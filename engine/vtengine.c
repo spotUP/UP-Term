@@ -6,7 +6,13 @@
 #include "vtengine.h"
 #include <string.h>
 
-#ifndef VT_MALLOC
+#if defined(VT_AMIGA_EXEC_ALLOC)
+/* code without a C startup (the handler): exec memory, no libc heap */
+#include <exec/memory.h>
+#include <proto/exec.h>
+#define VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
+#define VT_FREE(p) FreeVec(p)
+#elif !defined(VT_MALLOC)
 #include <stdlib.h>
 #define VT_MALLOC(n) malloc(n)
 #define VT_FREE(p) free(p)
@@ -86,6 +92,7 @@ struct vt_term {
     /* UTF-8 decoder (xterm) */
     vt_u32 u_cp;
     int u_need;
+    int utf8;
 
     /* per-row dirty spans, flushed at the end of each write */
     short *dx0, *dx1;
@@ -1725,6 +1732,10 @@ static void decode(vt_term *t, vt_u8 b)
             feed(t, b);
         return;
     }
+    if (!t->utf8) {
+        feed(t, b); /* Latin-1 xterm: bytes are code points, 80-9F are C1 */
+        return;
+    }
     /* UTF-8 */
     if (t->u_need) {
         if ((b & 0xC0) == 0x80) {
@@ -1804,6 +1815,7 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->tabs = (vt_u8 *)VT_MALLOC(cols);
     t->dx0 = (short *)VT_MALLOC(rows * sizeof(short));
     t->dx1 = (short *)VT_MALLOC(rows * sizeof(short));
+    t->utf8 = 1;
     t->sb_cap = scrollback > 0 ? scrollback : 0;
     if (t->sb_cap)
         t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
@@ -1884,6 +1896,12 @@ void vt_set_personality(vt_term *t, enum vt_personality p)
 enum vt_personality vt_personality(const vt_term *t)
 {
     return t->pers;
+}
+
+void vt_set_utf8(vt_term *t, int on)
+{
+    t->utf8 = on != 0;
+    t->u_need = 0;
 }
 
 void vt_write(vt_term *t, const vt_u8 *buf, long len)
@@ -2108,6 +2126,8 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *b
     default:
         if ((c->attr & VT_ATTR_BOLD) && f < 8)
             f = (vt_u16)(f + 8);
+        if (b == VT_COLOR_DEFAULT)
+            b = VT_COLOR_DEFAULT_BG;
         break;
     }
     if (!(c->attr & VT_ATTR_INVERSE) != !(t->modes & VT_MODE_SCREEN_REVERSE)) {
@@ -2274,7 +2294,7 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
         }
         if ((mods & VT_MOD_ALT) && t->pers != VT_AMIGA)
             out[n++] = 0x1B;
-        if (t->pers == VT_XTERM)
+        if (t->pers == VT_XTERM && t->utf8)
             n += put_utf8(out + n, c);
         else if (t->pers == VT_PCANSI)
             out[n++] = (vt_u8)cp437_encode(c);

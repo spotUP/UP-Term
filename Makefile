@@ -65,11 +65,35 @@ VBCC_CFG ?= $(CURDIR)/tools/vbcc-aos68k.cfg
 CPU      ?= 68020
 VC       := vc +$(VBCC_CFG) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o
+GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
+HANDLER_SRC := handler/vtcon_handler.c $(ENGINE) render/amiga_render.c render/glyphmap.c
+HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc
+
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler
 
 $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/vtengine.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -c -o $@ $(ENGINE)
+
+# The handler: no C startup (handler_entry is the first code), exec memory.
+# Gotcha: with -O2, vbcc can loop forever on a source that has a compile
+# error instead of reporting it; build with -O0 to see the error.
+# Rebuild when the flags change (DEBUG=1 on or off): the stamp holds them.
+HANDLER_FLAGS := DEBUG=$(DEBUG) CPU=$(CPU)
+$(BUILD)/amiga/handler.flags: FORCE
+	@mkdir -p $(BUILD)/amiga
+	@echo '$(HANDLER_FLAGS)' | cmp -s - $@ || echo '$(HANDLER_FLAGS)' > $@
+FORCE:
+
+$(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(BUILD)/amiga/handler.flags
+	@mkdir -p $(BUILD)/amiga/obj
+	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
+	$(VC) -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
+	$(VC) -c -o $(BUILD)/amiga/obj/glyphmap.o render/glyphmap.c
+	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
+	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/glyphmap.o \
+	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
 clean:
 	rm -rf $(BUILD)

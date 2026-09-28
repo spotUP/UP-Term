@@ -443,7 +443,7 @@ static void screen_reverse_video_inverts_every_cell(void)
     h_put(t, "a\033[7mb\033[?5h");
     CHECK(vt_modes(t) & VT_MODE_SCREEN_REVERSE);
     vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
-    CHECK_INT(f, VT_COLOR_DEFAULT);
+    CHECK_INT(f, VT_COLOR_DEFAULT_BG); /* the defaults swap */
     h_put(t, "\033[0;31;42m");
     h_put(t, "c");
     vt_resolve_colors(t, h_cell(t, 2, 0), &f, &b);
@@ -451,13 +451,31 @@ static void screen_reverse_video_inverts_every_cell(void)
     CHECK_INT(b, 1);
     vt_resolve_colors(t, h_cell(t, 1, 0), &f, &b);
     CHECK_INT(f, VT_COLOR_DEFAULT); /* inverse cell on an inverse screen: normal */
+    CHECK_INT(b, VT_COLOR_DEFAULT_BG);
+    vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
+    CHECK_INT(f, VT_COLOR_DEFAULT_BG); /* a plain cell on an inverse screen */
+    CHECK_INT(b, VT_COLOR_DEFAULT);
     h_put(t, "\033[?5l");
     CHECK_INT(vt_modes(t) & VT_MODE_SCREEN_REVERSE, 0);
     vt_free(t);
 }
 
+static void latin1_mode_for_amiga_unix_ports(void)
+{
+    vt_term *t = h_new(10, 1, VT_XTERM);
+    vt_u8 out[8];
+    vt_set_utf8(t, 0);
+    h_put(t, "\xe5\xe4\x9b" "1D" "X");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 0xE5);
+    CHECK_INT(h_cell(t, 1, 0)->ch, 'X'); /* 8-bit CSI moved back over the 0xE4 */
+    CHECK_INT(vt_encode_key(t, 0xF6, 0, out), 1);
+    CHECK_INT(out[0], 0xF6);
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    latin1_mode_for_amiga_unix_ports();
     screen_reverse_video_inverts_every_cell();
     parser_splits_sequences_across_writes();
     c0_controls_execute_inside_csi();

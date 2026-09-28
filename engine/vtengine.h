@@ -28,6 +28,10 @@ enum vt_personality {
  * pcansi, screen pens for amiga. VT_COLOR_DEFAULT is the personality's
  * default; VT_COLOR_RGB | rgb555 is a direct colour (SGR 38;2). */
 #define VT_COLOR_DEFAULT 0x0100
+/* vt_resolve_colors only: the default background, so that it stays itself
+ * when inverse swaps it into the foreground (the default foreground is
+ * VT_COLOR_DEFAULT). */
+#define VT_COLOR_DEFAULT_BG 0x0101
 #define VT_COLOR_RGB     0x8000
 #define VT_RGB(r, g, b) (vt_u16)(VT_COLOR_RGB | ((((unsigned)(r)) >> 3) << 10) | \
                                   ((((unsigned)(g)) >> 3) << 5) | (((unsigned)(b)) >> 3))
@@ -92,6 +96,10 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
 void     vt_free(vt_term *t);
 void     vt_set_personality(vt_term *t, enum vt_personality p); /* also resets */
 enum vt_personality vt_personality(const vt_term *t);
+/* xterm only: 1 (default) decodes UTF-8; 0 takes bytes as Latin-1 with
+ * 8-bit C1 controls, for Amiga Unix ports (ixemul/libnix) that write
+ * Latin-1. Keys are then encoded as Latin-1 too. */
+void     vt_set_utf8(vt_term *t, int on);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
 void     vt_resize(vt_term *t, int cols, int rows);
