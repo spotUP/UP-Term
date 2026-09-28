@@ -40,6 +40,7 @@
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
 #include "clip.h"
+#include "lineedit.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -71,9 +72,7 @@ static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.2026) " STR(VTCON_BUIL
 /* ---- the console ----------------------------------------------------------- */
 
 #define IN_MAX 4096
-#define LINE_MAX 1024
 #define READ_Q 16
-#define HIST_N 20
 
 typedef struct con {
     struct MsgPort *port;
@@ -95,11 +94,7 @@ typedef struct con {
     /* bytes ready for Read (complete lines in cooked mode) */
     vt_u8 in[IN_MAX];
     int in_len;
-    /* the line being edited (cooked) */
-    vt_u8 line[LINE_MAX];
-    int line_len;
-    vt_u8 hist[HIST_N][LINE_MAX / 4];
-    int hist_n, hist_pos;
+    le_line le;                  /* the line being edited (cooked mode) */
     struct DosPacket *reads[READ_Q];
     int nreads;
     struct DosPacket *waitchar;
@@ -465,6 +460,8 @@ static struct TextFont *open_font(con *c)
     return GfxBase->DefaultFont;
 }
 
+static void le_out(void *u, const unsigned char *b, long n);
+
 static int open_window(con *c)
 {
     struct Screen *scr;
@@ -526,6 +523,8 @@ static int open_window(con *c)
     else if (c->pers == VT_XTERM && c->cp437)
         vt_set_charset(c->t, VT_CS_CP437);
     vr_init(&c->r, c->win, c->font, c->t, c->pers == VT_PCANSI ? VT_ENC_CP437 : VT_ENC_LATIN1);
+    le_init(&c->le, c->t, le_out, c);
+    c->le.utf8 = c->pers == VT_XTERM && !c->latin1 && !c->cp437;
     DBG("vr_init", c->r.cols, c->r.rows);
     vr_redraw(&c->r);
     DBG("redrawn", 0, 0);
@@ -574,6 +573,8 @@ static void output(con *c, const vt_u8 *b, long n)
         return;
     if (c->r.view)
         vr_set_view(&c->r, 0); /* new output shows the live screen, as xterm does */
+    if (!c->le.len)
+        c->le.started = 0; /* the next line starts wherever this output ends */
     vr_cursor_off(&c->r);
     vt_write(c->t, b, n);
     vr_cursor_on(&c->r);
@@ -651,97 +652,21 @@ static void echo(con *c, const vt_u8 *b, int n)
     output(c, b, n);
 }
 
-/* bytes of the last character in the line (UTF-8 aware) */
-static int last_char_len(con *c)
+static void le_out(void *u, const unsigned char *b, long n)
 {
-    int k = 1;
-    if (vt_personality(c->t) == VT_XTERM && !c->latin1 && !c->cp437)
-        while (k < c->line_len && (c->line[c->line_len - k] & 0xC0) == 0x80)
-            k++;
-    return k;
+    output((con *)u, b, n);
 }
 
-static void line_erase_all(con *c)
+static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
-    while (c->line_len) {
-        c->line_len -= last_char_len(c);
-        echo(c, (const vt_u8 *)"\b \b", 3);
-    }
-}
-
-static void line_set(con *c, const vt_u8 *s)
-{
-    int n = 0;
-    line_erase_all(c);
-    while (s[n] && n < LINE_MAX - 1)
-        n++;
-    CopyMem((APTR)s, c->line, n);
-    c->line_len = n;
-    echo(c, c->line, n);
-}
-
-static void history_add(con *c)
-{
-    int n = c->line_len, i;
-    if (!n)
-        return;
-    if (n > LINE_MAX / 4 - 1)
-        n = LINE_MAX / 4 - 1;
-    if (c->hist_n == HIST_N) {
-        for (i = 1; i < HIST_N; i++)
-            CopyMem(c->hist[i], c->hist[i - 1], LINE_MAX / 4);
-        c->hist_n--;
-    }
-    CopyMem(c->line, c->hist[c->hist_n], n);
-    c->hist[c->hist_n][n] = 0;
-    c->hist_n++;
-}
-
-static void cooked_key(con *c, const vt_u8 *b, int n, long key)
-{
-    int i;
-    if (key == VT_KEY_RETURN || key == VT_KEY_KP_ENTER) {
-        history_add(c);
-        c->hist_pos = c->hist_n;
-        echo(c, (const vt_u8 *)"\r\n", 2);
-        c->line[c->line_len++] = '\n';
-        in_append(c, c->line, c->line_len);
-        c->line_len = 0;
-        return;
-    }
-    if (key == VT_KEY_BACKSPACE) {
-        if (c->line_len) {
-            c->line_len -= last_char_len(c);
-            echo(c, (const vt_u8 *)"\b \b", 3);
-        }
-        return;
-    }
-    if (key == VT_KEY_UP || key == VT_KEY_DOWN) {
-        if (!c->hist_n)
-            return;
-        if (key == VT_KEY_UP && c->hist_pos > 0)
-            c->hist_pos--;
-        else if (key == VT_KEY_DOWN && c->hist_pos < c->hist_n)
-            c->hist_pos++;
-        if (c->hist_pos < c->hist_n)
-            line_set(c, c->hist[c->hist_pos]);
-        else
-            line_set(c, (const vt_u8 *)"");
-        return;
-    }
-    if (key >= 0x110000)
-        return; /* other special keys do nothing in a cooked line */
-    if (n == 1 && b[0] == 0x18) { /* Ctrl-X: kill the line */
-        line_erase_all(c);
-        return;
-    }
-    if (n == 1 && b[0] == 0x1C) { /* Ctrl-\: end of file */
+    if (!key && n == 1 && b[0] == 0x1C) { /* Ctrl-\: end of file */
         c->eof = 1;
         return;
     }
-    for (i = 0; i < n && c->line_len < LINE_MAX - 2; i++)
-        c->line[c->line_len++] = b[i];
-    echo(c, b, n);
+    if (le_key(&c->le, key ? key : (n ? (long)b[0] : 0), mods, b, n)) {
+        in_append(c, c->le.buf, c->le.len);
+        le_reset(&c->le);
+    }
 }
 
 /* ---- keyboard ------------------------------------------------------------------- */
@@ -805,7 +730,7 @@ static void send_break(con *c, ULONG sig)
         Signal((struct Task *)c->break_port->mp_SigTask, sig);
 }
 
-static void cooked_key(con *c, const vt_u8 *b, int n, long key);
+static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
 
 /* The selection's text to the clipboard, as Latin-1 (the clipboard's). */
 static void copy_selection(con *c)
@@ -865,7 +790,7 @@ static void paste(con *c)
         if (c->raw)
             in_append(c, out, k);
         else
-            cooked_key(c, out, k, key == VT_KEY_RETURN ? key : 0);
+            cooked_key(c, out, k, key == VT_KEY_RETURN ? key : 0, 0);
     }
     if (c->raw) {
         k = vt_encode_paste(c->t, 1, out);
@@ -962,7 +887,7 @@ static void key_event(con *c, struct IntuiMessage *im)
     if (c->raw) {
         in_append(c, out, n);
     } else {
-        cooked_key(c, out, n, key);
+        cooked_key(c, out, n, key, mods);
     }
     service_reads(c);
 }
@@ -1189,8 +1114,8 @@ static void packet(con *c, struct DosPacket *p)
             c->raw = 0;
         } else if (!c->raw && p->dp_Arg1) {
             /* a partly typed line becomes input as it stands */
-            in_append(c, c->line, c->line_len);
-            c->line_len = 0;
+            in_append(c, c->le.buf, c->le.len);
+            le_reset(&c->le);
             c->raw = 1;
         }
         reply(p, DOSTRUE, 0);
