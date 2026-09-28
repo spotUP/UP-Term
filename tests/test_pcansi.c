@@ -73,8 +73,41 @@ static void eighty_column_art_wraps_deferred(void)
     vt_free(t);
 }
 
+static void aixterm_bright_sets_bold_like_dctelnet(void)
+{
+    vt_term *t = h_new(10, 1, VT_PCANSI);
+    vt_u16 f, b;
+    h_put(t, "\033[91ma\033[32mb\033[0;104mc");
+    vt_resolve_colors(t, h_cell(t, 1, 0), &f, &b);
+    CHECK_INT(f, 10); /* stays bright until 22/0 */
+    vt_resolve_colors(t, h_cell(t, 2, 0), &f, &b);
+    CHECK_INT(b, 12);
+    vt_free(t);
+}
+
+static void extended_colours_are_consumed(void)
+{
+    vt_term *t = h_new(10, 1, VT_PCANSI);
+    h_put(t, "\033[38;5;196;1ma\033[0;38:5:9mb");
+    CHECK(h_cell(t, 0, 0)->attr & VT_ATTR_BOLD);
+    CHECK_INT(h_cell(t, 0, 0)->fg, VT_COLOR_DEFAULT);
+    CHECK_INT(h_cell(t, 1, 0)->fg, VT_COLOR_DEFAULT);
+    vt_free(t);
+}
+
+static void del_is_the_house_glyph(void)
+{
+    vt_term *t = h_new(10, 1, VT_PCANSI);
+    h_put(t, "\177");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 0x2302);
+    vt_free(t);
+}
+
 void suite_pcansi(void)
 {
+    aixterm_bright_sets_bold_like_dctelnet();
+    extended_colours_are_consumed();
+    del_is_the_house_glyph();
     bold_is_bright_and_blink_is_ice();
     erase_display_homes_the_cursor();
     high_bytes_are_cp437();

@@ -66,6 +66,9 @@ struct vt_term {
     /* amiga personality */
     vt_u32 raw_events;
     vt_u16 amiga_bg;       /* global background pen (SGR >n) */
+    vt_u16 amiga_dfg, amiga_dbg; /* SGR 0 / 39 / 49 defaults (CSI SP s, V39) */
+    vt_u8 amiga_dattr;
+    int amiga_msb;         /* SO: 20-7F display as A0-FF (matrix 2.1, C-SO) */
     int scroll_enabled;    /* CSI >1h / >1l */
 
     /* parser */
@@ -557,6 +560,12 @@ static void restore_cursor(vt_term *t, const vt_saved *s)
 
 static void sgr_reset(vt_term *t)
 {
+    if (t->pers == VT_AMIGA) {
+        t->fg = t->amiga_dfg;
+        t->bg = t->amiga_dbg;
+        t->attr = t->amiga_dattr;
+        return;
+    }
     t->fg = VT_COLOR_DEFAULT;
     t->bg = VT_COLOR_DEFAULT;
     t->attr = 0;
@@ -721,12 +730,16 @@ static void exec_c0(vt_term *t, vt_u32 c)
         t->wrap_pending = 0;
         break;
     case 0x0E:
-        if (t->pers == VT_XTERM || t->pers == VT_AMIGA)
+        if (t->pers == VT_XTERM)
             t->gl = 1;
+        else if (t->pers == VT_AMIGA)
+            t->amiga_msb = 1;
         break;
     case 0x0F:
-        if (t->pers == VT_XTERM || t->pers == VT_AMIGA)
+        if (t->pers == VT_XTERM)
             t->gl = 0;
+        else if (t->pers == VT_AMIGA)
+            t->amiga_msb = 0;
         break;
     default:
         break;
@@ -893,10 +906,40 @@ static void sgr(vt_term *t)
         sgr_reset(t);
         return;
     }
+    if (t->pers == VT_PCANSI) {
+        for (i = 0; i < t->np; i++)
+            if (t->sub[i])
+                return; /* DCTelnet ignores the whole SGR on a ':' form */
+    }
     for (i = 0; i < t->np; i++) {
         long p = t->params[i];
+        if (t->sub[i] == 2) { /* amiga '>n' item */
+            t->amiga_bg = (vt_u16)(p & 0xFF);
+            mark_rows(t, 0, t->rows);
+            continue;
+        }
         if (t->sub[i])
             continue; /* a stray sub-parameter */
+        if (t->pers == VT_PCANSI && (p == 2 || p == 21)) {
+            t->attr &= ~VT_ATTR_BOLD; /* DCTelnet: intensity off */
+            continue;
+        }
+        if (t->pers == VT_PCANSI && p >= 90 && p <= 97) {
+            t->fg = (vt_u16)(p - 90); /* and bold, so a later 30-37 stays bright */
+            t->attr |= VT_ATTR_BOLD;
+            continue;
+        }
+        if (t->pers == VT_PCANSI && p >= 100 && p <= 107) {
+            t->bg = (vt_u16)(p - 100);
+            t->attr |= VT_ATTR_BLINK;
+            continue;
+        }
+        if (t->pers == VT_PCANSI && (p == 38 || p == 48)) {
+            /* consumed with no effect: 16 colours only */
+            long mode = param0(t, i + 1);
+            i += mode == 5 ? 2 : mode == 2 ? 4 : 1;
+            continue;
+        }
         if (p == 0) {
             sgr_reset(t);
         } else if (p == 1) {
@@ -944,13 +987,13 @@ static void sgr(vt_term *t)
         } else if (p == 38) {
             t->fg = ext_colour(t, &i);
         } else if (p == 39) {
-            t->fg = VT_COLOR_DEFAULT;
+            t->fg = t->pers == VT_AMIGA ? t->amiga_dfg : VT_COLOR_DEFAULT;
         } else if (p >= 40 && p <= 47) {
             t->bg = (vt_u16)(p - 40);
         } else if (p == 48) {
             t->bg = ext_colour(t, &i);
         } else if (p == 49) {
-            t->bg = VT_COLOR_DEFAULT;
+            t->bg = t->pers == VT_AMIGA ? t->amiga_dbg : VT_COLOR_DEFAULT;
         } else if (p >= 90 && p <= 97 && t->pers != VT_AMIGA) {
             t->fg = (vt_u16)(p - 90 + 8);
         } else if (p >= 100 && p <= 107 && t->pers != VT_AMIGA) {
@@ -1314,6 +1357,10 @@ static void csi_amiga(vt_term *t, vt_u8 final)
                 t->modes &= ~(vt_u32)VT_MODE_CURSOR_VISIBLE;
             else
                 t->modes |= VT_MODE_CURSOR_VISIBLE;
+        } else if (final == 's') { /* aSDSS: current pens become the defaults */
+            t->amiga_dfg = t->fg;
+            t->amiga_dbg = t->bg;
+            t->amiga_dattr = t->attr;
         } else if (final == 'q') { /* window status request */
             char b[40];
             int n = put_csi(t, b);
@@ -1371,6 +1418,16 @@ static void csi_amiga(vt_term *t, vt_u8 final)
                     t->raw_events &= ~((vt_u32)1 << e);
             }
         }
+        return;
+    }
+    case 'W': { /* CTC: 0 set tab here, 2 clear tab here, 5 clear all */
+        long m = param0(t, 0);
+        if (m == 0 && t->cx < t->tabs_cap)
+            t->tabs[t->cx] = 1;
+        else if (m == 2 && t->cx < t->tabs_cap)
+            t->tabs[t->cx] = 0;
+        else if (m == 5)
+            memset(t->tabs, 0, t->tabs_cap);
         return;
     }
     case 'c':
@@ -1525,8 +1582,16 @@ static void feed(vt_term *t, vt_u32 c)
 
     switch (t->state) {
     case S_GROUND:
-        if (c == 0x7F)
+        if (c == 0x7F) {
+            /* DEL is a glyph on the Amiga console and in CP437 (matrix C-DEL). */
+            if (t->pers == VT_AMIGA)
+                put_char(t, 0x7F);
+            else if (t->pers == VT_PCANSI)
+                put_char(t, 0x2302);
             return;
+        }
+        if (t->amiga_msb && c >= 0x20 && c < 0x80)
+            c |= 0x80;
         put_char(t, c);
         return;
 
@@ -1591,10 +1656,15 @@ static void feed(vt_term *t, vt_u32 c)
             return;
         }
         if (c >= 0x3C && c <= 0x3F) { /* < = > ? */
-            if (t->state == S_CSI_ENTRY)
+            if (t->state == S_CSI_ENTRY) {
                 t->priv = (vt_u8)c;
-            else
+            } else if (c == '>' && t->pers == VT_AMIGA && t->np && t->params[t->np - 1] == 0) {
+                /* CSI 1;33;40;>0m: a '>' item after ';' is the global
+                 * background colour (matrix 4.1). */
+                t->sub[t->np - 1] = 2;
+            } else {
                 t->state = S_CSI_IGNORE;
+            }
             return;
         }
         if (c >= 0x20 && c <= 0x2F) {
@@ -1774,6 +1844,10 @@ void vt_reset(vt_term *t)
     t->modes = VT_MODE_CURSOR_VISIBLE;
     if (t->pers == VT_AMIGA)
         t->modes |= VT_MODE_NEWLINE; /* the console's LF starts a new line */
+    t->amiga_dfg = VT_COLOR_DEFAULT;
+    t->amiga_dbg = VT_COLOR_DEFAULT;
+    t->amiga_dattr = 0;
+    t->amiga_msb = 0;
     soft_reset(t);
     t->sav_1049 = t->sav;
     t->raw_events = 0;
@@ -2158,6 +2232,21 @@ static int amiga_key(vt_u8 *o, long key, int mods)
         o[n++] = '~';
         return n;
     }
+    {
+        /* 101-key keyboards (matrix 5.3): F11 20~, F12 21~ (shifted 30/31),
+         * Insert 40~, PgUp 41~, PgDn 42~, Home 44~, End 45~ (shifted +10). */
+        int code = key == VT_KEY_F11 ? 20 : key == VT_KEY_F12 ? 21 : key == VT_KEY_INSERT ? 40
+                 : key == VT_KEY_PAGE_UP ? 41 : key == VT_KEY_PAGE_DOWN ? 42
+                 : key == VT_KEY_HOME ? 44 : key == VT_KEY_END ? 45 : 0;
+        if (code) {
+            if (sh)
+                code += 10;
+            o[n++] = (vt_u8)('0' + code / 10);
+            o[n++] = (vt_u8)('0' + code % 10);
+            o[n++] = '~';
+            return n;
+        }
+    }
     return 0;
 }
 
@@ -2208,7 +2297,12 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
         out[n++] = (vt_u8)(t->pers == VT_XTERM ? 0x7F : 0x08);
         return n;
     case VT_KEY_TAB:
-        if ((mods & VT_MOD_SHIFT) && t->pers != VT_AMIGA) {
+        if ((mods & VT_MOD_SHIFT) && t->pers == VT_AMIGA) {
+            out[n++] = 0x9B; /* the usa keymap's Shift+Tab */
+            out[n++] = 'Z';
+            return n;
+        }
+        if (mods & VT_MOD_SHIFT) {
             out[n++] = 0x1B;
             out[n++] = '[';
             out[n++] = 'Z';

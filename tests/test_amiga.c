@@ -76,8 +76,93 @@ static void form_feed_clears_the_window(void)
     vt_free(t);
 }
 
+static void shift_out_sets_the_high_bit(void)
+{
+    vt_term *t = h_new(10, 1, VT_AMIGA);
+    h_put(t, "a\016a\017a");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 'a');
+    CHECK_INT(h_cell(t, 1, 0)->ch, 0xE1); /* 'a' | 0x80 */
+    CHECK_INT(h_cell(t, 2, 0)->ch, 'a');
+    vt_free(t);
+}
+
+static void del_is_a_glyph(void)
+{
+    vt_term *t = h_new(10, 1, VT_AMIGA);
+    h_put(t, "a\177b");
+    CHECK_INT(h_cell(t, 1, 0)->ch, 0x7F);
+    CHECK_INT(h_cell(t, 2, 0)->ch, 'b');
+    vt_free(t);
+}
+
+static void vertical_tab_moves_up(void)
+{
+    vt_term *t = h_new(10, 3, VT_AMIGA);
+    h_put(t, "\n\nab\013c");
+    CHECK_STR(h_screen(t), "|  c|ab");
+    vt_free(t);
+}
+
+static void global_background_as_a_prefixed_item(void)
+{
+    vt_term *t = h_new(10, 1, VT_AMIGA);
+    vt_u16 f, b;
+    h_put(t, "\x9b" "1;33;40;>2m\x9b" "K");
+    vt_resolve_colors(t, h_cell(t, 5, 0), &f, &b);
+    CHECK_INT(b, 2); /* vacated cells take the global background */
+    h_put(t, "x");
+    CHECK_INT(h_cell(t, 0, 0)->fg, 3);
+    CHECK_INT(h_cell(t, 0, 0)->bg, 0);
+    vt_free(t);
+}
+
+static void set_default_style_makes_sgr0_return_to_it(void)
+{
+    vt_term *t = h_new(10, 1, VT_AMIGA);
+    h_put(t, "\x9b" "32;43m\x9b" " s\x9b" "31m\x9b" "0mx");
+    CHECK_INT(h_cell(t, 0, 0)->fg, 2);
+    CHECK_INT(h_cell(t, 0, 0)->bg, 3);
+    h_put(t, "\033c\x9b" "0my"); /* RIS restores the factory defaults */
+    CHECK_INT(h_cell(t, 0, 0)->fg, VT_COLOR_DEFAULT);
+    vt_free(t);
+}
+
+static void ctc_sets_and_clears_tabs(void)
+{
+    vt_term *t = h_new(20, 1, VT_AMIGA);
+    h_put(t, "\x9b" "5W\x9b" "1;4H\x9b" "0W\r\tX");
+    CHECK_INT(h_cell(t, 3, 0)->ch, 'X');
+    h_put(t, "\x9b" "1;4H\x9b" "2W\r\tY");
+    CHECK_INT(h_cell(t, 19, 0)->ch, 'Y');
+    vt_free(t);
+}
+
+static void cursor_report_uses_the_8bit_csi(void)
+{
+    vt_term *t = h_new(40, 20, VT_AMIGA);
+    h_put(t, "\x9b" "12;7H\x9b" "6n");
+    CHECK_STR(h_reply, "\x9b" "12;7R"); /* row;column (matrix erratum E3) */
+    vt_free(t);
+}
+
+static void xterm_only_sequences_are_inert(void)
+{
+    vt_term *t = h_new(10, 3, VT_AMIGA);
+    h_put(t, "ab\x9b" "2;3r\x9b" "sc");
+    CHECK_STR(h_screen(t), "abc");
+    vt_free(t);
+}
+
 void suite_amiga(void)
 {
+    shift_out_sets_the_high_bit();
+    del_is_a_glyph();
+    vertical_tab_moves_up();
+    global_background_as_a_prefixed_item();
+    set_default_style_makes_sgr0_return_to_it();
+    ctc_sets_and_clears_tabs();
+    cursor_report_uses_the_8bit_csi();
+    xterm_only_sequences_are_inert();
     window_status_request_reports_bounds();
     private_layout_sequences_reach_the_host();
     raw_events_set_and_reset();

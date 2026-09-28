@@ -64,6 +64,11 @@ static void amiga_keys_use_the_8bit_csi(void)
     CHECK_STR(key(t, VT_KEY_BACKSPACE, 0), "\010");
     CHECK_STR(key(t, VT_KEY_DELETE, 0), "\177");
     CHECK_STR(key(t, 0xE5, 0), "\xe5");
+    CHECK_STR(key(t, VT_KEY_F11, 0), "\x9b" "20~");
+    CHECK_STR(key(t, VT_KEY_F12, VT_MOD_SHIFT), "\x9b" "31~");
+    CHECK_STR(key(t, VT_KEY_INSERT, 0), "\x9b" "40~");
+    CHECK_STR(key(t, VT_KEY_END, VT_MOD_SHIFT), "\x9b" "55~");
+    CHECK_STR(key(t, VT_KEY_TAB, VT_MOD_SHIFT), "\x9b" "Z");
     vt_free(t);
 }
 

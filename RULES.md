@@ -22,7 +22,8 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 |------|---------|
 | Host tests (CI) | `make test` |
 | One suite | `make test ONLY=<name>` (e.g. `ONLY=xterm`) |
-| Reference diff vs pyte | `make test-pyte` (needs `make venv` once) |
+| Reference diff vs libvterm + pyte | `make test-ref` (needs `make venv` once; clones libvterm into `build/`) |
+| Re-record streams from real programs | `make capture` |
 | Cross build (vbcc, 68020) | `make amiga` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | Clean | `make clean` |

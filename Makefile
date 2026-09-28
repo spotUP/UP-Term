@@ -8,7 +8,7 @@ ENGINE  := engine/vtengine.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c
 
-.PHONY: test test-pyte venv capture amiga clean
+.PHONY: test test-ref venv capture amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
@@ -21,9 +21,18 @@ $(BUILD)/vtdump: $(ENGINE) engine/vtengine.h tests/dump_main.c
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) tests/dump_main.c
 
-# The xterm personality against pyte, on the recorded streams (ONLY= a name part).
-test-pyte: $(BUILD)/vtdump
-	.venv/bin/python tools/pyte_diff.py $(ONLY)
+# libvterm (neovim's terminal) as the reference, built from source into build/.
+LIBVTERM := $(BUILD)/third_party/libvterm
+$(LIBVTERM)/src/vterm.c:
+	@mkdir -p $(BUILD)/third_party
+	git clone -q --depth 1 https://github.com/neovim/libvterm.git $(LIBVTERM)
+
+$(BUILD)/vterm_dump: tools/vterm_dump.c $(LIBVTERM)/src/vterm.c
+	$(HOSTCC) -O1 -std=c99 -I$(LIBVTERM)/include -I$(LIBVTERM)/src -o $@ tools/vterm_dump.c $(LIBVTERM)/src/*.c
+
+# The xterm personality against libvterm and pyte on tests/streams (ONLY= a name part).
+test-ref: $(BUILD)/vtdump $(BUILD)/vterm_dump
+	.venv/bin/python tools/refdiff.py $(ONLY)
 
 venv:
 	python3 -m venv .venv && .venv/bin/pip install pyte
