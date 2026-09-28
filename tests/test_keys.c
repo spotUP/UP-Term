@@ -118,8 +118,26 @@ static void mouse_reports_follow_the_modes(void)
     vt_free(t);
 }
 
+static void keypad_follows_deckpam(void)
+{
+    vt_term *t = h_new(10, 2, VT_XTERM);
+    CHECK_STR(key(t, VT_KEY_KP_5, 0), "5");
+    h_put(t, "\033=");
+    CHECK_STR(key(t, VT_KEY_KP_5, 0), "\033Ou");
+    CHECK_STR(key(t, VT_KEY_KP_MINUS, 0), "\033Om");
+    CHECK_STR(key(t, VT_KEY_KP_ENTER, 0), "\033OM");
+    CHECK_STR(key(t, VT_KEY_KP_LPAREN, 0), "(");
+    h_put(t, "\033>");
+    CHECK_STR(key(t, VT_KEY_KP_SLASH, 0), "/");
+    vt_free(t);
+    t = h_new(10, 2, VT_AMIGA);
+    CHECK_STR(key(t, VT_KEY_KP_7, 0), "7");
+    vt_free(t);
+}
+
 void suite_keys(void)
 {
+    keypad_follows_deckpam();
     mouse_reports_follow_the_modes();
     xterm_cursor_keys_follow_decckm();
     xterm_function_and_editing_keys();

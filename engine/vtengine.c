@@ -262,7 +262,6 @@ static const vt_u16 dec_graphics[32] = {
     0x252C, 0x2502, 0x2264, 0x2265, 0x03C0, 0x2260, 0x00A3, 0x00B7
 };
 
-const vt_u16 *vt_cp437_table(void);
 const vt_u16 *vt_cp437_table(void)
 {
     return cp437_hi;
@@ -2321,6 +2320,20 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
         return n;
     default:
         break;
+    }
+
+    if (key >= VT_KEY_KP_0 && key <= VT_KEY_KP_RPAREN) {
+        static const char plain[] = "0123456789.-+*/()";
+        static const char ss3[] = "pqrstuvwxynmkjo";
+        int k = (int)(key - VT_KEY_KP_0);
+        if (t->pers == VT_XTERM && (t->modes & VT_MODE_APP_KEYPAD) && k < 15) {
+            out[n++] = 0x1B;
+            out[n++] = 'O';
+            out[n++] = (vt_u8)ss3[k];
+            return n;
+        }
+        out[n++] = (vt_u8)plain[k];
+        return n;
     }
 
     if (t->pers == VT_AMIGA) {

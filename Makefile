@@ -5,17 +5,21 @@ HOSTCFLAGS := -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -fsanitize=address
 BUILD   := build
 
 ENGINE  := engine/vtengine.c
+RENDER  := render/glyphmap.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
-           tests/test_amiga.c tests/test_pcansi.c
+           tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c
 
 .PHONY: test test-ref golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
 
-$(BUILD)/vttest_host: $(ENGINE) engine/vtengine.h $(TESTS) tests/harness.h
+$(BUILD)/vttest_host: $(ENGINE) $(RENDER) engine/vtengine.h render/glyphmap.h render/glyph_tables.inc $(TESTS) tests/harness.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(TESTS)
+
+render/glyph_tables.inc: tools/gen_glyph_tables.py
+	python3 tools/gen_glyph_tables.py
 
 $(BUILD)/vtdump: $(ENGINE) engine/vtengine.h tests/dump_main.c
 	@mkdir -p $(BUILD)

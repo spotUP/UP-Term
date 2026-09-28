@@ -116,6 +116,9 @@ vt_u32   vt_raw_events(const vt_term *t);
  * RGB colours pass through unchanged. */
 void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *bg);
 
+/* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
+const vt_u16 *vt_cp437_table(void);
+
 /* Keys. key is a Unicode character, or one of VT_KEY_*. */
 enum vt_key {
     VT_KEY_UP = 0x110000, VT_KEY_DOWN, VT_KEY_RIGHT, VT_KEY_LEFT,
@@ -124,7 +127,12 @@ enum vt_key {
     VT_KEY_F1, VT_KEY_F2, VT_KEY_F3, VT_KEY_F4, VT_KEY_F5, VT_KEY_F6,
     VT_KEY_F7, VT_KEY_F8, VT_KEY_F9, VT_KEY_F10, VT_KEY_F11, VT_KEY_F12,
     VT_KEY_RETURN, VT_KEY_BACKSPACE, VT_KEY_TAB, VT_KEY_ESCAPE,
-    VT_KEY_KP_ENTER
+    VT_KEY_KP_ENTER,
+    /* numeric keypad: characters normally, SS3 codes in DECKPAM (xterm) */
+    VT_KEY_KP_0, VT_KEY_KP_1, VT_KEY_KP_2, VT_KEY_KP_3, VT_KEY_KP_4,
+    VT_KEY_KP_5, VT_KEY_KP_6, VT_KEY_KP_7, VT_KEY_KP_8, VT_KEY_KP_9,
+    VT_KEY_KP_DOT, VT_KEY_KP_MINUS, VT_KEY_KP_PLUS, VT_KEY_KP_STAR, VT_KEY_KP_SLASH,
+    VT_KEY_KP_LPAREN, VT_KEY_KP_RPAREN
 };
 #define VT_MOD_SHIFT 1
 #define VT_MOD_ALT   2

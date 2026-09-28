@@ -5,12 +5,14 @@ void suite_xterm(void);
 void suite_keys(void);
 void suite_amiga(void);
 void suite_pcansi(void);
+void suite_glyph(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
     { "keys", suite_keys },
     { "amiga", suite_amiga },
     { "pcansi", suite_pcansi },
+    { "glyph", suite_glyph },
     { 0, 0 }
 };
 
