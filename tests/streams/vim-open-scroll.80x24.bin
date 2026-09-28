@@ -1,4 +1,4 @@
-[?1049h[>4;2m[?1h=[?2004h[?1004h[1;24r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[24;1H"~/Code/vtcon/engine/vtengine.c" 2295L, 59952B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[>c]10;?]11;?[1;1H[34m/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+[?1049h[>4;2m[?1h=[?2004h[?1004h[1;24r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[24;1H"~/Code/vtcon/engine/vtengine.c" 2441L, 65433B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[>c]10;?]11;?[1;1H[34m/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
  * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[m[2;76H[K[3;1H[34m * it are per personality, because the Amiga console and xterm give the same[m[3;77H[K[4;1H[34m * CSI finals different meanings (the conformance matrix in
  * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[m
 [35m#include [m[31m"vtengine.h"[m
@@ -75,10 +75,13 @@
 
 [34m/* Rows [top, bot) move up by n; n blank rows enter at the bottom. Lines
  * leaving the top of the primary screen go to the scrollback. */
-[?25h[?25l[m[1;5H    out[n++] = [31m'O'[m;
-        out[n++] = (vt_u8)([31m'P'[m + (key - VT_KEY_F1));[3;9H[38;5;130mreturn[m n;[3;18H[K[4;5H[38;5;130mdefault[m:[5;9H[38;5;130mbreak[m;[5;15H[K[6;5H}[6;6H[K[7;5H[38;5;130mif[m (key >= VT_KEY_F5 && key <= VT_KEY_F12) {
- [7C[32mstatic[m [32mconst[m [32mint[m code[[31m8[m] = { [31m15[m, [31m17[m, [31m18[m, [31m19[m, [31m20[m, [31m21[m, [31m23[m, [31m24[m };[9;9H[38;5;130mreturn[m xterm_tilde(out, code[key - VT_KEY_F5], mods);
-    }[10;6H[K[11;1H    [38;5;130mreturn[m [31m0[m;[11;14H[K[12;1H}[12;2H[K[13;1H[K[14;1H[32mint[m vt_encode_paste([32mconst[m vt_term *t, [32mint[m end, vt_u8 *out)
+[?25h[?25l[m[1;7H[38;5;130melse[m {
+        [38;5;130mif[m (x > [31m222[m || y > [31m222[m[3;9H    [38;5;130mreturn[m [31m0[m; [34m/* beyond what one byte can carry */[m
+        b[n++] = [31m'M'[m;[5;9Hb[n++] = ([32mchar[m)([31m32[m + cb);
+        b[n++] = ([32mchar[m)([31m33[m + x);
+        b[n++] = ([32mchar[m)([31m33[m + y);[7;33H[K[8;1H    }
+    [38;5;130mfor[m (i = [31m0[m; i < n; i++)
+        out[i] = (vt_u8)b[i];[10;30H[K[11;1H    [38;5;130mreturn[m n;[11;14H[K[12;1H}[12;2H[K[13;1H[K[14;1H[32mint[m vt_encode_paste([32mconst[m vt_term *t, [32mint[m end, vt_u8 *out)
 {[15;5H[K[16;5H[32mconst[m [32mchar[m *s = end ? [31m"[m[35m\033[m[31m[201~"[m : [31m"[m[35m\033[m[31m[200~"[m;
     [32mint[m i;[17;11H[K[18;9H!(t->modes & VT_MODE_BRACKET_PASTE) || t->pers != VT_XTERM)[19;9H[38;5;130mreturn[m [31m0[m;
     [38;5;130mfor[m (i = [31m0[m; s[i]; i++)
@@ -88,9 +91,7 @@
  * it are per personality, because the Amiga console and xterm give the same
  * CSI finals different meanings (the conformance matrix in
  * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[m
-[35m#include [m[31m"vtengine.h"[m
-[35m#include [m[31m<string.h>[m[7;20H[K[8;9H[K[9;1H[35m#ifndef VT_MALLOC[m[9;18H[K[10;1H[35m#include [m[31m<stdlib.h>[m
-[35m#define VT_MALLOC(n) malloc(n)
+[35m#include [m[31m"vtengine.h"[m[6;22H[K[7;1H[35m#include [m[31m<string.h>[m[7;20H[K[8;5H[K[9;1H[35m#ifndef VT_MALLOC[m[9;19H[K[10;1H[35m#include [m[31m<stdlib.h>[m[10;20H[K[11;1H[35m#define VT_MALLOC(n) malloc(n)
 #define VT_FREE(p) free(p)
 #endif[m[14;1H[K[15;1H[35m#define VT_MAX_PARAMS [m[31m16[m
 [35m#define VT_STR_MAX [m[31m256[m[16;23H[K[17;1H[35m#define VT_PARAM_MAX [m[31m65535L[m[18;5H[K[19;1H[34m/* Parser states. */[m

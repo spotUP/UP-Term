@@ -46,7 +46,7 @@ int main(int argc, char **argv)
         int nc;
         const vt_cell *c = vt_row(t, y, &nc);
         for (x = 0; x < nc; x++)
-            printf("%s%u,%u,%u", x ? " " : "", c[x].fg, c[x].bg, c[x].attr);
+            printf("%s%u,%u,%u,%u", x ? " " : "", c[x].fg, c[x].bg, c[x].attr, c[x].ch);
         printf("\n");
     }
     vt_cursor(t, &cx, &cy);

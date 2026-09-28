@@ -1,0 +1,92 @@
+[?1049h[!p[?3;4l[4l>[4l[?1h=[0m(B[1;24r[H[2J[H[2J[H[2J[37m[44m #amiga: vtcon test channel                                                     [22B [12:00] [spot(+i)] [2:#amiga] [Act: 3,4]                                       
+[39m[49m[#amiga] [H
+[1m12:00 [0m[2m<[0m[36mspot[39m[2m> [0mhello there
+[1m12:01 [0m[2m<[0m[33mblueberry[39m[2m> [0manyone tried the new console on 3.2?
+[1m12:02 [0m[2m<[0m[32mflubba[39m[2m> [0mit scrolls with a region above the input line, like irssi
+[1m12:03 [0m[2m<[0m[35mlars[39m[2m> [0måäö and é should survive
+[1m12:04 [0m[2m<[0m[31mmr_x[39m[2m> [0ma long line that has to wrap because it is much wider than the log
+window and keeps going past the right edge of the terminal[23;41H[37m[44m[Act: 4][39m[49m[15A[1m12:05 [0m[2m<[0m[34ma_very_long_nickname[39m[2m> [0mok
+[1m12:06 [0m[2m<[0m[36mspot[39m[2m> [0m/me waves
+[1m12:07 [0m[2m<[0m[33mblueberry[39m[2m> [0mhello there
+[1m12:08 [0m[2m<[0m[32mflubba[39m[2m> [0manyone tried the new console on 3.2?
+[1m12:09 [0m[2m<[0m[35mlars[39m[2m> [0mit scrolls with a region above the input line, like irssi[23;47H[37m[44m9][39m[49m[10A[1m12:10 [0m[2m<[0m[31mmr_x[39m[2m> [0måäö and é should survive
+[1m12:11 [0m[2m<[0m[34ma_very_long_nickname[39m[2m> [0ma long line that has to wrap because it is much wid
+er than the log window and keeps going past the right edge of the terminal
+[1m12:12 [0m[2m<[0m[36mspot[39m[2m> [0mok
+[1m12:13 [0m[2m<[0m[33mblueberry[39m[2m> [0m/me waves
+[1m12:14 [0m[2m<[0m[32mflubba[39m[2m> [0mhello there[23;47H[37m[44m14][39m[49m[4A[1m12:15 [0m[2m<[0m[35mlars[39m[2m> [0manyone tried the new console on 3.2?
+[1m12:16 [0m[2m<[0m[31mmr_x[39m[2m> [0mit scrolls with a region above the input line, like irssi
+[1m12:17 [0m[2m<[0m[34ma_very_long_nickname[39m[2m> [0måäö and é should survive[H[21;54H
+[2;22r[22;1H
+[H[20B[1m12:18 [0m[2m<[0m[36mspot[39m[2m> [0ma long line that has to wrap because it is much wider than the log
+window and keeps going past the right edge of the terminal[H[22;59H
+[H[21B[1m12:19 [0m[2m<[0m[33mblueberry[39m[2m> [0mok[23;48H[37m[44m9][39m[49m[H[21B
+[H[21B[1m12:20 [0m[2m<[0m[32mflubba[39m[2m> [0m/me waves[H[22;25H
+[H[21B[1m12:21 [0m[2m<[0m[35mlars[39m[2m> [0mhello there[H[22;25H
+[H[21B[1m12:22 [0m[2m<[0m[31mmr_x[39m[2m> [0manyone tried the new console on 3.2?[H[22;50H[20A[2M[20B[H[20B[1m12:23 [0m[2m<[0m[34ma_very_long_nickname[39m[2m> [0mit scrolls with a region above the input line, like[22;2Hirssi[H[22;7H
+[H[21B[1m12:24 [0m[2m<[0m[36mspot[39m[2m> [0måäö and é should survive[23;47H[37m[44m24][39m[49m[H[21B[20A[2M[20B[H[20B[1m12:25 [0m[2m<[0m[33mblueberry[39m[2m> [0ma long line that has to wrap because it is much wider than the[22;2Hlog window and keeps going past the right edge of the terminal[H[22;64H
+[H[21B[1m12:26 [0m[2m<[0m[32mflubba[39m[2m> [0mok[H[22;18H
+[H[21B[1m12:27 [0m[2m<[0m[35mlars[39m[2m> [0m/me waves[H[22;23H
+[H[21B[1m12:28 [0m[2m<[0m[31mmr_x[39m[2m> [0mhello there[H[22;25H
+[H[21B[1m12:29 [0m[2m<[0m[34ma_very_long_nickname[39m[2m> [0manyone tried the new console on 3.2?[23;48H[37m[44m9][39m[49m[24;10Htyping a reply[14D[K[1;24r[H[2J[1m12:23 [0m[2m<[0m[34ma_very_long_nickname[2m[39m> [0mit scrolls with a region above the input line, like[2;2Hirssi
+[1m12:24 [0m[2m<[0m[36mspot[2m[39m> [0måäö and é should survive
+[1m12:25 [0m[2m<[0m[33mblueberry[2m[39m> [0ma long line that has to wrap because it is much wider than the[5;2Hlog window and keeps going past the right edge of the terminal
+[1m12:26 [0m[2m<[0m[32mflubba[2m[39m> [0mok
+[1m12:27 [0m[2m<[0m[35mlars[2m[39m> [0m/me waves
+[1m12:28 [0m[2m<[0m[31mmr_x[2m[39m> [0mhello there
+[1m12:29 [0m[2m<[0m[34ma_very_long_nickname[2m[39m> [0manyone tried the new console on 3.2?
+[37m[44m [12:00] [spot(+i)] [2:#amiga] [Act: 3,4[Act: 29]                               
+[39m[49m[#amiga]
+[7m  0 python                                                                      [12B --                                                                             [11;10H[27m[H[2J[1m12:23 [0m[2m<[0m[34ma_very_long_nickname[2m[39m> [0mit scrolls with a region above the input line, like[2;2Hirssi
+[1m12:24 [0m[2m<[0m[36mspot[2m[39m> [0måäö and é should survive
+[1m12:25 [0m[2m<[0m[33mblueberry[2m[39m> [0ma long line that has to wrap because it is much wider than the[5;2Hlog window and keeps going past the right edge of the terminal
+[1m12:26 [0m[2m<[0m[32mflubba[2m[39m> [0mok
+[1m12:27 [0m[2m<[0m[35mlars[2m[39m> [0m/me waves
+[1m12:28 [0m[2m<[0m[31mmr_x[2m[39m> [0mhello there
+[1m12:29 [0m[2m<[0m[34ma_very_long_nickname[2m[39m> [0manyone tried the new console on 3.2?
+[37m[44m [12:00] [spot(+i)] [2:#amiga] [Act: 3,4[Act: 29]                               
+[39m[49m[#amiga]
+[7m  0 python                                                                      [12B --                                                                             [11;10H[27m
+
+[H[2J[1m12:23 [0m[2m<[0m[34ma_very_long_nickname[2m[39m> [0mit scrolls with a region above the input line, like[2;2Hirssi
+[1m12:24 [0m[2m<[0m[36mspot[2m[39m> [0måäö and é should survive
+[1m12:25 [0m[2m<[0m[33mblueberry[2m[39m> [0ma long line that has to wrap because it is much wider than the[5;2Hlog window and keeps going past the right edge of the terminal
+[1m12:26 [0m[2m<[0m[32mflubba[2m[39m> [0mok
+[1m12:27 [0m[2m<[0m[35mlars[2m[39m> [0m/me waves
+[1m12:28 [0m[2m<[0m[31mmr_x[2m[39m> [0mhello there
+[1m12:29 [0m[2m<[0m[34ma_very_long_nickname[2m[39m> [0manyone tried the new console on 3.2?
+[37m[44m [12:00] [spot(+i)] [2:#amiga] [Act: 3,4[Act: 29]                               
+[39m[49m[#amiga]
+[7m  0 python                                                                      [12B  1 sh                                                                          [11A[27m$ /Users/spot/Code/vtcon/.venv/bin/python /Users/spot/Code/vtcon/tools/chatsim.p y 20
+[2A[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K[10A[37m[44m #amiga: vtcon test channel                                                     [9B [12:00] [spot(+i)] [2:#amiga] [Act: 3,4]                                       
+[39m[49m[#amiga] [10A
+[1m12:00 [0m[2m<[0m[36mspot[39m[2m> [0mhello there
+[1m12:01 [0m[2m<[0m[33mblueberry[39m[2m> [0manyone tried the new console on 3.2?
+[1m12:02 [0m[2m<[0m[32mflubba[39m[2m> [0mit scrolls with a region above the input line, like irssi
+[1m12:03 [0m[2m<[0m[35mlars[39m[2m> [0måäö and é should survive
+[1m12:04 [0m[2m<[0m[31mmr_x[39m[2m> [0ma long line that has to wrap because it is much wider than the log
+window and keeps going past the right edge of the terminal[22;41H[37m[44m[Act: 4][39m[49m[2A[1m12:05 [0m[2m<[0m[34ma_very_long_nickname[39m[2m> [0mok
+[1m12:06 [0m[2m<[0m[36mspot[39m[2m> [0m/me waves[8A[21;23H[14;21r[21;1H
+[13;1H[8B[1m12:07 [0m[2m<[0m[33mblueberry[39m[2m> [0mhello there[13;1H[21;30H
+[13;1H[8B[1m12:08 [0m[2m<[0m[32mflubba[39m[2m> [0manyone tried the new console on 3.2?[13;1H[21;52H
+[13;1H[8B[1m12:09 [0m[2m<[0m[35mlars[39m[2m> [0mit scrolls with a region above the input line, like irssi[22;47H[37m[44m9][39m[49m[13;1H[8B
+[13;1H[8B[1m12:10 [0m[2m<[0m[31mmr_x[39m[2m> [0måäö and é should survive[13;1H[21;38H[7A[2M[7B[13;1H[7B[1m12:11 [0m[2m<[0m[34ma_very_long_nickname[39m[2m> [0ma long line that has to wrap because it is much wid
+er than the log window and keeps going past the right edge of the terminal[13;1H[21;75H
+[13;1H[8B[1m12:12 [0m[2m<[0m[36mspot[39m[2m> [0mok[13;1H[21;16H
+[13;1H[8B[1m12:13 [0m[2m<[0m[33mblueberry[39m[2m> [0m/me waves[13;1H[21;28H
+[13;1H[8B[1m12:14 [0m[2m<[0m[32mflubba[39m[2m> [0mhello there[22;47H[37m[44m14][39m[49m[13;1H[8B
+[13;1H[8B[1m12:15 [0m[2m<[0m[35mlars[39m[2m> [0manyone tried the new console on 3.2?[13;1H[21;50H
+[13;1H[8B[1m12:16 [0m[2m<[0m[31mmr_x[39m[2m> [0mit scrolls with a region above the input line, like irssi[13;1H[21;71H
+[13;1H[8B[1m12:17 [0m[2m<[0m[34ma_very_long_nickname[39m[2m> [0måäö and é should survive[13;1H[21;54H[7A[2M[7B[13;1H[7B[1m12:18 [0m[2m<[0m[36mspot[39m[2m> [0ma long line that has to wrap because it is much wider than the log
+window and keeps going past the right edge of the terminal[13;1H[21;59H
+[13;1H[8B[1m12:19 [0m[2m<[0m[33mblueberry[39m[2m> [0mok[22;48H[37m[44m9][39m[49m[23;10Htyping a reply[14D[K

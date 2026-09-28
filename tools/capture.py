@@ -7,7 +7,7 @@ tests/streams/<name>.<cols>x<rows>.bin. Re-run to refresh the captures. The prog
 killed while still on screen (no quit key), so the final grid is theirs:
 pyte, the reference, has no alternate screen to return from.
 """
-import os, pty, select, struct, fcntl, termios, time, pathlib, sys
+import os, pty, select, struct, fcntl, termios, time, pathlib, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "tests/streams"
@@ -51,15 +51,46 @@ def capture(name, argv, keys, cols=80, rows=24, settle=0.4, env_extra=None):
     p.write_bytes(bytes(data))
     print("%-28s %6d bytes" % (p.name, len(data)))
 
+def tmux(name, cmd, keys, cols=80, rows=24):
+    """Run cmd inside tmux (own socket and config under build/), capture the
+    outer terminal's bytes: tmux redraws with scroll regions and its own
+    status line, the heaviest DECSTBM user there is."""
+    sock = str(ROOT / "build/tmux.sock")
+    subprocess.run(["tmux", "-S", sock, "kill-server"], capture_output=True)
+    capture(name, ["tmux", "-S", sock, "-f", "/dev/null", "new-session", cmd], keys, cols, rows,
+            settle=0.6)
+    subprocess.run(["tmux", "-S", sock, "kill-server"], capture_output=True)
+
+def screen(name, cmd, keys, cols=80, rows=24):
+    sdir = ROOT / "build/screens"
+    sdir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(sdir, 0o700)
+    capture(name, ["screen", "-c", "/dev/null", "-S", "vtcon-" + name] + cmd.split(), keys,
+            cols, rows, settle=0.6, env_extra={"SCREENDIR": str(sdir)})
+    subprocess.run(["screen", "-S", "vtcon-" + name, "-X", "quit"], capture_output=True,
+                   env=dict(os.environ, SCREENDIR=str(sdir)))
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    chat = "%s %s" % (sys.executable, ROOT / "tools/chatsim.py")
+    capture("chatsim", [sys.executable, str(ROOT / "tools/chatsim.py"), "60"], [], settle=1.0)
+    capture("chatsim-small", [sys.executable, str(ROOT / "tools/chatsim.py"), "30"], [], cols=40,
+            rows=12, settle=1.0)
+    tmux("tmux-chatsim", chat + " 50", [])
+    tmux("tmux-split", chat + " 30",
+         [b"\x02\"", ("%s 25\r" % chat).encode(), b"\x02%", b"ls -la /\r", b"\x02o",
+          b"\x02[", b"\x1b[A" * 6, b"q"])
+    tmux("tmux-vim", "vim -n -u NONE -N " + str(SAMPLE), [b"\x02\"", b"\x06", b"\x02o", b"\x06"])
+    screen("screen-chatsim", chat + " 50", [])
+    screen("screen-split", chat + " 30",
+           [b"\x01S", b"\x01\t", b"\x01c", ("%s 20\r" % chat).encode()])
     f = str(SAMPLE)
-    capture("vim-open-scroll", ["vim", "-u", "NONE", "-N", "+syntax on", f],
+    capture("vim-open-scroll", ["vim", "-n", "-u", "NONE", "-N", "+syntax on", f],
             [b"\x06", b"\x06", b"/scroll_up\r", b"\x04", b"\x15", b"G", b"gg"])
-    capture("vim-edit", ["vim", "-u", "NONE", "-N", f],
+    capture("vim-edit", ["vim", "-n", "-u", "NONE", "-N", f],
             [b"10G", b"O", b"inserted line \xc3\xa5\xc3\xa4\xc3\xb6", b"\x1b", b"dd", b"u",
              b"3dd", b":split\r", b"\x17w", b":q!\r"])
-    capture("vim-small", ["vim", "-u", "NONE", "-N", f], [b"\x06", b"\x06", b":q!\r"], cols=40, rows=12)
+    capture("vim-small", ["vim", "-n", "-u", "NONE", "-N", f], [b"\x06", b"\x06", b":q!\r"], cols=40, rows=12)
     capture("less-scroll", ["less", f],
             [b" ", b" ", b"b", b"j" * 5, b"k" * 3, b"/state\r", b"n", b"G"])
     capture("ls-color", ["/bin/ls", "-laG", str(ROOT / "engine"), str(ROOT / "tests")], [],

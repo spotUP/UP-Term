@@ -3,3 +3,4 @@ thoughts/searchable/
 .venv/
 build/
 *.o
+*.sw?

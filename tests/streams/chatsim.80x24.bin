@@ -1,0 +1,59 @@
+[?1049h[1;24r(B[m[4l[?7h[?1h=[39;49m[39;49m(B[m[H[2J[37m[44m #amiga: vtcon test channel[K[23d [12:00] [spot(+i)] [2:#amiga] [Act: 3,4][K
+[39;49m(B[m[#amiga] [H
+(B[0;1m12:00 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[mhello there
+(B[0;1m12:01 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[manyone tried the new console on 3.2?
+(B[0;1m12:02 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[mit scrolls with a region above the input line, like irssi
+(B[0;1m12:03 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[måäö and é should survive
+(B[0;1m12:04 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[ma long line that has to wrap because it is much wider than the log
+window and keeps going past the right edge of the terminal[23;40H[37m[44m4[Act: 4][39;49m(B[m[8d(B[0;1m12:05 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[mok
+(B[0;1m12:06 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[m/me waves
+(B[0;1m12:07 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[mhello there
+(B[0;1m12:08 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[manyone tried the new console on 3.2?
+(B[0;1m12:09 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[mit scrolls with a region above the input line, like irssi[23;47H[37m[44m9][39;49m(B[m[13d(B[0;1m12:10 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[måäö and é should survive
+(B[0;1m12:11 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[ma long line that has to wrap because it is much wid[15;1Her than the log window and keeps going past the right edge of the terminal
+(B[0;1m12:12 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[mok
+(B[0;1m12:13 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[m/me waves
+(B[0;1m12:14 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[mhello there[23;47H[37m[44m14][39;49m(B[m[19d(B[0;1m12:15 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[manyone tried the new console on 3.2?
+(B[0;1m12:16 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[mit scrolls with a region above the input line, like irssi
+(B[0;1m12:17 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[måäö and é should survive7[2;22r8
+
+[1;24r[21;1H(B[0;1m12:18 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[ma long line that has to wrap because it is much wider than the log
+window and keeps going past the right edge of the terminal7[2;22r8
+[1;24r[22;1H(B[0;1m12:19 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[mok[23;48H[37m[44m9][39;49m(B[m[2;22r[22;1H
+[1;24r[22;1H(B[0;1m12:20 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[m/me waves7[2;22r8
+[1;24r[22;1H(B[0;1m12:21 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[mhello there7[2;22r8
+[1;24r[22;1H(B[0;1m12:22 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[manyone tried the new console on 3.2?7[2;22r8[2S[1;24r[21;1H(B[0;1m12:23 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[mit scrolls with a region above the input line, like[22;2Hirssi7[2;22r8
+[1;24r[22;1H(B[0;1m12:24 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[måäö and é should survive[23;47H[37m[44m24][39;49m(B[m[2;22r[22;1H[2S[1;24r[21;1H(B[0;1m12:25 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[ma long line that has to wrap because it is much wider than the[22;2Hlog window and keeps going past the right edge of the terminal7[2;22r8
+[1;24r[22;1H(B[0;1m12:26 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[mok7[2;22r8
+[1;24r[22;1H(B[0;1m12:27 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[m/me waves7[2;22r8
+[1;24r[22;1H(B[0;1m12:28 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[mhello there7[2;22r8
+[1;24r[22;1H(B[0;1m12:29 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[manyone tried the new console on 3.2?[23;48H[37m[44m9][39;49m(B[m[2;22r[22;1H
+[1;24r[22;1H(B[0;1m12:30 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[mit scrolls with a region above the input line, like irssi7[2;22r8
+[1;24r[22;1H(B[0;1m12:31 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[måäö and é should survive7[2;22r8[2S[1;24r[21;1H(B[0;1m12:32 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[ma long line that has to wrap because it is much wider than the lo[22;1Hg window and keeps going past the right edge of the terminal7[2;22r8
+[1;24r[22;1H(B[0;1m12:33 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[mok7[2;22r8
+[1;24r[22;1H(B[0;1m12:34 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[m/me waves[23;47H[37m[44m34][39;49m(B[m[2;22r[22;1H
+[1;24r[22;1H(B[0;1m12:35 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[mhello there7[2;22r8
+[1;24r[22;1H(B[0;1m12:36 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[manyone tried the new console on 3.2?7[2;22r8
+[1;24r[22;1H(B[0;1m12:37 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[mit scrolls with a region above the input line, like irssi7[2;22r8
+[1;24r[22;1H(B[0;1m12:38 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[måäö and é should survive7[2;22r8[2S[1;24r[21;1H(B[0;1m12:39 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[ma long line that has to wrap because it is much wider than the log
+window and keeps going past the right edge of the terminal[23;48H[37m[44m9][39;49m(B[m[2;22r[22;1H
+[1;24r[22;1H(B[0;1m12:40 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[mok7[2;22r8
+[1;24r[22;1H(B[0;1m12:41 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[m/me waves7[2;22r8
+[1;24r[22;1H(B[0;1m12:42 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[mhello there7[2;22r8
+[1;24r[22;1H(B[0;1m12:43 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[manyone tried the new console on 3.2?7[2;22r8
+[1;24r[22;1H(B[0;1m12:44 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[mit scrolls with a region above the input line, like irssi[23;47H[37m[44m44][39;49m(B[m[2;22r[22;1H
+[1;24r[22;1H(B[0;1m12:45 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[måäö and é should survive7[2;22r8[2S[1;24r[21;1H(B[0;1m12:46 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[ma long line that has to wrap because it is much wider than the log
+window and keeps going past the right edge of the terminal7[2;22r8
+[1;24r[22;1H(B[0;1m12:47 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[mok7[2;22r8
+[1;24r[22;1H(B[0;1m12:48 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[m/me waves7[2;22r8
+[1;24r[22;1H(B[0;1m12:49 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[mhello there[23;48H[37m[44m9][39;49m(B[m[2;22r[22;1H
+[1;24r[22;1H(B[0;1m12:50 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[manyone tried the new console on 3.2?7[2;22r8
+[1;24r[22;1H(B[0;1m12:51 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[mit scrolls with a region above the input line, like irssi7[2;22r8
+[1;24r[22;1H(B[0;1m12:52 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[måäö and é should survive7[2;22r8[2S[1;24r[21;1H(B[0;1m12:53 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[ma long line that has to wrap because it is much wid[22;1Her than the log window and keeps going past the right edge of the terminal7[2;22r8
+[1;24r[22;1H(B[0;1m12:54 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[mok[23;47H[37m[44m54][39;49m(B[m[2;22r[22;1H
+[1;24r[22;1H(B[0;1m12:55 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[m/me waves7[2;22r8
+[1;24r[22;1H(B[0;1m12:56 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[mhello there7[2;22r8
+[1;24r[22;1H(B[0;1m12:57 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[manyone tried the new console on 3.2?7[2;22r8
+[1;24r[22;1H(B[0;1m12:58 (B[0;2m<(B[0m[31mmr_x[39m(B[0;2m> (B[mit scrolls with a region above the input line, like irssi7[2;22r8
+[1;24r[22;1H(B[0;1m12:59 (B[0;2m<(B[0m[34ma_very_long_nickname[39m(B[0;2m> (B[måäö and é should survive
+[48G[37m[44m9][39;49m(B[m[24;10Htyping a reply[24;10H[K

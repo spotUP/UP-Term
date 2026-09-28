@@ -40,6 +40,8 @@ DISAGREE = {
     "quirk-st-forms.10x3.bin": "pyte prints DCS payloads",
     "quirk-wide-at-last-col.10x3.bin": "pyte puts a wide glyph in the last column",
     "quirk-wrap-then-lf.10x4.bin": "pyte's LF cancels the column of a pending wrap",
+    "chatsim.80x24.bin": "pyte's SU/SD ignore the region (ncurses scrolls the log with them)",
+    "vim-small.40x12.bin": PYTE_GAP_ALT + " (vim has quit back to the primary screen)",
 }
 
 # stream name -> reason: the engine follows xterm here and libvterm differs.
@@ -69,6 +71,9 @@ REF_BROKEN = {
     "quirk-wide-dch-split.10x3.bin": "pyte IndexError on a wide glyph edit",
     "quirk-wide-ich-split.10x3.bin": "pyte IndexError on a wide glyph edit",
     "quirk-wide-overwrite-left.10x3.bin": "pyte IndexError on a wide glyph edit",
+    "tmux-chatsim.80x24.bin": "pyte crashes on tmux's output",
+    "tmux-split.80x24.bin": "pyte crashes on tmux's output",
+    "tmux-vim.80x24.bin": "pyte crashes on tmux's output",
 }
 
 class RefScreen(pyte.Screen):
@@ -94,10 +99,19 @@ def dump(tool, data, cols, rows):
     for y in range(rows):
         row = []
         for cell in lines[rows + y].split(" "):
-            fg, bg, a = (int(v) for v in cell.split(","))
-            row.append((fg, bg, bool(a & 1), bool(a & 0x20), bool(a & 8)))
+            fg, bg, a, ch = (int(v) for v in cell.split(","))
+            row.append(visible(fg, bg, bool(a & 1), bool(a & 0x20), bool(a & 8), ch))
         attr.append(row)
     return text, lines[2 * rows], attr
+
+def visible(fg, bg, bold, inverse, underline, ch):
+    """What a cell shows. A blank with no underline paints only its
+    background (swapped under inverse): its foreground and bold are
+    invisible, and the references disagree about what an erase leaves
+    there, so they are not compared."""
+    if ch == 32 and not underline:
+        return (None, fg if inverse else bg, False, False, False)
+    return (fg, bg, bold, inverse, underline)
 
 def compare(a, b, cols, rows):
     """Differences between two dumps: (rows with other text, cursor pair, cells)."""
@@ -118,7 +132,8 @@ def pyte_dump_(data, cols, rows):
     st.feed(data)
     text = [scr.display[y] for y in range(rows)]
     cur = "@%d,%d" % (min(scr.cursor.x, cols - 1), scr.cursor.y)
-    attr = [[(colour(c.fg), colour(c.bg), bool(c.bold), bool(c.reverse), bool(c.underscore))
+    attr = [[visible(colour(c.fg), colour(c.bg), bool(c.bold), bool(c.reverse), bool(c.underscore),
+                     ord(c.data[0]) if c.data else 32)
              for c in (scr.buffer[y][x] for x in range(cols))] for y in range(rows)]
     return text, cur, attr
 

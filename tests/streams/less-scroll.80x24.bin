@@ -66,7 +66,7 @@ struct vt_term {
     /* amiga personality */
     vt_u32 raw_events;
     vt_u16 amiga_bg;       /* global background pen (SGR >n) */
-    int scroll_enabled;    /* CSI >1h / >1l */
+    vt_u16 amiga_dfg, amiga_dbg; /* SGR 0 / 39 / 49 defaults (CSI SP s, V39) */
 :[K[K[HM    int cols, rows;
 [HM    enum vt_personality pers;
 [HM    void *user;
@@ -193,17 +193,17 @@ static void restore_cursor(vt_term *t, const vt_saved *s)
     memcpy(t->charset, s->charset, 4);
     t->gl = s->gl;
 :[K[K...skipping...
-        out[n++] = 'O';
-        out[n++] = (vt_u8)('P' + (key - VT_KEY_F1));
-        return n;
-    default:
-        break;
+    } else {
+        if (x > 222 || y > 222)
+            return 0; /* beyond what one byte can carry */
+        b[n++] = 'M';
+        b[n++] = (char)(32 + cb);
+        b[n++] = (char)(33 + x);
+        b[n++] = (char)(33 + y);
     }
-    if (key >= VT_KEY_F5 && key <= VT_KEY_F12) {
-        static const int code[8] = { 15, 17, 18, 19, 20, 21, 23, 24 };
-        return xterm_tilde(out, code[key - VT_KEY_F5], mods);
-    }
-    return 0;
+    for (i = 0; i < n; i++)
+        out[i] = (vt_u8)b[i];
+    return n;
 }
 
 int vt_encode_paste(const vt_term *t, int end, vt_u8 *out)

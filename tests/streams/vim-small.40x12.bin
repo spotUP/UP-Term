@@ -1,23 +1,15 @@
-[?1049h[>4;2m[?1h=[?2004h[?1004h[1;12r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[12;1HE325: ATTENTION
-Found a swap file by the name "~/Code/v
-[11;40Ht[12;1Hcon/engine/.vtengine.c.swp"
-[10Cowned by: spot   dated: Mon S
-[11;40He[12;1Hp 28 23:42:40 2026
-[9Cfile name: ~spot/Code/vtcon/en
-[11;40Hg[12;1Hine/vtengine.c
-[10Cmodified: YES
-[9Cuser name: spot   host name: B
-[11;40HM[12;1HS-MAC001
-[8Cprocess ID: 47927
--- More --[?25h SPACE/d/j: screen/page/line d[12;1H[K[12;1HWhile opening file "/Users/spot/Code/vt
-[11;40Hc[12;1Hon/engine/vtengine.c"
-[13Cdated: Mon Sep 28 23:40:50
-2026
+[?1049h[>4;2m[?1h=[?2004h[?1004h[1;12r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[12;1H"~/Code/vtcon/engine/vtengine.c"<vtcon/engine/vtengine.c" 2441L, 65433B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[>c]10;?]11;?[1;1H/* vtengine -- see vtengine.h. The parsee[2;1Hr is Paul Williams' DEC-compatible[2;35H[K[3;1H * state machine (vt100.net/emu/dec_ansii[4;1H_parser); the dispatch tables below
+ * it are per personality, because the AA[6;1Hmiga console and xterm give the same
+ * CSI finals different meanings (the coo[8;1Hnformance matrix in
+ * thoughts/shared/research/2026-09-28_cc[10;1Honsole-conformance-matrix.md). */
+#include "vtengine.h"[1;1H[?25h[?4m[?25l * thoughts/shared/research/2026-09-28_cc[2;1Honsole-conformance-matrix.md). */[2;34H[K[3;1H#include "vtengine.h"[3;22H[K[4;1H#include <string.h>[4;20H[K[5;2H[K[6;1H#ifndef VT_MALLOC[6;18H[K[7;1H#include <stdlib.h>[7;20H[K[8;1H#define VT_MALLOC(n) malloc(n)
+#define VT_FREE(p) free(p)[9;27H[K[10;1H#endif[10;7H[K[11;1H[K[1;2H[?25h[?25l[27m[23m[29m[m[H[2J[1;1H#endif
 
-(1) Another program may be editing the
-[11;40Hs[12;1Hame file.  If this is the case,
-    be careful not to end up with two d
-[11;40Hi[12;1Hfferent instances of the same
-    file when making changes.  Quit, or
-continue with caution.
--- More --
+#define VT_MAX_PARAMS 16
+#define VT_STR_MAX 256
+#define VT_PARAM_MAX 65535L
+
+/* Parser states. */
+enum {
+    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENN[10;1HTRY, S_CSI_PARAM, S_CSI_INT,
+    S_CSI_IGNORE, S_OSC, S_STRING /* DCS[11;1H[94m@                                       [1;1H[?25h[?25l[12;1H[m:q![?2004l[>4;m[23;2t[23;1t[12;1H[K[12;1H[?1004l[?2004l[?1l>[?1049l[?25h[>4;m

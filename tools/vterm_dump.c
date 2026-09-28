@@ -72,7 +72,8 @@ int main(int argc, char **argv)
             if (c.attrs.bold) a |= 1;
             if (c.attrs.underline) a |= 8;
             if (c.attrs.reverse) a |= 0x20;
-            printf("%s%u,%u,%u", x ? " " : "", colour(&c.fg, 1), colour(&c.bg, 0), a);
+            printf("%s%u,%u,%u,%u", x ? " " : "", colour(&c.fg, 1), colour(&c.bg, 0), a,
+                   (unsigned)(c.chars[0] && c.chars[0] != (uint32_t)-1 ? c.chars[0] : 32));
         }
         printf("\n");
     }

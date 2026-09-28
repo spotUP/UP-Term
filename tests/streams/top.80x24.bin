@@ -1,17 +1,17 @@
-Processes: 595 total, 34 running, 1 stuck, 560 sleeping, 5144 threads 
-2026/09/28 23:42:57
-Load Avg: 36.89, 29.12, 28.90 
-CPU usage: 57.56% user, 38.59% sys, 3.83% idle 
-SharedLibs: 417M resident, 109M data, 65M linkedit.
-MemRegions: 485034 total, 4284M resident, 138M private, 1492M shared.
-PhysMem: 15G used (3305M wired, 4275M compressor), 277M unused.
-VM: 255T vsize, 5703M framework vsize, 279533141(0) swapins, 300664371(0) swapouts.
-Networks: packets: 146312597/196G in, 99744240/146G out.
-Disks: 800505352/15T read, 1153918668/21T written.
+Processes: 641 total, 15 running, 626 sleeping, 5107 threads 
+2026/09/28 23:57:04
+Load Avg: 33.01, 45.97, 40.92 
+CPU usage: 45.27% user, 52.78% sys, 1.93% idle 
+SharedLibs: 529M resident, 125M data, 85M linkedit.
+MemRegions: 498420 total, 4278M resident, 177M private, 1512M shared.
+PhysMem: 15G used (3368M wired, 4894M compressor), 535M unused.
+VM: 275T vsize, 5703M framework vsize, 279563188(0) swapins, 300664823(0) swapouts.
+Networks: packets: 146443127/196G in, 99891994/146G out.
+Disks: 801684467/15T read, 1154723897/21T written.
 
-PID    COMMAND  %CPU TIME     #TH #WQ #PORTS MEM PURG CMPRS PGRP  PPID  STATE    BOOSTS   %CPU_ME %CPU_OTHRS UID FAULTS   COW MSGSENT MSGRECV SYSBSD   SYSMACH CSW      PAGEINS IDLEW POWER INSTRS CYCLES JETPRI USER #MREGS RPRVT VPRVT VSIZE KPRVT KSHRD
-99646  suggestd 0.0  98:56.20 5   4   436    23M 0B   23M   99646 1     sleeping *0[3657] 0.00000 0.00000    501 10783417 444 1264075 453453  17100756 5366864 41049839 245743  1     0.0   0      0      0      spot N/A    N/A   N/A   N/A   N/A   N/A  
-99301  esbuild  0.0  01:49.15 10  0   20     11M 0B   8992K 98928 99009 sleeping *0[1]    0.00000 0.00000    501 1896863  157 24      7       14492480 111     13334827 4499    71415 0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
-99222  esbuild  0.0  02:33.82 43  0   53     65M 0B   61M   98928 99009 sleeping *0[1]    0.00000 0.00000    501 4788751  162 3384    7       15426136 186     14445146 13682   67972 0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
-99166  esbuild  0.0  01:55.59 18  0   28     32M 0B   29M   98928 99009 sleeping *0[1]    0.00000 0.00000    501 2581820  161 362     7       14188593 135     13109314 2206    69384 0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
-99049  esbuild  0.0  01:48.04 8   0   18     11M 0B   9056K 98928 99009 sleeping *0[1]    0.00000 0.00000    501 1847562  157 24      7       14268153 107     13119521 4209    69663 0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
+PID    COMMAND          %CPU TIME     #TH  #WQ #PORTS MEM   PURG CMPRS PGRP  PPID  STATE    BOOSTS    %CPU_ME %CPU_OTHRS UID FAULTS   COW MSGSENT MSGRECV SYSBSD   SYSMACH CSW      PAGEINS IDLEW POWER INSTRS CYCLES JETPRI USER #MREGS RPRVT VPRVT VSIZE KPRVT KSHRD
+99646  suggestd         0.0  98:56.86 2    1   436    23M   0B   18M   99646 1     sleeping *16[3675] 0.00000 0.00000    501 10799383 444 1265120 453925  17110103 5370901 41059518 246112  1     0.0   0      0      40     spot N/A    N/A   N/A   N/A   N/A   N/A  
+99466  SetStoreUpdateSe 0.0  00:00.12 2    1   36     3201K 0B   2800K 99466 1     sleeping  0[0]     0.00000 0.00000    501 1375     144 200     58      1201     367     1723     11      0     0.0   0      0      0      spot N/A    N/A   N/A   N/A   N/A   N/A  
+99301  esbuild          0.0  01:49.47 10/1 0   20     11M   0B   5216K 98928 99009 running  *0[1]     0.00000 0.00000    501 1903322  157 24      7       14540704 111     13379958 4506    71415 0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
+99222  esbuild          0.0  02:34.22 43   0   53     65M   0B   61M   98928 99009 sleeping *0[1]     0.00000 0.00000    501 4805946  162 3384    7       15474654 186     14491289 13728   67972 0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
+99166  esbuild          0.0  01:55.93 18   0   28     32M   0B   29M   98928 99009 sleeping *0[1]     0.00000 0.00000    501 2591001  161 362     7       14236476 135     13154317 2215    69384 0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
