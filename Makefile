@@ -9,7 +9,7 @@ RENDER  := render/glyphmap.c handler/lineedit.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c
 
-.PHONY: test test-ref test-terminfo test-rig golden vttest venv capture quirks amiga clean
+.PHONY: test test-ref test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
@@ -118,6 +118,16 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(BUILD)/amiga/handl
 	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/glyphmap.o \
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/lineedit.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
+
+# The install kit: build/vtcon.lha (handler, DOSDrivers entry, terminfo,
+# termcap, Install script, README), unpacking to a drawer "vtcon".
+dist: amiga $(BUILD)/terminfo/76/vtcon
+	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v
+	cp $(BUILD)/amiga/vtcon-handler dist/XCON dist/Install dist/README.txt $(BUILD)/dist/vtcon/
+	cp $(BUILD)/terminfo/v/vtcon $(BUILD)/dist/vtcon/terminfo/v/vtcon
+	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
+	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon
+	@ls -la $(BUILD)/vtcon.lha
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga

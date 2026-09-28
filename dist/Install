@@ -1,0 +1,12 @@
+; vtcon install: copies the handler and mounts XCON:.
+; Run from the unpacked drawer:  Execute Install
+FailAt 21
+Copy vtcon-handler L: CLONE
+Copy XCON DEVS:DOSDrivers/XCON CLONE
+MakeDir >NIL: ENVARC:terminfo
+MakeDir >NIL: ENVARC:terminfo/v
+Copy terminfo/v/vtcon ENVARC:terminfo/v/vtcon CLONE
+Copy termcap.vtcon ENVARC:termcap.vtcon CLONE
+Mount >NIL: XCON: FROM DEVS:DOSDrivers/XCON
+Echo "vtcon installed. Try:  NewShell XCON:0/20/640/300/vtcon/CLOSE"
+Echo "For ixemul programs:  SetEnv TERM vtcon"

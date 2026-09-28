@@ -67,7 +67,7 @@ LONG handler_entry(void)
 #endif
 #define STR2(x) #x
 #define STR(x) STR2(x)
-static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.2026) " STR(VTCON_BUILD);
+static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.26) " STR(VTCON_BUILD);
 
 /* ---- the console ----------------------------------------------------------- */
 

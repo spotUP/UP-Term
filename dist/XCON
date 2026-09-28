@@ -1,0 +1,5 @@
+/* vtcon: XCON: a console window with xterm, Amiga and PC-ANSI dialects */
+Handler   = L:vtcon-handler
+Priority  = 5
+StackSize = 16000
+GlobVec   = -1

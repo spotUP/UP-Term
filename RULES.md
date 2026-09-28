@@ -30,4 +30,5 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Rig (FS-UAE A1200, amiagent) | `python3 tools/rig/rig.py setup|start|install|stop|status`; drive with `tools/rig/ami.py` |
 | Cross build (vbcc, 68020) | `make amiga` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
+| Install kit (build/vtcon.lha) | `make dist` |
 | Clean | `make clean` |
