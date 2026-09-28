@@ -9,7 +9,7 @@ RENDER  := render/glyphmap.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c
 
-.PHONY: test test-ref test-terminfo golden vttest venv capture quirks amiga clean
+.PHONY: test test-ref test-terminfo test-rig golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
@@ -84,7 +84,12 @@ GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --qui
 HANDLER_SRC := handler/vtcon_handler.c $(ENGINE) render/amiga_render.c render/glyphmap.c
 HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/reach
+
+# The reachability probe (ledger V3), an ordinary program with vbcc's startup.
+$(BUILD)/amiga/reach: tests/amiga/reach.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/reach.c
 
 $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/vtengine.h
 	@mkdir -p $(BUILD)/amiga
@@ -109,6 +114,10 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(BUILD)/amiga/handl
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
 	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/glyphmap.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
+
+# The one reachability test: XCON: through DOS on the running rig.
+test-rig: amiga
+	python3 tools/rig/reach.py
 
 clean:
 	rm -rf $(BUILD)

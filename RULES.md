@@ -26,6 +26,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Re-record streams from real programs | `make capture` |
 | terminfo proof: recapture with TERM=vtcon, check | `make test-terminfo` |
 | Amiga build with the handler trace (RAM:vtcon.log) | `make amiga DEBUG=1` |
+| Reachability test on the rig (V3) | `make test-rig` (rig up first) |
 | Rig (FS-UAE A1200, amiagent) | `python3 tools/rig/rig.py setup|start|install|stop|status`; drive with `tools/rig/ami.py` |
 | Cross build (vbcc, 68020) | `make amiga` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
