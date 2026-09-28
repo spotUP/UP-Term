@@ -81,7 +81,7 @@ CPU      ?= 68020
 VC       := vc +$(VBCC_CFG) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
 
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
-HANDLER_SRC := handler/vtcon_handler.c $(ENGINE) render/amiga_render.c render/glyphmap.c
+HANDLER_SRC := handler/vtcon_handler.c handler/clip.c $(ENGINE) render/amiga_render.c render/glyphmap.c
 HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc
 
 amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/reach
@@ -111,8 +111,10 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(BUILD)/amiga/handl
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
 	$(VC) -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
 	$(VC) -c -o $(BUILD)/amiga/obj/glyphmap.o render/glyphmap.c
+	$(VC) -c -o $(BUILD)/amiga/obj/clip.o handler/clip.c
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
 	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/glyphmap.o \
+	  $(BUILD)/amiga/obj/clip.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
 # The one reachability test: XCON: through DOS on the running rig.

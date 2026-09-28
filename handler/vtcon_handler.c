@@ -39,6 +39,7 @@
 
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
+#include "clip.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -118,6 +119,8 @@ typedef struct con {
     int layout_req[4];           /* CSI t / u / x / y values, -1 automatic */
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
+    int dragging, drag_moved;    /* mouse selection */
+    int drag_ax, drag_ay;
     struct IOStdReq lib_io;      /* console.device CONU_LIBRARY, for RawKeyConvert */
 #ifdef VTCON_DEBUG
     ULONG prof_out, prof_damage, prof_scroll, prof_writes, prof_bytes, prof_ndamage, prof_nscroll;
@@ -484,7 +487,7 @@ static int open_window(con *c)
     tags[n].ti_Tag = WA_Title;       tags[n++].ti_Data = (ULONG)c->title;
     tags[n].ti_Tag = WA_Flags;       tags[n++].ti_Data = c->wflags;
     tags[n].ti_Tag = WA_IDCMP;       tags[n++].ti_Data = IDCMP_RAWKEY | IDCMP_NEWSIZE |
-        IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_ACTIVEWINDOW |
+        IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE | IDCMP_ACTIVEWINDOW |
         IDCMP_INACTIVEWINDOW;
     tags[n].ti_Tag = WA_PubScreen;   tags[n++].ti_Data = (ULONG)scr;
     tags[n].ti_Tag = WA_MinWidth;    tags[n++].ti_Data = 80;
@@ -569,6 +572,8 @@ static void output(con *c, const vt_u8 *b, long n)
 #endif
     if (!c->t)
         return;
+    if (c->r.view)
+        vr_set_view(&c->r, 0); /* new output shows the live screen, as xterm does */
     vr_cursor_off(&c->r);
     vt_write(c->t, b, n);
     vr_cursor_on(&c->r);
@@ -800,6 +805,105 @@ static void send_break(con *c, ULONG sig)
         Signal((struct Task *)c->break_port->mp_SigTask, sig);
 }
 
+static void cooked_key(con *c, const vt_u8 *b, int n, long key);
+
+/* The selection's text to the clipboard, as Latin-1 (the clipboard's). */
+static void copy_selection(con *c)
+{
+    /* allocated, not static: every window's process runs this code */
+    char *utf, *lat;
+    int ax, ay, bx, by;
+    long n, i, k = 0;
+    if (!vr_selection(&c->r, &ax, &ay, &bx, &by))
+        return;
+    utf = (char *)AllocVec(16384, MEMF_ANY);
+    if (!utf)
+        return;
+    lat = utf; /* converted in place: Latin-1 is never longer */
+    n = vt_copy_text(c->t, ax, ay, bx, by, utf, 16384);
+    for (i = 0; i < n; i++) {
+        unsigned char b = (unsigned char)utf[i];
+        if (b < 0x80) {
+            lat[k++] = (char)b;
+        } else if ((b & 0xE0) == 0xC0 && i + 1 < n) {
+            unsigned cp = ((b & 0x1F) << 6) | (utf[i + 1] & 0x3F);
+            lat[k++] = (char)(cp < 0x100 ? cp : '?');
+            i++;
+        } else if ((b & 0xC0) != 0x80) {
+            lat[k++] = '?'; /* beyond Latin-1 */
+        }
+    }
+    clip_write(lat, k);
+    FreeVec(utf);
+}
+
+/* The clipboard, typed into the program: Return for each line break, and
+ * bracketed when the program asked for it (?2004). */
+static void paste(con *c)
+{
+    char *text = (char *)AllocVec(8192, MEMF_ANY); /* not static: see copy_selection */
+    long n, i;
+    vt_u8 out[40];
+    int k;
+    if (!text)
+        return;
+    n = clip_read(text, 8192);
+    if (n <= 0) {
+        FreeVec(text);
+        return;
+    }
+    if (c->raw) {
+        k = vt_encode_paste(c->t, 0, out);
+        in_append(c, out, k);
+    }
+    for (i = 0; i < n; i++) {
+        unsigned char ch = (unsigned char)text[i];
+        long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
+        if (ch == '\r')
+            continue;
+        k = vt_encode_key(c->t, key, 0, out);
+        if (c->raw)
+            in_append(c, out, k);
+        else
+            cooked_key(c, out, k, key == VT_KEY_RETURN ? key : 0);
+    }
+    if (c->raw) {
+        k = vt_encode_paste(c->t, 1, out);
+        in_append(c, out, k);
+    }
+    FreeVec(text);
+    service_reads(c);
+}
+
+/* Right Amiga C/V copy and paste, Right Amiga Up/Down and Shift+PgUp/PgDn
+ * move through the scrollback. Returns 1 when the key was the console's. */
+static int console_key(con *c, UWORD code, UWORD qual)
+{
+    int page = c->r.rows > 1 ? c->r.rows - 1 : 1;
+    if (qual & IEQUALIFIER_RCOMMAND) {
+        switch (code) {
+        case 0x33: copy_selection(c); return 1;
+        case 0x34: paste(c); return 1;
+        case 0x4C: vr_set_view(&c->r, c->r.view + 1); return 1;
+        case 0x4D: vr_set_view(&c->r, c->r.view - 1); return 1;
+        default: return 0;
+        }
+    }
+    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) {
+        if (code == 0x48) {
+            vr_set_view(&c->r, c->r.view + page);
+            return 1;
+        }
+        if (code == 0x49) {
+            vr_set_view(&c->r, c->r.view - page);
+            if (!c->r.view)
+                vr_cursor_on(&c->r);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void key_event(con *c, struct IntuiMessage *im)
 {
     UWORD code = im->Code, qual = im->Qualifier;
@@ -808,6 +912,10 @@ static void key_event(con *c, struct IntuiMessage *im)
     vt_u8 out[40];
     if (code & IECODE_UP_PREFIX)
         return;
+    if (console_key(c, code, qual))
+        return; /* copy, paste, scrollback: the console's own keys */
+    if (c->r.view)
+        vr_set_view(&c->r, 0);
     if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
         mods |= VT_MOD_SHIFT;
     if (qual & IEQUALIFIER_CONTROL)
@@ -890,6 +998,52 @@ static void resize(con *c)
     raw_report(c, 12); /* IECLASS_SIZEWINDOW */
 }
 
+/* The mouse: reports to a program that asked for them (Shift held gives
+ * the mouse back to selection, as in xterm), else drag-to-select. */
+static void mouse_event(con *c, struct IntuiMessage *im)
+{
+    int x, y, btn = -1, kind = 0, n;
+    vt_u8 out[40];
+    int shift = (im->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0;
+    int in = vr_cell_at(&c->r, im->MouseX, im->MouseY, &x, &y);
+    if (im->Class == IDCMP_MOUSEMOVE) {
+        if (c->dragging && in) {
+            vr_select(&c->r, 1, c->drag_ax, c->drag_ay, x, y - c->r.view);
+            c->drag_moved = 1;
+        }
+        return;
+    }
+    if (im->Code == SELECTDOWN) { btn = 0; kind = 0; }
+    else if (im->Code == SELECTUP) { btn = 0; kind = 1; }
+    else if (im->Code == MENUDOWN) { btn = 2; kind = 0; }
+    else if (im->Code == MENUUP) { btn = 2; kind = 1; }
+    if (btn < 0)
+        return;
+    if (!shift && in && !c->dragging) {
+        n = vt_encode_mouse(c->t, btn, kind, x, y, 0, out);
+        if (n) {
+            in_append(c, out, n);
+            service_reads(c);
+            return;
+        }
+    }
+    if (btn != 0)
+        return;
+    if (kind == 0 && in) {
+        c->dragging = 1;
+        c->drag_moved = 0;
+        c->drag_ax = x;
+        c->drag_ay = y - c->r.view;
+        vr_select(&c->r, 0, 0, 0, 0, 0);
+        ReportMouse(TRUE, c->win);
+    } else if (kind == 1 && c->dragging) {
+        c->dragging = 0;
+        ReportMouse(FALSE, c->win);
+        if (!c->drag_moved)
+            vr_select(&c->r, 0, 0, 0, 0, 0); /* a click clears the selection */
+    }
+}
+
 static void idcmp(con *c)
 {
     struct IntuiMessage *im;
@@ -915,23 +1069,10 @@ static void idcmp(con *c)
             else if (!raw_report(c, 11)) /* IECLASS_CLOSEWINDOW, if asked */
                 send_break(c, SIGBREAKF_CTRL_C);
             break;
-        case IDCMP_MOUSEBUTTONS: {
-            int x, y, btn = -1, kind = 0;
-            vt_u8 out[40];
-            int n;
-            if (im->Code == SELECTDOWN) { btn = 0; kind = 0; }
-            else if (im->Code == SELECTUP) { btn = 0; kind = 1; }
-            else if (im->Code == MENUDOWN) { btn = 2; kind = 0; }
-            else if (im->Code == MENUUP) { btn = 2; kind = 1; }
-            if (btn >= 0 && vr_cell_at(&c->r, im->MouseX, im->MouseY, &x, &y)) {
-                n = vt_encode_mouse(c->t, btn, kind, x, y, 0, out);
-                if (n) {
-                    in_append(c, out, n);
-                    service_reads(c);
-                }
-            }
+        case IDCMP_MOUSEBUTTONS:
+        case IDCMP_MOUSEMOVE:
+            mouse_event(c, im);
             break;
-        }
         default:
             break;
         }

@@ -121,6 +121,8 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->n_rgb = 0;
     r->cursor_drawn = 0;
     r->cursor_x = r->cursor_y = 0;
+    r->view = 0;
+    r->sel = 0;
     SetFont(r->rp, font);
     vr_layout(r);
 }
@@ -316,7 +318,28 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, UBYTE f
     }
 }
 
-void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
+static int selected(const vr_render *r, int x, int gy)
+{
+    LONG ay = r->sel_ay, by = r->sel_by, t;
+    int ax = r->sel_ax, bx = r->sel_bx, tx;
+    if (!r->sel)
+        return 0;
+    gy += vt_lines_scrolled(r->t); /* to the selection's absolute rows */
+    if (ay > by || (ay == by && ax > bx)) {
+        tx = ax; ax = bx; bx = tx;
+        t = ay; ay = by; by = t;
+    }
+    if (gy < ay || gy > by)
+        return 0;
+    if (gy == ay && x < ax)
+        return 0;
+    if (gy == by && x > bx)
+        return 0;
+    return 1;
+}
+
+/* Draw screen rows [y0, y1), columns [x0, x1): each shows grid row y - view. */
+static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
     int y, x, n;
@@ -328,7 +351,8 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
         y1 = r->rows;
     for (y = y0; y < y1; y++) {
         int ncells;
-        const vt_cell *c = vt_row(r->t, y, &ncells);
+        const vt_cell *c = vt_row(r->t, y - r->view, &ncells);
+        int gy = y - r->view;
         WORD py = r->oy + y * r->ch, run_x = 0;
         UBYTE run_fg = 0, run_bg = 0;
         vt_u8 run_attr = 0;
@@ -352,13 +376,18 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
                      pen_for(r, b, 1));
                 continue;
             }
-            if (c[x].fg != last_f || c[x].bg != last_b || c[x].attr != last_a) {
+            if (c[x].fg != last_f || c[x].bg != last_b || c[x].attr != last_a || r->sel) {
                 last_f = c[x].fg;
                 last_b = c[x].bg;
                 last_a = c[x].attr;
                 vt_resolve_colors(r->t, &c[x], &f, &b);
                 fg = pen_for(r, f, 0);
                 bg = pen_for(r, b, 1);
+                if (selected(r, x, gy)) {
+                    UBYTE tmp = fg;
+                    fg = bg;
+                    bg = tmp;
+                }
             }
             attr = (vt_u8)(c[x].attr & (VT_ATTR_BOLD | VT_ATTR_UNDERLINE | VT_ATTR_ITALIC |
                                         VT_ATTR_STRIKE));
@@ -393,6 +422,76 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
     SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
 }
 
+void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
+{
+    if (r->view)
+        return; /* looking at the scrollback: the live rows are not shown */
+    draw_rows(r, x0, y0, x1, y1);
+}
+
+void vr_set_view(vr_render *r, int lines)
+{
+    int max = vt_scrollback_lines(r->t);
+    if (lines < 0)
+        lines = 0;
+    if (lines > max)
+        lines = max;
+    if (lines == r->view)
+        return;
+    r->view = (WORD)lines;
+    vr_cursor_off(r);
+    vr_redraw(r);
+}
+
+int vr_selection(const vr_render *r, int *ax, int *ay, int *bx, int *by)
+{
+    LONG base = vt_lines_scrolled(r->t);
+    if (!r->sel)
+        return 0;
+    *ax = r->sel_ax;
+    *bx = r->sel_bx;
+    *ay = (int)(r->sel_ay - base);
+    *by = (int)(r->sel_by - base);
+    return 1;
+}
+
+void vr_select(vr_render *r, int on, int ax, int ay, int bx, int by)
+{
+    LONG base = vt_lines_scrolled(r->t), lo = 0, hi = -1;
+    int y0, y1, any = 0;
+    /* redraw the rows the old and the new selection touch */
+    if (r->sel) {
+        lo = (r->sel_ay < r->sel_by ? r->sel_ay : r->sel_by) - base;
+        hi = (r->sel_ay < r->sel_by ? r->sel_by : r->sel_ay) - base;
+        any = 1;
+    }
+    r->sel = (BYTE)on;
+    r->sel_ax = (WORD)ax;
+    r->sel_bx = (WORD)bx;
+    r->sel_ay = ay + base;
+    r->sel_by = by + base;
+    if (on) {
+        int nlo = ay < by ? ay : by, nhi = ay < by ? by : ay;
+        if (!any || nlo < lo)
+            lo = nlo;
+        if (!any || nhi > hi)
+            hi = nhi;
+        any = 1;
+    }
+    if (!any)
+        return;
+    y0 = (int)lo + r->view;
+    y1 = (int)hi + r->view + 1;
+    if (y0 < 0)
+        y0 = 0;
+    if (y1 > r->rows)
+        y1 = r->rows;
+    vr_cursor_off(r);
+    if (y0 < y1)
+        draw_rows(r, 0, y0, r->cols, y1);
+    vr_cursor_on(r);
+}
+
 void vr_redraw(vr_render *r)
 {
     struct Window *w = r->win;
@@ -400,7 +499,7 @@ void vr_redraw(vr_render *r)
         fill(r, w->BorderLeft, w->BorderTop, w->Width - w->BorderRight - 1,
              w->Height - w->BorderBottom - 1, r->pen_default_bg);
     r->cursor_drawn = 0;
-    vr_damage(r, 0, 0, r->cols, r->rows);
+    draw_rows(r, 0, 0, r->cols, r->rows);
 }
 
 void vr_scroll(vr_render *r, int top, int bottom, int n)
@@ -408,7 +507,7 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
     WORD dy = (WORD)(n * r->ch);
     vt_cell blank;
     vt_u16 f, b;
-    if (r->hidden)
+    if (r->hidden || r->view)
         return;
     vr_cursor_off(r);
     /* The vacated rows must come out in the personality's default
@@ -450,7 +549,7 @@ void vr_cursor_on(vr_render *r)
     vt_cursor(r->t, &x, &y);
     if (r->cursor_drawn && (x != r->cursor_x || y != r->cursor_y))
         vr_cursor_off(r);
-    if (!(vt_modes(r->t) & VT_MODE_CURSOR_VISIBLE) || x >= r->cols || y >= r->rows)
+    if (!(vt_modes(r->t) & VT_MODE_CURSOR_VISIBLE) || x >= r->cols || y >= r->rows || r->view)
         return;
     if (!r->cursor_drawn) {
         r->cursor_x = (WORD)x;

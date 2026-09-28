@@ -121,11 +121,22 @@ int      vt_rows(const vt_term *t);
 const vt_cell *vt_row(const vt_term *t, int row, int *ncells);
 int      vt_row_wrapped(const vt_term *t, int row); /* continues on the next row */
 int      vt_scrollback_lines(const vt_term *t);
+/* Lines that have scrolled off the top of the primary screen since vt_new:
+ * grid row y + vt_lines_scrolled() names a line for good (a selection
+ * stays on its text while output scrolls). */
+long     vt_lines_scrolled(const vt_term *t);
 void     vt_cursor(const vt_term *t, int *x, int *y);
 vt_u32   vt_modes(const vt_term *t);
 const char *vt_title(const vt_term *t);
 /* Amiga raw input event classes the host asked for (CSI n {), bit n. */
 vt_u32   vt_raw_events(const vt_term *t);
+
+/* The text of a selection from (ax, ay) to (bx, by) inclusive, in reading
+ * order (rows below 0 are scrollback, as for vt_row). Trailing blanks of a
+ * line are dropped and lines end with '\n', except a line that wrapped into
+ * the next: selecting a wrapped paragraph gives it back as one line.
+ * Written as UTF-8, NUL-terminated; returns the length (at most max - 1). */
+long     vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, long max);
 
 /* How many sequences were parsed but not acted on since vt_new, and the
  * distinct kinds (up to 16 are kept) with their counts, as text: "C ?12h"

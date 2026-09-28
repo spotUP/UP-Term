@@ -53,6 +53,7 @@ struct vt_term {
 
     vt_line **scr, **pri, **alt;
     vt_line **sb;          /* scrollback ring */
+    long scrolled;         /* lines scrolled off the primary screen's top */
     int sb_cap, sb_len, sb_head; /* head: next slot to write */
 
     int cx, cy, wrap_pending;
@@ -131,6 +132,8 @@ static void note_text(vt_term *t, const char *d)
         t->unhandled_count[t->unhandled_kinds++] = 1;
     }
 }
+
+static int put_utf8(vt_u8 *o, long c);
 
 static void note_value(vt_term *t, char kind, long v)
 {
@@ -491,6 +494,8 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
     if (n > h)
         n = h;
     pend_prepare(t, top, bot, n);
+    if (top == 0 && t->scr == t->pri)
+        t->scrolled += n;
     for (i = 0; i < n; i++) {
         l = t->scr[top];
         memmove(&t->scr[top], &t->scr[top + 1], (h - 1) * sizeof(vt_line *));
@@ -2374,6 +2379,11 @@ int vt_scrollback_lines(const vt_term *t)
     return t->sb_len;
 }
 
+long vt_lines_scrolled(const vt_term *t)
+{
+    return t->scrolled;
+}
+
 void vt_cursor(const vt_term *t, int *x, int *y)
 {
     if (x)
@@ -2395,6 +2405,54 @@ const char *vt_title(const vt_term *t)
 vt_u32 vt_raw_events(const vt_term *t)
 {
     return t->raw_events;
+}
+
+long vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, long max)
+{
+    long len = 0;
+    int y;
+    if (max < 1)
+        return 0;
+    if (ay > by || (ay == by && ax > bx)) {
+        int tx = ax, ty = ay;
+        ax = bx;
+        ay = by;
+        bx = tx;
+        by = ty;
+    }
+    for (y = ay; y <= by; y++) {
+        int n, x, x0, x1, end;
+        const vt_cell *c = vt_row(t, y, &n);
+        if (!c)
+            continue;
+        x0 = y == ay ? ax : 0;
+        x1 = y == by ? bx : n - 1;
+        if (x1 > n - 1)
+            x1 = n - 1;
+        end = x1;
+        if (!(y < by && vt_row_wrapped(t, y)))
+            while (end >= x0 && c[end].ch == ' ')
+                end--; /* trailing blanks of a line that ends here */
+        for (x = x0; x <= end; x++) {
+            vt_u8 u[4];
+            int k, m;
+            if (c[x].width == 0)
+                continue;
+            m = put_utf8(u, c[x].ch);
+            if (len + m >= max)
+                goto done;
+            for (k = 0; k < m; k++)
+                out[len++] = (char)u[k];
+        }
+        if (y < by && !vt_row_wrapped(t, y)) {
+            if (len + 1 >= max)
+                goto done;
+            out[len++] = '\n';
+        }
+    }
+done:
+    out[len] = 0;
+    return len;
 }
 
 long vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max)

@@ -530,8 +530,25 @@ static void onlcr_returns_on_linefeed_without_changing_return(void)
     vt_free(t);
 }
 
+static void copy_text_joins_wrapped_lines_and_trims_blanks(void)
+{
+    vt_term *t = h_new(8, 4, VT_XTERM);
+    char buf[128];
+    h_put(t, "one   \r\n0123456789\r\n\xc3\xa5x");
+    /* rows: "one", "01234567" (wrapped), "89", "\xe5x" */
+    vt_copy_text(t, 0, 0, 7, 3, buf, sizeof(buf));
+    CHECK_STR(buf, "one\n0123456789\n\xc3\xa5x");
+    vt_copy_text(t, 2, 1, 1, 2, buf, sizeof(buf)); /* inside, across the wrap */
+    CHECK_STR(buf, "234567" "89");
+    vt_copy_text(t, 1, 2, 2, 1, buf, sizeof(buf)); /* backwards selection */
+    CHECK_STR(buf, "234567" "89"); /* the same range as forwards */
+    CHECK_INT(vt_copy_text(t, 0, 0, 7, 3, buf, 5), 4); /* bounded */
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    copy_text_joins_wrapped_lines_and_trims_blanks();
     onlcr_returns_on_linefeed_without_changing_return();
     cp437_charset_for_ibm_font_programs();
     eight_bit_csi_speaks_amiga_where_the_dialects_collide();

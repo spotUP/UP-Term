@@ -36,6 +36,13 @@ typedef struct vr_render {
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
     BYTE hidden;          /* the window is too small to draw into */
+    /* scrollback view: screen row y shows grid row y - view (0 = live) */
+    WORD view;
+    /* selection, inclusive, rows as grid row + vt_lines_scrolled() at the
+     * time (so it stays on its text while output scrolls) */
+    BYTE sel;
+    WORD sel_ax, sel_bx;
+    LONG sel_ay, sel_by;
 } vr_render;
 
 /* Palette used for xterm / pcansi: 16 ANSI colours, 6x6x6 cube, 24 greys. */
@@ -55,5 +62,12 @@ void vr_cursor_off(vr_render *r);
 void vr_cursor_on(vr_render *r);
 /* Cell under a window pixel position; returns 0 outside the text area. */
 int  vr_cell_at(const vr_render *r, WORD mx, WORD my, int *x, int *y);
+/* Show the grid `lines` rows back into the scrollback (0 = live output);
+ * clamps and redraws. Engine damage is not drawn while the view is back. */
+void vr_set_view(vr_render *r, int lines);
+/* Selection: set (a to b, grid coordinates now) or clear; redraws what
+ * changed. vr_selection gives it back in grid coordinates of now. */
+void vr_select(vr_render *r, int on, int ax, int ay, int bx, int by);
+int  vr_selection(const vr_render *r, int *ax, int *ay, int *bx, int *by);
 
 #endif
