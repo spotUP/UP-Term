@@ -84,6 +84,8 @@ struct vt_term {
     int np, have;
     vt_u8 priv, inter;
     int ninter;
+    int csi8;                  /* this CSI came as the raw byte $9B (see csi_xterm) */
+    int raw_c1;                /* feed(): the C1 code point is a raw 8-bit byte */
     vt_u8 str_kind;            /* ']' OSC, 'P' DCS, 'X' SOS, '^' PM, '_' APC */
     int str_esc;
     char str[VT_STR_MAX];
@@ -300,10 +302,12 @@ static int fmt_uint(char *buf, int n, long v)
 }
 
 /* The CSI introducer a reply uses: the Amiga console answers with the 8-bit
- * $9B, everything else with ESC [. */
+ * $9B, and so does the xterm personality to a request that came 8-bit;
+ * everything else gets ESC [. */
 static int put_csi(const vt_term *t, char *buf)
 {
-    if (t->pers == VT_AMIGA) {
+    /* an 8-bit request is answered 8-bit too (ixemul parses 9B ... r) */
+    if (t->pers == VT_AMIGA || t->csi8) {
         buf[0] = (char)0x9B;
         return 1;
     }
@@ -1352,8 +1356,39 @@ static int csi_common(vt_term *t, vt_u8 final)
     }
 }
 
+static void csi_amiga(vt_term *t, vt_u8 final);
+
+/* The Amiga console's private sequences whose bytes mean something else in
+ * xterm (matrix 3.1): t u x y { } SP p SP q, and SGR with a '>' item. */
+static int amiga_collision(const vt_term *t, vt_u8 final)
+{
+    int i;
+    if (t->inter == ' ')
+        return final == 'p' || final == 'q';
+    if (t->inter)
+        return 0;
+    if (!t->priv && (final == 't' || final == 'u' || final == 'x' || final == 'y' ||
+                     final == '{' || final == '}'))
+        return 1;
+    if (final == 'm') {
+        if (t->priv == '>')
+            return 1;
+        for (i = 0; i < t->np; i++)
+            if (t->sub[i] == 2)
+                return 1;
+    }
+    return 0;
+}
+
 static void csi_xterm(vt_term *t, vt_u8 final)
 {
+    /* One window, both dialects: Unix programs write the 7-bit ESC [, the
+     * Amiga ones (and ixemul's size probe) the 8-bit $9B. So a sequence
+     * opened with $9B takes the Amiga meaning where the two collide. */
+    if (t->csi8 && amiga_collision(t, final)) {
+        csi_amiga(t, final);
+        return;
+    }
     if (t->inter == '!' && final == 'p') { /* DECSTR */
         soft_reset(t);
         return;
@@ -1668,6 +1703,7 @@ static void feed(vt_term *t, vt_u32 c)
         switch (c) {
         case 0x9B:
             clear_params(t);
+            t->csi8 = t->raw_c1;
             t->state = S_CSI_ENTRY;
             return;
         case 0x9D:
@@ -1719,6 +1755,7 @@ static void feed(vt_term *t, vt_u32 c)
         }
         if (c == '[') {
             clear_params(t);
+            t->csi8 = 0;
             t->state = S_CSI_ENTRY;
             return;
         }
@@ -1773,7 +1810,8 @@ static void feed(vt_term *t, vt_u32 c)
         if (c >= 0x3C && c <= 0x3F) { /* < = > ? */
             if (t->state == S_CSI_ENTRY) {
                 t->priv = (vt_u8)c;
-            } else if (c == '>' && t->pers == VT_AMIGA && t->np && t->params[t->np - 1] == 0) {
+            } else if (c == '>' && (t->pers == VT_AMIGA || t->csi8) && t->np &&
+                       t->params[t->np - 1] == 0) {
                 /* CSI 1;33;40;>0m: a '>' item after ';' is the global
                  * background colour (matrix 4.1). */
                 t->sub[t->np - 1] = 2;
@@ -1825,7 +1863,9 @@ static void feed(vt_term *t, vt_u32 c)
 static void decode(vt_term *t, vt_u8 b)
 {
     if (t->pers == VT_AMIGA) {
+        t->raw_c1 = 1;
         feed(t, b); /* Latin-1: the byte is the code point */
+        t->raw_c1 = 0;
         return;
     }
     if (t->pers == VT_PCANSI) {
@@ -1836,7 +1876,10 @@ static void decode(vt_term *t, vt_u8 b)
         return;
     }
     if (!t->utf8) {
-        feed(t, b); /* Latin-1 xterm: bytes are code points, 80-9F are C1 */
+        /* Latin-1 xterm: bytes are code points, 80-9F are C1 */
+        t->raw_c1 = b >= 0x80 && b <= 0x9F;
+        feed(t, b);
+        t->raw_c1 = 0;
         return;
     }
     /* UTF-8 */
@@ -1856,6 +1899,13 @@ static void decode(vt_term *t, vt_u8 b)
     }
     if (b < 0x80) {
         feed(t, b);
+    } else if (b == 0x9B) {
+        /* A lone $9B is not UTF-8. Amiga programs and ixemul send it as
+         * the 8-bit CSI (ixemul asks the window size with 9B 20 71), so it
+         * is taken as one, marked raw for csi_xterm. */
+        t->raw_c1 = 1;
+        feed(t, 0x9B);
+        t->raw_c1 = 0;
     } else if ((b & 0xE0) == 0xC0 && b >= 0xC2) {
         t->u_cp = b & 0x1F;
         t->u_need = 1;

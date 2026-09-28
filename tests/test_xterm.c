@@ -473,8 +473,41 @@ static void latin1_mode_for_amiga_unix_ports(void)
     vt_free(t);
 }
 
+static void eight_bit_csi_speaks_amiga_where_the_dialects_collide(void)
+{
+    vt_term *t = h_new(77, 23, VT_XTERM);
+    int x, y;
+    /* ixemul's window-size probe: 9B 20 71, answered Amiga style */
+    h_put(t, "\x9b q");
+    CHECK_STR(h_reply, "\x9b" "1;1;23;77 r");
+    h_reply_clear();
+    /* the same bytes after ESC [ are DECSCUSR: no reply */
+    h_put(t, "\033[ q");
+    CHECK_STR(h_reply, "");
+    /* 8-bit CSI u sets the line length; ESC [ u restores the cursor */
+    h_put(t, "\x9b" "40u");
+    CHECK_INT(h_layout_which, VT_LAYOUT_LINE_LENGTH);
+    CHECK_INT(h_layout_value, 40);
+    h_put(t, "\033[2;3H\033[s\033[5;5H\033[u");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 2);
+    CHECK_INT(y, 1);
+    /* raw events through the 8-bit form */
+    h_put(t, "\x9b" "12{");
+    CHECK_INT(vt_raw_events(t), 1L << 12);
+    /* shared sequences mean the same either way */
+    h_put(t, "\x9b" "1;1H\x9b" "31mZ");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 'Z');
+    CHECK_INT(h_cell(t, 0, 0)->fg, 1);
+    /* UTF-8 still decodes around it */
+    h_put(t, "\xc3\xa5");
+    CHECK_INT(h_cell(t, 1, 0)->ch, 0xE5);
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    eight_bit_csi_speaks_amiga_where_the_dialects_collide();
     latin1_mode_for_amiga_unix_ports();
     screen_reverse_video_inverts_every_cell();
     parser_splits_sequences_across_writes();

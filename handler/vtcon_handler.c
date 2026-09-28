@@ -114,16 +114,21 @@ typedef struct con {
     int layout_req[4];           /* CSI t / u / x / y values, -1 automatic */
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
+    struct IOStdReq lib_io;      /* console.device CONU_LIBRARY, for RawKeyConvert */
 } con;
 
-static con C;
-static struct IOStdReq lib_io;  /* console.device CONU_LIBRARY, for RawKeyConvert */
+/* No mutable globals below this line except the library bases (the same
+ * value in every process): every XCON: window is its own process running
+ * this one loaded segment, so static state would be shared between them
+ * (a second window zeroed the first one's state, 2026-09-29). Each process
+ * allocates its con in handler_main. */
 
 #ifdef VTCON_DEBUG
 /* Debug trace (build with DEBUG=1) to RAM:vtcon.log. Lines collect in
  * memory and reach the file only from the main loop, between packets:
  * DOS holds the DosList lock while it waits for our reply to an Open, so
  * any DOS call made while handling one deadlocks. */
+/* debug builds only: shared by all windows' processes, so trace one window */
 static char dbg_buf[2048];
 static int dbg_len;
 static BPTR dbg_file;
@@ -827,12 +832,33 @@ static void key_event(con *c, struct IntuiMessage *im)
 
 /* ---- IDCMP ------------------------------------------------------------------------ */
 
+/* An Amiga input event report (matrix 5.2) for a window class, when the
+ * program asked for that class with CSI n { (ixemul asks for 12, resize). */
+static int raw_report(con *c, int cls)
+{
+    char b[48];
+    int n = 0, k;
+    static const char tail[] = ";0;0;0;0;0;0;0|";
+    if (!(vt_raw_events(c->t) & (1UL << cls)))
+        return 0;
+    b[n++] = (char)0x9B;
+    if (cls >= 10)
+        b[n++] = (char)('0' + cls / 10);
+    b[n++] = (char)('0' + cls % 10);
+    for (k = 0; tail[k]; k++)
+        b[n++] = tail[k];
+    in_append(c, (const vt_u8 *)b, n);
+    service_reads(c);
+    return 1;
+}
+
 static void resize(con *c)
 {
     if (vr_layout(&c->r))
         vt_resize(c->t, c->r.cols, c->r.rows);
     vr_redraw(&c->r);
     vr_cursor_on(&c->r);
+    raw_report(c, 12); /* IECLASS_SIZEWINDOW */
 }
 
 static void idcmp(con *c)
@@ -857,7 +883,7 @@ static void idcmp(con *c)
             c->closing = 1;
             if (!c->raw)
                 c->eof = 1;
-            else
+            else if (!raw_report(c, 11)) /* IECLASS_CLOSEWINDOW, if asked */
                 send_break(c, SIGBREAKF_CTRL_C);
             break;
         case IDCMP_MOUSEBUTTONS: {
@@ -1042,14 +1068,14 @@ static LONG handler_main(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
     struct DosPacket *p;
-    con *c = &C;
-    LONG i;
+    con *c;
 
-    for (i = 0; i < (LONG)sizeof(C); i++)
-        ((UBYTE *)&C)[i] = 0;
+    WaitPort(&me->pr_MsgPort);
+    p = (struct DosPacket *)GetMsg(&me->pr_MsgPort)->mn_Node.ln_Name; /* the startup packet */
+    c = (con *)AllocVec(sizeof(con), MEMF_ANY | MEMF_CLEAR);
+    if (!c)
+        return 0; /* cannot even reply: DOS will see the process end */
     c->port = &me->pr_MsgPort;
-    WaitPort(c->port);
-    p = (struct DosPacket *)GetMsg(c->port)->mn_Node.ln_Name; /* the startup packet */
 
     DOSBase = (struct DosLibrary *)OpenLibrary((STRPTR)"dos.library", 39);
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
@@ -1061,11 +1087,12 @@ static LONG handler_main(void)
         if (c->timer && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)c->timer, 0))
             c->timer_open = 1;
     }
-    if (!OpenDevice((STRPTR)"console.device", (ULONG)CONU_LIBRARY, (struct IORequest *)&lib_io, 0))
-        ConsoleDevice = lib_io.io_Device; /* RawKeyConvert */
+    if (!OpenDevice((STRPTR)"console.device", (ULONG)CONU_LIBRARY, (struct IORequest *)&c->lib_io, 0))
+        ConsoleDevice = c->lib_io.io_Device; /* RawKeyConvert; the same device for every process */
     if (!DOSBase || !IntuitionBase || !GfxBase || !ConsoleDevice) {
         if (DOSBase)
             ReplyPkt(p, DOSFALSE, ERROR_NO_FREE_STORE);
+        FreeVec(c);
         return 0;
     }
     if (!vers[0])
@@ -1126,10 +1153,11 @@ static LONG handler_main(void)
     if (c->timer_port)
         DeleteMsgPort(c->timer_port);
     if (ConsoleDevice)
-        CloseDevice((struct IORequest *)&lib_io); /* CONU_LIBRARY must be closed too (matrix 6.2) */
+        CloseDevice((struct IORequest *)&c->lib_io); /* CONU_LIBRARY must be closed too (matrix 6.2) */
     CloseLibrary(DiskfontBase);
     CloseLibrary((struct Library *)GfxBase);
     CloseLibrary((struct Library *)IntuitionBase);
     CloseLibrary((struct Library *)DOSBase);
+    FreeVec(c);
     return 0;
 }
