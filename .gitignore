@@ -1,0 +1,5 @@
+thoughts/spot/
+thoughts/searchable/
+.venv/
+build/
+*.o

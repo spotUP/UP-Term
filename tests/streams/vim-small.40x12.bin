@@ -1,0 +1,23 @@
+[?1049h[>4;2m[?1h=[?2004h[?1004h[1;12r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[12;1HE325: ATTENTION
+Found a swap file by the name "~/Code/v
+[11;40Ht[12;1Hcon/engine/.vtengine.c.swp"
+[10Cowned by: spot   dated: Mon S
+[11;40He[12;1Hp 28 23:42:40 2026
+[9Cfile name: ~spot/Code/vtcon/en
+[11;40Hg[12;1Hine/vtengine.c
+[10Cmodified: YES
+[9Cuser name: spot   host name: B
+[11;40HM[12;1HS-MAC001
+[8Cprocess ID: 47927
+-- More --[?25h SPACE/d/j: screen/page/line d[12;1H[K[12;1HWhile opening file "/Users/spot/Code/vt
+[11;40Hc[12;1Hon/engine/vtengine.c"
+[13Cdated: Mon Sep 28 23:40:50
+2026
+
+(1) Another program may be editing the
+[11;40Hs[12;1Hame file.  If this is the case,
+    be careful not to end up with two d
+[11;40Hi[12;1Hfferent instances of the same
+    file when making changes.  Quit, or
+continue with caution.
+-- More --

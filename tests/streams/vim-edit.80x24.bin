@@ -1,0 +1,40 @@
+[?1049h[>4;2m[?1h=[?2004h[?1004h[1;24r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[24;1H"~/Code/vtcon/engine/vtengine.c" 2295L, 59952B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[>c]10;?]11;?[1;1H/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[2;76H[K[3;1H * it are per personality, because the Amiga console and xterm give the same[3;77H[K[4;2H* CSI finals different meanings (the conformance matrix in
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */
+#include "vtengine.h"
+#include <string.h>
+
+#ifndef VT_MALLOC
+#include <stdlib.h>
+#define VT_MALLOC(n) malloc(n)
+#define VT_FREE(p) free(p)
+#endif
+
+#define VT_MAX_PARAMS 16
+#define VT_STR_MAX 256
+#define VT_PARAM_MAX 65535L
+
+/* Parser states. */
+enum {
+    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+};[1;1H[?25h[?4m[10;1H[?25l[24;1H[1m-- INSERT --[m[24;13H[K[10;23r[10;1H[L[1;24r[10;1H[?25h[?25linserted line åäö[?25h[24;1H[K[10;17H[?25l[?25h[?25l[10;23r[23;1H
+[1;24r[23;1H};[10;1H[?25h[?25l[24;1H1 more line; before #2  1 second ago[10;23r[10;1H[L[1;24r[10;1Hinserted line åäö[24;1H[K[24;1H1 more line; before #2  1 second ago[10;1H[?25h[?25l[24;1H3 fewer lines[24;14H[K[10;23r[10;1H[3M[1;24r[21;1H};
+
+/* A grid line: one allocation, cells follow the header. */[24;1H[K[24;1H3 fewer lines[10;1H[?25h[?25l[24;1H[K[24;1H:split[1;1H#include "vtengine.h"[1;22H[K[2;1H#include <string.h>[2;20H[K[3;2H[K[4;1H#ifndef VT_MALLOC[4;18H[K[5;1H#define VT_FREE(p) free(p)[5;27H[K[6;2Hendif[6;7H[K[7;1H[K[8;1H#define VT_MAX_PARAMS 16
+#define VT_STR_MAX 256[10;12HPARAM_MAX 65535L[11;1H[K[12;1H[1m[7mengine/vtengine.c [+]                                                           [m[13;2Hinclude "vtengine.h"[13;23H[K[14;2Hinclude <string.h>[14;20H[K[15;1H[K[16;1H#ifndef VT_MALLOC
+#define VT_FREE(p) free(p)
+#endif[19;5H[K[20;1H#define VT_MAX_PARAMS 16[20;26H[K[21;1H#define VT_STR_MAX 256
+#define VT_PARAM_MAX 65535L
+[7mengine/vtengine.c [+]                                                           [5;1H[?25h[12;1Hengine/vtengine.c [+][m[1m[7m [m[7m                                                           [m[23;1H[1m[7mengine/vtengine.c [+]                                                           [17;1H[?25l[m[24;1H[K[24;1H:q![1;1H/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below
+ * it are per personality, because the Amiga console and xterm give the same
+ * CSI finals different meanings (the conformance matrix in
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */
+#include "vtengine.h"
+#include <string.h>[8;1H[K[9;2Hifndef VT_MALLOC[9;18H[K[10;12HFREE(p) free(p)[10;27H[K[11;1H#endif[12;1H[K[13;2Hdefine VT_MAX_PARAMS 16
+#define VT_STR_MAX 256
+#define VT_PARAM_MAX 65535L[16;1H[K[17;1H/* Parser states. */[17;21H[K[18;1Henum {
+    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+};[21;3H[K[22;1H[K[23;1H/* A grid line: one allocation, cells follow the header. */[23;60H[K[10;1H[?25h

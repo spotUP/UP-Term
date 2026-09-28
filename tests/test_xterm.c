@@ -1,0 +1,479 @@
+/* xterm personality: parser, grid and the sequences Unix ports send. */
+#include "harness.h"
+
+static void parser_splits_sequences_across_writes(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "ab\033");
+    h_put(t, "[");
+    h_put(t, "2");
+    h_put(t, "D");
+    h_put(t, "X");
+    CHECK_STR(h_row(t, 0), "Xb");
+    vt_free(t);
+}
+
+static void c0_controls_execute_inside_csi(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "abc\033[\r1C!"); /* CR runs mid-sequence, then CUF 1 */
+    CHECK_STR(h_row(t, 0), "a!c");
+    vt_free(t);
+}
+
+static void can_aborts_a_sequence(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "\033[3\030X");
+    CHECK_STR(h_row(t, 0), "X");
+    vt_free(t);
+}
+
+static void unknown_private_sequences_are_swallowed(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "a\033[?1;2$pb\033[>4;2mc\033[=5ud");
+    CHECK_STR(h_row(t, 0), "abcd");
+    vt_free(t);
+}
+
+static void osc_title_ends_on_bel_and_st(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "\033]0;hello\007x");
+    CHECK_STR(vt_title(t), "hello");
+    h_put(t, "\033]2;w\xc3\xb6rld\033\\y");
+    CHECK_STR(vt_title(t), "w\xc3\xb6rld");
+    CHECK_STR(h_row(t, 0), "xy");
+    vt_free(t);
+}
+
+static void dcs_strings_are_ignored(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "a\033P1$r0m\033\\b");
+    CHECK_STR(h_row(t, 0), "ab");
+    vt_free(t);
+}
+
+static void utf8_decodes_to_cells(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "\xc3\xa5\xe2\x94\x80\xe2\x82\xac");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 0xE5);
+    CHECK_INT(h_cell(t, 1, 0)->ch, 0x2500);
+    CHECK_INT(h_cell(t, 2, 0)->ch, 0x20AC);
+    h_put(t, "\xff" "a");
+    CHECK_INT(h_cell(t, 3, 0)->ch, 0xFFFD);
+    CHECK_INT(h_cell(t, 4, 0)->ch, 'a');
+    vt_free(t);
+}
+
+static void wide_glyphs_take_two_cells(void)
+{
+    vt_term *t = h_new(6, 2, VT_XTERM);
+    h_put(t, "a\xe4\xb8\xadz"); /* U+4E2D */
+    CHECK_INT(h_cell(t, 1, 0)->width, 2);
+    CHECK_INT(h_cell(t, 2, 0)->width, 0);
+    CHECK_INT(h_cell(t, 3, 0)->ch, 'z');
+    h_put(t, "\033[1;3Hx"); /* overwrite the right half: both halves go */
+    CHECK_INT(h_cell(t, 1, 0)->ch, ' ');
+    CHECK_INT(h_cell(t, 1, 0)->width, 1);
+    CHECK_INT(h_cell(t, 2, 0)->ch, 'x');
+    vt_free(t);
+}
+
+static void autowrap_is_deferred(void)
+{
+    vt_term *t = h_new(5, 3, VT_XTERM);
+    int x, y;
+    h_put(t, "abcde");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 4);
+    CHECK_INT(y, 0);
+    h_put(t, "\r\n");      /* a full row followed by CR LF: no blank line */
+    CHECK_STR(h_screen(t), "abcde");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 1);
+    h_put(t, "12345X");
+    CHECK_STR(h_screen(t), "abcde|12345|X");
+    CHECK(vt_row_wrapped(t, 1));
+    vt_free(t);
+}
+
+static void autowrap_off_overwrites_last_column(void)
+{
+    vt_term *t = h_new(5, 2, VT_XTERM);
+    h_put(t, "\033[?7labcdefg");
+    CHECK_STR(h_screen(t), "abcdg");
+    vt_free(t);
+}
+
+static void erase_uses_current_background(void)
+{
+    vt_term *t = h_new(10, 2, VT_XTERM);
+    h_put(t, "\033[44m\033[2J");
+    CHECK_INT(h_cell(t, 5, 1)->bg, 4);
+    h_put(t, "\033[0m\033[K");
+    CHECK_INT(h_cell(t, 5, 0)->bg, VT_COLOR_DEFAULT);
+    vt_free(t);
+}
+
+static void erase_display_does_not_home(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    int x, y;
+    h_put(t, "\033[2;4H\033[2J");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 3);
+    CHECK_INT(y, 1);
+    vt_free(t);
+}
+
+static void erase_modes(void)
+{
+    vt_term *t = h_new(5, 3, VT_XTERM);
+    h_put(t, "aaaaa\r\nbbbbb\r\nccccc\033[2;3H\033[1J");
+    CHECK_STR(h_screen(t), "|   bb|ccccc");
+    h_put(t, "\033[0J");
+    CHECK_STR(h_screen(t), "");
+    h_put(t, "\033[1;1Habcde\033[1;3H\033[1K");
+    CHECK_STR(h_row(t, 0), "   de");
+    h_put(t, "\033[2K");
+    CHECK_STR(h_row(t, 0), "");
+    vt_free(t);
+}
+
+static void scroll_region_confines_linefeed(void)
+{
+    vt_term *t = h_new(5, 5, VT_XTERM);
+    h_put(t, "1\r\n2\r\n3\r\n4\r\n5");
+    h_put(t, "\033[2;4r");          /* region rows 2-4, cursor homes */
+    h_put(t, "\033[4;1H\nX");       /* LF at region bottom scrolls 2-4 only */
+    CHECK_STR(h_screen(t), "1|3|4|X|5");
+    CHECK_INT(vt_scrollback_lines(t), 0); /* region scroll saves nothing */
+    vt_free(t);
+}
+
+static void reverse_index_at_top_scrolls_down(void)
+{
+    vt_term *t = h_new(5, 3, VT_XTERM);
+    h_put(t, "a\r\nb\r\nc\033[1;1H\033M");
+    CHECK_STR(h_screen(t), "|a|b");
+    vt_free(t);
+}
+
+static void origin_mode_positions_relative_to_region(void)
+{
+    vt_term *t = h_new(5, 5, VT_XTERM);
+    int x, y;
+    h_put(t, "\033[2;4r\033[?6h\033[1;1HX");
+    CHECK_STR(h_row(t, 1), "X");
+    h_put(t, "\033[9;1H");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 3); /* clamped to the region bottom */
+    h_reply_clear();
+    h_put(t, "\033[6n");
+    CHECK_STR(h_reply, "\033[3;1R");
+    vt_free(t);
+}
+
+static void insert_and_delete_characters(void)
+{
+    vt_term *t = h_new(6, 1, VT_XTERM);
+    h_put(t, "abcdef\033[1;2H\033[2@");
+    CHECK_STR(h_row(t, 0), "a  bcd");
+    h_put(t, "\033[3P");
+    CHECK_STR(h_row(t, 0), "acd");
+    h_put(t, "\033[4hXY\033[4l");
+    CHECK_STR(h_row(t, 0), "aXYcd");
+    vt_free(t);
+}
+
+static void insert_and_delete_lines(void)
+{
+    vt_term *t = h_new(3, 4, VT_XTERM);
+    h_put(t, "a\r\nb\r\nc\r\nd\033[2;2H\033[L");
+    CHECK_STR(h_screen(t), "a||b|c");
+    h_put(t, "\033[2M");
+    CHECK_STR(h_screen(t), "a|c");
+    vt_free(t);
+}
+
+static void scroll_up_down_sequences(void)
+{
+    vt_term *t = h_new(3, 3, VT_XTERM);
+    h_put(t, "a\r\nb\r\nc\033[S");
+    CHECK_STR(h_screen(t), "b|c");
+    h_put(t, "\033[2T");
+    CHECK_STR(h_screen(t), "||b");
+    vt_free(t);
+}
+
+static void tabs_default_every_eight(void)
+{
+    vt_term *t = h_new(20, 1, VT_XTERM);
+    h_put(t, "a\tb\tc\td");
+    CHECK_STR(h_row(t, 0), "a       b       c  d");
+    h_put(t, "\033[3g\r\t!"); /* no stops: tab goes to the last column */
+    CHECK_INT(h_cell(t, 19, 0)->ch, '!');
+    h_put(t, "\033[1;4H\033H\r\tX"); /* HTS at column 4 */
+    CHECK_INT(h_cell(t, 3, 0)->ch, 'X');
+    vt_free(t);
+}
+
+static void back_tab(void)
+{
+    vt_term *t = h_new(20, 1, VT_XTERM);
+    h_put(t, "\033[1;18H\033[ZX");
+    CHECK_INT(h_cell(t, 16, 0)->ch, 'X');
+    vt_free(t);
+}
+
+static void sgr_colours_and_attributes(void)
+{
+    vt_term *t = h_new(10, 1, VT_XTERM);
+    vt_u16 f, b;
+    h_put(t, "\033[1;31;44ma\033[22;39mb\033[38;5;200;48;2;255;0;0mc\033[38:2::0:255:0md");
+    CHECK_INT(h_cell(t, 0, 0)->fg, 1);
+    CHECK_INT(h_cell(t, 0, 0)->bg, 4);
+    CHECK(h_cell(t, 0, 0)->attr & VT_ATTR_BOLD);
+    CHECK_INT(h_cell(t, 1, 0)->attr & VT_ATTR_BOLD, 0);
+    CHECK_INT(h_cell(t, 1, 0)->fg, VT_COLOR_DEFAULT);
+    CHECK_INT(h_cell(t, 2, 0)->fg, 200);
+    CHECK_INT(h_cell(t, 2, 0)->bg, VT_RGB(255, 0, 0));
+    CHECK_INT(h_cell(t, 3, 0)->fg, VT_RGB(0, 255, 0));
+    vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
+    CHECK_INT(f, 9); /* bold red is bright red */
+    h_put(t, "\033[0;7;32;41me\033[0;95;103mf");
+    vt_resolve_colors(t, h_cell(t, 4, 0), &f, &b);
+    CHECK_INT(f, 1);
+    CHECK_INT(b, 2);
+    CHECK_INT(h_cell(t, 5, 0)->fg, 13);
+    CHECK_INT(h_cell(t, 5, 0)->bg, 11);
+    vt_free(t);
+}
+
+static void alt_screen_1049_saves_and_restores(void)
+{
+    vt_term *t = h_new(5, 3, VT_XTERM);
+    int x, y;
+    h_put(t, "main\033[2;3H");
+    h_put(t, "\033[?1049h");
+    CHECK_STR(h_screen(t), "");
+    CHECK(vt_modes(t) & VT_MODE_ALT_SCREEN);
+    h_put(t, "\033[1;1Hvim");
+    h_put(t, "\033[?1049l");
+    CHECK_STR(h_screen(t), "main");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 2);
+    CHECK_INT(y, 1);
+    vt_free(t);
+}
+
+static void dec_graphics_draw_boxes(void)
+{
+    vt_term *t = h_new(5, 1, VT_XTERM);
+    h_put(t, "\033(0lqk\033(Bq");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 0x250C);
+    CHECK_INT(h_cell(t, 1, 0)->ch, 0x2500);
+    CHECK_INT(h_cell(t, 2, 0)->ch, 0x2510);
+    CHECK_INT(h_cell(t, 3, 0)->ch, 'q');
+    vt_free(t);
+}
+
+static void shift_out_selects_g1(void)
+{
+    vt_term *t = h_new(5, 1, VT_XTERM);
+    h_put(t, "\033)0\016x\017x");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 0x2502);
+    CHECK_INT(h_cell(t, 1, 0)->ch, 'x');
+    vt_free(t);
+}
+
+static void device_reports(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_put(t, "\033[5n");
+    CHECK_STR(h_reply, "\033[0n");
+    h_reply_clear();
+    h_put(t, "\033[c");
+    CHECK_STR(h_reply, "\033[?62;22c");
+    h_reply_clear();
+    h_put(t, "\033[>c");
+    CHECK_STR(h_reply, "\033[>1;10;0c");
+    h_reply_clear();
+    h_put(t, "\033[18t");
+    CHECK_STR(h_reply, "\033[8;24;80t");
+    h_reply_clear();
+    h_put(t, "\033[3;7H\033[6n");
+    CHECK_STR(h_reply, "\033[3;7R");
+    vt_free(t);
+}
+
+static void save_restore_cursor_keeps_attributes(void)
+{
+    vt_term *t = h_new(10, 2, VT_XTERM);
+    h_put(t, "\033[31m\033[1;5H\0337\033[0m\033[2;1H\0338x");
+    CHECK_INT(h_cell(t, 4, 0)->fg, 1);
+    h_put(t, "\033[2;2H\033[s\033[1;1H\033[uy");
+    CHECK_INT(h_cell(t, 1, 1)->ch, 'y');
+    vt_free(t);
+}
+
+static void repeat_last_character(void)
+{
+    vt_term *t = h_new(10, 1, VT_XTERM);
+    h_put(t, "-\033[4b");
+    CHECK_STR(h_row(t, 0), "-----");
+    vt_free(t);
+}
+
+static void linefeed_off_the_bottom_fills_scrollback(void)
+{
+    vt_term *t = h_new(5, 2, VT_XTERM);
+    h_put(t, "1\r\n2\r\n3\r\n4");
+    CHECK_STR(h_screen(t), "3|4");
+    CHECK_INT(vt_scrollback_lines(t), 2);
+    CHECK_STR(h_row(t, -1), "2");
+    CHECK_STR(h_row(t, -2), "1");
+    h_put(t, "\033[3J");
+    CHECK_INT(vt_scrollback_lines(t), 0);
+    vt_free(t);
+}
+
+static void scroll_calls_the_renderer_once_per_step(void)
+{
+    vt_term *t = h_new(5, 2, VT_XTERM);
+    h_scroll_calls = 0;
+    h_put(t, "1\r\n2\r\n3");
+    CHECK_INT(h_scroll_calls, 1);
+    vt_free(t);
+}
+
+static void resize_keeps_cursor_row_visible(void)
+{
+    vt_term *t = h_new(10, 5, VT_XTERM);
+    int x, y;
+    h_put(t, "1\r\n2\r\n3\r\n4\r\n5");
+    vt_resize(t, 8, 3);
+    CHECK_STR(h_screen(t), "3|4|5");
+    CHECK_INT(vt_scrollback_lines(t), 2);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 2);
+    vt_resize(t, 12, 4);
+    CHECK_STR(h_screen(t), "3|4|5");
+    h_put(t, "\033[2;1Habcdefghijkl");
+    CHECK_STR(h_row(t, 1), "abcdefghijkl");
+    vt_free(t);
+}
+
+static void resize_with_a_blank_bottom_drops_it(void)
+{
+    vt_term *t = h_new(10, 5, VT_XTERM);
+    h_put(t, "top\033[1;1H");
+    vt_resize(t, 10, 2);
+    CHECK_STR(h_screen(t), "top");
+    CHECK_INT(vt_scrollback_lines(t), 0);
+    vt_free(t);
+}
+
+static void decaln_fills_with_e(void)
+{
+    vt_term *t = h_new(3, 2, VT_XTERM);
+    h_put(t, "\033#8");
+    CHECK_STR(h_screen(t), "EEE|EEE");
+    vt_free(t);
+}
+
+static void soft_reset_restores_modes(void)
+{
+    vt_term *t = h_new(5, 5, VT_XTERM);
+    h_put(t, "\033[?7l\033[?1h\033[2;3r\033[4h\033[!p");
+    CHECK_INT(vt_modes(t) & VT_MODE_APP_CURSOR, 0);
+    h_put(t, "\033[5;1Habcdefg");
+    CHECK_STR(h_row(t, 3), "abcde"); /* autowrap back on, and the region is */
+    CHECK_STR(h_row(t, 4), "fg");    /* full again, so the bottom row scrolls */
+    vt_free(t);
+}
+
+static void mouse_and_paste_modes(void)
+{
+    vt_term *t = h_new(5, 5, VT_XTERM);
+    h_put(t, "\033[?1000;1006;2004h");
+    CHECK(vt_modes(t) & VT_MODE_MOUSE_NORMAL);
+    CHECK(vt_modes(t) & VT_MODE_MOUSE_SGR);
+    CHECK(vt_modes(t) & VT_MODE_BRACKET_PASTE);
+    h_put(t, "\033[?1000l");
+    CHECK_INT(vt_modes(t) & VT_MODE_MOUSE_NORMAL, 0);
+    vt_free(t);
+}
+
+static void ris_resets_everything(void)
+{
+    vt_term *t = h_new(5, 2, VT_XTERM);
+    h_put(t, "abc\033[31m\033[?25l\033c");
+    CHECK_STR(h_screen(t), "");
+    CHECK(vt_modes(t) & VT_MODE_CURSOR_VISIBLE);
+    h_put(t, "x");
+    CHECK_INT(h_cell(t, 0, 0)->fg, VT_COLOR_DEFAULT);
+    vt_free(t);
+}
+
+static void bell_rings(void)
+{
+    vt_term *t = h_new(5, 2, VT_XTERM);
+    h_put(t, "\007\007");
+    CHECK_INT(h_bells, 2);
+    vt_free(t);
+}
+
+static void c1_via_utf8_code_points(void)
+{
+    vt_term *t = h_new(10, 2, VT_XTERM);
+    h_put(t, "ab\xc2\x9b" "1D" "X"); /* U+009B is CSI */
+    CHECK_STR(h_row(t, 0), "aX");
+    vt_free(t);
+}
+
+void suite_xterm(void)
+{
+    parser_splits_sequences_across_writes();
+    c0_controls_execute_inside_csi();
+    can_aborts_a_sequence();
+    unknown_private_sequences_are_swallowed();
+    osc_title_ends_on_bel_and_st();
+    dcs_strings_are_ignored();
+    utf8_decodes_to_cells();
+    wide_glyphs_take_two_cells();
+    autowrap_is_deferred();
+    autowrap_off_overwrites_last_column();
+    erase_uses_current_background();
+    erase_display_does_not_home();
+    erase_modes();
+    scroll_region_confines_linefeed();
+    reverse_index_at_top_scrolls_down();
+    origin_mode_positions_relative_to_region();
+    insert_and_delete_characters();
+    insert_and_delete_lines();
+    scroll_up_down_sequences();
+    tabs_default_every_eight();
+    back_tab();
+    sgr_colours_and_attributes();
+    alt_screen_1049_saves_and_restores();
+    dec_graphics_draw_boxes();
+    shift_out_selects_g1();
+    device_reports();
+    save_restore_cursor_keeps_attributes();
+    repeat_last_character();
+    linefeed_off_the_bottom_fills_scrollback();
+    scroll_calls_the_renderer_once_per_step();
+    resize_keeps_cursor_row_visible();
+    resize_with_a_blank_bottom_drops_it();
+    decaln_fills_with_e();
+    soft_reset_restores_modes();
+    mouse_and_paste_modes();
+    ris_resets_everything();
+    bell_rings();
+    c1_via_utf8_code_points();
+}

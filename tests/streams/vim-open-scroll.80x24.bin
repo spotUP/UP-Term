@@ -1,0 +1,99 @@
+[?1049h[>4;2m[?1h=[?2004h[?1004h[1;24r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[24;1H"~/Code/vtcon/engine/vtengine.c" 2295L, 59952B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[>c]10;?]11;?[1;1H[34m/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[m[2;76H[K[3;1H[34m * it are per personality, because the Amiga console and xterm give the same[m[3;77H[K[4;1H[34m * CSI finals different meanings (the conformance matrix in
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[m
+[35m#include [m[31m"vtengine.h"[m
+[35m#include [m[31m<string.h>[m
+
+[35m#ifndef VT_MALLOC
+#include [m[31m<stdlib.h>[m
+[35m#define VT_MALLOC(n) malloc(n)
+#define VT_FREE(p) free(p)
+#endif
+
+#define VT_MAX_PARAMS [m[31m16[m
+[35m#define VT_STR_MAX [m[31m256[m
+[35m#define VT_PARAM_MAX [m[31m65535L[m
+
+[34m/* Parser states. */[m
+[32menum[m {
+    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+    S_CSI_IGNORE, S_OSC, S_STRING [34m/* DCS, SOS, PM, APC: consumed, ignored */[m
+};[1;1H[?25h[?4m[?25l[27m[23m[29m[m[H[2J[1;5HS_CSI_IGNORE, S_OSC, S_STRING [34m/* DCS, SOS, PM, APC: consumed, ignored */[m
+};
+
+[34m/* A grid line: one allocation, cells follow the header. */[m
+[32mtypedef[m [32mstruct[m vt_line {
+    vt_u16 cap;      [34m/* cells allocated */[m
+    vt_u16 n;[8C[34m/* cells in use (== cols for grid lines) */[m
+    vt_u8 wrapped;   [34m/* the text continues on the next line */[m
+    vt_u8 pad;
+    vt_cell c[[31m1[m];
+} vt_line;
+
+[32mtypedef[m [32mstruct[m vt_saved {
+    [32mint[m x, y, wrap_pending, origin;
+    vt_u16 fg, bg;
+    vt_u8 attr;
+    vt_u8 charset[[31m4[m];
+    [32mint[m gl;
+} vt_saved;
+
+[32mstruct[m vt_term {
+    vt_callbacks cb;
+    [32mvoid[m *user;[1;5H[?25h[?25l[27m[23m[29m[m[H[2J[1;5Hvt_callbacks cb;
+    [32mvoid[m *user;
+    [32menum[m vt_personality pers;
+    [32mint[m cols, rows;[6;5Hvt_line **scr, **pri, **alt;
+    vt_line **sb;[10C[34m/* scrollback ring */[m
+    [32mint[m sb_cap, sb_len, sb_head; [34m/* head: next slot to write */[m[10;5H[32mint[m cx, cy, wrap_pending;
+    vt_u16 fg, bg;
+    vt_u8 attr;
+    [32mint[m top, bot;[10C[34m/* scroll region rows [top, bot) */[m
+    vt_u8 *tabs;
+    [32mint[m tabs_cap;[17;5Hvt_u32 modes;
+    [32mint[m autowrap, origin, insert;
+    vt_u8 charset[[31m4[m];      [34m/* 'B' ASCII, '0' DEC graphics, 'A' UK */[m
+    [32mint[m gl, single_shift;
+    vt_saved sav, sav_1049;
+    vt_u16 last_ch;[1;5H[?25h[?25l[24;1H/scroll_up[1;5H}[1;6H[K[2;5H[38;5;130mif[m (t->sb_len == t->sb_cap)
+        VT_FREE(t->sb[t->sb_head]);
+    [38;5;130melse[m[4;9H[K[5;9Ht->sb_len++;
+    t->sb[t->sb_head] = l;[6;27H[K[7;5Ht->sb_head = (t->sb_head + [31m1[m) % t->sb_cap;[7;47H[K[8;1H}[8;5H[K[10;1H[34m/* Rows [top, bot) move up by n; n blank rows enter at the bottom. Lines
+ * leaving the top of the primary screen go to the scrollback. */[m
+[32mstatic[m [32mvoid[m scroll_up(vt_term *t, [32mint[m top, [32mint[m bot, [32mint[m n)
+{[13;5H[K[14;5H[32mint[m i, h = bot - top;
+    vt_line *l;[15;16H[K[16;5H[38;5;130mif[m (n <= [31m0[m || h <= [31m0[m)
+        [38;5;130mreturn[m;[17;16H[K[18;5H[38;5;130mif[m (n > h)[18;15H[K[19;5H    n = h;[19;15H[K[20;5Hflush(t);[20;14H[K[21;5H[38;5;130mfor[m (i = [31m0[m; i < n; i++) {
+        l = t->scr[top];[23;9Hmemmove(&t->scr[top], &t->scr[top + [31m1[m], (h - [31m1[m) * [38;5;130msizeof[m(vt_line *));[12;13H[?25h[?25l[1;23r[1;1H[11M[1;24r[13;9H[38;5;130mif[m (top == [31m0[m && t->scr == t->pri && t->pers != VT_AMIGA) {[14;13Hvt_line *nl = line_new(t->cols);[15;13H[38;5;130mif[m (nl) {[16;17Hsb_push(t, l);[17;17Hl = nl;[18;13H}[19;9H}[20;9Hline_clear(t, l, t->cols);[21;9Ht->scr[bot - [31m1[m] = l;
+    }
+    [38;5;130mif[m (t->cb.scroll)[24;1H[K[12;9H[?25h[?25l[1;23r[1;1H[11L[1;24r[1;5H}
+    [38;5;130mif[m (t->sb_len == t->sb_cap)[3;9HVT_FREE(t->sb[t->sb_head]);
+    [38;5;130melse[m[5;9Ht->sb_len++;
+    t->sb[t->sb_head] = l;
+    t->sb_head = (t->sb_head + [31m1[m) % t->sb_cap;
+}
+
+[34m/* Rows [top, bot) move up by n; n blank rows enter at the bottom. Lines
+ * leaving the top of the primary screen go to the scrollback. */
+[?25h[?25l[m[1;5H    out[n++] = [31m'O'[m;
+        out[n++] = (vt_u8)([31m'P'[m + (key - VT_KEY_F1));[3;9H[38;5;130mreturn[m n;[3;18H[K[4;5H[38;5;130mdefault[m:[5;9H[38;5;130mbreak[m;[5;15H[K[6;5H}[6;6H[K[7;5H[38;5;130mif[m (key >= VT_KEY_F5 && key <= VT_KEY_F12) {
+ [7C[32mstatic[m [32mconst[m [32mint[m code[[31m8[m] = { [31m15[m, [31m17[m, [31m18[m, [31m19[m, [31m20[m, [31m21[m, [31m23[m, [31m24[m };[9;9H[38;5;130mreturn[m xterm_tilde(out, code[key - VT_KEY_F5], mods);
+    }[10;6H[K[11;1H    [38;5;130mreturn[m [31m0[m;[11;14H[K[12;1H}[12;2H[K[13;1H[K[14;1H[32mint[m vt_encode_paste([32mconst[m vt_term *t, [32mint[m end, vt_u8 *out)
+{[15;5H[K[16;5H[32mconst[m [32mchar[m *s = end ? [31m"[m[35m\033[m[31m[201~"[m : [31m"[m[35m\033[m[31m[200~"[m;
+    [32mint[m i;[17;11H[K[18;9H!(t->modes & VT_MODE_BRACKET_PASTE) || t->pers != VT_XTERM)[19;9H[38;5;130mreturn[m [31m0[m;
+    [38;5;130mfor[m (i = [31m0[m; s[i]; i++)
+        out[i] = (vt_u8)s[i];
+    [38;5;130mreturn[m i;[22;14H[K[23;1H}[23;9H[K[23;1H[?25h[?25l[1;1H[34m/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below
+ * it are per personality, because the Amiga console and xterm give the same
+ * CSI finals different meanings (the conformance matrix in
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[m
+[35m#include [m[31m"vtengine.h"[m
+[35m#include [m[31m<string.h>[m[7;20H[K[8;9H[K[9;1H[35m#ifndef VT_MALLOC[m[9;18H[K[10;1H[35m#include [m[31m<stdlib.h>[m
+[35m#define VT_MALLOC(n) malloc(n)
+#define VT_FREE(p) free(p)
+#endif[m[14;1H[K[15;1H[35m#define VT_MAX_PARAMS [m[31m16[m
+[35m#define VT_STR_MAX [m[31m256[m[16;23H[K[17;1H[35m#define VT_PARAM_MAX [m[31m65535L[m[18;5H[K[19;1H[34m/* Parser states. */[m
+[32menum[m {[20;7H[K[21;5HS_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+    S_CSI_IGNORE, S_OSC, S_STRING [34m/* DCS, SOS, PM, APC: consumed, ignored */[m
+};[1;1H[?25h
