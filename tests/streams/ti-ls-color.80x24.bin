@@ -1,0 +1,22 @@
+/Users/spot/Code/vtcon/engine:
+total 160
+drwxr-xr-x@  4 spot  staff    128 Sep 28 23:56 [34m.[39;49m[0m
+drwxr-xr-x@ 18 spot  staff    576 Sep 28 23:41 [34m..[39;49m[0m
+-rw-r--r--@  1 spot  staff  69841 Sep 29 00:48 vtengine.c
+-rw-r--r--@  1 spot  staff   7831 Sep 29 00:48 vtengine.h
+
+/Users/spot/Code/vtcon/tests:
+total 112
+drwxr-xr-x@  13 spot  staff    416 Sep 29 00:05 [34m.[39;49m[0m
+drwxr-xr-x@  18 spot  staff    576 Sep 28 23:41 [34m..[39;49m[0m
+-rw-r--r--@   1 spot  staff   2299 Sep 29 00:48 dump_main.c
+drwxr-xr-x@  19 spot  staff    608 Sep 29 00:02 [34mgolden[39;49m[0m
+-rw-r--r--@   1 spot  staff   2735 Sep 28 23:38 harness.c
+-rw-r--r--@   1 spot  staff   1400 Sep 28 23:38 harness.h
+drwxr-xr-x@ 146 spot  staff   4672 Sep 29 00:51 [34mstreams[39;49m[0m
+-rw-r--r--@   1 spot  staff   4816 Sep 28 23:48 test_amiga.c
+-rw-r--r--@   1 spot  staff   2672 Sep 29 00:05 test_glyph.c
+-rw-r--r--@   1 spot  staff   4813 Sep 29 00:05 test_keys.c
+-rw-r--r--@   1 spot  staff    975 Sep 29 00:05 test_main.c
+-rw-r--r--@   1 spot  staff   3164 Sep 28 23:48 test_pcansi.c
+-rw-r--r--@   1 spot  staff  14646 Sep 29 00:11 test_xterm.c

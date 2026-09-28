@@ -58,6 +58,22 @@ DISAGREE = {
     "vim-small.40x12.bin": PYTE_GAP_ALT + " (vim has quit back to the primary screen)",
 }
 
+# Sequences programs send whatever the terminfo says (capability probes and
+# optional features); a terminal that lacks them ignores them, and the
+# programs fall back. Only these may stay unhandled in a TERM=vtcon capture.
+PROBES = {
+    "C 14t": "XTWINOPS pixel-size query (tmux); no pixel size is reported",
+    "O 10": "OSC 10 foreground-colour query (tmux)",
+    "O 11": "OSC 11 background-colour query (tmux)",
+    "C >q": "XTVERSION query (tmux)",
+    "C ?996n": "colour-scheme DSR query (tmux)",
+    "M 2031": "colour-scheme change notifications (tmux)",
+    "M 1005": "UTF-8 mouse encoding (tmux asks for it; SGR ?1006 is what we do)",
+    "M 7727": "tmux application-escape mode, tmux-specific",
+    "C 0%m": "vim: an XTQMODKEYS-style query",
+    "D 0": "a DCS request (vim: XTGETTCAP/DECRQSS); no reply",
+}
+
 # stream name -> reason: the engine follows xterm here and libvterm differs.
 # These compare against a reviewed golden grid (tests/golden/<stream>.txt,
 # written by `make golden`), so a change to them is a visible diff.
@@ -117,7 +133,8 @@ def dump(tool, data, cols, rows):
             fg, bg, a, ch = (int(v) for v in cell.split(","))
             row.append(visible(fg, bg, bool(a & 1), bool(a & 0x20), bool(a & 8), ch))
         attr.append(row)
-    return text, lines[2 * rows], attr
+    unhandled = lines[2 * rows + 1] if len(lines) > 2 * rows + 1 else ""
+    return text, lines[2 * rows], attr, unhandled
 
 def visible(fg, bg, bold, inverse, underline, ch):
     """What a cell shows. A blank with no underline paints only its
@@ -129,7 +146,8 @@ def visible(fg, bg, bold, inverse, underline, ch):
     return (fg, bg, bold, inverse, underline)
 
 def compare(a, b, cols, rows):
-    """Differences between two dumps: (rows with other text, cursor pair, cells)."""
+    """Differences between two dumps: (rows with other text, cursor pair, cells).
+    Dumps are (text, cursor, attr[, unhandled]); only the first three count."""
     bad = [y for y in range(rows) if a[0][y] != b[0][y]]
     cells = [(x, y, a[2][y][x], b[2][y][x]) for y in range(rows) for x in range(cols)
              if a[2][y][x] != b[2][y][x]]
@@ -187,6 +205,16 @@ def report(label, diff, ours, ref):
 
 WRITE_GOLDEN = False
 
+def entry(table, name):
+    """A table entry for a stream, or for its xterm-256color twin: a ti-
+    capture is the same program under TERM=vtcon, so the same reference gap
+    applies to it."""
+    if name in table:
+        return table[name]
+    if name.startswith("ti-") and name[3:] in table:
+        return table[name[3:]]
+    return None
+
 def main():
     global WRITE_GOLDEN
     args = sys.argv[1:]
@@ -203,10 +231,22 @@ def main():
         cols, rows = (int(m.group(1)), int(m.group(2))) if m else (80, 24)
         data = p.read_bytes()
         ours = dump("vtdump", data, cols, rows)
+        if p.name.startswith("ti-"):
+            # A TERM=vtcon capture: terminfo promised only what the engine does,
+            # so anything unhandled must be a probe programs send regardless.
+            kinds = re.findall(r"\[([^\]]+)\]x(\d+)", ours[3])
+            bad = [k for k, _ in kinds if k not in PROBES]
+            if bad or ("unhandled 0" != ours[3].split(" [")[0] and not kinds):
+                fails += 1
+                print("[FAIL] %s: TERM=vtcon left unhandled sequences that are not known probes: %s"
+                      % (p.name, ", ".join(bad) or ours[3]))
+                continue
         if p.name in XTERM_NOT_LIBVTERM:
             g = ROOT / "tests/golden" / (p.name[:-4] + ".txt")
             raw = subprocess.run([str(ROOT / "build/vtdump"), str(cols), str(rows)], input=data,
                                  capture_output=True, check=True).stdout.decode("utf-8")
+            # the grid only: the unhandled-sequence line is a diagnostic
+            raw = "\n".join(l for l in raw.split("\n") if not l.startswith("unhandled "))
             if WRITE_GOLDEN:
                 g.write_text(raw)
             if not g.exists():
@@ -221,7 +261,7 @@ def main():
         vt = dump("vterm_dump", data, cols, rows)
         py = pyte_dump(data, cols, rows)
         if vt is None or py is None:
-            if p.name not in REF_BROKEN:
+            if entry(REF_BROKEN, p.name) is None:
                 fails += 1
                 print("[FAIL] %s: %s failed on it and REF_BROKEN has no entry"
                       % (p.name, "libvterm" if vt is None else "pyte"))
@@ -234,10 +274,10 @@ def main():
             d = compare(ours, ref, cols, rows)
             if d[0] or d[1] or d[2]:
                 fails += 1
-                print("[FAIL] %s: differs from %s (the other reference: %s)" % (p.name, label, REF_BROKEN[p.name]))
+                print("[FAIL] %s: differs from %s (the other reference: %s)" % (p.name, label, entry(REF_BROKEN, p.name)))
                 report(label, d, ours, ref)
             else:
-                print("[OK] %s (%s only: %s)" % (p.name, label, REF_BROKEN[p.name]))
+                print("[OK] %s (%s only: %s)" % (p.name, label, entry(REF_BROKEN, p.name)))
             continue
         dv = compare(ours, vt, cols, rows)
         dp = compare(ours, py, cols, rows)
@@ -246,8 +286,8 @@ def main():
         if vt_ok and py_ok:
             print("[OK] %s" % p.name)
         elif vt_ok:
-            if p.name in DISAGREE:
-                print("[OK] %s (pyte differs: %s)" % (p.name, DISAGREE[p.name]))
+            if entry(DISAGREE, p.name):
+                print("[OK] %s (pyte differs: %s)" % (p.name, entry(DISAGREE, p.name)))
             else:
                 fails += 1
                 print("[FAIL] %s: matches libvterm, pyte differs and DISAGREE has no entry" % p.name)

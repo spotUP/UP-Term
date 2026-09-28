@@ -99,7 +99,79 @@ struct vt_term {
     int dirty;
 
     char title[VT_STR_MAX];
+
+    /* sequences parsed but not acted on (vt_unhandled): the terminfo test
+     * requires none, so a capability the engine lacks cannot hide */
+    long unhandled;
+    char unhandled_seen[16][16];   /* distinct kinds, with counts */
+    long unhandled_count[16];
+    int unhandled_kinds;
 };
+
+static void note_text(vt_term *t, const char *d)
+{
+    int i;
+    t->unhandled++;
+    for (i = 0; i < t->unhandled_kinds; i++)
+        if (!strcmp(t->unhandled_seen[i], d)) {
+            t->unhandled_count[i]++;
+            return;
+        }
+    if (t->unhandled_kinds < 16) {
+        strcpy(t->unhandled_seen[t->unhandled_kinds], d);
+        t->unhandled_count[t->unhandled_kinds++] = 1;
+    }
+}
+
+static void note_value(vt_term *t, char kind, long v)
+{
+    char d[16];
+    int n = 0, k = 0;
+    char tmp[12];
+    d[n++] = kind;
+    d[n++] = ' ';
+    if (v < 0)
+        v = 0;
+    if (!v)
+        tmp[k++] = '0';
+    while (v && k < 10) {
+        tmp[k++] = (char)('0' + v % 10);
+        v /= 10;
+    }
+    while (k)
+        d[n++] = tmp[--k];
+    d[n] = 0;
+    note_text(t, d);
+}
+
+/* Record a sequence the engine parsed and ignored: "CSI ? 12 h" style. */
+static void note_unhandled(vt_term *t, char kind, vt_u8 final)
+{
+    char d[16];
+    int n = 0;
+    long p = t->np ? t->params[0] : -1;
+    d[n++] = kind;
+    d[n++] = ' ';
+    if (t->priv)
+        d[n++] = (char)t->priv;
+    if (p >= 0) {
+        char tmp[8];
+        int k = 0;
+        if (!p)
+            tmp[k++] = '0';
+        while (p && k < 6) {
+            tmp[k++] = (char)('0' + p % 10);
+            p /= 10;
+        }
+        while (k)
+            d[n++] = tmp[--k];
+    }
+    if (t->inter)
+        d[n++] = (char)t->inter;
+    d[n++] = (char)final;
+    d[n] = 0;
+    note_text(t, d);
+}
 
 /* ---- small helpers ---------------------------------------------------- */
 
@@ -812,9 +884,12 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
                 }
                 mark_rows(t, 0, t->rows);
                 move_to(t, 0, 0);
+            } else {
+                note_unhandled(t, 'E', final);
             }
             break;
         default:
+            note_unhandled(t, 'E', final);
             break;
         }
         return;
@@ -853,7 +928,10 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
     case '>':
         t->modes &= ~(vt_u32)VT_MODE_APP_KEYPAD;
         break;
+    case '\\':
+        break; /* ST with nothing open */
     default:
+        note_unhandled(t, 'E', final);
         break;
     }
 }
@@ -1004,6 +1082,8 @@ static void sgr(vt_term *t)
             t->fg = (vt_u16)(p - 90 + 8);
         } else if (p >= 100 && p <= 107 && t->pers != VT_AMIGA) {
             t->bg = (vt_u16)(p - 100 + 8);
+        } else {
+            note_value(t, 'S', p);
         }
     }
 }
@@ -1020,6 +1100,9 @@ static void set_mode(vt_term *t, int on)
                     t->modes |= VT_MODE_APP_CURSOR;
                 else
                     t->modes &= ~(vt_u32)VT_MODE_APP_CURSOR;
+                break;
+            case 3: /* DECCOLM: the window sets the width (xterm without allowColumns) */
+            case 4: /* DECSCLM: smooth scrolling, nothing to do */
                 break;
             case 5: /* DECSCNM */
                 if (!on != !(t->modes & VT_MODE_SCREEN_REVERSE)) {
@@ -1087,6 +1170,7 @@ static void set_mode(vt_term *t, int on)
                 }
                 break;
             default:
+                note_value(t, 'M', p); /* a DEC private mode we do not have */
                 break;
             }
         } else if (t->priv == '>' && t->pers == VT_AMIGA) {
@@ -1274,8 +1358,10 @@ static void csi_xterm(vt_term *t, vt_u8 final)
         soft_reset(t);
         return;
     }
-    if (t->inter)
-        return; /* DECSCUSR, DECRQM, ...: parsed and ignored */
+    if (t->inter) {
+        note_unhandled(t, 'C', final); /* DECSCUSR, DECRQM, ...: parsed and ignored */
+        return;
+    }
     if (t->priv == '?') {
         if (final == 'h' || final == 'l')
             set_mode(t, final == 'h');
@@ -1283,15 +1369,21 @@ static void csi_xterm(vt_term *t, vt_u8 final)
             report_cursor(t, 1);
         else if (final == 'J' || final == 'K')
             csi_common(t, final); /* DECSED / DECSEL: no protected cells */
+        else
+            note_unhandled(t, 'C', final);
         return;
     }
     if (t->priv == '>') {
         if (final == 'c' && param0(t, 0) == 0)
             reply(t, "\033[>1;10;0c", 10); /* DA2: a VT220, firmware 10 */
+        else
+            note_unhandled(t, 'C', final);
         return;
     }
-    if (t->priv)
+    if (t->priv) {
+        note_unhandled(t, 'C', final);
         return;
+    }
     switch (final) {
     case 'c':
         if (param0(t, 0) == 0)
@@ -1326,10 +1418,13 @@ static void csi_xterm(vt_term *t, vt_u8 final)
             n = fmt_uint(b, n, t->cols);
             b[n++] = 't';
             reply(t, b, n);
+        } else {
+            note_unhandled(t, 'C', final);
         }
         return;
     default:
-        csi_common(t, final);
+        if (!csi_common(t, final))
+            note_unhandled(t, 'C', final);
         return;
     }
 }
@@ -1474,7 +1569,13 @@ static void osc_dispatch(vt_term *t)
     if (i >= t->str_len || t->str[i] != ';')
         return;
     i++;
-    if (cmd == 0 || cmd == 2) {
+    if (cmd == 1)
+        return; /* icon name: no icon to name */
+    if (cmd != 0 && cmd != 2) {
+        note_value(t, 'O', cmd);
+        return;
+    }
+    {
         int n = t->str_len - i;
         memcpy(t->title, t->str + i, n);
         t->title[n] = 0;
@@ -1508,6 +1609,8 @@ static void end_string(vt_term *t)
 {
     if (t->state == S_OSC)
         osc_dispatch(t);
+    else
+        note_value(t, t->str_kind == 'P' ? 'D' : 'X', 0);
     t->state = S_GROUND;
 }
 
@@ -2100,6 +2203,20 @@ const char *vt_title(const vt_term *t)
 vt_u32 vt_raw_events(const vt_term *t)
 {
     return t->raw_events;
+}
+
+long vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max)
+{
+    int i;
+    for (i = 0; i < t->unhandled_kinds && i < max; i++) {
+        kinds[i] = t->unhandled_seen[i];
+        counts[i] = t->unhandled_count[i];
+    }
+    for (; i < max; i++) {
+        kinds[i] = 0;
+        counts[i] = 0;
+    }
+    return t->unhandled;
 }
 
 void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *bg)

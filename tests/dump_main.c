@@ -54,6 +54,15 @@ int main(int argc, char **argv)
     }
     vt_cursor(t, &cx, &cy);
     printf("@%d,%d\n", cx, cy);
+    {
+        const char *kinds[16];
+        long counts[16], u = vt_unhandled(t, kinds, counts, 16);
+        int i;
+        printf("unhandled %ld", u);
+        for (i = 0; i < 16 && kinds[i]; i++)
+            printf(" [%s]x%ld", kinds[i], counts[i]);
+        printf("\n");
+    }
     vt_free(t);
     return 0;
 }

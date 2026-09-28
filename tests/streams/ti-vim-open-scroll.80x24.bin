@@ -1,0 +1,104 @@
+[?1049h[?1h=[?2004h[1;24r[27m[24m[23m[0m[H[2J[?25l[24;1H"~/Code/vtcon/engine/vtengine.c" 2597L, 69841B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[1;1H[34m/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[0m[2;76H[K[3;1H[34m * it are per personality, because the Amiga console and xterm give the same[0m[3;77H[K[4;1H[34m * CSI finals different meanings (the conformance matrix in
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[0m
+[35m#include [0m[31m"vtengine.h"[0m
+[35m#include [0m[31m<string.h>[0m
+
+[35m#if defined(VT_AMIGA_EXEC_ALLOC)[0m
+[34m/* code without a C startup (the handler): exec memory, no libc heap */[0m
+[35m#include [0m[31m<exec/memory.h>[0m
+[35m#include [0m[31m<proto/exec.h>[0m
+[35m#define VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
+#define VT_FREE(p) FreeVec(p)
+#elif !defined(VT_MALLOC)
+#include [0m[31m<stdlib.h>[0m
+[35m#define VT_MALLOC(n) malloc(n)
+#define VT_FREE(p) free(p)
+#endif
+
+#define VT_MAX_PARAMS [0m[31m16[0m
+[35m#define VT_STR_MAX [0m[31m256[0m
+[35m#define VT_PARAM_MAX [0m[31m65535L[1;1H[?25h[?25l[27m[24m[23m[0m[H[2J[1;1H[35m#define VT_STR_MAX [0m[31m256[0m
+[35m#define VT_PARAM_MAX [0m[31m65535L[0m
+
+[34m/* Parser states. */[0m
+[32menum[0m {
+    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+    S_CSI_IGNORE, S_OSC, S_STRING [34m/* DCS, SOS, PM, APC: consumed, ignored */[0m
+};
+
+[34m/* A grid line: one allocation, cells follow the header. */[0m
+[32mtypedef[0m [32mstruct[0m vt_line {
+    vt_u16 cap;      [34m/* cells allocated */[0m
+    vt_u16 n;[8C[34m/* cells in use (== cols for grid lines) */[0m
+    vt_u8 wrapped;   [34m/* the text continues on the next line */[0m
+    vt_u8 pad;
+    vt_cell c[[31m1[0m];
+} vt_line;
+
+[32mtypedef[0m [32mstruct[0m vt_saved {
+    [32mint[0m x, y, wrap_pending, origin;
+    vt_u16 fg, bg;
+    vt_u8 attr;
+    vt_u8 charset[[31m4[0m];[1;1H[?25h[?25l[27m[24m[23m[0m[H[2J[1;5Hvt_u8 attr;
+    vt_u8 charset[[31m4[0m];
+    [32mint[0m gl;
+} vt_saved;
+
+[32mstruct[0m vt_term {
+    vt_callbacks cb;
+    [32mvoid[0m *user;
+    [32menum[0m vt_personality pers;
+    [32mint[0m cols, rows;[12;5Hvt_line **scr, **pri, **alt;
+    vt_line **sb;[10C[34m/* scrollback ring */[0m
+    [32mint[0m sb_cap, sb_len, sb_head; [34m/* head: next slot to write */[0m[16;5H[32mint[0m cx, cy, wrap_pending;
+    vt_u16 fg, bg;
+    vt_u8 attr;
+    [32mint[0m top, bot;[10C[34m/* scroll region rows [top, bot) */[0m
+    vt_u8 *tabs;
+    [32mint[0m tabs_cap;[23;5Hvt_u32 modes;[1;5H[?25h[?25l[24;1H/scroll_up[1;5H}[1;6H[K[2;5H[38;5;130mif[0m (t->sb_len == t->sb_cap)
+        VT_FREE(t->sb[t->sb_head]);
+    [38;5;130melse[0m[4;9H[K[5;9Ht->sb_len++;
+    t->sb[t->sb_head] = l;
+    t->sb_head = (t->sb_head + [31m1[0m) % t->sb_cap;
+}[8;5H[K[9;5H[K[10;1H[34m/* Rows [top, bot) move up by n; n blank rows enter at the bottom. Lines
+ * leaving the top of the primary screen go to the scrollback. */[0m
+[32mstatic[0m [32mvoid[0m scroll_up(vt_term *t, [32mint[0m top, [32mint[0m bot, [32mint[0m n)
+{[13;5H[K[14;9Hi, h = bot - top;[14;26H[K[15;5Hvt_line *l;
+    [38;5;130mif[0m (n <= [31m0[0m || h <= [31m0[0m)[16;26H[K[17;5H    [38;5;130mreturn[0m;[17;16H[K[18;5H[38;5;130mif[0m (n > h)[18;15H[K[19;5H    n = h;[19;15H[K[20;5Hflush(t);[20;14H[K[21;5H[38;5;130mfor[0m (i = [31m0[0m; i < n; i++) {[22;9Hl = t->scr[top];
+        memmove(&t->scr[top], &t->scr[top + [31m1[0m], (h - [31m1[0m) * [38;5;130msizeof[0m(vt_line *));[12;13H[?25h[?25l[1;23r[1;1H[11M[1;24r[13;9H[38;5;130mif[0m (top == [31m0[0m && t->scr == t->pri && t->pers != VT_AMIGA) {[14;13Hvt_line *nl = line_new(t->cols);[15;13H[38;5;130mif[0m (nl) {[16;17Hsb_push(t, l);[17;17Hl = nl;[18;13H}[19;9H}[20;9Hline_clear(t, l, t->cols);[21;9Ht->scr[bot - [31m1[0m] = l;
+    }
+    [38;5;130mif[0m (t->cb.scroll)[24;1H[K[12;9H[?25h[?25l[1;23r[1;1H[11L[1;24r[1;5H}
+    [38;5;130mif[0m (t->sb_len == t->sb_cap)[3;9HVT_FREE(t->sb[t->sb_head]);
+    [38;5;130melse[0m[5;9Ht->sb_len++;
+    t->sb[t->sb_head] = l;
+    t->sb_head = (t->sb_head + [31m1[0m) % t->sb_cap;
+}
+
+[34m/* Rows [top, bot) move up by n; n blank rows enter at the bottom. Lines
+ * leaving the top of the primary screen go to the scrollback. */
+[?25h[?25l[0m[1;7H[38;5;130melse[0m {
+        [38;5;130mif[0m (x > [31m222[0m || y > [31m222[0m[3;9H    [38;5;130mreturn[0m [31m0[0m; [34m/* beyond what one byte can carry */[0m
+        b[n++] = [31m'M'[0m;[5;9Hb[n++] = ([32mchar[0m)([31m32[0m + cb);
+        b[n++] = ([32mchar[0m)([31m33[0m + x);
+        b[n++] = ([32mchar[0m)([31m33[0m + y);[7;33H[K[8;1H    }
+    [38;5;130mfor[0m (i = [31m0[0m; i < n; i++)
+        out[i] = (vt_u8)b[i];[10;30H[K[11;1H    [38;5;130mreturn[0m n;[11;14H[K[12;1H}[12;2H[K[13;1H[K[14;1H[32mint[0m vt_encode_paste([32mconst[0m vt_term *t, [32mint[0m end, vt_u8 *out)
+{[15;5H[K[16;5H[32mconst[0m [32mchar[0m *s = end ? [31m"[0m[35m\033[0m[31m[201~"[0m : [31m"[0m[35m\033[0m[31m[200~"[0m;
+    [32mint[0m i;[17;11H[K[18;9H!(t->modes & VT_MODE_BRACKET_PASTE) || t->pers != VT_XTERM)[19;9H[38;5;130mreturn[0m [31m0[0m;
+    [38;5;130mfor[0m (i = [31m0[0m; s[i]; i++)
+        out[i] = (vt_u8)s[i];
+    [38;5;130mreturn[0m i;[22;14H[K[23;1H}[23;9H[K[23;1H[?25h[?25l[1;1H[34m/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below
+ * it are per personality, because the Amiga console and xterm give the same
+ * CSI finals different meanings (the conformance matrix in
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[0m
+[35m#include [0m[31m"vtengine.h"[0m[6;22H[K[7;1H[35m#include [0m[31m<string.h>[0m[7;20H[K[8;5H[K[9;1H[35m#if defined(VT_AMIGA_EXEC_ALLOC)[0m
+[34m/* code without a C startup (the handler): exec memory, no libc heap */[0m
+[35m#include [0m[31m<exec/memory.h>[0m
+[35m#include [0m[31m<proto/exec.h>[0m
+[35m#define VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
+#define VT_FREE(p) FreeVec(p)[0m[14;30H[K[15;1H[35m#elif !defined(VT_MALLOC)
+#include [0m[31m<stdlib.h>[0m[16;21H[K[17;1H[35m#define VT_MALLOC(n) malloc(n)
+#define VT_FREE(p) free(p)[0m[18;27H[K[19;1H[35m#endif[0m[19;9H[K[20;5H[K[21;1H[35m#define VT_MAX_PARAMS [0m[31m16[0m[21;25H[K[22;1H[35m#define VT_STR_MAX [0m[31m256[0m
+[35m#define VT_PARAM_MAX [0m[31m65535L[1;1H[?25h

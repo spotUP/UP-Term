@@ -24,6 +24,9 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | One suite | `make test ONLY=<name>` (e.g. `ONLY=xterm`) |
 | Reference diff vs libvterm + pyte | `make test-ref` (needs `make venv` once; clones libvterm into `build/`) |
 | Re-record streams from real programs | `make capture` |
+| terminfo proof: recapture with TERM=vtcon, check | `make test-terminfo` |
+| Amiga build with the handler trace (RAM:vtcon.log) | `make amiga DEBUG=1` |
+| Rig (FS-UAE A1200, amiagent) | `python3 tools/rig/rig.py setup|start|install|stop|status`; drive with `tools/rig/ami.py` |
 | Cross build (vbcc, 68020) | `make amiga` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | Clean | `make clean` |

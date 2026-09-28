@@ -1,0 +1,16 @@
+[?1049h[1;12r(B[m[4l[?7h[?1h=[39;49m[39;49m(B[m[H[2J[37m[44m #amiga: vtcon test channel[K[11d [12:00] [spot(+i)] [2:#amiga] [Act: 3,[K
+[39;49m(B[m[#amiga] [H
+(B[0;1m12:00 (B[0;2m<(B[0m[36mspot[39m(B[0;2m> (B[mhello there
+(B[0;1m12:01 (B[0;2m<(B[0m[33mblueberry[39m(B[0;2m> (B[manyone tried the new c[4;1Honsole on 3.2?
+(B[0;1m12:02 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[mit scrolls with a region
+above the input line, like irssi
+(B[0;1m12:03 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[måäö and é should survive[?1l>[12;1H[?1049l[?1l>Traceback (most recent call last):
+  File [35m"/Users/spot/Code/vtcon/tools/chatsim.py"[0m, line [35m72[0m, in [35m<module>[0m
+    [31mcurses.wrapper[0m[1;31m(main, int(sys.argv[1]) if len(sys.argv) > 1 else 40)[0m
+    [31m~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/lib/python3.14/curses/__init__.py"[0m, line [35m94[0m, in [35mwrapper[0m
+    return func(stdscr, *args, **kwds)
+  File [35m"/Users/spot/Code/vtcon/tools/chatsim.py"[0m, line [35m60[0m, in [35mmain[0m
+    [31mstatus.addstr[0m[1;31m(0, 40, "[Act: %d]" % i)[0m
+    [31m~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1;35m_curses.error[0m: [35maddwstr() returned ERR[0m

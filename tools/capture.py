@@ -13,10 +13,14 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "tests/streams"
 SAMPLE = ROOT / "engine/vtengine.c"
 
+TERM = "xterm-256color"   # main(): "vtcon" for the terminfo run
+
 def capture(name, argv, keys, cols=80, rows=24, settle=0.4, env_extra=None):
+    if TERM == "vtcon":
+        name = "ti-" + name
     pid, fd = pty.fork()
     if pid == 0:
-        env = {"TERM": "xterm-256color", "PATH": os.environ["PATH"], "HOME": os.environ["HOME"],
+        env = {"TERM": TERM, "TERMINFO": str(ROOT / "build/terminfo"), "PATH": os.environ["PATH"], "HOME": os.environ["HOME"],
                "LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8", "LESS": "", "PS1": "$ "}
         if env_extra:
             env.update(env_extra)
@@ -88,10 +92,18 @@ def vttest_screens():
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    global TERM
     if sys.argv[1:] == ["vttest"]:
         vttest_screens()
         return
-    vttest_screens()
+    if sys.argv[1:] == ["vtcon"]:
+        # The same programs with TERM=vtcon (terminfo/vtcon.terminfo, built
+        # into build/terminfo): what they send must all be implemented.
+        TERM = "vtcon"
+        for old in OUT.glob("ti-*.bin"):
+            old.unlink()
+    else:
+        vttest_screens()
     chat = "%s %s" % (sys.executable, ROOT / "tools/chatsim.py")
     capture("chatsim", [sys.executable, str(ROOT / "tools/chatsim.py"), "60"], [], settle=1.0)
     capture("chatsim-small", [sys.executable, str(ROOT / "tools/chatsim.py"), "30"], [], cols=40,

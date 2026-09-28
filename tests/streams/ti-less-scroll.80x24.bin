@@ -1,0 +1,219 @@
+[?1049h[?1h=/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below
+ * it are per personality, because the Amiga console and xterm give the same
+ * CSI finals different meanings (the conformance matrix in
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */
+#include "vtengine.h"
+#include <string.h>
+
+#if defined(VT_AMIGA_EXEC_ALLOC)
+/* code without a C startup (the handler): exec memory, no libc heap */
+#include <exec/memory.h>
+#include <proto/exec.h>
+#define VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
+#define VT_FREE(p) FreeVec(p)
+#elif !defined(VT_MALLOC)
+#include <stdlib.h>
+#define VT_MALLOC(n) malloc(n)
+#define VT_FREE(p) free(p)
+#endif
+
+#define VT_MAX_PARAMS 16
+#define VT_STR_MAX 256
+#define VT_PARAM_MAX 65535L
+[7m/Users/spot/Code/vtcon/engine/vtengine.c[27m[K[K
+/* Parser states. */
+enum {
+    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+};
+
+/* A grid line: one allocation, cells follow the header. */
+typedef struct vt_line {
+    vt_u16 cap;      /* cells allocated */
+    vt_u16 n;        /* cells in use (== cols for grid lines) */
+    vt_u8 wrapped;   /* the text continues on the next line */
+    vt_u8 pad;
+    vt_cell c[1];
+} vt_line;
+
+typedef struct vt_saved {
+    int x, y, wrap_pending, origin;
+    vt_u16 fg, bg;
+    vt_u8 attr;
+    vt_u8 charset[4];
+    int gl;
+} vt_saved;
+:[K[K
+struct vt_term {
+    vt_callbacks cb;
+    void *user;
+    enum vt_personality pers;
+    int cols, rows;
+
+    vt_line **scr, **pri, **alt;
+    vt_line **sb;          /* scrollback ring */
+    int sb_cap, sb_len, sb_head; /* head: next slot to write */
+
+    int cx, cy, wrap_pending;
+    vt_u16 fg, bg;
+    vt_u8 attr;
+    int top, bot;          /* scroll region rows [top, bot) */
+    vt_u8 *tabs;
+    int tabs_cap;
+
+    vt_u32 modes;
+    int autowrap, origin, insert;
+    vt_u8 charset[4];      /* 'B' ASCII, '0' DEC graphics, 'A' UK */
+    int gl, single_shift;
+    vt_saved sav, sav_1049;
+:[K[K[HM} vt_saved;
+[HM    int gl;
+[HM    vt_u8 charset[4];
+[HM    vt_u8 attr;
+[HM    vt_u16 fg, bg;
+[HM    int x, y, wrap_pending, origin;
+[HMtypedef struct vt_saved {
+[HM
+[HM} vt_line;
+[HM    vt_cell c[1];
+[HM    vt_u8 pad;
+[HM    vt_u8 wrapped;   /* the text continues on the next line */
+[HM    vt_u16 n;        /* cells in use (== cols for grid lines) */
+[HM    vt_u16 cap;      /* cells allocated */
+[HMtypedef struct vt_line {
+[HM/* A grid line: one allocation, cells follow the header. */
+[HM
+[HM};
+[HM    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+[HM    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+[HMenum {
+[HM/* Parser states. */
+[HM
+[24;1H[K:[K[K
+:[K[Kstruct vt_term {
+:[K[K    vt_callbacks cb;
+:[K[K    void *user;
+:[K[K    enum vt_personality pers;
+:[K[K[HM    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+[24;1H[K:[K[K[HM    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+[24;1H[K:[K[K[HMenum {
+[24;1H[K:[K[K/[Kss[Ktt[Kaa[Ktt[Kee[K[1;1Henum {
+[2;1H    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+[3;1H    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+[4;1H};
+[5;1H
+[6;1H/* A grid line: one allocation, cells follow the header. */
+[7;1Htypedef struct vt_line {
+[8;1H    vt_u16 cap;      /* cells allocated */
+[9;1H    vt_u16 n;        /* cells in use (== cols for grid lines) */
+[10;1H    vt_u8 wrapped;   /* the text continues on the next line */
+[11;1H    vt_u8 pad;
+[12;1H    vt_cell c[1];
+[13;1H} vt_line;
+[14;1H
+[15;1Htypedef struct vt_saved {
+[16;1H    int x, y, wrap_pending, origin;
+[17;1H    vt_u16 fg, bg;
+[18;1H    vt_u8 attr;
+[19;1H    vt_u8 charset[4];
+[20;1H    int gl;
+[21;1H} vt_saved;
+[22;1H
+[23;1Hstruct vt_term {
+[24;1H[1;1Henum {
+[2;1H    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+[3;1H    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+[4;1H};
+[5;1H
+[6;1H/* A grid line: one allocation, cells follow the header. */
+[7;1Htypedef struct vt_line {
+[8;1H    vt_u16 cap;      /* cells allocated */
+[9;1H    vt_u16 n;        /* cells in use (== cols for grid lines) */
+[10;1H    vt_u8 wrapped;   /* the text continues on the next line */
+[11;1H    vt_u8 pad;
+[12;1H    vt_cell c[1];
+[13;1H} vt_line;
+[14;1H
+[15;1Htypedef struct vt_saved {
+[16;1H    int x, y, wrap_pending, origin;
+[17;1H    vt_u16 fg, bg;
+[18;1H    vt_u8 attr;
+[19;1H    vt_u8 charset[4];
+[20;1H    int gl;
+[21;1H} vt_saved;
+[22;1H
+[23;1Hstruct vt_term {
+[24;1H...skipping...
+    int [7mstate[27m;
+    long params[VT_MAX_PARAMS];
+    vt_u8 sub[VT_MAX_PARAMS];  /* 1: this parameter followed a ':' */
+    int np, have;
+    vt_u8 priv, inter;
+    int ninter;
+    vt_u8 str_kind;            /* ']' OSC, 'P' DCS, 'X' SOS, '^' PM, '_' APC */
+    int str_esc;
+    char str[VT_STR_MAX];
+    int str_len;
+
+    /* UTF-8 decoder (xterm) */
+    vt_u32 u_cp;
+    int u_need;
+    int utf8;
+
+    /* per-row dirty spans, flushed at the end of each write */
+    short *dx0, *dx1;
+    int dirty;
+
+    char title[VT_STR_MAX];
+
+    /* sequences parsed but not acted on (vt_unhandled): the terminfo test
+:[K[K/[K...skipping...
+/* ---- [7mstate[27m ------------------------------------------------------------- */
+
+static void save_cursor(vt_term *t, vt_saved *s)
+{
+    s->x = t->cx;
+    s->y = t->cy;
+    s->wrap_pending = t->wrap_pending;
+    s->origin = t->origin;
+    s->fg = t->fg;
+    s->bg = t->bg;
+    s->attr = t->attr;
+    memcpy(s->charset, t->charset, 4);
+    s->gl = t->gl;
+}
+
+static void restore_cursor(vt_term *t, const vt_saved *s)
+{
+    t->origin = s->origin;
+    t->fg = s->fg;
+    t->bg = s->bg;
+    t->attr = s->attr;
+    memcpy(t->charset, s->charset, 4);
+    t->gl = s->gl;
+:[K[K...skipping...
+    } else {
+        if (x > 222 || y > 222)
+            return 0; /* beyond what one byte can carry */
+        b[n++] = 'M';
+        b[n++] = (char)(32 + cb);
+        b[n++] = (char)(33 + x);
+        b[n++] = (char)(33 + y);
+    }
+    for (i = 0; i < n; i++)
+        out[i] = (vt_u8)b[i];
+    return n;
+}
+
+int vt_encode_paste(const vt_term *t, int end, vt_u8 *out)
+{
+    const char *s = end ? "\033[201~" : "\033[200~";
+    int i;
+    if (!(t->modes & VT_MODE_BRACKET_PASTE) || t->pers != VT_XTERM)
+        return 0;
+    for (i = 0; s[i]; i++)
+        out[i] = (vt_u8)s[i];
+    return i;
+}
+[7m(END)[27m[K

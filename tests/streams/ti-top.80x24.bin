@@ -1,0 +1,17 @@
+Processes: 696 total, 10 running, 3 stuck, 683 sleeping, 5284 threads 
+2026/09/29 00:51:16
+Load Avg: 26.28, 24.24, 28.12 
+CPU usage: 44.44% user, 30.95% sys, 24.60% idle 
+SharedLibs: 313M resident, 59M data, 58M linkedit.
+MemRegions: 552873 total, 4722M resident, 200M private, 1775M shared.
+PhysMem: 15G used (3470M wired, 4845M compressor), 88M unused.
+VM: 301T vsize, 5703M framework vsize, 279710850(0) swapins, 300881703(0) swapouts.
+Networks: packets: 147536789/197G in, 100349667/147G out.
+Disks: 806026374/15T read, 1156191137/21T written.
+
+PID    COMMAND  %CPU TIME     #TH #WQ #PORTS MEM   PURG CMPRS PGRP  PPID  STATE    BOOSTS   %CPU_ME %CPU_OTHRS UID FAULTS   COW  MSGSENT MSGRECV SYSBSD   SYSMACH CSW      PAGEINS IDLEW POWER INSTRS CYCLES JETPRI USER #MREGS RPRVT VPRVT VSIZE KPRVT KSHRD
+99646  suggestd 0.0  98:59.20 2   1   458    23M   256K 17M   99646 1     sleeping *0[3748] 0.00000 0.00000    501 10857881 444  1268267 455231  17144530 5384377 41093461 248595  1     0.0   0      0      40     spot N/A    N/A   N/A   N/A   N/A   N/A  
+99406  Python   0.0  00:00.10 1   0   15     11M   0B   5312K 99361 99367 sleeping *0[1]    0.00000 0.00000    501 5992     1391 280     51      3423     341     2005     54      0     0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
+99368  tail     0.0  00:00.00 1   0   11     1201K 0B   944K  99361 99361 sleeping *0[1]    0.00000 0.00000    501 278      67   32      12      134      70      23       2       0     0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
+99367  make     0.0  00:00.01 1   0   11     2145K 0B   1872K 99361 99361 sleeping *0[1]    0.00000 0.00000    501 955      151  118     25      537      198     142      3       0     0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  
+99361  zsh      0.0  00:00.01 1   0   22     3297K 0B   2944K 99361 18904 sleeping *0[1]    0.00000 0.00000    501 542      114  72      15      5107     148     130      6       0     0.0   0      0      180    spot N/A    N/A   N/A   N/A   N/A   N/A  

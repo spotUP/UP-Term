@@ -118,6 +118,12 @@ const char *vt_title(const vt_term *t);
 /* Amiga raw input event classes the host asked for (CSI n {), bit n. */
 vt_u32   vt_raw_events(const vt_term *t);
 
+/* How many sequences were parsed but not acted on since vt_new, and the
+ * distinct kinds (up to 16 are kept) with their counts, as text: "C ?12h"
+ * a CSI, "E x" an ESC, "M 1005" a DEC mode, "S 58" an SGR value, "O 11" an
+ * OSC, "D 0" / "X 0" a DCS / other string. Unused slots are NULL. */
+long     vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max);
+
 /* The palette indices a cell draws with, for this personality: default
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,
  * inverse (the cell's, XOR the screen's DECSCNM) and conceal all resolved.

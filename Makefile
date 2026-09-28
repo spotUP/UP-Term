@@ -9,7 +9,7 @@ RENDER  := render/glyphmap.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c
 
-.PHONY: test test-ref golden vttest venv capture quirks amiga clean
+.PHONY: test test-ref test-terminfo golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
@@ -55,6 +55,21 @@ vttest:
 	@mkdir -p $(BUILD)/third_party
 	cd $(BUILD)/third_party && curl -sSfL -o vttest.tgz https://invisible-island.net/datafiles/release/vttest.tar.gz \
 	  && tar xzf vttest.tgz && cd vttest-* && ./configure -q && $(MAKE) -s
+
+# terminfo/vtcon.terminfo compiled for the host programs of the capture.
+$(BUILD)/terminfo/76/vtcon: terminfo/vtcon.terminfo
+	@mkdir -p $(BUILD)/terminfo
+	tic -x -o $(BUILD)/terminfo terminfo/vtcon.terminfo
+	@# both hashed layouts: newer ncurses reads 76/ (hex), macOS's and screen 4.00 read v/
+	@mkdir -p $(BUILD)/terminfo/v $(BUILD)/terminfo/76
+	@for d in 76 v; do [ -f $(BUILD)/terminfo/$$d/vtcon ] && cp $(BUILD)/terminfo/$$d/vtcon $(BUILD)/terminfo/76/vtcon.tmp && break; done
+	@cp $(BUILD)/terminfo/76/vtcon.tmp $(BUILD)/terminfo/v/vtcon; mv $(BUILD)/terminfo/76/vtcon.tmp $(BUILD)/terminfo/76/vtcon
+
+# Recapture the programs with TERM=vtcon (tests/streams/ti-*), then check
+# them: libvterm cell for cell and no sequence the engine ignored.
+test-terminfo: $(BUILD)/terminfo/76/vtcon $(BUILD)/vtdump $(BUILD)/vterm_dump
+	.venv/bin/python tools/capture.py vtcon
+	.venv/bin/python tools/refdiff.py ti-
 
 # Re-record tests/streams/ from real programs (vim, less, bash, ls, top).
 capture:
