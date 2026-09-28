@@ -96,10 +96,12 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
 void     vt_free(vt_term *t);
 void     vt_set_personality(vt_term *t, enum vt_personality p); /* also resets */
 enum vt_personality vt_personality(const vt_term *t);
-/* xterm only: 1 (default) decodes UTF-8; 0 takes bytes as Latin-1 with
- * 8-bit C1 controls, for Amiga Unix ports (ixemul/libnix) that write
- * Latin-1. Keys are then encoded as Latin-1 too. */
-void     vt_set_utf8(vt_term *t, int on);
+/* How the xterm personality reads bytes (and encodes typed characters):
+ * UTF-8 (the default); Latin-1 with 8-bit C1 controls, as Amiga Unix ports
+ * (ixemul/libnix) write; or CP437 for programs drawing for an IBM font
+ * (BitchX's logo and prefixes). A lone $9B is the 8-bit CSI in all three. */
+enum vt_charset { VT_CS_UTF8 = 0, VT_CS_LATIN1 = 1, VT_CS_CP437 = 2 };
+void     vt_set_charset(vt_term *t, enum vt_charset cs);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
 void     vt_resize(vt_term *t, int cols, int rows);

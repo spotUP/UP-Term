@@ -464,7 +464,7 @@ static void latin1_mode_for_amiga_unix_ports(void)
 {
     vt_term *t = h_new(10, 1, VT_XTERM);
     vt_u8 out[8];
-    vt_set_utf8(t, 0);
+    vt_set_charset(t, VT_CS_LATIN1);
     h_put(t, "\xe5\xe4\x9b" "1D" "X");
     CHECK_INT(h_cell(t, 0, 0)->ch, 0xE5);
     CHECK_INT(h_cell(t, 1, 0)->ch, 'X'); /* 8-bit CSI moved back over the 0xE4 */
@@ -505,8 +505,22 @@ static void eight_bit_csi_speaks_amiga_where_the_dialects_collide(void)
     vt_free(t);
 }
 
+static void cp437_charset_for_ibm_font_programs(void)
+{
+    vt_term *t = h_new(10, 1, VT_XTERM);
+    vt_u8 out[8];
+    vt_set_charset(t, VT_CS_CP437);
+    h_put(t, "\xdb\xb0\x9b" "1D" "X");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 0x2588);
+    CHECK_INT(h_cell(t, 1, 0)->ch, 'X'); /* $9B is still the CSI */
+    CHECK_INT(vt_encode_key(t, 0xE5, 0, out), 1);
+    CHECK_INT(out[0], 0x86); /* a-ring in CP437 */
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    cp437_charset_for_ibm_font_programs();
     eight_bit_csi_speaks_amiga_where_the_dialects_collide();
     latin1_mode_for_amiga_unix_ports();
     screen_reverse_video_inverts_every_cell();

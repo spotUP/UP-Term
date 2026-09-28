@@ -10,8 +10,9 @@
  * 2026-09-28_console-conformance-matrix.md). Options, in addition to the
  * CON: ones (CLOSE, WAIT, AUTO, SCREEN name, BACKDROP, NODRAG, NOBORDER,
  * NOSIZE, INACTIVE, SIMPLE, SMART): XTERM, AMIGA, PCANSI pick the
- * personality (XTERM is the default of XCON:), LATIN1 makes XTERM take
- * Latin-1 bytes as ixemul programs write them, FONT name/size.
+ * personality (XTERM is the default of XCON:), LATIN1 / CP437 make XTERM
+ * take Latin-1 bytes (ixemul programs) or CP437 (programs drawing for an
+ * IBM font, like BitchX) instead of UTF-8, FONT name/size.
  *
  * Built without a C startup: `handler_entry` must stay the first function.
  */
@@ -87,6 +88,7 @@ typedef struct con {
     struct MsgPort *break_port;  /* who gets Ctrl-C/D/E/F */
     enum vt_personality pers;
     int latin1;
+    int cp437;
     /* bytes ready for Read (complete lines in cooked mode) */
     vt_u8 in[IN_MAX];
     int in_len;
@@ -372,6 +374,8 @@ static void parse_spec(con *c, const char *s)
             c->pers = VT_PCANSI;
         } else if (str_ieq(field, "LATIN1")) {
             c->latin1 = 1;
+        } else if (str_ieq(field, "CP437")) {
+            c->cp437 = 1;
         } else if (str_ipre(field, "SCREEN", &rest)) {
             copy_str(c->screen, rest, sizeof(c->screen));
         } else if (str_ipre(field, "FONT", &rest)) {
@@ -487,7 +491,9 @@ static int open_window(con *c)
     DBG("vt_new", c->t, 0);
     vt_set_personality(c->t, c->pers);
     if (c->pers == VT_XTERM && c->latin1)
-        vt_set_utf8(c->t, 0);
+        vt_set_charset(c->t, VT_CS_LATIN1);
+    else if (c->pers == VT_XTERM && c->cp437)
+        vt_set_charset(c->t, VT_CS_CP437);
     vr_init(&c->r, c->win, c->font, c->t, c->pers == VT_PCANSI ? VT_ENC_CP437 : VT_ENC_LATIN1);
     DBG("vr_init", c->r.cols, c->r.rows);
     vr_redraw(&c->r);
@@ -621,7 +627,7 @@ static void echo(con *c, const vt_u8 *b, int n)
 static int last_char_len(con *c)
 {
     int k = 1;
-    if (vt_personality(c->t) == VT_XTERM && !c->latin1)
+    if (vt_personality(c->t) == VT_XTERM && !c->latin1 && !c->cp437)
         while (k < c->line_len && (c->line[c->line_len - k] & 0xC0) == 0x80)
             k++;
     return k;

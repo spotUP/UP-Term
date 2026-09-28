@@ -94,7 +94,8 @@ struct vt_term {
     /* UTF-8 decoder (xterm) */
     vt_u32 u_cp;
     int u_need;
-    int utf8;
+    int utf8;                  /* the charset is UTF-8 */
+    int cp437;                 /* the charset is CP437 (xterm personality) */
 
     /* per-row dirty spans, flushed at the end of each write */
     short *dx0, *dx1;
@@ -1875,6 +1876,18 @@ static void decode(vt_term *t, vt_u8 b)
             feed(t, b);
         return;
     }
+    if (t->cp437) {
+        if (b == 0x9B) {
+            t->raw_c1 = 1;
+            feed(t, 0x9B);
+            t->raw_c1 = 0;
+        } else if (b >= 0x80) {
+            feed(t, cp437_hi[b - 0x80]);
+        } else {
+            feed(t, b);
+        }
+        return;
+    }
     if (!t->utf8) {
         /* Latin-1 xterm: bytes are code points, 80-9F are C1 */
         t->raw_c1 = b >= 0x80 && b <= 0x9F;
@@ -2051,9 +2064,10 @@ enum vt_personality vt_personality(const vt_term *t)
     return t->pers;
 }
 
-void vt_set_utf8(vt_term *t, int on)
+void vt_set_charset(vt_term *t, enum vt_charset cs)
 {
-    t->utf8 = on != 0;
+    t->utf8 = cs == VT_CS_UTF8;
+    t->cp437 = cs == VT_CS_CP437;
     t->u_need = 0;
 }
 
@@ -2463,6 +2477,8 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
             out[n++] = 0x1B;
         if (t->pers == VT_XTERM && t->utf8)
             n += put_utf8(out + n, c);
+        else if (t->pers == VT_XTERM && t->cp437)
+            out[n++] = (vt_u8)cp437_encode(c);
         else if (t->pers == VT_PCANSI)
             out[n++] = (vt_u8)cp437_encode(c);
         else

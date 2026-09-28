@@ -35,6 +35,10 @@ C:Execute DH0:S/Startup-Sequence
 GO = """C:Wait 15
 C:Assign >NIL: VTC: VTCX:
 C:Mount XCON: FROM BOOTX:Mountlist
+C:Assign >NIL: AmiTCP: VTC:amitcp
+C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
+C:SetEnv TERM vtcon
+C:SetEnv TERMINFO /VTC/terminfo
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent TOKEN=rigtoken
 """
@@ -59,7 +63,7 @@ def setup():
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     shutil.copyfile(SRC_AGENT, RIG / "boot/amiagent")
     CFG.write_text("\n".join([
-        "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fast_memory = 8192",
+        "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
         "bsdsocket_library = 1", "graphics_card = uaegfx", "jit_compiler = 1",
         "hard_drive_0 = %s" % (RIG / "sys.hdf"),
         "hard_drive_1 = %s" % (RIG / "vtc"), "hard_drive_1_label = VTCX",
