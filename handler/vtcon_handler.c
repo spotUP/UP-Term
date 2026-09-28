@@ -35,6 +35,7 @@
 #include <proto/graphics.h>
 #include <proto/console.h>
 #include <proto/diskfont.h>
+#include <proto/timer.h>
 
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
@@ -45,6 +46,7 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Device *ConsoleDevice;
 struct Library *DiskfontBase;
+struct Device *TimerBase; /* for ReadEClock in the debug profile */
 
 static LONG handler_main(void);
 
@@ -117,6 +119,9 @@ typedef struct con {
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
     struct IOStdReq lib_io;      /* console.device CONU_LIBRARY, for RawKeyConvert */
+#ifdef VTCON_DEBUG
+    ULONG prof_out, prof_damage, prof_scroll, prof_writes, prof_bytes, prof_ndamage, prof_nscroll;
+#endif
 } con;
 
 /* No mutable globals below this line except the library bases (the same
@@ -192,7 +197,8 @@ static void dbg_flush(void)
 
 static void reply(struct DosPacket *p, LONG r1, LONG r2)
 {
-    DBG("reply", p->dp_Type, r1);
+    if (p->dp_Type != ACTION_WRITE && p->dp_Type != ACTION_READ)
+        DBG("reply", p->dp_Type, r1);
     ReplyPkt(p, r1, r2);
 }
 
@@ -210,12 +216,32 @@ static void in_append(con *c, const vt_u8 *b, int n)
 
 static void cb_damage(void *u, int x0, int y0, int x1, int y1)
 {
+#ifdef VTCON_DEBUG
+    con *c = (con *)u;
+    struct EClockVal e0, e1;
+    ReadEClock(&e0);
+#endif
     vr_damage(&((con *)u)->r, x0, y0, x1, y1);
+#ifdef VTCON_DEBUG
+    ReadEClock(&e1);
+    c->prof_damage += e1.ev_lo - e0.ev_lo;
+    c->prof_ndamage++;
+#endif
 }
 
 static void cb_scroll(void *u, int top, int bot, int n)
 {
+#ifdef VTCON_DEBUG
+    con *c = (con *)u;
+    struct EClockVal e0, e1;
+    ReadEClock(&e0);
+#endif
     vr_scroll(&((con *)u)->r, top, bot, n);
+#ifdef VTCON_DEBUG
+    ReadEClock(&e1);
+    c->prof_scroll += e1.ev_lo - e0.ev_lo;
+    c->prof_nscroll++;
+#endif
 }
 
 static void cb_reply(void *u, const vt_u8 *b, long n)
@@ -490,6 +516,8 @@ static int open_window(con *c)
         return 0;
     DBG("vt_new", c->t, 0);
     vt_set_personality(c->t, c->pers);
+    if (c->pers == VT_XTERM)
+        vt_set_onlcr(c->t, 1); /* LF out as CR LF, as a Unix tty does */
     if (c->pers == VT_XTERM && c->latin1)
         vt_set_charset(c->t, VT_CS_LATIN1);
     else if (c->pers == VT_XTERM && c->cp437)
@@ -535,26 +563,21 @@ static void close_window(con *c)
 
 static void output(con *c, const vt_u8 *b, long n)
 {
+#ifdef VTCON_DEBUG
+    struct EClockVal e0, e1;
+    ReadEClock(&e0);
+#endif
     if (!c->t)
         return;
     vr_cursor_off(&c->r);
-    if (c->pers == VT_XTERM) {
-        /* ONLCR, as a Unix tty's output does by default: LF goes out as
-         * CR LF. AmigaDOS programs end lines with a bare LF, and no termios
-         * reaches us to switch it off (a doubled CR is harmless). */
-        long i, from = 0;
-        for (i = 0; i < n; i++) {
-            if (b[i] == '\n') {
-                vt_write(c->t, b + from, i - from);
-                vt_write(c->t, (const vt_u8 *)"\r\n", 2);
-                from = i + 1;
-            }
-        }
-        vt_write(c->t, b + from, n - from);
-    } else {
-        vt_write(c->t, b, n);
-    }
+    vt_write(c->t, b, n);
     vr_cursor_on(&c->r);
+#ifdef VTCON_DEBUG
+    ReadEClock(&e1);
+    c->prof_out += e1.ev_lo - e0.ev_lo;
+    c->prof_writes++;
+    c->prof_bytes += n;
+#endif
 }
 
 /* ---- reads ------------------------------------------------------------------ */
@@ -959,7 +982,8 @@ static void start_timer(con *c, ULONG micros)
 
 static void packet(con *c, struct DosPacket *p)
 {
-    DBG("packet", p->dp_Type, p->dp_Arg1);
+    if (p->dp_Type != ACTION_WRITE && p->dp_Type != ACTION_READ)
+        DBG("packet", p->dp_Type, p->dp_Arg1);
     switch (p->dp_Type) {
     case ACTION_FINDINPUT:
     case ACTION_FINDOUTPUT:
@@ -1000,6 +1024,10 @@ static void packet(con *c, struct DosPacket *p)
     }
     case ACTION_END:
         c->opens--;
+        DBG("prof writes/bytes", c->prof_writes, c->prof_bytes);
+        DBG("prof out/damage", c->prof_out, c->prof_damage);
+        DBG("prof scroll/n", c->prof_scroll, c->prof_nscroll);
+        DBG("prof ndamage", c->prof_ndamage, 0);
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
@@ -1090,8 +1118,10 @@ static LONG handler_main(void)
     c->timer_port = CreateMsgPort();
     if (c->timer_port) {
         c->timer = (struct timerequest *)CreateIORequest(c->timer_port, sizeof(struct timerequest));
-        if (c->timer && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)c->timer, 0))
+        if (c->timer && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)c->timer, 0)) {
             c->timer_open = 1;
+            TimerBase = c->timer->tr_node.io_Device;
+        }
     }
     if (!OpenDevice((STRPTR)"console.device", (ULONG)CONU_LIBRARY, (struct IORequest *)&c->lib_io, 0))
         ConsoleDevice = c->lib_io.io_Device; /* RawKeyConvert; the same device for every process */

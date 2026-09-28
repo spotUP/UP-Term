@@ -342,12 +342,13 @@ static void linefeed_off_the_bottom_fills_scrollback(void)
     vt_free(t);
 }
 
-static void scroll_calls_the_renderer_once_per_step(void)
+static void scroll_calls_the_renderer_once_per_write(void)
 {
-    vt_term *t = h_new(5, 2, VT_XTERM);
+    vt_term *t = h_new(5, 4, VT_XTERM);
     h_scroll_calls = 0;
-    h_put(t, "1\r\n2\r\n3");
-    CHECK_INT(h_scroll_calls, 1);
+    h_put(t, "1\r\n2\r\n3\r\n4\r\n5\r\n6"); /* three lines scroll off */
+    CHECK_INT(h_scroll_calls, 1);            /* one blit of three rows */
+    CHECK_STR(h_screen(t), "3|4|5|6");
     vt_free(t);
 }
 
@@ -518,8 +519,20 @@ static void cp437_charset_for_ibm_font_programs(void)
     vt_free(t);
 }
 
+static void onlcr_returns_on_linefeed_without_changing_return(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    vt_u8 out[8];
+    vt_set_onlcr(t, 1);
+    h_put(t, "ab\ncd");
+    CHECK_STR(h_screen(t), "ab|cd");
+    CHECK_INT(vt_encode_key(t, VT_KEY_RETURN, 0, out), 1); /* Return is still CR */
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    onlcr_returns_on_linefeed_without_changing_return();
     cp437_charset_for_ibm_font_programs();
     eight_bit_csi_speaks_amiga_where_the_dialects_collide();
     latin1_mode_for_amiga_unix_ports();
@@ -553,7 +566,7 @@ void suite_xterm(void)
     save_restore_cursor_keeps_attributes();
     repeat_last_character();
     linefeed_off_the_bottom_fills_scrollback();
-    scroll_calls_the_renderer_once_per_step();
+    scroll_calls_the_renderer_once_per_write();
     resize_keeps_cursor_row_visible();
     resize_with_a_blank_bottom_drops_it();
     decaln_fills_with_e();

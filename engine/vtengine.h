@@ -64,8 +64,11 @@ typedef struct vt_callbacks {
     /* Cells x0 <= x < x1, y0 <= y < y1 of the visible grid changed. */
     void (*damage)(void *user, int x0, int y0, int x1, int y1);
     /* Rows top <= y < bottom moved up by n rows (down when n < 0), all
-     * columns. The engine damages the vacated rows afterwards. When this is
-     * NULL the engine damages the whole region instead. */
+     * columns. The renderer fills the rows it vacates with the DEFAULT
+     * background (as ScrollRaster does with the background pen); the engine
+     * damages them afterwards only when they hold something else (a BCE
+     * erase colour). All scrolls of one vt_write arrive as one call. When
+     * this is NULL the engine damages the whole region instead. */
     void (*scroll)(void *user, int top, int bottom, int n);
     void (*reply)(void *user, const vt_u8 *buf, long len);
     void (*bell)(void *user);
@@ -102,6 +105,10 @@ enum vt_personality vt_personality(const vt_term *t);
  * (BitchX's logo and prefixes). A lone $9B is the 8-bit CSI in all three. */
 enum vt_charset { VT_CS_UTF8 = 0, VT_CS_LATIN1 = 1, VT_CS_CP437 = 2 };
 void     vt_set_charset(vt_term *t, enum vt_charset cs);
+/* ONLCR: a received LF also returns the carriage, as a Unix tty's output
+ * does by default (the host's AmigaDOS programs end lines with a bare LF).
+ * Unlike LNM (CSI 20 h) it does not change what Return sends. */
+void     vt_set_onlcr(vt_term *t, int on);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
 void     vt_resize(vt_term *t, int cols, int rows);

@@ -6,6 +6,7 @@ void suite_keys(void);
 void suite_amiga(void);
 void suite_pcansi(void);
 void suite_glyph(void);
+void suite_mirror(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -13,6 +14,7 @@ static const h_suite suites[] = {
     { "amiga", suite_amiga },
     { "pcansi", suite_pcansi },
     { "glyph", suite_glyph },
+    { "mirror", suite_mirror },
     { 0, 0 }
 };
 

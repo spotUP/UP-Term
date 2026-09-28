@@ -332,12 +332,15 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
         WORD py = r->oy + y * r->ch, run_x = 0;
         UBYTE run_fg = 0, run_bg = 0;
         vt_u8 run_attr = 0;
+        /* the last cell's colours: runs of equal cells skip the lookups */
+        vt_u16 last_f = 0xFFFF, last_b = 0xFFFF;
+        vt_u8 last_a = 0;
+        UBYTE fg = 0, bg = 0;
         if (!c)
             continue;
         n = 0;
         for (x = x0; x < x1 && x < ncells; x++) {
             vt_u16 f, b;
-            UBYTE fg, bg;
             vt_glyph g;
             vt_u8 attr;
             if (c[x].width == 0) {
@@ -349,12 +352,22 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
                      pen_for(r, b, 1));
                 continue;
             }
-            vt_resolve_colors(r->t, &c[x], &f, &b);
-            fg = pen_for(r, f, 0);
-            bg = pen_for(r, b, 1);
+            if (c[x].fg != last_f || c[x].bg != last_b || c[x].attr != last_a) {
+                last_f = c[x].fg;
+                last_b = c[x].bg;
+                last_a = c[x].attr;
+                vt_resolve_colors(r->t, &c[x], &f, &b);
+                fg = pen_for(r, f, 0);
+                bg = pen_for(r, b, 1);
+            }
             attr = (vt_u8)(c[x].attr & (VT_ATTR_BOLD | VT_ATTR_UNDERLINE | VT_ATTR_ITALIC |
                                         VT_ATTR_STRIKE));
-            g = vt_map_glyph(c[x].ch, r->enc);
+            if (c[x].ch < 0x80) {
+                g.kind = VT_GLYPH_FONT; /* ASCII: the font's own character */
+                g.code = (vt_u8)c[x].ch;
+            } else {
+                g = vt_map_glyph(c[x].ch, r->enc);
+            }
             if (g.kind != VT_GLYPH_FONT) {
                 flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
                 n = 0;
@@ -393,10 +406,21 @@ void vr_redraw(vr_render *r)
 void vr_scroll(vr_render *r, int top, int bottom, int n)
 {
     WORD dy = (WORD)(n * r->ch);
+    vt_cell blank;
+    vt_u16 f, b;
     if (r->hidden)
         return;
     vr_cursor_off(r);
-    SetBPen(r->rp, r->pen_default_bg);
+    /* The vacated rows must come out in the personality's default
+     * background (the engine's scroll contract): the Amiga global
+     * background pen, for one, is not always pen 0. */
+    blank.ch = ' ';
+    blank.fg = VT_COLOR_DEFAULT;
+    blank.bg = VT_COLOR_DEFAULT;
+    blank.attr = 0;
+    blank.width = 1;
+    vt_resolve_colors(r->t, &blank, &f, &b);
+    SetBPen(r->rp, pen_for(r, b, 1));
     ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + r->cols * r->cw - 1,
                  r->oy + bottom * r->ch - 1);
 }

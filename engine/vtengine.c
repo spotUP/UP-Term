@@ -96,10 +96,16 @@ struct vt_term {
     int u_need;
     int utf8;                  /* the charset is UTF-8 */
     int cp437;                 /* the charset is CP437 (xterm personality) */
+    int onlcr;                 /* LF also returns (vt_set_onlcr) */
 
     /* per-row dirty spans, flushed at the end of each write */
     short *dx0, *dx1;
     int dirty;
+    /* A scroll the renderer has not been told about yet: the pixels are
+     * pend_n rows behind the grid in [pend_top, pend_bot) (negative: down).
+     * All scrolls of one write become one blit; the dirty spans move with
+     * the rows, so after flush() the pixels equal the grid. */
+    int pend_n, pend_top, pend_bot;
 
     char title[VT_STR_MAX];
 
@@ -257,6 +263,12 @@ static void mark_rows(vt_term *t, int y0, int y1)
 static void flush(vt_term *t)
 {
     int y, y0;
+    if (t->pend_n) {
+        int n = t->pend_n;
+        t->pend_n = 0;
+        if (t->cb.scroll)
+            t->cb.scroll(t->user, t->pend_top, t->pend_bot, n);
+    }
     if (!t->dirty)
         return;
     t->dirty = 0;
@@ -394,6 +406,66 @@ static void unwide(vt_term *t, int x, int y)
     }
 }
 
+/* The renderer's scroll fills the rows it vacates with the default
+ * background (the contract in vtengine.h), so blank rows in that colour
+ * need no drawing: only a BCE erase in another colour does. */
+static int vacated_default(const vt_term *t)
+{
+    vt_cell b;
+    blank_cell(t, &b);
+    return b.bg == VT_COLOR_DEFAULT;
+}
+
+/* Before the grid moves: a pending scroll of another region or direction
+ * is settled first, while the grid still matches it. */
+static void pend_prepare(vt_term *t, int top, int bot, int n)
+{
+    if (t->cb.scroll && t->pend_n &&
+        (t->pend_top != top || t->pend_bot != bot || (t->pend_n > 0) != (n > 0)))
+        flush(t);
+}
+
+/* The rows [top, bot) moved by n (up when n > 0): move their dirty spans
+ * with them and remember the pixels owe that scroll (see pend_n). */
+static void pend_scroll(vt_term *t, int top, int bot, int n)
+{
+    int y, h = bot - top;
+    if (!t->cb.scroll) {
+        mark_rows(t, top, bot); /* no blitting renderer: redraw the region */
+        return;
+    }
+    if (n > 0) {
+        for (y = top; y < bot - n; y++) {
+            t->dx0[y] = t->dx0[y + n];
+            t->dx1[y] = t->dx1[y + n];
+        }
+        for (y = bot - n; y < bot; y++) {
+            t->dx0[y] = (short)t->cols;
+            t->dx1[y] = 0;
+        }
+        if (!vacated_default(t))
+            mark_rows(t, bot - n, bot);
+    } else {
+        for (y = bot - 1; y >= top - n; y--) {
+            t->dx0[y] = t->dx0[y + n];
+            t->dx1[y] = t->dx1[y + n];
+        }
+        for (y = top; y < top - n; y++) {
+            t->dx0[y] = (short)t->cols;
+            t->dx1[y] = 0;
+        }
+        if (!vacated_default(t))
+            mark_rows(t, top, top - n);
+    }
+    t->pend_top = top;
+    t->pend_bot = bot;
+    t->pend_n += n;
+    if (t->pend_n >= h || -t->pend_n >= h) {
+        t->pend_n = 0; /* everything moved out: redraw instead of blitting */
+        mark_rows(t, top, bot);
+    }
+}
+
 static void sb_push(vt_term *t, vt_line *l)
 {
     if (!t->sb_cap) {
@@ -418,25 +490,36 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
         return;
     if (n > h)
         n = h;
-    flush(t);
+    pend_prepare(t, top, bot, n);
     for (i = 0; i < n; i++) {
         l = t->scr[top];
         memmove(&t->scr[top], &t->scr[top + 1], (h - 1) * sizeof(vt_line *));
-        if (top == 0 && t->scr == t->pri && t->pers != VT_AMIGA) {
-            vt_line *nl = line_new(t->cols);
-            if (nl) {
-                sb_push(t, l);
-                l = nl;
+        if (top == 0 && t->scr == t->pri && t->pers != VT_AMIGA && t->sb_cap) {
+            /* Into the scrollback. A full ring hands back its oldest line
+             * to become the new blank one, so steady scrolling allocates
+             * nothing. */
+            vt_line *blank = 0;
+            if (t->sb_len == t->sb_cap && t->sb[t->sb_head]->cap >= t->cols) {
+                blank = t->sb[t->sb_head];
+            } else {
+                blank = line_new(t->cols);
+                if (blank) {
+                    if (t->sb_len == t->sb_cap)
+                        VT_FREE(t->sb[t->sb_head]);
+                    else
+                        t->sb_len++;
+                }
+            }
+            if (blank) { /* no memory: the line is dropped, not saved */
+                t->sb[t->sb_head] = l;
+                t->sb_head = (t->sb_head + 1) % t->sb_cap;
+                l = blank;
             }
         }
         line_clear(t, l, t->cols);
         t->scr[bot - 1] = l;
     }
-    if (t->cb.scroll)
-        t->cb.scroll(t->user, top, bot, n);
-    else
-        mark_rows(t, top, bot - n);
-    mark_rows(t, bot - n, bot);
+    pend_scroll(t, top, bot, n);
 }
 
 static void scroll_down(vt_term *t, int top, int bot, int n)
@@ -447,18 +530,14 @@ static void scroll_down(vt_term *t, int top, int bot, int n)
         return;
     if (n > h)
         n = h;
-    flush(t);
+    pend_prepare(t, top, bot, -n);
     for (i = 0; i < n; i++) {
         l = t->scr[bot - 1];
         memmove(&t->scr[top + 1], &t->scr[top], (h - 1) * sizeof(vt_line *));
         line_clear(t, l, t->cols);
         t->scr[top] = l;
     }
-    if (t->cb.scroll)
-        t->cb.scroll(t->user, top, bot, -n);
-    else
-        mark_rows(t, top + n, bot);
-    mark_rows(t, top, top + n);
+    pend_scroll(t, top, bot, -n);
 }
 
 static void erase_cells(vt_term *t, int y, int x0, int x1)
@@ -795,7 +874,7 @@ static void exec_c0(vt_term *t, vt_u32 c)
     case 0x0A:
         t->wrap_pending = 0;
         index_down(t);
-        if (t->modes & VT_MODE_NEWLINE)
+        if ((t->modes & VT_MODE_NEWLINE) || t->onlcr)
             t->cx = 0;
         break;
     case 0x0C:
@@ -2064,6 +2143,11 @@ enum vt_personality vt_personality(const vt_term *t)
     return t->pers;
 }
 
+void vt_set_onlcr(vt_term *t, int on)
+{
+    t->onlcr = on != 0;
+}
+
 void vt_set_charset(vt_term *t, enum vt_charset cs)
 {
     t->utf8 = cs == VT_CS_UTF8;
@@ -2071,11 +2155,55 @@ void vt_set_charset(vt_term *t, enum vt_charset cs)
     t->u_need = 0;
 }
 
+/* Plain printable ASCII in the ground state, the bulk of all output, goes
+ * straight into the row: no decoding, one dirty mark per run. Anything that
+ * needs put_char's care (the last column and wrapping, wide cells being
+ * overwritten, character sets, insert mode) takes the general path. */
+static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
+{
+    vt_cell *c;
+    long k, room;
+    if (t->wrap_pending || t->cx >= t->cols - 1)
+        return 0;
+    room = t->cols - 1 - t->cx;
+    if (n > room)
+        n = room;
+    c = &t->scr[t->cy]->c[t->cx];
+    for (k = 0; k < n; k++) {
+        if (c[k].width != 1 || (t->cx + k + 1 < t->cols && c[k + 1].width == 0))
+            break; /* a wide glyph here: put_char unwides it */
+        c[k].ch = b[k];
+        c[k].fg = t->fg;
+        c[k].bg = t->bg;
+        c[k].attr = t->attr;
+    }
+    if (k) {
+        mark(t, t->cx, t->cy, t->cx + (int)k);
+        t->cx += (int)k;
+        t->last_ch = b[k - 1];
+    }
+    return k;
+}
+
 void vt_write(vt_term *t, const vt_u8 *buf, long len)
 {
-    long i;
-    for (i = 0; i < len; i++)
-        decode(t, buf[i]);
+    long i = 0;
+    while (i < len) {
+        vt_u8 b = buf[i];
+        if (b >= 0x20 && b < 0x7F && t->state == S_GROUND && !t->u_need && !t->insert &&
+            !t->single_shift && t->charset[t->gl] == 'B' && !t->amiga_msb) {
+            long j = i + 1, k;
+            while (j < len && buf[j] >= 0x20 && buf[j] < 0x7F)
+                j++;
+            k = put_ascii_run(t, buf + i, j - i);
+            if (k) {
+                i += k;
+                continue;
+            }
+        }
+        decode(t, b);
+        i++;
+    }
     flush(t);
 }
 

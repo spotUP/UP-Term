@@ -7,7 +7,7 @@ BUILD   := build
 ENGINE  := engine/vtengine.c
 RENDER  := render/glyphmap.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
-           tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c
+           tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c
 
 .PHONY: test test-ref test-terminfo test-rig golden vttest venv capture quirks amiga clean
 
