@@ -8,7 +8,7 @@ ENGINE  := engine/vtengine.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c
 
-.PHONY: test test-ref venv capture amiga clean
+.PHONY: test test-ref golden venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
@@ -34,8 +34,17 @@ $(BUILD)/vterm_dump: tools/vterm_dump.c $(LIBVTERM)/src/vterm.c
 test-ref: $(BUILD)/vtdump $(BUILD)/vterm_dump
 	.venv/bin/python tools/refdiff.py $(ONLY)
 
+# Rewrite the golden grids of the XTERM_NOT_LIBVTERM cases (review the diff).
+golden: $(BUILD)/vtdump
+	@mkdir -p tests/golden
+	.venv/bin/python tools/refdiff.py --write-golden $(ONLY)
+
 venv:
 	python3 -m venv .venv && .venv/bin/pip install pyte
+
+# Regenerate the hand-written edge-case streams (tests/streams/quirk-*).
+quirks:
+	python3 tools/quirks.py
 
 # Re-record tests/streams/ from real programs (vim, less, bash, ls, top).
 capture:

@@ -555,7 +555,7 @@ static void restore_cursor(vt_term *t, const vt_saved *s)
     t->gl = s->gl;
     t->cx = clampi(s->x, 0, t->cols - 1);
     t->cy = clampi(s->y, 0, t->rows - 1);
-    t->wrap_pending = s->wrap_pending && t->cx == t->cols - 1;
+    t->wrap_pending = 0; /* DECRC lands on the cell, like libvterm (quirk-wrap-then-decsc-decrc) */
 }
 
 static void sgr_reset(vt_term *t)

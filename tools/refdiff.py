@@ -14,7 +14,61 @@ import pyte
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # stream name -> reason; the engine follows libvterm on these, pyte differs.
+# Each reason names the pyte gap, so a new entry must be a gap too.
+PYTE_GAP_ALT = "pyte has no alternate screen (?47/?1047/?1049)"
+PYTE_GAP_BCE = "pyte erases with the default background, not the current one (no BCE)"
 DISAGREE = {
+    "quirk-alt-1047-clears-on-exit.10x4.bin": PYTE_GAP_ALT,
+    "quirk-alt-1049-roundtrip.10x4.bin": PYTE_GAP_ALT,
+    "quirk-bce-erase-colour.10x3.bin": PYTE_GAP_BCE,
+    "quirk-bce-il-colour.10x4.bin": PYTE_GAP_BCE,
+    "quirk-bce-scroll-colour.10x3.bin": PYTE_GAP_BCE,
+    "quirk-can-in-osc.10x3.bin": "pyte does not abort an OSC string on CAN",
+    "quirk-cha-hpa-vpa.10x4.bin": "pyte has no HPA (CSI `)",
+    "quirk-cht-cbt.30x3.bin": "pyte has no CHT (CSI I)",
+    "quirk-dec-graphics-box.12x4.bin": "pyte has no DEC special graphics",
+    "quirk-so-si-g1.12x3.bin": "pyte has no G1 / SO / SI",
+    "quirk-decstr-soft-reset.10x4.bin": "pyte has no DECSTR (CSI ! p)",
+    "quirk-esc-restarts-csi.10x3.bin": "pyte does not restart on ESC inside a CSI",
+    "quirk-nel.10x3.bin": "pyte's NEL keeps the column",
+    "quirk-origin-mode-cup.10x6.bin": "pyte does not clamp CUP to the region under DECOM",
+    "quirk-region-cup-outside.10x5.bin": "pyte scrolls the region on LF below it",
+    "quirk-wrap-below-region.10x5.bin": "pyte scrolls the region on a wrap below it",
+    "quirk-region-ri-above.10x5.bin": "pyte scrolls the region on RI above it",
+    "quirk-region-su-sd.10x6.bin": "pyte's SU/SD ignore the region",
+    "quirk-sgr-256-and-rgb.12x3.bin": "pyte has no colon SGR sub-parameters",
+    "quirk-st-forms.10x3.bin": "pyte prints DCS payloads",
+    "quirk-wide-at-last-col.10x3.bin": "pyte puts a wide glyph in the last column",
+    "quirk-wrap-then-lf.10x4.bin": "pyte's LF cancels the column of a pending wrap",
+}
+
+# stream name -> reason: the engine follows xterm here and libvterm differs.
+# These compare against a reviewed golden grid (tests/golden/<stream>.txt,
+# written by `make golden`), so a change to them is a visible diff.
+XTERM_NOT_LIBVTERM = {
+    "quirk-wrap-then-el.10x4.bin": "EL resets the pending wrap in xterm; libvterm keeps it",
+    "quirk-wrap-then-ech.10x4.bin": "ECH resets the pending wrap in xterm; libvterm keeps it",
+    "quirk-wrap-then-ich.10x4.bin": "ICH resets the pending wrap in xterm; libvterm keeps it",
+    "quirk-wrap-then-dch.10x4.bin": "DCH resets the pending wrap in xterm; libvterm keeps it",
+    "quirk-wrap-then-tab.10x4.bin": "HT at the last column stays there in xterm; libvterm wraps first",
+    "quirk-rep-after-wrap.10x3.bin": "REP prints like the glyph itself (wraps); libvterm drops it",
+    "quirk-region-cuu-stops.10x6.bin": "CUU stops at the top margin inside the region (VT100)",
+    "quirk-region-cud-stops.10x6.bin": "CUD stops at the bottom margin inside the region (VT100)",
+    "quirk-region-il-inside.10x6.bin": "IL moves the cursor to the left margin (VT102, xterm)",
+    "quirk-region-dl-inside.10x6.bin": "DL moves the cursor to the left margin (VT102, xterm)",
+    "quirk-region-one-line.10x5.bin": "DECSTBM needs top < bottom; a one-line region is ignored",
+    "quirk-wide-overwrite-left.10x3.bin": "writing over half of a wide glyph erases all of it",
+    "quirk-wide-overwrite-right.10x3.bin": "writing over half of a wide glyph erases all of it",
+    "quirk-wide-ich-split.10x3.bin": "ICH inside a wide glyph erases the glyph",
+    "quirk-wide-dch-split.10x3.bin": "DCH inside a wide glyph erases the glyph",
+    "quirk-decrc-without-save.10x4.bin": "libvterm resets the pen to RGB black, not default colours",
+}
+# stream name -> reason: a reference crashes or hangs on it; the other one decides.
+REF_BROKEN = {
+    "quirk-rep-with-nothing.10x3.bin": "libvterm loops forever on REP before any glyph",
+    "quirk-wide-dch-split.10x3.bin": "pyte IndexError on a wide glyph edit",
+    "quirk-wide-ich-split.10x3.bin": "pyte IndexError on a wide glyph edit",
+    "quirk-wide-overwrite-left.10x3.bin": "pyte IndexError on a wide glyph edit",
 }
 
 class RefScreen(pyte.Screen):
@@ -26,8 +80,14 @@ class RefScreen(pyte.Screen):
         super().select_graphic_rendition(*attrs)
 
 def dump(tool, data, cols, rows):
-    out = subprocess.run([str(ROOT / "build" / tool), str(cols), str(rows)],
-                         input=data, capture_output=True, check=True).stdout.decode("utf-8", "replace")
+    """A tool's grid, or None when the reference hangs (libvterm has one)."""
+    try:
+        out = subprocess.run([str(ROOT / "build" / tool), str(cols), str(rows)], input=data,
+                             capture_output=True, check=True, timeout=5).stdout.decode("utf-8", "replace")
+    except subprocess.TimeoutExpired:
+        if tool == "vtdump":
+            raise
+        return None
     lines = out.split("\n")
     text = lines[:rows]
     attr = []
@@ -47,6 +107,12 @@ def compare(a, b, cols, rows):
     return bad, (a[1], b[1]) if a[1] != b[1] else None, cells
 
 def pyte_dump(data, cols, rows):
+    try:
+        return pyte_dump_(data, cols, rows)
+    except Exception:  # pyte crashes on some wide-glyph edits
+        return None
+
+def pyte_dump_(data, cols, rows):
     scr = RefScreen(cols, rows)
     st = pyte.ByteStream(scr)
     st.feed(data)
@@ -89,8 +155,15 @@ def report(label, diff, ours, ref):
     if len(cells) > 4:
         print("  ... %d cells differ in colour or attributes" % len(cells))
 
+WRITE_GOLDEN = False
+
 def main():
-    only = sys.argv[1] if len(sys.argv) > 1 else None
+    global WRITE_GOLDEN
+    args = sys.argv[1:]
+    if args and args[0] == "--write-golden":
+        WRITE_GOLDEN = True
+        args = args[1:]
+    only = args[0] if args else None
     fails = ran = 0
     for p in sorted((ROOT / "tests/streams").glob("*.bin")):
         if only and only not in p.name:
@@ -100,8 +173,42 @@ def main():
         cols, rows = (int(m.group(1)), int(m.group(2))) if m else (80, 24)
         data = p.read_bytes()
         ours = dump("vtdump", data, cols, rows)
+        if p.name in XTERM_NOT_LIBVTERM:
+            g = ROOT / "tests/golden" / (p.name[:-4] + ".txt")
+            raw = subprocess.run([str(ROOT / "build/vtdump"), str(cols), str(rows)], input=data,
+                                 capture_output=True, check=True).stdout.decode("utf-8")
+            if WRITE_GOLDEN:
+                g.write_text(raw)
+            if not g.exists():
+                fails += 1
+                print("[FAIL] %s: no golden grid (make golden, then review it)" % p.name)
+            elif g.read_text() != raw:
+                fails += 1
+                print("[FAIL] %s: differs from its golden grid (%s)" % (p.name, XTERM_NOT_LIBVTERM[p.name]))
+            else:
+                print("[OK] %s (golden: %s)" % (p.name, XTERM_NOT_LIBVTERM[p.name]))
+            continue
         vt = dump("vterm_dump", data, cols, rows)
         py = pyte_dump(data, cols, rows)
+        if vt is None or py is None:
+            if p.name not in REF_BROKEN:
+                fails += 1
+                print("[FAIL] %s: %s failed on it and REF_BROKEN has no entry"
+                      % (p.name, "libvterm" if vt is None else "pyte"))
+                continue
+            ref, label = (py, "pyte") if vt is None else (vt, "libvterm")
+            if ref is None:
+                fails += 1
+                print("[FAIL] %s: both references failed" % p.name)
+                continue
+            d = compare(ours, ref, cols, rows)
+            if d[0] or d[1] or d[2]:
+                fails += 1
+                print("[FAIL] %s: differs from %s (the other reference: %s)" % (p.name, label, REF_BROKEN[p.name]))
+                report(label, d, ours, ref)
+            else:
+                print("[OK] %s (%s only: %s)" % (p.name, label, REF_BROKEN[p.name]))
+            continue
         dv = compare(ours, vt, cols, rows)
         dp = compare(ours, py, cols, rows)
         vt_ok = not (dv[0] or dv[1] or dv[2])
