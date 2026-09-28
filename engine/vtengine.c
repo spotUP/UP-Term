@@ -1015,6 +1015,12 @@ static void set_mode(vt_term *t, int on)
                 else
                     t->modes &= ~(vt_u32)VT_MODE_APP_CURSOR;
                 break;
+            case 5: /* DECSCNM */
+                if (!on != !(t->modes & VT_MODE_SCREEN_REVERSE)) {
+                    t->modes ^= VT_MODE_SCREEN_REVERSE;
+                    mark_rows(t, 0, t->rows);
+                }
+                break;
             case 6:
                 t->origin = on;
                 move_to(t, 0, t->origin ? t->top : 0);
@@ -2105,7 +2111,7 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *b
             f = (vt_u16)(f + 8);
         break;
     }
-    if (c->attr & VT_ATTR_INVERSE) {
+    if (!(c->attr & VT_ATTR_INVERSE) != !(t->modes & VT_MODE_SCREEN_REVERSE)) {
         tmp = f;
         f = b;
         b = tmp;

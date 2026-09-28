@@ -8,7 +8,7 @@ ENGINE  := engine/vtengine.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c
 
-.PHONY: test test-ref golden venv capture quirks amiga clean
+.PHONY: test test-ref golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
@@ -45,6 +45,12 @@ venv:
 # Regenerate the hand-written edge-case streams (tests/streams/quirk-*).
 quirks:
 	python3 tools/quirks.py
+
+# vttest (Dickey) from source into build/third_party, for `make capture`.
+vttest:
+	@mkdir -p $(BUILD)/third_party
+	cd $(BUILD)/third_party && curl -sSfL -o vttest.tgz https://invisible-island.net/datafiles/release/vttest.tar.gz \
+	  && tar xzf vttest.tgz && cd vttest-* && ./configure -q && $(MAKE) -s
 
 # Re-record tests/streams/ from real programs (vim, less, bash, ls, top).
 capture:

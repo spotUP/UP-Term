@@ -40,6 +40,20 @@ DISAGREE = {
     "quirk-st-forms.10x3.bin": "pyte prints DCS payloads",
     "quirk-wide-at-last-col.10x3.bin": "pyte puts a wide glyph in the last column",
     "quirk-wrap-then-lf.10x4.bin": "pyte's LF cancels the column of a pending wrap",
+    "vttest-m2-s04.80x24.bin": "pyte obeys DECCOLM and goes 132 wide; xterm without allowColumns, libvterm and we keep the width",
+    "vttest-m8-s07.80x24.bin": "pyte obeys DECCOLM and goes 132 wide; xterm without allowColumns, libvterm and we keep the width",
+    "vttest-m1-s00.80x24.bin": "pyte draws vttest's cursor-movement frame wrong (IND/RI/NEL frame)",
+    "vttest-m1-s01.80x24.bin": "pyte obeys DECCOLM (132 columns)",
+    "vttest-m1-s02.80x24.bin": "pyte obeys DECCOLM (132 columns) and loses the autowrap frame",
+    "vttest-m1-s03.80x24.bin": "pyte obeys DECCOLM (132 columns) and loses the autowrap frame",
+    "vttest-m2-s02.80x24.bin": "pyte obeys DECCOLM (132 columns)",
+    "vttest-m2-s12.80x24.bin": "pyte has no DECSCNM (?5 reverse-video screen)",
+    "vttest-m2-s13.80x24.bin": "pyte has no DECSCNM (?5 reverse-video screen)",
+    "vttest-m8-s03.80x24.bin": "pyte's insert mode leaves a stale glyph",
+    "vttest-m8-s08.80x24.bin": "pyte obeys DECCOLM (132 columns)",
+    "vttest-m8-s09.80x24.bin": "pyte obeys DECCOLM (132 columns)",
+    "vttest-m8-s10.80x24.bin": "pyte obeys DECCOLM (132 columns)",
+    "vttest-m8-s11.80x24.bin": "pyte obeys DECCOLM (132 columns)",
     "chatsim.80x24.bin": "pyte's SU/SD ignore the region (ncurses scrolls the log with them)",
     "vim-small.40x12.bin": PYTE_GAP_ALT + " (vim has quit back to the primary screen)",
 }
@@ -63,6 +77,7 @@ XTERM_NOT_LIBVTERM = {
     "quirk-wide-overwrite-right.10x3.bin": "writing over half of a wide glyph erases all of it",
     "quirk-wide-ich-split.10x3.bin": "ICH inside a wide glyph erases the glyph",
     "quirk-wide-dch-split.10x3.bin": "DCH inside a wide glyph erases the glyph",
+    "vttest-m2-s14.80x24.bin": "DECRC restores the character sets DECSC saved (VT100); libvterm does not",
     "quirk-decrc-without-save.10x4.bin": "libvterm resets the pen to RGB black, not default colours",
 }
 # stream name -> reason: a reference crashes or hangs on it; the other one decides.

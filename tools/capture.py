@@ -70,8 +70,28 @@ def screen(name, cmd, keys, cols=80, rows=24):
     subprocess.run(["screen", "-S", "vtcon-" + name, "-X", "quit"], capture_output=True,
                    env=dict(os.environ, SCREENDIR=str(sdir)))
 
+def vttest_screens():
+    """vttest (built by `make vttest` into build/third_party), one capture per
+    screen of menus 1 (cursor movements), 2 (screen features) and 8 (VT102
+    insert/delete): the grid a test leaves before it asks for Return. Menu
+    screens that only print text are included too; they cost nothing."""
+    exe = next((ROOT / "build/third_party").glob("vttest-*/vttest"), None)
+    if not exe:
+        print("vttest not built (make vttest); skipped")
+        return
+    for old in OUT.glob("vttest-*.bin"):
+        old.unlink()
+    for menu, screens in ((1, 6), (2, 15), (8, 12)):
+        for k in range(screens):
+            capture("vttest-m%d-s%02d" % (menu, k), [str(exe)],
+                    [("%d\r" % menu).encode()] + [b"\r"] * k, settle=0.3)
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    if sys.argv[1:] == ["vttest"]:
+        vttest_screens()
+        return
+    vttest_screens()
     chat = "%s %s" % (sys.executable, ROOT / "tools/chatsim.py")
     capture("chatsim", [sys.executable, str(ROOT / "tools/chatsim.py"), "60"], [], settle=1.0)
     capture("chatsim-small", [sys.executable, str(ROOT / "tools/chatsim.py"), "30"], [], cols=40,

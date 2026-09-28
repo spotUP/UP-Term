@@ -84,6 +84,7 @@ typedef struct vt_callbacks {
 #define VT_MODE_CURSOR_VISIBLE 0x0200
 #define VT_MODE_NEWLINE      0x0400 /* LNM: LF also returns; Return sends CR LF */
 #define VT_MODE_FOCUS        0x0800 /* ?1004 */
+#define VT_MODE_SCREEN_REVERSE 0x1000 /* DECSCNM ?5: the whole screen in reverse video */
 
 typedef struct vt_term vt_term;
 
@@ -111,7 +112,8 @@ vt_u32   vt_raw_events(const vt_term *t);
 
 /* The palette indices a cell draws with, for this personality: default
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,
- * inverse and conceal all resolved. RGB colours pass through unchanged. */
+ * inverse (the cell's, XOR the screen's DECSCNM) and conceal all resolved.
+ * RGB colours pass through unchanged. */
 void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *bg);
 
 /* Keys. key is a Unicode character, or one of VT_KEY_*. */

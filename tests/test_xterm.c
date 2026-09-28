@@ -436,8 +436,29 @@ static void c1_via_utf8_code_points(void)
     vt_free(t);
 }
 
+static void screen_reverse_video_inverts_every_cell(void)
+{
+    vt_term *t = h_new(5, 1, VT_XTERM);
+    vt_u16 f, b;
+    h_put(t, "a\033[7mb\033[?5h");
+    CHECK(vt_modes(t) & VT_MODE_SCREEN_REVERSE);
+    vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
+    CHECK_INT(f, VT_COLOR_DEFAULT);
+    h_put(t, "\033[0;31;42m");
+    h_put(t, "c");
+    vt_resolve_colors(t, h_cell(t, 2, 0), &f, &b);
+    CHECK_INT(f, 2); /* swapped by the screen */
+    CHECK_INT(b, 1);
+    vt_resolve_colors(t, h_cell(t, 1, 0), &f, &b);
+    CHECK_INT(f, VT_COLOR_DEFAULT); /* inverse cell on an inverse screen: normal */
+    h_put(t, "\033[?5l");
+    CHECK_INT(vt_modes(t) & VT_MODE_SCREEN_REVERSE, 0);
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    screen_reverse_video_inverts_every_cell();
     parser_splits_sequences_across_writes();
     c0_controls_execute_inside_csi();
     can_aborts_a_sequence();

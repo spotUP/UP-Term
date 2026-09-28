@@ -46,7 +46,10 @@ int main(int argc, char **argv)
         int nc;
         const vt_cell *c = vt_row(t, y, &nc);
         for (x = 0; x < nc; x++)
-            printf("%s%u,%u,%u,%u", x ? " " : "", c[x].fg, c[x].bg, c[x].attr, c[x].ch);
+            printf("%s%u,%u,%u,%u", x ? " " : "", c[x].fg, c[x].bg,
+                   /* inverse as shown: the cell's XOR the screen's */
+                   c[x].attr ^ ((vt_modes(t) & VT_MODE_SCREEN_REVERSE) ? VT_ATTR_INVERSE : 0),
+                   c[x].ch);
         printf("\n");
     }
     vt_cursor(t, &cx, &cy);
