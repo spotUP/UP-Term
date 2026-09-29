@@ -21,13 +21,10 @@ def run(cmd, timeout=60):
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'))
     return struct.unpack('>I', b[:4])[0], b[4:].decode('latin-1')
 
-def main():
-    orig = "--orig" in sys.argv
+def use_ixemul(orig=False):
+    """The patched ixemul first in LIBS: for this boot (or the original)."""
     (VTC / "ixp6").mkdir(exist_ok=True)
     shutil.copyfile(IXEMUL, VTC / "ixp6/ixemul.library")
-    for name in ("pty-handler", "ixpty"):
-        shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
-    (VTC / "ptymount").write_text(ptytest_rig.MOUNTLIST)
     run('Avail >NIL: FLUSH')
     if orig:
         run('Assign LIBS: DH0:Libs')
@@ -35,6 +32,13 @@ def main():
         run('Assign LIBS: VTC:ixp6')
         run('Assign LIBS: DH0:Libs ADD')
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
+
+def main():
+    orig = "--orig" in sys.argv
+    for name in ("pty-handler", "ixpty"):
+        shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
+    (VTC / "ptymount").write_text(ptytest_rig.MOUNTLIST)
+    use_ixemul(orig)
     rc, out = run('Assign >NIL: PTY: EXISTS DEVICES')
     if rc != 0:
         rc, out = run('Mount PTY: FROM VTC:ptymount')

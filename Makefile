@@ -142,6 +142,10 @@ $(BUILD)/amiga/ixpty: tests/amiga/ixpty.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixpty.c
 
+$(BUILD)/amiga/ixbg: tests/amiga/ixbg.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixbg.c
+
 $(BUILD)/amiga/ptytest: tests/amiga/ptytest.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ptytest.c
