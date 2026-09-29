@@ -1,0 +1,144 @@
+# vsh's startup file. Install copies it to ENVARC:vsh/vshrc; vsh reads it
+# before $HOME/.vshrc, where your own settings go.
+#
+# Unix command names for the AmigaDOS commands that do the same work,
+# with the flags people type most. Names are passed on as AmigaDOS names:
+# ../x becomes /x (the parent is /), ./x becomes x. To use a real Unix
+# port of one of these (an ixemul ls in the path), remove its function.
+
+# _amiga NAME: NAME as AmigaDOS writes it, in _r
+_amiga() {
+    _u=$1
+    _o=
+    while :; do
+        case $_u in
+        ./*) _u=${_u#./} ;;
+        ../*) _o="$_o/"; _u=${_u#../} ;;
+        ..) _o="$_o/"; _u= ;;
+        .) _u= ;;
+        *) break ;;
+        esac
+    done
+    _r="$_o$_u"
+}
+
+clear() {
+    printf '\033[H\033[2J'
+}
+
+# ls [-l] [name ...]: Dir for the short form, List for -l
+ls() {
+    _long=0
+    for _x; do
+        shift
+        case $_x in
+        -*) case $_x in *l*) _long=1 ;; esac ;;
+        *) _amiga "$_x"; set -- "$@" "$_r" ;;
+        esac
+    done
+    if [ $_long = 1 ]; then List "$@"; else Dir "$@"; fi
+}
+
+# mkdir [-p] dir ...: -p makes each missing directory on the way
+mkdir() {
+    _p=0
+    _rc=0
+    for _x; do
+        shift
+        case $_x in
+        -p) _p=1 ;;
+        -*) ;;
+        *) _amiga "$_x"; set -- "$@" "$_r" ;;
+        esac
+    done
+    for _d; do
+        if [ $_p = 1 ]; then
+            _made=
+            _rest=$_d
+            while [ -n "$_rest" ]; do
+                case $_rest in
+                */*) _part=${_rest%%/*}; _rest=${_rest#*/} ;;
+                *) _part=$_rest; _rest= ;;
+                esac
+                _made=$_made$_part
+                if [ -n "$_part" ] && [ ! -d "$_made" ]; then
+                    MakeDir "$_made" || _rc=1
+                fi
+                _made=$_made/
+            done
+        else
+            MakeDir "$_d" || _rc=1
+        fi
+    done
+    return $_rc
+}
+
+# rm [-r] [-f] name ...: -r deletes directories with what is in them,
+# -f also protected files, quietly
+rm() {
+    _all=
+    _q=
+    for _x; do
+        shift
+        case $_x in
+        -*)
+            case $_x in *[rR]*) _all=ALL ;; esac
+            case $_x in *f*) _q=1 ;; esac ;;
+        *) _amiga "$_x"; set -- "$@" "$_r" ;;
+        esac
+    done
+    if [ -n "$_q" ]; then
+        Delete "$@" $_all QUIET FORCE >NIL: 2>NIL:
+        return 0
+    fi
+    Delete "$@" $_all QUIET
+}
+
+# cp [-r] from ... to
+cp() {
+    _all=
+    for _x; do
+        shift
+        case $_x in
+        -*) case $_x in *[rR]*) _all=ALL ;; esac ;;
+        *) _amiga "$_x"; set -- "$@" "$_r" ;;
+        esac
+    done
+    Copy "$@" $_all QUIET
+}
+
+# mv from ... to (within one volume, as Rename does)
+mv() {
+    for _x; do
+        shift
+        case $_x in
+        -*) ;;
+        *) _amiga "$_x"; set -- "$@" "$_r" ;;
+        esac
+    done
+    Rename "$@" QUIET
+}
+
+# cat [name ...]: the files, or what comes in
+cat() {
+    if [ $# = 0 ]; then
+        while IFS= read -r _l; do printf '%s\n' "$_l"; done
+        return 0
+    fi
+    for _x; do
+        shift
+        _amiga "$_x"
+        set -- "$@" "$_r"
+    done
+    Type "$@"
+}
+
+# touch name ...: a new empty file, or today's date on one there
+touch() {
+    for _x; do
+        _amiga "$_x"
+        if [ -e "$_r" ]; then SetDate "$_r"; else : >"$_r"; fi
+    done
+}
+
+alias ll='ls -l'

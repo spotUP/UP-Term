@@ -165,7 +165,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 # termcap, Install script, README), unpacking to a drawer "vtcon".
 dist: amiga $(BUILD)/terminfo/76/vtcon
 	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v
-	cp $(BUILD)/amiga/vtcon-handler dist/XCON dist/Install dist/README.txt $(BUILD)/dist/vtcon/
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/vsh dist/XCON dist/Install dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
 	cp $(BUILD)/terminfo/v/vtcon $(BUILD)/dist/vtcon/terminfo/v/vtcon
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon

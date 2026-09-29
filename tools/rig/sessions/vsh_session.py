@@ -19,7 +19,8 @@ def shot(n):
 def amiga(cmd): return ami.req(0x02, struct.pack('>H', 20) + cmd.encode('latin-1'))[4:].decode('latin-1')
 
 # a user startup file in $HOME (RAM:), and the system one absent
-amiga('Delete ENV:vsh/vshrc QUIET')
+amiga('MakeDir >NIL: ENV:vsh')
+amiga('Copy VTC:vshrc ENV:vsh/vshrc')
 amiga('Echo >RAM:.vshrc "PS1=\'%F{green}%n@%m%f %F{cyan}%~%f [%?] %# \'"')
 amiga('Echo >>RAM:.vshrc "alias ll=\'List\'"')
 amiga('SetEnv HOME RAM:')
@@ -27,7 +28,7 @@ amiga('SetEnv USER spot')
 ami.req(0x02, struct.pack('>H', 10) +
         b'run >NIL: newshell "XCON:0/12/780/560/vsh session/CLOSE"')
 time.sleep(4)
-line('stack 40000')
+line('stack 4096')                     # the 3.1 default: vsh takes its own stack
 line('VTC:vsh', 3)
 line('cd T:')                          # outside HOME: the full name
 line('cd; pwd')                        # HOME: ~
@@ -91,5 +92,14 @@ line('x=$(exit 3); echo "status $?"')
 line('C=5 Get C; Get C; echo "after: $?"', 2)
 line('export E=7; Get E', 2)
 shot("vsh5j")
+# the vshrc's Unix names; deep recursion on the Shell's 4 KB stack
+line("printf '\\033[H\\033[2J'")
+line('mkdir -p RAM:u/v/w; ls RAM:u/v', 3)
+line('cd RAM:u; cd ../u/v; pwd; touch t; ls -l', 3)
+line('cd; rm -r RAM:u; ls RAM:u; echo "rm: $?"', 3)
+line('f() { if [ $1 -gt 0 ]; then f $(( $1 - 1 )); fi; }; f 40; echo deep ok', 5)
+line('g() { g; }; g; echo never', 8)      # stops with an error, the shell goes on
+line('echo "still here $?"')
+shot("vsh5k")
 line('exit', 2)
 shot("vsh5d")

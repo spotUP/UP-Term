@@ -7,6 +7,12 @@ MakeDir >NIL: ENVARC:terminfo
 MakeDir >NIL: ENVARC:terminfo/v
 Copy terminfo/v/vtcon ENVARC:terminfo/v/vtcon CLONE
 Copy termcap.vtcon ENVARC:termcap.vtcon CLONE
+Copy vsh C:vsh CLONE
+MakeDir >NIL: ENVARC:vsh
+Copy vshrc ENVARC:vsh/vshrc CLONE
+MakeDir >NIL: ENV:vsh
+Copy vshrc ENV:vsh/vshrc CLONE
 Mount >NIL: XCON: FROM DEVS:DOSDrivers/XCON
 Echo "vtcon installed. Try:  NewShell XCON:0/20/640/300/vtcon/CLOSE"
 Echo "For ixemul programs:  SetEnv TERM vtcon"
+Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"

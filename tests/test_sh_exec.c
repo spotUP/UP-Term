@@ -1,5 +1,6 @@
 /* vsh's executor against a fake OS: in-memory files and pipes, and a
  * few fake commands (cat, upper, wc, fail, ls). */
+#include <stdio.h>
 #include <stdlib.h>
 #include "harness.h"
 #include "../shell/sh_exec.h"
@@ -136,6 +137,17 @@ static long f_read_line(void *os, sh_fh fh, char *buf, long max)
     return n;
 }
 
+static int is_amiga_cmd(const char *n)
+{
+    static const char *const names[] = { "Dir", "List", "MakeDir", "Delete", "Copy", "Rename",
+                                         "Type", "SetDate", 0 };
+    int i;
+    for (i = 0; names[i]; i++)
+        if (!strcmp(n, names[i]))
+            return 1;
+    return 0;
+}
+
 /* The fake commands, run when they are waited for. */
 static long run_now(char argv[][64], int argc, const sh_io *io)
 {
@@ -172,6 +184,16 @@ static long run_now(char argv[][64], int argc, const sh_io *io)
         f_write(0, io->out, "a.c\nb.c\n", 8);
         return 0;
     }
+    if (is_amiga_cmd(argv[0])) {  /* the AmigaDOS commands the vshrc calls: <Name><arg>... */
+        int i;
+        for (i = 0; i < argc; i++) {
+            f_write(0, io->out, "<", 1);
+            f_write(0, io->out, argv[i], (long)strlen(argv[i]));
+            f_write(0, io->out, ">", 1);
+        }
+        f_write(0, io->out, "\n", 1);
+        return 0;
+    }
     if (!strcmp(argv[0], "args")) {  /* prints its arguments, one per line in <> */
         int i;
         for (i = 1; i < argc; i++) {
@@ -198,7 +220,8 @@ static long f_run(void *os, char **argv, const sh_io *io, int wait)
     if (wait)
         return run_now(p.argv, p.argc, &p.io);
     if (strcmp(argv[0], "cat") && strcmp(argv[0], "upper") && strcmp(argv[0], "wc") &&
-        strcmp(argv[0], "fail") && strcmp(argv[0], "ls") && strcmp(argv[0], "args"))
+        strcmp(argv[0], "fail") && strcmp(argv[0], "ls") && strcmp(argv[0], "args") &&
+        !is_amiga_cmd(argv[0]))
         return -1; /* as the real layer: not found, nothing started */
     if (n_started < 16)
         last_owned[n_started++] = io->owned;
@@ -523,6 +546,56 @@ static void read_builtin(void)
     CHECK_STR(run("IFS=:; echo 'p:q' | { read x y; echo \"$x $y\"; }"), "p q\n");
 }
 
+/* dist/vshrc: the Unix names turn into the AmigaDOS commands, flags and
+ * ../ names translated (the fake AmigaDOS commands print what they got). */
+static const char *with_vshrc(const char *text)
+{
+    static char rc[8192];
+    FILE *f = fopen("dist/vshrc", "r");
+    size_t n = f ? fread(rc, 1, sizeof(rc) - 1, f) : 0;
+    int inc = 0;
+    if (f)
+        fclose(f);
+    rc[n] = 0;
+    fresh();
+    sh_run_text(&sh, rc, &inc);
+    CHECK_STR(slot(ERR)->data, "");      /* it parses and runs clean */
+    sh_run_text(&sh, text, &inc);
+    return slot(OUT)->data;
+}
+
+static void vshrc_unix_names(void)
+{
+    CHECK_STR(with_vshrc("ls"), "<Dir>\n");
+    CHECK_STR(with_vshrc("ls -la ../x ./y"), "<List></x><y>\n");
+    CHECK_STR(with_vshrc("ll ../../z"), "<List><//z>\n");
+    CHECK_STR(with_vshrc("mkdir -p RAM:a/b"), "<MakeDir><RAM:a>\n<MakeDir><RAM:a/b>\n");
+    CHECK_STR(with_vshrc("mkdir one 'two words'"), "<MakeDir><one>\n<MakeDir><two words>\n");
+    CHECK_STR(with_vshrc("rm -r old"), "<Delete><old><ALL><QUIET>\n");
+    CHECK_STR(with_vshrc("rm -rf old; echo $?"), "0\n");   /* its output goes to NIL: */
+    CHECK_STR(with_vshrc("cp -R a ../b"), "<Copy><a></b><ALL><QUIET>\n");
+    CHECK_STR(with_vshrc("mv a b"), "<Rename><a><b><QUIET>\n");
+    CHECK_STR(with_vshrc("cat f"), "<Type><f>\n");
+    CHECK_STR(with_vshrc("echo '  x y' | cat"), "  x y\n");
+    CHECK_STR(with_vshrc("touch new; cat <new; echo made"), "made\n");
+}
+
+static void deep_recursion(void)
+{
+    int inc = 0;
+    char here;
+    CHECK_STR(run("f() { if [ $1 -gt 0 ]; then f $(( $1 - 1 )); fi; }; f 40; echo deep ok"), "deep ok\n");
+    /* endless recursion stops with an error when the stack runs low, and
+     * the next line runs */
+    fresh();
+    sh.stack_limit = (unsigned long)&here - 200000;
+    sh_run_text(&sh, "g() { g; }; g; echo never", &inc);
+    CHECK_STR(slot(OUT)->data, "");
+    CHECK_INT(strncmp(slot(ERR)->data, "vsh: nested too deeply (", 24), 0);
+    sh_run_text(&sh, "echo next", &inc);
+    CHECK_STR(slot(OUT)->data, "next\n");
+}
+
 static void incomplete_input(void)
 {
     int inc = 0;
@@ -602,5 +675,7 @@ void suite_sh_exec(void)
     subshells();
     assignment_status_and_scope();
     read_builtin();
+    vshrc_unix_names();
+    deep_recursion();
     sh_shell_free(&sh);
 }

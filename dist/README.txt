@@ -55,5 +55,18 @@ KEYS
   The command word shows green when it is a command, red when not.
   History is kept in ENVARC:vtcon.history (the last 100 lines).
 
+VSH (the shell)
+  Type  vsh  in an XCON: window. A POSIX shell with zsh touches: pipes,
+  redirections (2> 2>&1 &> <<EOF), $( ), $(( )), globs, if/while/for/case,
+  functions, aliases, jobs (& jobs fg wait, "[1] Done" notices), Ctrl-C to
+  the running command. Subshells, $( ) and all but the last stage of a
+  pipeline run as processes of their own (there is no fork on the Amiga).
+  Amiga commands run as usual; the command path is the Shell's (Path).
+  Startup: ENVARC:vsh/vshrc, then $HOME/.vshrc (HOME defaults to SYS:).
+  Prompt: PS1 takes bash (\w \u \h) and zsh (%~ %n %m %? %F{red}...%f)
+  escapes; default %F{cyan}%~%f %#.
+  The vshrc gives Unix names: ls (-l) mkdir (-p) rm (-r -f) cp (-r) mv cat
+  touch clear ll; ../x is passed on as /x.
+
 STATUS
   Test build. CON:/RAW: are not replaced; XCON: runs beside them.

@@ -53,6 +53,9 @@ void sh_shell_init(sh_shell *sh)
     memset(sh->job_text, 0, sizeof(sh->job_text));
     sh->retired = 0;
     sh->intr = 0;
+    sh->stack_limit = 0; /* the OS layer sets it for each process */
+    sh->subst_ran = 0;
+    sh->subst_status = 0;
     sh->ctx.subst = core_subst;
     sh->ctx.user = sh;
     sh->heredocs = 0;
@@ -1557,6 +1560,17 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
         return sh->ctx.status;
     if (poll_break(sh))
         return 130;
+    if (sh->stack_limit && (unsigned long)&rio < sh->stack_limit) {
+        /* the stack is nearly used up: stop here, as a clean error,
+         * rather than run past it (on the Amiga that corrupts memory) */
+        char d[16];
+        num(d, sh->func_depth);
+        say(sh, io->err, "vsh: nested too deeply (");
+        say(sh, io->err, d);
+        say(sh, io->err, " function levels)\n");
+        sh->intr = 1;
+        return 2;
+    }
     switch (n->kind) {
     case SH_CMD:
         st = exec_cmd(sh, n, io, 1, 0);

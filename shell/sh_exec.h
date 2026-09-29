@@ -87,6 +87,8 @@ typedef struct sh_shell {
     char *job_text[32];
     sh_retired *retired;   /* freed with the shell */
     int intr;              /* Ctrl-C: unwinding to the prompt */
+    unsigned long stack_limit; /* the OS layer's: below this stack address the
+                               * interpreter stops ("nested too deeply"), 0 = none */
     int subst_ran;         /* a $( ) ran in the current command ... */
     long subst_status;     /* ... with this status (assignments only: the command's $?) */
     int heredocs;          /* numbering for here-document temp files */

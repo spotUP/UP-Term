@@ -525,19 +525,33 @@ static long os_read_line(void *os, sh_fh fh, char *buf, long max)
 }
 
 /* Unix-style directory names: .. is the parent (/), . and "" stay. */
+/* A Unix-style relative name as AmigaDOS writes it: each leading ../ is
+ * a / (the parent), ./ goes, and . and .. alone are "" and "/". */
+static void amiga_name(const char *in, char *out, int max)
+{
+    int n = 0;
+    for (;;) {
+        if (!strncmp(in, "./", 2))
+            in += 2;
+        else if (!strncmp(in, "../", 3) || !strcmp(in, "..")) {
+            if (n < max - 1)
+                out[n++] = '/';
+            in += in[2] ? 3 : 2;
+        } else if (!strcmp(in, "."))
+            in++;
+        else
+            break;
+    }
+    out[n] = 0;
+    strncat(out, in, max - n - 1);
+}
+
 static int os_chdir(void *os, const char *path)
 {
     char p[256];
     BPTR lock;
     (void)os;
-    if (!strcmp(path, ".."))
-        strcpy(p, "/");
-    else if (!strcmp(path, "."))
-        strcpy(p, "");
-    else {
-        strncpy(p, path, sizeof(p) - 1);
-        p[sizeof(p) - 1] = 0;
-    }
+    amiga_name(path, p, sizeof(p));
     lock = Lock((STRPTR)p, SHARED_LOCK);
     if (!lock)
         return -1;
@@ -614,6 +628,17 @@ static int os_interrupted(void *os)
     return (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) != 0;
 }
 
+#define VSH_STACK_SUB 65536
+#define STACK_MARGIN 12288  /* the deepest path below a guard: read's buffers, DOS calls */
+
+/* Where the interpreter must stop in this process: the bottom of its
+ * stack plus a margin (the core reports "nested too deeply" there). */
+static unsigned long stack_limit_here(void)
+{
+    struct Task *t = FindTask(0);
+    return (unsigned long)t->tc_SPLower + STACK_MARGIN;
+}
+
 /* A subshell's process: the shell clone runs its tree (sh_run_child),
  * with a job port of its own for the commands it starts. */
 static void subshell_proc(void)
@@ -628,6 +653,7 @@ static void subshell_proc(void)
     if (vp.port) {
         j->sub->os.data = &vp;
         j->sub->ctx.pid = (long)me;
+        j->sub->stack_limit = stack_limit_here();
         j->rc = sh_run_child(j->sub, j->tree, &j->io);
         DeleteMsgPort(vp.port);
     } else {
@@ -674,7 +700,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                 j->io.err = j->io.out;
         }
         p = CreateNewProcTags(NP_Entry, (ULONG)subshell_proc, NP_Name, (ULONG)"vsh subshell",
-                              NP_StackSize, 32000, NP_Cli, TRUE, TAG_END);
+                              NP_StackSize, VSH_STACK_SUB, NP_Cli, TRUE, TAG_END);
     }
     if (!p) {
         sh_io *o = j ? &j->io : 0;
@@ -756,7 +782,7 @@ static void import_var(sh_shell *sh, const char *name)
         sh_set(&sh->ctx, name, v);
 }
 
-int main(int argc, char **argv)
+static int vsh_main(int argc, char **argv)
 {
     static sh_shell sh;
     char line[1024];
@@ -785,6 +811,7 @@ int main(int argc, char **argv)
     sh.os.cwd = os_cwd;
     sh.os.exists = os_exists;
     sh.os.data = &vp;
+    sh.stack_limit = stack_limit_here();
     sh.ctx.listdir = list_dir;
     sh.ctx.nocase = 1;
     sh.ctx.pid = (long)FindTask(0);
@@ -854,4 +881,34 @@ int main(int argc, char **argv)
         DeleteMsgPort(vp.port);
         return (int)st;
     }
+}
+
+/* The interpreter recurses (a function in a loop in a pipeline ...); a
+ * Shell's default stack is 4 KB on 3.1, so vsh runs on a 64 KB stack of
+ * its own when it was given less, as its subshell processes do. Only
+ * statics across the swap: locals of this frame live on the old stack. */
+#define VSH_STACK 65536
+static struct StackSwapStruct swap;
+static int g_argc, g_rc;
+static char **g_argv;
+
+int main(int argc, char **argv)
+{
+    struct Task *me = FindTask(0);
+    APTR stack;
+    g_argc = argc;
+    g_argv = argv;
+    if ((ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower >= VSH_STACK)
+        return vsh_main(argc, argv);
+    stack = AllocVec(VSH_STACK, MEMF_ANY);
+    if (!stack)
+        return vsh_main(argc, argv);
+    swap.stk_Lower = stack;
+    swap.stk_Upper = (ULONG)stack + VSH_STACK;
+    swap.stk_Pointer = (APTR)swap.stk_Upper;
+    StackSwap(&swap);
+    g_rc = vsh_main(g_argc, g_argv);
+    StackSwap(&swap);
+    FreeVec(stack);
+    return g_rc;
 }
