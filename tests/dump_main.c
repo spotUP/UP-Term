@@ -52,6 +52,13 @@ int main(int argc, char **argv)
                    c[x].ch);
         printf("\n");
     }
+    if (argc > 4 && !strcmp(argv[4], "sizes")) {
+        /* the DEC line size of each row (tools/rig/vttest_rig.py) */
+        printf("sizes");
+        for (y = 0; y < rows; y++)
+            printf(" %d", vt_row_size(t, y));
+        printf("\n");
+    }
     vt_cursor(t, &cx, &cy);
     printf("@%d,%d\n", cx, cy);
     {

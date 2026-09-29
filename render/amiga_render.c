@@ -302,6 +302,29 @@ void vr_free(vr_render *r)
     r->glyphs = 0;
 }
 
+/* The columns and rows the window can show right now. The grid follows a
+ * new window size only when Intuition reports it (resize()); between a
+ * size change and that report -- DECCOLM shrinking the window, the user
+ * dragging it smaller -- drawing to r->cols wrote over the window's own
+ * right border (owner, 2026-09-29, vttest's 132-column test). */
+static WORD vis_cols(const vr_render *r)
+{
+    WORD c;
+    if (!r->win || !r->cw)
+        return 0; /* not set up yet (vr_init): nothing to draw into */
+    c = (WORD)((r->win->Width - r->win->BorderRight - r->ox) / r->cw);
+    return c < r->cols ? (c < 0 ? 0 : c) : r->cols;
+}
+
+static WORD vis_rows(const vr_render *r)
+{
+    WORD n;
+    if (!r->win || !r->ch)
+        return 0;
+    n = (WORD)((r->win->Height - r->win->BorderBottom - r->oy) / r->ch);
+    return n < r->rows ? (n < 0 ? 0 : n) : r->rows;
+}
+
 int vr_layout(vr_render *r)
 {
     struct Window *w = r->win;
@@ -675,9 +698,19 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
         if (font != r->font)
             SetFont(r->rp, font);
         ink_ab(r, st->fg, st->bg);
-        SetSoftStyle(r->rp, style_of(st->attr), FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
+        /* Bold as the glyphs again 1 px right, in JAM1: the soft style's
+         * smear made Text() one pixel wider than the run and painted the
+         * next cell's first column in this run's background, which a
+         * partial redraw (a blink, one damaged cell) then left behind
+         * (rig, vttest menu 2: after bold inverse blinking text). */
+        SetSoftStyle(r->rp, style_of(st->attr) & ~FSF_BOLD, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
         Move(r->rp, px, py + r->base);
         Text(r->rp, (STRPTR)run, n);
+        if (st->attr & VT_ATTR_BOLD) {
+            SetDrMd(r->rp, JAM1);
+            Move(r->rp, (WORD)(px + 1), py + r->base);
+            Text(r->rp, (STRPTR)run, n);
+        }
         if (font != r->font)
             SetFont(r->rp, r->font);
     }
@@ -735,7 +768,7 @@ static int direct_ok(vr_render *r)
     struct BitMap *bm = r->rp->BitMap;
     struct ClipRect *cr = w->WLayer ? w->WLayer->ClipRect : 0;
     WORD sx0 = w->LeftEdge + r->ox, sy0 = w->TopEdge + r->oy;
-    WORD sx1 = sx0 + r->cols * r->cw - 1, sy1 = sy0 + r->rows * r->ch - 1;
+    WORD sx1 = sx0 + vis_cols(r) * r->cw - 1, sy1 = sy0 + vis_rows(r) * r->ch - 1;
     if (!r->glyphs || !bm || bm->Depth > 8 || (sx0 & 7))
         return 0;
     if (!(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
@@ -894,7 +927,7 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
     struct BitScaleArgs bsa;
     int x, half = (r->cols + 1) / 2;
     vr_style st;
-    fill(r, r->ox, py, (WORD)(r->ox + r->cols * cw - 1), (WORD)(py + ch - 1), r->pen_default_bg);
+    fill(r, r->ox, py, (WORD)(r->ox + vis_cols(r) * cw - 1), (WORD)(py + ch - 1), r->pen_default_bg);
     if (!full || !big) {
         if (full)
             FreeBitMap(full);
@@ -906,6 +939,8 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
     trp.BitMap = full;
     SetAPen(&trp, 1);
     SetDrMd(&trp, JAM1);
+    if (half > (vis_cols(r) + 1) / 2)
+        half = (vis_cols(r) + 1) / 2;
     for (x = 0; x < half && x < ncells; x++) {
         WORD px = (WORD)(r->ox + x * 2 * cw);
         vt_glyph g;
@@ -960,10 +995,10 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
     if (r->hidden)
         return;
     want_direct = r->glyphs != 0;
-    if (x1 > r->cols)
-        x1 = r->cols;
-    if (y1 > r->rows)
-        y1 = r->rows;
+    if (x1 > vis_cols(r))
+        x1 = vis_cols(r);
+    if (y1 > vis_rows(r))
+        y1 = vis_rows(r);
     for (y = y0; y < y1; y++) {
         int ncells;
         const vt_cell *c = vt_row(r->t, y - r->view, &ncells);
@@ -1213,6 +1248,10 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
     if (r->hidden || r->view)
         return;
     vr_cursor_off(r);
+    if (bottom > vis_rows(r))
+        bottom = vis_rows(r);
+    if (top >= bottom || !vis_cols(r))
+        return;
     /* The vacated rows must come out in the personality's default
      * background (the engine's scroll contract): the Amiga global
      * background pen, for one, is not always pen 0. */
@@ -1232,7 +1271,7 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
         LockLayer(0, layer);
         if (direct_ok(r)) {
             struct BitMap *bm = r->rp->BitMap;
-            WORD sx = r->win->LeftEdge + r->ox, w = (WORD)(r->cols * r->cw);
+            WORD sx = r->win->LeftEdge + r->ox, w = (WORD)(vis_cols(r) * r->cw);
             WORD sy = r->win->TopEdge + r->oy + top * r->ch;
             WORD h = (WORD)((bottom - top) * r->ch), ad = dy < 0 ? -dy : dy;
             UBYTE pen = (UBYTE)pen_for(r, b, 1); /* planar: never an RGB ink */
@@ -1258,7 +1297,7 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
     }
 #endif
     SetBPen(r->rp, ink_pen(r, pen_for(r, b, 1), 1));
-    ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + r->cols * r->cw - 1,
+    ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + vis_cols(r) * r->cw - 1,
                  r->oy + bottom * r->ch - 1);
 }
 
@@ -1294,7 +1333,7 @@ void vr_cursor_on(vr_render *r)
     vt_cursor(r->t, &x, &y);
     if (r->cursor_drawn && (x != r->cursor_x || y != r->cursor_y))
         vr_cursor_off(r);
-    if (!(vt_modes(r->t) & VT_MODE_CURSOR_VISIBLE) || x >= r->cols || y >= r->rows || r->view)
+    if (!(vt_modes(r->t) & VT_MODE_CURSOR_VISIBLE) || x >= vis_cols(r) || y >= vis_rows(r) || r->view)
         return;
     if (!r->cursor_drawn) {
         r->cursor_x = (WORD)x;

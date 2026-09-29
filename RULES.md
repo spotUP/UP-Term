@@ -25,6 +25,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Reference diff vs libvterm + pyte | `make test-ref` (needs `make venv` once; clones libvterm into `build/`) |
 | Re-record streams from real programs | `make capture` |
 | pcansi vs DCTelnet term-engine on BBS art | `make te-diff` (`DCTELNET=`, `ART=`; `build/te_diff -f file` names the first diverging byte) |
+| vttest on the rig, screen by screen against the engine | `python3 tools/rig/vttest_rig.py --out <dir> [vttest-mX-sYY.80x24.bin ...]` (rig up; needs `make amiga`) |
 | terminfo proof: recapture with TERM=vtcon, check | `make test-terminfo` |
 | Amiga build with the handler trace (RAM:vtcon.log) | `make amiga DEBUG=1` |
 | Reachability test on the rig (V3) | `make test-rig` (rig up first) |
