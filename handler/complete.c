@@ -9,6 +9,7 @@
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <exec/execbase.h>
+#include <exec/semaphores.h>
 #include <dos/dos.h>
 #include <dos/dostags.h>
 #include <dos/dosextens.h>
@@ -90,6 +91,96 @@ static void scan_dir(struct complete_req *q, BPTR lock, const char *prefix, int 
     FreeDosObject(DOS_FIB, fib);
 }
 
+/* The command names of each directory on the command path, kept for
+ * every window (the handler's code is shared, so is this): a Tab used to
+ * scan C: file by file, ~3 s on the rig. A directory is scanned again
+ * only when its date changes (FFS dates a directory when something in it
+ * is made, deleted or renamed); a Tab costs one Examine per directory. */
+typedef struct dir_cache {
+    char name[256];               /* NameFromLock of the directory */
+    struct DateStamp date;
+    char *names;                  /* NUL-separated, AllocVec'd */
+    long len;
+    struct dir_cache *next;
+} dir_cache;
+
+static struct SignalSemaphore cache_sem;
+static int cache_ready;
+static dir_cache *caches;
+
+static void cache_names(dir_cache *d, BPTR lock, struct FileInfoBlock *fib)
+{
+    long cap = 1024, len = 0;
+    char *names = (char *)AllocVec(cap, MEMF_ANY);
+    if (names && Examine(lock, fib)) {
+        while (ExNext(lock, fib)) {
+            const char *name = (const char *)fib->fib_FileName;
+            long n = (long)strlen(name);
+            if (fib->fib_DirEntryType > 0 || (n > 5 && same_name(name + n - 5, ".info")))
+                continue;
+            if (len + n + 1 > cap) {
+                char *more = (char *)AllocVec(cap * 2, MEMF_ANY);
+                if (!more)
+                    break;
+                CopyMem(names, more, len);
+                FreeVec(names);
+                names = more;
+                cap *= 2;
+            }
+            CopyMem((APTR)name, names + len, n + 1);
+            len += n + 1;
+        }
+    }
+    if (d->names)
+        FreeVec(d->names);
+    d->names = names;
+    d->len = names ? len : 0;
+}
+
+/* The commands in directory `lock` starting with prefix, from the cache. */
+static void scan_commands(struct complete_req *q, BPTR lock, const char *prefix)
+{
+    struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    char name[256];
+    dir_cache *d;
+    long k;
+    if (!fib)
+        return;
+    if (!NameFromLock(lock, (STRPTR)name, sizeof(name)) || !Examine(lock, fib)) {
+        FreeDosObject(DOS_FIB, fib);
+        scan_dir(q, lock, prefix, 1);
+        return;
+    }
+    Forbid();
+    if (!cache_ready) {
+        InitSemaphore(&cache_sem);
+        cache_ready = 1;
+    }
+    Permit();
+    ObtainSemaphore(&cache_sem);
+    for (d = caches; d && !same_name(d->name, name); d = d->next)
+        ;
+    if (!d && (d = (dir_cache *)AllocVec(sizeof(dir_cache), MEMF_CLEAR)) != 0) {
+        strcpy(d->name, name);
+        d->next = caches;
+        caches = d;
+        d->date.ds_Days = -1; /* never scanned */
+    }
+    if (d) {
+        if (CompareDates(&d->date, &fib->fib_Date) != 0 || !d->names) {
+            d->date = fib->fib_Date;
+            cache_names(d, lock, fib);
+        }
+        for (k = 0; k < d->len; k += (long)strlen(d->names + k) + 1)
+            if (has_prefix(d->names + k, prefix))
+                add_name(q, d->names + k, 0);
+    }
+    ReleaseSemaphore(&cache_sem);
+    FreeDosObject(DOS_FIB, fib);
+    if (!d)
+        scan_dir(q, lock, prefix, 1);
+}
+
 /* The resident list (the Shell's internal commands live there too): a
  * private DOS list, walked read-only under Forbid as Resident does. */
 static void scan_residents(struct complete_req *q, const char *prefix)
@@ -129,7 +220,7 @@ static void scan_path(struct complete_req *q, const char *prefix)
     BPTR *node;
     BPTR c = Lock((STRPTR)"C:", ACCESS_READ);
     if (c) {
-        scan_dir(q, c, prefix, 1);
+        scan_commands(q, c, prefix);
         UnLock(c);
     }
     if (!q->opener || !q->opener->pr_CLI)
@@ -137,7 +228,7 @@ static void scan_path(struct complete_req *q, const char *prefix)
     cli = (struct CommandLineInterface *)BADDR(q->opener->pr_CLI);
     for (node = (BPTR *)BADDR(cli->cli_CommandDir); node; node = (BPTR *)BADDR(node[0]))
         if (node[1])
-            scan_dir(q, node[1], prefix, 1);
+            scan_commands(q, node[1], prefix);
 }
 
 /* CHECK_COMMAND: resident, a path to a file, or a file in the current
@@ -277,6 +368,9 @@ static void worker(void)
 
     WaitPort(&me->pr_MsgPort); /* the request, before any DOS call */
     q = (struct complete_req *)GetMsg(&me->pr_MsgPort);
+    /* no requesters: the lookups run as the user types (a first word
+     * "KEY:x" asked for volume KEY in a dialog on the rig) */
+    me->pr_WindowPtr = (APTR)-1;
     q->matches = 0;
     q->add[0] = 0;
     q->common[0] = 0;
