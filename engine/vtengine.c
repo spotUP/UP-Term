@@ -220,6 +220,18 @@ static void blank_cell(const vt_term *t, vt_cell *c)
      * Devices, SGR implementation notes). */
     c->bg = (t->pers == VT_AMIGA) ? VT_COLOR_DEFAULT : t->bg;
     c->attr = 0;
+    if (t->pers == VT_PCANSI) {
+        /* ANSI.SYS erases with the whole attribute byte: an erased cell
+         * is a space in the current colours, so blink (the iCE bright
+         * background) and inverse (fg and bg swapped) count too. */
+        c->attr = (vt_u8)(t->attr & VT_ATTR_BLINK);
+        if (t->attr & VT_ATTR_INVERSE) {
+            /* the foreground is visible only when swapped in; otherwise
+             * the blank stays canonical (vacated_default) */
+            c->fg = t->fg;
+            c->attr |= (vt_u8)(t->attr & (VT_ATTR_BOLD | VT_ATTR_INVERSE));
+        }
+    }
     c->width = 1;
 }
 
@@ -416,7 +428,7 @@ static int vacated_default(const vt_term *t)
 {
     vt_cell b;
     blank_cell(t, &b);
-    return b.bg == VT_COLOR_DEFAULT;
+    return b.bg == VT_COLOR_DEFAULT && b.fg == VT_COLOR_DEFAULT && !b.attr;
 }
 
 /* Before the grid moves: a pending scroll of another region or direction
@@ -913,6 +925,9 @@ static void exec_c0(vt_term *t, vt_u32 c)
             t->wrap_pending = 0;
             break;
         }
+        if (t->pers == VT_PCANSI)
+            break; /* not a motion for ANSI.SYS art (DOS prints it as a
+                      glyph; DCTelnet's term-engine ignores it) */
         /* fall through: VT is LF elsewhere */
     case 0x0A:
         t->wrap_pending = 0;
@@ -1432,8 +1447,8 @@ static int csi_common(vt_term *t, vt_u8 final)
     case 'S':
         scroll_up(t, t->top, t->bot, (int)n);
         return 1;
-    case 'T':
-        if (t->np <= 1)
+    case 'T': /* more parameters: xterm's mouse highlight; SD for ANSI art */
+        if (t->np <= 1 || t->pers == VT_PCANSI)
             scroll_down(t, t->top, t->bot, (int)n);
         return 1;
     case 'X': {
@@ -1609,11 +1624,14 @@ static void csi_pcansi(vt_term *t, vt_u8 final)
     if (t->priv)
         return;
     switch (final) {
-    case 's':
-        save_cursor(t, &t->sav);
+    case 's': /* ANSI.SYS SCP/RCP: the position only, colours stay */
+        t->sav.x = t->cx;
+        t->sav.y = t->cy;
         return;
     case 'u':
-        restore_cursor(t, &t->sav);
+        t->cx = clampi(t->sav.x, 0, t->cols - 1);
+        t->cy = clampi(t->sav.y, 0, t->rows - 1);
+        t->wrap_pending = 0;
         return;
     case 'r': /* DECSTBM, as ibmcon 1.4-fixed does */
         csi_xterm(t, final);

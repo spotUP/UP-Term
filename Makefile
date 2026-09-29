@@ -9,7 +9,7 @@ RENDER  := render/glyphmap.c handler/lineedit.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c
 
-.PHONY: test test-ref test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
+.PHONY: test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
@@ -35,6 +35,17 @@ $(BUILD)/vterm_dump: tools/vterm_dump.c $(LIBVTERM)/src/vterm.c
 	$(HOSTCC) -O1 -std=c99 -I$(LIBVTERM)/include -I$(LIBVTERM)/src -o $@ tools/vterm_dump.c $(LIBVTERM)/src/*.c
 
 # The xterm personality against libvterm and pyte on tests/streams (ONLY= a name part).
+# pcansi against DCTelnet's term-engine.c on BBS art, pixel for pixel
+# (tools/te_diff). Needs a DCTelnet checkout and an art directory.
+DCTELNET ?= $(HOME)/Code/dctelnet-v2
+ART ?= $(HOME)/Code/amiexpress-doorserver/bbs_ads
+$(BUILD)/te_diff: tools/te_diff/te_diff.c tools/te_diff/te_shim.h engine/vtengine.c engine/vtengine.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=gnu99 -O1 -g -w -Itools/te_diff -I$(DCTELNET)/src/third_party/retro32-term \
+		tools/te_diff/te_diff.c engine/vtengine.c -o $@
+te-diff: $(BUILD)/te_diff
+	find $(ART) -type f -iname '*.ans' -print0 | xargs -0 $(BUILD)/te_diff | grep -v ' 0 cells differ'
+
 test-ref: $(BUILD)/vtdump $(BUILD)/vterm_dump
 	.venv/bin/python tools/refdiff.py $(ONLY)
 
