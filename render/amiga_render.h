@@ -38,6 +38,15 @@ typedef struct vr_render {
     BYTE hidden;          /* the window is too small to draw into */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
+    /* Amiga layout requests (CSI t / u / x / y), -1 = automatic:
+     * text rows, text columns, left and top offset in pixels */
+    WORD lay_rows, lay_cols, lay_x, lay_y;
+    /* planar fast path (retro32-term's technique): the font's 8-pixel
+     * glyphs, one byte per row, extracted once; NULL when the font is not
+     * 8 pixels wide */
+    UBYTE *glyphs;
+    /* profile counters, read by the debug build */
+    ULONG n_direct, n_text;
     /* selection, inclusive, rows as grid row + vt_lines_scrolled() at the
      * time (so it stays on its text while output scrolls) */
     BYTE sel;

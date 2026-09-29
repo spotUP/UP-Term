@@ -48,6 +48,7 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Device *ConsoleDevice;
 struct Library *DiskfontBase;
+struct Library *LayersBase; /* LockLayer, for the renderer's planar path */
 struct Device *TimerBase; /* for ReadEClock in the debug profile */
 
 static LONG handler_main(void);
@@ -111,7 +112,7 @@ typedef struct con {
     WORD fontsize;
     ULONG wflags;
     int inactive;
-    int layout_req[4];           /* CSI t / u / x / y values, -1 automatic */
+    int layout_dirty;            /* a CSI t/u/x/y changed the text area */
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
     int dragging, drag_moved;    /* mouse selection */
@@ -276,13 +277,22 @@ static void cb_title(void *u, const char *s)
         SetWindowTitles(c->win, (UBYTE *)c->title, (UBYTE *)~0);
 }
 
+static void resize(con *c);
+
+/* Amiga page length, line length and offsets (CSI t / u / x / y): the text
+ * area changes, as the console recomputes it (-1: back to automatic). The
+ * resize happens after the write that asked for it (see output()). */
 static void cb_layout(void *u, int which, int value)
 {
-    /* Amiga page/line length and offsets: recorded, not honoured yet
-     * (ledger E4 layout). */
     con *c = (con *)u;
-    if (which >= 1 && which <= 4)
-        c->layout_req[which - 1] = value;
+    switch (which) {
+    case VT_LAYOUT_PAGE_LENGTH: c->r.lay_rows = (WORD)value; break;
+    case VT_LAYOUT_LINE_LENGTH: c->r.lay_cols = (WORD)value; break;
+    case VT_LAYOUT_LEFT_OFFSET: c->r.lay_x = (WORD)value; break;
+    case VT_LAYOUT_TOP_OFFSET: c->r.lay_y = (WORD)value; break;
+    default: return;
+    }
+    c->layout_dirty = 1;
 }
 
 /* ---- the window -------------------------------------------------------------- */
@@ -577,6 +587,10 @@ static void output(con *c, const vt_u8 *b, long n)
         c->le.started = 0; /* the next line starts wherever this output ends */
     vr_cursor_off(&c->r);
     vt_write(c->t, b, n);
+    if (c->layout_dirty) {
+        c->layout_dirty = 0;
+        resize(c); /* not inside vt_write: the engine is mid-parse there */
+    }
     vr_cursor_on(&c->r);
 #ifdef VTCON_DEBUG
     ReadEClock(&e1);
@@ -835,6 +849,46 @@ static void key_event(con *c, struct IntuiMessage *im)
     long key;
     int mods = 0, n = 0;
     vt_u8 out[40];
+    if (vt_raw_events(c->t) & (1UL << 1)) {
+        /* the program asked for raw keyboard events (CSI 1 {): an input
+         * event report per key, press and release (matrix 5.2) */
+        char b[80];
+        int k = 0;
+        long v[8];
+        int i;
+        v[0] = 1;
+        v[1] = 0;
+        v[2] = code;
+        v[3] = qual;
+        v[4] = v[5] = 0;
+        if (im->IAddress) {
+            /* the previous two down keys (dead keys): one ULONG, prev1
+             * code and qualifier in the high word, prev2 in the low */
+            ULONG pv = *(ULONG *)im->IAddress;
+            v[4] = (long)(pv >> 16);
+            v[5] = (long)(pv & 0xFFFF);
+        }
+        v[6] = (long)im->Seconds;
+        v[7] = (long)im->Micros;
+        b[k++] = (char)0x9B;
+        for (i = 0; i < 8; i++) {
+            char d[12];
+            int m = 0;
+            unsigned long x = (unsigned long)v[i];
+            if (i)
+                b[k++] = ';';
+            do {
+                d[m++] = (char)('0' + x % 10);
+                x /= 10;
+            } while (x);
+            while (m)
+                b[k++] = d[--m];
+        }
+        b[k++] = '|';
+        in_append(c, (const vt_u8 *)b, k);
+        service_reads(c);
+        return;
+    }
     if (code & IECODE_UP_PREFIX)
         return;
     if (console_key(c, code, qual))
@@ -1094,6 +1148,7 @@ static void packet(con *c, struct DosPacket *p)
         DBG("prof out/damage", c->prof_out, c->prof_damage);
         DBG("prof scroll/n", c->prof_scroll, c->prof_nscroll);
         DBG("prof ndamage", c->prof_ndamage, 0);
+    DBG("prof direct/text", c->r.n_direct, c->r.n_text);
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
@@ -1181,6 +1236,7 @@ static LONG handler_main(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     DiskfontBase = OpenLibrary((STRPTR)"diskfont.library", 36);
+    LayersBase = OpenLibrary((STRPTR)"layers.library", 39);
     c->timer_port = CreateMsgPort();
     if (c->timer_port) {
         c->timer = (struct timerequest *)CreateIORequest(c->timer_port, sizeof(struct timerequest));
@@ -1191,7 +1247,7 @@ static LONG handler_main(void)
     }
     if (!OpenDevice((STRPTR)"console.device", (ULONG)CONU_LIBRARY, (struct IORequest *)&c->lib_io, 0))
         ConsoleDevice = c->lib_io.io_Device; /* RawKeyConvert; the same device for every process */
-    if (!DOSBase || !IntuitionBase || !GfxBase || !ConsoleDevice) {
+    if (!DOSBase || !IntuitionBase || !GfxBase || !ConsoleDevice || !LayersBase) {
         if (DOSBase)
             ReplyPkt(p, DOSFALSE, ERROR_NO_FREE_STORE);
         FreeVec(c);
@@ -1257,6 +1313,7 @@ static LONG handler_main(void)
     if (ConsoleDevice)
         CloseDevice((struct IORequest *)&c->lib_io); /* CONU_LIBRARY must be closed too (matrix 6.2) */
     CloseLibrary(DiskfontBase);
+    CloseLibrary(LayersBase);
     CloseLibrary((struct Library *)GfxBase);
     CloseLibrary((struct Library *)IntuitionBase);
     CloseLibrary((struct Library *)DOSBase);

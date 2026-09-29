@@ -8,6 +8,9 @@
 #include <proto/exec.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <proto/layers.h>
+#include <graphics/clip.h>
+#include <graphics/layers.h>
 
 #define RUN_MAX 256
 
@@ -89,6 +92,8 @@ static UBYTE pen_for(vr_render *r, vt_u16 c, int is_bg)
     return is_bg ? r->pen_default_bg : r->pen_default_fg;
 }
 
+static void extract_glyphs(vr_render *r);
+
 /* ---- setup ---------------------------------------------------------------- */
 
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
@@ -123,7 +128,10 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->cursor_x = r->cursor_y = 0;
     r->view = 0;
     r->sel = 0;
+    r->lay_rows = r->lay_cols = r->lay_x = r->lay_y = -1;
     SetFont(r->rp, font);
+    extract_glyphs(r);
+    r->n_direct = r->n_text = 0;
     vr_layout(r);
 }
 
@@ -141,17 +149,26 @@ void vr_free(vr_render *r)
     if (r->rgb_pens)
         FreeVec(r->rgb_pens);
     r->rgb_pens = 0;
+    if (r->glyphs)
+        FreeVec(r->glyphs);
+    r->glyphs = 0;
 }
 
 int vr_layout(vr_render *r)
 {
     struct Window *w = r->win;
-    WORD iw = w->Width - w->BorderLeft - w->BorderRight;
-    WORD ih = w->Height - w->BorderTop - w->BorderBottom;
+    WORD lx = r->lay_x > 0 ? r->lay_x : 0, ly = r->lay_y > 0 ? r->lay_y : 0;
+    WORD iw = w->Width - w->BorderLeft - w->BorderRight - lx;
+    WORD ih = w->Height - w->BorderTop - w->BorderBottom - ly;
     WORD cols = iw / r->cw, rows = ih / r->ch;
     int changed;
-    r->ox = w->BorderLeft;
-    r->oy = w->BorderTop;
+    /* the Amiga console's page and line length cap what fits */
+    if (r->lay_cols > 0 && r->lay_cols < cols)
+        cols = r->lay_cols;
+    if (r->lay_rows > 0 && r->lay_rows < rows)
+        rows = r->lay_rows;
+    r->ox = w->BorderLeft + lx;
+    r->oy = w->BorderTop + ly;
     r->hidden = cols < 1 || rows < 1;
     if (cols < 1)
         cols = 1;
@@ -319,6 +336,7 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, UBYTE f
             return;
         }
     }
+    r->n_text++;
     SetABPenDrMd(r->rp, fg, bg, JAM2);
     SetSoftStyle(r->rp, style_of(attr), FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
     Move(r->rp, px, py + r->base);
@@ -326,6 +344,105 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, UBYTE f
     if (attr & VT_ATTR_STRIKE) {
         SetAPen(r->rp, fg);
         line(r, px, py + r->ch / 2, px + n * r->cw - 1, py + r->ch / 2);
+    }
+}
+
+/* The font's glyphs as bytes, for the planar path: only a font exactly 8
+ * pixels wide (then a cell is one byte of every plane). */
+static void extract_glyphs(vr_render *r)
+{
+    struct TextFont *tf = r->font;
+    const UBYTE *data;
+    const ULONG *loc;
+    int c, row, h = tf->tf_YSize;
+    r->glyphs = 0;
+    if (tf->tf_XSize != 8 || (tf->tf_Flags & FPF_PROPORTIONAL) || h < 1 || h > 32)
+        return;
+    r->glyphs = (UBYTE *)AllocVec(256 * h, MEMF_ANY | MEMF_CLEAR);
+    if (!r->glyphs)
+        return;
+    data = (const UBYTE *)tf->tf_CharData;
+    loc = (const ULONG *)tf->tf_CharLoc;
+    for (c = tf->tf_LoChar; c <= tf->tf_HiChar; c++) {
+        ULONG bitoff = loc[c - tf->tf_LoChar] >> 16;
+        WORD bits = (WORD)(loc[c - tf->tf_LoChar] & 0xFFFF);
+        const UBYTE *src = data + (bitoff >> 3);
+        WORD sh = (WORD)(bitoff & 7);
+        UBYTE *dst = r->glyphs + c * h;
+        for (row = 0; row < h; row++) {
+            UBYTE g = (UBYTE)(src[0] << sh);
+            if (sh)
+                g |= (UBYTE)(src[1] >> (8 - sh));
+            if (bits < 8)
+                g &= (UBYTE)(0xFF00 >> bits);
+            dst[row] = g;
+            src += tf->tf_Modulo;
+        }
+    }
+}
+
+/* May cells be written straight into the screen's bitplanes now? The
+ * caller holds the window's layer lock. */
+static int direct_ok(vr_render *r)
+{
+    struct Window *w = r->win;
+    struct BitMap *bm = r->rp->BitMap;
+    struct ClipRect *cr = w->WLayer ? w->WLayer->ClipRect : 0;
+    WORD sx0 = w->LeftEdge + r->ox, sy0 = w->TopEdge + r->oy;
+    WORD sx1 = sx0 + r->cols * r->cw - 1, sy1 = sy0 + r->rows * r->ch - 1;
+    if (!r->glyphs || !bm || bm->Depth > 8 || (sx0 & 7))
+        return 0;
+    if (!(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
+        return 0; /* RTG: not planar */
+    {
+        /* Picasso96 calls its bitmaps standard too (it hung the rig,
+         * 2026-09-29): a native display bitmap is planes in chip RAM,
+         * graphics card memory never is. */
+        int p;
+        for (p = 0; p < bm->Depth; p++)
+            if (!bm->Planes[p] || !(TypeOfMem(bm->Planes[p]) & MEMF_CHIP))
+                return 0;
+    }
+    if (!cr || cr->Next || cr->obscured)
+        return 0; /* covered in part: the layer draws for us */
+    return cr->bounds.MinX <= sx0 && cr->bounds.MinY <= sy0 && cr->bounds.MaxX >= sx1 &&
+           cr->bounds.MaxY >= sy1;
+}
+
+/* One cell, straight into the planes: each plane byte row is the glyph,
+ * its inverse, or a constant, as the two pens' bits say. */
+static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg, vt_u8 attr)
+{
+    struct BitMap *bm = r->rp->BitMap;
+    WORD bpr = bm->BytesPerRow;
+    LONG off = (LONG)(r->win->TopEdge + r->oy + y * r->ch) * bpr + ((r->win->LeftEdge + r->ox) >> 3) + x;
+    const UBYTE *g0 = r->glyphs + ch * r->ch;
+    UBYTE rows[32];
+    int p, k, h = r->ch;
+    for (k = 0; k < h; k++) {
+        UBYTE v = g0[k];
+        if (attr & VT_ATTR_BOLD)
+            v |= (UBYTE)(v >> 1); /* the algorithmic bold, as SetSoftStyle does */
+        rows[k] = v;
+    }
+    if ((attr & VT_ATTR_UNDERLINE) && r->base + 1 < h)
+        rows[r->base + 1] = 0xFF;
+    if (attr & VT_ATTR_STRIKE)
+        rows[h / 2] = 0xFF;
+    for (p = 0; p < bm->Depth; p++) {
+        UBYTE *d = (UBYTE *)bm->Planes[p] + off;
+        int f = (fg >> p) & 1, b = (bg >> p) & 1;
+        if (f == b) {
+            UBYTE v = f ? 0xFF : 0x00;
+            for (k = 0; k < h; k++, d += bpr)
+                *d = v;
+        } else if (f) {
+            for (k = 0; k < h; k++, d += bpr)
+                *d = rows[k];
+        } else {
+            for (k = 0; k < h; k++, d += bpr)
+                *d = (UBYTE)~rows[k];
+        }
     }
 }
 
@@ -350,12 +467,48 @@ static int selected(const vr_render *r, int x, int gy)
 }
 
 /* Draw screen rows [y0, y1), columns [x0, x1): each shows grid row y - view. */
+/* Cells for the planar path, collected per row: they are written in one go
+ * with the layer locked, and the lock covers nothing else (a lock held
+ * across pen allocation and Text() hung the rig, 2026-09-29). */
+typedef struct dcell {
+    WORD x;
+    UBYTE ch, fg, bg, attr;
+} dcell;
+
+#define DCELL_MAX 160
+
+/* Write the collected cells of row y straight into the planes when the
+ * layer allows it now; returns 0 when it does not (then the caller draws
+ * them through the RastPort). */
+static int direct_row(vr_render *r, int y, const dcell *d, int n)
+{
+    struct Layer *layer = r->win->WLayer;
+    int i, ok;
+#ifdef VTCON_NO_DIRECT
+    (void)layer; (void)y; (void)d; (void)n; (void)i; (void)ok;
+    return 0;
+#else
+    LockLayer(0, layer);
+    ok = direct_ok(r);
+    if (ok) {
+        WaitBlit(); /* earlier blits (scroll, fills, Text, the cursor) finish first */
+        for (i = 0; i < n; i++)
+            direct_cell(r, d[i].x, y, d[i].ch, d[i].fg, d[i].bg, d[i].attr);
+    }
+    UnlockLayer(layer);
+    r->n_direct += ok ? n : 0;
+    return ok;
+#endif
+}
+
 static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
-    int y, x, n;
+    dcell dc[DCELL_MAX];
+    int y, x, n, nd, want_direct;
     if (r->hidden)
         return;
+    want_direct = r->glyphs != 0;
     if (x1 > r->cols)
         x1 = r->cols;
     if (y1 > r->rows)
@@ -374,6 +527,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         if (!c)
             continue;
         n = 0;
+        nd = 0;
         for (x = x0; x < x1 && x < ncells; x++) {
             vt_u16 f, b;
             vt_glyph g;
@@ -414,6 +568,17 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 draw_special(r, r->ox + x * r->cw, py, g, fg, bg);
                 continue;
             }
+            if (want_direct && !(attr & VT_ATTR_ITALIC) && nd < DCELL_MAX) {
+                flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
+                n = 0;
+                dc[nd].x = (WORD)x;
+                dc[nd].ch = g.code;
+                dc[nd].fg = fg;
+                dc[nd].bg = bg;
+                dc[nd].attr = attr;
+                nd++;
+                continue;
+            }
             if (n && (fg != run_fg || bg != run_bg || attr != run_attr || n == RUN_MAX)) {
                 flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
                 n = 0;
@@ -427,6 +592,20 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             run[n++] = g.code;
         }
         flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
+        if (nd && !direct_row(r, y, dc, nd)) {
+            /* covered or not planar: the same cells through the RastPort,
+             * one Text() per run of equal colours */
+            int i = 0;
+            while (i < nd) {
+                int j = i;
+                n = 0;
+                while (j < nd && dc[j].x == dc[i].x + (j - i) && dc[j].fg == dc[i].fg &&
+                       dc[j].bg == dc[i].bg && dc[j].attr == dc[i].attr && n < RUN_MAX)
+                    run[n++] = dc[j++].ch;
+                flush_run(r, run, n, r->ox + dc[i].x * r->cw, py, dc[i].fg, dc[i].bg, dc[i].attr);
+                i = j;
+            }
+        }
         if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
             r->cursor_drawn = 0; /* the cursor cell was just painted over */
     }

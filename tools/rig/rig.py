@@ -3,7 +3,8 @@
 through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background; DH0: read-only (--rw: writable)
+  rig.py start    boot it in the background (--ro: DH0: read-only, stalls on writes),
+                  --aga: no graphics card, Workbench on a native AGA screen
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
   rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer
   rig.py status   is it up (amiagent ping)
@@ -33,6 +34,7 @@ C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
 GO = """FailAt 21
+Echo >BOOTX:boot.log "go started"
 C:Wait 15
 C:Assign >NIL: VTC: VTCX:
 C:Mount XCON: FROM BOOTX:Mountlist
@@ -40,9 +42,13 @@ C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
 C:SetEnv TERM vtcon
 C:SetEnv TERMINFO /VTC/terminfo
+Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent TOKEN=rigtoken
+Echo >>BOOTX:boot.log "amiagent started"
 """
+# boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
+# (the rig's screen is not visible from here).
 MOUNTLIST = """XCON:
    Handler   = VTC:vtcon-handler
    Priority  = 5
@@ -51,7 +57,8 @@ MOUNTLIST = """XCON:
 #
 """
 
-RW = "--rw" in sys.argv
+RW = "--ro" not in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
+AGA = "--aga" in sys.argv   # no graphics card: Workbench on a native AGA screen
 
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
@@ -67,12 +74,13 @@ def setup():
     shutil.copyfile(SRC_AGENT, RIG / "boot/amiagent")
     CFG.write_text("\n".join([
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
-        "bsdsocket_library = 1", "graphics_card = uaegfx", "jit_compiler = 1",
+        "bsdsocket_library = 1", "graphics_card = %s" % ("none" if AGA else "uaegfx"),
+        "jit_compiler = 1",
         "hard_drive_0 = %s" % (RIG / "sys.hdf"),
-        # Read-only unless `start --rw`: stop is a SIGKILL, and a write in
-        # flight left DH0: to validate on the next boot (boots that never
-        # reached amiagent, 2026-09-29). Everything under test lives in the
-        # host drawers VTCX: and BOOTX:.
+        # Writable: read-only (--ro) put up "Volume System is write
+        # protected" requesters that stalled the rig (the owner saw them,
+        # 2026-09-29). stop write-protects DH0: through amiagent before its
+        # SIGKILL, so no write is left in flight to validate on next boot.
         "hard_drive_0_read_only = %d" % (0 if RW else 1),
         "hard_drive_1 = %s" % (RIG / "vtc"), "hard_drive_1_label = VTCX",
         "hard_drive_2 = %s" % (RIG / "boot"), "hard_drive_2_label = BOOTX",
@@ -99,6 +107,9 @@ def mine():
 
 def start():
     setup_config_only()
+    log = RIG / "boot/boot.log"
+    if log.exists():
+        log.unlink()
     if mine():
         print("already running")
         return
@@ -108,7 +119,9 @@ def start():
         if status(quiet=True):
             print("up")
             return
-    print("[ERROR] no amiagent after 180 s")
+    log = RIG / "boot/boot.log"
+    print("[ERROR] no amiagent after 180 s; boot.log:",
+          log.read_text().strip().replace("\n", " | ") if log.exists() else "(none: go never ran)")
 
 def stop():
     if mine() and status(quiet=True):
