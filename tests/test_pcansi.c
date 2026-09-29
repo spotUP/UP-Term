@@ -76,6 +76,17 @@ static void restore_position_keeps_the_colour(void)
     vt_free(t);
 }
 
+/* 0x7F is the house glyph on the PC and a graphics glyph in the C64
+ * font DCTelnet feeds through this personality. */
+static void byte_7f_is_a_glyph(void)
+{
+    vt_term *t = h_new(4, 1, VT_PCANSI);
+    h_put(t, "a\177b");
+    CHECK_INT(h_cell(t, 1, 0)->ch, 0x2302);
+    CHECK_INT(h_cell(t, 2, 0)->ch, 'b');
+    vt_free(t);
+}
+
 static void vertical_tab_does_not_move_the_cursor(void)
 {
     vt_term *t = h_new(10, 3, VT_PCANSI);
@@ -180,6 +191,7 @@ void suite_pcansi(void)
     bold_is_bright_and_blink_is_ice();
     erase_after_blink_fills_with_the_bright_background();
     vertical_tab_does_not_move_the_cursor();
+    byte_7f_is_a_glyph();
     restore_position_keeps_the_colour();
     scroll_down_takes_the_first_of_two_parameters();
     erase_under_inverse_fills_with_the_foreground();
