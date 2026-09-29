@@ -596,6 +596,38 @@ static void deep_recursion(void)
     CHECK_STR(slot(OUT)->data, "next\n");
 }
 
+/* The words vsh tells the console about (S9). */
+static int has_word(const char *list, long n, const char *w)
+{
+    long k = 0;
+    while (k < n) {
+        if (!strcmp(list + k, w))
+            return 1;
+        k += (long)strlen(list + k) + 1;
+    }
+    return 0;
+}
+
+static void word_lists(void)
+{
+    char buf[4096];
+    long n;
+    run("myfn() { :; }; alias ll='ls -l'; MYVAR=1");
+    n = sh_word_list(&sh, SH_WORDS_COMMANDS, buf, sizeof(buf));
+    CHECK_INT(has_word(buf, n, "myfn"), 1);
+    CHECK_INT(has_word(buf, n, "ll"), 1);
+    CHECK_INT(has_word(buf, n, "fg"), 1);
+    CHECK_INT(has_word(buf, n, "printf"), 1);
+    CHECK_INT(has_word(buf, n, "["), 0);
+    CHECK_INT(has_word(buf, n, "MYVAR"), 0);
+    n = sh_word_list(&sh, SH_WORDS_VARIABLES, buf, sizeof(buf));
+    CHECK_INT(has_word(buf, n, "MYVAR"), 1);
+    CHECK_INT(has_word(buf, n, "myfn"), 0);
+    /* whole names only when it does not all fit */
+    n = sh_word_list(&sh, SH_WORDS_COMMANDS, buf, 7);
+    CHECK_INT(n > 0 && n <= 7 && buf[n - 1] == 0, 1);
+}
+
 static void incomplete_input(void)
 {
     int inc = 0;
@@ -677,5 +709,6 @@ void suite_sh_exec(void)
     read_builtin();
     vshrc_unix_names();
     deep_recursion();
+    word_lists();
     sh_shell_free(&sh);
 }

@@ -96,7 +96,7 @@ VC       := vc +$(VBCC_CFG) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,1
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c $(ENGINE) render/amiga_render.c render/glyphmap.c
 HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc \
-               handler/clip.h handler/lineedit.h handler/complete.h
+               handler/clip.h handler/lineedit.h handler/complete.h handler/vtcon_packets.h
 
 amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/vsh
 
@@ -109,7 +109,7 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # (153) on the (void) parameter casts the host compiler needs, and (65) on
 # the parameters they are for.
 VSH_SRC := shell/vsh.c shell/sh_exec.c shell/sh_expand.c shell/sh_parse.c
-$(BUILD)/amiga/vsh: $(VSH_SRC) shell/sh_exec.h shell/sh_expand.h shell/sh_parse.h
+$(BUILD)/amiga/vsh: $(VSH_SRC) shell/sh_exec.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ $(VSH_SRC)
 

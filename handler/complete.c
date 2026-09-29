@@ -252,6 +252,20 @@ int task_alive(struct Task *t)
     return found;
 }
 
+/* The shell's words (q->extra) that start with prefix; the shell's names
+ * are case-sensitive, unlike AmigaDOS's. */
+static void scan_extra(struct complete_req *q, const char *prefix)
+{
+    long k = 0;
+    size_t l = strlen(prefix);
+    while (k < q->extra_len) {
+        const char *w = q->extra + k;
+        if (!strncmp(w, prefix, l))
+            add_name(q, w, 0);
+        k += (long)strlen(w) + 1;
+    }
+}
+
 /* The worker's body: runs as its own process. */
 static void worker(void)
 {
@@ -289,6 +303,16 @@ static void worker(void)
         history_load(q);
     } else if (q->mode == HISTORY_APPEND) {
         history_append(q);
+    } else if (q->mode == COMPLETE_VARS) {
+        /* $NAME or ${NAME: the part after the $ or ${ */
+        int brace = q->word[1] == '{';
+        const char *pre = q->word + (brace ? 2 : 1);
+        scan_extra(q, pre);
+        if (q->matches) {
+            strcpy(q->add, q->common + strlen(pre));
+            if (q->matches == 1 && brace)
+                strcat(q->add, "}");
+        }
     } else {
         for (i = 0; q->word[i]; i++)
             if (q->word[i] == '/' || q->word[i] == ':')
@@ -304,6 +328,7 @@ static void worker(void)
         if (q->mode == COMPLETE_COMMANDS && split < 0) {
             scan_path(q, prefix);
             scan_residents(q, prefix);
+            scan_extra(q, prefix);
         }
         if (q->matches) {
             strcpy(q->add, q->common + strlen(prefix));

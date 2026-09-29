@@ -13,7 +13,8 @@ enum complete_mode {
     COMPLETE_COMMANDS = 1,    /* the first word: C:, the Shell's path, residents, current dir */
     CHECK_COMMAND = 2,        /* does the first word name a command? (for colouring) */
     HISTORY_LOAD = 3,         /* data <- the saved history (newest last) */
-    HISTORY_APPEND = 4        /* word -> one more line of saved history */
+    HISTORY_APPEND = 4,       /* word -> one more line of saved history */
+    COMPLETE_VARS = 5         /* $NAME / ${NAME: the shell's variable names (extra) */
 };
 
 #define HISTORY_FILE "ENVARC:vtcon.history"
@@ -30,6 +31,9 @@ struct complete_req {
     int is_dir;
     char names[COMPLETE_NAMES];   /* out: the matches, NUL-separated, for the menu */
     int names_len;
+    char extra[2048];             /* in: the shell's words (COMMANDS: its commands, VARS: its
+                                   * variables), NUL-separated; extra_len 0: none */
+    long extra_len;
     char *data;                   /* HISTORY_LOAD: buffer to fill, data_max bytes */
     long data_max, data_len;
 };

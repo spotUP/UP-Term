@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sh_exec.h"
+#include "../handler/vtcon_packets.h"
 
 static const char version[] = "$VER: vsh 0.1 (29.9.2026)";
 
@@ -730,6 +731,35 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
     return (long)j;
 }
 
+/* The console's completion and colouring learn vsh's own words (its
+ * builtins, functions, aliases and variables): sent before a prompt when
+ * they have changed. A console that is not vtcon refuses the packet. */
+static char words_sent[3][VTCON_WORDS_MAX];
+static long words_sent_len[3] = { -1, -1, -1 };
+
+static void send_words(sh_shell *sh)
+{
+    static char buf[VTCON_WORDS_MAX];
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    int kind;
+    static int refused;
+    if (refused || !fh || !fh->fh_Type)
+        return;
+    for (kind = 1; kind <= 2; kind++) {
+        long n = sh_word_list(sh, kind == 1 ? SH_WORDS_COMMANDS : SH_WORDS_VARIABLES, buf,
+                              sizeof(buf));
+        if (n == words_sent_len[kind] && !memcmp(buf, words_sent[kind], n))
+            continue;
+        if (!DoPkt(fh->fh_Type, ACTION_VTCON_WORDS, fh->fh_Arg1,
+                   kind == 1 ? VTCON_WORDS_COMMANDS : VTCON_WORDS_VARIABLES, (LONG)buf, n, 0)) {
+            refused = 1; /* not vtcon (CON:): never again */
+            return;
+        }
+        memcpy(words_sent[kind], buf, n);
+        words_sent_len[kind] = n;
+    }
+}
+
 /* ---- the prompt and the main loop ----------------------------------------------- */
 
 static void prompt(sh_shell *sh, int more)
@@ -852,8 +882,10 @@ static int vsh_main(int argc, char **argv)
         int incomplete = 0;
         if (sh.exiting)
             break;
-        if (!text)
+        if (!text) {
             sh_notify(&sh);
+            send_words(&sh);
+        }
         prompt(&sh, text != 0);
         if (!FGets(Input(), (STRPTR)line, sizeof(line)))
             break;

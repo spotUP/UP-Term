@@ -100,6 +100,19 @@ line('cd; rm -r RAM:u; ls RAM:u; echo "rm: $?"', 3)
 line('f() { if [ $1 -gt 0 ]; then f $(( $1 - 1 )); fi; }; f 40; echo deep ok', 5)
 line('g() { g; }; g; echo never', 8)      # stops with an error, the shell goes on
 line('echo "still here $?"')
+# S9: the console knows vsh's words (functions, builtins, variables)
+line("printf '\\033[H\\033[2J'")
+line('myfunc() { echo in myfunc; }')
+t('myf'); time.sleep(1); k(0x42); time.sleep(2); ret(2)       # Tab: myfunc, runs
+t('fg'); time.sleep(2)                                        # green: a builtin
+shot("vsh5l")
+k(0x16, 0x08); ret(1)                                         # Ctrl-U, empty line
+t('echo $HO'); time.sleep(1); k(0x42); time.sleep(2); ret(2)  # Tab: $HOME
+t('echo hi | pri'); time.sleep(1); k(0x42); time.sleep(5)     # Tab after |: printf
+t("'<%s>\\n'"); ret(2)
+t('echo st'); k(0x42); t('X'); time.sleep(5)                   # typed on: the late answer is dropped
+shot("vsh5m")
+k(0x16, 0x08); ret(1)
 shot("vsh5k")
 line('exit', 2)
 shot("vsh5d")

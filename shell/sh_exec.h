@@ -106,6 +106,14 @@ sh_shell *sh_shell_clone(const sh_shell *sh);
  * free child and tree (both malloc'ed); the exit status. */
 long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io);
 
+#define SH_WORDS_COMMANDS 1   /* builtins, functions, aliases */
+#define SH_WORDS_VARIABLES 2  /* variable names */
+
+/* The names the shell knows, NUL-separated, into out (at most max bytes,
+ * whole names only). Returns the bytes used. For the console's
+ * completion and command colouring. */
+long sh_word_list(const sh_shell *sh, int kind, char *out, long max);
+
 /* Run one input text (a line, or a script). Returns the exit status of
  * its last command; *incomplete is set when the text needs more lines. */
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);

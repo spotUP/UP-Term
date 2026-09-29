@@ -1036,6 +1036,48 @@ static const struct {
     { "which", b_type }, { 0, 0 } /* no "type": AmigaDOS Type prints files */
 };
 
+static long add_word(char *out, long n, long max, const char *w)
+{
+    long l = (long)strlen(w) + 1;
+    if (n + l > max)
+        return n;
+    memcpy(out + n, w, l);
+    return n + l;
+}
+
+long sh_word_list(const sh_shell *sh, int kind, char *out, long max)
+{
+    long n = 0;
+    int i;
+    if (kind == SH_WORDS_VARIABLES) {
+        const sh_var *v;
+        for (v = sh->ctx.vars; v; v = v->next)
+            n = add_word(out, n, max, v->name);
+        return n;
+    }
+    for (i = 0; builtins[i].name; i++) {
+        char c = builtins[i].name[0];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))  /* not : . [ */
+            n = add_word(out, n, max, builtins[i].name);
+    }
+    {
+        const sh_func *f;
+        for (f = sh->funcs; f; f = f->next)
+            n = add_word(out, n, max, f->name);
+    }
+    for (i = 0; i < sh->aliases.n; i++) {
+        char name[64];
+        const char *eq = strchr(sh->aliases.v[i], '=');
+        size_t l = eq ? (size_t)(eq - sh->aliases.v[i]) : strlen(sh->aliases.v[i]);
+        if (l < sizeof(name)) {
+            memcpy(name, sh->aliases.v[i], l);
+            name[l] = 0;
+            n = add_word(out, n, max, name);
+        }
+    }
+    return n;
+}
+
 static builtin_fn find_builtin(const char *name)
 {
     int i;

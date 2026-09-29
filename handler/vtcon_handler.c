@@ -45,6 +45,7 @@
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
+#include "vtcon_packets.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -147,7 +148,12 @@ typedef struct con {
     int hist_queue_len;
     int comp_busy, check_busy;
     char checked[64];            /* the first word last sent to check */
+    char *words[3];              /* ACTION_VTCON_WORDS lists by kind (1, 2), AllocVec'd */
+    long words_len[3];
+    struct Task *words_owner;    /* the shell that sent them: valid while it lives */
     int tabs;                    /* Tabs in a row */
+    unsigned long edits;         /* keys that changed the line so far */
+    unsigned long comp_edits;    /* edits when the running completion started */
     char menu[COMPLETE_NAMES];   /* the last completion's names */
     int menu_len, menu_n, menu_i, menu_start;
     ULONG foreign_idcmp;         /* its IDCMP before we added ours, to restore */
@@ -986,18 +992,115 @@ static struct Process *opener(con *c)
     return (struct Process *)t;
 }
 
+static void forget_words(con *c)
+{
+    int k;
+    for (k = 1; k <= 2; k++) {
+        if (c->words[k])
+            FreeVec(c->words[k]);
+        c->words[k] = 0;
+        c->words_len[k] = 0;
+    }
+    c->words_owner = 0;
+}
+
+/* The shell's list of kind (VTCON_WORDS_*), while the shell that sent it
+ * runs; 0 otherwise (a shell that ended takes its words with it). */
+static const char *shell_words(con *c, int kind, long *len)
+{
+    int alive;
+    Forbid();
+    alive = task_alive(c->words_owner);
+    Permit();
+    if (!alive) {
+        if (c->words_owner)
+            forget_words(c);
+        return 0;
+    }
+    *len = c->words_len[kind];
+    return c->words[kind];
+}
+
+static int in_words(const char *list, long len, const char *w)
+{
+    long k = 0;
+    while (list && k < len) {
+        if (!strcmp(list + k, w))
+            return 1;
+        k += (long)strlen(list + k) + 1;
+    }
+    return 0;
+}
+
+/* ACTION_VTCON_WORDS: a shell's names, kept while it runs. */
+static void take_words(con *c, struct DosPacket *p)
+{
+    int kind = (int)p->dp_Arg2;
+    long len = p->dp_Arg4;
+    char *copy;
+    if (kind < 1 || kind > 2 || len < 0 || !p->dp_Arg3)
+        return;
+    if (len > VTCON_WORDS_MAX)
+        len = VTCON_WORDS_MAX;
+    while (len > 0 && ((const char *)p->dp_Arg3)[len - 1])
+        len--; /* whole names only */
+    copy = (char *)AllocVec(len + 1, MEMF_ANY);
+    if (!copy)
+        return;
+    CopyMem((APTR)p->dp_Arg3, copy, len);
+    copy[len] = 0;
+    if (c->words_owner != (struct Task *)p->dp_Port->mp_SigTask)
+        forget_words(c); /* another shell now: the old one's words go */
+    if (c->words[kind])
+        FreeVec(c->words[kind]);
+    c->words[kind] = copy;
+    c->words_len[kind] = len;
+    c->words_owner = (struct Task *)p->dp_Port->mp_SigTask;
+    c->checked[0] = 0; /* colour the command word again with what it knows */
+}
+
+/* Is the word at a in command position? At the line's start, and with a
+ * shell attached also after | ; & ( (in the AmigaDOS Shell ; starts a
+ * comment, so not without one). */
+static int command_position(con *c, int a)
+{
+    const le_line *le = &c->le;
+    long n;
+    int k = a;
+    while (k > 0 && le->buf[k - 1] == ' ')
+        k--;
+    if (k == 0)
+        return 1;
+    return shell_words(c, VTCON_WORDS_COMMANDS, &n) && strchr("|;&(", le->buf[k - 1]) != 0;
+}
+
 static void start_completion(con *c)
 {
     le_line *le = &c->le;
-    int a, k;
+    int a;
+    long n = 0;
+    const char *extra = 0;
     if (c->comp_busy || !ensure_worker(c))
         return;
     a = word_start(le);
-    for (k = 0; k < a && le->buf[k] == ' '; k++)
-        ;
-    c->comp->mode = k == a ? COMPLETE_COMMANDS : COMPLETE_FILES;
-    copy_latin1(le, a, le->pos, c->comp->word, COMPLETE_MAX);
     c->menu_start = a;
+    if (a < le->pos && le->buf[a] == '$') {
+        c->comp->mode = COMPLETE_VARS;
+        extra = shell_words(c, VTCON_WORDS_VARIABLES, &n);
+        c->menu_start = a + (a + 1 < le->pos && le->buf[a + 1] == '{' ? 2 : 1);
+    } else if (command_position(c, a)) {
+        c->comp->mode = COMPLETE_COMMANDS;
+        extra = shell_words(c, VTCON_WORDS_COMMANDS, &n);
+    } else {
+        c->comp->mode = COMPLETE_FILES;
+    }
+    c->comp->extra_len = 0;
+    if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
+        CopyMem((APTR)extra, c->comp->extra, n);
+        c->comp->extra_len = n;
+    }
+    copy_latin1(le, a, le->pos, c->comp->word, COMPLETE_MAX);
+    c->comp_edits = c->edits;
     if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
 }
@@ -1008,7 +1111,19 @@ static void check_command(con *c)
 {
     unsigned char w[64];
     le_first_word(&c->le, w, sizeof(w));
-    if (!w[0] || c->check_busy || !strcmp((const char *)w, c->checked) || !ensure_worker(c))
+    if (!w[0] || c->check_busy || !strcmp((const char *)w, c->checked))
+        return;
+    {
+        /* a word the shell knows (a function, a builtin): no lookup */
+        long n;
+        const char *list = shell_words(c, VTCON_WORDS_COMMANDS, &n);
+        if (list && in_words(list, n, (const char *)w)) {
+            strcpy(c->checked, (const char *)w);
+            le_set_command(&c->le, w, 1);
+            return;
+        }
+    }
+    if (!ensure_worker(c))
         return;
     copy_latin1(&c->le, 0, c->le.len, c->check->word, COMPLETE_MAX); /* then cut */
     {
@@ -1123,6 +1238,9 @@ static void finish_completion(con *c)
         }
         c->comp_busy = 0;
         c->menu_n = 0;
+        if (c->edits != c->comp_edits)
+            continue; /* the line changed while it ran (rig: typed text got the
+                       * answer for an older word): the answer is for no word now */
         if (q->matches > 1 && q->names_len < (int)sizeof(c->menu)) {
             CopyMem(q->names, c->menu, q->names_len);
             c->menu_len = q->names_len;
@@ -1134,6 +1252,7 @@ static void finish_completion(con *c)
             continue;
         }
         type_text(c, q->add);
+        check_command(c); /* the completed word gets its colour */
         if (q->matches > 1)
             DisplayBeep(c->win ? c->win->WScreen : 0); /* completed as far as they agree */
     }
@@ -1178,6 +1297,7 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
     }
     c->tabs = 0;
     c->menu_n = 0;
+    c->edits++;
     if (!key && n == 1 && b[0] == 0x1C) { /* Ctrl-\: end of file */
         c->eof = 1;
         return;
@@ -1786,6 +1906,10 @@ static void packet(con *c, struct DosPacket *p)
             start_timer(c, (ULONG)p->dp_Arg1);
         }
         return;
+    case ACTION_VTCON_WORDS:
+        take_words(c, p);
+        reply(p, DOSTRUE, 0);
+        return;
     case ACTION_CHANGE_SIGNAL:
         if (p->dp_Arg2) {
             c->break_port = (struct MsgPort *)p->dp_Arg2;
@@ -1939,6 +2063,7 @@ static LONG handler_main(void)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
     close_window(c);
+    forget_words(c);
     if (c->comp)
         FreeVec(c->comp);
     if (c->check)
