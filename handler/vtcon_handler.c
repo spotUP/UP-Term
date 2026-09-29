@@ -908,6 +908,7 @@ static void tty_echo(void *u, const unsigned char *s, int n)
 static void tty_signal(void *u, int sig)
 {
     con *c = (con *)u;
+    DBG("tty signal", sig, (long)c->tty_owner);
     /* the break signals a patched ixemul turns into Unix signals for the
      * foreground process group (vtcon_packets.h) */
     if (sig == LD_SIGINT)
@@ -1523,6 +1524,7 @@ static void send_break(con *c, ULONG sig)
     if ((t = break_task(c)) != 0)
         Signal(t, sig);
     Permit();
+    DBG("break to", (long)sig, (long)t);
 }
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
@@ -1718,6 +1720,7 @@ static void key_event(con *c, struct IntuiMessage *im)
     if (tty_active(c)) {
         /* a Unix program's terminal: the line discipline takes the key (ISIG
          * makes ^C a break, ^\\ and ^Z signals; the rest is input) */
+        DBG("tty key", out[0], (long)((c->ld.t.c_lflag & LD_ISIG) ? c->ld.t.c_cc[LD_VSUSP] : -1));
         ld_input(&c->ld, out, n);
         if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
             rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
