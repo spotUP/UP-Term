@@ -9,7 +9,26 @@ Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill C:screen QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc QUIET
 Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info QUIET
 Delete >NIL: ENVARC:up-term ENV:up-term ALL QUIET
-Delete >NIL: ENVARC:TERMINFO ENV:TERMINFO QUIET
+; TERMINFO: ours goes, the user's from before Install comes back
+If EXISTS ENV:TERMINFO
+  Search >NIL: ENV:TERMINFO /ENV/up-term/terminfo
+  If NOT WARN
+    Delete >NIL: ENV:TERMINFO QUIET
+  EndIf
+EndIf
+If EXISTS ENVARC:TERMINFO
+  Search >NIL: ENVARC:TERMINFO /ENV/up-term/terminfo
+  If NOT WARN
+    Delete >NIL: ENVARC:TERMINFO QUIET
+  EndIf
+EndIf
+If EXISTS ENVARC:up-term-orig/env
+  Copy ENVARC:up-term-orig/env ENV:TERMINFO CLONE
+EndIf
+If EXISTS ENVARC:up-term-orig/envarc
+  Copy ENVARC:up-term-orig/envarc ENVARC:TERMINFO CLONE
+EndIf
+Delete >NIL: ENVARC:up-term-orig ALL QUIET
 Delete >NIL: ENVARC:vsh ENV:vsh ALL QUIET
 If EXISTS LIBS:ixemul.library.orig
   Copy LIBS:ixemul.library.orig LIBS:ixemul.library CLONE

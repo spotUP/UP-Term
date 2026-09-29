@@ -13,6 +13,30 @@ Copy PTY DEVS:DOSDrivers/PTY CLONE
 ; still finds the other terminals in its own directories. TERM and TERMCAP
 ; are not: TERM=vtcon in a ROM CON: window would send it xterm sequences.
 ; vsh sets both for itself on a vtcon console.
+; A TERMINFO the user had is kept in ENVARC:up-term-orig for Uninstall:
+; "env" the value of this boot, "envarc" the saved one. Once only, and never
+; our own value (an Install over an Install). Before the drawer clean-up
+; below, whose "Delete ENV:terminfo" is also the variable. Search gives 5
+; for another value and 20 for the old kit's drawer (skipped).
+If NOT EXISTS ENVARC:up-term-orig
+  MakeDir >NIL: ENVARC:up-term-orig
+  If EXISTS ENV:TERMINFO
+    Search >NIL: ENV:TERMINFO /ENV/up-term/terminfo
+    If WARN
+      If NOT ERROR
+        Copy ENV:TERMINFO ENVARC:up-term-orig/env CLONE
+      EndIf
+    EndIf
+  EndIf
+  If EXISTS ENVARC:TERMINFO
+    Search >NIL: ENVARC:TERMINFO /ENV/up-term/terminfo
+    If WARN
+      If NOT ERROR
+        Copy ENVARC:TERMINFO ENVARC:up-term-orig/envarc CLONE
+      EndIf
+    EndIf
+  EndIf
+EndIf
 Delete >NIL: ENVARC:terminfo/v/vtcon ENV:terminfo/v/vtcon QUIET
 Delete >NIL: ENVARC:terminfo/v ENVARC:terminfo ENV:terminfo/v ENV:terminfo QUIET
 Delete >NIL: ENVARC:termcap.vtcon ENV:termcap.vtcon QUIET

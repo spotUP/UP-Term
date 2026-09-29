@@ -35,7 +35,16 @@ def main():
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "runinstall").write_text("CD VTC:distkit\nExecute Install\n")
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
+    # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
+    # and Install would then replace and keep the copy there)
+    run('Assign LIBS: DH0:Libs')
+    run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
+    rc, terminfo_before = run('GetEnv TERMINFO')  # the rig's boot sets /VTC/terminfo
+    terminfo_before = terminfo_before.strip()
     run('Execute VTC:rununinstall')  # a run that stopped half-way left things behind
+    rc, out = run('GetEnv TERMINFO')
+    check(rc == 0 and out.strip() == terminfo_before and terminfo_before != '/ENV/up-term/terminfo',
+          'Uninstall with nothing installed leaves the user\'s TERMINFO', out)
     before = lib_state()
     check(before.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in before,
           'before: the original ixemul, no .orig', str(before))
@@ -49,6 +58,8 @@ def main():
     check(st.get('ixemul.library.orig') == str(ORIG_SIZE), 'the original ixemul kept as .orig', str(st))
     rc, out = run('Search LIBS:ixemul.library UP-Term')
     check('UP-Term' in out, 'the patched ixemul is in LIBS:', out)
+    rc, out = run('Execute VTC:runinstall', 120)  # a second Install must not take ours for theirs
+    check(rc == 0, 'Install again over it runs', out)
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is set (and can be)', out)
     rc, out = run('List >NIL: ENV:up-term/terminfo/v/vtcon')
@@ -71,8 +82,10 @@ def main():
     st = lib_state()
     check(st.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in st,
           'after Uninstall: the original ixemul back, no .orig', str(st))
+    rc, out = run('GetEnv TERMINFO')
+    check(rc == 0 and out.strip() == terminfo_before, 'after Uninstall: the TERMINFO from before Install is back', out)
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'C:vsh', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:TERMINFO',
+                        'L:vtcon-handler', 'C:vsh', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
                         'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info')
             if run('List >NIL: %s' % f)[0] == 0]
     check(not left, 'Uninstall removed the files', ' '.join(left))
