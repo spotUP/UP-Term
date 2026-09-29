@@ -113,6 +113,7 @@ typedef struct con {
     WORD fontsize;
     ULONG wflags;
     int inactive;
+    ULONG fg_rgb, bg_rgb;        /* DARK / FG / BG options, VR_KEEP = the screen's */
     int layout_dirty;            /* a CSI t/u/x/y changed the text area */
     int auto_open;               /* AUTO: no window until the first read or write */
     int spec_parsed;
@@ -346,6 +347,23 @@ static void copy_str(char *d, const char *s, int max)
     d[i] = 0;
 }
 
+/* "rrggbb" (hex) or VR_KEEP when unreadable. */
+static ULONG parse_rgb(const char *s)
+{
+    ULONG v = 0;
+    int n = 0;
+    if (*s == '#')
+        s++;
+    for (; *s && n < 6; s++, n++) {
+        char h = *s;
+        if (h >= '0' && h <= '9') v = v * 16 + (ULONG)(h - '0');
+        else if (h >= 'a' && h <= 'f') v = v * 16 + (ULONG)(h - 'a' + 10);
+        else if (h >= 'A' && h <= 'F') v = v * 16 + (ULONG)(h - 'A' + 10);
+        else return VR_KEEP;
+    }
+    return n == 6 ? v : VR_KEEP;
+}
+
 /* "x/y/w/h/title/OPT/OPT..." after the colon. */
 static void parse_spec(con *c, const char *s)
 {
@@ -357,6 +375,7 @@ static void parse_spec(con *c, const char *s)
     c->wh = 200;
     copy_str(c->title, "vtcon", sizeof(c->title));
     c->pers = VT_XTERM;
+    c->fg_rgb = c->bg_rgb = VR_KEEP;
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;
     for (;;) {
@@ -431,6 +450,13 @@ static void parse_spec(con *c, const char *s)
             c->pers = VT_PCANSI;
         } else if (str_ieq(field, "LATIN1")) {
             c->latin1 = 1;
+        } else if (str_ieq(field, "DARK")) {
+            c->fg_rgb = 0xC0C0C0UL; /* light grey on black */
+            c->bg_rgb = 0x000000UL;
+        } else if (str_ipre(field, "FG", &rest)) {
+            c->fg_rgb = parse_rgb(rest);
+        } else if (str_ipre(field, "BG", &rest)) {
+            c->bg_rgb = parse_rgb(rest);
         } else if (str_ieq(field, "CP437")) {
             c->cp437 = 1;
         } else if (str_ipre(field, "SCREEN", &rest)) {
@@ -568,6 +594,7 @@ have_window:
     else if (c->pers == VT_XTERM && c->cp437)
         vt_set_charset(c->t, VT_CS_CP437);
     vr_init(&c->r, c->win, c->font, c->t, c->pers == VT_PCANSI ? VT_ENC_CP437 : VT_ENC_LATIN1);
+    vr_set_defaults(&c->r, c->fg_rgb, c->bg_rgb);
     le_init(&c->le, c->t, le_out, c);
     c->le.utf8 = c->pers == VT_XTERM && !c->latin1 && !c->cp437;
     DBG("vr_init", c->r.cols, c->r.rows);

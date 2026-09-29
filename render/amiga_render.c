@@ -135,6 +135,28 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     vr_layout(r);
 }
 
+void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb)
+{
+    ULONG want[2];
+    int i;
+    want[0] = fg_rgb;
+    want[1] = bg_rgb;
+    for (i = 0; i < 2; i++) {
+        LONG p;
+        if (want[i] == VR_KEEP)
+            continue;
+        p = obtain(r, want[i] & 0xFFFFFF);
+        if (p < 0)
+            continue;
+        if (r->n_rgb < 64)
+            r->rgb_obtained[r->n_rgb++] = p; /* released in vr_free */
+        if (i == 0)
+            r->pen_default_fg = (UBYTE)p;
+        else
+            r->pen_default_bg = (UBYTE)p;
+    }
+}
+
 void vr_free(vr_render *r)
 {
     int i;

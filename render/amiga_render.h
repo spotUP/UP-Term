@@ -54,6 +54,12 @@ typedef struct vr_render {
     LONG sel_ay, sel_by;
 } vr_render;
 
+/* Default colours from RGB (0xRRGGBB; VR_KEEP leaves the screen's text /
+ * background pen): XCON:'s DARK, FG and BG options. Call after vr_init,
+ * then vr_redraw. */
+#define VR_KEEP 0xFFFFFFFFUL
+void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
+
 /* Palette used for xterm / pcansi: 16 ANSI colours, 6x6x6 cube, 24 greys. */
 ULONG vr_palette_rgb(int index);
 

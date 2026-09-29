@@ -21,6 +21,7 @@ USE
 
   Options after the title, one per /: CLOSE WAIT BACKDROP NODRAG NOBORDER
   NOSIZE NODEPTH INACTIVE  SCREEN name  FONT name size
+  DARK (light grey on black)  FG rrggbb  BG rrggbb (default colours, hex)
   XTERM AMIGA PCANSI (dialect)  LATIN1 or CP437 (xterm byte set; default
   UTF-8)
 
