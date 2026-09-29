@@ -47,6 +47,12 @@
 #include "complete.h"
 #include "vtcon_packets.h"
 
+/* rexx/rexxio.h: ARexx PUSH and QUEUE */
+#ifndef ACTION_STACK
+#define ACTION_STACK 2002L
+#define ACTION_QUEUE 2003L
+#endif
+
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
 struct IntuitionBase *IntuitionBase;
@@ -1906,6 +1912,28 @@ static void packet(con *c, struct DosPacket *p)
             start_timer(c, (ULONG)p->dp_Arg1);
         }
         return;
+    case ACTION_STACK:
+    case ACTION_QUEUE: {
+        /* ARexx PUSH / QUEUE (rexx/rexxio.h): a line into the input, at the
+         * front (stack) or the end (queue), read as if typed but not shown
+         * -- as the ROM CON: does (rig: rx "push 'echo pushed'; queue ...") */
+        const vt_u8 *b = (const vt_u8 *)p->dp_Arg2;
+        LONG n = p->dp_Arg3;
+        if (n < 0 || !b)
+            n = 0;
+        if (n > IN_MAX - c->in_len)
+            n = IN_MAX - c->in_len;
+        if (p->dp_Type == ACTION_STACK && n > 0) {
+            memmove(c->in + n, c->in, c->in_len);
+            CopyMem((APTR)b, c->in, n);
+            c->in_len += n;
+        } else {
+            in_append(c, b, (int)n);
+        }
+        reply(p, n, 0);
+        service_reads(c);
+        return;
+    }
     case ACTION_VTCON_WORDS:
         take_words(c, p);
         reply(p, DOSTRUE, 0);
