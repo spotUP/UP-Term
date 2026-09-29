@@ -233,6 +233,25 @@ static void history_append(struct complete_req *q)
     Close(f);
 }
 
+int task_alive(struct Task *t)
+{
+    struct Node *n;
+    int found = 0;
+    if (!t)
+        return 0;
+    Forbid();
+    if (t == SysBase->ThisTask)
+        found = 1;
+    for (n = SysBase->TaskReady.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
+        if (n == &t->tc_Node)
+            found = 1;
+    for (n = SysBase->TaskWait.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
+        if (n == &t->tc_Node)
+            found = 1;
+    Permit();
+    return found;
+}
+
 /* The worker's body: runs as its own process. */
 static void worker(void)
 {
@@ -252,8 +271,15 @@ static void worker(void)
 
     /* the opener's current directory (read without its cooperation, as
      * console-side completion must; it is the Shell's, still alive) */
-    if (q->opener && q->opener->pr_Task.tc_Node.ln_Type == NT_PROCESS && q->opener->pr_CurrentDir)
-        dir = DupLock(q->opener->pr_CurrentDir);
+    {
+        BPTR cd = 0;
+        Forbid(); /* the opener may have ended since the request was made */
+        if (task_alive(&q->opener->pr_Task) && q->opener->pr_Task.tc_Node.ln_Type == NT_PROCESS)
+            cd = q->opener->pr_CurrentDir;
+        Permit();
+        if (cd)
+            dir = DupLock(cd);
+    }
     if (dir)
         old = CurrentDir(dir);
 

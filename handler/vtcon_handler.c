@@ -93,6 +93,8 @@ typedef struct con {
     int closing;                 /* close gadget clicked */
     int eof;                     /* Ctrl-\ or close gadget in cooked mode */
     struct MsgPort *break_port;  /* who gets Ctrl-C/D/E/F */
+    struct Task *break_owner;    /* break_port's task, read while it was alive */
+    struct MsgPort *home_port;   /* the opener's: the target again when break_port's process ends */
     enum vt_personality pers;
     int latin1;
     int cp437;
@@ -958,9 +960,30 @@ static int ensure_worker(con *c)
     return c->comp_port && c->comp && c->check && c->hist;
 }
 
+/* The process Ctrl-C goes to and whose directory completion uses: the
+ * last ACTION_CHANGE_SIGNAL target while it lives (a program the Shell
+ * runs may set itself and end without handing it back: the handler then
+ * signalled, and the completion worker read, a process that was gone --
+ * #80000008 on the rig), else the process that opened the window. Call
+ * under Forbid to use the answer. */
+static struct Task *break_task(con *c)
+{
+    if (c->break_port && task_alive(c->break_owner))
+        return c->break_owner;
+    c->break_port = c->home_port;
+    c->break_owner = 0;
+    if (c->home_port && task_alive((struct Task *)c->home_port->mp_SigTask))
+        return (struct Task *)c->home_port->mp_SigTask;
+    return 0;
+}
+
 static struct Process *opener(con *c)
 {
-    return c->break_port ? (struct Process *)c->break_port->mp_SigTask : 0;
+    struct Task *t;
+    Forbid();
+    t = break_task(c);
+    Permit();
+    return (struct Process *)t;
 }
 
 static void start_completion(con *c)
@@ -1226,8 +1249,11 @@ static long keypad_key(UWORD code)
 
 static void send_break(con *c, ULONG sig)
 {
-    if (c->break_port && c->break_port->mp_SigTask)
-        Signal((struct Task *)c->break_port->mp_SigTask, sig);
+    struct Task *t;
+    Forbid();
+    if ((t = break_task(c)) != 0)
+        Signal(t, sig);
+    Permit();
 }
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
@@ -1686,7 +1712,8 @@ static void packet(con *c, struct DosPacket *p)
             name[i] = 0;
             parse_spec(c, colon >= 0 ? name + colon + 1 : name);
             c->spec_parsed = 1;
-            c->break_port = p->dp_Port;
+            c->break_port = c->home_port = p->dp_Port;
+            c->break_owner = (struct Task *)p->dp_Port->mp_SigTask;
             DBG("open window", c->ww, c->wh);
             if (!c->auto_open && !open_window(c)) {
                 DBG("open failed", c->win, c->t);
@@ -1760,8 +1787,10 @@ static void packet(con *c, struct DosPacket *p)
         }
         return;
     case ACTION_CHANGE_SIGNAL:
-        if (p->dp_Arg2)
+        if (p->dp_Arg2) {
             c->break_port = (struct MsgPort *)p->dp_Arg2;
+            c->break_owner = (struct Task *)c->break_port->mp_SigTask;
+        }
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_DISK_INFO: {

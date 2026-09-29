@@ -34,6 +34,11 @@ struct complete_req {
     long data_max, data_len;
 };
 
+/* Is t a task that still exists (running, ready or waiting)? A process
+ * that made itself the Ctrl-C target (ACTION_CHANGE_SIGNAL) may end
+ * without handing it back. Call under Forbid to use the answer. */
+int task_alive(struct Task *t);
+
 /* Start the scan; the request comes back on `reply`. 0 if no worker. */
 int complete_start(struct complete_req *q, struct MsgPort *reply, struct Process *opener);
 

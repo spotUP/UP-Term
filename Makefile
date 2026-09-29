@@ -98,7 +98,7 @@ HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler
 HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc \
                handler/clip.h handler/lineedit.h handler/complete.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/vsh
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/vsh
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -124,6 +124,10 @@ $(BUILD)/amiga/winbox: tests/amiga/winbox.c
 $(BUILD)/amiga/sizewatch: tests/amiga/sizewatch.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/sizewatch.c
+
+$(BUILD)/amiga/breakport: tests/amiga/breakport.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/breakport.c
 
 $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/vtengine.h
 	@mkdir -p $(BUILD)/amiga
