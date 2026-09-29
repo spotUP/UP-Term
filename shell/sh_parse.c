@@ -867,3 +867,94 @@ int sh_dump(const sh_node *n, char *buf, int max)
     dump(&o, n);
     return o.n;
 }
+
+/* ---- copy ----------------------------------------------------------------- */
+
+static char *copy_str(sh_parse *p, const char *s, int *bad)
+{
+    char *r;
+    if (!s)
+        return 0;
+    r = dup_n(p, s, (long)strlen(s));
+    if (!r)
+        *bad = 1;
+    return r;
+}
+
+static sh_word *copy_words(sh_parse *p, const sh_word *w, int *bad)
+{
+    sh_word *head = 0, **tail = &head;
+    for (; w && !*bad; w = w->next) {
+        sh_word *c = (sh_word *)alloc(p, sizeof(sh_word));
+        if (!c) {
+            *bad = 1;
+            break;
+        }
+        c->text = copy_str(p, w->text, bad);
+        c->next = 0;
+        *tail = c;
+        tail = &c->next;
+    }
+    return head;
+}
+
+static sh_node *copy_node(sh_parse *p, const sh_node *n, int *bad)
+{
+    sh_node *c;
+    const sh_redir *r;
+    const sh_case *k;
+    sh_redir **rt;
+    sh_case **kt;
+    if (!n || *bad)
+        return 0;
+    c = (sh_node *)alloc(p, sizeof(sh_node));
+    if (!c) {
+        *bad = 1;
+        return 0;
+    }
+    *c = *n;
+    c->a = copy_node(p, n->a, bad);
+    c->b = copy_node(p, n->b, bad);
+    c->c = copy_node(p, n->c, bad);
+    c->words = copy_words(p, n->words, bad);
+    c->assigns = copy_words(p, n->assigns, bad);
+    c->name = copy_str(p, n->name, bad);
+    c->redirs = 0;
+    for (r = n->redirs, rt = &c->redirs; r && !*bad; r = r->next) {
+        sh_redir *d = (sh_redir *)alloc(p, sizeof(sh_redir));
+        if (!d) {
+            *bad = 1;
+            break;
+        }
+        *d = *r;
+        d->target = copy_str(p, r->target, bad);
+        d->next = 0;
+        *rt = d;
+        rt = &d->next;
+    }
+    c->cases = 0;
+    for (k = n->cases, kt = &c->cases; k && !*bad; k = k->next) {
+        sh_case *d = (sh_case *)alloc(p, sizeof(sh_case));
+        if (!d) {
+            *bad = 1;
+            break;
+        }
+        d->patterns = copy_words(p, k->patterns, bad);
+        d->body = copy_node(p, k->body, bad);
+        d->next = 0;
+        *kt = d;
+        kt = &d->next;
+    }
+    return c;
+}
+
+void sh_parse_copy(const sh_node *n, sh_parse *out)
+{
+    int bad = 0;
+    memset(out, 0, sizeof(*out));
+    out->tree = copy_node(out, n, &bad);
+    if (bad) {
+        sh_parse_free(out);
+        out->tree = 0;
+    }
+}

@@ -10,8 +10,18 @@ static void parses(const char *text, const char *want)
     if (p.error) {
         CHECK_STR(p.error, "(no error)");
     } else {
+        sh_parse copy;
         sh_dump(p.tree, buf, sizeof(buf));
         CHECK_STR(buf, want);
+        /* every tree also copies whole: the copy outlives the parse
+         * (ASan catches a pointer left into the freed arena) */
+        sh_parse_copy(p.tree, &copy);
+        sh_parse_free(&p);
+        CHECK_INT(copy.tree != 0 || !*text, 1);
+        sh_dump(copy.tree, buf, sizeof(buf));
+        CHECK_STR(buf, want);
+        sh_parse_free(&copy);
+        return;
     }
     sh_parse_free(&p);
 }

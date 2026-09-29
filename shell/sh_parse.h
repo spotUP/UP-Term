@@ -81,4 +81,9 @@ void sh_parse_free(sh_parse *p);
  * (max bytes); returns the length. */
 int  sh_dump(const sh_node *n, char *out, int max);
 
+/* A copy of the tree n (and everything it points to) in out's own arena,
+ * independent of n's parse: a subshell process runs it after the parse
+ * it came from is gone. out->tree is 0 when memory runs out. */
+void sh_parse_copy(const sh_node *n, sh_parse *out);
+
 #endif
