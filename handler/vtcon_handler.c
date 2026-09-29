@@ -113,6 +113,10 @@ typedef struct con {
     ULONG wflags;
     int inactive;
     int layout_dirty;            /* a CSI t/u/x/y changed the text area */
+    int auto_open;               /* AUTO: no window until the first read or write */
+    int spec_parsed;
+    struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
+    ULONG foreign_idcmp;         /* its IDCMP before we added ours, to restore */
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
     int dragging, drag_moved;    /* mouse selection */
@@ -398,8 +402,23 @@ static void parse_spec(con *c, const char *s)
             c->wflags &= ~WFLG_DEPTHGADGET;
         } else if (str_ieq(field, "INACTIVE")) {
             c->wflags &= ~WFLG_ACTIVATE;
-        } else if (str_ieq(field, "SIMPLE") || str_ieq(field, "SMART") || str_ieq(field, "AUTO")) {
-            /* SMART refresh always; AUTO opens at once (both: ledger H1) */
+        } else if (str_ieq(field, "AUTO")) {
+            c->auto_open = 1; /* the window opens on the first read or write */
+        } else if (str_ipre(field, "WINDOW", &rest)) {
+            /* WINDOW 0xaddr: draw into a window someone else opened */
+            ULONG v = 0;
+            if (rest[0] == '0' && (rest[1] == 'x' || rest[1] == 'X'))
+                rest += 2;
+            for (; *rest; rest++) {
+                char h = *rest;
+                if (h >= '0' && h <= '9') v = v * 16 + (ULONG)(h - '0');
+                else if (h >= 'a' && h <= 'f') v = v * 16 + (ULONG)(h - 'a' + 10);
+                else if (h >= 'A' && h <= 'F') v = v * 16 + (ULONG)(h - 'A' + 10);
+                else break;
+            }
+            c->foreign = (struct Window *)v;
+        } else if (str_ieq(field, "SIMPLE") || str_ieq(field, "SMART")) {
+            /* SMART refresh always: the cell grid redraws on refresh anyway */
         } else if (str_ieq(field, "XTERM")) {
             c->pers = VT_XTERM;
         } else if (str_ieq(field, "AMIGA")) {
@@ -487,6 +506,17 @@ static int open_window(con *c)
         return 0;
     c->locked = scr;
     c->font = open_font(c);
+    if (c->foreign) {
+        /* WINDOW 0xaddr: use it as it is; add the IDCMP we need */
+        c->win = c->foreign;
+        c->foreign_idcmp = c->win->IDCMPFlags;
+        if (!ModifyIDCMP(c->win, c->foreign_idcmp | IDCMP_RAWKEY | IDCMP_NEWSIZE |
+                         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS |
+                         IDCMP_MOUSEMOVE))
+            return 0;
+        SetFont(c->win->RPort, c->font);
+        goto have_window;
+    }
     tags[n].ti_Tag = WA_Left;        tags[n++].ti_Data = c->wx;
     tags[n].ti_Tag = WA_Top;         tags[n++].ti_Data = c->wy;
     tags[n].ti_Tag = WA_Width;       tags[n++].ti_Data = c->ww;
@@ -508,6 +538,7 @@ static int open_window(con *c)
     DBG("window", c->win, 0);
     if (!c->win)
         return 0;
+have_window:
 
     cb.damage = cb_damage;
     cb.scroll = cb_scroll;
@@ -559,7 +590,10 @@ static void close_window(con *c)
         c->t = 0;
     }
     if (c->win) {
-        CloseWindow(c->win);
+        if (c->win == c->foreign)
+            ModifyIDCMP(c->win, c->foreign_idcmp); /* hand it back as we found it */
+        else
+            CloseWindow(c->win);
         c->win = 0;
     }
     if (c->font && c->font_opened)
@@ -1109,7 +1143,7 @@ static void packet(con *c, struct DosPacket *p)
     case ACTION_FINDOUTPUT:
     case ACTION_FINDUPDATE: {
         struct FileHandle *fh = (struct FileHandle *)BADDR(p->dp_Arg1);
-        if (!c->win) {
+        if (!c->spec_parsed) {
             /* the first open names the window */
             UBYTE *b = (UBYTE *)BADDR(p->dp_Arg3);
             char name[256];
@@ -1121,9 +1155,10 @@ static void packet(con *c, struct DosPacket *p)
             }
             name[i] = 0;
             parse_spec(c, colon >= 0 ? name + colon + 1 : name);
+            c->spec_parsed = 1;
             c->break_port = p->dp_Port;
             DBG("open window", c->ww, c->wh);
-            if (!open_window(c)) {
+            if (!c->auto_open && !open_window(c)) {
                 DBG("open failed", c->win, c->t);
                 close_window(c);
                 reply(p, DOSFALSE, ERROR_NO_FREE_STORE);
@@ -1152,6 +1187,10 @@ static void packet(con *c, struct DosPacket *p)
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
+        if (!c->win && !open_window(c)) {
+            reply(p, -1, ERROR_NO_FREE_STORE);
+            return;
+        }
         if (c->nreads < READ_Q) {
             c->reads[c->nreads++] = p;
             service_reads(c);
@@ -1160,6 +1199,10 @@ static void packet(con *c, struct DosPacket *p)
         }
         return;
     case ACTION_WRITE:
+        if (!c->win && !open_window(c)) {
+            reply(p, -1, ERROR_NO_FREE_STORE);
+            return;
+        }
         output(c, (const vt_u8 *)p->dp_Arg2, p->dp_Arg3);
         reply(p, p->dp_Arg3, 0);
         service_reads(c); /* the output may have queued a report */
@@ -1194,6 +1237,8 @@ static void packet(con *c, struct DosPacket *p)
     case ACTION_DISK_INFO: {
         struct InfoData *id = (struct InfoData *)BADDR(p->dp_Arg1);
         LONG i;
+        if (!c->win)
+            open_window(c); /* as V47's con-handler does: the caller wants the window */
         for (i = 0; i < (LONG)sizeof(*id); i++)
             ((UBYTE *)id)[i] = 0;
         id->id_DiskType = 0x434F4E00L; /* 'CON\0' (no NDK name; value unverified against the ROM) */
