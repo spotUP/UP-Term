@@ -19,6 +19,7 @@
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <exec/execbase.h>
+#include <exec/interrupts.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
@@ -26,6 +27,7 @@
 #include <devices/conunit.h>
 #include <devices/timer.h>
 #include <devices/inputevent.h>
+#include <devices/input.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <graphics/gfxbase.h>
@@ -105,6 +107,12 @@ typedef struct con {
     struct timerequest *timer;
     int timer_open, timer_busy;
     struct IOStdReq *rom_io;     /* ROM console unit for DISK_INFO callers */
+    struct MsgPort *input_port;  /* input.device: size events for ixemul's SIGWINCH */
+    struct IOStdReq *input_io;
+    struct Interrupt winch_irq;  /* our input handler (priority 20), see post_sizewindow */
+    struct InputEvent winch_ev;  /* the size event it adds to the chain */
+    volatile UBYTE winch_pending;
+    UBYTE winch_added;
     struct MsgPort *rom_port;
     /* window spec */
     WORD wx, wy, ww, wh;
@@ -306,6 +314,8 @@ static void cb_title(void *u, const char *s)
 }
 
 static void resize(con *c);
+static void sync_size(con *c);
+static void post_sizewindow(con *c);
 
 /* The engine's idea of the default colours: what the pens show. */
 static void report_defaults(con *c)
@@ -706,6 +716,21 @@ have_window:
 
 static void close_window(con *c)
 {
+    if (c->input_io) {
+        if (c->winch_added) {
+            c->input_io->io_Command = IND_REMHANDLER;
+            c->input_io->io_Data = &c->winch_irq;
+            DoIO((struct IORequest *)c->input_io);
+            c->winch_added = 0;
+        }
+        CloseDevice((struct IORequest *)c->input_io);
+        DeleteIORequest((struct IORequest *)c->input_io);
+        c->input_io = 0;
+    }
+    if (c->input_port) {
+        DeleteMsgPort(c->input_port);
+        c->input_port = 0;
+    }
     if (c->rom_io) {
         CloseDevice((struct IORequest *)c->rom_io);
         DeleteIORequest((struct IORequest *)c->rom_io);
@@ -1436,8 +1461,11 @@ static int raw_report(con *c, int cls)
 
 static void resize(con *c)
 {
-    if (vr_layout(&c->r))
+    if (vr_layout(&c->r)) {
         vt_resize(c->t, c->r.cols, c->r.rows);
+        sync_size(c);
+        post_sizewindow(c);
+    }
     vr_redraw(&c->r);
     vr_cursor_on(&c->r);
     raw_report(c, 12); /* IECLASS_SIZEWINDOW */
@@ -1529,6 +1557,73 @@ static void idcmp(con *c)
 
 /* ---- packets ------------------------------------------------------------------------ */
 
+/* The ROM unit's size fields are what ixemul's TIOCGWINSZ reads
+ * (cu_XMax/YMax + 1, __tioctl.c:247). The ROM console recomputes them only
+ * when written to, which vtcon never does, so after a resize they stayed
+ * at the old size (rig, 2026-09-29: tcsh kept 47x26 in a 97-column
+ * window). The grid is vtcon's: its size is written there. */
+static void sync_size(con *c)
+{
+    struct ConUnit *cu;
+    if (!c->rom_io || !c->t)
+        return;
+    cu = (struct ConUnit *)c->rom_io->io_Unit;
+    cu->cu_XMax = (WORD)(vt_cols(c->t) - 1);
+    cu->cu_YMax = (WORD)(vt_rows(c->t) - 1);
+}
+
+/* ixemul raises SIGWINCH from an input handler at priority 10 that
+ * watches the chain for IECLASS_SIZEWINDOW events on the program's window
+ * (ix_sigwinch.c). On Kickstart 3.1 Intuition sends none -- a probe
+ * handler at priority 10 counted 0 for a drag of the size gadget and 0
+ * for one written with IND_WRITEEVENT, which enters above Intuition and
+ * does not come out of it (rig, 2026-09-29). So this handler, at 20,
+ * between Intuition (50) and ixemul, adds that event to the chain after
+ * a resize; input.device's 10 Hz timer events run it soon after. */
+static struct InputEvent *winch_handler(__reg("a0") struct InputEvent *chain, __reg("a1") APTR data)
+{
+    con *c = (con *)data;
+    if (c->winch_pending) {
+        c->winch_pending = 0;
+        c->winch_ev.ie_NextEvent = chain;
+        return &c->winch_ev;
+    }
+    return chain;
+}
+
+static void post_sizewindow(con *c)
+{
+    if (!c->win)
+        return;
+    if (!c->winch_added) {
+        c->input_port = CreateMsgPort();
+        if (!c->input_port)
+            return;
+        c->input_io = (struct IOStdReq *)CreateIORequest(c->input_port, sizeof(struct IOStdReq));
+        if (!c->input_io || OpenDevice((STRPTR)"input.device", 0, (struct IORequest *)c->input_io, 0)) {
+            if (c->input_io)
+                DeleteIORequest((struct IORequest *)c->input_io);
+            c->input_io = 0;
+            DeleteMsgPort(c->input_port);
+            c->input_port = 0;
+            return;
+        }
+        memset(&c->winch_ev, 0, sizeof(c->winch_ev));
+        c->winch_ev.ie_Class = IECLASS_SIZEWINDOW;
+        c->winch_irq.is_Code = (void (*)())winch_handler;
+        c->winch_irq.is_Data = (APTR)c;
+        c->winch_irq.is_Node.ln_Pri = 20;
+        c->winch_irq.is_Node.ln_Name = (char *)"vtcon SIGWINCH";
+        c->input_io->io_Command = IND_ADDHANDLER;
+        c->input_io->io_Data = &c->winch_irq;
+        DoIO((struct IORequest *)c->input_io);
+        c->winch_added = 1;
+    }
+    c->winch_ev.ie_EventAddress = (APTR)c->win;
+    c->winch_pending = 1;
+    DBG("sigwinch", c->winch_added, 0);
+}
+
 static struct IOStdReq *rom_console(con *c)
 {
     /* DISK_INFO callers get a real console.device unit on our window, so
@@ -1554,6 +1649,7 @@ static struct IOStdReq *rom_console(con *c)
     c->rom_io->io_Data = (APTR)"\x9b" "0 p";
     c->rom_io->io_Length = 4;
     DoIO((struct IORequest *)c->rom_io);
+    sync_size(c);
     return c->rom_io;
 }
 
