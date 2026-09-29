@@ -880,6 +880,78 @@ static int plain_style(const vr_style *st)
            st->ul == st->fg && !st->font;
 }
 
+/* A DEC double-width or double-height row: each of its first half of cells
+ * drawn two cells wide -- the glyph into a one-plane mask, scaled 2x wide
+ * (and 2x tall for the height halves, of which the top or bottom half is
+ * stamped). The whole row is drawn: its cells do not map 1:1 to pixels. */
+static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, int size)
+{
+    WORD cw = r->cw, ch = r->ch, py = (WORD)(r->oy + y * ch);
+    WORD sh = (WORD)(size == VT_LINE_DOUBLE_WIDTH ? ch : 2 * ch);
+    struct BitMap *full = AllocBitMap(cw, ch, 1, BMF_CLEAR, 0);
+    struct BitMap *big = AllocBitMap(2 * cw, sh, 1, BMF_CLEAR, 0);
+    struct RastPort trp;
+    struct BitScaleArgs bsa;
+    int x, half = (r->cols + 1) / 2;
+    vr_style st;
+    fill(r, r->ox, py, (WORD)(r->ox + r->cols * cw - 1), (WORD)(py + ch - 1), r->pen_default_bg);
+    if (!full || !big) {
+        if (full)
+            FreeBitMap(full);
+        if (big)
+            FreeBitMap(big);
+        return;
+    }
+    InitRastPort(&trp);
+    trp.BitMap = full;
+    SetAPen(&trp, 1);
+    SetDrMd(&trp, JAM1);
+    for (x = 0; x < half && x < ncells; x++) {
+        WORD px = (WORD)(r->ox + x * 2 * cw);
+        vt_glyph g;
+        struct TextFont *font = r->font;
+        UBYTE code;
+        cell_style(r, &c[x], selected(r, x, y - r->view), &st);
+        fill(r, px, py, (WORD)(px + 2 * cw - 1), (WORD)(py + ch - 1), st.bg);
+        g = vt_map_glyph(c[x].ch, r->enc);
+        code = g.kind == VT_GLYPH_FONT ? g.code : (UBYTE)'?';
+        if (st.font && st.font <= 10 && r->alt_font[st.font])
+            font = r->alt_font[st.font];
+        if (code != ' ') {
+            SetFont(&trp, font);
+            SetSoftStyle(&trp, style_of(st.attr), FSF_BOLD | FSF_ITALIC);
+            SetRast(&trp, 0);
+            Move(&trp, 0, r->base);
+            Text(&trp, (STRPTR)&code, 1);
+            bsa.bsa_SrcX = bsa.bsa_SrcY = 0;
+            bsa.bsa_SrcWidth = (UWORD)cw;
+            bsa.bsa_SrcHeight = (UWORD)ch;
+            bsa.bsa_XSrcFactor = 1;
+            bsa.bsa_XDestFactor = 2;
+            bsa.bsa_YSrcFactor = (UWORD)ch;
+            bsa.bsa_YDestFactor = (UWORD)sh;
+            bsa.bsa_SrcBitMap = full;
+            bsa.bsa_DestBitMap = big;
+            bsa.bsa_DestX = bsa.bsa_DestY = 0;
+            bsa.bsa_Flags = 0;
+            BitMapScale(&bsa);
+            WaitBlit();
+            ink_a(r, st.fg);
+            SetDrMd(r->rp, JAM1);
+            BltTemplate((PLANEPTR)(big->Planes[0] +
+                                   (size == VT_LINE_DOUBLE_BOTTOM ? (LONG)ch * big->BytesPerRow : 0)),
+                        0, (WORD)big->BytesPerRow, r->rp, px, py, (WORD)(2 * cw), ch);
+        }
+        if ((st.attr & LINE_ATTRS) || (st.deco & VT_DECO_IDEO_MASK))
+            decorate(r, 2, px, py, &st);
+    }
+    WaitBlit();
+    FreeBitMap(big);
+    FreeBitMap(full);
+    if (r->cursor_drawn && r->cursor_y == y)
+        r->cursor_drawn = 0; /* the cursor cell was just painted over */
+}
+
 static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
@@ -902,6 +974,10 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         const vt_cell *last = 0;
         if (!c)
             continue;
+        if (!r->view && vt_row_size(r->t, gy)) {
+            draw_double_row(r, y, c, ncells, vt_row_size(r->t, gy));
+            continue;
+        }
         n = 0;
         nd = 0;
         for (x = x0; x < x1 && x < ncells; x++) {
@@ -1188,8 +1264,9 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
 
 static void cursor_flip(vr_render *r)
 {
-    WORD px = r->ox + r->cursor_x * r->cw, py = r->oy + r->cursor_y * r->ch;
-    WORD x1 = (WORD)(px + r->cw - 1), y1 = (WORD)(py + r->ch - 1);
+    int wide = !r->view && vt_row_size(r->t, r->cursor_y) ? 2 : 1; /* a double-size row */
+    WORD px = (WORD)(r->ox + r->cursor_x * r->cw * wide), py = r->oy + r->cursor_y * r->ch;
+    WORD x1 = (WORD)(px + r->cw * wide - 1), y1 = (WORD)(py + r->ch - 1);
     int style = vt_cursor_style(r->t);   /* DECSCUSR */
     if (style == 3 || style == 4)
         py = (WORD)(y1 - 1);              /* underline: the two bottom rows */

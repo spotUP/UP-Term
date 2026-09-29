@@ -439,6 +439,34 @@ static void scheme_updates_when_asked(void)
     vt_free(t);
 }
 
+/* ---- phase A3: DEC double-width and double-height lines ---- */
+
+static void double_width_lines_hold_half_the_columns(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    int x, y;
+    h_put(t, "\033#6abcdefg");             /* 5 columns: wraps after e */
+    CHECK_INT(vt_row_size(t, 0), VT_LINE_DOUBLE_WIDTH);
+    CHECK_STR(h_row(t, 0), "abcde");
+    CHECK_STR(h_row(t, 1), "fg");
+    h_put(t, "\033[1;9H");                 /* CUP past the half: clamped */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 4);
+    h_put(t, "\033[2;1H\033#3\033[3;1H\033#4");
+    CHECK_INT(vt_row_size(t, 1), VT_LINE_DOUBLE_TOP);
+    CHECK_INT(vt_row_size(t, 2), VT_LINE_DOUBLE_BOTTOM);
+    h_put(t, "\033[3;1H\n");               /* a scroll takes the sizes along */
+    CHECK_INT(vt_row_size(t, 0), VT_LINE_DOUBLE_TOP);
+    CHECK_INT(vt_row_size(t, 1), VT_LINE_DOUBLE_BOTTOM);
+    CHECK_INT(vt_row_size(t, 2), 0);
+    h_put(t, "\033[1;1H\033#5");
+    CHECK_INT(vt_row_size(t, 0), 0);
+    h_put(t, "\033[2;1H\033[2J");          /* ED: single size again */
+    CHECK_INT(vt_row_size(t, 1), 0);
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
 static void sgr_colours_and_attributes(void)
 {
     vt_term *t = h_new(10, 1, VT_XTERM);
@@ -796,6 +824,7 @@ void suite_xterm(void)
     modes_of_phase_a5();
     deccolm_only_when_allowed();
     scheme_updates_when_asked();
+    double_width_lines_hold_half_the_columns();
     alt_screen_1049_saves_and_restores();
     dec_graphics_draw_boxes();
     shift_out_selects_g1();

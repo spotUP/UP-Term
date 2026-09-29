@@ -167,6 +167,13 @@ int      vt_rows(const vt_term *t);
  * grid, the width at the time for a scrollback line. */
 const vt_cell *vt_row(const vt_term *t, int row, int *ncells);
 int      vt_row_wrapped(const vt_term *t, int row); /* continues on the next row */
+/* DEC line size of grid row `row` (ESC # 3/4/5/6): the row shows its first
+ * half of the columns at twice the width, and for the height halves the
+ * top or bottom half of glyphs twice as tall. */
+#define VT_LINE_DOUBLE_WIDTH  1
+#define VT_LINE_DOUBLE_TOP    2
+#define VT_LINE_DOUBLE_BOTTOM 3
+int      vt_row_size(const vt_term *t, int row);
 int      vt_scrollback_lines(const vt_term *t);
 /* Lines that have scrolled off the top of the primary screen since vt_new:
  * grid row y + vt_lines_scrolled() names a line for good (a selection

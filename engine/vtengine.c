@@ -33,7 +33,7 @@ typedef struct vt_line {
     vt_u16 cap;      /* cells allocated */
     vt_u16 n;        /* cells in use (== cols for grid lines) */
     vt_u8 wrapped;   /* the text continues on the next line */
-    vt_u8 pad;
+    vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BOTTOM */
     vt_cell c[1];
 } vt_line;
 
@@ -224,7 +224,7 @@ static vt_line *line_new(int cap)
         l->cap = (vt_u16)cap;
         l->n = 0;
         l->wrapped = 0;
-        l->pad = 0;
+        l->dbl = 0;
     }
     return l;
 }
@@ -270,6 +270,13 @@ static void line_clear(const vt_term *t, vt_line *l, int n)
     cells_blank(t, l->c, n);
     l->n = (vt_u16)n;
     l->wrapped = 0;
+    l->dbl = 0;
+}
+
+/* The columns row y holds: half on a double-width or -height line. */
+static int row_cols(const vt_term *t, int y)
+{
+    return y >= 0 && y < t->rows && t->scr[y]->dbl ? (t->cols + 1) / 2 : t->cols;
 }
 
 static void mark(vt_term *t, int x0, int y, int x1)
@@ -596,8 +603,10 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
 static void erase_rows(vt_term *t, int y0, int y1)
 {
     int y;
-    for (y = y0; y < y1; y++)
+    for (y = y0; y < y1; y++) {
         erase_cells(t, y, 0, t->cols);
+        t->scr[y]->dbl = 0; /* an erased line is single size again (VT100) */
+    }
 }
 
 static void home_limits(vt_term *t, int *y0, int *y1)
@@ -615,8 +624,8 @@ static void move_to(vt_term *t, int x, int y)
 {
     int y0, y1;
     home_limits(t, &y0, &y1);
-    t->cx = clampi(x, 0, t->cols - 1);
     t->cy = clampi(y, y0, y1);
+    t->cx = clampi(x, 0, row_cols(t, t->cy) - 1);
     t->wrap_pending = 0;
 }
 
@@ -687,9 +696,9 @@ static void tab_forward(vt_term *t, int n)
             index_down(t);
             x = 1;
         }
-        while (x < t->cols - 1 && !t->tabs[x])
+        while (x < row_cols(t, t->cy) - 1 && !t->tabs[x])
             x++;
-        t->cx = clampi(x, 0, t->cols - 1);
+        t->cx = clampi(x, 0, row_cols(t, t->cy) - 1);
     }
     t->wrap_pending = 0;
 }
@@ -931,7 +940,7 @@ static void set_alt(vt_term *t, int on, int clear)
 
 static void put_char(vt_term *t, vt_u32 cp)
 {
-    int w;
+    int w, lc;
     vt_cell *c;
     vt_u8 cs;
 
@@ -956,15 +965,17 @@ static void put_char(vt_term *t, vt_u32 cp)
         index_down(t);
     }
     t->wrap_pending = 0;
-    if (w == 2 && t->cx == t->cols - 1) {
+    lc = row_cols(t, t->cy);
+    if (w == 2 && t->cx == lc - 1) {
         if (t->autowrap) {
             erase_cells(t, t->cy, t->cx, t->cols);
             t->scr[t->cy]->wrapped = 1;
             t->cx = 0;
             index_down(t);
         } else {
-            t->cx = t->cols - 2;
+            t->cx = lc - 2;
         }
+        lc = row_cols(t, t->cy);
     }
     if (t->insert)
         insert_chars(t, w);
@@ -988,8 +999,8 @@ static void put_char(vt_term *t, vt_u32 cp)
     mark(t, t->cx, t->cy, t->cx + w);
     t->last_ch = (vt_u16)cp;
 
-    if (t->cx + w >= t->cols) {
-        t->cx = t->cols - 1;
+    if (t->cx + w >= lc) {
+        t->cx = lc - 1;
         if (t->pers == VT_AMIGA && t->autowrap) {
             /* the ROM console wraps at once, no deferred wrap */
             t->scr[t->cy]->wrapped = 1;
@@ -1139,7 +1150,15 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
             }
             break;
         case '#':
-            if (final == '8') { /* DECALN */
+            if (final >= '3' && final <= '6') {
+                /* DECDHL top / bottom, DECSWL, DECDWL: the line's size */
+                vt_line *l = t->scr[t->cy];
+                l->dbl = (vt_u8)(final == '3' ? VT_LINE_DOUBLE_TOP : final == '4' ? VT_LINE_DOUBLE_BOTTOM
+                               : final == '6' ? VT_LINE_DOUBLE_WIDTH : 0);
+                if (t->cx > row_cols(t, t->cy) - 1)
+                    t->cx = row_cols(t, t->cy) - 1;
+                mark_rows(t, t->cy, t->cy + 1);
+            } else if (final == '8') { /* DECALN */
                 int x, y;
                 t->top = 0;
                 t->bot = t->rows;
@@ -1150,6 +1169,7 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
                         c->ch = 'E';
                     }
                     t->scr[y]->wrapped = 0;
+                    t->scr[y]->dbl = 0;
                 }
                 mark_rows(t, 0, t->rows);
                 move_to(t, 0, 0);
@@ -1557,7 +1577,7 @@ static int csi_common(vt_term *t, vt_u8 final)
             amiga_move_linear(t, n);
             return 1;
         }
-        t->cx = clampi(t->cx + (int)n, 0, t->cols - 1);
+        t->cx = clampi(t->cx + (int)n, 0, row_cols(t, t->cy) - 1);
         t->wrap_pending = 0;
         return 1;
     case 'D':
@@ -1578,7 +1598,7 @@ static int csi_common(vt_term *t, vt_u8 final)
         return 1;
     case 'G':
     case '`':
-        t->cx = clampi((int)n - 1, 0, t->cols - 1);
+        t->cx = clampi((int)n - 1, 0, row_cols(t, t->cy) - 1);
         t->wrap_pending = 0;
         return 1;
     case 'H':
@@ -2922,9 +2942,9 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
 {
     vt_cell *c;
     long k, room;
-    if (t->wrap_pending || t->cx >= t->cols - 1)
+    if (t->wrap_pending || t->cx >= row_cols(t, t->cy) - 1)
         return 0;
-    room = t->cols - 1 - t->cx;
+    room = row_cols(t, t->cy) - 1 - t->cx;
     if (n > room)
         n = room;
     c = &t->scr[t->cy]->c[t->cx];
@@ -3014,6 +3034,7 @@ static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is
                 memcpy(nl->c, l->c, l->n * sizeof(vt_cell));
                 nl->n = l->n;
                 nl->wrapped = l->wrapped;
+                nl->dbl = l->dbl;
                 VT_FREE(l);
                 l = nl;
             }
@@ -3129,6 +3150,11 @@ const vt_cell *vt_row(const vt_term *t, int row, int *ncells)
     if (ncells)
         *ncells = row >= 0 ? t->cols : l->n;
     return l->c;
+}
+
+int vt_row_size(const vt_term *t, int row)
+{
+    return row >= 0 && row < t->rows ? t->scr[row]->dbl : 0;
 }
 
 int vt_row_wrapped(const vt_term *t, int row)
