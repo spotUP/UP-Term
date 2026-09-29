@@ -230,6 +230,15 @@ static long f_stop(pending *p)
     return -1;
 }
 
+static long fake_stack = 4096;
+static long f_stack(void *os, long bytes)
+{
+    (void)os;
+    if (bytes > 0)
+        fake_stack = bytes;
+    return fake_stack;
+}
+
 /* the fake's terminal: the shell's own output stream */
 static sh_fh OUT;
 static int f_isatty(void *os, sh_fh fh)
@@ -398,6 +407,8 @@ static void fresh(void)
     sh.os.done = f_done;
     sh.os.cont = f_cont;
     sh.os.isatty = f_isatty;
+    sh.os.stack = f_stack;
+    fake_stack = 4096;
     sh.os.suspendable = 0;
     sh.os.spawn = f_spawn;
     sh.os.read = f_read;
@@ -481,6 +492,8 @@ static void jobs_aliases_and_dirs(void)
     CHECK_STR(run("cd Work:; pwd; (cd SYS:; pwd); pwd"), "Work:\nSYS:\nWork:\n");
     CHECK_STR(run("cd nowhere; echo $?"), "1\n");
     CHECK_STR(run("[ -d SYS: ] && echo dir"), "dir\n");
+    CHECK_STR(run("stack; stack 100000; stack; stack 12 || echo refused"),
+              "stack 4096\nstack 100000\nrefused\n");
     CHECK_STR(run("[ -t 1 ] && echo tty; [ -t 1 ] >f || echo redirected; [ -t 7 ] || echo no"),
               "tty\nredirected\nno\n");
     CHECK_STR(run("which echo f; f() { :; }; which f"), "echo is a shell builtin\nf is a command\nf is a function\n");

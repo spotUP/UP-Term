@@ -1053,6 +1053,34 @@ static int job_arg(sh_shell *sh, int argc, char **argv, int stopped_only)
     return -1;
 }
 
+/* stack [bytes]: the stack the commands vsh starts get, as the AmigaDOS
+ * Stack command sets it for a Shell (which inside vsh would only set it
+ * for the command's own process). A command whose file asks for more
+ * ($STACK: in it) gets that. */
+static long b_stack(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    long n;
+    char nb[16];
+    if (!sh->os.stack) {
+        err2(sh, io, "stack", "not here");
+        return 1;
+    }
+    if (argc > 1) {
+        n = atol(argv[1]);
+        if (n < 1600) {
+            err2(sh, io, "stack", "at least 1600 bytes");
+            return 1;
+        }
+        sh->os.stack(sh->os.data, n);
+        return 0;
+    }
+    num(nb, sh->os.stack(sh->os.data, 0));
+    say(sh, io->out, "stack ");
+    say(sh, io->out, nb);
+    say(sh, io->out, "\n");
+    return 0;
+}
+
 /* bg: a stopped job goes on, in the background ("[n] cmd &"). */
 static long b_bg(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
@@ -1132,7 +1160,7 @@ static const struct {
     { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "return", b_return },
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
-    { "wait", b_wait }, { "fg", b_wait }, { "bg", b_bg }, { "source", b_source }, { ".", b_source },
+    { "wait", b_wait }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
     { "which", b_type }, { 0, 0 } /* no "type": AmigaDOS Type prints files */
 };
 

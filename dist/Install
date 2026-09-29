@@ -24,6 +24,9 @@ SetEnv TERMINFO /ENV/up-term/terminfo
 Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
+; the Workbench way in: double-click UP-Term (its tool is C:vsh; the
+; window is its WINDOW tooltype)
+Copy UP-Term UP-Term.info SYS:Utilities CLONE
 MakeDir >NIL: ENVARC:vsh
 Copy vshrc ENVARC:vsh/vshrc CLONE
 Copy banner ENVARC:vsh/banner CLONE

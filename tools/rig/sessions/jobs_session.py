@@ -18,7 +18,6 @@ for name in ("ixbg",):
     shutil.copyfile(RIG.parents[1] / "build/amiga" / name, ixpty_rig.VTC / name)
 ixpty_rig.use_ixemul("--orig" in sys.argv)
 ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/12/640/228/jobs/CLOSE"'); time.sleep(4)
-t('stack 100000'); ret()
 t('VTC:pkgs/shells/tcsh'); ret(); time.sleep(5)
 # tcsh's "&" needs fork() (ixemul: "No more processes"): jobs go to the
 # background with ^Z and bg, while ixbg waits its two seconds

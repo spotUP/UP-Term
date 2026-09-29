@@ -5,7 +5,7 @@ it did (PTY: mounted and working, the patched ixemul in LIBS: with the
 original kept), then Uninstall and check the rig is as before. The rig's
 own image is left with its original ixemul. The rig must be up; `make
 dist` first."""
-import os, pathlib, shutil, struct, sys
+import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
 
@@ -31,7 +31,8 @@ def lib_state():
 def main():
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
     shutil.copytree(ROOT / "build/dist/vtcon", VTC / "distkit")
-    shutil.copyfile(ROOT / "build/amiga/ptytest", VTC / "ptytest")
+    for name in ("ptytest", "iconprobe", "wbrun"):
+        shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "runinstall").write_text("CD VTC:distkit\nExecute Install\n")
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     run('Execute VTC:rununinstall')  # a run that stopped half-way left things behind
@@ -54,13 +55,25 @@ def main():
     check(rc == 0, 'the vtcon entry is where TERMINFO points', out)
     rc, out = run('Type ENVARC:TERMINFO')  # a file now: the old ENVARC:terminfo drawer was the same name
     check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is kept in ENVARC: (no drawer by that name)', out)
+    rc, out = run('VTC:iconprobe SYS:Utilities/UP-Term')
+    check('tool C:vsh' in out and 'WINDOW=XCON:' in out, 'the UP-Term icon is in SYS:Utilities', out)
+    rc, out = run('VTC:wbrun C:vsh SYS:Utilities/UP-Term', 30)
+    time.sleep(3)
+    tree = ami.req(0x0D).decode('latin-1')
+    check(rc == 0 and any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
+          'a Workbench start of the icon opens the UP-Term window', out)
+    ami.req(0x08, bytes([4]) + b'exit'); time.sleep(0.4); ami.key(0x44); time.sleep(2)
+    tree = ami.req(0x0D).decode('latin-1')
+    check(not any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
+          'exit in it closes the window')
     rc, out = run('Execute VTC:rununinstall', 60)
     check(rc == 0, 'Uninstall runs', out)
     st = lib_state()
     check(st.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in st,
           'after Uninstall: the original ixemul back, no .orig', str(st))
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'C:vsh', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:TERMINFO')
+                        'L:vtcon-handler', 'C:vsh', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:TERMINFO',
+                        'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info')
             if run('List >NIL: %s' % f)[0] == 0]
     check(not left, 'Uninstall removed the files', ' '.join(left))
     print('install_rig: passed %d of %d' % (passed, total))

@@ -36,5 +36,5 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Cross build (vbcc, 68020) | `make amiga` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | Install kit (build/vtcon.lha) | `make dist` |
-| Install kit on the rig: Install, check, Uninstall | `python3 tools/rig/install_rig.py` (rig up; `make dist` first) |
+| Install kit on the rig: Install, check, Uninstall | `python3 tools/rig/install_rig.py` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first) |
 | Clean | `make clean` |

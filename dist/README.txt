@@ -57,6 +57,12 @@ KEYS
   The command word shows green when it is a command, red when not.
   History is kept in ENVARC:vtcon.history (the last 100 lines).
 
+STARTING IT
+  Workbench: double-click SYS:Utilities/UP-Term. It opens an XCON: window
+  with vsh, starting in $HOME (SYS:) with your Workbench path. Change the
+  window in the icon's WINDOW tooltype (any XCON: spec).
+  Shell: NewShell "XCON:0/20/640/300/UP-Term/CLOSE", then vsh.
+
 VSH (the shell)
   Type  vsh  in an XCON: window. A POSIX shell with zsh touches: pipes,
   redirections (2> 2>&1 &> <<EOF), $( ), $(( )), globs, if/while/for/case,
@@ -69,6 +75,9 @@ VSH (the shell)
   pipeline run as processes of their own (there is no fork on the Amiga).
   Amiga commands run as usual; the command path is the Shell's (Path).
   Startup: ENVARC:vsh/vshrc, then $HOME/.vshrc (HOME defaults to SYS:).
+  Stack: vsh needs none set (it takes 64 KB itself). The commands it runs
+  get the stack the builtin  stack [bytes]  sets (at least 16000), or more
+  when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).
   Prompt: PS1 takes bash (\w \u \h) and zsh (%~ %n %m %? %F{red}...%f)
   escapes; default %F{cyan}%~%f %#.
   The vshrc gives Unix names: ls (-l) mkdir (-p) rm (-r -f) cp (-r) mv cat

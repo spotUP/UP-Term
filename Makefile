@@ -155,6 +155,24 @@ $(BUILD)/amiga/ixkill: shell/ixkill.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ shell/ixkill.c
 
+# P8: the stack vsh gives a command (plain, and with a $STACK: cookie)
+$(BUILD)/amiga/stackprobe: tests/amiga/stackprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/stackprobe.c
+	$(VC) -DSTACK_COOKIE -o $(BUILD)/amiga/stackprobe50k tests/amiga/stackprobe.c
+
+$(BUILD)/amiga/iconprobe: tests/amiga/iconprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/iconprobe.c
+
+$(BUILD)/amiga/wbrun: tests/amiga/wbrun.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wbrun.c
+
+$(BUILD)/amiga/taskpath: tests/amiga/taskpath.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/taskpath.c
+
 $(BUILD)/amiga/ptytest: tests/amiga/ptytest.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ptytest.c
@@ -221,6 +239,8 @@ dist: amiga $(BUILD)/terminfo/76/vtcon
 	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v $(BUILD)/dist/vtcon/libs
 	cp $(IXEMUL_LIB) $(BUILD)/dist/vtcon/libs/ixemul.library
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(BUILD)/dist/vtcon/banner
+	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term.info
+	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(BUILD)/dist/vtcon/UP-Term
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
 	cp $(BUILD)/terminfo/v/vtcon $(BUILD)/dist/vtcon/terminfo/v/vtcon
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon

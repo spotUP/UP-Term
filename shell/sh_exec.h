@@ -63,6 +63,9 @@ typedef struct sh_os {
     int   (*exists)(void *os, const char *path, int want_dir); /* test -e / -f / -d */
     char *(*cwd)(void *os);                        /* malloc'ed */
     int   (*isatty)(void *os, sh_fh fh);           /* test -t (0 = none: never) */
+    /* the stack commands get, in bytes: set it (bytes > 0), and return it
+     * (0 = none: the builtin stack says so) */
+    long  (*stack)(void *os, long bytes);
     /* Job control (cont 0: none). While the shell sets `suspendable` (it
      * waits for one simple command in the foreground), run(wait) and wait
      * may return SH_STOPPED: the command was suspended and still exists,

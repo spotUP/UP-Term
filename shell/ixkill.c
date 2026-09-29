@@ -13,6 +13,9 @@
 #include <signal.h>
 #include <strings.h>
 
+/* ixemul's own startup wants 16 KB at least (its STACKSIZE) */
+const char stack_cookie[] __attribute__((used)) = "$STACK: 16384";
+
 static const struct { const char *name; int sig; } names[] = {
     { "HUP", SIGHUP }, { "INT", SIGINT }, { "QUIT", SIGQUIT }, { "KILL", SIGKILL },
     { "TERM", SIGTERM }, { "STOP", SIGSTOP }, { "TSTP", SIGTSTP }, { "CONT", SIGCONT },

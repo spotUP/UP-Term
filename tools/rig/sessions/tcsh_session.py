@@ -13,7 +13,6 @@ def shot(n):
     def ch(tg, d): return struct.pack('>I', len(d)) + tg + d + struct.pack('>I', zlib.crc32(tg + d))
     open(S+n+".png",'wb').write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + ch(b'IDAT', zlib.compress(raw)) + ch(b'IEND', b''))
 ami.req(0x02, struct.pack('>H',10)+b'run >NIL: newshell "XCON:0/12/640/228/tcsh test/CLOSE"'); time.sleep(4)
-t('stack 100000'); ret()
 t('VTC:pkgs/shells/tcsh'); ret(); time.sleep(5)
 t('echo hello'); ret()
 k(0x4c); t(''); time.sleep(0.5)           # Up: history

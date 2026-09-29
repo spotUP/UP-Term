@@ -17,6 +17,9 @@
 #include <dos/var.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <proto/icon.h>
+#include <workbench/startup.h>
+#include <workbench/workbench.h>
 #include <stdlib.h>
 #include <string.h>
 #include "sh_exec.h"
@@ -51,6 +54,9 @@ static void tr(const char *s, long a, long b)
 #endif
 
 static const char version[] = "$VER: vsh 0.1 (29.9.2026)";
+/* the stack vsh wants: AmigaOS 3.2 and 4 start it with that, and so does
+ * a vsh it runs; otherwise it swaps to 64 KB itself (main) */
+static const char stack_cookie[] = "$STACK: 65536";
 
 /* ---- the OS layer ------------------------------------------------------------- */
 
@@ -65,6 +71,7 @@ typedef struct job {
     char *name;             /* the program name (SetProgramName) */
     char *args;             /* its argument string, ending in \n */
     BPTR seg;               /* the loaded command, or 0: SystemTags */
+    ULONG stack;            /* its stack for RunCommand */
     BPTR in, out, err;
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
@@ -324,6 +331,11 @@ static void runner(void)
             e = v + strlen(v) + 1;
         }
     }
+    /* its CLI carries the command's stack: a Shell SystemTags starts takes
+     * its stack from there, and ixemul's stack extension reads it (it was
+     * CreateNewProc's 8000, whatever vsh's stack said) */
+    if (Cli())
+        Cli()->cli_DefaultStack = (j->stack + 3) / 4;
     /* the runner has the shell's current directory (CreateNewProc copies it) */
     if (j->seg) {
         BPTR oin = SelectInput(j->in), oout = SelectOutput(j->out);
@@ -331,7 +343,7 @@ static void runner(void)
         if (j->err)
             me->pr_CES = j->err;
         SetProgramName((STRPTR)j->name);
-        j->rc = RunCommand(j->seg, 16000, (STRPTR)j->args, (LONG)strlen(j->args));
+        j->rc = RunCommand(j->seg, j->stack, (STRPTR)j->args, (LONG)strlen(j->args));
         TR("runcommand back", j, j->rc);
         me->pr_CES = oerr;
         SelectInput(oin);
@@ -372,6 +384,55 @@ static int replied(struct MsgPort *port, job *j)
         if (n == &j->msg.mn_Node)
             return 1;
     return 0;
+}
+
+/* The stack a command asks for in its file: the "$STACK: n" cookie
+ * (AmigaOS 3.2 and 4 honour it; vsh does on 3.1 too). 0: none. */
+static ULONG seg_stack(BPTR seg)
+{
+    static const char key[] = "$STACK:";
+    for (; seg; seg = *(BPTR *)BADDR(seg)) {
+        const UBYTE *p = (const UBYTE *)BADDR(seg) + 4;
+        ULONG n = ((ULONG *)BADDR(seg))[-1];
+        const UBYTE *end = (const UBYTE *)BADDR(seg) - 4 + n;
+        for (; p + 8 < end; p++) {
+            if (*p == '$' && !memcmp(p, key, 7)) {
+                const UBYTE *d = p + 7;
+                ULONG v = 0;
+                while (d < end && *d == ' ')
+                    d++;
+                while (d < end && *d >= '0' && *d <= '9')
+                    v = v * 10 + (*d++ - '0');
+                if (v)
+                    return v;
+            }
+        }
+    }
+    return 0;
+}
+
+#define MIN_COMMAND_STACK 16000
+
+/* The stack for a command: its file's $STACK: when that is more, else
+ * the Shell's stack setting (vsh's stack builtin), at least 16000. */
+static ULONG command_stack(BPTR seg)
+{
+    struct CommandLineInterface *cli = Cli();
+    ULONG st = cli ? (ULONG)cli->cli_DefaultStack * 4 : 0, want = seg ? seg_stack(seg) : 0;
+    if (st < MIN_COMMAND_STACK)
+        st = MIN_COMMAND_STACK;
+    return want > st ? want : st;
+}
+
+static long os_stack(void *os, long bytes)
+{
+    struct CommandLineInterface *cli = Cli();
+    (void)os;
+    if (!cli)
+        return 0;
+    if (bytes > 0)
+        cli->cli_DefaultStack = (bytes + 3) / 4;
+    return (long)cli->cli_DefaultStack * 4;
 }
 
 /* A command name to something to run: *seg a loaded command file, or 0
@@ -481,6 +542,7 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     }
     j->cmd = cmd;
     j->seg = seg;
+    j->stack = command_stack(seg);
     j->name = (char *)malloc(strlen(argv[0]) + 1);
     if (j->name)
         strcpy(j->name, argv[0]);
@@ -1007,6 +1069,7 @@ static int vsh_main(int argc, char **argv)
     int i;
     static vproc vp;
     (void)version;
+    (void)stack_cookie;
     vp.sh = &sh;
     vp.port = CreateMsgPort();
     if (!vp.port)
@@ -1020,6 +1083,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.done = os_done;
     sh.os.cont = os_cont;
     sh.os.isatty = os_isatty;
+    sh.os.stack = os_stack;
     sh.os.spawn = os_spawn;
     sh.os.read = os_read;
     sh.os.interrupted = os_interrupted;
@@ -1149,10 +1213,116 @@ static int vsh_entry(void)
 
 static int (*volatile vsh_entry_ptr)(void) = vsh_entry;
 
+struct Library *IconBase;
+
+#define WB_WINDOW "XCON:0/20/640/400/UP-Term/CLOSE"
+
+/* A copy of the Workbench process's command path, the user's (LoadWB
+ * took it from the startup Shell), for the Shell vsh starts from
+ * Workbench (NP_Path: that process frees it). 0: none. */
+static BPTR wb_path(void)
+{
+    struct Process *wbp;
+    struct CommandLineInterface *cli;
+    BPTR *src, head = 0, *tail = &head;
+    Forbid();
+    wbp = (struct Process *)FindTask((STRPTR)"Workbench");
+    cli = wbp && wbp->pr_Task.tc_Node.ln_Type == NT_PROCESS
+              ? (struct CommandLineInterface *)BADDR(wbp->pr_CLI) : 0;
+    for (src = cli ? (BPTR *)BADDR(cli->cli_CommandDir) : 0; src; src = (BPTR *)BADDR(src[0])) {
+        BPTR *n = (BPTR *)AllocVec(2 * sizeof(BPTR), MEMF_PUBLIC | MEMF_CLEAR);
+        if (!n)
+            break;
+        n[1] = DupLock(src[1]);
+        *tail = MKBADDR(n);
+        tail = &n[0];
+    }
+    Permit();
+    return head;
+}
+
+/* Started from Workbench (the UP-Term icon; P8): no console and no CLI.
+ * Open the window the icon names (tooltype WINDOW=, from the project icon
+ * when there is one) and run vsh in it as a Shell process of its own --
+ * a CLI for the path and the stack, the window as its console -- then
+ * end: the window belongs to that vsh (it closes when vsh exits). */
+static int wb_start(struct WBStartup *wb)
+{
+    static char spec[256], self[256], cmd[280];
+    struct WBArg *icon = &wb->sm_ArgList[wb->sm_NumArgs > 1 ? 1 : 0];
+    struct Process *me = (struct Process *)FindTask(0);
+    BPTR win, out;
+    strcpy(spec, WB_WINDOW);
+    if ((IconBase = OpenLibrary((STRPTR)"icon.library", 36)) != 0) {
+        BPTR old = CurrentDir(icon->wa_Lock);
+        struct DiskObject *d = GetDiskObject((STRPTR)icon->wa_Name);
+        CurrentDir(old);
+        if (d) {
+            char *w = (char *)FindToolType((STRPTR *)d->do_ToolTypes, (STRPTR)"WINDOW");
+            if (w && *w) {
+                strncpy(spec, w, sizeof(spec) - 1);
+                spec[sizeof(spec) - 1] = 0;
+            }
+            FreeDiskObject(d);
+        }
+        CloseLibrary(IconBase);
+    }
+    /* this program's own file, to run it again in the new Shell */
+    if (!NameFromLock(wb->sm_ArgList[0].wa_Lock, (STRPTR)self, sizeof(self)) ||
+        !AddPart((STRPTR)self, (STRPTR)wb->sm_ArgList[0].wa_Name, sizeof(self)))
+        strcpy(self, "C:vsh");
+    win = Open((STRPTR)spec, MODE_NEWFILE);
+    if (!win)
+        return 20;
+    /* a second handle on the same window (another Open of XCON: would be
+     * another window): "*" with the window as our console */
+    me->pr_ConsoleTask = ((struct FileHandle *)BADDR(win))->fh_Type;
+    out = Open((STRPTR)"*", MODE_NEWFILE);
+    if (!out) {
+        Close(win);
+        return 20;
+    }
+    strcpy(cmd, "\"");
+    strcat(cmd, self);
+    strcat(cmd, "\"");
+    {
+        /* it starts at home ($HOME, else SYS:), not in the drawer vsh is in,
+         * with the user's command path */
+        char home[256];
+        BPTR dir, old = 0, path = wb_path();
+        LONG rc;
+        if (GetVar((STRPTR)"HOME", (STRPTR)home, sizeof(home), GVF_GLOBAL_ONLY) <= 0)
+            strcpy(home, "SYS:");
+        if ((dir = Lock((STRPTR)home, SHARED_LOCK)) != 0)
+            old = CurrentDir(dir);
+        rc = SystemTags((STRPTR)cmd, SYS_Input, win, SYS_Output, out, SYS_UserShell, TRUE,
+                        SYS_Asynch, TRUE, NP_ConsoleTask, (ULONG)me->pr_ConsoleTask,
+                        path ? NP_Path : TAG_IGNORE, path, TAG_END);
+        if (dir)
+            UnLock(CurrentDir(old));
+        if (rc == -1) {
+            /* not started: the path and the streams are still ours */
+            while (path) {
+                BPTR *n = (BPTR *)BADDR(path);
+                path = n[0];
+                UnLock(n[1]);
+                FreeVec(n);
+            }
+            Close(out);
+            Close(win);
+            return 20;
+        }
+    }
+    me->pr_ConsoleTask = 0;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     struct Task *me = FindTask(0);
     APTR stack;
+    if (argc == 0)
+        return wb_start((struct WBStartup *)argv);
     g_argc = argc;
     g_argv = argv;
     if ((ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower >= VSH_STACK)
