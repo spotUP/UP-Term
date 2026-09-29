@@ -29,8 +29,12 @@ def main():
     for s in ('VTC:vsh', 'source VTC:colors.sh'):
         ami.req(0x08, bytes([4]) + s.encode()); time.sleep(0.4); ami.key(0x44); time.sleep(4)
     ami.main(['shot', str(SHOT)])
-    im = Image.open(SHOT).convert('RGB')
-    top = next((y for y in range(300, 600) if im.getpixel((12, y))[:2] < (20, 20)
+    return check(Image.open(SHOT).convert('RGB'), 300, 600)
+
+def check(im, y0, y1):
+    """Find the cube (its first cell, colour 16 = 0/0/95) at x 12 between
+    rows y0 and y1 and compare all 240 cells; prints ok/FAIL, 0 on a pass."""
+    top = next((y for y in range(y0, y1) if im.getpixel((12, y))[:2] < (20, 20)
                 and abs(im.getpixel((12, y))[2] - 95) < 20), None)
     if top is None:
         print('FAIL no cube found'); return 1

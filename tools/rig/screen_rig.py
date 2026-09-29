@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""screen_rig.py -- GNU screen (P7.1) on the rig: an XCON window, vsh,
+screen with SHELL=vsh and TERM=screen-256color, then tests/amiga/colors.sh
+inside it. Passes when all 240 cube and grey cells are the xterm palette
+(cube_rig.check) within SCREEN_WAIT seconds (default 20; plain XCON takes
+under 4 s, the owner's first run inside screen over 60 s). Screenshot:
+build/rig/shots/screen_colors.png.
+
+Needs the rig up with the patched ixemul (ixpty_rig.use_ixemul), PTY:
+mounted, VTC:screen built from ~/Code/screen-amiga/src (Makefile.amiga)
+and the kit NOT installed (its DOSDrivers XCON mounts L:vtcon-handler).
+
+  screen_rig.py            run it
+  screen_rig.py --keep     leave screen running (default: exit it and close the window)"""
+import os, pathlib, shutil, struct, sys, time
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ami, cube_rig, ixpty_rig, ptytest_rig
+from PIL import Image
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+VTC = ROOT / "build/rig/vtc"
+SHOT = ROOT / "build/rig/shots/screen_colors.png"
+SCREENRC = """shell /VTC/vsh
+term screen-256color
+setenv IXSTACK 65536
+startup_message off
+"""
+
+
+def ex(cmd, t=20):
+    return ixpty_rig.run(cmd, t)
+
+
+def typeline(s, wait):
+    ami.req(0x08, bytes([4]) + s.encode())
+    time.sleep(0.4)
+    ami.key(0x44)
+    time.sleep(wait)
+
+
+def main():
+    shutil.copyfile(ROOT / "tests/amiga/colors.sh", VTC / "colors.sh")
+    shutil.copyfile(ROOT / "build/amiga/pty-handler", VTC / "pty-handler")
+    (VTC / "ptymount").write_text(ptytest_rig.MOUNTLIST)
+    (VTC / "screenrc").write_text(SCREENRC)
+    ixpty_rig.use_ixemul()
+    if ex('Assign >NIL: PTY: EXISTS DEVICES')[0] != 0:
+        ex('Mount PTY: FROM VTC:ptymount')
+    ex('Copy VTC:screenrc ENV:screenrc')
+    ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/20/780/560/screen/CLOSE"')
+    time.sleep(4)
+    typeline('VTC:vsh', 3)
+    typeline('VTC:screen', 10)
+    ex('Delete RAM:screen_sty QUIET')
+    typeline('echo "$STY" >RAM:screen_sty', 2)
+    sty = ex('Type RAM:screen_sty')[1].strip()
+    if not sty:
+        print('FAIL screen is not running (no STY in its window)')
+        return 1
+    typeline('source VTC:colors.sh', 0)
+    time.sleep(float(os.environ.get("SCREEN_WAIT", "20")))
+    ami.main(['shot', str(SHOT)])
+    rc = cube_rig.check(Image.open(SHOT).convert('RGB'), 30, 580)
+    if "--keep" not in sys.argv:
+        typeline('exit', 3)  # the last window's shell ends screen
+        typeline('endcli', 2)  # the vsh, then the XCON Shell
+    return rc
+
+
+if __name__ == '__main__':
+    sys.exit(main())
