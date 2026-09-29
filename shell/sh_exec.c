@@ -129,6 +129,8 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
 static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io);
 static void close_owned(sh_shell *sh, const sh_io *io);
 
+static long intr_status(const sh_shell *sh);
+
 long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io)
 {
     long st = exec_node(child, tree ? tree->tree : 0, io);
@@ -136,7 +138,7 @@ long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io)
     if (child->exiting)
         st = child->exit_status;
     else if (child->intr)
-        st = 130;
+        st = intr_status(child);
     close_owned(child, io);
     /* its own background jobs report to it: it waits for them */
     for (i = 0; i < 32; i++)
@@ -1194,6 +1196,19 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
 
 /* A simple command. wait = 0: start it in the background if it is an
  * external command (*job gets its id), else run it now. */
+/* NAME of an assignment word NAME=value, malloc'ed (on the heap, not in
+ * exec_cmd's frame: that frame is on every level of a recursion). */
+static char *assign_name(const char *word)
+{
+    size_t len = (size_t)(strchr(word, '=') - word);
+    char *name = (char *)malloc(len + 1);
+    if (name) {
+        memcpy(name, word, len);
+        name[len] = 0;
+    }
+    return name;
+}
+
 /* A variable as it was before NAME=value cmd, to put back after cmd. */
 typedef struct saved_var {
     char *name, *value;     /* value 0: it was not set */
@@ -1235,8 +1250,8 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
     builtin_fn b;
     sh_func *f;
     long st;
-    saved_var saved[16];
-    int n_saved = 0;
+    saved_var *saved = 0;   /* on the heap: this frame is on every recursion level */
+    int n_saved = 0, n_assigns = 0;
     memset(&argv, 0, sizeof(argv));
     if (job)
         *job = 0;
@@ -1249,13 +1264,10 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         /* only assignments (and redirections): they set shell variables */
         for (a = n->assigns; a; a = a->next) {
             char *v = expand_one(sh, strchr(a->text, '=') + 1, parent);
-            char name[128];
-            size_t len = (size_t)(strchr(a->text, '=') - a->text);
-            if (v && len < sizeof(name)) {
-                memcpy(name, a->text, len);
-                name[len] = 0;
+            char *name = assign_name(a->text);
+            if (v && name)
                 sh_set(&sh->ctx, name, v);
-            }
+            free(name);
             free(v);
         }
         if (n->redirs && !redirect(sh, n->redirs, parent, &io))
@@ -1270,18 +1282,20 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
     }
     /* assignments before a command: exported for that command only; the
      * old values come back after it (IFS=: read a b leaves IFS alone) */
+    for (a = n->assigns; a; a = a->next)
+        n_assigns++;
+    if (n_assigns)
+        saved = (saved_var *)malloc(n_assigns * sizeof(saved_var));
     for (a = n->assigns; a; a = a->next) {
         char *v = expand_one(sh, strchr(a->text, '=') + 1, parent);
-        char name[128];
-        size_t len = (size_t)(strchr(a->text, '=') - a->text);
-        if (v && len < sizeof(name)) {
-            memcpy(name, a->text, len);
-            name[len] = 0;
-            if (n_saved < 16)
+        char *name = assign_name(a->text);
+        if (v && name) {
+            if (saved)
                 save_var(sh, name, &saved[n_saved++]);
             sh_set(&sh->ctx, name, v);
             sh_export(&sh->ctx, name);
         }
+        free(name);
         free(v);
     }
     if ((f = find_func(sh, argv.v[0])) != 0) {
@@ -1314,6 +1328,7 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
     }
     while (n_saved > 0)
         restore_var(sh, &saved[--n_saved]);
+    free(saved);
     sh_list_free(&argv);
     return st;
 }
@@ -1528,7 +1543,7 @@ static long exec_list_loop(sh_shell *sh, const sh_node *n, const sh_io *io)
             break;
     }
     sh->loop_depth--;
-    return sh->intr ? 130 : st;
+    return sh->intr ? intr_status(sh) : st;
 }
 
 static long exec_for(sh_shell *sh, const sh_node *n, const sh_io *io)
@@ -1560,7 +1575,7 @@ static long exec_for(sh_shell *sh, const sh_node *n, const sh_io *io)
     }
     sh->loop_depth--;
     sh_list_free(&items);
-    return sh->intr ? 130 : st;
+    return sh->intr ? intr_status(sh) : st;
 }
 
 static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
@@ -1584,6 +1599,13 @@ static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
         }
     free(subject);
     return st;
+}
+
+/* The status an unwinding line ends with: 130 after Ctrl-C, 2 after
+ * "nested too deeply". */
+static long intr_status(const sh_shell *sh)
+{
+    return sh->intr == 2 ? 2 : 130;
 }
 
 /* Ctrl-C: once it arrives, everything unwinds to the prompt (status 130). */
@@ -1610,7 +1632,7 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
         say(sh, io->err, "vsh: nested too deeply (");
         say(sh, io->err, d);
         say(sh, io->err, " function levels)\n");
-        sh->intr = 1;
+        sh->intr = 2; /* unwind like Ctrl-C, but as an error: status 2 */
         return 2;
     }
     switch (n->kind) {
@@ -1745,8 +1767,8 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
     st = exec_node(sh, p.tree, &sh->io);
     sh_parse_free(&p);
     if (sh->intr) {
+        st = sh->ctx.status = intr_status(sh);
         sh->intr = 0;
-        st = sh->ctx.status = 130;
     }
     return st;
 }

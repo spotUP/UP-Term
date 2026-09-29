@@ -592,6 +592,7 @@ static void deep_recursion(void)
     sh_run_text(&sh, "g() { g; }; g; echo never", &inc);
     CHECK_STR(slot(OUT)->data, "");
     CHECK_INT(strncmp(slot(ERR)->data, "vsh: nested too deeply (", 24), 0);
+    CHECK_INT(sh.ctx.status, 2);   /* an error, not a Ctrl-C (130) */
     sh_run_text(&sh, "echo next", &inc);
     CHECK_STR(slot(OUT)->data, "next\n");
 }
