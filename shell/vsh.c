@@ -332,6 +332,7 @@ static void runner(void)
             me->pr_CES = j->err;
         SetProgramName((STRPTR)j->name);
         j->rc = RunCommand(j->seg, 16000, (STRPTR)j->args, (LONG)strlen(j->args));
+        TR("runcommand back", j, j->rc);
         me->pr_CES = oerr;
         SelectInput(oin);
         SelectOutput(oout);
@@ -687,6 +688,12 @@ static int os_done(void *os, long id)
     return r;
 }
 
+static int os_isatty(void *os, sh_fh fh)
+{
+    (void)os;
+    return fh && IsInteractive((BPTR)fh);
+}
+
 static long os_write(void *os, sh_fh fh, const char *b, long n)
 {
     (void)os;
@@ -1012,6 +1019,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.wait = os_wait;
     sh.os.done = os_done;
     sh.os.cont = os_cont;
+    sh.os.isatty = os_isatty;
     sh.os.spawn = os_spawn;
     sh.os.read = os_read;
     sh.os.interrupted = os_interrupted;
@@ -1086,7 +1094,8 @@ static int vsh_main(int argc, char **argv)
             sh_notify(&sh);
             send_words(&sh);
         }
-        prompt(&sh, text != 0);
+        if (IsInteractive(Input())) /* a script or a pipe gets no prompts */
+            prompt(&sh, text != 0);
         if (!FGets(Input(), (STRPTR)line, sizeof(line)))
             break;
         n = (long)strlen(line);
@@ -1109,8 +1118,11 @@ static int vsh_main(int argc, char **argv)
     free(text);
     {
         long st = sh.exiting ? sh.exit_status : sh.ctx.status;
+        TR("exit free", st, 0);
         sh_shell_free(&sh);
+        TR("exit port", 0, 0);
         DeleteMsgPort(vp.port);
+        TR("exit return", 0, 0);
         return (int)st;
     }
 }
@@ -1123,6 +1135,19 @@ static int vsh_main(int argc, char **argv)
 static struct StackSwapStruct swap;
 static int g_argc, g_rc;
 static char **g_argv;
+
+/* The call between the two StackSwaps takes no arguments and goes
+ * through a volatile pointer: vbcc popped vsh_main's arguments only after
+ * the second swap -- 8 bytes off the old stack, so main returned through a
+ * wrong address (#8000000B when a vsh started by vsh ended: vsh's runner
+ * gives it 16000 bytes, so it swaps). Nothing may be left to pop, and the
+ * call must not be inlined into main. */
+static int vsh_entry(void)
+{
+    return vsh_main(g_argc, g_argv);
+}
+
+static int (*volatile vsh_entry_ptr)(void) = vsh_entry;
 
 int main(int argc, char **argv)
 {
@@ -1139,7 +1164,7 @@ int main(int argc, char **argv)
     swap.stk_Upper = (ULONG)stack + VSH_STACK;
     swap.stk_Pointer = (APTR)swap.stk_Upper;
     StackSwap(&swap);
-    g_rc = vsh_main(g_argc, g_argv);
+    g_rc = vsh_entry_ptr();
     StackSwap(&swap);
     FreeVec(stack);
     return g_rc;

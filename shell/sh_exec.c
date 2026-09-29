@@ -914,7 +914,12 @@ static long b_test(sh_shell *sh, int argc, char **argv, const sh_io *io)
             r = sh->os.exists(sh->os.data, a[1], 0);
         else if (!strcmp(a[0], "-d"))
             r = sh->os.exists(sh->os.data, a[1], 1);
-        else {
+        else if (!strcmp(a[0], "-t")) {
+            /* the test command's own stream 0, 1 or 2 is a terminal */
+            int fd = atoi(a[1]);
+            sh_fh fh = fd == 0 ? io->in : fd == 1 ? io->out : fd == 2 ? io->err : SH_NOFH;
+            r = fh != SH_NOFH && sh->os.isatty && sh->os.isatty(sh->os.data, fh);
+        } else {
             err2(sh, io, "test", a[0]);
             return 2;
         }

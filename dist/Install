@@ -26,8 +26,10 @@ Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
 MakeDir >NIL: ENVARC:vsh
 Copy vshrc ENVARC:vsh/vshrc CLONE
+Copy banner ENVARC:vsh/banner CLONE
 MakeDir >NIL: ENV:vsh
 Copy vshrc ENV:vsh/vshrc CLONE
+Copy banner ENV:vsh/banner CLONE
 ; ixemul.library 48.2 with the UP-Term patches (termios, PTY: ptys, job
 ; control). The library there is kept once as LIBS:ixemul.library.orig.
 If NOT EXISTS LIBS:ixemul.library.orig

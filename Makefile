@@ -220,6 +220,7 @@ IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixe
 dist: amiga $(BUILD)/terminfo/76/vtcon
 	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v $(BUILD)/dist/vtcon/libs
 	cp $(IXEMUL_LIB) $(BUILD)/dist/vtcon/libs/ixemul.library
+	python3 tools/ans2utf8.py art/up_rough_banner.ans $(BUILD)/dist/vtcon/banner
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
 	cp $(BUILD)/terminfo/v/vtcon $(BUILD)/dist/vtcon/terminfo/v/vtcon
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon

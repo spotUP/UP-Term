@@ -230,6 +230,14 @@ static long f_stop(pending *p)
     return -1;
 }
 
+/* the fake's terminal: the shell's own output stream */
+static sh_fh OUT;
+static int f_isatty(void *os, sh_fh fh)
+{
+    (void)os;
+    return fh == OUT;
+}
+
 static int f_cont(void *os, long job)
 {
     (void)os;
@@ -371,7 +379,7 @@ static void sprintf_num(char *out, int v)
     out[k] = 0;
 }
 
-static sh_fh OUT, ERR, IN;
+static sh_fh ERR, IN;
 
 static void fresh(void)
 {
@@ -389,6 +397,7 @@ static void fresh(void)
     sh.os.wait = f_wait;
     sh.os.done = f_done;
     sh.os.cont = f_cont;
+    sh.os.isatty = f_isatty;
     sh.os.suspendable = 0;
     sh.os.spawn = f_spawn;
     sh.os.read = f_read;
@@ -472,6 +481,8 @@ static void jobs_aliases_and_dirs(void)
     CHECK_STR(run("cd Work:; pwd; (cd SYS:; pwd); pwd"), "Work:\nSYS:\nWork:\n");
     CHECK_STR(run("cd nowhere; echo $?"), "1\n");
     CHECK_STR(run("[ -d SYS: ] && echo dir"), "dir\n");
+    CHECK_STR(run("[ -t 1 ] && echo tty; [ -t 1 ] >f || echo redirected; [ -t 7 ] || echo no"),
+              "tty\nredirected\nno\n");
     CHECK_STR(run("which echo f; f() { :; }; which f"), "echo is a shell builtin\nf is a command\nf is a function\n");
     /* A background stage gets its pipe ends to keep (rig: list's output
      * went to the console, the runner had been given no pipe) */
