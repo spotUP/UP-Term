@@ -3,7 +3,7 @@
 through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (never takes the owner's focus)
+  rig.py start    boot it in the background; DH0: read-only (--rw: writable)
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
   rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer
   rig.py status   is it up (amiagent ping)
@@ -32,7 +32,8 @@ DH0:C/Assign >NIL: FONTS: DH0:Fonts
 C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
-GO = """C:Wait 15
+GO = """FailAt 21
+C:Wait 15
 C:Assign >NIL: VTC: VTCX:
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
@@ -50,6 +51,8 @@ MOUNTLIST = """XCON:
 #
 """
 
+RW = "--rw" in sys.argv
+
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
     (RIG / "vtc").mkdir(exist_ok=True)
@@ -66,6 +69,11 @@ def setup():
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
         "bsdsocket_library = 1", "graphics_card = uaegfx", "jit_compiler = 1",
         "hard_drive_0 = %s" % (RIG / "sys.hdf"),
+        # Read-only unless `start --rw`: stop is a SIGKILL, and a write in
+        # flight left DH0: to validate on the next boot (boots that never
+        # reached amiagent, 2026-09-29). Everything under test lives in the
+        # host drawers VTCX: and BOOTX:.
+        "hard_drive_0_read_only = %d" % (0 if RW else 1),
         "hard_drive_1 = %s" % (RIG / "vtc"), "hard_drive_1_label = VTCX",
         "hard_drive_2 = %s" % (RIG / "boot"), "hard_drive_2_label = BOOTX",
         "hard_drive_2_priority = 10", "joystick_port_1 = none",
@@ -73,7 +81,13 @@ def setup():
         "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
         "window_width = 1280", "window_height = 1024",
         "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
-    print("rig ready:", CFG)
+    if "start" not in sys.argv:
+        print("rig ready:", CFG)
+
+def setup_config_only():
+    """Rewrite just the config, so --rw on or off takes effect."""
+    if (RIG / "sys.hdf").exists():
+        setup()
 
 def install():
     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
@@ -84,6 +98,7 @@ def mine():
     return [l for l in out.splitlines() if str(CFG) in l and "fs-uae" in l.lower()]
 
 def start():
+    setup_config_only()
     if mine():
         print("already running")
         return
@@ -96,6 +111,13 @@ def start():
     print("[ERROR] no amiagent after 180 s")
 
 def stop():
+    if mine() and status(quiet=True):
+        try:  # write-protect DH0: first, which flushes it (matters with --rw)
+            sys.path.insert(0, str(ROOT / "tools/rig"))
+            import ami
+            ami.req(0x02, (10).to_bytes(2, "big") + b"C:Lock DH0: ON", timeout=15)
+        except BaseException:
+            pass
     subprocess.run(["pkill", "-9", "-f", str(CFG)])
     print("stopped" if not mine() else "[ERROR] still running")
 
