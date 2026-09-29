@@ -173,6 +173,10 @@ $(BUILD)/amiga/taskpath: tests/amiga/taskpath.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/taskpath.c
 
+$(BUILD)/amiga/ixsock: tests/amiga/ixsock.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixsock.c
+
 $(BUILD)/amiga/ptytest: tests/amiga/ptytest.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ptytest.c
