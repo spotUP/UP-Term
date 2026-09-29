@@ -6,17 +6,17 @@ BUILD   := build
 
 ENGINE  := engine/vtengine.c
 RENDER  := render/glyphmap.c handler/lineedit.c
-SHELL_CORE := shell/sh_parse.c
+SHELL_CORE := shell/sh_parse.c shell/sh_expand.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
-           tests/test_sh_parse.c
+           tests/test_sh_parse.c tests/test_sh_expand.c
 
 .PHONY: test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) shell/sh_parse.h engine/vtengine.h render/glyphmap.h handler/lineedit.h render/glyph_tables.inc $(TESTS) tests/harness.h
+$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) shell/sh_parse.h shell/sh_expand.h engine/vtengine.h render/glyphmap.h handler/lineedit.h render/glyph_tables.inc $(TESTS) tests/harness.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TESTS)
 

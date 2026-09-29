@@ -9,6 +9,7 @@ void suite_glyph(void);
 void suite_mirror(void);
 void suite_lineedit(void);
 void suite_sh_parse(void);
+void suite_sh_expand(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -19,6 +20,7 @@ static const h_suite suites[] = {
     { "mirror", suite_mirror },
     { "lineedit", suite_lineedit },
     { "sh_parse", suite_sh_parse },
+    { "sh_expand", suite_sh_expand },
     { 0, 0 }
 };
 
