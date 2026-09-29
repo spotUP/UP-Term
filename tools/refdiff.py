@@ -18,6 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 PYTE_GAP_ALT = "pyte has no alternate screen (?47/?1047/?1049)"
 PYTE_GAP_BCE = "pyte erases with the default background, not the current one (no BCE)"
 DISAGREE = {
+    "ansitest.150x140.bin": "pyte ignores SGR 21 (doubly underlined); libvterm and we underline",
     "quirk-alt-1047-clears-on-exit.10x4.bin": PYTE_GAP_ALT,
     "quirk-alt-1049-roundtrip.10x4.bin": PYTE_GAP_ALT,
     "quirk-bce-erase-colour.10x3.bin": PYTE_GAP_BCE,
