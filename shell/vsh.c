@@ -1034,6 +1034,26 @@ static int vsh_main(int argc, char **argv)
     import_var(&sh, "USER");
     import_var(&sh, "HOST");
     import_var(&sh, "HOSTNAME");
+    {
+        /* on a vtcon console (it answers TCGETA) the programs vsh runs get
+         * its terminal type -- a global TERM is another console's -- and
+         * its termcap unless one is set. Not globally: a ROM CON: window
+         * cannot show vtcon's sequences (dist/Install). */
+        vt_termios t;
+        struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+        if (fh && fh->fh_Type && DoPkt(fh->fh_Type, ACTION_VTCON_TCGETA, fh->fh_Arg1, (LONG)&t, 0, 0, 0)) {
+            BPTR lock;
+            import_var(&sh, "TERMCAP");
+            sh_set(&sh.ctx, "TERM", "vtcon");
+            sh_export(&sh.ctx, "TERM");
+            if (!sh_get(&sh.ctx, "TERMCAP") && (lock = Lock((STRPTR)"ENV:up-term/termcap.vtcon", SHARED_LOCK))) {
+                UnLock(lock);
+                sh_set(&sh.ctx, "TERMCAP", "/ENV/up-term/termcap.vtcon");
+            }
+            if (sh_get(&sh.ctx, "TERMCAP"))
+                sh_export(&sh.ctx, "TERMCAP");
+        }
+    }
     for (i = 1; i < argc; i++)
         sh_list_add(&sh.ctx.args, argv[i]);
     /* AmigaDOS leaves a command's argument line in its input buffer (for

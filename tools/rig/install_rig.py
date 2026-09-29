@@ -48,13 +48,20 @@ def main():
     check(st.get('ixemul.library.orig') == str(ORIG_SIZE), 'the original ixemul kept as .orig', str(st))
     rc, out = run('Search LIBS:ixemul.library UP-Term')
     check('UP-Term' in out, 'the patched ixemul is in LIBS:', out)
+    rc, out = run('GetEnv TERMINFO')
+    check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is set (and can be)', out)
+    rc, out = run('List >NIL: ENV:up-term/terminfo/v/vtcon')
+    check(rc == 0, 'the vtcon entry is where TERMINFO points', out)
+    rc, out = run('Type ENVARC:TERMINFO')  # a file now: the old ENVARC:terminfo drawer was the same name
+    check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is kept in ENVARC: (no drawer by that name)', out)
     rc, out = run('Execute VTC:rununinstall', 60)
     check(rc == 0, 'Uninstall runs', out)
     st = lib_state()
     check(st.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in st,
           'after Uninstall: the original ixemul back, no .orig', str(st))
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'C:vsh') if run('List >NIL: %s' % f)[0] == 0]
+                        'L:vtcon-handler', 'C:vsh', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:TERMINFO')
+            if run('List >NIL: %s' % f)[0] == 0]
     check(not left, 'Uninstall removed the files', ' '.join(left))
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1

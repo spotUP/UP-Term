@@ -13,8 +13,9 @@ XCON: is a console window like CON:, with a modern terminal inside:
 
 INSTALL
   Unpack, cd into the drawer, then:   Execute Install
-  (copies L:vtcon-handler, DEVS:DOSDrivers/XCON, the terminfo entry to
-  ENVARC:terminfo and mounts XCON:)
+  (copies the handlers, DOSDrivers entries, vsh, ixkill, the terminal
+  entries to ENVARC:up-term, sets TERMINFO, puts in the patched
+  ixemul.library and mounts XCON: and PTY:)
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
@@ -26,12 +27,13 @@ USE
   XTERM AMIGA PCANSI (dialect)  LATIN1 or CP437 (xterm byte set; default
   UTF-8)
 
-  For ixemul programs:   SetEnv TERM vtcon
-                         SetEnv TERMINFO /ENVARC/terminfo
-  Programs with their own termcap reader (tcsh, for one) also need
-                         SetEnv TERMCAP /ENVARC/termcap.vtcon
-  (they do not look in /etc/termcap by themselves; or add the vtcon entry
-  to your ixemul termcap and point TERMCAP at that)
+  Terminal type: vsh sets TERM=vtcon and TERMCAP for the programs it runs
+  when it is in an XCON: window. From the AmigaDOS Shell in XCON:, or in
+  tcsh, set them for that shell:
+                         SetEnv TERM vtcon
+                         SetEnv TERMCAP /ENV/up-term/termcap.vtcon
+  (not globally: a ROM CON: window cannot show vtcon's sequences).
+  TERMINFO (set by Install) is /ENV/up-term/terminfo.
 
 KEYS
   Mouse drag            select (Shift+drag when a program uses the mouse)

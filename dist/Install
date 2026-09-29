@@ -1,14 +1,27 @@
-; vtcon install: copies the handler and mounts XCON:.
+; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
+; the patched ixemul.library.
 ; Run from the unpacked drawer:  Execute Install
 FailAt 21
 Copy vtcon-handler L: CLONE
 Copy XCON DEVS:DOSDrivers/XCON CLONE
 Copy pty-handler L: CLONE
 Copy PTY DEVS:DOSDrivers/PTY CLONE
-MakeDir >NIL: ENVARC:terminfo
-MakeDir >NIL: ENVARC:terminfo/v
-Copy terminfo/v/vtcon ENVARC:terminfo/v/vtcon CLONE
-Copy termcap.vtcon ENVARC:termcap.vtcon CLONE
+; The terminal entries live in ENVARC:up-term (ENV:up-term after a boot).
+; Not in ENVARC:terminfo: AmigaDOS names ignore case, so that drawer IS the
+; variable TERMINFO, and TERMINFO could no longer be set at all (an earlier
+; kit did that; its entry goes). TERMINFO is set for every program: ncurses
+; still finds the other terminals in its own directories. TERM and TERMCAP
+; are not: TERM=vtcon in a ROM CON: window would send it xterm sequences.
+; vsh sets both for itself on a vtcon console.
+Delete >NIL: ENVARC:terminfo/v/vtcon ENV:terminfo/v/vtcon QUIET
+Delete >NIL: ENVARC:terminfo/v ENVARC:terminfo ENV:terminfo/v ENV:terminfo QUIET
+Delete >NIL: ENVARC:termcap.vtcon ENV:termcap.vtcon QUIET
+MakeDir >NIL: ENVARC:up-term ENVARC:up-term/terminfo ENVARC:up-term/terminfo/v
+Copy terminfo/v/vtcon ENVARC:up-term/terminfo/v/vtcon CLONE
+Copy termcap.vtcon ENVARC:up-term/termcap.vtcon CLONE
+Copy ENVARC:up-term ENV:up-term ALL CLONE QUIET
+SetEnv TERMINFO /ENV/up-term/terminfo
+Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
 MakeDir >NIL: ENVARC:vsh
@@ -35,6 +48,5 @@ Assign >NIL: PTY: EXISTS DEVICES
 If WARN
   Mount DEVS:DOSDrivers/PTY
 EndIf
-Echo "vtcon installed. Try:  NewShell XCON:0/20/640/300/vtcon/CLOSE"
-Echo "For ixemul programs:  SetEnv TERM vtcon"
+Echo "UP-Term installed. Try:  NewShell XCON:0/20/640/300/UP-Term/CLOSE"
 Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"
