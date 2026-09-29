@@ -733,7 +733,8 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
     int i;
     if (!plain)
         return;
-    memcpy(plain, b->s + from, to - from);
+    if (to > from)
+        memcpy(plain, b->s + from, to - from); /* an empty field may have no buffer */
     plain[to - from] = 0;
     if (!(flags & SH_NO_GLOB) && has_glob(b, from, to)) {
         /* the pattern: quoted characters escaped, so they match themselves */

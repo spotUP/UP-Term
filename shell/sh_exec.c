@@ -38,6 +38,8 @@ static void pb_str(pbuf *b, const char *s)
     pb_add(b, s, (long)strlen(s));
 }
 
+static char *core_subst(sh_ctx *c, const char *cmd);
+
 void sh_shell_init(sh_shell *sh)
 {
     memset(&sh->ctx, 0, sizeof(sh->ctx));
@@ -50,6 +52,9 @@ void sh_shell_init(sh_shell *sh)
     memset(sh->jobs, 0, sizeof(sh->jobs));
     memset(sh->job_text, 0, sizeof(sh->job_text));
     sh->retired = 0;
+    sh->intr = 0;
+    sh->ctx.subst = core_subst;
+    sh->ctx.user = sh;
     sh->heredocs = 0;
 }
 
@@ -73,6 +78,74 @@ void sh_shell_free(sh_shell *sh)
         free(sh->job_text[i]);
     sh_list_free(&sh->aliases);
     sh_ctx_free(&sh->ctx);
+}
+
+sh_shell *sh_shell_clone(const sh_shell *sh)
+{
+    sh_shell *c = (sh_shell *)malloc(sizeof(sh_shell));
+    const sh_var *v;
+    const sh_func *f;
+    sh_func **tail;
+    int i;
+    if (!c)
+        return 0;
+    sh_shell_init(c);
+    c->os = sh->os;
+    c->io = sh->io;
+    c->io.owned = 0;
+    for (v = sh->ctx.vars; v; v = v->next) {
+        sh_set(&c->ctx, v->name, v->value);
+        if (v->exported)
+            sh_export(&c->ctx, v->name);
+    }
+    for (i = 0; i < sh->ctx.args.n; i++)
+        sh_list_add(&c->ctx.args, sh->ctx.args.v[i]);
+    c->ctx.arg0 = sh->ctx.arg0;  /* not owned by a ctx */
+    c->ctx.status = sh->ctx.status;
+    c->ctx.pid = sh->ctx.pid;
+    c->ctx.last_bg = sh->ctx.last_bg;
+    c->ctx.nocase = sh->ctx.nocase;
+    c->ctx.listdir = sh->ctx.listdir;
+    c->ctx.subst = sh->ctx.subst;
+    c->ctx.user = sh->ctx.user == (const void *)sh ? (void *)c : sh->ctx.user;
+    tail = &c->funcs;
+    for (f = sh->funcs; f; f = f->next) {
+        sh_func *nf = (sh_func *)calloc(1, sizeof(sh_func));
+        if (!nf)
+            break;
+        nf->name = sdup(f->name);
+        sh_parse_copy(f->body.tree, &nf->body);
+        *tail = nf;
+        tail = &nf->next;
+    }
+    for (i = 0; i < sh->aliases.n; i++)
+        sh_list_add(&c->aliases, sh->aliases.v[i]);
+    return c;
+}
+
+static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io);
+static void close_owned(sh_shell *sh, const sh_io *io);
+
+long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io)
+{
+    long st = exec_node(child, tree ? tree->tree : 0, io);
+    int i;
+    if (child->exiting)
+        st = child->exit_status;
+    else if (child->intr)
+        st = 130;
+    close_owned(child, io);
+    /* its own background jobs report to it: it waits for them */
+    for (i = 0; i < 32; i++)
+        if (child->jobs[i])
+            child->os.wait(child->os.data, child->jobs[i]);
+    if (tree) {
+        sh_parse_free(tree);
+        free(tree);
+    }
+    sh_shell_free(child);
+    free(child);
+    return st;
 }
 
 /* ---- output helpers ------------------------------------------------------------- */
@@ -1124,11 +1197,110 @@ static int is_external(sh_shell *sh, const sh_node *n)
     return ext;
 }
 
+/* Run n as a subshell: a process of its own when the OS layer can make
+ * one (then the shell's variables, directory and functions are safe from
+ * it), else here with the directory restored. io's owned streams go with
+ * it. wait: its status; else *job (0: it ran here, or did not start). */
+static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, long *job)
+{
+    sh_shell *c;
+    sh_parse *t;
+    long r;
+    if (job)
+        *job = 0;
+    if (!sh->os.spawn) {
+        char *dir = sh->os.cwd(sh->os.data);
+        r = exec_node(sh, n, io);
+        close_owned(sh, io);
+        if (dir)
+            sh->os.chdir(sh->os.data, dir);
+        free(dir);
+        return r;
+    }
+    c = sh_shell_clone(sh);
+    t = (sh_parse *)malloc(sizeof(sh_parse));
+    if (t)
+        sh_parse_copy(n, t);
+    if (!c || !t || (n && !t->tree)) {
+        if (c) {
+            sh_shell_free(c);
+            free(c);
+        }
+        if (t) {
+            sh_parse_free(t);
+            free(t);
+        }
+        close_owned(sh, io);
+        err2(sh, io, "subshell", "out of memory");
+        return 1;
+    }
+    r = sh->os.spawn(sh->os.data, c, t, io, wait);
+    if (r < 0 && (!wait || r == -1)) {
+        /* it did not start: child and tree are still ours (the streams are not) */
+        sh_shell_free(c);
+        free(c);
+        sh_parse_free(t);
+        free(t);
+        err2(sh, io, "subshell", "cannot start");
+        return 1;
+    }
+    if (wait)
+        return r;
+    *job = r;
+    return 0;
+}
+
+/* A command's text for jobs: its words; a pipeline's stages joined by |. */
+static char *node_text(const sh_node *n)
+{
+    pbuf b = { 0, 0, 0 };
+    char *t;
+    if (n && n->kind == SH_CMD)
+        return words_text(n);
+    if (n && n->kind == SH_PIPE) {
+        t = node_text(n->a);
+        if (t)
+            pb_str(&b, t);
+        free(t);
+        pb_str(&b, " | ");
+        t = node_text(n->b);
+        if (t)
+            pb_str(&b, t);
+        free(t);
+        return b.s ? b.s : sdup("");
+    }
+    return sdup(n && n->kind == SH_SUBSHELL ? "( ... )" : "{ ... }");
+}
+
+/* A background job into the table, announced as "[n] id". */
+static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
+{
+    int i;
+    char nb[16];
+    for (i = 0; i < 32 && sh->jobs[i]; i++)
+        ;
+    if (i == 32) {
+        free(text);
+        return;
+    }
+    sh->jobs[i] = job;
+    free(sh->job_text[i]);
+    sh->job_text[i] = text;
+    num(nb, i + 1);
+    say(sh, io->err, "[");
+    say(sh, io->err, nb);
+    say(sh, io->err, "] ");
+    num(nb, job);
+    say(sh, io->err, nb);
+    say(sh, io->err, "\n");
+}
+
 static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     const sh_node *st[16];
     sh_io sio[16];
     long job[16];
+    int started[16];
     int k = stages(n, st, 16), i;
     long status = 0;
     for (i = 0; i < k; i++) {
@@ -1146,15 +1318,22 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
         sio[i + 1].in = rd;
         sio[i + 1].owned |= SH_OWN_IN;
     }
-    /* external stages start first, all at once; then the in-process ones
-     * (builtins, compound commands) run in order, feeding or draining them */
+    /* every stage starts at once: external commands in their runners, the
+     * others (builtins, functions, compound commands) as subshells -- all
+     * but the last, which runs in the shell itself (zsh: `echo a | read x`
+     * sets x) */
     for (i = 0; i < k; i++) {
         job[i] = 0;
-        if (is_external(sh, st[i]))
+        started[i] = 0;
+        if (is_external(sh, st[i])) {
             exec_cmd(sh, st[i], &sio[i], 0, &job[i]);
+        } else if (sh->os.spawn && i + 1 < k) {
+            subshell(sh, st[i], &sio[i], 0, &job[i]);
+            started[i] = 1; /* or failed: its streams are gone either way */
+        }
     }
     for (i = 0; i < k; i++) {
-        if (job[i])
+        if (job[i] || started[i])
             continue;
         if (is_external(sh, st[i])) {
             /* it did not start; the OS layer took its streams all the same */
@@ -1183,7 +1362,7 @@ static long exec_list_loop(sh_shell *sh, const sh_node *n, const sh_io *io)
     sh->loop_depth++;
     for (;;) {
         long c = exec_node(sh, n->a, io);
-        if (sh->exiting || sh->returning)
+        if (sh->exiting || sh->returning || sh->intr)
             break;
         if ((c == 0) == until)
             break;
@@ -1193,11 +1372,11 @@ static long exec_list_loop(sh_shell *sh, const sh_node *n, const sh_io *io)
             break;
         }
         sh->continuing = 0;
-        if (sh->exiting || sh->returning)
+        if (sh->exiting || sh->returning || sh->intr)
             break;
     }
     sh->loop_depth--;
-    return st;
+    return sh->intr ? 130 : st;
 }
 
 static long exec_for(sh_shell *sh, const sh_node *n, const sh_io *io)
@@ -1224,12 +1403,12 @@ static long exec_for(sh_shell *sh, const sh_node *n, const sh_io *io)
             break;
         }
         sh->continuing = 0;
-        if (sh->exiting || sh->returning)
+        if (sh->exiting || sh->returning || sh->intr)
             break;
     }
     sh->loop_depth--;
     sh_list_free(&items);
-    return st;
+    return sh->intr ? 130 : st;
 }
 
 static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
@@ -1255,12 +1434,22 @@ static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
     return st;
 }
 
+/* Ctrl-C: once it arrives, everything unwinds to the prompt (status 130). */
+static int poll_break(sh_shell *sh)
+{
+    if (!sh->intr && sh->os.interrupted && sh->os.interrupted(sh->os.data))
+        sh->intr = 1;
+    return sh->intr;
+}
+
 static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     long st = 0;
     sh_io rio;
     if (!n || sh->exiting)
         return sh->ctx.status;
+    if (poll_break(sh))
+        return 130;
     switch (n->kind) {
     case SH_CMD:
         st = exec_cmd(sh, n, io, 1, 0);
@@ -1268,33 +1457,22 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_SEQ:
         st = exec_node(sh, n->a, io);
         sh->ctx.status = st;
-        if (!sh->exiting && !sh->breaking && !sh->continuing && !sh->returning && n->b)
+        if (!sh->exiting && !sh->breaking && !sh->continuing && !sh->returning && !sh->intr && n->b)
             st = exec_node(sh, n->b, io);
         break;
     case SH_BG: {
         long job = 0;
-        if (n->a && n->a->kind == SH_CMD) {
+        if (n->a && is_external(sh, n->a))
             exec_cmd(sh, n->a, io, 0, &job);
+        else if (n->a && sh->os.spawn) {
+            sh_io bio = *io;
+            bio.owned = 0;
+            subshell(sh, n->a, &bio, 0, &job);
         } else {
-            exec_node(sh, n->a, io); /* a compound command runs now (no fork) */
+            exec_node(sh, n->a, io); /* no subshell processes: it runs now */
         }
         if (job) {
-            int i;
-            char nb[16];
-            for (i = 0; i < 32 && sh->jobs[i]; i++)
-                ;
-            if (i < 32) {
-                sh->jobs[i] = job;
-                free(sh->job_text[i]);
-                sh->job_text[i] = words_text(n->a);
-                num(nb, i + 1);
-                say(sh, io->err, "[");
-                say(sh, io->err, nb);
-                say(sh, io->err, "] ");
-                num(nb, job);
-                say(sh, io->err, nb);
-                say(sh, io->err, "\n");
-            }
+            add_job(sh, job, node_text(n->a), io);
             sh->ctx.last_bg = job;
         }
         st = 0;
@@ -1319,21 +1497,12 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_PIPE:
         st = exec_pipeline(sh, n, io);
         break;
-    case SH_SUBSHELL: {
-        /* no fork: the directory is restored afterwards, variables are not
-         * (documented limitation until subshells run as a process, S3.4) */
-        char *dir = sh->os.cwd(sh->os.data);
+    case SH_SUBSHELL:
         if (redirect(sh, n->redirs, io, &rio))
             st = 1;
-        else {
-            st = exec_node(sh, n->a, &rio);
-            close_owned(sh, &rio);
-        }
-        if (dir)
-            sh->os.chdir(sh->os.data, dir);
-        free(dir);
+        else
+            st = subshell(sh, n->a, &rio, 1, 0);
         break;
-    }
     case SH_GROUP:
         if (redirect(sh, n->redirs, io, &rio))
             st = 1;
@@ -1412,7 +1581,72 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
     }
     st = exec_node(sh, p.tree, &sh->io);
     sh_parse_free(&p);
+    if (sh->intr) {
+        sh->intr = 0;
+        st = sh->ctx.status = 130;
+    }
     return st;
+}
+
+/* $(cmd): cmd runs as a subshell writing into a pipe the shell reads
+ * (without subshell processes: here, into a temporary file). */
+static char *core_subst(sh_ctx *c, const char *cmd)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    pbuf out = { 0, 0, 0 };
+    sh_parse p;
+    char buf[512];
+    long n;
+    sh_parse_text(&p, cmd);
+    if (p.error) {
+        err2(sh, &sh->io, p.error, 0);
+        sh_parse_free(&p);
+        sh->ctx.status = 2;
+        return sdup("");
+    }
+    if (sh->os.spawn && sh->os.read) {
+        sh_fh rd, wr;
+        sh_io io = sh->io;
+        long job = 0, st;
+        if (sh->os.pipe(sh->os.data, &rd, &wr)) {
+            sh_parse_free(&p);
+            err2(sh, &sh->io, "pipe", "cannot create");
+            return sdup("");
+        }
+        io.out = wr;
+        io.owned = SH_OWN_OUT;
+        st = subshell(sh, p.tree, &io, 0, &job);
+        sh_parse_free(&p);
+        while ((n = sh->os.read(sh->os.data, rd, buf, sizeof(buf))) > 0)
+            pb_add(&out, buf, n);
+        sh->os.close(sh->os.data, rd);
+        if (job)
+            st = sh->os.wait(sh->os.data, job);
+        sh->ctx.status = st;
+    } else {
+        char path[48], nb[24];
+        sh_io io = sh->io;
+        sh_fh fh;
+        num(nb, ++sh->heredocs);
+        strcpy(path, "T:vsh-subst.");
+        strcat(path, nb);
+        fh = sh->os.open(sh->os.data, path, SH_OPEN_WRITE);
+        if (fh) {
+            io.out = fh;
+            io.owned = 0;
+            sh->ctx.status = exec_node(sh, p.tree, &io);
+            sh->os.close(sh->os.data, fh);
+            fh = sh->os.open(sh->os.data, path, SH_OPEN_READ);
+        }
+        sh_parse_free(&p);
+        if (fh) {
+            char line[512];
+            while ((n = sh->os.read_line(sh->os.data, fh, line, sizeof(line))) >= 0)
+                pb_add(&out, line, n);
+            sh->os.close(sh->os.data, fh);
+        }
+    }
+    return out.s ? out.s : sdup("");
 }
 
 /* ---- the prompt ---------------------------------------------------------------- */

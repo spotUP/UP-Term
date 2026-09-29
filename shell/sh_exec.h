@@ -25,6 +25,8 @@ typedef struct sh_io {
 #define SH_OPEN_WRITE  1   /* create / truncate */
 #define SH_OPEN_APPEND 2
 
+struct sh_shell;
+
 typedef struct sh_os {
     sh_fh (*open)(void *os, const char *path, int mode);
     void  (*close)(void *os, sh_fh fh);
@@ -38,6 +40,17 @@ typedef struct sh_os {
     long  (*run)(void *os, char **argv, const sh_io *io, int wait);
     long  (*wait)(void *os, long job);            /* its exit status */
     int   (*done)(void *os, long job);            /* 1: it has ended (wait returns at once) */
+    /* Run a subshell: tree in a process of its own with child, a clone of
+     * the shell (sh_shell_clone). The OS layer sets child->os.data (and
+     * ctx.pid) for that process and calls sh_run_child there, which runs
+     * the tree, closes io's owned streams and frees child and tree. The
+     * streams io->owned marks are the OS layer's from here, as with run.
+     * wait: the exit status; !wait: a job id for wait/done. -1: it could
+     * not start -- child and tree stay the caller's (the streams do not).
+     * 0 (no spawn): subshells run in the shell's own process. */
+    long  (*spawn)(void *os, struct sh_shell *child, sh_parse *tree, const sh_io *io, int wait);
+    long  (*read)(void *os, sh_fh fh, char *buf, long max); /* raw; 0 at the end */
+    int   (*interrupted)(void *os);  /* Ctrl-C arrived since the last call (0 = none) */
     long  (*write)(void *os, sh_fh fh, const char *buf, long n);
     long  (*read_line)(void *os, sh_fh fh, char *buf, long max); /* -1 at the end */
     int   (*chdir)(void *os, const char *path);    /* 0 = ok */
@@ -73,11 +86,21 @@ typedef struct sh_shell {
     long jobs[32];         /* background job ids, 0 = free */
     char *job_text[32];
     sh_retired *retired;   /* freed with the shell */
+    int intr;              /* Ctrl-C: unwinding to the prompt */
     int heredocs;          /* numbering for here-document temp files */
 } sh_shell;
 
 void sh_shell_init(sh_shell *sh);
 void sh_shell_free(sh_shell *sh);
+
+/* A subshell's copy of sh: variables (and which are exported), $0 $1.. $?,
+ * functions (bodies copied), aliases, the OS table and streams; no jobs.
+ * malloc'ed; 0 when memory runs out. */
+sh_shell *sh_shell_clone(const sh_shell *sh);
+
+/* In the subshell's process: run tree with io, close io's owned streams,
+ * free child and tree (both malloc'ed); the exit status. */
+long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io);
 
 /* Run one input text (a line, or a script). Returns the exit status of
  * its last command; *incomplete is set when the text needs more lines. */

@@ -18,6 +18,10 @@ typedef struct pending {
     int argc;
     sh_io io;
     int used;
+    sh_shell *child;        /* a subshell: runs tree with sh_run_child */
+    sh_parse *tree;
+    int ran;
+    long status;
 } pending;
 static pending jobs[16];
 static int last_owned[16];   /* io.owned each background start was given, in order */
@@ -85,11 +89,41 @@ static long f_write(void *os, sh_fh fh, const char *b, long n)
     return n;
 }
 
+static void run_pending(pending *p);
+
+/* An empty pipe with a job still to write it: run that job first, as a
+ * reader blocks until its writer has written (the fake runs jobs whole). */
+static void feed(sh_fh fh)
+{
+    int i;
+    fbuf *f = slot(fh);
+    if (!f || !f->is_pipe || f->rpos < f->len)
+        return;
+    for (i = 0; i < 16; i++)
+        if (jobs[i].used && !jobs[i].ran && jobs[i].io.out == fh)
+            run_pending(&jobs[i]);
+}
+
+static long f_read(void *os, sh_fh fh, char *buf, long max)
+{
+    fbuf *f = slot(fh);
+    long n;
+    (void)os;
+    feed(fh);
+    if (!f || f->rpos >= f->len)
+        return 0;
+    n = f->len - f->rpos < max ? f->len - f->rpos : max;
+    memcpy(buf, f->data + f->rpos, n);
+    f->rpos += (int)n;
+    return n;
+}
+
 static long f_read_line(void *os, sh_fh fh, char *buf, long max)
 {
     fbuf *f = slot(fh);
     long n = 0;
     (void)os;
+    feed(fh);
     if (!f || f->rpos >= f->len)
         return -1;
     while (f->rpos < f->len && n < max - 1) {
@@ -177,14 +211,56 @@ static long f_run(void *os, char **argv, const sh_io *io, int wait)
     return -1;
 }
 
+/* A subshell "process": the fake's directory is one global, so the
+ * child's own directory is put back when it ends. */
+static long run_child(sh_shell *child, sh_parse *tree, const sh_io *io)
+{
+    char saved[64];
+    long st;
+    strcpy(saved, cwd);
+    st = sh_run_child(child, tree, io);
+    strcpy(cwd, saved);
+    return st;
+}
+
+static void run_pending(pending *p)
+{
+    if (p->ran)
+        return;
+    p->ran = 1;
+    p->status = p->child ? run_child(p->child, p->tree, &p->io)
+                         : run_now(p->argv, p->argc, &p->io);
+}
+
 static long f_wait(void *os, long job)
 {
     pending *p = &jobs[job - 1];
-    long st;
     (void)os;
-    st = run_now(p->argv, p->argc, &p->io);
+    run_pending(p);
     p->used = 0;
-    return st;
+    return p->status;
+}
+
+static int n_spawned;
+
+static long f_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, int wait)
+{
+    int i;
+    (void)os;
+    n_spawned++;
+    child->ctx.pid = 1000 + n_spawned;
+    if (wait)
+        return run_child(child, tree, io);
+    for (i = 0; i < 16; i++)
+        if (!jobs[i].used) {
+            memset(&jobs[i], 0, sizeof(jobs[i]));
+            jobs[i].used = 1;
+            jobs[i].child = child;
+            jobs[i].tree = tree;
+            jobs[i].io = *io;
+            return i + 1;
+        }
+    return -1;
 }
 
 static int f_done(void *os, long job)
@@ -252,6 +328,9 @@ static void fresh(void)
     sh.os.run = f_run;
     sh.os.wait = f_wait;
     sh.os.done = f_done;
+    sh.os.spawn = f_spawn;
+    sh.os.read = f_read;
+    n_spawned = 0;
     sh.os.write = f_write;
     sh.os.read_line = f_read_line;
     sh.os.chdir = f_chdir;
@@ -378,6 +457,47 @@ static void functions_outlive_their_lines(void)
     CHECK_STR(slot(OUT)->data, "body\nbody\nold\nnew\n");
 }
 
+static int intr_after;  /* the fake's Ctrl-C arrives after this many polls (0: never) */
+
+static int f_interrupted(void *os)
+{
+    (void)os;
+    return intr_after > 0 && --intr_after == 0;
+}
+
+/* Subshells run as processes of their own (S3.4): what they change stays
+ * in them; builtin pipeline stages run at the same time; & takes any
+ * command; $( ) is a subshell too. */
+static void subshells(void)
+{
+    int inc = 0;
+    CHECK_STR(run("A=1; (A=2; cd Work:); echo $A; pwd"), "1\nRAM:\n");
+    CHECK_STR(run("(exit 3); echo $? after"), "3 after\n");
+    CHECK_STR(run("A=x; f() { echo f$1; }; (echo $A; f 1)"), "x\nf1\n");
+    CHECK_STR(run("(g() { :; }); which g"), "g is a command\n");
+    CHECK_STR(run("echo $(cd Work:; echo hi); pwd"), "hi\nRAM:\n");
+    CHECK_STR(run("x=$(exit 3); echo after"), "after\n");
+    CHECK_STR(run("echo [$(echo a; echo b)]"), "[a b]\n");
+    CHECK_STR(run("{ echo a; echo b; } | while read x; do echo got$x; done"), "gota\ngotb\n");
+    CHECK_INT(n_spawned, 1);   /* the first stage; the last runs in the shell */
+    CHECK_STR(run("echo a b | read x y; echo $y$x"), "ba\n");
+    run("{ echo bg; fail 2; } & wait; echo $?");
+    CHECK_STR(slot(OUT)->data, "bg\n2\n");
+    CHECK_STR(slot(ERR)->data, "[1] 1\n");
+    CHECK_STR(run("echo x | upper & wait"), "X\n");
+    CHECK_STR(run("{ echo a; } & jobs"), "a\n[1] Done  { ... }\n");
+    /* Ctrl-C ends a loop that only runs builtins, and what follows it */
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_after = 50;
+    sh_run_text(&sh, "while true; do :; done; echo never", &inc);
+    CHECK_STR(slot(OUT)->data, "");
+    CHECK_INT(sh.ctx.status, 130);
+    sh_run_text(&sh, "echo next line runs", &inc);
+    CHECK_STR(slot(OUT)->data, "next line runs\n");
+    intr_after = 0;
+}
+
 static void incomplete_input(void)
 {
     int inc = 0;
@@ -454,5 +574,6 @@ void suite_sh_exec(void)
     incomplete_input();
     job_notices();
     functions_outlive_their_lines();
+    subshells();
     sh_shell_free(&sh);
 }
