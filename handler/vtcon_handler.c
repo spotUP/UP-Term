@@ -421,7 +421,7 @@ static void parse_font(const char *rest, char *name, int max, WORD *size)
 static void parse_spec(con *c, const char *s)
 {
     char field[128];
-    int fno = 0, k;
+    int fno = 0, k, colours = 0;
     c->wx = 0;
     c->wy = 0;
     c->ww = 640;
@@ -506,10 +506,15 @@ static void parse_spec(con *c, const char *s)
         } else if (str_ieq(field, "DARK")) {
             c->fg_rgb = 0xC0C0C0UL; /* light grey on black */
             c->bg_rgb = 0x000000UL;
+            colours = 1;
+        } else if (str_ieq(field, "LIGHT")) {
+            colours = 1; /* the screen's text and background pens */
         } else if (str_ipre(field, "FG", &rest)) {
             c->fg_rgb = parse_rgb(rest);
+            colours = 1;
         } else if (str_ipre(field, "BG", &rest)) {
             c->bg_rgb = parse_rgb(rest);
+            colours = 1;
         } else if (str_ieq(field, "CP437")) {
             c->cp437 = 1;
         } else if (str_ipre(field, "SCREEN", &rest)) {
@@ -525,6 +530,14 @@ static void parse_spec(con *c, const char *s)
         if (*s != '/')
             break;
         s++;
+    }
+    /* Black background unless the options chose colours (owner, 2026-09-29:
+     * program colours sat on the Workbench's grey). The amiga personality
+     * keeps the screen's pens: CON: programs draw with pens 0-3 as the
+     * Workbench has them. LIGHT asks for the screen's pens anywhere. */
+    if (!colours && c->pers != VT_AMIGA) {
+        c->fg_rgb = 0xC0C0C0UL;
+        c->bg_rgb = 0x000000UL;
     }
 }
 
