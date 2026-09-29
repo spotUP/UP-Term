@@ -39,6 +39,7 @@ typedef struct job {
     BPTR in, out, err;
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
+    char child[24];         /* the name of the Shell process SystemTags makes */
     int done;               /* set (under Forbid) as the runner ends */
     LONG rc;
 } job;
@@ -54,6 +55,20 @@ typedef struct pipe_rec {
 
 static pipe_rec pipe_tab[32];
 
+/* Ctrl-C to a running job: its runner, which is the command's process
+ * for a loaded command, and the Shell process SystemTags spawned for a
+ * Resident command or a script (found by the name vsh gave it). Call
+ * under Forbid. */
+static void job_break(job *j)
+{
+    struct Task *t;
+    if (j->done)
+        return;
+    Signal(j->task, SIGBREAKF_CTRL_C);
+    if (j->child[0] && (t = FindTask((STRPTR)j->child)) != 0)
+        Signal(t, SIGBREAKF_CTRL_C);
+}
+
 /* Close a stream; every close of a stream vsh handed out comes here. */
 static void close_stream(BPTR fh)
 {
@@ -66,8 +81,8 @@ static void close_stream(BPTR fh)
         if (pipe_tab[i].rd == fh || pipe_tab[i].wr == fh)
             pr = &pipe_tab[i];
     if (pr && pr->rd == fh) {
-        if (pr->writer && !pr->writer->done)
-            Signal(pr->writer->task, SIGBREAKF_CTRL_C);
+        if (pr->writer)
+            job_break(pr->writer);
         Permit();
         {
             static char sink[512]; /* only read into, never used: shared is fine */
@@ -198,8 +213,11 @@ static void runner(void)
         SelectInput(oin);
         SelectOutput(oout);
     } else {
+        /* a Shell process of its own: named, so Ctrl-C can find it, and
+         * given the error stream (CreateNewProc takes NP_Error from V39) */
         j->rc = SystemTags((STRPTR)j->cmd, SYS_Input, j->in, SYS_Output, j->out,
-                           SYS_UserShell, TRUE, TAG_END);
+                           SYS_UserShell, TRUE, NP_Name, (ULONG)j->child,
+                           j->err ? NP_Error : TAG_IGNORE, j->err, TAG_END);
     }
     if (j->close_in)
         close_stream(j->in);
@@ -362,6 +380,15 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         return -1;
     }
     j->task = &p->pr_Task;
+    if (!seg) {
+        static const char hex[] = "0123456789abcdef";
+        unsigned long a = (unsigned long)j;
+        int i;
+        strcpy(j->child, "vsh command ");
+        for (i = 0; i < 8; i++)
+            j->child[12 + i] = hex[(a >> (28 - 4 * i)) & 15];
+        j->child[20] = 0;
+    }
     if (j->close_out) {
         int i;
         Forbid();
@@ -405,7 +432,7 @@ static long os_wait(void *os, long id)
                 if (m == j)
                     break;
             if (!m->msg.mn_Node.ln_Succ)
-                Signal(j->task, SIGBREAKF_CTRL_C);
+                job_break(j);
             Permit();
         }
     }

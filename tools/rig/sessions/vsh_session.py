@@ -47,5 +47,15 @@ shot("vsh5c")
 t('q'); time.sleep(2)                  # the reader goes: List must stop too
 line('List SYS: ALL | read x; echo "read: $x"', 4)   # a builtin reader, a long writer
 shot("vsh5e")
+# S3.2: the error stream per command, loaded and through SystemTags (a script)
+line('clear')
+line("printf '%s=%03d\\n' x 5")
+line('VTC:pkgs/bin/less RAM:nosuch 2>RAM:e; echo "rc $?"; Type RAM:e', 4)
+line("echo 'VTC:pkgs/bin/less RAM:nosuch' >RAM:s2; Protect RAM:s2 +s; RAM:s2 2>RAM:e2; Type RAM:e2", 5)
+# Ctrl-C reaches a script's Shell process
+line("echo 'Wait 30' >RAM:w; Protect RAM:w +s")
+t('RAM:w'); ret(2); k(0x33, 0x08); time.sleep(3)
+line('echo "script broke $?"')
+shot("vsh5f")
 line('exit', 2)
 shot("vsh5d")
