@@ -88,7 +88,8 @@ enum vt_layout {
     VT_LAYOUT_PAGE_LENGTH = 1, /* CSI n t: text lines */
     VT_LAYOUT_LINE_LENGTH,     /* CSI n u: columns */
     VT_LAYOUT_LEFT_OFFSET,     /* CSI n x: pixels */
-    VT_LAYOUT_TOP_OFFSET       /* CSI n y: pixels */
+    VT_LAYOUT_TOP_OFFSET,      /* CSI n y: pixels */
+    VT_LAYOUT_COLUMNS          /* DECCOLM (?3, allowed by ?40): 80 or 132 columns */
 };
 
 typedef struct vt_callbacks {
@@ -126,6 +127,13 @@ typedef struct vt_callbacks {
 #define VT_MODE_NEWLINE      0x0400 /* LNM: LF also returns; Return sends CR LF */
 #define VT_MODE_FOCUS        0x0800 /* ?1004 */
 #define VT_MODE_SCREEN_REVERSE 0x1000 /* DECSCNM ?5: the whole screen in reverse video */
+#define VT_MODE_CURSOR_BLINK 0x2000   /* ?12 (or a blinking DECSCUSR shape) */
+#define VT_MODE_AUTOREPEAT   0x4000   /* ?8 DECARM: held keys repeat (default on) */
+#define VT_MODE_REVERSE_WRAP 0x8000   /* ?45: BS at the left edge goes up a line */
+#define VT_MODE_MOUSE_UTF8   0x10000  /* ?1005: mouse coordinates as UTF-8 */
+#define VT_MODE_META_8BIT    0x20000  /* ?1034: Meta sets the 8th bit, no ESC prefix */
+#define VT_MODE_SCHEME_UPDATES 0x40000 /* ?2031: report dark/light changes */
+#define VT_MODE_APP_ESCAPE   0x80000  /* ?7727: the Escape key sends ESC O [ */
 
 typedef struct vt_term vt_term;
 

@@ -984,14 +984,30 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 /* Blinking (SGR 5 slow, 6 rapid): called every frame (50 ms). Slow cells
  * change every 10 frames (1 Hz), rapid ones every 3. Returns 1 while any
  * blinking cell is on screen, so the caller keeps the frames coming. */
+/* A blinking cursor: ?12, or a blinking DECSCUSR shape (1, 3, 5). */
+int vr_cursor_blinks(vr_render *r)
+{
+    int style = vt_cursor_style(r->t);
+    return (vt_modes(r->t) & VT_MODE_CURSOR_BLINK) || style == 1 || style == 3 || style == 5;
+}
+
 int vr_blink_tick(vr_render *r)
 {
-    int slow, fast, y, x, n;
-    if (!r->has_blink || r->hidden || r->view)
+    int slow, fast, y, x, n, cursor = vr_cursor_blinks(r);
+    if ((!r->has_blink && !cursor) || r->hidden || r->view)
         return 0;
     r->blink_frames++;
     slow = r->blink_frames % 10 == 0;
     fast = r->blink_frames % 3 == 0;
+    if (cursor && slow) {
+        /* the cursor's own blink, at the slow rate */
+        if (r->cursor_drawn)
+            vr_cursor_off(r);
+        else
+            vr_cursor_on(r);
+    }
+    if (!r->has_blink)
+        return cursor;
     if (!slow && !fast)
         return 1;
     if (slow)
@@ -999,6 +1015,7 @@ int vr_blink_tick(vr_render *r)
     if (fast)
         r->blink_fast_off = (BYTE)!r->blink_fast_off;
     r->has_blink = 0; /* found again by the rows that still blink */
+    cursor = r->cursor_drawn; /* the cursor's phase, kept across the redraw */
     vr_cursor_off(r);
     for (y = 0; y < r->rows; y++) {
         const vt_cell *c = vt_row(r->t, y, &n);
@@ -1017,8 +1034,9 @@ int vr_blink_tick(vr_render *r)
         if (x0 >= 0)
             draw_rows(r, x0, y, x1, y + 1);
     }
-    vr_cursor_on(r);
-    return r->has_blink;
+    if (cursor)
+        vr_cursor_on(r);
+    return r->has_blink || vr_cursor_blinks(r);
 }
 
 void vr_set_alt_font(vr_render *r, int n, struct TextFont *font)

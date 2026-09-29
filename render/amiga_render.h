@@ -82,6 +82,8 @@ void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
 
 /* Blinking cells: call once per frame; 1 while any blink on screen. */
 int  vr_blink_tick(vr_render *r);
+/* The cursor blinks (?12 or a blinking DECSCUSR shape). */
+int  vr_cursor_blinks(vr_render *r);
 /* The font SGR 11-19 (n 1-9) or 20 (n 10, Fraktur) draws with; the caller
  * keeps it open. Ignored unless its cells are the primary font's size. */
 void vr_set_alt_font(vr_render *r, int n, struct TextFont *font);

@@ -9,6 +9,43 @@ static const char *key(vt_term *t, long k, int mods)
     return buf;
 }
 
+/* ---- phase A5: modes that change what keys and the mouse send ---- */
+
+static void meta_escape_and_modify_other_keys(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    CHECK_STR(key(t, 'a', VT_MOD_ALT), "\033a");
+    h_put(t, "\033[?1034h");
+    CHECK_INT((unsigned char)key(t, 'a', VT_MOD_ALT)[0], 0xE1); /* Meta sets the 8th bit */
+    CHECK_STR(key(t, VT_KEY_ESCAPE, 0), "\033");
+    h_put(t, "\033[?7727h");
+    CHECK_STR(key(t, VT_KEY_ESCAPE, 0), "\033O[");
+    CHECK_STR(key(t, 'a', VT_MOD_CTRL), "\001");
+    h_put(t, "\033[>4;1m");
+    CHECK_STR(key(t, 'a', VT_MOD_CTRL), "\001");          /* level 1: plain still says it */
+    CHECK_STR(key(t, '1', VT_MOD_CTRL), "\033[27;5;49~");  /* Ctrl+1 has no plain form */
+    CHECK_STR(key(t, 'A', VT_MOD_CTRL | VT_MOD_SHIFT), "\033[27;6;65~");
+    h_put(t, "\033[>4;2m");
+    CHECK_STR(key(t, 'a', VT_MOD_CTRL), "\033[27;5;97~");  /* level 2: every modified key */
+    h_reply_clear();
+    h_put(t, "\033[?4m");
+    CHECK_STR(h_reply, "\033[>4;2m");
+    vt_free(t);
+}
+
+static void utf8_mouse_reaches_past_column_223(void)
+{
+    vt_term *t = h_new(400, 24, VT_XTERM);
+    char buf[40];
+    int n;
+    h_put(t, "\033[?1000h\033[?1005h");
+    n = vt_encode_mouse(t, 0, 0, 300, 5, 0, (vt_u8 *)buf);
+    buf[n] = 0;
+    /* ESC [ M, 32, then 333 and 38 as UTF-8 */
+    CHECK_STR(buf, "\033[M \xc5\x8d&");
+    vt_free(t);
+}
+
 static void xterm_cursor_keys_follow_decckm(void)
 {
     vt_term *t = h_new(10, 2, VT_XTERM);
@@ -146,4 +183,6 @@ void suite_keys(void)
     amiga_keys_use_the_8bit_csi();
     pcansi_keys_are_plain_ansi();
     bracketed_paste_only_when_asked();
+    meta_escape_and_modify_other_keys();
+    utf8_mouse_reaches_past_column_223();
 }

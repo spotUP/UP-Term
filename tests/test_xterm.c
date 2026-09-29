@@ -386,6 +386,59 @@ static void window_reports_and_title_stack(void)
     vt_free(t);
 }
 
+/* ---- phase A5: modes ---- */
+
+static void modes_of_phase_a5(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    int x, y;
+    CHECK_INT((vt_modes(t) & VT_MODE_AUTOREPEAT) != 0, 1);  /* DECARM on at start */
+    h_put(t, "\033[?8l\033[?12h");
+    CHECK_INT((vt_modes(t) & VT_MODE_AUTOREPEAT) != 0, 0);
+    CHECK_INT((vt_modes(t) & VT_MODE_CURSOR_BLINK) != 0, 1);
+    h_put(t, "\033[2;1H\b");                                /* no ?45: stays */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 0);
+    CHECK_INT(y, 1);
+    h_put(t, "\033[?45h\b");                                /* ?45: up to the line end */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 9);
+    CHECK_INT(y, 0);
+    /* ESC % G: UTF-8 from here in a Latin-1 window */
+    vt_set_charset(t, VT_CS_LATIN1);
+    h_put(t, "\033[3;1H\033%G\xc3\xa9");
+    CHECK_INT(h_cell(t, 0, 2)->ch, 0xE9);
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+static void deccolm_only_when_allowed(void)
+{
+    vt_term *t = h_new(80, 3, VT_XTERM);
+    h_layout_which = 0;
+    h_put(t, "x\033[?3h");
+    CHECK_INT(h_layout_which, 0);                           /* ?40 off: the window keeps its width */
+    CHECK_INT(h_cell(t, 0, 0)->ch, 'x');
+    h_put(t, "\033[?40h\033[?3h");
+    CHECK_INT(h_layout_which, VT_LAYOUT_COLUMNS);
+    CHECK_INT(h_layout_value, 132);
+    CHECK_INT(h_cell(t, 0, 0)->ch, ' ');                    /* and the screen cleared */
+    vt_free(t);
+}
+
+static void scheme_updates_when_asked(void)
+{
+    vt_term *t = h_new(10, 2, VT_XTERM);
+    vt_set_default_colors(t, 0xC0C0C0UL, 0x000000UL, 0xC0C0C0UL);
+    h_reply_clear();
+    vt_set_default_colors(t, 0x000000UL, 0xFFFFFFUL, 0x000000UL);
+    CHECK_INT(h_reply_len, 0);                              /* not asked: nothing */
+    h_put(t, "\033[?2031h");
+    vt_set_default_colors(t, 0xC0C0C0UL, 0x000000UL, 0xC0C0C0UL);
+    CHECK_STR(h_reply, "\033[?997;1n");
+    vt_free(t);
+}
+
 static void sgr_colours_and_attributes(void)
 {
     vt_term *t = h_new(10, 1, VT_XTERM);
@@ -740,6 +793,9 @@ void suite_xterm(void)
     colour_queries_and_changes();
     decrqss_decrqm_and_version();
     window_reports_and_title_stack();
+    modes_of_phase_a5();
+    deccolm_only_when_allowed();
+    scheme_updates_when_asked();
     alt_screen_1049_saves_and_restores();
     dec_graphics_draw_boxes();
     shift_out_selects_g1();

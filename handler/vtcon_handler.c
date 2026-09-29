@@ -116,6 +116,7 @@ typedef struct con {
     char altname[11][40];
     WORD altsize[11];
     struct TextFont *alt[11];
+    WORD want_cols;              /* DECCOLM asked for this width (0: none) */
     ULONG wflags;
     int inactive;
     ULONG fg_rgb, bg_rgb;        /* DARK / FG / BG options, VR_KEEP = the screen's */
@@ -334,6 +335,7 @@ static void cb_layout(void *u, int which, int value)
     case VT_LAYOUT_LINE_LENGTH: c->r.lay_cols = (WORD)value; break;
     case VT_LAYOUT_LEFT_OFFSET: c->r.lay_x = (WORD)value; break;
     case VT_LAYOUT_TOP_OFFSET: c->r.lay_y = (WORD)value; break;
+    case VT_LAYOUT_COLUMNS: c->want_cols = (WORD)value; break;
     default: return;
     }
     c->layout_dirty = 1;
@@ -757,8 +759,8 @@ static void render(con *c)
     vr_cursor_off(&c->r);
     vt_flush(c->t);
     vr_cursor_on(&c->r);
-    if (c->r.has_blink)
-        frame_start(c); /* blinking cells: the frames keep coming */
+    if (c->r.has_blink || vr_cursor_blinks(&c->r))
+        frame_start(c); /* blinking cells or cursor: the frames keep coming */
 }
 
 static void frame_start(con *c)
@@ -798,7 +800,18 @@ static void output(con *c, const vt_u8 *b, long n)
     if (c->layout_dirty) {
         c->layout_dirty = 0;
         render(c);
-        resize(c); /* not inside vt_feed: the engine is mid-parse there */
+        if (c->want_cols && c->win) {
+            /* DECCOLM: the window as wide as that many columns (as far
+             * as the screen allows); its new size resizes the grid */
+            struct Window *w = c->win;
+            WORD width = (WORD)(c->want_cols * c->font->tf_XSize + w->BorderLeft + w->BorderRight);
+            if (width > w->WScreen->Width - w->LeftEdge)
+                width = (WORD)(w->WScreen->Width - w->LeftEdge);
+            c->want_cols = 0;
+            ChangeWindowBox(w, w->LeftEdge, w->TopEdge, width, w->Height);
+        } else {
+            resize(c); /* not inside vt_feed: the engine is mid-parse there */
+        }
     }
     frame_start(c);
 #ifdef VTCON_DEBUG
@@ -1297,6 +1310,8 @@ static void key_event(con *c, struct IntuiMessage *im)
     long key;
     int mods = 0, n = 0;
     vt_u8 out[40];
+    if ((qual & IEQUALIFIER_REPEAT) && !(vt_modes(c->t) & VT_MODE_AUTOREPEAT))
+        return; /* DECARM off: a held key types once */
     if (vt_raw_events(c->t) & (1UL << 1)) {
         /* the program asked for raw keyboard events (CSI 1 {): an input
          * event report per key, press and release (matrix 5.2) */

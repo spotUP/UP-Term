@@ -124,6 +124,9 @@ struct vt_term {
     vt_u32 dflt_set[3];        /* OSC 10-12: 0x01RRGGBB, 0 = the host's */
     int cell_w, cell_h;        /* pixels, for CSI 14t / 16t */
     vt_u8 cursor_style;        /* DECSCUSR */
+    vt_u8 allow_cols;          /* ?40: DECCOLM may change the width */
+    vt_u8 mok;                 /* modifyOtherKeys level, CSI > 4 ; n m */
+    vt_u8 scheme;              /* the last dark (1) / light (2) scheme reported */
 
     /* sequences parsed but not acted on (vt_unhandled): the terminfo test
      * requires none, so a capability the engine lacks cannot hide */
@@ -1021,8 +1024,12 @@ static void exec_c0(vt_term *t, vt_u32 c)
             amiga_move_linear(t, -1); /* the ROM: back into the row above */
             break;
         }
-        if (t->cx > 0)
+        if (t->cx > 0) {
             t->cx--;
+        } else if ((t->modes & VT_MODE_REVERSE_WRAP) && t->autowrap && t->cy > t->top) {
+            t->cy--; /* ?45: back to the end of the line above */
+            t->cx = t->cols - 1;
+        }
         t->wrap_pending = 0;
         break;
     case 0x09:
@@ -1120,6 +1127,16 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
                 t->charset[t->inter - '('] = final;
             else
                 t->charset[t->inter - '('] = 'B';
+            break;
+        case '%':
+            if (t->pers == VT_XTERM && final == 'G') {
+                t->utf8 = 1; /* ISO 2022 DOCS: UTF-8 */
+                t->cp437 = 0;
+            } else if (t->pers == VT_XTERM && final == '@') {
+                t->utf8 = 0; /* back to the 8-bit set */
+            } else {
+                note_unhandled(t, 'E', final);
+            }
             break;
         case '#':
             if (final == '8') { /* DECALN */
@@ -1392,7 +1409,15 @@ static void set_mode(vt_term *t, int on)
                 else
                     t->modes &= ~(vt_u32)VT_MODE_APP_CURSOR;
                 break;
-            case 3: /* DECCOLM: the window sets the width (xterm without allowColumns) */
+            case 3: /* DECCOLM: 132 / 80 columns when ?40 allows it, as xterm */
+                if (t->allow_cols) {
+                    if (t->cb.layout)
+                        t->cb.layout(t->user, VT_LAYOUT_COLUMNS, on ? 132 : 80);
+                    t->top = 0; /* and, as a VT100 does, a clear screen */
+                    t->bot = t->rows;
+                    clear_screen_home(t);
+                }
+                break;
             case 4: /* DECSCLM: smooth scrolling, nothing to do */
                 break;
             case 5: /* DECSCNM */
@@ -1459,6 +1484,22 @@ static void set_mode(vt_term *t, int on)
                     set_alt(t, 0, 0);
                     restore_cursor(t, &t->sav_1049);
                 }
+                break;
+            case 8: case 12: case 45: case 1005: case 1034: case 2031: case 7727: {
+                vt_u32 bit = p == 8 ? VT_MODE_AUTOREPEAT : p == 12 ? VT_MODE_CURSOR_BLINK
+                           : p == 45 ? VT_MODE_REVERSE_WRAP : p == 1005 ? VT_MODE_MOUSE_UTF8
+                           : p == 1034 ? VT_MODE_META_8BIT : p == 2031 ? VT_MODE_SCHEME_UPDATES
+                           : VT_MODE_APP_ESCAPE;
+                if (on)
+                    t->modes |= bit;
+                else
+                    t->modes &= ~bit;
+                if (p == 12)
+                    mark(t, t->cx, t->cy, t->cx + 1); /* the cursor's look changed */
+                break;
+            }
+            case 40:
+                t->allow_cols = (vt_u8)on;
                 break;
             default:
                 note_value(t, 'M', p); /* a DEC private mode we do not have */
@@ -1755,8 +1796,15 @@ static void report_mode(vt_term *t)
         case 2004: bit = VT_MODE_BRACKET_PASTE; break;
         case 6: v = t->origin ? 1 : 2; break;
         case 7: v = t->autowrap ? 1 : 2; break;
-        case 12: v = t->cursor_style == 0 || (t->cursor_style & 1) ? 1 : 2; break;
-        case 3: v = 4; break;  /* DECCOLM: the window sets the width */
+        case 12: bit = VT_MODE_CURSOR_BLINK; break;
+        case 8: bit = VT_MODE_AUTOREPEAT; break;
+        case 45: bit = VT_MODE_REVERSE_WRAP; break;
+        case 1005: bit = VT_MODE_MOUSE_UTF8; break;
+        case 1034: bit = VT_MODE_META_8BIT; break;
+        case 2031: bit = VT_MODE_SCHEME_UPDATES; break;
+        case 7727: bit = VT_MODE_APP_ESCAPE; break;
+        case 40: v = t->allow_cols ? 1 : 2; break;
+        case 3: v = t->cols == 132 ? 1 : 2; break;
         default: break;
         }
         if (bit)
@@ -1777,6 +1825,8 @@ static void report_mode(vt_term *t)
     b[n++] = 'y';
     reply(t, b, n);
 }
+
+static int scheme_of(const vt_term *t);
 
 static void csi_xterm(vt_term *t, vt_u8 final)
 {
@@ -1809,11 +1859,17 @@ static void csi_xterm(vt_term *t, vt_u8 final)
             set_mode(t, final == 'h');
         else if (final == 'n' && param0(t, 0) == 6)
             report_cursor(t, 1);
-        else if (final == 'n' && param0(t, 0) == 996) {
-            /* the colour scheme: 1 dark, 2 light, from the background */
-            vt_u32 bg = vt_default_color(t, 1);
-            long lum = (long)((bg >> 16) & 0xFF) * 3 + (long)((bg >> 8) & 0xFF) * 6 + (long)(bg & 0xFF);
-            reply(t, lum < 1280 ? "\033[?997;1n" : "\033[?997;2n", 9);
+        else if (final == 'n' && param0(t, 0) == 996)
+            reply(t, scheme_of(t) == 1 ? "\033[?997;1n" : "\033[?997;2n", 9);
+        else if (final == 'm' && param0(t, 0) == 4) { /* XTQMODKEYS */
+            char b[16];
+            int n = put_csi(t, b);
+            b[n++] = '>';
+            b[n++] = '4';
+            b[n++] = ';';
+            b[n++] = (char)('0' + t->mok);
+            b[n++] = 'm';
+            reply(t, b, n);
         }
         else if (final == 'J' || final == 'K')
             csi_common(t, final); /* DECSED / DECSEL: no protected cells */
@@ -1824,6 +1880,11 @@ static void csi_xterm(vt_term *t, vt_u8 final)
     if (t->priv == '>') {
         if (final == 'q' && param0(t, 0) == 0) {
             reply(t, "\033P>|vtcon 1.0\033\\", 15); /* XTVERSION */
+            return;
+        }
+        if (final == 'm' && param0(t, 0) == 4) { /* modifyOtherKeys */
+            long v = t->np > 1 ? param0(t, 1) : 0;
+            t->mok = (vt_u8)(v > 2 ? 2 : v);
             return;
         }
         if (final == 'c' && param0(t, 0) == 0)
@@ -2098,11 +2159,31 @@ static void reply_color(vt_term *t, long cmd, int index, vt_u32 rgb)
     reply(t, b, n);
 }
 
+/* 1 dark, 2 light: the background's brightness. */
+static int scheme_of(const vt_term *t)
+{
+    vt_u32 bg = vt_default_color(t, 1);
+    long lum = (long)((bg >> 16) & 0xFF) * 3 + (long)((bg >> 8) & 0xFF) * 6 + (long)(bg & 0xFF);
+    return lum < 1280 ? 1 : 2;
+}
+
+/* ?2031: a program asked to hear when dark and light swap. */
+static void scheme_check(vt_term *t)
+{
+    int s = scheme_of(t);
+    if (s != t->scheme) {
+        t->scheme = (vt_u8)s;
+        if (t->modes & VT_MODE_SCHEME_UPDATES)
+            reply(t, s == 1 ? "\033[?997;1n" : "\033[?997;2n", 9);
+    }
+}
+
 static void colors_changed(vt_term *t)
 {
     mark_rows(t, 0, t->rows);
     if (t->cb.colors)
         t->cb.colors(t->user);
+    scheme_check(t);
 }
 
 /* The next ';'-separated item of the OSC string from *i: its length. */
@@ -2733,7 +2814,7 @@ void vt_free(vt_term *t)
 void vt_reset(vt_term *t)
 {
     t->scr = t->pri;
-    t->modes = VT_MODE_CURSOR_VISIBLE;
+    t->modes = VT_MODE_CURSOR_VISIBLE | VT_MODE_AUTOREPEAT;
     if (t->pers == VT_AMIGA)
         t->modes |= VT_MODE_NEWLINE; /* the console's LF starts a new line */
     t->amiga_dfg = VT_COLOR_DEFAULT;
@@ -2800,6 +2881,7 @@ void vt_set_default_colors(vt_term *t, vt_u32 fg, vt_u32 bg, vt_u32 cursor)
     t->dflt[0] = fg & 0xFFFFFFUL;
     t->dflt[1] = bg & 0xFFFFFFUL;
     t->dflt[2] = cursor & 0xFFFFFFUL;
+    scheme_check(t);
 }
 
 vt_u32 vt_default_color(const vt_term *t, int which)
@@ -3338,6 +3420,28 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
 
     if (key < 0x110000) { /* a character */
         long c = key;
+        /* modifyOtherKeys: CSI 27 ; mod ; code ~ for what the plain forms
+         * cannot say -- level 2 every modified key, level 1 the ambiguous */
+        if (t->pers == VT_XTERM && t->mok && mods && key < 0x110000 &&
+            (t->mok == 2 ||
+             ((mods & VT_MOD_CTRL) && ((mods & VT_MOD_SHIFT) ||
+                                       !((c >= 'a' && c <= 'z') || (c >= '@' && c <= '_') ||
+                                         c == ' ' || c == '?'))))) {
+            char b[24];
+            int k = 0, i;
+            b[k++] = 0x1B;
+            b[k++] = '[';
+            b[k++] = '2';
+            b[k++] = '7';
+            b[k++] = ';';
+            k = fmt_uint(b, k, 1 + mods);
+            b[k++] = ';';
+            k = fmt_uint(b, k, c);
+            b[k++] = '~';
+            for (i = 0; i < k; i++)
+                out[i] = (vt_u8)b[i];
+            return k;
+        }
         if (mods & VT_MOD_CTRL) {
             if (c >= 'a' && c <= 'z')
                 c -= 0x60;
@@ -3347,6 +3451,11 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
                 c = 0;
             else if (c == '?')
                 c = 0x7F;
+        }
+        if ((mods & VT_MOD_ALT) && t->pers == VT_XTERM && (t->modes & VT_MODE_META_8BIT) &&
+            c < 0x80) {
+            out[n++] = (vt_u8)(c | 0x80); /* ?1034: Meta sets the 8th bit */
+            return n;
         }
         if ((mods & VT_MOD_ALT) && t->pers != VT_AMIGA)
             out[n++] = 0x1B;
@@ -3395,6 +3504,10 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
         return n;
     case VT_KEY_ESCAPE:
         out[n++] = 0x1B;
+        if (t->pers == VT_XTERM && (t->modes & VT_MODE_APP_ESCAPE)) {
+            out[n++] = 'O'; /* ?7727: never mistaken for the start of a sequence */
+            out[n++] = '[';
+        }
         return n;
     default:
         break;
@@ -3513,6 +3626,18 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
         b[n++] = ';';
         n = fmt_uint(b, n, y + 1);
         b[n++] = (char)(kind == 1 ? 'm' : 'M');
+    } else if (m & VT_MODE_MOUSE_UTF8) {
+        /* ?1005: each value one UTF-8 character, to 2015 */
+        long v[3];
+        int k;
+        v[0] = 32 + cb;
+        v[1] = 33 + x;
+        v[2] = 33 + y;
+        if (v[1] > 2047 || v[2] > 2047)
+            return 0;
+        b[n++] = 'M';
+        for (k = 0; k < 3; k++)
+            n += put_utf8((vt_u8 *)b + n, v[k]);
     } else {
         if (x > 222 || y > 222)
             return 0; /* beyond what one byte can carry */
