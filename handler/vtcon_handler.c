@@ -112,6 +112,10 @@ typedef struct con {
     char screen[64];
     char fontname[40];
     WORD fontsize;
+    /* FONT1..FONT9, FRAKTUR: the fonts SGR 11-19 and 20 draw with */
+    char altname[11][40];
+    WORD altsize[11];
+    struct TextFont *alt[11];
     ULONG wflags;
     int inactive;
     ULONG fg_rgb, bg_rgb;        /* DARK / FG / BG options, VR_KEEP = the screen's */
@@ -378,11 +382,46 @@ static ULONG parse_rgb(const char *s)
     return n == 6 ? v : VR_KEEP;
 }
 
+/* FONT1..FONT9 give 1-9, FRAKTUR 10; 0 for any other option. */
+static int alt_font_option(const char *field, const char **rest)
+{
+    char pre[6];
+    int k;
+    if (str_ipre(field, "FRAKTUR", rest))
+        return 10;
+    copy_str(pre, "FONT0", sizeof(pre));
+    for (k = 1; k <= 9; k++) {
+        pre[4] = (char)('0' + k);
+        if (str_ipre(field, pre, rest))
+            return k;
+    }
+    return 0;
+}
+
+/* "name.font size" of a font option. */
+static void parse_font(const char *rest, char *name, int max, WORD *size)
+{
+    int i = 0;
+    while (*rest == ' ')
+        rest++;
+    while (rest[i] && rest[i] != ' ' && i < max - 1) {
+        name[i] = rest[i];
+        i++;
+    }
+    name[i] = 0;
+    rest += i;
+    while (*rest == ' ')
+        rest++;
+    *size = 0;
+    while (*rest >= '0' && *rest <= '9')
+        *size = (WORD)(*size * 10 + (*rest++ - '0'));
+}
+
 /* "x/y/w/h/title/OPT/OPT..." after the colon. */
 static void parse_spec(con *c, const char *s)
 {
     char field[128];
-    int fno = 0;
+    int fno = 0, k;
     c->wx = 0;
     c->wy = 0;
     c->ww = 640;
@@ -475,20 +514,12 @@ static void parse_spec(con *c, const char *s)
             c->cp437 = 1;
         } else if (str_ipre(field, "SCREEN", &rest)) {
             copy_str(c->screen, rest, sizeof(c->screen));
+        } else if ((k = alt_font_option(field, &rest)) != 0) {
+            /* FONT1..FONT9 name.font size: SGR 11-19; FRAKTUR: SGR 20 */
+            parse_font(rest, c->altname[k], sizeof(c->altname[k]), &c->altsize[k]);
         } else if (str_ipre(field, "FONT", &rest)) {
             /* FONT name.font size */
-            int i = 0;
-            while (rest[i] && rest[i] != ' ' && i < (int)sizeof(c->fontname) - 1) {
-                c->fontname[i] = rest[i];
-                i++;
-            }
-            c->fontname[i] = 0;
-            rest += i;
-            while (*rest == ' ')
-                rest++;
-            c->fontsize = 0;
-            while (*rest >= '0' && *rest <= '9')
-                c->fontsize = (WORD)(c->fontsize * 10 + (*rest++ - '0'));
+            parse_font(rest, c->fontname, sizeof(c->fontname), &c->fontsize);
         }
         fno++;
         if (*s != '/')
@@ -497,20 +528,22 @@ static void parse_spec(con *c, const char *s)
     }
 }
 
-static struct TextFont *open_font(con *c)
+/* A fixed-width font by name ("topaz" or "topaz.font") and size; 0 if it
+ * cannot be opened or is proportional. */
+static struct TextFont *open_named(const char *fontname, WORD fontsize)
 {
     struct TextFont *f = 0;
-    if (c->fontname[0]) {
+    if (fontname[0]) {
         struct TextAttr ta;
         char name[48];
         int i;
-        copy_str(name, c->fontname, sizeof(name) - 6);
+        copy_str(name, fontname, sizeof(name) - 6);
         for (i = 0; name[i]; i++)
             ;
         if (i < 5 || !str_ieq(name + i - 5, ".font"))
             copy_str(name + i, ".font", 6);
         ta.ta_Name = (STRPTR)name;
-        ta.ta_YSize = (UWORD)(c->fontsize ? c->fontsize : 8);
+        ta.ta_YSize = (UWORD)(fontsize ? fontsize : 8);
         ta.ta_Style = 0;
         ta.ta_Flags = 0;
         f = OpenFont(&ta);
@@ -523,10 +556,16 @@ static struct TextFont *open_font(con *c)
             CloseFont(f);
             f = 0;
         }
-        if (f) {
-            c->font_opened = 1;
-            return f;
-        }
+    }
+    return f;
+}
+
+static struct TextFont *open_font(con *c)
+{
+    struct TextFont *f = open_named(c->fontname, c->fontsize);
+    if (f) {
+        c->font_opened = 1;
+        return f;
     }
     /* The system default font: the one the user chose for text, as the
      * Shell uses it. It is fixed width by definition. */
@@ -609,6 +648,16 @@ have_window:
     else if (c->pers == VT_XTERM && c->cp437)
         vt_set_charset(c->t, VT_CS_CP437);
     vr_init(&c->r, c->win, c->font, c->t, c->pers == VT_PCANSI ? VT_ENC_CP437 : VT_ENC_LATIN1);
+    {
+        int k;
+        for (k = 1; k <= 10; k++) {
+            if (!c->alt[k] && c->altname[k][0])
+                c->alt[k] = open_named(c->altname[k], c->altsize[k] ? c->altsize[k] : c->font->tf_YSize);
+            vr_set_alt_font(&c->r, k, c->alt[k]);
+            if (c->altname[k][0])
+                DBG("altfont", k, c->r.alt_font[k] ? (LONG)c->r.alt_font[k] : -(LONG)c->alt[k] - 1);
+        }
+    }
     vr_set_defaults(&c->r, c->fg_rgb, c->bg_rgb);
     le_init(&c->le, c->t, le_out, c);
     c->le.utf8 = c->pers == VT_XTERM && !c->latin1 && !c->cp437;
@@ -646,6 +695,14 @@ static void close_window(con *c)
     if (c->font && c->font_opened)
         CloseFont(c->font);
     c->font = 0;
+    {
+        int k;
+        for (k = 1; k <= 10; k++)
+            if (c->alt[k]) {
+                CloseFont(c->alt[k]);
+                c->alt[k] = 0;
+            }
+    }
     if (c->locked) {
         UnlockPubScreen(0, c->locked);
         c->locked = 0;
@@ -656,6 +713,8 @@ static void close_window(con *c)
 
 #define FRAME_MICROS 50000 /* 20 frames per second */
 
+static void frame_start(con *c);
+
 /* Draw what the grid has that the screen has not. */
 static void render(con *c)
 {
@@ -665,6 +724,8 @@ static void render(con *c)
     vr_cursor_off(&c->r);
     vt_flush(c->t);
     vr_cursor_on(&c->r);
+    if (c->r.has_blink)
+        frame_start(c); /* blinking cells: the frames keep coming */
 }
 
 static void frame_start(con *c)
@@ -1665,6 +1726,8 @@ static LONG handler_main(void)
             WaitIO((struct IORequest *)c->frame);
             c->frame_busy = 0;
             render(c); /* the frame is due */
+            if (vr_blink_tick(&c->r))
+                frame_start(c);
         }
         if (!c->frame_open)
             render(c); /* no frame clock: draw at once */

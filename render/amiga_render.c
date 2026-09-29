@@ -3,6 +3,7 @@
 
 #include <exec/memory.h>
 #include <graphics/gfxmacros.h>
+#include <graphics/scale.h>
 #include <graphics/rastport.h>
 #include <intuition/screens.h>
 #include <proto/exec.h>
@@ -209,6 +210,11 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->n_exact = 0;
     for (i = 0; i < VR_EXACT_SLOTS; i++)
         r->exact_key[i] = 0;
+    r->has_blink = 0;
+    r->blink_frames = 0;
+    r->blink_slow_off = r->blink_fast_off = 0;
+    for (i = 0; i <= 10; i++)
+        r->alt_font[i] = 0;
     if (r->cm && win->WScreen &&
         GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) > 8) {
         r->scratch[0] = ObtainPen(r->cm, (ULONG)-1, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
@@ -443,43 +449,226 @@ static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, U
     }
 }
 
-static ULONG style_of(vt_u8 attr)
+/* How a run of cells is drawn: equal styles make one Text() call. */
+typedef struct vr_style {
+    ULONG fg, bg, ul;   /* inks; ul the underline's (the text's unless SGR 58) */
+    vt_attr attr;       /* the attributes that change the drawing */
+    vt_u8 deco, font;
+} vr_style;
+
+#define DRAWN_ATTRS (VT_ATTR_BOLD | VT_ATTR_ITALIC | VT_ATTR_UNDERLINE | VT_ATTR_STRIKE | \
+                     VT_ATTR_OVERLINE | VT_ATTR_SUPER | VT_ATTR_SUB | VT_ATTR_FRAMED | \
+                     VT_ATTR_ENCIRCLED)
+#define LINE_ATTRS (VT_ATTR_UNDERLINE | VT_ATTR_STRIKE | VT_ATTR_OVERLINE | VT_ATTR_FRAMED | \
+                    VT_ATTR_ENCIRCLED)
+
+static int same_style(const vr_style *a, const vr_style *b)
+{
+    return a->fg == b->fg && a->bg == b->bg && a->ul == b->ul && a->attr == b->attr &&
+           a->deco == b->deco && a->font == b->font;
+}
+
+static ULONG style_of(vt_attr attr)
 {
     ULONG s = 0;
     if (attr & VT_ATTR_BOLD)
         s |= FSF_BOLD;
-    if (attr & VT_ATTR_UNDERLINE)
-        s |= FSF_UNDERLINED;
     if (attr & VT_ATTR_ITALIC)
         s |= FSF_ITALIC;
-    return s;
+    return s; /* underlines are drawn by decorate(), in their style and colour */
 }
 
-static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, ULONG fg, ULONG bg,
-                      vt_u8 attr)
+static void hline(vr_render *r, WORD x0, WORD x1, WORD y)
+{
+    Move(r->rp, x0, y);
+    Draw(r->rp, x1, y);
+}
+
+/* A broken line: on pixels, off pixels (dotted 1/1, dashed 3/2). Drawn as
+ * short fills: the line pattern (SetDrPt) drew nothing on the rig's RTG
+ * screen. */
+static void broken_hline(vr_render *r, WORD x0, WORD x1, WORD y, WORD on, WORD off)
+{
+    WORD x;
+    for (x = x0; x <= x1; x = (WORD)(x + on + off))
+        RectFill(r->rp, x, y, (WORD)(x + on - 1 > x1 ? x1 : x + on - 1), y);
+}
+
+/* The lines around a run: underline in its style and colour, overline,
+ * strike, frame, circle (a frame with its corners cut) and the ideogram
+ * lines of SGR 60-64. */
+static void decorate(vr_render *r, int n, WORD px, WORD py, const vr_style *st)
+{
+    WORD x1 = (WORD)(px + n * r->cw - 1), y1 = (WORD)(py + r->ch - 1);
+    WORD u = (WORD)(py + r->base + 1), i;
+    int ideo = (st->deco & VT_DECO_IDEO_MASK) >> VT_DECO_IDEO_SHIFT;
+    /* two lines need a free row between them below the baseline: an 8-pixel
+     * cell has one row there, so its double lines are drawn single */
+    int room2 = u + 2 <= y1;
+    if (u > y1)
+        u = y1;
+    SetDrMd(r->rp, JAM1);
+    if (st->attr & VT_ATTR_UNDERLINE) {
+        ink_a(r, st->ul);
+        switch (st->deco & VT_DECO_UL_MASK) {
+        case VT_UL_DOUBLE:
+            hline(r, px, x1, u);
+            if (room2)
+                hline(r, px, x1, (WORD)(u + 2));
+            break;
+        case VT_UL_CURLY: {
+            WORD lo = (WORD)(u + 1 <= y1 ? u + 1 : u - 1);
+            Move(r->rp, px, u);
+            for (i = px; i <= x1; i += 2)
+                Draw(r->rp, i, ((i - px) >> 1) & 1 ? lo : u);
+            break;
+        }
+        case VT_UL_DOTTED:
+            broken_hline(r, px, x1, u, 1, 1);
+            break;
+        case VT_UL_DASHED:
+            broken_hline(r, px, x1, u, 3, 2);
+            break;
+        default:
+            hline(r, px, x1, u);
+            break;
+        }
+    }
+    ink_a(r, st->fg);
+    if (st->attr & VT_ATTR_OVERLINE)
+        hline(r, px, x1, py);
+    if (st->attr & VT_ATTR_STRIKE)
+        hline(r, px, x1, (WORD)(py + r->ch / 2));
+    if (st->attr & VT_ATTR_FRAMED) {
+        Move(r->rp, px, py);
+        Draw(r->rp, x1, py);
+        Draw(r->rp, x1, y1);
+        Draw(r->rp, px, y1);
+        Draw(r->rp, px, py);
+    }
+    if (st->attr & VT_ATTR_ENCIRCLED) {
+        hline(r, (WORD)(px + 2), (WORD)(x1 - 2), py);
+        hline(r, (WORD)(px + 2), (WORD)(x1 - 2), y1);
+        line(r, px, (WORD)(py + 2), px, (WORD)(y1 - 2));
+        line(r, x1, (WORD)(py + 2), x1, (WORD)(y1 - 2));
+        WritePixel(r->rp, (WORD)(px + 1), (WORD)(py + 1));
+        WritePixel(r->rp, (WORD)(x1 - 1), (WORD)(py + 1));
+        WritePixel(r->rp, (WORD)(px + 1), (WORD)(y1 - 1));
+        WritePixel(r->rp, (WORD)(x1 - 1), (WORD)(y1 - 1));
+    }
+    switch (ideo) {
+    case VT_IDEO_DOUBLE_UNDERLINE:
+        if (room2)
+            hline(r, px, x1, (WORD)(y1 - 2));
+        /* fall through */
+    case VT_IDEO_UNDERLINE:
+        hline(r, px, x1, y1);
+        break;
+    case VT_IDEO_DOUBLE_OVERLINE:
+        if (room2)
+            hline(r, px, x1, (WORD)(py + 2));
+        /* fall through */
+    case VT_IDEO_OVERLINE:
+        hline(r, px, x1, py);
+        break;
+    case VT_IDEO_STRESS:
+        for (i = 0; i < n; i++) {
+            WORD cx = (WORD)(px + i * r->cw + r->cw / 2);
+            RectFill(r->rp, (WORD)(cx - 1), (WORD)(y1 - 1), cx, y1);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+/* Superscript and subscript: each glyph drawn into a one-plane mask,
+ * scaled to two thirds and stamped in the text colour at the top (super)
+ * or the bottom (sub) of its cell. Rare, so the masks are made per run. */
+static int draw_script(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st,
+                       struct TextFont *font)
+{
+    WORD cw = r->cw, ch = r->ch, w2 = (WORD)((cw * 2 + 2) / 3), h2 = (WORD)((ch * 2 + 2) / 3);
+    struct BitMap *full = AllocBitMap(cw, ch, 1, BMF_CLEAR, 0);
+    struct BitMap *small = AllocBitMap(w2, h2, 1, BMF_CLEAR, 0);
+    struct RastPort trp;
+    struct BitScaleArgs bsa;
+    int i;
+    if (!full || !small) {
+        if (full)
+            FreeBitMap(full);
+        if (small)
+            FreeBitMap(small);
+        return 0;
+    }
+    fill(r, px, py, (WORD)(px + n * cw - 1), (WORD)(py + ch - 1), st->bg);
+    InitRastPort(&trp);
+    trp.BitMap = full;
+    SetFont(&trp, font);
+    SetSoftStyle(&trp, style_of(st->attr), FSF_BOLD | FSF_ITALIC);
+    SetAPen(&trp, 1);
+    SetDrMd(&trp, JAM1);
+    ink_a(r, st->fg);
+    SetDrMd(r->rp, JAM1);
+    for (i = 0; i < n; i++) {
+        SetRast(&trp, 0);
+        Move(&trp, 0, r->base);
+        Text(&trp, (STRPTR)&run[i], 1);
+        bsa.bsa_SrcX = bsa.bsa_SrcY = 0;
+        bsa.bsa_SrcWidth = (UWORD)cw;
+        bsa.bsa_SrcHeight = (UWORD)ch;
+        bsa.bsa_XSrcFactor = (UWORD)cw;
+        bsa.bsa_XDestFactor = (UWORD)w2;
+        bsa.bsa_YSrcFactor = (UWORD)ch;
+        bsa.bsa_YDestFactor = (UWORD)h2;
+        bsa.bsa_SrcBitMap = full;
+        bsa.bsa_DestBitMap = small;
+        bsa.bsa_DestX = bsa.bsa_DestY = 0;
+        bsa.bsa_Flags = 0;
+        BitMapScale(&bsa);
+        WaitBlit();
+        BltTemplate((PLANEPTR)small->Planes[0], 0, (WORD)small->BytesPerRow, r->rp,
+                    (WORD)(px + i * cw + (cw - w2) / 2),
+                    (WORD)(st->attr & VT_ATTR_SUB ? py + ch - h2 : py), w2, h2);
+    }
+    WaitBlit();
+    FreeBitMap(small);
+    FreeBitMap(full);
+    return 1;
+}
+
+static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
 {
     int i;
+    struct TextFont *font = r->font;
     if (!n)
         return;
-    if (!(attr & (VT_ATTR_UNDERLINE | VT_ATTR_STRIKE))) {
+    if (!(st->attr & LINE_ATTRS) && !(st->deco & VT_DECO_IDEO_MASK)) {
         /* a run of blanks (erases, clears, line ends) is a rectangle fill:
          * much cheaper than rendering spaces through the font */
         for (i = 0; i < n && run[i] == ' '; i++)
             ;
         if (i == n) {
-            fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, bg);
+            fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, st->bg);
             return;
         }
     }
     r->n_text++;
-    ink_ab(r, fg, bg);
-    SetSoftStyle(r->rp, style_of(attr), FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
-    Move(r->rp, px, py + r->base);
-    Text(r->rp, (STRPTR)run, n);
-    if (attr & VT_ATTR_STRIKE) {
-        ink_a(r, fg);
-        line(r, px, py + r->ch / 2, px + n * r->cw - 1, py + r->ch / 2);
+    if (st->font && st->font <= 10 && r->alt_font[st->font])
+        font = r->alt_font[st->font];
+    if (!(st->attr & (VT_ATTR_SUPER | VT_ATTR_SUB)) || !draw_script(r, run, n, px, py, st, font)) {
+        if (font != r->font)
+            SetFont(r->rp, font);
+        ink_ab(r, st->fg, st->bg);
+        SetSoftStyle(r->rp, style_of(st->attr), FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
+        Move(r->rp, px, py + r->base);
+        Text(r->rp, (STRPTR)run, n);
+        if (font != r->font)
+            SetFont(r->rp, r->font);
     }
+    if ((st->attr & LINE_ATTRS & ~VT_ATTR_UNDERLINE) || (st->attr & VT_ATTR_UNDERLINE) ||
+        (st->deco & VT_DECO_IDEO_MASK))
+        decorate(r, n, px, py, st);
 }
 
 /* The font's glyphs as bytes, for the planar path: only a font exactly 8
@@ -643,6 +832,39 @@ static int direct_row(vr_render *r, int y, const dcell *d, int n)
 #endif
 }
 
+/* The style cell c draws with (selection and blink phase applied). */
+static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
+{
+    vt_color f, b, u;
+    vt_resolve_colors(r->t, c, &f, &b);
+    st->fg = pen_for(r, f, 0);
+    st->bg = pen_for(r, b, 1);
+    if (selected_cell) {
+        ULONG tmp = st->fg;
+        st->fg = st->bg;
+        st->bg = tmp;
+    }
+    u = vt_cell_underline_color(r->t, c);
+    st->ul = u == VT_COLOR_DEFAULT ? st->fg : pen_for(r, u, 0);
+    st->attr = (vt_attr)(c->attr & DRAWN_ATTRS);
+    st->deco = c->deco;
+    st->font = (vt_u8)vt_cell_font(r->t, c);
+    if ((c->attr & VT_ATTR_BLINK) && vt_personality(r->t) != VT_PCANSI) {
+        /* pcansi's blink is the iCE bright background, never a blink */
+        r->has_blink = 1;
+        if (c->attr & VT_ATTR_RAPID ? r->blink_fast_off : r->blink_slow_off)
+            st->fg = st->ul = st->bg; /* the off phase: text and lines hidden */
+    }
+}
+
+/* A cell the planar path can write: one byte a plane, nothing drawn on it. */
+static int plain_style(const vr_style *st)
+{
+    return !(st->attr & ~(VT_ATTR_BOLD | VT_ATTR_UNDERLINE | VT_ATTR_STRIKE)) &&
+           (st->deco & ~VT_DECO_UL_MASK) == 0 && (st->deco & VT_DECO_UL_MASK) <= VT_UL_SINGLE &&
+           st->ul == st->fg && !st->font;
+}
+
 static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
@@ -660,44 +882,30 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         const vt_cell *c = vt_row(r->t, y - r->view, &ncells);
         int gy = y - r->view;
         WORD py = r->oy + y * r->ch, run_x = 0;
-        ULONG run_fg = 0, run_bg = 0;
-        vt_u8 run_attr = 0;
-        /* the last cell's colours: runs of equal cells skip the lookups */
-        vt_color last_f = 0xFFFFFFFFUL, last_b = 0xFFFFFFFFUL;
-        vt_u8 last_a = 0;
-        ULONG fg = 0, bg = 0;
+        vr_style st, run_st;
+        /* the last cell's look: runs of equal cells skip the lookups */
+        const vt_cell *last = 0;
         if (!c)
             continue;
         n = 0;
         nd = 0;
         for (x = x0; x < x1 && x < ncells; x++) {
-            vt_color f, b;
             vt_glyph g;
-            vt_u8 attr;
             if (c[x].width == 0) {
                 /* the right half of a wide glyph: its '?' took the left */
-                vt_resolve_colors(r->t, &c[x], &f, &b);
-                flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
+                vr_style ws;
+                cell_style(r, &c[x], selected(r, x, gy), &ws);
+                flush_run(r, run, n, run_x, py, &run_st);
                 n = 0;
-                fill(r, r->ox + x * r->cw, py, r->ox + (x + 1) * r->cw - 1, py + r->ch - 1,
-                     pen_for(r, b, 1));
+                fill(r, r->ox + x * r->cw, py, r->ox + (x + 1) * r->cw - 1, py + r->ch - 1, ws.bg);
+                last = 0;
                 continue;
             }
-            if (c[x].fg != last_f || c[x].bg != last_b || c[x].attr != last_a || r->sel) {
-                last_f = c[x].fg;
-                last_b = c[x].bg;
-                last_a = c[x].attr;
-                vt_resolve_colors(r->t, &c[x], &f, &b);
-                fg = pen_for(r, f, 0);
-                bg = pen_for(r, b, 1);
-                if (selected(r, x, gy)) {
-                    ULONG tmp = fg;
-                    fg = bg;
-                    bg = tmp;
-                }
+            if (!last || c[x].fg != last->fg || c[x].bg != last->bg || c[x].attr != last->attr ||
+                c[x].deco != last->deco || c[x].ext != last->ext || r->sel) {
+                cell_style(r, &c[x], selected(r, x, gy), &st);
+                last = &c[x];
             }
-            attr = (vt_u8)(c[x].attr & (VT_ATTR_BOLD | VT_ATTR_UNDERLINE | VT_ATTR_ITALIC |
-                                        VT_ATTR_STRIKE));
             if (c[x].ch < 0x80) {
                 g.kind = VT_GLYPH_FONT; /* ASCII: the font's own character */
                 g.code = (vt_u8)c[x].ch;
@@ -705,46 +913,50 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 g = vt_map_glyph(c[x].ch, r->enc);
             }
             if (g.kind != VT_GLYPH_FONT) {
-                flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
+                flush_run(r, run, n, run_x, py, &run_st);
                 n = 0;
-                draw_special(r, r->ox + x * r->cw, py, g, fg, bg);
+                draw_special(r, r->ox + x * r->cw, py, g, st.fg, st.bg);
                 continue;
             }
-            if (want_direct && !(attr & VT_ATTR_ITALIC) && nd < DCELL_MAX) {
-                flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
+            if (want_direct && plain_style(&st) && nd < DCELL_MAX) {
+                flush_run(r, run, n, run_x, py, &run_st);
                 n = 0;
                 dc[nd].x = (WORD)x;
                 dc[nd].ch = g.code;
-                dc[nd].fg = (UBYTE)fg; /* planar: never an RGB ink */
-                dc[nd].bg = (UBYTE)bg;
-                dc[nd].attr = attr;
+                dc[nd].fg = (UBYTE)st.fg; /* planar: never an RGB ink */
+                dc[nd].bg = (UBYTE)st.bg;
+                dc[nd].attr = (UBYTE)st.attr; /* plain: the low byte holds it */
                 nd++;
                 continue;
             }
-            if (n && (fg != run_fg || bg != run_bg || attr != run_attr || n == RUN_MAX)) {
-                flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
+            if (n && (!same_style(&st, &run_st) || n == RUN_MAX)) {
+                flush_run(r, run, n, run_x, py, &run_st);
                 n = 0;
             }
             if (!n) {
                 run_x = r->ox + x * r->cw;
-                run_fg = fg;
-                run_bg = bg;
-                run_attr = attr;
+                run_st = st;
             }
             run[n++] = g.code;
         }
-        flush_run(r, run, n, run_x, py, run_fg, run_bg, run_attr);
+        flush_run(r, run, n, run_x, py, &run_st);
         if (nd && !direct_row(r, y, dc, nd)) {
             /* covered or not planar: the same cells through the RastPort,
              * one Text() per run of equal colours */
             int i = 0;
             while (i < nd) {
                 int j = i;
+                vr_style ds;
                 n = 0;
                 while (j < nd && dc[j].x == dc[i].x + (j - i) && dc[j].fg == dc[i].fg &&
                        dc[j].bg == dc[i].bg && dc[j].attr == dc[i].attr && n < RUN_MAX)
                     run[n++] = dc[j++].ch;
-                flush_run(r, run, n, r->ox + dc[i].x * r->cw, py, dc[i].fg, dc[i].bg, dc[i].attr);
+                ds.fg = ds.ul = dc[i].fg;
+                ds.bg = dc[i].bg;
+                ds.attr = dc[i].attr;
+                ds.deco = (vt_u8)(dc[i].attr & VT_ATTR_UNDERLINE ? VT_UL_SINGLE : 0);
+                ds.font = 0;
+                flush_run(r, run, n, r->ox + dc[i].x * r->cw, py, &ds);
                 i = j;
             }
         }
@@ -752,6 +964,56 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             r->cursor_drawn = 0; /* the cursor cell was just painted over */
     }
     SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
+}
+
+/* Blinking (SGR 5 slow, 6 rapid): called every frame (50 ms). Slow cells
+ * change every 10 frames (1 Hz), rapid ones every 3. Returns 1 while any
+ * blinking cell is on screen, so the caller keeps the frames coming. */
+int vr_blink_tick(vr_render *r)
+{
+    int slow, fast, y, x, n;
+    if (!r->has_blink || r->hidden || r->view)
+        return 0;
+    r->blink_frames++;
+    slow = r->blink_frames % 10 == 0;
+    fast = r->blink_frames % 3 == 0;
+    if (!slow && !fast)
+        return 1;
+    if (slow)
+        r->blink_slow_off = (BYTE)!r->blink_slow_off;
+    if (fast)
+        r->blink_fast_off = (BYTE)!r->blink_fast_off;
+    r->has_blink = 0; /* found again by the rows that still blink */
+    vr_cursor_off(r);
+    for (y = 0; y < r->rows; y++) {
+        const vt_cell *c = vt_row(r->t, y, &n);
+        int x0 = -1, x1 = 0;
+        if (!c)
+            continue;
+        for (x = 0; x < n && x < r->cols; x++)
+            if ((c[x].attr & VT_ATTR_BLINK) &&
+                (c[x].attr & VT_ATTR_RAPID ? fast : slow)) {
+                if (x0 < 0)
+                    x0 = x;
+                x1 = x + 1;
+            } else if (c[x].attr & VT_ATTR_BLINK) {
+                r->has_blink = 1; /* the other rate: still on screen */
+            }
+        if (x0 >= 0)
+            draw_rows(r, x0, y, x1, y + 1);
+    }
+    vr_cursor_on(r);
+    return r->has_blink;
+}
+
+void vr_set_alt_font(vr_render *r, int n, struct TextFont *font)
+{
+    if (n < 1 || n > 10)
+        return;
+    /* a cell is the primary font's: another width would break the grid */
+    if (font && (font->tf_XSize != r->cw || font->tf_YSize > r->ch))
+        font = 0;
+    r->alt_font[n] = font;
 }
 
 void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)

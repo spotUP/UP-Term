@@ -47,6 +47,11 @@ typedef struct vr_render {
     ULONG exact_key[VR_EXACT_SLOTS];
     UBYTE exact_pen[VR_EXACT_SLOTS];
     WORD n_exact;
+    /* fonts for SGR 11-19 (1-9) and Fraktur, SGR 20 (10); 0 = the primary */
+    struct TextFont *alt_font[11];
+    /* blinking: a blinking cell was drawn; frames counted; the off phases */
+    BYTE has_blink, blink_slow_off, blink_fast_off;
+    ULONG blink_frames;
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
     BYTE hidden;          /* the window is too small to draw into */
@@ -73,6 +78,12 @@ typedef struct vr_render {
  * then vr_redraw. */
 #define VR_KEEP 0xFFFFFFFFUL
 void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
+
+/* Blinking cells: call once per frame; 1 while any blink on screen. */
+int  vr_blink_tick(vr_render *r);
+/* The font SGR 11-19 (n 1-9) or 20 (n 10, Fraktur) draws with; the caller
+ * keeps it open. Ignored unless its cells are the primary font's size. */
+void vr_set_alt_font(vr_render *r, int n, struct TextFont *font);
 
 /* Palette used for xterm / pcansi: 16 ANSI colours, 6x6x6 cube, 24 greys. */
 ULONG vr_palette_rgb(int index);
