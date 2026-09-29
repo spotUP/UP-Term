@@ -74,5 +74,14 @@ PTY: (pseudo-terminals)
   between them (termios, Ctrl-C, Ctrl-\, Ctrl-Z, window size). A master
   is open once per id; a program looks for a free one by trying ids.
 
+IXEMUL
+  Install puts in ixemul.library 48.2 with the UP-Term patches: termios,
+  window size and signal keys go to the terminal (XCON:, PTY:), Ctrl-Z and
+  fg/bg job control work, /dev/ptyXY are PTY: pairs. It runs the existing
+  ixemul programs (it is 48.2, built with the compiler 48.2 was). The
+  library that was there is kept as LIBS:ixemul.library.orig; to go back:
+    Copy LIBS:ixemul.library.orig LIBS:ixemul.library
+  To tell which one is in:  Search LIBS:ixemul.library UP-Term
+
 STATUS
   Test build. CON:/RAW: are not replaced; XCON: runs beside them.

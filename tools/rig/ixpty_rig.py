@@ -35,7 +35,7 @@ def main():
         run('Assign LIBS: VTC:ixp6')
         run('Assign LIBS: DH0:Libs ADD')
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
-    rc, out = run('Assign >NIL: PTY: EXISTS')
+    rc, out = run('Assign >NIL: PTY: EXISTS DEVICES')
     if rc != 0:
         rc, out = run('Mount PTY: FROM VTC:ptymount')
         if rc != 0:

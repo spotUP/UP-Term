@@ -202,9 +202,12 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c han
 
 # The install kit: build/vtcon.lha (handler, DOSDrivers entry, terminfo,
 # termcap, Install script, README), unpacking to a drawer "vtcon".
+# the patched ixemul (P6): built in ~/Code/ixemul-vtcon with sh docker/build.sh
+IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 dist: amiga $(BUILD)/terminfo/76/vtcon
-	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v
-	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh dist/XCON dist/PTY dist/Install dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
+	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v $(BUILD)/dist/vtcon/libs
+	cp $(IXEMUL_LIB) $(BUILD)/dist/vtcon/libs/ixemul.library
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh dist/XCON dist/PTY dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
 	cp $(BUILD)/terminfo/v/vtcon $(BUILD)/dist/vtcon/terminfo/v/vtcon
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon

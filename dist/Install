@@ -14,8 +14,26 @@ MakeDir >NIL: ENVARC:vsh
 Copy vshrc ENVARC:vsh/vshrc CLONE
 MakeDir >NIL: ENV:vsh
 Copy vshrc ENV:vsh/vshrc CLONE
-Mount >NIL: XCON: FROM DEVS:DOSDrivers/XCON
-Mount >NIL: PTY: FROM DEVS:DOSDrivers/PTY
+; ixemul.library 48.2 with the UP-Term patches (termios, PTY: ptys, job
+; control). The library there is kept once as LIBS:ixemul.library.orig.
+If NOT EXISTS LIBS:ixemul.library.orig
+  If EXISTS LIBS:ixemul.library
+    Copy LIBS:ixemul.library LIBS:ixemul.library.orig CLONE
+  EndIf
+EndIf
+Copy libs/ixemul.library LIBS:ixemul.library CLONE
+Avail >NIL: FLUSH
+; a DOSDrivers file is mounted by its path ("Mount XCON: FROM file" looks
+; for an XCON: entry inside, which a DOSDrivers file has not; >NIL: hid
+; that, so XCON: only appeared after a reboot). Not twice: it is there.
+Assign >NIL: XCON: EXISTS DEVICES
+If WARN
+  Mount DEVS:DOSDrivers/XCON
+EndIf
+Assign >NIL: PTY: EXISTS DEVICES
+If WARN
+  Mount DEVS:DOSDrivers/PTY
+EndIf
 Echo "vtcon installed. Try:  NewShell XCON:0/20/640/300/vtcon/CLOSE"
 Echo "For ixemul programs:  SetEnv TERM vtcon"
 Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"

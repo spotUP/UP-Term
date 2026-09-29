@@ -25,7 +25,7 @@ def main():
     for name in ("pty-handler", "ptytest"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "ptymount").write_text(MOUNTLIST)
-    rc, out = run('Assign >NIL: PTY: EXISTS')
+    rc, out = run('Assign >NIL: PTY: EXISTS DEVICES')
     if rc != 0:
         rc, out = run('Mount PTY: FROM VTC:ptymount')
         if rc != 0:
