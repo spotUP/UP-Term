@@ -23,6 +23,7 @@ typedef struct pending {
     sh_parse *tree;
     int ran;
     long status;
+    int stopped;            /* "stopper", suspended until f_cont */
 } pending;
 static pending jobs[16];
 static int last_owned[16];   /* io.owned each background start was given, in order */
@@ -184,6 +185,10 @@ static long run_now(char argv[][64], int argc, const sh_io *io)
         f_write(0, io->out, "a.c\nb.c\n", 8);
         return 0;
     }
+    if (!strcmp(argv[0], "stopper")) {  /* suspended by ^Z when it may be; then goes on */
+        f_write(0, io->out, "resumed\n", 8);
+        return 0;
+    }
     if (is_amiga_cmd(argv[0])) {  /* the AmigaDOS commands the vshrc calls: <Name><arg>... */
         int i;
         for (i = 0; i < argc; i++) {
@@ -207,6 +212,33 @@ static long run_now(char argv[][64], int argc, const sh_io *io)
     return -1;
 }
 
+static sh_shell sh;
+
+/* "stopper" in the foreground where the shell allows a suspend: ^Z at
+ * once, it stays as job id for f_cont/f_wait */
+static long f_stop(pending *p)
+{
+    int i;
+    for (i = 0; i < 16; i++)
+        if (!jobs[i].used) {
+            jobs[i] = *p;
+            jobs[i].used = 1;
+            jobs[i].stopped = 1;
+            sh.os.stopped = i + 1;
+            return SH_STOPPED;
+        }
+    return -1;
+}
+
+static int f_cont(void *os, long job)
+{
+    (void)os;
+    if (!jobs[job - 1].used || !jobs[job - 1].stopped)
+        return -1;
+    jobs[job - 1].stopped = 0;
+    return 0;
+}
+
 static long f_run(void *os, char **argv, const sh_io *io, int wait)
 {
     pending p;
@@ -217,11 +249,13 @@ static long f_run(void *os, char **argv, const sh_io *io, int wait)
         strcpy(p.argv[i], argv[i]);
     p.argc = i;
     p.io = *io;
+    if (wait && !strcmp(argv[0], "stopper") && sh.os.suspendable)
+        return f_stop(&p);
     if (wait)
         return run_now(p.argv, p.argc, &p.io);
     if (strcmp(argv[0], "cat") && strcmp(argv[0], "upper") && strcmp(argv[0], "wc") &&
         strcmp(argv[0], "fail") && strcmp(argv[0], "ls") && strcmp(argv[0], "args") &&
-        !is_amiga_cmd(argv[0]))
+        strcmp(argv[0], "stopper") && !is_amiga_cmd(argv[0]))
         return -1; /* as the real layer: not found, nothing started */
     if (n_started < 16)
         last_owned[n_started++] = io->owned;
@@ -259,6 +293,8 @@ static long f_wait(void *os, long job)
 {
     pending *p = &jobs[job - 1];
     (void)os;
+    if (p->stopped)
+        return SH_STOPPED; /* waited for while stopped: still stopped */
     run_pending(p);
     p->used = 0;
     return p->status;
@@ -289,6 +325,8 @@ static long f_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, 
 static int f_done(void *os, long job)
 {
     (void)os;
+    if (jobs[job - 1].stopped)
+        return 0;
     return jobs[job - 1].used; /* the fake runs a job when it is waited for */
 }
 
@@ -333,7 +371,6 @@ static void sprintf_num(char *out, int v)
     out[k] = 0;
 }
 
-static sh_shell sh;
 static sh_fh OUT, ERR, IN;
 
 static void fresh(void)
@@ -351,6 +388,8 @@ static void fresh(void)
     sh.os.run = f_run;
     sh.os.wait = f_wait;
     sh.os.done = f_done;
+    sh.os.cont = f_cont;
+    sh.os.suspendable = 0;
     sh.os.spawn = f_spawn;
     sh.os.read = f_read;
     n_spawned = 0;
@@ -458,6 +497,36 @@ static void job_notices(void)
     run("fg");
     CHECK_STR(slot(ERR)->data, "vsh: fg: no such job\n");
     CHECK_INT(sh.ctx.status, 1);
+}
+
+/* ^Z: a foreground command stops and waits in the table; bg and fg
+ * continue it; exit warns once about stopped jobs (S8). */
+static void suspend(void)
+{
+    int inc = 0;
+    run("stopper; echo $?");
+    CHECK_STR(slot(OUT)->data, "146\n");
+    CHECK_STR(slot(ERR)->data, "\n[1] Stopped  stopper\n");
+    CHECK_STR(run("stopper; jobs"), "[1] Stopped  stopper\n");
+    /* (the fake runs a job when it is reaped: bg's job is done at once) */
+    CHECK_STR(run("stopper; bg; jobs"), "[1] stopper &\nresumed\n[1] Done  stopper\n");
+    CHECK_STR(run("stopper; fg; echo $?; jobs"), "stopper\nresumed\n0\n");
+    CHECK_STR(run("stopper; bg; wait; jobs"), "[1] stopper &\nresumed\n");
+    CHECK_STR(run("stopper x; stopper y; fg %1; jobs"), "stopper x\nresumed\n[2] Stopped  stopper y\n");
+    run("bg");
+    CHECK_STR(slot(ERR)->data, "vsh: bg: no stopped job\n");
+    run("stopper; exit");
+    CHECK_INT(sh.exiting, 0);
+    CHECK_STR(slot(ERR)->data, "\n[1] Stopped  stopper\nvsh: exit: there are stopped jobs (fg or bg them; exit again to leave them)\n");
+    sh_run_text(&sh, "exit", &inc);
+    CHECK_INT(sh.exiting, 1);
+    /* only a simple command in the foreground stops: a pipeline stage and
+     * a background job run on; without job control nothing stops */
+    CHECK_STR(run("stopper | cat"), "resumed\n");
+    fresh();
+    sh.os.cont = 0;
+    sh_run_text(&sh, "stopper", &inc);
+    CHECK_STR(slot(OUT)->data, "resumed\n");
 }
 
 /* Function bodies outlive the line that defined them: only 16 parses were
@@ -704,6 +773,7 @@ void suite_sh_exec(void)
     jobs_aliases_and_dirs();
     incomplete_input();
     job_notices();
+    suspend();
     functions_outlive_their_lines();
     subshells();
     assignment_status_and_scope();

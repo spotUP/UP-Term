@@ -17,6 +17,14 @@ static void tstp(int s)
 int main(int argc, char **argv)
 {
     int i;
+    {
+        /* its pid, for a rig script that signals it (its output may be a file in use) */
+        FILE *f = fopen("/RAM/ixwait.pid", "w");
+        if (f) {
+            fprintf(f, "0x%lx\n", (unsigned long)getpid());
+            fclose(f);
+        }
+    }
     if (argc > 1 && !strcmp(argv[1], "catch"))
         signal(SIGTSTP, tstp);
     for (i = 0; i < 20; i++) {

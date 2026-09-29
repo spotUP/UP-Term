@@ -10,6 +10,7 @@ MakeDir >NIL: ENVARC:terminfo/v
 Copy terminfo/v/vtcon ENVARC:terminfo/v/vtcon CLONE
 Copy termcap.vtcon ENVARC:termcap.vtcon CLONE
 Copy vsh C:vsh CLONE
+Copy ixkill C:ixkill CLONE
 MakeDir >NIL: ENVARC:vsh
 Copy vshrc ENVARC:vsh/vshrc CLONE
 MakeDir >NIL: ENV:vsh

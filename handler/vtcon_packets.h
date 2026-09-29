@@ -35,6 +35,20 @@
 #define ACTION_VTCON_GWINSZ 0x7657
 #define ACTION_VTCON_SWINSZ 0x7658
 
+/* Job control for a shell (vsh S8): reads from a stopped or background
+ * job's process wait, and the console serves the next reader -- as a Unix
+ * tty sleeps a reader that is not in the foreground. A read the job sent
+ * before it was stopped stays queued, not answered with the shell's line.
+ *   ACTION_VTCON_HOLD  Arg1 fh_Arg1, Arg2 the process (struct Task *),
+ *                      Arg3 1 hold / 0 release. Holds of processes that
+ *                      are gone are dropped. */
+#define ACTION_VTCON_HOLD 0x7659
+
+/* ACTION_VTCON_TCGETA answers dp_Res2 1 when the console is in termios
+ * mode (a program set it), 0 when it describes the Amiga mode in termios
+ * terms: a shell that suspends a job keeps the job's settings only then
+ * (vsh S8). PTY: is always in termios mode. */
+
 /* In termios mode the line discipline's signal keys go to the program as
  * break signals, which ixemul (patched, on a vtcon console) turns into
  * Unix signals for the foreground process group:

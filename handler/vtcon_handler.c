@@ -119,6 +119,8 @@ typedef struct con {
     le_line le;                  /* the line being edited (cooked mode) */
     struct DosPacket *reads[READ_Q];
     int nreads;
+    struct Task *held[8];        /* ACTION_VTCON_HOLD: their reads wait */
+    int nheld;
     struct DosPacket *waitchar;
     struct MsgPort *timer_port;
     struct timerequest *timer;
@@ -893,6 +895,52 @@ static int line_end(con *c)
     return 0;
 }
 
+/* Is read p from a process a shell holds (ACTION_VTCON_HOLD)? */
+static int read_held(con *c, struct DosPacket *p)
+{
+    struct Task *t = p->dp_Port ? (struct Task *)p->dp_Port->mp_SigTask : 0;
+    int i;
+    for (i = 0; i < c->nheld; i++)
+        if (c->held[i] == t)
+            return 1;
+    return 0;
+}
+
+/* The first queued read that may be answered, or -1. */
+static int next_read(con *c)
+{
+    int i;
+    for (i = 0; i < c->nreads; i++)
+        if (!read_held(c, c->reads[i]))
+            return i;
+    return -1;
+}
+
+static void drop_read(con *c, int k)
+{
+    int i;
+    for (i = k + 1; i < c->nreads; i++)
+        c->reads[i - 1] = c->reads[i];
+    c->nreads--;
+}
+
+static void hold_task(con *c, struct Task *t, int on)
+{
+    int i, k = 0;
+    /* drop the holds of processes that are gone, and t's own */
+    for (i = 0; i < c->nheld; i++) {
+        int alive;
+        Forbid();
+        alive = task_alive(c->held[i]);
+        Permit();
+        if (alive && c->held[i] != t)
+            c->held[k++] = c->held[i];
+    }
+    c->nheld = k;
+    if (on && t && c->nheld < 8)
+        c->held[c->nheld++] = t;
+}
+
 /* Answer queued reads with what the input holds. */
 /* ---- termios mode ----------------------------------------------------------- */
 
@@ -997,10 +1045,11 @@ static void tty_enter(con *c, struct Task *owner)
  * or what came within VTIME tenths of a second. */
 static void tty_reads(con *c)
 {
-    while (c->nreads) {
-        struct DosPacket *p = c->reads[0];
+    int k;
+    while ((k = next_read(c)) >= 0) {
+        struct DosPacket *p = c->reads[k];
         long n = 0;
-        int eof, i, arm;
+        int eof, arm;
         int act = ld_read_action(&c->ld, c->rtimer_fired, &arm);
         if (act == LD_RD_WAIT) {
             if (arm && !c->rtimer_busy)
@@ -1011,9 +1060,7 @@ static void tty_reads(con *c)
             n = ld_read(&c->ld, (unsigned char *)p->dp_Arg2, p->dp_Arg3, &eof);
         rtimer_stop(c);
         reply(p, n < 0 ? 0 : n, 0);
-        for (i = 1; i < c->nreads; i++)
-            c->reads[i - 1] = c->reads[i];
-        c->nreads--;
+        drop_read(c, k);
     }
     if (c->waitchar && ld_input_pending(&c->ld))
         finish_waitchar(c, DOSTRUE);
@@ -1025,8 +1072,9 @@ static void service_reads(con *c)
         tty_reads(c);
         return;
     }
-    while (c->nreads) {
-        struct DosPacket *p = c->reads[0];
+    int k;
+    while ((k = next_read(c)) >= 0) {
+        struct DosPacket *p = c->reads[k];
         LONG want = p->dp_Arg3, n;
         int i;
         if (c->in_len) {
@@ -1049,9 +1097,7 @@ static void service_reads(con *c)
         c->in_len -= (int)n;
         reply(p, n, 0);
     next:
-        for (i = 1; i < c->nreads; i++)
-            c->reads[i - 1] = c->reads[i];
-        c->nreads--;
+        drop_read(c, k);
     }
     if (c->waitchar && c->in_len)
         finish_waitchar(c, DOSTRUE);
@@ -1712,12 +1758,22 @@ static void key_event(con *c, struct IntuiMessage *im)
     }
     /* Break keys: Ctrl-C..F signal the opener in cooked mode (and Amiga raw
      * mode); an xterm window in raw mode sends the byte only, as a Unix tty
-     * without ISIG does. */
-    if (n == 1 && out[0] >= 0x03 && out[0] <= 0x06 && !key &&
-        (!c->raw || c->pers != VT_XTERM)) {
-        send_break(c, SIGBREAKF_CTRL_C << (out[0] - 0x03));
-        if (!c->raw)
-            return;
+     * without ISIG does. ^\ and ^Z are the CTRL_E and CTRL_F breaks too, as
+     * in termios mode (VQUIT, VSUSP): a shell running a job that never set
+     * termios still hears the suspend key (vsh S8). */
+    if (n == 1 && !key && (!c->raw || c->pers != VT_XTERM)) {
+        ULONG brk = 0;
+        if (out[0] >= 0x03 && out[0] <= 0x06)
+            brk = SIGBREAKF_CTRL_C << (out[0] - 0x03);
+        else if (out[0] == 0x1C)
+            brk = SIGBREAKF_CTRL_E;
+        else if (out[0] == 0x1A)
+            brk = SIGBREAKF_CTRL_F;
+        if (brk) {
+            send_break(c, brk);
+            if (!c->raw)
+                return;
+        }
     }
     if (c->raw) {
         in_append(c, out, n);
@@ -2102,6 +2158,7 @@ static void packet(con *c, struct DosPacket *p)
         }
         if (tty_active(c)) {
             CopyMem(&c->ld.t, (APTR)p->dp_Arg2, sizeof(vt_termios));
+            reply(p, DOSTRUE, 1); /* Res2 1: termios mode (vtcon_packets.h) */
         } else {
             /* what the window does now, in termios terms */
             vt_termios t;
@@ -2109,8 +2166,8 @@ static void packet(con *c, struct DosPacket *p)
             if (c->raw)
                 t.c_lflag &= ~(ld_flag)(LD_ICANON | LD_ECHO | LD_ISIG | LD_IEXTEN);
             CopyMem(&t, (APTR)p->dp_Arg2, sizeof(t));
+            reply(p, DOSTRUE, 0);
         }
-        reply(p, DOSTRUE, 0);
         return;
     case ACTION_VTCON_TCSETA:
         if (!p->dp_Arg2) {
@@ -2138,6 +2195,11 @@ static void packet(con *c, struct DosPacket *p)
         return;
     case ACTION_VTCON_SWINSZ:
         reply(p, DOSFALSE, ERROR_ACTION_NOT_KNOWN); /* a window's size is the window's */
+        return;
+    case ACTION_VTCON_HOLD:
+        hold_task(c, (struct Task *)p->dp_Arg2, p->dp_Arg3 != 0);
+        reply(p, DOSTRUE, 0);
+        service_reads(c);
         return;
     case ACTION_VTCON_WORDS:
         take_words(c, p);

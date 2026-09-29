@@ -27,6 +27,12 @@ typedef struct sh_io {
 
 struct sh_shell;
 
+/* run(wait) and wait: the command was suspended (^Z) and still exists;
+ * sh_os.stopped holds its job id (see sh_os.cont). */
+#define SH_STOPPED (-1000L)
+/* $? of a suspended command: 128 + SIGTSTP (18, as ixemul numbers it) */
+#define SH_STATUS_STOPPED 146
+
 typedef struct sh_os {
     sh_fh (*open)(void *os, const char *path, int mode);
     void  (*close)(void *os, sh_fh fh);
@@ -56,6 +62,14 @@ typedef struct sh_os {
     int   (*chdir)(void *os, const char *path);    /* 0 = ok */
     int   (*exists)(void *os, const char *path, int want_dir); /* test -e / -f / -d */
     char *(*cwd)(void *os);                        /* malloc'ed */
+    /* Job control (cont 0: none). While the shell sets `suspendable` (it
+     * waits for one simple command in the foreground), run(wait) and wait
+     * may return SH_STOPPED: the command was suspended and still exists,
+     * and `stopped` is its job id for wait/done/cont. cont continues a
+     * stopped job (SIGCONT); 0 = ok. */
+    int   (*cont)(void *os, long job);
+    int   suspendable;
+    long  stopped;
     void *data;
 } sh_os;
 
@@ -85,6 +99,8 @@ typedef struct sh_shell {
     int loop_depth, func_depth;
     long jobs[32];         /* background job ids, 0 = free */
     char *job_text[32];
+    char job_stopped[32];  /* suspended (^Z), until fg or bg */
+    int warned_stopped;    /* exit said once that jobs are stopped */
     sh_retired *retired;   /* freed with the shell */
     int intr;              /* Ctrl-C: unwinding to the prompt */
     unsigned long stack_limit; /* the OS layer's: below this stack address the

@@ -58,8 +58,12 @@ KEYS
 VSH (the shell)
   Type  vsh  in an XCON: window. A POSIX shell with zsh touches: pipes,
   redirections (2> 2>&1 &> <<EOF), $( ), $(( )), globs, if/while/for/case,
-  functions, aliases, jobs (& jobs fg wait, "[1] Done" notices), Ctrl-C to
-  the running command. Subshells, $( ) and all but the last stage of a
+  functions, aliases, jobs (& jobs fg bg wait, "[1] Done" notices), Ctrl-C to
+  the running command, Ctrl-Z to suspend it (ixemul programs: a native
+  Amiga command cannot be stopped; vsh says so). A stopped job gets its
+  terminal settings back with fg; its console reads wait while it is
+  stopped or in the background. ixkill (C:ixkill) sends Unix signals to
+  ixemul programs:  ixkill -TERM 0x<process> Subshells, $( ) and all but the last stage of a
   pipeline run as processes of their own (there is no fork on the Amiga).
   Amiga commands run as usual; the command path is the Shell's (Path).
   Startup: ENVARC:vsh/vshrc, then $HOME/.vshrc (HOME defaults to SYS:).

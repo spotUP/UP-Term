@@ -5,7 +5,7 @@
 FailAt 21
 Delete >NIL: DEVS:DOSDrivers/XCON DEVS:DOSDrivers/XCON.info QUIET
 Delete >NIL: DEVS:DOSDrivers/PTY DEVS:DOSDrivers/PTY.info QUIET
-Delete >NIL: L:vtcon-handler L:pty-handler C:vsh QUIET
+Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill QUIET
 Delete >NIL: ENVARC:terminfo/v/vtcon ENVARC:termcap.vtcon QUIET
 Delete >NIL: ENVARC:vsh ENV:vsh ALL QUIET
 If EXISTS LIBS:ixemul.library.orig

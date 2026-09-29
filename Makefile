@@ -99,7 +99,7 @@ HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler
 HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc \
                handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/vtcon_packets.h tty/ldisc.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/vsh
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -110,9 +110,9 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # (153) on the (void) parameter casts the host compiler needs, and (65) on
 # the parameters they are for.
 VSH_SRC := shell/vsh.c shell/sh_exec.c shell/sh_expand.c shell/sh_parse.c
-$(BUILD)/amiga/vsh: $(VSH_SRC) shell/sh_exec.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h
+$(BUILD)/amiga/vsh: $(VSH_SRC) shell/sh_exec.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ $(VSH_SRC)
+	$(VC) -dontwarn=153,65 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC)
 
 $(BUILD)/amiga/vtshow: tests/amiga/vtshow.c
 	@mkdir -p $(BUILD)/amiga
@@ -142,9 +142,18 @@ $(BUILD)/amiga/ixpty: tests/amiga/ixpty.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixpty.c
 
+$(BUILD)/amiga/ixwait: tests/amiga/ixwait.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwait.c
+
 $(BUILD)/amiga/ixbg: tests/amiga/ixbg.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixbg.c
+
+# vsh's signal helper (S8): an ixemul program, so bebbo's gcc
+$(BUILD)/amiga/ixkill: shell/ixkill.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ shell/ixkill.c
 
 $(BUILD)/amiga/ptytest: tests/amiga/ptytest.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
@@ -211,7 +220,7 @@ IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixe
 dist: amiga $(BUILD)/terminfo/76/vtcon
 	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v $(BUILD)/dist/vtcon/libs
 	cp $(IXEMUL_LIB) $(BUILD)/dist/vtcon/libs/ixemul.library
-	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh dist/XCON dist/PTY dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
 	cp $(BUILD)/terminfo/v/vtcon $(BUILD)/dist/vtcon/terminfo/v/vtcon
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon

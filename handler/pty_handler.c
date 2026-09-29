@@ -652,7 +652,7 @@ static void packet(struct DosPacket *d, pair *via, int side)
             return;
         }
         CopyMem(&p->ld.t, (APTR)d->dp_Arg2, sizeof(vt_termios));
-        reply(d, DOSTRUE, 0);
+        reply(d, DOSTRUE, 1); /* Res2 1: always termios mode (vtcon_packets.h) */
         return;
     case ACTION_VTCON_TCSETA:
         if (!d->dp_Arg2) {

@@ -21,6 +21,34 @@
 #include <string.h>
 #include "sh_exec.h"
 #include "../handler/vtcon_packets.h"
+#include "../tty/ldisc.h"
+
+#ifdef VSH_DEBUG
+/* A trace on the serial port (the rig captures it in build/rig/serial.log). */
+void vsh_rawputchar(__reg("a6") struct ExecBase *, __reg("d0") UBYTE) = "\tjsr\t-516(a6)";
+static void tr(const char *s, long a, long b)
+{
+    static const char hex[] = "0123456789abcdef";
+    struct ExecBase *eb = *(struct ExecBase **)4L;
+    long v[2];
+    int i, k;
+    v[0] = a;
+    v[1] = b;
+    vsh_rawputchar(eb, 'V');
+    vsh_rawputchar(eb, ' ');
+    while (*s)
+        vsh_rawputchar(eb, (UBYTE)*s++);
+    for (i = 0; i < 2; i++) {
+        vsh_rawputchar(eb, ' ');
+        for (k = 28; k >= 0; k -= 4)
+            vsh_rawputchar(eb, (UBYTE)hex[(v[i] >> k) & 15]);
+    }
+    vsh_rawputchar(eb, '\n');
+}
+#define TR(s, a, b) tr(s, (long)(a), (long)(b))
+#else
+#define TR(s, a, b)
+#endif
 
 static const char version[] = "$VER: vsh 0.1 (29.9.2026)";
 
@@ -47,6 +75,10 @@ typedef struct job {
     sh_io io;
     int done;               /* set (under Forbid) as the runner ends */
     LONG rc;
+    struct Task *held;      /* its process, whose console reads wait (stopped, bg) */
+    vt_termios tios;        /* the console's termios when it was suspended ... */
+    int tios_saved;         /* ... if the job had set one (S8) */
+    int tios_restored;      /* fg put it back: the prompt takes the Amiga mode again */
 } job;
 
 /* The pipes vsh made. AmigaOS has no SIGPIPE: a PIPE: writer whose reader
@@ -60,18 +92,93 @@ typedef struct pipe_rec {
 
 static pipe_rec pipe_tab[32];
 
-/* Ctrl-C to a running job: its runner, which is the command's process
- * for a loaded command, and the Shell process SystemTags spawned for a
- * Resident command or a script (found by the name vsh gave it). Call
- * under Forbid. */
-static void job_break(job *j)
+/* A break (Ctrl-C, or ^\ as CTRL_E) to a running job: its runner, which
+ * is the command's process for a loaded command, and the Shell process
+ * SystemTags spawned for a Resident command or a script (found by the
+ * name vsh gave it). Call under Forbid. */
+static void job_signal(job *j, ULONG sig)
 {
     struct Task *t;
     if (j->done)
         return;
-    Signal(j->task, SIGBREAKF_CTRL_C);
+    Signal(j->task, sig);
     if (j->child[0] && (t = FindTask((STRPTR)j->child)) != 0)
-        Signal(t, SIGBREAKF_CTRL_C);
+        Signal(t, sig);
+}
+
+static void job_break(job *j)
+{
+    job_signal(j, SIGBREAKF_CTRL_C);
+}
+
+/* A Unix signal to the job's process through ixkill (vsh cannot send
+ * one itself): 0 when it went out, -1 when the job is no ixemul process
+ * (a native command cannot be stopped) or ixkill is missing. */
+/* The job's process: the runner for a loaded command, the Shell process
+ * SystemTags made for a Resident command or a script; 0 when it ended. */
+static struct Task *job_process(job *j)
+{
+    struct Task *t;
+    Forbid();
+    t = j->done ? 0 : (j->child[0] ? FindTask((STRPTR)j->child) : j->task);
+    Permit();
+    return t;
+}
+
+static int job_unix_signal(job *j, const char *sig)
+{
+    struct Task *t;
+    char cmd[64];
+    static const char hex[] = "0123456789abcdef";
+    unsigned long a;
+    int i, k;
+    BPTR nil_in, nil_out;
+    LONG rc;
+    t = job_process(j);
+    if (!t)
+        return -1;
+    a = (unsigned long)t;
+    strcpy(cmd, "ixkill -");
+    strcat(cmd, sig);
+    strcat(cmd, " 0x");
+    k = (int)strlen(cmd);
+    for (i = 0; i < 8; i++)
+        cmd[k++] = hex[(a >> (28 - 4 * i)) & 15];
+    cmd[k] = 0;
+    nil_in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    nil_out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    rc = SystemTags((STRPTR)cmd, SYS_Input, nil_in, SYS_Output, nil_out, SYS_UserShell, TRUE, TAG_END);
+    if (rc == -1) { /* not started: the streams are still ours */
+        Close(nil_in);
+        Close(nil_out);
+    }
+    return rc == 0 ? 0 : -1;
+}
+
+/* The console's termios, if a program set one (TCGETA's Res2, see
+ * vtcon_packets.h); 0 when it is in the Amiga mode or no vtcon console. */
+static int console_termios(vt_termios *t)
+{
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    if (!fh || !fh->fh_Type)
+        return 0;
+    return DoPkt(fh->fh_Type, ACTION_VTCON_TCGETA, fh->fh_Arg1, (LONG)t, 0, 0, 0) && IoErr() == 1;
+}
+
+/* Reads from process t wait while held (a stopped or background job:
+ * ACTION_VTCON_HOLD); a console that does not know it refuses. */
+static void console_hold(struct Task *t, int on)
+{
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    if (t && fh && fh->fh_Type)
+        DoPkt(fh->fh_Type, ACTION_VTCON_HOLD, fh->fh_Arg1, (LONG)t, on, 0, 0);
+}
+
+static void console_set_termios(const vt_termios *t)
+{
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    if (fh && fh->fh_Type)
+        DoPkt(fh->fh_Type, ACTION_VTCON_TCSETA, fh->fh_Arg1, (LONG)t, LD_TCSANOW, 0, 0);
 }
 
 /* Close a stream; every close of a stream vsh handed out comes here. */
@@ -206,6 +313,7 @@ static void runner(void)
     job *j;
     WaitPort(&me->pr_MsgPort);
     j = (job *)GetMsg(&me->pr_MsgPort);
+    TR("runner start", j, me);
     /* the exported variables, as local variables of this process: the
      * command's own (a Shell SystemTags starts copies them) */
     if (j->env) {
@@ -240,6 +348,7 @@ static void runner(void)
         close_stream(j->out);
     if (j->close_err && j->err != j->out)
         close_stream(j->err);
+    TR("runner end", j, j->rc);
     Forbid(); /* the reply and our end, before the shell can free anything */
     j->done = 1;
     ReplyMsg(&j->msg);
@@ -401,6 +510,20 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         j->close_in = (io->owned & SH_OWN_IN) != 0;
         j->close_out = (io->owned & SH_OWN_OUT) != 0;
         j->close_err = (io->owned & SH_OWN_ERR) != 0;
+        if (!j->close_in && j->in == Input()) {
+            /* its own handle on the console, not the shell's: RunCommand
+             * puts the argument line in the input handle's buffer and takes
+             * it back when the command returns. A suspended command has not
+             * returned: the prompt read its argument line (an empty
+             * command, a second prompt), and its late return put the
+             * buffer back under the shell (rig: the machine rebooted when a
+             * job continued with bg ended). */
+            BPTR own = Open((STRPTR)"*", MODE_OLDFILE);
+            if (own) {
+                j->in = own;
+                j->close_in = 1;
+            }
+        }
     } else {
         /* streams it does not own are the shell's: it gets its own handles
          * on the same console (or NIL: for input), not the shell's */
@@ -453,13 +576,57 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     return (long)j;
 }
 
-/* Wait for a job. Ctrl-C while waiting goes on to the job's runner, the
- * command's process, as long as it runs (the console signals the shell). */
+/* ^Z while a job runs in the foreground: SIGTSTP to it. It stays (its
+ * reply comes when it ends, after fg or bg); the console's termios, if
+ * the job had set one, is kept for fg, and the prompt gets the Amiga mode
+ * back. 0: suspended. */
+static int suspend_job(void *os, job *j)
+{
+    sh_shell *sh = ((vproc *)os)->sh;
+    TR("suspend", j, j->task);
+    if (job_unix_signal(j, "TSTP")) {
+        const char *m = "\nvsh: only ixemul programs can be suspended\n";
+        Write((BPTR)sh->io.err, (APTR)m, (LONG)strlen(m));
+        return -1;
+    }
+    /* a read it sent before it stopped waits: the prompt's line is ours */
+    j->held = job_process(j);
+    console_hold(j->held, 1);
+    j->tios_saved = console_termios(&j->tios);
+    SetMode(Input(), 0);
+    sh->os.stopped = (long)j;
+    return 0;
+}
+
+static int os_cont(void *os, long id)
+{
+    (void)os;
+    TR("cont", id, 0);
+    return job_unix_signal((job *)id, "CONT");
+}
+
+/* Wait for a job. Ctrl-C (and ^\) while waiting goes on to the job's
+ * runner, the command's process, as long as it runs (the console signals
+ * the shell); ^Z suspends it when the shell allows (SH_STOPPED). */
 static long os_wait(void *os, long id)
 {
     job *j = (job *)id;
+    sh_shell *sh = ((vproc *)os)->sh;
     LONG rc;
     int broke = 0;
+    TR("wait", j, sh->os.suspendable);
+    if (sh->os.suspendable) {
+        SetSignal(0, SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F); /* an old ^Z or ^\ is not for this job */
+        /* fg: the terminal is the job's again */
+        console_hold(j->held, 0);
+        j->held = 0;
+    }
+    if (sh->os.suspendable && j->tios_saved) {
+        /* fg: the job's own terminal settings again */
+        console_set_termios(&j->tios);
+        j->tios_saved = 0;
+        j->tios_restored = 1;
+    }
     for (;;) {
         ULONG got;
         Forbid();
@@ -469,15 +636,24 @@ static long os_wait(void *os, long id)
             break;
         }
         Permit();
-        got = Wait((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C);
-        if (got & SIGBREAKF_CTRL_C) {
+        got = Wait((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E |
+                   SIGBREAKF_CTRL_F);
+        if (got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E)) {
             Forbid(); /* still running: its reply is not in yet */
             if (!replied(PORT(os), j))
-                job_break(j);
+                job_signal(j, got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E));
             Permit();
-            broke = 1;
+            if (got & SIGBREAKF_CTRL_C)
+                broke = 1;
         }
+        if ((got & SIGBREAKF_CTRL_F) && sh->os.suspendable && !j->done && suspend_job(os, j) == 0)
+            return SH_STOPPED;
     }
+    TR("waited", j, j->rc);
+    if (j->held) /* it ended in the background */
+        console_hold(j->held, 0);
+    if (j->tios_restored)
+        SetMode(Input(), 0); /* the settings were vsh's to put back: the prompt's mode */
     /* the break was for the whole line: raised again for the interpreter,
      * which stops what follows (a loop around the command) */
     if (broke)
@@ -520,8 +696,11 @@ static long os_write(void *os, sh_fh fh, const char *b, long n)
 static long os_read_line(void *os, sh_fh fh, char *buf, long max)
 {
     (void)os;
-    if (!FGets((BPTR)fh, (STRPTR)buf, max))
+    if (!FGets((BPTR)fh, (STRPTR)buf, max)) {
+        TR("read_line eof", fh, IoErr());
         return -1;
+    }
+    TR("read_line", fh, strlen(buf));
     return (long)strlen(buf);
 }
 
@@ -832,6 +1011,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.run = os_run;
     sh.os.wait = os_wait;
     sh.os.done = os_done;
+    sh.os.cont = os_cont;
     sh.os.spawn = os_spawn;
     sh.os.read = os_read;
     sh.os.interrupted = os_interrupted;

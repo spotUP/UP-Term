@@ -29,6 +29,25 @@ static void tstp(int s)
 int main(int argc, char **argv)
 {
     char line[80];
+    /* "ixbg keys": raw mode (no ICANON, no ECHO, ISIG on), prints each key
+     * as [hex] until q: a full-screen program's terminal, for ^Z and fg */
+    if (argc > 1 && !strcmp(argv[1], "keys")) {
+        struct termios t, old;
+        unsigned char c;
+        tcgetattr(0, &old);
+        t = old;
+        t.c_lflag &= ~(ICANON | ECHO);
+        t.c_cc[VMIN] = 1;
+        t.c_cc[VTIME] = 0;
+        tcsetattr(0, TCSANOW, &t);
+        while (read(0, &c, 1) == 1 && c != 'q') {
+            printf("[%02x]", c);
+            fflush(stdout);
+        }
+        tcsetattr(0, TCSANOW, &old);
+        printf("\nkeys: done\n");
+        return 0;
+    }
     /* "ixbg napdfl": the same with SIGTSTP's default action (a stop) */
     if (argc > 1 && (!strcmp(argv[1], "nap") || !strcmp(argv[1], "napdfl"))) {
         gettimeofday(&t0, 0);

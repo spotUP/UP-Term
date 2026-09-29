@@ -51,6 +51,8 @@ void sh_shell_init(sh_shell *sh)
     sh->loop_depth = sh->func_depth = 0;
     memset(sh->jobs, 0, sizeof(sh->jobs));
     memset(sh->job_text, 0, sizeof(sh->job_text));
+    memset(sh->job_stopped, 0, sizeof(sh->job_stopped));
+    sh->warned_stopped = 0;
     sh->retired = 0;
     sh->intr = 0;
     sh->stack_limit = 0; /* the OS layer sets it for each process */
@@ -697,7 +699,14 @@ static long b_shift(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static long b_exit(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    (void)io;
+    int i;
+    /* a stopped job would wait for a SIGCONT for ever: say so once */
+    for (i = 0; i < 32; i++)
+        if (sh->jobs[i] && sh->job_stopped[i] && !sh->warned_stopped) {
+            sh->warned_stopped = 1;
+            err2(sh, io, "exit", "there are stopped jobs (fg or bg them; exit again to leave them)");
+            return 1;
+        }
     sh->exiting = 1;
     sh->exit_status = argc > 1 ? atol(argv[1]) : sh->ctx.status;
     return sh->exit_status;
@@ -961,6 +970,7 @@ static void job_line(sh_shell *sh, sh_fh fh, int i, const char *state, long st)
 static void job_forget(sh_shell *sh, int i)
 {
     sh->jobs[i] = 0;
+    sh->job_stopped[i] = 0;
     free(sh->job_text[i]);
     sh->job_text[i] = 0;
 }
@@ -990,7 +1000,74 @@ static long b_jobs(sh_shell *sh, int argc, char **argv, const sh_io *io)
     (void)argc; (void)argv;
     for (i = 0; i < 32; i++)
         if (sh->jobs[i] && !job_reap(sh, i, io->out))
-            job_line(sh, io->out, i, "Running", 0);
+            job_line(sh, io->out, i, sh->job_stopped[i] ? "Stopped" : "Running", 0);
+    return 0;
+}
+
+/* A command in the foreground: its status, or, when it was suspended,
+ * into the table as a stopped job ("[n] Stopped  cmd") and $? 146.
+ * slot: its place in the table already (fg), or -1. */
+static long fg_status(sh_shell *sh, long st, int slot, char *text, const sh_io *io)
+{
+    int i = slot;
+    if (st != SH_STOPPED) {
+        free(text);
+        return st;
+    }
+    if (i < 0) {
+        for (i = 0; i < 32 && sh->jobs[i]; i++)
+            ;
+        if (i == 32) {
+            free(text);
+            return SH_STATUS_STOPPED; /* no room: it stays stopped, unlisted */
+        }
+        sh->job_text[i] = text;
+    } else {
+        free(text);
+    }
+    sh->jobs[i] = sh->os.stopped;
+    sh->job_stopped[i] = 1;
+    sh->warned_stopped = 0;
+    say(sh, io->err, "\n");
+    job_line(sh, io->err, i, "Stopped", 0);
+    return SH_STATUS_STOPPED;
+}
+
+/* The job a job argument (%n or n) names, or the newest one for which
+ * want(sh, i) holds; -1: none. */
+static int job_arg(sh_shell *sh, int argc, char **argv, int stopped_only)
+{
+    int i;
+    if (argc > 1) {
+        i = atoi(argv[1][0] == '%' ? argv[1] + 1 : argv[1]) - 1;
+        return i >= 0 && i < 32 && sh->jobs[i] && (!stopped_only || sh->job_stopped[i]) ? i : -1;
+    }
+    for (i = 31; i >= 0; i--)
+        if (sh->jobs[i] && (!stopped_only || sh->job_stopped[i]))
+            return i;
+    return -1;
+}
+
+/* bg: a stopped job goes on, in the background ("[n] cmd &"). */
+static long b_bg(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int i = job_arg(sh, argc, argv, 1);
+    char nb[16];
+    if (i < 0 || !sh->os.cont) {
+        err2(sh, io, "bg", "no stopped job");
+        return 1;
+    }
+    if (sh->os.cont(sh->os.data, sh->jobs[i])) {
+        err2(sh, io, "bg", "cannot continue it");
+        return 1;
+    }
+    sh->job_stopped[i] = 0;
+    num(nb, i + 1);
+    say(sh, io->out, "[");
+    say(sh, io->out, nb);
+    say(sh, io->out, "] ");
+    say(sh, io->out, sh->job_text[i] ? sh->job_text[i] : "");
+    say(sh, io->out, " &\n");
     return 0;
 }
 
@@ -1000,23 +1077,39 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     long st = 0;
     int i, which = -1, fg = !strcmp(argv[0], "fg");
+    if (fg) {
+        /* the named job, or the newest; a stopped one is continued first,
+         * and may be suspended again */
+        i = job_arg(sh, argc, argv, 0);
+        if (i < 0) {
+            err2(sh, io, "fg", "no such job");
+            return 1;
+        }
+        say(sh, io->out, sh->job_text[i] ? sh->job_text[i] : "");
+        say(sh, io->out, "\n");
+        if (sh->job_stopped[i]) {
+            if (!sh->os.cont || sh->os.cont(sh->os.data, sh->jobs[i])) {
+                err2(sh, io, "fg", "cannot continue it");
+                return 1;
+            }
+            sh->job_stopped[i] = 0;
+        }
+        sh->os.suspendable = sh->os.cont != 0;
+        st = sh->os.wait(sh->os.data, sh->jobs[i]);
+        sh->os.suspendable = 0;
+        if (st == SH_STOPPED)
+            return fg_status(sh, st, i, 0, io);
+        job_forget(sh, i);
+        return st;
+    }
     if (argc > 1)
         which = atoi(argv[1][0] == '%' ? argv[1] + 1 : argv[1]) - 1;
     for (i = 31; i >= 0; i--) {
-        if (!sh->jobs[i] || (which >= 0 && i != which))
+        /* a stopped job is not waited for: it would never end */
+        if (!sh->jobs[i] || sh->job_stopped[i] || (which >= 0 && i != which))
             continue;
-        if (fg) {
-            say(sh, io->out, sh->job_text[i] ? sh->job_text[i] : "");
-            say(sh, io->out, "\n");
-        }
         st = sh->os.wait(sh->os.data, sh->jobs[i]);
         job_forget(sh, i);
-        if (fg)
-            break;
-    }
-    if (fg && i < 0) {
-        err2(sh, io, "fg", "no such job");
-        return 1;
     }
     return st;
 }
@@ -1034,7 +1127,7 @@ static const struct {
     { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "return", b_return },
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
-    { "wait", b_wait }, { "fg", b_wait }, { "source", b_source }, { ".", b_source },
+    { "wait", b_wait }, { "fg", b_wait }, { "bg", b_bg }, { "source", b_source }, { ".", b_source },
     { "which", b_type }, { 0, 0 } /* no "type": AmigaDOS Type prints files */
 };
 
@@ -1316,8 +1409,12 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
             if (io.err == parent->err && (parent->owned & SH_OWN_ERR))
                 io.owned |= SH_OWN_ERR;
         }
+        sh->os.suspendable = wait && sh->os.cont;
         st = sh->os.run(sh->os.data, argv.v, &io, wait);
-        if (!wait) {
+        sh->os.suspendable = 0;
+        if (wait && st == SH_STOPPED) {
+            st = fg_status(sh, st, -1, words_text(n), &io);
+        } else if (!wait) {
             if (job)
                 *job = st > 0 ? st : 0;
             st = st > 0 ? 0 : 1;
