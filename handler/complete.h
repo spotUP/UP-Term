@@ -11,8 +11,13 @@
 enum complete_mode {
     COMPLETE_FILES = 0,       /* the word is a path: names in its directory */
     COMPLETE_COMMANDS = 1,    /* the first word: C:, the Shell's path, residents, current dir */
-    CHECK_COMMAND = 2         /* does the first word name a command? (for colouring) */
+    CHECK_COMMAND = 2,        /* does the first word name a command? (for colouring) */
+    HISTORY_LOAD = 3,         /* data <- the saved history (newest last) */
+    HISTORY_APPEND = 4        /* word -> one more line of saved history */
 };
+
+#define HISTORY_FILE "ENVARC:vtcon.history"
+#define HISTORY_KEEP 100      /* lines kept when the file is trimmed */
 
 struct complete_req {
     struct Message msg;
@@ -25,6 +30,8 @@ struct complete_req {
     int is_dir;
     char names[COMPLETE_NAMES];   /* out: the matches, NUL-separated, for the menu */
     int names_len;
+    char *data;                   /* HISTORY_LOAD: buffer to fill, data_max bytes */
+    long data_max, data_len;
 };
 
 /* Start the scan; the request comes back on `reply`. 0 if no worker. */

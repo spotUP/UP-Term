@@ -39,8 +39,20 @@ KEYS
   Right Amiga Up / Down scroll back / forward one line
   Left Amiga + key      Meta (ESC prefix) for Unix programs; Alt stays
                         with your keymap
-  In the Shell line: Left/Right, Shift+Left/Right, Ctrl-A/E/K/U/W/X,
-  Up/Down history, Shift+Up/Down history search, Ctrl-\ end of file.
+  In the Shell line:
+    Left/Right, Shift+Left/Right, Ctrl-A/E     move; Ctrl+Left/Right words
+    Ctrl-K/U/W/X, Meta-D, Meta-Backspace       kill; Ctrl-_ undo
+    Up/Down, Shift+Up/Down                     history; history by prefix
+    Ctrl-R                                     search history as you type
+    grey text after the cursor                 a suggestion from history:
+                                               Right or End takes it
+    Tab                                        complete (commands for the
+                                               first word, else files);
+                                               Tab again lists, then cycles
+    Ctrl-L                                     clear, keep prompt and line
+    Ctrl-\                                     end of file
+  The command word shows green when it is a command, red when not.
+  History is kept in ENVARC:vtcon.history (the last 100 lines).
 
 STATUS
   Test build. CON:/RAW: are not replaced; XCON: runs beside them.

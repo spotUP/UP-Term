@@ -126,6 +126,10 @@ typedef struct con {
     struct MsgPort *comp_port;   /* Tab completion and command lookups answer here */
     struct complete_req *comp;   /* Tab */
     struct complete_req *check;  /* is the first word a command */
+    struct complete_req *hist;   /* history file: load at open, append per line */
+    int hist_busy;
+    char hist_queue[512];        /* lines waiting for the file, '\n'-ended */
+    int hist_queue_len;
     int comp_busy, check_busy;
     char checked[64];            /* the first word last sent to check */
     int tabs;                    /* Tabs in a row */
@@ -530,6 +534,7 @@ static struct TextFont *open_font(con *c)
 }
 
 static void le_out(void *u, const unsigned char *b, long n);
+static void history_load(con *c);
 
 static int open_window(con *c)
 {
@@ -607,6 +612,7 @@ have_window:
     vr_set_defaults(&c->r, c->fg_rgb, c->bg_rgb);
     le_init(&c->le, c->t, le_out, c);
     c->le.utf8 = c->pers == VT_XTERM && !c->latin1 && !c->cp437;
+    history_load(c); /* the saved history, read by a worker */
     DBG("vr_init", c->r.cols, c->r.rows);
     vr_redraw(&c->r);
     DBG("redrawn", 0, 0);
@@ -815,7 +821,9 @@ static int ensure_worker(con *c)
         c->comp = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
     if (!c->check)
         c->check = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    return c->comp_port && c->comp && c->check;
+    if (!c->hist)
+        c->hist = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
+    return c->comp_port && c->comp && c->check && c->hist;
 }
 
 static struct Process *opener(con *c)
@@ -864,6 +872,51 @@ static void check_command(con *c)
         c->check_busy = 1;
 }
 
+/* The history file: loaded once when the window opens, then each entered
+ * line appended (one worker at a time; lines queue meanwhile). */
+static void history_next(con *c)
+{
+    int i;
+    if (c->hist_busy || !c->hist_queue_len || !ensure_worker(c))
+        return;
+    for (i = 0; i < c->hist_queue_len && c->hist_queue[i] != '\n' && i < COMPLETE_MAX - 1; i++)
+        c->hist->word[i] = c->hist_queue[i];
+    c->hist->word[i] = 0;
+    while (i < c->hist_queue_len && c->hist_queue[i] != '\n')
+        i++;
+    i++;
+    memmove(c->hist_queue, c->hist_queue + i, c->hist_queue_len - i);
+    c->hist_queue_len -= i;
+    c->hist->mode = HISTORY_APPEND;
+    if (complete_start(c->hist, c->comp_port, opener(c)))
+        c->hist_busy = 1;
+}
+
+static void history_save(con *c, const unsigned char *line, int n)
+{
+    while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == ' '))
+        n--;
+    if (n <= 0 || c->hist_queue_len + n + 1 > (int)sizeof(c->hist_queue))
+        return;
+    CopyMem((APTR)line, c->hist_queue + c->hist_queue_len, n);
+    c->hist_queue_len += n;
+    c->hist_queue[c->hist_queue_len++] = '\n';
+    history_next(c);
+}
+
+static void history_load(con *c)
+{
+    if (!ensure_worker(c) || c->hist_busy)
+        return;
+    c->hist->data = (char *)AllocVec(HISTORY_KEEP * 2 * 256, MEMF_ANY);
+    if (!c->hist->data)
+        return;
+    c->hist->data_max = HISTORY_KEEP * 2 * 256;
+    c->hist->mode = HISTORY_LOAD;
+    if (complete_start(c->hist, c->comp_port, opener(c)))
+        c->hist_busy = 1;
+}
+
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
 
 static void type_text(con *c, const char *s)
@@ -882,6 +935,21 @@ static void finish_completion(con *c)
 {
     struct complete_req *q;
     while ((q = (struct complete_req *)GetMsg(c->comp_port)) != 0) {
+        if (q == c->hist) {
+            c->hist_busy = 0;
+            if (q->mode == HISTORY_LOAD && q->data) {
+                long a = 0, i;
+                for (i = 0; i < q->data_len; i++)
+                    if (q->data[i] == '\n') {
+                        le_hist_add(&c->le, (const unsigned char *)q->data + a, (int)(i - a));
+                        a = i + 1;
+                    }
+                FreeVec(q->data);
+                q->data = 0;
+            }
+            history_next(c);
+            continue;
+        }
         if (q == c->check) {
             c->check_busy = 0;
             if (!c->raw) {
@@ -961,6 +1029,7 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
     }
     if (le_key(&c->le, key ? key : (n ? (long)b[0] : 0), mods, b, n)) {
         in_append(c, c->le.buf, c->le.len);
+        history_save(c, c->le.buf, c->le.len);
         le_reset(&c->le);
         c->checked[0] = 0;
         return;
@@ -1615,7 +1684,7 @@ static LONG handler_main(void)
          * before it, opens is 0 too (a wake-up between the startup packet and
          * that Open used to end the handler, leaving dn_Task at a dead port). */
         if (c->ever_opened && c->opens <= 0 && (!c->wait_close || c->closing) && !c->nreads &&
-            !c->comp_busy && !c->check_busy) /* a worker still holds our request */
+            !c->comp_busy && !c->check_busy && !c->hist_busy) /* a worker holds our request */
             break;
     }
     render(c);
@@ -1638,6 +1707,11 @@ static LONG handler_main(void)
         FreeVec(c->comp);
     if (c->check)
         FreeVec(c->check);
+    if (c->hist) {
+        if (c->hist->data)
+            FreeVec(c->hist->data);
+        FreeVec(c->hist);
+    }
     if (c->comp_port)
         DeleteMsgPort(c->comp_port);
     if (c->timer_open) {

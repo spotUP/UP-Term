@@ -192,6 +192,47 @@ static int command_exists(struct complete_req *q)
     return found;
 }
 
+/* HISTORY_LOAD: the file's last HISTORY_KEEP lines into q->data (and the
+ * file trimmed to them once it has grown past twice that). */
+static void history_load(struct complete_req *q)
+{
+    BPTR f = Open((STRPTR)HISTORY_FILE, MODE_OLDFILE);
+    long n, i, lines = 0, from = 0;
+    q->data_len = 0;
+    if (!f)
+        return;
+    n = Read(f, q->data, q->data_max - 1);
+    Close(f);
+    if (n <= 0)
+        return;
+    for (i = n - 1; i >= 0; i--)
+        if (q->data[i] == '\n' && ++lines > HISTORY_KEEP) {
+            from = i + 1;
+            break;
+        }
+    memmove(q->data, q->data + from, n - from);
+    q->data_len = n - from;
+    if (from && lines > HISTORY_KEEP) {
+        /* the file had more: keep only what was loaded */
+        f = Open((STRPTR)HISTORY_FILE, MODE_NEWFILE);
+        if (f) {
+            Write(f, q->data, q->data_len);
+            Close(f);
+        }
+    }
+}
+
+static void history_append(struct complete_req *q)
+{
+    BPTR f = Open((STRPTR)HISTORY_FILE, MODE_READWRITE);
+    if (!f)
+        return;
+    Seek(f, 0, OFFSET_END);
+    Write(f, q->word, (LONG)strlen(q->word));
+    Write(f, "\n", 1);
+    Close(f);
+}
+
 /* The worker's body: runs as its own process. */
 static void worker(void)
 {
@@ -218,6 +259,10 @@ static void worker(void)
 
     if (q->mode == CHECK_COMMAND) {
         q->matches = command_exists(q);
+    } else if (q->mode == HISTORY_LOAD) {
+        history_load(q);
+    } else if (q->mode == HISTORY_APPEND) {
+        history_append(q);
     } else {
         for (i = 0; q->word[i]; i++)
             if (q->word[i] == '/' || q->word[i] == ':')
