@@ -511,6 +511,18 @@ static void assignment_status_and_scope(void)
     CHECK_STR(run("A=1; A=2 args $A; echo $A"), "<1>\n1\n");
 }
 
+/* read: IFS decides the splitting (IFS= keeps the line whole), -r keeps
+ * backslashes; without -r a backslash quotes the next character. */
+static void read_builtin(void)
+{
+    CHECK_STR(run("echo '  lead  tail  ' | { IFS= read -r l; echo \"[$l]\"; }"), "[  lead  tail  ]\n");
+    CHECK_STR(run("echo 'a:b:c d' | { IFS=: read x y; echo \"$x|$y\"; }"), "a|b:c d\n");
+    CHECK_STR(run("echo 'a\\b c' | { read -r x y; echo \"$x|$y\"; }"), "a\\b|c\n");
+    CHECK_STR(run("echo 'a\\ b c' | { read x y; echo \"$x|$y\"; }"), "a b|c\n");
+    CHECK_STR(run("echo '  one  two  ' | { read x; echo \"[$x]\"; }"), "[one  two]\n");
+    CHECK_STR(run("IFS=:; echo 'p:q' | { read x y; echo \"$x $y\"; }"), "p q\n");
+}
+
 static void incomplete_input(void)
 {
     int inc = 0;
@@ -589,5 +601,6 @@ void suite_sh_exec(void)
     functions_outlive_their_lines();
     subshells();
     assignment_status_and_scope();
+    read_builtin();
     sh_shell_free(&sh);
 }

@@ -429,6 +429,48 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         e->err = "bad substitution";
         return end + 1;
     }
+    if (i < end && (w[i] == '#' || w[i] == '%') && !len_op) {
+        /* ${X#p} ${X##p}: without the shortest / longest prefix matching p;
+         * ${X%p} ${X%%p}: the same for a suffix */
+        char kind = w[i++], *pat, *tmp;
+        int longest = 0;
+        long l, k, from = 0, to;
+        if (i < end && w[i] == kind) {
+            longest = 1;
+            i++;
+        }
+        val = param(e, name);
+        if (!val)
+            val = "";
+        l = (long)strlen(val);
+        to = l;
+        pat = expand_string(e, w + i, end - i, dquote);
+        tmp = (char *)malloc(l + 1);
+        if (pat && tmp) {
+            if (kind == '#') {
+                for (k = longest ? l : 0; longest ? k >= 0 : k <= l; k += longest ? -1 : 1) {
+                    memcpy(tmp, val, k);
+                    tmp[k] = 0;
+                    if (sh_match(pat, tmp, 0)) {
+                        from = k;
+                        break;
+                    }
+                }
+            } else {
+                for (k = longest ? 0 : l; longest ? k <= l : k >= 0; k += longest ? 1 : -1)
+                    if (sh_match(pat, val + k, 0)) {
+                        to = k;
+                        break;
+                    }
+            }
+            memcpy(tmp, val + from, to - from);
+            tmp[to - from] = 0;
+            cputs(b, tmp, dquote ? F_QUOTED : F_SPLIT);
+        }
+        free(pat);
+        free(tmp);
+        return end + 1;
+    }
     if (i < end && w[i] == ':') {
         colon = 1;
         i++;

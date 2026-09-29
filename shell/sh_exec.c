@@ -723,30 +723,97 @@ static long b_continue(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+static int in_ifs(const char *ifs, char c)
+{
+    return c && strchr(ifs, c) != 0;
+}
+
+static int ifs_space(const char *ifs, char c)
+{
+    return (c == ' ' || c == '\t' || c == '\n') && in_ifs(ifs, c);
+}
+
+static void set_part(sh_shell *sh, const char *name, const char *s, long n)
+{
+    char *v = (char *)malloc(n + 1);
+    if (!v)
+        return;
+    memcpy(v, s, n);
+    v[n] = 0;
+    sh_set(&sh->ctx, name, v);
+    free(v);
+}
+
+/* read [-r] [name ...]: one line, split by $IFS (IFS whitespace trimmed
+ * and collapsed; other IFS characters end one field each), the last name
+ * takes the rest. Without -r a backslash quotes the next character (and
+ * joins the next line at the end). No names: REPLY. */
 static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    char line[1024];
-    long n = sh->os.read_line(sh->os.data, io->in, line, sizeof(line));
-    int i;
-    char *p = line;
-    if (n < 0)
-        return 1;
-    while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
-        line[--n] = 0;
-    for (i = 1; i < argc; i++) {
-        char *start;
-        while (*p == ' ' || *p == '\t')
+    char line[1024], quoted[1024], buf[1024];
+    const char *ifs = sh_get(&sh->ctx, "IFS");
+    const char *reply[1];
+    char **names = argv;
+    long n = 0, m, k, p = 0;
+    int raw = 0, a = 1, i, got = 0;
+    if (!ifs)
+        ifs = " \t\n";
+    while (a < argc && !strcmp(argv[a], "-r")) {
+        raw = 1;
+        a++;
+    }
+    if (a == argc) {
+        reply[0] = "REPLY";
+        names = (char **)reply;
+        a = 0;
+        argc = 1;
+    }
+    for (;;) {
+        int more = 0;
+        m = sh->os.read_line(sh->os.data, io->in, buf, sizeof(buf));
+        if (m < 0)
+            break;
+        got = 1;
+        while (m > 0 && (buf[m - 1] == '\n' || buf[m - 1] == '\r'))
+            m--;
+        for (k = 0; k < m && n < (long)sizeof(line) - 1; k++) {
+            if (!raw && buf[k] == '\\') {
+                if (k + 1 == m) {
+                    more = 1; /* backslash-newline: the line goes on */
+                    break;
+                }
+                line[n] = buf[++k];
+                quoted[n++] = 1;
+            } else {
+                line[n] = buf[k];
+                quoted[n++] = 0;
+            }
+        }
+        if (!more)
+            break;
+    }
+    line[n] = 0;
+    for (i = a; i < argc; i++) {
+        long start;
+        while (p < n && !quoted[p] && ifs_space(ifs, line[p]))
             p++;
         start = p;
-        if (i + 1 < argc) {
-            while (*p && *p != ' ' && *p != '\t')
-                p++;
-            if (*p)
-                *p++ = 0;
+        if (i + 1 == argc) {
+            long e = n;
+            while (e > p && !quoted[e - 1] && ifs_space(ifs, line[e - 1]))
+                e--;
+            set_part(sh, names[i], line + start, e - start);
+            break;
         }
-        sh_set(&sh->ctx, argv[i], start);
+        while (p < n && (quoted[p] || !in_ifs(ifs, line[p])))
+            p++;
+        set_part(sh, names[i], line + start, p - start);
+        while (p < n && !quoted[p] && ifs_space(ifs, line[p]))
+            p++;
+        if (p < n && !quoted[p] && in_ifs(ifs, line[p]))
+            p++; /* one non-space IFS character ends the field */
     }
-    return 0;
+    return got ? 0 : 1;
 }
 
 static long b_alias(sh_shell *sh, int argc, char **argv, const sh_io *io)

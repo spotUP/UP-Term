@@ -94,6 +94,16 @@ static int fields(sh_ctx *c, const char *word)
 static void variables_and_quotes(void)
 {
     sh_ctx *c = ctx();
+    /* ${X#p} ${X##p} ${X%p} ${X%%p}: prefix and suffix removal */
+    sh_set(c, "X", "a/b/c.txt");
+    CHECK_STR(ex(c, "${X#*/}", 0), "b/c.txt");
+    CHECK_STR(ex(c, "${X##*/}", 0), "c.txt");
+    CHECK_STR(ex(c, "${X%/*}", 0), "a/b");
+    CHECK_STR(ex(c, "${X%%/*}", 0), "a");
+    CHECK_STR(ex(c, "${X%.txt}", 0), "a/b/c");
+    CHECK_STR(ex(c, "${X#nomatch}", 0), "a/b/c.txt");
+    CHECK_STR(ex(c, "\"${X##*/}\"", 0), "c.txt");
+    CHECK_STR(ex(c, "${NOPE%x}", 0), "");
     CHECK_STR(ex(c, "$A", 0), "one|two");            /* unquoted: split */
     CHECK_STR(ex(c, "\"$A\"", 0), "one two");        /* quoted: one field */
     CHECK_STR(ex(c, "'$A'", 0), "$A");               /* single quotes: literal */
