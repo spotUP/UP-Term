@@ -41,6 +41,7 @@
 #include "../render/amiga_render.h"
 #include "clip.h"
 #include "lineedit.h"
+#include "complete.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -116,6 +117,9 @@ typedef struct con {
     int auto_open;               /* AUTO: no window until the first read or write */
     int spec_parsed;
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
+    struct MsgPort *comp_port;   /* Tab completion answers come back here */
+    struct complete_req *comp;
+    int comp_busy;
     ULONG foreign_idcmp;         /* its IDCMP before we added ours, to restore */
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
@@ -705,8 +709,65 @@ static void le_out(void *u, const unsigned char *b, long n)
     output((con *)u, b, n);
 }
 
+/* Tab in the cooked line: send the word before the cursor to a worker
+ * that scans the directory (complete.c); the answer is typed in later. */
+static void start_completion(con *c)
+{
+    le_line *le = &c->le;
+    int a = le->pos, i, k = 0;
+    if (c->comp_busy)
+        return;
+    if (!c->comp_port)
+        c->comp_port = CreateMsgPort();
+    if (!c->comp)
+        c->comp = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
+    if (!c->comp_port || !c->comp)
+        return;
+    while (a > 0 && le->buf[a - 1] != ' ' && le->buf[a - 1] != '"' && le->buf[a - 1] != '=')
+        a--;
+    for (i = a; i < le->pos && k < COMPLETE_MAX - 1; i++) {
+        unsigned char ch = le->buf[i];
+        if (le->utf8 && (ch & 0xE0) == 0xC0 && i + 1 < le->pos) {
+            ch = (unsigned char)(((ch & 0x1F) << 6) | (le->buf[i + 1] & 0x3F));
+            i++; /* file names are Latin-1 */
+        }
+        c->comp->word[k++] = (char)ch;
+    }
+    c->comp->word[k] = 0;
+    if (complete_start(c->comp, c->comp_port,
+                       c->break_port ? (struct Process *)c->break_port->mp_SigTask : 0))
+        c->comp_busy = 1;
+}
+
+static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
+
+static void finish_completion(con *c)
+{
+    struct complete_req *q;
+    int i;
+    while ((q = (struct complete_req *)GetMsg(c->comp_port)) != 0) {
+        c->comp_busy = 0;
+        if (!q->add[0]) {
+            DisplayBeep(c->win ? c->win->WScreen : 0); /* no match, or several */
+            continue;
+        }
+        for (i = 0; q->add[i]; i++) {
+            vt_u8 out[8];
+            int k = vt_encode_key(c->t, (unsigned char)q->add[i], 0, out);
+            if (!c->raw)
+                cooked_key(c, out, k, 0, 0);
+        }
+        if (q->matches > 1)
+            DisplayBeep(c->win ? c->win->WScreen : 0); /* completed as far as they agree */
+    }
+}
+
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
+    if (key == VT_KEY_TAB) {
+        start_completion(c);
+        return;
+    }
     if (!key && n == 1 && b[0] == 0x1C) { /* Ctrl-\: end of file */
         c->eof = 1;
         return;
@@ -1320,6 +1381,8 @@ static LONG handler_main(void)
             wait |= 1UL << c->win->UserPort->mp_SigBit;
         if (c->timer_port)
             wait |= 1UL << c->timer_port->mp_SigBit;
+        if (c->comp_port)
+            wait |= 1UL << c->comp_port->mp_SigBit;
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */
@@ -1327,6 +1390,8 @@ static LONG handler_main(void)
         while ((m = GetMsg(c->port)))
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
         idcmp(c);
+        if (c->comp_port)
+            finish_completion(c);
         if (c->timer_busy && CheckIO((struct IORequest *)c->timer)) {
             WaitIO((struct IORequest *)c->timer);
             c->timer_busy = 0;
@@ -1339,7 +1404,8 @@ static LONG handler_main(void)
         /* Done when every handle is closed -- but only after the first Open:
          * before it, opens is 0 too (a wake-up between the startup packet and
          * that Open used to end the handler, leaving dn_Task at a dead port). */
-        if (c->ever_opened && c->opens <= 0 && (!c->wait_close || c->closing) && !c->nreads)
+        if (c->ever_opened && c->opens <= 0 && (!c->wait_close || c->closing) && !c->nreads &&
+            !c->comp_busy) /* a completion worker still holds our request */
             break;
     }
     Forbid();
@@ -1347,6 +1413,10 @@ static LONG handler_main(void)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
     close_window(c);
+    if (c->comp)
+        FreeVec(c->comp);
+    if (c->comp_port)
+        DeleteMsgPort(c->comp_port);
     if (c->timer_open) {
         CloseDevice((struct IORequest *)c->timer);
         c->timer_open = 0;
