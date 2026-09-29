@@ -564,7 +564,7 @@ static const struct {
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
     { "wait", b_wait }, { "fg", b_wait }, { "source", b_source }, { ".", b_source },
-    { "type", b_type }, { "which", b_type }, { 0, 0 }
+    { "which", b_type }, { 0, 0 } /* no "type": AmigaDOS Type prints files */
 };
 
 static builtin_fn find_builtin(const char *name)
@@ -740,6 +740,17 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         st = b(sh, argv.n, argv.v, &io);
         close_owned(sh, &io);
     } else {
+        if (!wait) {
+            /* started in the background, the command keeps the streams the
+             * pipeline opened for it (its pipe ends): the runner closes them
+             * when it ends. The shell's own streams are never handed over. */
+            if (io.in == parent->in && (parent->owned & SH_OWN_IN))
+                io.owned |= SH_OWN_IN;
+            if (io.out == parent->out && (parent->owned & SH_OWN_OUT))
+                io.owned |= SH_OWN_OUT;
+            if (io.err == parent->err && (parent->owned & SH_OWN_ERR))
+                io.owned |= SH_OWN_ERR;
+        }
         st = sh->os.run(sh->os.data, argv.v, &io, wait);
         if (!wait) {
             if (job)

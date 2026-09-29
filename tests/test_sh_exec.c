@@ -20,6 +20,8 @@ typedef struct pending {
     int used;
 } pending;
 static pending jobs[16];
+static int last_owned[16];   /* io.owned each background start was given, in order */
+static int n_started;
 
 static fbuf *slot(sh_fh fh)
 {
@@ -161,6 +163,8 @@ static long f_run(void *os, char **argv, const sh_io *io, int wait)
     p.io = *io;
     if (wait)
         return run_now(p.argv, p.argc, &p.io);
+    if (n_started < 16)
+        last_owned[n_started++] = io->owned;
     for (i = 0; i < 16; i++)
         if (!jobs[i].used) {
             jobs[i] = p;
@@ -217,6 +221,8 @@ static void fresh(void)
     sh_shell_free(&sh);
     memset(fs, 0, sizeof(fs));
     memset(jobs, 0, sizeof(jobs));
+    memset(last_owned, 0, sizeof(last_owned));
+    n_started = 0;
     strcpy(cwd, "RAM:");
     sh_shell_init(&sh);
     sh.os.open = f_open;
@@ -303,7 +309,12 @@ static void jobs_aliases_and_dirs(void)
     CHECK_STR(run("cd Work:; pwd; (cd SYS:; pwd); pwd"), "Work:\nSYS:\nWork:\n");
     CHECK_STR(run("cd nowhere; echo $?"), "1\n");
     CHECK_STR(run("[ -d SYS: ] && echo dir"), "dir\n");
-    CHECK_STR(run("type echo f; f() { :; }; type f"), "echo is a shell builtin\nf is a command\nf is a function\n");
+    CHECK_STR(run("which echo f; f() { :; }; which f"), "echo is a shell builtin\nf is a command\nf is a function\n");
+    /* A background stage gets its pipe ends to keep (rig: list's output
+     * went to the console, the runner had been given no pipe) */
+    run("ls | cat");
+    CHECK_INT(last_owned[0] & SH_OWN_OUT, SH_OWN_OUT);
+    CHECK_INT(last_owned[1] & SH_OWN_IN, SH_OWN_IN);
 }
 
 static void incomplete_input(void)
