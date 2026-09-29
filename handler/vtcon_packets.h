@@ -35,4 +35,11 @@
 #define ACTION_VTCON_GWINSZ 0x7657
 #define ACTION_VTCON_SWINSZ 0x7658
 
+/* In termios mode the line discipline's signal keys go to the program as
+ * break signals, which ixemul (patched, on a vtcon console) turns into
+ * Unix signals for the foreground process group:
+ *   VINTR ^C  -> SIGBREAKF_CTRL_C -> SIGINT
+ *   VQUIT ^\  -> SIGBREAKF_CTRL_E -> SIGQUIT
+ *   VSUSP ^Z  -> SIGBREAKF_CTRL_F -> SIGTSTP */
+
 #endif

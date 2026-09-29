@@ -106,7 +106,6 @@ typedef struct con {
     int tty;                     /* in termios mode */
     struct Task *tty_owner;      /* the task that set it; its end ends the mode */
     int tty_ocol;                /* output column, for OXTABS */
-    int tty_sig;                 /* a VQUIT/VSUSP not delivered yet (P6) */
     struct timerequest *rtimer;  /* VTIME for the first waiting read */
     int rtimer_busy, rtimer_fired;
     vt_u8 obuf[2048];            /* OPOST output of one chunk */
@@ -909,10 +908,14 @@ static void tty_echo(void *u, const unsigned char *s, int n)
 static void tty_signal(void *u, int sig)
 {
     con *c = (con *)u;
+    /* the break signals a patched ixemul turns into Unix signals for the
+     * foreground process group (vtcon_packets.h) */
     if (sig == LD_SIGINT)
-        send_break(c, SIGBREAKF_CTRL_C); /* ixemul makes it SIGINT */
-    else
-        c->tty_sig = sig; /* SIGQUIT, SIGTSTP: no way to deliver them before P6 */
+        send_break(c, SIGBREAKF_CTRL_C);
+    else if (sig == LD_SIGQUIT)
+        send_break(c, SIGBREAKF_CTRL_E);
+    else if (sig == LD_SIGTSTP)
+        send_break(c, SIGBREAKF_CTRL_F);
 }
 
 static void rtimer_stop(con *c)
@@ -1951,6 +1954,12 @@ static struct IOStdReq *rom_console(con *c)
     c->rom_io->io_Length = 4;
     DoIO((struct IORequest *)c->rom_io);
     sync_size(c);
+    /* opening a console unit on a window clears it in the ROM console's
+     * pens: every ixemul program asks DISK_INFO at startup, and the window
+     * turned Workbench grey with black only behind the text drawn after
+     * (rig, 2026-09-29). Our grid is the truth: draw it all again. */
+    if (c->t)
+        vr_redraw(&c->r);
     return c->rom_io;
 }
 
