@@ -1079,3 +1079,243 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
         sh_parse_free(&p);
     return st;
 }
+
+/* ---- the prompt ---------------------------------------------------------------- */
+
+typedef struct pbuf {
+    char *s;
+    long n, cap;
+} pbuf;
+
+static void pb_add(pbuf *b, const char *s, long n)
+{
+    if (b->n + n + 1 > b->cap) {
+        long cap = (b->n + n + 1) * 2;
+        char *t = (char *)realloc(b->s, cap);
+        if (!t)
+            return;
+        b->s = t;
+        b->cap = cap;
+    }
+    memcpy(b->s + b->n, s, n);
+    b->n += n;
+    b->s[b->n] = 0;
+}
+
+static void pb_str(pbuf *b, const char *s)
+{
+    pb_add(b, s, (long)strlen(s));
+}
+
+/* Text an escape produced, protected from the expansion that follows
+ * (a directory named "$x" stays "$x"). */
+static void pb_literal(pbuf *b, const char *s)
+{
+    for (; *s; s++) {
+        if (*s == '$' || *s == '`' || *s == '"' || *s == '\\')
+            pb_add(b, "\\", 1);
+        pb_add(b, s, 1);
+    }
+}
+
+static int prefix_nocase(const char *s, const char *p)
+{
+    for (; *p; s++, p++) {
+        char a = *s, c = *p;
+        if (a >= 'A' && a <= 'Z')
+            a = (char)(a - 'A' + 'a');
+        if (c >= 'A' && c <= 'Z')
+            c = (char)(c - 'A' + 'a');
+        if (a != c)
+            return 0;
+    }
+    return 1;
+}
+
+/* The directory with $HOME shown as ~ (Amiga names ignore case). */
+static void pb_dir(sh_shell *sh, pbuf *b, int base_only)
+{
+    char *cwd = sh->os.cwd ? sh->os.cwd(sh->os.data) : 0;
+    const char *home = sh_get(&sh->ctx, "HOME");
+    const char *d = cwd ? cwd : "?";
+    long hl = home ? (long)strlen(home) : 0;
+    if (hl && prefix_nocase(d, home)) {
+        const char *rest = d + hl;
+        /* only at a name boundary: HOME "Work:x" is not a prefix of "Work:xy" */
+        if (!*rest || *rest == '/' || home[hl - 1] == ':' || home[hl - 1] == '/') {
+            if (base_only && *rest) {
+                const char *s = strrchr(rest, '/');
+                pb_literal(b, s ? s + 1 : rest);
+            } else {
+                pb_add(b, "~", 1);
+                if (*rest && *rest != '/')
+                    pb_add(b, "/", 1);
+                pb_literal(b, rest);
+            }
+            free(cwd);
+            return;
+        }
+    }
+    if (base_only) {
+        const char *s = strrchr(d, '/');
+        if (!s)
+            s = strrchr(d, ':');
+        if (s && s[1])
+            d = s + 1;
+    }
+    pb_literal(b, d);
+    free(cwd);
+}
+
+static const char *var_or(sh_shell *sh, const char *a, const char *b, const char *dflt)
+{
+    const char *v = sh_get(&sh->ctx, a);
+    if ((!v || !*v) && b)
+        v = sh_get(&sh->ctx, b);
+    return v && *v ? v : dflt;
+}
+
+/* ESC [ n1 ; n2 ... m */
+static void pb_sgr(pbuf *b, const long *v, int n)
+{
+    char t[24];
+    int i;
+    pb_str(b, "\033[");
+    for (i = 0; i < n; i++) {
+        if (i)
+            pb_add(b, ";", 1);
+        num(t, v[i]);
+        pb_str(b, t);
+    }
+    pb_add(b, "m", 1);
+}
+
+/* %F{..} / %K{..}: a colour name, a palette index, or #rrggbb */
+static const char *pb_colour(pbuf *b, const char *p, int bg)
+{
+    static const char *const names[] = { "black", "red", "green", "yellow", "blue",
+                                         "magenta", "cyan", "white" };
+    char spec[16];
+    long v[5];
+    int n = 0, i;
+    if (*p != '{') {
+        v[0] = bg ? 49 : 39;
+        pb_sgr(b, v, 1);
+        return p;
+    }
+    for (p++; *p && *p != '}'; p++)
+        if (n < (int)sizeof(spec) - 1)
+            spec[n++] = *p;
+    spec[n] = 0;
+    if (*p == '}')
+        p++;
+    for (i = 0; i < 8; i++)
+        if (!strcmp(spec, names[i]))
+            break;
+    if (i < 8) {
+        v[0] = (bg ? 40 : 30) + i;
+        pb_sgr(b, v, 1);
+    } else if (!strcmp(spec, "default")) {
+        v[0] = bg ? 49 : 39;
+        pb_sgr(b, v, 1);
+    } else if (spec[0] == '#' && n == 7) {
+        long rgb = strtol(spec + 1, 0, 16);
+        v[0] = bg ? 48 : 38;
+        v[1] = 2;
+        v[2] = (rgb >> 16) & 255;
+        v[3] = (rgb >> 8) & 255;
+        v[4] = rgb & 255;
+        pb_sgr(b, v, 5);
+    } else if (spec[0] >= '0' && spec[0] <= '9') {
+        v[0] = bg ? 48 : 38;
+        v[1] = 5;
+        v[2] = atol(spec) & 255;
+        pb_sgr(b, v, 3);
+    }
+    /* an unknown name draws nothing, as in zsh */
+    return p;
+}
+
+/* bash's \c escape c */
+static void pb_bash(sh_shell *sh, pbuf *b, char c)
+{
+    switch (c) {
+    case 'w': pb_dir(sh, b, 0); break;
+    case 'W': pb_dir(sh, b, 1); break;
+    case 'u': pb_literal(b, var_or(sh, "USER", "USERNAME", "amiga")); break;
+    case 'h': case 'H': pb_literal(b, var_or(sh, "HOST", "HOSTNAME", "amiga")); break;
+    case '$': pb_add(b, "\\$", 2); break;  /* no superuser: always $ */
+    case 'e': pb_add(b, "\033", 1); break;
+    case 'n': pb_add(b, "\n", 1); break;
+    case 'a': pb_add(b, "\007", 1); break;
+    case '[': case ']': break;  /* readline's non-printing marks: nothing to mark here */
+    case '\\': pb_add(b, "\\\\", 2); break;
+    default: pb_add(b, "\\", 1); pb_add(b, &c, 1); break;
+    }
+}
+
+/* zsh's %c escape at p (p[-1] is the %); returns the last character used */
+static const char *pb_zsh(sh_shell *sh, pbuf *b, const char *p)
+{
+    static const char *const simple[] = { "f\033[39m", "k\033[49m", "B\033[1m", "b\033[22m",
+                                          "U\033[4m", "u\033[24m", "S\033[7m", "s\033[27m",
+                                          "#%", "%%" };
+    char digits[24];
+    int i;
+    for (i = 0; i < (int)(sizeof(simple) / sizeof(simple[0])); i++)
+        if (simple[i][0] == *p) {
+            pb_str(b, simple[i] + 1);
+            return p;
+        }
+    switch (*p) {
+    case '~': pb_dir(sh, b, 0); break;
+    case '/': case 'd': {
+        char *cwd = sh->os.cwd ? sh->os.cwd(sh->os.data) : 0;
+        pb_literal(b, cwd ? cwd : "?");
+        free(cwd);
+        break;
+    }
+    case 'c': case '.': case '1': pb_dir(sh, b, 1); break;
+    case 'n': pb_literal(b, var_or(sh, "USER", "USERNAME", "amiga")); break;
+    case 'm': case 'M': pb_literal(b, var_or(sh, "HOST", "HOSTNAME", "amiga")); break;
+    case '?': num(digits, sh->ctx.status); pb_str(b, digits); break;
+    case 'F': return pb_colour(b, p + 1, 0) - 1;
+    case 'K': return pb_colour(b, p + 1, 1) - 1;
+    default: pb_add(b, "%", 1); pb_add(b, p, 1); break;
+    }
+    return p;
+}
+
+char *sh_prompt(sh_shell *sh, const char *ps)
+{
+    pbuf b = { 0, 0, 0 };
+    sh_list out;
+    const char *err = 0;
+    char *r;
+    pb_add(&b, "\"", 1);
+    for (; *ps; ps++) {
+        if (*ps == '"' || (*ps == '\\' && !ps[1])) {
+            pb_add(&b, "\\", 1);  /* a quote, or a last backslash, stays text */
+            pb_add(&b, ps, 1);
+        } else if (*ps == '\\')
+            pb_bash(sh, &b, *++ps);
+        else if (*ps == '%' && ps[1])
+            ps = pb_zsh(sh, &b, ps + 1);
+        else
+            pb_add(&b, ps, 1);
+    }
+    pb_add(&b, "\"", 1);
+    if (!b.s)
+        return sdup("");
+    /* then parameter, command and arithmetic expansion (POSIX PS1; zsh's
+     * PROMPT_SUBST), as one double-quoted word */
+    memset(&out, 0, sizeof(out));
+    if (sh_expand(&sh->ctx, b.s, SH_NO_SPLIT | SH_NO_GLOB, &out, &err) || out.n < 1) {
+        b.s[b.n - 1] = 0;
+        r = sdup(b.s + 1);  /* unexpanded, rather than nothing */
+    } else
+        r = sdup(out.v[0]);
+    sh_list_free(&out);
+    free(b.s);
+    return r;
+}

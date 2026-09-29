@@ -334,8 +334,38 @@ static void incomplete_input(void)
     CHECK_STR(slot(OUT)->data, "in\n");
 }
 
+/* The prompt of the shell after text ran. */
+static char *prompt_after(const char *text, const char *ps)
+{
+    static char *last;
+    free(last);
+    run(text);
+    last = sh_prompt(&sh, ps);
+    return last;
+}
+
+static void prompts(void)
+{
+    CHECK_STR(prompt_after("HOME=RAM:", "%~> "), "~> ");
+    CHECK_STR(prompt_after("HOME=Work:; cd work:src/vtcon", "\\w \\W"), "~/src/vtcon vtcon");
+    /* only at a name boundary */
+    CHECK_STR(prompt_after("HOME=Work:x; cd Work:xy", "%~"), "Work:xy");
+    CHECK_STR(prompt_after("HOME=Work:x; cd Work:x/y", "%~ %c"), "~/y y");
+    CHECK_STR(prompt_after("", "%F{red}a%f%K{blue}b%k"), "\033[31ma\033[39m\033[44mb\033[49m");
+    CHECK_STR(prompt_after("", "%F{#ff8000}x%F{208}y%B%bz"),
+              "\033[38;2;255;128;0mx\033[38;5;208my\033[1m\033[22mz");
+    CHECK_STR(prompt_after("A=hi; fail 2", "$A %? $((1+2))"), "hi 2 3");
+    /* a directory's name is text, not expanded */
+    CHECK_STR(prompt_after("cd 'RAM:$A'; A=no", "\\w"), "RAM:$A");
+    CHECK_STR(prompt_after("", "\\u@\\h %n"), "amiga@amiga amiga");
+    CHECK_STR(prompt_after("USER=spot HOST=a1200; export USER", "%n@%m"), "spot@a1200");
+    CHECK_STR(prompt_after("", "say \"hi\" 100%% \\$ a\\"), "say \"hi\" 100% $ a\\");
+    CHECK_STR(prompt_after("", "\\[\\e[1m\\]x"), "\033[1mx");
+}
+
 void suite_sh_exec(void)
 {
+    prompts();
     basics();
     control_flow();
     pipes_and_redirection();

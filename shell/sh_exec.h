@@ -77,6 +77,12 @@ void sh_shell_free(sh_shell *sh);
  * its last command; *incomplete is set when the text needs more lines. */
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);
 
+/* The prompt text for PS1/PS2 value ps: bash escapes (\w \W \u \h \$ \e \n,
+ * \[ \] ignored) and zsh escapes (%~ %/ %c %n %m %# %? %F{c} %f %K{c} %k
+ * %B %b %U %u %S %s %%), then parameter, command and arithmetic expansion.
+ * $HOME in the directory shows as ~. malloc'ed. */
+char *sh_prompt(sh_shell *sh, const char *ps);
+
 /* Run a parsed tree with io. */
 long sh_exec(sh_shell *sh, const struct sh_node *n, const sh_io *io);
 

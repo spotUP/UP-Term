@@ -25,6 +25,65 @@ static const char version[] = "$VER: vsh 0.1 (29.9.2026)";
 
 /* ---- the OS layer ------------------------------------------------------------- */
 
+/* Every external command runs in a runner process of its own. A command
+ * file found on disk is loaded here and run by RunCommand in the runner,
+ * as the AmigaDOS Shell runs commands in its process: then the runner is
+ * the command's process, and Ctrl-C can be passed on to it. Resident
+ * commands and scripts go through SystemTags in the runner instead. */
+typedef struct job {
+    struct Message msg;
+    char *cmd;              /* the whole line, for SystemTags */
+    char *name;             /* the program name (SetProgramName) */
+    char *args;             /* its argument string, ending in \n */
+    BPTR seg;               /* the loaded command, or 0: SystemTags */
+    BPTR in, out, err;
+    int close_in, close_out, close_err;
+    struct Task *task;      /* the runner, while it runs */
+    int done;               /* set (under Forbid) as the runner ends */
+    LONG rc;
+} job;
+
+/* The pipes vsh made. AmigaOS has no SIGPIPE: a PIPE: writer whose reader
+ * has gone blocks for ever (rig: List | less, q, and the shell never came
+ * back). So closing a read end is the broken pipe: the writer gets Ctrl-C
+ * and the pipe is read dry, which lets its blocked Write return. */
+typedef struct pipe_rec {
+    BPTR rd, wr;
+    job *writer;            /* the command writing it, if one runs */
+} pipe_rec;
+
+static pipe_rec pipe_tab[32];
+
+/* Close a stream; every close of a stream vsh handed out comes here. */
+static void close_stream(BPTR fh)
+{
+    pipe_rec *pr = 0;
+    int i;
+    if (!fh)
+        return;
+    Forbid();
+    for (i = 0; i < 32; i++)
+        if (pipe_tab[i].rd == fh || pipe_tab[i].wr == fh)
+            pr = &pipe_tab[i];
+    if (pr && pr->rd == fh) {
+        if (pr->writer && !pr->writer->done)
+            Signal(pr->writer->task, SIGBREAKF_CTRL_C);
+        Permit();
+        {
+            static char sink[512]; /* only read into, never used: shared is fine */
+            while (Read(fh, sink, sizeof(sink)) > 0)
+                ;
+        }
+        Forbid();
+        pr->rd = 0;
+    } else if (pr) {
+        pr->wr = 0;
+        pr->writer = 0;
+    }
+    Permit();
+    Close(fh);
+}
+
 static sh_fh os_open(void *os, const char *path, int mode)
 {
     BPTR fh;
@@ -42,8 +101,7 @@ static sh_fh os_open(void *os, const char *path, int mode)
 static void os_close(void *os, sh_fh fh)
 {
     (void)os;
-    if (fh)
-        Close((BPTR)fh);
+    close_stream((BPTR)fh);
 }
 
 static long pipes;
@@ -78,6 +136,15 @@ static int os_pipe(void *os, sh_fh *rd, sh_fh *wr)
             Close((BPTR)*rd);
         return -1;
     }
+    Forbid();
+    for (k = 0; k < 32; k++)
+        if (!pipe_tab[k].rd && !pipe_tab[k].wr) {
+            pipe_tab[k].rd = (BPTR)*rd;
+            pipe_tab[k].wr = (BPTR)*wr;
+            pipe_tab[k].writer = 0;
+            break;
+        }
+    Permit();
     return 0;
 }
 
@@ -113,23 +180,6 @@ static char *command_line(char **argv)
     return s;
 }
 
-/* Every external command runs in a runner process of its own. A command
- * file found on disk is loaded here and run by RunCommand in the runner,
- * as the AmigaDOS Shell runs commands in its process: then the runner is
- * the command's process, and Ctrl-C can be passed on to it. Resident
- * commands and scripts go through SystemTags in the runner instead. */
-typedef struct job {
-    struct Message msg;
-    char *cmd;              /* the whole line, for SystemTags */
-    char *name;             /* the program name (SetProgramName) */
-    char *args;             /* its argument string, ending in \n */
-    BPTR seg;               /* the loaded command, or 0: SystemTags */
-    BPTR in, out, err;
-    int close_in, close_out, close_err;
-    struct Task *task;      /* the runner, while it runs */
-    LONG rc;
-} job;
-
 static void runner(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
@@ -152,12 +202,13 @@ static void runner(void)
                            SYS_UserShell, TRUE, TAG_END);
     }
     if (j->close_in)
-        Close(j->in);
+        close_stream(j->in);
     if (j->close_out)
-        Close(j->out);
+        close_stream(j->out);
     if (j->close_err && j->err != j->out)
-        Close(j->err);
+        close_stream(j->err);
     Forbid(); /* the reply and our end, before the shell can free anything */
+    j->done = 1;
     ReplyMsg(&j->msg);
 }
 
@@ -234,9 +285,9 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     if (resolve(argv[0], &seg) < 0) {
         free(cmd);
         if ((io->owned & SH_OWN_IN) && io->in)
-            Close((BPTR)io->in);
+            close_stream((BPTR)io->in);
         if ((io->owned & SH_OWN_OUT) && io->out)
-            Close((BPTR)io->out);
+            close_stream((BPTR)io->out);
         return -1;
     }
     /* exported variables are local variables for the command */
@@ -299,9 +350,9 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         : 0;
     if (!p) {
         if (j->close_in)
-            Close(j->in);
+            close_stream(j->in);
         if (j->close_out)
-            Close(j->out);
+            close_stream(j->out);
         if (seg)
             UnLoadSeg(seg);
         free(j->name);
@@ -311,6 +362,14 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         return -1;
     }
     j->task = &p->pr_Task;
+    if (j->close_out) {
+        int i;
+        Forbid();
+        for (i = 0; i < 32; i++)
+            if (pipe_tab[i].wr == j->out)
+                pipe_tab[i].writer = j;
+        Permit();
+    }
     SetSignal(0, SIGBREAKF_CTRL_C); /* an old Ctrl-C is not for this command */
     PutMsg(&p->pr_MsgPort, &j->msg);
     if (wait)
@@ -351,6 +410,14 @@ static long os_wait(void *os, long id)
         }
     }
     rc = j->rc;
+    {
+        int i;
+        Forbid();
+        for (i = 0; i < 32; i++)
+            if (pipe_tab[i].writer == j)
+                pipe_tab[i].writer = 0;
+        Permit();
+    }
     if (j->seg)
         UnLoadSeg(j->seg);
     free(j->name);
@@ -498,24 +565,51 @@ static char *subst(sh_ctx *c, const char *cmd)
 static void prompt(sh_shell *sh, int more)
 {
     const char *ps = sh_get(&sh->ctx, more ? "PS2" : "PS1");
-    char *cwd;
-    if (!ps)
-        ps = more ? "> " : "\\w> ";
-    for (; *ps; ps++) {
-        if (ps[0] == '\\' && ps[1] == 'w') {
-            cwd = os_cwd(sh);
-            if (cwd) {
-                Write(Output(), cwd, (LONG)strlen(cwd));
-                free(cwd);
-            }
-            ps++;
-        } else if (ps[0] == '\\' && ps[1] == 'e') {
-            Write(Output(), "\033", 1);
-            ps++;
-        } else {
-            Write(Output(), (APTR)ps, 1);
-        }
+    char *text = sh_prompt(sh, ps ? ps : more ? "> " : "%F{cyan}%~%f %# ");
+    if (text) {
+        Write(Output(), text, (LONG)strlen(text));
+        free(text);
     }
+}
+
+/* $HOME as the name the current directory is shown by ("SYS:" is
+ * "System:"), so the prompt can show it as ~ */
+static void canonical_home(sh_shell *sh)
+{
+    const char *home = sh_get(&sh->ctx, "HOME");
+    char name[256];
+    BPTR lock = home ? Lock((STRPTR)home, SHARED_LOCK) : 0;
+    if (!lock)
+        return;
+    if (NameFromLock(lock, (STRPTR)name, sizeof(name)) && strcmp(name, home))
+        sh_set(&sh->ctx, "HOME", name);
+    UnLock(lock);
+}
+
+/* Run a startup file if it is there. */
+static void source_if(sh_shell *sh, const char *path)
+{
+    BPTR lock = Lock((STRPTR)path, SHARED_LOCK);
+    char *cmd;
+    if (!lock)
+        return;
+    UnLock(lock);
+    cmd = (char *)malloc(strlen(path) + 12);
+    if (!cmd)
+        return;
+    strcpy(cmd, "source '");
+    strcat(cmd, path);
+    strcat(cmd, "'");
+    sh_run_text(sh, cmd, 0);
+    free(cmd);
+}
+
+/* An environment variable of the system (ENV:) into the shell, if set. */
+static void import_var(sh_shell *sh, const char *name)
+{
+    char v[256];
+    if (GetVar((STRPTR)name, (STRPTR)v, sizeof(v), GVF_GLOBAL_ONLY) > 0)
+        sh_set(&sh->ctx, name, v);
 }
 
 int main(int argc, char **argv)
@@ -551,24 +645,32 @@ int main(int argc, char **argv)
     sh.io.err = (sh_fh)Output();
     sh.io.owned = 0;
     sh_set(&sh.ctx, "HOME", "SYS:");
-    {
-        char home[256];
-        if (GetVar((STRPTR)"HOME", (STRPTR)home, sizeof(home), 0) > 0)
-            sh_set(&sh.ctx, "HOME", home);
-    }
+    import_var(&sh, "HOME");
+    import_var(&sh, "USER");
+    import_var(&sh, "HOST");
+    import_var(&sh, "HOSTNAME");
     for (i = 1; i < argc; i++)
         sh_list_add(&sh.ctx.args, argv[i]);
     /* AmigaDOS leaves a command's argument line in its input buffer (for
      * ReadArgs); unread, vsh took it as its first, empty, command line
      * and printed a second prompt (rig, 2026-09-29) */
     Flush(Input());
+    /* the system's startup file (ENVARC:vsh/vshrc, copied to ENV: at boot),
+     * then the user's */
+    source_if(&sh, "ENV:vsh/vshrc");
+    canonical_home(&sh);
     {
-        /* ENVARC:vsh/vshrc, then a script named on the command line */
-        BPTR rc = Lock((STRPTR)"ENV:vsh/vshrc", SHARED_LOCK);
-        if (rc) {
-            UnLock(rc);
-            sh_run_text(&sh, "source ENV:vsh/vshrc", 0);
+        const char *home = sh_get(&sh.ctx, "HOME");
+        char *p = (char *)malloc(strlen(home) + 10);
+        if (p) {
+            strcpy(p, home);
+            if (*p && p[strlen(p) - 1] != ':' && p[strlen(p) - 1] != '/')
+                strcat(p, "/");
+            strcat(p, ".vshrc");
+            source_if(&sh, p);
+            free(p);
         }
+        canonical_home(&sh);
     }
     for (;;) {
         long n;
