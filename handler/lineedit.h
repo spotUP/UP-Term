@@ -47,6 +47,10 @@ typedef struct le_line {
     /* undo */
     le_state undo[LE_UNDO];
     int undo_n, typing;     /* typing: the last change was an inserted char */
+    /* the first word as a command: 0 not known, 1 found, 2 not found;
+     * valid while the first word is still cmd_word */
+    int cmd_state;
+    unsigned char cmd_word[64];
     /* what the editor writes to the screen (echo) */
     void (*out)(void *user, const unsigned char *b, long n);
     void *user;
@@ -59,6 +63,18 @@ void le_init(le_line *le, vt_term *t, void (*out)(void *, const unsigned char *,
  * it with the '\n', and the caller takes it and calls le_reset. */
 int  le_key(le_line *le, long key, int mods, const unsigned char *bytes, int n);
 void le_reset(le_line *le);
+/* The first word of the line (up to the first space): its length, and
+ * whether the colouring is still unknown for it. */
+int  le_first_word(const le_line *le, unsigned char *out, int max);
+/* The answer to "is the first word a command": green or red on screen,
+ * applied only if the first word is still `word`. */
+void le_set_command(le_line *le, const unsigned char *word, int found);
+/* A completion menu: the names (NUL-separated) in columns under the line,
+ * then prompt and line again below them. */
+void le_show_list(le_line *le, const char *names, int len);
+/* Replace the word ending at the cursor (from `from`) with `s`. */
+void le_replace_word(le_line *le, int from, const unsigned char *s, int n);
+
 /* History from outside (a saved history file): one line per call, oldest
  * first; empty lines and repeats of the last entry are skipped. */
 void le_hist_add(le_line *le, const unsigned char *s, int n);

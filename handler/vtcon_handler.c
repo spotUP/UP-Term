@@ -37,6 +37,7 @@
 #include <proto/diskfont.h>
 #include <proto/timer.h>
 
+#include <string.h>
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
 #include "clip.h"
@@ -122,9 +123,14 @@ typedef struct con {
     int auto_open;               /* AUTO: no window until the first read or write */
     int spec_parsed;
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
-    struct MsgPort *comp_port;   /* Tab completion answers come back here */
-    struct complete_req *comp;
-    int comp_busy;
+    struct MsgPort *comp_port;   /* Tab completion and command lookups answer here */
+    struct complete_req *comp;   /* Tab */
+    struct complete_req *check;  /* is the first word a command */
+    int comp_busy, check_busy;
+    char checked[64];            /* the first word last sent to check */
+    int tabs;                    /* Tabs in a row */
+    char menu[COMPLETE_NAMES];   /* the last completion's names */
+    int menu_len, menu_n, menu_i, menu_start;
     ULONG foreign_idcmp;         /* its IDCMP before we added ours, to restore */
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
@@ -774,65 +780,181 @@ static void le_out(void *u, const unsigned char *b, long n)
     output((con *)u, b, n);
 }
 
-/* Tab in the cooked line: send the word before the cursor to a worker
- * that scans the directory (complete.c); the answer is typed in later. */
-static void start_completion(con *c)
+/* Tab in the cooked line. The first Tab sends the word before the cursor
+ * to a worker (complete.c): the first word of the line completes against
+ * commands, any other against file names. A second Tab lists the matches
+ * under the line, further Tabs cycle through them (zsh's menu). */
+static int word_start(const le_line *le)
 {
-    le_line *le = &c->le;
-    int a = le->pos, i, k = 0;
-    if (c->comp_busy)
-        return;
+    int a = le->pos;
+    while (a > 0 && le->buf[a - 1] != ' ' && le->buf[a - 1] != '"' && le->buf[a - 1] != '=')
+        a--;
+    return a;
+}
+
+static int copy_latin1(const le_line *le, int a, int b, char *out, int max)
+{
+    int i, k = 0;
+    for (i = a; i < b && k < max - 1; i++) {
+        unsigned char ch = le->buf[i];
+        if (le->utf8 && (ch & 0xE0) == 0xC0 && i + 1 < b) {
+            ch = (unsigned char)(((ch & 0x1F) << 6) | (le->buf[i + 1] & 0x3F));
+            i++; /* file names are Latin-1 */
+        }
+        out[k++] = (char)ch;
+    }
+    out[k] = 0;
+    return k;
+}
+
+static int ensure_worker(con *c)
+{
     if (!c->comp_port)
         c->comp_port = CreateMsgPort();
     if (!c->comp)
         c->comp = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    if (!c->comp_port || !c->comp)
+    if (!c->check)
+        c->check = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
+    return c->comp_port && c->comp && c->check;
+}
+
+static struct Process *opener(con *c)
+{
+    return c->break_port ? (struct Process *)c->break_port->mp_SigTask : 0;
+}
+
+static void start_completion(con *c)
+{
+    le_line *le = &c->le;
+    int a, k;
+    if (c->comp_busy || !ensure_worker(c))
         return;
-    while (a > 0 && le->buf[a - 1] != ' ' && le->buf[a - 1] != '"' && le->buf[a - 1] != '=')
-        a--;
-    for (i = a; i < le->pos && k < COMPLETE_MAX - 1; i++) {
-        unsigned char ch = le->buf[i];
-        if (le->utf8 && (ch & 0xE0) == 0xC0 && i + 1 < le->pos) {
-            ch = (unsigned char)(((ch & 0x1F) << 6) | (le->buf[i + 1] & 0x3F));
-            i++; /* file names are Latin-1 */
-        }
-        c->comp->word[k++] = (char)ch;
-    }
-    c->comp->word[k] = 0;
-    if (complete_start(c->comp, c->comp_port,
-                       c->break_port ? (struct Process *)c->break_port->mp_SigTask : 0))
+    a = word_start(le);
+    for (k = 0; k < a && le->buf[k] == ' '; k++)
+        ;
+    c->comp->mode = k == a ? COMPLETE_COMMANDS : COMPLETE_FILES;
+    copy_latin1(le, a, le->pos, c->comp->word, COMPLETE_MAX);
+    c->menu_start = a;
+    if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
+}
+
+/* Is the first word a command? Asked whenever it changes (the answer
+ * colours it green or red, see le_set_command). */
+static void check_command(con *c)
+{
+    unsigned char w[64];
+    le_first_word(&c->le, w, sizeof(w));
+    if (!w[0] || c->check_busy || !strcmp((const char *)w, c->checked) || !ensure_worker(c))
+        return;
+    copy_latin1(&c->le, 0, c->le.len, c->check->word, COMPLETE_MAX); /* then cut */
+    {
+        int i = 0;
+        char *q = c->check->word;
+        while (*q == ' ')
+            q++;
+        while (q[i] && q[i] != ' ')
+            i++;
+        memmove(c->check->word, q, i);
+        c->check->word[i] = 0;
+    }
+    strcpy(c->checked, (const char *)w);
+    c->check->mode = CHECK_COMMAND;
+    if (complete_start(c->check, c->comp_port, opener(c)))
+        c->check_busy = 1;
 }
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
 
+static void type_text(con *c, const char *s)
+{
+    for (; *s; s++) {
+        vt_u8 out[8];
+        int k = vt_encode_key(c->t, (unsigned char)*s, 0, out);
+        if (!c->raw && le_key(&c->le, (unsigned char)*s, 0, out, k)) {
+            in_append(c, c->le.buf, c->le.len);
+            le_reset(&c->le);
+        }
+    }
+}
+
 static void finish_completion(con *c)
 {
     struct complete_req *q;
-    int i;
     while ((q = (struct complete_req *)GetMsg(c->comp_port)) != 0) {
-        c->comp_busy = 0;
-        if (!q->add[0]) {
-            DisplayBeep(c->win ? c->win->WScreen : 0); /* no match, or several */
+        if (q == c->check) {
+            c->check_busy = 0;
+            if (!c->raw) {
+                unsigned char w[64];
+                int i;
+                /* the answer is for the Latin-1 word; compare in the
+                 * line's encoding, as le_set_command does */
+                le_first_word(&c->le, w, sizeof(w));
+                for (i = 0; c->checked[i] && w[i] == (unsigned char)c->checked[i]; i++)
+                    ;
+                if (!c->checked[i] && !w[i])
+                    le_set_command(&c->le, w, q->matches);
+            }
+            check_command(c); /* the word may have changed meanwhile */
             continue;
         }
-        for (i = 0; q->add[i]; i++) {
-            vt_u8 out[8];
-            int k = vt_encode_key(c->t, (unsigned char)q->add[i], 0, out);
-            if (!c->raw)
-                cooked_key(c, out, k, 0, 0);
+        c->comp_busy = 0;
+        c->menu_n = 0;
+        if (q->matches > 1 && q->names_len < (int)sizeof(c->menu)) {
+            CopyMem(q->names, c->menu, q->names_len);
+            c->menu_len = q->names_len;
+            c->menu_n = q->matches;
+            c->menu_i = -1;
         }
+        if (!q->add[0] && q->matches != 1) {
+            DisplayBeep(c->win ? c->win->WScreen : 0); /* none, or several with no more in common */
+            continue;
+        }
+        type_text(c, q->add);
         if (q->matches > 1)
             DisplayBeep(c->win ? c->win->WScreen : 0); /* completed as far as they agree */
+    }
+}
+
+/* The next Tab after a completion: show the menu, then cycle through it. */
+static void menu_tab(con *c)
+{
+    if (c->tabs == 2) {
+        le_show_list(&c->le, c->menu, c->menu_len);
+        return;
+    }
+    {
+        int k = 0, i;
+        const char *name;
+        c->menu_i = (c->menu_i + 1) % c->menu_n;
+        for (i = 0; i < c->menu_i; i++)
+            k += (int)strlen(c->menu + k) + 1;
+        name = c->menu + k;
+        {
+            /* the name in the line's encoding */
+            unsigned char enc[COMPLETE_MAX * 2];
+            int n = 0;
+            for (; *name && n < (int)sizeof(enc) - 3; name++)
+                n += vt_encode_key(c->t, (unsigned char)*name, 0, enc + n);
+            le_replace_word(&c->le, word_start(&c->le) < c->menu_start ? word_start(&c->le)
+                                                                          : c->menu_start,
+                            enc, n);
+        }
     }
 }
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
     if (key == VT_KEY_TAB) {
-        start_completion(c);
+        c->tabs++;
+        if (c->tabs >= 2 && c->menu_n > 1)
+            menu_tab(c);
+        else
+            start_completion(c);
         return;
     }
+    c->tabs = 0;
+    c->menu_n = 0;
     if (!key && n == 1 && b[0] == 0x1C) { /* Ctrl-\: end of file */
         c->eof = 1;
         return;
@@ -840,7 +962,10 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
     if (le_key(&c->le, key ? key : (n ? (long)b[0] : 0), mods, b, n)) {
         in_append(c, c->le.buf, c->le.len);
         le_reset(&c->le);
+        c->checked[0] = 0;
+        return;
     }
+    check_command(c);
 }
 
 /* ---- keyboard ------------------------------------------------------------------- */
@@ -1490,7 +1615,7 @@ static LONG handler_main(void)
          * before it, opens is 0 too (a wake-up between the startup packet and
          * that Open used to end the handler, leaving dn_Task at a dead port). */
         if (c->ever_opened && c->opens <= 0 && (!c->wait_close || c->closing) && !c->nreads &&
-            !c->comp_busy) /* a completion worker still holds our request */
+            !c->comp_busy && !c->check_busy) /* a worker still holds our request */
             break;
     }
     render(c);
@@ -1511,6 +1636,8 @@ static LONG handler_main(void)
     close_window(c);
     if (c->comp)
         FreeVec(c->comp);
+    if (c->check)
+        FreeVec(c->check);
     if (c->comp_port)
         DeleteMsgPort(c->comp_port);
     if (c->timer_open) {

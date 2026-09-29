@@ -195,16 +195,63 @@ static int find(const unsigned char *s, const unsigned char *pat, int pn)
     return pn ? -1 : 0;
 }
 
+/* ---- the command word ---------------------------------------------------- */
+
+static int first_word_len(const le_line *le)
+{
+    int i = 0;
+    while (i < le->len && le->buf[i] == ' ')
+        i++;
+    while (i < le->len && le->buf[i] != ' ')
+        i++;
+    return i;
+}
+
+int le_first_word(const le_line *le, unsigned char *out, int max)
+{
+    int a = 0, b = first_word_len(le), n;
+    while (a < b && le->buf[a] == ' ')
+        a++;
+    n = b - a;
+    if (n > max - 1)
+        n = max - 1;
+    memcpy(out, le->buf + a, n);
+    out[n] = 0;
+    return n;
+}
+
+/* drop the colouring when the first word changed under it */
+static void check_command_word(le_line *le)
+{
+    unsigned char w[64];
+    le_first_word(le, w, sizeof(w));
+    if (le->cmd_state && strcmp((const char *)w, (const char *)le->cmd_word))
+        le->cmd_state = 0;
+}
+
 /* ---- drawing ------------------------------------------------------------ */
 
 /* Show the line from byte p on, then its grey tail, blank the cells it no
  * longer covers, and leave the cursor at le->pos. */
 static void redraw_from(le_line *le, int p)
 {
-    const unsigned char *sug = suggestion(le);
-    int now = cells(le, le->len), i;
+    const unsigned char *sug;
+    int now, i, fw;
+    check_command_word(le);
+    sug = suggestion(le);
+    now = cells(le, le->len);
+    fw = first_word_len(le);
+    if (le->cmd_state && p < fw)
+        p = 0; /* the command word is drawn whole, in its colour */
     go(le, p);
-    out(le, le->buf + p, le->len - p);
+    if (le->cmd_state && p < fw) {
+        out(le, le->cmd_state == 1 ? "\033[32m" : "\033[31m", 5); /* green / red */
+        out(le, le->buf, fw);
+        out(le, "\033[39m", 5);
+        out(le, le->buf + fw, le->len - fw);
+    } else {
+        out(le, le->buf + p, le->len - p);
+    }
     if (sug || le->searching) {
         out(le, "\033[2m", 4); /* faint: grey */
         if (sug) {
@@ -299,7 +346,9 @@ static void insert(le_line *le, const unsigned char *b, int n)
     memcpy(le->buf + le->pos, b, n);
     le->len += n;
     le->pos += n;
-    if (le->pos == le->len && !sug && !suggestion(le) && le->shown <= cells(le, le->len - n)) {
+    check_command_word(le);
+    if (le->pos == le->len && !sug && !suggestion(le) && le->shown <= cells(le, le->len - n) &&
+        (!le->cmd_state || le->pos - n >= first_word_len(le))) {
         /* typing at the end with no grey tail: just echo, the engine
          * wraps and scrolls */
         le->shown = cells(le, le->len);
@@ -348,13 +397,12 @@ static void search_from(le_line *le, int from)
 /* Ctrl-L: clear the window, then prompt and line again at the top. The
  * prompt is what the start row held before the line (the program wrote it;
  * the console only knows it from the screen). */
-static void clear_screen(le_line *le)
+static int prompt_from_screen(le_line *le, unsigned char *prompt, int max)
 {
     int n, i, k = 0;
     const vt_cell *c = vt_row(le->t, (int)(le->start_row - vt_lines_scrolled(le->t)), &n);
-    unsigned char prompt[256];
     if (c)
-        for (i = 0; i < le->start_col && i < n && k < 250; i++) {
+        for (i = 0; i < le->start_col && i < n && k < max - 6; i++) {
             unsigned long cp = c[i].ch;
             if (cp < 0x80 || !le->utf8) {
                 prompt[k++] = (unsigned char)(cp < 0x100 ? cp : '?');
@@ -367,6 +415,13 @@ static void clear_screen(le_line *le)
                 prompt[k++] = (unsigned char)(0x80 | (cp & 0x3F));
             }
         }
+    return k;
+}
+
+static void clear_screen(le_line *le)
+{
+    unsigned char prompt[256];
+    int k = prompt_from_screen(le, prompt, sizeof(prompt));
     out(le, "\033[H\033[2J", 7);
     out(le, prompt, k);
     le->started = 0;
@@ -440,7 +495,7 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
         le->searching = 0;
         if (le->shown > cells(le, le->len)) {
             int keep = le->suggest;
-            le->suggest = 1; /* the grey tail goes, the line stays */
+            le->suggest = 0; /* the grey tail goes, the line stays */
             redraw_from(le, le->len);
             le->suggest = keep;
         }
@@ -546,4 +601,67 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
     }
     insert(le, b, n);
     return 0;
+}
+
+void le_set_command(le_line *le, const unsigned char *word, int found)
+{
+    unsigned char w[64];
+    le_first_word(le, w, sizeof(w));
+    if (!w[0] || strcmp((const char *)w, (const char *)word))
+        return; /* the line moved on; a newer answer will come */
+    strncpy((char *)le->cmd_word, (const char *)w, sizeof(le->cmd_word) - 1);
+    if (le->cmd_state == (found ? 1 : 2))
+        return;
+    le->cmd_state = found ? 1 : 2;
+    redraw_from(le, 0);
+}
+
+void le_replace_word(le_line *le, int from, const unsigned char *s, int n)
+{
+    if (from < 0 || from > le->pos || le->len - (le->pos - from) + n > LE_MAX - 2)
+        return;
+    push_undo(le);
+    le->typing = 0;
+    memmove(le->buf + from + n, le->buf + le->pos, le->len - le->pos);
+    le->len += n - (le->pos - from);
+    memcpy(le->buf + from, s, n);
+    le->pos = from + n;
+    redraw_from(le, from);
+}
+
+void le_show_list(le_line *le, const char *names, int len)
+{
+    int widest = 0, k = 0, col, per, cols = vt_cols(le->t), i;
+    unsigned char prompt[256];
+    int pl = prompt_from_screen(le, prompt, sizeof(prompt));
+    while (k < len) {
+        int n = (int)strlen(names + k);
+        if (n > widest)
+            widest = n;
+        k += n + 1;
+    }
+    widest += 2;
+    per = cols / widest;
+    if (per < 1)
+        per = 1;
+    le->pos = le->len;
+    go(le, le->len);
+    out(le, "\r\n", 2);
+    for (k = 0, col = 0; k < len; col++) {
+        int n = (int)strlen(names + k);
+        if (col == per) {
+            out(le, "\r\n", 2);
+            col = 0;
+        }
+        out(le, names + k, n);
+        for (i = n; i < widest && col < per - 1; i++)
+            out(le, " ", 1);
+        k += n + 1;
+    }
+    out(le, "\r\n", 2);
+    out(le, prompt, pl);
+    le->started = 0;
+    start(le);
+    le->shown = 0;
+    redraw_from(le, 0);
 }

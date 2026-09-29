@@ -128,7 +128,10 @@ def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
     return [l for l in out.splitlines() if str(CFG) in l and "fs-uae" in l.lower()]
 
-def start():
+def start(retries=2):
+    """Boot; a boot that stops right after "go started" (the emulator froze
+    before anything under test loaded: seen 3 times on 2026-09-29, cause not
+    found) is killed and retried."""
     setup_config_only()
     log = RIG / "boot/boot.log"
     if log.exists():
@@ -137,14 +140,20 @@ def start():
         print("already running")
         return
     subprocess.run(["open", "-g", "-n", "-a", "/Applications/FS-UAE.app", "--args", str(CFG)], check=True)
-    for _ in range(90):
+    for i in range(90):
         time.sleep(2)
         if status(quiet=True):
             print("up")
             return
-    log = RIG / "boot/boot.log"
-    print("[ERROR] no amiagent after 180 s; boot.log:",
+        text = log.read_text() if log.exists() else ""
+        if i >= 60 and "go started" in text and "assigns done" not in text:
+            break  # frozen early boot
+    print("[ERROR] no amiagent; boot.log:",
           log.read_text().strip().replace("\n", " | ") if log.exists() else "(none: go never ran)")
+    if retries > 0:
+        print("retrying the boot")
+        stop()
+        start(retries - 1)
 
 def stop():
     if mine() and status(quiet=True):

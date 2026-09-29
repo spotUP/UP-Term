@@ -255,8 +255,51 @@ static void ctrl_l_clears_and_keeps_prompt_and_line(void)
     vt_free(t);
 }
 
+static void command_word_gets_colour_until_it_changes(void)
+{
+    vt_term *t = start(40, 4, "> ");
+    type("list ram:");
+    le_set_command(&le, (const unsigned char *)"list", 1);
+    CHECK_INT(h_cell(t, 2, 0)->fg, 2);  /* green */
+    CHECK_INT(h_cell(t, 7, 0)->fg, VT_COLOR_DEFAULT); /* arguments stay plain */
+    le_set_command(&le, (const unsigned char *)"lis", 0); /* a stale answer */
+    CHECK_INT(h_cell(t, 2, 0)->fg, 2);
+    key(VT_KEY_LEFT, VT_MOD_SHIFT);
+    type("x");                           /* the word changed: colour drops */
+    CHECK_STR(h_row(t, 0), "> xlist ram:");
+    le_set_command(&le, (const unsigned char *)"xlist", 0);
+    CHECK_INT(h_cell(t, 3, 0)->fg, 1);  /* red */
+    vt_free(t);
+}
+
+static void menu_lists_names_and_redraws_prompt_and_line(void)
+{
+    vt_term *t = start(30, 8, "1.SYS:> ");
+    type("li");
+    le_show_list(&le, "list\0lister\0lister2\0", 20);
+    CHECK_STR(h_row(t, 1), "list     lister   lister2");
+    CHECK_STR(h_row(t, 2), "1.SYS:> li");
+    type("st");
+    CHECK_STR(h_row(t, 2), "1.SYS:> list");
+    vt_free(t);
+}
+
+static void replace_word_for_menu_cycling(void)
+{
+    vt_term *t = start(40, 3, "> ");
+    type("cd Wor");
+    le_replace_word(&le, 3, (const unsigned char *)"Work:", 5);
+    CHECK_STR(line(), "cd Work:");
+    le_replace_word(&le, 3, (const unsigned char *)"WorkBench/", 10);
+    CHECK_STR(h_row(t, 0), "> cd WorkBench/");
+    vt_free(t);
+}
+
 void suite_lineedit(void)
 {
+    command_word_gets_colour_until_it_changes();
+    menu_lists_names_and_redraws_prompt_and_line();
+    replace_word_for_menu_cycling();
     suggestion_shows_grey_and_right_takes_it();
     return_does_not_run_the_suggestion();
     ctrl_r_searches_history();
