@@ -366,6 +366,8 @@ static void decrqss_decrqm_and_version(void)
     check_reply("\033[?25;1$y\033[?25;2$y\033[?9999;0$y\033[4;2$y");
     h_put(t, "\033[>q");
     check_reply("\033P>|vtcon 1.0\033\\");
+    h_put(t, "\033P+q544E;436F;5858\033\\"); /* XTGETTCAP TN, Co, XX */
+    check_reply("\033P1+r544E=7674636F6E\033\\\033P1+r436F=323536\033\\\033P0+r5858\033\\");
     vt_free(t);
 }
 

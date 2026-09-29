@@ -62,16 +62,8 @@ DISAGREE = {
 # optional features); a terminal that lacks them ignores them, and the
 # programs fall back. Only these may stay unhandled in a TERM=vtcon capture.
 PROBES = {
-    "C 14t": "XTWINOPS pixel-size query (tmux); no pixel size is reported",
-    "O 10": "OSC 10 foreground-colour query (tmux)",
-    "O 11": "OSC 11 background-colour query (tmux)",
-    "C >q": "XTVERSION query (tmux)",
-    "C ?996n": "colour-scheme DSR query (tmux)",
-    "M 2031": "colour-scheme change notifications (tmux)",
-    "M 1005": "UTF-8 mouse encoding (tmux asks for it; SGR ?1006 is what we do)",
-    "M 7727": "tmux application-escape mode, tmux-specific",
-    "C 0%m": "vim: an XTQMODKEYS-style query",
-    "D 0": "a DCS request (vim: XTGETTCAP/DECRQSS); no reply",
+    "C 0%m": "vim: a probe (after DCS zz), followed by CSI 6n to see whether anything was printed",
+    "D 0": "vim sends DCS zz ST, a DCS no terminal knows, to see how it is swallowed; ignoring it is the answer",
 }
 
 # stream name -> reason: the engine follows xterm here and libvterm differs.

@@ -2417,10 +2417,66 @@ static void decrqss(vt_term *t, const char *pt, int len)
     reply(t, b, n);
 }
 
+/* XTGETTCAP (DCS + q hexname;hexname ST): a terminfo capability, as
+ * DCS 1 + r hexname=hexvalue ST, or DCS 0 + r hexname ST when unknown. */
+static void xtgettcap(vt_term *t, const char *s, int len)
+{
+    static const char *const caps[][2] = {
+        { "TN", "vtcon" }, { "name", "vtcon" }, { "Co", "256" }, { "colors", "256" },
+        { "RGB", "8/8/8" }
+    };
+    static const char hex[] = "0123456789ABCDEF";
+    while (len > 0) {
+        char name[16], b[96];
+        int k = 0, i, n = 0, h1, h2;
+        const char *v = 0;
+        while (len >= 2 && *s != ';') {
+            h1 = hexval(s[0]);
+            h2 = hexval(s[1]);
+            if (h1 < 0 || h2 < 0 || k >= (int)sizeof(name) - 1)
+                return;
+            name[k++] = (char)(h1 * 16 + h2);
+            s += 2;
+            len -= 2;
+        }
+        name[k] = 0;
+        if (len > 0 && *s == ';') {
+            s++;
+            len--;
+        }
+        for (i = 0; i < (int)(sizeof(caps) / sizeof(caps[0])); i++)
+            if (!strcmp(name, caps[i][0]))
+                v = caps[i][1];
+        b[n++] = 0x1B;
+        b[n++] = 'P';
+        b[n++] = v ? '1' : '0';
+        b[n++] = '+';
+        b[n++] = 'r';
+        for (i = 0; i < k; i++) {
+            b[n++] = hex[(unsigned char)name[i] >> 4];
+            b[n++] = hex[name[i] & 15];
+        }
+        if (v) {
+            b[n++] = '=';
+            for (i = 0; v[i]; i++) {
+                b[n++] = hex[(unsigned char)v[i] >> 4];
+                b[n++] = hex[v[i] & 15];
+            }
+        }
+        b[n++] = 0x1B;
+        b[n++] = '\\';
+        reply(t, b, n);
+        if (!k)
+            break;
+    }
+}
+
 static void dcs_dispatch(vt_term *t)
 {
     if (t->str_len >= 2 && t->str[0] == '$' && t->str[1] == 'q')
         decrqss(t, t->str + 2, t->str_len - 2);
+    else if (t->str_len >= 2 && t->str[0] == '+' && t->str[1] == 'q')
+        xtgettcap(t, t->str + 2, t->str_len - 2);
     else
         note_value(t, 'D', 0);
 }
