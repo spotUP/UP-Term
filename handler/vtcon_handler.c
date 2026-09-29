@@ -45,6 +45,7 @@
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
+#include "brk.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
 
@@ -100,7 +101,7 @@ typedef struct con {
     int wait_close;              /* WAIT: keep the window after the last Close */
     int closing;                 /* close gadget clicked */
     int eof;                     /* Ctrl-\ or close gadget in cooked mode */
-    struct MsgPort *break_port;  /* who gets Ctrl-C/D/E/F */
+    brk brk;                     /* who gets Ctrl-C/D/E/F (brk.h) */
     /* termios mode (ACTION_VTCON_TCSETA): a Unix program's line discipline */
     ldisc ld;
     int tty;                     /* in termios mode */
@@ -109,8 +110,6 @@ typedef struct con {
     struct timerequest *rtimer;  /* VTIME for the first waiting read */
     int rtimer_busy, rtimer_fired;
     vt_u8 obuf[2048];            /* OPOST output of one chunk */
-    struct Task *break_owner;    /* break_port's task, read while it was alive */
-    struct MsgPort *home_port;   /* the opener's: the target again when break_port's process ends */
     enum vt_personality pers;
     int latin1;
     int cp437;
@@ -998,31 +997,25 @@ static void tty_enter(con *c, struct Task *owner)
  * or what came within VTIME tenths of a second. */
 static void tty_reads(con *c)
 {
-    int canon = (c->ld.t.c_lflag & LD_ICANON) != 0;
-    int vmin = c->ld.t.c_cc[LD_VMIN], vtime = c->ld.t.c_cc[LD_VTIME];
     while (c->nreads) {
         struct DosPacket *p = c->reads[0];
-        long n;
-        int eof, i;
-        if (ld_read_ready(&c->ld) && (canon || vmin > 0 || c->ld.qlen > 0)) {
-            n = ld_read(&c->ld, (unsigned char *)p->dp_Arg2, p->dp_Arg3, &eof);
-        } else if (!canon && vmin == 0 && vtime == 0) {
-            n = 0; /* a poll: nothing there */
-        } else if (!canon && vtime > 0 && c->rtimer_fired) {
-            n = ld_read(&c->ld, (unsigned char *)p->dp_Arg2, p->dp_Arg3, &eof);
-        } else {
-            /* wait; VTIME counts from now (VMIN 0) or from the first byte */
-            if (!canon && vtime > 0 && !c->rtimer_busy && (vmin == 0 || c->ld.qlen > 0))
-                rtimer_start(c, (ULONG)vtime);
+        long n = 0;
+        int eof, i, arm;
+        int act = ld_read_action(&c->ld, c->rtimer_fired, &arm);
+        if (act == LD_RD_WAIT) {
+            if (arm && !c->rtimer_busy)
+                rtimer_start(c, (ULONG)c->ld.t.c_cc[LD_VTIME]);
             break;
         }
+        if (act == LD_RD_TAKE)
+            n = ld_read(&c->ld, (unsigned char *)p->dp_Arg2, p->dp_Arg3, &eof);
         rtimer_stop(c);
         reply(p, n < 0 ? 0 : n, 0);
         for (i = 1; i < c->nreads; i++)
             c->reads[i - 1] = c->reads[i];
         c->nreads--;
     }
-    if (c->waitchar && (canon ? c->ld.lines > 0 : c->ld.qlen > 0))
+    if (c->waitchar && ld_input_pending(&c->ld))
         finish_waitchar(c, DOSTRUE);
 }
 
@@ -1116,21 +1109,11 @@ static int ensure_worker(con *c)
     return c->comp_port && c->comp && c->check && c->hist;
 }
 
-/* The process Ctrl-C goes to and whose directory completion uses: the
- * last ACTION_CHANGE_SIGNAL target while it lives (a program the Shell
- * runs may set itself and end without handing it back: the handler then
- * signalled, and the completion worker read, a process that was gone --
- * #80000008 on the rig), else the process that opened the window. Call
- * under Forbid to use the answer. */
+/* The process Ctrl-C goes to and whose directory completion uses
+ * (brk.h). Call under Forbid to use the answer. */
 static struct Task *break_task(con *c)
 {
-    if (c->break_port && task_alive(c->break_owner))
-        return c->break_owner;
-    c->break_port = c->home_port;
-    c->break_owner = 0;
-    if (c->home_port && task_alive((struct Task *)c->home_port->mp_SigTask))
-        return (struct Task *)c->home_port->mp_SigTask;
-    return 0;
+    return brk_task(&c->brk);
 }
 
 static struct Process *opener(con *c)
@@ -1519,12 +1502,12 @@ static long keypad_key(UWORD code)
 
 static void send_break(con *c, ULONG sig)
 {
-    struct Task *t;
-    Forbid();
-    if ((t = break_task(c)) != 0)
-        Signal(t, sig);
-    Permit();
+#ifdef VTCON_DEBUG
+    struct Task *t = brk_send(&c->brk, sig);
     DBG("break to", (long)sig, (long)t);
+#else
+    brk_send(&c->brk, sig);
+#endif
 }
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
@@ -1999,8 +1982,7 @@ static void packet(con *c, struct DosPacket *p)
             name[i] = 0;
             parse_spec(c, colon >= 0 ? name + colon + 1 : name);
             c->spec_parsed = 1;
-            c->break_port = c->home_port = p->dp_Port;
-            c->break_owner = (struct Task *)p->dp_Port->mp_SigTask;
+            brk_open(&c->brk, p->dp_Port);
             DBG("open window", c->ww, c->wh);
             if (!c->auto_open && !open_window(c)) {
                 DBG("open failed", c->win, c->t);
@@ -2157,10 +2139,7 @@ static void packet(con *c, struct DosPacket *p)
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_CHANGE_SIGNAL:
-        if (p->dp_Arg2) {
-            c->break_port = (struct MsgPort *)p->dp_Arg2;
-            c->break_owner = (struct Task *)c->break_port->mp_SigTask;
-        }
+        brk_change(&c->brk, (struct MsgPort *)p->dp_Arg2);
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_DISK_INFO: {

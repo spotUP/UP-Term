@@ -130,6 +130,21 @@ long ld_read(ldisc *l, unsigned char *buf, long max, int *eof);
  * VMIN bytes are there (VMIN 0: always). The VTIME timer is the caller's. */
 int ld_read_ready(const ldisc *l);
 
+/* What a read() that is waiting does now. The VTIME timer is the
+ * caller's; timer_fired: it ran out since the read began to wait.
+ *   LD_RD_TAKE  ld_read what is there (it may be nothing after VTIME)
+ *   LD_RD_ZERO  return 0 bytes: VMIN 0 and VTIME 0, a poll found nothing
+ *   LD_RD_WAIT  keep waiting; *arm set: start the VTIME timer
+ *               (c_cc[VTIME] tenths) unless it is running already.
+ * XCON: and PTY: both serve their reads with it. */
+#define LD_RD_WAIT 0
+#define LD_RD_TAKE 1
+#define LD_RD_ZERO 2
+int ld_read_action(const ldisc *l, int timer_fired, int *arm);
+
+/* ACTION_WAIT_CHAR, select(): would a read find input? */
+int ld_input_pending(const ldisc *l);
+
 /* Output processing (OPOST: ONLCR, OXTABS, ONOEOT) of n bytes into out;
  * out needs 8 * n bytes at most (a tab to 8 spaces). *col tracks the
  * column for OXTABS. Returns the bytes written. */

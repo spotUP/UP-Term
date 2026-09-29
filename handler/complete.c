@@ -324,25 +324,6 @@ static void history_append(struct complete_req *q)
     Close(f);
 }
 
-int task_alive(struct Task *t)
-{
-    struct Node *n;
-    int found = 0;
-    if (!t)
-        return 0;
-    Forbid();
-    if (t == SysBase->ThisTask)
-        found = 1;
-    for (n = SysBase->TaskReady.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
-        if (n == &t->tc_Node)
-            found = 1;
-    for (n = SysBase->TaskWait.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
-        if (n == &t->tc_Node)
-            found = 1;
-    Permit();
-    return found;
-}
-
 /* The shell's words (q->extra) that start with prefix; the shell's names
  * are case-sensitive, unlike AmigaDOS's. */
 static void scan_extra(struct complete_req *q, const char *prefix)

@@ -185,8 +185,53 @@ static void output(void)
     CHECK_INT(memcmp(out, "ab      c", 9), 0);  /* OXTABS to column 8 */
 }
 
+/* How a waiting read is served (XCON: and PTY: share this). */
+static void read_action(void)
+{
+    vt_termios t;
+    int arm;
+    fresh();
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_WAIT);  /* canonical, no line */
+    CHECK_INT(arm, 0);
+    type("ab");
+    CHECK_INT(ld_input_pending(&L), 0);                  /* a line is not finished */
+    type("\r");
+    CHECK_INT(ld_input_pending(&L), 1);
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_TAKE);
+    /* VMIN 0 VTIME 0: a poll */
+    fresh();
+    t = L.t;
+    t.c_lflag &= ~(ld_flag)(LD_ICANON | LD_ECHO);
+    t.c_cc[LD_VMIN] = 0;
+    t.c_cc[LD_VTIME] = 0;
+    ld_set(&L, &t, LD_TCSANOW);
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_ZERO);
+    type("x");
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_TAKE);
+    /* VMIN 0 VTIME 5: the timer starts at once, its end returns what is there */
+    fresh();
+    t.c_cc[LD_VTIME] = 5;
+    ld_set(&L, &t, LD_TCSANOW);
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_WAIT);
+    CHECK_INT(arm, 1);
+    CHECK_INT(ld_read_action(&L, 1, &arm), LD_RD_TAKE);
+    /* VMIN 2 VTIME 5: the timer starts at the first byte */
+    fresh();
+    t.c_cc[LD_VMIN] = 2;
+    ld_set(&L, &t, LD_TCSANOW);
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_WAIT);
+    CHECK_INT(arm, 0);
+    type("a");
+    CHECK_INT(ld_input_pending(&L), 1);
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_WAIT);
+    CHECK_INT(arm, 1);
+    type("b");
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_TAKE);
+}
+
 void suite_ldisc(void)
 {
+    read_action();
     canonical_editing();
     signals();
     non_canonical();

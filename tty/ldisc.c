@@ -329,6 +329,30 @@ int ld_read_ready(const ldisc *l)
     return l->qlen >= l->t.c_cc[LD_VMIN] || l->t.c_cc[LD_VMIN] == 0;
 }
 
+int ld_read_action(const ldisc *l, int timer_fired, int *arm)
+{
+    int canon = (l->t.c_lflag & LD_ICANON) != 0;
+    int vmin = l->t.c_cc[LD_VMIN], vtime = l->t.c_cc[LD_VTIME];
+    *arm = 0;
+    if (ld_read_ready(l) && (canon || vmin > 0 || l->qlen > 0))
+        return LD_RD_TAKE;
+    if (canon)
+        return LD_RD_WAIT;
+    if (vmin == 0 && vtime == 0)
+        return LD_RD_ZERO;
+    if (vtime > 0 && timer_fired)
+        return LD_RD_TAKE;
+    /* VTIME counts from now (VMIN 0) or from the first byte */
+    if (vtime > 0 && (vmin == 0 || l->qlen > 0))
+        *arm = 1;
+    return LD_RD_WAIT;
+}
+
+int ld_input_pending(const ldisc *l)
+{
+    return (l->t.c_lflag & LD_ICANON) ? l->lines > 0 : l->qlen > 0;
+}
+
 long ld_read(ldisc *l, unsigned char *buf, long max, int *eof)
 {
     *eof = 0;
