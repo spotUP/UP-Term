@@ -1060,6 +1060,26 @@ static void import_var(sh_shell *sh, const char *name)
         sh_set(&sh->ctx, name, v);
 }
 
+/* The process's local variables: the environment its parent gave it
+ * (a Shell's Set variables; a Unix program -- screen, tcsh -- passing its
+ * environment to vsh through ixemul's execve). Into the shell, exported,
+ * as a Unix shell takes its environment. */
+static void import_locals(sh_shell *sh)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    struct LocalVar *lv;
+    char v[512];
+    for (lv = (struct LocalVar *)me->pr_LocalVars.mlh_Head; lv->lv_Node.ln_Succ;
+         lv = (struct LocalVar *)lv->lv_Node.ln_Succ) {
+        if (lv->lv_Node.ln_Type != LV_VAR || (lv->lv_Flags & GVF_BINARY_VAR) || !lv->lv_Node.ln_Name)
+            continue;
+        if (GetVar((STRPTR)lv->lv_Node.ln_Name, (STRPTR)v, sizeof(v), GVF_LOCAL_ONLY) < 0)
+            continue;
+        sh_set(&sh->ctx, lv->lv_Node.ln_Name, v);
+        sh_export(&sh->ctx, lv->lv_Node.ln_Name);
+    }
+}
+
 static int vsh_main(int argc, char **argv)
 {
     static sh_shell sh;
@@ -1106,6 +1126,7 @@ static int vsh_main(int argc, char **argv)
     import_var(&sh, "USER");
     import_var(&sh, "HOST");
     import_var(&sh, "HOSTNAME");
+    import_locals(&sh);
     {
         /* on a vtcon console (it answers TCGETA) the programs vsh runs get
          * its terminal type -- a global TERM is another console's -- and
@@ -1116,7 +1137,14 @@ static int vsh_main(int argc, char **argv)
         if (fh && fh->fh_Type && DoPkt(fh->fh_Type, ACTION_VTCON_TCGETA, fh->fh_Arg1, (LONG)&t, 0, 0, 0)) {
             BPTR lock;
             import_var(&sh, "TERMCAP");
-            sh_set(&sh.ctx, "TERM", "vtcon");
+            /* a TERM the parent set is the terminal's (screen sets
+             * "screen" for its windows, which are PTY: -- vtcon consoles
+             * too); a global one is another console's */
+            {
+                char lt[64];
+                if (GetVar((STRPTR)"TERM", (STRPTR)lt, sizeof(lt), GVF_LOCAL_ONLY) <= 0)
+                    sh_set(&sh.ctx, "TERM", "vtcon");
+            }
             sh_export(&sh.ctx, "TERM");
             if (!sh_get(&sh.ctx, "TERMCAP") && (lock = Lock((STRPTR)"ENV:up-term/termcap.vtcon", SHARED_LOCK))) {
                 UnLock(lock);
