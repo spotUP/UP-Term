@@ -83,6 +83,9 @@ def setup():
     shutil.copyfile(SRC_AGENT, RIG / "boot/amiagent")
     CFG.write_text("\n".join([
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
+        # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
+        # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
+        "zorro_iii_memory = 65536",
         "bsdsocket_library = 1", "graphics_card = uaegfx",
         "jit_compiler = %d" % (0 if EXACT else 1),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
