@@ -46,6 +46,7 @@ C:Assign >NIL: ETC: VTC:etc
 C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
 C:SetEnv TERM vtcon
 C:SetEnv TERMINFO /VTC/terminfo
+C:SetEnv TERMCAP /etc/termcap
 Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent TOKEN=rigtoken

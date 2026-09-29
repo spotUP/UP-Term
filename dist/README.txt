@@ -26,7 +26,10 @@ USE
 
   For ixemul programs:   SetEnv TERM vtcon
                          SetEnv TERMINFO /ENVARC/terminfo
-  (or copy termcap.vtcon into your ixemul termcap)
+  Programs with their own termcap reader (tcsh, for one) also need
+                         SetEnv TERMCAP /ENVARC/termcap.vtcon
+  (they do not look in /etc/termcap by themselves; or add the vtcon entry
+  to your ixemul termcap and point TERMCAP at that)
 
 KEYS
   Mouse drag            select (Shift+drag when a program uses the mouse)
