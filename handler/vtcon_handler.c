@@ -46,6 +46,7 @@
 #include "lineedit.h"
 #include "complete.h"
 #include "vtcon_packets.h"
+#include "../tty/ldisc.h"
 
 /* rexx/rexxio.h: ARexx PUSH and QUEUE */
 #ifndef ACTION_STACK
@@ -100,6 +101,15 @@ typedef struct con {
     int closing;                 /* close gadget clicked */
     int eof;                     /* Ctrl-\ or close gadget in cooked mode */
     struct MsgPort *break_port;  /* who gets Ctrl-C/D/E/F */
+    /* termios mode (ACTION_VTCON_TCSETA): a Unix program's line discipline */
+    ldisc ld;
+    int tty;                     /* in termios mode */
+    struct Task *tty_owner;      /* the task that set it; its end ends the mode */
+    int tty_ocol;                /* output column, for OXTABS */
+    int tty_sig;                 /* a VQUIT/VSUSP not delivered yet (P6) */
+    struct timerequest *rtimer;  /* VTIME for the first waiting read */
+    int rtimer_busy, rtimer_fired;
+    vt_u8 obuf[2048];            /* OPOST output of one chunk */
     struct Task *break_owner;    /* break_port's task, read while it was alive */
     struct MsgPort *home_port;   /* the opener's: the target again when break_port's process ends */
     enum vt_personality pers;
@@ -886,8 +896,138 @@ static int line_end(con *c)
 }
 
 /* Answer queued reads with what the input holds. */
+/* ---- termios mode ----------------------------------------------------------- */
+
+static void output(con *c, const vt_u8 *b, long n);
+static void send_break(con *c, ULONG sig);
+
+static void tty_echo(void *u, const unsigned char *s, int n)
+{
+    output((con *)u, s, n);
+}
+
+static void tty_signal(void *u, int sig)
+{
+    con *c = (con *)u;
+    if (sig == LD_SIGINT)
+        send_break(c, SIGBREAKF_CTRL_C); /* ixemul makes it SIGINT */
+    else
+        c->tty_sig = sig; /* SIGQUIT, SIGTSTP: no way to deliver them before P6 */
+}
+
+static void rtimer_stop(con *c)
+{
+    if (c->rtimer_busy) {
+        AbortIO((struct IORequest *)c->rtimer);
+        WaitIO((struct IORequest *)c->rtimer);
+        c->rtimer_busy = 0;
+    }
+    c->rtimer_fired = 0;
+}
+
+static void rtimer_start(con *c, ULONG tenths)
+{
+    rtimer_stop(c);
+    if (!c->rtimer)
+        return;
+    c->rtimer->tr_node.io_Command = TR_ADDREQUEST;
+    c->rtimer->tr_time.tv_secs = tenths / 10;
+    c->rtimer->tr_time.tv_micro = (tenths % 10) * 100000;
+    SendIO((struct IORequest *)c->rtimer);
+    c->rtimer_busy = 1;
+}
+
+/* Leave termios mode: what the line discipline holds becomes plain input. */
+static void tty_leave(con *c)
+{
+    unsigned char b[256];
+    long n;
+    int eof;
+    if (!c->tty)
+        return;
+    c->ld.t.c_lflag &= ~(ld_flag)LD_ICANON; /* whole lines and a partial one, as bytes */
+    ld_set(&c->ld, &c->ld.t, LD_TCSANOW);
+    while ((n = ld_read(&c->ld, b, sizeof(b), &eof)) > 0)
+        in_append(c, b, (int)n);
+    rtimer_stop(c);
+    c->tty = 0;
+    c->tty_owner = 0;
+    if (c->t)
+        vt_set_onlcr(c->t, c->pers == VT_XTERM);
+}
+
+/* In termios mode, while the program that set it runs. */
+static int tty_active(con *c)
+{
+    int alive;
+    if (!c->tty)
+        return 0;
+    Forbid();
+    alive = task_alive(c->tty_owner);
+    Permit();
+    if (!alive)
+        tty_leave(c);
+    return c->tty;
+}
+
+static void tty_enter(con *c, struct Task *owner)
+{
+    if (!c->tty) {
+        /* typed ahead: input as it stands, not echoed again */
+        void (*e)(void *, const unsigned char *, int) = c->ld.echo;
+        ld_init(&c->ld);
+        c->ld.echo = 0;
+        c->ld.t.c_lflag &= ~(ld_flag)LD_ISIG;
+        ld_input(&c->ld, c->in, c->in_len);
+        c->in_len = 0;
+        ld_defaults(&c->ld.t);
+        c->ld.echo = e;
+        c->tty = 1;
+        c->tty_ocol = 0;
+        if (c->t)
+            vt_set_onlcr(c->t, 0); /* OPOST decides now (vttest m1 s04: raw LF is LF) */
+    }
+    c->tty_owner = owner;
+}
+
+/* Reads in termios mode: ICANON a line or an EOF; otherwise VMIN bytes,
+ * or what came within VTIME tenths of a second. */
+static void tty_reads(con *c)
+{
+    int canon = (c->ld.t.c_lflag & LD_ICANON) != 0;
+    int vmin = c->ld.t.c_cc[LD_VMIN], vtime = c->ld.t.c_cc[LD_VTIME];
+    while (c->nreads) {
+        struct DosPacket *p = c->reads[0];
+        long n;
+        int eof, i;
+        if (ld_read_ready(&c->ld) && (canon || vmin > 0 || c->ld.qlen > 0)) {
+            n = ld_read(&c->ld, (unsigned char *)p->dp_Arg2, p->dp_Arg3, &eof);
+        } else if (!canon && vmin == 0 && vtime == 0) {
+            n = 0; /* a poll: nothing there */
+        } else if (!canon && vtime > 0 && c->rtimer_fired) {
+            n = ld_read(&c->ld, (unsigned char *)p->dp_Arg2, p->dp_Arg3, &eof);
+        } else {
+            /* wait; VTIME counts from now (VMIN 0) or from the first byte */
+            if (!canon && vtime > 0 && !c->rtimer_busy && (vmin == 0 || c->ld.qlen > 0))
+                rtimer_start(c, (ULONG)vtime);
+            break;
+        }
+        rtimer_stop(c);
+        reply(p, n < 0 ? 0 : n, 0);
+        for (i = 1; i < c->nreads; i++)
+            c->reads[i - 1] = c->reads[i];
+        c->nreads--;
+    }
+    if (c->waitchar && (canon ? c->ld.lines > 0 : c->ld.qlen > 0))
+        finish_waitchar(c, DOSTRUE);
+}
+
 static void service_reads(con *c)
 {
+    if (tty_active(c)) {
+        tty_reads(c);
+        return;
+    }
     while (c->nreads) {
         struct DosPacket *p = c->reads[0];
         LONG want = p->dp_Arg3, n;
@@ -1572,6 +1712,15 @@ static void key_event(con *c, struct IntuiMessage *im)
     }
     if (!n)
         return;
+    if (tty_active(c)) {
+        /* a Unix program's terminal: the line discipline takes the key (ISIG
+         * makes ^C a break, ^\\ and ^Z signals; the rest is input) */
+        ld_input(&c->ld, out, n);
+        if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
+            rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
+        service_reads(c);
+        return;
+    }
     /* Break keys: Ctrl-C..F signal the opener in cooked mode (and Amiga raw
      * mode); an xterm window in raw mode sends the byte only, as a Unix tty
      * without ISIG does. */
@@ -1886,11 +2035,24 @@ static void packet(con *c, struct DosPacket *p)
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
-        output(c, (const vt_u8 *)p->dp_Arg2, p->dp_Arg3);
+        if (tty_active(c) && (c->ld.t.c_oflag & LD_OPOST)) {
+            /* OPOST in chunks: a byte may become 8 (a tab under OXTABS) */
+            const unsigned char *b = (const unsigned char *)p->dp_Arg2;
+            LONG left = p->dp_Arg3;
+            while (left > 0) {
+                LONG k = left > (LONG)sizeof(c->obuf) / 8 ? (LONG)sizeof(c->obuf) / 8 : left;
+                output(c, c->obuf, ld_output(&c->ld.t, b, k, c->obuf, &c->tty_ocol));
+                b += k;
+                left -= k;
+            }
+        } else {
+            output(c, (const vt_u8 *)p->dp_Arg2, p->dp_Arg3);
+        }
         reply(p, p->dp_Arg3, 0);
         service_reads(c); /* the output may have queued a report */
         return;
     case ACTION_SCREEN_MODE:
+        tty_leave(c); /* the Amiga way to set a mode: termios mode is over */
         if (c->raw && !p->dp_Arg1) {
             c->raw = 0;
         } else if (!c->raw && p->dp_Arg1) {
@@ -1934,6 +2096,50 @@ static void packet(con *c, struct DosPacket *p)
         service_reads(c);
         return;
     }
+    case ACTION_VTCON_TCGETA:
+        if (!p->dp_Arg2) {
+            reply(p, DOSFALSE, ERROR_REQUIRED_ARG_MISSING);
+            return;
+        }
+        if (tty_active(c)) {
+            CopyMem(&c->ld.t, (APTR)p->dp_Arg2, sizeof(vt_termios));
+        } else {
+            /* what the window does now, in termios terms */
+            vt_termios t;
+            ld_defaults(&t);
+            if (c->raw)
+                t.c_lflag &= ~(ld_flag)(LD_ICANON | LD_ECHO | LD_ISIG | LD_IEXTEN);
+            CopyMem(&t, (APTR)p->dp_Arg2, sizeof(t));
+        }
+        reply(p, DOSTRUE, 0);
+        return;
+    case ACTION_VTCON_TCSETA:
+        if (!p->dp_Arg2) {
+            reply(p, DOSFALSE, ERROR_REQUIRED_ARG_MISSING);
+            return;
+        }
+        tty_enter(c, (struct Task *)p->dp_Port->mp_SigTask);
+        ld_set(&c->ld, (const vt_termios *)p->dp_Arg2, (int)p->dp_Arg3);
+        reply(p, DOSTRUE, 0);
+        service_reads(c);
+        return;
+    case ACTION_VTCON_GWINSZ:
+        if (!p->dp_Arg2 || !c->t) {
+            reply(p, DOSFALSE, p->dp_Arg2 ? ERROR_OBJECT_NOT_FOUND : ERROR_REQUIRED_ARG_MISSING);
+            return;
+        }
+        {
+            vt_winsize *ws = (vt_winsize *)p->dp_Arg2;
+            ws->ws_row = (unsigned short)vt_rows(c->t);
+            ws->ws_col = (unsigned short)vt_cols(c->t);
+            ws->ws_xpixel = (unsigned short)(ws->ws_col * c->r.cw);
+            ws->ws_ypixel = (unsigned short)(ws->ws_row * c->r.ch);
+        }
+        reply(p, DOSTRUE, 0);
+        return;
+    case ACTION_VTCON_SWINSZ:
+        reply(p, DOSFALSE, ERROR_ACTION_NOT_KNOWN); /* a window's size is the window's */
+        return;
     case ACTION_VTCON_WORDS:
         take_words(c, p);
         reply(p, DOSTRUE, 0);
@@ -1999,8 +2205,18 @@ static LONG handler_main(void)
         if (c->timer && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)c->timer, 0)) {
             c->timer_open = 1;
             TimerBase = c->timer->tr_node.io_Device;
+            /* VTIME's timer: the same unit, its own request */
+            c->rtimer = (struct timerequest *)CreateIORequest(c->timer_port, sizeof(struct timerequest));
+            if (c->rtimer) {
+                c->rtimer->tr_node.io_Device = c->timer->tr_node.io_Device;
+                c->rtimer->tr_node.io_Unit = c->timer->tr_node.io_Unit;
+            }
         }
     }
+    c->ld.echo = tty_echo;
+    c->ld.signal = tty_signal;
+    c->ld.user = c;
+    ld_init(&c->ld);
     c->frame_port = CreateMsgPort();
     if (c->frame_port) {
         c->frame = (struct timerequest *)CreateIORequest(c->frame_port, sizeof(struct timerequest));
@@ -2059,6 +2275,11 @@ static LONG handler_main(void)
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
+        if (c->rtimer_busy && CheckIO((struct IORequest *)c->rtimer)) {
+            WaitIO((struct IORequest *)c->rtimer);
+            c->rtimer_busy = 0;
+            c->rtimer_fired = 1; /* VTIME is up: the waiting read takes what there is */
+        }
         if (c->timer_busy && CheckIO((struct IORequest *)c->timer)) {
             WaitIO((struct IORequest *)c->timer);
             c->timer_busy = 0;
@@ -2103,6 +2324,10 @@ static LONG handler_main(void)
     }
     if (c->comp_port)
         DeleteMsgPort(c->comp_port);
+    rtimer_stop(c);
+    if (c->rtimer)
+        DeleteIORequest((struct IORequest *)c->rtimer);
+    c->rtimer = 0;
     if (c->timer_open) {
         CloseDevice((struct IORequest *)c->timer);
         c->timer_open = 0;

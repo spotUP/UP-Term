@@ -95,11 +95,11 @@ CPU      ?= 68020
 VC       := vc +$(VBCC_CFG) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
 
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
-HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c $(ENGINE) render/amiga_render.c render/glyphmap.c
+HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c $(ENGINE) render/amiga_render.c render/glyphmap.c tty/ldisc.c
 HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc \
-               handler/clip.h handler/lineedit.h handler/complete.h handler/vtcon_packets.h
+               handler/clip.h handler/lineedit.h handler/complete.h handler/vtcon_packets.h tty/ldisc.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/vsh
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/vsh
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -130,6 +130,10 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/breakport.c
 
+$(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldisc.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/ttyprobe.c
+
 $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/vtengine.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -c -o $@ $(ENGINE)
@@ -157,9 +161,11 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -c -o $(BUILD)/amiga/obj/clip.o handler/clip.c
 	$(VC) -c -o $(BUILD)/amiga/obj/lineedit.o handler/lineedit.c
 	$(VC) -c -o $(BUILD)/amiga/obj/complete.o handler/complete.c
+	$(VC) -c -o $(BUILD)/amiga/obj/ldisc.o tty/ldisc.c
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
 	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/glyphmap.o \
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o \
+	  $(BUILD)/amiga/obj/ldisc.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
 # The install kit: build/vtcon.lha (handler, DOSDrivers entry, terminfo,
