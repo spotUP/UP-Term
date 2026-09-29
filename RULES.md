@@ -30,6 +30,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Amiga build with the handler trace (RAM:vtcon.log) | `make amiga DEBUG=1` |
 | Reachability test on the rig (V3) | `make test-rig` (rig up first) |
 | PTY: on the rig (P5, self-checking) | `python3 tools/rig/ptytest_rig.py` (rig up; `make amiga` first) |
+| BSD ptys via patched ixemul (P6.4, self-checking) | `python3 tools/rig/ixpty_rig.py [--orig]` (rig up; `make amiga build/amiga/ixpty`; ixemul from ~/Code/ixemul-vtcon `sh docker/build.sh`) |
 | pty-handler with a serial trace (build/rig/serial.log) | `make build/amiga/pty-handler DEBUG=1` |
 | Rig (FS-UAE A1200, amiagent) | `python3 tools/rig/rig.py setup|start|install|stop|status`; drive with `tools/rig/ami.py` |
 | Cross build (vbcc, 68020) | `make amiga` |

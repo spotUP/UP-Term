@@ -2059,10 +2059,15 @@ static void packet(con *c, struct DosPacket *p)
         service_reads(c);
         return;
     case ACTION_WAIT_CHAR:
-        if (c->in_len || c->eof) {
+        /* a newer WAIT_CHAR ends the older one: it is stale (ixemul's
+         * select sends one per call, and one with no timeout before it
+         * closes a file whose select is still out) */
+        if (c->waitchar)
+            finish_waitchar(c, DOSFALSE);
+        if (c->in_len || c->eof || (tty_active(c) && ld_input_pending(&c->ld))) {
             reply(p, DOSTRUE, 0);
-        } else if (c->waitchar) {
-            reply(p, DOSFALSE, 0); /* one waiter at a time */
+        } else if (p->dp_Arg1 <= 0) {
+            reply(p, DOSFALSE, 0); /* a poll */
         } else {
             c->waitchar = p;
             start_timer(c, (ULONG)p->dp_Arg1);

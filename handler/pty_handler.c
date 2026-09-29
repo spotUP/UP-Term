@@ -526,10 +526,15 @@ static void by_port(struct DosPacket *d, pair *p, int master)
         struct DosPacket **w = master ? &p->mwait : &p->swait;
         int ready = master ? (p->out_len || (p->slave_ever && p->slaves <= 0))
                            : (hung_up(p) || ld_input_pending(&p->ld));
+        /* a newer WAIT_CHAR ends the older one: it is stale (ixemul's
+         * select sends one per call, and one with no timeout before it
+         * closes a file whose select is still out) */
+        if (*w)
+            finish_wait(w, master ? p->mtimer : p->stimer, master ? &p->mtimer_busy : &p->stimer_busy, DOSFALSE);
         if (ready) {
             reply(d, DOSTRUE, 0);
-        } else if (*w || d->dp_Arg1 <= 0) {
-            reply(d, DOSFALSE, 0); /* a poll, or one waiter at a time */
+        } else if (d->dp_Arg1 <= 0) {
+            reply(d, DOSFALSE, 0); /* a poll */
         } else {
             *w = d;
             if (master)
