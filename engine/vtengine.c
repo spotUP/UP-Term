@@ -39,8 +39,9 @@ typedef struct vt_line {
 
 typedef struct vt_saved {
     int x, y, wrap_pending, origin;
-    vt_color fg, bg;
-    vt_u8 attr;
+    vt_color fg, bg, ul;
+    vt_attr attr;
+    vt_u8 deco, font;
     vt_u8 charset[4];
     int gl;
 } vt_saved;
@@ -58,7 +59,13 @@ struct vt_term {
 
     int cx, cy, wrap_pending;
     vt_color fg, bg;
-    vt_u8 attr;
+    vt_attr attr;
+    vt_u8 deco;            /* VT_DECO_* for the next cells */
+    vt_color ul;           /* SGR 58 underline colour, VT_COLOR_DEFAULT = the text's */
+    vt_u8 font;            /* SGR 10-20 */
+    vt_u8 ext;             /* the rare-style entry of ul + font, 0 = none (style_index) */
+    struct { vt_color ul; vt_u8 font; } styles[255];
+    int n_styles;
     int top, bot;          /* scroll region rows [top, bot) */
     vt_u8 *tabs;
     int tabs_cap;
@@ -74,7 +81,7 @@ struct vt_term {
     vt_u32 raw_events;
     vt_color amiga_bg;       /* global background pen (SGR >n) */
     vt_color amiga_dfg, amiga_dbg; /* SGR 0 / 39 / 49 defaults (CSI SP s, V39) */
-    vt_u8 amiga_dattr;
+    vt_attr amiga_dattr;
     int amiga_msb;         /* SO: 20-7F display as A0-FF (matrix 2.1, C-SO) */
     int scroll_enabled;    /* CSI >1h / >1l */
 
@@ -220,16 +227,19 @@ static void blank_cell(const vt_term *t, vt_cell *c)
      * Devices, SGR implementation notes). */
     c->bg = (t->pers == VT_AMIGA) ? VT_COLOR_DEFAULT : t->bg;
     c->attr = 0;
+    c->deco = 0;
+    c->ext = 0;
+    c->pad = 0;
     if (t->pers == VT_PCANSI) {
         /* ANSI.SYS erases with the whole attribute byte: an erased cell
          * is a space in the current colours, so blink (the iCE bright
          * background) and inverse (fg and bg swapped) count too. */
-        c->attr = (vt_u8)(t->attr & VT_ATTR_BLINK);
+        c->attr = (vt_attr)(t->attr & VT_ATTR_BLINK);
         if (t->attr & VT_ATTR_INVERSE) {
             /* the foreground is visible only when swapped in; otherwise
              * the blank stays canonical (vacated_default) */
             c->fg = t->fg;
-            c->attr |= (vt_u8)(t->attr & (VT_ATTR_BOLD | VT_ATTR_INVERSE));
+            c->attr |= (vt_attr)(t->attr & (VT_ATTR_BOLD | VT_ATTR_INVERSE));
         }
     }
     c->width = 1;
@@ -738,6 +748,84 @@ static void delete_lines(vt_term *t, int n)
 
 /* ---- state ------------------------------------------------------------- */
 
+/* ---- rare styles: underline colour and font ---------------------------------
+ * Few cells have them, so a cell holds a one-byte index into this table
+ * instead of the values. A full table is swept: entries no cell uses any
+ * more are dropped and the cells renumbered. */
+
+/* Lines first..first+n-1 of a ring of cap (the grid: first 0, cap n). */
+static void sweep_lines(vt_line **lines, int first, int n, int cap, const vt_u8 *remap, vt_u8 *used)
+{
+    int y, x;
+    for (y = 0; y < n; y++) {
+        vt_line *l = lines ? lines[(first + y) % cap] : 0;
+        if (!l)
+            continue;
+        for (x = 0; x < l->n; x++) {
+            if (!l->c[x].ext)
+                continue;
+            if (used)
+                used[l->c[x].ext] = 1;
+            else
+                l->c[x].ext = remap[l->c[x].ext];
+        }
+    }
+}
+
+static void sweep_styles(vt_term *t)
+{
+    vt_u8 used[256], remap[256];
+    int i, k = 0;
+    memset(used, 0, sizeof(used));
+    sweep_lines(t->pri, 0, t->rows, t->rows, 0, used);
+    sweep_lines(t->alt, 0, t->rows, t->rows, 0, used);
+    if (t->sb_cap)
+        sweep_lines(t->sb, t->sb_head + t->sb_cap - t->sb_len, t->sb_len, t->sb_cap, 0, used);
+    remap[0] = 0;
+    for (i = 1; i <= t->n_styles; i++) {
+        remap[i] = 0;
+        if (used[i]) {
+            t->styles[k] = t->styles[i - 1];
+            remap[i] = (vt_u8)++k;
+        }
+    }
+    t->n_styles = k;
+    sweep_lines(t->pri, 0, t->rows, t->rows, remap, 0);
+    sweep_lines(t->alt, 0, t->rows, t->rows, remap, 0);
+    if (t->sb_cap)
+        sweep_lines(t->sb, t->sb_head + t->sb_cap - t->sb_len, t->sb_len, t->sb_cap, remap, 0);
+}
+
+/* The entry for the current underline colour and font (0: both default). */
+static vt_u8 style_index(vt_term *t)
+{
+    int i, pass;
+    if (t->ul == VT_COLOR_DEFAULT && !t->font)
+        return 0;
+    for (pass = 0; pass < 2; pass++) {
+        for (i = 0; i < t->n_styles; i++)
+            if (t->styles[i].ul == t->ul && t->styles[i].font == t->font)
+                return (vt_u8)(i + 1);
+        if (t->n_styles < 255) {
+            t->styles[t->n_styles].ul = t->ul;
+            t->styles[t->n_styles].font = t->font;
+            return (vt_u8)++t->n_styles;
+        }
+        sweep_styles(t);
+    }
+    return 0; /* 255 distinct styles on screen at once: drawn plain */
+}
+
+vt_color vt_cell_underline_color(const vt_term *t, const vt_cell *c)
+{
+    return c->ext && c->ext <= t->n_styles ? t->styles[c->ext - 1].ul : VT_COLOR_DEFAULT;
+}
+
+int vt_cell_font(const vt_term *t, const vt_cell *c)
+{
+    return c->ext && c->ext <= t->n_styles ? t->styles[c->ext - 1].font : 0;
+}
+
 static void save_cursor(vt_term *t, vt_saved *s)
 {
     s->x = t->cx;
@@ -747,6 +835,9 @@ static void save_cursor(vt_term *t, vt_saved *s)
     s->fg = t->fg;
     s->bg = t->bg;
     s->attr = t->attr;
+    s->deco = t->deco;
+    s->ul = t->ul;
+    s->font = t->font;
     memcpy(s->charset, t->charset, 4);
     s->gl = t->gl;
 }
@@ -757,6 +848,10 @@ static void restore_cursor(vt_term *t, const vt_saved *s)
     t->fg = s->fg;
     t->bg = s->bg;
     t->attr = s->attr;
+    t->deco = s->deco;
+    t->ul = s->ul;
+    t->font = s->font;
+    t->ext = style_index(t);
     memcpy(t->charset, s->charset, 4);
     t->gl = s->gl;
     t->cx = clampi(s->x, 0, t->cols - 1);
@@ -766,6 +861,10 @@ static void restore_cursor(vt_term *t, const vt_saved *s)
 
 static void sgr_reset(vt_term *t)
 {
+    t->deco = 0;
+    t->ul = VT_COLOR_DEFAULT;
+    t->font = 0;
+    t->ext = 0;
     if (t->pers == VT_AMIGA) {
         t->fg = t->amiga_dfg;
         t->bg = t->amiga_dbg;
@@ -793,8 +892,9 @@ static void soft_reset(vt_term *t)
     t->sav.x = t->sav.y = 0;
     t->sav.wrap_pending = 0;
     t->sav.origin = 0;
-    t->sav.fg = t->sav.bg = VT_COLOR_DEFAULT;
+    t->sav.fg = t->sav.bg = t->sav.ul = VT_COLOR_DEFAULT;
     t->sav.attr = 0;
+    t->sav.deco = t->sav.font = 0;
     memcpy(t->sav.charset, t->charset, 4);
     t->sav.gl = 0;
 }
@@ -866,6 +966,8 @@ static void put_char(vt_term *t, vt_u32 cp)
     c->fg = t->fg;
     c->bg = t->bg;
     c->attr = t->attr;
+    c->deco = t->deco;
+    c->ext = t->ext;
     c->width = (vt_u8)w;
     if (w == 2) {
         c[1] = c[0];
@@ -1177,17 +1279,21 @@ static void sgr(vt_term *t)
         } else if (p == 3) {
             t->attr |= VT_ATTR_ITALIC;
         } else if (p == 4) {
+            long style = VT_UL_SINGLE;
             if (i + 1 < t->np && t->sub[i + 1]) {
-                if (t->params[i + 1] == 0)
-                    t->attr &= ~VT_ATTR_UNDERLINE;
-                else
-                    t->attr |= VT_ATTR_UNDERLINE;
-                i++;
-            } else {
-                t->attr |= VT_ATTR_UNDERLINE;
+                style = t->params[++i]; /* 4:0 none, 4:1-4:5 the styles */
+                if (style > VT_UL_DASHED)
+                    style = VT_UL_SINGLE;
             }
-        } else if (p == 5 || p == 6) {
-            t->attr |= VT_ATTR_BLINK;
+            t->deco = (vt_u8)((t->deco & ~VT_DECO_UL_MASK) | style);
+            if (style)
+                t->attr |= VT_ATTR_UNDERLINE;
+            else
+                t->attr &= ~VT_ATTR_UNDERLINE;
+        } else if (p == 5) {
+            t->attr = (vt_attr)((t->attr | VT_ATTR_BLINK) & ~VT_ATTR_RAPID);
+        } else if (p == 6) {
+            t->attr |= VT_ATTR_BLINK | (t->pers == VT_AMIGA ? 0 : VT_ATTR_RAPID);
         } else if (p == 7) {
             t->attr |= VT_ATTR_INVERSE;
         } else if (p == 8) {
@@ -1196,20 +1302,52 @@ static void sgr(vt_term *t)
             t->attr |= VT_ATTR_STRIKE;
         } else if (p == 21) {
             t->attr |= VT_ATTR_UNDERLINE;
+            t->deco = (vt_u8)((t->deco & ~VT_DECO_UL_MASK) | VT_UL_DOUBLE);
         } else if (p == 22) {
             t->attr &= ~(VT_ATTR_BOLD | VT_ATTR_FAINT);
         } else if (p == 23) {
             t->attr &= ~VT_ATTR_ITALIC;
+            if (t->font == 10)
+                t->font = 0; /* not italic, not Fraktur */
         } else if (p == 24) {
             t->attr &= ~VT_ATTR_UNDERLINE;
+            t->deco &= ~VT_DECO_UL_MASK;
         } else if (p == 25) {
-            t->attr &= ~VT_ATTR_BLINK;
+            t->attr &= ~(VT_ATTR_BLINK | VT_ATTR_RAPID);
         } else if (p == 27) {
             t->attr &= ~VT_ATTR_INVERSE;
         } else if (p == 28) {
             t->attr &= ~VT_ATTR_CONCEAL;
         } else if (p == 29) {
             t->attr &= ~VT_ATTR_STRIKE;
+        } else if (t->pers != VT_AMIGA && p >= 10 && p <= 20) {
+            t->font = (vt_u8)(p - 10); /* 10 primary, 11-19 alternative, 20 Fraktur */
+        } else if (t->pers != VT_AMIGA && (p == 26 || p == 50)) {
+            /* proportional spacing on / off: a character cell grid has none */
+        } else if (t->pers != VT_AMIGA && p == 51) {
+            t->attr = (vt_attr)((t->attr | VT_ATTR_FRAMED) & ~VT_ATTR_ENCIRCLED);
+        } else if (t->pers != VT_AMIGA && p == 52) {
+            t->attr = (vt_attr)((t->attr | VT_ATTR_ENCIRCLED) & ~VT_ATTR_FRAMED);
+        } else if (t->pers != VT_AMIGA && p == 53) {
+            t->attr |= VT_ATTR_OVERLINE;
+        } else if (t->pers != VT_AMIGA && p == 54) {
+            t->attr &= ~(VT_ATTR_FRAMED | VT_ATTR_ENCIRCLED);
+        } else if (t->pers != VT_AMIGA && p == 55) {
+            t->attr &= ~VT_ATTR_OVERLINE;
+        } else if (t->pers != VT_AMIGA && p == 58) {
+            t->ul = ext_colour(t, &i);
+        } else if (t->pers != VT_AMIGA && p == 59) {
+            t->ul = VT_COLOR_DEFAULT;
+        } else if (t->pers != VT_AMIGA && p >= 60 && p <= 64) {
+            t->deco = (vt_u8)((t->deco & ~VT_DECO_IDEO_MASK) | ((p - 59) << VT_DECO_IDEO_SHIFT));
+        } else if (t->pers != VT_AMIGA && p == 65) {
+            t->deco &= ~VT_DECO_IDEO_MASK;
+        } else if (t->pers != VT_AMIGA && p == 73) {
+            t->attr = (vt_attr)((t->attr | VT_ATTR_SUPER) & ~VT_ATTR_SUB);
+        } else if (t->pers != VT_AMIGA && p == 74) {
+            t->attr = (vt_attr)((t->attr | VT_ATTR_SUB) & ~VT_ATTR_SUPER);
+        } else if (t->pers != VT_AMIGA && p == 75) {
+            t->attr &= ~(VT_ATTR_SUPER | VT_ATTR_SUB);
         } else if (p >= 30 && p <= 37) {
             t->fg = (vt_color)(p - 30);
         } else if (p == 38) {
@@ -1230,6 +1368,7 @@ static void sgr(vt_term *t)
             note_value(t, 'S', p);
         }
     }
+    t->ext = style_index(t);
 }
 
 static void set_mode(vt_term *t, int on)
@@ -2249,6 +2388,8 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
         c[k].fg = t->fg;
         c[k].bg = t->bg;
         c[k].attr = t->attr;
+        c[k].deco = t->deco;
+        c[k].ext = t->ext;
     }
     if (k) {
         mark(t, t->cx, t->cy, t->cx + (int)k);

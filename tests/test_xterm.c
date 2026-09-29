@@ -1,3 +1,4 @@
+#include <string.h>
 /* xterm personality: parser, grid and the sequences Unix ports send. */
 #include "harness.h"
 
@@ -238,6 +239,78 @@ static void rgb_colour_keeps_all_24_bits(void)
     h_put(t, "\033[38;2;1;130;255;48;2;7;8;9mA");
     CHECK_INT(h_cell(t, 0, 0)->fg == (VT_COLOR_RGB | 0x0182FFUL), 1);
     CHECK_INT(h_cell(t, 0, 0)->bg == (VT_COLOR_RGB | 0x070809UL), 1);
+    vt_free(t);
+}
+
+/* ---- phase A1: the whole of SGR ---- */
+
+static void underline_styles_and_colour(void)
+{
+    vt_term *t = h_new(10, 1, VT_XTERM);
+    h_put(t, "\033[4:3ma\033[21mb\033[4:0mc\033[4;58;5;196md\033[58:2::1:2:3me\033[59mf\033[24mg");
+    CHECK_INT(h_cell(t, 0, 0)->deco & VT_DECO_UL_MASK, VT_UL_CURLY);
+    CHECK_INT((h_cell(t, 0, 0)->attr & VT_ATTR_UNDERLINE) != 0, 1);
+    CHECK_INT(h_cell(t, 1, 0)->deco & VT_DECO_UL_MASK, VT_UL_DOUBLE);
+    CHECK_INT(h_cell(t, 2, 0)->attr & VT_ATTR_UNDERLINE, 0);
+    CHECK_INT(h_cell(t, 3, 0)->deco & VT_DECO_UL_MASK, VT_UL_SINGLE);
+    CHECK_INT(vt_cell_underline_color(t, h_cell(t, 3, 0)) == 196, 1);
+    CHECK_INT(vt_cell_underline_color(t, h_cell(t, 4, 0)) == VT_RGB(1, 2, 3), 1);
+    CHECK_INT(vt_cell_underline_color(t, h_cell(t, 5, 0)) == VT_COLOR_DEFAULT, 1);
+    CHECK_INT(h_cell(t, 6, 0)->deco & VT_DECO_UL_MASK, 0);
+    CHECK_INT(h_cell(t, 6, 0)->attr & VT_ATTR_UNDERLINE, 0);
+    vt_free(t);
+}
+
+static void fonts_and_fraktur(void)
+{
+    vt_term *t = h_new(10, 1, VT_XTERM);
+    h_put(t, "\033[11ma\033[19mb\033[20mc\033[23md\033[13me\033[10mf");
+    CHECK_INT(vt_cell_font(t, h_cell(t, 0, 0)), 1);
+    CHECK_INT(vt_cell_font(t, h_cell(t, 1, 0)), 9);
+    CHECK_INT(vt_cell_font(t, h_cell(t, 2, 0)), 10);
+    CHECK_INT(vt_cell_font(t, h_cell(t, 3, 0)), 0); /* 23: neither italic nor Fraktur */
+    CHECK_INT(vt_cell_font(t, h_cell(t, 4, 0)), 3);
+    CHECK_INT(vt_cell_font(t, h_cell(t, 5, 0)), 0);
+    vt_free(t);
+}
+
+static void overline_frames_scripts_ideograms_blink(void)
+{
+    vt_term *t = h_new(12, 1, VT_XTERM);
+    h_put(t, "\033[53;51ma\033[52mb\033[54;55mc\033[73md\033[74me\033[75mf"
+             "\033[62mg\033[64mh\033[65mi\033[5mj\033[6mk\033[25ml");
+    CHECK_INT(h_cell(t, 0, 0)->attr & (VT_ATTR_OVERLINE | VT_ATTR_FRAMED), VT_ATTR_OVERLINE | VT_ATTR_FRAMED);
+    CHECK_INT(h_cell(t, 1, 0)->attr & (VT_ATTR_FRAMED | VT_ATTR_ENCIRCLED), VT_ATTR_ENCIRCLED);
+    CHECK_INT(h_cell(t, 2, 0)->attr & (VT_ATTR_OVERLINE | VT_ATTR_FRAMED | VT_ATTR_ENCIRCLED), 0);
+    CHECK_INT(h_cell(t, 3, 0)->attr & (VT_ATTR_SUPER | VT_ATTR_SUB), VT_ATTR_SUPER);
+    CHECK_INT(h_cell(t, 4, 0)->attr & (VT_ATTR_SUPER | VT_ATTR_SUB), VT_ATTR_SUB);
+    CHECK_INT(h_cell(t, 5, 0)->attr & (VT_ATTR_SUPER | VT_ATTR_SUB), 0);
+    CHECK_INT((h_cell(t, 6, 0)->deco & VT_DECO_IDEO_MASK) >> VT_DECO_IDEO_SHIFT, VT_IDEO_OVERLINE);
+    CHECK_INT((h_cell(t, 7, 0)->deco & VT_DECO_IDEO_MASK) >> VT_DECO_IDEO_SHIFT, VT_IDEO_STRESS);
+    CHECK_INT(h_cell(t, 8, 0)->deco & VT_DECO_IDEO_MASK, 0);
+    CHECK_INT(h_cell(t, 9, 0)->attr & (VT_ATTR_BLINK | VT_ATTR_RAPID), VT_ATTR_BLINK);
+    CHECK_INT(h_cell(t, 10, 0)->attr & (VT_ATTR_BLINK | VT_ATTR_RAPID), VT_ATTR_BLINK | VT_ATTR_RAPID);
+    CHECK_INT(h_cell(t, 11, 0)->attr & (VT_ATTR_BLINK | VT_ATTR_RAPID), 0);
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* More distinct underline colours than the table holds: entries the grid
+ * no longer shows are swept, so the newest colour is always kept. */
+static void rare_style_table_is_swept_when_full(void)
+{
+    vt_term *t = h_new(4, 1, VT_XTERM);
+    char b[32];
+    int i;
+    for (i = 0; i < 600; i++) {
+        /* ESC [ 58 ; 2 ; r ; g ; 0 m A, r and g as three digits */
+        int r = i & 255, g = i >> 8;
+        memcpy(b, "\r\033[58;2;000;000;0mA", 20);
+        b[8] = (char)('0' + r / 100); b[9] = (char)('0' + r / 10 % 10); b[10] = (char)('0' + r % 10);
+        b[12] = (char)('0' + g / 100); b[13] = (char)('0' + g / 10 % 10); b[14] = (char)('0' + g % 10);
+        h_put(t, b);
+    }
+    CHECK_INT(vt_cell_underline_color(t, h_cell(t, 0, 0)) == VT_RGB(599 & 255, 599 >> 8, 0), 1);
     vt_free(t);
 }
 
@@ -588,6 +661,10 @@ void suite_xterm(void)
     back_tab();
     sgr_colours_and_attributes();
     rgb_colour_keeps_all_24_bits();
+    underline_styles_and_colour();
+    fonts_and_fraktur();
+    overline_frames_scripts_ideograms_blink();
+    rare_style_table_is_swept_when_full();
     alt_screen_1049_saves_and_restores();
     dec_graphics_draw_boxes();
     shift_out_selects_g1();

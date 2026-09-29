@@ -47,12 +47,40 @@ typedef vt_u32 vt_color;
 #define VT_ATTR_INVERSE   0x20
 #define VT_ATTR_CONCEAL   0x40
 #define VT_ATTR_STRIKE    0x80
+#define VT_ATTR_OVERLINE  0x0100  /* SGR 53 */
+#define VT_ATTR_RAPID     0x0200  /* SGR 6: with BLINK, the fast rate */
+#define VT_ATTR_SUPER     0x0400  /* SGR 73 */
+#define VT_ATTR_SUB       0x0800  /* SGR 74 */
+#define VT_ATTR_FRAMED    0x1000  /* SGR 51 */
+#define VT_ATTR_ENCIRCLED 0x2000  /* SGR 52 */
+typedef vt_u16 vt_attr;
+
+/* vt_cell.deco: the underline's style (with VT_ATTR_UNDERLINE set) and an
+ * ideogram line (SGR 60-64), which ECMA-48 draws beside or over the text. */
+#define VT_DECO_UL_MASK   0x07
+#define VT_UL_SINGLE      1       /* SGR 4, 4:1 */
+#define VT_UL_DOUBLE      2       /* SGR 21, 4:2 */
+#define VT_UL_CURLY       3       /* 4:3 */
+#define VT_UL_DOTTED      4       /* 4:4 */
+#define VT_UL_DASHED      5       /* 4:5 */
+#define VT_DECO_IDEO_SHIFT 3
+#define VT_DECO_IDEO_MASK 0x38
+#define VT_IDEO_UNDERLINE        1 /* SGR 60 */
+#define VT_IDEO_DOUBLE_UNDERLINE 2 /* SGR 61 */
+#define VT_IDEO_OVERLINE         3 /* SGR 62 */
+#define VT_IDEO_DOUBLE_OVERLINE  4 /* SGR 63 */
+#define VT_IDEO_STRESS           5 /* SGR 64 */
 
 typedef struct vt_cell {
     vt_color fg, bg; /* see VT_COLOR_* */
     vt_u16 ch;      /* Unicode code point (BMP); 0x20 for blank */
-    vt_u8  attr;    /* VT_ATTR_* */
+    vt_attr attr;   /* VT_ATTR_* */
     vt_u8  width;   /* 1; 2 for the first cell of a wide glyph, 0 for its second */
+    vt_u8  deco;    /* VT_DECO_*: underline style, ideogram line */
+    vt_u8  ext;     /* 0, or 1 + an entry of the terminal's rare styles:
+                     * underline colour and font (vt_cell_underline_color,
+                     * vt_cell_font) */
+    vt_u8  pad;
 } vt_cell;
 
 /* Window-level requests the engine does not own itself (amiga personality). */
@@ -157,6 +185,10 @@ long     vt_unhandled(const vt_term *t, const char **kinds, long *counts, int ma
  * inverse (the cell's, XOR the screen's DECSCNM) and conceal all resolved.
  * RGB colours pass through unchanged. */
 void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_color *bg);
+/* The colour of the cell's underline (SGR 58), VT_COLOR_DEFAULT when it
+ * follows the text; and its font, 0 primary, 1-9 SGR 11-19, 10 Fraktur (20). */
+vt_color vt_cell_underline_color(const vt_term *t, const vt_cell *c);
+int      vt_cell_font(const vt_term *t, const vt_cell *c);
 
 /* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
 const vt_u16 *vt_cp437_table(void);

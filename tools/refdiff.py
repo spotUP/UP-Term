@@ -18,7 +18,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 PYTE_GAP_ALT = "pyte has no alternate screen (?47/?1047/?1049)"
 PYTE_GAP_BCE = "pyte erases with the default background, not the current one (no BCE)"
 DISAGREE = {
-    "ansitest.150x140.bin": "pyte ignores SGR 21 (doubly underlined); libvterm and we underline",
     "quirk-alt-1047-clears-on-exit.10x4.bin": PYTE_GAP_ALT,
     "quirk-alt-1049-roundtrip.10x4.bin": PYTE_GAP_ALT,
     "quirk-bce-erase-colour.10x3.bin": PYTE_GAP_BCE,
@@ -79,6 +78,7 @@ PROBES = {
 # These compare against a reviewed golden grid (tests/golden/<stream>.txt,
 # written by `make golden`), so a change to them is a visible diff.
 XTERM_NOT_LIBVTERM = {
+    "ansitest.150x140.bin": "SGR 58;5;n is the underline colour (VTE, kitty, mintty; we follow them); libvterm has no 58 and reads its 5 as blink and 1 as bold",
     "quirk-wrap-then-el.10x4.bin": "EL resets the pending wrap in xterm; libvterm keeps it",
     "quirk-wrap-then-ech.10x4.bin": "ECH resets the pending wrap in xterm; libvterm keeps it",
     "quirk-wrap-then-ich.10x4.bin": "ICH resets the pending wrap in xterm; libvterm keeps it",

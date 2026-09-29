@@ -2,6 +2,18 @@
  * chapter; see the conformance matrix). */
 #include "harness.h"
 
+/* The ROM console knows none of the ECMA-48 extras: they stay unhandled
+ * (and draw nothing) in the amiga personality. */
+static void amiga_ignores_the_ecma_extras(void)
+{
+    vt_term *t = h_new(4, 1, VT_AMIGA);
+    h_put(t, "\033[53;73;11ma");
+    CHECK_INT(h_cell(t, 0, 0)->attr & (VT_ATTR_OVERLINE | VT_ATTR_SUPER), 0);
+    CHECK_INT(vt_cell_font(t, h_cell(t, 0, 0)), 0);
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 3);
+    vt_free(t);
+}
+
 static void window_status_request_reports_bounds(void)
 {
     vt_term *t = h_new(77, 23, VT_AMIGA);
@@ -205,4 +217,5 @@ void suite_amiga(void)
     linefeed_starts_a_new_line();
     pens_are_screen_pens();
     form_feed_clears_the_window();
+    amiga_ignores_the_ecma_extras();
 }
