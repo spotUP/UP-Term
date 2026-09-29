@@ -61,6 +61,8 @@ STARTING IT
   Workbench: double-click SYS:Utilities/UP-Term. It opens an XCON: window
   with vsh, starting in $HOME (SYS:) with your Workbench path. Change the
   window in the icon's WINDOW tooltype (any XCON: spec).
+  (Directory Opus: Shift + double-click runs a project through its icon;
+  a plain double-click opens it by file type.)
   Shell: NewShell "XCON:0/20/640/300/UP-Term/CLOSE", then vsh.
 
 VSH (the shell)

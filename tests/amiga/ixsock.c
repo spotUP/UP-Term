@@ -25,7 +25,7 @@ static void say(const char *fmt, ...)
     va_end(ap);
     fputs(line, stdout);
     fflush(stdout);
-    if ((f = fopen("/RAM/ixsock.log", "a"))) {
+    if ((f = fopen("/VTC/ixsock.log", "a"))) {
         fputs(line, f);
         fclose(f);
     }
@@ -49,7 +49,9 @@ int main(int argc, char **argv)
     char buf[64];
     const char *path = "/T/ixsock.test";
     if (argc > 1 && !strcmp(argv[1], "client")) {
+        printf("c1 client started\n");
         c = socket(AF_UNIX, SOCK_STREAM, 0);
+        printf("c2 client socket %d\n", c);
         memset(&a, 0, sizeof(a));
         a.sun_family = AF_UNIX;
         strcpy(a.sun_path, path);
@@ -57,13 +59,17 @@ int main(int argc, char **argv)
             printf("client: connect errno %d\n", errno);
             return 1;
         }
+        printf("c3 client connected\n");
         write(c, "hello over AF_UNIX", 18);
+        printf("c4 client wrote\n");
         close(c);
         return 0;
     }
     unlink(path);
-    unlink("/RAM/ixsock.log");
+    unlink("/VTC/ixsock.log");
     printf("0 start\n");
+    if (argc > 1 && !strcmp(argv[1], "nop"))
+        return 0; /* does a program that links the socket calls even start? */
     s = socket(AF_UNIX, SOCK_STREAM, 0);
     printf("1 socket %d errno %d\n", s, s < 0 ? errno : 0);
     memset(&a, 0, sizeof(a));
@@ -74,19 +80,36 @@ int main(int argc, char **argv)
     n = listen(s, 5);
     printf("3 listen %d errno %d\n", n, n < 0 ? errno : 0);
     fflush(stdout);
+    if (argc > 1 && !strcmp(argv[1], "listen")) {
+        close(s);
+        unlink(path);
+        printf("3b closed\n");
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "server")) {
+        printf("3c waiting for a client started apart\n");
+    } else {
+    printf("3c vfork\n");
     if (vfork() == 0) {
         execl(argv[0], argv[0], "client", (char *)0);
         _exit(127);
     }
-    printf("4 select on listener: %d\n", readable(s, 3000000));
+    }
+    if (argc > 1 && (!strcmp(argv[1], "noselect") || !strcmp(argv[1], "server")))
+        printf("4 (no select)\n");
+    else
+        printf("4 select on listener: %d\n", readable(s, 3000000));
+    printf("4b accept...\n");
     c = accept(s, 0, 0);
     printf("5 accept %d errno %d\n", c, c < 0 ? errno : 0);
     printf("6 select on connection: %d\n", c >= 0 && readable(c, 3000000));
     n = c >= 0 ? read(c, buf, sizeof(buf) - 1) : -1;
     buf[n > 0 ? n : 0] = 0;
     printf("7 read %d [%s]\n", n, buf);
-    wait(&st);
-    printf("8 client exit %d\n", WEXITSTATUS(st));
+    if (!(argc > 1 && !strcmp(argv[1], "server"))) {
+        wait(&st);
+        printf("8 client exit %d\n", WEXITSTATUS(st));
+    }
     close(c);
     close(s);
     unlink(path);
