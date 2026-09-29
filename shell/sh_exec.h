@@ -31,7 +31,8 @@ typedef struct sh_os {
     /* a pipe: data written to *wr is read from *rd; 0 = ok */
     int   (*pipe)(void *os, sh_fh *rd, sh_fh *wr);
     /* start argv as a command with io; the streams io->owned marks become
-     * the OS layer's to close when the command ends. wait: return its exit
+     * the OS layer's to close -- when the command ends, or at once if it
+     * cannot start (the caller never closes them again). wait: return its exit
      * status (-1: not found); !wait: return a job id (> 0) for sh_os.wait,
      * or -1 */
     long  (*run)(void *os, char **argv, const sh_io *io, int wait);

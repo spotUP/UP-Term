@@ -829,8 +829,11 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
         if (job[i])
             continue;
         if (is_external(sh, st[i])) {
-            status = 127; /* it did not start */
-            close_owned(sh, &sio[i]);
+            /* it did not start; the OS layer took its streams all the same */
+            char *name = expand_one(sh, st[i]->words->text, io);
+            err2(sh, io, name ? name : "?", "not found");
+            free(name);
+            status = 127;
             continue;
         }
         status = exec_node(sh, st[i], &sio[i]);

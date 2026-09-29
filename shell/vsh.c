@@ -113,13 +113,20 @@ static char *command_line(char **argv)
     return s;
 }
 
-/* A background command runs in a runner process of its own, which calls
- * SystemTags and replies with the exit status. */
+/* Every external command runs in a runner process of its own. A command
+ * file found on disk is loaded here and run by RunCommand in the runner,
+ * as the AmigaDOS Shell runs commands in its process: then the runner is
+ * the command's process, and Ctrl-C can be passed on to it. Resident
+ * commands and scripts go through SystemTags in the runner instead. */
 typedef struct job {
     struct Message msg;
-    char *cmd;
-    BPTR in, out;
-    int close_in, close_out;
+    char *cmd;              /* the whole line, for SystemTags */
+    char *name;             /* the program name (SetProgramName) */
+    char *args;             /* its argument string, ending in \n */
+    BPTR seg;               /* the loaded command, or 0: SystemTags */
+    BPTR in, out, err;
+    int close_in, close_out, close_err;
+    struct Task *task;      /* the runner, while it runs */
     LONG rc;
 } job;
 
@@ -130,76 +137,196 @@ static void runner(void)
     WaitPort(&me->pr_MsgPort);
     j = (job *)GetMsg(&me->pr_MsgPort);
     /* the runner has the shell's current directory (CreateNewProc copies it) */
-    j->rc = SystemTags((STRPTR)j->cmd, SYS_Input, j->in, SYS_Output, j->out,
-                       SYS_UserShell, TRUE, TAG_END);
+    if (j->seg) {
+        BPTR oin = SelectInput(j->in), oout = SelectOutput(j->out);
+        BPTR oerr = me->pr_CES;
+        if (j->err)
+            me->pr_CES = j->err;
+        SetProgramName((STRPTR)j->name);
+        j->rc = RunCommand(j->seg, 16000, (STRPTR)j->args, (LONG)strlen(j->args));
+        me->pr_CES = oerr;
+        SelectInput(oin);
+        SelectOutput(oout);
+    } else {
+        j->rc = SystemTags((STRPTR)j->cmd, SYS_Input, j->in, SYS_Output, j->out,
+                           SYS_UserShell, TRUE, TAG_END);
+    }
     if (j->close_in)
         Close(j->in);
     if (j->close_out)
         Close(j->out);
+    if (j->close_err && j->err != j->out)
+        Close(j->err);
     Forbid(); /* the reply and our end, before the shell can free anything */
     ReplyMsg(&j->msg);
 }
 
 static struct MsgPort *job_port;
 
+/* A command name to something to run: *seg a loaded command file, or 0
+ * for SystemTags (Resident commands, scripts). -1: found nowhere. The
+ * Shell's order: a path as given; else the current directory, the
+ * Shell's path, C:. */
+static int resolve(const char *name, BPTR *seg)
+{
+    struct CommandLineInterface *cli = Cli();
+    BPTR lock, old;
+    BPTR *node;
+    *seg = 0;
+    if (!strchr(name, ':') && !strchr(name, '/')) {
+        struct Segment *r;
+        Forbid();
+        r = FindSegment((STRPTR)name, 0, 0);
+        if (!r)
+            r = FindSegment((STRPTR)name, 0, 1);
+        Permit();
+        if (r)
+            return 0; /* Resident: the Shell runs it */
+    }
+    if ((lock = Lock((STRPTR)name, SHARED_LOCK)) != 0) {
+        UnLock(lock);
+        *seg = LoadSeg((STRPTR)name);
+        return 0; /* not loadable (a script): SystemTags */
+    }
+    if (strchr(name, ':') || strchr(name, '/'))
+        return -1;
+    for (node = cli ? (BPTR *)BADDR(cli->cli_CommandDir) : 0; node; node = (BPTR *)BADDR(node[0])) {
+        if (!node[1])
+            continue;
+        old = CurrentDir(node[1]);
+        lock = Lock((STRPTR)name, SHARED_LOCK);
+        if (lock) {
+            UnLock(lock);
+            *seg = LoadSeg((STRPTR)name);
+            CurrentDir(old);
+            return 0;
+        }
+        CurrentDir(old);
+    }
+    lock = Lock((STRPTR)"C:", SHARED_LOCK);
+    if (lock) {
+        BPTR f;
+        old = CurrentDir(lock);
+        f = Lock((STRPTR)name, SHARED_LOCK);
+        if (f) {
+            UnLock(f);
+            *seg = LoadSeg((STRPTR)name);
+        }
+        UnLock(CurrentDir(old));
+        if (f)
+            return 0;
+    }
+    return -1;
+}
+
+static long os_wait(void *os, long id);
+
 static long os_run(void *os, char **argv, const sh_io *io, int wait)
 {
     sh_shell *sh = (sh_shell *)os;
-    char *cmd = command_line(argv);
+    char *cmd = command_line(argv), *sp;
     sh_var *v;
-    LONG rc;
+    job *j;
+    struct Process *p;
+    BPTR seg;
     if (!cmd)
         return -1;
-    /* exported variables are local variables for the command */
-    for (v = sh->ctx.vars; v; v = v->next)
-        if (v->exported)
-            SetVar((STRPTR)v->name, (STRPTR)v->value, -1, GVF_LOCAL_ONLY);
-    if (wait) {
-        rc = SystemTags((STRPTR)cmd, SYS_Input, (BPTR)io->in, SYS_Output, (BPTR)io->out,
-                        SYS_UserShell, TRUE, TAG_END);
+    if (resolve(argv[0], &seg) < 0) {
         free(cmd);
         if ((io->owned & SH_OWN_IN) && io->in)
             Close((BPTR)io->in);
         if ((io->owned & SH_OWN_OUT) && io->out)
             Close((BPTR)io->out);
-        return rc < 0 ? -1 : rc;
+        return -1;
     }
-    {
-        job *j = (job *)AllocVec(sizeof(job), MEMF_PUBLIC | MEMF_CLEAR);
-        struct Process *p;
-        if (!j) {
-            free(cmd);
-            return -1;
-        }
-        j->msg.mn_ReplyPort = job_port;
-        j->msg.mn_Length = sizeof(job);
-        j->cmd = cmd;
+    /* exported variables are local variables for the command */
+    for (v = sh->ctx.vars; v; v = v->next)
+        if (v->exported)
+            SetVar((STRPTR)v->name, (STRPTR)v->value, -1, GVF_LOCAL_ONLY);
+    j = (job *)AllocVec(sizeof(job), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!j) {
+        if (seg)
+            UnLoadSeg(seg);
+        free(cmd);
+        return -1;
+    }
+    j->msg.mn_ReplyPort = job_port;
+    j->msg.mn_Length = sizeof(job);
+    j->cmd = cmd;
+    j->seg = seg;
+    j->name = (char *)malloc(strlen(argv[0]) + 1);
+    if (j->name)
+        strcpy(j->name, argv[0]);
+    /* the argument string: the line after the name, ending in a newline */
+    sp = cmd;
+    if (*sp == '"') {
+        for (sp++; *sp && *sp != '"'; sp++)
+            if (*sp == '*' && sp[1])
+                sp++;
+        if (*sp)
+            sp++;
+    } else {
+        while (*sp && *sp != ' ')
+            sp++;
+    }
+    while (*sp == ' ')
+        sp++;
+    j->args = (char *)malloc(strlen(sp) + 2);
+    if (j->args) {
+        strcpy(j->args, sp);
+        strcat(j->args, "\n");
+    }
+    if (wait) {
+        /* in the foreground: the shell's own streams, not handed over */
+        j->in = (BPTR)io->in;
+        j->out = (BPTR)io->out;
+        j->err = (BPTR)io->err;
+        j->close_in = (io->owned & SH_OWN_IN) != 0;
+        j->close_out = (io->owned & SH_OWN_OUT) != 0;
+        j->close_err = (io->owned & SH_OWN_ERR) != 0;
+    } else {
         /* streams it does not own are the shell's: it gets its own handles
          * on the same console (or NIL: for input), not the shell's */
         j->in = (io->owned & SH_OWN_IN) ? (BPTR)io->in : Open((STRPTR)"NIL:", MODE_OLDFILE);
         j->out = (io->owned & SH_OWN_OUT) ? (BPTR)io->out : Open((STRPTR)"*", MODE_NEWFILE);
+        j->err = (io->owned & SH_OWN_ERR) ? (BPTR)io->err : 0;
         j->close_in = j->close_out = 1;
-        p = CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"vsh job", NP_StackSize, 8000,
-                              NP_Cli, TRUE, TAG_END);
-        if (!p) {
-            Close(j->in);
-            Close(j->out);
-            free(cmd);
-            FreeVec(j);
-            return -1;
-        }
-        PutMsg(&p->pr_MsgPort, &j->msg);
-        return (long)j;
+        j->close_err = (io->owned & SH_OWN_ERR) != 0;
     }
+    p = (j->name && j->args)
+        ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"vsh job", NP_StackSize, 8000,
+                            NP_Cli, TRUE, TAG_END)
+        : 0;
+    if (!p) {
+        if (j->close_in)
+            Close(j->in);
+        if (j->close_out)
+            Close(j->out);
+        if (seg)
+            UnLoadSeg(seg);
+        free(j->name);
+        free(j->args);
+        free(cmd);
+        FreeVec(j);
+        return -1;
+    }
+    j->task = &p->pr_Task;
+    SetSignal(0, SIGBREAKF_CTRL_C); /* an old Ctrl-C is not for this command */
+    PutMsg(&p->pr_MsgPort, &j->msg);
+    if (wait)
+        return os_wait(os, (long)j);
+    return (long)j;
 }
 
+/* Wait for a job. Ctrl-C while waiting goes on to the job's runner, the
+ * command's process, as long as it runs (the console signals the shell). */
 static long os_wait(void *os, long id)
 {
     job *j = (job *)id, *m;
     LONG rc;
     (void)os;
-    /* replies come in any order: wait until this one is among them */
     for (;;) {
+        ULONG got;
         Forbid();
         for (m = (job *)job_port->mp_MsgList.lh_Head; m->msg.mn_Node.ln_Succ;
              m = (job *)m->msg.mn_Node.ln_Succ)
@@ -211,9 +338,23 @@ static long os_wait(void *os, long id)
             break;
         }
         Permit();
-        Wait(1UL << job_port->mp_SigBit); /* set by every reply: look again */
+        got = Wait((1UL << job_port->mp_SigBit) | SIGBREAKF_CTRL_C);
+        if (got & SIGBREAKF_CTRL_C) {
+            Forbid(); /* still running: its reply is not in yet */
+            for (m = (job *)job_port->mp_MsgList.lh_Head; m->msg.mn_Node.ln_Succ;
+                 m = (job *)m->msg.mn_Node.ln_Succ)
+                if (m == j)
+                    break;
+            if (!m->msg.mn_Node.ln_Succ)
+                Signal(j->task, SIGBREAKF_CTRL_C);
+            Permit();
+        }
     }
     rc = j->rc;
+    if (j->seg)
+        UnLoadSeg(j->seg);
+    free(j->name);
+    free(j->args);
     free(j->cmd);
     FreeVec(j);
     return rc;
@@ -417,6 +558,10 @@ int main(int argc, char **argv)
     }
     for (i = 1; i < argc; i++)
         sh_list_add(&sh.ctx.args, argv[i]);
+    /* AmigaDOS leaves a command's argument line in its input buffer (for
+     * ReadArgs); unread, vsh took it as its first, empty, command line
+     * and printed a second prompt (rig, 2026-09-29) */
+    Flush(Input());
     {
         /* ENVARC:vsh/vshrc, then a script named on the command line */
         BPTR rc = Lock((STRPTR)"ENV:vsh/vshrc", SHARED_LOCK);

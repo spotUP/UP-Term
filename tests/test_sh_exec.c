@@ -163,6 +163,9 @@ static long f_run(void *os, char **argv, const sh_io *io, int wait)
     p.io = *io;
     if (wait)
         return run_now(p.argv, p.argc, &p.io);
+    if (strcmp(argv[0], "cat") && strcmp(argv[0], "upper") && strcmp(argv[0], "wc") &&
+        strcmp(argv[0], "fail") && strcmp(argv[0], "ls") && strcmp(argv[0], "args"))
+        return -1; /* as the real layer: not found, nothing started */
     if (n_started < 16)
         last_owned[n_started++] = io->owned;
     for (i = 0; i < 16; i++)
@@ -312,6 +315,8 @@ static void jobs_aliases_and_dirs(void)
     CHECK_STR(run("which echo f; f() { :; }; which f"), "echo is a shell builtin\nf is a command\nf is a function\n");
     /* A background stage gets its pipe ends to keep (rig: list's output
      * went to the console, the runner had been given no pipe) */
+    run("ls | nosuch | cat");  /* a stage that cannot start says so */
+    CHECK_STR(slot(ERR)->data, "vsh: nosuch: not found\n");
     run("ls | cat");
     CHECK_INT(last_owned[0] & SH_OWN_OUT, SH_OWN_OUT);
     CHECK_INT(last_owned[1] & SH_OWN_IN, SH_OWN_IN);
