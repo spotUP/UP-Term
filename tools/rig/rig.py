@@ -118,6 +118,8 @@ def screenmode(name):
     import ami
     if name == "aga":
         cmd = b"Copy VTC:screenmode.aga16.prefs ENVARC:Sys/screenmode.prefs"
+    elif name == "aga256":  # the aga16 file with depth 8 (SCRM sm_Depth)
+        cmd = b"Copy VTC:screenmode.aga256.prefs ENVARC:Sys/screenmode.prefs"
     else:
         cmd = b"Copy VTC:screenmode.rtg.prefs ENVARC:Sys/screenmode.prefs"
     print(ami.req(0x02, (20).to_bytes(2, "big") + cmd)[4:].decode("latin-1"))
@@ -181,5 +183,5 @@ def status(quiet=False):
 
 if __name__ == "__main__":
     {"setup": setup, "start": start, "stop": stop, "install": install,
-     "status": status, "aga": lambda: screenmode("aga"),
+     "status": status, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
      "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()

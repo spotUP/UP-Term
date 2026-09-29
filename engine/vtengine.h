@@ -213,6 +213,9 @@ int      vt_cell_font(const vt_term *t, const vt_cell *c);
  * and of the default text (0), background (1) and cursor (2) colours. The
  * host tells the engine the defaults it draws with; OSC 10-12 override. */
 vt_u32   vt_palette_rgb(const vt_term *t, int i);
+/* The xterm 256-colour index (16..255: the 6x6x6 cube or the grey ramp)
+ * nearest to 0xRRGGBB, for screens that cannot show every colour. */
+int      vt_rgb_to_256(vt_u32 rgb);
 void     vt_set_default_colors(vt_term *t, vt_u32 fg, vt_u32 bg, vt_u32 cursor);
 vt_u32   vt_default_color(const vt_term *t, int which);
 /* The cell size in pixels, for the size reports programs ask for (CSI 14t,

@@ -323,6 +323,28 @@ static void check_reply(const char *want)
     h_reply_clear();
 }
 
+/* 24-bit colours to the nearest xterm 256 index (for palette screens). */
+static void rgb_to_256(void)
+{
+    CHECK_INT(vt_rgb_to_256(0x000000UL), 16);
+    CHECK_INT(vt_rgb_to_256(0xFFFFFFUL), 231);
+    CHECK_INT(vt_rgb_to_256(0xFF0000UL), 196);
+    CHECK_INT(vt_rgb_to_256(0x5F87AFUL), 67);    /* exactly a cube colour */
+    CHECK_INT(vt_rgb_to_256(0x808080UL), 244);   /* grey 128 is on the ramp */
+    CHECK_INT(vt_rgb_to_256(0x0A0A0AUL), 232);   /* dark grey: ramp beats cube black */
+    CHECK_INT(vt_rgb_to_256(0xEEEEEEUL), 255);
+    CHECK_INT(vt_rgb_to_256(0x0B0700UL), 232);   /* near black, not quite grey */
+    {
+        /* every index maps back to itself: the palette's own colours */
+        vt_term *t = h_new(2, 1, VT_XTERM);
+        int i, same = 0;
+        for (i = 16; i < 256; i++)
+            same += vt_rgb_to_256(vt_palette_rgb(t, i)) == i;
+        CHECK_INT(same, 240);
+        vt_free(t);
+    }
+}
+
 static void colour_queries_and_changes(void)
 {
     vt_term *t = h_new(10, 2, VT_XTERM);
@@ -787,6 +809,7 @@ static void copy_text_joins_wrapped_lines_and_trims_blanks(void)
 
 void suite_xterm(void)
 {
+    rgb_to_256();
     copy_text_joins_wrapped_lines_and_trims_blanks();
     onlcr_returns_on_linefeed_without_changing_return();
     cp437_charset_for_ibm_font_programs();

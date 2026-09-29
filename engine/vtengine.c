@@ -2952,6 +2952,31 @@ vt_u32 vt_palette_rgb(const vt_term *t, int i)
     return ((vt_u32)i << 16) | ((vt_u32)i << 8) | (vt_u32)i;
 }
 
+/* One channel to its nearest level of the xterm cube (0, 95, 135, 175, 215, 255). */
+static int cube_step(int v)
+{
+    return v < 48 ? 0 : v < 115 ? 1 : (v - 35) / 40;
+}
+
+static long dist2(int r, int g, int b, vt_u32 c)
+{
+    long dr = r - (int)((c >> 16) & 0xFF), dg = g - (int)((c >> 8) & 0xFF), db = b - (int)(c & 0xFF);
+    return dr * dr + dg * dg + db * db;
+}
+
+int vt_rgb_to_256(vt_u32 rgb)
+{
+    static const int level[6] = { 0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF };
+    int r = (int)((rgb >> 16) & 0xFF), g = (int)((rgb >> 8) & 0xFF), b = (int)(rgb & 0xFF);
+    int cr = cube_step(r), cg = cube_step(g), cb = cube_step(b);
+    int avg = (r + g + b) / 3, grey = avg > 238 ? 23 : avg < 3 ? 0 : (avg - 3) / 10;
+    int gv = 8 + 10 * grey;
+    vt_u32 cube = ((vt_u32)level[cr] << 16) | ((vt_u32)level[cg] << 8) | (vt_u32)level[cb];
+    vt_u32 gc = ((vt_u32)gv << 16) | ((vt_u32)gv << 8) | (vt_u32)gv;
+    /* the cube or the grey ramp, whichever is nearer */
+    return dist2(r, g, b, gc) < dist2(r, g, b, cube) ? 232 + grey : 16 + 36 * cr + 6 * cg + cb;
+}
+
 void vt_set_default_colors(vt_term *t, vt_u32 fg, vt_u32 bg, vt_u32 cursor)
 {
     t->dflt[0] = fg & 0xFFFFFFUL;

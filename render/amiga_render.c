@@ -112,28 +112,14 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
     if (vt_personality(r->t) == VT_AMIGA)
         return (UBYTE)(c & 0xFF); /* amiga colours are screen pens */
     if (c & VT_COLOR_RGB) {
-        vt_u16 k;
-        LONG p;
         if (r->truecolor)
             return truecolor_ink(r, VT_RGB_OF(c));
-        /* nearest obtainable pen, cached by rgb555 */
-        k = (vt_u16)((((c >> 19) & 31) << 10) | (((c >> 11) & 31) << 5) | ((c >> 3) & 31));
-        if (!r->rgb_pens)
-            r->rgb_pens = (UBYTE *)AllocVec(32768, MEMF_ANY | MEMF_CLEAR);
-        if (r->rgb_pens && r->rgb_pens[k])
-            return (UBYTE)(r->rgb_pens[k] - 1);
-        p = obtain(r, ((ULONG)((k >> 10) & 31) << 19) | ((ULONG)((k >> 5) & 31) << 11) |
-                      ((ULONG)(k & 31) << 3));
-        if (p < 0)
-            return is_bg ? r->pen_default_bg : r->pen_default_fg;
-        if (r->rgb_pens && r->n_rgb < 64) {
-            /* kept until vr_free, so the colour cannot be taken away */
-            r->rgb_pens[k] = (UBYTE)(p + 1);
-            r->rgb_obtained[r->n_rgb++] = p;
-        } else {
-            ReleasePen(r->cm, (ULONG)p); /* no room: used once, not cached */
-        }
-        return (UBYTE)p;
+        /* a palette screen (AGA, 8-bit RTG): the nearest of the xterm 256
+         * colours, drawn with that index's pen. At most 240 pens, each
+         * obtained once and shared with SGR 38;5 -- a pen per new colour
+         * ran out after 64 and the rest fell to one colour (AGA 256: 63
+         * colours on screen for 320 asked, mean error 161) */
+        c = (vt_color)vt_rgb_to_256(VT_RGB_OF(c));
     }
     c &= 0xFF;
     if (!r->have[c]) {
@@ -181,8 +167,6 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
         r->have[i] = 0;
         r->obtained[i] = -1;
     }
-    r->rgb_pens = 0;
-    r->n_rgb = 0;
     /* A true-colour screen (RTG, more than 8 bits a pixel) shows direct
      * colours exactly through two exclusive scratch pens (ink_pen); a
      * palette screen (AGA, 8-bit RTG) would recolour everything drawn in a
@@ -275,10 +259,6 @@ void vr_free(vr_render *r)
         for (i = 0; i < 256; i++)
             if (r->obtained[i] >= 0)
                 ReleasePen(r->cm, (ULONG)r->obtained[i]);
-    if (r->cm)
-        for (i = 0; i < r->n_rgb; i++)
-            ReleasePen(r->cm, (ULONG)r->rgb_obtained[i]);
-    r->n_rgb = 0;
     for (i = 0; i < 2; i++)
         if (r->cm && r->scratch[i] >= 0)
             ReleasePen(r->cm, (ULONG)r->scratch[i]);
@@ -294,9 +274,6 @@ void vr_free(vr_render *r)
     r->n_exact = 0;
     r->scratch[0] = r->scratch[1] = -1;
     r->truecolor = 0;
-    if (r->rgb_pens)
-        FreeVec(r->rgb_pens);
-    r->rgb_pens = 0;
     if (r->glyphs)
         FreeVec(r->glyphs);
     r->glyphs = 0;
