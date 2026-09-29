@@ -994,7 +994,10 @@ static void key_event(con *c, struct IntuiMessage *im)
         mods |= VT_MOD_SHIFT;
     if (qual & IEQUALIFIER_CONTROL)
         mods |= VT_MOD_CTRL;
-    if (qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
+    /* Meta (the ESC prefix, VT_MOD_ALT) is Left Amiga + key: Alt belongs
+     * to the keymap, where many layouts type ; @ { [ with it (the rig's
+     * ';' is Alt + 0x29; Alt-as-Meta turned it into ESC + o-umlaut). */
+    if (qual & IEQUALIFIER_LCOMMAND)
         mods |= VT_MOD_ALT;
     key = special_key(code);
     if (!key && c->pers == VT_XTERM && (vt_modes(c->t) & VT_MODE_APP_KEYPAD))
@@ -1010,9 +1013,9 @@ static void key_event(con *c, struct IntuiMessage *im)
         ie.ie_Class = IECLASS_RAWKEY;
         ie.ie_SubClass = 0;
         ie.ie_Code = code;
-        /* xterm: Alt is Meta (an ESC prefix), so the keymap sees no Alt */
-        ie.ie_Qualifier = (c->pers == VT_XTERM) ? (UWORD)(qual & ~(IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-                                                : qual;
+        /* the keymap sees Alt (national characters); Left Amiga, our
+         * Meta, it does not */
+        ie.ie_Qualifier = (UWORD)(qual & ~IEQUALIFIER_LCOMMAND);
         ie.ie_EventAddress = *(APTR *)im->IAddress;
         k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), 0);
         for (i = 0; i < k && n < (int)sizeof(out) - 8; i++) {

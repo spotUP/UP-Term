@@ -33,6 +33,8 @@ KEYS
   Right Amiga C / V     copy / paste (clipboard, IFF FTXT)
   Shift+PgUp / PgDn     scroll back / forward
   Right Amiga Up / Down scroll back / forward one line
+  Left Amiga + key      Meta (ESC prefix) for Unix programs; Alt stays
+                        with your keymap
   In the Shell line: Left/Right, Shift+Left/Right, Ctrl-A/E/K/U/W/X,
   Up/Down history, Shift+Up/Down history search, Ctrl-\ end of file.
 

@@ -169,6 +169,14 @@ int vr_layout(vr_render *r)
         rows = r->lay_rows;
     r->ox = w->BorderLeft + lx;
     r->oy = w->BorderTop + ly;
+    if (r->glyphs) {
+        /* the planar path needs cells on a byte boundary of the screen:
+         * start the text at the next 8-pixel column (at most 7 px more) */
+        WORD pad = (WORD)((8 - ((w->LeftEdge + r->ox) & 7)) & 7);
+        if (cols * r->cw + pad > iw)
+            cols = (iw - pad) / r->cw;
+        r->ox += pad;
+    }
     r->hidden = cols < 1 || rows < 1;
     if (cols < 1)
         cols = 1;
@@ -709,6 +717,41 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
     blank.attr = 0;
     blank.width = 1;
     vt_resolve_colors(r->t, &blank, &f, &b);
+#ifndef VTCON_NO_DIRECT
+    {
+        /* Unobscured planar window: blit the screen bitmap itself and
+         * fill the vacated rows, as retro32-term does; ScrollRaster's
+         * layer bookkeeping cost more than the copy (rig, AGA 4 planes). */
+        struct Layer *layer = r->win->WLayer;
+        int done = 0;
+        LockLayer(0, layer);
+        if (direct_ok(r)) {
+            struct BitMap *bm = r->rp->BitMap;
+            WORD sx = r->win->LeftEdge + r->ox, w = (WORD)(r->cols * r->cw);
+            WORD sy = r->win->TopEdge + r->oy + top * r->ch;
+            WORD h = (WORD)((bottom - top) * r->ch), ad = dy < 0 ? -dy : dy;
+            UBYTE pen = pen_for(r, b, 1);
+            if (ad < h) {
+                if (dy > 0)
+                    BltBitMap(bm, sx, sy + ad, bm, sx, sy, w, h - ad, 0xC0, 0xFF, 0);
+                else
+                    BltBitMap(bm, sx, sy, bm, sx, sy + ad, w, h - ad, 0xC0, 0xFF, 0);
+            }
+            /* the vacated rows in the background pen: minterm 0xF0 sets
+             * the planes of its bits, 0x00 clears the rest */
+            {
+                WORD fy = dy > 0 ? sy + h - (ad < h ? ad : h) : sy, fh = ad < h ? ad : h;
+                BltBitMap(bm, sx, fy, bm, sx, fy, w, fh, 0x00, (UBYTE)~pen, 0);
+                if (pen)
+                    BltBitMap(bm, sx, fy, bm, sx, fy, w, fh, 0xFF, pen, 0);
+            }
+            done = 1;
+        }
+        UnlockLayer(layer);
+        if (done)
+            return;
+    }
+#endif
     SetBPen(r->rp, pen_for(r, b, 1));
     ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + r->cols * r->cw - 1,
                  r->oy + bottom * r->ch - 1);

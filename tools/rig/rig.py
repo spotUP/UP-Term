@@ -3,8 +3,11 @@
 through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (--ro: DH0: read-only, stalls on writes),
-                  --aga: no graphics card, Workbench on a native AGA screen
+  rig.py start    boot it in the background (--ro: DH0: read-only, stalls on writes)
+  rig.py aga      Workbench on native AGA (PAL hires, 16 colours) from next boot
+  rig.py rtg      Workbench back on the graphics card from next boot
+  (The screen mode is the Workbench's ScreenMode prefs, not the config: the
+  owner's way, 2026-09-29. aga/rtg need the rig up and reboot it.)
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
   rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer
   rig.py status   is it up (amiagent ping)
@@ -39,6 +42,7 @@ C:Wait 15
 C:Assign >NIL: VTC: VTCX:
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
+C:Assign >NIL: ETC: VTC:etc
 C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
 C:SetEnv TERM vtcon
 C:SetEnv TERMINFO /VTC/terminfo
@@ -58,7 +62,7 @@ MOUNTLIST = """XCON:
 """
 
 RW = "--ro" not in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
-AGA = "--aga" in sys.argv   # no graphics card: Workbench on a native AGA screen
+
 
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
@@ -74,7 +78,7 @@ def setup():
     shutil.copyfile(SRC_AGENT, RIG / "boot/amiagent")
     CFG.write_text("\n".join([
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
-        "bsdsocket_library = 1", "graphics_card = %s" % ("none" if AGA else "uaegfx"),
+        "bsdsocket_library = 1", "graphics_card = uaegfx",
         "jit_compiler = 1",
         "hard_drive_0 = %s" % (RIG / "sys.hdf"),
         # Writable: read-only (--ro) put up "Volume System is write
@@ -100,6 +104,18 @@ def setup_config_only():
 def install():
     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
+
+def screenmode(name):
+    """Install a ScreenMode prefs file (saved from ours) and reboot."""
+    sys.path.insert(0, str(ROOT / "tools/rig"))
+    import ami
+    if name == "aga":
+        cmd = b"Copy VTC:screenmode.aga16.prefs ENVARC:Sys/screenmode.prefs"
+    else:
+        cmd = b"Copy VTC:screenmode.rtg.prefs ENVARC:Sys/screenmode.prefs"
+    print(ami.req(0x02, (20).to_bytes(2, "big") + cmd)[4:].decode("latin-1"))
+    stop()
+    start()
 
 def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
@@ -149,4 +165,5 @@ def status(quiet=False):
 
 if __name__ == "__main__":
     {"setup": setup, "start": start, "stop": stop, "install": install,
-     "status": status}[sys.argv[1]]()
+     "status": status, "aga": lambda: screenmode("aga"),
+     "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()
