@@ -99,6 +99,8 @@ def setup():
         "kickstart_file = %s" % KICK,
         "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
         "window_width = 1280", "window_height = 1024",
+        # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
+        "serial_port = %s" % (RIG / "serial.log"),
         "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
     if "start" not in sys.argv:
         print("rig ready:", CFG)
