@@ -157,8 +157,112 @@ static void utf8_characters_move_as_one(void)
     vt_free(t);
 }
 
+static void ctrl(unsigned char c)
+{
+    le_key(&le, c, 0, &c, 1);
+}
+
+static void run(const char *s)
+{
+    type(s);
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    h_put(le.t, "> ");
+}
+
+static void suggestion_shows_grey_and_right_takes_it(void)
+{
+    vt_term *t = start(40, 6, "> ");
+    run("list SYS:Prefs");
+    type("li");
+    CHECK_STR(h_row(t, 1), "> list SYS:Prefs");   /* the grey tail is on screen */
+    CHECK(h_cell(t, 4, 1)->attr & VT_ATTR_FAINT); /* ...and it is faint */
+    CHECK(!(h_cell(t, 3, 1)->attr & VT_ATTR_FAINT));
+    CHECK_STR(line(), "li");                       /* but not in the line */
+    key(VT_KEY_RIGHT, 0);                          /* Right at the end takes it */
+    CHECK_STR(line(), "list SYS:Prefs");
+    CHECK(!(h_cell(t, 4, 1)->attr & VT_ATTR_FAINT));
+    vt_free(t);
+}
+
+static void return_does_not_run_the_suggestion(void)
+{
+    vt_term *t = start(40, 6, "> ");
+    run("echo long command");
+    type("ec");
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "ec\n");
+    CHECK_STR(h_row(t, 1), "> ec"); /* the grey tail was wiped */
+    vt_free(t);
+}
+
+static void ctrl_r_searches_history(void)
+{
+    vt_term *t = start(50, 6, "> ");
+    run("copy a b");
+    run("list SYS:");
+    run("copy c d");
+    ctrl(0x12);
+    type("co");
+    CHECK_STR(line(), "copy c d");
+    ctrl(0x12); /* again: older */
+    CHECK_STR(line(), "copy a b");
+    CHECK(strstr(h_row(t, 3), "(search: co)") != 0);
+    key(VT_KEY_RIGHT, 0); /* any movement keeps the found line */
+    CHECK_STR(line(), "copy a b");
+    CHECK(strstr(h_row(t, 3), "search") == 0);
+    vt_free(t);
+}
+
+static void ctrl_r_cancel_restores(void)
+{
+    vt_term *t = start(50, 6, "> ");
+    run("dir ram:");
+    type("typed");
+    ctrl(0x12);
+    type("dir");
+    CHECK_STR(line(), "dir ram:");
+    ctrl(0x07); /* Ctrl-G */
+    CHECK_STR(line(), "typed");
+    vt_free(t);
+}
+
+static void word_motions_and_undo(void)
+{
+    vt_term *t = start(50, 4, "> ");
+    type("copy from to");
+    key(VT_KEY_LEFT, VT_MOD_CTRL);
+    CHECK_INT(le.pos, 10);
+    key(VT_KEY_LEFT, VT_MOD_CTRL);
+    CHECK_INT(le.pos, 5);
+    le_key(&le, 'd', VT_MOD_ALT, (const unsigned char *)"\033d", 2); /* Meta-D */
+    CHECK_STR(line(), "copy  to");
+    ctrl(0x1F); /* undo */
+    CHECK_STR(line(), "copy from to");
+    CHECK_STR(h_row(t, 0), "> copy from to");
+    vt_free(t);
+}
+
+static void ctrl_l_clears_and_keeps_prompt_and_line(void)
+{
+    vt_term *t = start(40, 5, "junk\r\nmore junk\r\n1.SYS:> ");
+    type("echo hi");
+    ctrl(0x0C);
+    CHECK_STR(h_screen(t), "1.SYS:> echo hi");
+    type("!");
+    CHECK_STR(line(), "echo hi!");
+    CHECK_STR(h_row(t, 0), "1.SYS:> echo hi!");
+    vt_free(t);
+}
+
 void suite_lineedit(void)
 {
+    suggestion_shows_grey_and_right_takes_it();
+    return_does_not_run_the_suggestion();
+    ctrl_r_searches_history();
+    ctrl_r_cancel_restores();
+    word_motions_and_undo();
+    ctrl_l_clears_and_keeps_prompt_and_line();
     editing_inside_the_line();
     kill_keys();
     a_long_line_wraps_and_edits_across_rows();

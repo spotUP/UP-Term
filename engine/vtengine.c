@@ -2557,6 +2557,11 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *b
             b = VT_COLOR_DEFAULT_BG;
         break;
     }
+    if ((c->attr & VT_ATTR_FAINT) && (f == VT_COLOR_DEFAULT || f == 7 || f == 15)) {
+        /* faint: grey (the line editor's suggestions use it); pen 2 on the
+         * Amiga console's palette */
+        f = t->pers == VT_AMIGA ? 2 : 8;
+    }
     if (!(c->attr & VT_ATTR_INVERSE) != !(t->modes & VT_MODE_SCREEN_REVERSE)) {
         tmp = f;
         f = b;
