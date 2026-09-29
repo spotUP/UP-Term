@@ -17,6 +17,7 @@
  * every file renders identically. */
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "te_shim.h"
 
 static void te_reply(const UBYTE *b, int n) { (void)b; (void)n; }
@@ -161,7 +162,8 @@ static int draw_vt(vt_term *t, UBYTE **vt_planes, UBYTE (*mem)[BPR * MAXROWS * 8
     return unmapped;
 }
 
-static int first_div = 0; /* -f: find the first byte after which the screens differ */
+static int first_div = 0;
+static double time_te, time_vt; /* -t: seconds in each engine */ /* -f: find the first byte after which the screens differ */
 
 static void null_damage(void *u, int x, int y, int w, int h) { (void)u; (void)x; (void)y; (void)w; (void)h; }
 
@@ -217,9 +219,11 @@ static int run_file(const char *path, int rows, int verbose, long *cells_bad)
         return -1;
     }
     if (!first_div) {
+        clock_t c0 = clock();
         for (i = 0; i < n; i++)
             term_feed(buf[i]);
         term_flush();
+        time_te += (double)(clock() - c0) / CLOCKS_PER_SEC;
     }
 
     /* vtcon */
@@ -249,7 +253,9 @@ static int run_file(const char *path, int rows, int verbose, long *cells_bad)
             }
         }
     } else {
+        clock_t c0 = clock();
         vt_write(t, buf, n);
+        time_vt += (double)(clock() - c0) / CLOCKS_PER_SEC;
     }
     unmapped = draw_vt(t, vt_planes, mem_vt, rows);
     for (y = 0; y < rows; y++)
@@ -300,5 +306,6 @@ int main(int argc, char **argv)
         }
     }
     printf("%d files, %d differ, %ld cells differ\n", files, differ, cells);
+    printf("parse+draw: term-engine %.3f s; vtcon parse+model (no drawing) %.3f s\n", time_te, time_vt);
     return differ != 0;
 }
