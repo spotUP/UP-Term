@@ -27,8 +27,20 @@ def pixels(path):
     raw = zlib.decompress(idat); stride = 1 + w * 3
     return w, h, lambda x, y: tuple(raw[y * stride + 1 + x * 3:y * stride + 4 + x * 3])
 
+# the 320 test colours, all different (the rig's VTC: is build/rig/vtc)
+COLOURS = [((i * 7 + 1) & 255, (i * 13 + 5) & 255, (255 - i * 3) & 255) for i in range(320)]
+
+def write_test_file():
+    out = b''
+    for row in range(10):
+        for r, g, b in COLOURS[row * 32:(row + 1) * 32]:
+            out += b'\x1b[48;2;%d;%d;%dm  ' % (r, g, b)
+        out += b'\x1b[0m\n'
+    open(os.path.join(VTC, "grad320n.txt"), 'wb').write(out)
+
 def main():
-    want = ast.literal_eval(open(os.path.join(VTC, "grad320.json")).read())
+    want = COLOURS
+    write_test_file()
     ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/12/640/200/colour check/CLOSE"')
     time.sleep(4)
     ami.req(0x08, bytes([4]) + b'Type VTC:grad320n.txt\r'); time.sleep(4)
