@@ -1082,6 +1082,39 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
 
 /* A simple command. wait = 0: start it in the background if it is an
  * external command (*job gets its id), else run it now. */
+/* A variable as it was before NAME=value cmd, to put back after cmd. */
+typedef struct saved_var {
+    char *name, *value;     /* value 0: it was not set */
+    int exported;
+} saved_var;
+
+static void save_var(sh_shell *sh, const char *name, saved_var *s)
+{
+    const sh_var *v;
+    s->name = sdup(name);
+    s->value = 0;
+    s->exported = 0;
+    for (v = sh->ctx.vars; v; v = v->next)
+        if (!strcmp(v->name, name)) {
+            s->value = sdup(v->value);
+            s->exported = v->exported;
+        }
+}
+
+static void restore_var(sh_shell *sh, saved_var *s)
+{
+    if (s->name) {
+        sh_unset(&sh->ctx, s->name);
+        if (s->value) {
+            sh_set(&sh->ctx, s->name, s->value);
+            if (s->exported)
+                sh_export(&sh->ctx, s->name);
+        }
+    }
+    free(s->name);
+    free(s->value);
+}
+
 static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job)
 {
     sh_list argv;
@@ -1090,9 +1123,12 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
     builtin_fn b;
     sh_func *f;
     long st;
+    saved_var saved[16];
+    int n_saved = 0;
     memset(&argv, 0, sizeof(argv));
     if (job)
         *job = 0;
+    sh->subst_ran = 0;
     if (expand_words(sh, n->words, &argv, parent)) {
         sh_list_free(&argv);
         return 1;
@@ -1113,15 +1149,15 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         if (n->redirs && !redirect(sh, n->redirs, parent, &io))
             close_owned(sh, &io);
         sh_list_free(&argv);
-        return 0;
+        return sh->subst_ran ? sh->subst_status : 0;
     }
     apply_alias(sh, &argv);
     if (redirect(sh, n->redirs, parent, &io)) {
         sh_list_free(&argv);
         return 1;
     }
-    /* assignments before a command: exported for it (and kept, simpler
-     * than the POSIX "only for this command"; documented) */
+    /* assignments before a command: exported for that command only; the
+     * old values come back after it (IFS=: read a b leaves IFS alone) */
     for (a = n->assigns; a; a = a->next) {
         char *v = expand_one(sh, strchr(a->text, '=') + 1, parent);
         char name[128];
@@ -1129,6 +1165,8 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         if (v && len < sizeof(name)) {
             memcpy(name, a->text, len);
             name[len] = 0;
+            if (n_saved < 16)
+                save_var(sh, name, &saved[n_saved++]);
             sh_set(&sh->ctx, name, v);
             sh_export(&sh->ctx, name);
         }
@@ -1162,6 +1200,8 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
             st = 127;
         }
     }
+    while (n_saved > 0)
+        restore_var(sh, &saved[--n_saved]);
     sh_list_free(&argv);
     return st;
 }
@@ -1623,6 +1663,8 @@ static char *core_subst(sh_ctx *c, const char *cmd)
         if (job)
             st = sh->os.wait(sh->os.data, job);
         sh->ctx.status = st;
+        sh->subst_ran = 1;
+        sh->subst_status = st;
     } else {
         char path[48], nb[24];
         sh_io io = sh->io;
@@ -1635,6 +1677,8 @@ static char *core_subst(sh_ctx *c, const char *cmd)
             io.out = fh;
             io.owned = 0;
             sh->ctx.status = exec_node(sh, p.tree, &io);
+            sh->subst_ran = 1;
+            sh->subst_status = sh->ctx.status;
             sh->os.close(sh->os.data, fh);
             fh = sh->os.open(sh->os.data, path, SH_OPEN_READ);
         }

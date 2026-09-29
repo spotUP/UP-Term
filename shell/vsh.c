@@ -40,6 +40,10 @@ typedef struct job {
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
     char child[24];         /* the name of the Shell process SystemTags makes */
+    char *env;              /* exported variables: name\0value\0 ... \0 */
+    sh_shell *sub;          /* a subshell: this shell clone runs tree with io */
+    sh_parse *tree;
+    sh_io io;
     int done;               /* set (under Forbid) as the runner ends */
     LONG rc;
 } job;
@@ -201,6 +205,16 @@ static void runner(void)
     job *j;
     WaitPort(&me->pr_MsgPort);
     j = (job *)GetMsg(&me->pr_MsgPort);
+    /* the exported variables, as local variables of this process: the
+     * command's own (a Shell SystemTags starts copies them) */
+    if (j->env) {
+        const char *e = j->env;
+        while (*e) {
+            const char *v = e + strlen(e) + 1;
+            SetVar((STRPTR)e, (STRPTR)v, -1, GVF_LOCAL_ONLY);
+            e = v + strlen(v) + 1;
+        }
+    }
     /* the runner has the shell's current directory (CreateNewProc copies it) */
     if (j->seg) {
         BPTR oin = SelectInput(j->in), oout = SelectOutput(j->out);
@@ -230,7 +244,24 @@ static void runner(void)
     ReplyMsg(&j->msg);
 }
 
-static struct MsgPort *job_port;
+/* The OS layer's data per process that runs the interpreter (the shell,
+ * and each subshell): its shell, and the port its jobs report to. */
+typedef struct vproc {
+    sh_shell *sh;
+    struct MsgPort *port;
+} vproc;
+
+#define PORT(os) (((vproc *)(os))->port)
+
+/* Has job j replied on port? Call under Forbid. */
+static int replied(struct MsgPort *port, job *j)
+{
+    struct Node *n;
+    for (n = port->mp_MsgList.lh_Head; n->ln_Succ; n = n->ln_Succ)
+        if (n == &j->msg.mn_Node)
+            return 1;
+    return 0;
+}
 
 /* A command name to something to run: *seg a loaded command file, or 0
  * for SystemTags (Resident commands, scripts). -1: found nowhere. The
@@ -292,7 +323,7 @@ static long os_wait(void *os, long id);
 
 static long os_run(void *os, char **argv, const sh_io *io, int wait)
 {
-    sh_shell *sh = (sh_shell *)os;
+    sh_shell *sh = ((vproc *)os)->sh;
     char *cmd = command_line(argv), *sp;
     sh_var *v;
     job *j;
@@ -308,10 +339,6 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
             close_stream((BPTR)io->out);
         return -1;
     }
-    /* exported variables are local variables for the command */
-    for (v = sh->ctx.vars; v; v = v->next)
-        if (v->exported)
-            SetVar((STRPTR)v->name, (STRPTR)v->value, -1, GVF_LOCAL_ONLY);
     j = (job *)AllocVec(sizeof(job), MEMF_PUBLIC | MEMF_CLEAR);
     if (!j) {
         if (seg)
@@ -319,8 +346,28 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         free(cmd);
         return -1;
     }
-    j->msg.mn_ReplyPort = job_port;
+    j->msg.mn_ReplyPort = PORT(os);
     j->msg.mn_Length = sizeof(job);
+    {
+        /* exported variables go to the runner, which makes them its local
+         * variables (never the shell's own: NAME=v cmd must not stay) */
+        long need = 1;
+        char *e;
+        for (v = sh->ctx.vars; v; v = v->next)
+            if (v->exported)
+                need += (long)strlen(v->name) + (long)strlen(v->value) + 2;
+        j->env = e = (char *)malloc(need);
+        if (e) {
+            for (v = sh->ctx.vars; v; v = v->next)
+                if (v->exported) {
+                    strcpy(e, v->name);
+                    e += strlen(e) + 1;
+                    strcpy(e, v->value);
+                    e += strlen(e) + 1;
+                }
+            *e = 0;
+        }
+    }
     j->cmd = cmd;
     j->seg = seg;
     j->name = (char *)malloc(strlen(argv[0]) + 1);
@@ -376,6 +423,7 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         free(j->name);
         free(j->args);
         free(cmd);
+        free(j->env);
         FreeVec(j);
         return -1;
     }
@@ -408,34 +456,31 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
  * command's process, as long as it runs (the console signals the shell). */
 static long os_wait(void *os, long id)
 {
-    job *j = (job *)id, *m;
+    job *j = (job *)id;
     LONG rc;
-    (void)os;
+    int broke = 0;
     for (;;) {
         ULONG got;
         Forbid();
-        for (m = (job *)job_port->mp_MsgList.lh_Head; m->msg.mn_Node.ln_Succ;
-             m = (job *)m->msg.mn_Node.ln_Succ)
-            if (m == j)
-                break;
-        if (m->msg.mn_Node.ln_Succ) {
-            Remove(&m->msg.mn_Node);
+        if (replied(PORT(os), j)) {
+            Remove(&j->msg.mn_Node);
             Permit();
             break;
         }
         Permit();
-        got = Wait((1UL << job_port->mp_SigBit) | SIGBREAKF_CTRL_C);
+        got = Wait((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C);
         if (got & SIGBREAKF_CTRL_C) {
             Forbid(); /* still running: its reply is not in yet */
-            for (m = (job *)job_port->mp_MsgList.lh_Head; m->msg.mn_Node.ln_Succ;
-                 m = (job *)m->msg.mn_Node.ln_Succ)
-                if (m == j)
-                    break;
-            if (!m->msg.mn_Node.ln_Succ)
+            if (!replied(PORT(os), j))
                 job_break(j);
             Permit();
+            broke = 1;
         }
     }
+    /* the break was for the whole line: raised again for the interpreter,
+     * which stops what follows (a loop around the command) */
+    if (broke)
+        SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
     rc = j->rc;
     {
         int i;
@@ -450,6 +495,7 @@ static long os_wait(void *os, long id)
     free(j->name);
     free(j->args);
     free(j->cmd);
+    free(j->env);
     FreeVec(j);
     return rc;
 }
@@ -457,15 +503,11 @@ static long os_wait(void *os, long id)
 /* Has a job ended? Its reply is on the job port then. */
 static int os_done(void *os, long id)
 {
-    job *m;
-    (void)os;
+    int r;
     Forbid();
-    for (m = (job *)job_port->mp_MsgList.lh_Head; m->msg.mn_Node.ln_Succ;
-         m = (job *)m->msg.mn_Node.ln_Succ)
-        if (m == (job *)id)
-            break;
+    r = replied(PORT(os), (job *)id);
     Permit();
-    return m->msg.mn_Node.ln_Succ != 0;
+    return r;
 }
 
 static long os_write(void *os, sh_fh fh, const char *b, long n)
@@ -556,49 +598,110 @@ static int list_dir(sh_ctx *c, const char *dir, sh_list *out)
     return 0;
 }
 
-/* $(cmd): run it into a T: file, read it back. */
-static sh_shell *the_shell;
-
-static char *subst(sh_ctx *c, const char *cmd)
+static long os_read(void *os, sh_fh fh, char *buf, long max)
 {
-    sh_shell *sh = the_shell;
-    char path[40];
-    sh_io io;
-    BPTR fh;
-    char *out = 0;
-    long len = 0, n;
-    char buf[256];
-    int inc = 0;
-    (void)c;
-    strcpy(path, "T:vsh-subst");
-    fh = Open((STRPTR)path, MODE_NEWFILE);
-    if (!fh)
-        return 0;
-    io = sh->io;
-    io.out = (sh_fh)fh;
-    io.owned = 0;
-    {
-        sh_io saved = sh->io;
-        sh->io = io;
-        sh_run_text(sh, cmd, &inc);
-        sh->io = saved;
+    LONG n;
+    (void)os;
+    n = Read((BPTR)fh, buf, max);
+    return n > 0 ? n : 0;
+}
+
+/* Ctrl-C since the last look (the console signals the interpreter's
+ * process; os_wait raises it again after passing it on). */
+static int os_interrupted(void *os)
+{
+    (void)os;
+    return (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) != 0;
+}
+
+/* A subshell's process: the shell clone runs its tree (sh_run_child),
+ * with a job port of its own for the commands it starts. */
+static void subshell_proc(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    job *j;
+    vproc vp;
+    WaitPort(&me->pr_MsgPort);
+    j = (job *)GetMsg(&me->pr_MsgPort);
+    vp.sh = j->sub;
+    vp.port = CreateMsgPort();
+    if (vp.port) {
+        j->sub->os.data = &vp;
+        j->sub->ctx.pid = (long)me;
+        j->rc = sh_run_child(j->sub, j->tree, &j->io);
+        DeleteMsgPort(vp.port);
+    } else {
+        /* cannot run: its streams and memory go all the same */
+        if (j->io.owned & SH_OWN_IN)
+            close_stream((BPTR)j->io.in);
+        if (j->io.owned & SH_OWN_OUT)
+            close_stream((BPTR)j->io.out);
+        if ((j->io.owned & SH_OWN_ERR) && j->io.err != j->io.out)
+            close_stream((BPTR)j->io.err);
+        sh_parse_free(j->tree);
+        free(j->tree);
+        sh_shell_free(j->sub);
+        free(j->sub);
+        j->rc = 20;
     }
-    Close(fh);
-    fh = Open((STRPTR)path, MODE_OLDFILE);
-    if (!fh)
-        return 0;
-    while ((n = Read(fh, buf, sizeof(buf))) > 0) {
-        char *t = (char *)realloc(out, len + n + 1);
-        if (!t)
-            break;
-        out = t;
-        memcpy(out + len, buf, n);
-        len += n;
-        out[len] = 0;
+    Forbid(); /* the reply and our end, before the shell can free anything */
+    j->done = 1;
+    ReplyMsg(&j->msg);
+}
+
+static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, int wait)
+{
+    job *j = (job *)AllocVec(sizeof(job), MEMF_PUBLIC | MEMF_CLEAR);
+    struct Process *p = 0;
+    if (j) {
+        j->msg.mn_ReplyPort = PORT(os);
+        j->msg.mn_Length = sizeof(job);
+        j->sub = child;
+        j->tree = tree;
+        j->io = *io;
+        if (!wait) {
+            /* in the background: streams it does not own are the shell's;
+             * it gets its own handles on the same console (NIL: for input) */
+            if (!(io->owned & SH_OWN_IN)) {
+                j->io.in = (sh_fh)Open((STRPTR)"NIL:", MODE_OLDFILE);
+                j->io.owned |= SH_OWN_IN;
+            }
+            if (!(io->owned & SH_OWN_OUT)) {
+                j->io.out = (sh_fh)Open((STRPTR)"*", MODE_NEWFILE);
+                j->io.owned |= SH_OWN_OUT;
+            }
+            if (!(io->owned & SH_OWN_ERR))
+                j->io.err = j->io.out;
+        }
+        p = CreateNewProcTags(NP_Entry, (ULONG)subshell_proc, NP_Name, (ULONG)"vsh subshell",
+                              NP_StackSize, 32000, NP_Cli, TRUE, TAG_END);
     }
-    Close(fh);
-    DeleteFile((STRPTR)path);
-    return out ? out : (char *)calloc(1, 1);
+    if (!p) {
+        sh_io *o = j ? &j->io : 0;
+        const sh_io *c = o ? o : io;
+        if (c->owned & SH_OWN_IN)
+            close_stream((BPTR)c->in);
+        if (c->owned & SH_OWN_OUT)
+            close_stream((BPTR)c->out);
+        if ((c->owned & SH_OWN_ERR) && c->err != c->out)
+            close_stream((BPTR)c->err);
+        if (j)
+            FreeVec(j);
+        return -1;  /* child and tree stay the caller's */
+    }
+    j->task = &p->pr_Task;
+    if (j->io.owned & SH_OWN_OUT) {
+        int i;
+        Forbid();
+        for (i = 0; i < 32; i++)
+            if (pipe_tab[i].wr == (BPTR)j->io.out)
+                pipe_tab[i].writer = j;
+        Permit();
+    }
+    PutMsg(&p->pr_MsgPort, &j->msg);
+    if (wait)
+        return os_wait(os, (long)j);
+    return (long)j;
 }
 
 /* ---- the prompt and the main loop ----------------------------------------------- */
@@ -660,11 +763,12 @@ int main(int argc, char **argv)
     char *text = 0;
     long len = 0;
     int i;
+    static vproc vp;
     (void)version;
-    job_port = CreateMsgPort();
-    if (!job_port)
+    vp.sh = &sh;
+    vp.port = CreateMsgPort();
+    if (!vp.port)
         return 20;
-    the_shell = &sh;
     sh_shell_init(&sh);
     sh.os.open = os_open;
     sh.os.close = os_close;
@@ -672,14 +776,16 @@ int main(int argc, char **argv)
     sh.os.run = os_run;
     sh.os.wait = os_wait;
     sh.os.done = os_done;
+    sh.os.spawn = os_spawn;
+    sh.os.read = os_read;
+    sh.os.interrupted = os_interrupted;
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;
     sh.os.chdir = os_chdir;
     sh.os.cwd = os_cwd;
     sh.os.exists = os_exists;
-    sh.os.data = &sh;
+    sh.os.data = &vp;
     sh.ctx.listdir = list_dir;
-    sh.ctx.subst = subst;
     sh.ctx.nocase = 1;
     sh.ctx.pid = (long)FindTask(0);
     sh.io.in = (sh_fh)Input();
@@ -733,6 +839,7 @@ int main(int argc, char **argv)
             memcpy(text + len, line, n + 1);
             len += n;
         }
+        SetSignal(0, SIGBREAKF_CTRL_C); /* a Ctrl-C at the prompt is not for this line */
         sh_run_text(&sh, text, &incomplete);
         if (incomplete)
             continue;
@@ -744,7 +851,7 @@ int main(int argc, char **argv)
     {
         long st = sh.exiting ? sh.exit_status : sh.ctx.status;
         sh_shell_free(&sh);
-        DeleteMsgPort(job_port);
+        DeleteMsgPort(vp.port);
         return (int)st;
     }
 }

@@ -498,6 +498,19 @@ static void subshells(void)
     intr_after = 0;
 }
 
+/* $? after assignments only is the last $( )'s status; NAME=v cmd sets
+ * NAME for cmd alone. */
+static void assignment_status_and_scope(void)
+{
+    CHECK_STR(run("x=$(exit 3); echo $?"), "3\n");
+    CHECK_STR(run("fail 2; x=$(true); echo $?"), "0\n");
+    CHECK_STR(run("fail 2; x=1; echo $?"), "0\n");
+    CHECK_STR(run("B=1; B=2 true; echo $B"), "1\n");
+    CHECK_STR(run("C=5 true; echo [$C]"), "[]\n");
+    CHECK_STR(run("f() { echo $D; }; D=4 f; echo [$D]"), "4\n[]\n");
+    CHECK_STR(run("A=1; A=2 args $A; echo $A"), "<1>\n1\n");
+}
+
 static void incomplete_input(void)
 {
     int inc = 0;
@@ -575,5 +588,6 @@ void suite_sh_exec(void)
     job_notices();
     functions_outlive_their_lines();
     subshells();
+    assignment_status_and_scope();
     sh_shell_free(&sh);
 }
