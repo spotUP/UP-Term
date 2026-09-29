@@ -222,6 +222,18 @@ static int f_exists(void *os, const char *path, int want_dir)
     return 0;
 }
 
+static void sprintf_num(char *out, int v)
+{
+    char t[16];
+    int n = 0, k = 0;
+    do
+        t[n++] = (char)('0' + v % 10);
+    while ((v /= 10) > 0);
+    while (n)
+        out[k++] = t[--n];
+    out[k] = 0;
+}
+
 static sh_shell sh;
 static sh_fh OUT, ERR, IN;
 
@@ -346,6 +358,26 @@ static void job_notices(void)
     CHECK_INT(sh.ctx.status, 1);
 }
 
+/* Function bodies outlive the line that defined them: only 16 parses were
+ * kept, so the 17th function's body pointed into a freed parse. */
+static void functions_outlive_their_lines(void)
+{
+    int i, inc = 0;
+    char line[64];
+    fresh();
+    for (i = 1; i <= 20; i++) {
+        strcpy(line, "f");
+        sprintf_num(line + 1, i);
+        strcat(line, "() { echo body; }");
+        sh_run_text(&sh, line, &inc);
+    }
+    sh_run_text(&sh, "f1; f20", &inc);
+    CHECK_STR(slot(OUT)->data, "body\nbody\n");
+    /* a function that redefines itself while it runs */
+    sh_run_text(&sh, "g() { g() { echo new; }; echo old; }; g; g", &inc);
+    CHECK_STR(slot(OUT)->data, "body\nbody\nold\nnew\n");
+}
+
 static void incomplete_input(void)
 {
     int inc = 0;
@@ -421,5 +453,6 @@ void suite_sh_exec(void)
     jobs_aliases_and_dirs();
     incomplete_input();
     job_notices();
+    functions_outlive_their_lines();
     sh_shell_free(&sh);
 }

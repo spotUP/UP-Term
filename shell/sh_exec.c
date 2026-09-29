@@ -49,8 +49,7 @@ void sh_shell_init(sh_shell *sh)
     sh->loop_depth = sh->func_depth = 0;
     memset(sh->jobs, 0, sizeof(sh->jobs));
     memset(sh->job_text, 0, sizeof(sh->job_text));
-    sh->n_kept = 0;
-    sh->keep_parse = 0;
+    sh->retired = 0;
     sh->heredocs = 0;
 }
 
@@ -61,10 +60,15 @@ void sh_shell_free(sh_shell *sh)
         sh_func *f = sh->funcs;
         sh->funcs = f->next;
         free(f->name);
+        sh_parse_free(&f->body);
         free(f);
     }
-    for (i = 0; i < sh->n_kept; i++)
-        sh_parse_free(&sh->kept[i]);
+    while (sh->retired) {
+        sh_retired *r = sh->retired;
+        sh->retired = r->next;
+        sh_parse_free(&r->p);
+        free(r);
+    }
     for (i = 0; i < 32; i++)
         free(sh->job_text[i]);
     sh_list_free(&sh->aliases);
@@ -991,7 +995,9 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
     for (i = 1; i < argv->n; i++)
         sh_list_add(&sh->ctx.args, argv->v[i]);
     sh->func_depth++;
-    st = exec_node(sh, f->body, io);
+    f->busy++;
+    st = exec_node(sh, f->body.tree, io);
+    f->busy--;
     if (sh->returning)
         st = sh->ctx.status;
     sh->returning = 0;
@@ -1364,9 +1370,20 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
             f->next = sh->funcs;
             sh->funcs = f;
         }
-        f->body = n->a;
-        sh->keep_parse = 1; /* the body lives in this parse: keep it */
-        st = 0;
+        if (f->body.tree && f->busy) {
+            /* it is running: its old body stays until the shell ends */
+            sh_retired *r = (sh_retired *)malloc(sizeof(sh_retired));
+            if (r) {
+                r->p = f->body;
+                r->next = sh->retired;
+                sh->retired = r;
+            }
+        } else {
+            sh_parse_free(&f->body);
+        }
+        /* its own copy: the line that defined it is freed after it runs */
+        sh_parse_copy(n->a, &f->body);
+        st = f->body.tree || !n->a ? 0 : 1;
         break;
     }
     }
@@ -1393,12 +1410,8 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
         sh->ctx.status = p.incomplete ? sh->ctx.status : 2;
         return sh->ctx.status;
     }
-    sh->keep_parse = 0;
     st = exec_node(sh, p.tree, &sh->io);
-    if (sh->keep_parse && sh->n_kept < 16)
-        sh->kept[sh->n_kept++] = p;
-    else
-        sh_parse_free(&p);
+    sh_parse_free(&p);
     return st;
 }
 

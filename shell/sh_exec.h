@@ -48,9 +48,15 @@ typedef struct sh_os {
 
 typedef struct sh_func {
     char *name;
-    const struct sh_node *body; /* in one of sh_shell.kept */
+    sh_parse body;         /* its own copy of the body (body.tree) */
+    int busy;              /* running: a redefinition retires the old body */
     struct sh_func *next;
 } sh_func;
+
+typedef struct sh_retired {
+    sh_parse p;            /* a function body replaced while it ran */
+    struct sh_retired *next;
+} sh_retired;
 
 typedef struct sh_shell {
     sh_ctx ctx;
@@ -66,8 +72,7 @@ typedef struct sh_shell {
     int loop_depth, func_depth;
     long jobs[32];         /* background job ids, 0 = free */
     char *job_text[32];
-    sh_parse kept[16];     /* parses holding function bodies */
-    int n_kept, keep_parse;
+    sh_retired *retired;   /* freed with the shell */
     int heredocs;          /* numbering for here-document temp files */
 } sh_shell;
 
