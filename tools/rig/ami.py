@@ -33,6 +33,13 @@ def req(code, payload=b'', timeout=150):
     if st != 0: raise SystemExit('ERR: ' + body.decode('latin-1'))
     return body
 
+def key(code, qual=0):
+    # Down, 2 ticks, up in ONE request (INPUT op 8 SCRIPT): two requests
+    # arrive hundreds of ms apart under host load and the Amiga auto-
+    # repeats the 'held' key (garbled tcsh input, 2026-09-29).
+    ev = lambda d: bytes([3, code, d]) + struct.pack('>H', qual)
+    req(0x08, bytes([8, 3]) + ev(1) + bytes([9]) + struct.pack('>H', 2) + ev(0))
+
 def png(path, w, h, rows):
     raw = b''.join(b'\0' + r for r in rows)
     def ch(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d))
@@ -70,8 +77,7 @@ def main(a):
     elif cmd == 'key':
         # INPUT op 3 KEY: rawcode u8, down u8, qualifier u16 -- down, then up
         code, qual = int(a[1], 16), int(a[2], 16) if len(a) > 2 else 0
-        req(0x08, bytes([3, code, 1]) + struct.pack('>H', qual))
-        req(0x08, bytes([3, code, 0]) + struct.pack('>H', qual))
+        key(code, qual)
     elif cmd == 'type': req(0x08, bytes([4]) + a[1].encode('latin-1'))
     elif cmd == 'gclick':
         # the scale: park the pointer at (200, 200) and read where the front screen has it

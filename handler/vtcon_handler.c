@@ -213,6 +213,12 @@ static void reply(struct DosPacket *p, LONG r1, LONG r2)
 
 static void in_append(con *c, const vt_u8 *b, int n)
 {
+    {
+        int i;
+        for (i = 0; i < n; i += 4)
+            DBG("in", n - i, ((LONG)b[i] << 24) | ((LONG)(i + 1 < n ? b[i + 1] : 0) << 16) |
+                ((LONG)(i + 2 < n ? b[i + 2] : 0) << 8) | (i + 3 < n ? b[i + 3] : 0));
+    }
     if (c->in_len + n > IN_MAX)
         n = IN_MAX - c->in_len;
     if (n > 0) {
