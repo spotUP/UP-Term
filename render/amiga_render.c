@@ -82,6 +82,42 @@ static void ink_ab(vr_render *r, ULONG fg, ULONG bg)
     SetABPenDrMd(r->rp, ink_pen(r, fg, 0), ink_pen(r, bg, 1), JAM2);
 }
 
+/* A direct colour on a true-colour screen: a pen of its own while there
+ * are pens to spare (drawing with it costs nothing extra), else the
+ * scratch pens, reloaded per drawing call (a 1536-colour grid took 11.6 s
+ * against 5.7 s for palette colours on the non-exact rig: noisy, not a
+ * clean measurement of SetRGB32). The pens are kept in a hash of 0xRRGGBB
+ * until vr_free. */
+static ULONG truecolor_ink(vr_render *r, ULONG rgb)
+{
+    static const struct TagItem exact[] = {
+        { OBP_Precision, (ULONG)PRECISION_EXACT },
+        { OBP_FailIfBad, TRUE },
+        { TAG_DONE, 0 }
+    };
+    ULONG key = rgb | 0x01000000UL;
+    int h = (int)(((rgb * 2654435761UL) >> 24) & (VR_EXACT_SLOTS - 1)), i;
+    LONG p;
+    for (i = 0; i < VR_EXACT_SLOTS; i++, h = (h + 1) & (VR_EXACT_SLOTS - 1)) {
+        if (r->exact_key[h] == key)
+            return r->exact_pen[h];
+        if (!r->exact_key[h])
+            break;
+    }
+    if (i == VR_EXACT_SLOTS || r->n_exact >= VR_EXACT_MAX)
+        return VR_INK_RGB | rgb;
+    p = ObtainBestPenA(r->cm, ((rgb >> 16) & 0xFF) * 0x01010101UL, ((rgb >> 8) & 0xFF) * 0x01010101UL,
+                       (rgb & 0xFF) * 0x01010101UL, (struct TagItem *)exact);
+    if (p < 0) {
+        r->n_exact = VR_EXACT_MAX; /* the screen has no pen left: scratch from now on */
+        return VR_INK_RGB | rgb;
+    }
+    r->exact_key[h] = key;
+    r->exact_pen[h] = (UBYTE)p;
+    r->n_exact++;
+    return (ULONG)p;
+}
+
 /* The ink for a resolved engine colour. */
 static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
 {
@@ -95,7 +131,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
         vt_u16 k;
         LONG p;
         if (r->truecolor)
-            return VR_INK_RGB | VT_RGB_OF(c); /* exact, through a scratch pen */
+            return truecolor_ink(r, VT_RGB_OF(c));
         /* nearest obtainable pen, cached by rgb555 */
         k = (vt_u16)((((c >> 19) & 31) << 10) | (((c >> 11) & 31) << 5) | ((c >> 3) & 31));
         if (!r->rgb_pens)
@@ -170,6 +206,9 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->truecolor = 0;
     r->scratch[0] = r->scratch[1] = -1;
     r->scratch_ink[0] = r->scratch_ink[1] = 0;
+    r->n_exact = 0;
+    for (i = 0; i < VR_EXACT_SLOTS; i++)
+        r->exact_key[i] = 0;
     if (r->cm && win->WScreen &&
         GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) > 8) {
         r->scratch[0] = ObtainPen(r->cm, (ULONG)-1, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
@@ -226,6 +265,12 @@ void vr_free(vr_render *r)
     for (i = 0; i < 2; i++)
         if (r->cm && r->scratch[i] >= 0)
             ReleasePen(r->cm, (ULONG)r->scratch[i]);
+    for (i = 0; i < VR_EXACT_SLOTS; i++)
+        if (r->cm && r->exact_key[i])
+            ReleasePen(r->cm, (ULONG)r->exact_pen[i]);
+    for (i = 0; i < VR_EXACT_SLOTS; i++)
+        r->exact_key[i] = 0;
+    r->n_exact = 0;
     r->scratch[0] = r->scratch[1] = -1;
     r->truecolor = 0;
     if (r->rgb_pens)

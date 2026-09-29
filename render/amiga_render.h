@@ -16,6 +16,9 @@
 #include "../engine/vtengine.h"
 #include "glyphmap.h"
 
+#define VR_EXACT_SLOTS 256  /* a power of two */
+#define VR_EXACT_MAX 160
+
 typedef struct vr_render {
     struct Window *win;
     struct RastPort *rp;
@@ -38,6 +41,12 @@ typedef struct vr_render {
     BYTE truecolor;
     LONG scratch[2];
     ULONG scratch_ink[2];
+    /* true-colour screen: pens obtained for exact direct colours, a hash
+     * on 0xRRGGBB (key 0 = empty, else 0x01RRGGBB); at most VR_EXACT_MAX,
+     * so other programs keep pens too */
+    ULONG exact_key[VR_EXACT_SLOTS];
+    UBYTE exact_pen[VR_EXACT_SLOTS];
+    WORD n_exact;
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
     BYTE hidden;          /* the window is too small to draw into */
