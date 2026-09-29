@@ -148,7 +148,7 @@ static int draw_vt(vt_term *t, UBYTE **vt_planes, UBYTE (*mem)[BPR * MAXROWS * 8
         int nc;
         const vt_cell *row = vt_row(t, y, &nc);
         for (x = 0; x < 80 && x < nc; x++) {
-            vt_u16 fg, bg;
+            vt_color fg, bg;
             int code = to_cp437(row[x].ch);
             vt_resolve_colors(t, &row[x], &fg, &bg);
             if (code < 0) {

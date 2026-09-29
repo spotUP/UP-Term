@@ -230,10 +230,21 @@ static void back_tab(void)
     vt_free(t);
 }
 
+/* A 24-bit colour is kept exactly: a true-colour screen shows the value
+ * the program asked for (it was rgb555, which dropped 3 bits a channel). */
+static void rgb_colour_keeps_all_24_bits(void)
+{
+    vt_term *t = h_new(4, 1, VT_XTERM);
+    h_put(t, "\033[38;2;1;130;255;48;2;7;8;9mA");
+    CHECK_INT(h_cell(t, 0, 0)->fg == (VT_COLOR_RGB | 0x0182FFUL), 1);
+    CHECK_INT(h_cell(t, 0, 0)->bg == (VT_COLOR_RGB | 0x070809UL), 1);
+    vt_free(t);
+}
+
 static void sgr_colours_and_attributes(void)
 {
     vt_term *t = h_new(10, 1, VT_XTERM);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "\033[1;31;44ma\033[22;39mb\033[38;5;200;48;2;255;0;0mc\033[38:2::0:255:0md");
     CHECK_INT(h_cell(t, 0, 0)->fg, 1);
     CHECK_INT(h_cell(t, 0, 0)->bg, 4);
@@ -440,7 +451,7 @@ static void c1_via_utf8_code_points(void)
 static void screen_reverse_video_inverts_every_cell(void)
 {
     vt_term *t = h_new(5, 1, VT_XTERM);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "a\033[7mb\033[?5h");
     CHECK(vt_modes(t) & VT_MODE_SCREEN_REVERSE);
     vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
@@ -576,6 +587,7 @@ void suite_xterm(void)
     tabs_default_every_eight();
     back_tab();
     sgr_colours_and_attributes();
+    rgb_colour_keeps_all_24_bits();
     alt_screen_1049_saves_and_restores();
     dec_graphics_draw_boxes();
     shift_out_selects_g1();

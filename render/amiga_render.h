@@ -30,9 +30,14 @@ typedef struct vr_render {
     UBYTE pens[256];      /* palette index -> screen pen (xterm, pcansi) */
     UBYTE have[256];      /* 1: pens[i] obtained, 2: failed */
     LONG obtained[256];   /* ObtainBestPen results to release */
-    UBYTE *rgb_pens;      /* 32768 rgb555 -> pen+1 cache, 0 = unknown */
+    UBYTE *rgb_pens;      /* 32768 rgb555 -> pen+1 cache, 0 = unknown (palette screens) */
     LONG rgb_obtained[64];/* pens obtained for direct colours, released in vr_free */
     WORD n_rgb;
+    /* true-colour screen: direct colours through two exclusive scratch
+     * pens, A and B, and the ink each holds now (0: none yet) */
+    BYTE truecolor;
+    LONG scratch[2];
+    ULONG scratch_ink[2];
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
     BYTE hidden;          /* the window is too small to draw into */

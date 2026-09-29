@@ -26,15 +26,18 @@ enum vt_personality {
 
 /* Colours in a cell. 0-255 index a palette: ANSI colours for xterm and
  * pcansi, screen pens for amiga. VT_COLOR_DEFAULT is the personality's
- * default; VT_COLOR_RGB | rgb555 is a direct colour (SGR 38;2). */
+ * default; VT_COLOR_RGB | 0xRRGGBB is a direct colour (SGR 38;2), kept at
+ * full 24 bits so a true-colour screen can show it exactly. */
+typedef vt_u32 vt_color;
 #define VT_COLOR_DEFAULT 0x0100
 /* vt_resolve_colors only: the default background, so that it stays itself
  * when inverse swaps it into the foreground (the default foreground is
  * VT_COLOR_DEFAULT). */
 #define VT_COLOR_DEFAULT_BG 0x0101
-#define VT_COLOR_RGB     0x8000
-#define VT_RGB(r, g, b) (vt_u16)(VT_COLOR_RGB | ((((unsigned)(r)) >> 3) << 10) | \
-                                  ((((unsigned)(g)) >> 3) << 5) | (((unsigned)(b)) >> 3))
+#define VT_COLOR_RGB     0x01000000UL
+#define VT_RGB(r, g, b) (vt_color)(VT_COLOR_RGB | ((vt_u32)((r) & 0xFF) << 16) | \
+                                    ((vt_u32)((g) & 0xFF) << 8) | (vt_u32)((b) & 0xFF))
+#define VT_RGB_OF(c) ((vt_u32)(c) & 0xFFFFFFUL) /* 0xRRGGBB of a VT_COLOR_RGB colour */
 
 #define VT_ATTR_BOLD      0x01
 #define VT_ATTR_FAINT     0x02
@@ -46,8 +49,8 @@ enum vt_personality {
 #define VT_ATTR_STRIKE    0x80
 
 typedef struct vt_cell {
+    vt_color fg, bg; /* see VT_COLOR_* */
     vt_u16 ch;      /* Unicode code point (BMP); 0x20 for blank */
-    vt_u16 fg, bg;  /* see VT_COLOR_* */
     vt_u8  attr;    /* VT_ATTR_* */
     vt_u8  width;   /* 1; 2 for the first cell of a wide glyph, 0 for its second */
 } vt_cell;
@@ -153,7 +156,7 @@ long     vt_unhandled(const vt_term *t, const char **kinds, long *counts, int ma
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,
  * inverse (the cell's, XOR the screen's DECSCNM) and conceal all resolved.
  * RGB colours pass through unchanged. */
-void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *bg);
+void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_color *bg);
 
 /* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
 const vt_u16 *vt_cp437_table(void);

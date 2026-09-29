@@ -47,8 +47,43 @@ static LONG obtain(vr_render *r, ULONG rgb)
                           (struct TagItem *)tags);
 }
 
-/* The screen pen for a resolved engine colour. */
-static UBYTE pen_for(vr_render *r, vt_u16 c, int is_bg)
+/* An ink is what a cell is drawn with: a screen pen, or on a true-colour
+ * screen VR_INK_RGB | 0xRRGGBB, loaded into a scratch pen just before the
+ * drawing call that uses it (ink_pen). */
+#define VR_INK_RGB 0x80000000UL
+
+/* The pen that draws ink as pen A (slot 0) or pen B (slot 1). On a screen
+ * of more than 8 bits a pen is only the colour of the next drawing, not a
+ * palette entry: pixels drawn earlier keep their colour when it changes
+ * (the method Phantasm described), so one exclusive pen per slot shows any
+ * number of colours. */
+static UBYTE ink_pen(vr_render *r, ULONG ink, int slot)
+{
+    ULONG rgb;
+    if (!(ink & VR_INK_RGB))
+        return (UBYTE)ink;
+    if (r->scratch_ink[slot] != ink) {
+        rgb = ink & 0xFFFFFFUL;
+        SetRGB32(&r->win->WScreen->ViewPort, (ULONG)r->scratch[slot],
+                 ((rgb >> 16) & 0xFF) * 0x01010101UL, ((rgb >> 8) & 0xFF) * 0x01010101UL,
+                 (rgb & 0xFF) * 0x01010101UL);
+        r->scratch_ink[slot] = ink;
+    }
+    return (UBYTE)r->scratch[slot];
+}
+
+static void ink_a(vr_render *r, ULONG ink)
+{
+    SetAPen(r->rp, ink_pen(r, ink, 0));
+}
+
+static void ink_ab(vr_render *r, ULONG fg, ULONG bg)
+{
+    SetABPenDrMd(r->rp, ink_pen(r, fg, 0), ink_pen(r, bg, 1), JAM2);
+}
+
+/* The ink for a resolved engine colour. */
+static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
 {
     if (c == VT_COLOR_DEFAULT)
         return r->pen_default_fg;
@@ -57,8 +92,12 @@ static UBYTE pen_for(vr_render *r, vt_u16 c, int is_bg)
     if (vt_personality(r->t) == VT_AMIGA)
         return (UBYTE)(c & 0xFF); /* amiga colours are screen pens */
     if (c & VT_COLOR_RGB) {
-        vt_u16 k = (vt_u16)(c & 0x7FFF);
+        vt_u16 k;
         LONG p;
+        if (r->truecolor)
+            return VR_INK_RGB | VT_RGB_OF(c); /* exact, through a scratch pen */
+        /* nearest obtainable pen, cached by rgb555 */
+        k = (vt_u16)((((c >> 19) & 31) << 10) | (((c >> 11) & 31) << 5) | ((c >> 3) & 31));
         if (!r->rgb_pens)
             r->rgb_pens = (UBYTE *)AllocVec(32768, MEMF_ANY | MEMF_CLEAR);
         if (r->rgb_pens && r->rgb_pens[k])
@@ -124,6 +163,19 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     }
     r->rgb_pens = 0;
     r->n_rgb = 0;
+    /* A true-colour screen (RTG, more than 8 bits a pixel) shows direct
+     * colours exactly through two exclusive scratch pens (ink_pen); a
+     * palette screen (AGA, 8-bit RTG) would recolour everything drawn in a
+     * pen it redefines, so there they get the nearest pen instead. */
+    r->truecolor = 0;
+    r->scratch[0] = r->scratch[1] = -1;
+    r->scratch_ink[0] = r->scratch_ink[1] = 0;
+    if (r->cm && win->WScreen &&
+        GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) > 8) {
+        r->scratch[0] = ObtainPen(r->cm, (ULONG)-1, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+        r->scratch[1] = ObtainPen(r->cm, (ULONG)-1, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+        r->truecolor = r->scratch[0] >= 0 && r->scratch[1] >= 0;
+    }
     r->cursor_drawn = 0;
     r->cursor_x = r->cursor_y = 0;
     r->view = 0;
@@ -171,6 +223,11 @@ void vr_free(vr_render *r)
         for (i = 0; i < r->n_rgb; i++)
             ReleasePen(r->cm, (ULONG)r->rgb_obtained[i]);
     r->n_rgb = 0;
+    for (i = 0; i < 2; i++)
+        if (r->cm && r->scratch[i] >= 0)
+            ReleasePen(r->cm, (ULONG)r->scratch[i]);
+    r->scratch[0] = r->scratch[1] = -1;
+    r->truecolor = 0;
     if (r->rgb_pens)
         FreeVec(r->rgb_pens);
     r->rgb_pens = 0;
@@ -215,11 +272,11 @@ int vr_layout(vr_render *r)
 
 /* ---- drawing ------------------------------------------------------------- */
 
-static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE pen)
+static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 {
     if (x1 < x0 || y1 < y0)
         return;
-    SetAPen(r->rp, pen);
+    ink_a(r, pen);
     SetDrMd(r->rp, JAM1);
     RectFill(r->rp, x0, y0, x1, y1);
 }
@@ -233,12 +290,12 @@ static void line(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1)
 /* Box drawing: arms from the cell centre to its edges, 1 px light, 2 px
  * heavy, two 1 px lines double. Joins with the neighbours because every
  * arm reaches the cell edge. */
-static void draw_box(vr_render *r, WORD px, WORD py, vt_u8 code, UBYTE fg)
+static void draw_box(vr_render *r, WORD px, WORD py, vt_u8 code, ULONG fg)
 {
     WORD cx = px + r->cw / 2, cy = py + r->ch / 2;
     WORD x1 = px + r->cw - 1, y1 = py + r->ch - 1;
     int arm;
-    SetAPen(r->rp, fg);
+    ink_a(r, fg);
     SetDrMd(r->rp, JAM1);
     for (arm = 0; arm < 4; arm++) {
         int w = VT_BOX_ARM(code, arm);
@@ -268,11 +325,11 @@ static const UWORD shade_pat[3][2] = {
     { 0x7777, 0xDDDD }  /* dark: 75 % */
 };
 
-static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, UBYTE fg, UBYTE bg)
+static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, ULONG fg, ULONG bg)
 {
     WORD w = r->cw, h = r->ch;
     if (code & 0x80) {
-        SetABPenDrMd(r->rp, fg, bg, JAM2);
+        ink_ab(r, fg, bg);
         SetAfPt(r->rp, (UWORD *)shade_pat[(code & 3) - 1], 1);
         RectFill(r->rp, px, py, px + w - 1, py + h - 1);
         SetAfPt(r->rp, 0, 0);
@@ -302,7 +359,7 @@ static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, UBYTE fg, UBY
     }
 }
 
-static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, UBYTE fg, UBYTE bg)
+static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg)
 {
     WORD x1 = px + r->cw - 1, y1 = py + r->ch - 1;
     fill(r, px, py, x1, y1, bg);
@@ -314,7 +371,7 @@ static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, UBYTE fg, U
         draw_block(r, px, py, g.code, fg, bg);
         break;
     case VT_GLYPH_DIAGONAL:
-        SetAPen(r->rp, fg);
+        ink_a(r, fg);
         if (g.code & 1)
             line(r, px, y1, x1, py);
         if (g.code & 2)
@@ -322,13 +379,13 @@ static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, UBYTE fg, U
         break;
     case VT_GLYPH_HLINE: {
         WORD y = py + (WORD)((r->ch - 1) * g.code / 7);
-        SetAPen(r->rp, fg);
+        ink_a(r, fg);
         line(r, px, y, x1, y);
         break;
     }
     case VT_GLYPH_DIAMOND: {
         WORD cx = px + r->cw / 2, cy = py + r->ch / 2, rx = r->cw / 2 - 1, ry = r->ch / 2 - 1, d;
-        SetAPen(r->rp, fg);
+        ink_a(r, fg);
         for (d = 0; d <= ry; d++) {
             WORD half = (WORD)(rx * (ry - d) / (ry ? ry : 1));
             line(r, cx - half, cy - d, cx + half, cy - d);
@@ -353,7 +410,7 @@ static ULONG style_of(vt_u8 attr)
     return s;
 }
 
-static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, UBYTE fg, UBYTE bg,
+static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, ULONG fg, ULONG bg,
                       vt_u8 attr)
 {
     int i;
@@ -370,12 +427,12 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, UBYTE f
         }
     }
     r->n_text++;
-    SetABPenDrMd(r->rp, fg, bg, JAM2);
+    ink_ab(r, fg, bg);
     SetSoftStyle(r->rp, style_of(attr), FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
     Move(r->rp, px, py + r->base);
     Text(r->rp, (STRPTR)run, n);
     if (attr & VT_ATTR_STRIKE) {
-        SetAPen(r->rp, fg);
+        ink_a(r, fg);
         line(r, px, py + r->ch / 2, px + n * r->cw - 1, py + r->ch / 2);
     }
 }
@@ -558,18 +615,18 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         const vt_cell *c = vt_row(r->t, y - r->view, &ncells);
         int gy = y - r->view;
         WORD py = r->oy + y * r->ch, run_x = 0;
-        UBYTE run_fg = 0, run_bg = 0;
+        ULONG run_fg = 0, run_bg = 0;
         vt_u8 run_attr = 0;
         /* the last cell's colours: runs of equal cells skip the lookups */
-        vt_u16 last_f = 0xFFFF, last_b = 0xFFFF;
+        vt_color last_f = 0xFFFFFFFFUL, last_b = 0xFFFFFFFFUL;
         vt_u8 last_a = 0;
-        UBYTE fg = 0, bg = 0;
+        ULONG fg = 0, bg = 0;
         if (!c)
             continue;
         n = 0;
         nd = 0;
         for (x = x0; x < x1 && x < ncells; x++) {
-            vt_u16 f, b;
+            vt_color f, b;
             vt_glyph g;
             vt_u8 attr;
             if (c[x].width == 0) {
@@ -589,7 +646,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 fg = pen_for(r, f, 0);
                 bg = pen_for(r, b, 1);
                 if (selected(r, x, gy)) {
-                    UBYTE tmp = fg;
+                    ULONG tmp = fg;
                     fg = bg;
                     bg = tmp;
                 }
@@ -613,8 +670,8 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 n = 0;
                 dc[nd].x = (WORD)x;
                 dc[nd].ch = g.code;
-                dc[nd].fg = fg;
-                dc[nd].bg = bg;
+                dc[nd].fg = (UBYTE)fg; /* planar: never an RGB ink */
+                dc[nd].bg = (UBYTE)bg;
                 dc[nd].attr = attr;
                 nd++;
                 continue;
@@ -736,7 +793,7 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
 {
     WORD dy = (WORD)(n * r->ch);
     vt_cell blank;
-    vt_u16 f, b;
+    vt_color f, b;
     if (r->hidden || r->view)
         return;
     vr_cursor_off(r);
@@ -762,7 +819,7 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
             WORD sx = r->win->LeftEdge + r->ox, w = (WORD)(r->cols * r->cw);
             WORD sy = r->win->TopEdge + r->oy + top * r->ch;
             WORD h = (WORD)((bottom - top) * r->ch), ad = dy < 0 ? -dy : dy;
-            UBYTE pen = pen_for(r, b, 1);
+            UBYTE pen = (UBYTE)pen_for(r, b, 1); /* planar: never an RGB ink */
             if (ad < h) {
                 if (dy > 0)
                     BltBitMap(bm, sx, sy + ad, bm, sx, sy, w, h - ad, 0xC0, 0xFF, 0);
@@ -784,7 +841,7 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
             return;
     }
 #endif
-    SetBPen(r->rp, pen_for(r, b, 1));
+    SetBPen(r->rp, ink_pen(r, pen_for(r, b, 1), 1));
     ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + r->cols * r->cw - 1,
                  r->oy + bottom * r->ch - 1);
 }

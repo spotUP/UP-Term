@@ -16,13 +16,13 @@ static int utf8(char *o, unsigned c)
     return 3;
 }
 
-static unsigned colour(VTermColor *c, int is_fg)
+static unsigned long colour(VTermColor *c, int is_fg)
 {
     if ((is_fg && VTERM_COLOR_IS_DEFAULT_FG(c)) || (!is_fg && VTERM_COLOR_IS_DEFAULT_BG(c)))
         return 0x100;
     if (VTERM_COLOR_IS_INDEXED(c))
         return c->indexed.idx;
-    return 0x8000 | ((c->rgb.red >> 3) << 10) | ((c->rgb.green >> 3) << 5) | (c->rgb.blue >> 3);
+    return 0x1000000UL | ((unsigned long)c->rgb.red << 16) | ((unsigned long)c->rgb.green << 8) | c->rgb.blue;
 }
 
 int main(int argc, char **argv)
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
             if (c.attrs.bold) a |= 1;
             if (c.attrs.underline) a |= 8;
             if (c.attrs.reverse) a |= 0x20;
-            printf("%s%u,%u,%u,%u", x ? " " : "", colour(&c.fg, 1), colour(&c.bg, 0), a,
+            printf("%s%lu,%lu,%u,%u", x ? " " : "", colour(&c.fg, 1), colour(&c.bg, 0), a,
                    (unsigned)(c.chars[0] && c.chars[0] != (uint32_t)-1 ? c.chars[0] : 32));
         }
         printf("\n");

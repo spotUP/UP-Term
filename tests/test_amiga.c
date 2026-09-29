@@ -57,7 +57,7 @@ static void linefeed_starts_a_new_line(void)
 static void pens_are_screen_pens(void)
 {
     vt_term *t = h_new(10, 1, VT_AMIGA);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "a\x9b" "1;33;41mb");
     vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
     CHECK_INT(f, 1);
@@ -106,7 +106,7 @@ static void vertical_tab_moves_up(void)
 static void global_background_as_a_prefixed_item(void)
 {
     vt_term *t = h_new(10, 1, VT_AMIGA);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "\x9b" "1;33;40;>2m\x9b" "K");
     vt_resolve_colors(t, h_cell(t, 5, 0), &f, &b);
     CHECK_INT(b, 2); /* vacated cells take the global background */

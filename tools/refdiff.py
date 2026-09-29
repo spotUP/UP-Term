@@ -171,7 +171,7 @@ def pyte_dump_(data, cols, rows):
     return text, cur, attr
 
 NAMES = ["black", "red", "green", "brown", "blue", "magenta", "cyan", "white"]
-DEFAULT, RGB = 0x100, 0x8000
+DEFAULT, RGB = 0x100, 0x1000000
 
 def colour(v):
     """pyte's colour value in the engine's encoding."""
@@ -187,7 +187,7 @@ def colour(v):
     hexv = v.lower()
     if hexv in PALETTE:
         return PALETTE.index(hexv)
-    return RGB | ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)
+    return RGB | (r << 16) | (g << 8) | b
 
 import pyte.graphics
 PALETTE = [c.lower() for c in pyte.graphics.FG_BG_256]

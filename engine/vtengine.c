@@ -39,7 +39,7 @@ typedef struct vt_line {
 
 typedef struct vt_saved {
     int x, y, wrap_pending, origin;
-    vt_u16 fg, bg;
+    vt_color fg, bg;
     vt_u8 attr;
     vt_u8 charset[4];
     int gl;
@@ -57,7 +57,7 @@ struct vt_term {
     int sb_cap, sb_len, sb_head; /* head: next slot to write */
 
     int cx, cy, wrap_pending;
-    vt_u16 fg, bg;
+    vt_color fg, bg;
     vt_u8 attr;
     int top, bot;          /* scroll region rows [top, bot) */
     vt_u8 *tabs;
@@ -72,8 +72,8 @@ struct vt_term {
 
     /* amiga personality */
     vt_u32 raw_events;
-    vt_u16 amiga_bg;       /* global background pen (SGR >n) */
-    vt_u16 amiga_dfg, amiga_dbg; /* SGR 0 / 39 / 49 defaults (CSI SP s, V39) */
+    vt_color amiga_bg;       /* global background pen (SGR >n) */
+    vt_color amiga_dfg, amiga_dbg; /* SGR 0 / 39 / 49 defaults (CSI SP s, V39) */
     vt_u8 amiga_dattr;
     int amiga_msb;         /* SO: 20-7F display as A0-FF (matrix 2.1, C-SO) */
     int scroll_enabled;    /* CSI >1h / >1l */
@@ -1096,7 +1096,7 @@ static long param0(const vt_term *t, int i)
     return t->params[i];
 }
 
-static vt_u16 ext_colour(vt_term *t, int *i)
+static vt_color ext_colour(vt_term *t, int *i)
 {
     /* 38;5;n / 38;2;r;g;b and the colon forms 38:5:n, 38:2:[cs]:r:g:b */
     int k = *i;
@@ -1104,7 +1104,7 @@ static vt_u16 ext_colour(vt_term *t, int *i)
     int colon = (k + 1 < t->np) && t->sub[k + 1];
     if (mode == 5) {
         *i = k + 2;
-        return (vt_u16)(param0(t, k + 2) & 0xFF);
+        return (vt_color)(param0(t, k + 2) & 0xFF);
     }
     if (mode == 2) {
         int base = k + 2;
@@ -1142,7 +1142,7 @@ static void sgr(vt_term *t)
     for (i = 0; i < t->np; i++) {
         long p = t->params[i];
         if (t->sub[i] == 2) { /* amiga '>n' item */
-            t->amiga_bg = (vt_u16)(p & 0xFF);
+            t->amiga_bg = (vt_color)(p & 0xFF);
             mark_rows(t, 0, t->rows);
             continue;
         }
@@ -1153,12 +1153,12 @@ static void sgr(vt_term *t)
             continue;
         }
         if (t->pers == VT_PCANSI && p >= 90 && p <= 97) {
-            t->fg = (vt_u16)(p - 90); /* and bold, so a later 30-37 stays bright */
+            t->fg = (vt_color)(p - 90); /* and bold, so a later 30-37 stays bright */
             t->attr |= VT_ATTR_BOLD;
             continue;
         }
         if (t->pers == VT_PCANSI && p >= 100 && p <= 107) {
-            t->bg = (vt_u16)(p - 100);
+            t->bg = (vt_color)(p - 100);
             t->attr |= VT_ATTR_BLINK;
             continue;
         }
@@ -1211,21 +1211,21 @@ static void sgr(vt_term *t)
         } else if (p == 29) {
             t->attr &= ~VT_ATTR_STRIKE;
         } else if (p >= 30 && p <= 37) {
-            t->fg = (vt_u16)(p - 30);
+            t->fg = (vt_color)(p - 30);
         } else if (p == 38) {
             t->fg = ext_colour(t, &i);
         } else if (p == 39) {
             t->fg = t->pers == VT_AMIGA ? t->amiga_dfg : VT_COLOR_DEFAULT;
         } else if (p >= 40 && p <= 47) {
-            t->bg = (vt_u16)(p - 40);
+            t->bg = (vt_color)(p - 40);
         } else if (p == 48) {
             t->bg = ext_colour(t, &i);
         } else if (p == 49) {
             t->bg = t->pers == VT_AMIGA ? t->amiga_dbg : VT_COLOR_DEFAULT;
         } else if (p >= 90 && p <= 97 && t->pers != VT_AMIGA) {
-            t->fg = (vt_u16)(p - 90 + 8);
+            t->fg = (vt_color)(p - 90 + 8);
         } else if (p >= 100 && p <= 107 && t->pers != VT_AMIGA) {
-            t->bg = (vt_u16)(p - 100 + 8);
+            t->bg = (vt_color)(p - 100 + 8);
         } else {
             note_value(t, 'S', p);
         }
@@ -1674,7 +1674,7 @@ static void csi_amiga(vt_term *t, vt_u8 final)
         return;
     if (t->priv == '>') {
         if (final == 'm') { /* SGR >n: global background pen */
-            t->amiga_bg = (vt_u16)(param0(t, 0) & 0xFF);
+            t->amiga_bg = (vt_color)(param0(t, 0) & 0xFF);
             mark_rows(t, 0, t->rows);
         } else if (final == 'h' || final == 'l') {
             set_mode(t, final == 'h');
@@ -2547,9 +2547,9 @@ long vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max)
     return t->unhandled;
 }
 
-void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *bg)
+void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_color *bg)
 {
-    vt_u16 f = c->fg, b = c->bg, tmp;
+    vt_color f = c->fg, b = c->bg, tmp;
     switch (t->pers) {
     case VT_AMIGA:
         /* Pens are screen pens; bold is a font style, not a colour. */
@@ -2564,13 +2564,13 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_u16 *fg, vt_u16 *b
         if (b == VT_COLOR_DEFAULT)
             b = 0;
         if ((c->attr & VT_ATTR_BOLD) && f < 8)
-            f = (vt_u16)(f + 8);
+            f = (vt_color)(f + 8);
         if ((c->attr & VT_ATTR_BLINK) && b < 8)
-            b = (vt_u16)(b + 8); /* iCE colours */
+            b = (vt_color)(b + 8); /* iCE colours */
         break;
     default:
         if ((c->attr & VT_ATTR_BOLD) && f < 8)
-            f = (vt_u16)(f + 8);
+            f = (vt_color)(f + 8);
         if (b == VT_COLOR_DEFAULT)
             b = VT_COLOR_DEFAULT_BG;
         break;

@@ -4,7 +4,7 @@
 static void bold_is_bright_and_blink_is_ice(void)
 {
     vt_term *t = h_new(10, 1, VT_PCANSI);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "\033[1;30ma\033[0;5;44mb\033[0mc");
     vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
     CHECK_INT(f, 8); /* 1;30 is the dark grey BBS art shadows with */
@@ -24,7 +24,7 @@ static void bold_is_bright_and_blink_is_ice(void)
 static void erase_after_blink_fills_with_the_bright_background(void)
 {
     vt_term *t = h_new(10, 2, VT_PCANSI);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "\033[5ma\033[K");
     vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
     CHECK_INT(b, 8);
@@ -44,7 +44,7 @@ static void erase_after_blink_fills_with_the_bright_background(void)
 static void erase_under_inverse_fills_with_the_foreground(void)
 {
     vt_term *t = h_new(10, 2, VT_PCANSI);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "\033[1;33;44;7m\033[K\r\n\n");
     vt_resolve_colors(t, h_cell(t, 0, 1), &f, &b);
     CHECK_INT(f, 4);
@@ -68,7 +68,7 @@ static void scroll_down_takes_the_first_of_two_parameters(void)
 static void restore_position_keeps_the_colour(void)
 {
     vt_term *t = h_new(10, 2, VT_PCANSI);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "\033[s\033[1;33mX\033[uY");
     vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
     CHECK_INT(h_cell(t, 0, 0)->ch, 'Y');
@@ -156,7 +156,7 @@ static void eighty_column_art_wraps_deferred(void)
 static void aixterm_bright_sets_bold_like_dctelnet(void)
 {
     vt_term *t = h_new(10, 1, VT_PCANSI);
-    vt_u16 f, b;
+    vt_color f, b;
     h_put(t, "\033[91ma\033[32mb\033[0;104mc");
     vt_resolve_colors(t, h_cell(t, 1, 0), &f, &b);
     CHECK_INT(f, 10); /* stays bright until 22/0 */
