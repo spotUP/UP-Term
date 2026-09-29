@@ -99,7 +99,7 @@ HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler
 HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc \
                handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/vtcon_packets.h tty/ldisc.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/vsh
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/vsh
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -136,6 +136,10 @@ AGCC ?= $(HOME)/opt/amiga/bin/m68k-amigaos-gcc
 $(BUILD)/amiga/ptyprobe: tests/amiga/ptyprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ptyprobe.c
+
+$(BUILD)/amiga/ptytest: tests/amiga/ptytest.c handler/vtcon_packets.h tty/ldisc.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/ptytest.c
 
 $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
@@ -176,11 +180,26 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/ldisc.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
+# PTY: (P5): pseudo-terminals on the same line discipline. No C startup.
+PTY_FLAGS := DEBUG=$(DEBUG)
+ifneq ($(PTY_FLAGS),$(shell cat $(BUILD)/amiga/pty.flags 2>/dev/null))
+PTY_FORCE := FORCE
+endif
+$(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c handler/brk.h handler/vtcon_packets.h tty/ldisc.c tty/ldisc.h
+	@mkdir -p $(BUILD)/amiga/obj/pty
+	@echo '$(PTY_FLAGS)' > $(BUILD)/amiga/pty.flags
+	$(VC) $(if $(DEBUG),-DPTY_DEBUG) -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/pty/pty_handler.o handler/pty_handler.c
+	$(VC) -c -o $(BUILD)/amiga/obj/pty/brk.o handler/brk.c
+	$(VC) -c -o $(BUILD)/amiga/obj/pty/ldisc.o tty/ldisc.c
+	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/pty/pty_handler.o \
+	  $(BUILD)/amiga/obj/pty/brk.o $(BUILD)/amiga/obj/pty/ldisc.o \
+	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
+
 # The install kit: build/vtcon.lha (handler, DOSDrivers entry, terminfo,
 # termcap, Install script, README), unpacking to a drawer "vtcon".
 dist: amiga $(BUILD)/terminfo/76/vtcon
 	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v
-	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/vsh dist/XCON dist/Install dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh dist/XCON dist/PTY dist/Install dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
 	cp $(BUILD)/terminfo/v/vtcon $(BUILD)/dist/vtcon/terminfo/v/vtcon
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon

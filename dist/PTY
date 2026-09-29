@@ -1,0 +1,5 @@
+/* UP-Term: PTY:, Unix pseudo-terminals (PTY:<id>/m master, PTY:<id>/s slave) */
+Handler   = L:pty-handler
+Priority  = 5
+StackSize = 8000
+GlobVec   = -1

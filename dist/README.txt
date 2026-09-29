@@ -68,5 +68,11 @@ VSH (the shell)
   The vshrc gives Unix names: ls (-l) mkdir (-p) rm (-r -f) cp (-r) mv cat
   touch clear ll; ../x is passed on as /x.
 
+PTY: (pseudo-terminals)
+  For terminal multiplexers and remote shells: PTY:<id>/m is the master,
+  PTY:<id>/s the slave, with the same Unix line discipline XCON: runs
+  between them (termios, Ctrl-C, Ctrl-\, Ctrl-Z, window size). A master
+  is open once per id; a program looks for a free one by trying ids.
+
 STATUS
   Test build. CON:/RAW: are not replaced; XCON: runs beside them.
