@@ -52,11 +52,16 @@ vt_glyph vt_map_glyph(vt_u32 cp, enum vt_font_enc enc)
     if (enc == VT_ENC_CP437) {
         /* The IBM font has the line and block glyphs itself: they join
          * as the art was drawn for. */
-        const vt_u16 *t = vt_cp437_table();
-        int i;
-        for (i = 0; i < 128; i++)
-            if (t[i] == cp)
-                return mk(VT_GLYPH_FONT, 0x80 + i);
+        int lo = 0, hi = 127;
+        while (lo <= hi) { /* 7 steps: BBS art is mostly these characters */
+            int mid = (lo + hi) >> 1;
+            if (cp437_rev_cp[mid] == cp)
+                return mk(VT_GLYPH_FONT, cp437_rev_byte[mid]);
+            if (cp437_rev_cp[mid] < cp)
+                lo = mid + 1;
+            else
+                hi = mid - 1;
+        }
         if (cp == 0x2302)
             return mk(VT_GLYPH_FONT, 0x7F);
     } else if (cp >= 0xA0 && cp <= 0xFF) {

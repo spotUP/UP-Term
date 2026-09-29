@@ -18,7 +18,7 @@ $(BUILD)/vttest_host: $(ENGINE) $(RENDER) engine/vtengine.h render/glyphmap.h ha
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(TESTS)
 
-render/glyph_tables.inc: tools/gen_glyph_tables.py
+render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
 
 $(BUILD)/vtdump: $(ENGINE) engine/vtengine.h tests/dump_main.c

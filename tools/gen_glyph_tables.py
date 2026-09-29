@@ -13,7 +13,7 @@ Blocks U+2580-U+259F: one byte each:
                   4 lower left, 8 lower right
   side << 4 | k   a bar of k eighths against side 0 top, 1 bottom, 2 left, 3 right
 """
-import pathlib, unicodedata
+import pathlib, re, unicodedata
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 W = {"LIGHT": 1, "SINGLE": 1, "HEAVY": 2, "DOUBLE": 3}
@@ -83,6 +83,22 @@ def main():
     out.append("static const vt_u8 block_shape[32] = {")
     for i in range(0, 32, 8):
         out.append("    " + ", ".join("0x%02X" % b for b in blocks[i:i + 8]) + ",  /* U+%04X */" % (0x2580 + i))
+    out.append("};")
+    # CP437 0x80-0xFF sorted by code point, for a binary search: read from
+    # the engine's decode table so the two cannot drift apart.
+    src = (ROOT / "engine/vtengine.c").read_text()
+    body = src.split("static const vt_u16 cp437_hi[128] = {", 1)[1].split("};", 1)[0]
+    hi = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]{4})", body)]
+    assert len(hi) == 128 and len(set(hi)) == 128, len(hi)
+    pairs = sorted((cp, 0x80 + i) for i, cp in enumerate(hi))
+    out.append("/* CP437 0x80-0xFF by code point (from vtengine.c cp437_hi), for a binary search. */")
+    out.append("static const vt_u16 cp437_rev_cp[128] = {")
+    for i in range(0, 128, 8):
+        out.append("    " + ", ".join("0x%04X" % c for c, _ in pairs[i:i + 8]) + ",")
+    out.append("};")
+    out.append("static const vt_u8 cp437_rev_byte[128] = {")
+    for i in range(0, 128, 8):
+        out.append("    " + ", ".join("0x%02X" % b for _, b in pairs[i:i + 8]) + ",")
     out.append("};")
     (ROOT / "render/glyph_tables.inc").write_text("\n".join(out) + "\n")
     print("box: %d, blocks: %d" % (len(boxes), len(blocks)))

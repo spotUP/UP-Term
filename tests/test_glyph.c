@@ -43,6 +43,19 @@ static void blocks_become_rectangles(void)
     CHECK_INT(g.code, 0x40 | 2 | 4);
 }
 
+/* Every CP437 high byte maps back to itself (the reverse table is sorted
+ * for a binary search; a wrong order or a drifted entry loses glyphs). */
+static void cp437_round_trips_every_high_byte(void)
+{
+    const vt_u16 *t = vt_cp437_table();
+    int i;
+    for (i = 0; i < 128; i++) {
+        vt_glyph g = vt_map_glyph(t[i], VT_ENC_CP437);
+        CHECK_INT(g.kind, VT_GLYPH_FONT);
+        CHECK_INT(g.code, 0x80 + i);
+    }
+}
+
 static void cp437_font_uses_its_own_line_glyphs(void)
 {
     vt_glyph g = vt_map_glyph(0x2554, VT_ENC_CP437);
@@ -75,5 +88,6 @@ void suite_glyph(void)
     box_drawing_becomes_lines();
     blocks_become_rectangles();
     cp437_font_uses_its_own_line_glyphs();
+    cp437_round_trips_every_high_byte();
     unknown_code_points_get_a_stand_in();
 }
