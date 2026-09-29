@@ -47,6 +47,7 @@ typedef struct vr_render {
     ULONG exact_key[VR_EXACT_SLOTS];
     UBYTE exact_pen[VR_EXACT_SLOTS];
     WORD n_exact;
+    LONG dflt_obtained[2];  /* the pens vr_set_defaults obtained, -1 none */
     /* fonts for SGR 11-19 (1-9) and Fraktur, SGR 20 (10); 0 = the primary */
     struct TextFont *alt_font[11];
     /* blinking: a blinking cell was drawn; frames counted; the off phases */
@@ -85,8 +86,11 @@ int  vr_blink_tick(vr_render *r);
  * keeps it open. Ignored unless its cells are the primary font's size. */
 void vr_set_alt_font(vr_render *r, int n, struct TextFont *font);
 
-/* Palette used for xterm / pcansi: 16 ANSI colours, 6x6x6 cube, 24 greys. */
-ULONG vr_palette_rgb(int index);
+/* The colour a screen pen shows now, 0xRRGGBB. */
+ULONG vr_pen_rgb(vr_render *r, UBYTE pen);
+/* The palette or the default colours changed (OSC 4 / 10-12): the pens
+ * chosen for palette entries are given back and chosen again. */
+void vr_palette_changed(vr_render *r);
 
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
              enum vt_font_enc enc);

@@ -314,6 +314,78 @@ static void rare_style_table_is_swept_when_full(void)
     vt_free(t);
 }
 
+/* ---- phase A4: the replies programs ask for ---- */
+
+static void check_reply(const char *want)
+{
+    CHECK_INT(h_reply_len, (long)strlen(want));
+    CHECK_INT(memcmp(h_reply, want, strlen(want)), 0);
+    h_reply_clear();
+}
+
+static void colour_queries_and_changes(void)
+{
+    vt_term *t = h_new(10, 2, VT_XTERM);
+    vt_set_default_colors(t, 0xC0C0C0UL, 0x000000UL, 0xFFFFFFUL);
+    h_reply_clear();
+    h_put(t, "\033]4;1;?\007");
+    check_reply("\033]4;1;rgb:cdcd/0000/0000\007");
+    h_put(t, "\033]4;1;#123456;2;rgb:f/80/ff\033\\\033]4;1;?;2;?\033\\");
+    check_reply("\033]4;1;rgb:1212/3434/5656\033\\\033]4;2;rgb:ffff/8080/ffff\033\\");
+    CHECK_INT(vt_palette_rgb(t, 1) == 0x123456UL, 1);
+    h_put(t, "\033]104;1\007");
+    CHECK_INT(vt_palette_rgb(t, 1) == 0xCD0000UL, 1);
+    CHECK_INT(vt_palette_rgb(t, 2) == 0xFF80FFUL, 1);
+    h_put(t, "\033]104\007");
+    CHECK_INT(vt_palette_rgb(t, 2) == 0x00CD00UL, 1);
+    h_put(t, "\033]10;?;?\007");
+    check_reply("\033]10;rgb:c0c0/c0c0/c0c0\007\033]11;rgb:0000/0000/0000\007");
+    h_put(t, "\033]11;#203040\007");
+    CHECK_INT(vt_default_color(t, 1) == 0x203040UL, 1);
+    h_put(t, "\033]111\007");
+    CHECK_INT(vt_default_color(t, 1) == 0x000000UL, 1);
+    h_put(t, "\033[?996n");
+    check_reply("\033[?997;1n");
+    vt_free(t);
+}
+
+static void decrqss_decrqm_and_version(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_reply_clear();
+    h_put(t, "\033[1;4:3;38;5;196;48;2;1;2;3m\033P$qm\033\\");
+    check_reply("\033P1$r0;1;4:3;38;5;196;48;2;1;2;3m\033\\");
+    h_put(t, "\033[2;5r\033P$qr\033\\");
+    check_reply("\033P1$r2;5r\033\\");
+    h_put(t, "\033P$qx\033\\");
+    check_reply("\033P0$r\033\\");
+    h_put(t, "\033[5 q\033P$q q\033\\");
+    check_reply("\033P1$r5 q\033\\");
+    CHECK_INT(vt_cursor_style(t), 5);
+    h_put(t, "\033[?25$p\033[?25l\033[?25$p\033[?9999$p\033[4$p");
+    check_reply("\033[?25;1$y\033[?25;2$y\033[?9999;0$y\033[4;2$y");
+    h_put(t, "\033[>q");
+    check_reply("\033P>|vtcon 1.0\033\\");
+    vt_free(t);
+}
+
+static void window_reports_and_title_stack(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_reply_clear();
+    h_put(t, "\033[14t"); /* no pixel size known yet: no answer */
+    CHECK_INT(h_reply_len, 0);
+    vt_set_cell_pixels(t, 8, 16);
+    h_put(t, "\033[14t\033[16t\033[18t\033[19t");
+    check_reply("\033[4;384;640t\033[6;16;8t\033[8;24;80t\033[9;24;80t");
+    h_put(t, "\033]2;one\007\033[22;0t\033]2;two\007");
+    CHECK_INT(strcmp(vt_title(t), "two"), 0);
+    h_put(t, "\033[23;0t");
+    CHECK_INT(strcmp(vt_title(t), "one"), 0);
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
 static void sgr_colours_and_attributes(void)
 {
     vt_term *t = h_new(10, 1, VT_XTERM);
@@ -665,6 +737,9 @@ void suite_xterm(void)
     fonts_and_fraktur();
     overline_frames_scripts_ideograms_blink();
     rare_style_table_is_swept_when_full();
+    colour_queries_and_changes();
+    decrqss_decrqm_and_version();
+    window_reports_and_title_stack();
     alt_screen_1049_saves_and_restores();
     dec_graphics_draw_boxes();
     shift_out_selects_g1();

@@ -17,23 +17,6 @@
 
 /* ---- palette ------------------------------------------------------------ */
 
-static const ULONG ansi16[16] = {
-    0x000000, 0xCD0000, 0x00CD00, 0xCDCD00, 0x0000EE, 0xCD00CD, 0x00CDCD, 0xE5E5E5,
-    0x7F7F7F, 0xFF0000, 0x00FF00, 0xFFFF00, 0x5C5CFF, 0xFF00FF, 0x00FFFF, 0xFFFFFF
-};
-
-ULONG vr_palette_rgb(int i)
-{
-    static const UBYTE level[6] = { 0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF };
-    if (i < 16)
-        return ansi16[i];
-    if (i < 232) {
-        i -= 16;
-        return ((ULONG)level[i / 36] << 16) | ((ULONG)level[(i / 6) % 6] << 8) | level[i % 6];
-    }
-    i = 8 + (i - 232) * 10;
-    return ((ULONG)i << 16) | ((ULONG)i << 8) | (ULONG)i;
-}
 
 static LONG obtain(vr_render *r, ULONG rgb)
 {
@@ -154,7 +137,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
     }
     c &= 0xFF;
     if (!r->have[c]) {
-        LONG p = obtain(r, vr_palette_rgb(c));
+        LONG p = obtain(r, vt_palette_rgb(r->t, c));
         if (p >= 0) {
             r->pens[c] = (UBYTE)p;
             r->obtained[c] = p;
@@ -210,6 +193,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->n_exact = 0;
     for (i = 0; i < VR_EXACT_SLOTS; i++)
         r->exact_key[i] = 0;
+    r->dflt_obtained[0] = r->dflt_obtained[1] = -1;
     r->has_blink = 0;
     r->blink_frames = 0;
     r->blink_slow_off = r->blink_fast_off = 0;
@@ -248,12 +232,39 @@ void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb)
         p = obtain(r, want[i] & 0xFFFFFF);
         if (p < 0)
             continue;
-        if (r->n_rgb < 64)
-            r->rgb_obtained[r->n_rgb++] = p; /* released in vr_free */
+        /* one pen per default at a time: programs may change them (OSC 10/11) */
+        if (r->dflt_obtained[i] >= 0 && r->cm)
+            ReleasePen(r->cm, (ULONG)r->dflt_obtained[i]);
+        r->dflt_obtained[i] = p;
         if (i == 0)
             r->pen_default_fg = (UBYTE)p;
         else
             r->pen_default_bg = (UBYTE)p;
+    }
+}
+
+/* The colour a screen pen shows now, 0xRRGGBB. */
+ULONG vr_pen_rgb(vr_render *r, UBYTE pen)
+{
+    ULONG c[3];
+    if (!r->cm)
+        return 0;
+    GetRGB32(r->cm, pen, 1, c);
+    return ((c[0] >> 24) << 16) | ((c[1] >> 24) << 8) | (c[2] >> 24);
+}
+
+/* A program changed the palette or the default colours: every pen chosen
+ * for a colour is given back and chosen again as cells are drawn. */
+void vr_palette_changed(vr_render *r)
+{
+    int i;
+    if (r->cm)
+        for (i = 0; i < 256; i++)
+            if (r->obtained[i] >= 0)
+                ReleasePen(r->cm, (ULONG)r->obtained[i]);
+    for (i = 0; i < 256; i++) {
+        r->have[i] = 0;
+        r->obtained[i] = -1;
     }
 }
 
@@ -274,6 +285,10 @@ void vr_free(vr_render *r)
     for (i = 0; i < VR_EXACT_SLOTS; i++)
         if (r->cm && r->exact_key[i])
             ReleasePen(r->cm, (ULONG)r->exact_pen[i]);
+    for (i = 0; i < 2; i++)
+        if (r->cm && r->dflt_obtained[i] >= 0)
+            ReleasePen(r->cm, (ULONG)r->dflt_obtained[i]);
+    r->dflt_obtained[0] = r->dflt_obtained[1] = -1;
     for (i = 0; i < VR_EXACT_SLOTS; i++)
         r->exact_key[i] = 0;
     r->n_exact = 0;
@@ -1156,9 +1171,15 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
 static void cursor_flip(vr_render *r)
 {
     WORD px = r->ox + r->cursor_x * r->cw, py = r->oy + r->cursor_y * r->ch;
+    WORD x1 = (WORD)(px + r->cw - 1), y1 = (WORD)(py + r->ch - 1);
+    int style = vt_cursor_style(r->t);   /* DECSCUSR */
+    if (style == 3 || style == 4)
+        py = (WORD)(y1 - 1);              /* underline: the two bottom rows */
+    else if (style == 5 || style == 6)
+        x1 = (WORD)(px + 1);              /* bar: the two left columns */
     SetDrMd(r->rp, COMPLEMENT);
     SetWriteMask(r->rp, 0xFF);
-    RectFill(r->rp, px, py, px + r->cw - 1, py + r->ch - 1);
+    RectFill(r->rp, px, py, x1, y1);
     SetDrMd(r->rp, JAM2);
 }
 

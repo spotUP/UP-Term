@@ -306,6 +306,23 @@ static void cb_title(void *u, const char *s)
 
 static void resize(con *c);
 
+/* The engine's idea of the default colours: what the pens show. */
+static void report_defaults(con *c)
+{
+    ULONG fg = vr_pen_rgb(&c->r, c->r.pen_default_fg), bg = vr_pen_rgb(&c->r, c->r.pen_default_bg);
+    vt_set_default_colors(c->t, fg, bg, fg);
+}
+
+/* A program changed the palette or the default colours (OSC 4, 10-12):
+ * new pens, then the whole window redrawn (the engine marked it). */
+static void cb_colors(void *u)
+{
+    con *c = (con *)u;
+    ULONG fg = vt_default_color(c->t, 0), bg = vt_default_color(c->t, 1);
+    vr_palette_changed(&c->r);
+    vr_set_defaults(&c->r, fg, bg);
+}
+
 /* Amiga page length, line length and offsets (CSI t / u / x / y): the text
  * area changes, as the console recomputes it (-1: back to automatic). The
  * resize happens after the write that asked for it (see output()). */
@@ -643,6 +660,7 @@ have_window:
     cb.bell = cb_bell;
     cb.title = cb_title;
     cb.layout = cb_layout;
+    cb.colors = cb_colors;
     {
         /* size from the window before the engine exists */
         struct Window *w = c->win;
@@ -672,6 +690,8 @@ have_window:
         }
     }
     vr_set_defaults(&c->r, c->fg_rgb, c->bg_rgb);
+    report_defaults(c);
+    vt_set_cell_pixels(c->t, c->font->tf_XSize, c->font->tf_YSize);
     le_init(&c->le, c->t, le_out, c);
     c->le.utf8 = c->pers == VT_XTERM && !c->latin1 && !c->cp437;
     history_load(c); /* the saved history, read by a worker */

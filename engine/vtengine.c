@@ -116,6 +116,14 @@ struct vt_term {
     int pend_n, pend_top, pend_bot;
 
     char title[VT_STR_MAX];
+    char title_stack[4][VT_STR_MAX]; /* CSI 22 t / 23 t */
+    int n_titles;
+    vt_u8 str_bel;             /* the string ended with BEL: answer with BEL */
+    vt_u32 pal_set[256];       /* OSC 4: 0x01RRGGBB, 0 = the default entry */
+    vt_u32 dflt[3];            /* the host's default text, background, cursor */
+    vt_u32 dflt_set[3];        /* OSC 10-12: 0x01RRGGBB, 0 = the host's */
+    int cell_w, cell_h;        /* pixels, for CSI 14t / 16t */
+    vt_u8 cursor_style;        /* DECSCUSR */
 
     /* sequences parsed but not acted on (vt_unhandled): the terminfo test
      * requires none, so a capability the engine lacks cannot hide */
@@ -1667,6 +1675,109 @@ static int amiga_collision(const vt_term *t, vt_u8 final)
     return 0;
 }
 
+/* CSI Ps t (xterm window operations): the reports, and the title stack.
+ * Moving, resizing and raising the window are the user's, not a program's. */
+static void window_op(vt_term *t)
+{
+    long op = param0(t, 0);
+    char b[40];
+    int n, a = 0, c = 0, code = 0;
+    switch (op) {
+    case 14: /* text area in pixels */
+        code = 4;
+        a = t->rows * t->cell_h;
+        c = t->cols * t->cell_w;
+        break;
+    case 16: /* character cell in pixels */
+        code = 6;
+        a = t->cell_h;
+        c = t->cell_w;
+        break;
+    case 18: /* text area in characters */
+    case 19: /* the screen: the same, the window is the terminal */
+        code = op == 18 ? 8 : 9;
+        a = t->rows;
+        c = t->cols;
+        break;
+    case 22: /* push the title */
+        if (param0(t, 1) != 1) {
+            if (t->n_titles == 4) {
+                memmove(t->title_stack[0], t->title_stack[1], 3 * VT_STR_MAX);
+                t->n_titles = 3;
+            }
+            memcpy(t->title_stack[t->n_titles++], t->title, VT_STR_MAX);
+        }
+        return;
+    case 23: /* pop it */
+        if (param0(t, 1) != 1 && t->n_titles) {
+            memcpy(t->title, t->title_stack[--t->n_titles], VT_STR_MAX);
+            if (t->cb.title)
+                t->cb.title(t->user, t->title);
+        }
+        return;
+    default:
+        note_unhandled(t, 'C', 't');
+        return;
+    }
+    if ((op == 14 || op == 16) && !t->cell_w)
+        return; /* the host has not said */
+    n = put_csi(t, b);
+    n = fmt_uint(b, n, code);
+    b[n++] = ';';
+    n = fmt_uint(b, n, a);
+    b[n++] = ';';
+    n = fmt_uint(b, n, c);
+    b[n++] = 't';
+    reply(t, b, n);
+}
+
+/* DECRQM: CSI [?] Ps $ p -> CSI [?] Ps ; Pm $ y, Pm 1 set, 2 reset,
+ * 0 not recognised, 4 permanently reset. */
+static void report_mode(vt_term *t)
+{
+    long m = param0(t, 0);
+    int v = 0;
+    char b[32];
+    int n;
+    if (t->priv == '?') {
+        vt_u32 bit = 0;
+        switch (m) {
+        case 1: bit = VT_MODE_APP_CURSOR; break;
+        case 5: bit = VT_MODE_SCREEN_REVERSE; break;
+        case 9: bit = VT_MODE_MOUSE_X10; break;
+        case 25: bit = VT_MODE_CURSOR_VISIBLE; break;
+        case 47: case 1047: case 1049: bit = VT_MODE_ALT_SCREEN; break;
+        case 1000: bit = VT_MODE_MOUSE_NORMAL; break;
+        case 1002: bit = VT_MODE_MOUSE_BUTTON; break;
+        case 1003: bit = VT_MODE_MOUSE_ANY; break;
+        case 1004: bit = VT_MODE_FOCUS; break;
+        case 1006: bit = VT_MODE_MOUSE_SGR; break;
+        case 2004: bit = VT_MODE_BRACKET_PASTE; break;
+        case 6: v = t->origin ? 1 : 2; break;
+        case 7: v = t->autowrap ? 1 : 2; break;
+        case 12: v = t->cursor_style == 0 || (t->cursor_style & 1) ? 1 : 2; break;
+        case 3: v = 4; break;  /* DECCOLM: the window sets the width */
+        default: break;
+        }
+        if (bit)
+            v = (t->modes & bit) ? 1 : 2;
+    } else {
+        if (m == 4)
+            v = t->insert ? 1 : 2;
+        else if (m == 20)
+            v = (t->modes & VT_MODE_NEWLINE) ? 1 : 2;
+    }
+    n = put_csi(t, b);
+    if (t->priv == '?')
+        b[n++] = '?';
+    n = fmt_uint(b, n, m);
+    b[n++] = ';';
+    n = fmt_uint(b, n, v);
+    b[n++] = '$';
+    b[n++] = 'y';
+    reply(t, b, n);
+}
+
 static void csi_xterm(vt_term *t, vt_u8 final)
 {
     /* One window, both dialects: Unix programs write the 7-bit ESC [, the
@@ -1680,8 +1791,17 @@ static void csi_xterm(vt_term *t, vt_u8 final)
         soft_reset(t);
         return;
     }
+    if (t->inter == ' ' && final == 'q') { /* DECSCUSR */
+        long st = param0(t, 0);
+        t->cursor_style = (vt_u8)(st <= 6 ? st : 0);
+        return;
+    }
+    if (t->inter == '$' && final == 'p') { /* DECRQM */
+        report_mode(t);
+        return;
+    }
     if (t->inter) {
-        note_unhandled(t, 'C', final); /* DECSCUSR, DECRQM, ...: parsed and ignored */
+        note_unhandled(t, 'C', final);
         return;
     }
     if (t->priv == '?') {
@@ -1689,6 +1809,12 @@ static void csi_xterm(vt_term *t, vt_u8 final)
             set_mode(t, final == 'h');
         else if (final == 'n' && param0(t, 0) == 6)
             report_cursor(t, 1);
+        else if (final == 'n' && param0(t, 0) == 996) {
+            /* the colour scheme: 1 dark, 2 light, from the background */
+            vt_u32 bg = vt_default_color(t, 1);
+            long lum = (long)((bg >> 16) & 0xFF) * 3 + (long)((bg >> 8) & 0xFF) * 6 + (long)(bg & 0xFF);
+            reply(t, lum < 1280 ? "\033[?997;1n" : "\033[?997;2n", 9);
+        }
         else if (final == 'J' || final == 'K')
             csi_common(t, final); /* DECSED / DECSEL: no protected cells */
         else
@@ -1696,6 +1822,10 @@ static void csi_xterm(vt_term *t, vt_u8 final)
         return;
     }
     if (t->priv == '>') {
+        if (final == 'q' && param0(t, 0) == 0) {
+            reply(t, "\033P>|vtcon 1.0\033\\", 15); /* XTVERSION */
+            return;
+        }
         if (final == 'c' && param0(t, 0) == 0)
             reply(t, "\033[>1;10;0c", 10); /* DA2: a VT220, firmware 10 */
         else
@@ -1730,19 +1860,7 @@ static void csi_xterm(vt_term *t, vt_u8 final)
         restore_cursor(t, &t->sav);
         return;
     case 't':
-        if (param0(t, 0) == 18) {
-            char b[32];
-            int n = put_csi(t, b);
-            b[n++] = '8';
-            b[n++] = ';';
-            n = fmt_uint(b, n, t->rows);
-            b[n++] = ';';
-            n = fmt_uint(b, n, t->cols);
-            b[n++] = 't';
-            reply(t, b, n);
-        } else {
-            note_unhandled(t, 'C', final);
-        }
+        window_op(t);
         return;
     default:
         if (!csi_common(t, final))
@@ -1886,18 +2004,205 @@ static void csi_dispatch(vt_term *t, vt_u8 final)
 
 /* ---- OSC ----------------------------------------------------------------- */
 
+/* The string terminator a reply uses: BEL for a request that ended with
+ * BEL, else ST (ESC \). */
+static int put_st(const vt_term *t, char *b, int n)
+{
+    if (t->str_bel) {
+        b[n++] = 0x07;
+    } else {
+        b[n++] = 0x1B;
+        b[n++] = '\\';
+    }
+    return n;
+}
+
+static int hexval(int c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+/* An X colour spec: rgb:r/g/b (1-4 hex digits each) or #rgb, #rrggbb,
+ * #rrrgggbbb, #rrrrggggbbbb. 0x01RRGGBB, 0 when it is not one. */
+static vt_u32 parse_color(const char *s, int n)
+{
+    vt_u32 c[3];
+    int i, k, d;
+    if (n > 4 && !memcmp(s, "rgb:", 4)) {
+        s += 4;
+        n -= 4;
+        for (k = 0; k < 3; k++) {
+            vt_u32 v = 0, max = 0;
+            for (i = 0; i < n && s[i] != '/'; i++) {
+                if ((d = hexval(s[i])) < 0 || i >= 4)
+                    return 0;
+                v = v * 16 + (vt_u32)d;
+                max = max * 16 + 15;
+            }
+            if (!i)
+                return 0;
+            c[k] = v * 255 / max;
+            s += i + (i < n);
+            n -= i + (i < n);
+        }
+        return 0x01000000UL | (c[0] << 16) | (c[1] << 8) | c[2];
+    }
+    if (n >= 4 && s[0] == '#' && (n - 1) % 3 == 0 && n - 1 <= 12) {
+        int w = (n - 1) / 3;
+        for (k = 0; k < 3; k++) {
+            vt_u32 v = 0;
+            for (i = 0; i < w; i++) {
+                if ((d = hexval(s[1 + k * w + i])) < 0)
+                    return 0;
+                v = v * 16 + (vt_u32)d;
+            }
+            c[k] = w == 1 ? v * 17 : v >> ((w - 2) * 4);
+        }
+        return 0x01000000UL | (c[0] << 16) | (c[1] << 8) | c[2];
+    }
+    return 0;
+}
+
+/* OSC Ps;[index;]rgb:rrrr/gggg/bbbb, the form xterm answers in. */
+static void reply_color(vt_term *t, long cmd, int index, vt_u32 rgb)
+{
+    static const char hex[] = "0123456789abcdef";
+    char b[48];
+    int n = 0, k;
+    b[n++] = 0x1B;
+    b[n++] = ']';
+    n = fmt_uint(b, n, cmd);
+    b[n++] = ';';
+    if (index >= 0) {
+        n = fmt_uint(b, n, index);
+        b[n++] = ';';
+    }
+    memcpy(b + n, "rgb:", 4);
+    n += 4;
+    for (k = 2; k >= 0; k--) {
+        int v = (int)((rgb >> (k * 8)) & 0xFF);
+        b[n++] = hex[v >> 4];
+        b[n++] = hex[v & 15];
+        b[n++] = hex[v >> 4];
+        b[n++] = hex[v & 15];
+        if (k)
+            b[n++] = '/';
+    }
+    n = put_st(t, b, n);
+    reply(t, b, n);
+}
+
+static void colors_changed(vt_term *t)
+{
+    mark_rows(t, 0, t->rows);
+    if (t->cb.colors)
+        t->cb.colors(t->user);
+}
+
+/* The next ';'-separated item of the OSC string from *i: its length. */
+static int osc_item(const vt_term *t, int *i, const char **item)
+{
+    int k = *i;
+    *item = t->str + k;
+    while (k < t->str_len && t->str[k] != ';')
+        k++;
+    k -= *i;
+    *i += k + (*i + k < t->str_len);
+    return k;
+}
+
 static void osc_dispatch(vt_term *t)
 {
-    int i = 0;
+    int i = 0, changed = 0;
     long cmd = 0;
     t->str[t->str_len] = 0;
     while (i < t->str_len && t->str[i] >= '0' && t->str[i] <= '9')
         cmd = cmd * 10 + (t->str[i++] - '0');
-    if (i >= t->str_len || t->str[i] != ';')
+    if (i < t->str_len && t->str[i] != ';')
         return;
     i++;
+    if (cmd == 104 || (cmd >= 110 && cmd <= 112)) { /* resets */
+        const char *it;
+        int n, any = 0;
+        if (cmd != 104) {
+            t->dflt_set[cmd - 110] = 0;
+        } else {
+            while (i < t->str_len && (n = osc_item(t, &i, &it)) >= 0) {
+                long k = 0;
+                int j;
+                for (j = 0; j < n && it[j] >= '0' && it[j] <= '9'; j++)
+                    k = k * 10 + (it[j] - '0');
+                if (j && k < 256)
+                    t->pal_set[k] = 0;
+                any = 1;
+                if (!n)
+                    break;
+            }
+            if (!any)
+                memset(t->pal_set, 0, sizeof(t->pal_set));
+        }
+        colors_changed(t);
+        return;
+    }
+    if (i > t->str_len)
+        return;
     if (cmd == 1)
         return; /* icon name: no icon to name */
+    if (cmd == 4) {
+        /* 4;index;spec[;index;spec...]: ? queries, a colour sets */
+        const char *it, *spec;
+        int n, m;
+        while (i < t->str_len) {
+            long k = 0;
+            int j;
+            n = osc_item(t, &i, &it);
+            m = osc_item(t, &i, &spec);
+            for (j = 0; j < n && it[j] >= '0' && it[j] <= '9'; j++)
+                k = k * 10 + (it[j] - '0');
+            if (!j || k > 255)
+                break;
+            if (m == 1 && spec[0] == '?') {
+                reply_color(t, 4, (int)k, vt_palette_rgb(t, (int)k));
+            } else {
+                vt_u32 c = parse_color(spec, m);
+                if (c) {
+                    t->pal_set[k] = c;
+                    changed = 1;
+                }
+            }
+        }
+        if (changed)
+            colors_changed(t);
+        return;
+    }
+    if (cmd >= 10 && cmd <= 12) {
+        /* 10;fg[;bg[;cursor]]: each item the next of the three */
+        const char *spec;
+        int m;
+        long which = cmd;
+        while (i < t->str_len && which <= 12) {
+            m = osc_item(t, &i, &spec);
+            if (m == 1 && spec[0] == '?') {
+                reply_color(t, which, -1, vt_default_color(t, (int)(which - 10)));
+            } else {
+                vt_u32 c = parse_color(spec, m);
+                if (c) {
+                    t->dflt_set[which - 10] = c;
+                    changed = 1;
+                }
+            }
+            which++;
+        }
+        if (changed)
+            colors_changed(t);
+        return;
+    }
     if (cmd != 0 && cmd != 2) {
         note_value(t, 'O', cmd);
         return;
@@ -1909,6 +2214,114 @@ static void osc_dispatch(vt_term *t)
         if (t->cb.title)
             t->cb.title(t->user, t->title);
     }
+}
+
+/* ---- DCS ------------------------------------------------------------------ */
+
+/* The current SGR as parameters (DECRQSS answers with it). */
+static int put_sgr(const vt_term *t, char *b, int n)
+{
+    static const struct { vt_attr a; char p; } plain[] = {
+        { VT_ATTR_BOLD, '1' }, { VT_ATTR_FAINT, '2' }, { VT_ATTR_ITALIC, '3' },
+        { VT_ATTR_INVERSE, '7' }, { VT_ATTR_CONCEAL, '8' }, { VT_ATTR_STRIKE, '9' }
+    };
+    int k, w;
+    b[n++] = '0';
+    for (k = 0; k < (int)(sizeof(plain) / sizeof(plain[0])); k++)
+        if (t->attr & plain[k].a) {
+            b[n++] = ';';
+            b[n++] = plain[k].p;
+        }
+    if (t->attr & VT_ATTR_UNDERLINE) {
+        b[n++] = ';';
+        b[n++] = '4';
+        if ((t->deco & VT_DECO_UL_MASK) > VT_UL_SINGLE) {
+            b[n++] = ':';
+            b[n++] = (char)('0' + (t->deco & VT_DECO_UL_MASK));
+        }
+    }
+    if (t->attr & VT_ATTR_BLINK) {
+        b[n++] = ';';
+        b[n++] = t->attr & VT_ATTR_RAPID ? '6' : '5';
+    }
+    if (t->attr & VT_ATTR_OVERLINE) {
+        memcpy(b + n, ";53", 3);
+        n += 3;
+    }
+    for (w = 0; w < 2; w++) {
+        vt_color c = w ? t->bg : t->fg;
+        if (c == VT_COLOR_DEFAULT)
+            continue;
+        b[n++] = ';';
+        if (c & VT_COLOR_RGB) {
+            n = fmt_uint(b, n, w ? 48 : 38);
+            memcpy(b + n, ";2;", 3);
+            n += 3;
+            n = fmt_uint(b, n, (long)((c >> 16) & 0xFF));
+            b[n++] = ';';
+            n = fmt_uint(b, n, (long)((c >> 8) & 0xFF));
+            b[n++] = ';';
+            n = fmt_uint(b, n, (long)(c & 0xFF));
+        } else if (c < 8) {
+            n = fmt_uint(b, n, (long)(c + (w ? 40 : 30)));
+        } else if (c < 16) {
+            n = fmt_uint(b, n, (long)(c - 8 + (w ? 100 : 90)));
+        } else {
+            n = fmt_uint(b, n, w ? 48 : 38);
+            memcpy(b + n, ";5;", 3);
+            n += 3;
+            n = fmt_uint(b, n, (long)c);
+        }
+    }
+    return n;
+}
+
+/* DECRQSS (DCS $ q Pt ST): the setting Pt names, as DCS 1 $ r ... ST;
+ * DCS 0 $ r ST for one this terminal does not have. */
+static void decrqss(vt_term *t, const char *pt, int len)
+{
+    char b[160];
+    int n = 0;
+    b[n++] = 0x1B;
+    b[n++] = 'P';
+    b[n++] = '1';
+    b[n++] = '$';
+    b[n++] = 'r';
+    if (len == 1 && pt[0] == 'm') {
+        n = put_sgr(t, b, n);
+        b[n++] = 'm';
+    } else if (len == 1 && pt[0] == 'r') {
+        n = fmt_uint(b, n, t->top + 1);
+        b[n++] = ';';
+        n = fmt_uint(b, n, t->bot);
+        b[n++] = 'r';
+    } else if (len == 2 && pt[0] == ' ' && pt[1] == 'q') {
+        n = fmt_uint(b, n, t->cursor_style ? t->cursor_style : 1);
+        b[n++] = ' ';
+        b[n++] = 'q';
+    } else if (len == 2 && pt[0] == '"' && pt[1] == 'p') {
+        memcpy(b + n, "64;1\"p", 6); /* a level 4 terminal, 7-bit controls */
+        n += 6;
+    } else if (len == 2 && pt[0] == '"' && pt[1] == 'q') {
+        memcpy(b + n, "0\"q", 3);    /* DECSCA: no protected cells */
+        n += 3;
+    } else {
+        n = 2;
+        b[n++] = '0';
+        b[n++] = '$';
+        b[n++] = 'r';
+    }
+    b[n++] = 0x1B;
+    b[n++] = '\\';
+    reply(t, b, n);
+}
+
+static void dcs_dispatch(vt_term *t)
+{
+    if (t->str_len >= 2 && t->str[0] == '$' && t->str[1] == 'q')
+        decrqss(t, t->str + 2, t->str_len - 2);
+    else
+        note_value(t, 'D', 0);
 }
 
 /* ---- parser ---------------------------------------------------------------- */
@@ -1930,14 +2343,17 @@ static void enter_string(vt_term *t, vt_u8 kind)
     t->str_kind = kind;
     t->str_len = 0;
     t->str_esc = 0;
+    t->str_bel = 0;
 }
 
 static void end_string(vt_term *t)
 {
     if (t->state == S_OSC)
         osc_dispatch(t);
+    else if (t->str_kind == 'P')
+        dcs_dispatch(t);
     else
-        note_value(t, t->str_kind == 'P' ? 'D' : 'X', 0);
+        note_value(t, 'X', 0);
     t->state = S_GROUND;
 }
 
@@ -1963,13 +2379,15 @@ static void feed(vt_term *t, vt_u32 c)
             t->str_esc = 1;
             return;
         } else if (c == 0x07 && t->state == S_OSC) {
+            t->str_bel = 1;
             end_string(t);
             return;
         } else if (c == 0x9C) {
             end_string(t);
             return;
         } else {
-            if (t->state == S_OSC && c >= 0x20 && t->str_len < VT_STR_MAX - 1) {
+            if ((t->state == S_OSC || t->str_kind == 'P') && c >= 0x20 &&
+                t->str_len < VT_STR_MAX - 1) {
                 if (c < 0x80)
                     t->str[t->str_len++] = (char)c;
                 else if (c < 0x800 && t->str_len < VT_STR_MAX - 2) {
@@ -2353,6 +2771,53 @@ void vt_set_personality(vt_term *t, enum vt_personality p)
 enum vt_personality vt_personality(const vt_term *t)
 {
     return t->pers;
+}
+
+/* xterm's 256 colours: the 16 ANSI ones, a 6x6x6 cube, 24 greys. */
+vt_u32 vt_palette_rgb(const vt_term *t, int i)
+{
+    static const vt_u32 ansi16[16] = {
+        0x000000, 0xCD0000, 0x00CD00, 0xCDCD00, 0x0000EE, 0xCD00CD, 0x00CDCD, 0xE5E5E5,
+        0x7F7F7F, 0xFF0000, 0x00FF00, 0xFFFF00, 0x5C5CFF, 0xFF00FF, 0x00FFFF, 0xFFFFFF
+    };
+    static const vt_u8 level[6] = { 0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF };
+    if (i < 0 || i > 255)
+        return 0;
+    if (t && t->pal_set[i])
+        return t->pal_set[i] & 0xFFFFFFUL;
+    if (i < 16)
+        return ansi16[i];
+    if (i < 232) {
+        i -= 16;
+        return ((vt_u32)level[i / 36] << 16) | ((vt_u32)level[(i / 6) % 6] << 8) | level[i % 6];
+    }
+    i = 8 + (i - 232) * 10;
+    return ((vt_u32)i << 16) | ((vt_u32)i << 8) | (vt_u32)i;
+}
+
+void vt_set_default_colors(vt_term *t, vt_u32 fg, vt_u32 bg, vt_u32 cursor)
+{
+    t->dflt[0] = fg & 0xFFFFFFUL;
+    t->dflt[1] = bg & 0xFFFFFFUL;
+    t->dflt[2] = cursor & 0xFFFFFFUL;
+}
+
+vt_u32 vt_default_color(const vt_term *t, int which)
+{
+    if (which < 0 || which > 2)
+        return 0;
+    return t->dflt_set[which] ? t->dflt_set[which] & 0xFFFFFFUL : t->dflt[which];
+}
+
+void vt_set_cell_pixels(vt_term *t, int w, int h)
+{
+    t->cell_w = w;
+    t->cell_h = h;
+}
+
+int vt_cursor_style(const vt_term *t)
+{
+    return t->cursor_style;
 }
 
 void vt_set_onlcr(vt_term *t, int on)

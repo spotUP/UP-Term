@@ -107,6 +107,9 @@ typedef struct vt_callbacks {
     /* A setting that changes the window's layout (see vt_layout); value is
      * the parameter, -1 when the sequence reset it to the default. */
     void (*layout)(void *user, int which, int value);
+    /* A program changed the palette (OSC 4 / 104) or the default colours
+     * (OSC 10-12 / 110-112): the renderer's pens are out of date. */
+    void (*colors)(void *user);
 } vt_callbacks;
 
 /* vt_modes() bits the host needs for input. */
@@ -189,6 +192,20 @@ void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_
  * follows the text; and its font, 0 primary, 1-9 SGR 11-19, 10 Fraktur (20). */
 vt_color vt_cell_underline_color(const vt_term *t, const vt_cell *c);
 int      vt_cell_font(const vt_term *t, const vt_cell *c);
+
+/* Colours as programs query and set them (OSC 4, 10-12): 0xRRGGBB of
+ * palette entry i (xterm's 16 + 6x6x6 cube + 24 greys, or what OSC 4 set),
+ * and of the default text (0), background (1) and cursor (2) colours. The
+ * host tells the engine the defaults it draws with; OSC 10-12 override. */
+vt_u32   vt_palette_rgb(const vt_term *t, int i);
+void     vt_set_default_colors(vt_term *t, vt_u32 fg, vt_u32 bg, vt_u32 cursor);
+vt_u32   vt_default_color(const vt_term *t, int which);
+/* The cell size in pixels, for the size reports programs ask for (CSI 14t,
+ * 16t). */
+void     vt_set_cell_pixels(vt_term *t, int w, int h);
+/* DECSCUSR: 0/1 blinking block, 2 block, 3 blinking underline, 4 underline,
+ * 5 blinking bar, 6 bar. */
+int      vt_cursor_style(const vt_term *t);
 
 /* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
 const vt_u16 *vt_cp437_table(void);
