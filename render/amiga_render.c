@@ -122,6 +122,12 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
         c = (vt_color)vt_rgb_to_256(VT_RGB_OF(c));
     }
     c &= 0xFF;
+    /* the 240 extended colours on a true-colour screen: exact, as a direct
+     * colour -- a pen each from the screen's colour map ran out after
+     * about 150, and "best pen" then gave Workbench colours (a 256-colour
+     * cube on the rig: 52 of 240 cells wrong, (238,153,0) for (215,135,0)) */
+    if (r->truecolor && c >= 16)
+        return truecolor_ink(r, vt_palette_rgb(r->t, c));
     if (!r->have[c]) {
         LONG p = obtain(r, vt_palette_rgb(r->t, c));
         if (p >= 0) {
