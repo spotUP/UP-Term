@@ -12,6 +12,32 @@ static char *sdup(const char *s)
     return r;
 }
 
+/* A growing string. */
+typedef struct pbuf {
+    char *s;
+    long n, cap;
+} pbuf;
+
+static void pb_add(pbuf *b, const char *s, long n)
+{
+    if (b->n + n + 1 > b->cap) {
+        long cap = (b->n + n + 1) * 2;
+        char *t = (char *)realloc(b->s, cap);
+        if (!t)
+            return;
+        b->s = t;
+        b->cap = cap;
+    }
+    memcpy(b->s + b->n, s, n);
+    b->n += n;
+    b->s[b->n] = 0;
+}
+
+static void pb_str(pbuf *b, const char *s)
+{
+    pb_add(b, s, (long)strlen(s));
+}
+
 void sh_shell_init(sh_shell *sh)
 {
     memset(&sh->ctx, 0, sizeof(sh->ctx));
@@ -233,6 +259,244 @@ static long b_echo(sh_shell *sh, int argc, char **argv, const sh_io *io)
     if (nl)
         say(sh, io->out, "\n");
     return 0;
+}
+
+/* printf: one backslash escape at *pp (on the backslash); %b's octal
+ * form is \0nnn. Returns 1 at \c (stop all output). */
+static int pf_escape(pbuf *b, const char **pp, int is_b)
+{
+    const char *p = *pp + 1;
+    char c = *p, out;
+    int n = 0, v = 0;
+    switch (c) {
+    case 'a': out = 7; break;
+    case 'b': out = 8; break;
+    case 'e': out = 27; break;
+    case 'f': out = 12; break;
+    case 'n': out = 10; break;
+    case 'r': out = 13; break;
+    case 't': out = 9; break;
+    case 'v': out = 11; break;
+    case 'c':
+        if (is_b) {
+            *pp = p;
+            return 1;
+        }
+        out = c;
+        break;
+    case 'x':
+        while (n < 2 && ((p[1] >= '0' && p[1] <= '9') || ((p[1] | 32) >= 'a' && (p[1] | 32) <= 'f'))) {
+            p++;
+            v = v * 16 + (*p <= '9' ? *p - '0' : (*p | 32) - 'a' + 10);
+            n++;
+        }
+        out = (char)v;
+        if (!n) {
+            pb_add(b, "\\", 1);
+            out = 'x';
+        }
+        break;
+    case 0:
+        pb_add(b, "\\", 1);
+        *pp = p - 1;
+        return 0;
+    default:
+        if (c >= '0' && c <= '7') {
+            if (is_b && c == '0')
+                p++;
+            else
+                p--;
+            while (n < 3 && p[1] >= '0' && p[1] <= '7') {
+                p++;
+                v = v * 8 + (*p - '0');
+                n++;
+            }
+            out = (char)v;
+        } else if (c == '\\' || c == '"' || c == '\'') {
+            out = c;
+        } else {
+            pb_add(b, "\\", 1);
+            out = c;
+        }
+    }
+    pb_add(b, &out, 1);
+    *pp = p;
+    return 0;
+}
+
+/* printf: a numeric argument ('c gives the character's value) */
+static long pf_number(sh_shell *sh, const sh_io *io, const char *a, int *bad)
+{
+    char *end;
+    long v;
+    if (!a || !*a)
+        return 0;
+    if (*a == '\'' || *a == '"')
+        return (unsigned char)a[1];
+    v = strtol(a, &end, 0);
+    if (*end || end == a) {
+        char *m = (char *)malloc(strlen(a) + 10);
+        if (m) {
+            strcpy(m, "printf: ");
+            strcat(m, a);
+            err2(sh, io, m, "invalid number");
+            free(m);
+        }
+        *bad = 1;
+    }
+    return v;
+}
+
+/* printf: body (after its prefix of pl characters: sign, 0x) in a field */
+static void pf_field(pbuf *b, const char *body, int pl, long width, int left, int zero)
+{
+    long len = (long)strlen(body), pad = width > len ? width - len : 0;
+    if (left) {
+        pb_str(b, body);
+        for (; pad > 0; pad--)
+            pb_add(b, " ", 1);
+        return;
+    }
+    if (zero) {
+        pb_add(b, body, pl);
+        for (; pad > 0; pad--)
+            pb_add(b, "0", 1);
+        pb_str(b, body + pl);
+        return;
+    }
+    for (; pad > 0; pad--)
+        pb_add(b, " ", 1);
+    pb_str(b, body);
+}
+
+static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    pbuf b = { 0, 0, 0 };
+    int ai = 2, bad = 0, stop = 0;
+    const char *p;
+    if (argc < 2) {
+        err2(sh, io, "printf", "usage: printf format [arguments]");
+        return 2;
+    }
+    do {
+        int used = ai;
+        for (p = argv[1]; *p && !stop; p++) {
+            const char *arg;
+            char spec, body[80], digits[24];
+            int left = 0, plus = 0, space = 0, alt = 0, zero = 0, pl = 0;
+            long width = 0, prec = -1;
+            if (*p == '\\') {
+                pf_escape(&b, &p, 0);
+                continue;
+            }
+            if (*p != '%') {
+                pb_add(&b, p, 1);
+                continue;
+            }
+            if (p[1] == '%') {
+                pb_add(&b, "%", 1);
+                p++;
+                continue;
+            }
+            for (p++; *p && strchr("-+ #0", *p); p++)
+                switch (*p) {
+                case '-': left = 1; break;
+                case '+': plus = 1; break;
+                case ' ': space = 1; break;
+                case '#': alt = 1; break;
+                default: zero = 1; break;
+                }
+            if (*p == '*') {
+                width = pf_number(sh, io, ai < argc ? argv[ai] : 0, &bad);
+                ai++;
+                p++;
+                if (width < 0) {
+                    left = 1;
+                    width = -width;
+                }
+            } else
+                for (; *p >= '0' && *p <= '9'; p++)
+                    width = width * 10 + (*p - '0');
+            if (*p == '.') {
+                prec = 0;
+                if (*++p == '*') {
+                    prec = pf_number(sh, io, ai < argc ? argv[ai] : 0, &bad);
+                    ai++;
+                    p++;
+                } else
+                    for (; *p >= '0' && *p <= '9'; p++)
+                        prec = prec * 10 + (*p - '0');
+            }
+            if (width > 4096)
+                width = 4096;
+            spec = *p;
+            if (!spec)
+                break;
+            arg = ai < argc ? argv[ai] : 0;
+            ai++;
+            if (spec == 's' || spec == 'b' || spec == 'c') {
+                pbuf t = { 0, 0, 0 };
+                const char *a = arg ? arg : "";
+                if (spec == 'b') {
+                    for (; *a && !stop; a++)
+                        if (*a == '\\')
+                            stop = pf_escape(&t, &a, 1);
+                        else
+                            pb_add(&t, a, 1);
+                } else
+                    pb_add(&t, a, spec == 'c' ? (*a ? 1 : 0) : (long)strlen(a));
+                if (!t.s)
+                    pb_add(&t, "", 0);
+                if (t.s && prec >= 0 && prec < t.n && spec != 'c')
+                    t.s[prec] = 0;
+                if (t.s)
+                    pf_field(&b, t.s, 0, width, left, 0);
+                free(t.s);
+            } else if (strchr("diouxX", spec)) {
+                long v = pf_number(sh, io, arg, &bad);
+                unsigned long u = (unsigned long)v;
+                int base = spec == 'o' ? 8 : (spec == 'x' || spec == 'X') ? 16 : 10;
+                int n = 0, k;
+                if (spec == 'd' || spec == 'i') {
+                    if (v < 0) {
+                        body[pl++] = '-';
+                        u = (unsigned long)-v;
+                    } else if (plus)
+                        body[pl++] = '+';
+                    else if (space)
+                        body[pl++] = ' ';
+                } else if (alt && spec != 'o' && u) {
+                    body[pl++] = '0';
+                    body[pl++] = spec;
+                }
+                do {
+                    int d = (int)(u % base);
+                    digits[n++] = (char)(d < 10 ? '0' + d : (spec == 'X' ? 'A' : 'a') + d - 10);
+                } while ((u /= base) > 0);
+                if (alt && spec == 'o' && digits[n - 1] != '0')
+                    digits[n++] = '0';
+                for (k = n; k < prec && k < 40; k++)
+                    body[pl + k - n] = '0';
+                k = pl + (prec > n && prec < 40 ? (int)prec - n : 0);
+                while (n)
+                    body[k++] = digits[--n];
+                body[k] = 0;
+                pf_field(&b, body, pl, width, left, zero && prec < 0);
+            } else {
+                body[0] = '%';
+                body[1] = spec;
+                body[2] = 0;
+                pb_str(&b, body);  /* not a conversion: printed as it is */
+                ai--;
+            }
+        }
+        if (ai == used)
+            break;  /* the format takes no arguments: once */
+    } while (ai < argc && !stop);
+    if (b.s)
+        sh->os.write(sh->os.data, io->out, b.s, b.n);
+    free(b.s);
+    return bad;
 }
 
 static long b_cd(sh_shell *sh, int argc, char **argv, const sh_io *io)
@@ -559,6 +823,7 @@ static const struct {
     builtin_fn fn;
 } builtins[] = {
     { ":", b_true }, { "true", b_true }, { "false", b_false }, { "echo", b_echo },
+    { "printf", b_printf },
     { "cd", b_cd }, { "pwd", b_pwd }, { "export", b_export }, { "unset", b_unset },
     { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "return", b_return },
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
@@ -1081,31 +1346,6 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
 }
 
 /* ---- the prompt ---------------------------------------------------------------- */
-
-typedef struct pbuf {
-    char *s;
-    long n, cap;
-} pbuf;
-
-static void pb_add(pbuf *b, const char *s, long n)
-{
-    if (b->n + n + 1 > b->cap) {
-        long cap = (b->n + n + 1) * 2;
-        char *t = (char *)realloc(b->s, cap);
-        if (!t)
-            return;
-        b->s = t;
-        b->cap = cap;
-    }
-    memcpy(b->s + b->n, s, n);
-    b->n += n;
-    b->s[b->n] = 0;
-}
-
-static void pb_str(pbuf *b, const char *s)
-{
-    pb_add(b, s, (long)strlen(s));
-}
 
 /* Text an escape produced, protected from the expansion that follows
  * (a directory named "$x" stays "$x"). */

@@ -363,8 +363,33 @@ static void prompts(void)
     CHECK_STR(prompt_after("", "\\[\\e[1m\\]x"), "\033[1mx");
 }
 
+static void printf_builtin(void)
+{
+    CHECK_STR(run("printf 'a %s b\\n' x"), "a x b\n");
+    CHECK_STR(run("printf '%d-%5d|%-5d|%05d\\n' 1 2 3 4"), "1-    2|3    |00004\n");
+    CHECK_STR(run("printf '%x %X %o %c %%\\n' 255 255 8 hello"), "ff FF 10 h %\n");
+    CHECK_STR(run("printf '%s\\n' a b c"), "a\nb\nc\n");   /* the format again while arguments remain */
+    CHECK_STR(run("printf '%.3s|%5.1s|\\n' abcdef xyz"), "abc|    x|\n");
+    CHECK_STR(run("printf 'x\\ty\\n'"), "x\ty\n");
+    CHECK_STR(run("printf '%b|\\n' 'a\\tb'"), "a\tb|\n");
+    CHECK_STR(run("printf '%s %s|\\n' a"), "a |\n");
+    CHECK_STR(run("printf '\\101\\x42\\n'"), "AB\n");
+    CHECK_STR(run("printf '%+d % d %i\\n' 5 5 -7"), "+5  5 -7\n");
+    CHECK_STR(run("printf '%d\\n' \"'A\""), "65\n");
+    CHECK_STR(run("printf '%*d|%-*s|\\n' 4 7 3 a"), "   7|a  |\n");
+    CHECK_STR(run("printf '%#x %#o\\n' 255 8"), "0xff 010\n");
+    CHECK_STR(run("printf '%.3d|%5.2x|%-4c|\\n' 7 10 z"), "007|   0a|z   |\n");
+    CHECK_STR(run("printf '%b%s\\n' 'x\\cy' never"), "x");  /* \c in %b stops everything */
+    run("printf '%d\\n' abc; echo $?");
+    CHECK_STR(slot(OUT)->data, "0\n1\n");
+    CHECK_STR(slot(ERR)->data, "vsh: printf: abc: invalid number\n");
+    CHECK_STR(run("printf"), "");
+    CHECK_INT(sh.ctx.status, 2);
+}
+
 void suite_sh_exec(void)
 {
+    printf_builtin();
     prompts();
     basics();
     control_flow();
