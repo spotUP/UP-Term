@@ -99,18 +99,22 @@ $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/vtengine.h
 # The handler: no C startup (handler_entry is the first code), exec memory.
 # Gotcha: with -O2, vbcc can loop forever on a source that has a compile
 # error instead of reporting it; build with -O0 to see the error.
-# Rebuild when the flags change (DEBUG=1 on or off): the stamp holds them.
-HANDLER_FLAGS := DEBUG=$(DEBUG) CPU=$(CPU) NO_DIRECT=$(NO_DIRECT)
-$(BUILD)/amiga/handler.flags: FORCE
-	@mkdir -p $(BUILD)/amiga
-	@echo '$(HANDLER_FLAGS)' | cmp -s - $@ || echo '$(HANDLER_FLAGS)' > $@
+# Rebuild when the flags change (DEBUG=1, DIRECT=1 on or off): the last
+# flags are read while make parses, and a difference forces the link (a
+# stamp file's mtime could equal the binary's to the second and be ignored).
+HANDLER_FLAGS := DEBUG=$(DEBUG) CPU=$(CPU) DIRECT=$(DIRECT)
+HANDLER_FLAGS_OLD := $(shell cat $(BUILD)/amiga/handler.flags 2>/dev/null)
+ifneq ($(HANDLER_FLAGS),$(HANDLER_FLAGS_OLD))
+HANDLER_FORCE := FORCE
+endif
 FORCE:
 
-$(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(BUILD)/amiga/handler.flags
+$(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	@mkdir -p $(BUILD)/amiga/obj
+	@echo '$(HANDLER_FLAGS)' > $(BUILD)/amiga/handler.flags
 	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
-	$(VC) $(if $(NO_DIRECT),-DVTCON_NO_DIRECT) -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
+	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
 	$(VC) -c -o $(BUILD)/amiga/obj/glyphmap.o render/glyphmap.c
 	$(VC) -c -o $(BUILD)/amiga/obj/clip.o handler/clip.c
 	$(VC) -c -o $(BUILD)/amiga/obj/lineedit.o handler/lineedit.c

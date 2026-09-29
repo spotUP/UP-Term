@@ -114,7 +114,11 @@ typedef struct con {
     ULONG wflags;
     int inactive;
     ULONG fg_rgb, bg_rgb;        /* DARK / FG / BG options, VR_KEEP = the screen's */
-    int layout_dirty;            /* a CSI t/u/x/y changed the text area */
+    int layout_dirty;
+    int render_pending;          /* the grid is ahead of the screen */
+    struct MsgPort *frame_port;  /* the frame clock (timer.device) */
+    struct timerequest *frame;
+    int frame_open, frame_busy;            /* a CSI t/u/x/y changed the text area */
     int auto_open;               /* AUTO: no window until the first read or write */
     int spec_parsed;
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
@@ -638,6 +642,30 @@ static void close_window(con *c)
 
 /* ---- output ---------------------------------------------------------------- */
 
+#define FRAME_MICROS 50000 /* 20 frames per second */
+
+/* Draw what the grid has that the screen has not. */
+static void render(con *c)
+{
+    if (!c->render_pending || !c->t)
+        return;
+    c->render_pending = 0;
+    vr_cursor_off(&c->r);
+    vt_flush(c->t);
+    vr_cursor_on(&c->r);
+}
+
+static void frame_start(con *c)
+{
+    if (!c->frame_open || c->frame_busy)
+        return;
+    c->frame->tr_node.io_Command = TR_ADDREQUEST;
+    c->frame->tr_time.tv_secs = 0;
+    c->frame->tr_time.tv_micro = FRAME_MICROS;
+    SendIO((struct IORequest *)c->frame);
+    c->frame_busy = 1;
+}
+
 static void output(con *c, const vt_u8 *b, long n)
 {
 #ifdef VTCON_DEBUG
@@ -646,17 +674,27 @@ static void output(con *c, const vt_u8 *b, long n)
 #endif
     if (!c->t)
         return;
-    if (c->r.view)
-        vr_set_view(&c->r, 0); /* new output shows the live screen, as xterm does */
+    if (c->r.view) {
+        /* new output shows the live screen, as xterm does; the engine's
+         * pending batch goes first (ignored by the renderer while the view
+         * is back), then the view redraws from the grid */
+        render(c);
+        vr_set_view(&c->r, 0);
+    }
     if (!c->le.len)
         c->le.started = 0; /* the next line starts wherever this output ends */
-    vr_cursor_off(&c->r);
-    vt_write(c->t, b, n);
+    /* Frame-paced: the grid changes now, the screen at the next frame
+     * (render()), so a flood of one-line writes costs one scroll blit
+     * per frame instead of one per line (the chip bus of a 4-plane hires
+     * screen could not keep up: 45 ms per scroll, cycle-exact rig). */
+    vt_feed(c->t, b, n);
+    c->render_pending = 1;
     if (c->layout_dirty) {
         c->layout_dirty = 0;
-        resize(c); /* not inside vt_write: the engine is mid-parse there */
+        render(c);
+        resize(c); /* not inside vt_feed: the engine is mid-parse there */
     }
-    vr_cursor_on(&c->r);
+    frame_start(c);
 #ifdef VTCON_DEBUG
     ReadEClock(&e1);
     c->prof_out += e1.ev_lo - e0.ev_lo;
@@ -1151,6 +1189,8 @@ static void mouse_event(con *c, struct IntuiMessage *im)
 static void idcmp(con *c)
 {
     struct IntuiMessage *im;
+    if (c->win && !IsListEmpty(&c->win->UserPort->mp_MsgList))
+        render(c); /* resize, refresh, selection: on the current screen */
     while (c->win && (im = (struct IntuiMessage *)GetMsg(c->win->UserPort))) {
         ULONG cls = im->Class;
         switch (cls) {
@@ -1381,6 +1421,12 @@ static LONG handler_main(void)
             TimerBase = c->timer->tr_node.io_Device;
         }
     }
+    c->frame_port = CreateMsgPort();
+    if (c->frame_port) {
+        c->frame = (struct timerequest *)CreateIORequest(c->frame_port, sizeof(struct timerequest));
+        if (c->frame && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)c->frame, 0))
+            c->frame_open = 1;
+    }
     if (!OpenDevice((STRPTR)"console.device", (ULONG)CONU_LIBRARY, (struct IORequest *)&c->lib_io, 0))
         ConsoleDevice = c->lib_io.io_Device; /* RawKeyConvert; the same device for every process */
     if (!DOSBase || !IntuitionBase || !GfxBase || !ConsoleDevice || !LayersBase) {
@@ -1413,12 +1459,21 @@ static LONG handler_main(void)
             wait |= 1UL << c->timer_port->mp_SigBit;
         if (c->comp_port)
             wait |= 1UL << c->comp_port->mp_SigBit;
+        if (c->frame_port)
+            wait |= 1UL << c->frame_port->mp_SigBit;
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */
         wait = Wait(wait);
         while ((m = GetMsg(c->port)))
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
+        if (c->frame_busy && CheckIO((struct IORequest *)c->frame)) {
+            WaitIO((struct IORequest *)c->frame);
+            c->frame_busy = 0;
+            render(c); /* the frame is due */
+        }
+        if (!c->frame_open)
+            render(c); /* no frame clock: draw at once */
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
@@ -1438,6 +1493,17 @@ static LONG handler_main(void)
             !c->comp_busy) /* a completion worker still holds our request */
             break;
     }
+    render(c);
+    if (c->frame_busy) {
+        AbortIO((struct IORequest *)c->frame);
+        WaitIO((struct IORequest *)c->frame);
+    }
+    if (c->frame_open)
+        CloseDevice((struct IORequest *)c->frame);
+    if (c->frame)
+        DeleteIORequest((struct IORequest *)c->frame);
+    if (c->frame_port)
+        DeleteMsgPort(c->frame_port);
     Forbid();
     if (c->node && c->node->dn_Task == c->port)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */

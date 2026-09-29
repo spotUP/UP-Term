@@ -62,7 +62,11 @@ MOUNTLIST = """XCON:
 #
 """
 
-RW = "--ro" not in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
+RW = "--ro" not in sys.argv
+# --exact: 68020 cycle-exact, no JIT. Emulated time then counts cycles,
+# not host speed: the only way to benchmark on a loaded host (JIT timings
+# swung 10x with the owner's other emulators, 2026-09-29).
+EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
 def setup():
@@ -80,7 +84,9 @@ def setup():
     CFG.write_text("\n".join([
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
         "bsdsocket_library = 1", "graphics_card = uaegfx",
-        "jit_compiler = 1",
+        "jit_compiler = %d" % (0 if EXACT else 1),
+        "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
+        "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
         "hard_drive_0 = %s" % (RIG / "sys.hdf"),
         # Writable: read-only (--ro) put up "Volume System is write
         # protected" requesters that stalled the rig (the owner saw them,

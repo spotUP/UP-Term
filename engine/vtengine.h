@@ -111,6 +111,11 @@ void     vt_set_charset(vt_term *t, enum vt_charset cs);
 void     vt_set_onlcr(vt_term *t, int on);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
+/* Frame-paced output: vt_feed changes the grid without telling the
+ * renderer; vt_flush then sends everything changed since, as one batch
+ * (all scrolls in between become one scroll call). vt_write = both. */
+void     vt_feed(vt_term *t, const vt_u8 *buf, long len);
+void     vt_flush(vt_term *t);
 void     vt_resize(vt_term *t, int cols, int rows);
 
 int      vt_cols(const vt_term *t);

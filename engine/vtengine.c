@@ -2242,6 +2242,17 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
 
 void vt_write(vt_term *t, const vt_u8 *buf, long len)
 {
+    vt_feed(t, buf, len);
+    flush(t);
+}
+
+void vt_flush(vt_term *t)
+{
+    flush(t);
+}
+
+void vt_feed(vt_term *t, const vt_u8 *buf, long len)
+{
     long i = 0;
     while (i < len) {
         vt_u8 b = buf[i];
@@ -2259,7 +2270,6 @@ void vt_write(vt_term *t, const vt_u8 *buf, long len)
         decode(t, b);
         i++;
     }
-    flush(t);
 }
 
 static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is_pri, int *cy)

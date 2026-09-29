@@ -130,7 +130,10 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->sel = 0;
     r->lay_rows = r->lay_cols = r->lay_x = r->lay_y = -1;
     SetFont(r->rp, font);
-    extract_glyphs(r);
+    r->glyphs = 0;
+#ifdef VTCON_DIRECT
+    extract_glyphs(r); /* and with it the 8-pixel alignment of the text */
+#endif
     r->n_direct = r->n_text = 0;
     vr_layout(r);
 }
@@ -378,7 +381,14 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, UBYTE f
 }
 
 /* The font's glyphs as bytes, for the planar path: only a font exactly 8
- * pixels wide (then a cell is one byte of every plane). */
+ * pixels wide (then a cell is one byte of every plane).
+ *
+ * The planar path is built only with DIRECT=1 (VTCON_DIRECT). Measured on
+ * the cycle-exact rig, 68020, AGA hires 4 planes, 500-line type
+ * (2026-09-29): drawing took 6.6 s direct against 3.4 s through Text() --
+ * the CPU's chip writes wait for display DMA while Text()'s blits run
+ * beside the CPU. It stays for setups where it may win (a 68000 on a
+ * custom screen, as retro32-term measured) -- measure before enabling. */
 static void extract_glyphs(vr_render *r)
 {
     struct TextFont *tf = r->font;
@@ -512,12 +522,12 @@ typedef struct dcell {
  * them through the RastPort). */
 static int direct_row(vr_render *r, int y, const dcell *d, int n)
 {
+#ifndef VTCON_DIRECT
+    /* off by default: measured slower (see extract_glyphs) */
+    return r && d && y < 0 && n < 0; /* always 0 */
+#else
     struct Layer *layer = r->win->WLayer;
     int i, ok;
-#ifdef VTCON_NO_DIRECT
-    (void)layer; (void)y; (void)d; (void)n; (void)i; (void)ok;
-    return 0;
-#else
     LockLayer(0, layer);
     ok = direct_ok(r);
     if (ok) {
@@ -739,7 +749,7 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
     blank.attr = 0;
     blank.width = 1;
     vt_resolve_colors(r->t, &blank, &f, &b);
-#ifndef VTCON_NO_DIRECT
+#ifdef VTCON_DIRECT
     {
         /* Unobscured planar window: blit the screen bitmap itself and
          * fill the vacated rows, as retro32-term does; ScrollRaster's

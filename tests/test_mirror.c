@@ -104,13 +104,20 @@ static void run_stream(const char *path, int cols, int rows, enum vt_personality
         n = 1 + (long)((seed >> 16) % 97);
         if (off + n > len)
             n = len - off;
-        vt_write(m.t, data + off, n);
+        /* frame pacing: several feeds, then one flush */
+        vt_feed(m.t, data + off, n);
         off += n;
+        if ((seed >> 8) & 3)
+            continue;
+        vt_flush(m.t);
         if (!same(&m, &bx, &by)) {
             bad = 1;
             break;
         }
     }
+    vt_flush(m.t);
+    if (!bad && !same(&m, &bx, &by))
+        bad = 1;
     h_checks++;
     if (bad) {
         h_failures++;
