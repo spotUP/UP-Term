@@ -1,0 +1,54 @@
+# Amiga console probe cases: label <TAB> bytes (C escapes; \e = ESC, \x9b = CSI).
+# Each case starts from a cleared window with the cursor home; after the bytes
+# the probe asks CSI 6n and records the reply. tools/probe_compare.py runs the
+# same cases through the engine's amiga personality and diffs.
+cup-12-40	\x9b12;40H
+lf-after-text	ab\n
+cr	abc\r
+bs-at-col0	\b
+bs-mid	abc\b
+ht	\t
+ht-twice	\t\t
+vt-up	\n\n\x0b
+ff	abc\x0c
+cha	\x9b5G
+hvp	\x9b3;7f
+cuu-past-top	\x9b99A
+cud	\x9b3B
+cuf-past-right	\x9b999C
+cnl	\x9b3;9H\x9b2E
+cpl	\x9b5;9H\x9b2F
+wrap-at-80	012345678901234567890123456789012345678901234567890123456789012345678901234567890123
+esc-7-8	\x9b3;5H\e7\x9b1;1H\e8
+csi-s-u	\x9b3;5H\x9bs\x9b1;1H\x9bu
+ind	\eD
+nel	abc\eE
+ri-at-top	\eM
+cht	\x9b2I
+cbt	\x9b1;20H\x9bZ
+ich	abc\x9b1;2H\x9b3@
+dch	abcdef\x9b1;2H\x9b2P
+il	\x9b2;3H\x9bL
+dl	\x9b2;3H\x9bM
+ed0	\x9b2;3H\x9bJ
+el0	abc\x9b1;2H\x9bK
+su	\x9b3;4H\x9bS
+sd	\x9b3;4H\x9bT
+lnm-off-lf	\x9b20lab\n
+aw-off	\x9b?7l01234567890123456789012345678901234567890123456789012345678901234567890123456789012345
+del-glyph	a\x7fb
+so-si	\x0eab\x0fc
+bs-at-col0-row2	\x9b2;1H\b
+bs-at-col0-row3-twice	\x9b3;1H\b\b
+cub-past-left	\x9b3;5H\x9b10D
+cub-past-home	\x9b1;5H\x9b10D
+cuf-at-bottom	\x9b25;70H\x9b20C
+wrap-exact-79	0123456789012345678901234567890123456789012345678901234567890123456789012345678
+wrap-exact-79-cr	0123456789012345678901234567890123456789012345678901234567890123456789012345678\r
+wrap-exact-79-bs	0123456789012345678901234567890123456789012345678901234567890123456789012345678\b
+text-at-bottom-right	\x9b25;78Hab
+ht-at-end	\x9b1;75H\t\t
+cup-past-bounds	\x9b99;99H
+cup-zero	\x9b3;3H\x9b0;0H
+il-many	\x9b2;3H\x9b99L
+cpr-in-region	\x9b5;5H

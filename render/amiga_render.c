@@ -306,8 +306,19 @@ static ULONG style_of(vt_u8 attr)
 static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, UBYTE fg, UBYTE bg,
                       vt_u8 attr)
 {
+    int i;
     if (!n)
         return;
+    if (!(attr & (VT_ATTR_UNDERLINE | VT_ATTR_STRIKE))) {
+        /* a run of blanks (erases, clears, line ends) is a rectangle fill:
+         * much cheaper than rendering spaces through the font */
+        for (i = 0; i < n && run[i] == ' '; i++)
+            ;
+        if (i == n) {
+            fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, bg);
+            return;
+        }
+    }
     SetABPenDrMd(r->rp, fg, bg, JAM2);
     SetSoftStyle(r->rp, style_of(attr), FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
     Move(r->rp, px, py + r->base);

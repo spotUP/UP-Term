@@ -692,11 +692,33 @@ name": treat space-separated within one field as the documented form
 
 ---
 
+## 7a. Measured on the ROM console (2026-09-29)
+
+`tests/amiga/romprobe` on the rig (KS 3.1 40.068, CON: 79x25), cases in
+`tests/probes/amiga_cases.txt`, compared with `tools/probe_compare.py`. The
+engine's amiga personality now gives the same answer on all 50 cases, and so
+does XCON:/AMIGA through DOS (identical output, window size included).
+
+- **Q1 resolved:** the cursor report is `row;column` (the RKM-91 example is wrong).
+- **Cursor motion is linear:** BS at column 1 goes to the last column of the row
+  above (on row 1: its own last column); CUB past column 1 continues in the row
+  above; CUF past the right edge continues in the rows below, stopping on the
+  bottom row without scrolling; HT at the last column goes to the next line's
+  first tab stop.
+- **Wrap is immediate:** the 79th character of a row puts the cursor on the next
+  row at once (no deferred wrap); at the bottom right that scrolls.
+- **Not implemented by the ROM:** CHA (`CSI G`), `ESC 7` / `ESC 8`, `CSI s` / `CSI u`
+  (u is set-line-length anyway).
+- **IL / DL keep the cursor column** (xterm homes it).
+- Confirmed as documented: LNM set at open (LF = CR LF), `CSI 20 l` turns it off;
+  VT moves up; FF clears and homes; DEL takes a cell; SO/SI; ?7l stops at the
+  last column; CHT/CBT; SU/SD leave the cursor.
+
 ## 8. Open questions / not found
 
 | Q | Question | Where I looked |
 |---|----------|----------------|
-| Q1 | CPR field order: RKM-91 format says row;col, its own example gives `40;12R` for row 12 col 40 (E3). | RKM-91, AD20 (only "CPR 2 params"). Needs a ROM probe on the rig |
+| Q1 | RESOLVED 7a: row;column. CPR field order: RKM-91 format says row;col, its own example gives `40;12R` for row 12 col 40 (E3). | RKM-91, AD20 (only "CPR 2 params"). Needs a ROM probe on the rig |
 | Q2 | Amiga behaviour for anything not in the tables: CHA `CSI G`, ECH, VPA, `?25`, `ESC 7/8`, `ESC ( 0`, unknown finals, unknown SGR values, SGR 2 pen, ED/EL with 1/2, BS at column 0, default tab stops, default LNM at console open, what ASM-off does at the bottom, other C1 bytes, controls inside a CSI. | RKM-8C/8D, AD20, AD31, NDK-DOC. Not documented: probe on the rig |
 | Q3 | aSLPP unit: RKM-8D says "in character raster lines" but also "how many text lines will fit"; AD20 gives no unit. | RKM-8D, AD20 |
 | Q4 | Backspace byte in the xterm personality (08 vs 7F) and the matching `kbs` in `terminfo/`. | xterm ctlseqs from knowledge; vtcon plan has no decision |

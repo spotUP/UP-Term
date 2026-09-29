@@ -129,7 +129,7 @@ static void set_default_style_makes_sgr0_return_to_it(void)
 
 static void ctc_sets_and_clears_tabs(void)
 {
-    vt_term *t = h_new(20, 1, VT_AMIGA);
+    vt_term *t = h_new(20, 2, VT_AMIGA); /* 2 rows: the last column wraps at once */
     h_put(t, "\x9b" "5W\x9b" "1;4H\x9b" "0W\r\tX");
     CHECK_INT(h_cell(t, 3, 0)->ch, 'X');
     h_put(t, "\x9b" "1;4H\x9b" "2W\r\tY");
@@ -153,8 +153,43 @@ static void xterm_only_sequences_are_inert(void)
     vt_free(t);
 }
 
+/* Cursor motion as measured on the ROM console (tests/probes, rig
+ * 2026-09-29): tools/probe_compare.py checks all 50 cases on the rig; these
+ * pin the rules on the host. */
+static void rom_measured_cursor_motion(void)
+{
+    vt_term *t = h_new(79, 25, VT_AMIGA);
+    int x, y;
+    h_put(t, "\x9b" "2;1H\b");          /* BS at column 1: into the row above */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 0);
+    CHECK_INT(x, 78);
+    h_put(t, "\x9b" "1;1H\x9b" "999C"); /* CUF runs on through the rows */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 12);
+    CHECK_INT(x, 51);
+    h_put(t, "\x9b" "25;70H\x9b" "20C"); /* and stops on the bottom row */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 24);
+    CHECK_INT(x, 10);
+    h_put(t, "\x9b" "1;1H");
+    h_put(t, "0123456789012345678901234567890123456789012345678901234567890123456789012345678");
+    vt_cursor(t, &x, &y);                /* 79 characters: the wrap is immediate */
+    CHECK_INT(y, 1);
+    CHECK_INT(x, 0);
+    h_put(t, "\x9b" "1;4H\x9b" "5G\0337\x9b" "3;3H\0338");
+    vt_cursor(t, &x, &y);                /* no CHA, no ESC 7 / ESC 8 */
+    CHECK_INT(y, 2);
+    CHECK_INT(x, 2);
+    h_put(t, "\x9b" "2;3H\x9b" "L");    /* IL keeps the column */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 2);
+    vt_free(t);
+}
+
 void suite_amiga(void)
 {
+    rom_measured_cursor_motion();
     shift_out_sets_the_high_bit();
     del_is_a_glyph();
     vertical_tab_moves_up();

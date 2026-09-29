@@ -625,10 +625,35 @@ static void tab_reset(vt_term *t)
         t->tabs[i] = (vt_u8)(i && (i % 8) == 0);
 }
 
+/* The Amiga console moves the cursor as one line of text through the
+ * window (measured on the ROM console, tests/probes): back past column 1
+ * into the row above, forward past the edge into the rows below, stopping
+ * at the top and bottom rows without scrolling. */
+static void amiga_move_linear(vt_term *t, long d)
+{
+    long pos = (long)t->cy * t->cols + t->cx + d;
+    long row = pos >= 0 ? pos / t->cols : -((-pos + t->cols - 1) / t->cols);
+    long col = pos - row * t->cols;
+    if (row < 0)
+        row = 0;
+    if (row > t->rows - 1)
+        row = t->rows - 1;
+    t->cy = (int)row;
+    t->cx = (int)col;
+    t->wrap_pending = 0;
+}
+
 static void tab_forward(vt_term *t, int n)
 {
     while (n-- > 0) {
         int x = t->cx + 1;
+        if (t->pers == VT_AMIGA && t->cx >= t->cols - 1) {
+            /* the ROM console: a tab at the last column goes on to the
+             * next line's first tab stop */
+            t->cx = 0;
+            index_down(t);
+            x = 1;
+        }
         while (x < t->cols - 1 && !t->tabs[x])
             x++;
         t->cx = clampi(x, 0, t->cols - 1);
@@ -684,7 +709,8 @@ static void insert_lines(vt_term *t, int n)
     if (t->cy < t->top || t->cy >= t->bot)
         return;
     scroll_down(t, t->cy, t->bot, n);
-    t->cx = 0;
+    if (t->pers != VT_AMIGA)
+        t->cx = 0; /* xterm homes the column; the ROM console keeps it */
     t->wrap_pending = 0;
 }
 
@@ -693,7 +719,8 @@ static void delete_lines(vt_term *t, int n)
     if (t->cy < t->top || t->cy >= t->bot)
         return;
     scroll_up(t, t->cy, t->bot, n);
-    t->cx = 0;
+    if (t->pers != VT_AMIGA)
+        t->cx = 0;
     t->wrap_pending = 0;
 }
 
@@ -838,7 +865,14 @@ static void put_char(vt_term *t, vt_u32 cp)
 
     if (t->cx + w >= t->cols) {
         t->cx = t->cols - 1;
-        t->wrap_pending = 1;
+        if (t->pers == VT_AMIGA && t->autowrap) {
+            /* the ROM console wraps at once, no deferred wrap */
+            t->scr[t->cy]->wrapped = 1;
+            t->cx = 0;
+            index_down(t);
+        } else {
+            t->wrap_pending = 1;
+        }
     } else {
         t->cx += w;
     }
@@ -861,6 +895,10 @@ static void exec_c0(vt_term *t, vt_u32 c)
             t->cb.bell(t->user);
         break;
     case 0x08:
+        if (t->pers == VT_AMIGA) {
+            amiga_move_linear(t, -1); /* the ROM: back into the row above */
+            break;
+        }
         if (t->cx > 0)
             t->cx--;
         t->wrap_pending = 0;
@@ -985,10 +1023,12 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
     }
     switch (final) {
     case '7':
-        save_cursor(t, &t->sav);
+        if (t->pers != VT_AMIGA) /* the ROM console has no DECSC/DECRC (probed) */
+            save_cursor(t, &t->sav);
         break;
     case '8':
-        restore_cursor(t, &t->sav);
+        if (t->pers != VT_AMIGA)
+            restore_cursor(t, &t->sav);
         break;
     case 'D':
         exec_c1(t, 0x84);
@@ -1310,10 +1350,18 @@ static int csi_common(vt_term *t, vt_u8 final)
         return 1;
     case 'C':
     case 'a':
+        if (t->pers == VT_AMIGA) {
+            amiga_move_linear(t, n);
+            return 1;
+        }
         t->cx = clampi(t->cx + (int)n, 0, t->cols - 1);
         t->wrap_pending = 0;
         return 1;
     case 'D':
+        if (t->pers == VT_AMIGA) {
+            amiga_move_linear(t, -n);
+            return 1;
+        }
         t->cx = clampi(t->cx - (int)n, 0, t->cols - 1);
         t->wrap_pending = 0;
         return 1;
@@ -1660,6 +1708,8 @@ static void csi_amiga(vt_term *t, vt_u8 final)
     case 'c':
     case 'r':
     case 's':
+    case 'G': /* no CHA on the ROM console (probed) */
+    case '`':
         return; /* not console.device sequences */
     default:
         csi_common(t, final);

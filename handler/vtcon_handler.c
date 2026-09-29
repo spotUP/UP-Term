@@ -339,7 +339,7 @@ static void parse_spec(con *c, const char *s)
     c->wh = 200;
     copy_str(c->title, "vtcon", sizeof(c->title));
     c->pers = VT_XTERM;
-    c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBBOTTOM |
+    c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;
     for (;;) {
         int n = 0;
@@ -383,7 +383,7 @@ static void parse_spec(con *c, const char *s)
         } else if (str_ieq(field, "NOBORDER")) {
             c->wflags |= WFLG_BORDERLESS;
         } else if (str_ieq(field, "NOSIZE")) {
-            c->wflags &= ~(WFLG_SIZEGADGET | WFLG_SIZEBBOTTOM);
+            c->wflags &= ~(WFLG_SIZEGADGET | WFLG_SIZEBRIGHT);
         } else if (str_ieq(field, "NODEPTH")) {
             c->wflags &= ~WFLG_DEPTHGADGET;
         } else if (str_ieq(field, "INACTIVE")) {
