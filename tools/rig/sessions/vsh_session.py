@@ -48,7 +48,7 @@ t('q'); time.sleep(2)                  # the reader goes: List must stop too
 line('List SYS: ALL | read x; echo "read: $x"', 4)   # a builtin reader, a long writer
 shot("vsh5e")
 # S3.2: the error stream per command, loaded and through SystemTags (a script)
-line('clear')
+line("printf '\\033[H\\033[2J'")
 line("printf '%s=%03d\\n' x 5")
 line('VTC:pkgs/bin/less RAM:nosuch 2>RAM:e; echo "rc $?"; Type RAM:e', 4)
 line("echo 'VTC:pkgs/bin/less RAM:nosuch' >RAM:s2; Protect RAM:s2 +s; RAM:s2 2>RAM:e2; Type RAM:e2", 5)
@@ -57,5 +57,19 @@ line("echo 'Wait 30' >RAM:w; Protect RAM:w +s")
 t('RAM:w'); ret(2); k(0x33, 0x08); time.sleep(3)
 line('echo "script broke $?"')
 shot("vsh5f")
+# S4.1: a notice before the prompt when a background job ends; fg
+line("printf '\\033[H\\033[2J'")
+line('Wait 2 &', 1)
+line('echo waiting', 3)
+line('', 1)                            # the notice comes before this prompt
+line('Wait 2 & fg', 4)
+line('fg')
+shot("vsh5g")
+# the Ctrl-C target left behind by a process that ended (the handler kept
+# signalling and reading it: a completion worker crashed, #80000008)
+t('VTC:breakport'); ret(2); k(0x33, 0x08); time.sleep(4)   # must say "got the break"
+line('echo "breakport rc $?"')
+t('ech'); time.sleep(2); k(0x41); k(0x41); k(0x41); ret()   # the command check runs, then erased
+shot("vsh5h")
 line('exit', 2)
 shot("vsh5d")

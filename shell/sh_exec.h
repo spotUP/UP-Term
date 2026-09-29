@@ -37,6 +37,7 @@ typedef struct sh_os {
      * or -1 */
     long  (*run)(void *os, char **argv, const sh_io *io, int wait);
     long  (*wait)(void *os, long job);            /* its exit status */
+    int   (*done)(void *os, long job);            /* 1: it has ended (wait returns at once) */
     long  (*write)(void *os, sh_fh fh, const char *buf, long n);
     long  (*read_line)(void *os, sh_fh fh, char *buf, long max); /* -1 at the end */
     int   (*chdir)(void *os, const char *path);    /* 0 = ok */
@@ -82,6 +83,11 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete);
  * %B %b %U %u %S %s %%), then parameter, command and arithmetic expansion.
  * $HOME in the directory shows as ~. malloc'ed. */
 char *sh_prompt(sh_shell *sh, const char *ps);
+
+/* Report background jobs that have ended ("[1] Done  cmd") on the
+ * shell's error stream and forget them; the shell calls it before each
+ * prompt. */
+void sh_notify(sh_shell *sh);
 
 /* Run a parsed tree with io. */
 long sh_exec(sh_shell *sh, const struct sh_node *n, const sh_io *io);

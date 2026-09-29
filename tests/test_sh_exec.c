@@ -187,6 +187,12 @@ static long f_wait(void *os, long job)
     return st;
 }
 
+static int f_done(void *os, long job)
+{
+    (void)os;
+    return jobs[job - 1].used; /* the fake runs a job when it is waited for */
+}
+
 static int f_chdir(void *os, const char *path)
 {
     (void)os;
@@ -233,6 +239,7 @@ static void fresh(void)
     sh.os.pipe = f_pipe;
     sh.os.run = f_run;
     sh.os.wait = f_wait;
+    sh.os.done = f_done;
     sh.os.write = f_write;
     sh.os.read_line = f_read_line;
     sh.os.chdir = f_chdir;
@@ -322,6 +329,23 @@ static void jobs_aliases_and_dirs(void)
     CHECK_INT(last_owned[1] & SH_OWN_IN, SH_OWN_IN);
 }
 
+static void job_notices(void)
+{
+    run("fail 3 &");
+    sh_notify(&sh);
+    CHECK_STR(slot(ERR)->data, "[1] 1\n[1] Exit 3  fail 3\n");
+    run("args a b &");
+    sh_notify(&sh);
+    CHECK_STR(slot(ERR)->data, "[1] 1\n[1] Done  args a b\n");
+    sh_notify(&sh);  /* reported once */
+    CHECK_STR(slot(ERR)->data, "[1] 1\n[1] Done  args a b\n");
+    CHECK_STR(run("fail 2 & jobs"), "[1] Exit 2  fail 2\n");
+    CHECK_STR(run("fail 4 & fg; echo $?"), "fail 4\n4\n");
+    run("fg");
+    CHECK_STR(slot(ERR)->data, "vsh: fg: no such job\n");
+    CHECK_INT(sh.ctx.status, 1);
+}
+
 static void incomplete_input(void)
 {
     int inc = 0;
@@ -396,5 +420,6 @@ void suite_sh_exec(void)
     pipes_and_redirection();
     jobs_aliases_and_dirs();
     incomplete_input();
+    job_notices();
     sh_shell_free(&sh);
 }

@@ -105,6 +105,19 @@ static void num(char *out, long v)
     out[k] = 0;
 }
 
+/* A simple command's words as written, for jobs and notices. */
+static char *words_text(const sh_node *c)
+{
+    pbuf b = { 0, 0, 0 };
+    const sh_word *w;
+    for (w = c->words; w; w = w->next) {
+        if (b.n)
+            pb_add(&b, " ", 1);
+        pb_str(&b, w->text);
+    }
+    return b.s ? b.s : sdup("");
+}
+
 static void close_owned(sh_shell *sh, const sh_io *io)
 {
     if ((io->owned & SH_OWN_IN) && io->in)
@@ -777,40 +790,84 @@ static long b_test(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return (r != neg) ? 0 : 1;
 }
 
+/* A job's line in jobs and notices: "[n] <state>  <command>". */
+static void job_line(sh_shell *sh, sh_fh fh, int i, const char *state, long st)
+{
+    char n[16];
+    num(n, i + 1);
+    say(sh, fh, "[");
+    say(sh, fh, n);
+    say(sh, fh, "] ");
+    say(sh, fh, state);
+    if (st > 0) {
+        num(n, st);
+        say(sh, fh, " ");
+        say(sh, fh, n);
+    }
+    say(sh, fh, "  ");
+    say(sh, fh, sh->job_text[i] ? sh->job_text[i] : "");
+    say(sh, fh, "\n");
+}
+
+static void job_forget(sh_shell *sh, int i)
+{
+    sh->jobs[i] = 0;
+    free(sh->job_text[i]);
+    sh->job_text[i] = 0;
+}
+
+/* A job that has ended: its status collected, reported, forgotten. */
+static int job_reap(sh_shell *sh, int i, sh_fh fh)
+{
+    long st;
+    if (!sh->jobs[i] || !sh->os.done || !sh->os.done(sh->os.data, sh->jobs[i]))
+        return 0;
+    st = sh->os.wait(sh->os.data, sh->jobs[i]);
+    job_line(sh, fh, i, st ? "Exit" : "Done", st);
+    job_forget(sh, i);
+    return 1;
+}
+
+void sh_notify(sh_shell *sh)
+{
+    int i;
+    for (i = 0; i < 32; i++)
+        job_reap(sh, i, sh->io.err);
+}
+
 static long b_jobs(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int i;
-    char n[16];
     (void)argc; (void)argv;
     for (i = 0; i < 32; i++)
-        if (sh->jobs[i]) {
-            num(n, i + 1);
-            say(sh, io->out, "[");
-            say(sh, io->out, n);
-            say(sh, io->out, "] Running  ");
-            say(sh, io->out, sh->job_text[i] ? sh->job_text[i] : "");
-            say(sh, io->out, "\n");
-        }
+        if (sh->jobs[i] && !job_reap(sh, i, io->out))
+            job_line(sh, io->out, i, "Running", 0);
     return 0;
 }
 
-/* fg / wait: wait for a job (fg %n / wait: the newest, or all). */
+/* fg / wait: wait for a job (fg %n / wait: the newest, or all). fg shows
+ * the command it brings back, as the Unix shells do. */
 static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     long st = 0;
-    int i, which = -1;
-    (void)io;
+    int i, which = -1, fg = !strcmp(argv[0], "fg");
     if (argc > 1)
         which = atoi(argv[1][0] == '%' ? argv[1] + 1 : argv[1]) - 1;
     for (i = 31; i >= 0; i--) {
         if (!sh->jobs[i] || (which >= 0 && i != which))
             continue;
+        if (fg) {
+            say(sh, io->out, sh->job_text[i] ? sh->job_text[i] : "");
+            say(sh, io->out, "\n");
+        }
         st = sh->os.wait(sh->os.data, sh->jobs[i]);
-        sh->jobs[i] = 0;
-        free(sh->job_text[i]);
-        sh->job_text[i] = 0;
-        if (!strcmp(argv[0], "fg"))
+        job_forget(sh, i);
+        if (fg)
             break;
+    }
+    if (fg && i < 0) {
+        err2(sh, io, "fg", "no such job");
+        return 1;
     }
     return st;
 }
@@ -1223,7 +1280,7 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
             if (i < 32) {
                 sh->jobs[i] = job;
                 free(sh->job_text[i]);
-                sh->job_text[i] = sdup(n->a->words ? n->a->words->text : "");
+                sh->job_text[i] = words_text(n->a);
                 num(nb, i + 1);
                 say(sh, io->err, "[");
                 say(sh, io->err, nb);

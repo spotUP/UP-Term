@@ -454,6 +454,20 @@ static long os_wait(void *os, long id)
     return rc;
 }
 
+/* Has a job ended? Its reply is on the job port then. */
+static int os_done(void *os, long id)
+{
+    job *m;
+    (void)os;
+    Forbid();
+    for (m = (job *)job_port->mp_MsgList.lh_Head; m->msg.mn_Node.ln_Succ;
+         m = (job *)m->msg.mn_Node.ln_Succ)
+        if (m == (job *)id)
+            break;
+    Permit();
+    return m->msg.mn_Node.ln_Succ != 0;
+}
+
 static long os_write(void *os, sh_fh fh, const char *b, long n)
 {
     (void)os;
@@ -657,6 +671,7 @@ int main(int argc, char **argv)
     sh.os.pipe = os_pipe;
     sh.os.run = os_run;
     sh.os.wait = os_wait;
+    sh.os.done = os_done;
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;
     sh.os.chdir = os_chdir;
@@ -704,6 +719,8 @@ int main(int argc, char **argv)
         int incomplete = 0;
         if (sh.exiting)
             break;
+        if (!text)
+            sh_notify(&sh);
         prompt(&sh, text != 0);
         if (!FGets(Input(), (STRPTR)line, sizeof(line)))
             break;
