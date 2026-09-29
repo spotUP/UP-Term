@@ -78,6 +78,8 @@ PROBES = {
 # These compare against a reviewed golden grid (tests/golden/<stream>.txt,
 # written by `make golden`), so a change to them is a visible diff.
 XTERM_NOT_LIBVTERM = {
+    "vttest-m1-s02.80x24.bin": "vttest sends ?40h, so DECCOLM (?3h/?3l) clears the screen as on a VT100 and xterm with allowColumns; libvterm ignores DECCOLM and keeps the previous test's stars",
+    "vttest-m1-s03.80x24.bin": "vttest sends ?40h, so DECCOLM (?3h/?3l) clears the screen as on a VT100 and xterm with allowColumns; libvterm ignores DECCOLM and keeps the previous test's stars",
     "ansitest.150x140.bin": "SGR 58;5;n is the underline colour (VTE, kitty, mintty; we follow them); libvterm has no 58 and reads its 5 as blink and 1 as bold",
     "quirk-wrap-then-el.10x4.bin": "EL resets the pending wrap in xterm; libvterm keeps it",
     "quirk-wrap-then-ech.10x4.bin": "ECH resets the pending wrap in xterm; libvterm keeps it",
