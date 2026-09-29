@@ -130,6 +130,13 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/breakport.c
 
+# ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
+# Aminet's ixemul SDK (no -m68020: the SDK has no libm020 multilib)
+AGCC ?= $(HOME)/opt/amiga/bin/m68k-amigaos-gcc
+$(BUILD)/amiga/ptyprobe: tests/amiga/ptyprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ptyprobe.c
+
 $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ttyprobe.c
