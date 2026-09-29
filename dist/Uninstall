@@ -5,7 +5,8 @@
 FailAt 21
 Delete >NIL: DEVS:DOSDrivers/XCON DEVS:DOSDrivers/XCON.info QUIET
 Delete >NIL: DEVS:DOSDrivers/PTY DEVS:DOSDrivers/PTY.info QUIET
-Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill QUIET
+Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill C:screen QUIET
+Delete >NIL: ENVARC:screenrc ENV:screenrc QUIET
 Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info QUIET
 Delete >NIL: ENVARC:up-term ENV:up-term ALL QUIET
 Delete >NIL: ENVARC:TERMINFO ENV:TERMINFO QUIET

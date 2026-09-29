@@ -79,6 +79,22 @@ $(BUILD)/terminfo/76/vtcon: terminfo/vtcon.terminfo
 	@for d in 76 v; do [ -f $(BUILD)/terminfo/$$d/vtcon ] && cp $(BUILD)/terminfo/$$d/vtcon $(BUILD)/terminfo/76/vtcon.tmp && break; done
 	@cp $(BUILD)/terminfo/76/vtcon.tmp $(BUILD)/terminfo/v/vtcon; mv $(BUILD)/terminfo/76/vtcon.tmp $(BUILD)/terminfo/76/vtcon
 
+# The kit's terminal entries: vtcon and GNU screen's, in first-letter
+# directories (v/vtcon): the Amiga's ncurses 5.5 reads those, tic on macOS
+# writes hex ones (76/).
+KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/screen.terminfo
+$(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
+	rm -rf $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
+	mkdir -p $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
+	for f in $(KIT_TERMINFO); do tic -x -o $(BUILD)/kit-terminfo.tmp $$f; done
+	cd $(BUILD)/kit-terminfo.tmp && for p in */*; do n=$${p#*/}; c=$$(printf %s "$$n" | cut -c1); \
+	  mkdir -p ../kit-terminfo/$$c && cp "$$p" ../kit-terminfo/$$c/; done
+	rm -rf $(BUILD)/kit-terminfo.tmp
+	touch $@
+
+# GNU screen for the kit (P7.1): built in ~/Code/screen-amiga/src (make -f Makefile.amiga)
+SCREEN_BIN ?= $(HOME)/Code/screen-amiga/src/screen
+
 # Recapture the programs with TERM=vtcon (tests/streams/ti-*), then check
 # them: libvterm cell for cell and no sequence the engine ignored.
 test-terminfo: $(BUILD)/terminfo/76/vtcon $(BUILD)/vtdump $(BUILD)/vterm_dump
@@ -239,14 +255,16 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c han
 # termcap, Install script, README), unpacking to a drawer "vtcon".
 # the patched ixemul (P6): built in ~/Code/ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
-dist: amiga $(BUILD)/terminfo/76/vtcon
-	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo/v $(BUILD)/dist/vtcon/libs
+dist: amiga $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp
+	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo $(BUILD)/dist/vtcon/libs
+	cd $(BUILD)/kit-terminfo && cp -R [a-z] ../dist/vtcon/terminfo/
+	cp $(SCREEN_BIN) $(BUILD)/dist/vtcon/screen
+	cp dist/screenrc $(BUILD)/dist/vtcon/screenrc
 	cp $(IXEMUL_LIB) $(BUILD)/dist/vtcon/libs/ixemul.library
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(BUILD)/dist/vtcon/banner
 	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term.info
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(BUILD)/dist/vtcon/UP-Term
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
-	cp $(BUILD)/terminfo/v/vtcon $(BUILD)/dist/vtcon/terminfo/v/vtcon
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon
 	@ls -la $(BUILD)/vtcon.lha

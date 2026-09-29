@@ -100,5 +100,11 @@ IXEMUL
     Copy LIBS:ixemul.library.orig LIBS:ixemul.library
   To tell which one is in:  Search LIBS:ixemul.library UP-Term
 
+SCREEN
+  GNU screen 4.9.1: C-a c new window, C-a n / C-a p next / previous,
+  C-a " list, C-a S / C-a | split, C-a Tab next region, C-a d detach,
+  screen -r to come back. vsh runs in its windows (ENV:screenrc: shell,
+  256 colours). Each window costs about 1 MB (its process and shell).
+
 STATUS
   Test build. CON:/RAW: are not replaced; XCON: runs beside them.

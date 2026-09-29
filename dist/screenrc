@@ -1,0 +1,10 @@
+# GNU screen's system screenrc for UP-Term (Install copies it to
+# ENVARC:screenrc; the port reads /ENV/screenrc). Your own: $HOME/.screenrc
+# vsh in every window, and the colours the vtcon console shows
+shell /C/vsh
+term screen-256color
+# the stack each window's process starts with (ixemul reads IXSTACK when
+# screen starts a window): 64 KB is plenty for vsh and tcsh, and four
+# windows then fit in a few MB
+setenv IXSTACK 65536
+startup_message off

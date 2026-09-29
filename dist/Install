@@ -16,14 +16,18 @@ Copy PTY DEVS:DOSDrivers/PTY CLONE
 Delete >NIL: ENVARC:terminfo/v/vtcon ENV:terminfo/v/vtcon QUIET
 Delete >NIL: ENVARC:terminfo/v ENVARC:terminfo ENV:terminfo/v ENV:terminfo QUIET
 Delete >NIL: ENVARC:termcap.vtcon ENV:termcap.vtcon QUIET
-MakeDir >NIL: ENVARC:up-term ENVARC:up-term/terminfo ENVARC:up-term/terminfo/v
-Copy terminfo/v/vtcon ENVARC:up-term/terminfo/v/vtcon CLONE
+MakeDir >NIL: ENVARC:up-term ENVARC:up-term/terminfo
+Copy terminfo ENVARC:up-term/terminfo ALL CLONE QUIET
 Copy termcap.vtcon ENVARC:up-term/termcap.vtcon CLONE
 Copy ENVARC:up-term ENV:up-term ALL CLONE QUIET
 SetEnv TERMINFO /ENV/up-term/terminfo
 Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
+; GNU screen, and its system screenrc (the port reads /ENV/screenrc)
+Copy screen C:screen CLONE
+Copy screenrc ENVARC:screenrc CLONE
+Copy screenrc ENV:screenrc CLONE
 ; the Workbench way in: double-click UP-Term (its tool is C:vsh; the
 ; window is its WINDOW tooltype)
 Copy UP-Term UP-Term.info SYS:Utilities CLONE

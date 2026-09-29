@@ -19,9 +19,12 @@ static char *fake_subst(sh_ctx *c, const char *cmd)
 
 /* A fake disk: "" (current) holds a.c b.c B.C readme .hidden src/;
  * "src" holds x.c y.h; "Work:" holds Projects */
+static int n_lists; /* directory listings made */
+
 static int fake_list(sh_ctx *c, const char *dir, sh_list *out)
 {
     (void)c;
+    n_lists++;
     if (!*dir) {
         sh_list_add(out, "a.c");
         sh_list_add(out, "b.c");
@@ -165,8 +168,24 @@ static void globbing(void)
     CHECK_INT(sh_match("[a-c]1", "b1", 0), 1);
 }
 
+/* "[" and "]" alone, as in [ $i -lt 9 ], are no patterns: a bracket
+ * that does not close is literal (POSIX). vsh listed the directory for
+ * every [ it ran -- 85 ms per loop turn on the rig. */
+static void unclosed_bracket_is_literal(void)
+{
+    sh_ctx *c = ctx();
+    n_lists = 0;
+    CHECK_STR(ex(c, "[", 0), "[");
+    CHECK_STR(ex(c, "]", 0), "]");
+    CHECK_STR(ex(c, "a[b", 0), "a[b");
+    CHECK_INT(n_lists, 0);
+    CHECK_STR(ex(c, "[ab].c", 0), "a.c|b.c");  /* a closed one still globs */
+    CHECK_INT(n_lists, 1);
+}
+
 void suite_sh_expand(void)
 {
+    unclosed_bracket_is_literal();
     variables_and_quotes();
     substitution_and_arithmetic();
     globbing();

@@ -696,11 +696,31 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
 
 /* ---- globbing ------------------------------------------------------------------- */
 
+/* Does the bracket at s[i] close within s[..to)? A ']' right after '[' or
+ * '[!' is a member, not the end (POSIX). Without its ']', '[' is literal:
+ * the word "[" of [ $i -lt 9 ] is no pattern (vsh listed the directory
+ * for every one -- 85 ms per loop turn on the rig). quoted: the flags,
+ * or 0 to take every character as unquoted. */
+static int bracket_closes(const char *s, const unsigned char *quoted, int i, int to)
+{
+    int j = i + 1;
+    if (j < to && (s[j] == '!' || s[j] == '^'))
+        j++;
+    if (j < to && s[j] == ']')
+        j++;
+    for (; j < to; j++)
+        if (s[j] == ']' && !(quoted && (quoted[j] & F_QUOTED)))
+            return 1;
+    return 0;
+}
+
 static int has_glob(const cbuf *b, int from, int to)
 {
     int i;
     for (i = from; i < to; i++)
-        if (!(b->f[i] & F_QUOTED) && (b->s[i] == '*' || b->s[i] == '?' || b->s[i] == '['))
+        if (!(b->f[i] & F_QUOTED) &&
+            (b->s[i] == '*' || b->s[i] == '?' ||
+             (b->s[i] == '[' && bracket_closes(b->s, b->f, i, to))))
             return 1;
     return 0;
 }
@@ -724,7 +744,8 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
     memcpy(comp, pat, clen);
     comp[clen] = 0;
     for (i = 0; comp[i]; i++)
-        if (comp[i] == '*' || comp[i] == '?' || comp[i] == '[')
+        if (comp[i] == '*' || comp[i] == '?' ||
+            (comp[i] == '[' && bracket_closes(comp, 0, i, (int)clen)))
             magic = 1;
     if (!magic) {
         /* a literal component: no listing, the escapes removed */
