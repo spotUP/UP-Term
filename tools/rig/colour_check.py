@@ -28,7 +28,7 @@ def pixels(path):
     return w, h, lambda x, y: tuple(raw[y * stride + 1 + x * 3:y * stride + 4 + x * 3])
 
 # the 320 test colours, all different (the rig's VTC: is build/rig/vtc)
-COLOURS = [((i * 7 + 1) & 255, (i * 13 + 5) & 255, (255 - i * 3) & 255) for i in range(320)]
+COLOURS = [((11 + 37 * i) & 255, 7 + 128 * (i // 256), i & 255) for i in range(320)]
 
 def write_test_file():
     out = b''
