@@ -69,6 +69,17 @@ struct upc_unit {
 
 extern struct ExecBase *SysBase;
 
+/* DEBUG=1 (UPCON_DEBUG): a trace to the serial port through exec's
+ * RawPutChar -- no DOS, so safe in Open under Forbid, in the unit process
+ * and anywhere else (the rig writes the port to build/rig/serial.log).
+ * UPC_DBG(what, text or 0, a number). */
+#ifdef UPCON_DEBUG
+void upc_dbg(const char *what, const char *s, LONG v);
+#define UPC_DBG(w, s, v) upc_dbg(w, s, (LONG)(v))
+#else
+#define UPC_DBG(w, s, v)
+#endif
+
 /* upcon_unit.c */
 void upc_unit_entry(void);
 /* upcon_input.c */

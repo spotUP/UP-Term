@@ -126,7 +126,7 @@ Known readers of ConUnit fields:
 |--------|--------|--------|
 | ixemul 48.2 TIOCGWINSZ (non-vtcon consoles) | `cu_Window` (checked against id_VolumeNode), `cu_XMax+1`, `cu_YMax+1` | IXE `__tioctl.c` l.255-270 |
 | XCON:'s own `sync_size()` | WRITES `cu_XMax/YMax` of the ROM unit it opened for DISK_INFO callers | `vtcon_handler.c:1914` |
-| con-handler, other programs | **unknown**: no source or document lists readers; see plan item D1.7 (opener census) | looked in NDK-DOC, RN-CH, AM-65 |
+| con-handler, other programs | **Measured 2026-09-30 (plan D1.7, KS 40.63, UP-Term's device with DEBUG=1 logging every OpenDevice):** task `CON` (the con-handler, for NewShell, More, the ixemul `less` run inside a Shell) opens unit 3 SNIPMAP, flags 0; task `RAW` (Ed opens its window through RAW:) unit 3, flags 0; `Background CLI` (MultiView) only CONU_LIBRARY (-1), for RawKeyConvert; ConClip opens no unit (it works through the con-handler and the private snip vectors, which our device forwards to the ROM). No program on the rig opened unit 0 or 1 directly. | rig serial log |
 
 The ledger note that "the ROM console recomputes cu_XMax/YMax only when written to"
 (P2) is a rig measurement on KS 3.1.

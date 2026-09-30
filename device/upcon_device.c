@@ -121,6 +121,29 @@ struct upc_base *upc_init(__reg("a0") BPTR seglist, __reg("a6") struct ExecBase 
     return b;
 }
 
+#ifdef UPCON_DEBUG
+static void ser_putc(__reg("d0") char ch) =
+    "\tmove.l\ta6,-(sp)\n\tmove.l\t4.w,a6\n\tjsr\t-516(a6)\n\tmove.l\t(sp)+,a6";
+
+void upc_dbg(const char *what, const char *s, LONG v)
+{
+    int k;
+    ser_putc('u');
+    ser_putc(' ');
+    while (*what)
+        ser_putc(*what++);
+    if (s) {
+        ser_putc(' ');
+        while (*s)
+            ser_putc(*s++);
+    }
+    ser_putc(' ');
+    for (k = 28; k >= 0; k -= 4)
+        ser_putc("0123456789abcdef"[((ULONG)v >> k) & 15]);
+    ser_putc('\n');
+}
+#endif
+
 void upc_reply_io(struct IOStdReq *io, long actual, BYTE error)
 {
     io->io_Actual = (ULONG)actual;
@@ -212,6 +235,8 @@ static void upc_open(__reg("a1") struct IOStdReq *io, __reg("d0") ULONG unitno,
     b->lib.lib_OpenCnt++; /* no expunge while this Open waits for its unit */
     b->lib.lib_Flags &= ~LIBF_DELEXP;
     io->io_Error = 0;
+    /* the opener census (D1.7): who opens which unit with which flags */
+    UPC_DBG("open", FindTask(0)->tc_Node.ln_Name ? FindTask(0)->tc_Node.ln_Name : "-", (unitno << 16) | (flags & 0xFFFF));
     if (flags & UPCONFLAG_ROM) {
         /* DD16: the caller gets the ROM's unit and talks to the ROM from now on */
         io->io_Device = (struct Device *)b->rom;
@@ -268,6 +293,7 @@ static void upc_open(__reg("a1") struct IOStdReq *io, __reg("d0") ULONG unitno,
 static BPTR upc_close(__reg("a1") struct IOStdReq *io, __reg("a6") struct upc_base *b)
 {
     struct upc_unit *u = (struct upc_unit *)io->io_Unit;
+    UPC_DBG("close", FindTask(0)->tc_Node.ln_Name ? FindTask(0)->tc_Node.ln_Name : "-", u ? u->unitno : -1);
     if (u) {
         struct MsgPort *rp = CreateMsgPort(), *old = io->io_Message.mn_ReplyPort;
         int i, any = 0;

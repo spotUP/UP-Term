@@ -383,14 +383,19 @@ moved code, no duplicate of any moved function remains.
       aborted), CMD_RESET answered (terminal reset), NSCMD_DEVICEQUERY type 6 with our list,
       UPCMD_STATS; unknown IOERR_NOCMD. AbortIO of a queued read: IOERR_ABORTED (not yet
       measured on the rig).
-- [ ] D1.6 Makefile: `build/amiga/up-console.device` (vbcc + vlink, no startup, like the
+- [x] D1.6 Makefile: `build/amiga/up-console.device` (vbcc + vlink, no startup, like the
       handler, Makefile l.235-260); `make amiga` builds it; DEBUG=1 logs to
       RAM:upcon.log from the unit process only.
-      **Part 2026-09-30:** `build/amiga/up-console.device` built by `make amiga`. OPEN: DEBUG=1
-      log from the unit process.
-- [ ] D1.7 Opener census (DEBUG=1): DevOpen records caller task name, unit, flags; rig
+      **DONE 2026-09-30:** `build/amiga/up-console.device` built by `make amiga`. DEBUG=1 logs to
+      the serial port (exec RawPutChar, build/rig/serial.log) instead of RAM:upcon.log: no DOS
+      call, so it is safe in Open under Forbid and in the unit process alike (the handler's
+      RAM: log was found racing its packets, 2026-09-30).
+- [x] D1.7 Opener census (DEBUG=1): DevOpen records caller task name, unit, flags; rig
       runs the Shell, NewShell, Ed, MultiView, More, Workbench Execute Command, an
       ixemul `less`, ConClip. Table written into R-2 (replaces its "unverified" row).
+      **DONE 2026-09-30:** table in the research doc (section 2): the con-handler (CON: and
+      RAW: windows: Shell, NewShell, Ed, More, ixemul less) opens SNIPMAP units; MultiView only
+      CONU_LIBRARY; ConClip none. Workbench Execute Command opens a CON: window: the same path.
 - [x] D1.8 Reflow: if DP4 showed the ROM re-wraps linked lines, the engine gains it
       (`vt_set_reflow`, portable, host tests in `tests/test_amiga.c`, matrix updated) and
       charmap units turn it on; if DP4 showed no re-wrap, this row closes citing the

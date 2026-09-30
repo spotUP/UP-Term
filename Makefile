@@ -243,12 +243,18 @@ DEVICE_SRC := device/upcon_device.c device/upcon_unit.c device/upcon_input.c dev
               render/vtwin.c render/amiga_render.c render/glyphmap.c handler/clip.c $(ENGINE)
 DEVICE_HDR := device/upcon.h device/upc_public.h device/upc_core.h render/vtwin.h render/amiga_render.h render/glyphmap.h \
               render/glyph_tables.inc handler/clip.h engine/vtengine.h engine/vtwidth.h
-$(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
+DEVICE_FLAGS := DEBUG=$(DEBUG)
+DEVICE_FLAGS_OLD := $(shell cat $(BUILD)/amiga/device.flags 2>/dev/null)
+ifneq ($(DEVICE_FLAGS),$(DEVICE_FLAGS_OLD))
+DEVICE_FORCE := FORCE
+endif
+$(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR) $(DEVICE_FORCE)
 	@mkdir -p $(BUILD)/amiga/devobj
+	@echo '$(DEVICE_FLAGS)' > $(BUILD)/amiga/device.flags
 	vasmm68k_mot -quiet -Fhunk -m68020 -o $(BUILD)/amiga/devobj/upcon_rom.o device/upcon_rom.s
-	$(VC) -c -o $(BUILD)/amiga/devobj/upcon_device.o device/upcon_device.c
-	$(VC) -dontwarn=65 -c -o $(BUILD)/amiga/devobj/upcon_unit.o device/upcon_unit.c
-	$(VC) -c -o $(BUILD)/amiga/devobj/upcon_input.o device/upcon_input.c
+	$(VC) $(if $(DEBUG),-DUPCON_DEBUG) -c -o $(BUILD)/amiga/devobj/upcon_device.o device/upcon_device.c
+	$(VC) -dontwarn=65 $(if $(DEBUG),-DUPCON_DEBUG) -c -o $(BUILD)/amiga/devobj/upcon_unit.o device/upcon_unit.c
+	$(VC) $(if $(DEBUG),-DUPCON_DEBUG) -c -o $(BUILD)/amiga/devobj/upcon_input.o device/upcon_input.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/upc_core.o device/upc_core.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/devobj/vtwin.o render/vtwin.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/amiga_render.o render/amiga_render.c
