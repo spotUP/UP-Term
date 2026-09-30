@@ -199,8 +199,148 @@ static void rom_measured_cursor_motion(void)
     vt_free(t);
 }
 
+/* Reflow on resize (vt_set_reflow), as the ROM's character-mapped units
+ * re-wrap linked lines. Measured on the SNIPMAP unit (rig 2026-09-30, all
+ * four Kickstarts): 100 characters in 45 columns leave the cursor at 3;11;
+ * widened to 90 columns the window shows 90 + 10 and the cursor is at 2;11. */
+static const char hundred[] =
+    "0123456789012345678901234567890123456789012345678901234567890123456789"
+    "012345678901234567890123456789";
+
+static void reflow_widening_rewraps_as_the_rom_does(void)
+{
+    vt_term *t = h_new(45, 10, VT_AMIGA);
+    int x, y;
+    vt_set_reflow(t, 1);
+    h_put(t, hundred);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 2);
+    CHECK_INT(x, 10);
+    vt_resize(t, 90, 10);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 1);                   /* 2;11 in the console's terms */
+    CHECK_INT(x, 10);
+    CHECK_INT(strlen(h_row(t, 0)), 90);
+    CHECK_STR(h_row(t, 1), "0123456789");
+    CHECK(vt_row_wrapped(t, 0));
+    CHECK(!vt_row_wrapped(t, 1));
+    CHECK_STR(h_row(t, 2), "");
+    vt_free(t);
+}
+
+static void reflow_there_and_back_restores_the_layout(void)
+{
+    vt_term *t = h_new(45, 10, VT_AMIGA);
+    char before[512];
+    int x, y;
+    vt_set_reflow(t, 1);
+    h_put(t, "\x9b" "32mgreen\x9b" "0m\n");
+    h_put(t, hundred);
+    strcpy(before, h_screen(t));
+    vt_resize(t, 90, 10);
+    vt_resize(t, 45, 10);
+    CHECK_STR(h_screen(t), before);
+    CHECK(vt_row_wrapped(t, 1));
+    CHECK(vt_row_wrapped(t, 2));
+    CHECK(!vt_row_wrapped(t, 3));
+    CHECK_INT(h_cell(t, 0, 0)->fg, 2); /* attributes travel with their cells */
+    CHECK_INT(h_cell(t, 5, 0)->fg, VT_COLOR_DEFAULT);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 3);
+    CHECK_INT(x, 10);
+    vt_resize(t, 30, 10);              /* narrower than it started: 30+30+30+10 */
+    CHECK_STR(h_row(t, 4), "0123456789");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 4);
+    CHECK_INT(x, 10);
+    vt_free(t);
+}
+
+/* The ROM wraps at once, so a line that fills its last column owns the
+ * empty row the cursor went to: widened it is one row with the cursor
+ * after it, narrowed back the empty row returns. */
+static void reflow_line_ending_at_the_margin(void)
+{
+    vt_term *t = h_new(10, 4, VT_AMIGA);
+    int x, y;
+    vt_set_reflow(t, 1);
+    h_put(t, "0123456789");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 1);
+    CHECK_INT(x, 0);
+    vt_resize(t, 20, 4);
+    CHECK_STR(h_screen(t), "0123456789");
+    CHECK(!vt_row_wrapped(t, 0));
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 0);
+    CHECK_INT(x, 10);
+    vt_resize(t, 10, 4);
+    CHECK(vt_row_wrapped(t, 0));
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 1);
+    CHECK_INT(x, 0);
+    h_put(t, "a");
+    CHECK_STR(h_screen(t), "0123456789|a");
+    vt_free(t);
+}
+
+static void reflow_never_joins_a_hard_newline(void)
+{
+    vt_term *t = h_new(10, 4, VT_AMIGA);
+    vt_set_reflow(t, 1);
+    h_put(t, "abc\ndef\n012345678901");
+    CHECK_STR(h_screen(t), "abc|def|0123456789|01");
+    vt_resize(t, 20, 4);
+    CHECK_STR(h_screen(t), "abc|def|012345678901");
+    vt_resize(t, 5, 8);
+    CHECK_STR(h_screen(t), "abc|def|01234|56789|01");
+    vt_free(t);
+}
+
+static void reflow_keeps_the_cursor_on_its_character(void)
+{
+    vt_term *t = h_new(45, 10, VT_AMIGA);
+    int x, y;
+    vt_set_reflow(t, 1);
+    h_put(t, hundred);
+    h_put(t, "\x9b" "2;5H");           /* on the 50th character */
+    vt_resize(t, 90, 10);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 0);
+    CHECK_INT(x, 49);
+    vt_resize(t, 20, 10);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 2);
+    CHECK_INT(x, 9);
+    h_put(t, "X");
+    CHECK_INT(h_cell(t, 9, 2)->ch, 'X');
+    vt_free(t);
+}
+
+/* Off (the default, XCON:): rows are cut or padded as before. */
+static void reflow_off_keeps_the_rows(void)
+{
+    vt_term *t = h_new(45, 10, VT_AMIGA);
+    int x, y;
+    h_put(t, hundred);
+    vt_resize(t, 90, 10);
+    CHECK_INT(strlen(h_row(t, 0)), 45);
+    CHECK_INT(strlen(h_row(t, 1)), 45);
+    CHECK_STR(h_row(t, 2), "0123456789");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 2);
+    CHECK_INT(x, 10);
+    vt_free(t);
+}
+
 void suite_amiga(void)
 {
+    reflow_widening_rewraps_as_the_rom_does();
+    reflow_there_and_back_restores_the_layout();
+    reflow_line_ending_at_the_margin();
+    reflow_never_joins_a_hard_newline();
+    reflow_keeps_the_cursor_on_its_character();
+    reflow_off_keeps_the_rows();
     rom_measured_cursor_motion();
     shift_out_sets_the_high_bit();
     del_is_a_glyph();

@@ -707,6 +707,19 @@ does XCON:/AMIGA through DOS (identical output, window size included).
   first tab stop.
 - **Wrap is immediate:** the 79th character of a row puts the cursor on the next
   row at once (no deferred wrap); at the bottom right that scrolls.
+- **Charmap units re-wrap on resize** (measured 2026-09-30 on the SNIPMAP unit, all
+  four Kickstarts; research `2026-09-30_console-device-replacement.md` section 7):
+  100 characters typed into 45 columns, cursor 3;11; widened to 90 columns the
+  window shows 90 + 10 characters and the cursor is at 2;11. Engine:
+  `vt_set_reflow(t, 1)` (D1.8; off by default, so XCON: keeps cutting or padding
+  rows) joins wrap-linked rows into logical lines on a width change and types them
+  again at the new width with the personality's wrap rule: amiga wraps at once, so
+  a line ending exactly at the margin keeps the empty row after it; xterm keeps a
+  pending wrap pending. A hard newline is never joined, attributes stay per cell,
+  the cursor stays on its character (or as far past the text as it was).
+  Not reflowed: the alternate screen (xterm does not), scrollback lines (they keep
+  their width; the amiga personality keeps none), DEC double-size rows.
+  Narrowing was not measured on the ROM; the engine treats it as the inverse.
 - **Not implemented by the ROM:** CHA (`CSI G`), `ESC 7` / `ESC 8`, `CSI s` / `CSI u`
   (u is set-line-length anyway).
 - **IL / DL keep the cursor column** (xterm homes it).

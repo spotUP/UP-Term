@@ -630,6 +630,42 @@ static void resize_keeps_cursor_row_visible(void)
     vt_free(t);
 }
 
+/* vt_set_reflow with xterm's deferred wrap: the cursor waiting at the
+ * margin still waits after narrowing, and the next character wraps. */
+static void reflow_keeps_the_deferred_wrap(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    int x, y;
+    vt_set_reflow(t, 1);
+    h_put(t, "abcdefghij");
+    vt_resize(t, 5, 3);
+    CHECK_STR(h_screen(t), "abcde|fghij");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 1);
+    CHECK_INT(x, 4);
+    h_put(t, "X");
+    CHECK_STR(h_screen(t), "abcde|fghij|X");
+    vt_free(t);
+}
+
+/* The alternate screen is resized plainly (xterm does not reflow it); the
+ * primary one behind it reflows, its saved cursor with it. */
+static void reflow_leaves_the_alternate_screen(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    int x, y;
+    vt_set_reflow(t, 1);
+    h_put(t, "0123456789ab\033[?1049h\033[HABCDEFGHIJKL");
+    vt_resize(t, 20, 3);
+    CHECK_STR(h_screen(t), "ABCDEFGHIJ|KL");
+    h_put(t, "\033[?1049l");
+    CHECK_STR(h_screen(t), "0123456789ab");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 0);
+    CHECK_INT(x, 12);
+    vt_free(t);
+}
+
 static void resize_with_a_blank_bottom_drops_it(void)
 {
     vt_term *t = h_new(10, 5, VT_XTERM);
@@ -860,6 +896,8 @@ void suite_xterm(void)
     scroll_calls_the_renderer_once_per_write();
     resize_keeps_cursor_row_visible();
     resize_with_a_blank_bottom_drops_it();
+    reflow_keeps_the_deferred_wrap();
+    reflow_leaves_the_alternate_screen();
     decaln_fills_with_e();
     soft_reset_restores_modes();
     mouse_and_paste_modes();

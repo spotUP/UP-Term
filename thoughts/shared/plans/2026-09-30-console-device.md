@@ -347,10 +347,23 @@ moved code, no duplicate of any moved function remains.
 - [ ] D1.7 Opener census (DEBUG=1): DevOpen records caller task name, unit, flags; rig
       runs the Shell, NewShell, Ed, MultiView, More, Workbench Execute Command, an
       ixemul `less`, ConClip. Table written into R-2 (replaces its "unverified" row).
-- [ ] D1.8 Reflow: if DP4 showed the ROM re-wraps linked lines, the engine gains it
+- [x] D1.8 Reflow: if DP4 showed the ROM re-wraps linked lines, the engine gains it
       (`vt_set_reflow`, portable, host tests in `tests/test_amiga.c`, matrix updated) and
       charmap units turn it on; if DP4 showed no re-wrap, this row closes citing the
       screenshot.
+      **DONE 2026-09-30 (engine; branch `d1.8-reflow`):** `vt_set_reflow(t, on)`, off by
+      default (XCON: unchanged). On a width change `vt_resize` joins wrap-linked rows of the
+      primary screen and types them again at the new width with the personality's wrap rule
+      (amiga at once, xterm deferred), cursor on its character, attributes per cell. Not
+      reflowed: alternate screen, scrollback (lines keep their width; amiga keeps none),
+      double-size rows. Tests: amiga `reflow_widening_rewraps_as_the_rom_does` (the DP4 case,
+      45 -> 90: cursor 2;11, rows 90 + 10), `reflow_there_and_back_restores_the_layout`,
+      `reflow_line_ending_at_the_margin`, `reflow_never_joins_a_hard_newline`,
+      `reflow_keeps_the_cursor_on_its_character`, `reflow_off_keeps_the_rows`; xterm
+      `reflow_keeps_the_deferred_wrap`, `reflow_leaves_the_alternate_screen`. Matrix 7a
+      updated. **Open, belongs to D1.3:** the device's CONU_CHARMAP / CONU_SNIPMAP units
+      call `vt_set_reflow(t, 1)` (CONU_STANDARD stays off). Narrowing is not measured on the
+      ROM; the engine treats it as the inverse of widening.
 Success: `make test` green incl. `upcon`; the device builds; the census table exists.
 
 **Phase D2: vectors and keymaps**
