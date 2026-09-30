@@ -43,6 +43,7 @@ struct upc_base {
     struct Interrupt ih;                /* our input handler (DD6) */
     int ih_added;
     ULONG written, answered, dropped;   /* UPCMD_STATS */
+    ULONG events, mice, drags, pointer;
 };
 
 struct upc_unit {

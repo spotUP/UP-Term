@@ -60,6 +60,10 @@ typedef struct vtwin {
     struct TextFont *given_font; /* draw with this font (the window's), not opened or closed here */
     int sb_lines;                /* scrollback lines: 0 = 500 (XCON:), -1 = none */
     struct KeyMap *keymap;       /* keys convert with this map; 0 = the system default */
+    /* owner switches, 0 for XCON: (a console.device unit sets them) */
+    int nodraw_resize;           /* CONFLAG_NODRAW_ON_NEWSIZE: a resize clears, nothing redrawn */
+    int no_clipboard;            /* no RAmiga-C/V copy and paste (only SNIPMAP units have them) */
+    int foreign_window;          /* not ours: never change its flags (ReportMouse) */
     /* live */
     struct Window *win;
     struct TextFont *font;
@@ -75,6 +79,7 @@ typedef struct vtwin {
     int frame_open, frame_busy;
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;
+    int drag_x, drag_y;          /* the cell the selection ends at now */
     const vtwin_host *host;
     void *user;
 } vtwin;

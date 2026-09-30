@@ -28,6 +28,10 @@ struct upc_stats {
     ULONG written;                      /* bytes written, all units, since install */
     ULONG answered;                     /* reads answered */
     ULONG dropped;                      /* input events and bytes lost to full buffers */
+    ULONG events;                       /* input events the units handled */
+    ULONG mice;                         /* of them mouse events */
+    ULONG drags;                        /* selections started (SNIPMAP) */
+    ULONG pointer;                      /* the last pointer a unit saw: x << 16 | y (window) */
 };
 
 /* Is this device base UP-Term's? (never by version: DD13) */

@@ -356,13 +356,21 @@ moved code, no duplicate of any moved function remains.
       ROM's Open; Close through the unit process; Expunge refused while named console.device.
       Measured: KS 40.63's RemDevice frees the seglist our Expunge returns -- UPConsole's own
       UnLoadSeg after it was a double free that took the machine down.
-- [ ] D1.3 `device/upcon_unit.c`: the unit process (DD5) on vtwin; STANDARD/CHARMAP/
+- [x] D1.3 `device/upcon_unit.c`: the unit process (DD5) on vtwin; STANDARD/CHARMAP/
       SNIPMAP rules (DD8, DD9, DD10), NODRAW flag, frame clock, flush on UPCMD_DIE.
       **Part 2026-09-30:** the unit process on vtwin (AMIGA, the window's font, 200/0 lines of
       scrollback, reflow on for CHARMAP/SNIPMAP), CMD_WRITE after the feed, size polled on
       every write and event, REFRESHWINDOW repaint for non-STANDARD units whose window lacks
       IDCMP_REFRESHWINDOW, ConUnit filled after writes/resizes, UPCMD_DIE flush + abort reads.
-      OPEN: CONFLAG_NODRAW_ON_NEWSIZE, copy/paste for SNIPMAP only (DD10), mouse selection.
+      **DONE 2026-09-30:** cdprobe through our device gives every RESULT line the ROM gives
+      (census, NODRAW, shrink and grow, re-wrap). Measured and copied from the ROM on the way:
+      CONFLAG_NODRAW_ON_NEWSIZE clears the unit on a resize (cursor 1;1, area empty), and rows
+      a shrink pushes off the top come back on a grow (engine: the reflow overflow list;
+      tests `reflow_shrink_and_grow_brings_the_rows_back`, `reflow_output_scroll_forgets_the_
+      pushed_rows`). NSCMD_DEVICEQUERY answered only on a ROM of 46+, as the ROM does. Copy on
+      SNIPMAP only (DD10), drag select followed on the frame clock (the rig's absolute pointer
+      moves never reach priority 5; POINTERPOS/NEWPOINTERPOS routed too): `tools/rig/snip_rig.py`
+      4/4, XCON:'s copy included.
 - [x] D1.4 `device/upcon_input.c`: the input handler (DD6, DD7), added on the first unit
       open, removed on the last close.
       **DONE 2026-09-30:** priority 5, upc_route per event, ring + Signal, chain passed on;

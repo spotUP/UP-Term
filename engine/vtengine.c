@@ -107,6 +107,12 @@ struct vt_term {
     int cp437;                 /* the charset is CP437 (xterm personality) */
     int onlcr;                 /* LF also returns (vt_set_onlcr) */
     int reflow;                /* vt_resize re-wraps wrapped lines (vt_set_reflow) */
+    /* reflow: rows a resize pushed off the top of the primary screen, oldest
+     * first, all t->cols wide. The next reflow lays them out again with the
+     * screen (the ROM console brings them back on a grow); output that
+     * scrolls makes them history (ovf_drop). */
+    vt_line **ovf;
+    int novf, ovf_cap;
 
     /* per-row dirty spans, flushed at the end of each write */
     short *dx0, *dx1;
@@ -503,6 +509,55 @@ static void sb_push(vt_term *t, vt_line *l)
     t->sb_head = (t->sb_head + 1) % t->sb_cap;
 }
 
+/* The rows a resize pushed out stop being part of the screen: into the
+ * scrollback where the personality keeps one (amiga keeps none, as the
+ * console), else gone. */
+static void ovf_drop(vt_term *t)
+{
+    int i;
+    for (i = 0; i < t->novf; i++) {
+        if (t->pers != VT_AMIGA)
+            sb_push(t, t->ovf[i]);
+        else
+            VT_FREE(t->ovf[i]);
+    }
+    t->novf = 0;
+}
+
+#define VT_OVF_MAX 500 /* rows kept above the screen for a later grow */
+
+/* A row a reflow pushed off the top, kept for the next one. */
+static void ovf_push(vt_term *t, vt_line *l)
+{
+    if (t->novf == t->ovf_cap) {
+        int cap = t->ovf_cap ? t->ovf_cap * 2 : 16;
+        vt_line **n;
+        if (cap > VT_OVF_MAX)
+            cap = VT_OVF_MAX;
+        if (t->novf == cap) { /* full: the oldest becomes history */
+            if (t->pers != VT_AMIGA)
+                sb_push(t, t->ovf[0]);
+            else
+                VT_FREE(t->ovf[0]);
+            memmove(t->ovf, t->ovf + 1, (t->novf - 1) * sizeof(vt_line *));
+            t->novf--;
+        } else {
+            n = (vt_line **)VT_MALLOC(cap * sizeof(vt_line *));
+            if (!n) {
+                sb_push(t, l);
+                return;
+            }
+            if (t->novf)
+                memcpy(n, t->ovf, t->novf * sizeof(vt_line *));
+            if (t->ovf)
+                VT_FREE(t->ovf);
+            t->ovf = n;
+            t->ovf_cap = cap;
+        }
+    }
+    t->ovf[t->novf++] = l;
+}
+
 /* Rows [top, bot) move up by n; n blank rows enter at the bottom. Lines
  * leaving the top of the primary screen go to the scrollback. */
 static void scroll_up(vt_term *t, int top, int bot, int n)
@@ -514,8 +569,10 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
     if (n > h)
         n = h;
     pend_prepare(t, top, bot, n);
-    if (top == 0 && t->scr == t->pri)
+    if (top == 0 && t->scr == t->pri) {
         t->scrolled += n;
+        ovf_drop(t); /* above the rows scrolling out: history first */
+    }
     for (i = 0; i < n; i++) {
         l = t->scr[top];
         memmove(&t->scr[top], &t->scr[top + 1], (h - 1) * sizeof(vt_line *));
@@ -998,6 +1055,8 @@ static void put_char(vt_term *t, vt_u32 cp)
 
 static void clear_screen_home(vt_term *t)
 {
+    if (t->scr == t->pri)
+        ovf_drop(t); /* a cleared screen has nothing above it to bring back */
     erase_rows(t, 0, t->rows);
     t->cx = t->cy = 0;
     t->wrap_pending = 0;
@@ -1597,6 +1656,8 @@ static int csi_common(vt_term *t, vt_u8 final)
             erase_rows(t, 0, t->cy);
             erase_cells(t, t->cy, 0, t->cx + 1);
         } else if (m == 2 || m == 3) {
+            if (t->scr == t->pri)
+                ovf_drop(t);
             erase_rows(t, 0, t->rows);
             if (m == 3 && t->pers == VT_XTERM) {
                 while (t->sb_len) {
@@ -2851,6 +2912,9 @@ void vt_free(vt_term *t)
         return;
     free_screen(t->pri, t->rows);
     free_screen(t->alt, t->rows);
+    ovf_drop(t); /* into the scrollback, freed below */
+    if (t->ovf)
+        VT_FREE(t->ovf);
     while (t->sb_len) {
         t->sb_head = (t->sb_head + t->sb_cap - 1) % t->sb_cap;
         VT_FREE(t->sb[t->sb_head]);
@@ -3252,8 +3316,21 @@ static int reflow_pass(vt_term *t, vt_line **out, int cols, int cx, int cy, int 
  * as resize_screen does. 0 when out of memory, nothing changed. */
 static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *wp)
 {
-    vt_line **nr, **nw;
-    int total, i, ok, ncx = 0, ncy = 0, nwp = 0, excess, below, drop_top = 0;
+    vt_line **nr, **nw, **pri = t->pri, **all = 0;
+    int total, i, ok, ncx = 0, ncy = 0, nwp = 0, excess, below, drop_top = 0, above = t->novf;
+    int orows = t->rows;
+    if (above) {
+        /* the rows an earlier resize pushed out, then the screen: laid out
+         * together, as one screen that starts `above` rows higher */
+        all = (vt_line **)VT_MALLOC((above + orows) * sizeof(vt_line *));
+        if (!all)
+            return 0;
+        memcpy(all, t->ovf, above * sizeof(vt_line *));
+        memcpy(all + above, pri, orows * sizeof(vt_line *));
+        t->pri = all;
+        t->rows = above + orows;
+        *cy += above;
+    }
     total = reflow_pass(t, 0, cols, *cx, *cy, *wp, &ncx, &ncy, &nwp);
     nr = (vt_line **)VT_MALLOC(total * sizeof(vt_line *));
     nw = (vt_line **)VT_MALLOC(rows * sizeof(vt_line *));
@@ -3262,7 +3339,7 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
             VT_FREE(nr);
         if (nw)
             VT_FREE(nw);
-        return 0;
+        goto undo;
     }
     memset(nr, 0, total * sizeof(vt_line *));
     memset(nw, 0, rows * sizeof(vt_line *));
@@ -3283,7 +3360,7 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
                 VT_FREE(nw[i]);
         VT_FREE(nr);
         VT_FREE(nw);
-        return 0;
+        goto undo;
     }
     if (total > rows) {
         excess = total - rows;
@@ -3293,22 +3370,36 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
         drop_top = excess - below;
         for (i = total - below; i < total; i++)
             VT_FREE(nr[i]);
-        for (i = 0; i < drop_top; i++)
-            sb_push(t, nr[i]);
         total = rows;
         ncy -= drop_top;
     }
-    for (i = 0; i < total; i++)
-        nw[i] = nr[drop_top + i];
+    /* the old rows (the pushed-out ones among them) are laid out anew */
     for (i = 0; i < t->rows; i++)
         VT_FREE(t->pri[i]);
+    t->novf = 0;
+    if (all)
+        VT_FREE(all);
+    t->pri = pri;
+    t->rows = orows;
     VT_FREE(t->pri);
+    for (i = 0; i < drop_top; i++)
+        ovf_push(t, nr[i]); /* pushed out now: back on a later grow */
+    for (i = 0; i < total; i++)
+        nw[i] = nr[drop_top + i];
     VT_FREE(nr);
     t->pri = nw;
     *cx = ncx;
     *cy = ncy;
     *wp = nwp;
     return 1;
+undo:
+    if (all) {
+        VT_FREE(all);
+        t->pri = pri;
+        t->rows = orows;
+        *cy -= above;
+    }
+    return 0;
 }
 
 static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is_pri, int *cy)
@@ -3413,7 +3504,7 @@ void vt_resize(vt_term *t, int cols, int rows)
         int acy = alt_active ? t->cy : 0;
         /* Only the primary screen reflows: xterm leaves the alternate one
          * to the full-screen program that owns it, which redraws. */
-        reflowed = t->reflow && cols != t->cols &&
+        reflowed = t->reflow && (cols != t->cols || rows != t->rows || t->novf) &&
                    reflow_screen(t, cols, rows, &pcx, &pcy, &pwp);
         if (!reflowed) {
             resize_screen(t, &t->pri, cols, rows, 1, &pcy);

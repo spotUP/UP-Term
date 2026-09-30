@@ -333,9 +333,61 @@ static void reflow_off_keeps_the_rows(void)
     vt_free(t);
 }
 
+/* The ROM console, measured (DP4 cdprobe NODRAW part, KS 40.63): three
+ * 40-character lines in a 47 x 10 charmap unit; the window shrunk to
+ * 22 x 4 pushes rows off the top (cursor 4;19); grown back to 47 x 10 every
+ * line is there again, cursor 3;41. Rows a resize pushes out come back. */
+static void reflow_shrink_and_grow_brings_the_rows_back(void)
+{
+    static const char x40[] = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+    vt_term *t = h_new(47, 10, VT_AMIGA);
+    int x, y;
+    vt_set_reflow(t, 1);
+    h_put(t, x40);
+    h_put(t, "\n");
+    h_put(t, x40);
+    h_put(t, "\n");
+    h_put(t, x40);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 2);
+    CHECK_INT(x, 40);
+    vt_resize(t, 22, 4);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 3);                   /* 4;19 in the console's terms */
+    CHECK_INT(x, 18);
+    vt_resize(t, 47, 10);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 2);                   /* 3;41 */
+    CHECK_INT(x, 40);
+    CHECK_STR(h_row(t, 0), x40);
+    CHECK_STR(h_row(t, 1), x40);
+    CHECK_STR(h_row(t, 2), x40);
+    vt_free(t);
+}
+
+/* Output that scrolls ends it: the rows above are history then, not part
+ * of the screen a later resize lays out again. */
+static void reflow_output_scroll_forgets_the_pushed_rows(void)
+{
+    vt_term *t = h_new(10, 3, VT_AMIGA);
+    int x, y;
+    vt_set_reflow(t, 1);
+    h_put(t, "aaaaaaaaaa\nbbb\nccc");
+    vt_resize(t, 10, 2);               /* a pushed out */
+    h_put(t, "\nddd");                 /* scrolls: b pushed out by output */
+    vt_resize(t, 10, 5);
+    CHECK_STR(h_row(t, 0), "ccc");
+    CHECK_STR(h_row(t, 1), "ddd");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 1);
+    vt_free(t);
+}
+
 void suite_amiga(void)
 {
     reflow_widening_rewraps_as_the_rom_does();
+    reflow_shrink_and_grow_brings_the_rows_back();
+    reflow_output_scroll_forgets_the_pushed_rows();
     reflow_there_and_back_restores_the_layout();
     reflow_line_ending_at_the_margin();
     reflow_never_joins_a_hard_newline();

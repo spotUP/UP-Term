@@ -340,12 +340,25 @@ static void nodraw(ULONG flags)
     w0 = u.win->Width;
     h0 = u.win->Height;
     po_line("  nodraw %lu: ink %ld, shrinking\n", flags, before);
-    ChangeWindowBox(u.win, u.win->LeftEdge, u.win->TopEdge, w0 / 2, h0 / 2);
-    Delay(50);
-    po_line("  nodraw %lu: %d x %d, growing\n", flags, u.win->Width, u.win->Height);
-    ChangeWindowBox(u.win, u.win->LeftEdge, u.win->TopEdge, w0, h0);
-    Delay(50);
-    po_line("  nodraw %lu: %d x %d, counting ink\n", flags, u.win->Width, u.win->Height);
+    {
+        struct ConUnit *cu = (struct ConUnit *)u.io->io_Unit;
+        int r, c;
+        po_line("RESULT nodraw %lu before: unit %d x %d\n", flags, cu->cu_XMax + 1, cu->cu_YMax + 1);
+        ChangeWindowBox(u.win, u.win->LeftEdge, u.win->TopEdge, w0 / 2, h0 / 2);
+        Delay(50);
+        write_str(&u, ""); /* the ROM recomputes its size on a write (R-1.4) */
+        r = c = 0;
+        cursor_pos(&u, &r, &c);
+        po_line("RESULT nodraw %lu shrunk: unit %d x %d, cursor %d;%d\n", flags, cu->cu_XMax + 1,
+                cu->cu_YMax + 1, r, c);
+        ChangeWindowBox(u.win, u.win->LeftEdge, u.win->TopEdge, w0, h0);
+        Delay(50);
+        write_str(&u, "");
+        r = c = 0;
+        cursor_pos(&u, &r, &c);
+        po_line("RESULT nodraw %lu grown: unit %d x %d, cursor %d;%d\n", flags, cu->cu_XMax + 1,
+                cu->cu_YMax + 1, r, c);
+    }
     after = ink(u.win);
     po_line("RESULT nodraw flags %lu: ink before %ld, after shrink+grow %ld (%s)\n", flags, before, after,
             after >= before ? "redrawn" : "not redrawn");

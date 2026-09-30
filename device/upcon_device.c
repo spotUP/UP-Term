@@ -350,6 +350,10 @@ static void upc_beginio(__reg("a1") struct IOStdReq *io, __reg("a6") struct upc_
         st.written = b->written;
         st.answered = b->answered;
         st.dropped = b->dropped;
+        st.events = b->events;
+        st.mice = b->mice;
+        st.drags = b->drags;
+        st.pointer = b->pointer;
         io->io_Actual = io->io_Length < sizeof(st) ? io->io_Length : sizeof(st);
         CopyMem(&st, io->io_Data, io->io_Actual);
         done(io);
@@ -357,7 +361,9 @@ static void upc_beginio(__reg("a1") struct IOStdReq *io, __reg("a6") struct upc_
     }
     case NSCMD_DEVICEQUERY: {
         struct NSDeviceQueryResult *q = (struct NSDeviceQueryResult *)io->io_Data;
-        if (io->io_Length < 16) {
+        if (b->rom->lib_Version < 46) {
+            io->io_Error = IOERR_NOCMD; /* as the running ROM (DP4: 46.1 answers, 39-40 do not) */
+        } else if (io->io_Length < 16) {
             io->io_Error = IOERR_BADLENGTH;
         } else {
             q->nsdqr_DevQueryFormat = 0;

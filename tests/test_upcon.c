@@ -320,6 +320,9 @@ static void route(void)
     /* keys, mouse, timer: the active window's unit */
     CHECK_INT(upc_route(UPC_IE_RAWKEY, 0, &w1, wins, 4), 2);
     CHECK_INT(upc_route(UPC_IE_RAWMOUSE, &w0, &w2, wins, 4), 3);  /* the address does not matter */
+    /* absolute pointer moves (tablets, a remote pointer) are mouse moves too */
+    CHECK_INT(upc_route(UPC_IE_POINTERPOS, 0, &w2, wins, 4), 3);
+    CHECK_INT(upc_route(UPC_IE_NEWPOINTERPOS, &w0, &w2, wins, 4), 3);
     CHECK_INT(upc_route(UPC_IE_TIMER, 0, &w0, wins, 4), 0);
     CHECK_INT(upc_route(UPC_IE_RAWKEY, 0, &foreign, wins, 4), -1);
     CHECK_INT(upc_route(UPC_IE_RAWKEY, 0, 0, wins, 4), -1);        /* no active window */
@@ -335,7 +338,7 @@ static void route(void)
     CHECK_INT(upc_route(UPC_IE_SIZEWINDOW, &foreign, &foreign, wins, 4), -1);
     CHECK_INT(upc_route(UPC_IE_ACTIVEWINDOW, 0, 0, wins, 4), -1);  /* a free slot never matches 0 */
     /* anything else: no unit */
-    CHECK_INT(upc_route(0x04, &w0, &w0, wins, 4), -1);             /* POINTERPOS */
+    CHECK_INT(upc_route(0x03, &w0, &w0, wins, 4), -1);             /* EVENT */
     CHECK_INT(upc_route(0x07, &w0, &w0, wins, 4), -1);             /* GADGETDOWN */
     CHECK_INT(upc_route(0x0A, &w0, &w0, wins, 4), -1);             /* MENULIST */
     CHECK_INT(upc_route(UPC_IE_RAWKEY, 0, &w0, wins, 0), -1);      /* no units */

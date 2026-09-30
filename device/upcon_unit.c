@@ -137,10 +137,26 @@ static void check_size(struct upc_unit *u)
 
 static void event(struct upc_unit *u, const upc_event *e)
 {
+    u->base->events++;
     switch (e->cls) {
     case UPC_IE_RAWKEY:
         /* ie_EventAddress: the previous two down keys (dead keys) */
         vtwin_key(&u->w, e->code, e->qual, (ULONG)e->addr, e->secs, e->micros);
+        break;
+    case UPC_IE_RAWMOUSE:
+    case UPC_IE_POINTERPOS:
+    case UPC_IE_NEWPOINTERPOS:
+        u->base->mice++;
+        /* drag-select on SNIPMAP units (DD10); the pointer as the window
+         * sees it now (a raw mouse event carries deltas, the others screen
+         * positions) */
+        u->base->pointer = ((ULONG)(UWORD)u->win->MouseX << 16) | (UWORD)u->win->MouseY;
+        if (u->unitno == CONU_SNIPMAP) {
+            int button = e->cls == UPC_IE_RAWMOUSE && (e->code & ~IECODE_UP_PREFIX) == IECODE_LBUTTON;
+            int was = u->w.dragging;
+            vtwin_mouse(&u->w, !button, e->code, e->qual, u->win->MouseX, u->win->MouseY);
+            u->base->drags += !was && u->w.dragging;
+        }
         break;
     case UPC_IE_SIZEWINDOW:
     case UPC_IE_CHANGEWINDOW:
@@ -228,6 +244,9 @@ void upc_unit_entry(void)
     u->w.given_font = u->win->RPort->Font;
     u->w.sb_lines = u->unitno == CONU_STANDARD ? -1 : 200;
     u->w.keymap = &u->cu.cu_KeyMapStruct; /* CD_SETKEYMAP changes this unit's keys (DD12) */
+    u->w.nodraw_resize = (u->flags & CONFLAG_NODRAW_ON_NEWSIZE) != 0;
+    u->w.no_clipboard = u->unitno != CONU_SNIPMAP; /* DD10 */
+    u->w.foreign_window = 1;
     vtwin_init(&u->w, &host, u);
     if (!vtwin_attach(&u->w, u->win)) {
         vtwin_cleanup(&u->w);

@@ -222,6 +222,8 @@ int upc_route(int cls, const void *evaddr, const void *active, const void *const
     switch (cls) {
     case UPC_IE_RAWKEY:
     case UPC_IE_RAWMOUSE:
+    case UPC_IE_POINTERPOS:
+    case UPC_IE_NEWPOINTERPOS:
     case UPC_IE_TIMER:
         return find(active, wins, nwins);
     case UPC_IE_CLOSEWINDOW:

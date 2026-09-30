@@ -33,8 +33,9 @@ int main(void)
         io.io_Data = &st;
         io.io_Length = sizeof(st);
         if (DoIO((struct IORequest *)&io) == 0)
-            printf("UP-Term units %lu written %lu answered %lu dropped %lu\n", st.units, st.written,
-                   st.answered, st.dropped);
+            printf("UP-Term units %lu written %lu answered %lu dropped %lu events %lu mice %lu drags %lu "
+                   "pointer %lu,%lu\n", st.units, st.written, st.answered, st.dropped, st.events, st.mice,
+                   st.drags, st.pointer >> 16, st.pointer & 0xFFFF);
         else
             printf("UP-Term error %d\n", io.io_Error);
     }

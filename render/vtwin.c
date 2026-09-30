@@ -165,6 +165,8 @@ void vtwin_render(vtwin *w)
         frame_start(w); /* blinking cells or cursor: the frames keep coming */
 }
 
+static void drag_to(vtwin *w, WORD mx, WORD my);
+
 void vtwin_tick(vtwin *w)
 {
     if (w->frame_busy && CheckIO((struct IORequest *)w->frame)) {
@@ -176,6 +178,14 @@ void vtwin_tick(vtwin *w)
     }
     if (!w->frame_open)
         vtwin_render(w); /* no frame clock: draw at once */
+    if (w->dragging && w->win) {
+        /* follow the pointer on the frame clock (after the frame's own
+         * bookkeeping, or frame_start finds it busy and the polling stops):
+         * moves may never reach us as events -- Intuition keeps absolute
+         * pointer moves to itself */
+        drag_to(w, w->win->MouseX, w->win->MouseY);
+        frame_start(w);
+    }
 }
 
 /* A fixed-width font by name ("topaz" or "topaz.font") and size; 0 if it
@@ -359,10 +369,14 @@ void vtwin_resize(vtwin *w)
         return;
     if (vr_layout(&w->r)) {
         vt_resize(w->t, w->r.cols, w->r.rows);
+        if (w->nodraw_resize)
+            vt_write(w->t, (const vt_u8 *)"\x0c", 1); /* the ROM clears the unit, cursor home (DP4) */
         w->host->resized(w->user);
     }
-    vr_redraw(&w->r);
-    vr_cursor_on(&w->r);
+    if (!w->nodraw_resize) {
+        vr_redraw(&w->r);
+        vr_cursor_on(&w->r);
+    }
     vtwin_raw_report(w, 12); /* IECLASS_SIZEWINDOW */
 }
 
@@ -502,8 +516,8 @@ static int console_key(vtwin *w, UWORD code, UWORD qual)
     int page = w->r.rows > 1 ? w->r.rows - 1 : 1;
     if (qual & IEQUALIFIER_RCOMMAND) {
         switch (code) {
-        case 0x33: copy_selection(w); return 1;
-        case 0x34: paste(w); return 1;
+        case 0x33: if (w->no_clipboard) return 0; copy_selection(w); return 1;
+        case 0x34: if (w->no_clipboard) return 0; paste(w); return 1;
         case 0x4C: vr_set_view(&w->r, w->r.view + 1); return 1;
         case 0x4D: vr_set_view(&w->r, w->r.view - 1); return 1;
         default: return 0;
@@ -614,6 +628,20 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
 
 /* ---- the mouse ---------------------------------------------------------------------- */
 
+/* The selection to the cell under the pointer, while a drag is on. */
+static void drag_to(vtwin *w, WORD mx, WORD my)
+{
+    int x, y;
+    if (!w->dragging || !w->t || !vr_cell_at(&w->r, mx, my, &x, &y))
+        return;
+    if (x == w->drag_x && y == w->drag_y)
+        return;
+    w->drag_x = x;
+    w->drag_y = y;
+    vr_select(&w->r, 1, w->drag_ax, w->drag_ay, x, y - w->r.view);
+    w->drag_moved = 1;
+}
+
 /* Reports to a program that asked for them (Shift held gives the mouse back
  * to selection, as in xterm), else drag-to-select. */
 void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
@@ -625,10 +653,7 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
         return;
     in = vr_cell_at(&w->r, mx, my, &x, &y);
     if (move) {
-        if (w->dragging && in) {
-            vr_select(&w->r, 1, w->drag_ax, w->drag_ay, x, y - w->r.view);
-            w->drag_moved = 1;
-        }
+        drag_to(w, mx, my);
         return;
     }
     if (code == SELECTDOWN) { btn = 0; kind = 0; }
@@ -649,13 +674,18 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
     if (kind == 0 && in) {
         w->dragging = 1;
         w->drag_moved = 0;
+        w->drag_x = x;
+        w->drag_y = y;
         w->drag_ax = x;
         w->drag_ay = y - w->r.view;
         vr_select(&w->r, 0, 0, 0, 0, 0);
-        ReportMouse(TRUE, w->win);
+        frame_start(w); /* vtwin_tick follows the pointer */
+        if (!w->foreign_window)
+            ReportMouse(TRUE, w->win);
     } else if (kind == 1 && w->dragging) {
         w->dragging = 0;
-        ReportMouse(FALSE, w->win);
+        if (!w->foreign_window)
+            ReportMouse(FALSE, w->win);
         if (!w->drag_moved)
             vr_select(&w->r, 0, 0, 0, 0, 0); /* a click clears the selection */
     }

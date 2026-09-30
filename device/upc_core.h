@@ -109,7 +109,8 @@ int  upc_ev_pop(upc_evring *r, upc_event *e);          /* 0 = empty */
 int  upc_ev_count(const upc_evring *r);
 
 /* ---- routing (DD7) -----------------------------------------------------
- * Keys, mouse and timer go to the unit whose window is active; window
+ * Keys, mouse (RAWMOUSE and the absolute POINTERPOS/NEWPOINTERPOS moves)
+ * and timer go to the unit whose window is active; window
  * events go to the unit whose window is ie_EventAddress, else the active
  * one (AROS's rule). CHANGEWINDOW (V39: moved or sized) is routed like
  * the window events: a resize hint for DD8's polling. Other classes go to
@@ -117,6 +118,8 @@ int  upc_ev_count(const upc_evring *r);
 
 #define UPC_IE_RAWKEY          0x01
 #define UPC_IE_RAWMOUSE        0x02
+#define UPC_IE_POINTERPOS      0x04     /* absolute moves: a tablet, a remote pointer */
+#define UPC_IE_NEWPOINTERPOS   0x13
 #define UPC_IE_TIMER           0x06
 #define UPC_IE_CLOSEWINDOW     0x0B
 #define UPC_IE_SIZEWINDOW      0x0C
