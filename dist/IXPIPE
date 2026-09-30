@@ -1,0 +1,6 @@
+/* UP-Term: IXPIPE:, ixemul's pipe handler (a Unix program starting an
+   AmigaDOS program on a pipe, like GNU screen's printcmd, goes through it) */
+Handler   = L:ixpipe-handler
+Priority  = 5
+StackSize = 3000
+GlobVec   = -1

@@ -1,5 +1,5 @@
 ; UP-Term uninstall: removes what Install put in and gives back the
-; ixemul.library it replaced. XCON: and PTY: stay mounted until a reboot.
+; ixemul.library it replaced. XCON:, PTY: and IXPIPE: stay mounted until a reboot.
 ; Your history (ENVARC:vtcon.history) and $HOME/.vshrc are kept.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
@@ -8,6 +8,9 @@ Delete >NIL: DEVS:DOSDrivers/PTY DEVS:DOSDrivers/PTY.info QUIET
 Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill C:screen QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc QUIET
 Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info QUIET
+If EXISTS ENVARC:up-term/ixpipe
+  Delete >NIL: DEVS:DOSDrivers/IXPIPE DEVS:DOSDrivers/IXPIPE.info L:ixpipe-handler QUIET
+EndIf
 Delete >NIL: ENVARC:up-term ENV:up-term ALL QUIET
 ; TERMINFO: ours goes, the user's from before Install comes back
 If EXISTS ENV:TERMINFO
@@ -35,4 +38,4 @@ If EXISTS LIBS:ixemul.library.orig
   Delete >NIL: LIBS:ixemul.library.orig QUIET
   Avail >NIL: FLUSH
 EndIf
-Echo "UP-Term removed. Reboot to unmount XCON: and PTY:."
+Echo "UP-Term removed. Reboot to unmount XCON:, PTY: and IXPIPE:."

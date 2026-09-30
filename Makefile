@@ -115,7 +115,7 @@ HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler
 HANDLER_HDR := engine/vtengine.h render/amiga_render.h render/glyphmap.h render/glyph_tables.inc \
                handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/vtcon_packets.h tty/ldisc.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -170,6 +170,13 @@ $(BUILD)/amiga/forkprobe: tests/amiga/forkprobe.c
 $(BUILD)/amiga/ixbg: tests/amiga/ixbg.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixbg.c
+
+# ixemul's IXPIPE: handler (its utils/ixpipe-handler.c): execve hands a
+# pipe or socket to a native program through it (screen's printcmd to vsh)
+IXEMUL_SRC ?= $(HOME)/Code/ixemul-vtcon
+$(BUILD)/amiga/ixpipe-handler: $(IXEMUL_SRC)/utils/ixpipe-handler.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -I$(IXEMUL_SRC)/include -nostdlib -o $@ $< -lc
 
 # vsh's signal helper (S8): an ixemul program, so bebbo's gcc
 $(BUILD)/amiga/ixkill: shell/ixkill.c
@@ -269,7 +276,7 @@ dist: amiga $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(BUILD)/dist/vtcon/banner
 	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term.info
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(BUILD)/dist/vtcon/UP-Term
-	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon
 	@ls -la $(BUILD)/vtcon.lha

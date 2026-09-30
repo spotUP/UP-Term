@@ -52,6 +52,8 @@ def main():
     check(rc == 0, 'Install runs', out)
     rc, out = run('Assign PTY: EXISTS DEVICES')
     check(rc == 0, 'Install mounted PTY:', out)
+    rc, out = run('Assign IXPIPE: EXISTS DEVICES')
+    check(rc == 0, 'Install mounted IXPIPE:', out)
     rc, out = run('VTC:ptytest', 120)
     check(rc == 0 and 'FAIL' not in out, 'the installed PTY: passes ptytest', out[-300:])
     st = lib_state()
@@ -85,7 +87,7 @@ def main():
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == terminfo_before, 'after Uninstall: the TERMINFO from before Install is back', out)
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'C:vsh', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
+                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
                         'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info')
             if run('List >NIL: %s' % f)[0] == 0]
     check(not left, 'Uninstall removed the files', ' '.join(left))

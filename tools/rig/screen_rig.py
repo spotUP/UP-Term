@@ -8,7 +8,8 @@ build/rig/shots/screen_colors.png.
 
 Then screen's other children, which the port starts with vfork (ixemul has
 no fork): a backtick in the status line, the blanker (":blanker") and the
-lock (Ctrl-A x with LOCKPRG) each run tests/amiga/forkprobe, which logs to
+lock (Ctrl-A x with LOCKPRG) and printcmd (through vsh -c; ESC [5i
+... ESC [4i in the window) each run tests/amiga/forkprobe, which logs to
 RAM:forkprobe.log.
 
 Needs the rig up with the patched ixemul (ixpty_rig.use_ixemul), PTY:
@@ -32,10 +33,19 @@ startup_message off
 backtick 1 0 0 /VTC/forkprobe backtick
 hardstatus alwayslastline "status: %1`"
 blankerprg /VTC/forkprobe blanker
+printcmd "VTC:forkprobe read"
+"""
+IXPIPE_MOUNT = """IXPIPE:
+    Handler = VTC:ixpipe-handler
+    Stacksize = 3000
+    Priority = 5
+    GlobVec = -1
+#
 """
 CHILDREN = ["argv0=/VTC/forkprobe argc=2 [backtick]",
             "argv0=/VTC/forkprobe argc=2 [blanker]",
-            "argv0=SCREEN-LOCK argc=1"]
+            "argv0=SCREEN-LOCK argc=1",
+            "argv0=VTC:forkprobe argc=2 [read] stdin=printed"]
 
 
 def ex(cmd, t=20):
@@ -54,32 +64,50 @@ def ctrl_a():
     time.sleep(0.4)
 
 
+def screens():
+    """screen processes on the rig (an attacher and a backend each)"""
+    return sum('screen' in l for l in ex('Status')[1].splitlines())
+
+
 def main():
     shutil.copyfile(ROOT / "tests/amiga/colors.sh", VTC / "colors.sh")
     for name in ("pty-handler", "forkprobe"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "ptymount").write_text(ptytest_rig.MOUNTLIST)
     (VTC / "screenrc").write_text(SCREENRC)
+    (VTC / "printcmd.sh").write_text("printf '\\033[5iprinted\\n\\033[4i'\n")
+    shutil.copyfile(ROOT / "build/amiga/ixpipe-handler", VTC / "ixpipe-handler")
+    (VTC / "ixpipemount").write_text(IXPIPE_MOUNT)
     ixpty_rig.use_ixemul()
+    # printcmd's pipe reaches vsh (a native program) through IXPIPE:
+    if ex('Assign >NIL: IXPIPE: EXISTS DEVICES')[0] != 0:
+        ex('Mount IXPIPE: FROM VTC:ixpipemount')
     if ex('Assign >NIL: PTY: EXISTS DEVICES')[0] != 0:
         ex('Mount PTY: FROM VTC:ptymount')
     ex('Copy VTC:screenrc ENV:screenrc')
     ex('Delete RAM:forkprobe.log QUIET')
+    before = screens()
     ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/20/780/560/screen/CLOSE"')
     time.sleep(4)
     typeline('VTC:vsh', 3)
     typeline('LOCKPRG=/VTC/forkprobe; export LOCKPRG', 1)
     typeline('VTC:screen', 10)
     ex('Delete RAM:screen_sty QUIET')
-    typeline('echo "$STY" >RAM:screen_sty', 2)
+    typeline('echo "$STY $-" >RAM:screen_sty', 2)
     sty = ex('Type RAM:screen_sty')[1].strip()
-    if not sty:
+    if len(sty.split()) < 1 or sty.split()[0] in ('', 'i'):
         print('FAIL screen is not running (no STY in its window)')
         return 1
+    rc = 0
+    if len(sty.split()) < 2 or 'i' not in sty.split()[1]:
+        print('FAIL the window\'s vsh is not interactive ($- without i): ' + sty)
+        rc = 1
     typeline('source VTC:colors.sh', 0)
     time.sleep(float(os.environ.get("SCREEN_WAIT", "20")))
     ami.main(['shot', str(SHOT)])
-    rc = cube_rig.check(Image.open(SHOT).convert('RGB'), 30, 580)
+    rc |= cube_rig.check(Image.open(SHOT).convert('RGB'), 30, 580)
+    # typed text cannot carry "[" (amiagent types it as "("): from a file
+    typeline('source VTC:printcmd.sh', 3)
     ctrl_a()
     typeline(':blanker', 4)
     ami.key(0x40)  # any key ends the blanker
@@ -93,8 +121,13 @@ def main():
         rc |= not ok
         print('%s screen started %s' % ('ok' if ok else 'FAIL', want))
     if "--keep" not in sys.argv:
-        typeline('exit', 3)  # the last window's shell ends screen
-        typeline('endcli', 2)  # the vsh, then the XCON Shell
+        typeline('exit', 3)  # the window's vsh: its last window, so screen ends
+        typeline('exit', 2)  # the vsh screen was started from
+        typeline('endcli', 2)  # the AmigaDOS Shell of the XCON window
+        left = screens()
+        if left > before:
+            print('FAIL screen still running after exit: %d screen processes, %d before' % (left, before))
+            rc = 1
     return rc
 
 

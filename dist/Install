@@ -77,6 +77,17 @@ Assign >NIL: XCON: EXISTS DEVICES
 If WARN
   Mount DEVS:DOSDrivers/XCON
 EndIf
+; IXPIPE: (ixemul's own handler): kept as it is when ixemul's install put
+; it there; ENVARC:up-term/ixpipe marks ours for Uninstall
+If NOT EXISTS DEVS:DOSDrivers/IXPIPE
+  Copy ixpipe-handler L: CLONE
+  Copy IXPIPE DEVS:DOSDrivers/IXPIPE CLONE
+  Echo >ENVARC:up-term/ixpipe "installed by UP-Term"
+EndIf
+Assign >NIL: IXPIPE: EXISTS DEVICES
+If WARN
+  Mount DEVS:DOSDrivers/IXPIPE
+EndIf
 Assign >NIL: PTY: EXISTS DEVICES
 If WARN
   Mount DEVS:DOSDrivers/PTY
