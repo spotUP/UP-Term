@@ -153,6 +153,9 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
 
 ## Checklist
 
+**Order (owner 2026-09-30): all AmigaOS 3.2 work -- DP5, H5.3, DV5's 3.2 row -- comes last in
+the project (ledger T3). The rest does not wait for it.**
+
 **Phase DP: probes (no product code; each writes its result into this file and R-6)**
 - [x] DP1 Input chain census. `tests/amiga/chainprobe.c`: opens a SIMPLE_REFRESH window
       with IDCMP 0 and a CON: window, adds handlers at priorities 9, 5 and -5, counts
