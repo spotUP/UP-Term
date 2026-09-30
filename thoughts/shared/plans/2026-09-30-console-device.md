@@ -403,13 +403,21 @@ moved code, no duplicate of any moved function remains.
 Success: `make test` green incl. `upcon`; the device builds; the census table exists.
 
 **Phase D2: vectors and keymaps**
-- [ ] D2.1 `device/upcon_vec.s` (vasm) forward stubs for -42..-72 (DD11); our
+- [x] D2.1 `device/upcon_vec.s` (vasm) forward stubs for -42..-72 (DD11); our
       CDInputHandler routes then forwards.
-- [ ] D2.2 CD_ASK/SETKEYMAP per unit, CD_ASK/SETDEFAULTKEYMAP delegated (DD12).
-- [ ] D2.3 Rig probe `tests/amiga/rkcprobe.c`: RawKeyConvert over all 128 codes x
+      **DONE 2026-09-30, one decided change:** the stubs are in `device/upcon_rom.s`;
+      CDInputHandler forwards only (with the ROM's base as its device argument). Our priority-5
+      input handler already sees every input.device event for our units; routing the events
+      a program also pushes through CDInputHandler would hand our units every key twice.
+- [x] D2.2 CD_ASK/SETKEYMAP per unit, CD_ASK/SETDEFAULTKEYMAP delegated (DD12).
+      **DONE 2026-09-30:** per unit in cu_KeyMapStruct (copied from AskKeyMapDefault at open);
+      the unit converts keys with it (vtwin.keymap); the defaults go to the ROM's BeginIO.
+- [x] D2.3 Rig probe `tests/amiga/rkcprobe.c`: RawKeyConvert over all 128 codes x
       {none, Shift, Alt, Ctrl} with the default keymap, output file before DEVICE ON and
       after: byte-identical. A CD_SETKEYMAP'd unit converts with its own map (a swapped
       two-key map changes exactly those keys).
+      **DONE 2026-09-30:** `tools/rig/rkc_rig.py` 5/5 on KS 40.63: 512-line tables identical,
+      a/b-swapped unit reads 62 for a, 63 for c.
 Success: D2.3 identical tables; ledger D2 ticked.
 
 **Phase D3: ConUnit fields current**

@@ -24,6 +24,7 @@
 #include <devices/timer.h>
 #include <intuition/intuition.h>
 #include <graphics/text.h>
+#include <devices/keymap.h>
 #include "../engine/vtengine.h"
 #include "amiga_render.h"
 
@@ -58,6 +59,7 @@ typedef struct vtwin {
     WORD altsize[11];
     struct TextFont *given_font; /* draw with this font (the window's), not opened or closed here */
     int sb_lines;                /* scrollback lines: 0 = 500 (XCON:), -1 = none */
+    struct KeyMap *keymap;       /* keys convert with this map; 0 = the system default */
     /* live */
     struct Window *win;
     struct TextFont *font;

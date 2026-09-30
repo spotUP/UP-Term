@@ -11,6 +11,7 @@
  * lines and repaint on REFRESHWINDOW when the window's owner does not;
  * STANDARD keeps none and leaves refresh to the layers (smart refresh). */
 #include <string.h>
+#include <stddef.h>
 #include <exec/memory.h>
 #include <exec/errors.h>
 #include <clib/alib_protos.h>
@@ -71,6 +72,11 @@ static void h_resized(void *user)
 static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized };
 
 /* ---- struct ConUnit (DD17) ---------------------------------------------------- */
+
+/* upc_conunit_fill writes the public struct at these offsets (matrix 6.4) */
+typedef char check_rawevents[offsetof(struct ConUnit, cu_RawEvents) == UPC_CU_RAWEVENTS ? 1 : -1];
+typedef char check_cusize[sizeof(struct ConUnit) == UPC_CU_SIZE ? 1 : -1];
+typedef char check_keymap[offsetof(struct ConUnit, cu_KeyMapStruct) == UPC_CU_KEYMAP ? 1 : -1];
 
 static void fill_conunit(struct upc_unit *u)
 {
@@ -217,6 +223,7 @@ void upc_unit_entry(void)
     u->w.fg_rgb = u->w.bg_rgb = VR_KEEP;
     u->w.given_font = u->win->RPort->Font;
     u->w.sb_lines = u->unitno == CONU_STANDARD ? -1 : 200;
+    u->w.keymap = &u->cu.cu_KeyMapStruct; /* CD_SETKEYMAP changes this unit's keys (DD12) */
     vtwin_init(&u->w, &host, u);
     if (!vtwin_attach(&u->w, u->win)) {
         vtwin_cleanup(&u->w);

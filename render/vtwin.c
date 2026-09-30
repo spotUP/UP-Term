@@ -601,7 +601,7 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
          * Meta, it does not */
         ie.ie_Qualifier = (UWORD)(qual & ~IEQUALIFIER_LCOMMAND);
         ie.ie_EventAddress = (APTR)prev;
-        k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), 0);
+        k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), w->keymap);
         for (i = 0; i < k && n < (int)sizeof(out) - 8; i++) {
             /* The keymap already applied Ctrl: pass the character, with
              * Meta only (vt_encode_key adds the ESC for xterm). */

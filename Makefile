@@ -266,6 +266,11 @@ $(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ device/upconsole.c
 
+# D2.3's probe (tools/rig/rkc_rig.py)
+$(BUILD)/amiga/rkcprobe: tests/amiga/rkcprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/rkcprobe.c
+
 # DV1's probe (tools/rig/condev_rig.py)
 $(BUILD)/amiga/devwho: tests/amiga/devwho.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
