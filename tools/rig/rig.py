@@ -80,7 +80,10 @@ def setup():
     (RIG / "boot/s/startup-sequence").write_text(STARTUP)
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
-    shutil.copyfile(SRC_AGENT, RIG / "boot/amiagent")
+    # once, like the disk: the sources were in a session scratchpad, which
+    # is gone after that session (the rig failed to start, 2026-09-30)
+    if not (RIG / "boot/amiagent").exists():
+        shutil.copyfile(SRC_AGENT, RIG / "boot/amiagent")
     CFG.write_text("\n".join([
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in

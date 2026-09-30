@@ -133,6 +133,22 @@ int main(void)
     write(s, "a\nb", 3);
     expect(m, "a\r\nb", "slave output gets ONLCR");
 
+    /* select for writing only: a DOS handle is always writable, and select
+     * must say so at once (it slept to its timeout: tmux's output through
+     * libevent never went out) */
+    {
+        fd_set w;
+        struct timeval tv = { 3, 0 }, a, z;
+        FD_ZERO(&w);
+        FD_SET(s, &w);
+        gettimeofday(&a, 0);
+        n = select(s + 1, 0, &w, 0, &tv);
+        gettimeofday(&z, 0);
+        ms = (z.tv_sec - a.tv_sec) * 1000 + (z.tv_usec - a.tv_usec) / 1000;
+        sprintf(seen, "%d ready after %ld ms", n, ms);
+        check(n == 1 && FD_ISSET(s, &w) && ms < 1000, "select for writing on the slave returns at once", seen);
+    }
+
     /* raw, as a full-screen program sets it */
     t = def;
     t.c_lflag &= ~(ICANON | ECHO | ISIG | IEXTEN);
