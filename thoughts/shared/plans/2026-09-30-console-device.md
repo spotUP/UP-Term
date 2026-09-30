@@ -159,16 +159,36 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       events per class and per `ie_EventAddress`/ActiveWindow match while the rig script
       types, clicks, drags, resizes, depth-arranges and closes; prints input.device's
       handler list (name, priority; code from `tests/amiga/sizewatch.c` l.66-72).
-      Rig: `tools/rig/conprobe_rig.py dp1`. Records: ROM console handler name/priority,
+      Rig: `tools/rig/chainprobe_rig.py`. Records: ROM console handler name/priority,
       and which classes arrive for IDCMP-less windows (fixes DD6's number, DD9's path).
+      **Written, not yet run on the rig** (condev, 2026-09-30): `make build/amiga/chainprobe`;
+      the console's handler is identified by is_Code inside the console.device resident
+      or is_Data = the console base; RESULT lines give the classes addressed to each
+      window per priority, and RAWKEY/RAWMOUSE counts while each window is active.
 - [ ] DP3 DosList dump. `tests/amiga/dosnode.c`: CON, RAW, XCON entries -- dn_Type,
       dn_Task, dn_Handler, dn_StackSize, dn_Priority, dn_Startup, dn_SegList (and whether
       it lies in ROM / the resident segment list), dn_GlobalVec. Every Kickstart of DD22.
       Output table goes into `device/upconsole.c` as the pristine table (DD21).
+      **Written, not yet run on the rig** (condev, 2026-09-30): `make build/amiga/dosnode`,
+      `tools/rig/dosnode_rig.py` (log per Kickstart in build/rig/shots/). Prints a
+      `PRISTINE { dosver, name, type, handler, stack, pri, startup, SEG_NONE|SEG_DOSRES|
+      SEG_ROMTAG|SEG_OTHER, segname, globvec }` line per entry, and every DLT_DEVICE entry.
 - [ ] DP4 ROM command census. `tests/amiga/cdprobe.c`: units 0/1/3 on a test window:
       io_Error for commands 0-14 and NSCMD_DEVICEQUERY's list; CONFLAG_NODRAW_ON_NEWSIZE;
       a wrapped 100-column line in a 60-column CONU_SNIPMAP window resized to 120 columns
       (screenshot: re-wrapped or not). Every Kickstart of DD22.
+      **Written, not yet run on the rig** (condev, 2026-09-30): `make build/amiga/cdprobe`,
+      `tools/rig/cdprobe_rig.py [--noscroll]`. Decided: every command goes out with SendIO
+      and is AbortIO'd after 1 s (so a queued CMD_READ also measures AbortIO's io_Error,
+      D1.2); CD_SETDEFAULTKEYMAP sets `AskKeyMapDefault()` (no change, no dangling
+      pointer); CD_SETUPSCROLLBACK/POSITION get a zeroed ConsoleScrollback (`NOSCROLL`
+      skips them if a 3.2 ROM dereferences it); also CMD_FLUSH with a read pending. The
+      re-wrap is judged by CSI 6n before/after as well as the screenshot. **Plan fix:**
+      120 columns of an 8-pixel font need 960 pixels, wider than the rig's 640-pixel
+      Workbench; the probe uses 60/100/120 when 120 fit, else WIDE = what fits,
+      NARROW = WIDE/2, LINE = WIDE-2 (same question: a line longer than the narrow width
+      and shorter than the wide one). NODRAW is judged by ink pixels before/after a
+      shrink+grow of a CHARMAP window, flags 0 against CONFLAG_NODRAW_ON_NEWSIZE.
 - [ ] DP5 Medium-mode bytes (3.2 only). `tests/amiga/mediumprobe.c`: SetMode(Output(),2),
       hex-dump reads while the script types TAB, Shift+TAB, Up, Down, a line. Closes
       matrix Q9. Skipped with a written reason when no 3.2 row boots (DD22).
@@ -219,10 +239,29 @@ Success: XCON: behaves identically (the listed rig checks), vtcon_handler.c smal
 moved code, no duplicate of any moved function remains.
 
 **Phase D1: the device (units, commands, input)**
-- [ ] D1.1 `device/upc_core.[ch]` + `tests/test_upcon.c` (suite `upcon`, in Makefile TESTS):
+- [x] D1.1 `device/upc_core.[ch]` + `tests/test_upcon.c` (suite `upcon`, in Makefile TESTS):
       read queue (partial satisfy, io_Actual, queued reads in order, CMD_CLEAR, paste text
       before later keys), event ring (64 entries, overflow counted), `upc_route` (DD7),
       `upc_conunit_fill` (DD17) on a mirror struct.
+      Done on branch condev (2026-09-30): 197 checks; also compiles with vbcc for 68000 and
+      68020. Decisions made there: 512 buffered input bytes per unit, overflow dropped and
+      counted (`dropped`, for UPCMD_STATS); at most 8 queued CMD_READs per unit, a ninth is
+      failed with IOERR_UNITBUSY by the caller; a CMD_READ of length 0 is answered at once;
+      a paste is the caller's text, referenced until `paste_done` (drained or CMD_CLEAR),
+      one at a time; `upc_rq_take` pops queued reads for CloseDevice. CHANGEWINDOW (V39) is
+      routed like the window classes (a resize hint for DD8). The "mirror struct" is the
+      296-byte image written big-endian at the matrix 6.4 offsets (the host's own struct
+      would have host pointers and alignment); the test re-types every offset from the
+      matrix. Fill writes the read-only block, tab stops (the unit's, or every 8 from 0,
+      then 0xFFFF), pens/draw mode, font fields, cu_Modes (bit 20 LNM, 21 ASM, 22 AWM) and
+      cu_RawEvents (classes 0-23); never cu_MP, cu_KeyMapStruct, cu_Obsolete1/2,
+      cu_Minterms. **For D3.2 to check** (assumed, unmeasured): bit n of cu_Modes/
+      cu_RawEvents = byte n/8, mask 1<<(n%8) (BSET order, not BFSET's MSB-first);
+      cu_XRExtant = cu_XROrigin + cols*cu_XRSize - 1 (and Y); cu_XCP = cu_XCCP = cursor;
+      cu_XMinShrink/YMinShrink supplied by the unit. **Found:** DD7 routes TIMER events
+      to the active unit only, so DD9's TIMER fallback would check LAYERREFRESH for the
+      active window alone; D1.3 should run that check on the unit's own 50 ms frame clock
+      (DD5) instead, which every unit has.
 - [ ] D1.2 `device/upcon_device.c`: RomTag (RTF_AUTOINIT, NT_DEVICE, first hunk
       `moveq #-1,d0; rts`), base with the DD13 extension, Open (units -1/0/1/3, flags,
       io_Error set and io_Device cleared on failure, DD16 forward), Close, Expunge (DD15),
@@ -304,8 +343,8 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
 ## Automated vs manual
 
 Automated (host): `make test` (suites incl. new `upcon`, `lineedit` medium mode, engine
-reflow if D1.8 adds it). Automated (rig, one at a time, rig free): conprobe_rig.py
-(DP1-DP5), concon_rig.py (H5.6), condev_rig.py (DV1, DV2, D2.3, D3.2, D4.3, DV6),
+reflow if D1.8 adds it). Automated (rig, one at a time, rig free): chainprobe_rig.py (DP1),
+dosnode_rig.py (DP3), cdprobe_rig.py (DP4), mediumprobe (DP5), concon_rig.py (H5.6), condev_rig.py (DV1, DV2, D2.3, D3.2, D4.3, DV6),
 install_rig.py (H5.5, D4.2), the existing XCON: checks after DX (test-rig, vttest_rig,
 screen_rig, cube_rig, ptytest_rig, ttyprobe_rig).
 
