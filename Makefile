@@ -228,6 +228,13 @@ $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldis
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ttyprobe.c
 
+# Phase DP of the console.device plan: DP1 input chain, DP3 DosList, DP4 ROM
+# commands (run by tools/rig/<name>_rig.py)
+CONPROBES := chainprobe dosnode cdprobe
+$(CONPROBES:%=$(BUILD)/amiga/%): $(BUILD)/amiga/%: tests/amiga/%.c tests/amiga/probeout.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/$*.c
+
 $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/vtengine.h engine/vtwidth.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -c -o $@ $(ENGINE)

@@ -40,6 +40,43 @@ def key(code, qual=0):
     ev = lambda d: bytes([3, code, d]) + struct.pack('>H', qual)
     req(0x08, bytes([8, 3]) + ev(1) + bytes([9]) + struct.pack('>H', 2) + ev(0))
 
+def script(*events):
+    # INPUT op 8 SCRIPT: events run on the Amiga's own ticks (a drag held
+    # across TCP round trips reads as a held button). Each event is
+    # ('move', x, y) | ('button', b, down) | ('wait', ticks).
+    body = b''
+    for e in events:
+        if e[0] == 'move': body += bytes([1]) + struct.pack('>HH', int(e[1]), int(e[2]))
+        elif e[0] == 'button': body += bytes([2, e[1], e[2]])
+        elif e[0] == 'wait': body += bytes([9]) + struct.pack('>H', e[1])
+        else: raise ValueError(e)
+    req(0x08, bytes([8, len(events)]) + body)
+
+def pointer_scale():
+    # INPUT MOVE takes Intuition pointer units, UITREE gives screen pixels:
+    # park the pointer at (200, 200) and ask POINTER where the screen has it.
+    req(0x08, bytes([1]) + struct.pack('>HH', 200, 200))
+    x, y = struct.unpack('>HH', req(0x0B)[:4])
+    return 200.0 / max(x, 1), 200.0 / max(y, 1)
+
+def window(title):
+    # The front screen's window titled exactly `title`, from UITREE:
+    # {'box': (x, y, w, h), 'active': bool, 'sys:size': (x, y, w, h), ...}
+    import shlex
+    found = None
+    for line in req(0x0D).decode('latin-1').splitlines():
+        if line.startswith('W '):
+            if found is not None: break
+            f = shlex.split(line)
+            if f[-1] == title:
+                w, h = map(int, f[4].split('x'))
+                found = {'box': (int(f[2]), int(f[3]), w, h), 'active': f[5] == 'active'}
+        elif found is not None and line.startswith('G '):
+            f = shlex.split(line)
+            w, h = map(int, f[4].split('x'))
+            found.setdefault(f[5], (int(f[2]), int(f[3]), w, h))
+    return found
+
 def png(path, w, h, rows):
     raw = b''.join(b'\0' + r for r in rows)
     def ch(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d))
