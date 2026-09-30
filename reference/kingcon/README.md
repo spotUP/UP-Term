@@ -10,7 +10,7 @@ What it is (read from the file, not checked further):
   change log at the top runs from 0.16 (1.4, 1999-03-07) past 0.18 (1.5), with build
   switches for KS 3.x ROM, VisualPrefs, screennotify, NewMouse, OS4 and MorphOS.
 - Copyright string: "Copyright (c) 1993,1994 David Larsson" (line 19484).
-- Status (owner, 2026-09-30): KingCON is freeware. Its sources were lost until someone
+- Status (owner, 2026-09-30): KingCON is freeware, on Aminet (free to use, no paid licence). Its sources were lost until someone
   found them and published them on a public forum; this is that source. The file itself
   states no licence text.
 - Use: study it freely. Where vtcon code follows its logic (for example the completer),
