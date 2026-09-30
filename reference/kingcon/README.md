@@ -10,9 +10,12 @@ What it is (read from the file, not checked further):
   change log at the top runs from 0.16 (1.4, 1999-03-07) past 0.18 (1.5), with build
   switches for KS 3.x ROM, VisualPrefs, screennotify, NewMouse, OS4 and MorphOS.
 - Copyright string: "Copyright (c) 1993,1994 David Larsson" (line 19484).
-- Licence: not stated in the file. Treat as reference: read it to learn behaviour
-  (Tab/command completion, history, menus, iconify), write our own code; do not copy
-  code from it into vtcon.
+- Status (owner, 2026-09-30): KingCON is freeware. Its sources were lost until someone
+  found them and published them on a public forum; this is that source. The file itself
+  states no licence text.
+- Use: study it freely. Where vtcon code follows its logic (for example the completer),
+  write it in C in our own structure and credit "KingCON, David Larsson" in that file's
+  header comment. No verbatim copying of the assembler.
 
 Where it helps: ledger item H8 (KingCON-style Tab completion) -- the completer
 (C: scan, multi-assigns, resident commands, quoting; change log l.23-94) -- and
