@@ -40,7 +40,9 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
   compatibility; xterm stays XCON:'s. Charset Latin-1, pens as the ROM (Workbench pens,
   A8's AMIGA rule).
 - **DD5 One process per unit** ("UP-Term console unit"), as XCON: and ibmcon (R-3). It
-  owns the `vt_term`, the renderer, the frame clock, the input buffer. `BeginIO`:
+  owns the `vt_term`, the renderer, the frame clock, the input buffer. (Amended 2026-09-30,
+  DV3: CMD_WRITE feeds the grid in the caller's task under the unit's semaphore -- the
+  original text follows.) `BeginIO`:
   CMD_WRITE always goes to the unit process (PutMsg to `cu_MP`, which IS the unit's
   request port) and is replied after `vt_feed` -- the grid is current, the screen follows
   at the next 50 ms frame (XCON:'s pacing, R-5). CMD_READ is answered quick when input is
@@ -501,8 +503,15 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       looks as the ROM's window.
 - [x] DV2 romprobe through the ROM CON: over our device: 50/50 equal to the ROM results.
       **DONE 2026-09-30:** `tools/rig/devverify_rig.py`: 51 of 51 lines equal (KS 40.63).
-- [ ] DV3 Speed, `rig.py --exact`: 2000-line `type` in a ROM CON: over our device is not
+- [x] DV3 Speed, `rig.py --exact`: 2000-line `type` in a ROM CON: over our device is not
       slower than over the ROM device (the same run as ledger's 19.5 s baseline).
+      **DONE 2026-09-30 (`tools/rig/devspeed_rig.py`, cycle-exact rig, KS 40.63):** ROM device
+      27.7-27.8 s, ours 26.9 s (twice). First 29.7 against 27.9: a full ConUnit fill after every
+      write (now only the cursor fields unless modes, raw events or size changed: 27.5 against
+      27.4) and two task switches per write -- DD5 amended: CMD_WRITE feeds the grid in the
+      caller's task under the unit's semaphore, as the ROM writes in the caller's; the unit
+      process draws on its frame clock under the same semaphore. condev, devctl, snip, rkc,
+      cudump, devverify and the cdprobe comparison all green again after it.
 - [x] DV4 Memory per unit (AvailMem before/after open): CHARMAP 80x25 with 200 lines
       <= 256 KB; STANDARD <= 64 KB. Recorded here.
       **DONE 2026-09-30 (devverify_rig.py, KS 40.63, 80 x 25 of the screen font):** STANDARD

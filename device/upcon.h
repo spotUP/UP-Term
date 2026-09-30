@@ -67,6 +67,8 @@ struct upc_unit {
     struct MsgPort *startup_reply;
     int ok;                             /* the process attached its window */
     WORD inner_w, inner_h;              /* the window's inner size when last seen (DD8) */
+    ULONG cu_modes, cu_raw;             /* what the last full ConUnit fill wrote */
+    int cu_cols, cu_rows;
 };
 
 extern struct ExecBase *SysBase;
@@ -84,6 +86,7 @@ void upc_dbg(const char *what, const char *s, LONG v);
 
 /* upcon_unit.c */
 void upc_unit_entry(void);
+void upc_unit_write(struct upc_unit *u, struct IOStdReq *io);
 /* upcon_input.c */
 int  upc_input_add(struct upc_base *b);
 void upc_input_rem(struct upc_base *b);

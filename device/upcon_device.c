@@ -521,6 +521,9 @@ static void upc_beginio(__reg("a1") struct IOStdReq *io, __reg("a6") struct upc_
         return;
     }
     case CMD_WRITE:
+        upc_unit_write(u, io); /* in the caller's task, as the ROM (DD5 amended) */
+        done(io);
+        return;
     case CMD_RESET:
         to_unit(u, io);
         return;

@@ -63,6 +63,7 @@ static int h_raw(void *user)
 }
 
 static void fill_conunit(struct upc_unit *u);
+static void fill_after_write(struct upc_unit *u);
 
 static void h_resized(void *user)
 {
@@ -77,6 +78,25 @@ static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_res
 typedef char check_rawevents[offsetof(struct ConUnit, cu_RawEvents) == UPC_CU_RAWEVENTS ? 1 : -1];
 typedef char check_cusize[sizeof(struct ConUnit) == UPC_CU_SIZE ? 1 : -1];
 typedef char check_keymap[offsetof(struct ConUnit, cu_KeyMapStruct) == UPC_CU_KEYMAP ? 1 : -1];
+
+/* After a write: the cursor fields only, unless the modes, the raw events
+ * or the size changed since the last full fill (a full fill per write cost
+ * DV3's 2000-line Type 1.8 s on the cycle-exact rig). */
+static void fill_after_write(struct upc_unit *u)
+{
+    vtwin *w = &u->w;
+    int x, y;
+    if (!w->t)
+        return;
+    if (vt_modes(w->t) != u->cu_modes || vt_raw_events(w->t) != u->cu_raw || vt_cols(w->t) != u->cu_cols ||
+        vt_rows(w->t) != u->cu_rows) {
+        fill_conunit(u);
+        return;
+    }
+    vt_cursor(w->t, &x, &y);
+    u->cu.cu_XCP = u->cu.cu_XCCP = (WORD)x;
+    u->cu.cu_YCP = u->cu.cu_YCCP = (WORD)y;
+}
 
 static void fill_conunit(struct upc_unit *u)
 {
@@ -117,6 +137,10 @@ static void fill_conunit(struct upc_unit *u)
     s.lnm = (vt_modes(w->t) & VT_MODE_NEWLINE) != 0;
     s.rawevents = vt_raw_events(w->t);
     upc_conunit_fill((unsigned char *)&u->cu, &s);
+    u->cu_modes = vt_modes(w->t);
+    u->cu_raw = vt_raw_events(w->t);
+    u->cu_cols = s.cols;
+    u->cu_rows = s.rows;
 }
 
 /* ---- the window's size (DD8) ----------------------------------------------------- */
@@ -176,22 +200,30 @@ static void event(struct upc_unit *u, const upc_event *e)
     }
 }
 
+/* CMD_WRITE, in the caller's task (DD5 amended, DV3): the grid now, under the
+ * unit's semaphore, the screen at the unit process's next frame. The ROM
+ * device writes in the caller's task too; sending every write to the unit
+ * process cost two task switches a write -- 1 % of a 2000-line Type on the
+ * cycle-exact rig, slower than the ROM. */
+void upc_unit_write(struct upc_unit *u, struct IOStdReq *io)
+{
+    long n = (LONG)io->io_Length;
+    const vt_u8 *p = (const vt_u8 *)io->io_Data;
+    if (n < 0)
+        n = p ? (long)strlen((const char *)p) : 0;
+    ObtainSemaphore(&u->lock);
+    check_size(u); /* the ROM recomputes on write too (R-1.4) */
+    if (n > 0)
+        vtwin_write(&u->w, p, n);
+    u->base->written += (ULONG)n;
+    fill_after_write(u);
+    ReleaseSemaphore(&u->lock);
+    io->io_Actual = (ULONG)n;
+}
+
 static int command(struct upc_unit *u, struct IOStdReq *io)
 {
     switch (io->io_Command) {
-    case CMD_WRITE: {
-        long n = (LONG)io->io_Length;
-        const vt_u8 *p = (const vt_u8 *)io->io_Data;
-        if (n < 0)
-            n = p ? (long)strlen((const char *)p) : 0;
-        check_size(u); /* the ROM recomputes on write too (R-1.4) */
-        if (n > 0)
-            vtwin_write(&u->w, p, n);
-        u->base->written += (ULONG)n;
-        fill_conunit(u);
-        upc_reply_io(io, n, 0);
-        return 1;
-    }
     case CMD_RESET:
         /* the ROM never returns from it (DP4); here: the terminal reset */
         vt_reset(u->w.t);
@@ -268,25 +300,29 @@ void upc_unit_entry(void)
         struct IOStdReq *io;
         upc_event e;
         Wait((1UL << port->mp_SigBit) | u->ev_sig | vtwin_sigmask(&u->w));
+        /* the terminal is shared with CMD_WRITE's callers: all of it under
+         * the unit's semaphore (the read queue nests inside it) */
+        ObtainSemaphore(&u->lock);
         while (!die && (io = (struct IOStdReq *)GetMsg(port)) != 0)
             if (!command(u, io))
                 die = io;
         while (upc_ev_pop(&u->ring, &e))
             event(u, &e);
         vtwin_tick(&u->w);
+        ReleaseSemaphore(&u->lock);
     }
     /* UPCMD_DIE: what is pending on the screen, the queued reads aborted
      * (the V47 con-handler aborts its own read at close, RN-CH 47.1) */
+    ObtainSemaphore(&u->lock);
     vtwin_render(&u->w);
     {
         void *r;
-        ObtainSemaphore(&u->lock);
         while ((r = upc_rq_take(&u->rq)) != 0)
             upc_reply_io((struct IOStdReq *)r, 0, IOERR_ABORTED);
-        ReleaseSemaphore(&u->lock);
     }
     vtwin_detach(&u->w);
     vtwin_cleanup(&u->w);
+    ReleaseSemaphore(&u->lock);
     FreeSignal(evsig);
     FreeSignal(portsig);
     /* our ports die with us (ibmcon 1.8): the closer frees the unit once we
