@@ -151,6 +151,13 @@ void     vt_set_charset(vt_term *t, enum vt_charset cs);
  * does by default (the host's AmigaDOS programs end lines with a bare LF).
  * Unlike LNM (CSI 20 h) it does not change what Return sends. */
 void     vt_set_onlcr(vt_term *t, int on);
+/* Reflow on resize, as the ROM console's character-mapped units do: when
+ * the width changes, vt_resize joins the rows a wrap linked into logical
+ * lines and wraps them again at the new width, the cursor staying on its
+ * character. Off by default (rows are cut or padded, as xterm does); a
+ * setting of the host, so vt_reset leaves it. Scrollback lines and the
+ * alternate screen are not reflowed. */
+void     vt_set_reflow(vt_term *t, int on);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
 /* Frame-paced output: vt_feed changes the grid without telling the
