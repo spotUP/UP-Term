@@ -477,6 +477,18 @@ static void pipes_and_redirection(void)
     CHECK_STR(run("A=v; cat <<EOF\n$A\nEOF\n"), "v\n");
     CHECK_STR(run("A=v; cat <<'EOF'\n$A\nEOF\n"), "$A\n");
     CHECK_STR(run("{ echo a; echo b; } | wc"), "2\n");
+    /* redirections on compound commands (POSIX 2.9.4): the whole loop, if
+     * or case reads and writes the file. vsh ignored them -- a
+     * "while read l; do ...; done <in >out" read the shell's own input
+     * (Uninstall's User-Startup filter wrote nothing) */
+    CHECK_STR(run("echo one >f; echo two >>f; while read l; do echo got $l; done <f >g1; echo --; cat <g1"),
+              "--\ngot one\ngot two\n");
+    CHECK_STR(run("echo x >f; if read l; then echo in:$l; fi <f"), "in:x\n");
+    CHECK_STR(run("if true; then echo a; echo b; fi >g2; echo --; cat <g2"), "--\na\nb\n");
+    CHECK_STR(run("for i in 1 2; do echo $i; done >g3; echo --; cat <g3"), "--\n1\n2\n");
+    CHECK_STR(run("case z in z) echo zed ;; esac >g4; echo --; cat <g4"), "--\nzed\n");
+    CHECK_STR(run("n=0; until [ $n = 2 ]; do n=$((n+1)); echo $n; done >g5; echo --; cat <g5"),
+              "--\n1\n2\n");
     run("nosuch 2>&1");
     CHECK_STR(slot(OUT)->data, "vsh: nosuch: not found\n");
     CHECK_STR(run("echo x >&2"), "");

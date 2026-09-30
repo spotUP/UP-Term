@@ -1746,6 +1746,27 @@ static int poll_break(sh_shell *sh)
     return sh->intr;
 }
 
+/* if, while, until, for, case: the body, once their redirections (if any)
+ * are in io */
+static long exec_compound(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    switch (n->kind) {
+    case SH_IF:
+        if (!exec_node(sh, n->a, io))
+            return exec_node(sh, n->b, io);
+        return n->c ? exec_node(sh, n->c, io) : 0;
+    case SH_WHILE:
+    case SH_UNTIL:
+        return exec_list_loop(sh, n, io);
+    case SH_FOR:
+        return exec_for(sh, n, io);
+    case SH_CASE:
+        return exec_case(sh, n, io);
+    default:
+        return 0;
+    }
+}
+
 static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     long st = 0;
@@ -1827,22 +1848,22 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
         }
         break;
     case SH_IF:
-        if (!exec_node(sh, n->a, io))
-            st = exec_node(sh, n->b, io);
-        else if (n->c)
-            st = exec_node(sh, n->c, io);
-        else
-            st = 0;
-        break;
     case SH_WHILE:
     case SH_UNTIL:
-        st = exec_list_loop(sh, n, io);
-        break;
     case SH_FOR:
-        st = exec_for(sh, n, io);
-        break;
     case SH_CASE:
-        st = exec_case(sh, n, io);
+        /* a compound command's redirections are for all of it (POSIX
+         * 2.9.4), as a group's: "while read l; ...; done <in >out" */
+        if (n->redirs) {
+            if (redirect(sh, n->redirs, io, &rio)) {
+                st = 1;
+                break;
+            }
+            st = exec_compound(sh, n, &rio);
+            close_owned(sh, &rio);
+        } else {
+            st = exec_compound(sh, n, io);
+        }
         break;
     case SH_FUNC: {
         sh_func *f = find_func(sh, n->name);
