@@ -239,10 +239,29 @@ Success: XCON: behaves identically (the listed rig checks), vtcon_handler.c smal
 moved code, no duplicate of any moved function remains.
 
 **Phase D1: the device (units, commands, input)**
-- [ ] D1.1 `device/upc_core.[ch]` + `tests/test_upcon.c` (suite `upcon`, in Makefile TESTS):
+- [x] D1.1 `device/upc_core.[ch]` + `tests/test_upcon.c` (suite `upcon`, in Makefile TESTS):
       read queue (partial satisfy, io_Actual, queued reads in order, CMD_CLEAR, paste text
       before later keys), event ring (64 entries, overflow counted), `upc_route` (DD7),
       `upc_conunit_fill` (DD17) on a mirror struct.
+      Done on branch condev (2026-09-30): 197 checks; also compiles with vbcc for 68000 and
+      68020. Decisions made there: 512 buffered input bytes per unit, overflow dropped and
+      counted (`dropped`, for UPCMD_STATS); at most 8 queued CMD_READs per unit, a ninth is
+      failed with IOERR_UNITBUSY by the caller; a CMD_READ of length 0 is answered at once;
+      a paste is the caller's text, referenced until `paste_done` (drained or CMD_CLEAR),
+      one at a time; `upc_rq_take` pops queued reads for CloseDevice. CHANGEWINDOW (V39) is
+      routed like the window classes (a resize hint for DD8). The "mirror struct" is the
+      296-byte image written big-endian at the matrix 6.4 offsets (the host's own struct
+      would have host pointers and alignment); the test re-types every offset from the
+      matrix. Fill writes the read-only block, tab stops (the unit's, or every 8 from 0,
+      then 0xFFFF), pens/draw mode, font fields, cu_Modes (bit 20 LNM, 21 ASM, 22 AWM) and
+      cu_RawEvents (classes 0-23); never cu_MP, cu_KeyMapStruct, cu_Obsolete1/2,
+      cu_Minterms. **For D3.2 to check** (assumed, unmeasured): bit n of cu_Modes/
+      cu_RawEvents = byte n/8, mask 1<<(n%8) (BSET order, not BFSET's MSB-first);
+      cu_XRExtant = cu_XROrigin + cols*cu_XRSize - 1 (and Y); cu_XCP = cu_XCCP = cursor;
+      cu_XMinShrink/YMinShrink supplied by the unit. **Found:** DD7 routes TIMER events
+      to the active unit only, so DD9's TIMER fallback would check LAYERREFRESH for the
+      active window alone; D1.3 should run that check on the unit's own 50 ms frame clock
+      (DD5) instead, which every unit has.
 - [ ] D1.2 `device/upcon_device.c`: RomTag (RTF_AUTOINIT, NT_DEVICE, first hunk
       `moveq #-1,d0; rts`), base with the DD13 extension, Open (units -1/0/1/3, flags,
       io_Error set and io_Device cleared on failure, DD16 forward), Close, Expunge (DD15),
