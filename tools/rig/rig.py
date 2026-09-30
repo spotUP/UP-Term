@@ -3,7 +3,8 @@
 through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (--ro: DH0: read-only, stalls on writes)
+  rig.py start    boot it in the background (--ro: DH0: read-only, stalls on writes;
+                  --kick <file>: another Kickstart ROM for this boot)
   rig.py aga      Workbench on native AGA (PAL hires, 16 colours) from next boot
   rig.py rtg      Workbench back on the graphics card from next boot
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
@@ -24,7 +25,13 @@ CFG = RIG / "vtcon-rig.fs-uae"
 SRC_HDF = pathlib.Path("/private/tmp/claude-501/-Users-spot-Code-Up-Rough-Demo-System/"
                        "b2f93683-405c-45fc-b7dc-6a4daa5aa439/scratchpad/repro/sys.hdf")
 SRC_AGENT = SRC_HDF.parent / "boot/amiagent"
+# The default ROM's header says 40.63 (the A500/A600/A2000 3.1), whatever
+# its file name says (measured 2026-09-30). --kick <file> boots another ROM
+# (DP6 of the console.device plan); the config is rewritten on every start,
+# so the next start without --kick is back on this one.
 KICK = pathlib.Path("/Users/spot/Code/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
+if "--kick" in sys.argv:
+    KICK = pathlib.Path(sys.argv[sys.argv.index("--kick") + 1]).expanduser()
 
 STARTUP = """DH0:C/Assign >NIL: SYS: DH0:
 DH0:C/Assign >NIL: C: DH0:C

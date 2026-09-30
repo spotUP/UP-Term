@@ -210,12 +210,33 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
 - [ ] DP5 Medium-mode bytes (3.2 only). `tests/amiga/mediumprobe.c`: SetMode(Output(),2),
       hex-dump reads while the script types TAB, Shift+TAB, Up, Down, a line. Closes
       matrix Q9. Skipped with a written reason when no 3.2 row boots (DD22).
+      **PARTLY MEASURED (2026-09-30, KS 47.115 ROM on the rig's 3.1 system disk -- a hybrid, not a
+      3.2 install):** `tests/amiga/mediumprobe.c` + `tools/rig/mediumprobe_rig.py`: SetMode(fh,2)
+      returns -1; TAB after typing "ab" gives the reader `9b 31 32 3b 32 3b 33 55 61 62`
+      = CSI "12;2;3U" "ab" (typed characters are not delivered before it: lines stay buffered).
+      After that report the con-handler took no more input and did not return the probe's next
+      Write (tried: WaitForChar or plain Read; reply "\r CSI K"+line, or a single BEL; through
+      the same handle or a second one; the window as pr_ConsoleTask) -- while the ROM V47 Shell
+      in a CON: window completes with TAB fine. Shell side (`tests/amiga/medshell.c`: the ROM
+      Shell on a PTY: slave, this program the master): it writes `0f` before its first prompt,
+      and answers the "ab" report with one BEL (no match); a guessed report for "dir RAM:T"
+      (CSI 12;9;10U) got no answer in 3 s, so the field meanings are not settled (12 is not
+      the line length). Shift+TAB, Up, Down bytes not yet read (each try hangs the window).
+      NEXT: repeat on a real 3.2 install (the owner has AmigaOS 3.2 and offered to install it,
+      2026-09-30 -- a second rig disk, owner's step), vary the typed text to decode the fields.
 - [ ] DP6 Boot matrix: `tools/rig/rig.py` gains `--kick <file>`; record which ROMs boot the
       rig's system to Workbench with amiagent.
 Success: every DP row has its numbers written here and in R-6; no code depends on an
 unmeasured value.
 
 **Phase H5: CON:/RAW: served by the XCON: handler (opt-in)**
+      **Started 2026-09-30:** `rig.py start --kick <file>` added. The default ROM
+      (`kick40068.A1200`) is 40.63 by its header. KS 47.115 (`~/Desktop/KICK_323.rom`, 3.2.3)
+      boots the 3.1 system disk to amiagent, but 2 of about 8 boots hung on a black screen
+      before the boot script ran (a restart cured it); DP1, DP3, DP4 on it: same as 40.63
+      except console.device 46.1 answers NSCMD_DEVICEQUERY (type 6, commands 0001 0002 0003
+      0009-000c 4000 -- it lists CMD_RESET, which still blocks the caller). con stack 4096.
+      OPEN: 39.106, 40.71.
 - [ ] H5.1 Handler knows its DOS name (from the startup packet's DeviceNode, `c->node`):
       CON/RAW default to AMIGA, RAW opens raw; XCON unchanged. In `parse_spec`
       (vtcon_handler.c ~l.474) defaults. Host-free; rig-checked in H5.6.
