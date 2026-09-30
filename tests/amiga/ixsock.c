@@ -106,6 +106,32 @@ int main(int argc, char **argv)
     printf("0 start\n");
     if (argc > 1 && !strcmp(argv[1], "nop"))
         return 0; /* does a program that links the socket calls even start? */
+    if (argc > 1 && !strcmp(argv[1], "pair")) {
+        /* socketpair: libevent's signal pipe and tmux's client/server pair
+         * (48.2 answered EPFNOSUPPORT for every domain) */
+        int sv[2], bad = 0;
+        n = socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+        printf("%s socketpair %d errno %d\n", n == 0 ? "ok" : "FAIL", n, n < 0 ? errno : 0);
+        if (n != 0)
+            return 1;
+        bad |= readable(sv[1], 0);
+        write(sv[0], "ping", 4);
+        bad |= !readable(sv[1], 200000);
+        n = read(sv[1], buf, sizeof(buf));
+        bad |= !(n == 4 && !memcmp(buf, "ping", 4));
+        printf("%s 0 -> 1: select, then %d bytes\n", bad ? "FAIL" : "ok", n);
+        write(sv[1], "pong!", 5);
+        n = read(sv[0], buf, sizeof(buf));
+        printf("%s 1 -> 0: %d bytes\n", n == 5 && !memcmp(buf, "pong!", 5) ? "ok" : "FAIL", n);
+        bad |= !(n == 5 && !memcmp(buf, "pong!", 5));
+        close(sv[0]);
+        n = readable(sv[1], 200000) ? (int)read(sv[1], buf, sizeof(buf)) : -2;
+        printf("%s after closing 0, 1 reads end of file (%d)\n", n == 0 ? "ok" : "FAIL", n);
+        bad |= n != 0;
+        close(sv[1]);
+        printf("ixsock pair: %s\n", bad ? "FAIL" : "all ok");
+        return bad;
+    }
     s = socket(AF_UNIX, SOCK_STREAM, 0);
     printf("1 socket %d errno %d\n", s, s < 0 ? errno : 0);
     memset(&a, 0, sizeof(a));
