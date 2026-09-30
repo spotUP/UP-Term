@@ -239,7 +239,7 @@ $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldis
 
 # Phase DP of the console.device plan: DP1 input chain, DP3 DosList, DP4 ROM
 # commands (run by tools/rig/<name>_rig.py)
-CONPROBES := chainprobe dosnode cdprobe mediumprobe medshell
+CONPROBES := chainprobe dosnode cdprobe mediumprobe medshell autoprobe
 $(CONPROBES:%=$(BUILD)/amiga/%): $(BUILD)/amiga/%: tests/amiga/%.c tests/amiga/probeout.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/$*.c
@@ -254,7 +254,7 @@ $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/vtengine.h engine/vtwidth.h
 # Rebuild when the flags change (DEBUG=1, DIRECT=1 on or off): the last
 # flags are read while make parses, and a difference forces the link (a
 # stamp file's mtime could equal the binary's to the second and be ignored).
-HANDLER_FLAGS := DEBUG=$(DEBUG) CPU=$(CPU) DIRECT=$(DIRECT)
+HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) CPU=$(CPU) DIRECT=$(DIRECT)
 HANDLER_FLAGS_OLD := $(shell cat $(BUILD)/amiga/handler.flags 2>/dev/null)
 ifneq ($(HANDLER_FLAGS),$(HANDLER_FLAGS_OLD))
 HANDLER_FORCE := FORCE
@@ -264,7 +264,7 @@ FORCE:
 $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	@mkdir -p $(BUILD)/amiga/obj
 	@echo '$(HANDLER_FLAGS)' > $(BUILD)/amiga/handler.flags
-	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
+	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
 	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
 	$(VC) -c -o $(BUILD)/amiga/obj/glyphmap.o render/glyphmap.c

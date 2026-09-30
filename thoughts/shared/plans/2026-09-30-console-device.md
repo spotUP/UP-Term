@@ -242,8 +242,17 @@ unmeasured value.
 - [ ] H5.1 Handler knows its DOS name (from the startup packet's DeviceNode, `c->node`):
       CON/RAW default to AMIGA, RAW opens raw; XCON unchanged. In `parse_spec`
       (vtcon_handler.c ~l.474) defaults. Host-free; rig-checked in H5.6.
-- [ ] H5.2 ACTION_UNDISK_INFO (513) and V47's rule: DISK_INFO disables AUTO until
+- [x] H5.2 ACTION_UNDISK_INFO (513) and V47's rule: DISK_INFO disables AUTO until
       UNDISK_INFO (RN-CH 47.1). Matrix 7.1 row updated.
+      **DONE 2026-09-30:** measured the ROM first (`tests/amiga/autoprobe.c`,
+      `tools/rig/autoprobe_rig.py [CON|XCON]`): AUTO close gadget = window only, reopened by
+      the next write; DISK_INFO holds it; 40.x does not know UNDISK_INFO. XCON: now matches,
+      plus UNDISK_INFO. The reopen exposed a hang (about 1 run in 3): vt_new's reset flushed
+      damage through the renderer of the closed window -- vr_free now leaves the renderer
+      empty and every drawing entry returns without a window; the frame clock stops at
+      close. Fail-first on the rig (unfixed build hung on run 2), fixed build 6/6, reach.py
+      PASS, cube_rig 240/240. The race is intermittent: run autoprobe_rig.py XCON several
+      times (a reboot between runs) when touching window open/close.
 - [ ] H5.3 Medium mode SetMode(fh,2): cooked line editing, but TAB, Shift+TAB, Up, Down
       send DP5's bytes at once. `handler/lineedit.c` gains the mode; host test in
       `tests/test_lineedit.c` (each key gives DP5's bytes, other keys edit). Lifts DD20.

@@ -1,5 +1,6 @@
 /* The Amiga renderer; see amiga_render.h. */
 #include "amiga_render.h"
+#include <string.h>
 
 #include <exec/memory.h>
 #include <graphics/gfxmacros.h>
@@ -213,6 +214,8 @@ void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb)
 {
     ULONG want[2];
     int i;
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
     want[0] = fg_rgb;
     want[1] = bg_rgb;
     for (i = 0; i < 2; i++) {
@@ -248,6 +251,8 @@ ULONG vr_pen_rgb(vr_render *r, UBYTE pen)
 void vr_palette_changed(vr_render *r)
 {
     int i;
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
     if (r->cm)
         for (i = 0; i < 256; i++)
             if (r->obtained[i] >= 0)
@@ -282,7 +287,11 @@ void vr_free(vr_render *r)
     r->truecolor = 0;
     if (r->glyphs)
         FreeVec(r->glyphs);
-    r->glyphs = 0;
+    /* inert until the next vr_init: the handler closes an AUTO window and
+     * opens another, and vt_new's reset flushes damage through this
+     * renderer before vr_init runs -- it drew into the closed window's
+     * RastPort and hung the handler (rig, 2026-09-30) */
+    memset(r, 0, sizeof(*r));
 }
 
 /* The columns and rows the window can show right now. The grid follows a
@@ -1087,7 +1096,10 @@ int vr_cursor_blinks(vr_render *r)
 
 int vr_blink_tick(vr_render *r)
 {
-    int slow, fast, y, x, n, cursor = vr_cursor_blinks(r);
+    int slow, fast, y, x, n, cursor;
+    if (!r->win)
+        return 0; /* no window (before vr_init, after vr_free) */
+    cursor = vr_cursor_blinks(r);
     if ((!r->has_blink && !cursor) || r->hidden || r->view)
         return 0;
     r->blink_frames++;
@@ -1145,6 +1157,8 @@ void vr_set_alt_font(vr_render *r, int n, struct TextFont *font)
 
 void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
 {
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
     if (r->view)
         return; /* looking at the scrollback: the live rows are not shown */
     draw_rows(r, x0, y0, x1, y1);
@@ -1152,7 +1166,10 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
 
 void vr_set_view(vr_render *r, int lines)
 {
-    int max = vt_scrollback_lines(r->t);
+    int max;
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
+    max = vt_scrollback_lines(r->t);
     if (lines < 0)
         lines = 0;
     if (lines > max)
@@ -1178,8 +1195,11 @@ int vr_selection(const vr_render *r, int *ax, int *ay, int *bx, int *by)
 
 void vr_select(vr_render *r, int on, int ax, int ay, int bx, int by)
 {
-    LONG base = vt_lines_scrolled(r->t), lo = 0, hi = -1;
+    LONG base, lo = 0, hi = -1;
     int y0, y1, any = 0;
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
+    base = vt_lines_scrolled(r->t);
     /* redraw the rows the old and the new selection touch */
     if (r->sel) {
         lo = (r->sel_ay < r->sel_by ? r->sel_ay : r->sel_by) - base;
@@ -1215,6 +1235,8 @@ void vr_select(vr_render *r, int on, int ax, int ay, int bx, int by)
 
 void vr_redraw(vr_render *r)
 {
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
     struct Window *w = r->win;
     if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= w->BorderTop)
         fill(r, w->BorderLeft, w->BorderTop, w->Width - w->BorderRight - 1,
@@ -1228,6 +1250,8 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
     WORD dy = (WORD)(n * r->ch);
     vt_cell blank;
     vt_color f, b;
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
     if (r->hidden || r->view)
         return;
     vr_cursor_off(r);
@@ -1302,6 +1326,8 @@ static void cursor_flip(vr_render *r)
 
 void vr_cursor_off(vr_render *r)
 {
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
     if (r->cursor_drawn) {
         cursor_flip(r);
         r->cursor_drawn = 0;
@@ -1311,6 +1337,8 @@ void vr_cursor_off(vr_render *r)
 void vr_cursor_on(vr_render *r)
 {
     int x, y;
+    if (!r->win)
+        return; /* no window (before vr_init, after vr_free) */
     if (r->hidden)
         return;
     vt_cursor(r->t, &x, &y);

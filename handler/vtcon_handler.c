@@ -153,6 +153,8 @@ typedef struct con {
     struct timerequest *frame;
     int frame_open, frame_busy;            /* a CSI t/u/x/y changed the text area */
     int auto_open;               /* AUTO: no window until the first read or write */
+    int auto_held;               /* DISK_INFO holds an AUTO window open until UNDISK_INFO (V47) */
+    int auto_shut;               /* the close gadget shut an AUTO window: close it after idcmp() */
     int spec_parsed;
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
     struct MsgPort *comp_port;   /* Tab completion and command lookups answer here */
@@ -249,6 +251,31 @@ static void dbg_flush(void)
 }
 #define DBG(w, a, b) dbg(w, (LONG)(a), (LONG)(b))
 #define DBG_FLUSH() dbg_flush()
+#elif defined(VTCON_SERIAL)
+/* Trace (build with SERIAL=1) to the serial port through exec's RawPutChar
+ * (LVO -516): no DOS call, so it cannot race the packets as the RAM: log's
+ * Write can; safe anywhere. The rig writes the port to build/rig/serial.log. */
+static void ser_putc(__reg("d0") char ch) =
+    "\tmove.l\ta6,-(sp)\n\tmove.l\t4.w,a6\n\tjsr\t-516(a6)\n\tmove.l\t(sp)+,a6";
+static void ser_dbg(const char *what, LONG a, LONG b)
+{
+    int i, k;
+    LONG v[2];
+    v[0] = a;
+    v[1] = b;
+    ser_putc('v');
+    ser_putc(' ');
+    for (i = 0; what[i] && i < 40; i++)
+        ser_putc(what[i]);
+    for (i = 0; i < 2; i++) {
+        ser_putc(' ');
+        for (k = 28; k >= 0; k -= 4)
+            ser_putc("0123456789abcdef"[((ULONG)v[i] >> k) & 15]);
+    }
+    ser_putc('\n');
+}
+#define DBG(w, a, b) ser_dbg(w, (LONG)(a), (LONG)(b))
+#define DBG_FLUSH()
 #else
 #define DBG(w, a, b)
 #define DBG_FLUSH()
@@ -653,6 +680,7 @@ static struct TextFont *open_font(con *c)
 
 static void le_out(void *u, const unsigned char *b, long n);
 static void history_load(con *c);
+static void close_window(con *c);
 
 static int open_window(con *c)
 {
@@ -715,10 +743,13 @@ have_window:
         struct Window *w = c->win;
         int cols = (w->Width - w->BorderLeft - w->BorderRight) / c->font->tf_XSize;
         int rows = (w->Height - w->BorderTop - w->BorderBottom) / c->font->tf_YSize;
+        DBG("grid", cols, rows);
         c->t = vt_new(cols > 0 ? cols : 1, rows > 0 ? rows : 1, 500, &cb, c);
     }
-    if (!c->t)
+    if (!c->t) {
+        close_window(c); /* no window without its grid: read/write retry the open */
         return 0;
+    }
     DBG("vt_new", c->t, 0);
     vt_set_personality(c->t, c->pers);
     if (c->pers == VT_XTERM)
@@ -753,6 +784,16 @@ have_window:
 
 static void close_window(con *c)
 {
+    /* the frame clock draws (cursor blink) through the renderer freed
+     * below: stop it; an AUTO window closes mid-life and opens again
+     * (the reopened window hung the handler on the rig, 2026-09-30) */
+    if (c->frame_busy) {
+        AbortIO((struct IORequest *)c->frame);
+        WaitIO((struct IORequest *)c->frame);
+        c->frame_busy = 0;
+    }
+    c->render_pending = 0;
+    DBG("close_window", c->win, c->t);
     if (c->input_io) {
         if (c->winch_added) {
             c->input_io->io_Command = IND_REMHANDLER;
@@ -1417,6 +1458,8 @@ static void finish_completion(con *c)
         }
         if (q == c->check) {
             c->check_busy = 0;
+            if (!c->t)
+                continue; /* the window closed (AUTO): no line to colour */
             if (!c->raw) {
                 unsigned char w[64];
                 int i;
@@ -1433,6 +1476,8 @@ static void finish_completion(con *c)
         }
         c->comp_busy = 0;
         c->menu_n = 0;
+        if (!c->t)
+            continue; /* the window closed (AUTO): the answer has no line */
         if (c->edits != c->comp_edits)
             continue; /* the line changed while it ran (rig: typed text got the
                        * answer for an older word): the answer is for no word now */
@@ -1900,6 +1945,14 @@ static void idcmp(con *c)
             vr_cursor_on(&c->r);
             break;
         case IDCMP_CLOSEWINDOW:
+            /* AUTO: the gadget shuts the window only, and the next read or
+             * write opens it again -- unless a read waits (then it is EOF as
+             * without AUTO) or DISK_INFO gave the window out (ROM 40.x and
+             * V47, tools/rig/autoprobe_rig.py) */
+            if (c->auto_open && !c->auto_held && !c->nreads && c->win != c->foreign) {
+                c->auto_shut = 1;
+                break;
+            }
             c->closing = 1;
             if (!c->raw)
                 c->eof = 1;
@@ -1914,6 +1967,10 @@ static void idcmp(con *c)
             break;
         }
         ReplyMsg((struct Message *)im);
+    }
+    if (c->auto_shut) {
+        c->auto_shut = 0;
+        close_window(c);
     }
 }
 
@@ -2002,6 +2059,7 @@ static struct IOStdReq *rom_console(con *c)
         return 0;
     c->rom_io->io_Data = c->win;
     c->rom_io->io_Length = sizeof(struct Window);
+    DBG("rom open", c->win, 0);
     if (OpenDevice((STRPTR)"console.device", CONU_STANDARD, (struct IORequest *)c->rom_io, 0)) {
         DeleteIORequest((struct IORequest *)c->rom_io);
         c->rom_io = 0;
@@ -2010,7 +2068,9 @@ static struct IOStdReq *rom_console(con *c)
     c->rom_io->io_Command = CMD_WRITE;
     c->rom_io->io_Data = (APTR)"\x9b" "0 p";
     c->rom_io->io_Length = 4;
+    DBG("rom write", 0, 0);
     DoIO((struct IORequest *)c->rom_io);
+    DBG("rom sync", 0, 0);
     sync_size(c);
     /* opening a console unit on a window clears it in the ROM console's
      * pens: every ixemul program asks DISK_INFO at startup, and the window
@@ -2077,11 +2137,13 @@ static void packet(con *c, struct DosPacket *p)
     }
     case ACTION_END:
         c->opens--;
+#ifdef VTCON_DEBUG
         DBG("prof writes/bytes", c->prof_writes, c->prof_bytes);
         DBG("prof out/damage", c->prof_out, c->prof_damage);
         DBG("prof scroll/n", c->prof_scroll, c->prof_nscroll);
         DBG("prof ndamage", c->prof_ndamage, 0);
-    DBG("prof direct/text", c->r.n_direct, c->r.n_text);
+        DBG("prof direct/text", c->r.n_direct, c->r.n_text);
+#endif
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
@@ -2244,6 +2306,7 @@ static void packet(con *c, struct DosPacket *p)
         LONG i;
         if (!c->win)
             open_window(c); /* as V47's con-handler does: the caller wants the window */
+        c->auto_held = 1;   /* the caller has the window: AUTO no longer shuts it */
         for (i = 0; i < (LONG)sizeof(*id); i++)
             ((UBYTE *)id)[i] = 0;
         id->id_DiskType = 0x434F4E00L; /* 'CON\0' (no NDK name; value unverified against the ROM) */
@@ -2252,6 +2315,12 @@ static void packet(con *c, struct DosPacket *p)
         reply(p, DOSTRUE, 0);
         return;
     }
+    case ACTION_UNDISK_INFO:
+        /* V47: AUTO shuts the window on its close gadget again (ROM 40.x
+         * does not know the packet and keeps the window for good) */
+        c->auto_held = 0;
+        reply(p, DOSTRUE, 0);
+        return;
     case ACTION_IS_FILESYSTEM:
         reply(p, DOSFALSE, 0);
         return;
@@ -2355,7 +2424,7 @@ static LONG handler_main(void)
             WaitIO((struct IORequest *)c->frame);
             c->frame_busy = 0;
             render(c); /* the frame is due */
-            if (vr_blink_tick(&c->r))
+            if (c->t && vr_blink_tick(&c->r))
                 frame_start(c);
         }
         if (!c->frame_open)
