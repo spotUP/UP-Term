@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <fcntl.h>
+#include <paths.h>
 #include <sys/time.h>
 
 static void plog(const char *what, long v)
@@ -71,7 +72,7 @@ static int tmuxlike;  /* E: the steps tmux's job start adds (see main) */
 
 static int run_sock(void)
 {
-    static char *d[] = {"/bin/sh", "-c", "VTC:forkprobe job-output", 0};
+    static char *d[] = {_PATH_BSHELL, "-c", "VTC:forkprobe job-output", 0};  /* /gg/bin/sh */
     sigset_t all, old;
     int sv[2], pid, st = -1, i, n, got = 0, eof = 0;
     char buf[128];

@@ -52,6 +52,35 @@ Copy ixkill C:ixkill CLONE
 Copy screen C:screen CLONE
 Copy screenrc ENVARC:screenrc CLONE
 Copy screenrc ENV:screenrc CLONE
+; tmux, and its system tmux.conf (the port reads /ENV/tmux.conf)
+Copy tmux C:tmux CLONE
+Copy tmux.conf ENVARC:tmux.conf CLONE
+Copy tmux.conf ENV:tmux.conf CLONE
+; The shell ixemul programs run (system(), popen(), tmux's jobs) is
+; /gg/bin/sh -- GG:bin/sh, where Geek Gadgets keeps its sh. Without a GG:
+; UP-Term gives one: SYS:UP-Term with vsh as bin/sh, assigned at every
+; boot by a marked block in S:User-Startup (Uninstall takes it out). An
+; existing GG: is left as it is.
+Assign >NIL: GG: EXISTS
+If WARN
+  MakeDir >NIL: SYS:UP-Term SYS:UP-Term/bin
+  Copy vsh SYS:UP-Term/bin/sh CLONE
+  Copy unstartup.sh SYS:UP-Term/unstartup.sh CLONE
+  Assign GG: SYS:UP-Term
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup ";BEGIN UP-Term"
+  If WARN
+    Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    Echo >>S:User-Startup ";BEGIN UP-Term"
+    Echo >>S:User-Startup "Assign >NIL: GG: EXISTS"
+    Echo >>S:User-Startup "If WARN"
+    Echo >>S:User-Startup "  Assign GG: SYS:UP-Term"
+    Echo >>S:User-Startup "EndIf"
+    Echo >>S:User-Startup ";END UP-Term"
+  EndIf
+EndIf
 ; the Workbench way in: double-click UP-Term (its tool is C:vsh; the
 ; window is its WINDOW tooltype)
 Copy UP-Term UP-Term.info SYS:Utilities CLONE

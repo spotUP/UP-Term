@@ -106,5 +106,20 @@ SCREEN
   screen -r to come back. vsh runs in its windows (ENV:screenrc: shell,
   256 colours). Each window costs about 1 MB (its process and shell).
 
+TMUX
+  tmux 3.6a: C-b c new window, C-b % / C-b " split, C-b arrows move
+  between panes, C-b d detach, tmux attach to come back. vsh runs in its
+  panes (ENV:tmux.conf: default-shell, 256 colours). Your own settings go
+  in ~/.tmux.conf.
+
+THE SHELL FOR UNIX PROGRAMS
+  ixemul programs run their shell commands (system(), popen(), tmux's
+  run-shell and #() status jobs) with /gg/bin/sh, which is GG:bin/sh, where
+  Geek Gadgets keeps its sh. Without a GG: Install puts vsh there: the
+  drawer SYS:UP-Term, assigned as GG: by a block in S:User-Startup between
+  ;BEGIN UP-Term and ;END UP-Term (the file as it was is kept as
+  S:User-Startup.before-UP-Term). Uninstall takes the block out again. An
+  existing GG: (an ADE or Geek Gadgets install) is left alone.
+
 STATUS
   Test build. CON:/RAW: are not replaced; XCON: runs beside them.

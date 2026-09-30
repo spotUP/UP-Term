@@ -132,7 +132,8 @@ int main(int argc, char **argv)
                     got += n;
             }
             if (FD_ISSET(fd, &w)) {
-                int n = write(fd, out, sizeof out);
+                int want = 20000 - sent < (int)sizeof out ? 20000 - sent : (int)sizeof out;
+                int n = write(fd, out, want);
                 if (n > 0)
                     sent += n;
             }

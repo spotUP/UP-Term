@@ -104,6 +104,46 @@ int main(int argc, char **argv)
         remove("/T/ixc99.tmp");
     } else
         check(0, "fseeko/ftello (no temporary file)");
+    {
+        /* malloc's per-process cache of small blocks (size classes of 16 up
+         * to 512): patterned blocks of every size, freed in a shuffled
+         * order, taken again from the cache, grown by realloc across the
+         * class boundaries -- every byte must still be what was written */
+        static unsigned char *blk[600];
+        int i, j, bad = 0;
+        for (i = 0; i < 600; i++) {
+            int sz = (i % 530) + 1;
+            blk[i] = malloc(sz);
+            for (j = 0; j < sz; j++)
+                blk[i][j] = (unsigned char)(i + j);
+        }
+        for (i = 0; i < 600; i++) {
+            int sz = (i % 530) + 1;
+            for (j = 0; j < sz; j++)
+                bad |= blk[i][j] != (unsigned char)(i + j);
+        }
+        for (i = 0; i < 600; i += 2)
+            free(blk[(i * 7) % 600]);
+        for (i = 0; i < 600; i += 2) {
+            int k = (i * 7) % 600, sz = (k % 530) + 1;
+            blk[k] = malloc(sz);
+            for (j = 0; j < sz; j++)
+                blk[k][j] = (unsigned char)(k + j);
+        }
+        for (i = 0; i < 600; i++) {
+            int sz = (i % 530) + 1;
+            for (j = 0; j < sz; j++)
+                bad |= blk[i][j] != (unsigned char)(i + j);
+        }
+        for (i = 0; i < 600; i++) {
+            int sz = (i % 530) + 1;
+            blk[i] = realloc(blk[i], sz + 300);
+            for (j = 0; j < sz; j++)
+                bad |= blk[i][j] != (unsigned char)(i + j);
+            free(blk[i]);
+        }
+        check(!bad, "malloc/free/realloc keep every byte across the small-block cache");
+    }
     printf("ixc99: passed %d of %d\n", passed, total);
     return passed == total ? 0 : 10;
 }

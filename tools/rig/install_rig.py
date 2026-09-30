@@ -42,6 +42,13 @@ def main():
     rc, terminfo_before = run('GetEnv TERMINFO')  # the rig's boot sets /VTC/terminfo
     terminfo_before = terminfo_before.strip()
     run('Execute VTC:rununinstall')  # a run that stopped half-way left things behind
+    startup_before = run('Type S:User-Startup')[1]
+    # the rig's boot assigns GG: (VTC:gg); take it away so Install's own
+    # GG: set-up is what gets tested, and put it back at the end
+    rig_gg = run('Assign >NIL: GG: EXISTS')[0] == 0
+    if rig_gg:
+        run('Assign GG:')
+    gg_before = False
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == terminfo_before and terminfo_before != '/ENV/up-term/terminfo',
           'Uninstall with nothing installed leaves the user\'s TERMINFO', out)
@@ -68,6 +75,13 @@ def main():
     check(rc == 0, 'the vtcon entry is where TERMINFO points', out)
     rc, out = run('Type ENVARC:TERMINFO')  # a file now: the old ENVARC:terminfo drawer was the same name
     check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is kept in ENVARC: (no drawer by that name)', out)
+    rc, out = run('C:tmux -V')
+    check(rc == 0 and 'tmux 3.6a' in out, 'C:tmux runs', out)
+    if not gg_before:
+        rc, out = run('List >NIL: GG:bin/sh')
+        check(rc == 0, 'no GG: before: vsh is GG:bin/sh (/gg/bin/sh for ixemul programs)', out)
+        rc, out = run('Search S:User-Startup ";BEGIN UP-Term"')
+        check(';BEGIN UP-Term' in out, 'S:User-Startup assigns GG: at boot', out)
     rc, out = run('VTC:iconprobe SYS:Utilities/UP-Term')
     check('tool C:vsh' in out and 'WINDOW=XCON:' in out, 'the UP-Term icon is in SYS:Utilities', out)
     rc, out = run('VTC:wbrun C:vsh SYS:Utilities/UP-Term', 30)
@@ -86,11 +100,18 @@ def main():
           'after Uninstall: the original ixemul back, no .orig', str(st))
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == terminfo_before, 'after Uninstall: the TERMINFO from before Install is back', out)
+    rc, out = run('Type S:User-Startup')
+    check(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
+          'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
+    if not gg_before:
+        check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
+                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
                         'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info')
             if run('List >NIL: %s' % f)[0] == 0]
     check(not left, 'Uninstall removed the files', ' '.join(left))
+    if rig_gg:
+        run('Assign GG: VTC:gg')
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 

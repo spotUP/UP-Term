@@ -94,6 +94,8 @@ $(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
 
 # GNU screen for the kit (P7.1): built in ~/Code/screen-amiga/src (make -f Makefile.amiga)
 SCREEN_BIN ?= $(HOME)/Code/screen-amiga/src/screen
+# tmux for the kit (P7.2): built in ~/Code/tmux-amiga (make -f Makefile.amiga)
+TMUX_BIN ?= $(HOME)/Code/tmux-amiga/build/tmux-bin
 
 # Recapture the programs with TERM=vtcon (tests/streams/ti-*), then check
 # them: libvterm cell for cell and no sequence the engine ignored.
@@ -181,6 +183,11 @@ $(BUILD)/amiga/ixc99: tests/amiga/ixc99.c
 $(BUILD)/amiga/ixreply: tests/amiga/ixreply.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixreply.c
+
+# ixemul's malloc/free/realloc timings (the small-block cache)
+$(BUILD)/amiga/ixmalloc: tests/amiga/ixmalloc.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixmalloc.c
 
 $(BUILD)/amiga/ixbg: tests/amiga/ixbg.c
 	@mkdir -p $(BUILD)/amiga
@@ -287,6 +294,8 @@ dist: amiga $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] ../dist/vtcon/terminfo/
 	cp $(SCREEN_BIN) $(BUILD)/dist/vtcon/screen
 	cp dist/screenrc $(BUILD)/dist/vtcon/screenrc
+	cp $(TMUX_BIN) $(BUILD)/dist/vtcon/tmux
+	cp dist/tmux.conf dist/unstartup.sh $(BUILD)/dist/vtcon/
 	cp $(IXEMUL_LIB) $(BUILD)/dist/vtcon/libs/ixemul.library
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(BUILD)/dist/vtcon/banner
 	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term.info

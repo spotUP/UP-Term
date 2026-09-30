@@ -44,6 +44,28 @@ C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
 C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
+; UP-Term as the owner uses it on the rig: the patched ixemul first in
+; LIBS: (Classes and MUI stay), PTY: and IXPIPE:, and GG: for /gg/bin/sh
+; (vsh), as the kit sets it up. VTC: exists only from here on: a
+; User-Startup line cannot do this (it runs before this script's Wait).
+If EXISTS VTC:ixp6/ixemul.library
+  C:Assign >NIL: LIBS: VTC:ixp6
+  C:Assign >NIL: LIBS: DH0:Libs ADD
+  C:Assign >NIL: LIBS: DH0:Classes ADD
+  C:Assign >NIL: LIBS: DH0:MUI/Libs ADD
+  C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
+EndIf
+C:Assign >NIL: PTY: EXISTS DEVICES
+If WARN
+  C:Mount >NIL: PTY: FROM VTC:ptymount
+EndIf
+C:Assign >NIL: IXPIPE: EXISTS DEVICES
+If WARN
+  C:Mount >NIL: IXPIPE: FROM VTC:ixpipemount
+EndIf
+If EXISTS VTC:gg/bin/sh
+  C:Assign >NIL: GG: VTC:gg
+EndIf
 C:SetEnv TERM vtcon
 C:SetEnv TERMINFO /VTC/terminfo
 C:SetEnv TERMCAP /etc/termcap
