@@ -43,6 +43,7 @@
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
 #include "../render/vtwin.h"
+#include "../device/upc_public.h"
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
@@ -1515,6 +1516,18 @@ static void post_sizewindow(con *c)
     DBG("sigwinch", c->winch_added, 0);
 }
 
+/* Is console.device UP-Term's (the 'UPTC' magic at offset 36, DD13)? */
+static int upterm_device(void)
+{
+    struct Library *d;
+    int ours;
+    Forbid();
+    d = (struct Library *)FindName(&SysBase->DeviceList, (STRPTR)"console.device");
+    ours = upc_is_upterm(d);
+    Permit();
+    return ours;
+}
+
 static struct IOStdReq *rom_console(con *c)
 {
     /* DISK_INFO callers get a real console.device unit on our window, so
@@ -1532,7 +1545,10 @@ static struct IOStdReq *rom_console(con *c)
     c->rom_io->io_Data = c->w.win;
     c->rom_io->io_Length = sizeof(struct Window);
     DBG("rom open", c->w.win, 0);
-    if (OpenDevice((STRPTR)"console.device", CONU_STANDARD, (struct IORequest *)c->rom_io, 0)) {
+    /* with UP-Term's console.device in, ask it for the ROM's unit: a second
+     * engine must not draw on this window (console plan DD18, D5.1) */
+    if (OpenDevice((STRPTR)"console.device", CONU_STANDARD, (struct IORequest *)c->rom_io,
+                   upterm_device() ? UPCONFLAG_ROM : 0)) {
         DeleteIORequest((struct IORequest *)c->rom_io);
         c->rom_io = 0;
         return 0;

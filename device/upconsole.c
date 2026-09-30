@@ -17,8 +17,17 @@
  *     ViNCEd, ...) is installed -- conflicts refuse, never stack (DD21);
  *   - dos.library is V47 (3.2): its Shell needs the con-handler's medium mode
  *     (SetMode 2), which UP-Term does not have yet (DD20, plan H5.3).
- * DEVICE and EXCLUDE (the console.device replacement, phase D4) are not
- * built yet and say so. */
+ *
+ *   UPConsole DEVICE ON   console.device is UP-Term's (DEVS:up-console.device,
+ *                         or FILE <path>) for every unit opened from now on
+ *   UPConsole DEVICE OFF  the ROM's again; UP-Term's code stays until its
+ *                         last unit closes
+ * DEVICE ON (DD15, DD21) loads the device, gives its RomTag to InitResident
+ * (it arrives as "UP-Term console.device" and keeps the ROM device open for
+ * good), then, under Forbid, takes the ROM node out of the device list and
+ * names ours "console.device". It refuses when a console.device vector is
+ * patched (points outside the ROM module: SetFunction), or when UP-Term's
+ * device is on already. EXCLUDE (D4.1) is not built yet and says so. */
 #include <stdio.h>
 #include <string.h>
 #include <exec/memory.h>
@@ -27,8 +36,11 @@
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
 #include <dos/rdargs.h>
+#include <exec/resident.h>
+#include <exec/execbase.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include "upc_public.h"
 
 extern struct DosLibrary *DOSBase;
 
@@ -50,7 +62,12 @@ typedef struct {
     BPTR seg;          /* the handler, loaded once, never unloaded */
     int con_on;
     saved_entry saved[2]; /* CON, RAW */
+    /* DEVICE ON: our device, the ROM's node it replaced, our own name */
+    struct Library *dev, *rom;
+    char *dev_name;
+    BPTR dev_seg;
 } upc_state;
+
 
 static const char *const entry_name[2] = { "CON", "RAW" };
 
@@ -234,6 +251,198 @@ static int con_off(void)
     return changed ? RETURN_WARN : RETURN_OK;
 }
 
+/* TRACE: each step of DEVICE ON/OFF to the serial port (exec RawPutChar,
+ * LVO -516): a step that takes the machine down still shows how far it got */
+static int tracing;
+static void ser_putc(__reg("d0") char ch) =
+    "\tmove.l\ta6,-(sp)\n\tmove.l\t4.w,a6\n\tjsr\t-516(a6)\n\tmove.l\t(sp)+,a6";
+static void trace(const char *s)
+{
+    if (!tracing)
+        return;
+    while (*s)
+        ser_putc(*s++);
+    ser_putc('\n');
+}
+
+static void trace_hex(const char *s, ULONG v)
+{
+    int k;
+    if (!tracing)
+        return;
+    while (*s)
+        ser_putc(*s++);
+    ser_putc(' ');
+    for (k = 28; k >= 0; k -= 4)
+        ser_putc("0123456789abcdef"[(v >> k) & 15]);
+    ser_putc('\n');
+}
+
+/* the seglist's hunks: address and size of each */
+static void trace_seg(BPTR seg)
+{
+    while (seg && tracing) {
+        ULONG *p = (ULONG *)BADDR(seg);
+        trace_hex("  hunk", (ULONG)p);
+        trace_hex("  size", p[-1]);
+        seg = (BPTR)p[0];
+    }
+}
+
+/* A console.device vector patched with SetFunction points outside the ROM
+ * module: its `jmp abs.l` target is not in [resident, rt_EndSkip). */
+static int patched_vector(struct Library *rom)
+{
+    struct Resident *rt = FindResident((STRPTR)"console.device");
+    int lvo;
+    if (!rt)
+        return 0; /* not a ROM module (a loaded one): nothing to compare with */
+    for (lvo = 6; lvo <= 72; lvo += 6) {
+        UBYTE *v = (UBYTE *)rom - lvo;
+        ULONG target;
+        if (v[0] != 0x4E || v[1] != 0xF9)
+            return lvo; /* not a jmp: someone rewrote it */
+        target = *(ULONG *)(v + 2);
+        if (target < (ULONG)rt || target >= (ULONG)rt->rt_EndSkip)
+            return lvo;
+    }
+    return 0;
+}
+
+/* The RomTag right after the file's first 4 bytes (moveq #-1,d0; rts). */
+static struct Resident *find_romtag(BPTR seg)
+{
+    UWORD *code = (UWORD *)((UBYTE *)BADDR(seg) + 4);
+    struct Resident *rt = (struct Resident *)(code + 2);
+    if (code[0] != 0x70FF || code[1] != 0x4E75 || rt->rt_MatchWord != RTC_MATCHWORD || rt->rt_MatchTag != rt)
+        return 0;
+    return rt;
+}
+
+static int device_on(const char *file)
+{
+    upc_state *st = make_state();
+    struct Library *rom, *ours;
+    struct Resident *rt;
+    BPTR seg;
+    int lvo;
+    if (!st) {
+        printf("UPConsole: no memory\n");
+        return RETURN_FAIL;
+    }
+    ObtainSemaphore(&st->ss);
+    Forbid();
+    rom = (struct Library *)FindName(&SysBase->DeviceList, (STRPTR)"console.device");
+    Permit();
+    if (st->dev || upc_is_upterm(rom)) {
+        ReleaseSemaphore(&st->ss);
+        printf("UPConsole: console.device is UP-Term already\n");
+        return RETURN_OK;
+    }
+    if (!rom) {
+        ReleaseSemaphore(&st->ss);
+        printf("UPConsole: not switched: there is no console.device\n");
+        return RETURN_WARN;
+    }
+    if (st->dev_seg) {
+        ReleaseSemaphore(&st->ss);
+        printf("UPConsole: not switched: the UP-Term device switched off before still has units open\n");
+        return RETURN_WARN;
+    }
+    lvo = patched_vector(rom);
+    if (lvo) {
+        ReleaseSemaphore(&st->ss);
+        printf("UPConsole: not switched: console.device vector -%d is patched (SetFunction).\n"
+               "Remove that patch first; UP-Term does not stack on another.\n", lvo);
+        return RETURN_WARN;
+    }
+    seg = LoadSeg((STRPTR)file);
+    if (!seg) {
+        ReleaseSemaphore(&st->ss);
+        printf("UPConsole: cannot load %s\n", file);
+        return RETURN_FAIL;
+    }
+    trace_hex("upconsole on: seg", (ULONG)seg);
+    trace_seg(seg);
+    rt = find_romtag(seg);
+    ours = rt ? (struct Library *)InitResident(rt, seg) : 0;
+    if (!ours || !upc_is_upterm(ours)) {
+        UnLoadSeg(seg);
+        ReleaseSemaphore(&st->ss);
+        printf("UPConsole: %s is not UP-Term's console.device, or it did not start\n", file);
+        return RETURN_FAIL;
+    }
+    trace_hex("upconsole on: base", (ULONG)ours);
+    trace_hex("  negsize", ours->lib_NegSize);
+    trace_hex("  possize", ours->lib_PosSize);
+    trace_seg(seg);
+    Forbid();
+    Remove(&rom->lib_Node);
+    st->dev_name = ours->lib_Node.ln_Name;
+    ours->lib_Node.ln_Name = *(char **)((UBYTE *)ours + UPC_CONNAME_OFFSET); /* the device's own string */
+    Permit();
+    st->dev = ours;
+    st->rom = rom;
+    st->dev_seg = seg;
+    ReleaseSemaphore(&st->ss);
+    printf("UPConsole: console.device is UP-Term now (new units)\n");
+    return RETURN_OK;
+}
+
+/* A device DEVICE OFF left for its last unit's Close: once its node is gone,
+ * its Expunge ran and the system unloaded its code with the seglist Expunge
+ * returned (measured on KS 40.63: RemDevice frees the whole seglist; our own
+ * UnLoadSeg after it was a double free that took the machine down). Every
+ * run forgets it then. */
+static void unload_retired(upc_state *st)
+{
+    int gone;
+    if (!st || !st->dev_seg || st->dev)
+        return;
+    Forbid();
+    gone = !FindName(&SysBase->DeviceList, (STRPTR)st->dev_name);
+    Permit();
+    trace(gone ? "upconsole retired: gone (unloaded by RemDevice)" : "upconsole retired: still there");
+    if (gone)
+        st->dev_seg = 0;
+}
+
+static int device_off(void)
+{
+    upc_state *st = find_state();
+    struct Library *ours;
+    if (!st || !st->dev) {
+        printf("UPConsole: console.device is not UP-Term\n");
+        return RETURN_OK;
+    }
+    ObtainSemaphore(&st->ss);
+    ours = st->dev;
+    trace_hex("upconsole off: base", (ULONG)ours);
+    trace_hex("  negsize", ours->lib_NegSize);
+    trace_hex("  possize", ours->lib_PosSize);
+    trace_seg(st->dev_seg);
+    trace("upconsole off: swap");
+    Forbid();
+    Remove(&ours->lib_Node);
+    ours->lib_Node.ln_Name = st->dev_name;
+    Enqueue(&SysBase->DeviceList, &st->rom->lib_Node);
+    AddTail(&SysBase->DeviceList, &ours->lib_Node);
+    trace("upconsole off: RemDevice");
+    /* its Expunge frees it now, or at its last unit's Close (LIBF_DELEXP) */
+    RemDevice((struct Device *)ours);
+    trace("upconsole off: RemDevice returned");
+    Permit();
+    trace("upconsole off: permitted");
+    st->dev = 0;
+    st->rom = 0;
+    unload_retired(st);
+    trace("upconsole off: unloaded");
+    ReleaseSemaphore(&st->ss);
+    printf("UPConsole: console.device is the ROM's again%s\n",
+           st->dev_seg ? " (UP-Term's stays until its units close)" : "");
+    return RETURN_OK;
+}
+
 static void status(void)
 {
     upc_state *st = find_state();
@@ -253,13 +462,20 @@ static void status(void)
     for (i = 0; i < 2; i++)
         printf("%s: %s%s\n", entry_name[i], ours[i] ? "UP-Term" : rom[i] ? "ROM" : "other",
                !ours[i] && !rom[i] && h[i][0] ? (sprintf(why, " (%s)", h[i]), why) : "");
-    printf("console.device: ROM (the UP-Term device is not built yet)\n");
+    {
+        struct Library *d;
+        Forbid();
+        d = (struct Library *)FindName(&SysBase->DeviceList, (STRPTR)"console.device");
+        i = upc_is_upterm(d);
+        Permit();
+        printf("console.device: %s\n", i ? "UP-Term" : d ? "ROM" : "none");
+    }
 }
 
 int main(void)
 {
-    static const char tmpl[] = "CON/K,DEVICE/K,EXCLUDE/K,STATUS/S,HANDLER/K";
-    LONG args[5] = { 0, 0, 0, 0, 0 };
+    static const char tmpl[] = "CON/K,DEVICE/K,EXCLUDE/K,STATUS/S,HANDLER/K,FILE/K,TRACE/S";
+    LONG args[7] = { 0, 0, 0, 0, 0, 0, 0 };
     struct RDArgs *rd = ReadArgs((STRPTR)tmpl, args, 0);
     int rc = RETURN_OK;
     if (!rd) {
@@ -268,9 +484,29 @@ int main(void)
     }
     if (!vers[0])
         rc = RETURN_FAIL; /* keeps the version string linked in */
-    if (args[1] || args[2]) {
-        printf("UPConsole: DEVICE and EXCLUDE come with the console.device replacement (not built yet)\n");
+    tracing = args[6] != 0;
+    {
+        upc_state *st = find_state();
+        if (st) {
+            ObtainSemaphore(&st->ss);
+            unload_retired(st);
+            ReleaseSemaphore(&st->ss);
+        }
+    }
+    if (args[2]) {
+        printf("UPConsole: EXCLUDE is not built yet\n");
         rc = RETURN_WARN;
+    }
+    if (args[1]) {
+        const char *v = (const char *)args[1];
+        if (word_is(v, "ON"))
+            rc = device_on(args[5] ? (const char *)args[5] : "DEVS:up-console.device");
+        else if (word_is(v, "OFF"))
+            rc = device_off();
+        else {
+            printf("UPConsole: DEVICE takes ON or OFF\n");
+            rc = RETURN_ERROR;
+        }
     }
     if (args[0]) {
         const char *v = (const char *)args[0];

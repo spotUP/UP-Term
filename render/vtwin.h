@@ -56,6 +56,8 @@ typedef struct vtwin {
     WORD fontsize;
     char altname[11][40];        /* FONT1..FONT9 (SGR 11-19), FRAKTUR (SGR 20) */
     WORD altsize[11];
+    struct TextFont *given_font; /* draw with this font (the window's), not opened or closed here */
+    int sb_lines;                /* scrollback lines: 0 = 500 (XCON:), -1 = none */
     /* live */
     struct Window *win;
     struct TextFont *font;

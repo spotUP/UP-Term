@@ -341,22 +341,45 @@ moved code, no duplicate of any moved function remains.
       to the active unit only, so DD9's TIMER fallback would check LAYERREFRESH for the
       active window alone; D1.3 should run that check on the unit's own 50 ms frame clock
       (DD5) instead, which every unit has.
-- [ ] D1.2 `device/upcon_device.c`: RomTag (RTF_AUTOINIT, NT_DEVICE, first hunk
+- [x] D1.2 `device/upcon_device.c`: RomTag (RTF_AUTOINIT, NT_DEVICE, first hunk
       `moveq #-1,d0; rts`), base with the DD13 extension, Open (units -1/0/1/3, flags,
       io_Error set and io_Device cleared on failure, DD16 forward), Close, Expunge (DD15),
       BeginIO/AbortIO (AbortIO of a queued CMD_READ replies IOERR_ABORTED: the V47
       con-handler aborts its read at close, RN-CH 47.1).
+      **DONE 2026-09-30:** RomTag in `device/upcon_rom.s` (first: `moveq #-1,d0; rts`, rt_Init
+      = upc_init, not AUTOINIT: Init builds the base with MakeLibrary, copies the ROM's
+      version, opens the ROM's CONU_LIBRARY for good, AddDevice as "UP-Term console.device").
+      Base extension at fixed offsets (compile-time checked): magic 36, ROM base 40, the
+      device's own "console.device" string 44 (UPConsole names the node with it -- a name
+      from UPConsole's own segment died with it and the next OpenDevice loaded a DEVS: copy
+      from disk). Open: -1 library, 0/1/3 on io_Data's window, UPCONFLAG_ROM forwards to the
+      ROM's Open; Close through the unit process; Expunge refused while named console.device.
+      Measured: KS 40.63's RemDevice frees the seglist our Expunge returns -- UPConsole's own
+      UnLoadSeg after it was a double free that took the machine down.
 - [ ] D1.3 `device/upcon_unit.c`: the unit process (DD5) on vtwin; STANDARD/CHARMAP/
       SNIPMAP rules (DD8, DD9, DD10), NODRAW flag, frame clock, flush on UPCMD_DIE.
-- [ ] D1.4 `device/upcon_input.c`: the input handler (DD6, DD7), added on the first unit
+      **Part 2026-09-30:** the unit process on vtwin (AMIGA, the window's font, 200/0 lines of
+      scrollback, reflow on for CHARMAP/SNIPMAP), CMD_WRITE after the feed, size polled on
+      every write and event, REFRESHWINDOW repaint for non-STANDARD units whose window lacks
+      IDCMP_REFRESHWINDOW, ConUnit filled after writes/resizes, UPCMD_DIE flush + abort reads.
+      OPEN: CONFLAG_NODRAW_ON_NEWSIZE, copy/paste for SNIPMAP only (DD10), mouse selection.
+- [x] D1.4 `device/upcon_input.c`: the input handler (DD6, DD7), added on the first unit
       open, removed on the last close.
-- [ ] D1.5 Commands: CMD_READ, CMD_WRITE (-1 length, io_Actual, io_Length 0, io_Data
+      **DONE 2026-09-30:** priority 5, upc_route per event, ring + Signal, chain passed on;
+      added with the first unit, removed with the last (DV1: keys reach a ROM CON: Shell).
+- [x] D1.5 Commands: CMD_READ, CMD_WRITE (-1 length, io_Actual, io_Length 0, io_Data
       advanced), CMD_CLEAR, NSCMD_DEVICEQUERY, private UPCMD_STATS (0x7F00: units open,
       bytes written, reads answered, events dropped) and UPCMD_DIE (0x7FF0), the rest
       IOERR_NOCMD (DD14).
+      **DONE 2026-09-30:** codes as DP4 measured (CMD_STOP/START -1, FLUSH -1 or 0 + reads
+      aborted), CMD_RESET answered (terminal reset), NSCMD_DEVICEQUERY type 6 with our list,
+      UPCMD_STATS; unknown IOERR_NOCMD. AbortIO of a queued read: IOERR_ABORTED (not yet
+      measured on the rig).
 - [ ] D1.6 Makefile: `build/amiga/up-console.device` (vbcc + vlink, no startup, like the
       handler, Makefile l.235-260); `make amiga` builds it; DEBUG=1 logs to
       RAM:upcon.log from the unit process only.
+      **Part 2026-09-30:** `build/amiga/up-console.device` built by `make amiga`. OPEN: DEBUG=1
+      log from the unit process.
 - [ ] D1.7 Opener census (DEBUG=1): DevOpen records caller task name, unit, flags; rig
       runs the Shell, NewShell, Ed, MultiView, More, Workbench Execute Command, an
       ixemul `less`, ConClip. Table written into R-2 (replaces its "unverified" row).
@@ -413,15 +436,23 @@ Success: D3.2 equal (or every difference justified); ledger D3 ticked.
 Success: D4.2/D4.3 green; ledger D4 ticked.
 
 **Phase D5: XCON: next to the device**
-- [ ] D5.1 `rom_console()` passes UPCONFLAG_ROM when the magic is present (DD18). Rig: with
+- [x] D5.1 `rom_console()` passes UPCONFLAG_ROM when the magic is present (DD18). Rig: with
       DEVICE ON, ixemul `less` in XCON: starts without the grey-window redraw and
       TIOCGWINSZ is right after a resize (ttyprobe_rig.py green).
 
 **Phase DV: verification**
-- [ ] DV1 REACHABILITY `tools/rig/condev_rig.py` (CON OFF, DEVICE ON): a ROM con-handler
+      **DONE 2026-09-30:** `upterm_device()` + UPCONFLAG_ROM (device/upc_public.h, shared by the
+      device, UPConsole and the handler). Rig: DEVICE ON, ttyprobe_rig in XCON: all 9 steps,
+      black window (no grey redraw), winsize 77 x 25, and devwho counts 0 units of ours.
+- [x] DV1 REACHABILITY `tools/rig/condev_rig.py` (CON OFF, DEVICE ON): a ROM con-handler
       window (`NewShell CON:...`) runs `echo hi`; `tests/amiga/devwho.c` reads UPCMD_STATS
       through CONU_LIBRARY: units open >= 1 and bytes written moved by at least the
       echo's bytes (the sentinel: only our device counts); the screenshot shows "hi".
+      **DONE 2026-09-30:** `tools/rig/condev_rig.py` 12/12 on KS 40.63: DEVICE ON; a ROM
+      con-handler NewShell window opens a unit of ours; `echo devhi` typed (input handler ->
+      unit -> CMD_READ, 11 reads answered) and run (CMD_WRITE, 67 bytes); endcli closes the
+      unit; DEVICE OFF: the ROM's again, our code unloaded. Screenshot build/rig/shots/condev.png
+      looks as the ROM's window.
 - [ ] DV2 romprobe through the ROM CON: over our device: 50/50 equal to the ROM results.
 - [ ] DV3 Speed, `rig.py --exact`: 2000-line `type` in a ROM CON: over our device is not
       slower than over the ROM device (the same run as ledger's 19.5 s baseline).

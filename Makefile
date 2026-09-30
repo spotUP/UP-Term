@@ -117,9 +117,9 @@ VC       := vc +$(VBCC_CFG) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,1
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/brk.c $(ENGINE) render/amiga_render.c render/vtwin.c render/glyphmap.c tty/ldisc.c
 HANDLER_HDR := engine/vtengine.h engine/vtwidth.h render/amiga_render.h render/vtwin.h render/glyphmap.h render/glyph_tables.inc \
-               handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/vtcon_packets.h tty/ldisc.h
+               handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -237,10 +237,39 @@ $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldis
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ttyprobe.c
 
+# UP-Term's console.device (console plan D1.6): upcon_rom.o first (the
+# RomTag and the ROM forwards), no C startup, as the handler.
+DEVICE_SRC := device/upcon_device.c device/upcon_unit.c device/upcon_input.c device/upc_core.c \
+              render/vtwin.c render/amiga_render.c render/glyphmap.c handler/clip.c $(ENGINE)
+DEVICE_HDR := device/upcon.h device/upc_public.h device/upc_core.h render/vtwin.h render/amiga_render.h render/glyphmap.h \
+              render/glyph_tables.inc handler/clip.h engine/vtengine.h engine/vtwidth.h
+$(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
+	@mkdir -p $(BUILD)/amiga/devobj
+	vasmm68k_mot -quiet -Fhunk -m68020 -o $(BUILD)/amiga/devobj/upcon_rom.o device/upcon_rom.s
+	$(VC) -c -o $(BUILD)/amiga/devobj/upcon_device.o device/upcon_device.c
+	$(VC) -dontwarn=65 -c -o $(BUILD)/amiga/devobj/upcon_unit.o device/upcon_unit.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/upcon_input.o device/upcon_input.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/upc_core.o device/upc_core.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/devobj/vtwin.o render/vtwin.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/amiga_render.o render/amiga_render.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/glyphmap.o render/glyphmap.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/clip.o handler/clip.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/devobj/vtengine.o $(ENGINE)
+	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/devobj/upcon_rom.o \
+	  $(BUILD)/amiga/devobj/upcon_device.o $(BUILD)/amiga/devobj/upcon_unit.o $(BUILD)/amiga/devobj/upcon_input.o \
+	  $(BUILD)/amiga/devobj/upc_core.o $(BUILD)/amiga/devobj/vtwin.o $(BUILD)/amiga/devobj/amiga_render.o \
+	  $(BUILD)/amiga/devobj/glyphmap.o $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/vtengine.o \
+	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
+
 # C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
-$(BUILD)/amiga/UPConsole: device/upconsole.c
+$(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ device/upconsole.c
+
+# DV1's probe (tools/rig/condev_rig.py)
+$(BUILD)/amiga/devwho: tests/amiga/devwho.c device/upc_public.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/devwho.c
 
 # H5.6's probes (tools/rig/concon_rig.py)
 $(BUILD)/amiga/conwho: tests/amiga/conwho.c handler/vtcon_packets.h

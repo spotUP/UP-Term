@@ -213,7 +213,12 @@ static struct TextFont *open_named(const char *fontname, WORD fontsize)
 
 struct TextFont *vtwin_open_font(vtwin *w)
 {
-    struct TextFont *f = open_named(w->fontname, w->fontsize);
+    struct TextFont *f;
+    if (w->given_font) {
+        w->font_opened = 0;
+        return w->font = w->given_font;
+    }
+    f = open_named(w->fontname, w->fontsize);
     w->font_opened = f != 0;
     /* else the system default font: the one the user chose for text, as
      * the Shell uses it. It is fixed width by definition. */
@@ -239,7 +244,8 @@ int vtwin_attach(vtwin *w, struct Window *win)
         /* size from the window before the engine exists */
         int cols = (win->Width - win->BorderLeft - win->BorderRight) / w->font->tf_XSize;
         int rows = (win->Height - win->BorderTop - win->BorderBottom) / w->font->tf_YSize;
-        w->t = vt_new(cols > 0 ? cols : 1, rows > 0 ? rows : 1, 500, &cb, w);
+        w->t = vt_new(cols > 0 ? cols : 1, rows > 0 ? rows : 1,
+                      w->sb_lines < 0 ? 0 : w->sb_lines ? w->sb_lines : 500, &cb, w);
     }
     if (!w->t)
         return 0;
