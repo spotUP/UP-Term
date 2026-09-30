@@ -145,6 +145,12 @@ int ld_read_action(const ldisc *l, int timer_fired, int *arm);
 /* ACTION_WAIT_CHAR, select(): would a read find input? */
 int ld_input_pending(const ldisc *l);
 
+/* FIONREAD (ACTION_VTCON_NREAD): how many bytes a read would get now.
+ * ICANON: the first complete line (0 at an EOF or with no line yet);
+ * otherwise everything queued. A reader that sizes its read with it
+ * (libevent) got 1 at a time, and a terminal's 9-byte answer came apart. */
+long ld_nread(const ldisc *l);
+
 /* Output processing (OPOST: ONLCR, OXTABS, ONOEOT) of n bytes into out;
  * out needs 8 * n bytes at most (a tab to 8 spaces). *col tracks the
  * column for OXTABS. Returns the bytes written. */

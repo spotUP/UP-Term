@@ -353,6 +353,18 @@ int ld_input_pending(const ldisc *l)
     return (l->t.c_lflag & LD_ICANON) ? l->lines > 0 : l->qlen > 0;
 }
 
+long ld_nread(const ldisc *l)
+{
+    if (l->t.c_lflag & LD_ICANON) {
+        int len;
+        if (!l->lines || l->qlen < 2)
+            return 0;
+        len = (l->q[0] << 8) | l->q[1];
+        return len == 0xFFFF ? 0 : len;
+    }
+    return l->qlen;
+}
+
 long ld_read(ldisc *l, unsigned char *buf, long max, int *eof)
 {
     *eof = 0;

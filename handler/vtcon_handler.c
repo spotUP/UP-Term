@@ -303,10 +303,23 @@ static void cb_scroll(void *u, int top, int bot, int n)
 #endif
 }
 
+static int tty_active(con *c);
+static void service_reads(con *c);
+
 static void cb_reply(void *u, const vt_u8 *b, long n)
 {
-    /* reports enter the read stream, as the console's do */
-    in_append((con *)u, b, (int)n);
+    con *c = (con *)u;
+    /* reports enter the read stream, as the console's do. In termios mode
+     * that stream is the line discipline, as for a typed key: in the cooked
+     * buffer they were never read, yet made WAIT_CHAR answer yes -- tmux's
+     * select saw input, its read blocked until the next key, and every key
+     * showed one key late (tmux asks for DA and colours at start) */
+    if (tty_active(c)) {
+        ld_input(&c->ld, b, (int)n);
+        service_reads(c);
+        return;
+    }
+    in_append(c, b, (int)n);
 }
 
 static void cb_bell(void *u)
@@ -1059,6 +1072,9 @@ static void tty_reads(con *c)
         if (act == LD_RD_TAKE)
             n = ld_read(&c->ld, (unsigned char *)p->dp_Arg2, p->dp_Arg3, &eof);
         rtimer_stop(c);
+#ifdef VTCON_DEBUG
+        dbg("TTYREAD task/n", (LONG)p->dp_Port->mp_SigTask, n);
+#endif
         reply(p, n < 0 ? 0 : n, 0);
         drop_read(c, k);
     }
@@ -2075,6 +2091,9 @@ static void packet(con *c, struct DosPacket *p)
         }
         if (c->nreads < READ_Q) {
             c->reads[c->nreads++] = p;
+#ifdef VTCON_DEBUG
+            dbg("READ task/nreads", (LONG)p->dp_Port->mp_SigTask, c->nreads);
+#endif
             service_reads(c);
         } else {
             reply(p, -1, ERROR_NO_FREE_STORE);
@@ -2120,6 +2139,11 @@ static void packet(con *c, struct DosPacket *p)
          * closes a file whose select is still out) */
         if (c->waitchar)
             finish_waitchar(c, DOSFALSE);
+#ifdef VTCON_DEBUG
+        dbg("WAIT task/timeout", (LONG)p->dp_Port->mp_SigTask, p->dp_Arg1);
+        dbg("WAIT in/eof", c->in_len, c->eof);
+        dbg("WAIT tty/pending", c->tty, c->tty ? ld_input_pending(&c->ld) : -1);
+#endif
         if (c->in_len || c->eof || (tty_active(c) && ld_input_pending(&c->ld))) {
             reply(p, DOSTRUE, 0);
         } else if (p->dp_Arg1 <= 0) {
@@ -2178,6 +2202,12 @@ static void packet(con *c, struct DosPacket *p)
         ld_set(&c->ld, (const vt_termios *)p->dp_Arg2, (int)p->dp_Arg3);
         reply(p, DOSTRUE, 0);
         service_reads(c);
+        return;
+    case ACTION_VTCON_NREAD:
+        if (tty_active(c))
+            reply(p, ld_nread(&c->ld), 0);
+        else
+            reply(p, c->raw ? c->in_len : line_end(c), 0);
         return;
     case ACTION_VTCON_GWINSZ:
         if (!p->dp_Arg2 || !c->t) {

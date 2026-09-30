@@ -44,6 +44,13 @@
  *                      are gone are dropped. */
 #define ACTION_VTCON_HOLD 0x7659
 
+/* FIONREAD: dp_Res1 the bytes a Read would get now (a complete line in
+ * canonical mode, everything queued otherwise; a PTY: master, the slave's
+ * output). ixemul asked WaitForChar, which says 1 at most: libevent then
+ * read one byte per turn and a terminal's answer came apart. dp_Arg1 is
+ * the handle's fh_Arg1. */
+#define ACTION_VTCON_NREAD 0x765A
+
 /* ACTION_VTCON_TCGETA answers dp_Res2 1 when the console is in termios
  * mode (a program set it), 0 when it describes the Amiga mode in termios
  * terms: a shell that suspends a job keeps the job's settings only then

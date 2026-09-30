@@ -172,6 +172,16 @@ $(BUILD)/amiga/ixpipeprobe: tests/amiga/ixpipeprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixpipeprobe.c
 
+# C99/POSIX additions to ixemul (library + libixcompat) for libevent/tmux
+$(BUILD)/amiga/ixc99: tests/amiga/ixc99.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixc99.c -lixcompat
+
+# a terminal's answer to a query is termios input (XCON: handler cb_reply)
+$(BUILD)/amiga/ixreply: tests/amiga/ixreply.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixreply.c
+
 $(BUILD)/amiga/ixbg: tests/amiga/ixbg.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixbg.c

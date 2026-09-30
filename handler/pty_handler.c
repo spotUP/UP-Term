@@ -603,6 +603,9 @@ static void packet(struct DosPacket *d, pair *via, int side)
     p = EP_PAIR(d->dp_Arg1);
     master = EP_MASTER(d->dp_Arg1) != 0;
     switch (d->dp_Type) {
+    case ACTION_VTCON_NREAD:
+        reply(d, master ? p->out_len : ld_nread(&p->ld), 0);
+        return;
     case ACTION_END:
         if (master)
             p->masters--;

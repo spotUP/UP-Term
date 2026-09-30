@@ -229,8 +229,35 @@ static void read_action(void)
     CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_TAKE);
 }
 
+/* FIONREAD: what a read would get now. libevent sizes its read with it; 1
+ * at a time split a terminal's 9-byte answer (tmux's theme report) past
+ * tmux's escape timeout, and the half went to the pane as keys. */
+static void nread(void)
+{
+    vt_termios t;
+    fresh();
+    CHECK_INT(ld_nread(&L), 0);
+    type("ab");
+    CHECK_INT(ld_nread(&L), 0);                 /* ICANON: no line yet */
+    type("\r");
+    CHECK_INT(ld_nread(&L), 3);                 /* "ab\n" */
+    type("xyz\r");
+    CHECK_INT(ld_nread(&L), 3);                 /* the first line only */
+    CHECK_STR(rd(100), "ab\n");
+    CHECK_INT(ld_nread(&L), 4);
+    fresh();
+    t = L.t;
+    t.c_lflag &= ~(ld_flag)(LD_ICANON | LD_ECHO);
+    ld_set(&L, &t, LD_TCSANOW);
+    type("\033[?997;1n");
+    CHECK_INT(ld_nread(&L), 9);                 /* raw: everything queued */
+    CHECK_STR(rd(100), "\033[?997;1n");
+    CHECK_INT(ld_nread(&L), 0);
+}
+
 void suite_ldisc(void)
 {
+    nread();
     read_action();
     canonical_editing();
     signals();
