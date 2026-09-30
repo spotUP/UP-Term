@@ -458,9 +458,15 @@ Success: D3.2 equal (or every difference justified); ledger D3 ticked.
       **DONE 2026-09-30:** DEVICE ON/OFF (DD15, DD21), EXCLUDE name|CLEAR through the private
       UPCMD_EXCLUDE/EXCLUDED on the library unit (no base offsets), STATUS lists the excluded
       names. `tools/rig/devctl_rig.py` 12/12.
-- [ ] D4.2 Kit: Install question (default No), User-Startup block, Uninstall; README.
+- [x] D4.2 Kit: Install question (default No), User-Startup block, Uninstall; README.
       `install_rig.py` extended: DEVICE ON after reboot, STATUS says on, Uninstall
       leaves the ROM device in the list (magic absent).
+      **DONE 2026-09-30:** `Execute Install [DEVICE|NODEVICE]` (asks, default No; offered below
+      V47 only until the 3.2 phase tests it there), DEVS:up-console.device, block `;BEGIN
+      UP-Term device` / `C:UPConsole >NIL: DEVICE ON` / `;END UP-Term device`; Uninstall DEVICE
+      OFF + block out; README section CONSOLE.DEVICE. install_rig.py 37/37 (device on after
+      Install, the block's line switches it, after Uninstall the ROM's, S:User-Startup byte for
+      byte).
 - [x] D4.3 Conflict tests: `tests/amiga/patchcon.c` SetFunctions RawKeyConvert to a stub
       (test only), DEVICE ON must refuse and name the vector; restore; DEVICE ON twice
       refuses "already on"; DEVICE OFF with a unit open leaves our code until its Close

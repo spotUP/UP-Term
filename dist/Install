@@ -1,4 +1,4 @@
-.KEY CONSOLE/S,NOCONSOLE/S
+.KEY CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -6,6 +6,8 @@
 ; Run from the unpacked drawer:  Execute Install
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
 ; (every new Shell window); CONSOLE answers yes, NOCONSOLE no, unasked.
+; And whether console.device itself should be UP-Term's (every program's
+; console window); DEVICE / NODEVICE answer that one.
 ; (The brackets are { } here: the script's > redirections stay as they are.)
 FailAt 21
 Copy vtcon-handler L: CLONE
@@ -161,8 +163,38 @@ If WARN
     C:UPConsole CON ON
   EndIf
   UnSet upcon
+  ; console.device served by UP-Term (opt-in): UPConsole DEVICE ON at every
+  ; boot from its own block, and now. Not on 3.2 before it is tested there.
+  Copy up-console.device DEVS:up-console.device CLONE
+  Set updev "{DEVICE}"
+  If "{NODEVICE}" EQ "NODEVICE"
+    Set updev ""
+  Else
+    If "{DEVICE}" EQ ""
+      Ask "Should console.device be UP-Term's too (every program's console window)? y/N"
+      If WARN
+        Set updev "DEVICE"
+      EndIf
+    EndIf
+  EndIf
+  If "$updev" EQ "DEVICE"
+    If NOT EXISTS S:User-Startup
+      Echo >S:User-Startup ""
+    EndIf
+    Search >NIL: S:User-Startup ";BEGIN UP-Term device"
+    If WARN
+      If NOT EXISTS S:User-Startup.before-UP-Term
+        Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+      EndIf
+      Echo >>S:User-Startup ";BEGIN UP-Term device"
+      Echo >>S:User-Startup "C:UPConsole >NIL: DEVICE ON"
+      Echo >>S:User-Startup ";END UP-Term device"
+    EndIf
+    C:UPConsole DEVICE ON
+  EndIf
+  UnSet updev
 Else
-  Echo "CON: stays the system's: UP-Term cannot serve it on AmigaOS 3.2 yet."
+  Echo "CON: and console.device stay the system's: UP-Term cannot serve them on AmigaOS 3.2 yet."
 EndIf
 Echo "UP-Term installed. Try:  NewShell XCON:0/20/640/300/UP-Term/CLOSE"
 Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"

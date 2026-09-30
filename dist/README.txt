@@ -18,7 +18,8 @@ INSTALL
   ixemul.library and mounts XCON: and PTY:)
   It asks whether UP-Term should also serve CON: and RAW: (see CON: AND
   RAW: below); answer in advance with  Execute Install CONSOLE  or
-  Execute Install NOCONSOLE.
+  Execute Install NOCONSOLE. The same for console.device (see
+  CONSOLE.DEVICE below): DEVICE or NODEVICE.
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
@@ -138,6 +139,24 @@ CON: AND RAW:
   replacement (KingCON, ViNCEd, ...) serves CON:, and on AmigaOS 3.2, whose
   Shell needs a console mode UP-Term does not have yet.
 
+CONSOLE.DEVICE
+  UP-Term can also be console.device itself: every console window any
+  program opens (Ed, More, a Shell's CON: window from the system's
+  con-handler) then draws with UP-Term's engine, the Amiga personality,
+  with the ROM's public behaviour. C:UPConsole switches it at runtime:
+    UPConsole DEVICE ON      console windows opened from now on are UP-Term's
+    UPConsole DEVICE OFF     the ROM's again (open windows keep UP-Term's
+                             until they close)
+    UPConsole EXCLUDE name   the program with that task name gets the ROM's
+                             units (for one that needs the ROM's internals)
+    UPConsole EXCLUDE CLEAR  nobody excluded
+  Install's block ;BEGIN UP-Term device / ;END UP-Term device in
+  S:User-Startup switches it at every boot; Uninstall switches it off and
+  takes the block out. It refuses to switch when console.device has been
+  patched by another program (SetFunction). Fields of struct ConUnit that
+  programs write are overwritten at the next output, except the keymap
+  (CD_SETKEYMAP). Not offered on AmigaOS 3.2 yet.
+
 STATUS
-  Test build. CON:/RAW: stay the system's unless you switch them (above);
-  XCON: runs beside them.
+  Test build. CON:/RAW: and console.device stay the system's unless you
+  switch them (above); XCON: runs beside them.
