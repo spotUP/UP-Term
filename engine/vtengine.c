@@ -835,7 +835,8 @@ static void sweep_styles(vt_term *t)
     int i, k = 0;
     memset(used, 0, sizeof(used));
     sweep_lines(t->pri, 0, t->rows, t->rows, 0, used);
-    sweep_lines(t->alt, 0, t->rows, t->rows, 0, used);
+    if (t->alt)
+        sweep_lines(t->alt, 0, t->rows, t->rows, 0, used);
     if (t->sb_cap)
         sweep_lines(t->sb, t->sb_head + t->sb_cap - t->sb_len, t->sb_len, t->sb_cap, 0, used);
     remap[0] = 0;
@@ -848,7 +849,8 @@ static void sweep_styles(vt_term *t)
     }
     t->n_styles = k;
     sweep_lines(t->pri, 0, t->rows, t->rows, remap, 0);
-    sweep_lines(t->alt, 0, t->rows, t->rows, remap, 0);
+    if (t->alt)
+        sweep_lines(t->alt, 0, t->rows, t->rows, remap, 0);
     if (t->sb_cap)
         sweep_lines(t->sb, t->sb_head + t->sb_cap - t->sb_len, t->sb_len, t->sb_cap, remap, 0);
 }
@@ -956,8 +958,21 @@ static void soft_reset(vt_term *t)
     t->sav.gl = 0;
 }
 
+static int alloc_screen(vt_line ***scr, int rows, int cols, const vt_term *t);
+static void free_screen(vt_line **scr, int rows);
+
 static void set_alt(vt_term *t, int on, int clear)
 {
+    if (on && !t->alt) {
+        /* made on first use: a terminal whose programs never switch (the
+         * amiga personality, a console.device unit) never pays for it --
+         * 16 bytes a cell, 32 KB at 80 x 25 (plan DV4) */
+        if (!alloc_screen(&t->alt, t->rows, t->cols, t)) {
+            free_screen(t->alt, t->rows);
+            t->alt = 0;
+            return; /* no memory: the primary screen stays */
+        }
+    }
     if (on && t->scr != t->alt) {
         t->scr = t->alt;
         if (clear)
@@ -2848,6 +2863,7 @@ static int alloc_screen(vt_line ***scr, int rows, int cols, const vt_term *t)
     *scr = (vt_line **)VT_MALLOC(rows * sizeof(vt_line *));
     if (!*scr)
         return 0;
+    memset(*scr, 0, rows * sizeof(vt_line *)); /* free_screen after a failure frees only what was made */
     for (y = 0; y < rows; y++) {
         (*scr)[y] = line_new(cols);
         if (!(*scr)[y])
@@ -2893,7 +2909,7 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     if (t->sb_cap)
         t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
     if (!t->tabs || !t->dx0 || !t->dx1 || (t->sb_cap && !t->sb) ||
-        !alloc_screen(&t->pri, rows, cols, t) || !alloc_screen(&t->alt, rows, cols, t)) {
+        !alloc_screen(&t->pri, rows, cols, t)) {
         vt_free(t);
         return 0;
     }
@@ -2953,7 +2969,7 @@ void vt_reset(vt_term *t)
     tab_reset(t);
     set_alt(t, 0, 0);
     clear_screen_home(t);
-    {
+    if (t->alt) {
         vt_line **keep = t->scr;
         t->scr = t->alt;
         erase_rows(t, 0, t->rows);
@@ -3510,7 +3526,8 @@ void vt_resize(vt_term *t, int cols, int rows)
             resize_screen(t, &t->pri, cols, rows, 1, &pcy);
             pwp = 0;
         }
-        resize_screen(t, &t->alt, cols, rows, 0, &acy);
+        if (t->alt)
+            resize_screen(t, &t->alt, cols, rows, 0, &acy);
         if (alt_active) {
             t->sav_1049.y = clampi(pcy, 0, rows - 1);
             if (reflowed) {

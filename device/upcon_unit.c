@@ -242,7 +242,7 @@ void upc_unit_entry(void)
     u->w.pers = VT_AMIGA;
     u->w.fg_rgb = u->w.bg_rgb = VR_KEEP;
     u->w.given_font = u->win->RPort->Font;
-    u->w.sb_lines = u->unitno == CONU_STANDARD ? -1 : 200;
+    u->w.sb_lines = -1; /* the amiga personality keeps no scrollback, as the ROM (DD14 amended, DV4) */
     u->w.keymap = &u->cu.cu_KeyMapStruct; /* CD_SETKEYMAP changes this unit's keys (DD12) */
     u->w.nodraw_resize = (u->flags & CONFLAG_NODRAW_ON_NEWSIZE) != 0;
     u->w.no_clipboard = u->unitno != CONU_SNIPMAP; /* DD10 */

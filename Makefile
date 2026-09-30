@@ -272,6 +272,16 @@ $(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ device/upconsole.c
 
+# DV3's clock (tools/rig/devspeed_rig.py)
+$(BUILD)/amiga/stamp: tests/amiga/stamp.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/stamp.c
+
+# DV4's probe (tools/rig/devverify_rig.py)
+$(BUILD)/amiga/memprobe: tests/amiga/memprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/memprobe.c
+
 # D4.3's patch (tools/rig/devctl_rig.py; test only)
 $(BUILD)/amiga/patchcon: tests/amiga/patchcon.c
 	@mkdir -p $(BUILD)/amiga

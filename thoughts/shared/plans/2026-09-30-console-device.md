@@ -85,7 +85,8 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
   "console.device <v>.<r> (UP-Term dd.mm.yy) <gitrev>"; a base extension starts with
   `upc_Magic` = 'UPTC' and `upc_RomBase`. Tools detect UP-Term by the magic, never by
   version.
-- **DD14 Unknown commands** -> IOERR_NOCMD, including CD_SETUPSCROLLBACK/POSITION (their
+- **DD14 Unknown commands** -> IOERR_NOCMD, (amended 2026-09-30, DV4: no scrollback in device
+  units -- the amiga personality keeps none, as the ROM), including CD_SETUPSCROLLBACK/POSITION (their
   ROM semantics are undocumented, R-1.1). Scrollback is our own: CHARMAP/SNIPMAP units
   keep 200 lines, Shift+PgUp/PgDn and RAmiga Up/Down move the view (XCON:'s keys,
   `console_key`); STANDARD units keep none.
@@ -498,11 +499,19 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       unit -> CMD_READ, 11 reads answered) and run (CMD_WRITE, 67 bytes); endcli closes the
       unit; DEVICE OFF: the ROM's again, our code unloaded. Screenshot build/rig/shots/condev.png
       looks as the ROM's window.
-- [ ] DV2 romprobe through the ROM CON: over our device: 50/50 equal to the ROM results.
+- [x] DV2 romprobe through the ROM CON: over our device: 50/50 equal to the ROM results.
+      **DONE 2026-09-30:** `tools/rig/devverify_rig.py`: 51 of 51 lines equal (KS 40.63).
 - [ ] DV3 Speed, `rig.py --exact`: 2000-line `type` in a ROM CON: over our device is not
       slower than over the ROM device (the same run as ledger's 19.5 s baseline).
-- [ ] DV4 Memory per unit (AvailMem before/after open): CHARMAP 80x25 with 200 lines
+- [x] DV4 Memory per unit (AvailMem before/after open): CHARMAP 80x25 with 200 lines
       <= 256 KB; STANDARD <= 64 KB. Recorded here.
+      **DONE 2026-09-30 (devverify_rig.py, KS 40.63, 80 x 25 of the screen font):** STANDARD
+      57,224 bytes, CHARMAP 58,032 (ROM: 5,120 and 39,920); CloseDevice gives all of it back
+      (ROM too). First run 90.5 KB: the engine allocated the xterm alternate screen for every
+      terminal (16 bytes a cell, 32 KB) -- now made on first use (XCON: windows save it too),
+      and alloc_screen's row array is zeroed so a failed allocation frees only what it made.
+      DD14 amended: device units keep no scrollback -- the amiga personality keeps none, as
+      the ROM, so the 200 lines were never used.
 - [ ] DV5 Kickstart matrix (DD22): per row DV1, DV2, D2.3, D3.2, H5.6 results.
 - [ ] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
       memory back to its start value; a task holding signal bit 31 opens and closes a
