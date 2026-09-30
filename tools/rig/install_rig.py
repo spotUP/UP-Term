@@ -112,6 +112,12 @@ def main():
     check(not left, 'Uninstall removed the files', ' '.join(left))
     if rig_gg:
         run('Assign GG: VTC:gg')
+    # LIBS: as the rig runs (the patched ixemul first): this test set it to
+    # the stock library, and whatever runs next on the rig needs ours
+    import rig
+    run('Avail >NIL: FLUSH')
+    for line in rig.RIG_LIBS:
+        run(line)
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 

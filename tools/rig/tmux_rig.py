@@ -83,6 +83,15 @@ def main():
     typeline('VTC:tmux attach', 15)
     sess = lines('VTC:tmux ls')
     check(len(sess) == 1 and 'attached' in sess[0], 'tmux attach brings it back', ' | '.join(sess))
+    # kill-server ends the server and, with the panes' ptys closed, their
+    # shells (the server ran with every signal blocked: SIGTERM was lost)
+    before = sum('tmux' in l or 'vsh' in l for l in run('Status')[1].splitlines())
+    rc, out = run('VTC:vsh -c "VTC:tmux -L killtest -f /VTC/tmux.conf new -d"', 120)
+    run('VTC:vsh -c "VTC:tmux -L killtest kill-server"', 60)
+    time.sleep(8)
+    after = sum('tmux' in l or 'vsh' in l for l in run('Status')[1].splitlines())
+    check(after <= before, 'kill-server ends the server and its panes',
+          '%d tmux/vsh processes, %d before' % (after, before))
     if "--keep" not in sys.argv:
         typeline('exit', 3)      # the second pane
         typeline('exit', 5)      # the first: the session ends, the server too

@@ -36,6 +36,15 @@ DH0:C/Assign >NIL: FONTS: DH0:Fonts
 C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
+# LIBS: as the rig runs: the patched ixemul first, then the system's (with
+# Classes and MUI) and ncurses. The boot script uses it, and install_rig.py
+# puts it back after testing Install/Uninstall against the stock library.
+RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
+            "Assign >NIL: LIBS: DH0:Libs ADD",
+            "Assign >NIL: LIBS: DH0:Classes ADD",
+            "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
+            "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD"]
+
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
 C:Wait 15
@@ -49,11 +58,7 @@ C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
 ; (vsh), as the kit sets it up. VTC: exists only from here on: a
 ; User-Startup line cannot do this (it runs before this script's Wait).
 If EXISTS VTC:ixp6/ixemul.library
-  C:Assign >NIL: LIBS: VTC:ixp6
-  C:Assign >NIL: LIBS: DH0:Libs ADD
-  C:Assign >NIL: LIBS: DH0:Classes ADD
-  C:Assign >NIL: LIBS: DH0:MUI/Libs ADD
-  C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
+%(libs)s
 EndIf
 C:Assign >NIL: PTY: EXISTS DEVICES
 If WARN
@@ -73,7 +78,7 @@ Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent TOKEN=rigtoken
 Echo >>BOOTX:boot.log "amiagent started"
-"""
+""" % {"libs": "\n".join("  C:" + l for l in RIG_LIBS)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
 MOUNTLIST = """XCON:
