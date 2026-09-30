@@ -31,6 +31,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Reachability test on the rig (V3) | `make test-rig` (rig up first) |
 | 256-colour cube on the rig, every cell vs the xterm palette | `python3 tools/rig/cube_rig.py` (rig up; handler + vsh in VTC:, kit not installed) |
 | GNU screen on the rig: 256 colours inside screen, colours done in 20 s | `python3 tools/rig/screen_rig.py` (rig up; VTC:screen from ~/Code/screen-amiga/src, kit not installed) |
+| Pipes into vfork + exec children (screen printcmd path), no IXPIPE: requester | `python3 tools/rig/ixpipe_rig.py` (fresh rig boot for the requester part) |
 | PTY: on the rig (P5, self-checking) | `python3 tools/rig/ptytest_rig.py` (rig up; `make amiga` first) |
 | BSD ptys via patched ixemul (P6.4, self-checking) | `python3 tools/rig/ixpty_rig.py [--orig]` (rig up; `make amiga build/amiga/ixpty`; ixemul from ~/Code/ixemul-vtcon `sh docker/build.sh`) |
 | pty-handler with a serial trace (build/rig/serial.log) | `make build/amiga/pty-handler DEBUG=1` |
