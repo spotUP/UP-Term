@@ -573,14 +573,17 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         j->close_in = (io->owned & SH_OWN_IN) != 0;
         j->close_out = (io->owned & SH_OWN_OUT) != 0;
         j->close_err = (io->owned & SH_OWN_ERR) != 0;
-        if (!j->close_in && j->in == Input()) {
+        if (!j->close_in && j->in == Input() && IsInteractive(j->in)) {
             /* its own handle on the console, not the shell's: RunCommand
              * puts the argument line in the input handle's buffer and takes
              * it back when the command returns. A suspended command has not
              * returned: the prompt read its argument line (an empty
              * command, a second prompt), and its late return put the
              * buffer back under the shell (rig: the machine rebooted when a
-             * job continued with bg ended). */
+             * job continued with bg ended). Only on a console: "*" is
+             * vsh's console even when its input is a pipe or a file (vsh -c
+             * under screen's printcmd: the command waited on screen's
+             * window instead of reading the pipe). */
             BPTR own = Open((STRPTR)"*", MODE_OLDFILE);
             if (own) {
                 j->in = own;
