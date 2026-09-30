@@ -22,6 +22,14 @@
 /* private commands (D1.5) */
 #define UPCMD_STATS 0x7F00              /* io_Data: struct upc_stats, io_Length its size */
 #define UPCMD_DIE   0x7FF0              /* the device's own: Close -> unit process */
+/* the exclusion list (DD16): programs, by task name, that get the ROM's
+ * units. EXCLUDE: io_Data a name to add, or 0 / io_Length 0 to clear
+ * (IOERR_BADLENGTH when full). EXCLUDED: the names into io_Data, each
+ * '\n'-ended, io_Actual the bytes. Both on the library unit. */
+#define UPCMD_EXCLUDE  0x7F01
+#define UPCMD_EXCLUDED 0x7F02
+#define UPC_MAXEXCLUDE 8
+#define UPC_EXCLUDE_LEN 32
 
 struct upc_stats {
     ULONG units;                        /* units open now */

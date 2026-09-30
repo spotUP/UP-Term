@@ -27,7 +27,11 @@
  * good), then, under Forbid, takes the ROM node out of the device list and
  * names ours "console.device". It refuses when a console.device vector is
  * patched (points outside the ROM module: SetFunction), or when UP-Term's
- * device is on already. EXCLUDE (D4.1) is not built yet and says so. */
+ * device is on already.
+ *
+ *   UPConsole EXCLUDE <task name>  that program gets the ROM's console units
+ *   UPConsole EXCLUDE CLEAR        nobody is excluded (DD16: the escape hatch
+ *                                  for a program that needs ROM internals) */
 #include <stdio.h>
 #include <string.h>
 #include <exec/memory.h>
@@ -37,6 +41,8 @@
 #include <dos/filehandler.h>
 #include <dos/rdargs.h>
 #include <exec/resident.h>
+#include <exec/io.h>
+#include <devices/conunit.h>
 #include <exec/execbase.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -443,6 +449,50 @@ static int device_off(void)
     return RETURN_OK;
 }
 
+/* A private command to UP-Term's device on the library unit; -1 when
+ * console.device is not UP-Term's, else io_Error. */
+static int lib_cmd(UWORD cmd, APTR data, ULONG len, ULONG *actual)
+{
+    struct MsgPort *p = CreateMsgPort();
+    struct IOStdReq *io = p ? (struct IOStdReq *)CreateIORequest(p, sizeof(struct IOStdReq)) : 0;
+    int rc = -1;
+    if (io && !OpenDevice((STRPTR)"console.device", (ULONG)CONU_LIBRARY, (struct IORequest *)io, 0)) {
+        if (upc_is_upterm((struct Library *)io->io_Device)) {
+            io->io_Command = cmd;
+            io->io_Data = data;
+            io->io_Length = len;
+            rc = DoIO((struct IORequest *)io);
+            if (actual)
+                *actual = io->io_Actual;
+        }
+        CloseDevice((struct IORequest *)io);
+    }
+    if (io)
+        DeleteIORequest((struct IORequest *)io);
+    if (p)
+        DeleteMsgPort(p);
+    return rc;
+}
+
+static int exclude(const char *name)
+{
+    int clear = word_is(name, "CLEAR"), rc;
+    rc = lib_cmd(UPCMD_EXCLUDE, clear ? 0 : (APTR)name, clear ? 0 : strlen(name) + 1, 0);
+    if (rc < 0) {
+        printf("UPConsole: EXCLUDE works with UP-Term's console.device (DEVICE ON)\n");
+        return RETURN_WARN;
+    }
+    if (rc) {
+        printf("UPConsole: the list is full (%d names) or the name too long\n", UPC_MAXEXCLUDE);
+        return RETURN_WARN;
+    }
+    if (clear)
+        printf("UPConsole: no program is excluded now\n");
+    else
+        printf("UPConsole: %s gets the ROM's console units from its next open\n", name);
+    return RETURN_OK;
+}
+
 static void status(void)
 {
     upc_state *st = find_state();
@@ -470,6 +520,17 @@ static void status(void)
         Permit();
         printf("console.device: %s\n", i ? "UP-Term" : d ? "ROM" : "none");
     }
+    {
+        static char names[UPC_MAXEXCLUDE * UPC_EXCLUDE_LEN + 1];
+        ULONG n = 0, k;
+        if (lib_cmd(UPCMD_EXCLUDED, names, sizeof(names) - 1, &n) == 0 && n) {
+            names[n] = 0;
+            for (k = 0; k < n; k++)
+                if (names[k] == '\n')
+                    names[k] = ' ';
+            printf("excluded (the ROM's units): %s\n", names);
+        }
+    }
 }
 
 int main(void)
@@ -493,10 +554,8 @@ int main(void)
             ReleaseSemaphore(&st->ss);
         }
     }
-    if (args[2]) {
-        printf("UPConsole: EXCLUDE is not built yet\n");
-        rc = RETURN_WARN;
-    }
+    if (args[2])
+        rc = exclude((const char *)args[2]);
     if (args[1]) {
         const char *v = (const char *)args[1];
         if (word_is(v, "ON"))

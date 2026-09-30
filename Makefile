@@ -272,6 +272,11 @@ $(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ device/upconsole.c
 
+# D4.3's patch (tools/rig/devctl_rig.py; test only)
+$(BUILD)/amiga/patchcon: tests/amiga/patchcon.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/patchcon.c
+
 # D1.3's copy probe (tools/rig/snip_rig.py)
 $(BUILD)/amiga/snipprobe: tests/amiga/snipprobe.c handler/clip.c handler/clip.h
 	@mkdir -p $(BUILD)/amiga

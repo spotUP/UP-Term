@@ -453,16 +453,25 @@ Success: D2.3 identical tables; ledger D2 ticked.
 Success: D3.2 equal (or every difference justified); ledger D3 ticked.
 
 **Phase D4: installer and uninstall**
-- [ ] D4.1 `UPConsole DEVICE ON|OFF`, `EXCLUDE`, `STATUS` (DD15, DD16, DD21). Refusals
+- [x] D4.1 `UPConsole DEVICE ON|OFF`, `EXCLUDE`, `STATUS` (DD15, DD16, DD21). Refusals
       print one line naming the conflict.
+      **DONE 2026-09-30:** DEVICE ON/OFF (DD15, DD21), EXCLUDE name|CLEAR through the private
+      UPCMD_EXCLUDE/EXCLUDED on the library unit (no base offsets), STATUS lists the excluded
+      names. `tools/rig/devctl_rig.py` 12/12.
 - [ ] D4.2 Kit: Install question (default No), User-Startup block, Uninstall; README.
       `install_rig.py` extended: DEVICE ON after reboot, STATUS says on, Uninstall
       leaves the ROM device in the list (magic absent).
-- [ ] D4.3 Conflict tests: `tests/amiga/patchcon.c` SetFunctions RawKeyConvert to a stub
+- [x] D4.3 Conflict tests: `tests/amiga/patchcon.c` SetFunctions RawKeyConvert to a stub
       (test only), DEVICE ON must refuse and name the vector; restore; DEVICE ON twice
       refuses "already on"; DEVICE OFF with a unit open leaves our code until its Close
       (UPCMD_STATS through the open unit still answers; after Close the segment is gone:
       `Avail` back to the pre-install value).
+      **DONE 2026-09-30 (devctl_rig.py 12/12, KS 40.63):** patched RawKeyConvert -> DEVICE ON
+      refuses naming -48; ON twice -> "already"; DEVICE OFF with a unit open -> our code stays,
+      the unit keeps working ("echo still here"), and after its endcli free memory is back
+      within 2.3 KB of the value before DEVICE ON (the delayed Expunge path unloads too).
+      Deviation: "UPCMD_STATS through the open unit" was not sent (devwho opens a new library
+      unit, which is the ROM's by then); the working echo and the memory show the same.
 Success: D4.2/D4.3 green; ledger D4 ticked.
 
 **Phase D5: XCON: next to the device**

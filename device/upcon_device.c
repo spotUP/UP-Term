@@ -227,6 +227,19 @@ static struct upc_unit *new_unit(struct upc_base *b, LONG unitno, ULONG flags, s
     return u;
 }
 
+/* Is the opening task on the exclusion list (UPConsole EXCLUDE)? */
+static int excluded(struct upc_base *b)
+{
+    const char *me = FindTask(0)->tc_Node.ln_Name;
+    int i;
+    if (!me)
+        return 0;
+    for (i = 0; i < b->nexclude; i++)
+        if (!strcmp(b->exclude[i], me))
+            return 1;
+    return 0;
+}
+
 static void upc_open(__reg("a1") struct IOStdReq *io, __reg("d0") ULONG unitno,
                      __reg("d1") ULONG flags, __reg("a6") struct upc_base *b)
 {
@@ -237,6 +250,8 @@ static void upc_open(__reg("a1") struct IOStdReq *io, __reg("d0") ULONG unitno,
     io->io_Error = 0;
     /* the opener census (D1.7): who opens which unit with which flags */
     UPC_DBG("open", FindTask(0)->tc_Node.ln_Name ? FindTask(0)->tc_Node.ln_Name : "-", (unitno << 16) | (flags & 0xFFFF));
+    if (!(flags & UPCONFLAG_ROM) && excluded(b)) /* DD16: this program gets the ROM's unit */
+        flags |= UPCONFLAG_ROM;
     if (flags & UPCONFLAG_ROM) {
         /* DD16: the caller gets the ROM's unit and talks to the ROM from now on */
         io->io_Device = (struct Device *)b->rom;
@@ -399,6 +414,42 @@ static void upc_beginio(__reg("a1") struct IOStdReq *io, __reg("a6") struct upc_
             q->nsdqr_SupportedCommands = (APTR)supported;
             io->io_Actual = 16;
         }
+        done(io);
+        return;
+    }
+    case UPCMD_EXCLUDE: {
+        const char *name = (const char *)io->io_Data;
+        int i, known = 0;
+        Forbid(); /* Open reads the list */
+        if (!name || !io->io_Length || !name[0]) {
+            b->nexclude = 0;
+        } else {
+            for (i = 0; i < b->nexclude; i++)
+                known |= !strcmp(b->exclude[i], name);
+            if (known) {
+            } else if (b->nexclude == UPC_MAXEXCLUDE || strlen(name) >= UPC_EXCLUDE_LEN) {
+                io->io_Error = IOERR_BADLENGTH;
+            } else {
+                strcpy(b->exclude[b->nexclude++], name);
+            }
+        }
+        Permit();
+        done(io);
+        return;
+    }
+    case UPCMD_EXCLUDED: {
+        char *out = (char *)io->io_Data;
+        ULONG n = 0;
+        int i;
+        for (i = 0; i < b->nexclude; i++) {
+            ULONG k = strlen(b->exclude[i]);
+            if (n + k + 1 > io->io_Length)
+                break;
+            CopyMem(b->exclude[i], out + n, k);
+            n += k;
+            out[n++] = '\n';
+        }
+        io->io_Actual = n;
         done(io);
         return;
     }

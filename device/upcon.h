@@ -44,6 +44,8 @@ struct upc_base {
     int ih_added;
     ULONG written, answered, dropped;   /* UPCMD_STATS */
     ULONG events, mice, drags, pointer;
+    char exclude[UPC_MAXEXCLUDE][UPC_EXCLUDE_LEN]; /* task names the ROM serves (DD16) */
+    int nexclude;
 };
 
 struct upc_unit {
