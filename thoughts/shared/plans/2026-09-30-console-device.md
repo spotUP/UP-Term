@@ -226,10 +226,6 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       2026-09-30 -- a second rig disk, owner's step), vary the typed text to decode the fields.
 - [x] DP6 Boot matrix: `tools/rig/rig.py` gains `--kick <file>`; record which ROMs boot the
       rig's system to Workbench with amiagent.
-Success: every DP row has its numbers written here and in R-6; no code depends on an
-unmeasured value.
-
-**Phase H5: CON:/RAW: served by the XCON: handler (opt-in)**
       **Started 2026-09-30:** `rig.py start --kick <file>` added. The default ROM
       (`kick40068.A1200`) is 40.63 by its header. KS 47.115 (`~/Desktop/KICK_323.rom`, 3.2.3)
       boots the 3.1 system disk to amiagent, but 2 of about 8 boots hung on a black screen
@@ -239,6 +235,10 @@ unmeasured value.
       **DONE 2026-09-30:** 39.106 (console.device 39.28, dos 39.23) and 40.71 (console.device
       40.2) boot too; DP1, DP3 and DP4 give the same results on all four ROMs (CON/RAW stack
       3200 below 47, 4096 on 47; the rest identical). Logs build/rig/shots/*-ks<ver>.log.
+Success: every DP row has its numbers written here and in R-6; no code depends on an
+unmeasured value.
+
+**Phase H5: CON:/RAW: served by the XCON: handler (opt-in)**
 - [ ] H5.1 Handler knows its DOS name (from the startup packet's DeviceNode, `c->node`):
       CON/RAW default to AMIGA, RAW opens raw; XCON unchanged. In `parse_spec`
       (vtcon_handler.c ~l.474) defaults. Host-free; rig-checked in H5.6.
