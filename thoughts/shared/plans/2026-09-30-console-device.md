@@ -292,7 +292,7 @@ Success: H5.6 green on 3.0 and 3.1; on 3.2 green after H5.3 or refused with the 
 message; ledger H5 ticked.
 
 **Phase DX: one window core for XCON: and the device**
-- [ ] DX1 `render/vtwin.[ch]`: move the window-binding code out of vtcon_handler.c
+- [x] DX1 `render/vtwin.[ch]`: move the window-binding code out of vtcon_handler.c
       (cb_damage, cb_scroll, cb_bell, cb_title, report_defaults, cb_colors, cb_layout,
       the attach half of open_window, render, frame_start, output's feed/pacing part,
       special_key, keypad_key, copy_selection, paste's text source, console_key,
@@ -301,9 +301,19 @@ message; ledger H5 ticked.
       reports "bytes for the input" and "break key" through callbacks. No behaviour
       change: `make test`, `make test-rig`, `vttest_rig.py` 31/33 as before,
       `screen_rig.py`, `cube_rig.py`, `ptytest_rig.py` green.
-- [ ] DX2 vtwin key input takes (code, qualifier, prev-keys, keymap) instead of an
+      **DONE 2026-09-30 (with DX2):** `render/vtwin.[ch]` holds the window's engine, renderer,
+      fonts (spec + open), title, frame clock, layout/DECCOLM, selection, copy/paste, key and
+      mouse translation, raw reports; the owner's policy is `vtwin_host` (reply, input, key,
+      pasted, raw, resized). vtcon_handler.c 2534 -> 1954 lines; no moved function left in it.
+      Debug-only damage/scroll timers dropped. Checks: make test green, make test-rig PASS,
+      vttest_rig 32/33 (only m1-s04, the known raw-mode ONLCR case; recorded baseline 31/33),
+      screen_rig all ok, cube_rig 240/240, ptytest 33/33, autoprobe 2/2, concon 9/9,
+      install_rig 31/31.
+- [x] DX2 vtwin key input takes (code, qualifier, prev-keys, keymap) instead of an
       IntuiMessage, so the device feeds InputEvents and the handler IntuiMessages
       through one path.
+      **DONE 2026-09-30:** `vtwin_key(w, code, qual, prev, secs, micros)` -- the handler passes
+      the IntuiMessage fields (prev = *IAddress); a device unit passes InputEvent fields.
 Success: XCON: behaves identically (the listed rig checks), vtcon_handler.c smaller by the
 moved code, no duplicate of any moved function remains.
 

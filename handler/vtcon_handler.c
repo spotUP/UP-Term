@@ -42,6 +42,7 @@
 #include <string.h>
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
+#include "../render/vtwin.h"
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
@@ -90,12 +91,8 @@ static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.26) " STR(VTCON_BUILD)
 
 typedef struct con {
     struct MsgPort *port;
-    struct Window *win;
+    vtwin w;                     /* the window: engine, renderer, fonts, frame clock (render/vtwin.h) */
     struct Screen *locked;       /* the public screen we opened on */
-    struct TextFont *font;
-    int font_opened;
-    vt_term *t;
-    vr_render r;
     int opens;
     int raw;
     int wait_close;              /* WAIT: keep the window after the last Close */
@@ -110,9 +107,6 @@ typedef struct con {
     struct timerequest *rtimer;  /* VTIME for the first waiting read */
     int rtimer_busy, rtimer_fired;
     vt_u8 obuf[2048];            /* OPOST output of one chunk */
-    enum vt_personality pers;
-    int latin1;
-    int cp437;
     /* bytes ready for Read (complete lines in cooked mode) */
     vt_u8 in[IN_MAX];
     int in_len;
@@ -135,23 +129,9 @@ typedef struct con {
     struct MsgPort *rom_port;
     /* window spec */
     WORD wx, wy, ww, wh;
-    char title[80];
     char screen[64];
-    char fontname[40];
-    WORD fontsize;
-    /* FONT1..FONT9, FRAKTUR: the fonts SGR 11-19 and 20 draw with */
-    char altname[11][40];
-    WORD altsize[11];
-    struct TextFont *alt[11];
-    WORD want_cols;              /* DECCOLM asked for this width (0: none) */
     ULONG wflags;
     int inactive;
-    ULONG fg_rgb, bg_rgb;        /* DARK / FG / BG options, VR_KEEP = the screen's */
-    int layout_dirty;
-    int render_pending;          /* the grid is ahead of the screen */
-    struct MsgPort *frame_port;  /* the frame clock (timer.device) */
-    struct timerequest *frame;
-    int frame_open, frame_busy;            /* a CSI t/u/x/y changed the text area */
     int auto_open;               /* AUTO: no window until the first read or write */
     int auto_held;               /* DISK_INFO holds an AUTO window open until UNDISK_INFO (V47) */
     int auto_shut;               /* the close gadget shut an AUTO window: close it after idcmp() */
@@ -177,11 +157,9 @@ typedef struct con {
     ULONG foreign_idcmp;         /* its IDCMP before we added ours, to restore */
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
-    int dragging, drag_moved;    /* mouse selection */
-    int drag_ax, drag_ay;
     struct IOStdReq lib_io;      /* console.device CONU_LIBRARY, for RawKeyConvert */
 #ifdef VTCON_DEBUG
-    ULONG prof_out, prof_damage, prof_scroll, prof_writes, prof_bytes, prof_ndamage, prof_nscroll;
+    ULONG prof_out, prof_writes, prof_bytes;
 #endif
 } con;
 
@@ -300,40 +278,10 @@ static void in_append(con *c, const vt_u8 *b, int n)
     }
 }
 
-static void cb_damage(void *u, int x0, int y0, int x1, int y1)
-{
-#ifdef VTCON_DEBUG
-    con *c = (con *)u;
-    struct EClockVal e0, e1;
-    ReadEClock(&e0);
-#endif
-    vr_damage(&((con *)u)->r, x0, y0, x1, y1);
-#ifdef VTCON_DEBUG
-    ReadEClock(&e1);
-    c->prof_damage += e1.ev_lo - e0.ev_lo;
-    c->prof_ndamage++;
-#endif
-}
-
-static void cb_scroll(void *u, int top, int bot, int n)
-{
-#ifdef VTCON_DEBUG
-    con *c = (con *)u;
-    struct EClockVal e0, e1;
-    ReadEClock(&e0);
-#endif
-    vr_scroll(&((con *)u)->r, top, bot, n);
-#ifdef VTCON_DEBUG
-    ReadEClock(&e1);
-    c->prof_scroll += e1.ev_lo - e0.ev_lo;
-    c->prof_nscroll++;
-#endif
-}
-
 static int tty_active(con *c);
 static void service_reads(con *c);
 
-static void cb_reply(void *u, const vt_u8 *b, long n)
+static void h_reply(void *u, const vt_u8 *b, long n)
 {
     con *c = (con *)u;
     /* reports enter the read stream, as the console's do. In termios mode
@@ -349,71 +297,48 @@ static void cb_reply(void *u, const vt_u8 *b, long n)
     in_append(c, b, (int)n);
 }
 
-static void cb_bell(void *u)
+/* bytes straight into the read stream (raw reports, mouse, paste marks) */
+static void h_input(void *u, const vt_u8 *b, long n)
 {
     con *c = (con *)u;
-    DisplayBeep(c->win ? c->win->WScreen : 0);
+    in_append(c, b, (int)n);
+    service_reads(c);
 }
 
-static void cb_title(void *u, const char *s)
+static void typed(con *c, const vt_u8 *out, int n, long key, int mods);
+static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
+
+static void h_key(void *u, const vt_u8 *b, int n, long key, int mods)
+{
+    typed((con *)u, b, n, key, mods);
+}
+
+static void h_pasted(void *u, const vt_u8 *b, int n, long key)
 {
     con *c = (con *)u;
-    int i;
-    /* the title arrives as UTF-8; Intuition shows Latin-1 */
-    for (i = 0; *s && i < (int)sizeof(c->title) - 1; s++) {
-        unsigned char b = (unsigned char)*s;
-        if (b < 0x80) {
-            c->title[i++] = (char)b;
-        } else if ((b & 0xE0) == 0xC0 && s[1]) {
-            unsigned cp = ((b & 0x1F) << 6) | (s[1] & 0x3F);
-            c->title[i++] = (char)(cp < 0x100 ? cp : '?');
-            s++;
-        } else if ((b & 0xC0) != 0x80) {
-            c->title[i++] = '?';
-        }
-    }
-    c->title[i] = 0;
-    if (c->win)
-        SetWindowTitles(c->win, (UBYTE *)c->title, (UBYTE *)~0);
+    if (c->raw)
+        in_append(c, b, n);
+    else
+        cooked_key(c, b, n, key, 0);
+    service_reads(c);
 }
 
-static void resize(con *c);
+static int h_raw(void *u)
+{
+    return ((con *)u)->raw;
+}
+
 static void sync_size(con *c);
 static void post_sizewindow(con *c);
 
-/* The engine's idea of the default colours: what the pens show. */
-static void report_defaults(con *c)
-{
-    ULONG fg = vr_pen_rgb(&c->r, c->r.pen_default_fg), bg = vr_pen_rgb(&c->r, c->r.pen_default_bg);
-    vt_set_default_colors(c->t, fg, bg, fg);
-}
-
-/* A program changed the palette or the default colours (OSC 4, 10-12):
- * new pens, then the whole window redrawn (the engine marked it). */
-static void cb_colors(void *u)
+static void h_resized(void *u)
 {
     con *c = (con *)u;
-    ULONG fg = vt_default_color(c->t, 0), bg = vt_default_color(c->t, 1);
-    vr_palette_changed(&c->r);
-    vr_set_defaults(&c->r, fg, bg);
+    sync_size(c);
+    post_sizewindow(c);
 }
 
-/* Amiga page length, line length and offsets (CSI t / u / x / y): the text
- * area changes, as the console recomputes it (-1: back to automatic). The
- * resize happens after the write that asked for it (see output()). */
-static void cb_layout(void *u, int which, int value)
-{
-    con *c = (con *)u;
-    switch (which) {
-    case VT_LAYOUT_PAGE_LENGTH: c->r.lay_rows = (WORD)value; break;
-    case VT_LAYOUT_LINE_LENGTH: c->r.lay_cols = (WORD)value; break;
-    case VT_LAYOUT_LEFT_OFFSET: c->r.lay_x = (WORD)value; break;
-    case VT_LAYOUT_TOP_OFFSET: c->r.lay_y = (WORD)value; break;
-    case VT_LAYOUT_COLUMNS: c->want_cols = (WORD)value; break;
-    default: return;
-    }
-    c->layout_dirty = 1;
-}
+static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized };
 
 /* ---- the window -------------------------------------------------------------- */
 
@@ -542,13 +467,13 @@ static void parse_spec(con *c, const char *s)
     c->wy = 0;
     c->ww = 640;
     c->wh = 200;
-    copy_str(c->title, "vtcon", sizeof(c->title));
-    c->pers = VT_XTERM;
+    copy_str(c->w.title, "vtcon", sizeof(c->w.title));
+    c->w.pers = VT_XTERM;
     if (node_named(c, "CON") || node_named(c, "RAW"))
-        c->pers = VT_AMIGA; /* options below may still choose another */
+        c->w.pers = VT_AMIGA; /* options below may still choose another */
     if (node_named(c, "RAW"))
         c->raw = 1;
-    c->fg_rgb = c->bg_rgb = VR_KEEP;
+    c->w.fg_rgb = c->w.bg_rgb = VR_KEEP;
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;
     for (;;) {
@@ -580,7 +505,7 @@ static void parse_spec(con *c, const char *s)
             }
         } else if (fno == 4) {
             if (n)
-                copy_str(c->title, field, sizeof(c->title));
+                copy_str(c->w.title, field, sizeof(c->w.title));
         } else if (str_ieq(field, "CLOSE")) {
             c->wflags |= WFLG_CLOSEGADGET;
         } else if (str_ieq(field, "WAIT")) {
@@ -616,35 +541,35 @@ static void parse_spec(con *c, const char *s)
         } else if (str_ieq(field, "SIMPLE") || str_ieq(field, "SMART")) {
             /* SMART refresh always: the cell grid redraws on refresh anyway */
         } else if (str_ieq(field, "XTERM")) {
-            c->pers = VT_XTERM;
+            c->w.pers = VT_XTERM;
         } else if (str_ieq(field, "AMIGA")) {
-            c->pers = VT_AMIGA;
+            c->w.pers = VT_AMIGA;
         } else if (str_ieq(field, "PCANSI")) {
-            c->pers = VT_PCANSI;
+            c->w.pers = VT_PCANSI;
         } else if (str_ieq(field, "LATIN1")) {
-            c->latin1 = 1;
+            c->w.latin1 = 1;
         } else if (str_ieq(field, "DARK")) {
-            c->fg_rgb = 0xC0C0C0UL; /* light grey on black */
-            c->bg_rgb = 0x000000UL;
+            c->w.fg_rgb = 0xC0C0C0UL; /* light grey on black */
+            c->w.bg_rgb = 0x000000UL;
             colours = 1;
         } else if (str_ieq(field, "LIGHT")) {
             colours = 1; /* the screen's text and background pens */
         } else if (str_ipre(field, "FG", &rest)) {
-            c->fg_rgb = parse_rgb(rest);
+            c->w.fg_rgb = parse_rgb(rest);
             colours = 1;
         } else if (str_ipre(field, "BG", &rest)) {
-            c->bg_rgb = parse_rgb(rest);
+            c->w.bg_rgb = parse_rgb(rest);
             colours = 1;
         } else if (str_ieq(field, "CP437")) {
-            c->cp437 = 1;
+            c->w.cp437 = 1;
         } else if (str_ipre(field, "SCREEN", &rest)) {
             copy_str(c->screen, rest, sizeof(c->screen));
         } else if ((k = alt_font_option(field, &rest)) != 0) {
             /* FONT1..FONT9 name.font size: SGR 11-19; FRAKTUR: SGR 20 */
-            parse_font(rest, c->altname[k], sizeof(c->altname[k]), &c->altsize[k]);
+            parse_font(rest, c->w.altname[k], sizeof(c->w.altname[k]), &c->w.altsize[k]);
         } else if (str_ipre(field, "FONT", &rest)) {
             /* FONT name.font size */
-            parse_font(rest, c->fontname, sizeof(c->fontname), &c->fontsize);
+            parse_font(rest, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
         }
         fno++;
         if (*s != '/')
@@ -655,54 +580,10 @@ static void parse_spec(con *c, const char *s)
      * program colours sat on the Workbench's grey). The amiga personality
      * keeps the screen's pens: CON: programs draw with pens 0-3 as the
      * Workbench has them. LIGHT asks for the screen's pens anywhere. */
-    if (!colours && c->pers != VT_AMIGA) {
-        c->fg_rgb = 0xC0C0C0UL;
-        c->bg_rgb = 0x000000UL;
+    if (!colours && c->w.pers != VT_AMIGA) {
+        c->w.fg_rgb = 0xC0C0C0UL;
+        c->w.bg_rgb = 0x000000UL;
     }
-}
-
-/* A fixed-width font by name ("topaz" or "topaz.font") and size; 0 if it
- * cannot be opened or is proportional. */
-static struct TextFont *open_named(const char *fontname, WORD fontsize)
-{
-    struct TextFont *f = 0;
-    if (fontname[0]) {
-        struct TextAttr ta;
-        char name[48];
-        int i;
-        copy_str(name, fontname, sizeof(name) - 6);
-        for (i = 0; name[i]; i++)
-            ;
-        if (i < 5 || !str_ieq(name + i - 5, ".font"))
-            copy_str(name + i, ".font", 6);
-        ta.ta_Name = (STRPTR)name;
-        ta.ta_YSize = (UWORD)(fontsize ? fontsize : 8);
-        ta.ta_Style = 0;
-        ta.ta_Flags = 0;
-        f = OpenFont(&ta);
-        if ((!f || f->tf_YSize != ta.ta_YSize) && DiskfontBase) {
-            if (f)
-                CloseFont(f);
-            f = OpenDiskFont(&ta);
-        }
-        if (f && (f->tf_Flags & FPF_PROPORTIONAL)) {
-            CloseFont(f);
-            f = 0;
-        }
-    }
-    return f;
-}
-
-static struct TextFont *open_font(con *c)
-{
-    struct TextFont *f = open_named(c->fontname, c->fontsize);
-    if (f) {
-        c->font_opened = 1;
-        return f;
-    }
-    /* The system default font: the one the user chose for text, as the
-     * Shell uses it. It is fixed width by definition. */
-    return GfxBase->DefaultFont;
 }
 
 static void le_out(void *u, const unsigned char *b, long n);
@@ -713,8 +594,8 @@ static int open_window(con *c)
 {
     struct Screen *scr;
     struct TagItem tags[14];
+    struct Window *win;
     int n = 0;
-    struct vt_callbacks cb;
 
     DBG("lockpub", 0, 0);
     scr = LockPubScreen(c->screen[0] ? (UBYTE *)c->screen : 0);
@@ -723,23 +604,23 @@ static int open_window(con *c)
     if (!scr)
         return 0;
     c->locked = scr;
-    c->font = open_font(c);
+    vtwin_open_font(&c->w);
     if (c->foreign) {
         /* WINDOW 0xaddr: use it as it is; add the IDCMP we need */
-        c->win = c->foreign;
-        c->foreign_idcmp = c->win->IDCMPFlags;
-        if (!ModifyIDCMP(c->win, c->foreign_idcmp | IDCMP_RAWKEY | IDCMP_NEWSIZE |
+        win = c->foreign;
+        c->foreign_idcmp = win->IDCMPFlags;
+        if (!ModifyIDCMP(win, c->foreign_idcmp | IDCMP_RAWKEY | IDCMP_NEWSIZE |
                          IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS |
                          IDCMP_MOUSEMOVE))
             return 0;
-        SetFont(c->win->RPort, c->font);
+        SetFont(win->RPort, c->w.font);
         goto have_window;
     }
     tags[n].ti_Tag = WA_Left;        tags[n++].ti_Data = c->wx;
     tags[n].ti_Tag = WA_Top;         tags[n++].ti_Data = c->wy;
     tags[n].ti_Tag = WA_Width;       tags[n++].ti_Data = c->ww;
     tags[n].ti_Tag = WA_Height;      tags[n++].ti_Data = c->wh;
-    tags[n].ti_Tag = WA_Title;       tags[n++].ti_Data = (ULONG)c->title;
+    tags[n].ti_Tag = WA_Title;       tags[n++].ti_Data = (ULONG)c->w.title;
     tags[n].ti_Tag = WA_Flags;       tags[n++].ti_Data = c->wflags;
     tags[n].ti_Tag = WA_IDCMP;       tags[n++].ti_Data = IDCMP_RAWKEY | IDCMP_NEWSIZE |
         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE | IDCMP_ACTIVEWINDOW |
@@ -751,76 +632,29 @@ static int open_window(con *c)
     tags[n].ti_Tag = WA_MaxHeight;   tags[n++].ti_Data = (ULONG)~0;
     tags[n].ti_Tag = WA_AutoAdjust;  tags[n++].ti_Data = TRUE;
     tags[n].ti_Tag = TAG_DONE;       tags[n].ti_Data = 0;
-    DBG("openwindow", scr, c->font);
-    c->win = OpenWindowTagList(0, tags);
-    DBG("window", c->win, 0);
-    if (!c->win)
+    DBG("openwindow", scr, c->w.font);
+    win = OpenWindowTagList(0, tags);
+    DBG("window", win, 0);
+    if (!win)
         return 0;
 have_window:
-
-    cb.damage = cb_damage;
-    cb.scroll = cb_scroll;
-    cb.reply = cb_reply;
-    cb.bell = cb_bell;
-    cb.title = cb_title;
-    cb.layout = cb_layout;
-    cb.colors = cb_colors;
-    {
-        /* size from the window before the engine exists */
-        struct Window *w = c->win;
-        int cols = (w->Width - w->BorderLeft - w->BorderRight) / c->font->tf_XSize;
-        int rows = (w->Height - w->BorderTop - w->BorderBottom) / c->font->tf_YSize;
-        DBG("grid", cols, rows);
-        c->t = vt_new(cols > 0 ? cols : 1, rows > 0 ? rows : 1, 500, &cb, c);
-    }
-    if (!c->t) {
+    if (!vtwin_attach(&c->w, win)) {
+        c->w.win = win; /* close_window closes it */
         close_window(c); /* no window without its grid: read/write retry the open */
         return 0;
     }
-    DBG("vt_new", c->t, 0);
-    vt_set_personality(c->t, c->pers);
-    if (c->pers == VT_XTERM)
-        vt_set_onlcr(c->t, 1); /* LF out as CR LF, as a Unix tty does */
-    if (c->pers == VT_XTERM && c->latin1)
-        vt_set_charset(c->t, VT_CS_LATIN1);
-    else if (c->pers == VT_XTERM && c->cp437)
-        vt_set_charset(c->t, VT_CS_CP437);
-    vr_init(&c->r, c->win, c->font, c->t, c->pers == VT_PCANSI ? VT_ENC_CP437 : VT_ENC_LATIN1);
-    {
-        int k;
-        for (k = 1; k <= 10; k++) {
-            if (!c->alt[k] && c->altname[k][0])
-                c->alt[k] = open_named(c->altname[k], c->altsize[k] ? c->altsize[k] : c->font->tf_YSize);
-            vr_set_alt_font(&c->r, k, c->alt[k]);
-            if (c->altname[k][0])
-                DBG("altfont", k, c->r.alt_font[k] ? (LONG)c->r.alt_font[k] : -(LONG)c->alt[k] - 1);
-        }
-    }
-    vr_set_defaults(&c->r, c->fg_rgb, c->bg_rgb);
-    report_defaults(c);
-    vt_set_cell_pixels(c->t, c->font->tf_XSize, c->font->tf_YSize);
-    le_init(&c->le, c->t, le_out, c);
-    c->le.utf8 = c->pers == VT_XTERM && !c->latin1 && !c->cp437;
+    DBG("vt_new", c->w.t, 0);
+    le_init(&c->le, c->w.t, le_out, c);
+    c->le.utf8 = c->w.pers == VT_XTERM && !c->w.latin1 && !c->w.cp437;
     history_load(c); /* the saved history, read by a worker */
-    DBG("vr_init", c->r.cols, c->r.rows);
-    vr_redraw(&c->r);
-    DBG("redrawn", 0, 0);
-    vr_cursor_on(&c->r);
+    DBG("vr_init", c->w.r.cols, c->w.r.rows);
     return 1;
 }
 
 static void close_window(con *c)
 {
-    /* the frame clock draws (cursor blink) through the renderer freed
-     * below: stop it; an AUTO window closes mid-life and opens again
-     * (the reopened window hung the handler on the rig, 2026-09-30) */
-    if (c->frame_busy) {
-        AbortIO((struct IORequest *)c->frame);
-        WaitIO((struct IORequest *)c->frame);
-        c->frame_busy = 0;
-    }
-    c->render_pending = 0;
-    DBG("close_window", c->win, c->t);
+    struct Window *win = c->w.win;
+    DBG("close_window", win, c->w.t);
     if (c->input_io) {
         if (c->winch_added) {
             c->input_io->io_Command = IND_REMHANDLER;
@@ -845,28 +679,12 @@ static void close_window(con *c)
         DeleteMsgPort(c->rom_port);
         c->rom_port = 0;
     }
-    if (c->t) {
-        vr_free(&c->r);
-        vt_free(c->t);
-        c->t = 0;
-    }
-    if (c->win) {
-        if (c->win == c->foreign)
-            ModifyIDCMP(c->win, c->foreign_idcmp); /* hand it back as we found it */
+    vtwin_detach(&c->w); /* engine, renderer, fonts; the frame clock stops */
+    if (win) {
+        if (win == c->foreign)
+            ModifyIDCMP(win, c->foreign_idcmp); /* hand it back as we found it */
         else
-            CloseWindow(c->win);
-        c->win = 0;
-    }
-    if (c->font && c->font_opened)
-        CloseFont(c->font);
-    c->font = 0;
-    {
-        int k;
-        for (k = 1; k <= 10; k++)
-            if (c->alt[k]) {
-                CloseFont(c->alt[k]);
-                c->alt[k] = 0;
-            }
+            CloseWindow(win);
     }
     if (c->locked) {
         UnlockPubScreen(0, c->locked);
@@ -876,74 +694,17 @@ static void close_window(con *c)
 
 /* ---- output ---------------------------------------------------------------- */
 
-#define FRAME_MICROS 50000 /* 20 frames per second */
-
-static void frame_start(con *c);
-
-/* Draw what the grid has that the screen has not. */
-static void render(con *c)
-{
-    if (!c->render_pending || !c->t)
-        return;
-    c->render_pending = 0;
-    vr_cursor_off(&c->r);
-    vt_flush(c->t);
-    vr_cursor_on(&c->r);
-    if (c->r.has_blink || vr_cursor_blinks(&c->r))
-        frame_start(c); /* blinking cells or cursor: the frames keep coming */
-}
-
-static void frame_start(con *c)
-{
-    if (!c->frame_open || c->frame_busy)
-        return;
-    c->frame->tr_node.io_Command = TR_ADDREQUEST;
-    c->frame->tr_time.tv_secs = 0;
-    c->frame->tr_time.tv_micro = FRAME_MICROS;
-    SendIO((struct IORequest *)c->frame);
-    c->frame_busy = 1;
-}
-
 static void output(con *c, const vt_u8 *b, long n)
 {
 #ifdef VTCON_DEBUG
     struct EClockVal e0, e1;
     ReadEClock(&e0);
 #endif
-    if (!c->t)
+    if (!c->w.t)
         return;
-    if (c->r.view) {
-        /* new output shows the live screen, as xterm does; the engine's
-         * pending batch goes first (ignored by the renderer while the view
-         * is back), then the view redraws from the grid */
-        render(c);
-        vr_set_view(&c->r, 0);
-    }
     if (!c->le.len)
         c->le.started = 0; /* the next line starts wherever this output ends */
-    /* Frame-paced: the grid changes now, the screen at the next frame
-     * (render()), so a flood of one-line writes costs one scroll blit
-     * per frame instead of one per line (the chip bus of a 4-plane hires
-     * screen could not keep up: 45 ms per scroll, cycle-exact rig). */
-    vt_feed(c->t, b, n);
-    c->render_pending = 1;
-    if (c->layout_dirty) {
-        c->layout_dirty = 0;
-        render(c);
-        if (c->want_cols && c->win) {
-            /* DECCOLM: the window as wide as that many columns (as far
-             * as the screen allows); its new size resizes the grid */
-            struct Window *w = c->win;
-            WORD width = (WORD)(c->want_cols * c->font->tf_XSize + w->BorderLeft + w->BorderRight);
-            if (width > w->WScreen->Width - w->LeftEdge)
-                width = (WORD)(w->WScreen->Width - w->LeftEdge);
-            c->want_cols = 0;
-            ChangeWindowBox(w, w->LeftEdge, w->TopEdge, width, w->Height);
-        } else {
-            resize(c); /* not inside vt_feed: the engine is mid-parse there */
-        }
-    }
-    frame_start(c);
+    vtwin_write(&c->w, b, n);
 #ifdef VTCON_DEBUG
     ReadEClock(&e1);
     c->prof_out += e1.ev_lo - e0.ev_lo;
@@ -1084,8 +845,8 @@ static void tty_leave(con *c)
     rtimer_stop(c);
     c->tty = 0;
     c->tty_owner = 0;
-    if (c->t)
-        vt_set_onlcr(c->t, c->pers == VT_XTERM);
+    if (c->w.t)
+        vt_set_onlcr(c->w.t, c->w.pers == VT_XTERM);
 }
 
 /* In termios mode, while the program that set it runs. */
@@ -1116,8 +877,8 @@ static void tty_enter(con *c, struct Task *owner)
         c->ld.echo = e;
         c->tty = 1;
         c->tty_ocol = 0;
-        if (c->t)
-            vt_set_onlcr(c->t, 0); /* OPOST decides now (vttest m1 s04: raw LF is LF) */
+        if (c->w.t)
+            vt_set_onlcr(c->w.t, 0); /* OPOST decides now (vttest m1 s04: raw LF is LF) */
     }
     c->tty_owner = owner;
 }
@@ -1456,7 +1217,7 @@ static void type_text(con *c, const char *s)
 {
     for (; *s; s++) {
         vt_u8 out[8];
-        int k = vt_encode_key(c->t, (unsigned char)*s, 0, out);
+        int k = vt_encode_key(c->w.t, (unsigned char)*s, 0, out);
         if (!c->raw && le_key(&c->le, (unsigned char)*s, 0, out, k)) {
             in_append(c, c->le.buf, c->le.len);
             le_reset(&c->le);
@@ -1485,7 +1246,7 @@ static void finish_completion(con *c)
         }
         if (q == c->check) {
             c->check_busy = 0;
-            if (!c->t)
+            if (!c->w.t)
                 continue; /* the window closed (AUTO): no line to colour */
             if (!c->raw) {
                 unsigned char w[64];
@@ -1503,7 +1264,7 @@ static void finish_completion(con *c)
         }
         c->comp_busy = 0;
         c->menu_n = 0;
-        if (!c->t)
+        if (!c->w.t)
             continue; /* the window closed (AUTO): the answer has no line */
         if (c->edits != c->comp_edits)
             continue; /* the line changed while it ran (rig: typed text got the
@@ -1515,13 +1276,13 @@ static void finish_completion(con *c)
             c->menu_i = -1;
         }
         if (!q->add[0] && q->matches != 1) {
-            DisplayBeep(c->win ? c->win->WScreen : 0); /* none, or several with no more in common */
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* none, or several with no more in common */
             continue;
         }
         type_text(c, q->add);
         check_command(c); /* the completed word gets its colour */
         if (q->matches > 1)
-            DisplayBeep(c->win ? c->win->WScreen : 0); /* completed as far as they agree */
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* completed as far as they agree */
     }
 }
 
@@ -1544,7 +1305,7 @@ static void menu_tab(con *c)
             unsigned char enc[COMPLETE_MAX * 2];
             int n = 0;
             for (; *name && n < (int)sizeof(enc) - 3; name++)
-                n += vt_encode_key(c->t, (unsigned char)*name, 0, enc + n);
+                n += vt_encode_key(c->w.t, (unsigned char)*name, 0, enc + n);
             le_replace_word(&c->le, word_start(&c->le) < c->menu_start ? word_start(&c->le)
                                                                           : c->menu_start,
                             enc, n);
@@ -1581,59 +1342,6 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 
 /* ---- keyboard ------------------------------------------------------------------- */
 
-static long special_key(UWORD code)
-{
-    switch (code) {
-    case 0x4C: return VT_KEY_UP;
-    case 0x4D: return VT_KEY_DOWN;
-    case 0x4E: return VT_KEY_RIGHT;
-    case 0x4F: return VT_KEY_LEFT;
-    case 0x41: return VT_KEY_BACKSPACE;
-    case 0x42: return VT_KEY_TAB;
-    case 0x43: return VT_KEY_KP_ENTER;
-    case 0x44: return VT_KEY_RETURN;
-    case 0x45: return VT_KEY_ESCAPE;
-    case 0x46: return VT_KEY_DELETE;
-    case 0x47: return VT_KEY_INSERT;
-    case 0x48: return VT_KEY_PAGE_UP;
-    case 0x49: return VT_KEY_PAGE_DOWN;
-    case 0x4B: return VT_KEY_F11;
-    case 0x5F: return VT_KEY_HELP;
-    case 0x6F: return VT_KEY_F12;
-    case 0x70: return VT_KEY_HOME;
-    case 0x71: return VT_KEY_END;
-    default: break;
-    }
-    if (code >= 0x50 && code <= 0x59)
-        return VT_KEY_F1 + (code - 0x50);
-    return 0;
-}
-
-/* Amiga numeric keypad raw codes (the A1200/A500 layout). */
-static long keypad_key(UWORD code)
-{
-    switch (code) {
-    case 0x0F: return VT_KEY_KP_0;
-    case 0x1D: return VT_KEY_KP_1;
-    case 0x1E: return VT_KEY_KP_2;
-    case 0x1F: return VT_KEY_KP_3;
-    case 0x2D: return VT_KEY_KP_4;
-    case 0x2E: return VT_KEY_KP_5;
-    case 0x2F: return VT_KEY_KP_6;
-    case 0x3D: return VT_KEY_KP_7;
-    case 0x3E: return VT_KEY_KP_8;
-    case 0x3F: return VT_KEY_KP_9;
-    case 0x3C: return VT_KEY_KP_DOT;
-    case 0x4A: return VT_KEY_KP_MINUS;
-    case 0x5E: return VT_KEY_KP_PLUS;
-    case 0x5D: return VT_KEY_KP_STAR;
-    case 0x5C: return VT_KEY_KP_SLASH;
-    case 0x5A: return VT_KEY_KP_LPAREN;
-    case 0x5B: return VT_KEY_KP_RPAREN;
-    default: return 0;
-    }
-}
-
 static void send_break(con *c, ULONG sig)
 {
 #ifdef VTCON_DEBUG
@@ -1646,194 +1354,10 @@ static void send_break(con *c, ULONG sig)
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
 
-/* The selection's text to the clipboard, as Latin-1 (the clipboard's). */
-static void copy_selection(con *c)
+/* A typed key, encoded by the window (vtwin_key): the break keys, the
+ * line discipline, the line editor or the raw stream. */
+static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
 {
-    /* allocated, not static: every window's process runs this code */
-    char *utf, *lat;
-    int ax, ay, bx, by;
-    long n, i, k = 0;
-    if (!vr_selection(&c->r, &ax, &ay, &bx, &by))
-        return;
-    utf = (char *)AllocVec(16384, MEMF_ANY);
-    if (!utf)
-        return;
-    lat = utf; /* converted in place: Latin-1 is never longer */
-    n = vt_copy_text(c->t, ax, ay, bx, by, utf, 16384);
-    for (i = 0; i < n; i++) {
-        unsigned char b = (unsigned char)utf[i];
-        if (b < 0x80) {
-            lat[k++] = (char)b;
-        } else if ((b & 0xE0) == 0xC0 && i + 1 < n) {
-            unsigned cp = ((b & 0x1F) << 6) | (utf[i + 1] & 0x3F);
-            lat[k++] = (char)(cp < 0x100 ? cp : '?');
-            i++;
-        } else if ((b & 0xC0) != 0x80) {
-            lat[k++] = '?'; /* beyond Latin-1 */
-        }
-    }
-    clip_write(lat, k);
-    FreeVec(utf);
-}
-
-/* The clipboard, typed into the program: Return for each line break, and
- * bracketed when the program asked for it (?2004). */
-static void paste(con *c)
-{
-    char *text = (char *)AllocVec(8192, MEMF_ANY); /* not static: see copy_selection */
-    long n, i;
-    vt_u8 out[40];
-    int k;
-    if (!text)
-        return;
-    n = clip_read(text, 8192);
-    if (n <= 0) {
-        FreeVec(text);
-        return;
-    }
-    if (c->raw) {
-        k = vt_encode_paste(c->t, 0, out);
-        in_append(c, out, k);
-    }
-    for (i = 0; i < n; i++) {
-        unsigned char ch = (unsigned char)text[i];
-        long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '\r')
-            continue;
-        k = vt_encode_key(c->t, key, 0, out);
-        if (c->raw)
-            in_append(c, out, k);
-        else
-            cooked_key(c, out, k, key == VT_KEY_RETURN ? key : 0, 0);
-    }
-    if (c->raw) {
-        k = vt_encode_paste(c->t, 1, out);
-        in_append(c, out, k);
-    }
-    FreeVec(text);
-    service_reads(c);
-}
-
-/* Right Amiga C/V copy and paste, Right Amiga Up/Down and Shift+PgUp/PgDn
- * move through the scrollback. Returns 1 when the key was the console's. */
-static int console_key(con *c, UWORD code, UWORD qual)
-{
-    int page = c->r.rows > 1 ? c->r.rows - 1 : 1;
-    if (qual & IEQUALIFIER_RCOMMAND) {
-        switch (code) {
-        case 0x33: copy_selection(c); return 1;
-        case 0x34: paste(c); return 1;
-        case 0x4C: vr_set_view(&c->r, c->r.view + 1); return 1;
-        case 0x4D: vr_set_view(&c->r, c->r.view - 1); return 1;
-        default: return 0;
-        }
-    }
-    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) {
-        if (code == 0x48) {
-            vr_set_view(&c->r, c->r.view + page);
-            return 1;
-        }
-        if (code == 0x49) {
-            vr_set_view(&c->r, c->r.view - page);
-            if (!c->r.view)
-                vr_cursor_on(&c->r);
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static void key_event(con *c, struct IntuiMessage *im)
-{
-    UWORD code = im->Code, qual = im->Qualifier;
-    long key;
-    int mods = 0, n = 0;
-    vt_u8 out[40];
-    if ((qual & IEQUALIFIER_REPEAT) && !(vt_modes(c->t) & VT_MODE_AUTOREPEAT))
-        return; /* DECARM off: a held key types once */
-    if (vt_raw_events(c->t) & (1UL << 1)) {
-        /* the program asked for raw keyboard events (CSI 1 {): an input
-         * event report per key, press and release (matrix 5.2) */
-        char b[80];
-        int k = 0;
-        long v[8];
-        int i;
-        v[0] = 1;
-        v[1] = 0;
-        v[2] = code;
-        v[3] = qual;
-        v[4] = v[5] = 0;
-        if (im->IAddress) {
-            /* the previous two down keys (dead keys): one ULONG, prev1
-             * code and qualifier in the high word, prev2 in the low */
-            ULONG pv = *(ULONG *)im->IAddress;
-            v[4] = (long)(pv >> 16);
-            v[5] = (long)(pv & 0xFFFF);
-        }
-        v[6] = (long)im->Seconds;
-        v[7] = (long)im->Micros;
-        b[k++] = (char)0x9B;
-        for (i = 0; i < 8; i++) {
-            char d[12];
-            int m = 0;
-            unsigned long x = (unsigned long)v[i];
-            if (i)
-                b[k++] = ';';
-            do {
-                d[m++] = (char)('0' + x % 10);
-                x /= 10;
-            } while (x);
-            while (m)
-                b[k++] = d[--m];
-        }
-        b[k++] = '|';
-        in_append(c, (const vt_u8 *)b, k);
-        service_reads(c);
-        return;
-    }
-    if (code & IECODE_UP_PREFIX)
-        return;
-    if (console_key(c, code, qual))
-        return; /* copy, paste, scrollback: the console's own keys */
-    if (c->r.view)
-        vr_set_view(&c->r, 0);
-    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-        mods |= VT_MOD_SHIFT;
-    if (qual & IEQUALIFIER_CONTROL)
-        mods |= VT_MOD_CTRL;
-    /* Meta (the ESC prefix, VT_MOD_ALT) is Left Amiga + key: Alt belongs
-     * to the keymap, where many layouts type ; @ { [ with it (the rig's
-     * ';' is Alt + 0x29; Alt-as-Meta turned it into ESC + o-umlaut). */
-    if (qual & IEQUALIFIER_LCOMMAND)
-        mods |= VT_MOD_ALT;
-    key = special_key(code);
-    if (!key && c->pers == VT_XTERM && (vt_modes(c->t) & VT_MODE_APP_KEYPAD))
-        key = keypad_key(code); /* DECKPAM: the keypad sends SS3 codes */
-    if (key) {
-        n = vt_encode_key(c->t, key, mods, out);
-    } else {
-        /* Character keys go through the keymap (dead keys, Alt chars). */
-        struct InputEvent ie;
-        UBYTE buf[16];
-        LONG k, i;
-        ie.ie_NextEvent = 0;
-        ie.ie_Class = IECLASS_RAWKEY;
-        ie.ie_SubClass = 0;
-        ie.ie_Code = code;
-        /* the keymap sees Alt (national characters); Left Amiga, our
-         * Meta, it does not */
-        ie.ie_Qualifier = (UWORD)(qual & ~IEQUALIFIER_LCOMMAND);
-        ie.ie_EventAddress = *(APTR *)im->IAddress;
-        k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), 0);
-        for (i = 0; i < k && n < (int)sizeof(out) - 8; i++) {
-            /* The keymap already applied Ctrl: pass the character, with
-             * Meta only (vt_encode_key adds the ESC for xterm). */
-            n += vt_encode_key(c->t, buf[i], (c->pers == VT_XTERM) ? (mods & VT_MOD_ALT) : 0,
-                               out + n);
-        }
-    }
-    if (!n)
-        return;
     if (tty_active(c)) {
         /* a Unix program's terminal: the line discipline takes the key (ISIG
          * makes ^C a break, ^\\ and ^Z signals; the rest is input) */
@@ -1849,7 +1373,7 @@ static void key_event(con *c, struct IntuiMessage *im)
      * without ISIG does. ^\ and ^Z are the CTRL_E and CTRL_F breaks too, as
      * in termios mode (VQUIT, VSUSP): a shell running a job that never set
      * termios still hears the suspend key (vsh S8). */
-    if (n == 1 && !key && (!c->raw || c->pers != VT_XTERM)) {
+    if (n == 1 && !key && (!c->raw || c->w.pers != VT_XTERM)) {
         ULONG brk = 0;
         if (out[0] >= 0x03 && out[0] <= 0x06)
             brk = SIGBREAKF_CTRL_C << (out[0] - 0x03);
@@ -1873,122 +1397,43 @@ static void key_event(con *c, struct IntuiMessage *im)
 
 /* ---- IDCMP ------------------------------------------------------------------------ */
 
-/* An Amiga input event report (matrix 5.2) for a window class, when the
- * program asked for that class with CSI n { (ixemul asks for 12, resize). */
-static int raw_report(con *c, int cls)
-{
-    char b[48];
-    int n = 0, k;
-    static const char tail[] = ";0;0;0;0;0;0;0|";
-    if (!(vt_raw_events(c->t) & (1UL << cls)))
-        return 0;
-    b[n++] = (char)0x9B;
-    if (cls >= 10)
-        b[n++] = (char)('0' + cls / 10);
-    b[n++] = (char)('0' + cls % 10);
-    for (k = 0; tail[k]; k++)
-        b[n++] = tail[k];
-    in_append(c, (const vt_u8 *)b, n);
-    service_reads(c);
-    return 1;
-}
-
-static void resize(con *c)
-{
-    if (vr_layout(&c->r)) {
-        vt_resize(c->t, c->r.cols, c->r.rows);
-        sync_size(c);
-        post_sizewindow(c);
-    }
-    vr_redraw(&c->r);
-    vr_cursor_on(&c->r);
-    raw_report(c, 12); /* IECLASS_SIZEWINDOW */
-}
-
-/* The mouse: reports to a program that asked for them (Shift held gives
- * the mouse back to selection, as in xterm), else drag-to-select. */
-static void mouse_event(con *c, struct IntuiMessage *im)
-{
-    int x, y, btn = -1, kind = 0, n;
-    vt_u8 out[40];
-    int shift = (im->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0;
-    int in = vr_cell_at(&c->r, im->MouseX, im->MouseY, &x, &y);
-    if (im->Class == IDCMP_MOUSEMOVE) {
-        if (c->dragging && in) {
-            vr_select(&c->r, 1, c->drag_ax, c->drag_ay, x, y - c->r.view);
-            c->drag_moved = 1;
-        }
-        return;
-    }
-    if (im->Code == SELECTDOWN) { btn = 0; kind = 0; }
-    else if (im->Code == SELECTUP) { btn = 0; kind = 1; }
-    else if (im->Code == MENUDOWN) { btn = 2; kind = 0; }
-    else if (im->Code == MENUUP) { btn = 2; kind = 1; }
-    if (btn < 0)
-        return;
-    if (!shift && in && !c->dragging) {
-        n = vt_encode_mouse(c->t, btn, kind, x, y, 0, out);
-        if (n) {
-            in_append(c, out, n);
-            service_reads(c);
-            return;
-        }
-    }
-    if (btn != 0)
-        return;
-    if (kind == 0 && in) {
-        c->dragging = 1;
-        c->drag_moved = 0;
-        c->drag_ax = x;
-        c->drag_ay = y - c->r.view;
-        vr_select(&c->r, 0, 0, 0, 0, 0);
-        ReportMouse(TRUE, c->win);
-    } else if (kind == 1 && c->dragging) {
-        c->dragging = 0;
-        ReportMouse(FALSE, c->win);
-        if (!c->drag_moved)
-            vr_select(&c->r, 0, 0, 0, 0, 0); /* a click clears the selection */
-    }
-}
-
 static void idcmp(con *c)
 {
     struct IntuiMessage *im;
-    if (c->win && !IsListEmpty(&c->win->UserPort->mp_MsgList))
-        render(c); /* resize, refresh, selection: on the current screen */
-    while (c->win && (im = (struct IntuiMessage *)GetMsg(c->win->UserPort))) {
+    if (c->w.win && !IsListEmpty(&c->w.win->UserPort->mp_MsgList))
+        vtwin_render(&c->w); /* resize, refresh, selection: on the current screen */
+    while (c->w.win && (im = (struct IntuiMessage *)GetMsg(c->w.win->UserPort))) {
         ULONG cls = im->Class;
         switch (cls) {
         case IDCMP_RAWKEY:
-            key_event(c, im);
+            /* IAddress: the previous two down keys (dead keys) */
+            vtwin_key(&c->w, im->Code, im->Qualifier, im->IAddress ? *(ULONG *)im->IAddress : 0,
+                      im->Seconds, im->Micros);
             break;
         case IDCMP_NEWSIZE:
-            resize(c);
+            vtwin_resize(&c->w);
             break;
         case IDCMP_REFRESHWINDOW:
-            BeginRefresh(c->win);
-            vr_redraw(&c->r);
-            EndRefresh(c->win, TRUE);
-            vr_cursor_on(&c->r);
+            vtwin_refresh(&c->w);
             break;
         case IDCMP_CLOSEWINDOW:
             /* AUTO: the gadget shuts the window only, and the next read or
              * write opens it again -- unless a read waits (then it is EOF as
              * without AUTO) or DISK_INFO gave the window out (ROM 40.x and
              * V47, tools/rig/autoprobe_rig.py) */
-            if (c->auto_open && !c->auto_held && !c->nreads && c->win != c->foreign) {
+            if (c->auto_open && !c->auto_held && !c->nreads && c->w.win != c->foreign) {
                 c->auto_shut = 1;
                 break;
             }
             c->closing = 1;
             if (!c->raw)
                 c->eof = 1;
-            else if (!raw_report(c, 11)) /* IECLASS_CLOSEWINDOW, if asked */
+            else if (!vtwin_raw_report(&c->w, 11)) /* IECLASS_CLOSEWINDOW, if asked */
                 send_break(c, SIGBREAKF_CTRL_C);
             break;
         case IDCMP_MOUSEBUTTONS:
         case IDCMP_MOUSEMOVE:
-            mouse_event(c, im);
+            vtwin_mouse(&c->w, cls == IDCMP_MOUSEMOVE, im->Code, im->Qualifier, im->MouseX, im->MouseY);
             break;
         default:
             break;
@@ -2011,11 +1456,11 @@ static void idcmp(con *c)
 static void sync_size(con *c)
 {
     struct ConUnit *cu;
-    if (!c->rom_io || !c->t)
+    if (!c->rom_io || !c->w.t)
         return;
     cu = (struct ConUnit *)c->rom_io->io_Unit;
-    cu->cu_XMax = (WORD)(vt_cols(c->t) - 1);
-    cu->cu_YMax = (WORD)(vt_rows(c->t) - 1);
+    cu->cu_XMax = (WORD)(vt_cols(c->w.t) - 1);
+    cu->cu_YMax = (WORD)(vt_rows(c->w.t) - 1);
 }
 
 /* ixemul raises SIGWINCH from an input handler at priority 10 that
@@ -2039,7 +1484,7 @@ static struct InputEvent *winch_handler(__reg("a0") struct InputEvent *chain, __
 
 static void post_sizewindow(con *c)
 {
-    if (!c->win)
+    if (!c->w.win)
         return;
     if (!c->winch_added) {
         c->input_port = CreateMsgPort();
@@ -2065,7 +1510,7 @@ static void post_sizewindow(con *c)
         DoIO((struct IORequest *)c->input_io);
         c->winch_added = 1;
     }
-    c->winch_ev.ie_EventAddress = (APTR)c->win;
+    c->winch_ev.ie_EventAddress = (APTR)c->w.win;
     c->winch_pending = 1;
     DBG("sigwinch", c->winch_added, 0);
 }
@@ -2076,7 +1521,7 @@ static struct IOStdReq *rom_console(con *c)
      * programs that read ConUnit fields (window size in characters) or
      * send it CMD_WRITE keep working. Opened on first use only; its
      * cursor is switched off at once, our renderer owns the window. */
-    if (c->rom_io || !c->win)
+    if (c->rom_io || !c->w.win)
         return c->rom_io;
     c->rom_port = CreateMsgPort();
     if (!c->rom_port)
@@ -2084,9 +1529,9 @@ static struct IOStdReq *rom_console(con *c)
     c->rom_io = (struct IOStdReq *)CreateIORequest(c->rom_port, sizeof(struct IOStdReq));
     if (!c->rom_io)
         return 0;
-    c->rom_io->io_Data = c->win;
+    c->rom_io->io_Data = c->w.win;
     c->rom_io->io_Length = sizeof(struct Window);
-    DBG("rom open", c->win, 0);
+    DBG("rom open", c->w.win, 0);
     if (OpenDevice((STRPTR)"console.device", CONU_STANDARD, (struct IORequest *)c->rom_io, 0)) {
         DeleteIORequest((struct IORequest *)c->rom_io);
         c->rom_io = 0;
@@ -2103,8 +1548,8 @@ static struct IOStdReq *rom_console(con *c)
      * pens: every ixemul program asks DISK_INFO at startup, and the window
      * turned Workbench grey with black only behind the text drawn after
      * (rig, 2026-09-29). Our grid is the truth: draw it all again. */
-    if (c->t)
-        vr_redraw(&c->r);
+    if (c->w.t)
+        vr_redraw(&c->w.r);
     return c->rom_io;
 }
 
@@ -2144,7 +1589,7 @@ static void packet(con *c, struct DosPacket *p)
             brk_open(&c->brk, p->dp_Port);
             DBG("open window", c->ww, c->wh);
             if (!c->auto_open && !open_window(c)) {
-                DBG("open failed", c->win, c->t);
+                DBG("open failed", c->w.win, c->w.t);
                 close_window(c);
                 reply(p, DOSFALSE, ERROR_NO_FREE_STORE);
                 return;
@@ -2166,15 +1611,13 @@ static void packet(con *c, struct DosPacket *p)
         c->opens--;
 #ifdef VTCON_DEBUG
         DBG("prof writes/bytes", c->prof_writes, c->prof_bytes);
-        DBG("prof out/damage", c->prof_out, c->prof_damage);
-        DBG("prof scroll/n", c->prof_scroll, c->prof_nscroll);
-        DBG("prof ndamage", c->prof_ndamage, 0);
-        DBG("prof direct/text", c->r.n_direct, c->r.n_text);
+        DBG("prof out", c->prof_out, 0);
+        DBG("prof direct/text", c->w.r.n_direct, c->w.r.n_text);
 #endif
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
-        if (!c->win && !open_window(c)) {
+        if (!c->w.win && !open_window(c)) {
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
@@ -2189,7 +1632,7 @@ static void packet(con *c, struct DosPacket *p)
         }
         return;
     case ACTION_WRITE:
-        if (!c->win && !open_window(c)) {
+        if (!c->w.win && !open_window(c)) {
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
@@ -2299,16 +1742,16 @@ static void packet(con *c, struct DosPacket *p)
             reply(p, c->raw ? c->in_len : line_end(c), 0);
         return;
     case ACTION_VTCON_GWINSZ:
-        if (!p->dp_Arg2 || !c->t) {
+        if (!p->dp_Arg2 || !c->w.t) {
             reply(p, DOSFALSE, p->dp_Arg2 ? ERROR_OBJECT_NOT_FOUND : ERROR_REQUIRED_ARG_MISSING);
             return;
         }
         {
             vt_winsize *ws = (vt_winsize *)p->dp_Arg2;
-            ws->ws_row = (unsigned short)vt_rows(c->t);
-            ws->ws_col = (unsigned short)vt_cols(c->t);
-            ws->ws_xpixel = (unsigned short)(ws->ws_col * c->r.cw);
-            ws->ws_ypixel = (unsigned short)(ws->ws_row * c->r.ch);
+            ws->ws_row = (unsigned short)vt_rows(c->w.t);
+            ws->ws_col = (unsigned short)vt_cols(c->w.t);
+            ws->ws_xpixel = (unsigned short)(ws->ws_col * c->w.r.cw);
+            ws->ws_ypixel = (unsigned short)(ws->ws_row * c->w.r.ch);
         }
         reply(p, DOSTRUE, 0);
         return;
@@ -2331,13 +1774,13 @@ static void packet(con *c, struct DosPacket *p)
     case ACTION_DISK_INFO: {
         struct InfoData *id = (struct InfoData *)BADDR(p->dp_Arg1);
         LONG i;
-        if (!c->win)
+        if (!c->w.win)
             open_window(c); /* as V47's con-handler does: the caller wants the window */
         c->auto_held = 1;   /* the caller has the window: AUTO no longer shuts it */
         for (i = 0; i < (LONG)sizeof(*id); i++)
             ((UBYTE *)id)[i] = 0;
         id->id_DiskType = 0x434F4E00L; /* 'CON\0' (no NDK name; value unverified against the ROM) */
-        id->id_VolumeNode = (BPTR)c->win;
+        id->id_VolumeNode = (BPTR)c->w.win;
         id->id_InUse = (LONG)rom_console(c);
         reply(p, DOSTRUE, 0);
         return;
@@ -2401,12 +1844,7 @@ static LONG handler_main(void)
     c->ld.signal = tty_signal;
     c->ld.user = c;
     ld_init(&c->ld);
-    c->frame_port = CreateMsgPort();
-    if (c->frame_port) {
-        c->frame = (struct timerequest *)CreateIORequest(c->frame_port, sizeof(struct timerequest));
-        if (c->frame && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)c->frame, 0))
-            c->frame_open = 1;
-    }
+    vtwin_init(&c->w, &host, c); /* the frame clock */
     if (!OpenDevice((STRPTR)"console.device", (ULONG)CONU_LIBRARY, (struct IORequest *)&c->lib_io, 0))
         ConsoleDevice = c->lib_io.io_Device; /* RawKeyConvert; the same device for every process */
     if (!DOSBase || !IntuitionBase || !GfxBase || !ConsoleDevice || !LayersBase) {
@@ -2433,29 +1871,20 @@ static LONG handler_main(void)
     for (;;) {
         ULONG wait = 1UL << c->port->mp_SigBit;
         struct Message *m;
-        if (c->win)
-            wait |= 1UL << c->win->UserPort->mp_SigBit;
+        if (c->w.win)
+            wait |= 1UL << c->w.win->UserPort->mp_SigBit;
         if (c->timer_port)
             wait |= 1UL << c->timer_port->mp_SigBit;
         if (c->comp_port)
             wait |= 1UL << c->comp_port->mp_SigBit;
-        if (c->frame_port)
-            wait |= 1UL << c->frame_port->mp_SigBit;
+        wait |= vtwin_sigmask(&c->w);
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */
         wait = Wait(wait);
         while ((m = GetMsg(c->port)))
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
-        if (c->frame_busy && CheckIO((struct IORequest *)c->frame)) {
-            WaitIO((struct IORequest *)c->frame);
-            c->frame_busy = 0;
-            render(c); /* the frame is due */
-            if (c->t && vr_blink_tick(&c->r))
-                frame_start(c);
-        }
-        if (!c->frame_open)
-            render(c); /* no frame clock: draw at once */
+        vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
@@ -2480,20 +1909,9 @@ static LONG handler_main(void)
             !c->comp_busy && !c->check_busy && !c->hist_busy) /* a worker holds our request */
             break;
     }
-    render(c);
-    close_window(c); /* first: it stops the frame clock with the request still there */
-    if (c->frame_busy) {
-        AbortIO((struct IORequest *)c->frame);
-        WaitIO((struct IORequest *)c->frame);
-        c->frame_busy = 0;
-    }
-    if (c->frame_open)
-        CloseDevice((struct IORequest *)c->frame);
-    if (c->frame)
-        DeleteIORequest((struct IORequest *)c->frame);
-    c->frame = 0;
-    if (c->frame_port)
-        DeleteMsgPort(c->frame_port);
+    vtwin_render(&c->w);
+    close_window(c);
+    vtwin_cleanup(&c->w);
     Forbid();
     if (c->node && c->node->dn_Task == c->port)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
