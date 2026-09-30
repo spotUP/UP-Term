@@ -311,7 +311,7 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c han
 # termcap, Install script, README), unpacking to a drawer "vtcon".
 # the patched ixemul (P6): built in ~/Code/ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
-dist: amiga $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp
+dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp
 	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo $(BUILD)/dist/vtcon/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] ../dist/vtcon/terminfo/
 	cp $(SCREEN_BIN) $(BUILD)/dist/vtcon/screen
@@ -322,7 +322,7 @@ dist: amiga $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(BUILD)/dist/vtcon/banner
 	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term.info
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(BUILD)/dist/vtcon/UP-Term
-	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon
 	@ls -la $(BUILD)/vtcon.lha

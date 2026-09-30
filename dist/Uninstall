@@ -3,22 +3,39 @@
 ; Your history (ENVARC:vtcon.history) and $HOME/.vshrc are kept.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
+; CON:/RAW: back to the system's (new windows; open ones keep UP-Term)
+If EXISTS C:UPConsole
+  C:UPConsole >NIL: CON OFF
+EndIf
 Delete >NIL: DEVS:DOSDrivers/XCON DEVS:DOSDrivers/XCON.info QUIET
 Delete >NIL: DEVS:DOSDrivers/PTY DEVS:DOSDrivers/PTY.info QUIET
 ; GG: and the block in S:User-Startup, if Install made them (SYS:UP-Term
 ; is ours only then): vsh takes the block out, before vsh itself goes
+; The blocks Install wrote into S:User-Startup (GG:, the CON: switch) go;
+; vsh does it, before vsh itself goes. The script is in ENVARC:up-term
+; (older kits kept it in SYS:UP-Term only).
+Set unst ""
 If EXISTS SYS:UP-Term/unstartup.sh
+  Set unst SYS:UP-Term/unstartup.sh
+EndIf
+If EXISTS ENVARC:up-term/unstartup.sh
+  Set unst ENVARC:up-term/unstartup.sh
+EndIf
+If NOT "$unst" EQ ""
   If EXISTS S:User-Startup
-    C:vsh SYS:UP-Term/unstartup.sh
+    C:vsh $unst
     If EXISTS T:User-Startup.up-term
       Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
       Delete >NIL: T:User-Startup.up-term QUIET
     EndIf
   EndIf
+EndIf
+UnSet unst
+If EXISTS SYS:UP-Term/unstartup.sh
   Assign >NIL: GG: SYS:UP-Term REMOVE
   Delete >NIL: SYS:UP-Term ALL QUIET
 EndIf
-Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill C:screen C:tmux QUIET
+Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill C:screen C:tmux C:UPConsole QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
 Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info QUIET
 If EXISTS ENVARC:up-term/ixpipe

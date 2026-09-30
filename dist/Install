@@ -1,6 +1,12 @@
+.KEY CONSOLE/S,NOCONSOLE/S
+.BRA {
+.KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
 ; the patched ixemul.library.
 ; Run from the unpacked drawer:  Execute Install
+; It asks whether UP-Term should also serve the system's CON: and RAW:
+; (every new Shell window); CONSOLE answers yes, NOCONSOLE no, unasked.
+; (The brackets are { } here: the script's > redirections stay as they are.)
 FailAt 21
 Copy vtcon-handler L: CLONE
 Copy XCON DEVS:DOSDrivers/XCON CLONE
@@ -120,6 +126,43 @@ EndIf
 Assign >NIL: PTY: EXISTS DEVICES
 If WARN
   Mount DEVS:DOSDrivers/PTY
+EndIf
+; CON: and RAW: served by UP-Term (opt-in): C:UPConsole switches them at
+; every boot from its own marked block in S:User-Startup, and now. Not on
+; AmigaOS 3.2 yet: its Shell needs medium mode (UPConsole refuses there).
+Copy UPConsole C:UPConsole CLONE
+Copy unstartup.sh ENVARC:up-term/unstartup.sh CLONE
+Version >NIL: dos.library 47
+If WARN
+  Set upcon "{CONSOLE}"
+  If "{NOCONSOLE}" EQ "NOCONSOLE"
+    Set upcon ""
+  Else
+    If "{CONSOLE}" EQ ""
+      Ask "Should UP-Term also serve CON: and RAW: (every new Shell window)? y/N"
+      If WARN
+        Set upcon "CONSOLE"
+      EndIf
+    EndIf
+  EndIf
+  If "$upcon" EQ "CONSOLE"
+    If NOT EXISTS S:User-Startup
+      Echo >S:User-Startup ""
+    EndIf
+    Search >NIL: S:User-Startup ";BEGIN UP-Term console"
+    If WARN
+      If NOT EXISTS S:User-Startup.before-UP-Term
+        Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+      EndIf
+      Echo >>S:User-Startup ";BEGIN UP-Term console"
+      Echo >>S:User-Startup "C:UPConsole >NIL: CON ON"
+      Echo >>S:User-Startup ";END UP-Term console"
+    EndIf
+    C:UPConsole CON ON
+  EndIf
+  UnSet upcon
+Else
+  Echo "CON: stays the system's: UP-Term cannot serve it on AmigaOS 3.2 yet."
 EndIf
 Echo "UP-Term installed. Try:  NewShell XCON:0/20/640/300/UP-Term/CLOSE"
 Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"

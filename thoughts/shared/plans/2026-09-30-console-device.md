@@ -264,10 +264,16 @@ unmeasured value.
       **DONE 2026-09-30:** `C:UPConsole CON ON|OFF`, `STATUS`, `HANDLER <file>` (the rig's
       VTC: copy); state in the public semaphore "UP-Term console"; refuses non-pristine
       entries (DP3 table, stack 3200 below V47) and V47 (DD20). DEVICE/EXCLUDE say "not built".
-- [ ] H5.5 Kit: `dist/Install` asks (default No), writes the User-Startup block;
+- [x] H5.5 Kit: `dist/Install` asks (default No), writes the User-Startup block;
       `dist/Uninstall` runs `UPConsole CON OFF` and removes the block; README section.
       `tools/rig/install_rig.py` gains: block written, CON ON after reboot, Uninstall
       removes it, CON: back to ROM.
+      **DONE 2026-09-30:** `Execute Install [CONSOLE|NOCONSOLE]` (asks when neither; not
+      offered on V47); block `;BEGIN UP-Term console` / `C:UPConsole >NIL: CON ON` /
+      `;END UP-Term console`; Uninstall runs `UPConsole CON OFF`, unstartup.sh strips both
+      blocks (script now also in ENVARC:up-term). install_rig.py 31/31. It caught a crash I
+      had just made: the handler's teardown deleted the frame timer before close_window
+      stopped it (address error on exit with a blinking cursor) -- fixed, 31/31.
 - [x] H5.6 REACHABILITY `tools/rig/concon_rig.py`: `UPConsole CON ON`; `NewShell
       CON:0/20/640/200/t`; probe `tests/amiga/conwho.c` run in it sends
       ACTION_VTCON_GWINSZ to `*` -- only the vtcon handler answers it (ROM:

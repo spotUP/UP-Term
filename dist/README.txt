@@ -16,6 +16,9 @@ INSTALL
   (copies the handlers, DOSDrivers entries, vsh, ixkill, the terminal
   entries to ENVARC:up-term, sets TERMINFO, puts in the patched
   ixemul.library and mounts XCON: and PTY:)
+  It asks whether UP-Term should also serve CON: and RAW: (see CON: AND
+  RAW: below); answer in advance with  Execute Install CONSOLE  or
+  Execute Install NOCONSOLE.
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
@@ -121,5 +124,20 @@ THE SHELL FOR UNIX PROGRAMS
   S:User-Startup.before-UP-Term). Uninstall takes the block out again. An
   existing GG: (an ADE or Geek Gadgets install) is left alone.
 
+CON: AND RAW:
+  UP-Term can serve the system's CON: and RAW: too, so every new Shell
+  window is an UP-Term window (the Amiga personality: programs see the
+  console they know). C:UPConsole switches it:
+    UPConsole CON ON     new CON:/RAW: windows are UP-Term
+    UPConsole CON OFF    new windows are the system's again
+    UPConsole STATUS     who serves CON: and RAW: now
+  Windows already open keep whoever opened them. When Install switched it
+  on, a block in S:User-Startup between ;BEGIN UP-Term console and
+  ;END UP-Term console does it at every boot; Uninstall switches it off and
+  takes the block out. It refuses to switch when another console
+  replacement (KingCON, ViNCEd, ...) serves CON:, and on AmigaOS 3.2, whose
+  Shell needs a console mode UP-Term does not have yet.
+
 STATUS
-  Test build. CON:/RAW: are not replaced; XCON: runs beside them.
+  Test build. CON:/RAW: stay the system's unless you switch them (above);
+  XCON: runs beside them.

@@ -31,9 +31,10 @@ def lib_state():
 def main():
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
     shutil.copytree(ROOT / "build/dist/vtcon", VTC / "distkit")
-    for name in ("ptytest", "iconprobe", "wbrun"):
+    for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
-    (VTC / "runinstall").write_text("CD VTC:distkit\nExecute Install\n")
+    (VTC / "runinstall").write_text("CD VTC:distkit\nExecute Install NOCONSOLE\n")
+    (VTC / "runinstallcon").write_text("CD VTC:distkit\nExecute Install CONSOLE\n")
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
@@ -67,8 +68,24 @@ def main():
     check(st.get('ixemul.library.orig') == str(ORIG_SIZE), 'the original ixemul kept as .orig', str(st))
     rc, out = run('Search LIBS:ixemul.library UP-Term')
     check('UP-Term' in out, 'the patched ixemul is in LIBS:', out)
-    rc, out = run('Execute VTC:runinstall', 120)  # a second Install must not take ours for theirs
-    check(rc == 0, 'Install again over it runs', out)
+    rc, out = run('C:UPConsole STATUS')
+    check('CON: ROM' in out, 'Install NOCONSOLE leaves CON: the ROM\'s', out)
+    check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term console"')[0] != 0,
+          'Install NOCONSOLE writes no console block', '')
+    # a second Install must not take ours for theirs; this one says yes to CON:
+    rc, out = run('Execute VTC:runinstallcon', 120)
+    check(rc == 0, 'Install CONSOLE again over it runs', out)
+    rc, out = run('C:UPConsole STATUS')
+    check('CON: UP-Term' in out and 'RAW: UP-Term' in out, 'Install CONSOLE: CON: and RAW: are UP-Term now', out)
+    import concon_rig
+    who = concon_rig.shell_conwho('kit', 'RAM:who-kit.txt')
+    check(who.startswith('UP-Term '), 'a NewShell CON: window runs the kit\'s handler (%s)' % who, who)
+    rc, out = run('Search S:User-Startup "C:UPConsole >NIL: CON ON"')
+    check('CON ON' in out, 'S:User-Startup switches CON: at boot', out)
+    run('C:UPConsole CON OFF')
+    run('C:UPConsole >NIL: CON ON')  # the block's own line, as a boot runs it
+    rc, out = run('C:UPConsole STATUS')
+    check('CON: UP-Term' in out, 'the block\'s line switches CON: again', out)
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is set (and can be)', out)
     rc, out = run('List >NIL: ENV:up-term/terminfo/v/vtcon')
@@ -95,6 +112,8 @@ def main():
           'exit in it closes the window')
     rc, out = run('Execute VTC:rununinstall', 60)
     check(rc == 0, 'Uninstall runs', out)
+    rc, out = run('VTC:UPConsole STATUS')
+    check('CON: ROM' in out and 'RAW: ROM' in out, 'after Uninstall: CON: and RAW: are the ROM\'s', out)
     st = lib_state()
     check(st.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in st,
           'after Uninstall: the original ixemul back, no .orig', str(st))
@@ -107,7 +126,7 @@ def main():
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
                         'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
-                        'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info')
+                        'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info', 'C:UPConsole')
             if run('List >NIL: %s' % f)[0] == 0]
     check(not left, 'Uninstall removed the files', ' '.join(left))
     if rig_gg:

@@ -2481,21 +2481,23 @@ static LONG handler_main(void)
             break;
     }
     render(c);
+    close_window(c); /* first: it stops the frame clock with the request still there */
     if (c->frame_busy) {
         AbortIO((struct IORequest *)c->frame);
         WaitIO((struct IORequest *)c->frame);
+        c->frame_busy = 0;
     }
     if (c->frame_open)
         CloseDevice((struct IORequest *)c->frame);
     if (c->frame)
         DeleteIORequest((struct IORequest *)c->frame);
+    c->frame = 0;
     if (c->frame_port)
         DeleteMsgPort(c->frame_port);
     Forbid();
     if (c->node && c->node->dn_Task == c->port)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
-    close_window(c);
     forget_words(c);
     if (c->comp)
         FreeVec(c->comp);
