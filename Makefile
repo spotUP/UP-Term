@@ -266,6 +266,11 @@ $(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ device/upconsole.c
 
+# D3.2's probe (tools/rig/cudump_rig.py)
+$(BUILD)/amiga/cudump: tests/amiga/cudump.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/cudump.c
+
 # D2.3's probe (tools/rig/rkc_rig.py)
 $(BUILD)/amiga/rkcprobe: tests/amiga/rkcprobe.c
 	@mkdir -p $(BUILD)/amiga

@@ -421,13 +421,22 @@ Success: `make test` green incl. `upcon`; the device builds; the census table ex
 Success: D2.3 identical tables; ledger D2 ticked.
 
 **Phase D3: ConUnit fields current**
-- [ ] D3.1 `upc_conunit_fill` wired after writes/resizes/mode changes; compile-time
+- [x] D3.1 `upc_conunit_fill` wired after writes/resizes/mode changes; compile-time
       offset asserts (DD17).
-- [ ] D3.2 Rig probe `tests/amiga/cudump.c`: every read-only field, tab stops, modes,
+      **DONE 2026-09-30:** filled at open, after every CMD_WRITE, CMD_RESET and resize; asserts
+      pin cu_KeyMapStruct 0x042, cu_RawEvents 0x125, size 0x128.
+- [x] D3.2 Rig probe `tests/amiga/cudump.c`: every read-only field, tab stops, modes,
       raw-event bits, pens, font of the unit behind a CON: window, same window size and
       writes, ROM (DEVICE OFF) vs ours (DEVICE ON): equal field by field; any difference
       written here with its reason. ixemul `tests/amiga/ixtty` in a ROM CON: over our
       device: winsize equals the grid, again after a resize.
+      **DONE 2026-09-30:** `tools/rig/cudump_rig.py` 0 of 15 field lines differ on KS 40.63
+      (log copied to research/2026-09-30_cudump-ks40.63.log). The first run found 5 and the ROM
+      said what to write: default tab list 79 stops every 8 then 0xFFFF whatever the width,
+      MinShrink 9999, cu_Mask 1 and AOL pen 0 (RTG and AGA alike), text fields from the
+      window's RastPort, the LNM bit. The bit numbering D1.1 assumed (bit n = byte n/8,
+      1 << n%8) is the ROM's. ixemul ixtty in a ROM CON: over our device: TIOCGWINSZ 77 x 16,
+      57 x 24 after a resize -- the ROM device gives the same, and re-wraps the same line.
 Success: D3.2 equal (or every difference justified); ledger D3 ticked.
 
 **Phase D4: installer and uninstall**

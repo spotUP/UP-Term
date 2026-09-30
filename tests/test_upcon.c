@@ -426,10 +426,9 @@ static void conunit_fill(void)
     CHECK_INT(be16(0x03C), 24);                 /* cu_YMinShrink */
     CHECK_INT(be16(0x03E), 5);                  /* cu_XCCP */
     CHECK_INT(be16(0x040), 7);                  /* cu_YCCP */
-    for (i = 0; i < 10; i++)                    /* default tabs: every 8 from 0 */
-        ok &= be16(0x062 + 2 * i) == 8 * i;
-    for (i = 10; i < 80; i++)                   /* then 0xFFFF to the end of the list */
-        ok &= be16(0x062 + 2 * i) == 0xFFFF;
+    for (i = 0; i < 79; i++)                    /* default tabs: 79 stops every 8 from 0, */
+        ok &= be16(0x062 + 2 * i) == 8 * i;     /* whatever the width (the ROM's, D3.2 cudump) */
+    ok &= be16(0x062 + 2 * 79) == 0xFFFF;       /* then 0xFFFF */
     CHECK(ok);
     CHECK_INT(CU[0x102], 3);                    /* cu_Mask */
     CHECK_INT(CU[0x103], 1);                    /* cu_FgPen */
@@ -479,8 +478,8 @@ static void conunit_fill(void)
     CHECK_INT(be16(0x028), 0);
     CHECK_INT(be16(0x03E), 39);
     CHECK_INT(be16(0x040), 0);
-    CHECK_INT(be16(0x062 + 2 * 4), 32);         /* default tabs stop at the grid's width */
-    CHECK_INT(be16(0x062 + 2 * 5), 0xFFFF);
+    CHECK_INT(be16(0x062 + 2 * 5), 40);         /* default tabs do not stop at the grid's width */
+    CHECK_INT(be16(0x062 + 2 * 78), 624);
 
     s = state();                                /* the unit's own tab stops */
     {

@@ -97,20 +97,24 @@ static void fill_conunit(struct upc_unit *u)
     s.ch = w->font->tf_YSize;
     s.ox = w->r.ox;
     s.oy = w->r.oy;
-    s.minshrink_x = u->win->BorderLeft + u->win->BorderRight + w->font->tf_XSize;
-    s.minshrink_y = u->win->BorderTop + u->win->BorderBottom + w->font->tf_YSize;
-    s.mask = 0xFF;
+    /* the values the ROM writes (D3.2 cudump on KS 40.63, RTG and AGA screens
+     * alike): MinShrink 9999, mask 1, AOL pen 0, text fields from the
+     * window's RastPort (not the font's flags) */
+    s.minshrink_x = s.minshrink_y = 9999;
+    s.mask = 1;
     s.fg = 1;
     s.bg = 0;
-    s.aol = 1;
+    s.aol = 0;
     s.drawmode = JAM2;
-    s.txheight = w->font->tf_YSize;
-    s.txwidth = w->font->tf_XSize;
-    s.txbaseline = w->font->tf_Baseline;
-    s.txflags = w->font->tf_Flags;
-    s.algostyle = w->font->tf_Style;
+    s.txheight = u->win->RPort->TxHeight;
+    s.txwidth = u->win->RPort->TxWidth;
+    s.txbaseline = u->win->RPort->TxBaseline;
+    s.txflags = u->win->RPort->TxFlags;
+    s.algostyle = u->win->RPort->AlgoStyle;
+    s.txspacing = u->win->RPort->TxSpacing;
     s.awm = 1;
     s.asm_ = 1;
+    s.lnm = (vt_modes(w->t) & VT_MODE_NEWLINE) != 0;
     s.rawevents = vt_raw_events(w->t);
     upc_conunit_fill((unsigned char *)&u->cu, &s);
 }

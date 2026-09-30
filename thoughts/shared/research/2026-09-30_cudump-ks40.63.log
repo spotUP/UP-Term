@@ -1,0 +1,35 @@
+ROM:
+cu_Window the window
+cu_XCP 6 cu_YCP 2
+cu_XMax 58 cu_YMax 15
+cu_XRSize 8 cu_YRSize 8
+cu_XROrigin 4 cu_YROrigin 14
+cu_XRExtant 475 cu_YRExtant 141
+cu_XMinShrink 9999 cu_YMinShrink 9999
+cu_XCCP 6 cu_YCCP 2
+cu_KeyMapStruct lo set hi set
+cu_TabStops 0 8 16 24 32 40 48 56 64 72 80 88 96 104 112 120 128 136 144 152 160 168 176 184 192 200 208 216 224 232 240 248 256 264 272 280 288 296 304 312 320 328 336 344 352 360 368 376 384 392 400 408 416 424 432 440 448 456 464 472 480 488 496 504 512 520 528 536 544 552 560 568 576 584 592 600 608 616 624 65535
+cu_Mask 1 cu_FgPen 1 cu_BgPen 0 cu_AOLPen 0 cu_DrawMode 1
+cu_Font window font
+cu_AlgoStyle 0 cu_TxFlags 0 cu_TxHeight 8 cu_TxWidth 8 cu_TxBaseline 6 cu_TxSpacing 0
+cu_Modes 00 00 70
+cu_RawEvents 00 18 00
+
+UP-Term:
+cu_Window the window
+cu_XCP 6 cu_YCP 2
+cu_XMax 58 cu_YMax 15
+cu_XRSize 8 cu_YRSize 8
+cu_XROrigin 4 cu_YROrigin 14
+cu_XRExtant 475 cu_YRExtant 141
+cu_XMinShrink 9999 cu_YMinShrink 9999
+cu_XCCP 6 cu_YCCP 2
+cu_KeyMapStruct lo set hi set
+cu_TabStops 0 8 16 24 32 40 48 56 64 72 80 88 96 104 112 120 128 136 144 152 160 168 176 184 192 200 208 216 224 232 240 248 256 264 272 280 288 296 304 312 320 328 336 344 352 360 368 376 384 392 400 408 416 424 432 440 448 456 464 472 480 488 496 504 512 520 528 536 544 552 560 568 576 584 592 600 608 616 624 65535
+cu_Mask 1 cu_FgPen 1 cu_BgPen 0 cu_AOLPen 0 cu_DrawMode 1
+cu_Font window font
+cu_AlgoStyle 0 cu_TxFlags 0 cu_TxHeight 8 cu_TxWidth 8 cu_TxBaseline 6 cu_TxSpacing 0
+cu_Modes 00 00 70
+cu_RawEvents 00 18 00
+
+differ: 0 of 15

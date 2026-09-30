@@ -291,7 +291,9 @@ void upc_conunit_fill(unsigned char *cu, const upc_cu_state *s)
         for (i = 0; i < s->ntabs && n < UPC_CU_MAXTABS - 1; i++)
             put16(cu, UPC_CU_TABSTOPS + 2 * n++, s->tabs[i]);
     } else {
-        for (i = 0; i < cols && n < UPC_CU_MAXTABS - 1; i += 8)
+        /* the ROM's default list: every 8 from 0 for all but the last entry,
+         * whatever the width (measured, D3.2 cudump, KS 40.63) */
+        for (i = 0; n < UPC_CU_MAXTABS - 1; i += 8)
             put16(cu, UPC_CU_TABSTOPS + 2 * n++, i);
     }
     while (n < UPC_CU_MAXTABS)
