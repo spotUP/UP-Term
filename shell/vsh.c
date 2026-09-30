@@ -1087,6 +1087,7 @@ static int vsh_main(int argc, char **argv)
     char *text = 0;
     long len = 0;
     int i;
+    const char *command = 0, *script = 0;
     static vproc vp;
     (void)version;
     (void)stack_cookie;
@@ -1154,8 +1155,25 @@ static int vsh_main(int argc, char **argv)
                 sh_export(&sh.ctx, "TERMCAP");
         }
     }
-    for (i = 1; i < argc; i++)
-        sh_list_add(&sh.ctx.args, argv[i]);
+    /* vsh -c COMMAND [NAME [ARG ...]] and vsh FILE [ARG ...], as sh: run
+     * it and end with its status, no prompts ($- has no "i"). screen's
+     * printcmd, vim's :! and other ports run $SHELL -c. */
+    {
+        int first = 1;
+        if (argc > 2 && !strcmp(argv[1], "-c")) {
+            command = argv[2];
+            if (argc > 3)
+                sh.ctx.arg0 = argv[3];
+            first = 4;
+        } else if (argc > 1 && argv[1][0] != '-') {
+            script = argv[1];
+            sh.ctx.arg0 = argv[1];
+            first = 2;
+        }
+        for (i = first; i < argc; i++)
+            sh_list_add(&sh.ctx.args, argv[i]);
+        sh.ctx.flags = !command && !script && IsInteractive(Input()) ? "i" : "";
+    }
     /* AmigaDOS leaves a command's argument line in its input buffer (for
      * ReadArgs); unread, vsh took it as its first, empty, command line
      * and printed a second prompt (rig, 2026-09-29) */
@@ -1177,10 +1195,14 @@ static int vsh_main(int argc, char **argv)
         }
         canonical_home(&sh);
     }
+    if (command)
+        sh_run_text(&sh, command, 0);
+    else if (script)
+        sh_run_text(&sh, "source \"$0\"", 0); /* the arguments stay $1 ... */
     for (;;) {
         long n;
         int incomplete = 0;
-        if (sh.exiting)
+        if (sh.exiting || command || script)
             break;
         if (!text) {
             sh_notify(&sh);

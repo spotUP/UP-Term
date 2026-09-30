@@ -117,6 +117,13 @@ static void variables_and_quotes(void)
     CHECK_INT(fields(c, "$E"), 0);
     CHECK_INT(fields(c, "\"$E\""), 1);
     CHECK_STR(ex(c, "$? $$ $#", SH_NO_SPLIT), "5 42 2");
+    /* $-: the shell's flags, "i" when interactive (vshrc prints the banner
+     * only then, not for vsh -c from vim or screen) */
+    CHECK_STR(ex(c, "[$-]", SH_NO_SPLIT), "[]");
+    c->flags = "i";
+    CHECK_STR(ex(c, "[$-] [${-}]", SH_NO_SPLIT), "[i] [i]");
+    CHECK_STR(ex(c, "\"$-\"", 0), "i");
+    c->flags = 0;
     CHECK_STR(ex(c, "$1-$2", 0), "p1-p|2");          /* only the expansion splits */
     CHECK_STR(ex(c, "\"$@\"", 0), "p1|p 2");         /* "$@": one field each */
     CHECK_STR(ex(c, "\"$*\"", 0), "p1 p 2");

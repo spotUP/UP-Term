@@ -366,6 +366,8 @@ static const char *param(ex *e, const char *name)
         num[k] = 0;
         return num;
     }
+    if (!name[1] && name[0] == '-')
+        return c->flags ? c->flags : "";
     if (name[0] >= '0' && name[0] <= '9') {
         int i = atoi(name);
         if (!i)
@@ -418,7 +420,7 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         len_op = 1;
         i++;
     }
-    if (strchr("?$!#@*", w[i]) && k == 0) {
+    if (strchr("?$!#@*-", w[i]) && k == 0) {
         name[k++] = w[i++];
     } else {
         while (i < end && k < 63 && (is_name_char(w[i], !k) || (w[i] >= '0' && w[i] <= '9')))
@@ -604,7 +606,7 @@ static long dollar(ex *e, const char *w, long len, cbuf *b, int dquote)
     }
     if (len >= 2 && w[1] == '{')
         return brace(e, w, len, b, dquote);
-    if (len >= 2 && strchr("?$!#@*0123456789", w[1])) {
+    if (len >= 2 && strchr("?$!#@*-0123456789", w[1])) {
         char name[2];
         name[0] = w[1];
         name[1] = 0;

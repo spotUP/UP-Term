@@ -26,6 +26,7 @@ typedef struct sh_ctx {
     sh_var *vars;
     sh_list args;           /* $1.. */
     char *arg0;             /* $0 */
+    const char *flags;      /* $-: "i" in an interactive shell (not owned) */
     long status;            /* $? */
     long pid;               /* $$ */
     long last_bg;           /* $! (0: none yet) */

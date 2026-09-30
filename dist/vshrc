@@ -143,8 +143,13 @@ touch() {
 
 alias ll='ls -l'
 
-# The Up Rough banner when vsh starts on a terminal (not when its output
-# goes elsewhere). Remove these lines, or the file, to start quietly.
-if [ -t 1 ] && [ -f ENV:vsh/banner ]; then
-    Type ENV:vsh/banner
-fi
+# The Up Rough banner when an interactive vsh starts on a terminal (not
+# for vsh -c or a script, and not when its output goes elsewhere). Remove
+# these lines, or the file, to start quietly.
+case $- in
+*i*)
+    if [ -t 1 ] && [ -f ENV:vsh/banner ]; then
+        Type ENV:vsh/banner
+    fi
+    ;;
+esac
