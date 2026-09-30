@@ -154,7 +154,7 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
 ## Checklist
 
 **Phase DP: probes (no product code; each writes its result into this file and R-6)**
-- [ ] DP1 Input chain census. `tests/amiga/chainprobe.c`: opens a SIMPLE_REFRESH window
+- [x] DP1 Input chain census. `tests/amiga/chainprobe.c`: opens a SIMPLE_REFRESH window
       with IDCMP 0 and a CON: window, adds handlers at priorities 9, 5 and -5, counts
       events per class and per `ie_EventAddress`/ActiveWindow match while the rig script
       types, clicks, drags, resizes, depth-arranges and closes; prints input.device's
@@ -171,8 +171,8 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       RAWKEY/RAWMOUSE while active, above 0. CLOSEWINDOW is not addressed to the window. No
       TIMER events below Intuition. Consequences: DD6 priority 5 stands; R1 closed; DD9
       uses REFRESHWINDOW (its TIMER fallback would never fire -- the unit's own frame clock
-      is the fallback); DD7 routes CLOSEWINDOW to the active window. Open: other Kickstarts (DP6).
-- [ ] DP3 DosList dump. `tests/amiga/dosnode.c`: CON, RAW, XCON entries -- dn_Type,
+      is the fallback); DD7 routes CLOSEWINDOW to the active window. Same on 39.106, 40.71, 47.115 (DP6).
+- [x] DP3 DosList dump. `tests/amiga/dosnode.c`: CON, RAW, XCON entries -- dn_Type,
       dn_Task, dn_Handler, dn_StackSize, dn_Priority, dn_Startup, dn_SegList (and whether
       it lies in ROM / the resident segment list), dn_GlobalVec. Every Kickstart of DD22.
       Output table goes into `device/upconsole.c` as the pristine table (DD21).
@@ -182,8 +182,8 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       SEG_ROMTAG|SEG_OTHER, segname, globvec }` line per entry, and every DLT_DEVICE entry.
       **MEASURED KS 40.63 (2026-09-30, 2/2):** CON/RAW: dn_Type 0, no handler name, stack
       3200, pri 5, startup 0/1, GlobVec -1, shared seglist 0x40010470 (disk-loaded, SEG_OTHER).
-      PRISTINE lines in research section 7 / the log. Open: other Kickstarts (DP6).
-- [ ] DP4 ROM command census. `tests/amiga/cdprobe.c`: units 0/1/3 on a test window:
+      PRISTINE lines in research section 7 / the log. Same on 39.106, 40.71, 47.115 (DP6).
+- [x] DP4 ROM command census. `tests/amiga/cdprobe.c`: units 0/1/3 on a test window:
       io_Error for commands 0-14 and NSCMD_DEVICEQUERY's list; CONFLAG_NODRAW_ON_NEWSIZE;
       a wrapped 100-column line in a 60-column CONU_SNIPMAP window resized to 120 columns
       (screenshot: re-wrapped or not). Every Kickstart of DD22.
@@ -206,7 +206,7 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       commands 0, scrollback and NSCMD_DEVICEQUERY -3. NODRAW confirmed. **The SNIPMAP unit
       re-wraps** (45 -> 90 columns: cursor 3;11 -> 2;11) so D1.8 builds reflow. Decided for
       D1: our device answers CMD_RESET (terminal reset, reply 0) instead of copying the hang;
-      every other code copies the ROM. Open: other Kickstarts (DP6).
+      every other code copies the ROM. Same on 39.106, 40.71, 47.115 (DP6).
 - [ ] DP5 Medium-mode bytes (3.2 only). `tests/amiga/mediumprobe.c`: SetMode(Output(),2),
       hex-dump reads while the script types TAB, Shift+TAB, Up, Down, a line. Closes
       matrix Q9. Skipped with a written reason when no 3.2 row boots (DD22).
@@ -224,7 +224,7 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       the line length). Shift+TAB, Up, Down bytes not yet read (each try hangs the window).
       NEXT: repeat on a real 3.2 install (the owner has AmigaOS 3.2 and offered to install it,
       2026-09-30 -- a second rig disk, owner's step), vary the typed text to decode the fields.
-- [ ] DP6 Boot matrix: `tools/rig/rig.py` gains `--kick <file>`; record which ROMs boot the
+- [x] DP6 Boot matrix: `tools/rig/rig.py` gains `--kick <file>`; record which ROMs boot the
       rig's system to Workbench with amiagent.
 Success: every DP row has its numbers written here and in R-6; no code depends on an
 unmeasured value.
@@ -236,7 +236,9 @@ unmeasured value.
       before the boot script ran (a restart cured it); DP1, DP3, DP4 on it: same as 40.63
       except console.device 46.1 answers NSCMD_DEVICEQUERY (type 6, commands 0001 0002 0003
       0009-000c 4000 -- it lists CMD_RESET, which still blocks the caller). con stack 4096.
-      OPEN: 39.106, 40.71.
+      **DONE 2026-09-30:** 39.106 (console.device 39.28, dos 39.23) and 40.71 (console.device
+      40.2) boot too; DP1, DP3 and DP4 give the same results on all four ROMs (CON/RAW stack
+      3200 below 47, 4096 on 47; the rest identical). Logs build/rig/shots/*-ks<ver>.log.
 - [ ] H5.1 Handler knows its DOS name (from the startup packet's DeviceNode, `c->node`):
       CON/RAW default to AMIGA, RAW opens raw; XCON unchanged. In `parse_spec`
       (vtcon_handler.c ~l.474) defaults. Host-free; rig-checked in H5.6.
