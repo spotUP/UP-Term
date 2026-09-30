@@ -286,3 +286,50 @@ Memory: 500 lines of scrollback at 12-byte cells is ~480 KB per 80-column window
 | AddDevice ordering (Enqueue by priority vs AddTail) | NDK-EXEC |
 | V47 medium-mode bytes | RN-CH, matrix Q9 |
 | KICK_323.rom identity, 3.2 disks, any 3.1.4 ROM | filesystem search listed in section 4 |
+
+## 7. Measured on the rig (KS 40.63, console.device 40.2, dos 40.3), 2026-09-30
+
+Logs: `build/rig/shots/chainprobe-ks40.63.log`, `dosnode-ks40.63.log`, `cdprobe-ks40.63.log`
+(not committed; rerun with the rig scripts named). Other Kickstarts wait for DP6.
+
+**DP1 input chain** (`tools/rig/chainprobe_rig.py`, 7/7):
+- Chain at start: commodities 53, intuition 50, (probe 9, 5), **console.device 0**
+  (is_Code 0x4000c92e in RAM, is_Data = the console base), (probe -5).
+- **Nothing reaches priority -5**: the ROM console handler passes no event on, for any
+  class, whichever window is active (CON: or not). A handler that must see events goes
+  above 0.
+- For a SIMPLE_REFRESH window with IDCMP 0, the chain above 0 carries SIZEWINDOW,
+  REFRESHWINDOW (3 for one drag-over), ACTIVEWINDOW, INACTIVEWINDOW and CHANGEWINDOW with
+  ie_EventAddress = that window; RAWKEY (8) and RAWMOUSE arrive while it is active.
+- CLOSEWINDOW: 2 events, neither addressed to either window (ie_EventAddress is not the
+  window); the close click activates the window first, so "the active window" names it.
+- No IECLASS_TIMER event reached priority 9 in 50 s (Intuition, at 50, consumes them).
+
+**DP3 DosList** (`tools/rig/dosnode_rig.py`, 2/2): CON: and RAW: are DLT_DEVICE, dn_Type 0,
+no handler name, stack 3200, pri 5, startup 0 (CON) / 1 (RAW), GlobVec -1, both sharing
+seglist 0x40010470 in fast memory -- not a ROM address and not a dos resident: a
+con-handler loaded from disk (this rig's L: carries one). KingCON is mounted as KCON/KRAW.
+
+**DP4 ROM command census** (`tools/rig/cdprobe_rig.py`, 9/9; same on units 0, 1 and 3):
+
+| Command | io_Error |
+|---|---|
+| CMD_INVALID | -3 IOERR_NOCMD |
+| CMD_RESET | **never returns: SendIO blocks the caller for good** (all three units; `--reset unit=n`) |
+| CMD_READ, no input | stays queued; AbortIO gives -2 IOERR_ABORTED |
+| CMD_WRITE, CMD_CLEAR | 0 |
+| CMD_UPDATE | -3 |
+| CMD_STOP, CMD_START, CMD_FLUSH | -1 with nothing queued |
+| CMD_FLUSH with a read pending | 0; the read replies -2 |
+| CD_ASKKEYMAP / SETKEYMAP / ASKDEFAULTKEYMAP / SETDEFAULTKEYMAP | 0, io_Actual 32 |
+| CD_SETUPSCROLLBACK, CD_SETSCROLLBACKPOSITION | -3 (no scrollback on 40.2) |
+| NSCMD_DEVICEQUERY | -3 (not a new-style device) |
+
+- CONFLAG_NODRAW_ON_NEWSIZE: a CHARMAP unit with flags 0 redraws after shrink+grow
+  (ink 3120 -> 3120); with the flag the inner area stays empty (3120 -> 0).
+- **The SNIPMAP unit re-wraps** a wrapped line on widening: 100 characters in 45 columns,
+  cursor 3;11; widened to 90 columns, cursor 2;11 (screenshot: 90 + 10). The console uses
+  its own 8-pixel font, not the 6-pixel screen font, so the probe sizes by cu_XMax.
+- Probe fixes found on the way: ReadPixel per pixel hung the probe for minutes on the
+  rig's RTG screen (now ReadPixelLine8 per row); the re-wrap verdict now uses the unit's
+  measured widths.

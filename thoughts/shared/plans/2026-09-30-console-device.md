@@ -165,6 +165,13 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       the console's handler is identified by is_Code inside the console.device resident
       or is_Data = the console base; RESULT lines give the classes addressed to each
       window per priority, and RAWKEY/RAWMOUSE counts while each window is active.
+      **MEASURED KS 40.63 (2026-09-30, 7/7; research section 7):** ROM handler "console.device"
+      at priority **0**, passes nothing on (priority -5 saw no event). IDCMP-less windows get
+      SIZEWINDOW, REFRESHWINDOW, ACTIVE/INACTIVEWINDOW, CHANGEWINDOW addressed to them, and
+      RAWKEY/RAWMOUSE while active, above 0. CLOSEWINDOW is not addressed to the window. No
+      TIMER events below Intuition. Consequences: DD6 priority 5 stands; R1 closed; DD9
+      uses REFRESHWINDOW (its TIMER fallback would never fire -- the unit's own frame clock
+      is the fallback); DD7 routes CLOSEWINDOW to the active window. Open: other Kickstarts (DP6).
 - [ ] DP3 DosList dump. `tests/amiga/dosnode.c`: CON, RAW, XCON entries -- dn_Type,
       dn_Task, dn_Handler, dn_StackSize, dn_Priority, dn_Startup, dn_SegList (and whether
       it lies in ROM / the resident segment list), dn_GlobalVec. Every Kickstart of DD22.
@@ -173,6 +180,9 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       `tools/rig/dosnode_rig.py` (log per Kickstart in build/rig/shots/). Prints a
       `PRISTINE { dosver, name, type, handler, stack, pri, startup, SEG_NONE|SEG_DOSRES|
       SEG_ROMTAG|SEG_OTHER, segname, globvec }` line per entry, and every DLT_DEVICE entry.
+      **MEASURED KS 40.63 (2026-09-30, 2/2):** CON/RAW: dn_Type 0, no handler name, stack
+      3200, pri 5, startup 0/1, GlobVec -1, shared seglist 0x40010470 (disk-loaded, SEG_OTHER).
+      PRISTINE lines in research section 7 / the log. Open: other Kickstarts (DP6).
 - [ ] DP4 ROM command census. `tests/amiga/cdprobe.c`: units 0/1/3 on a test window:
       io_Error for commands 0-14 and NSCMD_DEVICEQUERY's list; CONFLAG_NODRAW_ON_NEWSIZE;
       a wrapped 100-column line in a 60-column CONU_SNIPMAP window resized to 120 columns
@@ -189,6 +199,14 @@ matrix (DV5) filled in for every ROM on this machine, the manual checks listed u
       NARROW = WIDE/2, LINE = WIDE-2 (same question: a line longer than the narrow width
       and shorter than the wide one). NODRAW is judged by ink pixels before/after a
       shrink+grow of a CHARMAP window, flags 0 against CONFLAG_NODRAW_ON_NEWSIZE.
+      **MEASURED KS 40.63 (2026-09-30, 9/9; table in research section 7):** units 0/1/3
+      identical. **CMD_RESET blocks the caller's SendIO for good on every unit** -- the probe
+      skips it unless `RESET` (`--reset unit=n`, one reboot each). CMD_UPDATE -3, STOP/START/
+      FLUSH -1 with nothing queued, FLUSH with a read pending 0 and the read -2, keymap
+      commands 0, scrollback and NSCMD_DEVICEQUERY -3. NODRAW confirmed. **The SNIPMAP unit
+      re-wraps** (45 -> 90 columns: cursor 3;11 -> 2;11) so D1.8 builds reflow. Decided for
+      D1: our device answers CMD_RESET (terminal reset, reply 0) instead of copying the hang;
+      every other code copies the ROM. Open: other Kickstarts (DP6).
 - [ ] DP5 Medium-mode bytes (3.2 only). `tests/amiga/mediumprobe.c`: SetMode(Output(),2),
       hex-dump reads while the script types TAB, Shift+TAB, Up, Down, a line. Closes
       matrix Q9. Skipped with a written reason when no 3.2 row boots (DD22).

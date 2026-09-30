@@ -1,4 +1,4 @@
-/* cdprobe [NOSCROLL] -- DP4 of the console.device plan
+/* cdprobe [NOSCROLL] [RESET] [UNIT=n] -- DP4 of the console.device plan
  * (thoughts/shared/plans/2026-09-30-console-device.md): what the running
  * ROM console.device answers, where the documents say nothing (research
  * section 1.1: CMD_RESET/UPDATE/STOP/START/FLUSH, the 3.2 scrollback
@@ -30,6 +30,11 @@
  *    the screen; otherwise WIDE = what fits, NARROW = WIDE/2, LINE = WIDE-2.
  *    "SHOT rewrap-before"/"SHOT rewrap-after" lines: the window stays up
  *    4 s after each for the runner's screenshot.
+ * CMD_RESET is skipped unless RESET is given: on console.device 40.2
+ * (KS 40.63) SendIO of CMD_RESET on unit 0 never returns (measured
+ * 2026-09-30, the probe hangs inside BeginIO). UNIT=n runs the census on
+ * that unit only and skips parts 2 and 3 (RESET UNIT=1: one reboot per unit);
+ * NOCENSUS runs parts 2 and 3 only.
  * Output also in RAM:cdprobe.log. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -127,17 +132,25 @@ static int open_unit(unit *u, const char *title, WORD w, WORD h, LONG unitno, UL
 
 /* SendIO, wait up to `ticks` for the reply; a request still pending is
  * AbortIO'd. Returns 1 when it came back by itself. */
+static int trace;                       /* census: log each step, so a hang names it */
+
 static int send_wait(struct IOStdReq *r, int ticks)
 {
     int t;
     SendIO((struct IORequest *)r);
+    if (trace)
+        po_line("  SendIO returned, io_Flags %u\n", r->io_Flags);
     for (t = 0; t < ticks && !CheckIO((struct IORequest *)r); t++)
         Delay(1);
     if (CheckIO((struct IORequest *)r)) {
         WaitIO((struct IORequest *)r);
         return 1;
     }
+    if (trace)
+        po_line("  pending after %d ticks, AbortIO\n", ticks);
     AbortIO((struct IORequest *)r);
+    if (trace)
+        po_line("  AbortIO returned, WaitIO\n");
     WaitIO((struct IORequest *)r);
     return 0;
 }
@@ -180,18 +193,35 @@ static int cursor_pos(unit *u, int *row, int *col)
     return 0;
 }
 
-/* Pixels in the inner area whose pen is not 0 (the background). */
+/* Pixels in the inner area whose pen is not 0 (the background). One
+ * ReadPixelLine8 per row: ReadPixel per pixel took minutes on the rig's RTG
+ * screen (measured 2026-09-30, the probe sat in this count). */
 static LONG ink(struct Window *w)
 {
-    LONG x, y, n = 0;
-    for (y = w->BorderTop; y < w->Height - w->BorderBottom; y++)
-        for (x = w->BorderLeft; x < w->Width - w->BorderRight; x++)
-            if (ReadPixel(w->RPort, x, y) > 0)
+    static UBYTE line[1024];
+    struct RastPort tmp;
+    LONG x, y, n = 0, x0 = w->BorderLeft, width = w->Width - w->BorderLeft - w->BorderRight;
+    if (width > (LONG)sizeof(line) - 16)
+        width = sizeof(line) - 16;
+    tmp = *w->RPort;
+    tmp.Layer = 0;
+    tmp.BitMap = AllocBitMap((ULONG)(width + 15) & ~15UL, 1, GetBitMapAttr(w->RPort->BitMap, BMA_DEPTH), 0,
+                             w->RPort->BitMap);
+    if (!tmp.BitMap)
+        return -1;
+    for (y = w->BorderTop; y < w->Height - w->BorderBottom; y++) {
+        ReadPixelLine8(w->RPort, x0, y, (ULONG)width, line, &tmp);
+        for (x = 0; x < width; x++)
+            if (line[x])
                 n++;
+    }
+    FreeBitMap(tmp.BitMap);
     return n;
 }
 
-static void census_unit(int ui, int noscroll)
+static int noscroll, sendreset;
+
+static void census_unit(int ui)
 {
     unit u;
     char title[40];
@@ -233,14 +263,17 @@ static void census_unit(int ui, int noscroll)
             break;
         case NSCMD_DEVICEQUERY: r->io_Data = nsq; r->io_Length = sizeof(nsq); break;
         }
-        if ((cmds[ci] == CD_SETKEYMAP && !askok) || (cmds[ci] == CD_SETDEFAULTKEYMAP && !r->io_Data)
+        if ((cmds[ci] == CMD_RESET && !sendreset)
+            || (cmds[ci] == CD_SETKEYMAP && !askok) || (cmds[ci] == CD_SETDEFAULTKEYMAP && !r->io_Data)
             || (noscroll && (cmds[ci] == CD_SETUPSCROLLBACK || cmds[ci] == CD_SETSCROLLBACKPOSITION))) {
             census[ui][ci] = 2000;
             po_line("unit %ld cmd %04x %-24s skipped\n", units[ui], cmds[ci], cmdname[ci]);
             continue;
         }
         po_line("unit %ld cmd %04x %-24s sending\n", units[ui], cmds[ci], cmdname[ci]);
+        trace = 1;
         back = send_wait(r, 50);
+        trace = 0;
         census[ui][ci] = back ? r->io_Error : 1000 + r->io_Error;
         if (cmds[ci] == CD_ASKKEYMAP && back && !r->io_Error)
             askok = 1;
@@ -302,13 +335,17 @@ static void nodraw(ULONG flags)
     write_str(&u, "\x0c" "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n"
               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n" "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
     Delay(25);
+    po_line("  nodraw %lu: written, counting ink\n", flags);
     before = ink(u.win);
     w0 = u.win->Width;
     h0 = u.win->Height;
+    po_line("  nodraw %lu: ink %ld, shrinking\n", flags, before);
     ChangeWindowBox(u.win, u.win->LeftEdge, u.win->TopEdge, w0 / 2, h0 / 2);
     Delay(50);
+    po_line("  nodraw %lu: %d x %d, growing\n", flags, u.win->Width, u.win->Height);
     ChangeWindowBox(u.win, u.win->LeftEdge, u.win->TopEdge, w0, h0);
     Delay(50);
+    po_line("  nodraw %lu: %d x %d, counting ink\n", flags, u.win->Width, u.win->Height);
     after = ink(u.win);
     po_line("RESULT nodraw flags %lu: ink before %ld, after shrink+grow %ld (%s)\n", flags, before, after,
             after >= before ? "redrawn" : "not redrawn");
@@ -357,10 +394,14 @@ static void rewrap(void)
     ChangeWindowBox(u.win, u.win->LeftEdge, u.win->TopEdge, (WORD)(wide * fw + bw), u.win->Height);
     Delay(75);
     po_check(cursor_pos(&u, &r1, &c1), "CSI 6n answered after the resize", 0);
-    po_line("rewrap: the unit's cu_XMax+1 after = %d\n", ((struct ConUnit *)u.io->io_Unit)->cu_XMax + 1);
+    /* the cursor after `len` characters from column 1 of row 1 in a unit
+     * `w` columns wide is row len/w+1, column len%w+1: a re-wrap moves it
+     * there for the new width, no re-wrap leaves it where it was */
+    wide = ((struct ConUnit *)u.io->io_Unit)->cu_XMax + 1;
+    po_line("rewrap: the unit's cu_XMax+1 after = %d\n", wide);
     po_line("RESULT rewrap line %d narrow %d wide %d: cursor before %d;%d after %d;%d -> %s\n", len, narrow, wide,
-            r0, c0, r1, c1, (r1 == r0 - 1 && c1 == len + 1) ? "re-wrapped (joined)" :
-            (r1 == r0 && c1 == c0) ? "not re-wrapped" : "other (see the screenshot)");
+            r0, c0, r1, c1, (r1 == r0 && c1 == c0) ? "not re-wrapped" :
+            (r1 == len / wide + 1 && c1 == len % wide + 1) ? "re-wrapped" : "other (see the screenshot)");
     po_line("SHOT rewrap-after\n");
     Delay(200);
     close_unit(&u);
@@ -368,8 +409,16 @@ static void rewrap(void)
 
 int main(int argc, char **argv)
 {
-    int noscroll = argc > 1 && !strcmp(argv[1], "NOSCROLL");
-    int ui, ci;
+    int ui, ci, i, only = -1;
+    for (i = 1; i < argc; i++)
+        if (!strcmp(argv[i], "NOSCROLL"))
+            noscroll = 1;
+        else if (!strcmp(argv[i], "RESET"))
+            sendreset = 1;
+        else if (!strcmp(argv[i], "NOCENSUS"))
+            only = -2;
+        else if (!strncmp(argv[i], "UNIT=", 5))
+            only = atoi(argv[i] + 5);
     po_start("RAM:cdprobe.log");
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 37);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 37);
@@ -382,7 +431,11 @@ int main(int argc, char **argv)
                 con ? con->lib_Revision : 0, SysBase->LibNode.lib_Version, SysBase->SoftVer);
     }
     for (ui = 0; ui < 3; ui++)
-        census_unit(ui, noscroll);
+        if (only == -1 || units[ui] == only)
+            census_unit(ui);
+        else
+            for (ci = 0; ci < NCMD; ci++)
+                census[ui][ci] = 2000;
     for (ci = 0; ci < NCMD; ci++) {
         char row[120], *p = row;
         for (ui = 0; ui < 3; ui++) {
@@ -394,9 +447,12 @@ int main(int argc, char **argv)
         }
         po_line("RESULT cmd %04x %-24s%s\n", cmds[ci], cmdname[ci], row);
     }
-    nodraw(0);
-    nodraw(CONFLAG_NODRAW_ON_NEWSIZE);
-    rewrap();
+    if (only < 0) {
+        po_line("nodraw part\n");
+        nodraw(0);
+        nodraw(CONFLAG_NODRAW_ON_NEWSIZE);
+        rewrap();
+    }
     if (KeymapBase)
         CloseLibrary(KeymapBase);
     CloseLibrary((struct Library *)GfxBase);

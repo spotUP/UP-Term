@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cdprobe_rig.py [--noscroll] -- DP4 of the console.device plan on the
+"""cdprobe_rig.py [--noscroll] [--reset] [unit=n] -- DP4 of the console.device plan on the
 rig: runs tests/amiga/cdprobe (the ROM console.device's answers to commands
 0-14 and NSCMD_DEVICEQUERY on units 0/1/3, CONFLAG_NODRAW_ON_NEWSIZE, and
 whether a wrapped line re-wraps when its SNIPMAP window widens). No
@@ -8,7 +8,8 @@ before and after the resize (build/rig/shots/cdprobe-rewrap-*.png), prints
 the log and saves it as build/rig/shots/cdprobe-ks<version>.log; exits
 non-zero on a FAIL line. --noscroll skips CD_SETUPSCROLLBACK/POSITION (use
 it when a run crashed on them: the log's last "sending" line names the
-command). The rig must be up; `make build/amiga/cdprobe` first."""
+command). --reset also sends CMD_RESET (hangs on unit 0 of KS 40.63;
+reboot after), unit=n runs the census on that unit only, --nocensus parts 2 and 3 only. The rig must be up; `make build/amiga/cdprobe` first."""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
@@ -24,7 +25,9 @@ def run(cmd, timeout=60):
 def main():
     shutil.copyfile(ROOT / "build/amiga/cdprobe", VTC / "cdprobe")
     OUT.mkdir(parents=True, exist_ok=True)
-    run('Run >NIL: VTC:cdprobe%s' % (' NOSCROLL' if '--noscroll' in sys.argv else ''))
+    args = [a[2:].upper() for a in sys.argv[1:] if a.startswith('--')]
+    args += [a.upper() for a in sys.argv[1:] if a.startswith('unit=')]
+    run('Run >NIL: VTC:cdprobe %s' % ' '.join(args))
     shots, log = set(), ''
     for _ in range(240):
         time.sleep(1)
@@ -37,7 +40,8 @@ def main():
         if 'passed ' in log:
             break
     m = re.search(r'kickstart (\d+\.\d+)', log)
-    (OUT / ('cdprobe-ks%s.log' % (m.group(1) if m else 'unknown'))).write_text(log)
+    tag = ''.join('-' + a.lower().replace('=', '') for a in args)
+    (OUT / ('cdprobe-ks%s%s.log' % (m.group(1) if m else 'unknown', tag))).write_text(log)
     sys.stdout.write(log)
     if 'passed ' not in log:
         print('FAIL the probe did not finish (the last "sending" line names the command it was on)')
