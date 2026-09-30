@@ -162,6 +162,11 @@ $(BUILD)/amiga/ixwait: tests/amiga/ixwait.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwait.c
 
+# GNU screen's backtick/printcmd/blanker/lock children (tools/rig/screen_rig.py)
+$(BUILD)/amiga/forkprobe: tests/amiga/forkprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/forkprobe.c
+
 $(BUILD)/amiga/ixbg: tests/amiga/ixbg.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixbg.c

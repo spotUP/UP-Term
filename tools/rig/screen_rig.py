@@ -6,6 +6,11 @@ inside it. Passes when all 240 cube and grey cells are the xterm palette
 under 4 s, the owner's first run inside screen over 60 s). Screenshot:
 build/rig/shots/screen_colors.png.
 
+Then screen's other children, which the port starts with vfork (ixemul has
+no fork): a backtick in the status line, the blanker (":blanker") and the
+lock (Ctrl-A x with LOCKPRG) each run tests/amiga/forkprobe, which logs to
+RAM:forkprobe.log.
+
 Needs the rig up with the patched ixemul (ixpty_rig.use_ixemul), PTY:
 mounted, VTC:screen built from ~/Code/screen-amiga/src (Makefile.amiga)
 and the kit NOT installed (its DOSDrivers XCON mounts L:vtcon-handler).
@@ -24,7 +29,13 @@ SCREENRC = """shell /VTC/vsh
 term screen-256color
 setenv IXSTACK 65536
 startup_message off
+backtick 1 0 0 /VTC/forkprobe backtick
+hardstatus alwayslastline "status: %1`"
+blankerprg /VTC/forkprobe blanker
 """
+CHILDREN = ["argv0=/VTC/forkprobe argc=2 [backtick]",
+            "argv0=/VTC/forkprobe argc=2 [blanker]",
+            "argv0=SCREEN-LOCK argc=1"]
 
 
 def ex(cmd, t=20):
@@ -38,18 +49,26 @@ def typeline(s, wait):
     time.sleep(wait)
 
 
+def ctrl_a():
+    ami.key(0x20, 0x08)  # A with Ctrl
+    time.sleep(0.4)
+
+
 def main():
     shutil.copyfile(ROOT / "tests/amiga/colors.sh", VTC / "colors.sh")
-    shutil.copyfile(ROOT / "build/amiga/pty-handler", VTC / "pty-handler")
+    for name in ("pty-handler", "forkprobe"):
+        shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "ptymount").write_text(ptytest_rig.MOUNTLIST)
     (VTC / "screenrc").write_text(SCREENRC)
     ixpty_rig.use_ixemul()
     if ex('Assign >NIL: PTY: EXISTS DEVICES')[0] != 0:
         ex('Mount PTY: FROM VTC:ptymount')
     ex('Copy VTC:screenrc ENV:screenrc')
+    ex('Delete RAM:forkprobe.log QUIET')
     ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/20/780/560/screen/CLOSE"')
     time.sleep(4)
     typeline('VTC:vsh', 3)
+    typeline('LOCKPRG=/VTC/forkprobe; export LOCKPRG', 1)
     typeline('VTC:screen', 10)
     ex('Delete RAM:screen_sty QUIET')
     typeline('echo "$STY" >RAM:screen_sty', 2)
@@ -61,6 +80,18 @@ def main():
     time.sleep(float(os.environ.get("SCREEN_WAIT", "20")))
     ami.main(['shot', str(SHOT)])
     rc = cube_rig.check(Image.open(SHOT).convert('RGB'), 30, 580)
+    ctrl_a()
+    typeline(':blanker', 4)
+    ami.key(0x40)  # any key ends the blanker
+    time.sleep(2)
+    ctrl_a()
+    ami.req(0x08, bytes([4]) + b'x')
+    time.sleep(5)
+    log = ex('Type RAM:forkprobe.log')[1]
+    for want in CHILDREN:
+        ok = want in log
+        rc |= not ok
+        print('%s screen started %s' % ('ok' if ok else 'FAIL', want))
     if "--keep" not in sys.argv:
         typeline('exit', 3)  # the last window's shell ends screen
         typeline('endcli', 2)  # the vsh, then the XCON Shell
