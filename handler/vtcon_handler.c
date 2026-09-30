@@ -510,6 +510,29 @@ static void parse_font(const char *rest, char *name, int max, WORD *size)
         *size = (WORD)(*size * 10 + (*rest++ - '0'));
 }
 
+/* Is our DOS device node named `want` (case-insensitive)? The CON:/RAW:
+ * swap (console plan DD19, H5) points those entries at this handler; it
+ * then serves them in the Amiga personality, RAW: starting raw. */
+static int node_named(con *c, const char *want)
+{
+    const UBYTE *b;
+    int i, n;
+    if (!c->node || !c->node->dn_Name)
+        return 0;
+    b = (const UBYTE *)BADDR(c->node->dn_Name);
+    n = b[0];
+    for (i = 0; i < n; i++) {
+        char x = (char)b[i + 1], y = want[i];
+        if (!y)
+            return 0;
+        if (x >= 'a' && x <= 'z')
+            x = (char)(x - 32);
+        if (x != y)
+            return 0;
+    }
+    return want[n] == 0;
+}
+
 /* "x/y/w/h/title/OPT/OPT..." after the colon. */
 static void parse_spec(con *c, const char *s)
 {
@@ -521,6 +544,10 @@ static void parse_spec(con *c, const char *s)
     c->wh = 200;
     copy_str(c->title, "vtcon", sizeof(c->title));
     c->pers = VT_XTERM;
+    if (node_named(c, "CON") || node_named(c, "RAW"))
+        c->pers = VT_AMIGA; /* options below may still choose another */
+    if (node_named(c, "RAW"))
+        c->raw = 1;
     c->fg_rgb = c->bg_rgb = VR_KEEP;
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;

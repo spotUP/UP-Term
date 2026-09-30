@@ -239,9 +239,11 @@ Success: every DP row has its numbers written here and in R-6; no code depends o
 unmeasured value.
 
 **Phase H5: CON:/RAW: served by the XCON: handler (opt-in)**
-- [ ] H5.1 Handler knows its DOS name (from the startup packet's DeviceNode, `c->node`):
+- [x] H5.1 Handler knows its DOS name (from the startup packet's DeviceNode, `c->node`):
       CON/RAW default to AMIGA, RAW opens raw; XCON unchanged. In `parse_spec`
       (vtcon_handler.c ~l.474) defaults. Host-free; rig-checked in H5.6.
+      **DONE 2026-09-30:** `node_named()` in vtcon_handler.c; CON/RAW -> AMIGA, RAW starts raw.
+      Proven by H5.6 (romprobe 51/51 through the swapped CON:, a RAW: key without RETURN).
 - [x] H5.2 ACTION_UNDISK_INFO (513) and V47's rule: DISK_INFO disables AUTO until
       UNDISK_INFO (RN-CH 47.1). Matrix 7.1 row updated.
       **DONE 2026-09-30:** measured the ROM first (`tests/amiga/autoprobe.c`,
@@ -256,19 +258,27 @@ unmeasured value.
 - [ ] H5.3 Medium mode SetMode(fh,2): cooked line editing, but TAB, Shift+TAB, Up, Down
       send DP5's bytes at once. `handler/lineedit.c` gains the mode; host test in
       `tests/test_lineedit.c` (each key gives DP5's bytes, other keys edit). Lifts DD20.
-- [ ] H5.4 `device/upconsole.c` -> `C:UPConsole` (vbcc, ReadArgs
+- [x] H5.4 `device/upconsole.c` -> `C:UPConsole` (vbcc, ReadArgs
       `CON/K,DEVICE/K,EXCLUDE/K,STATUS/S`): CON ON/OFF per DD19/DD21, STATUS prints both
       states. Makefile target `build/amiga/UPConsole`.
+      **DONE 2026-09-30:** `C:UPConsole CON ON|OFF`, `STATUS`, `HANDLER <file>` (the rig's
+      VTC: copy); state in the public semaphore "UP-Term console"; refuses non-pristine
+      entries (DP3 table, stack 3200 below V47) and V47 (DD20). DEVICE/EXCLUDE say "not built".
 - [ ] H5.5 Kit: `dist/Install` asks (default No), writes the User-Startup block;
       `dist/Uninstall` runs `UPConsole CON OFF` and removes the block; README section.
       `tools/rig/install_rig.py` gains: block written, CON ON after reboot, Uninstall
       removes it, CON: back to ROM.
-- [ ] H5.6 REACHABILITY `tools/rig/concon_rig.py`: `UPConsole CON ON`; `NewShell
+- [x] H5.6 REACHABILITY `tools/rig/concon_rig.py`: `UPConsole CON ON`; `NewShell
       CON:0/20/640/200/t`; probe `tests/amiga/conwho.c` run in it sends
       ACTION_VTCON_GWINSZ to `*` -- only the vtcon handler answers it (ROM:
       ERROR_ACTION_NOT_KNOWN) -- and prints the grid; romprobe through `CON:` gives
       50/50 equal to the ROM results (`tools/probe_compare.py`); a RAW: open reads a key
       unbuffered; `CON OFF`, a new CON: window answers ERROR_ACTION_NOT_KNOWN again.
+      **DONE 2026-09-30:** `tools/rig/concon_rig.py` 9/9 on KS 39.106 and 40.63 (logs
+      build/rig/shots/concon*.log): ROM window refuses GWINSZ (209); after CON ON a NewShell
+      CON: window answers it (UP-Term 16 77); romprobe 51/51 lines equal to the ROM; RAW: key
+      0x78 without RETURN; after CON OFF 209 again. On 47.115 CON ON is refused with the DD20
+      message and STATUS stays ROM.
 Success: H5.6 green on 3.0 and 3.1; on 3.2 green after H5.3 or refused with the DD20
 message; ledger H5 ticked.
 

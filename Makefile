@@ -237,6 +237,19 @@ $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldis
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ttyprobe.c
 
+# C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
+$(BUILD)/amiga/UPConsole: device/upconsole.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ device/upconsole.c
+
+# H5.6's probes (tools/rig/concon_rig.py)
+$(BUILD)/amiga/conwho: tests/amiga/conwho.c handler/vtcon_packets.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/conwho.c
+$(BUILD)/amiga/romprobe: tests/amiga/romprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/romprobe.c
+
 # Phase DP of the console.device plan: DP1 input chain, DP3 DosList, DP4 ROM
 # commands (run by tools/rig/<name>_rig.py)
 CONPROBES := chainprobe dosnode cdprobe mediumprobe medshell autoprobe
