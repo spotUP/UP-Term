@@ -216,6 +216,55 @@ void suite_upconf(void)
         CHECK(upconf_hex6(0, &rgb) == 0);
     }
 
+    /* The selection colours a theme carries. VR_KEEP lives in the Amiga
+     * renderer, which the host does not link, so the sentinel is spelled
+     * out here; the point is the contract: a key that is absent leaves the
+     * caller's sentinel alone, so the renderer keeps swapping the cell. */
+    {
+        const uc_u32 keep = 0xFFFFFFFFUL; /* VR_KEEP */
+        const char *text =
+            "[profile night]\n"
+            "selection-bg = 87AFD7\n"
+            "selection-fg = 262626\n"
+            "cursor-color = BCBCBC\n"
+            "palette = 0,1C1C1C,1,AF5F5F\n";
+        upconf_clear(&c);
+        CHECK(upconf_parse(&c, text, (long)strlen(text)));
+        CHECK(upconf_rgb(&c, "night", "selection-bg", keep) == 0x87AFD7);
+        CHECK(upconf_rgb(&c, "night", "selection-fg", keep) == 0x262626);
+        CHECK(upconf_rgb(&c, "night", "cursor-color", keep) == 0xBCBCBC);
+        /* absent keys keep the sentinel, so the swap survives */
+        CHECK(upconf_rgb(&c, "night", "selection-underline", keep) == keep);
+        CHECK(upconf_get(&c, "night", "selection-bg"));
+        CHECK(upconf_get(&c, "night", "selection-fg"));
+
+        /* a profile that sets only the background themes the highlight and
+         * leaves the text to the swap -- the renderer asks for the other
+         * half with its own sentinel and gets it back unchanged */
+        text = "[profile half]\nselection-bg = 000000\n";
+        upconf_clear(&c);
+        CHECK(upconf_parse(&c, text, (long)strlen(text)));
+        CHECK(upconf_rgb(&c, "half", "selection-bg", keep) == 0x000000);
+        CHECK(upconf_rgb(&c, "half", "selection-fg", keep) == keep);
+
+        /* black is a colour, not a missing key */
+        upconf_clear(&c);
+        CHECK(upconf_has(&c, "x", "selection-bg") == 0);
+        CHECK(upconf_set(&c, "x", "selection-bg", "000000"));
+        CHECK(upconf_has(&c, "x", "selection-bg"));
+        CHECK(upconf_rgb(&c, "x", "selection-bg", keep) == 0x000000);
+
+        /* a value with no hex digits at all falls back to the sentinel, so
+         * the renderer keeps the swap; upconf_hex is the lenient parser for
+         * values already in a file, so a short one is taken as written
+         * (upconf_hex6 is the strict one the Prefs editor uses) */
+        upconf_clear(&c);
+        CHECK(upconf_set(&c, "y", "selection-fg", "nothex"));
+        CHECK_INT(upconf_rgb(&c, "y", "selection-fg", keep), keep);
+        CHECK(upconf_set(&c, "y", "selection-bg", ""));
+        CHECK_INT(upconf_rgb(&c, "y", "selection-bg", keep), keep);
+    }
+
     /* Delete a whole profile; the later ones keep their place. */
     upconf_clear(&c);
     CHECK(upconf_set(&c, "alpha", "k", "1"));

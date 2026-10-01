@@ -300,6 +300,10 @@ def profile(theme, name=None):
         lines.append("bg = %s" % word(theme["bg"]))
     if theme["cursor"]:
         lines.append("cursor-color = %s" % word(theme["cursor"]))
+    if theme["selection_bg"]:
+        lines.append("selection-bg = %s" % word(theme["selection_bg"]))
+    if theme["selection_fg"]:
+        lines.append("selection-fg = %s" % word(theme["selection_fg"]))
     if theme["palette"]:
         lines.append("palette = " + ",".join(
             "%d,%s" % (i, word(rgb)) for i, rgb in enumerate(theme["palette"])))
@@ -412,6 +416,15 @@ def _selftest():
     check("profile bg", "bg = 262626" in out, True)
     check("profile cursor", "cursor-color = BCBCBC" in out, True)
     check("profile palette", "palette = 0,1C1C1C,1,AF5F5F,2,5F875F" in out, True)
+    sel = profile({"palette": expect, "fg": (0xBC, 0xBC, 0xBC), "bg": (0x26, 0x26, 0x26),
+                   "cursor": (0xBC, 0xBC, 0xBC), "selection_bg": (0x87, 0xAF, 0xD7),
+                   "selection_fg": (0x26, 0x26, 0x26), "name": None}, "night")
+    check("profile selection bg", "selection-bg = 87AFD7" in sel, True)
+    check("profile selection fg", "selection-fg = 262626" in sel, True)
+    none_sel = profile({"palette": expect, "fg": None, "bg": None, "cursor": None,
+                        "selection_bg": None, "selection_fg": None, "name": None}, "x")
+    check("no selection keys when the theme has none",
+          "selection-" in none_sel, False)
     check("profile palette is one line", len([l for l in out.splitlines()
                                               if l.startswith("palette =")]), 1)
     check("value width fits UC_MAX_VALUE",

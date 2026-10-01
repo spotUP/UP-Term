@@ -199,6 +199,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->cursor_drawn = 0;
     r->cursor_colorful = 0;
     r->cursor_ink = VR_KEEP;
+    r->sel_ink[0] = r->sel_ink[1] = VR_KEEP;
     r->bell_flash = 0;
     r->cursor_x = r->cursor_y = 0;
     r->view = 0;
@@ -260,6 +261,30 @@ void vr_set_cursor_color(vr_render *r, ULONG rgb)
     }
 }
 
+/* The profile's selection colours. VR_KEEP for either keeps that half of the
+ * swap, so setting only selection-bg themes the highlight and leaves the text
+ * the colour the cell would otherwise have had. */
+void vr_set_selection_colors(vr_render *r, ULONG fg_rgb, ULONG bg_rgb)
+{
+    int i;
+    if (!r->win)
+        return; /* before vr_init, after vr_free */
+    for (i = 0; i < 2; i++) {
+        ULONG rgb = i ? bg_rgb : fg_rgb;
+        if (r->sel_ink[i] != VR_KEEP && !(r->sel_ink[i] & VR_INK_RGB) && r->cm)
+            ReleasePen(r->cm, r->sel_ink[i]);
+        r->sel_ink[i] = VR_KEEP;
+        if (rgb == VR_KEEP)
+            continue;
+        if (r->truecolor)
+            r->sel_ink[i] = truecolor_ink(r, rgb);
+        else {
+            LONG p = obtain(r, rgb);
+            r->sel_ink[i] = p >= 0 ? (ULONG)p : VR_KEEP; /* no pen left: swapped */
+        }
+    }
+}
+
 /* The colour a screen pen shows now, 0xRRGGBB. */
 ULONG vr_pen_rgb(vr_render *r, UBYTE pen)
 {
@@ -305,6 +330,9 @@ void vr_free(vr_render *r)
             ReleasePen(r->cm, (ULONG)r->dflt_obtained[i]);
     if (r->cm && r->cursor_ink != VR_KEEP && !(r->cursor_ink & VR_INK_RGB))
         ReleasePen(r->cm, r->cursor_ink);
+    for (i = 0; i < 2; i++)
+        if (r->cm && r->sel_ink[i] != VR_KEEP && !(r->sel_ink[i] & VR_INK_RGB))
+            ReleasePen(r->cm, r->sel_ink[i]);
     r->dflt_obtained[0] = r->dflt_obtained[1] = -1;
     for (i = 0; i < VR_EXACT_SLOTS; i++)
         r->exact_key[i] = 0;
@@ -906,9 +934,16 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
     st->fg = pen_for(r, f, 0);
     st->bg = pen_for(r, b, 1);
     if (selected_cell) {
-        ULONG tmp = st->fg;
-        st->fg = st->bg;
-        st->bg = tmp;
+        /* the profile's selection colours, else the swapped cell */
+        if (r->sel_ink[0] != VR_KEEP)
+            st->fg = r->sel_ink[0];
+        if (r->sel_ink[1] != VR_KEEP)
+            st->bg = r->sel_ink[1];
+        if (r->sel_ink[0] == VR_KEEP && r->sel_ink[1] == VR_KEEP) {
+            ULONG tmp = st->fg;
+            st->fg = st->bg;
+            st->bg = tmp;
+        }
     }
     if (r->bell_flash) {
         /* the visual bell's frame: the whole window reversed, the terminal's

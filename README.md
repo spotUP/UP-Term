@@ -46,8 +46,12 @@ away the accent the author picked (Dracula's pink, Nord's frost). The `.yaml`
 and `.terminal` exports keep it. `.terminal` is the runner-up and carries the
 same accent, but one theme in 36 ships malformed XML that will not parse.
 
-Selection colours are read but not written: the profile format has no keys for
-them yet.
+`selection-bg` and `selection-fg` theme the selected cell; either left out
+keeps that half of the flip, which is what a terminal did before. Worth
+knowing: the Warp `.yaml` export carries no selection colours at all, so a
+scheme downloaded from there needs them typed in by hand. The Alacritty
+`.toml` and Ghostty exports do carry them, at the cost of setting the cursor
+to the foreground.
 
 Colours are exact on a true-colour or AGA screen. On OCS/ECS a window has 16
 pens and the renderer takes the nearest one per colour, so a theme whose

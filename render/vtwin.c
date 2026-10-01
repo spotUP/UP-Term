@@ -316,6 +316,7 @@ int vtwin_attach(vtwin *w, struct Window *win)
                                   vt_default_color(w->t, 1), w->cursor_rgb);
             vr_set_cursor_color(&w->r, w->cursor_rgb);
         }
+        vr_set_selection_colors(&w->r, w->sel_fg_rgb, w->sel_bg_rgb);
     }
     vt_set_cell_pixels(w->t, w->font->tf_XSize, w->font->tf_YSize);
     vr_redraw(&w->r);

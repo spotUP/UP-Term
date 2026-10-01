@@ -565,6 +565,9 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "cursor-color", 0);
     if (v && !str_ieq(v, "inverse"))
         c->w.cursor_rgb = upconf_rgb(c->conf, p, "cursor-color", VR_KEEP);
+    /* either key alone is enough: whichever is unset keeps the swapped value */
+    c->w.sel_fg_rgb = upconf_rgb(c->conf, p, "selection-fg", VR_KEEP);
+    c->w.sel_bg_rgb = upconf_rgb(c->conf, p, "selection-bg", VR_KEEP);
     v = upconf_str(c->conf, p, "bell", 0);
     if (v) {
         if (str_ieq(v, "none"))
@@ -611,6 +614,7 @@ static void parse_spec(con *c, const char *s)
     c->w.bold_bright = 1;   /* xterm SGR 1 takes the bright 8-15 */
     c->w.wheel_scroll = 1;  /* the wheel moves through the scrollback */
     c->w.cursor_rgb = VR_KEEP;
+    c->w.sel_fg_rgb = c->w.sel_bg_rgb = VR_KEEP;
     copy_str(c->profile, "default", sizeof(c->profile));
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;

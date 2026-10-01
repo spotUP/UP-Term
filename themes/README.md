@@ -23,6 +23,10 @@ Only the ANSI sixteen, the default foreground and background and the cursor
 are set. Everything else - font, scrollback size, bell, cursor shape - stays
 at the built-in default, so a theme changes the colours and nothing else.
 
+None of them set `selection-bg` or `selection-fg`: the Warp export these
+came from carries no selection colours. Add them by hand if the scheme
+wants them, or convert the Alacritty `.toml`, which has them.
+
 ## Where they came from
 
 Converted from the `.yaml` (Warp) export of each theme with

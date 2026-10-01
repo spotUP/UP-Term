@@ -97,6 +97,7 @@ def main():
     # falls back to the built-in look (light text on black).
     put('ENV:up-term/up-term',
         b'[profile a]\nfg = FFFF00\nbg = 000000\npalette = 2,FF0000\n'
+        b'selection-bg = 0000FF\nselection-fg = FFFFFF\n'
         b'[profile b]\nfg = 00FFFF\nbg = FF0000\nfont = TOPAZ:16\n')
     # the bytes to Type: an ANSI-green word and a plain word, one per line
     put('VTC:prefsa.txt', b'\x1b[32mGGGG\x1b[0m\nHHHH\n')
@@ -125,6 +126,32 @@ def main():
     check("profile a palette: SGR 32 draws red", yg is not None, "y=%s" % yg)
     check("profile a foreground is yellow", yh is not None, "y=%s" % yh)
     step_a = (yh - yg) if (yg and yh) else None
+
+    # 3b: profile a's selection: a drag over the text paints it with the
+    # profile's selection colours instead of flipping the cell
+    w = ami.window('prefsA')
+    if not w:
+        check("selection colours (no window to drag in)", False)
+    else:
+        bx, by, bw, bh = w['box']
+        kx, ky = ami.pointer_scale()
+        # inside the first text row, from the first column across two cells
+        sx, sy = bx + 22, by + 40
+        ex, ey = bx + 90, by + 40
+        ami.script(('move', int(sx * kx), int(sy * ky)),
+                   ('button', 1, 1),
+                   ('move', int(ex * kx), int(ey * ky)),
+                   ('wait', 4),
+                   ('button', 1, 0))
+        time.sleep(2)
+        shot(out); _, _, px = pixels(out)
+        # the selected cell sits under the drag; the row below it holds the
+        # same text unselected, so the two must differ
+        sel = px(bx + 40, by + 40)
+        unsel = px(bx + 40, by + 56)
+        check("drag-select paints the profile's selection background",
+              sel[2] > 100 and sel[2] > sel[0] + 40,
+              "selected rgb=%s, below it rgb=%s" % (sel, unsel))
 
     # 4: profile b: cyan on red, topaz 16 -> the row pitch doubles
     open_win('prefsB', 'PROFILE b')

@@ -58,7 +58,7 @@ enum {
     ID_PROFN, ID_LOAD, ID_NEW, ID_DEL,
     ID_FONT, ID_SB, ID_CURCOL,
     ID_CURSTYLE, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL,
-    ID_FG, ID_BG, ID_PAL,
+    ID_FG, ID_BG, ID_PAL, ID_SELFG, ID_SELBG,
     ID_SAVE, ID_CANCEL, ID_STATUS
 };
 
@@ -75,6 +75,8 @@ struct app {
     char fg[UC_MAX_VALUE];
     char bg[UC_MAX_VALUE];
     char pal[16][16];
+    char selfg[UC_MAX_VALUE];
+    char selbg[UC_MAX_VALUE];
     char status[128];
     /* the cycle buttons' labels */
     char lb_curstyle[40];
@@ -94,8 +96,8 @@ struct app {
     struct Gadget gfont, gsb, gcurcol;
     struct Gadget gcurstyle, gblink, gbell, gbold, gmeta, gcopy, gwheel;
     struct Gadget glab_gen[4];
-    struct Gadget gfg, gbg, gpal[16];
-    struct Gadget glab_col[18];
+    struct Gadget gfg, gbg, gpal[16], gselfg, gselbg;
+    struct Gadget glab_col[20];
     struct Gadget gsave, gcancel, gstatus;
 };
 
@@ -219,6 +221,8 @@ static void defaults(struct app *a)
     a->curcol[0] = 0;
     a->fg[0] = 0;
     a->bg[0] = 0;
+    a->selfg[0] = 0;
+    a->selbg[0] = 0;
     memset(a->pal, 0, sizeof(a->pal));
     refresh_labels(a);
 }
@@ -235,6 +239,8 @@ static void load_profile(struct app *a, const char *name)
     strcpy(a->curcol, upconf_str(&a->conf, name, "cursor-color", ""));
     strcpy(a->fg, upconf_str(&a->conf, name, "fg", ""));
     strcpy(a->bg, upconf_str(&a->conf, name, "bg", ""));
+    strcpy(a->selfg, upconf_str(&a->conf, name, "selection-fg", ""));
+    strcpy(a->selbg, upconf_str(&a->conf, name, "selection-bg", ""));
     v = upconf_str(&a->conf, name, "cursor", "block");
     a->cursor_style = ieq(v, "underline") ? 3 : ieq(v, "bar") ? 5 : 1;
     a->blink = ieq(upconf_str(&a->conf, name, "cursor-blink", "off"), "on");
@@ -268,7 +274,9 @@ static void set_page(struct app *a, int page)
         g = g->NextGadget;
     }
     g = &a->gfg;
-    for (i = 0; g && i < 36; i++) { /* the Colors controls and labels */
+    /* the Colors controls and labels: fg, bg, the 16 palette fields, the
+     * 20 labels and the two selection fields */
+    for (i = 0; g && i < 40; i++) {
         if (!page)
             g->Flags |= GFLG_DISABLED;
         else
@@ -408,6 +416,25 @@ static int save_all(struct app *a)
             pal[i] = 0x01000000UL | rgb;
         }
     }
+    /* the two selection fields, strictly: what the user typed must be six
+     * hex digits, not something the lenient file parser would quietly cut */
+    {
+        static const char *sel_names[2] = { "Selected text", "Selection" };
+        const char *sel_vals[2];
+        int s;
+        sel_vals[0] = a->selfg;
+        sel_vals[1] = a->selbg;
+        for (s = 0; s < 2; s++) {
+            uc_u32 rgb;
+            if (sel_vals[s][0] && !upconf_hex6(sel_vals[s], &rgb)) {
+                char msg[STATUS_MAX];
+                int j = puts_(msg, 0, sel_names[s], -1);
+                j = puts_(msg, j, ": six hex digits, or blank.", 0);
+                set_status(a, msg);
+                return 0;
+            }
+        }
+    }
     if (upconf_palette_str(pal, palstr, sizeof(palstr)) < 0) {
         /* a value slot is UC_MAX_VALUE long and the palette line is one
          * value; a full 16-entry grid is 159 bytes and fills it exactly, so reaching
@@ -439,6 +466,12 @@ static int save_all(struct app *a)
         upconf_set(c, name, "fg", a->fg);
     if (a->bg[0])
         upconf_set(c, name, "bg", a->bg);
+    /* blank keeps the swap for that half, so an emptied field is not written
+     * at all: the handler then leaves VR_KEEP and the cell stays inverted */
+    if (a->selfg[0])
+        upconf_set(c, name, "selection-fg", a->selfg);
+    if (a->selbg[0])
+        upconf_set(c, name, "selection-bg", a->selbg);
     upconf_set(c, name, "cursor",
                a->cursor_style == 3 ? "underline" : a->cursor_style == 5 ? "bar" : "block");
     upconf_set(c, name, "cursor-blink", a->blink ? "on" : "off");
@@ -507,17 +540,20 @@ static void build_gadgets(struct app *a)
     int i;
     static const char *gen_labels[4] = { "Profile", "Font", "Scrollback", "Cursor colour" };
     static const int gen_y[4] = { 30, 54, 78, 102 };
-    static const char *col_labels[18] = {
+    static const char *col_labels[20] = {
         "Text colour", "Background",
-        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
+        "Selected text", "Selection"
     };
-    static const int col_x[18] = {
+    static const int col_x[20] = {
         8, 8,
-        8, 114, 220, 326, 8, 114, 220, 326, 8, 114, 220, 326, 8, 114, 220, 326
+        8, 114, 220, 326, 8, 114, 220, 326, 8, 114, 220, 326, 8, 114, 220, 326,
+        8, 8
     };
-    static const int col_y[18] = {
+    static const int col_y[20] = {
         30, 54,
-        82, 82, 82, 82, 108, 108, 108, 108, 134, 134, 134, 134, 160, 160, 160, 160
+        82, 82, 82, 82, 108, 108, 108, 108, 134, 134, 134, 134, 160, 160, 160, 160,
+        196, 220
     };
     mk(&a->gtab_gen, &a->gtab_col, 312, 6, 72, 14, BOOLGADGET, "General", ID_TABGEN);
     mk(&a->gtab_col, &a->gprof, 392, 6, 72, 14, BOOLGADGET, "Colors", ID_TABCOL);
@@ -545,8 +581,16 @@ static void build_gadgets(struct app *a)
            30 + (i % 4) * 106, 82 + (i / 4) * 26, 74, 12, PREFS_STRING, a->pal[i],
            (ULONG)ID_PAL + i);
     for (i = 0; i < 18; i++)
-        mk(&a->glab_col[i], i < 17 ? &a->glab_col[i + 1] : &a->gsave,
+        mk(&a->glab_col[i], i < 17 ? &a->glab_col[i + 1] : &a->glab_col[18],
            col_x[i], col_y[i], 96, 8, PREFS_LABEL, (char *)col_labels[i], 0);
+    /* the theme's selection colours: either left blank keeps that half of
+     * the swap, which is the look a terminal had before */
+    mk(&a->glab_col[18], &a->glab_col[19], col_x[18], col_y[18], 96, 8,
+       PREFS_LABEL, (char *)col_labels[18], 0);
+    mk(&a->glab_col[19], &a->gselfg, col_x[19], col_y[19], 96, 8,
+       PREFS_LABEL, (char *)col_labels[19], 0);
+    mk(&a->gselfg, &a->gselbg, 100, 198, 80, 12, PREFS_STRING, a->selfg, ID_SELFG);
+    mk(&a->gselbg, &a->gsave, 100, 222, 80, 12, PREFS_STRING, a->selbg, ID_SELBG);
     mk(&a->gsave, &a->gcancel, 8, 284, 56, 16, BOOLGADGET, "Save", ID_SAVE);
     mk(&a->gcancel, &a->gstatus, 70, 284, 56, 16, BOOLGADGET, "Cancel", ID_CANCEL);
     mk(&a->gstatus, 0, 134, 286, 326, 12, PREFS_STRING, a->status, ID_STATUS);

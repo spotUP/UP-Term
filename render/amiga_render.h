@@ -56,6 +56,9 @@ typedef struct vr_render {
     BYTE cursor_colorful;  /* the cursor cell was filled with the profile colour */
     ULONG cursor_ink;      /* the profile's cursor colour (a pen, or VR_INK_RGB on
                               * true colour), or VR_KEEP: the inverted cell */
+ULONG sel_ink[2];      /* the profile's selection foreground and background: a
+                         * pen, or VR_INK_RGB on true colour, else VR_KEEP --
+                         * which keeps the swapped colours of the cell */
     BYTE hidden;          /* the window is too small to draw into */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
@@ -114,6 +117,10 @@ void vr_scroll(vr_render *r, int top, int bottom, int n);
  * its cursor colour. VR_KEEP keeps the inverted cell (the default).
  * Underline and bar shapes stay inverted. */
 void vr_set_cursor_color(vr_render *r, ULONG rgb);
+/* The profile's selection foreground and background, 0xRRGGBB. VR_KEEP for
+ * either (both by default) leaves that half of the swap in place, so the
+ * plain look is a selected cell with its two colours exchanged. */
+void vr_set_selection_colors(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
 /* Hide / show the cursor around a batch of output. */
 void vr_cursor_off(vr_render *r);
 void vr_cursor_on(vr_render *r);

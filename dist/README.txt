@@ -66,6 +66,8 @@ CONFIGURATION (profiles)
      cursor = block            block | underline | bar
      cursor-blink = off        on | off
      cursor-color = inverse    inverse (the flipped cell) or RRGGBB
+     selection-bg = 87AFD7     the selected cell's background and text
+     selection-fg = 262626     colour; blank either keeps the flip
      bell = beep               none | beep | visual (a one-frame screen flash)
      bold-bright = on          xterm only: SGR 1 takes the bright colours 8-15
      meta = amiga              amiga (Left Amiga = Meta) | alt (the Alt keys)

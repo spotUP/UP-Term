@@ -65,6 +65,7 @@ typedef struct vtwin {
     int bold_bright;             /* xterm SGR 1 takes the bright 8-15 (1, default) */
     int bell;                    /* 0 none, 1 beep (default), 2 a screen flash */
     ULONG cursor_rgb;            /* VR_KEEP: the inverted cell (default) */
+    ULONG sel_fg_rgb, sel_bg_rgb;/* VR_KEEP: the selection swaps fg and bg (default) */
     int cursor_style;            /* DECSCUSR default, 0-6 */
     int cursor_blink;            /* ?12 default */
     int meta_alt;                /* Alt (not Left Amiga) is the ESC prefix */
