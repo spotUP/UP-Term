@@ -21,3 +21,37 @@ in xterm), so a window carries exactly one personality at a time.
 | `device/` | Later: the console.device replacement. |
 | `terminfo/` | The terminfo entry that matches the xterm personality exactly. |
 | `tests/` | Host suites (`make test`) and rig scripts. |
+
+## Colour themes
+
+A window's colours are a profile in `ENVARC:up-term/up-term` (see
+`dist/README.txt`). Themes downloaded for another terminal convert to one:
+
+```sh
+tools/theme_import.py Apprentice.itermcolors      # prints the profile text
+tools/theme_import.py --name night --out night.conf theme.toml
+```
+
+It reads Terminal.app (`.terminal`), iTerm2 (`.itermcolors`), Alacritty
+(`.toml`), Warp (`.yaml`) and Ghostty (flat `key = value`), picking the format
+from the file's content rather than its name. All five carry the same sixteen
+ANSI colours and round-trip exactly through `upconf_palette_parse`. Run
+`tools/theme_import.py --self-test` for the checks.
+
+Download **`.yaml`** when a site offers a choice. Measured over a 36-theme
+set: all five formats agree exactly on `fg`, `bg` and all sixteen palette
+colours, so colour fidelity is a tie - but the flat, `.itermcolors` and
+`.toml` exports set the cursor to the foreground on 28 themes of 36, throwing
+away the accent the author picked (Dracula's pink, Nord's frost). The `.yaml`
+and `.terminal` exports keep it. `.terminal` is the runner-up and carries the
+same accent, but one theme in 36 ships malformed XML that will not parse.
+
+Selection colours are read but not written: the profile format has no keys for
+them yet.
+
+Colours are exact on a true-colour or AGA screen. On OCS/ECS a window has 16
+pens and the renderer takes the nearest one per colour, so a theme whose
+colours sit close together collapses - Apprentice, for one, pairs colour 2
+with colour 7 at 33 levels apart and runs four greys through an 80-level
+range, landing on about five distinct pens. A scheme built for 256 colours
+shows its true self on 4-bit hardware.

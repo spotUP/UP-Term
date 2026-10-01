@@ -78,6 +78,11 @@ CONFIGURATION (profiles)
      NewShell "XCON:0/20/640/300/vim/PROFILE vim/CLOSE"
    with  [profile vim]  bell = none  in the file.
 
+   Themes from another terminal convert to a profile section with
+   tools/theme_import.py in the source tree; it reads the Terminal.app,
+   iTerm2, Alacritty, Warp and Ghostty formats and prints the fg, bg,
+   cursor-color and palette lines to paste here.
+
 KEYS
   Mouse drag            select (Shift+drag when a program uses the mouse)
   Right Amiga C / V     copy / paste (clipboard, IFF FTXT)

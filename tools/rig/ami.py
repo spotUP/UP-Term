@@ -117,12 +117,9 @@ def main(a):
         key(code, qual)
     elif cmd == 'type': req(0x08, bytes([4]) + a[1].encode('latin-1'))
     elif cmd == 'gclick':
-        # the scale: park the pointer at (200, 200) and read where the front screen has it
-        req(0x08, bytes([1]) + struct.pack('>HH', 200, 200))
-        import re
-        out = req(0x02, struct.pack('>H', 10) + b'DCT:ptrpos')[4:].decode('latin-1')
-        sx, sy = map(int, re.search(r'" (-?\d+),(-?\d+) viewmodes', out).groups())
-        kx, ky = 200.0 / max(sx, 1), 200.0 / max(sy, 1)
+        # CLICK's x/y are absolute screen coordinates (PROTOCOL.md: the move
+        # uses IECLASS_POINTERPOS), so UITREE's screen pixels are used as they
+        # are -- no scaling against ptrpos.
         tree = req(0x0D).decode('latin-1').splitlines()
         win = None
         for line in tree:
@@ -133,9 +130,9 @@ def main(a):
                 win = None
             elif win is not None and line.startswith('G ') and a[2].lower() in line.lower():
                 x, y = int(f[2]), int(f[3]); w, h = map(int, f[4].split('x'))
-                cx, cy = int((x + w // 2) * kx), int((y + h // 2) * ky)
+                cx, cy = x + w // 2, y + h // 2
                 req(0x08, bytes([5]) + struct.pack('>HH', cx, cy) + bytes([0, 1]))
-                print('click at %d,%d (scale %.2f,%.2f)' % (cx, cy, kx, ky)); return
+                print('click at %d,%d' % (cx, cy)); return
         raise SystemExit('no matching gadget')
     else: raise SystemExit(__doc__)
 

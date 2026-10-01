@@ -74,9 +74,13 @@ def scan_ink_row(px, x, y0, y1, want, bg):
             return y
     return None
 
-def open_win(title, spec):
+def open_win(title, opts=""):
+    # XCON:x/y/w/h/TITLE/OPT... -- the title is the fifth field, so it has to
+    # come before the options; passing "PROFILE a" there made it the title and
+    # the profile was never applied.
     ami.req(0x02, struct.pack('>H', 30) +
-            ('run >NIL: newshell "XCON:0/12/640/300/%s/CLOSE"' % spec).encode('latin-1'))
+            ('run >NIL: newshell "XCON:0/12/640/300/%s/CLOSE%s"'
+             % (title, ("/" + opts if opts else ""))).encode('latin-1'))
     time.sleep(4)
     for _ in range(3):
         w = ami.window(title)
@@ -101,7 +105,7 @@ def main():
     x = 20   # inside the window's first column area
 
     # 1: no profile -> the built-in defaults: black bg, light achromatic text
-    open_win('prefs0', 'CLOSE')
+    open_win('prefs0')
     ami.main(['type', 'Type VTC:prefsb.txt'])
     time.sleep(2)
     shot(out); _, _, px = pixels(out)
