@@ -38,20 +38,26 @@ from the file's content rather than its name. All five carry the same sixteen
 ANSI colours and round-trip exactly through `upconf_palette_parse`. Run
 `tools/theme_import.py --self-test` for the checks.
 
-Download **`.yaml`** when a site offers a choice. Measured over a 36-theme
-set: all five formats agree exactly on `fg`, `bg` and all sixteen palette
-colours, so colour fidelity is a tie - but the flat, `.itermcolors` and
-`.toml` exports set the cursor to the foreground on 28 themes of 36, throwing
-away the accent the author picked (Dracula's pink, Nord's frost). The `.yaml`
-and `.terminal` exports keep it. `.terminal` is the runner-up and carries the
-same accent, but one theme in 36 ships malformed XML that will not parse.
+No single format is best on its own, so take two. Measured over a 36-theme
+set, all five agree exactly on `fg`, `bg` and all sixteen palette colours, so
+colour fidelity is a tie - but they differ on two other things. The Warp
+`.yaml` and Terminal.app `.terminal` exports keep the accent the author chose
+for the cursor; the flat, `.itermcolors` and `.toml` exports set it to the
+foreground on 28 themes of 36, which says nothing. Conversely the Warp
+`.yaml` carries no selection colours at all, while the Alacritty `.toml`
+does, and it is the only readable format with a theme's name in it.
 
-`selection-bg` and `selection-fg` theme the selected cell; either left out
-keeps that half of the flip, which is what a terminal did before. Worth
-knowing: the Warp `.yaml` export carries no selection colours at all, so a
-scheme downloaded from there needs them typed in by hand. The Alacritty
-`.toml` and Ghostty exports do carry them, at the cost of setting the cursor
-to the foreground.
+So convert from the `.toml` and pass `--cursor-from` a folder of the same
+themes in `.yaml`, which supplies the name and restores the accent:
+
+```sh
+python3 tools/theme_import.py --cursor-from themes Nord.toml
+```
+
+The tool only takes the fallback's cursor where this one's is merely the
+foreground, so a theme that genuinely chose the foreground as its cursor
+keeps it. `.terminal` is the runner-up for the accent, but one theme in 36
+ships malformed XML that will not parse.
 
 Colours are exact on a true-colour or AGA screen. On OCS/ECS a window has 16
 pens and the renderer takes the nearest one per colour, so a theme whose

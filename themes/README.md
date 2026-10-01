@@ -23,24 +23,26 @@ Only the ANSI sixteen, the default foreground and background and the cursor
 are set. Everything else - font, scrollback size, bell, cursor shape - stays
 at the built-in default, so a theme changes the colours and nothing else.
 
-None of them set `selection-bg` or `selection-fg`: the Warp export these
-came from carries no selection colours. Add them by hand if the scheme
-wants them, or convert the Alacritty `.toml`, which has them.
+All 112 set `selection-bg` and `selection-fg`, which the Warp export never
+carried.
 
 ## Where they came from
 
-Converted from the `.yaml` (Warp) export of each theme with
-`tools/theme_import.py`. See `README.md` for why that format was chosen over
-the Terminal.app, iTerm2, Alacritty and Ghostty ones.
+Converted from the Alacritty `.toml` export of each theme with
+`tools/theme_import.py`, taking the name and the cursor accent from the Warp
+`.yaml` of the same theme -- the `.toml` sets the cursor to the foreground,
+which carries no information. See `README.md` for the measurements behind
+that. Both sources are kept: `toml/` is the export these were converted
+from, and the `.yaml` files beside them supplied the name and the cursor.
 
 ## Regenerating
 
 Point it at a folder of downloaded themes and every `.yaml` in it is rewritten:
 
 ```sh
-mkdir -p themes
-for f in ~/Downloads/Terminal_Themes/*.yaml; do
-    python3 tools/theme_import.py "$f" > "themes/$(basename "$f" .yaml).conf"
+for f in ~/Downloads/newthemes/*.toml; do
+    python3 tools/theme_import.py --cursor-from themes "$f" \
+        > "themes/$(basename "$f" .toml).conf"
 done
 ```
 
