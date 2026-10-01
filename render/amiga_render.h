@@ -50,8 +50,12 @@ typedef struct vr_render {
     /* blinking: a blinking cell was drawn; frames counted; the off phases */
     BYTE has_blink, blink_slow_off, blink_fast_off;
     ULONG blink_frames;
+    BYTE bell_flash;      /* the visual bell's reversed frame */
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
+    BYTE cursor_colorful;  /* the cursor cell was filled with the profile colour */
+    ULONG cursor_ink;      /* the profile's cursor colour (a pen, or VR_INK_RGB on
+                              * true colour), or VR_KEEP: the inverted cell */
     BYTE hidden;          /* the window is too small to draw into */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
@@ -79,6 +83,11 @@ void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
 
 /* Blinking cells: call once per frame; 1 while any blink on screen. */
 int  vr_blink_tick(vr_render *r);
+/* The visual bell: every cell reversed for one frame; call once per frame,
+ * 1 when the frame just ended (a re-render is due). The terminal's own
+ * reverse-video mode is not touched. */
+void vr_bell_flash(vr_render *r);
+int  vr_flash_tick(vr_render *r);
 /* The cursor blinks (?12 or a blinking DECSCUSR shape). */
 int  vr_cursor_blinks(vr_render *r);
 /* The font SGR 11-19 (n 1-9) or 20 (n 10, Fraktur) draws with; the caller
@@ -100,6 +109,11 @@ int  vr_layout(vr_render *r);
 void vr_redraw(vr_render *r);
 void vr_damage(vr_render *r, int x0, int y0, int x1, int y1);
 void vr_scroll(vr_render *r, int top, int bottom, int n);
+/* The cursor's colour (0xRRGGBB) for a block cursor: the cell is filled
+ * with it and the glyph drawn in the background colour, as xterm does with
+ * its cursor colour. VR_KEEP keeps the inverted cell (the default).
+ * Underline and bar shapes stay inverted. */
+void vr_set_cursor_color(vr_render *r, ULONG rgb);
 /* Hide / show the cursor around a batch of output. */
 void vr_cursor_off(vr_render *r);
 void vr_cursor_on(vr_render *r);

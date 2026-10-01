@@ -37,11 +37,20 @@ If EXISTS SYS:UP-Term/unstartup.sh
   Assign >NIL: GG: SYS:UP-Term REMOVE
   Delete >NIL: SYS:UP-Term ALL QUIET
 EndIf
-Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill C:screen C:tmux C:UPConsole DEVS:up-console.device QUIET
+Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
-Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info QUIET
+Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-Term-Prefs SYS:Utilities/UP-Term-Prefs.info QUIET
 If EXISTS ENVARC:up-term/ixpipe
   Delete >NIL: DEVS:DOSDrivers/IXPIPE DEVS:DOSDrivers/IXPIPE.info L:ixpipe-handler QUIET
+EndIf
+; the window preferences the user edited with UP-Term Prefs are their own
+; data, not ours: kept once in ENVARC:up-term-orig/up-term (Install uses that
+; drawer for the TERMINFO it replaced)
+If EXISTS ENVARC:up-term/up-term
+  If NOT EXISTS ENVARC:up-term-orig
+    MakeDir >NIL: ENVARC:up-term-orig
+  EndIf
+  Copy ENVARC:up-term/up-term ENVARC:up-term-orig/up-term CLONE QUIET
 EndIf
 Delete >NIL: ENVARC:up-term ENV:up-term ALL QUIET
 ; TERMINFO: ours goes, the user's from before Install comes back
@@ -63,7 +72,9 @@ EndIf
 If EXISTS ENVARC:up-term-orig/envarc
   Copy ENVARC:up-term-orig/envarc ENVARC:TERMINFO CLONE
 EndIf
-Delete >NIL: ENVARC:up-term-orig ALL QUIET
+; our TERMINFO entries go; the user's TERMINFO comes back. The window
+; preferences copied to ENVARC:up-term-orig/up-term above stay.
+Delete >NIL: ENVARC:up-term-orig/env ENVARC:up-term-orig/envarc QUIET
 Delete >NIL: ENVARC:vsh ENV:vsh ALL QUIET
 If EXISTS LIBS:ixemul.library.orig
   Copy LIBS:ixemul.library.orig LIBS:ixemul.library CLONE

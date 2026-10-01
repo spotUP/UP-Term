@@ -17,7 +17,9 @@ struct IntuitionBase *IntuitionBase;
 static struct Window *watched;
 static volatile LONG seen, any, total;
 
-static struct InputEvent *watch(__reg("a0") struct InputEvent *ev, __reg("a1") APTR data)
+/* the data parameter is part of the hook's signature and is not used here;
+ * left unnamed so it is not an unused variable */
+static struct InputEvent *watch(__reg("a0") struct InputEvent *ev, __reg("a1") APTR)
 {
     struct InputEvent *e;
     for (e = ev; e; e = e->ie_NextEvent) {

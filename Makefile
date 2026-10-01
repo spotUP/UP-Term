@@ -9,19 +9,20 @@ RENDER  := render/glyphmap.c handler/lineedit.c
 SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c
 TTY     := tty/ldisc.c
 DEVICE_CORE := device/upc_core.c
+CONF    := config/upconf.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
-           tests/test_upcon.c
+           tests/test_upcon.c tests/test_upconf.c
 
 .PHONY: test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) device/upc_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h handler/lineedit.h render/glyph_tables.inc $(TESTS) tests/harness.h
+$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) device/upc_core.h config/upconf.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h handler/lineedit.h render/glyph_tables.inc $(TESTS) tests/harness.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TESTS)
 
 render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
@@ -112,14 +113,18 @@ capture:
 # --- Amiga (vbcc, NDK 3.2; the same setup as DCTelnet) -----------------------
 VBCC_CFG ?= $(CURDIR)/tools/vbcc-aos68k.cfg
 CPU      ?= 68020
-VC       := vc +$(VBCC_CFG) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
+# The AmigaOS 3.2 SDK headers. vendor/ is gitignored (4.1 MB of third-party
+# headers), so unpack NDK3.2R4 there once, or point this at your own copy:
+#   make amiga VTCON_NDK=~/Code/dctelnet-petscii-recovered/.ndk/Include_H
+VTCON_NDK ?= $(CURDIR)/vendor/ndk-3.2r4-Include_H
+VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
 
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
-HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/brk.c $(ENGINE) render/amiga_render.c render/vtwin.c render/glyphmap.c tty/ldisc.c
+HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/brk.c $(ENGINE) render/amiga_render.c render/vtwin.c render/glyphmap.c tty/ldisc.c config/upconf.c
 HANDLER_HDR := engine/vtengine.h engine/vtwidth.h render/amiga_render.h render/vtwin.h render/glyphmap.h render/glyph_tables.inc \
-               handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h
+               handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -149,6 +154,13 @@ $(BUILD)/amiga/sizewatch: tests/amiga/sizewatch.c
 $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/breakport.c
+
+# the Prefs editor: the profiles in ENVARC:up-term/up-term, two pages of
+# Intuition gadgets. A plain CLI program (its own window), so vc links it.
+# The kit ships it as "UP-Term Prefs" (make cannot hold a space in a target).
+$(BUILD)/amiga/upprefs: prefs/upprefs.c config/upconf.c config/upconf.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ prefs/upprefs.c config/upconf.c
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (no -m68020: the SDK has no libm020 multilib)
@@ -352,10 +364,11 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -c -o $(BUILD)/amiga/obj/complete.o handler/complete.c
 	$(VC) -c -o $(BUILD)/amiga/obj/brk.o handler/brk.c
 	$(VC) -c -o $(BUILD)/amiga/obj/ldisc.o tty/ldisc.c
+	$(VC) -c -o $(BUILD)/amiga/obj/upconf.o $(CONF)
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
 	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/glyphmap.o \
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o \
-	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/ldisc.o \
+	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
 # PTY: (P5): pseudo-terminals on the same line discipline. No C startup.
@@ -388,7 +401,10 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(BUILD)/dist/vtcon/banner
 	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term.info
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(BUILD)/dist/vtcon/UP-Term
+	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
+	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(BUILD)/dist/vtcon/UP-Term-Prefs
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
+	cp $(BUILD)/amiga/upprefs "$(BUILD)/dist/vtcon/UP-Term Prefs"
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon
 	@ls -la $(BUILD)/vtcon.lha

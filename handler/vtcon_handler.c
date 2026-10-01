@@ -50,6 +50,7 @@
 #include "brk.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../config/upconf.h"
 
 /* rexx/rexxio.h: ARexx PUSH and QUEUE */
 #ifndef ACTION_STACK
@@ -137,6 +138,9 @@ typedef struct con {
     int auto_held;               /* DISK_INFO holds an AUTO window open until UNDISK_INFO (V47) */
     int auto_shut;               /* the close gadget shut an AUTO window: close it after idcmp() */
     int spec_parsed;
+    char profile[UC_NAME];       /* the config profile (spec's PROFILE; "default") */
+    int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
+    upconf *conf;                /* the user config, read at startup (config/upconf.h) */
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
     struct MsgPort *comp_port;   /* Tab completion and command lookups answer here */
     struct complete_req *comp;   /* Tab */
@@ -155,6 +159,15 @@ typedef struct con {
     unsigned long comp_edits;    /* edits when the running completion started */
     char menu[COMPLETE_NAMES];   /* the last completion's names */
     int menu_len, menu_n, menu_i, menu_start;
+    /* the find prompt (Right Amiga F): its own small window, open while the
+     * console keeps running -- the program's output must not stop while a
+     * query is typed */
+    struct MsgPort *find_port;
+    struct Window *find_win;
+    struct Gadget *find_gad;      /* reported back by AddGadget, for RefreshGadgets */
+    struct Gadget find_gadget;    /* the gadget struct, filled by hand (see below) */
+    struct StringInfo find_si;    /* its text; Intuition maintains find_buf through it */
+    char find_buf[VT_FIND_QUERY_MAX]; /* the query */
     ULONG foreign_idcmp;         /* its IDCMP before we added ours, to restore */
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
@@ -459,6 +472,125 @@ static int node_named(con *c, const char *want)
     return want[n] == 0;
 }
 
+/* ---- the user config (plan 2026-10-01) ---------------------------------------- */
+
+/* /ENV/up-term/up-term, read once per process while it is idle -- before
+ * the first Open, so no DOS call can race a packet (the handler's rule).
+ * The kit's Install creates the directory; a missing or empty file is not
+ * an error: every lookup then misses and the built-in defaults stand, so
+ * a window with no config behaves exactly as before this feature. */
+#define CONF_MAX UC_MAX_FILE
+
+static void config_load(con *c)
+{
+    BPTR f;
+    char *buf;
+    LONG size;
+    if (!c->conf)
+        return; /* out of memory: the built-in defaults stand */
+    f = Open((STRPTR)"/ENV/up-term/up-term", MODE_OLDFILE);
+    if (!f)
+        return;
+    size = Seek(f, 0, OFFSET_END);
+    if (size > 0) {
+        if (size > CONF_MAX)
+            size = CONF_MAX; /* upconf's overflow flag says the file was cut */
+        buf = (char *)AllocVec(size + 1, MEMF_ANY);
+        if (buf) {
+            LONG got;
+            Seek(f, 0, OFFSET_BEGINNING);
+            got = Read(f, buf, size);
+            buf[got > 0 ? got : 0] = 0;
+            upconf_parse(c->conf, buf, got > 0 ? got : 0);
+            FreeVec(buf);
+        }
+    }
+    Close(f);
+}
+
+static int profile_exists(const upconf *cf, const char *name)
+{
+    const char *names[UC_MAX_PROFILES + 1];
+    int n = upconf_profiles(cf, names), i;
+    for (i = 0; i < n; i++)
+        if (str_ieq(names[i], name))
+            return 1;
+    return 0;
+}
+
+/* The profile's values for every knob the spec did not set (precedence:
+ * built-in defaults < profile < window spec; plan 2026-10-01). A profile
+ * the file does not know falls back to "default". */
+static void apply_profile(con *c)
+{
+    const char *p, *v;
+    if (!c->conf)
+        return;
+    p = c->profile;
+    if (!profile_exists(c->conf, p))
+        p = profile_exists(c->conf, "default") ? "default" : 0;
+    if (!p)
+        return;
+    v = upconf_str(c->conf, p, "font", 0);
+    if (v && !c->w.fontname[0]) {
+        char f[UC_MAX_VALUE];
+        int i;
+        copy_str(f, v, sizeof(f));
+        for (i = 0; f[i]; i++)
+            if (f[i] == ':')
+                f[i] = ' '; /* the profile's "NAME:SIZE" is the spec's "NAME SIZE" */
+        parse_font(f, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
+    }
+    if (!c->colours_spec) {
+        ULONG fg = upconf_rgb(c->conf, p, "fg", VR_KEEP);
+        ULONG bg = upconf_rgb(c->conf, p, "bg", VR_KEEP);
+        if (fg != VR_KEEP)
+            c->w.fg_rgb = fg;
+        if (bg != VR_KEEP)
+            c->w.bg_rgb = bg;
+    }
+    c->w.sb_lines = (int)upconf_int(c->conf, p, "scrollback", 0); /* 0 = the built-in 500 */
+    v = upconf_str(c->conf, p, "cursor", 0);
+    if (v) {
+        if (str_ieq(v, "block"))
+            c->w.cursor_style = 1;
+        else if (str_ieq(v, "underline"))
+            c->w.cursor_style = 3;
+        else if (str_ieq(v, "bar"))
+            c->w.cursor_style = 5;
+    }
+    v = upconf_str(c->conf, p, "cursor-blink", 0);
+    if (v)
+        c->w.cursor_blink = str_ieq(v, "on");
+    v = upconf_str(c->conf, p, "cursor-color", 0);
+    if (v && !str_ieq(v, "inverse"))
+        c->w.cursor_rgb = upconf_rgb(c->conf, p, "cursor-color", VR_KEEP);
+    v = upconf_str(c->conf, p, "bell", 0);
+    if (v) {
+        if (str_ieq(v, "none"))
+            c->w.bell = 0;
+        else if (str_ieq(v, "visual"))
+            c->w.bell = 2;
+        else if (str_ieq(v, "beep"))
+            c->w.bell = 1;
+    }
+    v = upconf_str(c->conf, p, "bold-bright", 0);
+    if (v)
+        c->w.bold_bright = str_ieq(v, "on");
+    v = upconf_str(c->conf, p, "meta", 0);
+    if (v)
+        c->w.meta_alt = str_ieq(v, "alt");
+    v = upconf_str(c->conf, p, "copy-on-select", 0);
+    if (v)
+        c->w.copy_on_select = str_ieq(v, "on");
+    v = upconf_str(c->conf, p, "wheel", 0);
+    if (v)
+        c->w.wheel_scroll = !str_ieq(v, "ignore");
+    v = upconf_str(c->conf, p, "palette", 0);
+    if (v)
+        upconf_palette_parse(v, c->w.pal16); /* 0x01RRGGBB, 0 = not remapped */
+}
+
 /* "x/y/w/h/title/OPT/OPT..." after the colon. */
 static void parse_spec(con *c, const char *s)
 {
@@ -475,6 +607,11 @@ static void parse_spec(con *c, const char *s)
     if (node_named(c, "RAW"))
         c->raw = 1;
     c->w.fg_rgb = c->w.bg_rgb = VR_KEEP;
+    c->w.bell = 1;          /* beep; the profile may choose none or a flash */
+    c->w.bold_bright = 1;   /* xterm SGR 1 takes the bright 8-15 */
+    c->w.wheel_scroll = 1;  /* the wheel moves through the scrollback */
+    c->w.cursor_rgb = VR_KEEP;
+    copy_str(c->profile, "default", sizeof(c->profile));
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;
     for (;;) {
@@ -571,12 +708,18 @@ static void parse_spec(con *c, const char *s)
         } else if (str_ipre(field, "FONT", &rest)) {
             /* FONT name.font size */
             parse_font(rest, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
+        } else if (str_ipre(field, "PROFILE", &rest)) {
+            /* PROFILE name: the config profile (the file's, else "default") */
+            while (*rest == ' ')
+                rest++;
+            copy_str(c->profile, rest, sizeof(c->profile));
         }
         fno++;
         if (*s != '/')
             break;
         s++;
     }
+    c->colours_spec = colours;
     /* Black background unless the options chose colours (owner, 2026-09-29:
      * program colours sat on the Workbench's grey). The amiga personality
      * keeps the screen's pens: CON: programs draw with pens 0-3 as the
@@ -585,11 +728,14 @@ static void parse_spec(con *c, const char *s)
         c->w.fg_rgb = 0xC0C0C0UL;
         c->w.bg_rgb = 0x000000UL;
     }
+    apply_profile(c); /* the profile's values, under the spec's own options */
 }
 
 static void le_out(void *u, const unsigned char *b, long n);
 static void history_load(con *c);
 static void close_window(con *c);
+
+static void find_close(con *c); /* the find prompt (see the find prompt section) */
 
 static int open_window(con *c)
 {
@@ -612,7 +758,7 @@ static int open_window(con *c)
         c->foreign_idcmp = win->IDCMPFlags;
         if (!ModifyIDCMP(win, c->foreign_idcmp | IDCMP_RAWKEY | IDCMP_NEWSIZE |
                          IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS |
-                         IDCMP_MOUSEMOVE))
+                         IDCMP_MOUSEMOVE | IDCMP_EXTENDEDMOUSE))
             return 0;
         SetFont(win->RPort, c->w.font);
         goto have_window;
@@ -624,8 +770,8 @@ static int open_window(con *c)
     tags[n].ti_Tag = WA_Title;       tags[n++].ti_Data = (ULONG)c->w.title;
     tags[n].ti_Tag = WA_Flags;       tags[n++].ti_Data = c->wflags;
     tags[n].ti_Tag = WA_IDCMP;       tags[n++].ti_Data = IDCMP_RAWKEY | IDCMP_NEWSIZE |
-        IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE | IDCMP_ACTIVEWINDOW |
-        IDCMP_INACTIVEWINDOW;
+        IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE |
+        IDCMP_EXTENDEDMOUSE | IDCMP_ACTIVEWINDOW | IDCMP_INACTIVEWINDOW;
     tags[n].ti_Tag = WA_PubScreen;   tags[n++].ti_Data = (ULONG)scr;
     tags[n].ti_Tag = WA_MinWidth;    tags[n++].ti_Data = 80;
     tags[n].ti_Tag = WA_MinHeight;   tags[n++].ti_Data = 40;
@@ -655,6 +801,7 @@ have_window:
 static void close_window(con *c)
 {
     struct Window *win = c->w.win;
+    find_close(c); /* the prompt belongs to the window */
     DBG("close_window", win, c->w.t);
     if (c->input_io) {
         if (c->winch_added) {
@@ -1396,7 +1543,145 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
     service_reads(c);
 }
 
-/* ---- IDCMP ------------------------------------------------------------------------ */
+/* ---- find prompt ----------------------------------------------------------------- */
+
+/* Right Amiga F raises this: a one-line window with a string gadget, beside
+ * the console window. Enter searches and closes, so F again repeats the last
+ * query (vtwin_find(NULL) re-searches it); Escape closes without searching.
+ *
+ * The prompt is a window and a port of its own, so the console window keeps
+ * the IDCMP it was opened with: output, resize and the wheel keep working
+ * while the query is typed, which is the point of a find in a live terminal.
+ *
+ * This NDK has neither REQ_STR_GETANSWER nor a requester tag that asks for a
+ * string, so the gadget is a hand-built struct filled field by field, exactly
+ * as the Prefs editor does it (prefs/upprefs.c mk()). Intuition maintains the
+ * text in StringInfo: the keys are not decoded here, only Enter and Escape
+ * are acted on. */
+
+#define FIND_STRING GTYP_GADGET0002   /* the type the Prefs editor uses for a string */
+#define FIND_GAD_X  6
+#define FIND_GAD_Y  3
+#define FIND_GAD_W  340
+#define FIND_GAD_H  18
+
+static void find_close(con *c)
+{
+    if (c->find_win) {
+        CloseWindow(c->find_win); /* the gadget is a plain struct, not allocated */
+        c->find_win = 0;
+        c->find_gad = 0;
+    }
+    if (c->find_port) {
+        struct Message *m;
+        /* whatever the prompt still holds must not answer a dead port */
+        while ((m = GetMsg(c->find_port)))
+            ReplyMsg(m);
+        DeleteMsgPort(c->find_port);
+        c->find_port = 0;
+    }
+}
+
+/* Search for the text in the prompt, or repeat the console's last query when
+ * the prompt is empty. Beeps when nothing matched: a find that scrolled
+ * nowhere must not be silence. */
+static void find_run(con *c)
+{
+    const char *q = c->find_buf; /* the gadget's StringInfo.Buffer */
+    if (vtwin_find(&c->w, q[0] ? q : 0)) {
+        find_close(c); /* the line is on screen: the prompt has done its job */
+        return;
+    }
+    DisplayBeep(c->find_win ? c->find_win->WScreen
+                            : (c->w.win ? c->w.win->WScreen : 0));
+}
+
+static int find_open(con *c)
+{
+    struct TagItem tags[14];
+    struct Gadget *g;
+    int n = 0;
+    if (!c->w.win)
+        return 0;
+    if (c->find_win) {
+        WindowToFront(c->find_win); /* already up: keep typing into the same query */
+        return 1;
+    }
+    if (!c->find_port)
+        c->find_port = CreateMsgPort();
+    if (!c->find_port)
+        return 0;
+    /* beside the console window, moved back on screen if it hangs over */
+    tags[n].ti_Tag = WA_Left;       tags[n++].ti_Data =
+        (LONG)(c->w.win->LeftEdge + c->w.win->Width + 2);
+    tags[n].ti_Tag = WA_Top;        tags[n++].ti_Data =
+        (LONG)(c->w.win->TopEdge + c->w.win->Height + 2);
+    tags[n].ti_Tag = WA_Width;      tags[n++].ti_Data = 356;
+    tags[n].ti_Tag = WA_Height;     tags[n++].ti_Data = 26;
+    tags[n].ti_Tag = WA_Title;      tags[n++].ti_Data = (ULONG)"Find";
+    tags[n].ti_Tag = WA_IDCMP;      tags[n++].ti_Data = IDCMP_GADGETUP | IDCMP_RAWKEY;
+    tags[n].ti_Tag = WA_PubScreen;  tags[n++].ti_Data = (ULONG)c->w.win->WScreen;
+    c->find_buf[0] = 0;
+    g = &c->find_gadget;
+    g->NextGadget = 0;
+    g->LeftEdge = FIND_GAD_X;
+    g->TopEdge = FIND_GAD_Y;
+    g->Width = FIND_GAD_W;
+    g->Height = FIND_GAD_H;
+    g->Flags = 0;
+    g->Activation = GACT_IMMEDIATE; /* Intuition types into it (StringInfo) */
+    g->GadgetType = FIND_STRING;
+    g->GadgetRender = 0;
+    g->SelectRender = 0;
+    g->GadgetText = 0;
+    g->MutualExclude = 0;
+    g->SpecialInfo = (APTR)&c->find_si;
+    g->GadgetID = 0;
+    g->UserData = 0;
+    c->find_si.Buffer = c->find_buf;
+    c->find_si.MaxChars = (WORD)sizeof(c->find_buf);
+    c->find_si.BufferPos = 0;
+    c->find_si.DispPos = 0;
+    tags[n].ti_Tag = WA_Gadgets;    tags[n++].ti_Data = (ULONG)g;
+    tags[n].ti_Tag = TAG_DONE;      tags[n++].ti_Data = 0;
+    c->find_win = OpenWindowTagList(0, tags);
+    if (!c->find_win) {
+        find_close(c);
+        return 0;
+    }
+    /* the window answers this port now: nothing has been waited on yet */
+    c->find_win->UserPort = c->find_port;
+    c->find_gad = g; /* in the window's chain: RefreshGadgets and events use it */
+    RefreshGadgets(c->find_gad, c->find_win, 0);
+    return 1;
+}
+
+/* The prompt's events, drained whenever the console is idle. Enter runs the
+ * search (find_run may close the prompt), Escape closes it. Everything else
+ * is Intuition's: it edits the string and redraws the gadget itself. */
+static void find_idcmp(con *c)
+{
+    struct IntuiMessage *im;
+    struct Message *m;
+    while (c->find_port && (m = GetMsg(c->find_port))) {
+        int run;
+        ULONG cls;
+        im = (struct IntuiMessage *)m;
+        cls = im->Class;
+        if (cls != IDCMP_GADGETUP &&
+            !(cls == IDCMP_RAWKEY && (im->Code == 0x0D || im->Code == 0x1B))) {
+            ReplyMsg(m);
+            continue;
+        }
+        run = cls == IDCMP_GADGETUP || im->Code == 0x0D;
+        ReplyMsg(m);
+        if (run)
+            find_run(c); /* may close the prompt and its port */
+        else
+            find_close(c);
+        return; /* one action per pass, and the port may be gone now */
+    }
+}
 
 static void idcmp(con *c)
 {
@@ -1407,6 +1692,12 @@ static void idcmp(con *c)
         ULONG cls = im->Class;
         switch (cls) {
         case IDCMP_RAWKEY:
+            /* Right Amiga F: the find prompt, opened here rather than in
+             * vtwin because the prompt is a window of ours */
+            if ((im->Qualifier & IEQUALIFIER_RCOMMAND) && im->Code == 0x46) {
+                find_open(c);
+                break;
+            }
             /* IAddress: the previous two down keys (dead keys) */
             vtwin_key(&c->w, im->Code, im->Qualifier, im->IAddress ? *(ULONG *)im->IAddress : 0,
                       im->Seconds, im->Micros);
@@ -1435,6 +1726,16 @@ static void idcmp(con *c)
         case IDCMP_MOUSEBUTTONS:
         case IDCMP_MOUSEMOVE:
             vtwin_mouse(&c->w, cls == IDCMP_MOUSEMOVE, im->Code, im->Qualifier, im->MouseX, im->MouseY);
+            break;
+        case IDCMP_EXTENDEDMOUSE:
+            /* the mouse wheel (OS 3.9+): the IntuiWheelData behind IAddress.
+             * WheelX is the main wheel; forward (up) is the negative delta.
+             * Anything else extended-mouse reports is not ours. */
+            if (im->Code == IMSGCODE_INTUIWHEELDATA && im->IAddress) {
+                struct IntuiWheelData *wd = (struct IntuiWheelData *)im->IAddress;
+                if (wd->Version == INTUIWHEELDATA_VERSION)
+                    vtwin_wheel(&c->w, wd->WheelX < 0, im->MouseX, im->MouseY);
+            }
             break;
         default:
             break;
@@ -1883,6 +2184,8 @@ static LONG handler_main(void)
     if (c->node)
         c->node->dn_Task = c->port;
     ReplyPkt(p, DOSTRUE, 0);
+    c->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
+    config_load(c); /* /ENV/up-term/up-term, while the process is still idle */
 
     for (;;) {
         ULONG wait = 1UL << c->port->mp_SigBit;
@@ -1894,6 +2197,8 @@ static LONG handler_main(void)
         if (c->comp_port)
             wait |= 1UL << c->comp_port->mp_SigBit;
         wait |= vtwin_sigmask(&c->w);
+        if (c->find_port)
+            wait |= 1UL << c->find_port->mp_SigBit;
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */
@@ -1901,6 +2206,7 @@ static LONG handler_main(void)
         while ((m = GetMsg(c->port)))
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
         vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
+        find_idcmp(c); /* the find prompt, while it is open */
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
@@ -1963,6 +2269,8 @@ static LONG handler_main(void)
     CloseLibrary((struct Library *)GfxBase);
     CloseLibrary((struct Library *)IntuitionBase);
     CloseLibrary((struct Library *)DOSBase);
+    if (c->conf)
+        FreeVec(c->conf);
     FreeVec(c);
     return 0;
 }

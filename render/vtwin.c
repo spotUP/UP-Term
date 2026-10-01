@@ -17,8 +17,15 @@
 
 extern struct GfxBase *GfxBase;
 extern struct Library *DiskfontBase;
+/* RawKeyConvert is a macro that calls into the console device at
+ * CONSOLE_BASE_NAME (ConsoleDevice by default), so it needs the base here.
+ * Both programs that link vtwin.c define it: the handler from its console
+ * device packet, upcon_device.c from the ROM device it fronts. */
+extern struct Device *ConsoleDevice;
 
 #define FRAME_MICROS 50000 /* 20 frames per second */
+
+static void frame_start(vtwin *w);
 
 /* ---- engine callbacks ------------------------------------------------------- */
 
@@ -38,10 +45,19 @@ static void cb_reply(void *u, const vt_u8 *b, long n)
     w->host->reply(w->user, b, n);
 }
 
+/* The profile's bell: 1 beeps, 2 reverses the screen for one frame (50 ms;
+ * vtwin_tick ends the flash on the next frame, in the renderer only --
+ * the program's own reverse-video mode is not touched). */
 static void cb_bell(void *u)
 {
     vtwin *w = (vtwin *)u;
-    DisplayBeep(w->win ? w->win->WScreen : 0);
+    if (w->bell == 1)
+        DisplayBeep(w->win ? w->win->WScreen : 0);
+    else if (w->bell == 2 && w->t) {
+        vr_bell_flash(&w->r);
+        w->render_pending = 1;
+        frame_start(w);
+    }
 }
 
 static void cb_title(void *u, const char *s)
@@ -74,13 +90,16 @@ static void report_defaults(vtwin *w)
 }
 
 /* A program changed the palette or the default colours (OSC 4, 10-12):
- * new pens, then the whole window redrawn (the engine marked it). */
+ * new pens, then the whole window redrawn (the engine marked it). With a
+ * profile cursor colour, OSC 12's new cursor colour follows through. */
 static void cb_colors(void *u)
 {
     vtwin *w = (vtwin *)u;
     ULONG fg = vt_default_color(w->t, 0), bg = vt_default_color(w->t, 1);
     vr_palette_changed(&w->r);
     vr_set_defaults(&w->r, fg, bg);
+    if (w->cursor_rgb != VR_KEEP)
+        vr_set_cursor_color(&w->r, vt_default_color(w->t, 2));
 }
 
 /* Amiga page length, line length and offsets (CSI t / u / x / y): the text
@@ -106,6 +125,7 @@ void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
 {
     w->host = host;
     w->user = user;
+    w->find_next = VT_ROW_NONE;
     w->frame_port = CreateMsgPort();
     if (w->frame_port) {
         w->frame = (struct timerequest *)CreateIORequest(w->frame_port, sizeof(struct timerequest));
@@ -173,11 +193,14 @@ void vtwin_tick(vtwin *w)
         WaitIO((struct IORequest *)w->frame);
         w->frame_busy = 0;
         vtwin_render(w); /* the frame is due */
-        if (w->t && vr_blink_tick(&w->r))
-            frame_start(w);
+        if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r)))
+            frame_start(w); /* that frame ended a flash or a blink phase */
     }
-    if (!w->frame_open)
+    if (!w->frame_open) {
         vtwin_render(w); /* no frame clock: draw at once */
+        if (w->t && vr_flash_tick(&w->r))
+            vtwin_render(w); /* the flash's frame is over */
+    }
     if (w->dragging && w->win) {
         /* follow the pointer on the frame clock (after the frame's own
          * bookkeeping, or frame_start finds it busy and the polling stops):
@@ -274,6 +297,26 @@ int vtwin_attach(vtwin *w, struct Window *win)
     }
     vr_set_defaults(&w->r, w->fg_rgb, w->bg_rgb);
     report_defaults(w);
+    {
+        /* The profile's engine settings, after report_defaults(): the
+         * default colours must be in place so a palette change can
+         * re-derive the pens through cb_colors(). */
+        int i;
+        if (w->bold_bright != 1)
+            vt_set_bold_bright(w->t, w->bold_bright);
+        if (w->cursor_style != 0)
+            vt_set_cursor_style(w->t, w->cursor_style);
+        if (w->cursor_blink)
+            vt_set_cursor_blink(w->t, w->cursor_blink);
+        for (i = 0; i < 16; i++)
+            if (w->pal16[i] & 0x01000000UL)
+                vt_set_palette(w->t, i, w->pal16[i] & 0xFFFFFFUL);
+        if (w->cursor_rgb != VR_KEEP) {
+            vt_set_default_colors(w->t, vt_default_color(w->t, 0),
+                                  vt_default_color(w->t, 1), w->cursor_rgb);
+            vr_set_cursor_color(&w->r, w->cursor_rgb);
+        }
+    }
     vt_set_cell_pixels(w->t, w->font->tf_XSize, w->font->tf_YSize);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
@@ -594,8 +637,12 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         mods |= VT_MOD_CTRL;
     /* Meta (the ESC prefix, VT_MOD_ALT) is Left Amiga + key: Alt belongs
      * to the keymap, where many layouts type ; @ { [ with it (the rig's
-     * ';' is Alt + 0x29; Alt-as-Meta turned it into ESC + o-umlaut). */
-    if (qual & IEQUALIFIER_LCOMMAND)
+     * ';' is Alt + 0x29; Alt-as-Meta turned it into ESC + o-umlaut).
+     * With meta_alt the Alt keys take the Meta role instead. */
+    if (w->meta_alt) {
+        if (qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
+            mods |= VT_MOD_ALT;
+    } else if (qual & IEQUALIFIER_LCOMMAND)
         mods |= VT_MOD_ALT;
     key = special_key(code);
     if (!key && w->pers == VT_XTERM && (vt_modes(w->t) & VT_MODE_APP_KEYPAD))
@@ -612,8 +659,10 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         ie.ie_SubClass = 0;
         ie.ie_Code = code;
         /* the keymap sees Alt (national characters); Left Amiga, our
-         * Meta, it does not */
-        ie.ie_Qualifier = (UWORD)(qual & ~IEQUALIFIER_LCOMMAND);
+         * Meta, it does not -- with meta_alt the other way round */
+        ie.ie_Qualifier = (UWORD)(w->meta_alt ?
+                                  (qual & ~(IEQUALIFIER_LALT | IEQUALIFIER_RALT)) :
+                                  (qual & ~IEQUALIFIER_LCOMMAND));
         ie.ie_EventAddress = (APTR)prev;
         k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), w->keymap);
         for (i = 0; i < k && n < (int)sizeof(out) - 8; i++) {
@@ -688,5 +737,72 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
             ReportMouse(FALSE, w->win);
         if (!w->drag_moved)
             vr_select(&w->r, 0, 0, 0, 0, 0); /* a click clears the selection */
+        else if (w->copy_on_select && !w->no_clipboard)
+            copy_selection(w); /* the profile's copy-on-select */
     }
+}
+
+/* The mouse wheel: three lines per notch. A program in mouse mode gets
+ * the wheel as its report; otherwise the wheel moves through the
+ * scrollback (the spec's wheel_scroll). */
+void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my)
+{
+    int n = 0;
+    vt_u8 out[40];
+    if (!w->t || !w->wheel_scroll)
+        return;
+    if (!w->r.view &&
+        (vt_modes(w->t) & (VT_MODE_MOUSE_X10 | VT_MODE_MOUSE_NORMAL | VT_MODE_MOUSE_BUTTON |
+                           VT_MODE_MOUSE_ANY)))
+        n = vt_encode_mouse(w->t, up ? 64 : 65, 0, mx, my, 0, out);
+    if (n) {
+        w->host->input(w->user, out, n);
+        return;
+    }
+    vr_set_view(&w->r, w->r.view + (up ? 3 : -3));
+}
+
+/* Find: scroll the view to the line a match is on. A match in the live grid
+ * brings the view back to the live output (the line is already showing), a
+ * match in the scrollback puts the line on the last row of the window so
+ * what follows it is readable. Repeating with the same query carries on from
+ * the line after the last hit and wraps at the newest line. */
+int vtwin_find(vtwin *w, const char *q)
+{
+    long row, from;
+    if (!w->t)
+        return 0;
+    if (q && q[0]) {
+        strncpy(w->find_q, q, sizeof(w->find_q) - 1);
+        w->find_q[sizeof(w->find_q) - 1] = 0;
+        w->find_next = VT_ROW_NONE; /* a new query starts at the oldest line */
+    }
+    if (!w->find_q[0])
+        return 0;
+    if (w->find_next == VT_ROW_NONE)
+        from = -vt_scrollback_lines(w->t);
+    else
+        from = w->find_next;
+    row = vt_find(w->t, w->find_q, from);
+    if (row == VT_ROW_NONE) {
+        /* wrap to the oldest line and try once more, so a repeated find
+         * cycles instead of stopping at the end */
+        if (w->find_next == VT_ROW_NONE)
+            return 0;
+        row = vt_find(w->t, w->find_q, -vt_scrollback_lines(w->t));
+        if (row == VT_ROW_NONE)
+            return 0;
+    }
+    if (row >= vt_rows(w->t)) {
+        /* the scan reports the row a match starts on, which for a query that
+         * crossed a wrap can be the row above: land on the last line of the
+         * window so the whole hit is readable */
+        row = vt_rows(w->t) - 1;
+    }
+    w->find_next = row + 1;
+    if (row >= 0)
+        vr_set_view(&w->r, 0); /* the live grid: it is on screen already */
+    else
+        vr_set_view(&w->r, -row + w->r.rows - 1);
+    return 1;
 }

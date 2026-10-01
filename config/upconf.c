@@ -1,0 +1,438 @@
+/* upconf: see upconf.h for the file format and the contract. */
+#include <string.h>
+#include "upconf.h"
+
+/* 1 when s starts with "profile", case-insensitively. */
+static int uc_prefix_profile(const char *s)
+{
+    static const char want[] = "profile";
+    int i;
+    for (i = 0; want[i]; i++) {
+        char c = s[i];
+        if (c >= 'A' && c <= 'Z')
+            c = (char)(c - 'A' + 'a');
+        if (c != want[i])
+            return 0;
+    }
+    return 1;
+}
+
+/* Case-insensitive compare of two NUL-terminated strings. */
+static int uc_ieq(const char *a, const char *b)
+{
+    while (*a && *b) {
+        char ca = *a, cb = *b;
+        if (ca >= 'A' && ca <= 'Z')
+            ca = (char)(ca - 'A' + 'a');
+        if (cb >= 'A' && cb <= 'Z')
+            cb = (char)(cb - 'A' + 'a');
+        if (ca != cb)
+            return 0;
+        a++;
+        b++;
+    }
+    return *a == 0 && *b == 0;
+}
+
+/* Copy at most n-1 bytes, always NUL-terminating. 1 when src was longer than
+ * n-1 (truncated), 0 otherwise. */
+static int uc_copy(char *dst, const char *src, int n)
+{
+    int i;
+    for (i = 0; i < n - 1 && src[i]; i++)
+        dst[i] = src[i];
+    dst[i] = 0;
+    return src[i] ? 1 : 0;
+}
+
+static int prof_find(const upconf *c, const char *name)
+{
+    int i;
+    for (i = 0; i < c->nprof; i++)
+        if (uc_ieq(c->prof[i], name))
+            return i;
+    return -1;
+}
+
+static int key_find(const upconf *c, int p, const char *name)
+{
+    int i;
+    for (i = 0; i < c->n[p]; i++)
+        if (uc_ieq(c->key[p][i], name))
+            return i;
+    return -1;
+}
+
+/* Copy s through *o while it fits in [o, end); *o advances past it. 0 when
+ * it does not fit. */
+static int uc_copyto(char **o, char *end, const char *s)
+{
+    while (*s) {
+        if (*o >= end)
+            return 0;
+        *(*o)++ = *s++;
+    }
+    return 1;
+}
+
+int upconf_set(upconf *c, const char *profile, const char *key, const char *value)
+{
+    int p, k;
+    if (!profile || !*profile || !key || !*key)
+        return 0;
+    p = prof_find(c, profile);
+    if (p < 0) {
+        if (c->nprof >= UC_MAX_PROFILES) {
+            c->overflow = 1;
+            return 0;
+        }
+        p = c->nprof++;
+        if (uc_copy(c->prof[p], profile, UC_NAME))
+            c->overflow = 1;
+        c->n[p] = 0;
+    }
+    k = key_find(c, p, key);
+    if (k < 0) {
+        if (c->n[p] >= UC_MAX_KEYS) {
+            c->overflow = 1;
+            return 0;
+        }
+        k = c->n[p]++;
+        if (uc_copy(c->key[p][k], key, UC_NAME))
+            c->overflow = 1;
+    }
+    if (uc_copy(c->val[p][k], value ? value : "", UC_MAX_VALUE))
+        c->overflow = 1;
+    return 1;
+}
+
+int upconf_del(upconf *c, const char *profile, const char *key)
+{
+    int p, k, last;
+    p = prof_find(c, profile);
+    if (p < 0)
+        return 0;
+    k = key_find(c, p, key);
+    if (k < 0)
+        return 0;
+    /* Shift the last key of the profile down over it; order is not a promise. */
+    last = c->n[p] - 1;
+    if (k != last) {
+        uc_copy(c->key[p][k], c->key[p][last], UC_NAME);
+        uc_copy(c->val[p][k], c->val[p][last], UC_MAX_VALUE);
+    }
+    c->n[p]--;
+    return 1;
+}
+
+int upconf_rmprof(upconf *c, const char *profile)
+{
+    int p, i;
+    p = prof_find(c, profile);
+    if (p < 0)
+        return 0;
+    /* Slide the later profiles down over it; their order is kept. */
+    for (i = p; i < c->nprof - 1; i++) {
+        int j = i + 1;
+        memcpy(c->prof[i], c->prof[j], sizeof(c->prof[0]));
+        memcpy(c->key[i], c->key[j], sizeof(c->key[0]));
+        memcpy(c->val[i], c->val[j], sizeof(c->val[0]));
+        c->n[i] = c->n[j];
+    }
+    c->nprof--;
+    return 1;
+}
+
+void upconf_clear(upconf *c)
+{
+    memset(c, 0, sizeof(*c));
+}
+
+int upconf_parse(upconf *c, const char *buf, long len)
+{
+    char line[256];
+    char curprof[UC_NAME];
+    long i = 0;
+    upconf_clear(c);
+    if (!buf || len <= 0)
+        return 0;
+    uc_copy(curprof, "default", UC_NAME);
+    while (i < len) {
+        long n = 0;
+        while (i < len && buf[i] != '\n' && n < (long)sizeof(line) - 1)
+            line[n++] = buf[i++];
+        line[n] = 0;
+        if (i < len)
+            i++; /* the newline */
+        {
+            char *s = line;
+            char *eq;
+            while (*s == ' ' || *s == '\t')
+                s++;
+            if (!*s || *s == ';' || *s == '#')
+                continue;
+            while (n > 0 && (line[n - 1] == ' ' || line[n - 1] == '\t' || line[n - 1] == '\r'))
+                line[--n] = 0;
+            if (*s == '[') {
+                char *close = strchr(s, ']');
+                if (!close)
+                    continue;
+                *close = 0;
+                s++;
+                /* "profile name" or "name" */
+                if (uc_prefix_profile(s))
+                    s += 8;
+                while (*s == ' ')
+                    s++;
+                uc_copy(curprof, *s ? s : "default", UC_NAME);
+            } else {
+                char *value;
+                eq = strchr(s, '=');
+                if (!eq)
+                    continue;
+                value = eq + 1;
+                *eq = 0;
+                while (eq > s && (eq[-1] == ' ' || eq[-1] == '\t'))
+                    *--eq = 0;
+                while (*value == ' ' || *value == '\t')
+                    value++;
+                upconf_set(c, curprof, s, value);
+            }
+        }
+    }
+    return 1;
+}
+
+const char *upconf_get(const upconf *c, const char *profile, const char *key)
+{
+    int p, k;
+    if (!profile || !*profile || !key || !*key)
+        return 0;
+    p = prof_find(c, profile);
+    if (p < 0)
+        return 0;
+    k = key_find(c, p, key);
+    if (k < 0)
+        return 0;
+    return c->val[p][k];
+}
+
+const char *upconf_str(const upconf *c, const char *profile, const char *key, const char *def)
+{
+    const char *v = upconf_get(c, profile, key);
+    if (!v || !*v)
+        return def;
+    return v;
+}
+
+long upconf_int(const upconf *c, const char *profile, const char *key, long def)
+{
+    const char *v = upconf_get(c, profile, key);
+    long r = 0;
+    int neg = 0, any = 0;
+    if (!v)
+        return def;
+    while (*v == ' ')
+        v++;
+    if (*v == '-') {
+        neg = 1;
+        v++;
+    }
+    while (*v >= '0' && *v <= '9') {
+        r = r * 10 + (*v - '0');
+        any = 1;
+        v++;
+    }
+    if (!any)
+        return def;
+    return neg ? -r : r;
+}
+
+uc_u32 upconf_hex(const char *v, uc_u32 def)
+{
+    uc_u32 r = 0;
+    int any = 0;
+    if (!v)
+        return def;
+    while (*v == ' ')
+        v++;
+    if (*v == '#')
+        v++;
+    else if (*v == '0' && (v[1] == 'x' || v[1] == 'X'))
+        v += 2;
+    while (*v) {
+        char h = *v;
+        if (h >= '0' && h <= '9')
+            r = (r << 4) | (uc_u32)(h - '0');
+        else if (h >= 'a' && h <= 'f')
+            r = (r << 4) | (uc_u32)(h - 'a' + 10);
+        else if (h >= 'A' && h <= 'F')
+            r = (r << 4) | (uc_u32)(h - 'A' + 10);
+        else
+            break;
+        any = 1;
+        v++;
+    }
+    if (!any)
+        return def;
+    return r & 0xFFFFFFUL;
+}
+
+/* Strictly six hex digits, nothing else: for a field the user typed, where a
+ * seventh digit or trailing junk must be an error rather than silently cut.
+ * upconf_hex is the lenient one for values already in a file. */
+int upconf_hex6(const char *s, uc_u32 *rgb)
+{
+    uc_u32 r = 0;
+    int i;
+    if (!s || !rgb)
+        return 0;
+    while (*s == ' ' || *s == '\t')
+        s++;
+    if (*s == '#')
+        s++;
+    else if (*s == '0' && (s[1] == 'x' || s[1] == 'X'))
+        s += 2;
+    for (i = 0; i < 6; i++) {
+        char h = s[i];
+        if (h >= '0' && h <= '9')
+            r = (r << 4) | (uc_u32)(h - '0');
+        else if (h >= 'a' && h <= 'f')
+            r = (r << 4) | (uc_u32)(h - 'a' + 10);
+        else if (h >= 'A' && h <= 'F')
+            r = (r << 4) | (uc_u32)(h - 'A' + 10);
+        else
+            return 0;
+    }
+    s += 6;
+    while (*s == ' ' || *s == '\t')
+        s++;
+    if (*s)
+        return 0;
+    *rgb = r;
+    return 1;
+}
+
+uc_u32 upconf_rgb(const upconf *c, const char *profile, const char *key, uc_u32 def)
+{
+    return upconf_hex(upconf_get(c, profile, key), def);
+}
+
+int upconf_palette_parse(const char *s, uc_u32 *out16)
+{
+    const char *p;
+    int n = 0;
+    if (!out16)
+        return 0;
+    memset(out16, 0, 16 * sizeof(uc_u32));
+    if (!s)
+        return 0;
+    p = s;
+    while (*p) {
+        long idx = 0, rgb = 0;
+        int any = 0;
+        /* the pair "index,RRGGBB": a malformed one stops the list */
+        while (*p >= '0' && *p <= '9') {
+            idx = idx * 10 + (*p - '0');
+            p++;
+            any = 1;
+        }
+        if (!any || *p != ',')
+            break;
+        p++;
+        if (*p == '0' && (p[1] == 'x' || p[1] == 'X'))
+            p += 2;
+        else if (*p == '#')
+            p++;
+        any = 0;
+        while (*p && *p != ',') {
+            char h = *p;
+            if (h >= '0' && h <= '9')
+                rgb = rgb * 16 + (h - '0');
+            else if (h >= 'a' && h <= 'f')
+                rgb = rgb * 16 + (h - 'a' + 10);
+            else if (h >= 'A' && h <= 'F')
+                rgb = rgb * 16 + (h - 'A' + 10);
+            else
+                break;
+            p++;
+            any = 1;
+        }
+        if (!any || idx >= 16 || rgb > 0xFFFFFF)
+            break;
+        out16[(int)idx] = 0x01000000UL | (uc_u32)rgb;
+        n++;
+        if (*p == ',')
+            p++;
+    }
+    return n;
+}
+
+long upconf_palette_str(const uc_u32 *in16, char *out, long cap)
+{
+    char *o = out;
+    char *end = out + cap;
+    int i, first = 1;
+    if (!in16 || !out || cap <= 0)
+        return -1;
+    *o = 0;
+    for (i = 0; i < 16; i++) {
+        char num[3];
+        char hex[8];
+        char *h;
+        uc_u32 rgb;
+        if (!(in16[i] & 0x01000000UL))
+            continue;
+        rgb = in16[i] & 0xFFFFFFUL;
+        num[0] = (char)('0' + i / 10);
+        num[1] = (char)('0' + i % 10);
+        num[2] = 0;
+        h = hex + 5;
+        *h = 0;
+        while (h >= hex) {
+            *h-- = (char)"0123456789ABCDEF"[rgb & 0xF];
+            rgb >>= 4;
+        }
+        if (!first && !uc_copyto(&o, end, ","))
+            return -1;
+        if (!uc_copyto(&o, end, num) || !uc_copyto(&o, end, ",") ||
+            !uc_copyto(&o, end, hex))
+            return -1;
+        first = 0;
+    }
+    return (long)(o - out);
+}
+
+int upconf_has(const upconf *c, const char *profile, const char *key)
+{
+    return upconf_get(c, profile, key) ? 1 : 0;
+}
+
+int upconf_profiles(const upconf *c, const char **names)
+{
+    int i;
+    for (i = 0; i < c->nprof; i++)
+        names[i] = c->prof[i];
+    names[c->nprof] = 0;
+    return c->nprof;
+}
+
+long upconf_save(const upconf *c, char *buf, long cap)
+{
+    char *o = buf;
+    char *end = buf + cap;
+    int p, k;
+    for (p = 0; p < c->nprof; p++) {
+        if (!uc_copyto(&o, end, p ? "\n\n[profile " : "[profile ") ||
+            !uc_copyto(&o, end, c->prof[p]) || !uc_copyto(&o, end, "]\n"))
+            return -1;
+        for (k = 0; k < c->n[p]; k++) {
+            if (!uc_copyto(&o, end, c->key[p][k]) ||
+                !uc_copyto(&o, end, " = ") ||
+                !uc_copyto(&o, end, c->val[p][k]) ||
+                !uc_copyto(&o, end, "\n"))
+                return -1;
+        }
+    }
+    return (long)(o - buf);
+}

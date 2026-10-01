@@ -107,6 +107,7 @@ struct vt_term {
     int cp437;                 /* the charset is CP437 (xterm personality) */
     int onlcr;                 /* LF also returns (vt_set_onlcr) */
     int reflow;                /* vt_resize re-wraps wrapped lines (vt_set_reflow) */
+    int bold_bright;           /* xterm: SGR 1 takes the bright 8-15 (vt_set_bold_bright) */
     /* reflow: rows a resize pushed off the top of the primary screen, oldest
      * first, all t->cols wide. The next reflow lays them out again with the
      * screen (the ROM console brings them back on a grow); output that
@@ -2905,6 +2906,7 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->dx0 = (short *)VT_MALLOC(rows * sizeof(short));
     t->dx1 = (short *)VT_MALLOC(rows * sizeof(short));
     t->utf8 = 1;
+    t->bold_bright = 1;
     t->sb_cap = scrollback > 0 ? scrollback : 0;
     if (t->sb_cap)
         t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
@@ -3050,6 +3052,60 @@ vt_u32 vt_default_color(const vt_term *t, int which)
     if (which < 0 || which > 2)
         return 0;
     return t->dflt_set[which] ? t->dflt_set[which] & 0xFFFFFFUL : t->dflt[which];
+}
+
+/* The host's own palette (a profile default), as OSC 4 does it from a
+ * program: entry i becomes 0xRRGGBB for good, until the program changes it.
+ * The colours callback fires: the renderer's pens are out of date. */
+void vt_set_palette(vt_term *t, int i, vt_u32 rgb)
+{
+    if (!t || i < 0 || i > 255)
+        return;
+    t->pal_set[i] = 0x01000000UL | (rgb & 0xFFFFFFUL);
+    colors_changed(t);
+}
+
+/* xterm SGR 1: bright colours 8-15 for the default 0-7 (on, as xterm
+ * draws it) or the plain colours, the bold font style either way. A host
+ * setting, so vt_reset leaves it. */
+void vt_set_bold_bright(vt_term *t, int on)
+{
+    if (t)
+        t->bold_bright = on != 0;
+}
+
+/* DECSCUSR (0/1 blinking block, 2 block, 3/4 underline, 5/6 bar) set by
+ * the host before the first output, as a default the programs' DECSCUSR
+ * still overrides. */
+void vt_set_cursor_style(vt_term *t, int style)
+{
+    if (t)
+        t->cursor_style = (vt_u8)(style >= 0 && style <= 6 ? style : 0);
+}
+
+/* ?12 from the host: a profile's cursor-blink default,
+ * overridable by the programs' ?12 like anything else. A blinking DECSCUSR
+ * shape blinks on its own. */
+void vt_set_cursor_blink(vt_term *t, int on)
+{
+    if (!t)
+        return;
+    if (on)
+        t->modes |= VT_MODE_CURSOR_BLINK;
+    else
+        t->modes &= ~(vt_u32)VT_MODE_CURSOR_BLINK;
+}
+
+/* ?5 (DECSCNM) from the host: the whole screen in reverse video. The host
+ * redraws; the engine only keeps the state (vt_resolve_colors does the work). */
+void vt_screen_reverse(vt_term *t, int on)
+{
+    if (!t)
+        return;
+    if (on)
+        t->modes |= VT_MODE_SCREEN_REVERSE;
+    else
+        t->modes &= ~(vt_u32)VT_MODE_SCREEN_REVERSE;
 }
 
 void vt_set_cell_pixels(vt_term *t, int w, int h)
@@ -3684,6 +3740,70 @@ done:
     return len;
 }
 
+/* ASCII case fold: A-Z to a-z, everything else (UTF-8 continuation bytes,
+ * PETSCII) as it is. */
+static char fold(char c)
+{
+    return c >= 'A' && c <= 'Z' ? (char)(c - 'A' + 'a') : c;
+}
+
+/* The offset of the ASCII-case-insensitive `needle` in the `hlen` bytes of
+ * `hay`, or -1. */
+static long ci_find(const char *hay, long hlen, const char *needle, long nlen)
+{
+    long i, k;
+    if (nlen == 0 || nlen > hlen)
+        return -1;
+    for (i = 0; i + nlen <= hlen; i++) {
+        for (k = 0; k < nlen; k++)
+            if (fold(hay[i + k]) != fold(needle[k]))
+                break;
+        if (k == nlen)
+            return i;
+    }
+    return -1;
+}
+
+long vt_find(const vt_term *t, const char *q, long from)
+{
+    char buf[VT_FIND_MAX];
+    long hist, rows, nq, first, i, span;
+    if (!t || !q)
+        return VT_ROW_NONE;
+    nq = 0;
+    while (q[nq])
+        nq++;
+    if (nq == 0)
+        return VT_ROW_NONE;
+    hist = vt_scrollback_lines(t);
+    rows = vt_rows(t);
+    /* reading order as one run: the oldest scrollback line, then each newer
+     * one, then the grid */
+    if (from < 0)
+        first = hist + from;
+    else
+        first = hist + from;
+    if (first < 0)
+        first = 0;
+    for (i = first; i < hist + rows; i++) {
+        long row = i < hist ? -(hist - i) : i - hist;
+        long last = row;
+        /* a wrapped line is searched whole: take in every row it continues
+         * into, stopping at the oldest edge of the run */
+        while (last < rows - 1 && vt_row_wrapped(t, last)) {
+            last++;
+            if (i + (last - row) >= hist + rows)
+                break; /* past the newest line */
+        }
+        span = last - row + 1;
+        if (vt_copy_text(t, 0, (int)row, (int)span > 0 ? 32767 : 0,
+                         (int)(row + span - 1), buf, sizeof(buf)) > 0 &&
+            ci_find(buf, (long)strlen(buf), q, nq) >= 0)
+            return row;
+    }
+    return VT_ROW_NONE;
+}
+
 long vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max)
 {
     int i;
@@ -3720,7 +3840,9 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_colo
             b = (vt_color)(b + 8); /* iCE colours */
         break;
     default:
-        if ((c->attr & VT_ATTR_BOLD) && f < 8)
+        /* bold-as-bright is on as xterm draws it; a host setting (a profile
+         * option) turns just the colour shift off, the bold font style stays */
+        if (t->bold_bright && (c->attr & VT_ATTR_BOLD) && f < 8)
             f = (vt_color)(f + 8);
         if (b == VT_COLOR_DEFAULT)
             b = VT_COLOR_DEFAULT_BG;

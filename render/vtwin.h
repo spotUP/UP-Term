@@ -60,6 +60,17 @@ typedef struct vtwin {
     struct TextFont *given_font; /* draw with this font (the window's), not opened or closed here */
     int sb_lines;                /* scrollback lines: 0 = 500 (XCON:), -1 = none */
     struct KeyMap *keymap;       /* keys convert with this map; 0 = the system default */
+    /* profile (config/upconf): the window's defaults the program's
+     * sequences still override; 0 / VR_KEEP keep the historical look */
+    int bold_bright;             /* xterm SGR 1 takes the bright 8-15 (1, default) */
+    int bell;                    /* 0 none, 1 beep (default), 2 a screen flash */
+    ULONG cursor_rgb;            /* VR_KEEP: the inverted cell (default) */
+    int cursor_style;            /* DECSCUSR default, 0-6 */
+    int cursor_blink;            /* ?12 default */
+    int meta_alt;                /* Alt (not Left Amiga) is the ESC prefix */
+    int copy_on_select;          /* a drag ends with the text on the clipboard */
+    int wheel_scroll;            /* the wheel moves through the scrollback */
+    ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
     /* owner switches, 0 for XCON: (a console.device unit sets them) */
     int nodraw_resize;           /* CONFLAG_NODRAW_ON_NEWSIZE: a resize clears, nothing redrawn */
     int no_clipboard;            /* no RAmiga-C/V copy and paste (only SNIPMAP units have them) */
@@ -80,6 +91,8 @@ typedef struct vtwin {
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */
+    char find_q[VT_FIND_QUERY_MAX]; /* the last find query, for "find next" */
+    long find_next;              /* the row to continue from (VT_ROW_NONE: from the oldest) */
     const vtwin_host *host;
     void *user;
 } vtwin;
@@ -109,6 +122,15 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
 /* a mouse event: move (1) or button (code SELECTDOWN/UP, MENUDOWN/UP) at
  * window coordinates mx, my */
 void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my);
+/* the wheel: up (1) / down (-1). The program's when it asked for the mouse,
+ * otherwise the scrollback by a few lines (the spec's wheel_scroll) */
+void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my);
+/* Find (Right Amiga F, or the console's menu): the scrollback and the grid,
+ * oldest line first, case-insensitively, and scroll the view so the line the
+ * match is on shows. q NULL or empty repeats the last query. 1 when the view
+ * moved to a hit, 0 when there was none (the view is left alone). The view
+ * returns to the live output when the match is already on screen. */
+int vtwin_find(vtwin *w, const char *q);
 /* an Amiga input event report for a window class, when the program asked
  * for that class (CSI n {); 1 when it was sent */
 int vtwin_raw_report(vtwin *w, int cls);

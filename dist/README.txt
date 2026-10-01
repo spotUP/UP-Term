@@ -36,8 +36,47 @@ USE
   tcsh, set them for that shell:
                          SetEnv TERM vtcon
                          SetEnv TERMCAP /ENV/up-term/termcap.vtcon
-  (not globally: a ROM CON: window cannot show vtcon's sequences).
-  TERMINFO (set by Install) is /ENV/up-term/terminfo.
+   (not globally: a ROM CON: window cannot show vtcon's sequences).
+   TERMINFO (set by Install) is /ENV/up-term/terminfo.
+
+CONFIGURATION (profiles)
+   XCON: windows are user-configurable like iTerm2's: /ENV/up-term/up-term
+   holds named profiles; the Prefs app (SYS:Utilities/UP-Term-Prefs, its
+   tool is "C:UP-Term Prefs") writes it. Install lays down a fully
+   commented sample; without the file every window behaves as before.
+
+   Prefs: two pages, General and Colors. Type the profile name in the
+   Profile field, press Load to edit an existing profile or New to start
+   one, change the values, press Save. Save writes ENVARC:up-term/up-term
+   and keeps the file that was there as up-term.orig; Cancel closes without
+   writing. Open windows keep the settings they started with; a new window
+   takes the file. Preferences apply to XCON:, PTY: and RAW: windows (the
+   console.device ones, CON: under console.device, are not touched).
+
+   A window takes the profile named by the spec option  PROFILE <name>
+   (otherwise the "default" profile). Precedence, low to high: the built-in
+   defaults < the profile < the window spec options (DARK, FG, BG, FONT ...)
+   < the running program (OSC colours, DECSCUSR). A profile only changes
+   what it names; it does not inherit from another profile.
+
+   The keys (all optional, case-insensitive):
+     font = TOPAZ:8.8.font     font name : size
+     fg = C0C0C0  bg = 000000  default foreground / background (RRGGBB hex)
+     scrollback = 2000         lines to keep (0 = the built-in 500, -1 = none)
+     cursor = block            block | underline | bar
+     cursor-blink = off        on | off
+     cursor-color = inverse    inverse (the flipped cell) or RRGGBB
+     bell = beep               none | beep | visual (a one-frame screen flash)
+     bold-bright = on          xterm only: SGR 1 takes the bright colours 8-15
+     meta = amiga              amiga (Left Amiga = Meta) | alt (the Alt keys)
+     copy-on-select = off      on: a drag ends with the selection on the clipboard
+     wheel = scroll            scroll | ignore (the mouse wheel moves the scrollback)
+     palette = 1,0x00CD00,4,0x5C5CFF
+                               remap ANSI colours: index,RRGGBB pairs
+
+   Example: a dim, silent editor window
+     NewShell "XCON:0/20/640/300/vim/PROFILE vim/CLOSE"
+   with  [profile vim]  bell = none  in the file.
 
 KEYS
   Mouse drag            select (Shift+drag when a program uses the mouse)

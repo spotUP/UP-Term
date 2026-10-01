@@ -13,6 +13,7 @@ void suite_sh_expand(void);
 void suite_sh_exec(void);
 void suite_ldisc(void);
 void suite_upcon(void);
+void suite_upconf(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -27,6 +28,7 @@ static const h_suite suites[] = {
     { "sh_exec", suite_sh_exec },
     { "ldisc", suite_ldisc },
     { "upcon", suite_upcon },
+    { "upconf", suite_upconf },
     { 0, 0 }
 };
 

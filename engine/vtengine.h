@@ -199,6 +199,24 @@ vt_u32   vt_raw_events(const vt_term *t);
  * Written as UTF-8, NUL-terminated; returns the length (at most max - 1). */
 long     vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, long max);
 
+/* vt_find: what vt_row returns when nothing matched. Below any real row. */
+#define VT_ROW_NONE (-1000000L)
+/* Search the grid and the scrollback for the ASCII-case-insensitive substring
+ * `q`, oldest line first, starting at row `from` (a vt_row number: below 0
+ * the scrollback, -1 its newest line; 0..rows-1 the grid). Returns the row
+ * the match starts in, or VT_ROW_NONE. The scan stops at the newest line, so
+ * repeating a search means calling again with the row after the last hit and
+ * wrapping to the oldest yourself.
+ * A line the terminal wrapped is searched as one line, so a query can cross a
+ * wrap. A logical line longer than VT_FIND_MAX is searched to that many
+ * bytes. Only ASCII A-Z fold: PETSCII and non-ASCII case are compared as
+ * they are. */
+#define VT_FIND_MAX 4096
+/* The query itself is a short line of typing, not a screenful of text: the
+ * window's find prompt keeps one of these, the console one for "find next". */
+#define VT_FIND_QUERY_MAX 256
+long     vt_find(const vt_term *t, const char *q, long from);
+
 /* How many sequences were parsed but not acted on since vt_new, and the
  * distinct kinds (up to 16 are kept) with their counts, as text: "C ?12h"
  * a CSI, "E x" an ESC, "M 1005" a DEC mode, "S 58" an SGR value, "O 11" an
@@ -225,12 +243,28 @@ vt_u32   vt_palette_rgb(const vt_term *t, int i);
 int      vt_rgb_to_256(vt_u32 rgb);
 void     vt_set_default_colors(vt_term *t, vt_u32 fg, vt_u32 bg, vt_u32 cursor);
 vt_u32   vt_default_color(const vt_term *t, int which);
+/* The host's own palette (a profile default): entry i becomes 0xRRGGBB,
+ * as OSC 4 does it from a program. The colours callback fires. */
+void     vt_set_palette(vt_term *t, int i, vt_u32 rgb);
+/* xterm SGR 1: the bright colours 8-15 for the default 0-7 (on, as xterm
+ * draws it) or the plain colours; the bold font style stays either way. A
+ * host setting, so vt_reset leaves it. */
+void     vt_set_bold_bright(vt_term *t, int on);
+/* ?12 from the host: a profile's cursor-blink default, overridable by the
+ * programs' ?12 like anything else. A blinking DECSCUSR shape blinks alone. */
+void     vt_set_cursor_blink(vt_term *t, int on);
+/* ?5 (DECSCNM) from the host: the whole screen in reverse video, until
+ * turned off or a program sets it. The host redraws. */
+void     vt_screen_reverse(vt_term *t, int on);
 /* The cell size in pixels, for the size reports programs ask for (CSI 14t,
  * 16t). */
 void     vt_set_cell_pixels(vt_term *t, int w, int h);
 /* DECSCUSR: 0/1 blinking block, 2 block, 3 blinking underline, 4 underline,
  * 5 blinking bar, 6 bar. */
 int      vt_cursor_style(const vt_term *t);
+/* The DECSCUSR default the host wants before the first output (a profile);
+ * a program's DECSCUSR still overrides it. */
+void     vt_set_cursor_style(vt_term *t, int style);
 
 /* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
 const vt_u16 *vt_cp437_table(void);

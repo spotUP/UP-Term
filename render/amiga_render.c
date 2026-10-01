@@ -197,6 +197,9 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
         r->truecolor = r->scratch[0] >= 0 && r->scratch[1] >= 0;
     }
     r->cursor_drawn = 0;
+    r->cursor_colorful = 0;
+    r->cursor_ink = VR_KEEP;
+    r->bell_flash = 0;
     r->cursor_x = r->cursor_y = 0;
     r->view = 0;
     r->sel = 0;
@@ -233,6 +236,27 @@ void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb)
             r->pen_default_fg = (UBYTE)p;
         else
             r->pen_default_bg = (UBYTE)p;
+    }
+}
+
+void vr_set_cursor_color(vr_render *r, ULONG rgb)
+{
+    if (!r->win)
+        return; /* before vr_init, after vr_free */
+    if (r->cursor_ink != VR_KEEP && !(r->cursor_ink & VR_INK_RGB) && r->cm)
+        ReleasePen(r->cm, r->cursor_ink);
+    r->cursor_ink = VR_KEEP;
+    if (rgb == VR_KEEP)
+        return;
+    if (r->truecolor)
+        r->cursor_ink = truecolor_ink(r, rgb);
+    else {
+        LONG p = obtain(r, rgb);
+        r->cursor_ink = p >= 0 ? (ULONG)p : VR_KEEP; /* no pen left: inverted */
+    }
+    if (r->cursor_drawn) {
+        vr_cursor_off(r);
+        vr_cursor_on(r); /* the new colour on the cell the cursor is at now */
     }
 }
 
@@ -279,6 +303,8 @@ void vr_free(vr_render *r)
     for (i = 0; i < 2; i++)
         if (r->cm && r->dflt_obtained[i] >= 0)
             ReleasePen(r->cm, (ULONG)r->dflt_obtained[i]);
+    if (r->cm && r->cursor_ink != VR_KEEP && !(r->cursor_ink & VR_INK_RGB))
+        ReleasePen(r->cm, r->cursor_ink);
     r->dflt_obtained[0] = r->dflt_obtained[1] = -1;
     for (i = 0; i < VR_EXACT_SLOTS; i++)
         r->exact_key[i] = 0;
@@ -884,6 +910,13 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
         st->fg = st->bg;
         st->bg = tmp;
     }
+    if (r->bell_flash) {
+        /* the visual bell's frame: the whole window reversed, the terminal's
+         * own reverse-video mode untouched */
+        ULONG tmp = st->fg;
+        st->fg = st->bg;
+        st->bg = tmp;
+    }
     u = vt_cell_underline_color(r->t, c);
     st->ul = u == VT_COLOR_DEFAULT ? st->fg : pen_for(r, u, 0);
     st->attr = (vt_attr)(c->attr & DRAWN_ATTRS);
@@ -1145,6 +1178,21 @@ int vr_blink_tick(vr_render *r)
     return r->has_blink || vr_cursor_blinks(r);
 }
 
+void vr_bell_flash(vr_render *r)
+{
+    if (r->win)
+        r->bell_flash = 1; /* drawn with the next render, over for the next */
+}
+
+int vr_flash_tick(vr_render *r)
+{
+    if (r->bell_flash) {
+        r->bell_flash = 0;
+        return 1;
+    }
+    return 0;
+}
+
 void vr_set_alt_font(vr_render *r, int n, struct TextFont *font)
 {
     if (n < 1 || n > 10)
@@ -1308,7 +1356,10 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
                  r->oy + bottom * r->ch - 1);
 }
 
-static void cursor_flip(vr_render *r)
+/* Draw (on) or erase (off) the cursor. With a profile cursor colour and a
+ * block style, the cell is filled with that colour and the glyph redrawn in
+ * the default background; otherwise the cell is inverted (the original). */
+static void cursor_draw(vr_render *r, int on)
 {
     int wide = !r->view && vt_row_size(r->t, r->cursor_y) ? 2 : 1; /* a double-size row */
     WORD px = (WORD)(r->ox + r->cursor_x * r->cw * wide), py = r->oy + r->cursor_y * r->ch;
@@ -1318,6 +1369,51 @@ static void cursor_flip(vr_render *r)
         py = (WORD)(y1 - 1);              /* underline: the two bottom rows */
     else if (style == 5 || style == 6)
         x1 = (WORD)(px + 1);              /* bar: the two left columns */
+    if (!on) {
+        if (r->cursor_colorful) {
+            /* the cell was filled: repaint it normally */
+            r->cursor_colorful = 0;
+            draw_rows(r, r->cursor_x, r->cursor_y, r->cursor_x + 1, r->cursor_y + 1);
+        } else {
+            SetDrMd(r->rp, COMPLEMENT);
+            SetWriteMask(r->rp, 0xFF);
+            RectFill(r->rp, px, py, x1, y1);
+            SetDrMd(r->rp, JAM2);
+        }
+        return;
+    }
+    if (r->cursor_ink != VR_KEEP && style <= 2 && wide == 1) {
+        int ncells;
+        const vt_cell *c = vt_row(r->t, r->cursor_y, &ncells);
+        int have = c && r->cursor_x < ncells;
+        vt_glyph g = { VT_GLYPH_FONT, 0 };
+        struct TextFont *font = r->font;
+        if (have)
+            g = vt_map_glyph(c[r->cursor_x].ch, r->enc);
+        if (have && g.kind != VT_GLYPH_FONT) {
+            /* box / block / line on the cursor colour, drawn in the default
+             * background -- draw_special fills the cell with `bg` itself */
+            r->cursor_colorful = 1;
+            draw_special(r, px, py, g, r->pen_default_bg, r->cursor_ink);
+            return;
+        }
+        ink_ab(r, r->pen_default_bg, r->cursor_ink);
+        SetWriteMask(r->rp, 0xFF);
+        RectFill(r->rp, px, py, x1, y1);
+        if (have && g.code) {
+            int fk = vt_cell_font(r->t, &c[r->cursor_x]);
+            if (fk && fk <= 10 && r->alt_font[fk])
+                font = r->alt_font[fk];
+            SetFont(r->rp, font);
+            Move(r->rp, px, py + r->base);
+            Text(r->rp, (STRPTR)&g.code, 1);
+            if (font != r->font)
+                SetFont(r->rp, r->font);
+        }
+        r->cursor_colorful = 1;
+        return;
+    }
+    r->cursor_colorful = 0;
     SetDrMd(r->rp, COMPLEMENT);
     SetWriteMask(r->rp, 0xFF);
     RectFill(r->rp, px, py, x1, y1);
@@ -1329,7 +1425,7 @@ void vr_cursor_off(vr_render *r)
     if (!r->win)
         return; /* no window (before vr_init, after vr_free) */
     if (r->cursor_drawn) {
-        cursor_flip(r);
+        cursor_draw(r, 0);
         r->cursor_drawn = 0;
     }
 }
@@ -1349,7 +1445,7 @@ void vr_cursor_on(vr_render *r)
     if (!r->cursor_drawn) {
         r->cursor_x = (WORD)x;
         r->cursor_y = (WORD)y;
-        cursor_flip(r);
+        cursor_draw(r, 1);
         r->cursor_drawn = 1;
     }
 }

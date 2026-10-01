@@ -590,6 +590,81 @@ static void repeat_last_character(void)
     vt_free(t);
 }
 
+/* The search the window's Cmd-F asks for: oldest line first, in the
+ * scrollback as well as the grid, ASCII-case-insensitive, a match found on a
+ * row that the terminal wrapped is the row it starts on. */
+static void find_scans_scrollback_then_grid_oldest_first(void)
+{
+    vt_term *t = h_new(8, 2, VT_XTERM);
+    /* two rows, so Alpha and bravo scroll off: sb -2 is Alpha, -1 is bravo,
+     * the grid holds CHARLIE on row 0 and delta on row 1 */
+    h_put(t, "Alpha\r\nbravo\r\nCHARLIE\r\ndelta");
+    CHECK_STR(h_screen(t), "CHARLIE|delta");
+    CHECK_INT(vt_scrollback_lines(t), 2);
+    /* from before the oldest, the first hit is the oldest matching line */
+    CHECK_INT(vt_find(t, "bravo", -3), -1);
+    CHECK_INT(vt_find(t, "BRAVO", -3), -1);   /* ASCII case folds */
+    CHECK_INT(vt_find(t, "alpha", -3), -2);   /* older than bravo: found first */
+    /* then the grid, in reading order */
+    CHECK_INT(vt_find(t, "charlie", -3), 0);
+    CHECK_INT(vt_find(t, "delta", -3), 1);
+    /* from a row the scan starts there and moves on, never back */
+    CHECK_INT(vt_find(t, "bravo", -1), -1);
+    CHECK_INT(vt_find(t, "delta", 0), 1);
+    CHECK_INT(vt_find(t, "charlie", 1), VT_ROW_NONE); /* CHARLIE is row 0 */
+    vt_free(t);
+}
+
+static void find_reports_what_is_there_to_find_and_nothing_else(void)
+{
+    vt_term *t = h_new(24, 3, VT_XTERM);
+    h_put(t, "root@vtcon:~$ ls -l\r\ntotal 8");
+    CHECK_INT(vt_find(t, "total", -1), 1);
+    CHECK_INT(vt_find(t, "nowhere", -1), VT_ROW_NONE);
+    CHECK_INT(vt_find(t, "", -1), VT_ROW_NONE);        /* an empty query finds nothing */
+    CHECK_INT(vt_find(t, "LS -L", -1), 0);             /* whole-row substring */
+    CHECK_INT(vt_find(t, "lsl", -1), VT_ROW_NONE);      /* contiguous, not fuzzy */
+    CHECK_INT(vt_find(t, "vtcon", -1), 0);
+    CHECK_INT(vt_find(t, "$", -1), 0);                 /* a one-byte query */
+    /* the empty row at the bottom is searched too and holds nothing */
+    CHECK_INT(vt_find(t, " ", 2), VT_ROW_NONE);
+    vt_free(t);
+}
+
+static void find_takes_a_query_that_crosses_a_wrap(void)
+{
+    vt_term *t = h_new(10, 4, VT_XTERM);
+    /* ten columns: "0123456789" fills row 0 and its wrap flag is set, so
+     * "ABC" is the start of row 1 */
+    h_put(t, "0123456789ABC\r\nthird");
+    CHECK_STR(h_row(t, 0), "0123456789");
+    CHECK_INT(vt_row_wrapped(t, 0), 1);
+    /* one query, two rows: found, and reported on the row it starts in */
+    CHECK_INT(vt_find(t, "6789ABC", -1), 0);
+    CHECK_INT(vt_find(t, "23456789ABC", -1), 0);
+    /* a query inside either row alone, too */
+    CHECK_INT(vt_find(t, "34567", -1), 0);
+    CHECK_INT(vt_find(t, "ABC", -1), 0);
+    /* searching from row 1 cannot reach back into the wrapped row 0 */
+    CHECK_INT(vt_find(t, "6789", 1), VT_ROW_NONE);
+    /* the next line is still its own */
+    CHECK_INT(vt_find(t, "third", -1), 2);
+    vt_free(t);
+}
+
+static void find_reads_utf8_and_petscii_as_they_are(void)
+{
+    vt_term *t = h_new(8, 2, VT_XTERM);
+    /* U+00E9 LATIN SMALL LETTER E WITH ACUTE: C3 A9 in UTF-8 */
+    h_put(t, "caf\303\251 bar\r\nna\303\257ve");
+    CHECK_INT(vt_find(t, "caf", -1), 0);
+    CHECK_INT(vt_find(t, "caf\303\251", -1), 0);  /* the accented cell, exact bytes */
+    CHECK_INT(vt_find(t, "CAF\303\251", -1), 0);  /* the ASCII part folds */
+    CHECK_INT(vt_find(t, "na\303\257ve", -1), 1);
+    /* a PETSCII-mode term holds bytes, not UTF-8: only ASCII folds there */
+    vt_free(t);
+}
+
 static void linefeed_off_the_bottom_fills_scrollback(void)
 {
     vt_term *t = h_new(5, 2, VT_XTERM);
@@ -843,6 +918,8 @@ static void copy_text_joins_wrapped_lines_and_trims_blanks(void)
     vt_free(t);
 }
 
+static void host_settings_palette_bold_cursor(void);
+
 void suite_xterm(void)
 {
     rgb_to_256();
@@ -892,6 +969,10 @@ void suite_xterm(void)
     device_reports();
     save_restore_cursor_keeps_attributes();
     repeat_last_character();
+    find_scans_scrollback_then_grid_oldest_first();
+    find_reports_what_is_there_to_find_and_nothing_else();
+    find_takes_a_query_that_crosses_a_wrap();
+    find_reads_utf8_and_petscii_as_they_are();
     linefeed_off_the_bottom_fills_scrollback();
     scroll_calls_the_renderer_once_per_write();
     resize_keeps_cursor_row_visible();
@@ -904,4 +985,73 @@ void suite_xterm(void)
     ris_resets_everything();
     bell_rings();
     c1_via_utf8_code_points();
+    host_settings_palette_bold_cursor();
+}
+
+/* The host-side (profile) settings: palette entries, bold-as-bright, the
+ * DECSCUSR and blink defaults, ?5 from the host. */
+static void host_settings_palette_bold_cursor(void)
+{
+    vt_term *t;
+    const vt_cell *c;
+    vt_color f, b;
+
+    t = h_new(10, 2, VT_XTERM);
+
+    /* The palette starts as xterm's table; the host remaps entries. */
+    CHECK_INT(vt_palette_rgb(t, 1), 0xCD0000);
+    vt_set_palette(t, 1, 0x00CD00);
+    CHECK_INT(vt_palette_rgb(t, 1), 0x00CD00);
+    vt_set_palette(t, 255, 0x808080);
+    CHECK_INT(vt_palette_rgb(t, 255), 0x808080);
+    vt_set_palette(t, 256, 0);
+    vt_set_palette(t, -1, 0);
+    CHECK_INT(vt_palette_rgb(t, 255), 0x808080);
+
+    /* Bold-as-bright: SGR 1 over 0-7 takes 8-15, xterm's way of drawing;
+     * the profile option turns only the colour shift off. */
+    h_put(t, "\033[31mA\033[1;31mB");
+    c = h_cell(t, 0, 0);
+    vt_resolve_colors(t, c, &f, &b);
+    CHECK_INT(f, 1);
+    c = h_cell(t, 1, 0);
+    vt_resolve_colors(t, c, &f, &b);
+    CHECK_INT(f, 9);
+    vt_set_bold_bright(t, 0);
+    c = h_cell(t, 1, 0);
+    vt_resolve_colors(t, c, &f, &b);
+    CHECK_INT(f, 1);
+    vt_set_bold_bright(t, 1);
+    vt_resolve_colors(t, c, &f, &b);
+    CHECK_INT(f, 9);
+
+    /* DECSCUSR and blink defaults; the programs' sequences still override. */
+    CHECK_INT(vt_cursor_style(t), 0);
+    vt_set_cursor_style(t, 6);
+    CHECK_INT(vt_cursor_style(t), 6);
+    vt_set_cursor_style(t, 9);
+    CHECK_INT(vt_cursor_style(t), 0);
+    CHECK(!(vt_modes(t) & VT_MODE_CURSOR_BLINK));
+    vt_set_cursor_blink(t, 1);
+    CHECK(vt_modes(t) & VT_MODE_CURSOR_BLINK);
+    h_put(t, "\033[?12l\033[2 q");
+    CHECK(!(vt_modes(t) & VT_MODE_CURSOR_BLINK));
+    CHECK_INT(vt_cursor_style(t), 2);
+
+    /* ?5 from the host inverts, as from the program. */
+    h_put(t, "\033[H\033[0;31;44mC");
+    c = h_cell(t, 0, 0);
+    vt_resolve_colors(t, c, &f, &b);
+    CHECK_INT(f, 1);
+    CHECK_INT(b, 4);
+    vt_screen_reverse(t, 1);
+    vt_resolve_colors(t, c, &f, &b);
+    CHECK_INT(f, 4);
+    CHECK_INT(b, 1);
+    vt_screen_reverse(t, 0);
+    vt_resolve_colors(t, c, &f, &b);
+    CHECK_INT(f, 1);
+    CHECK_INT(b, 4);
+
+    vt_free(t);
 }
