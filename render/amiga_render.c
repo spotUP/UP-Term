@@ -200,6 +200,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->cursor_colorful = 0;
     r->cursor_ink = VR_KEEP;
     r->sel_ink[0] = r->sel_ink[1] = VR_KEEP;
+    r->cursor_pen = r->sel_pen[0] = r->sel_pen[1] = -1;
     r->bell_flash = 0;
     r->cursor_x = r->cursor_y = 0;
     r->view = 0;
@@ -240,25 +241,43 @@ void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb)
     }
 }
 
+/* The ink for a profile colour, and the pen obtained for it that the
+ * caller then owns (-1: none -- an exact true-colour pen stays exact_pen[]'s,
+ * released by vr_free). VR_KEEP when no pen was left. */
+static ULONG profile_ink(vr_render *r, ULONG rgb, LONG *own)
+{
+    LONG p;
+    *own = -1;
+    if (rgb == VR_KEEP)
+        return VR_KEEP;
+    if (r->truecolor)
+        return truecolor_ink(r, rgb);
+    p = obtain(r, rgb);
+    if (p < 0)
+        return VR_KEEP;
+    *own = p;
+    return (ULONG)p;
+}
+
 void vr_set_cursor_color(vr_render *r, ULONG rgb)
 {
+    LONG old = r->cursor_pen, pen;
+    ULONG ink;
     if (!r->win)
         return; /* before vr_init, after vr_free */
-    if (r->cursor_ink != VR_KEEP && !(r->cursor_ink & VR_INK_RGB) && r->cm)
-        ReleasePen(r->cm, r->cursor_ink);
-    r->cursor_ink = VR_KEEP;
-    if (rgb == VR_KEEP)
-        return;
-    if (r->truecolor)
-        r->cursor_ink = truecolor_ink(r, rgb);
-    else {
-        LONG p = obtain(r, rgb);
-        r->cursor_ink = p >= 0 ? (ULONG)p : VR_KEEP; /* no pen left: inverted */
-    }
+    ink = profile_ink(r, rgb, &pen); /* VR_KEEP: inverted */
+    /* the cursor drawn in the old colour goes before its pen does */
     if (r->cursor_drawn) {
         vr_cursor_off(r);
+        r->cursor_ink = ink;
+        r->cursor_pen = pen;
         vr_cursor_on(r); /* the new colour on the cell the cursor is at now */
+    } else {
+        r->cursor_ink = ink;
+        r->cursor_pen = pen;
     }
+    if (old >= 0 && r->cm)
+        ReleasePen(r->cm, (ULONG)old);
 }
 
 /* The profile's selection colours. VR_KEEP for either keeps that half of the
@@ -266,23 +285,21 @@ void vr_set_cursor_color(vr_render *r, ULONG rgb)
  * the colour the cell would otherwise have had. */
 void vr_set_selection_colors(vr_render *r, ULONG fg_rgb, ULONG bg_rgb)
 {
+    LONG old[2];
     int i;
     if (!r->win)
         return; /* before vr_init, after vr_free */
     for (i = 0; i < 2; i++) {
-        ULONG rgb = i ? bg_rgb : fg_rgb;
-        if (r->sel_ink[i] != VR_KEEP && !(r->sel_ink[i] & VR_INK_RGB) && r->cm)
-            ReleasePen(r->cm, r->sel_ink[i]);
-        r->sel_ink[i] = VR_KEEP;
-        if (rgb == VR_KEEP)
-            continue;
-        if (r->truecolor)
-            r->sel_ink[i] = truecolor_ink(r, rgb);
-        else {
-            LONG p = obtain(r, rgb);
-            r->sel_ink[i] = p >= 0 ? (ULONG)p : VR_KEEP; /* no pen left: swapped */
-        }
+        old[i] = r->sel_pen[i];
+        r->sel_ink[i] = profile_ink(r, i ? bg_rgb : fg_rgb, &r->sel_pen[i]);
     }
+    /* a selection on screen is drawn in the old pens: repaint it in the new
+     * ones before those are given back */
+    if (r->sel)
+        vr_redraw(r);
+    for (i = 0; i < 2; i++)
+        if (old[i] >= 0 && r->cm)
+            ReleasePen(r->cm, (ULONG)old[i]);
 }
 
 /* The colour a screen pen shows now, 0xRRGGBB. */
@@ -328,11 +345,13 @@ void vr_free(vr_render *r)
     for (i = 0; i < 2; i++)
         if (r->cm && r->dflt_obtained[i] >= 0)
             ReleasePen(r->cm, (ULONG)r->dflt_obtained[i]);
-    if (r->cm && r->cursor_ink != VR_KEEP && !(r->cursor_ink & VR_INK_RGB))
-        ReleasePen(r->cm, r->cursor_ink);
+    /* the profile inks: only the pens their setters obtained (an exact
+     * true-colour ink was released with exact_pen[] above) */
+    if (r->cm && r->cursor_pen >= 0)
+        ReleasePen(r->cm, (ULONG)r->cursor_pen);
     for (i = 0; i < 2; i++)
-        if (r->cm && r->sel_ink[i] != VR_KEEP && !(r->sel_ink[i] & VR_INK_RGB))
-            ReleasePen(r->cm, r->sel_ink[i]);
+        if (r->cm && r->sel_pen[i] >= 0)
+            ReleasePen(r->cm, (ULONG)r->sel_pen[i]);
     r->dflt_obtained[0] = r->dflt_obtained[1] = -1;
     for (i = 0; i < VR_EXACT_SLOTS; i++)
         r->exact_key[i] = 0;
