@@ -56,9 +56,15 @@ typedef struct vr_render {
     BYTE cursor_colorful;  /* the cursor cell was filled with the profile colour */
     ULONG cursor_ink;      /* the profile's cursor colour (a pen, or VR_INK_RGB on
                               * true colour), or VR_KEEP: the inverted cell */
-ULONG sel_ink[2];      /* the profile's selection foreground and background: a
-                         * pen, or VR_INK_RGB on true colour, else VR_KEEP --
-                         * which keeps the swapped colours of the cell */
+    ULONG sel_ink[2];      /* the profile's selection foreground and background: a
+                            * pen, or VR_INK_RGB on true colour, else VR_KEEP --
+                            * which keeps the swapped colours of the cell */
+    /* The pens the two setters obtained for those inks themselves, -1 none:
+     * released by the setter that replaces them or by vr_free, nowhere
+     * else. An ink can be a pen another table owns (an exact true-colour
+     * pen belongs to exact_pen[]), so the ink alone does not say whose it is. */
+    LONG cursor_pen;
+    LONG sel_pen[2];
     BYTE hidden;          /* the window is too small to draw into */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;

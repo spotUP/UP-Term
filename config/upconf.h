@@ -3,7 +3,7 @@
  * (tests/test_upconf.c) and used by the XCON: handler and the Prefs app
  * without pulling in an Amiga.
  *
- * The file (default /ENV/up-term/up-term, plan
+ * The file (ENV:up-term/up-term, saved in ENVARC:; plan
  * thoughts/shared/plans/2026-10-01-terminal-preferences.md):
  *
  *   ; comments with ; or #, blank lines free

@@ -1,18 +1,21 @@
-/* UP-Term Prefs: the settings editor for /ENV/up-term/up-term -- the
- * profiles the XCON: handler reads for every window (plan
+/* UP-Term Prefs: the settings editor for up-term/up-term in ENV: and
+ * ENVARC: -- the profiles the XCON: handler reads for every window (plan
  * thoughts/shared/plans/2026-10-01-terminal-preferences.md).
  *
- * C:UP-Term Prefs opens a two-page window, General and Colors. The fields
- * edit one profile at a time: name it in the profile field, Load it (or
- * start it with New), change the values, Save. The previous file is kept
- * as up-term.orig. New XCON: windows use the file; open windows keep
- * their own settings (live apply is a later phase).
+ * C:UP-Term Prefs opens a window with two pages, General and Colors, picked
+ * with the Page gadget. The fields edit one profile at a time: name it in
+ * the Profile field, Load it (or start it with New), change the values, then
+ * the Amiga Prefs buttons: Save writes ENVARC: and ENV: (kept across a
+ * reboot), Use writes ENV: only (until the reboot), Cancel writes nothing.
+ * The previous file is kept as up-term.orig. New XCON: windows use the file;
+ * open windows keep their own settings (live apply is a later phase).
  *
- * One Intuition window, two pages of gadgets: the active page's tab is
- * grey (you are here) and the other page's gadgets are disabled. Every
- * control does one thing when clicked; the "toggle" buttons (cursor,
- * bell, ...) cycle their value and their label, so no gadget state lives
- * outside this program.
+ * The window is GadTools. Each page is a gadget list of its own; the shown
+ * one is in the window, the other is held off it, so no two gadgets ever
+ * share a place on screen. What reaches the file is decided in
+ * prefs/prefs_core.c (host-tested): a file the editor cannot hold whole is
+ * not written back, a save is staged on a copy of the table, and the file
+ * is replaced through a temporary file and renames.
  */
 #include <string.h>
 
@@ -23,125 +26,111 @@
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <intuition/intuitionbase.h>
+#include <graphics/gfxbase.h>
+#include <graphics/text.h>
+#include <libraries/gadtools.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
+#include <proto/graphics.h>
+#include <proto/gadtools.h>
 
 #include "../config/upconf.h"
+#include "prefs_core.h"
 
-/* The clib's Intuition calls read IntuitionBase; startup.o provides the
- * DOSBase one, so only this one is ours to define. */
+/* The clib's calls read these; startup.o provides DOSBase only. */
 struct IntuitionBase *IntuitionBase;
+struct GfxBase *GfxBase;
+struct Library *GadToolsBase;
 
-/* V39's headers renamed the classic gadget types; the values are the ones
- * every Intuition has always used: 2 is the string gadget (it edits its
- * GadgetText when clicked and typed into), 3 the plain label. */
-#define PREFS_STRING GTYP_GADGET0002
-#define PREFS_LABEL  GTYP_PROPGADGET
+/* ENV: is what is in use now, ENVARC: what the next boot copies to ENV:. */
+enum { T_ENV, T_ENVARC };
+static const char *const conf_dir[2] = { "ENV:up-term", "ENVARC:up-term" };
+static const char *const conf_path[2] = { "ENV:up-term/up-term", "ENVARC:up-term/up-term" };
+static const char *const conf_tmp[2] = { "ENV:up-term/up-term.new", "ENVARC:up-term/up-term.new" };
+static const char *const conf_orig[2] = { "ENV:up-term/up-term.orig", "ENVARC:up-term/up-term.orig" };
 
-#define CONF_PATH  "/ENV/up-term/up-term"
-#define CONF_ORIG  "/ENV/up-term/up-term.orig"
-#define CONF_TMP   "/ENV/up-term/up-term.new"
-#define CONF_DIR   "/ENV/up-term"
 /* the same cap the handler reads with, so a file this writes is always a
  * file the handler can read whole */
 #define CONF_MAX   UC_MAX_FILE
-#define LOCK_DIRONLY 4       /* Lock(): the path is a directory, not a file */
-
-#define WIN_W 470
-#define WIN_H 306
 #define STATUS_MAX 128
 
-/* The gadget IDs. The palette fields are ID_PAL + i. */
+/* layout, in pixels of topaz 8 from the window's inner top left */
+#define ROW(i)    (20 + (i) * 16)
+#define FIELD_X   128
+#define AREA_W    466
+#define PAGE_ROWS 11
+#define STATUS_Y  (ROW(PAGE_ROWS) + 4)
+#define BUTTON_Y  (STATUS_Y + 20)
+#define INNER_W   (AREA_W + 16)
+#define INNER_H   (4 + BUTTON_Y + 14 + 6)
+
 enum {
-    ID_TABGEN, ID_TABCOL,
-    ID_PROFN, ID_LOAD, ID_NEW, ID_DEL,
+    ID_PAGE = 1,
+    ID_PROF, ID_LOAD, ID_NEW, ID_DEL,
     ID_FONT, ID_SB, ID_CURCOL,
-    ID_CURSTYLE, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL,
-    ID_FG, ID_BG, ID_PAL, ID_SELFG, ID_SELBG,
-    ID_SAVE, ID_CANCEL, ID_STATUS
+    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL,
+    ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
+    ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT
 };
+
+/* A string field: its gadget, the page it is on, the text it edits. */
+struct strfield {
+    struct Gadget *g;
+    int page;
+    char *val;
+    int cap;
+};
+
+#define N_STR (4 + 4 + 16)
 
 struct app {
-    struct MsgPort *port;
     struct Window *win;
-    upconf conf;              /* the file's table, edited in place */
-    /* the profile the fields show now; every field holds a value of upconf's
-     * own size, so a hand-edited file cannot overflow one */
-    char prof[UC_NAME];
-    char font[UC_MAX_VALUE];
-    char sb[UC_MAX_VALUE];
-    char curcol[UC_MAX_VALUE];
-    char fg[UC_MAX_VALUE];
-    char bg[UC_MAX_VALUE];
-    char pal[16][16];
-    char selfg[UC_MAX_VALUE];
-    char selbg[UC_MAX_VALUE];
-    char status[128];
-    /* the cycle buttons' labels */
-    char lb_curstyle[40];
-    char lb_blink[40];
-    char lb_bell[40];
-    char lb_bold[40];
-    char lb_meta[40];
-    char lb_copy[40];
-    char lb_wheel[40];
-    int cursor_style;         /* 1 block, 3 underline, 5 bar */
-    int blink, bell, bold, meta_alt, copy_sel, wheel;
-    int page;                 /* 0 General, 1 Colors */
-    /* the gadgets, in window order: the tabs, the General controls and
-     * labels, the Colors controls and labels, then Save / Cancel / status */
-    struct Gadget gtab_gen, gtab_col;
-    struct Gadget gprof, gload, gnew, gdel;
-    struct Gadget gfont, gsb, gcurcol;
-    struct Gadget gcurstyle, gblink, gbell, gbold, gmeta, gcopy, gwheel;
-    struct Gadget glab_gen[4];
-    struct Gadget gfg, gbg, gpal[16], gselfg, gselbg;
-    struct Gadget glab_col[20];
-    struct Gadget gsave, gcancel, gstatus;
+    APTR vi;                  /* GadTools' VisualInfo of the screen */
+    WORD ox, oy;              /* the inner top left, in window coordinates */
+    struct Gadget *glist_common; /* Page, status, Save / Use / Cancel */
+    struct Gadget *glist[2];  /* the General and the Colors page */
+    int page;                 /* the page in the window, -1 none yet */
+    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel;
+    struct strfield str[N_STR];
+    int nstr;
+    upconf conf;              /* the file's table, as loaded and as last written */
+    upconf work;              /* a save is staged here, then copied to conf */
+    char buf[CONF_MAX + 2];   /* the file text, read or about to be written */
+    int writable;             /* the file was loaded whole: it may be written back */
+    char prof[UC_NAME];       /* the profile the fields show */
+    prefs_fields f;
+    char status[2][STATUS_MAX]; /* GadTools keeps the pointer: alternate */
+    int st;
 };
 
-/* Repaint the window. The gadget list is static and changes only in the
- * text and the disabled flags, so a full refresh is the whole job. */
-static void redraw(struct app *a)
+static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFONT };
+
+static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", 0 };
+static STRPTR cursor_labels[] = { (STRPTR)"Block", (STRPTR)"Underline", (STRPTR)"Bar", 0 };
+static STRPTR bell_labels[] = { (STRPTR)"None", (STRPTR)"Beep", (STRPTR)"Visual", 0 };
+static STRPTR meta_labels[] = { (STRPTR)"Left Amiga", (STRPTR)"Alt", 0 };
+
+/* The window a gadget of this page is in now (0: held off the window). */
+static struct Window *win_of(struct app *a, int page)
 {
-    if (a->win)
-        RefreshGadgets(0, a->win, 0);
+    return page < 0 || page == a->page ? a->win : 0;
 }
 
-/* A window gadget: label a string, reported on the release still over it. */
-static void mk(struct Gadget *g, struct Gadget *next, int x, int y, int w, int h,
-               UWORD type, char *label, UWORD id)
+static void set_attr(struct app *a, struct Gadget *g, int page, ULONG tag, ULONG data)
 {
-    g->NextGadget = next;
-    g->LeftEdge = (WORD)x;
-    g->TopEdge = (WORD)y;
-    g->Width = (WORD)w;
-    g->Height = (WORD)h;
-    g->Flags = 0;
-    g->Activation = GACT_RELVERIFY | GACT_IMMEDIATE;
-    g->GadgetType = type;
-    g->GadgetRender = 0;
-    g->SelectRender = 0;
-    g->GadgetText = (struct IntuiText *)label;
-    g->MutualExclude = 0;
-    g->SpecialInfo = 0;
-    g->GadgetID = id;
-    g->UserData = 0;
-}
-
-static void set_status(struct app *a, const char *s)
-{
-    int i = 0;
-    while (*s && i < (int)sizeof(a->status) - 1)
-        a->status[i++] = *s++;
-    a->status[i] = 0;
-    redraw(a);
+    struct TagItem t[2];
+    t[0].ti_Tag = tag;
+    t[0].ti_Data = data;
+    t[1].ti_Tag = TAG_DONE;
+    t[1].ti_Data = 0;
+    if (g)
+        GT_SetGadgetAttrsA(g, win_of(a, page), 0, t);
 }
 
 /* Append to a status line: a string, then (when num >= 0) its decimal.
  * Leaves the line terminated; returns the length. */
-static int puts_(char *dst, int at, const char *s, int num)
+static int puts_(char *dst, int at, const char *s, long num)
 {
     char digits[12];
     int n = 0;
@@ -159,641 +148,556 @@ static int puts_(char *dst, int at, const char *s, int num)
     return at;
 }
 
-static int ieq(const char *a, const char *b)
+static void set_status(struct app *a, const char *s)
 {
-    while (*a && *b) {
-        char ca = *a, cb = *b;
-        if (ca >= 'A' && ca <= 'Z')
-            ca = (char)(ca - 'A' + 'a');
-        if (cb >= 'A' && cb <= 'Z')
-            cb = (char)(cb - 'A' + 'a');
-        if (ca != cb)
-            return 0;
-        a++;
-        b++;
-    }
-    return *a == 0 && *b == 0;
+    char *d;
+    a->st ^= 1;
+    d = a->status[a->st];
+    puts_(d, 0, s, -1);
+    set_attr(a, a->gstatus, -1, GTTX_Text, (ULONG)d);
 }
 
-/* A palette field is exactly six hex digits, 0x or # optional. */
-/* "000000" form of a colour, for the palette fields. */
-static void rgb_chars(uc_u32 rgb, char *out, int cap)
+/* ---- the fields <-> the gadgets ------------------------------------------------ */
+
+static void add_str(struct app *a, struct Gadget *g, int page, char *val, int cap)
+{
+    struct strfield *s = &a->str[a->nstr++];
+    s->g = g;
+    s->page = page;
+    s->val = val;
+    s->cap = cap;
+}
+
+/* Show the fields in the gadgets. */
+static void show_fields(struct app *a)
 {
     int i;
-    if (cap < 7)
+    for (i = 0; i < a->nstr; i++)
+        set_attr(a, a->str[i].g, a->str[i].page, GTST_String, (ULONG)a->str[i].val);
+    set_attr(a, a->gcursor, 0, GTCY_Active, (ULONG)a->f.cursor);
+    set_attr(a, a->gbell, 0, GTCY_Active, (ULONG)a->f.bell);
+    set_attr(a, a->gmeta, 0, GTCY_Active, (ULONG)a->f.meta_alt);
+    set_attr(a, a->gblink, 0, GTCB_Checked, (ULONG)a->f.blink);
+    set_attr(a, a->gbold, 0, GTCB_Checked, (ULONG)a->f.bold);
+    set_attr(a, a->gcopy, 0, GTCB_Checked, (ULONG)a->f.copy_sel);
+    set_attr(a, a->gwheel, 0, GTCB_Checked, (ULONG)a->f.wheel);
+}
+
+/* Take the text of every string field: a string gadget reports only Return
+ * and Tab, so what was typed without either is read here, before any
+ * action that uses the fields. GadTools lets a program read the buffer. */
+static void collect(struct app *a)
+{
+    int i, k;
+    for (i = 0; i < a->nstr; i++) {
+        const char *s = (const char *)((struct StringInfo *)a->str[i].g->SpecialInfo)->Buffer;
+        for (k = 0; s[k] && k < a->str[i].cap - 1; k++)
+            a->str[i].val[k] = s[k];
+        a->str[i].val[k] = 0;
+    }
+}
+
+/* ---- the pages --------------------------------------------------------------------- */
+
+static void show_page(struct app *a, int page)
+{
+    if (a->page == page)
         return;
-    for (i = 5; i >= 0; i--) {
-        out[i] = "0123456789ABCDEF"[rgb & 0xF];
-        rgb >>= 4;
-    }
-    out[6] = 0;
-}
-
-/* ---- the editor <-> the table ------------------------------------------------ */
-
-static void refresh_labels(struct app *a)
-{
-    static const char *cursor_names[3] = { "Cursor: block", "Cursor: underline", "Cursor: bar" };
-    static const char *bell_names[3] = { "Bell: none", "Bell: beep", "Bell: visual" };
-    int cs = a->cursor_style == 3 ? 1 : a->cursor_style == 5 ? 2 : 0;
-    int bell = a->bell < 0 ? 0 : a->bell > 2 ? 2 : a->bell;
-    strcpy(a->lb_curstyle, cursor_names[cs]);
-    strcpy(a->lb_blink, a->blink ? "Cursor blink: on" : "Cursor blink: off");
-    strcpy(a->lb_bell, bell_names[bell]);
-    strcpy(a->lb_bold, a->bold ? "Bold bright: on" : "Bold bright: off");
-    strcpy(a->lb_meta, a->meta_alt ? "Meta: Alt" : "Meta: Left Amiga");
-    strcpy(a->lb_copy, a->copy_sel ? "Copy on select: on" : "Copy on select: off");
-    strcpy(a->lb_wheel, a->wheel ? "Wheel: scroll" : "Wheel: off");
-}
-
-/* The built-in values, into the fields. */
-static void defaults(struct app *a)
-{
-    a->cursor_style = 1;
-    a->blink = 0;
-    a->bell = 1;
-    a->bold = 1;
-    a->meta_alt = 0;
-    a->copy_sel = 0;
-    a->wheel = 1;
-    a->font[0] = 0;
-    a->sb[0] = 0;
-    a->curcol[0] = 0;
-    a->fg[0] = 0;
-    a->bg[0] = 0;
-    a->selfg[0] = 0;
-    a->selbg[0] = 0;
-    memset(a->pal, 0, sizeof(a->pal));
-    refresh_labels(a);
-}
-
-/* Put the profile's values into the fields (an absent key takes its
- * default, as the handler's built-ins would). */
-static void load_profile(struct app *a, const char *name)
-{
-    const char *v;
-    uc_u32 pal[16];
-    int i;
-    strcpy(a->font, upconf_str(&a->conf, name, "font", ""));
-    strcpy(a->sb, upconf_str(&a->conf, name, "scrollback", ""));
-    strcpy(a->curcol, upconf_str(&a->conf, name, "cursor-color", ""));
-    strcpy(a->fg, upconf_str(&a->conf, name, "fg", ""));
-    strcpy(a->bg, upconf_str(&a->conf, name, "bg", ""));
-    strcpy(a->selfg, upconf_str(&a->conf, name, "selection-fg", ""));
-    strcpy(a->selbg, upconf_str(&a->conf, name, "selection-bg", ""));
-    v = upconf_str(&a->conf, name, "cursor", "block");
-    a->cursor_style = ieq(v, "underline") ? 3 : ieq(v, "bar") ? 5 : 1;
-    a->blink = ieq(upconf_str(&a->conf, name, "cursor-blink", "off"), "on");
-    v = upconf_str(&a->conf, name, "bell", "beep");
-    a->bell = ieq(v, "none") ? 0 : ieq(v, "visual") ? 2 : 1;
-    a->bold = ieq(upconf_str(&a->conf, name, "bold-bright", "on"), "on");
-    a->meta_alt = ieq(upconf_str(&a->conf, name, "meta", "amiga"), "alt");
-    a->copy_sel = ieq(upconf_str(&a->conf, name, "copy-on-select", "off"), "on");
-    a->wheel = !ieq(upconf_str(&a->conf, name, "wheel", "scroll"), "ignore");
-    upconf_palette_parse(upconf_get(&a->conf, name, "palette"), pal);
-    for (i = 0; i < 16; i++)
-        if (pal[i] & 0x01000000UL)
-            rgb_chars(pal[i] & 0xFFFFFFUL, a->pal[i], sizeof(a->pal[i]));
-        else
-            a->pal[i][0] = 0;
-    refresh_labels(a);
-    redraw(a);
-}
-
-static void set_page(struct app *a, int page)
-{
-    struct Gadget *g;
-    int i;
+    if (a->page >= 0)
+        RemoveGList(a->win, a->glist[a->page], -1);
+    /* the old page's gadgets and labels go with the area they were in */
+    EraseRect(a->win->RPort, a->ox - 8, a->oy + ROW(0) - 2,
+              a->ox + AREA_W + 7, a->oy + ROW(PAGE_ROWS) - 1);
     a->page = page;
-    g = &a->gprof;
-    for (i = 0; g && i < 18; i++) { /* the General controls and labels */
-        if (page)
-            g->Flags |= GFLG_DISABLED;
-        else
-            g->Flags &= ~(UWORD)GFLG_DISABLED;
-        g = g->NextGadget;
-    }
-    g = &a->gfg;
-    /* the Colors controls and labels: fg, bg, the 16 palette fields, the
-     * 20 labels and the two selection fields */
-    for (i = 0; g && i < 40; i++) {
-        if (!page)
-            g->Flags |= GFLG_DISABLED;
-        else
-            g->Flags &= ~(UWORD)GFLG_DISABLED;
-        g = g->NextGadget;
-    }
-    if (page)
-        a->gtab_gen.Flags |= GFLG_DISABLED;
-    else
-        a->gtab_gen.Flags &= ~(UWORD)GFLG_DISABLED;
-    if (!page)
-        a->gtab_col.Flags |= GFLG_DISABLED;
-    else
-        a->gtab_col.Flags &= ~(UWORD)GFLG_DISABLED;
-    redraw(a);
+    AddGList(a->win, a->glist[page], (UWORD)~0, -1, 0);
+    RefreshGList(a->glist[page], a->win, 0, -1);
+    GT_RefreshWindow(a->win, 0);
 }
 
-/* ---- the file ---------------------------------------------------------------- */
+/* ---- the file ---------------------------------------------------------------------- */
 
-static int ensure_dir(void)
+static int dos_write(void *ctx, const char *path, const char *buf, long len)
 {
-    BPTR l = CreateDir(CONF_DIR);
-    if (l)
-        UnLock(l);
-    l = Lock(CONF_DIR, LOCK_DIRONLY);
-    if (l) {
-        UnLock(l);
-        return 1;
-    }
-    return 0;
-}
-
-/* The current file becomes up-term.orig (its old backup goes). */
-static void backup(void)
-{
-    BPTR src, dst;
-    char *buf;
-    LONG n;
-    src = Open(CONF_PATH, MODE_OLDFILE);
-    if (!src)
-        return;
-    n = Seek(src, 0, OFFSET_END);
-    if (n > 0 && n <= CONF_MAX) {
-        buf = (char *)AllocVec(n + 1, MEMF_ANY);
-        if (buf) {
-            Seek(src, 0, OFFSET_BEGINNING);
-            n = Read(src, buf, n);
-            if (n > 0) {
-                DeleteFile(CONF_ORIG); /* a missing old backup is not an error */
-                dst = Open(CONF_ORIG, MODE_NEWFILE);
-                if (dst) {
-                    Write(dst, buf, n);
-                    Close(dst);
-                }
-            }
-            FreeVec(buf);
-        }
-    }
-    Close(src);
-}
-
-static void load_file(struct app *a)
-{
-    BPTR f;
-    char *buf;
-    LONG n;
-    f = Open(CONF_PATH, MODE_OLDFILE);
+    BPTR f = Open((STRPTR)path, MODE_NEWFILE);
+    LONG w, closed;
+    (void)ctx;
     if (!f)
-        return; /* no file: the table stays empty, the defaults stand */
-    n = Seek(f, 0, OFFSET_END);
-    if (n > 0 && n <= CONF_MAX) {
-        buf = (char *)AllocVec(n + 1, MEMF_ANY);
-        if (buf) {
-            Seek(f, 0, OFFSET_BEGINNING);
-            n = Read(f, buf, n);
-            if (n > 0)
-                upconf_parse(&a->conf, buf, n);
-            FreeVec(buf);
-        }
-    }
-    Close(f);
+        return 0;
+    w = Write(f, (APTR)buf, len);
+    closed = Close(f); /* a buffered write can fail only here */
+    return w == len && closed;
 }
 
-/* The profile name as typed: trimmed, its [ ] stripped, what fits UC_NAME. */
-static void clean_name(struct app *a, char *out, int cap)
+static int dos_exists(void *ctx, const char *path)
 {
-    char *p = a->prof, *o = out;
-    while (*p == ' ' || *p == '\t')
-        p++;
-    while (*p) {
-        if (*p != '[' && *p != ']' && (int)(o - out) < cap - 1)
-            *o++ = *p;
-        p++;
-    }
-    while (o > out && (o[-1] == ' ' || o[-1] == '\t'))
-        o--;
-    *o = 0;
-}
-
-static int profile_exists(struct app *a, const char *name)
-{
-    const char *names[UC_MAX_PROFILES + 1];
-    int i, n = upconf_profiles(&a->conf, names);
-    for (i = 0; i < n; i++)
-        if (ieq(names[i], name))
-            return 1;
-    return 0;
-}
-
-static int save_all(struct app *a)
-{
-    upconf *c = &a->conf;
-    char name[UC_NAME];
-    char *buf;
-    char palstr[UC_MAX_VALUE];
-    uc_u32 pal[16];
-    long len;
-    int i;
-    clean_name(a, name, sizeof(name));
-    if (!name[0]) {
-        set_status(a, "Name the profile first.");
+    BPTR l = Lock((STRPTR)path, SHARED_LOCK);
+    (void)ctx;
+    if (!l)
         return 0;
-    }
-    /* Validate everything before the table is touched: a value the file
-     * cannot hold must leave the loaded file exactly as it was. */
-    memset(pal, 0, sizeof(pal));
-    for (i = 0; i < 16; i++) {
-        if (a->pal[i][0]) {
-            uc_u32 rgb;
-            if (!upconf_hex6(a->pal[i], &rgb)) {
-                char msg[STATUS_MAX];
-                int j = puts_(msg, 0, "Palette ", i);
-                j = puts_(msg, j, ": six hex digits, or blank.", 0);
-                set_status(a, msg);
-                return 0;
-            }
-            pal[i] = 0x01000000UL | rgb;
-        }
-    }
-    /* the two selection fields, strictly: what the user typed must be six
-     * hex digits, not something the lenient file parser would quietly cut */
-    {
-        static const char *sel_names[2] = { "Selected text", "Selection" };
-        const char *sel_vals[2];
-        int s;
-        sel_vals[0] = a->selfg;
-        sel_vals[1] = a->selbg;
-        for (s = 0; s < 2; s++) {
-            uc_u32 rgb;
-            if (sel_vals[s][0] && !upconf_hex6(sel_vals[s], &rgb)) {
-                char msg[STATUS_MAX];
-                int j = puts_(msg, 0, sel_names[s], -1);
-                j = puts_(msg, j, ": six hex digits, or blank.", 0);
-                set_status(a, msg);
-                return 0;
-            }
-        }
-    }
-    if (upconf_palette_str(pal, palstr, sizeof(palstr)) < 0) {
-        /* a value slot is UC_MAX_VALUE long and the palette line is one
-         * value; a full 16-entry grid is 159 bytes and fills it exactly, so reaching
-         * this means the table grew shorter than the palette */
-        char msg[STATUS_MAX];
-        int j = 0;
-        for (i = 0; i < 16; i++)
-            if (pal[i] & 0x01000000UL)
-                j++;
-        j = puts_(msg, 0, "Palette: ", j);
-        j = puts_(msg, j, " colours exceed ", UC_MAX_VALUE - 1);
-        puts_(msg, j, " characters.", 0);
-        set_status(a, msg);
-        return 0;
-    }
-    buf = (char *)AllocVec(CONF_MAX + 1, MEMF_ANY);
-    if (!buf) {
-        set_status(a, "Out of memory.");
-        return 0;
-    }
-    upconf_rmprof(c, name); /* re-enter its keys fresh */
-    if (a->font[0])
-        upconf_set(c, name, "font", a->font);
-    if (a->sb[0])
-        upconf_set(c, name, "scrollback", a->sb);
-    if (a->curcol[0])
-        upconf_set(c, name, "cursor-color", a->curcol);
-    if (a->fg[0])
-        upconf_set(c, name, "fg", a->fg);
-    if (a->bg[0])
-        upconf_set(c, name, "bg", a->bg);
-    /* blank keeps the swap for that half, so an emptied field is not written
-     * at all: the handler then leaves VR_KEEP and the cell stays inverted */
-    if (a->selfg[0])
-        upconf_set(c, name, "selection-fg", a->selfg);
-    if (a->selbg[0])
-        upconf_set(c, name, "selection-bg", a->selbg);
-    upconf_set(c, name, "cursor",
-               a->cursor_style == 3 ? "underline" : a->cursor_style == 5 ? "bar" : "block");
-    upconf_set(c, name, "cursor-blink", a->blink ? "on" : "off");
-    upconf_set(c, name, "bell", a->bell == 0 ? "none" : a->bell == 2 ? "visual" : "beep");
-    upconf_set(c, name, "bold-bright", a->bold ? "on" : "off");
-    upconf_set(c, name, "meta", a->meta_alt ? "alt" : "amiga");
-    upconf_set(c, name, "copy-on-select", a->copy_sel ? "on" : "off");
-    upconf_set(c, name, "wheel", a->wheel ? "scroll" : "ignore");
-    if (palstr[0])
-        upconf_set(c, name, "palette", palstr);
-    else
-        upconf_del(c, name, "palette");
-    len = upconf_save(c, buf, CONF_MAX);
-    buf[CONF_MAX] = 0;
-    if (len < 0) {
-        FreeVec(buf);
-        set_status(a, "The file would be too large.");
-        return 0;
-    }
-    if (!ensure_dir()) {
-        FreeVec(buf);
-        set_status(a, "Cannot create ENVARC:up-term.");
-        return 0;
-    }
-    backup();
-    /* Write the whole file beside the target and rename it over: until the
-     * rename the live file is untouched, so a short write or a full disk
-     * cannot leave the user's profiles half-written. Rename cannot replace an
-     * existing file, hence the delete right before it -- at that point the
-     * new file is already complete on disk and the old one is in .orig. */
-    DeleteFile(CONF_TMP);
-    {
-        BPTR f = Open(CONF_TMP, MODE_NEWFILE);
-        LONG w;
-        if (!f) {
-            FreeVec(buf);
-            set_status(a, "Cannot write ENVARC:up-term/up-term.");
-            return 0;
-        }
-        w = Write(f, buf, len);
-        Close(f);
-        FreeVec(buf);
-        if (w != len) {
-            DeleteFile(CONF_TMP);
-            set_status(a, "The write failed (your old file is untouched).");
-            return 0;
-        }
-    }
-    DeleteFile(CONF_PATH);
-    if (Rename(CONF_TMP, CONF_PATH) != 0) {
-        DeleteFile(CONF_TMP);
-        set_status(a, "Cannot replace ENVARC:up-term/up-term (see up-term.orig).");
-        return 0;
-    }
-    set_status(a, c->overflow ? "Saved (the file was cut short)." : "Saved. New windows use it.");
-    /* the file holds the trimmed name: keep the field showing what was
-     * written, so Load and Save agree from here on */
-    strcpy(a->prof, name);
+    UnLock(l);
     return 1;
 }
 
-/* ---- the window --------------------------------------------------------------- */
-
-static void build_gadgets(struct app *a)
+static int dos_remove(void *ctx, const char *path)
 {
-    int i;
-    static const char *gen_labels[4] = { "Profile", "Font", "Scrollback", "Cursor colour" };
-    static const int gen_y[4] = { 30, 54, 78, 102 };
-    static const char *col_labels[20] = {
-        "Text colour", "Background",
-        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
-        "Selected text", "Selection"
-    };
-    static const int col_x[20] = {
-        8, 8,
-        8, 114, 220, 326, 8, 114, 220, 326, 8, 114, 220, 326, 8, 114, 220, 326,
-        8, 8
-    };
-    static const int col_y[20] = {
-        30, 54,
-        82, 82, 82, 82, 108, 108, 108, 108, 134, 134, 134, 134, 160, 160, 160, 160,
-        196, 220
-    };
-    mk(&a->gtab_gen, &a->gtab_col, 312, 6, 72, 14, BOOLGADGET, "General", ID_TABGEN);
-    mk(&a->gtab_col, &a->gprof, 392, 6, 72, 14, BOOLGADGET, "Colors", ID_TABCOL);
-    mk(&a->gprof, &a->gload, 64, 28, 100, 12, PREFS_STRING, a->prof, ID_PROFN);
-    mk(&a->gload, &a->gnew, 170, 28, 40, 14, BOOLGADGET, "Load", ID_LOAD);
-    mk(&a->gnew, &a->gdel, 214, 28, 40, 14, BOOLGADGET, "New", ID_NEW);
-    mk(&a->gdel, &a->gfont, 258, 28, 44, 14, BOOLGADGET, "Delete", ID_DEL);
-    mk(&a->gfont, &a->gsb, 64, 52, 150, 12, PREFS_STRING, a->font, ID_FONT);
-    mk(&a->gsb, &a->gcurcol, 90, 76, 70, 12, PREFS_STRING, a->sb, ID_SB);
-    mk(&a->gcurcol, &a->gcurstyle, 110, 100, 70, 12, PREFS_STRING, a->curcol, ID_CURCOL);
-    mk(&a->gcurstyle, &a->gblink, 260, 52, 190, 14, BOOLGADGET, a->lb_curstyle, ID_CURSTYLE);
-    mk(&a->gblink, &a->gbell, 260, 76, 190, 14, BOOLGADGET, a->lb_blink, ID_BLINK);
-    mk(&a->gbell, &a->gbold, 260, 100, 190, 14, BOOLGADGET, a->lb_bell, ID_BELL);
-    mk(&a->gbold, &a->gmeta, 260, 124, 190, 14, BOOLGADGET, a->lb_bold, ID_BOLD);
-    mk(&a->gmeta, &a->gcopy, 260, 148, 190, 14, BOOLGADGET, a->lb_meta, ID_META);
-    mk(&a->gcopy, &a->gwheel, 260, 172, 190, 14, BOOLGADGET, a->lb_copy, ID_COPY);
-    mk(&a->gwheel, &a->glab_gen[0], 260, 196, 190, 14, BOOLGADGET, a->lb_wheel, ID_WHEEL);
-    for (i = 0; i < 4; i++)
-        mk(&a->glab_gen[i], i < 3 ? &a->glab_gen[i + 1] : &a->gfg,
-           8, gen_y[i], 96, 8, PREFS_LABEL, (char *)gen_labels[i], 0);
-    mk(&a->gfg, &a->gbg, 100, 28, 80, 12, PREFS_STRING, a->fg, ID_FG);
-    mk(&a->gbg, &a->gpal[0], 100, 52, 80, 12, PREFS_STRING, a->bg, ID_BG);
-    for (i = 0; i < 16; i++)
-        mk(&a->gpal[i], i < 15 ? &a->gpal[i + 1] : &a->glab_col[0],
-           30 + (i % 4) * 106, 82 + (i / 4) * 26, 74, 12, PREFS_STRING, a->pal[i],
-           (ULONG)ID_PAL + i);
-    for (i = 0; i < 18; i++)
-        mk(&a->glab_col[i], i < 17 ? &a->glab_col[i + 1] : &a->glab_col[18],
-           col_x[i], col_y[i], 96, 8, PREFS_LABEL, (char *)col_labels[i], 0);
-    /* the theme's selection colours: either left blank keeps that half of
-     * the swap, which is the look a terminal had before */
-    mk(&a->glab_col[18], &a->glab_col[19], col_x[18], col_y[18], 96, 8,
-       PREFS_LABEL, (char *)col_labels[18], 0);
-    mk(&a->glab_col[19], &a->gselfg, col_x[19], col_y[19], 96, 8,
-       PREFS_LABEL, (char *)col_labels[19], 0);
-    mk(&a->gselfg, &a->gselbg, 100, 198, 80, 12, PREFS_STRING, a->selfg, ID_SELFG);
-    mk(&a->gselbg, &a->gsave, 100, 222, 80, 12, PREFS_STRING, a->selbg, ID_SELBG);
-    mk(&a->gsave, &a->gcancel, 8, 284, 56, 16, BOOLGADGET, "Save", ID_SAVE);
-    mk(&a->gcancel, &a->gstatus, 70, 284, 56, 16, BOOLGADGET, "Cancel", ID_CANCEL);
-    mk(&a->gstatus, 0, 134, 286, 326, 12, PREFS_STRING, a->status, ID_STATUS);
-    a->gstatus.Flags |= GFLG_DISABLED; /* the status line: text, no editing */
+    (void)ctx;
+    if (DeleteFile((STRPTR)path))
+        return 1;
+    return IoErr() == ERROR_OBJECT_NOT_FOUND;
 }
 
-/* The window: two pages of gadgets in one static list, on a public screen
- * so it shows up wherever Workbench happens to be. */
-static struct Window *open_window(struct app *a, struct Screen *scr,
-                                  int left, int top)
+static int dos_rename(void *ctx, const char *from, const char *to)
 {
-    struct TagItem tags[10];
+    (void)ctx;
+    return Rename((STRPTR)from, (STRPTR)to) ? 1 : 0;
+}
+
+static const prefs_fs dos_fs = { 0, dos_write, dos_exists, dos_remove, dos_rename };
+
+static int ensure_dir(int t)
+{
+    BPTR l = CreateDir((STRPTR)conf_dir[t]); /* fails when it exists: fine */
+    if (l)
+        UnLock(l);
+    l = Lock((STRPTR)conf_dir[t], SHARED_LOCK);
+    if (!l)
+        return 0;
+    UnLock(l);
+    return 1;
+}
+
+/* Read one file: up to CONF_MAX + 1 bytes, read straight rather than
+ * Seek()ed (the handler found Seek answering 0 for ENV files on 3.1), so a
+ * longer file shows as longer. 0 when absent, -1 on a read error. */
+static long read_file(struct app *a, int t)
+{
+    BPTR f = Open((STRPTR)conf_path[t], MODE_OLDFILE);
+    long got = 0, n;
+    if (!f)
+        return IoErr() == ERROR_OBJECT_NOT_FOUND ? 0 : -1;
+    while (got < CONF_MAX + 1) {
+        n = Read(f, a->buf + got, CONF_MAX + 1 - got);
+        if (n < 0) {
+            got = -1;
+            break;
+        }
+        if (n == 0)
+            break;
+        got += n;
+    }
+    Close(f);
+    if (got >= 0)
+        a->buf[got] = 0;
+    return got;
+}
+
+/* The settings in use (ENV:), else the saved ones (ENVARC:). A file this
+ * editor cannot hold whole is shown as defaults and never written back. */
+static void load_file(struct app *a)
+{
+    long got = read_file(a, T_ENV);
+    int r;
+    char msg[STATUS_MAX];
+    if (got == 0)
+        got = read_file(a, T_ENVARC);
+    r = prefs_load(&a->conf, a->buf, got, CONF_MAX);
+    a->writable = prefs_load_writable(r);
+    switch (r) {
+    case PREFS_LOAD_TOOBIG:
+        puts_(msg, puts_(msg, 0, "The file is over ", CONF_MAX), " bytes: read only.", -1);
+        set_status(a, msg);
+        break;
+    case PREFS_LOAD_LOSSY:
+        set_status(a, "The file holds more than the editor can: read only.");
+        break;
+    case PREFS_LOAD_ERROR:
+        set_status(a, "The file cannot be read: read only.");
+        break;
+    default:
+        break;
+    }
+}
+
+static void install_error(struct app *a, int t, int r)
+{
+    char msg[STATUS_MAX];
+    int j = puts_(msg, 0, conf_path[t], -1);
+    switch (r) {
+    case PREFS_INSTALL_WRITE:
+        puts_(msg, j, ": write failed, old file kept.", -1);
+        break;
+    case PREFS_INSTALL_BACKUP:
+        puts_(msg, j, ": no backup possible, old file kept.", -1);
+        break;
+    case PREFS_INSTALL_PLACE:
+        puts_(msg, j, ": cannot replace, old file kept.", -1);
+        break;
+    default:
+        puts_(msg, j, ": see up-term.orig and up-term.new.", -1);
+        break;
+    }
+    set_status(a, msg);
+}
+
+/* Use (keep = 0): ENV: only. Save (keep = 1): ENVARC:, then ENV:. */
+static void commit(struct app *a, int keep)
+{
+    char name[UC_NAME];
+    char msg[STATUS_MAX];
+    long len;
+    int bad, t, r;
+    if (!a->writable) {
+        set_status(a, "Read only: the file was not loaded whole.");
+        return;
+    }
+    collect(a);
+    prefs_clean_name(a->prof, name, sizeof(name));
+    if (!name[0]) {
+        set_status(a, "Name the profile first.");
+        return;
+    }
+    bad = prefs_validate(&a->f);
+    if (bad) {
+        int j;
+        if (bad == PREFS_BAD_SELFG)
+            j = puts_(msg, 0, "Selected text", -1);
+        else if (bad == PREFS_BAD_SELBG)
+            j = puts_(msg, 0, "Selection", -1);
+        else
+            j = puts_(msg, 0, "Palette ", bad - PREFS_BAD_PAL);
+        puts_(msg, j, ": six hex digits, or blank.", -1);
+        set_status(a, msg);
+        return;
+    }
+    len = prefs_stage(&a->work, &a->conf, name, &a->f, a->buf, CONF_MAX + 1);
+    if (len == PREFS_STAGE_FULL) {
+        puts_(msg, puts_(msg, 0, "No room: at most ", UC_MAX_PROFILES),
+              " profiles.", -1);
+        set_status(a, msg);
+        return;
+    }
+    if (len < 0) {
+        puts_(msg, puts_(msg, 0, "The file would be over ", CONF_MAX), " bytes.", -1);
+        set_status(a, msg);
+        return;
+    }
+    for (t = keep ? T_ENVARC : T_ENV; t >= T_ENV; t--) {
+        if (!ensure_dir(t)) {
+            puts_(msg, puts_(msg, 0, "Cannot create ", -1), conf_dir[t], -1);
+            set_status(a, msg);
+            return;
+        }
+        r = prefs_install(&dos_fs, conf_path[t], conf_tmp[t], conf_orig[t], a->buf, len);
+        if (r != PREFS_INSTALL_OK) {
+            install_error(a, t, r);
+            return;
+        }
+    }
+    /* both files are in place: the editor's table is what they hold */
+    CopyMem(&a->work, &a->conf, sizeof(a->conf));
+    strcpy(a->prof, name);
+    show_fields(a);
+    set_status(a, keep ? "Saved. New windows use it." : "In use until reboot. New windows use it.");
+}
+
+/* ---- the window -------------------------------------------------------------------- */
+
+static struct Gadget *gad(struct app *a, struct Gadget *prev, ULONG kind,
+                          int x, int y, int w, int h, const char *label, UWORD id,
+                          ULONG place, struct TagItem *tags)
+{
+    struct NewGadget ng;
+    ng.ng_LeftEdge = (WORD)(a->ox + x);
+    ng.ng_TopEdge = (WORD)(a->oy + y);
+    ng.ng_Width = (WORD)w;
+    ng.ng_Height = (WORD)h;
+    ng.ng_GadgetText = (STRPTR)label;
+    ng.ng_TextAttr = &topaz8;
+    ng.ng_GadgetID = id;
+    ng.ng_Flags = place;
+    ng.ng_VisualInfo = a->vi;
+    ng.ng_UserData = 0;
+    return CreateGadgetA(kind, prev, &ng, tags);
+}
+
+static struct Gadget *str_gad(struct app *a, struct Gadget *prev, int page, int x, int y,
+                              int w, const char *label, UWORD id, char *val, int cap)
+{
+    struct TagItem t[2];
+    struct Gadget *g;
+    t[0].ti_Tag = GTST_MaxChars;
+    t[0].ti_Data = (ULONG)(cap - 1);
+    t[1].ti_Tag = TAG_DONE;
+    t[1].ti_Data = 0;
+    g = gad(a, prev, STRING_KIND, x, y, w, 14, label, id, PLACETEXT_LEFT, t);
+    if (g)
+        add_str(a, g, page, val, cap);
+    return g;
+}
+
+static struct Gadget *cycle_gad(struct app *a, struct Gadget *prev, int y, const char *label,
+                                UWORD id, STRPTR *labels)
+{
+    struct TagItem t[2];
+    t[0].ti_Tag = GTCY_Labels;
+    t[0].ti_Data = (ULONG)labels;
+    t[1].ti_Tag = TAG_DONE;
+    t[1].ti_Data = 0;
+    return gad(a, prev, CYCLE_KIND, FIELD_X, y, 140, 14, label, id, PLACETEXT_LEFT, t);
+}
+
+static struct Gadget *check_gad(struct app *a, struct Gadget *prev, int y, const char *label, UWORD id)
+{
+    return gad(a, prev, CHECKBOX_KIND, FIELD_X, y, 26, 11, label, id, PLACETEXT_LEFT, 0);
+}
+
+/* The three lists. 0 when GadTools could not make one (out of memory). */
+static int build_gadgets(struct app *a)
+{
+    static const char *pal_names[16] = {
+        "0", "1", "2", "3", "4", "5", "6", "7",
+        "8", "9", "10", "11", "12", "13", "14", "15"
+    };
+    struct Gadget *g;
+    struct TagItem t[3];
+    int i;
+
+    /* common: the page, the status line, Save / Use / Cancel */
+    g = CreateContext(&a->glist_common);
+    t[0].ti_Tag = GTCY_Labels;
+    t[0].ti_Data = (ULONG)page_labels;
+    t[1].ti_Tag = TAG_DONE;
+    g = gad(a, g, CYCLE_KIND, 100, 0, 140, 14, "Page", ID_PAGE, PLACETEXT_LEFT, t);
+    t[0].ti_Tag = GTTX_Border;
+    t[0].ti_Data = TRUE;
+    t[1].ti_Tag = TAG_DONE;
+    g = a->gstatus = gad(a, g, TEXT_KIND, 0, STATUS_Y, AREA_W, 14, 0, ID_STATUS, 0, t);
+    g = gad(a, g, BUTTON_KIND, 0, BUTTON_Y, 80, 14, "Save", ID_SAVE, PLACETEXT_IN, 0);
+    g = gad(a, g, BUTTON_KIND, (AREA_W - 80) / 2, BUTTON_Y, 80, 14, "Use", ID_USE, PLACETEXT_IN, 0);
+    g = gad(a, g, BUTTON_KIND, AREA_W - 80, BUTTON_Y, 80, 14, "Cancel", ID_CANCEL, PLACETEXT_IN, 0);
+    if (!g)
+        return 0;
+
+    /* General */
+    g = CreateContext(&a->glist[0]);
+    g = str_gad(a, g, 0, FIELD_X, ROW(0), 150, "Profile", ID_PROF, a->prof, UC_NAME);
+    g = gad(a, g, BUTTON_KIND, 282, ROW(0), 56, 14, "Load", ID_LOAD, PLACETEXT_IN, 0);
+    g = gad(a, g, BUTTON_KIND, 342, ROW(0), 56, 14, "New", ID_NEW, PLACETEXT_IN, 0);
+    g = gad(a, g, BUTTON_KIND, 402, ROW(0), 64, 14, "Delete", ID_DEL, PLACETEXT_IN, 0);
+    g = str_gad(a, g, 0, FIELD_X, ROW(1), 200, "Font", ID_FONT, a->f.font, UC_MAX_VALUE);
+    g = str_gad(a, g, 0, FIELD_X, ROW(2), 80, "Scrollback", ID_SB, a->f.sb, UC_MAX_VALUE);
+    g = str_gad(a, g, 0, FIELD_X, ROW(3), 80, "Cursor colour", ID_CURCOL, a->f.curcol, UC_MAX_VALUE);
+    g = a->gcursor = cycle_gad(a, g, ROW(4), "Cursor", ID_CURSOR, cursor_labels);
+    g = a->gblink = check_gad(a, g, ROW(5) + 1, "Cursor blinks", ID_BLINK);
+    g = a->gbell = cycle_gad(a, g, ROW(6), "Bell", ID_BELL, bell_labels);
+    g = a->gbold = check_gad(a, g, ROW(7) + 1, "Bold is bright", ID_BOLD);
+    g = a->gmeta = cycle_gad(a, g, ROW(8), "Meta key", ID_META, meta_labels);
+    g = a->gcopy = check_gad(a, g, ROW(9) + 1, "Copy on select", ID_COPY);
+    g = a->gwheel = check_gad(a, g, ROW(10) + 1, "Wheel scrolls", ID_WHEEL);
+    if (!g)
+        return 0;
+
+    /* Colors */
+    g = CreateContext(&a->glist[1]);
+    g = str_gad(a, g, 1, FIELD_X, ROW(0), 80, "Text colour", ID_FG, a->f.fg, UC_MAX_VALUE);
+    g = str_gad(a, g, 1, FIELD_X, ROW(1), 80, "Background", ID_BG, a->f.bg, UC_MAX_VALUE);
+    t[0].ti_Tag = GTTX_Text;
+    t[0].ti_Data = (ULONG)"Palette, RRGGBB (blank: built-in)";
+    t[1].ti_Tag = TAG_DONE;
+    g = gad(a, g, TEXT_KIND, 0, ROW(2), AREA_W, 14, 0, ID_PALTEXT, 0, t);
+    for (i = 0; i < 16; i++)
+        g = str_gad(a, g, 1, 32 + (i % 4) * 112, ROW(3 + i / 4), 80, pal_names[i],
+                    (UWORD)(ID_PAL + i), a->f.pal[i], sizeof(a->f.pal[i]));
+    g = str_gad(a, g, 1, FIELD_X, ROW(7), 80, "Selected text", ID_SELFG, a->f.selfg, UC_MAX_VALUE);
+    g = str_gad(a, g, 1, FIELD_X, ROW(8), 80, "Selection", ID_SELBG, a->f.selbg, UC_MAX_VALUE);
+    return g != 0;
+}
+
+static struct Window *open_window(struct app *a, struct Screen *scr)
+{
+    struct TagItem tags[12];
     int n = 0;
-    tags[n].ti_Tag = WA_Left;       tags[n++].ti_Data = left;
-    tags[n].ti_Tag = WA_Top;        tags[n++].ti_Data = top;
-    tags[n].ti_Tag = WA_Width;      tags[n++].ti_Data = WIN_W;
-    tags[n].ti_Tag = WA_Height;     tags[n++].ti_Data = WIN_H;
-    tags[n].ti_Tag = WA_IDCMP;      tags[n++].ti_Data = IDCMP_CLOSEWINDOW | IDCMP_GADGETUP |
-                                                   IDCMP_RAWKEY | IDCMP_ACTIVEWINDOW |
-                                                   IDCMP_INACTIVEWINDOW;
-    tags[n].ti_Tag = WA_Flags;      tags[n++].ti_Data = WFLG_DRAGBAR | WFLG_DEPTHGADGET |
-                                                   WFLG_CLOSEGADGET | WFLG_ACTIVATE |
-                                                   WFLG_SMART_REFRESH;
-    tags[n].ti_Tag = WA_Title;      tags[n++].ti_Data = (ULONG)"UP-Term Prefs";
-    tags[n].ti_Tag = WA_PubScreen;  tags[n++].ti_Data = (ULONG)scr;
-    tags[n].ti_Tag = WA_Gadgets;    tags[n++].ti_Data = (ULONG)&a->gtab_gen;
-    tags[n].ti_Tag = TAG_DONE;      tags[n].ti_Data = 0;
+    LONG left = (scr->Width - INNER_W) / 2, top = (scr->Height - INNER_H) / 2;
+    if (left < 0)
+        left = 0;
+    if (top < 0)
+        top = 0;
+    tags[n].ti_Tag = WA_Left;        tags[n++].ti_Data = (ULONG)left;
+    tags[n].ti_Tag = WA_Top;         tags[n++].ti_Data = (ULONG)top;
+    tags[n].ti_Tag = WA_InnerWidth;  tags[n++].ti_Data = INNER_W;
+    tags[n].ti_Tag = WA_InnerHeight; tags[n++].ti_Data = INNER_H;
+    tags[n].ti_Tag = WA_AutoAdjust;  tags[n++].ti_Data = TRUE;
+    tags[n].ti_Tag = WA_IDCMP;       tags[n++].ti_Data = IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW |
+                                                     BUTTONIDCMP | STRINGIDCMP | CYCLEIDCMP |
+                                                     CHECKBOXIDCMP;
+    tags[n].ti_Tag = WA_Flags;       tags[n++].ti_Data = WFLG_DRAGBAR | WFLG_DEPTHGADGET |
+                                                     WFLG_CLOSEGADGET | WFLG_ACTIVATE |
+                                                     WFLG_SMART_REFRESH;
+    tags[n].ti_Tag = WA_Title;       tags[n++].ti_Data = (ULONG)"UP-Term Prefs";
+    tags[n].ti_Tag = WA_PubScreen;   tags[n++].ti_Data = (ULONG)scr;
+    tags[n].ti_Tag = WA_Gadgets;     tags[n++].ti_Data = (ULONG)a->glist_common;
+    tags[n].ti_Tag = TAG_DONE;       tags[n].ti_Data = 0;
     return OpenWindowTagList(0, tags);
+}
+
+/* A gadget was released. 1 when the editor is done. */
+static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
+{
+    char name[UC_NAME];
+    switch (g->GadgetID) {
+    case ID_PAGE:
+        show_page(a, code ? 1 : 0);
+        break;
+    case ID_LOAD:
+        collect(a);
+        prefs_clean_name(a->prof, name, sizeof(name));
+        if (!name[0])
+            break;
+        if (prefs_profile_exists(&a->conf, name)) {
+            strcpy(a->prof, name);
+            prefs_from_conf(&a->f, &a->conf, name);
+            show_fields(a);
+            set_status(a, "Loaded.");
+        } else
+            set_status(a, "Not in the file: New starts it, Save writes it.");
+        break;
+    case ID_NEW:
+        collect(a); /* keeps the typed name */
+        prefs_defaults(&a->f);
+        show_fields(a);
+        set_status(a, "New profile: Save writes it.");
+        break;
+    case ID_DEL:
+        collect(a);
+        prefs_clean_name(a->prof, name, sizeof(name));
+        if (name[0] && upconf_rmprof(&a->conf, name)) {
+            prefs_defaults(&a->f);
+            show_fields(a);
+            set_status(a, "Deleted: Save or Use writes the file.");
+        } else
+            set_status(a, "Not in the file.");
+        break;
+    case ID_CURSOR:
+        a->f.cursor = code;
+        break;
+    case ID_BELL:
+        a->f.bell = code;
+        break;
+    case ID_META:
+        a->f.meta_alt = code ? 1 : 0;
+        break;
+    case ID_BLINK:
+        a->f.blink = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_BOLD:
+        a->f.bold = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_COPY:
+        a->f.copy_sel = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_WHEEL:
+        a->f.wheel = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_SAVE:
+        commit(a, 1);
+        break;
+    case ID_USE:
+        commit(a, 0);
+        break;
+    case ID_CANCEL:
+        return 1;
+    default:
+        break; /* a string field: read by collect() when it is used */
+    }
+    return 0;
 }
 
 int main(void)
 {
-    struct app *a;
+    struct app *a = 0;
+    struct Screen *scr = 0;
     struct IntuiMessage *im;
-    struct Screen *scr;
-    int done = 0;
-    int left, top;
+    ULONG sig;
+    int done = 0, rc = 1;
 
-    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 35L);
-    DOSBase = (struct DosLibrary *)OpenLibrary((STRPTR)"dos.library", 39L);
-    if (!IntuitionBase || !DOSBase) {
-        if (IntuitionBase)
-            CloseLibrary((struct Library *)IntuitionBase);
-        if (DOSBase)
-            CloseLibrary((struct Library *)DOSBase);
-        return 1;
-    }
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39L);
+    GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39L);
+    GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39L);
+    if (!IntuitionBase || !GfxBase || !GadToolsBase)
+        goto out;
 
     a = (struct app *)AllocVec(sizeof(*a), MEMF_ANY | MEMF_CLEAR);
-    if (!a) {
-        CloseLibrary((struct Library *)DOSBase);
-        CloseLibrary((struct Library *)IntuitionBase);
-        return 1;
-    }
-
-    load_file(a);
-    defaults(a);
-
-    /* the profile to edit first: "default", else the file's first, else "default" */
-    if (profile_exists(a, "default"))
-        strcpy(a->prof, "default");
-    else {
-        const char *names[UC_MAX_PROFILES + 1];
-        if (upconf_profiles(&a->conf, names) > 0 && names[0])
-            strcpy(a->prof, names[0]);
-        else
-            strcpy(a->prof, "default");
-    }
-
-    build_gadgets(a);
-
-    a->port = CreateMsgPort();
-    if (!a->port)
-        goto fail;
+    if (!a)
+        goto out;
+    a->page = -1;
 
     scr = LockPubScreen(0);
     if (!scr)
-        goto fail;
-    left = (scr->Width - WIN_W) / 2 + 40;
-    top = (scr->Height - WIN_H) / 2;
-    if (left < 8)
-        left = 8;
-    if (top < 8)
-        top = 8;
+        goto out;
+    a->vi = GetVisualInfoA(scr, 0);
+    if (!a->vi)
+        goto out;
+    a->ox = (WORD)(scr->WBorLeft + 8);
+    a->oy = (WORD)(scr->WBorTop + scr->Font->ta_YSize + 1 + 4);
+    if (!build_gadgets(a))
+        goto out;
 
-    a->win = open_window(a, scr, left, top);
+    a->win = open_window(a, scr);
     UnlockPubScreen(0, scr);
+    scr = 0;
     if (!a->win)
-        goto fail;
+        goto out;
+    GT_RefreshWindow(a->win, 0);
+    show_page(a, 0);
 
-    set_page(a, 0);
-    load_profile(a, a->prof); /* fills the fields and shows them */
+    load_file(a);
+    /* the profile to edit first: "default", else the file's first, else "default" */
+    if (!prefs_profile_exists(&a->conf, "default") && a->conf.nprof > 0)
+        strcpy(a->prof, a->conf.prof[0]);
+    else
+        strcpy(a->prof, "default");
+    prefs_from_conf(&a->f, &a->conf, a->prof);
+    show_fields(a);
 
-    for (;;) {
-        im = (struct IntuiMessage *)GetMsg(a->port);
-        if (!im)
-            continue;
-        if (im->Class & IDCMP_CLOSEWINDOW)
-            done = 1;
-        else if (im->Class & IDCMP_GADGETUP) {
+    sig = 1UL << a->win->UserPort->mp_SigBit;
+    while (!done) {
+        Wait(sig);
+        while (!done && (im = GT_GetIMsg(a->win->UserPort))) {
+            ULONG cls = im->Class;
+            UWORD code = im->Code;
             struct Gadget *g = (struct Gadget *)im->IAddress;
-            if (g && g->GadgetType == BOOLGADGET) {
-                switch (g->GadgetID) {
-                case ID_TABGEN:
-                    if (a->page != 0)
-                        set_page(a, 0);
-                    break;
-                case ID_TABCOL:
-                    if (a->page != 1)
-                        set_page(a, 1);
-                    break;
-                case ID_LOAD: {
-                    char name[UC_NAME];
-                    clean_name(a, name, sizeof(name));
-                    if (name[0]) {
-                        if (profile_exists(a, name)) {
-                            strcpy(a->prof, name);
-                            load_profile(a, name);
-                            set_status(a, "Loaded.");
-                        } else
-                            set_status(a, "Not in the file: New starts it, Save writes it.");
-                    }
-                    break;
-                }
-                case ID_NEW:
-                    defaults(a);
-                    redraw(a);
-                    set_status(a, "New profile: Save writes it.");
-                    break;
-                case ID_DEL: {
-                    char name[UC_NAME];
-                    clean_name(a, name, sizeof(name));
-                    if (name[0] && upconf_rmprof(&a->conf, name)) {
-                        defaults(a);
-                        redraw(a);
-                        set_status(a, "Deleted.");
-                    } else
-                        set_status(a, "Not in the file.");
-                    break;
-                }
-                case ID_CURSTYLE:
-                    a->cursor_style = a->cursor_style == 1 ? 3 : a->cursor_style == 3 ? 5 : 1;
-                    break;
-                case ID_BLINK:
-                    a->blink = !a->blink;
-                    break;
-                case ID_BELL:
-                    a->bell = (a->bell + 1) % 3;
-                    break;
-                case ID_BOLD:
-                    a->bold = !a->bold;
-                    break;
-                case ID_META:
-                    a->meta_alt = !a->meta_alt;
-                    break;
-                case ID_COPY:
-                    a->copy_sel = !a->copy_sel;
-                    break;
-                case ID_WHEEL:
-                    a->wheel = !a->wheel;
-                    break;
-                case ID_SAVE:
-                    save_all(a);
-                    break;
-                case ID_CANCEL:
-                    done = 1;
-                    break;
-                default:
-                    break;
-                }
-                if (g == &a->gcurstyle || g == &a->gblink || g == &a->gbell ||
-                    g == &a->gbold || g == &a->gmeta || g == &a->gcopy || g == &a->gwheel)
-                    refresh_labels(a);
-                redraw(a);
-            } else if (g) {
-                redraw(a); /* a string field was clicked */
-            }
-        } else if (im->Class & IDCMP_RAWKEY) {
-            if (im->IAddress)
-                redraw(a); /* typed into a field */
-        } else if (im->Class & (IDCMP_ACTIVEWINDOW | IDCMP_INACTIVEWINDOW)) {
-            redraw(a);
+            GT_ReplyIMsg(im);
+            if (cls == IDCMP_CLOSEWINDOW)
+                done = 1;
+            else if (cls == IDCMP_REFRESHWINDOW) {
+                GT_BeginRefresh(a->win);
+                GT_EndRefresh(a->win, TRUE);
+            } else if (cls == IDCMP_GADGETUP && g)
+                done = gadget_up(a, g, code);
         }
-        ReplyMsg((struct Message *)im);
-        if (done)
-            break;
     }
+    rc = 0;
 
-    CloseWindow(a->win);
-    DeleteMsgPort(a->port);
-    FreeVec(a);
-    CloseLibrary((struct Library *)DOSBase);
-    CloseLibrary((struct Library *)IntuitionBase);
-    return 0;
-
-fail:
+out:
     /* whatever was made, undone once, in the reverse order */
-    if (a->win)
-        CloseWindow(a->win);
-    if (a->port)
-        DeleteMsgPort(a->port);
-    FreeVec(a);
-    CloseLibrary((struct Library *)DOSBase);
-    CloseLibrary((struct Library *)IntuitionBase);
-    return 1;
+    if (a) {
+        if (a->win)
+            CloseWindow(a->win);
+        /* the page held off the window is freed with the others */
+        FreeGadgets(a->glist[1]);
+        FreeGadgets(a->glist[0]);
+        FreeGadgets(a->glist_common);
+        if (a->vi)
+            FreeVisualInfo(a->vi);
+        FreeVec(a);
+    }
+    if (scr)
+        UnlockPubScreen(0, scr);
+    if (GadToolsBase)
+        CloseLibrary(GadToolsBase);
+    if (GfxBase)
+        CloseLibrary((struct Library *)GfxBase);
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
+    return rc;
 }
