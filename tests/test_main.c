@@ -16,6 +16,7 @@ void suite_upcon(void);
 void suite_upconf(void);
 void suite_prefs(void);
 void suite_iconspec(void);
+void suite_zmodem(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -33,6 +34,7 @@ static const h_suite suites[] = {
     { "upconf", suite_upconf },
     { "prefs", suite_prefs },
     { "iconspec", suite_iconspec },
+    { "zmodem", suite_zmodem },
     { 0, 0 }
 };
 

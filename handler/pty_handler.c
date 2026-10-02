@@ -105,6 +105,8 @@ typedef struct pair {
     char id[ID_MAX];
     struct MsgPort mport, sport; /* fh_Type of master and slave handles */
     ldisc ld;
+    vt_termios cooked;           /* the termios before SetMode(fh, 1), for SetMode(fh, 0) */
+    int has_cooked;
     vt_winsize ws;
     brk brk;                     /* who the slave's signal keys go to */
     int masters, slaves;
@@ -546,13 +548,23 @@ static void by_port(struct DosPacket *d, pair *p, int master)
     }
 }
 
+/* SetMode(fh, 1) is cfmakeraw (ld_make_raw): an Amiga program asking for
+ * raw mode gets every byte as it is, both ways -- a zmodem transfer (sz,
+ * rz) over a serial login must, and the lflag-only raw kept \n -> \r\n on
+ * output and XON/XOFF as flow control. SetMode(fh, 0) puts back the termios
+ * from before. */
 static void set_mode(pair *p, int raw)
 {
     vt_termios t = p->ld.t;
     if (raw) {
-        t.c_lflag &= ~(ld_flag)(LD_ICANON | LD_ECHO | LD_ISIG | LD_IEXTEN);
-        t.c_cc[LD_VMIN] = 1;
-        t.c_cc[LD_VTIME] = 0;
+        if (!p->has_cooked) {
+            p->cooked = p->ld.t;
+            p->has_cooked = 1;
+        }
+        ld_make_raw(&t);
+    } else if (p->has_cooked) {
+        t = p->cooked;
+        p->has_cooked = 0;
     } else {
         vt_termios d;
         ld_defaults(&d);

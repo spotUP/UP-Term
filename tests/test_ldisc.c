@@ -165,6 +165,28 @@ static void non_canonical(void)
     CHECK_STR(rd(100), "");
 }
 
+/* SetMode(fh, 1) on a PTY: is cfmakeraw: a binary file (sz) arrives byte for
+ * byte -- CR, LF, ^C, ^S/^Q, DEL and 8-bit bytes untouched both ways */
+static void raw_is_binary_clean(void)
+{
+    vt_termios t;
+    unsigned char out[64];
+    static const unsigned char all[] = { 0x0D, 0x0A, 0x03, 0x13, 0x11, 0x7F, 0x1A, 0x1C, 0x15,
+                                         0x18, 0x8D, 0xFF, 0x00 };
+    int col = 0, eof = 0;
+    fresh();
+    t = L.t;
+    ld_make_raw(&t);
+    ld_set(&L, &t, LD_TCSANOW);
+    ld_input(&L, all, (int)sizeof(all));
+    CHECK_INT(n_sigs, 0);                        /* no ^C / ^Z / ^\ signal */
+    CHECK_STR(echoed, "");
+    CHECK_INT(ld_read(&L, out, sizeof(out), &eof), (long)sizeof(all));
+    CHECK(!memcmp(out, all, sizeof(all)));
+    CHECK_INT(ld_output(&L.t, (const unsigned char *)"a\nb", 3, out, &col), 3); /* no \n -> \r\n */
+    CHECK(!memcmp(out, "a\nb", 3));
+}
+
 static void output(void)
 {
     vt_termios t;
@@ -257,6 +279,7 @@ static void nread(void)
 
 void suite_ldisc(void)
 {
+    raw_is_binary_clean();
     nread();
     read_action();
     canonical_editing();

@@ -102,6 +102,10 @@ Copy tmux.conf ENV:tmux.conf CLONE
 ; keeps its own commands.
 MakeDir >NIL: SYS:UP-Term SYS:UP-Term/bin
 Copy coreutils/bin SYS:UP-Term/bin ALL CLONE QUIET
+; sz / rz: ZMODEM over the shell's own line (UP-Term's, no ixemul), beside
+; coreutils; C:upgetty: a shell on the serial port (see the README)
+Copy sz rz SYS:UP-Term/bin CLONE
+Copy upgetty C:upgetty CLONE
 ; The shell ixemul programs run (system(), popen(), tmux's jobs) is
 ; /gg/bin/sh -- GG:bin/sh, where Geek Gadgets keeps its sh: vsh, as
 ; SYS:UP-Term/bin/sh. Without a GG: SYS:UP-Term is GG:, assigned at every

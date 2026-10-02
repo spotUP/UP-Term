@@ -211,6 +211,21 @@ TMUX
   panes (ENV:tmux.conf: default-shell, 256 colours). Your own settings go
   in ~/.tmux.conf.
 
+SERIAL LOGIN
+  A Unix-style login on the serial port: connect a null-modem cable (or a
+  USB serial adapter) to another computer, open a terminal program there
+  (screen /dev/ttyUSB0 19200, minicom, PuTTY), and on the Amiga run
+    upgetty LOOP
+  The far end then has vsh with a real tty: line editing, Ctrl-C/Z as
+  signals, the window size (stty rows/cols), vim, less, tmux.
+  Options: BAUD n (default 19200), RTSCTS (hardware flow control; needed
+  for 115200 and a cable that carries RTS/CTS), UNIT n, DEVICE name,
+  ROWS n COLS n, TERM name, SHELL command, LOOP (a new shell when one ends).
+  Files over the same line, ZMODEM: in the login,  sz file ...  sends
+  (the far end's  rz  or terminal program receives), and  rz  receives
+  into the current directory (OVERWRITE replaces files there). Unlike
+  NewShell AUX:, every byte arrives as it was sent.
+
 THE SHELL FOR UNIX PROGRAMS
   ixemul programs run their shell commands (system(), popen(), tmux's
   run-shell and #() status jobs) with /gg/bin/sh, which is GG:bin/sh, where

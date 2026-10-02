@@ -5,8 +5,13 @@
  * signals, the window size, so screen, tmux and vim work over the wire.
  *
  *   upgetty [UNIT n] [BAUD n] [ROWS n] [COLS n] [TERM name] [SHELL cmd] [DEVICE name] [LOOP]
+ *           [RTSCTS]
  *
- * Defaults: serial.device unit 0, 19200 baud, 8N1, 24 x 80, TERM
+ * Defaults: serial.device unit 0, 19200 baud, 8N1, no flow control: what
+ * any cable carries (a three-wire null-modem has no CTS, and with RTS/CTS
+ * on nothing would leave the port). Faster needs the far end held back:
+ * RTSCTS with a full cable, then BAUD 115200 (measured on the rig: 115200
+ * without it overran, zmodem stalled both ways). 24 x 80, TERM
  * xterm-256color, SHELL C:vsh. LOOP starts a new shell when one ends (as a
  * getty); without it upgetty ends with its shell. Ctrl-C to upgetty itself
  * (Break) ends it; the terminal's Ctrl-C goes to the shell, never to us.
@@ -180,8 +185,8 @@ static int start_shell(getty *g, const char *shell, const char *term)
 
 int main(void)
 {
-    static const char tmpl[] = "UNIT/K/N,BAUD/K/N,ROWS/K/N,COLS/K/N,TERM/K,SHELL/K,DEVICE/K,LOOP/S";
-    LONG args[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    static const char tmpl[] = "UNIT/K/N,BAUD/K/N,ROWS/K/N,COLS/K/N,TERM/K,SHELL/K,DEVICE/K,LOOP/S,RTSCTS/S";
+    LONG args[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     struct RDArgs *rd = ReadArgs((STRPTR)tmpl, args, 0);
     getty g;
     LONG unit, baud, rows, cols;
@@ -211,11 +216,12 @@ int main(void)
         rc = RETURN_FAIL;
         goto out;
     }
-    /* 8N1, no handshake: what a terminal program expects by default */
+    /* 8N1, no XON/XOFF (zmodem's data must pass), RTS/CTS only when asked
+     * (FS-UAE's serial port and a three-wire cable never raise CTS) */
     g.rd->io_Baud = (ULONG)baud;
     g.rd->io_ReadLen = g.rd->io_WriteLen = 8;
     g.rd->io_StopBits = 1;
-    g.rd->io_SerFlags = SERF_XDISABLED | SERF_RAD_BOOGIE;
+    g.rd->io_SerFlags = SERF_XDISABLED | SERF_RAD_BOOGIE | (args[8] ? SERF_7WIRE : 0);
     g.rd->IOSer.io_Command = SDCMD_SETPARAMS;
     DoIO((struct IORequest *)g.rd);
     *g.wr = *g.rd;

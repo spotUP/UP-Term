@@ -27,6 +27,17 @@ void ld_defaults(vt_termios *t)
     t->c_ispeed = t->c_ospeed = 38400;
 }
 
+void ld_make_raw(vt_termios *t)
+{
+    t->c_iflag &= ~(ld_flag)(LD_IGNBRK | LD_BRKINT | LD_ISTRIP | LD_INLCR | LD_IGNCR | LD_ICRNL |
+                             LD_IXON | LD_IXOFF);
+    t->c_oflag &= ~(ld_flag)LD_OPOST;
+    t->c_lflag &= ~(ld_flag)(LD_ECHO | LD_ECHONL | LD_ICANON | LD_ISIG | LD_IEXTEN);
+    t->c_cflag |= LD_CS8;
+    t->c_cc[LD_VMIN] = 1;
+    t->c_cc[LD_VTIME] = 0;
+}
+
 void ld_init(ldisc *l)
 {
     void (*echo)(void *, const unsigned char *, int) = l->echo;

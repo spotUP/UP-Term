@@ -111,6 +111,11 @@ typedef struct ldisc {
  * ISIG ICANON IEXTEN ECHO ECHOE ECHOK ECHOKE ECHOCTL; ^C ^\ ^Z ^D, DEL erase,
  * ^U kill, ^W word, ^R reprint, ^V lnext, VMIN 1, VTIME 0. */
 void ld_defaults(vt_termios *t);
+/* t made raw, as cfmakeraw(): no line editing, echo or signal keys, no
+ * input or output translation, no XON/XOFF, 8 data bits, one byte a read.
+ * AmigaDOS's SetMode(fh, 1) on a PTY: means this -- a binary transfer (sz,
+ * rz) over it must arrive byte for byte. */
+void ld_make_raw(vt_termios *t);
 void ld_init(ldisc *l);
 
 /* tcsetattr: TCSAFLUSH also drops pending input. Switching from canonical
