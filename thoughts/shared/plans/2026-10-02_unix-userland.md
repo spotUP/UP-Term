@@ -58,24 +58,55 @@ function in it, not just the offending one.
 | `ls SYS: >file` | 0 SGR sequences |
 | `ls ..` | lists the parent directory |
 
-The `..` row is the gate that decides the rest of this plan: the shims
-exist because AmigaDOS has no `..`, so before retiring any of them we had
-to know a real GNU tool handles it under ixemul. It does.
+## `..` does NOT mean what the shims made it mean
 
-## Next: retire the remaining shims
+This was measured after `df13767` shipped, and it reverses the plan this
+document originally carried. Do not retire the remaining shims on the
+strength of "ls .. worked".
+
+| command | result |
+|---|---|
+| `cd VTC:; ls .` | VTC: contents |
+| `cd VTC:; ls ..` | **VTC: contents again** |
+| `cd VTC:shtest; ls ..` | VTC: contents |
+| `cd VTC:; ls /` | `BOOTX`, `Ram Disk`, `Rushhours`, `System`, `VTCX` |
+
+So under ixemul `..` drops one path component and **clamps at the assigned
+root**: from `VTC:shtest` it goes to `VTC:`, but from `VTC:` it stays at
+`VTC:`. The shims' `_amiga` translated `../x` into `/x`, where `/` is the
+parent of the assign -- the fourth row, the volume list. Same typed path,
+two different answers, and the shim's is the one a user of this system had
+been trained by.
+
+Two consequences:
+
+1. **`ls ..` changed meaning when the real `ls` arrived.** Someone who
+   typed `ls ..` to reach the volume parent now gets the assign root. `/`
+   still reaches it. This is a real behaviour change, not a no-op, and it
+   is the cost of not shipping a wrapper.
+2. **The shims cannot simply be deleted.** They are the only thing that
+   makes `..` mean `/`. Deleting `cp`, `mv`, `rm`, `mkdir` and `touch`
+   would lose that, not just the name translation.
+
+That leaves the honest options, and the choice is not mine:
+
+- **Keep the shims.** `ls` is real and colourful; everything else keeps
+  its old meaning. The cost is the inconsistency: `ls ..` and `cp ../x`
+  now disagree.
+- **Translate-then-exec.** Turn each shim into a wrapper that applies
+  `_amiga` and then calls the real binary (`command cp ...`), so Unix
+  semantics *and* `..` as `/` both hold. More shell to get right, and
+  quoting a variable argument list in this POSIX shell is the risk.
+
+Until that is decided, `cat` and the five shims stay as they are.
+
+## Next: settle the shims (not "retire" them)
 
 `vshrc` still wraps `cp`, `mv`, `rm`, `mkdir`, `touch` and `cat` over
-AmigaDOS commands. fileutils 3.16 covers the first five, so they can go the
-way `ls` did — same reason, same risk: while a function is defined it hides
-the command of the same name in `C:`.
-
-`cat` is the exception: it lives in textutils, not fileutils, so it stays
-until textutils is installed.
-
-Retiring them is one commit per group, and each needs the same proof `ls`
-got: `which <name>` must stop saying "is a function", the real binary's
-`--version` must appear, and colour must still be absent from redirected
-output.
+AmigaDOS commands. fileutils 3.16 covers the first five, so they *could*
+go the way `ls` did -- but the section above shows they must not, because
+they are what makes `..` mean `/`. The work is to decide between keeping
+them and converting them to translate-then-exec.
 
 ## Why not a newer coreutils yet
 
