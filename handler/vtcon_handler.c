@@ -835,7 +835,8 @@ static void menu_add(con *c, struct Window *win)
         return; /* a window someone else opened keeps its own menus */
     c->menustrip = CreateMenusA((struct NewMenu *)menu_def, 0);
     vi = c->menustrip ? GetVisualInfoA(win->WScreen, 0) : 0;
-    if (!vi || !LayoutMenusA(c->menustrip, vi, 0) || !SetMenuStrip(win, c->menustrip)) {
+    if (!vi || !LayoutMenus(c->menustrip, vi, GTMN_NewLookMenus, TRUE, TAG_DONE) ||
+        !SetMenuStrip(win, c->menustrip)) {
         FreeMenus(c->menustrip);
         c->menustrip = 0;
     }
@@ -859,7 +860,22 @@ static void menu_remove(con *c, struct Window *win)
  * and ends. */
 static void launcher(void)
 {
-    BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    static struct EasyStruct missing = {
+        sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term",
+        (UBYTE *)"The preferences editor is not installed:\nC:UP-Term Prefs was not found.\n\n"
+                 "Install UP-Term from its archive to get it.",
+        (UBYTE *)"OK"
+    };
+    BPTR in, out, lock;
+    /* the editor's errors would go to NIL: below: say here that it is not
+     * there, instead of a menu item that does nothing */
+    if (!(lock = Lock((STRPTR)"C:UP-Term Prefs", SHARED_LOCK))) {
+        EasyRequestArgs(0, &missing, 0, 0);
+        return;
+    }
+    UnLock(lock);
+    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    out = Open((STRPTR)"NIL:", MODE_NEWFILE);
     if (in && out &&
         SystemTags((STRPTR)"\"C:UP-Term Prefs\"", SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
                    TAG_DONE) != -1)
@@ -898,7 +914,7 @@ static void menu_pick(con *c, UWORD code)
 static int open_window(con *c)
 {
     struct Screen *scr;
-    struct TagItem tags[14];
+    struct TagItem tags[16];
     struct Window *win;
     int n = 0;
 
@@ -937,6 +953,9 @@ static int open_window(con *c)
     tags[n].ti_Tag = WA_MaxWidth;    tags[n++].ti_Data = (ULONG)~0;
     tags[n].ti_Tag = WA_MaxHeight;   tags[n++].ti_Data = (ULONG)~0;
     tags[n].ti_Tag = WA_AutoAdjust;  tags[n++].ti_Data = TRUE;
+    /* the 3.x menu look (screen-coloured, not the 1.3 black and white);
+     * LayoutMenus asks for it too (menu_add) */
+    tags[n].ti_Tag = WA_NewLookMenus; tags[n++].ti_Data = TRUE;
     tags[n].ti_Tag = TAG_DONE;       tags[n].ti_Data = 0;
     DBG("openwindow", scr, c->w.font);
     win = OpenWindowTagList(0, tags);
