@@ -100,10 +100,23 @@ That leaves the honest options, and the choice is not mine:
 
 Until that is decided, `cat` and the five shims stay as they are.
 
+**DECIDED (lead, 2026-10-02; the owner delegates design decisions): neither
+option -- fix `..` where it is wrong, in our patched ixemul.** On Unix the
+parent of a mount point is the directory above it; under ixemul an assign
+`VTC:` is `/VTC`, so `..` from its root must be `/` (the volume list), and
+ixemul's clamp at the assign root is the deviation. Fixed there, every Unix
+program agrees (`ls ..`, `cp ../x`, `cd ..` in tcsh, tmux's paths), and the
+shims can then go the way `ls` did, replaced by fileutils `cp mv rm mkdir
+touch` (3.15, the Aminet pair whose source we ship). Translate-then-exec
+would have fixed five commands and left every other Unix program clamped.
+Order: the ixemul `..` patch (with a rig probe: `cd VTC:; ls ..` lists the
+volumes), then retire the shims, then the 48.2 -> 48.3 rebase for
+coreutils (which carries the same patch forward).
+
 ## Next: settle the shims (not "retire" them)
 
 `vshrc` still wraps `cp`, `mv`, `rm`, `mkdir`, `touch` and `cat` over
-AmigaDOS commands. fileutils 3.16 covers the first five, so they *could*
+AmigaDOS commands. fileutils 3.15 covers the first five, so they *could*
 go the way `ls` did -- but the section above shows they must not, because
 they are what makes `..` mean `/`. The work is to decide between keeping
 them and converting them to translate-then-exec.
