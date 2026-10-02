@@ -328,9 +328,36 @@ static void kingcon_word_and_quoting(void)
     CHECK_STR(kc("copy a=b", "a=bc "), "copy a=bc ");  /* = is not a delimiter */
 }
 
+static void kingcon_cycle_and_fncmode(void)
+{
+    vt_term *t = start(80, 3, "> ");
+    unsigned char snap[LE_MAX];
+    int q, a, sp;
+    type("type RAM:My");
+    type("X");
+    key(VT_KEY_LEFT, 0);           /* text after the cursor stays through the cycle */
+    a = le_kc_word(&le, &q);
+    sp = le.pos;
+    memcpy(snap, le.buf, le.len);
+    le_kc_redo(&le, snap, sp, a, q, (const unsigned char *)"My File ", 8);
+    CHECK_STR(line(), "type \"RAM:My File\" X");
+    le_kc_redo(&le, snap, sp, a, q, (const unsigned char *)"Myfile ", 7);
+    CHECK_STR(line(), "type RAM:Myfile X");  /* the quote the last one needed is gone */
+    le_kc_redo(&le, snap, sp, a, q, (const unsigned char *)"Mydir/", 6);
+    CHECK_STR(line(), "type RAM:Mydir/X");
+    vt_free(t);
+    CHECK_INT(le_kc_fncmode(""), LE_KC_WINDOW);
+    CHECK_INT(le_kc_fncmode("w"), LE_KC_WINDOW);
+    CHECK_INT(le_kc_fncmode("WLB"), LE_KC_WINDOW);     /* W clears L and B */
+    CHECK_INT(le_kc_fncmode("bl"), LE_KC_CYCLE | LE_KC_LIST);
+    CHECK_INT(le_kc_fncmode("CB S"), LE_KC_COMMON | LE_KC_CYCLE | LE_KC_SILENT);
+    CHECK_INT(le_kc_fncmode("S"), LE_KC_WINDOW | LE_KC_SILENT);
+}
+
 void suite_lineedit(void)
 {
     kingcon_word_and_quoting();
+    kingcon_cycle_and_fncmode();
     command_word_gets_colour_until_it_changes();
     menu_lists_names_and_redraws_prompt_and_line();
     replace_word_for_menu_cycling();

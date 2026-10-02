@@ -130,7 +130,13 @@ KEYS
       One match goes in with "/" after a directory, a space after a file,
       quoted when the name has a space. Several open a "Select ..." window:
       Tab / Shift-Tab / cursor keys move, Return or a double-click takes the
-      name, Escape or Cancel leaves the line as it was.
+      name, Escape or Cancel leaves the line as it was. Tab on an empty
+      word opens a file requester.
+    KingCON style (Prefs, or  kingcon-mode = letters ) picks KingCON's
+    FNCMODE: W the window (the default), L print the list, B cycle through
+    the names on the line (Tab next, Shift-Tab back, Ctrl-S the window), C
+    complete the part all names share first (then W or B on the next Tab),
+    S no beeps. ".info in lists" (kingcon-info = show) lists .info files.
 
 STARTING IT
   Workbench: double-click SYS:Utilities/UP-Term. It opens an XCON: window

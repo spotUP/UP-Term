@@ -141,6 +141,48 @@ def main():
              ('look', lambda: seen.update(win=has_window('Select filename', 3))), (RET,)], None)
     check(not seen.get('win'), 'unix Tab: no selection window')
 
+    # KingCON's other styles (kingcon-mode = FNCMODE letters)
+    hip = [n for n in first_s if n.lower().startswith('hip')]
+    B = 'kingcon*Nkingcon-mode = B'
+    out = session(['Echo >RAM:kc.out S:', (TAB,), (TAB,), (TAB,), (TAB, SHIFT), (RET,)], B)
+    check(out == 'S:' + first_s[1], 'B: Tab cycles inline (Tab, Tab, Tab, Shift+Tab = the second)',
+          '%r vs %r' % (out, first_s[:2]))
+    seen = {}
+    session(['Echo >RAM:kc.out S:', (TAB,), '\x13',
+             ('look', lambda: seen.update(win=has_window('Select filename'))), (ESC,), (RET,)], B)
+    check(seen.get('win'), 'B: Ctrl+S during a cycle opens the window')
+    if len(hip) > 1:
+        common = hip[0]
+        for h in hip[1:]:
+            i = 0
+            while i < len(common) and i < len(h) and common[i].lower() == h[i].lower():
+                i += 1
+            common = common[:i]
+        out = session(['Echo >RAM:kc.out S:Hip', (TAB,), (RET,)], 'kingcon*Nkingcon-mode = C')
+        check(out == 'S:' + common, 'C: the part all names share first', '%r vs %r' % (out, common))
+        out = session(['Echo >RAM:kc.out S:Hip', (TAB,), (TAB,), (RET,)], 'kingcon*Nkingcon-mode = CB')
+        check(out == 'S:' + hip[0], 'CB: shared part, then the cycle from the first', '%r vs %r' % (out, hip[0]))
+        seen = {}
+        session(['Echo >RAM:kc.out S:Hip', (TAB,), (TAB,),
+                 ('look', lambda: seen.update(win=has_window('Select filename'))), (ESC,), (RET,)],
+                'kingcon*Nkingcon-mode = CW')
+        check(seen.get('win'), 'CW: shared part, then the window on the next Tab')
+        out = session(['Echo >RAM:kc.out S:Hip', (TAB,), (RET,)], 'kingcon*Nkingcon-mode = L')
+        check(out == 'S:Hip', 'L: the list printed, the line left as it was', out)
+    # .info files: hidden by default, kingcon-info = show lists them
+    out = session(['Echo >RAM:kc.out SYS:Prefs.in', (TAB,), (RET,)], 'kingcon')
+    check(out == 'SYS:Prefs.in', 'kingcon hides .info files', out)
+    out = session(['Echo >RAM:kc.out SYS:Prefs.in', (TAB,), (RET,)], 'kingcon*Nkingcon-info = show')
+    check(out == 'SYS:Prefs.info', 'kingcon-info = show lists them', out)
+    # Tab on an empty word: the ASL file requester, in the current directory
+    # (the Shell's: BOOTX: on the rig); the File field has the cursor
+    seen = {}
+    out = session(['Echo >RAM:kc.out ', (TAB,),
+                   ('look', lambda: seen.update(win=has_window('Select filename'))),
+                   'boot.log', (RET,), (RET,)], 'kingcon')
+    check(seen.get('win'), 'W: Tab on an empty word opens the file requester')
+    check(out == 'BOOTX:boot.log', 'the chosen file goes in with its drawer', out)
+
     c.run('Delete >NIL: ENV:up-term/up-term RAM:kc.out QUIET')
     print('kingcon_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1

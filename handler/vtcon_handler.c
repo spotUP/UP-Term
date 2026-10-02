@@ -174,6 +174,15 @@ typedef struct con {
      * for, and the "Select ..." window (see the KingCON section) */
     int kc_start, kc_quote;      /* le_kc_word's answer when the request went out */
     int kc_list;                 /* the request is Ctrl+D's directory listing */
+    int kc_style;                /* LE_KC_* from the profile's kingcon-mode (FNCMODE) */
+    int kc_info;                 /* kingcon-info = show: .info files listed */
+    int kc_cyc, kc_cyc_i;        /* an inline cycle (B, or C armed): its entry, -1 before the first */
+    int kc_cyc_window;           /* C with W: the next Tab opens the window */
+    int kc_cyc_n, kc_cyc_mode;
+    char *kc_cyc_names;          /* the cycle's entries, NUL-separated */
+    long kc_cyc_len;
+    unsigned char *kc_snap;      /* the line before the cycle, LE_MAX bytes */
+    int kc_snap_pos;
     struct MsgPort *sel_port;
     struct Window *sel_win;
     APTR sel_vi;
@@ -677,6 +686,9 @@ static void apply_profile(con *c)
         c->w.wheel_scroll = !str_ieq(v, "ignore");
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
+    c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));
+    v = upconf_str(c->conf, p, "kingcon-info", 0);
+    c->kc_info = v && str_ieq(v, "show");
     v = upconf_str(c->conf, p, "palette", 0);
     if (v)
         upconf_palette_parse(v, c->w.pal16); /* 0x01RRGGBB, 0 = not remapped */
@@ -828,6 +840,8 @@ static void sel_close(con *c);  /* KingCON's selection window (see the KingCON s
 static void sel_idcmp(con *c);
 static void kc_tab(con *c, int mode);
 static void kc_finish(con *c, struct complete_req *q);
+static void kc_cyc_end(con *c);
+static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static int find_open(con *c);
 static void close_gadget(con *c);
 
@@ -1004,6 +1018,7 @@ static void close_window(con *c)
     c->winch_closing = 1; /* stop naming this window before we dismantle it */
     find_close(c); /* the prompt belongs to the window */
     sel_close(c);  /* so does the selection window */
+    kc_cyc_end(c);
     menu_remove(c, win);
     DBG("close_window", win, c->w.t);
     if (c->input_io) {
@@ -1672,6 +1687,9 @@ static void menu_tab(con *c)
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
     sel_close(c); /* typing in the console ends a selection, as any key ends KingCON's */
+    if (c->kc_cyc && kc_cyc_key(c, b, n, key, mods))
+        return;   /* Tab, Shift+Tab, Alt+Tab or Ctrl+S inside a cycle */
+    kc_cyc_end(c); /* any other key ends it */
     if (c->kingcon && key == VT_KEY_TAB) {
         kc_tab(c, (mods & VT_MOD_SHIFT) ? COMPLETE_DEVICES
                   : (mods & (VTWIN_MOD_ALTKEY | VT_MOD_ALT)) ? COMPLETE_COMMANDS : COMPLETE_FILES);
@@ -1799,8 +1817,15 @@ static void kc_tab(con *c, int mode)
     }
     if (mode == COMPLETE_COMMANDS)
         extra = shell_words(c, VTCON_WORDS_COMMANDS, &n);
+    /* Tab on an empty word, window style: KingCON's file requester */
+    if (mode == COMPLETE_FILES && !c->kc_list && a == le->pos && (c->kc_style & LE_KC_WINDOW) &&
+        c->w.win) {
+        mode = COMPLETE_ASL;
+        c->comp->screen = c->w.win->WScreen;
+    }
     c->comp->mode = mode;
     c->comp->kingcon = 1;
+    c->comp->show_info = c->kc_info;
     c->comp->extra_len = 0;
     if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
         CopyMem((APTR)extra, c->comp->extra, n);
@@ -1822,28 +1847,143 @@ static void kc_put(con *c, const char *name)
     check_command(c); /* a completed first word gets its colour */
 }
 
-static int sel_open(con *c, struct complete_req *q);
+static int sel_open(con *c, const char *names, long len, int count, int mode);
+
+static void kc_beep(con *c)
+{
+    if (!(c->kc_style & LE_KC_SILENT))
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+}
+
+static void kc_cyc_end(con *c)
+{
+    if (c->kc_cyc_names)
+        FreeVec(c->kc_cyc_names);
+    c->kc_cyc_names = 0;
+    c->kc_cyc = c->kc_cyc_window = 0;
+}
+
+/* Keep the entries and the line as it is now, for an inline cycle. */
+static int kc_cyc_begin(con *c, struct complete_req *q)
+{
+    kc_cyc_end(c);
+    if (!c->kc_snap && !(c->kc_snap = (unsigned char *)AllocVec(LE_MAX, MEMF_ANY)))
+        return 0;
+    if (!(c->kc_cyc_names = (char *)AllocVec(q->names_len + 1, MEMF_ANY)))
+        return 0;
+    CopyMem(q->names, c->kc_cyc_names, q->names_len);
+    c->kc_cyc_names[q->names_len] = 0;
+    c->kc_cyc_len = q->names_len;
+    c->kc_cyc_n = q->matches;
+    c->kc_cyc_mode = q->mode;
+    CopyMem(c->le.buf, c->kc_snap, c->le.pos);
+    c->kc_snap_pos = c->le.pos;
+    c->kc_cyc_i = -1;
+    c->kc_cyc = 1;
+    return 1;
+}
+
+/* Entry i of the cycle in place of the word (both ends wrap). */
+static void kc_cyc_put(con *c, int i)
+{
+    unsigned char enc[COMPLETE_MAX * 2];
+    const char *name = c->kc_cyc_names;
+    int k, n = 0;
+    c->kc_cyc_i = i = (i % c->kc_cyc_n + c->kc_cyc_n) % c->kc_cyc_n;
+    for (k = 0; k < i; k++)
+        name += strlen(name) + 1;
+    for (; *name && n < (int)sizeof(enc) - 4; name++)
+        n += vt_encode_key(c->w.t, (unsigned char)*name, 0, enc + n);
+    le_kc_redo(&c->le, c->kc_snap, c->kc_snap_pos, c->kc_start, c->kc_quote, enc, n);
+    c->edits++;
+    c->comp_edits = c->edits; /* the window, if one opens now, is for this line */
+    check_command(c);
+}
+
+/* A key while a cycle runs: Tab next, Shift+Tab previous, Alt+Tab the
+ * current again, Ctrl+S (or Tab when C armed the window) the window.
+ * 0: not one of them (the cycle ends). */
+static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods)
+{
+    if ((key == VT_KEY_TAB && c->kc_cyc_window) || (!key && n == 1 && b[0] == 0x13)) {
+        int ok = sel_open(c, c->kc_cyc_names, c->kc_cyc_len, c->kc_cyc_n, c->kc_cyc_mode);
+        kc_cyc_end(c);
+        if (!ok)
+            kc_beep(c);
+        return 1;
+    }
+    if (key != VT_KEY_TAB)
+        return 0;
+    if (mods & (VTWIN_MOD_ALTKEY | VT_MOD_ALT)) {
+        if (c->kc_cyc_i >= 0)
+            kc_cyc_put(c, c->kc_cyc_i);
+        return 1;
+    }
+    if (mods & VT_MOD_SHIFT)
+        kc_cyc_put(c, c->kc_cyc_i < 0 ? c->kc_cyc_n - 1 : c->kc_cyc_i - 1);
+    else
+        kc_cyc_put(c, c->kc_cyc_i + 1);
+    return 1;
+}
+
+/* The typed part the names were matched against: after the word's last
+ * '/' or ':' (a device word: all of it). */
+static int kc_typed_len(const struct complete_req *q)
+{
+    const char *w = q->word, *p;
+    if (q->mode == COMPLETE_DEVICES)
+        return (int)strlen(w);
+    for (p = w; *p; p++)
+        if (*p == '/' || *p == ':')
+            w = p + 1;
+    return (int)strlen(w);
+}
 
 static void kc_finish(con *c, struct complete_req *q)
 {
+    int style = c->kc_style;
     if (c->kc_list) {
         /* Ctrl+D: the names under the line, then the prompt and the line */
         if (q->matches)
             le_show_list(&c->le, q->names, q->names_len);
         else
-            DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+            kc_beep(c);
         return;
     }
+    if (q->mode == COMPLETE_ASL) {
+        if (q->matches)
+            kc_put(c, q->add);
+        return; /* cancelled: nothing, as KingCON */
+    }
     if (!q->matches) {
-        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+        kc_beep(c);
         return;
     }
     if (q->matches == 1) {
         kc_put(c, q->names);
         return;
     }
-    if (!sel_open(c, q))
-        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+    if ((style & LE_KC_COMMON) && (int)strlen(q->common) > kc_typed_len(q)) {
+        /* C: the part all names share first; W or B then arm the cycle */
+        int armed = (style & (LE_KC_WINDOW | LE_KC_CYCLE)) && kc_cyc_begin(c, q);
+        if (armed)
+            c->kc_cyc_window = (style & LE_KC_WINDOW) != 0;
+        kc_put(c, q->common);
+        if (armed) {
+            c->edits++;
+            c->comp_edits = c->edits;
+        }
+        return;
+    }
+    if (style & LE_KC_WINDOW) {
+        if (!sel_open(c, q->names, q->names_len, q->matches, q->mode))
+            kc_beep(c);
+        return;
+    }
+    if (style & LE_KC_LIST)
+        le_show_list(&c->le, q->names, q->names_len); /* L: the list, before a cycle's first step */
+    if ((style & LE_KC_CYCLE) && kc_cyc_begin(c, q))
+        kc_cyc_put(c, 0);
 }
 
 #define SEL_ROWS 12              /* names the list shows at once */
@@ -1915,7 +2055,7 @@ static void sel_take(con *c)
         kc_put(c, name);
 }
 
-static int sel_open(con *c, struct complete_req *q)
+static int sel_open(con *c, const char *names, long len, int count, int mode)
 {
     struct NewGadget ng;
     struct Gadget *g, *str;
@@ -1924,8 +2064,8 @@ static int sel_open(con *c, struct complete_req *q)
     struct TagItem tags[11];
     LONG fh, bar, lvh, ww, wh, left, top;
     int i, k, t = 0;
-    const char *title = q->mode == COMPLETE_DEVICES ? "Select device"
-                      : q->mode == COMPLETE_COMMANDS ? "Select command" : "Select filename";
+    const char *title = mode == COMPLETE_DEVICES ? "Select device"
+                      : mode == COMPLETE_COMMANDS ? "Select command" : "Select filename";
     if (!c->w.win || !GadToolsBase)
         return 0;
     sel_close(c);
@@ -1933,21 +2073,21 @@ static int sel_open(con *c, struct complete_req *q)
     ta = scr->Font;
     fh = ta->ta_YSize;
     bar = scr->WBorTop + fh + 1;
-    c->sel_names = (char *)AllocVec(q->names_len + 1, MEMF_ANY);
-    c->sel_nodes = (struct Node *)AllocVec(sizeof(struct Node) * q->matches, MEMF_CLEAR);
+    c->sel_names = (char *)AllocVec(len + 1, MEMF_ANY);
+    c->sel_nodes = (struct Node *)AllocVec(sizeof(struct Node) * count, MEMF_CLEAR);
     c->sel_port = CreateMsgPort();
     c->sel_vi = GetVisualInfoA(scr, 0);
     if (!c->sel_names || !c->sel_nodes || !c->sel_port || !c->sel_vi) {
         sel_close(c);
         return 0;
     }
-    CopyMem(q->names, c->sel_names, q->names_len);
-    c->sel_names[q->names_len] = 0;
+    CopyMem((APTR)names, c->sel_names, len);
+    c->sel_names[len] = 0;
     /* NewList (amiga.lib's), by hand */
     c->sel_list.lh_Head = (struct Node *)&c->sel_list.lh_Tail;
     c->sel_list.lh_Tail = 0;
     c->sel_list.lh_TailPred = (struct Node *)&c->sel_list.lh_Head;
-    for (i = 0, k = 0; i < q->matches && k < q->names_len; i++) {
+    for (i = 0, k = 0; i < count && k < len; i++) {
         char *e = c->sel_names + k;
         int l = (int)strlen(e);
         k += l + 1;
@@ -2862,6 +3002,9 @@ static LONG handler_main(void)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
     forget_words(c);
+    kc_cyc_end(c);
+    if (c->kc_snap)
+        FreeVec(c->kc_snap);
     if (c->comp)
         FreeVec(c->comp);
     if (c->check)

@@ -72,7 +72,7 @@ enum {
     ID_PAGE = 1,
     ID_PROF, ID_LOAD, ID_NEW, ID_DEL,
     ID_FONT, ID_SB, ID_CURCOL,
-    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_COMPLETE,
+    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_COMPLETE, ID_KCMODE, ID_KCINFO,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
     ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME
 };
@@ -85,7 +85,10 @@ struct strfield {
     int cap;
 };
 
-#define N_STR (4 + 4 + 16)
+/* the string fields: General's profile, font, scrollback, cursor colour
+ * and KingCON style; Colors' text, background, selection pair and the 16
+ * palette entries */
+#define N_STR (5 + 4 + 16)
 
 struct app {
     struct Window *win;
@@ -94,7 +97,7 @@ struct app {
     struct Gadget *glist_common; /* Page, status, Save / Use / Cancel */
     struct Gadget *glist[2];  /* the General and the Colors page */
     int page;                 /* the page in the window, -1 none yet */
-    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *gcomplete;
+    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *gcomplete, *gkcinfo;
     struct strfield str[N_STR];
     int nstr;
     upconf conf;              /* the file's table, as loaded and as last written */
@@ -165,7 +168,10 @@ static void set_status(struct app *a, const char *s)
 
 static void add_str(struct app *a, struct Gadget *g, int page, char *val, int cap)
 {
-    struct strfield *s = &a->str[a->nstr++];
+    struct strfield *s;
+    if (a->nstr >= N_STR)
+        return; /* never past the table (a 25th field once overwrote nstr) */
+    s = &a->str[a->nstr++];
     s->g = g;
     s->page = page;
     s->val = val;
@@ -186,6 +192,7 @@ static void show_fields(struct app *a)
     set_attr(a, a->gcopy, 0, GTCB_Checked, (ULONG)a->f.copy_sel);
     set_attr(a, a->gwheel, 0, GTCB_Checked, (ULONG)a->f.wheel);
     set_attr(a, a->gcomplete, 0, GTCY_Active, (ULONG)a->f.completion);
+    set_attr(a, a->gkcinfo, 0, GTCB_Checked, (ULONG)a->f.kcinfo);
 }
 
 /* Take the text of every string field: a string gadget reports only Return
@@ -509,6 +516,11 @@ static int build_gadgets(struct app *a)
         g = a->gcomplete = gad(a, g, CYCLE_KIND, 336, ROW(9), 120, 14, "Tab completion",
                                ID_COMPLETE, PLACETEXT_LEFT, t);
     }
+    /* KingCON's own switches: its FNCMODE letters (W window, L list, B
+     * cycle, C common part first, S silent; blank is W) and .info files */
+    g = str_gad(a, g, 0, 336, ROW(10), 120, "KingCON style", ID_KCMODE, a->f.kcmode, UC_MAX_VALUE);
+    g = a->gkcinfo = gad(a, g, CHECKBOX_KIND, 430, ROW(8) + 1, 26, 11, ".info in lists", ID_KCINFO,
+                         PLACETEXT_LEFT, 0);
     if (!g)
         return 0;
 
@@ -655,6 +667,9 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
         break;
     case ID_BOLD:
         a->f.bold = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_KCINFO:
+        a->f.kcinfo = (g->Flags & GFLG_SELECTED) ? 1 : 0;
         break;
     case ID_COPY:
         a->f.copy_sel = (g->Flags & GFLG_SELECTED) ? 1 : 0;

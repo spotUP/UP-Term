@@ -90,6 +90,21 @@ int  le_kc_word(const le_line *le, int *quote_at);
  * file's trailing space becoming '" '; a directory stays open. The text
  * after the cursor stays. */
 void le_kc_insert(le_line *le, int start, int quote_at, const unsigned char *entry, int n);
+/* One step of KingCON's inline cycle: the line as it was before the cycle
+ * (snap, the snap_pos bytes before the cursor; what follows the cursor is
+ * the line's own and stays) and entry put in as le_kc_insert does -- so a
+ * quote one entry needed is gone again when the next does not. */
+void le_kc_redo(le_line *le, const unsigned char *snap, int snap_pos, int start, int quote_at,
+                const unsigned char *entry, int n);
+/* KingCON's FNCMODE letters (W window, L list, B cycle, C common prefix
+ * first, S silent; any case, other characters ignored) as LE_KC_* bits.
+ * W clears L and B, as in KingCON. 0 letters: W. */
+#define LE_KC_WINDOW 1
+#define LE_KC_LIST   2
+#define LE_KC_CYCLE  4
+#define LE_KC_COMMON 8
+#define LE_KC_SILENT 16
+int  le_kc_fncmode(const char *letters);
 void le_hist_add(le_line *le, const unsigned char *s, int n);
 
 #endif

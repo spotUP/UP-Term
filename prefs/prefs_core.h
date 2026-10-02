@@ -35,6 +35,8 @@ typedef struct prefs_fields {
     int bell;       /* PREFS_BELL_* */
     int blink, bold, meta_alt, copy_sel, wheel; /* 0 / 1 */
     int completion; /* PREFS_COMPLETE_* */
+    char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
+    int kcinfo;     /* KingCON completion lists .info files too */
 } prefs_fields;
 
 /* the choices, in the order the window's cycle gadgets list them */

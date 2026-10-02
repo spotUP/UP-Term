@@ -20,6 +20,8 @@
 #include <dos/dosextens.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <proto/asl.h>
+#include <libraries/asl.h>
 #include <string.h>
 #include "complete.h"
 
@@ -199,7 +201,7 @@ static void scan_dir(struct complete_req *q, BPTR lock, const char *prefix, int 
             int info = n > 5 && same_name(name + n - 5, ".info");
             if (commands && (is_dir || info))
                 continue;
-            if (q->kingcon && info)
+            if (q->kingcon && info && !q->show_info)
                 continue;
             if (wild ? MatchPatternNoCase((STRPTR)pat, (STRPTR)name) : has_prefix(name, prefix))
                 add_name(q, name, is_dir);
@@ -455,6 +457,39 @@ static void scan_extra(struct complete_req *q, const char *prefix)
     }
 }
 
+/* COMPLETE_ASL: KingCON's Tab on an empty word -- a file requester in the
+ * current directory; the chosen path in add, a space after a file. */
+static void asl_pick(struct complete_req *q)
+{
+    struct Library *AslBase = OpenLibrary((STRPTR)"asl.library", 37);
+    struct FileRequester *fr;
+    char drawer[COMPLETE_MAX];
+    BPTR cd = CurrentDir(0);
+    CurrentDir(cd);
+    drawer[0] = 0;
+    if (cd)
+        NameFromLock(cd, (STRPTR)drawer, sizeof(drawer));
+    if (!AslBase)
+        return;
+    fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
+            ASLFR_Screen, (ULONG)q->screen, ASLFR_TitleText, (ULONG)"Select filename",
+            ASLFR_InitialDrawer, (ULONG)drawer, ASLFR_RejectIcons, (ULONG)!q->show_info,
+            TAG_DONE);
+    if (fr && AslRequest(fr, 0)) {
+        int n;
+        strncpy(q->add, (const char *)fr->fr_Drawer, COMPLETE_MAX - 2);
+        q->add[COMPLETE_MAX - 2] = 0;
+        AddPart((STRPTR)q->add, fr->fr_File, COMPLETE_MAX - 2);
+        n = (int)strlen(q->add);
+        if (n && q->add[n - 1] != '/' && q->add[n - 1] != ':')
+            strcpy(q->add + n, " ");
+        q->matches = q->add[0] != 0;
+    }
+    if (fr)
+        FreeAslRequest(fr);
+    CloseLibrary(AslBase);
+}
+
 /* The worker's body: runs as its own process. */
 static void worker(void)
 {
@@ -489,7 +524,9 @@ static void worker(void)
     if (dir)
         old = CurrentDir(dir);
 
-    if (q->mode == CHECK_COMMAND) {
+    if (q->mode == COMPLETE_ASL) {
+        asl_pick(q);
+    } else if (q->mode == CHECK_COMMAND) {
         q->matches = command_exists(q);
     } else if (q->mode == HISTORY_LOAD) {
         history_load(q);
@@ -553,7 +590,7 @@ int complete_start(struct complete_req *q, struct MsgPort *reply, struct Process
     q->msg.mn_Length = sizeof(*q);
     q->opener = opener;
     w = CreateNewProcTags(NP_Entry, (ULONG)worker, NP_Name, (ULONG)"vtcon completion",
-                          NP_StackSize, 6000, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
+                          NP_StackSize, 16000, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
                           NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
     if (!w)
         return 0;
