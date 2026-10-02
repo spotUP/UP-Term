@@ -226,6 +226,7 @@ static void ld_echo_cb(void *u, const unsigned char *s, int n)
 static void ld_signal_cb(void *u, int sig)
 {
     pair *p = (pair *)u;
+    TR("signal to", sig, (LONG)brk_task(&p->brk));
     if (sig == LD_SIGINT)
         brk_send(&p->brk, SIGBREAKF_CTRL_C);
     else if (sig == LD_SIGQUIT)
@@ -611,6 +612,19 @@ static void packet(struct DosPacket *d, pair *via, int side)
             p->masters--;
         else
             p->slaves--;
+        /* the side's last handle closed with a read still out (a program
+         * that stops pumping, upgetty at its end): the read ends, 0 bytes
+         * -- nobody is left to answer it later */
+        if (master && p->masters <= 0)
+            while (p->nmr) {
+                reply(p->mreads[0], 0, 0);
+                shift(p->mreads, &p->nmr);
+            }
+        if (!master && p->slaves <= 0)
+            while (p->nsr) {
+                reply(p->sreads[0], 0, 0);
+                shift(p->sreads, &p->nsr);
+            }
         reply(d, DOSTRUE, 0);
         end_pair(p);
         return;
@@ -647,6 +661,7 @@ static void packet(struct DosPacket *d, pair *via, int side)
     case ACTION_CHANGE_SIGNAL:
         if (!master)
             brk_change(&p->brk, (struct MsgPort *)d->dp_Arg2);
+        TR("change signal", master, d->dp_Arg2);
         reply(d, DOSTRUE, 0);
         return;
     case ACTION_VTCON_TCGETA:

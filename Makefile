@@ -279,10 +279,20 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	  $(BUILD)/amiga/devobj/glyphmap.o $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/vtengine.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
+# C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
+$(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ device/upgetty.c
+
 # C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
 $(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ device/upconsole.c
+
+# DV6's signal-bit probe (tools/rig/soak_rig.py)
+$(BUILD)/amiga/sigprobe: tests/amiga/sigprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/sigprobe.c
 
 # DV3's clock (tools/rig/devspeed_rig.py)
 $(BUILD)/amiga/stamp: tests/amiga/stamp.c

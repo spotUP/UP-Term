@@ -281,6 +281,42 @@ int main(void)
     if (m)
         Close(m);
 
+    /* a read still out when the master closes ends (0 bytes): nobody is
+     * left to answer it (upgetty closes its master with a read pending) */
+    m = Open((STRPTR)"PTY:t1/m", MODE_OLDFILE);
+    s = m ? Open((STRPTR)"PTY:t1/s", MODE_OLDFILE) : 0;
+    if (m && s) {
+        static struct StandardPacket sp;
+        struct MsgPort *rp = CreateMsgPort();
+        struct FileHandle *fh = (struct FileHandle *)BADDR(m);
+        int back = 0, t;
+        if (rp) {
+            sp.sp_Msg.mn_Node.ln_Name = (char *)&sp.sp_Pkt;
+            sp.sp_Pkt.dp_Link = &sp.sp_Msg;
+            sp.sp_Pkt.dp_Port = rp;
+            sp.sp_Pkt.dp_Type = ACTION_READ;
+            sp.sp_Pkt.dp_Arg1 = fh->fh_Arg1;
+            sp.sp_Pkt.dp_Arg2 = (LONG)buf;
+            sp.sp_Pkt.dp_Arg3 = sizeof(buf);
+            PutMsg(fh->fh_Type, &sp.sp_Msg);
+            Delay(10);
+            Close(m);
+            for (t = 0; t < 50 && !back; t++) {
+                if (GetMsg(rp))
+                    back = 1;
+                else
+                    Delay(2);
+            }
+            DeleteMsgPort(rp);
+        }
+        check(back && sp.sp_Pkt.dp_Res1 == 0, "a master read pending at its close ends with 0 bytes", 0);
+        Close(s);
+    } else {
+        check(0, "a master read pending at its close ends with 0 bytes", "no pair t1");
+        if (m)
+            Close(m);
+    }
+
     Printf("ptytest: passed %ld of %ld\n", (LONG)passed, (LONG)total);
     return passed == total ? 0 : 10;
 }

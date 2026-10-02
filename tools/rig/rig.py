@@ -4,7 +4,8 @@ through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
   rig.py start    boot it in the background (--ro: DH0: read-only, stalls on writes;
-                  --kick <file>: another Kickstart ROM for this boot)
+                  --kick <file>: another Kickstart ROM for this boot;
+                  --serial <path>: the serial port to that path, not serial.log)
   rig.py aga      Workbench on native AGA (PAL hires, 16 colours) from next boot
   rig.py rtg      Workbench back on the graphics card from next boot
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
@@ -30,6 +31,11 @@ SRC_AGENT = SRC_HDF.parent / "boot/amiagent"
 # (DP6 of the console.device plan); the config is rewritten on every start,
 # so the next start without --kick is back on this one.
 KICK = pathlib.Path("/Users/spot/Code/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
+# the serial port: a file for traces (default), or --serial <path> (a host
+# pty a test drives: tools/rig/getty_rig.py)
+SERIAL = RIG / "serial.log"
+if "--serial" in sys.argv:
+    SERIAL = sys.argv[sys.argv.index("--serial") + 1]
 if "--kick" in sys.argv:
     KICK = pathlib.Path(sys.argv[sys.argv.index("--kick") + 1]).expanduser()
 
@@ -140,7 +146,7 @@ def setup():
         "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
         "window_width = 1280", "window_height = 1024",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
-        "serial_port = %s" % (RIG / "serial.log"),
+        "serial_port = %s" % SERIAL,
         "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
     if "start" not in sys.argv:
         print("rig ready:", CFG)
