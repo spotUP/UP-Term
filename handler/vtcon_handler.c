@@ -678,7 +678,13 @@ static void apply_profile(con *c)
         apply_colours(c, c->conf, p, 0);
     else
         apply_colours_rest(c, c->conf, p, 0);
-    c->w.sb_lines = (int)upconf_int(c->conf, p, "scrollback", 0); /* 0 = the built-in 500 */
+    /* no key: the built-in 500 (sb_lines 0); "scrollback = 0": none (-1),
+     * as Settings > Scrollback > None saves it */
+    if (upconf_get(c->conf, p, "scrollback")) {
+        long n = upconf_int(c->conf, p, "scrollback", 0);
+        c->w.sb_lines = n > 0 ? (int)n : -1;
+    } else
+        c->w.sb_lines = 0;
     v = upconf_str(c->conf, p, "cursor", 0);
     if (v) {
         if (str_ieq(v, "block"))
@@ -870,6 +876,7 @@ static void sel_idcmp(con *c);
 static void kc_tab(con *c, int mode);
 static void kc_finish(con *c, struct complete_req *q);
 static void kc_cyc_end(con *c);
+static int sb_size(const con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
 static int find_open(con *c);
@@ -884,7 +891,8 @@ enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
        MENU_SET_BELL_BEEP, MENU_SET_BELL_VISUAL, MENU_SET_BOLD, MENU_SET_META_AMIGA,
        MENU_SET_META_ALT, MENU_SET_COPY, MENU_SET_WHEEL, MENU_SET_UNIX, MENU_SET_KINGCON,
        MENU_SET_KC_W, MENU_SET_KC_L, MENU_SET_KC_B, MENU_SET_KC_C, MENU_SET_KC_S,
-       MENU_SET_FONT, MENU_SET_THEME, MENU_SET_SAVE,
+       MENU_SET_FONT, MENU_SET_THEME, MENU_SET_SAVE, MENU_SET_SB_NONE, MENU_SET_SB_500,
+       MENU_SET_SB_1000, MENU_SET_SB_2000, MENU_SET_SB_5000,
        MENU_SET_PROFILE0 = 100 /* + the profile's place in the file */ };
 
 /* Right Amiga C, V and F stay what they were: Intuition now hands them in
@@ -923,7 +931,7 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 30
+#define MENU_SET_ITEMS 36
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -939,6 +947,12 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"None", 0, CHECKIT, 6, (APTR)MENU_SET_BELL_NONE },
     { NM_SUB, (STRPTR)"Beep", 0, CHECKIT, 5, (APTR)MENU_SET_BELL_BEEP },
     { NM_SUB, (STRPTR)"Visual", 0, CHECKIT, 3, (APTR)MENU_SET_BELL_VISUAL },
+    { NM_ITEM, (STRPTR)"Scrollback", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"None", 0, CHECKIT, 30, (APTR)MENU_SET_SB_NONE },
+    { NM_SUB, (STRPTR)"500 lines", 0, CHECKIT, 29, (APTR)MENU_SET_SB_500 },
+    { NM_SUB, (STRPTR)"1000 lines", 0, CHECKIT, 27, (APTR)MENU_SET_SB_1000 },
+    { NM_SUB, (STRPTR)"2000 lines", 0, CHECKIT, 23, (APTR)MENU_SET_SB_2000 },
+    { NM_SUB, (STRPTR)"5000 lines", 0, CHECKIT, 15, (APTR)MENU_SET_SB_5000 },
     { NM_ITEM, (STRPTR)"Bold is bright", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_BOLD },
     { NM_ITEM, (STRPTR)"Meta key", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Left Amiga", 0, CHECKIT, 2, (APTR)MENU_SET_META_AMIGA },
@@ -956,6 +970,12 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Common part first", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_KC_C },
     { NM_SUB, (STRPTR)"Silent", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_KC_S }
 };
+
+/* the window's scrollback in lines (the spec's -1 none, 0 the built-in 500) */
+static int sb_size(const con *c)
+{
+    return c->w.sb_lines < 0 ? 0 : c->w.sb_lines ? c->w.sb_lines : 500;
+}
 
 /* Is the setting behind a checkmark item on in this window? */
 static int menu_checked(const con *c, LONG id)
@@ -983,6 +1003,11 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_KC_S: return (c->kc_style & LE_KC_SILENT) != 0;
     case MENU_KC_CACHE: return c->kc_cache;
     case MENU_KC_INFO: return c->kc_info;
+    case MENU_SET_SB_NONE: return sb_size(c) == 0;
+    case MENU_SET_SB_500: return sb_size(c) == 500;
+    case MENU_SET_SB_1000: return sb_size(c) == 1000;
+    case MENU_SET_SB_2000: return sb_size(c) == 2000;
+    case MENU_SET_SB_5000: return sb_size(c) == 5000;
     }
     return 0;
 }
@@ -1153,6 +1178,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->copy_sel = c->w.copy_on_select != 0;
     f->wheel = c->w.wheel_scroll != 0;
     f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
+    k = 0;
     if (c->kc_style & LE_KC_WINDOW) f->kcmode[k++] = 'W';
     if (c->kc_style & LE_KC_LIST) f->kcmode[k++] = 'L';
     if (c->kc_style & LE_KC_CYCLE) f->kcmode[k++] = 'B';
@@ -1161,6 +1187,18 @@ static void window_fields(con *c, prefs_fields *f)
     f->kcmode[k] = 0;
     f->kcinfo = c->kc_info != 0;
     f->kccache = c->kc_cache != 0;
+    {
+        /* the scrollback, as the profile's "scrollback = n" (0: none) */
+        char n[12];
+        int m = 0, v = sb_size(c);
+        k = 0;
+        do
+            n[m++] = (char)('0' + v % 10);
+        while ((v /= 10) != 0);
+        while (m)
+            f->sb[k++] = n[--m];
+        f->sb[k] = 0;
+    }
     if (c->w.fontname[0]) {
         /* "NAME SIZE", as apply_profile reads it */
         char n[12];
@@ -1257,12 +1295,14 @@ static void profile_switch(con *c, int k)
     const char *names[UC_MAX_PROFILES + 1];
     char oldname[40];
     WORD oldsize = c->w.fontsize;
+    int sb_was;
     if (!c->conf || k >= upconf_profiles(c->conf, names) || !c->w.t)
         return;
     copy_str(c->profile, names[k], sizeof(c->profile));
     copy_str(oldname, c->w.fontname, sizeof(oldname));
     sel_close(c);
     kc_cyc_end(c);
+    sb_was = sb_size(c);
     vtwin_profile_defaults(&c->w);
     c->w.fg_rgb = c->spec_fg;
     c->w.bg_rgb = c->spec_bg;
@@ -1280,6 +1320,8 @@ static void profile_switch(con *c, int k)
         copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
         c->w.fontsize = oldsize;
     }
+    if (sb_size(c) != sb_was)
+        vtwin_set_scrollback(&c->w, sb_size(c)); /* the profile's scrollback, live too */
     vtwin_apply_settings(&c->w);
 }
 
@@ -1316,6 +1358,15 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_KC_S: bit = LE_KC_SILENT; break;
     case MENU_KC_CACHE: c->kc_cache = on; break;
     case MENU_KC_INFO: c->kc_info = on; break;
+    case MENU_SET_SB_NONE: case MENU_SET_SB_500: case MENU_SET_SB_1000: case MENU_SET_SB_2000:
+    case MENU_SET_SB_5000:
+        {
+            static const int lines[] = { 0, 500, 1000, 2000, 5000 };
+            if (!vtwin_set_scrollback(&c->w, lines[id - MENU_SET_SB_NONE]))
+                DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no memory for it */
+            restyle = 1;
+        }
+        break;
     default: return 0;
     }
     if (bit) {

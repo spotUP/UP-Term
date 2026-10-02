@@ -381,6 +381,18 @@ int vtwin_set_font(vtwin *w, const char *name, WORD size)
     return 1;
 }
 
+int vtwin_set_scrollback(vtwin *w, int lines)
+{
+    if (!w->t)
+        return 0;
+    if (w->r.view)
+        vr_set_view(&w->r, 0); /* the old view may be past the new size */
+    if (!vt_set_scrollback(w->t, lines))
+        return 0;
+    w->sb_lines = lines ? lines : -1; /* the spec's encoding: 0 is the built-in 500 */
+    return 1;
+}
+
 void vtwin_apply_settings(vtwin *w)
 {
     if (!w->t || !w->win)

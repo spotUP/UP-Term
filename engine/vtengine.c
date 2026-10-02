@@ -2924,6 +2924,35 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     return t;
 }
 
+int vt_set_scrollback(vt_term *t, int lines)
+{
+    vt_line **ring = 0;
+    int keep, i;
+    if (!t || lines < 0)
+        return 0;
+    if (lines == t->sb_cap)
+        return 1;
+    if (lines && !(ring = (vt_line **)VT_MALLOC(lines * sizeof(vt_line *))))
+        return 0;
+    keep = t->sb_len < lines ? t->sb_len : lines;
+    /* the oldest lines past the new size go */
+    while (t->sb_len > keep) {
+        int oldest = (t->sb_head + t->sb_cap - t->sb_len) % t->sb_cap;
+        VT_FREE(t->sb[oldest]);
+        t->sb_len--;
+    }
+    /* the rest, oldest first, to the start of the new ring */
+    for (i = 0; i < keep; i++)
+        ring[i] = t->sb[(t->sb_head + t->sb_cap - keep + i) % t->sb_cap];
+    if (t->sb)
+        VT_FREE(t->sb);
+    t->sb = ring;
+    t->sb_cap = lines;
+    t->sb_len = keep;
+    t->sb_head = lines ? keep % lines : 0;
+    return 1;
+}
+
 void vt_free(vt_term *t)
 {
     if (!t)

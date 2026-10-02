@@ -182,6 +182,9 @@ int      vt_row_wrapped(const vt_term *t, int row); /* continues on the next row
 #define VT_LINE_DOUBLE_BOTTOM 3
 int      vt_row_size(const vt_term *t, int row);
 int      vt_scrollback_lines(const vt_term *t);
+/* A new scrollback size (0: none): the newest lines it can hold stay, the
+ * older ones go. 0 when there was no memory for it (nothing changed). */
+int      vt_set_scrollback(vt_term *t, int lines);
 /* Lines that have scrolled off the top of the primary screen since vt_new:
  * grid row y + vt_lines_scrolled() names a line for good (a selection
  * stays on its text while output scrolls). */

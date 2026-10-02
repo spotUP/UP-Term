@@ -590,6 +590,34 @@ static void repeat_last_character(void)
     vt_free(t);
 }
 
+/* Settings > Scrollback: a new size keeps the newest lines it can hold,
+ * the scrollback goes on filling at the new size, and none means none */
+static void scrollback_size_changes_live(void)
+{
+    vt_term *t = h_new(8, 2, VT_XTERM); /* 100 lines */
+    h_put(t, "l1\r\nl2\r\nl3\r\nl4\r\nl5\r\nl6\r\nl7");
+    CHECK_INT(vt_scrollback_lines(t), 5);
+    CHECK(vt_set_scrollback(t, 3));
+    CHECK_INT(vt_scrollback_lines(t), 3);
+    CHECK_STR(h_row(t, -1), "l5");       /* the newest three: l3 l4 l5 */
+    CHECK_STR(h_row(t, -3), "l3");
+    h_put(t, "\r\nl8");                 /* the ring at its new size: l3 goes */
+    CHECK_INT(vt_scrollback_lines(t), 3);
+    CHECK_STR(h_row(t, -1), "l6");
+    CHECK_STR(h_row(t, -3), "l4");
+    CHECK(vt_set_scrollback(t, 10));     /* bigger: all kept, room for more */
+    CHECK_INT(vt_scrollback_lines(t), 3);
+    h_put(t, "\r\nl9");
+    CHECK_INT(vt_scrollback_lines(t), 4);
+    CHECK_STR(h_row(t, -4), "l4");
+    CHECK(vt_set_scrollback(t, 0));      /* none */
+    CHECK_INT(vt_scrollback_lines(t), 0);
+    h_put(t, "\r\nl10");
+    CHECK_INT(vt_scrollback_lines(t), 0);
+    CHECK_STR(h_screen(t), "l9|l10");
+    vt_free(t);
+}
+
 /* The search the window's Cmd-F asks for: oldest line first, in the
  * scrollback as well as the grid, ASCII-case-insensitive, a match found on a
  * row that the terminal wrapped is the row it starts on. */
@@ -970,6 +998,7 @@ void suite_xterm(void)
     save_restore_cursor_keeps_attributes();
     repeat_last_character();
     find_scans_scrollback_then_grid_oldest_first();
+    scrollback_size_changes_live();
     find_reports_what_is_there_to_find_and_nothing_else();
     find_takes_a_query_that_crosses_a_wrap();
     find_reads_utf8_and_petscii_as_they_are();

@@ -117,6 +117,9 @@ void vtwin_apply_settings(vtwin *w);
  * stay. 0 when the font cannot be opened or is proportional (nothing
  * changes). */
 int vtwin_set_font(vtwin *w, const char *name, WORD size);
+/* A new scrollback size for an attached window, live (0: none); the view
+ * returns to the live output. 0 when there was no memory (unchanged). */
+int vtwin_set_scrollback(vtwin *w, int lines);
 void vtwin_cleanup(vtwin *w);
 /* the frame clock's signal (0 without one) */
 ULONG vtwin_sigmask(const vtwin *w);
