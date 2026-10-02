@@ -1007,6 +1007,10 @@ static void host_settings_palette_bold_cursor(void)
     vt_set_palette(t, 256, 0);
     vt_set_palette(t, -1, 0);
     CHECK_INT(vt_palette_rgb(t, 255), 0x808080);
+    vt_clear_palette(t, 1);                       /* a theme without entry 1 */
+    CHECK_INT(vt_palette_rgb(t, 1), 0xCD0000);
+    vt_clear_palette(t, 300);
+    CHECK_INT(vt_palette_rgb(t, 255), 0x808080);
 
     /* Bold-as-bright: SGR 1 over 0-7 takes 8-15, xterm's way of drawing;
      * the profile option turns only the colour shift off. */

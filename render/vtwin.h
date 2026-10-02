@@ -106,6 +106,11 @@ void vtwin_init(vtwin *w, const vtwin_host *host, void *user);
 /* the profile fields to the historical look (vtwin_init does it; an owner
  * that parses a new spec calls it again before applying a profile) */
 void vtwin_profile_defaults(vtwin *w);
+/* The spec's settings (colours, palette, cursor, bold-bright, selection
+ * colours) applied to an attached window and drawn: vtwin_attach does it,
+ * and an owner whose menus changed one calls it (every field is set, so a
+ * setting turned back off takes effect too). */
+void vtwin_apply_settings(vtwin *w);
 void vtwin_cleanup(vtwin *w);
 /* the frame clock's signal (0 without one) */
 ULONG vtwin_sigmask(const vtwin *w);

@@ -3065,6 +3065,14 @@ void vt_set_palette(vt_term *t, int i, vt_u32 rgb)
     colors_changed(t);
 }
 
+void vt_clear_palette(vt_term *t, int i)
+{
+    if (!t || i < 0 || i > 255)
+        return;
+    t->pal_set[i] = 0;
+    colors_changed(t);
+}
+
 /* xterm SGR 1: bright colours 8-15 for the default 0-7 (on, as xterm
  * draws it) or the plain colours, the bold font style either way. A host
  * setting, so vt_reset leaves it. */

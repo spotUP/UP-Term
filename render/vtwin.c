@@ -272,6 +272,32 @@ struct TextFont *vtwin_open_font(vtwin *w)
     return w->font;
 }
 
+/* The spec's settings into the engine and the renderer (vtwin_attach,
+ * vtwin_apply_settings). Every field is set, so one turned back off takes
+ * effect in a live window too. */
+static void settings(vtwin *w)
+{
+    int i;
+    vr_set_defaults(&w->r, w->fg_rgb, w->bg_rgb);
+    report_defaults(w);
+    /* after report_defaults(): the default colours must be in place so a
+     * palette change can re-derive the pens through cb_colors() */
+    vt_set_bold_bright(w->t, w->bold_bright);
+    vt_set_cursor_style(w->t, w->cursor_style);
+    vt_set_cursor_blink(w->t, w->cursor_blink);
+    for (i = 0; i < 16; i++)
+        if (w->pal16[i] & 0x01000000UL)
+            vt_set_palette(w->t, i, w->pal16[i] & 0xFFFFFFUL);
+        else
+            vt_clear_palette(w->t, i);
+    if (w->cursor_rgb != VR_KEEP) {
+        vt_set_default_colors(w->t, vt_default_color(w->t, 0),
+                              vt_default_color(w->t, 1), w->cursor_rgb);
+        vr_set_cursor_color(&w->r, w->cursor_rgb);
+    }
+    vr_set_selection_colors(&w->r, w->sel_fg_rgb, w->sel_bg_rgb);
+}
+
 int vtwin_attach(vtwin *w, struct Window *win)
 {
     struct vt_callbacks cb;
@@ -308,33 +334,21 @@ int vtwin_attach(vtwin *w, struct Window *win)
             w->alt[k] = open_named(w->altname[k], w->altsize[k] ? w->altsize[k] : w->font->tf_YSize);
         vr_set_alt_font(&w->r, k, w->alt[k]);
     }
-    vr_set_defaults(&w->r, w->fg_rgb, w->bg_rgb);
-    report_defaults(w);
-    {
-        /* The profile's engine settings, after report_defaults(): the
-         * default colours must be in place so a palette change can
-         * re-derive the pens through cb_colors(). */
-        int i;
-        if (w->bold_bright != 1)
-            vt_set_bold_bright(w->t, w->bold_bright);
-        if (w->cursor_style != 0)
-            vt_set_cursor_style(w->t, w->cursor_style);
-        if (w->cursor_blink)
-            vt_set_cursor_blink(w->t, w->cursor_blink);
-        for (i = 0; i < 16; i++)
-            if (w->pal16[i] & 0x01000000UL)
-                vt_set_palette(w->t, i, w->pal16[i] & 0xFFFFFFUL);
-        if (w->cursor_rgb != VR_KEEP) {
-            vt_set_default_colors(w->t, vt_default_color(w->t, 0),
-                                  vt_default_color(w->t, 1), w->cursor_rgb);
-            vr_set_cursor_color(&w->r, w->cursor_rgb);
-        }
-        vr_set_selection_colors(&w->r, w->sel_fg_rgb, w->sel_bg_rgb);
-    }
+    settings(w);
     vt_set_cell_pixels(w->t, w->font->tf_XSize, w->font->tf_YSize);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
     return 1;
+}
+
+void vtwin_apply_settings(vtwin *w)
+{
+    if (!w->t || !w->win)
+        return;
+    vr_cursor_off(&w->r);
+    settings(w);
+    vr_redraw(&w->r);
+    vr_cursor_on(&w->r);
 }
 
 void vtwin_detach(vtwin *w)

@@ -246,6 +246,9 @@ vt_u32   vt_default_color(const vt_term *t, int which);
 /* The host's own palette (a profile default): entry i becomes 0xRRGGBB,
  * as OSC 4 does it from a program. The colours callback fires. */
 void     vt_set_palette(vt_term *t, int i, vt_u32 rgb);
+/* Entry i back to xterm's table (a theme or profile without it). The
+ * colours callback fires. */
+void     vt_clear_palette(vt_term *t, int i);
 /* xterm SGR 1: the bright colours 8-15 for the default 0-7 (on, as xterm
  * draws it) or the plain colours; the bold font style stays either way. A
  * host setting, so vt_reset leaves it. */
