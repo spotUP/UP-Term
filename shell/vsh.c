@@ -591,12 +591,26 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
             }
         }
     } else {
-        /* streams it does not own are the shell's: it gets its own handles
-         * on the same console (or NIL: for input), not the shell's */
+        /* streams it does not own are the shell's. Input: NIL:. Output on
+         * a console: its own handle on that console, not the shell's.
+         * Output to a file or a pipe: the shell's handle itself, as Unix
+         * shares the descriptor (one offset; the shell waits or writes
+         * after it). "*" there was a console the process may not have:
+         * the last stage of "seq 3 | cat" in "vsh script >file" wrote
+         * nowhere. */
         j->in = (io->owned & SH_OWN_IN) ? (BPTR)io->in : Open((STRPTR)"NIL:", MODE_OLDFILE);
-        j->out = (io->owned & SH_OWN_OUT) ? (BPTR)io->out : Open((STRPTR)"*", MODE_NEWFILE);
+        j->close_in = 1;
+        if (io->owned & SH_OWN_OUT) {
+            j->out = (BPTR)io->out;
+            j->close_out = 1;
+        } else if (io->out && !IsInteractive((BPTR)io->out)) {
+            j->out = (BPTR)io->out;
+            j->close_out = 0;
+        } else {
+            j->out = Open((STRPTR)"*", MODE_NEWFILE);
+            j->close_out = 1;
+        }
         j->err = (io->owned & SH_OWN_ERR) ? (BPTR)io->err : 0;
-        j->close_in = j->close_out = 1;
         j->close_err = (io->owned & SH_OWN_ERR) != 0;
     }
     p = (j->name && j->args)
