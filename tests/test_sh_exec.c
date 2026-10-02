@@ -182,6 +182,20 @@ static long run_now(char argv[][64], int argc, const sh_io *io)
     if (!strcmp(argv[0], "fail"))
         return argc > 1 ? atol(argv[1]) : 5;
     if (!strcmp(argv[0], "ls")) {
+        /* Bare ls is the fake listing the pipeline tests count. Given
+         * arguments it echoes them instead, so a test can see what vshrc's
+         * alias ls expanded to -- that is how the real C:ls is checked to
+         * be reached rather than a Dir/List function. */
+        if (argc > 1) {
+            int i;
+            for (i = 1; i < argc; i++) {
+                f_write(0, io->out, "<", 1);
+                f_write(0, io->out, argv[i], (long)strlen(argv[i]));
+                f_write(0, io->out, ">", 1);
+            }
+            f_write(0, io->out, "\n", 1);
+            return 0;
+        }
         f_write(0, io->out, "a.c\nb.c\n", 8);
         return 0;
     }
@@ -671,9 +685,13 @@ static const char *with_vshrc(const char *text)
 
 static void vshrc_unix_names(void)
 {
-    CHECK_STR(with_vshrc("ls"), "<Dir>\n");
-    CHECK_STR(with_vshrc("ls -la ../x ./y"), "<List></x><y>\n");
-    CHECK_STR(with_vshrc("ll ../../z"), "<List><//z>\n");
+    /* ls is no longer a Dir/List wrapper: the command is reached (a function
+     * would have printed <Dir>/<List>), and the alias is what adds colour.
+     * The ../ names stay as written -- translating them was the shim's job,
+     * and ixemul resolves them itself (ls .. lists the parent on the rig). */
+    CHECK_STR(with_vshrc("ls"), "<--color=auto>\n");
+    CHECK_STR(with_vshrc("ls -la ../x ./y"), "<--color=auto><-la><../x><./y>\n");
+    CHECK_STR(with_vshrc("ll ../../z"), "<--color=auto><-l><../../z>\n");
     CHECK_STR(with_vshrc("mkdir -p RAM:a/b"), "<MakeDir><RAM:a>\n<MakeDir><RAM:a/b>\n");
     CHECK_STR(with_vshrc("mkdir one 'two words'"), "<MakeDir><one>\n<MakeDir><two words>\n");
     CHECK_STR(with_vshrc("rm -r old"), "<Delete><old><ALL><QUIET>\n");
