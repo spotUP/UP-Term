@@ -129,6 +129,7 @@ typedef struct con {
     struct InputEvent winch_ev;  /* the size event it adds to the chain */
     volatile UBYTE winch_pending;
     UBYTE winch_added;
+    volatile UBYTE winch_closing; /* teardown started: name no window again */
     struct MsgPort *rom_port;
     /* window spec */
     WORD wx, wy, ww, wh;
@@ -820,6 +821,7 @@ static int open_window(con *c)
     struct Window *win;
     int n = 0;
 
+    c->winch_closing = 0; /* read/write retry the open: arm the handler again */
     DBG("lockpub", 0, 0);
     scr = LockPubScreen(c->screen[0] ? (UBYTE *)c->screen : 0);
     if (!scr)
@@ -877,6 +879,7 @@ have_window:
 static void close_window(con *c)
 {
     struct Window *win = c->w.win;
+    c->winch_closing = 1; /* stop naming this window before we dismantle it */
     find_close(c); /* the prompt belongs to the window */
     DBG("close_window", win, c->w.t);
     if (c->input_io) {
@@ -1852,6 +1855,11 @@ static void sync_size(con *c)
 static struct InputEvent *winch_handler(__reg("a0") struct InputEvent *chain, __reg("a1") APTR data)
 {
     con *c = (con *)data;
+    /* Runs off input.device's 10 Hz timer, so it can fire while close_window
+     * is dismantling the window it would name. An injected IECLASS_SIZEWINDOW
+     * that reaches Intuition after the window is gone is a stale pointer. */
+    if (c->winch_closing)
+        return chain;
     if (c->winch_pending) {
         c->winch_pending = 0;
         c->winch_ev.ie_NextEvent = chain;
