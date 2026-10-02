@@ -100,8 +100,11 @@ def main():
     wire.send('VTC:ixtty\r')
     ok = wire.wait_for(rb'TIOCGWINSZ 0: 80 x 24', 60)
     check(ok, 'ixemul sees the size upgetty set (80 x 24)', wire.text())
+    wire.wait_for(rb'press a key', 15)
+    wire.seen = b''
     wire.send('x')  # ixtty's "press a key"
-    wire.wait_for(prompt, 15)
+    check(wire.wait_for(prompt, 15) and b'got 1 byte 0x78' in wire.seen,
+          'a key in raw mode reaches the program (ixtty ends)', wire.text())
     wire.seen = b''
     wire.send('Wait 30\r')
     for _ in range(30):  # the command must be running: vsh drops a Ctrl-C that comes before it starts

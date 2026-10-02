@@ -48,20 +48,36 @@ typedef struct {
 } getty;
 
 #ifdef UPGETTY_DEBUG
+/* the trace in memory (a file write per event slowed the pump enough to
+ * hide a race); Ctrl-E writes it to RAM:upgetty.log */
+static char lgbuf[8192];
+static long lglen;
 static void lg(const char *w, LONG a)
 {
-    BPTR f = Open((STRPTR)"RAM:upgetty.log", MODE_READWRITE);
     char b[80];
-    if (!f)
-        return;
-    Seek(f, 0, OFFSET_END);
+    long n;
     sprintf(b, "%s %ld\n", w, a);
-    Write(f, b, (LONG)strlen(b));
-    Close(f);
+    n = (long)strlen(b);
+    if (lglen + n < (long)sizeof(lgbuf)) {
+        memcpy(lgbuf + lglen, b, n);
+        lglen += n;
+    }
+}
+static void lg_dump(void)
+{
+    BPTR f = Open((STRPTR)"RAM:upgetty.log", MODE_NEWFILE);
+    if (f) {
+        Write(f, lgbuf, lglen);
+        Close(f);
+    }
 }
 #define LG(w, a) lg(w, (LONG)(a))
+#define LG_DUMP() lg_dump()
 #else
-#define LG(w, a)
+/* the value is still evaluated: a call written inside LG() must not vanish
+ * with the trace (Write and ACTION_CHANGE_SIGNAL once did) */
+#define LG(w, a) ((void)(a))
+#define LG_DUMP()
 #endif
 
 static void serial_read(getty *g)
@@ -219,7 +235,10 @@ int main(void)
     serial_read(&g);
     master_read(&g);
     while (running) {
-        ULONG got = Wait((1UL << g.port->mp_SigBit) | (1UL << g.pport->mp_SigBit) | SIGBREAKF_CTRL_C);
+        ULONG got = Wait((1UL << g.port->mp_SigBit) | (1UL << g.pport->mp_SigBit) | SIGBREAKF_CTRL_C |
+                         SIGBREAKF_CTRL_E);
+        if (got & SIGBREAKF_CTRL_E)
+            LG_DUMP();
         if (got & SIGBREAKF_CTRL_C) {
             LG("ctrl-c to upgetty", 0);
             break;
@@ -242,7 +261,10 @@ int main(void)
                     n += (LONG)g.rd->IOSer.io_Actual;
                 }
                 LG("serial in", n);
-                LG("  master write", Write(g.master, g.rbuf, n)); /* typing on the terminal */
+                /* typing on the terminal (LG evaluates its value in every
+                 * build: when it did not, this Write was the debug build's
+                 * only, and no key reached the shell) */
+                LG("  master write", Write(g.master, g.rbuf, n));
             }
             serial_read(&g);
         }

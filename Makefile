@@ -291,7 +291,7 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
 $(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ device/upgetty.c
+	$(VC) -dontwarn=153 -o $@ device/upgetty.c
 
 # C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
 $(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h
