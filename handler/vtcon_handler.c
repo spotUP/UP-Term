@@ -857,7 +857,8 @@ enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
        MENU_SET_BLOCK, MENU_SET_UNDERLINE, MENU_SET_BAR, MENU_SET_BLINK, MENU_SET_BELL_NONE,
        MENU_SET_BELL_BEEP, MENU_SET_BELL_VISUAL, MENU_SET_BOLD, MENU_SET_META_AMIGA,
        MENU_SET_META_ALT, MENU_SET_COPY, MENU_SET_WHEEL, MENU_SET_UNIX, MENU_SET_KINGCON,
-       MENU_SET_KC_W, MENU_SET_KC_L, MENU_SET_KC_B, MENU_SET_KC_C, MENU_SET_KC_S };
+       MENU_SET_KC_W, MENU_SET_KC_L, MENU_SET_KC_B, MENU_SET_KC_C, MENU_SET_KC_S,
+       MENU_SET_FONT };
 
 /* Right Amiga C, V and F stay what they were: Intuition now hands them in
  * as MENUPICK, which picks the same actions. */
@@ -895,9 +896,11 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 27
+#define MENU_SET_ITEMS 29
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Cursor", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Block", 0, CHECKIT, 6, (APTR)MENU_SET_BLOCK },
     { NM_SUB, (STRPTR)"Underline", 0, CHECKIT, 5, (APTR)MENU_SET_UNDERLINE },
@@ -1042,6 +1045,25 @@ static void prefs_launch(void)
                       NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
 }
 
+static int ensure_worker(con *c);
+static struct Process *opener(con *c);
+
+/* Settings > Font...: the ASL font requester, in the completion worker (it
+ * reads FONTS:, DOS calls the handler must not make); the answer arrives
+ * in finish_completion. */
+static void font_ask(con *c)
+{
+    if (c->comp_busy || !ensure_worker(c) || !c->w.win)
+        return;
+    copy_str(c->comp->word, c->w.fontname[0] ? c->w.fontname : "", COMPLETE_MAX);
+    c->comp->font_size = c->w.font ? c->w.font->tf_YSize : 8;
+    c->comp->mode = COMPLETE_FONT;
+    c->comp->kingcon = 0;
+    c->comp->screen = c->w.win->WScreen;
+    if (complete_start(c->comp, c->comp_port, opener(c)))
+        c->comp_busy = 1;
+}
+
 /* A Settings (or Complete) checkmark picked: the window's setting, live.
  * on is the item's checkmark after the pick. 1 when it was one. */
 static int menu_setting(con *c, LONG id, int on)
@@ -1113,6 +1135,7 @@ static void menu_pick(con *c, UWORD code)
         case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); break;
         case MENU_KC_RESET: complete_cache_reset(); break;
         case MENU_KC_PURGE: complete_cache_purge(); break;
+        case MENU_SET_FONT: font_ask(c); break;
         default:
             if (menu_setting(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0)) {
                 /* the strip again: every checkmark from the settings (one
@@ -1812,6 +1835,12 @@ static void finish_completion(con *c)
             continue;
         }
         c->comp_busy = 0;
+        if (q->mode == COMPLETE_FONT) {
+            /* Settings > Font...: the window in the chosen font, live */
+            if (q->matches && c->w.t && !vtwin_set_font(&c->w, q->add, (WORD)q->font_size))
+                DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not fixed width, or gone */
+            continue;
+        }
         c->menu_n = 0;
         if (!c->w.t)
             continue; /* the window closed (AUTO): the answer has no line */

@@ -524,6 +524,29 @@ static void asl_pick(struct complete_req *q)
     CloseLibrary(AslBase);
 }
 
+/* COMPLETE_FONT: the Settings menu's Font... -- fixed-width fonts only, the
+ * current one (q->word, q->font_size) preselected. */
+static void font_pick(struct complete_req *q)
+{
+    struct Library *AslBase = OpenLibrary((STRPTR)"asl.library", 37);
+    struct FontRequester *fr;
+    if (!AslBase)
+        return;
+    fr = (struct FontRequester *)AllocAslRequestTags(ASL_FontRequest,
+            ASLFO_Screen, (ULONG)q->screen, ASLFO_TitleText, (ULONG)"UP-Term font",
+            ASLFO_FixedWidthOnly, TRUE, ASLFO_InitialName, (ULONG)q->word,
+            ASLFO_InitialSize, (ULONG)(q->font_size ? q->font_size : 8), TAG_DONE);
+    if (fr && AslRequest(fr, 0)) {
+        strncpy(q->add, (const char *)fr->fo_Attr.ta_Name, COMPLETE_MAX - 1);
+        q->add[COMPLETE_MAX - 1] = 0;
+        q->font_size = fr->fo_Attr.ta_YSize;
+        q->matches = 1;
+    }
+    if (fr)
+        FreeAslRequest(fr);
+    CloseLibrary(AslBase);
+}
+
 /* The worker's body: runs as its own process. */
 static void worker(void)
 {
@@ -560,6 +583,8 @@ static void worker(void)
 
     if (q->mode == COMPLETE_ASL) {
         asl_pick(q);
+    } else if (q->mode == COMPLETE_FONT) {
+        font_pick(q);
     } else if (q->mode == CHECK_COMMAND) {
         q->matches = command_exists(q);
     } else if (q->mode == HISTORY_LOAD) {

@@ -17,8 +17,10 @@ enum complete_mode {
     HISTORY_APPEND = 4,       /* word -> one more line of saved history */
     COMPLETE_VARS = 5,        /* $NAME / ${NAME: the shell's variable names (extra) */
     COMPLETE_DEVICES = 6,     /* devices, volumes and assigns (KingCON's Shift+Tab) */
-    COMPLETE_ASL = 7          /* an ASL file requester on `screen`: the chosen path in add
+    COMPLETE_ASL = 7,         /* an ASL file requester on `screen`: the chosen path in add
                                * (KingCON's Tab on an empty word); matches 0: cancelled */
+    COMPLETE_FONT = 8         /* an ASL font requester (fixed width) on `screen`: the font's
+                               * name in add, its size in font_size; matches 0: cancelled */
 };
 
 #define HISTORY_FILE "ENVARC:vtcon.history"
@@ -37,7 +39,8 @@ struct complete_req {
     int show_info;                /* in: KingCON lists .info files too */
     int no_cache;                 /* in: scan command directories afresh (KingCON's menu
                                    * "Enable cache" off, or kingcon-cache = off) */
-    struct Screen *screen;        /* in: COMPLETE_ASL's screen */
+    struct Screen *screen;        /* in: COMPLETE_ASL's / _FONT's screen */
+    int font_size;                /* COMPLETE_FONT: in the current size, out the chosen one */
     char word[COMPLETE_MAX];      /* in: the word before the cursor */
     char common[COMPLETE_MAX];    /* the longest name all matches start with */
     char add[COMPLETE_MAX];       /* out: what to type after the word */

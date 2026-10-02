@@ -111,6 +111,12 @@ void vtwin_profile_defaults(vtwin *w);
  * and an owner whose menus changed one calls it (every field is set, so a
  * setting turned back off takes effect too). */
 void vtwin_apply_settings(vtwin *w);
+/* Another font for an attached window, live: name ("topaz" or
+ * "topaz.font") and size; an empty name is the system's default font. The
+ * grid takes the window's new columns and rows, the text and scrollback
+ * stay. 0 when the font cannot be opened or is proportional (nothing
+ * changes). */
+int vtwin_set_font(vtwin *w, const char *name, WORD size);
 void vtwin_cleanup(vtwin *w);
 /* the frame clock's signal (0 without one) */
 ULONG vtwin_sigmask(const vtwin *w);

@@ -341,6 +341,37 @@ int vtwin_attach(vtwin *w, struct Window *win)
     return 1;
 }
 
+int vtwin_set_font(vtwin *w, const char *name, WORD size)
+{
+    struct TextFont *f, *old = w->font;
+    int opened;
+    if (!w->t || !w->win || w->given_font)
+        return 0; /* a window drawn in its own font (console.device units) keeps it */
+    f = name[0] ? open_named(name, size) : GfxBase->DefaultFont;
+    if (!f)
+        return 0;
+    opened = name[0] != 0;
+    vr_cursor_off(&w->r);
+    vr_set_font(&w->r, f);
+    if (old && w->font_opened && old != f)
+        CloseFont(old);
+    w->font = f;
+    w->font_opened = opened;
+    strncpy(w->fontname, name, sizeof(w->fontname) - 1);
+    w->fontname[sizeof(w->fontname) - 1] = 0;
+    w->fontsize = size;
+    vt_set_cell_pixels(w->t, f->tf_XSize, f->tf_YSize);
+    vr_layout(&w->r);
+    vt_resize(w->t, w->r.cols, w->r.rows);
+    w->host->resized(w->user);
+    /* the old cells' pixels go: the new grid may not cover them */
+    EraseRect(w->win->RPort, w->win->BorderLeft, w->win->BorderTop,
+              w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
+    vr_redraw(&w->r);
+    vr_cursor_on(&w->r);
+    return 1;
+}
+
 void vtwin_apply_settings(vtwin *w)
 {
     if (!w->t || !w->win)

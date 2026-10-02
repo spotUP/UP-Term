@@ -109,6 +109,11 @@ ULONG vr_pen_rgb(vr_render *r, UBYTE pen);
  * chosen for palette entries are given back and chosen again. */
 void vr_palette_changed(vr_render *r);
 
+/* Another fixed-width font for the text: cell size, baseline, the
+ * rastport's font and the planar glyphs follow; the caller resizes the
+ * grid (vr_layout) and redraws. */
+void vr_set_font(vr_render *r, struct TextFont *font);
+
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
              enum vt_font_enc enc);
 void vr_free(vr_render *r);

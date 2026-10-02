@@ -367,6 +367,23 @@ void vr_free(vr_render *r)
     memset(r, 0, sizeof(*r));
 }
 
+void vr_set_font(vr_render *r, struct TextFont *font)
+{
+    if (!r->win || !font)
+        return;
+    r->font = font;
+    r->cw = font->tf_XSize;
+    r->ch = font->tf_YSize;
+    r->base = font->tf_Baseline;
+    SetFont(r->rp, font);
+    if (r->glyphs)
+        FreeVec(r->glyphs);
+    r->glyphs = 0;
+#ifdef VTCON_DIRECT
+    extract_glyphs(r);
+#endif
+}
+
 /* The columns and rows the window can show right now. The grid follows a
  * new window size only when Intuition reports it (resize()); between a
  * size change and that report -- DECCOLM shrinking the window, the user
