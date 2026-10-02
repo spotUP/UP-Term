@@ -84,7 +84,7 @@ RULES.md rule 3: input decoding is Latin-1 (amiga), UTF-8 (xterm), CP437 (pcansi
 | Byte | Name | amiga | xterm (XT, from knowledge) | pcansi (DCT) | Source |
 |------|------|-------|---------------------------|--------------|--------|
 | 00-06, 10-17, 19, 1C-1F | - | Not listed; behaviour unverified (expected: ignored) | Ignored (05 ENQ may send answerback, default empty) | Ignored (`term_ctl` default) | AD20; DCT l.604 |
-| 07 | BEL | Intuition `DisplayBeep()` (screen flash) | Bell (audible or visual) | Ignored | RKM-8C, AD20; DCT l.604 |
+| 07 | BEL | Intuition `DisplayBeep()` (screen flash) | Bell (audible or visual); xterm makes the style a user resource: vtcon's xterm bell is per-profile `none` / `beep` / `visual` (a one-frame screen flash), default `beep` (plan 2026-10-01-terminal-preferences.md) | Ignored | RKM-8C, AD20; DCT l.604 |
 | 08 | BS | Move left one column (behaviour at column 0 unverified) | Move left, stops at column 0 (reverse wrap only with `?45h`); cancels pending wrap | Left if x>0, never erases, clears pending wrap | RKM-8C, AD20; DCT l.577 |
 | 09 | HT | Move right to next tab stop (`cu_TabStops`, set by HTS/CTC/TBC; default stops unverified, expected every 8) | Next tab stop (default every 8), stops at last column | Fixed stops every 8 columns, clamped to last column; HTS/CTC/TBC not implemented | RKM-8C; H-CU `MAXTABS 80`; DCT l.582 |
 | 0A | LF | Down one line; with LNM set (`CSI 20h`) also CR. At bottom scrolls if ASM (`CSI >1h`, default on) | IND; with LNM (`CSI 20h`) also CR. Scrolls at bottom margin | Down one line, no CR; scrolls at bottom; clears pending wrap | RKM-88, RKM-8C, AD20; DCT l.564, l.591 |
@@ -197,7 +197,7 @@ xterm (the reason a window carries exactly one personality).
 | `CSI 6 n` (9B 36 6E) | DSR: console inserts CPR `CSI row;col R` into the read stream (introducer 9B) | DSR 6 -> `ESC [ row ; col R` (7-bit unless S8C1T); `CSI 5 n` -> `ESC [ 0 n`; `CSI ? 6 n` -> DECXCPR `ESC [ ? row ; col R` | 6 -> `ESC [ row ; col R`, 5 -> `ESC [ 0 n` (sent via `send_data`) | RKM-8C, RKM-91, AD20, H-CON `DSR_CPR 6`; DCT l.639. Same meaning, **different reply introducer** (9B vs 1B 5B) |
 | `CSI Ps SP p` (9B [N] 20 70) | aSCR set cursor rendition: `9B 30 20 70` invisible, `9B 20 70` visible. Other N unverified | Not defined in ctlseqs (from knowledge). `CSI ! p` = DECSTR soft reset; `CSI Ps $ p` = DECRQM; `CSI > Ps p` = XTSMPOINTER; `CSI Ps ; Ps " p` = DECSCL | Ignored (intermediate) | RKM-8B, RKM-8D, AD20 |
 | `CSI Ps q` (71) | Not defined | DECLL (load LEDs) | Ignored | - |
-| `CSI Ps SP q` (9B 30 20 71) | **aWSR window status request**: console answers with aWBR into the read stream | **DECSCUSR cursor style**: 0/1 blinking block, 2 steady block, 3 blinking underline, 4 steady underline, 5 blinking bar, 6 steady bar (vim sends `CSI 2 SP q`) | Ignored | RKM-8D, RKM-92, AD20 (`#p = 0`); XT. **COLLISION C-SPq** |
+| `CSI Ps SP q` (9B 30 20 71) | **aWSR window status request**: console answers with aWBR into the read stream | **DECSCUSR cursor style**: 0/1 blinking block, 2 steady block, 3 blinking underline, 4 steady underline, 5 blinking bar, 6 steady bar (vim sends `CSI 2 SP q`). vtcon xterm: the starting style, blink (`?12`, off by default) and block colour are per-window-profile (`cursor`, `cursor-blink`, `cursor-color`; plan 2026-10-01-terminal-preferences.md), a profile default only — runtime sequences override | Ignored | RKM-8D, RKM-92, AD20 (`#p = 0`); XT. **COLLISION C-SPq** |
 | `CSI 1;1;Pb;Pr SP r` (9B 31 3B 31 3B .. 3B .. 20 72) | aWBR window bounds report, **read stream only**: bottom margin = rows, right margin = columns; e.g. 20x60: `9B 31 3B 31 3B 32 30 3B 36 30 20 72` | Not defined (`CSI Pt;Pb r` bare = DECSTBM) | Ignored | RKM-8D (E4), RKM-92, AD20 |
 | `CSI Pt ; Pb r` (72) | Not defined | DECSTBM: set scroll region (cursor homes) | **Ignored** (no scroll regions) | - |
 | `CSI s` (73) | Not defined | SCOSC save cursor (when DECLRMM `?69` off; otherwise DECSLRM) | Save cursor position | DCT l.775 |
@@ -244,7 +244,7 @@ DCH, SU, SD, TBC, LNM 20, AWM ?7, SGR 0/1/3/4/7/8/22-28/30-37/39/40-47/49
 | Param | amiga | xterm (XT) | pcansi (DCT l.503-557, l.754-773) |
 |-------|-------|------------|-----------------------------------|
 | 0 | Normal colours and attributes: fg pen 1, cell pen 0, plain, reverse off. V39+: the aSDSS-saved defaults instead | All attributes off, default fg/bg | fg 7, bg 0, bold/blink/inverse/underline off |
-| 1 | **Bold font style** (algorithmic style of the RastPort, `cu_AlgoStyle`); colour does not change | Bold. xterm resource `boldColors` (default true) also brightens 30-37 to 90-97 when rendering: vtcon decision (Q6) | **Bright foreground** (fg + 8). No font change |
+| 1 | **Bold font style** (algorithmic style of the RastPort, `cu_AlgoStyle`); colour does not change | Bold. xterm resource `boldColors` (default true) also brightens 30-37 to 90-97 when rendering: vtcon decision (Q6, resolved: ON as default, togglable per window profile `bold-bright`) | **Bright foreground** (fg + 8). No font change |
 | 2 | Faint ("secondary color"); the pen it uses is unverified | Faint | Bold off (treated as intensity off) |
 | 3 | Italic | Italic | Ignored |
 | 4 | Underscore | Underline (`4:0..5` styles with colon) | Underline |
@@ -736,7 +736,7 @@ does XCON:/AMIGA through DOS (identical output, window size included).
 | Q3 | aSLPP unit: RKM-8D says "in character raster lines" but also "how many text lines will fit"; AD20 gives no unit. | RKM-8D, AD20 |
 | Q4 | Backspace byte in the xterm personality (08 vs 7F) and the matching `kbs` in `terminfo/`. | xterm ctlseqs from knowledge; vtcon plan has no decision |
 | Q5 | Caps Lock report keycode: RKM-95 "62" / "190" vs `RAWKEY_CAPSLOCK 0x62` (98). | RKM-95, H-KM |
-| Q6 | xterm bold-brightens-colour (`boldColors`) on or off in vtcon. | XT from knowledge |
+| Q6 | RESOLVED (2026-10-01): ON by default (xterm's `boldColors` default), togglable off per window profile (`bold-bright = off`). Engine `bold_bright` field, default 1, xterm personality only; the P1.3 host test pins it. | XT from knowledge; plan 2026-10-01-terminal-preferences.md |
 | Q7 | Amiga key to xterm modifier mapping (Left/Right Amiga as Meta? Alt as ESC prefix or 8-bit?). | XT from knowledge |
 | Q8 | DA1/DA2 replies the xterm personality sends (must match `terminfo/`). | XT from knowledge |
 | Q9 | Exact CSI bytes V47 medium mode sends for TAB / Shift+TAB / Up / Down. | RN-CH 47.1, DOSDOC SetMode, NDK `ReleaseNotes/shell-RelNotes` (nothing) |

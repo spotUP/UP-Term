@@ -522,6 +522,14 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       DD14 amended: device units keep no scrollback -- the amiga personality keeps none, as
       the ROM, so the 200 lines were never used.
 - [ ] DV5 Kickstart matrix (DD22): per row DV1, DV2, D2.3, D3.2, H5.6 results.
+      **2026-09-30, all but the 3.2 row (last, ledger T3):** `tools/rig/dvmatrix.sh <rom> <label>`
+      (logs build/rig/shots/dvmatrix-<label>.log):
+      | ROM | DV1 condev | DV2+DV4 devverify | D2.3 rkc | D3.2 cudump | H5.6 concon |
+      | 3.0 39.106 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
+      | 3.1 40.63 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
+      | 3.5 40.71 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
+      | 3.1.4 | not tested: no ROM on this machine (the owner's A1200, V4, is the real-hardware row) |
+      | 3.2 47.115 | last in the project (T3: a real 3.2 install) |
 - [ ] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
       memory back to its start value; a task holding signal bit 31 opens and closes a
       unit 100 times and still holds it (ibmcon 1.8 regression, R-3).
