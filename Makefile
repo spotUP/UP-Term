@@ -403,7 +403,8 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(BUILD)/dist/vtcon/UP-Term
 	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(BUILD)/dist/vtcon/UP-Term-Prefs
-	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/Install dist/Uninstall dist/README.txt dist/vshrc $(BUILD)/dist/vtcon/
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/Install dist/Uninstall dist/README.txt dist/vshrc \
+	  dist/gg/fileutils-3.16/ls dist/gg/fileutils-3.16/dircolors dist/gg/fileutils-3.16/COPYING $(BUILD)/dist/vtcon/
 	cp $(BUILD)/amiga/upprefs "$(BUILD)/dist/vtcon/UP-Term Prefs"
 	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
 	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon

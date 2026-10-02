@@ -65,6 +65,21 @@ SetEnv TERMINFO /ENV/up-term/terminfo
 Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
+; ls: GNU fileutils 3.16 from Geek Gadgets (gg/fileutils-3.16, GPL v2,
+; its COPYING ships beside it). The terminal can only show the colour a
+; listing program emits, and AmigaDOS Dir colours directories alone, so
+; this is what makes `ls` type its output. C: is where resolve() in
+; shell/vsh.c looks last, so a bare `ls` finds it; vshrc aliases it to
+; --color=auto. Skip both copies if the machine already has one: an
+; existing C:ls or C:dircolors is the user's own, and Dir/List stay
+; the AmigaDOS commands (they are residents, which resolve() finds
+; before C: -- hence no dir/vdir here, they would never run).
+If NOT EXISTS C:ls
+  Copy ls C:ls CLONE
+EndIf
+If NOT EXISTS C:dircolors
+  Copy dircolors C:dircolors CLONE
+EndIf
 ; the preferences editor: C:UP-Term Prefs (its file keeps the space) and a
 ; plain program icon in Utilities, beside UP-Term
 Copy "UP-Term Prefs" "C:UP-Term Prefs" CLONE

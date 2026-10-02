@@ -6,6 +6,16 @@
 # ../x becomes /x (the parent is /), ./x becomes x. To use a real Unix
 # port of one of these (an ixemul ls in the path), remove its function.
 
+# vsh reads $HOME/.vshrc straight after this file, and the shell's default
+# HOME is the volume HOME:, which nothing assigns: an interactive vsh then
+# stops at startup with "Please insert volume HOME in any drive" and the
+# function definitions below never run. Point HOME at SYS: whenever it does
+# not name something that exists; a real HOME the user set is left alone.
+if [ ! -d "${HOME:-HOME:}" ] 2>/dev/null; then
+    HOME=SYS:
+fi
+export HOME
+
 # _amiga NAME: NAME as AmigaDOS writes it, in _r
 _amiga() {
     _u=$1
@@ -26,18 +36,24 @@ clear() {
     printf '\033[H\033[2J'
 }
 
-# ls [-l] [name ...]: Dir for the short form, List for -l
-ls() {
-    _long=0
-    for _x; do
-        shift
-        case $_x in
-        -*) case $_x in *l*) _long=1 ;; esac ;;
-        *) _amiga "$_x"; set -- "$@" "$_r" ;;
-        esac
-    done
-    if [ $_long = 1 ]; then List "$@"; else Dir "$@"; fi
-}
+# ls: the real GNU ls, not a Dir/List wrapper. A terminal can only show the
+# colour a program emits, and Dir colours directories alone, so file-type
+# colouring has to come from the listing program. The kit installs GNU
+# fileutils' ls and dircolors as C:ls and C:dircolors (see Install), which is
+# where resolve() in shell/vsh.c looks last, so a bare ls finds them. The
+# wrapper function used to be defined here and, being a function, hid that
+# command, so it is gone rather than overridden. Type Dir or List directly for
+# the AmigaDOS form, or unset the alias to get ls without colour.
+#
+# --color=auto keeps colour off when the output is a pipe or a file, which is
+# what a redirected ls must do, and LS_COLORS (see dircolors) picks the
+# colours; the ANSI numbers are whatever the window's profile defines.
+#
+# The tools still wrapped below (cp, mv, rm, mkdir, touch) shadow their
+# fileutils equivalents for exactly the reason the wrapper hid ls. The .. gate
+# is verified (ls .. lists the parent), so they can go the same way; see
+# thoughts/shared/plans/2026-10-02_unix-userland.md.
+alias ls='ls --color=auto'
 
 # mkdir [-p] dir ...: -p makes each missing directory on the way
 mkdir() {
