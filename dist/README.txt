@@ -12,14 +12,16 @@ XCON: is a console window like CON:, with a modern terminal inside:
   - PC-ANSI dialect (option PCANSI): ANSI.SYS / BBS art, CP437.
 
 INSTALL
-  Unpack, cd into the drawer, then:   Execute Install
-  (copies the handlers, DOSDrivers entries, vsh, ixkill, the terminal
+  Unpack the archive and double-click Install in the UP-Term drawer
+  (needs C:Installer or SYS:Utilities/Installer, AmigaOS 3.0 and up).
+  It copies the handlers, DOSDrivers entries, vsh, ixkill, the terminal
   entries to ENVARC:up-term, sets TERMINFO, puts in the patched
-  ixemul.library and mounts XCON: and PTY:)
-  It asks whether UP-Term should also serve CON: and RAW: (see CON: AND
-  RAW: below); answer in advance with  Execute Install CONSOLE  or
-  Execute Install NOCONSOLE. The same for console.device (see
-  CONSOLE.DEVICE below): DEVICE or NODEVICE.
+  ixemul.library and mounts XCON: and PTY:. It asks whether UP-Term
+  should also serve CON: and RAW: (see CON: AND RAW: below) and
+  console.device (see CONSOLE.DEVICE below).
+  From a Shell, without Installer, cd into the drawer, then:
+    Execute Files/install.dos Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
+  Remove everything again: double-click Uninstall (or Execute Uninstall).
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
