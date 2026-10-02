@@ -23,6 +23,7 @@
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
+#include <dos/dostags.h>
 #include <devices/console.h>
 #include <devices/conunit.h>
 #include <devices/timer.h>
@@ -481,31 +482,102 @@ static int node_named(con *c, const char *want)
  * a window with no config behaves exactly as before this feature. */
 #define CONF_MAX UC_MAX_FILE
 
-static void config_load(con *c)
+/* Reading the file is DOS work, and a handler must not do DOS work while DOS
+ * is waiting for its reply: DOS holds the DosList lock for exactly that
+ * period, so our own Open() blocks and the rig answers every NewShell XCON:
+ * with "Software Failure - wait for disk activity to finish" (2026-10-02).
+ * This process was started by the Open we just answered, so DOS is still
+ * forwarding that reply. The same lock blocks OpenLibrary() here too.
+ *
+ * So the read runs in its own process, the way handler/complete.c's worker
+ * already does its lookups: a task may block on DOS without blocking the
+ * packet loop, and pr_WindowPtr = -1 keeps a requester off the screen. The
+ * caller waits for the reply before it serves any packet, so the profile is
+ * in place before the first Open is answered. */
+struct config_msg {
+    struct Message msg;
+    upconf *conf;
+};
+
+static void config_worker(void)
 {
+    struct Process *me = (struct Process *)FindTask(0);
+    struct config_msg *m;
     BPTR f;
     char *buf;
-    LONG size;
-    if (!c->conf)
-        return; /* out of memory: the built-in defaults stand */
-    f = Open((STRPTR)"/ENV/up-term/up-term", MODE_OLDFILE);
-    if (!f)
-        return;
-    size = Seek(f, 0, OFFSET_END);
-    if (size > 0) {
-        if (size > CONF_MAX)
-            size = CONF_MAX; /* upconf's overflow flag says the file was cut */
-        buf = (char *)AllocVec(size + 1, MEMF_ANY);
+
+    WaitPort(&me->pr_MsgPort); /* the request, before any DOS call */
+    m = (struct config_msg *)GetMsg(&me->pr_MsgPort);
+    me->pr_WindowPtr = (APTR)-1; /* no requesters from a file that may be absent */
+    f = Open((STRPTR)"ENVARC:up-term/up-term", MODE_OLDFILE);
+    if (f) {
+        /* Read straight up to the cap rather than Seek()ing to the end first:
+         * on 3.1 that Seek answers 0 for this file, and the read is skipped. */
+        buf = (char *)AllocVec(CONF_MAX + 1, MEMF_ANY);
         if (buf) {
-            LONG got;
-            Seek(f, 0, OFFSET_BEGINNING);
-            got = Read(f, buf, size);
+            LONG got = Read(f, buf, CONF_MAX);
             buf[got > 0 ? got : 0] = 0;
-            upconf_parse(c->conf, buf, got > 0 ? got : 0);
+            upconf_parse(m->conf, buf, got > 0 ? got : 0);
             FreeVec(buf);
         }
+        Close(f);
+    } else {
     }
-    Close(f);
+    ReplyMsg((struct Message *)m);
+}
+
+static void config_load(con *c)
+{
+    struct MsgPort *port;
+    struct config_msg *m;
+    struct Process *w;
+    int spins;
+
+    if (!c->conf)
+        return; /* out of memory: the built-in defaults stand */
+    port = CreateMsgPort();
+    m = (struct config_msg *)AllocVec(sizeof(*m), MEMF_CLEAR);
+    if (!port || !m) {
+        if (m)
+            FreeVec(m);
+        if (port)
+            DeleteMsgPort(port);
+        return;
+    }
+    m->msg.mn_ReplyPort = port;
+    m->conf = c->conf;
+    w = CreateNewProcTags(NP_Entry, (ULONG)config_worker,
+                          NP_Name, (ULONG)"vtcon config", NP_StackSize, 8192,
+                          NP_Input, 0, NP_Output, 0,
+                          NP_CloseInput, FALSE, NP_CloseOutput, FALSE,
+                          NP_ConsoleTask, 0, TAG_DONE);
+    if (!w) {
+        FreeVec(m);
+        DeleteMsgPort(port);
+        return; /* no worker: the built-in defaults stand */
+    }
+    /* Bind the reply port before the request goes out: the worker can answer
+     * the moment it is scheduled, and a reply to an unbound port is a lost
+     * signal, which would leave the WaitPort below hanging forever. */
+    AddPort(port);
+    PutMsg(&w->pr_MsgPort, (struct Message *)m);
+    /* DOS is not waiting on us any more, so it can answer the worker. */
+    /* Poll for the reply rather than Wait()ing on a bit: this NDK has no
+     * Wait() prototype, and WaitPort() answers whichever port woke us, which
+     * can be the packet port -- dropping out on that loses the reply and hangs
+     * the window. Delay() is exec, not DOS, so it is safe here, and the bound
+     * keeps a worker that never answers from costing us the window. */
+    for (spins = 0; spins < 200; spins++) { /* ~10s */
+        struct Message *reply = GetMsg(port);
+        if (reply) {
+            ReplyMsg(reply); /* frees the request */
+            if (reply == (struct Message *)m)
+                break;
+            continue;
+        }
+        Delay(10);
+    }
+    DeleteMsgPort(port);
 }
 
 static int profile_exists(const upconf *cf, const char *name)
@@ -2189,7 +2261,7 @@ static LONG handler_main(void)
         c->node->dn_Task = c->port;
     ReplyPkt(p, DOSTRUE, 0);
     c->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
-    config_load(c); /* /ENV/up-term/up-term, while the process is still idle */
+    config_load(c); /* ENVARC:up-term/up-term, read by a worker (see above) */
 
     for (;;) {
         ULONG wait = 1UL << c->port->mp_SigBit;
