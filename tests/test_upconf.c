@@ -276,4 +276,33 @@ void suite_upconf(void)
     CHECK_STR(upconf_get(&c, "gamma", "k"), "3");
     CHECK(upconf_get(&c, "beta", "k") == 0);
     CHECK(!upconf_rmprof(&c, "beta"));
+
+    /* A palette index or colour too long for a long writes nothing out of
+     * the table (an index of 2^31 wrapped negative and wrote out16[-1]). */
+    {
+        static uc_u32 guard[18];
+        uc_u32 *pal = guard + 1;
+        guard[0] = guard[17] = 0xDEADBEEFUL;
+        CHECK_INT(upconf_palette_parse("2147483648,FFFFFF", pal), 0);
+        CHECK_INT(upconf_palette_parse("99999999999999999999,FFFFFF", pal), 0);
+        CHECK_INT(upconf_palette_parse("1,FFFFFFFFFFFFFFFFFF", pal), 0);
+        CHECK_INT(upconf_palette_parse("3,00FF00", pal), 1);
+        CHECK(guard[0] == 0xDEADBEEFUL && guard[17] == 0xDEADBEEFUL);
+    }
+
+    /* A line longer than the parser takes is dropped whole: its tail is no
+     * line of its own (a long font value smuggled in "bell=none"). */
+    {
+        static char longline[400];
+        int k;
+        strcpy(longline, "font = ");
+        for (k = 7; k < 300; k++)
+            longline[k] = 'a';
+        strcpy(longline + 300, "bell=none\nscrollback = 7\n");
+        upconf_parse(&c, longline, (long)strlen(longline));
+        CHECK(upconf_get(&c, "default", "bell") == 0);
+        CHECK(upconf_get(&c, "default", "font") == 0);
+        CHECK_STR(upconf_get(&c, "default", "scrollback"), "7");
+        CHECK(c.overflow);
+    }
 }

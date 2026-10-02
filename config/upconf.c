@@ -162,6 +162,17 @@ int upconf_parse(upconf *c, const char *buf, long len)
         while (i < len && buf[i] != '\n' && n < (long)sizeof(line) - 1)
             line[n++] = buf[i++];
         line[n] = 0;
+        if (i < len && buf[i] != '\n') {
+            /* longer than a line can be: the whole line is dropped -- its
+             * tail parsed as a line of its own let a long value smuggle in
+             * a key (2026-10-02 review) */
+            while (i < len && buf[i] != '\n')
+                i++;
+            c->overflow = 1;
+            if (i < len)
+                i++;
+            continue;
+        }
         if (i < len)
             i++; /* the newline */
         {
@@ -333,7 +344,8 @@ int upconf_palette_parse(const char *s, uc_u32 *out16)
         int any = 0;
         /* the pair "index,RRGGBB": a malformed one stops the list */
         while (*p >= '0' && *p <= '9') {
-            idx = idx * 10 + (*p - '0');
+            if (idx < 16) /* capped while it is read: no digit count wraps it */
+                idx = idx * 10 + (*p - '0');
             p++;
             any = 1;
         }
@@ -355,10 +367,12 @@ int upconf_palette_parse(const char *s, uc_u32 *out16)
                 rgb = rgb * 16 + (h - 'A' + 10);
             else
                 break;
+            if (rgb > 0xFFFFFF) /* too many digits: stop before it wraps */
+                break;
             p++;
             any = 1;
         }
-        if (!any || idx >= 16 || rgb > 0xFFFFFF)
+        if (!any || idx < 0 || idx >= 16 || rgb > 0xFFFFFF)
             break;
         out16[(int)idx] = 0x01000000UL | (uc_u32)rgb;
         n++;

@@ -99,6 +99,9 @@ typedef struct vtwin {
 } vtwin;
 
 void vtwin_init(vtwin *w, const vtwin_host *host, void *user);
+/* the profile fields to the historical look (vtwin_init does it; an owner
+ * that parses a new spec calls it again before applying a profile) */
+void vtwin_profile_defaults(vtwin *w);
 void vtwin_cleanup(vtwin *w);
 /* the frame clock's signal (0 without one) */
 ULONG vtwin_sigmask(const vtwin *w);

@@ -43,14 +43,17 @@ Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-T
 If EXISTS ENVARC:up-term/ixpipe
   Delete >NIL: DEVS:DOSDrivers/IXPIPE DEVS:DOSDrivers/IXPIPE.info L:ixpipe-handler QUIET
 EndIf
-; the window preferences the user edited with UP-Term Prefs are their own
-; data, not ours: kept once in ENVARC:up-term-orig/up-term (Install uses that
-; drawer for the TERMINFO it replaced)
+; the window preferences are the user's own data: kept as
+; ENVARC:UP-Term.prefs, which a later Install brings back
 If EXISTS ENVARC:up-term/up-term
-  If NOT EXISTS ENVARC:up-term-orig
-    MakeDir >NIL: ENVARC:up-term-orig
-  EndIf
-  Copy ENVARC:up-term/up-term ENVARC:up-term-orig/up-term CLONE QUIET
+  Copy ENVARC:up-term/up-term ENVARC:UP-Term.prefs CLONE QUIET
+EndIf
+; ls and dircolors only when Install put them there (its markers)
+If EXISTS ENVARC:up-term/ls
+  Delete >NIL: C:ls QUIET
+EndIf
+If EXISTS ENVARC:up-term/dircolors
+  Delete >NIL: C:dircolors QUIET
 EndIf
 Delete >NIL: ENVARC:up-term ENV:up-term ALL QUIET
 ; TERMINFO: ours goes, the user's from before Install comes back
@@ -72,9 +75,7 @@ EndIf
 If EXISTS ENVARC:up-term-orig/envarc
   Copy ENVARC:up-term-orig/envarc ENVARC:TERMINFO CLONE
 EndIf
-; our TERMINFO entries go; the user's TERMINFO comes back. The window
-; preferences copied to ENVARC:up-term-orig/up-term above stay.
-Delete >NIL: ENVARC:up-term-orig/env ENVARC:up-term-orig/envarc QUIET
+Delete >NIL: ENVARC:up-term-orig ALL QUIET
 Delete >NIL: ENVARC:vsh ENV:vsh ALL QUIET
 If EXISTS LIBS:ixemul.library.orig
   Copy LIBS:ixemul.library.orig LIBS:ixemul.library CLONE

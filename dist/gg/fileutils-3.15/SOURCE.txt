@@ -1,0 +1,9 @@
+GNU fileutils 3.15 for AmigaOS (ixemul), from the Amiga Development
+Environment (Geek Gadgets) as published on Aminet:
+
+  binaries  https://aminet.net/dev/gg/fileutils-bin.lha  (ls, dircolors here)
+  source    https://aminet.net/dev/gg/fileutils-src.lha  (in this drawer:
+            fileutils-3.15-src.lha, the complete corresponding source)
+
+Licence: GNU General Public License version 2 (COPYING, beside this file).
+UP-Term ships ls and dircolors unmodified.

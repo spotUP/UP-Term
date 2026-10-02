@@ -55,18 +55,25 @@ Copy ENVARC:up-term ENV:up-term ALL CLONE QUIET
 ; the window-preferences sample (/ENV/up-term/up-term, read by the XCON:
 ; handler, written by UP-Term Prefs): laid down where the user has no file,
 ; never over a file that is there
+; (up-term.conf in the kit: a file named up-term would be UP-Term, the
+; icon's stub, to AmigaDOS, which ignores case.) Preferences an earlier
+; Uninstall kept in ENVARC:UP-Term.prefs come back first.
 If NOT EXISTS ENVARC:up-term/up-term
-  Copy up-term ENVARC:up-term/up-term CLONE QUIET
+  If EXISTS ENVARC:UP-Term.prefs
+    Copy ENVARC:UP-Term.prefs ENVARC:up-term/up-term CLONE QUIET
+  Else
+    Copy up-term.conf ENVARC:up-term/up-term CLONE QUIET
+  EndIf
 EndIf
 If NOT EXISTS ENV:up-term/up-term
-  Copy up-term ENV:up-term/up-term CLONE QUIET
+  Copy ENVARC:up-term/up-term ENV:up-term/up-term CLONE QUIET
 EndIf
 SetEnv TERMINFO /ENV/up-term/terminfo
 Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
-; ls: GNU fileutils 3.16 from Geek Gadgets (gg/fileutils-3.16, GPL v2,
-; its COPYING ships beside it). The terminal can only show the colour a
+; ls: GNU fileutils 3.15 from Geek Gadgets (GPL v2: its COPYING and the
+; complete source are in the kit's fileutils-3.15 drawer). The terminal can only show the colour a
 ; listing program emits, and AmigaDOS Dir colours directories alone, so
 ; this is what makes `ls` type its output. C: is where resolve() in
 ; shell/vsh.c looks last, so a bare `ls` finds it; vshrc aliases it to
@@ -74,11 +81,18 @@ Copy ixkill C:ixkill CLONE
 ; existing C:ls or C:dircolors is the user's own, and Dir/List stay
 ; the AmigaDOS commands (they are residents, which resolve() finds
 ; before C: -- hence no dir/vdir here, they would never run).
+; A marker in ENVARC:up-term says the copy is ours, for Uninstall and for
+; vshrc's colour alias (a user's own ls may not know --color).
 If NOT EXISTS C:ls
   Copy ls C:ls CLONE
+  Echo >ENVARC:up-term/ls "installed by UP-Term"
 EndIf
 If NOT EXISTS C:dircolors
   Copy dircolors C:dircolors CLONE
+  Echo >ENVARC:up-term/dircolors "installed by UP-Term"
+EndIf
+If EXISTS ENVARC:up-term/ls
+  Copy ENVARC:up-term/ls ENV:up-term/ls CLONE QUIET
 EndIf
 ; the preferences editor: C:UP-Term Prefs (its file keeps the space) and a
 ; plain program icon in Utilities, beside UP-Term

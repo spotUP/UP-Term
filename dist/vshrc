@@ -49,11 +49,16 @@ clear() {
 # what a redirected ls must do, and LS_COLORS (see dircolors) picks the
 # colours; the ANSI numbers are whatever the window's profile defines.
 #
-# The tools still wrapped below (cp, mv, rm, mkdir, touch) shadow their
-# fileutils equivalents for exactly the reason the wrapper hid ls. The .. gate
-# is verified (ls .. lists the parent), so they can go the same way; see
+# The tools still wrapped below (cp, mv, rm, mkdir, touch) stay: they are
+# what makes ../x mean /x (the parent of an assign), which ixemul's own ..
+# does not (it stops at the assign's root); see
 # thoughts/shared/plans/2026-10-02_unix-userland.md.
-alias ls='ls --color=auto'
+#
+# The colour alias only for the ls UP-Term installed: a user's own ls may
+# not know --color (Install leaves a marker beside its copy).
+if [ -f ENV:up-term/ls ]; then
+    alias ls='ls --color=auto'
+fi
 
 # mkdir [-p] dir ...: -p makes each missing directory on the way
 mkdir() {

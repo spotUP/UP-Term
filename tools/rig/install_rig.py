@@ -44,6 +44,8 @@ def main():
     terminfo_before = terminfo_before.strip()
     run('Execute VTC:rununinstall')  # a run that stopped half-way left things behind
     startup_before = run('Type S:User-Startup')[1]
+    run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
+    ls_before = run('List >NIL: C:ls')[0] == 0  # the user's own ls: Install must leave it
     # the rig's boot assigns GG: (VTC:gg); take it away so Install's own
     # GG: set-up is what gets tested, and put it back at the end
     rig_gg = run('Assign >NIL: GG: EXISTS')[0] == 0
@@ -102,6 +104,11 @@ def main():
     check(rc == 0, 'the vtcon entry is where TERMINFO points', out)
     rc, out = run('Type ENVARC:TERMINFO')  # a file now: the old ENVARC:terminfo drawer was the same name
     check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is kept in ENVARC: (no drawer by that name)', out)
+    if not ls_before:
+        rc, out = run('C:ls --version')
+        check(rc == 0 and 'fileutils' in out and '3.15' in out, 'C:ls is GNU fileutils 3.15', out)
+        check(run('List >NIL: ENVARC:up-term/ls')[0] == 0, 'Install marked C:ls as its own', '')
+    check(run('List >NIL: ENVARC:up-term/up-term')[0] == 0, 'the window preferences file is in place', '')
     rc, out = run('C:tmux -V')
     check(rc == 0 and 'tmux 3.6a' in out, 'C:tmux runs', out)
     if not gg_before:
@@ -137,9 +144,14 @@ def main():
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
                         'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
-                        'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device')
+                        'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
+                        '"C:UP-Term Prefs"', 'SYS:Utilities/UP-Term-Prefs', 'SYS:Utilities/UP-Term-Prefs.info')
             if run('List >NIL: %s' % f)[0] == 0]
+    if not ls_before:
+        left += [f for f in ('C:ls', 'C:dircolors') if run('List >NIL: %s' % f)[0] == 0]
     check(not left, 'Uninstall removed the files', ' '.join(left))
+    check(run('List >NIL: ENVARC:UP-Term.prefs')[0] == 0, 'Uninstall kept the user\'s preferences', '')
+    run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')
     if rig_gg:
         run('Assign GG: VTC:gg')
     # LIBS: as the rig runs (the patched ixemul first): this test set it to

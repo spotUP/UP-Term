@@ -121,11 +121,24 @@ static void cb_layout(void *u, int which, int value)
 
 /* ---- lifetime ----------------------------------------------------------------- */
 
+void vtwin_profile_defaults(vtwin *w)
+{
+    w->bell = 1;          /* beep; a profile may choose none or a flash */
+    w->bold_bright = 1;   /* xterm SGR 1 takes the bright 8-15 */
+    w->wheel_scroll = 1;  /* the wheel moves through the scrollback */
+    w->cursor_rgb = VR_KEEP;
+    w->sel_fg_rgb = w->sel_bg_rgb = VR_KEEP;
+}
+
 void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
 {
     w->host = host;
     w->user = user;
     w->find_next = VT_ROW_NONE;
+    /* every owner starts from the historical look: a console.device unit
+     * (MEMF_CLEAR'd) had a silent bell, a black cursor and black-on-black
+     * selection (2026-10-02 review) */
+    vtwin_profile_defaults(w);
     w->frame_port = CreateMsgPort();
     if (w->frame_port) {
         w->frame = (struct timerequest *)CreateIORequest(w->frame_port, sizeof(struct timerequest));

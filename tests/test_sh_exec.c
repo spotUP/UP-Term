@@ -667,6 +667,8 @@ static void read_builtin(void)
 
 /* dist/vshrc: the Unix names turn into the AmigaDOS commands, flags and
  * ../ names translated (the fake AmigaDOS commands print what they got). */
+static int vshrc_ours = 1; /* Install's marker: the C:ls is UP-Term's */
+
 static const char *with_vshrc(const char *text)
 {
     static char rc[8192];
@@ -677,6 +679,8 @@ static const char *with_vshrc(const char *text)
         fclose(f);
     rc[n] = 0;
     fresh();
+    if (vshrc_ours)
+        sh_run_text(&sh, "echo ours >ENV:up-term/ls", &inc);
     sh_run_text(&sh, rc, &inc);
     CHECK_STR(slot(ERR)->data, "");      /* it parses and runs clean */
     sh_run_text(&sh, text, &inc);
@@ -692,6 +696,11 @@ static void vshrc_unix_names(void)
     CHECK_STR(with_vshrc("ls"), "<--color=auto>\n");
     CHECK_STR(with_vshrc("ls -la ../x ./y"), "<--color=auto><-la><../x><./y>\n");
     CHECK_STR(with_vshrc("ll ../../z"), "<--color=auto><-l><../../z>\n");
+    /* a C:ls the user had before Install (no marker) gets no --color: it may
+     * not be GNU's */
+    vshrc_ours = 0;
+    CHECK_STR(with_vshrc("ls -l"), "<-l>\n");
+    vshrc_ours = 1;
     CHECK_STR(with_vshrc("mkdir -p RAM:a/b"), "<MakeDir><RAM:a>\n<MakeDir><RAM:a/b>\n");
     CHECK_STR(with_vshrc("mkdir one 'two words'"), "<MakeDir><one>\n<MakeDir><two words>\n");
     CHECK_STR(with_vshrc("rm -r old"), "<Delete><old><ALL><QUIET>\n");

@@ -510,7 +510,12 @@ static void config_worker(void)
     WaitPort(&me->pr_MsgPort); /* the request, before any DOS call */
     m = (struct config_msg *)GetMsg(&me->pr_MsgPort);
     me->pr_WindowPtr = (APTR)-1; /* no requesters from a file that may be absent */
-    f = Open((STRPTR)"ENVARC:up-term/up-term", MODE_OLDFILE);
+    /* ENV: first, as Amiga prefs do (the editor's Use writes there; Install
+     * and Save copy to both), ENVARC: when ENV: has none (a fresh boot
+     * before ENVARC: was copied) */
+    f = Open((STRPTR)"ENV:up-term/up-term", MODE_OLDFILE);
+    if (!f)
+        f = Open((STRPTR)"ENVARC:up-term/up-term", MODE_OLDFILE);
     if (f) {
         /* Read straight up to the cap rather than Seek()ing to the end first:
          * on 3.1 that Seek answers 0 for this file, and the read is skipped. */
@@ -522,8 +527,8 @@ static void config_worker(void)
             FreeVec(buf);
         }
         Close(f);
-    } else {
     }
+    Forbid(); /* the opener frees m: end before it can run on */
     ReplyMsg((struct Message *)m);
 }
 
@@ -532,7 +537,6 @@ static void config_load(con *c)
     struct MsgPort *port;
     struct config_msg *m;
     struct Process *w;
-    int spins;
 
     if (!c->conf)
         return; /* out of memory: the built-in defaults stand */
@@ -557,27 +561,17 @@ static void config_load(con *c)
         DeleteMsgPort(port);
         return; /* no worker: the built-in defaults stand */
     }
-    /* Bind the reply port before the request goes out: the worker can answer
-     * the moment it is scheduled, and a reply to an unbound port is a lost
-     * signal, which would leave the WaitPort below hanging forever. */
-    AddPort(port);
+    /* CreateMsgPort binds the port to us: the worker's reply sets its
+     * signal whenever it comes, so WaitPort cannot miss it. The port stays
+     * private -- AddPort put it on exec's public list, and deleting it
+     * without RemPort left a freed node there (every window open corrupted
+     * the system port list, 2026-10-02 review). The worker only reads a file:
+     * waiting for it here is what the ROM con-handler does for its own
+     * reads; DOS is not waiting on us any more, so it can answer the worker. */
     PutMsg(&w->pr_MsgPort, (struct Message *)m);
-    /* DOS is not waiting on us any more, so it can answer the worker. */
-    /* Poll for the reply rather than Wait()ing on a bit: this NDK has no
-     * Wait() prototype, and WaitPort() answers whichever port woke us, which
-     * can be the packet port -- dropping out on that loses the reply and hangs
-     * the window. Delay() is exec, not DOS, so it is safe here, and the bound
-     * keeps a worker that never answers from costing us the window. */
-    for (spins = 0; spins < 200; spins++) { /* ~10s */
-        struct Message *reply = GetMsg(port);
-        if (reply) {
-            ReplyMsg(reply); /* frees the request */
-            if (reply == (struct Message *)m)
-                break;
-            continue;
-        }
-        Delay(10);
-    }
+    WaitPort(port);
+    GetMsg(port);
+    FreeVec(m);
     DeleteMsgPort(port);
 }
 
@@ -683,11 +677,7 @@ static void parse_spec(con *c, const char *s)
     if (node_named(c, "RAW"))
         c->raw = 1;
     c->w.fg_rgb = c->w.bg_rgb = VR_KEEP;
-    c->w.bell = 1;          /* beep; the profile may choose none or a flash */
-    c->w.bold_bright = 1;   /* xterm SGR 1 takes the bright 8-15 */
-    c->w.wheel_scroll = 1;  /* the wheel moves through the scrollback */
-    c->w.cursor_rgb = VR_KEEP;
-    c->w.sel_fg_rgb = c->w.sel_bg_rgb = VR_KEEP;
+    vtwin_profile_defaults(&c->w); /* a profile may change them */
     copy_str(c->profile, "default", sizeof(c->profile));
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;
