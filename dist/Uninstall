@@ -33,10 +33,20 @@ If NOT "$unst" EQ ""
   EndIf
 EndIf
 UnSet unst
+; TMP: only when Install assigned it (its marker)
+If EXISTS ENVARC:up-term/tmp
+  Assign >NIL: TMP: T: REMOVE
+EndIf
+; GG: only when Install assigned it (its marker; older kits kept
+; unstartup.sh in SYS:UP-Term then). SYS:UP-Term is UP-Term's own drawer
+; (bin: coreutils and sh)
+If EXISTS ENVARC:up-term/gg
+  Assign >NIL: GG: SYS:UP-Term REMOVE
+EndIf
 If EXISTS SYS:UP-Term/unstartup.sh
   Assign >NIL: GG: SYS:UP-Term REMOVE
-  Delete >NIL: SYS:UP-Term ALL QUIET
 EndIf
+Delete >NIL: SYS:UP-Term ALL QUIET
 Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
 Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-Term-Prefs SYS:Utilities/UP-Term-Prefs.info QUIET
@@ -48,7 +58,7 @@ EndIf
 If EXISTS ENVARC:up-term/up-term
   Copy ENVARC:up-term/up-term ENVARC:UP-Term.prefs CLONE QUIET
 EndIf
-; the fileutils commands only when Install put them there (its markers)
+; the fileutils commands older kits put in C: (their markers)
 If EXISTS ENVARC:up-term/ls
   Delete >NIL: C:ls QUIET
 EndIf

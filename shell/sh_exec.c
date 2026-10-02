@@ -14,6 +14,39 @@ static const char *dev_name(const char *path)
         return "*";
     return path;
 }
+int sh_path_next(const char **p, char *dir, long max)
+{
+    while (*p) {
+        const char *e = *p, *end = strchr(e, ':');
+        long n = end ? (long)(end - e) : (long)strlen(e);
+        long o = 0;
+        *p = end ? end + 1 : 0;
+        if (n == 1 && (*e == '/' || *e == '.')) {
+            if (*e == '/')
+                continue;     /* the volume list holds no commands */
+            n = 0;            /* "." */
+        }
+        if (n + 2 > max)
+            continue;
+        if (n && *e == '/') { /* /vol/rest: vol:rest */
+            long i = 1;
+            while (i < n && e[i] != '/')
+                dir[o++] = e[i++];
+            dir[o++] = ':';
+            if (i < n)
+                i++;
+            while (i < n)
+                dir[o++] = e[i++];
+        } else {
+            memcpy(dir, e, (size_t)n);
+            o = n;
+        }
+        dir[o] = 0;
+        return 1;
+    }
+    return 0;
+}
+
 static char *sdup(const char *s)
 {
     size_t n = strlen(s);

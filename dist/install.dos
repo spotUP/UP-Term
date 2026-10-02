@@ -80,48 +80,6 @@ SetEnv TERMINFO /ENV/up-term/terminfo
 Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
-; ls, dircolors, cp, mv, rm, mkdir, touch: GNU fileutils 3.15 from Geek Gadgets (GPL v2: its COPYING and the
-; complete source are in the kit's fileutils-3.15 drawer). The terminal can only show the colour a
-; listing program emits, and AmigaDOS Dir colours directories alone, so
-; this is what makes `ls` type its output. C: is where resolve() in
-; shell/vsh.c looks last, so a bare `ls` finds it; vshrc aliases it to
-; --color=auto. Skip both copies if the machine already has one: an
-; existing C:ls or C:dircolors is the user's own, and Dir/List stay
-; the AmigaDOS commands (they are residents, which resolve() finds
-; before C: -- hence no dir/vdir here, they would never run).
-; A marker in ENVARC:up-term says the copy is ours, for Uninstall and for
-; vshrc's colour alias (a user's own ls may not know --color).
-If NOT EXISTS C:ls
-  Copy ls C:ls CLONE
-  Echo >ENVARC:up-term/ls "installed by UP-Term"
-EndIf
-If NOT EXISTS C:dircolors
-  Copy dircolors C:dircolors CLONE
-  Echo >ENVARC:up-term/dircolors "installed by UP-Term"
-EndIf
-If NOT EXISTS C:cp
-  Copy cp C:cp CLONE
-  Echo >ENVARC:up-term/cp "installed by UP-Term"
-EndIf
-If NOT EXISTS C:mv
-  Copy mv C:mv CLONE
-  Echo >ENVARC:up-term/mv "installed by UP-Term"
-EndIf
-If NOT EXISTS C:rm
-  Copy rm C:rm CLONE
-  Echo >ENVARC:up-term/rm "installed by UP-Term"
-EndIf
-If NOT EXISTS C:mkdir
-  Copy mkdir C:mkdir CLONE
-  Echo >ENVARC:up-term/mkdir "installed by UP-Term"
-EndIf
-If NOT EXISTS C:touch
-  Copy touch C:touch CLONE
-  Echo >ENVARC:up-term/touch "installed by UP-Term"
-EndIf
-If EXISTS ENVARC:up-term/ls
-  Copy ENVARC:up-term/ls ENV:up-term/ls CLONE QUIET
-EndIf
 ; the preferences editor: C:UP-Term Prefs (its file keeps the space) and a
 ; plain program icon in Utilities, beside UP-Term
 Copy "UP-Term Prefs" "C:UP-Term Prefs" CLONE
@@ -133,29 +91,66 @@ Copy screenrc ENV:screenrc CLONE
 Copy tmux C:tmux CLONE
 Copy tmux.conf ENVARC:tmux.conf CLONE
 Copy tmux.conf ENV:tmux.conf CLONE
+ The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
+; wc... GPL v2: COPYING and the complete source are in the kit's
+; coreutils-5.2.1 drawer) in UP-Term's own drawer SYS:UP-Term/bin, not C::
+; AmigaDOS names ignore case, so GNU sort, date, join and install would be
+; C:Sort, C:Date, C:Join and C:Install, which the system's scripts need.
+; vsh finds them through $PATH (vshrc puts /SYS/UP-Term/bin first), and so
+; do ixemul programs (execvp reads the same $PATH); the AmigaDOS Shell
+; keeps its own commands.
+MakeDir >NIL: SYS:UP-Term SYS:UP-Term/bin
+Copy coreutils/bin SYS:UP-Term/bin ALL CLONE QUIET
 ; The shell ixemul programs run (system(), popen(), tmux's jobs) is
-; /gg/bin/sh -- GG:bin/sh, where Geek Gadgets keeps its sh. Without a GG:
-; UP-Term gives one: SYS:UP-Term with vsh as bin/sh, assigned at every
-; boot by a marked block in S:User-Startup (Uninstall takes it out). An
-; existing GG: is left as it is.
+; /gg/bin/sh -- GG:bin/sh, where Geek Gadgets keeps its sh: vsh, as
+; SYS:UP-Term/bin/sh. Without a GG: SYS:UP-Term is GG:, assigned at every
+; boot by a marked block in S:User-Startup (Uninstall takes it out, its
+; marker says Install made it). An existing GG: is left as it is.
+Copy vsh SYS:UP-Term/bin/sh CLONE
 Assign >NIL: GG: EXISTS
 If WARN
-  MakeDir >NIL: SYS:UP-Term SYS:UP-Term/bin
-  Copy vsh SYS:UP-Term/bin/sh CLONE
-  Copy unstartup.sh SYS:UP-Term/unstartup.sh CLONE
   Assign GG: SYS:UP-Term
+  Echo >ENVARC:up-term/gg "installed by UP-Term"
   If NOT EXISTS S:User-Startup
     Echo >S:User-Startup ""
   EndIf
-  Search >NIL: S:User-Startup ";BEGIN UP-Term"
+  ; its own line, not ";BEGIN UP-Term": that also starts the other blocks
+  Search >NIL: S:User-Startup "Assign GG: SYS:UP-Term"
   If WARN
-    Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
     Echo >>S:User-Startup ";BEGIN UP-Term"
     Echo >>S:User-Startup "Assign >NIL: GG: EXISTS"
     Echo >>S:User-Startup "If WARN"
     Echo >>S:User-Startup "  Assign GG: SYS:UP-Term"
     Echo >>S:User-Startup "EndIf"
     Echo >>S:User-Startup ";END UP-Term"
+  EndIf
+EndIf
+; /tmp: ixemul programs put their temporary files there (sort, mktemp,
+; vim's swap), and to ixemul /tmp is the volume TMP:, which AmigaOS does
+; not assign. Without one UP-Term assigns it to T:, at every boot by a
+; marked block in S:User-Startup; Uninstall takes both away. An existing
+; TMP: is left as it is.
+Assign >NIL: TMP: EXISTS
+If WARN
+  Assign TMP: T:
+  Echo >ENVARC:up-term/tmp "installed by UP-Term"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup "Assign TMP: T:"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term tmp"
+    Echo >>S:User-Startup "Assign >NIL: TMP: EXISTS"
+    Echo >>S:User-Startup "If WARN"
+    Echo >>S:User-Startup "  Assign TMP: T:"
+    Echo >>S:User-Startup "EndIf"
+    Echo >>S:User-Startup ";END UP-Term tmp"
   EndIf
 EndIf
 ; the Workbench way in: double-click UP-Term (its tool is C:vsh; the

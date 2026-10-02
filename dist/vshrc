@@ -1,8 +1,5 @@
 # vsh's startup file. Install copies it to ENVARC:vsh/vshrc; vsh reads it
 # before $HOME/.vshrc, where your own settings go.
-#
-# cat is still a function over AmigaDOS Type (fileutils has no cat):
-# names are passed on as AmigaDOS names, ../x becomes /x, ./x becomes x.
 
 # vsh reads $HOME/.vshrc straight after this file, and the shell's default
 # HOME is the volume HOME:, which nothing assigns: an interactive vsh then
@@ -14,63 +11,26 @@ if [ ! -d "${HOME:-HOME:}" ] 2>/dev/null; then
 fi
 export HOME
 
-# _amiga NAME: NAME as AmigaDOS writes it, in _r
-_amiga() {
-    _u=$1
-    _o=
-    while :; do
-        case $_u in
-        ./*) _u=${_u#./} ;;
-        ../*) _o="$_o/"; _u=${_u#../} ;;
-        ..) _o="$_o/"; _u= ;;
-        .) _u= ;;
-        *) break ;;
-        esac
-    done
-    _r="$_o$_u"
-}
-
 clear() {
     printf '\033[H\033[2J'
 }
 
-# ls: the real GNU ls, not a Dir/List wrapper. A terminal can only show the
-# colour a program emits, and Dir colours directories alone, so file-type
-# colouring has to come from the listing program. The kit installs GNU
-# fileutils' ls and dircolors as C:ls and C:dircolors (see Install), which is
-# where resolve() in shell/vsh.c looks last, so a bare ls finds them. The
-# wrapper function used to be defined here and, being a function, hid that
-# command, so it is gone rather than overridden. Type Dir or List directly for
-# the AmigaDOS form, or unset the alias to get ls without colour.
-#
-# --color=auto keeps colour off when the output is a pipe or a file, which is
-# what a redirected ls must do, and LS_COLORS (see dircolors) picks the
-# colours; the ANSI numbers are whatever the window's profile defines.
-#
-# cp, mv, rm, mkdir and touch are fileutils' too (C:, installed the same
-# way), so their flags and paths are the Unix ones: .. is the parent, / is
-# the volume list. Copy, Rename, Delete and MakeDir stay the AmigaDOS forms.
-#
-# The colour alias only for the ls UP-Term installed: a user's own ls may
-# not know --color (Install leaves a marker beside its copy).
-if [ -f ENV:up-term/ls ]; then
-    alias ls='ls --color=auto'
+# The Unix commands are GNU coreutils 5.2.1 in SYS:UP-Term/bin (see
+# Install): ls, cp, mv, rm, mkdir, cat, sort, head, tail, wc and the rest,
+# with their Unix flags and paths (.. is the parent, / the volume list).
+# $PATH is in Unix form, the way ixemul programs read it too, and comes
+# before the Shell's own path and C:, so sort here is GNU sort while the
+# AmigaDOS Shell keeps C:Sort. Dir, List, Copy, Delete, Type and the other
+# AmigaDOS commands keep their names. A PATH you set is left alone.
+if [ -z "$PATH" ]; then
+    PATH=/SYS/UP-Term/bin:/gg/bin:/c
 fi
+export PATH
 
-# cat [name ...]: the files, or what comes in
-cat() {
-    if [ $# = 0 ]; then
-        while IFS= read -r _l; do printf '%s\n' "$_l"; done
-        return 0
-    fi
-    for _x; do
-        shift
-        _amiga "$_x"
-        set -- "$@" "$_r"
-    done
-    Type "$@"
-}
-
+# ls in colour on a terminal: --color=auto keeps it off when the output is
+# a pipe or a file. The ANSI colour numbers are whatever the window's
+# profile defines.
+alias ls='ls --color=auto'
 alias ll='ls -l'
 
 # The Up Rough banner when an interactive vsh starts on a terminal (not

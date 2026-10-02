@@ -439,12 +439,20 @@ static long os_stack(void *os, long bytes)
  * for SystemTags (Resident commands, scripts). -1: found nowhere. The
  * Shell's order: a path as given; else the current directory, the
  * Shell's path, C:. */
-static int resolve(const char *name, BPTR *seg)
+/* Find a command the way a Shell does: residents, a name with a path or
+ * in the current directory, then the directories of $PATH (path, Unix
+ * form: sh_path_next), the Shell's path, C:. *seg is the loaded command (0
+ * for a script or a resident: SystemTags runs those). A command found
+ * through $PATH has its full name in found (found[0] = 0 otherwise), so a
+ * script there runs as that file and not as a same-named command of the
+ * Shell's path (C:Sort for sort). -1: not found. */
+static int resolve(const char *name, const char *path, BPTR *seg, char *found, long max)
 {
     struct CommandLineInterface *cli = Cli();
     BPTR lock, old;
     BPTR *node;
     *seg = 0;
+    found[0] = 0;
     if (!strchr(name, ':') && !strchr(name, '/')) {
         struct Segment *r;
         Forbid();
@@ -462,6 +470,35 @@ static int resolve(const char *name, BPTR *seg)
     }
     if (strchr(name, ':') || strchr(name, '/'))
         return -1;
+    if (path) {
+        /* no "insert volume GG" requester for a $PATH volume this machine
+         * does not have: the entry is skipped */
+        struct Process *me = (struct Process *)FindTask(0);
+        APTR win = me->pr_WindowPtr;
+        const char *p = path;
+        char dir[256];
+        BPTR f = 0;
+        me->pr_WindowPtr = (APTR)-1;
+        while (!f && sh_path_next(&p, dir, sizeof(dir))) {
+            if (!dir[0])
+                continue; /* the current directory: looked at above */
+            if (!(lock = Lock((STRPTR)dir, SHARED_LOCK)))
+                continue;
+            old = CurrentDir(lock);
+            if ((f = Lock((STRPTR)name, SHARED_LOCK)) != 0) {
+                UnLock(f);
+                *seg = LoadSeg((STRPTR)name);
+                if ((long)(strlen(dir) + strlen(name) + 2) <= max) {
+                    strcpy(found, dir);
+                    AddPart((STRPTR)found, (STRPTR)name, max);
+                }
+            }
+            UnLock(CurrentDir(old));
+        }
+        me->pr_WindowPtr = win;
+        if (f)
+            return 0;
+    }
     for (node = cli ? (BPTR *)BADDR(cli->cli_CommandDir) : 0; node; node = (BPTR *)BADDR(node[0])) {
         if (!node[1])
             continue;
@@ -501,15 +538,27 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     job *j;
     struct Process *p;
     BPTR seg;
+    char found[256];
     if (!cmd)
         return -1;
-    if (resolve(argv[0], &seg) < 0) {
+    if (resolve(argv[0], sh_get(&sh->ctx, "PATH"), &seg, found, sizeof(found)) < 0) {
         free(cmd);
         if ((io->owned & SH_OWN_IN) && io->in)
             close_stream((BPTR)io->in);
         if ((io->owned & SH_OWN_OUT) && io->out)
             close_stream((BPTR)io->out);
         return -1;
+    }
+    if (found[0]) {
+        /* found through $PATH: the command line names that file */
+        char *a0 = argv[0], *full;
+        argv[0] = found;
+        full = command_line(argv);
+        argv[0] = a0;
+        if (full) {
+            free(cmd);
+            cmd = full;
+        }
     }
     j = (job *)AllocVec(sizeof(job), MEMF_PUBLIC | MEMF_CLEAR);
     if (!j) {

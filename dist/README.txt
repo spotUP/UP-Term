@@ -138,15 +138,22 @@ VSH (the shell)
   stopped or in the background. ixkill (C:ixkill) sends Unix signals to
   ixemul programs:  ixkill -TERM 0x<process> Subshells, $( ) and all but the last stage of a
   pipeline run as processes of their own (there is no fork on the Amiga).
-  Amiga commands run as usual; the command path is the Shell's (Path).
+  Commands are looked for in $PATH (Unix form, as ixemul programs read it:
+  /SYS/UP-Term/bin:/gg/bin:/c by default), then the Shell's path (Path).
   Startup: ENVARC:vsh/vshrc, then $HOME/.vshrc (HOME defaults to SYS:).
   Stack: vsh needs none set (it takes 64 KB itself). The commands it runs
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
   when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).
   Prompt: PS1 takes bash (\w \u \h) and zsh (%~ %n %m %? %F{red}...%f)
   escapes; default %F{cyan}%~%f %#.
-  The vshrc gives Unix names: ls (-l) mkdir (-p) rm (-r -f) cp (-r) mv cat
-  touch clear ll; ../x is passed on as /x.
+  Unix commands: GNU coreutils 5.2.1 (ls cp mv rm mkdir cat sort head tail
+  wc tr cut uniq seq du stat dd tee date and the rest, 86 in all) in
+  SYS:UP-Term/bin, first in vsh's $PATH. They are not in C: (AmigaDOS
+  names ignore case: GNU sort would be C:Sort), so the AmigaDOS Shell keeps
+  its own commands. .. is the parent directory, / the list of volumes.
+  /tmp is TMP:; without one Install assigns it to T: at every boot.
+  coreutils is GPL v2: COPYING and the complete source are in the kit's
+  Files/coreutils drawer.
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

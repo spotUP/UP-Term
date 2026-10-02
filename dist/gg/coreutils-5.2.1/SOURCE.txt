@@ -1,0 +1,12 @@
+GNU coreutils 5.2.1-9 for AmigaOS m68k (ixemul), the Amiga compile of the
+OS4 port, as published on Aminet:
+
+  https://aminet.net/dev/gg/coreutils-bin-src.lha
+    bin/   the 68020 soft-float binaries of that archive (coreutils-020s-bin),
+           unmodified
+    coreutils-5.2.1-src.tar.bz2   its src.tar.bz2: the complete
+           corresponding source
+
+Licence: GNU General Public License version 2 (COPYING, beside this file).
+The archive's readme asks for ixemul 48.3; measured on the rig, the tools run
+on UP-Term's patched ixemul 48.2 (thoughts/shared/plans/2026-10-02_unix-userland.md).

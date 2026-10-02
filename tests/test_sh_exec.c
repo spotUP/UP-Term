@@ -140,7 +140,7 @@ static long f_read_line(void *os, sh_fh fh, char *buf, long max)
 
 static int is_vshrc_cmd(const char *n)
 {
-    /* what the vshrc reaches: Type (its cat), the fileutils commands, and
+    /* what the vshrc reaches: the coreutils commands, Type, and
      * Dir/List, which no ls may turn into again */
     static const char *const names[] = { "Dir", "List", "Type", "cp", "mv", "rm", "mkdir",
                                          "touch", 0 };
@@ -671,9 +671,10 @@ static void read_builtin(void)
     CHECK_STR(run("IFS=:; echo 'p:q' | { read x y; echo \"$x $y\"; }"), "p q\n");
 }
 
-/* dist/vshrc: the Unix names turn into the AmigaDOS commands, flags and
- * ../ names translated (the fake AmigaDOS commands print what they got). */
-static int vshrc_ours = 1; /* Install's marker: the C:ls is UP-Term's */
+/* dist/vshrc: the Unix names reach coreutils' commands as typed (the fake
+ * commands print what they got). */
+
+static const char *vshrc_pre; /* run before the vshrc (a user's setting) */
 
 static const char *with_vshrc(const char *text)
 {
@@ -685,12 +686,37 @@ static const char *with_vshrc(const char *text)
         fclose(f);
     rc[n] = 0;
     fresh();
-    if (vshrc_ours)
-        sh_run_text(&sh, "echo ours >ENV:up-term/ls", &inc);
+    if (vshrc_pre)
+        sh_run_text(&sh, vshrc_pre, &inc);
     sh_run_text(&sh, rc, &inc);
     CHECK_STR(slot(ERR)->data, "");      /* it parses and runs clean */
     sh_run_text(&sh, text, &inc);
     return slot(OUT)->data;
+}
+
+/* $PATH in Unix form, as ixemul programs read it, walked as AmigaDOS names */
+static const char *path_dirs(const char *path)
+{
+    static char out[256];
+    char d[64];
+    const char *p = path;
+    out[0] = 0;
+    while (sh_path_next(&p, d, sizeof(d))) {
+        strcat(out, "<");
+        strcat(out, d);
+        strcat(out, ">");
+    }
+    return out;
+}
+
+static void path_entries_are_amigados_dirs(void)
+{
+    CHECK_STR(path_dirs("/SYS/UP-Term/bin:/gg/bin:/c"), "<SYS:UP-Term/bin><gg:bin><c:>");
+    CHECK_STR(path_dirs("bin::.:/"), "<bin><><>");      /* relative, current twice, no volume list */
+    CHECK_STR(path_dirs("/c:"), "<c:><>");              /* a trailing : is the current directory */
+    CHECK_STR(path_dirs(""), "<>");
+    CHECK_STR(path_dirs("/a/b/c/d"), "<a:b/c/d>");
+    CHECK_STR(path_dirs(0), "");
 }
 
 static void vshrc_unix_names(void)
@@ -702,21 +728,20 @@ static void vshrc_unix_names(void)
     CHECK_STR(with_vshrc("ls"), "<--color=auto>\n");
     CHECK_STR(with_vshrc("ls -la ../x ./y"), "<--color=auto><-la><../x><./y>\n");
     CHECK_STR(with_vshrc("ll ../../z"), "<--color=auto><-l><../../z>\n");
-    /* a C:ls the user had before Install (no marker) gets no --color: it may
-     * not be GNU's */
-    vshrc_ours = 0;
-    CHECK_STR(with_vshrc("ls -l"), "<-l>\n");
-    vshrc_ours = 1;
-    /* cp, mv, rm, mkdir and touch are fileutils' commands now, not
-     * functions over Copy/Rename/Delete/MakeDir/SetDate: flags and names
-     * reach them as typed (../b stays ../b, ixemul resolves it) */
+    /* cp, mv, rm, mkdir, touch and cat are coreutils' commands, not
+     * functions over Copy/Rename/Delete/MakeDir/SetDate/Type: flags and
+     * names reach them as typed (../b stays ../b, ixemul resolves it) */
     CHECK_STR(with_vshrc("mkdir -p RAM:a/b"), "<mkdir><-p><RAM:a/b>\n");
     CHECK_STR(with_vshrc("rm -rf old"), "<rm><-rf><old>\n");
     CHECK_STR(with_vshrc("cp -R a ../b"), "<cp><-R><a><../b>\n");
     CHECK_STR(with_vshrc("mv a 'two words'"), "<mv><a><two words>\n");
     CHECK_STR(with_vshrc("touch new"), "<touch><new>\n");
-    CHECK_STR(with_vshrc("cat f"), "<Type><f>\n");
-    CHECK_STR(with_vshrc("echo '  x y' | cat"), "  x y\n");
+    CHECK_STR(with_vshrc("echo '  x y' | cat"), "  x y\n");  /* the command, not a function over Type */
+    /* the Unix $PATH: UP-Term's bin first, kept when the user set one */
+    CHECK_STR(with_vshrc("echo $PATH"), "/SYS/UP-Term/bin:/gg/bin:/c\n");
+    vshrc_pre = "PATH=/mine";
+    CHECK_STR(with_vshrc("echo $PATH"), "/mine\n");
+    vshrc_pre = 0;
 }
 
 static void deep_recursion(void)
@@ -848,6 +873,7 @@ void suite_sh_exec(void)
     subshells();
     assignment_status_and_scope();
     read_builtin();
+    path_entries_are_amigados_dirs();
     vshrc_unix_names();
     deep_recursion();
     word_lists();

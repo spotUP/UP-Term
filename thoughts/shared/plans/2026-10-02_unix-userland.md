@@ -137,30 +137,47 @@ typed; fails on the old vshrc) and `install_rig` (on RAM:, `cp t ../u`,
 removes them). One AmigaDOS difference: a shell cannot `rm -r` the drawer it
 is in (the current directory is locked).
 
-## Why not a newer coreutils yet
+## Coreutils 5.2.1 runs on 48.2: no rebase needed (measured 2026-10-02)
 
-`dev/gg/coreutils-bin-src` (5.2.1-9, 2010, ~80 tools) needs **ixemul 48.3 or
-newer**; the rig runs the project's patched **48.2**. So it is one revision
-away, and that is the whole of the gap.
+The "needs ixemul 48.3" premise came from the Aminet readme
+(`dev/gg/coreutils-bin-src`), not from a measurement. On the rig, with the
+patched 48.2, all 86 tools of the archive answer `--version` (`false`,
+`groups` -- a script -- and `test` behave as designed), and file, text and
+pipe work runs. The 48.3 rebase is dropped from the queue.
 
-Two routes, and the difference matters:
+Two real defects showed up instead, both fixed:
 
-- **Rebase the patched tree onto 48.3.** Small delta onto a tree we already
-  patch. Unblocks coreutils 5.2.1 immediately.
-- **Rebase onto ixemul 80.x.** Already researched in
-  `2026-09-30_ixemul-80.1-vs-our-48.2-patches.md`: 3 patches drop, 6 carry
-  over, 6 need hand rework, SCM_RIGHTS needs a rewrite on 80's refcounted
-  streams, both handlers need a waiter list, the build script changes, and
-  the target fork is five days old with an unresolved freeze in its own
-  BUGS file. Worth doing eventually; not a small job.
+1. **`echo x | wc -c` printed 0.** ixemul's `fstat()` on a 3.1 `PIPE:`
+   (queue-handler) handle: `ExamineFH` fails (209) and `Seek()` answers 0
+   instead of -1 (IoErr 209), so the fallback called the pipe a regular
+   file of size 0, and `wc -c` trusts `st_size` for regular files.
+   Fixed in ixemul-vtcon at the root: `FH_SEEK` (packets.h) turns that
+   answer into -1; `fstat` reports `S_IFIFO`, `lseek` `ESPIPE`, and
+   `FIONREAD` no longer reads 0 off a pipe. Probe: `tests/amiga/fstatprobe.c`.
+2. **`sort` could not create `/tmp/...`.** To ixemul `/tmp` is the volume
+   `TMP:`, which AmigaOS does not assign. Install assigns `TMP:` to `T:`
+   when there is none (marked block in S:User-Startup, marker
+   `ENVARC:up-term/tmp`, Uninstall removes both).
 
-Start with 48.3. The 80.x rebase is a separate piece of work with a
-separate risk budget.
+### Decision (lead, 2026-10-02): coreutils replaces fileutils, in SYS:UP-Term/bin
 
-Note that the 80.1 research doc is stale in one respect: it cites
-`~/Code/ixemul-vtcon` at `5f2d856`, and the tree has since moved to
-`ddd6e22` (per-process malloc cache, real `FIONREAD` on a vtcon console or
-PTY:, gcc-3 `%zu` handling).
+- GNU `sort`, `date`, `join`, `install` cannot live in `C:`: AmigaDOS names
+  ignore case, so they would be `C:Sort`, `C:Date`... which system scripts
+  use. The "skip when C: has one" rule would silently drop exactly those.
+- So the Unix userland lives in UP-Term's own drawer `SYS:UP-Term/bin`
+  (always created now; it already held `sh`), and **vsh honours `$PATH`**
+  in Unix form, the same variable ixemul's `execvp` reads
+  (`sh_path_next`, host-tested). vshrc sets
+  `PATH=/SYS/UP-Term/bin:/gg/bin:/c` when unset. A missing `$PATH` volume
+  raises no requester.
+- The `C:ls`/`C:cp`... copies and their markers are gone (Uninstall still
+  removes those of older kits). The `cat` function over `Type` is gone too.
+- The AmigaDOS Shell keeps its own commands; the Unix names are vsh's.
+- fileutils 3.15 is removed from the kit; coreutils' 020 soft-float
+  binaries and the complete source ship in `Files/coreutils`.
+
+Follow-up: `which` says only "is a command"; it could print the file found
+through `$PATH`.
 
 ## The e-bit caveat
 

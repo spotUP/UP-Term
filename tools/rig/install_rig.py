@@ -45,9 +45,8 @@ def main():
     run('Execute VTC:rununinstall')  # a run that stopped half-way left things behind
     startup_before = run('Type S:User-Startup')[1]
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
-    ls_before = run('List >NIL: C:ls')[0] == 0  # the user's own ls: Install must leave it
-    FU = ('cp', 'mv', 'rm', 'mkdir', 'touch')
-    fu_before = [t for t in FU if run('List >NIL: C:%s' % t)[0] == 0]  # likewise
+    ls_before = run('List >NIL: C:ls')[0] == 0  # Install puts no Unix command in C:
+    tmp_before = run('Assign >NIL: TMP: EXISTS')[0] == 0
     # the rig's boot assigns GG: (VTC:gg); take it away so Install's own
     # GG: set-up is what gets tested, and put it back at the end
     rig_gg = run('Assign >NIL: GG: EXISTS')[0] == 0
@@ -106,23 +105,31 @@ def main():
     check(rc == 0, 'the vtcon entry is where TERMINFO points', out)
     rc, out = run('Type ENVARC:TERMINFO')  # a file now: the old ENVARC:terminfo drawer was the same name
     check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is kept in ENVARC: (no drawer by that name)', out)
-    if not ls_before:
-        rc, out = run('C:ls --version')
-        check(rc == 0 and 'fileutils' in out and '3.15' in out, 'C:ls is GNU fileutils 3.15', out)
-        check(run('List >NIL: ENVARC:up-term/ls')[0] == 0, 'Install marked C:ls as its own', '')
-    if not fu_before:
-        # the shims are gone: these are fileutils' own, and .. is the parent
-        # (on RAM:, a real volume -- VTC:'s root is its own parent, an FS-UAE
-        # quirk). rm -r runs from outside: AmigaDOS keeps the current
-        # directory locked, so a shell can never delete the drawer it is in
-        rc, out = run('C:vsh -c "mkdir -p RAM:fu/a/b && touch RAM:fu/a/b/t && cd RAM:fu/a/b && '
-                      'cp t ../u && mv ../u ../../v && cd RAM: && rm -r fu/a && C:ls RAM:fu"', 30)
-        check(rc == 0 and out.split() == ['v'], 'cp, mv, rm, mkdir and touch are fileutils\' and .. is the parent', out)
-        rc, out = run('C:rm --version')
-        check(rc == 0 and 'fileutils' in out and '3.15' in out, 'C:rm is GNU fileutils 3.15', out)
-        check(all(run('List >NIL: ENVARC:up-term/%s' % t)[0] == 0 for t in FU),
-              'Install marked cp, mv, rm, mkdir and touch as its own', '')
+    # the Unix userland: coreutils in SYS:UP-Term/bin, reached through
+    # vshrc's $PATH, nothing in C:
+    rc, out = run('C:vsh -c "ls --version"')
+    check(rc == 0 and 'coreutils' in out and '5.2.1' in out, 'vsh\'s ls is GNU coreutils 5.2.1 (through $PATH)', out)
+    check((run('List >NIL: C:ls')[0] == 0) == ls_before, 'Install put no ls in C:', '')
+    # .. is the parent (on RAM:, a real volume -- VTC:'s root is its own
+    # parent, an FS-UAE quirk). rm -r runs from outside: AmigaDOS keeps the
+    # current directory locked, so a shell can never delete the drawer it is in
+    rc, out = run('C:vsh -c "mkdir -p RAM:fu/a/b && touch RAM:fu/a/b/t && cd RAM:fu/a/b && '
+                  'cp t ../u && mv ../u ../../v && cd RAM: && rm -r fu/a && ls RAM:fu"', 30)
+    check(rc == 0 and out.split() == ['v'], 'cp, mv, rm, mkdir and touch are coreutils\' and .. is the parent', out)
     run('Delete >NIL: RAM:fu ALL QUIET')
+    # a pipe reads as a pipe (ixemul fstat): wc -c counted 0 when it took
+    # PIPE: for an empty file
+    rc, out = run('C:vsh -c "echo hello | wc -c"', 30)
+    check(rc == 0 and out.strip() == '6', 'echo hello | wc -c counts 6 (a pipe is not an empty file)', out)
+    # sort is GNU sort in vsh (its temporary file in /tmp, TMP:), C:Sort in
+    # the AmigaDOS Shell
+    rc, out = run('C:vsh -c "seq 5 | sort -rn | head -2"', 30)
+    check(rc == 0 and out.split() == ['5', '4'], 'seq 5 | sort -rn | head -2 (GNU sort, /tmp works)', out)
+    rc, out = run('Which Sort')
+    check(out.strip().lower().endswith('c/sort'), 'the AmigaDOS Shell keeps C:Sort', out)
+    if not tmp_before:
+        rc, out = run('Search S:User-Startup "Assign TMP: T:"')
+        check('Assign TMP: T:' in out, 'S:User-Startup assigns TMP: (/tmp) at boot', out)
     check(run('List >NIL: ENVARC:up-term/up-term')[0] == 0, 'the window preferences file is in place', '')
     rc, out = run('C:tmux -V')
     check(rc == 0 and 'tmux 3.6a' in out, 'C:tmux runs', out)
@@ -162,9 +169,8 @@ def main():
                         'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
                         '"C:UP-Term Prefs"', 'SYS:Utilities/UP-Term-Prefs', 'SYS:Utilities/UP-Term-Prefs.info')
             if run('List >NIL: %s' % f)[0] == 0]
-    if not ls_before:
-        left += [f for f in ('C:ls', 'C:dircolors') if run('List >NIL: %s' % f)[0] == 0]
-    left += ['C:' + t for t in FU if t not in fu_before and run('List >NIL: C:%s' % t)[0] == 0]
+    if not tmp_before:
+        check(run('Assign >NIL: TMP: EXISTS')[0] != 0, 'after Uninstall: no TMP: (Install made it)')
     check(not left, 'Uninstall removed the files', ' '.join(left))
     check(run('List >NIL: ENVARC:UP-Term.prefs')[0] == 0, 'Uninstall kept the user\'s preferences', '')
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')

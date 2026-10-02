@@ -134,6 +134,14 @@ long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io);
  * completion and command colouring. */
 long sh_word_list(const sh_shell *sh, int kind, char *out, long max);
 
+/* The next directory of a Unix $PATH ("/gg/bin:/c:."), as AmigaDOS names
+ * it, into dir (at most max bytes): /vol/rest is vol:rest, /vol is vol:,
+ * an empty entry or "." the current directory (""), a relative entry
+ * stays relative. "/" (the volume list) and entries too long for dir are
+ * skipped. *p moves past the entry; 0 when the list is done. The same
+ * $PATH is what ixemul programs search (execvp), so both agree. */
+int sh_path_next(const char **p, char *dir, long max);
+
 /* Run one input text (a line, or a script). Returns the exit status of
  * its last command; *incomplete is set when the text needs more lines. */
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);
