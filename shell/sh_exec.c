@@ -3,6 +3,17 @@
 #include <string.h>
 #include "sh_exec.h"
 
+
+/* The Unix device names scripts use, as AmigaDOS has them: /dev/null is
+ * NIL:, /dev/tty the console ("*"). Any other name is passed as it is. */
+static const char *dev_name(const char *path)
+{
+    if (!strcmp(path, "/dev/null"))
+        return "NIL:";
+    if (!strcmp(path, "/dev/tty"))
+        return "*";
+    return path;
+}
 static char *sdup(const char *s)
 {
     size_t n = strlen(s);
@@ -292,7 +303,7 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
                      : r->kind == SH_R_APPEND ? SH_OPEN_APPEND : SH_OPEN_WRITE;
             if (!path)
                 return -1;
-            fh = sh->os.open(sh->os.data, path, mode);
+            fh = sh->os.open(sh->os.data, dev_name(path), mode);
             if (!fh)
                 err2(sh, parent, path, mode == SH_OPEN_READ ? "cannot open" : "cannot create");
             free(path);

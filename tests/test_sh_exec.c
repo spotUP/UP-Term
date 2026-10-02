@@ -483,6 +483,10 @@ static void control_flow(void)
 static void pipes_and_redirection(void)
 {
     CHECK_STR(run("echo hi there | upper"), "HI THERE\n");
+    /* /dev/null is NIL: (the vshrc's 2>/dev/null printed "cannot create"
+     * on every vsh start), /dev/tty the console */
+    CHECK_STR(run("echo gone >/dev/null; cat <NIL:"), "gone\n");
+    CHECK_STR(run("echo here >/dev/tty; cat <'*'"), "here\n");
     CHECK_STR(run("ls | cat | wc"), "2\n");
     CHECK_STR(run("echo a b | read x y; echo $y$x"), "ba\n");
     CHECK_STR(run("echo one >f; echo two >>f; cat <f"), "one\ntwo\n");
