@@ -24,6 +24,7 @@
 #include <libraries/asl.h>
 #include <string.h>
 #include "complete.h"
+#include "../prefs/prefs_dos.h"
 
 static int lower(int c)
 {
@@ -623,6 +624,10 @@ static void worker(void)
         font_pick(q);
     } else if (q->mode == COMPLETE_THEME) {
         theme_pick(q);
+    } else if (q->mode == CONFIG_SAVE) {
+        int failed;
+        q->font_size = prefs_dos_save(q->data, q->data_len, 1, &failed);
+        q->matches = q->font_size == PREFS_INSTALL_OK;
     } else if (q->mode == CHECK_COMMAND) {
         q->matches = command_exists(q);
     } else if (q->mode == HISTORY_LOAD) {

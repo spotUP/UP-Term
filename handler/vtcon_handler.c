@@ -54,6 +54,7 @@
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../config/upconf.h"
+#include "../prefs/prefs_core.h"
 
 /* rexx/rexxio.h: ARexx PUSH and QUEUE */
 #ifndef ACTION_STACK
@@ -145,6 +146,8 @@ typedef struct con {
     int spec_parsed;
     char profile[UC_NAME];       /* the config profile (spec's PROFILE; "default") */
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
+    ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
+    upconf *save_work;           /* Save settings to profile: the table once the file is written */
     upconf *conf;                /* the user config, read at startup (config/upconf.h) */
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
     struct MsgPort *comp_port;   /* Tab completion and command lookups answer here */
@@ -852,6 +855,8 @@ static void parse_spec(con *c, const char *s)
         c->w.fg_rgb = 0xC0C0C0UL;
         c->w.bg_rgb = 0x000000UL;
     }
+    c->spec_fg = c->w.fg_rgb;
+    c->spec_bg = c->w.bg_rgb;
     apply_profile(c); /* the profile's values, under the spec's own options */
 }
 
@@ -879,7 +884,8 @@ enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
        MENU_SET_BELL_BEEP, MENU_SET_BELL_VISUAL, MENU_SET_BOLD, MENU_SET_META_AMIGA,
        MENU_SET_META_ALT, MENU_SET_COPY, MENU_SET_WHEEL, MENU_SET_UNIX, MENU_SET_KINGCON,
        MENU_SET_KC_W, MENU_SET_KC_L, MENU_SET_KC_B, MENU_SET_KC_C, MENU_SET_KC_S,
-       MENU_SET_FONT, MENU_SET_THEME };
+       MENU_SET_FONT, MENU_SET_THEME, MENU_SET_SAVE,
+       MENU_SET_PROFILE0 = 100 /* + the profile's place in the file */ };
 
 /* Right Amiga C, V and F stay what they were: Intuition now hands them in
  * as MENUPICK, which picks the same actions. */
@@ -988,7 +994,8 @@ static void menu_add(con *c, struct Window *win)
         return; /* a window someone else opened keeps its own menus */
     {
         /* UP-Term, Settings, and the Complete menu under KingCON completion */
-        struct NewMenu nm[sizeof(menu_def) / sizeof(menu_def[0]) + MENU_SET_ITEMS + MENU_KC_ITEMS];
+        struct NewMenu nm[sizeof(menu_def) / sizeof(menu_def[0]) + MENU_SET_ITEMS + 2 + UC_MAX_PROFILES +
+                          MENU_KC_ITEMS];
         int n = sizeof(menu_def) / sizeof(menu_def[0]) - 1, i; /* without the NM_END */
         CopyMem((APTR)menu_def, nm, n * sizeof(struct NewMenu));
         CopyMem((APTR)menu_set, nm + n, sizeof(menu_set));
@@ -997,6 +1004,37 @@ static void menu_add(con *c, struct Window *win)
                 nm[i].nm_Label != NM_BARLABEL && !strcmp((const char *)nm[i].nm_Label, "KingCON style"))
                 nm[i].nm_Flags |= NM_ITEMDISABLED; /* Unix completion has no styles */
         n += MENU_SET_ITEMS;
+        {
+            /* Profile: the file's profiles, the window's checked; picking
+             * one switches the window to it (profile_switch) */
+            const char *names[UC_MAX_PROFILES + 1];
+            int np = c->conf ? upconf_profiles(c->conf, names) : 0, k;
+            memset(&nm[n], 0, sizeof(struct NewMenu) * 2);
+            nm[n].nm_Type = NM_ITEM;
+            nm[n].nm_Label = (STRPTR)"Profile";
+            n++;
+            if (!np) {
+                nm[n].nm_Type = NM_SUB;
+                nm[n].nm_Label = (STRPTR)"default";
+                nm[n].nm_Flags = CHECKIT | CHECKED | NM_ITEMDISABLED;
+                n++;
+            }
+            for (k = 0; k < np && k < UC_MAX_PROFILES; k++, n++) {
+                memset(&nm[n], 0, sizeof(struct NewMenu));
+                nm[n].nm_Type = NM_SUB;
+                nm[n].nm_Label = (STRPTR)names[k];
+                nm[n].nm_Flags = CHECKIT | (str_ieq(names[k], c->profile) ? CHECKED : 0);
+                nm[n].nm_MutualExclude = ~(1L << k) & ((1L << np) - 1);
+                nm[n].nm_UserData = (APTR)(LONG)(MENU_SET_PROFILE0 + k);
+            }
+            memset(&nm[n], 0, sizeof(struct NewMenu));
+            nm[n].nm_Type = NM_ITEM;
+            nm[n].nm_Label = (STRPTR)"Save settings to profile";
+            nm[n].nm_UserData = (APTR)(LONG)MENU_SET_SAVE;
+            if (!c->conf)
+                nm[n].nm_Flags = NM_ITEMDISABLED;
+            n++;
+        }
         if (c->kingcon) {
             CopyMem((APTR)menu_kc, nm + n, sizeof(menu_kc));
             n += MENU_KC_ITEMS;
@@ -1086,6 +1124,93 @@ static void font_ask(con *c)
         c->comp_busy = 1;
 }
 
+static void rgb_hex(ULONG rgb, char *out)
+{
+    static const char d[] = "0123456789ABCDEF";
+    int i;
+    if (rgb == VR_KEEP) {
+        out[0] = 0;
+        return;
+    }
+    for (i = 5; i >= 0; i--, rgb >>= 4)
+        out[i] = d[rgb & 15];
+    out[6] = 0;
+}
+
+/* The window's settings now, as UP-Term Prefs' fields for its profile:
+ * the profile's own values first (what no menu sets, the scrollback),
+ * then everything the window has changed. */
+static void window_fields(con *c, prefs_fields *f)
+{
+    int cs = c->w.cursor_style, i, k = 0;
+    prefs_from_conf(f, c->conf, c->profile);
+    f->cursor = cs == 3 || cs == 4 ? PREFS_CURSOR_UNDERLINE : cs >= 5 ? PREFS_CURSOR_BAR
+              : PREFS_CURSOR_BLOCK;
+    f->blink = c->w.cursor_blink != 0;
+    f->bell = c->w.bell == 0 ? PREFS_BELL_NONE : c->w.bell == 2 ? PREFS_BELL_VISUAL : PREFS_BELL_BEEP;
+    f->bold = c->w.bold_bright != 0;
+    f->meta_alt = c->w.meta_alt != 0;
+    f->copy_sel = c->w.copy_on_select != 0;
+    f->wheel = c->w.wheel_scroll != 0;
+    f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
+    if (c->kc_style & LE_KC_WINDOW) f->kcmode[k++] = 'W';
+    if (c->kc_style & LE_KC_LIST) f->kcmode[k++] = 'L';
+    if (c->kc_style & LE_KC_CYCLE) f->kcmode[k++] = 'B';
+    if (c->kc_style & LE_KC_COMMON) f->kcmode[k++] = 'C';
+    if (c->kc_style & LE_KC_SILENT) f->kcmode[k++] = 'S';
+    f->kcmode[k] = 0;
+    f->kcinfo = c->kc_info != 0;
+    f->kccache = c->kc_cache != 0;
+    if (c->w.fontname[0]) {
+        /* "NAME SIZE", as apply_profile reads it */
+        char n[12];
+        int m = 0, sz = c->w.fontsize;
+        copy_str(f->font, c->w.fontname, sizeof(f->font) - 8);
+        do
+            n[m++] = (char)('0' + sz % 10);
+        while ((sz /= 10) != 0);
+        k = (int)strlen(f->font);
+        f->font[k++] = ' ';
+        while (m)
+            f->font[k++] = n[--m];
+        f->font[k] = 0;
+    }
+    rgb_hex(c->w.fg_rgb, f->fg);
+    rgb_hex(c->w.bg_rgb, f->bg);
+    rgb_hex(c->w.cursor_rgb, f->curcol);
+    rgb_hex(c->w.sel_fg_rgb, f->selfg);
+    rgb_hex(c->w.sel_bg_rgb, f->selbg);
+    for (i = 0; i < 16; i++)
+        rgb_hex((c->w.pal16[i] & 0x01000000UL) ? (c->w.pal16[i] & 0xFFFFFFUL) : VR_KEEP, f->pal[i]);
+}
+
+/* Settings > Save settings to profile: the file staged here (prefs_core,
+ * as UP-Term Prefs does it), written by the worker (DOS) into ENV: and
+ * ENVARC:; the window's table follows once both are in place. */
+static void save_ask(con *c)
+{
+    prefs_fields f;
+    long len;
+    if (c->comp_busy || !ensure_worker(c) || !c->conf)
+        return;
+    if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
+        return;
+    if (!c->save_work && !(c->save_work = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY)))
+        return;
+    window_fields(c, &f);
+    len = prefs_validate(&f) ? -1
+        : prefs_stage(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1);
+    if (len < 0) {
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room in the file for it */
+        return;
+    }
+    c->comp->data_len = len;
+    c->comp->mode = CONFIG_SAVE;
+    c->comp->kingcon = 0;
+    if (complete_start(c->comp, c->comp_port, opener(c)))
+        c->comp_busy = 1;
+}
+
 /* Settings > Theme...: a theme file picked and read by the worker (DOS),
  * its colours put on the window in finish_completion. */
 static void theme_ask(con *c)
@@ -1121,6 +1246,41 @@ static void theme_apply(con *c, const char *text, long len)
     }
     if (!ok)
         DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not a theme file */
+}
+
+/* Settings > Profile: the window takes the file's k-th profile, live --
+ * the built-in look first, then the profile, as a window opening with it
+ * gets (what the window's own spec set, its colours, still wins); its font
+ * when it names one. */
+static void profile_switch(con *c, int k)
+{
+    const char *names[UC_MAX_PROFILES + 1];
+    char oldname[40];
+    WORD oldsize = c->w.fontsize;
+    if (!c->conf || k >= upconf_profiles(c->conf, names) || !c->w.t)
+        return;
+    copy_str(c->profile, names[k], sizeof(c->profile));
+    copy_str(oldname, c->w.fontname, sizeof(oldname));
+    sel_close(c);
+    kc_cyc_end(c);
+    vtwin_profile_defaults(&c->w);
+    c->w.fg_rgb = c->spec_fg;
+    c->w.bg_rgb = c->spec_bg;
+    c->w.fontname[0] = 0; /* apply_profile sets it only when empty */
+    apply_profile(c);
+    if (c->w.fontname[0] && (strcmp(c->w.fontname, oldname) || c->w.fontsize != oldsize)) {
+        char want[40];
+        WORD wsize = c->w.fontsize;
+        copy_str(want, c->w.fontname, sizeof(want));
+        copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
+        c->w.fontsize = oldsize;
+        if (!vtwin_set_font(&c->w, want, wsize))
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the profile's font is not there */
+    } else {
+        copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
+        c->w.fontsize = oldsize;
+    }
+    vtwin_apply_settings(&c->w);
 }
 
 /* A Settings (or Complete) checkmark picked: the window's setting, live.
@@ -1196,7 +1356,15 @@ static void menu_pick(con *c, UWORD code)
         case MENU_KC_PURGE: complete_cache_purge(); break;
         case MENU_SET_FONT: font_ask(c); break;
         case MENU_SET_THEME: theme_ask(c); break;
+        case MENU_SET_SAVE: save_ask(c); break;
         default:
+            if ((LONG)GTMENUITEM_USERDATA(it) >= MENU_SET_PROFILE0 &&
+                (LONG)GTMENUITEM_USERDATA(it) < MENU_SET_PROFILE0 + UC_MAX_PROFILES) {
+                profile_switch(c, (int)((LONG)GTMENUITEM_USERDATA(it) - MENU_SET_PROFILE0));
+                menu_remove(c, c->w.win);
+                menu_add(c, c->w.win);
+                return; /* the strip is new */
+            }
             if (menu_setting(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0)) {
                 /* the strip again: every checkmark from the settings (one
                  * pick can move others: KingCON's W clears L and B) */
@@ -1895,6 +2063,13 @@ static void finish_completion(con *c)
             continue;
         }
         c->comp_busy = 0;
+        if (q->mode == CONFIG_SAVE) {
+            if (q->matches && c->save_work)
+                CopyMem(c->save_work, c->conf, sizeof(upconf)); /* the table is the file's now */
+            else
+                DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not written: the old file stands */
+            continue;
+        }
         if (q->mode == COMPLETE_THEME) {
             if (q->matches && c->w.t)
                 theme_apply(c, q->data, q->data_len);
@@ -3295,6 +3470,8 @@ static LONG handler_main(void)
     kc_cyc_end(c);
     if (c->kc_snap)
         FreeVec(c->kc_snap);
+    if (c->save_work)
+        FreeVec(c->save_work);
     if (c->comp) {
         if (c->comp->data)
             FreeVec(c->comp->data);

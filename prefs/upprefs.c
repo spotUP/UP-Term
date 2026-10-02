@@ -39,6 +39,7 @@
 
 #include "../config/upconf.h"
 #include "prefs_core.h"
+#include "prefs_dos.h"
 
 /* The clib's calls read these; startup.o provides DOSBase only. */
 struct IntuitionBase *IntuitionBase;
@@ -47,11 +48,10 @@ struct Library *GadToolsBase;
 struct Library *AslBase;      /* the theme requester; 0: no Theme button action */
 
 /* ENV: is what is in use now, ENVARC: what the next boot copies to ENV:. */
-enum { T_ENV, T_ENVARC };
-static const char *const conf_dir[2] = { "ENV:up-term", "ENVARC:up-term" };
-static const char *const conf_path[2] = { "ENV:up-term/up-term", "ENVARC:up-term/up-term" };
-static const char *const conf_tmp[2] = { "ENV:up-term/up-term.new", "ENVARC:up-term/up-term.new" };
-static const char *const conf_orig[2] = { "ENV:up-term/up-term.orig", "ENVARC:up-term/up-term.orig" };
+#define T_ENV PREFS_T_ENV
+#define T_ENVARC PREFS_T_ENVARC
+#define conf_dir prefs_conf_dir
+#define conf_path prefs_conf_path
 
 /* the same cap the handler reads with, so a file this writes is always a
  * file the handler can read whole */
@@ -229,56 +229,6 @@ static void show_page(struct app *a, int page)
 
 /* ---- the file ---------------------------------------------------------------------- */
 
-static int dos_write(void *ctx, const char *path, const char *buf, long len)
-{
-    BPTR f = Open((STRPTR)path, MODE_NEWFILE);
-    LONG w, closed;
-    (void)ctx;
-    if (!f)
-        return 0;
-    w = Write(f, (APTR)buf, len);
-    closed = Close(f); /* a buffered write can fail only here */
-    return w == len && closed;
-}
-
-static int dos_exists(void *ctx, const char *path)
-{
-    BPTR l = Lock((STRPTR)path, SHARED_LOCK);
-    (void)ctx;
-    if (!l)
-        return 0;
-    UnLock(l);
-    return 1;
-}
-
-static int dos_remove(void *ctx, const char *path)
-{
-    (void)ctx;
-    if (DeleteFile((STRPTR)path))
-        return 1;
-    return IoErr() == ERROR_OBJECT_NOT_FOUND;
-}
-
-static int dos_rename(void *ctx, const char *from, const char *to)
-{
-    (void)ctx;
-    return Rename((STRPTR)from, (STRPTR)to) ? 1 : 0;
-}
-
-static const prefs_fs dos_fs = { 0, dos_write, dos_exists, dos_remove, dos_rename };
-
-static int ensure_dir(int t)
-{
-    BPTR l = CreateDir((STRPTR)conf_dir[t]); /* fails when it exists: fine */
-    if (l)
-        UnLock(l);
-    l = Lock((STRPTR)conf_dir[t], SHARED_LOCK);
-    if (!l)
-        return 0;
-    UnLock(l);
-    return 1;
-}
-
 /* Read one file: up to CONF_MAX + 1 bytes, read straight rather than
  * Seek()ed (the handler found Seek answering 0 for ENV files on 3.1), so a
  * longer file shows as longer. 0 when absent, -1 on a read error. */
@@ -394,17 +344,15 @@ static void commit(struct app *a, int keep)
         set_status(a, msg);
         return;
     }
-    for (t = keep ? T_ENVARC : T_ENV; t >= T_ENV; t--) {
-        if (!ensure_dir(t)) {
-            puts_(msg, puts_(msg, 0, "Cannot create ", -1), conf_dir[t], -1);
-            set_status(a, msg);
-            return;
-        }
-        r = prefs_install(&dos_fs, conf_path[t], conf_tmp[t], conf_orig[t], a->buf, len);
-        if (r != PREFS_INSTALL_OK) {
-            install_error(a, t, r);
-            return;
-        }
+    r = prefs_dos_save(a->buf, len, keep, &t);
+    if (r == PREFS_DOS_NODIR) {
+        puts_(msg, puts_(msg, 0, "Cannot create ", -1), conf_dir[t], -1);
+        set_status(a, msg);
+        return;
+    }
+    if (r != PREFS_INSTALL_OK) {
+        install_error(a, t, r);
+        return;
     }
     /* both files are in place: the editor's table is what they hold */
     CopyMem(&a->work, &a->conf, sizeof(a->conf));

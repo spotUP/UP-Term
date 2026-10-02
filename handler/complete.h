@@ -21,8 +21,11 @@ enum complete_mode {
                                * (KingCON's Tab on an empty word); matches 0: cancelled */
     COMPLETE_FONT = 8,        /* an ASL font requester (fixed width) on `screen`: the font's
                                * name in add, its size in font_size; matches 0: cancelled */
-    COMPLETE_THEME = 9        /* an ASL file requester on the themes drawer, on `screen`:
+    COMPLETE_THEME = 9,       /* an ASL file requester on the themes drawer, on `screen`:
                                * the chosen theme file read into data; matches 0: none */
+    CONFIG_SAVE = 10          /* data (data_len bytes) written as the profile file, ENV: and
+                               * ENVARC: (prefs_dos_save); matches 1 when both are in place,
+                               * font_size the result code */
 };
 
 #define HISTORY_FILE "ENVARC:vtcon.history"

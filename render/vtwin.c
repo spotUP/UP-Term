@@ -123,11 +123,20 @@ static void cb_layout(void *u, int which, int value)
 
 void vtwin_profile_defaults(vtwin *w)
 {
+    int i;
     w->bell = 1;          /* beep; a profile may choose none or a flash */
     w->bold_bright = 1;   /* xterm SGR 1 takes the bright 8-15 */
     w->wheel_scroll = 1;  /* the wheel moves through the scrollback */
     w->cursor_rgb = VR_KEEP;
     w->sel_fg_rgb = w->sel_bg_rgb = VR_KEEP;
+    /* every other profile field too: a window switching profiles must not
+     * keep the last one's cursor or palette */
+    w->cursor_style = 0;
+    w->cursor_blink = 0;
+    w->meta_alt = 0;
+    w->copy_on_select = 0;
+    for (i = 0; i < 16; i++)
+        w->pal16[i] = 0;
 }
 
 void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
