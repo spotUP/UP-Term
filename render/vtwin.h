@@ -135,6 +135,10 @@ void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my);
  * moved to a hit, 0 when there was none (the view is left alone). The view
  * returns to the live output when the match is already on screen. */
 int vtwin_find(vtwin *w, const char *q);
+/* copy the selection to the clipboard / type the clipboard in: Right Amiga
+ * C and V, also for an owner's menu (no-ops without a clipboard) */
+void vtwin_copy(vtwin *w);
+void vtwin_paste(vtwin *w);
 /* an Amiga input event report for a window class, when the program asked
  * for that class (CSI n {); 1 when it was sent */
 int vtwin_raw_report(vtwin *w, int cls);

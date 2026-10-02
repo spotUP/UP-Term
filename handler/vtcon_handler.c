@@ -38,6 +38,8 @@
 #include <proto/graphics.h>
 #include <proto/console.h>
 #include <proto/diskfont.h>
+#include <proto/gadtools.h>
+#include <libraries/gadtools.h>
 #include <proto/timer.h>
 
 #include <string.h>
@@ -65,6 +67,7 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Device *ConsoleDevice;
 struct Library *DiskfontBase;
+struct Library *GadToolsBase; /* the window's menu (may be 0: no menu) */
 struct Library *LayersBase; /* LockLayer, for the renderer's planar path */
 struct Device *TimerBase; /* for ReadEClock in the debug profile */
 
@@ -159,6 +162,7 @@ typedef struct con {
     int tabs;                    /* Tabs in a row */
     unsigned long edits;         /* keys that changed the line so far */
     unsigned long comp_edits;    /* edits when the running completion started */
+    struct Menu *menustrip;      /* the window's menu (GadTools), 0 without one */
     char menu[COMPLETE_NAMES];   /* the last completion's names */
     int menu_len, menu_n, menu_i, menu_start;
     /* the find prompt (Right Amiga F): its own small window, open while the
@@ -803,6 +807,93 @@ static void history_load(con *c);
 static void close_window(con *c);
 
 static void find_close(con *c); /* the find prompt (see the find prompt section) */
+static int find_open(con *c);
+static void close_gadget(con *c);
+
+/* ---- the window's menu -------------------------------------------------------- */
+
+enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE };
+
+/* Right Amiga C, V and F stay what they were: Intuition now hands them in
+ * as MENUPICK, which picks the same actions. */
+static const struct NewMenu menu_def[] = {
+    { NM_TITLE, (STRPTR)"UP-Term", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Copy", (STRPTR)"C", 0, 0, (APTR)MENU_COPY },
+    { NM_ITEM, (STRPTR)"Paste", (STRPTR)"V", 0, 0, (APTR)MENU_PASTE },
+    { NM_ITEM, (STRPTR)"Find...", (STRPTR)"F", 0, 0, (APTR)MENU_FIND },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Close window", 0, 0, 0, (APTR)MENU_CLOSE },
+    { NM_END, 0, 0, 0, 0, 0 }
+};
+
+static void menu_add(con *c, struct Window *win)
+{
+    APTR vi;
+    if (!GadToolsBase || win == c->foreign)
+        return; /* a window someone else opened keeps its own menus */
+    c->menustrip = CreateMenusA((struct NewMenu *)menu_def, 0);
+    vi = c->menustrip ? GetVisualInfoA(win->WScreen, 0) : 0;
+    if (!vi || !LayoutMenusA(c->menustrip, vi, 0) || !SetMenuStrip(win, c->menustrip)) {
+        FreeMenus(c->menustrip);
+        c->menustrip = 0;
+    }
+    if (vi)
+        FreeVisualInfo(vi);
+}
+
+static void menu_remove(con *c, struct Window *win)
+{
+    if (!c->menustrip)
+        return;
+    if (win)
+        ClearMenuStrip(win);
+    FreeMenus(c->menustrip);
+    c->menustrip = 0;
+}
+
+/* The Prefs editor, started by a process of its own: the handler makes no
+ * DOS call on its own port (a reply waiting there can swallow a packet),
+ * and SystemTags is all DOS. The worker starts the editor asynchronously
+ * and ends. */
+static void launcher(void)
+{
+    BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    if (in && out &&
+        SystemTags((STRPTR)"\"C:UP-Term Prefs\"", SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
+                   TAG_DONE) != -1)
+        return; /* the streams are the editor's now */
+    if (in)
+        Close(in);
+    if (out)
+        Close(out);
+}
+
+static void prefs_launch(void)
+{
+    CreateNewProcTags(NP_Entry, (ULONG)launcher, NP_Name, (ULONG)"UP-Term Prefs launcher",
+                      NP_StackSize, 8192, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
+                      NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
+}
+
+static void menu_pick(con *c, UWORD code)
+{
+    while (code != MENUNULL && c->menustrip && c->w.win) {
+        struct MenuItem *it = ItemAddress(c->menustrip, code);
+        if (!it)
+            break;
+        switch ((LONG)GTMENUITEM_USERDATA(it)) {
+        case MENU_COPY: vtwin_copy(&c->w); break;
+        case MENU_PASTE: vtwin_paste(&c->w); service_reads(c); break;
+        case MENU_FIND: find_open(c); break;
+        case MENU_PREFS: prefs_launch(); break;
+        case MENU_CLOSE: close_gadget(c); return; /* as the close gadget */
+        default: break;
+        }
+        code = it->NextSelect;
+    }
+}
 
 static int open_window(con *c)
 {
@@ -839,7 +930,7 @@ static int open_window(con *c)
     tags[n].ti_Tag = WA_Flags;       tags[n++].ti_Data = c->wflags;
     tags[n].ti_Tag = WA_IDCMP;       tags[n++].ti_Data = IDCMP_RAWKEY | IDCMP_NEWSIZE |
         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE |
-        IDCMP_EXTENDEDMOUSE | IDCMP_ACTIVEWINDOW | IDCMP_INACTIVEWINDOW;
+        IDCMP_EXTENDEDMOUSE | IDCMP_ACTIVEWINDOW | IDCMP_INACTIVEWINDOW | IDCMP_MENUPICK;
     tags[n].ti_Tag = WA_PubScreen;   tags[n++].ti_Data = (ULONG)scr;
     tags[n].ti_Tag = WA_MinWidth;    tags[n++].ti_Data = 80;
     tags[n].ti_Tag = WA_MinHeight;   tags[n++].ti_Data = 40;
@@ -859,6 +950,7 @@ have_window:
         return 0;
     }
     DBG("vt_new", c->w.t, 0);
+    menu_add(c, win);
     le_init(&c->le, c->w.t, le_out, c);
     c->le.utf8 = c->w.pers == VT_XTERM && !c->w.latin1 && !c->w.cp437;
     history_load(c); /* the saved history, read by a worker */
@@ -871,6 +963,7 @@ static void close_window(con *c)
     struct Window *win = c->w.win;
     c->winch_closing = 1; /* stop naming this window before we dismantle it */
     find_close(c); /* the prompt belongs to the window */
+    menu_remove(c, win);
     DBG("close_window", win, c->w.t);
     if (c->input_io) {
         if (c->winch_added) {
@@ -1793,6 +1886,23 @@ static void find_idcmp(con *c)
     }
 }
 
+/* The close gadget, or the menu's Close window. AUTO: the gadget shuts the
+ * window only, and the next read or write opens it again -- unless a read
+ * waits (then it is EOF as without AUTO) or DISK_INFO gave the window out
+ * (ROM 40.x and V47, tools/rig/autoprobe_rig.py) */
+static void close_gadget(con *c)
+{
+    if (c->auto_open && !c->auto_held && !c->nreads && c->w.win != c->foreign) {
+        c->auto_shut = 1;
+        return;
+    }
+    c->closing = 1;
+    if (!c->raw)
+        c->eof = 1;
+    else if (!vtwin_raw_report(&c->w, 11)) /* IECLASS_CLOSEWINDOW, if asked */
+        send_break(c, SIGBREAKF_CTRL_C);
+}
+
 static void idcmp(con *c)
 {
     struct IntuiMessage *im;
@@ -1819,19 +1929,10 @@ static void idcmp(con *c)
             vtwin_refresh(&c->w);
             break;
         case IDCMP_CLOSEWINDOW:
-            /* AUTO: the gadget shuts the window only, and the next read or
-             * write opens it again -- unless a read waits (then it is EOF as
-             * without AUTO) or DISK_INFO gave the window out (ROM 40.x and
-             * V47, tools/rig/autoprobe_rig.py) */
-            if (c->auto_open && !c->auto_held && !c->nreads && c->w.win != c->foreign) {
-                c->auto_shut = 1;
-                break;
-            }
-            c->closing = 1;
-            if (!c->raw)
-                c->eof = 1;
-            else if (!vtwin_raw_report(&c->w, 11)) /* IECLASS_CLOSEWINDOW, if asked */
-                send_break(c, SIGBREAKF_CTRL_C);
+            close_gadget(c);
+            break;
+        case IDCMP_MENUPICK:
+            menu_pick(c, im->Code);
             break;
         case IDCMP_MOUSEBUTTONS:
         case IDCMP_MOUSEMOVE:
@@ -2257,6 +2358,7 @@ static LONG handler_main(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     DiskfontBase = OpenLibrary((STRPTR)"diskfont.library", 36);
+    GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39);
     LayersBase = OpenLibrary((STRPTR)"layers.library", 39);
     c->timer_port = CreateMsgPort();
     if (c->timer_port) {
@@ -2380,6 +2482,8 @@ static LONG handler_main(void)
     if (ConsoleDevice)
         CloseDevice((struct IORequest *)&c->lib_io); /* CONU_LIBRARY must be closed too (matrix 6.2) */
     CloseLibrary(DiskfontBase);
+    if (GadToolsBase)
+        CloseLibrary(GadToolsBase);
     CloseLibrary(LayersBase);
     CloseLibrary((struct Library *)GfxBase);
     CloseLibrary((struct Library *)IntuitionBase);

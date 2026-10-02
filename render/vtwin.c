@@ -566,6 +566,19 @@ static void paste(vtwin *w)
     FreeVec(text);
 }
 
+/* the window's menu (the owner's): the same copy and paste as the keys */
+void vtwin_copy(vtwin *w)
+{
+    if (w->t && !w->no_clipboard)
+        copy_selection(w);
+}
+
+void vtwin_paste(vtwin *w)
+{
+    if (w->t && !w->no_clipboard)
+        paste(w);
+}
+
 /* Right Amiga C/V copy and paste, Right Amiga Up/Down and Shift+PgUp/PgDn
  * move through the scrollback. Returns 1 when the key was the console's. */
 static int console_key(vtwin *w, UWORD code, UWORD qual)

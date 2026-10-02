@@ -85,6 +85,12 @@ CONFIGURATION (profiles)
    iTerm2, Alacritty, Warp and Ghostty formats and prints the fg, bg,
    cursor-color and palette lines to paste here.
 
+MENU
+  An XCON: window has a menu (right mouse button, on the screen's title
+  bar): UP-Term > Copy, Paste, Find..., Preferences... (opens UP-Term
+  Prefs), Close window. The right button therefore opens the menu rather
+  than reaching a program that asked for mouse reports.
+
 KEYS
   Mouse drag            select (Shift+drag when a program uses the mouse)
   Right Amiga C / V     copy / paste (clipboard, IFF FTXT)
