@@ -65,6 +65,10 @@ typedef struct upconf {
  * left empty and every lookup misses: defaults stand), 1 otherwise. What does
  * not fit the caps is kept truncated; overflow marks it. */
 int  upconf_parse(upconf *c, const char *buf, long len);
+/* Does profile hold the same keys with the same values in a and b (order
+ * and key case aside; a profile absent from both is equal)? A window's
+ * live update: only a window whose own profile changed is redrawn. */
+int  upconf_profile_equal(const upconf *a, const upconf *b, const char *profile);
 /* The last value of key in profile, 0 when absent. Case-insensitive. */
 const char *upconf_get(const upconf *c, const char *profile, const char *key);
 /* upconf_get, or def when the key is absent or its value is empty. */

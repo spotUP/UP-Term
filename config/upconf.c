@@ -428,6 +428,36 @@ int upconf_has(const upconf *c, const char *profile, const char *key)
     return upconf_get(c, profile, key) ? 1 : 0;
 }
 
+static int prof_index(const upconf *c, const char *profile)
+{
+    const char *names[UC_MAX_PROFILES + 1];
+    int n = upconf_profiles(c, names), i;
+    for (i = 0; i < n; i++)
+        if (uc_ieq(names[i], profile))
+            return i;
+    return -1;
+}
+
+/* every key of profile in a has that value in b (b's last, as lookups see it) */
+static int keys_in(const upconf *a, const upconf *b, const char *profile)
+{
+    int i = prof_index(a, profile), k;
+    if (i < 0)
+        return 1;
+    for (k = 0; k < a->n[i]; k++) {
+        const char *va = upconf_get(a, profile, a->key[i][k]);
+        const char *vb = upconf_get(b, profile, a->key[i][k]);
+        if (!vb || strcmp(va, vb))
+            return 0;
+    }
+    return 1;
+}
+
+int upconf_profile_equal(const upconf *a, const upconf *b, const char *profile)
+{
+    return keys_in(a, b, profile) && keys_in(b, a, profile);
+}
+
 int upconf_profiles(const upconf *c, const char **names)
 {
     int i;

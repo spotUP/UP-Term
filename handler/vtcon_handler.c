@@ -24,6 +24,7 @@
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
 #include <dos/dostags.h>
+#include <dos/notify.h>
 #include <devices/console.h>
 #include <devices/conunit.h>
 #include <devices/timer.h>
@@ -148,6 +149,10 @@ typedef struct con {
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
     upconf *save_work;           /* Save settings to profile: the table once the file is written */
+    struct MsgPort *watch_port;  /* the live-update watcher's replies (watch_worker) */
+    struct watch_msg *watch;
+    struct Process *watch_task;
+    int watch_held;              /* the window has the message (the watcher waits for it) */
     upconf *conf;                /* the user config, read at startup (config/upconf.h) */
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
     struct MsgPort *comp_port;   /* Tab completion and command lookups answer here */
@@ -532,36 +537,104 @@ struct config_msg {
     upconf *conf;
 };
 
+/* The profile file into conf, in a process that may make DOS calls (a
+ * worker). ENV: first, as Amiga prefs do (the editor's Use writes there;
+ * Install and Save copy to both), ENVARC: when ENV: has none (a fresh boot
+ * before ENVARC: was copied). */
+static void read_conf(upconf *conf)
+{
+    BPTR f = Open((STRPTR)"ENV:up-term/up-term", MODE_OLDFILE);
+    char *buf;
+    if (!f)
+        f = Open((STRPTR)"ENVARC:up-term/up-term", MODE_OLDFILE);
+    if (!f)
+        return;
+    /* Read straight up to the cap rather than Seek()ing to the end first:
+     * on 3.1 that Seek answers 0 for this file, and the read is skipped. */
+    buf = (char *)AllocVec(CONF_MAX + 1, MEMF_ANY);
+    if (buf) {
+        LONG got = Read(f, buf, CONF_MAX);
+        buf[got > 0 ? got : 0] = 0;
+        upconf_parse(conf, buf, got > 0 ? got : 0);
+        FreeVec(buf);
+    }
+    Close(f);
+}
+
 static void config_worker(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
     struct config_msg *m;
-    BPTR f;
-    char *buf;
 
     WaitPort(&me->pr_MsgPort); /* the request, before any DOS call */
     m = (struct config_msg *)GetMsg(&me->pr_MsgPort);
     me->pr_WindowPtr = (APTR)-1; /* no requesters from a file that may be absent */
-    /* ENV: first, as Amiga prefs do (the editor's Use writes there; Install
-     * and Save copy to both), ENVARC: when ENV: has none (a fresh boot
-     * before ENVARC: was copied) */
-    f = Open((STRPTR)"ENV:up-term/up-term", MODE_OLDFILE);
-    if (!f)
-        f = Open((STRPTR)"ENVARC:up-term/up-term", MODE_OLDFILE);
-    if (f) {
-        /* Read straight up to the cap rather than Seek()ing to the end first:
-         * on 3.1 that Seek answers 0 for this file, and the read is skipped. */
-        buf = (char *)AllocVec(CONF_MAX + 1, MEMF_ANY);
-        if (buf) {
-            LONG got = Read(f, buf, CONF_MAX);
-            buf[got > 0 ? got : 0] = 0;
-            upconf_parse(m->conf, buf, got > 0 ? got : 0);
-            FreeVec(buf);
-        }
-        Close(f);
-    }
+    read_conf(m->conf);
     Forbid(); /* the opener frees m: end before it can run on */
     ReplyMsg((struct Message *)m);
+}
+
+/* Live updates (owner 2026-10-03: "make prefs update all open windows live
+ * ... but per tab"): a watcher process per window holds a DOS notification
+ * on ENV:up-term/up-term. When UP-Term Prefs (Use or Save), another
+ * window's Save settings to profile or an editor writes it, the watcher
+ * reads it into m->conf and hands m over; the window takes the new table
+ * and, when its own profile's section changed, applies it live
+ * (watch_take). One message goes back and forth, so the table is never
+ * read while the other side writes it. Quitting: the window sends m back
+ * with quit set, or signals CTRL_C while the watcher holds m; the watcher
+ * answers with done set and ends. */
+struct watch_msg {
+    struct Message msg;
+    upconf *conf;
+    int quit, done;
+};
+
+static void watch_worker(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    struct watch_msg *m;
+    struct NotifyRequest nr;
+    LONG sig;
+    int have = 1, quitting = 0, watching;
+    WaitPort(&me->pr_MsgPort);
+    m = (struct watch_msg *)GetMsg(&me->pr_MsgPort);
+    me->pr_WindowPtr = (APTR)-1;
+    sig = AllocSignal(-1);
+    memset(&nr, 0, sizeof(nr));
+    nr.nr_Name = (STRPTR)"ENV:up-term/up-term";
+    nr.nr_Flags = NRF_SEND_SIGNAL;
+    nr.nr_stuff.nr_Signal.nr_Task = &me->pr_Task;
+    nr.nr_stuff.nr_Signal.nr_SignalNum = (UBYTE)sig;
+    watching = sig >= 0 && StartNotify(&nr);
+    for (;;) {
+        ULONG got = Wait((watching ? 1UL << sig : 0) | SIGBREAKF_CTRL_C |
+                         (1UL << me->pr_MsgPort.mp_SigBit));
+        struct Message *back;
+        while ((back = GetMsg(&me->pr_MsgPort)) != 0) {
+            have = 1; /* the window is done with the last table */
+            if (m->quit)
+                quitting = 1;
+        }
+        if (got & SIGBREAKF_CTRL_C)
+            quitting = 1;
+        if (quitting && have)
+            break;
+        if (have && watching && (got & (1UL << sig))) {
+            Delay(5); /* a writer that renames its new file in: let it finish */
+            upconf_clear(m->conf);
+            read_conf(m->conf);
+            have = 0;
+            ReplyMsg(&m->msg);
+        }
+    }
+    if (watching)
+        EndNotify(&nr);
+    if (sig >= 0)
+        FreeSignal(sig);
+    m->done = 1;
+    Forbid(); /* the window frees m: end before it can run on */
+    ReplyMsg(&m->msg);
 }
 
 static void config_load(con *c)
@@ -605,6 +678,67 @@ static void config_load(con *c)
     GetMsg(port);
     FreeVec(m);
     DeleteMsgPort(port);
+}
+
+static void watch_start(con *c)
+{
+    if (!c->conf)
+        return;
+    c->watch_port = CreateMsgPort();
+    c->watch = (struct watch_msg *)AllocVec(sizeof(struct watch_msg), MEMF_PUBLIC | MEMF_CLEAR);
+    if (c->watch)
+        c->watch->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
+    if (!c->watch_port || !c->watch || !c->watch->conf)
+        goto fail;
+    c->watch->msg.mn_ReplyPort = c->watch_port;
+    c->watch->msg.mn_Length = sizeof(struct watch_msg);
+    c->watch_task = CreateNewProcTags(NP_Entry, (ULONG)watch_worker, NP_Name, (ULONG)"vtcon watch",
+                                      NP_StackSize, 8192, NP_Input, 0, NP_Output, 0,
+                                      NP_CloseInput, FALSE, NP_CloseOutput, FALSE,
+                                      NP_ConsoleTask, 0, TAG_DONE);
+    if (!c->watch_task)
+        goto fail;
+    PutMsg(&c->watch_task->pr_MsgPort, &c->watch->msg);
+    return;
+fail:
+    if (c->watch) {
+        if (c->watch->conf)
+            FreeVec(c->watch->conf);
+        FreeVec(c->watch);
+        c->watch = 0;
+    }
+    if (c->watch_port)
+        DeleteMsgPort(c->watch_port);
+    c->watch_port = 0;
+}
+
+static void watch_stop(con *c)
+{
+    struct watch_msg *m;
+    if (!c->watch_task)
+        return;
+    if (c->watch_held) {
+        c->watch->quit = 1;
+        c->watch_held = 0;
+        PutMsg(&c->watch_task->pr_MsgPort, &c->watch->msg);
+    } else
+        Signal(&c->watch_task->pr_Task, SIGBREAKF_CTRL_C);
+    for (;;) {
+        WaitPort(c->watch_port);
+        m = (struct watch_msg *)GetMsg(c->watch_port);
+        if (!m)
+            continue;
+        if (m->done)
+            break;
+        m->quit = 1; /* a table on its way when we asked: back, quitting */
+        PutMsg(&c->watch_task->pr_MsgPort, &m->msg);
+    }
+    c->watch_task = 0;
+    FreeVec(c->watch->conf);
+    FreeVec(c->watch);
+    c->watch = 0;
+    DeleteMsgPort(c->watch_port);
+    c->watch_port = 0;
 }
 
 static int profile_exists(const upconf *cf, const char *name)
@@ -877,6 +1011,7 @@ static void kc_tab(con *c, int mode);
 static void kc_finish(con *c, struct complete_req *q);
 static void kc_cyc_end(con *c);
 static int sb_size(const con *c);
+static void watch_take(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
 static int find_open(con *c);
@@ -1323,6 +1458,32 @@ static void profile_switch(con *c, int k)
     if (sb_size(c) != sb_was)
         vtwin_set_scrollback(&c->w, sb_size(c)); /* the profile's scrollback, live too */
     vtwin_apply_settings(&c->w);
+}
+
+/* The watcher's new table: the window takes it, and when its own
+ * profile's section changed puts it on live (profile_switch); the menus
+ * follow either way (a profile may have come or gone). */
+static void watch_take(con *c)
+{
+    struct watch_msg *m;
+    while (c->watch_port && (m = (struct watch_msg *)GetMsg(c->watch_port)) != 0) {
+        int changed = !upconf_profile_equal(c->conf, m->conf, c->profile);
+        CopyMem(m->conf, c->conf, sizeof(upconf));
+        if (c->w.t && c->w.win) {
+            if (changed) {
+                const char *names[UC_MAX_PROFILES + 1];
+                int n = upconf_profiles(c->conf, names), k;
+                for (k = 0; k < n && !str_ieq(names[k], c->profile); k++)
+                    ;
+                if (k < n)
+                    profile_switch(c, k);
+            }
+            menu_remove(c, c->w.win);
+            menu_add(c, c->w.win);
+        }
+        c->watch_held = 0;
+        PutMsg(&c->watch_task->pr_MsgPort, &m->msg); /* back: the next change */
+    }
 }
 
 /* A Settings (or Complete) checkmark picked: the window's setting, live.
@@ -3462,6 +3623,7 @@ static LONG handler_main(void)
     ReplyPkt(p, DOSTRUE, 0);
     c->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
     config_load(c); /* ENVARC:up-term/up-term, read by a worker (see above) */
+    watch_start(c); /* and its changes, live (watch_worker) */
 
     for (;;) {
         ULONG wait = 1UL << c->port->mp_SigBit;
@@ -3475,6 +3637,8 @@ static LONG handler_main(void)
         wait |= vtwin_sigmask(&c->w);
         if (c->find_port)
             wait |= 1UL << c->find_port->mp_SigBit;
+        if (c->watch_port)
+            wait |= 1UL << c->watch_port->mp_SigBit;
         if (c->sel_port)
             wait |= 1UL << c->sel_port->mp_SigBit;
         /* No trace lines in the loop itself: each log Write's reply re-arms
@@ -3486,6 +3650,7 @@ static LONG handler_main(void)
         vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
         find_idcmp(c); /* the find prompt, while it is open */
         sel_idcmp(c);  /* KingCON's selection window, while it is open */
+        watch_take(c); /* the profile file changed: this window's profile, live */
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
@@ -3517,6 +3682,7 @@ static LONG handler_main(void)
     if (c->node && c->node->dn_Task == c->port)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
+    watch_stop(c);
     forget_words(c);
     kc_cyc_end(c);
     if (c->kc_snap)

@@ -21,6 +21,28 @@ static long palette_str_dirty(const uc_u32 *in, char *out, long cap)
     return upconf_palette_str(in, out, cap);
 }
 
+/* Prefs' Use updates open windows live, each only when its own profile
+ * changed: the comparison behind it */
+static void profile_equal(void)
+{
+    static upconf a, b;
+    static const char one[] = "[profile default]\nbell = none\nfg = C0C0C0\n[profile vim]\nbg = 000000\n";
+    static const char reordered[] = "[profile vim]\nbg = 000000\n[profile default]\nFG = C0C0C0\nbell = none\n";
+    static const char vim_changed[] = "[profile default]\nbell = none\nfg = C0C0C0\n[profile vim]\nbg = 102030\n";
+    static const char extra_key[] = "[profile default]\nbell = none\nfg = C0C0C0\ncursor = bar\n[profile vim]\nbg = 000000\n";
+    upconf_parse(&a, one, (long)strlen(one));
+    upconf_parse(&b, reordered, (long)strlen(reordered));
+    CHECK(upconf_profile_equal(&a, &b, "default"));  /* order and key case aside */
+    CHECK(upconf_profile_equal(&a, &b, "vim"));
+    upconf_parse(&b, vim_changed, (long)strlen(vim_changed));
+    CHECK(upconf_profile_equal(&a, &b, "default"));  /* another profile changed: not this one */
+    CHECK(!upconf_profile_equal(&a, &b, "vim"));
+    upconf_parse(&b, extra_key, (long)strlen(extra_key));
+    CHECK(!upconf_profile_equal(&a, &b, "default")); /* a key more */
+    CHECK(!upconf_profile_equal(&b, &a, "default")); /* a key less */
+    CHECK(upconf_profile_equal(&a, &b, "nosuch"));   /* absent from both */
+}
+
 void suite_upconf(void)
 {
     upconf c;
@@ -334,4 +356,5 @@ void suite_upconf(void)
         CHECK(!strncmp(out, "00,111111,01,222222,", 20));
         CHECK_INT((int)strlen(out), 16 * 10 - 1);       /* "NN,RRGGBB," x 16, no last comma */
     }
+    profile_equal();
 }
