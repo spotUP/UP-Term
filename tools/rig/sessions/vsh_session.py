@@ -1,6 +1,7 @@
 """vsh on the rig (vsh plan S5/S6): one scripted session in an XCON window.
 Run from tools/rig/sessions with the rig up and build/amiga/vsh installed as
-VTC:vsh. Screenshots land in build/rig/shots/vsh*.png."""
+VTC:vsh, and the kit installed (its vshrc reaches fileutils' ls, cp, mv, rm,
+mkdir and touch in C:). Screenshots land in build/rig/shots/vsh*.png."""
 import time, ami, struct, os
 S = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../build/rig/shots/")
 def t(s): ami.req(0x08, bytes([4]) + s.encode('latin-1')); time.sleep(0.4)

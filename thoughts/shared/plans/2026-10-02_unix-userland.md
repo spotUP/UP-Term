@@ -123,13 +123,19 @@ Order: the ixemul `..` patch (with a rig probe: `cd VTC:; ls ..` lists the
 volumes), then retire the shims, then the 48.2 -> 48.3 rebase for
 coreutils (which carries the same patch forward).
 
-## Next: settle the shims (not "retire" them)
+## Done (2026-10-02): the shims are retired
 
-`vshrc` still wraps `cp`, `mv`, `rm`, `mkdir`, `touch` and `cat` over
-AmigaDOS commands. fileutils 3.15 covers the first five, so they *could*
-go the way `ls` did -- but the section above shows they must not, because
-they are what makes `..` mean `/`. The work is to decide between keeping
-them and converting them to translate-then-exec.
+`vshrc` no longer defines `cp`, `mv`, `rm`, `mkdir` or `touch`. The kit ships
+fileutils 3.15's own binaries (the same Aminet `fileutils-bin.lha` as `ls`,
+source already in the kit) and installs each to `C:` the way `ls` is: only
+when `C:` has none, with a marker in `ENVARC:up-term/<name>` that Uninstall
+reads. `cat` stays a function over `Type` (fileutils has no cat).
+
+Checks: `tests/test_sh_exec.c` (the commands are reached, arguments as
+typed; fails on the old vshrc) and `install_rig` (on RAM:, `cp t ../u`,
+`mv ../u ../../v`, `rm -r`, `mkdir -p`, `touch` through vsh, and Uninstall
+removes them). One AmigaDOS difference: a shell cannot `rm -r` the drawer it
+is in (the current directory is locked).
 
 ## Why not a newer coreutils yet
 

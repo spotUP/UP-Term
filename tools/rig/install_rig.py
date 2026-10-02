@@ -46,6 +46,8 @@ def main():
     startup_before = run('Type S:User-Startup')[1]
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
     ls_before = run('List >NIL: C:ls')[0] == 0  # the user's own ls: Install must leave it
+    FU = ('cp', 'mv', 'rm', 'mkdir', 'touch')
+    fu_before = [t for t in FU if run('List >NIL: C:%s' % t)[0] == 0]  # likewise
     # the rig's boot assigns GG: (VTC:gg); take it away so Install's own
     # GG: set-up is what gets tested, and put it back at the end
     rig_gg = run('Assign >NIL: GG: EXISTS')[0] == 0
@@ -108,6 +110,19 @@ def main():
         rc, out = run('C:ls --version')
         check(rc == 0 and 'fileutils' in out and '3.15' in out, 'C:ls is GNU fileutils 3.15', out)
         check(run('List >NIL: ENVARC:up-term/ls')[0] == 0, 'Install marked C:ls as its own', '')
+    if not fu_before:
+        # the shims are gone: these are fileutils' own, and .. is the parent
+        # (on RAM:, a real volume -- VTC:'s root is its own parent, an FS-UAE
+        # quirk). rm -r runs from outside: AmigaDOS keeps the current
+        # directory locked, so a shell can never delete the drawer it is in
+        rc, out = run('C:vsh -c "mkdir -p RAM:fu/a/b && touch RAM:fu/a/b/t && cd RAM:fu/a/b && '
+                      'cp t ../u && mv ../u ../../v && cd RAM: && rm -r fu/a && C:ls RAM:fu"', 30)
+        check(rc == 0 and out.split() == ['v'], 'cp, mv, rm, mkdir and touch are fileutils\' and .. is the parent', out)
+        rc, out = run('C:rm --version')
+        check(rc == 0 and 'fileutils' in out and '3.15' in out, 'C:rm is GNU fileutils 3.15', out)
+        check(all(run('List >NIL: ENVARC:up-term/%s' % t)[0] == 0 for t in FU),
+              'Install marked cp, mv, rm, mkdir and touch as its own', '')
+    run('Delete >NIL: RAM:fu ALL QUIET')
     check(run('List >NIL: ENVARC:up-term/up-term')[0] == 0, 'the window preferences file is in place', '')
     rc, out = run('C:tmux -V')
     check(rc == 0 and 'tmux 3.6a' in out, 'C:tmux runs', out)
@@ -149,6 +164,7 @@ def main():
             if run('List >NIL: %s' % f)[0] == 0]
     if not ls_before:
         left += [f for f in ('C:ls', 'C:dircolors') if run('List >NIL: %s' % f)[0] == 0]
+    left += ['C:' + t for t in FU if t not in fu_before and run('List >NIL: C:%s' % t)[0] == 0]
     check(not left, 'Uninstall removed the files', ' '.join(left))
     check(run('List >NIL: ENVARC:UP-Term.prefs')[0] == 0, 'Uninstall kept the user\'s preferences', '')
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')

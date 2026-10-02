@@ -138,10 +138,12 @@ static long f_read_line(void *os, sh_fh fh, char *buf, long max)
     return n;
 }
 
-static int is_amiga_cmd(const char *n)
+static int is_vshrc_cmd(const char *n)
 {
-    static const char *const names[] = { "Dir", "List", "MakeDir", "Delete", "Copy", "Rename",
-                                         "Type", "SetDate", 0 };
+    /* what the vshrc reaches: Type (its cat), the fileutils commands, and
+     * Dir/List, which no ls may turn into again */
+    static const char *const names[] = { "Dir", "List", "Type", "cp", "mv", "rm", "mkdir",
+                                         "touch", 0 };
     int i;
     for (i = 0; names[i]; i++)
         if (!strcmp(n, names[i]))
@@ -203,7 +205,7 @@ static long run_now(char argv[][64], int argc, const sh_io *io)
         f_write(0, io->out, "resumed\n", 8);
         return 0;
     }
-    if (is_amiga_cmd(argv[0])) {  /* the AmigaDOS commands the vshrc calls: <Name><arg>... */
+    if (is_vshrc_cmd(argv[0])) {  /* the commands the vshrc reaches: <Name><arg>... */
         int i;
         for (i = 0; i < argc; i++) {
             f_write(0, io->out, "<", 1);
@@ -286,7 +288,7 @@ static long f_run(void *os, char **argv, const sh_io *io, int wait)
         return run_now(p.argv, p.argc, &p.io);
     if (strcmp(argv[0], "cat") && strcmp(argv[0], "upper") && strcmp(argv[0], "wc") &&
         strcmp(argv[0], "fail") && strcmp(argv[0], "ls") && strcmp(argv[0], "args") &&
-        strcmp(argv[0], "stopper") && !is_amiga_cmd(argv[0]))
+        strcmp(argv[0], "stopper") && !is_vshrc_cmd(argv[0]))
         return -1; /* as the real layer: not found, nothing started */
     if (n_started < 16)
         last_owned[n_started++] = io->owned;
@@ -705,15 +707,16 @@ static void vshrc_unix_names(void)
     vshrc_ours = 0;
     CHECK_STR(with_vshrc("ls -l"), "<-l>\n");
     vshrc_ours = 1;
-    CHECK_STR(with_vshrc("mkdir -p RAM:a/b"), "<MakeDir><RAM:a>\n<MakeDir><RAM:a/b>\n");
-    CHECK_STR(with_vshrc("mkdir one 'two words'"), "<MakeDir><one>\n<MakeDir><two words>\n");
-    CHECK_STR(with_vshrc("rm -r old"), "<Delete><old><ALL><QUIET>\n");
-    CHECK_STR(with_vshrc("rm -rf old; echo $?"), "0\n");   /* its output goes to NIL: */
-    CHECK_STR(with_vshrc("cp -R a ../b"), "<Copy><a></b><ALL><QUIET>\n");
-    CHECK_STR(with_vshrc("mv a b"), "<Rename><a><b><QUIET>\n");
+    /* cp, mv, rm, mkdir and touch are fileutils' commands now, not
+     * functions over Copy/Rename/Delete/MakeDir/SetDate: flags and names
+     * reach them as typed (../b stays ../b, ixemul resolves it) */
+    CHECK_STR(with_vshrc("mkdir -p RAM:a/b"), "<mkdir><-p><RAM:a/b>\n");
+    CHECK_STR(with_vshrc("rm -rf old"), "<rm><-rf><old>\n");
+    CHECK_STR(with_vshrc("cp -R a ../b"), "<cp><-R><a><../b>\n");
+    CHECK_STR(with_vshrc("mv a 'two words'"), "<mv><a><two words>\n");
+    CHECK_STR(with_vshrc("touch new"), "<touch><new>\n");
     CHECK_STR(with_vshrc("cat f"), "<Type><f>\n");
     CHECK_STR(with_vshrc("echo '  x y' | cat"), "  x y\n");
-    CHECK_STR(with_vshrc("touch new; cat <new; echo made"), "made\n");
 }
 
 static void deep_recursion(void)

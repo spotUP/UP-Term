@@ -48,12 +48,27 @@ EndIf
 If EXISTS ENVARC:up-term/up-term
   Copy ENVARC:up-term/up-term ENVARC:UP-Term.prefs CLONE QUIET
 EndIf
-; ls and dircolors only when Install put them there (its markers)
+; the fileutils commands only when Install put them there (its markers)
 If EXISTS ENVARC:up-term/ls
   Delete >NIL: C:ls QUIET
 EndIf
 If EXISTS ENVARC:up-term/dircolors
   Delete >NIL: C:dircolors QUIET
+EndIf
+If EXISTS ENVARC:up-term/cp
+  Delete >NIL: C:cp QUIET
+EndIf
+If EXISTS ENVARC:up-term/mv
+  Delete >NIL: C:mv QUIET
+EndIf
+If EXISTS ENVARC:up-term/rm
+  Delete >NIL: C:rm QUIET
+EndIf
+If EXISTS ENVARC:up-term/mkdir
+  Delete >NIL: C:mkdir QUIET
+EndIf
+If EXISTS ENVARC:up-term/touch
+  Delete >NIL: C:touch QUIET
 EndIf
 Delete >NIL: ENVARC:up-term ENV:up-term ALL QUIET
 ; TERMINFO: ours goes, the user's from before Install comes back

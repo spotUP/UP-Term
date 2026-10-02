@@ -1,10 +1,8 @@
 # vsh's startup file. Install copies it to ENVARC:vsh/vshrc; vsh reads it
 # before $HOME/.vshrc, where your own settings go.
 #
-# Unix command names for the AmigaDOS commands that do the same work,
-# with the flags people type most. Names are passed on as AmigaDOS names:
-# ../x becomes /x (the parent is /), ./x becomes x. To use a real Unix
-# port of one of these (an ixemul ls in the path), remove its function.
+# cat is still a function over AmigaDOS Type (fileutils has no cat):
+# names are passed on as AmigaDOS names, ../x becomes /x, ./x becomes x.
 
 # vsh reads $HOME/.vshrc straight after this file, and the shell's default
 # HOME is the volume HOME:, which nothing assigns: an interactive vsh then
@@ -49,96 +47,15 @@ clear() {
 # what a redirected ls must do, and LS_COLORS (see dircolors) picks the
 # colours; the ANSI numbers are whatever the window's profile defines.
 #
-# The tools still wrapped below (cp, mv, rm, mkdir, touch) stay: they are
-# what makes ../x mean /x (the parent of an assign), which ixemul's own ..
-# does not (it stops at the assign's root); see
-# thoughts/shared/plans/2026-10-02_unix-userland.md.
+# cp, mv, rm, mkdir and touch are fileutils' too (C:, installed the same
+# way), so their flags and paths are the Unix ones: .. is the parent, / is
+# the volume list. Copy, Rename, Delete and MakeDir stay the AmigaDOS forms.
 #
 # The colour alias only for the ls UP-Term installed: a user's own ls may
 # not know --color (Install leaves a marker beside its copy).
 if [ -f ENV:up-term/ls ]; then
     alias ls='ls --color=auto'
 fi
-
-# mkdir [-p] dir ...: -p makes each missing directory on the way
-mkdir() {
-    _p=0
-    _rc=0
-    for _x; do
-        shift
-        case $_x in
-        -p) _p=1 ;;
-        -*) ;;
-        *) _amiga "$_x"; set -- "$@" "$_r" ;;
-        esac
-    done
-    for _d; do
-        if [ $_p = 1 ]; then
-            _made=
-            _rest=$_d
-            while [ -n "$_rest" ]; do
-                case $_rest in
-                */*) _part=${_rest%%/*}; _rest=${_rest#*/} ;;
-                *) _part=$_rest; _rest= ;;
-                esac
-                _made=$_made$_part
-                if [ -n "$_part" ] && [ ! -d "$_made" ]; then
-                    MakeDir "$_made" || _rc=1
-                fi
-                _made=$_made/
-            done
-        else
-            MakeDir "$_d" || _rc=1
-        fi
-    done
-    return $_rc
-}
-
-# rm [-r] [-f] name ...: -r deletes directories with what is in them,
-# -f also protected files, quietly
-rm() {
-    _all=
-    _q=
-    for _x; do
-        shift
-        case $_x in
-        -*)
-            case $_x in *[rR]*) _all=ALL ;; esac
-            case $_x in *f*) _q=1 ;; esac ;;
-        *) _amiga "$_x"; set -- "$@" "$_r" ;;
-        esac
-    done
-    if [ -n "$_q" ]; then
-        Delete "$@" $_all QUIET FORCE >NIL: 2>NIL:
-        return 0
-    fi
-    Delete "$@" $_all QUIET
-}
-
-# cp [-r] from ... to
-cp() {
-    _all=
-    for _x; do
-        shift
-        case $_x in
-        -*) case $_x in *[rR]*) _all=ALL ;; esac ;;
-        *) _amiga "$_x"; set -- "$@" "$_r" ;;
-        esac
-    done
-    Copy "$@" $_all QUIET
-}
-
-# mv from ... to (within one volume, as Rename does)
-mv() {
-    for _x; do
-        shift
-        case $_x in
-        -*) ;;
-        *) _amiga "$_x"; set -- "$@" "$_r" ;;
-        esac
-    done
-    Rename "$@" QUIET
-}
 
 # cat [name ...]: the files, or what comes in
 cat() {
@@ -152,14 +69,6 @@ cat() {
         set -- "$@" "$_r"
     done
     Type "$@"
-}
-
-# touch name ...: a new empty file, or today's date on one there
-touch() {
-    for _x; do
-        _amiga "$_x"
-        if [ -e "$_r" ]; then SetDate "$_r"; else : >"$_r"; fi
-    done
 }
 
 alias ll='ls -l'

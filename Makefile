@@ -418,7 +418,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/install.dos dist/vshrc \
-	  dist/up-term.conf dist/gg/fileutils-3.15/ls dist/gg/fileutils-3.15/dircolors $(KIT)/Files/
+	  dist/up-term.conf $(addprefix dist/gg/fileutils-3.15/,ls dircolors cp mv rm mkdir touch) $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
 	mkdir -p $(KIT)/Files/fileutils-3.15
 	cp dist/gg/fileutils-3.15/COPYING dist/gg/fileutils-3.15/SOURCE.txt dist/gg/fileutils-3.15/fileutils-3.15-src.lha $(KIT)/Files/fileutils-3.15/

@@ -80,7 +80,7 @@ SetEnv TERMINFO /ENV/up-term/terminfo
 Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
-; ls: GNU fileutils 3.15 from Geek Gadgets (GPL v2: its COPYING and the
+; ls, dircolors, cp, mv, rm, mkdir, touch: GNU fileutils 3.15 from Geek Gadgets (GPL v2: its COPYING and the
 ; complete source are in the kit's fileutils-3.15 drawer). The terminal can only show the colour a
 ; listing program emits, and AmigaDOS Dir colours directories alone, so
 ; this is what makes `ls` type its output. C: is where resolve() in
@@ -98,6 +98,26 @@ EndIf
 If NOT EXISTS C:dircolors
   Copy dircolors C:dircolors CLONE
   Echo >ENVARC:up-term/dircolors "installed by UP-Term"
+EndIf
+If NOT EXISTS C:cp
+  Copy cp C:cp CLONE
+  Echo >ENVARC:up-term/cp "installed by UP-Term"
+EndIf
+If NOT EXISTS C:mv
+  Copy mv C:mv CLONE
+  Echo >ENVARC:up-term/mv "installed by UP-Term"
+EndIf
+If NOT EXISTS C:rm
+  Copy rm C:rm CLONE
+  Echo >ENVARC:up-term/rm "installed by UP-Term"
+EndIf
+If NOT EXISTS C:mkdir
+  Copy mkdir C:mkdir CLONE
+  Echo >ENVARC:up-term/mkdir "installed by UP-Term"
+EndIf
+If NOT EXISTS C:touch
+  Copy touch C:touch CLONE
+  Echo >ENVARC:up-term/touch "installed by UP-Term"
 EndIf
 If EXISTS ENVARC:up-term/ls
   Copy ENVARC:up-term/ls ENV:up-term/ls CLONE QUIET
