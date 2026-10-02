@@ -853,7 +853,11 @@ static void close_gadget(con *c);
 
 enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
        MENU_KC_FILE, MENU_KC_COMMAND, MENU_KC_DEVICE, MENU_KC_CACHE, MENU_KC_RESET,
-       MENU_KC_PURGE, MENU_KC_INFO };
+       MENU_KC_PURGE, MENU_KC_INFO,
+       MENU_SET_BLOCK, MENU_SET_UNDERLINE, MENU_SET_BAR, MENU_SET_BLINK, MENU_SET_BELL_NONE,
+       MENU_SET_BELL_BEEP, MENU_SET_BELL_VISUAL, MENU_SET_BOLD, MENU_SET_META_AMIGA,
+       MENU_SET_META_ALT, MENU_SET_COPY, MENU_SET_WHEEL, MENU_SET_UNIX, MENU_SET_KINGCON,
+       MENU_SET_KC_W, MENU_SET_KC_L, MENU_SET_KC_B, MENU_SET_KC_C, MENU_SET_KC_S };
 
 /* Right Amiga C, V and F stay what they were: Intuition now hands them in
  * as MENUPICK, which picks the same actions. */
@@ -886,24 +890,95 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
     { NM_ITEM, (STRPTR)"Show .info", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_KC_INFO }
 };
 
+/* Settings: what UP-Term Prefs sets for a profile, for this window, live
+ * (plan H9). The checkmarks show the window's settings (menu_checked); a
+ * pick changes the window only -- Prefs keeps the profile. MutualExclude
+ * bits are the item's place in its submenu. KingCON's .info and cache
+ * switches are in its Complete menu. */
+#define MENU_SET_ITEMS 27
+static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
+    { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Cursor", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Block", 0, CHECKIT, 6, (APTR)MENU_SET_BLOCK },
+    { NM_SUB, (STRPTR)"Underline", 0, CHECKIT, 5, (APTR)MENU_SET_UNDERLINE },
+    { NM_SUB, (STRPTR)"Bar", 0, CHECKIT, 3, (APTR)MENU_SET_BAR },
+    { NM_SUB, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Blinking", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_BLINK },
+    { NM_ITEM, (STRPTR)"Bell", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"None", 0, CHECKIT, 6, (APTR)MENU_SET_BELL_NONE },
+    { NM_SUB, (STRPTR)"Beep", 0, CHECKIT, 5, (APTR)MENU_SET_BELL_BEEP },
+    { NM_SUB, (STRPTR)"Visual", 0, CHECKIT, 3, (APTR)MENU_SET_BELL_VISUAL },
+    { NM_ITEM, (STRPTR)"Bold is bright", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_BOLD },
+    { NM_ITEM, (STRPTR)"Meta key", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Left Amiga", 0, CHECKIT, 2, (APTR)MENU_SET_META_AMIGA },
+    { NM_SUB, (STRPTR)"Alt", 0, CHECKIT, 1, (APTR)MENU_SET_META_ALT },
+    { NM_ITEM, (STRPTR)"Copy on select", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_COPY },
+    { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Tab completion", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Unix", 0, CHECKIT, 2, (APTR)MENU_SET_UNIX },
+    { NM_SUB, (STRPTR)"KingCON", 0, CHECKIT, 1, (APTR)MENU_SET_KINGCON },
+    { NM_ITEM, (STRPTR)"KingCON style", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Window", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_KC_W },
+    { NM_SUB, (STRPTR)"List", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_KC_L },
+    { NM_SUB, (STRPTR)"Cycle", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_KC_B },
+    { NM_SUB, (STRPTR)"Common part first", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_KC_C },
+    { NM_SUB, (STRPTR)"Silent", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_KC_S }
+};
+
+/* Is the setting behind a checkmark item on in this window? */
+static int menu_checked(const con *c, LONG id)
+{
+    int cs = c->w.cursor_style;
+    switch (id) {
+    case MENU_SET_BLOCK: return cs <= 2;
+    case MENU_SET_UNDERLINE: return cs == 3 || cs == 4;
+    case MENU_SET_BAR: return cs >= 5;
+    case MENU_SET_BLINK: return c->w.cursor_blink;
+    case MENU_SET_BELL_NONE: return c->w.bell == 0;
+    case MENU_SET_BELL_BEEP: return c->w.bell == 1;
+    case MENU_SET_BELL_VISUAL: return c->w.bell == 2;
+    case MENU_SET_BOLD: return c->w.bold_bright;
+    case MENU_SET_META_AMIGA: return !c->w.meta_alt;
+    case MENU_SET_META_ALT: return c->w.meta_alt;
+    case MENU_SET_COPY: return c->w.copy_on_select;
+    case MENU_SET_WHEEL: return c->w.wheel_scroll;
+    case MENU_SET_UNIX: return !c->kingcon;
+    case MENU_SET_KINGCON: return c->kingcon;
+    case MENU_SET_KC_W: return (c->kc_style & LE_KC_WINDOW) != 0;
+    case MENU_SET_KC_L: return (c->kc_style & LE_KC_LIST) != 0;
+    case MENU_SET_KC_B: return (c->kc_style & LE_KC_CYCLE) != 0;
+    case MENU_SET_KC_C: return (c->kc_style & LE_KC_COMMON) != 0;
+    case MENU_SET_KC_S: return (c->kc_style & LE_KC_SILENT) != 0;
+    case MENU_KC_CACHE: return c->kc_cache;
+    case MENU_KC_INFO: return c->kc_info;
+    }
+    return 0;
+}
+
 static void menu_add(con *c, struct Window *win)
 {
     APTR vi;
     if (!GadToolsBase || win == c->foreign)
         return; /* a window someone else opened keeps its own menus */
     {
-        /* the strip, with the Complete menu under KingCON completion */
-        struct NewMenu nm[sizeof(menu_def) / sizeof(menu_def[0]) + MENU_KC_ITEMS];
+        /* UP-Term, Settings, and the Complete menu under KingCON completion */
+        struct NewMenu nm[sizeof(menu_def) / sizeof(menu_def[0]) + MENU_SET_ITEMS + MENU_KC_ITEMS];
         int n = sizeof(menu_def) / sizeof(menu_def[0]) - 1, i; /* without the NM_END */
         CopyMem((APTR)menu_def, nm, n * sizeof(struct NewMenu));
+        CopyMem((APTR)menu_set, nm + n, sizeof(menu_set));
+        for (i = n; i < n + MENU_SET_ITEMS; i++)
+            if (!c->kingcon && (LONG)nm[i].nm_UserData == 0 && nm[i].nm_Label &&
+                nm[i].nm_Label != NM_BARLABEL && !strcmp((const char *)nm[i].nm_Label, "KingCON style"))
+                nm[i].nm_Flags |= NM_ITEMDISABLED; /* Unix completion has no styles */
+        n += MENU_SET_ITEMS;
         if (c->kingcon) {
             CopyMem((APTR)menu_kc, nm + n, sizeof(menu_kc));
-            for (i = n; i < n + MENU_KC_ITEMS; i++)
-                if (((LONG)nm[i].nm_UserData == MENU_KC_CACHE && c->kc_cache) ||
-                    ((LONG)nm[i].nm_UserData == MENU_KC_INFO && c->kc_info))
-                    nm[i].nm_Flags |= CHECKED;
             n += MENU_KC_ITEMS;
         }
+        for (i = 0; i < n; i++)
+            if ((nm[i].nm_Flags & CHECKIT) && menu_checked(c, (LONG)nm[i].nm_UserData))
+                nm[i].nm_Flags |= CHECKED;
         CopyMem((APTR)&menu_def[sizeof(menu_def) / sizeof(menu_def[0]) - 1], nm + n,
                 sizeof(struct NewMenu));
         c->menustrip = CreateMenusA(nm, 0);
@@ -967,6 +1042,60 @@ static void prefs_launch(void)
                       NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
 }
 
+/* A Settings (or Complete) checkmark picked: the window's setting, live.
+ * on is the item's checkmark after the pick. 1 when it was one. */
+static int menu_setting(con *c, LONG id, int on)
+{
+    int restyle = 0, bit = 0;
+    switch (id) {
+    case MENU_SET_BLOCK: c->w.cursor_style = 1; restyle = 1; break;
+    case MENU_SET_UNDERLINE: c->w.cursor_style = 3; restyle = 1; break;
+    case MENU_SET_BAR: c->w.cursor_style = 5; restyle = 1; break;
+    case MENU_SET_BLINK: c->w.cursor_blink = on; restyle = 1; break;
+    case MENU_SET_BELL_NONE: c->w.bell = 0; break;
+    case MENU_SET_BELL_BEEP: c->w.bell = 1; break;
+    case MENU_SET_BELL_VISUAL: c->w.bell = 2; break;
+    case MENU_SET_BOLD: c->w.bold_bright = on; restyle = 1; break;
+    case MENU_SET_META_AMIGA: c->w.meta_alt = 0; break;
+    case MENU_SET_META_ALT: c->w.meta_alt = 1; break;
+    case MENU_SET_COPY: c->w.copy_on_select = on; break;
+    case MENU_SET_WHEEL: c->w.wheel_scroll = on; break;
+    case MENU_SET_UNIX:
+    case MENU_SET_KINGCON:
+        sel_close(c);
+        kc_cyc_end(c);
+        c->tabs = 0;
+        c->menu_n = 0;
+        c->kingcon = id == MENU_SET_KINGCON;
+        break;
+    case MENU_SET_KC_W: bit = LE_KC_WINDOW; break;
+    case MENU_SET_KC_L: bit = LE_KC_LIST; break;
+    case MENU_SET_KC_B: bit = LE_KC_CYCLE; break;
+    case MENU_SET_KC_C: bit = LE_KC_COMMON; break;
+    case MENU_SET_KC_S: bit = LE_KC_SILENT; break;
+    case MENU_KC_CACHE: c->kc_cache = on; break;
+    case MENU_KC_INFO: c->kc_info = on; break;
+    default: return 0;
+    }
+    if (bit) {
+        /* KingCON's rules: W and L/B exclude each other; no style at all is W */
+        kc_cyc_end(c);
+        if (on)
+            c->kc_style |= bit;
+        else
+            c->kc_style &= ~bit;
+        if (on && bit == LE_KC_WINDOW)
+            c->kc_style &= ~(LE_KC_LIST | LE_KC_CYCLE);
+        if (on && (bit == LE_KC_LIST || bit == LE_KC_CYCLE))
+            c->kc_style &= ~LE_KC_WINDOW;
+        if (!(c->kc_style & (LE_KC_WINDOW | LE_KC_LIST | LE_KC_CYCLE | LE_KC_COMMON)))
+            c->kc_style |= LE_KC_WINDOW;
+    }
+    if (restyle)
+        vtwin_apply_settings(&c->w); /* the cursor and colours drawn anew */
+    return 1;
+}
+
 static void menu_pick(con *c, UWORD code)
 {
     while (code != MENUNULL && c->menustrip && c->w.win) {
@@ -982,11 +1111,17 @@ static void menu_pick(con *c, UWORD code)
         case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); break;
         case MENU_KC_COMMAND: kc_menu(c, COMPLETE_COMMANDS); break;
         case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); break;
-        case MENU_KC_CACHE: c->kc_cache = (it->Flags & CHECKED) != 0; break;
         case MENU_KC_RESET: complete_cache_reset(); break;
         case MENU_KC_PURGE: complete_cache_purge(); break;
-        case MENU_KC_INFO: c->kc_info = (it->Flags & CHECKED) != 0; break;
-        default: break;
+        default:
+            if (menu_setting(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0)) {
+                /* the strip again: every checkmark from the settings (one
+                 * pick can move others: KingCON's W clears L and B) */
+                menu_remove(c, c->w.win);
+                menu_add(c, c->w.win);
+                return; /* the old strip, and its NextSelect chain, are gone */
+            }
+            break;
         }
         code = it->NextSelect;
     }
@@ -2981,6 +3116,8 @@ static LONG handler_main(void)
     c->ld.user = c;
     ld_init(&c->ld);
     vtwin_init(&c->w, &host, c); /* the frame clock */
+    c->kc_style = LE_KC_WINDOW; /* KingCON's defaults, before any profile */
+    c->kc_cache = 1;
     if (!OpenDevice((STRPTR)"console.device", (ULONG)CONU_LIBRARY, (struct IORequest *)&c->lib_io, 0))
         ConsoleDevice = c->lib_io.io_Device; /* RawKeyConvert; the same device for every process */
     if (!DOSBase || !IntuitionBase || !GfxBase || !ConsoleDevice || !LayersBase) {

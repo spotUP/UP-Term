@@ -95,8 +95,13 @@ CONFIGURATION (profiles)
 MENU
   An XCON: window has a menu (right mouse button, on the screen's title
   bar): UP-Term > Copy, Paste, Find..., Preferences... (opens UP-Term
-  Prefs), Close window. The right button therefore opens the menu rather
-  than reaching a program that asked for mouse reports.
+  Prefs), Close window. Settings > Cursor (Block, Underline, Bar,
+  Blinking), Bell (None, Beep, Visual), Bold is bright, Meta key (Left
+  Amiga, Alt), Copy on select, Wheel scrolls, Tab completion (Unix,
+  KingCON), KingCON style: the same settings as UP-Term Prefs, for this
+  window and at once (Prefs keeps them for the profile). With KingCON
+  completion a Complete menu follows. The right button therefore opens the
+  menu rather than reaching a program that asked for mouse reports.
 
 KEYS
   Mouse drag            select (Shift+drag when a program uses the mouse)

@@ -54,8 +54,10 @@ def k(code, q=0):
 
 
 # The Complete menu, on the Workbench screen's bar (topaz 8): its title and
-# each item's row, in screen pixels (rig screenshot 2026-10-02)
-MENU_X = 80
+# each item's row, in screen pixels (rig screenshot 2026-10-02). Since the
+# Settings menu came in front of it the title is further right: x estimated
+# from the Settings screenshot, not yet run.
+MENU_X = 140
 ITEM_Y = {'Filename': 20, 'Command': 32, 'Device': 44, 'Enable cache': 62,
           'Reset cache': 74, 'Purge cache': 86, 'Show .info': 104}
 
