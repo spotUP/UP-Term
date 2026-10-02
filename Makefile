@@ -10,19 +10,20 @@ SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c
 TTY     := tty/ldisc.c
 DEVICE_CORE := device/upc_core.c
 CONF    := config/upconf.c
+PREFS_CORE := prefs/prefs_core.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
-           tests/test_upcon.c tests/test_upconf.c
+           tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c
 
 .PHONY: test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) device/upc_core.h config/upconf.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h handler/lineedit.h render/glyph_tables.inc $(TESTS) tests/harness.h
+$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(PREFS_CORE) device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h handler/lineedit.h render/glyph_tables.inc $(TESTS) tests/harness.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(PREFS_CORE) $(TESTS)
 
 render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
@@ -155,12 +156,14 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/breakport.c
 
-# the Prefs editor: the profiles in ENVARC:up-term/up-term, two pages of
-# Intuition gadgets. A plain CLI program (its own window), so vc links it.
+# the Prefs editor: the profiles in ENV: / ENVARC:up-term/up-term, two pages
+# of GadTools gadgets; its model (prefs_core) is host-tested. A plain CLI
+# program (its own window), so vc links it. vbcc warns (153, 65) on the
+# (void) parameter casts of the file callbacks, as for vsh.
 # The kit ships it as "UP-Term Prefs" (make cannot hold a space in a target).
-$(BUILD)/amiga/upprefs: prefs/upprefs.c config/upconf.c config/upconf.h
+$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h config/upconf.c config/upconf.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ prefs/upprefs.c config/upconf.c
+	$(VC) -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_core.c config/upconf.c
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (no -m68020: the SDK has no libm020 multilib)
