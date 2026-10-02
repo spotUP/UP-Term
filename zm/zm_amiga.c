@@ -17,6 +17,8 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "zmodem.h"
+#include "../handler/vtcon_packets.h"
+#include "../tty/ldisc.h"
 
 #ifdef ZM_SZ
 static const char vers[] = "$VER: sz 1.0 (2.10.2026) UP-Term";
@@ -30,6 +32,9 @@ typedef struct aline {
     BPTR in, out;
     UBYTE buf[1024];
     LONG len, pos;
+#ifdef ZM_STATS
+    LONG reads, waits, bytes, writes;
+#endif
 } aline;
 
 static int a_getc(void *u, int timeout_ms)
@@ -38,9 +43,17 @@ static int a_getc(void *u, int timeout_ms)
     if (l->pos < l->len)
         return l->buf[l->pos++];
     /* WaitForChar takes microseconds; 0 asks without waiting */
+#ifdef ZM_STATS
+    l->waits++;
+#endif
     if (!WaitForChar(l->in, (LONG)timeout_ms * 1000))
         return ZM_TIMEOUT;
     l->len = Read(l->in, l->buf, sizeof(l->buf));
+#ifdef ZM_STATS
+    l->reads++;
+    if (l->len > 0)
+        l->bytes += l->len;
+#endif
     l->pos = 0;
     if (l->len <= 0) {
         l->len = 0;
@@ -52,7 +65,29 @@ static int a_getc(void *u, int timeout_ms)
 static int a_write(void *u, const unsigned char *b, long n)
 {
     aline *l = (aline *)u;
+#ifdef ZM_STATS
+    l->writes++;
+#endif
     return Write(l->out, (APTR)b, n) == n ? 0 : 1;
+}
+
+/* Reads in bulk: on an UP-Term console or PTY: (its termios packets), a
+ * read returns once 255 bytes are there or the line has been quiet for
+ * 0.1 s (VMIN 255, VTIME 1), the Unix way for a raw transfer. Without it
+ * every read took what had come -- 4.5 bytes on a serial login, two DOS
+ * packets each, and rz ran at half the line's speed. Any other console
+ * refuses the packet and keeps reading as before. */
+static void bulk_reads(BPTR in)
+{
+    struct FileHandle *fh = (struct FileHandle *)BADDR(in);
+    static vt_termios t;
+    if (!fh || !fh->fh_Type)
+        return;
+    if (!DoPkt(fh->fh_Type, ACTION_VTCON_TCGETA, fh->fh_Arg1, (LONG)&t, 0, 0, 0))
+        return;
+    t.c_cc[LD_VMIN] = 255;
+    t.c_cc[LD_VTIME] = 1;
+    DoPkt(fh->fh_Type, ACTION_VTCON_TCSETA, fh->fh_Arg1, (LONG)&t, LD_TCSANOW, 0, 0);
 }
 
 /* ---- the files ---------------------------------------------------------------- */
@@ -148,6 +183,7 @@ int main(void)
     line.write = a_write;
     line.user = &al;
     SetMode(al.in, 1); /* every byte as it is, both ways (PTY: makes it cfmakeraw) */
+    bulk_reads(al.in);
 #ifdef ZM_SZ
     {
         const char *const *names = (const char *const *)args[0];
@@ -160,6 +196,9 @@ int main(void)
     rc = zm_receive(&line, &files, &n);
 #endif
     SetMode(al.in, 0);
+#ifdef ZM_STATS
+    Printf("\r\nstats: %ld waits, %ld reads, %ld bytes, %ld writes\r\n", al.waits, al.reads, al.bytes, al.writes);
+#endif
     FreeArgs(rd);
     if (rc != ZM_OK) {
         Printf("\r\n%s: %s\r\n", (STRPTR)(vers + 6), (STRPTR)why[rc]);
