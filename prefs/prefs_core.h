@@ -52,6 +52,13 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *profile);
 #define PREFS_BAD_SELBG 18
 int prefs_validate(const prefs_fields *f);
 
+/* A theme file (UP-Term's themes drawer, one .conf per theme: one profile section) applied to
+ * f: its colours -- fg, bg, cursor-color, selection-fg/bg, palette --
+ * replace f's, a colour it does not set is cleared, everything else in f
+ * stays. work is scratch for the parse (an upconf is too big for a 68k
+ * stack). 1 when the file held a colour, else 0 and f is untouched. */
+int prefs_apply_theme(prefs_fields *f, upconf *work, const char *text, long len);
+
 /* 1 when the table has a profile of that name (case-insensitive). */
 int prefs_profile_exists(const upconf *c, const char *profile);
 

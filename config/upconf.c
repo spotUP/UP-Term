@@ -405,8 +405,10 @@ long upconf_palette_str(const uc_u32 *in16, char *out, long cap)
         num[0] = (char)('0' + i / 10);
         num[1] = (char)('0' + i % 10);
         num[2] = 0;
+        hex[6] = 0; /* six digits, then the end: the terminator was at [5],
+                     * where the first digit went, and the entry ran on into
+                     * whatever followed on the stack (2026-10-02) */
         h = hex + 5;
-        *h = 0;
         while (h >= hex) {
             *h-- = (char)"0123456789ABCDEF"[rgb & 0xF];
             rgb >>= 4;

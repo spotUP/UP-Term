@@ -50,6 +50,10 @@ Delete >NIL: ENVARC:terminfo/v ENVARC:terminfo ENV:terminfo/v ENV:terminfo QUIET
 Delete >NIL: ENVARC:termcap.vtcon ENV:termcap.vtcon QUIET
 MakeDir >NIL: ENVARC:up-term ENVARC:up-term/terminfo
 Copy terminfo ENVARC:up-term/terminfo ALL CLONE QUIET
+; colour themes for UP-Term Prefs' Theme... requester (one profile section
+; each; ENVARC:up-term goes whole at Uninstall)
+MakeDir >NIL: ENVARC:up-term/themes
+Copy themes ENVARC:up-term/themes ALL CLONE QUIET
 Copy termcap.vtcon ENVARC:up-term/termcap.vtcon CLONE
 Copy ENVARC:up-term ENV:up-term ALL CLONE QUIET
 ; the window-preferences sample (/ENV/up-term/up-term, read by the XCON:

@@ -314,8 +314,45 @@ static void stage_cases(void)
     }
 }
 
+/* A theme file (one .conf in themes/: a profile section of colours) applied to
+ * the fields: its colours replace the profile's, the rest of the profile
+ * (font, bell, cursor shape...) stays; a colour the theme does not set is
+ * cleared, so nothing of an earlier theme lingers. */
+static void theme_cases(void)
+{
+    static upconf work;
+    prefs_fields f;
+    static const char theme[] =
+        "[profile Apprentice Default]\nfg = BCBCBC\nbg = 262626\ncursor-color = 5F875F\n"
+        "selection-bg = 87AFD7\nselection-fg = 262626\n"
+        "palette = 0,1C1C1C,1,AF5F5F,15,FFFFFF\n";
+    prefs_defaults(&f);
+    strcpy(f.font, "TOPAZ:11.font");
+    f.bell = PREFS_BELL_NONE;
+    strcpy(f.pal[3], "123456");                 /* an earlier theme's entry */
+    CHECK_INT(prefs_apply_theme(&f, &work, theme, (long)strlen(theme)), 1);
+    CHECK_STR(f.fg, "BCBCBC");
+    CHECK_STR(f.bg, "262626");
+    CHECK_STR(f.curcol, "5F875F");
+    CHECK_STR(f.selbg, "87AFD7");
+    CHECK_STR(f.selfg, "262626");
+    CHECK_STR(f.pal[0], "1C1C1C");
+    CHECK_STR(f.pal[15], "FFFFFF");
+    CHECK_STR(f.pal[3], "");                    /* not in the theme: cleared */
+    CHECK_STR(f.font, "TOPAZ:11.font");         /* not a colour: kept */
+    CHECK_INT(f.bell, PREFS_BELL_NONE);
+    /* a file with no colours is no theme: the fields stay as they were */
+    {
+        static const char notheme[] = "[profile x]\nbell = none\n";
+        CHECK_INT(prefs_apply_theme(&f, &work, notheme, (long)strlen(notheme)), 0);
+    }
+    CHECK_STR(f.fg, "BCBCBC");
+    CHECK_INT(prefs_apply_theme(&f, &work, "", 0), 0);
+}
+
 void suite_prefs(void)
 {
+    theme_cases();
     install_cases();
     install_restore_case();
     load_cases();

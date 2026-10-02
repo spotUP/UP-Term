@@ -80,6 +80,11 @@ CONFIGURATION (profiles)
      NewShell "XCON:0/20/640/300/vim/PROFILE vim/CLOSE"
    with  [profile vim]  bell = none  in the file.
 
+   Themes: the kit installs 112 colour themes in ENVARC:up-term/themes.
+   In UP-Term Prefs, Colors page, press Theme... and pick one: its colours
+   go into the profile you are editing; Save (or Use) applies them to the
+   windows opened after.
+
    Themes from another terminal convert to a profile section with
    tools/theme_import.py in the source tree; it reads the Terminal.app,
    iTerm2, Alacritty, Warp and Ghostty formats and prints the fg, bg,

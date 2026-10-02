@@ -34,6 +34,8 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include <proto/gadtools.h>
+#include <proto/asl.h>
+#include <libraries/asl.h>
 
 #include "../config/upconf.h"
 #include "prefs_core.h"
@@ -42,6 +44,7 @@
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *GadToolsBase;
+struct Library *AslBase;      /* the theme requester; 0: no Theme button action */
 
 /* ENV: is what is in use now, ENVARC: what the next boot copies to ENV:. */
 enum { T_ENV, T_ENVARC };
@@ -71,7 +74,7 @@ enum {
     ID_FONT, ID_SB, ID_CURCOL,
     ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
-    ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT
+    ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME
 };
 
 /* A string field: its gadget, the page it is on, the text it edits. */
@@ -510,6 +513,7 @@ static int build_gadgets(struct app *a)
                     (UWORD)(ID_PAL + i), a->f.pal[i], sizeof(a->f.pal[i]));
     g = str_gad(a, g, 1, FIELD_X, ROW(7), 80, "Selected text", ID_SELFG, a->f.selfg, UC_MAX_VALUE);
     g = str_gad(a, g, 1, FIELD_X, ROW(8), 80, "Selection", ID_SELBG, a->f.selbg, UC_MAX_VALUE);
+    g = gad(a, g, BUTTON_KIND, FIELD_X, ROW(9), 120, 14, "Theme...", ID_THEME, PLACETEXT_IN, 0);
     return g != 0;
 }
 
@@ -541,6 +545,47 @@ static struct Window *open_window(struct app *a, struct Screen *scr)
 }
 
 /* A gadget was released. 1 when the editor is done. */
+/* Theme...: a theme file from the kit's drawer, its colours into the
+ * profile being edited (prefs_apply_theme); Save or Use writes them. */
+static void pick_theme(struct app *a)
+{
+    struct FileRequester *fr;
+    char path[300];
+    BPTR f;
+    long got;
+    if (!AslBase) {
+        set_status(a, "No asl.library: no theme requester.");
+        return;
+    }
+    fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
+            ASLFR_Window, (ULONG)a->win, ASLFR_TitleText, (ULONG)"Choose a theme",
+            ASLFR_InitialDrawer, (ULONG)"ENVARC:up-term/themes", ASLFR_InitialPattern, (ULONG)"#?.conf",
+            ASLFR_DoPatterns, TRUE, ASLFR_RejectIcons, TRUE, TAG_DONE);
+    if (!fr)
+        return;
+    if (!AslRequest(fr, 0) || !fr->fr_File[0]) {
+        FreeAslRequest(fr);
+        return;
+    }
+    strncpy(path, (const char *)fr->fr_Drawer, sizeof(path) - 1);
+    path[sizeof(path) - 1] = 0;
+    AddPart((STRPTR)path, (STRPTR)fr->fr_File, sizeof(path));
+    FreeAslRequest(fr);
+    f = Open((STRPTR)path, MODE_OLDFILE);
+    if (!f) {
+        set_status(a, "The theme file cannot be opened.");
+        return;
+    }
+    got = Read(f, a->buf, CONF_MAX); /* the file text is parsed already: buf is free */
+    Close(f);
+    a->buf[got > 0 ? got : 0] = 0;
+    if (got > 0 && prefs_apply_theme(&a->f, &a->work, a->buf, got)) {
+        show_fields(a);
+        set_status(a, "Theme in the fields: Save or Use writes it.");
+    } else
+        set_status(a, "That file holds no colours.");
+}
+
 static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
 {
     char name[UC_NAME];
@@ -576,6 +621,10 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
             set_status(a, "Deleted: Save or Use writes the file.");
         } else
             set_status(a, "Not in the file.");
+        break;
+    case ID_THEME:
+        collect(a); /* what was typed stays, the theme replaces only colours */
+        pick_theme(a);
         break;
     case ID_CURSOR:
         a->f.cursor = code;
@@ -623,6 +672,7 @@ int main(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39L);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39L);
     GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39L);
+    AslBase = OpenLibrary((STRPTR)"asl.library", 38L);
     if (!IntuitionBase || !GfxBase || !GadToolsBase)
         goto out;
 
@@ -702,6 +752,8 @@ out:
         UnlockPubScreen(0, scr);
     if (GadToolsBase)
         CloseLibrary(GadToolsBase);
+    if (AslBase)
+        CloseLibrary(AslBase);
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase)

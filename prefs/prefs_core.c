@@ -81,6 +81,39 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
             pc_rgb_chars(pal[i] & 0xFFFFFFUL, f->pal[i]);
 }
 
+int prefs_apply_theme(prefs_fields *f, upconf *work, const char *text, long len)
+{
+    const char *p, *keys[5];
+    uc_u32 pal[16];
+    int i, any = 0;
+    upconf_parse(work, text, len);
+    if (work->nprof < 1)
+        return 0;
+    p = work->prof[0]; /* a theme file is one section; its name is the theme's */
+    keys[0] = "fg";
+    keys[1] = "bg";
+    keys[2] = "cursor-color";
+    keys[3] = "selection-fg";
+    keys[4] = "selection-bg";
+    for (i = 0; i < 5; i++)
+        any |= upconf_get(work, p, keys[i]) != 0;
+    any |= upconf_get(work, p, "palette") != 0;
+    if (!any)
+        return 0;
+    pc_copy(f->fg, upconf_str(work, p, "fg", ""), sizeof(f->fg));
+    pc_copy(f->bg, upconf_str(work, p, "bg", ""), sizeof(f->bg));
+    pc_copy(f->curcol, upconf_str(work, p, "cursor-color", ""), sizeof(f->curcol));
+    pc_copy(f->selfg, upconf_str(work, p, "selection-fg", ""), sizeof(f->selfg));
+    pc_copy(f->selbg, upconf_str(work, p, "selection-bg", ""), sizeof(f->selbg));
+    upconf_palette_parse(upconf_get(work, p, "palette"), pal);
+    for (i = 0; i < 16; i++) {
+        f->pal[i][0] = 0;
+        if (pal[i] & 0x01000000UL)
+            pc_rgb_chars(pal[i] & 0xFFFFFFUL, f->pal[i]);
+    }
+    return 1;
+}
+
 int prefs_validate(const prefs_fields *f)
 {
     uc_u32 rgb;
