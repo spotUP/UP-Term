@@ -681,9 +681,16 @@ int main(void)
 out:
     /* whatever was made, undone once, in the reverse order */
     if (a) {
-        if (a->win)
+        if (a->win) {
+            /* the shown page is chained behind the common gadgets (AddGList):
+             * unhook it first, or FreeGadgets(glist_common) walks on into
+             * the page FreeGadgets(glist[page]) already freed -- closing the
+             * window took the machine down (rig, 2026-10-02) */
+            if (a->page >= 0)
+                RemoveGList(a->win, a->glist[a->page], -1);
             CloseWindow(a->win);
-        /* the page held off the window is freed with the others */
+        }
+        /* each list on its own now: freed once each */
         FreeGadgets(a->glist[1]);
         FreeGadgets(a->glist[0]);
         FreeGadgets(a->glist_common);

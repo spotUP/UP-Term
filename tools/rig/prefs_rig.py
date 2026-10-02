@@ -68,11 +68,27 @@ def ink_at(px, x, y, bg):
     return best
 
 def scan_ink_row(px, x, y0, y1, want, bg):
-    """the first line at/below y0 whose cell at x shows ink of family want"""
-    for y in range(y0, y1, 2):
-        if fam(ink_at(px, x, y, bg)) == want:
-            return y
+    """the first pixel row at/below y0 with ink of family want near x. One
+    row at a time: ink_at's +-4 rows let the next text line's brighter ink
+    (yellow over red) win, so a red line was never seen (2026-10-02)"""
+    for y in range(y0, y1):
+        for dx in range(-4, 12):
+            if fam(px(x + dx, y)) == want:
+                return y
     return None
+
+def next_row(px, x, y, y1, want):
+    """the top of the next text row of family want: past the ink of the row
+    starting at y and a blank pixel row, the first ink again (a glyph is
+    several pixel rows tall, so "y + 4" landed in the same row)"""
+    def ink(yy):
+        return any(fam(px(x + dx, yy)) == want for dx in range(-4, 12))
+    while y < y1 and ink(y):
+        y += 1
+    while y < y1 and not ink(y):
+        y += 1
+    return y if y < y1 else None
+
 
 def open_win(title, opts=""):
     # XCON:x/y/w/h/TITLE/OPT... -- the title is the fifth field, so it has to
@@ -92,7 +108,14 @@ def open_win(title, opts=""):
 def shot(out):
     ami.main(['shot', out]); SHOTS.append(out)
 
+def ensure_dir():
+    # the drawer the kit makes; absent on a rig without the kit (install_rig
+    # uninstalls it)
+    b = ami.req(0x02, struct.pack('>H', 10) + b'MakeDir >NIL: ENV:up-term')
+
+
 def main():
+    ensure_dir()
     # two profiles, and no "default" section: a window without PROFILE <name>
     # falls back to the built-in look (light text on black).
     put('ENV:up-term/up-term',
@@ -104,25 +127,34 @@ def main():
     put('VTC:prefsb.txt', b'WWWW\nWWWW\n')
     out = os.path.join(HERE, "../../build/rig/shots/prefs_rig.png")
     x = 20   # inside the window's first column area
+    # a background pixel: well right of and below any text the test writes
+    # (x=20,y=100 sat on the prompt line once profile b's 16-pixel font
+    # pushed the rows down)
 
     # 1: no profile -> the built-in defaults: black bg, light achromatic text
     open_win('prefs0')
     ami.main(['type', 'Type VTC:prefsb.txt'])
-    time.sleep(2)
+    time.sleep(0.4)
+    ami.key(0x44)  # Return: the command runs (it only sat on the line)
+    time.sleep(3)
     shot(out); _, _, px = pixels(out)
-    bg = fam(px(x, 100))
+    bg = fam(px(BGX, BGY))
     check("no-profile background is black", bg == 'b', "fam=%s" % bg)
+    shot(out.replace('.png', '-0.png'))
     ty = scan_ink_row(px, x, 30, 200, 'g', (0, 0, 0))
     check("no-profile text is light (built-in grey)", ty is not None, "y=%s" % ty)
 
     # 2 + 3: profile a: yellow on black, ANSI green remapped to red
     open_win('prefsA', 'PROFILE a')
     ami.main(['type', 'Type VTC:prefsa.txt'])
-    time.sleep(2)
+    time.sleep(0.4)
+    ami.key(0x44)  # Return: the command runs (it only sat on the line)
+    time.sleep(3)
     shot(out); _, _, px = pixels(out)
-    check("profile a background is black", fam(px(x, 100)) == 'b')
+    shot(out.replace('.png', '-a.png'))
+    check("profile a background is black", fam(px(BGX, BGY)) == 'b')
     yg = scan_ink_row(px, x, 30, 200, 'r', (0, 0, 0))   # GGGG: remapped green
-    yh = scan_ink_row(px, x, (yg or 30) + 4, 220, 'y', (0, 0, 0))  # HHHH
+    yh = next_row(px, x, yg, 220, 'y') if yg else None  # HHHH: the next text row
     check("profile a palette: SGR 32 draws red", yg is not None, "y=%s" % yg)
     check("profile a foreground is yellow", yh is not None, "y=%s" % yh)
     step_a = (yh - yg) if (yg and yh) else None
@@ -139,10 +171,10 @@ def main():
         sx, sy = bx + 22, by + 40
         ex, ey = bx + 90, by + 40
         ami.script(('move', int(sx * kx), int(sy * ky)),
-                   ('button', 1, 1),
+                   ('button', 0, 1),
                    ('move', int(ex * kx), int(ey * ky)),
                    ('wait', 4),
-                   ('button', 1, 0))
+                   ('button', 0, 0))
         time.sleep(2)
         shot(out); _, _, px = pixels(out)
         # the selected cell sits under the drag; the row below it holds the
@@ -156,11 +188,14 @@ def main():
     # 4: profile b: cyan on red, topaz 16 -> the row pitch doubles
     open_win('prefsB', 'PROFILE b')
     ami.main(['type', 'Type VTC:prefsb.txt'])
-    time.sleep(2)
+    time.sleep(0.4)
+    ami.key(0x44)  # Return: the command runs (it only sat on the line)
+    time.sleep(3)
     shot(out); _, _, px = pixels(out)
-    check("profile b background is red", fam(px(x, 100)) == 'r')
+    shot(out.replace('.png', '-b.png'))
+    check("profile b background is red", fam(px(BGX, BGY)) == 'r', "rgb=%s" % (px(BGX, BGY),))
     w1 = scan_ink_row(px, x, 30, 220, 'c', (255, 0, 0))
-    w2 = scan_ink_row(px, x, (w1 or 30) + 4, 240, 'c', (255, 0, 0))
+    w2 = next_row(px, x, w1, 260, 'c')
     check("profile b foreground is cyan", w1 is not None, "y=%s" % w1)
     step_b = (w2 - w1) if (w1 and w2) else None
     check("profile b font: row pitch ~2x profile a",
@@ -190,7 +225,8 @@ def report():
 # "C:UP-Term Prefs"; a space in the rig's run command would break the CLI, the
 # name itself is Install's business, not the app's).
 
-BACKSPACE = 0x48
+BGX, BGY = 400, 250
+BACKSPACE = 0x41  # (was 0x48: Page Up)
 WIN = 'UP-Term Prefs'
 
 def click(box, right=False):
@@ -201,7 +237,7 @@ def click(box, right=False):
     cy = y + h // 2
     kx, ky = ami.pointer_scale()
     ami.script(('move', int(cx * kx), int(cy * ky)),
-               ('button', 1, 1), ('wait', 2), ('button', 1, 0))
+               ('button', 0, 1), ('wait', 2), ('button', 0, 0))  # the left button (1 is the right)
 
 def find_win(timeout=10):
     for _ in range(timeout * 2):
@@ -218,11 +254,41 @@ def get(path):
     os.unlink(tmp)
     return data.decode('latin-1')
 
+def gadgets():
+    """the Prefs window's gadgets from UITREE: id -> (box, kind, label, text).
+    GadTools buttons show no label there; they are found by GadgetID
+    (prefs/upprefs.c: ID_SAVE 36, ID_USE 37, ID_CANCEL 38)"""
+    import shlex
+    out, inside = {}, False
+    for line in ami.req(0x0D).decode('latin-1').splitlines():
+        if line.startswith('W '):
+            if inside:
+                break
+            inside = shlex.split(line)[-1] == WIN
+        elif inside and line.startswith('G '):
+            f = shlex.split(line)
+            w, h = map(int, f[4].split('x'))
+            out[int(f[1])] = ((int(f[2]), int(f[3]), w, h), f[5], f[7] if len(f) > 7 else '',
+                              f[8] if len(f) > 8 else '')
+    return out
+
+
+def by_label(g, label):
+    for gid, v in g.items():
+        if v[2] == label:
+            return gid, v
+    return None, None
+
+
+ID_SAVE = 36
+
+
 def ui_main():
     binary = os.path.join(HERE, "../../build/amiga/upprefs")
     if not os.path.exists(binary):
         raise SystemExit("build the app first: make build/amiga/upprefs")
     out = os.path.join(HERE, "../../build/rig/shots/prefs_ui.png")
+    ensure_dir()
     # a file for Load to read: one profile with a font the field shows
     put('ENV:up-term/up-term',
         b'[profile default]\nfont = TOPAZ:8.8.font\nbell = beep\n')
@@ -230,39 +296,29 @@ def ui_main():
     ami.main(['exec', 'run >NIL: VTC:upprefs'])
     w = find_win()
     check("the Prefs window is open", w is not None)
-    box = w['box']
-    shot(out); _, _, px = pixels(out)
-    # the General page is up: both tabs are there, the profile's fields are
-    # loaded. Disabled gadgets still appear in the tree, so the page checks
-    # that follow are the field's text and what Save writes.
-    check("the tabs are there",
-          w.get('Colors') is not None and w.get('General') is not None,
-          "gadgets: %s" % ", ".join(sorted(k for k in w if k != 'box')))
-
-    # the font field carries the file's value: Load ran on startup
-    field = w.get('TOPAZ:8.8.font')
-    check("Load filled the font field from the file", field is not None,
-          "field=%s" % (field,))
-    if field:
-        click(field, right=True)
-        for _ in range(14):
+    shot(out)
+    g = gadgets()
+    check("the page switch is there", by_label(g, 'Page')[0] is not None)
+    fid, font = by_label(g, 'Font')
+    check("Load filled the font field from the file", font is not None and font[3] == 'TOPAZ:8.8.font',
+          "font=%s" % (font,))
+    if font:
+        click(font[0], right=True)
+        for _ in range(16):
             ami.key(BACKSPACE)
         ami.main(['type', 'TOPAZ:12.font'])
         time.sleep(1)
-        w2 = find_win(2)
-        check("the field shows the typed value",
-              w2.get('TOPAZ:12.font') is not None,
-              "gadgets: %s" % ", ".join(sorted(k for k in w2 if k != 'box')))
-        save = w2.get('Save')
+        font2 = gadgets().get(fid)
+        check("the field shows the typed value", font2 is not None and font2[3] == 'TOPAZ:12.font',
+              "font=%s" % (font2,))
+        save = gadgets().get(ID_SAVE)
         check("the Save button is there", save is not None)
         if save:
-            click(save)
+            click(save[0])
             time.sleep(2)
             text = get('ENV:up-term/up-term')
-            check("Save wrote the edited font", 'font = TOPAZ:12.font' in text,
-                  repr(text[:120]))
-            check("Save kept the profile's other keys", 'bell = beep' in text,
-                  repr(text[:120]))
+            check("Save wrote the edited font", 'font = TOPAZ:12.font' in text, repr(text[:120]))
+            check("Save kept the profile's other keys", 'bell = beep' in text, repr(text[:120]))
             check("Save kept the profile name", '[profile default]' in text)
             try:
                 back = get('ENV:up-term/up-term.orig')
@@ -270,21 +326,34 @@ def ui_main():
                       'TOPAZ:8.8.font' in back, repr(back[:80]))
             except SystemExit:
                 check("the previous file was kept as up-term.orig", False, "no .orig")
+            try:
+                arc = get('ENVARC:up-term/up-term')
+                check("Save also wrote ENVARC:", 'font = TOPAZ:12.font' in arc, repr(arc[:80]))
+            except SystemExit:
+                check("Save also wrote ENVARC:", False, "none")
 
-    # closing the window: the app must come back with everything written
-    try:
-        ami.main(['gclick', WIN, 'close'])
-    except SystemExit:
-        pass
-    time.sleep(2)
+    # closing the window: the app must end and the machine keep running
+    # (closing with a loaded file crashed it: a double FreeGadgets)
+    if ami.window(WIN):
+        ami.main(['gclick', WIN, 'sys:close'])
+    time.sleep(3)
     check("the window closes", ami.window(WIN) is None)
+    check("the machine is still up", run_cmd('Echo up') == 'up')
 
-    for p in ('ENV:up-term/up-term', 'ENV:up-term/up-term.orig', 'VTC:upprefs'):
+    for p in ('ENV:up-term/up-term', 'ENV:up-term/up-term.orig', 'ENVARC:up-term/up-term.orig', 'VTC:upprefs'):
         try:
             ami.main(['exec', 'Delete %s QUIET' % p])
         except SystemExit:
             pass
     report()
+
+
+def run_cmd(cmd):
+    try:
+        b = ami.req(0x02, struct.pack('>H', 10) + cmd.encode('latin-1'))
+        return b[4:].decode('latin-1').strip()
+    except Exception:
+        return ''
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--ui':
