@@ -340,7 +340,10 @@ def ui_main():
     check("the window closes", ami.window(WIN) is None)
     check("the machine is still up", run_cmd('Echo up') == 'up')
 
-    for p in ('ENV:up-term/up-term', 'ENV:up-term/up-term.orig', 'ENVARC:up-term/up-term.orig', 'VTC:upprefs'):
+    # Save wrote ENVARC: too: left there it changed every later window on
+    # the rig (a 12-point font failed tmux_rig's cube check)
+    for p in ('ENV:up-term/up-term', 'ENV:up-term/up-term.orig', 'ENVARC:up-term/up-term',
+              'ENVARC:up-term/up-term.orig', 'VTC:upprefs'):
         try:
             ami.main(['exec', 'Delete %s QUIET' % p])
         except SystemExit:

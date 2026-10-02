@@ -100,7 +100,17 @@ That leaves the honest options, and the choice is not mine:
 
 Until that is decided, `cat` and the five shims stay as they are.
 
-**DECIDED (lead, 2026-10-02; the owner delegates design decisions): neither
+**MEASURED LATER THE SAME DAY (tests/amiga/dotdot on the rig): the premise
+was wrong. ixemul does not clamp `..`.** From the root of System: or Ram Disk:
+`..` is `/` (the volume list), as on Unix. Only `VTCX:` -- FS-UAE's
+host-directory filesystem behind `VTC:` -- answers its own root as its
+parent; on a real Amiga's FFS/PFS volumes `..` already works. So the
+`..`-as-`/` argument for the shims is a rig artefact, and they can retire
+for fileutils `cp mv rm mkdir touch` (rig checks of `..` must use a real
+volume, not VTC:). The probe did find a real ixemul bug, fixed in
+ixemul-vtcon: after `cd /`, Amiga paths (`SYS:C`) failed.
+
+The earlier decision, kept for the record: **(lead, 2026-10-02; the owner delegates design decisions): neither
 option -- fix `..` where it is wrong, in our patched ixemul.** On Unix the
 parent of a mount point is the directory above it; under ixemul an assign
 `VTC:` is `/VTC`, so `..` from its root must be `/` (the volume list), and
