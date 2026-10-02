@@ -1633,30 +1633,42 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
  * while the query is typed, which is the point of a find in a live terminal.
  *
  * This NDK has neither REQ_STR_GETANSWER nor a requester tag that asks for a
- * string, so the gadget is a hand-built struct filled field by field, exactly
- * as the Prefs editor does it (prefs/upprefs.c mk()). Intuition maintains the
- * text in StringInfo: the keys are not decoded here, only Enter and Escape
- * are acted on. */
+ * string, so the gadget is an Intuition string gadget (GTYP_STRGADGET with
+ * its StringInfo) filled field by field. Intuition maintains the text and
+ * reports Return or Enter as GADGETUP (GACT_RELVERIFY); Escape, or Return
+ * while the gadget is not active, arrive as VANILLAKEY, and the close
+ * gadget cancels too.
+ *
+ * The window's IDCMP goes to find_port, a port the window did not create:
+ * opened with no IDCMP, given the port, then ModifyIDCMP; closed the RKM's
+ * CloseWindowSafely way (strip its messages, detach the port, no IDCMP,
+ * then CloseWindow) so Intuition never frees our port as its own nor
+ * leaves a message pointing at a closed window. */
 
-#define FIND_STRING GTYP_GADGET0002   /* the type the Prefs editor uses for a string */
-#define FIND_GAD_X  6
-#define FIND_GAD_Y  3
 #define FIND_GAD_W  340
-#define FIND_GAD_H  18
+#define FIND_PAD    4             /* inner margin around the gadget */
 
 static void find_close(con *c)
 {
     if (c->find_win) {
-        CloseWindow(c->find_win); /* the gadget is a plain struct, not allocated */
+        struct Window *w = c->find_win;
+        struct Node *n, *next;
+        Forbid();
+        /* whatever the window still has queued must not outlive it */
+        for (n = c->find_port->mp_MsgList.lh_Head; (next = n->ln_Succ) != 0; n = next)
+            if (((struct IntuiMessage *)n)->IDCMPWindow == w) {
+                Remove(n);
+                ReplyMsg((struct Message *)n);
+            }
+        w->UserPort = 0;          /* not Intuition's to free */
+        ModifyIDCMP(w, 0);        /* and no more messages for it */
+        Permit();
+        CloseWindow(w);           /* the gadget is a plain struct, not allocated */
         c->find_win = 0;
         c->find_gad = 0;
     }
     if (c->find_port) {
-        struct Message *m;
-        /* whatever the prompt still holds must not answer a dead port */
-        while ((m = GetMsg(c->find_port)))
-            ReplyMsg(m);
-        DeleteMsgPort(c->find_port);
+        DeleteMsgPort(c->find_port); /* empty: its only window's messages were stripped */
         c->find_port = 0;
     }
 }
@@ -1677,39 +1689,58 @@ static void find_run(con *c)
 
 static int find_open(con *c)
 {
-    struct TagItem tags[14];
+    struct TagItem tags[10];
     struct Gadget *g;
+    struct Screen *scr;
+    LONG bar, fh, gw, ww, wh, left, top;
     int n = 0;
     if (!c->w.win)
         return 0;
     if (c->find_win) {
         WindowToFront(c->find_win); /* already up: keep typing into the same query */
+        ActivateWindow(c->find_win);
         return 1;
     }
+    scr = c->w.win->WScreen;
+    /* the frame on this screen: title bar, borders, and the font the gadget
+     * is drawn in (the window's, which is the screen's) */
+    bar = scr->WBorTop + scr->Font->ta_YSize + 1;
+    fh = scr->Font->ta_YSize;
+    gw = FIND_GAD_W;
+    ww = scr->WBorLeft + FIND_PAD + gw + FIND_PAD + scr->WBorRight;
+    wh = bar + FIND_PAD + fh + FIND_PAD + scr->WBorBottom;
+    /* never wider or taller than the screen: the field gives up the width */
+    if (ww > scr->Width) {
+        gw -= ww - scr->Width;
+        ww = scr->Width;
+    }
+    if (wh > scr->Height || gw < 16)
+        return 0; /* no room for a field on this screen */
+    /* beside the console window, moved back on screen if it hangs over */
+    left = c->w.win->LeftEdge + c->w.win->Width + 2;
+    top = c->w.win->TopEdge + c->w.win->Height + 2;
+    if (left + ww > scr->Width)
+        left = scr->Width - ww;
+    if (top + wh > scr->Height)
+        top = scr->Height - wh;
+    if (left < 0)
+        left = 0;
+    if (top < 0)
+        top = 0;
     if (!c->find_port)
         c->find_port = CreateMsgPort();
     if (!c->find_port)
         return 0;
-    /* beside the console window, moved back on screen if it hangs over */
-    tags[n].ti_Tag = WA_Left;       tags[n++].ti_Data =
-        (LONG)(c->w.win->LeftEdge + c->w.win->Width + 2);
-    tags[n].ti_Tag = WA_Top;        tags[n++].ti_Data =
-        (LONG)(c->w.win->TopEdge + c->w.win->Height + 2);
-    tags[n].ti_Tag = WA_Width;      tags[n++].ti_Data = 356;
-    tags[n].ti_Tag = WA_Height;     tags[n++].ti_Data = 26;
-    tags[n].ti_Tag = WA_Title;      tags[n++].ti_Data = (ULONG)"Find";
-    tags[n].ti_Tag = WA_IDCMP;      tags[n++].ti_Data = IDCMP_GADGETUP | IDCMP_RAWKEY;
-    tags[n].ti_Tag = WA_PubScreen;  tags[n++].ti_Data = (ULONG)c->w.win->WScreen;
     c->find_buf[0] = 0;
     g = &c->find_gadget;
     g->NextGadget = 0;
-    g->LeftEdge = FIND_GAD_X;
-    g->TopEdge = FIND_GAD_Y;
-    g->Width = FIND_GAD_W;
-    g->Height = FIND_GAD_H;
+    g->LeftEdge = (WORD)(scr->WBorLeft + FIND_PAD);
+    g->TopEdge = (WORD)(bar + FIND_PAD);
+    g->Width = (WORD)gw;
+    g->Height = (WORD)fh;
     g->Flags = 0;
-    g->Activation = GACT_IMMEDIATE; /* Intuition types into it (StringInfo) */
-    g->GadgetType = FIND_STRING;
+    g->Activation = GACT_RELVERIFY; /* Return / Enter end the edit with GADGETUP */
+    g->GadgetType = GTYP_STRGADGET;
     g->GadgetRender = 0;
     g->SelectRender = 0;
     g->GadgetText = 0;
@@ -1717,48 +1748,58 @@ static int find_open(con *c)
     g->SpecialInfo = (APTR)&c->find_si;
     g->GadgetID = 0;
     g->UserData = 0;
-    c->find_si.Buffer = c->find_buf;
+    c->find_si.Buffer = (UBYTE *)c->find_buf;
+    c->find_si.UndoBuffer = 0;
     c->find_si.MaxChars = (WORD)sizeof(c->find_buf);
     c->find_si.BufferPos = 0;
     c->find_si.DispPos = 0;
+    c->find_si.Extension = 0;
+    tags[n].ti_Tag = WA_Left;       tags[n++].ti_Data = (ULONG)left;
+    tags[n].ti_Tag = WA_Top;        tags[n++].ti_Data = (ULONG)top;
+    tags[n].ti_Tag = WA_Width;      tags[n++].ti_Data = (ULONG)ww;
+    tags[n].ti_Tag = WA_Height;     tags[n++].ti_Data = (ULONG)wh;
+    tags[n].ti_Tag = WA_Title;      tags[n++].ti_Data = (ULONG)"Find";
+    tags[n].ti_Tag = WA_Flags;      tags[n++].ti_Data = WFLG_DRAGBAR | WFLG_DEPTHGADGET |
+                                                    WFLG_CLOSEGADGET | WFLG_ACTIVATE;
+    tags[n].ti_Tag = WA_IDCMP;      tags[n++].ti_Data = 0; /* the port is ours: below */
+    tags[n].ti_Tag = WA_PubScreen;  tags[n++].ti_Data = (ULONG)scr;
     tags[n].ti_Tag = WA_Gadgets;    tags[n++].ti_Data = (ULONG)g;
-    tags[n].ti_Tag = TAG_DONE;      tags[n++].ti_Data = 0;
+    tags[n].ti_Tag = TAG_DONE;      tags[n].ti_Data = 0;
     c->find_win = OpenWindowTagList(0, tags);
     if (!c->find_win) {
         find_close(c);
         return 0;
     }
-    /* the window answers this port now: nothing has been waited on yet */
     c->find_win->UserPort = c->find_port;
+    if (!ModifyIDCMP(c->find_win, IDCMP_GADGETUP | IDCMP_VANILLAKEY | IDCMP_CLOSEWINDOW)) {
+        find_close(c);
+        return 0;
+    }
     c->find_gad = g; /* in the window's chain: RefreshGadgets and events use it */
     RefreshGadgets(c->find_gad, c->find_win, 0);
+    ActivateGadget(c->find_gad, c->find_win, 0); /* type straight away */
     return 1;
 }
 
-/* The prompt's events, drained whenever the console is idle. Enter runs the
- * search (find_run may close the prompt), Escape closes it. Everything else
- * is Intuition's: it edits the string and redraws the gadget itself. */
+/* The prompt's events, drained whenever the console is idle. Return or
+ * Enter runs the search (find_run may close the prompt); Escape and the
+ * close gadget close it. Everything else is Intuition's: it edits the
+ * string and redraws the gadget itself. */
 static void find_idcmp(con *c)
 {
     struct IntuiMessage *im;
-    struct Message *m;
-    while (c->find_port && (m = GetMsg(c->find_port))) {
-        int run;
-        ULONG cls;
-        im = (struct IntuiMessage *)m;
-        cls = im->Class;
-        if (cls != IDCMP_GADGETUP &&
-            !(cls == IDCMP_RAWKEY && (im->Code == 0x0D || im->Code == 0x1B))) {
-            ReplyMsg(m);
-            continue;
-        }
-        run = cls == IDCMP_GADGETUP || im->Code == 0x0D;
-        ReplyMsg(m);
-        if (run)
+    while (c->find_port && (im = (struct IntuiMessage *)GetMsg(c->find_port))) {
+        ULONG cls = im->Class;
+        UWORD code = im->Code;
+        ReplyMsg((struct Message *)im);
+        if (cls == IDCMP_GADGETUP || (cls == IDCMP_VANILLAKEY && code == 0x0D)) {
             find_run(c); /* may close the prompt and its port */
-        else
+            return;      /* one action per pass, and the port may be gone now */
+        }
+        if (cls == IDCMP_CLOSEWINDOW || (cls == IDCMP_VANILLAKEY && code == 0x1B)) {
             find_close(c);
-        return; /* one action per pass, and the port may be gone now */
+            return;
+        }
     }
 }
 
