@@ -77,6 +77,19 @@ void le_replace_word(le_line *le, int from, const unsigned char *s, int n);
 
 /* History from outside (a saved history file): one line per call, oldest
  * first; empty lines and repeats of the last entry are skipped. */
+/* KingCON's completion word (research/2026-10-02_kingcon-completion.md):
+ * after an odd number of '"' before the cursor the word starts after the
+ * last one (*quote_at = its index, spaces allowed); otherwise it runs back
+ * to a space , > < or backtick (*quote_at = -1). Returns its start. */
+int  le_kc_word(const le_line *le, int *quote_at);
+/* Put entry (n bytes, in the line's encoding, ending in its suffix: ' '
+ * for a file, '/' for a directory, ':' for a device) in place of the file
+ * part of that word (after its last '/' or ':'), KingCON's way: when the
+ * word was opened with '"' or the result holds a space it is quoted --
+ * an opening '"' added at the word's start if there was none, and a
+ * file's trailing space becoming '" '; a directory stays open. The text
+ * after the cursor stays. */
+void le_kc_insert(le_line *le, int start, int quote_at, const unsigned char *entry, int n);
 void le_hist_add(le_line *le, const unsigned char *s, int n);
 
 #endif

@@ -6,7 +6,7 @@
 #include <dos/dosextens.h>
 
 #define COMPLETE_MAX 256
-#define COMPLETE_NAMES 2048   /* the matching names, NUL-separated */
+#define COMPLETE_NAMES 8192   /* the matching names, NUL-separated (a whole C: in KingCON's window) */
 
 enum complete_mode {
     COMPLETE_FILES = 0,       /* the word is a path: names in its directory */
@@ -14,7 +14,8 @@ enum complete_mode {
     CHECK_COMMAND = 2,        /* does the first word name a command? (for colouring) */
     HISTORY_LOAD = 3,         /* data <- the saved history (newest last) */
     HISTORY_APPEND = 4,       /* word -> one more line of saved history */
-    COMPLETE_VARS = 5         /* $NAME / ${NAME: the shell's variable names (extra) */
+    COMPLETE_VARS = 5,        /* $NAME / ${NAME: the shell's variable names (extra) */
+    COMPLETE_DEVICES = 6      /* devices, volumes and assigns (KingCON's Shift+Tab) */
 };
 
 #define HISTORY_FILE "ENVARC:vtcon.history"
@@ -24,6 +25,11 @@ struct complete_req {
     struct Message msg;
     struct Process *opener;       /* whose current directory and path count */
     int mode;                     /* enum complete_mode */
+    int kingcon;                  /* in: KingCON's rules (research/2026-10-02_kingcon-completion.md):
+                                   * names carry their suffix (dir "/", file " ", device ":"),
+                                   * sorted files before dirs and volumes before assigns before
+                                   * devices, then by name; a word with wildcards is a pattern;
+                                   * no .info; files that find nothing fall back to devices */
     char word[COMPLETE_MAX];      /* in: the word before the cursor */
     char common[COMPLETE_MAX];    /* the longest name all matches start with */
     char add[COMPLETE_MAX];       /* out: what to type after the word */

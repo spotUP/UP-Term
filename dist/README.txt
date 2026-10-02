@@ -119,6 +119,18 @@ KEYS
     Ctrl-\                                     end of file
   The command word shows green when it is a command, red when not.
   History is kept in ENVARC:vtcon.history (the last 100 lines).
+  Tab completion has two styles, chosen per profile in UP-Term Prefs
+  ("Tab completion"), or with  completion = unix | kingcon  in the file:
+    Unix (the default)   as above
+    KingCON              as KingCON (David Larsson) does it:
+      Tab           file names, anywhere on the line (none: device names)
+      Shift-Tab     devices, volumes and assigns
+      Alt-Tab       commands (also Left Amiga-Tab)
+      Ctrl-D        on a line with text: list the word's directory
+      One match goes in with "/" after a directory, a space after a file,
+      quoted when the name has a space. Several open a "Select ..." window:
+      Tab / Shift-Tab / cursor keys move, Return or a double-click takes the
+      name, Escape or Cancel leaves the line as it was.
 
 STARTING IT
   Workbench: double-click SYS:Utilities/UP-Term. It opens an XCON: window

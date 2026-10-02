@@ -75,6 +75,8 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     f->meta_alt = pc_ieq(upconf_str(c, p, "meta", "amiga"), "alt");
     f->copy_sel = pc_ieq(upconf_str(c, p, "copy-on-select", "off"), "on");
     f->wheel = !pc_ieq(upconf_str(c, p, "wheel", "scroll"), "ignore");
+    f->completion = pc_ieq(upconf_str(c, p, "completion", "unix"), "kingcon")
+                  ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     upconf_palette_parse(upconf_get(c, p, "palette"), pal);
     for (i = 0; i < 16; i++)
         if (pal[i] & 0x01000000UL)
@@ -210,6 +212,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     upconf_set(w, p, "meta", f->meta_alt ? "alt" : "amiga");
     upconf_set(w, p, "copy-on-select", f->copy_sel ? "on" : "off");
     upconf_set(w, p, "wheel", f->wheel ? "scroll" : "ignore");
+    upconf_set(w, p, "completion", f->completion == PREFS_COMPLETE_KINGCON ? "kingcon" : "unix");
     for (i = 0; i < 16; i++) {
         uc_u32 rgb;
         pal[i] = 0;

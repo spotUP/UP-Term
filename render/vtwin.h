@@ -28,6 +28,10 @@
 #include "../engine/vtengine.h"
 #include "amiga_render.h"
 
+/* With a key to the owner: the physical Alt key was down (VT_MOD_ALT is
+ * Meta, which is Left Amiga unless meta_alt). KingCON's Alt+Tab. */
+#define VTWIN_MOD_ALTKEY 8
+
 /* What the window needs from its owner. `user` is vtwin.user. */
 typedef struct vtwin_host {
     /* the engine's reports (DSR, DA, window status...): the read stream */

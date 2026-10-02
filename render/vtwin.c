@@ -699,7 +699,8 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         }
     }
     if (n)
-        w->host->key(w->user, out, n, key, mods);
+        w->host->key(w->user, out, n, key,
+                     mods | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? VTWIN_MOD_ALTKEY : 0));
 }
 
 /* ---- the mouse ---------------------------------------------------------------------- */

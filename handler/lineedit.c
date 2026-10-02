@@ -629,6 +629,57 @@ void le_replace_word(le_line *le, int from, const unsigned char *s, int n)
     redraw_from(le, from);
 }
 
+int le_kc_word(const le_line *le, int *quote_at)
+{
+    int i, quotes = 0, last = -1, a;
+    for (i = 0; i < le->pos; i++)
+        if (le->buf[i] == '"') {
+            quotes++;
+            last = i;
+        }
+    if (quotes & 1) {
+        *quote_at = last;
+        return last + 1;
+    }
+    *quote_at = -1;
+    for (a = le->pos; a > 0; a--) {
+        unsigned char ch = le->buf[a - 1];
+        if (ch == ' ' || ch == ',' || ch == '>' || ch == '<' || ch == '`')
+            break;
+    }
+    return a;
+}
+
+void le_kc_insert(le_line *le, int start, int quote_at, const unsigned char *entry, int n)
+{
+    unsigned char out[LE_MAX];
+    int from = start, i, m = 0, need = quote_at >= 0, body = n;
+    for (i = start; i < le->pos; i++)
+        if (le->buf[i] == '/' || le->buf[i] == ':')
+            from = i + 1;
+    if (n > 0 && entry[n - 1] == ' ')
+        body = n - 1; /* the file's space is not part of the name */
+    for (i = start; i < from && !need; i++)
+        need = le->buf[i] == ' ';
+    for (i = 0; i < body && !need; i++)
+        need = entry[i] == ' ';
+    if (need && quote_at < 0) {
+        /* the opening quote goes in front: rewrite the word from its start */
+        out[m++] = '"';
+        for (i = start; i < from && m < LE_MAX - 4; i++)
+            out[m++] = le->buf[i];
+        from = start;
+    }
+    for (i = 0; i < body && m < LE_MAX - 3; i++)
+        out[m++] = entry[i];
+    if (body < n) {
+        if (need)
+            out[m++] = '"';
+        out[m++] = ' ';
+    }
+    le_replace_word(le, from, out, m);
+}
+
 void le_show_list(le_line *le, const char *names, int len)
 {
     int widest = 0, k = 0, col, per, cols = vt_cols(le->t), i;

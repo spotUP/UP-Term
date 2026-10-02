@@ -255,6 +255,8 @@ static void stage_cases(void)
     CHECK_INT(f.bell, PREFS_BELL_NONE);
     f.cursor = PREFS_CURSOR_BAR;
     f.blink = 1;
+    CHECK_INT(f.completion, PREFS_COMPLETE_UNIX);   /* no key: today's Tab */
+    f.completion = PREFS_COMPLETE_KINGCON;
     strcpy(f.pal[3], "#FFAA00");
     strcpy(f.selbg, "203040");
     CHECK_INT(prefs_validate(&f), 0);
@@ -268,6 +270,8 @@ static void stage_cases(void)
     CHECK_STR(g.font, "TOPAZ 8.8.font");
     CHECK_INT(g.cursor, PREFS_CURSOR_BAR);
     CHECK_INT(g.blink, 1);
+    CHECK_INT(g.completion, PREFS_COMPLETE_KINGCON);
+    CHECK_STR(upconf_str(&conf, "default", "completion", "?"), "kingcon");
     CHECK_STR(g.pal[3], "FFAA00");
     CHECK_STR(g.selbg, "203040");
     CHECK_STR(upconf_str(&conf, "vim", "fg", "?"), "C0C0C0"); /* other profiles kept */

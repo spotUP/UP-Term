@@ -1,0 +1,150 @@
+"""H8 on the rig: completion = kingcon in an XCON: window behaves as the
+owner's KingCON does (thoughts/shared/research/2026-10-02_kingcon-completion.md),
+and completion = unix (no key) is unchanged.
+
+Each case types `Echo >RAM:kc.out <word>`, presses the keys, runs the line
+and reads RAM:kc.out: what the completion put on the line is what Echo
+wrote. The selection window is checked in the UI tree. The profile lives in
+ENV:up-term/up-term only (ENVARC: is never touched) and is removed at the end.
+
+Run with the rig up and the handler installed (rig.py install + a reboot):
+  python3 tools/rig/kingcon_rig.py
+"""
+import sys, time
+sys.path.insert(0, __file__.rsplit('/', 1)[0])
+import ami, condev_rig as c
+
+TAB, RET, ESC = 0x42, 0x44, 0x45
+SHIFT, LALT = 0x0001, 0x0010
+passed = total = 0
+serial = 0
+
+
+def check(ok, what, seen=''):
+    global passed, total
+    total += 1
+    passed += bool(ok)
+    print('%s %d %s%s' % ('ok' if ok else 'FAIL', total, what, (': ' + seen.strip()) if seen and not ok else ''))
+
+
+def windows():
+    return [l for l in ami.req(0x0D).decode('latin-1').splitlines() if l.startswith('W ')]
+
+
+def has_window(title, wait=8.0):
+    """Is the window up -- waiting for it: the first command scan of C:
+    and the path takes seconds (later ones come from the cache)."""
+    end = time.time() + wait
+    while True:
+        if any(l.endswith('"%s"' % title) for l in windows()):
+            return True
+        if time.time() >= end:
+            return False
+        time.sleep(0.5)
+
+
+def t(s):
+    ami.req(0x08, bytes([4]) + s.encode('latin-1'))
+    time.sleep(0.5)
+
+
+def k(code, q=0):
+    ami.key(code, q)
+    time.sleep(0.7)
+
+
+def session(steps, profile):
+    """A fresh XCON: window with its own title; steps are text or
+    (key, qualifier) or ('look', fn). Returns what Echo wrote."""
+    global serial
+    serial += 1
+    title = 'kc%d' % serial
+    if profile:
+        c.run('MakeDir >NIL: ENV:up-term')
+        c.run('Echo >ENV:up-term/up-term "[profile default]*Ncompletion = %s"' % profile)
+    else:
+        c.run('Delete >NIL: ENV:up-term/up-term QUIET')
+    c.run('Delete >NIL: RAM:kc.out QUIET')
+    c.run('Run >NIL: NewShell "XCON:0/20/640/300/%s/CLOSE"' % title)
+    time.sleep(4)
+    kx, ky = ami.pointer_scale()
+    w = ami.window(title)
+    x, y, ww, hh = w['box']
+    ami.script(('move', int((x + 300) * kx), int((y + 150) * ky)), ('wait', 2), ('button', 0, 1),
+               ('wait', 2), ('button', 0, 0), ('wait', 5))
+    time.sleep(1)
+    for st in steps:
+        if isinstance(st, str):
+            t(st)
+        elif st[0] == 'look':
+            st[1]()
+        else:
+            k(*st)
+    time.sleep(1.5)
+    out = c.run('Type RAM:kc.out')[1] if c.run('List >NIL: RAM:kc.out')[0] == 0 else ''
+    t('endcli')
+    k(RET)
+    time.sleep(1)
+    return out.strip()
+
+
+def main():
+    first_s = sorted([n for n in c.run('List S: FILES LFORMAT %n')[1].split('\n')
+                      if n and not n.lower().endswith('.info')], key=str.lower)
+
+    # kingcon: one match, a name and a space
+    out = session(['Echo >RAM:kc.out S:Shell-Sta', (TAB,), (RET,)], 'kingcon')
+    check(out == 'S:Shell-Startup', 'kingcon Tab: one match goes in whole', out)
+    # a directory: "/" and no space
+    out = session(['Echo >RAM:kc.out SYS:Pre', (TAB,), 'x', (RET,)], 'kingcon')
+    check(out == 'SYS:Prefs/x', 'kingcon Tab: a directory gets "/" and no space', out)
+    # several: the window; Tab Tab Shift+Tab moves to the second; Return takes it
+    seen = {}
+    out = session(['Echo >RAM:kc.out S:', (TAB,),
+                   ('look', lambda: seen.update(win=has_window('Select filename'))),
+                   (TAB,), (TAB,), (TAB, SHIFT), (RET,),
+                   ('look', lambda: seen.update(gone=not has_window('Select filename', 0))), (RET,)],
+                  'kingcon')
+    check(seen.get('win'), 'kingcon Tab: several matches open "Select filename"')
+    check(seen.get('gone'), 'Return in the list closes it')
+    check(len(first_s) > 1 and out == 'S:' + first_s[1],
+          'Tab, Tab, Shift+Tab, Return takes the second name (sorted)', '%r vs %r' % (out, first_s[:2]))
+    # Escape: the line as it was
+    out = session(['Echo >RAM:kc.out S:', (TAB,), (ESC,), (RET,)], 'kingcon')
+    check(out == 'S:', 'Escape in the list leaves the line as it was', out)
+    # Shift+Tab: devices, volumes and assigns
+    seen = {}
+    out = session(['Echo >RAM:kc.out Sy', (TAB, SHIFT),
+                   ('look', lambda: seen.update(win=has_window('Select device'))), (RET,), (RET,)],
+                  'kingcon')
+    check(seen.get('win'), 'kingcon Shift+Tab: "Select device"')
+    check(out == 'System:', 'the volume lists before the assign (System: before SYS:)', out)
+    # Alt+Tab: commands
+    seen = {}
+    session(['Lo', (TAB, LALT), ('look', lambda: seen.update(win=has_window('Select command'))),
+             (ESC,), ('look', lambda: seen.update(gone=not has_window('Select command', 0))),
+             (0x41,), (0x41,)], 'kingcon')
+    check(seen.get('win'), 'kingcon Alt+Tab: "Select command"')
+    check(seen.get('gone'), 'Escape closes it')
+    # quoting: a name with a space
+    c.run('MakeDir >NIL: "RAM:kc dir"')
+    c.run('Echo >"RAM:kc dir/my file" x')
+    out = session(['Echo >RAM:kc.out RAM:kc', (TAB,), 'my', (TAB,), (RET,)], 'kingcon')
+    check(out == 'RAM:kc dir/my file', 'kingcon quotes a name with a space (and closes the quote)', out)
+    c.run('Delete >NIL: "RAM:kc dir" ALL QUIET')
+
+    # unix (no key): unchanged -- one match the same, several: no window
+    out = session(['Echo >RAM:kc.out S:Shell-Sta', (TAB,), (RET,)], None)
+    check(out == 'S:Shell-Startup', 'unix Tab: one match goes in whole', out)
+    seen = {}
+    session(['Echo >RAM:kc.out S:', (TAB,),
+             ('look', lambda: seen.update(win=has_window('Select filename', 3))), (RET,)], None)
+    check(not seen.get('win'), 'unix Tab: no selection window')
+
+    c.run('Delete >NIL: ENV:up-term/up-term RAM:kc.out QUIET')
+    print('kingcon_rig: passed %d of %d' % (passed, total))
+    return 0 if passed == total else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

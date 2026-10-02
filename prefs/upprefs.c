@@ -72,7 +72,7 @@ enum {
     ID_PAGE = 1,
     ID_PROF, ID_LOAD, ID_NEW, ID_DEL,
     ID_FONT, ID_SB, ID_CURCOL,
-    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL,
+    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_COMPLETE,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
     ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME
 };
@@ -94,7 +94,7 @@ struct app {
     struct Gadget *glist_common; /* Page, status, Save / Use / Cancel */
     struct Gadget *glist[2];  /* the General and the Colors page */
     int page;                 /* the page in the window, -1 none yet */
-    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel;
+    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *gcomplete;
     struct strfield str[N_STR];
     int nstr;
     upconf conf;              /* the file's table, as loaded and as last written */
@@ -113,6 +113,7 @@ static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", 0 };
 static STRPTR cursor_labels[] = { (STRPTR)"Block", (STRPTR)"Underline", (STRPTR)"Bar", 0 };
 static STRPTR bell_labels[] = { (STRPTR)"None", (STRPTR)"Beep", (STRPTR)"Visual", 0 };
 static STRPTR meta_labels[] = { (STRPTR)"Left Amiga", (STRPTR)"Alt", 0 };
+static STRPTR complete_labels[] = { (STRPTR)"Unix", (STRPTR)"KingCON", 0 };
 
 /* The window a gadget of this page is in now (0: held off the window). */
 static struct Window *win_of(struct app *a, int page)
@@ -184,6 +185,7 @@ static void show_fields(struct app *a)
     set_attr(a, a->gbold, 0, GTCB_Checked, (ULONG)a->f.bold);
     set_attr(a, a->gcopy, 0, GTCB_Checked, (ULONG)a->f.copy_sel);
     set_attr(a, a->gwheel, 0, GTCB_Checked, (ULONG)a->f.wheel);
+    set_attr(a, a->gcomplete, 0, GTCY_Active, (ULONG)a->f.completion);
 }
 
 /* Take the text of every string field: a string gadget reports only Return
@@ -497,6 +499,16 @@ static int build_gadgets(struct app *a)
     g = a->gmeta = cycle_gad(a, g, ROW(8), "Meta key", ID_META, meta_labels);
     g = a->gcopy = check_gad(a, g, ROW(9) + 1, "Copy on select", ID_COPY);
     g = a->gwheel = check_gad(a, g, ROW(10) + 1, "Wheel scrolls", ID_WHEEL);
+    {
+        /* beside the check boxes: the window is as tall as a PAL Workbench allows */
+        struct TagItem t[2];
+        t[0].ti_Tag = GTCY_Labels;
+        t[0].ti_Data = (ULONG)complete_labels;
+        t[1].ti_Tag = TAG_DONE;
+        t[1].ti_Data = 0;
+        g = a->gcomplete = gad(a, g, CYCLE_KIND, 336, ROW(9), 120, 14, "Tab completion",
+                               ID_COMPLETE, PLACETEXT_LEFT, t);
+    }
     if (!g)
         return 0;
 
@@ -634,6 +646,9 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
         break;
     case ID_META:
         a->f.meta_alt = code ? 1 : 0;
+        break;
+    case ID_COMPLETE:
+        a->f.completion = code ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
         break;
     case ID_BLINK:
         a->f.blink = (g->Flags & GFLG_SELECTED) ? 1 : 0;

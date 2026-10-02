@@ -5,7 +5,12 @@
  * port and would take a queued packet for it (see the handler's notes).
  * The worker works in the directory of the process that opened the window
  * (the Shell), with its command path, answers on a private port the
- * handler waits on, and ends. */
+ * handler waits on, and ends.
+ *
+ * The KingCON rules (q->kingcon: device names, its order and suffixes,
+ * wildcard words) follow the behaviour of KingCON by David Larsson, as
+ * thoughts/shared/research/2026-10-02_kingcon-completion.md records it; no
+ * code of KingCON is used. */
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <exec/execbase.h>
@@ -43,13 +48,34 @@ static int same_name(const char *a, const char *b)
     return *a == *b;
 }
 
+/* KingCON's kinds, the order its list shows them in (higher first) */
+#define KIND_DEVICE 1
+#define KIND_ASSIGN 2
+#define KIND_VOLUME 3
+#define KIND_DIR    1
+#define KIND_FILE   2
+
 /* One matching name: shortens the shared prefix, joins the menu list
- * (without repeats: a command in C: and in the path is one entry). */
-static void add_name(struct complete_req *q, const char *name, int is_dir)
+ * (without repeats: a command in C: and in the path is one entry). Under
+ * KingCON's rules an entry is stored as <kind><name><suffix> until
+ * finish_names sorts the list and drops the kind byte. */
+/* the stored entry k names `name` (KingCON entries: kind byte, name, suffix) */
+static int entry_is(const struct complete_req *q, int k, const char *name)
+{
+    const char *e = q->names + k;
+    int i;
+    if (!q->kingcon)
+        return same_name(e, name);
+    for (e++, i = 0; name[i] && e[i] && lower((unsigned char)e[i]) == lower((unsigned char)name[i]); i++)
+        ;
+    return !name[i] && (!e[i] || !e[i + 1]); /* the name, then at most its suffix */
+}
+
+static void add_entry(struct complete_req *q, const char *name, int is_dir, int kind, char suffix)
 {
     int n, k = 0;
     while (k < q->names_len) {
-        if (same_name(q->names + k, name))
+        if (entry_is(q, k, name))
             return;
         k += (int)strlen(q->names + k) + 1;
     }
@@ -63,11 +89,94 @@ static void add_name(struct complete_req *q, const char *name, int is_dir)
         q->common[n] = 0;
     }
     q->matches++;
-    n = (int)strlen(name) + 1;
-    if (q->names_len + n < COMPLETE_NAMES) {
-        memcpy(q->names + q->names_len, name, n);
-        q->names_len += n;
+    n = (int)strlen(name);
+    if (!q->kingcon) {
+        if (q->names_len + n + 1 < COMPLETE_NAMES) {
+            memcpy(q->names + q->names_len, name, n + 1);
+            q->names_len += n + 1;
+        }
+        return;
     }
+    if (q->names_len + n + 3 < COMPLETE_NAMES) {
+        char *e = q->names + q->names_len;
+        e[0] = (char)('0' + kind);
+        memcpy(e + 1, name, n);
+        e[n + 1] = suffix;
+        e[n + 2] = 0;
+        q->names_len += n + 3;
+    }
+}
+
+static void add_name(struct complete_req *q, const char *name, int is_dir)
+{
+    add_entry(q, name, is_dir, is_dir ? KIND_DIR : KIND_FILE, is_dir ? '/' : ' ');
+}
+
+/* KingCON's order: kind (higher first), then the name, case-insensitively;
+ * then the kind byte goes. An insertion sort over offsets, as KingCON's
+ * own: the lists are a directory's worth. */
+static int name_cmp(const char *a, const char *b)
+{
+    if (*a != *b)
+        return *b - *a;
+    for (a++, b++; *a && lower((unsigned char)*a) == lower((unsigned char)*b); a++, b++)
+        ;
+    return lower((unsigned char)*a) - lower((unsigned char)*b);
+}
+
+static void finish_names(struct complete_req *q)
+{
+    static const int max = 1024;
+    char *sorted;
+    int *at, n = 0, k = 0, i, j, o = 0;
+    if (!q->kingcon || !q->names_len)
+        return;
+    at = (int *)AllocVec(max * sizeof(int), MEMF_ANY);
+    sorted = (char *)AllocVec(COMPLETE_NAMES, MEMF_ANY);
+    if (at && sorted) {
+        while (k < q->names_len && n < max) {
+            int x = k;
+            for (i = n; i > 0 && name_cmp(q->names + at[i - 1], q->names + x) > 0; i--)
+                at[i] = at[i - 1];
+            at[i] = x;
+            n++;
+            k += (int)strlen(q->names + k) + 1;
+        }
+        for (i = 0; i < n; i++) {
+            const char *e = q->names + at[i] + 1;
+            j = (int)strlen(e) + 1;
+            memcpy(sorted + o, e, j);
+            o += j;
+        }
+        CopyMem(sorted, q->names, o);
+        q->names_len = o;
+    }
+    if (at)
+        FreeVec(at);
+    if (sorted)
+        FreeVec(sorted);
+}
+
+/* Devices, volumes and assigns starting with prefix, ":" appended. */
+static void scan_devices(struct complete_req *q, const char *prefix)
+{
+    struct DosList *dl = LockDosList(LDF_DEVICES | LDF_VOLUMES | LDF_ASSIGNS | LDF_READ);
+    char name[32];
+    struct DosList *d = dl;
+    while ((d = NextDosEntry(d, LDF_DEVICES | LDF_VOLUMES | LDF_ASSIGNS)) != 0) {
+        const UBYTE *b = (const UBYTE *)BADDR(d->dol_Name);
+        int n = b ? b[0] : 0, kind;
+        if (n < 1 || n > 30)
+            continue;
+        memcpy(name, b + 1, n);
+        name[n] = 0;
+        if (!has_prefix(name, prefix))
+            continue;
+        kind = d->dol_Type == DLT_VOLUME ? KIND_VOLUME : d->dol_Type == DLT_DEVICE ? KIND_DEVICE
+                                                                                  : KIND_ASSIGN;
+        add_entry(q, name, 0, kind, ':');
+    }
+    UnLockDosList(LDF_DEVICES | LDF_VOLUMES | LDF_ASSIGNS | LDF_READ);
 }
 
 /* Names in directory `lock` starting with `prefix`; commands only: files
@@ -75,16 +184,24 @@ static void add_name(struct complete_req *q, const char *name, int is_dir)
 static void scan_dir(struct complete_req *q, BPTR lock, const char *prefix, int commands)
 {
     struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    char pat[COMPLETE_MAX * 2 + 2];
+    int wild = 0;
     if (!fib)
         return;
+    /* KingCON: a word with wildcards matches whole names (no implicit #?) */
+    if (q->kingcon && prefix[0])
+        wild = ParsePatternNoCase((STRPTR)prefix, (STRPTR)pat, sizeof(pat)) == 1;
     if (Examine(lock, fib)) {
         while (ExNext(lock, fib)) {
             const char *name = (const char *)fib->fib_FileName;
             int is_dir = fib->fib_DirEntryType > 0;
             int n = (int)strlen(name);
-            if (commands && (is_dir || (n > 5 && same_name(name + n - 5, ".info"))))
+            int info = n > 5 && same_name(name + n - 5, ".info");
+            if (commands && (is_dir || info))
                 continue;
-            if (has_prefix(name, prefix))
+            if (q->kingcon && info)
+                continue;
+            if (wild ? MatchPatternNoCase((STRPTR)pat, (STRPTR)name) : has_prefix(name, prefix))
                 add_name(q, name, is_dir);
         }
     }
@@ -395,7 +512,7 @@ static void worker(void)
         memcpy(dirpart, q->word, split + 1);
         dirpart[split + 1] = 0;
         strcpy(prefix, q->word + split + 1);
-        lock = Lock((STRPTR)dirpart, ACCESS_READ);
+        lock = q->mode == COMPLETE_DEVICES ? 0 : Lock((STRPTR)dirpart, ACCESS_READ);
         if (lock) {
             scan_dir(q, lock, prefix, 0);
             UnLock(lock);
@@ -405,6 +522,16 @@ static void worker(void)
             scan_residents(q, prefix);
             scan_extra(q, prefix);
         }
+        /* KingCON: file names that find nothing are device names */
+        if (q->mode == COMPLETE_DEVICES || (q->kingcon && q->mode == COMPLETE_FILES && !q->matches)) {
+            q->matches = 0;
+            q->names_len = 0;
+            q->common[0] = 0;
+            q->mode = COMPLETE_DEVICES; /* the handler titles its window by this */
+            scan_devices(q, q->word);
+            strcpy(prefix, q->word);
+        }
+        finish_names(q);
         if (q->matches) {
             strcpy(q->add, q->common + strlen(prefix));
             if (q->matches == 1)

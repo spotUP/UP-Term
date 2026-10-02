@@ -295,8 +295,42 @@ static void replace_word_for_menu_cycling(void)
     vt_free(t);
 }
 
+/* KingCON's completion word and quoting (research/2026-10-02_kingcon-completion.md) */
+static const char *kc(const char *typed, const char *entry)
+{
+    vt_term *t = start(80, 3, "> ");
+    int q, a;
+    type(typed);
+    a = le_kc_word(&le, &q);
+    le_kc_insert(&le, a, q, (const unsigned char *)entry, (int)strlen(entry));
+    vt_free(t);
+    return line();
+}
+
+static void kingcon_word_and_quoting(void)
+{
+    vt_term *t = start(80, 3, "> ");
+    int q;
+    type("echo x >RAM:t");
+    CHECK_INT(le_kc_word(&le, &q), 8);             /* > ends a word, = | ; do not */
+    CHECK_INT(q, -1);
+    le_reset(&le);
+    type("type \"My Fi");
+    CHECK_INT(le_kc_word(&le, &q), 6);             /* odd quotes: after the last one */
+    CHECK_INT(q, 5);
+    vt_free(t);
+    CHECK_STR(kc("dir S:Sh", "Shell-Startup "), "dir S:Shell-Startup ");
+    CHECK_STR(kc("dir SYS:Pre", "Prefs/"), "dir SYS:Prefs/");
+    CHECK_STR(kc("cd Sy", "SYS:"), "cd SYS:");
+    CHECK_STR(kc("type \"My Fi", "My File "), "type \"My File\" ");
+    CHECK_STR(kc("type RAM:My", "My File "), "type \"RAM:My File\" ");
+    CHECK_STR(kc("cd \"Work Dir/Su", "Sub/"), "cd \"Work Dir/Sub/");
+    CHECK_STR(kc("copy a=b", "a=bc "), "copy a=bc ");  /* = is not a delimiter */
+}
+
 void suite_lineedit(void)
 {
+    kingcon_word_and_quoting();
     command_word_gets_colour_until_it_changes();
     menu_lists_names_and_redraws_prompt_and_line();
     replace_word_for_menu_cycling();

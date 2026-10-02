@@ -160,6 +160,8 @@ typedef struct con {
     long words_len[3];
     struct Task *words_owner;    /* the shell that sent them: valid while it lives */
     int tabs;                    /* Tabs in a row */
+    int kingcon;                 /* profile completion = kingcon: KingCON's keys and
+                                  * selection window (research/2026-10-02_kingcon-completion.md) */
     unsigned long edits;         /* keys that changed the line so far */
     unsigned long comp_edits;    /* edits when the running completion started */
     struct Menu *menustrip;      /* the window's menu (GadTools), 0 without one */
@@ -168,6 +170,19 @@ typedef struct con {
     /* the find prompt (Right Amiga F): its own small window, open while the
      * console keeps running -- the program's output must not stop while a
      * query is typed */
+    /* KingCON completion (completion = kingcon): the word the request was
+     * for, and the "Select ..." window (see the KingCON section) */
+    int kc_start, kc_quote;      /* le_kc_word's answer when the request went out */
+    int kc_list;                 /* the request is Ctrl+D's directory listing */
+    struct MsgPort *sel_port;
+    struct Window *sel_win;
+    APTR sel_vi;
+    struct Gadget *sel_glist, *sel_lv;
+    struct List sel_list;
+    struct Node *sel_nodes;
+    char *sel_names;             /* the entries, NUL-separated, with their suffixes */
+    int sel_n, sel_i, sel_click; /* entries, selected, last clicked (double-click) */
+    ULONG sel_secs, sel_mics;
     struct MsgPort *find_port;
     struct Window *find_win;
     struct Gadget *find_gad;      /* reported back by AddGadget, for RefreshGadgets */
@@ -660,6 +675,8 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "wheel", 0);
     if (v)
         c->w.wheel_scroll = !str_ieq(v, "ignore");
+    v = upconf_str(c->conf, p, "completion", 0);
+    c->kingcon = v && str_ieq(v, "kingcon");
     v = upconf_str(c->conf, p, "palette", 0);
     if (v)
         upconf_palette_parse(v, c->w.pal16); /* 0x01RRGGBB, 0 = not remapped */
@@ -807,6 +824,10 @@ static void history_load(con *c);
 static void close_window(con *c);
 
 static void find_close(con *c); /* the find prompt (see the find prompt section) */
+static void sel_close(con *c);  /* KingCON's selection window (see the KingCON section) */
+static void sel_idcmp(con *c);
+static void kc_tab(con *c, int mode);
+static void kc_finish(con *c, struct complete_req *q);
 static int find_open(con *c);
 static void close_gadget(con *c);
 
@@ -982,6 +1003,7 @@ static void close_window(con *c)
     struct Window *win = c->w.win;
     c->winch_closing = 1; /* stop naming this window before we dismantle it */
     find_close(c); /* the prompt belongs to the window */
+    sel_close(c);  /* so does the selection window */
     menu_remove(c, win);
     DBG("close_window", win, c->w.t);
     if (c->input_io) {
@@ -1447,6 +1469,7 @@ static void start_completion(con *c)
     } else {
         c->comp->mode = COMPLETE_FILES;
     }
+    c->comp->kingcon = 0;
     c->comp->extra_len = 0;
     if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
         CopyMem((APTR)extra, c->comp->extra, n);
@@ -1598,6 +1621,10 @@ static void finish_completion(con *c)
         if (c->edits != c->comp_edits)
             continue; /* the line changed while it ran (rig: typed text got the
                        * answer for an older word): the answer is for no word now */
+        if (q->kingcon) {
+            kc_finish(c, q);
+            continue;
+        }
         if (q->matches > 1 && q->names_len < (int)sizeof(c->menu)) {
             CopyMem(q->names, c->menu, q->names_len);
             c->menu_len = q->names_len;
@@ -1644,6 +1671,12 @@ static void menu_tab(con *c)
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
+    sel_close(c); /* typing in the console ends a selection, as any key ends KingCON's */
+    if (c->kingcon && key == VT_KEY_TAB) {
+        kc_tab(c, (mods & VT_MOD_SHIFT) ? COMPLETE_DEVICES
+                  : (mods & (VTWIN_MOD_ALTKEY | VT_MOD_ALT)) ? COMPLETE_COMMANDS : COMPLETE_FILES);
+        return;
+    }
     if (key == VT_KEY_TAB) {
         c->tabs++;
         if (c->tabs >= 2 && c->menu_n > 1)
@@ -1702,6 +1735,14 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
      * without ISIG does. ^\ and ^Z are the CTRL_E and CTRL_F breaks too, as
      * in termios mode (VQUIT, VSUSP): a shell running a job that never set
      * termios still hears the suspend key (vsh S8). */
+    /* KingCON: Ctrl+D on a line with text lists the word's directory (on
+     * an empty line it stays the break) */
+    if (c->kingcon && !c->raw && n == 1 && !key && out[0] == 0x04 && c->le.len > 0) {
+        sel_close(c);
+        kc_tab(c, -1);
+        service_reads(c);
+        return;
+    }
     if (n == 1 && !key && (!c->raw || c->w.pers != VT_XTERM)) {
         ULONG brk = 0;
         if (out[0] >= 0x03 && out[0] <= 0x06)
@@ -1722,6 +1763,349 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
         cooked_key(c, out, n, key, mods);
     }
     service_reads(c);
+}
+
+/* ---- KingCON completion ------------------------------------------------------------ */
+
+/* completion = kingcon (thoughts/shared/research/2026-10-02_kingcon-completion.md,
+ * after KingCON by David Larsson; no code of it is used). Tab completes file
+ * names wherever the word is (a word that finds none tries device names),
+ * Shift+Tab devices, volumes and assigns, Alt+Tab commands, Ctrl+D on a line
+ * with text lists the word's directory. One match goes in with its suffix;
+ * several open a "Select ..." window: Tab / Shift+Tab / cursor keys move
+ * (wrapping), Return or a double-click takes the name, Escape or Cancel
+ * leaves the line as it was. The scan is complete.c's, in its worker. */
+
+/* mode: enum complete_mode, or -1 for Ctrl+D's listing */
+static void kc_tab(con *c, int mode)
+{
+    le_line *le = &c->le;
+    long n = 0;
+    const char *extra = 0;
+    int a, q;
+    if (c->comp_busy || !ensure_worker(c))
+        return;
+    a = le_kc_word(le, &q);
+    c->kc_start = a;
+    c->kc_quote = q;
+    c->kc_list = mode < 0;
+    copy_latin1(le, a, le->pos, c->comp->word, COMPLETE_MAX);
+    if (c->kc_list) {
+        /* the directory the word names: its contents */
+        int l = (int)strlen(c->comp->word);
+        if (l && c->comp->word[l - 1] != '/' && c->comp->word[l - 1] != ':' && l < COMPLETE_MAX - 1)
+            strcpy(c->comp->word + l, "/");
+        mode = COMPLETE_FILES;
+    }
+    if (mode == COMPLETE_COMMANDS)
+        extra = shell_words(c, VTCON_WORDS_COMMANDS, &n);
+    c->comp->mode = mode;
+    c->comp->kingcon = 1;
+    c->comp->extra_len = 0;
+    if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
+        CopyMem((APTR)extra, c->comp->extra, n);
+        c->comp->extra_len = n;
+    }
+    c->comp_edits = c->edits;
+    if (complete_start(c->comp, c->comp_port, opener(c)))
+        c->comp_busy = 1;
+}
+
+/* One entry (Latin-1, with its suffix) into the line, KingCON's way. */
+static void kc_put(con *c, const char *name)
+{
+    unsigned char enc[COMPLETE_MAX * 2];
+    int n = 0;
+    for (; *name && n < (int)sizeof(enc) - 4; name++)
+        n += vt_encode_key(c->w.t, (unsigned char)*name, 0, enc + n);
+    le_kc_insert(&c->le, c->kc_start, c->kc_quote, enc, n);
+    check_command(c); /* a completed first word gets its colour */
+}
+
+static int sel_open(con *c, struct complete_req *q);
+
+static void kc_finish(con *c, struct complete_req *q)
+{
+    if (c->kc_list) {
+        /* Ctrl+D: the names under the line, then the prompt and the line */
+        if (q->matches)
+            le_show_list(&c->le, q->names, q->names_len);
+        else
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+        return;
+    }
+    if (!q->matches) {
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+        return;
+    }
+    if (q->matches == 1) {
+        kc_put(c, q->names);
+        return;
+    }
+    if (!sel_open(c, q))
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+}
+
+#define SEL_ROWS 12              /* names the list shows at once */
+#define SEL_W    300             /* its width in pixels (KingCON's window is about this) */
+#define SEL_PAD  6
+
+/* Closed the find prompt's way: the port is ours, not Intuition's. */
+static void sel_close(con *c)
+{
+    if (c->sel_win) {
+        struct Window *w = c->sel_win;
+        struct Node *n, *next;
+        Forbid();
+        for (n = c->sel_port->mp_MsgList.lh_Head; (next = n->ln_Succ) != 0; n = next)
+            if (((struct IntuiMessage *)n)->IDCMPWindow == w) {
+                Remove(n);
+                ReplyMsg((struct Message *)n);
+            }
+        w->UserPort = 0;
+        ModifyIDCMP(w, 0);
+        Permit();
+        CloseWindow(w);
+        c->sel_win = 0;
+    }
+    if (c->sel_glist) {
+        FreeGadgets(c->sel_glist);
+        c->sel_glist = 0;
+        c->sel_lv = 0;
+    }
+    if (c->sel_vi) {
+        FreeVisualInfo(c->sel_vi);
+        c->sel_vi = 0;
+    }
+    if (c->sel_nodes) {
+        FreeVec(c->sel_nodes);
+        c->sel_nodes = 0;
+    }
+    if (c->sel_names) {
+        FreeVec(c->sel_names);
+        c->sel_names = 0;
+    }
+    if (c->sel_port) {
+        DeleteMsgPort(c->sel_port);
+        c->sel_port = 0;
+    }
+    c->sel_n = 0;
+}
+
+static void sel_move(con *c, int to)
+{
+    if (!c->sel_n)
+        return;
+    c->sel_i = (to % c->sel_n + c->sel_n) % c->sel_n; /* both ends wrap */
+    GT_SetGadgetAttrs(c->sel_lv, c->sel_win, 0, GTLV_Selected, (ULONG)c->sel_i,
+                      GTLV_MakeVisible, (ULONG)c->sel_i, TAG_DONE);
+}
+
+/* The selected entry into the line, and the window closed. */
+static void sel_take(con *c)
+{
+    int i, k = 0;
+    char name[COMPLETE_MAX];
+    for (i = 0; i < c->sel_i; i++)
+        k += (int)strlen(c->sel_names + k) + 1;
+    strncpy(name, c->sel_names + k, sizeof(name) - 1);
+    name[sizeof(name) - 1] = 0;
+    sel_close(c);
+    if (c->edits == c->comp_edits && c->w.t)
+        kc_put(c, name);
+}
+
+static int sel_open(con *c, struct complete_req *q)
+{
+    struct NewGadget ng;
+    struct Gadget *g, *str;
+    struct Screen *scr;
+    struct TextAttr *ta;
+    struct TagItem tags[11];
+    LONG fh, bar, lvh, ww, wh, left, top;
+    int i, k, t = 0;
+    const char *title = q->mode == COMPLETE_DEVICES ? "Select device"
+                      : q->mode == COMPLETE_COMMANDS ? "Select command" : "Select filename";
+    if (!c->w.win || !GadToolsBase)
+        return 0;
+    sel_close(c);
+    scr = c->w.win->WScreen;
+    ta = scr->Font;
+    fh = ta->ta_YSize;
+    bar = scr->WBorTop + fh + 1;
+    c->sel_names = (char *)AllocVec(q->names_len + 1, MEMF_ANY);
+    c->sel_nodes = (struct Node *)AllocVec(sizeof(struct Node) * q->matches, MEMF_CLEAR);
+    c->sel_port = CreateMsgPort();
+    c->sel_vi = GetVisualInfoA(scr, 0);
+    if (!c->sel_names || !c->sel_nodes || !c->sel_port || !c->sel_vi) {
+        sel_close(c);
+        return 0;
+    }
+    CopyMem(q->names, c->sel_names, q->names_len);
+    c->sel_names[q->names_len] = 0;
+    /* NewList (amiga.lib's), by hand */
+    c->sel_list.lh_Head = (struct Node *)&c->sel_list.lh_Tail;
+    c->sel_list.lh_Tail = 0;
+    c->sel_list.lh_TailPred = (struct Node *)&c->sel_list.lh_Head;
+    for (i = 0, k = 0; i < q->matches && k < q->names_len; i++) {
+        char *e = c->sel_names + k;
+        int l = (int)strlen(e);
+        k += l + 1;
+        c->sel_nodes[i].ln_Name = e;
+        AddTail(&c->sel_list, &c->sel_nodes[i]);
+    }
+    c->sel_n = i;
+    c->sel_i = 0;
+    c->sel_click = -1;
+    /* the list with the selected name under it (GadTools puts the
+     * ShowSelected field inside the list's height), then OK and Cancel */
+    lvh = SEL_ROWS * fh + 4 + fh + 6;
+    ww = scr->WBorLeft + SEL_PAD + SEL_W + SEL_PAD + scr->WBorRight;
+    wh = bar + SEL_PAD + lvh + SEL_PAD + fh + 6 + SEL_PAD + scr->WBorBottom;
+    if (ww > scr->Width || wh > scr->Height) {
+        lvh = 6 * fh + 4 + fh + 6; /* a small screen: fewer rows */
+        wh = bar + SEL_PAD + lvh + SEL_PAD + fh + 6 + SEL_PAD + scr->WBorBottom;
+        if (ww > scr->Width || wh > scr->Height) {
+            sel_close(c);
+            return 0;
+        }
+    }
+    g = CreateContext(&c->sel_glist);
+    memset(&ng, 0, sizeof(ng));
+    ng.ng_VisualInfo = c->sel_vi;
+    ng.ng_TextAttr = ta;
+    /* the string that shows the selection: made first, the list points at
+     * it and places it */
+    ng.ng_LeftEdge = scr->WBorLeft + SEL_PAD;
+    ng.ng_TopEdge = bar + SEL_PAD;
+    ng.ng_Width = SEL_W;
+    ng.ng_Height = fh + 6;
+    str = g = CreateGadget(STRING_KIND, g, &ng, GTST_MaxChars, COMPLETE_MAX, TAG_DONE);
+    ng.ng_TopEdge = bar + SEL_PAD;
+    ng.ng_Height = lvh;
+    ng.ng_GadgetID = 1;
+    c->sel_lv = g = CreateGadget(LISTVIEW_KIND, g, &ng, GTLV_Labels, (ULONG)&c->sel_list,
+                                 GTLV_ShowSelected, (ULONG)str, GTLV_Selected, 0,
+                                 TAG_DONE);
+    ng.ng_TopEdge = bar + SEL_PAD + lvh + SEL_PAD;
+    ng.ng_Width = 80;
+    ng.ng_Height = fh + 6;
+    ng.ng_GadgetText = (UBYTE *)"OK";
+    ng.ng_GadgetID = 2;
+    g = CreateGadget(BUTTON_KIND, g, &ng, TAG_DONE);
+    ng.ng_LeftEdge = scr->WBorLeft + SEL_PAD + SEL_W - 80;
+    ng.ng_GadgetText = (UBYTE *)"Cancel";
+    ng.ng_GadgetID = 3;
+    g = CreateGadget(BUTTON_KIND, g, &ng, TAG_DONE);
+    if (!g) {
+        sel_close(c);
+        return 0;
+    }
+    /* over the console window, centred */
+    left = c->w.win->LeftEdge + (c->w.win->Width - ww) / 2;
+    top = c->w.win->TopEdge + (c->w.win->Height - wh) / 2;
+    if (left + ww > scr->Width)
+        left = scr->Width - ww;
+    if (top + wh > scr->Height)
+        top = scr->Height - wh;
+    if (left < 0)
+        left = 0;
+    if (top < 0)
+        top = 0;
+    tags[t].ti_Tag = WA_Left;      tags[t++].ti_Data = (ULONG)left;
+    tags[t].ti_Tag = WA_Top;       tags[t++].ti_Data = (ULONG)top;
+    tags[t].ti_Tag = WA_Width;     tags[t++].ti_Data = (ULONG)ww;
+    tags[t].ti_Tag = WA_Height;    tags[t++].ti_Data = (ULONG)wh;
+    tags[t].ti_Tag = WA_Title;     tags[t++].ti_Data = (ULONG)title;
+    tags[t].ti_Tag = WA_Flags;     tags[t++].ti_Data = WFLG_DRAGBAR | WFLG_DEPTHGADGET |
+                                                   WFLG_CLOSEGADGET | WFLG_ACTIVATE;
+    tags[t].ti_Tag = WA_IDCMP;     tags[t++].ti_Data = 0; /* the port is ours: below */
+    tags[t].ti_Tag = WA_PubScreen; tags[t++].ti_Data = (ULONG)scr;
+    tags[t].ti_Tag = WA_Gadgets;   tags[t++].ti_Data = (ULONG)c->sel_glist;
+    tags[t].ti_Tag = WA_NewLookMenus; tags[t++].ti_Data = TRUE;
+    tags[t].ti_Tag = TAG_DONE;     tags[t].ti_Data = 0;
+    c->sel_win = OpenWindowTagList(0, tags);
+    if (!c->sel_win) {
+        sel_close(c);
+        return 0;
+    }
+    c->sel_win->UserPort = c->sel_port;
+    if (!ModifyIDCMP(c->sel_win, LISTVIEWIDCMP | BUTTONIDCMP | IDCMP_VANILLAKEY | IDCMP_RAWKEY |
+                     IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW)) {
+        sel_close(c);
+        return 0;
+    }
+    GT_RefreshWindow(c->sel_win, 0);
+    return 1;
+}
+
+/* The selection window's events: GadTools' own first (GT_GetIMsg). */
+static void sel_idcmp(con *c)
+{
+    struct IntuiMessage *im;
+    while (c->sel_port && (im = GT_GetIMsg(c->sel_port))) {
+        ULONG cls = im->Class;
+        UWORD code = im->Code, qual = im->Qualifier;
+        ULONG secs = im->Seconds, mics = im->Micros;
+        struct Gadget *gad = (struct Gadget *)im->IAddress;
+        int jump = (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT | IEQUALIFIER_LALT |
+                            IEQUALIFIER_RALT)) ? SEL_ROWS : 1;
+        if (cls == IDCMP_REFRESHWINDOW) {
+            GT_BeginRefresh(c->sel_win);
+            GT_EndRefresh(c->sel_win, TRUE);
+        }
+        GT_ReplyIMsg(im);
+        switch (cls) {
+        case IDCMP_VANILLAKEY:
+            if (code == 0x0D) {
+                sel_take(c);
+                return;
+            }
+            if (code == 0x1B) {
+                sel_close(c);
+                return;
+            }
+            if (code == 0x09)
+                sel_move(c, c->sel_i + ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) ? -1 : 1));
+            break;
+        case IDCMP_RAWKEY:
+            /* Shift+Tab has no character in the keymap: it comes raw */
+            if (code == 0x42)
+                sel_move(c, c->sel_i + ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) ? -1 : 1));
+            else if (code == 0x4C)
+                sel_move(c, c->sel_i - jump);
+            else if (code == 0x4D)
+                sel_move(c, c->sel_i + jump);
+            else if (code == 0x43) { /* Enter on the keypad */
+                sel_take(c);
+                return;
+            }
+            break;
+        case IDCMP_GADGETUP:
+            if (gad->GadgetID == 1) {
+                /* a click: a second one on the same name in time takes it */
+                int dbl = (int)code == c->sel_click && DoubleClick(c->sel_secs, c->sel_mics, secs, mics);
+                c->sel_i = code;
+                c->sel_click = code;
+                c->sel_secs = secs;
+                c->sel_mics = mics;
+                if (dbl) {
+                    sel_take(c);
+                    return;
+                }
+            } else if (gad->GadgetID == 2) {
+                sel_take(c);
+                return;
+            } else if (gad->GadgetID == 3) {
+                sel_close(c);
+                return;
+            }
+            break;
+        case IDCMP_CLOSEWINDOW:
+            sel_close(c);
+            return;
+        }
+    }
 }
 
 /* ---- find prompt ----------------------------------------------------------------- */
@@ -2435,6 +2819,8 @@ static LONG handler_main(void)
         wait |= vtwin_sigmask(&c->w);
         if (c->find_port)
             wait |= 1UL << c->find_port->mp_SigBit;
+        if (c->sel_port)
+            wait |= 1UL << c->sel_port->mp_SigBit;
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */
@@ -2443,6 +2829,7 @@ static LONG handler_main(void)
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
         vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
         find_idcmp(c); /* the find prompt, while it is open */
+        sel_idcmp(c);  /* KingCON's selection window, while it is open */
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
