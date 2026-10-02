@@ -23,9 +23,12 @@ import os, pathlib, shutil, subprocess, sys, time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = ROOT / "build/rig"
 CFG = RIG / "vtcon-rig.fs-uae"
-SRC_HDF = pathlib.Path("/private/tmp/claude-501/-Users-spot-Code-Up-Rough-Demo-System/"
-                       "b2f93683-405c-45fc-b7dc-6a4daa5aa439/scratchpad/repro/sys.hdf")
-SRC_AGENT = SRC_HDF.parent / "boot/amiagent"
+# the owner's system disk (2026-10-03: the rig's copy was taken from it;
+# the old source sat in a session scratchpad that is gone). Only read: the
+# rig works on its own copy, build/rig/sys.hdf.
+SRC_HDF = pathlib.Path.home() / "Downloads/nyhd2.hdf"
+# amiagent itself lives in build/rig/boot (the Up Rough demo system's agent,
+# copied there once); the rig refuses to start without it
 # The default ROM's header says 40.63 (the A500/A600/A2000 3.1), whatever
 # its file name says (measured 2026-09-30). --kick <file> boots another ROM
 # (DP6 of the console.device plan); the config is rewritten on every start,
@@ -123,7 +126,7 @@ def setup():
     # once, like the disk: the sources were in a session scratchpad, which
     # is gone after that session (the rig failed to start, 2026-09-30)
     if not (RIG / "boot/amiagent").exists():
-        shutil.copyfile(SRC_AGENT, RIG / "boot/amiagent")
+        sys.exit("rig: build/rig/boot/amiagent is missing (copy it from the Up Rough demo system)")
     CFG.write_text("\n".join([
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
