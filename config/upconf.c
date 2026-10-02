@@ -166,9 +166,13 @@ int upconf_parse(upconf *c, const char *buf, long len)
             /* longer than a line can be: the whole line is dropped -- its
              * tail parsed as a line of its own let a long value smuggle in
              * a key (2026-10-02 review) */
+            const char *f = line;
             while (i < len && buf[i] != '\n')
                 i++;
-            c->overflow = 1;
+            while (*f == ' ' || *f == '\t')
+                f++;
+            if (*f != ';' && *f != '#')
+                c->overflow = 1; /* a setting was lost; a long comment loses nothing */
             if (i < len)
                 i++;
             continue;
