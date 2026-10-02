@@ -74,6 +74,7 @@
 
 (set #shellicon "NOSHELLICON")
 (set #sysicon "NOSYSICON")
+(set #serial "NOSERIAL")
 (if (exists "SYS:System/Shell.info")
     (if (askbool
             (prompt "Should the Shell icon (SYS:System/Shell) open an UP-Term window?\n\n"
@@ -93,11 +94,22 @@
         (choices "Yes" "No")
         (default 1))
     (set #sysicon "SYSICON"))
+(if (askbool
+        (prompt "Should a serial login start at every boot?\n\n"
+                "A terminal program on another computer, on a null-modem cable to "
+                "this Amiga's serial port at 19200 baud, then gets vsh. "
+                "While it runs, no other program can use the serial port.")
+        (help "C:upgetty LOOP runs from a block in S:User-Startup; Uninstall "
+              "takes it out. Options (speed, RTS/CTS) are in the README's "
+              "SERIAL LOGIN section.")
+        (choices "Yes" "No")
+        (default 1))
+    (set #serial "SERIAL"))
 
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial)
 
 (exit
     "UP-Term is installed.\n\n"

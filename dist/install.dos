@@ -1,4 +1,4 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -6,6 +6,7 @@
 ; Run by the kit's Install (an Installer script), which asks the questions:
 ;   Execute <kit>/Files/install.dos <kit>/Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
 ;     [SHELLICON|NOSHELLICON] [SYSICON|NOSYSICON]   (the icons: no unless asked)
+;     [SERIAL|NOSERIAL]   (a serial login at every boot: no unless asked)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
 ; (every new Shell window); CONSOLE answers yes, NOCONSOLE no, unasked.
@@ -172,6 +173,24 @@ If "{SHELLICON}" EQ "SHELLICON"
       Copy SYS:System/Shell.info ENVARC:up-term-orig/Shell.info CLONE
     EndIf
     upicon SYS:System/Shell WINDOWDEV=XCON
+  EndIf
+EndIf
+; SERIAL: a Unix-style login on the serial port at every boot (upgetty LOOP:
+; vsh for whoever connects, see the README's SERIAL LOGIN), from a marked
+; block in S:User-Startup that Uninstall takes out. upgetty then holds
+; serial.device: nothing else can use the port while it runs.
+If "{SERIAL}" EQ "SERIAL"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup "C:upgetty LOOP"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term serial"
+    Echo >>S:User-Startup "Run >NIL: C:upgetty LOOP"
+    Echo >>S:User-Startup ";END UP-Term serial"
   EndIf
 EndIf
 ; SYSICON: the UP-Term icon in SYS:System too, beside Shell (a marker says
