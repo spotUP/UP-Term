@@ -399,32 +399,39 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c han
 	  $(BUILD)/amiga/obj/pty/brk.o $(BUILD)/amiga/obj/pty/ldisc.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
-# The install kit: build/vtcon.lha (handler, DOSDrivers entry, terminfo,
-# termcap, Install script, README), unpacking to a drawer "vtcon".
+# The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
+# Installer script and its icon), Uninstall, README.txt and Files/ (the rest).
+KIT := $(BUILD)/dist/UP-Term
 # the patched ixemul (P6): built in ~/Code/ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp
-	rm -rf $(BUILD)/dist && mkdir -p $(BUILD)/dist/vtcon/terminfo $(BUILD)/dist/vtcon/libs
-	cd $(BUILD)/kit-terminfo && cp -R [a-z] ../dist/vtcon/terminfo/
-	cp $(SCREEN_BIN) $(BUILD)/dist/vtcon/screen
-	cp dist/screenrc $(BUILD)/dist/vtcon/screenrc
-	cp $(TMUX_BIN) $(BUILD)/dist/vtcon/tmux
-	cp dist/tmux.conf dist/unstartup.sh $(BUILD)/dist/vtcon/
-	cp $(IXEMUL_LIB) $(BUILD)/dist/vtcon/libs/ixemul.library
-	python3 tools/ans2utf8.py art/up_rough_banner.ans $(BUILD)/dist/vtcon/banner
-	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term.info
-	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(BUILD)/dist/vtcon/UP-Term
-	python3 tools/mkicon.py $(BUILD)/dist/vtcon/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
-	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(BUILD)/dist/vtcon/UP-Term-Prefs
-	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/Install dist/Uninstall dist/README.txt dist/vshrc \
-	  dist/up-term.conf dist/gg/fileutils-3.15/ls dist/gg/fileutils-3.15/dircolors $(BUILD)/dist/vtcon/
-	mkdir -p $(BUILD)/dist/vtcon/themes && cp themes/*.conf themes/ATTRIBUTION.md $(BUILD)/dist/vtcon/themes/
-	mkdir -p $(BUILD)/dist/vtcon/fileutils-3.15
-	cp dist/gg/fileutils-3.15/COPYING dist/gg/fileutils-3.15/SOURCE.txt dist/gg/fileutils-3.15/fileutils-3.15-src.lha $(BUILD)/dist/vtcon/fileutils-3.15/
-	cp $(BUILD)/amiga/upprefs "$(BUILD)/dist/vtcon/UP-Term Prefs"
-	cp terminfo/vtcon.termcap $(BUILD)/dist/vtcon/termcap.vtcon
-	cd $(BUILD)/dist && rm -f ../vtcon.lha && lha -aq ../vtcon.lha vtcon
-	@ls -la $(BUILD)/vtcon.lha
+	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
+	cd $(BUILD)/kit-terminfo && cp -R [a-z] $(CURDIR)/$(KIT)/Files/terminfo/
+	cp $(SCREEN_BIN) $(KIT)/Files/screen
+	cp dist/screenrc $(KIT)/Files/screenrc
+	cp $(TMUX_BIN) $(KIT)/Files/tmux
+	cp dist/tmux.conf dist/unstartup.sh $(KIT)/Files/
+	cp $(IXEMUL_LIB) $(KIT)/Files/libs/ixemul.library
+	python3 tools/ans2utf8.py art/up_rough_banner.ans $(KIT)/Files/banner
+	python3 tools/mkicon.py $(KIT)/Files/UP-Term.info
+	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
+	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
+	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/install.dos dist/vshrc \
+	  dist/up-term.conf dist/gg/fileutils-3.15/ls dist/gg/fileutils-3.15/dircolors $(KIT)/Files/
+	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
+	mkdir -p $(KIT)/Files/fileutils-3.15
+	cp dist/gg/fileutils-3.15/COPYING dist/gg/fileutils-3.15/SOURCE.txt dist/gg/fileutils-3.15/fileutils-3.15-src.lha $(KIT)/Files/fileutils-3.15/
+	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
+	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
+	# the top drawer: Install (the Installer script), Uninstall, README, Files
+	cp dist/Install.installer $(KIT)/Install
+	python3 tools/mkicon.py $(KIT)/Install.info --tool Installer --plain \
+	  --tooltype APPNAME=UP-Term --tooltype MINUSER=AVERAGE --tooltype DEFUSER=AVERAGE
+	cp dist/Uninstall dist/README.txt $(KIT)/
+	python3 tools/mkicon.py $(KIT)/Uninstall.info --tool C:IconX --plain
+	cd $(BUILD)/dist && rm -f ../UP-Term.lha && lha -aq ../UP-Term.lha UP-Term
+	@ls -la $(BUILD)/UP-Term.lha
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga

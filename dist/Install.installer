@@ -1,0 +1,84 @@
+; UP-Term -- Installer script (Commodore Installer 43, AmigaOS 3.0 and up).
+; Double-click the Install icon. The script asks the questions; the copying
+; is done by Files/install.dos (the tested AmigaDOS install, also usable
+; from a Shell without Installer). Remove it again with Uninstall.
+
+(set @app-name "UP-Term")
+(set #files (tackon (pathonly @icon) "Files"))
+
+; ---- requirements ---------------------------------------------------------
+
+(if (< (/ (getversion "exec.library" (resident)) 65536) 39)
+    (abort "UP-Term needs AmigaOS 3.0 or newer."))
+(if (or (= (database "cpu") "68000") (= (database "cpu") "68010"))
+    (abort "UP-Term needs a 68020 or better (the terminal and its ixemul.library are 68020 code)."))
+(if (not (exists (tackon #files "install.dos")))
+    (abort "The Files drawer is missing: unpack the whole archive and start Install from its drawer."))
+
+(set #v47 (>= (/ (getversion "dos.library" (resident)) 65536) 47))
+
+; ---- what it is -----------------------------------------------------------
+
+(message
+    "UP-Term: a modern terminal for AmigaOS\n\n"
+    "This installs:\n"
+    "- XCON:, a console window with an xterm-class terminal inside\n"
+    "- vsh, a Unix-style shell, and tmux, screen and ls\n"
+    "- PTY:, Unix pseudo-terminals\n"
+    "- UP-Term Prefs, with 112 colour themes\n"
+    "- a patched ixemul.library 48.2 (the one there is kept as\n"
+    "  LIBS:ixemul.library.orig; Uninstall puts it back)\n\n"
+    "Files go to C:, L:, LIBS:, DEVS:, ENVARC: and SYS:Utilities.")
+
+; ---- the two opt-ins ------------------------------------------------------
+
+(set #con "NOCONSOLE")
+(set #dev "NODEVICE")
+(if #v47
+    (message
+        "AmigaOS 3.2 found.\n\n"
+        "UP-Term installs normally, but it does not take over CON: or "
+        "console.device on 3.2 yet: the 3.2 Shell needs a console mode "
+        "UP-Term does not have yet.")
+    (
+        (if (askbool
+                (prompt "Should UP-Term also serve CON: and RAW:?\n\n"
+                        "Every new Shell window then is an UP-Term window "
+                        "(the Amiga look, with UP-Term's line editing, history "
+                        "and Tab completion). C:UPConsole CON OFF switches back.")
+                (help "UP-Term serves CON: and RAW: through its own handler. "
+                      "Windows already open are not changed. A block in "
+                      "S:User-Startup switches it on at every boot; Uninstall "
+                      "takes it out. It is refused when another console "
+                      "replacement (KingCON, ViNCEd...) serves CON:.")
+                (choices "Yes" "No")
+                (default 0))
+            (set #con "CONSOLE"))
+        (if (askbool
+                (prompt "Should console.device be UP-Term's too?\n\n"
+                        "Then every program's console window (Ed, More, the "
+                        "system's own Shell windows) draws with UP-Term's "
+                        "engine. C:UPConsole DEVICE OFF switches back.")
+                (help "The ROM's console.device stays in memory; UP-Term's "
+                      "replaces it in the device list while it is on. A block "
+                      "in S:User-Startup switches it on at every boot; "
+                      "Uninstall takes it out. It is refused when "
+                      "console.device was patched by another program.")
+                (choices "Yes" "No")
+                (default 0))
+            (set #dev "DEVICE"))
+    )
+)
+
+; ---- install --------------------------------------------------------------
+
+(working "Installing UP-Term...")
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev)
+
+(exit
+    "UP-Term is installed.\n\n"
+    "Open it: double-click SYS:Utilities/UP-Term, or type\n"
+    "  NewShell XCON:0/20/640/300/UP-Term/CLOSE\n\n"
+    "Preferences and themes: SYS:Utilities/UP-Term-Prefs, or the\n"
+    "UP-Term menu of any UP-Term window.\n\n"
+    "A reboot mounts XCON:, PTY: and IXPIPE: at every start.")

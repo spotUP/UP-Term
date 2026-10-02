@@ -1,15 +1,19 @@
-.KEY CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
 ; the patched ixemul.library.
-; Run from the unpacked drawer:  Execute Install
+; Run by the kit's Install (an Installer script), which asks the questions:
+;   Execute <kit>/Files/install.dos <kit>/Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
+; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
 ; (every new Shell window); CONSOLE answers yes, NOCONSOLE no, unasked.
 ; And whether console.device itself should be UP-Term's (every program's
 ; console window); DEVICE / NODEVICE answer that one.
 ; (The brackets are { } here: the script's > redirections stay as they are.)
 FailAt 21
+; the kit's Files drawer: every name below is relative to it
+CD "{DIR}"
 Copy vtcon-handler L: CLONE
 Copy XCON DEVS:DOSDrivers/XCON CLONE
 Copy pty-handler L: CLONE

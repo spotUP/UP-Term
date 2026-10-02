@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""mkicon.py OUT.info [--x X --y Y] [--tool NAME] [--plain] -- the UP-Term
+"""mkicon.py OUT.info [--x X --y Y] [--tool NAME] [--plain] [--tooltype T ...] -- the UP-Term
 Workbench project icon (P8): default tool C:vsh, tooltype WINDOW= the XCON
 window vsh opens, a 64 KB stack. Written in the Workbench DiskObject format
 (workbench/workbench.h, intuition/intuition.h): DiskObject, the Image and
 its planar data, then the default tool and the tooltypes as length-prefixed
 strings. The image is a small terminal window in the Workbench's four pens
 (0 grey, 1 black, 2 white, 3 blue). --tool with --plain is the same image
-for a plain program icon (UP-Term Prefs: its own tool, no window)."""
+for a plain program icon (UP-Term Prefs: its own tool, no window);
+--tooltype adds tooltypes to it (the kit's Install icon: Installer's
+APPNAME, MINUSER)."""
 import argparse, struct
 
 WINDOW = "XCON:0/20/640/400/UP-Term/CLOSE"
@@ -93,10 +95,11 @@ def main():
     ap.add_argument('--y', type=int)
     ap.add_argument('--tool', default='C:vsh')
     ap.add_argument('--plain', action='store_true')
+    ap.add_argument('--tooltype', action='append', default=[])
     a = ap.parse_args()
     x = a.x if a.x is not None else NO_ICON_POSITION
     y = a.y if a.y is not None else NO_ICON_POSITION
-    tooltypes = [] if a.plain else ["WINDOW=" + WINDOW]
+    tooltypes = ([] if a.plain else ["WINDOW=" + WINDOW]) + a.tooltype
     data = icon(x - (1 << 32) if x >= 1 << 31 else x, y - (1 << 32) if y >= 1 << 31 else y,
                 a.tool, tooltypes)
     open(a.out, 'wb').write(data)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """install_rig.py -- the install kit on the rig, the owner's way: unpack
-build/dist/vtcon into VTC:distkit, run Install from its drawer, check what
+build/dist/UP-Term into VTC:distkit, run its Files/install.dos (what the kit's Installer script runs), check what
 it did (PTY: mounted and working, the patched ixemul in LIBS: with the
 original kept), then Uninstall and check the rig is as before. The rig's
 own image is left with its original ixemul. The rig must be up; `make
@@ -30,11 +30,11 @@ def lib_state():
 
 def main():
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
-    shutil.copytree(ROOT / "build/dist/vtcon", VTC / "distkit")
+    shutil.copytree(ROOT / "build/dist/UP-Term", VTC / "distkit")
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
-    (VTC / "runinstall").write_text("CD VTC:distkit\nExecute Install NOCONSOLE NODEVICE\n")
-    (VTC / "runinstallcon").write_text("CD VTC:distkit\nExecute Install CONSOLE DEVICE\n")
+    (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE\n")
+    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE\n")
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
