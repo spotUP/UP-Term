@@ -259,6 +259,8 @@ static void stage_cases(void)
     f.completion = PREFS_COMPLETE_KINGCON;
     strcpy(f.kcmode, "CB");
     f.kcinfo = 1;
+    CHECK_INT(f.kccache, 1);   /* on unless the file says off */
+    f.kccache = 0;
     strcpy(f.pal[3], "#FFAA00");
     strcpy(f.selbg, "203040");
     CHECK_INT(prefs_validate(&f), 0);
@@ -276,6 +278,7 @@ static void stage_cases(void)
     CHECK_STR(upconf_str(&conf, "default", "completion", "?"), "kingcon");
     CHECK_STR(g.kcmode, "CB");
     CHECK_INT(g.kcinfo, 1);
+    CHECK_INT(g.kccache, 0);
     CHECK_STR(g.pal[3], "FFAA00");
     CHECK_STR(g.selbg, "203040");
     CHECK_STR(upconf_str(&conf, "vim", "fg", "?"), "C0C0C0"); /* other profiles kept */

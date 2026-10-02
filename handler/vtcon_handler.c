@@ -176,6 +176,7 @@ typedef struct con {
     int kc_list;                 /* the request is Ctrl+D's directory listing */
     int kc_style;                /* LE_KC_* from the profile's kingcon-mode (FNCMODE) */
     int kc_info;                 /* kingcon-info = show: .info files listed */
+    int kc_cache;                /* kingcon-cache (default on): command directories cached */
     int kc_cyc, kc_cyc_i;        /* an inline cycle (B, or C armed): its entry, -1 before the first */
     int kc_cyc_window;           /* C with W: the next Tab opens the window */
     int kc_cyc_n, kc_cyc_mode;
@@ -689,6 +690,8 @@ static void apply_profile(con *c)
     c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));
     v = upconf_str(c->conf, p, "kingcon-info", 0);
     c->kc_info = v && str_ieq(v, "show");
+    v = upconf_str(c->conf, p, "kingcon-cache", 0);
+    c->kc_cache = !(v && str_ieq(v, "off"));
     v = upconf_str(c->conf, p, "palette", 0);
     if (v)
         upconf_palette_parse(v, c->w.pal16); /* 0x01RRGGBB, 0 = not remapped */
@@ -842,12 +845,15 @@ static void kc_tab(con *c, int mode);
 static void kc_finish(con *c, struct complete_req *q);
 static void kc_cyc_end(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
+static void kc_menu(con *c, int mode);
 static int find_open(con *c);
 static void close_gadget(con *c);
 
 /* ---- the window's menu -------------------------------------------------------- */
 
-enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE };
+enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
+       MENU_KC_FILE, MENU_KC_COMMAND, MENU_KC_DEVICE, MENU_KC_CACHE, MENU_KC_RESET,
+       MENU_KC_PURGE, MENU_KC_INFO };
 
 /* Right Amiga C, V and F stay what they were: Intuition now hands them in
  * as MENUPICK, which picks the same actions. */
@@ -863,12 +869,45 @@ static const struct NewMenu menu_def[] = {
     { NM_END, 0, 0, 0, 0, 0 }
 };
 
+/* With completion = kingcon, KingCON's Complete menu follows (its items
+ * are the keys', and the window's switches; a switch here is this window's
+ * only -- Prefs keeps the profile). Checkmarks are set in menu_add. */
+#define MENU_KC_ITEMS 10
+static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
+    { NM_TITLE, (STRPTR)"Complete", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Filename", 0, 0, 0, (APTR)MENU_KC_FILE },
+    { NM_ITEM, (STRPTR)"Command", 0, 0, 0, (APTR)MENU_KC_COMMAND },
+    { NM_ITEM, (STRPTR)"Device", 0, 0, 0, (APTR)MENU_KC_DEVICE },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Enable cache", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_KC_CACHE },
+    { NM_ITEM, (STRPTR)"Reset cache", 0, 0, 0, (APTR)MENU_KC_RESET },
+    { NM_ITEM, (STRPTR)"Purge cache", 0, 0, 0, (APTR)MENU_KC_PURGE },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Show .info", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_KC_INFO }
+};
+
 static void menu_add(con *c, struct Window *win)
 {
     APTR vi;
     if (!GadToolsBase || win == c->foreign)
         return; /* a window someone else opened keeps its own menus */
-    c->menustrip = CreateMenusA((struct NewMenu *)menu_def, 0);
+    {
+        /* the strip, with the Complete menu under KingCON completion */
+        struct NewMenu nm[sizeof(menu_def) / sizeof(menu_def[0]) + MENU_KC_ITEMS];
+        int n = sizeof(menu_def) / sizeof(menu_def[0]) - 1, i; /* without the NM_END */
+        CopyMem((APTR)menu_def, nm, n * sizeof(struct NewMenu));
+        if (c->kingcon) {
+            CopyMem((APTR)menu_kc, nm + n, sizeof(menu_kc));
+            for (i = n; i < n + MENU_KC_ITEMS; i++)
+                if (((LONG)nm[i].nm_UserData == MENU_KC_CACHE && c->kc_cache) ||
+                    ((LONG)nm[i].nm_UserData == MENU_KC_INFO && c->kc_info))
+                    nm[i].nm_Flags |= CHECKED;
+            n += MENU_KC_ITEMS;
+        }
+        CopyMem((APTR)&menu_def[sizeof(menu_def) / sizeof(menu_def[0]) - 1], nm + n,
+                sizeof(struct NewMenu));
+        c->menustrip = CreateMenusA(nm, 0);
+    }
     vi = c->menustrip ? GetVisualInfoA(win->WScreen, 0) : 0;
     if (!vi || !LayoutMenus(c->menustrip, vi, GTMN_NewLookMenus, TRUE, TAG_DONE) ||
         !SetMenuStrip(win, c->menustrip)) {
@@ -940,6 +979,13 @@ static void menu_pick(con *c, UWORD code)
         case MENU_FIND: find_open(c); break;
         case MENU_PREFS: prefs_launch(); break;
         case MENU_CLOSE: close_gadget(c); return; /* as the close gadget */
+        case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); break;
+        case MENU_KC_COMMAND: kc_menu(c, COMPLETE_COMMANDS); break;
+        case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); break;
+        case MENU_KC_CACHE: c->kc_cache = (it->Flags & CHECKED) != 0; break;
+        case MENU_KC_RESET: complete_cache_reset(); break;
+        case MENU_KC_PURGE: complete_cache_purge(); break;
+        case MENU_KC_INFO: c->kc_info = (it->Flags & CHECKED) != 0; break;
         default: break;
         }
         code = it->NextSelect;
@@ -1485,6 +1531,7 @@ static void start_completion(con *c)
         c->comp->mode = COMPLETE_FILES;
     }
     c->comp->kingcon = 0;
+    c->comp->no_cache = 0;
     c->comp->extra_len = 0;
     if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
         CopyMem((APTR)extra, c->comp->extra, n);
@@ -1826,6 +1873,7 @@ static void kc_tab(con *c, int mode)
     c->comp->mode = mode;
     c->comp->kingcon = 1;
     c->comp->show_info = c->kc_info;
+    c->comp->no_cache = !c->kc_cache;
     c->comp->extra_len = 0;
     if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
         CopyMem((APTR)extra, c->comp->extra, n);
@@ -1924,6 +1972,17 @@ static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods)
     else
         kc_cyc_put(c, c->kc_cyc_i + 1);
     return 1;
+}
+
+/* The Complete menu's Filename / Command / Device: as the keys, in a
+ * cooked line (a raw stream has no line to complete). */
+static void kc_menu(con *c, int mode)
+{
+    if (c->raw || tty_active(c))
+        return;
+    sel_close(c);
+    kc_cyc_end(c);
+    kc_tab(c, mode);
 }
 
 /* The typed part the names were matched against: after the word's last

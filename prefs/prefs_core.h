@@ -37,6 +37,7 @@ typedef struct prefs_fields {
     int completion; /* PREFS_COMPLETE_* */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
     int kcinfo;     /* KingCON completion lists .info files too */
+    int kccache;    /* KingCON's directory cache (DIRCACHE; on by default) */
 } prefs_fields;
 
 /* the choices, in the order the window's cycle gadgets list them */

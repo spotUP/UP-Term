@@ -227,6 +227,8 @@ static struct SignalSemaphore cache_sem;
 static int cache_ready;
 static dir_cache *caches;
 
+static void cache_lock(void); /* the cache's semaphore, made at first use */
+
 static void cache_names(dir_cache *d, BPTR lock, struct FileInfoBlock *fib)
 {
     long cap = 1024, len = 0;
@@ -265,18 +267,17 @@ static void scan_commands(struct complete_req *q, BPTR lock, const char *prefix)
     long k;
     if (!fib)
         return;
+    if (q->no_cache) {
+        FreeDosObject(DOS_FIB, fib);
+        scan_dir(q, lock, prefix, 1);
+        return;
+    }
     if (!NameFromLock(lock, (STRPTR)name, sizeof(name)) || !Examine(lock, fib)) {
         FreeDosObject(DOS_FIB, fib);
         scan_dir(q, lock, prefix, 1);
         return;
     }
-    Forbid();
-    if (!cache_ready) {
-        InitSemaphore(&cache_sem);
-        cache_ready = 1;
-    }
-    Permit();
-    ObtainSemaphore(&cache_sem);
+    cache_lock();
     for (d = caches; d && !same_name(d->name, name); d = d->next)
         ;
     if (!d && (d = (dir_cache *)AllocVec(sizeof(dir_cache), MEMF_CLEAR)) != 0) {
@@ -298,6 +299,39 @@ static void scan_commands(struct complete_req *q, BPTR lock, const char *prefix)
     FreeDosObject(DOS_FIB, fib);
     if (!d)
         scan_dir(q, lock, prefix, 1);
+}
+
+static void cache_lock(void)
+{
+    Forbid();
+    if (!cache_ready) {
+        InitSemaphore(&cache_sem);
+        cache_ready = 1;
+    }
+    Permit();
+    ObtainSemaphore(&cache_sem);
+}
+
+void complete_cache_reset(void)
+{
+    dir_cache *d;
+    cache_lock();
+    for (d = caches; d; d = d->next)
+        d->date.ds_Days = -1; /* no directory has that date: read again */
+    ReleaseSemaphore(&cache_sem);
+}
+
+void complete_cache_purge(void)
+{
+    dir_cache *d;
+    cache_lock();
+    while ((d = caches) != 0) {
+        caches = d->next;
+        if (d->names)
+            FreeVec(d->names);
+        FreeVec(d);
+    }
+    ReleaseSemaphore(&cache_sem);
 }
 
 /* The resident list (the Shell's internal commands live there too): a

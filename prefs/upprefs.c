@@ -72,7 +72,7 @@ enum {
     ID_PAGE = 1,
     ID_PROF, ID_LOAD, ID_NEW, ID_DEL,
     ID_FONT, ID_SB, ID_CURCOL,
-    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_COMPLETE, ID_KCMODE, ID_KCINFO,
+    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_COMPLETE, ID_KCMODE, ID_KCINFO, ID_KCCACHE,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
     ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME
 };
@@ -97,7 +97,7 @@ struct app {
     struct Gadget *glist_common; /* Page, status, Save / Use / Cancel */
     struct Gadget *glist[2];  /* the General and the Colors page */
     int page;                 /* the page in the window, -1 none yet */
-    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *gcomplete, *gkcinfo;
+    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *gcomplete, *gkcinfo, *gkccache;
     struct strfield str[N_STR];
     int nstr;
     upconf conf;              /* the file's table, as loaded and as last written */
@@ -193,6 +193,7 @@ static void show_fields(struct app *a)
     set_attr(a, a->gwheel, 0, GTCB_Checked, (ULONG)a->f.wheel);
     set_attr(a, a->gcomplete, 0, GTCY_Active, (ULONG)a->f.completion);
     set_attr(a, a->gkcinfo, 0, GTCB_Checked, (ULONG)a->f.kcinfo);
+    set_attr(a, a->gkccache, 0, GTCB_Checked, (ULONG)a->f.kccache);
 }
 
 /* Take the text of every string field: a string gadget reports only Return
@@ -521,6 +522,8 @@ static int build_gadgets(struct app *a)
     g = str_gad(a, g, 0, 336, ROW(10), 120, "KingCON style", ID_KCMODE, a->f.kcmode, UC_MAX_VALUE);
     g = a->gkcinfo = gad(a, g, CHECKBOX_KIND, 430, ROW(8) + 1, 26, 11, ".info in lists", ID_KCINFO,
                          PLACETEXT_LEFT, 0);
+    g = a->gkccache = gad(a, g, CHECKBOX_KIND, 430, ROW(7) + 1, 26, 11, "Directory cache",
+                          ID_KCCACHE, PLACETEXT_LEFT, 0);
     if (!g)
         return 0;
 
@@ -667,6 +670,9 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
         break;
     case ID_BOLD:
         a->f.bold = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_KCCACHE:
+        a->f.kccache = (g->Flags & GFLG_SELECTED) ? 1 : 0;
         break;
     case ID_KCINFO:
         a->f.kcinfo = (g->Flags & GFLG_SELECTED) ? 1 : 0;

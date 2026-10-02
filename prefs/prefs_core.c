@@ -49,6 +49,7 @@ void prefs_defaults(prefs_fields *f)
     f->bell = PREFS_BELL_BEEP;
     f->bold = 1;
     f->wheel = 1;
+    f->kccache = 1;
 }
 
 void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
@@ -79,6 +80,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
                   ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     pc_copy(f->kcmode, upconf_str(c, p, "kingcon-mode", ""), sizeof(f->kcmode));
     f->kcinfo = pc_ieq(upconf_str(c, p, "kingcon-info", "hide"), "show");
+    f->kccache = !pc_ieq(upconf_str(c, p, "kingcon-cache", "on"), "off");
     upconf_palette_parse(upconf_get(c, p, "palette"), pal);
     for (i = 0; i < 16; i++)
         if (pal[i] & 0x01000000UL)
@@ -218,6 +220,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     if (f->kcmode[0])
         upconf_set(w, p, "kingcon-mode", f->kcmode);
     upconf_set(w, p, "kingcon-info", f->kcinfo ? "show" : "hide");
+    upconf_set(w, p, "kingcon-cache", f->kccache ? "on" : "off");
     for (i = 0; i < 16; i++) {
         uc_u32 rgb;
         pal[i] = 0;

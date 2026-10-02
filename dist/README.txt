@@ -137,6 +137,12 @@ KEYS
     the names on the line (Tab next, Shift-Tab back, Ctrl-S the window), C
     complete the part all names share first (then W or B on the next Tab),
     S no beeps. ".info in lists" (kingcon-info = show) lists .info files.
+    A KingCON window has KingCON's Complete menu: Filename, Command and
+    Device (as the keys), Enable cache (the command directories' names are
+    kept between Tabs; kingcon-cache = off, or "Directory cache" in Prefs,
+    starts with it off), Reset cache (read every directory again), Purge
+    cache (free the kept names) and Show .info. The menu's switches are for
+    that window; Prefs sets the profile.
 
 STARTING IT
   Workbench: double-click SYS:Utilities/UP-Term. It opens an XCON: window

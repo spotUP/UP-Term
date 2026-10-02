@@ -53,6 +53,31 @@ def k(code, q=0):
     time.sleep(0.7)
 
 
+# The Complete menu, on the Workbench screen's bar (topaz 8): its title and
+# each item's row, in screen pixels (rig screenshot 2026-10-02)
+MENU_X = 80
+ITEM_Y = {'Filename': 20, 'Command': 32, 'Device': 44, 'Enable cache': 62,
+          'Reset cache': 74, 'Purge cache': 86, 'Show .info': 104}
+
+
+def menu(item):
+    kx, ky = ami.pointer_scale()
+    ami.script(('move', int(MENU_X * kx), int(5 * ky)), ('wait', 2), ('button', 1, 1), ('wait', 8),
+               ('move', int(MENU_X * kx), int(ITEM_Y[item] * ky)), ('wait', 5), ('button', 1, 0),
+               ('wait', 5))
+    time.sleep(1)
+
+
+def menu_state():
+    """{item: 'checked' | 'uncheck' | '-'} for the active window's menus."""
+    out = {}
+    for l in ami.req(0x0F).decode('latin-1').splitlines():
+        if l.startswith('I '):
+            f = l.split('"')
+            out[f[-2]] = l.split()[5]
+    return out
+
+
 def session(steps, profile):
     """A fresh XCON: window with its own title; steps are text or
     (key, qualifier) or ('look', fn). Returns what Echo wrote."""
@@ -78,6 +103,8 @@ def session(steps, profile):
             t(st)
         elif st[0] == 'look':
             st[1]()
+        elif st[0] == 'menu':
+            menu(st[1])
         else:
             k(*st)
     time.sleep(1.5)
@@ -182,6 +209,46 @@ def main():
                    'boot.log', (RET,), (RET,)], 'kingcon')
     check(seen.get('win'), 'W: Tab on an empty word opens the file requester')
     check(out == 'BOOTX:boot.log', 'the chosen file goes in with its drawer', out)
+
+    # KingCON's Complete menu (kingcon only): the keys' completions, the
+    # cache switches and Show .info, for this window
+    seen = {}
+    out = session([('look', lambda: seen.update(m=menu_state())),
+                   'Echo >RAM:kc.out S:Shell-Sta', ('menu', 'Filename'), (RET,)], 'kingcon')
+    m = seen.get('m', {})
+    check(m.get('Enable cache') == 'checked' and m.get('Show .info') == 'uncheck' and 'Filename' in m,
+          'kingcon: the Complete menu, cache on, .info off', str(m))
+    check(out == 'S:Shell-Startup', 'Complete > Filename completes as Tab does', out)
+    seen = {}
+    session(['Lo', ('menu', 'Command'), ('look', lambda: seen.update(win=has_window('Select command'))),
+             (ESC,), (0x41,), (0x41,)], 'kingcon')
+    check(seen.get('win'), 'Complete > Command opens "Select command"')
+    seen = {}
+    session(['Sy', ('menu', 'Device'), ('look', lambda: seen.update(win=has_window('Select device'))),
+             (ESC,), (0x41,), (0x41,)], 'kingcon')
+    check(seen.get('win'), 'Complete > Device opens "Select device"')
+    seen = {}
+    out = session([('menu', 'Show .info'), ('look', lambda: seen.update(m=menu_state())),
+                   'Echo >RAM:kc.out SYS:Prefs.in', (TAB,), (RET,)], 'kingcon')
+    check(seen.get('m', {}).get('Show .info') == 'checked', 'Show .info checks', str(seen.get('m')))
+    check(out == 'SYS:Prefs.info', 'and the window lists .info files from then on', out)
+    seen = {}
+    session([('menu', 'Reset cache'), ('menu', 'Purge cache'), 'Lo', (TAB, LALT),
+             ('look', lambda: seen.update(win=has_window('Select command'))), (ESC,), (0x41,), (0x41,)],
+            'kingcon')
+    check(seen.get('win'), 'after Reset cache and Purge cache the commands are found again')
+    seen = {}
+    session([('menu', 'Enable cache'), ('look', lambda: seen.update(m=menu_state())), 'Lo', (TAB, LALT),
+             ('look', lambda: seen.update(win=has_window('Select command'))), (ESC,), (0x41,), (0x41,)],
+            'kingcon')
+    check(seen.get('m', {}).get('Enable cache') == 'uncheck' and seen.get('win'),
+          'Enable cache off: unchecked, commands still found (read afresh)', str(seen.get('m')))
+    seen = {}
+    session([('look', lambda: seen.update(m=menu_state()))], 'kingcon*Nkingcon-cache = off')
+    check(seen.get('m', {}).get('Enable cache') == 'uncheck', 'kingcon-cache = off: the menu starts unchecked')
+    seen = {}
+    session([('look', lambda: seen.update(m=menu_state()))], None)
+    check('Filename' not in seen.get('m', {'Filename': 1}), 'unix: no Complete menu')
 
     c.run('Delete >NIL: ENV:up-term/up-term RAM:kc.out QUIET')
     print('kingcon_rig: passed %d of %d' % (passed, total))
