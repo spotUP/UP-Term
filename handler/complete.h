@@ -19,8 +19,10 @@ enum complete_mode {
     COMPLETE_DEVICES = 6,     /* devices, volumes and assigns (KingCON's Shift+Tab) */
     COMPLETE_ASL = 7,         /* an ASL file requester on `screen`: the chosen path in add
                                * (KingCON's Tab on an empty word); matches 0: cancelled */
-    COMPLETE_FONT = 8         /* an ASL font requester (fixed width) on `screen`: the font's
+    COMPLETE_FONT = 8,        /* an ASL font requester (fixed width) on `screen`: the font's
                                * name in add, its size in font_size; matches 0: cancelled */
+    COMPLETE_THEME = 9        /* an ASL file requester on the themes drawer, on `screen`:
+                               * the chosen theme file read into data; matches 0: none */
 };
 
 #define HISTORY_FILE "ENVARC:vtcon.history"

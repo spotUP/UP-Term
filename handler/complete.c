@@ -547,6 +547,42 @@ static void font_pick(struct complete_req *q)
     CloseLibrary(AslBase);
 }
 
+/* COMPLETE_THEME: Settings > Theme... -- a theme file from the kit's themes
+ * drawer, read into q->data (q->data_max bytes at most). */
+static void theme_pick(struct complete_req *q)
+{
+    struct Library *AslBase = OpenLibrary((STRPTR)"asl.library", 37);
+    struct FileRequester *fr;
+    char path[COMPLETE_MAX];
+    q->data_len = 0;
+    if (!AslBase)
+        return;
+    fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
+            ASLFR_Screen, (ULONG)q->screen, ASLFR_TitleText, (ULONG)"UP-Term theme",
+            ASLFR_InitialDrawer, (ULONG)"ENVARC:up-term/themes", ASLFR_InitialPattern,
+            (ULONG)"#?.conf", ASLFR_DoPatterns, TRUE, ASLFR_RejectIcons, TRUE, TAG_DONE);
+    if (fr && AslRequest(fr, 0) && fr->fr_File[0]) {
+        BPTR f;
+        strncpy(path, (const char *)fr->fr_Drawer, sizeof(path) - 2);
+        path[sizeof(path) - 2] = 0;
+        AddPart((STRPTR)path, fr->fr_File, sizeof(path) - 2);
+        if ((f = Open((STRPTR)path, MODE_OLDFILE)) != 0) {
+            long n = Read(f, q->data, q->data_max - 1);
+            Close(f);
+            if (n > 0) {
+                q->data_len = n;
+                q->data[n] = 0;
+                q->matches = 1;
+                strncpy(q->add, (const char *)fr->fr_File, COMPLETE_MAX - 1);
+                q->add[COMPLETE_MAX - 1] = 0;
+            }
+        }
+    }
+    if (fr)
+        FreeAslRequest(fr);
+    CloseLibrary(AslBase);
+}
+
 /* The worker's body: runs as its own process. */
 static void worker(void)
 {
@@ -585,6 +621,8 @@ static void worker(void)
         asl_pick(q);
     } else if (q->mode == COMPLETE_FONT) {
         font_pick(q);
+    } else if (q->mode == COMPLETE_THEME) {
+        theme_pick(q);
     } else if (q->mode == CHECK_COMMAND) {
         q->matches = command_exists(q);
     } else if (q->mode == HISTORY_LOAD) {

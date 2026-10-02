@@ -614,6 +614,40 @@ static int profile_exists(const upconf *cf, const char *name)
     return 0;
 }
 
+/* A profile's or a theme's colours other than fg/bg: cursor, selection,
+ * palette. theme: what the section does not set goes back to the built-in
+ * look (a theme replaces the colours, as UP-Term Prefs' Theme... does). */
+static void apply_colours_rest(con *c, const upconf *cf, const char *p, int theme)
+{
+    const char *v = upconf_str(cf, p, "cursor-color", 0);
+    int i;
+    if (v && !str_ieq(v, "inverse"))
+        c->w.cursor_rgb = upconf_rgb(cf, p, "cursor-color", VR_KEEP);
+    else if (theme)
+        c->w.cursor_rgb = VR_KEEP;
+    /* either key alone is enough: whichever is unset keeps the swapped value */
+    c->w.sel_fg_rgb = upconf_rgb(cf, p, "selection-fg", VR_KEEP);
+    c->w.sel_bg_rgb = upconf_rgb(cf, p, "selection-bg", VR_KEEP);
+    v = upconf_str(cf, p, "palette", 0);
+    if (theme)
+        for (i = 0; i < 16; i++)
+            c->w.pal16[i] = 0;
+    if (v)
+        upconf_palette_parse(v, c->w.pal16); /* 0x01RRGGBB, 0 = not remapped */
+}
+
+/* fg and bg, then the rest. */
+static void apply_colours(con *c, const upconf *cf, const char *p, int theme)
+{
+    ULONG fg = upconf_rgb(cf, p, "fg", VR_KEEP);
+    ULONG bg = upconf_rgb(cf, p, "bg", VR_KEEP);
+    if (fg != VR_KEEP)
+        c->w.fg_rgb = fg;
+    if (bg != VR_KEEP)
+        c->w.bg_rgb = bg;
+    apply_colours_rest(c, cf, p, theme);
+}
+
 /* The profile's values for every knob the spec did not set (precedence:
  * built-in defaults < profile < window spec; plan 2026-10-01). A profile
  * the file does not know falls back to "default". */
@@ -637,14 +671,10 @@ static void apply_profile(con *c)
                 f[i] = ' '; /* the profile's "NAME:SIZE" is the spec's "NAME SIZE" */
         parse_font(f, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
     }
-    if (!c->colours_spec) {
-        ULONG fg = upconf_rgb(c->conf, p, "fg", VR_KEEP);
-        ULONG bg = upconf_rgb(c->conf, p, "bg", VR_KEEP);
-        if (fg != VR_KEEP)
-            c->w.fg_rgb = fg;
-        if (bg != VR_KEEP)
-            c->w.bg_rgb = bg;
-    }
+    if (!c->colours_spec)
+        apply_colours(c, c->conf, p, 0);
+    else
+        apply_colours_rest(c, c->conf, p, 0);
     c->w.sb_lines = (int)upconf_int(c->conf, p, "scrollback", 0); /* 0 = the built-in 500 */
     v = upconf_str(c->conf, p, "cursor", 0);
     if (v) {
@@ -658,12 +688,6 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "cursor-blink", 0);
     if (v)
         c->w.cursor_blink = str_ieq(v, "on");
-    v = upconf_str(c->conf, p, "cursor-color", 0);
-    if (v && !str_ieq(v, "inverse"))
-        c->w.cursor_rgb = upconf_rgb(c->conf, p, "cursor-color", VR_KEEP);
-    /* either key alone is enough: whichever is unset keeps the swapped value */
-    c->w.sel_fg_rgb = upconf_rgb(c->conf, p, "selection-fg", VR_KEEP);
-    c->w.sel_bg_rgb = upconf_rgb(c->conf, p, "selection-bg", VR_KEEP);
     v = upconf_str(c->conf, p, "bell", 0);
     if (v) {
         if (str_ieq(v, "none"))
@@ -692,9 +716,6 @@ static void apply_profile(con *c)
     c->kc_info = v && str_ieq(v, "show");
     v = upconf_str(c->conf, p, "kingcon-cache", 0);
     c->kc_cache = !(v && str_ieq(v, "off"));
-    v = upconf_str(c->conf, p, "palette", 0);
-    if (v)
-        upconf_palette_parse(v, c->w.pal16); /* 0x01RRGGBB, 0 = not remapped */
 }
 
 /* "x/y/w/h/title/OPT/OPT..." after the colon. */
@@ -858,7 +879,7 @@ enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
        MENU_SET_BELL_BEEP, MENU_SET_BELL_VISUAL, MENU_SET_BOLD, MENU_SET_META_AMIGA,
        MENU_SET_META_ALT, MENU_SET_COPY, MENU_SET_WHEEL, MENU_SET_UNIX, MENU_SET_KINGCON,
        MENU_SET_KC_W, MENU_SET_KC_L, MENU_SET_KC_B, MENU_SET_KC_C, MENU_SET_KC_S,
-       MENU_SET_FONT };
+       MENU_SET_FONT, MENU_SET_THEME };
 
 /* Right Amiga C, V and F stay what they were: Intuition now hands them in
  * as MENUPICK, which picks the same actions. */
@@ -896,10 +917,11 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 29
+#define MENU_SET_ITEMS 30
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
+    { NM_ITEM, (STRPTR)"Theme...", 0, 0, 0, (APTR)MENU_SET_THEME },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Cursor", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Block", 0, CHECKIT, 6, (APTR)MENU_SET_BLOCK },
@@ -1064,6 +1086,43 @@ static void font_ask(con *c)
         c->comp_busy = 1;
 }
 
+/* Settings > Theme...: a theme file picked and read by the worker (DOS),
+ * its colours put on the window in finish_completion. */
+static void theme_ask(con *c)
+{
+    if (c->comp_busy || !ensure_worker(c) || !c->w.win)
+        return;
+    if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
+        return;
+    c->comp->data_max = UC_MAX_FILE + 1;
+    c->comp->mode = COMPLETE_THEME;
+    c->comp->kingcon = 0;
+    c->comp->screen = c->w.win->WScreen;
+    if (complete_start(c->comp, c->comp_port, opener(c)))
+        c->comp_busy = 1;
+}
+
+/* The theme's colours on the window, live: one profile section, read as
+ * a profile's are (apply_colours); what it does not set goes back to the
+ * built-in look. */
+static void theme_apply(con *c, const char *text, long len)
+{
+    upconf *t = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
+    const char *names[UC_MAX_PROFILES + 1];
+    int ok = 0;
+    if (t) {
+        upconf_parse(t, text, len);
+        if (upconf_profiles(t, names) > 0 && upconf_has(t, names[0], "fg")) {
+            apply_colours(c, t, names[0], 1);
+            vtwin_apply_settings(&c->w);
+            ok = 1;
+        }
+        FreeVec(t);
+    }
+    if (!ok)
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not a theme file */
+}
+
 /* A Settings (or Complete) checkmark picked: the window's setting, live.
  * on is the item's checkmark after the pick. 1 when it was one. */
 static int menu_setting(con *c, LONG id, int on)
@@ -1136,6 +1195,7 @@ static void menu_pick(con *c, UWORD code)
         case MENU_KC_RESET: complete_cache_reset(); break;
         case MENU_KC_PURGE: complete_cache_purge(); break;
         case MENU_SET_FONT: font_ask(c); break;
+        case MENU_SET_THEME: theme_ask(c); break;
         default:
             if (menu_setting(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0)) {
                 /* the strip again: every checkmark from the settings (one
@@ -1835,6 +1895,11 @@ static void finish_completion(con *c)
             continue;
         }
         c->comp_busy = 0;
+        if (q->mode == COMPLETE_THEME) {
+            if (q->matches && c->w.t)
+                theme_apply(c, q->data, q->data_len);
+            continue;
+        }
         if (q->mode == COMPLETE_FONT) {
             /* Settings > Font...: the window in the chosen font, live */
             if (q->matches && c->w.t && !vtwin_set_font(&c->w, q->add, (WORD)q->font_size))
@@ -3230,8 +3295,11 @@ static LONG handler_main(void)
     kc_cyc_end(c);
     if (c->kc_snap)
         FreeVec(c->kc_snap);
-    if (c->comp)
+    if (c->comp) {
+        if (c->comp->data)
+            FreeVec(c->comp->data);
         FreeVec(c->comp);
+    }
     if (c->check)
         FreeVec(c->check);
     if (c->hist) {
