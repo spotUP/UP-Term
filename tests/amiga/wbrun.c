@@ -12,6 +12,16 @@
 static BPTR parent_and_name(const char *path, char *name)
 {
     BPTR lock = Lock((STRPTR)path, SHARED_LOCK), dir;
+    if (!lock) {
+        /* a project that is only an icon (SYS:System/Shell): Workbench
+         * hands it over by its .info's drawer and the name without .info */
+        char info[120];
+        if (strlen(path) + 6 > sizeof(info))
+            return 0;
+        strcpy(info, path);
+        strcat(info, ".info");
+        lock = Lock((STRPTR)info, SHARED_LOCK);
+    }
     if (!lock)
         return 0;
     strcpy(name, (const char *)FilePart((STRPTR)path));

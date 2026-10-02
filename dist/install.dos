@@ -1,10 +1,11 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
 ; the patched ixemul.library.
 ; Run by the kit's Install (an Installer script), which asks the questions:
 ;   Execute <kit>/Files/install.dos <kit>/Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
+;     [SHELLICON|NOSHELLICON] [SYSICON|NOSYSICON]   (the icons: no unless asked)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
 ; (every new Shell window); CONSOLE answers yes, NOCONSOLE no, unasked.
@@ -91,7 +92,7 @@ Copy screenrc ENV:screenrc CLONE
 Copy tmux C:tmux CLONE
 Copy tmux.conf ENVARC:tmux.conf CLONE
 Copy tmux.conf ENV:tmux.conf CLONE
- The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
+; The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
 ; wc... GPL v2: COPYING and the complete source are in the kit's
 ; coreutils-5.2.1 drawer) in UP-Term's own drawer SYS:UP-Term/bin, not C::
 ; AmigaDOS names ignore case, so GNU sort, date, join and install would be
@@ -157,6 +158,24 @@ EndIf
 ; window is its WINDOW tooltype)
 Copy UP-Term UP-Term.info SYS:Utilities CLONE
 Copy UP-Term-Prefs UP-Term-Prefs.info SYS:Utilities CLONE
+; SHELLICON: the Shell icon (SYS:System/Shell) opens its window on XCON:,
+; its place, size, title and options as they were (upicon swaps only the
+; WINDOW tooltype's device). The icon as it was is kept in
+; ENVARC:up-term-orig for Uninstall (a second Install keeps the first copy).
+If "{SHELLICON}" EQ "SHELLICON"
+  If EXISTS SYS:System/Shell.info
+    If NOT EXISTS ENVARC:up-term-orig/Shell.info
+      Copy SYS:System/Shell.info ENVARC:up-term-orig/Shell.info CLONE
+    EndIf
+    upicon SYS:System/Shell WINDOWDEV=XCON
+  EndIf
+EndIf
+; SYSICON: the UP-Term icon in SYS:System too, beside Shell (a marker says
+; it is ours, for Uninstall)
+If "{SYSICON}" EQ "SYSICON"
+  Copy UP-Term UP-Term.info SYS:System CLONE
+  Echo >ENVARC:up-term/sysicon "installed by UP-Term"
+EndIf
 MakeDir >NIL: ENVARC:vsh
 Copy vshrc ENVARC:vsh/vshrc CLONE
 Copy banner ENVARC:vsh/banner CLONE

@@ -11,7 +11,11 @@ window through our device, proven with a sentinel only our device answers.
      handler, the unit, CMD_READ) and run (its output through CMD_WRITE):
      units >= 1, bytes written grew by at least the echo's.
   4. endcli: the window closes, units back to 0.
-  5. UPConsole DEVICE OFF: STATUS says ROM, devwho says ROM; the device's
+  5. Retired and back: a window holds a unit, DEVICE OFF leaves the device
+     loaded for it ("stays"), DEVICE ON switches that same device back on
+     (it used to refuse until the window closed, which failed the kit's
+     DEVICE step); the window still works through it.
+  6. UPConsole DEVICE OFF: STATUS says ROM, devwho says ROM; the device's
      code is unloaded (no unit open).
 Screenshot of step 3: build/rig/shots/condev.png. Log: condev.log.
 The rig must be up; `make build/amiga/up-console.device build/amiga/UPConsole
@@ -85,6 +89,21 @@ def main():
     typeline('endcli', 3)
     out, s2 = stats()
     check(s2 is not None and s2[0] == 0, 'endcli closed the unit (%s)' % out, out)
+    # retired and back
+    run('Run >NIL: NewShell "CON:0/240/640/150/condev2"')
+    time.sleep(5)
+    rc, out = run('VTC:UPConsole DEVICE OFF')
+    check(rc == 0 and 'stays' in out, 'DEVICE OFF with a window open: the device stays for it', out)
+    rc, out = run('VTC:UPConsole DEVICE ON FILE VTC:up-console.device')
+    check(rc == 0 and 'again' in out, 'DEVICE ON switches the device still in use back on', out)
+    out, s3 = stats()
+    check(s3 is not None and s3[0] >= 1, 'devwho: ours again, the window\'s unit with it (%s)' % out, out)
+    typeline('echo again', 3)
+    out, s4 = stats()
+    check(s3 is not None and s4 is not None and s4[1] > s3[1], 'the window writes through it (%s)' % out, out)
+    typeline('endcli', 3)
+    out, s5 = stats()
+    check(s5 is not None and s5[0] == 0, 'endcli closed that unit too (%s)' % out, out)
     rc, out = run('VTC:UPConsole DEVICE OFF')
     check(rc == 0 and 'stays' not in out, 'UPConsole DEVICE OFF, code unloaded', out)
     st = run('VTC:UPConsole STATUS')[1]

@@ -70,10 +70,34 @@
     )
 )
 
+; ---- the Workbench icons -------------------------------------------------
+
+(set #shellicon "NOSHELLICON")
+(set #sysicon "NOSYSICON")
+(if (exists "SYS:System/Shell.info")
+    (if (askbool
+            (prompt "Should the Shell icon (SYS:System/Shell) open an UP-Term window?\n\n"
+                    "Its window keeps its place, size and title; only the console "
+                    "behind it becomes UP-Term's. Uninstall puts the icon back as it was.")
+            (help "The Shell icon's WINDOW tooltype names the console its window opens "
+                  "on (CON:, or KCON: with KingCON). Install changes that device to "
+                  "XCON: and keeps a copy of the icon in ENVARC:up-term-orig.")
+            (choices "Yes" "No")
+            (default 0))
+        (set #shellicon "SHELLICON")))
+(if (askbool
+        (prompt "Should the UP-Term icon also go in SYS:System, beside Shell?\n\n"
+                "It is in SYS:Utilities either way.")
+        (help "A second copy of the UP-Term icon (vsh in an UP-Term window). "
+              "Uninstall removes it.")
+        (choices "Yes" "No")
+        (default 1))
+    (set #sysicon "SYSICON"))
+
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon)
 
 (exit
     "UP-Term is installed.\n\n"

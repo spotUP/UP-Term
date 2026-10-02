@@ -15,6 +15,7 @@ void suite_ldisc(void);
 void suite_upcon(void);
 void suite_upconf(void);
 void suite_prefs(void);
+void suite_iconspec(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -31,6 +32,7 @@ static const h_suite suites[] = {
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
     { "prefs", suite_prefs },
+    { "iconspec", suite_iconspec },
     { 0, 0 }
 };
 

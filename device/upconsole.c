@@ -325,6 +325,8 @@ static struct Resident *find_romtag(BPTR seg)
     return rt;
 }
 
+static void unload_retired(upc_state *st);
+
 static int device_on(const char *file)
 {
     upc_state *st = make_state();
@@ -350,10 +352,30 @@ static int device_on(const char *file)
         printf("UPConsole: not switched: there is no console.device\n");
         return RETURN_WARN;
     }
+    unload_retired(st); /* gone since the last run: forget it */
     if (st->dev_seg) {
+        /* switched off while windows still used it: it is still loaded,
+         * under its own name, its expunge pending. Switch that one back
+         * on (refusing left DEVICE ON failing until every such window
+         * closed, the install's DEVICE step among them). */
+        struct Library *retired;
+        Forbid();
+        retired = (struct Library *)FindName(&SysBase->DeviceList, (STRPTR)st->dev_name);
+        if (retired && upc_is_upterm(retired)) {
+            retired->lib_Flags &= ~LIBF_DELEXP; /* no expunge at its last close now */
+            Remove(&rom->lib_Node);
+            retired->lib_Node.ln_Name = *(char **)((UBYTE *)retired + UPC_CONNAME_OFFSET);
+            st->dev = retired;
+            st->rom = rom;
+        }
+        Permit();
         ReleaseSemaphore(&st->ss);
-        printf("UPConsole: not switched: the UP-Term device switched off before still has units open\n");
-        return RETURN_WARN;
+        if (!st->dev) {
+            printf("UPConsole: not switched: the UP-Term device switched off before is not found\n");
+            return RETURN_WARN;
+        }
+        printf("UPConsole: console.device is UP-Term again (the one still in use)\n");
+        return RETURN_OK;
     }
     lvo = patched_vector(rom);
     if (lvo) {

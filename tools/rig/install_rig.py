@@ -34,7 +34,7 @@ def main():
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE\n")
-    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE\n")
+    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE SHELLICON SYSICON\n")
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
@@ -46,6 +46,7 @@ def main():
     startup_before = run('Type S:User-Startup')[1]
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
     ls_before = run('List >NIL: C:ls')[0] == 0  # Install puts no Unix command in C:
+    shell_before = run('VTC:iconprobe SYS:System/Shell')[1]  # SHELLICON must give it back
     tmp_before = run('Assign >NIL: TMP: EXISTS')[0] == 0
     # the rig's boot assigns GG: (VTC:gg); take it away so Install's own
     # GG: set-up is what gets tested, and put it back at the end
@@ -60,7 +61,7 @@ def main():
     check(before.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in before,
           'before: the original ixemul, no .orig', str(before))
     rc, out = run('Execute VTC:runinstall', 120)
-    check(rc == 0, 'Install runs', out)
+    check(rc == 0 and 'Unknown command' not in out, 'Install runs (no line taken for a command)', out)
     rc, out = run('Assign PTY: EXISTS DEVICES')
     check(rc == 0, 'Install mounted PTY:', out)
     rc, out = run('Assign IXPIPE: EXISTS DEVICES')
@@ -80,7 +81,15 @@ def main():
           'Install NODEVICE writes no device block', '')
     # a second Install must not take ours for theirs; this one says yes to CON:
     rc, out = run('Execute VTC:runinstallcon', 120)
-    check(rc == 0, 'Install CONSOLE again over it runs', out)
+    check(rc == 0 and 'Unknown command' not in out, 'Install CONSOLE again over it runs', out)
+    # SHELLICON: the Shell icon's window on XCON:, nothing else changed
+    rc, out = run('VTC:iconprobe SYS:System/Shell')
+    want = [l if not l.startswith('tooltype WINDOW=') else
+            'tooltype WINDOW=XCON:' + l.split(':', 1)[1] for l in shell_before.splitlines()]
+    check(out.splitlines() == want and 'WINDOW=XCON:' in out,
+          'SHELLICON: the Shell icon opens on XCON:, its window and other tooltypes kept',
+          '%r vs %r' % (out, want))
+    check(run('List >NIL: SYS:System/UP-Term.info')[0] == 0, 'SYSICON: the UP-Term icon is in SYS:System', '')
     rc, out = run('C:UPConsole STATUS')
     check('CON: UP-Term' in out and 'RAW: UP-Term' in out, 'Install CONSOLE: CON: and RAW: are UP-Term now', out)
     check('console.device: UP-Term' in out, 'Install DEVICE: console.device is UP-Term\'s now', out)
@@ -96,6 +105,14 @@ def main():
     rc, out = run('Search S:User-Startup "C:UPConsole >NIL: CON ON"')
     check('CON ON' in out, 'S:User-Startup switches CON: at boot', out)
     run('C:UPConsole CON OFF')
+    # the Shell icon from Workbench, CON: the ROM's again: its window is UP-Term's
+    run('Delete RAM:who-shell.txt QUIET')
+    run('VTC:wbrun SYS:System/CLI SYS:System/Shell', 30)
+    time.sleep(4)
+    concon_rig.typeline('VTC:conwho >RAM:who-shell.txt', 3)
+    concon_rig.typeline('endcli', 2)
+    who = run('Type RAM:who-shell.txt')[1].strip()
+    check(who.startswith('UP-Term '), 'the Shell icon opens an UP-Term window (%s)' % who, who)
     run('C:UPConsole >NIL: CON ON')  # the block's own line, as a boot runs it
     rc, out = run('C:UPConsole STATUS')
     check('CON: UP-Term' in out, 'the block\'s line switches CON: again', out)
@@ -154,6 +171,9 @@ def main():
           'exit in it closes the window')
     rc, out = run('Execute VTC:rununinstall', 60)
     check(rc == 0, 'Uninstall runs', out)
+    rc, out = run('VTC:iconprobe SYS:System/Shell')
+    check(out == shell_before, 'after Uninstall: the Shell icon as it was', '%r vs %r' % (out, shell_before))
+    check(run('List >NIL: SYS:System/UP-Term.info')[0] != 0, 'after Uninstall: no UP-Term icon in SYS:System', '')
     rc, out = run('VTC:UPConsole STATUS')
     check('CON: ROM' in out and 'RAW: ROM' in out, 'after Uninstall: CON: and RAW: are the ROM\'s', out)
     check('console.device: ROM' in out, 'after Uninstall: console.device is the ROM\'s', out)
