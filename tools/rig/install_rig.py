@@ -130,6 +130,9 @@ def main():
     if not tmp_before:
         rc, out = run('Search S:User-Startup "Assign TMP: T:"')
         check('Assign TMP: T:' in out, 'S:User-Startup assigns TMP: (/tmp) at boot', out)
+    check(run('List >NIL: "C:UP-Term Prefs"')[0] == 0 and
+          run('List >NIL: SYS:Utilities/UP-Term-Prefs.info')[0] == 0,
+          'the preferences editor is in C: (the menu\'s Preferences runs it) and in Utilities', '')
     check(run('List >NIL: ENVARC:up-term/up-term')[0] == 0, 'the window preferences file is in place', '')
     rc, out = run('C:tmux -V')
     check(rc == 0 and 'tmux 3.6a' in out, 'C:tmux runs', out)
