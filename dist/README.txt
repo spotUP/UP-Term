@@ -113,6 +113,21 @@ OUTLINE FONTS (icons, other scripts)
    profile, or type it in UP-Term Prefs, General page, Fallback font.
    Open windows take it at once.
 
+COMMANDS (/cursor bar)
+   Every setting of the menus and of Prefs is also a command you type at
+   the prompt: a line that starts with "/" and one of these names is
+   UP-Term's, it answers in the window and the shell shows a new prompt.
+   /help lists them; Tab completes the names and their values.
+     /cursor bar        /bell visual      /scrollback 5000   /font topaz 11
+     /fg C0C0C0         /theme Dracula    /profile vim       /tab new
+     /completion kingcon                  /font-fallback SymbolsNerdFontMono
+   They change the window you type in; /save writes them to its profile.
+   "/" alone, "//", "/Work" and every other path are the shell's as
+   before, and a line that starts with a blank goes to the shell as typed
+   (" /cursor" runs a program called cursor in the parent directory).
+   From a script, or in a window whose shell does its own line editing,
+   C:UPTerm does the same: UPTerm cursor bar (return code 10 when refused).
+
 MENU
   An XCON: window has a menu (right mouse button, on the screen's title
   bar): UP-Term > Copy, Paste, Find..., Preferences... (opens UP-Term

@@ -18,6 +18,7 @@ void suite_prefs(void);
 void suite_iconspec(void);
 void suite_zmodem(void);
 void suite_otag(void);
+void suite_slash(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -37,6 +38,7 @@ static const h_suite suites[] = {
     { "iconspec", suite_iconspec },
     { "zmodem", suite_zmodem },
     { "otag", suite_otag },
+    { "slash", suite_slash },
     { 0, 0 }
 };
 

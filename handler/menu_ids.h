@@ -1,0 +1,20 @@
+/* The ids of the window menu's items (GadTools user data). The menu
+ * (handler/vtcon_handler.c) and the slash commands (handler/slash.c) name
+ * the same actions by them, so a typed "/cursor bar" runs what the menu
+ * item Cursor > Bar runs. */
+#ifndef MENU_IDS_H
+#define MENU_IDS_H
+
+enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
+       MENU_TAB_NEW, MENU_TAB_NEXT, MENU_TAB_PREV, MENU_TAB_CLOSE,
+       MENU_KC_FILE, MENU_KC_COMMAND, MENU_KC_DEVICE, MENU_KC_CACHE, MENU_KC_RESET,
+       MENU_KC_PURGE, MENU_KC_INFO,
+       MENU_SET_BLOCK, MENU_SET_UNDERLINE, MENU_SET_BAR, MENU_SET_BLINK, MENU_SET_BELL_NONE,
+       MENU_SET_BELL_BEEP, MENU_SET_BELL_VISUAL, MENU_SET_BOLD, MENU_SET_META_AMIGA,
+       MENU_SET_META_ALT, MENU_SET_COPY, MENU_SET_WHEEL, MENU_SET_UNIX, MENU_SET_KINGCON,
+       MENU_SET_KC_W, MENU_SET_KC_L, MENU_SET_KC_B, MENU_SET_KC_C, MENU_SET_KC_S,
+       MENU_SET_FONT, MENU_SET_THEME, MENU_SET_SAVE, MENU_SET_SB_NONE, MENU_SET_SB_500,
+       MENU_SET_SB_1000, MENU_SET_SB_2000, MENU_SET_SB_5000,
+       MENU_SET_PROFILE0 = 100 /* + the profile's place in the file */ };
+
+#endif

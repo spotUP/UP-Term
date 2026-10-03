@@ -548,14 +548,45 @@ static void font_pick(struct complete_req *q)
     CloseLibrary(AslBase);
 }
 
+/* theme file -> q->data, its name in q->add; 0 when it cannot be read */
+static int theme_read(struct complete_req *q, const char *path, const char *name)
+{
+    BPTR f = Open((STRPTR)path, MODE_OLDFILE);
+    long n;
+    if (!f)
+        return 0;
+    n = Read(f, q->data, q->data_max - 1);
+    Close(f);
+    if (n <= 0)
+        return 0;
+    q->data_len = n;
+    q->data[n] = 0;
+    q->matches = 1;
+    strncpy(q->add, name, COMPLETE_MAX - 1);
+    q->add[COMPLETE_MAX - 1] = 0;
+    return 1;
+}
+
 /* COMPLETE_THEME: Settings > Theme... -- a theme file from the kit's themes
- * drawer, read into q->data (q->data_max bytes at most). */
+ * drawer, read into q->data (q->data_max bytes at most). With q->word set
+ * (a typed "/theme NAME") that theme, no requester. */
 static void theme_pick(struct complete_req *q)
 {
-    struct Library *AslBase = OpenLibrary((STRPTR)"asl.library", 37);
+    struct Library *AslBase;
     struct FileRequester *fr;
     char path[COMPLETE_MAX];
     q->data_len = 0;
+    if (q->word[0]) {
+        int l;
+        strcpy(path, "ENVARC:up-term/themes");
+        AddPart((STRPTR)path, (STRPTR)q->word, sizeof(path) - 6);
+        l = (int)strlen(path);
+        if (l < 5 || strcmp(path + l - 5, ".conf"))
+            strcat(path, ".conf");
+        theme_read(q, path, q->word);
+        return;
+    }
+    AslBase = OpenLibrary((STRPTR)"asl.library", 37);
     if (!AslBase)
         return;
     fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
@@ -563,21 +594,10 @@ static void theme_pick(struct complete_req *q)
             ASLFR_InitialDrawer, (ULONG)"ENVARC:up-term/themes", ASLFR_InitialPattern,
             (ULONG)"#?.conf", ASLFR_DoPatterns, TRUE, ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (fr && AslRequest(fr, 0) && fr->fr_File[0]) {
-        BPTR f;
         strncpy(path, (const char *)fr->fr_Drawer, sizeof(path) - 2);
         path[sizeof(path) - 2] = 0;
         AddPart((STRPTR)path, fr->fr_File, sizeof(path) - 2);
-        if ((f = Open((STRPTR)path, MODE_OLDFILE)) != 0) {
-            long n = Read(f, q->data, q->data_max - 1);
-            Close(f);
-            if (n > 0) {
-                q->data_len = n;
-                q->data[n] = 0;
-                q->matches = 1;
-                strncpy(q->add, (const char *)fr->fr_File, COMPLETE_MAX - 1);
-                q->add[COMPLETE_MAX - 1] = 0;
-            }
-        }
+        theme_read(q, path, (const char *)fr->fr_File);
     }
     if (fr)
         FreeAslRequest(fr);

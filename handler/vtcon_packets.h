@@ -51,6 +51,14 @@
  * the handle's fh_Arg1. */
 #define ACTION_VTCON_NREAD 0x765A
 
+/* A slash command (handler/slash.c; ledger C1) run in the window, as typed
+ * at its prompt: C:UPTerm sends them for scripts.
+ *   dp_Arg1  fh_Arg1 of a handle on the window
+ *   dp_Arg2  the command line, NUL-terminated, starting with "/" (APTR)
+ *   dp_Arg3  a buffer for the answer (APTR), dp_Arg4 its size
+ *   dp_Res1  0 not a command, 1 done, 2 refused (the answer says why) */
+#define ACTION_VTCON_COMMAND 0x765B
+
 /* ACTION_VTCON_TCGETA answers dp_Res2 1 when the console is in termios
  * mode (a program set it), 0 when it describes the Amiga mode in termios
  * terms: a shell that suspends a job keeps the job's settings only then

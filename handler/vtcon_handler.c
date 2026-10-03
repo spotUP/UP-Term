@@ -51,6 +51,8 @@
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
+#include "menu_ids.h"
+#include "slash.h"
 #include "brk.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
@@ -1044,17 +1046,7 @@ static void close_gadget(con *c);
 
 /* ---- the window's menu -------------------------------------------------------- */
 
-enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
-       MENU_TAB_NEW, MENU_TAB_NEXT, MENU_TAB_PREV, MENU_TAB_CLOSE,
-       MENU_KC_FILE, MENU_KC_COMMAND, MENU_KC_DEVICE, MENU_KC_CACHE, MENU_KC_RESET,
-       MENU_KC_PURGE, MENU_KC_INFO,
-       MENU_SET_BLOCK, MENU_SET_UNDERLINE, MENU_SET_BAR, MENU_SET_BLINK, MENU_SET_BELL_NONE,
-       MENU_SET_BELL_BEEP, MENU_SET_BELL_VISUAL, MENU_SET_BOLD, MENU_SET_META_AMIGA,
-       MENU_SET_META_ALT, MENU_SET_COPY, MENU_SET_WHEEL, MENU_SET_UNIX, MENU_SET_KINGCON,
-       MENU_SET_KC_W, MENU_SET_KC_L, MENU_SET_KC_B, MENU_SET_KC_C, MENU_SET_KC_S,
-       MENU_SET_FONT, MENU_SET_THEME, MENU_SET_SAVE, MENU_SET_SB_NONE, MENU_SET_SB_500,
-       MENU_SET_SB_1000, MENU_SET_SB_2000, MENU_SET_SB_5000,
-       MENU_SET_PROFILE0 = 100 /* + the profile's place in the file */ };
+/* the items' ids: handler/menu_ids.h (the slash commands name them too) */
 
 /* Right Amiga C, V and F stay what they were: Intuition now hands them in
  * as MENUPICK, which picks the same actions. */
@@ -1417,10 +1409,11 @@ static void save_ask(con *c)
 
 /* Settings > Theme...: a theme file picked and read by the worker (DOS),
  * its colours put on the window in finish_completion. */
-static void theme_ask(con *c)
+static void theme_ask(con *c, const char *name)
 {
     if (c->comp_busy || !ensure_worker(c) || !c->w.win)
         return;
+    copy_str(c->comp->word, name, COMPLETE_MAX); /* a name: that theme, no requester */
     if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
         return;
     c->comp->data_max = UC_MAX_FILE + 1;
@@ -1580,47 +1573,55 @@ static int menu_setting(con *c, LONG id, int on)
     return 1;
 }
 
+/* One menu item's action by its id, from a pick or a typed /command
+ * (handler/slash.c names the same ids). 0: not an item; 1: done; 2: done,
+ * a checkmark may have moved (the caller builds the strip again); 3: done,
+ * and the strip or the window may be gone. */
+static int menu_run(con *c, LONG id, int on)
+{
+    switch (id) {
+    case MENU_COPY: vtwin_copy(&c->w); return 1;
+    case MENU_PASTE: vtwin_paste(&c->w); service_reads(c); return 1;
+    case MENU_FIND: find_open(c); return 1;
+    case MENU_PREFS: prefs_launch(); return 1;
+    case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
+    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE:
+        tab_command(c, (int)id);
+        return 3;
+    case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
+    case MENU_KC_COMMAND: kc_menu(c, COMPLETE_COMMANDS); return 1;
+    case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); return 1;
+    case MENU_KC_RESET: complete_cache_reset(); return 1;
+    case MENU_KC_PURGE: complete_cache_purge(); return 1;
+    case MENU_SET_FONT: font_ask(c); return 1;
+    case MENU_SET_THEME: theme_ask(c, ""); return 1;
+    case MENU_SET_SAVE: save_ask(c); return 1;
+    default:
+        break;
+    }
+    if (id >= MENU_SET_PROFILE0 && id < MENU_SET_PROFILE0 + UC_MAX_PROFILES) {
+        profile_switch(c, (int)(id - MENU_SET_PROFILE0));
+        return 2;
+    }
+    return menu_setting(c, id, on) ? 2 : 0;
+}
+
 static void menu_pick(con *c, UWORD code)
 {
     while (code != MENUNULL && c->menustrip && c->w.win) {
         struct MenuItem *it = ItemAddress(c->menustrip, code);
+        int r;
         if (!it)
             break;
-        switch ((LONG)GTMENUITEM_USERDATA(it)) {
-        case MENU_COPY: vtwin_copy(&c->w); break;
-        case MENU_PASTE: vtwin_paste(&c->w); service_reads(c); break;
-        case MENU_FIND: find_open(c); break;
-        case MENU_PREFS: prefs_launch(); break;
-        case MENU_CLOSE: close_gadget(c); return; /* as the close gadget */
-        case MENU_TAB_NEW: tab_command(c, MENU_TAB_NEW); return;
-        case MENU_TAB_NEXT: tab_command(c, MENU_TAB_NEXT); return;
-        case MENU_TAB_PREV: tab_command(c, MENU_TAB_PREV); return;
-        case MENU_TAB_CLOSE: tab_command(c, MENU_TAB_CLOSE); return;
-        case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); break;
-        case MENU_KC_COMMAND: kc_menu(c, COMPLETE_COMMANDS); break;
-        case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); break;
-        case MENU_KC_RESET: complete_cache_reset(); break;
-        case MENU_KC_PURGE: complete_cache_purge(); break;
-        case MENU_SET_FONT: font_ask(c); break;
-        case MENU_SET_THEME: theme_ask(c); break;
-        case MENU_SET_SAVE: save_ask(c); break;
-        default:
-            if ((LONG)GTMENUITEM_USERDATA(it) >= MENU_SET_PROFILE0 &&
-                (LONG)GTMENUITEM_USERDATA(it) < MENU_SET_PROFILE0 + UC_MAX_PROFILES) {
-                profile_switch(c, (int)((LONG)GTMENUITEM_USERDATA(it) - MENU_SET_PROFILE0));
-                menu_remove(c, c->w.win);
-                menu_add(c, c->w.win);
-                return; /* the strip is new */
-            }
-            if (menu_setting(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0)) {
-                /* the strip again: every checkmark from the settings (one
-                 * pick can move others: KingCON's W clears L and B) */
-                menu_remove(c, c->w.win);
-                menu_add(c, c->w.win);
-                return; /* the old strip, and its NextSelect chain, are gone */
-            }
-            break;
+        r = menu_run(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0);
+        if (r == 2 && c->w.win) {
+            /* the strip again: every checkmark from the settings (one pick
+             * can move others: KingCON's W clears L and B) */
+            menu_remove(c, c->w.win);
+            menu_add(c, c->w.win);
         }
+        if (r >= 2)
+            return; /* the old strip, and its NextSelect chain, are gone */
         code = it->NextSelect;
     }
 }
@@ -2195,6 +2196,16 @@ static void check_command(con *c)
     le_first_word(&c->le, w, sizeof(w));
     if (!w[0] || c->check_busy || !strcmp((const char *)w, c->checked))
         return;
+    if (c->le.len && c->le.buf[0] == '/') {
+        /* one of UP-Term's /commands: green, as a command the shell has */
+        slash_cmd sc;
+        char e[8];
+        if (slash_parse((const char *)w, (int)strlen((const char *)w), &sc, e, sizeof(e)) != SLASH_NOT_OURS) {
+            strcpy(c->checked, (const char *)w);
+            le_set_command(&c->le, w, 1);
+            return;
+        }
+    }
     {
         /* a word the shell knows (a function, a builtin): no lookup */
         long n;
@@ -2331,6 +2342,8 @@ static void finish_completion(con *c)
         if (q->mode == COMPLETE_THEME) {
             if (q->matches && c->w.t)
                 theme_apply(c, q->data, q->data_len);
+            else if (q->word[0])
+                DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* "/theme NAME": no such theme */
             continue;
         }
         if (q->mode == COMPLETE_FONT) {
@@ -2393,12 +2406,234 @@ static void menu_tab(con *c)
     }
 }
 
+/* ---- slash commands (ledger C1, handler/slash.c) ------------------------------- */
+
+/* a = b + c + d, cut to cap */
+static void cat3(char *a, int cap, const char *b, const char *c2, const char *d)
+{
+    copy_str(a, b, cap);
+    if ((int)strlen(a) < cap - 1)
+        copy_str(a + strlen(a), c2, cap - (int)strlen(a));
+    if ((int)strlen(a) < cap - 1)
+        copy_str(a + strlen(a), d, cap - (int)strlen(a));
+}
+
+/* RRGGBB or none into *rgb (VR_KEEP for none); 0 when neither */
+static int slash_colour(const char *arg, ULONG *rgb)
+{
+    uc_u32 v;
+    if (str_ieq(arg, "none")) {
+        *rgb = VR_KEEP;
+        return 1;
+    }
+    if (!upconf_hex6(arg, &v))
+        return 0;
+    *rgb = (ULONG)v;
+    return 1;
+}
+
+/* A /command line: run it, and its answer into ans (one or more lines,
+ * each ending "\n"). 0 when the line is not one (the program's), 1 done,
+ * 2 refused (ans says why). */
+static int slash_run(con *c, const char *line, int len, char *ans, int cap)
+{
+    slash_cmd cmd;
+    char err[160];
+    int r = slash_parse(line, len, &cmd, err, sizeof(err)), m;
+    const char *name;
+    ULONG rgb;
+    if (r == SLASH_NOT_OURS)
+        return 0;
+    ans[0] = 0;
+    if (r == SLASH_ERROR) {
+        cat3(ans, cap, err, "\n", "");
+        return 2;
+    }
+    name = cmd.def->name;
+    cat3(ans, cap, name, ": ", cmd.arg[0] ? cmd.arg : "done");
+    cat3(ans + strlen(ans), cap - (int)strlen(ans), "\n", "", "");
+    switch (cmd.id) {
+    case SLASH_HELP:
+        if (slash_help(cmd.arg, ans, cap) < 0) {
+            cat3(ans, cap, "help: no command ", cmd.arg, "\n");
+            return 2;
+        }
+        return 1;
+    case SLASH_SCROLLBACK: {
+        long n = 0;
+        const char *p = cmd.arg;
+        if (!str_ieq(p, "none")) {
+            for (; *p >= '0' && *p <= '9' && n < 100000L; p++)
+                n = n * 10 + (*p - '0');
+            if (*p || !n) {
+                cat3(ans, cap, name, ": LINES | none", "\n");
+                return 2;
+            }
+        }
+        if (!vtwin_set_scrollback(&c->w, (int)n)) {
+            cat3(ans, cap, name, ": no memory for that many", "\n");
+            return 2;
+        }
+        return 1;
+    }
+    case SLASH_FONT:
+        if (!cmd.arg[0]) {
+            font_ask(c);
+            cat3(ans, cap, "", "", "");
+            return 1;
+        }
+        {
+            char fname[40];
+            WORD size = 0;
+            parse_font(cmd.arg, fname, sizeof(fname), &size);
+            if (!vtwin_set_font(&c->w, fname, size)) {
+                cat3(ans, cap, name, ": no fixed-width font ", "by that name and size\n");
+                return 2;
+            }
+        }
+        return 1;
+    case SLASH_FALLBACK:
+        copy_str(c->w.fallback, str_ieq(cmd.arg, "none") ? "" : cmd.arg, sizeof(c->w.fallback));
+        vtwin_apply_settings(&c->w);
+        if (c->w.fallback[0] && !c->w.outline) {
+            cat3(ans, cap, name, ": not installed, or no engine for it (FONTS:", "<name>.otag, LIBS:ttf.library)\n");
+            return 2;
+        }
+        return 1;
+    case SLASH_FG: case SLASH_BG: case SLASH_CURSOR_COLOR: case SLASH_SEL_FG: case SLASH_SEL_BG:
+        if (!slash_colour(cmd.arg, &rgb)) {
+            cat3(ans, cap, name, ": RRGGBB | none", "\n");
+            return 2;
+        }
+        if (cmd.id == SLASH_FG)
+            c->w.fg_rgb = rgb;
+        else if (cmd.id == SLASH_BG)
+            c->w.bg_rgb = rgb;
+        else if (cmd.id == SLASH_CURSOR_COLOR)
+            c->w.cursor_rgb = rgb;
+        else if (cmd.id == SLASH_SEL_FG)
+            c->w.sel_fg_rgb = rgb;
+        else
+            c->w.sel_bg_rgb = rgb;
+        vtwin_apply_settings(&c->w);
+        return 1;
+    case SLASH_KC_MODE:
+        kc_cyc_end(c);
+        c->kc_style = le_kc_fncmode(cmd.arg);
+        break;
+    case SLASH_THEME:
+        theme_ask(c, cmd.arg);
+        if (!cmd.arg[0])
+            ans[0] = 0; /* the requester answers */
+        return 1;
+    case SLASH_PROFILE: {
+        const char *names[UC_MAX_PROFILES + 1];
+        int np = c->conf ? upconf_profiles(c->conf, names) : 0, k;
+        for (k = 0; k < np && !str_ieq(names[k], cmd.arg); k++)
+            ;
+        if (k == np) {
+            cat3(ans, cap, name, ": no profile ", cmd.arg);
+            cat3(ans + strlen(ans), cap - (int)strlen(ans), "\n", "", "");
+            return 2;
+        }
+        cmd.id = MENU_SET_PROFILE0 + k;
+        break;
+    }
+    case SLASH_FIND:
+        if (!vtwin_find(&c->w, cmd.arg[0] ? cmd.arg : 0)) {
+            cat3(ans, cap, name, ": not found", "\n");
+            return 2;
+        }
+        return 1;
+    default:
+        break;
+    }
+    if (cmd.id == SLASH_KC_MODE)
+        m = 2;
+    else
+        m = menu_run(c, cmd.id, cmd.on);
+    if (m == 2 && c->w.win) {
+        menu_remove(c, c->w.win); /* the menus' checkmarks follow */
+        menu_add(c, c->w.win);
+    }
+    if (cmd.id == MENU_SET_SAVE || cmd.id == MENU_PREFS)
+        ans[0] = 0; /* their own requester / window answers */
+    return 1;
+}
+
+/* Tab on a /command line: the table's names and values, as the Shell's
+ * completion offers files (Tab again lists them, then cycles). 0 when the
+ * line is not a command line. */
+static int slash_tab(con *c)
+{
+    le_line *le = &c->le;
+    char line[256], add[COMPLETE_MAX], *names;
+    const char *profiles[UC_MAX_PROFILES + 1];
+    int np = c->conf ? upconf_profiles(c->conf, profiles) : 0;
+    int n, from, i, len, common, typed;
+    len = copy_latin1(le, 0, le->pos, line, sizeof(line));
+    /* the handler's stack is small: the candidates on the heap */
+    if (!(names = (char *)AllocVec(sizeof(c->menu), MEMF_ANY)))
+        return 0;
+    n = slash_complete(line, len, profiles, np, names, sizeof(c->menu), &from);
+    if (n <= 0) {
+        FreeVec(names);
+        return 0; /* not a command line, or nothing fits: the Shell's completion */
+    }
+    /* what all candidates agree on past what is typed */
+    typed = len - from;
+    common = (int)strlen(names);
+    {
+        int k = 0;
+        for (i = 0; i < n; i++) {
+            const char *nm = names + k;
+            int j = 0;
+            while (j < common && nm[j] == names[j])
+                j++;
+            common = j;
+            k += (int)strlen(nm) + 1;
+        }
+    }
+    add[0] = 0;
+    if (common > typed)
+        copy_str(add, names + typed, common - typed + 1);
+    if (n == 1 && (int)strlen(add) < COMPLETE_MAX - 1)
+        strcat(add, " ");
+    c->menu_n = 0;
+    if (n > 1) {
+        int k = 0;
+        for (i = 0; i < n; i++)
+            k += (int)strlen(names + k) + 1;
+        CopyMem(names, c->menu, k);
+        c->menu_len = k;
+        c->menu_n = n;
+        c->menu_i = -1;
+        c->menu_start = from;
+    }
+    FreeVec(names);
+    if (add[0])
+        type_text(c, add);
+    else if (n > 1)
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* several, nothing more in common */
+    return 1;
+}
+
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
     sel_close(c); /* typing in the console ends a selection, as any key ends KingCON's */
     if (c->kc_cyc && kc_cyc_key(c, b, n, key, mods))
         return;   /* Tab, Shift+Tab, Alt+Tab or Ctrl+S inside a cycle */
     kc_cyc_end(c); /* any other key ends it */
+    if (key == VT_KEY_TAB && !mods && c->le.len && c->le.buf[0] == '/') {
+        c->tabs++;
+        if (c->tabs >= 2 && c->menu_n > 1) {
+            menu_tab(c);
+            return;
+        }
+        if (slash_tab(c))
+            return;
+        c->tabs = 0; /* a path: the Shell's completion */
+    }
     if (c->kingcon && key == VT_KEY_TAB) {
         kc_tab(c, (mods & VT_MOD_SHIFT) ? COMPLETE_DEVICES
                   : (mods & (VTWIN_MOD_ALTKEY | VT_MOD_ALT)) ? COMPLETE_COMMANDS : COMPLETE_FILES);
@@ -2420,8 +2655,36 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
         return;
     }
     if (le_key(&c->le, key ? key : (n ? (long)b[0] : 0), mods, b, n)) {
-        in_append(c, c->le.buf, c->le.len);
+        char line[256], *ans = 0;
+        int l = copy_latin1(&c->le, 0, c->le.len, line, sizeof(line));
         history_save(c, c->le.buf, c->le.len);
+        /* the answer (the help is long) on the heap: the stack is small, and
+         * a static would be every window's (one code, many processes) */
+        if (l > 1 && line[0] == '/' && line[1] >= 'a' && line[1] <= 'z' &&
+            (ans = (char *)AllocVec(4096, MEMF_ANY)) != 0 && slash_run(c, line, l, ans, 4096)) {
+            /* UP-Term's: its answer on screen, and an empty line for the
+             * reader -- a shell shows a fresh prompt */
+            le_reset(&c->le);
+            if (ans[0]) {
+                int i, k = 0;
+                char crlf[2];
+                crlf[0] = '\r';
+                crlf[1] = '\n';
+                for (i = 0; ans[i]; i++)
+                    if (ans[i] == '\n') {
+                        output(c, (const vt_u8 *)ans + k, i - k);
+                        output(c, (const vt_u8 *)crlf, 2);
+                        k = i + 1;
+                    }
+            }
+            FreeVec(ans);
+            in_append(c, (const vt_u8 *)"\n", 1);
+            c->checked[0] = 0;
+            return;
+        }
+        if (ans)
+            FreeVec(ans);
+        in_append(c, c->le.buf, c->le.len);
         le_reset(&c->le);
         c->checked[0] = 0;
         return;
@@ -4076,6 +4339,19 @@ static void packet(con *c, struct DosPacket *p)
         ld_set(&c->ld, (const vt_termios *)p->dp_Arg2, (int)p->dp_Arg3);
         reply(p, DOSTRUE, 0);
         service_reads(c);
+        return;
+    case ACTION_VTCON_COMMAND:
+        /* C:UPTerm: a slash command for this window, its answer back */
+        if (!p->dp_Arg2 || !p->dp_Arg3 || p->dp_Arg4 < 2 || !c->w.t) {
+            reply(p, 0, ERROR_REQUIRED_ARG_MISSING);
+            return;
+        }
+        {
+            const char *line = (const char *)p->dp_Arg2;
+            char *ans = (char *)p->dp_Arg3;
+            ans[0] = 0;
+            reply(p, slash_run(c, line, (int)strlen(line), ans, (int)p->dp_Arg4), 0);
+        }
         return;
     case ACTION_VTCON_NREAD:
         if (tty_active(c))
