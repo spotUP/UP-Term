@@ -133,6 +133,10 @@ def setup():
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
         "zorro_iii_memory = 65536",
         "bsdsocket_library = 1", "graphics_card = uaegfx",
+        # the RTG card's pointer as a sprite: Picasso96's software pointer is
+        # hidden and drawn again around every blit, so it flickered with the
+        # blinking cursor (owner 2026-10-03: "the mouse pointer still blinks")
+        "uae_gfxcard_hardware_sprite = true",
         "jit_compiler = %d" % (0 if EXACT else 1),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
