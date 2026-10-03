@@ -5,6 +5,7 @@
  * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */
 #include "vtengine.h"
 #include "vtwidth.h"
+#include <stddef.h>
 #include <string.h>
 
 #if defined(VT_AMIGA_EXEC_ALLOC)
@@ -41,6 +42,9 @@ typedef struct vt_line {
                       * raises it; a line whose cells are not known (new, or
                       * cleared in a colour) has used == cap. (S1: a scroll
                       * cleared 80 cells a line, 0.69 ms on a 14 MHz 68020.) */
+    short dx0, dx1;  /* the row's cells [dx0, dx1) changed since the last flush
+                      * (empty when dx0 >= dx1). Kept in the line: a scroll
+                      * moves the lines, and their spans with them. */
     vt_cell c[1];
 } vt_line;
 
@@ -123,7 +127,6 @@ struct vt_term {
     int novf, ovf_cap;
 
     /* per-row dirty spans, flushed at the end of each write */
-    short *dx0, *dx1;
     int dirty;
     int full_y0, full_y1;      /* rows damaged whole since the last flush (damage_rows) */
     /* A scroll the renderer has not been told about yet: the pixels are
@@ -240,6 +243,8 @@ static vt_line *line_new(int cap)
     if (l) {
         l->cap = (vt_u16)cap;
         l->used = (vt_u16)cap;
+        l->dx0 = 0x7FFF;
+        l->dx1 = 0;
         l->n = 0;
         l->wrapped = 0;
         l->dbl = 0;
@@ -274,13 +279,30 @@ static void blank_cell(const vt_term *t, vt_cell *c)
     c->width = 1;
 }
 
+#ifdef VT_ASM
+long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
+void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
+void vt_asm_rows_up(struct vt_line **p, long k);
+void vt_asm_rows_down(struct vt_line **p, long k);
+/* vtengine_68k.s knows vt_cell by its offsets: a negative array size here
+ * when they change */
+typedef char vt_asm_layout[(sizeof(vt_cell) == 16 && offsetof(vt_cell, ch) == 8 && offsetof(vt_cell, attr) == 10 &&
+                            offsetof(vt_cell, width) == 12 && offsetof(vt_cell, pad) == 15) ? 1 : -1];
+#endif
+
 static void cells_blank(const vt_term *t, vt_cell *c, int n)
 {
     vt_cell b;
-    int i;
     blank_cell(t, &b);
-    for (i = 0; i < n; i++)
-        c[i] = b;
+#ifdef VT_ASM
+    vt_asm_fill(c, n, &b);
+#else
+    {
+        int i;
+        for (i = 0; i < n; i++)
+            c[i] = b;
+    }
+#endif
 }
 
 static int vacated_default(const vt_term *t);
@@ -323,12 +345,15 @@ static void mark(vt_term *t, int x0, int y, int x1)
     x1 = clampi(x1, 0, t->cols);
     if (x0 >= x1)
         return;
-    if (t->dx0[y] > x0)
-        t->dx0[y] = (short)x0;
-    if (t->dx1[y] < x1)
-        t->dx1[y] = (short)x1;
-    if (t->scr[y]->used < x1)
-        t->scr[y]->used = (vt_u16)x1;
+    {
+        vt_line *l = t->scr[y];
+        if (l->dx0 > x0)
+            l->dx0 = (short)x0;
+        if (l->dx1 < x1)
+            l->dx1 = (short)x1;
+        if (l->used < x1)
+            l->used = (vt_u16)x1;
+    }
     t->dirty = 1;
 }
 
@@ -346,8 +371,8 @@ static void damage_rows(vt_term *t, int y0, int y1)
     if (y0 >= y1)
         return;
     for (y = y0; y < y1; y++) {
-        t->dx0[y] = 0;
-        t->dx1[y] = (short)t->cols;
+        t->scr[y]->dx0 = 0;
+        t->scr[y]->dx1 = (short)t->cols;
     }
     if (t->full_y0 >= t->full_y1 || (y0 <= t->full_y0 && y1 >= t->full_y1)) {
         t->full_y0 = y0;
@@ -380,18 +405,18 @@ static void flush(vt_term *t)
     t->full_y0 = t->full_y1 = 0;
     y = 0;
     while (y < t->rows) {
-        if (t->dx0[y] >= t->dx1[y]) {
+        if (t->scr[y]->dx0 >= t->scr[y]->dx1) {
             y++;
             continue;
         }
         y0 = y;
-        while (y + 1 < t->rows && t->dx0[y + 1] == t->dx0[y0] && t->dx1[y + 1] == t->dx1[y0])
+        while (y + 1 < t->rows && t->scr[y + 1]->dx0 == t->scr[y0]->dx0 && t->scr[y + 1]->dx1 == t->scr[y0]->dx1)
             y++;
         if (t->cb.damage)
-            t->cb.damage(t->user, t->dx0[y0], y0, t->dx1[y0], y + 1);
+            t->cb.damage(t->user, t->scr[y0]->dx0, y0, t->scr[y0]->dx1, y + 1);
         for (; y0 <= y; y0++) {
-            t->dx0[y0] = (short)t->cols;
-            t->dx1[y0] = 0;
+            t->scr[y0]->dx0 = 0x7FFF;
+            t->scr[y0]->dx1 = 0;
         }
         y++;
     }
@@ -500,46 +525,47 @@ static int vacated_default(const vt_term *t)
     return b.bg == VT_COLOR_DEFAULT && b.fg == VT_COLOR_DEFAULT && !b.attr;
 }
 
+static void damage_rows(vt_term *t, int y0, int y1);
+
 /* Before the grid moves: a pending scroll of another region or direction
- * is settled first, while the grid still matches it. */
+ * cannot be added to. Its rows are drawn again from the grid at the flush
+ * instead of being moved on screen -- no drawing in the middle of a
+ * write: an insert-line / delete-line pair was two blits of its own each
+ * time (conbench insdel-line, 9.5 ms a pair on the stock rig; S1). */
 static void pend_prepare(vt_term *t, int top, int bot, int n)
 {
     if (t->cb.scroll && t->pend_n &&
-        (t->pend_top != top || t->pend_bot != bot || (t->pend_n > 0) != (n > 0)))
-        flush(t);
+        (t->pend_top != top || t->pend_bot != bot || (t->pend_n > 0) != (n > 0))) {
+        t->pend_n = 0;
+        damage_rows(t, t->pend_top, t->pend_bot);
+    }
 }
 
 /* The rows [top, bot) moved by n (up when n > 0): move their dirty spans
  * with them and remember the pixels owe that scroll (see pend_n). */
 static void pend_scroll(vt_term *t, int top, int bot, int n)
 {
-    int y, h = bot - top;
+    int h = bot - top;
     if (!t->cb.scroll) {
         damage_rows(t, top, bot); /* no blitting renderer: redraw the region */
         return;
     }
-    if (!t->pend_n && top >= t->full_y0 && bot <= t->full_y1)
-        return; /* the region is drawn whole at the flush: nothing moves on screen */
+    if (!t->pend_n && top >= t->full_y0 && bot <= t->full_y1) {
+        /* the region is drawn whole at the flush: nothing moves on screen.
+         * The lines that came in are clean (scroll_up / scroll_down), and
+         * their rows are drawn whole like the others. */
+        if (n > 0)
+            damage_rows(t, bot - n < top ? top : bot - n, bot);
+        else
+            damage_rows(t, top, top - n > bot ? bot : top - n);
+        return;
+    }
+    /* the rows' dirty spans went with their lines (vt_line.dx0), the rows
+     * that came in start clean (scroll_up / scroll_down) */
     if (n > 0) {
-        for (y = top; y < bot - n; y++) {
-            t->dx0[y] = t->dx0[y + n];
-            t->dx1[y] = t->dx1[y + n];
-        }
-        for (y = bot - n; y < bot; y++) {
-            t->dx0[y] = (short)t->cols;
-            t->dx1[y] = 0;
-        }
         if (!vacated_default(t))
             damage_rows(t, bot - n, bot);
     } else {
-        for (y = bot - 1; y >= top - n; y--) {
-            t->dx0[y] = t->dx0[y + n];
-            t->dx1[y] = t->dx1[y + n];
-        }
-        for (y = top; y < top - n; y++) {
-            t->dx0[y] = (short)t->cols;
-            t->dx1[y] = 0;
-        }
         if (!vacated_default(t))
             damage_rows(t, top, top - n);
     }
@@ -632,10 +658,16 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
     }
     for (i = 0; i < n; i++) {
         vt_line **p = &t->scr[top];
-        int k;
         l = *p;
-        for (k = h - 1; k > 0; k--, p++)
-            p[0] = p[1];
+#ifdef VT_ASM
+        vt_asm_rows_up(p, h - 1);
+#else
+        {
+            int k;
+            for (k = h - 1; k > 0; k--, p++)
+                p[0] = p[1];
+        }
+#endif
         if (top == 0 && t->scr == t->pri && t->pers != VT_AMIGA && t->sb_cap) {
             /* Into the scrollback. A full ring hands back its oldest line
              * to become the new blank one, so steady scrolling allocates
@@ -659,6 +691,8 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
             }
         }
         line_clear(t, l, t->cols);
+        l->dx0 = 0x7FFF;
+        l->dx1 = 0;
         t->scr[bot - 1] = l;
     }
     pend_scroll(t, top, bot, n);
@@ -675,11 +709,19 @@ static void scroll_down(vt_term *t, int top, int bot, int n)
     pend_prepare(t, top, bot, -n);
     for (i = 0; i < n; i++) {
         vt_line **p = &t->scr[bot - 1];
-        int k;
         l = *p;
-        for (k = h - 1; k > 0; k--, p--)
-            p[0] = p[-1];
+#ifdef VT_ASM
+        vt_asm_rows_down(p, h - 1);
+#else
+        {
+            int k;
+            for (k = h - 1; k > 0; k--, p--)
+                p[0] = p[-1];
+        }
+#endif
         line_clear(t, l, t->cols);
+        l->dx0 = 0x7FFF;
+        l->dx1 = 0;
         t->scr[top] = l;
     }
     pend_scroll(t, top, bot, -n);
@@ -2953,7 +2995,6 @@ static void free_screen(vt_line **scr, int rows)
 vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void *user)
 {
     vt_term *t;
-    int y;
     if (cols < 1 || rows < 1)
         return 0;
     t = (vt_term *)VT_MALLOC(sizeof(vt_term));
@@ -2968,21 +3009,15 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->pers = VT_XTERM;
     t->tabs_cap = cols;
     t->tabs = (vt_u8 *)VT_MALLOC(cols);
-    t->dx0 = (short *)VT_MALLOC(rows * sizeof(short));
-    t->dx1 = (short *)VT_MALLOC(rows * sizeof(short));
     t->utf8 = 1;
     t->bold_bright = 1;
     t->sb_cap = scrollback > 0 ? scrollback : 0;
     if (t->sb_cap)
         t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
-    if (!t->tabs || !t->dx0 || !t->dx1 || (t->sb_cap && !t->sb) ||
+    if (!t->tabs || (t->sb_cap && !t->sb) ||
         !alloc_screen(&t->pri, rows, cols, t)) {
         vt_free(t);
         return 0;
-    }
-    for (y = 0; y < rows; y++) {
-        t->dx0[y] = (short)cols;
-        t->dx1[y] = 0;
     }
     t->scr = t->pri;
     vt_reset(t);
@@ -3045,10 +3080,6 @@ void vt_free(vt_term *t)
         VT_FREE(t->sb);
     if (t->tabs)
         VT_FREE(t->tabs);
-    if (t->dx0)
-        VT_FREE(t->dx0);
-    if (t->dx1)
-        VT_FREE(t->dx1);
     VT_FREE(t);
 }
 
@@ -3261,7 +3292,25 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
     if (n > room)
         n = room;
     c = &t->scr[t->cy]->c[t->cx];
+#ifdef VT_ASM
+    {
+        /* the loop below in assembler (vtengine_68k.s): 14 us a character
+         * in C on a 14 MHz 68020 (S1) */
+        vt_cell p;
+        p.fg = t->fg;
+        p.bg = t->bg;
+        p.ch = 0;
+        p.attr = t->attr;
+        p.width = 1;
+        p.deco = t->deco;
+        p.ext = t->ext;
+        p.pad = 0;
+        k = vt_asm_put_run(c, b, n, &p);
+    }
+#else
     for (k = 0; k < n; k++) {
+        if (b[k] < 0x20 || b[k] >= 0x7F)
+            break; /* the run of printable ASCII ends: the parser's byte */
         if (c[k].width != 1 || (t->cx + k + 1 < t->cols && c[k + 1].width == 0))
             break; /* a wide glyph here: put_char unwides it */
         c[k].ch = b[k];
@@ -3271,6 +3320,7 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
         c[k].deco = t->deco;
         c[k].ext = t->ext;
     }
+#endif
     if (k) {
         mark(t, t->cx, t->cy, t->cx + (int)k);
         t->cx += (int)k;
@@ -3299,10 +3349,7 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
             t->tab_end = 0; /* only a tab right after a tab keeps it */
         if (b >= 0x20 && b < 0x7F && t->state == S_GROUND && !t->u_need && !t->insert &&
             !t->single_shift && t->charset[t->gl] == 'B' && !t->amiga_msb) {
-            long j = i + 1, k;
-            while (j < len && buf[j] >= 0x20 && buf[j] < 0x7F)
-                j++;
-            k = put_ascii_run(t, buf + i, j - i);
+            long k = put_ascii_run(t, buf + i, len - i); /* as far as printable ASCII and the row go */
             if (k) {
                 i += k;
                 continue;
@@ -3650,27 +3697,14 @@ static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is
 void vt_resize(vt_term *t, int cols, int rows)
 {
     int y, cy, alt_active, i, reflowed, wp = 0;
-    short *d0, *d1;
     vt_u8 *tabs;
     if (cols < 1 || rows < 1 || (cols == t->cols && rows == t->rows))
         return;
     flush(t);
-    d0 = (short *)VT_MALLOC(rows * sizeof(short));
-    d1 = (short *)VT_MALLOC(rows * sizeof(short));
-    if (!d0 || !d1) {
-        if (d0)
-            VT_FREE(d0);
-        if (d1)
-            VT_FREE(d1);
-        return;
-    }
     if (cols > t->tabs_cap) {
         tabs = (vt_u8 *)VT_MALLOC(cols);
-        if (!tabs) {
-            VT_FREE(d0);
-            VT_FREE(d1);
+        if (!tabs)
             return;
-        }
         memcpy(tabs, t->tabs, t->tabs_cap);
         for (i = t->tabs_cap; i < cols; i++)
             tabs[i] = (vt_u8)((i % 8) == 0);
@@ -3712,15 +3746,11 @@ void vt_resize(vt_term *t, int cols, int rows)
         }
     }
     t->scr = alt_active ? t->alt : t->pri;
-    VT_FREE(t->dx0);
-    VT_FREE(t->dx1);
-    t->dx0 = d0;
-    t->dx1 = d1;
     t->cols = cols;
     t->rows = rows;
     for (y = 0; y < rows; y++) {
-        t->dx0[y] = (short)cols;
-        t->dx1[y] = 0;
+        t->scr[y]->dx0 = 0x7FFF;
+        t->scr[y]->dx1 = 0;
     }
     t->top = 0;
     t->bot = rows;
