@@ -32,6 +32,7 @@
 #include <devices/input.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
+#include <graphics/displayinfo.h>
 #include <graphics/gfxbase.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -1785,13 +1786,21 @@ static struct Screen *own_screen_open(con *c)
     if (wb) {
         if (mode == (ULONG)INVALID_ID)
             mode = GetVPModeID(&wb->ViewPort);
-        if (!depth)
-            depth = (GetBitMapAttr(wb->RastPort.BitMap, BMA_DEPTH) > 8 ||
-                     !(GetBitMapAttr(wb->RastPort.BitMap, BMA_FLAGS) & BMF_STANDARD)) ? 8 : 4;
         UnlockPubScreen(0, wb);
     }
     if (mode == (ULONG)INVALID_ID)
         mode = HIRES_KEY;
+    if (!depth) {
+        /* the mode's own kind decides: a graphics card's mode (foreign to
+         * the chipset) is chunky, 8 bits at least; a native one gets the 4
+         * planes the 16 colours need (a Workbench on a card asking for a
+         * PAL mode got 8 planes before) */
+        struct DisplayInfo di;
+        depth = 4;
+        if (GetDisplayInfoData(0, (UBYTE *)&di, sizeof(di), DTAG_DISP, mode) &&
+            (di.PropertyFlags & DIPF_IS_FOREIGN))
+            depth = 8;
+    }
     if (depth < 4)
         depth = 4; /* 16 pens: the ANSI colours */
     if (depth > 8)
@@ -1840,6 +1849,12 @@ static struct Screen *own_screen_open(con *c)
     }
     if (!scr)
         return 0;
+    /* the 16 ANSI pens shared, with their colours: ObtainBestPen matches
+     * only allocated pens and otherwise takes a free one and sets ITS
+     * colour -- the first requests overwrote the palette (rig, PAL hires
+     * 4 planes: 9 of the 16 colours moved) */
+    for (i = 0; i < 16; i++)
+        ObtainPen(scr->ViewPort.ColorMap, (ULONG)i, cols[1 + i * 3], cols[2 + i * 3], cols[3 + i * 3], 0);
     PubScreenStatus(scr, 0); /* public now: programs may open on it */
     copy_str(c->pubname, name, sizeof(c->pubname));
     c->myscreen = scr;

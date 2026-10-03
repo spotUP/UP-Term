@@ -36,8 +36,10 @@ else should be ported over from DC Telnet?"
       (prefs_core keeps them on a save); the title on the screen in full screen; the screen closes
       with its last window, a visitor's window keeps it until it goes. tools/rig/ownscreen_rig.py
       7/7 (3.1, RTG Workbench).
-- [ ] P1.2 a native screen on the rig (SCREENMODE PAL hires, 4 planes): colours exact, menus; the
-      3.2 rig too.
+- [x] P1.2 a native screen (SCREENMODE 0x29000 PAL hires): 4 planes chosen by the mode's own
+      kind (DIPF_IS_FOREIGN; a Workbench on a card had made it 8), the 16 ANSI pens allocated
+      shared at open (ObtainBestPen took free pens and overwrote 9 colours before).
+      ownscreen_rig.py 8/8. The 3.2 rig: still to run.
 - [ ] P1.3 Settings > Screen (Workbench / Own screen / Full screen) live: the window moves to the
       other screen with its text (vtwin reattach keeping the engine); /screen; a ScreenMode
       requester (ASL, in the worker) for screen-mode; Prefs fields.

@@ -9,12 +9,15 @@ thoughts/shared/plans/2026-10-03-screens-and-dctelnet.md, P1).
   4. XCON:.../FULLSCREEN: one window, borderless, the whole screen, its
      title in the screen's title bar; it closes with the window.
   5. The profile key screen = fullscreen does the same for a plain window.
+  6. SCREENMODE 0x29000 (PAL hires): 4 planes, and after colour output the
+     palette still holds the 16 ANSI colours (ObtainBestPen took free pens
+     and overwrote them until the 16 were allocated shared at open).
 
 UITREE lists the front screen only, so each check reads the front screen's
 name and its windows. Run with the rig up and the handler installed (rig.py
 install + a reboot): python3 tools/rig/ownscreen_rig.py
 """
-import pathlib, sys, time
+import pathlib, struct, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import ami, condev_rig as c
 
@@ -97,6 +100,21 @@ def main():
         name, wins = front()
         check(name == 'byprofile' and len(wins) == 1 and wins[0][1] >= 640,
               'the profile key screen = fullscreen does it for a plain XCON: window', (name, wins))
+        t('EndCLI', 4)
+        # 8: a native screen, 4 planes, the ANSI colours exact after colour output
+        ansi = ['000000', 'cd0000', '00cd00', 'cdcd00', '0000ee', 'cd00cd', '00cdcd', 'e5e5e5',
+                '7f7f7f', 'ff0000', '00ff00', 'ffff00', '5c5cff', 'ff00ff', '00ffff', 'ffffff']
+        c.run('Delete ENV:up-term/up-term QUIET')
+        (VTC / 'cols.txt').write_bytes(b''.join(b'\x1b[%dm %02d \x1b[0m' % (40 + i if i < 8 else 92 + i, i)
+                                                for i in range(16)) + b'\n')
+        c.run('Run >NIL: NewShell "XCON:0/20/640/200/nat/FULLSCREEN/SCREENMODE 0x29000/XTERM"')
+        time.sleep(6)
+        t('Type VTC:cols.txt', 3)
+        b = ami.req(0x07)
+        nc = struct.unpack('>H', b[6:8])[0]
+        pal = [b[8 + i * 3:11 + i * 3].hex() for i in range(min(nc, 16))]
+        check(b[0] == 1 and nc == 16 and pal == ansi,
+              'a native PAL screen: 4 planes, the 16 ANSI colours exact after colour output', (nc, pal))
         t('EndCLI', 4)
     finally:
         if had:
