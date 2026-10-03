@@ -15,6 +15,8 @@ itself is read from the window's menus.
      (UPTerm find; the word comes through a shell variable so the typed
      line cannot be the hit).
   6. /about: the About requester opens.
+  7. Settings > Cursor > Blinking, picked from the menu in an idle window:
+     the cursor blinks; picked again, it is steady.
 
 Run with the rig up and the handler installed (rig.py install + a reboot):
   python3 tools/rig/menus_rig.py
@@ -69,6 +71,22 @@ def pixel(x, y):
     w = struct.unpack('>H', b[2:4])[0]
     o = 8 + (y * w + x) * 3
     return tuple(b[o:o + 3])
+
+
+def find_cursor():
+    """the middle of the block cursor: a run of 8 lit pixels on a text row
+    (glyphs are never that solid); None when not found"""
+    b = ami.req(0x07)
+    w, h = struct.unpack('>HH', b[2:6])
+    x0, y0, ww, hh = box()
+    for y in range(y0 + 12, y0 + hh - 4):
+        run = 0
+        for x in range(x0 + 4, x0 + ww - 20):
+            o = 8 + (y * w + x) * 3
+            run = run + 1 if sum(b[o:o + 3]) > 600 else 0
+            if run == 8:
+                return (x - 4, y + 2)
+    return None
 
 
 def rc_of(cmd):
@@ -142,6 +160,34 @@ def main():
         t('/clear scrollback')
         rc = rc_of('VTC:UPTerm find $w >NIL:')
         check(rc == '10', '/clear scrollback: the word is gone', rc)
+
+        # 7: Settings > Cursor > Blinking by a real menu pick (a typed command
+        # prints an answer, and output started the frame clock anyway: only
+        # a pick in an idle window shows the bug). The places are the rig's
+        # Workbench screen (topaz 8), measured from a screenshot 2026-10-03.
+        def pick_blinking():
+            kx, ky = ami.pointer_scale()
+            ami.script(('move', int(150 * kx), int(5 * ky)), ('wait', 2), ('button', 1, 1), ('wait', 8),
+                       ('move', int(190 * kx), int(50 * ky)), ('wait', 8), ('move', int(240 * kx), int(50 * ky)),
+                       ('wait', 4), ('move', int(260 * kx), int(91 * ky)), ('wait', 6), ('button', 1, 0),
+                       ('wait', 5))
+            time.sleep(1.5)
+
+        t('/clear screen', wait=2)
+        cur = find_cursor()
+        check(cur is not None, 'the block cursor is found on screen')
+        pick_blinking()
+        seen = set()
+        for i in range(12):
+            seen.add(pixel(*cur))
+            time.sleep(0.25)
+        check(len(seen) >= 2, 'Settings > Cursor > Blinking picked in an idle window: the cursor blinks', seen)
+        pick_blinking()
+        seen = set()
+        for i in range(10):
+            seen.add(pixel(*cur))
+            time.sleep(0.25)
+        check(len(seen) == 1, 'unticked: the cursor is steady (the shapes are the steady ones)', seen)
 
         # 6
         t('/about', wait=2)

@@ -525,6 +525,11 @@ void vtwin_apply_settings(vtwin *w)
     settings(w);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
+    /* a blink just turned on runs on the frame clock, which only output
+     * started: Settings > Cursor > Blinking did nothing in an idle window
+     * (owner 2026-10-03: "the cursor doesnt blink when i select that") */
+    if (w->r.has_blink || vr_cursor_blinks(&w->r))
+        frame_start(w);
 }
 
 void vtwin_detach(vtwin *w)

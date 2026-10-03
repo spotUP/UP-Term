@@ -842,14 +842,17 @@ static void apply_profile(con *c)
         c->w.sb_lines = n > 0 ? (int)n : -1;
     } else
         c->w.sb_lines = 0;
+    /* the steady DECSCUSR shapes (2, 4, 6): blinking is cursor-blink's
+     * (1, 3, 5 blink by themselves -- every shape blinked once the frame
+     * clock ran, whatever Blinking said) */
     v = upconf_str(c->conf, p, "cursor", 0);
     if (v) {
         if (str_ieq(v, "block"))
-            c->w.cursor_style = 1;
+            c->w.cursor_style = 2;
         else if (str_ieq(v, "underline"))
-            c->w.cursor_style = 3;
+            c->w.cursor_style = 4;
         else if (str_ieq(v, "bar"))
-            c->w.cursor_style = 5;
+            c->w.cursor_style = 6;
     }
     v = upconf_str(c->conf, p, "cursor-blink", 0);
     if (v)
@@ -1530,9 +1533,9 @@ static int menu_setting(con *c, LONG id, int on)
 {
     int restyle = 0, bit = 0;
     switch (id) {
-    case MENU_SET_BLOCK: c->w.cursor_style = 1; restyle = 1; break;
-    case MENU_SET_UNDERLINE: c->w.cursor_style = 3; restyle = 1; break;
-    case MENU_SET_BAR: c->w.cursor_style = 5; restyle = 1; break;
+    case MENU_SET_BLOCK: c->w.cursor_style = 2; restyle = 1; break; /* steady: Blinking blinks it */
+    case MENU_SET_UNDERLINE: c->w.cursor_style = 4; restyle = 1; break;
+    case MENU_SET_BAR: c->w.cursor_style = 6; restyle = 1; break;
     case MENU_SET_BLINK: c->w.cursor_blink = on; restyle = 1; break;
     case MENU_SET_BELL_NONE: c->w.bell = 0; break;
     case MENU_SET_BELL_BEEP: c->w.bell = 1; break;
