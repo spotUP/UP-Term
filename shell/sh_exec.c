@@ -14,6 +14,22 @@ static const char *dev_name(const char *path)
         return "*";
     return path;
 }
+int sh_unix_root(const char *in, char *out, long max)
+{
+    long i = 1, o = 0, n = (long)strlen(in);
+    if (n < 2 || in[0] != '/' || in[1] == '/' || n + 2 > max)
+        return 0;
+    while (i < n && in[i] != '/')
+        out[o++] = in[i++];
+    out[o++] = ':';
+    if (i < n)
+        i++;
+    while (i < n)
+        out[o++] = in[i++];
+    out[o] = 0;
+    return 1;
+}
+
 int sh_path_next(const char **p, char *dir, long max)
 {
     while (*p) {
@@ -29,14 +45,14 @@ int sh_path_next(const char **p, char *dir, long max)
         if (n + 2 > max)
             continue;
         if (n && *e == '/') { /* /vol/rest: vol:rest */
-            long i = 1;
-            while (i < n && e[i] != '/')
-                dir[o++] = e[i++];
-            dir[o++] = ':';
-            if (i < n)
-                i++;
-            while (i < n)
-                dir[o++] = e[i++];
+            char entry[256];
+            if (n >= (long)sizeof(entry))
+                continue;
+            memcpy(entry, e, (size_t)n);
+            entry[n] = 0;
+            if (!sh_unix_root(entry, dir, max))
+                continue;
+            o = (long)strlen(dir);
         } else {
             memcpy(dir, e, (size_t)n);
             o = n;

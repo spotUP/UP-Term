@@ -858,8 +858,25 @@ static void printf_builtin(void)
     CHECK_INT(sh.ctx.status, 2);
 }
 
+/* V2: "/VTC/bin/nvim" is vol:rest when the Amiga meaning has nothing */
+static void a_unix_absolute_name_maps_to_its_volume(void)
+{
+    char out[64];
+    CHECK(sh_unix_root("/VTC/nvim-test/nvim", out, sizeof(out)));
+    CHECK_STR(out, "VTC:nvim-test/nvim");
+    CHECK(sh_unix_root("/RAM", out, sizeof(out)));
+    CHECK_STR(out, "RAM:");
+    CHECK(sh_unix_root("/RAM/", out, sizeof(out)));
+    CHECK_STR(out, "RAM:");
+    CHECK(!sh_unix_root("/", out, sizeof(out)));      /* the parent, as AmigaDOS has it */
+    CHECK(!sh_unix_root("//x", out, sizeof(out)));    /* the grandparent's x */
+    CHECK(!sh_unix_root("c/dir", out, sizeof(out)));  /* relative */
+    CHECK(!sh_unix_root("/a/very/long/name/here", out, 8)); /* does not fit */
+}
+
 void suite_sh_exec(void)
 {
+    a_unix_absolute_name_maps_to_its_volume();
     printf_builtin();
     prompts();
     basics();

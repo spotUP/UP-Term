@@ -274,6 +274,9 @@ THE SHELL FOR UNIX PROGRAMS
   ;BEGIN UP-Term and ;END UP-Term (the file as it was is kept as
   S:User-Startup.before-UP-Term). Uninstall takes the block out again. An
   existing GG: (an ADE or Geek Gadgets install) is left alone.
+  In vsh, a name that starts with "/" means what it means on AmigaDOS
+  (the parent directory) when something is there, and otherwise what it
+  means on Unix: /RAM/notes is RAM:notes, as ixemul programs name it.
 
 CON: AND RAW:
   UP-Term can serve the system's CON: and RAW: too, so every new Shell

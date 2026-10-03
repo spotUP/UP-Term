@@ -218,10 +218,35 @@ static void close_stream(BPTR fh)
     Close(fh);
 }
 
+static BPTR lock_name(const char *path, char *used, int max);
+
 static sh_fh os_open(void *os, const char *path, int mode)
 {
     BPTR fh;
+    char p[256];
     (void)os;
+    if (path[0] == '/' && path[1] && path[1] != '/') {
+        /* "/vol/x" as Unix means it when the Amiga meaning (the parent's
+         * x) has nothing there: the file itself, or for a new file its
+         * directory */
+        BPTR l;
+        char dir[256];
+        const char *slash = strrchr(path, '/');
+        if ((l = lock_name(path, p, sizeof(p))) != 0) {
+            UnLock(l);
+            path = p;
+        } else if (mode != SH_OPEN_READ && slash && slash != path && slash - path < (long)sizeof(dir)) {
+            memcpy(dir, path, (size_t)(slash - path));
+            dir[slash - path] = 0;
+            if ((l = lock_name(dir, p, sizeof(p))) != 0) {
+                UnLock(l);
+                if (strchr(p, ':') && p[0] != '/') {
+                    AddPart((STRPTR)p, (STRPTR)(slash + 1), sizeof(p));
+                    path = p;
+                }
+            }
+        }
+    }
     if (mode == SH_OPEN_READ)
         return (sh_fh)Open((STRPTR)path, MODE_OLDFILE);
     if (mode == SH_OPEN_WRITE)
@@ -463,10 +488,15 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
         if (r)
             return 0; /* Resident: the Shell runs it */
     }
-    if ((lock = Lock((STRPTR)name, SHARED_LOCK)) != 0) {
-        UnLock(lock);
-        *seg = LoadSeg((STRPTR)name);
-        return 0; /* not loadable (a script): SystemTags */
+    {
+        char used[256];
+        if ((lock = lock_name(name, used, sizeof(used))) != 0) {
+            UnLock(lock);
+            *seg = LoadSeg((STRPTR)used);
+            if (strcmp(used, name) && (long)strlen(used) < max)
+                strcpy(found, used); /* "/vol/x" ran as vol:x: a script there runs as that file */
+            return 0; /* not loadable (a script): SystemTags */
+        }
     }
     if (strchr(name, ':') || strchr(name, '/'))
         return -1;
@@ -861,13 +891,28 @@ static void amiga_name(const char *in, char *out, int max)
     strncat(out, in, max - n - 1);
 }
 
+/* path as AmigaDOS names it, into used: the Amiga meaning first ("/x" is
+ * the parent's x), and when nothing is there by it, the Unix one ("/vol/x"
+ * is vol:x, as $PATH and ixemul programs name it -- V2: "/VTC/bin/nvim"
+ * was "not found"). The lock, or 0. */
+static BPTR lock_name(const char *path, char *used, int max)
+{
+    BPTR lock;
+    amiga_name(path, used, max);
+    if ((lock = Lock((STRPTR)used, SHARED_LOCK)) != 0)
+        return lock;
+    if (sh_unix_root(path, used, max) && (lock = Lock((STRPTR)used, SHARED_LOCK)) != 0)
+        return lock;
+    amiga_name(path, used, max); /* not there either way: the Amiga name */
+    return 0;
+}
+
 static int os_chdir(void *os, const char *path)
 {
     char p[256];
     BPTR lock;
     (void)os;
-    amiga_name(path, p, sizeof(p));
-    lock = Lock((STRPTR)p, SHARED_LOCK);
+    lock = lock_name(path, p, sizeof(p));
     if (!lock)
         return -1;
     UnLock(CurrentDir(lock));
