@@ -124,7 +124,7 @@ COMMANDS (/cursor bar)
    UP-Term's, it answers in the window and the shell shows a new prompt.
    /help lists them; Tab completes the names and their values.
      /cursor bar        /bell visual      /scrollback 5000   /font topaz 11
-     /fg C0C0C0         /theme Dracula    /profile vim       /tab new
+     /fg C0C0C0         /theme dracula-default /profile vim       /tab new
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
    They change the window you type in; /save writes them to its profile.
    "/" alone, "//", "/Work" and every other path are the shell's as
