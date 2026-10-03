@@ -3,7 +3,9 @@
 through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (--ro: DH0: read-only, stalls on writes;
+  rig.py start    boot it in the background (--os32: AmigaOS 3.2 -- the 3.2.3 ROM
+                  and the owner's 3.2 install as DH0:, ledger T3;
+                  --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
                   --serial <path>: the serial port to that path, not serial.log)
   rig.py aga      Workbench on native AGA (PAL hires, 16 colours) from next boot
@@ -39,13 +41,24 @@ KICK = pathlib.Path("/Users/spot/Code/Up_Rough_Demo_System/web/maker/public/puae
 SERIAL = RIG / "serial.log"
 if "--serial" in sys.argv:
     SERIAL = sys.argv[sys.argv.index("--serial") + 1]
+# --os32: AmigaOS 3.2 (ledger T3; the owner's Replay runs 3.2): the 3.2.3
+# Kickstart and the owner's installed 3.2 tree (a host drawer, its .uaem
+# files carry the protection bits), copied once to build/rig/os32 -- the
+# owner's tree is only read. Same boot drawer, VTC: and amiagent.
+OS32 = "--os32" in sys.argv
+OS32_SRC = pathlib.Path.home() / "Downloads/AmigaOS-3.2-full (1)"
+OS32_KICK = pathlib.Path.home() / "Desktop/KICK_323.rom"
+if OS32:
+    KICK = OS32_KICK
 if "--kick" in sys.argv:
     KICK = pathlib.Path(sys.argv[sys.argv.index("--kick") + 1]).expanduser()
 
 STARTUP = """DH0:C/Assign >NIL: SYS: DH0:
 DH0:C/Assign >NIL: C: DH0:C
 DH0:C/Assign >NIL: S: DH0:S
-DH0:C/Assign >NIL: L: DH0:L
+If EXISTS DH0:L
+  DH0:C/Assign >NIL: L: DH0:L
+EndIf
 DH0:C/Assign >NIL: LIBS: DH0:Libs
 DH0:C/Assign >NIL: DEVS: DH0:Devs
 DH0:C/Assign >NIL: FONTS: DH0:Fonts
@@ -116,7 +129,10 @@ def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
     (RIG / "vtc").mkdir(exist_ok=True)
     (RIG / "shots").mkdir(exist_ok=True)
-    if not (RIG / "sys.hdf").exists():
+    if OS32 and not (RIG / "os32").exists():
+        print("copying the 3.2 system (168 MB) ...")
+        shutil.copytree(OS32_SRC, RIG / "os32", symlinks=True)
+    if not OS32 and not (RIG / "sys.hdf").exists():
         print("copying the system disk (1.5 GB) ...")
         shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
     (RIG / "boot/s").mkdir(exist_ok=True)
@@ -140,7 +156,7 @@ def setup():
         "jit_compiler = %d" % (0 if EXACT else 1),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
-        "hard_drive_0 = %s" % (RIG / "sys.hdf"),
+        "hard_drive_0 = %s" % (RIG / ("os32" if OS32 else "sys.hdf")),
         # Writable: read-only (--ro) put up "Volume System is write
         # protected" requesters that stalled the rig (the owner saw them,
         # 2026-09-29). stop write-protects DH0: through amiagent before its
