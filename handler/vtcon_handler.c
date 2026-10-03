@@ -156,6 +156,7 @@ typedef struct con {
     ULONG mode_id;               /* SCREENMODE 0x...; INVALID_ID = the Workbench's */
     int depth;                   /* DEPTH n; 0 = 4 on a native screen, 8 on a card */
     struct Screen *myscreen;     /* the screen opened for this window */
+    int screen_want;             /* a move to this screen kind asked for (-1 none): done after the IDCMP loop */
     struct Screen *screen_closing; /* ours, its close refused (a visitor still on it): tried again */
     int inactive;
     int auto_open;               /* AUTO: no window until the first read or write */
@@ -944,6 +945,7 @@ static void parse_spec(con *c, const char *s)
     vtwin_profile_defaults(&c->w); /* a profile may change them */
     copy_str(c->profile, "default", sizeof(c->profile));
     c->own_screen = 0;
+    c->screen_want = -1;
     c->pubname[0] = 0;
     c->mode_id = (ULONG)INVALID_ID;
     c->depth = 0;
@@ -1172,11 +1174,15 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 36
+#define MENU_SET_ITEMS 40
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
     { NM_ITEM, (STRPTR)"Theme...", 0, 0, 0, (APTR)MENU_SET_THEME },
+    { NM_ITEM, (STRPTR)"Screen", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Workbench", 0, CHECKIT, 6, (APTR)MENU_SCREEN_WB },
+    { NM_SUB, (STRPTR)"Own screen", 0, CHECKIT, 5, (APTR)MENU_SCREEN_OWN },
+    { NM_SUB, (STRPTR)"Full screen", 0, CHECKIT, 3, (APTR)MENU_SCREEN_FULL },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Cursor", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Block", 0, CHECKIT, 6, (APTR)MENU_SET_BLOCK },
@@ -1223,6 +1229,9 @@ static int menu_checked(const con *c, LONG id)
 {
     int cs = c->w.cursor_style;
     switch (id) {
+    case MENU_SCREEN_WB: return c->own_screen == 0;
+    case MENU_SCREEN_OWN: return c->own_screen == 1;
+    case MENU_SCREEN_FULL: return c->own_screen == 2;
     case MENU_SET_BLOCK: return cs <= 2;
     case MENU_SET_UNDERLINE: return cs == 3 || cs == 4;
     case MENU_SET_BAR: return cs >= 5;
@@ -1709,6 +1718,10 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_SET_THEME: theme_ask(c, ""); return 1;
     case MENU_SET_SAVE: save_ask(c); return 1;
     case MENU_ABOUT: about(c); return 1;
+    case MENU_SCREEN_WB: case MENU_SCREEN_OWN: case MENU_SCREEN_FULL:
+        /* after the IDCMP loop has replied its messages (the window goes) */
+        c->screen_want = (int)(id - MENU_SCREEN_WB);
+        return 3;
     case MENU_SELECT_ALL: vtwin_select_all(&c->w); return 1;
     case MENU_FIND_NEXT:
         if (!vtwin_find(&c->w, 0))
@@ -1891,16 +1904,12 @@ static int own_screen_retry(con *c)
     return c->screen_closing != 0;
 }
 
-static int open_window(con *c)
+/* The screen the window opens on, locked: its own (OWNSCREEN /
+ * FULLSCREEN / PUBSCREEN, opened now if need be), the named public screen,
+ * the default one. 0 when none can be locked. */
+static struct Screen *lock_screen(con *c)
 {
-    struct Screen *scr;
-    struct TagItem tags[16];
-    struct Window *win;
-    int n = 0;
-
-    c->winch_closing = 0; /* read/write retry the open: arm the handler again */
-    DBG("lockpub", 0, 0);
-    scr = 0;
+    struct Screen *scr = 0;
     DBG("own_screen", c->own_screen, c->myscreen);
     if (c->own_screen && !c->tab_host[0] && !c->foreign && (c->myscreen || own_screen_open(c)))
         scr = LockPubScreen((UBYTE *)c->pubname); /* ours, locked as any public screen */
@@ -1908,23 +1917,16 @@ static int open_window(con *c)
         scr = LockPubScreen(c->screen[0] ? (UBYTE *)c->screen : 0);
     if (!scr)
         scr = LockPubScreen(0);
-    if (!scr)
-        return 0;
-    c->locked = scr;
-    vtwin_open_font(&c->w);
-    if (c->tab_host[0] && (win = tab_register(c)) != 0)
-        goto have_window; /* a tab: the host's window, its RastPort ours */
-    if (c->foreign) {
-        /* WINDOW 0xaddr: use it as it is; add the IDCMP we need */
-        win = c->foreign;
-        c->foreign_idcmp = win->IDCMPFlags;
-        if (!ModifyIDCMP(win, c->foreign_idcmp | IDCMP_RAWKEY | IDCMP_NEWSIZE |
-                         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS |
-                         IDCMP_MOUSEMOVE | IDCMP_EXTENDEDMOUSE))
-            return 0;
-        SetFont(win->RPort, c->w.font);
-        goto have_window;
-    }
+    return scr;
+}
+
+/* The window on scr: the spec's place and flags, or the whole screen,
+ * borderless, for FULLSCREEN on its own screen. */
+static struct Window *create_window(con *c, struct Screen *scr)
+{
+    struct TagItem tags[18];
+    struct Window *win;
+    int n = 0;
     if (c->myscreen && scr == c->myscreen && c->own_screen == 2) {
         /* FULLSCREEN: the whole screen, no borders, behind everything */
         tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = 0;
@@ -1962,6 +1964,35 @@ static int open_window(con *c)
     DBG("openwindow", scr, c->w.font);
     win = OpenWindowTagList(0, tags);
     DBG("window", win, 0);
+    return win;
+}
+
+static int open_window(con *c)
+{
+    struct Screen *scr;
+    struct Window *win;
+
+    c->winch_closing = 0; /* read/write retry the open: arm the handler again */
+    DBG("lockpub", 0, 0);
+    scr = lock_screen(c);
+    if (!scr)
+        return 0;
+    c->locked = scr;
+    vtwin_open_font(&c->w);
+    if (c->tab_host[0] && (win = tab_register(c)) != 0)
+        goto have_window; /* a tab: the host's window, its RastPort ours */
+    if (c->foreign) {
+        /* WINDOW 0xaddr: use it as it is; add the IDCMP we need */
+        win = c->foreign;
+        c->foreign_idcmp = win->IDCMPFlags;
+        if (!ModifyIDCMP(win, c->foreign_idcmp | IDCMP_RAWKEY | IDCMP_NEWSIZE |
+                         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS |
+                         IDCMP_MOUSEMOVE | IDCMP_EXTENDEDMOUSE))
+            return 0;
+        SetFont(win->RPort, c->w.font);
+        goto have_window;
+    }
+    win = create_window(c, scr);
     if (!win)
         return 0;
 have_window:
@@ -1981,15 +2012,15 @@ have_window:
     return 1;
 }
 
-static void close_window(con *c)
+/* What belongs to the window and not to the terminal: the Find prompt,
+ * the selection window, menus, the input handler, the ROM console unit.
+ * close_window, and a move to another screen, take these down first. */
+static void window_parts_close(con *c)
 {
-    struct Window *win = c->w.win;
-    c->winch_closing = 1; /* stop naming this window before we dismantle it */
     find_close(c); /* the prompt belongs to the window */
     sel_close(c);  /* so does the selection window */
     kc_cyc_end(c);
-    menu_remove(c, win);
-    DBG("close_window", win, c->w.t);
+    menu_remove(c, c->w.win);
     if (c->input_io) {
         if (c->winch_added) {
             c->input_io->io_Command = IND_REMHANDLER;
@@ -2014,6 +2045,14 @@ static void close_window(con *c)
         DeleteMsgPort(c->rom_port);
         c->rom_port = 0;
     }
+}
+
+static void close_window(con *c)
+{
+    struct Window *win = c->w.win;
+    c->winch_closing = 1; /* stop naming this window before we dismantle it */
+    DBG("close_window", win, c->w.t);
+    window_parts_close(c);
     if (c->is_tab)
         tab_unregister(c); /* the host stops sending before the grid goes */
     vtwin_detach(&c->w); /* engine, renderer, fonts; the frame clock stops */
@@ -2030,6 +2069,65 @@ static void close_window(con *c)
         c->locked = 0;
     }
     own_screen_close(c); /* its screen goes with it */
+}
+
+/* The window to another screen, its terminal with it (Settings > Screen,
+ * /screen; P1.3): 0 the Workbench (or the SCREEN the spec named), 1 a
+ * screen of its own, 2 full screen. The terminal is unbound from the old
+ * window and bound to the new one -- text, scrollback, modes, the line
+ * being edited stay. Not with tabs (they share the window) or someone
+ * else's window. 1 when it moved. */
+static int screen_switch(con *c, int mode)
+{
+    struct Screen *scr;
+    struct Window *win;
+    if (!c->w.t || !c->own_win || c->is_tab || c->foreign || c->ntabs >= 2 || mode < 0 || mode > 2)
+        return 0;
+    if (mode == c->own_screen)
+        return 1;
+    window_parts_close(c);
+    vtwin_unbind(&c->w);
+    CloseWindow(c->own_win);
+    c->own_win = 0;
+    if (c->locked) {
+        UnlockPubScreen(0, c->locked);
+        c->locked = 0;
+    }
+    own_screen_close(c); /* own -> full opens a fresh one: borderless, no title bar */
+    c->own_screen = mode;
+    scr = lock_screen(c);
+    win = scr ? create_window(c, scr) : 0;
+    if (!win && mode) {
+        /* no screen of its own (no memory, a bad mode): back where it was */
+        if (scr)
+            UnlockPubScreen(0, scr);
+        own_screen_close(c);
+        c->own_screen = 0;
+        scr = lock_screen(c);
+        win = scr ? create_window(c, scr) : 0;
+    }
+    if (!win) {
+        if (scr)
+            UnlockPubScreen(0, scr);
+        c->auto_shut = 0;
+        c->eof = 1; /* nowhere to show the terminal: the reader sees the end */
+        return 0;
+    }
+    c->locked = scr;
+    c->own_win = win;
+    vtwin_rebind(&c->w, win);
+    menu_add(c, win);
+    return c->own_screen == mode;
+}
+
+static void screen_pending(con *c)
+{
+    if (c->screen_want >= 0) {
+        int m = c->screen_want;
+        c->screen_want = -1;
+        if (!screen_switch(c, m))
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* tabs, or no such screen */
+    }
 }
 
 /* ---- output ---------------------------------------------------------------- */
@@ -3836,6 +3934,7 @@ static void idcmp(con *c)
         c->auto_shut = 0;
         close_window(c);
     }
+    screen_pending(c); /* a pick or a /screen: the messages are replied now */
 }
 
 /* ---- tabs ------------------------------------------------------------------- */
@@ -4919,6 +5018,7 @@ static LONG handler_main(void)
         if (c->sel_port)
             wait |= 1UL << c->sel_port->mp_SigBit;
         own_screen_retry(c); /* an AUTO window's screen a visitor kept open */
+        screen_pending(c);   /* a /screen from C:UPTerm (a packet, not a key) */
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */

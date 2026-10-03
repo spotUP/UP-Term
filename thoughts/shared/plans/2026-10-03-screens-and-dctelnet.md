@@ -40,9 +40,12 @@ else should be ported over from DC Telnet?"
       kind (DIPF_IS_FOREIGN; a Workbench on a card had made it 8), the 16 ANSI pens allocated
       shared at open (ObtainBestPen took free pens and overwrote 9 colours before).
       ownscreen_rig.py 8/8. The 3.2 rig: still to run.
-- [ ] P1.3 Settings > Screen (Workbench / Own screen / Full screen) live: the window moves to the
-      other screen with its text (vtwin reattach keeping the engine); /screen; a ScreenMode
-      requester (ASL, in the worker) for screen-mode; Prefs fields.
+- [~] P1.3 Settings > Screen (Workbench / Own screen / Full screen) and /screen: the window moves
+      live with its text (vtwin_unbind / vtwin_rebind keep the engine; open_window split into
+      lock_screen + create_window, close_window's window parts into window_parts_close; the move
+      waits until the IDCMP loop has replied its messages). Refused with 2+ tabs. ownscreen_rig.py
+      11/11. OPEN: a ScreenMode requester (ASL, in the worker) for screen-mode; Prefs fields for
+      screen / screen-mode / screen-depth (the keys are kept on a save already).
 - [ ] P2 fonts by pixel aspect: the pair table (topaz 8 <-> TopazPro 16, IBM 8 <-> IBM 16), the
       bundled fonts (licences checked: IBM 16 = Moebius VGA 8x16, Apache-2.0), chosen at open and
       on a screen change.

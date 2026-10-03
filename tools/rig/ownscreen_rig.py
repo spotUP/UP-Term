@@ -9,6 +9,8 @@ thoughts/shared/plans/2026-10-03-screens-and-dctelnet.md, P1).
   4. XCON:.../FULLSCREEN: one window, borderless, the whole screen, its
      title in the screen's title bar; it closes with the window.
   5. The profile key screen = fullscreen does the same for a plain window.
+  7. /screen own, fullscreen, workbench (Settings > Screen): the window
+     moves live, the text before the move still in it each time.
   6. SCREENMODE 0x29000 (PAL hires): 4 planes, and after colour output the
      palette still holds the 16 ANSI colours (ObtainBestPen took free pens
      and overwrote them until the 16 were allocated shared at open).
@@ -17,7 +19,7 @@ UITREE lists the front screen only, so each check reads the front screen's
 name and its windows. Run with the rig up and the handler installed (rig.py
 install + a reboot): python3 tools/rig/ownscreen_rig.py
 """
-import pathlib, struct, sys, time
+import pathlib, shutil, struct, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import ami, condev_rig as c
 
@@ -116,6 +118,32 @@ def main():
         check(b[0] == 1 and nc == 16 and pal == ansi,
               'a native PAL screen: 4 planes, the 16 ANSI colours exact after colour output', (nc, pal))
         t('EndCLI', 4)
+        # 9-11: the window moves live (Settings > Screen = /screen), its text with it
+        shutil.copyfile(ROOT / 'build/amiga/UPTerm', VTC / 'UPTerm')
+        c.run('Run >NIL: NewShell "XCON:0/20/640/300/sw/CLOSE"')
+        time.sleep(5)
+        click_in('sw')
+        t('Set w marker')
+        t('Echo before-$w')     # the word comes through a variable: the typed line is not it
+
+        def kept():
+            c.run('Delete RAM:sw.rc QUIET')
+            t('VTC:UPTerm find before-$w >NIL:')
+            t('Echo >RAM:sw.rc $RC')
+            return c.run('Type RAM:sw.rc')[1].strip() == '0'
+        t('/screen own', 5)
+        name, wins = front()
+        check(name == 'UP-Term' and ('sw', 640, 300) in wins and kept(),
+              '/screen own: the window on a screen of its own, its text with it', (name, wins))
+        t('/screen fullscreen', 5)
+        name, wins = front()
+        check(name == 'sw' and len(wins) == 1 and wins[0][1] >= 640 and kept(),
+              '/screen fullscreen: the whole screen, the text still there', (name, wins))
+        t('/screen workbench', 5)
+        name, wins = front()
+        check(name != 'UP-Term' and ('sw', 640, 300) in wins and kept(),
+              '/screen workbench: back at its size, the text still there', (name, wins))
+        t('EndCLI', 3)
     finally:
         if had:
             c.run('Copy RAM:ownscreen.bak ENV:up-term/up-term QUIET')
@@ -123,6 +151,7 @@ def main():
             c.run('Delete ENV:up-term/up-term QUIET')
         c.run('Delete RAM:ownscreen.bak QUIET')
         (VTC / 'ownscreen.conf').unlink(missing_ok=True)
+        c.run('Delete RAM:sw.rc QUIET')
     print('ownscreen_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 

@@ -164,12 +164,13 @@ def main():
         # 7: Settings > Cursor > Blinking by a real menu pick (a typed command
         # prints an answer, and output started the frame clock anyway: only
         # a pick in an idle window shows the bug). The places are the rig's
-        # Workbench screen (topaz 8), measured from a screenshot 2026-10-03.
+        # Workbench screen (topaz 8), measured from a screenshot 2026-10-03; one row
+        # lower since Settings > Screen came above Cursor.
         def pick_blinking():
             kx, ky = ami.pointer_scale()
             ami.script(('move', int(150 * kx), int(5 * ky)), ('wait', 2), ('button', 1, 1), ('wait', 8),
-                       ('move', int(190 * kx), int(50 * ky)), ('wait', 8), ('move', int(240 * kx), int(50 * ky)),
-                       ('wait', 4), ('move', int(260 * kx), int(91 * ky)), ('wait', 6), ('button', 1, 0),
+                       ('move', int(190 * kx), int(62 * ky)), ('wait', 8), ('move', int(240 * kx), int(62 * ky)),
+                       ('wait', 4), ('move', int(260 * kx), int(103 * ky)), ('wait', 6), ('button', 1, 0),
                        ('wait', 5))
             time.sleep(1.5)
 

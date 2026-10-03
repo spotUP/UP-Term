@@ -405,10 +405,11 @@ static void settings(vtwin *w)
     vr_set_selection_colors(&w->r, w->sel_fg_rgb, w->sel_bg_rgb);
 }
 
+static void bind(vtwin *w, struct Window *win);
+
 int vtwin_attach(vtwin *w, struct Window *win)
 {
     struct vt_callbacks cb;
-    int k;
     w->win = win;
     if (!w->font)
         vtwin_open_font(w);
@@ -435,26 +436,62 @@ int vtwin_attach(vtwin *w, struct Window *win)
         vt_set_charset(w->t, VT_CS_LATIN1);
     else if (w->pers == VT_XTERM && w->cp437)
         vt_set_charset(w->t, VT_CS_CP437);
+    bind(w, win);
+    return 1;
+}
+
+/* The renderer on win for the engine there is: attach's second half, and
+ * all of a rebind (the window moved to another screen). The grid takes
+ * the window's size when it differs. */
+static void bind(vtwin *w, struct Window *win)
+{
+    int k;
+    w->win = win;
     vr_init(&w->r, win, w->font, w->t, w->pers == VT_PCANSI ? VT_ENC_CP437 : VT_ENC_LATIN1);
     if (w->own_rp) {
         w->r.rp = w->own_rp; /* a shared window: our pens and font, its layer */
         SetFont(w->own_rp, w->font);
     }
-    if (w->inset_top) {
+    if (w->inset_top)
         vr_set_inset(&w->r, w->inset_top);
-        vr_layout(&w->r);
-        vt_resize(w->t, w->r.cols, w->r.rows);
-    }
     for (k = 1; k <= 10; k++) {
         if (!w->alt[k] && w->altname[k][0])
             w->alt[k] = open_named(w->altname[k], w->altsize[k] ? w->altsize[k] : w->font->tf_YSize);
         vr_set_alt_font(&w->r, k, w->alt[k]);
     }
+    if (w->outline)
+        vr_set_outline(&w->r, w->outline); /* a rebind keeps the open outline font */
     outline_sync(w);
     settings(w);
     vt_set_cell_pixels(w->t, w->font->tf_XSize, w->font->tf_YSize);
+    vr_layout(&w->r);
+    if (w->r.cols != vt_cols(w->t) || w->r.rows != vt_rows(w->t)) {
+        vt_resize(w->t, w->r.cols, w->r.rows);
+        w->host->resized(w->user);
+    }
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
+}
+
+void vtwin_unbind(vtwin *w)
+{
+    if (!w->t || !w->win)
+        return;
+    frame_stop(w);
+    w->render_pending = 0;
+    w->layout_dirty = 0;
+    w->dragging = 0;
+    vr_set_outline(&w->r, 0);
+    vr_free(&w->r);
+    w->win = 0;
+}
+
+int vtwin_rebind(vtwin *w, struct Window *win)
+{
+    if (!w->t || w->win || !win)
+        return 0;
+    bind(w, win);
+    vtwin_show_title(w);
     return 1;
 }
 

@@ -290,6 +290,25 @@ THE SHELL FOR UNIX PROGRAMS
   (the parent directory) when something is there, and otherwise what it
   means on Unix: /RAM/notes is RAM:notes, as ixemul programs name it.
 
+A SCREEN OF ITS OWN, FULL SCREEN
+  An UP-Term window can have a screen to itself: Settings > Screen >
+  Own screen or Full screen (or /screen own, /screen fullscreen; back
+  with Workbench). The text, the scrollback and the line you are typing
+  go along. Full screen is one borderless window over the whole screen;
+  the menus still open on the right mouse button, the title shows in the
+  screen's title bar.
+  The screen has the Workbench's mode and size, 16 colours on a native
+  screen (exactly the terminal's 16 ANSI colours) or 256 on a graphics
+  card. It is a public screen ("UP-Term", "UP-Term.2" ...): other
+  programs can open on it. It closes with the last UP-Term window on it,
+  or, if another program's window is still there, when that one closes.
+  From the start, in the window's name or in a profile:
+    XCON:0/0/640/256/UP-Term/FULLSCREEN
+    XCON:...../OWNSCREEN    PUBSCREEN name    SCREENMODE 0x29000    DEPTH 4
+    screen = fullscreen     screen-mode = 0x29000     screen-depth = 4
+  (0x29000 is PAL hires; ScreenMode prefs show the numbers. Not with tabs:
+  move the window before opening a second tab.)
+
 NETWORK
   Install puts network tools in SYS:UP-Term/bin when you say yes (the
   Installer asks); they need a TCP/IP stack (Roadshow, AmiTCP):

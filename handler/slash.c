@@ -36,6 +36,10 @@ static const slash_value v_clear[] = {
 static const slash_value v_fontsize[] = {
     { "bigger", MENU_FONT_BIGGER, 1 }, { "smaller", MENU_FONT_SMALLER, 1 }, { 0, 0, 0 }
 };
+static const slash_value v_screen[] = {
+    { "workbench", MENU_SCREEN_WB, 1 }, { "own", MENU_SCREEN_OWN, 1 },
+    { "fullscreen", MENU_SCREEN_FULL, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_tab[] = {
     { "new", MENU_TAB_NEW, 1 }, { "next", MENU_TAB_NEXT, 1 }, { "previous", MENU_TAB_PREV, 1 },
     { "close", MENU_TAB_CLOSE, 1 }, { 0, 0, 0 }
@@ -70,6 +74,8 @@ static const slash_def table[] = {
     { "profile", SL_ARG, SLASH_PROFILE, 1, 0, "NAME", "switch to a profile" },
     { "reset", SL_ACTION, MENU_RESET, 0, 0, "", "reset the terminal (RIS)" },
     { "save", SL_ACTION, MENU_SET_SAVE, 0, 0, "", "save the settings to the profile" },
+    { "screen", SL_CHOICE, 0, 0, v_screen, "workbench | own | fullscreen",
+      "the window on the Workbench, a screen of its own, or full screen" },
     { "scrollback", SL_ARG, SLASH_SCROLLBACK, 1, 0, "LINES | none", "the lines kept" },
     { "select-all", SL_ACTION, MENU_SELECT_ALL, 0, 0, "", "select the scrollback and the screen" },
     { "selection-bg", SL_ARG, SLASH_SEL_BG, 1, 0, "RRGGBB | none", "the selection's background" },

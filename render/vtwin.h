@@ -145,6 +145,12 @@ void vtwin_tick(vtwin *w);
 struct TextFont *vtwin_open_font(vtwin *w);
 int vtwin_attach(vtwin *w, struct Window *win); /* 0: no memory (the owner closes its window) */
 void vtwin_detach(vtwin *w);
+/* The window goes but the terminal stays (moving to another screen):
+ * unbind before closing the old window, rebind to the new one -- the
+ * text, scrollback, modes and fonts go along; the grid takes the new
+ * window's size. 0 from rebind when there is nothing to bind. */
+void vtwin_unbind(vtwin *w);
+int vtwin_rebind(vtwin *w, struct Window *win);
 
 /* output: the grid now, the screen at the next frame */
 void vtwin_write(vtwin *w, const vt_u8 *b, long n);
