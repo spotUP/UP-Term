@@ -127,7 +127,7 @@ HANDLER_SRC := handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler
 HANDLER_HDR := engine/vtengine.h engine/vtwidth.h render/amiga_render.h render/vtwin.h render/glyphmap.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -263,6 +263,11 @@ $(BUILD)/amiga/ixsock: tests/amiga/ixsock.c
 $(BUILD)/amiga/ptytest: tests/amiga/ptytest.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ptytest.c
+
+# The console's answer time for Neovim 0.12's startup query (OSC 11 + DSR 5n)
+$(BUILD)/amiga/dsrtime: tests/amiga/dsrtime.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/dsrtime.c
 
 $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
