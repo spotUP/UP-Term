@@ -148,6 +148,14 @@ typedef struct con {
     WORD wx, wy, ww, wh;
     char screen[64];
     ULONG wflags;
+    /* a screen of its own (OWNSCREEN, FULLSCREEN, PUBSCREEN name; plan
+     * 2026-10-03-screens-and-dctelnet.md P1): 0 none, 1 own, 2 full screen */
+    int own_screen;
+    char pubname[32];            /* PUBSCREEN name; "" = UP-Term, UP-Term.2 ... */
+    ULONG mode_id;               /* SCREENMODE 0x...; INVALID_ID = the Workbench's */
+    int depth;                   /* DEPTH n; 0 = 4 on a native screen, 8 on a card */
+    struct Screen *myscreen;     /* the screen opened for this window */
+    struct Screen *screen_closing; /* ours, its close refused (a visitor still on it): tried again */
     int inactive;
     int auto_open;               /* AUTO: no window until the first read or write */
     int auto_held;               /* DISK_INFO holds an AUTO window open until UNDISK_INFO (V47) */
@@ -832,6 +840,31 @@ static void apply_profile(con *c)
                 f[i] = ' '; /* the profile's "NAME:SIZE" is the spec's "NAME SIZE" */
         parse_font(f, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
     }
+    /* a screen of its own (P1): screen = workbench | own | fullscreen,
+     * screen-mode = 0xID, screen-depth = n -- under the window's own
+     * OWNSCREEN / FULLSCREEN / PUBSCREEN / SCREENMODE / DEPTH */
+    if (!c->own_screen && !c->screen[0]) {
+        v = upconf_str(c->conf, p, "screen", 0);
+        if (v && str_ieq(v, "own"))
+            c->own_screen = 1;
+        else if (v && str_ieq(v, "fullscreen"))
+            c->own_screen = 2;
+    }
+    if (c->mode_id == (ULONG)INVALID_ID && (v = upconf_str(c->conf, p, "screen-mode", 0)) != 0) {
+        ULONG m = 0;
+        if (v[0] == '0' && (v[1] == 'x' || v[1] == 'X'))
+            v += 2;
+        for (; *v; v++) {
+            char h = *v;
+            if (h >= '0' && h <= '9') m = m * 16 + (ULONG)(h - '0');
+            else if (h >= 'a' && h <= 'f') m = m * 16 + (ULONG)(h - 'a' + 10);
+            else if (h >= 'A' && h <= 'F') m = m * 16 + (ULONG)(h - 'A' + 10);
+            else break;
+        }
+        c->mode_id = m;
+    }
+    if (!c->depth && upconf_get(c->conf, p, "screen-depth"))
+        c->depth = (int)upconf_int(c->conf, p, "screen-depth", 0);
     /* glyphs the bitmap font lacks: an outline font's (F1); "" none */
     v = upconf_str(c->conf, p, "font-fallback", 0);
     copy_str(c->w.fallback, v ? v : "", sizeof(c->w.fallback));
@@ -909,6 +942,10 @@ static void parse_spec(con *c, const char *s)
     c->w.fg_rgb = c->w.bg_rgb = VR_KEEP;
     vtwin_profile_defaults(&c->w); /* a profile may change them */
     copy_str(c->profile, "default", sizeof(c->profile));
+    c->own_screen = 0;
+    c->pubname[0] = 0;
+    c->mode_id = (ULONG)INVALID_ID;
+    c->depth = 0;
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;
     for (;;) {
@@ -997,6 +1034,30 @@ static void parse_spec(con *c, const char *s)
             colours = 1;
         } else if (str_ieq(field, "CP437")) {
             c->w.cp437 = 1;
+        } else if (str_ieq(field, "OWNSCREEN")) {
+            c->own_screen = c->own_screen ? c->own_screen : 1;
+        } else if (str_ieq(field, "FULLSCREEN")) {
+            c->own_screen = 2;
+        } else if (str_ipre(field, "PUBSCREEN", &rest)) {
+            /* a screen of its own, public under this name */
+            copy_str(c->pubname, rest, sizeof(c->pubname));
+            c->own_screen = c->own_screen ? c->own_screen : 1;
+        } else if (str_ipre(field, "SCREENMODE", &rest)) {
+            ULONG v = 0;
+            if (rest[0] == '0' && (rest[1] == 'x' || rest[1] == 'X'))
+                rest += 2;
+            for (; *rest; rest++) {
+                char h = *rest;
+                if (h >= '0' && h <= '9') v = v * 16 + (ULONG)(h - '0');
+                else if (h >= 'a' && h <= 'f') v = v * 16 + (ULONG)(h - 'a' + 10);
+                else if (h >= 'A' && h <= 'F') v = v * 16 + (ULONG)(h - 'A' + 10);
+                else break;
+            }
+            c->mode_id = v;
+        } else if (str_ipre(field, "DEPTH", &rest)) {
+            c->depth = 0;
+            for (; *rest >= '0' && *rest <= '9'; rest++)
+                c->depth = c->depth * 10 + (*rest - '0');
         } else if (str_ipre(field, "SCREEN", &rest)) {
             copy_str(c->screen, rest, sizeof(c->screen));
         } else if ((k = alt_font_option(field, &rest)) != 0) {
@@ -1696,6 +1757,125 @@ static void menu_pick(con *c, UWORD code)
 static struct Window *tab_register(con *c);
 static void tab_unregister(con *c);
 
+/* ---- a screen of its own (P1) ------------------------------------------------ */
+
+/* The screen for OWNSCREEN / FULLSCREEN / PUBSCREEN: the Workbench's mode
+ * and size unless SCREENMODE says otherwise, 16 colours on a native screen
+ * (8 planes on a graphics card), its first 16 pens the terminal's ANSI
+ * colours (the profile's palette over xterm's) so every colour has its
+ * exact pen, Intuition's pens chosen among them. Public, so programs can
+ * open on it: the name given, else "UP-Term", "UP-Term.2" ... Locked for
+ * the window as a public screen is (c->locked). */
+static struct Screen *own_screen_open(con *c)
+{
+    static const UWORD pens[] = {
+        0,  /* DETAILPEN */        7,  /* BLOCKPEN */      7,  /* TEXTPEN */
+        15, /* SHINEPEN */         8,  /* SHADOWPEN */     4,  /* FILLPEN */
+        15, /* FILLTEXTPEN */      0,  /* BACKGROUNDPEN */ 15, /* HIGHLIGHTTEXTPEN */
+        0,  /* BARDETAILPEN */     7,  /* BARBLOCKPEN */   8,  /* BARTRIMPEN */
+        (UWORD)~0
+    };
+    ULONG cols[1 + 16 * 3 + 1];
+    struct TagItem t[20];
+    struct Screen *wb, *scr = 0;
+    ULONG mode = c->mode_id, err = 0;
+    int depth = c->depth, i, n, k;
+    char name[32];
+    wb = LockPubScreen((UBYTE *)"Workbench");
+    if (wb) {
+        if (mode == (ULONG)INVALID_ID)
+            mode = GetVPModeID(&wb->ViewPort);
+        if (!depth)
+            depth = (GetBitMapAttr(wb->RastPort.BitMap, BMA_DEPTH) > 8 ||
+                     !(GetBitMapAttr(wb->RastPort.BitMap, BMA_FLAGS) & BMF_STANDARD)) ? 8 : 4;
+        UnlockPubScreen(0, wb);
+    }
+    if (mode == (ULONG)INVALID_ID)
+        mode = HIRES_KEY;
+    if (depth < 4)
+        depth = 4; /* 16 pens: the ANSI colours */
+    if (depth > 8)
+        depth = 8;
+    cols[0] = (16UL << 16) | 0;
+    for (i = 0; i < 16; i++) {
+        ULONG rgb = (c->w.pal16[i] & 0x01000000UL) ? (c->w.pal16[i] & 0xFFFFFFUL) : vt_palette_rgb(0, i);
+        cols[1 + i * 3] = ((rgb >> 16) & 0xFF) * 0x01010101UL;
+        cols[2 + i * 3] = ((rgb >> 8) & 0xFF) * 0x01010101UL;
+        cols[3 + i * 3] = (rgb & 0xFF) * 0x01010101UL;
+    }
+    cols[1 + 16 * 3] = 0;
+    for (k = 1; k <= 9 && !scr; k++) {
+        if (c->pubname[0])
+            copy_str(name, c->pubname, sizeof(name));
+        else
+            copy_str(name, "UP-Term", sizeof(name));
+        if (k > 1 && !c->pubname[0]) {
+            n = (int)strlen(name);
+            name[n] = '.';
+            name[n + 1] = (char)('0' + k);
+            name[n + 2] = 0;
+        }
+        n = 0;
+        t[n].ti_Tag = SA_DisplayID;  t[n++].ti_Data = mode;
+        t[n].ti_Tag = SA_Depth;      t[n++].ti_Data = (ULONG)depth;
+        t[n].ti_Tag = SA_Width;      t[n++].ti_Data = (ULONG)STDSCREENWIDTH;
+        t[n].ti_Tag = SA_Height;     t[n++].ti_Data = (ULONG)STDSCREENHEIGHT;
+        t[n].ti_Tag = SA_Overscan;   t[n++].ti_Data = OSCAN_TEXT;
+        t[n].ti_Tag = SA_Title;      t[n++].ti_Data = (ULONG)"UP-Term";
+        t[n].ti_Tag = SA_PubName;    t[n++].ti_Data = (ULONG)name;
+        t[n].ti_Tag = SA_Pens;       t[n++].ti_Data = (ULONG)pens;
+        t[n].ti_Tag = SA_Colors32;   t[n++].ti_Data = (ULONG)cols;
+        t[n].ti_Tag = SA_SharePens;  t[n++].ti_Data = TRUE;
+        t[n].ti_Tag = SA_Interleaved; t[n++].ti_Data = TRUE;
+        t[n].ti_Tag = SA_AutoScroll; t[n++].ti_Data = TRUE;
+        t[n].ti_Tag = SA_ShowTitle;  t[n++].ti_Data = c->own_screen == 2 ? FALSE : TRUE;
+        t[n].ti_Tag = SA_ErrorCode;  t[n++].ti_Data = (ULONG)&err;
+        t[n].ti_Tag = TAG_DONE;      t[n].ti_Data = 0;
+        err = 0;
+        scr = OpenScreenTagList(0, t);
+        DBG("own screen mode/depth", mode, depth);
+        DBG("own screen scr/err", scr, err);
+        if (!scr && (err != OSERR_PUBNOTUNIQUE || c->pubname[0]))
+            break; /* not a name clash, or the name was the user's: no other try */
+    }
+    if (!scr)
+        return 0;
+    PubScreenStatus(scr, 0); /* public now: programs may open on it */
+    copy_str(c->pubname, name, sizeof(c->pubname));
+    c->myscreen = scr;
+    return scr;
+}
+
+/* The screen goes with its last window: private again (no new visitors),
+ * then closed -- a visitor still open (another program's window) keeps it
+ * a little longer, and then it stays until that program closes. */
+static void own_screen_close(con *c)
+{
+    int tries;
+    if (!c->myscreen)
+        return;
+    PubScreenStatus(c->myscreen, PSNF_PRIVATE);
+    for (tries = 0; tries < 10; tries++) {
+        if (CloseScreen(c->myscreen)) {
+            c->myscreen = 0;
+            return;
+        }
+        WaitTOF(); /* a visitor's window closing */
+    }
+    /* another program's window is still on it: closed when that goes
+     * (own_screen_retry, from the main loop, and before the handler ends) */
+    c->screen_closing = c->myscreen;
+    c->myscreen = 0;
+}
+
+/* A screen whose close was refused: again; 1 while it is still open. */
+static int own_screen_retry(con *c)
+{
+    if (c->screen_closing && CloseScreen(c->screen_closing))
+        c->screen_closing = 0;
+    return c->screen_closing != 0;
+}
+
 static int open_window(con *c)
 {
     struct Screen *scr;
@@ -1705,7 +1885,12 @@ static int open_window(con *c)
 
     c->winch_closing = 0; /* read/write retry the open: arm the handler again */
     DBG("lockpub", 0, 0);
-    scr = LockPubScreen(c->screen[0] ? (UBYTE *)c->screen : 0);
+    scr = 0;
+    DBG("own_screen", c->own_screen, c->myscreen);
+    if (c->own_screen && !c->tab_host[0] && !c->foreign && (c->myscreen || own_screen_open(c)))
+        scr = LockPubScreen((UBYTE *)c->pubname); /* ours, locked as any public screen */
+    if (!scr)
+        scr = LockPubScreen(c->screen[0] ? (UBYTE *)c->screen : 0);
     if (!scr)
         scr = LockPubScreen(0);
     if (!scr)
@@ -1725,12 +1910,27 @@ static int open_window(con *c)
         SetFont(win->RPort, c->w.font);
         goto have_window;
     }
-    tags[n].ti_Tag = WA_Left;        tags[n++].ti_Data = c->wx;
-    tags[n].ti_Tag = WA_Top;         tags[n++].ti_Data = c->wy;
-    tags[n].ti_Tag = WA_Width;       tags[n++].ti_Data = c->ww;
-    tags[n].ti_Tag = WA_Height;      tags[n++].ti_Data = c->wh;
-    tags[n].ti_Tag = WA_Title;       tags[n++].ti_Data = (ULONG)c->w.title;
-    tags[n].ti_Tag = WA_Flags;       tags[n++].ti_Data = c->wflags;
+    if (c->myscreen && scr == c->myscreen && c->own_screen == 2) {
+        /* FULLSCREEN: the whole screen, no borders, behind everything */
+        tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = 0;
+        tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = 0;
+        tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = scr->Width;
+        tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = scr->Height;
+        tags[n].ti_Tag = WA_Flags;   tags[n++].ti_Data = WFLG_BACKDROP | WFLG_BORDERLESS | WFLG_ACTIVATE |
+                                                           WFLG_SMART_REFRESH;
+        /* no window title (it would draw a title bar over the text): the
+         * screen's title bar, shown with the menus, says it */
+        tags[n].ti_Tag = WA_ScreenTitle; tags[n++].ti_Data = (ULONG)c->w.title;
+        c->w.title_on_screen = 1;
+    } else {
+        c->w.title_on_screen = 0;
+        tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = c->wx;
+        tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = c->wy;
+        tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = c->ww;
+        tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = c->wh;
+        tags[n].ti_Tag = WA_Flags;   tags[n++].ti_Data = c->wflags;
+        tags[n].ti_Tag = WA_Title;   tags[n++].ti_Data = (ULONG)c->w.title;
+    }
     tags[n].ti_Tag = WA_IDCMP;       tags[n++].ti_Data = IDCMP_RAWKEY | IDCMP_NEWSIZE |
         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE |
         IDCMP_EXTENDEDMOUSE | IDCMP_ACTIVEWINDOW | IDCMP_INACTIVEWINDOW | IDCMP_MENUPICK;
@@ -1814,6 +2014,7 @@ static void close_window(con *c)
         UnlockPubScreen(0, c->locked);
         c->locked = 0;
     }
+    own_screen_close(c); /* its screen goes with it */
 }
 
 /* ---- output ---------------------------------------------------------------- */
@@ -4702,6 +4903,7 @@ static LONG handler_main(void)
             wait |= 1UL << c->watch_port->mp_SigBit;
         if (c->sel_port)
             wait |= 1UL << c->sel_port->mp_SigBit;
+        own_screen_retry(c); /* an AUTO window's screen a visitor kept open */
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */
@@ -4755,9 +4957,18 @@ static LONG handler_main(void)
             UnlockPubScreen(0, c->locked);
             c->locked = 0;
         }
+        own_screen_close(c);
     } else {
         vtwin_render(&c->w);
         close_window(c);
+    }
+    while (own_screen_retry(c)) {
+        /* our screen still has another program's window on it: the
+         * process stays until that closes (DOS sends it nothing more: a
+         * new Open starts a new process) */
+        int f;
+        for (f = 0; f < 25; f++)
+            WaitTOF();
     }
     if (c->tab_port && !c->is_tab) {
         RemPort(c->tab_port);

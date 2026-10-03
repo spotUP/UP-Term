@@ -60,6 +60,9 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     prefs_defaults(f);
     pc_copy(f->font, upconf_str(c, p, "font", ""), sizeof(f->font));
     pc_copy(f->fallback, upconf_str(c, p, "font-fallback", ""), sizeof(f->fallback));
+    pc_copy(f->screen, upconf_str(c, p, "screen", ""), sizeof(f->screen));
+    pc_copy(f->screenmode, upconf_str(c, p, "screen-mode", ""), sizeof(f->screenmode));
+    pc_copy(f->screendepth, upconf_str(c, p, "screen-depth", ""), sizeof(f->screendepth));
     pc_copy(f->sb, upconf_str(c, p, "scrollback", ""), sizeof(f->sb));
     pc_copy(f->curcol, upconf_str(c, p, "cursor-color", ""), sizeof(f->curcol));
     pc_copy(f->fg, upconf_str(c, p, "fg", ""), sizeof(f->fg));
@@ -197,6 +200,12 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
         upconf_set(w, p, "font", f->font);
     if (f->fallback[0])
         upconf_set(w, p, "font-fallback", f->fallback);
+    if (f->screen[0])
+        upconf_set(w, p, "screen", f->screen);
+    if (f->screenmode[0])
+        upconf_set(w, p, "screen-mode", f->screenmode);
+    if (f->screendepth[0])
+        upconf_set(w, p, "screen-depth", f->screendepth);
     if (f->sb[0])
         upconf_set(w, p, "scrollback", f->sb);
     if (f->curcol[0])

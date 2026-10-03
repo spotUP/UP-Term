@@ -87,6 +87,7 @@ typedef struct vtwin {
     int nodraw_resize;           /* CONFLAG_NODRAW_ON_NEWSIZE: a resize clears, nothing redrawn */
     int no_clipboard;            /* no RAmiga-C/V copy and paste (only SNIPMAP units have them) */
     int foreign_window;          /* not ours: never change its flags (ReportMouse) */
+    int title_on_screen;         /* the title goes to the screen's title bar (FULLSCREEN) */
     /* live */
     struct Window *win;
     struct TextFont *font;
@@ -134,6 +135,8 @@ void vtwin_show(vtwin *w, int on);
 /* The tab bar's height changed: the text area moves, the grid follows. */
 void vtwin_set_inset(vtwin *w, WORD top);
 void vtwin_cleanup(vtwin *w);
+/* the title (w->title) to the window's title bar, or the screen's */
+void vtwin_show_title(vtwin *w);
 /* the frame clock's signal (0 without one) */
 ULONG vtwin_sigmask(const vtwin *w);
 /* call after a Wait() that may have been the frame clock */

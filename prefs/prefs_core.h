@@ -25,6 +25,9 @@
 typedef struct prefs_fields {
     char font[UC_MAX_VALUE];
     char fallback[UC_MAX_VALUE]; /* font-fallback: outline font for glyphs the font lacks */
+    char screen[UC_MAX_VALUE];   /* screen: workbench | own | fullscreen ("" = workbench) */
+    char screenmode[UC_MAX_VALUE];  /* screen-mode: 0xID ("" = the Workbench's) */
+    char screendepth[UC_MAX_VALUE]; /* screen-depth: n ("" = 4, or 8 on a card) */
     char sb[UC_MAX_VALUE];
     char curcol[UC_MAX_VALUE];
     char fg[UC_MAX_VALUE];

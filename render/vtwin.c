@@ -62,6 +62,19 @@ static void cb_bell(void *u)
     }
 }
 
+/* The title where it shows: the window's title bar, or -- a borderless
+ * full-screen window has none -- the screen's (a title given to such a
+ * window makes Intuition draw a title bar over the text). */
+void vtwin_show_title(vtwin *w)
+{
+    if (!w->win)
+        return;
+    if (w->title_on_screen)
+        SetWindowTitles(w->win, (UBYTE *)~0, (UBYTE *)w->title);
+    else
+        SetWindowTitles(w->win, (UBYTE *)w->title, (UBYTE *)~0);
+}
+
 static void cb_title(void *u, const char *s)
 {
     vtwin *w = (vtwin *)u;
@@ -81,7 +94,7 @@ static void cb_title(void *u, const char *s)
     }
     w->title[i] = 0;
     if (w->win && !w->r.off)
-        SetWindowTitles(w->win, (UBYTE *)w->title, (UBYTE *)~0);
+        vtwin_show_title(w);
     if (w->host->titled)
         w->host->titled(w->user);
 }
@@ -500,7 +513,7 @@ void vtwin_show(vtwin *w, int on)
         vt_resize(w->t, w->r.cols, w->r.rows); /* the window changed while we were away */
         w->host->resized(w->user);
     }
-    SetWindowTitles(w->win, (UBYTE *)w->title, (UBYTE *)~0);
+    vtwin_show_title(w);
     EraseRect(w->r.rp, w->win->BorderLeft, w->win->BorderTop + w->inset_top,
               w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
     vr_redraw(&w->r);

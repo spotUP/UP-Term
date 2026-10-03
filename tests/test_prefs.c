@@ -242,7 +242,8 @@ static void stage_cases(void)
 {
     static char buf[UC_MAX_FILE + 1];
     static const char file[] =
-        "[profile default]\nfont = TOPAZ 8.8.font\nfont-fallback = Symbols Nerd Font Mono\nbell = none\n"
+        "[profile default]\nfont = TOPAZ 8.8.font\nfont-fallback = Symbols Nerd Font Mono\n"
+        "screen = fullscreen\nscreen-mode = 0x29004\nscreen-depth = 4\nbell = none\n"
         "[profile vim]\nfg = C0C0C0\n";
     prefs_fields f, g;
     long len;
@@ -274,6 +275,9 @@ static void stage_cases(void)
     CHECK_STR(g.font, "TOPAZ 8.8.font");
     /* the fallback font survives a save (the stage writes the profile afresh) */
     CHECK_STR(g.fallback, "Symbols Nerd Font Mono");
+    CHECK_STR(g.screen, "fullscreen");      /* the screen keys survive a save too */
+    CHECK_STR(g.screenmode, "0x29004");
+    CHECK_STR(g.screendepth, "4");
     CHECK_INT(g.cursor, PREFS_CURSOR_BAR);
     CHECK_INT(g.blink, 1);
     CHECK_INT(g.completion, PREFS_COMPLETE_KINGCON);
