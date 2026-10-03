@@ -8,7 +8,7 @@ from an outline font (plan thoughts/shared/plans/2026-10-03-outline-fonts.md).
      system disk is not touched), the font installed by ttf.library's own
      ttfinstall into RAM:.
   2. The same UTF-8 line typed out in an XCON:/XTERM window twice: with a
-     profile naming no fallback font, then with font_fallback naming it.
+     profile naming no fallback font, then with font-fallback naming it.
      The two screenshots differ exactly in the icon cells: eight Nerd Font
      icons drawn as glyphs where the first run drew '?'; a CJK character
      the font lacks and an em dash (Latin-1 stand-in '-') do not change, nor
@@ -121,7 +121,7 @@ def main():
         face = names[0][:-5]
         print('  face:', face)
         w, h, plain, _ = run_line('[profile default]\n')
-        w, h, fancy, secs = run_line('[profile default]\nfont_fallback = %s\n' % face)
+        w, h, fancy, secs = run_line('[profile default]\nfont-fallback = %s\n' % face)
         # the window's text area: 4 pixels in, under an 11-pixel title bar
         # (topaz 8 Workbench). The shell's number differs between the two
         # windows (its banner and prompt): the typed line is the row that

@@ -59,7 +59,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     int i;
     prefs_defaults(f);
     pc_copy(f->font, upconf_str(c, p, "font", ""), sizeof(f->font));
-    pc_copy(f->fallback, upconf_str(c, p, "font_fallback", ""), sizeof(f->fallback));
+    pc_copy(f->fallback, upconf_str(c, p, "font-fallback", ""), sizeof(f->fallback));
     pc_copy(f->sb, upconf_str(c, p, "scrollback", ""), sizeof(f->sb));
     pc_copy(f->curcol, upconf_str(c, p, "cursor-color", ""), sizeof(f->curcol));
     pc_copy(f->fg, upconf_str(c, p, "fg", ""), sizeof(f->fg));
@@ -196,7 +196,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     if (f->font[0])
         upconf_set(w, p, "font", f->font);
     if (f->fallback[0])
-        upconf_set(w, p, "font_fallback", f->fallback);
+        upconf_set(w, p, "font-fallback", f->fallback);
     if (f->sb[0])
         upconf_set(w, p, "scrollback", f->sb);
     if (f->curcol[0])

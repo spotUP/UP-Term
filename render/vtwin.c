@@ -458,7 +458,7 @@ void vtwin_apply_settings(vtwin *w)
     if (!w->t || !w->win)
         return;
     vr_cursor_off(&w->r);
-    outline_sync(w); /* a profile's font_fallback, live */
+    outline_sync(w); /* a profile's font-fallback, live */
     settings(w);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);

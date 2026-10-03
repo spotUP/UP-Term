@@ -242,7 +242,7 @@ static void stage_cases(void)
 {
     static char buf[UC_MAX_FILE + 1];
     static const char file[] =
-        "[profile default]\nfont = TOPAZ 8.8.font\nfont_fallback = Symbols Nerd Font Mono\nbell = none\n"
+        "[profile default]\nfont = TOPAZ 8.8.font\nfont-fallback = Symbols Nerd Font Mono\nbell = none\n"
         "[profile vim]\nfg = C0C0C0\n";
     prefs_fields f, g;
     long len;

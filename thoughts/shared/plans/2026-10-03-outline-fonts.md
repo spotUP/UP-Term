@@ -19,7 +19,7 @@ UP-Term draws as '?'.
   ...). The bitmap font keeps ASCII, Latin-1 (CP437 for IBM fonts), and the drawn box,
   block and DEC line glyphs (they join at any size). No outline font set, or the outline
   font lacks the glyph: today's drawing, unchanged.
-- **The font**: profile key `font_fallback = <name>`, the name of an installed outline font
+- **The font**: profile key `font-fallback = <name>`, the name of an installed outline font
   (FONTS:<name>.otag, as ttf.library's ttfinstall / ttfmanager write it; ".otag" and ".font"
   suffixes accepted). Empty or absent: none. Prefs: a string field under Font.
 - **The engine runs in a worker process** (render/outline.c). The handler may not make DOS
@@ -60,7 +60,7 @@ UP-Term draws as '?'.
 - [x] F1.4 renderer: draw_rows draws outline glyphs (single and double width, bold, lines),
       the right half of a wide outline glyph is not erased, partial damage starting on a right
       half widens left.
-- [x] F1.5 vtwin + handler: `font_fallback` from the profile (apply_profile, profile switch,
+- [x] F1.5 vtwin + handler: `font-fallback` from the profile (apply_profile, profile switch,
       L1 live change), the outline font opened with the window and on a font change.
 - [x] F1.6 Prefs: the Fallback font field (prefs_core + upprefs), host test.
 - [x] F1.7 rig check tools/rig/outline_rig.py: ttf.library 0.8.5.020 + Symbols Nerd Font Mono
@@ -73,7 +73,7 @@ UP-Term draws as '?'.
 
 Owner on the rig: "pass".
 
-8 of 8. Host: otag 11 checks, glyph 295, prefs 83 (font_fallback survives a Prefs save: the
+8 of 8. Host: otag 11 checks, glyph 295, prefs 83 (font-fallback survives a Prefs save: the
 stage rewrites a profile from its fields, so a key without a field was dropped -- the test
 fails with the field's write taken out). Rig (3.1, FS-UAE, ttf.library 0.8.5.020, Symbols
 Nerd Font Mono installed by ttfinstall into RAM:, LIBS:/FONTS: assigned ADD):

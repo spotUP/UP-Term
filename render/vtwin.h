@@ -82,7 +82,7 @@ typedef struct vtwin {
     int wheel_scroll;            /* the wheel moves through the scrollback */
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
     char fallback[64];           /* outline font for glyphs the bitmap font lacks
-                                  * (font_fallback; FONTS:<name>.otag), "" none */
+                                  * (font-fallback; FONTS:<name>.otag), "" none */
     /* owner switches, 0 for XCON: (a console.device unit sets them) */
     int nodraw_resize;           /* CONFLAG_NODRAW_ON_NEWSIZE: a resize clears, nothing redrawn */
     int no_clipboard;            /* no RAmiga-C/V copy and paste (only SNIPMAP units have them) */
