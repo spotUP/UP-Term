@@ -26,7 +26,8 @@ enum {
     SLASH_THEME,             /* arg: a theme's name; empty: the requester */
     SLASH_PROFILE,           /* arg: a profile's name */
     SLASH_FIND,              /* arg: the text */
-    SLASH_HELP               /* arg: a command's name, or empty for all */
+    SLASH_HELP,              /* arg: a command's name, or empty for all */
+    SLASH_SIZE               /* arg: COLSxROWS */
 };
 
 typedef struct slash_value {

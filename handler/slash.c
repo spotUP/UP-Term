@@ -30,6 +30,12 @@ static const slash_value v_kccache[] = {
     { "on", MENU_KC_CACHE, 1 }, { "off", MENU_KC_CACHE, 0 }, { "reset", MENU_KC_RESET, 1 },
     { "purge", MENU_KC_PURGE, 1 }, { 0, 0, 0 }
 };
+static const slash_value v_clear[] = {
+    { "screen", MENU_CLEAR_SCREEN, 1 }, { "scrollback", MENU_CLEAR_SB, 1 }, { 0, 0, 0 }
+};
+static const slash_value v_fontsize[] = {
+    { "bigger", MENU_FONT_BIGGER, 1 }, { "smaller", MENU_FONT_SMALLER, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_tab[] = {
     { "new", MENU_TAB_NEW, 1 }, { "next", MENU_TAB_NEXT, 1 }, { "previous", MENU_TAB_PREV, 1 },
     { "close", MENU_TAB_CLOSE, 1 }, { 0, 0, 0 }
@@ -37,9 +43,11 @@ static const slash_value v_tab[] = {
 
 /* Alphabetical: the help lists it in this order, completion offers it so. */
 static const slash_def table[] = {
+    { "about", SL_ACTION, MENU_ABOUT, 0, 0, "", "the build" },
     { "bell", SL_CHOICE, 0, 0, v_bell, "none | beep | visual", "the bell" },
     { "bg", SL_ARG, SLASH_BG, 1, 0, "RRGGBB | none", "the background colour" },
     { "bold-bright", SL_CHOICE, 0, 0, v_bold, "on | off", "bold text takes the bright colours (xterm)" },
+    { "clear", SL_CHOICE, 0, 0, v_clear, "screen | scrollback", "clear the screen or the scrollback" },
     { "completion", SL_CHOICE, 0, 0, v_completion, "unix | kingcon", "the Tab key's completion style" },
     { "copy", SL_ACTION, MENU_COPY, 0, 0, "", "copy the selection to the clipboard" },
     { "copy-on-select", SL_CHOICE, 0, 0, v_copy, "on | off", "a drag ends with the text on the clipboard" },
@@ -51,6 +59,7 @@ static const slash_def table[] = {
     { "font", SL_ARG, SLASH_FONT, 0, 0, "[NAME SIZE]", "the font (no name: the requester)" },
     { "font-fallback", SL_ARG, SLASH_FALLBACK, 1, 0, "NAME | none",
       "an outline font for what the font cannot show" },
+    { "font-size", SL_CHOICE, 0, 0, v_fontsize, "bigger | smaller", "the font's next designed size" },
     { "help", SL_ARG, SLASH_HELP, 0, 0, "[COMMAND]", "these commands" },
     { "kingcon-cache", SL_CHOICE, 0, 0, v_kccache, "on | off | reset | purge", "KingCON's directory cache" },
     { "kingcon-info", SL_CHOICE, 0, 0, v_kcinfo, "show | hide", "KingCON lists .info files" },
@@ -59,10 +68,13 @@ static const slash_def table[] = {
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
     { "profile", SL_ARG, SLASH_PROFILE, 1, 0, "NAME", "switch to a profile" },
+    { "reset", SL_ACTION, MENU_RESET, 0, 0, "", "reset the terminal (RIS)" },
     { "save", SL_ACTION, MENU_SET_SAVE, 0, 0, "", "save the settings to the profile" },
     { "scrollback", SL_ARG, SLASH_SCROLLBACK, 1, 0, "LINES | none", "the lines kept" },
+    { "select-all", SL_ACTION, MENU_SELECT_ALL, 0, 0, "", "select the scrollback and the screen" },
     { "selection-bg", SL_ARG, SLASH_SEL_BG, 1, 0, "RRGGBB | none", "the selection's background" },
     { "selection-fg", SL_ARG, SLASH_SEL_FG, 1, 0, "RRGGBB | none", "the selected text's colour" },
+    { "size", SL_ARG, SLASH_SIZE, 1, 0, "COLSxROWS", "the window sized to the grid (80x24)" },
     { "tab", SL_CHOICE, 0, 0, v_tab, "new | next | previous | close", "tabs" },
     { "theme", SL_ARG, SLASH_THEME, 0, 0, "[NAME]", "a colour theme (no name: the requester)" },
     { "wheel", SL_CHOICE, 0, 0, v_wheel, "scroll | ignore", "the mouse wheel moves the scrollback" }

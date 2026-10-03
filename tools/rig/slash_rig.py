@@ -49,16 +49,25 @@ def t(s, enter=True, wait=1.5):
 
 
 def menu_state():
-    """{(menu, item, sub): 'checked' | 'uncheck' | ...} for the active window"""
-    out = {}
+    """{(menu title, item, sub item): 'checked' | 'uncheck' | ...} for the
+    active window, by the names shown (the menus' places move as menus come)"""
+    out, titles, items = {}, {}, {}
     for l in ami.req(0x0F).decode('latin-1').splitlines():
         f = l.split()
-        if l.startswith('I ') and len(f) > 5:
-            out[(int(f[1]), int(f[2]), f[3])] = f[5]
+        if l.startswith('M ') and len(f) > 2:
+            titles[f[1]] = l.split('"')[-2]
+        elif l.startswith('I ') and len(f) > 5:
+            name = l.split('"')[-2]
+            if f[3] == '-':
+                items[(f[1], f[2])] = name
+                out[(titles.get(f[1]), name, None)] = f[5]
+            else:
+                out[(titles.get(f[1]), items.get((f[1], f[2])), name)] = f[5]
     return out
 
 
-CURSOR = {'block': (1, 3, '0'), 'underline': (1, 3, '1'), 'bar': (1, 3, '2'), 'blinking': (1, 3, '4')}
+CURSOR = {'block': ('Settings', 'Cursor', 'Block'), 'underline': ('Settings', 'Cursor', 'Underline'),
+          'bar': ('Settings', 'Cursor', 'Bar'), 'blinking': ('Settings', 'Cursor', 'Blinking')}
 
 
 def checked(name):

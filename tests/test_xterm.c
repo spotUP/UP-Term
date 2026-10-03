@@ -592,6 +592,22 @@ static void repeat_last_character(void)
 
 /* Settings > Scrollback: a new size keeps the newest lines it can hold,
  * the scrollback goes on filling at the new size, and none means none */
+/* Edit > Clear scrollback: the lines above go, the screen stays */
+static void clear_scrollback_keeps_the_screen(void)
+{
+    vt_term *t = h_new(8, 2, VT_XTERM);
+    h_put(t, "l1\r\nl2\r\nl3\r\nl4");
+    CHECK_INT(vt_scrollback_lines(t), 2);
+    vt_clear_scrollback(t);
+    CHECK_INT(vt_scrollback_lines(t), 0);
+    CHECK_STR(h_row(t, 0), "l3");
+    CHECK_STR(h_row(t, 1), "l4");
+    h_put(t, "\r\nl5");           /* and fills again */
+    CHECK_INT(vt_scrollback_lines(t), 1);
+    CHECK_STR(h_row(t, -1), "l3");
+    vt_free(t);
+}
+
 static void scrollback_size_changes_live(void)
 {
     vt_term *t = h_new(8, 2, VT_XTERM); /* 100 lines */
@@ -998,6 +1014,7 @@ void suite_xterm(void)
     save_restore_cursor_keeps_attributes();
     repeat_last_character();
     find_scans_scrollback_then_grid_oldest_first();
+    clear_scrollback_keeps_the_screen();
     scrollback_size_changes_live();
     find_reports_what_is_there_to_find_and_nothing_else();
     find_takes_a_query_that_crosses_a_wrap();

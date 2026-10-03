@@ -130,14 +130,21 @@ COMMANDS (/cursor bar)
 
 MENU
   An XCON: window has a menu (right mouse button, on the screen's title
-  bar): UP-Term > Copy, Paste, Find..., Preferences... (opens UP-Term
-  Prefs), Close window. Settings > Cursor (Block, Underline, Bar,
-  Blinking), Bell (None, Beep, Visual), Bold is bright, Meta key (Left
-  Amiga, Alt), Copy on select, Wheel scrolls, Tab completion (Unix,
-  KingCON), KingCON style: the same settings as UP-Term Prefs, for this
-  window and at once (Prefs keeps them for the profile). With KingCON
-  completion a Complete menu follows. The right button therefore opens the
-  menu rather than reaching a program that asked for mouse reports.
+  bar):
+    UP-Term   New tab, Next tab, Previous tab, Close tab, Preferences...
+              (opens UP-Term Prefs), About UP-Term..., Close window
+    Edit      Copy, Paste, Select all, Find..., Find next, Clear screen,
+              Clear scrollback, Reset terminal
+    View      Bigger font, Smaller font (the font's next size on disk),
+              80 x 24, 132 x 43 (the window sized to that grid)
+    Settings  Font..., Theme..., Cursor, Bell, Scrollback, Bold is
+              bright, Meta key, Copy on select, Wheel scrolls, Tab
+              completion, KingCON style, Profile, Save settings to profile
+  Settings are the same as UP-Term Prefs, for this window and at once
+  (Prefs keeps them for the profile). With KingCON completion a Complete
+  menu follows. Every item is also a command (see COMMANDS). The right
+  button therefore opens the menu rather than reaching a program that
+  asked for mouse reports.
 
 KEYS
   Mouse drag            select (Shift+drag when a program uses the mouse)

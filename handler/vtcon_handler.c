@@ -1052,18 +1052,32 @@ static void close_gadget(con *c);
  * as MENUPICK, which picks the same actions. */
 static const struct NewMenu menu_def[] = {
     { NM_TITLE, (STRPTR)"UP-Term", 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Copy", (STRPTR)"C", 0, 0, (APTR)MENU_COPY },
-    { NM_ITEM, (STRPTR)"Paste", (STRPTR)"V", 0, 0, (APTR)MENU_PASTE },
-    { NM_ITEM, (STRPTR)"Find...", (STRPTR)"F", 0, 0, (APTR)MENU_FIND },
-    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"New tab", (STRPTR)"T", 0, 0, (APTR)MENU_TAB_NEW },
     { NM_ITEM, (STRPTR)"Next tab", (STRPTR)".", 0, 0, (APTR)MENU_TAB_NEXT },
     { NM_ITEM, (STRPTR)"Previous tab", (STRPTR)",", 0, 0, (APTR)MENU_TAB_PREV },
     { NM_ITEM, (STRPTR)"Close tab", 0, 0, 0, (APTR)MENU_TAB_CLOSE },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
+    { NM_ITEM, (STRPTR)"About UP-Term...", 0, 0, 0, (APTR)MENU_ABOUT },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Close window", 0, 0, 0, (APTR)MENU_CLOSE },
+    { NM_TITLE, (STRPTR)"Edit", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Copy", (STRPTR)"C", 0, 0, (APTR)MENU_COPY },
+    { NM_ITEM, (STRPTR)"Paste", (STRPTR)"V", 0, 0, (APTR)MENU_PASTE },
+    { NM_ITEM, (STRPTR)"Select all", (STRPTR)"A", 0, 0, (APTR)MENU_SELECT_ALL },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Find...", (STRPTR)"F", 0, 0, (APTR)MENU_FIND },
+    { NM_ITEM, (STRPTR)"Find next", (STRPTR)"G", 0, 0, (APTR)MENU_FIND_NEXT },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Clear screen", (STRPTR)"K", 0, 0, (APTR)MENU_CLEAR_SCREEN },
+    { NM_ITEM, (STRPTR)"Clear scrollback", 0, 0, 0, (APTR)MENU_CLEAR_SB },
+    { NM_ITEM, (STRPTR)"Reset terminal", 0, 0, 0, (APTR)MENU_RESET },
+    { NM_TITLE, (STRPTR)"View", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Bigger font", (STRPTR)"+", 0, 0, (APTR)MENU_FONT_BIGGER },
+    { NM_ITEM, (STRPTR)"Smaller font", (STRPTR)"-", 0, 0, (APTR)MENU_FONT_SMALLER },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"80 x 24", 0, 0, 0, (APTR)MENU_SIZE_80X24 },
+    { NM_ITEM, (STRPTR)"132 x 43", 0, 0, 0, (APTR)MENU_SIZE_132X43 },
     { NM_END, 0, 0, 0, 0, 0 }
 };
 
@@ -1573,6 +1587,35 @@ static int menu_setting(con *c, LONG id, int on)
     return 1;
 }
 
+/* Edit > Clear screen: in the Shell's line, as Ctrl-L does there (the
+ * prompt and the line drawn again at the top); for a program, the screen
+ * cleared and the cursor home. */
+static void clear_screen(con *c)
+{
+    static const vt_u8 ff = 0x0C;
+    static const vt_u8 home_clear[] = "\033[H\033[2J";
+    if (!c->raw && !tty_active(c)) {
+        cooked_key(c, &ff, 1, 0, 0);
+        return;
+    }
+    vtwin_write(&c->w, home_clear, sizeof(home_clear) - 1);
+}
+
+/* UP-Term > About: the build, in a requester on the window's screen */
+static void about(con *c)
+{
+    struct EasyStruct es;
+    es.es_StructSize = sizeof(es);
+    es.es_Flags = 0;
+    es.es_Title = (UBYTE *)"About UP-Term";
+    es.es_TextFormat = (UBYTE *)"UP-Term\n\nA terminal for AmigaOS 3: xterm, Amiga and PC-ANSI,\n"
+                                "tabs, profiles, outline fonts, slash commands.\n\nBuild %s\n"
+                                "Type /help in a window for the commands.";
+    es.es_GadgetFormat = (UBYTE *)"OK";
+    if (c->w.win)
+        EasyRequest(c->w.win, &es, 0, (ULONG)STR(VTCON_BUILD));
+}
+
 /* One menu item's action by its id, from a pick or a typed /command
  * (handler/slash.c names the same ids). 0: not an item; 1: done; 2: done,
  * a checkmark may have moved (the caller builds the strip again); 3: done,
@@ -1596,6 +1639,23 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_SET_FONT: font_ask(c); return 1;
     case MENU_SET_THEME: theme_ask(c, ""); return 1;
     case MENU_SET_SAVE: save_ask(c); return 1;
+    case MENU_ABOUT: about(c); return 1;
+    case MENU_SELECT_ALL: vtwin_select_all(&c->w); return 1;
+    case MENU_FIND_NEXT:
+        if (!vtwin_find(&c->w, 0))
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no more, or no query yet */
+        return 1;
+    case MENU_CLEAR_SCREEN: clear_screen(c); return 1;
+    case MENU_CLEAR_SB: vtwin_clear_scrollback(&c->w); return 1;
+    case MENU_RESET: vtwin_reset(&c->w); return 1;
+    case MENU_FONT_BIGGER: case MENU_FONT_SMALLER:
+        if (!vtwin_font_step(&c->w, id == MENU_FONT_BIGGER ? 1 : -1))
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no designed size that way */
+        return 1;
+    case MENU_SIZE_80X24: case MENU_SIZE_132X43:
+        if (!vtwin_set_size(&c->w, id == MENU_SIZE_80X24 ? 80 : 132, id == MENU_SIZE_80X24 ? 24 : 43))
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the screen is too small */
+        return 1;
     default:
         break;
     }
@@ -2538,6 +2598,24 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap)
         }
         cmd.id = MENU_SET_PROFILE0 + k;
         break;
+    }
+    case SLASH_SIZE: {
+        long cols = 0, rows = 0;
+        const char *p = cmd.arg;
+        for (; *p >= '0' && *p <= '9'; p++)
+            cols = cols * 10 + (*p - '0');
+        if (*p == 'x' || *p == 'X')
+            for (p++; *p >= '0' && *p <= '9'; p++)
+                rows = rows * 10 + (*p - '0');
+        if (*p || cols < 2 || rows < 1 || cols > 400 || rows > 200) {
+            cat3(ans, cap, name, ": COLSxROWS, e.g. 80x24", "\n");
+            return 2;
+        }
+        if (!vtwin_set_size(&c->w, (int)cols, (int)rows)) {
+            cat3(ans, cap, name, ": the screen is too small for it", "\n");
+            return 2;
+        }
+        return 1;
     }
     case SLASH_FIND:
         if (!vtwin_find(&c->w, cmd.arg[0] ? cmd.arg : 0)) {
@@ -4458,7 +4536,7 @@ static LONG handler_main(void)
     DOSBase = (struct DosLibrary *)OpenLibrary((STRPTR)"dos.library", 39);
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
-    DiskfontBase = OpenLibrary((STRPTR)"diskfont.library", 36);
+    /* diskfont.library: opened by the worker that loads a font from disk (render/vtwin.c disk_font) */
     GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39);
     LayersBase = OpenLibrary((STRPTR)"layers.library", 39);
     c->timer_port = CreateMsgPort();
@@ -4633,7 +4711,6 @@ static LONG handler_main(void)
         DeleteMsgPort(c->timer_port);
     if (ConsoleDevice)
         CloseDevice((struct IORequest *)&c->lib_io); /* CONU_LIBRARY must be closed too (matrix 6.2) */
-    CloseLibrary(DiskfontBase);
     if (GadToolsBase)
         CloseLibrary(GadToolsBase);
     CloseLibrary(LayersBase);

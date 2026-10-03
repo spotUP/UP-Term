@@ -5,6 +5,9 @@
  *   UPTerm COMMAND/F
  *   UPTerm help          the list
  *
+ * The command goes to the window of the output, or, when the output is
+ * redirected (">NIL:", a file), to the window of the input.
+ *
  * Return code 0 done, 10 refused (the answer says why), 20 not an UP-Term
  * window or not a command. No ixemul, no C library beyond vbcc's startup. */
 #include <string.h>
@@ -26,6 +29,7 @@ int main(void)
     struct FileHandle *fh;
     BPTR out = Output();
     LONG r;
+    int i;
     const char *a;
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"UPTerm");
@@ -38,12 +42,18 @@ int main(void)
     strncpy(line + 1, a, sizeof(line) - 2);
     line[sizeof(line) - 1] = 0;
     FreeArgs(rd);
-    fh = out ? (struct FileHandle *)BADDR(out) : 0;
-    if (!fh || !fh->fh_Type) {
-        PutStr((STRPTR)"UPTerm: the output is not a window\n");
-        return RETURN_FAIL;
+    /* the window of the output; redirected ("UPTerm find x >NIL:"), the
+     * window of the input -- the answer still goes to the output */
+    r = 0;
+    for (i = 0; i < 2 && !r; i++) {
+        BPTR h = i ? Input() : out;
+        fh = h ? (struct FileHandle *)BADDR(h) : 0;
+        if (!fh || !fh->fh_Type)
+            continue;
+        r = DoPkt(fh->fh_Type, ACTION_VTCON_COMMAND, fh->fh_Arg1, (LONG)line, (LONG)ans, sizeof(ans), 0);
+        if (!r && IoErr() != ERROR_ACTION_NOT_KNOWN && IoErr() != ERROR_REQUIRED_ARG_MISSING)
+            break; /* an UP-Term window that said no: not a command */
     }
-    r = DoPkt(fh->fh_Type, ACTION_VTCON_COMMAND, fh->fh_Arg1, (LONG)line, (LONG)ans, sizeof(ans), 0);
     if (r == 0) {
         if (IoErr() == ERROR_ACTION_NOT_KNOWN)
             PutStr((STRPTR)"UPTerm: not an UP-Term window\n");

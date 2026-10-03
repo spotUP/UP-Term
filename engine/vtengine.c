@@ -1675,13 +1675,8 @@ static int csi_common(vt_term *t, vt_u8 final)
             if (t->scr == t->pri)
                 ovf_drop(t);
             erase_rows(t, 0, t->rows);
-            if (m == 3 && t->pers == VT_XTERM) {
-                while (t->sb_len) {
-                    t->sb_head = (t->sb_head + t->sb_cap - 1) % t->sb_cap;
-                    VT_FREE(t->sb[t->sb_head]);
-                    t->sb_len--;
-                }
-            }
+            if (m == 3 && t->pers == VT_XTERM)
+                vt_clear_scrollback(t);
             if (t->pers == VT_PCANSI) { /* ANSI.SYS homes the cursor */
                 t->cx = t->cy = 0;
             }
@@ -2922,6 +2917,15 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->scr = t->pri;
     vt_reset(t);
     return t;
+}
+
+void vt_clear_scrollback(vt_term *t)
+{
+    while (t->sb_len) {
+        t->sb_head = (t->sb_head + t->sb_cap - 1) % t->sb_cap;
+        VT_FREE(t->sb[t->sb_head]);
+        t->sb_len--;
+    }
 }
 
 int vt_set_scrollback(vt_term *t, int lines)

@@ -4,6 +4,8 @@
 #include "vtwin.h"
 #include <string.h>
 #include <exec/memory.h>
+#include <dos/dosextens.h>
+#include <dos/dostags.h>
 #include <devices/inputevent.h>
 #include <devices/console.h>
 #include <graphics/gfxbase.h>
@@ -12,11 +14,11 @@
 #include <proto/graphics.h>
 #include <proto/intuition.h>
 #include <proto/diskfont.h>
+#include <proto/dos.h>
 #include <proto/console.h>
 #include "../handler/clip.h"
 
 extern struct GfxBase *GfxBase;
-extern struct Library *DiskfontBase;
 /* RawKeyConvert is a macro that calls into the console device at
  * CONSOLE_BASE_NAME (ConsoleDevice by default), so it needs the base here.
  * Both programs that link vtwin.c define it: the handler from its console
@@ -257,7 +259,63 @@ void vtwin_tick(vtwin *w)
 
 /* A fixed-width font by name ("topaz" or "topaz.font") and size; 0 if it
  * cannot be opened or is proportional. */
-static struct TextFont *open_named(const char *fontname, WORD fontsize)
+/* OpenDiskFont in a process of its own: diskfont reads FONTS: (DOS calls),
+ * and a handler's own DOS call shares its process port with the packets
+ * DOS sends it, so the reply goes astray -- the call failed and every font
+ * came back as the nearest one in memory (rig 2026-10-03: /font topaz 11
+ * and View > Bigger font drew topaz 8). The worker opens the font and
+ * ends; the font is a system object, the caller closes it. */
+struct font_job {
+    struct Message msg;
+    struct TextAttr ta;
+    char name[48];
+    struct TextFont *font;
+};
+
+static void font_worker(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    struct font_job *j;
+    struct Library *DiskfontBase;
+    WaitPort(&me->pr_MsgPort);
+    j = (struct font_job *)GetMsg(&me->pr_MsgPort);
+    me->pr_WindowPtr = (APTR)-1; /* a missing font is an answer, not a requester */
+    if ((DiskfontBase = OpenLibrary((STRPTR)"diskfont.library", 36)) != 0) {
+        j->font = OpenDiskFont(&j->ta);
+        CloseLibrary(DiskfontBase);
+    }
+    Forbid(); /* the caller frees j: end before it can run on */
+    ReplyMsg(&j->msg);
+}
+
+static struct TextFont *disk_font(const struct TextAttr *ta)
+{
+    struct font_job j;
+    struct MsgPort *reply = CreateMsgPort();
+    struct Process *p;
+    if (!reply)
+        return 0;
+    memset(&j, 0, sizeof(j));
+    strncpy(j.name, (const char *)ta->ta_Name, sizeof(j.name) - 1);
+    j.ta = *ta;
+    j.ta.ta_Name = (STRPTR)j.name;
+    j.msg.mn_ReplyPort = reply;
+    j.msg.mn_Length = sizeof(j);
+    p = CreateNewProcTags(NP_Entry, (ULONG)font_worker, NP_Name, (ULONG)"UP-Term font", NP_StackSize, 8192,
+                          TAG_DONE);
+    if (p) {
+        PutMsg(&p->pr_MsgPort, &j.msg);
+        WaitPort(reply);
+        GetMsg(reply);
+    }
+    DeleteMsgPort(reply);
+    return j.font;
+}
+
+/* A font by name ("topaz" or "topaz.font") and size, fixed width only:
+ * from memory, else from disk. designed: only a size the font has on disk
+ * (diskfont scales one otherwise; FPF_DESIGNED in the request says no). */
+static struct TextFont *open_font(const char *fontname, WORD fontsize, int designed)
 {
     struct TextFont *f = 0;
     if (fontname[0]) {
@@ -273,19 +331,24 @@ static struct TextFont *open_named(const char *fontname, WORD fontsize)
         ta.ta_Name = (STRPTR)name;
         ta.ta_YSize = (UWORD)(fontsize ? fontsize : 8);
         ta.ta_Style = 0;
-        ta.ta_Flags = 0;
+        ta.ta_Flags = designed ? FPF_DESIGNED : 0;
         f = OpenFont(&ta);
-        if ((!f || f->tf_YSize != ta.ta_YSize) && DiskfontBase) {
+        if (!f || f->tf_YSize != ta.ta_YSize) {
             if (f)
                 CloseFont(f);
-            f = OpenDiskFont(&ta);
+            f = disk_font(&ta);
         }
-        if (f && (f->tf_Flags & FPF_PROPORTIONAL)) {
+        if (f && ((f->tf_Flags & FPF_PROPORTIONAL) || (designed && f->tf_YSize != ta.ta_YSize))) {
             CloseFont(f);
             f = 0;
         }
     }
     return f;
+}
+
+static struct TextFont *open_named(const char *fontname, WORD fontsize)
+{
+    return open_font(fontname, fontsize, 0);
 }
 
 struct TextFont *vtwin_open_font(vtwin *w)
@@ -927,6 +990,72 @@ void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my)
  * match in the scrollback puts the line on the last row of the window so
  * what follows it is readable. Repeating with the same query carries on from
  * the line after the last hit and wraps at the newest line. */
+void vtwin_select_all(vtwin *w)
+{
+    if (!w->t || !w->win)
+        return;
+    /* grid coordinates now: the scrollback is above row 0 */
+    vr_select(&w->r, 1, 0, -vt_scrollback_lines(w->t), vt_cols(w->t) - 1, vt_rows(w->t) - 1);
+}
+
+void vtwin_clear_scrollback(vtwin *w)
+{
+    if (!w->t)
+        return;
+    if (w->r.view)
+        vr_set_view(&w->r, 0); /* the view was in what goes */
+    vr_select(&w->r, 0, 0, 0, 0, 0);
+    vt_clear_scrollback(w->t);
+}
+
+void vtwin_reset(vtwin *w)
+{
+    if (!w->t || !w->win)
+        return;
+    vr_select(&w->r, 0, 0, 0, 0, 0);
+    vt_reset(w->t);
+    vtwin_apply_settings(w); /* the window's own settings again, drawn whole */
+}
+
+/* the next designed (not scaled) size of the window's font up (dir 1) or
+ * down (-1), within 6..64 pixels: 0 when there is none */
+int vtwin_font_step(vtwin *w, int dir)
+{
+    const char *name;
+    WORD size, s;
+    if (!w->t || !w->win || !w->font || w->given_font)
+        return 0;
+    name = w->fontname[0] ? w->fontname : (const char *)w->font->tf_Message.mn_Node.ln_Name;
+    size = w->font->tf_YSize;
+    for (s = (WORD)(size + dir); s >= 6 && s <= 64; s = (WORD)(s + dir)) {
+        struct TextFont *f = open_font(name, s, 1);
+        if (f) {
+            char n[40];
+            CloseFont(f);
+            strncpy(n, name, sizeof(n) - 1);
+            n[sizeof(n) - 1] = 0;
+            return vtwin_set_font(w, n, s);
+        }
+    }
+    return 0;
+}
+
+int vtwin_set_size(vtwin *w, int cols, int rows)
+{
+    struct Window *win = w->win;
+    WORD ww, wh;
+    if (!w->t || !win || cols < 1 || rows < 1)
+        return 0;
+    ww = (WORD)(win->BorderLeft + win->BorderRight + cols * w->r.cw);
+    wh = (WORD)(win->BorderTop + win->BorderBottom + w->inset_top + rows * w->r.ch);
+    if (ww > win->WScreen->Width || wh > win->WScreen->Height)
+        return 0; /* the screen is too small for it */
+    ChangeWindowBox(win, (WORD)(win->LeftEdge + ww > win->WScreen->Width ? win->WScreen->Width - ww : win->LeftEdge),
+                    (WORD)(win->TopEdge + wh > win->WScreen->Height ? win->WScreen->Height - wh : win->TopEdge),
+                    ww, wh);
+    return 1; /* the grid follows on IDCMP_NEWSIZE */
+}
+
 int vtwin_find(vtwin *w, const char *q)
 {
     long row, from;

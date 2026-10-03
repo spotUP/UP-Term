@@ -185,6 +185,8 @@ int      vt_scrollback_lines(const vt_term *t);
 /* A new scrollback size (0: none): the newest lines it can hold stay, the
  * older ones go. 0 when there was no memory for it (nothing changed). */
 int      vt_set_scrollback(vt_term *t, int lines);
+/* Every scrollback line gone (Edit > Clear scrollback; xterm's ED 3). */
+void     vt_clear_scrollback(vt_term *t);
 /* Lines that have scrolled off the top of the primary screen since vt_new:
  * grid row y + vt_lines_scrolled() names a line for good (a selection
  * stays on its text while output scrolls). */

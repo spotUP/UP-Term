@@ -166,6 +166,18 @@ void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my);
  * moved to a hit, 0 when there was none (the view is left alone). The view
  * returns to the live output when the match is already on screen. */
 int vtwin_find(vtwin *w, const char *q);
+/* Edit > Select all: the scrollback and the screen selected. */
+void vtwin_select_all(vtwin *w);
+/* Edit > Clear scrollback: the lines above the screen gone. */
+void vtwin_clear_scrollback(vtwin *w);
+/* Edit > Reset terminal: RIS, then the window's own settings again. */
+void vtwin_reset(vtwin *w);
+/* View > Bigger / Smaller font: the next designed size of the font (dir 1 /
+ * -1); 0 when there is none (nothing changes). */
+int vtwin_font_step(vtwin *w, int dir);
+/* View > 80 x 24 ...: the window sized to cols x rows cells (the grid
+ * follows on the resize); 0 when the screen is too small. */
+int vtwin_set_size(vtwin *w, int cols, int rows);
 /* copy the selection to the clipboard / type the clipboard in: Right Amiga
  * C and V, also for an owner's menu (no-ops without a clipboard) */
 void vtwin_copy(vtwin *w);

@@ -47,6 +47,13 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.id, MENU_KC_PURGE);
     CHECK_INT(parse("/tab previous"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_TAB_PREV);
+    CHECK_INT(parse("/clear scrollback"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_CLEAR_SB);
+    CHECK_INT(parse("/font-size bigger"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_FONT_BIGGER);
+    CHECK_INT(parse("/size 132x43"), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_SIZE);
+    CHECK_STR(cmd.arg, "132x43");
     CHECK_INT(parse("/save"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_SAVE);
 }
