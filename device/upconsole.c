@@ -17,6 +17,7 @@
  *     ViNCEd, ...) is installed -- conflicts refuse, never stack (DD21);
  *   - dos.library is V47 (3.2): its Shell needs the con-handler's medium mode
  *     (SetMode 2), which UP-Term does not have yet (DD20, plan H5.3).
+ * DEVICE ON refuses on 3.2 too: not proven on a real 3.2 yet (ledger T3).
  *
  *   UPConsole DEVICE ON   console.device is UP-Term's (DEVS:up-console.device,
  *                         or FILE <path>) for every unit opened from now on
@@ -334,6 +335,15 @@ static int device_on(const char *file)
     struct Resident *rt;
     BPTR seg;
     int lvo;
+    if (DOSBase->dl_lib.lib_Version >= 47) {
+        /* as CON ON: 3.2's con-handler (47) talks to console.device in ways
+         * never measured on a real 3.2 (only a 3.2 ROM on the rig's 3.1
+         * disk, a hybrid); not switched until that is done (ledger T3) */
+        printf("UPConsole: not switched: this is AmigaOS 3.2 (dos.library %d); UP-Term's console.device\n"
+               "is not proven on 3.2 yet.\n",
+               (int)DOSBase->dl_lib.lib_Version);
+        return RETURN_WARN;
+    }
     if (!st) {
         printf("UPConsole: no memory\n");
         return RETURN_FAIL;
