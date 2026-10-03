@@ -337,6 +337,19 @@ NETWORK
   under the curl licence. Their COPYING files and sources (or where the
   source is) are in the kit's Files/net drawer.
 
+DEMO
+  UPDemo, typed in an UP-Term window (76 x 20 characters or more), shows
+  what the terminal draws: text styles, double-size lines, 256 and 24-bit
+  colours, box drawing, scroll regions, and text-mode demo effects --
+  copper bars, plasma, fire, a rotozoomer, vector cubes, a sine scroller,
+  palette cycling. Space: the next scene, B: back, Q: quit; UPDemo 5
+  starts at scene 5. Your shell comes back as it was.
+  UPDemo BENCH runs every scene for three seconds and prints the frames
+  a second each reached: a benchmark of the terminal on your machine.
+  The full-screen effects need a fast processor (a 68060, a PiStorm, an
+  emulator at full speed); a stock A1200 draws them at about a frame a
+  second.
+
 WASABI (REMOTE DEVELOPMENT)
   For working on this Amiga from a Mac or Linux machine on the same
   network: copy files to it, run commands with their output on the other

@@ -3,7 +3,7 @@
 through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (--os32: AmigaOS 3.2 -- the 3.2.3 ROM
+  rig.py start    boot it in the background (--fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
@@ -122,6 +122,7 @@ RW = "--ro" not in sys.argv
 # --exact: 68020 cycle-exact, no JIT. Emulated time then counts cycles,
 # not host speed: the only way to benchmark on a loaded host (JIT timings
 # swung 10x with the owner's other emulators, 2026-09-29).
+FAST = "--fast" in sys.argv   # the CPU as fast as the host runs it (an accelerator's order of speed, not a model of one)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -154,6 +155,10 @@ def setup():
         # blinking cursor (owner 2026-10-03: "the mouse pointer still blinks")
         "uae_gfxcard_hardware_sprite = true",
         "jit_compiler = %d" % (0 if EXACT else 1),
+        # without this FS-UAE runs the A1200's 68020 at about its real speed
+        # (no JIT on an ARM host): UPDemo BENCH and cellbench measured a
+        # stock machine, 2026-10-04
+        "uae_cpu_speed = %s" % ("max" if FAST else "real"),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
         "hard_drive_0 = %s" % (RIG / ("os32" if OS32 else "sys.hdf")),

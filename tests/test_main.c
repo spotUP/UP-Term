@@ -20,6 +20,7 @@ void suite_zmodem(void);
 void suite_otag(void);
 void suite_slash(void);
 void suite_fontpair(void);
+void suite_updemo(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -41,6 +42,7 @@ static const h_suite suites[] = {
     { "otag", suite_otag },
     { "slash", suite_slash },
     { "fontpair", suite_fontpair },
+    { "updemo", suite_updemo },
     { 0, 0 }
 };
 

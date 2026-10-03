@@ -110,6 +110,8 @@ Copy coreutils/bin SYS:UP-Term/bin ALL CLONE QUIET
 ; coreutils; C:upgetty: a shell on the serial port (see the README)
 Copy sz rz SYS:UP-Term/bin CLONE
 Copy upgetty C:upgetty CLONE
+; UPDemo: the terminal's show-off and benchmark (README, DEMO)
+Copy UPDemo C:UPDemo CLONE
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
 Copy UPTerm C:UPTerm CLONE
 ; The network tools, beside coreutils: BebboSSH 1.45 (bebbossh, bebboscp,
