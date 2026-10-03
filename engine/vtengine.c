@@ -107,6 +107,7 @@ struct vt_term {
     int cp437;                 /* the charset is CP437 (xterm personality) */
     int onlcr;                 /* LF also returns (vt_set_onlcr) */
     int reflow;                /* vt_resize re-wraps wrapped lines (vt_set_reflow) */
+    int tab_end;               /* amiga: the last byte was a TAB that ended at the last column */
     int bold_bright;           /* xterm: SGR 1 takes the bright 8-15 (vt_set_bold_bright) */
     /* reflow: rows a resize pushed off the top of the primary screen, oldest
      * first, all t->cols wide. The next reflow lays them out again with the
@@ -727,9 +728,12 @@ static void tab_forward(vt_term *t, int n)
 {
     while (n-- > 0) {
         int x = t->cx + 1;
-        if (t->pers == VT_AMIGA && t->cx >= t->cols - 1) {
+        if (t->pers == VT_AMIGA && t->cx >= t->cols - 1 && t->tab_end) {
             /* the ROM console: a tab at the last column goes on to the
-             * next line's first tab stop */
+             * next line's first tab stop -- when a tab took the cursor
+             * there; placed there (a CUP past the edge) the first tab
+             * stays (3.2.3 and 3.1: CSI 1;75H TAB TAB in 61 columns ends
+             * at 2;9, in 80 columns too) */
             t->cx = 0;
             index_down(t);
             x = 1;
@@ -737,6 +741,7 @@ static void tab_forward(vt_term *t, int n)
         while (x < row_cols(t, t->cy) - 1 && !t->tabs[x])
             x++;
         t->cx = clampi(x, 0, row_cols(t, t->cy) - 1);
+        t->tab_end = t->cx >= t->cols - 1;
     }
     t->wrap_pending = 0;
 }
@@ -3225,6 +3230,8 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
     long i = 0;
     while (i < len) {
         vt_u8 b = buf[i];
+        if (b != 0x09)
+            t->tab_end = 0; /* only a tab right after a tab keeps it */
         if (b >= 0x20 && b < 0x7F && t->state == S_GROUND && !t->u_need && !t->insert &&
             !t->single_shift && t->charset[t->gl] == 'B' && !t->amiga_msb) {
             long j = i + 1, k;

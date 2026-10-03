@@ -60,6 +60,9 @@
 #include "../prefs/prefs_core.h"
 
 /* rexx/rexxio.h: ARexx PUSH and QUEUE */
+#ifndef ACTION_FORCE
+#define ACTION_FORCE 2001L /* the V47 Shell: a command line into the console's input */
+#endif
 #ifndef ACTION_STACK
 #define ACTION_STACK 2002L
 #define ACTION_QUEUE 2003L
@@ -107,6 +110,7 @@ typedef struct con {
     struct Screen *locked;       /* the public screen we opened on */
     int opens;
     int raw;
+    int medium;                  /* V47 medium mode (SetMode 2): cooked, but TAB reports at once */
     int wait_close;              /* WAIT: keep the window after the last Close */
     int closing;                 /* close gadget clicked */
     int eof;                     /* Ctrl-\ or close gadget in cooked mode */
@@ -2705,6 +2709,37 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
     if (c->kc_cyc && kc_cyc_key(c, b, n, key, mods))
         return;   /* Tab, Shift+Tab, Alt+Tab or Ctrl+S inside a cycle */
     kc_cyc_end(c); /* any other key ends it */
+    if (c->medium) {
+        /* V47 medium mode (SetMode 2, the 3.2 Shell): TAB, Shift+TAB, Up and
+         * Down go to the reader at once as CSI code;length;cursor+1 U and the
+         * line -- codes 12, 13, 2, 3 (measured on 3.2.3 with the ROM
+         * con-handler: "abcd" with the cursor two left gives 12;4;3U abcd).
+         * The Shell answers with ACTION_FORCE (the line it made); it keeps
+         * the history, so Up and Down are its. */
+        int code = key == VT_KEY_TAB ? ((mods & VT_MOD_SHIFT) ? 13 : 12)
+                 : key == VT_KEY_UP && !mods ? 2 : key == VT_KEY_DOWN && !mods ? 3 : 0;
+        if (code) {
+            char rep[24];
+            int n = 0, v[3], i;
+            v[0] = code;
+            v[1] = c->le.len;
+            v[2] = c->le.pos + 1;
+            rep[n++] = (char)0x9b;
+            for (i = 0; i < 3; i++) {
+                char d[8];
+                int m = 0, x = v[i];
+                do
+                    d[m++] = (char)('0' + x % 10);
+                while ((x /= 10) != 0);
+                while (m)
+                    rep[n++] = d[--m];
+                rep[n++] = i < 2 ? ';' : 'U';
+            }
+            in_append(c, (const vt_u8 *)rep, n);
+            in_append(c, c->le.buf, c->le.len);
+            return;
+        }
+    }
     if (key == VT_KEY_TAB && !mods && c->le.len && c->le.buf[0] == '/') {
         c->tabs++;
         if (c->tabs >= 2 && c->menu_n > 1) {
@@ -4318,6 +4353,18 @@ static void packet(con *c, struct DosPacket *p)
         }
         return;
     case ACTION_WRITE:
+#if defined(VTCON_SERIAL)
+        if (c->medium && p->dp_Arg2 && p->dp_Arg3 > 0) {
+            /* T3 probe: what a V47 Shell writes in medium mode, 4 bytes a line */
+            const UBYTE *wb = (const UBYTE *)p->dp_Arg2;
+            LONG k;
+            DBG("medwrite len", p->dp_Arg3, 0);
+            for (k = 0; k < p->dp_Arg3 && k < 64; k += 4)
+                DBG("medwrite", k, ((LONG)wb[k] << 24) | ((LONG)(k + 1 < p->dp_Arg3 ? wb[k + 1] : 0) << 16) |
+                                       ((LONG)(k + 2 < p->dp_Arg3 ? wb[k + 2] : 0) << 8) |
+                                       (LONG)(k + 3 < p->dp_Arg3 ? wb[k + 3] : 0));
+        }
+#endif
         if (!c->w.win && !open_window(c)) {
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
@@ -4338,8 +4385,54 @@ static void packet(con *c, struct DosPacket *p)
         reply(p, p->dp_Arg3, 0);
         service_reads(c); /* the output may have queued a report */
         return;
+    case ACTION_FORCE: {
+        /* The V47 Shell's answer to a medium-mode report (T3, measured on
+         * 3.2): the command line it made -- a TAB completion, a history
+         * line -- as Arg2 / Arg3; a leading 0x02 replaces the line being
+         * edited, otherwise the text is typed in where the cursor is. The
+         * line stays in the editor (shown, editable); Return sends it. */
+        const UBYTE *b = (const UBYTE *)p->dp_Arg2;
+        LONG n = p->dp_Arg3, k;
+        if (n < 0 || !b)
+            n = 0;
+        if (n > 0 && b[0] == 0x02) {
+            vt_u8 none = 0;
+            while (c->le.pos < c->le.len)
+                le_key(&c->le, VT_KEY_END, 0, &none, 0);
+            le_replace_word(&c->le, 0, b + 1, (int)(n - 1));
+        } else {
+            for (k = 0; k < n; k++)
+                if (b[k] >= 0x20)
+                    le_key(&c->le, b[k], 0, &b[k], 1);
+        }
+        c->checked[0] = 0;
+        check_command(c);
+        reply(p, n, 0);
+        return;
+    }
     case ACTION_SCREEN_MODE:
         tty_leave(c); /* the Amiga way to set a mode: termios mode is over */
+        DBG("screenmode", p->dp_Arg1, c->raw);
+        if (c->medium && p->dp_Arg1 == 1) {
+            /* medium -> raw (the V47 Shell lists completions): the line is
+             * the Shell's already (the report carried it; it forces it back
+             * after) -- dropped, not handed over as typed input */
+            le_reset(&c->le);
+            c->medium = 0;
+            c->raw = 1;
+            reply(p, DOSTRUE, 0);
+            service_reads(c);
+            return;
+        }
+        /* 2: the V47 medium mode -- lines edited as cooked, TAB (and the
+         * history keys) reported to the reader at once (T3, DP5) */
+        c->medium = p->dp_Arg1 == 2;
+        if (p->dp_Arg1 == 2) {
+            c->raw = 0;
+            reply(p, DOSTRUE, 0);
+            service_reads(c);
+            return;
+        }
         if (c->raw && !p->dp_Arg1) {
             c->raw = 0;
         } else if (!c->raw && p->dp_Arg1) {

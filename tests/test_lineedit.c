@@ -354,8 +354,21 @@ static void kingcon_cycle_and_fncmode(void)
     CHECK_INT(le_kc_fncmode("S"), LE_KC_WINDOW | LE_KC_SILENT);
 }
 
+/* The V47 Shell forces a line into an empty prompt (ACTION_FORCE after it
+ * listed completions): the line is drawn after the prompt, not nowhere
+ * (rig 3.2, 2026-10-03: the restored "dir RAM:" did not show) */
+static void a_replaced_line_on_a_fresh_prompt_draws_after_it(void)
+{
+    vt_term *t = start(40, 4, "1.SYS:> ");
+    le_replace_word(&le, 0, (const unsigned char *)"dir RAM:", 8);
+    CHECK_STR(line(), "dir RAM:");
+    CHECK_STR(h_row(t, 0), "1.SYS:> dir RAM:");
+    vt_free(t);
+}
+
 void suite_lineedit(void)
 {
+    a_replaced_line_on_a_fresh_prompt_draws_after_it();
     kingcon_word_and_quoting();
     kingcon_cycle_and_fncmode();
     command_word_gets_colour_until_it_changes();

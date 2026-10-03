@@ -41,7 +41,9 @@ def main():
             break
     if 'READY' in log:
         time.sleep(1)
-        text('ab')
+        text(os.environ.get('MP_TEXT', 'ab'))
+        for _ in range(int(os.environ.get('MP_LEFT', '0'))):
+            key(0x4F)  # cursor left
         key(TAB)
         key(TAB, SHIFT)
         key(UP)

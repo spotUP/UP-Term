@@ -25,7 +25,7 @@ extern struct DosLibrary *DOSBase;
 
 int main(int argc, char **argv)
 {
-    int i2, nowait = 0, reply = 0, second = 0, bel = 0, own = 0;
+    int i2, nowait = 0, reply = 0, second = 0, bel = 0, own = 0, force = 0;
     APTR oldcons = 0;
     BPTR out = 0;
     BPTR fh;
@@ -34,6 +34,8 @@ int main(int argc, char **argv)
     for (i2 = 1; i2 < argc; i2++) {
         nowait |= !strcmp(argv[i2], "NOWAIT");
         reply |= !strcmp(argv[i2], "REPLY");
+        force |= !strcmp(argv[i2], "FORCE");
+        reply |= force;
         second |= !strcmp(argv[i2], "SECOND");
         bel |= !strcmp(argv[i2], "BEL");
         own |= !strcmp(argv[i2], "OWN");
@@ -88,7 +90,20 @@ int main(int argc, char **argv)
         if (reply && (unsigned char)buf[0] == 0x9b) {
             char *e = memchr(buf, 'U', (size_t)n);
             BPTR w = out ? out : fh;
-            if (bel) {
+            if (force) {
+                /* as the V47 Shell does (measured on 3.2 through XCON:'s
+                 * packet log): ACTION_FORCE (2001), Arg2 0x02 + the line,
+                 * Arg3 its length -- 0x02 replaces the line being edited */
+                static char fb[256];
+                struct FileHandle *h = (struct FileHandle *)BADDR(fh);
+                LONG len = e ? (LONG)(buf + n - e - 1) : 0;
+                if (len > 250)
+                    len = 250;
+                fb[0] = 0x02;
+                if (len > 0)
+                    memcpy(fb + 1, e + 1, (size_t)len);
+                po_line("FORCE %ld\n", DoPkt(h->fh_Type, 2001, h->fh_Arg1, (LONG)fb, len + 1, 0, 0));
+            } else if (bel) {
                 Write(w, "\x07", 1);    /* what the V47 Shell answers on no match (medshell) */
             } else {
                 Write(w, "\r\x9bK", 3);

@@ -149,6 +149,28 @@ static void ctc_sets_and_clears_tabs(void)
     vt_free(t);
 }
 
+/* The ROM console (3.1 and 3.2.3): a TAB at the last column wraps only when
+ * a TAB took the cursor there. Placed at the last column (a CUP past the
+ * edge), the first TAB stays and the second goes to the next line's first
+ * stop (rig 3.2, romprobe ht-at-end: CSI 1;75H TAB TAB in a 61-column
+ * window -> 2;9; UP-Term gave 2;17). */
+static void a_tab_at_the_last_column_wraps_only_after_a_tab(void)
+{
+    vt_term *t = h_new(61, 5, VT_AMIGA);
+    int x, y;
+    h_put(t, "\x9b" "1;75H\t\t");      /* CUP clamps to column 61 */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 1);
+    CHECK_INT(x, 8);
+    vt_free(t);
+    t = h_new(80, 5, VT_AMIGA);
+    h_put(t, "\x9b" "1;75H\t\t");      /* the 3.1 rig's case: TAB to 80, TAB wraps */
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 1);
+    CHECK_INT(x, 8);
+    vt_free(t);
+}
+
 static void cursor_report_uses_the_8bit_csi(void)
 {
     vt_term *t = h_new(40, 20, VT_AMIGA);
@@ -397,6 +419,7 @@ void suite_amiga(void)
     shift_out_sets_the_high_bit();
     del_is_a_glyph();
     vertical_tab_moves_up();
+    a_tab_at_the_last_column_wraps_only_after_a_tab();
     global_background_as_a_prefixed_item();
     set_default_style_makes_sgr0_return_to_it();
     ctc_sets_and_clears_tabs();

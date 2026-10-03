@@ -15,8 +15,8 @@
  *   - the entries are not the ones the ROM leaves (DP3, measured on 39.106,
  *     40.63, 40.71 and 47.115): another console replacement (KingCON,
  *     ViNCEd, ...) is installed -- conflicts refuse, never stack (DD21);
- *   - dos.library is V47 (3.2): its Shell needs the con-handler's medium mode
- *     (SetMode 2), which UP-Term does not have yet (DD20, plan H5.3).
+ * (3.2's Shell uses the con-handler's medium mode, SetMode 2: UP-Term has
+ * it since T3 -- plan 2026-10-03-amigaos32.md.)
  * DEVICE ON refuses on 3.2 too: not proven on a real 3.2 yet (ledger T3).
  *
  *   UPConsole DEVICE ON   console.device is UP-Term's (DEVS:up-console.device,
@@ -155,12 +155,6 @@ static int con_on(const char *file)
     struct DosList *dl;
     char why[120];
     int i, bad = -1;
-    if (DOSBase->dl_lib.lib_Version >= 47) {
-        printf("UPConsole: not switched: this is AmigaOS 3.2 (dos.library %d), whose Shell needs the\n"
-               "console's medium mode (SetMode 2); UP-Term does not have it yet.\n",
-               (int)DOSBase->dl_lib.lib_Version);
-        return RETURN_WARN;
-    }
     st = make_state();
     if (!st) {
         printf("UPConsole: no memory\n");

@@ -620,6 +620,7 @@ void le_replace_word(le_line *le, int from, const unsigned char *s, int n)
 {
     if (from < 0 || from > le->pos || le->len - (le->pos - from) + n > LE_MAX - 2)
         return;
+    start(le); /* a line put into a fresh prompt (ACTION_FORCE) begins here */
     push_undo(le);
     le->typing = 0;
     memmove(le->buf + from + n, le->buf + le->pos, le->len - le->pos);

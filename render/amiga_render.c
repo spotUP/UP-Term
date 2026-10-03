@@ -993,6 +993,13 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
     vt_resolve_colors(r->t, c, &f, &b);
     st->fg = pen_for(r, f, 0);
     st->bg = pen_for(r, b, 1);
+    if (st->fg == st->bg && f != b)
+        /* a screen with few pens (a 4-colour Workbench) gave the text the
+         * background's pen: the text went invisible (rig 3.2, the line
+         * editor's green command word). The plain text pen then, or the
+         * background's opposite. Conceal and the blink's off phase hide
+         * text on purpose below. */
+        st->fg = st->bg == r->pen_default_fg ? r->pen_default_bg : r->pen_default_fg;
     if (selected_cell) {
         /* the profile's selection colours, else the swapped cell */
         if (r->sel_ink[0] != VR_KEEP)
