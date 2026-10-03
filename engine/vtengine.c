@@ -1462,6 +1462,20 @@ static void sgr(vt_term *t)
         }
         if (t->sub[i])
             continue; /* a stray sub-parameter */
+        if (t->pers != VT_PCANSI && p >= 30 && p <= 48 && p != 39) {
+            /* the colours first: they are what an SGR mostly holds, and
+             * they sat at the end of the chain below (pcansi has its own
+             * 38 / 48 just below) */
+            if (p <= 37)
+                t->fg = (vt_color)(p - 30);
+            else if (p == 38)
+                t->fg = ext_colour(t, &i);
+            else if (p <= 47)
+                t->bg = (vt_color)(p - 40);
+            else
+                t->bg = ext_colour(t, &i);
+            continue;
+        }
         if (t->pers == VT_PCANSI && (p == 2 || p == 21)) {
             t->attr &= ~VT_ATTR_BOLD; /* DCTelnet: intensity off */
             continue;
@@ -3329,6 +3343,58 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
     return k;
 }
 
+/* "ESC [ parameters final" whole in the buffer, the parameters only
+ * digits, ';' and ':': parsed here in one go and dispatched, instead of a
+ * walk through decode() and feed() for every byte (colour output is
+ * mostly these: 52 us a byte on a 14 MHz 68020, the terminal's slowest
+ * path; S1). Anything else -- a private marker, an intermediate, a
+ * control inside, the sequence cut by the end of the write -- returns 0
+ * with nothing changed that the parser's own ESC does not set again.
+ * The bytes consumed. */
+static long csi_fast(vt_term *t, const vt_u8 *b, long len)
+{
+    long j = 2, v;
+    int np = 0;
+    vt_u8 c;
+    if (len < 3 || b[1] != '[')
+        return 0;
+    clear_params(t);
+    for (;;) {
+        if (j >= len)
+            return 0;
+        c = b[j];
+        if (c >= '0' && c <= '9') {
+            if (!np)
+                np = 1;
+            v = t->params[np - 1];
+            t->params[np - 1] = v < VT_PARAM_MAX / 10 ? v * 10 + (long)(c - '0') : VT_PARAM_MAX;
+        } else if (c == ';' || c == ':') {
+            if (!np)
+                np = 1;
+            if (np < VT_MAX_PARAMS) {
+                t->params[np] = 0;
+                t->sub[np] = (vt_u8)(c == ':');
+                np++;
+            }
+        } else {
+            break;
+        }
+        j++;
+    }
+    if (c < 0x40 || c > 0x7E)
+        return 0;
+    t->np = np;
+    t->csi8 = 0;
+    /* the state is ground, as after the final byte. An xterm SGR (no
+     * private marker, no intermediate here) is csi_xterm's last case:
+     * straight to it */
+    if (c == 'm' && t->pers == VT_XTERM)
+        sgr(t);
+    else
+        csi_dispatch(t, c);
+    return j + 1;
+}
+
 void vt_write(vt_term *t, const vt_u8 *buf, long len)
 {
     vt_feed(t, buf, len);
@@ -3350,6 +3416,13 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
         if (b >= 0x20 && b < 0x7F && t->state == S_GROUND && !t->u_need && !t->insert &&
             !t->single_shift && t->charset[t->gl] == 'B' && !t->amiga_msb) {
             long k = put_ascii_run(t, buf + i, len - i); /* as far as printable ASCII and the row go */
+            if (k) {
+                i += k;
+                continue;
+            }
+        }
+        if (b == 0x1B && t->state == S_GROUND && !t->u_need) {
+            long k = csi_fast(t, buf + i, len - i);
             if (k) {
                 i += k;
                 continue;

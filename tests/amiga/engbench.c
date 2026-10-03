@@ -58,6 +58,8 @@ long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_rows_up(void **p, long k);
 void vt_asm_rows_down(void **p, long k);
+void vr_asm_cell(unsigned char **planes, long depth, long off, long bpr, const unsigned char *rows, long h, long fg, long bg,
+                 long mask);
 
 static int asm_check(void)
 {
@@ -100,6 +102,33 @@ static int asm_check(void)
         vt_asm_rows_up(r, 0);
         vt_asm_rows_down(r + 5, 0);
         if (r[0] != &m[0] || r[5] != &m[5]) return 14;
+    }
+    {
+        /* vr_asm_cell against its C: 5 planes of 4 rows x 3 bytes, the
+         * cell in the middle byte, every pen pair, the masks 0x1f and 0x0b */
+        static unsigned char pl[5][12], want[5][12];
+        static const unsigned char glyph[4] = { 0x81, 0x7E, 0x00, 0xFF };
+        unsigned char *planes[5];
+        int f, b, m, pn, k, q;
+        for (pn = 0; pn < 5; pn++) planes[pn] = pl[pn];
+        for (m = 0; m < 2; m++)
+            for (f = 0; f < 32; f += 3)
+                for (b = 0; b < 32; b += 5) {
+                    int mask = m ? 0x0B : 0x1F;
+                    for (pn = 0; pn < 5; pn++)
+                        for (q = 0; q < 12; q++) pl[pn][q] = want[pn][q] = (unsigned char)(0x33 + pn + q);
+                    for (pn = 0; pn < 5; pn++) {
+                        if (!((mask >> pn) & 1)) continue;
+                        for (k = 0; k < 4; k++) {
+                            int fb = (f >> pn) & 1, bb = (b >> pn) & 1;
+                            want[pn][k * 3 + 1] = (unsigned char)(fb == bb ? (fb ? 0xFF : 0) : fb ? glyph[k] : ~glyph[k]);
+                        }
+                    }
+                    vr_asm_cell(planes, 5, 1, 3, glyph, 4, f, b, mask);
+                    for (pn = 0; pn < 5; pn++)
+                        for (q = 0; q < 12; q++)
+                            if (pl[pn][q] != want[pn][q]) return 20 + pn;
+                }
     }
     return 0;
 }

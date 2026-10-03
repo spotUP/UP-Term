@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 /* xterm personality: parser, grid and the sequences Unix ports send. */
 #include "harness.h"
@@ -989,8 +990,43 @@ static void a_row_counts_the_cells_in_use(void)
     vt_free(t);
 }
 
+/* csi_fast takes a whole "ESC [ ... final" from one write; cut anywhere,
+ * the same bytes go through the parser byte by byte: the same screen */
+static void a_sequence_cut_by_a_write_means_the_same(void)
+{
+    static const char *const seq[] = {
+        "ab\033[1;31mcd\033[0m\033[2;3Hxy\033[K\033[38;5;196;48;5;21mZ\033[m",
+        "\033[3;1H\033[L\033[2Mq\033[;5Hw\033[38:5:99me\033[1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18mr",
+        "\033[?25l\033[2 qA\033[99999999999Cb\033[1\0332Jc\033[5\nmd\033[4;",
+        "\033[31\030m!\033[1;7mi\033[0;>mj\033[=1hk\033[32"
+    };
+    char want[400];
+    int i, cut, len, x, y, wx, wy;
+    for (i = 0; i < 4; i++) {
+        vt_term *t = h_new(20, 6, VT_XTERM);
+        len = (int)strlen(seq[i]);
+        vt_write(t, (const vt_u8 *)seq[i], len);
+        strcpy(want, h_screen(t));
+        vt_cursor(t, &wx, &wy);
+        vt_free(t);
+        for (cut = 1; cut < len; cut++) {
+            t = h_new(20, 6, VT_XTERM);
+            vt_write(t, (const vt_u8 *)seq[i], cut);
+            vt_write(t, (const vt_u8 *)seq[i] + cut, len - cut);
+            vt_cursor(t, &x, &y);
+            if (strcmp(h_screen(t), want) || x != wx || y != wy) {
+                CHECK_INT(cut, -1 - i); /* names the sequence and where it was cut */
+                CHECK_STR(h_screen(t), want);
+            }
+            vt_free(t);
+        }
+        CHECK(len > 10);
+    }
+}
+
 void suite_xterm(void)
 {
+    a_sequence_cut_by_a_write_means_the_same();
     a_row_counts_the_cells_in_use();
     rgb_to_256();
     copy_text_joins_wrapped_lines_and_trims_blanks();

@@ -223,9 +223,8 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->lay_rows = r->lay_cols = r->lay_x = r->lay_y = -1;
     SetFont(r->rp, font);
     r->glyphs = 0;
-#ifdef VTCON_DIRECT
-    extract_glyphs(r); /* and with it the 8-pixel alignment of the text */
-#endif
+    if (r->planar)
+        extract_glyphs(r); /* the planar path's glyphs (DIRECT=1: also the text's 8-pixel alignment) */
     r->n_direct = r->n_text = 0;
     vr_layout(r);
 }
@@ -396,9 +395,8 @@ void vr_set_font(vr_render *r, struct TextFont *font)
     if (r->glyphs)
         FreeVec(r->glyphs);
     r->glyphs = 0;
-#ifdef VTCON_DIRECT
-    extract_glyphs(r);
-#endif
+    if (r->planar)
+        extract_glyphs(r);
 }
 
 void vr_set_outline(vr_render *r, struct vo_font *f)
@@ -464,14 +462,19 @@ int vr_layout(vr_render *r)
         rows = r->lay_rows;
     r->ox = w->BorderLeft + lx;
     r->oy = w->BorderTop + ly;
+#ifdef VTCON_DIRECT
     if (r->glyphs) {
         /* the planar path needs cells on a byte boundary of the screen:
-         * start the text at the next 8-pixel column (at most 7 px more) */
+         * start the text at the next 8-pixel column (at most 7 px more).
+         * Only in a DIRECT=1 build: by default the path is used where the
+         * text is on a byte boundary anyway (a borderless window, a lucky
+         * place) and nobody loses a column to it. */
         WORD pad = (WORD)((8 - ((w->LeftEdge + r->ox) & 7)) & 7);
         if (cols * r->cw + pad > iw)
             cols = (iw - pad) / r->cw;
         r->ox += pad;
     }
+#endif
     r->hidden = r->off || cols < 1 || rows < 1;
     if (cols < 1)
         cols = 1;
@@ -945,6 +948,11 @@ static int direct_ok(vr_render *r)
 
 /* One cell, straight into the planes: each plane byte row is the glyph,
  * its inverse, or a constant, as the two pens' bits say. */
+#ifdef VR_ASM
+void vr_asm_cell(UBYTE **planes, long depth, long off, long bpr, const UBYTE *rows, long h, long fg, long bg,
+                 long mask);
+#endif
+
 static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg, vt_u8 attr)
 {
     struct BitMap *bm = r->rp->BitMap;
@@ -952,7 +960,10 @@ static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg
     LONG off = (LONG)(r->win->TopEdge + r->oy + y * r->ch) * bpr + ((r->win->LeftEdge + r->ox) >> 3) + x;
     const UBYTE *g0 = r->glyphs + ch * r->ch;
     UBYTE rows[32];
-    int p, k, h = r->ch;
+#ifndef VR_ASM
+    int p;
+#endif
+    int k, h = r->ch;
     for (k = 0; k < h; k++) {
         UBYTE v = g0[k];
         if (attr & VT_ATTR_BOLD)
@@ -963,9 +974,15 @@ static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg
         rows[r->base + 1] = 0xFF;
     if (attr & VT_ATTR_STRIKE)
         rows[h / 2] = 0xFF;
+#ifdef VR_ASM
+    /* the loop below in assembler (amiga_render_68k.s) */
+    vr_asm_cell((UBYTE **)bm->Planes, bm->Depth, off, bpr, rows, h, fg, bg, r->mask);
+#else
     for (p = 0; p < bm->Depth; p++) {
         UBYTE *d = (UBYTE *)bm->Planes[p] + off;
         int f = (fg >> p) & 1, b = (bg >> p) & 1;
+        if (!((r->mask >> p) & 1))
+            continue; /* a plane not in use: it holds zeros, and both pens' bits are 0 */
         if (f == b) {
             UBYTE v = f ? 0xFF : 0x00;
             for (k = 0; k < h; k++, d += bpr)
@@ -978,6 +995,7 @@ static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg
                 *d = (UBYTE)~rows[k];
         }
     }
+#endif
 }
 
 static int selected(const vr_render *r, int x, int gy)
@@ -1011,20 +1029,47 @@ typedef struct dcell {
 
 #define DCELL_MAX 160
 
+/* Whether the planar path is the cheaper one for these cells: Text() draws
+ * a run of equal colours in one call whatever its length, the planar path
+ * pays per cell -- so it wins where the runs are short (a colour change
+ * every few characters: conbench sgr-perchar took 1.7 ms a character
+ * through Text() on the stock rig). A DIRECT=1 build takes it always. */
+#define DIRECT_MIN_RUNS 4
+static int direct_wins(const dcell *d, int n)
+{
+#ifdef VTCON_DIRECT
+    return d && n > 0;
+#else
+    int i, runs = 1;
+    for (i = 1; i < n; i++)
+        if (d[i].fg != d[i - 1].fg || d[i].bg != d[i - 1].bg || d[i].attr != d[i - 1].attr ||
+            d[i].x != d[i - 1].x + 1)
+            if (++runs >= DIRECT_MIN_RUNS)
+                return 1;
+    return 0;
+#endif
+}
+
 /* Write the collected cells of row y straight into the planes when the
  * layer allows it now; returns 0 when it does not (then the caller draws
  * them through the RastPort). */
 static int direct_row(vr_render *r, int y, const dcell *d, int n)
 {
-#ifndef VTCON_DIRECT
-    /* off by default: measured slower (see extract_glyphs) */
-    return r && d && y < 0 && n < 0; /* always 0 */
-#else
     struct Layer *layer = r->win->WLayer;
     int i, ok;
+    UBYTE pens = 0;
+    for (i = 0; i < n; i++)
+        pens |= (UBYTE)(d[i].fg | d[i].bg);
     LockLayer(0, layer);
     ok = direct_ok(r);
     if (ok) {
+        if (pens & ~r->mask) {
+            /* a pen's plane not in use yet: it holds zeros, the cells
+             * below start writing it (as ink_pen does for the RastPort) */
+            r->mask |= pens;
+            if (r->mask_on)
+                SetWriteMask(r->rp, r->mask);
+        }
         WaitBlit(); /* earlier blits (scroll, fills, Text, the cursor) finish first */
         for (i = 0; i < n; i++)
             direct_cell(r, d[i].x, y, d[i].ch, d[i].fg, d[i].bg, d[i].attr);
@@ -1034,7 +1079,6 @@ static int direct_row(vr_render *r, int y, const dcell *d, int n)
     if (ok)
         r->blank = 0;
     return ok;
-#endif
 }
 
 /* The style cell c draws with (selection and blink phase applied). */
@@ -1320,7 +1364,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             run[n++] = g.code;
         }
         flush_run(r, run, n, run_x, py, &run_st);
-        if (nd && !direct_row(r, y, dc, nd)) {
+        if (nd && !(direct_wins(dc, nd) && direct_row(r, y, dc, nd))) {
             /* covered or not planar: the same cells through the RastPort,
              * one Text() per run of equal colours */
             int i = 0;

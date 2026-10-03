@@ -125,7 +125,7 @@ VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=16
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
-HANDLER_SRC := $(ENGINE_68K) handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/brk.c handler/slash.c $(ENGINE) render/amiga_render.c render/vtwin.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c prefs/prefs_core.c prefs/prefs_dos.c
+HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/brk.c handler/slash.c $(ENGINE) render/amiga_render.c render/vtwin.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c prefs/prefs_core.c prefs/prefs_dos.c
 HANDLER_HDR := engine/vtengine.h engine/vtwidth.h render/amiga_render.h render/vtwin.h render/glyphmap.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h
 
@@ -288,9 +288,9 @@ $(BUILD)/amiga/wasabikey: install/wasabikey.c
 	$(VC) -o $@ install/wasabikey.c
 
 # The engine alone on the 68k: bytes a second per workload (S1)
-$(BUILD)/amiga/engbench: tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) engine/vtengine.h
+$(BUILD)/amiga/engbench: tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s engine/vtengine.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -DVT_ASM -o $@ tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K)
+	$(VC) -dontwarn=153,65 -DVT_ASM -o $@ tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s
 
 # What a full screen of each kind of cell costs the terminal (S1)
 $(BUILD)/amiga/cellbench: tests/amiga/cellbench.c
@@ -434,7 +434,8 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -DVT_ASM -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vtengine_68k.o $(ENGINE_68K)
-	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
+	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) -DVR_ASM -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/amiga_render_68k.o render/amiga_render_68k.s
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtwin.o render/vtwin.c
 	$(VC) -c -o $(BUILD)/amiga/obj/glyphmap.o render/glyphmap.c
 	$(VC) -c -o $(BUILD)/amiga/obj/fontpair.o render/fontpair.c
@@ -450,7 +451,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_core.o prefs/prefs_core.c
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_dos.o prefs/prefs_dos.c
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
-	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/glyphmap.o \
+	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/glyphmap.o \
 	  $(BUILD)/amiga/obj/outline.o $(BUILD)/amiga/obj/otag.o $(BUILD)/amiga/obj/fontpair.o \
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o \
 	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o \
