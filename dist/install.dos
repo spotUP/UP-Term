@@ -1,4 +1,4 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,CPU040/S,CPU060/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -8,6 +8,7 @@
 ;     [SHELLICON|NOSHELLICON] [SYSICON|NOSYSICON]   (the icons: no unless asked)
 ;     [SERIAL|NOSERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
+;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
@@ -257,6 +258,38 @@ If "{SERIAL}" EQ "SERIAL"
     Echo >>S:User-Startup ";BEGIN UP-Term serial"
     Echo >>S:User-Startup "Run >NIL: C:upgetty LOOP"
     Echo >>S:User-Startup ";END UP-Term serial"
+  EndIf
+EndIf
+; WASABI: wasabid in C: (wasabi/SOURCE.txt), for working on this Amiga
+; from another machine over the network. It runs any command a client with
+; the key sends -- and with no key set, any client's: wasabikey makes one
+; (a key already set stays), saved in ENVARC:wasabi.key (a marker when it
+; is ours, for Uninstall). Started now and at every boot from a marked
+; block in S:User-Startup.
+If "{WASABI}" EQ "WASABI"
+  If NOT EXISTS C:wasabid
+    Echo >ENVARC:up-term/wasabid "installed by UP-Term"
+  EndIf
+  Copy wasabi/wasabid C:wasabid CLONE
+  If NOT EXISTS ENV:wasabi.key
+    Echo >ENVARC:up-term/wasabikey "installed by UP-Term"
+  EndIf
+  wasabi/wasabikey >NIL:
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup "C:wasabid"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term wasabi"
+    Echo >>S:User-Startup "Run >NIL: C:wasabid"
+    Echo >>S:User-Startup ";END UP-Term wasabi"
+  EndIf
+  Status >NIL: COM C:wasabid
+  If WARN
+    Run >NIL: C:wasabid
   EndIf
 EndIf
 ; SYSICON: the UP-Term icon in SYS:System too, beside Shell (a marker says

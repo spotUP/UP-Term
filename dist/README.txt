@@ -24,7 +24,7 @@ INSTALL
   CONSOLE.DEVICE below).
   From a Shell, without Installer, cd into the drawer, then:
     Execute Files/install.dos Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
-      [SERIAL] [SYSICON] [SHELLICON] [SSH] [BEBBOGET] [CURL] [CPU040|CPU060]
+      [SERIAL] [SYSICON] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [CPU040|CPU060]
   (each optional part only when named).
   Remove everything again: double-click Uninstall (or Execute Uninstall).
 
@@ -297,9 +297,10 @@ A SCREEN OF ITS OWN, FULL SCREEN
   go along. Full screen is one borderless window over the whole screen;
   the menus still open on the right mouse button, the title shows in the
   screen's title bar.
-  The screen has the Workbench's mode and size, 16 colours on a native
-  screen (exactly the terminal's 16 ANSI colours) or 256 on a graphics
-  card. It is a public screen ("UP-Term", "UP-Term.2" ...): other
+  The screen has the Workbench's mode and size, 32 colours on an AGA
+  screen (16 on ECS) or 256 on a graphics card: the terminal's 16 ANSI
+  colours exactly, and the window frames, title bar and menus in your
+  Workbench's colours (on ECS the nearest of the 16). It is a public screen ("UP-Term", "UP-Term.2" ...): other
   programs can open on it. It closes with the last UP-Term window on it,
   or, if another program's window is still there, when that one closes.
   From the start, in the window's name or in a profile:
@@ -308,6 +309,15 @@ A SCREEN OF ITS OWN, FULL SCREEN
     screen = fullscreen     screen-mode = 0x29000     screen-depth = 4
   (0x29000 is PAL hires; ScreenMode prefs show the numbers. Not with tabs:
   move the window before opening a second tab.)
+
+FONTS BY PIXEL SHAPE
+  topaz 8 is drawn for tall pixels. On screens with square pixels
+  (graphics cards, AGA hires interlaced) UP-Term draws it as TopazPro 16,
+  topaz redrawn for square pixels, and IBM 8 as IBM 16; on PAL / NTSC
+  hires the 8-pixel fonts again. A window moved between screens changes
+  with them. Other fonts, and topaz 9 or 11, stay as chosen. Install puts
+  TopazPro and IBM in FONTS: (only the sizes not there). To keep the font
+  as asked everywhere: font-aspect = off in the profile.
 
 NETWORK
   Install puts network tools in SYS:UP-Term/bin when you say yes (the
@@ -326,6 +336,21 @@ NETWORK
   Licences: BebboSSH and bebboget by Stefan Franke, GPL v3 or later; curl
   under the curl licence. Their COPYING files and sources (or where the
   source is) are in the kit's Files/net drawer.
+
+WASABI (REMOTE DEVELOPMENT)
+  For working on this Amiga from a Mac or Linux machine on the same
+  network: copy files to it, run commands with their output on the other
+  machine, grab its screen, read its debug output and a SnoopDOS-style
+  trace. wasabi by Tobias Karlsson, MIT licence (Files/wasabi).
+  Install puts wasabid in C: when you tick it, starts it, and starts it at
+  every boot. It makes a key (ENVARC:wasabi.key; one you set before stays)
+  and shows it at the end. On the other machine, with Python 3:
+    WASABI_KEY=yourkey ./wasabi discover
+    WASABI_KEY=yourkey ./wasabi run "Dir RAM:"
+  (the client is Files/wasabi/wasabi in the kit; ~/.config/wasabi/config
+  with "key = yourkey" saves typing it). Anyone with the key can run any
+  command on this Amiga: keep it to yourself. wasabid answers only private
+  network addresses. Uninstall stops and removes it.
 
 CON: AND RAW:
   UP-Term can serve the system's CON: and RAW: too, so every new Shell

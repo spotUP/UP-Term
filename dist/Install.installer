@@ -40,6 +40,7 @@
 (set #ssh "")
 (set #bget "")
 (set #curl "")
+(set #wasabi "")
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 ; curl is ticked when AmiSSL is there (curl cannot run without it)
@@ -60,6 +61,13 @@
               "Serial login: C:upgetty LOOP runs at every boot from a block in "
               "S:User-Startup, and a terminal program on a null-modem cable at 19200 "
               "baud gets vsh. While it runs no other program can use the serial port.\n\n"
+              "wasabi (remote development, MIT, by Tobias Karlsson): wasabid in C:, "
+              "started at every boot, so a Mac or Linux machine on your network can "
+              "copy files to this Amiga, run commands on it, grab its screen and read "
+              "its debug output. It runs ANY command a client with its key sends: "
+              "Install makes a key (or keeps yours, ENVARC:wasabi.key) and shows it at "
+              "the end. Leave it off unless you develop on this Amiga from another "
+              "machine. The client for the other machine is in the kit's Files/wasabi.\n\n"
               "The UP-Term icon is in SYS:Utilities either way; a second copy can go "
               "beside Shell in SYS:System.\n\n"
               "The Shell icon: its WINDOW tooltype is changed to XCON:, so SYS:System/Shell "
@@ -70,6 +78,7 @@
                  "bebboget (https downloads)"
                  (if #amissl "curl (AmiSSL 5 found)" "curl (needs AmiSSL 5, not found)")
                  "Serial login at every boot"
+                 "wasabi: remote development from another computer"
                  "UP-Term icon also in SYS:System"
                  "Shell icon opens an UP-Term window")
         (default (+ 1 2 (if #amissl 4 0)))))
@@ -77,8 +86,9 @@
 (if (in #opts 1) (set #bget "BEBBOGET"))
 (if (in #opts 2) (set #curl "CURL"))
 (if (in #opts 3) (set #serial "SERIAL"))
-(if (in #opts 4) (set #sysicon "SYSICON"))
-(if (and (in #opts 5) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+(if (in #opts 4) (set #wasabi "WASABI"))
+(if (in #opts 5) (set #sysicon "SYSICON"))
+(if (and (in #opts 6) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
 
 ; ---- taking over the system's console: a page of its own -----------------
 
@@ -114,12 +124,20 @@
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #cpu040 #cpu060)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #wasabi #cpu040 #cpu060)
 
-(exit
-    "UP-Term is installed.\n\n"
-    "Open it: double-click SYS:Utilities/UP-Term, or type\n"
-    "  NewShell XCON:0/20/640/300/UP-Term/CLOSE\n\n"
-    "Preferences and themes: SYS:Utilities/UP-Term-Prefs, or the\n"
-    "UP-Term menu of any UP-Term window.\n\n"
-    "A reboot mounts XCON:, PTY: and IXPIPE: at every start.")
+(set #done
+    (cat "UP-Term is installed.\n\n"
+         "Open it: double-click SYS:Utilities/UP-Term, or type\n"
+         "  NewShell XCON:0/20/640/300/UP-Term/CLOSE\n\n"
+         "Preferences and themes: SYS:Utilities/UP-Term-Prefs, or the\n"
+         "UP-Term menu of any UP-Term window.\n\n"
+         "A reboot mounts XCON:, PTY: and IXPIPE: at every start."))
+(if (= #wasabi "WASABI")
+    (set #done
+        (cat #done "\n\n"
+             "wasabi is running. On the other computer, with Python 3:\n"
+             "  copy Files/wasabi/wasabi from this kit, then\n"
+             "  WASABI_KEY=" (getenv "wasabi.key") " ./wasabi discover\n"
+             "The key is in ENVARC:wasabi.key; keep it to yourself.")))
+(exit #done)

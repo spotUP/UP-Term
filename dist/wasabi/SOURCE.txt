@@ -1,0 +1,15 @@
+wasabi -- drive an Amiga from a Linux / macOS / BSD machine over the network
+(Tobias Karlsson, MIT licence: LICENSE). Source: https://github.com/creep-ltx/wasabi
+
+  wasabid   the daemon, for the Amiga: "wasabid 0.2 (15.8.2026)", the build
+            its author handed the UP-Term project (sha256 d63e70b0b17d8c1f
+            3d9c13d88f86c39d11bd1d1568acc9eddc308ddf2b68355e). Install puts
+            it in C: when asked, with a key of its own, started at every boot.
+  wasabi    the client, for the other machine (Python 3, one file, no
+            packages): from the repository at commit 67379c2. Copy it to the
+            Mac or Linux machine and set WASABI_KEY (or ~/.config/wasabi/config:
+            key = ...) to the key Install showed (ENVARC:wasabi.key).
+
+wasabid runs any command the client sends, as you. It answers only clients
+with the key, and only from private addresses (10/8, 172.16/12, 192.168/16
+and the like); keep the key to yourself. Uninstall removes it.

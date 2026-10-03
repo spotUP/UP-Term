@@ -80,6 +80,20 @@ Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
 If EXISTS ENVARC:up-term/sysicon
   Delete >NIL: SYS:System/UP-Term SYS:System/UP-Term.info QUIET
 EndIf
+; wasabid: stopped (Ctrl-C, its own way out), and the daemon and its key
+; only when Install put them there (their markers)
+Status >ENV:upw COM C:wasabid
+If NOT WARN
+  Break $upw C
+EndIf
+UnSet >NIL: upw
+Delete >NIL: ENV:upw QUIET
+If EXISTS ENVARC:up-term/wasabid
+  Delete >NIL: C:wasabid QUIET
+EndIf
+If EXISTS ENVARC:up-term/wasabikey
+  Delete >NIL: ENVARC:wasabi.key ENV:wasabi.key QUIET
+EndIf
 Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-Term-Prefs SYS:Utilities/UP-Term-Prefs.info QUIET
 If EXISTS ENVARC:up-term/ixpipe
   Delete >NIL: DEVS:DOSDrivers/IXPIPE DEVS:DOSDrivers/IXPIPE.info L:ixpipe-handler QUIET
