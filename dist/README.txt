@@ -16,11 +16,16 @@ INSTALL
   (needs C:Installer or SYS:Utilities/Installer, AmigaOS 3.0 and up).
   It copies the handlers, DOSDrivers entries, vsh, ixkill, the terminal
   entries to ENVARC:up-term, sets TERMINFO, puts in the patched
-  ixemul.library and mounts XCON: and PTY:. It asks whether UP-Term
-  should also serve CON: and RAW: (see CON: AND RAW: below) and
-  console.device (see CONSOLE.DEVICE below).
+  ixemul.library and mounts XCON: and PTY:. A page of check boxes picks
+  the optional parts: ssh and scp, bebboget, curl (see NETWORK), the
+  serial login (SERIAL LOGIN), the UP-Term icon in SYS:System and the
+  Shell icon. On 3.0/3.1 a second page asks whether UP-Term should also
+  serve CON: and RAW: (see CON: AND RAW: below) and console.device (see
+  CONSOLE.DEVICE below).
   From a Shell, without Installer, cd into the drawer, then:
     Execute Files/install.dos Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
+      [SERIAL] [SYSICON] [SHELLICON] [SSH] [BEBBOGET] [CURL] [CPU040|CPU060]
+  (each optional part only when named).
   Remove everything again: double-click Uninstall (or Execute Uninstall).
 
 USE

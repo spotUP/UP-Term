@@ -1,4 +1,4 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,NONET/S,CPU040/S,CPU060/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,CPU040/S,CPU060/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -7,7 +7,7 @@
 ;   Execute <kit>/Files/install.dos <kit>/Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
 ;     [SHELLICON|NOSHELLICON] [SYSICON|NOSYSICON]   (the icons: no unless asked)
 ;     [SERIAL|NOSERIAL]   (a serial login at every boot: no unless asked)
-;     [NONET]   (no network tools: ssh, scp, bebboget; installed unless asked)
+;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
@@ -117,10 +117,22 @@ Copy UPTerm C:UPTerm CLONE
 ; COPYING and the complete source are in the kit's net drawer. vshrc makes
 ; ssh and scp of them. Their library goes to LIBS: unless one is there (a
 ; user's own BebboSSH keeps its library; Uninstall removes only ours).
-If NOT "{NONET}" EQ "NONET"
+If "{SSH}" EQ "SSH"
   Copy net/bebbossh-1.45/bebbossh net/bebbossh-1.45/bebboscp net/bebbossh-1.45/bebbosshkeygen net/bebbossh-1.45/bebbosshd SYS:UP-Term/bin CLONE QUIET
+  If NOT EXISTS LIBS:libcryptossh.library
+    If "{CPU060}" EQ "CPU060"
+      Copy net/bebbossh-1.45/libcryptossh.library060 LIBS:libcryptossh.library CLONE
+    Else
+      Copy net/bebbossh-1.45/libcryptossh.library020 LIBS:libcryptossh.library CLONE
+    EndIf
+    Echo >ENVARC:up-term/cryptossh "installed by UP-Term"
+  EndIf
+EndIf
+If "{BEBBOGET}" EQ "BEBBOGET"
   Copy net/bebboget-1.11/bebboget net/bebboget-1.11/installcerts SYS:UP-Term/bin CLONE QUIET
-  ; curl 8.22.0 (the curl licence, net/curl-8.22.0); it needs AmiSSL 5
+EndIf
+; curl 8.22.0 (the curl licence, net/curl-8.22.0); it needs AmiSSL 5
+If "{CURL}" EQ "CURL"
   If "{CPU060}" EQ "CPU060"
     Copy net/curl-8.22.0/curl.060 SYS:UP-Term/bin/curl CLONE QUIET
   Else
@@ -129,14 +141,6 @@ If NOT "{NONET}" EQ "NONET"
     Else
       Copy net/curl-8.22.0/curl.020 SYS:UP-Term/bin/curl CLONE QUIET
     EndIf
-  EndIf
-  If NOT EXISTS LIBS:libcryptossh.library
-    If "{CPU060}" EQ "CPU060"
-      Copy net/bebbossh-1.45/libcryptossh.library060 LIBS:libcryptossh.library CLONE
-    Else
-      Copy net/bebbossh-1.45/libcryptossh.library020 LIBS:libcryptossh.library CLONE
-    EndIf
-    Echo >ENVARC:up-term/cryptossh "installed by UP-Term"
   EndIf
 EndIf
 ; The shell ixemul programs run (system(), popen(), tmux's jobs) is

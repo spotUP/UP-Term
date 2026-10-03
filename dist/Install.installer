@@ -30,10 +30,58 @@
     "  LIBS:ixemul.library.orig; Uninstall puts it back)\n\n"
     "Files go to C:, L:, LIBS:, DEVS:, ENVARC: and SYS:Utilities.")
 
-; ---- the two opt-ins ------------------------------------------------------
+; ---- what to install: one page of choices --------------------------------
 
 (set #con "NOCONSOLE")
 (set #dev "NODEVICE")
+(set #shellicon "NOSHELLICON")
+(set #sysicon "NOSYSICON")
+(set #serial "NOSERIAL")
+(set #ssh "")
+(set #bget "")
+(set #curl "")
+(set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
+(set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
+; curl is ticked when AmiSSL is there (curl cannot run without it)
+(set #amissl (exists "LIBS:amisslmaster.library"))
+
+(set #opts
+    (askoptions
+        (prompt "UP-Term itself is always installed. Choose the optional parts:")
+        (help "ssh and scp: BebboSSH 1.45 by Stefan Franke (GPL v3+), an SSH client "
+              "for remote Unix machines, with scp, a key generator and a simple "
+              "server; libcryptossh.library goes to LIBS: unless one is there.\n\n"
+              "bebboget: https downloads (GPL v3+), by the same author.\n\n"
+              "curl 8.22.0: downloads and transfers (the curl licence); needs "
+              "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha).\n\n"
+              "The network tools need a TCP/IP stack (Roadshow, AmiTCP) and go to "
+              "SYS:UP-Term/bin; their licences and sources are in the kit's "
+              "Files/net drawer.\n\n"
+              "Serial login: C:upgetty LOOP runs at every boot from a block in "
+              "S:User-Startup, and a terminal program on a null-modem cable at 19200 "
+              "baud gets vsh. While it runs no other program can use the serial port.\n\n"
+              "The UP-Term icon is in SYS:Utilities either way; a second copy can go "
+              "beside Shell in SYS:System.\n\n"
+              "The Shell icon: its WINDOW tooltype is changed to XCON:, so SYS:System/Shell "
+              "opens an UP-Term window; a copy of the icon is kept in "
+              "ENVARC:up-term-orig.\n\n"
+              "Uninstall takes every one of them out again.")
+        (choices "ssh and scp (BebboSSH)"
+                 "bebboget (https downloads)"
+                 (if #amissl "curl (AmiSSL 5 found)" "curl (needs AmiSSL 5, not found)")
+                 "Serial login at every boot"
+                 "UP-Term icon also in SYS:System"
+                 "Shell icon opens an UP-Term window")
+        (default (+ 1 2 (if #amissl 4 0)))))
+(if (in #opts 0) (set #ssh "SSH"))
+(if (in #opts 1) (set #bget "BEBBOGET"))
+(if (in #opts 2) (set #curl "CURL"))
+(if (in #opts 3) (set #serial "SERIAL"))
+(if (in #opts 4) (set #sysicon "SYSICON"))
+(if (and (in #opts 5) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+
+; ---- taking over the system's console: a page of its own -----------------
+
 (if #v47
     (message
         "AmigaOS 3.2 found.\n\n"
@@ -41,91 +89,32 @@
         "console.device on 3.2 yet: the 3.2 Shell needs a console mode "
         "UP-Term does not have yet.")
     (
-        (if (askbool
-                (prompt "Should UP-Term also serve CON: and RAW:?\n\n"
-                        "Every new Shell window then is an UP-Term window "
-                        "(the Amiga look, with UP-Term's line editing, history "
-                        "and Tab completion). C:UPConsole CON OFF switches back.")
-                (help "UP-Term serves CON: and RAW: through its own handler. "
-                      "Windows already open are not changed. A block in "
-                      "S:User-Startup switches it on at every boot; Uninstall "
-                      "takes it out. It is refused when another console "
-                      "replacement (KingCON, ViNCEd...) serves CON:.")
-                (choices "Yes" "No")
-                (default 0))
-            (set #con "CONSOLE"))
-        (if (askbool
-                (prompt "Should console.device be UP-Term's too?\n\n"
-                        "Then every program's console window (Ed, More, the "
-                        "system's own Shell windows) draws with UP-Term's "
-                        "engine. C:UPConsole DEVICE OFF switches back.")
-                (help "The ROM's console.device stays in memory; UP-Term's "
-                      "replaces it in the device list while it is on. A block "
-                      "in S:User-Startup switches it on at every boot; "
-                      "Uninstall takes it out. It is refused when "
-                      "console.device was patched by another program.")
-                (choices "Yes" "No")
-                (default 0))
-            (set #dev "DEVICE"))
+        (set #sys
+            (askoptions
+                (prompt "UP-Term can also take over the system's console. "
+                        "Leave both off to keep the system's own.")
+                (help "CON: and RAW:: every new Shell window is an UP-Term window "
+                      "(the Amiga look, with UP-Term's line editing, history and Tab "
+                      "completion); C:UPConsole CON OFF switches back. Refused when "
+                      "another console replacement (KingCON, ViNCEd...) serves CON:.\n\n"
+                      "console.device: every program's console window (Ed, More, the "
+                      "system's Shell windows) draws with UP-Term's engine; C:UPConsole "
+                      "DEVICE OFF switches back. Refused when console.device was patched "
+                      "by another program.\n\n"
+                      "Each is switched on at every boot by a block in S:User-Startup, "
+                      "which Uninstall takes out.")
+                (choices "UP-Term serves CON: and RAW:"
+                         "console.device is UP-Term's")
+                (default 0)))
+        (if (in #sys 0) (set #con "CONSOLE"))
+        (if (in #sys 1) (set #dev "DEVICE"))
     )
 )
-
-; ---- the Workbench icons -------------------------------------------------
-
-(set #shellicon "NOSHELLICON")
-(set #sysicon "NOSYSICON")
-(set #serial "NOSERIAL")
-(set #net "NONET")
-(set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
-(set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
-(if (exists "SYS:System/Shell.info")
-    (if (askbool
-            (prompt "Should the Shell icon (SYS:System/Shell) open an UP-Term window?\n\n"
-                    "Its window keeps its place, size and title; only the console "
-                    "behind it becomes UP-Term's. Uninstall puts the icon back as it was.")
-            (help "The Shell icon's WINDOW tooltype names the console its window opens "
-                  "on (CON:, or KCON: with KingCON). Install changes that device to "
-                  "XCON: and keeps a copy of the icon in ENVARC:up-term-orig.")
-            (choices "Yes" "No")
-            (default 0))
-        (set #shellicon "SHELLICON")))
-(if (askbool
-        (prompt "Should the UP-Term icon also go in SYS:System, beside Shell?\n\n"
-                "It is in SYS:Utilities either way.")
-        (help "A second copy of the UP-Term icon (vsh in an UP-Term window). "
-              "Uninstall removes it.")
-        (choices "Yes" "No")
-        (default 1))
-    (set #sysicon "SYSICON"))
-(if (askbool
-        (prompt "Should a serial login start at every boot?\n\n"
-                "A terminal program on another computer, on a null-modem cable to "
-                "this Amiga's serial port at 19200 baud, then gets vsh. "
-                "While it runs, no other program can use the serial port.")
-        (help "C:upgetty LOOP runs from a block in S:User-Startup; Uninstall "
-              "takes it out. Options (speed, RTS/CTS) are in the README's "
-              "SERIAL LOGIN section.")
-        (choices "Yes" "No")
-        (default 1))
-    (set #serial "SERIAL"))
-(if (askbool
-        (prompt "Should the network tools be installed?\n\n"
-                "ssh and scp (BebboSSH 1.45), bebboget and curl 8.22.0 (downloads), in "
-                "SYS:UP-Term/bin. They need a TCP/IP stack (Roadshow, AmiTCP); curl "
-                "also needs AmiSSL 5.")
-        (help "By Stefan Franke, GPL v3 or later: COPYING and the complete source are "
-              "in the kit's Files/net drawer. Their libcryptossh.library goes to LIBS: "
-              "unless one is there. curl is under the curl licence, its source on "
-              "github.com/boingball/curl. In vsh, ssh and scp run them for a remote Unix "
-              "machine (TERM xterm-256color). See the README's NETWORK section.")
-        (choices "Yes" "No")
-        (default 0))
-    (set #net ""))
 
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #net #cpu040 #cpu060)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #cpu040 #cpu060)
 
 (exit
     "UP-Term is installed.\n\n"
