@@ -28,6 +28,12 @@ typedef struct vt_glyph {
 /* The replacement for a code point the font cannot show is font '?'. */
 vt_glyph vt_map_glyph(vt_u32 cp, enum vt_font_enc enc);
 
+/* 1 when vt_map_glyph shows cp as itself (the font's glyph, or a drawn line
+ * or block); 0 when it gives a stand-in ('-' for an en dash) or the
+ * replacement '?'. Those cells are the ones an outline font can do better
+ * (render/outline, plan 2026-10-03-outline-fonts.md). */
+int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc);
+
 /* Arm weight 0-3 of a VT_GLYPH_BOX code, for arm 0 up, 1 right, 2 down, 3 left. */
 #define VT_BOX_ARM(code, arm) (((code) >> ((arm) * 2)) & 3)
 

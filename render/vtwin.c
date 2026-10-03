@@ -139,6 +139,26 @@ void vtwin_profile_defaults(vtwin *w)
     w->copy_on_select = 0;
     for (i = 0; i < 16; i++)
         w->pal16[i] = 0;
+    w->fallback[0] = 0;
+}
+
+/* The outline font follows fallback: opened, changed or closed so the
+ * renderer has the one the spec names (0 when it cannot be opened: the
+ * cells look as without one). 1 when it changed. */
+static int outline_sync(vtwin *w)
+{
+    if (w->outline && !strcmp(vo_name(w->outline), w->fallback))
+        return 0;
+    if (!w->outline && !w->fallback[0])
+        return 0;
+    vr_set_outline(&w->r, 0);
+    if (w->outline)
+        vo_close(w->outline);
+    w->outline = w->fallback[0] && w->font
+                     ? vo_open(w->fallback, w->font->tf_XSize, w->font->tf_YSize, w->font->tf_Baseline)
+                     : 0;
+    vr_set_outline(&w->r, w->outline);
+    return 1;
 }
 
 void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
@@ -354,6 +374,7 @@ int vtwin_attach(vtwin *w, struct Window *win)
             w->alt[k] = open_named(w->altname[k], w->altsize[k] ? w->altsize[k] : w->font->tf_YSize);
         vr_set_alt_font(&w->r, k, w->alt[k]);
     }
+    outline_sync(w);
     settings(w);
     vt_set_cell_pixels(w->t, w->font->tf_XSize, w->font->tf_YSize);
     vr_redraw(&w->r);
@@ -437,6 +458,7 @@ void vtwin_apply_settings(vtwin *w)
     if (!w->t || !w->win)
         return;
     vr_cursor_off(&w->r);
+    outline_sync(w); /* a profile's font_fallback, live */
     settings(w);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
@@ -453,6 +475,11 @@ void vtwin_detach(vtwin *w)
     w->layout_dirty = 0;
     w->want_cols = 0;
     w->dragging = 0;
+    if (w->outline) {
+        vr_set_outline(&w->r, 0);
+        vo_close(w->outline);
+        w->outline = 0;
+    }
     if (w->t) {
         vr_free(&w->r);
         vt_free(w->t);

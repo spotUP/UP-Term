@@ -376,12 +376,21 @@ void vr_set_font(vr_render *r, struct TextFont *font)
     r->ch = font->tf_YSize;
     r->base = font->tf_Baseline;
     SetFont(r->rp, font);
+    if (r->outline)
+        vo_set_cell(r->outline, r->cw, r->ch, r->base); /* its glyphs at the new cell */
     if (r->glyphs)
         FreeVec(r->glyphs);
     r->glyphs = 0;
 #ifdef VTCON_DIRECT
     extract_glyphs(r);
 #endif
+}
+
+void vr_set_outline(vr_render *r, struct vo_font *f)
+{
+    r->outline = f;
+    if (f)
+        vo_set_cell(f, r->cw, r->ch, r->base);
 }
 
 void vr_set_off(vr_render *r, int off)
@@ -1098,6 +1107,33 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
         r->cursor_drawn = 0; /* the cursor cell was just painted over */
 }
 
+/* The outline font's glyph for a cell the bitmap font cannot show itself
+ * (render/outline; 0: draw as without one). */
+static const UBYTE *outline_glyph(vr_render *r, const vt_cell *c, WORD *bpr)
+{
+    if (r->outline && c->ch >= 0x80 && !vt_glyph_native(c->ch, r->enc))
+        return vo_glyph(r->outline, c->ch, c->width == 2 ? 2 : 1, bpr);
+    return 0;
+}
+
+/* An outline glyph over `cells` cells: the background, the mask in the
+ * text colour (bold: again one pixel right, as Text() bold), the lines. */
+static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bpr, int cells,
+                         const vr_style *st)
+{
+    WORD w = (WORD)(cells * r->cw);
+    fill(r, px, py, (WORD)(px + w - 1), (WORD)(py + r->ch - 1), st->bg);
+    ink_a(r, st->fg);
+    SetDrMd(r->rp, JAM1);
+    BltTemplate((PLANEPTR)m, 0, bpr, r->rp, px, py, w, r->ch);
+    if (st->attr & VT_ATTR_BOLD)
+        BltTemplate((PLANEPTR)m, 0, bpr, r->rp, (WORD)(px + 1), py, (WORD)(w - 1), r->ch);
+    SetDrMd(r->rp, JAM2);
+    if ((st->attr & LINE_ATTRS) || (st->deco & VT_DECO_IDEO_MASK))
+        decorate(r, cells, px, py, st);
+    r->n_outline++;
+}
+
 static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
@@ -1126,7 +1162,10 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         }
         n = 0;
         nd = 0;
-        for (x = x0; x < x1 && x < ncells; x++) {
+        x = x0;
+        if (x > 0 && x < ncells && c[x].width == 0 && r->outline)
+            x--; /* the right half of a wide glyph: the outline glyph spans both, draw it whole */
+        for (; x < x1 && x < ncells; x++) {
             vt_glyph g;
             if (c[x].width == 0) {
                 /* the right half of a wide glyph: its '?' took the left */
@@ -1147,6 +1186,17 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 g.kind = VT_GLYPH_FONT; /* ASCII: the font's own character */
                 g.code = (vt_u8)c[x].ch;
             } else {
+                WORD obpr;
+                const UBYTE *om = outline_glyph(r, &c[x], &obpr);
+                if (om) {
+                    int cells = c[x].width == 2 ? 2 : 1;
+                    flush_run(r, run, n, run_x, py, &run_st);
+                    n = 0;
+                    draw_outline(r, r->ox + x * r->cw, py, om, obpr, cells, &st);
+                    if (cells == 2 && x + 1 < ncells && c[x + 1].width == 0)
+                        x++; /* its right half is drawn */
+                    continue;
+                }
                 g = vt_map_glyph(c[x].ch, r->enc);
             }
             if (g.kind != VT_GLYPH_FONT) {
@@ -1490,6 +1540,19 @@ static void cursor_draw(vr_render *r, int on)
         ink_ab(r, r->pen_default_bg, r->cursor_ink);
         SetWriteMask(r->rp, 0xFF);
         RectFill(r->rp, px, py, x1, y1);
+        if (have && c[r->cursor_x].width == 1) {
+            WORD obpr;
+            const UBYTE *om = outline_glyph(r, &c[r->cursor_x], &obpr);
+            if (om) {
+                /* an outline glyph under the cursor, in the background colour */
+                ink_a(r, r->pen_default_bg);
+                SetDrMd(r->rp, JAM1);
+                BltTemplate((PLANEPTR)om, 0, obpr, r->rp, px, py, r->cw, r->ch);
+                SetDrMd(r->rp, JAM2);
+                r->cursor_colorful = 1;
+                return;
+            }
+        }
         if (have && g.code) {
             int fk = vt_cell_font(r->t, &c[r->cursor_x]);
             if (fk && fk <= 10 && r->alt_font[fk])

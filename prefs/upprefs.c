@@ -71,7 +71,7 @@ struct Library *AslBase;      /* the theme requester; 0: no Theme button action 
 enum {
     ID_PAGE = 1,
     ID_PROF, ID_LOAD, ID_NEW, ID_DEL,
-    ID_FONT, ID_SB, ID_CURCOL,
+    ID_FONT, ID_SB, ID_CURCOL, ID_FALLBACK,
     ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_COMPLETE, ID_KCMODE, ID_KCINFO, ID_KCCACHE,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
     ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME
@@ -85,10 +85,10 @@ struct strfield {
     int cap;
 };
 
-/* the string fields: General's profile, font, scrollback, cursor colour
+/* the string fields: General's profile, font, fallback font, scrollback, cursor colour
  * and KingCON style; Colors' text, background, selection pair and the 16
  * palette entries */
-#define N_STR (5 + 4 + 16)
+#define N_STR (6 + 4 + 16)
 
 struct app {
     struct Window *win;
@@ -447,6 +447,9 @@ static int build_gadgets(struct app *a)
     g = gad(a, g, BUTTON_KIND, 402, ROW(0), 64, 14, "Delete", ID_DEL, PLACETEXT_IN, 0);
     g = str_gad(a, g, 0, FIELD_X, ROW(1), 200, "Font", ID_FONT, a->f.font, UC_MAX_VALUE);
     g = str_gad(a, g, 0, FIELD_X, ROW(2), 80, "Scrollback", ID_SB, a->f.sb, UC_MAX_VALUE);
+    /* glyphs the font lacks (Nerd Font icons, CJK): an installed outline
+     * font's, FONTS:<name>.otag (plan 2026-10-03-outline-fonts.md) */
+    g = str_gad(a, g, 0, 336, ROW(2), 130, "Fallback font", ID_FALLBACK, a->f.fallback, UC_MAX_VALUE);
     g = str_gad(a, g, 0, FIELD_X, ROW(3), 80, "Cursor colour", ID_CURCOL, a->f.curcol, UC_MAX_VALUE);
     g = a->gcursor = cycle_gad(a, g, ROW(4), "Cursor", ID_CURSOR, cursor_labels);
     g = a->gblink = check_gad(a, g, ROW(5) + 1, "Cursor blinks", ID_BLINK);

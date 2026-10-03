@@ -44,9 +44,12 @@ static vt_glyph mk(int kind, int code)
     return g;
 }
 
-vt_glyph vt_map_glyph(vt_u32 cp, enum vt_font_enc enc)
+/* *native: 1 when the glyph is cp itself (the font's own, or drawn), 0 for
+ * a stand-in or the replacement */
+static vt_glyph map(vt_u32 cp, enum vt_font_enc enc, int *native)
 {
     int a;
+    *native = 1;
     if (cp < 0x80)
         return mk(VT_GLYPH_FONT, (int)cp);
     if (enc == VT_ENC_CP437) {
@@ -88,11 +91,29 @@ vt_glyph vt_map_glyph(vt_u32 cp, enum vt_font_enc enc)
         return mk(VT_GLYPH_DIAMOND, 0);
     if (cp == 0x25A0 || cp == 0x25AE)
         return mk(VT_GLYPH_BLOCK, 0x40 | 0x0F);
+    *native = 0;
     a = approx_find(cp);
     if (a >= 0) {
-        if (enc == VT_ENC_CP437 && a >= 0x80)
-            return vt_map_glyph((vt_u32)a, enc); /* e.g. the middle dot */
+        if (enc == VT_ENC_CP437 && a >= 0x80) {
+            int n;
+            return map((vt_u32)a, enc, &n); /* e.g. the middle dot */
+        }
         return mk(VT_GLYPH_FONT, a);
     }
     return mk(VT_GLYPH_FONT, '?');
+}
+
+vt_glyph vt_map_glyph(vt_u32 cp, enum vt_font_enc enc)
+{
+    int native;
+    return map(cp, enc, &native);
+}
+
+int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc)
+{
+    int native;
+    if (cp < 0x80)
+        return 1;
+    map(cp, enc, &native);
+    return native;
 }

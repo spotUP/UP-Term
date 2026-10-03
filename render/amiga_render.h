@@ -15,6 +15,7 @@
 #include <graphics/text.h>
 #include "../engine/vtengine.h"
 #include "glyphmap.h"
+#include "outline.h"
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
@@ -79,6 +80,10 @@ typedef struct vr_render {
     UBYTE *glyphs;
     /* profile counters, read by the debug build */
     ULONG n_direct, n_text;
+    /* the outline font for the cells the bitmap font cannot show (F1),
+     * 0 for none; the owner opens and closes it (vr_set_outline) */
+    struct vo_font *outline;
+    ULONG n_outline;      /* cells drawn from it */
     /* selection, inclusive, rows as grid row + vt_lines_scrolled() at the
      * time (so it stays on its text while output scrolls) */
     BYTE sel;
@@ -115,6 +120,9 @@ void vr_palette_changed(vr_render *r);
  * rastport's font and the planar glyphs follow; the caller resizes the
  * grid (vr_layout) and redraws. */
 void vr_set_font(vr_render *r, struct TextFont *font);
+/* The outline font for glyphs the bitmap font lacks (0: none); the caller
+ * keeps it open and redraws. Its cell follows vr_set_font. */
+void vr_set_outline(vr_render *r, struct vo_font *f);
 /* A tab's renderer: off (another tab is shown) draws nothing at all; the
  * caller redraws when it is on again. */
 void vr_set_off(vr_render *r, int off);

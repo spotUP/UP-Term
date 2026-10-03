@@ -81,6 +81,8 @@ typedef struct vtwin {
     int copy_on_select;          /* a drag ends with the text on the clipboard */
     int wheel_scroll;            /* the wheel moves through the scrollback */
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
+    char fallback[64];           /* outline font for glyphs the bitmap font lacks
+                                  * (font_fallback; FONTS:<name>.otag), "" none */
     /* owner switches, 0 for XCON: (a console.device unit sets them) */
     int nodraw_resize;           /* CONFLAG_NODRAW_ON_NEWSIZE: a resize clears, nothing redrawn */
     int no_clipboard;            /* no RAmiga-C/V copy and paste (only SNIPMAP units have them) */
@@ -90,6 +92,7 @@ typedef struct vtwin {
     struct TextFont *font;
     int font_opened;
     struct TextFont *alt[11];
+    struct vo_font *outline;     /* fallback, open while attached (0: none or not found) */
     vt_term *t;
     vr_render r;
     WORD want_cols;              /* DECCOLM asked for this width (0: none) */

@@ -63,6 +63,9 @@ CONFIGURATION (profiles)
 
    The keys (all optional, case-insensitive):
      font = TOPAZ:8.8.font     font name : size
+     font_fallback = SymbolsNerdFontMono
+                               an installed outline font for what the font
+                               cannot show (see OUTLINE FONTS below)
      fg = C0C0C0  bg = 000000  default foreground / background (RRGGBB hex)
      scrollback = 2000         lines to keep (0 = the built-in 500, -1 = none)
      cursor = block            block | underline | bar
@@ -92,6 +95,24 @@ CONFIGURATION (profiles)
    iTerm2, Alacritty, Warp and Ghostty formats and prints the fg, bg,
    cursor-color and palette lines to paste here.
 
+OUTLINE FONTS (icons, other scripts)
+   Amiga bitmap fonts hold 256 characters. A character outside them (a
+   Nerd Font icon in a prompt or a Neovim status line, CJK, symbols) shows
+   as '?', or as a near Latin-1 stand-in ('-' for a dash). With
+   font_fallback naming an installed outline font, UP-Term draws those
+   characters from it, at the size of your font; everything else keeps
+   your bitmap font. Characters up to U+FFFF.
+   You need a font engine for TrueType fonts: ttf.library 0.8.5 by Richard
+   Griffith, Aminet util/libs/ttflib68020 (also 68000, 68030, 68040 and
+   68060 builds), freely distributable, AmigaOS 3.0 or newer. Copy
+   ttf.library to LIBS:, then install a font with its ttfinstall, e.g. the
+   icons-only Nerd Font (github.com/ryanoasis/nerd-fonts, NerdFontsSymbolsOnly,
+   MIT licence):
+     ttfinstall SymbolsNerdFontMono-Regular.ttf FONTS:
+   and put  font_fallback = SymbolsNerdFontMono  (the .otag's name) in a
+   profile, or type it in UP-Term Prefs, General page, Fallback font.
+   Open windows take it at once.
+
 MENU
   An XCON: window has a menu (right mouse button, on the screen's title
   bar): UP-Term > Copy, Paste, Find..., Preferences... (opens UP-Term
@@ -108,6 +129,10 @@ KEYS
   Right Amiga C / V     copy / paste (clipboard, IFF FTXT)
   Shift+PgUp / PgDn     scroll back / forward
   Right Amiga Up / Down scroll back / forward one line
+  Right Amiga T         new tab (a shell of its own, the same profile)
+  Right Amiga 1-9       that tab; Right Amiga . and , the next / previous
+                        (or click the tab bar); the close gadget closes
+                        the tab you see
   Left Amiga + key      Meta (ESC prefix) for Unix programs; Alt stays
                         with your keymap
   In the Shell line:

@@ -826,6 +826,9 @@ static void apply_profile(con *c)
                 f[i] = ' '; /* the profile's "NAME:SIZE" is the spec's "NAME SIZE" */
         parse_font(f, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
     }
+    /* glyphs the bitmap font lacks: an outline font's (F1); "" none */
+    v = upconf_str(c->conf, p, "font_fallback", 0);
+    copy_str(c->w.fallback, v ? v : "", sizeof(c->w.fallback));
     if (!c->colours_spec)
         apply_colours(c, c->conf, p, 0);
     else

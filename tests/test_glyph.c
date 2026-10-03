@@ -82,8 +82,25 @@ static void unknown_code_points_get_a_stand_in(void)
     CHECK_INT(g.code, 2);
 }
 
+/* The cells an outline font may draw instead: stand-ins and the
+ * replacement; never what the font or the line drawing shows itself. */
+static void only_stand_ins_and_the_replacement_are_not_native(void)
+{
+    CHECK(vt_glyph_native('A', VT_ENC_LATIN1));
+    CHECK(vt_glyph_native(0xE5, VT_ENC_LATIN1));
+    CHECK(vt_glyph_native(0x2500, VT_ENC_LATIN1));  /* drawn line */
+    CHECK(vt_glyph_native(0x2588, VT_ENC_LATIN1));  /* drawn block */
+    CHECK(vt_glyph_native(0x2502, VT_ENC_CP437));   /* the IBM font's own */
+    CHECK(!vt_glyph_native(0x2014, VT_ENC_LATIN1)); /* em dash: '-' stands in */
+    CHECK(!vt_glyph_native(0xE0A0, VT_ENC_LATIN1)); /* a Nerd Font icon: '?' */
+    CHECK(!vt_glyph_native(0x4E2D, VT_ENC_LATIN1)); /* CJK: '?' */
+    CHECK(!vt_glyph_native(0x2022, VT_ENC_CP437));  /* bullet: CP437's middle dot stands in */
+    CHECK(vt_glyph_native(0xE5, VT_ENC_CP437));     /* CP437 has a-ring */
+}
+
 void suite_glyph(void)
 {
+    only_stand_ins_and_the_replacement_are_not_native();
     latin1_font_draws_latin1_itself();
     box_drawing_becomes_lines();
     blocks_become_rectangles();
