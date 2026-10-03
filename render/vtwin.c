@@ -78,8 +78,10 @@ static void cb_title(void *u, const char *s)
         }
     }
     w->title[i] = 0;
-    if (w->win)
+    if (w->win && !w->r.off)
         SetWindowTitles(w->win, (UBYTE *)w->title, (UBYTE *)~0);
+    if (w->host->titled)
+        w->host->titled(w->user);
 }
 
 /* The engine's idea of the default colours: what the pens show. */
@@ -338,6 +340,15 @@ int vtwin_attach(vtwin *w, struct Window *win)
     else if (w->pers == VT_XTERM && w->cp437)
         vt_set_charset(w->t, VT_CS_CP437);
     vr_init(&w->r, win, w->font, w->t, w->pers == VT_PCANSI ? VT_ENC_CP437 : VT_ENC_LATIN1);
+    if (w->own_rp) {
+        w->r.rp = w->own_rp; /* a shared window: our pens and font, its layer */
+        SetFont(w->own_rp, w->font);
+    }
+    if (w->inset_top) {
+        vr_set_inset(&w->r, w->inset_top);
+        vr_layout(&w->r);
+        vt_resize(w->t, w->r.cols, w->r.rows);
+    }
     for (k = 1; k <= 10; k++) {
         if (!w->alt[k] && w->altname[k][0])
             w->alt[k] = open_named(w->altname[k], w->altsize[k] ? w->altsize[k] : w->font->tf_YSize);
@@ -374,7 +385,7 @@ int vtwin_set_font(vtwin *w, const char *name, WORD size)
     vt_resize(w->t, w->r.cols, w->r.rows);
     w->host->resized(w->user);
     /* the old cells' pixels go: the new grid may not cover them */
-    EraseRect(w->win->RPort, w->win->BorderLeft, w->win->BorderTop,
+    EraseRect(w->r.rp, w->win->BorderLeft, w->win->BorderTop + w->inset_top,
               w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
@@ -391,6 +402,34 @@ int vtwin_set_scrollback(vtwin *w, int lines)
         return 0;
     w->sb_lines = lines ? lines : -1; /* the spec's encoding: 0 is the built-in 500 */
     return 1;
+}
+
+void vtwin_show(vtwin *w, int on)
+{
+    if (!w->t || !w->win)
+        return;
+    vr_set_off(&w->r, !on);
+    if (!on)
+        return;
+    vr_layout(&w->r);
+    if (w->r.cols != vt_cols(w->t) || w->r.rows != vt_rows(w->t)) {
+        vt_resize(w->t, w->r.cols, w->r.rows); /* the window changed while we were away */
+        w->host->resized(w->user);
+    }
+    SetWindowTitles(w->win, (UBYTE *)w->title, (UBYTE *)~0);
+    EraseRect(w->r.rp, w->win->BorderLeft, w->win->BorderTop + w->inset_top,
+              w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
+    vr_redraw(&w->r);
+    vr_cursor_on(&w->r);
+}
+
+void vtwin_set_inset(vtwin *w, WORD top)
+{
+    w->inset_top = top;
+    if (!w->t || !w->win)
+        return;
+    vr_set_inset(&w->r, top);
+    vtwin_resize(w);
 }
 
 void vtwin_apply_settings(vtwin *w)

@@ -97,6 +97,8 @@ static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.26) " STR(VTCON_BUILD)
 #define IN_MAX 4096
 #define READ_Q 16
 
+#define TAB_MAX 9 /* tabs in one window */
+
 typedef struct con {
     struct MsgPort *port;
     vtwin w;                     /* the window: engine, renderer, fonts, frame clock (render/vtwin.h) */
@@ -149,6 +151,21 @@ typedef struct con {
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
     upconf *save_work;           /* Save settings to profile: the table once the file is written */
+    /* tabs (plans/2026-10-03-tabs.md): a host owns the window, a tab is a
+     * process drawing into it */
+    struct Window *own_win;      /* the window this process opened and owns (0: a tab's) */
+    char tab_host[48];           /* TAB name: become a tab of that host */
+    int is_tab;                  /* a tab: the window is its host's */
+    struct Message *hiding;      /* host: the HIDE the old tab has not answered yet */
+    int shown;                   /* a tab: the active one (draws, its menus on the window) */
+    struct MsgPort *tab_port;    /* host: its public port (tabs register); tab: from its host */
+    struct MsgPort *tab_reply;   /* replies to the messages this process sent */
+    struct MsgPort *host_pub;    /* a tab: its host's public port */
+    struct RastPort tab_rp;      /* a tab: its own RastPort on the shared window */
+    struct con *tab_list[TAB_MAX]; /* host: its tabs in bar order, itself among them */
+    int ntabs, active;
+    int host_only;               /* host: its own shell ended, it keeps the window for the tabs */
+    char tab_name[32];           /* host: its public port's name */
     struct MsgPort *watch_port;  /* the live-update watcher's replies (watch_worker) */
     struct watch_msg *watch;
     struct Process *watch_task;
@@ -391,7 +408,8 @@ static void h_resized(void *u)
     post_sizewindow(c);
 }
 
-static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized };
+static void h_titled(void *u);
+static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled };
 
 /* ---- the window -------------------------------------------------------------- */
 
@@ -975,6 +993,9 @@ static void parse_spec(con *c, const char *s)
         } else if (str_ipre(field, "FONT", &rest)) {
             /* FONT name.font size */
             parse_font(rest, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
+        } else if (str_ipre(field, "TAB", &rest)) {
+            /* TAB port: a tab in that host's window (UP-Term > New tab) */
+            copy_str(c->tab_host, rest, sizeof(c->tab_host));
         } else if (str_ipre(field, "PROFILE", &rest)) {
             /* PROFILE name: the config profile (the file's, else "default") */
             while (*rest == ' ')
@@ -1012,6 +1033,7 @@ static void kc_finish(con *c, struct complete_req *q);
 static void kc_cyc_end(con *c);
 static int sb_size(const con *c);
 static void watch_take(con *c);
+static void tab_command(con *c, int what);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
 static int find_open(con *c);
@@ -1020,6 +1042,7 @@ static void close_gadget(con *c);
 /* ---- the window's menu -------------------------------------------------------- */
 
 enum { MENU_COPY = 1, MENU_PASTE, MENU_FIND, MENU_PREFS, MENU_CLOSE,
+       MENU_TAB_NEW, MENU_TAB_NEXT, MENU_TAB_PREV, MENU_TAB_CLOSE,
        MENU_KC_FILE, MENU_KC_COMMAND, MENU_KC_DEVICE, MENU_KC_CACHE, MENU_KC_RESET,
        MENU_KC_PURGE, MENU_KC_INFO,
        MENU_SET_BLOCK, MENU_SET_UNDERLINE, MENU_SET_BAR, MENU_SET_BLINK, MENU_SET_BELL_NONE,
@@ -1037,6 +1060,11 @@ static const struct NewMenu menu_def[] = {
     { NM_ITEM, (STRPTR)"Copy", (STRPTR)"C", 0, 0, (APTR)MENU_COPY },
     { NM_ITEM, (STRPTR)"Paste", (STRPTR)"V", 0, 0, (APTR)MENU_PASTE },
     { NM_ITEM, (STRPTR)"Find...", (STRPTR)"F", 0, 0, (APTR)MENU_FIND },
+    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"New tab", (STRPTR)"T", 0, 0, (APTR)MENU_TAB_NEW },
+    { NM_ITEM, (STRPTR)"Next tab", (STRPTR)".", 0, 0, (APTR)MENU_TAB_NEXT },
+    { NM_ITEM, (STRPTR)"Previous tab", (STRPTR)",", 0, 0, (APTR)MENU_TAB_PREV },
+    { NM_ITEM, (STRPTR)"Close tab", 0, 0, 0, (APTR)MENU_TAB_CLOSE },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
@@ -1208,7 +1236,7 @@ static void menu_add(con *c, struct Window *win)
     }
     vi = c->menustrip ? GetVisualInfoA(win->WScreen, 0) : 0;
     if (!vi || !LayoutMenus(c->menustrip, vi, GTMN_NewLookMenus, TRUE, TAG_DONE) ||
-        !SetMenuStrip(win, c->menustrip)) {
+        ((!c->is_tab || c->shown) && !SetMenuStrip(win, c->menustrip))) {
         FreeMenus(c->menustrip);
         c->menustrip = 0;
     }
@@ -1220,8 +1248,8 @@ static void menu_remove(con *c, struct Window *win)
 {
     if (!c->menustrip)
         return;
-    if (win)
-        ClearMenuStrip(win);
+    if (win && (!c->is_tab || c->shown))
+        ClearMenuStrip(win); /* a hidden tab's strip is not on the window */
     FreeMenus(c->menustrip);
     c->menustrip = 0;
 }
@@ -1561,6 +1589,10 @@ static void menu_pick(con *c, UWORD code)
         case MENU_FIND: find_open(c); break;
         case MENU_PREFS: prefs_launch(); break;
         case MENU_CLOSE: close_gadget(c); return; /* as the close gadget */
+        case MENU_TAB_NEW: tab_command(c, MENU_TAB_NEW); return;
+        case MENU_TAB_NEXT: tab_command(c, MENU_TAB_NEXT); return;
+        case MENU_TAB_PREV: tab_command(c, MENU_TAB_PREV); return;
+        case MENU_TAB_CLOSE: tab_command(c, MENU_TAB_CLOSE); return;
         case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); break;
         case MENU_KC_COMMAND: kc_menu(c, COMPLETE_COMMANDS); break;
         case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); break;
@@ -1590,6 +1622,9 @@ static void menu_pick(con *c, UWORD code)
     }
 }
 
+static struct Window *tab_register(con *c);
+static void tab_unregister(con *c);
+
 static int open_window(con *c)
 {
     struct Screen *scr;
@@ -1606,6 +1641,8 @@ static int open_window(con *c)
         return 0;
     c->locked = scr;
     vtwin_open_font(&c->w);
+    if (c->tab_host[0] && (win = tab_register(c)) != 0)
+        goto have_window; /* a tab: the host's window, its RastPort ours */
     if (c->foreign) {
         /* WINDOW 0xaddr: use it as it is; add the IDCMP we need */
         win = c->foreign;
@@ -1642,6 +1679,8 @@ static int open_window(con *c)
     if (!win)
         return 0;
 have_window:
+    if (!c->is_tab)
+        c->own_win = win; /* ours: its IDCMP is read here (a foreign one's too) */
     if (!vtwin_attach(&c->w, win)) {
         c->w.win = win; /* close_window closes it */
         close_window(c); /* no window without its grid: read/write retry the open */
@@ -1689,13 +1728,17 @@ static void close_window(con *c)
         DeleteMsgPort(c->rom_port);
         c->rom_port = 0;
     }
+    if (c->is_tab)
+        tab_unregister(c); /* the host stops sending before the grid goes */
     vtwin_detach(&c->w); /* engine, renderer, fonts; the frame clock stops */
-    if (win) {
+    if (win && !c->is_tab) {
         if (win == c->foreign)
             ModifyIDCMP(win, c->foreign_idcmp); /* hand it back as we found it */
         else
             CloseWindow(win);
     }
+    c->own_win = 0;
+    c->is_tab = 0;
     if (c->locked) {
         UnlockPubScreen(0, c->locked);
         c->locked = 0;
@@ -3121,60 +3164,605 @@ static void close_gadget(con *c)
         send_break(c, SIGBREAKF_CTRL_C);
 }
 
+/* One window event for this process's terminal: from its own window's
+ * IDCMP, or forwarded by the host when this process is a tab (wheel: 1 up,
+ * -1 down, for IDCMP_EXTENDEDMOUSE). */
+static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG mics,
+                     WORD mx, WORD my, int wheel)
+{
+    switch (cls) {
+    case IDCMP_RAWKEY:
+        /* Right Amiga F: the find prompt, opened here rather than in vtwin
+         * because the prompt is a window of ours */
+        if ((qual & IEQUALIFIER_RCOMMAND) && code == 0x46) {
+            find_open(c);
+            break;
+        }
+        vtwin_key(&c->w, code, qual, prev, secs, mics);
+        break;
+    case IDCMP_NEWSIZE:
+        vtwin_resize(&c->w);
+        break;
+    case IDCMP_REFRESHWINDOW:
+        if (c->is_tab)
+            vtwin_show(&c->w, 1); /* the host did Begin/EndRefresh: draw it all */
+        else
+            vtwin_refresh(&c->w);
+        break;
+    case IDCMP_CLOSEWINDOW:
+        close_gadget(c);
+        break;
+    case IDCMP_MENUPICK:
+        menu_pick(c, code);
+        break;
+    case IDCMP_MOUSEBUTTONS:
+    case IDCMP_MOUSEMOVE:
+        vtwin_mouse(&c->w, cls == IDCMP_MOUSEMOVE, code, qual, mx, my);
+        break;
+    case IDCMP_EXTENDEDMOUSE:
+        if (wheel)
+            vtwin_wheel(&c->w, wheel > 0, mx, my);
+        break;
+    default:
+        break;
+    }
+}
+
+static int tab_route(con *c, struct IntuiMessage *im, int wheel);
+
 static void idcmp(con *c)
 {
     struct IntuiMessage *im;
-    if (c->w.win && !IsListEmpty(&c->w.win->UserPort->mp_MsgList))
+    if (c->own_win && c->w.win && !IsListEmpty(&c->own_win->UserPort->mp_MsgList))
         vtwin_render(&c->w); /* resize, refresh, selection: on the current screen */
-    while (c->w.win && (im = (struct IntuiMessage *)GetMsg(c->w.win->UserPort))) {
+    while (c->own_win && (im = (struct IntuiMessage *)GetMsg(c->own_win->UserPort))) {
         ULONG cls = im->Class;
-        switch (cls) {
-        case IDCMP_RAWKEY:
-            /* Right Amiga F: the find prompt, opened here rather than in
-             * vtwin because the prompt is a window of ours */
-            if ((im->Qualifier & IEQUALIFIER_RCOMMAND) && im->Code == 0x46) {
-                find_open(c);
-                break;
-            }
-            /* IAddress: the previous two down keys (dead keys) */
-            vtwin_key(&c->w, im->Code, im->Qualifier, im->IAddress ? *(ULONG *)im->IAddress : 0,
-                      im->Seconds, im->Micros);
-            break;
-        case IDCMP_NEWSIZE:
-            vtwin_resize(&c->w);
-            break;
-        case IDCMP_REFRESHWINDOW:
-            vtwin_refresh(&c->w);
-            break;
-        case IDCMP_CLOSEWINDOW:
-            close_gadget(c);
-            break;
-        case IDCMP_MENUPICK:
-            menu_pick(c, im->Code);
-            break;
-        case IDCMP_MOUSEBUTTONS:
-        case IDCMP_MOUSEMOVE:
-            vtwin_mouse(&c->w, cls == IDCMP_MOUSEMOVE, im->Code, im->Qualifier, im->MouseX, im->MouseY);
-            break;
-        case IDCMP_EXTENDEDMOUSE:
+        int wheel = 0;
+        if (cls == IDCMP_EXTENDEDMOUSE && im->Code == IMSGCODE_INTUIWHEELDATA && im->IAddress) {
             /* the mouse wheel (OS 3.9+): the IntuiWheelData behind IAddress.
              * WheelX is the main wheel; forward (up) is the negative delta.
              * Anything else extended-mouse reports is not ours. */
-            if (im->Code == IMSGCODE_INTUIWHEELDATA && im->IAddress) {
-                struct IntuiWheelData *wd = (struct IntuiWheelData *)im->IAddress;
-                if (wd->Version == INTUIWHEELDATA_VERSION)
-                    vtwin_wheel(&c->w, wd->WheelX < 0, im->MouseX, im->MouseY);
-            }
-            break;
-        default:
-            break;
+            struct IntuiWheelData *wd = (struct IntuiWheelData *)im->IAddress;
+            if (wd->Version == INTUIWHEELDATA_VERSION)
+                wheel = wd->WheelX < 0 ? 1 : -1;
         }
+        /* with tabs the host takes its own keys and the bar, and the
+         * active tab gets the rest */
+        if (!tab_route(c, im, wheel))
+            dispatch(c, cls, im->Code, im->Qualifier,
+                     (cls == IDCMP_RAWKEY && im->IAddress) ? *(ULONG *)im->IAddress : 0,
+                     im->Seconds, im->Micros, im->MouseX, im->MouseY, wheel);
         ReplyMsg((struct Message *)im);
     }
     if (c->auto_shut) {
         c->auto_shut = 0;
         close_window(c);
     }
+}
+
+/* ---- tabs ------------------------------------------------------------------- */
+
+/* plans/2026-10-03-tabs.md. Every tab is a handler process of its own (its
+ * shell, engine, profile, menus); the host -- the process that opened the
+ * window -- owns the window and its IDCMP, draws the bar and routes the
+ * events to the active tab. Messages go both ways; whoever sends one frees
+ * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
+ * for. */
+enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_INSET };
+
+struct tab_msg {
+    struct Message msg;
+    int type;
+    con *from;
+    struct Window *win;      /* REGISTER's answer: the window */
+    WORD inset;              /* REGISTER's answer, INSET: the bar's height */
+    int ok, what;            /* REGISTER's answer; COMMAND: MENU_TAB_* */
+    ULONG cls;               /* EVENT: the IDCMP class and its fields */
+    UWORD code, qual;
+    ULONG prev, secs, mics;
+    WORD mx, my;
+    int wheel;
+};
+
+static struct tab_msg *tab_msg(con *c, int type)
+{
+    struct tab_msg *t;
+    if (!c->tab_reply && !(c->tab_reply = CreateMsgPort()))
+        return 0;
+    t = (struct tab_msg *)AllocVec(sizeof(*t), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!t)
+        return 0;
+    t->msg.mn_ReplyPort = c->tab_reply;
+    t->msg.mn_Length = sizeof(*t);
+    t->type = type;
+    t->from = c;
+    return t;
+}
+
+static void tab_show_active(con *c);
+
+static void tab_replies(con *c)
+{
+    struct Message *m;
+    while (c->tab_reply && (m = GetMsg(c->tab_reply)) != 0) {
+        if (m == c->hiding) {
+            c->hiding = 0; /* the old tab has stopped drawing: the window is free */
+            tab_show_active(c);
+        }
+        FreeVec(m);
+    }
+}
+
+/* host -> a tab, answered later (freed by tab_replies) */
+static void tab_post(con *c, con *to, int type, WORD inset, struct IntuiMessage *im, int wheel)
+{
+    struct tab_msg *t = to->tab_port ? tab_msg(c, type) : 0;
+    if (!t)
+        return;
+    t->inset = inset;
+    if (im) {
+        t->cls = im->Class;
+        t->code = im->Code;
+        t->qual = im->Qualifier;
+        t->prev = (im->Class == IDCMP_RAWKEY && im->IAddress) ? *(ULONG *)im->IAddress : 0;
+        t->secs = im->Seconds;
+        t->mics = im->Micros;
+        t->mx = im->MouseX;
+        t->my = im->MouseY;
+        t->wheel = wheel;
+    }
+    PutMsg(to->tab_port, &t->msg);
+}
+
+static WORD bar_height(con *c)
+{
+    return c->own_win && c->ntabs >= 2 ? (WORD)(c->own_win->WScreen->RastPort.Font->tf_YSize + 4) : 0;
+}
+
+/* the bar: one cell per tab, its number and title, the active one in the
+ * screen's fill pens (in a RastPort of its own: the terminal's pens and
+ * font stay the terminal's) */
+static void bar_draw(con *c)
+{
+    struct Window *win = c->own_win;
+    struct RastPort rp;
+    struct DrawInfo *di;
+    struct TextFont *tf;
+    struct TextExtent te;
+    WORD x0, y0, w, h, i;
+    UWORD *pens;
+    if (!win || c->ntabs < 2)
+        return;
+    rp = *win->RPort;
+    tf = win->WScreen->RastPort.Font;
+    SetFont(&rp, tf);
+    di = GetScreenDrawInfo(win->WScreen);
+    if (!di)
+        return;
+    pens = di->dri_Pens;
+    x0 = win->BorderLeft;
+    y0 = win->BorderTop;
+    w = win->Width - win->BorderLeft - win->BorderRight;
+    h = bar_height(c);
+    SetDrMd(&rp, JAM1);
+    for (i = 0; i < c->ntabs; i++) {
+        con *t = c->tab_list[i];
+        WORD a = x0 + (WORD)((LONG)w * i / c->ntabs), b = x0 + (WORD)((LONG)w * (i + 1) / c->ntabs) - 1;
+        char label[96];
+        int k = 0, n;
+        label[k++] = (char)('1' + i);
+        label[k++] = ' ';
+        copy_str(label + k, t->w.title[0] ? t->w.title : "UP-Term", (int)sizeof(label) - k);
+        SetAPen(&rp, pens[i == c->active ? FILLPEN : BACKGROUNDPEN]);
+        RectFill(&rp, a, y0, b, y0 + h - 2);
+        SetAPen(&rp, pens[SHADOWPEN]);
+        Move(&rp, b, y0);
+        Draw(&rp, b, y0 + h - 2);
+        n = (int)TextFit(&rp, (STRPTR)label, (UWORD)strlen(label), &te, 0, 1,
+                         (UWORD)(b - a - 6 > 0 ? b - a - 6 : 0), (UWORD)h);
+        SetAPen(&rp, pens[i == c->active ? FILLTEXTPEN : TEXTPEN]);
+        Move(&rp, a + 3, y0 + 2 + tf->tf_Baseline);
+        Text(&rp, (STRPTR)label, (UWORD)n);
+    }
+    SetAPen(&rp, pens[SHADOWPEN]);
+    Move(&rp, x0, y0 + h - 1);
+    Draw(&rp, x0 + w - 1, y0 + h - 1);
+    FreeScreenDrawInfo(win->WScreen, di);
+}
+
+/* the bar came or went: every tab's text area moves */
+static void tab_insets(con *c)
+{
+    WORD h = bar_height(c);
+    int i;
+    for (i = 0; i < c->ntabs; i++) {
+        if (c->tab_list[i] == c) {
+            if (c->w.t)
+                vtwin_set_inset(&c->w, h);
+        } else
+            tab_post(c, c->tab_list[i], TM_INSET, h, 0, 0);
+    }
+    if (!h && c->own_win && c->w.t && !c->host_only)
+        vtwin_show(&c->w, 1); /* the bar's pixels are text area again */
+}
+
+/* The window's text area has one owner at a time: the active tab draws, no
+ * other. Handing it over is a handshake: the old tab hides (takes its
+ * cursor away, stops drawing) and answers, and only then is the new one
+ * shown. Shown at once, the old tab's last cursor flip or output -- a
+ * complement, a row -- landed on the new tab's pixels (owner, 2026-10-03:
+ * "the cursor from the other tab leaks into the second tab"). */
+static void tab_show_active(con *c)
+{
+    con *t;
+    if (c->hiding || c->active < 0 || c->active >= c->ntabs || !c->own_win)
+        return;
+    t = c->tab_list[c->active];
+    if (t == c) {
+        vtwin_show(&c->w, 1);
+        if (c->menustrip)
+            SetMenuStrip(c->own_win, c->menustrip);
+    } else
+        tab_post(c, t, TM_SHOW, 0, 0, 0);
+}
+
+static void tab_activate(con *c, int i)
+{
+    con *old;
+    if (i < 0 || i >= c->ntabs || !c->own_win)
+        return;
+    /* while a hand-over is under way the one being left still draws until
+     * it answers, and the one it was going to is not shown yet: no new hide */
+    old = !c->hiding && c->active < c->ntabs ? c->tab_list[c->active] : 0;
+    ClearMenuStrip(c->own_win); /* whoever's strip it was */
+    c->active = i;
+    if (old && old != c->tab_list[i]) {
+        if (old == c)
+            vtwin_show(&c->w, 0);
+        else if (old->tab_port && (c->hiding = (struct Message *)tab_msg(c, TM_HIDE)) != 0)
+            PutMsg(old->tab_port, c->hiding); /* answered: tab_replies shows the new one */
+    }
+    if (!old || old != c->tab_list[i])
+        tab_show_active(c);
+    bar_draw(c);
+}
+
+static void tab_remove(con *c, con *t)
+{
+    int i, was;
+    for (i = 0; i < c->ntabs && c->tab_list[i] != t; i++)
+        ;
+    if (i == c->ntabs)
+        return;
+    was = i == c->active;
+    for (; i < c->ntabs - 1; i++)
+        c->tab_list[i] = c->tab_list[i + 1];
+    c->ntabs--;
+    if (c->active >= c->ntabs)
+        c->active = c->ntabs - 1;
+    if (!c->ntabs)
+        return;
+    tab_insets(c);
+    if (was) {
+        c->active = c->active < 0 ? 0 : c->active;
+        /* the one that went drew last: the new active one draws all */
+        ClearMenuStrip(c->own_win);
+        tab_show_active(c); /* the one that left is not drawing: it waits on us */
+    }
+    bar_draw(c);
+}
+
+/* New tab: a shell on an XCON: stream that names this host. The NewShell
+ * is DOS work: a worker process does it. The new tab takes `profile`. */
+struct tab_spawn_msg {
+    struct Message msg;
+    char cmd[200];
+};
+
+static void tab_spawner(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    struct tab_spawn_msg *m;
+    BPTR f, lock;
+    WaitPort(&me->pr_MsgPort);
+    m = (struct tab_spawn_msg *)GetMsg(&me->pr_MsgPort);
+    me->pr_WindowPtr = (APTR)-1;
+    /* vsh in the tab when there is one (the UP-Term icon's shell), else the
+     * AmigaDOS Shell; the FROM script ends the shell with it -- whatever vsh
+     * returns: its last command's status (127 for a name not found) failed
+     * the script at FailAt 10, and the tab stayed open on the Shell's prompt */
+    if ((lock = Lock((STRPTR)"C:vsh", SHARED_LOCK)) != 0) {
+        UnLock(lock);
+        if ((f = Open((STRPTR)"T:UP-Term-tab", MODE_NEWFILE)) != 0) {
+            FPuts(f, (STRPTR)"FailAt 2147483647\nC:vsh\nEndCLI >NIL:\n");
+            Close(f);
+        }
+        strcat(m->cmd, " FROM T:UP-Term-tab");
+    }
+    SystemTags((STRPTR)m->cmd, SYS_Asynch, TRUE, SYS_Input, Open((STRPTR)"NIL:", MODE_OLDFILE),
+               SYS_Output, Open((STRPTR)"NIL:", MODE_NEWFILE), TAG_DONE);
+    Forbid();
+    FreeVec(m);
+}
+
+static void tab_spawn(con *c, const char *profile)
+{
+    struct tab_spawn_msg *m;
+    struct Process *p;
+    if (c->ntabs >= TAB_MAX || !c->own_win || c->foreign)
+        return;
+    if (!c->tab_port) {
+        /* the public port tabs find us by */
+        char hex[9];
+        ULONG v = (ULONG)c;
+        int i;
+        for (i = 7; i >= 0; i--, v >>= 4)
+            hex[i] = "0123456789ABCDEF"[v & 15];
+        hex[8] = 0;
+        copy_str(c->tab_name, "UPTermTabs.", sizeof(c->tab_name));
+        strcat(c->tab_name, hex);
+        if (!(c->tab_port = CreateMsgPort()))
+            return;
+        c->tab_port->mp_Node.ln_Name = c->tab_name;
+        c->tab_port->mp_Node.ln_Pri = 0;
+        AddPort(c->tab_port);
+    }
+    m = (struct tab_spawn_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!m)
+        return;
+    copy_str(m->cmd, "NewShell \"XCON:0/0/320/100/UP-Term/TAB ", sizeof(m->cmd));
+    strcat(m->cmd, c->tab_name);
+    strcat(m->cmd, "/PROFILE ");
+    strcat(m->cmd, profile);
+    strcat(m->cmd, "\"");
+    p = CreateNewProcTags(NP_Entry, (ULONG)tab_spawner, NP_Name, (ULONG)"UP-Term new tab",
+                          NP_StackSize, 8192, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
+                          NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
+    if (p)
+        PutMsg(&p->pr_MsgPort, &m->msg);
+    else
+        FreeVec(m);
+}
+
+/* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
+static void host_command(con *c, int what, con *from)
+{
+    switch (what) {
+    case MENU_TAB_NEW:
+        tab_spawn(c, from->profile);
+        break;
+    case MENU_TAB_NEXT:
+        if (c->ntabs >= 2)
+            tab_activate(c, (c->active + 1) % c->ntabs);
+        break;
+    case MENU_TAB_PREV:
+        if (c->ntabs >= 2)
+            tab_activate(c, (c->active + c->ntabs - 1) % c->ntabs);
+        break;
+    case MENU_TAB_CLOSE:
+        if (c->ntabs >= 2 && c->tab_list[c->active] != c) {
+            struct IntuiMessage im;
+            memset(&im, 0, sizeof(im));
+            im.Class = IDCMP_CLOSEWINDOW;
+            tab_post(c, c->tab_list[c->active], TM_EVENT, 0, &im, 0);
+        } else
+            close_gadget(c); /* as the close gadget: the active tab is ours */
+        break;
+    }
+}
+
+static void tab_command(con *c, int what)
+{
+    if (c->is_tab && c->host_pub) {
+        struct tab_msg *t = tab_msg(c, TM_COMMAND);
+        if (t) {
+            t->what = what;
+            PutMsg(c->host_pub, &t->msg);
+        }
+    } else
+        host_command(c, what, c);
+}
+
+/* The host's IDCMP with tabs: the bar and the window's own events here,
+ * the rest to the active tab. 0: not handled (one tab, or the host's
+ * own tab is the active one -- dispatch() takes it). */
+static int tab_route(con *c, struct IntuiMessage *im, int wheel)
+{
+    int i;
+    struct Window *win = c->own_win;
+    if (c->ntabs < 2 && !c->host_only)
+        return 0;
+    /* Right Amiga 1-9: that tab (the digits' raw codes are the same on
+     * every keymap, unlike [ and ], which a Swedish map makes letters) */
+    if (im->Class == IDCMP_RAWKEY && (im->Qualifier & IEQUALIFIER_RCOMMAND) &&
+        im->Code >= 0x01 && im->Code <= 0x09) {
+        if (im->Code - 1 < c->ntabs)
+            tab_activate(c, im->Code - 1);
+        return 1;
+    }
+    switch (im->Class) {
+    case IDCMP_NEWSIZE:
+        for (i = 0; i < c->ntabs; i++) {
+            if (c->tab_list[i] == c)
+                vtwin_resize(&c->w);
+            else
+                tab_post(c, c->tab_list[i], TM_EVENT, 0, im, wheel);
+        }
+        bar_draw(c);
+        return 1;
+    case IDCMP_REFRESHWINDOW:
+        BeginRefresh(win);
+        EndRefresh(win, TRUE);
+        bar_draw(c);
+        if (c->tab_list[c->active] == c)
+            vtwin_show(&c->w, 1);
+        else
+            tab_post(c, c->tab_list[c->active], TM_EVENT, 0, im, wheel);
+        return 1;
+    case IDCMP_MOUSEBUTTONS:
+        if (im->Code == SELECTDOWN && im->MouseY >= win->BorderTop &&
+            im->MouseY < win->BorderTop + bar_height(c) && im->MouseX >= win->BorderLeft) {
+            LONG w = win->Width - win->BorderLeft - win->BorderRight;
+            tab_activate(c, (int)((LONG)(im->MouseX - win->BorderLeft) * c->ntabs / (w > 0 ? w : 1)));
+            return 1;
+        }
+        break;
+    }
+    if (c->ntabs && c->tab_list[c->active] == c)
+        return 0;
+    if (c->ntabs)
+        tab_post(c, c->tab_list[c->active], TM_EVENT, 0, im, wheel);
+    return 1;
+}
+
+/* the host's port: tabs registering, leaving, renamed, asking */
+static void host_msgs(con *c)
+{
+    struct tab_msg *t;
+    while (c->tab_port && !c->is_tab && (t = (struct tab_msg *)GetMsg(c->tab_port)) != 0) {
+        switch (t->type) {
+        case TM_REGISTER:
+            if (c->own_win && c->ntabs < TAB_MAX && (c->ntabs || !c->host_only)) {
+                if (!c->ntabs) {
+                    c->tab_list[0] = c;  /* the host's own session: the first tab */
+                    c->ntabs = 1;
+                    c->active = 0;
+                }
+                c->tab_list[c->ntabs++] = t->from;
+                t->ok = 1;
+                t->win = c->own_win;
+                t->inset = bar_height(c);
+                ReplyMsg(&t->msg);
+                tab_insets(c); /* a second tab: the bar comes */
+                tab_activate(c, c->ntabs - 1);
+                continue;
+            }
+            break;
+        case TM_UNREGISTER:
+            tab_remove(c, t->from);
+            break;
+        case TM_TITLE:
+            bar_draw(c);
+            break;
+        case TM_COMMAND:
+            host_command(c, t->what, t->from);
+            break;
+        }
+        ReplyMsg(&t->msg);
+    }
+}
+
+/* a tab: what its host sends */
+static void tab_msgs(con *c)
+{
+    struct tab_msg *t;
+    while (c->is_tab && c->tab_port && (t = (struct tab_msg *)GetMsg(c->tab_port)) != 0) {
+        switch (t->type) {
+        case TM_EVENT:
+            dispatch(c, t->cls, t->code, t->qual, t->prev, t->secs, t->mics, t->mx, t->my, t->wheel);
+            break;
+        case TM_SHOW:
+            c->shown = 1;
+            vtwin_show(&c->w, 1);
+            if (c->menustrip && c->w.win)
+                SetMenuStrip(c->w.win, c->menustrip);
+            break;
+        case TM_HIDE:
+            c->shown = 0; /* the host took our strip off the window */
+            vtwin_show(&c->w, 0);
+            break;
+        case TM_INSET:
+            vtwin_set_inset(&c->w, t->inset);
+            break;
+        }
+        ReplyMsg(&t->msg);
+    }
+}
+
+/* A tab's Open: the host's window, joined. 0 when there is no such host
+ * (gone, or never was): the tab opens a window of its own instead. */
+static struct Window *tab_register(con *c)
+{
+    struct tab_msg *t;
+    struct MsgPort *pub;
+    struct Window *win = 0;
+    if (!(c->tab_port = CreateMsgPort()))
+        return 0;
+    t = tab_msg(c, TM_REGISTER);
+    if (!t)
+        goto none;
+    Forbid();
+    pub = FindPort((STRPTR)c->tab_host);
+    if (pub)
+        PutMsg(pub, &t->msg);
+    Permit();
+    if (!pub) {
+        FreeVec(t);
+        goto none;
+    }
+    WaitPort(c->tab_reply);
+    GetMsg(c->tab_reply);
+    if (t->ok) {
+        win = t->win;
+        c->is_tab = 1;
+        c->host_pub = pub;
+        c->tab_rp = *win->RPort;      /* the window's layer, our own pens and font */
+        c->w.own_rp = &c->tab_rp;
+        c->w.inset_top = t->inset;
+        c->w.foreign_window = 1;      /* never its flags: the host's window */
+        c->w.r.off = 1;               /* nothing drawn until the host shows us */
+    }
+    FreeVec(t);
+    if (win)
+        return win;
+none:
+    DeleteMsgPort(c->tab_port);
+    c->tab_port = 0;
+    return 0;
+}
+
+static void tab_unregister(con *c)
+{
+    struct tab_msg *t = tab_msg(c, TM_UNREGISTER);
+    if (t && c->host_pub) {
+        PutMsg(c->host_pub, &t->msg);
+        for (;;) {
+            /* the host may still be sending until it has taken us out */
+            struct Message *m;
+            Wait((1UL << c->tab_reply->mp_SigBit) | (1UL << c->tab_port->mp_SigBit));
+            while ((m = GetMsg(c->tab_port)) != 0)
+                ReplyMsg(m); /* not acted on: we are leaving */
+            if ((m = GetMsg(c->tab_reply)) != 0) {
+                if (m == &t->msg)
+                    break;
+                FreeVec(m); /* an older one of ours */
+            }
+        }
+        FreeVec(t);
+    } else if (t)
+        FreeVec(t);
+    tab_replies(c);
+    {
+        struct Message *m;
+        while ((m = GetMsg(c->tab_port)) != 0)
+            ReplyMsg(m);
+    }
+    DeleteMsgPort(c->tab_port);
+    c->tab_port = 0;
+    c->host_pub = 0;
+    c->shown = 0;
+    c->w.own_rp = 0;
+}
+
+static void h_titled(void *u)
+{
+    con *c = (con *)u;
+    if (c->is_tab && c->host_pub) {
+        struct tab_msg *t = tab_msg(c, TM_TITLE);
+        if (t)
+            PutMsg(c->host_pub, &t->msg);
+    } else if (c->ntabs >= 2)
+        bar_draw(c);
 }
 
 /* ---- packets ------------------------------------------------------------------------ */
@@ -3557,6 +4145,22 @@ static void packet(con *c, struct DosPacket *p)
     }
 }
 
+/* The host's own shell ended while other tabs live: its tab goes from the
+ * bar, its session (engine, menus) goes, the window stays for the others. */
+static void host_retire(con *c)
+{
+    tab_remove(c, c);
+    c->host_only = 1;
+    find_close(c);
+    sel_close(c);
+    kc_cyc_end(c);
+    if (c->menustrip) {
+        FreeMenus(c->menustrip); /* tab_remove put another tab's strip on the window */
+        c->menustrip = 0;
+    }
+    vtwin_detach(&c->w);
+}
+
 /* ---- main ---------------------------------------------------------------------------- */
 
 static LONG handler_main(void)
@@ -3628,8 +4232,12 @@ static LONG handler_main(void)
     for (;;) {
         ULONG wait = 1UL << c->port->mp_SigBit;
         struct Message *m;
-        if (c->w.win)
-            wait |= 1UL << c->w.win->UserPort->mp_SigBit;
+        if (c->own_win)
+            wait |= 1UL << c->own_win->UserPort->mp_SigBit;
+        if (c->tab_port)
+            wait |= 1UL << c->tab_port->mp_SigBit;
+        if (c->tab_reply)
+            wait |= 1UL << c->tab_reply->mp_SigBit;
         if (c->timer_port)
             wait |= 1UL << c->timer_port->mp_SigBit;
         if (c->comp_port)
@@ -3651,6 +4259,9 @@ static LONG handler_main(void)
         find_idcmp(c); /* the find prompt, while it is open */
         sel_idcmp(c);  /* KingCON's selection window, while it is open */
         watch_take(c); /* the profile file changed: this window's profile, live */
+        host_msgs(c);  /* tabs: registering, leaving, asking (the host) */
+        tab_msgs(c);   /* tabs: events and show/hide from the host (a tab) */
+        tab_replies(c);
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
@@ -3672,11 +4283,37 @@ static LONG handler_main(void)
          * before it, opens is 0 too (a wake-up between the startup packet and
          * that Open used to end the handler, leaving dn_Task at a dead port). */
         if (c->ever_opened && c->opens <= 0 && (!c->wait_close || c->closing) && !c->nreads &&
-            !c->comp_busy && !c->check_busy && !c->hist_busy) /* a worker holds our request */
+            !c->comp_busy && !c->check_busy && !c->hist_busy && !c->host_only) { /* a worker holds our request */
+            if (c->own_win && c->ntabs >= 2) {
+                /* our own shell ended, other tabs live: their window stays
+                 * ours until the last one goes; our session goes now */
+                host_retire(c);
+                continue;
+            }
             break;
+        }
+        if (c->host_only && !c->ntabs)
+            break; /* the last tab went */
     }
-    vtwin_render(&c->w);
-    close_window(c);
+    if (c->host_only) {
+        CloseWindow(c->own_win);
+        c->own_win = 0;
+        if (c->locked) {
+            UnlockPubScreen(0, c->locked);
+            c->locked = 0;
+        }
+    } else {
+        vtwin_render(&c->w);
+        close_window(c);
+    }
+    if (c->tab_port && !c->is_tab) {
+        RemPort(c->tab_port);
+        DeleteMsgPort(c->tab_port);
+        c->tab_port = 0;
+    }
+    tab_replies(c);
+    if (c->tab_reply)
+        DeleteMsgPort(c->tab_reply);
     vtwin_cleanup(&c->w);
     Forbid();
     if (c->node && c->node->dn_Task == c->port)

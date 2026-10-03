@@ -65,7 +65,9 @@ typedef struct vr_render {
      * pen belongs to exact_pen[]), so the ink alone does not say whose it is. */
     LONG cursor_pen;
     LONG sel_pen[2];
-    BYTE hidden;          /* the window is too small to draw into */
+    BYTE hidden;          /* nothing is drawn: the window is too small, or off */
+    BYTE off;             /* a tab that is not the active one: the grid goes on, nothing drawn */
+    WORD inset_top;       /* pixels above the text kept free (the tab bar) */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
     /* Amiga layout requests (CSI t / u / x / y), -1 = automatic:
@@ -113,6 +115,12 @@ void vr_palette_changed(vr_render *r);
  * rastport's font and the planar glyphs follow; the caller resizes the
  * grid (vr_layout) and redraws. */
 void vr_set_font(vr_render *r, struct TextFont *font);
+/* A tab's renderer: off (another tab is shown) draws nothing at all; the
+ * caller redraws when it is on again. */
+void vr_set_off(vr_render *r, int off);
+/* Pixels above the text kept free (the tab bar); the caller lays out and
+ * redraws. */
+void vr_set_inset(vr_render *r, WORD top);
 
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
              enum vt_font_enc enc);

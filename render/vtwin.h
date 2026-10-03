@@ -49,6 +49,8 @@ typedef struct vtwin_host {
     int (*raw)(void *user);
     /* the grid changed size (after vt_resize) */
     void (*resized)(void *user);
+    /* the title changed (OSC 0/2): a tab's label (may be 0) */
+    void (*titled)(void *user);
 } vtwin_host;
 
 typedef struct vtwin {
@@ -64,6 +66,9 @@ typedef struct vtwin {
     struct TextFont *given_font; /* draw with this font (the window's), not opened or closed here */
     int sb_lines;                /* scrollback lines: 0 = 500 (XCON:), -1 = none */
     struct KeyMap *keymap;       /* keys convert with this map; 0 = the system default */
+    struct RastPort *own_rp;     /* draw through this RastPort, not the window's: a tab sharing
+                                  * its window with other processes (own pens and font) */
+    WORD inset_top;              /* pixels above the text kept free (the tab bar) */
     /* profile (config/upconf): the window's defaults the program's
      * sequences still override; 0 / VR_KEEP keep the historical look */
     int bold_bright;             /* xterm SGR 1 takes the bright 8-15 (1, default) */
@@ -120,6 +125,11 @@ int vtwin_set_font(vtwin *w, const char *name, WORD size);
 /* A new scrollback size for an attached window, live (0: none); the view
  * returns to the live output. 0 when there was no memory (unchanged). */
 int vtwin_set_scrollback(vtwin *w, int lines);
+/* A tab: shown (redrawn whole, its title on the window) or not (draws
+ * nothing, its engine goes on). */
+void vtwin_show(vtwin *w, int on);
+/* The tab bar's height changed: the text area moves, the grid follows. */
+void vtwin_set_inset(vtwin *w, WORD top);
 void vtwin_cleanup(vtwin *w);
 /* the frame clock's signal (0 without one) */
 ULONG vtwin_sigmask(const vtwin *w);

@@ -384,6 +384,21 @@ void vr_set_font(vr_render *r, struct TextFont *font)
 #endif
 }
 
+void vr_set_off(vr_render *r, int off)
+{
+    if (off && !r->off && r->win)
+        vr_cursor_off(r); /* still ours to take away */
+    r->off = (BYTE)(off != 0);
+    if (off)
+        r->cursor_drawn = 0;
+    r->hidden = r->off || r->cols < 1 || r->rows < 1;
+}
+
+void vr_set_inset(vr_render *r, WORD top)
+{
+    r->inset_top = top;
+}
+
 /* The columns and rows the window can show right now. The grid follows a
  * new window size only when Intuition reports it (resize()); between a
  * size change and that report -- DECCOLM shrinking the window, the user
@@ -410,7 +425,7 @@ static WORD vis_rows(const vr_render *r)
 int vr_layout(vr_render *r)
 {
     struct Window *w = r->win;
-    WORD lx = r->lay_x > 0 ? r->lay_x : 0, ly = r->lay_y > 0 ? r->lay_y : 0;
+    WORD lx = r->lay_x > 0 ? r->lay_x : 0, ly = (r->lay_y > 0 ? r->lay_y : 0) + r->inset_top;
     WORD iw = w->Width - w->BorderLeft - w->BorderRight - lx;
     WORD ih = w->Height - w->BorderTop - w->BorderBottom - ly;
     WORD cols = iw / r->cw, rows = ih / r->ch;
@@ -430,7 +445,7 @@ int vr_layout(vr_render *r)
             cols = (iw - pad) / r->cw;
         r->ox += pad;
     }
-    r->hidden = cols < 1 || rows < 1;
+    r->hidden = r->off || cols < 1 || rows < 1;
     if (cols < 1)
         cols = 1;
     if (rows < 1)
@@ -1354,11 +1369,15 @@ void vr_select(vr_render *r, int on, int ax, int ay, int bx, int by)
 
 void vr_redraw(vr_render *r)
 {
-    if (!r->win)
-        return; /* no window (before vr_init, after vr_free) */
     struct Window *w = r->win;
-    if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= w->BorderTop)
-        fill(r, w->BorderLeft, w->BorderTop, w->Width - w->BorderRight - 1,
+    WORD top;
+    if (!w)
+        return; /* no window (before vr_init, after vr_free) */
+    if (r->off)
+        return; /* a tab another one covers: its pixels are not ours */
+    top = w->BorderTop + r->inset_top; /* the tab bar above stays the host's */
+    if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= top)
+        fill(r, w->BorderLeft, top, w->Width - w->BorderRight - 1,
              w->Height - w->BorderBottom - 1, r->pen_default_bg);
     r->cursor_drawn = 0;
     draw_rows(r, 0, 0, r->cols, r->rows);
@@ -1495,6 +1514,10 @@ void vr_cursor_off(vr_render *r)
 {
     if (!r->win)
         return; /* no window (before vr_init, after vr_free) */
+    if (r->off) {
+        r->cursor_drawn = 0; /* another tab owns the pixels now */
+        return;
+    }
     if (r->cursor_drawn) {
         cursor_draw(r, 0);
         r->cursor_drawn = 0;
