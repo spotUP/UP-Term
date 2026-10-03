@@ -46,9 +46,20 @@ else should be ported over from DC Telnet?"
       waits until the IDCMP loop has replied its messages). Refused with 2+ tabs. ownscreen_rig.py
       11/11. OPEN: a ScreenMode requester (ASL, in the worker) for screen-mode; Prefs fields for
       screen / screen-mode / screen-depth (the keys are kept on a save already).
-- [ ] P2 fonts by pixel aspect: the pair table (topaz 8 <-> TopazPro 16, IBM 8 <-> IBM 16), the
+- [x] P2 fonts by pixel aspect: the pair table (topaz 8 <-> TopazPro 16, IBM 8 <-> IBM 16), the
       bundled fonts (licences checked: IBM 16 = Moebius VGA 8x16, Apache-2.0), chosen at open and
-      on a screen change.
+      on a screen change. DONE 2026-10-03: render/fontpair (host 28 checks), vtwin_set_screen /
+      vtwin_fit_aspect, profile key font-aspect = off, aspect_rig 4/4. Only topaz 8 pairs (topaz
+      9 / 11 are other designs, a chosen size stays); /font-size steps through the face, the
+      pair's square font one of its sizes (menus_rig 13/13). Kit: Files/fonts; install.dos
+      copies only the sizes FONTS: lacks, a marker each, FixFonts; Uninstall removes the
+      marked ones (rig: IBM 16 added and removed, the user's IBM 8 / 11 kept).
+- [x] P1.4 Intuition's pens in the user's Workbench colours (owner 2026-10-03: "they should use
+      the colors from the users wb settings"): wb_pens copies the Workbench's DrawInfo pens'
+      RGB to pens past the 16 ANSI ones (5 planes on AGA by default, 8 on a card; ECS 4 planes:
+      the nearest ANSI pen). The cursor is drawn in colours, not COMPLEMENT (pen numbers past
+      16 inverted to anything: a cyan cursor in a visitor window). ownscreen_rig 13/13, the
+      cursor check failing on the old code.
 - [ ] P3 the DIRECT path on the own native screen: lazy WaitBlit, stride, measured cycle-exact
       against Text() (68020; a 68000 row when there is an A500 rig); on by default where it wins.
 - [ ] P4 PETSCII personality: dispatch, screencodes, C64 colours, reverse, keys, 40 columns

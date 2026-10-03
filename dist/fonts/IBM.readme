@@ -1,0 +1,9 @@
+IBM.font 16 -- the IBM PC character set (CP437) drawn 8x16, as a VGA shows it.
+
+DCTelnet opens it in place of IBM.font 8 on screens with square pixels
+(every RTG mode, AGA hires interlaced), where the 8x8 drawing made for the
+Amiga's tall PAL hires pixels looks squashed; on PAL hires it opens IBM 8.
+
+Glyphs: app/fonts/ibm/CP437.F16 of Moebius, the ANSI art editor
+(https://github.com/blocktronics/moebius, Apache License 2.0), converted
+to an Amiga strike font: 8x16 cells, baseline row 11, characters 0-255.

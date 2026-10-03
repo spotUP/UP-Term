@@ -17,6 +17,8 @@
 #include <proto/dos.h>
 #include <proto/console.h>
 #include "../handler/clip.h"
+#include "fontpair.h"
+#include <graphics/displayinfo.h>
 
 extern struct GfxBase *GfxBase;
 /* RawKeyConvert is a macro that calls into the console device at
@@ -364,12 +366,110 @@ static struct TextFont *open_named(const char *fontname, WORD fontsize)
     return open_font(fontname, fontsize, 0);
 }
 
+/* a and b the same name, any case, ".font" optional on one of them */
+static int strcmp_nocase(const char *a, const char *b)
+{
+    for (; *a && *b; a++, b++) {
+        char x = (*a >= 'A' && *a <= 'Z') ? (char)(*a + 32) : *a;
+        char y = (*b >= 'A' && *b <= 'Z') ? (char)(*b + 32) : *b;
+        if (x != y)
+            break;
+    }
+    if (!*a && !*b)
+        return 0;
+    if (!*a)
+        return strcmp(b, ".font") && strcmp(b, ".FONT");
+    if (!*b)
+        return strcmp(a, ".font") && strcmp(a, ".FONT");
+    return 1;
+}
+
+/* The font a pair (render/fontpair) gives this screen for the font
+ * asked for -- the system's default font when none was -- or 0 when it
+ * is the font asked for, or not installed. */
+static struct TextFont *aspect_font(vtwin *w, char *name, int max, WORD *size)
+{
+    fontpair_choice ch;
+    const char *base = w->fontname;
+    int bsize = w->fontsize;
+    struct TextFont *f;
+    if (!w->aspect_known || w->aspect_off)
+        return 0;
+    if (!base[0]) {
+        base = (const char *)GfxBase->DefaultFont->tf_Message.mn_Node.ln_Name;
+        bsize = GfxBase->DefaultFont->tf_YSize;
+    }
+    fontpair_choose(base, bsize ? bsize : 8, w->square, w->square_fits, &ch);
+    if (!ch.changed)
+        return 0;
+    f = open_named(ch.name, (WORD)ch.size);
+    if (f && name) {
+        strncpy(name, ch.name, (size_t)max - 1);
+        name[max - 1] = 0;
+        *size = (WORD)ch.size;
+    }
+    return f;
+}
+
+void vtwin_set_screen(vtwin *w, struct Screen *scr)
+{
+    struct DisplayInfo di;
+    ULONG mode;
+    w->aspect_known = 0;
+    if (!scr)
+        return;
+    mode = GetVPModeID(&scr->ViewPort);
+    if (mode == (ULONG)INVALID_ID ||
+        !GetDisplayInfoData(0, (UBYTE *)&di, sizeof(di), DTAG_DISP, mode))
+        return;
+    w->square = di.Resolution.x == di.Resolution.y;
+    /* 25 rows of 16-pixel cells under the screen's title bar and a window's */
+    w->square_fits = scr->Height >= 25 * 16 + 2 * (scr->BarHeight + 1) + 4;
+    w->aspect_known = 1;
+}
+
+int vtwin_fit_aspect(vtwin *w)
+{
+    char name[40], base[40];
+    WORD size = 0, bsize = w->fontsize;
+    struct TextFont *f;
+    const char *now;
+    if (!w->t || !w->win || w->given_font || !w->font)
+        return 0;
+    /* the font this screen wants: the pair's other one, or the one asked
+     * for -- compared with the font drawn NOW (a move from square pixels
+     * back to tall ones has TopazPro open while topaz was asked for: it
+     * kept the 16-pixel font, rig 2026-10-03) */
+    f = aspect_font(w, name, sizeof(name), &size);
+    if (f)
+        CloseFont(f); /* vtwin_set_font opens it again for the window */
+    else {
+        strncpy(base, w->fontname, sizeof(base) - 1);
+        base[sizeof(base) - 1] = 0;
+        if (!base[0]) {
+            strncpy(base, (const char *)GfxBase->DefaultFont->tf_Message.mn_Node.ln_Name, sizeof(base) - 1);
+            bsize = GfxBase->DefaultFont->tf_YSize;
+        }
+        strncpy(name, base, sizeof(name));
+        size = bsize ? bsize : 8;
+    }
+    now = (const char *)w->font->tf_Message.mn_Node.ln_Name;
+    if (now && size == w->font->tf_YSize && !strcmp_nocase(now, name))
+        return 0; /* already that one */
+    return vtwin_set_font(w, name, size);
+}
+
 struct TextFont *vtwin_open_font(vtwin *w)
 {
     struct TextFont *f;
     if (w->given_font) {
         w->font_opened = 0;
         return w->font = w->given_font;
+    }
+    if ((f = aspect_font(w, 0, 0, 0)) != 0) {
+        /* the pair's other font for this screen's pixels (P2) */
+        w->font_opened = 1;
+        return w->font = f;
     }
     f = open_named(w->fontname, w->fontsize);
     w->font_opened = f != 0;
@@ -1073,26 +1173,44 @@ void vtwin_reset(vtwin *w)
 }
 
 /* the next designed (not scaled) size of the window's font up (dir 1) or
- * down (-1), within 6..64 pixels: 0 when there is none */
+ * down (-1), within 6..64 pixels: 0 when there is none. The sizes are the
+ * face's: a pair's square font is its tall face's (TopazPro 16 is topaz
+ * 8: down from it is topaz 11), and on square pixels the pair's square
+ * font is one of the sizes (up from topaz 11 is TopazPro 16) -- stepping
+ * TopazPro alone found nothing either way (rig 2026-10-03, menus_rig). */
 int vtwin_font_step(vtwin *w, int dir)
 {
-    const char *name;
-    WORD size, s;
+    fontpair_choice tall, sq;
+    char family[40], best[40];
+    WORD cur, s, best_size = 0;
     if (!w->t || !w->win || !w->font || w->given_font)
         return 0;
-    name = w->fontname[0] ? w->fontname : (const char *)w->font->tf_Message.mn_Node.ln_Name;
-    size = w->font->tf_YSize;
-    for (s = (WORD)(size + dir); s >= 6 && s <= 64; s = (WORD)(s + dir)) {
-        struct TextFont *f = open_font(name, s, 1);
-        if (f) {
-            char n[40];
-            CloseFont(f);
-            strncpy(n, name, sizeof(n) - 1);
-            n[sizeof(n) - 1] = 0;
-            return vtwin_set_font(w, n, s);
+    cur = w->font->tf_YSize;
+    fontpair_choose((const char *)w->font->tf_Message.mn_Node.ln_Name, cur, 0, 1, &tall);
+    strncpy(family, tall.name, sizeof(family) - 1);
+    family[sizeof(family) - 1] = 0;
+    if (w->aspect_known && !w->aspect_off) {
+        fontpair_face(family, w->square, w->square_fits, &sq);
+        if (sq.changed && (dir > 0 ? sq.size > cur : sq.size < cur)) {
+            strncpy(best, sq.name, sizeof(best) - 1);
+            best[sizeof(best) - 1] = 0;
+            best_size = (WORD)sq.size;
         }
     }
-    return 0;
+    for (s = (WORD)(cur + dir); s >= 6 && s <= 64; s = (WORD)(s + dir)) {
+        struct TextFont *f;
+        if (best_size && (dir > 0 ? s >= best_size : s <= best_size))
+            break; /* the pair's font is nearer */
+        if ((f = open_font(family, s, 1)) != 0) {
+            CloseFont(f);
+            strcpy(best, family);
+            best_size = s;
+            break;
+        }
+    }
+    if (!best_size)
+        return 0;
+    return vtwin_set_font(w, best, best_size);
 }
 
 int vtwin_set_size(vtwin *w, int cols, int rows)

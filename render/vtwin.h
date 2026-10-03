@@ -81,6 +81,8 @@ typedef struct vtwin {
     int copy_on_select;          /* a drag ends with the text on the clipboard */
     int wheel_scroll;            /* the wheel moves through the scrollback */
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
+    int aspect_off;              /* font-aspect = off: the font as asked, on any screen */
+    int aspect_known, square, square_fits; /* vtwin_set_screen: the screen's pixels */
     char fallback[64];           /* outline font for glyphs the bitmap font lacks
                                   * (font-fallback; FONTS:<name>.otag), "" none */
     /* owner switches, 0 for XCON: (a console.device unit sets them) */
@@ -143,6 +145,12 @@ ULONG vtwin_sigmask(const vtwin *w);
 void vtwin_tick(vtwin *w);
 
 struct TextFont *vtwin_open_font(vtwin *w);
+/* The screen the window is on, before vtwin_open_font: square pixels or
+ * tall ones decide between the two fonts of a pair (render/fontpair). */
+void vtwin_set_screen(vtwin *w, struct Screen *scr);
+/* After a move to another screen: the pair's other font when this screen
+ * wants it (1 when the font changed). */
+int vtwin_fit_aspect(vtwin *w);
 int vtwin_attach(vtwin *w, struct Window *win); /* 0: no memory (the owner closes its window) */
 void vtwin_detach(vtwin *w);
 /* The window goes but the terminal stays (moving to another screen):

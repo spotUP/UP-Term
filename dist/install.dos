@@ -2,7 +2,7 @@
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
-; the patched ixemul.library.
+; the patched ixemul.library, the fonts by pixel shape.
 ; Run by the kit's Install (an Installer script), which asks the questions:
 ;   Execute <kit>/Files/install.dos <kit>/Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
 ;     [SHELLICON|NOSHELLICON] [SYSICON|NOSYSICON]   (the icons: no unless asked)
@@ -142,6 +142,36 @@ If "{CURL}" EQ "CURL"
       Copy net/curl-8.22.0/curl.020 SYS:UP-Term/bin/curl CLONE QUIET
     EndIf
   EndIf
+EndIf
+; The fonts by pixel shape (fonts/SOURCE.txt): TopazPro 16, IBM 8 / 11 /
+; 16 into FONTS:, only the sizes not there yet -- a user's own IBM.font
+; keeps its files -- each marked for Uninstall; FixFonts then lists every
+; size in the .font files
+MakeDir >NIL: FONTS:TopazPro FONTS:IBM
+If NOT EXISTS FONTS:TopazPro/16
+  Copy fonts/TopazPro/16 FONTS:TopazPro/16 CLONE QUIET
+  Echo >ENVARC:up-term/font-TopazPro-16 "installed by UP-Term"
+EndIf
+If NOT EXISTS FONTS:IBM/8
+  Copy fonts/IBM/8 FONTS:IBM/8 CLONE QUIET
+  Echo >ENVARC:up-term/font-IBM-8 "installed by UP-Term"
+EndIf
+If NOT EXISTS FONTS:IBM/11
+  Copy fonts/IBM/11 FONTS:IBM/11 CLONE QUIET
+  Echo >ENVARC:up-term/font-IBM-11 "installed by UP-Term"
+EndIf
+If NOT EXISTS FONTS:IBM/16
+  Copy fonts/IBM/16 FONTS:IBM/16 CLONE QUIET
+  Echo >ENVARC:up-term/font-IBM-16 "installed by UP-Term"
+EndIf
+If NOT EXISTS FONTS:TopazPro.font
+  Copy fonts/TopazPro.font FONTS: CLONE QUIET
+EndIf
+If NOT EXISTS FONTS:IBM.font
+  Copy fonts/IBM.font FONTS: CLONE QUIET
+EndIf
+If EXISTS SYS:System/FixFonts
+  SYS:System/FixFonts
 EndIf
 ; The shell ixemul programs run (system(), popen(), tmux's jobs) is
 ; /gg/bin/sh -- GG:bin/sh, where Geek Gadgets keeps its sh: vsh, as

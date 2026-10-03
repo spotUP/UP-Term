@@ -11,9 +11,11 @@ thoughts/shared/plans/2026-10-03-screens-and-dctelnet.md, P1).
   5. The profile key screen = fullscreen does the same for a plain window.
   7. /screen own, fullscreen, workbench (Settings > Screen): the window
      moves live, the text before the move still in it each time.
-  6. SCREENMODE 0x29000 (PAL hires): 4 planes, and after colour output the
-     palette still holds the 16 ANSI colours (ObtainBestPen took free pens
-     and overwrote them until the 16 were allocated shared at open).
+  6. SCREENMODE 0x29000 (PAL hires, AGA): 5 planes, and after colour
+     output the palette's first 16 still hold the ANSI colours (ObtainBestPen
+     took free pens and overwrote them until the 16 were allocated shared at
+     open); the frames are in the Workbench's colours (its DrawInfo pens'
+     RGB on the screen's DrawInfo pens, VTC:dripens).
 
 UITREE lists the front screen only, so each check reads the front screen's
 name and its windows. Run with the rig up and the handler installed (rig.py
@@ -56,6 +58,39 @@ def t(s, wt=2):
     time.sleep(wt)
 
 
+def dri_rgb(screen):
+    """the colours of a public screen's DrawInfo pens (VTC:dripens)"""
+    for l in c.run('VTC:dripens "%s"' % screen)[1].splitlines():
+        if l.startswith('rgb:'):
+            return l.split()[1:]
+    return None
+
+
+def cursor_colour(title):
+    """the colour of the solid run of 8 pixels (the block cursor) in the
+    window, or the colours seen in its text area when there is none"""
+    b = ami.req(0x07)
+    w = struct.unpack('>H', b[2:4])[0]
+    if b[0] == 1:
+        nc = struct.unpack('>H', b[6:8])[0]
+        pal, px = b[8:8 + nc * 3], b[8 + nc * 3:]
+        rgb = lambda o: pal[px[o] * 3:px[o] * 3 + 3].hex()
+    else:
+        rgb = lambda o: b[8 + o * 3:11 + o * 3].hex()
+    x0, y0, ww, hh = ami.window(title)['box']
+    seen = set()
+    for y in range(y0 + 12, y0 + hh - 4):
+        run, last = 0, None
+        for x in range(x0 + 4, x0 + ww - 20):
+            v = rgb(y * w + x)
+            seen.add(v)
+            run = run + 1 if v == last and v != '000000' else 1
+            last = v
+            if run == 8:
+                return v
+    return sorted(seen)
+
+
 def click_in(title):
     x, y, w, h = ami.window(title)['box']
     kx, ky = ami.pointer_scale()
@@ -76,6 +111,13 @@ def main():
         time.sleep(4)
         name, wins = front()
         check(any(w[0] == 'visitor' for w in wins), 'it is public: another window opens on it', (name, wins))
+        c.run('Run >NIL: NewShell "XCON:300/340/300/100/xvis/SCREEN UP-Term"')
+        time.sleep(4)
+        seen = cursor_colour('xvis')
+        check(seen == 'c0c0c0', "a visitor UP-Term window's cursor is the default foreground (the pens past "
+              "the 16 made COMPLEMENT draw it cyan)", seen)
+        click_in('xvis')
+        t('EndCLI', 3)
         click_in('own')
         t('EndCLI', 3)
         name, wins = front()
@@ -103,7 +145,8 @@ def main():
         check(name == 'byprofile' and len(wins) == 1 and wins[0][1] >= 640,
               'the profile key screen = fullscreen does it for a plain XCON: window', (name, wins))
         t('EndCLI', 4)
-        # 8: a native screen, 4 planes, the ANSI colours exact after colour output
+        # 8: a native AGA screen, 5 planes, the ANSI colours exact after colour
+        # output, Intuition's pens in the Workbench's colours
         ansi = ['000000', 'cd0000', '00cd00', 'cdcd00', '0000ee', 'cd00cd', '00cdcd', 'e5e5e5',
                 '7f7f7f', 'ff0000', '00ff00', 'ffff00', '5c5cff', 'ff00ff', '00ffff', 'ffffff']
         c.run('Delete ENV:up-term/up-term QUIET')
@@ -114,9 +157,13 @@ def main():
         t('Type VTC:cols.txt', 3)
         b = ami.req(0x07)
         nc = struct.unpack('>H', b[6:8])[0]
-        pal = [b[8 + i * 3:11 + i * 3].hex() for i in range(min(nc, 16))]
-        check(b[0] == 1 and nc == 16 and pal == ansi,
-              'a native PAL screen: 4 planes, the 16 ANSI colours exact after colour output', (nc, pal))
+        allpal = [b[8 + i * 3:11 + i * 3].hex() for i in range(nc)]
+        pal = allpal[:16]
+        check(b[0] == 1 and nc == 32 and pal == ansi,
+              'a native AGA PAL screen: 5 planes, the 16 ANSI colours exact after colour output', (nc, pal))
+        shutil.copyfile(ROOT / 'build/amiga/dripens', VTC / 'dripens')
+        ours, wb = dri_rgb('UP-Term'), dri_rgb('Workbench')
+        check(ours and ours == wb, "the frames, bars and menus in the Workbench's colours", (ours, wb))
         t('EndCLI', 4)
         # 9-11: the window moves live (Settings > Screen = /screen), its text with it
         shutil.copyfile(ROOT / 'build/amiga/UPTerm', VTC / 'UPTerm')

@@ -867,6 +867,9 @@ static void apply_profile(con *c)
     }
     if (!c->depth && upconf_get(c->conf, p, "screen-depth"))
         c->depth = (int)upconf_int(c->conf, p, "screen-depth", 0);
+    /* font-aspect = off: the font as asked on every screen (P2) */
+    v = upconf_str(c->conf, p, "font-aspect", 0);
+    c->w.aspect_off = v && str_ieq(v, "off");
     /* glyphs the bitmap font lacks: an outline font's (F1); "" none */
     v = upconf_str(c->conf, p, "font-fallback", 0);
     copy_str(c->w.fallback, v ? v : "", sizeof(c->w.fallback));
@@ -1773,59 +1776,124 @@ static void tab_unregister(con *c);
 
 /* ---- a screen of its own (P1) ------------------------------------------------ */
 
+/* Intuition's pens for a screen of our own, from the Workbench's: each of
+ * its DrawInfo pens with the colour it has there. cols holds the 16 ANSI
+ * colours (SA_Colors32, 32-bit components); with room past them (more
+ * than 4 planes) each Workbench colour gets a pen of its own after them,
+ * else the nearest ANSI pen. pens: the SA_Pens array (NUMDRIPENS + 1),
+ * ~0-ended.
+ * The number of pens added past the 16; without a Workbench, a grey look
+ * from the ANSI colours. */
+static int wb_pens(struct Screen *wb, int depth, ULONG *cols, UWORD *pens)
+{
+    static const UWORD grey[] = { 0, 7, 0, 15, 0, 7, 0, 8, 15, 0, 7, 0, (UWORD)~0 };
+    struct DrawInfo *di = wb ? GetScreenDrawInfo(wb) : 0;
+    UWORD from[NUMDRIPENS];
+    int i, j, n = 0, np;
+    if (!di) {
+        for (i = 0; i < (int)(sizeof(grey) / sizeof(grey[0])); i++)
+            pens[i] = grey[i];
+        return 0;
+    }
+    np = di->dri_NumPens < NUMDRIPENS ? di->dri_NumPens : NUMDRIPENS;
+    for (i = 0; i < np; i++) {
+        ULONG rgb[3];
+        UWORD wp = di->dri_Pens[i];
+        for (j = 0; j < i; j++)
+            if (from[j] == wp)
+                break;
+        from[i] = wp;
+        if (j < i) {
+            pens[i] = pens[j]; /* the same Workbench pen: the same one here */
+            continue;
+        }
+        GetRGB32(wb->ViewPort.ColorMap, wp, 1, rgb);
+        if (depth > 4) {
+            cols[1 + (16 + n) * 3] = rgb[0];
+            cols[2 + (16 + n) * 3] = rgb[1];
+            cols[3 + (16 + n) * 3] = rgb[2];
+            pens[i] = (UWORD)(16 + n++);
+        } else {
+            /* 16 pens, all ANSI: the nearest of them */
+            ULONG best = ~0UL;
+            int k;
+            for (k = 0; k < 16; k++) {
+                LONG dr = (LONG)(cols[1 + k * 3] >> 24) - (LONG)(rgb[0] >> 24);
+                LONG dg = (LONG)(cols[2 + k * 3] >> 24) - (LONG)(rgb[1] >> 24);
+                LONG db = (LONG)(cols[3 + k * 3] >> 24) - (LONG)(rgb[2] >> 24);
+                ULONG d = (ULONG)(dr * dr + dg * dg + db * db);
+                if (d < best) {
+                    best = d;
+                    pens[i] = (UWORD)k;
+                }
+            }
+        }
+    }
+    pens[np] = (UWORD)~0; /* the pens this Intuition knows; it fills the rest */
+    FreeScreenDrawInfo(wb, di);
+    return n;
+}
+
 /* The screen for OWNSCREEN / FULLSCREEN / PUBSCREEN: the Workbench's mode
- * and size unless SCREENMODE says otherwise, 16 colours on a native screen
- * (8 planes on a graphics card), its first 16 pens the terminal's ANSI
- * colours (the profile's palette over xterm's) so every colour has its
- * exact pen, Intuition's pens chosen among them. Public, so programs can
+ * and size unless SCREENMODE says otherwise, 32 colours on an AGA screen
+ * (16 on ECS, 8 planes on a graphics card), its first 16 pens the
+ * terminal's ANSI colours (the profile's palette over xterm's) so every
+ * colour has its exact pen, the next the Workbench's colours for
+ * Intuition's frames and bars (wb_pens). Public, so programs can
  * open on it: the name given, else "UP-Term", "UP-Term.2" ... Locked for
  * the window as a public screen is (c->locked). */
 static struct Screen *own_screen_open(con *c)
 {
-    static const UWORD pens[] = {
-        0,  /* DETAILPEN */        7,  /* BLOCKPEN */      7,  /* TEXTPEN */
-        15, /* SHINEPEN */         8,  /* SHADOWPEN */     4,  /* FILLPEN */
-        15, /* FILLTEXTPEN */      0,  /* BACKGROUNDPEN */ 15, /* HIGHLIGHTTEXTPEN */
-        0,  /* BARDETAILPEN */     7,  /* BARBLOCKPEN */   8,  /* BARTRIMPEN */
-        (UWORD)~0
-    };
-    ULONG cols[1 + 16 * 3 + 1];
+    ULONG cols[1 + (16 + NUMDRIPENS) * 3 + 1];
+    UWORD pens[NUMDRIPENS + 1];
     struct TagItem t[20];
     struct Screen *wb, *scr = 0;
     ULONG mode = c->mode_id, err = 0;
-    int depth = c->depth, i, n, k;
+    int depth = c->depth, i, n, k, extra;
     char name[32];
     wb = LockPubScreen((UBYTE *)"Workbench");
-    if (wb) {
-        if (mode == (ULONG)INVALID_ID)
-            mode = GetVPModeID(&wb->ViewPort);
-        UnlockPubScreen(0, wb);
-    }
+    if (wb && mode == (ULONG)INVALID_ID)
+        mode = GetVPModeID(&wb->ViewPort);
     if (mode == (ULONG)INVALID_ID)
         mode = HIRES_KEY;
     if (!depth) {
         /* the mode's own kind decides: a graphics card's mode (foreign to
          * the chipset) is chunky, 8 bits at least; a native one gets the 4
-         * planes the 16 colours need (a Workbench on a card asking for a
-         * PAL mode got 8 planes before) */
+         * planes the 16 colours need, 5 where the chipset has them (a
+         * Workbench on a card asking for a PAL mode got 8 planes before) */
         struct DisplayInfo di;
+        struct DimensionInfo dims;
         depth = 4;
         if (GetDisplayInfoData(0, (UBYTE *)&di, sizeof(di), DTAG_DISP, mode) &&
             (di.PropertyFlags & DIPF_IS_FOREIGN))
             depth = 8;
+        /* a P96 mode is not marked foreign (rig 2026-10-03: 0x50041303 got
+         * 4 planes asked and 24 bits given); its depth says it */
+        if (GetDisplayInfoData(0, (UBYTE *)&dims, sizeof(dims), DTAG_DIMS, mode)) {
+            if (dims.MaxDepth > 8)
+                depth = 8;
+            else if (depth == 4 && dims.MaxDepth >= 5)
+                depth = 5; /* AGA: the Workbench's own colours past the 16 (wb_pens) */
+        }
     }
     if (depth < 4)
         depth = 4; /* 16 pens: the ANSI colours */
     if (depth > 8)
         depth = 8;
-    cols[0] = (16UL << 16) | 0;
     for (i = 0; i < 16; i++) {
         ULONG rgb = (c->w.pal16[i] & 0x01000000UL) ? (c->w.pal16[i] & 0xFFFFFFUL) : vt_palette_rgb(0, i);
         cols[1 + i * 3] = ((rgb >> 16) & 0xFF) * 0x01010101UL;
         cols[2 + i * 3] = ((rgb >> 8) & 0xFF) * 0x01010101UL;
         cols[3 + i * 3] = (rgb & 0xFF) * 0x01010101UL;
     }
-    cols[1 + 16 * 3] = 0;
+    /* the frames, title bars and menus in the user's Workbench colours
+     * (owner 2026-10-03: "they should use the colors from the users wb
+     * settings") */
+    extra = wb_pens(wb, depth, cols, pens);
+    if (wb)
+        UnlockPubScreen(0, wb);
+    cols[0] = ((ULONG)(16 + extra) << 16) | 0;
+    cols[1 + (16 + extra) * 3] = 0;
     for (k = 1; k <= 9 && !scr; k++) {
         if (c->pubname[0])
             copy_str(name, c->pubname, sizeof(name));
@@ -1866,7 +1934,7 @@ static struct Screen *own_screen_open(con *c)
      * only allocated pens and otherwise takes a free one and sets ITS
      * colour -- the first requests overwrote the palette (rig, PAL hires
      * 4 planes: 9 of the 16 colours moved) */
-    for (i = 0; i < 16; i++)
+    for (i = 0; i < 16 + extra; i++)
         ObtainPen(scr->ViewPort.ColorMap, (ULONG)i, cols[1 + i * 3], cols[2 + i * 3], cols[3 + i * 3], 0);
     PubScreenStatus(scr, 0); /* public now: programs may open on it */
     copy_str(c->pubname, name, sizeof(c->pubname));
@@ -1978,6 +2046,7 @@ static int open_window(con *c)
     if (!scr)
         return 0;
     c->locked = scr;
+    vtwin_set_screen(&c->w, scr); /* square pixels or tall: the font pair's choice */
     vtwin_open_font(&c->w);
     if (c->tab_host[0] && (win = tab_register(c)) != 0)
         goto have_window; /* a tab: the host's window, its RastPort ours */
@@ -2115,7 +2184,9 @@ static int screen_switch(con *c, int mode)
     }
     c->locked = scr;
     c->own_win = win;
+    vtwin_set_screen(&c->w, scr);
     vtwin_rebind(&c->w, win);
+    vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
     menu_add(c, win);
     return c->own_screen == mode;
 }

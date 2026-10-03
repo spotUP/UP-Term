@@ -1,0 +1,17 @@
+Fonts UP-Term installs into FONTS: (only the files not there yet; then
+FixFonts lists every size in the .font files).
+
+  TopazPro.font 16   'topaz pro' by spot / Divine Stylers (2022): topaz
+                     redrawn for square-pixel screens (TopazPro.diz).
+  IBM.font 8, 11     the IBM PC (CP437) font from Fred Fish disk 993
+                     (https://aminet.net/package/misc/fish/fish-0993),
+                     freely distributable.
+  IBM.font 16        the VGA 8x16 CP437 font of Moebius, the ANSI art
+                     editor (https://github.com/blocktronics/moebius,
+                     Apache License 2.0), converted to an Amiga strike
+                     font (IBM.readme).
+
+UP-Term draws topaz as TopazPro 16, and IBM 8 as IBM 16, on screens with
+square pixels (graphics cards, AGA hires interlaced), and the 8-pixel
+fonts on the Amiga's tall PAL / NTSC hires pixels -- unless the profile
+says font-aspect = off. (Taken from DCTelnet, feature/ibm16-square-pixels.)

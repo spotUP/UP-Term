@@ -51,6 +51,30 @@ Delete >NIL: SYS:UP-Term ALL QUIET
 If EXISTS ENVARC:up-term/cryptossh
   Delete >NIL: LIBS:libcryptossh.library QUIET
 EndIf
+; the font sizes Install added (their markers); a drawer left empty goes,
+; and FixFonts drops its .font
+If EXISTS ENVARC:up-term/font-TopazPro-16
+  Delete >NIL: FONTS:TopazPro/16 QUIET
+EndIf
+If EXISTS ENVARC:up-term/font-IBM-8
+  Delete >NIL: FONTS:IBM/8 QUIET
+EndIf
+If EXISTS ENVARC:up-term/font-IBM-11
+  Delete >NIL: FONTS:IBM/11 QUIET
+EndIf
+If EXISTS ENVARC:up-term/font-IBM-16
+  Delete >NIL: FONTS:IBM/16 QUIET
+EndIf
+Delete >NIL: FONTS:TopazPro FONTS:IBM QUIET
+If NOT EXISTS FONTS:TopazPro
+  Delete >NIL: FONTS:TopazPro.font QUIET
+EndIf
+If NOT EXISTS FONTS:IBM
+  Delete >NIL: FONTS:IBM.font QUIET
+EndIf
+If EXISTS SYS:System/FixFonts
+  SYS:System/FixFonts
+EndIf
 Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
 If EXISTS ENVARC:up-term/sysicon

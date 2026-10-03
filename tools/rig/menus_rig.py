@@ -7,8 +7,9 @@ itself is read from the window's menus.
      Select all, Find..., Find next, Clear screen, Clear scrollback, Reset
      terminal; View Bigger font, Smaller font, 80 x 24, 132 x 43.
   2. /size 80x24: the window's inner area is 80 x 24 cells.
-  3. /font-size bigger: the cells grow (the next designed size); /size
-     40x12 again makes the window taller; /font-size smaller goes back.
+  3. /font-size smaller: the cells shrink (the face's next designed size:
+     topaz 11 under TopazPro 16 on the rig's square pixels); /size 40x12
+     again makes the window shorter; /font-size bigger goes back.
   4. /select-all: the text area shows the selection (a pixel of the empty
      area changes colour); a click clears it.
   5. /clear scrollback: a word scrolled off the top is no longer found
@@ -83,7 +84,7 @@ def find_cursor():
         run = 0
         for x in range(x0 + 4, x0 + ww - 20):
             o = 8 + (y * w + x) * 3
-            run = run + 1 if sum(b[o:o + 3]) > 600 else 0
+            run = run + 1 if sum(b[o:o + 3]) > 500 else 0  # the default foreground, C0C0C0
             if run == 8:
                 return (x - 4, y + 2)
     return None
@@ -129,14 +130,17 @@ def main():
         # 80 of those are wider than the rig's 800-pixel screen (refused)
         t('/size 40x12', wait=3)
         x, y, w1, h1 = box()
-        t('/font-size bigger', wait=4)
-        t('/size 40x12', wait=3)
-        x, y, w2, h2 = box()
-        check(h2 > h1, '/font-size bigger: the next designed size, the 40 x 12 window is taller', (h1, h2))
+        # the rig's Workbench has square pixels: topaz is drawn as TopazPro
+        # 16, the face's biggest -- down first (topaz 11), then up again
         t('/font-size smaller', wait=4)
         t('/size 40x12', wait=3)
+        x, y, w2, h2 = box()
+        check(0 < h2 < h1, '/font-size smaller: the face\'s next designed size, the 40 x 12 window is shorter',
+              (h1, h2))
+        t('/font-size bigger', wait=4)
+        t('/size 40x12', wait=3)
         x, y, w3, h3 = box()
-        check(h3 == h1, '/font-size smaller goes back', (h1, h3))
+        check(h3 == h1, '/font-size bigger goes back (TopazPro 16)', (h1, h3))
         t('/size 80x24', wait=3)
 
         # 4

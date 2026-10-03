@@ -1503,11 +1503,17 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
                  r->oy + bottom * r->ch - 1);
 }
 
-/* Draw (on) or erase (off) the cursor. With a profile cursor colour and a
- * block style, the cell is filled with that colour and the glyph redrawn in
- * the default background; otherwise the cell is inverted (the original). */
+/* Draw (on) or erase (off) the cursor: the cell (a block), or its two
+ * bottom rows or left columns, filled with the cursor colour -- the
+ * profile's, else the default foreground -- and a block's glyph redrawn in
+ * the default background; off repaints the cell. Only a double-size row's
+ * block is inverted (COMPLEMENT): that flips pen NUMBERS, not colours, so
+ * on a screen whose pens are not paired by colour it drew anything (rig
+ * 2026-10-03, 32 pens on UP-Term's screen: black in pen 17 inverted to 14,
+ * a cyan cursor). */
 static void cursor_draw(vr_render *r, int on)
 {
+    ULONG ink = r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg;
     int wide = !r->view && vt_row_size(r->t, r->cursor_y) ? 2 : 1; /* a double-size row */
     WORD px = (WORD)(r->ox + r->cursor_x * r->cw * wide), py = r->oy + r->cursor_y * r->ch;
     WORD x1 = (WORD)(px + r->cw * wide - 1), y1 = (WORD)(py + r->ch - 1);
@@ -1529,7 +1535,15 @@ static void cursor_draw(vr_render *r, int on)
         }
         return;
     }
-    if (r->cursor_ink != VR_KEEP && style <= 2 && wide == 1) {
+    if (style > 2) {
+        /* underline, bar: the strip in the cursor colour */
+        ink_a(r, ink);
+        SetWriteMask(r->rp, 0xFF);
+        RectFill(r->rp, px, py, x1, y1);
+        r->cursor_colorful = 1;
+        return;
+    }
+    if (wide == 1) {
         int ncells;
         const vt_cell *c = vt_row(r->t, r->cursor_y, &ncells);
         int have = c && r->cursor_x < ncells;
@@ -1541,10 +1555,10 @@ static void cursor_draw(vr_render *r, int on)
             /* box / block / line on the cursor colour, drawn in the default
              * background -- draw_special fills the cell with `bg` itself */
             r->cursor_colorful = 1;
-            draw_special(r, px, py, g, r->pen_default_bg, r->cursor_ink);
+            draw_special(r, px, py, g, r->pen_default_bg, ink);
             return;
         }
-        ink_ab(r, r->pen_default_bg, r->cursor_ink);
+        ink_ab(r, r->pen_default_bg, ink);
         SetWriteMask(r->rp, 0xFF);
         RectFill(r->rp, px, py, x1, y1);
         if (have && c[r->cursor_x].width == 1) {
