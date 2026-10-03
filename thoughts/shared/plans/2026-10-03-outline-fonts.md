@@ -71,6 +71,8 @@ UP-Term draws as '?'.
 
 ## Result (2026-10-03)
 
+Owner on the rig: "pass".
+
 8 of 8. Host: otag 11 checks, glyph 295, prefs 83 (font_fallback survives a Prefs save: the
 stage rewrites a profile from its fields, so a key without a field was dropped -- the test
 fails with the field's write taken out). Rig (3.1, FS-UAE, ttf.library 0.8.5.020, Symbols
