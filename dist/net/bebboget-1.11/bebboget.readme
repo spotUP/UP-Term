@@ -1,0 +1,226 @@
+Short:        get https files for the Amiga, nodeps
+Author:       s.franke@bebbosoft.de
+Uploader:     s.franke@bebbosoft.de
+Architecture: m68k-amigaos
+Type:         comm/net
+Version:      1.11
+Required:     bsdsocket.library (e.g AmiTCP)
+
+===============================================================================
+NAME
+
+bebboget
+
+Get https files from the internet on your Amiga - all CPUs.
+This program only needs a bsdsocket.library to work. It's 'small' and fast.
+No other nonstandard dependencies!
+
+The 68000 version is slower, caused by using 16x16->32 multiplication.
+
+Expected speed, tested with a 1217kB zip file on github.com
+tested with WinUAE using original speed, no JIT.
+
+(in kB/s)                68000        68020
+bebboget00                 4.9         28.9
+bebboget00 --nochpo        5.7         32.2
+bebboget                               51.5
+bebboget   --nochpo                    39.8         
+
+Note that the speed also depends on the server!
+
+It comes with no known certificates but you can install certificates if 
+asked for. These end up in sys:Prefs/Env-Archive/certs.
+
+It supports 0=SSL3.0, 1=TLS1.0, 2=TLS1.1, 3=TLS1.2 and 4=TLS1.3.
+
+Written in C++ using a STL variant, and still lean!
+Speed criticial functions are now written in assembly.
+
+Based on my Java SSL/TLS implementation that grew over the years,
+starting when Java 1.1 was available and the export restrictions forbid
+strong cryptopgraphy.
+
+===============================================================================
+PROGRAMS
+
+===============
+   bebboget
+===============
+
+$VER: 1.10 (23.11.2025) written by Stefan "Bebbo" Franke
+USAGE: bebboget 1.10 [options] <url>
+    -?            display this help
+    -C            print the outgoing headers
+    -D <dir>      the directory to write to (must exist)
+    -H <header>   add the given header
+    -I            install all certificates    
+    -O            overwrite the file
+    -S            print the incoming headers
+    -T <n>        set timeout in seconds, default=15
+    -o <outname>  use this as out file name
+    -p            print progress and verbosity 4 = INFO
+    -q            print no progress
+    -v <n>        set verbosity, defaults to 2 = ERROR
+    --cipher <c>  use the given cipher, default uses all
+    --max <n>     max supported protocol version, default=4
+    --min <n>     min supported protocol version, default=3
+    --nochpo      disable chacha20_poly1305
+    --redir <n>   max count of redirects, default=7
+    --sloppy      skip signature checks
+
+available ciphers:
+TLS_CHACHA20_POLY1305_SHA256, TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384,
+TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_DHE_RSA_WITH_AES_128_GCM_SHA256, 
+TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, TLS_DHE_RSA_WITH_AES_256_GCM_SHA384, 
+TLS_DHE_RSA_WITH_AES_256_CBC_SHA256, TLS_DHE_RSA_WITH_AES_256_CBC_SHA, 
+TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256, TLS_DHE_RSA_WITH_AES_128_CBC_SHA256, 
+TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, TLS_DHE_RSA_WITH_AES_128_CBC_SHA, 
+TLS_RSA_WITH_AES_128_CBC_SHA256, TLS_RSA_WITH_AES_128_CBC_SHA, 
+TLS_RSA_WITH_AES_256_CBC_SHA256, TLS_RSA_WITH_AES_256_CBC_SHA, 
+TLS_RSA_WITH_3DES_EDE_CBC_SHA, TLS_RSA_WITH_DES_CBC_SHA,
+TLS_RSA_WITH_RC4_128_SHA
+
+===============
+   installcerts
+===============
+
+Get the latest root certs from https://curl.se/docs/caextract.html
+
+    bebboget --sloppy https://curl.se/ca/cacert-2025-05-20.pem
+
+Use this program to install the root certificates:
+
+    installcerts cacert-2025-05-20.pem
+
+===============================================================================
+TESTING
+
+Not too much testing yet^^ 
+
+===============================================================================
+LICENSE
+
+Most of the code in bebboget is licensed under the GNU General Public License,
+version 3 or (at your option) any later version.
+
+This includes:
+- Core HTTPS client (bebboget)
+- Cryptographic implementations: AES, ChaCha20, DES, 3DES, RC4, GCM, MD5,
+  Poly1305, SHA-256, SHA-384, SHA-512
+- Custom elliptic curve code: secp256r1, secp384r1
+- All STL/ministl infrastructure and wrappers
+- All javalike classes
+
+You may redistribute and/or modify these parts under the terms of the GPLv3+.
+See <https://www.gnu.org/licenses/gpl-3.0.html> for details.
+
+---
+
+Some components are derived from the SUPERCOP library
+(Daniel J. Bernstein, Tanja Lange, Peter Schwabe, et al.)
+and are released into the public domain.
+
+This includes:
+- Ed25519 internal math routines
+- X25519 scalar multiplication
+- Supporting field arithmetic helpers
+
+These files are explicitly marked as Public Domain in their headers.
+You may use, copy, modify, and distribute them without restriction.
+
+---
+
+Combined Use:
+- The project as a whole is distributed under GPLv3+, but individual files
+  marked Public Domain remain PD.
+- When linking or combining, 
+  the GPLv3+ terms apply to the resulting binary/library.
+- Downstream users may freely reuse the PD components in other projects without
+  GPL obligations.
+
+===============================================================================
+DISCLAIMER OF WARRANTY
+
+Software is provided "AS IS," without a warranty of any kind.
+You may use it on your own risk.
+
+===============================================================================
+LIMITATION OF LIABILITY
+
+I SHALL NOT BE LIABLE FOR ANY DAMAGES SUFFERED BY YOU OR ANY THIRD PARTY
+AS A RESULT OF USING OR DISTRIBUTING SOFTWARE. IN O EVENT WILL I BE LIABLE
+FOR ANY LOST REVENUE, PROFIT OR DATA, OR FOR DIRECT, INDIRECT, SPECIAL,
+CONSEQUENTIAL, INCIDENTAL OR PUNITIVE DAMAGES, HOWEVER CAUSED AND REGARDLESS
+OF THE THEORY OF LIABILITY, ARISING OUT OF THE USE OF OR INABILITY TO USE
+SOFTWARE, EVEN IF I HAVE ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+===============================================================================
+HISTORY
+
+bebboget V1.11 (26.11.2025)
+* function names in example file bg.cpp now match the header
+
+bebboget V1.10 (23.11.2025)
+* consolidating code with bebbossh
+* some speed gain with chacha20_poly1305
+
+bebboget V1.9 (21.11.2025)
+* name changed to bebboget
+* license change to GPLv3 (or later)
+  code derived from supercop is still public domain
+* --sloppy works again as intended
+* added --nochpo to disable chacha20_poly1305
+* added comments to code, some cleanup and minor improvements
+* source code is now available at https://franke.ms/git/bebbo/bebboget
+* added the lib, a wrapper and a header to use it in curl as backend
+  guess you can use it elsewhere too
+
+amigaget V1.8 (26.05.2025)
+* added installcerts to install a certificate bundle in pem format
+* merged back some speedup from amigassh
+* added the switch -I
+  don't install all certificates unless the user wants it
+
+amigaget V1.7 (10.05.2025)
+* more speed by implemeting some functions in assembly
+* add some more log output to DEBUG/TRACE levels
+
+amigaget V1.6 (05.05.2025)
+* switched to self coded poly1305 - way faster
+* more speed improvements
+* change verbosity
+* add some logging
+* auto install verified certificates
+* fixed address errors in the 68000 version
+ 
+amigaget V1.5 (29.04.2025)
+* support TLS_CHACHA20_POLY1305_SHA256
+
+amigaget V1.4 (24.04.2025)
+* speed improvements in secp256r1/secp384r1 verification
+* speed improvements in AES and GCM
+* don't verify installed certificates again
+* keep the original file name if there are redirects
+* more robust ASN1 handling
+* fix version string
+
+amigaget V1.3 (20.04.2025)
+* fix more printing when no size is known
+* accept wildcard certificates
+* fix reading some certificates
+
+amigaget V1.2 (19.04.2025)
+* fix sloppy handling
+* fix some printing issues
+
+amigaget V1.1 (17.04.2025)
+* add timeout parameter
+* support secp384r1 validation
+* improve secp256r1/secp384r1 performance
+* use -O2 to compile
+* add binaries for 68000 and 68040
+* skip more signature checks if sloppy is set
+* error code cleanup
+
+amigaget V1.0 (11.04.2025)
+* first public release

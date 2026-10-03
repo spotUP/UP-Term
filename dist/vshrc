@@ -15,6 +15,16 @@ clear() {
     printf '\033[H\033[2J'
 }
 
+# ssh and scp: BebboSSH (Install's network tools). vsh's own TERM is vtcon,
+# which a remote Unix machine has no entry for (its shell then cannot move
+# the cursor and redraws every key); an UP-Term window is an xterm to it.
+ssh() {
+    TERM=xterm-256color bebbossh "$@"
+}
+scp() {
+    bebboscp "$@"
+}
+
 # The Unix commands are GNU coreutils 5.2.1 in SYS:UP-Term/bin (see
 # Install): ls, cp, mv, rm, mkdir, cat, sort, head, tail, wc and the rest,
 # with their Unix flags and paths (.. is the parent, / the volume list).

@@ -1,0 +1,46 @@
+curl for AmigaOS build information
+==================================
+Upstream version:   8.22.0-DEV
+Compiled version:   8.22.0
+Package version:    8.22.0
+Git branch:         amigaos
+Git commit:         8347cfe80bc1af8a27fef889fa7a8c5071038620
+Working tree dirty: no
+Build date UTC:     2026-10-01 13:21:14 UTC
+Toolchain prefix:   /opt/amiga13
+Compiler:           m68k-amigaos-gcc (GCC) 13.2.0
+CPU targets:        000 020 030 040 060
+Common CFLAGS:      -O0 -msoft-float -mcrt=clib2
+Extra CPPFLAGS:     
+Extra LDFLAGS:      
+Static libraries:   -lnet -lc -lz -lunix -latomic -lgcc -lm
+
+=== CPU 000 ===
+CFLAGS: -m68000 -O0 -msoft-float -mcrt=clib2
+/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl: AmigaOS loadseg()ble executable/binary
+   text	   data	    bss	    dec	    hex	filename
+1125996	   1560	   5724	1133280	 114ae0	/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl
+
+=== CPU 020 ===
+CFLAGS: -m68020 -O0 -msoft-float -mcrt=clib2
+/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl.020: AmigaOS loadseg()ble executable/binary
+   text	   data	    bss	    dec	    hex	filename
+1116152	   1560	   5724	1123436	 11246c	/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl.020
+
+=== CPU 030 ===
+CFLAGS: -m68030 -O0 -msoft-float -mcrt=clib2
+/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl.030: AmigaOS loadseg()ble executable/binary
+   text	   data	    bss	    dec	    hex	filename
+1116152	   1560	   5724	1123436	 11246c	/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl.030
+
+=== CPU 040 ===
+CFLAGS: -m68040 -O0 -msoft-float -mcrt=clib2
+/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl.040: AmigaOS loadseg()ble executable/binary
+   text	   data	    bss	    dec	    hex	filename
+1114564	   1560	   5724	1121848	 111e38	/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl.040
+
+=== CPU 060 ===
+CFLAGS: -m68060 -O0 -msoft-float -mcrt=clib2
+/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl.060: AmigaOS loadseg()ble executable/binary
+   text	   data	    bss	    dec	    hex	filename
+1117380	   1560	   5724	1124664	 112938	/home/boingball/Amiga-Programs/curl/dist-amiga/curl-8.22.0-amigaos/curl.060

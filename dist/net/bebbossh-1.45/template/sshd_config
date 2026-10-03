@@ -1,0 +1,26 @@
+# sshd config for amigasshd
+
+# None, Error, Warn, Info, Debug, Fine, Trace
+DebugLevel Info
+
+#Port 22
+#ListenAddress 0.0.0.0
+
+HostKey	ENVARC:ssh/ssh_host_ed25519_key
+
+Passwords ENVARC:ssh/passwd
+
+# send random noop packets to make traffic analysis harder
+# Many, Some, Off
+SendNoop Off
+
+# remote shell config
+Stack 20000
+HomeDir RAM:
+
+# limit count of connections
+# MaxClients 32
+
+# limit count of connections + forward channels
+# MaxListeners 64
+

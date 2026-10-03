@@ -1,0 +1,64 @@
+bebboget - HTTPS client for Amiga
+Copyright (C) 2024-2025 Stefan "Bebbo" Franke <s.franke@bebbosoft.de>
+
+===============================================================================
+GPLv3+ LICENSE
+
+Most of the code in bebboget is licensed under the GNU General Public License,
+version 3 or (at your option) any later version.
+
+This includes:
+- Core HTTPS client (bebboget)
+- Cryptographic implementations: AES, ChaCha20, DES, 3DES, RC4, GCM, MD5,
+  Poly1305, SHA-256, SHA-384, SHA-512
+- Custom elliptic curve code: secp256r1, secp384r1
+- All STL/ministl infrastructure and wrappers
+- All javalike classes
+
+You may redistribute and/or modify these parts under the terms of the GPLv3+.
+See <https://www.gnu.org/licenses/gpl-3.0.html> for details.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+===============================================================================
+PUBLIC DOMAIN NOTICE (SUPERCOP-DERIVED CODE)
+
+Some components are derived from the SUPERCOP library
+(Daniel J. Bernstein, Tanja Lange, Peter Schwabe, et al.)
+and are released into the public domain.
+
+This includes:
+- Ed25519 internal math routines
+- X25519 scalar multiplication
+- Supporting field arithmetic helpers
+
+These files are explicitly marked as Public Domain in their headers.
+You may use, copy, modify, and distribute them without restriction.
+
+===============================================================================
+COMBINED USE
+
+The project as a whole is distributed under GPLv3+, but individual files
+marked Public Domain remain PD.
+
+When linking or combining, the GPLv3+ terms apply to the resulting binary/library.
+Downstream users may freely reuse the PD components in other projects without
+GPL obligations.
+
+===============================================================================
+DISCLAIMER OF WARRANTY
+
+Software is provided "AS IS," without a warranty of any kind.
+Use at your own risk.
+
+===============================================================================
+LIMITATION OF LIABILITY
+
+The author shall not be liable for any damages suffered by you or any third party
+as a result of using or distributing this software. In no event will the author
+be liable for any lost revenue, profit, or data, or for direct, indirect, special,
+consequential, incidental, or punitive damages, however caused and regardless of
+the theory of liability, arising out of the use of or inability to use this software,
+even if advised of the possibility of such damages.

@@ -75,6 +75,9 @@
 (set #shellicon "NOSHELLICON")
 (set #sysicon "NOSYSICON")
 (set #serial "NOSERIAL")
+(set #net "NONET")
+(set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
+(set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 (if (exists "SYS:System/Shell.info")
     (if (askbool
             (prompt "Should the Shell icon (SYS:System/Shell) open an UP-Term window?\n\n"
@@ -105,11 +108,24 @@
         (choices "Yes" "No")
         (default 1))
     (set #serial "SERIAL"))
+(if (askbool
+        (prompt "Should the network tools be installed?\n\n"
+                "ssh and scp (BebboSSH 1.45), bebboget and curl 8.22.0 (downloads), in "
+                "SYS:UP-Term/bin. They need a TCP/IP stack (Roadshow, AmiTCP); curl "
+                "also needs AmiSSL 5.")
+        (help "By Stefan Franke, GPL v3 or later: COPYING and the complete source are "
+              "in the kit's Files/net drawer. Their libcryptossh.library goes to LIBS: "
+              "unless one is there. curl is under the curl licence, its source on "
+              "github.com/boingball/curl. In vsh, ssh and scp run them for a remote Unix "
+              "machine (TERM xterm-256color). See the README's NETWORK section.")
+        (choices "Yes" "No")
+        (default 0))
+    (set #net ""))
 
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #net #cpu040 #cpu060)
 
 (exit
     "UP-Term is installed.\n\n"

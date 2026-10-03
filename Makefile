@@ -461,6 +461,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(KIT)/Files/
+	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
 	# the top drawer: Install (the Installer script), Uninstall, README, Files
 	cp dist/Install.installer $(KIT)/Install

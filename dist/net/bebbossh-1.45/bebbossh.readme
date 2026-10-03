@@ -1,0 +1,567 @@
+Short:        SSH2 suite, client/server, sftp
+Author:       s.franke@bebbosoft.de
+Uploader:     s.franke@bebbosoft.de
+Architecture: m68k-amigaos
+Type:         comm/net
+Version:      1.45
+Required:     bsdsocket.library (e.g AmiTCP)
+
+===============================================================================
+NAME
+
+BebboSSH
+
+BebboSSH is a portable SSH2 implementation for Amiga(68000+) and Linux(any).  
+
+Source Code: https://franke.ms/git/bebbo/bebbossh
+
+It requires a server that supports the included cryptographic algorithms. 
+The supported cryptographic methods are
+* curve25519-sha256
+* curve25519-sha256@libssh.org
+* ssh-ed25519
+* aes128-gcm@openssh.com
+* chacha20-poly1305@openssh.com
+* hmac-sha2-256
+* sha512
+So it needs a server that supports that.
+
+It provides the following tools and libraries:
+- bebbosshd
+- bebbossh
+- bebboscp
+- bebbosshkeygen
+- libcryptossh.library
+- libcryptossh.library020   (rename and use this on 68020-68040 or 68080)
+- libcryptossh.library060   (rename and use this on 68060)
+
+(libs only for the Amiga)
+
+===============================================================================
+PERFORMANCE
+
+Also get bebboget for fast https downloads!
+
+Example timings on an Amiga 3000:
+* X25519 key pair creation: ~0.9s  
+* Signature verification: ~1.2s  
+Use `-v5` for DEBUG logs with timing info  
+
+It will work on an unaccelerated Amiga but establishing the connection takes
+about one minute. 
+
+Expected SCP transfer speeds (kB/s):
+
+            UAE-A500/68000  UAE-1200/68020  A3000/68030 V4SA/68080
+------------------------------------------------------------------
+AES-GCM         6.6             35.6                       317
+ChaChaPoly      5.8             32.2                       351
+
+020 version UAE-A500/68000  UAE-1200/68020  A3000/68030 V4SA/68080
+------------------------------------------------------------------
+AES-GCM         -               44.6                       353
+ChaChaPoly      -               60.1                       396
+
+For a good terminal experience install the terminfo `xterm-amiga` 
+on the remote system! On many systems you have to copy `xterm-amiga`
+as root into `/usr/share/terminfo/x`
+
+Pimp your `.bash_profile` to set `LANG=C` since the Amiga doesn't like UTF8...
+A convenient way is to add this to `.bash_profile`:
+  ```
+    if [ "$TERM" == "xterm-amiga" ]; then
+      export LANG=C
+    fi
+  ```
+
+===============================================================================
+PROGRAMS
+
+===============
+   bebbossh
+===============
+USAGE: bebbossh [options] [user@]host[:port] [command [args...]]
+    -?            display this help
+    -c <file>     select the config file
+                  defaults to envarc:.ssh/ssh_config
+    -i <file>     select the private key file for public key authentication
+                  defaults to envarc:.ssh/id_ed25519
+    -L [bind_address:]port:host:hostport
+                  listen at bind_address:port and forward to host:hostport
+    -p <port>     connect to the host at port <port>
+    -T            don't allocate a pseudo terminal
+    -v <n>        set verbosity, defaults to 0 = OFF
+    --ciphers <n> use the ciphers in the given order:
+                  1=aes128-gcm, 2=chacha20-poly1305
+                  defaults to n=21
+    --noesc       don't handle ESC sequences, default is on if interactive
+
+Open a shell on the host using your console colors and mouse.   
+Or execute a command via SSH2.
+
+===============
+  bebbosshd
+===============
+USAGE: bebbosshd [options]
+    -?            display this help
+    -p <port>     use the given port <port>
+    -v <n>        set verbosity, defaults to 0 = OFF
+
+* Create the folder ENVARC:ssh
+* Copy the file sshd_config to ENVARC:ssh
+* Edit the file ENVARC:ssh/sshd_config at your needs
+* Create an unencrypted key file and name it as in ENVARC:ssh/sshd_config 
+  * e.g. ENVARC:ssh/ssh_host_ed25519_key
+* Create and edit the file ENVARC:ssh/passwd
+  * create entries with
+    username password
+  * the passwords are getting hashed on first user logon
+
+Start bebbosshd to accept remote SSH2 connections.
+* A simple terminal emulation is provided. 
+  (Works now for some stuff on ApolloOS)
+* You may also use sftp copy files from/to the Amiga. 
+  (This should work on ApolloOS too)
+
+===============
+bebbosshkeygen
+===============
+USAGE: bebbosshkeygen [-f <output_keyfile>] [-C <comment>]
+    -f <file>    specify output key filename
+    -C <comment> set key comment (default: "Amiga")
+    -?           display this help
+
+Create ed25519 key files.
+
+===============
+bebboscp
+===============
+USAGE: bebboscp [options] [source] [target]
+    one of [source]/[target] must be remote, the other local
+    -?            display this help
+    -c <file>     select the config file
+                  defaults to envarc:.ssh/ssh_config
+    -i <file>     select the private key file for public key authentication
+    -p <port>     connect to the host at port <port>
+    -t            allocate a pseudo terminal
+    -u <user>     connect as <user>
+                  or use <user>@<host>:<path>
+    -v <n>        set verbosity, defaults to 4 = INFO
+    --ciphers <n> use the ciphers in the given order:
+                  1=aes128-gcm, 2=chacha20-poly1305
+                  defaults to n=21
+
+Copy files from remote to local or from local to remote.
+Wildstar pattern is supported in the last element of the source.
+
+===============================================================================
+TESTING
+
+Many thanks to all testers, especially to 
+* Patrik Axelsson
+* Javier de las Rivas
+* AiO (Joakim Ekblad)
+
+===============================================================================
+LICENSE
+
+Most of BebboSSH is licensed under **GPLv3+**.  
+This includes:
+* Core tools (`bebbossh`, `bebbosshd`, `bebboscp`, `bebbosshkeygen`)  
+* Cryptographic implementations (AES, ChaCha20, DES, 3DES, RC4, GCM, MD5, Poly1305, SHA-256/384/512)  
+* STL/ministl infrastructure and wrappers  
+* Java-like classes  
+
+Some components are derived from **SUPERCOP** (Bernstein, Lange, Schwabe, et al.) and are released into the **Public Domain**:
+* Ed25519 internal math routines  
+* X25519 scalar multiplication  
+* Field arithmetic helpers  
+
+Combined use: The project as a whole is GPLv3+, but PD-marked files remain PD.  
+
+---
+
+Some components are derived from the SUPERCOP library
+(Daniel J. Bernstein, Tanja Lange, Peter Schwabe, et al.)
+and are released into the public domain.
+
+This includes:
+- Ed25519 internal math routines
+- X25519 scalar multiplication
+- Supporting field arithmetic helpers
+
+These files are explicitly marked as Public Domain in their headers.
+You may use, copy, modify, and distribute them without restriction.
+
+---
+
+Combined Use:
+- The project as a whole is distributed under GPLv3+, but individual files
+  marked Public Domain remain PD.
+- When linking or combining, 
+  the GPLv3+ terms apply to the resulting binary/library.
+- Downstream users may freely reuse the PD components in other projects without
+  GPL obligations.
+
+===============================================================================
+DISCLAIMER OF WARRANTY
+
+Software is provided "AS IS," without a warranty of any kind.
+You may use it on your own risk.
+
+===============================================================================
+LIMITATION OF LIABILITY
+
+I SHALL NOT BE LIABLE FOR ANY DAMAGES SUFFERED BY YOU OR ANY THIRD PARTY
+AS A RESULT OF USING OR DISTRIBUTING SOFTWARE. IN NO EVENT WILL I BE LIABLE
+FOR ANY LOST REVENUE, PROFIT OR DATA, OR FOR DIRECT, INDIRECT, SPECIAL,
+CONSEQUENTIAL, INCIDENTAL OR PUNITIVE DAMAGES, HOWEVER CAUSED AND REGARDLESS
+OF THE THEORY OF LIABILITY, ARISING OUT OF THE USE OF OR INABILITY TO USE
+SOFTWARE, EVEN IF I HAVE ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+===============================================================================
+HISTORY
+
+bebbossh V1.45
+* wrapped the entire KEX reply in a constant-upper-bound timing envelope 
+  to reduce timing side-channel leakage.
+* fixed errors in bebbosshkeygen, also the created keys are now more compliant.
+
+bebbossh V1.44
+* now linked with --gc-sections, to save some bytes
+* fix link in the readme to OkayDokey
+
+bebbossh V1.43
+* bebboscp applies now the ssh_config file *after* getting the hostname from
+  the command line...
+* default log level changed to WARN
+
+bebbossh V1.42
+* bug fix for bebbosshd: init signales correctly
+
+bebbossh V1.41
+* fix address error on 68000 if gethostbyname returns an odd address!?
+* known_hosts is now updated properly if the server key changed
+
+bebbossh V1.40
+* fix nasty bug that caused sig-verify to fail
+* add libcryptossh.library060
+* modified code to be more portable
+* support linux with x86/amd64/arm
+* add binaries for Linux amd64
+
+bebbossh V1.39
+* name change to bebbossh
+* consolidated crypto stuff with bebboget
+* rewrote AES from scratch, more speed
+* improved chacha20poly1305 speed
+* source code is available at https://franke.ms/git/bebbo/bebbossh
+
+amigassh V1.38
+* another benefit from amigaget: added chacha20/poly1305
+  it was a real challenge having virtual C++ methods in a library!
+* fix in verify/sign which occured randomly
+* added config file support for "Ciphers"
+* default cipher is now chacha20-poly1305@openssh.com
+  use --ciphers 1 
+  or use a ssh_config file to adjust it to aes128-gcm@openssh.com
+
+amigassh V1.37
+* applied speed enhancements (assembly code) from amigaget.
+  !!! Use amigaget to download https files !!! 
+  WINUAE 68000 original speed:
+  * creating a key pair is down to ~10s
+  * verifying the host is down to ~14s
+ WINUAE 68020 original speed using the 020 library
+  * creating a key pair is down to ~0.9s
+  * verifying the host is down to ~1.2s
+  * copying is slightly faster
+  
+amigassh V1.36
+* fix libnix/sftp channel: init _timezone and apply it
+
+amigassh V1.35
+* fix sftp channel: setting attributes unix -> amiga is working now
+
+amigassh V1.34
+* the sftp-subsystem now supports rename
+* rewrote the darned SSH packet handling for the sftp-subsystem.
+  SSHFS seems to work better now. BPTR keylog;
+
+amigassh V1.33
+* amigascp now copies linked files and skips linked folders
+* amigassh reads better from a pipe, if queue-handler is new enough
+* --noesc disables ESC handling for interactive input
+* support config files.
+  * uses fnmatch to match Host
+  * supports: HostName, IdentityFile, LocalForward, LogLevel, Port, User
+
+amigassh V1.32
+* fix handling piped stdin
+* fix sftp channel:
+  * mark links as Link and read these
+  * flip seconds/micros
+  * support creating softlinks
+  * new files are shared
+  * support file removal
+
+amigassh V1.31
+* fix slot reuse in sshd
+
+amigassh V1.30
+* lots of internal refactorings
+* sshd echoes next line if args end with ?
+* ESC stuff gets echoed if pty is present
+* add a missing ',' to xterm-amiga.src
+* handle partial send
+* handle EAGAIN - TCP stack is busy
+
+amigassh V1.29
+* split packets for forwarded data if necessary
+* more/update logging
+* proper eof/close packets
+* use correct remote channel numbers... /ouch
+* remove channel limits
+* reuse local channel numbers
+* amigascp no longer aborts if a remote directory already exists
+
+amigassh V1.28
+* delay sending first channel data after channel confirmation
+* don't close all when a forward channel terminates
+* fix handling multiple -L
+* support CTRL+C while reading the password
+
+amigassh V1.27
+* fix cd in sshd
+
+amigassh V1.26
+* disable RoadShow's CTRL-C handling...
+
+amigassh V1.25
+* another fragmentation fix to read from some ssh servers..
+
+amigassh V1.24
+* fix NPE in libnix:amistdio
+* fix UBE in libnix:init-shared
+* fix cache issues in libnix:init-shared (flush cache)
+* lots of internal refactoring...
+* add support for connection forwarding
+* colorize tab completion list
+
+amigassh V1.23
+* amigascp now handles fragmented read responses.
+* amigascp fix recognizing user@host 
+* add more bound checks
+* using newest simple library creation for libcryptossh.library
+* reduce stack usage again
+* more accurate progress indicator
+* TAB in sshd shell performs autocompletion
+* sshd passes CTRL+C to running task
+
+amigassh V1.22
+* added amigascp to copy file from/to remote ssh servers.
+
+amigassh V1.21
+* more AES tuning (that's it)
+  A3000 ~ 32kB/s
+  V4SA  ~ 630kB/s
+* remove the missing key file ERROR message
+* refactored amigassh, and hopefully it still works...
+
+amigassh V1.20
+* removed some debug output
+* switched the AES implementation to gain more speed
+  A3000 ~ 30kB/s
+  V4SA  ~ 580kB/s
+* create the lib using a .def file to only export used functions/data
+
+amigassh V1.19
+* add support for the public key authentication to client and server.
+  Note that only unprotected key files do work with amigassh.
+* improved AES/GCM encryption speed resulting in higher upload/download rates:
+  A3000 ~ 20kB/s
+  V4SA  ~ 400kB/s
+  this twice as fast as before!
+
+amigassh V1.18
+* fixed an enforcer hit during library unloading
+* reworked terminal I/O handling: 
+  Normal Amiga applications do work on ApolloOS
+  Stuff from C:bin/ is still broken. /shrug
+
+amigassh V1.17
+* added a sftp subsystem to amigasshd: copy files from/to the Amiga.
+  not available volumes are denied and result into: not found.
+  An A3000 will copy with ~10kb/s, a Vampire with up to ~180kb/s.
+* crypto code moved into the library libcryptossh.library:
+  The libcryptossh.library was built using my new simple library approach
+  https://franke.ms/amiga/so.wiki 
+
+amigassh V1.16
+* added example ssd_config file
+* added example passwd
+* fixed an enforcer hit
+* now compiled with -regparms
+* improved some messages and the program return code
+* ignore unknown shell CHANNEL_REQUESTS 
+
+amigassh V1.15
+* added amigasshd, amigasshkeygen
+
+amigassh V1.14
+* use all 16 bits of a WORD
+* enhanced C code with some asm statements
+* creating a key pair is down to ~15s
+* verifying the host is down to ~35s
+
+amigassh V1.13
+* compute the private key before establishing the connection
+  This increases the chance to establish a connection on slow Amigas
+* some speed improvements measured with WinUAE cycle exact A500:
+  * creating a key pair is down to 43,2s!
+  * verifying the host is down to 2:14,6!
+* removed CTRL+F
+* removed using c stdio
+* add -v switch
+
+amigassh V1.12
+* fixed some bus errors, now it really runs on 68000
+* CTRL+F is now used to ***Break
+* support sending CTRL+A/CTRL+E
+* better mapping of backspace and delete
+* stack usage is now below 4000 bytes
+* added -T switch to run without pseudo terminal
+
+amigassh V1.11
+* reworked and combined the ed25519 and curve25519 code.
+  Now 16 bit integers are sufficient!   
+* the resulting program can now be used on a 68000. 
+
+amigassh V1.10
+* fix an enforcer hit (using updated binutils/gcc)
+
+amigassh V1.9
+* renamed `mono` to `xterm-amiga`. Install it! 
+  Necessary since too many stuff checks for the string `xterm`...
+* added mouse support
+* patch the window title, like xterm
+* suppres right mouse button stuff, also during login
+
+amigassh V1.8
+* support tooltype CONSOLE
+* modify __chkabort: use CTRL+E to interrupt amigassh, 
+  CTRL+C is handled only by the host
+* TERM can be set by an environment variable or define it in the icon   
+* fixed an enforcer hit
+
+amigassh V1.7
+* fix broken window resize - was filtered too...
+
+amigassh V1.6
+* add key mappings for CTRL+ALT+CURSOR -> PgUp/Down,Pos1/End
+* pass CTRL+D and make it work
+* print preauth banner
+* support CTRL+S/CTRL+Q
+* suppress menu messages from KingCON
+
+amigassh V1.5
+* fix build...
+* support redirected stdin/stdout
+
+amigassh V1.4
+* bad version...
+
+amigassh V1.3
+* amigassh is now pure. set the flag and make it resident!
+* internal setting of a suitable stack size
+* verbose error messages
+* unify ed25519/curve25519 code
+* properly create ENVARC:.ssh if missing
+* some terminal improvements
+
+amigassh V1.2
+* properly exit after logout, no CTRL+D required
+* mono now supports 8 colors - update that file!
+* handle key stroke repetition
+* bind local, needed by roadshow
+* fix reading after buffer pointer changed
+
+amigassh V1.1
+* some support for CTRL/ALT,
+* better cursor keys,
+* better terminfo `mono`
+* fix if stdin is a file/pipe
+
+amigassh V1.0
+* initial version
+
+===============================================================================
+RANDOM HINTS
+
+* the know hosts are stored in `ENVARC:.ssh/known-hosts`
+
+* the random generator is not the best...
+  It's rand() pimped with time and vpos. Then SHA256 is applied. Good enough?    
+  But who would talk about security on an unprotected system like the Amiga?
+
+* preset your username with
+    set USER=<yourname>
+  you can do this in `s:shell-startup`
+
+* you can start it from the workbench!
+  Use the icon tooltypes to set 
+    COMMAND a remote command to execute instead of a shell
+    CONSOLE an Amiga console string (defaults to CON://///AUTO/CLOSE/WAIT)
+    HOST    the host name
+    PORT    the port (defaults to 22)
+    TERM    the terminal emulation (defaults to xterm-amiga)
+    USER    the user name
+
+* no console graphics?
+  install the `xterm-amiga` terminfo!
+
+* no console colors?
+  install the `xterm-amiga` terminfo!
+
+* no mouse in mc or other applications?
+  install the `xterm-amiga` terminfo!
+
+* keys not working properly?
+  install the `xterm-amiga` terminfo!
+
+* can't install xterm-amiga and have to build it for my system?
+  use tic and add the switch -s: 
+    tic -s xterm-amiga.src
+
+* some key does still not work
+  try pimping the xterm-amiga terminfo.
+  use `tic -xsv9 -o. xterm-amiga.src`
+
+* console displays trash? text look blank? lines are bogus?
+  unset the variable `LANG`
+
+* scp to bebbosshd: closed remote port
+  ensure you are using the sftp subsystem, on some systems it's the `-s` flag
+  `scp -s ...`
+  
+* your remote Amiga is blocking coz you accessed a volume that doesn't exist?
+  e.g.: list foobar:
+  Get https://aminet.net/util/boot/Requester.lha 
+  and run "Cancel 5" from your startup-sequence!
+  Or try https://aminet.net/util/cdity/OkayDokey14.lha.
+
+* public key authentication does not work!?
+  Check the file ENVARC:.ssh/authorized_keys if your 
+  public key is listed there.
+
+* can't scp to a server named 'ram', e.g. amigascp c:s* ram:folder 
+  add your user name to avoid detection as a local assign/drive: 
+    myname@ram:folder
+
+* the program aborts with a message like "can't resolve _Z9splitLineRPc"?
+  * ensure that you are using the recent libcryptossh.library
+  * if you just updated bebbossh, close all running bebbossh programs and run
+    "avail flush"
+
+* ENTER does not work with multiple SSH hops? Try CTRL+J
+

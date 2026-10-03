@@ -1,0 +1,19 @@
+BebboSSH 1.45 by Stefan "Bebbo" Franke: SSH2 client, server, scp and key
+generator for the Amiga (68000 and up), as published on Aminet:
+
+  https://aminet.net/comm/net/bebbossh.lha   ($VER: 1.45 (30.03.2026))
+    bebbossh, bebboscp, bebbosshkeygen, bebbosshd, libcryptossh.library
+    (68000), libcryptossh.library020 (68020-68040, 68080),
+    libcryptossh.library060 (68060): the archive's binaries, unmodified
+    bebbossh.readme, COPYING, template/sshd_config: from the archive
+    (template/passwd, the author's sample login, is left out)
+
+  bebbossh-1.45-src.tar.bz2: the complete corresponding source, the
+  author's repository https://franke.ms/git/bebbo/bebbossh at commit
+  057c7f3 ("cleanup and release 1.45").
+
+Licence: GNU General Public License version 3 or later (COPYING, beside
+this file); some files are public domain, as their headers say.
+UP-Term installs the client tools in SYS:UP-Term/bin and the library in
+LIBS: (README, NETWORK); thoughts/shared/research/2026-10-03_ssh-for-up-term.md
+in UP-Term's source has what was measured.

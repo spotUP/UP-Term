@@ -1,0 +1,20 @@
+curl 8.22.0 for AmigaOS 3.0+ (Daniel Stenberg and the curl project; the
+AmigaOS port by Darren Banfi), as published on Aminet:
+
+  https://aminet.net/comm/tcp/curl-8.22.0.lha
+    curl.020 (68020 and 68030: the archive's curl.020 and curl.030 are the
+    same file), curl.040, curl.060: the archive's executables, unmodified
+    (SHA256SUMS, from the archive, lists them); COPYING, the readme,
+    BUILD-INFO.txt, docs/AMIGAOS.md: from the archive
+
+  Source: https://github.com/boingball/curl, branch amigaos, commit
+  8347cfe80bc1af8a27fef889fa7a8c5071038620 (BUILD-INFO.txt).
+
+Licence: the curl licence (COPYING): permission to use, copy, modify and
+distribute with the notice kept.
+
+Needs, on the Amiga: AmiSSL 5 (https://aminet.net/util/libs/AmiSSL-v5-OS3.lha,
+not part of UP-Term), a TCP/IP stack with usergroup.library (Roadshow), and
+32 KB of stack (its stack cookie; vsh honours it, a 3.1 Shell needs
+"Stack 32768"). Not run by UP-Term's rig: its emulated stack has no
+usergroup.library.

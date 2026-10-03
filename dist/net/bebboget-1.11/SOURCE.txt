@@ -1,0 +1,14 @@
+bebboget 1.11 by Stefan "Bebbo" Franke: an https/http downloader for the
+Amiga that needs only a bsdsocket.library, as published on Aminet:
+
+  https://aminet.net/comm/net/bebboget.lha   ($VER: amigaget 1.11 (05.12.2025))
+    bebboget (68020+), bebboget00 (68000), installcerts: the archive's
+    binaries, unmodified; bebboget.readme, COPYING, LICENSE: from the archive
+
+  bebboget-1.11-src.tar.bz2: the complete corresponding source, the
+  author's repository https://franke.ms/git/bebbo/bebboget at commit
+  b18e500 ("Release 1.11").
+
+Licence: GNU General Public License version 3 or later (COPYING, LICENSE).
+It has no certificates of its own: installcerts adds them (they go to
+ENVARC:certs); see bebboget.readme.

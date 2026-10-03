@@ -47,6 +47,10 @@ If EXISTS SYS:UP-Term/unstartup.sh
   Assign >NIL: GG: SYS:UP-Term REMOVE
 EndIf
 Delete >NIL: SYS:UP-Term ALL QUIET
+; BebboSSH's library, only when Install put it there (its marker)
+If EXISTS ENVARC:up-term/cryptossh
+  Delete >NIL: LIBS:libcryptossh.library QUIET
+EndIf
 Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
 If EXISTS ENVARC:up-term/sysicon

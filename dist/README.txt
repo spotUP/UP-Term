@@ -285,6 +285,24 @@ THE SHELL FOR UNIX PROGRAMS
   (the parent directory) when something is there, and otherwise what it
   means on Unix: /RAM/notes is RAM:notes, as ixemul programs name it.
 
+NETWORK
+  Install puts network tools in SYS:UP-Term/bin when you say yes (the
+  Installer asks); they need a TCP/IP stack (Roadshow, AmiTCP):
+    ssh, scp        BebboSSH 1.45 (bebbossh, bebboscp), with bebbosshkeygen
+                    and the server bebbosshd; libcryptossh.library in LIBS:
+    bebboget        https downloads (installcerts adds root certificates)
+    curl            curl 8.22.0; it also needs AmiSSL 5 (Aminet
+                    util/libs/AmiSSL-v5-OS3.lha)
+  In vsh, ssh runs bebbossh with TERM=xterm-256color, which is what an
+  UP-Term window is to a Unix machine. Keys: bebbosshkeygen makes one
+  (ENVARC:.ssh/id_ed25519); bebbossh -i names another. The first connection
+  to a host asks whether to trust its key.
+  bebbosshd, the server, answers a login with its own simple shell, not a
+  terminal: full-screen programs do not run through it.
+  Licences: BebboSSH and bebboget by Stefan Franke, GPL v3 or later; curl
+  under the curl licence. Their COPYING files and sources (or where the
+  source is) are in the kit's Files/net drawer.
+
 CON: AND RAW:
   UP-Term can serve the system's CON: and RAW: too, so every new Shell
   window is an UP-Term window (the Amiga personality: programs see the
