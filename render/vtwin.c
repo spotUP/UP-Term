@@ -239,9 +239,11 @@ void vtwin_render(vtwin *w)
     if (!w->render_pending || !w->t)
         return;
     w->render_pending = 0;
+    vr_mask_begin(&w->r); /* planar screens: only the planes in use (S1) */
     vr_cursor_off(&w->r);
     vt_flush(w->t);
     vr_cursor_on(&w->r);
+    vr_mask_end(&w->r);
     if (w->r.has_blink || vr_cursor_blinks(&w->r))
         frame_start(w); /* blinking cells or cursor: the frames keep coming */
 }

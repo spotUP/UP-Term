@@ -173,6 +173,10 @@ int      vt_rows(const vt_term *t);
  * NULL outside. *ncells gets how many cells the row holds: vt_cols() for the
  * grid, the width at the time for a scrollback line. */
 const vt_cell *vt_row(const vt_term *t, int row, int *ncells);
+/* How many of the row's cells may hold something: from this column on
+ * they are default blanks (a space, default colours, no attribute) since
+ * the line was last cleared. A renderer need not look at them one by one. */
+int vt_row_used(const vt_term *t, int row);
 int      vt_row_wrapped(const vt_term *t, int row); /* continues on the next row */
 /* DEC line size of grid row `row` (ESC # 3/4/5/6): the row shows its first
  * half of the columns at twice the width, and for the height halves the

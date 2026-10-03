@@ -45,8 +45,16 @@ static LONG obtain(vr_render *r, ULONG rgb)
 static UBYTE ink_pen(vr_render *r, ULONG ink, int slot)
 {
     ULONG rgb;
-    if (!(ink & VR_INK_RGB))
+    if (!(ink & VR_INK_RGB)) {
+        if ((UBYTE)ink & ~r->mask) {
+            /* a pen with a plane not in use yet: those planes hold zeros
+             * everywhere, so drawing may simply start to include them */
+            r->mask |= (UBYTE)ink;
+            if (r->mask_on)
+                SetWriteMask(r->rp, r->mask);
+        }
         return (UBYTE)ink;
+    }
     if (r->scratch_ink[slot] != ink) {
         rgb = ink & 0xFFFFFFUL;
         SetRGB32(&r->win->WScreen->ViewPort, (ULONG)r->scratch[slot],
@@ -164,6 +172,13 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->base = font->tf_Baseline;
     r->pen_default_fg = 1;
     r->pen_default_bg = 0;
+    /* a window's pixels start as pen 0; until the first full redraw says
+     * otherwise every plane counts as used */
+    r->mask = 0xFF;
+    r->mask_on = 0;
+    r->blank = r->was_blank = 0;
+    r->planar = (UBYTE)((GetBitMapAttr(win->RPort->BitMap, BMA_FLAGS) & BMF_STANDARD) &&
+                        GetBitMapAttr(win->RPort->BitMap, BMA_DEPTH) <= 8);
     di = win->WScreen ? GetScreenDrawInfo(win->WScreen) : 0;
     if (di) {
         r->pen_default_fg = (UBYTE)di->dri_Pens[TEXTPEN];
@@ -398,6 +413,9 @@ void vr_set_off(vr_render *r, int off)
     if (off && !r->off && r->win)
         vr_cursor_off(r); /* still ours to take away */
     r->off = (BYTE)(off != 0);
+    /* another tab drew these pixels meanwhile: nothing is known about them */
+    r->mask = 0xFF;
+    r->blank = 0;
     if (off)
         r->cursor_drawn = 0;
     r->hidden = r->off || r->cols < 1 || r->rows < 1;
@@ -471,9 +489,35 @@ static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 {
     if (x1 < x0 || y1 < y0)
         return;
+    if (pen != r->pen_default_bg)
+        r->blank = 0;
     ink_a(r, pen);
     SetDrMd(r->rp, JAM1);
     RectFill(r->rp, x0, y0, x1, y1);
+}
+
+/* COMPLEMENT flips every plane: all of them are in use from here on */
+static void all_planes(vr_render *r)
+{
+    r->mask = 0xFF;
+    r->blank = 0;
+    SetWriteMask(r->rp, 0xFF);
+}
+
+void vr_mask_begin(vr_render *r)
+{
+    if (!r->win || !r->planar)
+        return;
+    r->mask_on = 1;
+    SetWriteMask(r->rp, r->mask);
+}
+
+void vr_mask_end(vr_render *r)
+{
+    if (!r->mask_on)
+        return;
+    r->mask_on = 0;
+    SetWriteMask(r->rp, 0xFF);
 }
 
 static void line(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1)
@@ -557,6 +601,7 @@ static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, ULONG fg, ULO
 static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg)
 {
     WORD x1 = px + r->cw - 1, y1 = py + r->ch - 1;
+    r->blank = 0;
     fill(r, px, py, x1, y1, bg);
     switch (g.kind) {
     case VT_GLYPH_BOX:
@@ -793,11 +838,15 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
         for (i = 0; i < n && run[i] == ' '; i++)
             ;
         if (i == n) {
-            fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, st->bg);
+            /* a blank screen's blank cells are there already (a flood of
+             * newlines redrew 32 empty rows a frame) */
+            if (!(r->was_blank && st->bg == r->pen_default_bg))
+                fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, st->bg);
             return;
         }
     }
     r->n_text++;
+    r->blank = 0;
     if (st->font && st->font <= 10 && r->alt_font[st->font])
         font = r->alt_font[st->font];
     if (!(st->attr & (VT_ATTR_SUPER | VT_ATTR_SUB)) || !draw_script(r, run, n, px, py, st, font)) {
@@ -982,6 +1031,8 @@ static int direct_row(vr_render *r, int y, const dcell *d, int n)
     }
     UnlockLayer(layer);
     r->n_direct += ok ? n : 0;
+    if (ok)
+        r->blank = 0;
     return ok;
 #endif
 }
@@ -1139,13 +1190,15 @@ static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bp
     if ((st->attr & LINE_ATTRS) || (st->deco & VT_DECO_IDEO_MASK))
         decorate(r, cells, px, py, st);
     r->n_outline++;
+    r->blank = 0;
 }
 
 static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
     dcell dc[DCELL_MAX];
-    int y, x, n, nd, want_direct;
+    int y, x, xe, n, nd, want_direct, tail_ok;
+    ULONG tail_bg;
     if (r->hidden)
         return;
     want_direct = r->glyphs != 0;
@@ -1153,6 +1206,26 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         x1 = vis_cols(r);
     if (y1 > vis_rows(r))
         y1 = vis_rows(r);
+    r->was_blank = (UBYTE)(r->blank && !r->cursor_drawn); /* a drawn cursor is pixels too */
+    {
+        /* what a default blank looks like now (reverse video, a bell's
+         * flash): plain means its row tails can be filled at once */
+        vt_cell b;
+        vr_style bs;
+        b.ch = ' ';
+        b.fg = VT_COLOR_DEFAULT;
+        b.bg = VT_COLOR_DEFAULT;
+        b.attr = 0;
+        b.width = 1;
+        b.deco = 0;
+        b.ext = 0;
+        b.pad = 0;
+        cell_style(r, &b, 0, &bs);
+        tail_ok = !r->sel && !bs.attr && !bs.deco && !bs.font;
+        tail_bg = bs.bg;
+    }
+    if (x0 <= 0 && y0 <= 0 && x1 >= vis_cols(r) && y1 >= vis_rows(r) && !r->view)
+        r->blank = 1; /* the whole grid again: blank unless a row draws something */
     for (y = y0; y < y1; y++) {
         int ncells;
         const vt_cell *c = vt_row(r->t, y - r->view, &ncells);
@@ -1172,7 +1245,20 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         x = x0;
         if (x > 0 && x < ncells && c[x].width == 0 && r->outline)
             x--; /* the right half of a wide glyph: the outline glyph spans both, draw it whole */
-        for (; x < x1 && x < ncells; x++) {
+        xe = x1 < ncells ? x1 : ncells;
+        if (tail_ok) {
+            /* the row's tail of default blanks: one fill, or nothing on a
+             * blank screen, instead of a look at every cell (a full
+             * redraw of 80 x 32 empty cells took a whole frame of a 14
+             * MHz 68020; S1) */
+            int used = vt_row_used(r->t, gy), tx = used > x0 ? used : x0;
+            if (tx < xe) {
+                if (!(r->was_blank && tail_bg == r->pen_default_bg))
+                    fill(r, r->ox + tx * r->cw, py, r->ox + xe * r->cw - 1, py + r->ch - 1, tail_bg);
+                xe = tx;
+            }
+        }
+        for (; x < xe; x++) {
             vt_glyph g;
             if (c[x].width == 0) {
                 /* the right half of a wide glyph: its '?' took the left */
@@ -1257,6 +1343,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
             r->cursor_drawn = 0; /* the cursor cell was just painted over */
     }
+    r->was_blank = 0;
     SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
 }
 
@@ -1433,9 +1520,15 @@ void vr_redraw(vr_render *r)
     if (r->off)
         return; /* a tab another one covers: its pixels are not ours */
     top = w->BorderTop + r->inset_top; /* the tab bar above stays the host's */
-    if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= top)
+    if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= top) {
+        /* every plane written: from here the planes in use are the
+         * background's and what the rows below draw */
+        vr_mask_end(r);
         fill(r, w->BorderLeft, top, w->Width - w->BorderRight - 1,
              w->Height - w->BorderBottom - 1, r->pen_default_bg);
+        r->mask = r->pen_default_bg;
+        r->blank = (UBYTE)!r->view; /* until the rows below draw something */
+    }
     r->cursor_drawn = 0;
     draw_rows(r, 0, 0, r->cols, r->rows);
 }
@@ -1454,6 +1547,8 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
         bottom = vis_rows(r);
     if (top >= bottom || !vis_cols(r))
         return;
+    if (r->blank)
+        return; /* blank rows over blank rows: no pixel changes (CCON 1.2.4, the ROM console) */
     /* The vacated rows must come out in the personality's default
      * background (the engine's scroll contract): the Amiga global
      * background pen, for one, is not always pen 0. */
@@ -1529,7 +1624,7 @@ static void cursor_draw(vr_render *r, int on)
             draw_rows(r, r->cursor_x, r->cursor_y, r->cursor_x + 1, r->cursor_y + 1);
         } else {
             SetDrMd(r->rp, COMPLEMENT);
-            SetWriteMask(r->rp, 0xFF);
+            all_planes(r);
             RectFill(r->rp, px, py, x1, y1);
             SetDrMd(r->rp, JAM2);
         }
@@ -1538,7 +1633,6 @@ static void cursor_draw(vr_render *r, int on)
     if (style > 2) {
         /* underline, bar: the strip in the cursor colour */
         ink_a(r, ink);
-        SetWriteMask(r->rp, 0xFF);
         RectFill(r->rp, px, py, x1, y1);
         r->cursor_colorful = 1;
         return;
@@ -1559,7 +1653,6 @@ static void cursor_draw(vr_render *r, int on)
             return;
         }
         ink_ab(r, r->pen_default_bg, ink);
-        SetWriteMask(r->rp, 0xFF);
         RectFill(r->rp, px, py, x1, y1);
         if (have && c[r->cursor_x].width == 1) {
             WORD obpr;
@@ -1589,7 +1682,7 @@ static void cursor_draw(vr_render *r, int on)
     }
     r->cursor_colorful = 0;
     SetDrMd(r->rp, COMPLEMENT);
-    SetWriteMask(r->rp, 0xFF);
+    all_planes(r);
     RectFill(r->rp, px, py, x1, y1);
     SetDrMd(r->rp, JAM2);
 }
@@ -1603,8 +1696,12 @@ void vr_cursor_off(vr_render *r)
         return;
     }
     if (r->cursor_drawn) {
+        /* the cell comes back as it was: a blank screen with a cursor on
+         * it is blank again */
+        UBYTE was = r->blank;
         cursor_draw(r, 0);
         r->cursor_drawn = 0;
+        r->blank = was;
     }
 }
 
@@ -1621,10 +1718,12 @@ void vr_cursor_on(vr_render *r)
     if (!(vt_modes(r->t) & VT_MODE_CURSOR_VISIBLE) || x >= vis_cols(r) || y >= vis_rows(r) || r->view)
         return;
     if (!r->cursor_drawn) {
+        UBYTE was = r->blank;
         r->cursor_x = (WORD)x;
         r->cursor_y = (WORD)y;
         cursor_draw(r, 1);
         r->cursor_drawn = 1;
+        r->blank = was; /* vr_scroll takes the cursor off before it looks */
     }
 }
 

@@ -52,6 +52,15 @@ typedef struct vr_render {
     BYTE has_blink, blink_slow_off, blink_fast_off;
     ULONG blink_frames;
     BYTE bell_flash;      /* the visual bell's reversed frame */
+    /* Speed on planar screens (ledger S1, after the ROM console and CCON):
+     * mask is the planes the pens drawn so far occupy -- every other plane
+     * of the text area holds zeros, so a render pass draws and scrolls
+     * only these (rp->Mask; vr_mask_begin / vr_mask_end around the pass).
+     * It widens with each new pen and starts again at a full redraw.
+     * blank: the text area is known to be all default background, so a
+     * scroll moves nothing and is skipped. */
+    UBYTE mask, mask_on, planar, blank;
+    UBYTE was_blank;      /* inside draw_rows: blank when it began (its blank runs need no fill) */
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
     BYTE cursor_colorful;  /* the cursor cell was filled with the profile colour */
@@ -136,6 +145,11 @@ void vr_free(vr_render *r);
 /* Recompute the text area from the window size; returns 1 when cols/rows
  * changed (the caller then calls vt_resize and vr_redraw). */
 int  vr_layout(vr_render *r);
+/* Around a render pass (the cursor off, the engine's flush, the cursor
+ * on): drawing limited to the planes in use. Outside it everything draws
+ * at full depth. */
+void vr_mask_begin(vr_render *r);
+void vr_mask_end(vr_render *r);
 void vr_redraw(vr_render *r);
 void vr_damage(vr_render *r, int x0, int y0, int x1, int y1);
 void vr_scroll(vr_render *r, int top, int bottom, int n);

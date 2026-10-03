@@ -964,8 +964,34 @@ static void copy_text_joins_wrapped_lines_and_trims_blanks(void)
 
 static void host_settings_palette_bold_cursor(void);
 
+/* a row knows how far it was written: a renderer skips the default
+ * blanks after that, and a scroll clears only that much (S1) */
+static void a_row_counts_the_cells_in_use(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    h_put(t, "\033[2J");
+    CHECK_INT(vt_row_used(t, 0), 0);
+    h_put(t, "abc");
+    CHECK_INT(vt_row_used(t, 0), 3);
+    CHECK_INT(vt_row_used(t, 1), 0);
+    h_put(t, "\033[1;8Hx\033[1;2H");        /* a cell further right; moving back changes nothing */
+    CHECK_INT(vt_row_used(t, 0), 8);
+    h_put(t, "\033[K");                      /* erased from column 2 to the end: unused from there */
+    CHECK_INT(vt_row_used(t, 0), 1);
+    h_put(t, "\033[44m\033[K\033[0m");       /* erased in a colour: those cells count */
+    CHECK_INT(vt_row_used(t, 0), 10);
+    h_put(t, "\r\n\n\n");                   /* scrolled out; the row entering at the bottom is new */
+    CHECK_INT(vt_row_used(t, 2), 0);
+    h_put(t, "\033[41m\n");                  /* a coloured blank line: every cell counts */
+    CHECK_INT(vt_row_used(t, 2), 10);
+    h_put(t, "\033[0m\n\n\n\n");
+    CHECK_INT(vt_row_used(t, 0), 0);
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    a_row_counts_the_cells_in_use();
     rgb_to_256();
     copy_text_joins_wrapped_lines_and_trims_blanks();
     onlcr_returns_on_linefeed_without_changing_return();

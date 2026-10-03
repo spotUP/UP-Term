@@ -35,6 +35,12 @@ typedef struct vt_line {
     vt_u16 n;        /* cells in use (== cols for grid lines) */
     vt_u8 wrapped;   /* the text continues on the next line */
     vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BOTTOM */
+    vt_u16 used;     /* cells [used, n) are still the default blank the last
+                      * line_clear wrote: clearing again need not touch them.
+                      * mark() -- every change to a grid cell passes it --
+                      * raises it; a line whose cells are not known (new, or
+                      * cleared in a colour) has used == cap. (S1: a scroll
+                      * cleared 80 cells a line, 0.69 ms on a 14 MHz 68020.) */
     vt_cell c[1];
 } vt_line;
 
@@ -119,6 +125,7 @@ struct vt_term {
     /* per-row dirty spans, flushed at the end of each write */
     short *dx0, *dx1;
     int dirty;
+    int full_y0, full_y1;      /* rows damaged whole since the last flush (damage_rows) */
     /* A scroll the renderer has not been told about yet: the pixels are
      * pend_n rows behind the grid in [pend_top, pend_bot) (negative: down).
      * All scrolls of one write become one blit; the dirty spans move with
@@ -232,6 +239,7 @@ static vt_line *line_new(int cap)
     l = (vt_line *)VT_MALLOC(sizeof(vt_line) + (cap - 1) * sizeof(vt_cell));
     if (l) {
         l->cap = (vt_u16)cap;
+        l->used = (vt_u16)cap;
         l->n = 0;
         l->wrapped = 0;
         l->dbl = 0;
@@ -275,9 +283,27 @@ static void cells_blank(const vt_term *t, vt_cell *c, int n)
         c[i] = b;
 }
 
+static int vacated_default(const vt_term *t);
+
 static void line_clear(const vt_term *t, vt_line *l, int n)
 {
-    cells_blank(t, l->c, n);
+    if (l->n == n && l->used < n && vacated_default(t)) {
+        /* the same width as its last clear, and the blank is the default
+         * one: only the cells written since need it */
+#ifdef VT_CHECK_USED
+        int i;
+        vt_cell b;
+        blank_cell(t, &b);
+        for (i = l->used; i < n; i++)
+            if (l->c[i].ch != b.ch || l->c[i].fg != b.fg || l->c[i].bg != b.bg || l->c[i].attr != b.attr ||
+                l->c[i].width != b.width || l->c[i].deco != b.deco || l->c[i].ext != b.ext)
+                abort(); /* a cell changed without mark(): host tests only */
+#endif
+        cells_blank(t, l->c, l->used);
+    } else {
+        cells_blank(t, l->c, n);
+    }
+    l->used = (vt_u16)(vacated_default(t) ? 0 : n);
     l->n = (vt_u16)n;
     l->wrapped = 0;
     l->dbl = 0;
@@ -301,6 +327,32 @@ static void mark(vt_term *t, int x0, int y, int x1)
         t->dx0[y] = (short)x0;
     if (t->dx1[y] < x1)
         t->dx1[y] = (short)x1;
+    if (t->scr[y]->used < x1)
+        t->scr[y]->used = (vt_u16)x1;
+    t->dirty = 1;
+}
+
+/* Rows [y0, y1) are to be drawn again, their cells unchanged (a scroll's
+ * bookkeeping): damage only, the lines' `used` stays. full_y0 / full_y1
+ * remember the widest such range since the last flush: a scroll inside it
+ * has nothing to track, every row there is drawn whole anyway. */
+static void damage_rows(vt_term *t, int y0, int y1)
+{
+    int y;
+    if (y0 < 0)
+        y0 = 0;
+    if (y1 > t->rows)
+        y1 = t->rows;
+    if (y0 >= y1)
+        return;
+    for (y = y0; y < y1; y++) {
+        t->dx0[y] = 0;
+        t->dx1[y] = (short)t->cols;
+    }
+    if (t->full_y0 >= t->full_y1 || (y0 <= t->full_y0 && y1 >= t->full_y1)) {
+        t->full_y0 = y0;
+        t->full_y1 = y1;
+    }
     t->dirty = 1;
 }
 
@@ -325,6 +377,7 @@ static void flush(vt_term *t)
     if (!t->dirty)
         return;
     t->dirty = 0;
+    t->full_y0 = t->full_y1 = 0;
     y = 0;
     while (y < t->rows) {
         if (t->dx0[y] >= t->dx1[y]) {
@@ -462,9 +515,11 @@ static void pend_scroll(vt_term *t, int top, int bot, int n)
 {
     int y, h = bot - top;
     if (!t->cb.scroll) {
-        mark_rows(t, top, bot); /* no blitting renderer: redraw the region */
+        damage_rows(t, top, bot); /* no blitting renderer: redraw the region */
         return;
     }
+    if (!t->pend_n && top >= t->full_y0 && bot <= t->full_y1)
+        return; /* the region is drawn whole at the flush: nothing moves on screen */
     if (n > 0) {
         for (y = top; y < bot - n; y++) {
             t->dx0[y] = t->dx0[y + n];
@@ -475,7 +530,7 @@ static void pend_scroll(vt_term *t, int top, int bot, int n)
             t->dx1[y] = 0;
         }
         if (!vacated_default(t))
-            mark_rows(t, bot - n, bot);
+            damage_rows(t, bot - n, bot);
     } else {
         for (y = bot - 1; y >= top - n; y--) {
             t->dx0[y] = t->dx0[y + n];
@@ -486,14 +541,14 @@ static void pend_scroll(vt_term *t, int top, int bot, int n)
             t->dx1[y] = 0;
         }
         if (!vacated_default(t))
-            mark_rows(t, top, top - n);
+            damage_rows(t, top, top - n);
     }
     t->pend_top = top;
     t->pend_bot = bot;
     t->pend_n += n;
     if (t->pend_n >= h || -t->pend_n >= h) {
         t->pend_n = 0; /* everything moved out: redraw instead of blitting */
-        mark_rows(t, top, bot);
+        damage_rows(t, top, bot);
     }
 }
 
@@ -576,8 +631,11 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
         ovf_drop(t); /* above the rows scrolling out: history first */
     }
     for (i = 0; i < n; i++) {
-        l = t->scr[top];
-        memmove(&t->scr[top], &t->scr[top + 1], (h - 1) * sizeof(vt_line *));
+        vt_line **p = &t->scr[top];
+        int k;
+        l = *p;
+        for (k = h - 1; k > 0; k--, p++)
+            p[0] = p[1];
         if (top == 0 && t->scr == t->pri && t->pers != VT_AMIGA && t->sb_cap) {
             /* Into the scrollback. A full ring hands back its oldest line
              * to become the new blank one, so steady scrolling allocates
@@ -616,8 +674,11 @@ static void scroll_down(vt_term *t, int top, int bot, int n)
         n = h;
     pend_prepare(t, top, bot, -n);
     for (i = 0; i < n; i++) {
-        l = t->scr[bot - 1];
-        memmove(&t->scr[top + 1], &t->scr[top], (h - 1) * sizeof(vt_line *));
+        vt_line **p = &t->scr[bot - 1];
+        int k;
+        l = *p;
+        for (k = h - 1; k > 0; k--, p--)
+            p[0] = p[-1];
         line_clear(t, l, t->cols);
         t->scr[top] = l;
     }
@@ -637,6 +698,10 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
     if (x1 == t->cols)
         t->scr[y]->wrapped = 0;
     mark(t, x0, y, x1);
+    /* erased to the end of the row with the default blank: from x0 on
+     * the row is unused again (see vt_line.used) */
+    if (x1 == t->cols && t->scr[y]->used > x0 && vacated_default(t))
+        t->scr[y]->used = (vt_u16)x0;
 }
 
 static void erase_rows(vt_term *t, int y0, int y1)
@@ -3691,6 +3756,24 @@ const vt_cell *vt_row(const vt_term *t, int row, int *ncells)
     if (ncells)
         *ncells = row >= 0 ? t->cols : l->n;
     return l->c;
+}
+
+int vt_row_used(const vt_term *t, int row)
+{
+    const vt_line *l;
+    int n;
+    if (row >= 0) {
+        if (row >= t->rows)
+            return 0;
+        l = t->scr[row];
+        n = t->cols;
+    } else {
+        if (-row > t->sb_len)
+            return 0;
+        l = t->sb[(t->sb_head + t->sb_cap + row) % t->sb_cap];
+        n = l->n;
+    }
+    return l->used < n ? l->used : n;
 }
 
 int vt_row_size(const vt_term *t, int row)
