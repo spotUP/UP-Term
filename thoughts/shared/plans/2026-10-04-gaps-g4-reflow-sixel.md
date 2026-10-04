@@ -2,7 +2,7 @@
 date: 2026-10-04
 topic: gaps G4 -- reflow on resize by default (#11, ledger W1) and DEC sixel graphics (#20)
 tags: [plan, ledger, reflow, sixel, graphics, gaps]
-status: draft
+status: implemented
 ---
 
 # G4: reflow + sixel -- progress ledger
@@ -56,7 +56,7 @@ are the owner's (the rig is busy with the speed benchmark).
 - [x] X4 renderer: image tiles drawn (palette pens / WriteLUTPixelArray), zero cost
       without images
 - [x] X5 OSC 1337 / kitty graphics: documented out of scope with reasons
-- [ ] F  full `make test`, `make amiga` zero warnings
+- [x] F  full `make test`, `make amiga` zero warnings
 
 ## Progress
 
@@ -72,6 +72,7 @@ are the owner's (the rig is busy with the speed benchmark).
 - X4 840ed28: renderer draws image runs (pens / WriteChunkyPixels, WritePixelArray8 on
   KS 3.0; WriteLUTPixelArray on true colour). Not host-testable: rig checks below.
 - X5: documented below (no code).
+- F: full `make test` green (22 suites), clean `make amiga` with 0 warnings (2026-10-04).
 
 ## OSC 1337 inline images and the kitty graphics protocol: out of scope
 
