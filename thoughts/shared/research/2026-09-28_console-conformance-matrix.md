@@ -711,14 +711,19 @@ does XCON:/AMIGA through DOS (identical output, window size included).
   four Kickstarts; research `2026-09-30_console-device-replacement.md` section 7):
   100 characters typed into 45 columns, cursor 3;11; widened to 90 columns the
   window shows 90 + 10 characters and the cursor is at 2;11. Engine:
-  `vt_set_reflow(t, 1)` (D1.8; off by default, so XCON: keeps cutting or padding
-  rows) joins wrap-linked rows into logical lines on a width change and types them
+  `vt_set_reflow(t, 1)` (D1.8; off in the engine by default; since 2026-10-04 every
+  UP-Term / XCON: window turns it on, profile `reflow = off` cuts or pads again) joins wrap-linked rows into logical lines on a width change and types them
   again at the new width with the personality's wrap rule: amiga wraps at once, so
   a line ending exactly at the margin keeps the empty row after it; xterm keeps a
   pending wrap pending. A hard newline is never joined, attributes stay per cell,
   the cursor stays on its character (or as far past the text as it was).
-  Not reflowed: the alternate screen (xterm does not), scrollback lines (they keep
-  their width; the amiga personality keeps none), DEC double-size rows.
+  Where the personality keeps a scrollback (xterm, pcansi) it is laid out with the
+  screen as one text (2026-10-04, gaps #11): a line that began in the scrollback joins
+  its rest, the screen is the bottom of the result (rows below the cursor dropped
+  first), the rows above go back to the scrollback, and a taller window brings rows
+  down from it (iTerm2, Terminal.app, Alacritty). Not reflowed: the alternate screen
+  (xterm does not; its program redraws on SIGWINCH), DEC double-size rows (cut or
+  padded in place). Tests: `make test ONLY=reflow`.
   Narrowing was not measured on the ROM; the engine treats it as the inverse.
 - **Not implemented by the ROM:** CHA (`CSI G`), `ESC 7` / `ESC 8`, `CSI s` / `CSI u`
   (u is set-line-length anyway).
