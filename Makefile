@@ -399,6 +399,10 @@ $(BUILD)/amiga/memprobe: tests/amiga/memprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/memprobe.c
 
+$(BUILD)/amiga/allocwatch: tests/amiga/allocwatch.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/allocwatch.c
+
 # D4.3's patch (tools/rig/devctl_rig.py; test only)
 $(BUILD)/amiga/patchcon: tests/amiga/patchcon.c
 	@mkdir -p $(BUILD)/amiga
