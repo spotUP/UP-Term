@@ -635,8 +635,33 @@ static void utf8_and_latin1_conversions(void)
     CHECK_INT(memcmp(out, "a\xc3\xa9", 3), 0);
 }
 
+/* ---- G3-17: colours by name ---- */
+
+/* OSC 4 / 10-12 take X11 colour names as xterm does (terminfo's Cs passes
+ * whatever the user named: tmux's cursor-colour "red"), and tmux's
+ * "colourN" as palette entry N. Unknown names change nothing. */
+static void osc_colours_take_x11_names(void)
+{
+    vt_term *t = h_new(10, 2, VT_XTERM);
+    vt_set_default_colors(t, 0xC0C0C0UL, 0x000000UL, 0xFFFFFFUL);
+    h_put(t, "\033]12;red\007");
+    CHECK_INT(vt_default_color(t, 2) == 0xFF0000UL, 1);
+    h_put(t, "\033]11;Dark Slate Gray\033\\");      /* case and blanks as X11 */
+    CHECK_INT(vt_default_color(t, 1) == 0x2F4F4FUL, 1);
+    h_put(t, "\033]10;colour196\007");
+    CHECK_INT(vt_default_color(t, 0) == 0xFF0000UL, 1);
+    h_put(t, "\033]4;3;navy\007");
+    CHECK_INT(vt_palette_rgb(t, 3) == 0x000080UL, 1);
+    h_put(t, "\033]12;nosuchcolour\007");
+    CHECK_INT(vt_default_color(t, 2) == 0xFF0000UL, 1);
+    h_put(t, "\033]112\007");                       /* Cr: back to the host's */
+    CHECK_INT(vt_default_color(t, 2) == 0xFFFFFFUL, 1);
+    vt_free(t);
+}
+
 void suite_protocol(void)
 {
+    osc_colours_take_x11_names();
     osc52_sets_the_clipboard_in_any_size();
     osc52_larger_than_a_megabyte_is_dropped();
     osc52_query_only_when_the_host_allows_it();

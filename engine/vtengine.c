@@ -2676,9 +2676,78 @@ static int hexval(int c)
     return -1;
 }
 
+/* X11 colour names (rgb.txt values) the programs name in OSC 4 / 10-12 --
+ * the common ones, not all 750; plus grayN / greyN (0-100) and tmux's
+ * colourN / colorN (palette entry N). Case and blanks do not count. */
+static vt_u32 color_name(const vt_term *t, const char *s, int n)
+{
+    static const struct { const char *name; vt_u32 rgb; } names[] = {
+        { "black", 0x000000 }, { "white", 0xFFFFFF }, { "red", 0xFF0000 }, { "green", 0x00FF00 },
+        { "blue", 0x0000FF }, { "yellow", 0xFFFF00 }, { "cyan", 0x00FFFF }, { "magenta", 0xFF00FF },
+        { "gray", 0xBEBEBE }, { "grey", 0xBEBEBE }, { "darkgray", 0xA9A9A9 }, { "darkgrey", 0xA9A9A9 },
+        { "lightgray", 0xD3D3D3 }, { "lightgrey", 0xD3D3D3 }, { "dimgray", 0x696969 },
+        { "dimgrey", 0x696969 }, { "slategray", 0x708090 }, { "darkslategray", 0x2F4F4F },
+        { "darkslategrey", 0x2F4F4F }, { "orange", 0xFFA500 }, { "darkorange", 0xFF8C00 },
+        { "purple", 0xA020F0 }, { "violet", 0xEE82EE }, { "brown", 0xA52A2A }, { "pink", 0xFFC0CB },
+        { "hotpink", 0xFF69B4 }, { "navy", 0x000080 }, { "navyblue", 0x000080 },
+        { "darkred", 0x8B0000 }, { "darkgreen", 0x006400 }, { "darkblue", 0x00008B },
+        { "darkcyan", 0x008B8B }, { "darkmagenta", 0x8B008B }, { "lightblue", 0xADD8E6 },
+        { "lightgreen", 0x90EE90 }, { "lightyellow", 0xFFFFE0 }, { "lightcyan", 0xE0FFFF },
+        { "skyblue", 0x87CEEB }, { "steelblue", 0x4682B4 }, { "royalblue", 0x4169E1 },
+        { "dodgerblue", 0x1E90FF }, { "turquoise", 0x40E0D0 }, { "gold", 0xFFD700 },
+        { "khaki", 0xF0E68C }, { "coral", 0xFF7F50 }, { "salmon", 0xFA8072 }, { "tomato", 0xFF6347 },
+        { "orchid", 0xDA70D6 }, { "plum", 0xDDA0DD }, { "maroon", 0xB03060 }, { "beige", 0xF5F5DC },
+        { "ivory", 0xFFFFF0 }, { "wheat", 0xF5DEB3 }, { "tan", 0xD2B48C }, { "chocolate", 0xD2691E },
+        { "firebrick", 0xB22222 }, { "forestgreen", 0x228B22 }, { "seagreen", 0x2E8B57 },
+        { "limegreen", 0x32CD32 }, { "olivedrab", 0x6B8E23 }, { "aquamarine", 0x7FFFD4 },
+        { "chartreuse", 0x7FFF00 }, { "indigo", 0x4B0082 }, { "lavender", 0xE6E6FA },
+        { "silver", 0xC0C0C0 }, { "teal", 0x008080 }, { "olive", 0x808000 }, { "lime", 0x00FF00 },
+        { "aqua", 0x00FFFF }, { "fuchsia", 0xFF00FF }
+    };
+    char k[24];
+    int i, m = 0;
+    long v = 0;
+    for (i = 0; i < n && m < (int)sizeof(k) - 1; i++)
+        if (s[i] != ' ')
+            k[m++] = (char)(s[i] >= 'A' && s[i] <= 'Z' ? s[i] + 32 : s[i]);
+    if (i < n)
+        return 0;
+    k[m] = 0;
+    for (i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++)
+        if (!strcmp(k, names[i].name))
+            return 0x01000000UL | names[i].rgb;
+    for (i = 0; i < 2; i++) {
+        const char *pre = i ? "colo" : "gr";
+        int pl = (int)strlen(pre), j;
+        if (strncmp(k, pre, pl))
+            continue;
+        j = pl;
+        if (i ? (k[j] == 'u' && k[j + 1] == 'r') : (k[j] == 'a' || k[j] == 'e') && k[j + 1] == 'y')
+            j += 2;
+        else if (i && k[j] == 'r')
+            j += 1;
+        else
+            continue;
+        if (!k[j])
+            continue;
+        for (v = 0; k[j] >= '0' && k[j] <= '9' && v < 1000; j++)
+            v = v * 10 + (k[j] - '0');
+        if (k[j])
+            continue;
+        if (i && v < 256)
+            return 0x01000000UL | vt_palette_rgb(t, (int)v);
+        if (!i && v <= 100) {
+            vt_u32 g = (vt_u32)((v * 255 + 50) / 100);
+            return 0x01000000UL | (g << 16) | (g << 8) | g;
+        }
+    }
+    return 0;
+}
+
 /* An X colour spec: rgb:r/g/b (1-4 hex digits each) or #rgb, #rrggbb,
- * #rrrgggbbb, #rrrrggggbbbb. 0x01RRGGBB, 0 when it is not one. */
-static vt_u32 parse_color(const char *s, int n)
+ * #rrrgggbbb, #rrrrggggbbbb, or a colour name (color_name). 0x01RRGGBB, 0
+ * when it is not one. */
+static vt_u32 parse_color(const vt_term *t, const char *s, int n)
 {
     vt_u32 c[3];
     int i, k, d;
@@ -2714,7 +2783,7 @@ static vt_u32 parse_color(const char *s, int n)
         }
         return 0x01000000UL | (c[0] << 16) | (c[1] << 8) | c[2];
     }
-    return 0;
+    return color_name(t, s, n);
 }
 
 /* OSC Ps;[index;]rgb:rrrr/gggg/bbbb, the form xterm answers in. */
@@ -3048,7 +3117,7 @@ static void osc_dispatch(vt_term *t)
             if (m == 1 && spec[0] == '?') {
                 reply_color(t, 4, (int)k, vt_palette_rgb(t, (int)k));
             } else {
-                vt_u32 c = parse_color(spec, m);
+                vt_u32 c = parse_color(t, spec, m);
                 if (c) {
                     t->pal_set[k] = c;
                     changed = 1;
@@ -3069,7 +3138,7 @@ static void osc_dispatch(vt_term *t)
             if (m == 1 && spec[0] == '?') {
                 reply_color(t, which, -1, vt_default_color(t, (int)(which - 10)));
             } else {
-                vt_u32 c = parse_color(spec, m);
+                vt_u32 c = parse_color(t, spec, m);
                 if (c) {
                     t->dflt_set[which - 10] = c;
                     changed = 1;
