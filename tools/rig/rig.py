@@ -144,6 +144,17 @@ def setup():
         shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
     (RIG / "boot/s").mkdir(exist_ok=True)
     (RIG / "boot/s/startup-sequence").write_text(STARTUP)
+    # --stock: creep's Workbench prints topaz 8, 77 columns in a 640-wide
+    # window. The rig boots from BOOTX:, which had no Devs/system-configuration,
+    # so Intuition took its built-in 60-column topaz (61 columns measured,
+    # 2026-10-04). The 3.2 install's own file (FontHeight 8) goes in for --stock
+    # only: the default rig's serial and other settings stay as they were.
+    sysconf = RIG / "boot/devs/system-configuration"
+    if STOCK:
+        sysconf.parent.mkdir(exist_ok=True)
+        shutil.copyfile(RIG / "os32/Devs/system-configuration", sysconf)
+    elif sysconf.exists():
+        sysconf.unlink()
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     # once, like the disk: the sources were in a session scratchpad, which
