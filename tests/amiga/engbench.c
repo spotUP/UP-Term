@@ -65,12 +65,83 @@ void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
 void vt_asm_rows_down(void **p, long k);
 void vr_asm_cell(unsigned char **planes, long depth, long off, long bpr, const unsigned char *rows, long h, long fg, long bg,
                  long mask);
+long vt_asm_csi(const vt_u8 *p, long n, long *params, vt_u8 *sub);
+
+/* vtengine.c's csi_scan (the C build's), the reference for vt_asm_csi */
+static long csi_scan_c(const vt_u8 *p, long n, long *params, vt_u8 *sub)
+{
+    long i, v = 0;
+    int np = 0;
+    if (n > 0x7FFF)
+        n = 0x7FFF;
+    for (i = 0; i < n; i++) {
+        vt_u8 c = p[i];
+        if ((vt_u8)(c - '0') <= 9) {
+            v = v < 65535L / 10 ? v * 10 + (long)(c - '0') : 65535L;
+            if (!np) {
+                np = 1;
+                sub[0] = 0;
+            }
+        } else if (c == ';' || c == ':') {
+            if (!np) {
+                np = 1;
+                sub[0] = 0;
+            }
+            params[np - 1] = v;
+            if (np < 16) {
+                sub[np] = (vt_u8)(c == ':');
+                np++;
+                v = 0;
+            }
+        } else {
+            if (np) {
+                params[np - 1] = v;
+            } else {
+                params[0] = 0;
+                sub[0] = 0;
+            }
+            return (long)np << 16 | i;
+        }
+    }
+    return -1;
+}
+
+/* vt_asm_csi against csi_scan_c: every cut of each string, the values and
+ * marks written, nothing past the 16 entries */
+static int csi_check(void)
+{
+    static const char *const t[] = {
+        "m", "31m", "38;5;123;48;5;45m", "1;1H", ";m", ";;;m", "0m", "6552m", "6553m", "6554m", "65535m", "65530m", "65529;65531m",
+        "99999999m", "123456789012;7m", "4:3m", "38:2::10:20:30m", "38:2:1:10:20:30;1m", "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16m",
+        "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18m", "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17:5m", "?25h", "5 q", "12\033",
+        "7/", "3;\200", ":m", "0;:;:5H", ""
+    };
+    static long pa[17], pc[17];
+    static vt_u8 sa[17], sc[17];
+    static vt_u8 b[64];
+    int k, n, i;
+    for (k = 0; k < (int)(sizeof t / sizeof t[0]); k++) {
+        int len = (int)strlen(t[k]);
+        memcpy(b, t[k], (size_t)len);
+        for (n = 0; n <= len; n++) {
+            long ra, rc;
+            for (i = 0; i < 17; i++) { pa[i] = pc[i] = 0x5A5A5A5AL; sa[i] = sc[i] = 0xA5; }
+            ra = vt_asm_csi(b, n, pa, sa);
+            rc = csi_scan_c(b, n, pc, sc);
+            if (ra != rc) return 80;
+            if (memcmp(pa, pc, sizeof pa) || memcmp(sa, sc, sizeof sa)) return 81;
+        }
+    }
+    return 0;
+}
 
 static int asm_check(void)
 {
     static vt_cell c[12];
     vt_cell p;
-    int i;
+    int i = csi_check();
+    if (i)
+        return i;
     for (i = 0; i < 12; i++) { c[i].ch = '.'; c[i].fg = 1; c[i].bg = 2; c[i].attr = 0; c[i].width = 1; c[i].deco = 0; c[i].ext = 0; c[i].pad = 0; }
     c[6].width = 2; c[7].width = 0; /* a wide glyph in cells 6 and 7 */
     p.fg = 0x11223344UL; p.bg = 0x55667788UL; p.ch = 0; p.attr = 0xA5C3; p.width = 1; p.deco = 9; p.ext = 7; p.pad = 0;

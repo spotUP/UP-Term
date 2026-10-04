@@ -530,6 +530,7 @@ long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_ch_blank(vt_cell *c, long n);
+long vt_asm_csi(const vt_u8 *p, long n, long *params, vt_u8 *sub);
 void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
 void vt_asm_rows_up(struct vt_line **p, long k);
 void vt_asm_rows_down(struct vt_line **p, long k);
@@ -5523,51 +5524,72 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
  * control inside, the sequence cut by the end of the write -- returns 0
  * with nothing changed that the parser's own ESC does not set again.
  * The bytes consumed. */
-static long csi_fast(vt_term *t, const vt_u8 *b, long len)
+#ifdef VT_ASM
+#define csi_scan vt_asm_csi
+#else
+/* csi_fast's parameter scan (vtengine_68k.s has it as vt_asm_csi): the
+ * bytes from p (after "ESC [") are digits, ';' and ':' up to the first
+ * other byte, the final. Their values go to params / sub as feed()'s CSI
+ * states put them: a value saturates at VT_PARAM_MAX, ':' marks the
+ * parameter it starts, parameters past VT_MAX_PARAMS run on into the last.
+ * No parameter: params[0] = sub[0] = 0. np << 16 | the final's offset
+ * from p, or -1 when the n bytes (at most 32767 are looked at) end first.
+ * The parameter being read stays in v until its separator. */
+static long csi_scan(const vt_u8 *p, long n, long *params, vt_u8 *sub)
 {
-    const vt_u8 *p = b + 2, *end = b + len;
-    long v = 0;
+    long i, v = 0;
     int np = 0;
-    vt_u8 c;
-    if (len < 3 || b[1] != '[')
-        return 0;
-    /* the parameter being read stays in v until its separator (ASM1: a
-     * store and a load of params[np - 1] for every digit before) */
-    for (;;) {
-        if (p >= end)
-            return 0;
-        c = *p;
+    if (n > 0x7FFF)
+        n = 0x7FFF;
+    for (i = 0; i < n; i++) {
+        vt_u8 c = p[i];
         if ((vt_u8)(c - '0') <= 9) {
             v = v < VT_PARAM_MAX / 10 ? v * 10 + (long)(c - '0') : VT_PARAM_MAX;
             if (!np) {
                 np = 1;
-                t->sub[0] = 0;
+                sub[0] = 0;
             }
         } else if (c == ';' || c == ':') {
             if (!np) {
                 np = 1;
-                t->sub[0] = 0;
+                sub[0] = 0;
             }
-            t->params[np - 1] = v;
+            params[np - 1] = v;
             if (np < VT_MAX_PARAMS) {
-                t->sub[np] = (vt_u8)(c == ':');
+                sub[np] = (vt_u8)(c == ':');
                 np++;
                 v = 0;
             } /* else: more digits go on into the last one, as feed() */
         } else {
-            break;
+            if (np) {
+                params[np - 1] = v;
+            } else {
+                params[0] = 0;
+                sub[0] = 0;
+            }
+            return (long)np << 16 | i;
         }
-        p++;
     }
+    return -1;
+}
+#endif
+
+static long csi_fast(vt_term *t, const vt_u8 *b, long len)
+{
+    long r;
+    int np;
+    vt_u8 c;
+    if (len < 3 || b[1] != '[')
+        return 0;
+    r = csi_scan(b + 2, len - 2, t->params, t->sub);
+    if (r < 0)
+        return 0;
+    np = (int)(r >> 16);
+    r = 2 + (r & 0xFFFF); /* the final's offset from ESC */
+    c = b[r];
     if (c < 0x40 || c > 0x7E)
         return 0;
     /* clear_params' work, now that the sequence is known whole */
-    if (np) {
-        t->params[np - 1] = v;
-    } else {
-        t->params[0] = 0;
-        t->sub[0] = 0;
-    }
     t->np = np;
     t->have = 0;
     t->priv = 0;
@@ -5583,7 +5605,7 @@ static long csi_fast(vt_term *t, const vt_u8 *b, long len)
         csi_common(t, c);
     else
         csi_dispatch(t, c);
-    return p + 1 - b;
+    return r + 1;
 }
 
 void vt_write(vt_term *t, const vt_u8 *buf, long len)

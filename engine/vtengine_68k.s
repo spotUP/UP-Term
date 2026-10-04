@@ -17,6 +17,7 @@
 	xdef	_vt_asm_put_ch
 	xdef	_vt_asm_fill
 	xdef	_vt_asm_ch_blank
+	xdef	_vt_asm_csi
 	xdef	_vt_asm_rows_up
 	xdef	_vt_asm_cells_move
 
@@ -96,6 +97,100 @@ _vt_asm_fill:
 	bne.s	.fcell
 	movem.l	(sp)+,d2-d4
 .fnone:	rts
+
+; long vt_asm_csi(const vt_u8 *p, long n, long *params, vt_u8 *sub)
+;
+; csi_fast's parameter scan (ASM1): the bytes from p (after "ESC [") are
+; digits, ';' and ':' up to the first other byte, the final. Their values
+; go to params / sub as the parser's own CSI states put them (feed): a
+; value saturates at 65535 (VT_PARAM_MAX: from 6553 on the next digit
+; makes it 65535), ':' marks the parameter it starts in sub, the 17th and
+; later parameters run on into the 16th (VT_MAX_PARAMS). No parameter:
+; params[0] = sub[0] = 0. Returns np << 16 | the final's offset from p, or
+; -1 when the n bytes (at most 32767 are looked at) end first. Eight
+; instructions a digit (C: twenty and more).
+_vt_asm_csi:
+	movem.l	d2-d7/a2-a3,-(sp)
+	move.l	36(sp),a0		; p
+	move.l	40(sp),d3		; n
+	move.l	44(sp),a2		; params
+	move.l	48(sp),a3		; sub
+	move.l	a0,a1			; p, for the offset
+	moveq	#0,d1			; v: the parameter being read
+	moveq	#0,d2			; np
+	moveq	#0,d0
+	move.w	#6553,d5		; VT_PARAM_MAX / 10
+	moveq	#'0',d6
+	moveq	#9,d7
+	cmp.l	#$7fff,d3
+	bls.s	.cn
+	move.w	#$7fff,d3
+.cn:	subq.w	#1,d3			; the bytes left after the one read
+	bmi	.cout
+	move.b	(a0)+,d0
+	sub.b	d6,d0
+.ctop:	cmp.b	d7,d0
+	bhi.s	.cnd			; not a digit
+	tst.w	d2
+	bne.s	.cdig
+	moveq	#1,d2			; the first parameter starts
+	clr.b	(a3)
+.cdig:	cmp.w	d5,d1
+	bcc.s	.csat
+	mulu.w	#10,d1
+	add.w	d0,d1
+.cdn:	subq.w	#1,d3
+	bmi.s	.cout
+	move.b	(a0)+,d0
+	sub.b	d6,d0
+	cmp.b	d7,d0
+	bls.s	.cdig
+.cnd:	cmp.b	#';'-'0',d0
+	beq.s	.csep
+	cmp.b	#':'-'0',d0
+	bne.s	.cfin
+.csep:	tst.w	d2
+	bne.s	.cs1
+	moveq	#1,d2
+	clr.b	(a3)
+.cs1:	move.w	d2,d4
+	lsl.w	#2,d4
+	move.l	d1,-4(a2,d4.w)		; params[np - 1] = v
+	cmp.w	#16,d2
+	bcc.s	.csn			; all 16: the digits go on into the last
+	moveq	#0,d4
+	cmp.b	#':'-'0',d0
+	bne.s	.cs2
+	moveq	#1,d4
+.cs2:	move.b	d4,(a3,d2.w)		; sub[np] = (c == ':')
+	addq.w	#1,d2
+	moveq	#0,d1
+.csn:	subq.w	#1,d3
+	bmi.s	.cout
+	move.b	(a0)+,d0
+	sub.b	d6,d0
+	bra.s	.ctop
+.csat:	move.w	#-1,d1			; 65535
+	bra.s	.cdn
+.cfin:	tst.w	d2
+	beq.s	.cf0
+	move.w	d2,d4
+	lsl.w	#2,d4
+	move.l	d1,-4(a2,d4.w)		; the last parameter
+	bra.s	.cf1
+.cf0:	clr.l	(a2)
+	clr.b	(a3)
+.cf1:	move.l	a0,d0
+	sub.l	a1,d0
+	subq.l	#1,d0			; the final's offset
+	swap	d2
+	clr.w	d2
+	or.l	d2,d0
+	movem.l	(sp)+,d2-d7/a2-a3
+	rts
+.cout:	moveq	#-1,d0
+	movem.l	(sp)+,d2-d7/a2-a3
+	rts
 
 ; void vt_asm_ch_blank(vt_cell *c, long n)
 ;
