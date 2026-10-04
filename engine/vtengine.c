@@ -145,6 +145,7 @@ struct vt_term {
     vt_u32 dflt_set[3];        /* OSC 10-12: 0x01RRGGBB, 0 = the host's */
     int cell_w, cell_h;        /* pixels, for CSI 14t / 16t */
     vt_u8 cursor_style;        /* DECSCUSR */
+    vt_u8 cursor_dflt;         /* the host's DECSCUSR default (vt_set_cursor_style): RIS's */
     vt_u8 allow_cols;          /* ?40: DECCOLM may change the width */
     vt_u8 mok;                 /* modifyOtherKeys level, CSI > 4 ; n m */
     vt_u8 scheme;              /* the last dark (1) / light (2) scheme reported */
@@ -3205,6 +3206,11 @@ void vt_reset(vt_term *t)
     t->u_need = 0;
     t->last_ch = 0;
     t->title[0] = 0;
+    /* what programs set that a full reset takes back (xterm's RIS): the
+     * key encoding, the pushed titles, the cursor shape (to the host's) */
+    t->n_titles = 0;
+    t->mok = 0;
+    t->cursor_style = t->cursor_dflt;
     tab_reset(t);
     set_alt(t, 0, 0);
     clear_screen_home(t);
@@ -3325,7 +3331,7 @@ void vt_set_bold_bright(vt_term *t, int on)
 void vt_set_cursor_style(vt_term *t, int style)
 {
     if (t)
-        t->cursor_style = (vt_u8)(style >= 0 && style <= 6 ? style : 0);
+        t->cursor_style = t->cursor_dflt = (vt_u8)(style >= 0 && style <= 6 ? style : 0);
 }
 
 /* ?12 from the host: a profile's cursor-blink default,

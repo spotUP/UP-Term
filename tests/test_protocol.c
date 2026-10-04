@@ -114,9 +114,31 @@ static void decrqss_sgr_round_trips_underline_colour_and_font(void)
     vt_free(t);
 }
 
+/* ---- G3-02: RIS resets what a program set ---- */
+
+/* ESC c left the modifyOtherKeys level, the title stack and the cursor
+ * shape of the program before it; the cursor goes back to the host's
+ * (profile) shape, not to the engine's. */
+static void ris_resets_keys_title_stack_and_cursor_shape(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    vt_set_cursor_style(t, 2);                      /* the profile's steady block */
+    h_put(t, "\033[>4;2m\033]2;one\007\033[22;0t\033[5 q");
+    CHECK_INT(vt_cursor_style(t), 5);
+    h_put(t, "\033c");
+    h_put(t, "\033[?4m");
+    REPLY("\033[>4;0m");                            /* modifyOtherKeys off */
+    CHECK_STR(vt_title(t), "");
+    h_put(t, "\033[23;0t");                         /* nothing pushed any more */
+    CHECK_STR(vt_title(t), "");
+    CHECK_INT(vt_cursor_style(t), 2);
+    vt_free(t);
+}
+
 void suite_protocol(void)
 {
     decrqss_conformance_level_matches_da1();
     decrqm_answers_every_mode_the_engine_keeps();
     decrqss_sgr_round_trips_underline_colour_and_font();
+    ris_resets_keys_title_stack_and_cursor_shape();
 }
