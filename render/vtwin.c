@@ -26,6 +26,7 @@ struct Device *vtwin_timer; /* also read by amiga_render.c's PROF=1 counters */
 #include "../handler/clip.h"
 #include "../handler/clipfmt.h"
 #include "fontpair.h"
+#include "synchold.h" /* the frame clock and the ?2026 hold */
 #include <graphics/displayinfo.h>
 
 extern struct GfxBase *GfxBase;
@@ -36,8 +37,8 @@ extern struct GfxBase *GfxBase;
 extern struct Device *ConsoleDevice;
 
 /* The frame clock's interval follows what the last frame cost (pace.h):
- * 1.5 times it, 20 to 160 ms. */
-#define SYNC_FRAMES 3       /* the longest a ?2026 frame is waited for */
+ * 1.5 times it, 20 to 160 ms. The ?2026 hold and a notice's time in the
+ * title count the microseconds it actually waited (synchold.h). */
 
 static void frame_start(vtwin *w);
 
@@ -102,17 +103,76 @@ void vtwin_show_title(vtwin *w)
         SetWindowTitles(w->win, (UBYTE *)w->title, (UBYTE *)~0);
 }
 
+/* UTF-8 text (the engine's) as Latin-1 (Intuition's) into out, cap bytes
+ * with the NUL. */
+static void latin1_copy(char *out, int cap, const char *s)
+{
+    char lat[256];
+    long n = (long)strlen(s);
+    if (n > (long)sizeof(lat))
+        n = sizeof(lat);
+    n = cf_to_latin1(s, n, lat);
+    if (n > cap - 1)
+        n = cap - 1;
+    memcpy(out, lat, n);
+    out[n] = 0;
+}
+
 static void cb_title(void *u, const char *s)
 {
     vtwin *w = (vtwin *)u;
-    int i;
-    long k = 0, n = (long)strlen(s);
-    /* the title arrives as UTF-8; Intuition shows Latin-1 */
-    for (i = 0; k < n && i < (int)sizeof(w->title) - 1; i++) {
-        unsigned long cp = cf_next(s, n, &k);
-        w->title[i] = (char)(cp < 0x100 ? cp : '?');
+    if (w->note_us) {
+        /* a notice is in the title bar: the new title waits behind it */
+        latin1_copy(w->note_saved, sizeof(w->note_saved), s);
+        return;
     }
-    w->title[i] = 0;
+    latin1_copy(w->title, sizeof(w->title), s);
+    if (w->win && !w->r.off)
+        vtwin_show_title(w);
+    if (w->host->titled)
+        w->host->titled(w->user);
+}
+
+/* OSC 9 / 777: the Amiga has no notification centre, so the notice takes
+ * the title bar for 5 s (the frame clock's waits count it down, vtwin_tick) and
+ * the window's own title comes back after. */
+static void cb_notify(void *u, const char *title, const char *body)
+{
+    vtwin *w = (vtwin *)u;
+    char text[256];
+    int n = 0;
+    if (!w->note_us)
+        memcpy(w->note_saved, w->title, sizeof(w->note_saved));
+    if (*title) {
+        n = (int)strlen(title);
+        if (n > 120)
+            n = 120;
+        memcpy(text, title, n);
+        text[n++] = ':';
+        text[n++] = ' ';
+    }
+    strncpy(text + n, body, sizeof(text) - 1 - n);
+    text[sizeof(text) - 1] = 0;
+    latin1_copy(w->title, sizeof(w->title), text);
+    w->note_us = w->frame_open ? VTWIN_NOTE_MICROS : 0; /* no clock: until the next title */
+    if (w->win && !w->r.off)
+        vtwin_show_title(w);
+    if (w->host->titled)
+        w->host->titled(w->user);
+    frame_start(w);
+}
+
+/* A frame clock's wait of a notice gone; at its end the window's title is back. */
+static void note_tick(vtwin *w, ULONG waited)
+{
+    if (!w->note_us)
+        return;
+    w->note_us = w->note_us > (long)waited ? w->note_us - (long)waited : 0;
+    if (w->note_us) {
+        frame_start(w);
+        return;
+    }
+    memcpy(w->title, w->note_saved, sizeof(w->title));
     if (w->win && !w->r.off)
         vtwin_show_title(w);
     if (w->host->titled)
@@ -137,6 +197,52 @@ static void cb_colors(void *u)
     vr_set_defaults(&w->r, fg, bg);
     if (w->cursor_rgb != VR_KEEP)
         vr_set_cursor_color(&w->r, vt_default_color(w->t, 2));
+}
+
+/* OSC 52 from a program: its text (UTF-8, or the window's 8-bit set, taken
+ * as Latin-1) to the clipboard, which keeps UTF-8 beside Latin-1 (clip.c). */
+static void cb_clipboard_set(void *u, const char *sel, const vt_u8 *data, long len)
+{
+    vtwin *w = (vtwin *)u;
+    char *utf;
+    long n;
+    /* the Amiga has one clipboard (unit 0), for c, p, s and 0-7 alike; a
+     * set of xterm's secondary selection (q) alone is not the clipboard */
+    if (sel[0] == 'q' && !sel[1])
+        return;
+    if (!(w->latin1 || w->cp437)) {
+        clip_write((const char *)data, len);
+        return;
+    }
+    utf = (char *)AllocVec(2 * len + 1, MEMF_ANY); /* not static: every window's process runs this */
+    if (!utf)
+        return;
+    n = cf_from_latin1((const char *)data, len, utf);
+    clip_write(utf, n);
+    FreeVec(utf);
+}
+
+/* OSC 52 ; ? -- only when the profile allows it (program-clipboard =
+ * read-write): the clipboard as the program reads text, at most max bytes
+ * and whole characters only. */
+static long cb_clipboard_get(void *u, vt_u8 *buf, long max)
+{
+    vtwin *w = (vtwin *)u;
+    long n;
+    char *text = clip_read(&n);
+    if (!text)
+        return 0;
+    if (w->latin1 || w->cp437)
+        n = cf_to_latin1(text, n, text); /* in place: Latin-1 is never longer */
+    if (n > max) {
+        n = max;
+        if (!(w->latin1 || w->cp437))
+            while (n > 0 && ((unsigned char)text[n] & 0xC0) == 0x80)
+                n--; /* not into the middle of a character */
+    }
+    memcpy(buf, text, n);
+    FreeVec(text);
+    return n;
 }
 
 /* Amiga page length, line length and offsets (CSI t / u / x / y): the text
@@ -173,6 +279,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->cursor_blink = 0;
     w->meta_alt = 0;
     w->copy_on_select = 0;
+    w->clip_access = VT_CLIP_WRITE; /* OSC 52 sets the clipboard, never reads it */
     for (i = 0; i < 16; i++)
         w->pal16[i] = 0;
     w->fallback[0] = 0;
@@ -251,7 +358,8 @@ static void frame_start(vtwin *w)
         return;
     w->frame->tr_node.io_Command = TR_ADDREQUEST;
     w->frame->tr_time.tv_secs = 0;
-    w->frame->tr_time.tv_micro = w->frame_us ? w->frame_us : VT_PACE_MIN_US;
+    w->frame_wait = w->frame_us ? w->frame_us : VT_PACE_MIN_US;
+    w->frame->tr_time.tv_micro = w->frame_wait;
     SendIO((struct IORequest *)w->frame);
     w->frame_busy = 1;
 }
@@ -260,12 +368,13 @@ void vtwin_render(vtwin *w)
 {
     if (!w->render_pending || !w->t)
         return;
-    if ((vt_modes(w->t) & VT_MODE_SYNC) && w->sync_held < SYNC_FRAMES) {
+    if (w->frame_open && (vt_modes(w->t) & VT_MODE_SYNC) && VTWIN_SYNC_HOLD(w->sync_held)) {
         /* synchronized output (?2026): the program is in the middle of a
          * frame. Nothing is drawn until it says the frame is whole -- or
-         * three frames have passed, should it never say so. (A frame sent
+         * a second has passed (synchold.h: vtwin_tick adds each wait of the
+         * frame clock; without a clock nothing could end the hold, so there
+         * is none), should it never say so. (A frame sent
          * in several writes showed its top new and its bottom old.) */
-        w->sync_held++;
         frame_start(w);
         return;
     }
@@ -308,7 +417,10 @@ void vtwin_tick(vtwin *w)
     if (w->frame_busy && CheckIO((struct IORequest *)w->frame)) {
         WaitIO((struct IORequest *)w->frame);
         w->frame_busy = 0;
+        if (w->render_pending && w->t && (vt_modes(w->t) & VT_MODE_SYNC))
+            w->sync_held += (long)w->frame_wait; /* a ?2026 frame waited this long */
         vtwin_render(w); /* the frame is due */
+        note_tick(w, w->frame_wait); /* a notice in the title counts down */
         if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r)))
             frame_start(w); /* that frame ended a flash or a blink phase */
     }
@@ -551,6 +663,7 @@ static void settings(vtwin *w)
     vt_set_reflow(w->t, w->reflow);
     vt_set_cursor_style(w->t, w->cursor_style);
     vt_set_cursor_blink(w->t, w->cursor_blink);
+    vt_set_clipboard_access(w->t, w->no_clipboard ? 0 : w->clip_access);
     for (i = 0; i < 16; i++)
         if (w->pal16[i] & 0x01000000UL)
             vt_set_palette(w->t, i, w->pal16[i] & 0xFFFFFFUL);
@@ -572,6 +685,7 @@ int vtwin_attach(vtwin *w, struct Window *win)
     w->win = win;
     if (!w->font)
         vtwin_open_font(w);
+    memset(&cb, 0, sizeof(cb)); /* a callback the engine gains is off until set here */
     cb.damage = cb_damage;
     cb.scroll = cb_scroll;
     cb.reply = cb_reply;
@@ -579,6 +693,9 @@ int vtwin_attach(vtwin *w, struct Window *win)
     cb.title = cb_title;
     cb.layout = cb_layout;
     cb.colors = cb_colors;
+    cb.clipboard_set = cb_clipboard_set; /* vt_set_clipboard_access (settings) says what may run */
+    cb.clipboard_get = cb_clipboard_get;
+    cb.notify = cb_notify;
     {
         /* size from the window before the engine exists */
         int cols = (win->Width - win->BorderLeft - win->BorderRight) / w->font->tf_XSize;
@@ -968,7 +1085,8 @@ static void paste(vtwin *w)
     for (i = 0; i < n;) {
         unsigned long ch = cf_next(text, n, &i);
         long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
+        if (ch == '
+' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
             continue; /* controls never; inside ?2004 nothing that ends the brackets early */
         k = vt_encode_key(w->t, key, 0, out);
         w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);
@@ -1008,6 +1126,18 @@ static int qual_mods(const vtwin *w, UWORD qual)
 static int console_key(vtwin *w, UWORD code, UWORD qual)
 {
     int page = w->r.rows > 1 ? w->r.rows - 1 : 1;
+    if ((qual & IEQUALIFIER_RCOMMAND) && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
+        (code == 0x4C || code == 0x4D)) {
+        /* Right Amiga + Shift + Up / Down: the previous / next prompt a
+         * shell marked (OSC 133) to the top of the view */
+        long r = vt_find_mark(w->t, -(long)w->r.view, code == 0x4C ? -1 : 1, VT_MARK_PROMPT);
+        if (r != VT_ROW_NONE) {
+            vr_set_view(&w->r, r < 0 ? (int)-r : 0);
+            if (!w->r.view)
+                vr_cursor_on(&w->r);
+        }
+        return 1;
+    }
     if (qual & IEQUALIFIER_RCOMMAND) {
         switch (code) {
         case 0x33: if (w->no_clipboard) return 0; copy_selection(w); return 1;
@@ -1031,6 +1161,74 @@ static int console_key(vtwin *w, UWORD code, UWORD qual)
         }
     }
     return 0;
+}
+
+/* The keymap's characters for raw key `code` with qualifiers `qual`: the
+ * first one, 0 when it makes none (a dead key) or several. */
+static long keymap_char(vtwin *w, UWORD code, UWORD qual, ULONG prev)
+{
+    struct InputEvent ie;
+    UBYTE buf[8];
+    LONG k;
+    ie.ie_NextEvent = 0;
+    ie.ie_Class = IECLASS_RAWKEY;
+    ie.ie_SubClass = 0;
+    ie.ie_Code = code;
+    ie.ie_Qualifier = qual;
+    ie.ie_EventAddress = (APTR)prev;
+    k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), w->keymap);
+    return k == 1 ? (long)buf[0] : 0;
+}
+
+/* A key while a program speaks the kitty keyboard protocol (CSI > u): the
+ * engine gets the event (press, repeat, release), the key's own character
+ * (the keymap without Shift, Ctrl and Meta), the one Shift makes and the
+ * text, so it can tell Ctrl+I from Tab and report releases. 0 when the
+ * protocol is off (the keys go the usual way). */
+static int kitty_key(vtwin *w, UWORD code, UWORD qual, ULONG prev)
+{
+    /* the modifier keys themselves (flag 8 reports them): LShift RShift
+     * CapsLock Ctrl LAlt RAlt LAmiga RAmiga, as kitty's left/right shift,
+     * caps lock, control, alt and super */
+    static const long modkey[8] = { 57441, 57447, 57358, 57442, 57443, 57449, 57444, 57450 };
+    int f = vt_kitty_flags(w->t), ev, mods, n;
+    UWORD raw = (UWORD)(code & ~IECODE_UP_PREFIX), keep;
+    long key, text = 0, shifted = 0;
+    vt_u8 out[72];
+    if (!f || w->pers != VT_XTERM)
+        return 0;
+    ev = (code & IECODE_UP_PREFIX) ? VT_KEY_EV_RELEASE : (qual & IEQUALIFIER_REPEAT) ? VT_KEY_EV_REPEAT
+                                                                                    : VT_KEY_EV_PRESS;
+    if (ev != VT_KEY_EV_RELEASE && console_key(w, raw, qual))
+        return 1; /* copy, paste, scrollback stay the console's */
+    mods = qual_mods(w, qual);
+    if (raw >= 0x60 && raw <= 0x67) {
+        key = modkey[raw - 0x60];
+        if (!(f & VT_KITTY_ALL_KEYS))
+            return 1;
+        n = vt_encode_key_kitty(w->t, key, mods, ev, 0, 0, 0, out);
+    } else if ((key = special_key(raw)) != 0 || (key = keypad_key(raw)) != 0) {
+        n = vt_encode_key_kitty(w->t, key, mods, ev, 0, 0, 0, out);
+    } else {
+        /* the keymap sees Alt (national characters) unless Alt is Meta;
+         * never Ctrl or Meta here: the protocol carries them */
+        keep = (UWORD)(qual & ~(IEQUALIFIER_CONTROL | IEQUALIFIER_LCOMMAND | IEQUALIFIER_REPEAT));
+        if (w->meta_alt)
+            keep &= (UWORD)~(IEQUALIFIER_LALT | IEQUALIFIER_RALT);
+        key = keymap_char(w, raw, (UWORD)(keep & ~(IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)), prev);
+        if (!key)
+            return 1; /* a dead key, or nothing: the keymap's business */
+        if (mods & VT_MOD_SHIFT)
+            shifted = keymap_char(w, raw, keep, prev);
+        text = (mods & VT_MOD_SHIFT) ? shifted : key;
+        n = vt_encode_key_kitty(w->t, key, mods, ev, shifted, 0, text, out);
+    }
+    if (n) {
+        if (w->r.view)
+            vr_set_view(&w->r, 0);
+        w->host->key(w->user, out, n, key >= 0x110000 ? key : 0, mods);
+    }
+    return 1;
 }
 
 void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG micros)
@@ -1077,6 +1275,8 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         w->host->input(w->user, (const vt_u8 *)b, k);
         return;
     }
+    if (kitty_key(w, code, qual, prev))
+        return; /* the kitty keyboard protocol: presses, repeats and releases */
     if (code & IECODE_UP_PREFIX)
         return;
     if (console_key(w, code, qual))
@@ -1159,6 +1359,23 @@ static void drag_to(vtwin *w, WORD mx, WORD my)
     w->drag_moved = 1;
 }
 
+/* Ctrl + click on a cell of an OSC 8 hyperlink: the owner opens it. 1 when
+ * the click was that. */
+static int link_click(vtwin *w, UWORD code, UWORD qual, WORD mx, WORD my)
+{
+    int x, y, n;
+    const vt_cell *row;
+    const char *uri;
+    if (code != SELECTDOWN || !(qual & IEQUALIFIER_CONTROL) || !w->host->open_link ||
+        !cell_at(w, mx, my, &x, &y))
+        return 0;
+    row = vt_row(w->t, y - w->r.view, &n);
+    if (!row || x >= n || !(uri = vt_cell_link(w->t, &row[x])))
+        return 0;
+    w->host->open_link(w->user, uri);
+    return 1;
+}
+
 /* Pointer moves as IDCMP_MOUSEMOVE while a drag selects or the program
  * wants them (?1003, ?1002 with a button down): ReportMouse follows. Never
  * on a window that is not ours. */
@@ -1195,6 +1412,8 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
     vt_u8 out[40];
     if (!w->t)
         return;
+    if (!move && link_click(w, code, qual, mx, my))
+        return; /* Ctrl + click on a hyperlink: opened, not selected or reported */
     in = cell_at(w, mx, my, &x, &y);
     w->mouse_mods = qual_mods(w, qual); /* Ctrl +16, Meta +8 in the reports */
     if (move) {

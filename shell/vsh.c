@@ -25,6 +25,7 @@
 #include "sh_exec.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../config/termurl.h"
 
 #ifdef VSH_DEBUG
 /* A trace on the serial port (the rig captures it in build/rig/serial.log). */
@@ -1121,14 +1122,56 @@ static void send_words(sh_shell *sh)
 
 /* ---- the prompt and the main loop ----------------------------------------------- */
 
+/* On a vtcon console (term_marks) vsh tells the terminal where it is and
+ * where its prompts are, as fish and VTE's vte.sh do: OSC 7 with the
+ * directory (a new tab starts there), OSC 133 A/B around the prompt, C
+ * before a command runs, D with its status after -- Right Amiga + Shift +
+ * Up / Down then jump between prompts in the scrollback. */
+static int term_marks;
+static int command_ran;
+
+static void put_str(const char *s)
+{
+    Write(Output(), (APTR)s, (LONG)strlen(s));
+}
+
 static void prompt(sh_shell *sh, int more)
 {
     const char *ps = sh_get(&sh->ctx, more ? "PS2" : "PS1");
     char *text = sh_prompt(sh, ps ? ps : more ? "> " : "%F{cyan}%~%f %# ");
+    if (term_marks && !more) {
+        char b[600];
+        char *dir = os_cwd(0);
+        const char *host = sh_get(&sh->ctx, "HOSTNAME");
+        if (command_ran) {
+            char st[24];
+            long v = sh->ctx.status, k = 0;
+            char d[12];
+            int m = 0;
+            strcpy(st, "\033]133;D;");
+            k = (long)strlen(st);
+            do {
+                d[m++] = (char)('0' + (v < 0 ? 0 : v) % 10);
+                v /= 10;
+            } while (v > 0 && m < 10);
+            while (m)
+                st[k++] = d[--m];
+            st[k++] = 7;
+            st[k] = 0;
+            put_str(st);
+            command_ran = 0;
+        }
+        if (dir && dir[0] && termurl_osc7(dir, host ? host : "", b, sizeof(b)))
+            put_str(b);
+        free(dir);
+        put_str("\033]133;A\007");
+    }
     if (text) {
         Write(Output(), text, (LONG)strlen(text));
         free(text);
     }
+    if (term_marks && !more)
+        put_str("\033]133;B\007");
 }
 
 /* $HOME as the name the current directory is shown by ("SYS:" is
@@ -1258,6 +1301,7 @@ static int vsh_main(int argc, char **argv)
                     sh_set(&sh.ctx, "TERM", "vtcon");
             }
             sh_export(&sh.ctx, "TERM");
+            term_marks = 1; /* OSC 7 and 133 around the prompts (prompt()) */
             if (!sh_get(&sh.ctx, "TERMCAP") && (lock = Lock((STRPTR)"ENV:up-term/termcap.vtcon", SHARED_LOCK))) {
                 UnLock(lock);
                 sh_set(&sh.ctx, "TERMCAP", "/ENV/up-term/termcap.vtcon");
@@ -1333,6 +1377,10 @@ static int vsh_main(int argc, char **argv)
             len += n;
         }
         SetSignal(0, SIGBREAKF_CTRL_C); /* a Ctrl-C at the prompt is not for this line */
+        if (term_marks && !command_ran && text[strspn(text, " \t\n")]) {
+            put_str("\033]133;C\007"); /* a command's output starts here */
+            command_ran = 1;
+        }
         sh_run_text(&sh, text, &incomplete);
         if (incomplete)
             continue;

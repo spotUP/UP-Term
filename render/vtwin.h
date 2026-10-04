@@ -52,6 +52,8 @@ typedef struct vtwin_host {
     void (*resized)(void *user);
     /* the title changed (OSC 0/2): a tab's label (may be 0) */
     void (*titled)(void *user);
+    /* Ctrl + click on an OSC 8 hyperlink: open uri (may be 0: no links) */
+    void (*open_link)(void *user, const char *uri);
 } vtwin_host;
 
 typedef struct vtwin {
@@ -82,6 +84,7 @@ typedef struct vtwin {
     int copy_on_select;          /* a drag ends with the text on the clipboard */
     int wheel_scroll;            /* the wheel moves through the scrollback */
     int reflow;                  /* a resize re-wraps lines and scrollback (1, default) */
+    int clip_access;             /* VT_CLIP_*: what OSC 52 may do (program-clipboard; write) */
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
     int aspect_off;              /* font-aspect = off: the font as asked, on any screen */
     int aspect_known, square, square_fits; /* vtwin_set_screen: the screen's pixels */
@@ -107,9 +110,12 @@ typedef struct vtwin {
     struct timerequest *frame;
     int frame_open, frame_busy;
     ULONG frame_us;              /* the frame clock's next interval (pace.h); 0: the shortest */
+    ULONG frame_wait;            /* the interval of the request in flight (us) */
     ULONG prof_render, prof_frames; /* EClock ticks drawing, and render passes (the handler's PROF=1) */
     ULONG prof_part[3];          /* PROF=1: of the drawing, damaged rows / scrolls / cursor and mask */
-    int sync_held;               /* frames a ?2026 update has been held back */
+    long sync_held;              /* microseconds a ?2026 update has been held back */
+    long note_us;                /* OSC 9 / 777: microseconds the notice stays in the title */
+    char note_saved[80];         /* the title it stands in for */
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */

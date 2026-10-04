@@ -25,13 +25,16 @@
 #define VT_MAX_PARAMS 16
 #define VT_STR_MAX 256
 #define VT_PARAM_MAX 65535L
+#define VT_LINKS_MAX 63 /* OSC 8 links the cells may name at once */
 
 /* Parser states. */
 enum {
     S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
     S_CSI_IGNORE, S_OSC, S_STRING, /* DCS, SOS, PM, APC: consumed, ignored */
-    S_SIXEL /* DCS P1;P2;P3 q: the bytes go to the sixel decoder (after S_STRING:
-             * feed tests state >= S_OSC once for all three) */
+    S_SIXEL, /* DCS P1;P2;P3 q: the bytes go to the sixel decoder (after S_STRING:
+              * feed tests state >= S_OSC once for all three) */
+    S_PRINT /* printer controller mode (CSI 5 i): the bytes go to no printer
+             * (feed handles it before anything else) */
 };
 
 /* A grid line: one allocation, cells follow the header. */
@@ -40,6 +43,8 @@ typedef struct vt_line {
     vt_u16 n;        /* cells in use (== cols for grid lines) */
     vt_u8 wrapped;   /* the text continues on the next line */
     vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BOTTOM */
+    vt_u8 mark;      /* OSC 133: VT_MARK_* that started on this line */
+    vt_u8 spare;
     vt_u16 used;     /* cells [used, n) are still the default blank the last
                       * line_clear wrote: clearing again need not touch them.
                       * mark() -- every change to a grid cell passes it --
@@ -111,7 +116,13 @@ struct vt_term {
     vt_color ul;           /* SGR 58 underline colour, VT_COLOR_DEFAULT = the text's */
     vt_u8 font;            /* SGR 10-20 */
     vt_u8 ext;             /* the rare-style entry of ul + font, 0 = none (style_index) */
-    struct { vt_color ul; vt_u8 font; } styles[255];
+    struct { vt_color ul; vt_u8 font; vt_u8 link; } styles[255]; /* link: OSC 8, 1 + links[] */
+    /* OSC 8 hyperlinks the cells name through their style entry; link is
+     * the one new cells get (0 none). OSC 7 cwd: the last one reported. */
+    struct { char *uri; char id[24]; } links[VT_LINKS_MAX];
+    int n_links;
+    vt_u8 link;
+    char *cwd;
     int n_styles;
     /* the cluster table (VT_CLUSTER_FIRST): made on the first character
      * that needs it, grown to VT_CLUSTERS entries, swept when full */
@@ -127,7 +138,11 @@ struct vt_term {
     int autowrap, origin, insert;
     vt_u8 charset[4];      /* 'B' ASCII, '0' DEC graphics, 'A' UK */
     int gl, single_shift;
+    int gr;                /* LS1R-LS3R: G1-G3 in GR (8-bit windows); 0 Latin-1 itself */
+    int prn_match;         /* S_PRINT: how much of CSI 4 i has come */
     vt_saved sav, sav_1049;
+    vt_u8 saved_1048;      /* ?1048 / ?1049 saved a cursor (DECRQM ?1048) */
+    vt_u8 rect_extent;     /* DECSACE 2: DECCARA / DECRARA cover a rectangle, not a stream */
     vt_u32 last_ch;            /* REP repeats it: the last character put */
 
     /* amiga personality */
@@ -151,6 +166,19 @@ struct vt_term {
     int str_esc;
     char str[VT_STR_MAX];
     int str_len;
+    /* OSC 52: its payload streams past str, base64 decoded as it comes
+     * into a buffer that grows to VT_CLIP_MAX (osc52_byte) */
+    vt_u8 osc52;               /* 0 not an OSC 52; 1 its selection; 2 its data;
+                                * 3 an OSC 7 / 8 (long_cmd) kept whole in clip */
+    vt_u8 long_cmd;
+    vt_u8 clip_bad, clip_query;
+    char clip_sel[8];
+    int clip_nsel;
+    vt_u8 *clip;
+    long clip_len, clip_cap;
+    vt_u32 b64_acc;
+    int b64_n, b64_pad;
+    int clip_access;           /* VT_CLIP_*: what the host lets OSC 52 do */
 
     /* UTF-8 decoder (xterm) */
     vt_u32 u_cp;
@@ -186,8 +214,11 @@ struct vt_term {
     vt_u32 dflt_set[3];        /* OSC 10-12: 0x01RRGGBB, 0 = the host's */
     int cell_w, cell_h;        /* pixels, for CSI 14t / 16t */
     vt_u8 cursor_style;        /* DECSCUSR */
+    vt_u8 cursor_dflt;         /* the host's DECSCUSR default (vt_set_cursor_style): RIS's */
     vt_u8 allow_cols;          /* ?40: DECCOLM may change the width */
     vt_u8 mok;                 /* modifyOtherKeys level, CSI > 4 ; n m */
+    vt_u8 kbd[2][8];           /* kitty keyboard flags, a stack per screen (0 main, 1 alternate) */
+    vt_u8 kbd_top[2];          /* its top entry: the flags in force */
     vt_u8 scheme;              /* the last dark (1) / light (2) scheme reported */
 
     /* images (sixel): the slots, their placements' pool (entry 0 unused,
@@ -306,6 +337,7 @@ static vt_line *line_new(int cap)
         l->wrapped = 0;
         l->dbl = 0;
         l->img = 0;
+        l->mark = 0;
     }
     return l;
 }
@@ -547,6 +579,7 @@ static void line_clear(vt_term *t, vt_line *l, int n)
     l->n = (vt_u16)n;
     l->wrapped = 0;
     l->dbl = 0;
+    l->mark = 0;
 }
 
 /* The columns row y holds: half on a double-width or -height line. */
@@ -1021,6 +1054,7 @@ static void erase_rows(vt_term *t, int y0, int y1)
     for (y = y0; y < y1; y++) {
         erase_cells(t, y, 0, t->cols);
         t->scr[y]->dbl = 0; /* an erased line is single size again (VT100) */
+        t->scr[y]->mark = 0;  /* and no prompt starts on it */
     }
 }
 
@@ -1343,15 +1377,16 @@ static void sweep_styles(vt_term *t)
 static vt_u8 style_index(vt_term *t)
 {
     int i, pass;
-    if (t->ul == VT_COLOR_DEFAULT && !t->font)
+    if (t->ul == VT_COLOR_DEFAULT && !t->font && !t->link)
         return 0;
     for (pass = 0; pass < 2; pass++) {
         for (i = 0; i < t->n_styles; i++)
-            if (t->styles[i].ul == t->ul && t->styles[i].font == t->font)
+            if (t->styles[i].ul == t->ul && t->styles[i].font == t->font && t->styles[i].link == t->link)
                 return (vt_u8)(i + 1);
         if (t->n_styles < 255) {
             t->styles[t->n_styles].ul = t->ul;
             t->styles[t->n_styles].font = t->font;
+            t->styles[t->n_styles].link = t->link;
             return (vt_u8)++t->n_styles;
         }
         sweep_styles(t);
@@ -1596,7 +1631,7 @@ static void sgr_reset(vt_term *t)
     t->deco = 0;
     t->ul = VT_COLOR_DEFAULT;
     t->font = 0;
-    t->ext = 0;
+    t->ext = t->link ? style_index(t) : 0; /* SGR 0 ends no hyperlink */
     if (t->pers == VT_AMIGA) {
         t->fg = t->amiga_dfg;
         t->bg = t->amiga_dbg;
@@ -1617,6 +1652,7 @@ static void soft_reset(vt_term *t)
     t->modes |= VT_MODE_CURSOR_VISIBLE;
     t->charset[0] = t->charset[1] = t->charset[2] = t->charset[3] = 'B';
     t->gl = 0;
+    t->gr = 0;
     t->single_shift = 0;
     t->top = 0;
     t->bot = t->rows;
@@ -1687,6 +1723,11 @@ static void put_char(vt_term *t, vt_u32 cp)
 
     cs = t->charset[t->single_shift ? t->single_shift : t->gl];
     t->single_shift = 0;
+    if (t->gr && cp >= 0xA0 && cp <= 0xFF && !t->utf8 && !t->cp437) {
+        /* an 8-bit byte through GR (LS1R-LS3R): the set's own 20-7F */
+        cs = t->charset[t->gr];
+        cp -= 0x80;
+    }
     if (cs == '0' && cp >= 0x5F && cp <= 0x7E)
         cp = dec_graphics[cp - 0x5F];
     else if (cs == 'A' && cp == '#')
@@ -1968,6 +2009,23 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
         break;
     case '\\':
         break; /* ST with nothing open */
+    case 'n': /* LS2, LS3: G2 / G3 into GL */
+    case 'o':
+        if (t->pers != VT_XTERM) {
+            note_unhandled(t, 'E', final);
+            break;
+        }
+        t->gl = final == 'n' ? 2 : 3;
+        break;
+    case '~': /* LS1R, LS2R, LS3R: G1 / G2 / G3 into GR */
+    case '}':
+    case '|':
+        if (t->pers != VT_XTERM) {
+            note_unhandled(t, 'E', final);
+            break;
+        }
+        t->gr = final == '~' ? 1 : final == '}' ? 2 : 3;
+        break;
     default:
         note_unhandled(t, 'E', final);
         break;
@@ -2177,6 +2235,8 @@ static void sgr(vt_term *t)
     t->ext = style_index(t);
 }
 
+static void report_size(vt_term *t);
+
 static void set_mode(vt_term *t, int on)
 {
     int i;
@@ -2245,6 +2305,14 @@ static void set_mode(vt_term *t, int on)
                 else
                     t->modes &= ~(vt_u32)VT_MODE_SYNC;
                 break;
+            case 2048: /* in-band resize: the size now, then at each resize */
+                if (on) {
+                    t->modes |= VT_MODE_IN_BAND_RESIZE;
+                    report_size(t);
+                } else {
+                    t->modes &= ~(vt_u32)VT_MODE_IN_BAND_RESIZE;
+                }
+                break;
             case 66:
                 if (on)
                     t->modes |= VT_MODE_APP_KEYPAD;
@@ -2258,24 +2326,29 @@ static void set_mode(vt_term *t, int on)
                 set_alt(t, on, !on);
                 break;
             case 1048:
-                if (on)
+                if (on) {
                     save_cursor(t, &t->sav_1049);
-                else
+                    t->saved_1048 = 1;
+                } else {
                     restore_cursor(t, &t->sav_1049);
+                }
                 break;
             case 1049:
                 if (on) {
                     save_cursor(t, &t->sav_1049);
+                    t->saved_1048 = 1;
                     set_alt(t, 1, 1);
                 } else {
                     set_alt(t, 0, 0);
                     restore_cursor(t, &t->sav_1049);
                 }
                 break;
-            case 8: case 12: case 45: case 1005: case 1007: case 1034: case 2031: case 7727: {
+            case 8: case 12: case 45: case 1005: case 1007: case 1015: case 1016: case 1034:
+            case 2031: case 7727: {
                 vt_u32 bit = p == 8 ? VT_MODE_AUTOREPEAT : p == 12 ? VT_MODE_CURSOR_BLINK
                            : p == 45 ? VT_MODE_REVERSE_WRAP : p == 1005 ? VT_MODE_MOUSE_UTF8
                            : p == 1007 ? VT_MODE_ALT_SCROLL
+                           : p == 1015 ? VT_MODE_MOUSE_URXVT : p == 1016 ? VT_MODE_MOUSE_PIXELS
                            : p == 1034 ? VT_MODE_META_8BIT : p == 2031 ? VT_MODE_SCHEME_UPDATES
                            : VT_MODE_APP_ESCAPE;
                 if (on)
@@ -2313,6 +2386,30 @@ static void set_mode(vt_term *t, int on)
             }
         }
     }
+}
+
+/* ?2048 in-band resize: CSI 48;rows;cols;height px;width px t (pixels 0
+ * when the host has not said), always 7-bit -- nobody asked in 8 bits. */
+static void report_size(vt_term *t)
+{
+    char b[48];
+    int n = 0;
+    if (!(t->modes & VT_MODE_IN_BAND_RESIZE) || t->pers != VT_XTERM)
+        return;
+    b[n++] = 0x1B;
+    b[n++] = '[';
+    b[n++] = '4';
+    b[n++] = '8';
+    b[n++] = ';';
+    n = fmt_uint(b, n, t->rows);
+    b[n++] = ';';
+    n = fmt_uint(b, n, t->cols);
+    b[n++] = ';';
+    n = fmt_uint(b, n, (long)t->rows * t->cell_h);
+    b[n++] = ';';
+    n = fmt_uint(b, n, (long)t->cols * t->cell_w);
+    b[n++] = 't';
+    reply(t, b, n);
 }
 
 static void report_cursor(vt_term *t, int dec)
@@ -2583,10 +2680,13 @@ static void report_mode(vt_term *t)
         case 1000: bit = VT_MODE_MOUSE_NORMAL; break;
         case 1002: bit = VT_MODE_MOUSE_BUTTON; break;
         case 1003: bit = VT_MODE_MOUSE_ANY; break;
+        case 1048: v = t->saved_1048 ? 1 : 2; break;
+        case 4: v = 4; break; /* DECSCLM: taken, never smooth: permanently reset */
         case 1004: bit = VT_MODE_FOCUS; break;
         case 1006: bit = VT_MODE_MOUSE_SGR; break;
         case 2004: bit = VT_MODE_BRACKET_PASTE; break;
         case 2026: bit = VT_MODE_SYNC; break;
+        case 2048: bit = VT_MODE_IN_BAND_RESIZE; break;
         case 6: v = t->origin ? 1 : 2; break;
         case 7: v = t->autowrap ? 1 : 2; break;
         case 12: bit = VT_MODE_CURSOR_BLINK; break;
@@ -2594,6 +2694,8 @@ static void report_mode(vt_term *t)
         case 45: bit = VT_MODE_REVERSE_WRAP; break;
         case 1005: bit = VT_MODE_MOUSE_UTF8; break;
         case 1007: bit = VT_MODE_ALT_SCROLL; break;
+        case 1015: bit = VT_MODE_MOUSE_URXVT; break;
+        case 1016: bit = VT_MODE_MOUSE_PIXELS; break;
         case 1034: bit = VT_MODE_META_8BIT; break;
         case 2031: bit = VT_MODE_SCHEME_UPDATES; break;
         case 7727: bit = VT_MODE_APP_ESCAPE; break;
@@ -2622,6 +2724,224 @@ static void report_mode(vt_term *t)
     reply(t, b, n);
 }
 
+/* ---- VT420 column and rectangle editing (xterm) ---------------------------
+ * No left/right margins (DECSLRM is not implemented, DA1 says VT220), so a
+ * column operation covers the scroll region's rows across the whole width. */
+
+/* DECIC / DECDC: n columns inserted / deleted at the cursor's in every row
+ * of the scroll region; the cursor stays. */
+static void edit_columns(vt_term *t, int n, int insert)
+{
+    int y, cy = t->cy;
+    if (cy < t->top || cy >= t->bot)
+        return;
+    for (y = t->top; y < t->bot; y++) {
+        t->cy = y;
+        if (insert)
+            insert_chars(t, n);
+        else
+            delete_chars(t, n);
+    }
+    t->cy = cy;
+}
+
+/* The rectangle Pt;Pl;Pb;Pr at params[i]: rows [*y0, *y1), columns
+ * [*x0, *x1) of the screen, relative to the region in origin mode, clamped.
+ * 0 when it is empty. */
+static int rect_of(const vt_term *t, int i, int *x0, int *y0, int *x1, int *y1)
+{
+    int org = t->origin ? t->top : 0, lim = t->origin ? t->bot : t->rows;
+    *y0 = clampi((int)param(t, i, 1) - 1 + org, org, lim);
+    *x0 = clampi((int)param(t, i + 1, 1) - 1, 0, t->cols);
+    *y1 = clampi((int)param(t, i + 2, lim - org) + org, org, lim);
+    *x1 = clampi((int)param(t, i + 3, t->cols), 0, t->cols);
+    return *y0 < *y1 && *x0 < *x1;
+}
+
+/* DECFRA (fill with ch in the current rendition) and DECERA / DECSERA
+ * (ch 0: erase, as ECH does). */
+static void rect_fill(vt_term *t, int x0, int y0, int x1, int y1, vt_u32 ch)
+{
+    int y, x;
+    for (y = y0; y < y1; y++) {
+        unwide(t, x0, y);
+        if (x1 < t->cols)
+            unwide(t, x1 - 1, y);
+        for (x = x0; x < x1; x++) {
+            vt_cell *c = cell_at(t, x, y);
+            blank_cell(t, c);
+            if (ch) {
+                c->ch = (vt_u16)ch;
+                c->fg = t->fg;
+                c->bg = t->bg;
+                c->attr = t->attr;
+                c->deco = t->deco;
+                c->ext = t->ext;
+            }
+        }
+        mark(t, x0, y, x1);
+    }
+}
+
+/* DECCRA: the rectangle to the place (dx, dy), overlapping or not. */
+static void rect_copy(vt_term *t, int x0, int y0, int x1, int y1, int dx, int dy)
+{
+    int w = x1 - x0, h = y1 - y0, k, y;
+    if (dx + w > t->cols)
+        w = t->cols - dx;
+    if (dy + h > t->rows)
+        h = t->rows - dy;
+    if (w <= 0 || h <= 0)
+        return;
+    for (k = 0; k < h; k++) {
+        y = dy > y0 ? h - 1 - k : k; /* downwards: the bottom row first */
+        cells_move(&t->scr[dy + y]->c[dx], &t->scr[y0 + y]->c[x0], w);
+        if (t->scr[dy + y]->c[dx].width == 0)
+            t->scr[dy + y]->c[dx].ch = ' ', t->scr[dy + y]->c[dx].width = 1;
+        if (t->scr[dy + y]->c[dx + w - 1].width == 2)
+            t->scr[dy + y]->c[dx + w - 1].ch = ' ', t->scr[dy + y]->c[dx + w - 1].width = 1;
+        mark(t, dx, dy + y, dx + w);
+    }
+}
+
+/* DECCARA (rev 0) sets, DECRARA (rev 1) reverses the attributes the SGR
+ * parameters from params[4] name (0 all off; 1 4 5 7 and their 22 24 25
+ * 27): in the rectangle, or with DECSACE 0/1 in the stream of cells from
+ * its first to its last. */
+static void rect_attrs(vt_term *t, int rev)
+{
+    int x0, y0, x1, y1, y, i;
+    vt_attr set = 0, clr = 0;
+    if (!rect_of(t, 0, &x0, &y0, &x1, &y1) && (t->rect_extent || y0 >= y1 - 1))
+        return; /* a stream may end left of where it starts, on a later row */
+    for (i = 4; i < t->np || i == 4; i++) {
+        long p = param0(t, i);
+        vt_attr a = p == 1 || p == 22 ? VT_ATTR_BOLD : p == 4 || p == 24 ? VT_ATTR_UNDERLINE
+                  : p == 5 || p == 25 ? VT_ATTR_BLINK : p == 7 || p == 27 ? VT_ATTR_INVERSE : 0;
+        if (p == 0)
+            clr = (vt_attr)(VT_ATTR_BOLD | VT_ATTR_UNDERLINE | VT_ATTR_BLINK | VT_ATTR_INVERSE), set = 0;
+        else if (p < 10)
+            set |= a, clr &= (vt_attr)~a;
+        else
+            clr |= a, set &= (vt_attr)~a;
+    }
+    for (y = y0; y < y1; y++) {
+        int a = x0, b = x1, x;
+        if (!t->rect_extent) { /* the stream: whole rows between the ends */
+            a = y == y0 ? x0 : 0;
+            b = y == y1 - 1 ? x1 : t->cols;
+            if (y0 == y1 - 1 && x1 <= x0)
+                break;
+        }
+        for (x = a; x < b; x++) {
+            vt_cell *c = cell_at(t, x, y);
+            if (rev) {
+                c->attr ^= set;
+            } else {
+                c->attr = (vt_attr)((c->attr & ~clr) | set);
+                if (clr & VT_ATTR_UNDERLINE)
+                    c->deco &= ~VT_DECO_UL_MASK;
+                if ((set & VT_ATTR_UNDERLINE) && !(c->deco & VT_DECO_UL_MASK))
+                    c->deco |= VT_UL_SINGLE;
+            }
+        }
+        mark(t, a, y, b);
+    }
+}
+
+/* CSI ... with the intermediate ' or $ or *: the VT420 editing the
+ * xterm personality does. 0 when the sequence is not one of them. */
+static int csi_vt420(vt_term *t, vt_u8 final)
+{
+    int x0, y0, x1, y1;
+    if (t->inter == '\'' && (final == '}' || final == '~')) {
+        edit_columns(t, (int)param(t, 0, 1), final == '}');
+        return 1;
+    }
+    if (t->inter == '*' && final == 'x') { /* DECSACE */
+        t->rect_extent = param0(t, 0) == 2;
+        return 1;
+    }
+    if (t->inter != '$')
+        return 0;
+    switch (final) {
+    case 'x': { /* DECFRA Pch;Pt;Pl;Pb;Pr */
+        long ch = param0(t, 0);
+        int i;
+        if (!((ch >= 32 && ch <= 126) || (ch >= 160 && ch <= 255)))
+            return 1;
+        for (i = 0; i < 4; i++) /* the rectangle starts at the second parameter */
+            t->params[i] = i + 1 < t->np ? t->params[i + 1] : 0;
+        t->np = t->np > 0 ? t->np - 1 : 0;
+        if (rect_of(t, 0, &x0, &y0, &x1, &y1))
+            rect_fill(t, x0, y0, x1, y1, (vt_u32)ch);
+        return 1;
+    }
+    case 'z': /* DECERA */
+    case '{': /* DECSERA: no cell is protected, so the same */
+        if (rect_of(t, 0, &x0, &y0, &x1, &y1))
+            rect_fill(t, x0, y0, x1, y1, 0);
+        return 1;
+    case 'v': { /* DECCRA Pts;Pls;Pbs;Prs;Pps;Ptd;Pld;Ppd: one page */
+        int org = t->origin ? t->top : 0;
+        if (rect_of(t, 0, &x0, &y0, &x1, &y1))
+            rect_copy(t, x0, y0, x1, y1, clampi((int)param(t, 6, 1) - 1, 0, t->cols - 1),
+                      clampi((int)param(t, 5, 1) - 1 + org, org, (t->origin ? t->bot : t->rows) - 1));
+        return 1;
+    }
+    case 'r': /* DECCARA */
+    case 't': /* DECRARA */
+        rect_attrs(t, final == 't');
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* The kitty keyboard protocol's flag stack (CSI ? u, > u, < u, = u): one
+ * per screen, 8 deep (a full one drops its oldest), entry 0 the base. */
+static void kitty_kbd(vt_term *t)
+{
+    int s = t->scr == t->alt && t->alt, top = t->kbd_top[s];
+    vt_u8 *k = t->kbd[s];
+    long f = param0(t, 0) & 31;
+    switch (t->priv) {
+    case '?': {
+        char b[16];
+        int n = put_csi(t, b);
+        b[n++] = '?';
+        n = fmt_uint(b, n, k[top]);
+        b[n++] = 'u';
+        reply(t, b, n);
+        return;
+    }
+    case '>':
+        if (top == 7)
+            memmove(k + 1, k + 2, 6); /* full: the oldest pushed goes */
+        else
+            top++;
+        k[top] = (vt_u8)f;
+        break;
+    case '<': {
+        long n = param(t, 0, 1);
+        while (n-- > 0) {
+            k[top] = 0;
+            if (top)
+                top--;
+            else
+                break;
+        }
+        break;
+    }
+    default: { /* '=' flags ; mode: 1 set, 2 or, 3 and-not */
+        long m = param(t, 1, 1);
+        k[top] = (vt_u8)(m == 2 ? (k[top] | f) : m == 3 ? (k[top] & ~f) : f);
+        break;
+    }
+    }
+    t->kbd_top[s] = (vt_u8)top;
+}
+
 static int scheme_of(const vt_term *t);
 static void xtsmgraphics(vt_term *t);
 
@@ -2645,6 +2965,12 @@ static void csi_xterm(vt_term *t, vt_u8 final)
     }
     if (t->inter == '$' && final == 'p') { /* DECRQM */
         report_mode(t);
+        return;
+    }
+    if (t->inter && !t->priv && csi_vt420(t, final))
+        return;
+    if (final == 'u' && !t->inter && t->priv) {
+        kitty_kbd(t); /* CSI ? u, CSI > f u, CSI < n u, CSI = f ; m u */
         return;
     }
     if (t->inter) {
@@ -2672,6 +2998,8 @@ static void csi_xterm(vt_term *t, vt_u8 final)
             csi_common(t, final); /* DECSED / DECSEL: no protected cells */
         else if (final == 'S')
             xtsmgraphics(t);
+        else if (final == 'i')
+            ; /* DEC media copy (auto print, print cursor line): no printer */
         else
             note_unhandled(t, 'C', final);
         return;
@@ -2692,6 +3020,13 @@ static void csi_xterm(vt_term *t, vt_u8 final)
             note_unhandled(t, 'C', final);
         return;
     }
+    if (t->priv == '=') {
+        if (final == 'c' && param0(t, 0) == 0)
+            reply(t, "\033P!|00000000\033\\", 14); /* DA3: DECRPTUI, as xterm */
+        else
+            note_unhandled(t, 'C', final);
+        return;
+    }
     if (t->priv) {
         note_unhandled(t, 'C', final);
         return;
@@ -2700,6 +3035,12 @@ static void csi_xterm(vt_term *t, vt_u8 final)
     case 'c':
         if (param0(t, 0) == 0)
             reply(t, "\033[?62;4;22c", 11); /* DA1: VT220 with sixel graphics and ANSI colour */
+        return;
+    case 'i': /* media copy: there is no printer */
+        if (param0(t, 0) == 5) {
+            t->state = S_PRINT; /* printer controller: to CSI 4 i, off the screen */
+            t->prn_match = 0;
+        }
         return;
     case 'r': { /* DECSTBM */
         int top = (int)param(t, 0, 1) - 1;
@@ -2888,9 +3229,78 @@ static int hexval(int c)
     return -1;
 }
 
+/* X11 colour names (rgb.txt values) the programs name in OSC 4 / 10-12 --
+ * the common ones, not all 750; plus grayN / greyN (0-100) and tmux's
+ * colourN / colorN (palette entry N). Case and blanks do not count. */
+static vt_u32 color_name(const vt_term *t, const char *s, int n)
+{
+    static const struct { const char *name; vt_u32 rgb; } names[] = {
+        { "black", 0x000000 }, { "white", 0xFFFFFF }, { "red", 0xFF0000 }, { "green", 0x00FF00 },
+        { "blue", 0x0000FF }, { "yellow", 0xFFFF00 }, { "cyan", 0x00FFFF }, { "magenta", 0xFF00FF },
+        { "gray", 0xBEBEBE }, { "grey", 0xBEBEBE }, { "darkgray", 0xA9A9A9 }, { "darkgrey", 0xA9A9A9 },
+        { "lightgray", 0xD3D3D3 }, { "lightgrey", 0xD3D3D3 }, { "dimgray", 0x696969 },
+        { "dimgrey", 0x696969 }, { "slategray", 0x708090 }, { "darkslategray", 0x2F4F4F },
+        { "darkslategrey", 0x2F4F4F }, { "orange", 0xFFA500 }, { "darkorange", 0xFF8C00 },
+        { "purple", 0xA020F0 }, { "violet", 0xEE82EE }, { "brown", 0xA52A2A }, { "pink", 0xFFC0CB },
+        { "hotpink", 0xFF69B4 }, { "navy", 0x000080 }, { "navyblue", 0x000080 },
+        { "darkred", 0x8B0000 }, { "darkgreen", 0x006400 }, { "darkblue", 0x00008B },
+        { "darkcyan", 0x008B8B }, { "darkmagenta", 0x8B008B }, { "lightblue", 0xADD8E6 },
+        { "lightgreen", 0x90EE90 }, { "lightyellow", 0xFFFFE0 }, { "lightcyan", 0xE0FFFF },
+        { "skyblue", 0x87CEEB }, { "steelblue", 0x4682B4 }, { "royalblue", 0x4169E1 },
+        { "dodgerblue", 0x1E90FF }, { "turquoise", 0x40E0D0 }, { "gold", 0xFFD700 },
+        { "khaki", 0xF0E68C }, { "coral", 0xFF7F50 }, { "salmon", 0xFA8072 }, { "tomato", 0xFF6347 },
+        { "orchid", 0xDA70D6 }, { "plum", 0xDDA0DD }, { "maroon", 0xB03060 }, { "beige", 0xF5F5DC },
+        { "ivory", 0xFFFFF0 }, { "wheat", 0xF5DEB3 }, { "tan", 0xD2B48C }, { "chocolate", 0xD2691E },
+        { "firebrick", 0xB22222 }, { "forestgreen", 0x228B22 }, { "seagreen", 0x2E8B57 },
+        { "limegreen", 0x32CD32 }, { "olivedrab", 0x6B8E23 }, { "aquamarine", 0x7FFFD4 },
+        { "chartreuse", 0x7FFF00 }, { "indigo", 0x4B0082 }, { "lavender", 0xE6E6FA },
+        { "silver", 0xC0C0C0 }, { "teal", 0x008080 }, { "olive", 0x808000 }, { "lime", 0x00FF00 },
+        { "aqua", 0x00FFFF }, { "fuchsia", 0xFF00FF }
+    };
+    char k[24];
+    int i, m = 0;
+    long v = 0;
+    for (i = 0; i < n && m < (int)sizeof(k) - 1; i++)
+        if (s[i] != ' ')
+            k[m++] = (char)(s[i] >= 'A' && s[i] <= 'Z' ? s[i] + 32 : s[i]);
+    if (i < n)
+        return 0;
+    k[m] = 0;
+    for (i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++)
+        if (!strcmp(k, names[i].name))
+            return 0x01000000UL | names[i].rgb;
+    for (i = 0; i < 2; i++) {
+        const char *pre = i ? "colo" : "gr";
+        int pl = (int)strlen(pre), j;
+        if (strncmp(k, pre, pl))
+            continue;
+        j = pl;
+        if (i ? (k[j] == 'u' && k[j + 1] == 'r') : (k[j] == 'a' || k[j] == 'e') && k[j + 1] == 'y')
+            j += 2;
+        else if (i && k[j] == 'r')
+            j += 1;
+        else
+            continue;
+        if (!k[j])
+            continue;
+        for (v = 0; k[j] >= '0' && k[j] <= '9' && v < 1000; j++)
+            v = v * 10 + (k[j] - '0');
+        if (k[j])
+            continue;
+        if (i && v < 256)
+            return 0x01000000UL | vt_palette_rgb(t, (int)v);
+        if (!i && v <= 100) {
+            vt_u32 g = (vt_u32)((v * 255 + 50) / 100);
+            return 0x01000000UL | (g << 16) | (g << 8) | g;
+        }
+    }
+    return 0;
+}
+
 /* An X colour spec: rgb:r/g/b (1-4 hex digits each) or #rgb, #rrggbb,
- * #rrrgggbbb, #rrrrggggbbbb. 0x01RRGGBB, 0 when it is not one. */
-static vt_u32 parse_color(const char *s, int n)
+ * #rrrgggbbb, #rrrrggggbbbb, or a colour name (color_name). 0x01RRGGBB, 0
+ * when it is not one. */
+static vt_u32 parse_color(const vt_term *t, const char *s, int n)
 {
     vt_u32 c[3];
     int i, k, d;
@@ -2926,7 +3336,7 @@ static vt_u32 parse_color(const char *s, int n)
         }
         return 0x01000000UL | (c[0] << 16) | (c[1] << 8) | c[2];
     }
-    return 0;
+    return color_name(t, s, n);
 }
 
 /* OSC Ps;[index;]rgb:rrrr/gggg/bbbb, the form xterm answers in. */
@@ -2997,10 +3407,363 @@ static int osc_item(const vt_term *t, int *i, const char **item)
     return k;
 }
 
+/* ---- OSC 52: the clipboard -------------------------------------------------
+ * OSC 52 ; selection ; base64 ST sets it, OSC 52 ; selection ; ? ST asks.
+ * A payload is as big as what was copied, so it never goes into str: the
+ * bytes after "52;" stream through osc52_byte, decoded as they come into a
+ * buffer that grows to VT_CLIP_MAX; past that the set is dropped whole. */
+
+static void osc52_begin(vt_term *t)
+{
+    t->osc52 = 1;
+    t->clip_nsel = 0;
+    t->clip_sel[0] = 0;
+    t->clip_bad = t->clip_query = 0;
+    t->clip_len = 0;
+    t->b64_acc = 0;
+    t->b64_n = t->b64_pad = 0;
+}
+
+static void clip_drop(vt_term *t)
+{
+    if (t->clip)
+        VT_FREE(t->clip);
+    t->clip = 0;
+    t->clip_cap = t->clip_len = 0;
+}
+
+static void clip_put(vt_term *t, vt_u8 b)
+{
+    if (t->clip_bad)
+        return;
+    if (t->clip_len == t->clip_cap) {
+        long cap = t->clip_cap ? t->clip_cap * 2 : 1024;
+        vt_u8 *n;
+        if (cap > VT_CLIP_MAX)
+            cap = VT_CLIP_MAX;
+        if (t->clip_len >= cap || !(n = (vt_u8 *)VT_MALLOC(cap))) {
+            t->clip_bad = 1; /* too big, or no memory: the whole set goes */
+            clip_drop(t);
+            return;
+        }
+        if (t->clip_len)
+            memcpy(n, t->clip, t->clip_len);
+        if (t->clip)
+            VT_FREE(t->clip);
+        t->clip = n;
+        t->clip_cap = cap;
+    }
+    t->clip[t->clip_len++] = b;
+}
+
+static int b64_value(vt_u32 c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return (int)(c - 'A');
+    if (c >= 'a' && c <= 'z')
+        return (int)(c - 'a' + 26);
+    if (c >= '0' && c <= '9')
+        return (int)(c - '0' + 52);
+    if (c == '+')
+        return 62;
+    if (c == '/')
+        return 63;
+    return -1;
+}
+
+/* The bytes a group of n base64 digits (2-4) in acc stands for. */
+static void b64_flush(vt_term *t)
+{
+    vt_u32 a = t->b64_acc << (6 * (4 - t->b64_n));
+    if (t->b64_n == 1)
+        t->clip_bad = 1; /* six bits are no byte */
+    if (t->b64_n >= 2)
+        clip_put(t, (vt_u8)(a >> 16));
+    if (t->b64_n >= 3)
+        clip_put(t, (vt_u8)(a >> 8));
+    if (t->b64_n == 4)
+        clip_put(t, (vt_u8)a);
+    t->b64_acc = 0;
+    t->b64_n = 0;
+}
+
+static void osc52_byte(vt_term *t, vt_u32 c)
+{
+    int v;
+    if (t->osc52 == 3) { /* OSC 7 / 8: the text as it is, to VT_URI_MAX */
+        vt_u8 u[4];
+        int k, n;
+        if (c < 0x20 || t->clip_bad)
+            return;
+        n = put_utf8(u, (long)c);
+        if (t->clip_len + n >= VT_URI_MAX) {
+            t->clip_bad = 1;
+            clip_drop(t);
+            return;
+        }
+        for (k = 0; k < n; k++)
+            clip_put(t, u[k]);
+        return;
+    }
+    if (t->osc52 == 1) { /* the selection: c, p, q, s, 0-7, or none */
+        if (c == ';')
+            t->osc52 = 2;
+        else if (t->clip_nsel < (int)sizeof(t->clip_sel) - 1)
+            t->clip_sel[t->clip_nsel++] = (char)c, t->clip_sel[t->clip_nsel] = 0;
+        return;
+    }
+    if (t->clip_bad)
+        return;
+    if (c == '?' && !t->clip_len && !t->b64_n && !t->b64_pad && !t->clip_query) {
+        t->clip_query = 1;
+        return;
+    }
+    if (t->clip_query) {
+        t->clip_bad = 1;
+        return;
+    }
+    if (c == '=') {
+        if (t->b64_n < 2 || ++t->b64_pad + t->b64_n > 4)
+            t->clip_bad = 1;
+        return;
+    }
+    if ((v = b64_value(c)) < 0 || t->b64_pad) {
+        t->clip_bad = 1; /* not base64 (or data after the padding): ignored, as xterm does */
+        clip_drop(t);
+        return;
+    }
+    t->b64_acc = (t->b64_acc << 6) | (vt_u32)v;
+    if (++t->b64_n == 4)
+        b64_flush(t);
+}
+
+/* OSC 52 ; selection ; ? -- the clipboard, base64, in the request's ST. */
+static void osc52_answer(vt_term *t)
+{
+    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    vt_u8 *data = (vt_u8 *)VT_MALLOC(VT_CLIP_QUERY_MAX);
+    char *b;
+    long n, i, k = 0;
+    if (!data)
+        return;
+    n = t->cb.clipboard_get(t->user, data, VT_CLIP_QUERY_MAX);
+    if (n < 0)
+        n = 0;
+    if (n > VT_CLIP_QUERY_MAX)
+        n = VT_CLIP_QUERY_MAX;
+    b = (char *)VT_MALLOC((n + 2) / 3 * 4 + 32);
+    if (b) {
+        b[k++] = 0x1B;
+        b[k++] = ']';
+        b[k++] = '5';
+        b[k++] = '2';
+        b[k++] = ';';
+        for (i = 0; t->clip_sel[i]; i++)
+            b[k++] = t->clip_sel[i];
+        if (!i)
+            b[k++] = 'c';
+        b[k++] = ';';
+        for (i = 0; i < n; i += 3) {
+            vt_u32 v = (vt_u32)data[i] << 16 | (i + 1 < n ? (vt_u32)data[i + 1] << 8 : 0) |
+                       (i + 2 < n ? data[i + 2] : 0);
+            b[k++] = a[(v >> 18) & 63];
+            b[k++] = a[(v >> 12) & 63];
+            b[k++] = i + 1 < n ? a[(v >> 6) & 63] : '=';
+            b[k++] = i + 2 < n ? a[v & 63] : '=';
+        }
+        k = put_st(t, b, (int)k);
+        reply(t, b, (int)k);
+        VT_FREE(b);
+    }
+    VT_FREE(data);
+}
+
+static void osc7_set(vt_term *t, const char *uri);
+static void osc8_set(vt_term *t, char *s);
+
+static void osc52_end(vt_term *t)
+{
+    if (t->osc52 == 3 && !t->clip_bad) {
+        clip_put(t, 0);
+        if (!t->clip_bad) {
+            if (t->long_cmd == 7)
+                osc7_set(t, (const char *)t->clip);
+            else
+                osc8_set(t, (char *)t->clip);
+        }
+    }
+    if (t->osc52 == 2 && !t->clip_bad) {
+        if (t->clip_query) {
+            if ((t->clip_access & VT_CLIP_READ) && t->cb.clipboard_get)
+                osc52_answer(t);
+        } else {
+            if (t->b64_n)
+                b64_flush(t); /* base64 without its padding */
+            if (!t->clip_bad && (t->clip_access & VT_CLIP_WRITE) && t->cb.clipboard_set)
+                t->cb.clipboard_set(t->user, t->clip_sel, t->clip ? t->clip : (const vt_u8 *)"",
+                                    t->clip_len);
+        }
+    }
+    t->osc52 = 0;
+    clip_drop(t); /* a megabyte is not kept for the next one */
+}
+
+/* ---- OSC 7: the working directory; OSC 8: hyperlinks ------------------------ */
+
+static char *str_dup(const char *s)
+{
+    long n = (long)strlen(s) + 1;
+    char *d = (char *)VT_MALLOC(n);
+    if (d)
+        memcpy(d, s, n);
+    return d;
+}
+
+static void osc7_set(vt_term *t, const char *uri)
+{
+    char *d = str_dup(uri);
+    if (!d)
+        return;
+    if (t->cwd)
+        VT_FREE(t->cwd);
+    t->cwd = d;
+    if (t->cb.cwd)
+        t->cb.cwd(t->user, d);
+}
+
+const char *vt_cwd(const vt_term *t)
+{
+    return t->cwd ? t->cwd : "";
+}
+
+/* Room in a full link table: the style entries no cell uses go
+ * (sweep_styles), then the links no style entry names, the rest moved down
+ * and the style entries renumbered. 0 when every link is still shown. */
+static int links_sweep(vt_term *t)
+{
+    vt_u8 used[VT_LINKS_MAX + 1], remap[VT_LINKS_MAX + 1];
+    int i, k = 0;
+    sweep_styles(t);
+    memset(used, 0, sizeof(used));
+    for (i = 0; i < t->n_styles; i++)
+        used[t->styles[i].link] = 1;
+    if (t->link)
+        used[t->link] = 1; /* the one being written */
+    remap[0] = 0;
+    for (i = 1; i <= t->n_links; i++) {
+        remap[i] = 0;
+        if (used[i]) {
+            t->links[k] = t->links[i - 1];
+            remap[i] = (vt_u8)++k;
+        } else {
+            VT_FREE(t->links[i - 1].uri);
+        }
+    }
+    t->n_links = k;
+    for (i = 0; i < t->n_styles; i++)
+        t->styles[i].link = remap[t->styles[i].link];
+    t->link = remap[t->link];
+    return k < VT_LINKS_MAX;
+}
+
+/* OSC 8 ; params ; URI: the cells written from here on link to URI (an
+ * empty one ends the link). params is key=value pairs split by ':' -- id=
+ * joins cells of one link written apart (the same id and URI are one). */
+static void osc8_set(vt_term *t, char *s)
+{
+    char *uri = s, id[24];
+    int i, n;
+    id[0] = 0;
+    while (*uri && *uri != ';')
+        uri++;
+    if (!*uri)
+        return; /* no second ';': not OSC 8 */
+    *uri++ = 0;
+    for (i = 0; s[i];) { /* params: id=... */
+        int e = i;
+        while (s[e] && s[e] != ':')
+            e++;
+        if (e - i > 3 && !memcmp(s + i, "id=", 3)) {
+            n = e - i - 3 < (int)sizeof(id) - 1 ? e - i - 3 : (int)sizeof(id) - 1;
+            memcpy(id, s + i + 3, n);
+            id[n] = 0;
+        }
+        i = s[e] ? e + 1 : e;
+    }
+    t->link = 0;
+    if (*uri) {
+        for (i = 0; i < t->n_links; i++)
+            if (!strcmp(t->links[i].uri, uri) && !strcmp(t->links[i].id, id))
+                break;
+        if (i == t->n_links) {
+            char *d;
+            if (t->n_links == VT_LINKS_MAX && !links_sweep(t)) {
+                t->ext = style_index(t); /* every link is on screen: the text goes unlinked */
+                return;
+            }
+            i = t->n_links;
+            if (!(d = str_dup(uri)))
+                return;
+            t->links[i].uri = d;
+            memcpy(t->links[i].id, id, sizeof(id));
+            t->n_links++;
+        }
+        t->link = (vt_u8)(i + 1);
+    }
+    t->ext = style_index(t);
+}
+
+const char *vt_cell_link(const vt_term *t, const vt_cell *c)
+{
+    int k;
+    if (!c->ext || c->ext > t->n_styles)
+        return 0;
+    k = t->styles[c->ext - 1].link;
+    return k && k <= t->n_links ? t->links[k - 1].uri : 0;
+}
+
+/* ---- OSC 133: semantic prompt marks ----------------------------------------- */
+
+static const vt_line *line_of(const vt_term *t, long row)
+{
+    if (row >= 0)
+        return row < t->rows ? t->scr[row] : 0;
+    if (-row > t->sb_len)
+        return 0;
+    return t->sb[(t->sb_head + t->sb_cap + (int)row) % t->sb_cap];
+}
+
+int vt_row_marks(const vt_term *t, int row)
+{
+    const vt_line *l = line_of(t, row);
+    return l ? l->mark : 0;
+}
+
+long vt_find_mark(const vt_term *t, long from, int dir, int mark)
+{
+    long r, lo = -(long)t->sb_len;
+    for (r = from + dir; r >= lo && r < t->rows; r += dir) {
+        const vt_line *l = line_of(t, r);
+        if (l && (l->mark & mark))
+            return r;
+    }
+    return VT_ROW_NONE;
+}
+
+void vt_set_clipboard_access(vt_term *t, int bits)
+{
+    if (t)
+        t->clip_access = bits & (VT_CLIP_WRITE | VT_CLIP_READ);
+}
+
 static void osc_dispatch(vt_term *t)
 {
     int i = 0, changed = 0;
     long cmd = 0;
+    if (t->osc52) {
+        osc52_end(t);
+        return;
+    }
     t->str[t->str_len] = 0;
     while (i < t->str_len && t->str[i] >= '0' && t->str[i] <= '9')
         cmd = cmd * 10 + (t->str[i++] - '0');
@@ -3050,7 +3813,7 @@ static void osc_dispatch(vt_term *t)
             if (m == 1 && spec[0] == '?') {
                 reply_color(t, 4, (int)k, vt_palette_rgb(t, (int)k));
             } else {
-                vt_u32 c = parse_color(spec, m);
+                vt_u32 c = parse_color(t, spec, m);
                 if (c) {
                     t->pal_set[k] = c;
                     changed = 1;
@@ -3071,7 +3834,7 @@ static void osc_dispatch(vt_term *t)
             if (m == 1 && spec[0] == '?') {
                 reply_color(t, which, -1, vt_default_color(t, (int)(which - 10)));
             } else {
-                vt_u32 c = parse_color(spec, m);
+                vt_u32 c = parse_color(t, spec, m);
                 if (c) {
                     t->dflt_set[which - 10] = c;
                     changed = 1;
@@ -3081,6 +3844,40 @@ static void osc_dispatch(vt_term *t)
         }
         if (changed)
             colors_changed(t);
+        return;
+    }
+    if (cmd == 133) { /* FinalTerm semantic prompt: A prompt, B command, C output, D end */
+        char k = i < t->str_len ? t->str[i] : 0;
+        int m = k == 'A' ? VT_MARK_PROMPT : k == 'B' ? VT_MARK_COMMAND : k == 'C' ? VT_MARK_OUTPUT
+              : k == 'D' ? VT_MARK_DONE : 0;
+        if (m)
+            t->scr[t->cy]->mark |= (vt_u8)m;
+        else
+            note_value(t, 'O', cmd);
+        return;
+    }
+    if (cmd == 9) { /* iTerm2's notification; 9;<digits>; is ConEmu's (progress...) */
+        int j = i;
+        while (j < t->str_len && t->str[j] >= '0' && t->str[j] <= '9')
+            j++;
+        if (!(j > i && j < t->str_len && t->str[j] == ';') && t->cb.notify)
+            t->cb.notify(t->user, "", t->str + i);
+        return;
+    }
+    if (cmd == 777) { /* urxvt / foot: 777;notify;title;body */
+        char *s = t->str + i, *b;
+        if (strncmp(s, "notify;", 7)) {
+            note_value(t, 'O', cmd);
+            return;
+        }
+        s += 7;
+        b = s;
+        while (*b && *b != ';')
+            b++;
+        if (*b)
+            *b++ = 0;
+        if (t->cb.notify)
+            t->cb.notify(t->user, s, b);
         return;
     }
     if (cmd != 0 && cmd != 2) {
@@ -3128,13 +3925,31 @@ static int put_sgr(const vt_term *t, char *b, int n)
         memcpy(b + n, ";53", 3);
         n += 3;
     }
-    for (w = 0; w < 2; w++) {
-        vt_color c = w ? t->bg : t->fg;
+    if (t->attr & (VT_ATTR_FRAMED | VT_ATTR_ENCIRCLED)) {
+        memcpy(b + n, t->attr & VT_ATTR_FRAMED ? ";51" : ";52", 3);
+        n += 3;
+    }
+    if (t->attr & (VT_ATTR_SUPER | VT_ATTR_SUB)) {
+        memcpy(b + n, t->attr & VT_ATTR_SUPER ? ";73" : ";74", 3);
+        n += 3;
+    }
+    if (t->deco & VT_DECO_IDEO_MASK) {
+        b[n++] = ';';
+        n = fmt_uint(b, n, 59 + ((t->deco & VT_DECO_IDEO_MASK) >> VT_DECO_IDEO_SHIFT));
+    }
+    if (t->font) {
+        b[n++] = ';';
+        n = fmt_uint(b, n, 10 + t->font);
+    }
+    for (w = 0; w < 3; w++) {
+        /* the text, the background, the underline (SGR 58: no 30-37 form) */
+        vt_color c = w == 2 ? t->ul : w ? t->bg : t->fg;
+        int base = w == 2 ? 58 : w ? 48 : 38;
         if (c == VT_COLOR_DEFAULT)
             continue;
         b[n++] = ';';
         if (c & VT_COLOR_RGB) {
-            n = fmt_uint(b, n, w ? 48 : 38);
+            n = fmt_uint(b, n, base);
             memcpy(b + n, ";2;", 3);
             n += 3;
             n = fmt_uint(b, n, (long)((c >> 16) & 0xFF));
@@ -3142,12 +3957,12 @@ static int put_sgr(const vt_term *t, char *b, int n)
             n = fmt_uint(b, n, (long)((c >> 8) & 0xFF));
             b[n++] = ';';
             n = fmt_uint(b, n, (long)(c & 0xFF));
-        } else if (c < 8) {
+        } else if (c < 8 && w < 2) {
             n = fmt_uint(b, n, (long)(c + (w ? 40 : 30)));
-        } else if (c < 16) {
+        } else if (c < 16 && w < 2) {
             n = fmt_uint(b, n, (long)(c - 8 + (w ? 100 : 90)));
         } else {
-            n = fmt_uint(b, n, w ? 48 : 38);
+            n = fmt_uint(b, n, base);
             memcpy(b + n, ";5;", 3);
             n += 3;
             n = fmt_uint(b, n, (long)c);
@@ -3180,7 +3995,7 @@ static void decrqss(vt_term *t, const char *pt, int len)
         b[n++] = ' ';
         b[n++] = 'q';
     } else if (len == 2 && pt[0] == '"' && pt[1] == 'p') {
-        memcpy(b + n, "64;1\"p", 6); /* a level 4 terminal, 7-bit controls */
+        memcpy(b + n, "62;1\"p", 6); /* what DA1 says: a VT220, 7-bit controls */
         n += 6;
     } else if (len == 2 && pt[0] == '"' && pt[1] == 'q') {
         memcpy(b + n, "0\"q", 3);    /* DECSCA: no protected cells */
@@ -3198,16 +4013,24 @@ static void decrqss(vt_term *t, const char *pt, int len)
 
 /* XTGETTCAP (DCS + q hexname;hexname ST): a terminfo capability, as
  * DCS 1 + r hexname=hexvalue ST, or DCS 0 + r hexname ST when unknown. */
+/* The terminfo entry, generated from terminfo/vtcon.terminfo
+ * (tools/gen_vtcaps.py): what XTGETTCAP answers is what the entry says. */
+static const struct { const char *name; char kind; const char *value; } vt_caps[] = {
+#include "vtcaps.inc"
+};
+
+/* xterm's names beside the terminfo ones: the terminal's name, termcap's
+ * Co, and RGB as the bits per channel (what xterm answers for it). */
+static const char *const caps_extra[][2] = {
+    { "TN", "vtcon" }, { "name", "vtcon" }, { "Co", "256" }, { "RGB", "8/8/8" }
+};
+
 static void xtgettcap(vt_term *t, const char *s, int len)
 {
-    static const char *const caps[][2] = {
-        { "TN", "vtcon" }, { "name", "vtcon" }, { "Co", "256" }, { "colors", "256" },
-        { "RGB", "8/8/8" }
-    };
     static const char hex[] = "0123456789ABCDEF";
     while (len > 0) {
-        char name[16], b[96];
-        int k = 0, i, n = 0, h1, h2;
+        char name[16], b[320];
+        int k = 0, i, n = 0, h1, h2, found = 0;
         const char *v = 0;
         while (len >= 2 && *s != ';') {
             h1 = hexval(s[0]);
@@ -3223,12 +4046,19 @@ static void xtgettcap(vt_term *t, const char *s, int len)
             s++;
             len--;
         }
-        for (i = 0; i < (int)(sizeof(caps) / sizeof(caps[0])); i++)
-            if (!strcmp(name, caps[i][0]))
-                v = caps[i][1];
+        for (i = 0; !found && i < (int)(sizeof(caps_extra) / sizeof(caps_extra[0])); i++)
+            if (!strcmp(name, caps_extra[i][0]))
+                v = caps_extra[i][1], found = 1;
+        for (i = 0; !found && i < (int)(sizeof(vt_caps) / sizeof(vt_caps[0])); i++)
+            if (!strcmp(name, vt_caps[i].name)) {
+                found = 1;
+                v = vt_caps[i].kind == 'b' ? 0 : vt_caps[i].value; /* a boolean: no value */
+            }
+        if (v && (int)strlen(v) * 2 + 2 * k + 16 > (int)sizeof(b))
+            found = 0, v = 0; /* cannot happen with the entry's lengths */
         b[n++] = 0x1B;
         b[n++] = 'P';
-        b[n++] = v ? '1' : '0';
+        b[n++] = found ? '1' : '0';
         b[n++] = '+';
         b[n++] = 'r';
         for (i = 0; i < k; i++) {
@@ -3813,6 +4643,7 @@ static void enter_string(vt_term *t, vt_u8 kind)
     t->state = kind == ']' ? S_OSC : S_STRING;
     t->str_kind = kind;
     t->str_len = 0;
+    t->osc52 = 0;
     t->str_esc = 0;
     t->str_bel = 0;
 }
@@ -3830,6 +4661,20 @@ static void end_string(vt_term *t)
 
 static void feed(vt_term *t, vt_u32 c)
 {
+    if (t->state == S_PRINT) {
+        /* printer controller mode: everything is the printer's (there is
+         * none) until CSI 4 i -- ESC [ 4 i or the 8-bit CSI 4 i */
+        static const vt_u8 end[] = { 0x1B, '[', '4', 'i' };
+        if (c == 0x9B)
+            t->prn_match = 2;
+        else if (c == end[t->prn_match])
+            t->prn_match++;
+        else
+            t->prn_match = c == 0x1B;
+        if (t->prn_match == 4)
+            t->state = S_GROUND;
+        return;
+    }
     /* Anywhere transitions. */
     if (c == 0x18 || c == 0x1A) { /* CAN, SUB */
         if (t->state == S_SIXEL)
@@ -3880,6 +4725,20 @@ static void feed(vt_term *t, vt_u32 c)
             end_string(t);
             return;
         } else {
+            if (t->osc52) {
+                osc52_byte(t, c); /* the payload streams past str */
+                return;
+            }
+            if (t->state == S_OSC && t->str_len == 2 && c == ';' && t->str[0] == '5' && t->str[1] == '2') {
+                osc52_begin(t);
+                return;
+            }
+            if (t->state == S_OSC && t->str_len == 1 && c == ';' && (t->str[0] == '7' || t->str[0] == '8')) {
+                osc52_begin(t); /* OSC 7 and 8: URLs, longer than str can hold */
+                t->osc52 = 3;
+                t->long_cmd = (vt_u8)(t->str[0] - '0');
+                return;
+            }
             if (t->str_kind == 'P' && c == 'q' && t->state == S_STRING && dcs_is_params(t)) {
                 sixel_begin(t); /* DCS P1;P2;P3 q: a sixel image */
                 return;
@@ -4188,6 +5047,7 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
      * xterm's colour 7 on black, so a faint default is grey, not black */
     t->dflt[0] = t->dflt[2] = 0xE5E5E5UL;
     t->dflt[1] = 0x000000UL;
+    t->clip_access = VT_CLIP_WRITE;
     t->sb_cap = scrollback > 0 ? scrollback : 0;
     if (t->sb_cap)
         t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
@@ -4275,11 +5135,22 @@ void vt_free(vt_term *t)
         VT_FREE(t->clu);
     if (t->clu_hash)
         VT_FREE(t->clu_hash);
+    if (t->clip)
+        VT_FREE(t->clip);
+    while (t->n_links)
+        VT_FREE(t->links[--t->n_links].uri);
+    if (t->cwd)
+        VT_FREE(t->cwd);
     VT_FREE(t);
 }
 
 void vt_reset(vt_term *t)
 {
+    t->link = 0; /* no hyperlink open (the cells keep theirs) */
+    if (t->cwd) {
+        VT_FREE(t->cwd); /* the shell will say again */
+        t->cwd = 0;
+    }
     t->scr = t->pri;
     t->modes = VT_MODE_CURSOR_VISIBLE | VT_MODE_AUTOREPEAT;
     if (t->pers == VT_AMIGA)
@@ -4290,8 +5161,9 @@ void vt_reset(vt_term *t)
     t->amiga_msb = 0;
     soft_reset(t);
     t->sav_1049 = t->sav;
+    t->saved_1048 = 0;
+    t->rect_extent = 0;
     t->raw_events = 0;
-    t->mok = 0; /* modifyOtherKeys back to xterm's default */
     t->amiga_bg = 0;
     t->scroll_enabled = 1;
     sixel_abort(t);
@@ -4303,6 +5175,13 @@ void vt_reset(vt_term *t)
     if (t->six_regs)
         sixel_default_regs(t, t->six_regs);
     t->title[0] = 0;
+    /* what programs set that a full reset takes back (xterm's RIS): the
+     * key encoding, the pushed titles, the cursor shape (to the host's) */
+    t->n_titles = 0;
+    t->mok = 0; /* modifyOtherKeys back to xterm's default */
+    memset(t->kbd, 0, sizeof(t->kbd));
+    t->kbd_top[0] = t->kbd_top[1] = 0;
+    t->cursor_style = t->cursor_dflt;
     tab_reset(t);
     set_alt(t, 0, 0);
     clear_screen_home(t);
@@ -4423,7 +5302,7 @@ void vt_set_bold_bright(vt_term *t, int on)
 void vt_set_cursor_style(vt_term *t, int style)
 {
     if (t)
-        t->cursor_style = (vt_u8)(style >= 0 && style <= 6 ? style : 0);
+        t->cursor_style = t->cursor_dflt = (vt_u8)(style >= 0 && style <= 6 ? style : 0);
 }
 
 /* ?12 from the host: a profile's cursor-blink default,
@@ -4823,6 +5702,7 @@ static int reflow_pass(vt_term *t, vt_line **old, int nold, int oc, vt_line **ou
                     blank_cell(t, &l->c[cols - 1]);
                 l->dbl = old[s]->dbl;
                 l->used = (vt_u16)cols;
+                l->mark = old[s]->mark;
                 out[w.ny] = l;
             }
             if (s == cy) {
@@ -4977,6 +5857,7 @@ static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is
                 nl->dbl = l->dbl;
                 nl->used = l->used;
                 nl->img = l->img; /* its images move with the cells */
+                nl->mark = l->mark;
                 VT_FREE(l);
                 l = nl;
             }
@@ -5071,6 +5952,7 @@ void vt_resize(vt_term *t, int cols, int rows)
     }
     mark_rows(t, 0, rows);
     flush(t);
+    report_size(t);
 }
 
 int vt_cols(const vt_term *t)
@@ -5511,6 +6393,8 @@ static int amiga_key(vt_u8 *o, long key, int mods)
     return 0;
 }
 
+static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out);
+
 /* modifyOtherKeys' form: CSI 27 ; 1 + mods ; code ~ */
 static int mok_report(vt_u8 *out, int mods, long code)
 {
@@ -5555,10 +6439,165 @@ static int c0_key_modified(const vt_term *t, long key, int mods, vt_u8 *out)
         out[n++] = 0x08; /* xterm: Ctrl+Backspace is BS */
         return n;
     }
-    return n + vt_encode_key(t, key, mods & ~(VT_MOD_ALT | VT_MOD_CTRL), out + n);
+    return n + legacy_key(t, key, mods & ~(VT_MOD_ALT | VT_MOD_CTRL), out + n);
+}
+
+/* ---- the kitty keyboard protocol (sw.kovidgoyal.net/kitty/keyboard-protocol) ---- */
+
+int vt_kitty_flags(const vt_term *t)
+{
+    int s;
+    if (!t || t->pers != VT_XTERM)
+        return 0;
+    s = t->scr == t->alt && t->alt;
+    return t->kbd[s][t->kbd_top[s]];
+}
+
+/* CSI number [; modifiers] final for a functional key; 0 when key is not one. */
+static int kitty_functional(long key, long *num, char *fin)
+{
+    static const struct { long key; long num; char fin; } fk[] = {
+        { VT_KEY_UP, 1, 'A' }, { VT_KEY_DOWN, 1, 'B' }, { VT_KEY_RIGHT, 1, 'C' }, { VT_KEY_LEFT, 1, 'D' },
+        { VT_KEY_HOME, 1, 'H' }, { VT_KEY_END, 1, 'F' }, { VT_KEY_F1, 1, 'P' }, { VT_KEY_F2, 1, 'Q' },
+        { VT_KEY_F3, 13, '~' }, { VT_KEY_F4, 1, 'S' }, { VT_KEY_INSERT, 2, '~' }, { VT_KEY_DELETE, 3, '~' },
+        { VT_KEY_PAGE_UP, 5, '~' }, { VT_KEY_PAGE_DOWN, 6, '~' }, { VT_KEY_F5, 15, '~' },
+        { VT_KEY_F6, 17, '~' }, { VT_KEY_F7, 18, '~' }, { VT_KEY_F8, 19, '~' }, { VT_KEY_F9, 20, '~' },
+        { VT_KEY_F10, 21, '~' }, { VT_KEY_F11, 23, '~' }, { VT_KEY_F12, 24, '~' }, { VT_KEY_HELP, 28, '~' },
+        { VT_KEY_ESCAPE, 27, 'u' }, { VT_KEY_RETURN, 13, 'u' }, { VT_KEY_TAB, 9, 'u' },
+        { VT_KEY_BACKSPACE, 127, 'u' }, { VT_KEY_KP_ENTER, 57414, 'u' }
+    };
+    int i;
+    for (i = 0; i < (int)(sizeof(fk) / sizeof(fk[0])); i++)
+        if (fk[i].key == key) {
+            *num = fk[i].num;
+            *fin = fk[i].fin;
+            return 1;
+        }
+    return 0;
+}
+
+/* The kitty protocol's own numbers for the keypad (KP_0 57399 .. KP_ADD
+ * 57413); 0 for a key it has none for (the parentheses). */
+static long kitty_keypad(long key)
+{
+    static const long kp[] = { 57399, 57400, 57401, 57402, 57403, 57404, 57405, 57406, 57407, 57408,
+                               57409, 57412, 57413, 57411, 57410 }; /* 0-9 . - + * / */
+    if (key >= VT_KEY_KP_0 && key <= VT_KEY_KP_SLASH)
+        return kp[key - VT_KEY_KP_0];
+    return 0;
+}
+
+int vt_encode_key_kitty(const vt_term *t, long key, int mods, int event, long shifted, long base,
+                        long text, vt_u8 *out)
+{
+    int f = vt_kitty_flags(t), dis, n = 0, i, k;
+    long num = 0, kp;
+    char fin = 'u', b[80];
+    int with_mods, with_text;
+    if (!f)
+        return event == VT_KEY_EV_RELEASE ? 0 : legacy_key(t, key, mods, out);
+    dis = f & (VT_KITTY_DISAMBIGUATE | VT_KITTY_ALL_KEYS);
+    if (!(f & VT_KITTY_EVENTS)) {
+        if (event == VT_KEY_EV_RELEASE)
+            return 0;
+        event = VT_KEY_EV_PRESS;
+    }
+    mods &= VT_MOD_SHIFT | VT_MOD_ALT | VT_MOD_CTRL;
+    if (key < 0x110000) {
+        /* a text key: the text itself, unless a modifier other than Shift
+         * makes it ambiguous, or every key is to be an escape code */
+        if (event != VT_KEY_EV_RELEASE && !(f & VT_KITTY_ALL_KEYS) && !(mods & ~VT_MOD_SHIFT))
+            return legacy_key(t, text ? text : (mods & VT_MOD_SHIFT) && shifted ? shifted : key, 0, out);
+        num = key;
+    } else if ((kp = kitty_keypad(key)) != 0) {
+        if (!(f & VT_KITTY_ALL_KEYS))
+            return event == VT_KEY_EV_RELEASE ? 0 : legacy_key(t, key, mods, out);
+        num = kp;
+    } else if (kitty_functional(key, &num, &fin)) {
+        int legacy_bytes = key == VT_KEY_RETURN || key == VT_KEY_TAB || key == VT_KEY_BACKSPACE;
+        if (!dis && event == VT_KEY_EV_PRESS)
+            return legacy_key(t, key, mods, out);
+        if (legacy_bytes && !(f & VT_KITTY_ALL_KEYS)) {
+            /* typing "reset" after a crash must still work: plain Return,
+             * Tab and Backspace stay as they were, and send no release */
+            if (event == VT_KEY_EV_RELEASE)
+                return 0;
+            if (!mods)
+                return legacy_key(t, key, 0, out);
+        }
+    } else {
+        return event == VT_KEY_EV_RELEASE ? 0 : legacy_key(t, key, mods, out);
+    }
+    with_text = (f & VT_KITTY_TEXT) && (f & VT_KITTY_ALL_KEYS) && key < 0x110000 && text >= 0x20 &&
+                text != 0x7F && event != VT_KEY_EV_RELEASE;
+    with_mods = mods || event != VT_KEY_EV_PRESS;
+    b[n++] = 0x1B;
+    b[n++] = '[';
+    if (fin == 'u' || num != 1 || with_mods)
+        n = fmt_uint(b, n, num);
+    if ((f & VT_KITTY_ALTERNATES) && key < 0x110000) {
+        int sh = (mods & VT_MOD_SHIFT) && shifted && shifted != num;
+        if (sh) {
+            b[n++] = ':';
+            n = fmt_uint(b, n, shifted);
+        }
+        if (base && base != num) {
+            if (!sh)
+                b[n++] = ':';
+            b[n++] = ':';
+            n = fmt_uint(b, n, base);
+        }
+    }
+    if (with_mods || with_text)
+        b[n++] = ';';
+    if (with_mods) {
+        n = fmt_uint(b, n, 1 + mods);
+        if (event != VT_KEY_EV_PRESS) {
+            b[n++] = ':';
+            b[n++] = (char)('0' + event);
+        }
+    }
+    if (with_text) {
+        b[n++] = ';';
+        n = fmt_uint(b, n, text);
+    }
+    b[n++] = fin;
+    for (i = 0, k = n; i < k; i++)
+        out[i] = (vt_u8)b[i];
+    return n;
+}
+
+/* What the keymap made, for the kitty protocol: a control character back
+ * to its key (Ctrl+A is ^A), Shift's capital back to the key's own letter. */
+static int kitty_from_char(const vt_term *t, long key, int mods, vt_u8 *out)
+{
+    long code = key, shifted = 0, text = 0;
+    if (key < 0x110000) {
+        if ((mods & VT_MOD_CTRL) && (key < 0x20 || key == 0x7F)) {
+            code = key == 0x7F ? '?' : key + 0x40;
+            if (code >= 'A' && code <= 'Z')
+                code += 0x20;
+        } else {
+            text = key;
+            if (key >= 'A' && key <= 'Z' && (mods & VT_MOD_SHIFT)) {
+                shifted = key;
+                code = key + 0x20;
+            }
+        }
+    }
+    return vt_encode_key_kitty(t, code, mods, VT_KEY_EV_PRESS, shifted, 0, text, out);
 }
 
 int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
+{
+    if (vt_kitty_flags(t))
+        return kitty_from_char(t, key, mods, out);
+    return legacy_key(t, key, mods, out);
+}
+
+/* xterm's keys (and the other personalities'): what vt_encode_key sends
+ * when no kitty flags are set. */
+static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out)
 {
     int n = 0;
     int app = (t->modes & VT_MODE_APP_CURSOR) != 0;
@@ -5724,6 +6763,12 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
 
 int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mods, vt_u8 *out)
 {
+    return vt_encode_mouse_px(t, button, kind, x, y, x * t->cell_w, y * t->cell_h, mods, out);
+}
+
+int vt_encode_mouse_px(const vt_term *t, int button, int kind, int x, int y, int px, int py,
+                       int mods, vt_u8 *out)
+{
     vt_u32 m = t->modes;
     int cb, n = 0, i;
     char b[32];
@@ -5741,7 +6786,7 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
     if (button >= 64 && kind != 0)
         return 0; /* the wheel has no release */
     cb = button;
-    if (kind == 1 && !(m & VT_MODE_MOUSE_SGR))
+    if (kind == 1 && !(m & (VT_MODE_MOUSE_SGR | VT_MODE_MOUSE_PIXELS)))
         cb = 3; /* the legacy form cannot say which button went up */
     if (kind == 2)
         cb += 32;
@@ -5755,14 +6800,23 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
     }
     b[n++] = 0x1B;
     b[n++] = '[';
-    if (m & VT_MODE_MOUSE_SGR) {
+    if (m & (VT_MODE_MOUSE_SGR | VT_MODE_MOUSE_PIXELS)) {
+        int pix = (m & VT_MODE_MOUSE_PIXELS) != 0; /* ?1016: pixels, from 1 */
         b[n++] = '<';
         n = fmt_uint(b, n, cb);
+        b[n++] = ';';
+        n = fmt_uint(b, n, (pix ? px : x) + 1);
+        b[n++] = ';';
+        n = fmt_uint(b, n, (pix ? py : y) + 1);
+        b[n++] = (char)(kind == 1 ? 'm' : 'M');
+    } else if (m & VT_MODE_MOUSE_URXVT) {
+        /* ?1015: CSI Cb;Cx;Cy M, decimal, the legacy button code */
+        n = fmt_uint(b, n, 32 + cb);
         b[n++] = ';';
         n = fmt_uint(b, n, x + 1);
         b[n++] = ';';
         n = fmt_uint(b, n, y + 1);
-        b[n++] = (char)(kind == 1 ? 'm' : 'M');
+        b[n++] = 'M';
     } else if (m & VT_MODE_MOUSE_UTF8) {
         /* ?1005: each value one UTF-8 character, to 2015 */
         long v[3];

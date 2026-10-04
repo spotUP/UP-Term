@@ -128,6 +128,21 @@ typedef struct vt_callbacks {
     /* A program changed the palette (OSC 4 / 104) or the default colours
      * (OSC 10-12 / 110-112): the renderer's pens are out of date. */
     void (*colors)(void *user);
+    /* OSC 52: a program sets the clipboard -- len bytes, as the program
+     * sent them (UTF-8 in a UTF-8 window), 0 to empty it. sel is the
+     * selection parameter ("c", "p", "s0"... or ""). Only while
+     * vt_set_clipboard_access allows writing (it does by default). */
+    void (*clipboard_set)(void *user, const char *sel, const vt_u8 *data, long len);
+    /* OSC 52 query: up to max bytes of the clipboard as UTF-8; the length.
+     * Asked only while vt_set_clipboard_access allows reading (it does
+     * not by default). */
+    long (*clipboard_get)(void *user, vt_u8 *buf, long max);
+    /* OSC 7: the shell's working directory, a file: URL as the program
+     * sent it ("file://host/path", path percent-encoded). vt_cwd keeps it. */
+    void (*cwd)(void *user, const char *uri);
+    /* OSC 9 ; text (title "") and OSC 777 ; notify ; title ; body: a
+     * program asks to tell the user something. UTF-8. */
+    void (*notify)(void *user, const char *title, const char *body);
 } vt_callbacks;
 
 /* vt_modes() bits the host needs for input. */
@@ -155,6 +170,10 @@ typedef struct vt_callbacks {
                                        * a frame; the host holds its drawing until this is reset (or a
                                        * moment has passed), so no half-updated screen is shown */
 #define VT_MODE_ALT_SCROLL   0x200000 /* ?1007: the wheel on the alternate screen sends cursor keys */
+/* (0x400000-0x800000 free) */
+#define VT_MODE_MOUSE_URXVT  0x1000000 /* ?1015: CSI Cb;Cx;Cy M in decimal */
+#define VT_MODE_MOUSE_PIXELS 0x2000000 /* ?1016: the SGR form with pixel coordinates */
+#define VT_MODE_IN_BAND_RESIZE 0x4000000 /* ?2048: vt_resize reports the size (a reply) */
 
 typedef struct vt_term vt_term;
 
@@ -345,6 +364,37 @@ int      vt_cursor_style(const vt_term *t);
  * a program's DECSCUSR still overrides it. */
 void     vt_set_cursor_style(vt_term *t, int style);
 
+/* What OSC 52 may do with the host's clipboard: write (VT_CLIP_WRITE, the
+ * default -- kitty, foot, WezTerm allow it) and read (VT_CLIP_READ, off by
+ * default: a remote program reading what the user copied is a leak, which
+ * is why xterm's disallowedWindowOps has it). A host setting (the profile's
+ * program-clipboard); vt_reset leaves it. A set larger than VT_CLIP_MAX
+ * bytes is dropped whole; a query answers at most VT_CLIP_QUERY_MAX. */
+#define VT_CLIP_WRITE 1
+#define VT_CLIP_READ  2
+#define VT_CLIP_MAX       1048576L
+#define VT_CLIP_QUERY_MAX 65536L
+void     vt_set_clipboard_access(vt_term *t, int bits);
+
+/* OSC 7: the last working directory a program reported (a file: URL), ""
+ * when none since vt_new or RIS. */
+const char *vt_cwd(const vt_term *t);
+/* OSC 8: the URI of the hyperlink the cell is part of, NULL when none. The
+ * pointer stays valid while a cell shows the link. Cells keep links through
+ * their rare-style index (vt_cell.ext), so a cell is no bigger for it. */
+#define VT_URI_MAX 4096 /* a longer OSC 7 / OSC 8 string is dropped */
+const char *vt_cell_link(const vt_term *t, const vt_cell *c);
+/* OSC 133 (FinalTerm semantic prompts): what started on a line -- the
+ * prompt (A), the command typed (B), its output (C), its end (D). */
+#define VT_MARK_PROMPT  1
+#define VT_MARK_COMMAND 2
+#define VT_MARK_OUTPUT  4
+#define VT_MARK_DONE    8
+int      vt_row_marks(const vt_term *t, int row); /* row as for vt_row; 0 outside */
+/* The nearest row after (dir 1) or before (dir -1) row `from` whose marks
+ * include `mark`, through the scrollback and the grid; VT_ROW_NONE. */
+long     vt_find_mark(const vt_term *t, long from, int dir, int mark);
+
 /* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
 const vt_u16 *vt_cp437_table(void);
 
@@ -373,11 +423,38 @@ int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
  * (and VT_MOD_SHIFT) in mods: the encoder decides between the control
  * character and CSI 27 ; m ; c ~. Shift alone never changes a character. */
 int      vt_modify_other_keys(const vt_term *t);
+/* The kitty keyboard protocol (CSI > u and friends): the flags the program
+ * set for the screen in use, 0 when it did not (keys are xterm's). 1
+ * disambiguate, 2 report repeats and releases, 4 alternate keys, 8 every
+ * key as an escape code, 16 the text with it. */
+#define VT_KITTY_DISAMBIGUATE 1
+#define VT_KITTY_EVENTS       2
+#define VT_KITTY_ALTERNATES   4
+#define VT_KITTY_ALL_KEYS     8
+#define VT_KITTY_TEXT         16
+int      vt_kitty_flags(const vt_term *t);
+#define VT_KEY_EV_PRESS   1
+#define VT_KEY_EV_REPEAT  2
+#define VT_KEY_EV_RELEASE 3
+/* A key as the kitty protocol has it, with what only the host knows: the
+ * event (VT_KEY_EV_*), for a character key `key` the key's own unshifted
+ * character, `shifted` what it types with Shift and `base` the key on a US
+ * layout (0: unknown or the same), `text` what the key types (0: nothing).
+ * With no flags set it is vt_encode_key (a release sends nothing). At most
+ * 64 bytes. vt_encode_key itself speaks the protocol too, for a press,
+ * from the character the keymap made. */
+int      vt_encode_key_kitty(const vt_term *t, long key, int mods, int event, long shifted, long base,
+                             long text, vt_u8 *out);
 /* Mouse reports, when the host asked for them (?9, ?1000, ?1002, ?1003,
  * with ?1006 for the SGR form). button: 0 left, 1 middle, 2 right,
  * 64/65 wheel up/down; kind: 0 press, 1 release, 2 motion. x, y are cell
  * coordinates from 0. Returns 0 when the current modes want no report. */
 int      vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mods, vt_u8 *out);
+/* The same with the pointer's pixel position in the text area (px, py from
+ * 0), which ?1016 reports; vt_encode_mouse gives the cell's corner instead
+ * (vt_set_cell_pixels). */
+int      vt_encode_mouse_px(const vt_term *t, int button, int kind, int x, int y, int px, int py,
+                            int mods, vt_u8 *out);
 /* Bracketed paste wrapper: writes the prefix or suffix (0 bytes when off). */
 int      vt_encode_paste(const vt_term *t, int end, vt_u8 *out);
 /* Focus report (?1004): CSI I when the window became active (in 1), CSI O

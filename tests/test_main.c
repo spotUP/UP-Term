@@ -28,6 +28,7 @@ void suite_painter(void);
 void suite_text(void);
 void suite_clip(void);
 void suite_input(void);
+void suite_protocol(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -57,6 +58,7 @@ static const h_suite suites[] = {
     { "text", suite_text },
     { "clip", suite_clip },
     { "input", suite_input },
+    { "protocol", suite_protocol },
     { 0, 0 }
 };
 

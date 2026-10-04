@@ -15,11 +15,27 @@ clear() {
     printf '\033[H\033[2J'
 }
 
-# ssh and scp: BebboSSH (Install's network tools). vsh's own TERM is vtcon,
-# which a remote Unix machine has no entry for (its shell then cannot move
-# the cursor and redraws every key); an UP-Term window is an xterm to it.
+# Remote logins: ssh (BebboSSH, Install's network tools), telnet, rlogin.
+# vsh's own TERM is vtcon, which a remote Unix machine has no entry for (its
+# shell then cannot move the cursor and redraws every key); an UP-Term
+# window is an xterm-256color to it -- everything that entry asks for, the
+# window does. To send another name, set UP_REMOTE_TERM (in $HOME/.vshrc,
+# say UP_REMOTE_TERM=xterm-amiga). A TERM that is not vtcon -- screen's
+# windows are "screen" -- goes as it is.
+remote_term() {
+    case "${UP_REMOTE_TERM:-$TERM}" in
+    ''|vtcon) echo xterm-256color ;;
+    *) echo "${UP_REMOTE_TERM:-$TERM}" ;;
+    esac
+}
 ssh() {
-    TERM=xterm-256color bebbossh "$@"
+    TERM=$(remote_term) bebbossh "$@"
+}
+telnet() {
+    TERM=$(remote_term) command telnet "$@"
+}
+rlogin() {
+    TERM=$(remote_term) command rlogin "$@"
 }
 scp() {
     bebboscp "$@"
