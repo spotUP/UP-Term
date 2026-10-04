@@ -11,7 +11,7 @@ So the rig must be up as:
   conbench_rig.py [LABEL ...] [--force] [--rows 20|30]
 
 LABELs (default: all of them): ccon127 (CCON 1.2.7, md5 be94e1b5..., his
-calibration point), ccon128b1 (github main), upterm (vtcon-handler, Amiga
+calibration point), ccon128b9 (his race build), ccon128b1 (github main), upterm (vtcon-handler, Amiga
 dialect). 77x20 is a 640x180 window, 77x30 is 640x256.
 
 RESUMABLE: each finished run is written to build/rig/conbench/<label>-<rows>.txt
@@ -29,6 +29,7 @@ FLAGS = ['--stock', '--os32']
 CONSOLES = {
     # label: (mount file or None, window spec with %d for the height)
     'ccon127':   ('VTC:ccon127.mount', 'CC127:0/0/640/%d/CCON127/DEFAULTS'),
+    'ccon128b9': ('VTC:ccon128b9.mount', 'CC128:0/0/640/%d/CCON128B9/DEFAULTS'),  # creep's 2026-10-04 build, md5 1fd50e18...
     'ccon128b1': ('VTC:ccon.mount',    'CCON:0/0/640/%d/CCON128/DEFAULTS'),
     'upterm':    (None,                'XCON:0/0/640/%d/UP-Term/AMIGA'),
 }
