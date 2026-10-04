@@ -48,14 +48,14 @@ are the owner's (the rig is busy with the speed benchmark).
       column, cursor on a wrapped line, scrollback full, shrink-grow round trip)
 - [x] R2 host: reflow on by default, profile key, Settings menu, /reflow, Prefs checkbox,
       selection cleared on a reflowing resize; matrix/README/conf docs
-- [ ] X1 engine: streaming sixel decoder (DCS P1;P2;P3 q ... ST), raster attributes,
+- [x] X1 engine: streaming sixel decoder (DCS P1;P2;P3 q ... ST), raster attributes,
       colour registers RGB + HLS, repeat, aspect, memory cap
-- [ ] X2 engine: image store and placement (cursor/scroll semantics, ?80 DECSDM, ?1070),
+- [x] X2 engine: image store and placement (cursor/scroll semantics, ?80 DECSDM, ?1070),
       scroll/clear/overwrite/scrollback/reflow carry, RIS
-- [ ] X3 engine: DA1 ;4, XTSMGRAPHICS (CSI ? Pi;Pa;Pv S), DECRQM ?80/?1070, matrix
-- [ ] X4 renderer: image tiles drawn (palette pens / WriteLUTPixelArray), zero cost
+- [x] X3 engine: DA1 ;4, XTSMGRAPHICS (CSI ? Pi;Pa;Pv S), DECRQM ?80/?1070, matrix
+- [x] X4 renderer: image tiles drawn (palette pens / WriteLUTPixelArray), zero cost
       without images
-- [ ] X5 OSC 1337 / kitty graphics: documented out of scope with reasons
+- [x] X5 OSC 1337 / kitty graphics: documented out of scope with reasons
 - [ ] F  full `make test`, `make amiga` zero warnings
 
 ## Progress
@@ -65,3 +65,49 @@ are the owner's (the rig is busy with the speed benchmark).
   on the old engine (14 failures) and the used fix proven by an abort without it.
 - R2 587c243: host default on + profile/menu/slash/Prefs; le_resized keeps the line
   editor on its line (test red without it); selection cleared on a reflowing resize.
+- X1-X3 a15a34b: decoder, image store, placement, DA1 ;4, XTSMGRAPHICS, DECRQM ?80/?1070,
+  matrix rows. Suite `sixel` (451 checks incl. two ImageMagick 7.1.2 streams in
+  tests/sixel/); mutants of the pad clear, line drop, row-erase drop and reflow carry
+  each turn it red. tests/amiga/reach.c expects the new DA1.
+- X4 840ed28: renderer draws image runs (pens / WriteChunkyPixels, WritePixelArray8 on
+  KS 3.0; WriteLUTPixelArray on true colour). Not host-testable: rig checks below.
+- X5: documented below (no code).
+
+## OSC 1337 inline images and the kitty graphics protocol: out of scope
+
+- **iTerm2 OSC 1337 File=**: the payload is a whole image file (PNG, JPEG, GIF) in
+  base64. Base64 is cheap; the decode is not. PNG is zlib inflate plus per-row filters
+  and 8-bit RGBA output (a 640x480 PNG is ~1.2 MB of RGBA to inflate and then quantise
+  to pens on AGA): seconds per picture on a 14 MHz 68020, and the engine must stay
+  portable C89 for DCTelnet's 68000 (no datatypes.library in the engine). The host could
+  hand the file to datatypes.library, but which formats exist depends on the installed
+  datatypes (PNG is a third-party datatype on most 3.x systems), the result needs the
+  same quantisation, and programs that emit OSC 1337 (imgcat, iTerm2 utilities) mostly
+  check for iTerm2 by name. Per the job's rule (cheap decode or document), left out;
+  the OSC stays swallowed cleanly.
+- **kitty graphics (APC _G)**: f=100 (PNG, what kitty's icat, timg, chafa and yazi send
+  by default) has the PNG cost above; o=z adds inflate to raw data too. Only f=24/32 raw
+  RGB(A) without compression would be cheap, and that alone is not "trivially mapped" on
+  the sixel store: it needs true-colour quantisation to a 255-entry palette per image,
+  the protocol's image ids, placements with z-index, virtual placements (Unicode
+  placeholders), delete commands, chunked transmission (m=1) and OK/error replies. Few
+  clients would use raw-only support (they probe with a query and then send PNG).
+  The APC stays swallowed; clients fall back to sixel or text after the probe gets
+  no answer.
+
+## Manual checks (owner; the rig was busy with the speed benchmark)
+
+1. Reflow: in a UP-Term window run `ls -l /c` (lines longer than the window), shrink the
+   window by dragging the size gadget to half width, then widen it back. PASS: the long
+   lines re-wrap at the new width and come back as before, the scrollback (scroll up)
+   re-wrapped too, the prompt and the line you were typing on the cursor. FAIL (the
+   old behaviour): lines cut at the right edge, the cut text gone after widening.
+2. Settings > Reflow on resize off, repeat: rows are cut/padded as before. `/reflow on`
+   turns it back; Prefs > General > Reflow on resize, Save, new window: the setting kept.
+3. Sixel: over ssh to a Linux box from a UP-Term window, `img2sixel some.png` (libsixel)
+   or `lsix` in a directory with pictures; locally `gnuplot -e "set term sixelgd; plot sin(x)"`
+   if available. PASS: the picture in the window, the prompt below it; `clear` or
+   scrolling removes/moves it with the text; scrolling back shows it in the scrollback.
+   Check on a 16-colour Workbench (nearest pens), an AGA 256-colour UP-Term screen, and an
+   RTG true-colour screen (P96/CGX: exact colours).
+4. tmux 3.4+ with `set -as terminal-features 'vtcon*:sixel'` passes sixel through.
