@@ -19,6 +19,8 @@
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
+#define VR_IMG_SLOTS 512    /* image colours' pens, a power of two */
+#define VR_IMG_MAX 256
 
 typedef struct vr_render {
     struct Window *win;
@@ -104,6 +106,23 @@ typedef struct vr_render {
     BYTE sel;
     WORD sel_ax, sel_bx;
     LONG sel_ay, sel_by;
+    /* images (sixel; draw_images). Palette screens: pens obtained for the
+     * images' colours, a hash on 0xRRGGBB, released by vr_free; the pixels
+     * turned into pens in img_buf. True-colour screens: cybergraphics'
+     * WriteLUTPixelArray draws the indices through img_ctab. The last
+     * image's table is kept (img_serial, img_bgrgb) */
+    ULONG img_key[VR_IMG_SLOTS];
+    UBYTE img_pen[VR_IMG_SLOTS];
+    WORD n_img_pens;
+    UBYTE *img_buf;
+    ULONG img_buf_size;
+    struct Library *cgx;
+    LONG img_serial;
+    ULONG img_bgrgb;
+    UBYTE img_planes;     /* the planes the last image's pens use */
+    UBYTE img_map[256];
+    ULONG img_ctab[256];
+    ULONG n_img_runs;     /* image runs drawn (the debug build's counter) */
 } vr_render;
 
 /* Default colours from RGB (0xRRGGBB; VR_KEEP leaves the screen's text /
