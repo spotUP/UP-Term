@@ -21,8 +21,10 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 
 .PHONY: demo-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
-test: $(BUILD)/vttest_host
-	./$(BUILD)/vttest_host $(ONLY)
+# ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py)
+test: $(BUILD)/vttest_host $(BUILD)/tn_host
+	@if [ "$(ONLY)" != uptelnetd ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 
 $(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/fontpair.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc $(TESTS) tests/harness.h
 	@mkdir -p $(BUILD)
@@ -40,6 +42,12 @@ $(BUILD)/vtdump: $(ENGINE) engine/vtengine.h engine/vtwidth.h tests/dump_main.c
 $(BUILD)/vtreply: $(ENGINE) engine/vtengine.h engine/vtwidth.h tools/vtreply.c
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) tools/vtreply.c
+
+# uptelnet's protocol on a POSIX socket, for the interop test against
+# tools/uptelnetd.py (tools/test_uptelnetd.py).
+$(BUILD)/tn_host: net/tn.c net/tn.h tools/tn_host.c
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -o $@ net/tn.c tools/tn_host.c
 
 # libvterm (neovim's terminal) as the reference, built from source into build/.
 LIBVTERM := $(BUILD)/third_party/libvterm
