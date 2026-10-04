@@ -202,6 +202,7 @@ void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
     w->host = host;
     w->user = user;
     w->find_next = VT_ROW_NONE;
+    vti_mouse_reset(&w->mouse);
     /* every owner starts from the historical look: a console.device unit
      * (MEMF_CLEAR'd) had a silent bell, a black cursor and black-on-black
      * selection (2026-10-02 review) */
@@ -299,6 +300,8 @@ void vtwin_render(vtwin *w)
 }
 
 static void drag_to(vtwin *w, WORD mx, WORD my);
+static void motion_to(vtwin *w, WORD mx, WORD my);
+static void pointer_sync(vtwin *w);
 
 void vtwin_tick(vtwin *w)
 {
@@ -320,6 +323,9 @@ void vtwin_tick(vtwin *w)
          * moves may never reach us as events -- Intuition keeps absolute
          * pointer moves to itself */
         drag_to(w, w->win->MouseX, w->win->MouseY);
+        frame_start(w);
+    } else if (w->mouse.held && w->win && w->t && vti_wants_motion(&w->mouse, w->t)) {
+        motion_to(w, w->win->MouseX, w->win->MouseY); /* the same for a program's ?1002 drag */
         frame_start(w);
     }
 }
@@ -634,6 +640,8 @@ void vtwin_unbind(vtwin *w)
     w->render_pending = 0;
     w->layout_dirty = 0;
     w->dragging = 0;
+    vti_mouse_reset(&w->mouse);
+    w->pointer_on = 0; /* the window's ReportMouse goes with it */
     vr_set_outline(&w->r, 0);
     vr_free(&w->r);
     w->win = 0;
@@ -746,6 +754,8 @@ void vtwin_detach(vtwin *w)
     w->layout_dirty = 0;
     w->want_cols = 0;
     w->dragging = 0;
+    vti_mouse_reset(&w->mouse);
+    w->pointer_on = 0; /* the window's ReportMouse goes with it */
     if (w->outline) {
         vr_set_outline(&w->r, 0);
         vo_close(w->outline);
@@ -792,6 +802,7 @@ void vtwin_write(vtwin *w, const vt_u8 *b, long n)
         if (sync && !(vt_modes(w->t) & VT_MODE_SYNC))
             vtwin_render(w); /* the program's frame is whole: shown now, not at the next tick */
     }
+    pointer_sync(w); /* ?1003 set or reset: the window reports moves, or stops */
     if (w->layout_dirty) {
         w->layout_dirty = 0;
         vtwin_render(w);
@@ -957,8 +968,8 @@ static void paste(vtwin *w)
     for (i = 0; i < n;) {
         unsigned long ch = cf_next(text, n, &i);
         long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '\r' || !cf_paste_keeps(ch))
-            continue;
+        if (ch == '' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
+            continue; /* controls never; inside ?2004 nothing that ends the brackets early */
         k = vt_encode_key(w->t, key, 0, out);
         w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);
     }
@@ -982,8 +993,18 @@ void vtwin_paste(vtwin *w)
         paste(w);
 }
 
+/* The modifiers a key or a mouse event carries (vti_mods: Meta is Left
+ * Amiga -- the rig's ';' is Alt + 0x29, Alt-as-Meta turned it into ESC +
+ * o-umlaut -- or Alt with meta_alt). */
+static int qual_mods(const vtwin *w, UWORD qual)
+{
+    return vti_mods(qual, w->meta_alt);
+}
+
 /* Right Amiga C/V copy and paste, Right Amiga Up/Down and Shift+PgUp/PgDn
- * move through the scrollback. Returns 1 when the key was the console's. */
+ * move through the scrollback (Shift+PgUp/PgDn on the main screen with no
+ * mouse mode: vti_page_keys_scroll). Returns 1 when the key was the
+ * console's. */
 static int console_key(vtwin *w, UWORD code, UWORD qual)
 {
     int page = w->r.rows > 1 ? w->r.rows - 1 : 1;
@@ -996,7 +1017,8 @@ static int console_key(vtwin *w, UWORD code, UWORD qual)
         default: return 0;
         }
     }
-    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) {
+    if ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) && vti_page_keys_scroll(w->t)) {
+        /* (a full-screen program gets them: kPRV / kNXT) */
         if (code == 0x48) {
             vr_set_view(&w->r, w->r.view + page);
             return 1;
@@ -1061,19 +1083,7 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         return; /* copy, paste, scrollback: the console's own keys */
     if (w->r.view)
         vr_set_view(&w->r, 0);
-    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-        mods |= VT_MOD_SHIFT;
-    if (qual & IEQUALIFIER_CONTROL)
-        mods |= VT_MOD_CTRL;
-    /* Meta (the ESC prefix, VT_MOD_ALT) is Left Amiga + key: Alt belongs
-     * to the keymap, where many layouts type ; @ { [ with it (the rig's
-     * ';' is Alt + 0x29; Alt-as-Meta turned it into ESC + o-umlaut).
-     * With meta_alt the Alt keys take the Meta role instead. */
-    if (w->meta_alt) {
-        if (qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-            mods |= VT_MOD_ALT;
-    } else if (qual & IEQUALIFIER_LCOMMAND)
-        mods |= VT_MOD_ALT;
+    mods = qual_mods(w, qual);
     key = special_key(code);
     if (!key && w->pers == VT_XTERM && (vt_modes(w->t) & VT_MODE_APP_KEYPAD))
         key = keypad_key(code); /* DECKPAM: the keypad sends SS3 codes */
@@ -1084,6 +1094,11 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         struct InputEvent ie;
         UBYTE buf[16];
         LONG k, i;
+        /* modifyOtherKeys (xterm, CSI > 4 ; n m): the keymap gives the
+         * character without Ctrl and the encoder gets Ctrl and Shift, so
+         * Ctrl+; or Ctrl+Shift+X can be told apart; otherwise the keymap
+         * applies Ctrl itself (its control characters, as always) */
+        int mok_ctrl = w->pers == VT_XTERM && (mods & VT_MOD_CTRL) && vt_modify_other_keys(w->t);
         ie.ie_NextEvent = 0;
         ie.ie_Class = IECLASS_RAWKEY;
         ie.ie_SubClass = 0;
@@ -1093,12 +1108,15 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         ie.ie_Qualifier = (UWORD)(w->meta_alt ?
                                   (qual & ~(IEQUALIFIER_LALT | IEQUALIFIER_RALT)) :
                                   (qual & ~IEQUALIFIER_LCOMMAND));
+        if (mok_ctrl)
+            ie.ie_Qualifier &= (UWORD)~IEQUALIFIER_CONTROL;
         ie.ie_EventAddress = (APTR)prev;
         k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), w->keymap);
-        for (i = 0; i < k && n < (int)sizeof(out) - 8; i++) {
-            /* The keymap already applied Ctrl: pass the character, with
-             * Meta only (vt_encode_key adds the ESC for xterm). */
-            n += vt_encode_key(w->t, buf[i], (w->pers == VT_XTERM) ? (mods & VT_MOD_ALT) : 0, out + n);
+        for (i = 0; i < k && n < (int)sizeof(out) - 16; i++) {
+            /* Meta (vt_encode_key adds the ESC for xterm), and Ctrl and
+             * Shift when the keymap left Ctrl to the encoder */
+            n += vt_encode_key(w->t, buf[i], (w->pers != VT_XTERM) ? 0 : mok_ctrl ? mods : (mods & VT_MOD_ALT),
+                               out + n);
         }
     }
     if (n)
@@ -1108,12 +1126,31 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
 
 /* ---- the mouse ---------------------------------------------------------------------- */
 
+/* The text area's geometry, for vtinput's pixel-to-cell maths. */
+static void geom(const vtwin *w, vti_geom *g)
+{
+    g->ox = w->r.ox;
+    g->oy = w->r.oy;
+    g->cw = w->r.cw;
+    g->ch = w->r.ch;
+    g->cols = w->r.cols;
+    g->rows = w->r.rows;
+}
+
+/* The cell under window pixel mx, my: 0 outside the text area. */
+static int cell_at(const vtwin *w, WORD mx, WORD my, int *x, int *y)
+{
+    vti_geom g;
+    geom(w, &g);
+    return vti_cell_at(&g, mx, my, x, y);
+}
+
 /* The selection to the cell under the pointer, while a drag is on. */
 static void drag_to(vtwin *w, WORD mx, WORD my)
 {
     int x, y;
-    if (!w->dragging || !w->t || !vr_cell_at(&w->r, mx, my, &x, &y))
-        return;
+    if (!w->dragging || w->sel_whole || !w->t || !cell_at(w, mx, my, &x, &y))
+        return; /* a word or line selection is whole as it is */
     if (x == w->drag_x && y == w->drag_y)
         return;
     w->drag_x = x;
@@ -1122,75 +1159,133 @@ static void drag_to(vtwin *w, WORD mx, WORD my)
     w->drag_moved = 1;
 }
 
-/* Reports to a program that asked for them (Shift held gives the mouse back
- * to selection, as in xterm), else drag-to-select. */
-void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
+/* Pointer moves as IDCMP_MOUSEMOVE while a drag selects or the program
+ * wants them (?1003, ?1002 with a button down): ReportMouse follows. Never
+ * on a window that is not ours. */
+static void pointer_sync(vtwin *w)
 {
-    int x, y, btn = -1, kind = 0, n, in;
+    int want;
+    if (!w->t || !w->win || w->foreign_window)
+        return;
+    want = w->dragging || vti_wants_motion(&w->mouse, w->t);
+    if (want != w->pointer_on) {
+        ReportMouse((BOOL)want, w->win);
+        w->pointer_on = want;
+    }
+}
+
+/* The pointer at window pixel mx, my: the program's motion report, when
+ * it wants one for that cell. */
+static void motion_to(vtwin *w, WORD mx, WORD my)
+{
+    int x, y, n;
     vt_u8 out[40];
-    int shift = (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0;
+    if (!cell_at(w, mx, my, &x, &y))
+        return;
+    n = vti_motion(&w->mouse, w->t, x, y, w->mouse_mods, out);
+    if (n)
+        w->host->input(w->user, out, n);
+}
+
+/* vti_button decides: reports to a program that asked for them (Shift held
+ * gives the mouse back to selection, as in xterm), else drag-to-select. */
+void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, ULONG secs, ULONG micros)
+{
+    int x = 0, y = 0, btn, down, n, in, dclick = 0, x0, x1, y0, y1;
+    vt_u8 out[40];
     if (!w->t)
         return;
-    in = vr_cell_at(&w->r, mx, my, &x, &y);
+    in = cell_at(w, mx, my, &x, &y);
+    w->mouse_mods = qual_mods(w, qual); /* Ctrl +16, Meta +8 in the reports */
     if (move) {
-        drag_to(w, mx, my);
+        if (w->dragging)
+            drag_to(w, mx, my);
+        else
+            motion_to(w, mx, my);
         return;
     }
-    if (code == SELECTDOWN) { btn = 0; kind = 0; }
-    else if (code == SELECTUP) { btn = 0; kind = 1; }
-    else if (code == MENUDOWN) { btn = 2; kind = 0; }
-    else if (code == MENUUP) { btn = 2; kind = 1; }
-    if (btn < 0)
+    if (!vti_button_code(code, &btn, &down))
         return;
-    if (!shift && in && !w->dragging) {
-        n = vt_encode_mouse(w->t, btn, kind, x, y, 0, out);
-        if (n) {
-            w->host->input(w->user, out, n);
-            return;
-        }
+    if (btn == 0 && down) {
+        /* the run of clicks (word, line) goes by the user's double-click time */
+        dclick = (w->click_secs || w->click_micros) &&
+                 DoubleClick(w->click_secs, w->click_micros, secs, micros);
+        w->click_secs = secs;
+        w->click_micros = micros;
     }
-    if (btn != 0)
-        return;
-    if (kind == 0 && in) {
+    switch (vti_button(&w->mouse, w->t, btn, down, x, y, in, w->mouse_mods,
+                       w->dragging, dclick, out, &n)) {
+    case VTI_REPORT:
+        w->host->input(w->user, out, n);
+        if (w->mouse.held)
+            frame_start(w); /* vtwin_tick follows the pointer for ?1002 */
+        break;
+    case VTI_SELECT:
         w->dragging = 1;
-        w->drag_moved = 0;
         w->drag_x = x;
         w->drag_y = y;
         w->drag_ax = x;
         w->drag_ay = y - w->r.view;
-        vr_select(&w->r, 0, 0, 0, 0, 0);
-        frame_start(w); /* vtwin_tick follows the pointer */
-        if (!w->foreign_window)
-            ReportMouse(TRUE, w->win);
-    } else if (kind == 1 && w->dragging) {
+        w->sel_whole = w->mouse.clicks > 1;
+        if (w->mouse.clicks == 2 && vti_word(w->t, x, w->drag_ay, &x0, &x1)) {
+            vr_select(&w->r, 1, x0, w->drag_ay, x1, w->drag_ay); /* double-click: the word */
+        } else if (w->mouse.clicks == 3) {
+            vti_line(w->t, w->drag_ay, &y0, &y1);                /* triple-click: the line */
+            if (!vt_row(w->t, y1, &n))
+                n = vt_cols(w->t);
+            vr_select(&w->r, 1, 0, y0, n - 1, y1);
+        } else {
+            w->sel_whole = 0;
+            vr_select(&w->r, 0, 0, 0, 0, 0);
+            frame_start(w); /* vtwin_tick follows the pointer */
+        }
+        w->drag_moved = w->sel_whole; /* a word or line stays selected on release */
+        break;
+    case VTI_SELECT_END:
         w->dragging = 0;
-        if (!w->foreign_window)
-            ReportMouse(FALSE, w->win);
         if (!w->drag_moved)
             vr_select(&w->r, 0, 0, 0, 0, 0); /* a click clears the selection */
         else if (w->copy_on_select && !w->no_clipboard)
             copy_selection(w); /* the profile's copy-on-select */
+        break;
+    case VTI_PASTE:
+        if (!w->no_clipboard)
+            paste(w); /* middle-click: the clipboard, as Right Amiga V */
+        break;
+    default:
+        break;
     }
+    pointer_sync(w);
 }
 
-/* The mouse wheel: three lines per notch. A program in mouse mode gets
- * the wheel as its report; otherwise the wheel moves through the
- * scrollback (the spec's wheel_scroll). */
-void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my)
+/* The mouse wheel (vti_wheel decides): the program's report when it asked
+ * for the mouse, otherwise the scrollback (the spec's wheel_scroll). */
+void vtwin_wheel(vtwin *w, int up, UWORD qual, WORD mx, WORD my)
 {
-    int n = 0;
+    int n, lines;
     vt_u8 out[40];
-    if (!w->t || !w->wheel_scroll)
+    vti_geom g;
+    if (!w->t)
         return;
-    if (!w->r.view &&
-        (vt_modes(w->t) & (VT_MODE_MOUSE_X10 | VT_MODE_MOUSE_NORMAL | VT_MODE_MOUSE_BUTTON |
-                           VT_MODE_MOUSE_ANY)))
-        n = vt_encode_mouse(w->t, up ? 64 : 65, 0, mx, my, 0, out);
+    geom(w, &g);
+    n = vti_wheel(&g, w->t, w->r.view, up, qual_mods(w, qual), mx, my, out, &lines);
     if (n) {
         w->host->input(w->user, out, n);
         return;
     }
-    vr_set_view(&w->r, w->r.view + (up ? 3 : -3));
+    if (w->wheel_scroll)
+        vr_set_view(&w->r, w->r.view + lines);
+}
+
+void vtwin_focus(vtwin *w, int in)
+{
+    vt_u8 out[8];
+    int n;
+    if (!w->t)
+        return;
+    n = vt_encode_focus(w->t, in, out);
+    if (n)
+        w->host->input(w->user, out, n);
 }
 
 /* Find: scroll the view to the line a match is on. A match in the live grid

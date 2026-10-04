@@ -33,6 +33,108 @@ static void meta_escape_and_modify_other_keys(void)
     vt_free(t);
 }
 
+/* gap #6: Alt+Backspace is readline's backward-kill-word only with the ESC */
+static void alt_backspace_return_tab_escape_send_the_esc_prefix(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    CHECK_STR(key(t, VT_KEY_BACKSPACE, VT_MOD_ALT), "\033\177");
+    CHECK_STR(key(t, VT_KEY_RETURN, VT_MOD_ALT), "\033\r");
+    CHECK_STR(key(t, VT_KEY_TAB, VT_MOD_ALT), "\033\t");
+    CHECK_STR(key(t, VT_KEY_ESCAPE, VT_MOD_ALT), "\033\033");
+    CHECK_STR(key(t, VT_KEY_BACKSPACE, VT_MOD_CTRL), "\010");  /* xterm: Ctrl+Backspace is BS */
+    CHECK_STR(key(t, VT_KEY_BACKSPACE, VT_MOD_CTRL | VT_MOD_ALT), "\033\010");
+    CHECK_STR(key(t, VT_KEY_RETURN, VT_MOD_CTRL), "\r");       /* no form without modifyOtherKeys */
+    CHECK_STR(key(t, VT_KEY_TAB, VT_MOD_SHIFT | VT_MOD_ALT), "\033\033[Z");
+    h_put(t, "\033[20h");
+    CHECK_STR(key(t, VT_KEY_RETURN, VT_MOD_ALT), "\033\r\n");
+    vt_free(t);
+    t = h_new(80, 24, VT_AMIGA);
+    CHECK_STR(key(t, VT_KEY_BACKSPACE, VT_MOD_ALT), "\010");   /* the console has no Meta prefix */
+    vt_free(t);
+}
+
+/* gap #6: Ctrl+Enter, Shift+Enter, Ctrl+Tab as xterm's modifyOtherKeys says them */
+static void modify_other_keys_reports_modified_return_and_tab(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_put(t, "\033[>4;1m");
+    CHECK_STR(key(t, VT_KEY_RETURN, VT_MOD_CTRL), "\033[27;5;13~");
+    CHECK_STR(key(t, VT_KEY_RETURN, VT_MOD_SHIFT), "\033[27;2;13~");
+    CHECK_STR(key(t, VT_KEY_TAB, VT_MOD_CTRL), "\033[27;5;9~");
+    CHECK_STR(key(t, VT_KEY_TAB, VT_MOD_SHIFT), "\033[Z");          /* back-tab stays */
+    CHECK_STR(key(t, VT_KEY_BACKSPACE, VT_MOD_CTRL), "\010");       /* its own key at level 1 */
+    CHECK_STR(key(t, VT_KEY_ESCAPE, VT_MOD_CTRL), "\033[27;5;27~");
+    CHECK_STR(key(t, VT_KEY_RETURN, VT_MOD_ALT), "\033\r");         /* level 1: Meta has a plain form */
+    CHECK_STR(key(t, VT_KEY_RETURN, 0), "\r");
+    h_put(t, "\033[>4;2m");
+    CHECK_STR(key(t, VT_KEY_RETURN, VT_MOD_ALT), "\033[27;3;13~");
+    CHECK_STR(key(t, VT_KEY_BACKSPACE, VT_MOD_CTRL), "\033[27;5;127~");
+    CHECK_STR(key(t, VT_KEY_TAB, VT_MOD_SHIFT), "\033[Z");
+    vt_free(t);
+}
+
+/* gap #7: the host hands Ctrl and Shift with the unmodified character only
+ * while modifyOtherKeys is on; Shift alone is the character's own */
+static void modify_other_keys_takes_ctrl_combinations_from_the_host(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    CHECK_INT(vt_modify_other_keys(t), 0);
+    h_put(t, "\033[>4;1m");
+    CHECK_INT(vt_modify_other_keys(t), 1);
+    CHECK_STR(key(t, ';', VT_MOD_CTRL), "\033[27;5;59~");
+    CHECK_STR(key(t, 'X', VT_MOD_CTRL | VT_MOD_SHIFT), "\033[27;6;88~");
+    CHECK_STR(key(t, 'x', VT_MOD_CTRL), "\030");
+    h_put(t, "\033[>4;2m");
+    CHECK_INT(vt_modify_other_keys(t), 2);
+    CHECK_STR(key(t, 'A', VT_MOD_SHIFT), "A");                    /* Shift alone: the character */
+    CHECK_STR(key(t, 'A', VT_MOD_SHIFT | VT_MOD_ALT), "\033[27;4;65~");
+    h_put(t, "\033[>4;0m");
+    CHECK_INT(vt_modify_other_keys(t), 0);
+    vt_free(t);
+    t = h_new(80, 24, VT_AMIGA);
+    h_put(t, "\033[>4;2m");
+    CHECK_INT(vt_modify_other_keys(t), 0);                        /* the console's own meaning */
+    vt_free(t);
+}
+
+/* gap #5: vim's FocusGained, tmux focus-events: CSI I / CSI O once ?1004 is on */
+static void focus_events_only_when_asked(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vt_u8 b[8];
+    CHECK_INT(vt_encode_focus(t, 1, b), 0);
+    h_put(t, "\033[?1004h");
+    CHECK_INT(vt_encode_focus(t, 1, b), 3);
+    CHECK(memcmp(b, "\033[I", 3) == 0);
+    CHECK_INT(vt_encode_focus(t, 0, b), 3);
+    CHECK(memcmp(b, "\033[O", 3) == 0);
+    h_put(t, "\033[?1004l");
+    CHECK_INT(vt_encode_focus(t, 0, b), 0);
+    vt_free(t);
+    t = h_new(80, 24, VT_AMIGA);
+    h_put(t, "\033[?1004h");
+    CHECK_INT(vt_encode_focus(t, 1, b), 0); /* the console reports classes 17/18 its own way */
+    vt_free(t);
+}
+
+/* audit 1: RIS left modifyOtherKeys on (a crashed vim left Ctrl keys as
+ * CSI 27 forms for the shell after `reset`); DECRQM ?66 answered 0 */
+static void reset_turns_modify_other_keys_off_and_decnkm_reports(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_put(t, "\033[>4;2m\033c");
+    CHECK_INT(vt_modify_other_keys(t), 0);
+    CHECK_STR(key(t, 'a', VT_MOD_CTRL), "\001");
+    h_reply_clear();
+    h_put(t, "\033[?66$p");
+    CHECK_STR(h_reply, "\033[?66;2$y");
+    h_put(t, "\033[?66h");
+    h_reply_clear();
+    h_put(t, "\033[?66$p");
+    CHECK_STR(h_reply, "\033[?66;1$y");
+    vt_free(t);
+}
+
 static void utf8_mouse_reaches_past_column_223(void)
 {
     vt_term *t = h_new(400, 24, VT_XTERM);
@@ -185,4 +287,9 @@ void suite_keys(void)
     bracketed_paste_only_when_asked();
     meta_escape_and_modify_other_keys();
     utf8_mouse_reaches_past_column_223();
+    alt_backspace_return_tab_escape_send_the_esc_prefix();
+    modify_other_keys_reports_modified_return_and_tab();
+    modify_other_keys_takes_ctrl_combinations_from_the_host();
+    focus_events_only_when_asked();
+    reset_turns_modify_other_keys_off_and_decnkm_reports();
 }

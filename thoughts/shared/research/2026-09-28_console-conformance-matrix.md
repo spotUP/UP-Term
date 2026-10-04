@@ -463,6 +463,9 @@ map Amiga Left/Right Amiga to Meta (vtcon decision, Q7).
 | Return / Enter | 0D (Enter in keypad application mode `ESC =`: `ESC O M`) | | |
 | Keypad digits in DECKPAM | `ESC O p`..`ESC O y`, `ESC O j/k/l/m/n/o` for `* + , - . /` | | |
 | Alt+key | `ESC` prefix (`metaSendsEscape`), vtcon default (Q7) | | |
+| Shift+PgUp / Shift+PgDn (G1 K4) | the window's scrollback on the main screen with no mouse mode; on the alternate screen or with a mouse mode the program's `ESC [ 5 ; 2 ~` / `ESC [ 6 ; 2 ~` (terminfo kPRV / kNXT) | same | test `shift_page_keys_reach_full_screen_programs` |
+| Ctrl / Shift + character keys under modifyOtherKeys (G1 K2) | the keymap applies Ctrl (its control characters) | same | while `CSI > 4 ; 1/2 m` is on the window converts the key without Ctrl and passes Ctrl+Shift: level 1 `ESC [ 27 ; m ; c ~` for Ctrl+Shift+x and Ctrl on keys with no control character (Ctrl+; Ctrl+1), level 2 for every Ctrl/Meta combination; Shift alone is never reported (the character says it). Test `modify_other_keys_takes_ctrl_combinations_from_the_host` |
+| Alt / Ctrl / Shift + Return, Tab, Backspace, Escape (G1 K1) | Alt: `ESC` + the plain key (`ESC 7F`, `ESC CR`, `ESC HT`, `ESC ESC`); Ctrl+Backspace `08`; Shift+Tab `ESC [ Z`; other modifiers: the plain key | same | modifyOtherKeys 1: Ctrl or Shift (not Shift+Tab, not Ctrl+Backspace) `ESC [ 27 ; m ; c ~` with c = 13 / 9 / 127 / 27; level 2: any modifier but Shift+Tab. Test `modify_other_keys_reports_modified_return_and_tab` |
 | HELP (no xterm key) | Proposed `ESC [ 28 ~` (DEC Help, as xterm maps it on LK keyboards) | | |
 | Shift+F1..F10 (Amiga has distinct codes) | Encoded with the modifier form, e.g. Shift+F1 `ESC [ 1 ; 2 P`, Shift+F5 `ESC [ 15 ; 2 ~` | | |
 
@@ -470,10 +473,33 @@ Other xterm input reports:
 
 - Mouse, SGR mode (`?1000h` + `?1006h`): press `ESC [ < b ; x ; y M`, release
   `... m`, 1-based cells; b = 0/1/2 button, +4 Shift, +8 Meta, +16 Ctrl, +32
-  motion, 64/65 wheel.
+  motion, 64/65 wheel. The wheel's report names the cell under the pointer
+  (clamped to the grid over the border), never window pixels (G1 M1,
+  `render/vtinput.c` `vti_wheel`; test `wheel_reports_name_the_cell_under_the_pointer`).
+  Buttons and modifiers (G1 M4): left 0, middle 1 (MIDDLEDOWN/UP), right 2
+  (only with a window that traps the menu button); Ctrl +16 and Meta (Left
+  Amiga, or Alt with meta-alt) +8 in clicks, moves and the wheel; Shift is never
+  sent (it gives the mouse back to selection, as xterm). Test
+  `middle_button_and_modifiers_reach_the_program`.
+  Motion (G1 M3): `?1002` reports moves (+32) while a button whose press the
+  program got is down, `?1003` every move (button 3 when none is down), once
+  per cell; the release of a reported press always goes to the program (off the
+  grid: the last cell reported). The window turns ReportMouse on for those modes
+  only. Tests `motion_reaches_the_program_in_the_motion_modes`,
+  `button_motion_mode_has_no_buttonless_moves`.
+- Alternate scroll (`?1007h`, xterm's alternateScroll; off by default as in
+  xterm, reset by RIS, DECRQM answers it): on the alternate screen with no
+  mouse mode a wheel notch sends three cursor-up / cursor-down keys (DECCKM
+  form). G1 M2; test `wheel_on_the_alternate_screen_sends_cursor_keys`.
 - Focus (`?1004h`): `ESC [ I` in, `ESC [ O` out (source: Amiga classes 17/18).
+  G1 K3: `vt_encode_focus`, sent by the window on IDCMP_ACTIVEWINDOW /
+  INACTIVEWINDOW (XCON:, tabs through the host's routing, console.device units);
+  test `focus_events_only_when_asked`.
 - Bracketed paste (`?2004h`): `ESC [ 200 ~` ... `ESC [ 201 ~` around pasted
-  text (the Amiga equivalent is `CSI 0 SP v` + clipboard read).
+  text (the Amiga equivalent is `CSI 0 SP v` + clipboard read). While `?2004`
+  is on the pasted text carries no ESC, no other C0 control but Tab and line
+  breaks, no DEL and no C1 (G1 P1, `vti_paste_keeps`; test
+  `bracketed_paste_drops_escape_and_controls`).
 - Window size: xterm has no in-band resize notification; ports learn it via
   the pty (`TIOCGWINSZ` / `SIGWINCH`, supplied by the handler / ixemul layer),
   or ask with `CSI 18 t` -> `ESC [ 8 ; rows ; cols t`.

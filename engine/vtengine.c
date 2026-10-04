@@ -2272,9 +2272,10 @@ static void set_mode(vt_term *t, int on)
                     restore_cursor(t, &t->sav_1049);
                 }
                 break;
-            case 8: case 12: case 45: case 1005: case 1034: case 2031: case 7727: {
+            case 8: case 12: case 45: case 1005: case 1007: case 1034: case 2031: case 7727: {
                 vt_u32 bit = p == 8 ? VT_MODE_AUTOREPEAT : p == 12 ? VT_MODE_CURSOR_BLINK
                            : p == 45 ? VT_MODE_REVERSE_WRAP : p == 1005 ? VT_MODE_MOUSE_UTF8
+                           : p == 1007 ? VT_MODE_ALT_SCROLL
                            : p == 1034 ? VT_MODE_META_8BIT : p == 2031 ? VT_MODE_SCHEME_UPDATES
                            : VT_MODE_APP_ESCAPE;
                 if (on)
@@ -2574,6 +2575,7 @@ static void report_mode(vt_term *t)
         vt_u32 bit = 0;
         switch (m) {
         case 1: bit = VT_MODE_APP_CURSOR; break;
+        case 66: bit = VT_MODE_APP_KEYPAD; break; /* DECNKM is DECKPAM's state */
         case 5: bit = VT_MODE_SCREEN_REVERSE; break;
         case 9: bit = VT_MODE_MOUSE_X10; break;
         case 25: bit = VT_MODE_CURSOR_VISIBLE; break;
@@ -2591,6 +2593,7 @@ static void report_mode(vt_term *t)
         case 8: bit = VT_MODE_AUTOREPEAT; break;
         case 45: bit = VT_MODE_REVERSE_WRAP; break;
         case 1005: bit = VT_MODE_MOUSE_UTF8; break;
+        case 1007: bit = VT_MODE_ALT_SCROLL; break;
         case 1034: bit = VT_MODE_META_8BIT; break;
         case 2031: bit = VT_MODE_SCHEME_UPDATES; break;
         case 7727: bit = VT_MODE_APP_ESCAPE; break;
@@ -4288,6 +4291,7 @@ void vt_reset(vt_term *t)
     soft_reset(t);
     t->sav_1049 = t->sav;
     t->raw_events = 0;
+    t->mok = 0; /* modifyOtherKeys back to xterm's default */
     t->amiga_bg = 0;
     t->scroll_enabled = 1;
     sixel_abort(t);
@@ -5166,6 +5170,11 @@ vt_u32 vt_raw_events(const vt_term *t)
     return t->raw_events;
 }
 
+int vt_modify_other_keys(const vt_term *t)
+{
+    return t->pers == VT_XTERM ? t->mok : 0;
+}
+
 long vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, long max)
 {
     long len = 0;
@@ -5502,6 +5511,53 @@ static int amiga_key(vt_u8 *o, long key, int mods)
     return 0;
 }
 
+/* modifyOtherKeys' form: CSI 27 ; 1 + mods ; code ~ */
+static int mok_report(vt_u8 *out, int mods, long code)
+{
+    char b[24];
+    int k = 0, i;
+    b[k++] = 0x1B;
+    b[k++] = '[';
+    b[k++] = '2';
+    b[k++] = '7';
+    b[k++] = ';';
+    k = fmt_uint(b, k, 1 + mods);
+    b[k++] = ';';
+    k = fmt_uint(b, k, code);
+    b[k++] = '~';
+    for (i = 0; i < k; i++)
+        out[i] = (vt_u8)b[i];
+    return k;
+}
+
+/* Return, Tab, Backspace and Escape with modifiers, as xterm sends them:
+ * modifyOtherKeys 2 reports every modified one, level 1 those Ctrl or
+ * Shift would otherwise lose (Shift+Tab is back-tab and Ctrl+Backspace BS
+ * at both levels: keys of their own); without it Alt is the ESC prefix
+ * and the rest is the plain key. 0: nothing here (the plain key). */
+static int c0_key_modified(const vt_term *t, long key, int mods, vt_u8 *out)
+{
+    int n = 0;
+    long code = key == VT_KEY_RETURN ? 13 : key == VT_KEY_TAB ? 9
+              : key == VT_KEY_BACKSPACE ? 0x7F : 0x1B;
+    int backtab = key == VT_KEY_TAB && mods == VT_MOD_SHIFT;
+    int ctrl_bs = key == VT_KEY_BACKSPACE && (mods & VT_MOD_CTRL);
+    if (!mods || t->pers == VT_AMIGA)
+        return 0;
+    if (t->pers == VT_XTERM && t->mok && !backtab &&
+        (t->mok == 2 || ((mods & (VT_MOD_CTRL | VT_MOD_SHIFT)) && !(ctrl_bs && mods == VT_MOD_CTRL))))
+        return mok_report(out, mods, code);
+    if (!(mods & VT_MOD_ALT) && !ctrl_bs)
+        return 0; /* Shift+Tab, or a modifier the plain key does not show */
+    if (mods & VT_MOD_ALT)
+        out[n++] = 0x1B; /* Meta: readline's M-DEL, M-RET, M-TAB, M-ESC */
+    if (ctrl_bs && t->pers == VT_XTERM) {
+        out[n++] = 0x08; /* xterm: Ctrl+Backspace is BS */
+        return n;
+    }
+    return n + vt_encode_key(t, key, mods & ~(VT_MOD_ALT | VT_MOD_CTRL), out + n);
+}
+
 int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
 {
     int n = 0;
@@ -5510,27 +5566,14 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
     if (key < 0x110000) { /* a character */
         long c = key;
         /* modifyOtherKeys: CSI 27 ; mod ; code ~ for what the plain forms
-         * cannot say -- level 2 every modified key, level 1 the ambiguous */
-        if (t->pers == VT_XTERM && t->mok && mods && key < 0x110000 &&
+         * cannot say -- level 2 every modified key, level 1 the ambiguous;
+         * Shift alone is never one (the character already says it) */
+        if (t->pers == VT_XTERM && t->mok && (mods & ~VT_MOD_SHIFT) && key < 0x110000 &&
             (t->mok == 2 ||
              ((mods & VT_MOD_CTRL) && ((mods & VT_MOD_SHIFT) ||
                                        !((c >= 'a' && c <= 'z') || (c >= '@' && c <= '_') ||
-                                         c == ' ' || c == '?'))))) {
-            char b[24];
-            int k = 0, i;
-            b[k++] = 0x1B;
-            b[k++] = '[';
-            b[k++] = '2';
-            b[k++] = '7';
-            b[k++] = ';';
-            k = fmt_uint(b, k, 1 + mods);
-            b[k++] = ';';
-            k = fmt_uint(b, k, c);
-            b[k++] = '~';
-            for (i = 0; i < k; i++)
-                out[i] = (vt_u8)b[i];
-            return k;
-        }
+                                         c == ' ' || c == '?')))))
+            return mok_report(out, mods, c);
         if (mods & VT_MOD_CTRL) {
             if (c >= 'a' && c <= 'z')
                 c -= 0x60;
@@ -5559,6 +5602,9 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
         return n;
     }
 
+    if ((key == VT_KEY_RETURN || key == VT_KEY_TAB || key == VT_KEY_BACKSPACE ||
+         key == VT_KEY_ESCAPE) && (n = c0_key_modified(t, key, mods, out)) != 0)
+        return n;
     switch (key) {
     case VT_KEY_RETURN:
         out[n++] = '\r';
@@ -5687,6 +5733,8 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
         return 0;
     if (kind == 2 && !(m & VT_MODE_MOUSE_ANY) && !(m & VT_MODE_MOUSE_BUTTON))
         return 0;
+    if (kind == 2 && button == 3 && !(m & VT_MODE_MOUSE_ANY))
+        return 0; /* ?1002 reports moves only with a button down */
     if (kind == 1 && (m & VT_MODE_MOUSE_X10) && !(m & (VT_MODE_MOUSE_NORMAL | VT_MODE_MOUSE_BUTTON |
                                                       VT_MODE_MOUSE_ANY)))
         return 0; /* X10 reports presses only */
@@ -5738,6 +5786,16 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
     for (i = 0; i < n; i++)
         out[i] = (vt_u8)b[i];
     return n;
+}
+
+int vt_encode_focus(const vt_term *t, int in, vt_u8 *out)
+{
+    if (!(t->modes & VT_MODE_FOCUS) || t->pers != VT_XTERM)
+        return 0;
+    out[0] = 0x1B;
+    out[1] = '[';
+    out[2] = (vt_u8)(in ? 'I' : 'O');
+    return 3;
 }
 
 int vt_encode_paste(const vt_term *t, int end, vt_u8 *out)

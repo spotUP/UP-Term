@@ -154,6 +154,7 @@ typedef struct vt_callbacks {
 #define VT_MODE_SYNC         0x100000 /* ?2026: synchronized output -- a program is in the middle of
                                        * a frame; the host holds its drawing until this is reset (or a
                                        * moment has passed), so no half-updated screen is shown */
+#define VT_MODE_ALT_SCROLL   0x200000 /* ?1007: the wheel on the alternate screen sends cursor keys */
 
 typedef struct vt_term vt_term;
 
@@ -367,6 +368,11 @@ enum vt_key {
 #define VT_MOD_CTRL  4
 /* Writes at most 32 bytes to out; returns the count (0: nothing to send). */
 int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
+/* xterm's modifyOtherKeys level (CSI > 4 ; n m), 0 off. While it is on the
+ * host hands character keys over without Ctrl applied, with VT_MOD_CTRL
+ * (and VT_MOD_SHIFT) in mods: the encoder decides between the control
+ * character and CSI 27 ; m ; c ~. Shift alone never changes a character. */
+int      vt_modify_other_keys(const vt_term *t);
 /* Mouse reports, when the host asked for them (?9, ?1000, ?1002, ?1003,
  * with ?1006 for the SGR form). button: 0 left, 1 middle, 2 right,
  * 64/65 wheel up/down; kind: 0 press, 1 release, 2 motion. x, y are cell
@@ -374,5 +380,8 @@ int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
 int      vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mods, vt_u8 *out);
 /* Bracketed paste wrapper: writes the prefix or suffix (0 bytes when off). */
 int      vt_encode_paste(const vt_term *t, int end, vt_u8 *out);
+/* Focus report (?1004): CSI I when the window became active (in 1), CSI O
+ * when it stopped being; 0 bytes when the program did not ask. */
+int      vt_encode_focus(const vt_term *t, int in, vt_u8 *out);
 
 #endif

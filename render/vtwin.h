@@ -27,6 +27,7 @@
 #include <devices/keymap.h>
 #include "../engine/vtengine.h"
 #include "amiga_render.h"
+#include "vtinput.h"
 
 /* With a key to the owner: the physical Alt key was down (VT_MOD_ALT is
  * Meta, which is Left Amiga unless meta_alt). KingCON's Alt+Tab. */
@@ -112,6 +113,11 @@ typedef struct vtwin {
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */
+    vti_mouse mouse;             /* buttons and moves the program was told about (vtinput) */
+    int mouse_mods;              /* VT_MOD_* of the last mouse event (motion polled on the clock) */
+    ULONG click_secs, click_micros; /* the last left press, for DoubleClick() */
+    int sel_whole;               /* the selection is a double-clicked word or triple-clicked line */
+    int pointer_on;              /* ReportMouse is on: a drag, or the program wants moves */
     char find_q[VT_FIND_QUERY_MAX]; /* the last find query, for "find next" */
     long find_next;              /* the row to continue from (VT_ROW_NONE: from the oldest) */
     const vtwin_host *host;
@@ -176,12 +182,17 @@ void vtwin_refresh(vtwin *w);
 /* a raw-key event: code and qualifier as Intuition gives them, prev the
  * previous two down keys (dead keys; 0 when unknown), the event's time */
 void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG micros);
-/* a mouse event: move (1) or button (code SELECTDOWN/UP, MENUDOWN/UP) at
- * window coordinates mx, my */
-void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my);
-/* the wheel: up (1) / down (-1). The program's when it asked for the mouse,
+/* a mouse event: move (1) or button (code SELECTDOWN/UP, MIDDLEDOWN/UP,
+ * MENUDOWN/UP) at window coordinates mx, my, at the event's time (a run of
+ * clicks selects a word, then a line) */
+void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, ULONG secs, ULONG micros);
+/* the wheel: up (1) / down (0), qual the event's qualifier (Ctrl and Meta
+ * go into the report). The program's when it asked for the mouse,
  * otherwise the scrollback by a few lines (the spec's wheel_scroll) */
-void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my);
+void vtwin_wheel(vtwin *w, int up, UWORD qual, WORD mx, WORD my);
+/* The window became active (in 1) or stopped being: the program's focus
+ * report when it asked for one (?1004) */
+void vtwin_focus(vtwin *w, int in);
 /* Find (Right Amiga F, or the console's menu): the scrollback and the grid,
  * oldest line first, case-insensitively, and scroll the view so the line the
  * match is on shows. q NULL or empty repeats the last query. 1 when the view

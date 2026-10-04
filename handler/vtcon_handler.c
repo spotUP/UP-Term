@@ -3979,11 +3979,15 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         break;
     case IDCMP_MOUSEBUTTONS:
     case IDCMP_MOUSEMOVE:
-        vtwin_mouse(&c->w, cls == IDCMP_MOUSEMOVE, code, qual, mx, my);
+        vtwin_mouse(&c->w, cls == IDCMP_MOUSEMOVE, code, qual, mx, my, secs, mics);
         break;
     case IDCMP_EXTENDEDMOUSE:
         if (wheel)
-            vtwin_wheel(&c->w, wheel > 0, mx, my);
+            vtwin_wheel(&c->w, wheel > 0, qual, mx, my);
+        break;
+    case IDCMP_ACTIVEWINDOW:
+    case IDCMP_INACTIVEWINDOW:
+        vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
         break;
     default:
         break;
