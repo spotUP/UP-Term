@@ -1,16 +1,18 @@
 /* sys_amiga -- sys.h on AmigaDOS for C:Claude.
  *
  * run_command: the command line goes into a script file in T: and runs as
- * "vsh <script>" through SystemTags, asynchronously, with no input (NIL:)
- * and its output to a second T: file. NP_ExitCode signals this task when
- * the command's process ends and hands over its return code. While it
- * runs, a Ctrl+C or the time limit sends the process a break (vsh passes
- * it to the command) and waits for it to end. Writing the command to a
- * file means no quoting rules stand between Claude's text and vsh. */
+ * "vsh <script>" with no input (NIL:) and its output to a second T: file,
+ * from a runner process the way vsh runs its own jobs (a synchronous
+ * SystemTags with the Shell process named; the runner replies with the
+ * return code). While it runs, a Ctrl+C or the time limit sends that
+ * process a break (vsh passes it to the command) and waits for it to end.
+ * Writing the command to a file means no quoting rules stand between
+ * Claude's text and vsh. */
 #include <string.h>
 #include <stdlib.h>
 #include <exec/types.h>
 #include <exec/tasks.h>
+#include <exec/memory.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/dostags.h>
@@ -144,25 +146,37 @@ static int a_canon(void *u, const char *path, char *out, long cap)
 
 /* ---- run_command ---- */
 
-static struct Task *parent;
-static BYTE done_sig = -1;
-static volatile LONG child_rc;
+/* vsh's job pattern (shell/vsh.c runner/job_signal, tested on the rig): a
+ * runner process makes a synchronous SystemTags call with the command's
+ * Shell process named, so a break can find it, and replies when it is
+ * back with the return code. */
+typedef struct runjob {
+    struct Message msg;
+    char line[64];              /* "vsh T:Claude-command-..." */
+    char child[40];             /* the name of the Shell process */
+    BPTR in, out;
+    LONG rc;
+    volatile int done;
+} runjob;
 
-/* NP_ExitCode: runs in the command's process as it ends; the return code
- * in d0, the exit data in d1 */
-static void child_exit(__reg("d0") LONG rc, __reg("d1") LONG data)
+static void runner(void)
 {
-    (void)data;
-    child_rc = rc;
-    Signal(parent, 1UL << done_sig);
+    struct Process *me = (struct Process *)FindTask(0);
+    runjob *j;
+    WaitPort(&me->pr_MsgPort);
+    j = (runjob *)GetMsg(&me->pr_MsgPort);
+    j->rc = SystemTags((STRPTR)j->line, SYS_Input, j->in, SYS_Output, j->out, SYS_UserShell, TRUE,
+                       NP_Name, (ULONG)j->child, TAG_END);
+    Forbid();                       /* the reply and our end, before Claude can free anything */
+    j->done = 1;
+    ReplyMsg(&j->msg);
 }
 
-static void send_break(const char *name)
+static void send_break(runjob *j)
 {
     struct Task *t;
     Forbid();
-    t = FindTask((STRPTR)name);
-    if (t)
+    if (!j->done && (t = FindTask((STRPTR)j->child)) != 0)
         Signal(t, SIGBREAKF_CTRL_C);
     Permit();
 }
@@ -170,20 +184,19 @@ static void send_break(const char *name)
 static int a_run(void *u, const char *cmd, int timeout_s, char *out, long cap, long *outn, long *rc)
 {
     sys_amiga *s = (sys_amiga *)u;
-    char script[48], output[48], line[64], name[40], num[12];
-    BPTR in, of;
-    LONG r;
+    char script[48], output[48], num[12];
+    struct MsgPort *port;
+    struct Process *p;
+    runjob *j;
     long waited = 0, limit = (long)timeout_s * 50, n = 0;
-    int result = 0, ended = 0, broke = 0;
-    ULONG mask;
-    parent = FindTask(0);
-    cl_ltoa((long)parent, num);
+    int broke = 0, ended = 0;
+    cl_ltoa((long)FindTask(0), num);
     cl_copy(script, "T:Claude-command-", sizeof(script));
     cl_cat(script, num, sizeof(script));
     cl_copy(output, "T:Claude-output-", sizeof(output));
     cl_cat(output, num, sizeof(output));
-    cl_copy(name, "Claude command ", sizeof(name));
-    cl_cat(name, num, sizeof(name));
+    *outn = 0;
+    *rc = -1;
     {
         /* the script: the command line and a newline */
         long cl = (long)strlen(cmd);
@@ -200,82 +213,90 @@ static int a_run(void *u, const char *cmd, int timeout_s, char *out, long cap, l
         if (bad)
             return -1;
     }
-    done_sig = AllocSignal(-1);
-    if (done_sig < 0) {
-        cl_copy(s->err, "no free signal", sizeof(s->err));
-        DeleteFile((STRPTR)script);
-        return -1;
+    /* the job and its port outlive this call when a command will not end */
+    j = (runjob *)AllocVec(sizeof(runjob), MEMF_PUBLIC | MEMF_CLEAR);
+    port = CreateMsgPort();
+    if (!j || !port) {
+        cl_copy(s->err, "out of memory", sizeof(s->err));
+        goto fail;
     }
-    SetSignal(0, 1UL << done_sig);
-    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
-    of = Open((STRPTR)output, MODE_NEWFILE);
-    if (!in || !of) {
+    cl_copy(j->line, "vsh ", sizeof(j->line));
+    cl_cat(j->line, script, sizeof(j->line));
+    cl_copy(j->child, "Claude command ", sizeof(j->child));
+    cl_cat(j->child, num, sizeof(j->child));
+    j->in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    j->out = Open((STRPTR)output, MODE_NEWFILE);
+    if (!j->in || !j->out) {
         set_err(s, "cannot open the command's input or output");
-        if (in)
-            Close(in);
-        if (of)
-            Close(of);
-        FreeSignal(done_sig);
-        DeleteFile((STRPTR)script);
-        return -1;
+        goto fail;
     }
-    cl_copy(line, "vsh ", sizeof(line));
-    cl_cat(line, script, sizeof(line));
-    child_rc = 0;
-    r = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, of, SYS_Asynch, TRUE, SYS_UserShell, TRUE,
-                   NP_Name, (ULONG)name, NP_ExitCode, (ULONG)child_exit, NP_ExitData, 0, TAG_END);
-    if (r == -1) {
+    j->msg.mn_ReplyPort = port;
+    j->msg.mn_Length = sizeof(runjob);
+    p = CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"Claude runner", NP_StackSize, 8000,
+                          NP_Cli, TRUE, TAG_END);
+    if (!p) {
         set_err(s, "the command did not start");
-        Close(in);
-        Close(of);
-        FreeSignal(done_sig);
-        DeleteFile((STRPTR)script);
-        DeleteFile((STRPTR)output);
-        return -1;
+        goto fail;
     }
-    /* SystemTags closes in and of when the process ends */
+    PutMsg(&p->pr_MsgPort, &j->msg);
     for (;;) {
-        mask = SetSignal(0, 0);
-        if (mask & (1UL << done_sig)) {
+        ULONG mask;
+        if (GetMsg(port)) {
             ended = 1;
             break;
         }
+        mask = SetSignal(0, 0);
         if (!broke && (mask & SIGBREAKF_CTRL_C)) {
             SetSignal(0, SIGBREAKF_CTRL_C);
-            send_break(name);
+            send_break(j);
             broke = SYS_BREAK;
             limit = waited + 500;   /* ten more seconds to end */
         } else if (!broke && waited >= limit) {
-            send_break(name);
+            send_break(j);
             broke = SYS_TIMEOUT;
             limit = waited + 500;
         } else if (broke && waited >= limit)
-            break;                  /* it does not end: leave it */
+            break;                  /* it does not end: leave it running */
         Delay(5);
         waited += 5;
     }
-    SetSignal(0, 1UL << done_sig);
-    FreeSignal(done_sig);
-    done_sig = -1;
-    *rc = ended ? child_rc : -1;
-    result = broke;
-    if (ended) {
+    if (!ended) {
+        /* the runner still owns j, its streams and the port: leave them */
+        cl_copy(s->err, "the command did not end after a break; it was left running", sizeof(s->err));
+        return -1;
+    }
+    *rc = j->rc;
+    Close(j->in);
+    Close(j->out);
+    FreeVec(j);
+    DeleteMsgPort(port);
+    {
         char *b = 0;
-        if (a_read(u, output, cap, &b, &n) == 0) {
-            memcpy(out, b, (size_t)n);
-            free(b);
-        } else if (a_read(u, output, 0x7fffffffL, &b, &n) == 0) {
-            n = n > cap ? cap : n;  /* longer than the cap: its start */
+        if (a_read(u, output, 0x7fffffffL, &b, &n) == 0) {
+            if (n > cap)
+                n = cap;            /* longer than the cap: its start */
             memcpy(out, b, (size_t)n);
             free(b);
         } else
             n = 0;
-        DeleteFile((STRPTR)output);
-        DeleteFile((STRPTR)script);
-    } else
-        cl_copy(s->err, "the command did not end after a break", sizeof(s->err));
+    }
+    DeleteFile((STRPTR)output);
+    DeleteFile((STRPTR)script);
     *outn = n;
-    return result;
+    return broke;
+fail:
+    if (j) {
+        if (j->in)
+            Close(j->in);
+        if (j->out)
+            Close(j->out);
+        FreeVec(j);
+    }
+    if (port)
+        DeleteMsgPort(port);
+    DeleteFile((STRPTR)script);
+    DeleteFile((STRPTR)output);
+    return -1;
 }
 
 static const char *a_err(void *u)

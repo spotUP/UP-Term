@@ -88,6 +88,7 @@ static int a_open(void *u, const char *host, int port, int tls)
         return NET_ERROR;
     }
     memset(&sa, 0, sizeof(sa));
+    sa.sin_len = sizeof(sa);
     sa.sin_family = AF_INET;
     sa.sin_port = (unsigned short)port;     /* the 68k is big-endian: network order */
     sa.sin_addr.s_addr = inet_addr((STRPTR)host);
@@ -219,8 +220,11 @@ static long a_recv(void *u, char *b, long cap, int timeout_ms)
                 set_err(n, "receiving failed (TLS)", 0);
                 return NET_ERROR;
             }
-            if (wr && wait_sock(n, 1, timeout_ms) < 0)
-                return NET_BREAK;
+            if (wr) {
+                w = wait_sock(n, 1, timeout_ms);
+                if (w < 0)
+                    return w;
+            }
             continue;
         }
         r = recv(n->sock, (APTR)b, cap, 0);
