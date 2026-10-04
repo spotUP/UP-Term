@@ -13,17 +13,18 @@ CONF    := config/upconf.c
 PREFS_CORE := prefs/prefs_core.c
 ICONSPEC := install/iconspec.c
 ZMODEM  := zm/zmodem.c
-# hl (view/): the lexer, themes, the line view
+# hl and mdv (view/): the lexer, themes, the Markdown renderer
 VIEW_LEX  := view/hl_lex.c view/hl_langs.c view/hl_style.c view/vw_text.c
 VIEW_HL   := $(VIEW_LEX) view/hl_view.c
-VIEW_CORE := $(VIEW_LEX) view/hl_view.c
-VIEW_HDR  := view/hl_lex.h view/hl_style.h view/hl_view.h view/vw_text.h
+VIEW_MD   := $(VIEW_LEX) view/md.c
+VIEW_CORE := $(VIEW_LEX) view/hl_view.c view/md.c
+VIEW_HDR  := view/hl_lex.h view/hl_style.h view/hl_view.h view/vw_text.h view/md.h
 VIEW_CLI  := view/vw_cli.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c \
-           tests/test_hl.c
+           tests/test_hl.c tests/test_md.c
 
 .PHONY: demo-host view-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
@@ -34,11 +35,14 @@ $(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) demo/updemo.c $(VIEW_CORE) $(TESTS)
 
-# hl for the host terminal (and the timings): build/hl
-view-host: $(BUILD)/hl
+# hl and mdv for the host terminal (and the timings): build/hl, build/mdv
+view-host: $(BUILD)/hl $(BUILD)/mdv
 $(BUILD)/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c
+$(BUILD)/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c
 
 render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
@@ -142,13 +146,16 @@ HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s handler/vtcon_handler.c h
 HANDLER_HDR := engine/vtengine.h engine/vtwidth.h render/amiga_render.h render/vtwin.h render/glyphmap.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/hl
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/hl $(BUILD)/amiga/mdv
 
-# hl: the portable view/ core and the AmigaDOS side (no ixemul).
+# hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
 $(BUILD)/amiga/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c
+$(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c

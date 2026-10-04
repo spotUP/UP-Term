@@ -22,6 +22,7 @@ void suite_slash(void);
 void suite_fontpair(void);
 void suite_updemo(void);
 void suite_hl(void);
+void suite_md(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -45,6 +46,7 @@ static const h_suite suites[] = {
     { "fontpair", suite_fontpair },
     { "updemo", suite_updemo },
     { "hl", suite_hl },
+    { "md", suite_md },
     { 0, 0 }
 };
 
