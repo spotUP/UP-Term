@@ -32,23 +32,23 @@ _vt_asm_cells_move:
 	ble.s	.mnone
 	cmp.l	a1,a0
 	bhi.s	.mback			; dst above src: from the end
+	subq.w	#1,d0			; (dbra: n < 65536, a row's cells)
 .mfwd:	move.l	(a1)+,(a0)+
 	move.l	(a1)+,(a0)+
 	move.l	(a1)+,(a0)+
 	move.l	(a1)+,(a0)+
-	subq.l	#1,d0
-	bne.s	.mfwd
+	dbra	d0,.mfwd
 .mnone:	rts
 .mback:	move.l	d0,d1
 	lsl.l	#4,d1			; n cells of 16 bytes
 	add.l	d1,a0
 	add.l	d1,a1
+	subq.w	#1,d0
 .mbk:	move.l	-(a1),-(a0)
 	move.l	-(a1),-(a0)
 	move.l	-(a1),-(a0)
 	move.l	-(a1),-(a0)
-	subq.l	#1,d0
-	bne.s	.mbk
+	dbra	d0,.mbk
 	rts
 	xdef	_vt_asm_rows_down
 
@@ -60,9 +60,9 @@ _vt_asm_rows_up:
 	move.l	8(sp),d0
 	ble.s	.unone
 	lea	4(a0),a1
+	subq.w	#1,d0			; (dbra: k < 65536 rows)
 .urow:	move.l	(a1)+,(a0)+
-	subq.l	#1,d0
-	bne.s	.urow
+	dbra	d0,.urow
 .unone:	rts
 
 _vt_asm_rows_down:
@@ -71,9 +71,9 @@ _vt_asm_rows_down:
 	ble.s	.dnone
 	addq.l	#4,a0			; one past p[0]
 	lea	-4(a0),a1		; one past p[-1]
+	subq.w	#1,d0
 .drow:	move.l	-(a1),-(a0)
-	subq.l	#1,d0
-	bne.s	.drow
+	dbra	d0,.drow
 .dnone:	rts
 
 ; void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto)
@@ -89,12 +89,12 @@ _vt_asm_fill:
 	move.l	(a1)+,d2
 	move.l	(a1)+,d3
 	move.l	(a1),d4
+	subq.w	#1,d0			; (dbra: n < 65536, a row's cells)
 .fcell:	move.l	d1,(a0)+
 	move.l	d2,(a0)+
 	move.l	d3,(a0)+
 	move.l	d4,(a0)+
-	subq.l	#1,d0
-	bne.s	.fcell
+	dbra	d0,.fcell
 	movem.l	(sp)+,d2-d4
 .fnone:	rts
 
