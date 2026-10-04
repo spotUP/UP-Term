@@ -1089,11 +1089,30 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
 
 /* ---- the mouse ---------------------------------------------------------------------- */
 
+/* The text area's geometry, for vtinput's pixel-to-cell maths. */
+static void geom(const vtwin *w, vti_geom *g)
+{
+    g->ox = w->r.ox;
+    g->oy = w->r.oy;
+    g->cw = w->r.cw;
+    g->ch = w->r.ch;
+    g->cols = w->r.cols;
+    g->rows = w->r.rows;
+}
+
+/* The cell under window pixel mx, my: 0 outside the text area. */
+static int cell_at(const vtwin *w, WORD mx, WORD my, int *x, int *y)
+{
+    vti_geom g;
+    geom(w, &g);
+    return vti_cell_at(&g, mx, my, x, y);
+}
+
 /* The selection to the cell under the pointer, while a drag is on. */
 static void drag_to(vtwin *w, WORD mx, WORD my)
 {
     int x, y;
-    if (!w->dragging || !w->t || !vr_cell_at(&w->r, mx, my, &x, &y))
+    if (!w->dragging || !w->t || !cell_at(w, mx, my, &x, &y))
         return;
     if (x == w->drag_x && y == w->drag_y)
         return;
@@ -1112,7 +1131,7 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
     int shift = (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0;
     if (!w->t)
         return;
-    in = vr_cell_at(&w->r, mx, my, &x, &y);
+    in = cell_at(w, mx, my, &x, &y);
     if (move) {
         drag_to(w, mx, my);
         return;
@@ -1154,24 +1173,23 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
     }
 }
 
-/* The mouse wheel: three lines per notch. A program in mouse mode gets
- * the wheel as its report; otherwise the wheel moves through the
- * scrollback (the spec's wheel_scroll). */
+/* The mouse wheel (vti_wheel decides): the program's report when it asked
+ * for the mouse, otherwise the scrollback (the spec's wheel_scroll). */
 void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my)
 {
-    int n = 0;
+    int n, lines;
     vt_u8 out[40];
-    if (!w->t || !w->wheel_scroll)
+    vti_geom g;
+    if (!w->t)
         return;
-    if (!w->r.view &&
-        (vt_modes(w->t) & (VT_MODE_MOUSE_X10 | VT_MODE_MOUSE_NORMAL | VT_MODE_MOUSE_BUTTON |
-                           VT_MODE_MOUSE_ANY)))
-        n = vt_encode_mouse(w->t, up ? 64 : 65, 0, mx, my, 0, out);
+    geom(w, &g);
+    n = vti_wheel(&g, w->t, w->r.view, up, 0, mx, my, out, &lines);
     if (n) {
         w->host->input(w->user, out, n);
         return;
     }
-    vr_set_view(&w->r, w->r.view + (up ? 3 : -3));
+    if (w->wheel_scroll)
+        vr_set_view(&w->r, w->r.view + lines);
 }
 
 void vtwin_focus(vtwin *w, int in)

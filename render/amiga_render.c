@@ -1858,13 +1858,3 @@ void vr_cursor_on(vr_render *r)
         r->blank = was; /* vr_scroll takes the cursor off before it looks */
     }
 }
-
-int vr_cell_at(const vr_render *r, WORD mx, WORD my, int *x, int *y)
-{
-    WORD cx = (WORD)((mx - r->ox) / r->cw), cy = (WORD)((my - r->oy) / r->ch);
-    if (mx < r->ox || my < r->oy || cx >= r->cols || cy >= r->rows)
-        return 0;
-    *x = cx;
-    *y = cy;
-    return 1;
-}

@@ -171,8 +171,6 @@ void vr_set_selection_colors(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
 /* Hide / show the cursor around a batch of output. */
 void vr_cursor_off(vr_render *r);
 void vr_cursor_on(vr_render *r);
-/* Cell under a window pixel position; returns 0 outside the text area. */
-int  vr_cell_at(const vr_render *r, WORD mx, WORD my, int *x, int *y);
 /* Show the grid `lines` rows back into the scrollback (0 = live output);
  * clamps and redraws. Engine damage is not drawn while the view is back. */
 void vr_set_view(vr_render *r, int lines);

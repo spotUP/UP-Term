@@ -27,6 +27,7 @@
 #include <devices/keymap.h>
 #include "../engine/vtengine.h"
 #include "amiga_render.h"
+#include "vtinput.h"
 
 /* With a key to the owner: the physical Alt key was down (VT_MOD_ALT is
  * Meta, which is Left Amiga unless meta_alt). KingCON's Alt+Tab. */
