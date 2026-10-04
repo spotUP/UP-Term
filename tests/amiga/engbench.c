@@ -14,7 +14,8 @@
 static void damage(void *u, int x0, int y0, int x1, int y1) { (void)u; (void)x0; (void)y0; (void)x1; (void)y1; }
 static void scroll(void *u, int t, int b, int n) { (void)u; (void)t; (void)b; (void)n; }
 
-static char buf[70000];
+static char buf[170000];
+static int plain_lines = 816; /* LINES n: workload 0's line count (at most 2000) */
 static long n;
 
 static void s(const char *t) { while (*t) buf[n++] = *t++; }
@@ -33,7 +34,7 @@ static void build(int w)
     n = 0;
     switch (w) {
     case 0: /* 816 lines of 78 characters */
-        for (i = 0; i < 816; i++) { for (x = 0; x < 78; x++) buf[n++] = (char)('a' + (i + x) % 26); s("\r\n"); }
+        for (i = 0; i < plain_lines; i++) { for (x = 0; x < 78; x++) buf[n++] = (char)('a' + (i + x) % 26); s("\r\n"); }
         break;
     case 1: /* 12000 newlines */
         for (i = 0; i < 12000; i++) buf[n++] = '\n';
@@ -58,6 +59,21 @@ static void build(int w)
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
 void vt_asm_ch_blank(vt_cell *c, long n);
+void vt_asm_pack_ch(const vt_cell *c, unsigned char *d, long n);
+long vt_asm_pack_run(const vt_cell *c, unsigned char *o, long n, const vt_cell *proto);
+
+/* sb_code's C loop for what vt_asm_pack_run does: the reference */
+static long pack_run_c(const vt_cell *c, unsigned char *o, long n, const vt_cell *p)
+{
+    long i;
+    for (i = 0; i < n; i++) {
+        if (c[i].fg != p->fg || c[i].bg != p->bg || c[i].attr != p->attr || c[i].deco != p->deco ||
+            c[i].ext != p->ext || c[i].pad != p->pad || c[i].width != 1 || c[i].ch >= 0x80)
+            break;
+        o[i] = (unsigned char)c[i].ch;
+    }
+    return i;
+}
 long vr_asm_row_scan(const vt_cell *c, long n, unsigned char *out);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_rows_up(void **p, long k);
@@ -202,6 +218,53 @@ static int asm_check(void)
             for (k = 0; k < 18; k++)
                 if (memcmp(&w[k], &r[k], sizeof(vt_cell))) return 68;
         }
+        /* vt_asm_pack_ch: the low bytes of n characters, nothing past them */
+        for (len = 0; len <= 13; len++) {
+            static unsigned char d[20];
+            for (i = 0; i < 18; i++)
+                w[i].ch = (vt_u16)(0x4100 + 0x20 + i);
+            memset(d, 0xEE, sizeof(d));
+            vt_asm_pack_ch(w + 1, d + 1, len);
+            if (d[0] != 0xEE || d[len + 1] != 0xEE) return 69;
+            for (k = 0; k < len; k++)
+                if (d[1 + k] != (unsigned char)(0x20 + 1 + k)) return 70;
+        }
+        /* vt_asm_pack_run against its C: every length, a cell of another
+         * kind (each style field, a width, a character) at every place */
+        for (len = 0; len <= 13; len++)
+            for (at = -1; at < 13; at++)
+                for (kind = 0; kind < 10; kind++) {
+                    static unsigned char d1[20], d2[20];
+                    vt_cell pr;
+                    long got, want;
+                    for (i = 0; i < 18; i++) {
+                        w[i].ch = (vt_u16)(0x21 + i); w[i].fg = 0x01000000UL | 0x123456UL; w[i].bg = 7;
+                        w[i].attr = 0x0105; w[i].width = 1; w[i].deco = 2; w[i].ext = 3; w[i].pad = 0;
+                    }
+                    pr = w[0];
+                    pr.width = 2; /* the proto's own width does not count */
+                    if (at >= 0) {
+                        vt_cell *x = &w[1 + at];
+                        switch (kind) {
+                        case 0: x->fg ^= 1; break;
+                        case 1: x->bg = 0x100; break;
+                        case 2: x->attr ^= 0x8000; break;
+                        case 3: x->deco = 0; break;
+                        case 4: x->ext = 4; break;
+                        case 5: x->pad = 1; break;
+                        case 6: x->width = 0; break;
+                        case 7: x->width = 2; break;
+                        case 8: x->ch = 0x80; break;
+                        default: x->ch = 0x2500; break;
+                        }
+                    }
+                    memset(d1, 0xEE, sizeof(d1));
+                    memset(d2, 0xEE, sizeof(d2));
+                    got = vt_asm_pack_run(w + 1, d1 + 1, len, &pr);
+                    want = pack_run_c(w + 1, d2 + 1, len, &pr);
+                    if (got != want) return 71;
+                    if (memcmp(d1, d2, sizeof(d1))) return 72;
+                }
     }
     for (i = 0; i < 12; i++) c[i].ch = (vt_u16)i;
     p.ch = 'F';
@@ -317,7 +380,11 @@ int main(int argc, char **argv)
     static vt_callbacks cb;
     /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-5) and
      * PERS one dialect (0 xterm, 1 amiga) -- for tools/prof68k.py, which
-     * counts the instructions of one workload under vamos */
+     * counts the instructions of one workload under vamos. LINES n and SB n
+     * (W23): workload 0's line count and the scrollback's size (500), so
+     * the cost of a line scrolled into a full scrollback is the difference
+     * of two counts. */
+    int sb = 500;
     int reps = 3, only = -1, onlypers = -1, w, r, pers, a;
     long chunk = 4096; /* CHUNK n: the write size (conbench plain-lines writes 79) */
     for (a = 1; a + 1 < argc; a += 2) {
@@ -325,6 +392,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[a], "ONLY")) only = atoi(argv[a + 1]);
         else if (!strcmp(argv[a], "PERS")) onlypers = atoi(argv[a + 1]);
         else if (!strcmp(argv[a], "CHUNK")) chunk = atoi(argv[a + 1]);
+        else if (!strcmp(argv[a], "LINES")) plain_lines = atoi(argv[a + 1]) > 2000 ? 2000 : atoi(argv[a + 1]);
+        else if (!strcmp(argv[a], "SB")) sb = atoi(argv[a + 1]);
     }
     cb.damage = damage;
     cb.scroll = scroll;
@@ -350,7 +419,7 @@ int main(int argc, char **argv)
                 continue;
             build(w);
             for (r = 0; r < reps; r++) {
-                vt_term *t = vt_new(80, 32, 500, &cb, 0);
+                vt_term *t = vt_new(80, 32, sb, &cb, 0);
                 long t0;
                 if (!t)
                     return 20;

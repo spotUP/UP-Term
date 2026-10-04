@@ -33,6 +33,7 @@ void suite_sbar(void);
 void suite_telnet(void);
 void suite_complete(void);
 void suite_winmem(void);
+void suite_sbpack(void);
 void suite_hl(void);
 void suite_md(void);
 
@@ -69,6 +70,7 @@ static const h_suite suites[] = {
     { "telnet", suite_telnet },
     { "complete", suite_complete },
     { "winmem", suite_winmem },
+    { "sbpack", suite_sbpack },
     { "hl", suite_hl },
     { "md", suite_md },
     { 0, 0 }

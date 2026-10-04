@@ -17,6 +17,8 @@
 	xdef	_vt_asm_put_ch
 	xdef	_vt_asm_fill
 	xdef	_vt_asm_ch_blank
+	xdef	_vt_asm_pack_ch
+	xdef	_vt_asm_pack_run
 	xdef	_vt_asm_csi
 	xdef	_vt_asm_rows_up
 	xdef	_vt_asm_cells_move
@@ -207,6 +209,79 @@ _vt_asm_ch_blank:
 	lea	64(a0),a0
 .b4e:	dbra	d0,.b4
 .bnone:	rts
+
+; void vt_asm_pack_ch(const vt_cell *c, vt_u8 *d, long n)
+;
+; sb_store of a plain line (chonly: the cells differ from the default blank
+; in a Latin-1 ch alone): the low byte of n cells' characters to d, one
+; after another -- the line's text, packed for the scrollback (W23). Four
+; cells a turn of the loop, six instructions (vbcc's C loop: five a cell).
+_vt_asm_pack_ch:
+	move.l	12(sp),d0		; n
+	ble.s	.pnone
+	move.l	4(sp),a0		; c
+	move.l	8(sp),a1		; d
+	moveq	#3,d1
+	and.w	d0,d1			; the odd cells first
+	lsr.l	#2,d0			; then fours
+	bra.s	.p1e
+.p1:	move.b	9(a0),(a1)+		; ch's low byte
+	lea	16(a0),a0
+.p1e:	dbra	d1,.p1
+	bra.s	.p4e
+.p4:	move.b	9(a0),(a1)+
+	move.b	25(a0),(a1)+
+	move.b	41(a0),(a1)+
+	move.b	57(a0),(a1)+
+	lea	64(a0),a0
+.p4e:	dbra	d0,.p4
+.pnone:	rts
+
+; long vt_asm_pack_run(const vt_cell *c, vt_u8 *o, long n, const vt_cell *proto)
+;
+; sb_code's loop (W23): the cells from c with proto's style (fg, bg, attr,
+; deco, ext, pad), width 1 and a character below $80 -- at most n of them,
+; n < 32768 -- one byte each to o. Stops at the first other cell; returns
+; how many it packed. Fourteen instructions a cell (vbcc's C: about 30,
+; the style's bytes on the stack).
+_vt_asm_pack_run:
+	movem.l	d2-d6/a2,-(sp)
+	move.l	28(sp),a0		; c
+	move.l	32(sp),a1		; o
+	move.l	36(sp),d0		; n
+	move.l	40(sp),a2		; proto
+	move.l	d0,d6
+	ble.s	.rnone
+	move.l	(a2),d2			; fg
+	move.l	4(a2),d3		; bg
+	move.w	10(a2),d4		; attr
+	move.l	12(a2),d5		; width deco ext pad, as one long
+	and.l	#$00ffffff,d5
+	or.l	#$01000000,d5		; with width 1
+	subq.w	#1,d0
+.rl:	cmp.l	12(a0),d5
+	bne.s	.rend
+	cmp.l	(a0),d2
+	bne.s	.rend
+	cmp.l	4(a0),d3
+	bne.s	.rend
+	cmp.w	10(a0),d4
+	bne.s	.rend
+	move.w	8(a0),d1
+	cmp.w	#$80,d1
+	bcc.s	.rend
+	move.b	d1,(a1)+
+	lea	16(a0),a0
+	dbra	d0,.rl
+.rend:	ext.l	d0			; cells left after the one that stopped it, -1 at the end
+	addq.l	#1,d0
+	sub.l	d0,d6			; packed: n - left
+	move.l	d6,d0
+	movem.l	(sp)+,d2-d6/a2
+	rts
+.rnone:	moveq	#0,d0
+	movem.l	(sp)+,d2-d6/a2
+	rts
 
 ; long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto)
 ;
