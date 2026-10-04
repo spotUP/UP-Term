@@ -18,7 +18,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c
 
-.PHONY: demo-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
+.PHONY: rom test-rom demo-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
@@ -357,9 +357,35 @@ $(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h
 	$(VC) -dontwarn=153 -o $@ device/upgetty.c
 
 # C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
-$(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h
+$(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_switch.c device/upc_switch.h device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ device/upconsole.c
+	$(VC) -o $@ device/upconsole.c device/upc_switch.c
+
+# UP-Term in ROM (ledger R1, research 2026-10-04_upterm-in-rom.md): the
+# RTF_AFTERDOS module carrying the device and the handler as hunk files,
+# one read-only hunk (tools/mkrom.py refuses DATA/BSS)
+$(BUILD)/amiga/uprom: device/uprom_tag.s device/uprom.c device/upc_switch.c device/upc_switch.h device/upc_public.h \
+                      $(BUILD)/amiga/up-console.device $(BUILD)/amiga/vtcon-handler
+	@mkdir -p $(BUILD)/amiga/romobj
+	vasmm68k_mot -quiet -Fhunk -m68020 -I$(BUILD)/amiga -o $(BUILD)/amiga/romobj/uprom_tag.o device/uprom_tag.s
+	$(VC) -c -o $(BUILD)/amiga/romobj/uprom.o device/uprom.c
+	$(VC) -c -o $(BUILD)/amiga/romobj/upc_switch.o device/upc_switch.c
+	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -sc -sd -o $@ $(BUILD)/amiga/romobj/uprom_tag.o \
+	  $(BUILD)/amiga/romobj/uprom.o $(BUILD)/amiga/romobj/upc_switch.o
+
+# Kickstart images with UP-Term in them (build/rom/, never booted here):
+# KICK= the 3.1 ROM to start from (default: the rig's)
+KICK ?= /Users/spot/Code/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200
+rom: $(BUILD)/amiga/uprom build/romvenv/bin/romtool
+	build/romvenv/bin/python tools/mkrom.py --kick "$(KICK)" --module $(BUILD)/amiga/uprom --out $(BUILD)/rom
+
+build/romvenv/bin/romtool:
+	python3 -m venv build/romvenv
+	build/romvenv/bin/pip install -q amitools
+
+# tools/mkrom.py's checks on the host (needs KICK and make rom's inputs)
+test-rom: $(BUILD)/amiga/uprom build/romvenv/bin/romtool
+	build/romvenv/bin/python tools/test_mkrom.py --kick "$(KICK)" --module $(BUILD)/amiga/uprom
 
 # DV6's signal-bit probe (tools/rig/soak_rig.py)
 $(BUILD)/amiga/sigprobe: tests/amiga/sigprobe.c

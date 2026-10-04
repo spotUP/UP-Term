@@ -48,41 +48,11 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "upc_public.h"
+#include "upc_switch.h"
 
 extern struct DosLibrary *DOSBase;
 
 static const char vers[] = "$VER: UPConsole 0.1 (30.9.2026)";
-
-#define SEM_NAME "UP-Term console"
-
-/* what CON ON replaced in one DosList entry */
-typedef struct {
-    BPTR seglist;
-    BSTR handler;
-    LONG stack, pri, globvec;
-    BPTR startup;
-} saved_entry;
-
-typedef struct {
-    struct SignalSemaphore ss;
-    char name[sizeof(SEM_NAME)];
-    BPTR seg;          /* the handler, loaded once, never unloaded */
-    int con_on;
-    saved_entry saved[2]; /* CON, RAW */
-    /* DEVICE ON: our device, the ROM's node it replaced, our own name */
-    struct Library *dev, *rom;
-    char *dev_name;
-    BPTR dev_seg;
-} upc_state;
-
-
-static const char *const entry_name[2] = { "CON", "RAW" };
-
-/* Under the DosList lock (either kind): the device entry `name`. */
-static struct DeviceNode *find_entry(struct DosList *locked, const char *name)
-{
-    return (struct DeviceNode *)FindDosEntry(locked, (STRPTR)name, LDF_DEVICES);
-}
 
 static void bstr_copy(char *out, int max, BSTR b)
 {
@@ -100,20 +70,21 @@ static void bstr_copy(char *out, int max, BSTR b)
 static int pristine(struct DeviceNode *d, int raw, char *why, int max)
 {
     char h[80];
-    LONG stack = DOSBase->dl_lib.lib_Version >= 47 ? 4096 : 3200;
-    bstr_copy(h, sizeof(h), d->dn_Handler);
-    if (h[0]) {
+    switch (d ? upc_con_pristine(DOSBase, d, raw) : UPC_MISSING) {
+    case UPC_PRISTINE:
+        return 1;
+    case UPC_MISSING:
+        snprintf(why, (size_t)max, "missing");
+        return 0;
+    case UPC_SERVED_BY:
+        bstr_copy(h, sizeof(h), d->dn_Handler);
         snprintf(why, (size_t)max, "served by %s", h);
         return 0;
     }
-    if (d->dn_Type != 0 || d->dn_GlobalVec != -1 || d->dn_Priority != 5 || !d->dn_SegList ||
-        d->dn_Startup != (BPTR)raw || d->dn_StackSize != stack) {
-        snprintf(why, (size_t)max, "not the ROM's entry (type %ld stack %ld pri %ld startup %ld globvec %ld)",
-                 (long)d->dn_Type, (long)d->dn_StackSize, (long)d->dn_Priority, (long)d->dn_Startup,
-                 (long)d->dn_GlobalVec);
-        return 0;
-    }
-    return 1;
+    snprintf(why, (size_t)max, "not the ROM's entry (type %ld stack %ld pri %ld startup %ld globvec %ld)",
+             (long)d->dn_Type, (long)d->dn_StackSize, (long)d->dn_Priority, (long)d->dn_Startup,
+             (long)d->dn_GlobalVec);
+    return 0;
 }
 
 static int word_is(const char *s, const char *upper)
@@ -126,36 +97,16 @@ static int word_is(const char *s, const char *upper)
 
 static upc_state *find_state(void)
 {
-    upc_state *st;
-    Forbid();
-    st = (upc_state *)FindSemaphore((STRPTR)SEM_NAME);
-    Permit();
-    return st;
-}
-
-static upc_state *make_state(void)
-{
-    upc_state *st = find_state();
-    if (st)
-        return st;
-    st = (upc_state *)AllocMem(sizeof(*st), MEMF_PUBLIC | MEMF_CLEAR);
-    if (!st)
-        return 0;
-    strcpy(st->name, SEM_NAME);
-    st->ss.ss_Link.ln_Name = st->name;
-    st->ss.ss_Link.ln_Pri = 0;
-    AddSemaphore(&st->ss); /* stays for good: it owns the loaded handler */
-    return st;
+    return upc_state_find(SysBase);
 }
 
 static int con_on(const char *file)
 {
     upc_state *st;
-    struct DeviceNode *d[2];
     struct DosList *dl;
     char why[120];
-    int i, bad = -1;
-    st = make_state();
+    int bad, reason;
+    st = upc_state_make(SysBase);
     if (!st) {
         printf("UPConsole: no memory\n");
         return RETURN_FAIL;
@@ -173,39 +124,17 @@ static int con_on(const char *file)
         printf("UPConsole: cannot load %s\n", file);
         return RETURN_FAIL;
     }
-    why[0] = 0;
-    dl = LockDosList(LDF_DEVICES | LDF_WRITE);
-    for (i = 0; i < 2 && bad < 0; i++) {
-        d[i] = find_entry(dl, entry_name[i]);
-        if (!d[i]) {
-            strcpy(why, "missing");
-            bad = i;
-        } else if (!pristine(d[i], i, why, sizeof(why))) {
-            bad = i;
-        }
-    }
-    if (bad < 0)
-        for (i = 0; i < 2; i++) {
-            saved_entry *s = &st->saved[i];
-            s->seglist = d[i]->dn_SegList;
-            s->handler = d[i]->dn_Handler;
-            s->stack = d[i]->dn_StackSize;
-            s->pri = d[i]->dn_Priority;
-            s->globvec = d[i]->dn_GlobalVec;
-            s->startup = d[i]->dn_Startup;
-            d[i]->dn_SegList = st->seg;
-            d[i]->dn_StackSize = 16000;
-            d[i]->dn_GlobalVec = -1;
-        }
-    UnLockDosList(LDF_DEVICES | LDF_WRITE);
-    if (bad >= 0) {
+    if (upc_con_switch(DOSBase, st, &bad, &reason) == UPC_SW_CONFLICT) {
+        /* the entry again, for the message (the switch changed nothing) */
+        dl = LockDosList(LDF_DEVICES | LDF_READ);
+        pristine(upc_find_entry(DOSBase, dl, upc_entry_name[bad]), bad, why, sizeof(why));
+        UnLockDosList(LDF_DEVICES | LDF_READ);
         ReleaseSemaphore(&st->ss);
         printf("UPConsole: not switched: %s: is %s.\n"
                "Remove that console replacement first; UP-Term does not stack on another.\n",
-               entry_name[bad], why);
+               upc_entry_name[bad], why);
         return RETURN_WARN;
     }
-    st->con_on = 1;
     ReleaseSemaphore(&st->ss);
     printf("UPConsole: new CON: and RAW: windows are UP-Term\n");
     return RETURN_OK;
@@ -228,8 +157,8 @@ static int con_off(void)
     }
     dl = LockDosList(LDF_DEVICES | LDF_WRITE);
     for (i = 0; i < 2; i++) {
-        struct DeviceNode *d = find_entry(dl, entry_name[i]);
-        saved_entry *s = &st->saved[i];
+        struct DeviceNode *d = upc_find_entry(DOSBase, dl, upc_entry_name[i]);
+        upc_saved_entry *s = &st->saved[i];
         if (!d || d->dn_SegList != st->seg) {
             changed |= 1 << i; /* someone else changed it since: leave it */
             continue;
@@ -247,7 +176,7 @@ static int con_off(void)
     for (i = 0; i < 2; i++)
         if (changed & (1 << i))
             printf("UPConsole: %s: was changed by another program since CON ON; left as it is\n",
-                   entry_name[i]);
+                   upc_entry_name[i]);
     printf("UPConsole: new CON: and RAW: windows are the ROM's again\n");
     return changed ? RETURN_WARN : RETURN_OK;
 }
@@ -290,43 +219,12 @@ static void trace_seg(BPTR seg)
     }
 }
 
-/* A console.device vector patched with SetFunction points outside the ROM
- * module: its `jmp abs.l` target is not in [resident, rt_EndSkip). */
-static int patched_vector(struct Library *rom)
-{
-    struct Resident *rt = FindResident((STRPTR)"console.device");
-    int lvo;
-    if (!rt)
-        return 0; /* not a ROM module (a loaded one): nothing to compare with */
-    for (lvo = 6; lvo <= 72; lvo += 6) {
-        UBYTE *v = (UBYTE *)rom - lvo;
-        ULONG target;
-        if (v[0] != 0x4E || v[1] != 0xF9)
-            return lvo; /* not a jmp: someone rewrote it */
-        target = *(ULONG *)(v + 2);
-        if (target < (ULONG)rt || target >= (ULONG)rt->rt_EndSkip)
-            return lvo;
-    }
-    return 0;
-}
-
-/* The RomTag right after the file's first 4 bytes (moveq #-1,d0; rts). */
-static struct Resident *find_romtag(BPTR seg)
-{
-    UWORD *code = (UWORD *)((UBYTE *)BADDR(seg) + 4);
-    struct Resident *rt = (struct Resident *)(code + 2);
-    if (code[0] != 0x70FF || code[1] != 0x4E75 || rt->rt_MatchWord != RTC_MATCHWORD || rt->rt_MatchTag != rt)
-        return 0;
-    return rt;
-}
-
 static void unload_retired(upc_state *st);
 
 static int device_on(const char *file)
 {
-    upc_state *st = make_state();
+    upc_state *st = upc_state_make(SysBase);
     struct Library *rom, *ours;
-    struct Resident *rt;
     BPTR seg;
     int lvo;
     if (DOSBase->dl_lib.lib_Version >= 47) {
@@ -381,7 +279,7 @@ static int device_on(const char *file)
         printf("UPConsole: console.device is UP-Term again (the one still in use)\n");
         return RETURN_OK;
     }
-    lvo = patched_vector(rom);
+    lvo = upc_patched_vector(SysBase, rom);
     if (lvo) {
         ReleaseSemaphore(&st->ss);
         printf("UPConsole: not switched: console.device vector -%d is patched (SetFunction).\n"
@@ -396,9 +294,8 @@ static int device_on(const char *file)
     }
     trace_hex("upconsole on: seg", (ULONG)seg);
     trace_seg(seg);
-    rt = find_romtag(seg);
-    ours = rt ? (struct Library *)InitResident(rt, seg) : 0;
-    if (!ours || !upc_is_upterm(ours)) {
+    ours = upc_device_start(SysBase, st, rom, seg);
+    if (!ours) {
         UnLoadSeg(seg);
         ReleaseSemaphore(&st->ss);
         printf("UPConsole: %s is not UP-Term's console.device, or it did not start\n", file);
@@ -408,14 +305,6 @@ static int device_on(const char *file)
     trace_hex("  negsize", ours->lib_NegSize);
     trace_hex("  possize", ours->lib_PosSize);
     trace_seg(seg);
-    Forbid();
-    Remove(&rom->lib_Node);
-    st->dev_name = ours->lib_Node.ln_Name;
-    ours->lib_Node.ln_Name = *(char **)((UBYTE *)ours + UPC_CONNAME_OFFSET); /* the device's own string */
-    Permit();
-    st->dev = ours;
-    st->rom = rom;
-    st->dev_seg = seg;
     ReleaseSemaphore(&st->ss);
     printf("UPConsole: console.device is UP-Term now (new units)\n");
     return RETURN_OK;
@@ -527,7 +416,7 @@ static void status(void)
     int i, ours[2], rom[2];
     dl = LockDosList(LDF_DEVICES | LDF_READ);
     for (i = 0; i < 2; i++) {
-        struct DeviceNode *d = find_entry(dl, entry_name[i]);
+        struct DeviceNode *d = upc_find_entry(DOSBase, dl, upc_entry_name[i]);
         h[i][0] = 0;
         ours[i] = d && st && st->seg && d->dn_SegList == st->seg;
         rom[i] = d && !ours[i] && pristine(d, i, why, sizeof(why));
@@ -536,7 +425,7 @@ static void status(void)
     }
     UnLockDosList(LDF_DEVICES | LDF_READ);
     for (i = 0; i < 2; i++)
-        printf("%s: %s%s\n", entry_name[i], ours[i] ? "UP-Term" : rom[i] ? "ROM" : "other",
+        printf("%s: %s%s\n", upc_entry_name[i], ours[i] ? "UP-Term" : rom[i] ? "ROM" : "other",
                !ours[i] && !rom[i] && h[i][0] ? (sprintf(why, " (%s)", h[i]), why) : "");
     {
         struct Library *d;
