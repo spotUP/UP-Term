@@ -107,14 +107,16 @@ _vt_asm_fill:
 ; makes it 65535), ':' marks the parameter it starts in sub, the 17th and
 ; later parameters run on into the 16th (VT_MAX_PARAMS). No parameter:
 ; params[0] = sub[0] = 0. Returns np << 16 | the final's offset from p, or
-; -1 when the n bytes (at most 32767 are looked at) end first. Eight
-; instructions a digit (C: twenty and more).
+; -1 when the n bytes (at most 32767 are looked at) end first. Ten
+; instructions a digit, about twenty a separator: a2 / a3 point at the
+; parameter being read and its mark, so a separator stores without
+; working out an index.
 _vt_asm_csi:
 	movem.l	d2-d7/a2-a3,-(sp)
 	move.l	36(sp),a0		; p
 	move.l	40(sp),d3		; n
-	move.l	44(sp),a2		; params
-	move.l	48(sp),a3		; sub
+	move.l	44(sp),a2		; &params[0]: the parameter being read
+	move.l	48(sp),a3		; &sub[0]
 	move.l	a0,a1			; p, for the offset
 	moveq	#0,d1			; v: the parameter being read
 	moveq	#0,d2			; np
@@ -129,11 +131,9 @@ _vt_asm_csi:
 	bmi	.cout
 	move.b	(a0)+,d0
 	sub.b	d6,d0
-.ctop:	cmp.b	d7,d0
+	cmp.b	d7,d0
 	bhi.s	.cnd			; not a digit
-	tst.w	d2
-	bne.s	.cdig
-	moveq	#1,d2			; the first parameter starts
+	moveq	#1,d2			; a digit first: the first parameter starts
 	clr.b	(a3)
 .cdig:	cmp.w	d5,d1
 	bcc.s	.csat
@@ -151,34 +151,24 @@ _vt_asm_csi:
 	bne.s	.cfin
 .csep:	tst.w	d2
 	bne.s	.cs1
-	moveq	#1,d2
+	moveq	#1,d2			; a separator first: an empty first parameter
 	clr.b	(a3)
-.cs1:	move.w	d2,d4
-	lsl.w	#2,d4
-	move.l	d1,-4(a2,d4.w)		; params[np - 1] = v
+.cs1:	move.l	d1,(a2)			; params[np - 1] = v
 	cmp.w	#16,d2
-	bcc.s	.csn			; all 16: the digits go on into the last
-	moveq	#0,d4
-	cmp.b	#':'-'0',d0
-	bne.s	.cs2
-	moveq	#1,d4
-.cs2:	move.b	d4,(a3,d2.w)		; sub[np] = (c == ':')
+	bcc.s	.cdn			; all 16: the digits go on into the last
+	addq.l	#4,a2
+	addq.l	#1,a3
+	moveq	#';'-'0',d4
+	sub.b	d0,d4			; ';' 0, ':' 1
+	move.b	d4,(a3)			; sub[np] = (c == ':')
 	addq.w	#1,d2
 	moveq	#0,d1
-.csn:	subq.w	#1,d3
-	bmi.s	.cout
-	move.b	(a0)+,d0
-	sub.b	d6,d0
-	bra.s	.ctop
+	bra.s	.cdn
 .csat:	move.w	#-1,d1			; 65535
 	bra.s	.cdn
-.cfin:	tst.w	d2
-	beq.s	.cf0
-	move.w	d2,d4
-	lsl.w	#2,d4
-	move.l	d1,-4(a2,d4.w)		; the last parameter
-	bra.s	.cf1
-.cf0:	clr.l	(a2)
+.cfin:	move.l	d1,(a2)			; the last parameter (0 when there is none)
+	tst.w	d2
+	bne.s	.cf1
 	clr.b	(a3)
 .cf1:	move.l	a0,d0
 	sub.l	a1,d0
