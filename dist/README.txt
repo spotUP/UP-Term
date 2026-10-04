@@ -54,7 +54,8 @@ CONFIGURATION (profiles)
    tool is "C:UP-Term Prefs") writes it. Install lays down a fully
    commented sample; without the file every window behaves as before.
 
-   Prefs: two pages, General and Colors. Type the profile name in the
+   Prefs: three pages, General, Colors and Advanced (the screen, the
+   Backspace key, what programs may do). Type the profile name in the
    Profile field, press Load to edit an existing profile or New to start
    one, change the values, press Save. Save writes ENVARC:up-term/up-term
    and keeps the file that was there as up-term.orig; Cancel closes without
@@ -93,10 +94,15 @@ CONFIGURATION (profiles)
                                remote host can then do too -- off by default
      link-open = OpenURL %s    the command a Ctrl + click on a link runs
                                (%s the URL, quoted)
+     backspace = del           del | bs: the Backspace key sends ^? or ^H
   A program's notification (OSC 9, OSC 777: a build finished...)
   shows in the title bar for 5 seconds.
      palette = 1,0x00CD00,4,0x5C5CFF
                                remap ANSI colours: index,RRGGBB pairs
+
+   A save (Prefs, or Save settings to profile) changes only the keys
+   Prefs shows; any other key and every comment line stays as you wrote
+   it. Blank lines are not kept.
 
    Example: a dim, silent editor window
      NewShell "XCON:0/20/640/300/vim/PROFILE vim/CLOSE"
@@ -138,6 +144,8 @@ COMMANDS (/cursor bar)
      /cursor bar        /bell visual      /scrollback 5000   /font topaz 11
      /fg C0C0C0         /theme dracula-default /profile vim       /tab new
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
+     /backspace bs      /program-clipboard read-write
+     /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.
    "/" alone, "//", "/Work" and every other path are the shell's as
    before, and a line that starts with a blank goes to the shell as typed
@@ -155,8 +163,10 @@ MENU
     View      Bigger font, Smaller font (the font's next size on disk),
               80 x 24, 132 x 43 (the window sized to that grid)
     Settings  Font..., Theme..., Cursor, Bell, Scrollback, Bold is
-              bright, Meta key, Copy on select, Wheel scrolls, Tab
-              completion, KingCON style, Profile, Save settings to profile
+              bright, Meta key, Copy on select, Wheel scrolls, Reflow on
+              resize, Backspace key sends, Programs may (the clipboard),
+              Tab completion, KingCON style, Profile, Save settings to
+              profile
   Settings are the same as UP-Term Prefs, for this window and at once
   (Prefs keeps them for the profile). With KingCON completion a Complete
   menu follows. Every item is also a command (see COMMANDS). The right

@@ -27,7 +27,8 @@ enum {
     SLASH_PROFILE,           /* arg: a profile's name */
     SLASH_FIND,              /* arg: the text */
     SLASH_HELP,              /* arg: a command's name, or empty for all */
-    SLASH_SIZE               /* arg: COLSxROWS */
+    SLASH_SIZE,              /* arg: COLSxROWS */
+    SLASH_LINK_OPEN          /* arg: the command for a link (%s the address), or "none" */
 };
 
 typedef struct slash_value {

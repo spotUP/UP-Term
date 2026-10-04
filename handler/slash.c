@@ -18,6 +18,13 @@ static const slash_value v_meta[] = {
 };
 static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
 static const slash_value v_reflow[] = ONOFF(MENU_SET_REFLOW);
+static const slash_value v_backspace[] = {
+    { "del", MENU_SET_BS_DEL, 1 }, { "bs", MENU_SET_BS_BS, 1 }, { 0, 0, 0 }
+};
+static const slash_value v_clipboard[] = {
+    { "write", MENU_SET_CLIP_WRITE, 1 }, { "read-write", MENU_SET_CLIP_READ_WRITE, 1 },
+    { "off", MENU_SET_CLIP_OFF, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_wheel[] = {
     { "scroll", MENU_SET_WHEEL, 1 }, { "ignore", MENU_SET_WHEEL, 0 }, { 0, 0, 0 }
 };
@@ -49,6 +56,7 @@ static const slash_value v_tab[] = {
 /* Alphabetical: the help lists it in this order, completion offers it so. */
 static const slash_def table[] = {
     { "about", SL_ACTION, MENU_ABOUT, 0, 0, "", "the build" },
+    { "backspace", SL_CHOICE, 0, 0, v_backspace, "del | bs", "what the Backspace key sends (^? or ^H)" },
     { "bell", SL_CHOICE, 0, 0, v_bell, "none | beep | visual", "the bell" },
     { "bg", SL_ARG, SLASH_BG, 1, 0, "RRGGBB | none", "the background colour" },
     { "bold-bright", SL_CHOICE, 0, 0, v_bold, "on | off", "bold text takes the bright colours (xterm)" },
@@ -69,10 +77,14 @@ static const slash_def table[] = {
     { "kingcon-cache", SL_CHOICE, 0, 0, v_kccache, "on | off | reset | purge", "KingCON's directory cache" },
     { "kingcon-info", SL_CHOICE, 0, 0, v_kcinfo, "show | hide", "KingCON lists .info files" },
     { "kingcon-mode", SL_ARG, SLASH_KC_MODE, 1, 0, "LETTERS (W L B C S)", "KingCON's completion style" },
+    { "link-open", SL_ARG, SLASH_LINK_OPEN, 1, 0, "COMMAND | none",
+      "what a Ctrl + click on a link runs (%s: the URL)" },
     { "meta", SL_CHOICE, 0, 0, v_meta, "amiga | alt", "the key that is Meta (ESC prefix)" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
     { "profile", SL_ARG, SLASH_PROFILE, 1, 0, "NAME", "switch to a profile" },
+    { "program-clipboard", SL_CHOICE, 0, 0, v_clipboard, "write | read-write | off",
+      "programs' clipboard access (OSC 52)" },
     { "reflow", SL_CHOICE, 0, 0, v_reflow, "on | off", "a resize re-wraps the lines and the scrollback" },
     { "reset", SL_ACTION, MENU_RESET, 0, 0, "", "reset the terminal (RIS)" },
     { "save", SL_ACTION, MENU_SET_SAVE, 0, 0, "", "save the settings to the profile" },
@@ -285,7 +297,7 @@ int slash_complete(const char *line, int len, const char *const *extra, int next
         }
     } else if (d->id == SLASH_SCROLLBACK || d->id == SLASH_FALLBACK || d->id == SLASH_FG ||
                d->id == SLASH_BG || d->id == SLASH_CURSOR_COLOR || d->id == SLASH_SEL_FG ||
-               d->id == SLASH_SEL_BG) {
+               d->id == SLASH_SEL_BG || d->id == SLASH_LINK_OPEN) {
         if (!strncmp("none", line + a, (size_t)(len - a)) && add(out, cap, &k, "", "none"))
             count++;
     }
