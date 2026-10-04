@@ -195,6 +195,9 @@ static void idle_prompt(void)
     vt_write(cs.vt, (const vt_u8 *)"1> Claude\r\n", 11);
     CHECK_INT(tui_start(&tui), 0);
     CHECK_INT(cs.raw_on, 1);
+    /* the start's modes and DSR went out whole, no stray NUL after them */
+    CHECK(strstr(cs.sent.p, "\033[?2004h\033[>1u\033[>4;1m\033[6n") == cs.sent.p);
+    CHECK(memchr(cs.sent.p, 0, (size_t)cs.sent.n) == 0);
     CHECK_INT(tui.tr, 2);
     CHECK_INT(tui.B, 12);
     CHECK_INT(tui_read(&tui, line, sizeof(line)), 5);

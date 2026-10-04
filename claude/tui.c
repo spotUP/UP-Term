@@ -721,7 +721,10 @@ int tui_start(cl_tui *t)
     /* bracketed paste, kitty's disambiguation (Esc and Shift+Enter come
      * as CSI u), modifyOtherKeys 1 for terminals without it; where is the
      * cursor? */
-    t->io->write(t->io->u, "\033[?2004h\033[>1u\033[>4;1m\033[6n", 25);
+    {
+        static const char start[] = "\033[?2004h\033[>1u\033[>4;1m\033[6n";
+        t->io->write(t->io->u, start, (long)sizeof(start) - 1);
+    }
     t->tr = t->rows;
     t0 = t->io->ms ? t->io->ms(t->io->u) : 0;
     for (;;) {
