@@ -92,7 +92,7 @@ conbench times writes: `vtwin_write` -> engine parse -> painter / row scan
    keys, 159-byte values, 160 comment lines of 6144 bytes); a set that would
    overflow the pool marks overflow, which only a table that could not be
    saved within `UC_MAX_FILE` anyway reaches. The table stays pointer-free,
-   so `memcpy` copies (prefs_stage, the handler) still work. 56240 -> 17932
+   so `memcpy` copies (prefs_stage, the handler) still work. 56240 -> 17844
    bytes. Read at open, on a profile switch, a live update, a save: never
    per byte written.
 2. **The watcher's table only while a change is on its way**
@@ -121,12 +121,44 @@ conbench times writes: `vtwin_write` -> engine parse -> painter / row scan
    `history_load`): the worker allocates file size + 1 (the old 51200 when
    the size is unknown); the window frees it as before.
 
+## Result (68020 vbcc sizes, same probe)
+
+| Block | Before | After |
+|-------|-------:|------:|
+| `con` | 66126 | 24402 (`le` 36116 -> 2580, `menu` 8192 -> pointer) |
+| `c->conf` | 56240 | 17844 |
+| watcher's table (if allocated, see above) | 56240 | 0 until the file changes, then it replaces `c->conf` |
+| `check` + `hist` requests | 2 x 11084 | 2 x 852 |
+| `comp` request + menu | 11084 + (8192 in `con`) | 0 until the first Tab, then 852 + 10240 + 8192 |
+| history file buffer (transient) | 51200 | the file's size + 1 |
+| history + undo (in `le`) | 33856 fixed | the bytes of the lines entered |
+
+Per window at open, in the handler task, from the logged list: 66130 +
+56244 + 3 x 11088 = 155,638 bytes become 24406 + 17848 + 2 x 856 =
+43,966: **about 111 KB less** (with the history's 51 KB transient cut to the
+file's size besides). If the watcher's second table is allocated on this
+rig (the code says it is), **another 56 KB**: about 167 KB a window. Not
+cut: the engine's grid, scrollback ring and lines (34 KB here), the glyph
+table, the menu strip, the processes.
+
+Host sentinel (`make test ONLY=winmem`, 64-bit host sizes): one window's
+engine blocks + line editor + profile table, 145,501 bytes before, 73,633
+after, bound 76,000. The 68k build fails at compile time if `con`,
+`upconf` or a request without lists climbs past 26000 / 18500 / 1024
+(`handler/vtcon_handler.c`, `con_size_bound`).
+
 ## Status
 
 - [x] M1 map (this file)
-- [ ] C1 upconf packed + host tests
-- [ ] C2 watcher / save / theme lifetimes
-- [ ] C3 line editor history and undo packed + host tests
-- [ ] C4 completion requests, menu, history buffer
-- [ ] C5 host sentinel: bytes per window open
-- [ ] rig: allocwatch on this build (watcher table, menus 4782 confirmed)
+- [x] C1 upconf packed + host tests (64b73e5)
+- [x] C2 watcher / save / theme lifetimes (95ec1d4)
+- [x] C3 line editor history and undo packed + host tests (3651b98)
+- [x] C4 completion requests, menu, history buffer, 68k size bounds
+- [x] C5 host sentinel: bytes per window open
+- [ ] rig: allocwatch on this build, MIN 1000 (the watcher table and the
+      menus' 4782 confirmed; the per-window total in Avail)
+- [ ] rig: the lifetimes only the rig runs -- Save settings to profile and
+      a live Prefs Use still apply; Tab, the KingCON window, the command
+      colouring and the saved history still work; an AUTO window closed
+      and opened again keeps its history
+- [ ] open: scrollback lines at full width (626 KB at 500 x 77 cells)
