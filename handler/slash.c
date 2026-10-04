@@ -17,8 +17,19 @@ static const slash_value v_meta[] = {
     { "amiga", MENU_SET_META_AMIGA, 1 }, { "alt", MENU_SET_META_ALT, 1 }, { 0, 0, 0 }
 };
 static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
+static const slash_value v_reflow[] = ONOFF(MENU_SET_REFLOW);
+static const slash_value v_backspace[] = {
+    { "del", MENU_SET_BS_DEL, 1 }, { "bs", MENU_SET_BS_BS, 1 }, { 0, 0, 0 }
+};
+static const slash_value v_clipboard[] = {
+    { "write", MENU_SET_CLIP_WRITE, 1 }, { "read-write", MENU_SET_CLIP_READ_WRITE, 1 },
+    { "off", MENU_SET_CLIP_OFF, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_wheel[] = {
     { "scroll", MENU_SET_WHEEL, 1 }, { "ignore", MENU_SET_WHEEL, 0 }, { 0, 0, 0 }
+};
+static const slash_value v_scrollbar[] = {
+    { "show", MENU_SET_SCROLLBAR, 1 }, { "hide", MENU_SET_SCROLLBAR, 0 }, { 0, 0, 0 }
 };
 static const slash_value v_completion[] = {
     { "unix", MENU_SET_UNIX, 1 }, { "kingcon", MENU_SET_KINGCON, 1 }, { 0, 0, 0 }
@@ -48,6 +59,7 @@ static const slash_value v_tab[] = {
 /* Alphabetical: the help lists it in this order, completion offers it so. */
 static const slash_def table[] = {
     { "about", SL_ACTION, MENU_ABOUT, 0, 0, "", "the build" },
+    { "backspace", SL_CHOICE, 0, 0, v_backspace, "del | bs", "what the Backspace key sends (^? or ^H)" },
     { "bell", SL_CHOICE, 0, 0, v_bell, "none | beep | visual", "the bell" },
     { "bg", SL_ARG, SLASH_BG, 1, 0, "RRGGBB | none", "the background colour" },
     { "bold-bright", SL_CHOICE, 0, 0, v_bold, "on | off", "bold text takes the bright colours (xterm)" },
@@ -58,6 +70,7 @@ static const slash_def table[] = {
     { "cursor", SL_CHOICE, 0, 0, v_cursor, "block | underline | bar", "the cursor's shape" },
     { "cursor-blink", SL_CHOICE, 0, 0, v_blink, "on | off", "the cursor blinks" },
     { "cursor-color", SL_ARG, SLASH_CURSOR_COLOR, 1, 0, "RRGGBB | none", "the cursor's colour (none: inverted)" },
+    { "demo", SL_ACTION, MENU_DEMO, 0, 0, "", "the tour of what UP-Term does, in a new tab" },
     { "fg", SL_ARG, SLASH_FG, 1, 0, "RRGGBB | none", "the text colour" },
     { "find", SL_ARG, SLASH_FIND, 0, 0, "[TEXT]", "find in the scrollback (again: the next)" },
     { "font", SL_ARG, SLASH_FONT, 0, 0, "[NAME SIZE]", "the font (no name: the requester)" },
@@ -68,15 +81,21 @@ static const slash_def table[] = {
     { "kingcon-cache", SL_CHOICE, 0, 0, v_kccache, "on | off | reset | purge", "KingCON's directory cache" },
     { "kingcon-info", SL_CHOICE, 0, 0, v_kcinfo, "show | hide", "KingCON lists .info files" },
     { "kingcon-mode", SL_ARG, SLASH_KC_MODE, 1, 0, "LETTERS (W L B C S)", "KingCON's completion style" },
+    { "link-open", SL_ARG, SLASH_LINK_OPEN, 1, 0, "COMMAND | none",
+      "what a Ctrl + click on a link runs (%s: the URL)" },
     { "meta", SL_CHOICE, 0, 0, v_meta, "amiga | alt", "the key that is Meta (ESC prefix)" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
     { "profile", SL_ARG, SLASH_PROFILE, 1, 0, "NAME", "switch to a profile" },
+    { "program-clipboard", SL_CHOICE, 0, 0, v_clipboard, "write | read-write | off",
+      "programs' clipboard access (OSC 52)" },
+    { "reflow", SL_CHOICE, 0, 0, v_reflow, "on | off", "a resize re-wraps the lines and the scrollback" },
     { "reset", SL_ACTION, MENU_RESET, 0, 0, "", "reset the terminal (RIS)" },
     { "save", SL_ACTION, MENU_SET_SAVE, 0, 0, "", "save the settings to the profile" },
     { "screen", SL_CHOICE, 0, 0, v_screen, "workbench | own | fullscreen",
       "the window on the Workbench, a screen of its own, or full screen" },
     { "scrollback", SL_ARG, SLASH_SCROLLBACK, 1, 0, "LINES | none", "the lines kept" },
+    { "scrollbar", SL_CHOICE, 0, 0, v_scrollbar, "show | hide", "the scroll bar in the window's border" },
     { "select-all", SL_ACTION, MENU_SELECT_ALL, 0, 0, "", "select the scrollback and the screen" },
     { "selection-bg", SL_ARG, SLASH_SEL_BG, 1, 0, "RRGGBB | none", "the selection's background" },
     { "selection-fg", SL_ARG, SLASH_SEL_FG, 1, 0, "RRGGBB | none", "the selected text's colour" },
@@ -283,7 +302,7 @@ int slash_complete(const char *line, int len, const char *const *extra, int next
         }
     } else if (d->id == SLASH_SCROLLBACK || d->id == SLASH_FALLBACK || d->id == SLASH_FG ||
                d->id == SLASH_BG || d->id == SLASH_CURSOR_COLOR || d->id == SLASH_SEL_FG ||
-               d->id == SLASH_SEL_BG) {
+               d->id == SLASH_SEL_BG || d->id == SLASH_LINK_OPEN) {
         if (!strncmp("none", line + a, (size_t)(len - a)) && add(out, cap, &k, "", "none"))
             count++;
     }

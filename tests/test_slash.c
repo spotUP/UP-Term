@@ -38,9 +38,17 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.on, 0);
     CHECK_INT(parse("/bell   visual  "), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_BELL_VISUAL);
+    CHECK_INT(parse("/reflow off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_REFLOW);
+    CHECK_INT(cmd.on, 0);
     CHECK_INT(parse("/wheel ignore"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_WHEEL);
     CHECK_INT(cmd.on, 0);
+    CHECK_INT(parse("/scrollbar hide"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_SCROLLBAR);
+    CHECK_INT(cmd.on, 0);
+    CHECK_INT(parse("/scrollbar show"), SLASH_OK);
+    CHECK_INT(cmd.on, 1);
     CHECK_INT(parse("/completion kingcon"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_KINGCON);
     CHECK_INT(parse("/kingcon-cache purge"), SLASH_OK);
@@ -49,6 +57,9 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.id, MENU_TAB_PREV);
     CHECK_INT(parse("/clear scrollback"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_CLEAR_SB);
+    CHECK_INT(parse("/demo"), SLASH_OK); /* Help > Demo tour */
+    CHECK_INT(cmd.id, MENU_DEMO);
+    CHECK_INT(parse("/demo now"), SLASH_ERROR);
     CHECK_INT(parse("/font-size bigger"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_FONT_BIGGER);
     CHECK_INT(parse("/size 132x43"), SLASH_OK);
@@ -56,6 +67,18 @@ static void settings_name_their_menu_items(void)
     CHECK_STR(cmd.arg, "132x43");
     CHECK_INT(parse("/save"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_SAVE);
+    /* the profile keys the settings audit found with no command: their
+     * values are the profile's words, each the menu item it is */
+    CHECK_INT(parse("/backspace bs"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_BS_BS);
+    CHECK_INT(parse("/backspace del"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_BS_DEL);
+    CHECK_INT(parse("/program-clipboard read-write"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_CLIP_READ_WRITE);
+    CHECK_INT(parse("/program-clipboard off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_CLIP_OFF);
+    CHECK_INT(parse("/program-clipboard write"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_CLIP_WRITE);
 }
 
 static void arguments_are_handed_on_trimmed(void)
@@ -72,6 +95,9 @@ static void arguments_are_handed_on_trimmed(void)
     CHECK_STR(cmd.arg, "vim");
     CHECK_INT(parse("/find two words"), SLASH_OK);
     CHECK_STR(cmd.arg, "two words");
+    CHECK_INT(parse("/link-open  Run >NIL: OpenURL %s "), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_LINK_OPEN);
+    CHECK_STR(cmd.arg, "Run >NIL: OpenURL %s");
 }
 
 static void a_wrong_value_says_what_fits(void)
@@ -83,6 +109,12 @@ static void a_wrong_value_says_what_fits(void)
     CHECK_STR(err, "save: takes nothing after it");
     CHECK_INT(parse("/scrollback"), SLASH_ERROR);
     CHECK_STR(err, "scrollback: LINES | none");
+    CHECK_INT(parse("/backspace ^H"), SLASH_ERROR);
+    CHECK_STR(err, "backspace: del | bs");
+    CHECK_INT(parse("/program-clipboard read"), SLASH_ERROR);
+    CHECK_STR(err, "program-clipboard: write | read-write | off");
+    CHECK_INT(parse("/link-open"), SLASH_ERROR);
+    CHECK_STR(err, "link-open: COMMAND | none");
 }
 
 static void the_help_lists_every_command(void)
@@ -123,6 +155,12 @@ static void tab_completes_names_then_values(void)
     CHECK_INT(n, 2);
     CHECK_STR(out, "vim");
     n = slash_complete("/scrollback ", 12, 0, 0, out, sizeof(out), &from);
+    CHECK_INT(n, 1);
+    CHECK_STR(out, "none");
+    n = slash_complete("/program-clipboard r", 20, 0, 0, out, sizeof(out), &from);
+    CHECK_INT(n, 1);
+    CHECK_STR(out, "read-write");
+    n = slash_complete("/link-open n", 12, 0, 0, out, sizeof(out), &from);
     CHECK_INT(n, 1);
     CHECK_STR(out, "none");
     CHECK_INT(slash_complete("/Wo", 3, 0, 0, out, sizeof(out), &from), 0);

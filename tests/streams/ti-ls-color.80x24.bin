@@ -1,22 +1,43 @@
-/Users/spot/Code/vtcon/engine:
-total 160
-drwxr-xr-x@  4 spot  staff    128 Sep 28 23:56 [34m.[39;49m[0m
-drwxr-xr-x@ 18 spot  staff    576 Sep 28 23:41 [34m..[39;49m[0m
--rw-r--r--@  1 spot  staff  69841 Sep 29 00:48 vtengine.c
--rw-r--r--@  1 spot  staff   7831 Sep 29 00:48 vtengine.h
+/Users/spot/Code/vtcon/.claude/worktrees/agent-a40d2523fe2066ed4/engine:
+total 432
+drwxr-xr-x@  7 spot  staff     224 Oct  4 18:44 [34m.[39;49m[0m
+drwxr-xr-x@ 29 spot  staff     928 Oct  4 18:47 [34m..[39;49m[0m
+-rw-r--r--@  1 spot  staff    9804 Oct  4 18:44 vtcaps.inc
+-rw-r--r--@  1 spot  staff    3866 Oct  4 17:56 vtengine_68k.s
+-rw-r--r--@  1 spot  staff  175001 Oct  4 18:44 vtengine.c
+-rw-r--r--@  1 spot  staff   21805 Oct  4 18:33 vtengine.h
+-rw-r--r--@  1 spot  staff    1492 Oct  4 17:56 vtwidth.h
 
-/Users/spot/Code/vtcon/tests:
-total 112
-drwxr-xr-x@  13 spot  staff    416 Sep 29 00:05 [34m.[39;49m[0m
-drwxr-xr-x@  18 spot  staff    576 Sep 28 23:41 [34m..[39;49m[0m
--rw-r--r--@   1 spot  staff   2299 Sep 29 00:48 dump_main.c
-drwxr-xr-x@  19 spot  staff    608 Sep 29 00:02 [34mgolden[39;49m[0m
--rw-r--r--@   1 spot  staff   2735 Sep 28 23:38 harness.c
--rw-r--r--@   1 spot  staff   1400 Sep 28 23:38 harness.h
-drwxr-xr-x@ 146 spot  staff   4672 Sep 29 00:51 [34mstreams[39;49m[0m
--rw-r--r--@   1 spot  staff   4816 Sep 28 23:48 test_amiga.c
--rw-r--r--@   1 spot  staff   2672 Sep 29 00:05 test_glyph.c
--rw-r--r--@   1 spot  staff   4813 Sep 29 00:05 test_keys.c
--rw-r--r--@   1 spot  staff    975 Sep 29 00:05 test_main.c
--rw-r--r--@   1 spot  staff   3164 Sep 28 23:48 test_pcansi.c
--rw-r--r--@   1 spot  staff  14646 Sep 29 00:11 test_xterm.c
+/Users/spot/Code/vtcon/.claude/worktrees/agent-a40d2523fe2066ed4/tests:
+total 616
+drwxr-xr-x@  31 spot  staff    992 Oct  4 18:45 [34m.[39;49m[0m
+drwxr-xr-x@  29 spot  staff    928 Oct  4 18:47 [34m..[39;49m[0m
+drwxr-xr-x@  55 spot  staff   1760 Oct  4 17:56 [34mamiga[39;49m[0m
+-rw-r--r--@   1 spot  staff   2584 Oct  4 17:56 dump_main.c
+drwxr-xr-x@  22 spot  staff    704 Oct  4 17:56 [34mgolden[39;49m[0m
+-rw-r--r--@   1 spot  staff   2735 Oct  4 17:56 harness.c
+-rw-r--r--@   1 spot  staff   1400 Oct  4 17:56 harness.h
+drwxr-xr-x@   3 spot  staff     96 Oct  4 17:56 [34mprobes[39;49m[0m
+drwxr-xr-x@ 147 spot  staff   4704 Oct  4 18:48 [34mstreams[39;49m[0m
+-rw-r--r--@   1 spot  staff  13575 Oct  4 17:56 test_amiga.c
+-rw-r--r--@   1 spot  staff   2524 Oct  4 17:56 test_fontpair.c
+-rw-r--r--@   1 spot  staff   4121 Oct  4 17:56 test_glyph.c
+-rw-r--r--@   1 spot  staff   1179 Oct  4 17:56 test_iconspec.c
+-rw-r--r--@   1 spot  staff   6272 Oct  4 17:56 test_keys.c
+-rw-r--r--@   1 spot  staff   8633 Oct  4 17:56 test_ldisc.c
+-rw-r--r--@   1 spot  staff  11748 Oct  4 17:56 test_lineedit.c
+-rw-r--r--@   1 spot  staff   1911 Oct  4 18:01 test_main.c
+-rw-r--r--@   1 spot  staff   5159 Oct  4 17:56 test_mirror.c
+-rw-r--r--@   1 spot  staff   2795 Oct  4 17:56 test_otag.c
+-rw-r--r--@   1 spot  staff   6039 Oct  4 17:56 test_pcansi.c
+-rw-r--r--@   1 spot  staff  13179 Oct  4 18:39 test_prefs.c
+-rw-r--r--@   1 spot  staff  39036 Oct  4 18:45 test_protocol.c
+-rw-r--r--@   1 spot  staff  33041 Oct  4 18:06 test_sh_exec.c
+-rw-r--r--@   1 spot  staff   6786 Oct  4 17:56 test_sh_expand.c
+-rw-r--r--@   1 spot  staff   3836 Oct  4 17:56 test_sh_parse.c
+-rw-r--r--@   1 spot  staff   5079 Oct  4 17:56 test_slash.c
+-rw-r--r--@   1 spot  staff  18342 Oct  4 17:56 test_upcon.c
+-rw-r--r--@   1 spot  staff  15279 Oct  4 17:56 test_upconf.c
+-rw-r--r--@   1 spot  staff   3427 Oct  4 17:56 test_updemo.c
+-rw-r--r--@   1 spot  staff  41050 Oct  4 17:56 test_xterm.c
+-rw-r--r--@   1 spot  staff   8651 Oct  4 17:56 test_zmodem.c

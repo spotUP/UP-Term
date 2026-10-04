@@ -18,7 +18,8 @@
  *   font = PARADISEC 8.8.font
  *   bell = none
  *
- * Keys and profile names are case-insensitive; a later [profile] section of
+ * Keys and profile names are case-insensitive; comment lines are kept and
+ * written back where they stood (UC_MAX_NOTES); a later [profile] section of
  * the same name adds to the earlier one (last value wins). The caller decides
  * what a value means: upconf only stores and hands back text, so a new knob
  * needs no change here. A value longer than the caps is kept truncated, not
@@ -29,8 +30,9 @@
  * behaves exactly as before this feature.
  *
  * Portable C89: declarations at block start, no // comments, no stdint.h.
- * upconf is a fixed-size struct (no internal allocation): the caller provides
- * it on the stack or with its own allocator (the handler AllocVecs one).
+ * upconf is a fixed-size struct with no pointers inside (no internal
+ * allocation; a memcpy copies it): the caller provides it on the stack or
+ * with its own allocator (the handler AllocVecs one).
  */
 #ifndef UPCONF_H
 #define UPCONF_H
@@ -39,26 +41,55 @@
  * The value width is set by the palette, the longest single value the
  * format has: 16 remap entries as "II,RRGGBB," is ten bytes each, 159 with
  * the last comma dropped, which fills a 160-byte slot exactly. 64 held about
- * six of them, so a full grid could not be written. The struct is then
- * 8*32*160 = 41 KB, allocated once per session by the handler.
+ * six of them, so a full grid could not be written.
  * UC_MAX_FILE is the file both ends agree on: the handler refuses to read
  * more, the editor refuses to write more, so a file it writes is always a
- * file the handler can read whole. */
+ * file the handler can read whole.
+ *
+ * Keys, values and comment lines are kept packed in one pool of
+ * UC_MAX_FILE bytes (UC_POOL), not in slots of the largest size: a key and
+ * its value take "key\0value\0", never more than their "key=value\n"
+ * line in the file, and a comment its text and a NUL, as many bytes as its
+ * line. So every file the handler can read fits, and the table is about
+ * 18 KB where slots took 56 KB -- one per XCON: window, on 2 MB machines
+ * (research/2026-10-04_window-memory.md). A set that would not fit marks
+ * overflow; such a table could not be saved within UC_MAX_FILE either. */
 #define UC_MAX_PROFILES 8
 #define UC_MAX_KEYS     32
 #define UC_NAME         32
 #define UC_MAX_VALUE    160
 #define UC_MAX_FILE     16384
+#define UC_POOL         UC_MAX_FILE
+
+/* Comment lines (; or #) are kept too, so a save writes back what it read:
+ * each one as typed, anchored to the key it stood before (or after the
+ * profile's last key, or before every section). The shipped sample is 45
+ * lines, 2.9 KB; the room is twice that. Blank lines are not kept: the
+ * save puts one between profiles. More comment text than this marks
+ * overflow, so the editor will not write such a file back. */
+#define UC_MAX_NOTES    160
+#define UC_NOTE_BYTES   6144
 
 typedef unsigned long uc_u32;
 
 typedef struct upconf {
     char prof[UC_MAX_PROFILES][UC_NAME];
-    char key[UC_MAX_PROFILES][UC_MAX_KEYS][UC_NAME];
-    char val[UC_MAX_PROFILES][UC_MAX_KEYS][UC_MAX_VALUE];
+    /* key k of profile p is at pool + at[p][k]: the key, its NUL, the
+     * value, its NUL (upconf.c KEY/VAL) */
+    unsigned short at[UC_MAX_PROFILES][UC_MAX_KEYS];
     int  n[UC_MAX_PROFILES];    /* keys in use in this profile */
     int  nprof;                 /* profiles in use */
     int  overflow;              /* value truncated or table full: set, not fatal */
+    /* the comments, in file order: note_at[i] is where line i starts in
+     * the pool (NUL-terminated), note_prof[i] its profile (-1: before every
+     * section), note_key[i] the key it stands before (n[]: after the last) */
+    short note_at[UC_MAX_NOTES];
+    signed char note_prof[UC_MAX_NOTES];
+    unsigned char note_key[UC_MAX_NOTES];
+    int  nnote;                 /* comment lines kept */
+    int  notelen;               /* comment bytes held (NULs counted), at most UC_NOTE_BYTES */
+    int  used;                  /* pool bytes in use: the live entries, packed from 0 */
+    char pool[UC_POOL];
 } upconf;
 
 /* Parse a whole NUL-terminated file. 0 when buf is NULL (the conf is then
@@ -103,17 +134,19 @@ int  upconf_profiles(const upconf *c, const char **names);
  * exists. 1 on success, 0 when the table is full (overflow marked). Used by
  * the Prefs app and the tests; the parser fills the same table. */
 int  upconf_set(upconf *c, const char *profile, const char *key, const char *value);
-/* Delete a key. 1 when it was there. */
+/* Delete a key; the profile's other keys keep their order and the comments
+ * their place. 1 when it was there. */
 int  upconf_del(upconf *c, const char *profile, const char *key);
-/* Delete a whole profile by name (case-insensitive); the later profiles keep
- * their order. 1 when it was there. */
+/* Delete a whole profile by name (case-insensitive), its comments with it;
+ * the later profiles keep their order. 1 when it was there. */
 int  upconf_rmprof(upconf *c, const char *profile);
 /* Empty the table. */
 void upconf_clear(upconf *c);
 
-/* Write the whole table back, in the format the parser reads: every profile
- * as a "[profile <name>]" line, its keys in the order set as "key = value"
- * lines, a blank line between profiles. Values are left bare: the parser
+/* Write the whole table back, in the format the parser reads: the comments
+ * before every section first, then every profile as a "[profile <name>]"
+ * line, its keys in the order set as "key = value" lines with its comments
+ * where they stood, a blank line between profiles. Values are left bare: the parser
  * reads to end-of-line, so no quoting is needed. Returns the length written
  * (without the terminating NUL), or -1 when it does not fit. */
 long upconf_save(const upconf *c, char *buf, long cap);

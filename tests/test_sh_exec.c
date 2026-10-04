@@ -143,7 +143,7 @@ static int is_vshrc_cmd(const char *n)
     /* what the vshrc reaches: the coreutils commands, Type, and
      * Dir/List, which no ls may turn into again */
     static const char *const names[] = { "Dir", "List", "Type", "cp", "mv", "rm", "mkdir",
-                                         "touch", 0 };
+                                         "touch", "hl", "mdv", "less", 0 };
     int i;
     for (i = 0; names[i]; i++)
         if (!strcmp(n, names[i]))
@@ -152,10 +152,30 @@ static int is_vshrc_cmd(const char *n)
 }
 
 /* The fake commands, run when they are waited for. */
+static sh_shell sh; /* defined below; the fake remote logins read its TERM */
+
 static long run_now(char argv[][64], int argc, const sh_io *io)
 {
     char line[256];
     long n;
+    if (!strcmp(argv[0], "bebbossh") || !strcmp(argv[0], "telnet") || !strcmp(argv[0], "uptelnet") ||
+        !strcmp(argv[0], "rlogin")) {
+        /* a remote login: <name><TERM it was given><args...> */
+        const char *term = sh_get(&sh.ctx, "TERM");
+        int i;
+        f_write(0, io->out, "<", 1);
+        f_write(0, io->out, argv[0], (long)strlen(argv[0]));
+        f_write(0, io->out, "><TERM=", 7);
+        f_write(0, io->out, term ? term : "", term ? (long)strlen(term) : 0);
+        f_write(0, io->out, ">", 1);
+        for (i = 1; i < argc; i++) {
+            f_write(0, io->out, "<", 1);
+            f_write(0, io->out, argv[i], (long)strlen(argv[i]));
+            f_write(0, io->out, ">", 1);
+        }
+        f_write(0, io->out, "\n", 1);
+        return 0;
+    }
     if (!strcmp(argv[0], "cat")) {
         while ((n = f_read_line(0, io->in, line, sizeof(line))) >= 0)
             f_write(0, io->out, line, n);
@@ -742,6 +762,37 @@ static void vshrc_unix_names(void)
     vshrc_pre = "PATH=/mine";
     CHECK_STR(with_vshrc("echo $PATH"), "/mine\n");
     vshrc_pre = 0;
+    /* hlp and mdp: hl / mdv in colour into less -R, or into $PAGER */
+    CHECK_STR(with_vshrc("hlp x.c"), "<less><-R>\n");
+    CHECK_STR(with_vshrc("PAGER=cat; hlp 'a b.c' y.s"), "<hl><--color=always><-n><a b.c><y.s>\n");
+    CHECK_STR(with_vshrc("PAGER=cat; mdp README.md"), "<mdv><--color=always><README.md>\n");
+}
+
+/* G3-04: a remote host has no vtcon entry, so ssh, telnet and rlogin give
+ * it xterm-256color (what the window is to a Unix machine) -- unless the
+ * user named another (UP_REMOTE_TERM), or the TERM is not vtcon (screen's
+ * windows are "screen"). vsh's own TERM stays vtcon. */
+static void remote_logins_send_xterm_256color(void)
+{
+    vshrc_pre = "TERM=vtcon";
+    CHECK_STR(with_vshrc("ssh -l me host"), "<bebbossh><TERM=xterm-256color><-l><me><host>\n");
+    CHECK_STR(with_vshrc("telnet bbs.example 23"), "<uptelnet><TERM=vtcon><bbs.example><23><TERM><xterm-256color>\n");
+    CHECK_STR(with_vshrc("rlogin box"), "<rlogin><TERM=xterm-256color><box>\n");
+    CHECK_STR(with_vshrc("ssh h; echo $TERM"), "<bebbossh><TERM=xterm-256color><h>\nvtcon\n");
+    vshrc_pre = "TERM=vtcon; UP_REMOTE_TERM=xterm-amiga";
+    CHECK_STR(with_vshrc("ssh h"), "<bebbossh><TERM=xterm-amiga><h>\n");
+    vshrc_pre = "TERM=screen";
+    CHECK_STR(with_vshrc("telnet h"), "<uptelnet><TERM=screen><h><TERM><screen>\n");
+    vshrc_pre = 0;
+}
+
+/* command NAME: the builtin or program, never a function of that name
+ * (how the vshrc's telnet() reaches the real telnet) */
+static void command_skips_functions(void)
+{
+    CHECK_STR(run("args() { echo function; }; command args x y"), "<x><y>\n");
+    CHECK_STR(run("echo() { :; }; command echo hi"), "hi\n");
+    CHECK_STR(run("command"), "");
 }
 
 static void deep_recursion(void)
@@ -892,6 +943,8 @@ void suite_sh_exec(void)
     read_builtin();
     path_entries_are_amigados_dirs();
     vshrc_unix_names();
+    remote_logins_send_xterm_256color();
+    command_skips_functions();
     deep_recursion();
     word_lists();
     sh_shell_free(&sh);

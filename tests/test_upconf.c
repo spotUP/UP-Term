@@ -43,6 +43,280 @@ static void profile_equal(void)
     CHECK(upconf_profile_equal(&a, &b, "nosuch"));   /* absent from both */
 }
 
+/* Save keeps the comments: the parse used to drop every ; and # line and
+ * the save wrote only keys, so the first Prefs save of the shipped sample
+ * (45 lines of documentation) left a bare table. A comment stays where
+ * it was among its profile's keys; one before every section stays first. */
+static void comments_kept(void)
+{
+    static upconf c, back;
+    static char out[UC_MAX_FILE + 1];
+    static char again[UC_MAX_FILE + 1];
+    static const char file[] =
+        "; UP-Term settings\n"
+        "# the head of the file\n"
+        "\n"
+        "[profile default]\n"
+        "; the font I like\n"
+        "font = TOPAZ 8.8.font\n"
+        "  ; indented, kept as typed\n"
+        "bell = none\n"
+        "; backspace = bs\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n";
+    static const char want[] =
+        "; UP-Term settings\n"
+        "# the head of the file\n"
+        "\n"
+        "[profile default]\n"
+        "; the font I like\n"
+        "font = TOPAZ 8.8.font\n"
+        "  ; indented, kept as typed\n"
+        "bell = none\n"
+        "; backspace = bs\n"
+        "\n"
+        "\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n";
+    long len, len2;
+    CHECK(upconf_parse(&c, file, (long)strlen(file)) == 1);
+    CHECK(!c.overflow);
+    CHECK_INT(c.nprof, 2);
+    CHECK_INT(c.n[0], 2); /* comments are not keys: no key slot taken */
+    len = upconf_save(&c, out, sizeof(out) - 1);
+    CHECK(len > 0);
+    out[len > 0 ? len : 0] = 0;
+    CHECK_STR(out, want);
+    /* and the saved file saves the same again: nothing grows or moves */
+    CHECK(upconf_parse(&back, out, len) == 1);
+    len2 = upconf_save(&back, again, sizeof(again) - 1);
+    again[len2 > 0 ? len2 : 0] = 0;
+    CHECK_STR(again, out);
+
+    /* a key deleted: the comment before the next key stays before it, the
+     * keys keep their order; a key added goes last */
+    CHECK(upconf_parse(&c, file, (long)strlen(file)) == 1);
+    CHECK(upconf_set(&c, "default", "scrollback", "900"));
+    CHECK(upconf_del(&c, "default", "font"));
+    len = upconf_save(&c, out, sizeof(out) - 1);
+    out[len > 0 ? len : 0] = 0;
+    CHECK_STR(out,
+        "; UP-Term settings\n"
+        "# the head of the file\n"
+        "\n"
+        "[profile default]\n"
+        "; the font I like\n"
+        "  ; indented, kept as typed\n"
+        "bell = none\n"
+        "; backspace = bs\n"
+        "scrollback = 900\n"
+        "\n"
+        "\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n");
+
+    /* a profile deleted takes its own comments, the others keep theirs */
+    CHECK(upconf_parse(&c, file, (long)strlen(file)) == 1);
+    CHECK(upconf_rmprof(&c, "default"));
+    len = upconf_save(&c, out, sizeof(out) - 1);
+    out[len > 0 ? len : 0] = 0;
+    CHECK_STR(out,
+        "; UP-Term settings\n"
+        "# the head of the file\n"
+        "\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n");
+
+    /* a section that holds only a comment is kept, as written */
+    CHECK(upconf_parse(&c, "[profile empty]\n; nothing yet\n", 30) == 1);
+    len = upconf_save(&c, out, sizeof(out) - 1);
+    out[len > 0 ? len : 0] = 0;
+    CHECK_STR(out, "[profile empty]\n; nothing yet\n");
+
+    /* a comment longer than a line of settings is kept whole: dropping it
+     * would lose it on the next save */
+    {
+        static char longc[600];
+        int k;
+        longc[0] = ';';
+        for (k = 1; k < 500; k++)
+            longc[k] = 'c';
+        strcpy(longc + 500, "\nbell = none\n");
+        CHECK(upconf_parse(&c, longc, (long)strlen(longc)) == 1);
+        CHECK(!c.overflow);
+        CHECK_STR(upconf_get(&c, "default", "bell"), "none");
+        len = upconf_save(&c, out, sizeof(out) - 1);
+        out[len > 0 ? len : 0] = 0;
+        CHECK(!strncmp(out, longc, 501));
+    }
+
+    /* more comment text than the table holds: marked, so the editor does
+     * not write the file back without it */
+    {
+        static char many[UC_MAX_FILE];
+        long n = 0;
+        while (n + 40 < (long)sizeof(many) - 1) {
+            memcpy(many + n, "; a comment line of forty bytes ......\n", 39);
+            n += 39;
+        }
+        many[n] = 0;
+        CHECK(upconf_parse(&c, many, n) == 1);
+        CHECK(c.overflow);
+    }
+}
+
+static long app(char *buf, long len, const char *s)
+{
+    strcpy(buf + len, s);
+    return len + (long)strlen(s);
+}
+
+/* The table is packed (research/2026-10-04_window-memory.md): one per
+ * XCON: window, 56 KB in slots, about 18 KB packed. */
+static void packed_table(void)
+{
+    static upconf c, back;
+    static char file[UC_MAX_FILE + 1], saved[UC_MAX_FILE + 1];
+    char val[UC_MAX_VALUE + 8];
+    long len, n;
+    int p, k, used;
+
+    /* the sentinel: a climb back towards slots fails here */
+    CHECK(sizeof(upconf) <= 18500);
+
+    /* a full file -- 8 profiles x 32 keys of long values and a long comment,
+     * as close to UC_MAX_FILE as it goes -- is read whole, every value kept,
+     * and saved back byte for byte */
+    len = 0;
+    for (p = 0; p < UC_MAX_PROFILES; p++) {
+        len = app(file, len, p ? "\n\n[profile p" : "[profile p");
+        val[0] = (char)('0' + p);
+        val[1] = 0;
+        len = app(file, len, val);
+        len = app(file, len, "]\n");
+        if (p == 3) {
+            memset(val, '0', 100);
+            strcpy(val + 100, "\n");
+            len = app(file, len, "; ");
+            len = app(file, len, val);
+        }
+        for (k = 0; k < UC_MAX_KEYS; k++) {
+            val[0] = 'k';
+            val[1] = (char)('0' + k / 10);
+            val[2] = (char)('0' + k % 10);
+            strcpy(val + 3, " = ");
+            memset(val + 6, 'a' + (p + k) % 26, 55);
+            strcpy(val + 61, "\n");
+            len = app(file, len, val);
+        }
+    }
+    CHECK(len <= UC_MAX_FILE);
+    CHECK(len > UC_MAX_FILE - 300);
+    upconf_parse(&c, file, len);
+    CHECK(!c.overflow);
+    CHECK_INT(c.nprof, UC_MAX_PROFILES);
+    CHECK(c.used <= len);
+    for (p = 0; p < UC_MAX_PROFILES; p++)
+        CHECK_INT(c.n[p], UC_MAX_KEYS);
+    memset(val, 'a' + (5 + 9) % 26, 55);
+    val[55] = 0;
+    CHECK_STR(upconf_get(&c, "p5", "k09"), val);
+    n = upconf_save(&c, saved, sizeof(saved));
+    CHECK_INT(n, len);
+    saved[n > 0 ? n : 0] = 0;
+    CHECK(n == len && !memcmp(saved, file, (size_t)len));
+
+    /* the pool is full: a set that does not fit fails, marks overflow and
+     * leaves the old value standing (a table no save could write anyway) */
+    upconf_clear(&c);
+    memset(val, 'v', UC_MAX_VALUE - 1);
+    val[UC_MAX_VALUE - 1] = 0;
+    n = 0;
+    for (p = 0; p < UC_MAX_PROFILES; p++)
+        for (k = 0; k < UC_MAX_KEYS; k++) {
+            char name[8];
+            name[0] = 'p';
+            name[1] = (char)('0' + p);
+            name[2] = 0;
+            file[0] = 'k';
+            file[1] = (char)('A' + k);
+            file[2] = 0;
+            n += upconf_set(&c, name, file, val);
+        }
+    CHECK(c.overflow);
+    CHECK(c.used <= UC_POOL);
+    CHECK(c.used > UC_POOL - (3 + UC_MAX_VALUE + 1));
+    CHECK_INT(n, UC_POOL / (3 + UC_MAX_VALUE));         /* as many as fit, whole */
+    CHECK_STR(upconf_get(&c, "p0", "kA"), val);
+    /* the last bytes exactly filled, then one byte more than that refused */
+    {
+        int left = UC_POOL - c.used - 4; /* "zz" NUL value NUL */
+        CHECK(left >= 1 && left < UC_MAX_VALUE);
+        val[left] = 0;
+        CHECK(upconf_set(&c, "p3", "zz", val));
+        CHECK_INT(c.used, UC_POOL);
+        c.overflow = 0;
+        val[left] = 'v';
+        val[left + 1] = 0;
+        CHECK(!upconf_set(&c, "p3", "zz", val));
+        CHECK(c.overflow);
+        CHECK_INT((long)strlen(upconf_get(&c, "p3", "zz")), left); /* the old value stands */
+    }
+
+    /* a value set from the table's own pool (a lookup handed straight
+     * back): copied before anything moves */
+    {
+        static const char abc[] = "a = one\nb = twotwo\nc = three\n";
+        upconf_parse(&c, abc, (long)strlen(abc));
+    }
+    CHECK(upconf_set(&c, "default", "a", upconf_get(&c, "default", "b")));
+    CHECK(upconf_set(&c, "default", "c", upconf_get(&c, "default", "c")));
+    CHECK(upconf_set(&c, "default", "b", upconf_get(&c, "default", "c")));
+    CHECK_STR(upconf_get(&c, "default", "a"), "twotwo");
+    CHECK_STR(upconf_get(&c, "default", "b"), "three");
+    CHECK_STR(upconf_get(&c, "default", "c"), "three");
+
+    /* values replaced a thousand times leave no garbage behind, and the
+     * others stay whole; a delete gives its bytes back */
+    used = c.used;
+    for (k = 0; k < 1000; k++)
+        upconf_set(&c, "default", "a", k & 1 ? "x" : "a much longer value than x");
+    CHECK_INT(c.used, used - 6 + 1);
+    CHECK_STR(upconf_get(&c, "default", "a"), "x");
+    CHECK_STR(upconf_get(&c, "default", "b"), "three");
+    CHECK(upconf_set(&c, "vim", "bell", "none"));
+    CHECK(upconf_set(&c, "default", "font", "topaz 8"));
+    CHECK(upconf_del(&c, "default", "b"));
+    CHECK(upconf_rmprof(&c, "vim"));
+    CHECK_INT(c.used, used - 6 + 1 - 8 + (int)sizeof("font") + (int)sizeof("topaz 8"));
+    CHECK_STR(upconf_get(&c, "default", "font"), "topaz 8");
+    CHECK_STR(upconf_get(&c, "default", "c"), "three");
+    CHECK(upconf_get(&c, "default", "b") == 0);
+    CHECK(upconf_get(&c, "vim", "bell") == 0);
+
+    /* a live reload parses the new file into a used table: nothing of the
+     * old one is left, and every profile reads (a profile switch) */
+    {
+        static const char two[] = "[profile vim]\nbg = 000000\n; note\n[profile default]\nfg = 101010\n";
+        upconf_parse(&c, two, (long)strlen(two));
+    }
+    CHECK(upconf_get(&c, "default", "font") == 0);
+    CHECK(upconf_get(&c, "default", "c") == 0);
+    CHECK_STR(upconf_get(&c, "vim", "bg"), "000000");
+    CHECK_STR(upconf_get(&c, "default", "fg"), "101010");
+    CHECK_INT(c.nnote, 1);
+    /* a copy is a plain memcpy: no pointers inside */
+    memcpy(&back, &c, sizeof(c));
+    upconf_set(&c, "vim", "bg", "FFFFFF");
+    CHECK_STR(upconf_get(&back, "vim", "bg"), "000000");
+    CHECK(!upconf_profile_equal(&c, &back, "vim"));
+    CHECK(upconf_profile_equal(&c, &back, "default"));
+}
+
 void suite_upconf(void)
 {
     upconf c;
@@ -349,12 +623,19 @@ void suite_upconf(void)
     {
         uc_u32 in[16];
         char out[200];
+        long len;
         int k;
         for (k = 0; k < 16; k++)
             in[k] = 0x01000000UL | (uc_u32)(0x111111UL * (uc_u32)(k % 15 + 1));
-        CHECK(palette_str_dirty(in, out, sizeof(out) - 1) > 0);
+        /* the text is not NUL-terminated (upconf.h): the length is the
+         * answer, and strlen of the buffer read on into the junk */
+        len = palette_str_dirty(in, out, sizeof(out) - 1);
+        CHECK_INT(len, 16 * 10 - 1);                  /* "NN,RRGGBB," x 16, no last comma */
+        out[len > 0 ? len : 0] = 0;
         CHECK(!strncmp(out, "00,111111,01,222222,", 20));
-        CHECK_INT((int)strlen(out), 16 * 10 - 1);       /* "NN,RRGGBB," x 16, no last comma */
+        CHECK_STR(out + 150, "15,111111");             /* the last entry whole, nothing after */
     }
     profile_equal();
+    comments_kept();
+    packed_table();
 }

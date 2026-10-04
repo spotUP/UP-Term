@@ -4,6 +4,8 @@
  * CSI finals different meanings (the conformance matrix in
  * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */
 #include "vtengine.h"
+#include "vtwidth.h"
+#include <stddef.h>
 #include <string.h>
 
 #if defined(VT_AMIGA_EXEC_ALLOC)
@@ -19,13 +21,15 @@
 #endif
 
 #define VT_MAX_PARAMS 16
-#define VT_STR_MAX 256
+[7mrs/spot/Code/vtcon/.claude/worktrees/agent-a40d2523fe2066ed4/engine/vtengine.c[27m[K[K#define VT_STR_MAX 256
 #define VT_PARAM_MAX 65535L
-[7m/Users/spot/Code/vtcon/engine/vtengine.c[27m[K[K
+#define VT_LINKS_MAX 63 /* OSC 8 links the cells may name at once */
+
 /* Parser states. */
 enum {
     S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
-    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */,
+    S_PRINT /* printer controller mode (CSI 5 i): the bytes go to no printer */
 };
 
 /* A grid line: one allocation, cells follow the header. */
@@ -33,165 +37,132 @@ typedef struct vt_line {
     vt_u16 cap;      /* cells allocated */
     vt_u16 n;        /* cells in use (== cols for grid lines) */
     vt_u8 wrapped;   /* the text continues on the next line */
-    vt_u8 pad;
+    vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BO TTOM */
+    vt_u8 mark;      /* OSC 133: VT_MARK_* that started on this line */
+    vt_u8 spare;
+    vt_u16 used;     /* cells [used, n) are still the default blank the last
+                      * line_clear wrote: clearing again need not touch them.
+                      * mark() -- every change to a grid cell passes it --
+:[K[K                      * raises it; a line whose cells are not known (new, or
+                      * cleared in a colour) has used == cap. (S1: a scroll
+                      * cleared 80 cells a line, 0.69 ms on a 14 MHz 68020.) */
+    short dx0, dx1;  /* the row's cells [dx0, dx1) changed since the last flush
+                      * (empty when dx0 >= dx1). Kept in the line: a scroll
+                      * moves the lines, and their spans with them. */
     vt_cell c[1];
 } vt_line;
 
 typedef struct vt_saved {
     int x, y, wrap_pending, origin;
-    vt_u16 fg, bg;
-    vt_u8 attr;
+    vt_color fg, bg, ul;
+    vt_attr attr;
+    vt_u8 deco, font;
     vt_u8 charset[4];
     int gl;
 } vt_saved;
-:[K[K
+
 struct vt_term {
     vt_callbacks cb;
     void *user;
     enum vt_personality pers;
     int cols, rows;
-
-    vt_line **scr, **pri, **alt;
-    vt_line **sb;          /* scrollback ring */
-    int sb_cap, sb_len, sb_head; /* head: next slot to write */
-
-    int cx, cy, wrap_pending;
-    vt_u16 fg, bg;
-    vt_u8 attr;
-    int top, bot;          /* scroll region rows [top, bot) */
-    vt_u8 *tabs;
-    int tabs_cap;
-
-    vt_u32 modes;
-    int autowrap, origin, insert;
-    vt_u8 charset[4];      /* 'B' ASCII, '0' DEC graphics, 'A' UK */
-    int gl, single_shift;
-    vt_saved sav, sav_1049;
-:[K[K[HM} vt_saved;
-[HM    int gl;
-[HM    vt_u8 charset[4];
-[HM    vt_u8 attr;
-[HM    vt_u16 fg, bg;
-[HM    int x, y, wrap_pending, origin;
-[HMtypedef struct vt_saved {
-[HM
-[HM} vt_line;
-[HM    vt_cell c[1];
-[HM    vt_u8 pad;
-[HM    vt_u8 wrapped;   /* the text continues on the next line */
+:[K[K[HM                      * mark() -- every change to a grid cell passes it --
+[HM                      * line_clear wrote: clearing again need not touch them.
+[HM    vt_u16 used;     /* cells [used, n) are still the default blank the last
+[HM    vt_u8 spare;
+[HM    vt_u8 mark;      /* OSC 133: VT_MARK_* that started on this line */
+[HMTTOM */
+[HM    vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BO[HM    vt_u8 wrapped;   /* the text continues on the next line */
 [HM    vt_u16 n;        /* cells in use (== cols for grid lines) */
 [HM    vt_u16 cap;      /* cells allocated */
 [HMtypedef struct vt_line {
 [HM/* A grid line: one allocation, cells follow the header. */
 [HM
 [HM};
-[HM    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+[HM    S_PRINT /* printer controller mode (CSI 5 i): the bytes go to no printer */
+[HM    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */,
 [HM    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
 [HMenum {
 [HM/* Parser states. */
 [HM
-[24;1H[K:[K[K
-:[K[Kstruct vt_term {
-:[K[K    vt_callbacks cb;
-:[K[K    void *user;
-:[K[K    enum vt_personality pers;
-:[K[K[HM    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
-[24;1H[K:[K[K[HM    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
-[24;1H[K:[K[K[HMenum {
-[24;1H[K:[K[K/[Kss[Ktt[Kaa[Ktt[Kee[K[1;1Henum {
-[2;1H    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
-[3;1H    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
-[4;1H};
-[5;1H
-[6;1H/* A grid line: one allocation, cells follow the header. */
-[7;1Htypedef struct vt_line {
-[8;1H    vt_u16 cap;      /* cells allocated */
-[9;1H    vt_u16 n;        /* cells in use (== cols for grid lines) */
-[10;1H    vt_u8 wrapped;   /* the text continues on the next line */
-[11;1H    vt_u8 pad;
-[12;1H    vt_cell c[1];
-[13;1H} vt_line;
-[14;1H
-[15;1Htypedef struct vt_saved {
-[16;1H    int x, y, wrap_pending, origin;
-[17;1H    vt_u16 fg, bg;
-[18;1H    vt_u8 attr;
-[19;1H    vt_u8 charset[4];
-[20;1H    int gl;
-[21;1H} vt_saved;
-[22;1H
-[23;1Hstruct vt_term {
-[24;1H[1;1Henum {
-[2;1H    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
-[3;1H    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
-[4;1H};
-[5;1H
-[6;1H/* A grid line: one allocation, cells follow the header. */
-[7;1Htypedef struct vt_line {
-[8;1H    vt_u16 cap;      /* cells allocated */
-[9;1H    vt_u16 n;        /* cells in use (== cols for grid lines) */
-[10;1H    vt_u8 wrapped;   /* the text continues on the next line */
-[11;1H    vt_u8 pad;
-[12;1H    vt_cell c[1];
-[13;1H} vt_line;
-[14;1H
-[15;1Htypedef struct vt_saved {
-[16;1H    int x, y, wrap_pending, origin;
-[17;1H    vt_u16 fg, bg;
-[18;1H    vt_u8 attr;
-[19;1H    vt_u8 charset[4];
-[20;1H    int gl;
-[21;1H} vt_saved;
-[22;1H
-[23;1Hstruct vt_term {
-[24;1H...skipping...
+[HM#define VT_LINKS_MAX 63 /* OSC 8 links the cells may name at once */
+[HM#define VT_PARAM_MAX 65535L
+[HM#define VT_STR_MAX 256
+[24;1H[K:[K[K                      * raises it; a line whose cells are not known (new, or
+:[K[K                      * cleared in a colour) has used == cap. (S1: a scroll
+:[K[K                      * cleared 80 cells a line, 0.69 ms on a 14 MHz 68020.) */
+:[K[K    short dx0, dx1;  /* the row's cells [dx0, dx1) changed since the last flush
+:[K[K                      * (empty when dx0 >= dx1). Kept in the line: a scroll
+:[K[K[HM/* Parser states. */
+[24;1H[K:[K[K[HM
+[24;1H[K:[K[K[HM#define VT_LINKS_MAX 63 /* OSC 8 links the cells may name at once */
+[24;1H[K:[K[K/[Kss[Ktt[Kaa[Ktt[Kee[K[1;1H#define VT_LINKS_MAX 63 /* OSC 8 links the cells may name at once */
+[2;1H
+[3;1H/* Parser states. */
+[4;1Henum {
+[5;1H    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+[6;1H    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */,
+[7;1H    S_PRINT /* printer controller mode (CSI 5 i): the bytes go to no printer */
+[8;1H};
+[9;1H
+[10;1H/* A grid line: one allocation, cells follow the header. */
+[11;1Htypedef struct vt_line {
+[12;1H    vt_u16 cap;      /* cells allocated */
+[13;1H    vt_u16 n;        /* cells in use (== cols for grid lines) */
+[14;1H    vt_u8 wrapped;   /* the text continues on the next line */
+[15;1H    vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BO [16;1HTTOM */
+[17;1H    vt_u8 mark;      /* OSC 133: VT_MARK_* that started on this line */
+[18;1H    vt_u8 spare;
+[19;1H    vt_u16 used;     /* cells [used, n) are still the default blank the last
+[20;1H                      * line_clear wrote: clearing again need not touch them.
+[21;1H                      * mark() -- every change to a grid cell passes it --
+[22;1H                      * raises it; a line whose cells are not known (new, or
+[23;1H                      * cleared in a colour) has used == cap. (S1: a scroll
+[24;1H[1;1H#define VT_LINKS_MAX 63 /* OSC 8 links the cells may name at once */
+[2;1H
+[3;1H/* Parser [7mstate[27ms. */
+[4;1Henum {
+[5;1H    S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
+[6;1H    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */,
+[7;1H    S_PRINT /* printer controller mode (CSI 5 i): the bytes go to no printer */
+[8;1H};
+[9;1H
+[10;1H/* A grid line: one allocation, cells follow the header. */
+[11;1Htypedef struct vt_line {
+[12;1H    vt_u16 cap;      /* cells allocated */
+[13;1H    vt_u16 n;        /* cells in use (== cols for grid lines) */
+[14;1H    vt_u8 wrapped;   /* the text continues on the next line */
+[15;1H    vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BO [16;1HTTOM */
+[17;1H    vt_u8 mark;      /* OSC 133: VT_MARK_* that started on this line */
+[18;1H    vt_u8 spare;
+[19;1H    vt_u16 used;     /* cells [used, n) are still the default blank the last
+[20;1H                      * line_clear wrote: clearing again need not touch them.
+[21;1H                      * mark() -- every change to a grid cell passes it --
+[22;1H                      * raises it; a line whose cells are not known (new, or
+[23;1H                      * cleared in a colour) has used == cap. (S1: a scroll
+[24;1H                      * cleared 80 cells a line, 0.69 ms on a 14 MHz 68020.) */
+    short dx0, dx1;  /* the row's cells [dx0, dx1) changed since the last flush
+:[K[K/[K...skipping...
     int [7mstate[27m;
     long params[VT_MAX_PARAMS];
     vt_u8 sub[VT_MAX_PARAMS];  /* 1: this parameter followed a ':' */
     int np, have;
     vt_u8 priv, inter;
     int ninter;
+    int csi8;                  /* this CSI came as the raw byte $9B (see csi_xte rm) */
+    int raw_c1;                /* feed(): the C1 code point is a raw 8-bit byte  */
     vt_u8 str_kind;            /* ']' OSC, 'P' DCS, 'X' SOS, '^' PM, '_' APC */
     int str_esc;
     char str[VT_STR_MAX];
     int str_len;
-
-    /* UTF-8 decoder (xterm) */
-    vt_u32 u_cp;
-    int u_need;
-    int utf8;
-
-    /* per-row dirty spans, flushed at the end of each write */
-    short *dx0, *dx1;
-    int dirty;
-
-    char title[VT_STR_MAX];
-
-    /* sequences parsed but not acted on (vt_unhandled): the terminfo test
-:[K[K/[K...skipping...
-/* ---- [7mstate[27m ------------------------------------------------------------- */
-
-static void save_cursor(vt_term *t, vt_saved *s)
-{
-    s->x = t->cx;
-    s->y = t->cy;
-    s->wrap_pending = t->wrap_pending;
-    s->origin = t->origin;
-    s->fg = t->fg;
-    s->bg = t->bg;
-    s->attr = t->attr;
-    memcpy(s->charset, t->charset, 4);
-    s->gl = t->gl;
-}
-
-static void restore_cursor(vt_term *t, const vt_saved *s)
-{
-    t->origin = s->origin;
-    t->fg = s->fg;
-    t->bg = s->bg;
-    t->attr = s->attr;
-    memcpy(t->charset, s->charset, 4);
-    t->gl = s->gl;
+    /* OSC 52: its payload streams past str, base64 decoded as it comes
+     * into a buffer that grows to VT_CLIP_MAX (osc52_byte) */
+    vt_u8 osc52;               /* 0 not an OSC 52; 1 its selection; 2 its data;
+                                * 3 an OSC 7 / 8 (long_cmd) kept whole in clip * /
+    vt_u8 long_cmd;
+    vt_u8 clip_bad, clip_query;
+    char clip_sel[8];
+    int clip_nsel;
 :[K[K...skipping...
     } else {
         if (x > 222 || y > 222)

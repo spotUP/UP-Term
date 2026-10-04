@@ -15,14 +15,33 @@ clear() {
     printf '\033[H\033[2J'
 }
 
-# ssh and scp: BebboSSH (Install's network tools). vsh's own TERM is vtcon,
-# which a remote Unix machine has no entry for (its shell then cannot move
-# the cursor and redraws every key); an UP-Term window is an xterm to it.
+# Remote logins: ssh (BebboSSH, Install's network tools), telnet, rlogin.
+# vsh's own TERM is vtcon, which a remote Unix machine has no entry for (its
+# shell then cannot move the cursor and redraws every key); an UP-Term
+# window is an xterm-256color to it -- everything that entry asks for, the
+# window does. To send another name, set UP_REMOTE_TERM (in $HOME/.vshrc,
+# say UP_REMOTE_TERM=xterm-amiga). A TERM that is not vtcon -- screen's
+# windows are "screen" -- goes as it is.
+remote_term() {
+    case "${UP_REMOTE_TERM:-$TERM}" in
+    ''|vtcon) echo xterm-256color ;;
+    *) echo "${UP_REMOTE_TERM:-$TERM}" ;;
+    esac
+}
 ssh() {
-    TERM=xterm-256color bebbossh "$@"
+    TERM=$(remote_term) bebbossh "$@"
+}
+rlogin() {
+    TERM=$(remote_term) command rlogin "$@"
 }
 scp() {
     bebboscp "$@"
+}
+# telnet: C:uptelnet (no ixemul). It tells the far end remote_term's name
+# (its TERM keyword) and the window's size, and follows a resize. Ctrl-]
+# ends it.
+telnet() {
+    uptelnet "$@" TERM "$(remote_term)"
 }
 
 # The Unix commands are GNU coreutils 5.2.1 in SYS:UP-Term/bin (see
@@ -42,6 +61,21 @@ export PATH
 # profile defines.
 alias ls='ls --color=auto'
 alias ll='ls -l'
+
+# hl and mdv (SYS:UP-Term/bin, see the README): a source in colour with
+# line numbers (hl file.c; to a pipe or a file it is plain cat), Markdown
+# formatted for the window (mdv README.md). hlp and mdp page them: less -R
+# keeps the colours (less from Geek Gadgets or Aminet; $PAGER names
+# another pager that shows colours).
+hlp() {
+    hl --color=always -n "$@" | ${PAGER:-less -R}
+}
+mdp() {
+    mdv --color=always "$@" | ${PAGER:-less -R}
+}
+# hl as cat on the console (colours, no numbers; a pipe or a file still
+# gets the bytes as they are), for whoever wants it:
+# alias cat='hl -p'
 
 # The Up Rough banner when an interactive vsh starts on a terminal (not
 # for vsh -c or a script, and not when its output goes elsewhere). Remove

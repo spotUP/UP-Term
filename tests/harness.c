@@ -73,15 +73,6 @@ void h_put(vt_term *t, const char *s)
     vt_write(t, (const vt_u8 *)s, (long)strlen(s));
 }
 
-static int utf8(char *o, unsigned c)
-{
-    if (c < 0x80) { o[0] = (char)c; return 1; }
-    if (c < 0x800) { o[0] = (char)(0xC0 | (c >> 6)); o[1] = (char)(0x80 | (c & 0x3F)); return 2; }
-    o[0] = (char)(0xE0 | (c >> 12)); o[1] = (char)(0x80 | ((c >> 6) & 0x3F));
-    o[2] = (char)(0x80 | (c & 0x3F));
-    return 3;
-}
-
 const char *h_row(vt_term *t, int row)
 {
     static char buf[4096];
@@ -92,7 +83,7 @@ const char *h_row(vt_term *t, int row)
     for (i = 0; i < n; i++) {
         if (c[i].width == 0)
             continue;
-        len += utf8(buf + len, c[i].ch);
+        len += vt_cell_utf8(t, &c[i], buf + len);
         if (c[i].ch != ' ')
             keep = len;
     }
@@ -122,4 +113,32 @@ const vt_cell *h_cell(vt_term *t, int x, int y)
 {
     int n;
     return vt_row(t, y, &n) + x;
+}
+
+/* -DVT_COUNT_ALLOC: the engine's and the line editor's blocks, counted.
+ * Each block carries its size in front (aligned for anything). */
+long vt_count_live, vt_count_blocks;
+
+typedef union { unsigned long n; double d; void *p; long l; } h_block_head;
+
+void *vt_count_malloc(unsigned long n)
+{
+    h_block_head *h = (h_block_head *)malloc(sizeof(h_block_head) + n);
+    if (!h)
+        return 0;
+    h->n = n;
+    vt_count_live += (long)n;
+    vt_count_blocks++;
+    return h + 1;
+}
+
+void vt_count_free(void *p)
+{
+    h_block_head *h;
+    if (!p)
+        return;
+    h = (h_block_head *)p - 1;
+    vt_count_live -= (long)h->n;
+    vt_count_blocks--;
+    free(h);
 }

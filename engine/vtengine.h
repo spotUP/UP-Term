@@ -73,15 +73,32 @@ typedef vt_u16 vt_attr;
 
 typedef struct vt_cell {
     vt_color fg, bg; /* see VT_COLOR_* */
-    vt_u16 ch;      /* Unicode code point (BMP); 0x20 for blank */
+    vt_u16 ch;      /* Unicode code point (BMP); 0x20 for blank; in
+                     * VT_CLUSTER_FIRST..LAST an entry of the terminal's
+                     * cluster table (vt_cell_text) */
     vt_attr attr;   /* VT_ATTR_* */
     vt_u8  width;   /* 1; 2 for the first cell of a wide glyph, 0 for its second */
     vt_u8  deco;    /* VT_DECO_*: underline style, ideogram line */
     vt_u8  ext;     /* 0, or 1 + an entry of the terminal's rare styles:
                      * underline colour and font (vt_cell_underline_color,
                      * vt_cell_font) */
-    vt_u8  pad;
+    vt_u8  pad;     /* VT_CELL_IMAGE, else 0 */
 } vt_cell;
+/* vt_cell.pad: the cell shows a tile of an image placed on its row
+ * (vt_row_image); its own text is a blank. Writing or erasing the cell
+ * rewrites it whole, so text over an image takes its place. */
+#define VT_CELL_IMAGE 0x01
+
+/* A cell's ch in U+D800..U+DFFF (the surrogates, which are never a
+ * character of their own) is not a character: it names an entry of the
+ * terminal's cluster table, which holds a character beyond the BMP (emoji,
+ * CJK Extension B, Nerd Font icons in plane 15), or any character with the
+ * combining marks, variation selectors and joiners that followed it. The
+ * cell stays 16 bytes. vt_cell_text gives the code points. */
+#define VT_CLUSTER_FIRST 0xD800
+#define VT_CLUSTER_LAST  0xDFFF
+#define VT_CELL_IS_CLUSTER(c) (((c)->ch & 0xF800) == 0xD800)
+#define VT_CLUSTER_CPS 6 /* code points a cell holds: the character and up to 5 marks */
 
 /* Window-level requests the engine does not own itself (amiga personality). */
 enum vt_layout {
@@ -111,6 +128,21 @@ typedef struct vt_callbacks {
     /* A program changed the palette (OSC 4 / 104) or the default colours
      * (OSC 10-12 / 110-112): the renderer's pens are out of date. */
     void (*colors)(void *user);
+    /* OSC 52: a program sets the clipboard -- len bytes, as the program
+     * sent them (UTF-8 in a UTF-8 window), 0 to empty it. sel is the
+     * selection parameter ("c", "p", "s0"... or ""). Only while
+     * vt_set_clipboard_access allows writing (it does by default). */
+    void (*clipboard_set)(void *user, const char *sel, const vt_u8 *data, long len);
+    /* OSC 52 query: up to max bytes of the clipboard as UTF-8; the length.
+     * Asked only while vt_set_clipboard_access allows reading (it does
+     * not by default). */
+    long (*clipboard_get)(void *user, vt_u8 *buf, long max);
+    /* OSC 7: the shell's working directory, a file: URL as the program
+     * sent it ("file://host/path", path percent-encoded). vt_cwd keeps it. */
+    void (*cwd)(void *user, const char *uri);
+    /* OSC 9 ; text (title "") and OSC 777 ; notify ; title ; body: a
+     * program asks to tell the user something. UTF-8. */
+    void (*notify)(void *user, const char *title, const char *body);
 } vt_callbacks;
 
 /* vt_modes() bits the host needs for input. */
@@ -137,8 +169,24 @@ typedef struct vt_callbacks {
 #define VT_MODE_SYNC         0x100000 /* ?2026: synchronized output -- a program is in the middle of
                                        * a frame; the host holds its drawing until this is reset (or a
                                        * moment has passed), so no half-updated screen is shown */
+#define VT_MODE_ALT_SCROLL   0x200000 /* ?1007: the wheel on the alternate screen sends cursor keys */
+#define VT_MODE_BACKSPACE_BS 0x400000 /* ?67 DECBKM: Backspace sends BS (^H), not DEL */
+/* (0x400000-0x800000 free) */
+#define VT_MODE_MOUSE_URXVT  0x1000000 /* ?1015: CSI Cb;Cx;Cy M in decimal */
+#define VT_MODE_MOUSE_PIXELS 0x2000000 /* ?1016: the SGR form with pixel coordinates */
+#define VT_MODE_IN_BAND_RESIZE 0x4000000 /* ?2048: vt_resize reports the size (a reply) */
 
 typedef struct vt_term vt_term;
+
+#ifdef VT_COUNT_ALLOC
+/* Host tests only (built with -DVT_COUNT_ALLOC, tests/harness.c): the
+ * engine's and the line editor's memory goes through these, which count
+ * the bytes held, so a test can say what a window costs. */
+void *vt_count_malloc(unsigned long n);
+void vt_count_free(void *p);
+extern long vt_count_live;   /* bytes held now */
+extern long vt_count_blocks; /* blocks held now */
+#endif
 
 vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void *user);
 void     vt_free(vt_term *t);
@@ -154,13 +202,20 @@ void     vt_set_charset(vt_term *t, enum vt_charset cs);
  * does by default (the host's AmigaDOS programs end lines with a bare LF).
  * Unlike LNM (CSI 20 h) it does not change what Return sends. */
 void     vt_set_onlcr(vt_term *t, int on);
-/* Reflow on resize, as the ROM console's character-mapped units do: when
- * the width changes, vt_resize joins the rows a wrap linked into logical
- * lines and wraps them again at the new width, the cursor staying on its
- * character. Off by default (rows are cut or padded, as xterm does); a
- * setting of the host, so vt_reset leaves it. Scrollback lines and the
- * alternate screen are not reflowed. */
+/* Reflow on resize, as modern terminals and the ROM console's
+ * character-mapped units do: vt_resize joins the rows a wrap linked into
+ * logical lines and wraps them again at the new width, the cursor staying
+ * on its character. Where the personality keeps a scrollback it is laid
+ * out with the screen as one text (a line that began in the scrollback
+ * joins its rest), the screen is the bottom of it, and a taller window
+ * brings rows back down from the scrollback. The alternate screen is cut
+ * or padded (its program redraws). Off by default (rows are cut or padded,
+ * as xterm does); a setting of the host, so vt_reset leaves it. */
 void     vt_set_reflow(vt_term *t, int on);
+/* Backspace's default for the xterm personality: 1 BS (^H), 0 DEL (^?, the
+ * default). The ?67 (DECBKM) a program sets changes it until RIS, which
+ * returns to this. A remote host whose terminfo says kbs=^H wants 1. */
+void     vt_set_backspace_bs(vt_term *t, int bs);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
 /* Frame-paced output: vt_feed changes the grid without telling the
@@ -199,6 +254,9 @@ void     vt_clear_scrollback(vt_term *t);
  * stays on its text while output scrolls). */
 long     vt_lines_scrolled(const vt_term *t);
 void     vt_cursor(const vt_term *t, int *x, int *y);
+/* 1 while the cursor waits on the last column for the next character to
+ * wrap it (xterm's deferred wrap): logically it stands one cell further. */
+int      vt_wrap_pending(const vt_term *t);
 vt_u32   vt_modes(const vt_term *t);
 const char *vt_title(const vt_term *t);
 /* Amiga raw input event classes the host asked for (CSI n {), bit n. */
@@ -208,8 +266,21 @@ vt_u32   vt_raw_events(const vt_term *t);
  * order (rows below 0 are scrollback, as for vt_row). Trailing blanks of a
  * line are dropped and lines end with '\n', except a line that wrapped into
  * the next: selecting a wrapped paragraph gives it back as one line.
- * Written as UTF-8, NUL-terminated; returns the length (at most max - 1). */
+ * Written as UTF-8, NUL-terminated; returns the length (at most max - 1).
+ * With out NULL (max ignored) nothing is written and the return is the
+ * length the whole text needs, without the NUL: size the buffer with it. */
 long     vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, long max);
+
+/* The code points of a cell (from vt_row): its character, then the marks
+ * that combine with it, at most VT_CLUSTER_CPS. Returns how many (1 for
+ * every cell outside the cluster range). */
+int      vt_cell_text(const vt_term *t, const vt_cell *c, vt_u32 *cp);
+/* The cell's character alone (a cluster's first code point). */
+vt_u32   vt_cell_char(const vt_term *t, const vt_cell *c);
+/* The cell's code points as UTF-8 into out (VT_CELL_UTF8_MAX bytes at
+ * most, not terminated); returns the byte count. */
+#define VT_CELL_UTF8_MAX (4 * VT_CLUSTER_CPS)
+int      vt_cell_utf8(const vt_term *t, const vt_cell *c, char *out);
 
 /* vt_find: what vt_row returns when nothing matched. Below any real row. */
 #define VT_ROW_NONE (-1000000L)
@@ -235,10 +306,37 @@ long     vt_find(const vt_term *t, const char *q, long from);
  * OSC, "D 0" / "X 0" a DCS / other string. Unused slots are NULL. */
 long     vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max);
 
+/* Images (DEC sixel, DCS P1;P2;P3 q ... ST). vt_images: how many are
+ * alive (on the screen or in the scrollback); 0 means there is nothing to
+ * draw, which is all a renderer needs to test per frame. */
+int      vt_images(const vt_term *t);
+typedef struct vt_image_view {
+    const vt_u8 *pix;   /* w x h indices into pal, row after row */
+    int w, h;
+    const vt_u32 *pal;  /* 0xRRGGBB; entry 0 is the pixels the image left
+                         * unset: draw them in the default background */
+    int npal;
+    int cw, ch;         /* the cell size the image was placed with */
+    int col0;           /* the grid column of the image's left edge on this
+                         * row (negative when a reflow split the image) */
+    int py;             /* the image's pixel row at the top of this row */
+    long serial;        /* different for every image (a pen cache's key) */
+} vt_image_view;
+/* The i-th image on row `row` (vt_row's numbering), the oldest first, so
+ * drawing them in order puts the newest on top. Draw a tile only in the
+ * row's cells with VT_CELL_IMAGE set. 0 when there is no i-th. */
+int      vt_row_image(const vt_term *t, int row, int i, vt_image_view *v);
+/* The largest sixel image, in pixels, and the memory all images share. */
+#define VT_SIXEL_MAX_W 1024
+#define VT_SIXEL_MAX_H 1024
+#define VT_IMAGE_MEMORY (2048L * 1024L)
+
 /* The palette indices a cell draws with, for this personality: default
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,
- * inverse (the cell's, XOR the screen's DECSCNM) and conceal all resolved.
- * RGB colours pass through unchanged. */
+ * faint, inverse (the cell's, XOR the screen's DECSCNM) and conceal all
+ * resolved. RGB colours pass through unchanged. Faint (SGR 2) makes any
+ * text colour an RGB one halfway to the background (xterm, pcansi; the
+ * amiga personality keeps its pens: 7 and 15 become pen 2). */
 void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_color *bg);
 /* The colour of the cell's underline (SGR 58), VT_COLOR_DEFAULT when it
  * follows the text; and its font, 0 primary, 1-9 SGR 11-19, 10 Fraktur (20). */
@@ -281,6 +379,37 @@ int      vt_cursor_style(const vt_term *t);
  * a program's DECSCUSR still overrides it. */
 void     vt_set_cursor_style(vt_term *t, int style);
 
+/* What OSC 52 may do with the host's clipboard: write (VT_CLIP_WRITE, the
+ * default -- kitty, foot, WezTerm allow it) and read (VT_CLIP_READ, off by
+ * default: a remote program reading what the user copied is a leak, which
+ * is why xterm's disallowedWindowOps has it). A host setting (the profile's
+ * program-clipboard); vt_reset leaves it. A set larger than VT_CLIP_MAX
+ * bytes is dropped whole; a query answers at most VT_CLIP_QUERY_MAX. */
+#define VT_CLIP_WRITE 1
+#define VT_CLIP_READ  2
+#define VT_CLIP_MAX       1048576L
+#define VT_CLIP_QUERY_MAX 65536L
+void     vt_set_clipboard_access(vt_term *t, int bits);
+
+/* OSC 7: the last working directory a program reported (a file: URL), ""
+ * when none since vt_new or RIS. */
+const char *vt_cwd(const vt_term *t);
+/* OSC 8: the URI of the hyperlink the cell is part of, NULL when none. The
+ * pointer stays valid while a cell shows the link. Cells keep links through
+ * their rare-style index (vt_cell.ext), so a cell is no bigger for it. */
+#define VT_URI_MAX 4096 /* a longer OSC 7 / OSC 8 string is dropped */
+const char *vt_cell_link(const vt_term *t, const vt_cell *c);
+/* OSC 133 (FinalTerm semantic prompts): what started on a line -- the
+ * prompt (A), the command typed (B), its output (C), its end (D). */
+#define VT_MARK_PROMPT  1
+#define VT_MARK_COMMAND 2
+#define VT_MARK_OUTPUT  4
+#define VT_MARK_DONE    8
+int      vt_row_marks(const vt_term *t, int row); /* row as for vt_row; 0 outside */
+/* The nearest row after (dir 1) or before (dir -1) row `from` whose marks
+ * include `mark`, through the scrollback and the grid; VT_ROW_NONE. */
+long     vt_find_mark(const vt_term *t, long from, int dir, int mark);
+
 /* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
 const vt_u16 *vt_cp437_table(void);
 
@@ -304,12 +433,47 @@ enum vt_key {
 #define VT_MOD_CTRL  4
 /* Writes at most 32 bytes to out; returns the count (0: nothing to send). */
 int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
+/* xterm's modifyOtherKeys level (CSI > 4 ; n m), 0 off. While it is on the
+ * host hands character keys over without Ctrl applied, with VT_MOD_CTRL
+ * (and VT_MOD_SHIFT) in mods: the encoder decides between the control
+ * character and CSI 27 ; m ; c ~. Shift alone never changes a character. */
+int      vt_modify_other_keys(const vt_term *t);
+/* The kitty keyboard protocol (CSI > u and friends): the flags the program
+ * set for the screen in use, 0 when it did not (keys are xterm's). 1
+ * disambiguate, 2 report repeats and releases, 4 alternate keys, 8 every
+ * key as an escape code, 16 the text with it. */
+#define VT_KITTY_DISAMBIGUATE 1
+#define VT_KITTY_EVENTS       2
+#define VT_KITTY_ALTERNATES   4
+#define VT_KITTY_ALL_KEYS     8
+#define VT_KITTY_TEXT         16
+int      vt_kitty_flags(const vt_term *t);
+#define VT_KEY_EV_PRESS   1
+#define VT_KEY_EV_REPEAT  2
+#define VT_KEY_EV_RELEASE 3
+/* A key as the kitty protocol has it, with what only the host knows: the
+ * event (VT_KEY_EV_*), for a character key `key` the key's own unshifted
+ * character, `shifted` what it types with Shift and `base` the key on a US
+ * layout (0: unknown or the same), `text` what the key types (0: nothing).
+ * With no flags set it is vt_encode_key (a release sends nothing). At most
+ * 64 bytes. vt_encode_key itself speaks the protocol too, for a press,
+ * from the character the keymap made. */
+int      vt_encode_key_kitty(const vt_term *t, long key, int mods, int event, long shifted, long base,
+                             long text, vt_u8 *out);
 /* Mouse reports, when the host asked for them (?9, ?1000, ?1002, ?1003,
  * with ?1006 for the SGR form). button: 0 left, 1 middle, 2 right,
  * 64/65 wheel up/down; kind: 0 press, 1 release, 2 motion. x, y are cell
  * coordinates from 0. Returns 0 when the current modes want no report. */
 int      vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mods, vt_u8 *out);
+/* The same with the pointer's pixel position in the text area (px, py from
+ * 0), which ?1016 reports; vt_encode_mouse gives the cell's corner instead
+ * (vt_set_cell_pixels). */
+int      vt_encode_mouse_px(const vt_term *t, int button, int kind, int x, int y, int px, int py,
+                            int mods, vt_u8 *out);
 /* Bracketed paste wrapper: writes the prefix or suffix (0 bytes when off). */
 int      vt_encode_paste(const vt_term *t, int end, vt_u8 *out);
+/* Focus report (?1004): CSI I when the window became active (in 1), CSI O
+ * when it stopped being; 0 bytes when the program did not ask. */
+int      vt_encode_focus(const vt_term *t, int in, vt_u8 *out);
 
 #endif

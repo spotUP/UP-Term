@@ -6,19 +6,27 @@
 # engine ignored. Add a capability only together with its engine support.
 #
 # Differences from xterm-256color, on purpose:
-#   - no Ms (OSC 52: no clipboard access for programs), no kmous SGR
-#     probing extras;
-#   - kbs is DEL (the engine's Backspace), as in most Linux xterms.
-# Beyond xterm-256color (phase A): underline styles and colour (Smulx,
-# Setulc), overline (Smol/Rmol), true colour (RGB, setrgbf/setrgbb).
+#   - kbs is DEL (the engine's Backspace), as in most Linux xterms;
+#   - no mc0/mc4/mc5: the engine takes media copy but there is no printer;
+#   - no meml/memu (HP memory lock).
+# Beyond xterm-256color: underline styles and colour (Smulx, Setulc),
+# overline (Smol/Rmol), true colour (RGB, Tc, setrgbf/setrgbb), synchronized
+# output (Sync), focus reports (fe/fd, kxIN/kxOUT).
+# km: Meta is the ESC prefix, or the 8th bit after smm (?1034).
+# kPRV/kNXT (Shift+PgUp/PgDn) reach programs on the alternate screen; on
+# the primary one the window keeps them for its scrollback.
 #
-# Build: tic -x -o <dir> terminfo/vtcon.terminfo
+# engine/vtcaps.inc (XTGETTCAP's answers) is generated from this file
+# (tools/gen_vtcaps.py, make); tests/test_protocol.c checks every capability
+# here against what XTGETTCAP answers.
+#
+# Build: tic -x -o <dir> terminfo/vtcon.terminfo   Check: tic -cx
 vtcon|vtcon Amiga console (xterm personality),
-	am, bce, ccc, hs, km, mir, msgr, npc, xenl, AX, RGB, XT,
+	am, bce, ccc, hs, km, mir, msgr, npc, xenl, AX, RGB, Tc, XT,
 	colors#256, cols#80, it#8, lines#24, pairs#32767,
 	acsc=``aaffggiijjkkllmmnnooppqqrrssttuuvvwwxxyyzz{{||}}~~,
 	bel=^G, blink=\E[5m, bold=\E[1m, cbt=\E[Z, civis=\E[?25l,
-	clear=\E[H\E[2J, cnorm=\E[?25h, cr=\r,
+	clear=\E[H\E[2J, cnorm=\E[?25h, cr=\r, cvvis=\E[?12;25h,
 	csr=\E[%i%p1%d;%p2%dr, cub=\E[%p1%dD, cub1=^H,
 	cud=\E[%p1%dB, cud1=\n, cuf=\E[%p1%dC, cuf1=\E[C,
 	cup=\E[%i%p1%d;%p2%dH, cuu=\E[%p1%dA, cuu1=\E[A,
@@ -40,11 +48,36 @@ vtcon|vtcon Amiga console (xterm personality),
 	kDC=\E[3;2~, kEND=\E[1;2F, kHOM=\E[1;2H, kIC=\E[2;2~,
 	kLFT=\E[1;2D, kNXT=\E[6;2~, kPRV=\E[5;2~, kRIT=\E[1;2C,
 	kind=\E[1;2B, kri=\E[1;2A, khlp=\E[28~,
+	ka1=\EOw, ka3=\EOy, kb2=\EOu, kc1=\EOq, kc3=\EOs,
+	kUP=\E[1;2A, kDN=\E[1;2B,
+	kUP3=\E[1;3A, kDN3=\E[1;3B, kRIT3=\E[1;3C, kLFT3=\E[1;3D,
+	kHOM3=\E[1;3H, kEND3=\E[1;3F, kIC3=\E[2;3~, kDC3=\E[3;3~,
+	kPRV3=\E[5;3~, kNXT3=\E[6;3~, kUP4=\E[1;4A, kDN4=\E[1;4B,
+	kRIT4=\E[1;4C, kLFT4=\E[1;4D, kHOM4=\E[1;4H, kEND4=\E[1;4F,
+	kIC4=\E[2;4~, kDC4=\E[3;4~, kPRV4=\E[5;4~, kNXT4=\E[6;4~,
+	kUP5=\E[1;5A, kDN5=\E[1;5B, kRIT5=\E[1;5C, kLFT5=\E[1;5D,
+	kHOM5=\E[1;5H, kEND5=\E[1;5F, kIC5=\E[2;5~, kDC5=\E[3;5~,
+	kPRV5=\E[5;5~, kNXT5=\E[6;5~, kUP6=\E[1;6A, kDN6=\E[1;6B,
+	kRIT6=\E[1;6C, kLFT6=\E[1;6D, kHOM6=\E[1;6H, kEND6=\E[1;6F,
+	kIC6=\E[2;6~, kDC6=\E[3;6~, kPRV6=\E[5;6~, kNXT6=\E[6;6~,
+	kUP7=\E[1;7A, kDN7=\E[1;7B, kRIT7=\E[1;7C, kLFT7=\E[1;7D,
+	kHOM7=\E[1;7H, kEND7=\E[1;7F, kIC7=\E[2;7~, kDC7=\E[3;7~,
+	kPRV7=\E[5;7~, kNXT7=\E[6;7~,
+	kf25=\E[1;5P, kf26=\E[1;5Q, kf27=\E[1;5R, kf28=\E[1;5S,
+	kf29=\E[15;5~, kf30=\E[17;5~, kf31=\E[18;5~, kf32=\E[19;5~,
+	kf33=\E[20;5~, kf34=\E[21;5~, kf35=\E[23;5~, kf36=\E[24;5~,
+	kf37=\E[1;6P, kf38=\E[1;6Q, kf39=\E[1;6R, kf40=\E[1;6S,
+	kf41=\E[15;6~, kf42=\E[17;6~, kf43=\E[18;6~, kf44=\E[19;6~,
+	kf45=\E[20;6~, kf46=\E[21;6~, kf47=\E[23;6~, kf48=\E[24;6~,
+	kf49=\E[1;3P, kf50=\E[1;3Q, kf51=\E[1;3R, kf52=\E[1;3S,
+	kf53=\E[15;3~, kf54=\E[17;3~, kf55=\E[18;3~, kf56=\E[19;3~,
+	kf57=\E[20;3~, kf58=\E[21;3~, kf59=\E[23;3~, kf60=\E[24;3~,
+	kf61=\E[1;4P, kf62=\E[1;4Q, kf63=\E[1;4R,
 	op=\E[39;49m, rc=\E8, rev=\E[7m, ri=\EM,
 	rin=\E[%p1%dT, ritm=\E[23m, rmacs=\E(B, rmam=\E[?7l,
 	rmcup=\E[?1049l, rmir=\E[4l, rmkx=\E[?1l\E>,
-	rmso=\E[27m, rmul=\E[24m, rs1=\Ec, rs2=\E[!p\E[?3;4l\E[4l\E>,
-	sc=\E7,
+	rmso=\E[27m, rmul=\E[24m, rs1=\Ec\E]104\007, rs2=\E[!p\E[?3;4l\E[4l\E>,
+	sc=\E7, rep=%p1%c\E[%p2%{1}%-%db, smm=\E[?1034h, rmm=\E[?1034l,
 	setab=\E[%?%p1%{8}%<%t4%p1%d%e%p1%{16}%<%t10%p1%{8}%-%d%e48;5;%p1%d%;m,
 	setaf=\E[%?%p1%{8}%<%t3%p1%d%e%p1%{16}%<%t9%p1%{8}%-%d%e38;5;%p1%d%;m,
 	sgr=%?%p9%t\E(0%e\E(B%;\E[0%?%p6%t;1%;%?%p5%t;2%;%?%p2%t;4%;%?%p1%p3%|%t;7%;%?%p4%t;5%;%?%p7%t;8%;m,
@@ -62,3 +95,5 @@ vtcon|vtcon Amiga console (xterm personality),
 	initc=\E]4;%p1%d;rgb:%p2%{255}%*%{1000}%/%2.2X/%p3%{255}%*%{1000}%/%2.2X/%p4%{255}%*%{1000}%/%2.2X\E\\,
 	oc=\E]104\007, tsl=\E]2;, fsl=^G, dsl=\E]2;\007,
 	kxIN=\E[I, kxOUT=\E[O,
+	fe=\E[?1004h, fd=\E[?1004l, Sync=\E[?2026%?%p1%{1}%-%tl%eh%;,
+	Cs=\E]12;%p1%s\007, Cr=\E]112\007, Ms=\E]52;%p1%s;%p2%s\007,

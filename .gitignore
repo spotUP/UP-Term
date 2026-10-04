@@ -6,3 +6,4 @@ build/
 *.sw?
 __pycache__/
 vendor/
+.claude/worktrees/

@@ -115,6 +115,7 @@ parsing (ECMA-48, DCT l.889). xterm does the same (XT). Amiga: unverified.
 | `ESC =` / `ESC >` | 1B 3D / 1B 3E | Not documented | DECKPAM / DECKPNM (keypad application / numeric) | Dropped | DCT l.862 |
 | `ESC ]` ... `BEL` or `ESC \` | 1B 5D ... | Not documented | OSC: `0;t`/`2;t` set title, `1;t` icon name, `4;n;rgb` palette, `10/11` colours, `52` clipboard. Terminated by BEL (07) or ST (`ESC \`) | **Not parsed**: `]` returns to plain state and the OSC payload is printed as text | DCT l.848-862 |
 | `ESC P` / `ESC ^` / `ESC _` ... `ESC \` | DCS / PM / APC | Not documented | Parsed and consumed to ST (DECRQSS, XTGETTCAP ... in DCS) | Not parsed (payload printed) | DCT |
+| `ESC P P1 ; P2 ; P3 q` ... `ESC \` | DCS sixel | Not documented | **DEC sixel graphics** (2026-10-04, gaps #20): streamed to a decoder (no 256-byte limit), up to 1024 x 1024 pixels, all images together 2 MB (the oldest gives way). P1 the pixel aspect (0/1 and 5/6 2:1, 2 5:1, 3/4 3:1, 7-9 1:1) unless raster attributes `"Pan;Pad;Ph;Pv` set it; `#Pc;1;H;L;S` (DEC HLS, blue at 0) and `#Pc;2;R;G;B` (percent) define registers (VT340 defaults for 0-15), `!n` repeats, `$` back to the band start, `-` next band. Unset pixels show the default background. The image takes the cells from the cursor: scrolls the region like text, the cursor ends on its last row in its first column (xterm); `?80` (DECSDM) puts it at the top left without scrolling or moving the cursor; `?1070` (default set) gives each image its own registers. Text or an erase over the cells replaces the image there; it scrolls into the scrollback and reflows with its cells. CAN/SUB cancel. Tests: `make test ONLY=sixel` | Not parsed (payload printed) | XT ctlseqs; VT330/VT340 manual ch. 14 |
 | `ESC SP F` / `ESC SP G` | 1B 20 46 / 47 | Not documented | S7C1T / S8C1T: 7-bit vs 8-bit C1 in replies | Swallowed | DCT l.855 |
 
 ### 2.3 8-bit C1 (80-9F)
@@ -183,7 +184,7 @@ xterm (the reason a window carries exactly one personality).
 | `CSI Pn X` (58) | Not documented | ECH: erase N cells from cursor, no shift | Ignored | - |
 | `CSI Pn Z` (5A) | CBT: back to the Nth previous tab stop | CBT | Ignored | RKM-8C, AD20 |
 | `` CSI Pn ` `` / `CSI Pn a` / `CSI Pn b` / `CSI Pn d` / `CSI Pn e` (60/61/62/64/65) | Not documented | HPA / HPR / REP (repeat previous glyph N times) / VPA / VPR | Ignored | - |
-| `CSI Ps c`, `CSI > Ps c`, `CSI = Ps c` (63) | Not documented | DA1 / DA2 / DA3 (reply formats: open question Q8) | Ignored (the `>`/`=` forms set p_ignore) | - |
+| `CSI Ps c`, `CSI > Ps c`, `CSI = Ps c` (63) | Not documented | DA1 / DA2 / DA3 (reply formats: open question Q8; xterm DA1 answers `CSI ? 62 ; 4 ; 22 c` since 2026-10-04 -- 4: sixel) | Ignored (the `>`/`=` forms set p_ignore) | - |
 | `CSI Pr ; Pc f` (66) | HVP: same as CUP | HVP | Same as CUP | AD20; DCT l.724 |
 | `CSI Ps g` (67) | TBC: 0 clear tab at cursor, 3 clear all (`TBC_HCLRTAB 0`, `TBC_HCLRTABSALL 3`) | TBC 0 / 3 | Ignored | AD20, H-CON |
 | `CSI 20 h` / `CSI 20 l` (9B 32 30 68 / 6C) | LNM set: LF acts as CR+LF / reset: LF only. Default at console open: unverified (CON: behaviour suggests set) | LNM (mode 20) same meaning | Ignored | RKM-8C, AD20, H-CON `M_LNM 20` |
@@ -191,7 +192,8 @@ xterm (the reason a window carries exactly one personality).
 | `CSI > 1 h` / `CSI > 1 l` (9B 3E 31 68 / 6C) | ASM auto scroll on (default) / off: when off, output at the bottom does not scroll (what happens instead: unverified) | Not defined as SM/RM (`CSI > Ps;Ps t/T` are title modes, `CSI > Ps p` XTSMPOINTER). Must be ignored | Ignored (p_ignore) | RKM-8D, AD20, H-CON `M_ASM ">1"` |
 | `CSI ? 7 h` / `CSI ? 7 l` (9B 3F 37 68 / 6C) | AWM auto wrap on (default) / off | DECAWM same meaning (xterm wraps deferred: last-column flag) | **Ignored**: pcansi always wraps (deferred, DCT l.608) | RKM-8D, AD20, H-CON `M_AWM "?7"`; DCT l.683 |
 | `CSI ? 25 h` / `l` | Not documented (cursor on/off is `CSI SP p`) | DECTCEM show / hide cursor | Show / hide cursor | DCT l.686 |
-| `CSI ? Pm h` / `l`, other modes | Not documented | DECSET/DECRST: `?1` DECCKM, `?6` DECOM, `?12` blink, `?47`/`?1047`/`?1049` alternate screen (1049 also saves cursor), `?1000/1002/1003` mouse, `?1004` focus in/out, `?1006` SGR mouse, `?2004` bracketed paste | Ignored | DCT l.683 |
+| `CSI ? Pm h` / `l`, other modes | Not documented | DECSET/DECRST: `?1` DECCKM, `?6` DECOM, `?12` blink, `?47`/`?1047`/`?1049` alternate screen (1049 also saves cursor), `?1000/1002/1003` mouse, `?1004` focus in/out, `?1006` SGR mouse, `?2004` bracketed paste, `?80` DECSDM and `?1070` private sixel colour registers (both in DECRQM) | Ignored | DCT l.683 |
+| `CSI ? Pi ; Pa ; Pv S` | Not documented | XTSMGRAPHICS: Pi 1 colour registers (256, fixed), Pi 2 sixel geometry (Pa 1/2/3: the window's pixels within 1024 x 1024; Pa 4: 1024 x 1024); reply `CSI ? Pi ; Ps ; Pv S`, Ps 1 for another Pi (no ReGIS), 2 for another Pa | Ignored | XT ctlseqs |
 | `CSI Pm m` (6D) | SGR, see §4. `>n` background item allowed as last item | SGR, see §4 | SGR, see §4 | RKM-8C, AD20; DCT l.754 |
 | `CSI > Ps ; Ps m` | **Global background colour** when written `CSI >4m` etc. (the `>n` item, V36) | **XTMODKEYS**: `CSI > 4 ; 2 m` = modifyOtherKeys level 2 (vim sends this) | Ignored (p_ignore) | AD20 SGR notes; XT. **COLLISION C-SGR>** |
 | `CSI 6 n` (9B 36 6E) | DSR: console inserts CPR `CSI row;col R` into the read stream (introducer 9B) | DSR 6 -> `ESC [ row ; col R` (7-bit unless S8C1T); `CSI 5 n` -> `ESC [ 0 n`; `CSI ? 6 n` -> DECXCPR `ESC [ ? row ; col R` | 6 -> `ESC [ row ; col R`, 5 -> `ESC [ 0 n` (sent via `send_data`) | RKM-8C, RKM-91, AD20, H-CON `DSR_CPR 6`; DCT l.639. Same meaning, **different reply introducer** (9B vs 1B 5B) |
@@ -461,6 +463,9 @@ map Amiga Left/Right Amiga to Meta (vtcon decision, Q7).
 | Return / Enter | 0D (Enter in keypad application mode `ESC =`: `ESC O M`) | | |
 | Keypad digits in DECKPAM | `ESC O p`..`ESC O y`, `ESC O j/k/l/m/n/o` for `* + , - . /` | | |
 | Alt+key | `ESC` prefix (`metaSendsEscape`), vtcon default (Q7) | | |
+| Shift+PgUp / Shift+PgDn (G1 K4) | the window's scrollback on the main screen with no mouse mode; on the alternate screen or with a mouse mode the program's `ESC [ 5 ; 2 ~` / `ESC [ 6 ; 2 ~` (terminfo kPRV / kNXT) | same | test `shift_page_keys_reach_full_screen_programs` |
+| Ctrl / Shift + character keys under modifyOtherKeys (G1 K2) | the keymap applies Ctrl (its control characters) | same | while `CSI > 4 ; 1/2 m` is on the window converts the key without Ctrl and passes Ctrl+Shift: level 1 `ESC [ 27 ; m ; c ~` for Ctrl+Shift+x and Ctrl on keys with no control character (Ctrl+; Ctrl+1), level 2 for every Ctrl/Meta combination; Shift alone is never reported (the character says it). Test `modify_other_keys_takes_ctrl_combinations_from_the_host` |
+| Alt / Ctrl / Shift + Return, Tab, Backspace, Escape (G1 K1) | Alt: `ESC` + the plain key (`ESC 7F`, `ESC CR`, `ESC HT`, `ESC ESC`); Ctrl+Backspace `08`; Shift+Tab `ESC [ Z`; other modifiers: the plain key | same | modifyOtherKeys 1: Ctrl or Shift (not Shift+Tab, not Ctrl+Backspace) `ESC [ 27 ; m ; c ~` with c = 13 / 9 / 127 / 27; level 2: any modifier but Shift+Tab. Test `modify_other_keys_reports_modified_return_and_tab` |
 | HELP (no xterm key) | Proposed `ESC [ 28 ~` (DEC Help, as xterm maps it on LK keyboards) | | |
 | Shift+F1..F10 (Amiga has distinct codes) | Encoded with the modifier form, e.g. Shift+F1 `ESC [ 1 ; 2 P`, Shift+F5 `ESC [ 15 ; 2 ~` | | |
 
@@ -468,10 +473,34 @@ Other xterm input reports:
 
 - Mouse, SGR mode (`?1000h` + `?1006h`): press `ESC [ < b ; x ; y M`, release
   `... m`, 1-based cells; b = 0/1/2 button, +4 Shift, +8 Meta, +16 Ctrl, +32
-  motion, 64/65 wheel.
+  motion, 64/65 wheel. The wheel's report names the cell under the pointer
+  (clamped to the grid over the border), never window pixels (G1 M1,
+  `render/vtinput.c` `vti_wheel`; test `wheel_reports_name_the_cell_under_the_pointer`).
+  Buttons and modifiers (G1 M4): left 0, middle 1 (MIDDLEDOWN/UP), right 2
+  (only with a window that traps the menu button); Ctrl +16 and Meta (Left
+  Amiga, or Alt with meta-alt) +8 in clicks, moves and the wheel; Shift is never
+  sent (it gives the mouse back to selection, as xterm). Test
+  `middle_button_and_modifiers_reach_the_program`.
+  Motion (G1 M3): `?1002` reports moves (+32) while a button whose press the
+  program got is down, `?1003` every move (button 3 when none is down), once
+  per cell; the release of a reported press always goes to the program (off the
+  grid: the last cell reported). The window turns ReportMouse on for those modes
+  only. Tests `motion_reaches_the_program_in_the_motion_modes`,
+  `button_motion_mode_has_no_buttonless_moves`.
+- Alternate scroll (`?1007h`, xterm's alternateScroll; off by default as in
+  xterm, reset by RIS, DECRQM answers it): on the alternate screen with no
+  mouse mode a wheel notch sends three cursor-up / cursor-down keys (DECCKM
+  form). G1 M2; test `wheel_on_the_alternate_screen_sends_cursor_keys`.
 - Focus (`?1004h`): `ESC [ I` in, `ESC [ O` out (source: Amiga classes 17/18).
+  G1 K3: `vt_encode_focus`, sent by the window on IDCMP_ACTIVEWINDOW /
+  INACTIVEWINDOW (XCON:, tabs through the host's routing, console.device units);
+  test `focus_events_only_when_asked`.
+  A1 (2026-10-04): vtcon sends them on the window's activation (IDCMP_ACTIVEWINDOW / INACTIVEWINDOW) to a program reading raw or in termios mode (ledger A1.3; Claude Code asks for them).
 - Bracketed paste (`?2004h`): `ESC [ 200 ~` ... `ESC [ 201 ~` around pasted
-  text (the Amiga equivalent is `CSI 0 SP v` + clipboard read).
+  text (the Amiga equivalent is `CSI 0 SP v` + clipboard read). While `?2004`
+  is on the pasted text carries no ESC, no other C0 control but Tab and line
+  breaks, no DEL and no C1 (G1 P1, `vti_paste_keeps`; test
+  `bracketed_paste_drops_escape_and_controls`).
 - Window size: xterm has no in-band resize notification; ports learn it via
   the pty (`TIOCGWINSZ` / `SIGWINCH`, supplied by the handler / ixemul layer),
   or ask with `CSI 18 t` -> `ESC [ 8 ; rows ; cols t`.
@@ -711,14 +740,19 @@ does XCON:/AMIGA through DOS (identical output, window size included).
   four Kickstarts; research `2026-09-30_console-device-replacement.md` section 7):
   100 characters typed into 45 columns, cursor 3;11; widened to 90 columns the
   window shows 90 + 10 characters and the cursor is at 2;11. Engine:
-  `vt_set_reflow(t, 1)` (D1.8; off by default, so XCON: keeps cutting or padding
-  rows) joins wrap-linked rows into logical lines on a width change and types them
+  `vt_set_reflow(t, 1)` (D1.8; off in the engine by default; since 2026-10-04 every
+  UP-Term / XCON: window turns it on, profile `reflow = off` cuts or pads again) joins wrap-linked rows into logical lines on a width change and types them
   again at the new width with the personality's wrap rule: amiga wraps at once, so
   a line ending exactly at the margin keeps the empty row after it; xterm keeps a
   pending wrap pending. A hard newline is never joined, attributes stay per cell,
   the cursor stays on its character (or as far past the text as it was).
-  Not reflowed: the alternate screen (xterm does not), scrollback lines (they keep
-  their width; the amiga personality keeps none), DEC double-size rows.
+  Where the personality keeps a scrollback (xterm, pcansi) it is laid out with the
+  screen as one text (2026-10-04, gaps #11): a line that began in the scrollback joins
+  its rest, the screen is the bottom of the result (rows below the cursor dropped
+  first), the rows above go back to the scrollback, and a taller window brings rows
+  down from it (iTerm2, Terminal.app, Alacritty). Not reflowed: the alternate screen
+  (xterm does not; its program redraws on SIGWINCH), DEC double-size rows (cut or
+  padded in place). Tests: `make test ONLY=reflow`.
   Narrowing was not measured on the ROM; the engine treats it as the inverse.
 - **Not implemented by the ROM:** CHA (`CSI G`), `ESC 7` / `ESC 8`, `CSI s` / `CSI u`
   (u is set-line-length anyway).
@@ -745,3 +779,40 @@ does XCON:/AMIGA through DOS (identical output, window size included).
 | Q12 | Exact field contents of input event reports for window classes (11, 12, 13, 17, 18, 21). | RKM-95 (generic format only) |
 | Q13 | Whether xterm personality honours 8-bit C1 decoded from UTF-8 (U+0080-U+009F). Recommendation: no. | XT from knowledge |
 | Q14 | pcansi: CP437 byte 9B is taken as CSI (C-C1), OSC payloads print as text, DECSTBM ignored, HT/HTS fixed 8. Keep as today's behaviour or fix: an owner decision before tests pin it. | DCT l.830, l.848-862, l.582 |
+
+## 9. xterm personality: reports, strings and protocol extras (2026-10-04, G3)
+
+What the xterm personality does beyond the tables above, one row per sequence, each
+pinned by `tests/test_protocol.c` (`make test ONLY=protocol`). Plan and ledger:
+`thoughts/shared/plans/2026-10-04-gaps-g3-protocol.md`.
+
+| Sequence | vtcon (xterm personality) | Test |
+|----------|---------------------------|------|
+| DECRQSS `DCS $ q " p ST` | `DCS 1 $ r 62;1 " p ST`: the level DA1 (`CSI ?62;4;22c`) claims, 7-bit controls. (Was `64;1`, a VT420 the engine is not.) | `decrqss_conformance_level_matches_da1` |
+| DECRQSS `DCS $ q m ST` | The whole rendition: 1-9, 4:n, 5/6, 53, 51/52, 73/74, 60-64, font 11-20, then fg, bg (30-37/90-97/38;5/38;2 forms) and the underline colour as `58;5;n` / `58;2;r;g;b` | `decrqss_sgr_round_trips_underline_colour_and_font` |
+| DECRQM `CSI ? Ps $ p` | 1 set / 2 reset for every DEC mode `set_mode` keeps, incl. ?66 (DECNKM = DECKPAM's switch) and ?1048 (1 once a cursor was saved by ?1048/?1049, until RIS); ?4 DECSCLM answers 4 (permanently reset: accepted, never smooth); unknown 0 | `decrqm_answers_every_mode_the_engine_keeps` |
+| RIS `ESC c` (additions) | Also resets the modifyOtherKeys level to 0, empties the title stack (`CSI 22/23 t`), sets the cursor shape back to the host default (`vt_set_cursor_style`, the profile), forgets a ?1048 save | `ris_resets_keys_title_stack_and_cursor_shape` |
+| Synchronized output `?2026` (host) | The window draws nothing while the mode is set, at most 1 s (`render/synchold.h`: foot and tmux 1 s, kitty 2 s); was 150 ms | `sync_frame_is_held_up_to_one_second` |
+| DA3 `CSI = c` | `DCS ! | 00000000 ST` (DECRPTUI, a unit id of zeros, as xterm) | `da3_reports_a_unit_id` |
+| LS2 / LS3 `ESC n` / `ESC o` | G2 / G3 into GL | `locking_shifts_invoke_g2_and_g3` |
+| LS1R / LS2R / LS3R `ESC ~` / `ESC }` / `ESC |` | G1 / G2 / G3 into GR: in an 8-bit (Latin-1) window bytes A0-FF draw as that set's 20-7F; default (and after DECSTR / RIS) GR is Latin-1 itself. No effect under UTF-8 or CP437 | `locking_shifts_invoke_g2_and_g3` |
+| Media copy `CSI i`, `CSI 4 i`, `CSI ? Ps i` | Accepted, nothing done (no printer) | `printer_controller_mode_keeps_text_off_the_screen` |
+| Printer controller `CSI 5 i` | What follows goes to the (absent) printer, not the screen, until `CSI 4 i` (7- or 8-bit CSI), as a VT102 | same |
+| DECIC / DECDC `CSI Pn ' }` / `CSI Pn ' ~` | Insert / delete Pn columns at the cursor's, in every row of the scroll region (no left/right margins); the cursor stays; nothing when the cursor is outside the region | `decic_and_decdc_move_columns_in_the_region` |
+| DECFRA `CSI Pch;Pt;Pl;Pb;Pr $ x` | Fill the rectangle with Pch (32-126, 160-255; else ignored) in the current rendition | `rectangle_fill_erase_copy_and_attributes` |
+| DECERA / DECSERA `CSI Pt;Pl;Pb;Pr $ z` / `$ {` | Erase the rectangle (BCE blanks); no protected cells, so DECSERA is DECERA | same |
+| DECCRA `CSI Pts;Pls;Pbs;Prs;Pps;Ptd;Pld;Ppd $ v` | Copy the rectangle (one page; overlap safe), clipped at the screen | same |
+| DECCARA / DECRARA `CSI Pt;Pl;Pb;Pr;Ps.. $ r` / `$ t` | Set / reverse bold, underline, blink, inverse (0 all off; 22-27 off) over the stream from first to last cell, or the rectangle after DECSACE `CSI 2 * x` (`0`/`1` stream, the default; RIS back to stream). Rectangle coordinates are region-relative in origin mode | same |
+| Mouse `?1015` (urxvt) / `?1016` (SGR-pixel) | ?1015: `CSI Cb;Cx;Cy M`, decimal, legacy button codes (release 3); ?1016: the SGR form with pixel coordinates from 1 (`vt_encode_mouse_px`; `vt_encode_mouse` gives the cell corner by `vt_set_cell_pixels`). Precedence ?1016 > ?1006 > ?1015 > ?1005 > X10. DECRQM answers both | `urxvt_and_sgr_pixel_mouse_reports` |
+| In-band resize `?2048` | On setting it, and after every `vt_resize` that changes the size: `CSI 48;rows;cols;height px;width px t` (7-bit; pixels from `vt_set_cell_pixels`, 0 when unknown), as kitty / foot. DECRQM answers it | `in_band_resize_reports_follow_the_mode` |
+| kitty keyboard `CSI ? u` / `CSI > f u` / `CSI < n u` / `CSI = f ; m u` | Query answers `CSI ? flags u`; push / pop / set (m 1 set, 2 or, 3 and-not) on a stack per screen (main, alternate), 8 deep, a full one drops its oldest; RIS empties both | `kitty_keyboard_flags_stack_per_screen` |
+| kitty keys, flag 1 (disambiguate) | Esc `CSI 27 u`; Ctrl/Alt with a text key `CSI code;mods u` (code = the key's unshifted character); plain and Shift text as text; Return/Tab/Backspace as before unless modified (`CSI 13/9/127;mods u`); cursor, Home/End, F1-F4 always CSI (`CSI A`, `CSI 1;5A`, `CSI P`), F3 `CSI 13 ~`; keypad Enter `CSI 57414 u`; DECCKM ignored | `kitty_disambiguate_flag` |
+| kitty keys, flags 2 / 4 / 8 / 16 | 2: `:2` repeat, `:3` release after the modifiers (none for Return/Tab/Backspace without 8); 4: `code:shifted:base`; 8: every key `CSI u` incl. keypad (57399-57415) and the modifier keys (57441-57450, Caps 57358); 16 with 8: `;text` code point. Host: `vtwin_key` hands kitty mode presses, repeats and releases with the key's unshifted / shifted character (`vt_encode_key_kitty`) | `kitty_event_alternate_all_and_text_flags` |
+| OSC 52 clipboard `OSC 52 ; sel ; base64 ST` / `; ? ST` | SET: the payload streams past the 256-byte string buffer, base64 decoded as it comes into a buffer that grows to 1 MB (`VT_CLIP_MAX`); larger, not base64, or data after padding: dropped whole; empty: the clipboard emptied; unpadded base64 accepted. QUERY: answered (`OSC 52;sel;base64` in the request's BEL/ST, at most 64 KB) only when the host allows reading (`vt_set_clipboard_access`, profile `program-clipboard = read-write`); default write only, as xterm's disallowedWindowOps keeps reads off. A host setting: RIS leaves it. Host: UTF-8 to the Latin-1 clipboard and back (`vt_utf8_to_latin1`) | `osc52_*`, `utf8_and_latin1_conversions` |
+| OSC 4 / 10-12 / 104 / 110-112 colour specs | `rgb:`, `#` forms, and X11 colour names (common rgb.txt names, `grayN` 0-100; case and blanks ignored) and tmux's `colourN` (palette entry); unknown names change nothing. Set and query of 4, 10, 11, 12 and the resets were complete before (`colour_queries_and_changes`) | `osc_colours_take_x11_names` |
+| OSC 7 `OSC 7 ; file://host/path ST` | Kept whole (streams past the 256-byte buffer, to `VT_URI_MAX` 4096; longer dropped) as `vt_cwd`, host told (`cwd` callback); RIS forgets it. Host: a new tab starts there when the URL is this machine's (host empty, localhost or `$HOSTNAME`), `/Vol/path` as `Vol:path` (`config/termurl.c`; a path with `"`, `*` or a control is refused) | `osc7_keeps_the_working_directory`, `termurl_round_trips_and_refuses_what_it_cannot_quote` |
+| OSC 8 `OSC 8 ; params ; URI ST` | Hyperlink for the cells written until `OSC 8 ; ; ST`; params `id=` joins pieces of one link; the cells hold it through their rare-style index (`vt_cell.ext`, no bigger cell), through SGR changes and SGR 0, into the scrollback (`vt_cell_link`); 63 links at once, unused ones swept when full; URI to 4096 bytes. Host: Ctrl + click opens it with the profile's `link-open` (default `OpenURL %s`, URL quoted; a URL with `"`, `*` or a control is refused) | `osc8_hyperlinks_stay_with_their_cells`, `osc8_old_links_make_room` |
+| OSC 133 `OSC 133 ; A/B/C/D[;..] ST` | Marks the cursor's line: prompt, command, output, done (`vt_row_marks`); `vt_find_mark` walks scrollback and grid; an erased or cleared line loses its marks (a reflow too). Host: Right Amiga + Shift + Up / Down scrolls the previous / next prompt to the top | `osc133_prompt_marks_and_jumps` |
+| OSC 9 / OSC 777 | `OSC 9 ; text` (iTerm2) and `OSC 777 ; notify ; title ; body` (urxvt, foot) reach the host (`notify`); `OSC 9 ; n ; ...` (ConEmu progress) does not. Host: the notice holds the title bar 5 s, then the title (or one set meanwhile) returns | `osc9_and_777_notify` |
+| terminfo `vtcon` (2026-10-04) | Adds Sync, rep, Cs/Cr, Ms, Tc, fe/fd, cvvis, smm/rmm (km honest: ?1034), ka1/ka3/kb2/kc1/kc3, kUP/kDN, kUP3-kNXT7 (Alt, Shift+Alt, Ctrl, Shift+Ctrl, Ctrl+Alt), kf25-kf63; rs1 also resets the palette. `tic -cx` clean; termcap regenerated (`infocmp -CrT`). Proven by `make test-terminfo` (tmux now wraps its redraws in Sync, bash sets smm; 14 captures match libvterm, nothing unhandled). Host: Shift+PgUp/PgDn reach programs on the alternate screen (kPRV/kNXT) | `make test-terminfo` |
+| XTGETTCAP `DCS + q hexname ; ... ST` | Every capability of `terminfo/vtcon.terminfo` (booleans without a value, numbers and strings as the entry has them), from `engine/vtcaps.inc` that `tools/gen_vtcaps.py` generates from the entry (make); plus xterm's TN / name (vtcon), Co, RGB (8/8/8). Unknown: `DCS 0 + r hexname ST` | `xtgettcap_answers_every_terminfo_capability` (parses the entry itself and asks for each) |

@@ -1,7 +1,9 @@
-/* UPDemo [SCENE | BENCH]: updemo in the console window it is started from
- * (an XCON: window in its xterm dialect, the default). BENCH: every scene
- * for three seconds, then the frames a second each one reached -- what
- * the terminal draws in a second, scene by scene. The window's size is
+/* UPDemo [SCENE | BENCH | TOUR [SCENE]]: updemo in the console window it is
+ * started from (an XCON: window in its xterm dialect, the default). BENCH:
+ * every scene for three seconds, then the frames a second each one reached
+ * -- what the terminal draws in a second, scene by scene. TOUR: the tour
+ * of what the terminal does (Help > Demo tour runs it in a tab of its
+ * own; any key ends it). The window's size is
  * the cursor's position after a move to the far corner (DSR 6): a query
  * every dialect answers, with the cursor put back. */
 #include <stdlib.h>
@@ -68,7 +70,7 @@ static int size(int *cols, int *rows)
 int main(int argc, char **argv)
 {
     updemo_io io;
-    int cols = 0, rows = 0, rc, bench;
+    int cols = 0, rows = 0, rc, bench, tour;
     con = Open((STRPTR)"*", MODE_OLDFILE);
     if (!con || !IsInteractive(con)) {
         PutStr((STRPTR)"UPDemo: start it in a console window\n");
@@ -80,8 +82,21 @@ int main(int argc, char **argv)
     io.ticks = ticks;
     io.user = 0;
     bench = argc > 1 && (argv[1][0] == 'B' || argv[1][0] == 'b');
-    rc = size(&cols, &rows) ? updemo_run(&io, cols, rows, argc > 1 && !bench ? atoi(argv[1]) - 1 : 0,
-                                         bench ? 150 : 0) : 2;
+    tour = argc > 1 && (argv[1][0] == 'T' || argv[1][0] == 't');
+    if (!size(&cols, &rows))
+        rc = 2;
+    else if (tour)
+        rc = updemo_tour(&io, cols, rows, argc > 2 ? atoi(argv[2]) - 1 : 0, 0);
+    else
+        rc = updemo_run(&io, cols, rows, argc > 1 && !bench ? atoi(argv[1]) - 1 : 0, bench ? 150 : 0);
+    if (rc == 1 && tour) {
+        /* from the menu the tab closes when this ends: the reason stays
+         * readable until a key, or ten seconds */
+        static const char why[] = "UPDemo: the window is too small for the tour (76 x 20 at least). "
+                                  "Press a key.\n";
+        Write(con, (APTR)why, sizeof(why) - 1);
+        key(0, 10000);
+    }
     SetMode(con, 0);
     Close(con);
     if (bench && rc == 0) {

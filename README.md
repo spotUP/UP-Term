@@ -20,6 +20,7 @@ in xterm), so a window carries exactly one personality at a time.
 | `handler/` | `vtcon-handler`, the DOS handler (`XCON:`, later `CON:`/`RAW:`). |
 | `device/` | Later: the console.device replacement. |
 | `terminfo/` | The terminfo entry that matches the xterm personality exactly. |
+| `view/` | `hl` (a source in syntax colours, 22 languages) and `mdv` (Markdown formatted for the window): a table-driven lexer and a renderer in portable C, AmigaDOS and host front ends (`make view-host`). |
 | `tests/` | Host suites (`make test`) and rig scripts. |
 
 ## Colour themes

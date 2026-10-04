@@ -49,7 +49,10 @@ void prefs_defaults(prefs_fields *f)
     f->bell = PREFS_BELL_BEEP;
     f->bold = 1;
     f->wheel = 1;
+    f->reflow = 1;
+    f->scrollbar = 1;
     f->kccache = 1;
+    f->aspect = 1;
 }
 
 void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
@@ -60,7 +63,6 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     prefs_defaults(f);
     pc_copy(f->font, upconf_str(c, p, "font", ""), sizeof(f->font));
     pc_copy(f->fallback, upconf_str(c, p, "font-fallback", ""), sizeof(f->fallback));
-    pc_copy(f->screen, upconf_str(c, p, "screen", ""), sizeof(f->screen));
     pc_copy(f->screenmode, upconf_str(c, p, "screen-mode", ""), sizeof(f->screenmode));
     pc_copy(f->screendepth, upconf_str(c, p, "screen-depth", ""), sizeof(f->screendepth));
     pc_copy(f->sb, upconf_str(c, p, "scrollback", ""), sizeof(f->sb));
@@ -69,6 +71,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     pc_copy(f->bg, upconf_str(c, p, "bg", ""), sizeof(f->bg));
     pc_copy(f->selfg, upconf_str(c, p, "selection-fg", ""), sizeof(f->selfg));
     pc_copy(f->selbg, upconf_str(c, p, "selection-bg", ""), sizeof(f->selbg));
+    pc_copy(f->linkopen, upconf_str(c, p, "link-open", ""), sizeof(f->linkopen));
     v = upconf_str(c, p, "cursor", "block");
     f->cursor = pc_ieq(v, "underline") ? PREFS_CURSOR_UNDERLINE
               : pc_ieq(v, "bar") ? PREFS_CURSOR_BAR : PREFS_CURSOR_BLOCK;
@@ -80,6 +83,17 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     f->meta_alt = pc_ieq(upconf_str(c, p, "meta", "amiga"), "alt");
     f->copy_sel = pc_ieq(upconf_str(c, p, "copy-on-select", "off"), "on");
     f->wheel = !pc_ieq(upconf_str(c, p, "wheel", "scroll"), "ignore");
+    f->reflow = !pc_ieq(upconf_str(c, p, "reflow", "on"), "off");
+    f->scrollbar = !pc_ieq(upconf_str(c, p, "scrollbar", "show"), "hide");
+    /* as the handler reads them (apply_profile) */
+    v = upconf_str(c, p, "screen", "workbench");
+    f->screen = pc_ieq(v, "own") ? PREFS_SCREEN_OWN
+              : pc_ieq(v, "fullscreen") ? PREFS_SCREEN_FULL : PREFS_SCREEN_WORKBENCH;
+    f->aspect = !pc_ieq(upconf_str(c, p, "font-aspect", "on"), "off");
+    f->backspace_bs = pc_ieq(upconf_str(c, p, "backspace", "del"), "bs");
+    v = upconf_str(c, p, "program-clipboard", "write");
+    f->clipboard = pc_ieq(v, "off") ? PREFS_CLIP_OFF
+                 : pc_ieq(v, "read-write") ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
     f->completion = pc_ieq(upconf_str(c, p, "completion", "unix"), "kingcon")
                   ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     pc_copy(f->kcmode, upconf_str(c, p, "kingcon-mode", ""), sizeof(f->kcmode));
@@ -186,6 +200,17 @@ int prefs_load_writable(int r)
     return r == PREFS_LOAD_OK || r == PREFS_LOAD_NONE;
 }
 
+/* One of the editor's keys, in place: a value replaces the key's (a new
+ * key goes after the profile's last), an empty one deletes it so the
+ * handler's built-in stands. */
+static void pc_put(upconf *w, const char *p, const char *key, const char *v)
+{
+    if (v[0])
+        upconf_set(w, p, key, v);
+    else
+        upconf_del(w, p, key);
+}
+
 long prefs_stage(upconf *w, const upconf *cur, const char *p,
                  const prefs_fields *f, char *buf, long cap)
 {
@@ -193,32 +218,33 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     char palstr[UC_MAX_VALUE];
     long len;
     int i;
+    if (cur->overflow)
+        return PREFS_STAGE_LOSSY; /* what did not fit would be gone from the file */
     memcpy(w, cur, sizeof(*w));
     w->overflow = 0;
-    upconf_rmprof(w, p); /* the profile's keys entered fresh, in a fixed order */
-    if (f->font[0])
-        upconf_set(w, p, "font", f->font);
-    if (f->fallback[0])
-        upconf_set(w, p, "font-fallback", f->fallback);
-    if (f->screen[0])
-        upconf_set(w, p, "screen", f->screen);
-    if (f->screenmode[0])
-        upconf_set(w, p, "screen-mode", f->screenmode);
-    if (f->screendepth[0])
-        upconf_set(w, p, "screen-depth", f->screendepth);
-    if (f->sb[0])
-        upconf_set(w, p, "scrollback", f->sb);
-    if (f->curcol[0])
-        upconf_set(w, p, "cursor-color", f->curcol);
-    if (f->fg[0])
-        upconf_set(w, p, "fg", f->fg);
-    if (f->bg[0])
-        upconf_set(w, p, "bg", f->bg);
+    /* Only the editor's own keys change, each where it stands: whatever
+     * else the profile holds -- keys only the handler reads, keys typed by
+     * hand, comments -- is written back as it was read. (The profile was
+     * removed and refilled here, and all of that went with every save.) */
+    pc_put(w, p, "font", f->font);
+    pc_put(w, p, "font-fallback", f->fallback);
+    upconf_set(w, p, "screen", f->screen == PREFS_SCREEN_OWN ? "own"
+                               : f->screen == PREFS_SCREEN_FULL ? "fullscreen" : "workbench");
+    pc_put(w, p, "screen-mode", f->screenmode);
+    pc_put(w, p, "screen-depth", f->screendepth);
+    pc_put(w, p, "scrollback", f->sb);
+    pc_put(w, p, "cursor-color", f->curcol);
+    pc_put(w, p, "fg", f->fg);
+    pc_put(w, p, "bg", f->bg);
     /* blank keeps the swap for that half: the key is not written at all */
-    if (f->selfg[0])
-        upconf_set(w, p, "selection-fg", f->selfg);
-    if (f->selbg[0])
-        upconf_set(w, p, "selection-bg", f->selbg);
+    pc_put(w, p, "selection-fg", f->selfg);
+    pc_put(w, p, "selection-bg", f->selbg);
+    upconf_set(w, p, "font-aspect", f->aspect ? "on" : "off");
+    upconf_set(w, p, "backspace", f->backspace_bs ? "bs" : "del");
+    upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"
+                                          : f->clipboard == PREFS_CLIP_READ_WRITE ? "read-write"
+                                          : "write");
+    pc_put(w, p, "link-open", f->linkopen);
     upconf_set(w, p, "cursor", f->cursor == PREFS_CURSOR_UNDERLINE ? "underline"
                                : f->cursor == PREFS_CURSOR_BAR ? "bar" : "block");
     upconf_set(w, p, "cursor-blink", f->blink ? "on" : "off");
@@ -228,9 +254,10 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     upconf_set(w, p, "meta", f->meta_alt ? "alt" : "amiga");
     upconf_set(w, p, "copy-on-select", f->copy_sel ? "on" : "off");
     upconf_set(w, p, "wheel", f->wheel ? "scroll" : "ignore");
+    upconf_set(w, p, "reflow", f->reflow ? "on" : "off");
+    upconf_set(w, p, "scrollbar", f->scrollbar ? "show" : "hide");
     upconf_set(w, p, "completion", f->completion == PREFS_COMPLETE_KINGCON ? "kingcon" : "unix");
-    if (f->kcmode[0])
-        upconf_set(w, p, "kingcon-mode", f->kcmode);
+    pc_put(w, p, "kingcon-mode", f->kcmode);
     upconf_set(w, p, "kingcon-info", f->kcinfo ? "show" : "hide");
     upconf_set(w, p, "kingcon-cache", f->kccache ? "on" : "off");
     for (i = 0; i < 16; i++) {
@@ -244,8 +271,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     if (len < 0)
         return PREFS_STAGE_FULL;
     palstr[len] = 0;
-    if (palstr[0])
-        upconf_set(w, p, "palette", palstr);
+    pc_put(w, p, "palette", palstr);
     if (w->overflow)
         return PREFS_STAGE_FULL; /* a key or the profile itself had no room */
     len = upconf_save(w, buf, cap - 1);

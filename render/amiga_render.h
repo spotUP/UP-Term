@@ -19,6 +19,8 @@
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
+#define VR_IMG_SLOTS 512    /* image colours' pens, a power of two */
+#define VR_IMG_MAX 256
 
 typedef struct vr_render {
     struct Window *win;
@@ -86,6 +88,9 @@ typedef struct vr_render {
     WORD inset_top;       /* pixels above the text kept free (the tab bar) */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
+    WORD jump;             /* jump scroll: screen row s shows grid row s + jump (vr_scroll) */
+    WORD jump_step;        /* the spare rows the next jump leaves; doubles while scrolls keep coming */
+    UBYTE scrolled_pass;   /* this render pass scrolled the whole screen */
     /* Amiga layout requests (CSI t / u / x / y), -1 = automatic:
      * text rows, text columns, left and top offset in pixels */
     WORD lay_rows, lay_cols, lay_x, lay_y;
@@ -95,6 +100,9 @@ typedef struct vr_render {
     UBYTE *glyphs;
     /* profile counters, read by the debug build */
     ULONG n_direct, n_text;
+    struct BitMap *chip_bm;       /* planes_ok's bitmap check, made once a bitmap (S1) */
+    PLANEPTR chip_plane0;
+    UBYTE chip_ok;
     /* the outline font for the cells the bitmap font cannot show (F1),
      * 0 for none; the owner opens and closes it (vr_set_outline) */
     struct vo_font *outline;
@@ -104,6 +112,23 @@ typedef struct vr_render {
     BYTE sel;
     WORD sel_ax, sel_bx;
     LONG sel_ay, sel_by;
+    /* images (sixel; draw_images). Palette screens: pens obtained for the
+     * images' colours, a hash on 0xRRGGBB, released by vr_free; the pixels
+     * turned into pens in img_buf. True-colour screens: cybergraphics'
+     * WriteLUTPixelArray draws the indices through img_ctab. The last
+     * image's table is kept (img_serial, img_bgrgb) */
+    ULONG img_key[VR_IMG_SLOTS];
+    UBYTE img_pen[VR_IMG_SLOTS];
+    WORD n_img_pens;
+    UBYTE *img_buf;
+    ULONG img_buf_size;
+    struct Library *cgx;
+    LONG img_serial;
+    ULONG img_bgrgb;
+    UBYTE img_planes;     /* the planes the last image's pens use */
+    UBYTE img_map[256];
+    ULONG img_ctab[256];
+    ULONG n_img_runs;     /* image runs drawn (the debug build's counter) */
 } vr_render;
 
 /* Default colours from RGB (0xRRGGBB; VR_KEEP leaves the screen's text /
@@ -158,6 +183,8 @@ void vr_mask_begin(vr_render *r);
 void vr_mask_end(vr_render *r);
 void vr_redraw(vr_render *r);
 void vr_damage(vr_render *r, int x0, int y0, int x1, int y1);
+/* Jump scroll's end: the screen exactly as the grid again (output stopped). */
+void vr_settle(vr_render *r);
 void vr_scroll(vr_render *r, int top, int bottom, int n);
 /* The cursor's colour (0xRRGGBB) for a block cursor: the cell is filled
  * with it and the glyph drawn in the background colour, as xterm does with
@@ -171,8 +198,6 @@ void vr_set_selection_colors(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
 /* Hide / show the cursor around a batch of output. */
 void vr_cursor_off(vr_render *r);
 void vr_cursor_on(vr_render *r);
-/* Cell under a window pixel position; returns 0 outside the text area. */
-int  vr_cell_at(const vr_render *r, WORD mx, WORD my, int *x, int *y);
 /* Show the grid `lines` rows back into the scrollback (0 = live output);
  * clamps and redraws. Engine damage is not drawn while the view is back. */
 void vr_set_view(vr_render *r, int lines);

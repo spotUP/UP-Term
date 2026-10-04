@@ -9,6 +9,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "../../engine/vtengine.h"
+#include "../../render/painter.h"
 
 static void damage(void *u, int x0, int y0, int x1, int y1) { (void)u; (void)x0; (void)y0; (void)x1; (void)y1; }
 static void scroll(void *u, int t, int b, int n) { (void)u; (void)t; (void)b; (void)n; }
@@ -55,18 +56,92 @@ static void build(int w)
 /* vtengine_68k.s against what its C says: the cells written, where it
  * stops (a wide glyph's halves), what it leaves alone. 0 when right. */
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
+long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
+void vt_asm_ch_blank(vt_cell *c, long n);
+long vr_asm_row_scan(const vt_cell *c, long n, unsigned char *out);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_rows_up(void **p, long k);
 void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
 void vt_asm_rows_down(void **p, long k);
 void vr_asm_cell(unsigned char **planes, long depth, long off, long bpr, const unsigned char *rows, long h, long fg, long bg,
                  long mask);
+long vt_asm_csi(const vt_u8 *p, long n, long *params, vt_u8 *sub);
+
+/* vtengine.c's csi_scan (the C build's), the reference for vt_asm_csi */
+static long csi_scan_c(const vt_u8 *p, long n, long *params, vt_u8 *sub)
+{
+    long i, v = 0;
+    int np = 0;
+    if (n > 0x7FFF)
+        n = 0x7FFF;
+    for (i = 0; i < n; i++) {
+        vt_u8 c = p[i];
+        if ((vt_u8)(c - '0') <= 9) {
+            v = v < 65535L / 10 ? v * 10 + (long)(c - '0') : 65535L;
+            if (!np) {
+                np = 1;
+                sub[0] = 0;
+            }
+        } else if (c == ';' || c == ':') {
+            if (!np) {
+                np = 1;
+                sub[0] = 0;
+            }
+            params[np - 1] = v;
+            if (np < 16) {
+                sub[np] = (vt_u8)(c == ':');
+                np++;
+                v = 0;
+            }
+        } else {
+            if (np) {
+                params[np - 1] = v;
+            } else {
+                params[0] = 0;
+                sub[0] = 0;
+            }
+            return (long)np << 16 | i;
+        }
+    }
+    return -1;
+}
+
+/* vt_asm_csi against csi_scan_c: every cut of each string, the values and
+ * marks written, nothing past the 16 entries */
+static int csi_check(void)
+{
+    static const char *const t[] = {
+        "m", "31m", "38;5;123;48;5;45m", "1;1H", ";m", ";;;m", "0m", "6552m", "6553m", "6554m", "65535m", "65530m", "65529;65531m",
+        "99999999m", "123456789012;7m", "4:3m", "38:2::10:20:30m", "38:2:1:10:20:30;1m", "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16m",
+        "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18m", "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17:5m", "?25h", "5 q", "12\033",
+        "7/", "3;\200", ":m", "0;:;:5H", ""
+    };
+    static long pa[17], pc[17];
+    static vt_u8 sa[17], sc[17];
+    static vt_u8 b[64];
+    int k, n, i;
+    for (k = 0; k < (int)(sizeof t / sizeof t[0]); k++) {
+        int len = (int)strlen(t[k]);
+        memcpy(b, t[k], (size_t)len);
+        for (n = 0; n <= len; n++) {
+            long ra, rc;
+            for (i = 0; i < 17; i++) { pa[i] = pc[i] = 0x5A5A5A5AL; sa[i] = sc[i] = 0xA5; }
+            ra = vt_asm_csi(b, n, pa, sa);
+            rc = csi_scan_c(b, n, pc, sc);
+            if (ra != rc) return 80;
+            if (memcmp(pa, pc, sizeof pa) || memcmp(sa, sc, sizeof sa)) return 81;
+        }
+    }
+    return 0;
+}
 
 static int asm_check(void)
 {
     static vt_cell c[12];
     vt_cell p;
-    int i;
+    int i = csi_check();
+    if (i)
+        return i;
     for (i = 0; i < 12; i++) { c[i].ch = '.'; c[i].fg = 1; c[i].bg = 2; c[i].attr = 0; c[i].width = 1; c[i].deco = 0; c[i].ext = 0; c[i].pad = 0; }
     c[6].width = 2; c[7].width = 0; /* a wide glyph in cells 6 and 7 */
     p.fg = 0x11223344UL; p.bg = 0x55667788UL; p.ch = 0; p.attr = 0xA5C3; p.width = 1; p.deco = 9; p.ext = 7; p.pad = 0;
@@ -83,6 +158,51 @@ static int asm_check(void)
     if (vt_asm_put_run(c, (const vt_u8 *)"A~\033B", 4, &p) != 2 || c[1].ch != '~' || c[2].ch != 'c') return 8;  /* ESC ends the run */
     if (vt_asm_put_run(c, (const vt_u8 *)"\177", 1, &p) != 0 || vt_asm_put_run(c, (const vt_u8 *)"\200", 1, &p) != 0 ||
         vt_asm_put_run(c, (const vt_u8 *)"\037", 1, &p) != 0 || vt_asm_put_run(c, (const vt_u8 *)" ", 1, &p) != 1 || c[0].ch != ' ') return 9;
+    for (i = 0; i < 12; i++) { c[i].ch = '.'; c[i].fg = 3; }
+    if (vt_asm_put_ch(c + 1, (const vt_u8 *)"ab~\033x", 5) != 3) return 30;  /* stops at ESC */
+    if (c[0].ch != '.' || c[1].ch != 'a' || c[2].ch != 'b' || c[3].ch != '~' || c[4].ch != '.' || c[1].fg != 3) return 31;
+    if (vt_asm_put_ch(c, (const vt_u8 *)"\177", 1) != 0 || vt_asm_put_ch(c, (const vt_u8 *)"\200", 1) != 0 ||
+        vt_asm_put_ch(c, (const vt_u8 *)" ", 1) != 1 || c[0].ch != ' ' || vt_asm_put_ch(c, (const vt_u8 *)"q", 0) != 0) return 32;
+    {
+        /* vt_asm_put_ch against put_ascii_run's C loop: every source
+         * alignment, lengths 0-13, an ending byte (or none) at every place,
+         * the bytes either side of the printable range */
+        static vt_cell w[18], r[18];
+        static vt_u8 src[24];
+        static const vt_u8 bad[6] = { 0x1F, 0x7F, 0x80, 0xFF, 0x00, 0x9F };
+        int al, len, at, kind, k;
+        long got, want;
+        for (al = 0; al < 4; al++)
+            for (len = 0; len <= 13; len++)
+                for (at = -1; at < len; at++)
+                    for (kind = 0; kind < 6; kind++) {
+                        for (i = 0; i < 24; i++) src[i] = (vt_u8)(i & 1 ? 0x7E - i : 0x20 + i);
+                        if (at >= 0) src[al + at] = bad[kind];
+                        for (i = 0; i < 18; i++) {
+                            w[i].ch = ' '; w[i].fg = 0x11u + (vt_color)i; w[i].bg = 0x22u; w[i].attr = 0x3344;
+                            w[i].width = 1; w[i].deco = 5; w[i].ext = 6; w[i].pad = 7;
+                            r[i] = w[i];
+                        }
+                        for (want = 0; want < len && src[al + want] >= 0x20 && src[al + want] < 0x7F; want++)
+                            r[1 + want].ch = src[al + want];
+                        got = vt_asm_put_ch(w + 1, src + al, len);
+                        if (got != want) return 60 + al;
+                        for (k = 0; k < 18; k++)
+                            if (memcmp(&w[k], &r[k], sizeof(vt_cell))) return 64 + al;
+                    }
+        /* vt_asm_ch_blank: n characters back to a space, nothing else */
+        for (len = 0; len <= 13; len++) {
+            for (i = 0; i < 18; i++) {
+                w[i].ch = (vt_u16)(0x4100 + i); w[i].fg = 0x11u + (vt_color)i; w[i].bg = 0x22u; w[i].attr = 0x3344;
+                w[i].width = 1; w[i].deco = 5; w[i].ext = 6; w[i].pad = 7;
+                r[i] = w[i];
+                if (i >= 1 && i <= len) r[i].ch = ' ';
+            }
+            vt_asm_ch_blank(w + 1, len);
+            for (k = 0; k < 18; k++)
+                if (memcmp(&w[k], &r[k], sizeof(vt_cell))) return 68;
+        }
+    }
     for (i = 0; i < 12; i++) c[i].ch = (vt_u16)i;
     p.ch = 'F';
     vt_asm_fill(c + 2, 5, &p);
@@ -114,6 +234,29 @@ static int asm_check(void)
         vt_asm_rows_down(r + 5, 0);
         if (r[0] != &m[0] || r[5] != &m[5]) return 14;
     }
+    return 0;
+}
+
+/* the renderer's assembler (render/, owned by the renderer work) against
+ * its C: reported apart, so a fault there does not stop the engine numbers */
+static int render_check(void)
+{
+    static vt_cell c[12];
+    int i;
+    {
+        /* vr_asm_row_scan: stops at the first cell unlike c[0] or not ASCII */
+        static unsigned char o[12];
+        for (i = 0; i < 12; i++) { c[i].ch = (vt_u16)('a' + i); c[i].fg = 5; c[i].bg = 6; c[i].attr = 0; c[i].width = 1; c[i].deco = 0; c[i].ext = 0; c[i].pad = 0; }
+        if (vr_asm_row_scan(c, 12, o) != 12 || o[0] != 'a' || o[11] != 'l') return 50;
+        c[7].bg = 9;
+        if (vr_asm_row_scan(c, 12, o) != 7) return 51;
+        c[7].bg = 6; c[4].ch = 0x80;
+        if (vr_asm_row_scan(c, 12, o) != 4) return 52;
+        c[4].ch = 0x141;
+        if (vr_asm_row_scan(c, 12, o) != 4) return 53;
+        c[4].ch = 'e'; c[9].deco = 1;
+        if (vr_asm_row_scan(c, 12, o) != 9 || vr_asm_row_scan(c, 0, o) != 0) return 54;
+    }
     {
         /* vr_asm_cell against its C: 5 planes of 4 rows x 3 bytes, the
          * cell in the middle byte, every pen pair, the masks 0x1f and 0x0b */
@@ -141,6 +284,30 @@ static int asm_check(void)
                             if (pl[pn][q] != want[pn][q]) return 20 + pn;
                 }
     }
+    {
+        /* vp_span_fast (render/painter_68k.s) against vp_span's C: every
+         * phase, lengths 1-9, pen pairs, two masks, on noisy planes */
+        static vp_u8 a[4][160], c2[4][160], gl[256 * 3];
+        static const vp_u8 ch[9] = { 'A', 0, 255, 'x', 7, ' ', 200, 'q', 3 };
+        vp_u8 *pa[4], *pc[4];
+        int x, n, f, b2, m, pn, q;
+        for (q = 0; q < 256 * 3; q++) gl[q] = (vp_u8)(q * 37 + (q >> 3) * 11);
+        for (pn = 0; pn < 4; pn++) { pa[pn] = a[pn]; pc[pn] = c2[pn]; }
+        for (x = 0; x < 40; x++)     /* every bit and byte offset from a long */
+            for (n = 1; n <= 9; n++)
+                for (f = 0; f < 16; f += 5)
+                    for (b2 = 0; b2 < 16; b2 += 3)
+                        for (m = 0; m < 2; m++) {
+                            int mask = m ? 0x05 : 0x0F;
+                            for (pn = 0; pn < 4; pn++)
+                                for (q = 0; q < 160; q++) a[pn][q] = c2[pn][q] = (vp_u8)(0x5A ^ (q * 13) ^ pn);
+                            vp_span_fast(pa, 4, 40, x, 1, gl, 3, ch, n, f, b2, mask);
+                            vp_span(pc, 4, 40, x, 1, gl, 3, ch, n, f, b2, mask);
+                            for (pn = 0; pn < 4; pn++)
+                                for (q = 0; q < 160; q++)
+                                    if (a[pn][q] != c2[pn][q]) return 40 + x;
+                        }
+    }
     return 0;
 }
 
@@ -148,17 +315,39 @@ int main(int argc, char **argv)
 {
     static const char *const name[] = { "plain lines", "newlines", "colour a char", "256 pair a cell", "frame repaint", "ins/del line" };
     static vt_callbacks cb;
-    int reps = argc > 2 ? atoi(argv[2]) : 3, w, r, pers;
+    /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-5) and
+     * PERS one dialect (0 xterm, 1 amiga) -- for tools/prof68k.py, which
+     * counts the instructions of one workload under vamos */
+    int reps = 3, only = -1, onlypers = -1, w, r, pers, a;
+    long chunk = 4096; /* CHUNK n: the write size (conbench plain-lines writes 79) */
+    for (a = 1; a + 1 < argc; a += 2) {
+        if (!strcmp(argv[a], "REPS")) reps = atoi(argv[a + 1]);
+        else if (!strcmp(argv[a], "ONLY")) only = atoi(argv[a + 1]);
+        else if (!strcmp(argv[a], "PERS")) onlypers = atoi(argv[a + 1]);
+        else if (!strcmp(argv[a], "CHUNK")) chunk = atoi(argv[a + 1]);
+    }
     cb.damage = damage;
     cb.scroll = scroll;
-    w = asm_check();
-    Printf((STRPTR)"asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
-    if (w)
-        return 20;
+    /* the checks run unless one workload is asked for (ONLY 0-5: a profile
+     * counts the workload, not the checks; ONLY 9 runs the checks alone).
+     * The engine's assembler must be right or nothing is timed; the
+     * renderer's is reported apart (its own work, its own fault). */
+    if (only < 0 || only > 5) {
+        w = asm_check();
+        Printf((STRPTR)"asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
+        if (w)
+            return 20;
+        w = render_check();
+        Printf((STRPTR)"render asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
+    }
     for (pers = 0; pers < 2; pers++) {
+        if (onlypers >= 0 && pers != onlypers)
+            continue;
         Printf((STRPTR)"%s\n", (LONG)(pers ? "amiga dialect" : "xterm dialect"));
         for (w = 0; w < 6; w++) {
             long best = 0x7FFFFFFF, i;
+            if (only >= 0 && w != only)
+                continue;
             build(w);
             for (r = 0; r < reps; r++) {
                 vt_term *t = vt_new(80, 32, 500, &cb, 0);
@@ -167,9 +356,10 @@ int main(int argc, char **argv)
                     return 20;
                 vt_set_personality(t, pers ? VT_AMIGA : VT_XTERM);
                 t0 = now();
-                for (i = 0; i < n; i += 4096) { /* 4K writes, a flush each: a frame's worth */
-                    vt_feed(t, (const vt_u8 *)buf + i, n - i < 4096 ? n - i : 4096);
-                    vt_flush(t);
+                for (i = 0; i < n; i += chunk) { /* writes of `chunk` bytes, a flush every 4K */
+                    vt_feed(t, (const vt_u8 *)buf + i, n - i < chunk ? n - i : chunk);
+                    if ((i + chunk) / 4096 != i / 4096 || i + chunk >= n)
+                        vt_flush(t);
                 }
                 t0 = now() - t0;
                 if (t0 < best)

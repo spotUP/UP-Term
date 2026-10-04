@@ -4,7 +4,9 @@ vtcon - a console window for AmigaOS 3.x (68020+)
 XCON: is a console window like CON:, with a modern terminal inside:
 
   - xterm dialect (default): what Unix ports expect - colours (16, 256,
-    RGB), scroll regions, alternate screen, mouse, bracketed paste.
+    RGB), scroll regions, alternate screen, mouse, bracketed paste,
+    sixel images (img2sixel, lsix, gnuplot's sixel terminal), and
+    lines that re-wrap when the window is resized.
     ixemul programs run with TERM=vtcon (less, nano, BitchX ...).
   - Amiga dialect (option AMIGA): the ROM console.device sequences.
     Amiga programs also work in the xterm dialect: the 8-bit CSI ($9B)
@@ -52,7 +54,8 @@ CONFIGURATION (profiles)
    tool is "C:UP-Term Prefs") writes it. Install lays down a fully
    commented sample; without the file every window behaves as before.
 
-   Prefs: two pages, General and Colors. Type the profile name in the
+   Prefs: three pages, General, Colors and Advanced (the screen, the
+   Backspace key, what programs may do). Type the profile name in the
    Profile field, press Load to edit an existing profile or New to start
    one, change the values, press Save. Save writes ENVARC:up-term/up-term
    and keeps the file that was there as up-term.orig; Cancel closes without
@@ -83,8 +86,24 @@ CONFIGURATION (profiles)
      meta = amiga              amiga (Left Amiga = Meta) | alt (the Alt keys)
      copy-on-select = off      on: a drag ends with the selection on the clipboard
      wheel = scroll            scroll | ignore (the mouse wheel moves the scrollback)
+     reflow = on               on | off (a resize re-wraps the lines and the scrollback;
+                               off cuts or pads the rows, as xterm does)
+     program-clipboard = write write | read-write | off: programs set the
+                               clipboard (OSC 52: tmux, neovim over ssh);
+                               read-write also lets them read it, which a
+                               remote host can then do too -- off by default
+     link-open = OpenURL %s    the command a Ctrl + click on a link runs
+                               (%s the URL, quoted)
+     backspace = del           del | bs: the Backspace key sends ^? or ^H
+  A program's notification (OSC 9, OSC 777: a build finished...)
+  shows in the title bar for 5 seconds.
+     scrollbar = show          show | hide (the scroll bar in a sizable window's border)
      palette = 1,0x00CD00,4,0x5C5CFF
                                remap ANSI colours: index,RRGGBB pairs
+
+   A save (Prefs, or Save settings to profile) changes only the keys
+   Prefs shows; any other key and every comment line stays as you wrote
+   it. Blank lines are not kept.
 
    Example: a dim, silent editor window
      NewShell "XCON:0/20/640/300/vim/PROFILE vim/CLOSE"
@@ -126,6 +145,8 @@ COMMANDS (/cursor bar)
      /cursor bar        /bell visual      /scrollback 5000   /font topaz 11
      /fg C0C0C0         /theme dracula-default /profile vim       /tab new
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
+     /backspace bs      /program-clipboard read-write
+     /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.
    "/" alone, "//", "/Work" and every other path are the shell's as
    before, and a line that starts with a blank goes to the shell as typed
@@ -143,8 +164,12 @@ MENU
     View      Bigger font, Smaller font (the font's next size on disk),
               80 x 24, 132 x 43 (the window sized to that grid)
     Settings  Font..., Theme..., Cursor, Bell, Scrollback, Bold is
-              bright, Meta key, Copy on select, Wheel scrolls, Tab
-              completion, KingCON style, Profile, Save settings to profile
+              bright, Meta key, Copy on select, Wheel scrolls, Reflow on
+              resize, Scroll bar, Backspace key sends, Programs may (the
+              clipboard), Tab completion, KingCON style, Profile, Save
+              settings to profile
+    Help      Demo tour (a tour of what the terminal does, in a new tab:
+              see DEMO; /demo does the same)
   Settings are the same as UP-Term Prefs, for this window and at once
   (Prefs keeps them for the profile). With KingCON completion a Complete
   menu follows. Every item is also a command (see COMMANDS). The right
@@ -156,7 +181,17 @@ KEYS
   Right Amiga C / V     copy / paste (clipboard, IFF FTXT)
   Shift+PgUp / PgDn     scroll back / forward
   Right Amiga Up / Down scroll back / forward one line
-  Right Amiga T         new tab (a shell of its own, the same profile)
+  Right Amiga Shift + Up / Down
+                        to the previous / next shell prompt (vsh marks
+                        its prompts; so do fish, and bash or zsh with
+                        OSC 133 in their prompt)
+  Ctrl + click          open the link under the pointer (ls --hyperlink,
+                        gcc, delta print them): the profile's
+                        link-open = OpenURL %s  runs (%s the URL), so the
+                        OpenURL package must be installed, or name your
+                        browser's command there
+  Right Amiga T         new tab (a shell of its own, the same profile,
+                        in the directory the shell of this tab is in)
   Right Amiga 1-9       that tab; Right Amiga . and , the next / previous
                         (or click the tab bar); the close gadget closes
                         the tab you see
@@ -263,6 +298,43 @@ TMUX
   panes (ENV:tmux.conf: default-shell, 256 colours). Your own settings go
   in ~/.tmux.conf.
 
+VIEWING FILES (hl, mdv)
+  hl shows a source file in colour, with line numbers, the language found
+  from the name, the #! line or -l:
+    hl main.c              hl -l asm intro.i      hl -n S:Startup-Sequence
+    hl -p file             (colours, no numbers)  hl --list (the languages)
+  C/C++, 68k assembler (vasm, Devpac), AmigaE, Python, shell and vsh
+  scripts, AmigaDOS scripts, ARexx, Lua, JavaScript/TypeScript, JSON,
+  YAML, TOML, INI and up-term.conf, Makefile, Markdown, HTML, XML, diff,
+  CSS, Rust, Go, Java. Into a pipe or a file hl is cat: the bytes as they
+  are (--color=always and -n keep the colours and numbers there).
+  mdv shows Markdown (a README.md) formatted for the window: headings,
+  bold and italic, lists, quotes, tables fitted to the width, code
+  blocks in colour, links with their address after them (and as OSC 8
+  hyperlinks for terminals that follow them), images as their text:
+    mdv README.md          mdv -w 60 notes.md     mdv -U (no addresses)
+  Through a pager (vshrc): hlp file, mdp README.md -- less -R, or the
+  pager $PAGER names; less is not part of UP-Term (Geek Gadgets, Aminet).
+  Colours: the 16 of the window's profile (theme ansi), so a profile
+  theme changes them too; --theme mono (bold and underline only),
+  --theme rich (24-bit colours, brought down to 256 or 16 where TERM and
+  COLORTERM say the terminal has fewer), or a theme file (also the
+  variable HL_THEME), one line a class:
+    comment = grey italic
+    keyword = bright-blue bold
+    string  = #98c379
+    h1      = magenta bold underline
+  Words: bold dim italic underline reverse strike, a colour (black red
+  green yellow blue magenta cyan white, bright-<name>, grey, 0-255,
+  #rrggbb), "on <colour>" for the background. The classes: plain comment
+  keyword type builtin string escape number preproc function label
+  variable key section tag attr heading emphasis link code meta added
+  removed lineno, and for mdv h1-h6 quote bullet rule codespan codeblock
+  url image table th task. Text in Latin-1 (the Amiga's own) is shown
+  right in a UTF-8 window; --latin1 / --utf8 say what the terminal reads
+  when TERM does not (a ROM CON: window: Latin-1, lines and boxes drawn
+  with + - |). hl --help and mdv --help list the options; Ctrl-C stops hl.
+
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a
   USB serial adapter) to another computer, open a terminal program there
@@ -327,8 +399,10 @@ NETWORK
     bebboget        https downloads (installcerts adds root certificates)
     curl            curl 8.22.0; it also needs AmiSSL 5 (Aminet
                     util/libs/AmiSSL-v5-OS3.lha)
-  In vsh, ssh runs bebbossh with TERM=xterm-256color, which is what an
-  UP-Term window is to a Unix machine. Keys: bebbosshkeygen makes one
+  In vsh, ssh (bebbossh), telnet and rlogin run with TERM=xterm-256color,
+  which is what an UP-Term window is to a Unix machine (no remote host has
+  a vtcon entry). UP_REMOTE_TERM=name in $HOME/.vshrc sends another name;
+  a TERM that is not vtcon (inside screen) goes as it is. Keys: bebbosshkeygen makes one
   (ENVARC:.ssh/id_ed25519); bebbossh -i names another. The first connection
   to a host asks whether to trust its key.
   bebbosshd, the server, answers a login with its own simple shell, not a
@@ -337,6 +411,28 @@ NETWORK
   under the curl licence. Their COPYING files and sources (or where the
   source is) are in the kit's Files/net drawer.
 
+CLAUDE FROM THE AMIGA
+  Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
+  On the Mac, from an UP-Term source checkout (nothing is installed; it
+  runs until Ctrl-C):
+    (umask 077; mkdir -p ~/.config/uptelnetd; read -rs p; printf '%s\n' "$p" > ~/.config/uptelnetd/password)
+    python3 tools/uptelnetd.py
+  It prints the address it listens on, e.g. 192.168.0.58 port 2323. On the
+  Amiga (TCP/IP stack running), in an UP-Term window:
+    uptelnet 192.168.0.58 2323
+  (vsh: telnet 192.168.0.58 2323). Type the password; you get your Mac
+  shell, where claude runs. uptelnetd --command 'tmux new -A -s claude
+  claude' goes straight into Claude Code in a tmux session that survives a
+  dropped line. uptelnet tells the Mac TERM=xterm-256color and the window's
+  size, and follows a resize. Ctrl-] ends it.
+  UNENCRYPTED: telnet carries everything in clear, the password too. The
+  Mac end listens on its LAN address only and lets in only its own subnet,
+  locks out an address after 5 wrong passwords, and never on 0.0.0.0;
+  still, use it only on a network you trust and never forward the port.
+  The encrypted alternative is ssh (BebboSSH, NETWORK above) to the Mac's
+  Remote Login (System Settings > General > Sharing); not yet tried
+  against macOS's sshd.
+
 DEMO
   UPDemo, typed in an UP-Term window (76 x 20 characters or more), shows
   what the terminal draws: text styles, double-size lines, 256 and 24-bit
@@ -344,6 +440,15 @@ DEMO
   copper bars, plasma, fire, a rotozoomer, vector cubes, a sine scroller,
   palette cycling. Space: the next scene, B: back, Q: quit; UPDemo 5
   starts at scene 5. Your shell comes back as it was.
+  Help > Demo tour (or /demo, or UPDemo TOUR typed in a window) plays
+  a tour of what UP-Term does, about three minutes, a caption on each
+  scene: text styles, 256 and 24-bit colours, line graphics, Latin-1 and
+  UTF-8, wide characters and accents, scroll regions, a tmux split, vsh,
+  Tab completion (Unix and KingCON), themes switched live, mouse reports
+  (click in the window), links, a sixel image, synchronized output, a
+  program resizing the window (from 80 columns), reflow (drag the size
+  gadget when it asks), then some of the effects. From the menu it runs
+  in a tab of its own, which closes when the tour ends; any key ends it.
   UPDemo BENCH runs every scene for three seconds and prints the frames
   a second each reached: a benchmark of the terminal on your machine.
   The full-screen effects need a fast processor (a 68060, a PiStorm, an

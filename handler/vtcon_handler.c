@@ -49,6 +49,7 @@
 #include "../render/amiga_render.h"
 #include "../render/vtwin.h"
 #include "../device/upc_public.h"
+#include "sbar_gad.h"
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
@@ -57,6 +58,7 @@
 #include "brk.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../config/termurl.h"
 #include "../config/upconf.h"
 #include "../prefs/prefs_core.h"
 
@@ -164,9 +166,11 @@ typedef struct con {
     int auto_shut;               /* the close gadget shut an AUTO window: close it after idcmp() */
     int spec_parsed;
     char profile[UC_NAME];       /* the config profile (spec's PROFILE; "default") */
+    char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
-    upconf *save_work;           /* Save settings to profile: the table once the file is written */
+    upconf *save_work;           /* Save settings to profile: the table once the file is written
+                                  * (while the worker writes it; then the window's c->conf) */
     /* tabs (plans/2026-10-03-tabs.md): a host owns the window, a tab is a
      * process drawing into it */
     struct Window *own_win;      /* the window this process opened and owns (0: a tab's) */
@@ -206,7 +210,13 @@ typedef struct con {
     unsigned long edits;         /* keys that changed the line so far */
     unsigned long comp_edits;    /* edits when the running completion started */
     struct Menu *menustrip;      /* the window's menu (GadTools), 0 without one */
-    char menu[COMPLETE_NAMES];   /* the last completion's names */
+    /* the scroll bar (SB1): the window owner's gadget in its right border,
+     * showing the active terminal's knob (a tab's arrives by TM_KNOB) */
+    int sbar_on;                 /* the setting: profile scrollbar = show | hide, the menu */
+    sbar_gad sbar;
+    sbar_knob knob_last;         /* the knob the window shows, for a scroll bar turned on */
+    int knob_last_valid;
+    char *menu;                  /* the last completion's names (COMPLETE_NAMES, made at the first menu) */
     int menu_len, menu_n, menu_i, menu_start;
     /* the find prompt (Right Amiga F): its own small window, open while the
      * console keeps running -- the program's output must not stop while a
@@ -244,10 +254,26 @@ typedef struct con {
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
     struct IOStdReq lib_io;      /* console.device CONU_LIBRARY, for RawKeyConvert */
-#ifdef VTCON_DEBUG
+#if defined(VTCON_DEBUG) || defined(VTCON_PROF)
     ULONG prof_out, prof_writes, prof_bytes;
 #endif
+#ifdef VTCON_PROF
+    /* the phase profile (PROF=1 SERIAL=1; ledger S1): EClock ticks spent
+     * waiting for work and in all, since the last stream closed; the
+     * output and render phases are prof_out and the vtwin's prof_render.
+     * Printed to the serial port when a stream closes, then reset. */
+    ULONG prof_idle, prof_t0;
+    ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
+#endif
 } con;
+
+/* What one window costs (research/2026-10-04_window-memory.md), held at
+ * compile time in the 68k build itself: the build fails when one of
+ * these climbs back past its bound. Measured 2026-10-04: con 66126 ->
+ * 24402, upconf 56240 -> 17844, a request without lists 11084 -> 852. */
+typedef char con_size_bound[sizeof(con) <= 26000 ? 1 : -1];
+typedef char upconf_size_bound[sizeof(upconf) <= 18500 ? 1 : -1];
+typedef char complete_req_size_bound[sizeof(struct complete_req) <= 1024 ? 1 : -1];
 
 /* No mutable globals below this line except the library bases (the same
  * value in every process): every XCON: window is its own process running
@@ -366,20 +392,32 @@ static void in_append(con *c, const vt_u8 *b, int n)
 
 static int tty_active(con *c);
 static void service_reads(con *c);
+static void rtimer_start(con *c, ULONG tenths);
+
+/* In termios mode the read stream is the line discipline: everything for
+ * the program -- a key, a report, a paste, a mouse or focus report -- goes
+ * through it, as on a Unix tty. 0 when the window is not in termios mode.
+ * Bytes put in the cooked buffer instead were never read there, yet made
+ * WAIT_CHAR answer yes (tmux's select saw input, its read blocked until
+ * the next key); and a paste or a mouse click in a termios program (Claude
+ * Code over uptelnet, tmux) never arrived (ledger A1.3). */
+static int to_tty(con *c, const vt_u8 *b, int n)
+{
+    if (!tty_active(c))
+        return 0;
+    ld_input(&c->ld, b, n);
+    if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
+        rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
+    service_reads(c);
+    return 1;
+}
 
 static void h_reply(void *u, const vt_u8 *b, long n)
 {
     con *c = (con *)u;
-    /* reports enter the read stream, as the console's do. In termios mode
-     * that stream is the line discipline, as for a typed key: in the cooked
-     * buffer they were never read, yet made WAIT_CHAR answer yes -- tmux's
-     * select saw input, its read blocked until the next key, and every key
-     * showed one key late (tmux asks for DA and colours at start) */
-    if (tty_active(c)) {
-        ld_input(&c->ld, b, (int)n);
-        service_reads(c);
+    /* reports enter the read stream, as the console's do */
+    if (to_tty(c, b, (int)n))
         return;
-    }
     in_append(c, b, (int)n);
 }
 
@@ -387,6 +425,8 @@ static void h_reply(void *u, const vt_u8 *b, long n)
 static void h_input(void *u, const vt_u8 *b, long n)
 {
     con *c = (con *)u;
+    if (to_tty(c, b, (int)n))
+        return;
     in_append(c, b, (int)n);
     service_reads(c);
 }
@@ -402,6 +442,8 @@ static void h_key(void *u, const vt_u8 *b, int n, long key, int mods)
 static void h_pasted(void *u, const vt_u8 *b, int n, long key)
 {
     con *c = (con *)u;
+    if (to_tty(c, b, n))
+        return;
     if (c->raw)
         in_append(c, b, n);
     else
@@ -409,9 +451,12 @@ static void h_pasted(void *u, const vt_u8 *b, int n, long key)
     service_reads(c);
 }
 
+/* the program reads bytes, not our line editor: Amiga raw mode, or
+ * termios mode (paste marks and focus reports are for it) */
 static int h_raw(void *u)
 {
-    return ((con *)u)->raw;
+    con *c = (con *)u;
+    return c->raw || tty_active(c);
 }
 
 static void sync_size(con *c);
@@ -421,11 +466,15 @@ static void h_resized(void *u)
 {
     con *c = (con *)u;
     sync_size(c);
+    le_resized(&c->le); /* a reflow moved the line being edited */
     post_sizewindow(c);
 }
 
 static void h_titled(void *u);
-static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled };
+static void h_open_link(void *u, const char *uri);
+static void h_knob(void *u, const sbar_knob *k);
+static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled, h_open_link,
+                                 h_knob };
 
 /* ---- the window -------------------------------------------------------------- */
 
@@ -585,11 +634,17 @@ static void read_conf(upconf *conf)
         return;
     /* Read straight up to the cap rather than Seek()ing to the end first:
      * on 3.1 that Seek answers 0 for this file, and the read is skipped. */
-    buf = (char *)AllocVec(CONF_MAX + 1, MEMF_ANY);
+    buf = (char *)AllocVec(CONF_MAX + 2, MEMF_ANY);
     if (buf) {
-        LONG got = Read(f, buf, CONF_MAX);
-        buf[got > 0 ? got : 0] = 0;
-        upconf_parse(conf, buf, got > 0 ? got : 0);
+        /* a byte more than the cap: a longer file is used as far as it
+         * fits, and marked (overflow) so Save settings to profile does not
+         * write it back cut (prefs_stage refuses it) */
+        LONG got = Read(f, buf, CONF_MAX + 1);
+        LONG use = got > CONF_MAX ? CONF_MAX : got > 0 ? got : 0;
+        buf[use] = 0;
+        upconf_parse(conf, buf, use);
+        if (got > CONF_MAX)
+            conf->overflow = 1;
         FreeVec(buf);
     }
     Close(f);
@@ -612,10 +667,13 @@ static void config_worker(void)
  * ... but per tab"): a watcher process per window holds a DOS notification
  * on ENV:up-term/up-term. When UP-Term Prefs (Use or Save), another
  * window's Save settings to profile or an editor writes it, the watcher
- * reads it into m->conf and hands m over; the window takes the new table
- * and, when its own profile's section changed, applies it live
- * (watch_take). One message goes back and forth, so the table is never
- * read while the other side writes it. Quitting: the window sends m back
+ * reads it into a table of its own (m->conf, allocated then) and hands m
+ * over; the window keeps that table as its own, frees the one it had and,
+ * when its own profile's section changed, applies it live (watch_take).
+ * So a window holds one table, not a second one waiting for a change
+ * that may never come (research/2026-10-04_window-memory.md). One message
+ * goes back and forth, so the table is never read while the other side
+ * writes it. Quitting: the window sends m back
  * with quit set, or signals CTRL_C while the watcher holds m; the watcher
  * answers with done set and ends. */
 struct watch_msg {
@@ -656,10 +714,14 @@ static void watch_worker(void)
             break;
         if (have && watching && (got & (1UL << sig))) {
             Delay(5); /* a writer that renames its new file in: let it finish */
-            upconf_clear(m->conf);
-            read_conf(m->conf);
-            have = 0;
-            ReplyMsg(&m->msg);
+            if (m->conf)
+                FreeVec(m->conf); /* not taken (the window always takes it) */
+            m->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
+            if (m->conf) { /* no memory: this change is missed, the window keeps its table */
+                read_conf(m->conf);
+                have = 0;
+                ReplyMsg(&m->msg);
+            }
         }
     }
     if (watching)
@@ -720,10 +782,8 @@ static void watch_start(con *c)
         return;
     c->watch_port = CreateMsgPort();
     c->watch = (struct watch_msg *)AllocVec(sizeof(struct watch_msg), MEMF_PUBLIC | MEMF_CLEAR);
-    if (c->watch)
-        c->watch->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
-    if (!c->watch_port || !c->watch || !c->watch->conf)
-        goto fail;
+    if (!c->watch_port || !c->watch)
+        goto fail; /* the watcher makes its table when the file changes */
     c->watch->msg.mn_ReplyPort = c->watch_port;
     c->watch->msg.mn_Length = sizeof(struct watch_msg);
     c->watch_task = CreateNewProcTags(NP_Entry, (ULONG)watch_worker, NP_Name, (ULONG)"vtcon watch",
@@ -736,8 +796,6 @@ static void watch_start(con *c)
     return;
 fail:
     if (c->watch) {
-        if (c->watch->conf)
-            FreeVec(c->watch->conf);
         FreeVec(c->watch);
         c->watch = 0;
     }
@@ -768,7 +826,8 @@ static void watch_stop(con *c)
         PutMsg(&c->watch_task->pr_MsgPort, &m->msg);
     }
     c->watch_task = 0;
-    FreeVec(c->watch->conf);
+    if (c->watch->conf)
+        FreeVec(c->watch->conf); /* a table on its way when we quit */
     FreeVec(c->watch);
     c->watch = 0;
     DeleteMsgPort(c->watch_port);
@@ -825,6 +884,7 @@ static void apply_colours(con *c, const upconf *cf, const char *p, int theme)
 static void apply_profile(con *c)
 {
     const char *p, *v;
+    c->link_open[0] = 0; /* none: OpenURL %s (h_open_link) */
     if (!c->conf)
         return;
     p = c->profile;
@@ -832,6 +892,8 @@ static void apply_profile(con *c)
         p = profile_exists(c->conf, "default") ? "default" : 0;
     if (!p)
         return;
+    /* OSC 8: the command a Ctrl + clicked link runs, %s the URL */
+    copy_str(c->link_open, upconf_str(c->conf, p, "link-open", ""), sizeof(c->link_open));
     v = upconf_str(c->conf, p, "font", 0);
     if (v && !c->w.fontname[0]) {
         char f[UC_MAX_VALUE];
@@ -914,12 +976,25 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "meta", 0);
     if (v)
         c->w.meta_alt = str_ieq(v, "alt");
+    v = upconf_str(c->conf, p, "program-clipboard", 0);
+    if (v) /* OSC 52: write (default) | read-write | off */
+        c->w.clip_access = str_ieq(v, "off") ? 0 : str_ieq(v, "read-write") ? VT_CLIP_WRITE | VT_CLIP_READ
+                         : VT_CLIP_WRITE;
     v = upconf_str(c->conf, p, "copy-on-select", 0);
     if (v)
         c->w.copy_on_select = str_ieq(v, "on");
     v = upconf_str(c->conf, p, "wheel", 0);
     if (v)
         c->w.wheel_scroll = !str_ieq(v, "ignore");
+    v = upconf_str(c->conf, p, "reflow", 0);
+    if (v)
+        c->w.reflow = !str_ieq(v, "off");
+    v = upconf_str(c->conf, p, "backspace", 0);
+    if (v)
+        c->w.backspace_bs = str_ieq(v, "bs"); /* del (^?, the default) or bs (^H) */
+    v = upconf_str(c->conf, p, "scrollbar", 0);
+    if (v)
+        c->sbar_on = !str_ieq(v, "hide");
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
     c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));
@@ -954,6 +1029,7 @@ static void parse_spec(con *c, const char *s)
     c->depth = 0;
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;
+    c->sbar_on = 1; /* a sizable window shows its scroll bar unless the profile hides it */
     for (;;) {
         int n = 0;
         const char *rest;
@@ -1113,6 +1189,7 @@ static void kc_cyc_end(con *c);
 static int sb_size(const con *c);
 static void watch_take(con *c);
 static void tab_command(con *c, int what);
+static void sbar_apply(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
 static int find_open(con *c);
@@ -1172,12 +1249,20 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
     { NM_ITEM, (STRPTR)"Show .info", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_KC_INFO }
 };
 
+/* Help, the strip's last menu: the tour of what the terminal does
+ * (UPDemo TOUR, in a new tab; /demo too) */
+#define MENU_HELP_ITEMS 2
+static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
+    { NM_TITLE, (STRPTR)"Help", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Demo tour", 0, 0, 0, (APTR)MENU_DEMO }
+};
+
 /* Settings: what UP-Term Prefs sets for a profile, for this window, live
  * (plan H9). The checkmarks show the window's settings (menu_checked); a
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 40
+#define MENU_SET_ITEMS 49
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1209,6 +1294,15 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Alt", 0, CHECKIT, 1, (APTR)MENU_SET_META_ALT },
     { NM_ITEM, (STRPTR)"Copy on select", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_COPY },
     { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
+    { NM_ITEM, (STRPTR)"Reflow on resize", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
+    { NM_ITEM, (STRPTR)"Scroll bar", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_SCROLLBAR },
+    { NM_ITEM, (STRPTR)"Backspace key sends", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Delete", 0, CHECKIT, 2, (APTR)MENU_SET_BS_DEL },
+    { NM_SUB, (STRPTR)"Backspace", 0, CHECKIT, 1, (APTR)MENU_SET_BS_BS },
+    { NM_ITEM, (STRPTR)"Programs may", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Set the clipboard", 0, CHECKIT, 6, (APTR)MENU_SET_CLIP_WRITE },
+    { NM_SUB, (STRPTR)"Set and read the clipboard", 0, CHECKIT, 5, (APTR)MENU_SET_CLIP_READ_WRITE },
+    { NM_SUB, (STRPTR)"Not use the clipboard", 0, CHECKIT, 3, (APTR)MENU_SET_CLIP_OFF },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Tab completion", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Unix", 0, CHECKIT, 2, (APTR)MENU_SET_UNIX },
@@ -1247,6 +1341,13 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_META_ALT: return c->w.meta_alt;
     case MENU_SET_COPY: return c->w.copy_on_select;
     case MENU_SET_WHEEL: return c->w.wheel_scroll;
+    case MENU_SET_REFLOW: return c->w.reflow;
+    case MENU_SET_SCROLLBAR: return c->sbar_on;
+    case MENU_SET_BS_DEL: return !c->w.backspace_bs;
+    case MENU_SET_BS_BS: return c->w.backspace_bs;
+    case MENU_SET_CLIP_WRITE: return c->w.clip_access == VT_CLIP_WRITE;
+    case MENU_SET_CLIP_READ_WRITE: return c->w.clip_access == (VT_CLIP_WRITE | VT_CLIP_READ);
+    case MENU_SET_CLIP_OFF: return c->w.clip_access == 0;
     case MENU_SET_UNIX: return !c->kingcon;
     case MENU_SET_KINGCON: return c->kingcon;
     case MENU_SET_KC_W: return (c->kc_style & LE_KC_WINDOW) != 0;
@@ -1271,9 +1372,9 @@ static void menu_add(con *c, struct Window *win)
     if (!GadToolsBase || win == c->foreign)
         return; /* a window someone else opened keeps its own menus */
     {
-        /* UP-Term, Settings, and the Complete menu under KingCON completion */
+        /* UP-Term, Settings, the Complete menu under KingCON completion, Help */
         struct NewMenu nm[sizeof(menu_def) / sizeof(menu_def[0]) + MENU_SET_ITEMS + 2 + UC_MAX_PROFILES +
-                          MENU_KC_ITEMS];
+                          MENU_KC_ITEMS + MENU_HELP_ITEMS];
         int n = sizeof(menu_def) / sizeof(menu_def[0]) - 1, i; /* without the NM_END */
         CopyMem((APTR)menu_def, nm, n * sizeof(struct NewMenu));
         CopyMem((APTR)menu_set, nm + n, sizeof(menu_set));
@@ -1317,6 +1418,8 @@ static void menu_add(con *c, struct Window *win)
             CopyMem((APTR)menu_kc, nm + n, sizeof(menu_kc));
             n += MENU_KC_ITEMS;
         }
+        CopyMem((APTR)menu_help, nm + n, sizeof(menu_help));
+        n += MENU_HELP_ITEMS;
         for (i = 0; i < n; i++)
             if ((nm[i].nm_Flags & CHECKIT) && menu_checked(c, (LONG)nm[i].nm_UserData))
                 nm[i].nm_Flags |= CHECKED;
@@ -1383,7 +1486,10 @@ static void prefs_launch(void)
                       NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
 }
 
-static int ensure_worker(con *c);
+#define WORK_COMP 1  /* the completion request (Tab, ASL, font, theme, save) */
+#define WORK_CHECK 2 /* is the first word a command */
+#define WORK_HIST 4  /* the history file */
+static int ensure_worker(con *c, int want);
 static struct Process *opener(con *c);
 
 /* Settings > Font...: the ASL font requester, in the completion worker (it
@@ -1391,7 +1497,7 @@ static struct Process *opener(con *c);
  * in finish_completion. */
 static void font_ask(con *c)
 {
-    if (c->comp_busy || !ensure_worker(c) || !c->w.win)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->w.win)
         return;
     copy_str(c->comp->word, c->w.fontname[0] ? c->w.fontname : "", COMPLETE_MAX);
     c->comp->font_size = c->w.font ? c->w.font->tf_YSize : 8;
@@ -1430,7 +1536,13 @@ static void window_fields(con *c, prefs_fields *f)
     f->meta_alt = c->w.meta_alt != 0;
     f->copy_sel = c->w.copy_on_select != 0;
     f->wheel = c->w.wheel_scroll != 0;
+    f->reflow = c->w.reflow != 0;
+    f->scrollbar = c->sbar_on != 0;
     f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
+    f->backspace_bs = c->w.backspace_bs != 0;
+    f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
+                 : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
+    copy_str(f->linkopen, c->link_open, sizeof(f->linkopen));
     k = 0;
     if (c->kc_style & LE_KC_WINDOW) f->kcmode[k++] = 'W';
     if (c->kc_style & LE_KC_LIST) f->kcmode[k++] = 'L';
@@ -1475,6 +1587,21 @@ static void window_fields(con *c, prefs_fields *f)
         rgb_hex((c->w.pal16[i] & 0x01000000UL) ? (c->w.pal16[i] & 0xFFFFFFUL) : VR_KEEP, f->pal[i]);
 }
 
+/* The file buffer of a save or a theme and the staged table: they live
+ * while the worker has them, not for the rest of the window (16 KB and
+ * 18 KB; research/2026-10-04_window-memory.md). */
+static void comp_data_done(con *c)
+{
+    if (c->comp->data) {
+        FreeVec(c->comp->data);
+        c->comp->data = 0;
+    }
+    if (c->save_work) {
+        FreeVec(c->save_work);
+        c->save_work = 0;
+    }
+}
+
 /* Settings > Save settings to profile: the file staged here (prefs_core,
  * as UP-Term Prefs does it), written by the worker (DOS) into ENV: and
  * ENVARC:; the window's table follows once both are in place. */
@@ -1482,17 +1609,20 @@ static void save_ask(con *c)
 {
     prefs_fields f;
     long len;
-    if (c->comp_busy || !ensure_worker(c) || !c->conf)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->conf)
         return;
     if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
         return;
-    if (!c->save_work && !(c->save_work = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY)))
+    if (!c->save_work && !(c->save_work = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY))) {
+        comp_data_done(c);
         return;
+    }
     window_fields(c, &f);
     len = prefs_validate(&f) ? -1
         : prefs_stage(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1);
     if (len < 0) {
-        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room in the file for it */
+        comp_data_done(c);
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room for it, or the file was not read whole */
         return;
     }
     c->comp->data_len = len;
@@ -1500,13 +1630,15 @@ static void save_ask(con *c)
     c->comp->kingcon = 0;
     if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
+    else
+        comp_data_done(c);
 }
 
 /* Settings > Theme...: a theme file picked and read by the worker (DOS),
  * its colours put on the window in finish_completion. */
 static void theme_ask(con *c, const char *name)
 {
-    if (c->comp_busy || !ensure_worker(c) || !c->w.win)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->w.win)
         return;
     copy_str(c->comp->word, name, COMPLETE_MAX); /* a name: that theme, no requester */
     if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
@@ -1517,6 +1649,8 @@ static void theme_ask(con *c, const char *name)
     c->comp->screen = c->w.win->WScreen;
     if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
+    else
+        comp_data_done(c);
 }
 
 /* The theme's colours on the window, live: one profile section, read as
@@ -1561,7 +1695,10 @@ static void profile_switch(con *c, int k)
     c->w.fg_rgb = c->spec_fg;
     c->w.bg_rgb = c->spec_bg;
     c->w.fontname[0] = 0; /* apply_profile sets it only when empty */
+    c->sbar_on = 1;
     apply_profile(c);
+    if (!c->is_tab)
+        sbar_apply(c); /* the profile's scroll bar, live (a tab's window is its host's) */
     if (c->w.fontname[0] && (strcmp(c->w.fontname, oldname) || c->w.fontsize != oldsize)) {
         char want[40];
         WORD wsize = c->w.fontsize;
@@ -1587,7 +1724,9 @@ static void watch_take(con *c)
     struct watch_msg *m;
     while (c->watch_port && (m = (struct watch_msg *)GetMsg(c->watch_port)) != 0) {
         int changed = !upconf_profile_equal(c->conf, m->conf, c->profile);
-        CopyMem(m->conf, c->conf, sizeof(upconf));
+        FreeVec(c->conf); /* the new table is the window's now: no copy, no second table */
+        c->conf = m->conf;
+        m->conf = 0;
         if (c->w.t && c->w.win) {
             if (changed) {
                 const char *names[UC_MAX_PROFILES + 1];
@@ -1623,6 +1762,16 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_META_ALT: c->w.meta_alt = 1; break;
     case MENU_SET_COPY: c->w.copy_on_select = on; break;
     case MENU_SET_WHEEL: c->w.wheel_scroll = on; break;
+    case MENU_SET_REFLOW: c->w.reflow = on; restyle = 1; break;
+    case MENU_SET_SCROLLBAR:
+        c->sbar_on = on;
+        tab_command(c, MENU_SET_SCROLLBAR); /* the window's: its owner shows or hides it */
+        break;
+    case MENU_SET_BS_DEL: c->w.backspace_bs = 0; restyle = 1; break;
+    case MENU_SET_BS_BS: c->w.backspace_bs = 1; restyle = 1; break;
+    case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
+    case MENU_SET_CLIP_READ_WRITE: c->w.clip_access = VT_CLIP_WRITE | VT_CLIP_READ; restyle = 1; break;
+    case MENU_SET_CLIP_OFF: c->w.clip_access = 0; restyle = 1; break;
     case MENU_SET_UNIX:
     case MENU_SET_KINGCON:
         sel_close(c);
@@ -1709,7 +1858,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_FIND: find_open(c); return 1;
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
-    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE:
+    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -2074,6 +2223,8 @@ have_window:
     }
     DBG("vt_new", c->w.t, 0);
     menu_add(c, win);
+    sbar_apply(c); /* our own sizable window: the scroll bar in its border */
+    le_free(&c->le); /* an AUTO window opening again: the last one's history (reloaded below) */
     le_init(&c->le, c->w.t, le_out, c);
     c->le.utf8 = c->w.pers == VT_XTERM && !c->w.latin1 && !c->w.cp437;
     history_load(c); /* the saved history, read by a worker */
@@ -2088,6 +2239,7 @@ static void window_parts_close(con *c)
 {
     find_close(c); /* the prompt belongs to the window */
     sel_close(c);  /* so does the selection window */
+    sbar_gad_close(&c->sbar); /* and the scroll bar in its border */
     kc_cyc_end(c);
     menu_remove(c, c->w.win);
     if (c->input_io) {
@@ -2188,6 +2340,7 @@ static int screen_switch(con *c, int mode)
     vtwin_rebind(&c->w, win);
     vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
     menu_add(c, win);
+    sbar_apply(c); /* none on the borderless full-screen window: it has no border */
     return c->own_screen == mode;
 }
 
@@ -2205,7 +2358,7 @@ static void screen_pending(con *c)
 
 static void output(con *c, const vt_u8 *b, long n)
 {
-#ifdef VTCON_DEBUG
+#if defined(VTCON_DEBUG) || defined(VTCON_PROF)
     struct EClockVal e0, e1;
     ReadEClock(&e0);
 #endif
@@ -2214,7 +2367,7 @@ static void output(con *c, const vt_u8 *b, long n)
     if (!c->le.len)
         c->le.started = 0; /* the next line starts wherever this output ends */
     vtwin_write(&c->w, b, n);
-#ifdef VTCON_DEBUG
+#if defined(VTCON_DEBUG) || defined(VTCON_PROF)
     ReadEClock(&e1);
     c->prof_out += e1.ev_lo - e0.ev_lo;
     c->prof_writes++;
@@ -2496,17 +2649,30 @@ static int copy_latin1(const le_line *le, int a, int b, char *out, int max)
     return k;
 }
 
-static int ensure_worker(con *c)
+/* The worker's reply port and the requests asked for (WORK_*), each made
+ * when it is first needed: the history's at open, the check's at the first
+ * typed word, the completion's (11 KB, with its lists) at the first Tab --
+ * not all three at open (research/2026-10-04_window-memory.md). */
+static int ensure_worker(con *c, int want)
 {
     if (!c->comp_port)
         c->comp_port = CreateMsgPort();
-    if (!c->comp)
-        c->comp = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    if (!c->check)
-        c->check = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    if (!c->hist)
-        c->hist = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    return c->comp_port && c->comp && c->check && c->hist;
+    if ((want & WORK_COMP) && !c->comp)
+        c->comp = complete_req_new(1);
+    if ((want & WORK_CHECK) && !c->check)
+        c->check = complete_req_new(0);
+    if ((want & WORK_HIST) && !c->hist)
+        c->hist = complete_req_new(0);
+    return c->comp_port && (!(want & WORK_COMP) || c->comp) && (!(want & WORK_CHECK) || c->check) &&
+           (!(want & WORK_HIST) || c->hist);
+}
+
+/* The completion menu's names (COMPLETE_NAMES), made at the first menu. */
+static char *menu_buf(con *c)
+{
+    if (!c->menu)
+        c->menu = (char *)AllocVec(COMPLETE_NAMES, MEMF_ANY);
+    return c->menu;
 }
 
 /* The process Ctrl-C goes to and whose directory completion uses
@@ -2613,7 +2779,7 @@ static void start_completion(con *c)
     int a;
     long n = 0;
     const char *extra = 0;
-    if (c->comp_busy || !ensure_worker(c))
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP))
         return;
     a = word_start(le);
     c->menu_start = a;
@@ -2630,7 +2796,7 @@ static void start_completion(con *c)
     c->comp->kingcon = 0;
     c->comp->no_cache = 0;
     c->comp->extra_len = 0;
-    if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
+    if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
         c->comp->extra_len = n;
     }
@@ -2668,7 +2834,7 @@ static void check_command(con *c)
             return;
         }
     }
-    if (!ensure_worker(c))
+    if (!ensure_worker(c, WORK_CHECK))
         return;
     copy_latin1(&c->le, 0, c->le.len, c->check->word, COMPLETE_MAX); /* then cut */
     {
@@ -2692,7 +2858,7 @@ static void check_command(con *c)
 static void history_next(con *c)
 {
     int i;
-    if (c->hist_busy || !c->hist_queue_len || !ensure_worker(c))
+    if (c->hist_busy || !c->hist_queue_len || !ensure_worker(c, WORK_HIST))
         return;
     for (i = 0; i < c->hist_queue_len && c->hist_queue[i] != '\n' && i < COMPLETE_MAX - 1; i++)
         c->hist->word[i] = c->hist_queue[i];
@@ -2721,11 +2887,9 @@ static void history_save(con *c, const unsigned char *line, int n)
 
 static void history_load(con *c)
 {
-    if (!ensure_worker(c) || c->hist_busy)
+    if (!ensure_worker(c, WORK_HIST) || c->hist_busy)
         return;
-    c->hist->data = (char *)AllocVec(HISTORY_KEEP * 2 * 256, MEMF_ANY);
-    if (!c->hist->data)
-        return;
+    c->hist->data = 0; /* the worker makes it at the file's size */
     c->hist->data_max = HISTORY_KEEP * 2 * 256;
     c->hist->mode = HISTORY_LOAD;
     if (complete_start(c->hist, c->comp_port, opener(c)))
@@ -2785,10 +2949,13 @@ static void finish_completion(con *c)
         }
         c->comp_busy = 0;
         if (q->mode == CONFIG_SAVE) {
-            if (q->matches && c->save_work)
-                CopyMem(c->save_work, c->conf, sizeof(upconf)); /* the table is the file's now */
-            else
+            if (q->matches && c->save_work) {
+                FreeVec(c->conf); /* the staged table is the file's now: it becomes the window's */
+                c->conf = c->save_work;
+                c->save_work = 0;
+            } else
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not written: the old file stands */
+            comp_data_done(c);
             continue;
         }
         if (q->mode == COMPLETE_THEME) {
@@ -2796,6 +2963,7 @@ static void finish_completion(con *c)
                 theme_apply(c, q->data, q->data_len);
             else if (q->word[0])
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* "/theme NAME": no such theme */
+            comp_data_done(c);
             continue;
         }
         if (q->mode == COMPLETE_FONT) {
@@ -2814,7 +2982,7 @@ static void finish_completion(con *c)
             kc_finish(c, q);
             continue;
         }
-        if (q->matches > 1 && q->names_len < (int)sizeof(c->menu)) {
+        if (q->matches > 1 && q->names_len < COMPLETE_NAMES && menu_buf(c)) {
             CopyMem(q->names, c->menu, q->names_len);
             c->menu_len = q->names_len;
             c->menu_n = q->matches;
@@ -2973,6 +3141,10 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap)
         kc_cyc_end(c);
         c->kc_style = le_kc_fncmode(cmd.arg);
         break;
+    case SLASH_LINK_OPEN:
+        /* this window's, until Save settings to profile keeps it */
+        copy_str(c->link_open, str_ieq(cmd.arg, "none") ? "" : cmd.arg, sizeof(c->link_open));
+        return 1;
     case SLASH_THEME:
         theme_ask(c, cmd.arg);
         if (!cmd.arg[0])
@@ -3043,9 +3215,9 @@ static int slash_tab(con *c)
     int n, from, i, len, common, typed;
     len = copy_latin1(le, 0, le->pos, line, sizeof(line));
     /* the handler's stack is small: the candidates on the heap */
-    if (!(names = (char *)AllocVec(sizeof(c->menu), MEMF_ANY)))
+    if (!(names = (char *)AllocVec(COMPLETE_NAMES, MEMF_ANY)))
         return 0;
-    n = slash_complete(line, len, profiles, np, names, sizeof(c->menu), &from);
+    n = slash_complete(line, len, profiles, np, names, COMPLETE_NAMES, &from);
     if (n <= 0) {
         FreeVec(names);
         return 0; /* not a command line, or nothing fits: the Shell's completion */
@@ -3070,7 +3242,7 @@ static int slash_tab(con *c)
     if (n == 1 && (int)strlen(add) < COMPLETE_MAX - 1)
         strcat(add, " ");
     c->menu_n = 0;
-    if (n > 1) {
+    if (n > 1 && menu_buf(c)) {
         int k = 0;
         for (i = 0; i < n; i++)
             k += (int)strlen(names + k) + 1;
@@ -3215,10 +3387,7 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
         /* a Unix program's terminal: the line discipline takes the key (ISIG
          * makes ^C a break, ^\\ and ^Z signals; the rest is input) */
         DBG("tty key", out[0], (long)((c->ld.t.c_lflag & LD_ISIG) ? c->ld.t.c_cc[LD_VSUSP] : -1));
-        ld_input(&c->ld, out, n);
-        if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
-            rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
-        service_reads(c);
+        to_tty(c, out, n);
         return;
     }
     /* Break keys: Ctrl-C..F signal the opener in cooked mode (and Amiga raw
@@ -3274,7 +3443,7 @@ static void kc_tab(con *c, int mode)
     long n = 0;
     const char *extra = 0;
     int a, q;
-    if (c->comp_busy || !ensure_worker(c))
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP))
         return;
     a = le_kc_word(le, &q);
     c->kc_start = a;
@@ -3301,7 +3470,7 @@ static void kc_tab(con *c, int mode)
     c->comp->show_info = c->kc_info;
     c->comp->no_cache = !c->kc_cache;
     c->comp->extra_len = 0;
-    if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
+    if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
         c->comp->extra_len = n;
     }
@@ -3430,7 +3599,7 @@ static void kc_finish(con *c, struct complete_req *q)
     if (c->kc_list) {
         /* Ctrl+D: the names under the line, then the prompt and the line */
         if (q->matches)
-            le_show_list(&c->le, q->names, q->names_len);
+            le_kc_show_list(&c->le, q->names, q->names_len);
         else
             kc_beep(c);
         return;
@@ -3466,7 +3635,7 @@ static void kc_finish(con *c, struct complete_req *q)
         return;
     }
     if (style & LE_KC_LIST)
-        le_show_list(&c->le, q->names, q->names_len); /* L: the list, before a cycle's first step */
+        le_kc_show_list(&c->le, q->names, q->names_len); /* L: the list, before a cycle's first step */
     if ((style & LE_KC_CYCLE) && kc_cyc_begin(c, q))
         kc_cyc_put(c, 0);
 }
@@ -3964,11 +4133,23 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         break;
     case IDCMP_MOUSEBUTTONS:
     case IDCMP_MOUSEMOVE:
-        vtwin_mouse(&c->w, cls == IDCMP_MOUSEMOVE, code, qual, mx, my);
+        vtwin_mouse(&c->w, cls == IDCMP_MOUSEMOVE, code, qual, mx, my, secs, mics);
         break;
     case IDCMP_EXTENDEDMOUSE:
         if (wheel)
-            vtwin_wheel(&c->w, wheel > 0, mx, my);
+            vtwin_wheel(&c->w, wheel > 0, qual, mx, my);
+        break;
+    case IDCMP_ACTIVEWINDOW:
+    case IDCMP_INACTIVEWINDOW:
+        vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
+        break;
+    case IDCMP_IDCMPUPDATE:
+        /* the scroll bar (sbar_route): code is the gadget, prev the knob's top */
+        if (code == SBAR_GID_PROP) {
+            if (prev != (ULONG)~0)
+                vtwin_knob_moved(&c->w, prev);
+        } else
+            vtwin_knob_lines(&c->w, code == SBAR_GID_UP ? 1 : -1);
         break;
     default:
         break;
@@ -3976,10 +4157,12 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
 }
 
 static int tab_route(con *c, struct IntuiMessage *im, int wheel);
+static void sbar_route(con *c, ULONG id, ULONG top);
 
 static void idcmp(con *c)
 {
     struct IntuiMessage *im;
+    ULONG knob_top = (ULONG)~0; /* the knob's last position in this batch */
     if (c->own_win && c->w.win && !IsListEmpty(&c->own_win->UserPort->mp_MsgList))
         vtwin_render(&c->w); /* resize, refresh, selection: on the current screen */
     while (c->own_win && (im = (struct IntuiMessage *)GetMsg(c->own_win->UserPort))) {
@@ -3993,6 +4176,18 @@ static void idcmp(con *c)
             if (wd->Version == INTUIWHEELDATA_VERSION)
                 wheel = wd->WheelX < 0 ? 1 : -1;
         }
+        if (cls == IDCMP_IDCMPUPDATE) {
+            /* the scroll bar: read now, the tag list goes with the reply */
+            ULONG id, top;
+            if (sbar_gad_event(im, &id, &top)) {
+                if (id == SBAR_GID_PROP)
+                    knob_top = top; /* a drag sends many: the view moves once, to the last */
+                else
+                    sbar_route(c, id, top);
+            }
+            ReplyMsg((struct Message *)im);
+            continue;
+        }
         /* with tabs the host takes its own keys and the bar, and the
          * active tab gets the rest */
         if (!tab_route(c, im, wheel))
@@ -4001,6 +4196,8 @@ static void idcmp(con *c)
                      im->Seconds, im->Micros, im->MouseX, im->MouseY, wheel);
         ReplyMsg((struct Message *)im);
     }
+    if (knob_top != (ULONG)~0 && c->own_win)
+        sbar_route(c, SBAR_GID_PROP, knob_top);
     if (c->auto_shut) {
         c->auto_shut = 0;
         close_window(c);
@@ -4016,7 +4213,8 @@ static void idcmp(con *c)
  * events to the active tab. Messages go both ways; whoever sends one frees
  * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
  * for. */
-enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_INSET };
+enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_INSET,
+       TM_KNOB };
 
 struct tab_msg {
     struct Message msg;
@@ -4030,6 +4228,7 @@ struct tab_msg {
     ULONG prev, secs, mics;
     WORD mx, my;
     int wheel;
+    sbar_knob knob;          /* KNOB: the shown tab's scroll bar knob */
 };
 
 static struct tab_msg *tab_msg(con *c, int type)
@@ -4079,6 +4278,58 @@ static void tab_post(con *c, con *to, int type, WORD inset, struct IntuiMessage 
         t->my = im->MouseY;
         t->wheel = wheel;
     }
+    PutMsg(to->tab_port, &t->msg);
+}
+
+/* ---- the scroll bar (SB1) ---- */
+
+/* The window's scroll bar shown or not, as the setting says: only on the
+ * window this process owns, and only when its right border has room
+ * (sizing gadget there; never the borderless full-screen window). */
+static void sbar_apply(con *c)
+{
+    struct Window *win = c->own_win;
+    if (!c->sbar_on || !win || c->is_tab || win == c->foreign || !sbar_gad_fits(win)) {
+        sbar_gad_close(&c->sbar);
+        return;
+    }
+    if (!c->sbar.win && sbar_gad_open(&c->sbar, win) && c->knob_last_valid)
+        sbar_gad_set(&c->sbar, &c->knob_last);
+}
+
+/* vtwin's knob changed: on our window's scroll bar, or a tab's to its host
+ * (only the shown tab's: a hidden one's vtwin gives none). At most once a
+ * frame. */
+static void h_knob(void *u, const sbar_knob *k)
+{
+    con *c = (con *)u;
+    if (c->is_tab) {
+        struct tab_msg *t = c->host_pub && c->shown ? tab_msg(c, TM_KNOB) : 0;
+        if (t) {
+            t->knob = *k;
+            PutMsg(c->host_pub, &t->msg);
+        }
+        return;
+    }
+    c->knob_last = *k;
+    c->knob_last_valid = 1;
+    sbar_gad_set(&c->sbar, k);
+}
+
+/* The scroll bar moved: to the terminal shown (ours, or the active tab's). */
+static void sbar_route(con *c, ULONG id, ULONG top)
+{
+    con *to = c->ntabs && c->active >= 0 && c->active < c->ntabs ? c->tab_list[c->active] : c;
+    struct tab_msg *t;
+    if (to == c) {
+        dispatch(c, IDCMP_IDCMPUPDATE, (UWORD)id, 0, top, 0, 0, 0, 0, 0);
+        return;
+    }
+    if (!to->tab_port || !(t = tab_msg(c, TM_EVENT)))
+        return;
+    t->cls = IDCMP_IDCMPUPDATE;
+    t->code = (UWORD)id;
+    t->prev = top;
     PutMsg(to->tab_port, &t->msg);
 }
 
@@ -4220,45 +4471,146 @@ static void tab_remove(con *c, con *t)
     bar_draw(c);
 }
 
+/* DOS work the handler must not do itself (a NewShell, a command): a
+ * worker process gets msg and does it, then frees msg. */
+static void start_worker(void (*entry)(void), const char *name, struct Message *msg)
+{
+    struct Process *p = CreateNewProcTags(NP_Entry, (ULONG)entry, NP_Name, (ULONG)name,
+                                          NP_StackSize, 8192, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
+                                          NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
+    if (p)
+        PutMsg(&p->pr_MsgPort, msg);
+    else
+        FreeVec(msg);
+}
+
+/* the message a worker was started with (start_worker) */
+static struct Message *worker_msg(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    WaitPort(&me->pr_MsgPort);
+    me->pr_WindowPtr = (APTR)-1;
+    return GetMsg(&me->pr_MsgPort);
+}
+
+static void run_async(const char *cmd)
+{
+    SystemTags((STRPTR)cmd, SYS_Asynch, TRUE, SYS_Input, Open((STRPTR)"NIL:", MODE_OLDFILE),
+               SYS_Output, Open((STRPTR)"NIL:", MODE_NEWFILE), TAG_DONE);
+}
+
 /* New tab: a shell on an XCON: stream that names this host. The NewShell
- * is DOS work: a worker process does it. The new tab takes `profile`. */
+ * is DOS work: a worker process does it. The new tab takes `profile`, and
+ * starts in the directory the shell of the tab it came from last reported
+ * (OSC 7) when that is on this machine. */
 struct tab_spawn_msg {
     struct Message msg;
     char cmd[200];
+    char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
+    int demo;                    /* Help > Demo tour: UPDemo's tour in the tab, not a shell */
 };
+
+/* Help > Demo tour: the tab runs UPDemo's tour and closes when it ends.
+ * 1 when the tab is on its way; 0 when C:UPDemo is not there (said in a
+ * requester, as Preferences... says it of the editor). */
+static int tab_demo_script(struct tab_spawn_msg *m)
+{
+    static struct EasyStruct missing = {
+        sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term",
+        (UBYTE *)"The demo is not installed:\nC:UPDemo was not found.\n\n"
+                 "Install UP-Term from its archive to get it.",
+        (UBYTE *)"OK"
+    };
+    BPTR f, lock;
+    if (!(lock = Lock((STRPTR)"C:UPDemo", SHARED_LOCK))) {
+        EasyRequestArgs(0, &missing, 0, 0);
+        return 0;
+    }
+    UnLock(lock);
+    if (!(f = Open((STRPTR)"T:UP-Term-demo", MODE_NEWFILE)))
+        return 0;
+    FPuts(f, (STRPTR)"FailAt 2147483647\nC:UPDemo TOUR\nEndCLI >NIL:\n");
+    Close(f);
+    strcat(m->cmd, " FROM T:UP-Term-demo");
+    return 1;
+}
 
 static void tab_spawner(void)
 {
-    struct Process *me = (struct Process *)FindTask(0);
-    struct tab_spawn_msg *m;
+    struct tab_spawn_msg *m = (struct tab_spawn_msg *)worker_msg();
     BPTR f, lock;
-    WaitPort(&me->pr_MsgPort);
-    m = (struct tab_spawn_msg *)GetMsg(&me->pr_MsgPort);
-    me->pr_WindowPtr = (APTR)-1;
+    char host[64], dir[256];
+    int vsh, cd;
+    if (m->demo) {
+        if (tab_demo_script(m))
+            run_async(m->cmd);
+        Forbid();
+        FreeVec(m);
+        return;
+    }
     /* vsh in the tab when there is one (the UP-Term icon's shell), else the
      * AmigaDOS Shell; the FROM script ends the shell with it -- whatever vsh
      * returns: its last command's status (127 for a name not found) failed
      * the script at FailAt 10, and the tab stayed open on the Shell's prompt */
-    if ((lock = Lock((STRPTR)"C:vsh", SHARED_LOCK)) != 0) {
+    if ((vsh = (lock = Lock((STRPTR)"C:vsh", SHARED_LOCK)) != 0) != 0)
         UnLock(lock);
-        if ((f = Open((STRPTR)"T:UP-Term-tab", MODE_NEWFILE)) != 0) {
-            FPuts(f, (STRPTR)"FailAt 2147483647\nC:vsh\nEndCLI >NIL:\n");
-            Close(f);
+    if (GetVar((STRPTR)"HOSTNAME", (STRPTR)host, sizeof(host), 0) <= 0)
+        host[0] = 0;
+    cd = m->cwd[0] && termurl_cwd_dir(m->cwd, host, dir, sizeof(dir));
+    if ((vsh || cd) && (f = Open((STRPTR)"T:UP-Term-tab", MODE_NEWFILE)) != 0) {
+        FPuts(f, (STRPTR)"FailAt 2147483647\n");
+        if (cd) { /* termurl_cwd_dir refused anything a quote cannot hold */
+            FPuts(f, (STRPTR)"CD \"");
+            FPuts(f, (STRPTR)dir);
+            FPuts(f, (STRPTR)"\"\n");
         }
+        if (vsh)
+            FPuts(f, (STRPTR)"C:vsh\nEndCLI >NIL:\n");
+        Close(f);
         strcat(m->cmd, " FROM T:UP-Term-tab");
     }
-    SystemTags((STRPTR)m->cmd, SYS_Asynch, TRUE, SYS_Input, Open((STRPTR)"NIL:", MODE_OLDFILE),
-               SYS_Output, Open((STRPTR)"NIL:", MODE_NEWFILE), TAG_DONE);
+    run_async(m->cmd);
     Forbid();
     FreeVec(m);
 }
 
-static void tab_spawn(con *c, const char *profile)
+/* OSC 8: a hyperlink Ctrl + clicked. The profile's link-open names the
+ * command (%s the URL; OpenURL, from the OpenURL package, by default); a
+ * worker runs it. */
+struct link_msg {
+    struct Message msg;
+    char cmd[VT_URI_MAX + 256];
+};
+
+static void link_opener(void)
+{
+    struct link_msg *m = (struct link_msg *)worker_msg();
+    run_async(m->cmd);
+    Forbid();
+    FreeVec(m);
+}
+
+static void h_open_link(void *u, const char *uri)
+{
+    con *c = (con *)u;
+    struct link_msg *m = (struct link_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!m)
+        return;
+    if (!termurl_link_command(c->link_open[0] ? c->link_open : "OpenURL %s", uri, m->cmd,
+                              sizeof(m->cmd))) {
+        FreeVec(m); /* a URL a command line cannot quote is not opened */
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+        return;
+    }
+    start_worker(link_opener, "UP-Term link", &m->msg);
+}
+
+/* 1 when the new tab is on its way; demo: the tab plays the tour */
+static int tab_spawn(con *c, const char *profile, con *from, int demo)
 {
     struct tab_spawn_msg *m;
-    struct Process *p;
     if (c->ntabs >= TAB_MAX || !c->own_win || c->foreign)
-        return;
+        return 0;
     if (!c->tab_port) {
         /* the public port tabs find us by */
         char hex[9];
@@ -4270,26 +4622,24 @@ static void tab_spawn(con *c, const char *profile)
         copy_str(c->tab_name, "UPTermTabs.", sizeof(c->tab_name));
         strcat(c->tab_name, hex);
         if (!(c->tab_port = CreateMsgPort()))
-            return;
+            return 0;
         c->tab_port->mp_Node.ln_Name = c->tab_name;
         c->tab_port->mp_Node.ln_Pri = 0;
         AddPort(c->tab_port);
     }
     m = (struct tab_spawn_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
     if (!m)
-        return;
+        return 0;
+    m->demo = demo;
     copy_str(m->cmd, "NewShell \"XCON:0/0/320/100/UP-Term/TAB ", sizeof(m->cmd));
     strcat(m->cmd, c->tab_name);
     strcat(m->cmd, "/PROFILE ");
     strcat(m->cmd, profile);
     strcat(m->cmd, "\"");
-    p = CreateNewProcTags(NP_Entry, (ULONG)tab_spawner, NP_Name, (ULONG)"UP-Term new tab",
-                          NP_StackSize, 8192, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
-                          NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
-    if (p)
-        PutMsg(&p->pr_MsgPort, &m->msg);
-    else
-        FreeVec(m);
+    if (from && from->w.t && !demo)
+        copy_str(m->cwd, vt_cwd(from->w.t), sizeof(m->cwd));
+    start_worker(tab_spawner, "UP-Term new tab", &m->msg);
+    return 1;
 }
 
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
@@ -4297,7 +4647,13 @@ static void host_command(con *c, int what, con *from)
 {
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile);
+        tab_spawn(c, from->profile, from, 0);
+        break;
+    case MENU_DEMO:
+        /* the tour in a tab of its own: what it does to its screen (the
+         * main screen, a resize) leaves the user's session alone */
+        if (!tab_spawn(c, from->profile, from, 1))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
         break;
     case MENU_TAB_NEXT:
         if (c->ntabs >= 2)
@@ -4306,6 +4662,11 @@ static void host_command(con *c, int what, con *from)
     case MENU_TAB_PREV:
         if (c->ntabs >= 2)
             tab_activate(c, (c->active + c->ntabs - 1) % c->ntabs);
+        break;
+    case MENU_SET_SCROLLBAR:
+        /* the window's scroll bar, from its own menu or a tab's */
+        c->sbar_on = from->sbar_on;
+        sbar_apply(c);
         break;
     case MENU_TAB_CLOSE:
         if (c->ntabs >= 2 && c->tab_list[c->active] != c) {
@@ -4414,6 +4775,13 @@ static void host_msgs(con *c)
             break;
         case TM_COMMAND:
             host_command(c, t->what, t->from);
+            break;
+        case TM_KNOB:
+            if (c->ntabs && c->active >= 0 && c->active < c->ntabs && c->tab_list[c->active] == t->from) {
+                c->knob_last = t->knob;
+                c->knob_last_valid = 1;
+                sbar_gad_set(&c->sbar, &t->knob);
+            }
             break;
         }
         ReplyMsg(&t->msg);
@@ -4723,6 +5091,38 @@ static void packet(con *c, struct DosPacket *p)
         DBG("prof writes/bytes", c->prof_writes, c->prof_bytes);
         DBG("prof out", c->prof_out, 0);
         DBG("prof direct/text", c->w.r.n_direct, c->w.r.n_text);
+#endif
+#ifdef VTCON_PROF
+        {
+            /* the phases in EClock ticks since the last close: total,
+             * waiting, vt_feed (out), drawing (render) -- the rest is the
+             * packets and the loop */
+            struct EClockVal e;
+            ULONG freq = ReadEClock(&e);
+            DBG("PROF eclock/total", freq, e.ev_lo - c->prof_t0);
+            DBG("PROF idle/out", c->prof_idle, c->prof_out);
+            DBG("PROF render/frames", c->w.prof_render, c->w.prof_frames);
+            DBG("PROF rows/scroll", c->w.prof_part[0], c->w.prof_part[1]);
+            {
+                extern ULONG vr_prof[4];
+                DBG("PROF cursor/paint", c->w.prof_part[2], vr_prof[0]);
+                DBG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
+                DBG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
+                c->w.prof_part[3] = 0;
+                vr_prof[0] = vr_prof[1] = vr_prof[2] = 0;
+                c->w.r.n_text = 0;
+            }
+            DBG("PROF pkwrite/n", c->prof_pk[0], c->prof_npk[0]);
+            DBG("PROF pkwait/n", c->prof_pk[1], c->prof_npk[1]);
+            DBG("PROF pkother/n", c->prof_pk[2], c->prof_npk[2]);
+            c->prof_pk[0] = c->prof_pk[1] = c->prof_pk[2] = 0;
+            c->prof_npk[0] = c->prof_npk[1] = c->prof_npk[2] = 0;
+            DBG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
+            c->w.prof_part[0] = c->w.prof_part[1] = c->w.prof_part[2] = 0;
+            c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;
+            c->w.prof_render = c->w.prof_frames = 0;
+            c->prof_t0 = e.ev_lo;
+        }
 #endif
         reply(p, DOSTRUE, 0);
         return;
@@ -5102,9 +5502,32 @@ static LONG handler_main(void)
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */
+#ifdef VTCON_PROF
+        {
+            struct EClockVal e0, e1;
+            ReadEClock(&e0);
+            wait = Wait(wait);
+            ReadEClock(&e1);
+            c->prof_idle += e1.ev_lo - e0.ev_lo;
+        }
+#else
         wait = Wait(wait);
+#endif
         while ((m = GetMsg(c->port)))
+#ifdef VTCON_PROF
+        {
+            struct DosPacket *pk = (struct DosPacket *)m->mn_Node.ln_Name;
+            struct EClockVal p0, p1;
+            int k = pk->dp_Type == ACTION_WRITE ? 0 : pk->dp_Type == ACTION_WAIT_CHAR ? 1 : 2;
+            ReadEClock(&p0);
+            packet(c, pk);
+            ReadEClock(&p1);
+            c->prof_pk[k] += p1.ev_lo - p0.ev_lo;
+            c->prof_npk[k]++;
+        }
+#else
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
+#endif
         if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
             /* only a DOS packet woke us: no other port has a message, no
              * timer is done, the frame is not due (each has its signal in
@@ -5190,6 +5613,7 @@ static LONG handler_main(void)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
     watch_stop(c);
+    le_free(&c->le);
     forget_words(c);
     kc_cyc_end(c);
     if (c->kc_snap)
@@ -5203,6 +5627,8 @@ static LONG handler_main(void)
     }
     if (c->check)
         FreeVec(c->check);
+    if (c->menu)
+        FreeVec(c->menu);
     if (c->hist) {
         if (c->hist->data)
             FreeVec(c->hist->data);

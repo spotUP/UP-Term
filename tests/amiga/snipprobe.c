@@ -35,17 +35,19 @@ int main(int argc, char **argv)
 {
     if (argc > 1 && !strcmp(argv[1], "CLIP")) {
         /* just the clipboard's text, for a window someone else drew */
-        static char t[256], l[300];
-        long k = clip_read(t, sizeof(t) - 1);
-        t[k > 0 ? k : 0] = 0;
-        sprintf(l, "CLIP %s\n", k > 0 ? t : "-");
+        static char l[300];
+        long k;
+        char *t = clip_read(&k);
+        sprintf(l, "CLIP %.250s\n", t && k > 0 ? t : "-");
         say(l);
+        if (t)
+            FreeVec(t);
         return 0;
     }
     struct Window *w;
     struct MsgPort *p = CreateMsgPort();
     struct IOStdReq *io = p ? (struct IOStdReq *)CreateIORequest(p, sizeof(struct IOStdReq)) : 0;
-    static char text[256], line[300];
+    static char line[300];
     long n;
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 37);
     if (!io || !IntuitionBase)
@@ -68,9 +70,12 @@ int main(int argc, char **argv)
     clip_write("-", 1);
     say("READY\n");
     Delay(12 * 50);
-    n = clip_read(text, sizeof(text) - 1);
-    text[n > 0 ? n : 0] = 0;
-    sprintf(line, "CLIP %s\n", n > 0 ? text : "-");
+    {
+        char *t = clip_read(&n);
+        sprintf(line, "CLIP %.250s\n", t && n > 0 ? t : "-");
+        if (t)
+            FreeVec(t);
+    }
     say(line);
     CloseDevice((struct IORequest *)io);
     CloseWindow(w);

@@ -27,6 +27,8 @@
 #include <devices/keymap.h>
 #include "../engine/vtengine.h"
 #include "amiga_render.h"
+#include "vtinput.h"
+#include "sbar.h"
 
 /* With a key to the owner: the physical Alt key was down (VT_MOD_ALT is
  * Meta, which is Left Amiga unless meta_alt). KingCON's Alt+Tab. */
@@ -51,6 +53,12 @@ typedef struct vtwin_host {
     void (*resized)(void *user);
     /* the title changed (OSC 0/2): a tab's label (may be 0) */
     void (*titled)(void *user);
+    /* Ctrl + click on an OSC 8 hyperlink: open uri (may be 0: no links) */
+    void (*open_link)(void *user, const char *uri);
+    /* the scroll bar's knob changed (scrollback length, rows, view, the
+     * alternate screen): at most once a frame, never per write. May be 0:
+     * a window with no scroll bar (console.device units) */
+    void (*knob)(void *user, const sbar_knob *k);
 } vtwin_host;
 
 typedef struct vtwin {
@@ -80,6 +88,8 @@ typedef struct vtwin {
     int meta_alt;                /* Alt (not Left Amiga) is the ESC prefix */
     int copy_on_select;          /* a drag ends with the text on the clipboard */
     int wheel_scroll;            /* the wheel moves through the scrollback */
+    int reflow;                  /* a resize re-wraps lines and scrollback (1, default) */
+    int clip_access;             /* VT_CLIP_*: what OSC 52 may do (program-clipboard; write) */
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
     int aspect_off;              /* font-aspect = off: the font as asked, on any screen */
     int aspect_known, square, square_fits; /* vtwin_set_screen: the screen's pixels */
@@ -104,10 +114,26 @@ typedef struct vtwin {
     struct MsgPort *frame_port;  /* the frame clock (timer.device) */
     struct timerequest *frame;
     int frame_open, frame_busy;
-    int sync_held;               /* frames a ?2026 update has been held back */
+    ULONG frame_us;              /* the frame clock's next interval (pace.h); 0: the shortest */
+    ULONG frame_wait;            /* the interval of the request in flight (us) */
+    ULONG prof_render, prof_frames; /* EClock ticks drawing, and render passes (the handler's PROF=1) */
+    ULONG prof_part[4];
+    int wrote;                   /* vtwin_write since the last frame tick */
+    ULONG quiet_us;              /* frame time with no output since the last write (jump scroll settles) */
+    int backspace_bs;            /* profile backspace = bs: Backspace sends ^H (vt_set_backspace_bs) */          /* PROF=1: of the drawing, damaged rows / scrolls / cursor and mask */
+    long sync_held;              /* microseconds a ?2026 update has been held back */
+    long note_us;                /* OSC 9 / 777: microseconds the notice stays in the title */
+    char note_saved[80];         /* the title it stands in for */
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */
+    vti_mouse mouse;             /* buttons and moves the program was told about (vtinput) */
+    int mouse_mods;              /* VT_MOD_* of the last mouse event (motion polled on the clock) */
+    ULONG click_secs, click_micros; /* the last left press, for DoubleClick() */
+    int sel_whole;               /* the selection is a double-clicked word or triple-clicked line */
+    int pointer_on;              /* ReportMouse is on: a drag, or the program wants moves */
+    sbar_knob knob;              /* the knob last given to host->knob */
+    int knob_valid;              /* 0: give it again at the next sync */
     char find_q[VT_FIND_QUERY_MAX]; /* the last find query, for "find next" */
     long find_next;              /* the row to continue from (VT_ROW_NONE: from the oldest) */
     const vtwin_host *host;
@@ -172,12 +198,14 @@ void vtwin_refresh(vtwin *w);
 /* a raw-key event: code and qualifier as Intuition gives them, prev the
  * previous two down keys (dead keys; 0 when unknown), the event's time */
 void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG micros);
-/* a mouse event: move (1) or button (code SELECTDOWN/UP, MENUDOWN/UP) at
- * window coordinates mx, my */
-void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my);
-/* the wheel: up (1) / down (-1). The program's when it asked for the mouse,
+/* a mouse event: move (1) or button (code SELECTDOWN/UP, MIDDLEDOWN/UP,
+ * MENUDOWN/UP) at window coordinates mx, my, at the event's time (a run of
+ * clicks selects a word, then a line) */
+void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, ULONG secs, ULONG micros);
+/* the wheel: up (1) / down (0), qual the event's qualifier (Ctrl and Meta
+ * go into the report). The program's when it asked for the mouse,
  * otherwise the scrollback by a few lines (the spec's wheel_scroll) */
-void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my);
+void vtwin_wheel(vtwin *w, int up, UWORD qual, WORD mx, WORD my);
 /* Find (Right Amiga F, or the console's menu): the scrollback and the grid,
  * oldest line first, case-insensitively, and scroll the view so the line the
  * match is on shows. q NULL or empty repeats the last query. 1 when the view
@@ -196,10 +224,23 @@ int vtwin_font_step(vtwin *w, int dir);
 /* View > 80 x 24 ...: the window sized to cols x rows cells (the grid
  * follows on the resize); 0 when the screen is too small. */
 int vtwin_set_size(vtwin *w, int cols, int rows);
+/* The scroll bar (SB1). The knob as it should look now goes to host->knob
+ * when it changed: vtwin calls this itself after a render pass and every
+ * view change; _resend gives it again even when unchanged (the window's
+ * gadget was just made, or a tab is shown). _moved: the knob was dragged
+ * (or the track clicked) to top, in the units of the knob last given;
+ * _lines: an arrow, n lines back (negative: towards the live screen). */
+void vtwin_knob_sync(vtwin *w);
+void vtwin_knob_resend(vtwin *w);
+void vtwin_knob_moved(vtwin *w, unsigned long top);
+void vtwin_knob_lines(vtwin *w, int n);
 /* copy the selection to the clipboard / type the clipboard in: Right Amiga
  * C and V, also for an owner's menu (no-ops without a clipboard) */
 void vtwin_copy(vtwin *w);
 void vtwin_paste(vtwin *w);
+/* the window became active (in = 1) or stopped being: a focus report for
+ * a program that asked (?1004) and reads raw; nothing otherwise */
+void vtwin_focus(vtwin *w, int in);
 /* an Amiga input event report for a window class, when the program asked
  * for that class (CSI n {); 1 when it was sent */
 int vtwin_raw_report(vtwin *w, int cls);

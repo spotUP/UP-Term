@@ -17,7 +17,9 @@ enum vt_glyph_kind {
     VT_GLYPH_BLOCK,     /* draw rectangles / shade: `code` is the block byte */
     VT_GLYPH_DIAGONAL,  /* `code` 1 = /, 2 = \\, 3 = X */
     VT_GLYPH_DIAMOND,   /* the DEC graphics diamond */
-    VT_GLYPH_HLINE      /* a light horizontal line `code` eighths down (DEC scan lines) */
+    VT_GLYPH_HLINE,     /* a light horizontal line `code` eighths down (DEC scan lines) */
+    VT_GLYPH_MISSING    /* a replacement box (a character beyond the BMP no font has);
+                         * the renderer sets `code` to the cells it spans, 1 or 2 */
 };
 
 typedef struct vt_glyph {
@@ -25,7 +27,8 @@ typedef struct vt_glyph {
     vt_u8 code;
 } vt_glyph;
 
-/* The replacement for a code point the font cannot show is font '?'. */
+/* The replacement for a code point the font cannot show is font '?'; for
+ * one beyond the BMP (an emoji, an icon) a box the width of the cell. */
 vt_glyph vt_map_glyph(vt_u32 cp, enum vt_font_enc enc);
 
 /* 1 when vt_map_glyph shows cp as itself (the font's glyph, or a drawn line
@@ -33,6 +36,20 @@ vt_glyph vt_map_glyph(vt_u32 cp, enum vt_font_enc enc);
  * replacement '?'. Those cells are the ones an outline font can do better
  * (render/outline, plan 2026-10-03-outline-fonts.md). */
 int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc);
+
+/* What a cell's code points (vt_cell_text: the character, then its marks)
+ * draw: the character composed with each mark that has a precomposed form
+ * (e + U+0301 is U+00E9, one glyph the font may have), then the marks left
+ * to draw over it. Variation selectors, joiners and other invisible
+ * controls are dropped. cp is rewritten in place; returns the new count,
+ * cp[0] the character to draw. */
+int vt_compose_cell(vt_u32 *cp, int n);
+
+/* UTF-8 text as a Latin-1 string an Intuition title can show: each code
+ * point as vt_map_glyph gives it for a Latin-1 font (so a stand-in, never a
+ * byte of the sequence), '?' for one drawn as lines or blocks or not
+ * decodable. At most max - 1 characters and a NUL; returns the length. */
+int vt_latin1_text(const char *utf8, char *out, int max);
 
 /* Arm weight 0-3 of a VT_GLYPH_BOX code, for arm 0 up, 1 right, 2 down, 3 left. */
 #define VT_BOX_ARM(code, arm) (((code) >> ((arm) * 2)) & 3)

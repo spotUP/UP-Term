@@ -15,6 +15,7 @@ static vt_term *start(int cols, int rows, const char *prompt)
     vt_term *t = h_new(cols, rows, VT_XTERM);
     vt_set_onlcr(t, 1);
     h_put(t, prompt);
+    le_free(&le); /* the last test's history and undo blocks */
     le_init(&le, t, to_term, t);
     return t;
 }
@@ -255,6 +256,18 @@ static void ctrl_l_clears_and_keeps_prompt_and_line(void)
     vt_free(t);
 }
 
+/* A prompt with wide characters and emoji (a zsh/starship prompt, an
+ * icon from a Nerd Font) comes back as it was: no blank for the right
+ * half of a wide character, the emoji whole. */
+static void ctrl_l_keeps_a_prompt_beyond_the_bmp(void)
+{
+    vt_term *t = start(40, 5, "junk\r\n\xe4\xb8\xad\xf0\x9f\x98\x80\xf3\xb0\x80\x81> ");
+    type("ls");
+    ctrl(0x0C);
+    CHECK_STR(h_screen(t), "\xe4\xb8\xad\xf0\x9f\x98\x80\xf3\xb0\x80\x81> ls");
+    vt_free(t);
+}
+
 static void command_word_gets_colour_until_it_changes(void)
 {
     vt_term *t = start(40, 4, "> ");
@@ -281,6 +294,27 @@ static void menu_lists_names_and_redraws_prompt_and_line(void)
     CHECK_STR(h_row(t, 2), "1.SYS:> li");
     type("st");
     CHECK_STR(h_row(t, 2), "1.SYS:> list");
+    vt_free(t);
+}
+
+/* H8.1: KingCON prints its list (FNCMODE L, Ctrl+D) in 19-character
+ * columns, (width + 1) / 19 a row, and cuts a name over 18 (its suffix
+ * counted) to 15 + "..." -- not sized to the widest name. */
+static void kingcon_list_has_19_char_columns_and_cuts_long_names(void)
+{
+    static const char names[] = "a \0Startup-Sequence \0AVeryLongFileName1 \0Prefs/\0";
+    vt_term *t = start(40, 8, "1.SYS:> ");
+    type("dir S:");
+    le_kc_show_list(&le, names, (int)sizeof(names) - 1);
+    CHECK_STR(h_row(t, 1), "a                  Startup-Sequence");
+    CHECK_STR(h_row(t, 2), "AVeryLongFileNa... Prefs/");
+    CHECK_STR(h_row(t, 3), "1.SYS:> dir S:");
+    vt_free(t);
+    t = start(18, 8, "> ");              /* (17 + 1) / 19 = 0: one column */
+    type("x");
+    le_kc_show_list(&le, names, (int)sizeof(names) - 1);
+    CHECK_STR(h_row(t, 1), "a");
+    CHECK_STR(h_row(t, 2), "Startup-Sequence");
     vt_free(t);
 }
 
@@ -366,13 +400,126 @@ static void a_replaced_line_on_a_fresh_prompt_draws_after_it(void)
     vt_free(t);
 }
 
+/* A reflow moves the line being edited (gaps #11): the editor finds its
+ * start again from the cursor, so editing goes on in the right place. */
+static void reflow_moves_the_line_and_editing_follows(void)
+{
+    vt_term *t = h_new(20, 8, VT_XTERM);
+    vt_set_onlcr(t, 1);
+    vt_set_reflow(t, 1);
+    h_put(t, "0123456789012345678901234567890\n$ "); /* two rows at 20, four at 10 */
+    le_free(&le);
+    le_init(&le, t, to_term, t);
+    type("abcdefghijklmnopqrstuvwxyz");
+    CHECK_STR(h_row(t, 2), "$ abcdefghijklmnopqr");
+    key(VT_KEY_LEFT, 0);
+    key(VT_KEY_LEFT, 0);
+    key(VT_KEY_LEFT, 0);
+    vt_resize(t, 10, 8);
+    le_resized(&le);
+    type("_");
+    CHECK_STR(h_screen(t), "0123456789|0123456789|0123456789|0|$ abcdefgh|ijklmnopqr|stuvw_xyz");
+    key(VT_KEY_LEFT, VT_MOD_SHIFT); /* to the start */
+    type("^");
+    CHECK_STR(h_row(t, 4), "$ ^abcdefg");
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "^abcdefghijklmnopqrstuvw_xyz\n");
+    vt_free(t);
+}
+
+/* History and undo are packed and grow as lines come
+ * (research/2026-10-04_window-memory.md): nothing is allocated when the
+ * line editor starts, a full history still keeps 100 lines of 255 bytes
+ * and drops the oldest, undo still goes 8 steps back on a long line, and
+ * le_free gives every byte back. */
+static void history_and_undo_grow_and_free(void)
+{
+    vt_term *t;
+    long before;
+    unsigned char ln[400];
+    int i, k;
+    le_free(&le);
+    t = h_new(80, 24, VT_XTERM);
+    before = vt_count_live;
+    le_init(&le, t, to_term, t);
+    CHECK_INT(vt_count_live, before); /* the window opens with none */
+    CHECK(le.hist == 0 && le.undo_buf == 0);
+    CHECK(sizeof(le_line) <= 3200);   /* the sentinel: was 36 KB with the slots */
+
+    /* a short history costs about its bytes */
+    le_hist_add(&le, (const unsigned char *)"dir\n", 4);
+    le_hist_add(&le, (const unsigned char *)"dir\n", 4); /* the same line again: one entry */
+    CHECK_INT(le.hist_n, 1);
+    CHECK_INT(le.hist_used, 4);
+    CHECK_INT(vt_count_live - before, 256);
+
+    /* 101 different lines of 300 bytes: each kept at 255, the first gone */
+    for (k = 0; k < LE_HIST + 1; k++) {
+        memset(ln, 'a' + k % 26, sizeof(ln));
+        ln[0] = (unsigned char)('0' + k / 100);
+        ln[1] = (unsigned char)('0' + k / 10 % 10);
+        ln[2] = (unsigned char)('0' + k % 10);
+        le_hist_add(&le, ln, 300);
+    }
+    CHECK_INT(le.hist_n, LE_HIST);
+    CHECK_INT(le.hist_used, (long)LE_HIST * LE_HIST_LEN);
+    CHECK(le.hist_cap <= LE_HIST_BYTES);
+    for (i = 0; i < LE_HIST; i++)
+        if (strlen((const char *)le.hist + le.hist_at[i]) != LE_HIST_LEN - 1)
+            break;
+    CHECK_INT(i, LE_HIST);
+    key(VT_KEY_UP, 0); /* the newest: line 100 */
+    CHECK(!strncmp(line(), "100", 3));
+    CHECK_INT(le.len, LE_HIST_LEN - 1);
+    CHECK_INT(line()[3], 'a' + 100 % 26);
+    for (k = 1; k < LE_HIST; k++)
+        key(VT_KEY_UP, 0);
+    CHECK(!strncmp(line(), "001", 3)); /* the oldest kept: line 1 (line 0 dropped) */
+    CHECK_INT(line()[3], 'a' + 1);
+    key(VT_KEY_UP, 0); /* no older one */
+    CHECK(!strncmp(line(), "001", 3));
+    le_reset(&le);
+
+    /* undo: ten edits on a 900-byte line, eight of them taken back */
+    memset(ln, 0, sizeof(ln));
+    for (i = 0; i < 900; i++) {
+        unsigned char ch = (unsigned char)(i % 10 == 9 ? ' ' : 'a' + i % 26);
+        le_key(&le, ch, 0, &ch, 1);
+    }
+    CHECK_INT(le.len, 900);
+    for (k = 0; k < 10; k++)
+        key(VT_KEY_BACKSPACE, VT_MOD_ALT); /* a word back each: one undo step each */
+    CHECK_INT(le.len, 900 - 10 * 10);
+    for (k = 0; k < 8; k++)
+        ctrl(0x1F);
+    CHECK_INT(le.len, 900 - 2 * 10);
+    for (i = 0; i < le.len; i++)
+        if (le.buf[i] != (unsigned char)(i % 10 == 9 ? ' ' : 'a' + i % 26))
+            break;
+    CHECK_INT(i, 900 - 2 * 10); /* the bytes too, not just the length */
+    CHECK_INT(le.undo_n, 0);
+    ctrl(0x1F); /* nothing older: the line stays */
+    CHECK_INT(le.len, 900 - 2 * 10);
+    CHECK(le.undo_cap <= LE_UNDO_BYTES);
+
+    le_free(&le);
+    CHECK_INT(vt_count_live, before);
+    CHECK(le.hist == 0 && le.undo_buf == 0 && le.hist_n == 0);
+    le_hist_add(&le, (const unsigned char *)"again", 5); /* usable after le_free */
+    CHECK_INT(le.hist_n, 1);
+    le_free(&le);
+    vt_free(t);
+}
+
 void suite_lineedit(void)
 {
+    reflow_moves_the_line_and_editing_follows();
     a_replaced_line_on_a_fresh_prompt_draws_after_it();
     kingcon_word_and_quoting();
     kingcon_cycle_and_fncmode();
     command_word_gets_colour_until_it_changes();
     menu_lists_names_and_redraws_prompt_and_line();
+    kingcon_list_has_19_char_columns_and_cuts_long_names();
     replace_word_for_menu_cycling();
     suggestion_shows_grey_and_right_takes_it();
     return_does_not_run_the_suggestion();
@@ -380,10 +527,12 @@ void suite_lineedit(void)
     ctrl_r_cancel_restores();
     word_motions_and_undo();
     ctrl_l_clears_and_keeps_prompt_and_line();
+    ctrl_l_keeps_a_prompt_beyond_the_bmp();
     editing_inside_the_line();
     kill_keys();
     a_long_line_wraps_and_edits_across_rows();
     a_line_that_fills_the_bottom_row_exactly();
     history_and_prefix_search();
     utf8_characters_move_as_one();
+    history_and_undo_grow_and_free();
 }

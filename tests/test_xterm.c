@@ -560,7 +560,7 @@ static void device_reports(void)
     CHECK_STR(h_reply, "\033[0n");
     h_reply_clear();
     h_put(t, "\033[c");
-    CHECK_STR(h_reply, "\033[?62;22c");
+    CHECK_STR(h_reply, "\033[?62;4;22c"); /* 4: sixel */
     h_reply_clear();
     h_put(t, "\033[>c");
     CHECK_STR(h_reply, "\033[>1;10;0c");
@@ -1039,8 +1039,130 @@ static void synchronized_output_is_a_mode(void)
     vt_free(t);
 }
 
+/* S1: a whole-screen scroll moves a window through twice the rows' slots
+ * and goes back to the start once a page has gone by. Many pages, a
+ * resize and the alternate screen in between must leave every row where
+ * a plain array would have it. */
+static void put_line(vt_term *t, int i)
+{
+    char buf[16] = "\r\nline ";
+    int n = 7;
+    if (i >= 10)
+        buf[n++] = (char)('0' + i / 10);
+    buf[n++] = (char)('0' + i % 10);
+    buf[n] = 0;
+    h_put(t, buf);
+}
+
+static void long_scrolling_keeps_rows_in_order(void)
+{
+    vt_term *t = h_new(20, 5, VT_XTERM);
+    int i;
+    for (i = 0; i < 37; i++) {               /* past the window's end several times */
+        put_line(t, i);
+    }
+    CHECK_STR(h_screen(t), "line 32|line 33|line 34|line 35|line 36");
+    CHECK_STR(h_row(t, 4), "line 36");
+    h_put(t, "\033[?1049h\033[2Jalt\r\n\r\n\r\n\r\n\r\nx\033[?1049l");
+    CHECK_STR(h_row(t, 0), "line 32");
+    vt_resize(t, 20, 7);                     /* the window settles, then a plain array */
+    for (i = 37; i < 50; i++) {
+        put_line(t, i);
+    }
+    CHECK_STR(h_row(t, 6), "line 49");
+    CHECK_STR(h_row(t, 0), "line 43");
+    vt_free(t);
+}
+
+/* S1: a run of line feeds is done at once (lf_run). It must land where as
+ * many single line feeds do: inside and below a scroll region, from every
+ * row, for runs longer than the region. */
+static void a_run_of_line_feeds_equals_single_ones(void)
+{
+    static const char *start[] = { "\033[1;1H", "\033[4;1H", "\033[8;1H", "\033[10;1H", "\033[12;1H" };
+    char many[40], one[2] = "\n";
+    int s, k, i, bad = 0;
+    for (s = 0; s < 5; s++)
+        for (k = 1; k < 30; k++) {
+            vt_term *a = h_new(10, 12, VT_XTERM), *b = h_new(10, 12, VT_XTERM);
+            char sa[400], sb[400];
+            for (i = 0; i < 12; i++) {
+                char row[8] = "\r\nrow ";
+                row[6] = (char)('a' + i);
+                row[7] = 0;
+                h_put(a, row);
+                h_put(b, row);
+            }
+            h_put(a, "\033[3;8r");
+            h_put(b, "\033[3;8r");
+            h_put(a, start[s]);
+            h_put(b, start[s]);
+            for (i = 0; i < k; i++)
+                many[i] = '\n';
+            many[k] = 0;
+            h_put(a, many);
+            for (i = 0; i < k; i++)
+                h_put(b, one);
+            h_put(a, "X");
+            h_put(b, "X");
+            strcpy(sa, h_screen(a));
+            strcpy(sb, h_screen(b));
+            if (strcmp(sa, sb))
+                bad++;
+            vt_free(a);
+            vt_free(b);
+        }
+    CHECK_INT(bad, 0);
+}
+
+/* Ledger A1.3: Claude Code's screen, as it drew it in a pty with UP-Term's
+ * engine answering its queries (tools/capture_claude.py). Every sequence it
+ * sends is acted on except the kitty graphics probe (an APC string,
+ * swallowed). The kitty keyboard query (CSI ? u) is answered since G1; the
+ * capture predates that, so Claude Code kept the legacy keys in it.
+ * Its answer and its prompt land where libvterm puts them (make test-ref). */
+static void claude_code_session_needs_only_what_we_have(void)
+{
+    static vt_u8 buf[65536];
+    FILE *f = fopen("tests/streams/claude-session.80x24.bin", "rb");
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    const char *kinds[16];
+    long counts[16], n;
+    int i, answer = -1, prompt = -1;
+    CHECK(f != 0);
+    if (!f) {
+        vt_free(t);
+        return;
+    }
+    n = (long)fread(buf, 1, sizeof(buf), f);
+    fclose(f);
+    CHECK(n > 4000 && n < (long)sizeof(buf));
+    h_reply_clear();
+    vt_write(t, buf, n);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 1);
+    for (i = 0; i < 16 && kinds[i]; i++)
+        CHECK(!strcmp(kinds[i], "X 0"));
+    for (i = 0; i < 24; i++) {
+        const char *r = h_row(t, i);
+        if (!strcmp(r, "\xe2\x8f\xba hello amiga"))
+            answer = i;
+        if (!strncmp(r, "\xe2\x9d\xaf Reply with the two words", 28))
+            prompt = i;
+    }
+    CHECK(prompt >= 0);
+    CHECK(answer > prompt);
+    CHECK(!(vt_modes(t) & VT_MODE_SYNC));  /* every frame it began, it ended */
+    CHECK(vt_modes(t) & VT_MODE_BRACKET_PASTE);
+    CHECK(vt_modes(t) & VT_MODE_FOCUS);
+    CHECK(strstr(h_reply, "\033[?2026;2$y") != 0); /* DECRQM: synchronized output is known */
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    a_run_of_line_feeds_equals_single_ones();
+    long_scrolling_keeps_rows_in_order();
+    claude_code_session_needs_only_what_we_have();
     synchronized_output_is_a_mode();
     a_sequence_cut_by_a_write_means_the_same();
     a_row_counts_the_cells_in_use();

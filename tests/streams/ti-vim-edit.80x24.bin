@@ -1,7 +1,9 @@
-[?1049h[?1h=[?2004h[1;24r[27m[24m[23m[0m[H[2J[?25l[24;1H"~/Code/vtcon/engine/vtengine.c" 2597L, 69841B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[1;1H/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
+[?1049h[?1h=[?2004h[1;24r[27m[24m[23m[0m[H[2J[?25l[24;1H"~/Code/vtcon/.claude/worktrees/agent-a40d2523fe2066ed4/engine/vtengine.c"<on/.claude/worktrees/agent-a40d2523fe2066ed4/engine/vtengine.c" 5626L, 175001B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[1;1H/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
  * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[2;76H[K[3;1H * it are per personality, because the Amiga console and xterm give the same[3;77H[K[4;2H* CSI finals different meanings (the conformance matrix in
  * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */
 #include "vtengine.h"
+#include "vtwidth.h"
+#include <stddef.h>
 #include <string.h>
 
 #if defined(VT_AMIGA_EXEC_ALLOC)
@@ -16,26 +18,24 @@
 #define VT_FREE(p) free(p)
 #endif
 
-#define VT_MAX_PARAMS 16
+#define VT_MAX_PARAMS 16[1;1H[?25h[10;1H[?25l[24;1H[1m-- INSERT --[0m[24;13H[K[10;23r[10;1H[L[1;24r[10;1H[?25h[?25linserted line åäö[?25h[24;1H[K[10;17H[?25l[?25h[?25l[10;23r[23;1H
+[1;24r[23;1H#define VT_MAX_PARAMS 16[10;1H[?25h[?25l[24;1H1 more line; before #2  1 second ago[10;23r[10;1H[L[1;24r[10;1Hinserted line åäö[24;1H[K[24;1H1 more line; before #2  1 second ago[10;1H[?25h[?25l[24;1H3 fewer lines[24;14H[K[10;23r[10;1H[3M[1;24r[21;1H#define VT_MAX_PARAMS 16
 #define VT_STR_MAX 256
-#define VT_PARAM_MAX 65535L[1;1H[?25h[10;1H[?25l[24;1H[1m-- INSERT --[0m[24;13H[K[10;23r[10;1H[L[1;24r[10;1H[?25h[?25linserted line åäö[?25h[24;1H[K[10;17H[?25l[?25h[?25l[10;23r[23;1H
-[1;24r[23;1H#define VT_PARAM_MAX 65535L[10;1H[?25h[?25l[24;1H1 more line; before #2  1 second ago[10;23r[10;1H[L[1;24r[10;1Hinserted line åäö[24;1H[K[24;1H1 more line; before #2  1 second ago[10;1H[?25h[?25l[24;1H3 fewer lines[24;14H[K[10;23r[10;1H[3M[1;24r[21;1H#define VT_PARAM_MAX 65535L
-
-/* Parser states. */[24;1H[K[24;1H3 fewer lines[10;1H[?25h[?25l[24;1H[K[24;1H:split[1;1H#include "vtengine.h"[1;22H[K[2;1H#include <string.h>[2;20H[K[3;2H[K[4;1H#if defined(VT_AMIGA_EXEC_ALLOC)[4;34H[K[5;1H#include <proto/exec.h>[5;24H[K[6;2Hdefine VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
+#define VT_PARAM_MAX 65535L[24;1H[K[24;1H3 fewer lines[10;1H[?25h[?25l[24;1H[K[24;1H:split[1;1H#include "vtengine.h"[1;22H[K[2;1H#include "vtwidth.h"[2;21H[K[3;1H#include <stddef.h>[3;20H[K[4;1H#include <string.h>[4;20H[K[5;1H/* code without a C startup (the handler): exec memory, no libc heap */[5;72H[K[6;10H<exec/memory.h>[7;10H<proto/exec.h>
+#define VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
 #define VT_FREE(p) FreeVec(p)
+#elif !defined(VT_MALLOC)[10;26H[K[11;11Hstdlib.h>[11;20H[K[12;1H[1m[7mengine/vtengine.c [+]                                                           [0m[13;2Hinclude "vtengine.h"[13;22H[K[14;2Hinclude "vtwidth.h"[14;21H[K[15;2Hinclude <stddef.h>[15;20H[K[16;13Hring
+/* code without a C startup (the handler): exec memory, no libc heap */
+#include <exec/memory.h>[18;25H[K[19;2Hinclude <proto/exec.h>
+#define VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)[21;12HFREE(p) FreeVec(p)
 #elif !defined(VT_MALLOC)
-#include <stdlib.h>[9;20H[K[10;2Hdefine VT_MALLOC(n) malloc(n)[11;12HFREE(p) free(p)[11;27H[K[12;1H[1m[7mengine/vtengine.c [+]                                                           [0m[13;2Hinclude "vtengine.h"[13;22H[K[14;13Hring[15;1H[K[16;2Hif defined(VT_AMIGA_EXEC_ALLOC)
-#include <proto/exec.h>
-#define VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)[19;12HFREE(p) FreeVec(p)
-#elif !defined(VT_MALLOC)
-#include <stdlib.h>[21;20H[K[22;1H#define VT_MALLOC(n) malloc(n)
 [7mengine/vtengine.c [+]                                                           [5;1H[?25h[12;1Hengine/vtengine.c [+]                                                           [0m[23;1H[1m[7mengine/vtengine.c [+]                                                           [17;1H[?25l[0m[24;1H[K[24;1H:q![1;1H/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible
  * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below
  * it are per personality, because the Amiga console and xterm give the same
  * CSI finals different meanings (the conformance matrix in
- * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */
-#include "vtengine.h"[6;22H[K[7;2Hinclude <string.h>[7;20H[K[8;1H[K[9;3Hf defined(VT_AMIGA_EXEC_ALLOC)
-#include <proto/exec.h>[10;24H[K[11;12HMALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
-#define VT_FREE(p) FreeVec(p)[12;30H[K[13;2Helif !defined(VT_MALLOC)[14;13Hdlib
-#define VT_MALLOC(n) malloc(n)
-#define VT_FREE(p) free(p)[16;27H[K[17;2Hendif[17;7H[K[18;1H[K[19;12HMAX_PARAMS 16[19;25H[K[20;2Hdefine VT_STR_MAX 256[20;23H[K[21;2Hdefine VT_PARAM_MAX 65535L[22;1H[K[23;1H/* Parser states. */[23;21H[K[10;1H[?25h
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[6;10H"vtengine.h"[6;22H[K[7;10H"vtwidth.h"[7;21H[K[8;2Hinclude <stddef.h>[8;20H[K[9;2Hinclude <string.h>[9;20H[K[10;1H/* code without a C startup (the handler): exec memory, no libc heap */[11;11Hexec/memory.h>
+#include <proto/exec.h>[12;24H[K[13;2Hdefine VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
+#define VT_FREE(p) FreeVec(p)
+#elif !defined(VT_MALLOC)[16;13Hdlib
+#define VT_MALLOC(n) malloc(n)[17;31H[K[18;2Hdefine VT_FREE(p) free(p)
+#endif[19;7H[K[20;1H[K[21;12HMAX_PARAMS 16[21;25H[K[22;2Hdefine VT_STR_MAX 256[22;23H[K[23;1H#define VT_PARAM_MAX 65535L[23;28H[K[10;1H[?25h

@@ -123,6 +123,12 @@ RW = "--ro" not in sys.argv
 # not host speed: the only way to benchmark on a loaded host (JIT timings
 # swung 10x with the owner's other emulators, 2026-09-29).
 FAST = "--fast" in sys.argv   # the CPU as fast as the host runs it (an accelerator's order of speed, not a model of one)
+# --stock: creep's conbench machine, his config A1200-Stock-net (ledger S1,
+# 2026-10-04): amiga_model A1200 at FS-UAE's default accuracy (the model's
+# own CPU timing, not our overrides), 2 MB chip RAM, no fast RAM, no FPU, no
+# graphics card, bsdsocket only. Our default rig has 8 MB fast + 64 MB Z3:
+# CCON 1.2.7 ran 38.32 s on it in 77x20 and 86.46 s on his.
+STOCK = "--stock" in sys.argv
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -138,13 +144,41 @@ def setup():
         shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
     (RIG / "boot/s").mkdir(exist_ok=True)
     (RIG / "boot/s/startup-sequence").write_text(STARTUP)
-    (RIG / "boot/go").write_text(GO)
+    # --stock: creep's Workbench prints topaz 8, 77 columns in a 640-wide
+    # window. The rig boots from BOOTX:, which had no Devs/system-configuration,
+    # so Intuition took its built-in 60-column topaz (61 columns measured,
+    # 2026-10-04). The 3.2 install's own file (FontHeight 8) goes in for --stock
+    # only: the default rig's serial and other settings stay as they were.
+    sysconf = RIG / "boot/devs/system-configuration"
+    if STOCK:
+        sysconf.parent.mkdir(exist_ok=True)
+        shutil.copyfile(RIG / "os32/Devs/system-configuration", sysconf)
+    elif sysconf.exists():
+        sysconf.unlink()
+    # --stock: the agent gives every command process a 256 KB stack; on the
+    # 2 MB machine that took an eighth of memory each and the window under
+    # test ran out (2026-10-04, allocwatch). A stock A1200's Shell has 4 KB;
+    # 16 KB keeps Avail readings honest.
+    # The agent sets its commands' stack itself (NP_StackSize 262144, two
+    # places in the binary): --stock runs a copy with 16384 there.
+    if STOCK:
+        a = bytearray((RIG / "boot/amiagent").read_bytes())
+        for off in (0x752, 0x14f20):
+            if a[off:off + 4] != bytes.fromhex("00040000"):
+                sys.exit("rig: amiagent's stack constant moved; the --stock patch needs new offsets")
+            a[off:off + 4] = (16384).to_bytes(4, "big")
+        (RIG / "boot/amiagent.stock").write_bytes(bytes(a))
+    (RIG / "boot/go").write_text(GO.replace("Run >NIL: BOOTX:amiagent TOKEN", "Run >NIL: BOOTX:amiagent.stock TOKEN")
+                                 if STOCK else GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     # once, like the disk: the sources were in a session scratchpad, which
     # is gone after that session (the rig failed to start, 2026-09-30)
     if not (RIG / "boot/amiagent").exists():
         sys.exit("rig: build/rig/boot/amiagent is missing (copy it from the Up Rough demo system)")
-    CFG.write_text("\n".join([
+    machine = [
+        "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
+        "bsdsocket_library = 1",
+    ] if STOCK else [
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
@@ -161,6 +195,8 @@ def setup():
         "uae_cpu_speed = %s" % ("max" if FAST else "real"),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
+    ]
+    CFG.write_text("\n".join(machine + [
         "hard_drive_0 = %s" % (RIG / ("os32" if OS32 else "sys.hdf")),
         # Writable: read-only (--ro) put up "Volume System is write
         # protected" requesters that stalled the rig (the owner saw them,

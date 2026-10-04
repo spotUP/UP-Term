@@ -178,7 +178,8 @@ static void event(struct upc_unit *u, const upc_event *e)
         if (u->unitno == CONU_SNIPMAP) {
             int button = e->cls == UPC_IE_RAWMOUSE && (e->code & ~IECODE_UP_PREFIX) == IECODE_LBUTTON;
             int was = u->w.dragging;
-            vtwin_mouse(&u->w, !button, e->code, e->qual, u->win->MouseX, u->win->MouseY);
+            vtwin_mouse(&u->w, !button, e->code, e->qual, u->win->MouseX, u->win->MouseY,
+                        e->secs, e->micros);
             u->base->drags += !was && u->w.dragging;
         }
         break;
@@ -194,6 +195,10 @@ static void event(struct upc_unit *u, const upc_event *e)
         break;
     case UPC_IE_CLOSEWINDOW:
         vtwin_raw_report(&u->w, 11);
+        break;
+    case UPC_IE_ACTIVEWINDOW:
+    case UPC_IE_INACTIVEWINDOW:
+        vtwin_focus(&u->w, e->cls == UPC_IE_ACTIVEWINDOW); /* ?1004 (xterm units only) */
         break;
     default:
         break;
@@ -280,6 +285,7 @@ void upc_unit_entry(void)
     u->w.no_clipboard = u->unitno != CONU_SNIPMAP; /* DD10 */
     u->w.foreign_window = 1;
     vtwin_init(&u->w, &host, u);
+    u->w.reflow = u->unitno != CONU_STANDARD; /* the ROM's charmap units re-wrap (DP4), raw ones do not */
     if (!vtwin_attach(&u->w, u->win)) {
         vtwin_cleanup(&u->w);
         FreeSignal(portsig);
@@ -288,8 +294,6 @@ void upc_unit_entry(void)
         ReplyMsg(m);
         return;
     }
-    if (u->unitno != CONU_STANDARD)
-        vt_set_reflow(u->w.t, 1); /* the ROM's charmap units re-wrap (DP4) */
     u->inner_w = (WORD)(u->win->Width - u->win->BorderLeft - u->win->BorderRight);
     u->inner_h = (WORD)(u->win->Height - u->win->BorderTop - u->win->BorderBottom);
     fill_conunit(u);
