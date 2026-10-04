@@ -155,7 +155,21 @@ def setup():
         shutil.copyfile(RIG / "os32/Devs/system-configuration", sysconf)
     elif sysconf.exists():
         sysconf.unlink()
-    (RIG / "boot/go").write_text(GO)
+    # --stock: the agent gives every command process a 256 KB stack; on the
+    # 2 MB machine that took an eighth of memory each and the window under
+    # test ran out (2026-10-04, allocwatch). A stock A1200's Shell has 4 KB;
+    # 16 KB keeps Avail readings honest.
+    # The agent sets its commands' stack itself (NP_StackSize 262144, two
+    # places in the binary): --stock runs a copy with 16384 there.
+    if STOCK:
+        a = bytearray((RIG / "boot/amiagent").read_bytes())
+        for off in (0x752, 0x14f20):
+            if a[off:off + 4] != bytes.fromhex("00040000"):
+                sys.exit("rig: amiagent's stack constant moved; the --stock patch needs new offsets")
+            a[off:off + 4] = (16384).to_bytes(4, "big")
+        (RIG / "boot/amiagent.stock").write_bytes(bytes(a))
+    (RIG / "boot/go").write_text(GO.replace("Run >NIL: BOOTX:amiagent TOKEN", "Run >NIL: BOOTX:amiagent.stock TOKEN")
+                                 if STOCK else GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     # once, like the disk: the sources were in a session scratchpad, which
     # is gone after that session (the rig failed to start, 2026-09-30)
