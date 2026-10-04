@@ -14,6 +14,11 @@
 #include <proto/exec.h>
 #define VT_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
 #define VT_FREE(p) FreeVec(p)
+#elif defined(VT_COUNT_ALLOC)
+/* the host tests: every block counted (tests/harness.c), a window's bytes measured */
+#include <stdlib.h>
+#define VT_MALLOC(n) vt_count_malloc((unsigned long)(n))
+#define VT_FREE(p) vt_count_free(p)
 #elif !defined(VT_MALLOC)
 #include <stdlib.h>
 #define VT_MALLOC(n) malloc(n)

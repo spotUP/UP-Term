@@ -27,7 +27,7 @@ test: $(BUILD)/vttest_host
 
 $(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) demo/updemo.c $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) demo/updemo.c $(TESTS)
 
 engine/vtcaps.inc: tools/gen_vtcaps.py terminfo/vtcon.terminfo
 	python3 tools/gen_vtcaps.py
@@ -480,7 +480,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -c -o $(BUILD)/amiga/obj/otag.o render/otag.c
 	$(VC) -c -o $(BUILD)/amiga/obj/clip.o handler/clip.c
 	$(VC) -c -o $(BUILD)/amiga/obj/clipfmt.o handler/clipfmt.c
-	$(VC) -c -o $(BUILD)/amiga/obj/lineedit.o handler/lineedit.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/lineedit.o handler/lineedit.c
 	$(VC) -c -o $(BUILD)/amiga/obj/complete.o handler/complete.c
 	$(VC) -c -o $(BUILD)/amiga/obj/brk.o handler/brk.c
 	$(VC) -c -o $(BUILD)/amiga/obj/slash.o handler/slash.c

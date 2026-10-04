@@ -2194,6 +2194,7 @@ have_window:
     DBG("vt_new", c->w.t, 0);
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */
+    le_free(&c->le); /* an AUTO window opening again: the last one's history (reloaded below) */
     le_init(&c->le, c->w.t, le_out, c);
     c->le.utf8 = c->w.pers == VT_XTERM && !c->w.latin1 && !c->w.cp437;
     history_load(c); /* the saved history, read by a worker */
@@ -5574,6 +5575,7 @@ static LONG handler_main(void)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
     watch_stop(c);
+    le_free(&c->le);
     forget_words(c);
     kc_cyc_end(c);
     if (c->kc_snap)

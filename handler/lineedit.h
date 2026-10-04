@@ -21,11 +21,25 @@
 #define LE_HIST 100
 #define LE_HIST_LEN 256
 #define LE_UNDO 8
+/* History and undo are kept packed, each in one block that grows as lines
+ * come (LE_MALLOC: AllocVec in the handler): the same 100 lines of up to
+ * 255 bytes and 8 snapshots of up to LE_MAX bytes as before, but a line
+ * costs its length, not the largest one -- 34 KB a window less, nothing
+ * allocated until a line is entered (research/2026-10-04_window-memory.md).
+ * le_free gives the blocks back. */
+#define LE_HIST_BYTES ((long)LE_HIST * LE_HIST_LEN)
+#define LE_UNDO_BYTES ((long)LE_UNDO * LE_MAX)
 
 typedef struct le_state {
     unsigned char buf[LE_MAX];
     int len, pos;
 } le_state;
+
+/* An undo snapshot: len bytes at undo_buf + at, the cursor at pos. */
+typedef struct le_snap {
+    long at;
+    int len, pos;
+} le_snap;
 
 typedef struct le_line {
     vt_term *t;
@@ -37,15 +51,19 @@ typedef struct le_line {
     int started;
     int utf8;               /* characters are UTF-8 (xterm personality) */
     int suggest;            /* show history suggestions (default on) */
-    unsigned char hist[LE_HIST][LE_HIST_LEN];
+    unsigned char *hist;    /* the lines, each NUL-terminated, oldest first (LE_MALLOC) */
+    long hist_used, hist_cap;
+    unsigned short hist_at[LE_HIST]; /* where line i starts in hist */
     int hist_n, hist_pos;
     /* Ctrl-R incremental search */
     int searching;
     unsigned char pat[64];
     int pat_len, search_idx;
     le_state before_search;
-    /* undo */
-    le_state undo[LE_UNDO];
+    /* undo: a stack of snapshots, their bytes packed in undo_buf (LE_MALLOC) */
+    le_snap undo[LE_UNDO];
+    unsigned char *undo_buf;
+    long undo_used, undo_cap;
     int undo_n, typing;     /* typing: the last change was an inserted char */
     /* the first word as a command: 0 not known, 1 found, 2 not found;
      * valid while the first word is still cmd_word */
@@ -57,6 +75,9 @@ typedef struct le_line {
 } le_line;
 
 void le_init(le_line *le, vt_term *t, void (*out)(void *, const unsigned char *, long), void *user);
+/* The history and undo blocks back (le_init starts without any). Safe on a
+ * line le_init made or on an all-zero one; le_init may follow. */
+void le_free(le_line *le);
 /* One key: `key` as vt_encode_key takes it, `mods` VT_MOD_*, `bytes` what
  * the key encodes to (a character's bytes in the terminal's charset).
  * Returns 1 when Return completed the line: le->buf[0..le->len) then holds
