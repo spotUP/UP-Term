@@ -23,19 +23,21 @@ extern struct DosLibrary *DOSBase;
 #define VO_MAXW 64         /* widest mask in pixels: two cells of a 32-pixel font */
 #define VO_MAXH 64
 
-enum { VO_OPEN = 1, VO_CELL, VO_GLYPH, VO_CLOSE };
+enum { VO_OPEN = 1, VO_CELL, VO_GLYPH, VO_CLOSE, VO_READ };
 enum { SLOT_EMPTY = 0, SLOT_HAVE, SLOT_MISSING };
 
 struct vo_msg {
     struct Message msg;
     int op;
-    char name[64];       /* OPEN: the font */
+    char name[64];       /* OPEN: the font ("": no engine, the worker only); READ: the file */
     WORD cw, ch, base;   /* OPEN, CELL */
     ULONG cp;            /* GLYPH */
     int cells;
     int mark;            /* GLYPH: a combining mark, placed over the cells */
     UBYTE *mask;         /* GLYPH: the caller's cleared buffer, ch rows of bpr */
     WORD bpr;
+    UBYTE *buf;          /* READ: the caller's buffer, max bytes */
+    LONG max, len;       /* READ: len the answer, the bytes read, -1 no such file */
     int ok;              /* the answer: 1 done / the glyph is there */
 };
 
@@ -51,6 +53,7 @@ struct vo_font {
     struct vo_msg m;
     WORD cw, ch, base;
     int used;
+    int engine;               /* 0: opened with "", the worker only (vo_read) */
     char name[64];
     struct vo_slot slot[VO_SLOTS];
 };
@@ -268,7 +271,7 @@ static void worker(void)
             e.cw = m->cw;
             e.ch = m->ch;
             e.base = m->base;
-            m->ok = engine_open(&e, m->name);
+            m->ok = !m->name[0] || engine_open(&e, m->name); /* "": the worker alone */
             if (!m->ok) {
                 engine_close(&e);
                 Forbid(); /* the opener frees what m is in: end before it runs on */
@@ -280,17 +283,36 @@ static void worker(void)
             e.cw = m->cw;
             e.ch = m->ch;
             e.base = m->base;
-            calibrate(&e);
+            if (e.ge)
+                calibrate(&e);
             m->ok = 1;
             break;
         case VO_GLYPH: {
             WORD w = (WORD)(m->cells * e.cw);
+            if (!e.ge) {
+                m->ok = 0;
+                break;
+            }
             /* a mark: drawn left of its point over the cell, as fonts make
              * them; one that draws nothing there is a spacing mark */
             m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w);
             if (!m->ok)
                 m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0) &&
                         !(m->cells == 1 && same_as_notdef(&e, m->mask, m->bpr));
+            break;
+        }
+        case VO_READ: {
+            /* a file the caller may not read itself (a DOS call; U2's
+             * Unifont pages): a missing one is an answer, not a requester */
+            BPTR fh = Open((STRPTR)m->name, MODE_OLDFILE);
+            m->len = -1;
+            if (fh) {
+                m->len = Read(fh, m->buf, m->max);
+                Close(fh);
+                if (m->len < 0)
+                    m->len = -1;
+            }
+            m->ok = 1;
             break;
         }
         case VO_CLOSE:
@@ -330,7 +352,7 @@ vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base)
 {
     vo_font *f;
     struct Process *p;
-    if (!name || !name[0] || cw < 1 || ch < 1 || 2 * cw > VO_MAXW || ch > VO_MAXH)
+    if (!name || cw < 1 || ch < 1 || 2 * cw > VO_MAXW || ch > VO_MAXH)
         return 0;
     f = (vo_font *)AllocVec(sizeof(*f), MEMF_PUBLIC | MEMF_CLEAR);
     if (!f)
@@ -360,6 +382,7 @@ vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base)
         FreeVec(f);
         return 0;
     }
+    f->engine = name[0] != 0;
     return f;
 }
 
@@ -384,7 +407,7 @@ void vo_set_cell(vo_font *f, WORD cw, WORD ch, WORD base)
     f->cw = f->m.cw = cw;
     f->ch = f->m.ch = ch;
     f->base = f->m.base = base;
-    if (ch) {
+    if (ch && f->engine) {
         f->m.op = VO_CELL;
         ask(f);
     }
@@ -397,7 +420,7 @@ static const UBYTE *glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
     struct vo_slot *s;
     WORD b;
     int mark = cells & 4;
-    if (!f || f->ch < 1)
+    if (!f || f->ch < 1 || !f->engine)
         return 0;
     cells = (cells & 3) == 2 ? 2 : 1;
     b = (WORD)(((cells * f->cw + 15) >> 4) << 1);
@@ -451,4 +474,21 @@ const UBYTE *vo_mark(vo_font *f, ULONG cp, int cells, WORD *bpr)
 const char *vo_name(const vo_font *f)
 {
     return f ? f->name : "";
+}
+
+int vo_has_engine(const vo_font *f)
+{
+    return f && f->engine;
+}
+
+LONG vo_read(vo_font *f, const char *path, UBYTE *buf, LONG max)
+{
+    if (!f || !path || strlen(path) >= sizeof(f->m.name) || max <= 0)
+        return -1;
+    strcpy(f->m.name, path);
+    f->m.op = VO_READ;
+    f->m.buf = buf;
+    f->m.max = max;
+    ask(f);
+    return f->m.len;
 }

@@ -161,3 +161,33 @@ int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc)
     map(cp, enc, &native);
     return native;
 }
+
+const vt_u8 *vt_fallback_glyph(const vt_fallback *f, vt_u32 cp, int cells, int *bpr)
+{
+    const vt_u8 *m;
+    if (!f || cp < 0x80 || vt_glyph_native(cp, f->enc))
+        return 0;
+    if (f->outline && (m = f->outline(f->outline_src, cp, cells, bpr)) != 0)
+        return m;
+    if (f->unifont && cp <= 0xFFFF && (m = f->unifont(f->unifont_src, cp, cells, bpr)) != 0)
+        return m;
+    return 0;
+}
+
+const vt_u8 *vt_cell_glyph(const vt_fallback *f, vt_term *t, const vt_cell *c, vt_u32 *cp, int *ncp,
+                           int *bpr, vt_glyph *g)
+{
+    const vt_u8 *m;
+    int cells = c->width == 2 ? 2 : 1;
+    cp[0] = c->ch;
+    *ncp = 1;
+    if (VT_CELL_IS_CLUSTER(c)) /* beyond the BMP, or with marks */
+        *ncp = vt_compose_cell(cp, vt_cell_text(t, c, cp));
+    m = vt_fallback_glyph(f, cp[0], cells, bpr);
+    if (m)
+        return m;
+    *g = vt_map_glyph(cp[0], f ? f->enc : VT_ENC_LATIN1);
+    if (g->kind == VT_GLYPH_MISSING)
+        g->code = (vt_u8)cells;
+    return 0;
+}

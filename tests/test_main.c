@@ -30,6 +30,7 @@ void suite_clip(void);
 void suite_input(void);
 void suite_protocol(void);
 void suite_sbar(void);
+void suite_unifont(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -61,6 +62,7 @@ static const h_suite suites[] = {
     { "input", suite_input },
     { "protocol", suite_protocol },
     { "sbar", suite_sbar },
+    { "unifont", suite_unifont },
     { 0, 0 }
 };
 

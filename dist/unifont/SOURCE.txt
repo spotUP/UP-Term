@@ -1,0 +1,25 @@
+GNU Unifont glyph pages for UP-Term
+
+The files 00 ... FF in this drawer are the glyphs of GNU Unifont 17.0.05,
+the Basic Multilingual Plane without its private use area, rearranged by
+UP-Term's tools/gen_unifont.py into one file per 256 code points. UP-Term
+draws a character from them when neither the window's font nor the outline
+font (font-fallback) has it.
+
+  Font:       GNU Unifont 17.0.05, https://unifoundry.com/unifont/
+  Taken from: https://ftp.gnu.org/gnu/unifont/unifont-17.0.05/
+              unifont_all-17.0.05.hex.gz
+              sha256 7b182454966046d35482469b979edce7d262fab5c53c2180e9b1fbb5d0b5e574
+  Copyright:  Copyright (C) 1998-2026 Roman Czyborra, Paul Hardy, Qianqian
+              Fang, Andrew Miller, Johnnie Weaver, David Corbett, Aella
+              Chiana Moskopp, Rebecca Bettencourt, Minseo Lee, Ho-Seok Ee,
+              et al.
+
+Licence: GNU Unifont is offered under two licences, the SIL Open Font
+License 1.1 and the GNU GPL version 2 or later with the GNU font embedding
+exception. UP-Term uses and redistributes these pages under the SIL Open
+Font License 1.1 (OFL-1.1.txt, beside this file). They are a Modified
+Version in the OFL's terms (the glyph bitmaps unchanged, the file format
+UP-Term's) and stay under the OFL. Unifont has no Reserved Font Name.
+
+Rebuild them from the source: make unifont (in the UP-Term source tree).
