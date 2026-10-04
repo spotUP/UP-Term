@@ -316,5 +316,8 @@ int      vt_modify_other_keys(const vt_term *t);
 int      vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mods, vt_u8 *out);
 /* Bracketed paste wrapper: writes the prefix or suffix (0 bytes when off). */
 int      vt_encode_paste(const vt_term *t, int end, vt_u8 *out);
+/* Focus report (?1004): CSI I when the window became active (in 1), CSI O
+ * when it stopped being; 0 bytes when the program did not ask. */
+int      vt_encode_focus(const vt_term *t, int in, vt_u8 *out);
 
 #endif

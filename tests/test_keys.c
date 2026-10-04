@@ -97,6 +97,26 @@ static void modify_other_keys_takes_ctrl_combinations_from_the_host(void)
     vt_free(t);
 }
 
+/* gap #5: vim's FocusGained, tmux focus-events: CSI I / CSI O once ?1004 is on */
+static void focus_events_only_when_asked(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vt_u8 b[8];
+    CHECK_INT(vt_encode_focus(t, 1, b), 0);
+    h_put(t, "\033[?1004h");
+    CHECK_INT(vt_encode_focus(t, 1, b), 3);
+    CHECK(memcmp(b, "\033[I", 3) == 0);
+    CHECK_INT(vt_encode_focus(t, 0, b), 3);
+    CHECK(memcmp(b, "\033[O", 3) == 0);
+    h_put(t, "\033[?1004l");
+    CHECK_INT(vt_encode_focus(t, 0, b), 0);
+    vt_free(t);
+    t = h_new(80, 24, VT_AMIGA);
+    h_put(t, "\033[?1004h");
+    CHECK_INT(vt_encode_focus(t, 1, b), 0); /* the console reports classes 17/18 its own way */
+    vt_free(t);
+}
+
 static void utf8_mouse_reaches_past_column_223(void)
 {
     vt_term *t = h_new(400, 24, VT_XTERM);
@@ -252,4 +272,5 @@ void suite_keys(void)
     alt_backspace_return_tab_escape_send_the_esc_prefix();
     modify_other_keys_reports_modified_return_and_tab();
     modify_other_keys_takes_ctrl_combinations_from_the_host();
+    focus_events_only_when_asked();
 }

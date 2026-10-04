@@ -3970,6 +3970,10 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         if (wheel)
             vtwin_wheel(&c->w, wheel > 0, mx, my);
         break;
+    case IDCMP_ACTIVEWINDOW:
+    case IDCMP_INACTIVEWINDOW:
+        vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
+        break;
     default:
         break;
     }

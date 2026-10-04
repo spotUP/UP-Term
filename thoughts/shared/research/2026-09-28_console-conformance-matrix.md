@@ -472,6 +472,9 @@ Other xterm input reports:
   `... m`, 1-based cells; b = 0/1/2 button, +4 Shift, +8 Meta, +16 Ctrl, +32
   motion, 64/65 wheel.
 - Focus (`?1004h`): `ESC [ I` in, `ESC [ O` out (source: Amiga classes 17/18).
+  G1 K3: `vt_encode_focus`, sent by the window on IDCMP_ACTIVEWINDOW /
+  INACTIVEWINDOW (XCON:, tabs through the host's routing, console.device units);
+  test `focus_events_only_when_asked`.
 - Bracketed paste (`?2004h`): `ESC [ 200 ~` ... `ESC [ 201 ~` around pasted
   text (the Amiga equivalent is `CSI 0 SP v` + clipboard read).
 - Window size: xterm has no in-band resize notification; ports learn it via

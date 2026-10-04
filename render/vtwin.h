@@ -178,6 +178,9 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my);
 /* the wheel: up (1) / down (-1). The program's when it asked for the mouse,
  * otherwise the scrollback by a few lines (the spec's wheel_scroll) */
 void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my);
+/* The window became active (in 1) or stopped being: the program's focus
+ * report when it asked for one (?1004) */
+void vtwin_focus(vtwin *w, int in);
 /* Find (Right Amiga F, or the console's menu): the scrollback and the grid,
  * oldest line first, case-insensitively, and scroll the view so the line the
  * match is on shows. q NULL or empty repeats the last query. 1 when the view

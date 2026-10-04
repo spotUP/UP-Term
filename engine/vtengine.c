@@ -4575,6 +4575,16 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
     return n;
 }
 
+int vt_encode_focus(const vt_term *t, int in, vt_u8 *out)
+{
+    if (!(t->modes & VT_MODE_FOCUS) || t->pers != VT_XTERM)
+        return 0;
+    out[0] = 0x1B;
+    out[1] = '[';
+    out[2] = (vt_u8)(in ? 'I' : 'O');
+    return 3;
+}
+
 int vt_encode_paste(const vt_term *t, int end, vt_u8 *out)
 {
     const char *s = end ? "\033[201~" : "\033[200~";

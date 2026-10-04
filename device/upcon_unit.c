@@ -195,6 +195,10 @@ static void event(struct upc_unit *u, const upc_event *e)
     case UPC_IE_CLOSEWINDOW:
         vtwin_raw_report(&u->w, 11);
         break;
+    case UPC_IE_ACTIVEWINDOW:
+    case UPC_IE_INACTIVEWINDOW:
+        vtwin_focus(&u->w, e->cls == UPC_IE_ACTIVEWINDOW); /* ?1004 (xterm units only) */
+        break;
     default:
         break;
     }

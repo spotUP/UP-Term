@@ -1174,6 +1174,17 @@ void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my)
     vr_set_view(&w->r, w->r.view + (up ? 3 : -3));
 }
 
+void vtwin_focus(vtwin *w, int in)
+{
+    vt_u8 out[8];
+    int n;
+    if (!w->t)
+        return;
+    n = vt_encode_focus(w->t, in, out);
+    if (n)
+        w->host->input(w->user, out, n);
+}
+
 /* Find: scroll the view to the line a match is on. A match in the live grid
  * brings the view back to the live output (the line is already showing), a
  * match in the scrollback puts the line on the last row of the window so
