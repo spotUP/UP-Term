@@ -19,7 +19,8 @@ static void usage(void)
 {
     vw_say("mdv -- show Markdown formatted\n"
            "usage: mdv [options] [FILE...]   (no FILE, or -: standard input)\n"
-           "  -w, --width N     wrap at N columns (default: the window's width)\n"
+           "  -w, --width N     wrap at N columns (default: the window's width, also\n"
+           "                    through a pipe; else COLUMNS, else 80)\n"
            "  -L, --no-osc8     no OSC 8 hyperlinks\n"
            "  -U, --no-urls     do not show a link's URL after its text\n");
     vw_say(vw_cli_help);
@@ -103,14 +104,16 @@ int main(int argc, char **argv)
         i++;
     }
     tty = vw_out_is_tty();
-    if (!width && tty)
-        width = vw_columns();
-    if (!width && vw_env("COLUMNS", v, sizeof(v)))
-        width = vw_number(v);
-    if (width < 10)
-        width = 80;
-    /* the last column stays free: a full line would wrap twice on some consoles */
-    mo.width = (int)(tty ? width - 1 : width);
+    mo.width = (int)width;
+    if (!width && (width = vw_columns()) >= 10) {
+        /* the window's: its last column stays free, a full line would
+         * wrap twice on some consoles */
+        mo.width = (int)width - 1;
+    } else if (!mo.width) {
+        if (vw_env("COLUMNS", v, sizeof(v)))
+            width = vw_number(v);
+        mo.width = width >= 10 ? (int)width : 80;
+    }
     if (vw_cli_start(&cli, tty, &out) < 0)
         return vw_fail_code;
     out.osc8 = osc8 && out.depth > 0 && out.cs == VW_UTF8;

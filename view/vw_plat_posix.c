@@ -75,8 +75,12 @@ int vw_out_is_tty(void)
 int vw_columns(void)
 {
     struct winsize ws;
-    if (ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
-        return ws.ws_col;
+    int fd;
+    /* standard output's terminal, else standard error's or input's (a pipe
+     * into a pager has no width, the terminal around it has) */
+    for (fd = 1; fd != 3; fd = fd == 1 ? 2 : fd == 2 ? 0 : 3)
+        if (ioctl(fd, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+            return ws.ws_col;
     return 0;
 }
 

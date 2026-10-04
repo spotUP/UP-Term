@@ -81,16 +81,17 @@ int vw_out_is_tty(void)
     return out && IsInteractive(out);
 }
 
-int vw_columns(void)
+/* the columns of the console window behind h, 0 when it is none */
+static int columns_of(BPTR h)
 {
-    BPTR out = Output();
     struct FileHandle *fh;
     vt_winsize ws;
     struct InfoData *id;
     int cols = 0;
-    if (!out || !IsInteractive(out))
+    /* only a console: DISK_INFO to a file's handler names a volume */
+    if (!h || !IsInteractive(h))
         return 0;
-    fh = (struct FileHandle *)BADDR(out);
+    fh = (struct FileHandle *)BADDR(h);
     if (!fh->fh_Type)
         return 0;
     ws.ws_col = 0;
@@ -107,6 +108,14 @@ int vw_columns(void)
     }
     FreeVec(id);
     return cols > 0 ? cols : 0;
+}
+
+/* standard output's window, else standard input's (mdv x | less: the
+ * pipe has no width, the window the pager runs in has) */
+int vw_columns(void)
+{
+    int c = columns_of(Output());
+    return c ? c : columns_of(Input());
 }
 
 int vw_env(const char *name, char *buf, int n)
