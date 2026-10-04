@@ -3501,16 +3501,24 @@ static void decrqss(vt_term *t, const char *pt, int len)
 
 /* XTGETTCAP (DCS + q hexname;hexname ST): a terminfo capability, as
  * DCS 1 + r hexname=hexvalue ST, or DCS 0 + r hexname ST when unknown. */
+/* The terminfo entry, generated from terminfo/vtcon.terminfo
+ * (tools/gen_vtcaps.py): what XTGETTCAP answers is what the entry says. */
+static const struct { const char *name; char kind; const char *value; } vt_caps[] = {
+#include "vtcaps.inc"
+};
+
+/* xterm's names beside the terminfo ones: the terminal's name, termcap's
+ * Co, and RGB as the bits per channel (what xterm answers for it). */
+static const char *const caps_extra[][2] = {
+    { "TN", "vtcon" }, { "name", "vtcon" }, { "Co", "256" }, { "RGB", "8/8/8" }
+};
+
 static void xtgettcap(vt_term *t, const char *s, int len)
 {
-    static const char *const caps[][2] = {
-        { "TN", "vtcon" }, { "name", "vtcon" }, { "Co", "256" }, { "colors", "256" },
-        { "RGB", "8/8/8" }
-    };
     static const char hex[] = "0123456789ABCDEF";
     while (len > 0) {
-        char name[16], b[96];
-        int k = 0, i, n = 0, h1, h2;
+        char name[16], b[320];
+        int k = 0, i, n = 0, h1, h2, found = 0;
         const char *v = 0;
         while (len >= 2 && *s != ';') {
             h1 = hexval(s[0]);
@@ -3526,12 +3534,19 @@ static void xtgettcap(vt_term *t, const char *s, int len)
             s++;
             len--;
         }
-        for (i = 0; i < (int)(sizeof(caps) / sizeof(caps[0])); i++)
-            if (!strcmp(name, caps[i][0]))
-                v = caps[i][1];
+        for (i = 0; !found && i < (int)(sizeof(caps_extra) / sizeof(caps_extra[0])); i++)
+            if (!strcmp(name, caps_extra[i][0]))
+                v = caps_extra[i][1], found = 1;
+        for (i = 0; !found && i < (int)(sizeof(vt_caps) / sizeof(vt_caps[0])); i++)
+            if (!strcmp(name, vt_caps[i].name)) {
+                found = 1;
+                v = vt_caps[i].kind == 'b' ? 0 : vt_caps[i].value; /* a boolean: no value */
+            }
+        if (v && (int)strlen(v) * 2 + 2 * k + 16 > (int)sizeof(b))
+            found = 0, v = 0; /* cannot happen with the entry's lengths */
         b[n++] = 0x1B;
         b[n++] = 'P';
-        b[n++] = v ? '1' : '0';
+        b[n++] = found ? '1' : '0';
         b[n++] = '+';
         b[n++] = 'r';
         for (i = 0; i < k; i++) {

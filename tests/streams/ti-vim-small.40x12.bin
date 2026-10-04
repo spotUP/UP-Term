@@ -1,15 +1,8 @@
-[?1049h[?1h=[?2004h[1;12r[27m[24m[23m[0m[H[2J[?25l[12;1H"~/Code/vtcon/engine/vtengine.c"<vtcon/engine/vtengine.c" 2597L, 69841B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[1;1H/* vtengine -- see vtengine.h. The parsee[2;1Hr is Paul Williams' DEC-compatible[2;35H[K[3;1H * state machine (vt100.net/emu/dec_ansii[4;1H_parser); the dispatch tables below
+[?1049h[?1h=[?2004h[1;12r[27m[24m[23m[0m[H[2J[?25l[12;1H<-a40d2523fe2066ed4/engine/vtengine.c"<6ed4/engine/vtengine.c" 5626L, 175001B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[1;1H/* vtengine -- see vtengine.h. The parsee[2;1Hr is Paul Williams' DEC-compatible[2;35H[K[3;1H * state machine (vt100.net/emu/dec_ansii[4;1H_parser); the dispatch tables below
  * it are per personality, because the AA[6;1Hmiga console and xterm give the same
  * CSI finals different meanings (the coo[8;1Hnformance matrix in
  * thoughts/shared/research/2026-09-28_cc[10;1Honsole-conformance-matrix.md). */
-#include "vtengine.h"[1;1H[?25h[?25l * thoughts/shared/research/2026-09-28_cc[2;1Honsole-conformance-matrix.md). */[2;34H[K[3;1H#include "vtengine.h"[3;22H[K[4;1H#include <string.h>[4;20H[K[5;2H[K[6;1H#if defined(VT_AMIGA_EXEC_ALLOC)[6;33H[K[7;1H/* code without a C startup (the handlerr[8;1H): exec memory, no libc heap */
-#include <exec/memory.h>[9;25H[K[10;1H#include <proto/exec.h>[10;24H[K[11;2Hdefine VT_MALLOC(n) AllocVec((ULONG)(n)[11;1H[94m@                                       [1;2H[?25h[?25l[27m[24m[23m[0m[H[2J[1;1H#include <proto/exec.h>
-#define VT_MALLOC(n) AllocVec((ULONG)(n))[3;1H, MEMF_ANY)
-#define VT_FREE(p) FreeVec(p)
-#elif !defined(VT_MALLOC)
-#include <stdlib.h>
-#define VT_MALLOC(n) malloc(n)
-#define VT_FREE(p) free(p)
-#endif
-
-#define VT_MAX_PARAMS 16[1;1H[?25h[?25l[12;1H:q![?2004l[12;1H[K[12;1H[?2004l[?1l>[?1049l[?25h
+#include "vtengine.h"[1;1H[?25h[?25l * thoughts/shared/research/2026-09-28_cc[2;1Honsole-conformance-matrix.md). */[2;34H[K[3;1H#include "vtengine.h"[3;22H[K[4;1H#include "vtwidth.h"[4;21H[K[5;1H#include <stddef.h>[5;20H[K[6;1H#include <string.h>[6;20H[K[7;2H[K[8;1H#if defined(VT_AMIGA_EXEC_ALLOC)
+/* code without a C startup (the handlerr[10;1H): exec memory, no libc heap */[10;32H[K[11;10H<exec/memory.h>[1;2H[?25h[?25l/* code without a C startup (the handlerr[2;1H): exec memory, no libc heap */[2;32H[K[3;10H<exec/memory.h>[4;10H<proto/exec.h>
+#define VT_MALLOC(n) AllocVec((ULONG)(n))[6;1H, MEMF_ANY)[6;12H[K[7;1H#define VT_FREE(p) FreeVec(p)
+#elif !defined(VT_MALLOC)[8;26H[K[9;1H#include <stdlib.h>[9;21H[K[10;1H#define VT_MALLOC(n) malloc(n)[10;31H[K[11;2Hdefine VT_FREE(p) free(p)[1;1H[?25h[?25l[12;1H[K[12;1H:q![?2004l[12;1H[K[12;1H[?2004l[?1l>[?1049l[?25h

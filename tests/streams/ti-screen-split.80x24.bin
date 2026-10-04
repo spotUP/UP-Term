@@ -59,8 +59,8 @@ window and keeps going past the right edge of the terminal[H[22;59H
 [1m12:29 [0m[2m<[0m[34ma_very_long_nickname[2m[39m> [0manyone tried the new console on 3.2?
 [37m[44m [12:00] [spot(+i)] [2:#amiga] [Act: 3,4[Act: 29]                               
 [39m[49m[#amiga]
-[7m  0 python                                                                      [12B  1 sh                                                                          [11A[27m$ /Users/spot/Code/vtcon/.venv/bin/python /Users/spot/Code/vtcon/tools/chatsim.p y 20
-[2A[K
+[7m  0 python                                                                      [12B  1 sh                                                                          [11A[27m$ /Users/spot/Code/vtcon/.claude/worktrees/agent-a40d2523fe2066ed4/.venv/bin/pyt hon /Users/spot/Code/vtcon/.claude/worktrees/agent-a40d2523fe2066ed4/tools/chats im.py 20
+[3A[K
 [K
 [K
 [K

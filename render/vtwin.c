@@ -1063,7 +1063,9 @@ static int console_key(vtwin *w, UWORD code, UWORD qual)
         default: return 0;
         }
     }
-    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) {
+    if ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) && !(vt_modes(w->t) & VT_MODE_ALT_SCREEN)) {
+        /* on the alternate screen (a full-screen program) Shift+PgUp/PgDn
+         * are the program's: terminfo's kPRV / kNXT */
         if (code == 0x48) {
             vr_set_view(&w->r, w->r.view + page);
             return 1;

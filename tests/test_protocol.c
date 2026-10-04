@@ -834,8 +834,143 @@ static void termurl_round_trips_and_refuses_what_it_cannot_quote(void)
     CHECK(!termurl_link_command("OpenURL %s", "http://x", b, 12));
 }
 
+/* ---- G3-19: XTGETTCAP says what terminfo/vtcon.terminfo says ---- */
+
+/* A terminfo string value as its bytes (terminfo(5) escapes), written here
+ * on its own -- not tools/gen_vtcaps.py's -- so the check is independent. */
+static int ti_unescape(const char *v, int n, unsigned char *out)
+{
+    int i = 0, k = 0;
+    while (i < n) {
+        char c = v[i];
+        if (c == '\\' && i + 1 < n) {
+            char d = v[i + 1];
+            const char *from = "EenlrtbfS^\\,:", *to = "\033\033\n\n\r\t\b\f \136\\,:";
+            const char *p = strchr(from, d);
+            if (d == 's') {
+                out[k++] = ' ';
+                i += 2;
+            } else if (p && d != 'S') {
+                out[k++] = (unsigned char)to[p - from];
+                i += 2;
+            } else if (d >= '0' && d <= '7') {
+                int j = i + 1, x = 0;
+                while (j < n && j < i + 4 && v[j] >= '0' && v[j] <= '7')
+                    x = x * 8 + (v[j++] - '0');
+                out[k++] = (unsigned char)(x ? x : 0x80);
+                i = j;
+            } else {
+                out[k++] = (unsigned char)d;
+                i += 2;
+            }
+        } else if (c == '^' && i + 1 < n) {
+            char d = v[i + 1];
+            out[k++] = (unsigned char)(d == '?' ? 0x7F : ((d >= 'a' && d <= 'z' ? d - 32 : d) & 0x1F));
+            i += 2;
+        } else {
+            out[k++] = (unsigned char)c;
+            i++;
+        }
+    }
+    return k;
+}
+
+static void hexstr(char *out, const unsigned char *s, int n)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    int i;
+    for (i = 0; i < n; i++) {
+        *out++ = hex[s[i] >> 4];
+        *out++ = hex[s[i] & 15];
+    }
+    *out = 0;
+}
+
+static void xtgettcap_answers_every_terminfo_capability(void)
+{
+    static char text[16384], body[16384];
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    FILE *f = fopen("terminfo/vtcon.terminfo", "r");
+    long n = f ? (long)fread(text, 1, sizeof(text) - 1, f) : 0;
+    long i, b = 0;
+    int caps = 0, bad = 0, first = 1;
+    char *line;
+    if (f)
+        fclose(f);
+    CHECK(n > 0);
+    text[n] = 0;
+    /* the entry's body: no comment lines, no names line */
+    for (line = strtok(text, "\n"); line; line = strtok(0, "\n")) {
+        while (*line == ' ' || *line == '\t')
+            line++;
+        if (!*line || *line == '#')
+            continue;
+        if (first) {
+            first = 0;
+            continue;
+        }
+        b += (long)strlen(strcpy(body + b, line));
+        body[b++] = ' ';
+    }
+    body[b] = 0;
+    for (i = 0; i < b;) {
+        long e = i;
+        char name[32], q[96], want[700];
+        unsigned char val[300];
+        int vl = 0, nl, kind;
+        while (e < b && body[e] != ',')
+            e += body[e] == '\\' ? 2 : 1;
+        while (i < e && body[i] == ' ')
+            i++;
+        if (i < e) {
+            long eq = i;
+            while (eq < e && body[eq] != '=' && body[eq] != '#')
+                eq++;
+            nl = (int)(eq - i);
+            memcpy(name, body + i, (size_t)nl);
+            name[nl] = 0;
+            kind = eq == e ? 'b' : body[eq];
+            if (kind == '=')
+                vl = ti_unescape(body + eq + 1, (int)(e - eq - 1), val);
+            else if (kind == '#') {
+                long x = strtol(body + eq + 1, 0, 0);
+                fmt3((char *)val, "", x, "");
+                vl = (int)strlen((char *)val);
+            }
+            if (strcmp(name, "RGB")) { /* RGB answers xterm's 8/8/8 (caps_extra) */
+                strcpy(q, "\033P+q");
+                hexstr(q + 4, (unsigned char *)name, nl);
+                strcat(q, "\033\\");
+                h_put(t, q);
+                strcpy(want, "\033P1+r");
+                hexstr(want + 5, (unsigned char *)name, nl);
+                if (kind != 'b') {
+                    strcat(want, "=");
+                    hexstr(want + strlen(want), val, vl);
+                }
+                strcat(want, "\033\\");
+                if (h_reply_len != (int)strlen(want) || memcmp(h_reply, want, strlen(want))) {
+                    printf("    XTGETTCAP %s: [%.*s]\n", name, h_reply_len, h_reply);
+                    bad++;
+                }
+                h_reply_clear();
+            }
+            caps++;
+        }
+        i = e + 1;
+    }
+    CHECK(caps > 250);                             /* the whole entry was read */
+    CHECK_INT(bad, 0);
+    h_put(t, "\033P+q4E6F7065\033\\");              /* "Nope" */
+    REPLY("\033P0+r4E6F7065\033\\");
+    h_put(t, "\033P+q524742\033\\");                /* RGB */
+    REPLY("\033P1+r524742=382F382F38\033\\");
+    vt_free(t);
+}
+
 void suite_protocol(void)
 {
+    xtgettcap_answers_every_terminfo_capability();
     termurl_round_trips_and_refuses_what_it_cannot_quote();
     osc7_keeps_the_working_directory();
     osc8_hyperlinks_stay_with_their_cells();

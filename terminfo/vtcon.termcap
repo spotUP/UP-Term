@@ -1,6 +1,6 @@
 #	Reconstructed via infocmp from file: build/terminfo/76/vtcon
 vtcon|vtcon Amiga console (xterm personality):\
-	:NP:am:km:mi:ms:ut:xn:\
+	:NP:am:cc:hs:km:mi:ms:ut:xn:\
 	:Co#256:co#80:it#8:li#24:pa#32767:\
 	:#2=\E[1;2H:#3=\E[2;2~:#4=\E[1;2D:%1=\E[28~:%c=\E[6;2~:\
 	:%e=\E[5;2~:%i=\E[1;2C:*4=\E[3;2~:*7=\E[1;2F:@7=\EOF:\
@@ -8,24 +8,39 @@ vtcon|vtcon Amiga console (xterm personality):\
 	:DC=\E[%dP:DL=\E[%dM:DO=\E[%dB:F1=\E[23~:F2=\E[24~:\
 	:F3=\E[1;2P:F4=\E[1;2Q:F5=\E[1;2R:F6=\E[1;2S:F7=\E[15;2~:\
 	:F8=\E[17;2~:F9=\E[18;2~:FA=\E[19;2~:FB=\E[20;2~:\
-	:FC=\E[21;2~:FD=\E[23;2~:FE=\E[24;2~:IC=\E[%d@:Km=\E[M:\
-	:LE=\E[%dD:RA=\E[?7l:RI=\E[%dC:SA=\E[?7h:SF=\E[%dS:\
-	:SR=\E[%dT:UP=\E[%dA:ZH=\E[3m:ZR=\E[23m:\
+	:FC=\E[21;2~:FD=\E[23;2~:FE=\E[24;2~:FF=\E[1;5P:\
+	:FG=\E[1;5Q:FH=\E[1;5R:FI=\E[1;5S:FJ=\E[15;5~:\
+	:FK=\E[17;5~:FL=\E[18;5~:FM=\E[19;5~:FN=\E[20;5~:\
+	:FO=\E[21;5~:FP=\E[23;5~:FQ=\E[24;5~:FR=\E[1;6P:\
+	:FS=\E[1;6Q:FT=\E[1;6R:FU=\E[1;6S:FV=\E[15;6~:\
+	:FW=\E[17;6~:FX=\E[18;6~:FY=\E[19;6~:FZ=\E[20;6~:\
+	:Fa=\E[21;6~:Fb=\E[23;6~:Fc=\E[24;6~:Fd=\E[1;3P:\
+	:Fe=\E[1;3Q:Ff=\E[1;3R:Fg=\E[1;3S:Fh=\E[15;3~:\
+	:Fi=\E[17;3~:Fj=\E[18;3~:Fk=\E[19;3~:Fl=\E[20;3~:\
+	:Fm=\E[21;3~:Fn=\E[23;3~:Fo=\E[24;3~:Fp=\E[1;4P:\
+	:Fq=\E[1;4Q:Fr=\E[1;4R:IC=\E[%d@:\
+	:..Ic=\E]4;%p1%d;rgb\:%p2%{255}%*%{1000}%/%2.2X/%p3%{255}%*%{1000}%/%2.2X/%p4%{255}%*%{1000}%/%2.2X\E\\:\
+	:K1=\EOw:K2=\EOu:K3=\EOy:K4=\EOq:K5=\EOs:Km=\E[M:LE=\E[%dD:\
+	:RA=\E[?7l:RI=\E[%dC:SA=\E[?7h:SF=\E[%dS:SR=\E[%dT:\
+	:UP=\E[%dA:ZH=\E[3m:ZR=\E[23m:\
 	:ac=``aaffggiijjkkllmmnnooppqqrrssttuuvvwwxxyyzz{{||}}~~:\
 	:ae=\E(B:al=\E[L:as=\E(0:bl=^G:bt=\E[Z:cb=\E[1K:cd=\E[J:\
 	:ce=\E[K:ch=\E[%i%dG:cl=\E[H\E[2J:cm=\E[%i%d;%dH:cr=\r:\
 	:cs=\E[%i%d;%dr:ct=\E[3g:cv=\E[%i%dd:dc=\E[P:dl=\E[M:\
-	:do=\n:ec=\E[%dX:ei=\E[4l:ho=\E[H:im=\E[4h:\
-	:is=\E[!p\E[?3;4l\E[4l\E>:k1=\EOP:k2=\EOQ:k3=\EOR:\
-	:k4=\EOS:k5=\E[15~:k6=\E[17~:k7=\E[18~:k8=\E[19~:\
+	:do=\n:ds=\E]2;\007:ec=\E[%dX:ei=\E[4l:fs=^G:ho=\E[H:\
+	:im=\E[4h:is=\E[!p\E[?3;4l\E[4l\E>:k1=\EOP:k2=\EOQ:\
+	:k3=\EOR:k4=\EOS:k5=\E[15~:k6=\E[17~:k7=\E[18~:k8=\E[19~:\
 	:k9=\E[20~:k;=\E[21~:kB=\E[Z:kD=\E[3~:kF=\E[1;2B:kI=\E[2~:\
 	:kN=\E[6~:kP=\E[5~:kR=\E[1;2A:kb=\177:kd=\EOB:\
 	:ke=\E[?1l\E>:kh=\EOH:kl=\EOD:kr=\EOC:ks=\E[?1h\E=:\
 	:ku=\EOA:le=^H:mb=\E[5m:md=\E[1m:me=\E[0m:mh=\E[2m:\
-	:mk=\E[8m:mr=\E[7m:nd=\E[C:op=\E[39;49m:r1=\Ec:\
+	:mk=\E[8m:mm=\E[?1034h:mo=\E[?1034l:mr=\E[7m:nd=\E[C:\
+	:oc=\E]104\007:op=\E[39;49m:r1=\Ec\E]104\007:\
 	:r2=\E[!p\E[?3;4l\E[4l\E>:rc=\E8:\
+	:..rp=%p1%c\E[%p2%{1}%-%db:\
 	:..sa=%?%p9%t\E(0%e\E(B%;\E[0%?%p6%t;1%;%?%p5%t;2%;%?%p2%t;4%;%?%p1%p3%|%t;7%;%?%p4%t;5%;%?%p7%t;8%;m:\
 	:sc=\E7:se=\E[27m:sf=\n:so=\E[7m:sr=\EM:st=\EH:ta=^I:\
-	:te=\E[?1049l:ti=\E[?1049h:u6=\E[%i%d;%dR:u7=\E[6n:\
-	:..u8=\E[?%[;0123456789]c:u9=\E[c:ue=\E[24m:up=\E[A:\
-	:us=\E[4m:vb=\E[?5h\E[?5l:ve=\E[?25h:vi=\E[?25l:
+	:te=\E[?1049l:ti=\E[?1049h:ts=\E]2;:u6=\E[%i%d;%dR:\
+	:u7=\E[6n:..u8=\E[?%[;0123456789]c:u9=\E[c:ue=\E[24m:\
+	:up=\E[A:us=\E[4m:vb=\E[?5h\E[?5l:ve=\E[?25h:vi=\E[?25l:\
+	:vs=\E[?12;25h:

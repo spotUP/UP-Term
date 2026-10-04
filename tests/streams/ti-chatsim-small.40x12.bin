@@ -5,12 +5,12 @@
 (B[0;1m12:02 (B[0;2m<(B[0m[32mflubba[39m(B[0;2m> (B[mit scrolls with a region
 above the input line, like irssi
 (B[0;1m12:03 (B[0;2m<(B[0m[35mlars[39m(B[0;2m> (B[måäö and é should survive[?1l>[12;1H[?1049l[?1l>Traceback (most recent call last):
-  File [35m"/Users/spot/Code/vtcon/tools/chatsim.py"[0m, line [35m72[0m, in [35m<module>[0m
+  File [35m"/Users/spot/Code/vtcon/.claude/worktrees/agent-a40d2523fe2066ed4/tools/chatsim.py"[0m, line [35m72[0m, in [35m<module>[0m
     [31mcurses.wrapper[0m[1;31m(main, int(sys.argv[1]) if len(sys.argv) > 1 else 40)[0m
     [31m~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
   File [35m"/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/lib/python3.14/curses/__init__.py"[0m, line [35m94[0m, in [35mwrapper[0m
     return func(stdscr, *args, **kwds)
-  File [35m"/Users/spot/Code/vtcon/tools/chatsim.py"[0m, line [35m60[0m, in [35mmain[0m
+  File [35m"/Users/spot/Code/vtcon/.claude/worktrees/agent-a40d2523fe2066ed4/tools/chatsim.py"[0m, line [35m60[0m, in [35mmain[0m
     [31mstatus.addstr[0m[1;31m(0, 40, "[Act: %d]" % i)[0m
     [31m~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^[0m
 [1;35m_curses.error[0m: [35maddwstr() returned ERR[0m
