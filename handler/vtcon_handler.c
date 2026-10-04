@@ -216,7 +216,7 @@ typedef struct con {
     sbar_gad sbar;
     sbar_knob knob_last;         /* the knob the window shows, for a scroll bar turned on */
     int knob_last_valid;
-    char menu[COMPLETE_NAMES];   /* the last completion's names */
+    char *menu;                  /* the last completion's names (COMPLETE_NAMES, made at the first menu) */
     int menu_len, menu_n, menu_i, menu_start;
     /* the find prompt (Right Amiga F): its own small window, open while the
      * console keeps running -- the program's output must not stop while a
@@ -266,6 +266,14 @@ typedef struct con {
     ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
 #endif
 } con;
+
+/* What one window costs (research/2026-10-04_window-memory.md), held at
+ * compile time in the 68k build itself: the build fails when one of
+ * these climbs back past its bound. Measured 2026-10-04: con 66126 ->
+ * 24402, upconf 56240 -> 17844, a request without lists 11084 -> 852. */
+typedef char con_size_bound[sizeof(con) <= 26000 ? 1 : -1];
+typedef char upconf_size_bound[sizeof(upconf) <= 18500 ? 1 : -1];
+typedef char complete_req_size_bound[sizeof(struct complete_req) <= 1024 ? 1 : -1];
 
 /* No mutable globals below this line except the library bases (the same
  * value in every process): every XCON: window is its own process running
@@ -1459,7 +1467,10 @@ static void prefs_launch(void)
                       NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
 }
 
-static int ensure_worker(con *c);
+#define WORK_COMP 1  /* the completion request (Tab, ASL, font, theme, save) */
+#define WORK_CHECK 2 /* is the first word a command */
+#define WORK_HIST 4  /* the history file */
+static int ensure_worker(con *c, int want);
 static struct Process *opener(con *c);
 
 /* Settings > Font...: the ASL font requester, in the completion worker (it
@@ -1467,7 +1478,7 @@ static struct Process *opener(con *c);
  * in finish_completion. */
 static void font_ask(con *c)
 {
-    if (c->comp_busy || !ensure_worker(c) || !c->w.win)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->w.win)
         return;
     copy_str(c->comp->word, c->w.fontname[0] ? c->w.fontname : "", COMPLETE_MAX);
     c->comp->font_size = c->w.font ? c->w.font->tf_YSize : 8;
@@ -1579,7 +1590,7 @@ static void save_ask(con *c)
 {
     prefs_fields f;
     long len;
-    if (c->comp_busy || !ensure_worker(c) || !c->conf)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->conf)
         return;
     if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
         return;
@@ -1608,7 +1619,7 @@ static void save_ask(con *c)
  * its colours put on the window in finish_completion. */
 static void theme_ask(con *c, const char *name)
 {
-    if (c->comp_busy || !ensure_worker(c) || !c->w.win)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->w.win)
         return;
     copy_str(c->comp->word, name, COMPLETE_MAX); /* a name: that theme, no requester */
     if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
@@ -2619,17 +2630,30 @@ static int copy_latin1(const le_line *le, int a, int b, char *out, int max)
     return k;
 }
 
-static int ensure_worker(con *c)
+/* The worker's reply port and the requests asked for (WORK_*), each made
+ * when it is first needed: the history's at open, the check's at the first
+ * typed word, the completion's (11 KB, with its lists) at the first Tab --
+ * not all three at open (research/2026-10-04_window-memory.md). */
+static int ensure_worker(con *c, int want)
 {
     if (!c->comp_port)
         c->comp_port = CreateMsgPort();
-    if (!c->comp)
-        c->comp = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    if (!c->check)
-        c->check = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    if (!c->hist)
-        c->hist = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    return c->comp_port && c->comp && c->check && c->hist;
+    if ((want & WORK_COMP) && !c->comp)
+        c->comp = complete_req_new(1);
+    if ((want & WORK_CHECK) && !c->check)
+        c->check = complete_req_new(0);
+    if ((want & WORK_HIST) && !c->hist)
+        c->hist = complete_req_new(0);
+    return c->comp_port && (!(want & WORK_COMP) || c->comp) && (!(want & WORK_CHECK) || c->check) &&
+           (!(want & WORK_HIST) || c->hist);
+}
+
+/* The completion menu's names (COMPLETE_NAMES), made at the first menu. */
+static char *menu_buf(con *c)
+{
+    if (!c->menu)
+        c->menu = (char *)AllocVec(COMPLETE_NAMES, MEMF_ANY);
+    return c->menu;
 }
 
 /* The process Ctrl-C goes to and whose directory completion uses
@@ -2736,7 +2760,7 @@ static void start_completion(con *c)
     int a;
     long n = 0;
     const char *extra = 0;
-    if (c->comp_busy || !ensure_worker(c))
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP))
         return;
     a = word_start(le);
     c->menu_start = a;
@@ -2753,7 +2777,7 @@ static void start_completion(con *c)
     c->comp->kingcon = 0;
     c->comp->no_cache = 0;
     c->comp->extra_len = 0;
-    if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
+    if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
         c->comp->extra_len = n;
     }
@@ -2791,7 +2815,7 @@ static void check_command(con *c)
             return;
         }
     }
-    if (!ensure_worker(c))
+    if (!ensure_worker(c, WORK_CHECK))
         return;
     copy_latin1(&c->le, 0, c->le.len, c->check->word, COMPLETE_MAX); /* then cut */
     {
@@ -2815,7 +2839,7 @@ static void check_command(con *c)
 static void history_next(con *c)
 {
     int i;
-    if (c->hist_busy || !c->hist_queue_len || !ensure_worker(c))
+    if (c->hist_busy || !c->hist_queue_len || !ensure_worker(c, WORK_HIST))
         return;
     for (i = 0; i < c->hist_queue_len && c->hist_queue[i] != '\n' && i < COMPLETE_MAX - 1; i++)
         c->hist->word[i] = c->hist_queue[i];
@@ -2844,11 +2868,9 @@ static void history_save(con *c, const unsigned char *line, int n)
 
 static void history_load(con *c)
 {
-    if (!ensure_worker(c) || c->hist_busy)
+    if (!ensure_worker(c, WORK_HIST) || c->hist_busy)
         return;
-    c->hist->data = (char *)AllocVec(HISTORY_KEEP * 2 * 256, MEMF_ANY);
-    if (!c->hist->data)
-        return;
+    c->hist->data = 0; /* the worker makes it at the file's size */
     c->hist->data_max = HISTORY_KEEP * 2 * 256;
     c->hist->mode = HISTORY_LOAD;
     if (complete_start(c->hist, c->comp_port, opener(c)))
@@ -2941,7 +2963,7 @@ static void finish_completion(con *c)
             kc_finish(c, q);
             continue;
         }
-        if (q->matches > 1 && q->names_len < (int)sizeof(c->menu)) {
+        if (q->matches > 1 && q->names_len < COMPLETE_NAMES && menu_buf(c)) {
             CopyMem(q->names, c->menu, q->names_len);
             c->menu_len = q->names_len;
             c->menu_n = q->matches;
@@ -3174,9 +3196,9 @@ static int slash_tab(con *c)
     int n, from, i, len, common, typed;
     len = copy_latin1(le, 0, le->pos, line, sizeof(line));
     /* the handler's stack is small: the candidates on the heap */
-    if (!(names = (char *)AllocVec(sizeof(c->menu), MEMF_ANY)))
+    if (!(names = (char *)AllocVec(COMPLETE_NAMES, MEMF_ANY)))
         return 0;
-    n = slash_complete(line, len, profiles, np, names, sizeof(c->menu), &from);
+    n = slash_complete(line, len, profiles, np, names, COMPLETE_NAMES, &from);
     if (n <= 0) {
         FreeVec(names);
         return 0; /* not a command line, or nothing fits: the Shell's completion */
@@ -3201,7 +3223,7 @@ static int slash_tab(con *c)
     if (n == 1 && (int)strlen(add) < COMPLETE_MAX - 1)
         strcat(add, " ");
     c->menu_n = 0;
-    if (n > 1) {
+    if (n > 1 && menu_buf(c)) {
         int k = 0;
         for (i = 0; i < n; i++)
             k += (int)strlen(names + k) + 1;
@@ -3405,7 +3427,7 @@ static void kc_tab(con *c, int mode)
     long n = 0;
     const char *extra = 0;
     int a, q;
-    if (c->comp_busy || !ensure_worker(c))
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP))
         return;
     a = le_kc_word(le, &q);
     c->kc_start = a;
@@ -3432,7 +3454,7 @@ static void kc_tab(con *c, int mode)
     c->comp->show_info = c->kc_info;
     c->comp->no_cache = !c->kc_cache;
     c->comp->extra_len = 0;
-    if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
+    if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
         c->comp->extra_len = n;
     }
@@ -5589,6 +5611,8 @@ static LONG handler_main(void)
     }
     if (c->check)
         FreeVec(c->check);
+    if (c->menu)
+        FreeVec(c->menu);
     if (c->hist) {
         if (c->hist->data)
             FreeVec(c->hist->data);

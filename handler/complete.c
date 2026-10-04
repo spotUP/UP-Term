@@ -77,6 +77,8 @@ static int entry_is(const struct complete_req *q, int k, const char *name)
 static void add_entry(struct complete_req *q, const char *name, int is_dir, int kind, char suffix)
 {
     int n, k = 0;
+    if (!q->names)
+        return; /* a request made without lists: no completion is asked of it */
     while (k < q->names_len) {
         if (entry_is(q, k, name))
             return;
@@ -438,15 +440,31 @@ static int command_exists(struct complete_req *q)
 }
 
 /* HISTORY_LOAD: the file's last HISTORY_KEEP lines into q->data (and the
- * file trimmed to them once it has grown past twice that). */
+ * file trimmed to them once it has grown past twice that). The buffer is
+ * made here at the file's size (data_max at most, and data_max when the
+ * size is not known): the window held 51 KB for a history of a few lines
+ * while it opened. */
 static void history_load(struct complete_req *q)
 {
     BPTR f = Open((STRPTR)HISTORY_FILE, MODE_OLDFILE);
-    long n, i, lines = 0, from = 0;
+    struct FileInfoBlock *fib;
+    long n, i, lines = 0, from = 0, size = q->data_max;
     q->data_len = 0;
+    q->data = 0;
     if (!f)
         return;
-    n = Read(f, q->data, q->data_max - 1);
+    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (fib) {
+        if (ExamineFH(f, fib) && fib->fib_Size > 0 && fib->fib_Size + 1 < size)
+            size = fib->fib_Size + 1;
+        FreeDosObject(DOS_FIB, fib);
+    }
+    q->data = (char *)AllocVec(size, MEMF_ANY);
+    if (!q->data) {
+        Close(f);
+        return;
+    }
+    n = Read(f, q->data, size - 1);
     Close(f);
     if (n <= 0)
         return;
@@ -703,6 +721,17 @@ static void worker(void)
     }
     Forbid(); /* the reply and our end, before the handler can free anything */
     ReplyMsg(&q->msg);
+}
+
+struct complete_req *complete_req_new(int lists)
+{
+    struct complete_req *q = (struct complete_req *)AllocVec(
+        sizeof(struct complete_req) + (lists ? COMPLETE_NAMES + COMPLETE_EXTRA : 0), MEMF_CLEAR);
+    if (q && lists) {
+        q->names = (char *)(q + 1);
+        q->extra = q->names + COMPLETE_NAMES;
+    }
+    return q;
 }
 
 int complete_start(struct complete_req *q, struct MsgPort *reply, struct Process *opener)
