@@ -30,12 +30,25 @@ typedef struct updemo_io {
  * 0 when it ran, 1 when the terminal is smaller than UPDEMO_MIN_*. */
 int updemo_run(const updemo_io *io, int cols, int rows, int first, long scene_ticks);
 
-/* how many scenes there are, and scene s's name */
+/* The tour (UPDemo TOUR; the window menu's Help > Demo tour plays it in a
+ * tab): what the terminal does, a scene each with a caption -- styles,
+ * colours, character sets, Unicode, scroll regions, a tmux split, vsh,
+ * completion, themes switched live, mouse reports, links, sixel images,
+ * synchronized output, a resize, reflow -- then some of the show's
+ * effects. Any key ends it (a mouse report does not: the mouse scene
+ * shows them). It asks the window's size (CSI 18 t) before each scene
+ * and follows it. Arguments and result as updemo_run. */
+int updemo_tour(const updemo_io *io, int cols, int rows, int first, long scene_ticks);
+
+/* how many scenes there are, and scene s's name: the show's, the tour's */
 int updemo_scenes(void);
 const char *updemo_scene_name(int s);
+int updemo_tour_scenes(void);
+const char *updemo_tour_scene_name(int s);
 
-/* After updemo_run: what scene s drew -- frames, and the 1/50 s they took
- * (a terminal benchmark: UPDemo BENCH prints frames a second per scene). */
+/* After updemo_run (or updemo_tour: its scenes): what scene s drew --
+ * frames, and the 1/50 s they took (a terminal benchmark: UPDemo BENCH
+ * prints frames a second per scene). */
 void updemo_stats(int s, long *frames, long *ticks);
 
 #endif

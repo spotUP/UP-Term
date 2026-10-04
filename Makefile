@@ -25,7 +25,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) demo/updemo.c demo/updemo.h zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/fontpair.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
+$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/fontpair.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) demo/updemo.c $(TESTS)
 
@@ -34,6 +34,10 @@ engine/vtcaps.inc: tools/gen_vtcaps.py terminfo/vtcon.terminfo
 
 render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
+
+# the themes the UPDemo tour switches between, from themes/ (committed)
+demo/tour_themes.inc: tools/gen_tour_themes.py themes/dracula-default.conf themes/solarized-dark.conf themes/gruvbox-dark.conf themes/nord-default.conf
+	python3 tools/gen_tour_themes.py
 
 # engine/vtwidth.h from the Unicode character database (glibc's wcwidth rules;
 # the UCD files are fetched once into build/ucd/). UNICODE= another version.
@@ -284,12 +288,12 @@ $(BUILD)/amiga/dsrtime: tests/amiga/dsrtime.c
 
 # UP-Term's show-off (demo/updemo.h): the Amiga program, and the same
 # scenes for a Unix terminal (make demo-host; build/updemo)
-$(BUILD)/amiga/UPDemo: demo/updemo.c demo/updemo_amiga.c demo/updemo.h
+$(BUILD)/amiga/UPDemo: demo/updemo.c demo/updemo_amiga.c demo/updemo.h demo/tour_themes.inc
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ demo/updemo.c demo/updemo_amiga.c
 
 demo-host: $(BUILD)/updemo
-$(BUILD)/updemo: demo/updemo.c demo/updemo_posix.c demo/updemo.h
+$(BUILD)/updemo: demo/updemo.c demo/updemo_posix.c demo/updemo.h demo/tour_themes.inc
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -O2 -Wall -Wextra -o $@ demo/updemo.c demo/updemo_posix.c
 
