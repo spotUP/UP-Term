@@ -41,4 +41,8 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Install kit (build/UP-Term.lha: Install with Installer, or Files/install.dos) | `make dist` |
 | Install kit on the rig: Install, check, Uninstall | `python3 tools/rig/install_rig.py` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first) |
 | Width tables (engine/vtwidth.h) from the Unicode database, glibc's wcwidth rules | `make widths` (`UNICODE=16.0.0`; fetches the UCD into build/ucd once) |
+| Claude client (A2) host suites | `make test ONLY=claude_repl` (the reachability test; also `claude_http`, `claude_json`, `claude_stream`, `claude_tools`) |
+| C:Claude cross build | `make build/amiga/Claude` (in `make amiga`). Needs Roadshow's netinclude once: copy `NDK3.2R4/SANA+RoadshowTCP-IP/netinclude` to `vendor/ndk-3.2r4-netinclude` (or `VTCON_NETINCLUDE=`). https needs `AMISSL_SDK=<AmiSSL 5 SDK dir>`; without it the build refuses https |
+| AmiSSL layer, OpenSSL half, on the host | `make claude-tls-check` (Homebrew OpenSSL 3; `OPENSSL_INC=`) |
+| Recorded Claude answers for the rig (no key, no Anthropic) | `python3 tools/claude_fixture.py`, then on the Amiga `Claude URL=http://<this Mac>:8080/v1/messages ROOT=SYS:` |
 | Clean | `make clean` |
