@@ -34,6 +34,8 @@ typedef struct prefs_fields {
     char bg[UC_MAX_VALUE];
     char selfg[UC_MAX_VALUE];
     char selbg[UC_MAX_VALUE];
+    /* kept through a save, not shown: what the window takes as it is */
+    char clipboard[UC_MAX_VALUE];   /* program-clipboard: write | read-write | off (OSC 52) */
     char pal[16][16];
     int cursor;     /* PREFS_CURSOR_* */
     int bell;       /* PREFS_BELL_* */

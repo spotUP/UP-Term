@@ -114,6 +114,17 @@ struct vt_term {
     int str_esc;
     char str[VT_STR_MAX];
     int str_len;
+    /* OSC 52: its payload streams past str, base64 decoded as it comes
+     * into a buffer that grows to VT_CLIP_MAX (osc52_byte) */
+    vt_u8 osc52;               /* 0 not an OSC 52; 1 its selection; 2 its data */
+    vt_u8 clip_bad, clip_query;
+    char clip_sel[8];
+    int clip_nsel;
+    vt_u8 *clip;
+    long clip_len, clip_cap;
+    vt_u32 b64_acc;
+    int b64_n, b64_pad;
+    int clip_access;           /* VT_CLIP_*: what the host lets OSC 52 do */
 
     /* UTF-8 decoder (xterm) */
     vt_u32 u_cp;
@@ -2774,10 +2785,220 @@ static int osc_item(const vt_term *t, int *i, const char **item)
     return k;
 }
 
+/* ---- OSC 52: the clipboard -------------------------------------------------
+ * OSC 52 ; selection ; base64 ST sets it, OSC 52 ; selection ; ? ST asks.
+ * A payload is as big as what was copied, so it never goes into str: the
+ * bytes after "52;" stream through osc52_byte, decoded as they come into a
+ * buffer that grows to VT_CLIP_MAX; past that the set is dropped whole. */
+
+static void osc52_begin(vt_term *t)
+{
+    t->osc52 = 1;
+    t->clip_nsel = 0;
+    t->clip_sel[0] = 0;
+    t->clip_bad = t->clip_query = 0;
+    t->clip_len = 0;
+    t->b64_acc = 0;
+    t->b64_n = t->b64_pad = 0;
+}
+
+static void clip_drop(vt_term *t)
+{
+    if (t->clip)
+        VT_FREE(t->clip);
+    t->clip = 0;
+    t->clip_cap = t->clip_len = 0;
+}
+
+static void clip_put(vt_term *t, vt_u8 b)
+{
+    if (t->clip_bad)
+        return;
+    if (t->clip_len == t->clip_cap) {
+        long cap = t->clip_cap ? t->clip_cap * 2 : 1024;
+        vt_u8 *n;
+        if (cap > VT_CLIP_MAX)
+            cap = VT_CLIP_MAX;
+        if (t->clip_len >= cap || !(n = (vt_u8 *)VT_MALLOC(cap))) {
+            t->clip_bad = 1; /* too big, or no memory: the whole set goes */
+            clip_drop(t);
+            return;
+        }
+        if (t->clip_len)
+            memcpy(n, t->clip, t->clip_len);
+        if (t->clip)
+            VT_FREE(t->clip);
+        t->clip = n;
+        t->clip_cap = cap;
+    }
+    t->clip[t->clip_len++] = b;
+}
+
+static int b64_value(vt_u32 c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return (int)(c - 'A');
+    if (c >= 'a' && c <= 'z')
+        return (int)(c - 'a' + 26);
+    if (c >= '0' && c <= '9')
+        return (int)(c - '0' + 52);
+    if (c == '+')
+        return 62;
+    if (c == '/')
+        return 63;
+    return -1;
+}
+
+/* The bytes a group of n base64 digits (2-4) in acc stands for. */
+static void b64_flush(vt_term *t)
+{
+    vt_u32 a = t->b64_acc << (6 * (4 - t->b64_n));
+    if (t->b64_n == 1)
+        t->clip_bad = 1; /* six bits are no byte */
+    if (t->b64_n >= 2)
+        clip_put(t, (vt_u8)(a >> 16));
+    if (t->b64_n >= 3)
+        clip_put(t, (vt_u8)(a >> 8));
+    if (t->b64_n == 4)
+        clip_put(t, (vt_u8)a);
+    t->b64_acc = 0;
+    t->b64_n = 0;
+}
+
+static void osc52_byte(vt_term *t, vt_u32 c)
+{
+    int v;
+    if (t->osc52 == 1) { /* the selection: c, p, q, s, 0-7, or none */
+        if (c == ';')
+            t->osc52 = 2;
+        else if (t->clip_nsel < (int)sizeof(t->clip_sel) - 1)
+            t->clip_sel[t->clip_nsel++] = (char)c, t->clip_sel[t->clip_nsel] = 0;
+        return;
+    }
+    if (t->clip_bad)
+        return;
+    if (c == '?' && !t->clip_len && !t->b64_n && !t->b64_pad && !t->clip_query) {
+        t->clip_query = 1;
+        return;
+    }
+    if (t->clip_query) {
+        t->clip_bad = 1;
+        return;
+    }
+    if (c == '=') {
+        if (t->b64_n < 2 || ++t->b64_pad + t->b64_n > 4)
+            t->clip_bad = 1;
+        return;
+    }
+    if ((v = b64_value(c)) < 0 || t->b64_pad) {
+        t->clip_bad = 1; /* not base64 (or data after the padding): ignored, as xterm does */
+        clip_drop(t);
+        return;
+    }
+    t->b64_acc = (t->b64_acc << 6) | (vt_u32)v;
+    if (++t->b64_n == 4)
+        b64_flush(t);
+}
+
+/* OSC 52 ; selection ; ? -- the clipboard, base64, in the request's ST. */
+static void osc52_answer(vt_term *t)
+{
+    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    vt_u8 *data = (vt_u8 *)VT_MALLOC(VT_CLIP_QUERY_MAX);
+    char *b;
+    long n, i, k = 0;
+    if (!data)
+        return;
+    n = t->cb.clipboard_get(t->user, data, VT_CLIP_QUERY_MAX);
+    if (n < 0)
+        n = 0;
+    if (n > VT_CLIP_QUERY_MAX)
+        n = VT_CLIP_QUERY_MAX;
+    b = (char *)VT_MALLOC((n + 2) / 3 * 4 + 32);
+    if (b) {
+        b[k++] = 0x1B;
+        b[k++] = ']';
+        b[k++] = '5';
+        b[k++] = '2';
+        b[k++] = ';';
+        for (i = 0; t->clip_sel[i]; i++)
+            b[k++] = t->clip_sel[i];
+        if (!i)
+            b[k++] = 'c';
+        b[k++] = ';';
+        for (i = 0; i < n; i += 3) {
+            vt_u32 v = (vt_u32)data[i] << 16 | (i + 1 < n ? (vt_u32)data[i + 1] << 8 : 0) |
+                       (i + 2 < n ? data[i + 2] : 0);
+            b[k++] = a[(v >> 18) & 63];
+            b[k++] = a[(v >> 12) & 63];
+            b[k++] = i + 1 < n ? a[(v >> 6) & 63] : '=';
+            b[k++] = i + 2 < n ? a[v & 63] : '=';
+        }
+        k = put_st(t, b, (int)k);
+        reply(t, b, (int)k);
+        VT_FREE(b);
+    }
+    VT_FREE(data);
+}
+
+static void osc52_end(vt_term *t)
+{
+    if (t->osc52 == 2 && !t->clip_bad) {
+        if (t->clip_query) {
+            if ((t->clip_access & VT_CLIP_READ) && t->cb.clipboard_get)
+                osc52_answer(t);
+        } else {
+            if (t->b64_n)
+                b64_flush(t); /* base64 without its padding */
+            if (!t->clip_bad && (t->clip_access & VT_CLIP_WRITE) && t->cb.clipboard_set)
+                t->cb.clipboard_set(t->user, t->clip_sel, t->clip ? t->clip : (const vt_u8 *)"",
+                                    t->clip_len);
+        }
+    }
+    t->osc52 = 0;
+    clip_drop(t); /* a megabyte is not kept for the next one */
+}
+
+void vt_set_clipboard_access(vt_term *t, int bits)
+{
+    if (t)
+        t->clip_access = bits & (VT_CLIP_WRITE | VT_CLIP_READ);
+}
+
+long vt_utf8_to_latin1(const char *in, long n, char *out)
+{
+    long i, k = 0;
+    for (i = 0; i < n; i++) {
+        unsigned char b = (unsigned char)in[i];
+        if (b < 0x80) {
+            out[k++] = (char)b;
+        } else if ((b & 0xE0) == 0xC0 && i + 1 < n) {
+            unsigned cp = ((b & 0x1F) << 6) | (in[i + 1] & 0x3F);
+            out[k++] = (char)(cp < 0x100 ? cp : '?');
+            i++;
+        } else if ((b & 0xC0) != 0x80) {
+            out[k++] = '?'; /* beyond Latin-1 (its continuation bytes are skipped) */
+        }
+    }
+    return k;
+}
+
+long vt_latin1_to_utf8(const char *in, long n, char *out, long max)
+{
+    long i, k = 0;
+    for (i = 0; i < n && k + 2 <= max; i++)
+        k += put_utf8((vt_u8 *)out + k, (unsigned char)in[i]);
+    return k;
+}
+
 static void osc_dispatch(vt_term *t)
 {
     int i = 0, changed = 0;
     long cmd = 0;
+    if (t->osc52) {
+        osc52_end(t);
+        return;
+    }
     t->str[t->str_len] = 0;
     while (i < t->str_len && t->str[i] >= '0' && t->str[i] <= '9')
         cmd = cmd * 10 + (t->str[i++] - '0');
@@ -3073,6 +3294,7 @@ static void enter_string(vt_term *t, vt_u8 kind)
     t->state = kind == ']' ? S_OSC : S_STRING;
     t->str_kind = kind;
     t->str_len = 0;
+    t->osc52 = 0;
     t->str_esc = 0;
     t->str_bel = 0;
 }
@@ -3131,6 +3353,14 @@ static void feed(vt_term *t, vt_u32 c)
             end_string(t);
             return;
         } else {
+            if (t->osc52) {
+                osc52_byte(t, c); /* the payload streams past str */
+                return;
+            }
+            if (t->state == S_OSC && t->str_len == 2 && c == ';' && t->str[0] == '5' && t->str[1] == '2') {
+                osc52_begin(t);
+                return;
+            }
             if ((t->state == S_OSC || t->str_kind == 'P') && c >= 0x20 &&
                 t->str_len < VT_STR_MAX - 1) {
                 if (c < 0x80)
@@ -3435,6 +3665,7 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->tabs = (vt_u8 *)VT_MALLOC(cols);
     t->utf8 = 1;
     t->bold_bright = 1;
+    t->clip_access = VT_CLIP_WRITE;
     t->sb_cap = scrollback > 0 ? scrollback : 0;
     if (t->sb_cap)
         t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
@@ -3504,6 +3735,8 @@ void vt_free(vt_term *t)
         VT_FREE(t->sb);
     if (t->tabs)
         VT_FREE(t->tabs);
+    if (t->clip)
+        VT_FREE(t->clip);
     VT_FREE(t);
 }
 

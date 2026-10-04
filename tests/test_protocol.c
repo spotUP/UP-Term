@@ -462,8 +462,185 @@ static void kitty_event_alternate_all_and_text_flags(void)
     vt_free(t);
 }
 
+/* ---- a terminal with the host callbacks the OSC tests need ---- */
+
+static struct {
+    char sel[16];
+    unsigned char *data;
+    long len;
+    int sets;
+    const char *give;          /* what the "clipboard" holds for a query */
+} hb;
+
+static void p_reply(void *u, const vt_u8 *b, long n)
+{
+    (void)u;
+    if (h_reply_len + n < (long)sizeof(h_reply) - 1) {
+        memcpy(h_reply + h_reply_len, b, (size_t)n);
+        h_reply_len += (int)n;
+        h_reply[h_reply_len] = 0;
+    }
+}
+
+static void p_clip_set(void *u, const char *sel, const vt_u8 *data, long len)
+{
+    (void)u;
+    strncpy(hb.sel, sel, sizeof(hb.sel) - 1);
+    free(hb.data);
+    hb.data = (unsigned char *)malloc((size_t)len + 1);
+    memcpy(hb.data, data, (size_t)len);
+    hb.len = len;
+    hb.sets++;
+}
+
+static long p_clip_get(void *u, vt_u8 *buf, long max)
+{
+    long n = hb.give ? (long)strlen(hb.give) : 0;
+    (void)u;
+    if (n > max)
+        n = max;
+    memcpy(buf, hb.give, (size_t)n);
+    return n;
+}
+
+static vt_term *p_new(int cols, int rows)
+{
+    vt_callbacks cb;
+    vt_term *t;
+    memset(&cb, 0, sizeof(cb));
+    cb.reply = p_reply;
+    cb.clipboard_set = p_clip_set;
+    cb.clipboard_get = p_clip_get;
+    t = vt_new(cols, rows, 100, &cb, 0);
+    free(hb.data);
+    memset(&hb, 0, sizeof(hb));
+    h_reply_clear();
+    return t;
+}
+
+/* ---- G3-12: OSC 52, the clipboard ---- */
+
+static long b64(const unsigned char *in, long n, char *out)
+{
+    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    long i, k = 0;
+    for (i = 0; i + 2 < n; i += 3) {
+        out[k++] = a[in[i] >> 2];
+        out[k++] = a[((in[i] & 3) << 4) | (in[i + 1] >> 4)];
+        out[k++] = a[((in[i + 1] & 15) << 2) | (in[i + 2] >> 6)];
+        out[k++] = a[in[i + 2] & 63];
+    }
+    if (n - i == 1) {
+        out[k++] = a[in[i] >> 2];
+        out[k++] = a[(in[i] & 3) << 4];
+        out[k++] = '=';
+        out[k++] = '=';
+    } else if (n - i == 2) {
+        out[k++] = a[in[i] >> 2];
+        out[k++] = a[((in[i] & 3) << 4) | (in[i + 1] >> 4)];
+        out[k++] = a[(in[i + 1] & 15) << 2];
+        out[k++] = '=';
+    }
+    out[k] = 0;
+    return k;
+}
+
+/* A program sets the clipboard with OSC 52 ; c ; base64 -- of any size up
+ * to 1 MB, in as many writes as it comes (the 256-byte string buffer never
+ * held a payload). */
+static void osc52_sets_the_clipboard_in_any_size(void)
+{
+    vt_term *t = p_new(20, 3);
+    long n = 300000L, i, k;
+    unsigned char *big = (unsigned char *)malloc((size_t)n);
+    char *enc = (char *)malloc((size_t)n * 2);
+    h_put(t, "\033]52;c;aGVsbG8gd29ybGQ=\007");
+    CHECK_INT(hb.sets, 1);
+    CHECK_INT(hb.len, 11);
+    CHECK_INT(memcmp(hb.data, "hello world", 11), 0);
+    CHECK_STR(hb.sel, "c");
+    for (i = 0; i < n; i++)
+        big[i] = (unsigned char)(i * 7 + (i >> 9));
+    k = b64(big, n, enc);
+    h_put(t, "\033]52;;");
+    for (i = 0; i < k; i += 1000)                  /* in 1000-byte writes */
+        vt_write(t, (const vt_u8 *)enc + i, k - i < 1000 ? k - i : 1000);
+    h_put(t, "\033\\");
+    CHECK_INT(hb.sets, 2);
+    CHECK_INT(hb.len, n);
+    CHECK_INT(memcmp(hb.data, big, (size_t)n), 0);
+    CHECK_STR(h_screen(t), "");                    /* none of it on the screen */
+    h_put(t, "\033]52;c;!!!!\007");                /* not base64: ignored */
+    CHECK_INT(hb.sets, 2);
+    h_put(t, "\033]52;c;\007");                    /* empty: the clipboard emptied */
+    CHECK_INT(hb.sets, 3);
+    CHECK_INT(hb.len, 0);
+    free(big);
+    free(enc);
+    vt_free(t);
+}
+
+/* Past 1 MB the set is dropped whole (no half clipboard), and the
+ * terminal goes on as before. */
+static void osc52_larger_than_a_megabyte_is_dropped(void)
+{
+    vt_term *t = p_new(20, 3);
+    long i;
+    char chunk[4097];
+    memset(chunk, 'Q', 4096);
+    chunk[4096] = 0;
+    h_put(t, "\033]52;c;");
+    for (i = 0; i < 342; i++)                      /* 1.4 MB of base64: 1.05 MB of data */
+        h_put(t, chunk);
+    h_put(t, "\007ok");
+    CHECK_INT(hb.sets, 0);
+    CHECK_STR(h_screen(t), "ok");
+    vt_free(t);
+}
+
+/* Reading the clipboard (OSC 52 ; c ; ?) is off unless the host allows
+ * it (a profile setting, as xterm's disallowedWindowOps): a remote program
+ * must not read what the user copied. */
+static void osc52_query_only_when_the_host_allows_it(void)
+{
+    vt_term *t = p_new(20, 3);
+    hb.give = "secret";
+    h_put(t, "\033]52;c;?\007");
+    CHECK_INT(h_reply_len, 0);
+    vt_set_clipboard_access(t, VT_CLIP_WRITE | VT_CLIP_READ);
+    h_put(t, "\033]52;c;?\007");
+    REPLY("\033]52;c;c2VjcmV0\007");
+    h_put(t, "\033]52;p;?\033\\");
+    REPLY("\033]52;p;c2VjcmV0\033\\");
+    vt_set_clipboard_access(t, 0);                 /* off: no writes either */
+    h_put(t, "\033]52;c;aGk=\007");
+    CHECK_INT(hb.sets, 0);
+    h_put(t, "\033c");                             /* a host setting: RIS leaves it */
+    vt_set_clipboard_access(t, VT_CLIP_WRITE);
+    h_put(t, "\033c\033]52;c;aGk=\007");
+    CHECK_INT(hb.sets, 1);
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* The host's clipboard is Latin-1: the conversions both ways. */
+static void utf8_and_latin1_conversions(void)
+{
+    char out[32];
+    long n = vt_utf8_to_latin1("a\xc3\xa9\xe2\x82\xac", 6, out);
+    CHECK_INT(n, 3);
+    CHECK_INT(memcmp(out, "a\xe9?", 3), 0);        /* the euro sign has no Latin-1 */
+    n = vt_latin1_to_utf8("a\xe9", 2, out, sizeof(out));
+    CHECK_INT(n, 3);
+    CHECK_INT(memcmp(out, "a\xc3\xa9", 3), 0);
+}
+
 void suite_protocol(void)
 {
+    osc52_sets_the_clipboard_in_any_size();
+    osc52_larger_than_a_megabyte_is_dropped();
+    osc52_query_only_when_the_host_allows_it();
+    utf8_and_latin1_conversions();
     kitty_keyboard_flags_stack_per_screen();
     kitty_disambiguate_flag();
     kitty_event_alternate_all_and_text_flags();

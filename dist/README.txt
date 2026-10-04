@@ -83,6 +83,10 @@ CONFIGURATION (profiles)
      meta = amiga              amiga (Left Amiga = Meta) | alt (the Alt keys)
      copy-on-select = off      on: a drag ends with the selection on the clipboard
      wheel = scroll            scroll | ignore (the mouse wheel moves the scrollback)
+     program-clipboard = write write | read-write | off: programs set the
+                               clipboard (OSC 52: tmux, neovim over ssh);
+                               read-write also lets them read it, which a
+                               remote host can then do too -- off by default
      palette = 1,0x00CD00,4,0x5C5CFF
                                remap ANSI colours: index,RRGGBB pairs
 

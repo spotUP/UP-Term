@@ -914,6 +914,10 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "meta", 0);
     if (v)
         c->w.meta_alt = str_ieq(v, "alt");
+    v = upconf_str(c->conf, p, "program-clipboard", 0);
+    if (v) /* OSC 52: write (default) | read-write | off */
+        c->w.clip_access = str_ieq(v, "off") ? 0 : str_ieq(v, "read-write") ? VT_CLIP_WRITE | VT_CLIP_READ
+                         : VT_CLIP_WRITE;
     v = upconf_str(c->conf, p, "copy-on-select", 0);
     if (v)
         c->w.copy_on_select = str_ieq(v, "on");

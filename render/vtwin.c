@@ -120,6 +120,51 @@ static void cb_colors(void *u)
         vr_set_cursor_color(&w->r, vt_default_color(w->t, 2));
 }
 
+/* OSC 52 from a program: its text (UTF-8, or the window's 8-bit set) to
+ * the clipboard, which holds Latin-1. */
+static void cb_clipboard_set(void *u, const char *sel, const vt_u8 *data, long len)
+{
+    vtwin *w = (vtwin *)u;
+    char *lat = (char *)AllocVec(len + 1, MEMF_ANY); /* not static: every window's process runs this */
+    long n;
+    /* the Amiga has one clipboard (unit 0), for c, p, s and 0-7 alike; a
+     * set of xterm's secondary selection (q) alone is not the clipboard */
+    if (sel[0] == 'q' && !sel[1]) {
+        if (lat)
+            FreeVec(lat);
+        return;
+    }
+    if (!lat)
+        return;
+    if (w->latin1 || w->cp437) {
+        memcpy(lat, data, len);
+        n = len;
+    } else {
+        n = vt_utf8_to_latin1((const char *)data, len, lat);
+    }
+    clip_write(lat, n);
+    FreeVec(lat);
+}
+
+/* OSC 52 ; ? -- only when the profile allows it (program-clipboard =
+ * read-write): the clipboard as the program reads text. */
+static long cb_clipboard_get(void *u, vt_u8 *buf, long max)
+{
+    vtwin *w = (vtwin *)u;
+    long half = max / 2, n;
+    char *lat = (char *)AllocVec(half + 1, MEMF_ANY);
+    if (!lat)
+        return 0;
+    n = clip_read(lat, half + 1);
+    if (w->latin1 || w->cp437) {
+        memcpy(buf, lat, n);
+    } else {
+        n = vt_latin1_to_utf8(lat, n, (char *)buf, max);
+    }
+    FreeVec(lat);
+    return n;
+}
+
 /* Amiga page length, line length and offsets (CSI t / u / x / y): the text
  * area changes, as the console recomputes it (-1: back to automatic). The
  * resize happens after the write that asked for it (see vtwin_write()). */
@@ -153,6 +198,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->cursor_blink = 0;
     w->meta_alt = 0;
     w->copy_on_select = 0;
+    w->clip_access = VT_CLIP_WRITE; /* OSC 52 sets the clipboard, never reads it */
     for (i = 0; i < 16; i++)
         w->pal16[i] = 0;
     w->fallback[0] = 0;
@@ -503,6 +549,7 @@ static void settings(vtwin *w)
     vt_set_bold_bright(w->t, w->bold_bright);
     vt_set_cursor_style(w->t, w->cursor_style);
     vt_set_cursor_blink(w->t, w->cursor_blink);
+    vt_set_clipboard_access(w->t, w->no_clipboard ? 0 : w->clip_access);
     for (i = 0; i < 16; i++)
         if (w->pal16[i] & 0x01000000UL)
             vt_set_palette(w->t, i, w->pal16[i] & 0xFFFFFFUL);
@@ -524,6 +571,7 @@ int vtwin_attach(vtwin *w, struct Window *win)
     w->win = win;
     if (!w->font)
         vtwin_open_font(w);
+    memset(&cb, 0, sizeof(cb)); /* a callback the engine gains is off until set here */
     cb.damage = cb_damage;
     cb.scroll = cb_scroll;
     cb.reply = cb_reply;
@@ -531,6 +579,8 @@ int vtwin_attach(vtwin *w, struct Window *win)
     cb.title = cb_title;
     cb.layout = cb_layout;
     cb.colors = cb_colors;
+    cb.clipboard_set = cb_clipboard_set; /* vt_set_clipboard_access (settings) says what may run */
+    cb.clipboard_get = cb_clipboard_get;
     {
         /* size from the window before the engine exists */
         int cols = (win->Width - win->BorderLeft - win->BorderRight) / w->font->tf_XSize;
@@ -872,29 +922,17 @@ static long keypad_key(UWORD code)
 static void copy_selection(vtwin *w)
 {
     /* allocated, not static: every window's process runs this code */
-    char *utf, *lat;
+    char *utf;
     int ax, ay, bx, by;
-    long n, i, k = 0;
+    long n;
     if (!vr_selection(&w->r, &ax, &ay, &bx, &by))
         return;
     utf = (char *)AllocVec(16384, MEMF_ANY);
     if (!utf)
         return;
-    lat = utf; /* converted in place: Latin-1 is never longer */
     n = vt_copy_text(w->t, ax, ay, bx, by, utf, 16384);
-    for (i = 0; i < n; i++) {
-        unsigned char b = (unsigned char)utf[i];
-        if (b < 0x80) {
-            lat[k++] = (char)b;
-        } else if ((b & 0xE0) == 0xC0 && i + 1 < n) {
-            unsigned cp = ((b & 0x1F) << 6) | (utf[i + 1] & 0x3F);
-            lat[k++] = (char)(cp < 0x100 ? cp : '?');
-            i++;
-        } else if ((b & 0xC0) != 0x80) {
-            lat[k++] = '?'; /* beyond Latin-1 */
-        }
-    }
-    clip_write(lat, k);
+    n = vt_utf8_to_latin1(utf, n, utf); /* in place: Latin-1 is never longer */
+    clip_write(utf, n);
     FreeVec(utf);
 }
 

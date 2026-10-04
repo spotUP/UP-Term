@@ -111,6 +111,15 @@ typedef struct vt_callbacks {
     /* A program changed the palette (OSC 4 / 104) or the default colours
      * (OSC 10-12 / 110-112): the renderer's pens are out of date. */
     void (*colors)(void *user);
+    /* OSC 52: a program sets the clipboard -- len bytes, as the program
+     * sent them (UTF-8 in a UTF-8 window), 0 to empty it. sel is the
+     * selection parameter ("c", "p", "s0"... or ""). Only while
+     * vt_set_clipboard_access allows writing (it does by default). */
+    void (*clipboard_set)(void *user, const char *sel, const vt_u8 *data, long len);
+    /* OSC 52 query: up to max bytes of the clipboard as UTF-8; the length.
+     * Asked only while vt_set_clipboard_access allows reading (it does
+     * not by default). */
+    long (*clipboard_get)(void *user, vt_u8 *buf, long max);
 } vt_callbacks;
 
 /* vt_modes() bits the host needs for input. */
@@ -284,6 +293,22 @@ int      vt_cursor_style(const vt_term *t);
 /* The DECSCUSR default the host wants before the first output (a profile);
  * a program's DECSCUSR still overrides it. */
 void     vt_set_cursor_style(vt_term *t, int style);
+
+/* What OSC 52 may do with the host's clipboard: write (VT_CLIP_WRITE, the
+ * default -- kitty, foot, WezTerm allow it) and read (VT_CLIP_READ, off by
+ * default: a remote program reading what the user copied is a leak, which
+ * is why xterm's disallowedWindowOps has it). A host setting (the profile's
+ * program-clipboard); vt_reset leaves it. A set larger than VT_CLIP_MAX
+ * bytes is dropped whole; a query answers at most VT_CLIP_QUERY_MAX. */
+#define VT_CLIP_WRITE 1
+#define VT_CLIP_READ  2
+#define VT_CLIP_MAX       1048576L
+#define VT_CLIP_QUERY_MAX 65536L
+void     vt_set_clipboard_access(vt_term *t, int bits);
+/* UTF-8 to Latin-1 (what has no Latin-1 becomes '?'), and back; out may
+ * be in for the first (Latin-1 is never longer). The lengths written. */
+long     vt_utf8_to_latin1(const char *in, long n, char *out);
+long     vt_latin1_to_utf8(const char *in, long n, char *out, long max);
 
 /* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
 const vt_u16 *vt_cp437_table(void);

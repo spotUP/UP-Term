@@ -80,6 +80,7 @@ typedef struct vtwin {
     int meta_alt;                /* Alt (not Left Amiga) is the ESC prefix */
     int copy_on_select;          /* a drag ends with the text on the clipboard */
     int wheel_scroll;            /* the wheel moves through the scrollback */
+    int clip_access;             /* VT_CLIP_*: what OSC 52 may do (program-clipboard; write) */
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
     int aspect_off;              /* font-aspect = off: the font as asked, on any screen */
     int aspect_known, square, square_fits; /* vtwin_set_screen: the screen's pixels */
