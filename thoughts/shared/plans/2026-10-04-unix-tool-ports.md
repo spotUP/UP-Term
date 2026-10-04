@@ -16,6 +16,9 @@ licence obligations are met in the release. Phases 4-5 are separate finish lines
 
 ## Decisions for the owner (blocking only the items named)
 
+**ANSWERED 2026-10-04 by the owner: D1 = a (current upstream), D2 = b (separate UP-Term-src.lha),
+D3 = grow vsh, D4 = am-git optional once its licence is confirmed, D5 = optional Installer component.**
+
 - **D1. Port current upstream, or ship the 1998 Geek Gadgets binaries first?**
   - Option a: port current upstream from the start.
   - Option b: ship the GG binaries (grep 2.1/2.5, sed 4.1.4, gawk 3.0.3, findutils 4.1, diffutils 2.7, patch 2.5, tar 1.12, gzip 1.2.4, less 321) now and replace them later.
