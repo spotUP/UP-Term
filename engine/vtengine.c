@@ -23,6 +23,7 @@
 #define VT_MAX_PARAMS 16
 #define VT_STR_MAX 256
 #define VT_PARAM_MAX 65535L
+#define VT_LINKS_MAX 63 /* OSC 8 links the cells may name at once */
 
 /* Parser states. */
 enum {
@@ -37,6 +38,8 @@ typedef struct vt_line {
     vt_u16 n;        /* cells in use (== cols for grid lines) */
     vt_u8 wrapped;   /* the text continues on the next line */
     vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BOTTOM */
+    vt_u8 mark;      /* OSC 133: VT_MARK_* that started on this line */
+    vt_u8 spare;
     vt_u16 used;     /* cells [used, n) are still the default blank the last
                       * line_clear wrote: clearing again need not touch them.
                       * mark() -- every change to a grid cell passes it --
@@ -76,7 +79,13 @@ struct vt_term {
     vt_color ul;           /* SGR 58 underline colour, VT_COLOR_DEFAULT = the text's */
     vt_u8 font;            /* SGR 10-20 */
     vt_u8 ext;             /* the rare-style entry of ul + font, 0 = none (style_index) */
-    struct { vt_color ul; vt_u8 font; } styles[255];
+    struct { vt_color ul; vt_u8 font; vt_u8 link; } styles[255]; /* link: OSC 8, 1 + links[] */
+    /* OSC 8 hyperlinks the cells name through their style entry; link is
+     * the one new cells get (0 none). OSC 7 cwd: the last one reported. */
+    struct { char *uri; char id[24]; } links[VT_LINKS_MAX];
+    int n_links;
+    vt_u8 link;
+    char *cwd;
     int n_styles;
     int top, bot;          /* scroll region rows [top, bot) */
     vt_u8 *tabs;
@@ -116,7 +125,9 @@ struct vt_term {
     int str_len;
     /* OSC 52: its payload streams past str, base64 decoded as it comes
      * into a buffer that grows to VT_CLIP_MAX (osc52_byte) */
-    vt_u8 osc52;               /* 0 not an OSC 52; 1 its selection; 2 its data */
+    vt_u8 osc52;               /* 0 not an OSC 52; 1 its selection; 2 its data;
+                                * 3 an OSC 7 / 8 (long_cmd) kept whole in clip */
+    vt_u8 long_cmd;
     vt_u8 clip_bad, clip_query;
     char clip_sel[8];
     int clip_nsel;
@@ -267,6 +278,7 @@ static vt_line *line_new(int cap)
         l->n = 0;
         l->wrapped = 0;
         l->dbl = 0;
+        l->mark = 0;
     }
     return l;
 }
@@ -349,6 +361,7 @@ static void line_clear(const vt_term *t, vt_line *l, int n)
     l->n = (vt_u16)n;
     l->wrapped = 0;
     l->dbl = 0;
+    l->mark = 0;
 }
 
 /* The columns row y holds: half on a double-width or -height line. */
@@ -772,6 +785,7 @@ static void erase_rows(vt_term *t, int y0, int y1)
     for (y = y0; y < y1; y++) {
         erase_cells(t, y, 0, t->cols);
         t->scr[y]->dbl = 0; /* an erased line is single size again (VT100) */
+        t->scr[y]->mark = 0;  /* and no prompt starts on it */
     }
 }
 
@@ -1047,15 +1061,16 @@ static void sweep_styles(vt_term *t)
 static vt_u8 style_index(vt_term *t)
 {
     int i, pass;
-    if (t->ul == VT_COLOR_DEFAULT && !t->font)
+    if (t->ul == VT_COLOR_DEFAULT && !t->font && !t->link)
         return 0;
     for (pass = 0; pass < 2; pass++) {
         for (i = 0; i < t->n_styles; i++)
-            if (t->styles[i].ul == t->ul && t->styles[i].font == t->font)
+            if (t->styles[i].ul == t->ul && t->styles[i].font == t->font && t->styles[i].link == t->link)
                 return (vt_u8)(i + 1);
         if (t->n_styles < 255) {
             t->styles[t->n_styles].ul = t->ul;
             t->styles[t->n_styles].font = t->font;
+            t->styles[t->n_styles].link = t->link;
             return (vt_u8)++t->n_styles;
         }
         sweep_styles(t);
@@ -1111,7 +1126,7 @@ static void sgr_reset(vt_term *t)
     t->deco = 0;
     t->ul = VT_COLOR_DEFAULT;
     t->font = 0;
-    t->ext = 0;
+    t->ext = t->link ? style_index(t) : 0; /* SGR 0 ends no hyperlink */
     if (t->pers == VT_AMIGA) {
         t->fg = t->amiga_dfg;
         t->bg = t->amiga_dbg;
@@ -2937,6 +2952,21 @@ static void b64_flush(vt_term *t)
 static void osc52_byte(vt_term *t, vt_u32 c)
 {
     int v;
+    if (t->osc52 == 3) { /* OSC 7 / 8: the text as it is, to VT_URI_MAX */
+        vt_u8 u[4];
+        int k, n;
+        if (c < 0x20 || t->clip_bad)
+            return;
+        n = put_utf8(u, (long)c);
+        if (t->clip_len + n >= VT_URI_MAX) {
+            t->clip_bad = 1;
+            clip_drop(t);
+            return;
+        }
+        for (k = 0; k < n; k++)
+            clip_put(t, u[k]);
+        return;
+    }
     if (t->osc52 == 1) { /* the selection: c, p, q, s, 0-7, or none */
         if (c == ';')
             t->osc52 = 2;
@@ -3010,8 +3040,20 @@ static void osc52_answer(vt_term *t)
     VT_FREE(data);
 }
 
+static void osc7_set(vt_term *t, const char *uri);
+static void osc8_set(vt_term *t, char *s);
+
 static void osc52_end(vt_term *t)
 {
+    if (t->osc52 == 3 && !t->clip_bad) {
+        clip_put(t, 0);
+        if (!t->clip_bad) {
+            if (t->long_cmd == 7)
+                osc7_set(t, (const char *)t->clip);
+            else
+                osc8_set(t, (char *)t->clip);
+        }
+    }
     if (t->osc52 == 2 && !t->clip_bad) {
         if (t->clip_query) {
             if ((t->clip_access & VT_CLIP_READ) && t->cb.clipboard_get)
@@ -3026,6 +3068,148 @@ static void osc52_end(vt_term *t)
     }
     t->osc52 = 0;
     clip_drop(t); /* a megabyte is not kept for the next one */
+}
+
+/* ---- OSC 7: the working directory; OSC 8: hyperlinks ------------------------ */
+
+static char *str_dup(const char *s)
+{
+    long n = (long)strlen(s) + 1;
+    char *d = (char *)VT_MALLOC(n);
+    if (d)
+        memcpy(d, s, n);
+    return d;
+}
+
+static void osc7_set(vt_term *t, const char *uri)
+{
+    char *d = str_dup(uri);
+    if (!d)
+        return;
+    if (t->cwd)
+        VT_FREE(t->cwd);
+    t->cwd = d;
+    if (t->cb.cwd)
+        t->cb.cwd(t->user, d);
+}
+
+const char *vt_cwd(const vt_term *t)
+{
+    return t->cwd ? t->cwd : "";
+}
+
+/* Room in a full link table: the style entries no cell uses go
+ * (sweep_styles), then the links no style entry names, the rest moved down
+ * and the style entries renumbered. 0 when every link is still shown. */
+static int links_sweep(vt_term *t)
+{
+    vt_u8 used[VT_LINKS_MAX + 1], remap[VT_LINKS_MAX + 1];
+    int i, k = 0;
+    sweep_styles(t);
+    memset(used, 0, sizeof(used));
+    for (i = 0; i < t->n_styles; i++)
+        used[t->styles[i].link] = 1;
+    if (t->link)
+        used[t->link] = 1; /* the one being written */
+    remap[0] = 0;
+    for (i = 1; i <= t->n_links; i++) {
+        remap[i] = 0;
+        if (used[i]) {
+            t->links[k] = t->links[i - 1];
+            remap[i] = (vt_u8)++k;
+        } else {
+            VT_FREE(t->links[i - 1].uri);
+        }
+    }
+    t->n_links = k;
+    for (i = 0; i < t->n_styles; i++)
+        t->styles[i].link = remap[t->styles[i].link];
+    t->link = remap[t->link];
+    return k < VT_LINKS_MAX;
+}
+
+/* OSC 8 ; params ; URI: the cells written from here on link to URI (an
+ * empty one ends the link). params is key=value pairs split by ':' -- id=
+ * joins cells of one link written apart (the same id and URI are one). */
+static void osc8_set(vt_term *t, char *s)
+{
+    char *uri = s, id[24];
+    int i, n;
+    id[0] = 0;
+    while (*uri && *uri != ';')
+        uri++;
+    if (!*uri)
+        return; /* no second ';': not OSC 8 */
+    *uri++ = 0;
+    for (i = 0; s[i];) { /* params: id=... */
+        int e = i;
+        while (s[e] && s[e] != ':')
+            e++;
+        if (e - i > 3 && !memcmp(s + i, "id=", 3)) {
+            n = e - i - 3 < (int)sizeof(id) - 1 ? e - i - 3 : (int)sizeof(id) - 1;
+            memcpy(id, s + i + 3, n);
+            id[n] = 0;
+        }
+        i = s[e] ? e + 1 : e;
+    }
+    t->link = 0;
+    if (*uri) {
+        for (i = 0; i < t->n_links; i++)
+            if (!strcmp(t->links[i].uri, uri) && !strcmp(t->links[i].id, id))
+                break;
+        if (i == t->n_links) {
+            char *d;
+            if (t->n_links == VT_LINKS_MAX && !links_sweep(t)) {
+                t->ext = style_index(t); /* every link is on screen: the text goes unlinked */
+                return;
+            }
+            i = t->n_links;
+            if (!(d = str_dup(uri)))
+                return;
+            t->links[i].uri = d;
+            memcpy(t->links[i].id, id, sizeof(id));
+            t->n_links++;
+        }
+        t->link = (vt_u8)(i + 1);
+    }
+    t->ext = style_index(t);
+}
+
+const char *vt_cell_link(const vt_term *t, const vt_cell *c)
+{
+    int k;
+    if (!c->ext || c->ext > t->n_styles)
+        return 0;
+    k = t->styles[c->ext - 1].link;
+    return k && k <= t->n_links ? t->links[k - 1].uri : 0;
+}
+
+/* ---- OSC 133: semantic prompt marks ----------------------------------------- */
+
+static const vt_line *line_of(const vt_term *t, long row)
+{
+    if (row >= 0)
+        return row < t->rows ? t->scr[row] : 0;
+    if (-row > t->sb_len)
+        return 0;
+    return t->sb[(t->sb_head + t->sb_cap + (int)row) % t->sb_cap];
+}
+
+int vt_row_marks(const vt_term *t, int row)
+{
+    const vt_line *l = line_of(t, row);
+    return l ? l->mark : 0;
+}
+
+long vt_find_mark(const vt_term *t, long from, int dir, int mark)
+{
+    long r, lo = -(long)t->sb_len;
+    for (r = from + dir; r >= lo && r < t->rows; r += dir) {
+        const vt_line *l = line_of(t, r);
+        if (l && (l->mark & mark))
+            return r;
+    }
+    return VT_ROW_NONE;
 }
 
 void vt_set_clipboard_access(vt_term *t, int bits)
@@ -3148,6 +3332,40 @@ static void osc_dispatch(vt_term *t)
         }
         if (changed)
             colors_changed(t);
+        return;
+    }
+    if (cmd == 133) { /* FinalTerm semantic prompt: A prompt, B command, C output, D end */
+        char k = i < t->str_len ? t->str[i] : 0;
+        int m = k == 'A' ? VT_MARK_PROMPT : k == 'B' ? VT_MARK_COMMAND : k == 'C' ? VT_MARK_OUTPUT
+              : k == 'D' ? VT_MARK_DONE : 0;
+        if (m)
+            t->scr[t->cy]->mark |= (vt_u8)m;
+        else
+            note_value(t, 'O', cmd);
+        return;
+    }
+    if (cmd == 9) { /* iTerm2's notification; 9;<digits>; is ConEmu's (progress...) */
+        int j = i;
+        while (j < t->str_len && t->str[j] >= '0' && t->str[j] <= '9')
+            j++;
+        if (!(j > i && j < t->str_len && t->str[j] == ';') && t->cb.notify)
+            t->cb.notify(t->user, "", t->str + i);
+        return;
+    }
+    if (cmd == 777) { /* urxvt / foot: 777;notify;title;body */
+        char *s = t->str + i, *b;
+        if (strncmp(s, "notify;", 7)) {
+            note_value(t, 'O', cmd);
+            return;
+        }
+        s += 7;
+        b = s;
+        while (*b && *b != ';')
+            b++;
+        if (*b)
+            *b++ = 0;
+        if (t->cb.notify)
+            t->cb.notify(t->user, s, b);
         return;
     }
     if (cmd != 0 && cmd != 2) {
@@ -3428,6 +3646,12 @@ static void feed(vt_term *t, vt_u32 c)
             }
             if (t->state == S_OSC && t->str_len == 2 && c == ';' && t->str[0] == '5' && t->str[1] == '2') {
                 osc52_begin(t);
+                return;
+            }
+            if (t->state == S_OSC && t->str_len == 1 && c == ';' && (t->str[0] == '7' || t->str[0] == '8')) {
+                osc52_begin(t); /* OSC 7 and 8: URLs, longer than str can hold */
+                t->osc52 = 3;
+                t->long_cmd = (vt_u8)(t->str[0] - '0');
                 return;
             }
             if ((t->state == S_OSC || t->str_kind == 'P') && c >= 0x20 &&
@@ -3806,11 +4030,20 @@ void vt_free(vt_term *t)
         VT_FREE(t->tabs);
     if (t->clip)
         VT_FREE(t->clip);
+    while (t->n_links)
+        VT_FREE(t->links[--t->n_links].uri);
+    if (t->cwd)
+        VT_FREE(t->cwd);
     VT_FREE(t);
 }
 
 void vt_reset(vt_term *t)
 {
+    t->link = 0; /* no hyperlink open (the cells keep theirs) */
+    if (t->cwd) {
+        VT_FREE(t->cwd); /* the shell will say again */
+        t->cwd = 0;
+    }
     t->scr = t->pri;
     t->modes = VT_MODE_CURSOR_VISIBLE | VT_MODE_AUTOREPEAT;
     if (t->pers == VT_AMIGA)
@@ -4315,6 +4548,7 @@ static int reflow_pass(vt_term *t, vt_line **out, int cols, int cx, int cy, int 
                 if (l->c[cols - 1].width == 2)
                     blank_cell(t, &l->c[cols - 1]);
                 l->dbl = old[s]->dbl;
+                l->mark = old[s]->mark;
                 out[w.ny] = l;
             }
             if (s == cy) {
@@ -4465,6 +4699,7 @@ static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is
                 nl->n = l->n;
                 nl->wrapped = l->wrapped;
                 nl->dbl = l->dbl;
+                nl->mark = l->mark;
                 VT_FREE(l);
                 l = nl;
             }

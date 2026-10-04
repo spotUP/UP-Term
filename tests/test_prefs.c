@@ -244,7 +244,7 @@ static void stage_cases(void)
     static const char file[] =
         "[profile default]\nfont = TOPAZ 8.8.font\nfont-fallback = Symbols Nerd Font Mono\n"
         "screen = fullscreen\nscreen-mode = 0x29004\nscreen-depth = 4\nbell = none\n"
-        "program-clipboard = read-write\n"
+        "program-clipboard = read-write\nlink-open = Run >NIL: OpenURL %s\n"
         "[profile vim]\nfg = C0C0C0\n";
     prefs_fields f, g;
     long len;
@@ -280,6 +280,7 @@ static void stage_cases(void)
     CHECK_STR(g.screenmode, "0x29004");
     CHECK_STR(g.screendepth, "4");
     CHECK_STR(g.clipboard, "read-write");   /* OSC 52 access (G3) survives a save */
+    CHECK_STR(g.linkopen, "Run >NIL: OpenURL %s"); /* and the OSC 8 link command */
     CHECK_INT(g.cursor, PREFS_CURSOR_BAR);
     CHECK_INT(g.blink, 1);
     CHECK_INT(g.completion, PREFS_COMPLETE_KINGCON);

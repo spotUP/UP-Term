@@ -120,6 +120,12 @@ typedef struct vt_callbacks {
      * Asked only while vt_set_clipboard_access allows reading (it does
      * not by default). */
     long (*clipboard_get)(void *user, vt_u8 *buf, long max);
+    /* OSC 7: the shell's working directory, a file: URL as the program
+     * sent it ("file://host/path", path percent-encoded). vt_cwd keeps it. */
+    void (*cwd)(void *user, const char *uri);
+    /* OSC 9 ; text (title "") and OSC 777 ; notify ; title ; body: a
+     * program asks to tell the user something. UTF-8. */
+    void (*notify)(void *user, const char *title, const char *body);
 } vt_callbacks;
 
 /* vt_modes() bits the host needs for input. */
@@ -309,6 +315,25 @@ void     vt_set_clipboard_access(vt_term *t, int bits);
  * be in for the first (Latin-1 is never longer). The lengths written. */
 long     vt_utf8_to_latin1(const char *in, long n, char *out);
 long     vt_latin1_to_utf8(const char *in, long n, char *out, long max);
+
+/* OSC 7: the last working directory a program reported (a file: URL), ""
+ * when none since vt_new or RIS. */
+const char *vt_cwd(const vt_term *t);
+/* OSC 8: the URI of the hyperlink the cell is part of, NULL when none. The
+ * pointer stays valid while a cell shows the link. Cells keep links through
+ * their rare-style index (vt_cell.ext), so a cell is no bigger for it. */
+#define VT_URI_MAX 4096 /* a longer OSC 7 / OSC 8 string is dropped */
+const char *vt_cell_link(const vt_term *t, const vt_cell *c);
+/* OSC 133 (FinalTerm semantic prompts): what started on a line -- the
+ * prompt (A), the command typed (B), its output (C), its end (D). */
+#define VT_MARK_PROMPT  1
+#define VT_MARK_COMMAND 2
+#define VT_MARK_OUTPUT  4
+#define VT_MARK_DONE    8
+int      vt_row_marks(const vt_term *t, int row); /* row as for vt_row; 0 outside */
+/* The nearest row after (dir 1) or before (dir -1) row `from` whose marks
+ * include `mark`, through the scrollback and the grid; VT_ROW_NONE. */
+long     vt_find_mark(const vt_term *t, long from, int dir, int mark);
 
 /* The CP437 code points of bytes 0x80-0xFF (pcansi decodes with it). */
 const vt_u16 *vt_cp437_table(void);

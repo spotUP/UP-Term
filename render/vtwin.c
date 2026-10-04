@@ -76,24 +76,76 @@ void vtwin_show_title(vtwin *w)
         SetWindowTitles(w->win, (UBYTE *)w->title, (UBYTE *)~0);
 }
 
+/* UTF-8 text (the engine's) as Latin-1 (Intuition's) into out, cap bytes
+ * with the NUL. */
+static void latin1_copy(char *out, int cap, const char *s)
+{
+    char lat[256];
+    long n = (long)strlen(s);
+    if (n > (long)sizeof(lat))
+        n = sizeof(lat);
+    n = vt_utf8_to_latin1(s, n, lat);
+    if (n > cap - 1)
+        n = cap - 1;
+    memcpy(out, lat, n);
+    out[n] = 0;
+}
+
 static void cb_title(void *u, const char *s)
 {
     vtwin *w = (vtwin *)u;
-    int i;
-    /* the title arrives as UTF-8; Intuition shows Latin-1 */
-    for (i = 0; *s && i < (int)sizeof(w->title) - 1; s++) {
-        unsigned char b = (unsigned char)*s;
-        if (b < 0x80) {
-            w->title[i++] = (char)b;
-        } else if ((b & 0xE0) == 0xC0 && s[1]) {
-            unsigned cp = ((b & 0x1F) << 6) | (s[1] & 0x3F);
-            w->title[i++] = (char)(cp < 0x100 ? cp : '?');
-            s++;
-        } else if ((b & 0xC0) != 0x80) {
-            w->title[i++] = '?';
-        }
+    if (w->note_frames) {
+        /* a notice is in the title bar: the new title waits behind it */
+        latin1_copy(w->note_saved, sizeof(w->note_saved), s);
+        return;
     }
-    w->title[i] = 0;
+    latin1_copy(w->title, sizeof(w->title), s);
+    if (w->win && !w->r.off)
+        vtwin_show_title(w);
+    if (w->host->titled)
+        w->host->titled(w->user);
+}
+
+/* OSC 9 / 777: the Amiga has no notification centre, so the notice takes
+ * the title bar for 5 s (the frame clock counts it down, vtwin_tick) and
+ * the window's own title comes back after. */
+#define NOTE_FRAMES (5000000L / VTWIN_FRAME_MICROS)
+static void cb_notify(void *u, const char *title, const char *body)
+{
+    vtwin *w = (vtwin *)u;
+    char text[256];
+    int n = 0;
+    if (!w->note_frames)
+        memcpy(w->note_saved, w->title, sizeof(w->note_saved));
+    if (*title) {
+        n = (int)strlen(title);
+        if (n > 120)
+            n = 120;
+        memcpy(text, title, n);
+        text[n++] = ':';
+        text[n++] = ' ';
+    }
+    strncpy(text + n, body, sizeof(text) - 1 - n);
+    text[sizeof(text) - 1] = 0;
+    latin1_copy(w->title, sizeof(w->title), text);
+    w->note_frames = w->frame_open ? (int)NOTE_FRAMES : 0; /* no clock: until the next title */
+    if (w->win && !w->r.off)
+        vtwin_show_title(w);
+    if (w->host->titled)
+        w->host->titled(w->user);
+    frame_start(w);
+}
+
+/* One frame of a notice gone; at the last the window's title is back. */
+static void note_tick(vtwin *w)
+{
+    if (!w->note_frames)
+        return;
+    if (--w->note_frames) {
+        frame_start(w);
+        return;
+    }
+    memcpy(w->title, w->note_saved, sizeof(w->title));
     if (w->win && !w->r.off)
         vtwin_show_title(w);
     if (w->host->titled)
@@ -311,6 +363,7 @@ void vtwin_tick(vtwin *w)
         WaitIO((struct IORequest *)w->frame);
         w->frame_busy = 0;
         vtwin_render(w); /* the frame is due */
+        note_tick(w);    /* a notice in the title counts down */
         if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r)))
             frame_start(w); /* that frame ended a flash or a blink phase */
     }
@@ -581,6 +634,7 @@ int vtwin_attach(vtwin *w, struct Window *win)
     cb.colors = cb_colors;
     cb.clipboard_set = cb_clipboard_set; /* vt_set_clipboard_access (settings) says what may run */
     cb.clipboard_get = cb_clipboard_get;
+    cb.notify = cb_notify;
     {
         /* size from the window before the engine exists */
         int cols = (win->Width - win->BorderLeft - win->BorderRight) / w->font->tf_XSize;
@@ -988,6 +1042,18 @@ void vtwin_paste(vtwin *w)
 static int console_key(vtwin *w, UWORD code, UWORD qual)
 {
     int page = w->r.rows > 1 ? w->r.rows - 1 : 1;
+    if ((qual & IEQUALIFIER_RCOMMAND) && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
+        (code == 0x4C || code == 0x4D)) {
+        /* Right Amiga + Shift + Up / Down: the previous / next prompt a
+         * shell marked (OSC 133) to the top of the view */
+        long r = vt_find_mark(w->t, -(long)w->r.view, code == 0x4C ? -1 : 1, VT_MARK_PROMPT);
+        if (r != VT_ROW_NONE) {
+            vr_set_view(&w->r, r < 0 ? (int)-r : 0);
+            if (!w->r.view)
+                vr_cursor_on(&w->r);
+        }
+        return 1;
+    }
     if (qual & IEQUALIFIER_RCOMMAND) {
         switch (code) {
         case 0x33: if (w->no_clipboard) return 0; copy_selection(w); return 1;
@@ -1198,6 +1264,23 @@ static void drag_to(vtwin *w, WORD mx, WORD my)
     w->drag_moved = 1;
 }
 
+/* Ctrl + click on a cell of an OSC 8 hyperlink: the owner opens it. 1 when
+ * the click was that. */
+static int link_click(vtwin *w, UWORD code, UWORD qual, WORD mx, WORD my)
+{
+    int x, y, n;
+    const vt_cell *row;
+    const char *uri;
+    if (code != SELECTDOWN || !(qual & IEQUALIFIER_CONTROL) || !w->host->open_link ||
+        !vr_cell_at(&w->r, mx, my, &x, &y))
+        return 0;
+    row = vt_row(w->t, y - w->r.view, &n);
+    if (!row || x >= n || !(uri = vt_cell_link(w->t, &row[x])))
+        return 0;
+    w->host->open_link(w->user, uri);
+    return 1;
+}
+
 /* Reports to a program that asked for them (Shift held gives the mouse back
  * to selection, as in xterm), else drag-to-select. */
 void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
@@ -1207,6 +1290,8 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
     int shift = (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0;
     if (!w->t)
         return;
+    if (!move && link_click(w, code, qual, mx, my))
+        return; /* Ctrl + click on a hyperlink: opened, not selected or reported */
     in = vr_cell_at(&w->r, mx, my, &x, &y);
     if (move) {
         drag_to(w, mx, my);

@@ -87,6 +87,10 @@ CONFIGURATION (profiles)
                                clipboard (OSC 52: tmux, neovim over ssh);
                                read-write also lets them read it, which a
                                remote host can then do too -- off by default
+     link-open = OpenURL %s    the command a Ctrl + click on a link runs
+                               (%s the URL, quoted)
+  A program's notification (OSC 9, OSC 777: a build finished...)
+  shows in the title bar for 5 seconds.
      palette = 1,0x00CD00,4,0x5C5CFF
                                remap ANSI colours: index,RRGGBB pairs
 
@@ -160,7 +164,17 @@ KEYS
   Right Amiga C / V     copy / paste (clipboard, IFF FTXT)
   Shift+PgUp / PgDn     scroll back / forward
   Right Amiga Up / Down scroll back / forward one line
-  Right Amiga T         new tab (a shell of its own, the same profile)
+  Right Amiga Shift + Up / Down
+                        to the previous / next shell prompt (vsh marks
+                        its prompts; so do fish, and bash or zsh with
+                        OSC 133 in their prompt)
+  Ctrl + click          open the link under the pointer (ls --hyperlink,
+                        gcc, delta print them): the profile's
+                        link-open = OpenURL %s  runs (%s the URL), so the
+                        OpenURL package must be installed, or name your
+                        browser's command there
+  Right Amiga T         new tab (a shell of its own, the same profile,
+                        in the directory the shell of this tab is in)
   Right Amiga 1-9       that tab; Right Amiga . and , the next / previous
                         (or click the tab bar); the close gadget closes
                         the tab you see

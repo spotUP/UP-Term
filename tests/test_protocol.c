@@ -4,6 +4,7 @@
 #include "harness.h"
 #include <stdlib.h>
 #include "../render/synchold.h"
+#include "../config/termurl.h"
 
 static void reply_is(const char *want, int line)
 {
@@ -470,6 +471,10 @@ static struct {
     long len;
     int sets;
     const char *give;          /* what the "clipboard" holds for a query */
+    char cwd[4200];
+    int cwds;
+    char note_title[128], note_body[300];
+    int notes;
 } hb;
 
 static void p_reply(void *u, const vt_u8 *b, long n)
@@ -503,6 +508,21 @@ static long p_clip_get(void *u, vt_u8 *buf, long max)
     return n;
 }
 
+static void p_cwd(void *u, const char *uri)
+{
+    (void)u;
+    strncpy(hb.cwd, uri, sizeof(hb.cwd) - 1);
+    hb.cwds++;
+}
+
+static void p_notify(void *u, const char *title, const char *body)
+{
+    (void)u;
+    strncpy(hb.note_title, title, sizeof(hb.note_title) - 1);
+    strncpy(hb.note_body, body, sizeof(hb.note_body) - 1);
+    hb.notes++;
+}
+
 static vt_term *p_new(int cols, int rows)
 {
     vt_callbacks cb;
@@ -511,6 +531,8 @@ static vt_term *p_new(int cols, int rows)
     cb.reply = p_reply;
     cb.clipboard_set = p_clip_set;
     cb.clipboard_get = p_clip_get;
+    cb.cwd = p_cwd;
+    cb.notify = p_notify;
     t = vt_new(cols, rows, 100, &cb, 0);
     free(hb.data);
     memset(&hb, 0, sizeof(hb));
@@ -659,8 +681,167 @@ static void osc_colours_take_x11_names(void)
     vt_free(t);
 }
 
+/* ---- G3-13..16: OSC 7, 8, 133, 9 and 777 ---- */
+
+/* OSC 7 tells the terminal the shell's directory (a file: URL, longer
+ * than the 256-byte string buffer when it must be); the host hears it,
+ * vt_cwd keeps the last one. */
+static void osc7_keeps_the_working_directory(void)
+{
+    vt_term *t = p_new(20, 3);
+    char url[1100];
+    CHECK_STR(vt_cwd(t), "");
+    h_put(t, "\033]7;file://amiga/Work/src\033\\");
+    CHECK_STR(vt_cwd(t), "file://amiga/Work/src");
+    CHECK_STR(hb.cwd, "file://amiga/Work/src");
+    strcpy(url, "\033]7;file:///Work/");
+    memset(url + 17, 'd', 1000);
+    strcpy(url + 1017, "\007");
+    h_put(t, url);
+    CHECK_INT((long)strlen(vt_cwd(t)), 13 + 1000); /* whole, past 256 bytes */
+    CHECK_INT(hb.cwds, 2);
+    h_put(t, "\033c");                             /* RIS: the shell will say again */
+    CHECK_STR(vt_cwd(t), "");
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* OSC 8 ; params ; URI starts a hyperlink, OSC 8 ; ; ends it. The cells
+ * keep it through the rare-style index (sizeof(vt_cell) does not grow),
+ * through SGR changes and resets, into the scrollback. */
+static void osc8_hyperlinks_stay_with_their_cells(void)
+{
+    vt_term *t = p_new(20, 3);
+    char url[700];
+    h_put(t, "a\033]8;;https://example.org/x\033\\li\033[1mn\033[0mk\033]8;;\033\\b");
+    CHECK(vt_cell_link(t, h_cell(t, 0, 0)) == 0);
+    CHECK_STR(vt_cell_link(t, h_cell(t, 1, 0)), "https://example.org/x");
+    CHECK_STR(vt_cell_link(t, h_cell(t, 3, 0)), "https://example.org/x");  /* bold */
+    CHECK_STR(vt_cell_link(t, h_cell(t, 4, 0)), "https://example.org/x");  /* after SGR 0 */
+    CHECK(vt_cell_link(t, h_cell(t, 5, 0)) == 0);
+    CHECK_INT(h_cell(t, 3, 0)->attr, VT_ATTR_BOLD);
+    /* a long URI, with an id */
+    strcpy(url, "\033]8;id=7;http://h/");
+    memset(url + 18, 'p', 600);
+    strcpy(url + 618, "\007Z\033]8;;\007");
+    h_put(t, "\r\n");
+    h_put(t, url);
+    CHECK_INT((long)strlen(vt_cell_link(t, h_cell(t, 0, 1))), 9 + 600);
+    /* the same id and URI again: the same link */
+    h_put(t, url);
+    CHECK(vt_cell_link(t, h_cell(t, 0, 1)) == vt_cell_link(t, h_cell(t, 1, 1)));
+    h_put(t, "\r\n\n\n");                           /* into the scrollback */
+    {
+        int n;
+        const vt_cell *row = vt_row(t, -1, &n);
+        CHECK(row && vt_cell_link(t, &row[1]) != 0);
+    }
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* Many links over time: the table makes room by dropping links no cell
+ * shows any more. */
+static void osc8_old_links_make_room(void)
+{
+    vt_term *t = p_new(10, 2);
+    int i;
+    for (i = 0; i < 500; i++) {
+        char b[64];
+        char *e = fmt3(b, "\033]8;;u", i, "\007x\033]8;;\007\033[H\033[2J");
+        (void)e;
+        h_put(t, b);
+    }
+    h_put(t, "\033]8;;last\007y\033]8;;\007");
+    CHECK_STR(vt_cell_link(t, h_cell(t, 0, 0)), "last");
+    vt_free(t);
+}
+
+/* OSC 133 marks the prompt (A), the command (B), its output (C) and its
+ * end (D); vt_find_mark finds the prompts back, in the scrollback too. */
+static void osc133_prompt_marks_and_jumps(void)
+{
+    vt_term *t = p_new(20, 4);
+    int i;
+    for (i = 0; i < 3; i++)
+        h_put(t, "\033]133;A\007$ \033]133;B\007ls\r\n\033]133;C\007out1\r\nout2\r\n\033]133;D;0\007");
+    h_put(t, "\033]133;A\007$ ");
+    /* 3 x 3 lines + the last prompt: rows 0..9 of 10, 4 on screen */
+    CHECK_INT(vt_row_marks(t, 3) & VT_MARK_PROMPT, VT_MARK_PROMPT);
+    CHECK_INT(vt_row_marks(t, 2) & VT_MARK_PROMPT, 0);
+    CHECK_INT(vt_row_marks(t, 1) & VT_MARK_OUTPUT, VT_MARK_OUTPUT);
+    CHECK_INT(vt_find_mark(t, 3, -1, VT_MARK_PROMPT), 0);
+    CHECK_INT(vt_find_mark(t, 0, -1, VT_MARK_PROMPT), -3);
+    CHECK_INT(vt_find_mark(t, -3, -1, VT_MARK_PROMPT), -6);
+    CHECK_INT(vt_find_mark(t, -6, -1, VT_MARK_PROMPT), VT_ROW_NONE);
+    CHECK_INT(vt_find_mark(t, -6, 1, VT_MARK_PROMPT), -3);
+    CHECK_INT(vt_find_mark(t, 0, 1, VT_MARK_PROMPT), 3);
+    CHECK_INT(vt_find_mark(t, 3, 1, VT_MARK_PROMPT), VT_ROW_NONE);
+    h_put(t, "\033[2J");                            /* an erased line forgets its mark */
+    CHECK_INT(vt_row_marks(t, 3), 0);
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* OSC 9 (iTerm2) and OSC 777 ; notify (urxvt, foot) reach the host as a
+ * notification; OSC 9 ; 4 ; ... (a progress report) is not one. */
+static void osc9_and_777_notify(void)
+{
+    vt_term *t = p_new(20, 3);
+    h_put(t, "\033]9;build done\007");
+    CHECK_INT(hb.notes, 1);
+    CHECK_STR(hb.note_title, "");
+    CHECK_STR(hb.note_body, "build done");
+    h_put(t, "\033]777;notify;make;all 3 targets\033\\");
+    CHECK_INT(hb.notes, 2);
+    CHECK_STR(hb.note_title, "make");
+    CHECK_STR(hb.note_body, "all 3 targets");
+    h_put(t, "\033]9;4;1;50\007");                  /* ConEmu progress */
+    CHECK_INT(hb.notes, 2);
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* The Amiga side of OSC 7 / 8 (config/termurl): vsh's directory as a
+ * file: URL, the URL back to a directory a new tab can start in (when it
+ * is this machine's), and the command that opens a link -- never with
+ * text that could break out of its quotes. */
+static void termurl_round_trips_and_refuses_what_it_cannot_quote(void)
+{
+    char b[300];
+    CHECK(termurl_osc7("Work:src/a b", "amiga", b, sizeof(b)) > 0);
+    CHECK_STR(b, "\033]7;file://amiga/Work/src/a%20b\033\\");
+    CHECK(termurl_osc7("RAM:", "", b, sizeof(b)) > 0);
+    CHECK_STR(b, "\033]7;file:///RAM\033\\");
+    CHECK_INT(termurl_osc7("Work:src", "amiga", b, 10), 0);   /* too long: nothing */
+    CHECK(termurl_cwd_dir("file://amiga/Work/src/a%20b", "Amiga", b, sizeof(b)));
+    CHECK_STR(b, "Work:src/a b");
+    CHECK(termurl_cwd_dir("file:///RAM", "amiga", b, sizeof(b)));
+    CHECK_STR(b, "RAM:");
+    CHECK(termurl_cwd_dir("file://localhost/Work/x/", 0, b, sizeof(b)));
+    CHECK_STR(b, "Work:x");
+    CHECK(!termurl_cwd_dir("file://server/home/me", "amiga", b, sizeof(b)));  /* remote */
+    CHECK(!termurl_cwd_dir("http://amiga/Work", "amiga", b, sizeof(b)));
+    CHECK(!termurl_cwd_dir("file:///Work/a%22b", 0, b, sizeof(b)));          /* a quote */
+    CHECK(!termurl_cwd_dir("file:///Work/a*b", 0, b, sizeof(b)));
+    CHECK(!termurl_cwd_dir("file:///", 0, b, sizeof(b)));
+    CHECK(termurl_link_command("OpenURL %s", "https://e.org/?q=1", b, sizeof(b)));
+    CHECK_STR(b, "OpenURL \"https://e.org/?q=1\"");
+    CHECK(termurl_link_command("C:Run >NIL: OpenURL", "http://x", b, sizeof(b)));
+    CHECK_STR(b, "C:Run >NIL: OpenURL \"http://x\"");
+    CHECK(!termurl_link_command("OpenURL %s", "http://x\" ; Delete SYS:#?", b, sizeof(b)));
+    CHECK(!termurl_link_command("OpenURL %s", "http://x*N", b, sizeof(b)));
+    CHECK(!termurl_link_command("OpenURL %s", "http://x", b, 12));
+}
+
 void suite_protocol(void)
 {
+    termurl_round_trips_and_refuses_what_it_cannot_quote();
+    osc7_keeps_the_working_directory();
+    osc8_hyperlinks_stay_with_their_cells();
+    osc8_old_links_make_room();
+    osc133_prompt_marks_and_jumps();
+    osc9_and_777_notify();
     osc_colours_take_x11_names();
     osc52_sets_the_clipboard_in_any_size();
     osc52_larger_than_a_megabyte_is_dropped();

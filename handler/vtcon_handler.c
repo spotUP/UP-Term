@@ -57,6 +57,7 @@
 #include "brk.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../config/termurl.h"
 #include "../config/upconf.h"
 #include "../prefs/prefs_core.h"
 
@@ -425,7 +426,8 @@ static void h_resized(void *u)
 }
 
 static void h_titled(void *u);
-static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled };
+static void h_open_link(void *u, const char *uri);
+static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled, h_open_link };
 
 /* ---- the window -------------------------------------------------------------- */
 
@@ -4224,43 +4226,110 @@ static void tab_remove(con *c, con *t)
     bar_draw(c);
 }
 
+/* DOS work the handler must not do itself (a NewShell, a command): a
+ * worker process gets msg and does it, then frees msg. */
+static void start_worker(void (*entry)(void), const char *name, struct Message *msg)
+{
+    struct Process *p = CreateNewProcTags(NP_Entry, (ULONG)entry, NP_Name, (ULONG)name,
+                                          NP_StackSize, 8192, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
+                                          NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
+    if (p)
+        PutMsg(&p->pr_MsgPort, msg);
+    else
+        FreeVec(msg);
+}
+
+/* the message a worker was started with (start_worker) */
+static struct Message *worker_msg(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    WaitPort(&me->pr_MsgPort);
+    me->pr_WindowPtr = (APTR)-1;
+    return GetMsg(&me->pr_MsgPort);
+}
+
+static void run_async(const char *cmd)
+{
+    SystemTags((STRPTR)cmd, SYS_Asynch, TRUE, SYS_Input, Open((STRPTR)"NIL:", MODE_OLDFILE),
+               SYS_Output, Open((STRPTR)"NIL:", MODE_NEWFILE), TAG_DONE);
+}
+
 /* New tab: a shell on an XCON: stream that names this host. The NewShell
- * is DOS work: a worker process does it. The new tab takes `profile`. */
+ * is DOS work: a worker process does it. The new tab takes `profile`, and
+ * starts in the directory the shell of the tab it came from last reported
+ * (OSC 7) when that is on this machine. */
 struct tab_spawn_msg {
     struct Message msg;
     char cmd[200];
+    char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
 };
 
 static void tab_spawner(void)
 {
-    struct Process *me = (struct Process *)FindTask(0);
-    struct tab_spawn_msg *m;
+    struct tab_spawn_msg *m = (struct tab_spawn_msg *)worker_msg();
     BPTR f, lock;
-    WaitPort(&me->pr_MsgPort);
-    m = (struct tab_spawn_msg *)GetMsg(&me->pr_MsgPort);
-    me->pr_WindowPtr = (APTR)-1;
+    char host[64], dir[256];
+    int vsh, cd;
     /* vsh in the tab when there is one (the UP-Term icon's shell), else the
      * AmigaDOS Shell; the FROM script ends the shell with it -- whatever vsh
      * returns: its last command's status (127 for a name not found) failed
      * the script at FailAt 10, and the tab stayed open on the Shell's prompt */
-    if ((lock = Lock((STRPTR)"C:vsh", SHARED_LOCK)) != 0) {
+    if ((vsh = (lock = Lock((STRPTR)"C:vsh", SHARED_LOCK)) != 0) != 0)
         UnLock(lock);
-        if ((f = Open((STRPTR)"T:UP-Term-tab", MODE_NEWFILE)) != 0) {
-            FPuts(f, (STRPTR)"FailAt 2147483647\nC:vsh\nEndCLI >NIL:\n");
-            Close(f);
+    if (GetVar((STRPTR)"HOSTNAME", (STRPTR)host, sizeof(host), 0) <= 0)
+        host[0] = 0;
+    cd = m->cwd[0] && termurl_cwd_dir(m->cwd, host, dir, sizeof(dir));
+    if ((vsh || cd) && (f = Open((STRPTR)"T:UP-Term-tab", MODE_NEWFILE)) != 0) {
+        FPuts(f, (STRPTR)"FailAt 2147483647\n");
+        if (cd) { /* termurl_cwd_dir refused anything a quote cannot hold */
+            FPuts(f, (STRPTR)"CD \"");
+            FPuts(f, (STRPTR)dir);
+            FPuts(f, (STRPTR)"\"\n");
         }
+        if (vsh)
+            FPuts(f, (STRPTR)"C:vsh\nEndCLI >NIL:\n");
+        Close(f);
         strcat(m->cmd, " FROM T:UP-Term-tab");
     }
-    SystemTags((STRPTR)m->cmd, SYS_Asynch, TRUE, SYS_Input, Open((STRPTR)"NIL:", MODE_OLDFILE),
-               SYS_Output, Open((STRPTR)"NIL:", MODE_NEWFILE), TAG_DONE);
+    run_async(m->cmd);
     Forbid();
     FreeVec(m);
 }
 
-static void tab_spawn(con *c, const char *profile)
+/* OSC 8: a hyperlink Ctrl + clicked. The profile's link-open names the
+ * command (%s the URL; OpenURL, from the OpenURL package, by default); a
+ * worker runs it. */
+struct link_msg {
+    struct Message msg;
+    char cmd[VT_URI_MAX + 256];
+};
+
+static void link_opener(void)
+{
+    struct link_msg *m = (struct link_msg *)worker_msg();
+    run_async(m->cmd);
+    Forbid();
+    FreeVec(m);
+}
+
+static void h_open_link(void *u, const char *uri)
+{
+    con *c = (con *)u;
+    const char *tmpl = c->conf ? upconf_str(c->conf, c->profile, "link-open", 0) : 0;
+    struct link_msg *m = (struct link_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!m)
+        return;
+    if (!termurl_link_command(tmpl ? tmpl : "OpenURL %s", uri, m->cmd, sizeof(m->cmd))) {
+        FreeVec(m); /* a URL a command line cannot quote is not opened */
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+        return;
+    }
+    start_worker(link_opener, "UP-Term link", &m->msg);
+}
+
+static void tab_spawn(con *c, const char *profile, con *from)
 {
     struct tab_spawn_msg *m;
-    struct Process *p;
     if (c->ntabs >= TAB_MAX || !c->own_win || c->foreign)
         return;
     if (!c->tab_port) {
@@ -4287,13 +4356,9 @@ static void tab_spawn(con *c, const char *profile)
     strcat(m->cmd, "/PROFILE ");
     strcat(m->cmd, profile);
     strcat(m->cmd, "\"");
-    p = CreateNewProcTags(NP_Entry, (ULONG)tab_spawner, NP_Name, (ULONG)"UP-Term new tab",
-                          NP_StackSize, 8192, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
-                          NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
-    if (p)
-        PutMsg(&p->pr_MsgPort, &m->msg);
-    else
-        FreeVec(m);
+    if (from && from->w.t)
+        copy_str(m->cwd, vt_cwd(from->w.t), sizeof(m->cwd));
+    start_worker(tab_spawner, "UP-Term new tab", &m->msg);
 }
 
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
@@ -4301,7 +4366,7 @@ static void host_command(con *c, int what, con *from)
 {
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile);
+        tab_spawn(c, from->profile, from);
         break;
     case MENU_TAB_NEXT:
         if (c->ntabs >= 2)

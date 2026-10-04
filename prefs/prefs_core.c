@@ -70,6 +70,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     pc_copy(f->selfg, upconf_str(c, p, "selection-fg", ""), sizeof(f->selfg));
     pc_copy(f->selbg, upconf_str(c, p, "selection-bg", ""), sizeof(f->selbg));
     pc_copy(f->clipboard, upconf_str(c, p, "program-clipboard", ""), sizeof(f->clipboard));
+    pc_copy(f->linkopen, upconf_str(c, p, "link-open", ""), sizeof(f->linkopen));
     v = upconf_str(c, p, "cursor", "block");
     f->cursor = pc_ieq(v, "underline") ? PREFS_CURSOR_UNDERLINE
               : pc_ieq(v, "bar") ? PREFS_CURSOR_BAR : PREFS_CURSOR_BLOCK;
@@ -222,6 +223,8 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
         upconf_set(w, p, "selection-bg", f->selbg);
     if (f->clipboard[0])
         upconf_set(w, p, "program-clipboard", f->clipboard);
+    if (f->linkopen[0])
+        upconf_set(w, p, "link-open", f->linkopen);
     upconf_set(w, p, "cursor", f->cursor == PREFS_CURSOR_UNDERLINE ? "underline"
                                : f->cursor == PREFS_CURSOR_BAR ? "bar" : "block");
     upconf_set(w, p, "cursor-blink", f->blink ? "on" : "off");

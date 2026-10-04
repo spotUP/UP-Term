@@ -51,6 +51,8 @@ typedef struct vtwin_host {
     void (*resized)(void *user);
     /* the title changed (OSC 0/2): a tab's label (may be 0) */
     void (*titled)(void *user);
+    /* Ctrl + click on an OSC 8 hyperlink: open uri (may be 0: no links) */
+    void (*open_link)(void *user, const char *uri);
 } vtwin_host;
 
 typedef struct vtwin {
@@ -106,6 +108,8 @@ typedef struct vtwin {
     struct timerequest *frame;
     int frame_open, frame_busy;
     int sync_held;               /* frames a ?2026 update has been held back */
+    int note_frames;             /* OSC 9 / 777: frames the notice stays in the title */
+    char note_saved[80];         /* the title it stands in for */
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */
