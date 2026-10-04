@@ -25,6 +25,7 @@ void suite_fontpair(void);
 void suite_updemo(void);
 void suite_pace(void);
 void suite_painter(void);
+void suite_chips(void);
 void suite_text(void);
 void suite_clip(void);
 void suite_input(void);
@@ -56,6 +57,7 @@ static const h_suite suites[] = {
     { "updemo", suite_updemo },
     { "pace", suite_pace },
     { "painter", suite_painter },
+    { "chips", suite_chips },
     { "text", suite_text },
     { "clip", suite_clip },
     { "input", suite_input },

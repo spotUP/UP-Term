@@ -45,6 +45,25 @@ void vp_span(vp_u8 **planes, int depth, long bpr, long x, long y, const vp_u8 *g
     }
 }
 
+void vp_fill(vp_u8 **planes, int depth, long bpr, long x, long y, int h, int n, int pen, int mask)
+{
+    vp_u8 v[256];
+    int p, r, i, k;
+    for (; n > 0; n -= k, x += 8L * k) {
+        k = n < 256 ? n : 256;
+        for (p = 0; p < depth; p++) {
+            vp_u8 *row;
+            if (!((mask >> p) & 1))
+                continue;
+            for (i = 0; i < k; i++)
+                v[i] = (vp_u8)((pen >> p) & 1 ? 0xFF : 0);
+            row = planes[p] + y * bpr + (x >> 3);
+            for (r = 0; r < h; r++, row += bpr)
+                put_bits(row, (int)(x & 7), v, k);
+        }
+    }
+}
+
 #ifdef VP_ASM
 void vp_asm_plane(vp_u8 *dst, long bpr, long s, const vp_u8 **gp, long n, long h, long pattern, long constant);
 
@@ -68,10 +87,27 @@ void vp_span_fast(vp_u8 **planes, int depth, long bpr, long x, long y, const vp_
             vp_asm_plane(planes[p] + off, bpr, x & 7, gp, n, h, fb ? 0L : -1L, 0);
     }
 }
+
+/* the plane loop's constant path: it reads no glyphs */
+void vp_fill_fast(vp_u8 **planes, int depth, long bpr, long x, long y, int h, int n, int pen, int mask)
+{
+    long off = y * bpr + (x >> 3);
+    int p;
+    if (n <= 0 || h <= 0)
+        return;
+    for (p = 0; p < depth; p++)
+        if ((mask >> p) & 1)
+            vp_asm_plane(planes[p] + off, bpr, x & 7, (const vp_u8 **)0, n, h, (pen >> p) & 1 ? -1L : 0L, 1);
+}
 #else
 void vp_span_fast(vp_u8 **planes, int depth, long bpr, long x, long y, const vp_u8 *glyphs, int h,
                   const vp_u8 *chars, int n, int fg, int bg, int mask)
 {
     vp_span(planes, depth, bpr, x, y, glyphs, h, chars, n, fg, bg, mask);
+}
+
+void vp_fill_fast(vp_u8 **planes, int depth, long bpr, long x, long y, int h, int n, int pen, int mask)
+{
+    vp_fill(planes, depth, bpr, x, y, h, n, pen, mask);
 }
 #endif
