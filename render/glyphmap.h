@@ -45,6 +45,12 @@ int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc);
  * cp[0] the character to draw. */
 int vt_compose_cell(vt_u32 *cp, int n);
 
+/* UTF-8 text as a Latin-1 string an Intuition title can show: each code
+ * point as vt_map_glyph gives it for a Latin-1 font (so a stand-in, never a
+ * byte of the sequence), '?' for one drawn as lines or blocks or not
+ * decodable. At most max - 1 characters and a NUL; returns the length. */
+int vt_latin1_text(const char *utf8, char *out, int max);
+
 /* Arm weight 0-3 of a VT_GLYPH_BOX code, for arm 0 up, 1 right, 2 down, 3 left. */
 #define VT_BOX_ARM(code, arm) (((code) >> ((arm) * 2)) & 3)
 

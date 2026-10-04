@@ -31,14 +31,17 @@ remote_term() {
 ssh() {
     TERM=$(remote_term) bebbossh "$@"
 }
-telnet() {
-    TERM=$(remote_term) command telnet "$@"
-}
 rlogin() {
     TERM=$(remote_term) command rlogin "$@"
 }
 scp() {
     bebboscp "$@"
+}
+# telnet: C:uptelnet (no ixemul). It tells the far end remote_term's name
+# (its TERM keyword) and the window's size, and follows a resize. Ctrl-]
+# ends it.
+telnet() {
+    uptelnet "$@" TERM "$(remote_term)"
 }
 
 # The Unix commands are GNU coreutils 5.2.1 in SYS:UP-Term/bin (see

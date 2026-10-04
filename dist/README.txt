@@ -374,6 +374,28 @@ NETWORK
   under the curl licence. Their COPYING files and sources (or where the
   source is) are in the kit's Files/net drawer.
 
+CLAUDE FROM THE AMIGA
+  Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
+  On the Mac, from an UP-Term source checkout (nothing is installed; it
+  runs until Ctrl-C):
+    (umask 077; mkdir -p ~/.config/uptelnetd; read -rs p; printf '%s\n' "$p" > ~/.config/uptelnetd/password)
+    python3 tools/uptelnetd.py
+  It prints the address it listens on, e.g. 192.168.0.58 port 2323. On the
+  Amiga (TCP/IP stack running), in an UP-Term window:
+    uptelnet 192.168.0.58 2323
+  (vsh: telnet 192.168.0.58 2323). Type the password; you get your Mac
+  shell, where claude runs. uptelnetd --command 'tmux new -A -s claude
+  claude' goes straight into Claude Code in a tmux session that survives a
+  dropped line. uptelnet tells the Mac TERM=xterm-256color and the window's
+  size, and follows a resize. Ctrl-] ends it.
+  UNENCRYPTED: telnet carries everything in clear, the password too. The
+  Mac end listens on its LAN address only and lets in only its own subnet,
+  locks out an address after 5 wrong passwords, and never on 0.0.0.0;
+  still, use it only on a network you trust and never forward the port.
+  The encrypted alternative is ssh (BebboSSH, NETWORK above) to the Mac's
+  Remote Login (System Settings > General > Sharing); not yet tried
+  against macOS's sshd.
+
 DEMO
   UPDemo, typed in an UP-Term window (76 x 20 characters or more), shows
   what the terminal draws: text styles, double-size lines, 256 and 24-bit

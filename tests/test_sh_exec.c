@@ -158,7 +158,8 @@ static long run_now(char argv[][64], int argc, const sh_io *io)
 {
     char line[256];
     long n;
-    if (!strcmp(argv[0], "bebbossh") || !strcmp(argv[0], "telnet") || !strcmp(argv[0], "rlogin")) {
+    if (!strcmp(argv[0], "bebbossh") || !strcmp(argv[0], "telnet") || !strcmp(argv[0], "uptelnet") ||
+        !strcmp(argv[0], "rlogin")) {
         /* a remote login: <name><TERM it was given><args...> */
         const char *term = sh_get(&sh.ctx, "TERM");
         int i;
@@ -771,13 +772,13 @@ static void remote_logins_send_xterm_256color(void)
 {
     vshrc_pre = "TERM=vtcon";
     CHECK_STR(with_vshrc("ssh -l me host"), "<bebbossh><TERM=xterm-256color><-l><me><host>\n");
-    CHECK_STR(with_vshrc("telnet bbs.example 23"), "<telnet><TERM=xterm-256color><bbs.example><23>\n");
+    CHECK_STR(with_vshrc("telnet bbs.example 23"), "<uptelnet><TERM=vtcon><bbs.example><23><TERM><xterm-256color>\n");
     CHECK_STR(with_vshrc("rlogin box"), "<rlogin><TERM=xterm-256color><box>\n");
     CHECK_STR(with_vshrc("ssh h; echo $TERM"), "<bebbossh><TERM=xterm-256color><h>\nvtcon\n");
     vshrc_pre = "TERM=vtcon; UP_REMOTE_TERM=xterm-amiga";
     CHECK_STR(with_vshrc("ssh h"), "<bebbossh><TERM=xterm-amiga><h>\n");
     vshrc_pre = "TERM=screen";
-    CHECK_STR(with_vshrc("telnet h"), "<telnet><TERM=screen><h>\n");
+    CHECK_STR(with_vshrc("telnet h"), "<uptelnet><TERM=screen><h><TERM><screen>\n");
     vshrc_pre = 0;
 }
 

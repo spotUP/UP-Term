@@ -105,18 +105,11 @@ void vtwin_show_title(vtwin *w)
 }
 
 /* UTF-8 text (the engine's) as Latin-1 (Intuition's) into out, cap bytes
- * with the NUL. */
+ * with the NUL; symbols get the glyph map's stand-ins. */
 static void latin1_copy(char *out, int cap, const char *s)
 {
-    char lat[256];
-    long n = (long)strlen(s);
-    if (n > (long)sizeof(lat))
-        n = sizeof(lat);
-    n = cf_to_latin1(s, n, lat);
-    if (n > cap - 1)
-        n = cap - 1;
-    memcpy(out, lat, n);
-    out[n] = 0;
+    /* through the glyph map: Claude Code's spinner star becomes '*', not '?' */
+    vt_latin1_text(s, out, cap);
 }
 
 static void cb_title(void *u, const char *s)
@@ -1134,6 +1127,17 @@ static void paste(vtwin *w)
     FreeVec(text);
 }
 
+void vtwin_focus(vtwin *w, int in)
+{
+    vt_u8 out[8];
+    int k;
+    if (!w->t || !w->host->raw(w->user))
+        return; /* a cooked line would get the bytes as typing */
+    k = vt_encode_focus(w->t, in, out);
+    if (k)
+        w->host->input(w->user, out, k);
+}
+
 /* the window's menu (the owner's): the same copy and paste as the keys */
 void vtwin_copy(vtwin *w)
 {
@@ -1527,17 +1531,6 @@ void vtwin_wheel(vtwin *w, int up, UWORD qual, WORD mx, WORD my)
     }
     if (w->wheel_scroll)
         set_view(w, w->r.view + lines);
-}
-
-void vtwin_focus(vtwin *w, int in)
-{
-    vt_u8 out[8];
-    int n;
-    if (!w->t)
-        return;
-    n = vt_encode_focus(w->t, in, out);
-    if (n)
-        w->host->input(w->user, out, n);
 }
 
 /* Find: scroll the view to the line a match is on. A match in the live grid

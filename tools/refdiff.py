@@ -38,6 +38,7 @@ DISAGREE = {
     "quirk-region-su-sd.10x6.bin": "pyte's SU/SD ignore the region",
     "quirk-sgr-256-and-rgb.12x3.bin": "pyte has no colon SGR sub-parameters",
     "quirk-st-forms.10x3.bin": "pyte prints DCS payloads",
+    "claude-session.80x24.bin": "pyte prints APC payloads (Claude Code's kitty graphics probe)",
     "quirk-wide-at-last-col.10x3.bin": "pyte puts a wide glyph in the last column",
     "quirk-wrap-then-lf.10x4.bin": "pyte's LF cancels the column of a pending wrap",
     "vttest-m2-s04.80x24.bin": "pyte obeys DECCOLM and goes 132 wide; xterm without allowColumns, libvterm and we keep the width",
