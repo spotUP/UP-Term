@@ -1489,6 +1489,9 @@ static vt_u8 style_index(vt_term *t)
     }
     return 0; /* 255 distinct styles on screen at once: drawn plain */
 }
+/* the cells' ext for the current pen: style_index's first answer (both
+ * default: 0) in place, the call only for a rare style (ASM1) */
+#define pen_ext(t) ((t)->ul == VT_COLOR_DEFAULT && !(t)->font && !(t)->link ? 0 : style_index(t))
 
 vt_color vt_cell_underline_color(const vt_term *t, const vt_cell *c)
 {
@@ -2196,6 +2199,17 @@ static void sgr(vt_term *t)
         sgr_reset(t);
         return;
     }
+    if (t->np == 1 && !t->sub[0] && (vt_u32)(t->params[0] - 30) <= 17 && t->params[0] != 38 && t->params[0] != 39) {
+        /* one colour, 30-37 or 40-47, the commonest SGR: what the loop
+         * below does for it (every personality), without the loop */
+        long p = t->params[0];
+        if (p <= 37)
+            t->fg = (vt_color)(p - 30);
+        else
+            t->bg = (vt_color)(p - 40);
+        t->ext = pen_ext(t);
+        return;
+    }
     if (t->pers == VT_PCANSI) {
         for (i = 0; i < t->np; i++)
             if (t->sub[i])
@@ -2351,7 +2365,7 @@ static void sgr(vt_term *t)
             note_value(t, 'S', p);
         }
     }
-    t->ext = t->ul == VT_COLOR_DEFAULT && !t->font && !t->link ? 0 : style_index(t);
+    t->ext = pen_ext(t);
 }
 
 static void report_size(vt_term *t);
@@ -5532,6 +5546,23 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
                 for (k = 0; k < room && b[done + k] >= 0x20 && b[done + k] < 0x7F; k++)
                     c[k].ch = b[done + k];
 #endif
+            } else if (room == 1 || b[done + 1] < 0x20 || b[done + 1] >= 0x7F) {
+                /* one character (a colour each, as colour output mostly
+                 * has it): the cell in place -- no proto and no call
+                 * (ASM1: 60 instructions the character through the
+                 * assembler loop) */
+                k = 0;
+                if (c->width == 1 && (x + 1 >= t->cols || c[1].width != 0)) {
+                    c->ch = b[done];
+                    c->fg = t->fg;
+                    c->bg = t->bg;
+                    c->attr = t->attr;
+                    c->deco = t->deco;
+                    c->ext = t->ext;
+                    c->pad = 0;
+                    l->chonly = 0;
+                    k = 1;
+                }
             } else {
 #ifdef VT_ASM
                 /* the loop below in assembler (vtengine_68k.s): 14 us a
