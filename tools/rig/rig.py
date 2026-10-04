@@ -123,6 +123,12 @@ RW = "--ro" not in sys.argv
 # not host speed: the only way to benchmark on a loaded host (JIT timings
 # swung 10x with the owner's other emulators, 2026-09-29).
 FAST = "--fast" in sys.argv   # the CPU as fast as the host runs it (an accelerator's order of speed, not a model of one)
+# --stock: creep's conbench machine, his config A1200-Stock-net (ledger S1,
+# 2026-10-04): amiga_model A1200 at FS-UAE's default accuracy (the model's
+# own CPU timing, not our overrides), 2 MB chip RAM, no fast RAM, no FPU, no
+# graphics card, bsdsocket only. Our default rig has 8 MB fast + 64 MB Z3:
+# CCON 1.2.7 ran 38.32 s on it in 77x20 and 86.46 s on his.
+STOCK = "--stock" in sys.argv
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -144,7 +150,10 @@ def setup():
     # is gone after that session (the rig failed to start, 2026-09-30)
     if not (RIG / "boot/amiagent").exists():
         sys.exit("rig: build/rig/boot/amiagent is missing (copy it from the Up Rough demo system)")
-    CFG.write_text("\n".join([
+    machine = [
+        "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
+        "bsdsocket_library = 1",
+    ] if STOCK else [
         "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
@@ -161,6 +170,8 @@ def setup():
         "uae_cpu_speed = %s" % ("max" if FAST else "real"),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
+    ]
+    CFG.write_text("\n".join(machine + [
         "hard_drive_0 = %s" % (RIG / ("os32" if OS32 else "sys.hdf")),
         # Writable: read-only (--ro) put up "Volume System is write
         # protected" requesters that stalled the rig (the owner saw them,
