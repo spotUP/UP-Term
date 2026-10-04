@@ -289,6 +289,7 @@ static void blank_cell(const vt_term *t, vt_cell *c)
 
 #ifdef VT_ASM
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
+long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
 void vt_asm_rows_up(struct vt_line **p, long k);
@@ -3426,6 +3427,19 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
     if (n > room)
         n = room;
     c = &t->scr[t->cy]->c[t->cx];
+    if (t->cx >= t->scr[t->cy]->used && t->fg == VT_COLOR_DEFAULT && t->bg == VT_COLOR_DEFAULT && !t->attr &&
+        !t->deco && !t->ext) {
+        /* Plain text into the untouched end of a line: those cells are
+         * default blanks (line_clear, `used`), so only their characters
+         * change -- 2 bytes a cell written instead of 16 (S1; plain lines
+         * on a stock A1200 are bound by these writes to chip RAM). */
+#ifdef VT_ASM
+        k = vt_asm_put_ch(c, b, n);
+#else
+        for (k = 0; k < n && b[k] >= 0x20 && b[k] < 0x7F; k++)
+            c[k].ch = b[k];
+#endif
+    } else
 #ifdef VT_ASM
     {
         /* the loop below in assembler (vtengine_68k.s): 14 us a character
@@ -3540,6 +3554,19 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
                 i += k;
                 continue;
             }
+        }
+        if ((b == 0x0D || b == 0x0A) && t->state == S_GROUND && !t->u_need) {
+            /* CR and LF straight to their action: every line of output
+             * has them, and decode -> feed -> exec_c0 cost three calls
+             * and a personality switch each (S1) */
+            if (b == 0x0D) {
+                t->cx = 0;
+                t->wrap_pending = 0;
+            } else {
+                exec_c0(t, 0x0A);
+            }
+            i++;
+            continue;
         }
         if (b == 0x1B && t->state == S_GROUND && !t->u_need) {
             long k = csi_fast(t, buf + i, len - i);

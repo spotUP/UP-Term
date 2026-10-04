@@ -14,6 +14,7 @@
 	section	"CODE",code
 
 	xdef	_vt_asm_put_run
+	xdef	_vt_asm_put_ch
 	xdef	_vt_asm_fill
 	xdef	_vt_asm_rows_up
 	xdef	_vt_asm_cells_move
@@ -142,4 +143,37 @@ _vt_asm_put_run:
 	rts
 .none:	moveq	#0,d0
 	movem.l	(sp)+,d2-d5/a2
+	rts
+
+; long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n)
+;
+; put_ascii_run's plain case (ledger S1): the cells are untouched default
+; blanks (past the line's `used`) and the text is in the default colours,
+; so of each cell only the character changes. Printable ASCII is stored as
+; the cell's ch (offset 8) until n or the first other byte; the cells
+; written are returned. Nine instructions and one word write a character,
+; against fifteen and five writes for a whole cell.
+_vt_asm_put_ch:
+	move.l	4(sp),a0		; c
+	move.l	8(sp),a1		; b
+	move.l	12(sp),d0		; n
+	ble.s	.pnone
+	move.l	d2,-(sp)
+	move.l	d0,d2
+	moveq	#0,d1
+	addq.l	#8,a0			; at ch
+.pch:	move.b	(a1)+,d1
+	cmp.b	#$20,d1
+	bcs.s	.pstop			; a control
+	cmp.b	#$7f,d1
+	bcc.s	.pstop			; DEL or an 8-bit byte
+	move.w	d1,(a0)
+	lea	16(a0),a0
+	subq.l	#1,d0
+	bne.s	.pch
+.pstop:	sub.l	d0,d2			; n less what is left
+	move.l	d2,d0
+	move.l	(sp)+,d2
+	rts
+.pnone:	moveq	#0,d0
 	rts

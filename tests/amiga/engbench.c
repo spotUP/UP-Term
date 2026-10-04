@@ -55,6 +55,7 @@ static void build(int w)
 /* vtengine_68k.s against what its C says: the cells written, where it
  * stops (a wide glyph's halves), what it leaves alone. 0 when right. */
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
+long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_rows_up(void **p, long k);
 void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
@@ -83,6 +84,11 @@ static int asm_check(void)
     if (vt_asm_put_run(c, (const vt_u8 *)"A~\033B", 4, &p) != 2 || c[1].ch != '~' || c[2].ch != 'c') return 8;  /* ESC ends the run */
     if (vt_asm_put_run(c, (const vt_u8 *)"\177", 1, &p) != 0 || vt_asm_put_run(c, (const vt_u8 *)"\200", 1, &p) != 0 ||
         vt_asm_put_run(c, (const vt_u8 *)"\037", 1, &p) != 0 || vt_asm_put_run(c, (const vt_u8 *)" ", 1, &p) != 1 || c[0].ch != ' ') return 9;
+    for (i = 0; i < 12; i++) { c[i].ch = '.'; c[i].fg = 3; }
+    if (vt_asm_put_ch(c + 1, (const vt_u8 *)"ab~\033x", 5) != 3) return 30;  /* stops at ESC */
+    if (c[0].ch != '.' || c[1].ch != 'a' || c[2].ch != 'b' || c[3].ch != '~' || c[4].ch != '.' || c[1].fg != 3) return 31;
+    if (vt_asm_put_ch(c, (const vt_u8 *)"\177", 1) != 0 || vt_asm_put_ch(c, (const vt_u8 *)"\200", 1) != 0 ||
+        vt_asm_put_ch(c, (const vt_u8 *)" ", 1) != 1 || c[0].ch != ' ' || vt_asm_put_ch(c, (const vt_u8 *)"q", 0) != 0) return 32;
     for (i = 0; i < 12; i++) c[i].ch = (vt_u16)i;
     p.ch = 'F';
     vt_asm_fill(c + 2, 5, &p);
