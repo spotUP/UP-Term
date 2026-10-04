@@ -272,6 +272,8 @@ void vtwin_render(vtwin *w)
             /* the next frame waits 1.5 times what this one cost (S1) */
             ReadEClock(&e1);
             w->frame_us = vt_pace_next(vt_pace_us(e1.ev_lo - e0.ev_lo, freq));
+            w->prof_render += e1.ev_lo - e0.ev_lo;
+            w->prof_frames++;
         }
     }
     if (w->r.has_blink || vr_cursor_blinks(&w->r))

@@ -105,6 +105,7 @@ typedef struct vtwin {
     struct timerequest *frame;
     int frame_open, frame_busy;
     ULONG frame_us;              /* the frame clock's next interval (pace.h); 0: the shortest */
+    ULONG prof_render, prof_frames; /* EClock ticks drawing, and render passes (the handler's PROF=1) */
     int sync_held;               /* frames a ?2026 update has been held back */
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;

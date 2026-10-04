@@ -244,8 +244,15 @@ typedef struct con {
     struct DeviceNode *node;     /* our DOS device node (from the startup packet) */
     int ever_opened;
     struct IOStdReq lib_io;      /* console.device CONU_LIBRARY, for RawKeyConvert */
-#ifdef VTCON_DEBUG
+#if defined(VTCON_DEBUG) || defined(VTCON_PROF)
     ULONG prof_out, prof_writes, prof_bytes;
+#endif
+#ifdef VTCON_PROF
+    /* the phase profile (PROF=1 SERIAL=1; ledger S1): EClock ticks spent
+     * waiting for work and in all, since the last stream closed; the
+     * output and render phases are prof_out and the vtwin's prof_render.
+     * Printed to the serial port when a stream closes, then reset. */
+    ULONG prof_idle, prof_t0;
 #endif
 } con;
 
@@ -2205,7 +2212,7 @@ static void screen_pending(con *c)
 
 static void output(con *c, const vt_u8 *b, long n)
 {
-#ifdef VTCON_DEBUG
+#if defined(VTCON_DEBUG) || defined(VTCON_PROF)
     struct EClockVal e0, e1;
     ReadEClock(&e0);
 #endif
@@ -2214,7 +2221,7 @@ static void output(con *c, const vt_u8 *b, long n)
     if (!c->le.len)
         c->le.started = 0; /* the next line starts wherever this output ends */
     vtwin_write(&c->w, b, n);
-#ifdef VTCON_DEBUG
+#if defined(VTCON_DEBUG) || defined(VTCON_PROF)
     ReadEClock(&e1);
     c->prof_out += e1.ev_lo - e0.ev_lo;
     c->prof_writes++;
@@ -4724,6 +4731,22 @@ static void packet(con *c, struct DosPacket *p)
         DBG("prof out", c->prof_out, 0);
         DBG("prof direct/text", c->w.r.n_direct, c->w.r.n_text);
 #endif
+#ifdef VTCON_PROF
+        {
+            /* the phases in EClock ticks since the last close: total,
+             * waiting, vt_feed (out), drawing (render) -- the rest is the
+             * packets and the loop */
+            struct EClockVal e;
+            ULONG freq = ReadEClock(&e);
+            DBG("PROF eclock/total", freq, e.ev_lo - c->prof_t0);
+            DBG("PROF idle/out", c->prof_idle, c->prof_out);
+            DBG("PROF render/frames", c->w.prof_render, c->w.prof_frames);
+            DBG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
+            c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;
+            c->w.prof_render = c->w.prof_frames = 0;
+            c->prof_t0 = e.ev_lo;
+        }
+#endif
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
@@ -5102,7 +5125,17 @@ static LONG handler_main(void)
         /* No trace lines in the loop itself: each log Write's reply re-arms
          * our DOS signal, so a trace here wakes the loop forever and filled
          * RAM: on the rig (2026-09-29). */
+#ifdef VTCON_PROF
+        {
+            struct EClockVal e0, e1;
+            ReadEClock(&e0);
+            wait = Wait(wait);
+            ReadEClock(&e1);
+            c->prof_idle += e1.ev_lo - e0.ev_lo;
+        }
+#else
         wait = Wait(wait);
+#endif
         while ((m = GetMsg(c->port)))
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
         if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
