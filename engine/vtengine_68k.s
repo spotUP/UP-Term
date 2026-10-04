@@ -149,31 +149,80 @@ _vt_asm_put_run:
 ;
 ; put_ascii_run's plain case (ledger S1): the cells are untouched default
 ; blanks (past the line's `used`) and the text is in the default colours,
-; so of each cell only the character changes. Printable ASCII is stored as
-; the cell's ch (offset 8) until n or the first other byte; the cells
-; written are returned. Nine instructions and one word write a character,
-; against fifteen and five writes for a whole cell.
+; so of each cell only the character changes -- and of the character only
+; its low byte (a default blank's ch is $0020). Printable ASCII is stored
+; until n or the first other byte; the cells written are returned.
+; Four bytes a long (creep's printable scan; ASM1): a long is all
+; printable when no byte is under $20 and none is $7f or over:
+;   ((x + $01010101) | (x - $20202020)) & $80808080 == 0
+; (the lowest bad byte gets no carry or borrow from the bytes below it,
+; so a bad long is always seen; the byte loop then finds the byte).
+; 17 instructions four characters, against 36. Longs are read from an
+; even address (a 68000 traps on an odd one): an odd start takes a byte.
 _vt_asm_put_ch:
-	move.l	4(sp),a0		; c
-	move.l	8(sp),a1		; b
 	move.l	12(sp),d0		; n
-	ble.s	.pnone
-	move.l	d2,-(sp)
-	move.l	d0,d2
-	moveq	#0,d1
-	addq.l	#8,a0			; at ch
-.pch:	move.b	(a1)+,d1
+	ble	.pnone
+	movem.l	d2-d7,-(sp)
+	move.l	4+24(sp),a0		; c
+	move.l	8+24(sp),a1		; b
+	lea	9(a0),a0		; at ch's low byte
+	move.l	a1,d1
+	btst	#0,d1
+	beq.s	.peven
+	move.b	(a1),d1			; an odd start: one byte first
 	cmp.b	#$20,d1
-	bcs.s	.pstop			; a control
+	bcs	.pdone			; a control
 	cmp.b	#$7f,d1
-	bcc.s	.pstop			; DEL or an 8-bit byte
-	move.w	d1,(a0)
+	bcc	.pdone			; DEL or an 8-bit byte
+	addq.l	#1,a1
+	move.b	d1,(a0)
 	lea	16(a0),a0
 	subq.l	#1,d0
-	bne.s	.pch
-.pstop:	sub.l	d0,d2			; n less what is left
+	beq	.pdone
+.peven:	moveq	#3,d7
+	and.l	d0,d7			; the bytes after the whole longs
+	move.l	d0,d6
+	lsr.l	#2,d6			; whole longs
+	beq.s	.ptail
+	move.l	#$01010101,d3
+	move.l	#$20202020,d4
+	move.l	#$80808080,d5
+	subq.w	#1,d6
+.plong:	move.l	(a1),d2			; b0 b1 b2 b3
+	move.l	d2,d1
+	add.l	d3,d1
 	move.l	d2,d0
-	move.l	(sp)+,d2
+	sub.l	d4,d0
+	or.l	d0,d1
+	and.l	d5,d1
+	bne.s	.pbad			; a byte in it ends the run
+	addq.l	#4,a1
+	move.b	d2,48(a0)		; b3
+	lsr.w	#8,d2
+	move.b	d2,32(a0)		; b2
+	swap	d2
+	move.b	d2,16(a0)		; b1
+	lsr.w	#8,d2
+	move.b	d2,(a0)			; b0
+	lea	64(a0),a0
+	dbra	d6,.plong
+.ptail:	move.l	d7,d0
+	bne.s	.pbyte
+	bra.s	.pdone
+.pbad:	moveq	#4,d0			; the byte that ends it is in this long
+.pbyte:	move.b	(a1),d1
+	cmp.b	#$20,d1
+	bcs.s	.pdone
+	cmp.b	#$7f,d1
+	bcc.s	.pdone
+	addq.l	#1,a1
+	move.b	d1,(a0)
+	lea	16(a0),a0
+	subq.l	#1,d0
+	bne.s	.pbyte
+.pdone:	move.l	a1,d0
+	sub.l	8+24(sp),d0		; the bytes taken: the cells written
+	movem.l	(sp)+,d2-d7
 	rts
 .pnone:	moveq	#0,d0
 	rts
