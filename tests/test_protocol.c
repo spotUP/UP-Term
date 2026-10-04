@@ -79,7 +79,7 @@ static void decrqm_answers_every_mode_the_engine_keeps(void)
     {
         /* every DEC mode set_mode takes: set, asked, reset, asked */
         static const int modes[] = { 1, 5, 47, 6, 7, 8, 9, 12, 25, 40, 45, 66, 1000, 1002, 1003,
-                                     1004, 1005, 1006, 1034, 1047, 1049, 2004, 2026, 2031, 7727 };
+                                     1004, 1005, 1006, 1015, 1016, 1034, 1047, 1049, 2004, 2026, 2031, 7727 };
         int i, bad = 0;
         for (i = 0; i < (int)(sizeof(modes) / sizeof(modes[0])); i++) {
             char want[64];
@@ -267,8 +267,48 @@ static void rectangle_fill_erase_copy_and_attributes(void)
     vt_free(t);
 }
 
+/* ---- G3-08: the urxvt and SGR-pixel mouse encodings ---- */
+
+static const char *mouse(vt_term *t, int button, int kind, int x, int y, int px, int py)
+{
+    static char b[64];
+    int n = vt_encode_mouse_px(t, button, kind, x, y, px, py, 0, (vt_u8 *)b);
+    b[n] = 0;
+    return b;
+}
+
+/* ?1015: CSI Cb;Cx;Cy M in decimal (no 223 limit); ?1016: the SGR form
+ * with pixel coordinates. SGR (?1006) beats urxvt, SGR-pixel beats SGR. */
+static void urxvt_and_sgr_pixel_mouse_reports(void)
+{
+    vt_term *t = h_new(400, 300, VT_XTERM);
+    vt_set_cell_pixels(t, 8, 16);
+    h_put(t, "\033[?1000;1015h");
+    CHECK_STR(mouse(t, 0, 0, 299, 9, 2395, 150), "\033[32;300;10M");
+    CHECK_STR(mouse(t, 0, 1, 299, 9, 2395, 150), "\033[35;300;10M");   /* release: button 3 */
+    h_put(t, "\033[?1006h");
+    CHECK_STR(mouse(t, 0, 1, 299, 9, 2395, 150), "\033[<0;300;10m");
+    h_put(t, "\033[?1016h");
+    CHECK_STR(mouse(t, 2, 0, 299, 9, 2395, 150), "\033[<2;2396;151M"); /* pixels from 1 */
+    CHECK_STR(mouse(t, 64, 0, 299, 9, 2395, 150), "\033[<64;2396;151M");
+    /* without pixels from the host (vt_encode_mouse) the cell's corner */
+    {
+        char b[64];
+        int n = vt_encode_mouse(t, 0, 0, 2, 1, 0, (vt_u8 *)b);
+        b[n] = 0;
+        CHECK_STR(b, "\033[<0;17;17M");
+    }
+    h_put(t, "\033[?1016l\033[?1006l\033[?1015l");
+    CHECK_STR(mouse(t, 0, 0, 299, 9, 0, 0), "");                       /* X10 cannot say 300 */
+    h_put(t, "\033[?1015$p\033[?1016$p");
+    REPLY("\033[?1015;2$y\033[?1016;2$y");
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
 void suite_protocol(void)
 {
+    urxvt_and_sgr_pixel_mouse_reports();
     decic_and_decdc_move_columns_in_the_region();
     rectangle_fill_erase_copy_and_attributes();
     da3_reports_a_unit_id();

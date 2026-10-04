@@ -137,6 +137,9 @@ typedef struct vt_callbacks {
 #define VT_MODE_SYNC         0x100000 /* ?2026: synchronized output -- a program is in the middle of
                                        * a frame; the host holds its drawing until this is reset (or a
                                        * moment has passed), so no half-updated screen is shown */
+/* (0x200000-0x800000 left for the input modes; G1 has ?1007 at 0x200000) */
+#define VT_MODE_MOUSE_URXVT  0x1000000 /* ?1015: CSI Cb;Cx;Cy M in decimal */
+#define VT_MODE_MOUSE_PIXELS 0x2000000 /* ?1016: the SGR form with pixel coordinates */
 
 typedef struct vt_term vt_term;
 
@@ -309,6 +312,11 @@ int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
  * 64/65 wheel up/down; kind: 0 press, 1 release, 2 motion. x, y are cell
  * coordinates from 0. Returns 0 when the current modes want no report. */
 int      vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mods, vt_u8 *out);
+/* The same with the pointer's pixel position in the text area (px, py from
+ * 0), which ?1016 reports; vt_encode_mouse gives the cell's corner instead
+ * (vt_set_cell_pixels). */
+int      vt_encode_mouse_px(const vt_term *t, int button, int kind, int x, int y, int px, int py,
+                            int mods, vt_u8 *out);
 /* Bracketed paste wrapper: writes the prefix or suffix (0 bytes when off). */
 int      vt_encode_paste(const vt_term *t, int end, vt_u8 *out);
 

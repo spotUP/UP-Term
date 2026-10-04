@@ -1780,9 +1780,11 @@ static void set_mode(vt_term *t, int on)
                     restore_cursor(t, &t->sav_1049);
                 }
                 break;
-            case 8: case 12: case 45: case 1005: case 1034: case 2031: case 7727: {
+            case 8: case 12: case 45: case 1005: case 1015: case 1016: case 1034: case 2031:
+            case 7727: {
                 vt_u32 bit = p == 8 ? VT_MODE_AUTOREPEAT : p == 12 ? VT_MODE_CURSOR_BLINK
                            : p == 45 ? VT_MODE_REVERSE_WRAP : p == 1005 ? VT_MODE_MOUSE_UTF8
+                           : p == 1015 ? VT_MODE_MOUSE_URXVT : p == 1016 ? VT_MODE_MOUSE_PIXELS
                            : p == 1034 ? VT_MODE_META_8BIT : p == 2031 ? VT_MODE_SCHEME_UPDATES
                            : VT_MODE_APP_ESCAPE;
                 if (on)
@@ -2096,6 +2098,8 @@ static void report_mode(vt_term *t)
         case 8: bit = VT_MODE_AUTOREPEAT; break;
         case 45: bit = VT_MODE_REVERSE_WRAP; break;
         case 1005: bit = VT_MODE_MOUSE_UTF8; break;
+        case 1015: bit = VT_MODE_MOUSE_URXVT; break;
+        case 1016: bit = VT_MODE_MOUSE_PIXELS; break;
         case 1034: bit = VT_MODE_META_8BIT; break;
         case 2031: bit = VT_MODE_SCHEME_UPDATES; break;
         case 7727: bit = VT_MODE_APP_ESCAPE; break;
@@ -4736,6 +4740,12 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
 
 int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mods, vt_u8 *out)
 {
+    return vt_encode_mouse_px(t, button, kind, x, y, x * t->cell_w, y * t->cell_h, mods, out);
+}
+
+int vt_encode_mouse_px(const vt_term *t, int button, int kind, int x, int y, int px, int py,
+                       int mods, vt_u8 *out)
+{
     vt_u32 m = t->modes;
     int cb, n = 0, i;
     char b[32];
@@ -4751,7 +4761,7 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
     if (button >= 64 && kind != 0)
         return 0; /* the wheel has no release */
     cb = button;
-    if (kind == 1 && !(m & VT_MODE_MOUSE_SGR))
+    if (kind == 1 && !(m & (VT_MODE_MOUSE_SGR | VT_MODE_MOUSE_PIXELS)))
         cb = 3; /* the legacy form cannot say which button went up */
     if (kind == 2)
         cb += 32;
@@ -4765,14 +4775,23 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
     }
     b[n++] = 0x1B;
     b[n++] = '[';
-    if (m & VT_MODE_MOUSE_SGR) {
+    if (m & (VT_MODE_MOUSE_SGR | VT_MODE_MOUSE_PIXELS)) {
+        int pix = (m & VT_MODE_MOUSE_PIXELS) != 0; /* ?1016: pixels, from 1 */
         b[n++] = '<';
         n = fmt_uint(b, n, cb);
+        b[n++] = ';';
+        n = fmt_uint(b, n, (pix ? px : x) + 1);
+        b[n++] = ';';
+        n = fmt_uint(b, n, (pix ? py : y) + 1);
+        b[n++] = (char)(kind == 1 ? 'm' : 'M');
+    } else if (m & VT_MODE_MOUSE_URXVT) {
+        /* ?1015: CSI Cb;Cx;Cy M, decimal, the legacy button code */
+        n = fmt_uint(b, n, 32 + cb);
         b[n++] = ';';
         n = fmt_uint(b, n, x + 1);
         b[n++] = ';';
         n = fmt_uint(b, n, y + 1);
-        b[n++] = (char)(kind == 1 ? 'm' : 'M');
+        b[n++] = 'M';
     } else if (m & VT_MODE_MOUSE_UTF8) {
         /* ?1005: each value one UTF-8 character, to 2015 */
         long v[3];
