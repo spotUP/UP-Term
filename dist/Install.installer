@@ -41,6 +41,7 @@
 (set #bget "")
 (set #curl "")
 (set #wasabi "")
+(set #unifont "")
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 ; curl is ticked when AmiSSL is there (curl cannot run without it)
@@ -68,6 +69,10 @@
               "Install makes a key (or keeps yours, ENVARC:wasabi.key) and shows it at "
               "the end. Leave it off unless you develop on this Amiga from another "
               "machine. The client for the other machine is in the kit's Files/wasabi.\n\n"
+              "Unifont: GNU Unifont's glyphs (SIL Open Font License 1.1), 1.7 MB in "
+              "SYS:UP-Term/unifont. UP-Term draws every character up to U+FFFF your "
+              "font lacks from them (Cyrillic, Greek, CJK, symbols) when the font is "
+              "8 or 16 pixels high; without them such characters show as '?'.\n\n"
               "The UP-Term icon is in SYS:Utilities either way; a second copy can go "
               "beside Shell in SYS:System.\n\n"
               "The Shell icon: its WINDOW tooltype is changed to XCON:, so SYS:System/Shell "
@@ -80,8 +85,9 @@
                  "Serial login at every boot"
                  "wasabi: remote development from another computer"
                  "UP-Term icon also in SYS:System"
-                 "Shell icon opens an UP-Term window")
-        (default (+ 1 2 (if #amissl 4 0)))))
+                 "Shell icon opens an UP-Term window"
+                 "Unifont: glyphs for every character (1.7 MB)")
+        (default (+ 1 2 (if #amissl 4 0) 128))))
 (if (in #opts 0) (set #ssh "SSH"))
 (if (in #opts 1) (set #bget "BEBBOGET"))
 (if (in #opts 2) (set #curl "CURL"))
@@ -89,6 +95,7 @@
 (if (in #opts 4) (set #wasabi "WASABI"))
 (if (in #opts 5) (set #sysicon "SYSICON"))
 (if (and (in #opts 6) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+(if (in #opts 7) (set #unifont "UNIFONT"))
 
 ; ---- taking over the system's console: a page of its own -----------------
 
@@ -124,7 +131,7 @@
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #wasabi #cpu040 #cpu060)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #wasabi #cpu040 #cpu060 #unifont)
 
 (set #done
     (cat "UP-Term is installed.\n\n"

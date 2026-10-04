@@ -1,4 +1,4 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S,UNIFONT/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -109,6 +109,15 @@ Copy coreutils/bin SYS:UP-Term/bin ALL CLONE QUIET
 ; sz / rz: ZMODEM over the shell's own line (UP-Term's, no ixemul), beside
 ; coreutils; C:upgetty: a shell on the serial port (see the README)
 Copy sz rz SYS:UP-Term/bin CLONE
+; [UNIFONT]: GNU Unifont's glyphs (SIL Open Font License 1.1: OFL-1.1.txt
+; and SOURCE.txt go with them), one file per 256 characters, 1.7 MB: drawn
+; for every character up to U+FFFF the window's font lacks, at 8 and 16
+; pixels high. Not in FONTS: (FixFonts below scans it). Uninstall takes the
+; whole of SYS:UP-Term.
+If "{UNIFONT}" EQ "UNIFONT"
+  MakeDir >NIL: SYS:UP-Term/unifont
+  Copy unifont SYS:UP-Term/unifont ALL CLONE QUIET
+EndIf
 Copy upgetty C:upgetty CLONE
 ; UPDemo: the terminal's show-off and benchmark (README, DEMO)
 Copy UPDemo C:UPDemo CLONE
