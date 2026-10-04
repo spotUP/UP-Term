@@ -30,8 +30,9 @@
  * behaves exactly as before this feature.
  *
  * Portable C89: declarations at block start, no // comments, no stdint.h.
- * upconf is a fixed-size struct (no internal allocation): the caller provides
- * it on the stack or with its own allocator (the handler AllocVecs one).
+ * upconf is a fixed-size struct with no pointers inside (no internal
+ * allocation; a memcpy copies it): the caller provides it on the stack or
+ * with its own allocator (the handler AllocVecs one).
  */
 #ifndef UPCONF_H
 #define UPCONF_H
@@ -40,16 +41,25 @@
  * The value width is set by the palette, the longest single value the
  * format has: 16 remap entries as "II,RRGGBB," is ten bytes each, 159 with
  * the last comma dropped, which fills a 160-byte slot exactly. 64 held about
- * six of them, so a full grid could not be written. The struct is then
- * 8*32*160 = 41 KB, allocated once per session by the handler.
+ * six of them, so a full grid could not be written.
  * UC_MAX_FILE is the file both ends agree on: the handler refuses to read
  * more, the editor refuses to write more, so a file it writes is always a
- * file the handler can read whole. */
+ * file the handler can read whole.
+ *
+ * Keys, values and comment lines are kept packed in one pool of
+ * UC_MAX_FILE bytes (UC_POOL), not in slots of the largest size: a key and
+ * its value take "key\0value\0", never more than their "key=value\n"
+ * line in the file, and a comment its text and a NUL, as many bytes as its
+ * line. So every file the handler can read fits, and the table is about
+ * 18 KB where slots took 56 KB -- one per XCON: window, on 2 MB machines
+ * (research/2026-10-04_window-memory.md). A set that would not fit marks
+ * overflow; such a table could not be saved within UC_MAX_FILE either. */
 #define UC_MAX_PROFILES 8
 #define UC_MAX_KEYS     32
 #define UC_NAME         32
 #define UC_MAX_VALUE    160
 #define UC_MAX_FILE     16384
+#define UC_POOL         UC_MAX_FILE
 
 /* Comment lines (; or #) are kept too, so a save writes back what it read:
  * each one as typed, anchored to the key it stood before (or after the
@@ -64,20 +74,22 @@ typedef unsigned long uc_u32;
 
 typedef struct upconf {
     char prof[UC_MAX_PROFILES][UC_NAME];
-    char key[UC_MAX_PROFILES][UC_MAX_KEYS][UC_NAME];
-    char val[UC_MAX_PROFILES][UC_MAX_KEYS][UC_MAX_VALUE];
+    /* key k of profile p is at pool + at[p][k]: the key, its NUL, the
+     * value, its NUL (upconf.c KEY/VAL) */
+    unsigned short at[UC_MAX_PROFILES][UC_MAX_KEYS];
     int  n[UC_MAX_PROFILES];    /* keys in use in this profile */
     int  nprof;                 /* profiles in use */
     int  overflow;              /* value truncated or table full: set, not fatal */
     /* the comments, in file order: note_at[i] is where line i starts in
-     * note (NUL-terminated), note_prof[i] its profile (-1: before every
+     * the pool (NUL-terminated), note_prof[i] its profile (-1: before every
      * section), note_key[i] the key it stands before (n[]: after the last) */
-    char note[UC_NOTE_BYTES];
     short note_at[UC_MAX_NOTES];
     signed char note_prof[UC_MAX_NOTES];
     unsigned char note_key[UC_MAX_NOTES];
     int  nnote;                 /* comment lines kept */
-    int  notelen;               /* bytes of note in use */
+    int  notelen;               /* comment bytes held (NULs counted), at most UC_NOTE_BYTES */
+    int  used;                  /* pool bytes in use: the live entries, packed from 0 */
+    char pool[UC_POOL];
 } upconf;
 
 /* Parse a whole NUL-terminated file. 0 when buf is NULL (the conf is then

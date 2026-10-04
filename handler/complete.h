@@ -8,6 +8,7 @@
 
 #define COMPLETE_MAX 256
 #define COMPLETE_NAMES 8192   /* the matching names, NUL-separated (a whole C: in KingCON's window) */
+#define COMPLETE_EXTRA 2048   /* the shell's words handed to a completion */
 
 enum complete_mode {
     COMPLETE_FILES = 0,       /* the word is a path: names in its directory */
@@ -51,14 +52,25 @@ struct complete_req {
     char add[COMPLETE_MAX];       /* out: what to type after the word */
     int matches;                  /* out: how many names matched (CHECK: 1 = found) */
     int is_dir;
-    char names[COMPLETE_NAMES];   /* out: the matches, NUL-separated, for the menu */
+    char *names;                  /* out: the matches, NUL-separated, for the menu
+                                   * (COMPLETE_NAMES; 0 in a request made without lists) */
     int names_len;
-    char extra[2048];             /* in: the shell's words (COMMANDS: its commands, VARS: its
-                                   * variables), NUL-separated; extra_len 0: none */
+    char *extra;                  /* in: the shell's words (COMMANDS: its commands, VARS: its
+                                   * variables), NUL-separated; extra_len 0: none
+                                   * (COMPLETE_EXTRA; 0 without lists) */
     long extra_len;
-    char *data;                   /* HISTORY_LOAD: buffer to fill, data_max bytes */
+    char *data;                   /* HISTORY_LOAD: 0 in; out the file, allocated by the worker
+                                   * at its size (data_max at most), the caller FreeVecs it.
+                                   * COMPLETE_THEME, CONFIG_SAVE: the caller's, data_max bytes */
     long data_max, data_len;
 };
+
+/* A request, cleared. lists: with room for the names and the shell's
+ * words (COMPLETE_NAMES + COMPLETE_EXTRA, in the same block), which only
+ * completions use; a command check or the history is 800 bytes without
+ * them, 11 KB with (research/2026-10-04_window-memory.md). FreeVec frees
+ * it. 0 when there is no memory. */
+struct complete_req *complete_req_new(int lists);
 
 #include "brk.h" /* task_alive */
 

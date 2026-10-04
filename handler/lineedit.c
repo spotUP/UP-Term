@@ -9,6 +9,49 @@
 #include "lineedit.h"
 #include <string.h>
 
+#if defined(VT_AMIGA_EXEC_ALLOC)
+/* code without a C startup (the handler): exec memory, no libc heap */
+#include <exec/memory.h>
+#include <proto/exec.h>
+#define LE_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
+#define LE_FREE(p) FreeVec(p)
+#elif defined(VT_COUNT_ALLOC)
+#define LE_MALLOC(n) vt_count_malloc((unsigned long)(n))
+#define LE_FREE(p) vt_count_free(p)
+#else
+#include <stdlib.h>
+#define LE_MALLOC(n) malloc(n)
+#define LE_FREE(p) free(p)
+#endif
+
+#define HIST(le, i) ((le)->hist + (le)->hist_at[i])
+
+/* *buf grown to hold need bytes (from 256, doubling, never past max), its
+ * used bytes kept. 0 when there is no memory: *buf is left as it was. */
+static int grow(unsigned char **buf, long *cap, long used, long need, long max)
+{
+    long n = *cap ? *cap : 256;
+    unsigned char *b;
+    if (need <= *cap)
+        return 1;
+    if (need > max)
+        return 0;
+    while (n < need)
+        n *= 2;
+    if (n > max)
+        n = max;
+    b = (unsigned char *)LE_MALLOC(n);
+    if (!b)
+        return 0;
+    if (used)
+        memcpy(b, *buf, (size_t)used);
+    if (*buf)
+        LE_FREE(*buf);
+    *buf = b;
+    *cap = n;
+    return 1;
+}
+
 static void out(le_line *le, const void *b, long n)
 {
     if (n > 0)
@@ -140,24 +183,41 @@ static void go(le_line *le, int p)
 
 /* ---- history ------------------------------------------------------------ */
 
+/* The oldest history line out; the others move down. */
+static void hist_drop(le_line *le)
+{
+    long n = (long)strlen((const char *)le->hist) + 1;
+    int i;
+    memmove(le->hist, le->hist + n, (size_t)(le->hist_used - n));
+    le->hist_used -= n;
+    for (i = 1; i < le->hist_n; i++)
+        le->hist_at[i - 1] = (unsigned short)(le->hist_at[i] - n);
+    le->hist_n--;
+}
+
 void le_hist_add(le_line *le, const unsigned char *s, int n)
 {
-    int i;
     while (n > 0 && (s[n - 1] == '\n' || s[n - 1] == '\r'))
         n--;
     if (n <= 0)
         return;
     if (n > LE_HIST_LEN - 1)
         n = LE_HIST_LEN - 1;
-    if (le->hist_n && !memcmp(le->hist[le->hist_n - 1], s, n) && le->hist[le->hist_n - 1][n] == 0)
+    if (le->hist_n && (int)strlen((const char *)HIST(le, le->hist_n - 1)) == n &&
+        !memcmp(HIST(le, le->hist_n - 1), s, n))
         return; /* the same line again */
-    if (le->hist_n == LE_HIST) {
-        for (i = 1; i < LE_HIST; i++)
-            memcpy(le->hist[i - 1], le->hist[i], LE_HIST_LEN);
-        le->hist_n--;
-    }
-    memcpy(le->hist[le->hist_n], s, n);
-    le->hist[le->hist_n][n] = 0;
+    if (le->hist_n == LE_HIST)
+        hist_drop(le);
+    /* no memory for more: the oldest lines make room, as a full history does */
+    while (!grow(&le->hist, &le->hist_cap, le->hist_used, le->hist_used + n + 1, LE_HIST_BYTES) &&
+           le->hist_n)
+        hist_drop(le);
+    if (le->hist_used + n + 1 > le->hist_cap)
+        return;
+    le->hist_at[le->hist_n] = (unsigned short)le->hist_used;
+    memcpy(le->hist + le->hist_used, s, n);
+    le->hist[le->hist_used + n] = 0;
+    le->hist_used += n + 1;
     le->hist_n++;
     le->hist_pos = le->hist_n;
 }
@@ -170,9 +230,10 @@ static const unsigned char *suggestion(const le_line *le)
     if (!le->suggest || le->searching || !le->len || le->pos != le->len)
         return 0;
     for (i = le->hist_n - 1; i >= 0; i--) {
-        int n = (int)strlen((const char *)le->hist[i]);
-        if (n > le->len && !memcmp(le->hist[i], le->buf, le->len))
-            return le->hist[i] + le->len;
+        const unsigned char *h = HIST(le, i);
+        int n = (int)strlen((const char *)h);
+        if (n > le->len && !memcmp(h, le->buf, le->len))
+            return h + le->len;
     }
     return 0;
 }
@@ -287,13 +348,49 @@ static void load_state(le_line *le, const le_state *s)
     redraw_from(le, 0);
 }
 
+/* The oldest undo snapshot out; the others move down. */
+static void undo_drop(le_line *le)
+{
+    long n = le->undo[0].len;
+    int i;
+    memmove(le->undo_buf, le->undo_buf + n, (size_t)(le->undo_used - n));
+    le->undo_used -= n;
+    for (i = 1; i < le->undo_n; i++) {
+        le->undo[i - 1] = le->undo[i];
+        le->undo[i - 1].at -= n;
+    }
+    le->undo_n--;
+}
+
 static void push_undo(le_line *le)
 {
-    if (le->undo_n == LE_UNDO) {
-        memmove(&le->undo[0], &le->undo[1], (LE_UNDO - 1) * sizeof(le_state));
-        le->undo_n--;
-    }
-    save_state(&le->undo[le->undo_n++], le);
+    le_snap *u;
+    if (le->undo_n == LE_UNDO)
+        undo_drop(le);
+    while (!grow(&le->undo_buf, &le->undo_cap, le->undo_used, le->undo_used + le->len, LE_UNDO_BYTES) &&
+           le->undo_n)
+        undo_drop(le);
+    if (le->undo_used + le->len > le->undo_cap)
+        return; /* no memory: no snapshot */
+    u = &le->undo[le->undo_n++];
+    u->at = le->undo_used;
+    u->len = le->len;
+    u->pos = le->pos;
+    if (le->len)
+        memcpy(le->undo_buf + u->at, le->buf, (size_t)le->len);
+    le->undo_used += le->len;
+}
+
+/* Ctrl-_: the last snapshot back on the line. */
+static void pop_undo(le_line *le)
+{
+    le_snap *u = &le->undo[--le->undo_n];
+    if (u->len)
+        memcpy(le->buf, le->undo_buf + u->at, (size_t)u->len);
+    le->len = u->len;
+    le->pos = u->pos;
+    le->undo_used = u->at;
+    redraw_from(le, 0);
 }
 
 static void erase(le_line *le, int a, int b)
@@ -366,7 +463,7 @@ static void history(le_line *le, int dir, int search)
         i += dir;
         if (i < 0 || i > le->hist_n)
             return;
-        if (i == le->hist_n || !plen || !memcmp(le->hist[i], le->buf, plen))
+        if (i == le->hist_n || !plen || !memcmp(HIST(le, i), le->buf, plen))
             break;
     }
     le->hist_pos = i;
@@ -376,7 +473,7 @@ static void history(le_line *le, int dir, int search)
             set_line(le, (const unsigned char *)"", -1);
         return;
     }
-    set_line(le, le->hist[i], search ? plen : -1);
+    set_line(le, HIST(le, i), search ? plen : -1);
 }
 
 /* Ctrl-R: the newest entry at or before `from` containing the pattern. */
@@ -384,10 +481,10 @@ static void search_from(le_line *le, int from)
 {
     int i, at;
     for (i = from; i >= 0; i--) {
-        at = find(le->hist[i], le->pat, le->pat_len);
+        at = find(HIST(le, i), le->pat, le->pat_len);
         if (at >= 0) {
             le->search_idx = i;
-            set_line(le, le->hist[i], at + le->pat_len);
+            set_line(le, HIST(le, i), at + le->pat_len);
             return;
         }
     }
@@ -438,6 +535,17 @@ void le_init(le_line *le, vt_term *t, void (*o)(void *, const unsigned char *, l
     le->suggest = 1;
 }
 
+void le_free(le_line *le)
+{
+    if (le->hist)
+        LE_FREE(le->hist);
+    if (le->undo_buf)
+        LE_FREE(le->undo_buf);
+    le->hist = le->undo_buf = 0;
+    le->hist_used = le->hist_cap = le->undo_used = le->undo_cap = 0;
+    le->hist_n = le->hist_pos = le->undo_n = 0;
+}
+
 void le_reset(le_line *le)
 {
     le->len = 0;
@@ -447,6 +555,7 @@ void le_reset(le_line *le)
     le->hist_pos = le->hist_n;
     le->searching = 0;
     le->undo_n = 0;
+    le->undo_used = 0;
     le->typing = 0;
 }
 
@@ -603,7 +712,7 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
         case 0x1A:
             if (le->undo_n) {
                 le->typing = 0;
-                load_state(le, &le->undo[--le->undo_n]);
+                pop_undo(le);
             }
             break;
         default:
