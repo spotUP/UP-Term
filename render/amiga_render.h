@@ -13,6 +13,7 @@
 #include <exec/types.h>
 #include <intuition/intuition.h>
 #include <graphics/text.h>
+#include <graphics/sprite.h>
 #include "../engine/vtengine.h"
 #include "glyphmap.h"
 #include "outline.h"
@@ -100,6 +101,34 @@ typedef struct vr_render {
     UBYTE *glyphs;
     /* profile counters, read by the debug build */
     ULONG n_direct, n_text;
+    /* CC1 (render/chips.h): what the blitter may still be doing for this
+     * renderer (VC_BLIT_*), and on which pixel rows of the window when it
+     * is the scroll copy; the rows a blitter scroll vacated, owed to the
+     * painter -- screen text rows [owe0, owe1) in the pen owe_pen. */
+    UBYTE bp, owe_pen;
+    WORD bp_y0, bp_y1;
+    WORD owe0, owe1;
+    ULONG n_blit_scroll, n_owed_fill; /* the debug build's counters: scrolls by blit, owed rows filled */
+    /* CC2: the cursor as a hardware sprite (vr_cursor_on). spr_num is the
+     * sprite's number, -1 none; spr_es the two images (the one shown and
+     * the next), spr_cur which is shown, spr_key what it shows; spr_vis
+     * the sprite is on screen as the cursor; spr_none no sprite was free
+     * (not asked again until the next screen); spr_reg the colour
+     * register of its colour 1, spr_rgb the colours set there, spr_old
+     * what they were (given back on release); spr_env the last
+     * vc_cursor_choice, for the watch (vr_cursor_watch). */
+    BYTE spr_num, spr_cur, spr_vis, spr_none;
+    struct ExtSprite *spr_es[2];
+    ULONG spr_key[2];
+    WORD spr_w;            /* the sprite engine's width the images were made for */
+    WORD spr_reg;
+    ULONG spr_rgb[2], spr_old[2][3];
+    WORD spr_x, spr_y;     /* its MoveSprite position */
+    BYTE spr_env;
+    WORD spr_sns;          /* the screen's pixel in ns, 0: no sprite cursor here (vr_init) */
+    BYTE spr_lace;         /* the screen is laced */
+    WORD spr_ns;           /* the sprite pixel the image was made for, in ns */
+    ULONG n_spr_moves, n_spr_images, n_plane_cursor; /* the debug build's counters */
     struct BitMap *chip_bm;       /* planes_ok's bitmap check, made once a bitmap (S1) */
     PLANEPTR chip_plane0;
     UBYTE chip_ok;
@@ -195,9 +224,17 @@ void vr_set_cursor_color(vr_render *r, ULONG rgb);
  * either (both by default) leaves that half of the swap in place, so the
  * plain look is a selected cell with its two colours exchanged. */
 void vr_set_selection_colors(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
-/* Hide / show the cursor around a batch of output. */
+/* Hide / show the cursor around a batch of output. A sprite cursor
+ * (CC2) is not in the planes: off leaves it where it is, on moves it --
+ * vr_cursor_hide takes it off the screen (the blink, a tab that goes). */
 void vr_cursor_off(vr_render *r);
 void vr_cursor_on(vr_render *r);
+void vr_cursor_hide(vr_render *r);
+/* While the cursor is a sprite: 1, and the frame clock keeps coming --
+ * the sprite is above every window and screen, so a window moved over
+ * this one, another window made active or another screen brought to the
+ * front must take it back to the planes; this looks each frame. */
+int  vr_cursor_watch(vr_render *r);
 /* Show the grid `lines` rows back into the scrollback (0 = live output);
  * clamps and redraws. Engine damage is not drawn while the view is back. */
 void vr_set_view(vr_render *r, int lines);

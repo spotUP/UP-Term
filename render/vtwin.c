@@ -425,8 +425,8 @@ void vtwin_render(vtwin *w)
         }
     }
     vtwin_knob_sync(w); /* once a frame: the scrollback grew, the alternate screen came */
-    if (w->r.has_blink || vr_cursor_blinks(&w->r) || w->r.jump)
-        frame_start(w); /* blinking cells or cursor, or a jump to settle: the frames keep coming */
+    if (w->r.has_blink || vr_cursor_blinks(&w->r) || w->r.jump || w->r.spr_vis)
+        frame_start(w); /* blinking cells or cursor, a jump to settle, a sprite cursor to watch */
 }
 
 static void drag_to(vtwin *w, WORD mx, WORD my);
@@ -450,6 +450,8 @@ void vtwin_tick(vtwin *w)
         note_tick(w, w->frame_wait); /* a notice in the title counts down */
         if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r)))
             frame_start(w); /* that frame ended a flash or a blink phase */
+        if (w->t && vr_cursor_watch(&w->r))
+            frame_start(w); /* a sprite cursor: looked at each frame (covered? another screen in front?) */
     }
     if (!w->frame_open) {
         vtwin_render(w); /* no frame clock: draw at once */
@@ -1535,6 +1537,14 @@ void vtwin_focus(vtwin *w, int in)
     int n;
     if (!w->t)
         return;
+    if (w->win && !w->r.hidden) {
+        /* the cursor is a sprite only in the active window (CC2): taken
+         * again, it is decided again */
+        vr_cursor_off(&w->r);
+        vr_cursor_on(&w->r);
+        if (w->r.spr_vis)
+            frame_start(w);
+    }
     n = vt_encode_focus(w->t, in, out);
     if (n)
         w->host->input(w->user, out, n);

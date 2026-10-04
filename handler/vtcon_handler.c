@@ -4963,6 +4963,12 @@ static void packet(con *c, struct DosPacket *p)
         DBG("render mask/planar", c->w.r.mask, c->w.r.planar);
         DBG("render pens fg/bg", c->w.r.pen_default_fg, c->w.r.pen_default_bg);
         DBG("render bg ink/seen", c->w.r.bg_ink, c->w.r.seen);
+        /* CC1 / CC2 reached (tools/rig/cc_rig.py): scrolls by blitter copy
+         * and owed rows filled; sprite cursor moves and images, plane
+         * cursors drawn and why the last one was not a sprite */
+        DBG("render blitscroll/owed", c->w.r.n_blit_scroll, c->w.r.n_owed_fill);
+        DBG("render spritemove/image", c->w.r.n_spr_moves, c->w.r.n_spr_images);
+        DBG("render planecursor/why", c->w.r.n_plane_cursor, c->w.r.spr_env);
 #ifdef VTCON_DEBUG
         DBG("prof writes/bytes", c->prof_writes, c->prof_bytes);
         DBG("prof out", c->prof_out, 0);

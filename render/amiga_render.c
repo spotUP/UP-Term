@@ -1,6 +1,7 @@
 /* The Amiga renderer; see amiga_render.h. */
 #include "amiga_render.h"
 #include "painter.h"
+#include "chips.h"
 #ifdef VTCON_PROF
 #define TimerBase vtwin_timer
 extern struct Device *vtwin_timer;
@@ -21,6 +22,9 @@ ULONG vr_prof[4]; /* PROF=1: EClock ticks in painter_run, Text() runs; painter /
 #include <graphics/clip.h>
 #include <graphics/layers.h>
 #include <graphics/gfxbase.h>
+#include <graphics/videocontrol.h>
+#include <graphics/displayinfo.h>
+#include <intuition/intuitionbase.h>
 
 extern struct GfxBase *GfxBase;
 
@@ -174,6 +178,8 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
 }
 
 static void extract_glyphs(vr_render *r);
+static void spr_free(vr_render *r);
+static int spr_screen_ns(struct Screen *scr, int *lace);
 
 /* ---- setup ---------------------------------------------------------------- */
 
@@ -252,6 +258,22 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     if (r->planar)
         extract_glyphs(r); /* the planar path's glyphs (DIRECT=1: also the text's 8-pixel alignment) */
     r->n_direct = r->n_text = 0;
+    r->bp = VC_BLIT_ANY;
+    r->owe0 = r->owe1 = 0;
+    r->n_blit_scroll = r->n_owed_fill = 0;
+    r->spr_num = -1;
+    r->spr_es[0] = r->spr_es[1] = 0;
+    r->spr_key[0] = r->spr_key[1] = 0;
+    r->spr_cur = r->spr_vis = r->spr_none = 0;
+    r->spr_x = r->spr_y = 0;
+    r->spr_env = VC_CUR_NONE;
+    {
+        int lace = 0;
+        r->spr_sns = (WORD)(win->WScreen ? spr_screen_ns(win->WScreen, &lace) : 0); /* a screen's mode stays */
+        r->spr_lace = (BYTE)lace;
+        r->spr_ns = 0;
+    }
+    r->n_spr_moves = r->n_spr_images = r->n_plane_cursor = 0;
     for (i = 0; i < VR_IMG_SLOTS; i++)
         r->img_key[i] = 0;
     r->n_img_pens = 0;
@@ -382,6 +404,7 @@ void vr_palette_changed(vr_render *r)
 void vr_free(vr_render *r)
 {
     int i;
+    spr_free(r); /* the window is still open: its screen gets the sprite back */
     if (r->cm)
         for (i = 0; i < 256; i++)
             if (r->obtained[i] >= 0)
@@ -451,8 +474,10 @@ void vr_set_outline(vr_render *r, struct vo_font *f)
 
 void vr_set_off(vr_render *r, int off)
 {
-    if (off && !r->off && r->win)
-        vr_cursor_off(r); /* still ours to take away */
+    if (off && !r->off && r->win) {
+        vr_cursor_hide(r); /* still ours to take away, a sprite too */
+        spr_free(r);       /* the tab shown now may need it (sprites are few) */
+    }
     r->off = (BYTE)(off != 0);
     /* another tab drew these pixels meanwhile: nothing is known about them */
     r->mask = 0xFF;
@@ -531,6 +556,36 @@ int vr_layout(vr_render *r)
 
 /* ---- drawing ------------------------------------------------------------- */
 
+/* A graphics call that may leave a blit running, rectangle unknown (CC1):
+ * every drawing call here other than the painter's goes through one. */
+#define GFX(r) ((r)->bp = VC_BLIT_ANY)
+static void pay_owed(vr_render *r);
+
+/* The CPU is about to write pixel rows [y0, y1) of the window into the
+ * bitplanes: a WaitBlit first, unless the only blit that may still run is
+ * the scroll copy and these rows are outside it (CC1: the painter fills
+ * and draws beside the copy). */
+static void cpu_sync(vr_render *r, WORD y0, WORD y1)
+{
+    if (vc_cpu_may_write(r->bp, r->bp_y0, r->bp_y1, y0, y1))
+        return;
+#ifdef VTCON_PROF
+    {
+        struct EClockVal w0, w1;
+        if (vtwin_timer)
+            ReadEClock(&w0);
+        WaitBlit();
+        if (vtwin_timer) {
+            ReadEClock(&w1);
+            vr_prof[1] += w1.ev_lo - w0.ev_lo;
+        }
+    }
+#else
+    WaitBlit();
+#endif
+    r->bp = VC_BLIT_IDLE;
+}
+
 static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 {
     if (x1 < x0 || y1 < y0)
@@ -539,6 +594,7 @@ static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
         r->blank = 0;
     ink_a(r, pen);
     SetDrMd(r->rp, JAM1);
+    GFX(r);
     RectFill(r->rp, x0, y0, x1, y1);
 }
 
@@ -552,6 +608,7 @@ static void all_planes(vr_render *r)
 
 void vr_mask_begin(vr_render *r)
 {
+    r->bp = VC_BLIT_ANY; /* blits since the last pass (gadgets, the title): not known */
     r->in_pass = 1;   /* one flush: what a default blank looks like is worked out once (draw_rows) */
     r->bs_valid = 0;
     /* jump scroll: a pass right after one that scrolled moves twice as far
@@ -573,6 +630,13 @@ void vr_mask_begin(vr_render *r)
 
 void vr_mask_end(vr_render *r)
 {
+    pay_owed(r);
+    if (r->bp != VC_BLIT_IDLE && r->in_pass) {
+        /* the one WaitBlit of the pass (CC1): every pixel is in the planes
+         * before the pass is over -- a WaitForChar answers after this */
+        WaitBlit();
+    }
+    r->bp = VC_BLIT_ANY; /* until the next pass: others draw too (gadgets, the title) */
     r->in_pass = 0;
     if (!r->mask_on)
         return;
@@ -582,6 +646,7 @@ void vr_mask_end(vr_render *r)
 
 static void line(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1)
 {
+    GFX(r);
     Move(r->rp, x0, y0);
     Draw(r->rp, x1, y1);
 }
@@ -630,6 +695,7 @@ static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, ULONG fg, ULO
     if (code & 0x80) {
         ink_ab(r, fg, bg);
         SetAfPt(r->rp, (UWORD *)shade_pat[(code & 3) - 1], 1);
+        GFX(r);
         RectFill(r->rp, px, py, px + w - 1, py + h - 1);
         SetAfPt(r->rp, 0, 0);
         return;
@@ -745,6 +811,7 @@ static ULONG style_of(vt_attr attr)
 
 static void hline(vr_render *r, WORD x0, WORD x1, WORD y)
 {
+    GFX(r);
     Move(r->rp, x0, y);
     Draw(r->rp, x1, y);
 }
@@ -755,6 +822,7 @@ static void hline(vr_render *r, WORD x0, WORD x1, WORD y)
 static void broken_hline(vr_render *r, WORD x0, WORD x1, WORD y, WORD on, WORD off)
 {
     WORD x;
+    GFX(r);
     for (x = x0; x <= x1; x = (WORD)(x + on + off))
         RectFill(r->rp, x, y, (WORD)(x + on - 1 > x1 ? x1 : x + on - 1), y);
 }
@@ -772,6 +840,7 @@ static void decorate(vr_render *r, int n, WORD px, WORD py, const vr_style *st)
     int room2 = u + 2 <= y1;
     if (u > y1)
         u = y1;
+    GFX(r);
     SetDrMd(r->rp, JAM1);
     if (st->attr & VT_ATTR_UNDERLINE) {
         ink_a(r, st->ul);
@@ -867,6 +936,7 @@ static int draw_script(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const 
         return 0;
     }
     fill(r, px, py, (WORD)(px + n * cw - 1), (WORD)(py + ch - 1), st->bg);
+    GFX(r);
     InitRastPort(&trp);
     trp.BitMap = full;
     SetFont(&trp, font);
@@ -931,6 +1001,7 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
         if (font != r->font)
             SetFont(r->rp, font);
         ink_ab(r, st->fg, st->bg);
+        GFX(r);
         /* Bold as the glyphs again 1 px right, in JAM1: the soft style's
          * smear made Text() one pixel wider than the run and painted the
          * next cell's first column in this run's background, which a
@@ -993,24 +1064,18 @@ static void extract_glyphs(vr_render *r)
     }
 }
 
-/* May cells be written straight into the screen's bitplanes now, at
- * any bit phase (the painter, render/painter.h)? The caller holds the
- * window's layer lock. */
-static int planes_ok(vr_render *r, int aligned)
+/* Is the window's bitmap planes in chip RAM -- a native display, not a
+ * graphics card's? Once a bitmap (it is asked for every run the painter
+ * draws: S1, sgr-colour paid ~1 ms a run): RTG is not planar, and
+ * Picasso96 calls its bitmaps standard too (it hung the rig, 2026-09-29) --
+ * a native display bitmap is planes in chip RAM, graphics card memory
+ * never is. */
+static int chip_planar(vr_render *r)
 {
-    struct Window *w = r->win;
     struct BitMap *bm = r->rp->BitMap;
-    struct ClipRect *cr = w->WLayer ? w->WLayer->ClipRect : 0;
-    WORD sx0 = w->LeftEdge + r->ox, sy0 = w->TopEdge + r->oy;
-    WORD sx1 = sx0 + vis_cols(r) * r->cw - 1, sy1 = sy0 + vis_rows(r) * r->ch - 1;
-    if (!r->glyphs || !bm || bm->Depth > 8 || (aligned && (sx0 & 7)))
+    if (!bm || bm->Depth > 8)
         return 0;
     if (bm != r->chip_bm || bm->Planes[0] != r->chip_plane0) {
-        /* Once a bitmap (it is asked for every run the painter draws: S1,
-         * sgr-colour paid ~1 ms a run): RTG is not planar, and Picasso96
-         * calls its bitmaps standard too (it hung the rig, 2026-09-29) --
-         * a native display bitmap is planes in chip RAM, graphics card
-         * memory never is. */
         int p, ok = (GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD) != 0;
         for (p = 0; ok && p < bm->Depth; p++)
             if (!bm->Planes[p] || !(TypeOfMem(bm->Planes[p]) & MEMF_CHIP))
@@ -1019,12 +1084,31 @@ static int planes_ok(vr_render *r, int aligned)
         r->chip_plane0 = bm->Planes[0];
         r->chip_ok = (UBYTE)ok;
     }
-    if (!r->chip_ok)
-        return 0;
+    return r->chip_ok;
+}
+
+/* Does one unobscured clip rectangle hold the whole text area (nothing
+ * covers it, in part or whole)? The caller holds the layer lock. */
+static int layer_whole(vr_render *r)
+{
+    struct Window *w = r->win;
+    struct ClipRect *cr = w->WLayer ? w->WLayer->ClipRect : 0;
+    WORD sx0 = w->LeftEdge + r->ox, sy0 = w->TopEdge + r->oy;
+    WORD sx1 = sx0 + vis_cols(r) * r->cw - 1, sy1 = sy0 + vis_rows(r) * r->ch - 1;
     if (!cr || cr->Next || cr->obscured)
         return 0; /* covered in part: the layer draws for us */
     return cr->bounds.MinX <= sx0 && cr->bounds.MinY <= sy0 && cr->bounds.MaxX >= sx1 &&
            cr->bounds.MaxY >= sy1;
+}
+
+/* May cells be written straight into the screen's bitplanes now, at
+ * any bit phase (the painter, render/painter.h)? The caller holds the
+ * window's layer lock. */
+static int planes_ok(vr_render *r, int aligned)
+{
+    if (!r->glyphs || (aligned && ((r->win->LeftEdge + r->ox) & 7)))
+        return 0;
+    return chip_planar(r) && layer_whole(r);
 }
 
 /* ...on a byte boundary of the screen (vr_asm_cell's one byte a cell). */
@@ -1066,20 +1150,7 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
         }
         r->seen |= pens;
         bm = r->rp->BitMap;
-#ifdef VTCON_PROF
-        {
-            struct EClockVal w0, w1;
-            if (vtwin_timer)
-                ReadEClock(&w0);
-            WaitBlit();
-            if (vtwin_timer) {
-                ReadEClock(&w1);
-                vr_prof[1] += w1.ev_lo - w0.ev_lo;
-            }
-        }
-#else
-        WaitBlit(); /* the scroll and fills before it are in the planes first */
-#endif
+        cpu_sync(r, py, (WORD)(py + r->ch)); /* the blits before it are in the planes first */
         vp_span_fast((vp_u8 **)bm->Planes, bm->Depth, bm->BytesPerRow, (long)(r->win->LeftEdge + px),
                      (long)(r->win->TopEdge + py), r->glyphs, r->font->tf_YSize, run, n, (int)st->fg,
                      (int)st->bg, r->mask);
@@ -1224,7 +1295,7 @@ static int direct_row(vr_render *r, int y, const dcell *d, int n)
                 SetWriteMask(r->rp, r->mask);
         }
         r->seen |= pens;
-        WaitBlit(); /* earlier blits (scroll, fills, Text, the cursor) finish first */
+        cpu_sync(r, (WORD)(r->oy + y * r->ch), (WORD)(r->oy + (y + 1) * r->ch)); /* earlier blits first */
         for (i = 0; i < n; i++)
             direct_cell(r, d[i].x, y, d[i].ch, d[i].fg, d[i].bg, d[i].attr);
     }
@@ -1315,6 +1386,7 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
     int x, half = (r->cols + 1) / 2;
     vr_style st;
     fill(r, r->ox, py, (WORD)(r->ox + vis_cols(r) * cw - 1), (WORD)(py + ch - 1), r->pen_default_bg);
+    GFX(r);
     if (!full || !big) {
         if (full)
             FreeBitMap(full);
@@ -1396,6 +1468,7 @@ static void draw_marks(vr_render *r, WORD px, WORD py, const vt_u32 *mk, int n, 
             continue;
         ink_a(r, st->fg);
         SetDrMd(r->rp, JAM1);
+        GFX(r);
         BltTemplate((PLANEPTR)m, 0, bpr, r->rp, px, py, (WORD)(cells * r->cw), r->ch);
         SetDrMd(r->rp, JAM2);
     }
@@ -1410,6 +1483,7 @@ static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bp
     fill(r, px, py, (WORD)(px + w - 1), (WORD)(py + r->ch - 1), st->bg);
     ink_a(r, st->fg);
     SetDrMd(r->rp, JAM1);
+    GFX(r);
     BltTemplate((PLANEPTR)m, 0, bpr, r->rp, px, py, w, r->ch);
     if (st->attr & VT_ATTR_BOLD)
         BltTemplate((PLANEPTR)m, 0, bpr, r->rp, (WORD)(px + 1), py, (WORD)(w - 1), r->ch);
@@ -1491,6 +1565,7 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
     img_colours(r, v);
     r->blank = 0;
     r->n_img_runs++;
+    GFX(r);
     if (r->cgx) {
         vr_cgx_write_lut(r->cgx, (APTR)v->pix, (UWORD)sx, (UWORD)sy, (UWORD)v->w, r->rp, r->img_ctab, (UWORD)dx,
                          (UWORD)dy, (UWORD)w, (UWORD)h, VR_CTABFMT_XRGB8);
@@ -1570,8 +1645,9 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
     dcell dc[DCELL_MAX];
-    int y, x, xe, n, nd, want_direct, tail_ok;
+    int y, x, xe, n, nd, want_direct, tail_ok, paid0 = 0, paid1 = 0;
     ULONG tail_bg;
+    UBYTE wb;
     if (r->hidden)
         return;
     want_direct = r->glyphs != 0;
@@ -1608,6 +1684,15 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             r->blank = 0;
         }
     }
+    if (r->owe1 > r->owe0 && y0 < r->owe1 && y1 > r->owe0) {
+        /* rows a blitter scroll vacated (CC1): filled before anything is
+         * drawn on them -- and then their default blanks need nothing more */
+        if ((ULONG)r->owe_pen == tail_bg) {
+            paid0 = r->owe0;
+            paid1 = r->owe1;
+        }
+        pay_owed(r);
+    }
     r->was_blank = (UBYTE)(r->blank && !r->cursor_drawn); /* a drawn cursor is pixels too */
     if (x0 <= 0 && y0 <= 0 && x1 >= vis_cols(r) && y1 >= vis_rows(r) && !r->view) {
         r->blank = 1; /* the whole grid again: blank unless a row draws something */
@@ -1637,6 +1722,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             }
         }
     }
+    wb = r->was_blank;
     for (y = y0; y < y1; y++) {
         int ncells;
         const vt_cell *c = vt_row(r->t, y - r->view + r->jump, &ncells);
@@ -1645,6 +1731,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         vr_style st, run_st;
         /* the last cell's look: runs of equal cells skip the lookups */
         const vt_cell *last = 0;
+        r->was_blank = (UBYTE)(wb || (y >= paid0 && y < paid1)); /* a row just filled is blank */
         if (!c)
             continue;
         if (!r->view && vt_row_size(r->t, gy)) {
@@ -1842,8 +1929,8 @@ int vr_blink_tick(vr_render *r)
     fast = r->blink_frames % 3 == 0;
     if (cursor && slow) {
         /* the cursor's own blink, at the slow rate */
-        if (r->cursor_drawn)
-            vr_cursor_off(r);
+        if (r->cursor_drawn || r->spr_vis)
+            vr_cursor_hide(r);
         else
             vr_cursor_on(r);
     }
@@ -1856,8 +1943,8 @@ int vr_blink_tick(vr_render *r)
     if (fast)
         r->blink_fast_off = (BYTE)!r->blink_fast_off;
     r->has_blink = 0; /* found again by the rows that still blink */
-    cursor = r->cursor_drawn; /* the cursor's phase, kept across the redraw */
-    vr_cursor_off(r);
+    cursor = r->cursor_drawn || r->spr_vis; /* the cursor's phase, kept across the redraw */
+    vr_cursor_off(r); /* a sprite cursor stays where it is */
     for (y = 0; y < r->rows; y++) {
         const vt_cell *c = vt_row(r->t, y, &n);
         int x0 = -1, x1 = 0;
@@ -1937,7 +2024,7 @@ void vr_set_view(vr_render *r, int lines)
         return;
     vr_settle(r);
     r->view = (WORD)lines;
-    vr_cursor_off(r);
+    vr_cursor_hide(r); /* back in the scrollback: no cursor (vr_cursor_on brings it back) */
     vr_redraw(r);
 }
 
@@ -2007,6 +2094,7 @@ void vr_redraw(vr_render *r)
     if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= top) {
         /* every plane written: from here the planes in use are the
          * background's and what the rows below draw */
+        r->owe0 = r->owe1 = 0; /* the fill below covers the rows a scroll left owed */
         vr_mask_end(r);
         fill(r, w->BorderLeft, top, w->Width - w->BorderRight - 1,
              w->Height - w->BorderBottom - 1, r->pen_default_bg);
@@ -2083,13 +2171,54 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
     raw_scroll(r, top, bottom, n);
 }
 
+/* The rows a blitter scroll vacated (CC1), in the pen the scroll left them
+ * owed in: straight into the planes by the CPU -- after the copy only where
+ * they lie in its rectangle -- or through the RastPort when the window got
+ * covered since. Before anything draws on those rows (draw_rows, the
+ * cursor), before another scroll moves them, and at the end of the pass. */
+static void pay_owed(vr_render *r)
+{
+    struct Layer *layer;
+    WORD y0 = (WORD)(r->oy + r->owe0 * r->ch), y1 = (WORD)(r->oy + r->owe1 * r->ch);
+    UBYTE pen = r->owe_pen;
+    int ok = 0;
+    if (r->owe1 <= r->owe0)
+        return;
+    r->owe0 = r->owe1 = 0;
+    if (!r->win || r->hidden)
+        return; /* nothing shows: the next redraw paints it all */
+    layer = r->win->WLayer;
+    LockLayer(0, layer);
+    if (planes_ok(r, 0)) {
+        struct BitMap *bm = r->rp->BitMap;
+        ink_pen(r, pen, 0); /* its planes in use from here (the mask widens) */
+        cpu_sync(r, y0, y1);
+        vp_fill_fast((vp_u8 **)bm->Planes, bm->Depth, bm->BytesPerRow, (long)(r->win->LeftEdge + r->ox),
+                     (long)(r->win->TopEdge + y0), y1 - y0, vis_cols(r), pen, r->mask);
+        ok = 1;
+    }
+    UnlockLayer(layer);
+    if (!ok)
+        fill(r, r->ox, y0, (WORD)(r->ox + vis_cols(r) * r->cw - 1), (WORD)(y1 - 1), pen);
+    r->n_owed_fill++;
+    if (r->cursor_drawn && r->cursor_y * r->ch + r->oy >= y0 && r->cursor_y * r->ch + r->oy < y1)
+        r->cursor_drawn = 0; /* the plane cursor was in those rows: gone with them */
+}
+
 /* Rows [top, bottom) of the screen up by n (down when n < 0), the vacated
- * rows in the default background. */
+ * rows in the default background.
+ *
+ * Inside a render pass on an unobscured planar window (CC1) it is one
+ * BltBitMap copy of the planes in use: no ScrollRaster (its layer work and
+ * its clearing blit, which waits for the copy), and the vacated rows owed
+ * to the CPU painter (pay_owed), which writes beside the copy where it
+ * can. Elsewhere -- covered, RTG, outside a pass -- ScrollRaster. */
 static void raw_scroll(vr_render *r, int top, int bottom, int n)
 {
     WORD dy = (WORD)(n * r->ch);
     vt_cell blank;
     vt_color f, b;
+    ULONG pen;
     /* The vacated rows must come out in the personality's default
      * background (the engine's scroll contract): the Amiga global
      * background pen, for one, is not always pen 0. */
@@ -2099,44 +2228,376 @@ static void raw_scroll(vr_render *r, int top, int bottom, int n)
     blank.attr = 0;
     blank.width = 1;
     vt_resolve_colors(r->t, &blank, &f, &b);
-#ifdef VTCON_DIRECT
-    {
-        /* Unobscured planar window: blit the screen bitmap itself and
-         * fill the vacated rows, as retro32-term does; ScrollRaster's
-         * layer bookkeeping cost more than the copy (rig, AGA 4 planes). */
+    pen = pen_for(r, b, 1);
+    if (r->in_pass && r->mask_on) {
         struct Layer *layer = r->win->WLayer;
         int done = 0;
+        pay_owed(r); /* rows still owed would be moved as they are */
         LockLayer(0, layer);
-        if (direct_ok(r)) {
+        if (vc_scroll_by_blit(1, planes_ok(r, 0), (pen & VR_INK_RGB) != 0)) {
             struct BitMap *bm = r->rp->BitMap;
-            WORD sx = r->win->LeftEdge + r->ox, w = (WORD)(vis_cols(r) * r->cw);
-            WORD sy = r->win->TopEdge + r->oy + top * r->ch;
-            WORD h = (WORD)((bottom - top) * r->ch), ad = dy < 0 ? -dy : dy;
-            UBYTE pen = (UBYTE)pen_for(r, b, 1); /* planar: never an RGB ink */
-            if (ad < h) {
-                if (dy > 0)
-                    BltBitMap(bm, sx, sy + ad, bm, sx, sy, w, h - ad, 0xC0, 0xFF, 0);
-                else
-                    BltBitMap(bm, sx, sy, bm, sx, sy + ad, w, h - ad, 0xC0, 0xFF, 0);
+            WORD sx = (WORD)(r->win->LeftEdge + r->ox), sy = (WORD)(r->win->TopEdge + r->oy);
+            vc_scroll s;
+            vc_scroll_plan(top, bottom, n, &s);
+            if (s.copy) {
+                BltBitMap(bm, sx, (WORD)(sy + s.src * r->ch), bm, sx, (WORD)(sy + s.dst * r->ch),
+                          (WORD)(vis_cols(r) * r->cw), (WORD)(s.copy * r->ch), 0xC0, r->mask, 0);
+                /* graphics waited for every earlier blit: this copy is the only one now */
+                r->bp = VC_BLIT_SCROLL;
+                r->bp_y0 = (WORD)(r->oy + s.busy0 * r->ch);
+                r->bp_y1 = (WORD)(r->oy + s.busy1 * r->ch);
             }
-            /* the vacated rows in the background pen: minterm 0xF0 sets
-             * the planes of its bits, 0x00 clears the rest */
-            {
-                WORD fy = dy > 0 ? sy + h - (ad < h ? ad : h) : sy, fh = ad < h ? ad : h;
-                BltBitMap(bm, sx, fy, bm, sx, fy, w, fh, 0x00, (UBYTE)~pen, 0);
-                if (pen)
-                    BltBitMap(bm, sx, fy, bm, sx, fy, w, fh, 0xFF, pen, 0);
-            }
+            r->owe0 = (WORD)s.vac0;
+            r->owe1 = (WORD)s.vac1;
+            r->owe_pen = (UBYTE)pen; /* planar: never an RGB ink */
+            r->n_blit_scroll++;
             done = 1;
         }
         UnlockLayer(layer);
         if (done)
             return;
     }
-#endif
-    SetBPen(r->rp, ink_pen(r, pen_for(r, b, 1), 1));
+    SetBPen(r->rp, ink_pen(r, pen, 1));
+    GFX(r);
     ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + vis_cols(r) * r->cw - 1,
                  r->oy + bottom * r->ch - 1);
+}
+
+/* ---- CC2: the cursor as a hardware sprite ---------------------------------- */
+
+/* What a released sprite shows, one per sprite engine width (16, 32, 64):
+ * the display keeps fetching whatever a sprite was last given, so that data
+ * must outlive it. Made on the first release, never freed. */
+static struct ExtSprite *spr_blank[3];
+static const BYTE spr_order[6] = { 2, 4, 6, 3, 5, 7 }; /* never 0 and 1: the pointer's colours */
+
+/* Width in nanoseconds of the screen's pixels (0: not a mode the sprite can
+ * follow -- RTG, scan doubled, no sprites), and laced or not. */
+static int spr_screen_ns(struct Screen *scr, int *lace)
+{
+    struct DisplayInfo di;
+    ULONG mode = GetVPModeID(&scr->ViewPort);
+    if (mode == (ULONG)INVALID_ID || !GetDisplayInfoData(0, (UBYTE *)&di, sizeof(di), DTAG_DISP, mode))
+        return 0;
+    if ((di.PropertyFlags & (DIPF_IS_FOREIGN | DIPF_IS_SCANDBL)) || !(di.PropertyFlags & DIPF_IS_SPRITES))
+        return 0;
+    *lace = (di.PropertyFlags & DIPF_IS_LACE) != 0;
+    return di.PixelSpeed;
+}
+
+/* Width in nanoseconds of a sprite pixel on this screen now (AGA: what
+ * Intuition set for its pointer; before AGA: lores). */
+static int spr_sprite_ns(struct ColorMap *cm)
+{
+    struct TagItem t[2];
+    LONG res = SPRITERESN_ECS;
+    t[0].ti_Tag = VTAG_SPRITERESN_GET;
+    t[0].ti_Data = (ULONG)SPRITERESN_ECS;
+    t[1].ti_Tag = TAG_DONE;
+    if (cm && !VideoControl(cm, t))
+        res = (LONG)t[0].ti_Data;
+    if (res == SPRITERESN_DEFAULT && cm && cm->Type >= COLORMAP_TYPE_V39)
+        res = (LONG)cm->SpriteResDefault;
+    return res == SPRITERESN_35NS ? 35 : res == SPRITERESN_70NS ? 70 : 140;
+}
+
+/* The colour register of sprite num's colour 1 on this screen, -1 when it
+ * would recolour text (render/chips.h). */
+static int spr_colour_reg(vr_render *r, int num)
+{
+    struct TagItem t[3];
+    ULONG even = 16, odd = 16;
+    struct Screen *scr = r->win->WScreen;
+    if (!r->cm || !scr)
+        return -1;
+    t[0].ti_Tag = VTAG_SPEVEN_BASE_GET;
+    t[0].ti_Data = 16;
+    t[1].ti_Tag = VTAG_SPODD_BASE_GET;
+    t[1].ti_Data = 16;
+    t[2].ti_Tag = TAG_DONE;
+    if (!VideoControl(r->cm, t)) {
+        even = t[0].ti_Data;
+        odd = t[1].ti_Data;
+    }
+    return vc_sprite_colour_reg(num, (int)even, (int)odd, (int)GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH),
+                                (int)r->cm->Count);
+}
+
+/* An image of sh lines from planes a and b, for a sprite engine `width`
+ * pixels wide (AllocSpriteDataA converts and pads; the planes need not be
+ * in chip RAM). */
+static struct ExtSprite *spr_alloc(const UWORD *a, const UWORD *b, int sh, int width)
+{
+    struct BitMap bm;
+    struct TagItem t[3];
+    InitBitMap(&bm, 2, VC_SPRITE_W, sh);
+    bm.Planes[0] = (PLANEPTR)a;
+    bm.Planes[1] = (PLANEPTR)b;
+    t[0].ti_Tag = SPRITEA_Width;
+    t[0].ti_Data = (ULONG)width;
+    t[1].ti_Tag = SPRITEA_OutputHeight;
+    t[1].ti_Data = (ULONG)sh;
+    t[2].ti_Tag = TAG_DONE;
+    return AllocSpriteDataA(&bm, t);
+}
+
+/* A sprite of our own on the window's screen: the first free one whose
+ * colours are not text colours. Asked once a screen (spr_none). */
+static int spr_get(vr_render *r, int sh)
+{
+    static const WORD widths[3] = { 16, 32, 64 };
+    UWORD zero[VC_SPRITE_H];
+    int wi, k;
+    if (r->spr_num >= 0)
+        return 1;
+    if (r->spr_none)
+        return 0;
+    r->spr_none = 1;
+    for (k = 0; k < VC_SPRITE_H; k++)
+        zero[k] = 0;
+    for (wi = 0; wi < 3; wi++) {
+        /* the engine's width is the display's (Intuition's pointer sets
+         * it): a sprite of another width is refused, so each is tried */
+        struct ExtSprite *es = spr_alloc(zero, zero, sh, widths[wi]);
+        if (!es)
+            continue;
+        for (k = 0; k < 6; k++) {
+            struct TagItem t[2];
+            LONG num;
+            int reg = spr_colour_reg(r, spr_order[k]);
+            if (reg < 0)
+                continue;
+            t[0].ti_Tag = GSTAG_SPRITE_NUM;
+            t[0].ti_Data = (ULONG)spr_order[k];
+            t[1].ti_Tag = TAG_DONE;
+            num = GetExtSpriteA(es, t);
+            if (num < 0)
+                continue;
+            r->spr_num = (BYTE)num;
+            r->spr_reg = (WORD)reg;
+            r->spr_w = widths[wi];
+            r->spr_es[0] = es;
+            r->spr_es[1] = 0;
+            r->spr_cur = 0;
+            r->spr_key[0] = 1; /* the empty image */
+            r->spr_key[1] = 0;
+            r->spr_rgb[0] = r->spr_rgb[1] = 0xFFFFFFFFUL;
+            GetRGB32(r->cm, (ULONG)reg, 1, r->spr_old[0]);
+            GetRGB32(r->cm, (ULONG)reg + 1, 1, r->spr_old[1]);
+            r->spr_none = 0; /* the first spr_image puts an image on it (ChangeExtSpriteA) */
+            return 1;
+        }
+        FreeSpriteData(es);
+    }
+    return 0;
+}
+
+/* Some sprite's colours on this screen are not text colours. */
+static int spr_colours_ok(vr_render *r)
+{
+    int k;
+    for (k = 0; k < 6; k++)
+        if (spr_colour_reg(r, spr_order[k]) >= 0)
+            return 1;
+    return 0;
+}
+
+/* The sprite back to the system: it shows the never-freed blank, its
+ * colour registers get back what they held, its images go. */
+static void spr_free(vr_render *r)
+{
+    struct ViewPort *vp;
+    int wi, k, keep = -1;
+    if (r->spr_num < 0 || !r->win || !r->win->WScreen)
+        return;
+    vp = &r->win->WScreen->ViewPort;
+    wi = r->spr_w == 64 ? 2 : r->spr_w == 32 ? 1 : 0;
+    if (!spr_blank[wi]) {
+        UWORD zero[2];
+        zero[0] = zero[1] = 0;
+        spr_blank[wi] = spr_alloc(zero, zero, 1, r->spr_w);
+    }
+    if (spr_blank[wi]) {
+        spr_blank[wi]->es_SimpleSprite.num = (UWORD)r->spr_num;
+        ChangeExtSpriteA(vp, r->spr_es[(int)r->spr_cur], spr_blank[wi], 0);
+    } else {
+        keep = r->spr_cur; /* no blank to show (no chip RAM left): the image shown stays allocated */
+    }
+    FreeSprite((WORD)r->spr_num);
+    for (k = 0; k < 2; k++)
+        SetRGB32(vp, (ULONG)r->spr_reg + k, r->spr_old[k][0], r->spr_old[k][1], r->spr_old[k][2]);
+    WaitTOF(); /* the display fetches the blank from here: the images may go */
+    for (k = 0; k < 2; k++)
+        if (r->spr_es[k] && k != keep)
+            FreeSpriteData(r->spr_es[k]);
+    r->spr_es[0] = r->spr_es[1] = 0;
+    r->spr_num = -1;
+    r->spr_vis = 0;
+}
+
+/* Show image (a, b) under key: made into the image not shown, then swapped
+ * in (the one shown before stays until the next swap: the display may be
+ * fetching it this frame). 0 when it cannot be made. */
+static int spr_image(vr_render *r, ULONG key, const UWORD *a, const UWORD *b, int sh)
+{
+    struct ViewPort *vp = &r->win->WScreen->ViewPort;
+    int nx = !r->spr_cur;
+    struct ExtSprite *es;
+    if (r->spr_key[(int)r->spr_cur] == key)
+        return 1;
+    if (r->spr_es[nx])
+        FreeSpriteData(r->spr_es[nx]);
+    r->spr_es[nx] = es = spr_alloc(a, b, sh, r->spr_w);
+    r->spr_key[nx] = 0;
+    if (!es)
+        return 0;
+    es->es_SimpleSprite.num = (UWORD)r->spr_num;
+    ChangeExtSpriteA(vp, r->spr_es[(int)r->spr_cur], es, 0);
+    MoveSprite(vp, &es->es_SimpleSprite, r->spr_x, r->spr_y);
+    r->spr_cur = (BYTE)nx;
+    r->spr_key[nx] = key;
+    r->n_spr_images++;
+    return 1;
+}
+
+/* The sprite off the screen (the empty image): the blink's off phase, a
+ * cursor that is not to be seen, the planes drawing it instead. */
+static void spr_hide(vr_render *r)
+{
+    UWORD zero[VC_SPRITE_H];
+    int k;
+    if (r->spr_num < 0 || !r->spr_vis)
+        return;
+    for (k = 0; k < VC_SPRITE_H; k++)
+        zero[k] = 0;
+    spr_image(r, 1, zero, zero, 1);
+    r->spr_vis = 0;
+}
+
+/* The colour register pair: colour 1 the cursor's, colour 2 the glyph's. */
+static void spr_colours(vr_render *r, ULONG c1, ULONG c2)
+{
+    struct ViewPort *vp = &r->win->WScreen->ViewPort;
+    ULONG c[2];
+    int k;
+    c[0] = c1;
+    c[1] = c2;
+    for (k = 0; k < 2; k++)
+        if (r->spr_rgb[k] != c[k]) {
+            r->spr_rgb[k] = c[k];
+            SetRGB32(vp, (ULONG)r->spr_reg + k, ((c[k] >> 16) & 0xFF) * 0x01010101UL,
+                     ((c[k] >> 8) & 0xFF) * 0x01010101UL, (c[k] & 0xFF) * 0x01010101UL);
+        }
+}
+
+/* May a sprite stand for this window's cursor: nothing covers the text,
+ * it is the active window, its screen the frontmost? (A sprite is above
+ * every window and screen.) */
+static int spr_visible(vr_render *r)
+{
+    struct Window *w = r->win;
+    int ok;
+    if (!(w->Flags & WFLG_WINDOWACTIVE) || IntuitionBase->FirstScreen != w->WScreen)
+        return 0;
+    LockLayer(0, w->WLayer);
+    ok = layer_whole(r);
+    UnlockLayer(w->WLayer);
+    return ok;
+}
+
+/* The cursor at screen cell (x, y) as the sprite (CC2): 1 when it is shown
+ * there; 0 and the reason in spr_env (render/chips.h) when the planes are
+ * to draw it. */
+static int spr_show(vr_render *r, int x, int y)
+{
+    vc_cursor_env e;
+    vc_sprite_geom g;
+    UWORD a[VC_SPRITE_H], b[VC_SPRITE_H];
+    UBYTE rows[VC_SPRITE_H * 2];
+    const UBYTE *glyph = 0;
+    struct Screen *scr = r->win->WScreen;
+    int style = vt_cursor_style(r->t), dx, dy, w, h, code = 0, k, choice;
+    long sx = 0, sy = 0;
+    ULONG key = 0;
+    e.native = e.visible = e.geom = e.pos = e.plain_cell = e.image = e.colours = e.have_sprite = 0;
+    g.sw = g.sh = g.lace = 0;
+    g.sprite_ns = g.screen_ns = 140;
+    e.native = r->spr_sns && scr && r->planar && !r->truecolor && chip_planar(r);
+    if (e.native)
+        e.visible = spr_visible(r);
+    if (e.visible)
+        e.geom = vc_sprite_geom_of(r->spr_sns, spr_sprite_ns(r->cm), r->spr_lace, r->cw, r->ch, &g);
+    if (e.geom) {
+        struct ViewPort *vp = &scr->ViewPort;
+        long px = (long)r->win->LeftEdge + r->ox + (long)x * r->cw;
+        long py = (long)r->win->TopEdge + r->oy + (long)y * r->ch;
+        if (vp->RasInfo) {
+            px -= vp->RasInfo->RxOffset; /* a screen bigger than the display, scrolled */
+            py -= vp->RasInfo->RyOffset;
+        }
+        e.pos = vc_sprite_pos(&g, px, py, &sx, &sy);
+    }
+    if (e.pos) {
+        /* the cell under the cursor: a glyph of the bitmap font, one cell
+         * wide, or nothing -- anything else the planes draw */
+        int ncells, gy = y + r->jump;
+        const vt_cell *c = vt_row(r->t, gy, &ncells);
+        e.plain_cell = !vt_row_size(r->t, gy) && r->ch <= VC_SPRITE_H * 2;
+        if (e.plain_cell && c && x < ncells) {
+            vt_u32 cp = cell_char(r, &c[x]);
+            vt_glyph gl = vt_map_glyph(cp, r->enc);
+            WORD obpr;
+            if (c[x].width != 1 || vt_cell_font(r->t, &c[x]) || gl.kind != VT_GLYPH_FONT ||
+                outline_glyph(r, cp, 1, &obpr))
+                e.plain_cell = 0;
+            else
+                code = gl.code;
+        }
+    }
+    if (e.plain_cell) {
+        int with_glyph = style <= 2 && code && code != ' '; /* a block over a glyph shows it */
+        /* the image's key: what it shows -- glyph, shape, size and scale (1 is the empty image) */
+        key = 0x80000000UL | (ULONG)(with_glyph ? code : 0) | ((ULONG)style << 8) | ((ULONG)g.sw << 12) |
+              ((ULONG)g.sh << 17) | ((ULONG)g.lace << 24) | ((ULONG)(g.sprite_ns / 35) << 25);
+        if (r->spr_num >= 0 && r->spr_key[(int)r->spr_cur] == key) {
+            e.image = 1; /* shown already: nothing to make (the common case: a cursor on blanks) */
+        } else if (with_glyph && !(r->glyphs && r->cw == 8)) {
+            e.image = 0; /* no 8-pixel glyph rows to put in it */
+        } else {
+            if (with_glyph) {
+                for (k = 0; k < r->ch; k++)
+                    rows[k] = r->glyphs[code * r->ch + k];
+                glyph = rows;
+            }
+            vc_cursor_rect(style, r->cw, r->ch, &dx, &dy, &w, &h);
+            e.image = vc_sprite_image(&g, dx, dy, w, h, glyph, a, b);
+        }
+    }
+    if (e.image)
+        e.colours = r->spr_num >= 0 || r->spr_none || spr_colours_ok(r);
+    if (e.colours)
+        e.have_sprite = spr_get(r, g.sh);
+    choice = vc_cursor_choice(&e);
+    r->spr_env = (BYTE)choice;
+    if (choice != VC_CUR_SPRITE)
+        return 0;
+    spr_colours(r, vr_pen_rgb(r, (UBYTE)(r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg)),
+                vr_pen_rgb(r, r->pen_default_bg));
+    if (sx != r->spr_x || sy != r->spr_y) {
+        r->spr_x = (WORD)sx;
+        r->spr_y = (WORD)sy;
+        if (r->spr_key[(int)r->spr_cur] == key) {
+            MoveSprite(&scr->ViewPort, &r->spr_es[(int)r->spr_cur]->es_SimpleSprite, r->spr_x, r->spr_y);
+            r->n_spr_moves++;
+        }
+    }
+    if (!spr_image(r, key, a, b, g.sh)) {
+        spr_hide(r);
+        return 0;
+    }
+    r->spr_ns = (WORD)g.sprite_ns;
+    r->spr_vis = 1;
+    return 1;
 }
 
 /* Draw (on) or erase (off) the cursor: the cell (a block), or its two
@@ -2151,6 +2612,7 @@ static void raw_scroll(vr_render *r, int top, int bottom, int n)
 static void cursor_flip(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE m)
 {
     r->mask |= m; /* planes not in use held zeros; they do no longer */
+    GFX(r);
     SetDrMd(r->rp, COMPLEMENT);
     SetWriteMask(r->rp, m);
     RectFill(r->rp, x0, y0, x1, y1);
@@ -2163,12 +2625,17 @@ static void cursor_draw(vr_render *r, int on)
     ULONG ink = r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg;
     int wide = !r->view && vt_row_size(r->t, r->cursor_y) ? 2 : 1; /* a double-size row */
     WORD px = (WORD)(r->ox + r->cursor_x * r->cw * wide), py = r->oy + r->cursor_y * r->ch;
-    WORD x1 = (WORD)(px + r->cw * wide - 1), y1 = (WORD)(py + r->ch - 1);
+    WORD x1, y1;
     int style = vt_cursor_style(r->t);   /* DECSCUSR */
-    if (style == 3 || style == 4)
-        py = (WORD)(y1 - 1);              /* underline: the two bottom rows */
-    else if (style == 5 || style == 6)
-        x1 = (WORD)(px + 1);              /* bar: the two left columns */
+    int dx, dy, w, h;
+    vc_cursor_rect(style, r->cw * wide, r->ch, &dx, &dy, &w, &h); /* a block, an underline, a bar */
+    px = (WORD)(px + dx);
+    py = (WORD)(py + dy);
+    x1 = (WORD)(px + w - 1);
+    y1 = (WORD)(py + h - 1);
+    GFX(r);
+    if (on)
+        r->n_plane_cursor++;
     if (!on) {
         if (r->cursor_colorful) {
             /* the cell was filled: repaint it normally */
@@ -2285,14 +2752,27 @@ void vr_cursor_on(vr_render *r)
     int x, y;
     if (!r->win)
         return; /* no window (before vr_init, after vr_free) */
-    if (r->hidden)
+    pay_owed(r); /* the cursor's row may be one a scroll left owed (CC1) */
+    if (r->hidden) {
+        spr_hide(r);
         return;
+    }
     vt_cursor(r->t, &x, &y);
     y -= r->jump; /* its screen row (vr_scroll's jump) */
     if (r->cursor_drawn && (x != r->cursor_x || y != r->cursor_y))
         vr_cursor_off(r);
-    if (!(vt_modes(r->t) & VT_MODE_CURSOR_VISIBLE) || x >= vis_cols(r) || y >= vis_rows(r) || y < 0 || r->view)
+    if (!(vt_modes(r->t) & VT_MODE_CURSOR_VISIBLE) || x >= vis_cols(r) || y >= vis_rows(r) || y < 0 || r->view) {
+        spr_hide(r);
         return;
+    }
+    if (spr_show(r, x, y)) {
+        /* CC2: a hardware sprite is the cursor -- nothing in the planes */
+        vr_cursor_off(r);
+        r->cursor_x = (WORD)x;
+        r->cursor_y = (WORD)y;
+        return;
+    }
+    spr_hide(r); /* the planes draw it (covered, RTG, a glyph the sprite cannot show ...) */
     if (!r->cursor_drawn) {
         UBYTE was = r->blank;
         r->cursor_x = (WORD)x;
@@ -2301,4 +2781,24 @@ void vr_cursor_on(vr_render *r)
         r->cursor_drawn = 1;
         r->blank = was; /* vr_scroll takes the cursor off before it looks */
     }
+}
+
+void vr_cursor_hide(vr_render *r)
+{
+    vr_cursor_off(r);
+    spr_hide(r);
+}
+
+int vr_cursor_watch(vr_render *r)
+{
+    if (!r->win || !r->spr_vis)
+        return 0;
+    if (!spr_visible(r) || spr_sprite_ns(r->cm) != r->spr_ns) {
+        /* covered, another window active, another screen in front: the
+         * planes draw the cursor from here (they clip to the layer); or
+         * the pointer changed the sprites' pixel size: a new image */
+        vr_cursor_off(r);
+        vr_cursor_on(r);
+    }
+    return r->spr_vis;
 }
