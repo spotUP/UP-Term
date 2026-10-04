@@ -137,6 +137,7 @@ typedef struct vt_callbacks {
 #define VT_MODE_SYNC         0x100000 /* ?2026: synchronized output -- a program is in the middle of
                                        * a frame; the host holds its drawing until this is reset (or a
                                        * moment has passed), so no half-updated screen is shown */
+#define VT_MODE_ALT_SCROLL   0x200000 /* ?1007: the wheel on the alternate screen sends cursor keys */
 
 typedef struct vt_term vt_term;
 

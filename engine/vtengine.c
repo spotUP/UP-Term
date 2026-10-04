@@ -1748,9 +1748,10 @@ static void set_mode(vt_term *t, int on)
                     restore_cursor(t, &t->sav_1049);
                 }
                 break;
-            case 8: case 12: case 45: case 1005: case 1034: case 2031: case 7727: {
+            case 8: case 12: case 45: case 1005: case 1007: case 1034: case 2031: case 7727: {
                 vt_u32 bit = p == 8 ? VT_MODE_AUTOREPEAT : p == 12 ? VT_MODE_CURSOR_BLINK
                            : p == 45 ? VT_MODE_REVERSE_WRAP : p == 1005 ? VT_MODE_MOUSE_UTF8
+                           : p == 1007 ? VT_MODE_ALT_SCROLL
                            : p == 1034 ? VT_MODE_META_8BIT : p == 2031 ? VT_MODE_SCHEME_UPDATES
                            : VT_MODE_APP_ESCAPE;
                 if (on)
@@ -2061,6 +2062,7 @@ static void report_mode(vt_term *t)
         case 8: bit = VT_MODE_AUTOREPEAT; break;
         case 45: bit = VT_MODE_REVERSE_WRAP; break;
         case 1005: bit = VT_MODE_MOUSE_UTF8; break;
+        case 1007: bit = VT_MODE_ALT_SCROLL; break;
         case 1034: bit = VT_MODE_META_8BIT; break;
         case 2031: bit = VT_MODE_SCHEME_UPDATES; break;
         case 7727: bit = VT_MODE_APP_ESCAPE; break;

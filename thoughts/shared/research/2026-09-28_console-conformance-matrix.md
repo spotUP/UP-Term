@@ -473,6 +473,10 @@ Other xterm input reports:
   motion, 64/65 wheel. The wheel's report names the cell under the pointer
   (clamped to the grid over the border), never window pixels (G1 M1,
   `render/vtinput.c` `vti_wheel`; test `wheel_reports_name_the_cell_under_the_pointer`).
+- Alternate scroll (`?1007h`, xterm's alternateScroll; off by default as in
+  xterm, reset by RIS, DECRQM answers it): on the alternate screen with no
+  mouse mode a wheel notch sends three cursor-up / cursor-down keys (DECCKM
+  form). G1 M2; test `wheel_on_the_alternate_screen_sends_cursor_keys`.
 - Focus (`?1004h`): `ESC [ I` in, `ESC [ O` out (source: Amiga classes 17/18).
   G1 K3: `vt_encode_focus`, sent by the window on IDCMP_ACTIVEWINDOW /
   INACTIVEWINDOW (XCON:, tabs through the host's routing, console.device units);

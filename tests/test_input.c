@@ -54,7 +54,38 @@ static void wheel_reports_name_the_cell_under_the_pointer(void)
     vt_free(t);
 }
 
+/* gap #8: less, man, git log on the alternate screen scroll with the wheel
+ * once the program sets ?1007 (xterm's alternateScroll; off until asked) */
+static void wheel_on_the_alternate_screen_sends_cursor_keys(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    int lines;
+    h_put(t, "\033[?1049h");
+    CHECK_STR(wheel(t, 0, 1, 300, 200, &lines), "");             /* xterm's default: off */
+    h_reply_clear();
+    h_put(t, "\033[?1007$p");
+    CHECK_STR(h_reply, "\033[?1007;2$y");
+    h_put(t, "\033[?1007h");
+    h_reply_clear();
+    h_put(t, "\033[?1007$p");
+    CHECK_STR(h_reply, "\033[?1007;1$y");
+    CHECK_STR(wheel(t, 0, 1, 300, 200, &lines), "\033[A\033[A\033[A");
+    CHECK_STR(wheel(t, 0, 0, 300, 200, &lines), "\033[B\033[B\033[B");
+    h_put(t, "\033[?1h");                                          /* DECCKM: as the keys say it */
+    CHECK_STR(wheel(t, 0, 0, 300, 200, &lines), "\033OB\033OB\033OB");
+    h_put(t, "\033[?1000h\033[?1006h");                            /* a mouse mode wins */
+    CHECK_STR(wheel(t, 0, 1, 4, 11, &lines), "\033[<64;1;1M");
+    h_put(t, "\033[?1000l\033[?1049l");
+    CHECK_STR(wheel(t, 0, 1, 300, 200, &lines), "");             /* the main screen: scrollback */
+    CHECK_INT(lines, VTI_WHEEL_LINES);
+    h_put(t, "\033[?1049h\033c");                                  /* RIS: off again */
+    h_put(t, "\033[?1049h");
+    CHECK_STR(wheel(t, 0, 1, 300, 200, &lines), "");
+    vt_free(t);
+}
+
 void suite_input(void)
 {
     wheel_reports_name_the_cell_under_the_pointer();
+    wheel_on_the_alternate_screen_sends_cursor_keys();
 }

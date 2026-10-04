@@ -40,6 +40,13 @@ int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
     if (vt_modes(t) & MOUSE_MODES) {
         cell_clamped(g, px, py, &x, &y);
         n = vt_encode_mouse(t, up ? 64 : 65, 0, x, y, mods, out);
+    } else if ((vt_modes(t) & (VT_MODE_ALT_SCREEN | VT_MODE_ALT_SCROLL)) ==
+               (VT_MODE_ALT_SCREEN | VT_MODE_ALT_SCROLL)) {
+        /* ?1007 (xterm's alternateScroll): a pager on the alternate screen
+         * scrolls as the cursor keys move it; there is no scrollback here */
+        int i;
+        for (i = 0; i < VTI_WHEEL_LINES; i++)
+            n += vt_encode_key(t, up ? VT_KEY_UP : VT_KEY_DOWN, 0, out + n);
     }
     return n;
 }
