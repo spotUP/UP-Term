@@ -513,18 +513,39 @@ CLAUDE
     Claude list the files in S:   one request, then back to the Shell
     Claude PING               checks the connection: HTTP status, times
     Claude MODEL=name EFFORT=low|medium|high|xhigh|max ROOT=dir DEBUG
+    Claude PLAIN              the line mode at the window's own prompt
   The key: SetEnv SAVE ANTHROPIC_API_KEY yourkey, or put it alone in the
   file ENVARC:Claude/key (Install makes the drawer, never a key; Uninstall
   leaves the drawer and your key). Claude never shows the key and never
   writes it to a log; DEBUG logs to T:Claude.log with the key blanked. The
   key only goes over https.
-  Tools: every call is shown before it runs. Reading, listing and searching
-  ask once ("a" allows all three for the session); writing, editing and
-  running a command ask every time unless you answer "a" for that tool.
-  Anything outside the start directory (the current one, or ROOT=) asks
-  every time. Commands run through vsh with no input, up to 60 seconds.
-  Ctrl+C stops an answer (it is not kept) or a running command. The text
-  is UTF-8: an UP-Term window shows it right, a ROM CON: window does not.
+  The screen is Claude Code's: what was said scrolls above, an input box
+  and a status line stay at the bottom (model, effort, the start
+  directory, how much of the context is left, the permission mode).
+    Enter               sends; a new line: Shift+Enter, \ Enter, or Ctrl+J
+    Up / Down           earlier lines; Ctrl+A/E start/end; Ctrl+K/U/W cut,
+                        Ctrl+Y puts back; a paste stays one block
+    /                   the commands, as a menu: Up/Down, Tab completes
+    Shift+Tab           the permission mode: default, accept edits (writes
+                        and edits in the start directory run unasked), plan
+                        (only reading tools run; Claude presents a plan)
+    Esc                 stops Claude (the unfinished answer is not kept)
+    Ctrl+O              tool results in full instead of folded
+    Ctrl+C              clears the line; twice on an empty line: leave
+  /compact summarises the conversation and goes on from the summary;
+  /context shows how full the context is; /init writes AMIGA.md, notes on
+  the start directory that every later session reads; /resume loads the
+  conversation saved after each answer (ENVARC:Claude/session.json).
+  Tools: every call is shown. Reading, listing and searching ask once
+  (answer 2 allows all three for the session); writing, editing and
+  running a command ask every time unless you answer 2 for that tool; an
+  edit shows its change in red and green before you answer. 3 (or Esc)
+  says no and lets you tell Claude what to do instead. Anything outside
+  the start directory (the current one, or ROOT=) asks every time.
+  Commands run through vsh with no input, up to 60 seconds. The text is
+  UTF-8: the screen needs an UP-Term window in the xterm dialect (the
+  default); elsewhere Claude falls back to the line mode, where Ctrl+C
+  stops an answer and the questions are answered y, a or n.
   Model claude-opus-5-5 and effort medium unless you choose others.
 
 STATUS
