@@ -148,7 +148,15 @@ int main(int argc, char **argv)
 {
     static const char *const name[] = { "plain lines", "newlines", "colour a char", "256 pair a cell", "frame repaint", "ins/del line" };
     static vt_callbacks cb;
-    int reps = argc > 2 ? atoi(argv[2]) : 3, w, r, pers;
+    /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-5) and
+     * PERS one dialect (0 xterm, 1 amiga) -- for tools/prof68k.py, which
+     * counts the instructions of one workload under vamos */
+    int reps = 3, only = -1, onlypers = -1, w, r, pers, a;
+    for (a = 1; a + 1 < argc; a += 2) {
+        if (!strcmp(argv[a], "REPS")) reps = atoi(argv[a + 1]);
+        else if (!strcmp(argv[a], "ONLY")) only = atoi(argv[a + 1]);
+        else if (!strcmp(argv[a], "PERS")) onlypers = atoi(argv[a + 1]);
+    }
     cb.damage = damage;
     cb.scroll = scroll;
     w = asm_check();
@@ -156,9 +164,13 @@ int main(int argc, char **argv)
     if (w)
         return 20;
     for (pers = 0; pers < 2; pers++) {
+        if (onlypers >= 0 && pers != onlypers)
+            continue;
         Printf((STRPTR)"%s\n", (LONG)(pers ? "amiga dialect" : "xterm dialect"));
         for (w = 0; w < 6; w++) {
             long best = 0x7FFFFFFF, i;
+            if (only >= 0 && w != only)
+                continue;
             build(w);
             for (r = 0; r < reps; r++) {
                 vt_term *t = vt_new(80, 32, 500, &cb, 0);
