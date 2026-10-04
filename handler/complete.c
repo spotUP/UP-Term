@@ -376,30 +376,104 @@ static void scan_residents(struct complete_req *q, const char *prefix)
     Permit();
 }
 
-/* The Shell's command path: CLI cli_CommandDir, a list of {next, lock}. */
-static void scan_path(struct complete_req *q, const char *prefix)
+/* The command directories (cc_walk_command_dirs): C:'s through
+ * GetDeviceProc, every directory of a multi-assign, then the Shell's
+ * path, CLI cli_CommandDir, a list of {next, lock}. */
+typedef struct cmd_walk {
+    struct complete_req *q;
+    const char *prefix;          /* scan: the names starting with it */
+    int find;                    /* or find: is q->word in one */
+    struct DevProc *dp;          /* where the C: walk stands */
+    int c_done;
+    BPTR *path;                  /* the path's next node */
+} cmd_walk;
+
+static long cw_c_next(void *u)
 {
-    struct CommandLineInterface *cli;
-    BPTR *node;
-    BPTR c = Lock((STRPTR)"C:", ACCESS_READ);
-    if (c) {
-        scan_commands(q, c, prefix);
-        UnLock(c);
+    cmd_walk *w = (cmd_walk *)u;
+    BPTR l;
+    while (!w->c_done) {
+        w->dp = GetDeviceProc((STRPTR)"C:", w->dp);
+        if (!w->dp) {
+            w->c_done = 1;
+            break;
+        }
+        if (!(w->dp->dvp_Flags & DVPF_ASSIGN))
+            w->c_done = 1; /* not an assign: one directory, no next */
+        l = w->dp->dvp_Lock ? DupLock(w->dp->dvp_Lock) : Lock((STRPTR)"C:", ACCESS_READ);
+        if (l)
+            return (long)l;
     }
-    if (!q->opener || !q->opener->pr_CLI)
-        return;
-    cli = (struct CommandLineInterface *)BADDR(q->opener->pr_CLI);
-    for (node = (BPTR *)BADDR(cli->cli_CommandDir); node; node = (BPTR *)BADDR(node[0]))
+    return 0;
+}
+
+static void cw_c_end(void *u)
+{
+    cmd_walk *w = (cmd_walk *)u;
+    if (w->dp)
+        FreeDeviceProc(w->dp);
+    w->dp = 0;
+}
+
+static long cw_p_next(void *u)
+{
+    cmd_walk *w = (cmd_walk *)u;
+    while (w->path) {
+        BPTR *node = w->path;
+        w->path = (BPTR *)BADDR(node[0]);
         if (node[1])
-            scan_commands(q, node[1], prefix);
+            return (long)node[1];
+    }
+    return 0;
+}
+
+static int cw_same(long a, long b)
+{
+    return SameLock((BPTR)a, (BPTR)b) == LOCK_SAME;
+}
+
+static void cw_drop(long lock)
+{
+    UnLock((BPTR)lock);
+}
+
+static int cw_visit(void *u, long lock)
+{
+    cmd_walk *w = (cmd_walk *)u;
+    BPTR old, l;
+    if (!w->find) {
+        scan_commands(w->q, (BPTR)lock, w->prefix);
+        return 0;
+    }
+    old = CurrentDir((BPTR)lock);
+    l = Lock((STRPTR)w->q->word, ACCESS_READ);
+    CurrentDir(old);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
+static const cc_dirs_os cmd_dirs_os = { cw_c_next, cw_c_end, cw_p_next, cw_same, cw_drop, cw_visit };
+
+static int walk_command_dirs(struct complete_req *q, const char *prefix, int find)
+{
+    cmd_walk w;
+    w.q = q;
+    w.prefix = prefix;
+    w.find = find;
+    w.dp = 0;
+    w.c_done = 0;
+    w.path = 0;
+    if (q->opener && q->opener->pr_CLI)
+        w.path = (BPTR *)BADDR(((struct CommandLineInterface *)BADDR(q->opener->pr_CLI))->cli_CommandDir);
+    return cc_walk_command_dirs(&cmd_dirs_os, &w);
 }
 
 /* CHECK_COMMAND: resident, a path to a file, or a file in the current
  * directory, C: or the path. */
 static int command_exists(struct complete_req *q)
 {
-    struct CommandLineInterface *cli;
-    BPTR *node, lock, old;
+    BPTR lock;
     const char *w = q->word;
     int found = 0, i;
     for (i = 0; w[i]; i++)
@@ -419,31 +493,7 @@ static int command_exists(struct complete_req *q)
         UnLock(lock);
         return 1;
     }
-    lock = Lock((STRPTR)"C:", ACCESS_READ);
-    if (lock) {
-        old = CurrentDir(lock);
-        found = (lock = Lock((STRPTR)w, ACCESS_READ)) != 0;
-        if (lock)
-            UnLock(lock);
-        UnLock(CurrentDir(old));
-        if (found)
-            return 1;
-    }
-    if (!q->opener || !q->opener->pr_CLI)
-        return 0;
-    cli = (struct CommandLineInterface *)BADDR(q->opener->pr_CLI);
-    for (node = (BPTR *)BADDR(cli->cli_CommandDir); node && !found; node = (BPTR *)BADDR(node[0])) {
-        if (!node[1])
-            continue;
-        old = CurrentDir(node[1]);
-        lock = Lock((STRPTR)w, ACCESS_READ);
-        CurrentDir(old);
-        if (lock) {
-            UnLock(lock);
-            found = 1;
-        }
-    }
-    return found;
+    return walk_command_dirs(q, 0, 1);
 }
 
 /* HISTORY_LOAD: the file's last HISTORY_KEEP lines into q->data (and the
@@ -688,7 +738,7 @@ static void worker(void)
             UnLock(lock);
         }
         if (q->mode == COMPLETE_COMMANDS && split < 0) {
-            scan_path(q, prefix);
+            walk_command_dirs(q, prefix, 0);
             scan_residents(q, prefix);
             scan_extra(q, prefix);
         }

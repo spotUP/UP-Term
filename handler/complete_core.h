@@ -25,4 +25,27 @@ int cc_is_command(long entry_type, unsigned long protection);
  * CMD_SYSTEM (-1, the system's segments) nor CMD_DISABLED. */
 int cc_resident_listed(long seg_uc);
 
+/* The directories a command is looked for in: every directory C: is
+ * assigned to (a multi-assign has several), then the Shell's path. One
+ * already searched -- the same directory, whatever it is called -- is
+ * skipped, as KingCON does with SameLock. Directories are locks (BPTR on
+ * the Amiga); the OS side is behind these calls (u passed to those that
+ * keep state): */
+typedef struct cc_dirs_os {
+    long (*c_next)(void *u);           /* the next directory of C: (the first, at
+                                        * first), a lock of the walk's own that
+                                        * it gives to drop(); 0: no more */
+    void (*c_end)(void *u);            /* the C: walk is over (ended or cut short) */
+    long (*p_next)(void *u);           /* the next directory of the path, a lock
+                                        * the Shell owns; 0: no more */
+    int  (*same)(long a, long b);      /* the same directory? */
+    void (*drop)(long lock);           /* a c_next lock is done with */
+    int  (*visit)(void *u, long lock); /* search it; nonzero ends the walk */
+} cc_dirs_os;
+
+#define CC_DIRS_MAX 32 /* directories remembered for the same() check */
+
+/* Walk them; returns what the visit that ended the walk returned, or 0. */
+int cc_walk_command_dirs(const cc_dirs_os *os, void *u);
+
 #endif
