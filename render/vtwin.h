@@ -109,6 +109,8 @@ typedef struct vtwin {
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */
+    vti_mouse mouse;             /* buttons and moves the program was told about (vtinput) */
+    int pointer_on;              /* ReportMouse is on: a drag, or the program wants moves */
     char find_q[VT_FIND_QUERY_MAX]; /* the last find query, for "find next" */
     long find_next;              /* the row to continue from (VT_ROW_NONE: from the oldest) */
     const vtwin_host *host;

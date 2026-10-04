@@ -473,6 +473,12 @@ Other xterm input reports:
   motion, 64/65 wheel. The wheel's report names the cell under the pointer
   (clamped to the grid over the border), never window pixels (G1 M1,
   `render/vtinput.c` `vti_wheel`; test `wheel_reports_name_the_cell_under_the_pointer`).
+  Motion (G1 M3): `?1002` reports moves (+32) while a button whose press the
+  program got is down, `?1003` every move (button 3 when none is down), once
+  per cell; the release of a reported press always goes to the program (off the
+  grid: the last cell reported). The window turns ReportMouse on for those modes
+  only. Tests `motion_reaches_the_program_in_the_motion_modes`,
+  `button_motion_mode_has_no_buttonless_moves`.
 - Alternate scroll (`?1007h`, xterm's alternateScroll; off by default as in
   xterm, reset by RIS, DECRQM answers it): on the alternate screen with no
   mouse mode a wheel notch sends three cursor-up / cursor-down keys (DECCKM

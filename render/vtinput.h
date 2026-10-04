@@ -32,13 +32,16 @@ int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
               int px, int py, vt_u8 *out, int *lines);
 
 /* The mouse between events: which buttons went to the program, the cell
- * the last report named, the run of clicks. Zero it to start. */
+ * the last report named, the run of clicks. */
 typedef struct vti_mouse {
     int held;            /* bit b: button b's press was reported */
-    int last_x, last_y;  /* the cell of the last report */
+    int last_x, last_y;  /* the cell of the last report (-1: none yet) */
     int clicks;          /* 1, 2, 3: the click run the last local press was in */
     int click_x, click_y;
 } vti_mouse;
+
+/* No button held, no report made, no clicks: a window's start. */
+void vti_mouse_reset(vti_mouse *m);
 
 /* What a button event is for (vti_button). */
 enum vti_action {

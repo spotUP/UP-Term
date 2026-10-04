@@ -4524,6 +4524,8 @@ int vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mo
         return 0;
     if (kind == 2 && !(m & VT_MODE_MOUSE_ANY) && !(m & VT_MODE_MOUSE_BUTTON))
         return 0;
+    if (kind == 2 && button == 3 && !(m & VT_MODE_MOUSE_ANY))
+        return 0; /* ?1002 reports moves only with a button down */
     if (kind == 1 && (m & VT_MODE_MOUSE_X10) && !(m & (VT_MODE_MOUSE_NORMAL | VT_MODE_MOUSE_BUTTON |
                                                       VT_MODE_MOUSE_ANY)))
         return 0; /* X10 reports presses only */

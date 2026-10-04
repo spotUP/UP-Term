@@ -184,6 +184,7 @@ void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
     w->host = host;
     w->user = user;
     w->find_next = VT_ROW_NONE;
+    vti_mouse_reset(&w->mouse);
     /* every owner starts from the historical look: a console.device unit
      * (MEMF_CLEAR'd) had a silent bell, a black cursor and black-on-black
      * selection (2026-10-02 review) */
@@ -260,6 +261,8 @@ void vtwin_render(vtwin *w)
 }
 
 static void drag_to(vtwin *w, WORD mx, WORD my);
+static void motion_to(vtwin *w, WORD mx, WORD my);
+static void pointer_sync(vtwin *w);
 
 void vtwin_tick(vtwin *w)
 {
@@ -281,6 +284,9 @@ void vtwin_tick(vtwin *w)
          * moves may never reach us as events -- Intuition keeps absolute
          * pointer moves to itself */
         drag_to(w, w->win->MouseX, w->win->MouseY);
+        frame_start(w);
+    } else if (w->mouse.held && w->win && w->t && vti_wants_motion(&w->mouse, w->t)) {
+        motion_to(w, w->win->MouseX, w->win->MouseY); /* the same for a program's ?1002 drag */
         frame_start(w);
     }
 }
@@ -594,6 +600,8 @@ void vtwin_unbind(vtwin *w)
     w->render_pending = 0;
     w->layout_dirty = 0;
     w->dragging = 0;
+    vti_mouse_reset(&w->mouse);
+    w->pointer_on = 0; /* the window's ReportMouse goes with it */
     vr_set_outline(&w->r, 0);
     vr_free(&w->r);
     w->win = 0;
@@ -706,6 +714,8 @@ void vtwin_detach(vtwin *w)
     w->layout_dirty = 0;
     w->want_cols = 0;
     w->dragging = 0;
+    vti_mouse_reset(&w->mouse);
+    w->pointer_on = 0; /* the window's ReportMouse goes with it */
     if (w->outline) {
         vr_set_outline(&w->r, 0);
         vo_close(w->outline);
@@ -752,6 +762,7 @@ void vtwin_write(vtwin *w, const vt_u8 *b, long n)
         if (sync && !(vt_modes(w->t) & VT_MODE_SYNC))
             vtwin_render(w); /* the program's frame is whole: shown now, not at the next tick */
     }
+    pointer_sync(w); /* ?1003 set or reset: the window reports moves, or stops */
     if (w->layout_dirty) {
         w->layout_dirty = 0;
         vtwin_render(w);
@@ -1122,36 +1133,64 @@ static void drag_to(vtwin *w, WORD mx, WORD my)
     w->drag_moved = 1;
 }
 
-/* Reports to a program that asked for them (Shift held gives the mouse back
- * to selection, as in xterm), else drag-to-select. */
+/* Pointer moves as IDCMP_MOUSEMOVE while a drag selects or the program
+ * wants them (?1003, ?1002 with a button down): ReportMouse follows. Never
+ * on a window that is not ours. */
+static void pointer_sync(vtwin *w)
+{
+    int want;
+    if (!w->t || !w->win || w->foreign_window)
+        return;
+    want = w->dragging || vti_wants_motion(&w->mouse, w->t);
+    if (want != w->pointer_on) {
+        ReportMouse((BOOL)want, w->win);
+        w->pointer_on = want;
+    }
+}
+
+/* The pointer at window pixel mx, my: the program's motion report, when
+ * it wants one for that cell. */
+static void motion_to(vtwin *w, WORD mx, WORD my)
+{
+    int x, y, n;
+    vt_u8 out[40];
+    if (!cell_at(w, mx, my, &x, &y))
+        return;
+    n = vti_motion(&w->mouse, w->t, x, y, 0, out);
+    if (n)
+        w->host->input(w->user, out, n);
+}
+
+/* vti_button decides: reports to a program that asked for them (Shift held
+ * gives the mouse back to selection, as in xterm), else drag-to-select. */
 void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
 {
-    int x, y, btn = -1, kind = 0, n, in;
+    int x = 0, y = 0, btn = -1, down = 0, n, in;
     vt_u8 out[40];
-    int shift = (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0;
     if (!w->t)
         return;
     in = cell_at(w, mx, my, &x, &y);
     if (move) {
-        drag_to(w, mx, my);
+        if (w->dragging)
+            drag_to(w, mx, my);
+        else
+            motion_to(w, mx, my);
         return;
     }
-    if (code == SELECTDOWN) { btn = 0; kind = 0; }
-    else if (code == SELECTUP) { btn = 0; kind = 1; }
-    else if (code == MENUDOWN) { btn = 2; kind = 0; }
-    else if (code == MENUUP) { btn = 2; kind = 1; }
+    if (code == SELECTDOWN) { btn = 0; down = 1; }
+    else if (code == SELECTUP) { btn = 0; down = 0; }
+    else if (code == MENUDOWN) { btn = 2; down = 1; }
+    else if (code == MENUUP) { btn = 2; down = 0; }
     if (btn < 0)
         return;
-    if (!shift && in && !w->dragging) {
-        n = vt_encode_mouse(w->t, btn, kind, x, y, 0, out);
-        if (n) {
-            w->host->input(w->user, out, n);
-            return;
-        }
-    }
-    if (btn != 0)
-        return;
-    if (kind == 0 && in) {
+    switch (vti_button(&w->mouse, w->t, btn, down, x, y, in, qual_mods(w, qual) & VT_MOD_SHIFT,
+                       w->dragging, 0, out, &n)) {
+    case VTI_REPORT:
+        w->host->input(w->user, out, n);
+        if (w->mouse.held)
+            frame_start(w); /* vtwin_tick follows the pointer for ?1002 */
+        break;
+    case VTI_SELECT:
         w->dragging = 1;
         w->drag_moved = 0;
         w->drag_x = x;
@@ -1160,17 +1199,18 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
         w->drag_ay = y - w->r.view;
         vr_select(&w->r, 0, 0, 0, 0, 0);
         frame_start(w); /* vtwin_tick follows the pointer */
-        if (!w->foreign_window)
-            ReportMouse(TRUE, w->win);
-    } else if (kind == 1 && w->dragging) {
+        break;
+    case VTI_SELECT_END:
         w->dragging = 0;
-        if (!w->foreign_window)
-            ReportMouse(FALSE, w->win);
         if (!w->drag_moved)
             vr_select(&w->r, 0, 0, 0, 0, 0); /* a click clears the selection */
         else if (w->copy_on_select && !w->no_clipboard)
             copy_selection(w); /* the profile's copy-on-select */
+        break;
+    default:
+        break;
     }
+    pointer_sync(w);
 }
 
 /* The mouse wheel (vti_wheel decides): the program's report when it asked

@@ -30,6 +30,77 @@ static void cell_clamped(const vti_geom *g, int px, int py, int *x, int *y)
         *y = 0;
 }
 
+void vti_mouse_reset(vti_mouse *m)
+{
+    m->held = 0;
+    m->last_x = m->last_y = -1;
+    m->clicks = 0;
+    m->click_x = m->click_y = -1;
+}
+
+int vti_button(vti_mouse *m, const vt_term *t, int btn, int down, int x, int y, int in,
+               int mods, int selecting, int dclick, vt_u8 *out, int *n)
+{
+    int bit = 1 << btn;
+    *n = 0;
+    if (!down && (m->held & bit)) {
+        /* the program had the press: the release is its too, wherever the
+         * pointer went (off the grid: the cell it was last told about) */
+        m->held &= ~bit;
+        if (!in) {
+            x = m->last_x;
+            y = m->last_y;
+        }
+        *n = vt_encode_mouse(t, btn, 1, x, y, mods, out);
+        return *n ? VTI_REPORT : VTI_NONE; /* X10 has no releases */
+    }
+    if (!(mods & VT_MOD_SHIFT) && in && !selecting && (vt_modes(t) & MOUSE_MODES)) {
+        *n = vt_encode_mouse(t, btn, down ? 0 : 1, x, y, mods, out);
+        if (*n) {
+            if (down)
+                m->held |= bit;
+            m->last_x = x;
+            m->last_y = y;
+            return VTI_REPORT;
+        }
+    }
+    if (btn == 0 && down && in) {
+        /* a click soon after the last on the same cell: word, then line,
+         * then a character again */
+        if (dclick && m->clicks && x == m->click_x && y == m->click_y)
+            m->clicks = m->clicks % 3 + 1;
+        else
+            m->clicks = 1;
+        m->click_x = x;
+        m->click_y = y;
+        return VTI_SELECT;
+    }
+    if (btn == 0 && !down && selecting)
+        return VTI_SELECT_END;
+    return VTI_NONE;
+}
+
+int vti_wants_motion(const vti_mouse *m, const vt_term *t)
+{
+    vt_u32 md = vt_modes(t);
+    return (md & VT_MODE_MOUSE_ANY) || ((md & VT_MODE_MOUSE_BUTTON) && m->held);
+}
+
+int vti_motion(vti_mouse *m, const vt_term *t, int x, int y, int mods, vt_u8 *out)
+{
+    int b, n;
+    if (!vti_wants_motion(m, t) || (x == m->last_x && y == m->last_y))
+        return 0;
+    /* the lowest button held (xterm reports one), 3 for none */
+    b = (m->held & 1) ? 0 : (m->held & 2) ? 1 : (m->held & 4) ? 2 : 3;
+    n = vt_encode_mouse(t, b, 2, x, y, mods, out);
+    if (n) {
+        m->last_x = x;
+        m->last_y = y;
+    }
+    return n;
+}
+
 int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
               int px, int py, vt_u8 *out, int *lines)
 {
