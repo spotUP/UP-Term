@@ -34,18 +34,18 @@ Checklist (ID, item, commit):
 - [x] G3-08 #21 ?1015 urxvt and ?1016 SGR-pixel mouse encodings -- df96a65 (host pixel wiring: see notes)
 - [x] G3-09 #21 ?2048 in-band resize reports -- e2c46cc
 - [x] G3-10 #21 DECSLRM / DECLRMM: not implemented, decision below
-- [ ] G3-11 #18 kitty keyboard protocol: CSI >u <u ?u =u, flags 1/2/4/8/16, encoder
-- [ ] G3-12 #9 OSC 52: streaming OSC path, base64 decode, SET to the clipboard, QUERY opt-in
-- [ ] G3-13 #19 OSC 7 cwd stored; new tabs start there when local; vsh reports its cwd
-- [ ] G3-14 #19 OSC 8 hyperlinks (side table via ext), open with a profile command
-- [ ] G3-15 #19 OSC 133 prompt marks, previous/next prompt in the scrollback
-- [ ] G3-16 #19 OSC 9 / 777 notifications (title flash)
-- [ ] G3-17 #19 OSC 4/104, 10-12/110-112 set and query: audit complete
-- [ ] G3-18 #12 terminfo: Sync, rep, Cs/Cr, kUP3.., Ms, Tc, Smulx/Setulc kept; termcap in step; tic -c clean
-- [ ] G3-19 #15 XTGETTCAP from one table checked against the terminfo source by a host test
-- [ ] G3-20 make amiga zero warnings; full make test (landing)
+- [x] G3-11 #18 kitty keyboard protocol: CSI >u <u ?u =u, flags 1/2/4/8/16, encoder, host presses/repeats/releases -- 6fa7ccb (RIS clears the stacks there)
+- [x] G3-12 #9 OSC 52: streaming OSC path, base64 decode, SET to the clipboard, QUERY opt-in (program-clipboard) -- 7466869
+- [x] G3-13 #19 OSC 7 cwd stored; new tabs start there when local -- fc16295; vsh reports its cwd -- 6318b95
+- [x] G3-14 #19 OSC 8 hyperlinks (via the ext style table), Ctrl + click opens with link-open -- fc16295
+- [x] G3-15 #19 OSC 133 prompt marks, Right Amiga + Shift + Up/Down -- fc16295; vsh marks -- 6318b95
+- [x] G3-16 #19 OSC 9 / 777 notifications (title bar 5 s) -- fc16295
+- [x] G3-17 #19 OSC 4/104, 10-12/110-112: set/query were complete; X11 names + colourN added -- 42576bc
+- [x] G3-18 #12 terminfo: Sync, rep, Cs/Cr, Ms, Tc, fe/fd, smm/rmm, kUP3..kNXT7, kf25-63; termcap regenerated; tic -cx clean; make test-terminfo green -- 1798082
+- [x] G3-19 #15 XTGETTCAP from engine/vtcaps.inc generated from the terminfo; host test parses the entry -- 1798082
+- [x] G3-20 make amiga (68020 and CPU=68000) zero warnings; full make test green (21 suites); make test-ref 148 streams green
 
-Running count: 10 of 20.
+Running count: 20 of 20 (G3-10 by decision: not implemented).
 
 ## Decisions
 
@@ -71,3 +71,13 @@ Running count: 10 of 20.
   program found using them.
 - ?1016 pixels: vtwin_mouse passes cells, so the report is the cell's corner pixel until
   the host calls vt_encode_mouse_px (G1 owns vtwin_mouse this week).
+- kitty flag 4: the host gives the shifted key, not the base-layout key (base 0).
+- OSC 133 marks: a reflow drops them (reflow is off in UP-Term windows; G4 rewrites it).
+- OSC 52 selections c/p/s/0-7 all go to clipboard unit 0; q (secondary) alone is ignored.
+  A query answers at most 64 KB.
+- vt_encode_key's old body is legacy_key (unchanged); G1's encoder edits land there.
+- Merge with G1: render/vtwin.c (kitty_key call in vtwin_key, link_click in vtwin_mouse,
+  console_key prompt jump and Shift+PgUp on the alternate screen) and the vt_callbacks
+  memset in vtwin_attach overlap G1's rewrite of vtwin_mouse/vtwin_key.
+- A program that copies engine/vtengine.c alone (DCTelnet) now needs engine/vtcaps.inc
+  beside it.
