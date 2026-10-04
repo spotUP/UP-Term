@@ -57,6 +57,7 @@ static void build(int w)
  * stops (a wide glyph's halves), what it leaves alone. 0 when right. */
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
+void vt_asm_ch_blank(vt_cell *c, long n);
 long vr_asm_row_scan(const vt_cell *c, long n, unsigned char *out);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_rows_up(void **p, long k);
@@ -118,6 +119,18 @@ static int asm_check(void)
                         for (k = 0; k < 18; k++)
                             if (memcmp(&w[k], &r[k], sizeof(vt_cell))) return 64 + al;
                     }
+        /* vt_asm_ch_blank: n characters back to a space, nothing else */
+        for (len = 0; len <= 13; len++) {
+            for (i = 0; i < 18; i++) {
+                w[i].ch = (vt_u16)(0x4100 + i); w[i].fg = 0x11u + (vt_color)i; w[i].bg = 0x22u; w[i].attr = 0x3344;
+                w[i].width = 1; w[i].deco = 5; w[i].ext = 6; w[i].pad = 7;
+                r[i] = w[i];
+                if (i >= 1 && i <= len) r[i].ch = ' ';
+            }
+            vt_asm_ch_blank(w + 1, len);
+            for (k = 0; k < 18; k++)
+                if (memcmp(&w[k], &r[k], sizeof(vt_cell))) return 68;
+        }
     }
     for (i = 0; i < 12; i++) c[i].ch = (vt_u16)i;
     p.ch = 'F';

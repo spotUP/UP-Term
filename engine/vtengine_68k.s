@@ -16,6 +16,7 @@
 	xdef	_vt_asm_put_run
 	xdef	_vt_asm_put_ch
 	xdef	_vt_asm_fill
+	xdef	_vt_asm_ch_blank
 	xdef	_vt_asm_rows_up
 	xdef	_vt_asm_cells_move
 
@@ -95,6 +96,32 @@ _vt_asm_fill:
 	bne.s	.fcell
 	movem.l	(sp)+,d2-d4
 .fnone:	rts
+
+; void vt_asm_ch_blank(vt_cell *c, long n)
+;
+; line_clear of a chonly line: the characters of n cells back to a space,
+; the rest of each cell is the default blank's already. Four cells a turn
+; of the loop, six instructions (a whole cell is five).
+_vt_asm_ch_blank:
+	move.l	8(sp),d0		; n
+	ble.s	.bnone
+	move.l	4(sp),a0
+	addq.l	#8,a0			; at ch
+	moveq	#3,d1
+	and.w	d0,d1			; the odd cells first
+	lsr.l	#2,d0			; then fours
+	bra.s	.b1e
+.b1:	move.w	#$20,(a0)
+	lea	16(a0),a0
+.b1e:	dbra	d1,.b1
+	bra.s	.b4e
+.b4:	move.w	#$20,(a0)
+	move.w	#$20,16(a0)
+	move.w	#$20,32(a0)
+	move.w	#$20,48(a0)
+	lea	64(a0),a0
+.b4e:	dbra	d0,.b4
+.bnone:	rts
 
 ; long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto)
 ;
