@@ -110,6 +110,7 @@ typedef struct vtwin {
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */
     vti_mouse mouse;             /* buttons and moves the program was told about (vtinput) */
+    int mouse_mods;              /* VT_MOD_* of the last mouse event (motion polled on the clock) */
     int pointer_on;              /* ReportMouse is on: a drag, or the program wants moves */
     char find_q[VT_FIND_QUERY_MAX]; /* the last find query, for "find next" */
     long find_next;              /* the row to continue from (VT_ROW_NONE: from the oldest) */
@@ -175,12 +176,13 @@ void vtwin_refresh(vtwin *w);
 /* a raw-key event: code and qualifier as Intuition gives them, prev the
  * previous two down keys (dead keys; 0 when unknown), the event's time */
 void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG micros);
-/* a mouse event: move (1) or button (code SELECTDOWN/UP, MENUDOWN/UP) at
- * window coordinates mx, my */
+/* a mouse event: move (1) or button (code SELECTDOWN/UP, MIDDLEDOWN/UP,
+ * MENUDOWN/UP) at window coordinates mx, my */
 void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my);
-/* the wheel: up (1) / down (-1). The program's when it asked for the mouse,
+/* the wheel: up (1) / down (0), qual the event's qualifier (Ctrl and Meta
+ * go into the report). The program's when it asked for the mouse,
  * otherwise the scrollback by a few lines (the spec's wheel_scroll) */
-void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my);
+void vtwin_wheel(vtwin *w, int up, UWORD qual, WORD mx, WORD my);
 /* The window became active (in 1) or stopped being: the program's focus
  * report when it asked for one (?1004) */
 void vtwin_focus(vtwin *w, int in);

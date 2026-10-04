@@ -3,6 +3,30 @@
 
 #define MOUSE_MODES (VT_MODE_MOUSE_X10 | VT_MODE_MOUSE_NORMAL | VT_MODE_MOUSE_BUTTON | VT_MODE_MOUSE_ANY)
 
+int vti_mods(unsigned qual, int meta_alt)
+{
+    int mods = 0;
+    if (qual & VTI_QUAL_SHIFT)
+        mods |= VT_MOD_SHIFT;
+    if (qual & VTI_QUAL_CONTROL)
+        mods |= VT_MOD_CTRL;
+    if (qual & (meta_alt ? VTI_QUAL_ALT : VTI_QUAL_LCOMMAND))
+        mods |= VT_MOD_ALT;
+    return mods;
+}
+
+int vti_button_code(unsigned code, int *btn, int *down)
+{
+    switch (code & ~(unsigned)VTI_CODE_UP) {
+    case VTI_CODE_LBUTTON: *btn = 0; break;
+    case VTI_CODE_MBUTTON: *btn = 1; break;
+    case VTI_CODE_RBUTTON: *btn = 2; break;
+    default: return 0;
+    }
+    *down = !(code & VTI_CODE_UP);
+    return 1;
+}
+
 int vti_cell_at(const vti_geom *g, int px, int py, int *x, int *y)
 {
     int cx, cy;

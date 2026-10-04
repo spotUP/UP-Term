@@ -958,24 +958,12 @@ void vtwin_paste(vtwin *w)
         paste(w);
 }
 
-/* The modifiers a key or a mouse button carries (VT_MOD_*). Meta (the ESC
- * prefix, VT_MOD_ALT) is Left Amiga: Alt belongs to the keymap, where many
- * layouts type ; @ { [ with it (the rig's ';' is Alt + 0x29; Alt-as-Meta
- * turned it into ESC + o-umlaut). With meta_alt the Alt keys take the Meta
- * role instead. */
+/* The modifiers a key or a mouse event carries (vti_mods: Meta is Left
+ * Amiga -- the rig's ';' is Alt + 0x29, Alt-as-Meta turned it into ESC +
+ * o-umlaut -- or Alt with meta_alt). */
 static int qual_mods(const vtwin *w, UWORD qual)
 {
-    int mods = 0;
-    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-        mods |= VT_MOD_SHIFT;
-    if (qual & IEQUALIFIER_CONTROL)
-        mods |= VT_MOD_CTRL;
-    if (w->meta_alt) {
-        if (qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-            mods |= VT_MOD_ALT;
-    } else if (qual & IEQUALIFIER_LCOMMAND)
-        mods |= VT_MOD_ALT;
-    return mods;
+    return vti_mods(qual, w->meta_alt);
 }
 
 /* Right Amiga C/V copy and paste, Right Amiga Up/Down and Shift+PgUp/PgDn
@@ -1156,7 +1144,7 @@ static void motion_to(vtwin *w, WORD mx, WORD my)
     vt_u8 out[40];
     if (!cell_at(w, mx, my, &x, &y))
         return;
-    n = vti_motion(&w->mouse, w->t, x, y, 0, out);
+    n = vti_motion(&w->mouse, w->t, x, y, w->mouse_mods, out);
     if (n)
         w->host->input(w->user, out, n);
 }
@@ -1165,11 +1153,12 @@ static void motion_to(vtwin *w, WORD mx, WORD my)
  * gives the mouse back to selection, as in xterm), else drag-to-select. */
 void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
 {
-    int x = 0, y = 0, btn = -1, down = 0, n, in;
+    int x = 0, y = 0, btn, down, n, in;
     vt_u8 out[40];
     if (!w->t)
         return;
     in = cell_at(w, mx, my, &x, &y);
+    w->mouse_mods = qual_mods(w, qual); /* Ctrl +16, Meta +8 in the reports */
     if (move) {
         if (w->dragging)
             drag_to(w, mx, my);
@@ -1177,13 +1166,9 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
             motion_to(w, mx, my);
         return;
     }
-    if (code == SELECTDOWN) { btn = 0; down = 1; }
-    else if (code == SELECTUP) { btn = 0; down = 0; }
-    else if (code == MENUDOWN) { btn = 2; down = 1; }
-    else if (code == MENUUP) { btn = 2; down = 0; }
-    if (btn < 0)
+    if (!vti_button_code(code, &btn, &down))
         return;
-    switch (vti_button(&w->mouse, w->t, btn, down, x, y, in, qual_mods(w, qual) & VT_MOD_SHIFT,
+    switch (vti_button(&w->mouse, w->t, btn, down, x, y, in, w->mouse_mods,
                        w->dragging, 0, out, &n)) {
     case VTI_REPORT:
         w->host->input(w->user, out, n);
@@ -1215,7 +1200,7 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
 
 /* The mouse wheel (vti_wheel decides): the program's report when it asked
  * for the mouse, otherwise the scrollback (the spec's wheel_scroll). */
-void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my)
+void vtwin_wheel(vtwin *w, int up, UWORD qual, WORD mx, WORD my)
 {
     int n, lines;
     vt_u8 out[40];
@@ -1223,7 +1208,7 @@ void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my)
     if (!w->t)
         return;
     geom(w, &g);
-    n = vti_wheel(&g, w->t, w->r.view, up, 0, mx, my, out, &lines);
+    n = vti_wheel(&g, w->t, w->r.view, up, qual_mods(w, qual), mx, my, out, &lines);
     if (n) {
         w->host->input(w->user, out, n);
         return;

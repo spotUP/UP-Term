@@ -8,6 +8,26 @@
 
 #include "../engine/vtengine.h"
 
+/* The Amiga's qualifier bits and button codes as devices/inputevent.h has
+ * them (this file stays free of the OS headers to be host-tested). */
+#define VTI_QUAL_SHIFT    0x0003 /* IEQUALIFIER_LSHIFT | RSHIFT */
+#define VTI_QUAL_CONTROL  0x0008
+#define VTI_QUAL_ALT      0x0030 /* LALT | RALT */
+#define VTI_QUAL_LCOMMAND 0x0040 /* Left Amiga */
+#define VTI_CODE_LBUTTON  0x68
+#define VTI_CODE_RBUTTON  0x69
+#define VTI_CODE_MBUTTON  0x6A
+#define VTI_CODE_UP       0x80
+
+/* The modifiers (VT_MOD_*) a key or a mouse event carries. Meta (the ESC
+ * prefix, VT_MOD_ALT) is Left Amiga: Alt belongs to the keymap, where many
+ * layouts type ; @ { [ with it. With meta_alt the Alt keys are Meta. */
+int vti_mods(unsigned qual, int meta_alt);
+
+/* An IDCMP_MOUSEBUTTONS code: *btn 0 left, 1 middle, 2 right, *down 1 for
+ * a press. 0 when the code is no button. */
+int vti_button_code(unsigned code, int *btn, int *down);
+
 /* The text area in window pixels: its top left, the cell size and the
  * cells that fit (vr_render's ox, oy, cw, ch, cols, rows). */
 typedef struct vti_geom {

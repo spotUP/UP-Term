@@ -173,8 +173,44 @@ static void the_left_button_selects_when_nobody_asked(void)
     vt_free(t);
 }
 
+/* gap #14 / audit 6: no middle button, and the modifiers were always 0 */
+static void middle_button_and_modifiers_reach_the_program(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vti_mouse m;
+    int a, btn = -1, down = -1, lines;
+    char buf[40];
+    vti_geom g = geom();
+    vti_mouse_reset(&m);
+    CHECK_INT(vti_button_code(VTI_CODE_MBUTTON, &btn, &down), 1);
+    CHECK_INT(btn, 1);
+    CHECK_INT(down, 1);
+    CHECK_INT(vti_button_code(VTI_CODE_MBUTTON | VTI_CODE_UP, &btn, &down), 1);
+    CHECK_INT(down, 0);
+    CHECK_INT(vti_button_code(VTI_CODE_LBUTTON, &btn, &down), 1);
+    CHECK_INT(btn, 0);
+    CHECK_INT(vti_button_code(VTI_CODE_RBUTTON | VTI_CODE_UP, &btn, &down), 1);
+    CHECK_INT(btn, 2);
+    CHECK_INT(vti_button_code(0x45, &btn, &down), 0);
+    CHECK_INT(vti_mods(VTI_QUAL_CONTROL, 0), VT_MOD_CTRL);
+    CHECK_INT(vti_mods(VTI_QUAL_LCOMMAND, 0), VT_MOD_ALT);             /* Left Amiga is Meta */
+    CHECK_INT(vti_mods(0x0010, 0), 0);                                  /* Alt is the keymap's */
+    CHECK_INT(vti_mods(0x0020 | 0x0002, 1), VT_MOD_ALT | VT_MOD_SHIFT); /* meta_alt */
+    CHECK_INT(vti_mods(VTI_QUAL_LCOMMAND, 1), 0);
+    h_put(t, "\033[?1000h\033[?1006h");
+    CHECK_STR(button(&m, t, 1, 1, 2, 3, 0, 0, &a), "\033[<1;3;4M");
+    CHECK_STR(button(&m, t, 1, 0, 2, 3, 0, 0, &a), "\033[<1;3;4m");
+    CHECK_STR(button(&m, t, 0, 1, 2, 3, vti_mods(VTI_QUAL_CONTROL, 0), 0, &a), "\033[<16;3;4M");
+    CHECK_STR(button(&m, t, 0, 0, 2, 3, vti_mods(VTI_QUAL_LCOMMAND, 0), 0, &a), "\033[<8;3;4m");
+    a = vti_wheel(&g, t, 0, 1, VT_MOD_CTRL, 4, 11, (vt_u8 *)buf, &lines);
+    buf[a] = 0;
+    CHECK_STR(buf, "\033[<80;1;1M");
+    vt_free(t);
+}
+
 void suite_input(void)
 {
+    middle_button_and_modifiers_reach_the_program();
     motion_reaches_the_program_in_the_motion_modes();
     button_motion_mode_has_no_buttonless_moves();
     the_left_button_selects_when_nobody_asked();

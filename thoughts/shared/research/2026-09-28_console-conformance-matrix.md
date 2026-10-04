@@ -473,6 +473,11 @@ Other xterm input reports:
   motion, 64/65 wheel. The wheel's report names the cell under the pointer
   (clamped to the grid over the border), never window pixels (G1 M1,
   `render/vtinput.c` `vti_wheel`; test `wheel_reports_name_the_cell_under_the_pointer`).
+  Buttons and modifiers (G1 M4): left 0, middle 1 (MIDDLEDOWN/UP), right 2
+  (only with a window that traps the menu button); Ctrl +16 and Meta (Left
+  Amiga, or Alt with meta-alt) +8 in clicks, moves and the wheel; Shift is never
+  sent (it gives the mouse back to selection, as xterm). Test
+  `middle_button_and_modifiers_reach_the_program`.
   Motion (G1 M3): `?1002` reports moves (+32) while a button whose press the
   program got is down, `?1003` every move (button 3 when none is down), once
   per cell; the release of a reported press always goes to the program (off the

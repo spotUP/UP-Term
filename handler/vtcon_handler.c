@@ -3968,7 +3968,7 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         break;
     case IDCMP_EXTENDEDMOUSE:
         if (wheel)
-            vtwin_wheel(&c->w, wheel > 0, mx, my);
+            vtwin_wheel(&c->w, wheel > 0, qual, mx, my);
         break;
     case IDCMP_ACTIVEWINDOW:
     case IDCMP_INACTIVEWINDOW:
