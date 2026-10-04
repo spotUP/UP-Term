@@ -69,3 +69,47 @@ _vr_asm_cell:
 	bne.s	.plane
 	movem.l	(sp)+,d2-d7/a2-a4
 	rts
+
+	xdef	_vr_asm_row_scan
+
+; long vr_asm_row_scan(const vt_cell *c, long n, UBYTE *out)
+;
+; draw_rows' plain-row fast path (ledger S1): how many of the n cells from
+; c on look exactly like c[0] (fg, bg, attr, width, deco, ext, pad) with an
+; ASCII character (below $80); their characters are stored in out. On a
+; stock A1200 the C loop over the cells cost ~70 us a cell; this one is
+; ten instructions.
+_vr_asm_row_scan:
+	movem.l	d2-d5,-(sp)
+	move.l	20(sp),a0		; c
+	move.l	24(sp),d0		; n
+	move.l	28(sp),a1		; out
+	move.l	d0,d5
+	ble.s	.rnone
+	move.l	(a0),d1			; fg
+	move.l	4(a0),d2		; bg
+	move.w	10(a0),d3		; attr
+	move.l	12(a0),d4		; width, deco, ext, pad
+.rcell:	cmp.l	(a0),d1
+	bne.s	.rstop
+	cmp.l	4(a0),d2
+	bne.s	.rstop
+	cmp.w	10(a0),d3
+	bne.s	.rstop
+	cmp.l	12(a0),d4
+	bne.s	.rstop
+	tst.b	8(a0)			; ch's high byte: not ASCII
+	bne.s	.rstop
+	tst.b	9(a0)
+	bmi.s	.rstop			; $80-$ff
+	move.b	9(a0),(a1)+
+	lea	16(a0),a0
+	subq.l	#1,d0
+	bne.s	.rcell
+.rstop:	sub.l	d0,d5			; the cells that matched
+	move.l	d5,d0
+	movem.l	(sp)+,d2-d5
+	rts
+.rnone:	moveq	#0,d0
+	movem.l	(sp)+,d2-d5
+	rts

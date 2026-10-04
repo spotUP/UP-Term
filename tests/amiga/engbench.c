@@ -57,6 +57,7 @@ static void build(int w)
  * stops (a wide glyph's halves), what it leaves alone. 0 when right. */
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
+long vr_asm_row_scan(const vt_cell *c, long n, unsigned char *out);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_rows_up(void **p, long k);
 void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
@@ -90,6 +91,20 @@ static int asm_check(void)
     if (c[0].ch != '.' || c[1].ch != 'a' || c[2].ch != 'b' || c[3].ch != '~' || c[4].ch != '.' || c[1].fg != 3) return 31;
     if (vt_asm_put_ch(c, (const vt_u8 *)"\177", 1) != 0 || vt_asm_put_ch(c, (const vt_u8 *)"\200", 1) != 0 ||
         vt_asm_put_ch(c, (const vt_u8 *)" ", 1) != 1 || c[0].ch != ' ' || vt_asm_put_ch(c, (const vt_u8 *)"q", 0) != 0) return 32;
+    {
+        /* vr_asm_row_scan: stops at the first cell unlike c[0] or not ASCII */
+        static unsigned char o[12];
+        for (i = 0; i < 12; i++) { c[i].ch = (vt_u16)('a' + i); c[i].fg = 5; c[i].bg = 6; c[i].attr = 0; c[i].width = 1; c[i].deco = 0; c[i].ext = 0; c[i].pad = 0; }
+        if (vr_asm_row_scan(c, 12, o) != 12 || o[0] != 'a' || o[11] != 'l') return 50;
+        c[7].bg = 9;
+        if (vr_asm_row_scan(c, 12, o) != 7) return 51;
+        c[7].bg = 6; c[4].ch = 0x80;
+        if (vr_asm_row_scan(c, 12, o) != 4) return 52;
+        c[4].ch = 0x141;
+        if (vr_asm_row_scan(c, 12, o) != 4) return 53;
+        c[4].ch = 'e'; c[9].deco = 1;
+        if (vr_asm_row_scan(c, 12, o) != 9 || vr_asm_row_scan(c, 0, o) != 0) return 54;
+    }
     for (i = 0; i < 12; i++) c[i].ch = (vt_u16)i;
     p.ch = 'F';
     vt_asm_fill(c + 2, 5, &p);

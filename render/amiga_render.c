@@ -1,6 +1,12 @@
 /* The Amiga renderer; see amiga_render.h. */
 #include "amiga_render.h"
 #include "painter.h"
+#ifdef VTCON_PROF
+#define TimerBase vtwin_timer
+extern struct Device *vtwin_timer;
+#include <proto/timer.h>
+ULONG vr_prof[4]; /* PROF=1: EClock ticks in painter_run, Text() runs; painter / Text calls */
+#endif
 #include <string.h>
 
 #include <exec/memory.h>
@@ -658,6 +664,9 @@ typedef struct vr_style {
     vt_u8 deco, font;
 } vr_style;
 static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, const vr_style *st);
+#ifdef VR_ASM
+long vr_asm_row_scan(const vt_cell *c, long n, UBYTE *out);
+#endif
 
 #define DRAWN_ATTRS (VT_ATTR_BOLD | VT_ATTR_ITALIC | VT_ATTR_UNDERLINE | VT_ATTR_STRIKE | \
                      VT_ATTR_OVERLINE | VT_ATTR_SUPER | VT_ATTR_SUB | VT_ATTR_FRAMED | \
@@ -982,6 +991,11 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
         st->fg > 255 || st->bg > 255)
         return 0;
     pens = (UBYTE)(st->fg | st->bg);
+#ifdef VTCON_PROF
+    struct EClockVal pe0, pe1;
+    if (vtwin_timer)
+        ReadEClock(&pe0);
+#endif
     LockLayer(0, layer);
     ok = planes_ok(r, 0);
     if (ok) {
@@ -1000,6 +1014,13 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
                      (int)st->bg, r->mask);
     }
     UnlockLayer(layer);
+#ifdef VTCON_PROF
+    if (vtwin_timer) {
+        ReadEClock(&pe1);
+        vr_prof[0] += pe1.ev_lo - pe0.ev_lo;
+        vr_prof[2] += ok;
+    }
+#endif
     if (ok) {
         r->n_direct += n;
         r->blank = 0;
@@ -1402,6 +1423,24 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 xe = tx;
             }
         }
+#ifdef VR_ASM
+        if (r->planar && r->glyphs && !r->sel && x < xe && c[x].width == 1 && c[x].ch < 0x80) {
+            /* A plain row: its cells checked against the first in one
+             * assembler loop and handed to the painter whole (S1: the
+             * loop below cost ~70 us a cell on a stock A1200). */
+            long k = vr_asm_row_scan(&c[x], xe - x, run);
+            if (k == xe - x && k <= RUN_MAX) {
+                vr_style fs;
+                cell_style(r, &c[x], 0, &fs);
+                if (!fs.attr && !fs.deco && !fs.font && fs.ul == fs.fg &&
+                    painter_run(r, run, (int)k, r->ox + x * r->cw, py, &fs)) {
+                    if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
+                        r->cursor_drawn = 0;
+                    continue;
+                }
+            }
+        }
+#endif
         for (; x < xe; x++) {
             vt_glyph g;
             if (c[x].width == 0) {

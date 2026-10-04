@@ -444,11 +444,11 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -DVT_ASM -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vtengine_68k.o $(ENGINE_68K)
-	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) -DVR_ASM -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
+	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) $(if $(PROF),-DVTCON_PROF) -DVR_ASM -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/amiga_render_68k.o render/amiga_render_68k.s
 	$(VC) -DVP_ASM -c -o $(BUILD)/amiga/obj/painter.o render/painter.c
 	vasmm68k_mot -quiet -Fhunk -m68020 -o $(BUILD)/amiga/obj/painter_68k.o render/painter_68k.s
-	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtwin.o render/vtwin.c
+	$(VC) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtwin.o render/vtwin.c
 	$(VC) -c -o $(BUILD)/amiga/obj/glyphmap.o render/glyphmap.c
 	$(VC) -c -o $(BUILD)/amiga/obj/fontpair.o render/fontpair.c
 	$(VC) -c -o $(BUILD)/amiga/obj/outline.o render/outline.c

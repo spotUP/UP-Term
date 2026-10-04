@@ -63,6 +63,7 @@ int main(int argc, char **argv)
         Write(o, (APTR)"\033[0m\f", 5);
         WaitForChar(o, 0);
         Close(o); /* the handler's profile restarts here */
+        Delay(25); /* its lines on the serial port before ours (one port, two writers) */
         o = Open((STRPTR)"*", MODE_OLDFILE);
         if (!o)
             return 20;
@@ -70,8 +71,11 @@ int main(int argc, char **argv)
         shape(o, id);
         WaitForChar(o, 0);
         t0 = now() - t0;
+        Delay(25);
         ser(name[id]);
+        Delay(5);
         Close(o); /* the handler prints the shape's phases */
+        Delay(25);
         Printf((STRPTR)"%-12s %4ld ticks\n", (LONG)name[id], t0);
     }
     return 0;

@@ -20,7 +20,7 @@
  * (vtwin_timer), not a TimerBase of the program's -- vtwin is linked into
  * the handler and the console device alike */
 #define TimerBase vtwin_timer
-static struct Device *vtwin_timer;
+struct Device *vtwin_timer; /* also read by amiga_render.c's PROF=1 counters */
 #include <proto/timer.h>
 #include "pace.h"
 #include "../handler/clip.h"
@@ -42,14 +42,29 @@ static void frame_start(vtwin *w);
 
 /* ---- engine callbacks ------------------------------------------------------- */
 
+#ifdef VTCON_PROF
+/* the render pass split up (PROF=1): EClock ticks in each part */
+#define PROF_IN(w) struct EClockVal pe0, pe1; if (vtwin_timer) ReadEClock(&pe0)
+#define PROF_OUT(w, k) if (vtwin_timer) { ReadEClock(&pe1); (w)->prof_part[k] += pe1.ev_lo - pe0.ev_lo; }
+#else
+#define PROF_IN(w)
+#define PROF_OUT(w, k)
+#endif
+
 static void cb_damage(void *u, int x0, int y0, int x1, int y1)
 {
-    vr_damage(&((vtwin *)u)->r, x0, y0, x1, y1);
+    vtwin *w = (vtwin *)u;
+    PROF_IN(w);
+    vr_damage(&w->r, x0, y0, x1, y1);
+    PROF_OUT(w, 0);
 }
 
 static void cb_scroll(void *u, int top, int bot, int n)
 {
-    vr_scroll(&((vtwin *)u)->r, top, bot, n);
+    vtwin *w = (vtwin *)u;
+    PROF_IN(w);
+    vr_scroll(&w->r, top, bot, n);
+    PROF_OUT(w, 1);
 }
 
 static void cb_reply(void *u, const vt_u8 *b, long n)
@@ -263,11 +278,19 @@ void vtwin_render(vtwin *w)
     {
         struct EClockVal e0, e1;
         ULONG freq = vtwin_timer ? ReadEClock(&e0) : 0;
-        vr_mask_begin(&w->r); /* planar screens: only the planes in use (S1) */
-        vr_cursor_off(&w->r);
+        {
+            PROF_IN(w);
+            vr_mask_begin(&w->r); /* planar screens: only the planes in use (S1) */
+            vr_cursor_off(&w->r);
+            PROF_OUT(w, 2);
+        }
         vt_flush(w->t);
-        vr_cursor_on(&w->r);
-        vr_mask_end(&w->r);
+        {
+            PROF_IN(w);
+            vr_cursor_on(&w->r);
+            vr_mask_end(&w->r);
+            PROF_OUT(w, 2);
+        }
         if (freq) {
             /* the next frame waits 1.5 times what this one cost (S1) */
             ReadEClock(&e1);

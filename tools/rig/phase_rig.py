@@ -21,8 +21,9 @@ SER = ROOT / 'build/rig/serial.log'
 def main():
     only = sys.argv[sys.argv.index('ONLY') + 1] if 'ONLY' in sys.argv else None
     cb.rig('stop')
+    SER.write_bytes(b'')  # FS-UAE rewrites the file from its start each boot
     cb.rig('start')
-    start = SER.stat().st_size if SER.exists() else 0
+    start = 0
     c.run('Delete RAM:pp.txt QUIET')
     c.run('Run >NIL: NewShell "XCON:0/0/640/180/UP-Term/AMIGA"')
     time.sleep(8)
@@ -36,6 +37,7 @@ def main():
             break
     time.sleep(2)
     print(out)
+    cb.rig('stop')  # FS-UAE buffers the serial file: stopping flushes it
     log = SER.read_bytes()[start:].decode('latin-1', 'replace').splitlines()
     name = None
     vals = {}
@@ -53,6 +55,10 @@ def main():
                 idle, outt = vals['idle/out']
                 rend, frames = vals['render/frames']
                 ms = lambda v: 1000.0 * v / freq
+                pr, ps = vals.get('rows/scroll', (0, 0))
+                pc, pp = vals.get('cursor/paint', (0, 0))
+                npt, ntx = vals.get('paints/texts', (0, 0))
+                print('%-12s   draw = rows %6.0f (painter %6.0f, %d paints, %d Text runs)  scroll %6.0f  cursor+mask %6.0f' % (name, ms(pr), ms(pp), npt, ntx, ms(ps), ms(pc)))
                 print('%-12s total %7.0f ms  idle %7.0f  feed %7.0f  draw %7.0f (%d frames)  rest %7.0f  writes %d' % (
                     name, ms(total), ms(idle), ms(outt), ms(rend), frames, (total - idle - outt - rend) * 1000.0 / freq, vals['writes/bytes'][0]))
                 name = None

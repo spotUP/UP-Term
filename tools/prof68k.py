@@ -30,9 +30,9 @@ def build():
     cfg = cfg.replace('-ld=vlink ', '-ld=vlink -M%s ' % (OUT / 'link.map'), 1)
     (OUT / 'vbcc-prof.cfg').write_text(cfg)
     cmd = ['vc', '+%s' % (OUT / 'vbcc-prof.cfg'), '-g', '-I%s' % (ROOT / 'vendor/ndk-3.2r4-Include_H'),
-           '-cpu=68020', '-O2', '-warn=-1', '-dontwarn=163,166,167,168,170,306,307,81,153,65', '-DVT_ASM',
+           '-cpu=68020', '-O2', '-warn=-1', '-dontwarn=163,166,167,168,170,306,307,81,153,65', '-DVT_ASM', '-DVP_ASM',
            '-o', str(BIN), 'tests/amiga/engbench.c', 'engine/vtengine.c', 'engine/vtengine_68k.s',
-           'render/amiga_render_68k.s']
+           'render/amiga_render_68k.s', 'render/painter.c', 'render/painter_68k.s']
     subprocess.run(cmd, cwd=ROOT, check=True)
     print('built', BIN)
 
@@ -201,7 +201,7 @@ def run(args, nbytes):
         if p and p.exists():
             ls = p.read_text(errors='replace').splitlines()
             src = ls[ln - 1].strip()[:70] if 0 < ln <= len(ls) else ''
-        print('%10d  %s:%d  %s' % (c, f, ln, src))
+        print('%10d  %s:%s  %s' % (c, f, ln, src))
 
 
 if __name__ == '__main__':
