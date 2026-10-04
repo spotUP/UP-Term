@@ -169,7 +169,8 @@ typedef struct con {
     char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
-    upconf *save_work;           /* Save settings to profile: the table once the file is written */
+    upconf *save_work;           /* Save settings to profile: the table once the file is written
+                                  * (while the worker writes it; then the window's c->conf) */
     /* tabs (plans/2026-10-03-tabs.md): a host owns the window, a tab is a
      * process drawing into it */
     struct Window *own_win;      /* the window this process opened and owns (0: a tab's) */
@@ -639,10 +640,13 @@ static void config_worker(void)
  * ... but per tab"): a watcher process per window holds a DOS notification
  * on ENV:up-term/up-term. When UP-Term Prefs (Use or Save), another
  * window's Save settings to profile or an editor writes it, the watcher
- * reads it into m->conf and hands m over; the window takes the new table
- * and, when its own profile's section changed, applies it live
- * (watch_take). One message goes back and forth, so the table is never
- * read while the other side writes it. Quitting: the window sends m back
+ * reads it into a table of its own (m->conf, allocated then) and hands m
+ * over; the window keeps that table as its own, frees the one it had and,
+ * when its own profile's section changed, applies it live (watch_take).
+ * So a window holds one table, not a second one waiting for a change
+ * that may never come (research/2026-10-04_window-memory.md). One message
+ * goes back and forth, so the table is never read while the other side
+ * writes it. Quitting: the window sends m back
  * with quit set, or signals CTRL_C while the watcher holds m; the watcher
  * answers with done set and ends. */
 struct watch_msg {
@@ -683,10 +687,14 @@ static void watch_worker(void)
             break;
         if (have && watching && (got & (1UL << sig))) {
             Delay(5); /* a writer that renames its new file in: let it finish */
-            upconf_clear(m->conf);
-            read_conf(m->conf);
-            have = 0;
-            ReplyMsg(&m->msg);
+            if (m->conf)
+                FreeVec(m->conf); /* not taken (the window always takes it) */
+            m->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
+            if (m->conf) { /* no memory: this change is missed, the window keeps its table */
+                read_conf(m->conf);
+                have = 0;
+                ReplyMsg(&m->msg);
+            }
         }
     }
     if (watching)
@@ -747,10 +755,8 @@ static void watch_start(con *c)
         return;
     c->watch_port = CreateMsgPort();
     c->watch = (struct watch_msg *)AllocVec(sizeof(struct watch_msg), MEMF_PUBLIC | MEMF_CLEAR);
-    if (c->watch)
-        c->watch->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
-    if (!c->watch_port || !c->watch || !c->watch->conf)
-        goto fail;
+    if (!c->watch_port || !c->watch)
+        goto fail; /* the watcher makes its table when the file changes */
     c->watch->msg.mn_ReplyPort = c->watch_port;
     c->watch->msg.mn_Length = sizeof(struct watch_msg);
     c->watch_task = CreateNewProcTags(NP_Entry, (ULONG)watch_worker, NP_Name, (ULONG)"vtcon watch",
@@ -763,8 +769,6 @@ static void watch_start(con *c)
     return;
 fail:
     if (c->watch) {
-        if (c->watch->conf)
-            FreeVec(c->watch->conf);
         FreeVec(c->watch);
         c->watch = 0;
     }
@@ -795,7 +799,8 @@ static void watch_stop(con *c)
         PutMsg(&c->watch_task->pr_MsgPort, &m->msg);
     }
     c->watch_task = 0;
-    FreeVec(c->watch->conf);
+    if (c->watch->conf)
+        FreeVec(c->watch->conf); /* a table on its way when we quit */
     FreeVec(c->watch);
     c->watch = 0;
     DeleteMsgPort(c->watch_port);
@@ -1552,6 +1557,21 @@ static void window_fields(con *c, prefs_fields *f)
         rgb_hex((c->w.pal16[i] & 0x01000000UL) ? (c->w.pal16[i] & 0xFFFFFFUL) : VR_KEEP, f->pal[i]);
 }
 
+/* The file buffer of a save or a theme and the staged table: they live
+ * while the worker has them, not for the rest of the window (16 KB and
+ * 18 KB; research/2026-10-04_window-memory.md). */
+static void comp_data_done(con *c)
+{
+    if (c->comp->data) {
+        FreeVec(c->comp->data);
+        c->comp->data = 0;
+    }
+    if (c->save_work) {
+        FreeVec(c->save_work);
+        c->save_work = 0;
+    }
+}
+
 /* Settings > Save settings to profile: the file staged here (prefs_core,
  * as UP-Term Prefs does it), written by the worker (DOS) into ENV: and
  * ENVARC:; the window's table follows once both are in place. */
@@ -1563,12 +1583,15 @@ static void save_ask(con *c)
         return;
     if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
         return;
-    if (!c->save_work && !(c->save_work = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY)))
+    if (!c->save_work && !(c->save_work = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY))) {
+        comp_data_done(c);
         return;
+    }
     window_fields(c, &f);
     len = prefs_validate(&f) ? -1
         : prefs_stage(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1);
     if (len < 0) {
+        comp_data_done(c);
         DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room for it, or the file was not read whole */
         return;
     }
@@ -1577,6 +1600,8 @@ static void save_ask(con *c)
     c->comp->kingcon = 0;
     if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
+    else
+        comp_data_done(c);
 }
 
 /* Settings > Theme...: a theme file picked and read by the worker (DOS),
@@ -1594,6 +1619,8 @@ static void theme_ask(con *c, const char *name)
     c->comp->screen = c->w.win->WScreen;
     if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
+    else
+        comp_data_done(c);
 }
 
 /* The theme's colours on the window, live: one profile section, read as
@@ -1667,7 +1694,9 @@ static void watch_take(con *c)
     struct watch_msg *m;
     while (c->watch_port && (m = (struct watch_msg *)GetMsg(c->watch_port)) != 0) {
         int changed = !upconf_profile_equal(c->conf, m->conf, c->profile);
-        CopyMem(m->conf, c->conf, sizeof(upconf));
+        FreeVec(c->conf); /* the new table is the window's now: no copy, no second table */
+        c->conf = m->conf;
+        m->conf = 0;
         if (c->w.t && c->w.win) {
             if (changed) {
                 const char *names[UC_MAX_PROFILES + 1];
@@ -2878,10 +2907,13 @@ static void finish_completion(con *c)
         }
         c->comp_busy = 0;
         if (q->mode == CONFIG_SAVE) {
-            if (q->matches && c->save_work)
-                CopyMem(c->save_work, c->conf, sizeof(upconf)); /* the table is the file's now */
-            else
+            if (q->matches && c->save_work) {
+                FreeVec(c->conf); /* the staged table is the file's now: it becomes the window's */
+                c->conf = c->save_work;
+                c->save_work = 0;
+            } else
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not written: the old file stands */
+            comp_data_done(c);
             continue;
         }
         if (q->mode == COMPLETE_THEME) {
@@ -2889,6 +2921,7 @@ static void finish_completion(con *c)
                 theme_apply(c, q->data, q->data_len);
             else if (q->word[0])
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* "/theme NAME": no such theme */
+            comp_data_done(c);
             continue;
         }
         if (q->mode == COMPLETE_FONT) {
