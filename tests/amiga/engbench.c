@@ -9,6 +9,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "../../engine/vtengine.h"
+#include "../../render/painter.h"
 
 static void damage(void *u, int x0, int y0, int x1, int y1) { (void)u; (void)x0; (void)y0; (void)x1; (void)y1; }
 static void scroll(void *u, int t, int b, int n) { (void)u; (void)t; (void)b; (void)n; }
@@ -146,6 +147,30 @@ static int asm_check(void)
                         for (q = 0; q < 12; q++)
                             if (pl[pn][q] != want[pn][q]) return 20 + pn;
                 }
+    }
+    {
+        /* vp_span_fast (render/painter_68k.s) against vp_span's C: every
+         * phase, lengths 1-9, pen pairs, two masks, on noisy planes */
+        static vp_u8 a[4][160], c2[4][160], gl[256 * 3];
+        static const vp_u8 ch[9] = { 'A', 0, 255, 'x', 7, ' ', 200, 'q', 3 };
+        vp_u8 *pa[4], *pc[4];
+        int x, n, f, b2, m, pn, q;
+        for (q = 0; q < 256 * 3; q++) gl[q] = (vp_u8)(q * 37 + (q >> 3) * 11);
+        for (pn = 0; pn < 4; pn++) { pa[pn] = a[pn]; pc[pn] = c2[pn]; }
+        for (x = 0; x < 16; x++)
+            for (n = 1; n <= 9; n++)
+                for (f = 0; f < 16; f += 5)
+                    for (b2 = 0; b2 < 16; b2 += 3)
+                        for (m = 0; m < 2; m++) {
+                            int mask = m ? 0x05 : 0x0F;
+                            for (pn = 0; pn < 4; pn++)
+                                for (q = 0; q < 160; q++) a[pn][q] = c2[pn][q] = (vp_u8)(0x5A ^ (q * 13) ^ pn);
+                            vp_span_fast(pa, 4, 40, x, 1, gl, 3, ch, n, f, b2, mask);
+                            vp_span(pc, 4, 40, x, 1, gl, 3, ch, n, f, b2, mask);
+                            for (pn = 0; pn < 4; pn++)
+                                for (q = 0; q < 160; q++)
+                                    if (a[pn][q] != c2[pn][q]) return 40 + x;
+                        }
     }
     return 0;
 }

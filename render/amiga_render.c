@@ -1,5 +1,6 @@
 /* The Amiga renderer; see amiga_render.h. */
 #include "amiga_render.h"
+#include "painter.h"
 #include <string.h>
 
 #include <exec/memory.h>
@@ -656,6 +657,7 @@ typedef struct vr_style {
     vt_attr attr;       /* the attributes that change the drawing */
     vt_u8 deco, font;
 } vr_style;
+static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, const vr_style *st);
 
 #define DRAWN_ATTRS (VT_ATTR_BOLD | VT_ATTR_ITALIC | VT_ATTR_UNDERLINE | VT_ATTR_STRIKE | \
                      VT_ATTR_OVERLINE | VT_ATTR_SUPER | VT_ATTR_SUB | VT_ATTR_FRAMED | \
@@ -857,6 +859,8 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
             return;
         }
     }
+    if (painter_run(r, run, n, px, py, st))
+        return;
     r->n_text++;
     r->blank = 0;
     if (st->font && st->font <= 10 && r->alt_font[st->font])
@@ -927,16 +931,17 @@ static void extract_glyphs(vr_render *r)
     }
 }
 
-/* May cells be written straight into the screen's bitplanes now? The
- * caller holds the window's layer lock. */
-static int direct_ok(vr_render *r)
+/* May cells be written straight into the screen's bitplanes now, at
+ * any bit phase (the painter, render/painter.h)? The caller holds the
+ * window's layer lock. */
+static int planes_ok(vr_render *r, int aligned)
 {
     struct Window *w = r->win;
     struct BitMap *bm = r->rp->BitMap;
     struct ClipRect *cr = w->WLayer ? w->WLayer->ClipRect : 0;
     WORD sx0 = w->LeftEdge + r->ox, sy0 = w->TopEdge + r->oy;
     WORD sx1 = sx0 + vis_cols(r) * r->cw - 1, sy1 = sy0 + vis_rows(r) * r->ch - 1;
-    if (!r->glyphs || !bm || bm->Depth > 8 || (sx0 & 7))
+    if (!r->glyphs || !bm || bm->Depth > 8 || (aligned && (sx0 & 7)))
         return 0;
     if (!(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
         return 0; /* RTG: not planar */
@@ -953,6 +958,53 @@ static int direct_ok(vr_render *r)
         return 0; /* covered in part: the layer draws for us */
     return cr->bounds.MinX <= sx0 && cr->bounds.MinY <= sy0 && cr->bounds.MaxX >= sx1 &&
            cr->bounds.MaxY >= sy1;
+}
+
+/* ...on a byte boundary of the screen (vr_asm_cell's one byte a cell). */
+static int direct_ok(vr_render *r)
+{
+    return planes_ok(r, 1);
+}
+
+/* A run of plain text in one pair of pens, straight into the bitplanes at
+ * whatever bit phase the window puts it (render/painter_68k.s: four cells
+ * a long, BFINS). Text() drew a character at a time through the blitter
+ * and the layer; on a stock A1200 a screenful of text took 130-260 ms
+ * that way (S1 phase profile). 0 when the window is covered, the screen
+ * is not planar or the font not 8 pixels wide: the caller uses Text(). */
+static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
+{
+    struct Layer *layer = r->win->WLayer;
+    struct BitMap *bm;
+    UBYTE pens;
+    int ok;
+    if (!r->planar || !r->glyphs || st->attr || st->deco || st->font || ((st->fg | st->bg) & VR_INK_RGB) ||
+        st->fg > 255 || st->bg > 255)
+        return 0;
+    pens = (UBYTE)(st->fg | st->bg);
+    LockLayer(0, layer);
+    ok = planes_ok(r, 0);
+    if (ok) {
+        if (pens & ~r->mask) {
+            /* a pen's plane not in use yet holds zeros: from here on it is
+             * drawn too (as ink_pen does for the RastPort) */
+            r->mask |= pens;
+            if (r->mask_on)
+                SetWriteMask(r->rp, r->mask);
+        }
+        r->seen |= pens;
+        bm = r->rp->BitMap;
+        WaitBlit(); /* the scroll and fills before it are in the planes first */
+        vp_span_fast((vp_u8 **)bm->Planes, bm->Depth, bm->BytesPerRow, (long)(r->win->LeftEdge + px),
+                     (long)(r->win->TopEdge + py), r->glyphs, r->font->tf_YSize, run, n, (int)st->fg,
+                     (int)st->bg, r->mask);
+    }
+    UnlockLayer(layer);
+    if (ok) {
+        r->n_direct += n;
+        r->blank = 0;
+    }
+    return ok;
 }
 
 /* One cell, straight into the planes: each plane byte row is the glyph,
