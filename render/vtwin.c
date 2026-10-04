@@ -933,8 +933,8 @@ static void paste(vtwin *w)
     for (i = 0; i < n; i++) {
         unsigned char ch = (unsigned char)text[i];
         long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '\r')
-            continue;
+        if (ch == '\r' || !vti_paste_keeps(w->t, ch))
+            continue; /* inside ?2004 no ESC (nor other controls) ends the brackets early */
         k = vt_encode_key(w->t, key, 0, out);
         w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);
     }

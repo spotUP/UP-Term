@@ -308,8 +308,28 @@ static void shift_page_keys_reach_full_screen_programs(void)
     vt_free(t);
 }
 
+/* audit 1, ?2004: a pasted ESC [ 201 ~ ended the brackets early and the
+ * rest ran as typed commands */
+static void bracketed_paste_drops_escape_and_controls(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    CHECK_INT(vti_paste_keeps(t, 0x1B), 1);       /* no brackets: typed as it is */
+    h_put(t, "\033[?2004h");
+    CHECK_INT(vti_paste_keeps(t, 0x1B), 0);
+    CHECK_INT(vti_paste_keeps(t, 0x03), 0);
+    CHECK_INT(vti_paste_keeps(t, 0x7F), 0);
+    CHECK_INT(vti_paste_keeps(t, 0x9B), 0);       /* C1 CSI */
+    CHECK_INT(vti_paste_keeps(t, '\t'), 1);
+    CHECK_INT(vti_paste_keeps(t, '\n'), 1);
+    CHECK_INT(vti_paste_keeps(t, '\r'), 1);
+    CHECK_INT(vti_paste_keeps(t, '['), 1);
+    CHECK_INT(vti_paste_keeps(t, 0xE5), 1);
+    vt_free(t);
+}
+
 void suite_input(void)
 {
+    bracketed_paste_drops_escape_and_controls();
     shift_page_keys_reach_full_screen_programs();
     middle_click_pastes_when_nobody_asked();
     double_click_word_triple_click_line();

@@ -494,7 +494,10 @@ Other xterm input reports:
   INACTIVEWINDOW (XCON:, tabs through the host's routing, console.device units);
   test `focus_events_only_when_asked`.
 - Bracketed paste (`?2004h`): `ESC [ 200 ~` ... `ESC [ 201 ~` around pasted
-  text (the Amiga equivalent is `CSI 0 SP v` + clipboard read).
+  text (the Amiga equivalent is `CSI 0 SP v` + clipboard read). While `?2004`
+  is on the pasted text carries no ESC, no other C0 control but Tab and line
+  breaks, no DEL and no C1 (G1 P1, `vti_paste_keeps`; test
+  `bracketed_paste_drops_escape_and_controls`).
 - Window size: xterm has no in-band resize notification; ports learn it via
   the pty (`TIOCGWINSZ` / `SIGWINCH`, supplied by the handler / ixemul layer),
   or ask with `CSI 18 t` -> `ESC [ 8 ; rows ; cols t`.

@@ -182,6 +182,15 @@ void vti_line(const vt_term *t, int y, int *y0, int *y1)
         (*y1)++;
 }
 
+int vti_paste_keeps(const vt_term *t, unsigned long ch)
+{
+    if (!(vt_modes(t) & VT_MODE_BRACKET_PASTE))
+        return 1;
+    if (ch == '\t' || ch == '\n' || ch == '\r')
+        return 1;
+    return !(ch < 0x20 || (ch >= 0x7F && ch < 0xA0));
+}
+
 int vti_page_keys_scroll(const vt_term *t)
 {
     return !(vt_modes(t) & (VT_MODE_ALT_SCREEN | MOUSE_MODES));
