@@ -254,6 +254,7 @@ typedef struct con {
      * output and render phases are prof_out and the vtwin's prof_render.
      * Printed to the serial port when a stream closes, then reset. */
     ULONG prof_idle, prof_t0;
+    ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
 #endif
 } con;
 
@@ -4835,6 +4836,11 @@ static void packet(con *c, struct DosPacket *p)
                 vr_prof[0] = vr_prof[1] = vr_prof[2] = 0;
                 c->w.r.n_text = 0;
             }
+            DBG("PROF pkwrite/n", c->prof_pk[0], c->prof_npk[0]);
+            DBG("PROF pkwait/n", c->prof_pk[1], c->prof_npk[1]);
+            DBG("PROF pkother/n", c->prof_pk[2], c->prof_npk[2]);
+            c->prof_pk[0] = c->prof_pk[1] = c->prof_pk[2] = 0;
+            c->prof_npk[0] = c->prof_npk[1] = c->prof_npk[2] = 0;
             DBG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
             c->w.prof_part[0] = c->w.prof_part[1] = c->w.prof_part[2] = 0;
             c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;
@@ -5232,7 +5238,20 @@ static LONG handler_main(void)
         wait = Wait(wait);
 #endif
         while ((m = GetMsg(c->port)))
+#ifdef VTCON_PROF
+        {
+            struct DosPacket *pk = (struct DosPacket *)m->mn_Node.ln_Name;
+            struct EClockVal p0, p1;
+            int k = pk->dp_Type == ACTION_WRITE ? 0 : pk->dp_Type == ACTION_WAIT_CHAR ? 1 : 2;
+            ReadEClock(&p0);
+            packet(c, pk);
+            ReadEClock(&p1);
+            c->prof_pk[k] += p1.ev_lo - p0.ev_lo;
+            c->prof_npk[k]++;
+        }
+#else
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
+#endif
         if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
             /* only a DOS packet woke us: no other port has a message, no
              * timer is done, the frame is not due (each has its signal in

@@ -113,6 +113,8 @@ typedef struct vtwin {
     ULONG frame_wait;            /* the interval of the request in flight (us) */
     ULONG prof_render, prof_frames; /* EClock ticks drawing, and render passes (the handler's PROF=1) */
     ULONG prof_part[4];
+    int wrote;                   /* vtwin_write since the last frame tick */
+    ULONG quiet_us;              /* frame time with no output since the last write (jump scroll settles) */
     int backspace_bs;            /* profile backspace = bs: Backspace sends ^H (vt_set_backspace_bs) */          /* PROF=1: of the drawing, damaged rows / scrolls / cursor and mask */
     long sync_held;              /* microseconds a ?2026 update has been held back */
     long note_us;                /* OSC 9 / 777: microseconds the notice stays in the title */

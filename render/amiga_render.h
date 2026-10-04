@@ -88,6 +88,9 @@ typedef struct vr_render {
     WORD inset_top;       /* pixels above the text kept free (the tab bar) */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
+    WORD jump;             /* jump scroll: screen row s shows grid row s + jump (vr_scroll) */
+    WORD jump_step;        /* the spare rows the next jump leaves; doubles while scrolls keep coming */
+    UBYTE scrolled_pass;   /* this render pass scrolled the whole screen */
     /* Amiga layout requests (CSI t / u / x / y), -1 = automatic:
      * text rows, text columns, left and top offset in pixels */
     WORD lay_rows, lay_cols, lay_x, lay_y;
@@ -180,6 +183,8 @@ void vr_mask_begin(vr_render *r);
 void vr_mask_end(vr_render *r);
 void vr_redraw(vr_render *r);
 void vr_damage(vr_render *r, int x0, int y0, int x1, int y1);
+/* Jump scroll's end: the screen exactly as the grid again (output stopped). */
+void vr_settle(vr_render *r);
 void vr_scroll(vr_render *r, int top, int bottom, int n);
 /* The cursor's colour (0xRRGGBB) for a block cursor: the cell is filled
  * with it and the glyph drawn in the background colour, as xterm does with

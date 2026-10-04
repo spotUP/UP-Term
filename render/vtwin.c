@@ -364,6 +364,23 @@ static void frame_start(vtwin *w)
     w->frame_busy = 1;
 }
 
+/* Jump scroll's end (vr_settle): the text back where the grid has it, in a
+ * render pass of its own -- once the output has been quiet this long. A
+ * program that writes a line and waits for it (conbench sync-line) leaves
+ * a frame or two between lines; settling there cost a blit and a repaint
+ * a line (10 s for sync-line on the stock rig, against 4 without the jump). */
+#define SETTLE_QUIET_US 250000UL
+static void settle(vtwin *w)
+{
+    if (!w->t || !w->r.jump)
+        return;
+    vr_mask_begin(&w->r);
+    vr_cursor_off(&w->r);
+    vr_settle(&w->r);
+    vr_cursor_on(&w->r);
+    vr_mask_end(&w->r);
+}
+
 void vtwin_render(vtwin *w)
 {
     if (!w->render_pending || !w->t)
@@ -404,8 +421,8 @@ void vtwin_render(vtwin *w)
             w->prof_frames++;
         }
     }
-    if (w->r.has_blink || vr_cursor_blinks(&w->r))
-        frame_start(w); /* blinking cells or cursor: the frames keep coming */
+    if (w->r.has_blink || vr_cursor_blinks(&w->r) || w->r.jump)
+        frame_start(w); /* blinking cells or cursor, or a jump to settle: the frames keep coming */
 }
 
 static void drag_to(vtwin *w, WORD mx, WORD my);
@@ -417,15 +434,22 @@ void vtwin_tick(vtwin *w)
     if (w->frame_busy && CheckIO((struct IORequest *)w->frame)) {
         WaitIO((struct IORequest *)w->frame);
         w->frame_busy = 0;
+        int pending = w->render_pending;
         if (w->render_pending && w->t && (vt_modes(w->t) & VT_MODE_SYNC))
             w->sync_held += (long)w->frame_wait; /* a ?2026 frame waited this long */
         vtwin_render(w); /* the frame is due */
+        if (pending || w->wrote) /* (a WaitForChar draws at once: pending says nothing then) */
+            w->quiet_us = 0;
+        else if ((w->quiet_us += w->frame_wait) >= SETTLE_QUIET_US)
+            settle(w); /* the output has stopped: the jump scroll ends */
+        w->wrote = 0;
         note_tick(w, w->frame_wait); /* a notice in the title counts down */
         if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r)))
             frame_start(w); /* that frame ended a flash or a blink phase */
     }
     if (!w->frame_open) {
         vtwin_render(w); /* no frame clock: draw at once */
+        settle(w);
         if (w->t && vr_flash_tick(&w->r))
             vtwin_render(w); /* the flash's frame is over */
     }
@@ -915,6 +939,7 @@ void vtwin_write(vtwin *w, const vt_u8 *b, long n)
      * screen could not keep up: 45 ms per scroll, cycle-exact rig). */
     {
         vt_u32 sync = vt_modes(w->t) & VT_MODE_SYNC;
+        w->wrote = 1; /* output since the last frame: no settling yet */
         PROF_IN(w);
         vt_feed(w->t, b, n);
         PROF_OUT(w, 3);
@@ -1415,6 +1440,7 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
     vt_u8 out[40];
     if (!w->t)
         return;
+    settle(w); /* the pointer's cell is the grid's again */
     if (!move && link_click(w, code, qual, mx, my))
         return; /* Ctrl + click on a hyperlink: opened, not selected or reported */
     in = cell_at(w, mx, my, &x, &y);
