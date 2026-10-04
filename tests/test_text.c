@@ -51,8 +51,40 @@ static void bmp_emoji_take_two_cells(void)
     vt_free(t);
 }
 
+/* The rare-style table (underline colour, font) is swept when full: the
+ * rows a reflow pushed above the screen, brought back by the next grow,
+ * keep their entries (they were neither marked nor renumbered). */
+static void style_sweep_keeps_rows_pushed_above_the_screen(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    char seq[32];
+    int i;
+    vt_set_reflow(t, 1);
+    h_put(t, "\033[4;58:5:1mA\033[m\r\nb\r\nc");
+    vt_resize(t, 10, 1); /* rows 0 and 1 go above the screen */
+    CHECK_STR(h_row(t, 0), "c");
+    for (i = 0; i < 300; i++) { /* 300 underline colours, each overwriting the last */
+        int k = 0;
+        memcpy(seq, "\r\033[58:2::9:", 11);
+        k = 11;
+        seq[k++] = (char)('0' + i / 100);
+        seq[k++] = ':';
+        seq[k++] = (char)('0' + i / 10 % 10);
+        seq[k++] = (char)('0' + i % 10);
+        seq[k++] = 'm';
+        seq[k++] = 'x';
+        seq[k] = 0;
+        h_put(t, seq);
+    }
+    vt_resize(t, 10, 3);
+    CHECK_STR(h_row(t, 0), "A");
+    CHECK_INT(vt_cell_underline_color(t, h_cell(t, 0, 0)), 1);
+    vt_free(t);
+}
+
 void suite_text(void)
 {
+    style_sweep_keeps_rows_pushed_above_the_screen();
     widths_count_cells_as_glibc_does();
     bmp_emoji_take_two_cells();
 }

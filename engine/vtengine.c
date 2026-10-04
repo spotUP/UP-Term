@@ -979,35 +979,53 @@ static void delete_lines(vt_term *t, int n)
  * instead of the values. A full table is swept: entries no cell uses any
  * more are dropped and the cells renumbered. */
 
-/* Lines first..first+n-1 of a ring of cap (the grid: first 0, cap n). */
-static void sweep_lines(vt_line **lines, int first, int n, int cap, const vt_u8 *remap, vt_u8 *used)
+/* Every line that holds cells a table entry may be named by: the grid, the
+ * alternate screen, the scrollback and the rows a reflow keeps above the
+ * screen. The sweeps of the side tables (styles here, clusters below)
+ * walk them all, or an entry still in use is taken for free. */
+static void each_line(vt_term *t, void (*fn)(vt_line *, void *), void *u)
 {
-    int y, x;
-    for (y = 0; y < n; y++) {
-        vt_line *l = lines ? lines[(first + y) % cap] : 0;
-        if (!l)
+    int i;
+    for (i = 0; i < t->rows; i++) {
+        fn(t->pri[i], u);
+        if (t->alt)
+            fn(t->alt[i], u);
+    }
+    for (i = 0; i < t->sb_len; i++)
+        fn(t->sb[(t->sb_head + t->sb_cap - t->sb_len + i) % t->sb_cap], u);
+    for (i = 0; i < t->novf; i++)
+        fn(t->ovf[i], u);
+}
+
+/* sweep_styles: with used, the entries the line names; else renumbered */
+typedef struct {
+    vt_u8 *used;
+    const vt_u8 *remap;
+} vt_style_sweep;
+
+static void sweep_line_styles(vt_line *l, void *u)
+{
+    vt_style_sweep *s = (vt_style_sweep *)u;
+    int x;
+    for (x = 0; x < l->n; x++) {
+        if (!l->c[x].ext)
             continue;
-        for (x = 0; x < l->n; x++) {
-            if (!l->c[x].ext)
-                continue;
-            if (used)
-                used[l->c[x].ext] = 1;
-            else
-                l->c[x].ext = remap[l->c[x].ext];
-        }
+        if (s->used)
+            s->used[l->c[x].ext] = 1;
+        else
+            l->c[x].ext = s->remap[l->c[x].ext];
     }
 }
 
 static void sweep_styles(vt_term *t)
 {
     vt_u8 used[256], remap[256];
+    vt_style_sweep s;
     int i, k = 0;
     memset(used, 0, sizeof(used));
-    sweep_lines(t->pri, 0, t->rows, t->rows, 0, used);
-    if (t->alt)
-        sweep_lines(t->alt, 0, t->rows, t->rows, 0, used);
-    if (t->sb_cap)
-        sweep_lines(t->sb, t->sb_head + t->sb_cap - t->sb_len, t->sb_len, t->sb_cap, 0, used);
+    s.used = used;
+    s.remap = 0;
+    each_line(t, sweep_line_styles, &s);
     remap[0] = 0;
     for (i = 1; i <= t->n_styles; i++) {
         remap[i] = 0;
@@ -1017,11 +1035,9 @@ static void sweep_styles(vt_term *t)
         }
     }
     t->n_styles = k;
-    sweep_lines(t->pri, 0, t->rows, t->rows, remap, 0);
-    if (t->alt)
-        sweep_lines(t->alt, 0, t->rows, t->rows, remap, 0);
-    if (t->sb_cap)
-        sweep_lines(t->sb, t->sb_head + t->sb_cap - t->sb_len, t->sb_len, t->sb_cap, remap, 0);
+    s.used = 0;
+    s.remap = remap;
+    each_line(t, sweep_line_styles, &s);
 }
 
 /* The entry for the current underline colour and font (0: both default). */
