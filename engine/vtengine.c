@@ -5499,6 +5499,25 @@ void vt_set_charset(vt_term *t, enum vt_charset cs)
     t->u_need = 0;
 }
 
+/* A CR, LF or CR LF (and the LFs after it) at b in the ground state, what
+ * exec_c0 does for them: the bytes taken (at least the first). A run of
+ * newlines is one lf_run. */
+static long newlines(vt_term *t, const vt_u8 *b, long n)
+{
+    long i = 0, k;
+    if (b[0] == 0x0D) {
+        t->cx = 0;
+        t->wrap_pending = 0;
+        if (n < 2 || b[1] != 0x0A)
+            return 1;
+        i = 1;
+    }
+    for (k = i + 1; k < n && b[k] == 0x0A; k++)
+        ;
+    lf_run(t, k - i);
+    return k;
+}
+
 /* Plain printable ASCII in the ground state, the bulk of all output, goes
  * straight into the row: no decoding, one dirty mark per run. The last
  * column and the wrap are done here too, as put_char does them for a
@@ -5506,10 +5525,12 @@ void vt_set_charset(vt_term *t, enum vt_charset cs)
  * feed at every row's end). Anything that needs put_char's care (wide
  * cells being overwritten, no autowrap with a wrap pending) ends the run
  * there; the caller has checked the character set and insert mode, and
- * says whether the colours and attributes are the default ones (plain). */
+ * says whether the colours and attributes are the default ones (plain).
+ * CR and LF between the runs are taken here too (newlines), so a page of
+ * text is one call. */
 static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
 {
-    long done = 0, k, room;
+    long done = 0, k, room, last = -1; /* last: the last character written */
     for (;;) {
         vt_line *l;
         vt_cell *c;
@@ -5607,8 +5628,17 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
             t->dirty = 1;
             t->cx = x = x1;
             done += k;
-            if (k < room)
+            last = done - 1;
+            if (k < room && b[done] != 0x0D && b[done] != 0x0A)
                 break; /* a byte or a cell for the parser or put_char */
+        }
+        if (done < n && (b[done] == 0x0D || b[done] == 0x0A)) {
+            /* the line ends: on to the next one here (ASM1: a line of
+             * output was two more turns of vt_feed and a call) */
+            done += newlines(t, b + done, n - done);
+            if (done >= n || b[done] < 0x20 || b[done] >= 0x7F)
+                break;
+            continue;
         }
         /* the last column: put_char's work for a plain character */
         if (done >= n || x != lc - 1 || b[done] < 0x20 || b[done] >= 0x7F)
@@ -5635,7 +5665,7 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
         if (l->used < x + 1)
             l->used = (vt_u16)(x + 1);
         t->dirty = 1;
-        done++;
+        last = done++;
         if (t->pers == VT_AMIGA && t->autowrap) {
             /* the ROM console wraps at once, no deferred wrap */
             l->wrapped = 1;
@@ -5644,11 +5674,13 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
         } else {
             t->wrap_pending = 1;
         }
+        if (done < n && (b[done] == 0x0D || b[done] == 0x0A))
+            done += newlines(t, b + done, n - done);
         if (done >= n || b[done] < 0x20 || b[done] >= 0x7F)
             break;
     }
-    if (done)
-        t->last_ch = b[done - 1];
+    if (last >= 0)
+        t->last_ch = b[last];
     return done;
 }
 
@@ -5837,19 +5869,7 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
                     }
                 }
             } else if (b == 0x0D || b == 0x0A) {
-                if (b == 0x0D) {
-                    t->cx = 0;
-                    t->wrap_pending = 0;
-                    if (++i >= len || buf[i] != 0x0A)
-                        continue;
-                    /* CR LF: the LF in the same turn of the loop */
-                }
-                /* a run of newlines is one lf_run */
-                k = 1;
-                while (i + k < len && buf[i + k] == 0x0A)
-                    k++;
-                lf_run(t, k);
-                i += k;
+                i += newlines(t, buf + i, len - i); /* CR LF in one turn */
                 continue;
             } else if (b == 0x1B) {
                 k = csi_fast(t, buf + i, len - i);
