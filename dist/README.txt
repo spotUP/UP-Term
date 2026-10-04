@@ -157,6 +157,8 @@ MENU
     Settings  Font..., Theme..., Cursor, Bell, Scrollback, Bold is
               bright, Meta key, Copy on select, Wheel scrolls, Tab
               completion, KingCON style, Profile, Save settings to profile
+    Help      Demo tour (a tour of what the terminal does, in a new tab:
+              see DEMO; /demo does the same)
   Settings are the same as UP-Term Prefs, for this window and at once
   (Prefs keeps them for the profile). With KingCON completion a Complete
   menu follows. Every item is also a command (see COMMANDS). The right
@@ -368,6 +370,15 @@ DEMO
   copper bars, plasma, fire, a rotozoomer, vector cubes, a sine scroller,
   palette cycling. Space: the next scene, B: back, Q: quit; UPDemo 5
   starts at scene 5. Your shell comes back as it was.
+  Help > Demo tour (or /demo, or UPDemo TOUR typed in a window) plays
+  a tour of what UP-Term does, about three minutes, a caption on each
+  scene: text styles, 256 and 24-bit colours, line graphics, Latin-1 and
+  UTF-8, wide characters and accents, scroll regions, a tmux split, vsh,
+  Tab completion (Unix and KingCON), themes switched live, mouse reports
+  (click in the window), links, a sixel image, synchronized output, a
+  program resizing the window (from 80 columns), reflow (drag the size
+  gadget when it asks), then some of the effects. From the menu it runs
+  in a tab of its own, which closes when the tour ends; any key ends it.
   UPDemo BENCH runs every scene for three seconds and prints the frames
   a second each reached: a benchmark of the terminal on your machine.
   The full-screen effects need a fast processor (a 68060, a PiStorm, an

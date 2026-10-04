@@ -59,6 +59,7 @@ static const slash_def table[] = {
     { "cursor", SL_CHOICE, 0, 0, v_cursor, "block | underline | bar", "the cursor's shape" },
     { "cursor-blink", SL_CHOICE, 0, 0, v_blink, "on | off", "the cursor blinks" },
     { "cursor-color", SL_ARG, SLASH_CURSOR_COLOR, 1, 0, "RRGGBB | none", "the cursor's colour (none: inverted)" },
+    { "demo", SL_ACTION, MENU_DEMO, 0, 0, "", "the tour of what UP-Term does, in a new tab" },
     { "fg", SL_ARG, SLASH_FG, 1, 0, "RRGGBB | none", "the text colour" },
     { "find", SL_ARG, SLASH_FIND, 0, 0, "[TEXT]", "find in the scrollback (again: the next)" },
     { "font", SL_ARG, SLASH_FONT, 0, 0, "[NAME SIZE]", "the font (no name: the requester)" },
