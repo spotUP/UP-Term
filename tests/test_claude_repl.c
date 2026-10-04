@@ -477,6 +477,20 @@ static void test_commands(void)
         CHECK_INT(repl_init(&r2, &io, &net, &sys, "http://10.0.2.2:8080/v1/messages", 0, dir), 0);
         repl_free(&r2);
     }
+    /* a plain http URL never carries the key, even when one is set */
+    {
+        static const char *one[] = { "hi", 0 };
+        static cl_repl r3;
+        setup(&r3, one);
+        repl_free(&r3);
+        CHECK_INT(repl_init(&r3, &io, &net, &sys, "http://10.0.2.2:8080/v1/messages", "test-key-not-real", dir), 0);
+        add_stream("text.sse");
+        repl_line(&r3, "hi");
+        CHECK_INT(sb.nreq, 1);
+        CHECK(sb.nreq < 1 || strstr(sb.head[0], "x-api-key") == 0);
+        CHECK(sb.nreq < 1 || strstr(sb.head[0], "Host: 10.0.2.2:8080\r\n") != 0);
+        repl_free(&r3);
+    }
     {
         char k1[] = "  sk-ant-test-0123456789\n";
         char k2[] = "sk ant";

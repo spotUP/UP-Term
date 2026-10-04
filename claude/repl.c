@@ -628,7 +628,8 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
         ui_line(&r->ui, "No API key: set ENV:ANTHROPIC_API_KEY, or put the key in ENVARC:Claude/key.");
         return -1;
     }
-    r->key = key;
+    /* the key goes only over TLS: a plain http URL (the fixture) never sees it */
+    r->key = r->url.tls ? key : 0;
     cl_copy(r->model, CL_DEFAULT_MODEL, sizeof(r->model));
     cl_copy(r->effort, CL_DEFAULT_EFFORT, sizeof(r->effort));
     r->max_tokens = CL_MAX_TOKENS;
