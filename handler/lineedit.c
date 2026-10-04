@@ -737,6 +737,14 @@ void le_set_command(le_line *le, const unsigned char *word, int found)
     redraw_from(le, 0);
 }
 
+void le_no_command(le_line *le)
+{
+    if (!le->cmd_state)
+        return;
+    le->cmd_state = 0; /* a program's line, not the shell's: no command colour */
+    redraw_from(le, 0);
+}
+
 void le_replace_word(le_line *le, int from, const unsigned char *s, int n)
 {
     if (from < 0 || from > le->pos || le->len - (le->pos - from) + n > LE_MAX - 2)

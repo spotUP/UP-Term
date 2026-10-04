@@ -94,6 +94,9 @@ int  le_first_word(const le_line *le, unsigned char *out, int max);
 /* The answer to "is the first word a command": green or red on screen,
  * applied only if the first word is still `word`. */
 void le_set_command(le_line *le, const unsigned char *word, int found);
+/* The line is read by a program, not a shell: the first word plain again
+ * (W31: C:Claude's "hello" showed red as an unknown command). */
+void le_no_command(le_line *le);
 /* A completion menu: the names (NUL-separated) in columns under the line,
  * then prompt and line again below them. */
 void le_show_list(le_line *le, const char *names, int len);
