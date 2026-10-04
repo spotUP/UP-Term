@@ -16,14 +16,14 @@ ZMODEM  := zm/zmodem.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
-           tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c
+           tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c
 
 .PHONY: demo-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) demo/updemo.c demo/updemo.h zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/fontpair.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc $(TESTS) tests/harness.h
+$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) demo/updemo.c demo/updemo.h zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/fontpair.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc $(TESTS) tests/harness.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) demo/updemo.c $(TESTS)
 

@@ -104,6 +104,7 @@ typedef struct vtwin {
     struct MsgPort *frame_port;  /* the frame clock (timer.device) */
     struct timerequest *frame;
     int frame_open, frame_busy;
+    ULONG frame_us;              /* the frame clock's next interval (pace.h); 0: the shortest */
     int sync_held;               /* frames a ?2026 update has been held back */
     int dragging, drag_moved;    /* mouse selection */
     int drag_ax, drag_ay;

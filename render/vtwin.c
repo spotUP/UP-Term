@@ -16,6 +16,13 @@
 #include <proto/diskfont.h>
 #include <proto/dos.h>
 #include <proto/console.h>
+/* ReadEClock for the frame pacing: on the frame clock's own timer.device
+ * (vtwin_timer), not a TimerBase of the program's -- vtwin is linked into
+ * the handler and the console device alike */
+#define TimerBase vtwin_timer
+static struct Device *vtwin_timer;
+#include <proto/timer.h>
+#include "pace.h"
 #include "../handler/clip.h"
 #include "fontpair.h"
 #include <graphics/displayinfo.h>
@@ -27,7 +34,8 @@ extern struct GfxBase *GfxBase;
  * device packet, upcon_device.c from the ROM device it fronts. */
 extern struct Device *ConsoleDevice;
 
-#define FRAME_MICROS 50000 /* 20 frames per second */
+/* The frame clock's interval follows what the last frame cost (pace.h):
+ * 1.5 times it, 20 to 160 ms. */
 #define SYNC_FRAMES 3       /* the longest a ?2026 frame is waited for */
 
 static void frame_start(vtwin *w);
@@ -191,8 +199,10 @@ void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
     w->frame_port = CreateMsgPort();
     if (w->frame_port) {
         w->frame = (struct timerequest *)CreateIORequest(w->frame_port, sizeof(struct timerequest));
-        if (w->frame && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)w->frame, 0))
+        if (w->frame && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)w->frame, 0)) {
             w->frame_open = 1;
+            vtwin_timer = w->frame->tr_node.io_Device;
+        }
     }
 }
 
@@ -230,7 +240,7 @@ static void frame_start(vtwin *w)
         return;
     w->frame->tr_node.io_Command = TR_ADDREQUEST;
     w->frame->tr_time.tv_secs = 0;
-    w->frame->tr_time.tv_micro = FRAME_MICROS;
+    w->frame->tr_time.tv_micro = w->frame_us ? w->frame_us : VT_PACE_MIN_US;
     SendIO((struct IORequest *)w->frame);
     w->frame_busy = 1;
 }
@@ -250,11 +260,20 @@ void vtwin_render(vtwin *w)
     }
     w->sync_held = 0;
     w->render_pending = 0;
-    vr_mask_begin(&w->r); /* planar screens: only the planes in use (S1) */
-    vr_cursor_off(&w->r);
-    vt_flush(w->t);
-    vr_cursor_on(&w->r);
-    vr_mask_end(&w->r);
+    {
+        struct EClockVal e0, e1;
+        ULONG freq = vtwin_timer ? ReadEClock(&e0) : 0;
+        vr_mask_begin(&w->r); /* planar screens: only the planes in use (S1) */
+        vr_cursor_off(&w->r);
+        vt_flush(w->t);
+        vr_cursor_on(&w->r);
+        vr_mask_end(&w->r);
+        if (freq) {
+            /* the next frame waits 1.5 times what this one cost (S1) */
+            ReadEClock(&e1);
+            w->frame_us = vt_pace_next(vt_pace_us(e1.ev_lo - e0.ev_lo, freq));
+        }
+    }
     if (w->r.has_blink || vr_cursor_blinks(&w->r))
         frame_start(w); /* blinking cells or cursor: the frames keep coming */
 }
