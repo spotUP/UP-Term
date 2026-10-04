@@ -101,6 +101,8 @@ int vti_button(vti_mouse *m, const vt_term *t, int btn, int down, int x, int y, 
     }
     if (btn == 0 && !down && selecting)
         return VTI_SELECT_END;
+    if (btn == 1 && !down && !selecting)
+        return VTI_PASTE; /* xterm pastes on the middle button's release */
     return VTI_NONE;
 }
 

@@ -262,8 +262,35 @@ static void double_click_word_triple_click_line(void)
     vt_free(t);
 }
 
+/* gap #14: middle-click pastes (on the release, as xterm) when no program
+ * took the mouse, or with Shift */
+static void middle_click_pastes_when_nobody_asked(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vti_mouse m;
+    int a;
+    vti_mouse_reset(&m);
+    CHECK_STR(button(&m, t, 1, 1, 2, 3, 0, 0, &a), "");
+    CHECK_INT(a, VTI_NONE);
+    CHECK_STR(button(&m, t, 1, 0, 2, 3, 0, 0, &a), "");
+    CHECK_INT(a, VTI_PASTE);
+    h_put(t, "\033[?1000h\033[?1006h");
+    button(&m, t, 1, 1, 2, 3, 0, 0, &a);
+    CHECK_INT(a, VTI_REPORT);
+    button(&m, t, 1, 0, 2, 3, 0, 0, &a);
+    CHECK_INT(a, VTI_REPORT);                     /* the program's middle button */
+    button(&m, t, 1, 1, 2, 3, VT_MOD_SHIFT, 0, &a);
+    CHECK_INT(a, VTI_NONE);
+    button(&m, t, 1, 0, 2, 3, VT_MOD_SHIFT, 0, &a);
+    CHECK_INT(a, VTI_PASTE);                      /* Shift: ours */
+    CHECK_STR(button(&m, t, 2, 0, 2, 3, VT_MOD_SHIFT, 0, &a), "");
+    CHECK_INT(a, VTI_NONE);                       /* the right button pastes nothing */
+    vt_free(t);
+}
+
 void suite_input(void)
 {
+    middle_click_pastes_when_nobody_asked();
     double_click_word_triple_click_line();
     middle_button_and_modifiers_reach_the_program();
     motion_reaches_the_program_in_the_motion_modes();

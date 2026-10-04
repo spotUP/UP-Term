@@ -1210,6 +1210,10 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
         else if (w->copy_on_select && !w->no_clipboard)
             copy_selection(w); /* the profile's copy-on-select */
         break;
+    case VTI_PASTE:
+        if (!w->no_clipboard)
+            paste(w); /* middle-click: the clipboard, as Right Amiga V */
+        break;
     default:
         break;
     }
