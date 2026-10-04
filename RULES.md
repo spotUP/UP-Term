@@ -40,4 +40,5 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | Install kit (build/UP-Term.lha: Install with Installer, or Files/install.dos) | `make dist` |
 | Install kit on the rig: Install, check, Uninstall | `python3 tools/rig/install_rig.py` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first) |
+| Width tables (engine/vtwidth.h) from the Unicode database, glibc's wcwidth rules | `make widths` (`UNICODE=16.0.0`; fetches the UCD into build/ucd once) |
 | Clean | `make clean` |

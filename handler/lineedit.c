@@ -402,17 +402,14 @@ static int prompt_from_screen(le_line *le, unsigned char *prompt, int max)
     int n, i, k = 0;
     const vt_cell *c = vt_row(le->t, (int)(le->start_row - vt_lines_scrolled(le->t)), &n);
     if (c)
-        for (i = 0; i < le->start_col && i < n && k < max - 6; i++) {
-            unsigned long cp = c[i].ch;
-            if (cp < 0x80 || !le->utf8) {
-                prompt[k++] = (unsigned char)(cp < 0x100 ? cp : '?');
-            } else if (cp < 0x800) {
-                prompt[k++] = (unsigned char)(0xC0 | (cp >> 6));
-                prompt[k++] = (unsigned char)(0x80 | (cp & 0x3F));
+        for (i = 0; i < le->start_col && i < n && k < max - VT_CELL_UTF8_MAX; i++) {
+            if (!c[i].width)
+                continue; /* the right half of a wide character */
+            if (le->utf8) {
+                k += vt_cell_utf8(le->t, &c[i], (char *)prompt + k);
             } else {
-                prompt[k++] = (unsigned char)(0xE0 | (cp >> 12));
-                prompt[k++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
-                prompt[k++] = (unsigned char)(0x80 | (cp & 0x3F));
+                vt_u32 cp = vt_cell_char(le->t, &c[i]);
+                prompt[k++] = (unsigned char)(cp < 0x100 ? cp : '?');
             }
         }
     return k;

@@ -92,6 +92,8 @@ static vt_glyph map(vt_u32 cp, enum vt_font_enc enc, int *native)
     if (cp == 0x25A0 || cp == 0x25AE)
         return mk(VT_GLYPH_BLOCK, 0x40 | 0x0F);
     *native = 0;
+    if (cp > 0xFFFF)
+        return mk(VT_GLYPH_MISSING, 1); /* an emoji, an icon: no bitmap font has it */
     a = approx_find(cp);
     if (a >= 0) {
         if (enc == VT_ENC_CP437 && a >= 0x80) {
@@ -107,6 +109,48 @@ vt_glyph vt_map_glyph(vt_u32 cp, enum vt_font_enc enc)
 {
     int native;
     return map(cp, enc, &native);
+}
+
+/* Shown as nothing: variation selectors, joiners, the other format
+ * characters that only steer how their neighbours look. */
+static int invisible(vt_u32 c)
+{
+    return (c >= 0x200B && c <= 0x200F) || (c >= 0x2060 && c <= 0x206F) ||
+           (c >= 0xFE00 && c <= 0xFE0F) || (c >= 0x180B && c <= 0x180F) || c == 0x034F ||
+           (c >= 0xE0000UL && c <= 0xE0FFFUL);
+}
+
+static int compose_pair(vt_u32 base, vt_u32 mark)
+{
+    vt_u32 key;
+    int lo = 0, hi = COMPOSE_N - 1;
+    if (base > 0xFFFF || mark > 0xFFFF)
+        return -1;
+    key = (base << 16) | mark;
+    while (lo <= hi) {
+        int mid = (lo + hi) >> 1;
+        if (compose_key[mid] == key)
+            return compose_to[mid];
+        if (compose_key[mid] < key)
+            lo = mid + 1;
+        else
+            hi = mid - 1;
+    }
+    return -1;
+}
+
+int vt_compose_cell(vt_u32 *cp, int n)
+{
+    int i, k = 1, c;
+    for (i = 1; i < n; i++) {
+        if (invisible(cp[i]))
+            continue;
+        if (k == 1 && (c = compose_pair(cp[0], cp[i])) >= 0)
+            cp[0] = (vt_u32)c; /* a mark after one that did not compose stays a mark */
+        else
+            cp[k++] = cp[i];
+    }
+    return k;
 }
 
 int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc)

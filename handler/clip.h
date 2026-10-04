@@ -1,10 +1,12 @@
-/* The Amiga clipboard as text (IFF FTXT/CHRS on clipboard.device unit 0). */
+/* The Amiga clipboard as text (IFF FTXT on clipboard.device unit 0): CHRS
+ * in Latin-1 for every reader, UTF8 beside it (handler/clipfmt.h). */
 #ifndef CLIP_H
 #define CLIP_H
 
-/* Latin-1 text in, 1 on success. */
-int  clip_write(const char *text, long len);
-/* The first CHRS chunk of the clip, NUL-terminated; returns its length. */
-long clip_read(char *out, long max);
+/* UTF-8 text in, any length; 1 on success. */
+int  clip_write(const char *utf8, long len);
+/* The clip's text as UTF-8, NUL-terminated, in memory to FreeVec; *len
+ * its length. 0 when the clipboard holds no text. */
+char *clip_read(long *len);
 
 #endif

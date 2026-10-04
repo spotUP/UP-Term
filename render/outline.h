@@ -35,6 +35,11 @@ void vo_set_cell(vo_font *f, WORD cw, WORD ch, WORD base);
  * font has no such glyph. */
 const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr);
 
+/* A combining mark's glyph to draw over a character `cells` wide: the
+ * font's zero-advance mark placed over the cell (or, a spacing one, from
+ * its left edge). 0 when the font has no such glyph. */
+const UBYTE *vo_mark(vo_font *f, ULONG cp, int cells, WORD *bpr);
+
 /* The name it was opened with (for a profile change: same font or not). */
 const char *vo_name(const vo_font *f);
 

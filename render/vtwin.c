@@ -24,6 +24,7 @@ struct Device *vtwin_timer; /* also read by amiga_render.c's PROF=1 counters */
 #include <proto/timer.h>
 #include "pace.h"
 #include "../handler/clip.h"
+#include "../handler/clipfmt.h"
 #include "fontpair.h"
 #include <graphics/displayinfo.h>
 
@@ -105,18 +106,11 @@ static void cb_title(void *u, const char *s)
 {
     vtwin *w = (vtwin *)u;
     int i;
+    long k = 0, n = (long)strlen(s);
     /* the title arrives as UTF-8; Intuition shows Latin-1 */
-    for (i = 0; *s && i < (int)sizeof(w->title) - 1; s++) {
-        unsigned char b = (unsigned char)*s;
-        if (b < 0x80) {
-            w->title[i++] = (char)b;
-        } else if ((b & 0xE0) == 0xC0 && s[1]) {
-            unsigned cp = ((b & 0x1F) << 6) | (s[1] & 0x3F);
-            w->title[i++] = (char)(cp < 0x100 ? cp : '?');
-            s++;
-        } else if ((b & 0xC0) != 0x80) {
-            w->title[i++] = '?';
-        }
+    for (i = 0; k < n && i < (int)sizeof(w->title) - 1; i++) {
+        unsigned long cp = cf_next(s, n, &k);
+        w->title[i] = (char)(cp < 0x100 ? cp : '?');
     }
     w->title[i] = 0;
     if (w->win && !w->r.off)
@@ -914,47 +908,36 @@ static long keypad_key(UWORD code)
     }
 }
 
-/* The selection's text to the clipboard, as Latin-1 (the clipboard's). */
+/* The selection's text to the clipboard, whole: UTF-8, and Latin-1 for
+ * the programs that read only that (clip.c). */
 static void copy_selection(vtwin *w)
 {
     /* allocated, not static: every window's process runs this code */
-    char *utf, *lat;
+    char *utf;
     int ax, ay, bx, by;
-    long n, i, k = 0;
+    long n;
     if (!vr_selection(&w->r, &ax, &ay, &bx, &by))
         return;
-    utf = (char *)AllocVec(16384, MEMF_ANY);
+    n = vt_copy_text(w->t, ax, ay, bx, by, 0, 0); /* the length it needs */
+    utf = (char *)AllocVec((ULONG)n + 1, MEMF_ANY);
     if (!utf)
         return;
-    lat = utf; /* converted in place: Latin-1 is never longer */
-    n = vt_copy_text(w->t, ax, ay, bx, by, utf, 16384);
-    for (i = 0; i < n; i++) {
-        unsigned char b = (unsigned char)utf[i];
-        if (b < 0x80) {
-            lat[k++] = (char)b;
-        } else if ((b & 0xE0) == 0xC0 && i + 1 < n) {
-            unsigned cp = ((b & 0x1F) << 6) | (utf[i + 1] & 0x3F);
-            lat[k++] = (char)(cp < 0x100 ? cp : '?');
-            i++;
-        } else if ((b & 0xC0) != 0x80) {
-            lat[k++] = '?'; /* beyond Latin-1 */
-        }
-    }
-    clip_write(lat, k);
+    n = vt_copy_text(w->t, ax, ay, bx, by, utf, n + 1);
+    clip_write(utf, n);
     FreeVec(utf);
 }
 
-/* The clipboard, typed into the program: Return for each line break, and
- * bracketed when the program asked for it (?2004). */
+/* The clipboard, typed into the program: each character in the terminal's
+ * encoding, Return for each line break, controls other than TAB dropped
+ * (clipfmt.h), and bracketed when the program asked for it (?2004). */
 static void paste(vtwin *w)
 {
-    char *text = (char *)AllocVec(8192, MEMF_ANY); /* not static: see copy_selection */
     long n, i;
+    char *text = clip_read(&n);
     vt_u8 out[40];
     int k, raw = w->host->raw(w->user);
     if (!text)
         return;
-    n = clip_read(text, 8192);
     if (n <= 0) {
         FreeVec(text);
         return;
@@ -963,10 +946,10 @@ static void paste(vtwin *w)
         k = vt_encode_paste(w->t, 0, out);
         w->host->input(w->user, out, k);
     }
-    for (i = 0; i < n; i++) {
-        unsigned char ch = (unsigned char)text[i];
+    for (i = 0; i < n;) {
+        unsigned long ch = cf_next(text, n, &i);
         long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '\r')
+        if (ch == '\r' || !cf_paste_keeps(ch))
             continue;
         k = vt_encode_key(w->t, key, 0, out);
         w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);

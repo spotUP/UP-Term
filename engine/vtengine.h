@@ -73,7 +73,9 @@ typedef vt_u16 vt_attr;
 
 typedef struct vt_cell {
     vt_color fg, bg; /* see VT_COLOR_* */
-    vt_u16 ch;      /* Unicode code point (BMP); 0x20 for blank */
+    vt_u16 ch;      /* Unicode code point (BMP); 0x20 for blank; in
+                     * VT_CLUSTER_FIRST..LAST an entry of the terminal's
+                     * cluster table (vt_cell_text) */
     vt_attr attr;   /* VT_ATTR_* */
     vt_u8  width;   /* 1; 2 for the first cell of a wide glyph, 0 for its second */
     vt_u8  deco;    /* VT_DECO_*: underline style, ideogram line */
@@ -82,6 +84,17 @@ typedef struct vt_cell {
                      * vt_cell_font) */
     vt_u8  pad;
 } vt_cell;
+
+/* A cell's ch in U+D800..U+DFFF (the surrogates, which are never a
+ * character of their own) is not a character: it names an entry of the
+ * terminal's cluster table, which holds a character beyond the BMP (emoji,
+ * CJK Extension B, Nerd Font icons in plane 15), or any character with the
+ * combining marks, variation selectors and joiners that followed it. The
+ * cell stays 16 bytes. vt_cell_text gives the code points. */
+#define VT_CLUSTER_FIRST 0xD800
+#define VT_CLUSTER_LAST  0xDFFF
+#define VT_CELL_IS_CLUSTER(c) (((c)->ch & 0xF800) == 0xD800)
+#define VT_CLUSTER_CPS 6 /* code points a cell holds: the character and up to 5 marks */
 
 /* Window-level requests the engine does not own itself (amiga personality). */
 enum vt_layout {
@@ -208,8 +221,21 @@ vt_u32   vt_raw_events(const vt_term *t);
  * order (rows below 0 are scrollback, as for vt_row). Trailing blanks of a
  * line are dropped and lines end with '\n', except a line that wrapped into
  * the next: selecting a wrapped paragraph gives it back as one line.
- * Written as UTF-8, NUL-terminated; returns the length (at most max - 1). */
+ * Written as UTF-8, NUL-terminated; returns the length (at most max - 1).
+ * With out NULL (max ignored) nothing is written and the return is the
+ * length the whole text needs, without the NUL: size the buffer with it. */
 long     vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, long max);
+
+/* The code points of a cell (from vt_row): its character, then the marks
+ * that combine with it, at most VT_CLUSTER_CPS. Returns how many (1 for
+ * every cell outside the cluster range). */
+int      vt_cell_text(const vt_term *t, const vt_cell *c, vt_u32 *cp);
+/* The cell's character alone (a cluster's first code point). */
+vt_u32   vt_cell_char(const vt_term *t, const vt_cell *c);
+/* The cell's code points as UTF-8 into out (VT_CELL_UTF8_MAX bytes at
+ * most, not terminated); returns the byte count. */
+#define VT_CELL_UTF8_MAX (4 * VT_CLUSTER_CPS)
+int      vt_cell_utf8(const vt_term *t, const vt_cell *c, char *out);
 
 /* vt_find: what vt_row returns when nothing matched. Below any real row. */
 #define VT_ROW_NONE (-1000000L)
@@ -237,8 +263,10 @@ long     vt_unhandled(const vt_term *t, const char **kinds, long *counts, int ma
 
 /* The palette indices a cell draws with, for this personality: default
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,
- * inverse (the cell's, XOR the screen's DECSCNM) and conceal all resolved.
- * RGB colours pass through unchanged. */
+ * faint, inverse (the cell's, XOR the screen's DECSCNM) and conceal all
+ * resolved. RGB colours pass through unchanged. Faint (SGR 2) makes any
+ * text colour an RGB one halfway to the background (xterm, pcansi; the
+ * amiga personality keeps its pens: 7 and 15 become pen 2). */
 void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_color *bg);
 /* The colour of the cell's underline (SGR 58), VT_COLOR_DEFAULT when it
  * follows the text; and its font, 0 primary, 1-9 SGR 11-19, 10 Fraktur (20). */

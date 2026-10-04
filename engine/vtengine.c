@@ -20,6 +20,8 @@
 #define VT_FREE(p) free(p)
 #endif
 
+#define VT_CLUSTERS 2048          /* VT_CLUSTER_FIRST..LAST */
+#define VT_CLU_HASH 4096          /* a power of two, at least twice VT_CLUSTERS */
 #define VT_MAX_PARAMS 16
 #define VT_STR_MAX 256
 #define VT_PARAM_MAX 65535L
@@ -85,6 +87,12 @@ struct vt_term {
     vt_u8 ext;             /* the rare-style entry of ul + font, 0 = none (style_index) */
     struct { vt_color ul; vt_u8 font; } styles[255];
     int n_styles;
+    /* the cluster table (VT_CLUSTER_FIRST): made on the first character
+     * that needs it, grown to VT_CLUSTERS entries, swept when full */
+    struct vt_cluster *clu;
+    int clu_cap, clu_top;      /* entries allocated; entries ever used (the rest never were) */
+    int clu_free;              /* a free entry below clu_top is searched from here */
+    vt_u16 *clu_hash;          /* VT_CLU_HASH slots: entry + 1, 0 empty */
     int top, bot;          /* scroll region rows [top, bot) */
     vt_u8 *tabs;
     int tabs_cap;
@@ -94,7 +102,7 @@ struct vt_term {
     vt_u8 charset[4];      /* 'B' ASCII, '0' DEC graphics, 'A' UK */
     int gl, single_shift;
     vt_saved sav, sav_1049;
-    vt_u16 last_ch;
+    vt_u32 last_ch;            /* REP repeats it: the last character put */
 
     /* amiga personality */
     vt_u32 raw_events;
@@ -1074,35 +1082,53 @@ static void delete_lines(vt_term *t, int n)
  * instead of the values. A full table is swept: entries no cell uses any
  * more are dropped and the cells renumbered. */
 
-/* Lines first..first+n-1 of a ring of cap (the grid: first 0, cap n). */
-static void sweep_lines(vt_line **lines, int first, int n, int cap, const vt_u8 *remap, vt_u8 *used)
+/* Every line that holds cells a table entry may be named by: the grid, the
+ * alternate screen, the scrollback and the rows a reflow keeps above the
+ * screen. The sweeps of the side tables (styles here, clusters below)
+ * walk them all, or an entry still in use is taken for free. */
+static void each_line(vt_term *t, void (*fn)(vt_line *, void *), void *u)
 {
-    int y, x;
-    for (y = 0; y < n; y++) {
-        vt_line *l = lines ? lines[(first + y) % cap] : 0;
-        if (!l)
+    int i;
+    for (i = 0; i < t->rows; i++) {
+        fn(t->pri[i], u);
+        if (t->alt)
+            fn(t->alt[i], u);
+    }
+    for (i = 0; i < t->sb_len; i++)
+        fn(t->sb[(t->sb_head + t->sb_cap - t->sb_len + i) % t->sb_cap], u);
+    for (i = 0; i < t->novf; i++)
+        fn(t->ovf[i], u);
+}
+
+/* sweep_styles: with used, the entries the line names; else renumbered */
+typedef struct {
+    vt_u8 *used;
+    const vt_u8 *remap;
+} vt_style_sweep;
+
+static void sweep_line_styles(vt_line *l, void *u)
+{
+    vt_style_sweep *s = (vt_style_sweep *)u;
+    int x;
+    for (x = 0; x < l->n; x++) {
+        if (!l->c[x].ext)
             continue;
-        for (x = 0; x < l->n; x++) {
-            if (!l->c[x].ext)
-                continue;
-            if (used)
-                used[l->c[x].ext] = 1;
-            else
-                l->c[x].ext = remap[l->c[x].ext];
-        }
+        if (s->used)
+            s->used[l->c[x].ext] = 1;
+        else
+            l->c[x].ext = s->remap[l->c[x].ext];
     }
 }
 
 static void sweep_styles(vt_term *t)
 {
     vt_u8 used[256], remap[256];
+    vt_style_sweep s;
     int i, k = 0;
     memset(used, 0, sizeof(used));
-    sweep_lines(t->pri, 0, t->rows, t->rows, 0, used);
-    if (t->alt)
-        sweep_lines(t->alt, 0, t->rows, t->rows, 0, used);
-    if (t->sb_cap)
-        sweep_lines(t->sb, t->sb_head + t->sb_cap - t->sb_len, t->sb_len, t->sb_cap, 0, used);
+    s.used = used;
+    s.remap = 0;
+    each_line(t, sweep_line_styles, &s);
     remap[0] = 0;
     for (i = 1; i <= t->n_styles; i++) {
         remap[i] = 0;
@@ -1112,11 +1138,9 @@ static void sweep_styles(vt_term *t)
         }
     }
     t->n_styles = k;
-    sweep_lines(t->pri, 0, t->rows, t->rows, remap, 0);
-    if (t->alt)
-        sweep_lines(t->alt, 0, t->rows, t->rows, remap, 0);
-    if (t->sb_cap)
-        sweep_lines(t->sb, t->sb_head + t->sb_cap - t->sb_len, t->sb_len, t->sb_cap, remap, 0);
+    s.used = 0;
+    s.remap = remap;
+    each_line(t, sweep_line_styles, &s);
 }
 
 /* The entry for the current underline colour and font (0: both default). */
@@ -1147,6 +1171,195 @@ vt_color vt_cell_underline_color(const vt_term *t, const vt_cell *c)
 int vt_cell_font(const vt_term *t, const vt_cell *c)
 {
     return c->ext && c->ext <= t->n_styles ? t->styles[c->ext - 1].font : 0;
+}
+
+/* ---- clusters: characters beyond the BMP, combining marks -------------------
+ * A cell's ch in VT_CLUSTER_FIRST..LAST is entry ch - VT_CLUSTER_FIRST of
+ * this table. Equal clusters share an entry (found through a hash). Cells
+ * are copied, moved and dropped by scrolls, erases, resizes and reflows
+ * without a word to the table: when it is full, a sweep over every line
+ * (each_line) frees the entries no cell names any more. A free entry has
+ * n == 0. Nothing here runs for printable ASCII (put_ascii_run). */
+typedef struct vt_cluster {
+    vt_u8 n;                    /* code points in cp; 0: a free entry */
+    vt_u32 cp[VT_CLUSTER_CPS];
+} vt_cluster;
+
+int vt_cell_text(const vt_term *t, const vt_cell *c, vt_u32 *cp)
+{
+    if (VT_CELL_IS_CLUSTER(c)) {
+        int e = c->ch - VT_CLUSTER_FIRST, i;
+        if (e < t->clu_top && t->clu[e].n) {
+            for (i = 0; i < t->clu[e].n; i++)
+                cp[i] = t->clu[e].cp[i];
+            return t->clu[e].n;
+        }
+        cp[0] = 0xFFFD;
+        return 1;
+    }
+    cp[0] = c->ch;
+    return 1;
+}
+
+vt_u32 vt_cell_char(const vt_term *t, const vt_cell *c)
+{
+    vt_u32 cp[VT_CLUSTER_CPS];
+    if (!VT_CELL_IS_CLUSTER(c))
+        return c->ch;
+    vt_cell_text(t, c, cp);
+    return cp[0];
+}
+
+int vt_cell_utf8(const vt_term *t, const vt_cell *c, char *out)
+{
+    vt_u32 cp[VT_CLUSTER_CPS];
+    vt_u8 u[4];
+    int i, k, m, len = 0, n = vt_cell_text(t, c, cp);
+    for (i = 0; i < n; i++) {
+        m = put_utf8(u, (long)cp[i]);
+        for (k = 0; k < m; k++)
+            out[len++] = (char)u[k];
+    }
+    return len;
+}
+
+static unsigned clu_hash_of(const vt_u32 *cp, int n)
+{
+    vt_u32 h = (vt_u32)n;
+    int i;
+    for (i = 0; i < n; i++)
+        h = ((h ^ cp[i]) * 0x9E3779B1UL) & 0xFFFFFFFFUL;
+    return (unsigned)(h >> 16) & (VT_CLU_HASH - 1);
+}
+
+static void clu_hash_put(vt_term *t, int e)
+{
+    unsigned h = clu_hash_of(t->clu[e].cp, t->clu[e].n);
+    while (t->clu_hash[h])
+        h = (h + 1) & (VT_CLU_HASH - 1);
+    t->clu_hash[h] = (vt_u16)(e + 1);
+}
+
+static void sweep_line_clusters(vt_line *l, void *u)
+{
+    vt_u8 *live = (vt_u8 *)u;
+    int x;
+    for (x = 0; x < l->n; x++)
+        if (VT_CELL_IS_CLUSTER(&l->c[x])) {
+            int e = l->c[x].ch - VT_CLUSTER_FIRST;
+            live[e >> 3] |= (vt_u8)(1 << (e & 7));
+        }
+}
+
+/* The entries no line names any more become free; the hash is made again
+ * from those left. Returns how many are free. */
+static int sweep_clusters(vt_term *t)
+{
+    vt_u8 live[VT_CLUSTERS / 8];
+    int e, freed = 0;
+    memset(live, 0, sizeof(live));
+    each_line(t, sweep_line_clusters, live);
+    memset(t->clu_hash, 0, VT_CLU_HASH * sizeof(vt_u16));
+    for (e = 0; e < t->clu_top; e++) {
+        if (!(live[e >> 3] & (1 << (e & 7))))
+            t->clu[e].n = 0;
+        if (t->clu[e].n)
+            clu_hash_put(t, e);
+        else
+            freed++;
+    }
+    t->clu_free = 0;
+    return freed;
+}
+
+/* A free entry: one never used, then a grown table, then one a sweep
+ * freed. -1 when every entry is named by a cell (on screen, in the
+ * scrollback). */
+static int clu_alloc(vt_term *t)
+{
+    int pass;
+    for (pass = 0; pass < 2; pass++) {
+        if (t->clu_top < t->clu_cap)
+            return t->clu_top++;
+        if (t->clu_cap < VT_CLUSTERS) {
+            int cap = t->clu_cap ? t->clu_cap * 2 : 64;
+            vt_cluster *n = (vt_cluster *)VT_MALLOC(cap * sizeof(vt_cluster));
+            if (n) {
+                if (t->clu_top)
+                    memcpy(n, t->clu, t->clu_top * sizeof(vt_cluster));
+                if (t->clu)
+                    VT_FREE(t->clu);
+                t->clu = n;
+                t->clu_cap = cap;
+                return t->clu_top++;
+            }
+        }
+        for (; t->clu_free < t->clu_top; t->clu_free++)
+            if (!t->clu[t->clu_free].n)
+                return t->clu_free++;
+        if (pass == 0 && !sweep_clusters(t))
+            break;
+    }
+    return -1;
+}
+
+/* The cell value for the code points cp[0..n): an entry of the table,
+ * shared with an equal cluster. -1 when the table has no room. */
+static int cluster_of(vt_term *t, const vt_u32 *cp, int n)
+{
+    unsigned h;
+    int e, i;
+    if (!t->clu_hash) {
+        t->clu_hash = (vt_u16 *)VT_MALLOC(VT_CLU_HASH * sizeof(vt_u16));
+        if (!t->clu_hash)
+            return -1;
+        memset(t->clu_hash, 0, VT_CLU_HASH * sizeof(vt_u16));
+    }
+    for (h = clu_hash_of(cp, n); t->clu_hash[h]; h = (h + 1) & (VT_CLU_HASH - 1)) {
+        const vt_cluster *c = &t->clu[t->clu_hash[h] - 1];
+        if (c->n != n)
+            continue;
+        for (i = 0; i < n && c->cp[i] == cp[i]; i++)
+            ;
+        if (i == n)
+            return VT_CLUSTER_FIRST + t->clu_hash[h] - 1;
+    }
+    e = clu_alloc(t);
+    if (e < 0)
+        return -1;
+    t->clu[e].n = (vt_u8)n;
+    for (i = 0; i < n; i++)
+        t->clu[e].cp[i] = cp[i];
+    clu_hash_put(t, e);
+    return VT_CLUSTER_FIRST + e;
+}
+
+/* A code point of width 0 (a combining mark, a variation selector, a
+ * joiner) joins the character left of the cursor -- the cell the cursor
+ * waits on after the last column -- as xterm does. At the start of a row
+ * there is none: dropped, as is a mark the cell or the table has no room
+ * for. */
+static void combine(vt_term *t, vt_u32 mark_cp)
+{
+    vt_u32 cp[VT_CLUSTER_CPS];
+    vt_cell *c;
+    int x = t->wrap_pending ? t->cx : t->cx - 1, n, v;
+    if (x < 0)
+        return;
+    c = cell_at(t, x, t->cy);
+    if (c->width == 0 && x > 0) {
+        x--; /* the right half of a wide character: the mark is the character's */
+        c--;
+    }
+    n = vt_cell_text(t, c, cp);
+    if (n >= VT_CLUSTER_CPS)
+        return;
+    cp[n++] = mark_cp;
+    v = cluster_of(t, cp, n);
+    if (v < 0)
+        return;
+    c->ch = (vt_u16)v;
+    mark(t, x, t->cy, x + (c->width == 2 ? 2 : 1));
 }
 
 static void save_cursor(vt_term *t, vt_saved *s)
@@ -1254,11 +1467,27 @@ static void set_alt(vt_term *t, int on, int clear)
 
 /* ---- output of characters ------------------------------------------------ */
 
+/* put_char's characters that are not one BMP code point: 1 when cp was a
+ * mark and is done, else *ch the cell value for it. Out of put_char, so
+ * the common case stays a small function. */
+static int rare_char(vt_term *t, vt_u32 cp, int w, vt_u16 *ch)
+{
+    int v;
+    if (w == 0) {
+        combine(t, cp);
+        return 1;
+    }
+    v = cluster_of(t, &cp, 1);
+    *ch = (vt_u16)(v < 0 ? 0xFFFD : v);
+    return 0;
+}
+
 static void put_char(vt_term *t, vt_u32 cp)
 {
     int w, lc;
     vt_cell *c;
     vt_u8 cs;
+    vt_u16 ch;
 
     cs = t->charset[t->single_shift ? t->single_shift : t->gl];
     t->single_shift = 0;
@@ -1266,12 +1495,15 @@ static void put_char(vt_term *t, vt_u32 cp)
         cp = dec_graphics[cp - 0x5F];
     else if (cs == 'A' && cp == '#')
         cp = 0xA3;
-    if (cp > 0xFFFF)
-        cp = 0xFFFD; /* cells hold the BMP */
 
     w = vt_char_width(cp);
-    if (w == 0)
-        return; /* combining marks: not composed (one glyph per cell) */
+    ch = (vt_u16)cp;
+    if (w == 0 || cp > 0xFFFF) {
+        /* a mark joins the character before it; a character beyond the
+         * BMP is an entry of the cluster table */
+        if (rare_char(t, cp, w, &ch))
+            return;
+    }
     if (w == 2 && t->cols < 2)
         w = 1;
 
@@ -1300,7 +1532,7 @@ static void put_char(vt_term *t, vt_u32 cp)
     if (w == 2)
         unwide(t, t->cx + 1, t->cy);
     c = cell_at(t, t->cx, t->cy);
-    c->ch = (vt_u16)cp;
+    c->ch = ch;
     c->fg = t->fg;
     c->bg = t->bg;
     c->attr = t->attr;
@@ -1313,7 +1545,7 @@ static void put_char(vt_term *t, vt_u32 cp)
         c[1].width = 0;
     }
     mark(t, t->cx, t->cy, t->cx + w);
-    t->last_ch = (vt_u16)cp;
+    t->last_ch = cp;
 
     if (t->cx + w >= lc) {
         t->cx = lc - 1;
@@ -2879,18 +3111,14 @@ static void feed(vt_term *t, vt_u32 c)
             end_string(t);
             return;
         } else {
-            if ((t->state == S_OSC || t->str_kind == 'P') && c >= 0x20 &&
-                t->str_len < VT_STR_MAX - 1) {
-                if (c < 0x80)
-                    t->str[t->str_len++] = (char)c;
-                else if (c < 0x800 && t->str_len < VT_STR_MAX - 2) {
-                    t->str[t->str_len++] = (char)(0xC0 | (c >> 6));
-                    t->str[t->str_len++] = (char)(0x80 | (c & 0x3F));
-                } else if (t->str_len < VT_STR_MAX - 3) {
-                    t->str[t->str_len++] = (char)(0xE0 | (c >> 12));
-                    t->str[t->str_len++] = (char)(0x80 | ((c >> 6) & 0x3F));
-                    t->str[t->str_len++] = (char)(0x80 | (c & 0x3F));
-                }
+            if ((t->state == S_OSC || t->str_kind == 'P') && c >= 0x20) {
+                /* as UTF-8, whole characters only (a title beyond the BMP
+                 * was cut to 3 bytes of garbage) */
+                vt_u8 u[4];
+                int k, m = put_utf8(u, (long)c);
+                if (t->str_len + m < VT_STR_MAX)
+                    for (k = 0; k < m; k++)
+                        t->str[t->str_len++] = (char)u[k];
             }
             return;
         }
@@ -3183,6 +3411,10 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->tabs = (vt_u8 *)VT_MALLOC(cols);
     t->utf8 = 1;
     t->bold_bright = 1;
+    /* until the host reports what it draws with (vt_set_default_colors):
+     * xterm's colour 7 on black, so a faint default is grey, not black */
+    t->dflt[0] = t->dflt[2] = 0xE5E5E5UL;
+    t->dflt[1] = 0x000000UL;
     t->sb_cap = scrollback > 0 ? scrollback : 0;
     if (t->sb_cap)
         t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
@@ -3253,6 +3485,10 @@ void vt_free(vt_term *t)
         VT_FREE(t->sb);
     if (t->tabs)
         VT_FREE(t->tabs);
+    if (t->clu)
+        VT_FREE(t->clu);
+    if (t->clu_hash)
+        VT_FREE(t->clu_hash);
     VT_FREE(t);
 }
 
@@ -4124,7 +4360,7 @@ long vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, l
 {
     long len = 0;
     int y;
-    if (max < 1)
+    if (out && max < 1)
         return 0;
     if (ay > by || (ay == by && ax > bx)) {
         int tx = ax, ty = ay;
@@ -4147,24 +4383,32 @@ long vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, l
             while (end >= x0 && c[end].ch == ' ')
                 end--; /* trailing blanks of a line that ends here */
         for (x = x0; x <= end; x++) {
-            vt_u8 u[4];
+            char u[VT_CELL_UTF8_MAX];
             int k, m;
             if (c[x].width == 0)
                 continue;
-            m = put_utf8(u, c[x].ch);
+            m = vt_cell_utf8(t, &c[x], u);
+            if (!out) {
+                len += m;
+                continue;
+            }
             if (len + m >= max)
                 goto done;
             for (k = 0; k < m; k++)
-                out[len++] = (char)u[k];
+                out[len++] = u[k];
         }
         if (y < by && !vt_row_wrapped(t, y)) {
-            if (len + 1 >= max)
+            if (out && len + 1 >= max)
                 goto done;
-            out[len++] = '\n';
+            if (out)
+                out[len++] = '\n';
+            else
+                len++;
         }
     }
 done:
-    out[len] = 0;
+    if (out)
+        out[len] = 0;
     return len;
 }
 
@@ -4246,6 +4490,18 @@ long vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max)
     return t->unhandled;
 }
 
+/* 0xRRGGBB of a colour vt_resolve_colors works with (xterm, pcansi) */
+static vt_u32 colour_rgb(const vt_term *t, vt_color c)
+{
+    if (c & VT_COLOR_RGB)
+        return VT_RGB_OF(c);
+    if (c == VT_COLOR_DEFAULT)
+        return vt_default_color(t, 0);
+    if (c == VT_COLOR_DEFAULT_BG)
+        return vt_default_color(t, 1);
+    return vt_palette_rgb(t, (int)(c & 0xFF));
+}
+
 void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_color *bg)
 {
     vt_color f = c->fg, b = c->bg, tmp;
@@ -4276,10 +4532,20 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_colo
             b = VT_COLOR_DEFAULT_BG;
         break;
     }
-    if ((c->attr & VT_ATTR_FAINT) && (f == VT_COLOR_DEFAULT || f == 7 || f == 15)) {
-        /* faint: grey (the line editor's suggestions use it); pen 2 on the
-         * Amiga console's palette */
-        f = t->pers == VT_AMIGA ? 2 : 8;
+    if (c->attr & VT_ATTR_FAINT) {
+        if (t->pers == VT_AMIGA) {
+            /* pens 7 and 15 become pen 2, as before (its pens have no RGB
+             * the engine knows; the console's own pen is unverified,
+             * conformance matrix SGR 2) */
+            if (f == 7 || f == 15)
+                f = 2;
+        } else {
+            /* any colour, halfway to the background: as a direct colour,
+             * which a palette screen shows with the nearest xterm-256 pen */
+            vt_u32 fr = colour_rgb(t, f), br = colour_rgb(t, b);
+            f = VT_RGB((((fr >> 16) & 0xFF) + ((br >> 16) & 0xFF)) / 2,
+                       (((fr >> 8) & 0xFF) + ((br >> 8) & 0xFF)) / 2, ((fr & 0xFF) + (br & 0xFF)) / 2);
+        }
     }
     if (!(c->attr & VT_ATTR_INVERSE) != !(t->modes & VT_MODE_SCREEN_REVERSE)) {
         tmp = f;

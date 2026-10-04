@@ -1,5 +1,6 @@
-/* The Amiga clipboard (clipboard.device unit 0) as IFF FTXT with one CHRS
- * chunk: what ConClip, the Shell and editors exchange. Written and read
+/* The Amiga clipboard (clipboard.device unit 0) as IFF FTXT: a CHRS chunk
+ * in Latin-1, what ConClip, the Shell and editors exchange, and a UTF8
+ * chunk for the readers that know it (the formats: clipfmt.c). Written and read
  * with plain device IO, following the RKM Devices clipboard chapter
  * (write the FORM sequentially from offset 0 and finish with CMD_UPDATE;
  * a read must go on until io_Actual is 0, or the clip stays locked). */
@@ -8,6 +9,7 @@
 #include <devices/clipboard.h>
 #include <proto/exec.h>
 #include "clip.h"
+#include "clipfmt.h"
 
 static struct IOClipReq *clip_open(struct MsgPort **port)
 {
@@ -41,28 +43,33 @@ static int put(struct IOClipReq *io, const void *data, ULONG len)
     return io->io_Error == 0 && io->io_Actual == len;
 }
 
-static int put_long(struct IOClipReq *io, ULONG v)
-{
-    return put(io, &v, 4); /* the 68k is big-endian, as IFF is */
-}
-
-int clip_write(const char *text, long len)
+int clip_write(const char *utf8, long len)
 {
     struct MsgPort *port;
-    struct IOClipReq *io = clip_open(&port);
-    ULONG pad = len & 1;
-    int ok;
-    if (!io)
+    struct IOClipReq *io;
+    unsigned char head[20], mid[12];
+    char *lat = (char *)AllocVec((ULONG)len + 1, MEMF_ANY); /* Latin-1 is never longer */
+    long nl;
+    int ok, k;
+    if (!lat)
         return 0;
+    nl = cf_to_latin1(utf8, len, lat);
+    io = clip_open(&port);
+    if (!io) {
+        FreeVec(lat);
+        return 0;
+    }
     io->io_Offset = 0;
     io->io_Error = 0;
     io->io_ClipID = 0;
-    ok = put(io, "FORM", 4) && put_long(io, 4 + 8 + len + pad) && put(io, "FTXT", 4) &&
-         put(io, "CHRS", 4) && put_long(io, (ULONG)len) && put(io, text, (ULONG)len) &&
-         (!pad || put(io, "", 1));
+    cf_ftxt_head(head, nl, len);
+    k = cf_ftxt_mid(mid, nl, len);
+    ok = put(io, head, 20) && put(io, lat, (ULONG)nl) && put(io, mid, (ULONG)k) &&
+         put(io, utf8, (ULONG)len) && (!(len & 1) || put(io, "", 1));
     io->io_Command = CMD_UPDATE;
     DoIO((struct IORequest *)io);
     clip_close(io, port);
+    FreeVec(lat);
     return ok;
 }
 
@@ -75,43 +82,36 @@ static LONG get(struct IOClipReq *io, void *buf, ULONG len)
     return io->io_Error ? -1 : (LONG)io->io_Actual;
 }
 
-long clip_read(char *out, long max)
+static long reader(void *u, void *buf, long n)
+{
+    return (long)get((struct IOClipReq *)u, buf, (ULONG)n);
+}
+
+static void *alloc(unsigned long n)
+{
+    return AllocVec((ULONG)n, MEMF_ANY);
+}
+
+static void release(void *p)
+{
+    FreeVec(p);
+}
+
+char *clip_read(long *len)
 {
     struct MsgPort *port;
     struct IOClipReq *io = clip_open(&port);
-    ULONG hdr[3], ck[2];
-    long n = 0;
-    char sink[64];
+    char sink[64], *text;
+    *len = 0;
     if (!io)
         return 0;
     io->io_Offset = 0;
     io->io_Error = 0;
     io->io_ClipID = 0;
-    if (get(io, hdr, 12) == 12 && hdr[0] == 0x464F524DUL /* FORM */ && hdr[2] == 0x46545854UL) {
-        ULONG left = hdr[1] - 4;
-        while (left >= 8 && get(io, ck, 8) == 8) {
-            ULONG size = ck[1], skip = size + (size & 1);
-            left -= 8;
-            if (ck[0] == 0x43485253UL /* CHRS */ && !n) {
-                ULONG take = size < (ULONG)(max - 1) ? size : (ULONG)(max - 1);
-                if (get(io, out, take) != (LONG)take)
-                    break;
-                n = (long)take;
-                skip -= take;
-            }
-            while (skip) {
-                ULONG k = skip < sizeof(sink) ? skip : sizeof(sink);
-                if (get(io, sink, k) <= 0)
-                    break;
-                skip -= k;
-            }
-            left = left > size + (size & 1) ? left - size - (size & 1) : 0;
-        }
-    }
+    text = cf_read_ftxt(reader, io, alloc, release, len);
     /* read to the end, so the clipboard releases the clip */
     while (get(io, sink, sizeof(sink)) > 0)
         ;
     clip_close(io, port);
-    out[n] = 0;
-    return n;
+    return text;
 }

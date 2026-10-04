@@ -100,6 +100,30 @@ def main():
     for i in range(0, 128, 8):
         out.append("    " + ", ".join("0x%02X" % b for _, b in pairs[i:i + 8]) + ",")
     out.append("};")
+    # Canonical compositions (base, mark) -> precomposed, for a combining
+    # mark the bitmap font cannot draw over its letter: e + U+0301 is
+    # drawn as U+00E9. Pairs whose result is NFC, below U+2000 (Latin,
+    # Greek, Cyrillic and the rest the outline font may hold); a mark
+    # sequence composes one pair at a time (Vietnamese).
+    comp = []
+    for c in range(0x80, 0x2000):
+        d = unicodedata.decomposition(chr(c))
+        if not d or d.startswith("<"):
+            continue
+        p = [int(x, 16) for x in d.split()]
+        if len(p) == 2 and unicodedata.normalize("NFC", chr(p[0]) + chr(p[1])) == chr(c):
+            comp.append(((p[0] << 16) | p[1], c))
+    comp.sort()
+    out.append("/* Canonical compositions: (base << 16 | mark) -> the precomposed character. */")
+    out.append("#define COMPOSE_N %d" % len(comp))
+    out.append("static const vt_u32 compose_key[%d] = {" % len(comp))
+    for i in range(0, len(comp), 6):
+        out.append("    " + ", ".join("0x%08XUL" % k for k, _ in comp[i:i + 6]) + ",")
+    out.append("};")
+    out.append("static const vt_u16 compose_to[%d] = {" % len(comp))
+    for i in range(0, len(comp), 10):
+        out.append("    " + ", ".join("0x%04X" % v for _, v in comp[i:i + 10]) + ",")
+    out.append("};")
     (ROOT / "render/glyph_tables.inc").write_text("\n".join(out) + "\n")
     print("box: %d, blocks: %d" % (len(boxes), len(blocks)))
 

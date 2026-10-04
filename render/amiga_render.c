@@ -619,10 +619,22 @@ static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, ULONG fg, ULO
 
 static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg)
 {
-    WORD x1 = px + r->cw - 1, y1 = py + r->ch - 1;
+    WORD x1 = px + r->cw * (g.kind == VT_GLYPH_MISSING && g.code == 2 ? 2 : 1) - 1, y1 = py + r->ch - 1;
     r->blank = 0;
     fill(r, px, py, x1, y1, bg);
     switch (g.kind) {
+    case VT_GLYPH_MISSING: {
+        /* a character no font here has: an empty box its width, a pixel in
+         * from the sides and an eighth of the height in from top and bottom */
+        WORD bx0 = (WORD)(px + 1), bx1 = (WORD)(x1 - 1);
+        WORD by0 = (WORD)(py + r->ch / 8), by1 = (WORD)(y1 - r->ch / 8);
+        ink_a(r, fg);
+        line(r, bx0, by0, bx1, by0);
+        line(r, bx0, by1, bx1, by1);
+        line(r, bx0, by0, bx0, by1);
+        line(r, bx1, by0, bx1, by1);
+        break;
+    }
     case VT_GLYPH_BOX:
         draw_box(r, px, py, g.code, fg);
         break;
@@ -1218,6 +1230,17 @@ static int plain_style(const vr_style *st)
            st->ul == st->fg && !st->font;
 }
 
+/* The character a cell draws: its own, or its cluster's composed with
+ * the marks that fold into it (glyphmap's vt_compose_cell). */
+static vt_u32 cell_char(vr_render *r, const vt_cell *c)
+{
+    vt_u32 cp[VT_CLUSTER_CPS];
+    if (!VT_CELL_IS_CLUSTER(c))
+        return c->ch;
+    vt_compose_cell(cp, vt_cell_text(r->t, c, cp));
+    return cp[0];
+}
+
 /* A DEC double-width or double-height row: each of its first half of cells
  * drawn two cells wide -- the glyph into a one-plane mask, scaled 2x wide
  * (and 2x tall for the height halves, of which the top or bottom half is
@@ -1253,7 +1276,7 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
         UBYTE code;
         cell_style(r, &c[x], selected(r, x, y - r->view), &st);
         fill(r, px, py, (WORD)(px + 2 * cw - 1), (WORD)(py + ch - 1), st.bg);
-        g = vt_map_glyph(c[x].ch, r->enc);
+        g = vt_map_glyph(cell_char(r, &c[x]), r->enc);
         code = g.kind == VT_GLYPH_FONT ? g.code : (UBYTE)'?';
         if (st.font && st.font <= 10 && r->alt_font[st.font])
             font = r->alt_font[st.font];
@@ -1294,11 +1317,29 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
 
 /* The outline font's glyph for a cell the bitmap font cannot show itself
  * (render/outline; 0: draw as without one). */
-static const UBYTE *outline_glyph(vr_render *r, const vt_cell *c, WORD *bpr)
+static const UBYTE *outline_glyph(vr_render *r, vt_u32 cp, int cells, WORD *bpr)
 {
-    if (r->outline && c->ch >= 0x80 && !vt_glyph_native(c->ch, r->enc))
-        return vo_glyph(r->outline, c->ch, c->width == 2 ? 2 : 1, bpr);
+    if (r->outline && cp >= 0x80 && !vt_glyph_native(cp, r->enc))
+        return vo_glyph(r->outline, cp, cells, bpr);
     return 0;
+}
+
+/* The marks left over a drawn cell (vt_compose_cell could not fold them
+ * into its character): the outline font's mark glyphs, in the text colour
+ * on top. Without an outline font they are not drawn (copy keeps them). */
+static void draw_marks(vr_render *r, WORD px, WORD py, const vt_u32 *mk, int n, int cells, const vr_style *st)
+{
+    int i;
+    for (i = 0; i < n && r->outline; i++) {
+        WORD bpr;
+        const UBYTE *m = vo_mark(r->outline, mk[i], cells, &bpr);
+        if (!m)
+            continue;
+        ink_a(r, st->fg);
+        SetDrMd(r->rp, JAM1);
+        BltTemplate((PLANEPTR)m, 0, bpr, r->rp, px, py, (WORD)(cells * r->cw), r->ch);
+        SetDrMd(r->rp, JAM2);
+    }
 }
 
 /* An outline glyph over `cells` cells: the background, the mask in the
@@ -1463,22 +1504,49 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 g.code = (vt_u8)c[x].ch;
             } else {
                 WORD obpr;
-                const UBYTE *om = outline_glyph(r, &c[x], &obpr);
+                const UBYTE *om;
+                vt_u32 cp[VT_CLUSTER_CPS];
+                int ncp = 1, cells = c[x].width == 2 ? 2 : 1;
+                cp[0] = c[x].ch;
+                if (VT_CELL_IS_CLUSTER(&c[x])) /* beyond the BMP, or with marks */
+                    ncp = vt_compose_cell(cp, vt_cell_text(r->t, &c[x], cp));
+                om = outline_glyph(r, cp[0], cells, &obpr);
                 if (om) {
-                    int cells = c[x].width == 2 ? 2 : 1;
+                    WORD px = (WORD)(r->ox + x * r->cw);
                     flush_run(r, run, n, run_x, py, &run_st);
                     n = 0;
-                    draw_outline(r, r->ox + x * r->cw, py, om, obpr, cells, &st);
+                    draw_outline(r, px, py, om, obpr, cells, &st);
+                    draw_marks(r, px, py, cp + 1, ncp - 1, cells, &st);
                     if (cells == 2 && x + 1 < ncells && c[x + 1].width == 0)
                         x++; /* its right half is drawn */
                     continue;
                 }
-                g = vt_map_glyph(c[x].ch, r->enc);
+                g = vt_map_glyph(cp[0], r->enc);
+                if (g.kind == VT_GLYPH_MISSING)
+                    g.code = (vt_u8)cells;
+                if (ncp > 1 && r->outline) {
+                    /* marks to draw over it: the cell now, alone */
+                    WORD px = (WORD)(r->ox + x * r->cw);
+                    flush_run(r, run, n, run_x, py, &run_st);
+                    n = 0;
+                    if (g.kind == VT_GLYPH_FONT) {
+                        run[0] = g.code;
+                        flush_run(r, run, 1, px, py, &st);
+                    } else {
+                        draw_special(r, px, py, g, st.fg, st.bg);
+                    }
+                    draw_marks(r, px, py, cp + 1, ncp - 1, cells, &st);
+                    if (g.kind == VT_GLYPH_MISSING && cells == 2 && x + 1 < ncells && c[x + 1].width == 0)
+                        x++;
+                    continue;
+                }
             }
             if (g.kind != VT_GLYPH_FONT) {
                 flush_run(r, run, n, run_x, py, &run_st);
                 n = 0;
                 draw_special(r, r->ox + x * r->cw, py, g, st.fg, st.bg);
+                if (g.kind == VT_GLYPH_MISSING && g.code == 2 && x + 1 < ncells && c[x + 1].width == 0)
+                    x++; /* the box spans its right half */
                 continue;
             }
             if (want_direct && plain_style(&st) && nd < DCELL_MAX) {
@@ -1866,8 +1934,11 @@ static void cursor_draw(vr_render *r, int on)
         int have = c && r->cursor_x < ncells;
         vt_glyph g = { VT_GLYPH_FONT, 0 };
         struct TextFont *font = r->font;
-        if (have)
-            g = vt_map_glyph(c[r->cursor_x].ch, r->enc);
+        if (have) {
+            g = vt_map_glyph(cell_char(r, &c[r->cursor_x]), r->enc);
+            if (g.kind == VT_GLYPH_MISSING)
+                g.code = 1;
+        }
         if (have && g.kind != VT_GLYPH_FONT) {
             /* box / block / line on the cursor colour, drawn in the default
              * background -- draw_special fills the cell with `bg` itself */
@@ -1879,7 +1950,7 @@ static void cursor_draw(vr_render *r, int on)
         RectFill(r->rp, px, py, x1, y1);
         if (have && c[r->cursor_x].width == 1) {
             WORD obpr;
-            const UBYTE *om = outline_glyph(r, &c[r->cursor_x], &obpr);
+            const UBYTE *om = outline_glyph(r, cell_char(r, &c[r->cursor_x]), 1, &obpr);
             if (om) {
                 /* an outline glyph under the cursor, in the background colour */
                 ink_a(r, r->pen_default_bg);
