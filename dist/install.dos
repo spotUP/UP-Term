@@ -110,6 +110,9 @@ Copy coreutils/bin SYS:UP-Term/bin ALL CLONE QUIET
 ; coreutils; C:upgetty: a shell on the serial port (see the README)
 Copy sz rz SYS:UP-Term/bin CLONE
 Copy upgetty C:upgetty CLONE
+; hl and mdv: a source file in colour, Markdown formatted for the window
+; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
+Copy hl mdv SYS:UP-Term/bin CLONE
 ; UPDemo: the terminal's show-off and benchmark (README, DEMO)
 Copy UPDemo C:UPDemo CLONE
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
