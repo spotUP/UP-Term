@@ -250,6 +250,38 @@ static void copy_text_measures_without_a_buffer(void)
     vt_free(t);
 }
 
+/* Faint text in any colour is dimmed: halfway to its background, as a
+ * direct colour (a palette screen draws it with the nearest pen). Before,
+ * only the default and the greys were. */
+static void faint_dims_every_colour(void)
+{
+    vt_term *t = h_new(20, 2, VT_XTERM);
+    vt_color f, b;
+    vt_set_default_colors(t, 0xC0C0C0UL, 0x000000UL, 0xC0C0C0UL);
+    h_put(t, "\033[2;31ma\033[0;2;38;2;200;100;50mb\033[0;2mc\033[0;2;33;44md\033[0;2;7;32me");
+    vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
+    CHECK_INT(f, VT_RGB(0x66, 0, 0));          /* colour 1, 0xCD0000, over black */
+    vt_resolve_colors(t, h_cell(t, 1, 0), &f, &b);
+    CHECK_INT(f, VT_RGB(100, 50, 25));
+    vt_resolve_colors(t, h_cell(t, 2, 0), &f, &b);
+    CHECK_INT(f, VT_RGB(0x60, 0x60, 0x60));    /* the default text colour */
+    CHECK_INT(b, VT_COLOR_DEFAULT_BG);
+    vt_resolve_colors(t, h_cell(t, 3, 0), &f, &b);
+    CHECK_INT(f, VT_RGB(0x66, 0x66, 0x77));    /* 0xCDCD00 toward 0x0000EE */
+    CHECK_INT(b, 4);
+    vt_resolve_colors(t, h_cell(t, 4, 0), &f, &b); /* inverse: the dimmed colour behind */
+    CHECK_INT(b, VT_RGB(0, 0x66, 0));
+    vt_free(t);
+    /* the amiga personality keeps its pens */
+    t = h_new(20, 2, VT_AMIGA);
+    h_put(t, "\033[2;33mx\033[0;2;37my");
+    vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
+    CHECK_INT(f, 3);
+    vt_resolve_colors(t, h_cell(t, 1, 0), &f, &b);
+    CHECK_INT(f, 2);
+    vt_free(t);
+}
+
 void suite_text(void)
 {
     style_sweep_keeps_rows_pushed_above_the_screen();
@@ -263,4 +295,5 @@ void suite_text(void)
     combining_marks_stay_with_their_character();
     emoji_sequences_copy_back_whole();
     copy_text_measures_without_a_buffer();
+    faint_dims_every_colour();
 }

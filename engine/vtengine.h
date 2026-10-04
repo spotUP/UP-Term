@@ -263,8 +263,10 @@ long     vt_unhandled(const vt_term *t, const char **kinds, long *counts, int ma
 
 /* The palette indices a cell draws with, for this personality: default
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,
- * inverse (the cell's, XOR the screen's DECSCNM) and conceal all resolved.
- * RGB colours pass through unchanged. */
+ * faint, inverse (the cell's, XOR the screen's DECSCNM) and conceal all
+ * resolved. RGB colours pass through unchanged. Faint (SGR 2) makes any
+ * text colour an RGB one halfway to the background (xterm, pcansi; the
+ * amiga personality keeps its pens: 7 and 15 become pen 2). */
 void     vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_color *bg);
 /* The colour of the cell's underline (SGR 58), VT_COLOR_DEFAULT when it
  * follows the text; and its font, 0 primary, 1-9 SGR 11-19, 10 Fraktur (20). */

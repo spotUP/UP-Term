@@ -3316,6 +3316,10 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->tabs = (vt_u8 *)VT_MALLOC(cols);
     t->utf8 = 1;
     t->bold_bright = 1;
+    /* until the host reports what it draws with (vt_set_default_colors):
+     * xterm's colour 7 on black, so a faint default is grey, not black */
+    t->dflt[0] = t->dflt[2] = 0xE5E5E5UL;
+    t->dflt[1] = 0x000000UL;
     t->sb_cap = scrollback > 0 ? scrollback : 0;
     if (t->sb_cap)
         t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
@@ -4355,6 +4359,18 @@ long vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max)
     return t->unhandled;
 }
 
+/* 0xRRGGBB of a colour vt_resolve_colors works with (xterm, pcansi) */
+static vt_u32 colour_rgb(const vt_term *t, vt_color c)
+{
+    if (c & VT_COLOR_RGB)
+        return VT_RGB_OF(c);
+    if (c == VT_COLOR_DEFAULT)
+        return vt_default_color(t, 0);
+    if (c == VT_COLOR_DEFAULT_BG)
+        return vt_default_color(t, 1);
+    return vt_palette_rgb(t, (int)(c & 0xFF));
+}
+
 void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_color *bg)
 {
     vt_color f = c->fg, b = c->bg, tmp;
@@ -4385,10 +4401,20 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_colo
             b = VT_COLOR_DEFAULT_BG;
         break;
     }
-    if ((c->attr & VT_ATTR_FAINT) && (f == VT_COLOR_DEFAULT || f == 7 || f == 15)) {
-        /* faint: grey (the line editor's suggestions use it); pen 2 on the
-         * Amiga console's palette */
-        f = t->pers == VT_AMIGA ? 2 : 8;
+    if (c->attr & VT_ATTR_FAINT) {
+        if (t->pers == VT_AMIGA) {
+            /* pens 7 and 15 become pen 2, as before (its pens have no RGB
+             * the engine knows; the console's own pen is unverified,
+             * conformance matrix SGR 2) */
+            if (f == 7 || f == 15)
+                f = 2;
+        } else {
+            /* any colour, halfway to the background: as a direct colour,
+             * which a palette screen shows with the nearest xterm-256 pen */
+            vt_u32 fr = colour_rgb(t, f), br = colour_rgb(t, b);
+            f = VT_RGB((((fr >> 16) & 0xFF) + ((br >> 16) & 0xFF)) / 2,
+                       (((fr >> 8) & 0xFF) + ((br >> 8) & 0xFF)) / 2, ((fr & 0xFF) + (br & 0xFF)) / 2);
+        }
     }
     if (!(c->attr & VT_ATTR_INVERSE) != !(t->modes & VT_MODE_SCREEN_REVERSE)) {
         tmp = f;
