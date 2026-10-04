@@ -18,7 +18,7 @@ On the Amiga:  Claude URL=http://<this machine>:8080/v1/messages ROOT=SYS:
 Each request is summarised here: model, messages, tool results, and whether
 an x-api-key header came (it must not: the key only goes over https).
 
-  python3 tools/claude_fixture.py [--port 8080] [--stream text] [--delay 0.05]
+  python3 tools/claude_fixture.py [--bind 127.0.0.1] [--port 8080] [--stream text] [--delay 0.05]
 """
 import argparse
 import json
@@ -96,6 +96,8 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--port", type=int, default=8080)
+    ap.add_argument("--bind", default="127.0.0.1",
+                    help="address to listen on: 127.0.0.1 for the rig (FS-UAE uses the host's stack); the Mac's LAN address for a real Amiga (never 0.0.0.0)")
     ap.add_argument("--stream", help="answer every request with tests/claude/NAME.sse")
     ap.add_argument("--delay", type=float, default=0.05, help="seconds between 64-byte chunks")
     a = ap.parse_args()
@@ -103,7 +105,7 @@ def main():
         sys.exit("[ERROR] no tests/claude/%s.sse" % a.stream)
     Handler.forced = a.stream
     Handler.delay = a.delay
-    srv = ThreadingHTTPServer(("0.0.0.0", a.port), Handler)
+    srv = ThreadingHTTPServer((a.bind, a.port), Handler)
     print("[INFO] serving the recorded streams on port %d (Ctrl+C ends)" % a.port, flush=True)
     try:
         srv.serve_forever()
