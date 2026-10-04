@@ -63,13 +63,14 @@ def main():
         c.run('Run >NIL: NewShell "%s"' % spec)
         time.sleep(8)
         cb.click(title)  # active: the sprite cursor is only the active window's
-        cb.typeline('List SYS: ALL')
-        time.sleep(40)
-        cb.typeline('Echo done')
-        time.sleep(3)
+        # a listing that scrolls a few screens and ends well inside the wait
+        # (List SYS: ALL ran past it on the stock 020: the next lines were
+        # typed into a busy window and it never closed)
+        cb.typeline('List SYS:C SYS:Libs SYS:Devs')
+        time.sleep(30)
         ami.main(['shot', str(OUT / (name + '.png'))])
-        cb.typeline('EndCLI')
-        time.sleep(4)
+        cb.typeline('EndCLI')  # the own-screen window has no close gadget
+        time.sleep(5)
     cb.rig('stop')  # FS-UAE buffers the serial file: stopping flushes it
     log = SER.read_bytes().decode('latin-1', 'replace').splitlines()
     seen = counters(log)
