@@ -45,6 +45,12 @@ struct complete_req {
     int show_info;                /* in: KingCON lists .info files too */
     int no_cache;                 /* in: scan command directories afresh (KingCON's menu
                                    * "Enable cache" off, or kingcon-cache = off) */
+    int cold;                     /* in: read a command directory the cache cannot answer
+                                   * for (the refine after a warm-up); 0: never wait */
+    int partial;                  /* out: COMMANDS answered without every directory's
+                                   * current names (a warm-up refines it; add then
+                                   * carries no suffix) */
+    unsigned long warm_gen;       /* out: complete_warm_gen() when the lookup began */
     struct Screen *screen;        /* in: COMPLETE_ASL's / _FONT's screen */
     int font_size;                /* COMPLETE_FONT: in the current size, out the chosen one */
     char word[COMPLETE_MAX];      /* in: the word before the cursor */
@@ -79,6 +85,22 @@ struct complete_req *complete_req_new(int lists);
  * the cached names are freed). Exec calls only: safe in the handler. */
 void complete_cache_reset(void);
 void complete_cache_purge(void);
+
+/* W22: the warm-up -- a low-priority process reads C: (every directory of
+ * a multi-assign) and opener's path into the command cache, only what
+ * changed since the cache file was written, then writes the file. One at a
+ * time (0 when it could not start). */
+int complete_warm(struct Process *opener);
+
+/* Warm-ups finished so far. */
+unsigned long complete_warm_gen(void);
+
+/* t gets sig when a warm-up ends (one is started for opener when none
+ * runs). 1 instead when one has ended since gen (ask again now). */
+int complete_warm_wait(struct Task *t, ULONG sig, unsigned long gen, struct Process *opener);
+
+/* t waits no more (its window closes). */
+void complete_warm_forget(struct Task *t);
 
 /* Start the scan; the request comes back on `reply`. 0 if no worker. */
 int complete_start(struct complete_req *q, struct MsgPort *reply, struct Process *opener);
