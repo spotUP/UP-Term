@@ -1217,6 +1217,14 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
     { NM_ITEM, (STRPTR)"Show .info", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_KC_INFO }
 };
 
+/* Help, the strip's last menu: the tour of what the terminal does
+ * (UPDemo TOUR, in a new tab; /demo too) */
+#define MENU_HELP_ITEMS 2
+static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
+    { NM_TITLE, (STRPTR)"Help", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Demo tour", 0, 0, 0, (APTR)MENU_DEMO }
+};
+
 /* Settings: what UP-Term Prefs sets for a profile, for this window, live
  * (plan H9). The checkmarks show the window's settings (menu_checked); a
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
@@ -1332,9 +1340,9 @@ static void menu_add(con *c, struct Window *win)
     if (!GadToolsBase || win == c->foreign)
         return; /* a window someone else opened keeps its own menus */
     {
-        /* UP-Term, Settings, and the Complete menu under KingCON completion */
+        /* UP-Term, Settings, the Complete menu under KingCON completion, Help */
         struct NewMenu nm[sizeof(menu_def) / sizeof(menu_def[0]) + MENU_SET_ITEMS + 2 + UC_MAX_PROFILES +
-                          MENU_KC_ITEMS];
+                          MENU_KC_ITEMS + MENU_HELP_ITEMS];
         int n = sizeof(menu_def) / sizeof(menu_def[0]) - 1, i; /* without the NM_END */
         CopyMem((APTR)menu_def, nm, n * sizeof(struct NewMenu));
         CopyMem((APTR)menu_set, nm + n, sizeof(menu_set));
@@ -1378,6 +1386,8 @@ static void menu_add(con *c, struct Window *win)
             CopyMem((APTR)menu_kc, nm + n, sizeof(menu_kc));
             n += MENU_KC_ITEMS;
         }
+        CopyMem((APTR)menu_help, nm + n, sizeof(menu_help));
+        n += MENU_HELP_ITEMS;
         for (i = 0; i < n; i++)
             if ((nm[i].nm_Flags & CHECKIT) && menu_checked(c, (LONG)nm[i].nm_UserData))
                 nm[i].nm_Flags |= CHECKED;
@@ -1789,7 +1799,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_FIND: find_open(c); return 1;
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
-    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE:
+    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -4425,7 +4435,33 @@ struct tab_spawn_msg {
     struct Message msg;
     char cmd[200];
     char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
+    int demo;                    /* Help > Demo tour: UPDemo's tour in the tab, not a shell */
 };
+
+/* Help > Demo tour: the tab runs UPDemo's tour and closes when it ends.
+ * 1 when the tab is on its way; 0 when C:UPDemo is not there (said in a
+ * requester, as Preferences... says it of the editor). */
+static int tab_demo_script(struct tab_spawn_msg *m)
+{
+    static struct EasyStruct missing = {
+        sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term",
+        (UBYTE *)"The demo is not installed:\nC:UPDemo was not found.\n\n"
+                 "Install UP-Term from its archive to get it.",
+        (UBYTE *)"OK"
+    };
+    BPTR f, lock;
+    if (!(lock = Lock((STRPTR)"C:UPDemo", SHARED_LOCK))) {
+        EasyRequestArgs(0, &missing, 0, 0);
+        return 0;
+    }
+    UnLock(lock);
+    if (!(f = Open((STRPTR)"T:UP-Term-demo", MODE_NEWFILE)))
+        return 0;
+    FPuts(f, (STRPTR)"FailAt 2147483647\nC:UPDemo TOUR\nEndCLI >NIL:\n");
+    Close(f);
+    strcat(m->cmd, " FROM T:UP-Term-demo");
+    return 1;
+}
 
 static void tab_spawner(void)
 {
@@ -4433,6 +4469,13 @@ static void tab_spawner(void)
     BPTR f, lock;
     char host[64], dir[256];
     int vsh, cd;
+    if (m->demo) {
+        if (tab_demo_script(m))
+            run_async(m->cmd);
+        Forbid();
+        FreeVec(m);
+        return;
+    }
     /* vsh in the tab when there is one (the UP-Term icon's shell), else the
      * AmigaDOS Shell; the FROM script ends the shell with it -- whatever vsh
      * returns: its last command's status (127 for a name not found) failed
@@ -4490,11 +4533,12 @@ static void h_open_link(void *u, const char *uri)
     start_worker(link_opener, "UP-Term link", &m->msg);
 }
 
-static void tab_spawn(con *c, const char *profile, con *from)
+/* 1 when the new tab is on its way; demo: the tab plays the tour */
+static int tab_spawn(con *c, const char *profile, con *from, int demo)
 {
     struct tab_spawn_msg *m;
     if (c->ntabs >= TAB_MAX || !c->own_win || c->foreign)
-        return;
+        return 0;
     if (!c->tab_port) {
         /* the public port tabs find us by */
         char hex[9];
@@ -4506,22 +4550,24 @@ static void tab_spawn(con *c, const char *profile, con *from)
         copy_str(c->tab_name, "UPTermTabs.", sizeof(c->tab_name));
         strcat(c->tab_name, hex);
         if (!(c->tab_port = CreateMsgPort()))
-            return;
+            return 0;
         c->tab_port->mp_Node.ln_Name = c->tab_name;
         c->tab_port->mp_Node.ln_Pri = 0;
         AddPort(c->tab_port);
     }
     m = (struct tab_spawn_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
     if (!m)
-        return;
+        return 0;
+    m->demo = demo;
     copy_str(m->cmd, "NewShell \"XCON:0/0/320/100/UP-Term/TAB ", sizeof(m->cmd));
     strcat(m->cmd, c->tab_name);
     strcat(m->cmd, "/PROFILE ");
     strcat(m->cmd, profile);
     strcat(m->cmd, "\"");
-    if (from && from->w.t)
+    if (from && from->w.t && !demo)
         copy_str(m->cwd, vt_cwd(from->w.t), sizeof(m->cwd));
     start_worker(tab_spawner, "UP-Term new tab", &m->msg);
+    return 1;
 }
 
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
@@ -4529,7 +4575,13 @@ static void host_command(con *c, int what, con *from)
 {
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile, from);
+        tab_spawn(c, from->profile, from, 0);
+        break;
+    case MENU_DEMO:
+        /* the tour in a tab of its own: what it does to its screen (the
+         * main screen, a resize) leaves the user's session alone */
+        if (!tab_spawn(c, from->profile, from, 1))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
         break;
     case MENU_TAB_NEXT:
         if (c->ntabs >= 2)
