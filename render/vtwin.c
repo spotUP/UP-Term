@@ -18,6 +18,7 @@
 #include <proto/console.h>
 #include "../handler/clip.h"
 #include "fontpair.h"
+#include "synchold.h" /* the frame clock and the ?2026 hold */
 #include <graphics/displayinfo.h>
 
 extern struct GfxBase *GfxBase;
@@ -26,9 +27,6 @@ extern struct GfxBase *GfxBase;
  * Both programs that link vtwin.c define it: the handler from its console
  * device packet, upcon_device.c from the ROM device it fronts. */
 extern struct Device *ConsoleDevice;
-
-#define FRAME_MICROS 50000 /* 20 frames per second */
-#define SYNC_FRAMES 3       /* the longest a ?2026 frame is waited for */
 
 static void frame_start(vtwin *w);
 
@@ -230,7 +228,7 @@ static void frame_start(vtwin *w)
         return;
     w->frame->tr_node.io_Command = TR_ADDREQUEST;
     w->frame->tr_time.tv_secs = 0;
-    w->frame->tr_time.tv_micro = FRAME_MICROS;
+    w->frame->tr_time.tv_micro = VTWIN_FRAME_MICROS;
     SendIO((struct IORequest *)w->frame);
     w->frame_busy = 1;
 }
@@ -239,10 +237,10 @@ void vtwin_render(vtwin *w)
 {
     if (!w->render_pending || !w->t)
         return;
-    if ((vt_modes(w->t) & VT_MODE_SYNC) && w->sync_held < SYNC_FRAMES) {
+    if ((vt_modes(w->t) & VT_MODE_SYNC) && VTWIN_SYNC_HOLD(w->sync_held)) {
         /* synchronized output (?2026): the program is in the middle of a
          * frame. Nothing is drawn until it says the frame is whole -- or
-         * three frames have passed, should it never say so. (A frame sent
+         * a second has passed (synchold.h), should it never say so. (A frame sent
          * in several writes showed its top new and its bottom old.) */
         w->sync_held++;
         frame_start(w);

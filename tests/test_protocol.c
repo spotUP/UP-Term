@@ -3,6 +3,7 @@
  * editing extras. */
 #include "harness.h"
 #include <stdlib.h>
+#include "../render/synchold.h"
 
 static void reply_is(const char *want, int line)
 {
@@ -135,8 +136,23 @@ static void ris_resets_keys_title_stack_and_cursor_shape(void)
     vt_free(t);
 }
 
+/* ---- G3-03: a ?2026 frame is waited for as long as foot and tmux wait ---- */
+
+/* The hold was 3 frames (150 ms): a 68k program's full redraw is longer,
+ * and the window showed it half done. Now 1 s, then drawn anyway. */
+static void sync_frame_is_held_up_to_one_second(void)
+{
+    int held = 0;
+    while (VTWIN_SYNC_HOLD(held) && held < 1000)
+        held++;
+    CHECK_INT((long)held * VTWIN_FRAME_MICROS, 1000000L);
+    CHECK(VTWIN_SYNC_HOLD(3));                     /* 150 ms: still waiting */
+    CHECK(!VTWIN_SYNC_HOLD(20));                   /* 1 s: drawn */
+}
+
 void suite_protocol(void)
 {
+    sync_frame_is_held_up_to_one_second();
     decrqss_conformance_level_matches_da1();
     decrqm_answers_every_mode_the_engine_keeps();
     decrqss_sgr_round_trips_underline_colour_and_font();
