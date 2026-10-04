@@ -568,7 +568,9 @@ static void cells_blank(const vt_term *t, vt_cell *c, int n)
 #endif
 }
 
-static int vacated_default(const vt_term *t);
+static int vacated_default_at(const vt_term *t);
+/* the amiga dialect's answer (always) in place, the rest a call */
+#define vacated_default(t) ((t)->pers == VT_AMIGA || vacated_default_at(t))
 
 static void line_clear(vt_term *t, vt_line *l, int n)
 {
@@ -814,10 +816,11 @@ static void unwide_at(vt_term *t, int x, int y)
 /* The renderer's scroll fills the rows it vacates with the default
  * background (the contract in vtengine.h), so blank rows in that colour
  * need no drawing: only a BCE erase in another colour does. */
-static int vacated_default(const vt_term *t)
+static int vacated_default_at(const vt_term *t)
 {
     /* blank_cell's answer without building the cell: it is asked on every
-     * scroll and line clear (S1: a third of a newline's instructions) */
+     * scroll and line clear (S1: a third of a newline's instructions); the
+     * amiga dialect's (always) in place, no call (ASM1) */
     if (t->pers == VT_AMIGA)
         return 1;
     if (t->bg != VT_COLOR_DEFAULT)
@@ -832,14 +835,19 @@ static void damage_rows(vt_term *t, int y0, int y1);
  * instead of being moved on screen -- no drawing in the middle of a
  * write: an insert-line / delete-line pair was two blits of its own each
  * time (conbench insdel-line, 9.5 ms a pair on the stock rig; S1). */
-static void pend_prepare(vt_term *t, int top, int bot, int n)
+static void pend_drop(vt_term *t)
 {
-    if (t->cb.scroll && t->pend_n &&
-        (t->pend_top != top || t->pend_bot != bot || (t->pend_n > 0) != (n > 0))) {
-        t->pend_n = 0;
-        damage_rows(t, t->pend_top, t->pend_bot);
-    }
+    t->pend_n = 0;
+    damage_rows(t, t->pend_top, t->pend_bot);
 }
+/* the test in place, the call only when the pending scroll goes (a pending
+ * scroll exists only with cb.scroll: pend_scroll) -- every newline of
+ * scrolling output asked it (ASM1) */
+#define pend_prepare(t, top, bot, n)                                                                  \
+    do {                                                                                              \
+        if ((t)->pend_n && ((t)->pend_top != (top) || (t)->pend_bot != (bot) || ((t)->pend_n > 0) != ((n) > 0))) \
+            pend_drop(t);                                                                             \
+    } while (0)
 
 /* The rows [top, bot) moved by n (up when n > 0): move their dirty spans
  * with them and remember the pixels owe that scroll (see pend_n). */
@@ -985,8 +993,7 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
         return;
     if (n > h)
         n = h;
-    if (t->pend_n)
-        pend_prepare(t, top, bot, n);
+    pend_prepare(t, top, bot, n);
     slide = top == 0 && bot == t->rows && t->scr == t->pri && h > 1;
     if (slide && !t->pri_mem)
         pri_widen(t);
@@ -1063,8 +1070,7 @@ static void scroll_down(vt_term *t, int top, int bot, int n)
         return;
     if (n > h)
         n = h;
-    if (t->pend_n)
-        pend_prepare(t, top, bot, -n);
+    pend_prepare(t, top, bot, -n);
     for (i = 0; i < n; i++) {
         vt_line **p = &t->scr[bot - 1];
         l = *p;
@@ -5781,10 +5787,10 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
              * and a personality switch a byte */
             if (b >= 0x20) {
                 if (b < 0x7F) {
-                    if (text < 0)
-                        text = t->insert || t->single_shift || t->charset[t->gl] != 'B' || t->amiga_msb ? 0
-                             : t->fg == VT_COLOR_DEFAULT && t->bg == VT_COLOR_DEFAULT && !t->attr && !t->deco && !t->ext ? 2
-                             : 1;
+                    if (text < 0) /* (or-ed, not ||: one branch each instead of nine) */
+                        text = (t->insert | t->single_shift | t->amiga_msb) || t->charset[t->gl] != 'B' ? 0
+                             : ((t->fg ^ VT_COLOR_DEFAULT) | (t->bg ^ VT_COLOR_DEFAULT) | t->attr | t->deco | t->ext) ? 1
+                             : 2;
                     if (text) {
                         k = put_ascii_run(t, buf + i, len - i, text == 2); /* as far as printable ASCII goes */
                         if (k) {
