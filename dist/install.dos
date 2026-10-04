@@ -1,4 +1,4 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CLAUDE/S,CPU040/S,CPU060/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -9,6 +9,7 @@
 ;     [SERIAL|NOSERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
+;     [CLAUDE]  (C:Claude, the native Claude client; needs AmiSSL 5)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
@@ -150,6 +151,14 @@ If "{CURL}" EQ "CURL"
     Else
       Copy net/curl-8.22.0/curl.020 SYS:UP-Term/bin/curl CLONE QUIET
     EndIf
+  EndIf
+EndIf
+; C:Claude, the native Claude client (README, Claude); it needs AmiSSL 5.
+; ENVARC:Claude is where its key may go (Install never writes a key).
+If "{CLAUDE}" EQ "CLAUDE"
+  Copy Claude C:Claude CLONE QUIET
+  If NOT EXISTS ENVARC:Claude
+    MakeDir ENVARC:Claude
   EndIf
 EndIf
 ; The fonts by pixel shape (fonts/SOURCE.txt): TopazPro 16, IBM 8 / 11 /

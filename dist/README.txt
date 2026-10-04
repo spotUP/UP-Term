@@ -502,6 +502,31 @@ CONSOLE.DEVICE
   programs write are overwritten at the next output, except the keymap
   (CD_SETKEYMAP). Not offered on AmigaOS 3.2 yet.
 
+CLAUDE
+  C:Claude talks to Claude, Anthropic's AI model, from an UP-Term window,
+  and can read, search and edit files and run commands for you. It needs
+  a TCP/IP stack (Roadshow, Miami, AmiTCP), AmiSSL 5 (Aminet
+  util/libs/AmiSSL-v5-OS3.lha), a 68020 or better, and an API key of your
+  own from console.anthropic.com. What it uses is billed to that key:
+  /cost shows the tokens and the price so far.
+    Claude                    a conversation (/help lists the commands)
+    Claude list the files in S:   one request, then back to the Shell
+    Claude PING               checks the connection: HTTP status, times
+    Claude MODEL=name EFFORT=low|medium|high|xhigh|max ROOT=dir DEBUG
+  The key: SetEnv SAVE ANTHROPIC_API_KEY yourkey, or put it alone in the
+  file ENVARC:Claude/key (Install makes the drawer, never a key; Uninstall
+  leaves the drawer and your key). Claude never shows the key and never
+  writes it to a log; DEBUG logs to T:Claude.log with the key blanked. The
+  key only goes over https.
+  Tools: every call is shown before it runs. Reading, listing and searching
+  ask once ("a" allows all three for the session); writing, editing and
+  running a command ask every time unless you answer "a" for that tool.
+  Anything outside the start directory (the current one, or ROOT=) asks
+  every time. Commands run through vsh with no input, up to 60 seconds.
+  Ctrl+C stops an answer (it is not kept) or a running command. The text
+  is UTF-8: an UP-Term window shows it right, a ROM CON: window does not.
+  Model claude-opus-5-5 and effort medium unless you choose others.
+
 STATUS
   Test build. CON:/RAW: and console.device stay the system's unless you
   switch them (above); XCON: runs beside them.

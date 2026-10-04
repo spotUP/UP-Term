@@ -46,4 +46,8 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Its tests alone | `make test ONLY=uptelnetd` |
 | Re-record Claude Code's screen with the engine answering (asks the model once) | `make build/vtreply && python3 tools/capture_claude.py --dir <a directory Claude Code trusts>` |
 | uptelnet alone (Roadshow headers: `VTCON_NETINC=`, default DCTelnet's copy) | `make build/amiga/uptelnet` |
+| Claude client (A2) host suites | `make test ONLY=claude_repl` (the reachability test; also `claude_http`, `claude_json`, `claude_stream`, `claude_tools`) |
+| C:Claude cross build | `make build/amiga/Claude` (in `make amiga`). Needs Roadshow's netinclude once: copy `NDK3.2R4/SANA+RoadshowTCP-IP/netinclude` to `vendor/ndk-3.2r4-netinclude` (or `VTCON_NETINCLUDE=`). https needs the AmiSSL 5 SDK: unpacked to `vendor/amissl-5.27/` it is found by itself (`gh release download 5.27 -R jens-maus/amissl -p AmiSSL-5.27-SDK.lha`, `lha x`), else `AMISSL_SDK=<AmiSSL 5 SDK dir>`; without it the build refuses https |
+| AmiSSL layer, OpenSSL half, on the host | `make claude-tls-check` (Homebrew OpenSSL 3; `OPENSSL_INC=`) |
+| Recorded Claude answers for the rig (no key, no Anthropic) | `python3 tools/claude_fixture.py`, then on the Amiga `Claude URL=http://<this Mac>:8080/v1/messages ROOT=SYS:` |
 | Clean | `make clean` |

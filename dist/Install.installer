@@ -41,6 +41,7 @@
 (set #bget "")
 (set #curl "")
 (set #wasabi "")
+(set #claude "")
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 ; curl is ticked when AmiSSL is there (curl cannot run without it)
@@ -73,6 +74,10 @@
               "The Shell icon: its WINDOW tooltype is changed to XCON:, so SYS:System/Shell "
               "opens an UP-Term window; a copy of the icon is kept in "
               "ENVARC:up-term-orig.\n\n"
+              "Claude: C:Claude, a native client for Claude (Anthropic's AI model) "
+              "with tools to read, search and edit files and run commands, each one "
+              "shown and asked for. Needs AmiSSL 5 and an API key of your own (the "
+              "usage is billed to it); see README.txt, section Claude.\n\n"
               "Uninstall takes every one of them out again.")
         (choices "ssh and scp (BebboSSH)"
                  "bebboget (https downloads)"
@@ -80,8 +85,9 @@
                  "Serial login at every boot"
                  "wasabi: remote development from another computer"
                  "UP-Term icon also in SYS:System"
-                 "Shell icon opens an UP-Term window")
-        (default (+ 1 2 (if #amissl 4 0)))))
+                 "Shell icon opens an UP-Term window"
+                 (if #amissl "Claude client (AmiSSL 5 found)" "Claude client (needs AmiSSL 5, not found)"))
+        (default (+ 1 2 (if #amissl (+ 4 128) 0)))))
 (if (in #opts 0) (set #ssh "SSH"))
 (if (in #opts 1) (set #bget "BEBBOGET"))
 (if (in #opts 2) (set #curl "CURL"))
@@ -89,6 +95,7 @@
 (if (in #opts 4) (set #wasabi "WASABI"))
 (if (in #opts 5) (set #sysicon "SYSICON"))
 (if (and (in #opts 6) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+(if (in #opts 7) (set #claude "CLAUDE"))
 
 ; ---- taking over the system's console: a page of its own -----------------
 
@@ -124,7 +131,7 @@
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #wasabi #cpu040 #cpu060)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #wasabi #claude #cpu040 #cpu060)
 
 (set #done
     (cat "UP-Term is installed.\n\n"

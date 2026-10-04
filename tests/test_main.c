@@ -35,6 +35,11 @@ void suite_complete(void);
 void suite_winmem(void);
 void suite_hl(void);
 void suite_md(void);
+void suite_claude_http(void);
+void suite_claude_json(void);
+void suite_claude_stream(void);
+void suite_claude_tools(void);
+void suite_claude_repl(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -71,6 +76,11 @@ static const h_suite suites[] = {
     { "winmem", suite_winmem },
     { "hl", suite_hl },
     { "md", suite_md },
+    { "claude_http", suite_claude_http },
+    { "claude_json", suite_claude_json },
+    { "claude_stream", suite_claude_stream },
+    { "claude_tools", suite_claude_tools },
+    { "claude_repl", suite_claude_repl },
     { 0, 0 }
 };
 
