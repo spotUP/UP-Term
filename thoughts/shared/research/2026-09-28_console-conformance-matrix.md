@@ -759,3 +759,8 @@ pinned by `tests/test_protocol.c` (`make test ONLY=protocol`). Plan and ledger:
 | DECRQM `CSI ? Ps $ p` | 1 set / 2 reset for every DEC mode `set_mode` keeps, incl. ?66 (DECNKM = DECKPAM's switch) and ?1048 (1 once a cursor was saved by ?1048/?1049, until RIS); ?4 DECSCLM answers 4 (permanently reset: accepted, never smooth); unknown 0 | `decrqm_answers_every_mode_the_engine_keeps` |
 | RIS `ESC c` (additions) | Also resets the modifyOtherKeys level to 0, empties the title stack (`CSI 22/23 t`), sets the cursor shape back to the host default (`vt_set_cursor_style`, the profile), forgets a ?1048 save | `ris_resets_keys_title_stack_and_cursor_shape` |
 | Synchronized output `?2026` (host) | The window draws nothing while the mode is set, at most 1 s (`render/synchold.h`: foot and tmux 1 s, kitty 2 s); was 150 ms | `sync_frame_is_held_up_to_one_second` |
+| DA3 `CSI = c` | `DCS ! | 00000000 ST` (DECRPTUI, a unit id of zeros, as xterm) | `da3_reports_a_unit_id` |
+| LS2 / LS3 `ESC n` / `ESC o` | G2 / G3 into GL | `locking_shifts_invoke_g2_and_g3` |
+| LS1R / LS2R / LS3R `ESC ~` / `ESC }` / `ESC |` | G1 / G2 / G3 into GR: in an 8-bit (Latin-1) window bytes A0-FF draw as that set's 20-7F; default (and after DECSTR / RIS) GR is Latin-1 itself. No effect under UTF-8 or CP437 | `locking_shifts_invoke_g2_and_g3` |
+| Media copy `CSI i`, `CSI 4 i`, `CSI ? Ps i` | Accepted, nothing done (no printer) | `printer_controller_mode_keeps_text_off_the_screen` |
+| Printer controller `CSI 5 i` | What follows goes to the (absent) printer, not the screen, until `CSI 4 i` (7- or 8-bit CSI), as a VT102 | same |

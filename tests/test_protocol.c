@@ -150,8 +150,61 @@ static void sync_frame_is_held_up_to_one_second(void)
     CHECK(!VTWIN_SYNC_HOLD(20));                   /* 1 s: drawn */
 }
 
+/* ---- G3-05: DA3, the locking shifts, media copy ---- */
+
+/* DA3 (CSI = c) is answered with DECRPTUI, a unit id of zeros, as xterm. */
+static void da3_reports_a_unit_id(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "\033[=c");
+    REPLY("\033P!|00000000\033\\");
+    h_put(t, "\033[=0c");
+    REPLY("\033P!|00000000\033\\");
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* LS2 / LS3 (ESC n / ESC o) invoke G2 / G3 into GL; LS1R-LS3R (ESC ~ } |)
+ * into GR, which an 8-bit (Latin-1) window then draws through. */
+static void locking_shifts_invoke_g2_and_g3(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "\033*0\033+A\033nq\033o#\033(B\017q");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 0x2500);     /* G2 DEC graphics: q is a line */
+    CHECK_INT(h_cell(t, 1, 0)->ch, 0xA3);       /* G3 UK: # is a pound sign */
+    CHECK_INT(h_cell(t, 2, 0)->ch, 'q');        /* SI: G0 again */
+    vt_set_charset(t, VT_CS_LATIN1);
+    h_put(t, "\033[2;1H\033)0\033~\xf1\033|\xf1\033}\xf1");
+    CHECK_INT(h_cell(t, 0, 1)->ch, 0x2500);     /* GR = G1 (DEC graphics): F1 is q's line */
+    CHECK_INT(h_cell(t, 1, 1)->ch, 'q');        /* GR = G3 (UK): F1 is its q */
+    CHECK_INT(h_cell(t, 2, 1)->ch, 0x2500);     /* GR = G2 (DEC graphics, set above) */
+    h_put(t, "\033c\033[3;1H\xf1");
+    CHECK_INT(h_cell(t, 0, 2)->ch, 0xF1);       /* RIS: GR back to Latin-1 */
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* Media copy (xterm-256color's mc0 mc4 mc5): there is no printer, so
+ * printer controller mode (CSI 5 i) takes what follows off the screen
+ * until CSI 4 i, as a VT102 does; CSI i (print screen) does nothing. */
+static void printer_controller_mode_keeps_text_off_the_screen(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "a\033[ib\033[5isecret\033[1mstill\033[4");
+    h_put(t, "ic");
+    CHECK_STR(h_screen(t), "abc");
+    CHECK_INT(h_cell(t, 2, 0)->attr, 0);        /* the SGR inside went to the printer */
+    h_put(t, "\033[5ix\x9b" "4id");             /* the 8-bit CSI ends it too */
+    CHECK_STR(h_screen(t), "abcd");
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
 void suite_protocol(void)
 {
+    da3_reports_a_unit_id();
+    locking_shifts_invoke_g2_and_g3();
+    printer_controller_mode_keeps_text_off_the_screen();
     sync_frame_is_held_up_to_one_second();
     decrqss_conformance_level_matches_da1();
     decrqm_answers_every_mode_the_engine_keeps();

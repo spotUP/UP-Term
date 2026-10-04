@@ -27,7 +27,8 @@
 /* Parser states. */
 enum {
     S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
-    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */,
+    S_PRINT /* printer controller mode (CSI 5 i): the bytes go to no printer */
 };
 
 /* A grid line: one allocation, cells follow the header. */
@@ -85,6 +86,8 @@ struct vt_term {
     int autowrap, origin, insert;
     vt_u8 charset[4];      /* 'B' ASCII, '0' DEC graphics, 'A' UK */
     int gl, single_shift;
+    int gr;                /* LS1R-LS3R: G1-G3 in GR (8-bit windows); 0 Latin-1 itself */
+    int prn_match;         /* S_PRINT: how much of CSI 4 i has come */
     vt_saved sav, sav_1049;
     vt_u8 saved_1048;      /* ?1048 / ?1049 saved a cursor (DECRQM ?1048) */
     vt_u16 last_ch;
@@ -1115,6 +1118,7 @@ static void soft_reset(vt_term *t)
     t->modes |= VT_MODE_CURSOR_VISIBLE;
     t->charset[0] = t->charset[1] = t->charset[2] = t->charset[3] = 'B';
     t->gl = 0;
+    t->gr = 0;
     t->single_shift = 0;
     t->top = 0;
     t->bot = t->rows;
@@ -1169,6 +1173,11 @@ static void put_char(vt_term *t, vt_u32 cp)
 
     cs = t->charset[t->single_shift ? t->single_shift : t->gl];
     t->single_shift = 0;
+    if (t->gr && cp >= 0xA0 && cp <= 0xFF && !t->utf8 && !t->cp437) {
+        /* an 8-bit byte through GR (LS1R-LS3R): the set's own 20-7F */
+        cs = t->charset[t->gr];
+        cp -= 0x80;
+    }
     if (cs == '0' && cp >= 0x5F && cp <= 0x7E)
         cp = dec_graphics[cp - 0x5F];
     else if (cs == 'A' && cp == '#')
@@ -1446,6 +1455,23 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
         break;
     case '\\':
         break; /* ST with nothing open */
+    case 'n': /* LS2, LS3: G2 / G3 into GL */
+    case 'o':
+        if (t->pers != VT_XTERM) {
+            note_unhandled(t, 'E', final);
+            break;
+        }
+        t->gl = final == 'n' ? 2 : 3;
+        break;
+    case '~': /* LS1R, LS2R, LS3R: G1 / G2 / G3 into GR */
+    case '}':
+    case '|':
+        if (t->pers != VT_XTERM) {
+            note_unhandled(t, 'E', final);
+            break;
+        }
+        t->gr = final == '~' ? 1 : final == '}' ? 2 : 3;
+        break;
     default:
         note_unhandled(t, 'E', final);
         break;
@@ -2142,6 +2168,8 @@ static void csi_xterm(vt_term *t, vt_u8 final)
         }
         else if (final == 'J' || final == 'K')
             csi_common(t, final); /* DECSED / DECSEL: no protected cells */
+        else if (final == 'i')
+            ; /* DEC media copy (auto print, print cursor line): no printer */
         else
             note_unhandled(t, 'C', final);
         return;
@@ -2162,6 +2190,13 @@ static void csi_xterm(vt_term *t, vt_u8 final)
             note_unhandled(t, 'C', final);
         return;
     }
+    if (t->priv == '=') {
+        if (final == 'c' && param0(t, 0) == 0)
+            reply(t, "\033P!|00000000\033\\", 14); /* DA3: DECRPTUI, as xterm */
+        else
+            note_unhandled(t, 'C', final);
+        return;
+    }
     if (t->priv) {
         note_unhandled(t, 'C', final);
         return;
@@ -2170,6 +2205,12 @@ static void csi_xterm(vt_term *t, vt_u8 final)
     case 'c':
         if (param0(t, 0) == 0)
             reply(t, "\033[?62;22c", 9); /* DA1: VT220 with ANSI colour */
+        return;
+    case 'i': /* media copy: there is no printer */
+        if (param0(t, 0) == 5) {
+            t->state = S_PRINT; /* printer controller: to CSI 4 i, off the screen */
+            t->prn_match = 0;
+        }
         return;
     case 'r': { /* DECSTBM */
         int top = (int)param(t, 0, 1) - 1;
@@ -2783,6 +2824,20 @@ static void end_string(vt_term *t)
 
 static void feed(vt_term *t, vt_u32 c)
 {
+    if (t->state == S_PRINT) {
+        /* printer controller mode: everything is the printer's (there is
+         * none) until CSI 4 i -- ESC [ 4 i or the 8-bit CSI 4 i */
+        static const vt_u8 end[] = { 0x1B, '[', '4', 'i' };
+        if (c == 0x9B)
+            t->prn_match = 2;
+        else if (c == end[t->prn_match])
+            t->prn_match++;
+        else
+            t->prn_match = c == 0x1B;
+        if (t->prn_match == 4)
+            t->state = S_GROUND;
+        return;
+    }
     /* Anywhere transitions. */
     if (c == 0x18 || c == 0x1A) { /* CAN, SUB */
         t->state = S_GROUND;
