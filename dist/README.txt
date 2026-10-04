@@ -263,6 +263,43 @@ TMUX
   panes (ENV:tmux.conf: default-shell, 256 colours). Your own settings go
   in ~/.tmux.conf.
 
+VIEWING FILES (hl, mdv)
+  hl shows a source file in colour, with line numbers, the language found
+  from the name, the #! line or -l:
+    hl main.c              hl -l asm intro.i      hl -n S:Startup-Sequence
+    hl -p file             (colours, no numbers)  hl --list (the languages)
+  C/C++, 68k assembler (vasm, Devpac), AmigaE, Python, shell and vsh
+  scripts, AmigaDOS scripts, ARexx, Lua, JavaScript/TypeScript, JSON,
+  YAML, TOML, INI and up-term.conf, Makefile, Markdown, HTML, XML, diff,
+  CSS, Rust, Go, Java. Into a pipe or a file hl is cat: the bytes as they
+  are (--color=always and -n keep the colours and numbers there).
+  mdv shows Markdown (a README.md) formatted for the window: headings,
+  bold and italic, lists, quotes, tables fitted to the width, code
+  blocks in colour, links with their address after them (and as OSC 8
+  hyperlinks for terminals that follow them), images as their text:
+    mdv README.md          mdv -w 60 notes.md     mdv -U (no addresses)
+  Through a pager (vshrc): hlp file, mdp README.md -- less -R, or the
+  pager $PAGER names; less is not part of UP-Term (Geek Gadgets, Aminet).
+  Colours: the 16 of the window's profile (theme ansi), so a profile
+  theme changes them too; --theme mono (bold and underline only),
+  --theme rich (24-bit colours, brought down to 256 or 16 where TERM and
+  COLORTERM say the terminal has fewer), or a theme file (also the
+  variable HL_THEME), one line a class:
+    comment = grey italic
+    keyword = bright-blue bold
+    string  = #98c379
+    h1      = magenta bold underline
+  Words: bold dim italic underline reverse strike, a colour (black red
+  green yellow blue magenta cyan white, bright-<name>, grey, 0-255,
+  #rrggbb), "on <colour>" for the background. The classes: plain comment
+  keyword type builtin string escape number preproc function label
+  variable key section tag attr heading emphasis link code meta added
+  removed lineno, and for mdv h1-h6 quote bullet rule codespan codeblock
+  url image table th task. Text in Latin-1 (the Amiga's own) is shown
+  right in a UTF-8 window; --latin1 / --utf8 say what the terminal reads
+  when TERM does not (a ROM CON: window: Latin-1, lines and boxes drawn
+  with + - |). hl --help and mdv --help list the options; Ctrl-C stops hl.
+
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a
   USB serial adapter) to another computer, open a terminal program there

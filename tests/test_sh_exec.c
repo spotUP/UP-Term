@@ -143,7 +143,7 @@ static int is_vshrc_cmd(const char *n)
     /* what the vshrc reaches: the coreutils commands, Type, and
      * Dir/List, which no ls may turn into again */
     static const char *const names[] = { "Dir", "List", "Type", "cp", "mv", "rm", "mkdir",
-                                         "touch", 0 };
+                                         "touch", "hl", "mdv", "less", 0 };
     int i;
     for (i = 0; names[i]; i++)
         if (!strcmp(n, names[i]))
@@ -742,6 +742,10 @@ static void vshrc_unix_names(void)
     vshrc_pre = "PATH=/mine";
     CHECK_STR(with_vshrc("echo $PATH"), "/mine\n");
     vshrc_pre = 0;
+    /* hlp and mdp: hl / mdv in colour into less -R, or into $PAGER */
+    CHECK_STR(with_vshrc("hlp x.c"), "<less><-R>\n");
+    CHECK_STR(with_vshrc("PAGER=cat; hlp 'a b.c' y.s"), "<hl><--color=always><-n><a b.c><y.s>\n");
+    CHECK_STR(with_vshrc("PAGER=cat; mdp README.md"), "<mdv><--color=always><README.md>\n");
 }
 
 static void deep_recursion(void)
