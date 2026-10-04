@@ -24,6 +24,11 @@
 #include <libraries/asl.h>
 #include <string.h>
 #include "complete.h"
+#include "complete_core.h"
+
+#if CC_FIBF_EXECUTE != FIBF_EXECUTE || CC_FIBF_SCRIPT != FIBF_SCRIPT
+#error "the protection bits of complete_core.h disagree with dos/dos.h"
+#endif
 #include "../prefs/prefs_dos.h"
 
 static int lower(int c)
@@ -182,8 +187,8 @@ static void scan_devices(struct complete_req *q, const char *prefix)
     UnLockDosList(LDF_DEVICES | LDF_VOLUMES | LDF_ASSIGNS | LDF_READ);
 }
 
-/* Names in directory `lock` starting with `prefix`; commands only: files
- * (a command is a file) and, for the path search, no directories. */
+/* Names in directory `lock` starting with `prefix`; commands: only what
+ * cc_is_command takes (files with e or s, no directories), no .info. */
 static void scan_dir(struct complete_req *q, BPTR lock, const char *prefix, int commands)
 {
     struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
@@ -200,7 +205,7 @@ static void scan_dir(struct complete_req *q, BPTR lock, const char *prefix, int 
             int is_dir = fib->fib_DirEntryType > 0;
             int n = (int)strlen(name);
             int info = n > 5 && same_name(name + n - 5, ".info");
-            if (commands && (is_dir || info))
+            if (commands && (info || !cc_is_command(fib->fib_DirEntryType, fib->fib_Protection)))
                 continue;
             if (q->kingcon && info && !q->show_info)
                 continue;
@@ -238,7 +243,8 @@ static void cache_names(dir_cache *d, BPTR lock, struct FileInfoBlock *fib)
         while (ExNext(lock, fib)) {
             const char *name = (const char *)fib->fib_FileName;
             long n = (long)strlen(name);
-            if (fib->fib_DirEntryType > 0 || (n > 5 && same_name(name + n - 5, ".info")))
+            if ((n > 5 && same_name(name + n - 5, ".info")) ||
+                !cc_is_command(fib->fib_DirEntryType, fib->fib_Protection))
                 continue;
             if (len + n + 1 > cap) {
                 char *more = (char *)AllocVec(cap * 2, MEMF_ANY);
@@ -673,7 +679,9 @@ static void worker(void)
         strcpy(prefix, q->word + split + 1);
         lock = q->mode == COMPLETE_DEVICES ? 0 : Lock((STRPTR)dirpart, ACCESS_READ);
         if (lock) {
-            scan_dir(q, lock, prefix, 0);
+            /* KingCON's Alt+Tab: commands only, in the word's directory too
+             * (unix keeps directories there: a directory's name is a cd) */
+            scan_dir(q, lock, prefix, q->kingcon && q->mode == COMPLETE_COMMANDS);
             UnLock(lock);
         }
         if (q->mode == COMPLETE_COMMANDS && split < 0) {
