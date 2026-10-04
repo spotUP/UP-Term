@@ -112,7 +112,7 @@ typedef struct vtwin {
     ULONG frame_us;              /* the frame clock's next interval (pace.h); 0: the shortest */
     ULONG frame_wait;            /* the interval of the request in flight (us) */
     ULONG prof_render, prof_frames; /* EClock ticks drawing, and render passes (the handler's PROF=1) */
-    ULONG prof_part[3];          /* PROF=1: of the drawing, damaged rows / scrolls / cursor and mask */
+    ULONG prof_part[4];          /* PROF=1: of the drawing, damaged rows / scrolls / cursor and mask */
     long sync_held;              /* microseconds a ?2026 update has been held back */
     long note_us;                /* OSC 9 / 777: microseconds the notice stays in the title */
     char note_saved[80];         /* the title it stands in for */

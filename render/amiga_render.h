@@ -97,6 +97,9 @@ typedef struct vr_render {
     UBYTE *glyphs;
     /* profile counters, read by the debug build */
     ULONG n_direct, n_text;
+    struct BitMap *chip_bm;       /* planes_ok's bitmap check, made once a bitmap (S1) */
+    PLANEPTR chip_plane0;
+    UBYTE chip_ok;
     /* the outline font for the cells the bitmap font cannot show (F1),
      * 0 for none; the owner opens and closes it (vr_set_outline) */
     struct vo_font *outline;

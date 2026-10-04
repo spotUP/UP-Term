@@ -58,6 +58,7 @@ def main():
                 pr, ps = vals.get('rows/scroll', (0, 0))
                 pc, pp = vals.get('cursor/paint', (0, 0))
                 npt, ntx = vals.get('paints/texts', (0, 0))
+                print('%-12s   waitblit in painter %6.0f' % (name, ms(vals.get('waitblit/vtfeed', (0, 0))[0])) + '   vt_feed alone %6.0f' % ms(vals.get('waitblit/vtfeed', (0, 0))[1]))
                 print('%-12s   draw = rows %6.0f (painter %6.0f, %d paints, %d Text runs)  scroll %6.0f  cursor+mask %6.0f' % (name, ms(pr), ms(pp), npt, ntx, ms(ps), ms(pc)))
                 print('%-12s total %7.0f ms  idle %7.0f  feed %7.0f  draw %7.0f (%d frames)  rest %7.0f  writes %d' % (
                     name, ms(total), ms(idle), ms(outt), ms(rend), frames, (total - idle - outt - rend) * 1000.0 / freq, vals['writes/bytes'][0]))

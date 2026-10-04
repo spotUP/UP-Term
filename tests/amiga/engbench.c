@@ -172,7 +172,7 @@ static int asm_check(void)
         int x, n, f, b2, m, pn, q;
         for (q = 0; q < 256 * 3; q++) gl[q] = (vp_u8)(q * 37 + (q >> 3) * 11);
         for (pn = 0; pn < 4; pn++) { pa[pn] = a[pn]; pc[pn] = c2[pn]; }
-        for (x = 0; x < 16; x++)
+        for (x = 0; x < 40; x++)     /* every bit and byte offset from a long */
             for (n = 1; n <= 9; n++)
                 for (f = 0; f < 16; f += 5)
                     for (b2 = 0; b2 < 16; b2 += 3)
@@ -198,10 +198,12 @@ int main(int argc, char **argv)
      * PERS one dialect (0 xterm, 1 amiga) -- for tools/prof68k.py, which
      * counts the instructions of one workload under vamos */
     int reps = 3, only = -1, onlypers = -1, w, r, pers, a;
+    long chunk = 4096; /* CHUNK n: the write size (conbench plain-lines writes 79) */
     for (a = 1; a + 1 < argc; a += 2) {
         if (!strcmp(argv[a], "REPS")) reps = atoi(argv[a + 1]);
         else if (!strcmp(argv[a], "ONLY")) only = atoi(argv[a + 1]);
         else if (!strcmp(argv[a], "PERS")) onlypers = atoi(argv[a + 1]);
+        else if (!strcmp(argv[a], "CHUNK")) chunk = atoi(argv[a + 1]);
     }
     cb.damage = damage;
     cb.scroll = scroll;
@@ -225,9 +227,10 @@ int main(int argc, char **argv)
                     return 20;
                 vt_set_personality(t, pers ? VT_AMIGA : VT_XTERM);
                 t0 = now();
-                for (i = 0; i < n; i += 4096) { /* 4K writes, a flush each: a frame's worth */
-                    vt_feed(t, (const vt_u8 *)buf + i, n - i < 4096 ? n - i : 4096);
-                    vt_flush(t);
+                for (i = 0; i < n; i += chunk) { /* writes of `chunk` bytes, a flush every 4K */
+                    vt_feed(t, (const vt_u8 *)buf + i, n - i < chunk ? n - i : chunk);
+                    if ((i + chunk) / 4096 != i / 4096 || i + chunk >= n)
+                        vt_flush(t);
                 }
                 t0 = now() - t0;
                 if (t0 < best)

@@ -994,17 +994,22 @@ static int planes_ok(vr_render *r, int aligned)
     WORD sx1 = sx0 + vis_cols(r) * r->cw - 1, sy1 = sy0 + vis_rows(r) * r->ch - 1;
     if (!r->glyphs || !bm || bm->Depth > 8 || (aligned && (sx0 & 7)))
         return 0;
-    if (!(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
-        return 0; /* RTG: not planar */
-    {
-        /* Picasso96 calls its bitmaps standard too (it hung the rig,
-         * 2026-09-29): a native display bitmap is planes in chip RAM,
-         * graphics card memory never is. */
-        int p;
-        for (p = 0; p < bm->Depth; p++)
+    if (bm != r->chip_bm || bm->Planes[0] != r->chip_plane0) {
+        /* Once a bitmap (it is asked for every run the painter draws: S1,
+         * sgr-colour paid ~1 ms a run): RTG is not planar, and Picasso96
+         * calls its bitmaps standard too (it hung the rig, 2026-09-29) --
+         * a native display bitmap is planes in chip RAM, graphics card
+         * memory never is. */
+        int p, ok = (GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD) != 0;
+        for (p = 0; ok && p < bm->Depth; p++)
             if (!bm->Planes[p] || !(TypeOfMem(bm->Planes[p]) & MEMF_CHIP))
-                return 0;
+                ok = 0;
+        r->chip_bm = bm;
+        r->chip_plane0 = bm->Planes[0];
+        r->chip_ok = (UBYTE)ok;
     }
+    if (!r->chip_ok)
+        return 0;
     if (!cr || cr->Next || cr->obscured)
         return 0; /* covered in part: the layer draws for us */
     return cr->bounds.MinX <= sx0 && cr->bounds.MinY <= sy0 && cr->bounds.MaxX >= sx1 &&
@@ -1050,7 +1055,20 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
         }
         r->seen |= pens;
         bm = r->rp->BitMap;
+#ifdef VTCON_PROF
+        {
+            struct EClockVal w0, w1;
+            if (vtwin_timer)
+                ReadEClock(&w0);
+            WaitBlit();
+            if (vtwin_timer) {
+                ReadEClock(&w1);
+                vr_prof[1] += w1.ev_lo - w0.ev_lo;
+            }
+        }
+#else
         WaitBlit(); /* the scroll and fills before it are in the planes first */
+#endif
         vp_span_fast((vp_u8 **)bm->Planes, bm->Depth, bm->BytesPerRow, (long)(r->win->LeftEdge + px),
                      (long)(r->win->TopEdge + py), r->glyphs, r->font->tf_YSize, run, n, (int)st->fg,
                      (int)st->bg, r->mask);

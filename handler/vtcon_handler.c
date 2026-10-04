@@ -4827,7 +4827,9 @@ static void packet(con *c, struct DosPacket *p)
                 extern ULONG vr_prof[4];
                 DBG("PROF cursor/paint", c->w.prof_part[2], vr_prof[0]);
                 DBG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
-                vr_prof[0] = vr_prof[2] = 0;
+                DBG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
+                c->w.prof_part[3] = 0;
+                vr_prof[0] = vr_prof[1] = vr_prof[2] = 0;
                 c->w.r.n_text = 0;
             }
             DBG("PROF writes/bytes", c->prof_writes, c->prof_bytes);

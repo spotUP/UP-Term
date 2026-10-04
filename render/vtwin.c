@@ -914,7 +914,9 @@ void vtwin_write(vtwin *w, const vt_u8 *b, long n)
      * screen could not keep up: 45 ms per scroll, cycle-exact rig). */
     {
         vt_u32 sync = vt_modes(w->t) & VT_MODE_SYNC;
+        PROF_IN(w);
         vt_feed(w->t, b, n);
+        PROF_OUT(w, 3);
         w->render_pending = 1;
         if (sync && !(vt_modes(w->t) & VT_MODE_SYNC))
             vtwin_render(w); /* the program's frame is whole: shown now, not at the next tick */
