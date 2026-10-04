@@ -40,4 +40,8 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | Install kit (build/UP-Term.lha: Install with Installer, or Files/install.dos) | `make dist` |
 | Install kit on the rig: Install, check, Uninstall | `python3 tools/rig/install_rig.py` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first) |
+| Mac end for uptelnet (A1, LAN only, unencrypted; password in ~/.config/uptelnetd/password, 0600) | `python3 tools/uptelnetd.py [--command 'tmux new -A -s claude claude']` |
+| Its tests alone | `make test ONLY=uptelnetd` |
+| Re-record Claude Code's screen with the engine answering (asks the model once) | `make build/vtreply && python3 tools/capture_claude.py --dir <a directory Claude Code trusts>` |
+| uptelnet alone (Roadshow headers: `VTCON_NETINC=`, default DCTelnet's copy) | `make build/amiga/uptelnet` |
 | Clean | `make clean` |
