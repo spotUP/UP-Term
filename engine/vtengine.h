@@ -140,6 +140,7 @@ typedef struct vt_callbacks {
 /* (0x200000-0x800000 left for the input modes; G1 has ?1007 at 0x200000) */
 #define VT_MODE_MOUSE_URXVT  0x1000000 /* ?1015: CSI Cb;Cx;Cy M in decimal */
 #define VT_MODE_MOUSE_PIXELS 0x2000000 /* ?1016: the SGR form with pixel coordinates */
+#define VT_MODE_IN_BAND_RESIZE 0x4000000 /* ?2048: vt_resize reports the size (a reply) */
 
 typedef struct vt_term vt_term;
 

@@ -37,6 +37,13 @@ static char *fmt3(char *out, const char *a, long v, const char *b)
     return out;
 }
 
+/* the reply so far ends with s */
+static int ends_with(const char *s)
+{
+    int n = (int)strlen(s);
+    return h_reply_len >= n && !memcmp(h_reply + h_reply_len - n, s, (size_t)n);
+}
+
 /* a mode query for DEC mode m after setting (on) or resetting it */
 static void ask_mode(vt_term *t, int m, int on)
 {
@@ -79,20 +86,20 @@ static void decrqm_answers_every_mode_the_engine_keeps(void)
     {
         /* every DEC mode set_mode takes: set, asked, reset, asked */
         static const int modes[] = { 1, 5, 47, 6, 7, 8, 9, 12, 25, 40, 45, 66, 1000, 1002, 1003,
-                                     1004, 1005, 1006, 1015, 1016, 1034, 1047, 1049, 2004, 2026, 2031, 7727 };
+                                     1004, 1005, 1006, 1015, 1016, 1034, 1047, 1049, 2004, 2026, 2031, 2048, 7727 };
         int i, bad = 0;
         for (i = 0; i < (int)(sizeof(modes) / sizeof(modes[0])); i++) {
             char want[64];
             ask_mode(t, modes[i], 1);
             fmt3(want, "\033[?", modes[i], ";1$y");
-            if (h_reply_len != (int)strlen(want) || memcmp(h_reply, want, strlen(want))) {
+            if (!ends_with(want)) { /* ?2048 also reports the size first */
                 printf("    mode %d set: [%.*s]\n", modes[i], h_reply_len, h_reply);
                 bad++;
             }
             h_reply_clear();
             ask_mode(t, modes[i], 0);
             fmt3(want, "\033[?", modes[i], ";2$y");
-            if (h_reply_len != (int)strlen(want) || memcmp(h_reply, want, strlen(want))) {
+            if (!ends_with(want)) {
                 printf("    mode %d reset: [%.*s]\n", modes[i], h_reply_len, h_reply);
                 bad++;
             }
@@ -306,8 +313,33 @@ static void urxvt_and_sgr_pixel_mouse_reports(void)
     vt_free(t);
 }
 
+/* ---- G3-09: in-band resize reports ---- */
+
+/* ?2048: CSI 48;rows;cols;height px;width px t once on setting the mode,
+ * then at every resize, as kitty and foot send it (neovim asks for it). */
+static void in_band_resize_reports_follow_the_mode(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vt_set_cell_pixels(t, 8, 16);
+    vt_resize(t, 100, 30);
+    CHECK_INT(h_reply_len, 0);                     /* not asked: nothing */
+    h_put(t, "\033[?2048h");
+    REPLY("\033[48;30;100;480;800t");
+    vt_resize(t, 90, 25);
+    REPLY("\033[48;25;90;400;720t");
+    vt_resize(t, 90, 25);                          /* the same size: no report */
+    CHECK_INT(h_reply_len, 0);
+    h_put(t, "\033[?2048$p");
+    REPLY("\033[?2048;1$y");
+    h_put(t, "\033[?2048l");
+    vt_resize(t, 80, 24);
+    CHECK_INT(h_reply_len, 0);
+    vt_free(t);
+}
+
 void suite_protocol(void)
 {
+    in_band_resize_reports_follow_the_mode();
     urxvt_and_sgr_pixel_mouse_reports();
     decic_and_decdc_move_columns_in_the_region();
     rectangle_fill_erase_copy_and_attributes();

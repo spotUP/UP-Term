@@ -1682,6 +1682,8 @@ static void sgr(vt_term *t)
     t->ext = style_index(t);
 }
 
+static void report_size(vt_term *t);
+
 static void set_mode(vt_term *t, int on)
 {
     int i;
@@ -1750,6 +1752,14 @@ static void set_mode(vt_term *t, int on)
                 else
                     t->modes &= ~(vt_u32)VT_MODE_SYNC;
                 break;
+            case 2048: /* in-band resize: the size now, then at each resize */
+                if (on) {
+                    t->modes |= VT_MODE_IN_BAND_RESIZE;
+                    report_size(t);
+                } else {
+                    t->modes &= ~(vt_u32)VT_MODE_IN_BAND_RESIZE;
+                }
+                break;
             case 66:
                 if (on)
                     t->modes |= VT_MODE_APP_KEYPAD;
@@ -1816,6 +1826,30 @@ static void set_mode(vt_term *t, int on)
             }
         }
     }
+}
+
+/* ?2048 in-band resize: CSI 48;rows;cols;height px;width px t (pixels 0
+ * when the host has not said), always 7-bit -- nobody asked in 8 bits. */
+static void report_size(vt_term *t)
+{
+    char b[48];
+    int n = 0;
+    if (!(t->modes & VT_MODE_IN_BAND_RESIZE) || t->pers != VT_XTERM)
+        return;
+    b[n++] = 0x1B;
+    b[n++] = '[';
+    b[n++] = '4';
+    b[n++] = '8';
+    b[n++] = ';';
+    n = fmt_uint(b, n, t->rows);
+    b[n++] = ';';
+    n = fmt_uint(b, n, t->cols);
+    b[n++] = ';';
+    n = fmt_uint(b, n, (long)t->rows * t->cell_h);
+    b[n++] = ';';
+    n = fmt_uint(b, n, (long)t->cols * t->cell_w);
+    b[n++] = 't';
+    reply(t, b, n);
 }
 
 static void report_cursor(vt_term *t, int dec)
@@ -2092,6 +2126,7 @@ static void report_mode(vt_term *t)
         case 1006: bit = VT_MODE_MOUSE_SGR; break;
         case 2004: bit = VT_MODE_BRACKET_PASTE; break;
         case 2026: bit = VT_MODE_SYNC; break;
+        case 2048: bit = VT_MODE_IN_BAND_RESIZE; break;
         case 6: v = t->origin ? 1 : 2; break;
         case 7: v = t->autowrap ? 1 : 2; break;
         case 12: bit = VT_MODE_CURSOR_BLINK; break;
@@ -4164,6 +4199,7 @@ void vt_resize(vt_term *t, int cols, int rows)
     t->wrap_pending = wp;
     mark_rows(t, 0, rows);
     flush(t);
+    report_size(t);
 }
 
 int vt_cols(const vt_term *t)
