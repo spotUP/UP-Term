@@ -4295,6 +4295,53 @@ static int amiga_key(vt_u8 *o, long key, int mods)
     return 0;
 }
 
+/* modifyOtherKeys' form: CSI 27 ; 1 + mods ; code ~ */
+static int mok_report(vt_u8 *out, int mods, long code)
+{
+    char b[24];
+    int k = 0, i;
+    b[k++] = 0x1B;
+    b[k++] = '[';
+    b[k++] = '2';
+    b[k++] = '7';
+    b[k++] = ';';
+    k = fmt_uint(b, k, 1 + mods);
+    b[k++] = ';';
+    k = fmt_uint(b, k, code);
+    b[k++] = '~';
+    for (i = 0; i < k; i++)
+        out[i] = (vt_u8)b[i];
+    return k;
+}
+
+/* Return, Tab, Backspace and Escape with modifiers, as xterm sends them:
+ * modifyOtherKeys 2 reports every modified one, level 1 those Ctrl or
+ * Shift would otherwise lose (Shift+Tab is back-tab and Ctrl+Backspace BS
+ * at both levels: keys of their own); without it Alt is the ESC prefix
+ * and the rest is the plain key. 0: nothing here (the plain key). */
+static int c0_key_modified(const vt_term *t, long key, int mods, vt_u8 *out)
+{
+    int n = 0;
+    long code = key == VT_KEY_RETURN ? 13 : key == VT_KEY_TAB ? 9
+              : key == VT_KEY_BACKSPACE ? 0x7F : 0x1B;
+    int backtab = key == VT_KEY_TAB && mods == VT_MOD_SHIFT;
+    int ctrl_bs = key == VT_KEY_BACKSPACE && (mods & VT_MOD_CTRL);
+    if (!mods || t->pers == VT_AMIGA)
+        return 0;
+    if (t->pers == VT_XTERM && t->mok && !backtab &&
+        (t->mok == 2 || ((mods & (VT_MOD_CTRL | VT_MOD_SHIFT)) && !(ctrl_bs && mods == VT_MOD_CTRL))))
+        return mok_report(out, mods, code);
+    if (!(mods & VT_MOD_ALT) && !ctrl_bs)
+        return 0; /* Shift+Tab, or a modifier the plain key does not show */
+    if (mods & VT_MOD_ALT)
+        out[n++] = 0x1B; /* Meta: readline's M-DEL, M-RET, M-TAB, M-ESC */
+    if (ctrl_bs && t->pers == VT_XTERM) {
+        out[n++] = 0x08; /* xterm: Ctrl+Backspace is BS */
+        return n;
+    }
+    return n + vt_encode_key(t, key, mods & ~(VT_MOD_ALT | VT_MOD_CTRL), out + n);
+}
+
 int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
 {
     int n = 0;
@@ -4308,22 +4355,8 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
             (t->mok == 2 ||
              ((mods & VT_MOD_CTRL) && ((mods & VT_MOD_SHIFT) ||
                                        !((c >= 'a' && c <= 'z') || (c >= '@' && c <= '_') ||
-                                         c == ' ' || c == '?'))))) {
-            char b[24];
-            int k = 0, i;
-            b[k++] = 0x1B;
-            b[k++] = '[';
-            b[k++] = '2';
-            b[k++] = '7';
-            b[k++] = ';';
-            k = fmt_uint(b, k, 1 + mods);
-            b[k++] = ';';
-            k = fmt_uint(b, k, c);
-            b[k++] = '~';
-            for (i = 0; i < k; i++)
-                out[i] = (vt_u8)b[i];
-            return k;
-        }
+                                         c == ' ' || c == '?')))))
+            return mok_report(out, mods, c);
         if (mods & VT_MOD_CTRL) {
             if (c >= 'a' && c <= 'z')
                 c -= 0x60;
@@ -4352,6 +4385,9 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
         return n;
     }
 
+    if ((key == VT_KEY_RETURN || key == VT_KEY_TAB || key == VT_KEY_BACKSPACE ||
+         key == VT_KEY_ESCAPE) && (n = c0_key_modified(t, key, mods, out)) != 0)
+        return n;
     switch (key) {
     case VT_KEY_RETURN:
         out[n++] = '\r';
