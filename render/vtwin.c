@@ -81,21 +81,9 @@ void vtwin_show_title(vtwin *w)
 static void cb_title(void *u, const char *s)
 {
     vtwin *w = (vtwin *)u;
-    int i;
-    /* the title arrives as UTF-8; Intuition shows Latin-1 */
-    for (i = 0; *s && i < (int)sizeof(w->title) - 1; s++) {
-        unsigned char b = (unsigned char)*s;
-        if (b < 0x80) {
-            w->title[i++] = (char)b;
-        } else if ((b & 0xE0) == 0xC0 && s[1]) {
-            unsigned cp = ((b & 0x1F) << 6) | (s[1] & 0x3F);
-            w->title[i++] = (char)(cp < 0x100 ? cp : '?');
-            s++;
-        } else if ((b & 0xC0) != 0x80) {
-            w->title[i++] = '?';
-        }
-    }
-    w->title[i] = 0;
+    /* the title arrives as UTF-8; Intuition shows Latin-1 (Claude Code's
+     * spinner star becomes '*', not '?') */
+    vt_latin1_text(s, w->title, (int)sizeof(w->title));
     if (w->win && !w->r.off)
         vtwin_show_title(w);
     if (w->host->titled)
@@ -932,6 +920,17 @@ static void paste(vtwin *w)
         w->host->input(w->user, out, k);
     }
     FreeVec(text);
+}
+
+void vtwin_focus(vtwin *w, int in)
+{
+    vt_u8 out[8];
+    int k;
+    if (!w->t || !w->host->raw(w->user))
+        return; /* a cooked line would get the bytes as typing */
+    k = vt_encode_focus(w->t, in, out);
+    if (k)
+        w->host->input(w->user, out, k);
 }
 
 /* the window's menu (the owner's): the same copy and paste as the keys */
