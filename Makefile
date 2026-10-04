@@ -14,7 +14,7 @@ PREFS_CORE := prefs/prefs_core.c
 ICONSPEC := install/iconspec.c
 ZMODEM  := zm/zmodem.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
-           tests/test_amiga.c tests/test_reflow.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
+           tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c
 

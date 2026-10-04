@@ -560,7 +560,7 @@ static void device_reports(void)
     CHECK_STR(h_reply, "\033[0n");
     h_reply_clear();
     h_put(t, "\033[c");
-    CHECK_STR(h_reply, "\033[?62;22c");
+    CHECK_STR(h_reply, "\033[?62;4;22c"); /* 4: sixel */
     h_reply_clear();
     h_put(t, "\033[>c");
     CHECK_STR(h_reply, "\033[>1;10;0c");
