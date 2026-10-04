@@ -569,6 +569,25 @@ static void cells_blank(const vt_term *t, vt_cell *c, int n)
 }
 
 static int vacated_default_at(const vt_term *t);
+
+#ifdef VT_CHECK_USED
+/* Host tests only: the line's cells from `used` to n are the default
+ * blank, and on a chonly line the cells before differ from it in a Latin-1
+ * ch alone -- what a clear that touches less relies on. Aborts on a cell
+ * changed without mark(). */
+static void check_used(const vt_term *t, const vt_line *l, int n)
+{
+    int i;
+    vt_cell b;
+    blank_cell(t, &b);
+    for (i = 0; i < n; i++)
+        if ((i >= l->used && l->c[i].ch != b.ch) || (i < l->used && l->chonly && l->c[i].ch > 0xFF) ||
+            ((i >= l->used || l->chonly) &&
+             (l->c[i].fg != b.fg || l->c[i].bg != b.bg || l->c[i].attr != b.attr || l->c[i].width != b.width ||
+              l->c[i].deco != b.deco || l->c[i].ext != b.ext || l->c[i].pad != b.pad)))
+            abort();
+}
+#endif
 /* the amiga dialect's answer (always) in place, the rest a call */
 #define vacated_default(t) ((t)->pers == VT_AMIGA || vacated_default_at(t))
 
@@ -589,15 +608,7 @@ static void line_clear(vt_term *t, vt_line *l, int n)
          * one: only the cells written since need it (none after a flood of
          * newlines, S1), and of plain text only the characters (ASM1) */
 #ifdef VT_CHECK_USED
-        int i;
-        vt_cell b;
-        blank_cell(t, &b);
-        for (i = 0; i < n; i++)
-            if ((i >= l->used && l->c[i].ch != b.ch) || (i < l->used && l->chonly && l->c[i].ch > 0xFF) ||
-                ((i >= l->used || l->chonly) &&
-                 (l->c[i].fg != b.fg || l->c[i].bg != b.bg || l->c[i].attr != b.attr || l->c[i].width != b.width ||
-                  l->c[i].deco != b.deco || l->c[i].ext != b.ext || l->c[i].pad != b.pad)))
-                abort(); /* a cell changed without mark(): host tests only */
+        check_used(t, l, n);
 #endif
         if (l->chonly) {
 #ifdef VT_ASM
@@ -1109,6 +1120,10 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
          * drawing (ASM1: a repaint's CSI K blanked and drew 80 cells
          * where 50 had text). The row is unused again from x0. */
         int u = l->used < t->cols ? l->used : t->cols;
+#ifdef VT_CHECK_USED
+        if (l->n == t->cols)
+            check_used(t, l, t->cols);
+#endif
         l->wrapped = 0;
         if (u > x0) {
             if (l->chonly) {
