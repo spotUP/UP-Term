@@ -34,6 +34,12 @@ $(BUILD)/vtdump: $(ENGINE) engine/vtengine.h engine/vtwidth.h tests/dump_main.c
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) tests/dump_main.c
 
+# The engine as a live terminal that answers a program's queries
+# (tools/capture_claude.py).
+$(BUILD)/vtreply: $(ENGINE) engine/vtengine.h engine/vtwidth.h tools/vtreply.c
+	@mkdir -p $(BUILD)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) tools/vtreply.c
+
 # libvterm (neovim's terminal) as the reference, built from source into build/.
 LIBVTERM := $(BUILD)/third_party/libvterm
 $(LIBVTERM)/src/vterm.c:

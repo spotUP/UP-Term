@@ -1039,8 +1039,52 @@ static void synchronized_output_is_a_mode(void)
     vt_free(t);
 }
 
+/* Ledger A1.3: Claude Code's screen, as it drew it in a pty with UP-Term's
+ * engine answering its queries (tools/capture_claude.py). Every sequence it
+ * sends is acted on except the two it sends to find out what the terminal
+ * is not: the kitty keyboard query (CSI ? u; no answer, so it keeps the
+ * legacy keys) and the kitty graphics probe (an APC string, swallowed).
+ * Its answer and its prompt land where libvterm puts them (make test-ref). */
+static void claude_code_session_needs_only_what_we_have(void)
+{
+    static vt_u8 buf[65536];
+    FILE *f = fopen("tests/streams/claude-session.80x24.bin", "rb");
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    const char *kinds[16];
+    long counts[16], n;
+    int i, answer = -1, prompt = -1;
+    CHECK(f != 0);
+    if (!f) {
+        vt_free(t);
+        return;
+    }
+    n = (long)fread(buf, 1, sizeof(buf), f);
+    fclose(f);
+    CHECK(n > 4000 && n < (long)sizeof(buf));
+    h_reply_clear();
+    vt_write(t, buf, n);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 2);
+    for (i = 0; i < 16 && kinds[i]; i++)
+        CHECK(!strcmp(kinds[i], "C ?u") || !strcmp(kinds[i], "X 0"));
+    for (i = 0; i < 24; i++) {
+        const char *r = h_row(t, i);
+        if (!strcmp(r, "\xe2\x8f\xba hello amiga"))
+            answer = i;
+        if (!strncmp(r, "\xe2\x9d\xaf Reply with the two words", 28))
+            prompt = i;
+    }
+    CHECK(prompt >= 0);
+    CHECK(answer > prompt);
+    CHECK(!(vt_modes(t) & VT_MODE_SYNC));  /* every frame it began, it ended */
+    CHECK(vt_modes(t) & VT_MODE_BRACKET_PASTE);
+    CHECK(vt_modes(t) & VT_MODE_FOCUS);
+    CHECK(strstr(h_reply, "\033[?2026;2$y") != 0); /* DECRQM: synchronized output is known */
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    claude_code_session_needs_only_what_we_have();
     synchronized_output_is_a_mode();
     a_sequence_cut_by_a_write_means_the_same();
     a_row_counts_the_cells_in_use();
