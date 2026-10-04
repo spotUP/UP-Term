@@ -33,6 +33,7 @@ struct vo_msg {
     WORD cw, ch, base;   /* OPEN, CELL */
     ULONG cp;            /* GLYPH */
     int cells;
+    int mark;            /* GLYPH: a combining mark, placed over the cells */
     UBYTE *mask;         /* GLYPH: the caller's cleared buffer, ch rows of bpr */
     WORD bpr;
     int ok;              /* the answer: 1 done / the glyph is there */
@@ -79,15 +80,18 @@ static ULONG set1(struct vo_engine *e, ULONG tag, ULONG data)
 }
 
 /* cp's glyph into mask (cleared, ch rows of bpr bytes, w pixels used): the
- * glyph's current point on the left edge and the cell's baseline. 0 when
- * the engine has none or it is blank. */
-static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w)
+ * glyph's current point ox pixels from the left edge (0, or the cell's
+ * width for a mark that draws left of its point) and on the cell's
+ * baseline. 0 when the engine has none or it is blank. Beyond the BMP the
+ * 32-bit tag (diskfonttag.h: engines without it answer an error, and the
+ * glyph is missing). */
+static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox)
 {
     struct Library *BulletBase = e->BulletBase;
     struct GlyphMap *gm = 0;
     struct TagItem t[2];
     WORD x, y, any = 0;
-    if (set1(e, OT_GlyphCode, cp) != OTERR_Success)
+    if (set1(e, cp > 0xFFFF ? OT_GlyphCode_32 : OT_GlyphCode, cp) != OTERR_Success)
         return 0;
     t[0].ti_Tag = OT_GlyphMap;
     t[0].ti_Data = (ULONG)&gm;
@@ -100,7 +104,7 @@ static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w)
         if (dy < 0 || dy >= e->ch)
             continue;
         for (x = 0; x < (WORD)gm->glm_BlackWidth; x++) {
-            WORD sx = (WORD)(gm->glm_BlackLeft + x), dx = (WORD)(sx - gm->glm_X0);
+            WORD sx = (WORD)(gm->glm_BlackLeft + x), dx = (WORD)(sx - gm->glm_X0 + ox);
             if (dx < 0 || dx >= w || !(src[sx >> 3] & (0x80 >> (sx & 7))))
                 continue;
             mask[(LONG)dy * bpr + (dx >> 3)] |= (UBYTE)(0x80 >> (dx & 7));
@@ -150,7 +154,7 @@ static void calibrate(struct vo_engine *e)
     SetInfoA(e->ge, t);
     e->notdef_bpr = (WORD)(((e->cw + 15) >> 4) << 1);
     memset(e->notdef, 0, sizeof(e->notdef));
-    e->have_notdef = render(e, 0x0001, e->notdef, e->notdef_bpr, e->cw);
+    e->have_notdef = render(e, 0x0001, e->notdef, e->notdef_bpr, e->cw, 0);
 }
 
 /* the .otag read, checked and made a tag list; the engine its OT_Engine
@@ -279,10 +283,16 @@ static void worker(void)
             calibrate(&e);
             m->ok = 1;
             break;
-        case VO_GLYPH:
-            m->ok = render(&e, m->cp, m->mask, m->bpr, (WORD)(m->cells * e.cw)) &&
-                    !(m->cells == 1 && same_as_notdef(&e, m->mask, m->bpr));
+        case VO_GLYPH: {
+            WORD w = (WORD)(m->cells * e.cw);
+            /* a mark: drawn left of its point over the cell, as fonts make
+             * them; one that draws nothing there is a spacing mark */
+            m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w);
+            if (!m->ok)
+                m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0) &&
+                        !(m->cells == 1 && same_as_notdef(&e, m->mask, m->bpr));
             break;
+        }
         case VO_CLOSE:
             engine_close(&e);
             Forbid();
@@ -380,14 +390,16 @@ void vo_set_cell(vo_font *f, WORD cw, WORD ch, WORD base)
     }
 }
 
-const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
+/* cells: 1 or 2, plus 4 for a mark (a slot of its own) */
+static const UBYTE *glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
 {
     ULONG h;
     struct vo_slot *s;
     WORD b;
-    if (!f || f->ch < 1 || cp > 0xFFFF) /* 16-bit glyph codes: every engine has them */
+    int mark = cells & 4;
+    if (!f || f->ch < 1)
         return 0;
-    cells = cells == 2 ? 2 : 1;
+    cells = (cells & 3) == 2 ? 2 : 1;
     b = (WORD)(((cells * f->cw + 15) >> 4) << 1);
     *bpr = b;
     h = ((cp * 2654435761UL) >> 16) & (VO_SLOTS - 1);
@@ -395,16 +407,16 @@ const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
         s = &f->slot[h];
         if (s->state == SLOT_EMPTY)
             break;
-        if (s->cp == cp && s->cells == cells)
+        if (s->cp == cp && s->cells == (cells | mark))
             return s->state == SLOT_HAVE ? s->mask : 0;
         h = (h + 1) & (VO_SLOTS - 1);
     }
     if (f->used >= VO_FILL) {
         clear_cache(f);
-        return vo_glyph(f, cp, cells, bpr);
+        return glyph(f, cp, cells | mark, bpr);
     }
     s->cp = cp;
-    s->cells = (UBYTE)cells;
+    s->cells = (UBYTE)(cells | mark);
     s->state = SLOT_MISSING;
     f->used++;
     s->mask = (UBYTE *)AllocVec((ULONG)b * f->ch, MEMF_CHIP | MEMF_CLEAR);
@@ -413,6 +425,7 @@ const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
     f->m.op = VO_GLYPH;
     f->m.cp = cp;
     f->m.cells = cells;
+    f->m.mark = mark != 0;
     f->m.mask = s->mask;
     f->m.bpr = b;
     ask(f);
@@ -423,6 +436,16 @@ const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
     }
     s->state = SLOT_HAVE;
     return s->mask;
+}
+
+const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
+{
+    return glyph(f, cp, cells == 2 ? 2 : 1, bpr);
+}
+
+const UBYTE *vo_mark(vo_font *f, ULONG cp, int cells, WORD *bpr)
+{
+    return glyph(f, cp, (cells == 2 ? 2 : 1) | 4, bpr);
 }
 
 const char *vo_name(const vo_font *f)

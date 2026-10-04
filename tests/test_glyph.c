@@ -98,8 +98,57 @@ static void only_stand_ins_and_the_replacement_are_not_native(void)
     CHECK(vt_glyph_native(0xE5, VT_ENC_CP437));     /* CP437 has a-ring */
 }
 
+/* An emoji or a plane-15 icon no bitmap font has: a replacement box (the
+ * renderer sizes it to the cell's width), not a '?'; and not native, so an
+ * outline font is asked first. */
+static void beyond_the_bmp_is_a_replacement_box(void)
+{
+    vt_glyph g = vt_map_glyph(0x1F600, VT_ENC_LATIN1);
+    CHECK_INT(g.kind, VT_GLYPH_MISSING);
+    CHECK(!vt_glyph_native(0x1F600, VT_ENC_LATIN1));
+    g = vt_map_glyph(0xF0001, VT_ENC_CP437);
+    CHECK_INT(g.kind, VT_GLYPH_MISSING);
+    g = vt_map_glyph(0x4E2D, VT_ENC_LATIN1); /* the BMP keeps its '?' */
+    CHECK_INT(g.kind, VT_GLYPH_FONT);
+    CHECK_INT(g.code, '?');
+}
+
+/* A letter and its combining marks draw as the precomposed letter where
+ * one exists (the Latin-1 font has e acute, not U+0301); marks with no
+ * composition stay to be drawn over; selectors and joiners draw nothing. */
+static void combining_marks_compose_for_the_font(void)
+{
+    vt_u32 cp[6];
+    cp[0] = 'e';
+    cp[1] = 0x301;
+    CHECK_INT(vt_compose_cell(cp, 2), 1);
+    CHECK_INT(cp[0], 0xE9);
+    CHECK_INT(vt_map_glyph(cp[0], VT_ENC_LATIN1).code, 0xE9);
+    cp[0] = 'e'; /* Vietnamese: e, dot below, circumflex */
+    cp[1] = 0x323;
+    cp[2] = 0x302;
+    CHECK_INT(vt_compose_cell(cp, 3), 1);
+    CHECK_INT(cp[0], 0x1EC7);
+    cp[0] = 'x';
+    cp[1] = 0x301;
+    cp[2] = 0xFE0F;
+    CHECK_INT(vt_compose_cell(cp, 3), 2);
+    CHECK_INT(cp[0], 'x');
+    CHECK_INT(cp[1], 0x301);
+    cp[0] = 0x2764;
+    cp[1] = 0xFE0F;
+    cp[2] = 0x200D;
+    CHECK_INT(vt_compose_cell(cp, 3), 1);
+    CHECK_INT(cp[0], 0x2764);
+    cp[0] = 0x1F600;
+    cp[1] = 0x301;
+    CHECK_INT(vt_compose_cell(cp, 2), 2);
+}
+
 void suite_glyph(void)
 {
+    beyond_the_bmp_is_a_replacement_box();
+    combining_marks_compose_for_the_font();
     only_stand_ins_and_the_replacement_are_not_native();
     latin1_font_draws_latin1_itself();
     box_drawing_becomes_lines();
