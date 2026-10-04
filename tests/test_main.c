@@ -33,6 +33,7 @@ void suite_sbar(void);
 void suite_claude_http(void);
 void suite_claude_json(void);
 void suite_claude_stream(void);
+void suite_claude_tools(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -67,6 +68,7 @@ static const h_suite suites[] = {
     { "claude_http", suite_claude_http },
     { "claude_json", suite_claude_json },
     { "claude_stream", suite_claude_stream },
+    { "claude_tools", suite_claude_tools },
     { 0, 0 }
 };
 
