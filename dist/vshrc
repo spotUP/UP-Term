@@ -24,6 +24,11 @@ ssh() {
 scp() {
     bebboscp "$@"
 }
+# telnet: C:uptelnet (no ixemul), which tells the far end TERM=xterm-256color
+# and the window's size, and follows a resize. Ctrl-] ends it.
+telnet() {
+    uptelnet "$@"
+}
 
 # The Unix commands are GNU coreutils 5.2.1 in SYS:UP-Term/bin (see
 # Install): ls, cp, mv, rm, mkdir, cat, sort, head, tail, wc and the rest,
