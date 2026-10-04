@@ -56,6 +56,12 @@ cl_mark conv_mark(const cl_conv *c);
 void conv_rollback(cl_conv *c, cl_mark m);
 /* the request body */
 int conv_body(const cl_conv *c, const cl_opts *o, jw *out);
+/* what a model takes in the body: CAP_EFFORT output_config.effort,
+ * CAP_ADAPTIVE thinking {type adaptive, display summarized}; a field a
+ * model rejects is left out for it */
+#define CAP_EFFORT   1
+#define CAP_ADAPTIVE 2
+int conv_caps(const char *model);
 /* the anthropic-beta header for a model ("" none): server-side
  * fallbacks where the model takes them */
 const char *conv_beta(const char *model);
