@@ -5,15 +5,6 @@
 #include <string.h>
 #include "../engine/vtengine.h"
 
-static int utf8(char *o, unsigned c)
-{
-    if (c < 0x80) { o[0] = (char)c; return 1; }
-    if (c < 0x800) { o[0] = (char)(0xC0 | (c >> 6)); o[1] = (char)(0x80 | (c & 0x3F)); return 2; }
-    o[0] = (char)(0xE0 | (c >> 12)); o[1] = (char)(0x80 | ((c >> 6) & 0x3F));
-    o[2] = (char)(0x80 | (c & 0x3F));
-    return 3;
-}
-
 int main(int argc, char **argv)
 {
     static vt_u8 buf[65536];
@@ -37,7 +28,7 @@ int main(int argc, char **argv)
         const vt_cell *c = vt_row(t, y, &nc);
         for (x = 0; x < nc; x++)
             if (c[x].width)
-                len += utf8(line + len, c[x].ch);
+                len += vt_cell_utf8(t, &c[x], line + len);
         line[len] = 0;
         printf("%s\n", line);
     }
@@ -49,7 +40,7 @@ int main(int argc, char **argv)
             printf("%s%lu,%lu,%u,%u", x ? " " : "", (unsigned long)c[x].fg, (unsigned long)c[x].bg,
                    /* inverse as shown: the cell's XOR the screen's */
                    c[x].attr ^ ((vt_modes(t) & VT_MODE_SCREEN_REVERSE) ? VT_ATTR_INVERSE : 0),
-                   c[x].ch);
+                   (unsigned)vt_cell_char(t, &c[x]));
         printf("\n");
     }
     if (argc > 4 && !strcmp(argv[4], "sizes")) {

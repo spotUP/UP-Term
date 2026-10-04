@@ -255,6 +255,18 @@ static void ctrl_l_clears_and_keeps_prompt_and_line(void)
     vt_free(t);
 }
 
+/* A prompt with wide characters and emoji (a zsh/starship prompt, an
+ * icon from a Nerd Font) comes back as it was: no blank for the right
+ * half of a wide character, the emoji whole. */
+static void ctrl_l_keeps_a_prompt_beyond_the_bmp(void)
+{
+    vt_term *t = start(40, 5, "junk\r\n\xe4\xb8\xad\xf0\x9f\x98\x80\xf3\xb0\x80\x81> ");
+    type("ls");
+    ctrl(0x0C);
+    CHECK_STR(h_screen(t), "\xe4\xb8\xad\xf0\x9f\x98\x80\xf3\xb0\x80\x81> ls");
+    vt_free(t);
+}
+
 static void command_word_gets_colour_until_it_changes(void)
 {
     vt_term *t = start(40, 4, "> ");
@@ -380,6 +392,7 @@ void suite_lineedit(void)
     ctrl_r_cancel_restores();
     word_motions_and_undo();
     ctrl_l_clears_and_keeps_prompt_and_line();
+    ctrl_l_keeps_a_prompt_beyond_the_bmp();
     editing_inside_the_line();
     kill_keys();
     a_long_line_wraps_and_edits_across_rows();

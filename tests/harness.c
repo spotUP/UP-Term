@@ -73,15 +73,6 @@ void h_put(vt_term *t, const char *s)
     vt_write(t, (const vt_u8 *)s, (long)strlen(s));
 }
 
-static int utf8(char *o, unsigned c)
-{
-    if (c < 0x80) { o[0] = (char)c; return 1; }
-    if (c < 0x800) { o[0] = (char)(0xC0 | (c >> 6)); o[1] = (char)(0x80 | (c & 0x3F)); return 2; }
-    o[0] = (char)(0xE0 | (c >> 12)); o[1] = (char)(0x80 | ((c >> 6) & 0x3F));
-    o[2] = (char)(0x80 | (c & 0x3F));
-    return 3;
-}
-
 const char *h_row(vt_term *t, int row)
 {
     static char buf[4096];
@@ -92,7 +83,7 @@ const char *h_row(vt_term *t, int row)
     for (i = 0; i < n; i++) {
         if (c[i].width == 0)
             continue;
-        len += utf8(buf + len, c[i].ch);
+        len += vt_cell_utf8(t, &c[i], buf + len);
         if (c[i].ch != ' ')
             keep = len;
     }
