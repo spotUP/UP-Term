@@ -26,6 +26,7 @@
 #include <dos/dosextens.h>
 #include <dos/rdargs.h>
 #include <dos/var.h>
+#include <dos/dostags.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "../handler/vtcon_packets.h"
@@ -172,6 +173,23 @@ static int c_size(void *u, int *cols, int *rows)
     return 0;
 }
 
+/* Ctrl+G (A4 1.12): the prompt's file in the user's editor -- ENV:EDITOR
+ * (vsh's), else Ed -- in this window, raw mode off meanwhile */
+static int c_edit(void *u, const char *path)
+{
+    char ed[200], cmd[512];
+    LONG rc;
+    (void)u;
+    if (GetVar((STRPTR)"EDITOR", (STRPTR)ed, sizeof(ed), 0) <= 0)
+        cl_copy(ed, "Ed", sizeof(ed));
+    cl_copy(cmd, ed, sizeof(cmd));
+    cl_cat(cmd, " \"", sizeof(cmd));
+    cl_cat(cmd, path, sizeof(cmd));
+    cl_cat(cmd, "\"", sizeof(cmd));
+    rc = SystemTags((STRPTR)cmd, SYS_Input, Input(), SYS_Output, Output(), SYS_UserShell, TRUE, TAG_END);
+    return rc == -1 ? -1 : 0;
+}
+
 static void say(const char *s)
 {
     Write(Output(), (APTR)s, (LONG)strlen(s));
@@ -246,6 +264,7 @@ int main(void)
         io.read = c_rd;
         io.size = c_size;
         io.raw = c_raw;
+        io.edit = c_edit;
     }
     net_amiga_init(&na, &net);
     sys_amiga_init(&sa, &sys);
@@ -261,6 +280,7 @@ int main(void)
         if (args[A_EFFORT])
             cl_copy(r->effort, (const char *)args[A_EFFORT], sizeof(r->effort));
         cl_copy(r->session, "ENVARC:Claude/session.json", sizeof(r->session));
+        cl_copy(r->ui.histfile, "ENVARC:Claude/history", sizeof(r->ui.histfile));   /* A4 1.1 */
         if (args[A_PING])
             rc = repl_ping(r) ? 10 : 0;
         else if (args[A_PROMPT])

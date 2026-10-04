@@ -35,6 +35,8 @@ typedef struct cl_stream_ui {
     void (*text)(void *u, const char *s, long n);
     /* a block starts: its type, and a tool's name ("" otherwise) */
     void (*block)(void *u, int type, const char *name);
+    /* optional (0: none): thinking text as it streams (A4 1.9) */
+    void (*thinking)(void *u, const char *s, long n);
 } cl_stream_ui;
 
 enum { ST_WAIT, ST_OPEN, ST_DONE, ST_ERROR, ST_BAD };

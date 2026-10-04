@@ -523,15 +523,35 @@ CLAUDE
   and a status line stay at the bottom (model, effort, the start
   directory, how much of the context is left, the permission mode).
     Enter               sends; a new line: Shift+Enter, \ Enter, or Ctrl+J
-    Up / Down           earlier lines; Ctrl+A/E start/end; Ctrl+K/U/W cut,
-                        Ctrl+Y puts back; a paste stays one block
+    Up / Down           earlier prompts, kept across sessions per start
+                        directory (ENVARC:Claude/history); Ctrl+R searches
+                        them all (again: older; Tab edits, Enter sends)
+    Ctrl+A/E/K/U/W/Y    start, end, cut to the end / start / white space,
+                        put back; Ctrl+_ undoes; a paste stays one block
     /                   the commands, as a menu: Up/Down, Tab completes
     Shift+Tab           the permission mode: default, accept edits (writes
                         and edits in the start directory run unasked), plan
                         (only reading tools run; Claude presents a plan)
     Esc                 stops Claude (the unfinished answer is not kept)
-    Ctrl+O              tool results in full instead of folded
+    Esc Esc             clears the box (Up brings it back); on an empty box
+                        the rewind menu: back to before an earlier prompt
+    Enter while Claude works   queues the prompt; it goes in after the tool
+                        calls, or when Claude is done; Up takes it back
+    ! command           runs it in the shell; Claude sees the output
+    # note              saves the note to a memory file (CLAUDE.md, yours
+                        or the project's: a menu asks which)
+    @path               attaches the file (Tab completes the path)
+    Ctrl+O              the whole transcript: results in full, thinking;
+                        Up/Down/PgUp/PgDn, / or Ctrl+R searches, q leaves
+    Ctrl+T              Claude's todo list under the box, on or off
+    Ctrl+G              the prompt in your editor (ENV:EDITOR, else Ed)
+    Ctrl+L              draws the screen again
     Ctrl+C              clears the line; twice on an empty line: leave
+                        (Ctrl+D twice too)
+  /theme picks the colours (dark, light, colour-blind friendly, monochrome
+  for 2- and 4-colour screens); /vim turns on vim keys in the box. When a
+  long answer ends or Claude asks for permission, the window rings and its
+  title says so.
   /compact summarises the conversation and goes on from the summary;
   /context shows how full the context is; /init writes AMIGA.md, notes on
   the start directory that every later session reads; /resume loads the

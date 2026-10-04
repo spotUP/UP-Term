@@ -43,6 +43,8 @@ static long rd(void *u, char *buf, long cap, long ms)
     const char *c;
     long n;
     (void)u;
+    if (cs.before_read)
+        cs.before_read();
     if (h_reply_len) {
         n = h_reply_len < cap ? h_reply_len : cap;
         memcpy(buf, h_reply, (size_t)n);

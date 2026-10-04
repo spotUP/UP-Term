@@ -151,8 +151,12 @@ static int block_delta(cl_stream *s, jv ev)
         free(txt);
     } else if (json_streq(t, "input_json_delta") && b->type == B_TOOL && json_get(d, "partial_json", &v))
         append_str(&b->a, v);
-    else if (json_streq(t, "thinking_delta") && b->type == B_THINKING && json_get(d, "thinking", &v))
+    else if (json_streq(t, "thinking_delta") && b->type == B_THINKING && json_get(d, "thinking", &v)) {
+        long before = b->a.n;
         append_str(&b->a, v);
+        if (s->ui.thinking && b->a.n > before)
+            s->ui.thinking(s->ui.u, b->a.p + before, b->a.n - before);
+    }
     else if (json_streq(t, "signature_delta") && b->type == B_THINKING && json_get(d, "signature", &v))
         append_str(&b->sig, v);
     /* other delta types (citations, ...) change nothing the client keeps */

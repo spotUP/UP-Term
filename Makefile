@@ -23,9 +23,11 @@ VIEW_CORE := $(VIEW_LEX) view/hl_view.c view/md.c
 VIEW_HDR  := view/hl_lex.h view/hl_style.h view/hl_view.h view/vw_text.h view/md.h
 VIEW_CLI  := view/vw_cli.c
 # the Claude client's portable core (ledger A2); net_posix is the host transport
+# A4 WP1: the input box's vim mode, history, themes, prompt prefixes, transcript viewer
+CLAUDE_INPUT := claude/vim.c claude/hist.c claude/theme.c claude/input.c claude/tview.c
 CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
                claude/path.c claude/tools.c claude/sys_posix.c claude/ui.c claude/repl.c \
-               claude/keys.c claude/edit.c claude/tui.c claude/show.c
+               claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT)
 CLAUDE_HDR := $(wildcard claude/*.h)
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
@@ -209,7 +211,7 @@ $(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $
 VTCON_NETINCLUDE ?= $(CURDIR)/vendor/ndk-3.2r4-netinclude
 CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
                    claude/path.c claude/tools.c claude/ui.c claude/repl.c claude/sys_amiga.c claude/main_amiga.c \
-                   claude/keys.c claude/edit.c claude/tui.c claude/show.c $(VIEW_MD) tty/ldisc.c
+                   claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) $(VIEW_MD) tty/ldisc.c
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
 AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK

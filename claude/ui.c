@@ -1,11 +1,17 @@
 /* ui -- see ui.h. With a screen attached (u->tui, ledger A3) each call
  * goes to it (tui.c, show.c); without one, the A2 line mode below. */
+#include <stdlib.h>
 #include <string.h>
 #include "ui.h"
 #include "tools.h"
 #include "tui.h"
 #include "show.h"
 #include "util.h"
+
+static void rewind_cb(void *u)
+{
+    ui_rewind((cl_ui *)u);
+}
 
 #define BOLD "\033[1m"
 #define DIM  "\033[2m"
@@ -192,7 +198,16 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
         opt[2] = "No, and tell Claude what to do differently (esc)";
         n = 3;
     }
+    {
+        /* the user may be elsewhere: the bell, a notice, the title */
+        char note[120];
+        cl_copy(note, "Claude needs your permission to use ", sizeof(note));
+        cl_cat(note, show_name(tool), sizeof(note));
+        tui_title(u->tui, "Claude - needs your permission");
+        tui_notify(u->tui, note);
+    }
     c = tui_menu(u->tui, tool >= 0 && tool < T_COUNT ? titles[tool] : "Tool", q, opt, n, 0, n - 1);
+    tui_title(u->tui, u->tui->busy ? "Claude - working" : "Claude");
     if (c < 0)
         return ASK_NO;
     if (c == 0)
@@ -261,4 +276,133 @@ int ui_pick(cl_ui *u, const char *title, const char *const *opt, int n, int sel)
     if (!u->tui)
         return -1;
     return tui_menu(u->tui, title, "", opt, n, sel, -1);
+}
+
+/* ---- A4 (WP1) ---- */
+
+void ui_attach(cl_ui *u, cl_sys *sys, const char *root, struct cl_conv *conv)
+{
+    cl_tui *t = u->tui;
+    const char *v;
+    u->sys = sys;
+    u->root = root;
+    u->conv = conv;
+    if (!u->rw.count)
+        input_rewind_stub(u);
+    if (!t)
+        return;
+    t->sys = sys;
+    t->project = root;
+    t->histfile = u->histfile;
+    hist_load(&t->hist, sys, u->histfile);
+    hist_fill(&t->hist, &t->ed, root ? root : "");
+    t->complete = input_complete;
+    t->cu = u;
+    t->on_rewind = rewind_cb;
+    t->ru = u;
+    v = u->setting ? u->setting(u->su, "theme") : 0;
+    if (v)
+        t->th = theme_get(v);
+    v = u->setting ? u->setting(u->su, "editorMode") : 0;
+    if (v && !strcmp(v, "vim"))
+        ed_set_vim(&t->ed, 1);
+    t->full = 1;
+    tui_frame(t);
+}
+
+void ui_thinking(cl_ui *u, const char *s, long n)
+{
+    if (u->tui)
+        show_think(u->show, s, n);
+}
+
+int ui_take_queued(cl_ui *u, jw *out)
+{
+    char *q;
+    if (!u->tui || !(q = tui_dequeue(u->tui, 1)))
+        return 0;
+    ui_user(u, q);
+    jw_rawz(out, q);
+    free(q);
+    return 1;
+}
+
+/* Esc Esc: pick a prompt of this conversation, then what goes back */
+void ui_rewind(cl_ui *u)
+{
+    char lab[9][80], q[120];
+    const char *opt[9];
+    const char *what[4];
+    int whatv[4];
+    int n, first, k, i, c, can, nw = 0;
+    if (!u->tui || !u->rw.count)
+        return;
+    n = u->rw.count(u->rw.u);
+    if (n <= 0) {
+        ui_line(u, "Nothing to rewind to yet.");
+        return;
+    }
+    first = n > 9 ? n - 9 : 0;
+    for (i = first, k = 0; i < n; i++, k++) {
+        char full[400];
+        int w = 0;
+        long l;
+        full[0] = 0;
+        u->rw.label(u->rw.u, i, full, sizeof(full));
+        /* one line: the first one, cut to the menu's room */
+        for (l = 0; full[l] && full[l] != '\n'; l++)
+            ;
+        full[l] = 0;
+        for (l = 0; full[l] && w < u->tui->cols - 14 && l < (long)sizeof(lab[k]) - 4; l++, w++)
+            lab[k][l] = full[l];
+        lab[k][l] = 0;
+        if (full[l])
+            cl_cat(lab[k], "...", sizeof(lab[k]));
+        opt[k] = lab[k];
+    }
+    c = tui_menu(u->tui, "Rewind", "Restore the conversation and/or the code to the point before...", opt, k,
+                 k - 1, -1);
+    if (c < 0)
+        return;
+    i = first + c;
+    can = u->rw.can ? u->rw.can(u->rw.u, i) : RW_CONV;
+    if ((can & RW_CODE) && (can & RW_CONV)) {
+        what[nw] = "Restore code and conversation";
+        whatv[nw++] = RW_CODE | RW_CONV;
+    }
+    if (can & RW_CONV) {
+        what[nw] = "Restore conversation";
+        whatv[nw++] = RW_CONV;
+    }
+    if (can & RW_CODE) {
+        what[nw] = "Restore code";
+        whatv[nw++] = RW_CODE;
+    }
+    what[nw] = "Never mind";
+    whatv[nw++] = 0;
+    cl_copy(q, "Back to before: ", sizeof(q));
+    cl_cat(q, lab[c], sizeof(q));
+    c = tui_menu(u->tui, "Rewind", q, what, nw, 0, nw - 1);
+    if (c < 0 || !whatv[c])
+        return;
+    {
+        char *full = (char *)malloc(8192);
+        if (!full)
+            return;
+        full[0] = 0;
+        u->rw.label(u->rw.u, i, full, 8192);
+        if (u->rw.restore(u->rw.u, i, whatv[c])) {
+            free(full);
+            ui_line(u, "Could not rewind.");
+            return;
+        }
+        if (whatv[c] & RW_CONV) {
+            /* the prompt comes back into the box, to send again or change */
+            tui_set_text(u->tui, full);
+            ui_line(u, (whatv[c] & RW_CODE) ? "Rewound the conversation and the code." : "Rewound the conversation.");
+        } else {
+            ui_line(u, "Rewound the code.");
+        }
+        free(full);
+    }
 }
