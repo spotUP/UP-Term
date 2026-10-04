@@ -95,9 +95,11 @@ int prefs_load(upconf *c, const char *buf, long got, long cap);
 /* 1 when a load result lets the editor write the file back. */
 int prefs_load_writable(int load_result);
 
-/* Stage a save: *work becomes *cur with the named profile replaced by f, and
- * is written into buf (cap bytes, NUL-terminated on success). The length,
- * or PREFS_STAGE_FULL (the table has no room: a key or the profile would be
+/* Stage a save: *work becomes *cur with the editor's keys of the named
+ * profile set from f, each in place (an empty string field deletes its key);
+ * every other key of the profile, the other profiles and the comments stay
+ * as read. *work is written into buf (cap bytes, NUL-terminated on
+ * success). The length, or PREFS_STAGE_FULL (the table has no room: a key or the profile would be
  * dropped) or PREFS_STAGE_SIZE (the file would be over cap). *cur is never
  * touched; the caller copies *work over it once the file is in place.
  * f must have passed prefs_validate. */

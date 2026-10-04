@@ -190,6 +190,17 @@ int prefs_load_writable(int r)
     return r == PREFS_LOAD_OK || r == PREFS_LOAD_NONE;
 }
 
+/* One of the editor's keys, in place: a value replaces the key's (a new
+ * key goes after the profile's last), an empty one deletes it so the
+ * handler's built-in stands. */
+static void pc_put(upconf *w, const char *p, const char *key, const char *v)
+{
+    if (v[0])
+        upconf_set(w, p, key, v);
+    else
+        upconf_del(w, p, key);
+}
+
 long prefs_stage(upconf *w, const upconf *cur, const char *p,
                  const prefs_fields *f, char *buf, long cap)
 {
@@ -199,34 +210,24 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     int i;
     memcpy(w, cur, sizeof(*w));
     w->overflow = 0;
-    upconf_rmprof(w, p); /* the profile's keys entered fresh, in a fixed order */
-    if (f->font[0])
-        upconf_set(w, p, "font", f->font);
-    if (f->fallback[0])
-        upconf_set(w, p, "font-fallback", f->fallback);
-    if (f->screen[0])
-        upconf_set(w, p, "screen", f->screen);
-    if (f->screenmode[0])
-        upconf_set(w, p, "screen-mode", f->screenmode);
-    if (f->screendepth[0])
-        upconf_set(w, p, "screen-depth", f->screendepth);
-    if (f->sb[0])
-        upconf_set(w, p, "scrollback", f->sb);
-    if (f->curcol[0])
-        upconf_set(w, p, "cursor-color", f->curcol);
-    if (f->fg[0])
-        upconf_set(w, p, "fg", f->fg);
-    if (f->bg[0])
-        upconf_set(w, p, "bg", f->bg);
+    /* Only the editor's own keys change, each where it stands: whatever
+     * else the profile holds -- keys only the handler reads, keys typed by
+     * hand, comments -- is written back as it was read. (The profile was
+     * removed and refilled here, and all of that went with every save.) */
+    pc_put(w, p, "font", f->font);
+    pc_put(w, p, "font-fallback", f->fallback);
+    pc_put(w, p, "screen", f->screen);
+    pc_put(w, p, "screen-mode", f->screenmode);
+    pc_put(w, p, "screen-depth", f->screendepth);
+    pc_put(w, p, "scrollback", f->sb);
+    pc_put(w, p, "cursor-color", f->curcol);
+    pc_put(w, p, "fg", f->fg);
+    pc_put(w, p, "bg", f->bg);
     /* blank keeps the swap for that half: the key is not written at all */
-    if (f->selfg[0])
-        upconf_set(w, p, "selection-fg", f->selfg);
-    if (f->selbg[0])
-        upconf_set(w, p, "selection-bg", f->selbg);
-    if (f->clipboard[0])
-        upconf_set(w, p, "program-clipboard", f->clipboard);
-    if (f->linkopen[0])
-        upconf_set(w, p, "link-open", f->linkopen);
+    pc_put(w, p, "selection-fg", f->selfg);
+    pc_put(w, p, "selection-bg", f->selbg);
+    pc_put(w, p, "program-clipboard", f->clipboard);
+    pc_put(w, p, "link-open", f->linkopen);
     upconf_set(w, p, "cursor", f->cursor == PREFS_CURSOR_UNDERLINE ? "underline"
                                : f->cursor == PREFS_CURSOR_BAR ? "bar" : "block");
     upconf_set(w, p, "cursor-blink", f->blink ? "on" : "off");
@@ -238,8 +239,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     upconf_set(w, p, "wheel", f->wheel ? "scroll" : "ignore");
     upconf_set(w, p, "reflow", f->reflow ? "on" : "off");
     upconf_set(w, p, "completion", f->completion == PREFS_COMPLETE_KINGCON ? "kingcon" : "unix");
-    if (f->kcmode[0])
-        upconf_set(w, p, "kingcon-mode", f->kcmode);
+    pc_put(w, p, "kingcon-mode", f->kcmode);
     upconf_set(w, p, "kingcon-info", f->kcinfo ? "show" : "hide");
     upconf_set(w, p, "kingcon-cache", f->kccache ? "on" : "off");
     for (i = 0; i < 16; i++) {
@@ -253,8 +253,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     if (len < 0)
         return PREFS_STAGE_FULL;
     palstr[len] = 0;
-    if (palstr[0])
-        upconf_set(w, p, "palette", palstr);
+    pc_put(w, p, "palette", palstr);
     if (w->overflow)
         return PREFS_STAGE_FULL; /* a key or the profile itself had no room */
     len = upconf_save(w, buf, cap - 1);

@@ -335,8 +335,10 @@ static void commit(struct app *a, int keep)
     }
     len = prefs_stage(&a->work, &a->conf, name, &a->f, a->buf, CONF_MAX + 1);
     if (len == PREFS_STAGE_FULL) {
-        puts_(msg, puts_(msg, 0, "No room: at most ", UC_MAX_PROFILES),
-              " profiles.", -1);
+        /* a profile more than the table holds, or a key more than a
+         * profile does (the editor's keys beside the file's own) */
+        puts_(msg, puts_(msg, puts_(msg, 0, "No room: at most ", UC_MAX_PROFILES),
+                         " profiles of ", UC_MAX_KEYS), " settings.", -1);
         set_status(a, msg);
         return;
     }
