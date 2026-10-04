@@ -76,6 +76,11 @@ void le_set_command(le_line *le, const unsigned char *word, int found);
 /* A completion menu: the names (NUL-separated) in columns under the line,
  * then prompt and line again below them. */
 void le_show_list(le_line *le, const char *names, int len);
+/* KingCON's printed list (FNCMODE L, Ctrl+D): 19-character columns,
+ * (width + 1) / 19 of them where width is the last column's index (at
+ * least one), a name over 18 characters (its suffix counted) cut to 15
+ * and "..." (research/2026-10-02_kingcon-completion.md). */
+void le_kc_show_list(le_line *le, const char *names, int len);
 /* Replace the word ending at the cursor (from `from`) with `s`. */
 void le_replace_word(le_line *le, int from, const unsigned char *s, int n);
 

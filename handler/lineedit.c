@@ -718,32 +718,33 @@ int le_kc_fncmode(const char *letters)
     return m;
 }
 
-void le_show_list(le_line *le, const char *names, int len)
+/* The names under the line in `per` columns `colw` wide, a name longer
+ * than `cut` shown as its first cut - 3 bytes and "..." (cut 0: whole);
+ * then the prompt and the line again below them. */
+static void show_columns(le_line *le, const char *names, int len, int colw, int per, int cut)
 {
-    int widest = 0, k = 0, col, per, cols = vt_cols(le->t), i;
+    int k, col, i;
     unsigned char prompt[256];
     int pl = prompt_from_screen(le, prompt, sizeof(prompt));
-    while (k < len) {
-        int n = (int)strlen(names + k);
-        if (n > widest)
-            widest = n;
-        k += n + 1;
-    }
-    widest += 2;
-    per = cols / widest;
     if (per < 1)
         per = 1;
     le->pos = le->len;
     go(le, le->len);
     out(le, "\r\n", 2);
     for (k = 0, col = 0; k < len; col++) {
-        int n = (int)strlen(names + k);
+        int n = (int)strlen(names + k), shown = n;
         if (col == per) {
             out(le, "\r\n", 2);
             col = 0;
         }
-        out(le, names + k, n);
-        for (i = n; i < widest && col < per - 1; i++)
+        if (cut && n > cut) {
+            out(le, names + k, cut - 3);
+            out(le, "...", 3);
+            shown = cut;
+        } else {
+            out(le, names + k, n);
+        }
+        for (i = shown; i < colw && col < per - 1; i++)
             out(le, " ", 1);
         k += n + 1;
     }
@@ -753,4 +754,23 @@ void le_show_list(le_line *le, const char *names, int len)
     start(le);
     le->shown = 0;
     redraw_from(le, 0);
+}
+
+void le_show_list(le_line *le, const char *names, int len)
+{
+    int widest = 0, k = 0;
+    while (k < len) {
+        int n = (int)strlen(names + k);
+        if (n > widest)
+            widest = n;
+        k += n + 1;
+    }
+    widest += 2;
+    show_columns(le, names, len, widest, vt_cols(le->t) / widest, 0);
+}
+
+void le_kc_show_list(le_line *le, const char *names, int len)
+{
+    /* KingCON: 19 a column, (XMax + 1) / 19 of them, 15 + "..." past 18 */
+    show_columns(le, names, len, 19, vt_cols(le->t) / 19, 18);
 }
