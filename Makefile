@@ -355,8 +355,6 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	  $(BUILD)/amiga/devobj/upc_core.o $(BUILD)/amiga/devobj/vtwin.o $(BUILD)/amiga/devobj/amiga_render.o \
 	  $(BUILD)/amiga/devobj/glyphmap.o $(BUILD)/amiga/devobj/outline.o $(BUILD)/amiga/devobj/otag.o \
 	  $(BUILD)/amiga/devobj/fontpair.o $(BUILD)/amiga/devobj/painter.o \
-	  $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/vtengine.o \
-	  $(BUILD)/amiga/devobj/fontpair.o \
 	  $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/clipfmt.o $(BUILD)/amiga/devobj/vtengine.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
