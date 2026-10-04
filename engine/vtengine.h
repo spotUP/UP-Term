@@ -308,6 +308,28 @@ enum vt_key {
 #define VT_MOD_CTRL  4
 /* Writes at most 32 bytes to out; returns the count (0: nothing to send). */
 int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
+/* The kitty keyboard protocol (CSI > u and friends): the flags the program
+ * set for the screen in use, 0 when it did not (keys are xterm's). 1
+ * disambiguate, 2 report repeats and releases, 4 alternate keys, 8 every
+ * key as an escape code, 16 the text with it. */
+#define VT_KITTY_DISAMBIGUATE 1
+#define VT_KITTY_EVENTS       2
+#define VT_KITTY_ALTERNATES   4
+#define VT_KITTY_ALL_KEYS     8
+#define VT_KITTY_TEXT         16
+int      vt_kitty_flags(const vt_term *t);
+#define VT_KEY_EV_PRESS   1
+#define VT_KEY_EV_REPEAT  2
+#define VT_KEY_EV_RELEASE 3
+/* A key as the kitty protocol has it, with what only the host knows: the
+ * event (VT_KEY_EV_*), for a character key `key` the key's own unshifted
+ * character, `shifted` what it types with Shift and `base` the key on a US
+ * layout (0: unknown or the same), `text` what the key types (0: nothing).
+ * With no flags set it is vt_encode_key (a release sends nothing). At most
+ * 64 bytes. vt_encode_key itself speaks the protocol too, for a press,
+ * from the character the keymap made. */
+int      vt_encode_key_kitty(const vt_term *t, long key, int mods, int event, long shifted, long base,
+                             long text, vt_u8 *out);
 /* Mouse reports, when the host asked for them (?9, ?1000, ?1002, ?1003,
  * with ?1006 for the SGR form). button: 0 left, 1 middle, 2 right,
  * 64/65 wheel up/down; kind: 0 press, 1 release, 2 motion. x, y are cell

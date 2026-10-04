@@ -974,6 +974,79 @@ static int console_key(vtwin *w, UWORD code, UWORD qual)
     return 0;
 }
 
+/* The keymap's characters for raw key `code` with qualifiers `qual`: the
+ * first one, 0 when it makes none (a dead key) or several. */
+static long keymap_char(vtwin *w, UWORD code, UWORD qual, ULONG prev)
+{
+    struct InputEvent ie;
+    UBYTE buf[8];
+    LONG k;
+    ie.ie_NextEvent = 0;
+    ie.ie_Class = IECLASS_RAWKEY;
+    ie.ie_SubClass = 0;
+    ie.ie_Code = code;
+    ie.ie_Qualifier = qual;
+    ie.ie_EventAddress = (APTR)prev;
+    k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), w->keymap);
+    return k == 1 ? (long)buf[0] : 0;
+}
+
+/* A key while a program speaks the kitty keyboard protocol (CSI > u): the
+ * engine gets the event (press, repeat, release), the key's own character
+ * (the keymap without Shift, Ctrl and Meta), the one Shift makes and the
+ * text, so it can tell Ctrl+I from Tab and report releases. 0 when the
+ * protocol is off (the keys go the usual way). */
+static int kitty_key(vtwin *w, UWORD code, UWORD qual, ULONG prev)
+{
+    /* the modifier keys themselves (flag 8 reports them): LShift RShift
+     * CapsLock Ctrl LAlt RAlt LAmiga RAmiga, as kitty's left/right shift,
+     * caps lock, control, alt and super */
+    static const long modkey[8] = { 57441, 57447, 57358, 57442, 57443, 57449, 57444, 57450 };
+    int f = vt_kitty_flags(w->t), ev, mods = 0, n;
+    UWORD raw = (UWORD)(code & ~IECODE_UP_PREFIX), keep;
+    long key, text = 0, shifted = 0;
+    vt_u8 out[72];
+    if (!f || w->pers != VT_XTERM)
+        return 0;
+    ev = (code & IECODE_UP_PREFIX) ? VT_KEY_EV_RELEASE : (qual & IEQUALIFIER_REPEAT) ? VT_KEY_EV_REPEAT
+                                                                                    : VT_KEY_EV_PRESS;
+    if (ev != VT_KEY_EV_RELEASE && console_key(w, raw, qual))
+        return 1; /* copy, paste, scrollback stay the console's */
+    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
+        mods |= VT_MOD_SHIFT;
+    if (qual & IEQUALIFIER_CONTROL)
+        mods |= VT_MOD_CTRL;
+    if (w->meta_alt ? (qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) : (qual & IEQUALIFIER_LCOMMAND))
+        mods |= VT_MOD_ALT;
+    if (raw >= 0x60 && raw <= 0x67) {
+        key = modkey[raw - 0x60];
+        if (!(f & VT_KITTY_ALL_KEYS))
+            return 1;
+        n = vt_encode_key_kitty(w->t, key, mods, ev, 0, 0, 0, out);
+    } else if ((key = special_key(raw)) != 0 || (key = keypad_key(raw)) != 0) {
+        n = vt_encode_key_kitty(w->t, key, mods, ev, 0, 0, 0, out);
+    } else {
+        /* the keymap sees Alt (national characters) unless Alt is Meta;
+         * never Ctrl or Meta here: the protocol carries them */
+        keep = (UWORD)(qual & ~(IEQUALIFIER_CONTROL | IEQUALIFIER_LCOMMAND | IEQUALIFIER_REPEAT));
+        if (w->meta_alt)
+            keep &= (UWORD)~(IEQUALIFIER_LALT | IEQUALIFIER_RALT);
+        key = keymap_char(w, raw, (UWORD)(keep & ~(IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)), prev);
+        if (!key)
+            return 1; /* a dead key, or nothing: the keymap's business */
+        if (mods & VT_MOD_SHIFT)
+            shifted = keymap_char(w, raw, keep, prev);
+        text = (mods & VT_MOD_SHIFT) ? shifted : key;
+        n = vt_encode_key_kitty(w->t, key, mods, ev, shifted, 0, text, out);
+    }
+    if (n) {
+        if (w->r.view)
+            vr_set_view(&w->r, 0);
+        w->host->key(w->user, out, n, key >= 0x110000 ? key : 0, mods);
+    }
+    return 1;
+}
+
 void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG micros)
 {
     long key;
@@ -1018,6 +1091,8 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         w->host->input(w->user, (const vt_u8 *)b, k);
         return;
     }
+    if (kitty_key(w, code, qual, prev))
+        return; /* the kitty keyboard protocol: presses, repeats and releases */
     if (code & IECODE_UP_PREFIX)
         return;
     if (console_key(w, code, qual))

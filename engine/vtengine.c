@@ -152,6 +152,8 @@ struct vt_term {
     vt_u8 cursor_dflt;         /* the host's DECSCUSR default (vt_set_cursor_style): RIS's */
     vt_u8 allow_cols;          /* ?40: DECCOLM may change the width */
     vt_u8 mok;                 /* modifyOtherKeys level, CSI > 4 ; n m */
+    vt_u8 kbd[2][8];           /* kitty keyboard flags, a stack per screen (0 main, 1 alternate) */
+    vt_u8 kbd_top[2];          /* its top entry: the flags in force */
     vt_u8 scheme;              /* the last dark (1) / light (2) scheme reported */
 
     /* sequences parsed but not acted on (vt_unhandled): the terminfo test
@@ -2335,6 +2337,50 @@ static int csi_vt420(vt_term *t, vt_u8 final)
     }
 }
 
+/* The kitty keyboard protocol's flag stack (CSI ? u, > u, < u, = u): one
+ * per screen, 8 deep (a full one drops its oldest), entry 0 the base. */
+static void kitty_kbd(vt_term *t)
+{
+    int s = t->scr == t->alt && t->alt, top = t->kbd_top[s];
+    vt_u8 *k = t->kbd[s];
+    long f = param0(t, 0) & 31;
+    switch (t->priv) {
+    case '?': {
+        char b[16];
+        int n = put_csi(t, b);
+        b[n++] = '?';
+        n = fmt_uint(b, n, k[top]);
+        b[n++] = 'u';
+        reply(t, b, n);
+        return;
+    }
+    case '>':
+        if (top == 7)
+            memmove(k + 1, k + 2, 6); /* full: the oldest pushed goes */
+        else
+            top++;
+        k[top] = (vt_u8)f;
+        break;
+    case '<': {
+        long n = param(t, 0, 1);
+        while (n-- > 0) {
+            k[top] = 0;
+            if (top)
+                top--;
+            else
+                break;
+        }
+        break;
+    }
+    default: { /* '=' flags ; mode: 1 set, 2 or, 3 and-not */
+        long m = param(t, 1, 1);
+        k[top] = (vt_u8)(m == 2 ? (k[top] | f) : m == 3 ? (k[top] & ~f) : f);
+        break;
+    }
+    }
+    t->kbd_top[s] = (vt_u8)top;
+}
+
 static int scheme_of(const vt_term *t);
 
 static void csi_xterm(vt_term *t, vt_u8 final)
@@ -2361,6 +2407,10 @@ static void csi_xterm(vt_term *t, vt_u8 final)
     }
     if (t->inter && !t->priv && csi_vt420(t, final))
         return;
+    if (final == 'u' && !t->inter && t->priv) {
+        kitty_kbd(t); /* CSI ? u, CSI > f u, CSI < n u, CSI = f ; m u */
+        return;
+    }
     if (t->inter) {
         note_unhandled(t, 'C', final);
         return;
@@ -3482,6 +3532,8 @@ void vt_reset(vt_term *t)
      * key encoding, the pushed titles, the cursor shape (to the host's) */
     t->n_titles = 0;
     t->mok = 0;
+    memset(t->kbd, 0, sizeof(t->kbd));
+    t->kbd_top[0] = t->kbd_top[1] = 0;
     t->cursor_style = t->cursor_dflt;
     tab_reset(t);
     set_alt(t, 0, 0);
@@ -4600,7 +4652,164 @@ static int amiga_key(vt_u8 *o, long key, int mods)
     return 0;
 }
 
+/* ---- the kitty keyboard protocol (sw.kovidgoyal.net/kitty/keyboard-protocol) ---- */
+
+static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out);
+
+int vt_kitty_flags(const vt_term *t)
+{
+    int s;
+    if (!t || t->pers != VT_XTERM)
+        return 0;
+    s = t->scr == t->alt && t->alt;
+    return t->kbd[s][t->kbd_top[s]];
+}
+
+/* CSI number [; modifiers] final for a functional key; 0 when key is not one. */
+static int kitty_functional(long key, long *num, char *fin)
+{
+    static const struct { long key; long num; char fin; } fk[] = {
+        { VT_KEY_UP, 1, 'A' }, { VT_KEY_DOWN, 1, 'B' }, { VT_KEY_RIGHT, 1, 'C' }, { VT_KEY_LEFT, 1, 'D' },
+        { VT_KEY_HOME, 1, 'H' }, { VT_KEY_END, 1, 'F' }, { VT_KEY_F1, 1, 'P' }, { VT_KEY_F2, 1, 'Q' },
+        { VT_KEY_F3, 13, '~' }, { VT_KEY_F4, 1, 'S' }, { VT_KEY_INSERT, 2, '~' }, { VT_KEY_DELETE, 3, '~' },
+        { VT_KEY_PAGE_UP, 5, '~' }, { VT_KEY_PAGE_DOWN, 6, '~' }, { VT_KEY_F5, 15, '~' },
+        { VT_KEY_F6, 17, '~' }, { VT_KEY_F7, 18, '~' }, { VT_KEY_F8, 19, '~' }, { VT_KEY_F9, 20, '~' },
+        { VT_KEY_F10, 21, '~' }, { VT_KEY_F11, 23, '~' }, { VT_KEY_F12, 24, '~' }, { VT_KEY_HELP, 28, '~' },
+        { VT_KEY_ESCAPE, 27, 'u' }, { VT_KEY_RETURN, 13, 'u' }, { VT_KEY_TAB, 9, 'u' },
+        { VT_KEY_BACKSPACE, 127, 'u' }, { VT_KEY_KP_ENTER, 57414, 'u' }
+    };
+    int i;
+    for (i = 0; i < (int)(sizeof(fk) / sizeof(fk[0])); i++)
+        if (fk[i].key == key) {
+            *num = fk[i].num;
+            *fin = fk[i].fin;
+            return 1;
+        }
+    return 0;
+}
+
+/* The kitty protocol's own numbers for the keypad (KP_0 57399 .. KP_ADD
+ * 57413); 0 for a key it has none for (the parentheses). */
+static long kitty_keypad(long key)
+{
+    static const long kp[] = { 57399, 57400, 57401, 57402, 57403, 57404, 57405, 57406, 57407, 57408,
+                               57409, 57412, 57413, 57411, 57410 }; /* 0-9 . - + * / */
+    if (key >= VT_KEY_KP_0 && key <= VT_KEY_KP_SLASH)
+        return kp[key - VT_KEY_KP_0];
+    return 0;
+}
+
+int vt_encode_key_kitty(const vt_term *t, long key, int mods, int event, long shifted, long base,
+                        long text, vt_u8 *out)
+{
+    int f = vt_kitty_flags(t), dis, n = 0, i, k;
+    long num = 0, kp;
+    char fin = 'u', b[80];
+    int with_mods, with_text;
+    if (!f)
+        return event == VT_KEY_EV_RELEASE ? 0 : legacy_key(t, key, mods, out);
+    dis = f & (VT_KITTY_DISAMBIGUATE | VT_KITTY_ALL_KEYS);
+    if (!(f & VT_KITTY_EVENTS)) {
+        if (event == VT_KEY_EV_RELEASE)
+            return 0;
+        event = VT_KEY_EV_PRESS;
+    }
+    mods &= VT_MOD_SHIFT | VT_MOD_ALT | VT_MOD_CTRL;
+    if (key < 0x110000) {
+        /* a text key: the text itself, unless a modifier other than Shift
+         * makes it ambiguous, or every key is to be an escape code */
+        if (event != VT_KEY_EV_RELEASE && !(f & VT_KITTY_ALL_KEYS) && !(mods & ~VT_MOD_SHIFT))
+            return legacy_key(t, text ? text : (mods & VT_MOD_SHIFT) && shifted ? shifted : key, 0, out);
+        num = key;
+    } else if ((kp = kitty_keypad(key)) != 0) {
+        if (!(f & VT_KITTY_ALL_KEYS))
+            return event == VT_KEY_EV_RELEASE ? 0 : legacy_key(t, key, mods, out);
+        num = kp;
+    } else if (kitty_functional(key, &num, &fin)) {
+        int legacy_bytes = key == VT_KEY_RETURN || key == VT_KEY_TAB || key == VT_KEY_BACKSPACE;
+        if (!dis && event == VT_KEY_EV_PRESS)
+            return legacy_key(t, key, mods, out);
+        if (legacy_bytes && !(f & VT_KITTY_ALL_KEYS)) {
+            /* typing "reset" after a crash must still work: plain Return,
+             * Tab and Backspace stay as they were, and send no release */
+            if (event == VT_KEY_EV_RELEASE)
+                return 0;
+            if (!mods)
+                return legacy_key(t, key, 0, out);
+        }
+    } else {
+        return event == VT_KEY_EV_RELEASE ? 0 : legacy_key(t, key, mods, out);
+    }
+    with_text = (f & VT_KITTY_TEXT) && (f & VT_KITTY_ALL_KEYS) && key < 0x110000 && text >= 0x20 &&
+                text != 0x7F && event != VT_KEY_EV_RELEASE;
+    with_mods = mods || event != VT_KEY_EV_PRESS;
+    b[n++] = 0x1B;
+    b[n++] = '[';
+    if (fin == 'u' || num != 1 || with_mods)
+        n = fmt_uint(b, n, num);
+    if ((f & VT_KITTY_ALTERNATES) && key < 0x110000) {
+        int sh = (mods & VT_MOD_SHIFT) && shifted && shifted != num;
+        if (sh) {
+            b[n++] = ':';
+            n = fmt_uint(b, n, shifted);
+        }
+        if (base && base != num) {
+            if (!sh)
+                b[n++] = ':';
+            b[n++] = ':';
+            n = fmt_uint(b, n, base);
+        }
+    }
+    if (with_mods || with_text)
+        b[n++] = ';';
+    if (with_mods) {
+        n = fmt_uint(b, n, 1 + mods);
+        if (event != VT_KEY_EV_PRESS) {
+            b[n++] = ':';
+            b[n++] = (char)('0' + event);
+        }
+    }
+    if (with_text) {
+        b[n++] = ';';
+        n = fmt_uint(b, n, text);
+    }
+    b[n++] = fin;
+    for (i = 0, k = n; i < k; i++)
+        out[i] = (vt_u8)b[i];
+    return n;
+}
+
+/* What the keymap made, for the kitty protocol: a control character back
+ * to its key (Ctrl+A is ^A), Shift's capital back to the key's own letter. */
+static int kitty_from_char(const vt_term *t, long key, int mods, vt_u8 *out)
+{
+    long code = key, shifted = 0, text = 0;
+    if (key < 0x110000) {
+        if ((mods & VT_MOD_CTRL) && (key < 0x20 || key == 0x7F)) {
+            code = key == 0x7F ? '?' : key + 0x40;
+            if (code >= 'A' && code <= 'Z')
+                code += 0x20;
+        } else {
+            text = key;
+            if (key >= 'A' && key <= 'Z' && (mods & VT_MOD_SHIFT)) {
+                shifted = key;
+                code = key + 0x20;
+            }
+        }
+    }
+    return vt_encode_key_kitty(t, code, mods, VT_KEY_EV_PRESS, shifted, 0, text, out);
+}
+
 int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
+{
+    if (vt_kitty_flags(t))
+        return kitty_from_char(t, key, mods, out);
+    return legacy_key(t, key, mods, out);
+}
+
+/* xterm's keys (and the other personalities'): what vt_encode_key sends
+ * when no kitty flags are set. */
+static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out)
 {
     int n = 0;
     int app = (t->modes & VT_MODE_APP_CURSOR) != 0;

@@ -337,8 +337,136 @@ static void in_band_resize_reports_follow_the_mode(void)
     vt_free(t);
 }
 
+/* ---- G3-11: the kitty keyboard protocol ---- */
+
+static const char *kkey(vt_term *t, long key, int mods)
+{
+    static char b[80];
+    int n = vt_encode_key(t, key, mods, (vt_u8 *)b);
+    b[n] = 0;
+    return b;
+}
+
+static const char *kev(vt_term *t, long key, int mods, int event, long shifted, long base, long text)
+{
+    static char b[80];
+    int n = vt_encode_key_kitty(t, key, mods, event, shifted, base, text, (vt_u8 *)b);
+    b[n] = 0;
+    return b;
+}
+
+/* CSI ? u asks, CSI > f u pushes, CSI < n u pops, CSI = f ; m u sets (1),
+ * ors (2), clears (3); the main and alternate screens keep stacks of their
+ * own; RIS empties both. */
+static void kitty_keyboard_flags_stack_per_screen(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "\033[?u");
+    REPLY("\033[?0u");
+    h_put(t, "\033[>1u\033[?u");
+    REPLY("\033[?1u");
+    h_put(t, "\033[>5u\033[?u");
+    REPLY("\033[?5u");
+    h_put(t, "\033[=2;2u\033[?u");                 /* or */
+    REPLY("\033[?7u");
+    h_put(t, "\033[=4;3u\033[?u");                 /* and not */
+    REPLY("\033[?3u");
+    h_put(t, "\033[=24u\033[?u");                  /* set (mode 1 by default) */
+    REPLY("\033[?24u");
+    h_put(t, "\033[<u\033[?u");                    /* pop one: the 1 below */
+    REPLY("\033[?1u");
+    h_put(t, "\033[?1049h\033[?u");                /* the alternate screen's own */
+    REPLY("\033[?0u");
+    h_put(t, "\033[>8u\033[?1049l\033[?u");
+    REPLY("\033[?1u");
+    h_put(t, "\033[?1049h\033[?u\033[?1049l");
+    REPLY("\033[?8u");
+    h_put(t, "\033[<9u\033[?u");                   /* popping past the bottom: 0 */
+    REPLY("\033[?0u");
+    h_put(t, "\033[>1u\033[>1u\033[>1u\033[>1u\033[>1u\033[>1u\033[>1u\033[>1u\033[>2u\033[?u");
+    REPLY("\033[?2u");                             /* a full stack drops its oldest */
+    h_put(t, "\033c\033[?u");
+    REPLY("\033[?0u");
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* Flag 1, disambiguate: Esc, Ctrl/Alt combinations and modified Return,
+ * Tab, Backspace as CSI u; plain text, Shift+text, plain Return/Tab/
+ * Backspace as before; cursor and F keys always CSI, F3 as CSI 13 ~. */
+static void kitty_disambiguate_flag(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "\033[?1h\033[>1u");                  /* DECCKM does not matter */
+    CHECK_STR(kkey(t, VT_KEY_ESCAPE, 0), "\033[27u");
+    CHECK_STR(kkey(t, 1, VT_MOD_CTRL), "\033[97;5u");      /* the keymap's ^A */
+    CHECK_STR(kkey(t, 'a', VT_MOD_CTRL), "\033[97;5u");
+    CHECK_STR(kkey(t, 'a', VT_MOD_ALT), "\033[97;3u");
+    CHECK_STR(kkey(t, 'A', VT_MOD_SHIFT | VT_MOD_ALT), "\033[97;4u");
+    CHECK_STR(kkey(t, 'A', VT_MOD_SHIFT), "A");
+    CHECK_STR(kkey(t, 'a', 0), "a");
+    CHECK_STR(kkey(t, 0xE9, 0), "\xc3\xa9");
+    CHECK_STR(kkey(t, VT_KEY_RETURN, 0), "\r");
+    CHECK_STR(kkey(t, VT_KEY_RETURN, VT_MOD_CTRL), "\033[13;5u");
+    CHECK_STR(kkey(t, VT_KEY_TAB, VT_MOD_SHIFT), "\033[9;2u");
+    CHECK_STR(kkey(t, VT_KEY_BACKSPACE, 0), "\177");
+    CHECK_STR(kkey(t, VT_KEY_BACKSPACE, VT_MOD_ALT), "\033[127;3u");
+    CHECK_STR(kkey(t, VT_KEY_UP, 0), "\033[A");
+    CHECK_STR(kkey(t, VT_KEY_UP, VT_MOD_CTRL), "\033[1;5A");
+    CHECK_STR(kkey(t, VT_KEY_F1, 0), "\033[P");
+    CHECK_STR(kkey(t, VT_KEY_F3, 0), "\033[13~");
+    CHECK_STR(kkey(t, VT_KEY_F3, VT_MOD_SHIFT), "\033[13;2~");
+    CHECK_STR(kkey(t, VT_KEY_F5, 0), "\033[15~");
+    CHECK_STR(kkey(t, VT_KEY_DELETE, VT_MOD_CTRL), "\033[3;5~");
+    CHECK_STR(kkey(t, VT_KEY_KP_ENTER, 0), "\033[57414u");
+    CHECK_STR(kkey(t, VT_KEY_KP_5, 0), "5");
+    h_put(t, "\033[<u");                           /* back to the legacy keys */
+    CHECK_STR(kkey(t, VT_KEY_ESCAPE, 0), "\033");
+    CHECK_STR(kkey(t, VT_KEY_UP, 0), "\033OA");
+    vt_free(t);
+}
+
+/* Flag 2 reports repeats and releases (the host passes the event); flag 4
+ * adds the shifted and the base-layout key; flag 8 makes every key an
+ * escape code; flag 16 adds the text. */
+static void kitty_event_alternate_all_and_text_flags(void)
+{
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    h_put(t, "\033[>1u");
+    CHECK_STR(kev(t, 'a', 0, VT_KEY_EV_RELEASE, 0, 0, 'a'), "");   /* flag 2 off */
+    CHECK_STR(kev(t, 'a', 0, VT_KEY_EV_REPEAT, 0, 0, 'a'), "a");   /* a repeat is a press */
+    h_put(t, "\033[=3u");
+    CHECK_STR(kev(t, 'a', 0, VT_KEY_EV_RELEASE, 0, 0, 'a'), "\033[97;1:3u");
+    CHECK_STR(kev(t, VT_KEY_UP, 0, VT_KEY_EV_REPEAT, 0, 0, 0), "\033[1;1:2A");
+    CHECK_STR(kev(t, VT_KEY_RETURN, 0, VT_KEY_EV_RELEASE, 0, 0, 0), ""); /* only with 8 */
+    CHECK_STR(kev(t, 'a', VT_MOD_CTRL, VT_KEY_EV_PRESS, 0, 0, 0), "\033[97;5u");
+    h_put(t, "\033[=5u");                          /* 1 + 4: alternates */
+    CHECK_STR(kev(t, 'a', VT_MOD_SHIFT, VT_KEY_EV_PRESS, 'A', 0, 'A'), "A");
+    CHECK_STR(kev(t, 'a', VT_MOD_SHIFT | VT_MOD_CTRL, VT_KEY_EV_PRESS, 'A', 0, 0), "\033[97:65;6u");
+    CHECK_STR(kev(t, 'a', VT_MOD_CTRL, VT_KEY_EV_PRESS, 0, 'q', 0), "\033[97::113;5u");
+    h_put(t, "\033[=8u");
+    CHECK_STR(kev(t, 'a', 0, VT_KEY_EV_PRESS, 0, 0, 'a'), "\033[97u");
+    CHECK_STR(kev(t, 'a', VT_MOD_SHIFT, VT_KEY_EV_PRESS, 'A', 0, 'A'), "\033[97;2u");
+    CHECK_STR(kkey(t, VT_KEY_RETURN, 0), "\033[13u");
+    CHECK_STR(kkey(t, VT_KEY_KP_5, 0), "\033[57404u");
+    CHECK_STR(kkey(t, 'A', VT_MOD_SHIFT), "\033[97;2u");
+    h_put(t, "\033[=24u");                         /* 8 + 16: the text too */
+    CHECK_STR(kev(t, 'a', 0, VT_KEY_EV_PRESS, 0, 0, 'a'), "\033[97;;97u");
+    CHECK_STR(kev(t, 'a', VT_MOD_SHIFT, VT_KEY_EV_PRESS, 'A', 0, 'A'), "\033[97;2;65u");
+    CHECK_STR(kev(t, 'a', VT_MOD_CTRL, VT_KEY_EV_PRESS, 0, 0, 1), "\033[97;5u"); /* no control text */
+    h_put(t, "\033[=12u");                         /* 4 + 8 */
+    CHECK_STR(kev(t, 'a', VT_MOD_SHIFT, VT_KEY_EV_PRESS, 'A', 0, 'A'), "\033[97:65;2u");
+    h_put(t, "\033[=0u");                          /* off again */
+    CHECK_STR(kev(t, 'a', 0, VT_KEY_EV_RELEASE, 0, 0, 'a'), "");
+    CHECK_STR(kev(t, 'a', VT_MOD_CTRL, VT_KEY_EV_PRESS, 0, 0, 1), "\001");
+    vt_free(t);
+}
+
 void suite_protocol(void)
 {
+    kitty_keyboard_flags_stack_per_screen();
+    kitty_disambiguate_flag();
+    kitty_event_alternate_all_and_text_flags();
     in_band_resize_reports_follow_the_mode();
     urxvt_and_sgr_pixel_mouse_reports();
     decic_and_decdc_move_columns_in_the_region();
