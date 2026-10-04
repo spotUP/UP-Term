@@ -46,4 +46,6 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Its tests alone | `make test ONLY=uptelnetd` |
 | Re-record Claude Code's screen with the engine answering (asks the model once) | `make build/vtreply && python3 tools/capture_claude.py --dir <a directory Claude Code trusts>` |
 | uptelnet alone (Roadshow headers: `VTCON_NETINC=`, default DCTelnet's copy) | `make build/amiga/uptelnet` |
+| Kickstart image with UP-Term (R1): build/rom/upterm-1m.rom, never booted by the build | `make rom` (`KICK=` a 3.1 ROM, default the rig's; needs `make amiga`) |
+| ROM image checks on the host | `make test-rom` |
 | Clean | `make clean` |
