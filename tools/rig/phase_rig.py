@@ -33,7 +33,7 @@ def main():
     while time.time() - t0 < 900:
         time.sleep(10)
         rc, out = c.run('Type RAM:pp.txt')
-        if rc == 0 and out.count('ticks') >= (1 if only else 6):
+        if rc == 0 and out.count('ticks') >= (1 if only else 8):
             break
     time.sleep(2)
     print(out)
@@ -43,7 +43,7 @@ def main():
     vals = {}
     for l in log:
         l = l.strip()
-        if l in ('plain-lines', 'scroll-nl', 'clear-page', 'sync-line', 'wrap-long', 'bytewise'):
+        if l in ('plain-lines', 'scroll-nl', 'clear-page', 'sync-line', 'wrap-long', 'bytewise', 'sgr-colour', 'sgr-perchar'):
             name = l
             vals = {}
             continue
