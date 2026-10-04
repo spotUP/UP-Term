@@ -169,6 +169,154 @@ static void comments_kept(void)
     }
 }
 
+static long app(char *buf, long len, const char *s)
+{
+    strcpy(buf + len, s);
+    return len + (long)strlen(s);
+}
+
+/* The table is packed (research/2026-10-04_window-memory.md): one per
+ * XCON: window, 56 KB in slots, about 18 KB packed. */
+static void packed_table(void)
+{
+    static upconf c, back;
+    static char file[UC_MAX_FILE + 1], saved[UC_MAX_FILE + 1];
+    char val[UC_MAX_VALUE + 8];
+    long len, n;
+    int p, k, used;
+
+    /* the sentinel: a climb back towards slots fails here */
+    CHECK(sizeof(upconf) <= 18500);
+
+    /* a full file -- 8 profiles x 32 keys of long values and a long comment,
+     * as close to UC_MAX_FILE as it goes -- is read whole, every value kept,
+     * and saved back byte for byte */
+    len = 0;
+    for (p = 0; p < UC_MAX_PROFILES; p++) {
+        len = app(file, len, p ? "\n\n[profile p" : "[profile p");
+        val[0] = (char)('0' + p);
+        val[1] = 0;
+        len = app(file, len, val);
+        len = app(file, len, "]\n");
+        if (p == 3) {
+            memset(val, '0', 100);
+            strcpy(val + 100, "\n");
+            len = app(file, len, "; ");
+            len = app(file, len, val);
+        }
+        for (k = 0; k < UC_MAX_KEYS; k++) {
+            val[0] = 'k';
+            val[1] = (char)('0' + k / 10);
+            val[2] = (char)('0' + k % 10);
+            strcpy(val + 3, " = ");
+            memset(val + 6, 'a' + (p + k) % 26, 55);
+            strcpy(val + 61, "\n");
+            len = app(file, len, val);
+        }
+    }
+    CHECK(len <= UC_MAX_FILE);
+    CHECK(len > UC_MAX_FILE - 300);
+    upconf_parse(&c, file, len);
+    CHECK(!c.overflow);
+    CHECK_INT(c.nprof, UC_MAX_PROFILES);
+    CHECK(c.used <= len);
+    for (p = 0; p < UC_MAX_PROFILES; p++)
+        CHECK_INT(c.n[p], UC_MAX_KEYS);
+    memset(val, 'a' + (5 + 9) % 26, 55);
+    val[55] = 0;
+    CHECK_STR(upconf_get(&c, "p5", "k09"), val);
+    n = upconf_save(&c, saved, sizeof(saved));
+    CHECK_INT(n, len);
+    saved[n > 0 ? n : 0] = 0;
+    CHECK(n == len && !memcmp(saved, file, (size_t)len));
+
+    /* the pool is full: a set that does not fit fails, marks overflow and
+     * leaves the old value standing (a table no save could write anyway) */
+    upconf_clear(&c);
+    memset(val, 'v', UC_MAX_VALUE - 1);
+    val[UC_MAX_VALUE - 1] = 0;
+    n = 0;
+    for (p = 0; p < UC_MAX_PROFILES; p++)
+        for (k = 0; k < UC_MAX_KEYS; k++) {
+            char name[8];
+            name[0] = 'p';
+            name[1] = (char)('0' + p);
+            name[2] = 0;
+            file[0] = 'k';
+            file[1] = (char)('A' + k);
+            file[2] = 0;
+            n += upconf_set(&c, name, file, val);
+        }
+    CHECK(c.overflow);
+    CHECK(c.used <= UC_POOL);
+    CHECK(c.used > UC_POOL - (3 + UC_MAX_VALUE + 1));
+    CHECK_INT(n, UC_POOL / (3 + UC_MAX_VALUE));         /* as many as fit, whole */
+    CHECK_STR(upconf_get(&c, "p0", "kA"), val);
+    /* the last bytes exactly filled, then one byte more than that refused */
+    {
+        int left = UC_POOL - c.used - 4; /* "zz" NUL value NUL */
+        CHECK(left >= 1 && left < UC_MAX_VALUE);
+        val[left] = 0;
+        CHECK(upconf_set(&c, "p3", "zz", val));
+        CHECK_INT(c.used, UC_POOL);
+        c.overflow = 0;
+        val[left] = 'v';
+        val[left + 1] = 0;
+        CHECK(!upconf_set(&c, "p3", "zz", val));
+        CHECK(c.overflow);
+        CHECK_INT((long)strlen(upconf_get(&c, "p3", "zz")), left); /* the old value stands */
+    }
+
+    /* a value set from the table's own pool (a lookup handed straight
+     * back): copied before anything moves */
+    {
+        static const char abc[] = "a = one\nb = twotwo\nc = three\n";
+        upconf_parse(&c, abc, (long)strlen(abc));
+    }
+    CHECK(upconf_set(&c, "default", "a", upconf_get(&c, "default", "b")));
+    CHECK(upconf_set(&c, "default", "c", upconf_get(&c, "default", "c")));
+    CHECK(upconf_set(&c, "default", "b", upconf_get(&c, "default", "c")));
+    CHECK_STR(upconf_get(&c, "default", "a"), "twotwo");
+    CHECK_STR(upconf_get(&c, "default", "b"), "three");
+    CHECK_STR(upconf_get(&c, "default", "c"), "three");
+
+    /* values replaced a thousand times leave no garbage behind, and the
+     * others stay whole; a delete gives its bytes back */
+    used = c.used;
+    for (k = 0; k < 1000; k++)
+        upconf_set(&c, "default", "a", k & 1 ? "x" : "a much longer value than x");
+    CHECK_INT(c.used, used - 6 + 1);
+    CHECK_STR(upconf_get(&c, "default", "a"), "x");
+    CHECK_STR(upconf_get(&c, "default", "b"), "three");
+    CHECK(upconf_set(&c, "vim", "bell", "none"));
+    CHECK(upconf_set(&c, "default", "font", "topaz 8"));
+    CHECK(upconf_del(&c, "default", "b"));
+    CHECK(upconf_rmprof(&c, "vim"));
+    CHECK_INT(c.used, used - 6 + 1 - 8 + (int)sizeof("font") + (int)sizeof("topaz 8"));
+    CHECK_STR(upconf_get(&c, "default", "font"), "topaz 8");
+    CHECK_STR(upconf_get(&c, "default", "c"), "three");
+    CHECK(upconf_get(&c, "default", "b") == 0);
+    CHECK(upconf_get(&c, "vim", "bell") == 0);
+
+    /* a live reload parses the new file into a used table: nothing of the
+     * old one is left, and every profile reads (a profile switch) */
+    {
+        static const char two[] = "[profile vim]\nbg = 000000\n; note\n[profile default]\nfg = 101010\n";
+        upconf_parse(&c, two, (long)strlen(two));
+    }
+    CHECK(upconf_get(&c, "default", "font") == 0);
+    CHECK(upconf_get(&c, "default", "c") == 0);
+    CHECK_STR(upconf_get(&c, "vim", "bg"), "000000");
+    CHECK_STR(upconf_get(&c, "default", "fg"), "101010");
+    CHECK_INT(c.nnote, 1);
+    /* a copy is a plain memcpy: no pointers inside */
+    memcpy(&back, &c, sizeof(c));
+    upconf_set(&c, "vim", "bg", "FFFFFF");
+    CHECK_STR(upconf_get(&back, "vim", "bg"), "000000");
+    CHECK(!upconf_profile_equal(&c, &back, "vim"));
+    CHECK(upconf_profile_equal(&c, &back, "default"));
+}
+
 void suite_upconf(void)
 {
     upconf c;
@@ -489,4 +637,5 @@ void suite_upconf(void)
     }
     profile_equal();
     comments_kept();
+    packed_table();
 }
