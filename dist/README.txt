@@ -327,8 +327,10 @@ NETWORK
     bebboget        https downloads (installcerts adds root certificates)
     curl            curl 8.22.0; it also needs AmiSSL 5 (Aminet
                     util/libs/AmiSSL-v5-OS3.lha)
-  In vsh, ssh runs bebbossh with TERM=xterm-256color, which is what an
-  UP-Term window is to a Unix machine. Keys: bebbosshkeygen makes one
+  In vsh, ssh (bebbossh), telnet and rlogin run with TERM=xterm-256color,
+  which is what an UP-Term window is to a Unix machine (no remote host has
+  a vtcon entry). UP_REMOTE_TERM=name in $HOME/.vshrc sends another name;
+  a TERM that is not vtcon (inside screen) goes as it is. Keys: bebbosshkeygen makes one
   (ENVARC:.ssh/id_ed25519); bebbossh -i names another. The first connection
   to a host asks whether to trust its key.
   bebbosshd, the server, answers a login with its own simple shell, not a

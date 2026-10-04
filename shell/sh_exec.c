@@ -1437,7 +1437,7 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
     sh_func *f;
     long st;
     saved_var *saved = 0;   /* on the heap: this frame is on every recursion level */
-    int n_saved = 0, n_assigns = 0;
+    int n_saved = 0, n_assigns = 0, nofunc = 0;
     memset(&argv, 0, sizeof(argv));
     if (job)
         *job = 0;
@@ -1462,6 +1462,17 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         return sh->subst_ran ? sh->subst_status : 0;
     }
     apply_alias(sh, &argv);
+    if (!strcmp(argv.v[0], "command")) {
+        /* command NAME ...: the builtin or program NAME, never a function
+         * of that name (the vshrc's telnet() runs the real telnet) */
+        free(argv.v[0]);
+        memmove(argv.v, argv.v + 1, (size_t)argv.n * sizeof(char *)); /* and the NULL */
+        if (!--argv.n) {
+            sh_list_free(&argv);
+            return 0;
+        }
+        nofunc = 1;
+    }
     if (redirect(sh, n->redirs, parent, &io)) {
         sh_list_free(&argv);
         return 1;
@@ -1484,7 +1495,7 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         free(name);
         free(v);
     }
-    if ((f = find_func(sh, argv.v[0])) != 0) {
+    if (!nofunc && (f = find_func(sh, argv.v[0])) != 0) {
         st = run_function(sh, f, &argv, &io);
         close_owned(sh, &io);
     } else if ((b = find_builtin(argv.v[0])) != 0) {
