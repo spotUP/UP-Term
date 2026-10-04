@@ -129,7 +129,7 @@ HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s handler/vtcon_handler.c h
 HANDLER_HDR := engine/vtengine.h engine/vtwidth.h render/amiga_render.h render/vtwin.h render/glyphmap.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -291,6 +291,11 @@ $(BUILD)/amiga/wasabikey: install/wasabikey.c
 $(BUILD)/amiga/engbench: tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s engine/vtengine.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -DVT_ASM -o $@ tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s
+
+# Where a write's time goes: conbench's per-write shapes, apart (S1)
+$(BUILD)/amiga/wprobe: tests/amiga/wprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wprobe.c
 
 # What a full screen of each kind of cell costs the terminal (S1)
 $(BUILD)/amiga/cellbench: tests/amiga/cellbench.c

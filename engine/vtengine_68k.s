@@ -16,6 +16,37 @@
 	xdef	_vt_asm_put_run
 	xdef	_vt_asm_fill
 	xdef	_vt_asm_rows_up
+	xdef	_vt_asm_cells_move
+
+; void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n)
+;
+; n cells from src to dst, which may overlap (insert / delete character:
+; the C library's memmove moved 1136 bytes one at a time, 1.6 ms).
+_vt_asm_cells_move:
+	move.l	4(sp),a0		; dst
+	move.l	8(sp),a1		; src
+	move.l	12(sp),d0		; n
+	ble.s	.mnone
+	cmp.l	a1,a0
+	bhi.s	.mback			; dst above src: from the end
+.mfwd:	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	subq.l	#1,d0
+	bne.s	.mfwd
+.mnone:	rts
+.mback:	move.l	d0,d1
+	lsl.l	#4,d1			; n cells of 16 bytes
+	add.l	d1,a0
+	add.l	d1,a1
+.mbk:	move.l	-(a1),-(a0)
+	move.l	-(a1),-(a0)
+	move.l	-(a1),-(a0)
+	move.l	-(a1),-(a0)
+	subq.l	#1,d0
+	bne.s	.mbk
+	rts
 	xdef	_vt_asm_rows_down
 
 ; void vt_asm_rows_up(vt_line **p, long k):   p[0] = p[1] ... k times, upwards

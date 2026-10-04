@@ -1024,8 +1024,24 @@ static void a_sequence_cut_by_a_write_means_the_same(void)
     }
 }
 
+/* ?2026, synchronized output: the mode the host holds its drawing on */
+static void synchronized_output_is_a_mode(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    CHECK(!(vt_modes(t) & VT_MODE_SYNC));
+    h_put(t, "\033[?2026h");
+    CHECK(vt_modes(t) & VT_MODE_SYNC);
+    h_reply_clear();
+    h_put(t, "\033[?2026$p");
+    CHECK_STR(h_reply, "\033[?2026;1$y");
+    h_put(t, "\033[?2026l");
+    CHECK(!(vt_modes(t) & VT_MODE_SYNC));
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    synchronized_output_is_a_mode();
     a_sequence_cut_by_a_write_means_the_same();
     a_row_counts_the_cells_in_use();
     rgb_to_256();

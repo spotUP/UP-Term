@@ -28,6 +28,7 @@ extern struct GfxBase *GfxBase;
 extern struct Device *ConsoleDevice;
 
 #define FRAME_MICROS 50000 /* 20 frames per second */
+#define SYNC_FRAMES 3       /* the longest a ?2026 frame is waited for */
 
 static void frame_start(vtwin *w);
 
@@ -238,6 +239,16 @@ void vtwin_render(vtwin *w)
 {
     if (!w->render_pending || !w->t)
         return;
+    if ((vt_modes(w->t) & VT_MODE_SYNC) && w->sync_held < SYNC_FRAMES) {
+        /* synchronized output (?2026): the program is in the middle of a
+         * frame. Nothing is drawn until it says the frame is whole -- or
+         * three frames have passed, should it never say so. (A frame sent
+         * in several writes showed its top new and its bottom old.) */
+        w->sync_held++;
+        frame_start(w);
+        return;
+    }
+    w->sync_held = 0;
     w->render_pending = 0;
     vr_mask_begin(&w->r); /* planar screens: only the planes in use (S1) */
     vr_cursor_off(&w->r);
@@ -734,8 +745,13 @@ void vtwin_write(vtwin *w, const vt_u8 *b, long n)
      * (vtwin_render()), so a flood of one-line writes costs one scroll blit
      * per frame instead of one per line (the chip bus of a 4-plane hires
      * screen could not keep up: 45 ms per scroll, cycle-exact rig). */
-    vt_feed(w->t, b, n);
-    w->render_pending = 1;
+    {
+        vt_u32 sync = vt_modes(w->t) & VT_MODE_SYNC;
+        vt_feed(w->t, b, n);
+        w->render_pending = 1;
+        if (sync && !(vt_modes(w->t) & VT_MODE_SYNC))
+            vtwin_render(w); /* the program's frame is whole: shown now, not at the next tick */
+    }
     if (w->layout_dirty) {
         w->layout_dirty = 0;
         vtwin_render(w);

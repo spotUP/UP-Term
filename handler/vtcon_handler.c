@@ -4716,6 +4716,9 @@ static void packet(con *c, struct DosPacket *p)
     }
     case ACTION_END:
         c->opens--;
+        DBG("render mask/planar", c->w.r.mask, c->w.r.planar);
+        DBG("render pens fg/bg", c->w.r.pen_default_fg, c->w.r.pen_default_bg);
+        DBG("render bg ink/seen", c->w.r.bg_ink, c->w.r.seen);
 #ifdef VTCON_DEBUG
         DBG("prof writes/bytes", c->prof_writes, c->prof_bytes);
         DBG("prof out", c->prof_out, 0);
@@ -4728,6 +4731,7 @@ static void packet(con *c, struct DosPacket *p)
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
+        vtwin_render(&c->w); /* what was written is on screen before the read waits */
         if (c->nreads < READ_Q) {
             c->reads[c->nreads++] = p;
 #ifdef VTCON_DEBUG
@@ -4836,6 +4840,11 @@ static void packet(con *c, struct DosPacket *p)
          * closes a file whose select is still out) */
         if (c->waitchar)
             finish_waitchar(c, DOSFALSE);
+        /* a program that looks for input sees its output on screen first,
+         * not at the next frame (More and Ed feel it; CCON does the same;
+         * and conbench's SYNC barrier is this packet: without the draw
+         * our barrier numbers left a frame's work out) */
+        vtwin_render(&c->w);
 #ifdef VTCON_DEBUG
         dbg("WAIT task/timeout", (LONG)p->dp_Port->mp_SigTask, p->dp_Arg1);
         dbg("WAIT in/eof", c->in_len, c->eof);
@@ -5096,6 +5105,16 @@ static LONG handler_main(void)
         wait = Wait(wait);
         while ((m = GetMsg(c->port)))
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
+        if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
+            /* only a DOS packet woke us: no other port has a message, no
+             * timer is done, the frame is not due (each has its signal in
+             * the mask above). A flood of small writes paid for a dozen
+             * empty checks each (conbench bytewise: 0.53 ms a write
+             * against CCON's 0.37; S1) */
+            service_reads(c);
+            if (c->opens > 0 || !c->ever_opened)
+                continue;
+        } else {
         vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
         find_idcmp(c); /* the find prompt, while it is open */
         sel_idcmp(c);  /* KingCON's selection window, while it is open */
@@ -5120,6 +5139,7 @@ static LONG handler_main(void)
             }
         }
         service_reads(c);
+        }
         /* Done when every handle is closed -- but only after the first Open:
          * before it, opens is 0 too (a wake-up between the startup packet and
          * that Open used to end the handler, leaving dn_Task at a dead port). */

@@ -841,6 +841,7 @@ int updemo_run(const updemo_io *i, int cols, int rows, int first, long scene_tic
         act = 0;
         while ((t = io->ticks(io->user) - t0) < dur) {
             long spent;
+            ps("\033[?2026h"); /* a frame: shown whole (synchronized output), not as its writes arrive */
             scene[s].fn(t, fresh);
             if (scene[s].pixels)
                 blit();
@@ -856,6 +857,7 @@ int updemo_run(const updemo_io *i, int cols, int rows, int first, long scene_tic
                 status(s, fps);
             }
             fresh = 0;
+            ps("\033[?2026l");
             flush();
             /* 25 frames a second at most: the rest of the two ticks waits for a key */
             spent = io->ticks(io->user) - t0 - t;

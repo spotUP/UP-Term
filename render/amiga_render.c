@@ -53,6 +53,7 @@ static UBYTE ink_pen(vr_render *r, ULONG ink, int slot)
             if (r->mask_on)
                 SetWriteMask(r->rp, r->mask);
         }
+        r->seen |= (UBYTE)ink;
         return (UBYTE)ink;
     }
     if (r->scratch_ink[slot] != ink) {
@@ -177,6 +178,11 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->mask = 0xFF;
     r->mask_on = 0;
     r->blank = r->was_blank = 0;
+    r->cursor_flip = 0;
+    r->full_pass = 0;
+    r->in_pass = r->bs_valid = r->bs_ok = 0;
+    r->seen = 0;
+    r->bg_ink = r->pad_ink = r->pen_default_bg;
     r->planar = (UBYTE)((GetBitMapAttr(win->RPort->BitMap, BMA_FLAGS) & BMF_STANDARD) &&
                         GetBitMapAttr(win->RPort->BitMap, BMA_DEPTH) <= 8);
     di = win->WScreen ? GetScreenDrawInfo(win->WScreen) : 0;
@@ -492,7 +498,7 @@ static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 {
     if (x1 < x0 || y1 < y0)
         return;
-    if (pen != r->pen_default_bg)
+    if (pen != r->bg_ink)
         r->blank = 0;
     ink_a(r, pen);
     SetDrMd(r->rp, JAM1);
@@ -509,6 +515,8 @@ static void all_planes(vr_render *r)
 
 void vr_mask_begin(vr_render *r)
 {
+    r->in_pass = 1;   /* one flush: what a default blank looks like is worked out once (draw_rows) */
+    r->bs_valid = 0;
     if (!r->win || !r->planar)
         return;
     r->mask_on = 1;
@@ -517,6 +525,7 @@ void vr_mask_begin(vr_render *r)
 
 void vr_mask_end(vr_render *r)
 {
+    r->in_pass = 0;
     if (!r->mask_on)
         return;
     r->mask_on = 0;
@@ -843,7 +852,7 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
         if (i == n) {
             /* a blank screen's blank cells are there already (a flood of
              * newlines redrew 32 empty rows a frame) */
-            if (!(r->was_blank && st->bg == r->pen_default_bg))
+            if (!(r->was_blank && st->bg == r->bg_ink))
                 fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, st->bg);
             return;
         }
@@ -1070,6 +1079,7 @@ static int direct_row(vr_render *r, int y, const dcell *d, int n)
             if (r->mask_on)
                 SetWriteMask(r->rp, r->mask);
         }
+        r->seen |= pens;
         WaitBlit(); /* earlier blits (scroll, fills, Text, the cursor) finish first */
         for (i = 0; i < n; i++)
             direct_cell(r, d[i].x, y, d[i].ch, d[i].fg, d[i].bg, d[i].attr);
@@ -1250,10 +1260,15 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         x1 = vis_cols(r);
     if (y1 > vis_rows(r))
         y1 = vis_rows(r);
-    r->was_blank = (UBYTE)(r->blank && !r->cursor_drawn); /* a drawn cursor is pixels too */
-    {
-        /* what a default blank looks like now (reverse video, a bell's
-         * flash): plain means its row tails can be filled at once */
+    if (r->in_pass && r->bs_valid) {
+        tail_ok = r->bs_ok && !r->sel;
+        tail_bg = r->bg_ink;
+    } else {
+        /* what a default blank looks like now (the dialect's default
+         * background, reverse video, a bell's flash): plain means its row
+         * tails can be filled at once; its ink is what "blank" means.
+         * Once a render pass: it cost every damaged row a cell_style()
+         * (conbench cursor-pos: seven rows a frame; S1). */
         vt_cell b;
         vr_style bs;
         b.ch = ' ';
@@ -1265,11 +1280,44 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         b.ext = 0;
         b.pad = 0;
         cell_style(r, &b, 0, &bs);
-        tail_ok = !r->sel && !bs.attr && !bs.deco && !bs.font;
+        r->bs_ok = (UBYTE)(!bs.attr && !bs.deco && !bs.font);
+        r->bs_valid = 1;
+        tail_ok = r->bs_ok && !r->sel;
         tail_bg = bs.bg;
+        if (tail_bg != r->bg_ink) {
+            r->bg_ink = tail_bg; /* another background: nothing on screen is known blank */
+            r->blank = 0;
+        }
     }
-    if (x0 <= 0 && y0 <= 0 && x1 >= vis_cols(r) && y1 >= vis_rows(r) && !r->view)
+    r->was_blank = (UBYTE)(r->blank && !r->cursor_drawn); /* a drawn cursor is pixels too */
+    if (x0 <= 0 && y0 <= 0 && x1 >= vis_cols(r) && y1 >= vis_rows(r) && !r->view) {
         r->blank = 1; /* the whole grid again: blank unless a row draws something */
+        if (r->planar && r->mask_on && !r->cursor_drawn && !(tail_bg & VR_INK_RGB)) {
+            /* Every cell is drawn again: afterwards the planes in use are
+             * those of the pens this pass draws (r->seen), and no more --
+             * a colour that was on screen once kept its planes in every
+             * scroll after (CCON narrows at a form feed the same way).
+             * The pass itself draws under the mask as it is, which holds
+             * every plane that is not all zeros, so the planes dropped
+             * come out as zeros. Cells skipped as blank hold the
+             * background; the strips beside the grid are given it once. */
+            r->full_pass = 1;
+            r->seen = (UBYTE)tail_bg;
+            if (r->pad_ink != tail_bg) {
+                struct Window *w = r->win;
+                WORD gx1 = (WORD)(r->ox + vis_cols(r) * r->cw), gy1 = (WORD)(r->oy + vis_rows(r) * r->ch);
+                WORD ax1 = (WORD)(w->Width - w->BorderRight - 1), ay1 = (WORD)(w->Height - w->BorderBottom - 1);
+                UBYTE keep = r->was_blank;
+                fill(r, gx1, r->oy, ax1, ay1, tail_bg);
+                fill(r, r->ox, gy1, (WORD)(gx1 - 1), ay1, tail_bg);
+                if (w->BorderLeft < r->ox)
+                    fill(r, w->BorderLeft, r->oy, (WORD)(r->ox - 1), ay1, tail_bg);
+                r->pad_ink = tail_bg;
+                r->was_blank = keep;
+                r->blank = 1;
+            }
+        }
+    }
     for (y = y0; y < y1; y++) {
         int ncells;
         const vt_cell *c = vt_row(r->t, y - r->view, &ncells);
@@ -1297,7 +1345,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
              * MHz 68020; S1) */
             int used = vt_row_used(r->t, gy), tx = used > x0 ? used : x0;
             if (tx < xe) {
-                if (!(r->was_blank && tail_bg == r->pen_default_bg))
+                if (!r->was_blank)
                     fill(r, r->ox + tx * r->cw, py, r->ox + xe * r->cw - 1, py + r->ch - 1, tail_bg);
                 xe = tx;
             }
@@ -1388,6 +1436,11 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             r->cursor_drawn = 0; /* the cursor cell was just painted over */
     }
     r->was_blank = 0;
+    if (r->full_pass) {
+        r->full_pass = 0;
+        r->mask = r->seen;
+        SetWriteMask(r->rp, r->mask_on ? r->mask : 0xFF);
+    }
     SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
 }
 
@@ -1571,7 +1624,11 @@ void vr_redraw(vr_render *r)
         fill(r, w->BorderLeft, top, w->Width - w->BorderRight - 1,
              w->Height - w->BorderBottom - 1, r->pen_default_bg);
         r->mask = r->pen_default_bg;
-        r->blank = (UBYTE)!r->view; /* until the rows below draw something */
+        r->pad_ink = r->pen_default_bg;
+        /* blank until the rows below draw something -- when this is the
+         * blank cells' own background (an Amiga-dialect window's is the
+         * program's pen, not the screen's) */
+        r->blank = (UBYTE)(!r->view && r->bg_ink == r->pen_default_bg);
     }
     r->cursor_drawn = 0;
     draw_rows(r, 0, 0, r->cols, r->rows);
@@ -1650,6 +1707,17 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
  * on a screen whose pens are not paired by colour it drew anything (rig
  * 2026-10-03, 32 pens on UP-Term's screen: black in pen 17 inverted to 14,
  * a cyan cursor). */
+/* The rectangle inverted in the planes of m (COMPLEMENT under a write mask). */
+static void cursor_flip(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE m)
+{
+    r->mask |= m; /* planes not in use held zeros; they do no longer */
+    SetDrMd(r->rp, COMPLEMENT);
+    SetWriteMask(r->rp, m);
+    RectFill(r->rp, x0, y0, x1, y1);
+    SetDrMd(r->rp, JAM2);
+    SetWriteMask(r->rp, r->mask_on ? r->mask : 0xFF);
+}
+
 static void cursor_draw(vr_render *r, int on)
 {
     ULONG ink = r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg;
@@ -1666,12 +1734,32 @@ static void cursor_draw(vr_render *r, int on)
             /* the cell was filled: repaint it normally */
             r->cursor_colorful = 0;
             draw_rows(r, r->cursor_x, r->cursor_y, r->cursor_x + 1, r->cursor_y + 1);
+        } else if (r->cursor_flip) {
+            cursor_flip(r, px, py, x1, y1, r->cursor_flip);
+            r->cursor_flip = 0;
         } else {
             SetDrMd(r->rp, COMPLEMENT);
             all_planes(r);
             RectFill(r->rp, px, py, x1, y1);
             SetDrMd(r->rp, JAM2);
         }
+        return;
+    }
+    if (r->planar && r->cursor_ink == VR_KEEP) {
+        /* A planar screen, no cursor colour of its own: the cell (or the
+         * strip of an underline or bar) flipped in the planes in use, as
+         * the ROM console draws its cursor -- one fill on, one off, and no
+         * pen that would bring another plane into use (the cursor's pen
+         * made every scroll move its planes too; S1). A blank screen has
+         * none yet: the default pens' planes then. */
+        UBYTE m = r->mask;
+        if (!m)
+            m = (UBYTE)(r->pen_default_fg ^ r->pen_default_bg);
+        if (!m)
+            m = 1;
+        r->cursor_flip = m;
+        r->cursor_colorful = 0;
+        cursor_flip(r, px, py, x1, y1, m);
         return;
     }
     if (style > 2) {

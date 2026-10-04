@@ -134,6 +134,9 @@ typedef struct vt_callbacks {
 #define VT_MODE_META_8BIT    0x20000  /* ?1034: Meta sets the 8th bit, no ESC prefix */
 #define VT_MODE_SCHEME_UPDATES 0x40000 /* ?2031: report dark/light changes */
 #define VT_MODE_APP_ESCAPE   0x80000  /* ?7727: the Escape key sends ESC O [ */
+#define VT_MODE_SYNC         0x100000 /* ?2026: synchronized output -- a program is in the middle of
+                                       * a frame; the host holds its drawing until this is reset (or a
+                                       * moment has passed), so no half-updated screen is shown */
 
 typedef struct vt_term vt_term;
 

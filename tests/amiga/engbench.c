@@ -57,6 +57,7 @@ static void build(int w)
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_rows_up(void **p, long k);
+void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
 void vt_asm_rows_down(void **p, long k);
 void vr_asm_cell(unsigned char **planes, long depth, long off, long bpr, const unsigned char *rows, long h, long fg, long bg,
                  long mask);
@@ -90,6 +91,16 @@ static int asm_check(void)
                             : c[i].ch != (vt_u16)i) return 10;
     vt_asm_fill(c, 0, &p);
     if (c[0].ch != 0) return 11;
+    for (i = 0; i < 12; i++) { c[i].ch = (vt_u16)(100 + i); c[i].fg = (vt_color)i; c[i].ext = (vt_u8)i; }
+    vt_asm_cells_move(c + 3, c + 1, 6);     /* up, overlapping: 1..6 land in 3..8 */
+    for (i = 0; i < 12; i++)
+        if (c[i].ch != (vt_u16)(100 + (i >= 3 && i <= 8 ? i - 2 : i)) || c[i].ext != (vt_u8)(i >= 3 && i <= 8 ? i - 2 : i)) return 15;
+    for (i = 0; i < 12; i++) { c[i].ch = (vt_u16)(100 + i); c[i].fg = (vt_color)i; }
+    vt_asm_cells_move(c + 1, c + 4, 7);     /* down, overlapping: 4..10 land in 1..7 */
+    for (i = 0; i < 12; i++)
+        if (c[i].ch != (vt_u16)(100 + (i >= 1 && i <= 7 ? i + 3 : i)) || c[i].fg != (vt_color)(i >= 1 && i <= 7 ? i + 3 : i)) return 16;
+    vt_asm_cells_move(c, c + 5, 0);
+    if (c[0].ch != 100) return 17;
     {
         static void *r[6];
         static char m[6];

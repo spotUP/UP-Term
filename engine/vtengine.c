@@ -282,6 +282,7 @@ static void blank_cell(const vt_term *t, vt_cell *c)
 #ifdef VT_ASM
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
+void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
 void vt_asm_rows_up(struct vt_line **p, long k);
 void vt_asm_rows_down(struct vt_line **p, long k);
 /* vtengine_68k.s knows vt_cell by its offsets: a negative array size here
@@ -864,36 +865,91 @@ static void tab_back(vt_term *t, int n)
     t->wrap_pending = 0;
 }
 
+/* n cells from src to dst, overlapping or not */
+static void cells_move(vt_cell *dst, const vt_cell *src, int n)
+{
+    if (n <= 0)
+        return;
+#ifdef VT_ASM
+    vt_asm_cells_move(dst, src, n);
+#else
+    memmove(dst, src, (size_t)n * sizeof(vt_cell));
+#endif
+}
+
+/* The default blank (not the current erase colour): what the cells past a
+ * line's `used` hold. */
+static void default_cells(vt_cell *c, int n)
+{
+    vt_cell b;
+    int i;
+    b.ch = ' ';
+    b.fg = VT_COLOR_DEFAULT;
+    b.bg = VT_COLOR_DEFAULT;
+    b.attr = 0;
+    b.width = 1;
+    b.deco = 0;
+    b.ext = 0;
+    b.pad = 0;
+    for (i = 0; i < n; i++)
+        c[i] = b;
+}
+
+/* Insert and delete character move the row's tail. Only its cells in use
+ * (vt_line.used) need moving and drawing: past them the row is default
+ * blanks before and after. (conbench insdel-char: the whole tail moved
+ * through memmove and was drawn again, 4 ms an operation on the stock
+ * rig; S1.) */
 static void insert_chars(vt_term *t, int n)
 {
-    vt_cell *c = t->scr[t->cy]->c;
-    int x = t->cx, k;
+    vt_line *l = t->scr[t->cy];
+    vt_cell *c = l->c;
+    int x = t->cx, k, u, end;
     n = clampi(n, 1, t->cols - x);
     unwide(t, x, t->cy);
-    k = t->cols - x - n;
-    if (k > 0)
-        memmove(&c[x + n], &c[x], k * sizeof(vt_cell));
+    t->wrap_pending = 0;
+    u = l->used < t->cols ? l->used : t->cols;
+    if (u <= x) {
+        /* default blanks from the cursor on: only an erase colour shows */
+        if (!vacated_default(t)) {
+            cells_blank(t, &c[x], n);
+            mark(t, x, t->cy, x + n);
+        }
+        return;
+    }
+    k = (u < t->cols - n ? u : t->cols - n) - x; /* the cells in use that stay on the row */
+    cells_move(&c[x + n], &c[x], k);
     cells_blank(t, &c[x], n);
     if (c[t->cols - 1].width == 2)
         blank_cell(t, &c[t->cols - 1]);
-    t->wrap_pending = 0;
-    mark(t, x, t->cy, t->cols);
+    end = u + n < t->cols ? u + n : t->cols;
+    mark(t, x, t->cy, end);
 }
 
 static void delete_chars(vt_term *t, int n)
 {
-    vt_cell *c = t->scr[t->cy]->c;
-    int x = t->cx, k;
+    vt_line *l = t->scr[t->cy];
+    vt_cell *c = l->c;
+    int x = t->cx, k, u, from, dflt = vacated_default(t);
     n = clampi(n, 1, t->cols - x);
     unwide(t, x, t->cy);
     if (x + n < t->cols)
         unwide(t, x + n, t->cy);
-    k = t->cols - x - n;
-    if (k > 0)
-        memmove(&c[x], &c[x + n], k * sizeof(vt_cell));
-    cells_blank(t, &c[t->cols - n], n);
     t->wrap_pending = 0;
-    mark(t, x, t->cy, t->cols);
+    u = l->used < t->cols ? l->used : t->cols;
+    if (u > x) {
+        k = u - x - n; /* the cells in use right of the deleted ones */
+        cells_move(&c[x], &c[x + n], k);
+        from = x + (k > 0 ? k : 0);
+        default_cells(&c[from], u - from); /* default blanks came in behind them */
+        mark(t, x, t->cy, u);
+        if (dflt)
+            l->used = (vt_u16)from; /* unused again from there */
+    }
+    if (!dflt) {
+        cells_blank(t, &c[t->cols - n], n); /* the row's end in the erase colour */
+        mark(t, t->cols - n, t->cy, t->cols);
+    }
 }
 
 static void insert_lines(vt_term *t, int n)
@@ -1659,6 +1715,12 @@ static void set_mode(vt_term *t, int on)
                     t->modes &= ~bit;
                 break;
             }
+            case 2026:
+                if (on)
+                    t->modes |= VT_MODE_SYNC;
+                else
+                    t->modes &= ~(vt_u32)VT_MODE_SYNC;
+                break;
             case 66:
                 if (on)
                     t->modes |= VT_MODE_APP_KEYPAD;
@@ -1992,6 +2054,7 @@ static void report_mode(vt_term *t)
         case 1004: bit = VT_MODE_FOCUS; break;
         case 1006: bit = VT_MODE_MOUSE_SGR; break;
         case 2004: bit = VT_MODE_BRACKET_PASTE; break;
+        case 2026: bit = VT_MODE_SYNC; break;
         case 6: v = t->origin ? 1 : 2; break;
         case 7: v = t->autowrap ? 1 : 2; break;
         case 12: bit = VT_MODE_CURSOR_BLINK; break;
