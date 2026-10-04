@@ -86,7 +86,7 @@ def main():
     for p in range(LIMIT // 256):
         ws = [w(c) for c in range(p * 256, p * 256 + 256)]
         if len(set(ws)) == 1:
-            index.append({1: 0, 2: 1, 0: 2}[ws[0]])
+            index.append(ws[0])  # a uniform page: its width itself
             continue
         bits = []
         for i in range(0, 256, 4):
@@ -128,7 +128,7 @@ def main():
  * U+2764 U+FE0F as one cell (foot and kitty widen it only in grapheme mode,
  * ?2027).
  *
- * Layout: below U+40000, page c >> 8 is all width 1 (0), 2 (1) or 0 (2), or
+ * Layout: below U+40000, page c >> 8 is its width (0, 1, 2) when all alike, or
  * 3 + a row of vt_width_bits with 2 bits a code point; above, only
  * U+E0000..E0FFF (tags, variation selectors supplement) is not 1. A lookup
  * is two loads, no search: it runs for every character outside ASCII. */
@@ -149,7 +149,7 @@ static int vt_char_width(vt_u32 c)
         return c >= 0xE0000UL && c <= 0xE0FFFUL ? 0 : 1;
     p = vt_width_page[c >> 8];
     if (p < 3)
-        return p == 0 ? 1 : p == 1 ? 2 : 0;
+        return p;
     return (vt_width_bits[p - 3][(c & 0xFF) >> 2] >> ((c & 3) << 1)) & 3;
 }
 
