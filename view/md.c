@@ -57,7 +57,7 @@ typedef struct listmem {
     long num;
 } listmem;
 
-typedef struct md {
+struct md {
     const md_opts *o;
     vw_out *out;
     int utf8, oom;
@@ -85,7 +85,12 @@ typedef struct md {
     lspan *ln;
     long nln, cln;
     buf line;
-} md;
+    /* md_open's stream: its own copy of the options, the line not yet
+     * ended, pass 1's state kept line by line */
+    md_opts oc;
+    buf part;
+    int s_fence, s_fc, s_prev;
+};
 
 /* ---- small things -------------------------------------------------------- */
 
@@ -1903,12 +1908,65 @@ static int next_line(md *m, const char *doc, long n, long *pos)
     return 1;
 }
 
+static void md_free(md *m)
+{
+    int i;
+    for (i = 0; i < m->nrefs; i++) {
+        free(m->refs[i].label);
+        free(m->refs[i].url);
+    }
+    free(m->refs);
+    free(m->it);
+    free(m->stk);
+    free(m->flat.p);
+    free(m->fst);
+    free(m->urls.p);
+    free(m->ln);
+    free(m->line.p);
+    free(m->text.p);
+    free(m->part.p);
+    free(m);
+}
+
+/* the end of a document: what is open is drawn and closed */
+static int md_finish(md *m)
+{
+    close_leaf(m);
+    while (m->nc > 0)
+        pop(m);
+    vo_link(m->out, 0);
+    vo_reset(m->out);
+    return m->oom ? -1 : 0;
+}
+
+/* pass 1's rule for one line: 1 when it is a reference definition (not
+ * in a fence, not inside a paragraph) */
+static int pass1_line(md *m, const char *s, long ln, int *fence, int *fc, int *prev_text)
+{
+    long p = indent(s, ln);
+    if (p < 4 && p < ln && (s[p] == '`' || s[p] == '~') && run(s + p, ln - p, s[p]) >= 3) {
+        if (!*fence) {
+            *fence = 1;
+            *fc = s[p];
+        } else if (s[p] == *fc) {
+            *fence = 0;
+        }
+        *prev_text = 0;
+    } else if (!*fence) {
+        if (!*prev_text && ref_def(m, s, ln))
+            return 1;
+        /* a heading or an HTML line ("<!-- Links -->") is no paragraph */
+        *prev_text = !is_blank(s, ln) && !(p < ln && (s[p] == '#' || s[p] == '<'));
+    }
+    return 0;
+}
+
 int md_render(const char *doc, long n, const md_opts *opt, vw_out *out)
 {
     md *m = (md *)calloc(1, sizeof(md));
     long pos = 0, idx = 0, nl = 0;
     char *defs = 0;
-    int i, fence = 0, fc = 0, prev_text = 0, rc;
+    int fence = 0, fc = 0, prev_text = 0, rc;
     if (!m)
         return -1;
     m->o = opt;
@@ -1926,24 +1984,8 @@ int md_render(const char *doc, long n, const md_opts *opt, vw_out *out)
         return -1;
     }
     while (next_line(m, doc, n, &pos)) {
-        const char *s = m->line.p;
-        long ln = m->line.n, p = indent(s, ln);
-        if (p < 4 && p < ln && (s[p] == '`' || s[p] == '~') && run(s + p, ln - p, s[p]) >= 3) {
-            if (!fence) {
-                fence = 1;
-                fc = s[p];
-            } else if (s[p] == fc) {
-                fence = 0;
-            }
-            prev_text = 0;
-        } else if (!fence) {
-            if (!prev_text && ref_def(m, s, ln)) {
-                defs[idx] = 1;
-            } else {
-                /* a heading or an HTML line ("<!-- Links -->") is no paragraph */
-                prev_text = !is_blank(s, ln) && !(p < ln && (s[p] == '#' || s[p] == '<'));
-            }
-        }
+        if (pass1_line(m, m->line.p, m->line.n, &fence, &fc, &prev_text))
+            defs[idx] = 1;
         idx++;
     }
     /* pass 2: the blocks */
@@ -1953,26 +1995,72 @@ int md_render(const char *doc, long n, const md_opts *opt, vw_out *out)
         if (!defs[idx++])
             process_line(m, m->line.p, m->line.n);
     }
-    close_leaf(m);
-    while (m->nc > 0)
-        pop(m);
-    vo_link(out, 0);
-    vo_reset(out);
-    rc = m->oom ? -1 : 0;
-    for (i = 0; i < m->nrefs; i++) {
-        free(m->refs[i].label);
-        free(m->refs[i].url);
-    }
-    free(m->refs);
-    free(m->it);
-    free(m->stk);
-    free(m->flat.p);
-    free(m->fst);
-    free(m->urls.p);
-    free(m->ln);
-    free(m->line.p);
-    free(m->text.p);
+    rc = md_finish(m);
     free(defs);
-    free(m);
+    md_free(m);
+    return rc;
+}
+
+/* ---- the stream: lines as they arrive ------------------------------------ */
+
+md *md_open(const md_opts *opt, vw_out *out)
+{
+    md *m = (md *)calloc(1, sizeof(md));
+    if (!m)
+        return 0;
+    m->oc = *opt;
+    m->o = &m->oc;
+    m->out = out;
+    m->utf8 = out->cs == VW_UTF8;
+    return m;
+}
+
+static void stream_line(md *m, const char *s, long n)
+{
+    long pos = 0, ln = 0;
+    const char *l = "";
+    /* next_line expands the tabs; an empty line has nothing to expand */
+    if (n > 0 && next_line(m, s, n, &pos) && m->line.p) {
+        l = m->line.p;
+        ln = m->line.n;
+    }
+    if (!pass1_line(m, l, ln, &m->s_fence, &m->s_fc, &m->s_prev))
+        process_line(m, l, ln);
+}
+
+int md_feed(md *m, const char *s, long n)
+{
+    long a = 0, i;
+    for (i = 0; i < n; i++) {
+        if (s[i] != '\n')
+            continue;
+        if (m->part.n) {
+            badd(m, &m->part, s + a, i - a);
+            stream_line(m, m->part.p, m->part.n);
+            m->part.n = 0;
+        } else {
+            stream_line(m, s + a, i - a);
+        }
+        a = i + 1;
+    }
+    if (a < n)
+        badd(m, &m->part, s + a, n - a);
+    return m->oom ? -1 : 0;
+}
+
+int md_pending(const md *m)
+{
+    return m->part.n > 0 || m->leaf != L_NONE;
+}
+
+int md_close(md *m)
+{
+    int rc;
+    if (!m)
+        return -1;
+    if (m->part.n)
+        stream_line(m, m->part.p, m->part.n);
+    rc = md_finish(m);
+    md_free(m);
     return rc;
 }
