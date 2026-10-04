@@ -51,6 +51,7 @@ void prefs_defaults(prefs_fields *f)
     f->wheel = 1;
     f->reflow = 1;
     f->kccache = 1;
+    f->aspect = 1;
 }
 
 void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
@@ -61,7 +62,6 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     prefs_defaults(f);
     pc_copy(f->font, upconf_str(c, p, "font", ""), sizeof(f->font));
     pc_copy(f->fallback, upconf_str(c, p, "font-fallback", ""), sizeof(f->fallback));
-    pc_copy(f->screen, upconf_str(c, p, "screen", ""), sizeof(f->screen));
     pc_copy(f->screenmode, upconf_str(c, p, "screen-mode", ""), sizeof(f->screenmode));
     pc_copy(f->screendepth, upconf_str(c, p, "screen-depth", ""), sizeof(f->screendepth));
     pc_copy(f->sb, upconf_str(c, p, "scrollback", ""), sizeof(f->sb));
@@ -70,7 +70,6 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     pc_copy(f->bg, upconf_str(c, p, "bg", ""), sizeof(f->bg));
     pc_copy(f->selfg, upconf_str(c, p, "selection-fg", ""), sizeof(f->selfg));
     pc_copy(f->selbg, upconf_str(c, p, "selection-bg", ""), sizeof(f->selbg));
-    pc_copy(f->clipboard, upconf_str(c, p, "program-clipboard", ""), sizeof(f->clipboard));
     pc_copy(f->linkopen, upconf_str(c, p, "link-open", ""), sizeof(f->linkopen));
     v = upconf_str(c, p, "cursor", "block");
     f->cursor = pc_ieq(v, "underline") ? PREFS_CURSOR_UNDERLINE
@@ -84,6 +83,15 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     f->copy_sel = pc_ieq(upconf_str(c, p, "copy-on-select", "off"), "on");
     f->wheel = !pc_ieq(upconf_str(c, p, "wheel", "scroll"), "ignore");
     f->reflow = !pc_ieq(upconf_str(c, p, "reflow", "on"), "off");
+    /* as the handler reads them (apply_profile) */
+    v = upconf_str(c, p, "screen", "workbench");
+    f->screen = pc_ieq(v, "own") ? PREFS_SCREEN_OWN
+              : pc_ieq(v, "fullscreen") ? PREFS_SCREEN_FULL : PREFS_SCREEN_WORKBENCH;
+    f->aspect = !pc_ieq(upconf_str(c, p, "font-aspect", "on"), "off");
+    f->backspace_bs = pc_ieq(upconf_str(c, p, "backspace", "del"), "bs");
+    v = upconf_str(c, p, "program-clipboard", "write");
+    f->clipboard = pc_ieq(v, "off") ? PREFS_CLIP_OFF
+                 : pc_ieq(v, "read-write") ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
     f->completion = pc_ieq(upconf_str(c, p, "completion", "unix"), "kingcon")
                   ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     pc_copy(f->kcmode, upconf_str(c, p, "kingcon-mode", ""), sizeof(f->kcmode));
@@ -216,7 +224,8 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
      * removed and refilled here, and all of that went with every save.) */
     pc_put(w, p, "font", f->font);
     pc_put(w, p, "font-fallback", f->fallback);
-    pc_put(w, p, "screen", f->screen);
+    upconf_set(w, p, "screen", f->screen == PREFS_SCREEN_OWN ? "own"
+                               : f->screen == PREFS_SCREEN_FULL ? "fullscreen" : "workbench");
     pc_put(w, p, "screen-mode", f->screenmode);
     pc_put(w, p, "screen-depth", f->screendepth);
     pc_put(w, p, "scrollback", f->sb);
@@ -226,7 +235,11 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     /* blank keeps the swap for that half: the key is not written at all */
     pc_put(w, p, "selection-fg", f->selfg);
     pc_put(w, p, "selection-bg", f->selbg);
-    pc_put(w, p, "program-clipboard", f->clipboard);
+    upconf_set(w, p, "font-aspect", f->aspect ? "on" : "off");
+    upconf_set(w, p, "backspace", f->backspace_bs ? "bs" : "del");
+    upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"
+                                          : f->clipboard == PREFS_CLIP_READ_WRITE ? "read-write"
+                                          : "write");
     pc_put(w, p, "link-open", f->linkopen);
     upconf_set(w, p, "cursor", f->cursor == PREFS_CURSOR_UNDERLINE ? "underline"
                                : f->cursor == PREFS_CURSOR_BAR ? "bar" : "block");

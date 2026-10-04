@@ -25,7 +25,6 @@
 typedef struct prefs_fields {
     char font[UC_MAX_VALUE];
     char fallback[UC_MAX_VALUE]; /* font-fallback: outline font for glyphs the font lacks */
-    char screen[UC_MAX_VALUE];   /* screen: workbench | own | fullscreen ("" = workbench) */
     char screenmode[UC_MAX_VALUE];  /* screen-mode: 0xID ("" = the Workbench's) */
     char screendepth[UC_MAX_VALUE]; /* screen-depth: n ("" = 4, or 8 on a card) */
     char sb[UC_MAX_VALUE];
@@ -34,14 +33,16 @@ typedef struct prefs_fields {
     char bg[UC_MAX_VALUE];
     char selfg[UC_MAX_VALUE];
     char selbg[UC_MAX_VALUE];
-    /* kept through a save, not shown: what the window takes as it is */
-    char clipboard[UC_MAX_VALUE];   /* program-clipboard: write | read-write | off (OSC 52) */
     char linkopen[UC_MAX_VALUE];    /* link-open: the command for an OSC 8 link, %s the URL */
     char pal[16][16];
     int cursor;     /* PREFS_CURSOR_* */
     int bell;       /* PREFS_BELL_* */
     int blink, bold, meta_alt, copy_sel, wheel, reflow; /* 0 / 1 */
     int completion; /* PREFS_COMPLETE_* */
+    int screen;     /* PREFS_SCREEN_*: screen = workbench | own | fullscreen */
+    int aspect;     /* font-aspect: the font fitted to the screen's aspect (on by default) */
+    int backspace_bs; /* backspace = bs: the key sends ^H; 0: del, ^? (the default) */
+    int clipboard;  /* PREFS_CLIP_*: program-clipboard, what OSC 52 may do */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
     int kcinfo;     /* KingCON completion lists .info files too */
     int kccache;    /* KingCON's directory cache (DIRCACHE; on by default) */
@@ -54,6 +55,10 @@ enum { PREFS_BELL_NONE, PREFS_BELL_BEEP, PREFS_BELL_VISUAL };
  * kingcon (KingCON's keys and its selection window;
  * thoughts/shared/research/2026-10-02_kingcon-completion.md) */
 enum { PREFS_COMPLETE_UNIX, PREFS_COMPLETE_KINGCON };
+enum { PREFS_SCREEN_WORKBENCH, PREFS_SCREEN_OWN, PREFS_SCREEN_FULL };
+/* OSC 52: programs may set the clipboard (the default), set and read it,
+ * or neither */
+enum { PREFS_CLIP_WRITE, PREFS_CLIP_READ_WRITE, PREFS_CLIP_OFF };
 
 /* The built-in values (what a window with no file shows). */
 void prefs_defaults(prefs_fields *f);

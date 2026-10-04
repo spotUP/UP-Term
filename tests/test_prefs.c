@@ -266,6 +266,12 @@ static void stage_cases(void)
     f.kccache = 0;
     CHECK_INT(f.reflow, 1);    /* on unless the file says off (gaps #11) */
     f.reflow = 0;
+    /* the keys the Advanced page added: read as the handler reads them,
+     * written back as it reads them */
+    CHECK_INT(f.aspect, 1);         /* no key: on */
+    f.aspect = 0;
+    CHECK_INT(f.backspace_bs, 0);   /* no key: DEL */
+    f.backspace_bs = 1;
     strcpy(f.pal[3], "#FFAA00");
     strcpy(f.selbg, "203040");
     CHECK_INT(prefs_validate(&f), 0);
@@ -279,10 +285,10 @@ static void stage_cases(void)
     CHECK_STR(g.font, "TOPAZ 8.8.font");
     /* the fallback font survives a save */
     CHECK_STR(g.fallback, "Symbols Nerd Font Mono");
-    CHECK_STR(g.screen, "fullscreen");      /* the screen keys survive a save too */
+    CHECK_INT(g.screen, PREFS_SCREEN_FULL); /* the screen keys survive a save too */
     CHECK_STR(g.screenmode, "0x29004");
     CHECK_STR(g.screendepth, "4");
-    CHECK_STR(g.clipboard, "read-write");   /* OSC 52 access (G3) survives a save */
+    CHECK_INT(g.clipboard, PREFS_CLIP_READ_WRITE); /* OSC 52 access (G3) survives a save */
     CHECK_STR(g.linkopen, "Run >NIL: OpenURL %s"); /* and the OSC 8 link command */
     CHECK_INT(g.cursor, PREFS_CURSOR_BAR);
     CHECK_INT(g.blink, 1);
@@ -292,6 +298,12 @@ static void stage_cases(void)
     CHECK_INT(g.kcinfo, 1);
     CHECK_INT(g.kccache, 0);
     CHECK_INT(g.reflow, 0);
+    CHECK_STR(upconf_str(&conf, "default", "font-aspect", "?"), "off");
+    CHECK_STR(upconf_str(&conf, "default", "backspace", "?"), "bs");
+    CHECK_STR(upconf_str(&conf, "default", "screen", "?"), "fullscreen");
+    CHECK_STR(upconf_str(&conf, "default", "program-clipboard", "?"), "read-write");
+    CHECK_INT(g.aspect, 0);
+    CHECK_INT(g.backspace_bs, 1);
     CHECK_STR(upconf_str(&conf, "default", "reflow", "?"), "off");
     CHECK_STR(g.pal[3], "FFAA00");
     CHECK_STR(g.selbg, "203040");

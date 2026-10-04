@@ -2,8 +2,9 @@
  * ENVARC: -- the profiles the XCON: handler reads for every window (plan
  * thoughts/shared/plans/2026-10-01-terminal-preferences.md).
  *
- * C:UP-Term Prefs opens a window with two pages, General and Colors, picked
- * with the Page gadget. The fields edit one profile at a time: name it in
+ * C:UP-Term Prefs opens a window with three pages, General, Colors and
+ * Advanced (the screen, the keys, what programs may do), picked with the
+ * Page gadget. The fields edit one profile at a time: name it in
  * the Profile field, Load it (or start it with New), change the values, then
  * the Amiga Prefs buttons: Save writes ENVARC: and ENV: (kept across a
  * reboot), Use writes ENV: only (until the reboot), Cancel writes nothing.
@@ -74,8 +75,13 @@ enum {
     ID_FONT, ID_SB, ID_CURCOL, ID_FALLBACK,
     ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_REFLOW, ID_COMPLETE, ID_KCMODE, ID_KCINFO, ID_KCCACHE,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
-    ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME
+    ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME,
+    ID_SCREEN, ID_SMODE, ID_SDEPTH, ID_ASPECT, ID_BACKSPACE, ID_CLIP, ID_LINK, ID_ADVTEXT
 };
+
+#define N_PAGES 3
+/* the Advanced page's fields start here: its labels are longer */
+#define ADV_X 184
 
 /* A string field: its gadget, the page it is on, the text it edits. */
 struct strfield {
@@ -87,17 +93,18 @@ struct strfield {
 
 /* the string fields: General's profile, font, fallback font, scrollback, cursor colour
  * and KingCON style; Colors' text, background, selection pair and the 16
- * palette entries */
-#define N_STR (6 + 4 + 16)
+ * palette entries; Advanced's screen mode, screen depth and link command */
+#define N_STR (6 + 4 + 16 + 3)
 
 struct app {
     struct Window *win;
     APTR vi;                  /* GadTools' VisualInfo of the screen */
     WORD ox, oy;              /* the inner top left, in window coordinates */
     struct Gadget *glist_common; /* Page, status, Save / Use / Cancel */
-    struct Gadget *glist[2];  /* the General and the Colors page */
+    struct Gadget *glist[N_PAGES]; /* the General, Colors and Advanced pages */
     int page;                 /* the page in the window, -1 none yet */
     struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *greflow, *gcomplete, *gkcinfo, *gkccache;
+    struct Gadget *gscreen, *gaspect, *gbackspace, *gclip;
     struct strfield str[N_STR];
     int nstr;
     upconf conf;              /* the file's table, as loaded and as last written */
@@ -112,11 +119,16 @@ struct app {
 
 static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFONT };
 
-static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", 0 };
+static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", (STRPTR)"Advanced", 0 };
 static STRPTR cursor_labels[] = { (STRPTR)"Block", (STRPTR)"Underline", (STRPTR)"Bar", 0 };
 static STRPTR bell_labels[] = { (STRPTR)"None", (STRPTR)"Beep", (STRPTR)"Visual", 0 };
 static STRPTR meta_labels[] = { (STRPTR)"Left Amiga", (STRPTR)"Alt", 0 };
 static STRPTR complete_labels[] = { (STRPTR)"Unix", (STRPTR)"KingCON", 0 };
+/* in the order of PREFS_SCREEN_*, PREFS_CLIP_* */
+static STRPTR screen_labels[] = { (STRPTR)"Workbench", (STRPTR)"Own screen", (STRPTR)"Full screen", 0 };
+static STRPTR backspace_labels[] = { (STRPTR)"Delete", (STRPTR)"Backspace", 0 };
+static STRPTR clip_labels[] = { (STRPTR)"Set the clipboard", (STRPTR)"Set and read the clipboard",
+                                (STRPTR)"Not use the clipboard", 0 };
 
 /* The window a gadget of this page is in now (0: held off the window). */
 static struct Window *win_of(struct app *a, int page)
@@ -195,6 +207,10 @@ static void show_fields(struct app *a)
     set_attr(a, a->gcomplete, 0, GTCY_Active, (ULONG)a->f.completion);
     set_attr(a, a->gkcinfo, 0, GTCB_Checked, (ULONG)a->f.kcinfo);
     set_attr(a, a->gkccache, 0, GTCB_Checked, (ULONG)a->f.kccache);
+    set_attr(a, a->gscreen, 2, GTCY_Active, (ULONG)a->f.screen);
+    set_attr(a, a->gaspect, 2, GTCB_Checked, (ULONG)a->f.aspect);
+    set_attr(a, a->gbackspace, 2, GTCY_Active, (ULONG)a->f.backspace_bs);
+    set_attr(a, a->gclip, 2, GTCY_Active, (ULONG)a->f.clipboard);
 }
 
 /* Take the text of every string field: a string gadget reports only Return
@@ -498,6 +514,43 @@ static int build_gadgets(struct app *a)
     g = str_gad(a, g, 1, FIELD_X, ROW(7), 80, "Selected text", ID_SELFG, a->f.selfg, UC_MAX_VALUE);
     g = str_gad(a, g, 1, FIELD_X, ROW(8), 80, "Selection", ID_SELBG, a->f.selbg, UC_MAX_VALUE);
     g = gad(a, g, BUTTON_KIND, FIELD_X, ROW(9), 120, 14, "Theme...", ID_THEME, PLACETEXT_IN, 0);
+    if (!g)
+        return 0;
+
+    /* Advanced: the keys the handler read that the editor once dropped on
+     * every save (screen, font-aspect, backspace, program-clipboard,
+     * link-open), each as apply_profile reads it */
+    g = CreateContext(&a->glist[2]);
+    t[0].ti_Tag = GTCY_Labels;
+    t[0].ti_Data = (ULONG)screen_labels;
+    t[1].ti_Tag = TAG_DONE;
+    g = a->gscreen = gad(a, g, CYCLE_KIND, ADV_X, ROW(0), 140, 14, "Screen", ID_SCREEN, PLACETEXT_LEFT, t);
+    g = str_gad(a, g, 2, ADV_X, ROW(1), 100, "Screen mode", ID_SMODE, a->f.screenmode, UC_MAX_VALUE);
+    t[0].ti_Tag = GTTX_Text;
+    t[0].ti_Data = (ULONG)"Blank: the Workbench's";
+    t[1].ti_Tag = TAG_DONE;
+    g = gad(a, g, TEXT_KIND, ADV_X + 108, ROW(1), AREA_W - ADV_X - 108, 14, 0, ID_ADVTEXT, 0, t);
+    g = str_gad(a, g, 2, ADV_X, ROW(2), 100, "Screen depth", ID_SDEPTH, a->f.screendepth, UC_MAX_VALUE);
+    t[0].ti_Data = (ULONG)"Blank: 4, or 8 on a card";
+    g = gad(a, g, TEXT_KIND, ADV_X + 108, ROW(2), AREA_W - ADV_X - 108, 14, 0, ID_ADVTEXT, 0, t);
+    /* on: topaz 8 traded for its pair that keeps the shape on this
+     * screen's pixels (plan 2026-10-03-screens-and-dctelnet.md P2) */
+    g = a->gaspect = gad(a, g, CHECKBOX_KIND, 240, ROW(3) + 1, 26, 11, "Font follows screen aspect",
+                         ID_ASPECT, PLACETEXT_LEFT, 0);
+    t[0].ti_Tag = GTCY_Labels;
+    t[0].ti_Data = (ULONG)backspace_labels;
+    g = a->gbackspace = gad(a, g, CYCLE_KIND, ADV_X, ROW(5), 140, 14, "Backspace key sends",
+                            ID_BACKSPACE, PLACETEXT_LEFT, t);
+    t[0].ti_Data = (ULONG)clip_labels;
+    /* OSC 52 (program-clipboard) */
+    g = a->gclip = gad(a, g, CYCLE_KIND, ADV_X, ROW(6), 260, 14, "Programs may",
+                       ID_CLIP, PLACETEXT_LEFT, t);
+    /* a Ctrl + clicked hyperlink (OSC 8): the command run, %s the address */
+    g = str_gad(a, g, 2, ADV_X, ROW(8), AREA_W - ADV_X, "Link command", ID_LINK, a->f.linkopen,
+                UC_MAX_VALUE);
+    t[0].ti_Tag = GTTX_Text;
+    t[0].ti_Data = (ULONG)"%s: the address. Blank: OpenURL %s";
+    g = gad(a, g, TEXT_KIND, ADV_X, ROW(9), AREA_W - ADV_X, 14, 0, ID_ADVTEXT, 0, t);
     return g != 0;
 }
 
@@ -575,7 +628,7 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
     char name[UC_NAME];
     switch (g->GadgetID) {
     case ID_PAGE:
-        show_page(a, code ? 1 : 0);
+        show_page(a, code < N_PAGES ? code : 0);
         break;
     case ID_LOAD:
         collect(a);
@@ -642,6 +695,18 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
         break;
     case ID_REFLOW:
         a->f.reflow = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_SCREEN:
+        a->f.screen = code;
+        break;
+    case ID_ASPECT:
+        a->f.aspect = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_BACKSPACE:
+        a->f.backspace_bs = code ? 1 : 0;
+        break;
+    case ID_CLIP:
+        a->f.clipboard = code;
         break;
     case ID_SAVE:
         commit(a, 1);
@@ -737,6 +802,7 @@ out:
             CloseWindow(a->win);
         }
         /* each list on its own now: freed once each */
+        FreeGadgets(a->glist[2]);
         FreeGadgets(a->glist[1]);
         FreeGadgets(a->glist[0]);
         FreeGadgets(a->glist_common);
