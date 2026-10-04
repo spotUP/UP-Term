@@ -86,6 +86,7 @@ struct vt_term {
     vt_u8 charset[4];      /* 'B' ASCII, '0' DEC graphics, 'A' UK */
     int gl, single_shift;
     vt_saved sav, sav_1049;
+    vt_u8 saved_1048;      /* ?1048 / ?1049 saved a cursor (DECRQM ?1048) */
     vt_u16 last_ch;
 
     /* amiga personality */
@@ -1734,14 +1735,17 @@ static void set_mode(vt_term *t, int on)
                 set_alt(t, on, !on);
                 break;
             case 1048:
-                if (on)
+                if (on) {
                     save_cursor(t, &t->sav_1049);
-                else
+                    t->saved_1048 = 1;
+                } else {
                     restore_cursor(t, &t->sav_1049);
+                }
                 break;
             case 1049:
                 if (on) {
                     save_cursor(t, &t->sav_1049);
+                    t->saved_1048 = 1;
                     set_alt(t, 1, 1);
                 } else {
                     set_alt(t, 0, 0);
@@ -2051,6 +2055,9 @@ static void report_mode(vt_term *t)
         case 1000: bit = VT_MODE_MOUSE_NORMAL; break;
         case 1002: bit = VT_MODE_MOUSE_BUTTON; break;
         case 1003: bit = VT_MODE_MOUSE_ANY; break;
+        case 66: bit = VT_MODE_APP_KEYPAD; break; /* DECNKM: DECKPAM's switch */
+        case 1048: v = t->saved_1048 ? 1 : 2; break;
+        case 4: v = 4; break; /* DECSCLM: taken, never smooth: permanently reset */
         case 1004: bit = VT_MODE_FOCUS; break;
         case 1006: bit = VT_MODE_MOUSE_SGR; break;
         case 2004: bit = VT_MODE_BRACKET_PASTE; break;
@@ -2590,13 +2597,31 @@ static int put_sgr(const vt_term *t, char *b, int n)
         memcpy(b + n, ";53", 3);
         n += 3;
     }
-    for (w = 0; w < 2; w++) {
-        vt_color c = w ? t->bg : t->fg;
+    if (t->attr & (VT_ATTR_FRAMED | VT_ATTR_ENCIRCLED)) {
+        memcpy(b + n, t->attr & VT_ATTR_FRAMED ? ";51" : ";52", 3);
+        n += 3;
+    }
+    if (t->attr & (VT_ATTR_SUPER | VT_ATTR_SUB)) {
+        memcpy(b + n, t->attr & VT_ATTR_SUPER ? ";73" : ";74", 3);
+        n += 3;
+    }
+    if (t->deco & VT_DECO_IDEO_MASK) {
+        b[n++] = ';';
+        n = fmt_uint(b, n, 59 + ((t->deco & VT_DECO_IDEO_MASK) >> VT_DECO_IDEO_SHIFT));
+    }
+    if (t->font) {
+        b[n++] = ';';
+        n = fmt_uint(b, n, 10 + t->font);
+    }
+    for (w = 0; w < 3; w++) {
+        /* the text, the background, the underline (SGR 58: no 30-37 form) */
+        vt_color c = w == 2 ? t->ul : w ? t->bg : t->fg;
+        int base = w == 2 ? 58 : w ? 48 : 38;
         if (c == VT_COLOR_DEFAULT)
             continue;
         b[n++] = ';';
         if (c & VT_COLOR_RGB) {
-            n = fmt_uint(b, n, w ? 48 : 38);
+            n = fmt_uint(b, n, base);
             memcpy(b + n, ";2;", 3);
             n += 3;
             n = fmt_uint(b, n, (long)((c >> 16) & 0xFF));
@@ -2604,12 +2629,12 @@ static int put_sgr(const vt_term *t, char *b, int n)
             n = fmt_uint(b, n, (long)((c >> 8) & 0xFF));
             b[n++] = ';';
             n = fmt_uint(b, n, (long)(c & 0xFF));
-        } else if (c < 8) {
+        } else if (c < 8 && w < 2) {
             n = fmt_uint(b, n, (long)(c + (w ? 40 : 30)));
-        } else if (c < 16) {
+        } else if (c < 16 && w < 2) {
             n = fmt_uint(b, n, (long)(c - 8 + (w ? 100 : 90)));
         } else {
-            n = fmt_uint(b, n, w ? 48 : 38);
+            n = fmt_uint(b, n, base);
             memcpy(b + n, ";5;", 3);
             n += 3;
             n = fmt_uint(b, n, (long)c);
@@ -2642,7 +2667,7 @@ static void decrqss(vt_term *t, const char *pt, int len)
         b[n++] = ' ';
         b[n++] = 'q';
     } else if (len == 2 && pt[0] == '"' && pt[1] == 'p') {
-        memcpy(b + n, "64;1\"p", 6); /* a level 4 terminal, 7-bit controls */
+        memcpy(b + n, "62;1\"p", 6); /* what DA1 says: a VT220, 7-bit controls */
         n += 6;
     } else if (len == 2 && pt[0] == '"' && pt[1] == 'q') {
         memcpy(b + n, "0\"q", 3);    /* DECSCA: no protected cells */
@@ -3172,6 +3197,7 @@ void vt_reset(vt_term *t)
     t->amiga_msb = 0;
     soft_reset(t);
     t->sav_1049 = t->sav;
+    t->saved_1048 = 0;
     t->raw_events = 0;
     t->amiga_bg = 0;
     t->scroll_enabled = 1;

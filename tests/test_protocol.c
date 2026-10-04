@@ -1,0 +1,122 @@
+/* The xterm personality's protocol (G3, plan 2026-10-04-gaps-g3-protocol):
+ * reports, resets, OSC strings, the kitty keyboard protocol, the VT420
+ * editing extras. */
+#include "harness.h"
+#include <stdlib.h>
+
+static void reply_is(const char *want, int line)
+{
+    h_checks++;
+    if (h_reply_len != (int)strlen(want) || memcmp(h_reply, want, strlen(want))) {
+        h_failures++;
+        printf("  FAIL tests/test_protocol.c:%d: reply [", line);
+        fwrite(h_reply, 1, (size_t)h_reply_len, stdout);
+        printf("] want [%s]\n", want);
+    }
+    h_reply_clear();
+}
+#define REPLY(w) reply_is((w), __LINE__)
+
+/* a + the decimal of v + b, into out (C89 has no snprintf) */
+static char *fmt3(char *out, const char *a, long v, const char *b)
+{
+    char d[12];
+    int k = 0;
+    strcpy(out, a);
+    if (!v)
+        d[k++] = '0';
+    while (v) {
+        d[k++] = (char)('0' + v % 10);
+        v /= 10;
+    }
+    out += strlen(out);
+    while (k)
+        *out++ = d[--k];
+    strcpy(out, b);
+    return out;
+}
+
+/* a mode query for DEC mode m after setting (on) or resetting it */
+static void ask_mode(vt_term *t, int m, int on)
+{
+    char q[48], *e;
+    e = fmt3(q, "\033[?", m, on ? "h" : "l");
+    fmt3(e + 1, "\033[?", m, "$p");
+    h_put(t, q);
+}
+
+/* ---- G3-01: DECRQSS and DECRQM say what the terminal is ---- */
+
+/* DA1 says VT220 (62); DECSCL must not claim a VT420 the engine is not. */
+static void decrqss_conformance_level_matches_da1(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_put(t, "\033[c");
+    REPLY("\033[?62;22c");
+    h_put(t, "\033P$q\"p\033\\");
+    REPLY("\033P1$r62;1\"p\033\\");
+    vt_free(t);
+}
+
+/* DECRQM answers every mode set_mode keeps: ?66 (DECNKM) and ?1048 were
+ * answered "not recognised" though both are settable. */
+static void decrqm_answers_every_mode_the_engine_keeps(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_put(t, "\033[?66$p");
+    REPLY("\033[?66;2$y");
+    h_put(t, "\033[?66h\033[?66$p");
+    REPLY("\033[?66;1$y");
+    h_put(t, "\033>\033[?66$p");              /* DECKPNM is the same switch */
+    REPLY("\033[?66;2$y");
+    h_put(t, "\033[?1048$p");
+    REPLY("\033[?1048;2$y");
+    h_put(t, "\033[?1048h\033[?1048$p");       /* a cursor saved */
+    REPLY("\033[?1048;1$y");
+    h_put(t, "\033[?4$p");                     /* DECSCLM: accepted, never smooth */
+    REPLY("\033[?4;4$y");
+    {
+        /* every DEC mode set_mode takes: set, asked, reset, asked */
+        static const int modes[] = { 1, 5, 47, 6, 7, 8, 9, 12, 25, 40, 45, 66, 1000, 1002, 1003,
+                                     1004, 1005, 1006, 1034, 1047, 1049, 2004, 2026, 2031, 7727 };
+        int i, bad = 0;
+        for (i = 0; i < (int)(sizeof(modes) / sizeof(modes[0])); i++) {
+            char want[64];
+            ask_mode(t, modes[i], 1);
+            fmt3(want, "\033[?", modes[i], ";1$y");
+            if (h_reply_len != (int)strlen(want) || memcmp(h_reply, want, strlen(want))) {
+                printf("    mode %d set: [%.*s]\n", modes[i], h_reply_len, h_reply);
+                bad++;
+            }
+            h_reply_clear();
+            ask_mode(t, modes[i], 0);
+            fmt3(want, "\033[?", modes[i], ";2$y");
+            if (h_reply_len != (int)strlen(want) || memcmp(h_reply, want, strlen(want))) {
+                printf("    mode %d reset: [%.*s]\n", modes[i], h_reply_len, h_reply);
+                bad++;
+            }
+            h_reply_clear();
+        }
+        CHECK_INT(bad, 0);
+    }
+    vt_free(t);
+}
+
+/* DECRQSS m gives back the SGR that makes the current rendition, the
+ * underline colour and the font included. */
+static void decrqss_sgr_round_trips_underline_colour_and_font(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_put(t, "\033[0;4:3;58;2;1;2;3;12;53;73m\033P$qm\033\\");
+    REPLY("\033P1$r0;4:3;53;73;12;58;2;1;2;3m\033\\");
+    h_put(t, "\033[0;58;5;9;20m\033P$qm\033\\");
+    REPLY("\033P1$r0;20;58;5;9m\033\\");
+    vt_free(t);
+}
+
+void suite_protocol(void)
+{
+    decrqss_conformance_level_matches_da1();
+    decrqm_answers_every_mode_the_engine_keeps();
+    decrqss_sgr_round_trips_underline_colour_and_font();
+}

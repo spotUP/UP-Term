@@ -745,3 +745,15 @@ does XCON:/AMIGA through DOS (identical output, window size included).
 | Q12 | Exact field contents of input event reports for window classes (11, 12, 13, 17, 18, 21). | RKM-95 (generic format only) |
 | Q13 | Whether xterm personality honours 8-bit C1 decoded from UTF-8 (U+0080-U+009F). Recommendation: no. | XT from knowledge |
 | Q14 | pcansi: CP437 byte 9B is taken as CSI (C-C1), OSC payloads print as text, DECSTBM ignored, HT/HTS fixed 8. Keep as today's behaviour or fix: an owner decision before tests pin it. | DCT l.830, l.848-862, l.582 |
+
+## 9. xterm personality: reports, strings and protocol extras (2026-10-04, G3)
+
+What the xterm personality does beyond the tables above, one row per sequence, each
+pinned by `tests/test_protocol.c` (`make test ONLY=protocol`). Plan and ledger:
+`thoughts/shared/plans/2026-10-04-gaps-g3-protocol.md`.
+
+| Sequence | vtcon (xterm personality) | Test |
+|----------|---------------------------|------|
+| DECRQSS `DCS $ q " p ST` | `DCS 1 $ r 62;1 " p ST`: the level DA1 (`CSI ?62;22c`) claims, 7-bit controls. (Was `64;1`, a VT420 the engine is not.) | `decrqss_conformance_level_matches_da1` |
+| DECRQSS `DCS $ q m ST` | The whole rendition: 1-9, 4:n, 5/6, 53, 51/52, 73/74, 60-64, font 11-20, then fg, bg (30-37/90-97/38;5/38;2 forms) and the underline colour as `58;5;n` / `58;2;r;g;b` | `decrqss_sgr_round_trips_underline_colour_and_font` |
+| DECRQM `CSI ? Ps $ p` | 1 set / 2 reset for every DEC mode `set_mode` keeps, incl. ?66 (DECNKM = DECKPAM's switch) and ?1048 (1 once a cursor was saved by ?1048/?1049, until RIS); ?4 DECSCLM answers 4 (permanently reset: accepted, never smooth); unknown 0 | `decrqm_answers_every_mode_the_engine_keeps` |
