@@ -3517,7 +3517,7 @@ static void kc_finish(con *c, struct complete_req *q)
     if (c->kc_list) {
         /* Ctrl+D: the names under the line, then the prompt and the line */
         if (q->matches)
-            le_show_list(&c->le, q->names, q->names_len);
+            le_kc_show_list(&c->le, q->names, q->names_len);
         else
             kc_beep(c);
         return;
@@ -3553,7 +3553,7 @@ static void kc_finish(con *c, struct complete_req *q)
         return;
     }
     if (style & LE_KC_LIST)
-        le_show_list(&c->le, q->names, q->names_len); /* L: the list, before a cycle's first step */
+        le_kc_show_list(&c->le, q->names, q->names_len); /* L: the list, before a cycle's first step */
     if ((style & LE_KC_CYCLE) && kc_cyc_begin(c, q))
         kc_cyc_put(c, 0);
 }

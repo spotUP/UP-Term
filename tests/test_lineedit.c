@@ -296,6 +296,27 @@ static void menu_lists_names_and_redraws_prompt_and_line(void)
     vt_free(t);
 }
 
+/* H8.1: KingCON prints its list (FNCMODE L, Ctrl+D) in 19-character
+ * columns, (width + 1) / 19 a row, and cuts a name over 18 (its suffix
+ * counted) to 15 + "..." -- not sized to the widest name. */
+static void kingcon_list_has_19_char_columns_and_cuts_long_names(void)
+{
+    static const char names[] = "a \0Startup-Sequence \0AVeryLongFileName1 \0Prefs/\0";
+    vt_term *t = start(40, 8, "1.SYS:> ");
+    type("dir S:");
+    le_kc_show_list(&le, names, (int)sizeof(names) - 1);
+    CHECK_STR(h_row(t, 1), "a                  Startup-Sequence");
+    CHECK_STR(h_row(t, 2), "AVeryLongFileNa... Prefs/");
+    CHECK_STR(h_row(t, 3), "1.SYS:> dir S:");
+    vt_free(t);
+    t = start(18, 8, "> ");              /* (17 + 1) / 19 = 0: one column */
+    type("x");
+    le_kc_show_list(&le, names, (int)sizeof(names) - 1);
+    CHECK_STR(h_row(t, 1), "a");
+    CHECK_STR(h_row(t, 2), "Startup-Sequence");
+    vt_free(t);
+}
+
 static void replace_word_for_menu_cycling(void)
 {
     vt_term *t = start(40, 3, "> ");
@@ -412,6 +433,7 @@ void suite_lineedit(void)
     kingcon_cycle_and_fncmode();
     command_word_gets_colour_until_it_changes();
     menu_lists_names_and_redraws_prompt_and_line();
+    kingcon_list_has_19_char_columns_and_cuts_long_names();
     replace_word_for_menu_cycling();
     suggestion_shows_grey_and_right_takes_it();
     return_does_not_run_the_suggestion();
