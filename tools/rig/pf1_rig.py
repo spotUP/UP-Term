@@ -156,9 +156,12 @@ def main():
     check('/scrollbar show brings it back', has_bar())
     ami.main(['shot', os.path.join(HERE, '../../build/rig/pf1_rig.png')])
 
-    typeline('EndShell', wait=2)
+    print('%d failed' % len(fails), flush=True)
+    # close by the gadget: on a 2 MB rig a typed EndShell can find no memory
+    # for the command (the agent's command processes take 256 KB stacks)
+    ami.main(['gclick', TITLE, 'sys:close'])
+    time.sleep(3)
     run('Delete >NIL: ENV:up-term/up-term RAM:pf1_#?.txt QUIET')
-    print('%d failed' % len(fails))
     sys.exit(1 if fails else 0)
 
 
