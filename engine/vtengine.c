@@ -776,8 +776,10 @@ static vt_cell *cell_at(vt_term *t, int x, int y)
     return &t->scr[y]->c[x];
 }
 
-/* Overwriting either half of a wide glyph blanks the other half. */
-static void unwide(vt_term *t, int x, int y)
+/* Overwriting either half of a wide glyph blanks the other half. unwide()
+ * is the cell test in place, the call only for a wide glyph's half (ASM1:
+ * every erase and character paid a call for the common plain cell). */
+static void unwide_at(vt_term *t, int x, int y)
 {
     vt_cell *c = t->scr[y]->c;
     if (c[x].width == 0 && x > 0) {
@@ -789,6 +791,11 @@ static void unwide(vt_term *t, int x, int y)
         mark(t, x + 1, y, x + 2);
     }
 }
+#define unwide(t, x, y)                         \
+    do {                                        \
+        if ((t)->scr[y]->c[x].width != 1)       \
+            unwide_at(t, x, y);                 \
+    } while (0)
 
 /* The renderer's scroll fills the rows it vacates with the default
  * background (the contract in vtengine.h), so blank rows in that colour
@@ -1055,6 +1062,7 @@ static void scroll_down(vt_term *t, int top, int bot, int n)
 
 static void erase_cells(vt_term *t, int y, int x0, int x1)
 {
+    vt_line *l;
     x0 = clampi(x0, 0, t->cols);
     x1 = clampi(x1, 0, t->cols);
     if (x0 >= x1)
@@ -1062,6 +1070,36 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
     unwide(t, x0, y);
     if (x1 < t->cols)
         unwide(t, x1 - 1, y);
+    l = t->scr[y];
+    if (x1 == t->cols && !l->img && vacated_default(t)) {
+        /* to the end of the row with the default blank: the cells from
+         * `used` on are that blank already, so only [x0, used) changes --
+         * in its characters alone on a chonly line -- and only that needs
+         * drawing (ASM1: a repaint's CSI K blanked and drew 80 cells
+         * where 50 had text). The row is unused again from x0. */
+        int u = l->used < t->cols ? l->used : t->cols;
+        l->wrapped = 0;
+        if (u > x0) {
+            if (l->chonly) {
+#ifdef VT_ASM
+                vt_asm_ch_blank(&l->c[x0], u - x0);
+#else
+                int k;
+                for (k = x0; k < u; k++)
+                    l->c[k].ch = ' ';
+#endif
+            } else {
+                cells_blank(t, &l->c[x0], u - x0);
+            }
+            if (l->dx0 > x0)
+                l->dx0 = (short)x0;
+            if (l->dx1 < u)
+                l->dx1 = (short)u;
+            l->used = (vt_u16)x0;
+            t->dirty = 1;
+        }
+        return;
+    }
     cells_blank(t, &t->scr[y]->c[x0], x1 - x0);
     if (x1 == t->cols) {
         t->scr[y]->wrapped = 0;
@@ -2259,7 +2297,7 @@ static void sgr(vt_term *t)
             note_value(t, 'S', p);
         }
     }
-    t->ext = style_index(t);
+    t->ext = t->ul == VT_COLOR_DEFAULT && !t->font && !t->link ? 0 : style_index(t);
 }
 
 static void report_size(vt_term *t);
@@ -5487,46 +5525,65 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
  * The bytes consumed. */
 static long csi_fast(vt_term *t, const vt_u8 *b, long len)
 {
-    long j = 2, v;
+    const vt_u8 *p = b + 2, *end = b + len;
+    long v = 0;
     int np = 0;
     vt_u8 c;
     if (len < 3 || b[1] != '[')
         return 0;
-    clear_params(t);
+    /* the parameter being read stays in v until its separator (ASM1: a
+     * store and a load of params[np - 1] for every digit before) */
     for (;;) {
-        if (j >= len)
+        if (p >= end)
             return 0;
-        c = b[j];
-        if (c >= '0' && c <= '9') {
-            if (!np)
+        c = *p;
+        if ((vt_u8)(c - '0') <= 9) {
+            v = v < VT_PARAM_MAX / 10 ? v * 10 + (long)(c - '0') : VT_PARAM_MAX;
+            if (!np) {
                 np = 1;
-            v = t->params[np - 1];
-            t->params[np - 1] = v < VT_PARAM_MAX / 10 ? v * 10 + (long)(c - '0') : VT_PARAM_MAX;
+                t->sub[0] = 0;
+            }
         } else if (c == ';' || c == ':') {
-            if (!np)
+            if (!np) {
                 np = 1;
+                t->sub[0] = 0;
+            }
+            t->params[np - 1] = v;
             if (np < VT_MAX_PARAMS) {
-                t->params[np] = 0;
                 t->sub[np] = (vt_u8)(c == ':');
                 np++;
-            }
+                v = 0;
+            } /* else: more digits go on into the last one, as feed() */
         } else {
             break;
         }
-        j++;
+        p++;
     }
     if (c < 0x40 || c > 0x7E)
         return 0;
+    /* clear_params' work, now that the sequence is known whole */
+    if (np) {
+        t->params[np - 1] = v;
+    } else {
+        t->params[0] = 0;
+        t->sub[0] = 0;
+    }
     t->np = np;
+    t->have = 0;
+    t->priv = 0;
+    t->inter = 0;
+    t->ninter = 0;
     t->csi8 = 0;
-    /* the state is ground, as after the final byte. An xterm SGR (no
-     * private marker, no intermediate here) is csi_xterm's last case:
-     * straight to it */
-    if (c == 'm' && t->pers == VT_XTERM)
+    /* the state is ground, as after the final byte. With no private marker
+     * and no intermediate every personality takes SGR, CUP and the erases
+     * to the same place: straight there */
+    if (c == 'm')
         sgr(t);
+    else if (c == 'H' || c == 'K' || c == 'J' || c == 'f')
+        csi_common(t, c);
     else
         csi_dispatch(t, c);
-    return j + 1;
+    return p + 1 - b;
 }
 
 void vt_write(vt_term *t, const vt_u8 *buf, long len)
