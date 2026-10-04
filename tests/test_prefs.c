@@ -425,6 +425,22 @@ static void keep_cases(void)
     CHECK(prefs_profile_exists(&conf, "emacs"));
     CHECK_STR(upconf_str(&conf, "default", "backspace", "?"), "bs");
     CHECK(strstr(buf, "# vim's own\n") != 0);
+
+    /* a table that did not hold the whole file (the window's own read
+     * keeps what fits: a ninth profile, or a comment store full) is not
+     * written back: the window menu's Save settings to profile staged it
+     * and wrote the file without what had not fit */
+    {
+        static char nine[512];
+        long n = profiles_text(nine, UC_MAX_PROFILES + 1);
+        upconf_parse(&conf, nine, n);
+        CHECK(conf.overflow);
+        CHECK(upconf_get(&conf, "p8", "font") == 0); /* the ninth was not kept */
+        prefs_from_conf(&f, &conf, "p0");
+        memcpy(&before, &conf, sizeof(conf));
+        CHECK_INT(prefs_stage(&work, &conf, "p0", &f, buf, sizeof(buf)), PREFS_STAGE_LOSSY);
+        CHECK(!memcmp(&before, &conf, sizeof(conf)));
+    }
 }
 
 /* A theme file (one .conf in themes/: a profile section of colours) applied to

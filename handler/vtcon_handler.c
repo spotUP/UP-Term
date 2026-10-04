@@ -597,11 +597,17 @@ static void read_conf(upconf *conf)
         return;
     /* Read straight up to the cap rather than Seek()ing to the end first:
      * on 3.1 that Seek answers 0 for this file, and the read is skipped. */
-    buf = (char *)AllocVec(CONF_MAX + 1, MEMF_ANY);
+    buf = (char *)AllocVec(CONF_MAX + 2, MEMF_ANY);
     if (buf) {
-        LONG got = Read(f, buf, CONF_MAX);
-        buf[got > 0 ? got : 0] = 0;
-        upconf_parse(conf, buf, got > 0 ? got : 0);
+        /* a byte more than the cap: a longer file is used as far as it
+         * fits, and marked (overflow) so Save settings to profile does not
+         * write it back cut (prefs_stage refuses it) */
+        LONG got = Read(f, buf, CONF_MAX + 1);
+        LONG use = got > CONF_MAX ? CONF_MAX : got > 0 ? got : 0;
+        buf[use] = 0;
+        upconf_parse(conf, buf, use);
+        if (got > CONF_MAX)
+            conf->overflow = 1;
         FreeVec(buf);
     }
     Close(f);
@@ -1536,7 +1542,7 @@ static void save_ask(con *c)
     len = prefs_validate(&f) ? -1
         : prefs_stage(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1);
     if (len < 0) {
-        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room in the file for it */
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room for it, or the file was not read whole */
         return;
     }
     c->comp->data_len = len;

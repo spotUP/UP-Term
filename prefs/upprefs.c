@@ -350,6 +350,10 @@ static void commit(struct app *a, int keep)
         return;
     }
     len = prefs_stage(&a->work, &a->conf, name, &a->f, a->buf, CONF_MAX + 1);
+    if (len == PREFS_STAGE_LOSSY) {
+        set_status(a, "Read only: the file was not loaded whole.");
+        return;
+    }
     if (len == PREFS_STAGE_FULL) {
         /* a profile more than the table holds, or a key more than a
          * profile does (the editor's keys beside the file's own) */

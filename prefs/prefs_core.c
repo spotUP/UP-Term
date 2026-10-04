@@ -216,6 +216,8 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     char palstr[UC_MAX_VALUE];
     long len;
     int i;
+    if (cur->overflow)
+        return PREFS_STAGE_LOSSY; /* what did not fit would be gone from the file */
     memcpy(w, cur, sizeof(*w));
     w->overflow = 0;
     /* Only the editor's own keys change, each where it stands: whatever

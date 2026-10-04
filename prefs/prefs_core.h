@@ -104,12 +104,16 @@ int prefs_load_writable(int load_result);
  * profile set from f, each in place (an empty string field deletes its key);
  * every other key of the profile, the other profiles and the comments stay
  * as read. *work is written into buf (cap bytes, NUL-terminated on
- * success). The length, or PREFS_STAGE_FULL (the table has no room: a key or the profile would be
+ * success). The length, or PREFS_STAGE_LOSSY (*cur is not the whole
+ * file), PREFS_STAGE_FULL (the table has no room: a key or the profile would be
  * dropped) or PREFS_STAGE_SIZE (the file would be over cap). *cur is never
  * touched; the caller copies *work over it once the file is in place.
  * f must have passed prefs_validate. */
 #define PREFS_STAGE_FULL (-1L)
 #define PREFS_STAGE_SIZE (-2L)
+/* *cur did not hold the whole file (its overflow is set: the window's own
+ * read keeps what fits): writing it back would lose the rest */
+#define PREFS_STAGE_LOSSY (-3L)
 long prefs_stage(upconf *work, const upconf *cur, const char *profile,
                  const prefs_fields *f, char *buf, long cap);
 
