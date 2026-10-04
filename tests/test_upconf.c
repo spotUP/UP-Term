@@ -349,12 +349,17 @@ void suite_upconf(void)
     {
         uc_u32 in[16];
         char out[200];
+        long len;
         int k;
         for (k = 0; k < 16; k++)
             in[k] = 0x01000000UL | (uc_u32)(0x111111UL * (uc_u32)(k % 15 + 1));
-        CHECK(palette_str_dirty(in, out, sizeof(out) - 1) > 0);
+        /* the text is not NUL-terminated (upconf.h): the length is the
+         * answer, and strlen of the buffer read on into the junk */
+        len = palette_str_dirty(in, out, sizeof(out) - 1);
+        CHECK_INT(len, 16 * 10 - 1);                  /* "NN,RRGGBB," x 16, no last comma */
+        out[len > 0 ? len : 0] = 0;
         CHECK(!strncmp(out, "00,111111,01,222222,", 20));
-        CHECK_INT((int)strlen(out), 16 * 10 - 1);       /* "NN,RRGGBB," x 16, no last comma */
+        CHECK_STR(out + 150, "15,111111");             /* the last entry whole, nothing after */
     }
     profile_equal();
 }
