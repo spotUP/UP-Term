@@ -262,7 +262,8 @@ void show_welcome(cl_show *s, const char *model, const char *root)
         raw(s, C_ACCENT G_V SGR0 " ");
         if (!rows[k]) {
             raw(s, C_ACCENT G_STAR SGR0 " Welcome to " BOLD "Claude" SGR0 " on the Amiga!");
-            cw = 30;
+            /* the star is one column; the words' widths counted, not guessed */
+            cw = 1 + (int)(sizeof(" Welcome to ") - 1 + sizeof("Claude") - 1 + sizeof(" on the Amiga!") - 1);
         } else {
             text(&s->batch, rows[k], (long)strlen(rows[k]), w - 4, &cw);
         }

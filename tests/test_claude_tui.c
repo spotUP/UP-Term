@@ -487,6 +487,45 @@ static void grow_over_transcript(void)
     cs_close();
 }
 
+/* the column (code points from 0) of the last occurrence of the UTF-8
+ * sequence g in a screen row, -1 when absent */
+static int last_col(const char *row, const char *g)
+{
+    int col = 0, found = -1;
+    size_t n = strlen(g);
+    while (*row) {
+        if (!strncmp(row, g, n))
+            found = col;
+        row++;
+        while ((*row & 0xC0) == 0x80)
+            row++;
+        col++;
+    }
+    return found;
+}
+
+/* The welcome box: its right side in one column on every row (the first
+ * row's width was counted 3 short: its border stood 3 columns out). */
+static void welcome_box_sides_line_up(void)
+{
+    static const char *script[] = { 0 };
+    int r, top = -1, right;
+    screen(80, 20, script);
+    CHECK_INT(tui_start(&tui), 0);
+    show_welcome(&shw, "claude-opus-5-5", "RAM:");
+    for (r = 0; r < cs.rows && top < 0; r++)
+        if (strstr(cs_row(r), "\342\225\255"))
+            top = r;
+    CHECK(top >= 0);
+    right = last_col(cs_row(top), "\342\225\256");
+    CHECK(right > 0);
+    for (r = top + 1; r <= top + 5; r++)
+        CHECK_INT(last_col(cs_row(r), V), right);
+    CHECK_INT(last_col(cs_row(top + 6), "\342\225\257"), right);
+    unscreen();
+    cs_close();
+}
+
 void suite_claude_tui(void)
 {
     keys();
@@ -498,4 +537,5 @@ void suite_claude_tui(void)
     answer_and_tools();
     edit_diff_and_todos();
     grow_over_transcript();
+    welcome_box_sides_line_up();
 }
