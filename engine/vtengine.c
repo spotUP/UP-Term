@@ -319,6 +319,13 @@ static int vacated_default(const vt_term *t);
 
 static void line_clear(const vt_term *t, vt_line *l, int n)
 {
+    if (!l->used && l->n == n && vacated_default(t)) {
+        /* nothing written since its last clear: already blank (a flood of
+         * newlines clears a blank line each, S1) */
+        l->wrapped = 0;
+        l->dbl = 0;
+        return;
+    }
     if (l->n == n && l->used < n && vacated_default(t)) {
         /* the same width as its last clear, and the blank is the default
          * one: only the cells written since need it */
@@ -854,6 +861,37 @@ static void index_down(vt_term *t)
     } else if (t->cy < t->rows - 1) {
         t->cy++;
     }
+}
+
+/* k line feeds at once, as k of exec_c0's LF: the cursor down to the
+ * region's last row, the rest one scroll_up of that many lines (a page
+ * at a time, so the scrollback gets every line) -- one call for a run of
+ * newlines instead of the whole path for each (conbench scroll-nl writes
+ * ten a time; S1). */
+static void lf_run(vt_term *t, long k)
+{
+    t->wrap_pending = 0;
+    if (t->cy >= t->bot) { /* below the region: down to the last row, no scroll */
+        t->cy = (int)(t->cy + k < t->rows - 1 ? t->cy + k : t->rows - 1);
+    } else {
+        long d = t->bot - 1 - t->cy;
+        if (k <= d) {
+            t->cy += (int)k;
+        } else {
+            t->cy = t->bot - 1;
+            k -= d;
+            if (t->pers != VT_AMIGA || t->scroll_enabled) {
+                int h = t->bot - t->top;
+                while (k > 0) {
+                    int n = k > h ? h : (int)k;
+                    scroll_up(t, t->top, t->bot, n);
+                    k -= n;
+                }
+            }
+        }
+    }
+    if ((t->modes & VT_MODE_NEWLINE) || t->onlcr)
+        t->cx = 0;
 }
 
 static void index_up(vt_term *t)
@@ -3562,10 +3600,14 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
             if (b == 0x0D) {
                 t->cx = 0;
                 t->wrap_pending = 0;
+                i++;
             } else {
-                exec_c0(t, 0x0A);
+                long k = 1;
+                while (i + k < len && buf[i + k] == 0x0A)
+                    k++;
+                lf_run(t, k);
+                i += k;
             }
-            i++;
             continue;
         }
         if (b == 0x1B && t->state == S_GROUND && !t->u_need) {

@@ -1074,8 +1074,50 @@ static void long_scrolling_keeps_rows_in_order(void)
     vt_free(t);
 }
 
+/* S1: a run of line feeds is done at once (lf_run). It must land where as
+ * many single line feeds do: inside and below a scroll region, from every
+ * row, for runs longer than the region. */
+static void a_run_of_line_feeds_equals_single_ones(void)
+{
+    static const char *start[] = { "\033[1;1H", "\033[4;1H", "\033[8;1H", "\033[10;1H", "\033[12;1H" };
+    char many[40], one[2] = "\n";
+    int s, k, i, bad = 0;
+    for (s = 0; s < 5; s++)
+        for (k = 1; k < 30; k++) {
+            vt_term *a = h_new(10, 12, VT_XTERM), *b = h_new(10, 12, VT_XTERM);
+            char sa[400], sb[400];
+            for (i = 0; i < 12; i++) {
+                char row[8] = "\r\nrow ";
+                row[6] = (char)('a' + i);
+                row[7] = 0;
+                h_put(a, row);
+                h_put(b, row);
+            }
+            h_put(a, "\033[3;8r");
+            h_put(b, "\033[3;8r");
+            h_put(a, start[s]);
+            h_put(b, start[s]);
+            for (i = 0; i < k; i++)
+                many[i] = '\n';
+            many[k] = 0;
+            h_put(a, many);
+            for (i = 0; i < k; i++)
+                h_put(b, one);
+            h_put(a, "X");
+            h_put(b, "X");
+            strcpy(sa, h_screen(a));
+            strcpy(sb, h_screen(b));
+            if (strcmp(sa, sb))
+                bad++;
+            vt_free(a);
+            vt_free(b);
+        }
+    CHECK_INT(bad, 0);
+}
+
 void suite_xterm(void)
 {
+    a_run_of_line_feeds_equals_single_ones();
     long_scrolling_keeps_rows_in_order();
     synchronized_output_is_a_mode();
     a_sequence_cut_by_a_write_means_the_same();
