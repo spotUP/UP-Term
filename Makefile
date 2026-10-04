@@ -14,20 +14,31 @@ TERMURL := config/termurl.c
 PREFS_CORE := prefs/prefs_core.c
 ICONSPEC := install/iconspec.c
 ZMODEM  := zm/zmodem.c
+# the Claude client's portable core (ledger A2); net_posix is the host transport
+CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c
+CLAUDE_HDR := $(wildcard claude/*.h)
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
-           tests/test_input.c tests/test_protocol.c tests/test_sbar.c
+           tests/test_input.c tests/test_protocol.c tests/test_sbar.c \
+           tests/test_claude_http.c
 
-.PHONY: widths demo-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
+.PHONY: claude-tls-check widths demo-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 test: $(BUILD)/vttest_host
 	./$(BUILD)/vttest_host $(ONLY)
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) demo/updemo.c demo/updemo.h zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
+$(BUILD)/vttest_host: $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) demo/updemo.c demo/updemo.h zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) demo/updemo.c $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) demo/updemo.c $(CLAUDE_CORE) $(TESTS)
+
+# The OpenSSL half of claude/tls_amissl.c checked against the host's OpenSSL 3
+# (the AmiSSL SDK is not needed for this; OpenSSL's headers want C99).
+OPENSSL_INC ?= /opt/homebrew/opt/openssl@3/include
+claude-tls-check:
+	$(HOSTCC) -std=c99 -Wall -Wextra -Werror -Wdeclaration-after-statement -fsyntax-only \
+	  -DCL_TLS_HOSTCHECK -I$(OPENSSL_INC) claude/tls_amissl.c
 
 engine/vtcaps.inc: tools/gen_vtcaps.py terminfo/vtcon.terminfo
 	python3 tools/gen_vtcaps.py
