@@ -21,6 +21,7 @@ void suite_otag(void);
 void suite_slash(void);
 void suite_fontpair(void);
 void suite_updemo(void);
+void suite_text(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -43,6 +44,7 @@ static const h_suite suites[] = {
     { "slash", suite_slash },
     { "fontpair", suite_fontpair },
     { "updemo", suite_updemo },
+    { "text", suite_text },
     { 0, 0 }
 };
 
