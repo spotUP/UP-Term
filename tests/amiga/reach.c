@@ -52,7 +52,7 @@ int main(void)
     SetMode(fh, 1);
     n = ask(fh, "\033[c", 3, buf, sizeof(buf));
     show("DA1", buf, n);
-    ok &= n == 9 && !memcmp(buf, "\033[?62;22c", 9);
+    ok &= n == 11 && !memcmp(buf, "\033[?62;4;22c", 11);
     n = ask(fh, "\x9b q", 3, buf, sizeof(buf));
     show("SIZE", buf, n);
     ok &= n > 8 && (unsigned char)buf[0] == 0x9B && !memcmp(buf + 1, "1;1;", 4) &&

@@ -115,6 +115,7 @@ parsing (ECMA-48, DCT l.889). xterm does the same (XT). Amiga: unverified.
 | `ESC =` / `ESC >` | 1B 3D / 1B 3E | Not documented | DECKPAM / DECKPNM (keypad application / numeric) | Dropped | DCT l.862 |
 | `ESC ]` ... `BEL` or `ESC \` | 1B 5D ... | Not documented | OSC: `0;t`/`2;t` set title, `1;t` icon name, `4;n;rgb` palette, `10/11` colours, `52` clipboard. Terminated by BEL (07) or ST (`ESC \`) | **Not parsed**: `]` returns to plain state and the OSC payload is printed as text | DCT l.848-862 |
 | `ESC P` / `ESC ^` / `ESC _` ... `ESC \` | DCS / PM / APC | Not documented | Parsed and consumed to ST (DECRQSS, XTGETTCAP ... in DCS) | Not parsed (payload printed) | DCT |
+| `ESC P P1 ; P2 ; P3 q` ... `ESC \` | DCS sixel | Not documented | **DEC sixel graphics** (2026-10-04, gaps #20): streamed to a decoder (no 256-byte limit), up to 1024 x 1024 pixels, all images together 2 MB (the oldest gives way). P1 the pixel aspect (0/1 and 5/6 2:1, 2 5:1, 3/4 3:1, 7-9 1:1) unless raster attributes `"Pan;Pad;Ph;Pv` set it; `#Pc;1;H;L;S` (DEC HLS, blue at 0) and `#Pc;2;R;G;B` (percent) define registers (VT340 defaults for 0-15), `!n` repeats, `$` back to the band start, `-` next band. Unset pixels show the default background. The image takes the cells from the cursor: scrolls the region like text, the cursor ends on its last row in its first column (xterm); `?80` (DECSDM) puts it at the top left without scrolling or moving the cursor; `?1070` (default set) gives each image its own registers. Text or an erase over the cells replaces the image there; it scrolls into the scrollback and reflows with its cells. CAN/SUB cancel. Tests: `make test ONLY=sixel` | Not parsed (payload printed) | XT ctlseqs; VT330/VT340 manual ch. 14 |
 | `ESC SP F` / `ESC SP G` | 1B 20 46 / 47 | Not documented | S7C1T / S8C1T: 7-bit vs 8-bit C1 in replies | Swallowed | DCT l.855 |
 
 ### 2.3 8-bit C1 (80-9F)
@@ -183,7 +184,7 @@ xterm (the reason a window carries exactly one personality).
 | `CSI Pn X` (58) | Not documented | ECH: erase N cells from cursor, no shift | Ignored | - |
 | `CSI Pn Z` (5A) | CBT: back to the Nth previous tab stop | CBT | Ignored | RKM-8C, AD20 |
 | `` CSI Pn ` `` / `CSI Pn a` / `CSI Pn b` / `CSI Pn d` / `CSI Pn e` (60/61/62/64/65) | Not documented | HPA / HPR / REP (repeat previous glyph N times) / VPA / VPR | Ignored | - |
-| `CSI Ps c`, `CSI > Ps c`, `CSI = Ps c` (63) | Not documented | DA1 / DA2 / DA3 (reply formats: open question Q8) | Ignored (the `>`/`=` forms set p_ignore) | - |
+| `CSI Ps c`, `CSI > Ps c`, `CSI = Ps c` (63) | Not documented | DA1 / DA2 / DA3 (reply formats: open question Q8; xterm DA1 answers `CSI ? 62 ; 4 ; 22 c` since 2026-10-04 -- 4: sixel) | Ignored (the `>`/`=` forms set p_ignore) | - |
 | `CSI Pr ; Pc f` (66) | HVP: same as CUP | HVP | Same as CUP | AD20; DCT l.724 |
 | `CSI Ps g` (67) | TBC: 0 clear tab at cursor, 3 clear all (`TBC_HCLRTAB 0`, `TBC_HCLRTABSALL 3`) | TBC 0 / 3 | Ignored | AD20, H-CON |
 | `CSI 20 h` / `CSI 20 l` (9B 32 30 68 / 6C) | LNM set: LF acts as CR+LF / reset: LF only. Default at console open: unverified (CON: behaviour suggests set) | LNM (mode 20) same meaning | Ignored | RKM-8C, AD20, H-CON `M_LNM 20` |
@@ -191,7 +192,8 @@ xterm (the reason a window carries exactly one personality).
 | `CSI > 1 h` / `CSI > 1 l` (9B 3E 31 68 / 6C) | ASM auto scroll on (default) / off: when off, output at the bottom does not scroll (what happens instead: unverified) | Not defined as SM/RM (`CSI > Ps;Ps t/T` are title modes, `CSI > Ps p` XTSMPOINTER). Must be ignored | Ignored (p_ignore) | RKM-8D, AD20, H-CON `M_ASM ">1"` |
 | `CSI ? 7 h` / `CSI ? 7 l` (9B 3F 37 68 / 6C) | AWM auto wrap on (default) / off | DECAWM same meaning (xterm wraps deferred: last-column flag) | **Ignored**: pcansi always wraps (deferred, DCT l.608) | RKM-8D, AD20, H-CON `M_AWM "?7"`; DCT l.683 |
 | `CSI ? 25 h` / `l` | Not documented (cursor on/off is `CSI SP p`) | DECTCEM show / hide cursor | Show / hide cursor | DCT l.686 |
-| `CSI ? Pm h` / `l`, other modes | Not documented | DECSET/DECRST: `?1` DECCKM, `?6` DECOM, `?12` blink, `?47`/`?1047`/`?1049` alternate screen (1049 also saves cursor), `?1000/1002/1003` mouse, `?1004` focus in/out, `?1006` SGR mouse, `?2004` bracketed paste | Ignored | DCT l.683 |
+| `CSI ? Pm h` / `l`, other modes | Not documented | DECSET/DECRST: `?1` DECCKM, `?6` DECOM, `?12` blink, `?47`/`?1047`/`?1049` alternate screen (1049 also saves cursor), `?1000/1002/1003` mouse, `?1004` focus in/out, `?1006` SGR mouse, `?2004` bracketed paste, `?80` DECSDM and `?1070` private sixel colour registers (both in DECRQM) | Ignored | DCT l.683 |
+| `CSI ? Pi ; Pa ; Pv S` | Not documented | XTSMGRAPHICS: Pi 1 colour registers (256, fixed), Pi 2 sixel geometry (Pa 1/2/3: the window's pixels within 1024 x 1024; Pa 4: 1024 x 1024); reply `CSI ? Pi ; Ps ; Pv S`, Ps 1 for another Pi (no ReGIS), 2 for another Pa | Ignored | XT ctlseqs |
 | `CSI Pm m` (6D) | SGR, see §4. `>n` background item allowed as last item | SGR, see §4 | SGR, see §4 | RKM-8C, AD20; DCT l.754 |
 | `CSI > Ps ; Ps m` | **Global background colour** when written `CSI >4m` etc. (the `>n` item, V36) | **XTMODKEYS**: `CSI > 4 ; 2 m` = modifyOtherKeys level 2 (vim sends this) | Ignored (p_ignore) | AD20 SGR notes; XT. **COLLISION C-SGR>** |
 | `CSI 6 n` (9B 36 6E) | DSR: console inserts CPR `CSI row;col R` into the read stream (introducer 9B) | DSR 6 -> `ESC [ row ; col R` (7-bit unless S8C1T); `CSI 5 n` -> `ESC [ 0 n`; `CSI ? 6 n` -> DECXCPR `ESC [ ? row ; col R` | 6 -> `ESC [ row ; col R`, 5 -> `ESC [ 0 n` (sent via `send_data`) | RKM-8C, RKM-91, AD20, H-CON `DSR_CPR 6`; DCT l.639. Same meaning, **different reply introducer** (9B vs 1B 5B) |
@@ -711,14 +713,19 @@ does XCON:/AMIGA through DOS (identical output, window size included).
   four Kickstarts; research `2026-09-30_console-device-replacement.md` section 7):
   100 characters typed into 45 columns, cursor 3;11; widened to 90 columns the
   window shows 90 + 10 characters and the cursor is at 2;11. Engine:
-  `vt_set_reflow(t, 1)` (D1.8; off by default, so XCON: keeps cutting or padding
-  rows) joins wrap-linked rows into logical lines on a width change and types them
+  `vt_set_reflow(t, 1)` (D1.8; off in the engine by default; since 2026-10-04 every
+  UP-Term / XCON: window turns it on, profile `reflow = off` cuts or pads again) joins wrap-linked rows into logical lines on a width change and types them
   again at the new width with the personality's wrap rule: amiga wraps at once, so
   a line ending exactly at the margin keeps the empty row after it; xterm keeps a
   pending wrap pending. A hard newline is never joined, attributes stay per cell,
   the cursor stays on its character (or as far past the text as it was).
-  Not reflowed: the alternate screen (xterm does not), scrollback lines (they keep
-  their width; the amiga personality keeps none), DEC double-size rows.
+  Where the personality keeps a scrollback (xterm, pcansi) it is laid out with the
+  screen as one text (2026-10-04, gaps #11): a line that began in the scrollback joins
+  its rest, the screen is the bottom of the result (rows below the cursor dropped
+  first), the rows above go back to the scrollback, and a taller window brings rows
+  down from it (iTerm2, Terminal.app, Alacritty). Not reflowed: the alternate screen
+  (xterm does not; its program redraws on SIGWINCH), DEC double-size rows (cut or
+  padded in place). Tests: `make test ONLY=reflow`.
   Narrowing was not measured on the ROM; the engine treats it as the inverse.
 - **Not implemented by the ROM:** CHA (`CSI G`), `ESC 7` / `ESC 8`, `CSI s` / `CSI u`
   (u is set-line-length anyway).

@@ -450,6 +450,21 @@ void le_reset(le_line *le)
     le->typing = 0;
 }
 
+void le_resized(le_line *le)
+{
+    int x, y, cols = vt_cols(le->t);
+    long at, row;
+    if (!le->started)
+        return;
+    vt_cursor(le->t, &x, &y);
+    /* the cursor stands before byte pos: the line starts that many cells
+     * earlier, counted in rows of the new width */
+    at = (long)y * cols + x + vt_wrap_pending(le->t) - cells(le, le->pos);
+    row = at >= 0 ? at / cols : -((-at + cols - 1) / cols);
+    le->start_row = row + vt_lines_scrolled(le->t);
+    le->start_col = (int)(at - row * cols);
+}
+
 static int search_key(le_line *le, long key, const unsigned char *b, int n)
 {
     /* returns 1 when the key ended the search and should run as usual */

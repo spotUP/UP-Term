@@ -29,7 +29,9 @@
 /* Parser states. */
 enum {
     S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
-    S_CSI_IGNORE, S_OSC, S_STRING /* DCS, SOS, PM, APC: consumed, ignored */
+    S_CSI_IGNORE, S_OSC, S_STRING, /* DCS, SOS, PM, APC: consumed, ignored */
+    S_SIXEL /* DCS P1;P2;P3 q: the bytes go to the sixel decoder (after S_STRING:
+             * feed tests state >= S_OSC once for all three) */
 };
 
 /* A grid line: one allocation, cells follow the header. */
@@ -47,8 +49,32 @@ typedef struct vt_line {
     short dx0, dx1;  /* the row's cells [dx0, dx1) changed since the last flush
                       * (empty when dx0 >= dx1). Kept in the line: a scroll
                       * moves the lines, and their spans with them. */
+    vt_u16 img;      /* the images placed on the row: the first of its
+                      * entries in vt_term.pl (0 none). In the line, so the
+                      * images go wherever a scroll or the scrollback takes it */
     vt_cell c[1];
 } vt_line;
+
+/* An image's tile row on a line: cells from col0 show row `row` (in cells)
+ * of image slot `img`, while the slot's gen is still `gen`. */
+typedef struct vt_place {
+    vt_u16 img, gen, row, next; /* next: the line's next entry, or the free list's */
+    short col0;
+} vt_place;
+
+/* A decoded image (vt_term.imgs; pix 0 = a free slot). */
+typedef struct vt_image {
+    vt_u8 *pix;         /* w x h indices into pal */
+    long bytes;         /* what pix took, counted against VT_IMAGE_MEMORY */
+    long serial;
+    vt_u32 pal[256];    /* 0xRRGGBB; 0 the unset pixels */
+    int w, h, cw, ch, npal, refs;
+    vt_u16 gen;
+} vt_image;
+
+#define VT_IMG_SLOTS 64 /* images alive at once (the oldest gives way) */
+
+struct vt_sixel; /* the decoder of the sixel being received */
 
 typedef struct vt_saved {
     int x, y, wrap_pending, origin;
@@ -164,6 +190,21 @@ struct vt_term {
     vt_u8 mok;                 /* modifyOtherKeys level, CSI > 4 ; n m */
     vt_u8 scheme;              /* the last dark (1) / light (2) scheme reported */
 
+    /* images (sixel): the slots, their placements' pool (entry 0 unused,
+     * pl_free the free list), the pixels all images hold, a counter for
+     * serials; the decoder while a sixel arrives; the shared colour
+     * registers (?1070 off; 0 until used) */
+    vt_image *imgs[VT_IMG_SLOTS];
+    int n_img;
+    long img_mem, img_serial;
+    vt_place *pl;
+    long pl_cap;
+    vt_u16 pl_free;
+    struct vt_sixel *six;
+    vt_u32 *six_regs;
+    vt_u8 sixel_dm;            /* ?80 DECSDM: images at the top left, no scrolling */
+    vt_u8 six_private;         /* ?1070: each image its own colour registers (default) */
+
     /* sequences parsed but not acted on (vt_unhandled): the terminfo test
      * requires none, so a capability the engine lacks cannot hide */
     long unhandled;
@@ -264,8 +305,158 @@ static vt_line *line_new(int cap)
         l->n = 0;
         l->wrapped = 0;
         l->dbl = 0;
+        l->img = 0;
     }
     return l;
+}
+
+/* ---- images on lines (vt_line.img) --------------------------------------- */
+
+static void image_free(vt_term *t, int slot)
+{
+    vt_image *im = t->imgs[slot];
+    if (!im || !im->pix)
+        return;
+    VT_FREE(im->pix);
+    im->pix = 0;
+    t->img_mem -= im->bytes;
+    im->bytes = 0;
+    im->refs = 0;
+    im->gen++; /* the placements left naming it are stale now */
+    t->n_img--;
+}
+
+/* The image a placement shows, 0 when it went (evicted, its slot reused). */
+static vt_image *place_image(const vt_term *t, const vt_place *p)
+{
+    vt_image *im = t->imgs[p->img];
+    return im && im->pix && im->gen == p->gen ? im : 0;
+}
+
+static int image_cols(const vt_image *im)
+{
+    return (im->w + im->cw - 1) / im->cw;
+}
+
+/* Placement i back to the pool, its image released. */
+static void place_release(vt_term *t, vt_u16 i)
+{
+    vt_place *p = &t->pl[i];
+    vt_image *im = place_image(t, p);
+    if (im && --im->refs <= 0)
+        image_free(t, p->img);
+    p->next = t->pl_free;
+    t->pl_free = i;
+}
+
+/* Every image on line l let go (the line is cleared or freed). */
+static void place_drop(vt_term *t, vt_line *l)
+{
+    vt_u16 i = l->img, next;
+    l->img = 0;
+    while (i) {
+        next = t->pl[i].next;
+        place_release(t, i);
+        i = next;
+    }
+}
+
+/* A line's memory back, and its images let go. */
+static void line_free(vt_term *t, vt_line *l)
+{
+    if (l->img)
+        place_drop(t, l);
+    VT_FREE(l);
+}
+
+/* Image slot `slot` (gen) at col0 on line l, tile row `row`, after the
+ * line's others (drawn on top of them). 0 when the pool cannot grow. */
+static int place_link(vt_term *t, vt_line *l, int slot, vt_u16 gen, int col0, int row)
+{
+    vt_u16 i, *at;
+    vt_place *p;
+    if (!t->pl_free) {
+        long cap = t->pl_cap ? t->pl_cap * 2 : 64, k;
+        vt_place *n;
+        if (cap > 65535L)
+            cap = 65535L;
+        if (cap <= t->pl_cap)
+            return 0;
+        n = (vt_place *)VT_MALLOC(cap * sizeof(vt_place));
+        if (!n)
+            return 0;
+        if (t->pl_cap)
+            memcpy(n, t->pl, t->pl_cap * sizeof(vt_place));
+        for (k = cap - 1; k >= (t->pl_cap ? t->pl_cap : 1); k--) {
+            n[k].next = t->pl_free;
+            t->pl_free = (vt_u16)k;
+        }
+        if (t->pl)
+            VT_FREE(t->pl);
+        t->pl = n;
+        t->pl_cap = cap;
+    }
+    i = t->pl_free;
+    p = &t->pl[i];
+    t->pl_free = p->next;
+    p->img = (vt_u16)slot;
+    p->gen = gen;
+    p->row = (vt_u16)row;
+    p->col0 = (short)col0;
+    p->next = 0;
+    for (at = &l->img; *at; at = &t->pl[*at].next)
+        ;
+    *at = i;
+    t->imgs[slot]->refs++;
+    return 1;
+}
+
+/* A new image on line l over the columns [col0, col0 + its width): the
+ * line's images it covers whole (and the stale ones) go first, so a
+ * program drawing frame after frame in one place keeps one image. */
+static void place_add(vt_term *t, vt_line *l, int slot, int col0, int row)
+{
+    vt_image *im = t->imgs[slot], *o;
+    int c1 = col0 + image_cols(im);
+    vt_u16 *at = &l->img, i;
+    while (*at) {
+        i = *at;
+        o = place_image(t, &t->pl[i]);
+        if (!o || (t->pl[i].col0 >= col0 && t->pl[i].col0 + image_cols(o) <= c1)) {
+            *at = t->pl[i].next;
+            place_release(t, i);
+        } else {
+            at = &t->pl[i].next;
+        }
+    }
+    place_link(t, l, slot, im->gen, col0, row);
+}
+
+/* Reflow: the image cell at column x of `from` moved to column nx of `to`;
+ * the image tile it shows goes along (once per run of cells). */
+static void place_carry(vt_term *t, const vt_line *from, int x, vt_line *to, int nx)
+{
+    vt_u16 i, last = 0;
+    int slot = -1, row = 0, col0 = 0;
+    vt_u16 gen = 0;
+    const vt_image *im;
+    for (i = from->img; i; i = t->pl[i].next) {
+        im = place_image(t, &t->pl[i]);
+        if (im && x >= t->pl[i].col0 && x < t->pl[i].col0 + image_cols(im)) {
+            slot = t->pl[i].img; /* the newest one covering x: it is on top */
+            gen = t->pl[i].gen;
+            row = t->pl[i].row;
+            col0 = nx - (x - t->pl[i].col0);
+        }
+    }
+    if (slot < 0)
+        return;
+    for (i = to->img; i; i = t->pl[i].next)
+        last = i;
+    if (last && t->pl[last].img == slot && t->pl[last].gen == gen && t->pl[last].row == row &&
+        t->pl[last].col0 == col0)
+        return;
+    place_link(t, to, slot, gen, col0, row);
 }
 
 static void blank_cell(const vt_term *t, vt_cell *c)
@@ -325,8 +516,10 @@ static void cells_blank(const vt_term *t, vt_cell *c, int n)
 
 static int vacated_default(const vt_term *t);
 
-static void line_clear(const vt_term *t, vt_line *l, int n)
+static void line_clear(vt_term *t, vt_line *l, int n)
 {
+    if (l->img)
+        place_drop(t, l); /* one test a line: no images, no cost */
     if (!l->used && l->n == n && vacated_default(t)) {
         /* nothing written since its last clear: already blank (a flood of
          * newlines clears a blank line each, S1) */
@@ -610,11 +803,11 @@ static void pend_scroll(vt_term *t, int top, int bot, int n)
 static void sb_push(vt_term *t, vt_line *l)
 {
     if (!t->sb_cap) {
-        VT_FREE(l);
+        line_free(t, l);
         return;
     }
     if (t->sb_len == t->sb_cap)
-        VT_FREE(t->sb[t->sb_head]);
+        line_free(t, t->sb[t->sb_head]);
     else
         t->sb_len++;
     t->sb[t->sb_head] = l;
@@ -631,7 +824,7 @@ static void ovf_drop(vt_term *t)
         if (t->pers != VT_AMIGA)
             sb_push(t, t->ovf[i]);
         else
-            VT_FREE(t->ovf[i]);
+            line_free(t, t->ovf[i]);
     }
     t->novf = 0;
 }
@@ -650,7 +843,7 @@ static void ovf_push(vt_term *t, vt_line *l)
             if (t->pers != VT_AMIGA)
                 sb_push(t, t->ovf[0]);
             else
-                VT_FREE(t->ovf[0]);
+                line_free(t, t->ovf[0]);
             memmove(t->ovf, t->ovf + 1, (t->novf - 1) * sizeof(vt_line *));
             t->novf--;
         } else {
@@ -752,7 +945,7 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
                 blank = line_new(t->cols);
                 if (blank) {
                     if (t->sb_len == t->sb_cap)
-                        VT_FREE(t->sb[t->sb_head]);
+                        line_free(t, t->sb[t->sb_head]);
                     else
                         t->sb_len++;
                 }
@@ -810,8 +1003,11 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
     if (x1 < t->cols)
         unwide(t, x1 - 1, y);
     cells_blank(t, &t->scr[y]->c[x0], x1 - x0);
-    if (x1 == t->cols)
+    if (x1 == t->cols) {
         t->scr[y]->wrapped = 0;
+        if (!x0 && t->scr[y]->img)
+            place_drop(t, t->scr[y]); /* the whole row erased: its images go */
+    }
     mark(t, x0, y, x1);
     /* erased to the end of the row with the default blank: from x0 on
      * the row is unused again (see vt_line.used) */
@@ -1435,8 +1631,8 @@ static void soft_reset(vt_term *t)
     t->sav.gl = 0;
 }
 
-static int alloc_screen(vt_line ***scr, int rows, int cols, const vt_term *t);
-static void free_screen(vt_line **scr, int rows);
+static int alloc_screen(vt_line ***scr, int rows, int cols, vt_term *t);
+static void free_screen(vt_term *t, vt_line **scr, int rows);
 
 static void set_alt(vt_term *t, int on, int clear)
 {
@@ -1445,7 +1641,7 @@ static void set_alt(vt_term *t, int on, int clear)
          * amiga personality, a console.device unit) never pays for it --
          * 16 bytes a cell, 32 KB at 80 x 25 (plan DV4) */
         if (!alloc_screen(&t->alt, t->rows, t->cols, t)) {
-            free_screen(t->alt, t->rows);
+            free_screen(t, t->alt, t->rows);
             t->alt = 0;
             return; /* no memory: the primary screen stays */
         }
@@ -1539,6 +1735,7 @@ static void put_char(vt_term *t, vt_u32 cp)
     c->deco = t->deco;
     c->ext = t->ext;
     c->width = (vt_u8)w;
+    c->pad = 0; /* text over an image cell */
     if (w == 2) {
         c[1] = c[0];
         c[1].ch = ' ';
@@ -2091,6 +2288,12 @@ static void set_mode(vt_term *t, int on)
             case 40:
                 t->allow_cols = (vt_u8)on;
                 break;
+            case 80: /* DECSDM: sixel images at the top left, no scrolling */
+                t->sixel_dm = (vt_u8)on;
+                break;
+            case 1070: /* each sixel image its own colour registers */
+                t->six_private = (vt_u8)on;
+                break;
             default:
                 note_value(t, 'M', p); /* a DEC private mode we do not have */
                 break;
@@ -2392,6 +2595,8 @@ static void report_mode(vt_term *t)
         case 2031: bit = VT_MODE_SCHEME_UPDATES; break;
         case 7727: bit = VT_MODE_APP_ESCAPE; break;
         case 40: v = t->allow_cols ? 1 : 2; break;
+        case 80: v = t->sixel_dm ? 1 : 2; break;
+        case 1070: v = t->six_private ? 1 : 2; break;
         case 3: v = t->cols == 132 ? 1 : 2; break;
         default: break;
         }
@@ -2415,6 +2620,7 @@ static void report_mode(vt_term *t)
 }
 
 static int scheme_of(const vt_term *t);
+static void xtsmgraphics(vt_term *t);
 
 static void csi_xterm(vt_term *t, vt_u8 final)
 {
@@ -2461,6 +2667,8 @@ static void csi_xterm(vt_term *t, vt_u8 final)
         }
         else if (final == 'J' || final == 'K')
             csi_common(t, final); /* DECSED / DECSEL: no protected cells */
+        else if (final == 'S')
+            xtsmgraphics(t);
         else
             note_unhandled(t, 'C', final);
         return;
@@ -2488,7 +2696,7 @@ static void csi_xterm(vt_term *t, vt_u8 final)
     switch (final) {
     case 'c':
         if (param0(t, 0) == 0)
-            reply(t, "\033[?62;22c", 9); /* DA1: VT220 with ANSI colour */
+            reply(t, "\033[?62;4;22c", 11); /* DA1: VT220 with sixel graphics and ANSI colour */
         return;
     case 'r': { /* DECSTBM */
         int top = (int)param(t, 0, 1) - 1;
@@ -3049,6 +3257,541 @@ static void dcs_dispatch(vt_term *t)
         note_value(t, 'D', 0);
 }
 
+/* ---- sixel graphics (DCS P1;P2;P3 q ... ST) ------------------------------ */
+
+/* The decoder of the image arriving: a streaming state machine, one byte
+ * at a time from any number of writes; the pixels grow as the stream
+ * draws them, up to VT_SIXEL_MAX_W x VT_SIXEL_MAX_H and the memory all
+ * images share. Colours are kept per image in a compact palette: entry 0
+ * for pixels nothing drew, then one entry per register colour in use, so
+ * a renderer needs pens only for the colours the picture has. */
+typedef struct vt_sixel {
+    vt_u8 *pix;
+    long aw, ah;            /* allocated */
+    long x, y;              /* the next sixel's column, the band's top pixel row */
+    long w, h;              /* how far the pixels drawn reach */
+    long rw, rh;            /* raster attributes' size, 0 none */
+    long prm[5];
+    int np;
+    int mode;               /* 0 data, or '"', '#', '!' while their numbers come */
+    long rep;               /* the repeat count for the next sixel, 0 none */
+    int aspect;             /* pixel rows a sixel bit covers */
+    int reg;                /* the colour register drawing */
+    int npal;
+    int full;               /* the memory is spent: no more growth */
+    vt_u8 regmap[256];      /* register -> pal entry, 0 not yet in pal */
+    vt_u32 pal[256];
+    vt_u32 own[256];        /* the registers when the image has its own (?1070) */
+    vt_u32 *regs;
+} vt_sixel;
+
+static long dist2(int r, int g, int b, vt_u32 c);
+
+/* The VT340's 16 colour registers (percent R, G, B), xterm's defaults. */
+static const vt_u8 vt340_pal[16][3] = {
+    { 0, 0, 0 }, { 20, 20, 80 }, { 80, 13, 13 }, { 20, 80, 20 }, { 80, 20, 80 }, { 20, 80, 80 },
+    { 80, 80, 20 }, { 53, 53, 53 }, { 26, 26, 26 }, { 33, 33, 60 }, { 60, 26, 26 }, { 33, 60, 33 },
+    { 60, 33, 60 }, { 33, 60, 60 }, { 60, 60, 33 }, { 80, 80, 80 }
+};
+
+static vt_u32 pct_rgb(long r, long g, long b)
+{
+    r = r < 0 ? 0 : r > 100 ? 100 : r;
+    g = g < 0 ? 0 : g > 100 ? 100 : g;
+    b = b < 0 ? 0 : b > 100 ? 100 : b;
+    return ((vt_u32)((r * 255 + 50) / 100) << 16) | ((vt_u32)((g * 255 + 50) / 100) << 8) |
+           (vt_u32)((b * 255 + 50) / 100);
+}
+
+static long hls_part(long m1, long m2, long h)
+{
+    while (h < 0)
+        h += 360;
+    while (h >= 360)
+        h -= 360;
+    if (h < 60)
+        return m1 + (m2 - m1) * h / 60;
+    if (h < 180)
+        return m2;
+    if (h < 240)
+        return m1 + (m2 - m1) * (240 - h) / 60;
+    return m1;
+}
+
+/* DEC HLS (hue 0-360 with blue at 0 and red at 120, lightness and
+ * saturation 0-100) to 0xRRGGBB. */
+static vt_u32 hls_rgb(long h, long l, long s)
+{
+    long m1, m2;
+    l = l < 0 ? 0 : l > 100 ? 100 : l;
+    s = s < 0 ? 0 : s > 100 ? 100 : s;
+    if (!s)
+        return pct_rgb(l, l, l);
+    h += 240; /* DEC's blue at 0 to the usual red at 0 */
+    m2 = l <= 50 ? l * (100 + s) / 100 : l + s - l * s / 100;
+    m1 = 2 * l - m2;
+    return pct_rgb(hls_part(m1, m2, h + 120), hls_part(m1, m2, h), hls_part(m1, m2, h - 120));
+}
+
+static void sixel_default_regs(const vt_term *t, vt_u32 *regs)
+{
+    int i;
+    for (i = 0; i < 256; i++)
+        regs[i] = i < 16 ? pct_rgb(vt340_pal[i][0], vt340_pal[i][1], vt340_pal[i][2])
+                         : vt_palette_rgb(t, i);
+}
+
+/* The oldest image goes: its placements draw nothing from now on. */
+static int image_evict(vt_term *t)
+{
+    int i, old = -1;
+    for (i = 0; i < VT_IMG_SLOTS; i++)
+        if (t->imgs[i] && t->imgs[i]->pix && (old < 0 || t->imgs[i]->serial < t->imgs[old]->serial))
+            old = i;
+    if (old < 0)
+        return 0;
+    image_free(t, old);
+    return 1;
+}
+
+/* Room for the pixels up to (nx, ny), both exclusive; 0 when they cannot
+ * have it (past the size limit, or out of memory). */
+static int sixel_room(vt_term *t, vt_sixel *s, long nx, long ny)
+{
+    long aw = s->aw, ah = s->ah, y;
+    vt_u8 *n;
+    if (nx <= s->aw && ny <= s->ah)
+        return 1;
+    if (s->full || nx > VT_SIXEL_MAX_W || ny > VT_SIXEL_MAX_H)
+        return 0;
+    if (aw < s->rw)
+        aw = s->rw; /* the size the raster attributes promised: one allocation */
+    if (ah < s->rh)
+        ah = s->rh;
+    while (aw < nx)
+        aw = aw ? aw * 2 : 64;
+    while (ah < ny)
+        ah = ah ? ah * 2 : 6L * s->aspect;
+    if (aw > VT_SIXEL_MAX_W)
+        aw = VT_SIXEL_MAX_W;
+    if (ah > VT_SIXEL_MAX_H)
+        ah = VT_SIXEL_MAX_H;
+    while (t->img_mem + aw * ah > VT_IMAGE_MEMORY)
+        if (!image_evict(t)) {
+            s->full = 1;
+            return 0;
+        }
+    n = (vt_u8 *)VT_MALLOC(aw * ah);
+    if (!n) {
+        s->full = 1;
+        return 0;
+    }
+    memset(n, 0, aw * ah);
+    for (y = 0; y < s->ah; y++)
+        memcpy(n + y * aw, s->pix + y * s->aw, s->aw);
+    if (s->pix)
+        VT_FREE(s->pix);
+    s->pix = n;
+    s->aw = aw;
+    s->ah = ah;
+    return 1;
+}
+
+/* The pal entry of the register drawing now. */
+static vt_u8 sixel_ink(vt_sixel *s)
+{
+    vt_u32 rgb = s->regs[s->reg];
+    long best = -1, d;
+    int i, k = 0;
+    if (s->regmap[s->reg])
+        return s->regmap[s->reg];
+    if (s->npal < 256) {
+        s->pal[s->npal] = rgb;
+        return s->regmap[s->reg] = (vt_u8)s->npal++;
+    }
+    for (i = 1; i < 256; i++) { /* 255 colours in one image: the nearest */
+        d = dist2((int)(rgb >> 16) & 0xFF, (int)(rgb >> 8) & 0xFF, (int)rgb & 0xFF, s->pal[i]);
+        if (best < 0 || d < best) {
+            best = d;
+            k = i;
+        }
+    }
+    return s->regmap[s->reg] = (vt_u8)k;
+}
+
+static void sixel_draw(vt_term *t, vt_sixel *s, int bits)
+{
+    long n = s->rep ? s->rep : 1, x = s->x, nx, row;
+    int b, a, top = -1;
+    vt_u8 ink;
+    s->rep = 0;
+    s->x += n;
+    if (!bits || x >= VT_SIXEL_MAX_W || s->y >= VT_SIXEL_MAX_H)
+        return;
+    nx = x + n > VT_SIXEL_MAX_W ? VT_SIXEL_MAX_W : x + n;
+    for (b = 5; b >= 0 && top < 0; b--)
+        if (bits & (1 << b))
+            top = b;
+    if (!sixel_room(t, s, nx, s->y + (top + 1) * (long)s->aspect)) {
+        /* past the limits: what still fits is drawn */
+        nx = nx < s->aw ? nx : s->aw;
+        if (x >= nx)
+            return;
+    }
+    ink = sixel_ink(s);
+    for (b = 0; b <= top; b++) {
+        if (!(bits & (1 << b)))
+            continue;
+        for (a = 0; a < s->aspect; a++) {
+            row = s->y + (long)b * s->aspect + a;
+            if (row < s->ah)
+                memset(s->pix + row * s->aw + x, ink, nx - x);
+        }
+    }
+    if (nx > s->w)
+        s->w = nx;
+    row = s->y + (long)(top + 1) * s->aspect;
+    if (row > s->ah)
+        row = s->ah;
+    if (row > s->h)
+        s->h = row;
+}
+
+/* The numbers of a '"', '#' or '!' are complete. */
+static void sixel_command(vt_sixel *s)
+{
+    long *p = s->prm;
+    switch (s->mode) {
+    case '"': /* raster attributes: Pan;Pad;Ph;Pv */
+        if (s->np >= 2 && p[0] > 0 && p[1] > 0) {
+            long a = (p[0] + p[1] / 2) / p[1];
+            s->aspect = (int)(a < 1 ? 1 : a > 10 ? 10 : a);
+        }
+        if (s->np >= 3)
+            s->rw = p[2] > VT_SIXEL_MAX_W ? VT_SIXEL_MAX_W : p[2];
+        if (s->np >= 4)
+            s->rh = p[3] > VT_SIXEL_MAX_H ? VT_SIXEL_MAX_H : p[3];
+        break;
+    case '#': /* #Pc selects a register; #Pc;Pu;Px;Py;Pz defines it */
+        s->reg = (int)(p[0] > 255 ? 255 : p[0]);
+        if (s->np >= 5 && (p[1] == 1 || p[1] == 2)) {
+            s->regs[s->reg] = p[1] == 1 ? hls_rgb(p[2], p[3], p[4]) : pct_rgb(p[2], p[3], p[4]);
+            s->regmap[s->reg] = 0; /* the new colour takes a new entry: drawn pixels keep theirs */
+        }
+        break;
+    case '!':
+        s->rep = p[0] > 0 ? p[0] : 1;
+        break;
+    }
+    s->mode = 0;
+}
+
+static void sixel_byte(vt_term *t, vt_u8 c)
+{
+    vt_sixel *s = t->six;
+    if (s->mode) {
+        if (c >= '0' && c <= '9') {
+            if (!s->np)
+                s->np = 1;
+            if (s->prm[s->np - 1] < 100000L)
+                s->prm[s->np - 1] = s->prm[s->np - 1] * 10 + (c - '0');
+            return;
+        }
+        if (c == ';') {
+            if (!s->np)
+                s->np = 1;
+            if (s->np < 5)
+                s->prm[s->np++] = 0;
+            return;
+        }
+        sixel_command(s);
+    }
+    if (c >= 0x3F && c <= 0x7E) {
+        sixel_draw(t, s, c - 0x3F);
+    } else if (c == '$') {
+        s->x = 0;
+    } else if (c == '-') {
+        s->x = 0;
+        s->y += 6L * s->aspect;
+    } else if (c == '"' || c == '#' || c == '!') {
+        s->mode = c;
+        s->np = 0;
+        s->prm[0] = s->prm[1] = s->prm[2] = s->prm[3] = s->prm[4] = 0;
+    }
+}
+
+/* vt_feed's run of printable bytes inside a sixel: the decoder without a
+ * trip through decode() and feed() for each. The count taken. */
+static long sixel_run(vt_term *t, const vt_u8 *b, long n)
+{
+    long k;
+    for (k = 0; k < n && b[k] >= 0x20 && b[k] < 0x7F; k++)
+        sixel_byte(t, b[k]);
+    return k;
+}
+
+static int dcs_is_params(const vt_term *t)
+{
+    int i;
+    for (i = 0; i < t->str_len; i++)
+        if ((t->str[i] < '0' || t->str[i] > '9') && t->str[i] != ';')
+            return 0;
+    return 1;
+}
+
+static void sixel_abort(vt_term *t);
+
+/* DCS P1;P2;P3 q: the decoder takes the bytes until ST. */
+static void sixel_begin(vt_term *t)
+{
+    vt_sixel *s;
+    long p1 = 0;
+    int i;
+    for (i = 0; i < t->str_len && t->str[i] != ';'; i++)
+        p1 = p1 * 10 + (t->str[i] - '0');
+    sixel_abort(t); /* never two decoders */
+    s = (vt_sixel *)VT_MALLOC(sizeof(vt_sixel));
+    if (!s) {
+        t->str_len = VT_STR_MAX - 1; /* no memory: swallowed as any string */
+        return;
+    }
+    memset(s, 0, sizeof(*s));
+    /* P1, the pixel aspect ratio (DEC: 2:1 unless said otherwise; the
+     * raster attributes override it) */
+    s->aspect = p1 == 2 ? 5 : (p1 == 3 || p1 == 4) ? 3 : (p1 >= 7 && p1 <= 9) ? 1 : 2;
+    s->npal = 1; /* entry 0: the pixels nothing drew */
+    if (t->six_private) {
+        sixel_default_regs(t, s->own);
+        s->regs = s->own;
+    } else {
+        if (!t->six_regs) {
+            t->six_regs = (vt_u32 *)VT_MALLOC(256 * sizeof(vt_u32));
+            if (t->six_regs)
+                sixel_default_regs(t, t->six_regs);
+        }
+        if (t->six_regs) {
+            s->regs = t->six_regs;
+        } else {
+            sixel_default_regs(t, s->own);
+            s->regs = s->own;
+        }
+    }
+    t->six = s;
+    t->state = S_SIXEL;
+    t->str_esc = 0;
+}
+
+static void sixel_abort(vt_term *t)
+{
+    if (!t->six)
+        return;
+    if (t->six->pix)
+        VT_FREE(t->six->pix);
+    VT_FREE(t->six);
+    t->six = 0;
+}
+
+/* The image's cells: blanks marked VT_CELL_IMAGE on line y from x0, its
+ * tile row k. */
+static void sixel_place_row(vt_term *t, int slot, int y, int x0, int k)
+{
+    vt_line *l = t->scr[y];
+    int x, x1 = x0 + image_cols(t->imgs[slot]);
+    vt_cell b;
+    if (x1 > t->cols)
+        x1 = t->cols;
+    if (x0 >= x1)
+        return;
+    unwide(t, x0, y);
+    if (x1 < t->cols)
+        unwide(t, x1 - 1, y);
+    b.ch = ' ';
+    b.fg = b.bg = VT_COLOR_DEFAULT;
+    b.attr = 0;
+    b.width = 1;
+    b.deco = b.ext = 0;
+    b.pad = VT_CELL_IMAGE;
+    for (x = x0; x < x1; x++)
+        l->c[x] = b;
+    mark(t, x0, y, x1);
+    place_add(t, l, slot, x0, k);
+}
+
+/* ST: the image is complete. It goes on the screen like text: at the
+ * cursor, scrolling the region up when it runs past the bottom margin,
+ * the cursor left on its last row in the column it started (xterm, with
+ * sixel scrolling on, the default); with ?80 (DECSDM) at the top left,
+ * cut at the bottom, the cursor where it was. */
+static void sixel_end(vt_term *t)
+{
+    vt_sixel *s = t->six;
+    vt_image *im;
+    long w, h, y;
+    int slot, i, rows, k, cy, cw, ch;
+    if (!s)
+        return;
+    t->six = 0;
+    w = s->w > s->rw ? s->w : s->rw;
+    h = s->h > s->rh ? s->h : s->rh;
+    if (w > s->aw || h > s->ah) {
+        /* a raster size nothing drew into: the pixels for it, if there is room */
+        if (!sixel_room(t, s, w, h)) {
+            w = w < s->aw ? w : s->aw;
+            h = h < s->ah ? h : s->ah;
+        }
+    }
+    if (w <= 0 || h <= 0 || !s->pix) {
+        if (s->pix)
+            VT_FREE(s->pix);
+        VT_FREE(s);
+        return;
+    }
+    for (y = 1; y < h; y++) /* rows of w pixels, one after the other */
+        memmove(s->pix + y * w, s->pix + y * s->aw, w);
+    for (slot = 0; slot < VT_IMG_SLOTS && t->imgs[slot] && t->imgs[slot]->pix; slot++)
+        ;
+    if (slot == VT_IMG_SLOTS) {
+        image_evict(t);
+        for (slot = 0; slot < VT_IMG_SLOTS && t->imgs[slot] && t->imgs[slot]->pix; slot++)
+            ;
+    }
+    if (slot < VT_IMG_SLOTS && !t->imgs[slot]) {
+        t->imgs[slot] = (vt_image *)VT_MALLOC(sizeof(vt_image));
+        if (t->imgs[slot])
+            memset(t->imgs[slot], 0, sizeof(vt_image));
+    }
+    if (slot == VT_IMG_SLOTS || !t->imgs[slot]) {
+        VT_FREE(s->pix);
+        VT_FREE(s);
+        return;
+    }
+    im = t->imgs[slot];
+    im->pix = s->pix;
+    im->bytes = s->aw * s->ah;
+    im->w = (int)w;
+    im->h = (int)h;
+    cw = t->cell_w > 0 ? t->cell_w : 8;
+    ch = t->cell_h > 0 ? t->cell_h : 16;
+    im->cw = cw;
+    im->ch = ch;
+    im->npal = s->npal;
+    im->refs = 0;
+    im->serial = ++t->img_serial;
+    for (i = 0; i < s->npal; i++)
+        im->pal[i] = s->pal[i];
+    im->pal[0] = vt_default_color(t, 1); /* unset: the background (the renderer's own) */
+    t->img_mem += im->bytes;
+    t->n_img++;
+    VT_FREE(s);
+
+    rows = (int)((h + ch - 1) / ch);
+    if (t->sixel_dm) {
+        for (k = 0; k < rows && k < t->rows; k++)
+            sixel_place_row(t, slot, k, 0, k);
+    } else {
+        cy = t->cy;
+        for (k = 0; k < rows; k++) {
+            if (k) {
+                if (cy == t->bot - 1)
+                    scroll_up(t, t->top, t->bot, 1);
+                else if (cy < t->rows - 1)
+                    cy++;
+                else
+                    break; /* below the margins at the screen's bottom: cut */
+            }
+            sixel_place_row(t, slot, cy, t->cx, k);
+        }
+        t->cy = cy;
+        t->wrap_pending = 0;
+    }
+    if (!im->refs)
+        image_free(t, slot); /* nowhere on the screen */
+}
+
+/* XTSMGRAPHICS, CSI ? Pi ; Pa ; Pv S: the number of colour registers
+ * (Pi 1) and the largest sixel image (Pi 2), read (Pa 1), reset (2), set
+ * (3, answered with what stays in effect: both are fixed) or their
+ * maximum (4). ReGIS (Pi 3) is not here. */
+static void xtsmgraphics(vt_term *t)
+{
+    char b[48];
+    long pi = param0(t, 0), pa = param0(t, 1), w, h;
+    int n = put_csi(t, b);
+    b[n++] = '?';
+    n = fmt_uint(b, n, pi);
+    b[n++] = ';';
+    if (pi != 1 && pi != 2) {
+        b[n++] = '1'; /* error in Pi */
+        b[n++] = ';';
+        b[n++] = '0';
+    } else if (pa < 1 || pa > 4) {
+        b[n++] = '2'; /* error in Pa */
+        b[n++] = ';';
+        b[n++] = '0';
+    } else if (pi == 1) {
+        b[n++] = '0';
+        b[n++] = ';';
+        n = fmt_uint(b, n, 256);
+    } else {
+        w = VT_SIXEL_MAX_W;
+        h = VT_SIXEL_MAX_H;
+        if (pa != 4 && t->cell_w > 0 && t->cell_h > 0) {
+            /* what the window shows (xterm's answer), within the maximum */
+            if ((long)t->cols * t->cell_w < w)
+                w = (long)t->cols * t->cell_w;
+            if ((long)t->rows * t->cell_h < h)
+                h = (long)t->rows * t->cell_h;
+        }
+        b[n++] = '0';
+        b[n++] = ';';
+        n = fmt_uint(b, n, w);
+        b[n++] = ';';
+        n = fmt_uint(b, n, h);
+    }
+    b[n++] = 'S';
+    reply(t, b, n);
+}
+
+int vt_images(const vt_term *t)
+{
+    return t->n_img;
+}
+
+int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
+{
+    const vt_line *l;
+    const vt_image *im;
+    vt_u16 k;
+    if (!t->n_img)
+        return 0;
+    if (row >= 0) {
+        if (row >= t->rows)
+            return 0;
+        l = t->scr[row];
+    } else {
+        if (-row > t->sb_len)
+            return 0;
+        l = t->sb[(t->sb_head + t->sb_cap + row) % t->sb_cap];
+    }
+    for (k = l->img; k; k = t->pl[k].next) {
+        im = place_image(t, &t->pl[k]);
+        if (!im || i--)
+            continue;
+        v->pix = im->pix;
+        v->w = im->w;
+        v->h = im->h;
+        v->pal = im->pal;
+        v->npal = im->npal;
+        v->cw = im->cw;
+        v->ch = im->ch;
+        v->col0 = t->pl[k].col0;
+        v->py = t->pl[k].row * im->ch;
+        v->serial = im->serial;
+        return 1;
+    }
+    return 0;
+}
+
 /* ---- parser ---------------------------------------------------------------- */
 
 static void clear_params(vt_term *t)
@@ -3086,10 +3829,33 @@ static void feed(vt_term *t, vt_u32 c)
 {
     /* Anywhere transitions. */
     if (c == 0x18 || c == 0x1A) { /* CAN, SUB */
+        if (t->state == S_SIXEL)
+            sixel_abort(t); /* cancelled: no image */
         t->state = S_GROUND;
         return;
     }
-    if (t->state == S_OSC || t->state == S_STRING) {
+    if (t->state == S_SIXEL) {
+        if (t->str_esc) {
+            t->str_esc = 0;
+            sixel_end(t);
+            t->state = S_GROUND;
+            if (c == '\\')
+                return;
+            t->state = S_ESC; /* ESC ends the image and starts a new ESC */
+            clear_params(t);
+        } else if (c == 0x1B) {
+            t->str_esc = 1;
+            return;
+        } else if (c == 0x9C) {
+            sixel_end(t);
+            t->state = S_GROUND;
+            return;
+        } else {
+            if (c >= 0x20 && c < 0x7F)
+                sixel_byte(t, (vt_u8)c);
+            return; /* other controls inside the data are ignored */
+        }
+    } else if (t->state >= S_OSC) {
         if (t->str_esc) {
             t->str_esc = 0;
             if (c == '\\') {
@@ -3111,6 +3877,10 @@ static void feed(vt_term *t, vt_u32 c)
             end_string(t);
             return;
         } else {
+            if (t->str_kind == 'P' && c == 'q' && t->state == S_STRING && dcs_is_params(t)) {
+                sixel_begin(t); /* DCS P1;P2;P3 q: a sixel image */
+                return;
+            }
             if ((t->state == S_OSC || t->str_kind == 'P') && c >= 0x20) {
                 /* as UTF-8, whole characters only (a title beyond the BMP
                  * was cut to 3 bytes of garbage) */
@@ -3365,7 +4135,7 @@ static void decode(vt_term *t, vt_u8 b)
 
 /* ---- public API -------------------------------------------------------------- */
 
-static int alloc_screen(vt_line ***scr, int rows, int cols, const vt_term *t)
+static int alloc_screen(vt_line ***scr, int rows, int cols, vt_term *t)
 {
     int y;
     *scr = (vt_line **)VT_MALLOC(rows * sizeof(vt_line *));
@@ -3381,14 +4151,14 @@ static int alloc_screen(vt_line ***scr, int rows, int cols, const vt_term *t)
     return 1;
 }
 
-static void free_screen(vt_line **scr, int rows)
+static void free_screen(vt_term *t, vt_line **scr, int rows)
 {
     int y;
     if (!scr)
         return;
     for (y = 0; y < rows; y++)
         if (scr[y])
-            VT_FREE(scr[y]);
+            line_free(t, scr[y]);
     VT_FREE(scr);
 }
 
@@ -3432,7 +4202,7 @@ void vt_clear_scrollback(vt_term *t)
 {
     while (t->sb_len) {
         t->sb_head = (t->sb_head + t->sb_cap - 1) % t->sb_cap;
-        VT_FREE(t->sb[t->sb_head]);
+        line_free(t, t->sb[t->sb_head]);
         t->sb_len--;
     }
 }
@@ -3451,7 +4221,7 @@ int vt_set_scrollback(vt_term *t, int lines)
     /* the oldest lines past the new size go */
     while (t->sb_len > keep) {
         int oldest = (t->sb_head + t->sb_cap - t->sb_len) % t->sb_cap;
-        VT_FREE(t->sb[oldest]);
+        line_free(t, t->sb[oldest]);
         t->sb_len--;
     }
     /* the rest, oldest first, to the start of the new ring */
@@ -3466,23 +4236,36 @@ int vt_set_scrollback(vt_term *t, int lines)
     return 1;
 }
 
+static void sixel_abort(vt_term *t);
+
 void vt_free(vt_term *t)
 {
+    int i;
     if (!t)
         return;
     pri_settle(t); /* t->pri is the allocation again */
-    free_screen(t->pri, t->rows);
-    free_screen(t->alt, t->rows);
+    free_screen(t, t->pri, t->rows);
+    free_screen(t, t->alt, t->rows);
     ovf_drop(t); /* into the scrollback, freed below */
     if (t->ovf)
         VT_FREE(t->ovf);
     while (t->sb_len) {
         t->sb_head = (t->sb_head + t->sb_cap - 1) % t->sb_cap;
-        VT_FREE(t->sb[t->sb_head]);
+        line_free(t, t->sb[t->sb_head]);
         t->sb_len--;
     }
     if (t->sb)
         VT_FREE(t->sb);
+    sixel_abort(t);
+    for (i = 0; i < VT_IMG_SLOTS; i++)
+        if (t->imgs[i]) {
+            image_free(t, i);
+            VT_FREE(t->imgs[i]);
+        }
+    if (t->pl)
+        VT_FREE(t->pl);
+    if (t->six_regs)
+        VT_FREE(t->six_regs);
     if (t->tabs)
         VT_FREE(t->tabs);
     if (t->clu)
@@ -3507,9 +4290,14 @@ void vt_reset(vt_term *t)
     t->raw_events = 0;
     t->amiga_bg = 0;
     t->scroll_enabled = 1;
+    sixel_abort(t);
     t->state = S_GROUND;
     t->u_need = 0;
     t->last_ch = 0;
+    t->sixel_dm = 0;
+    t->six_private = 1;
+    if (t->six_regs)
+        sixel_default_regs(t, t->six_regs);
     t->title[0] = 0;
     tab_reset(t);
     set_alt(t, 0, 0);
@@ -3741,6 +4529,7 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
         c[k].attr = t->attr;
         c[k].deco = t->deco;
         c[k].ext = t->ext;
+        c[k].pad = 0; /* text over an image cell (the assembler copies the proto's 0) */
     }
 #endif
     if (k) {
@@ -3821,11 +4610,16 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
         vt_u8 b = buf[i];
         if (b != 0x09)
             t->tab_end = 0; /* only a tab right after a tab keeps it */
-        if (b >= 0x20 && b < 0x7F && t->state == S_GROUND && !t->u_need && !t->insert &&
-            !t->single_shift && t->charset[t->gl] == 'B' && !t->amiga_msb) {
-            long k = put_ascii_run(t, buf + i, len - i); /* as far as printable ASCII and the row go */
-            if (k) {
-                i += k;
+        if (b >= 0x20 && b < 0x7F) {
+            if (t->state == S_GROUND && !t->u_need && !t->insert && !t->single_shift &&
+                t->charset[t->gl] == 'B' && !t->amiga_msb) {
+                long k = put_ascii_run(t, buf + i, len - i); /* as far as printable ASCII and the row go */
+                if (k) {
+                    i += k;
+                    continue;
+                }
+            } else if (t->state == S_SIXEL && !t->str_esc && !t->u_need) {
+                i += sixel_run(t, buf + i, len - i); /* image data: at least this byte */
                 continue;
             }
         }
@@ -3866,7 +4660,7 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
  * text; the amiga personality erases with the default colours.) */
 static int cell_plain_blank(const vt_cell *c)
 {
-    return c->ch == ' ' && c->width == 1 && !c->attr && !c->deco && !c->ext &&
+    return c->ch == ' ' && c->width == 1 && !c->attr && !c->deco && !c->ext && !c->pad &&
            c->fg == VT_COLOR_DEFAULT && c->bg == VT_COLOR_DEFAULT;
 }
 
@@ -3896,6 +4690,7 @@ static int rw_row(vt_rewrap *w)
     if (!l)
         return 0;
     line_clear(w->t, l, w->cols);
+    l->used = (vt_u16)w->cols; /* the cells copied in are not marked one by one */
     w->out[w->ny] = l;
     return 1;
 }
@@ -3927,14 +4722,14 @@ static int rewrap_line(vt_rewrap *w, vt_line **old, int s, int e, int oc,
     w->nx = 0;
     if (!rw_row(w))
         return 0;
-    last = line_text_len(old[e], oc);
+    last = line_text_len(old[e], old[e]->n);
     for (r = s; r <= e; r++) {
-        n = r < e ? oc : last;
+        n = r < e ? old[r]->n : last; /* a scrollback row keeps the width it had */
         for (x = 0; x < n; x++) {
             c = &old[r]->c[x];
             if (c->width == 0)
                 continue; /* the right half of a wide glyph moves with its left */
-            if (r < e && x == oc - 1 && cell_plain_blank(c) && old[r + 1]->c[0].width == 2 &&
+            if (r < e && x == n - 1 && cell_plain_blank(c) && old[r + 1]->c[0].width == 2 &&
                 !(r == cy && x == cx))
                 continue; /* put_char's padding before a wide glyph that did not fit */
             width = c->width == 2 && w->cols >= 2 ? 2 : 1;
@@ -3948,6 +4743,8 @@ static int rewrap_line(vt_rewrap *w, vt_line **old, int s, int e, int oc,
             if (w->out) {
                 o = &w->out[w->ny]->c[w->nx];
                 o[0] = *c;
+                if (c->pad & VT_CELL_IMAGE)
+                    place_carry(w->t, old[r], x, w->out[w->ny], w->nx);
                 o[0].width = (vt_u8)width;
                 if (width == 2) {
                     o[1] = o[0];
@@ -3988,15 +4785,17 @@ static int rewrap_line(vt_rewrap *w, vt_line **old, int s, int e, int oc,
     return 1;
 }
 
-/* One pass over the primary screen: its logical lines typed again into
- * out (NULL: count only). Rows below both the cursor and the last text
- * are left out (the caller pads with blanks). A double-width or -height
- * row is never joined: it keeps its place, cut or padded. Returns the row
- * count, -1 when out of memory (the rows made so far stay in out). */
-static int reflow_pass(vt_term *t, vt_line **out, int cols, int cx, int cy, int wp,
-                       int *ncx, int *ncy, int *nwp)
+/* One pass over rows old[0..nold), oldest first: their logical lines typed
+ * again into out (NULL: count only). The screen's rows are oc wide; a
+ * scrollback row keeps the width it had. Rows below both the cursor and
+ * the last text are left out (the caller pads with blanks). A double-width
+ * or -height row is never joined: it keeps its place, cut or padded.
+ * Returns the row count, -1 when out of memory (the rows made so far stay
+ * in out). */
+static int reflow_pass(vt_term *t, vt_line **old, int nold, int oc, vt_line **out, int cols, int cx, int cy,
+                       int wp, int *ncx, int *ncy, int *nwp)
 {
-    vt_line **old = t->pri, *l;
+    vt_line *l;
     vt_rewrap w;
     int s, e, last, n;
     w.t = t;
@@ -4004,8 +4803,8 @@ static int reflow_pass(vt_term *t, vt_line **out, int cols, int cx, int cy, int 
     w.cols = cols;
     w.eager = t->pers == VT_AMIGA && t->autowrap;
     w.ny = 0;
-    for (last = t->rows - 1; last > cy; last--)
-        if (old[last]->wrapped || old[last]->dbl || line_text_len(old[last], t->cols))
+    for (last = nold - 1; last > cy; last--)
+        if (old[last]->wrapped || old[last]->dbl || line_text_len(old[last], old[last]->n))
             break;
     for (s = 0; s <= last; s = e + 1) {
         e = s;
@@ -4014,11 +4813,12 @@ static int reflow_pass(vt_term *t, vt_line **out, int cols, int cx, int cy, int 
                 if (!(l = line_new(cols)))
                     return -1;
                 line_clear(t, l, cols);
-                n = cols < t->cols ? cols : t->cols;
+                n = cols < old[s]->n ? cols : old[s]->n;
                 memcpy(l->c, old[s]->c, n * sizeof(vt_cell));
                 if (l->c[cols - 1].width == 2)
                     blank_cell(t, &l->c[cols - 1]);
                 l->dbl = old[s]->dbl;
+                l->used = (vt_u16)cols;
                 out[w.ny] = l;
             }
             if (s == cy) {
@@ -4027,9 +4827,9 @@ static int reflow_pass(vt_term *t, vt_line **out, int cols, int cx, int cy, int 
                 *nwp = 0;
             }
         } else {
-            while (old[e]->wrapped && e + 1 < t->rows && !old[e + 1]->dbl)
+            while (old[e]->wrapped && e + 1 < nold && !old[e + 1]->dbl)
                 e++;
-            if (!rewrap_line(&w, old, s, e, t->cols, cx, cy, wp, ncx, ncy, nwp))
+            if (!rewrap_line(&w, old, s, e, oc, cx, cy, wp, ncx, ncy, nwp))
                 return -1;
         }
         w.ny++;
@@ -4039,29 +4839,31 @@ static int reflow_pass(vt_term *t, vt_line **out, int cols, int cx, int cy, int 
 
 /* vt_resize with reflow, for the primary screen (the alternate one is
  * resized plainly, as xterm does: full-screen programs redraw it anyway).
- * The scrollback is not reflowed either: its lines keep the width they
- * had, which vt_row reports per line, and the amiga personality (the one
- * the ROM console's reflow is copied for) keeps none. Rows that do not fit
- * go from below the cursor first, then off the top into the scrollback,
- * as resize_screen does. 0 when out of memory, nothing changed. */
-static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *wp)
+ * hist: the scrollback is laid out with it, as one text -- a line that
+ * began in the scrollback joins its rest on the screen, and the rows above
+ * the new screen go back to the scrollback (a grow brings them down again,
+ * as iTerm2 and Terminal.app do). Without hist (the amiga personality,
+ * the ROM console's reflow, keeps no scrollback; or no memory for the
+ * whole history) the screen and the rows an earlier resize pushed out are
+ * laid out, and the rows that do not fit are pushed out again for a later
+ * grow. Rows that do not fit go from below the cursor first, then off the
+ * top, as resize_screen does. 0 when out of memory, nothing changed. */
+static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *wp, int hist)
 {
-    vt_line **nr, **nw, **pri = t->pri, **all = 0;
-    int total, i, ok, ncx = 0, ncy = 0, nwp = 0, excess, below, drop_top = 0, above = t->novf;
-    int orows = t->rows;
-    if (above) {
-        /* the rows an earlier resize pushed out, then the screen: laid out
-         * together, as one screen that starts `above` rows higher */
-        all = (vt_line **)VT_MALLOC((above + orows) * sizeof(vt_line *));
-        if (!all)
-            return 0;
-        memcpy(all, t->ovf, above * sizeof(vt_line *));
-        memcpy(all + above, pri, orows * sizeof(vt_line *));
-        t->pri = all;
-        t->rows = above + orows;
-        *cy += above;
-    }
-    total = reflow_pass(t, 0, cols, *cx, *cy, *wp, &ncx, &ncy, &nwp);
+    vt_line **nr, **nw, **all;
+    int nsb = hist ? t->sb_len : 0, above = nsb + t->novf, nold = above + t->rows;
+    int total, i, ok, ncx = 0, ncy = 0, nwp = 0, excess, below, drop_top = 0;
+    /* the scrollback (oldest first), the rows an earlier resize pushed out,
+     * then the screen: laid out together, as one screen `above` rows taller */
+    all = (vt_line **)VT_MALLOC(nold * sizeof(vt_line *));
+    if (!all)
+        return 0;
+    for (i = 0; i < nsb; i++)
+        all[i] = t->sb[(t->sb_head + t->sb_cap - nsb + i) % t->sb_cap];
+    if (t->novf)
+        memcpy(all + nsb, t->ovf, t->novf * sizeof(vt_line *));
+    memcpy(all + above, t->pri, t->rows * sizeof(vt_line *));
+    total = reflow_pass(t, all, nold, t->cols, 0, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp);
     nr = (vt_line **)VT_MALLOC(total * sizeof(vt_line *));
     nw = (vt_line **)VT_MALLOC(rows * sizeof(vt_line *));
     if (!nr || !nw) {
@@ -4069,11 +4871,12 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
             VT_FREE(nr);
         if (nw)
             VT_FREE(nw);
-        goto undo;
+        VT_FREE(all);
+        return 0;
     }
     memset(nr, 0, total * sizeof(vt_line *));
     memset(nw, 0, rows * sizeof(vt_line *));
-    ok = reflow_pass(t, nr, cols, *cx, *cy, *wp, &ncx, &ncy, &nwp) >= 0;
+    ok = reflow_pass(t, all, nold, t->cols, nr, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp) >= 0;
     for (i = total; ok && i < rows; i++) { /* the blank rows below */
         nw[i] = line_new(cols);
         if (nw[i])
@@ -4084,13 +4887,14 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
     if (!ok) {
         for (i = 0; i < total; i++)
             if (nr[i])
-                VT_FREE(nr[i]);
+                line_free(t, nr[i]);
         for (i = total; i < rows; i++)
             if (nw[i])
                 VT_FREE(nw[i]);
         VT_FREE(nr);
         VT_FREE(nw);
-        goto undo;
+        VT_FREE(all);
+        return 0;
     }
     if (total > rows) {
         excess = total - rows;
@@ -4099,37 +4903,35 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
             below = excess;
         drop_top = excess - below;
         for (i = total - below; i < total; i++)
-            VT_FREE(nr[i]);
+            line_free(t, nr[i]);
         total = rows;
         ncy -= drop_top;
     }
-    /* the old rows (the pushed-out ones among them) are laid out anew */
-    for (i = 0; i < t->rows; i++)
-        VT_FREE(t->pri[i]);
+    /* the old rows (the scrollback's and the pushed-out ones among them)
+     * are laid out anew */
+    for (i = 0; i < nold; i++)
+        line_free(t, all[i]);
+    VT_FREE(all);
     t->novf = 0;
-    if (all)
-        VT_FREE(all);
-    t->pri = pri;
-    t->rows = orows;
+    if (hist)
+        t->sb_len = t->sb_head = 0;
     VT_FREE(t->pri);
-    for (i = 0; i < drop_top; i++)
-        ovf_push(t, nr[i]); /* pushed out now: back on a later grow */
+    for (i = 0; i < drop_top; i++) {
+        if (hist)
+            sb_push(t, nr[i]); /* history again, oldest first */
+        else
+            ovf_push(t, nr[i]); /* pushed out now: back on a later grow */
+    }
     for (i = 0; i < total; i++)
         nw[i] = nr[drop_top + i];
     VT_FREE(nr);
     t->pri = nw;
+    if (hist)
+        t->scrolled += t->sb_len - nsb; /* grid row + scrolled still counts from the oldest line */
     *cx = ncx;
     *cy = ncy;
     *wp = nwp;
     return 1;
-undo:
-    if (all) {
-        VT_FREE(all);
-        t->pri = pri;
-        t->rows = orows;
-        *cy -= above;
-    }
-    return 0;
 }
 
 static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is_pri, int *cy)
@@ -4146,12 +4948,12 @@ static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is
         int from_bottom = excess < below ? excess : below;
         drop_top = excess - from_bottom;
         for (y = t->rows - from_bottom; y < t->rows; y++)
-            VT_FREE(old[y]);
+            line_free(t, old[y]);
         for (y = 0; y < drop_top; y++) {
             if (is_pri)
                 sb_push(t, old[y]);
             else
-                VT_FREE(old[y]);
+                line_free(t, old[y]);
         }
         *cy -= drop_top;
     }
@@ -4169,6 +4971,8 @@ static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is
                 nl->n = l->n;
                 nl->wrapped = l->wrapped;
                 nl->dbl = l->dbl;
+                nl->used = l->used;
+                nl->img = l->img; /* its images move with the cells */
                 VT_FREE(l);
                 l = nl;
             }
@@ -4222,8 +5026,9 @@ void vt_resize(vt_term *t, int cols, int rows)
         int acy = alt_active ? t->cy : 0;
         /* Only the primary screen reflows: xterm leaves the alternate one
          * to the full-screen program that owns it, which redraws. */
-        reflowed = t->reflow && (cols != t->cols || rows != t->rows || t->novf) &&
-                   reflow_screen(t, cols, rows, &pcx, &pcy, &pwp);
+        reflowed = t->reflow &&
+                   ((t->pers != VT_AMIGA && t->sb_cap && reflow_screen(t, cols, rows, &pcx, &pcy, &pwp, 1)) ||
+                    reflow_screen(t, cols, rows, &pcx, &pcy, &pwp, 0));
         if (!reflowed) {
             resize_screen(t, &t->pri, cols, rows, 1, &pcy);
             pwp = 0;
@@ -4331,6 +5136,11 @@ int vt_scrollback_lines(const vt_term *t)
 long vt_lines_scrolled(const vt_term *t)
 {
     return t->scrolled;
+}
+
+int vt_wrap_pending(const vt_term *t)
+{
+    return t->wrap_pending != 0;
 }
 
 void vt_cursor(const vt_term *t, int *x, int *y)

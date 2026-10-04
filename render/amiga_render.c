@@ -20,6 +20,19 @@ ULONG vr_prof[4]; /* PROF=1: EClock ticks in painter_run, Text() runs; painter /
 #include <proto/layers.h>
 #include <graphics/clip.h>
 #include <graphics/layers.h>
+#include <graphics/gfxbase.h>
+
+extern struct GfxBase *GfxBase;
+
+/* cybergraphics.library V41 WriteLUTPixelArray (LVO -198; AROS
+ * cybergraphics.conf, the CGX/P96 SDK's fd): 8-bit indices through a
+ * table of 0x00RRGGBB, on true-colour screens. No SDK header here, so
+ * the call is declared as vbcc's inline. */
+#define VR_CTABFMT_XRGB8 0
+LONG vr_cgx_write_lut(__reg("a6") struct Library *, __reg("a0") APTR src, __reg("d0") UWORD sx,
+                      __reg("d1") UWORD sy, __reg("d2") UWORD smod, __reg("a1") struct RastPort *rp,
+                      __reg("a2") APTR ctab, __reg("d3") UWORD dx, __reg("d4") UWORD dy,
+                      __reg("d5") UWORD w, __reg("d6") UWORD h, __reg("d7") UBYTE fmt) = "\tjsr\t-198(a6)";
 
 #define RUN_MAX 256
 
@@ -239,6 +252,16 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     if (r->planar)
         extract_glyphs(r); /* the planar path's glyphs (DIRECT=1: also the text's 8-pixel alignment) */
     r->n_direct = r->n_text = 0;
+    for (i = 0; i < VR_IMG_SLOTS; i++)
+        r->img_key[i] = 0;
+    r->n_img_pens = 0;
+    r->img_buf = 0;
+    r->img_buf_size = 0;
+    r->img_serial = 0;
+    r->n_img_runs = 0;
+    /* true colour: images straight from their indices (P96 and CGX both
+     * offer cybergraphics.library); else the pens path below */
+    r->cgx = r->truecolor ? OpenLibrary((STRPTR)"cybergraphics.library", 41) : 0;
     vr_layout(r);
 }
 
@@ -387,6 +410,13 @@ void vr_free(vr_render *r)
     r->truecolor = 0;
     if (r->glyphs)
         FreeVec(r->glyphs);
+    for (i = 0; i < VR_IMG_SLOTS; i++)
+        if (r->cm && r->img_key[i])
+            ReleasePen(r->cm, (ULONG)r->img_pen[i]);
+    if (r->img_buf)
+        FreeVec(r->img_buf);
+    if (r->cgx)
+        CloseLibrary(r->cgx);
     /* inert until the next vr_init: the handler closes an AUTO window and
      * opens another, and vt_new's reset flushes damage through this
      * renderer before vr_init runs -- it drew into the closed window's
@@ -1361,6 +1391,152 @@ static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bp
     r->blank = 0;
 }
 
+/* ---- images (sixel) -------------------------------------------------------- */
+
+/* The pen for an image colour on a palette screen: one obtained for it
+ * (ObtainBestPen gives a free pen the colour, or the nearest one when the
+ * screen has none left), kept until vr_free; past VR_IMG_MAX colours the
+ * nearest of the xterm 256 the text uses. */
+static UBYTE img_pen_for(vr_render *r, ULONG rgb)
+{
+    ULONG key = rgb | 0x01000000UL;
+    int h = (int)(((rgb * 2654435761UL) >> 23) & (VR_IMG_SLOTS - 1)), i;
+    LONG p;
+    ULONG ink;
+    for (i = 0; i < VR_IMG_SLOTS; i++, h = (h + 1) & (VR_IMG_SLOTS - 1)) {
+        if (r->img_key[h] == key)
+            return r->img_pen[h];
+        if (!r->img_key[h])
+            break;
+    }
+    if (i < VR_IMG_SLOTS && r->n_img_pens < VR_IMG_MAX && (p = obtain(r, rgb)) >= 0) {
+        r->img_key[h] = key;
+        r->img_pen[h] = (UBYTE)p;
+        r->n_img_pens++;
+        return (UBYTE)p;
+    }
+    ink = pen_for(r, VT_COLOR_RGB | rgb, 0);
+    return (UBYTE)(ink & VR_INK_RGB ? r->pen_default_fg : ink);
+}
+
+/* The image's colours for this screen, once per image (and background). */
+static void img_colours(vr_render *r, const vt_image_view *v)
+{
+    ULONG bgrgb = r->bg_ink & VR_INK_RGB ? r->bg_ink & 0xFFFFFFUL : vr_pen_rgb(r, (UBYTE)r->bg_ink);
+    int i;
+    if (r->img_serial == v->serial && r->img_bgrgb == bgrgb)
+        return;
+    r->img_serial = v->serial;
+    r->img_bgrgb = bgrgb;
+    if (r->cgx) {
+        r->img_ctab[0] = bgrgb; /* the pixels the image left unset */
+        for (i = 1; i < v->npal; i++)
+            r->img_ctab[i] = v->pal[i];
+        return;
+    }
+    r->img_map[0] = r->bg_ink & VR_INK_RGB ? img_pen_for(r, bgrgb) : (UBYTE)r->bg_ink;
+    r->img_planes = r->img_map[0];
+    for (i = 1; i < v->npal; i++) {
+        r->img_map[i] = img_pen_for(r, v->pal[i]);
+        r->img_planes |= r->img_map[i];
+    }
+}
+
+/* Cells [a, b) of screen row y show image v: its pixels there, clipped to
+ * the image (a cell it does not fill keeps the background the text drew). */
+static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
+{
+    LONG sx = (LONG)(a - v->col0) * v->cw, sy = v->py, w = (LONG)(b - a) * r->cw, h = r->ch;
+    LONG stride, k, j;
+    WORD dx = (WORD)(r->ox + a * r->cw), dy = (WORD)(r->oy + y * r->ch);
+    const vt_u8 *src;
+    UBYTE *d;
+    if (sx < 0 || sx >= v->w || sy >= v->h)
+        return;
+    if (w > v->w - sx)
+        w = v->w - sx;
+    if (h > v->h - sy)
+        h = v->h - sy;
+    if (w <= 0 || h <= 0)
+        return;
+    img_colours(r, v);
+    r->blank = 0;
+    r->n_img_runs++;
+    if (r->cgx) {
+        vr_cgx_write_lut(r->cgx, (APTR)v->pix, (UWORD)sx, (UWORD)sy, (UWORD)v->w, r->rp, r->img_ctab, (UWORD)dx,
+                         (UWORD)dy, (UWORD)w, (UWORD)h, VR_CTABFMT_XRGB8);
+        return;
+    }
+    stride = (w + 15) & ~15L; /* WritePixelArray8 wants rows of 16 */
+    if (r->img_buf_size < (ULONG)(stride * h)) {
+        if (r->img_buf)
+            FreeVec(r->img_buf);
+        r->img_buf_size = (ULONG)(stride * h);
+        r->img_buf = (UBYTE *)AllocVec(r->img_buf_size, MEMF_ANY);
+        if (!r->img_buf) {
+            r->img_buf_size = 0;
+            return;
+        }
+    }
+    for (k = 0; k < h; k++) {
+        src = v->pix + (sy + k) * v->w + sx;
+        d = r->img_buf + k * stride;
+        for (j = 0; j < w; j++)
+            d[j] = r->img_map[src[j]];
+    }
+    if ((UBYTE)(r->img_planes & ~r->mask)) {
+        /* planes not in use held zeros: drawing may start to include them */
+        r->mask |= r->img_planes;
+        if (r->mask_on)
+            SetWriteMask(r->rp, r->mask);
+    }
+    r->seen |= r->img_planes;
+    if (GfxBase->LibNode.lib_Version >= 40) {
+        WriteChunkyPixels(r->rp, dx, dy, dx + w - 1, dy + h - 1, r->img_buf, stride);
+    } else {
+        /* Kickstart 3.0: WritePixelArray8 and its one-row scratch rastport */
+        struct RastPort tmp = *r->rp;
+        tmp.Layer = 0;
+        tmp.BitMap = AllocBitMap((ULONG)stride, 1, GetBitMapAttr(r->rp->BitMap, BMA_DEPTH), 0, r->rp->BitMap);
+        if (tmp.BitMap) {
+            WritePixelArray8(r->rp, dx, dy, dx + w - 1, dy + h - 1, r->img_buf, &tmp);
+            FreeBitMap(tmp.BitMap);
+        }
+    }
+}
+
+/* The images on screen rows [y0, y1), cells [x0, x1): drawn over what
+ * draw_rows put there, in the cells still marked as theirs, the oldest
+ * first. draw_rows calls it only while the engine has images at all. */
+static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
+{
+    vt_image_view v;
+    const vt_cell *c;
+    int y, i, x, a, xe, ncells, gy;
+    for (y = y0; y < y1; y++) {
+        gy = y - r->view;
+        c = vt_row(r->t, gy, &ncells);
+        if (!c || (!r->view && vt_row_size(r->t, gy)))
+            continue; /* a double-size row shows no images */
+        for (i = 0; vt_row_image(r->t, gy, i, &v); i++) {
+            xe = v.col0 + (v.w + v.cw - 1) / v.cw;
+            if (xe > x1)
+                xe = x1;
+            if (xe > ncells)
+                xe = ncells;
+            for (x = v.col0 > x0 ? v.col0 : x0; x < xe;) {
+                if (!(c[x].pad & VT_CELL_IMAGE)) {
+                    x++;
+                    continue;
+                }
+                for (a = x; x < xe && (c[x].pad & VT_CELL_IMAGE); x++)
+                    ;
+                img_run(r, &v, a, x, y);
+            }
+        }
+    }
+}
+
 static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
@@ -1594,6 +1770,8 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
             r->cursor_drawn = 0; /* the cursor cell was just painted over */
     }
+    if (vt_images(r->t))
+        draw_images(r, x0, y0, x1, y1); /* the one test a frame pays when there are none */
     r->was_blank = 0;
     if (r->full_pass) {
         r->full_pass = 0;

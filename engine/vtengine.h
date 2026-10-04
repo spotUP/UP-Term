@@ -82,8 +82,12 @@ typedef struct vt_cell {
     vt_u8  ext;     /* 0, or 1 + an entry of the terminal's rare styles:
                      * underline colour and font (vt_cell_underline_color,
                      * vt_cell_font) */
-    vt_u8  pad;
+    vt_u8  pad;     /* VT_CELL_IMAGE, else 0 */
 } vt_cell;
+/* vt_cell.pad: the cell shows a tile of an image placed on its row
+ * (vt_row_image); its own text is a blank. Writing or erasing the cell
+ * rewrites it whole, so text over an image takes its place. */
+#define VT_CELL_IMAGE 0x01
 
 /* A cell's ch in U+D800..U+DFFF (the surrogates, which are never a
  * character of their own) is not a character: it names an entry of the
@@ -167,12 +171,15 @@ void     vt_set_charset(vt_term *t, enum vt_charset cs);
  * does by default (the host's AmigaDOS programs end lines with a bare LF).
  * Unlike LNM (CSI 20 h) it does not change what Return sends. */
 void     vt_set_onlcr(vt_term *t, int on);
-/* Reflow on resize, as the ROM console's character-mapped units do: when
- * the width changes, vt_resize joins the rows a wrap linked into logical
- * lines and wraps them again at the new width, the cursor staying on its
- * character. Off by default (rows are cut or padded, as xterm does); a
- * setting of the host, so vt_reset leaves it. Scrollback lines and the
- * alternate screen are not reflowed. */
+/* Reflow on resize, as modern terminals and the ROM console's
+ * character-mapped units do: vt_resize joins the rows a wrap linked into
+ * logical lines and wraps them again at the new width, the cursor staying
+ * on its character. Where the personality keeps a scrollback it is laid
+ * out with the screen as one text (a line that began in the scrollback
+ * joins its rest), the screen is the bottom of it, and a taller window
+ * brings rows back down from the scrollback. The alternate screen is cut
+ * or padded (its program redraws). Off by default (rows are cut or padded,
+ * as xterm does); a setting of the host, so vt_reset leaves it. */
 void     vt_set_reflow(vt_term *t, int on);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
@@ -212,6 +219,9 @@ void     vt_clear_scrollback(vt_term *t);
  * stays on its text while output scrolls). */
 long     vt_lines_scrolled(const vt_term *t);
 void     vt_cursor(const vt_term *t, int *x, int *y);
+/* 1 while the cursor waits on the last column for the next character to
+ * wrap it (xterm's deferred wrap): logically it stands one cell further. */
+int      vt_wrap_pending(const vt_term *t);
 vt_u32   vt_modes(const vt_term *t);
 const char *vt_title(const vt_term *t);
 /* Amiga raw input event classes the host asked for (CSI n {), bit n. */
@@ -260,6 +270,31 @@ long     vt_find(const vt_term *t, const char *q, long from);
  * a CSI, "E x" an ESC, "M 1005" a DEC mode, "S 58" an SGR value, "O 11" an
  * OSC, "D 0" / "X 0" a DCS / other string. Unused slots are NULL. */
 long     vt_unhandled(const vt_term *t, const char **kinds, long *counts, int max);
+
+/* Images (DEC sixel, DCS P1;P2;P3 q ... ST). vt_images: how many are
+ * alive (on the screen or in the scrollback); 0 means there is nothing to
+ * draw, which is all a renderer needs to test per frame. */
+int      vt_images(const vt_term *t);
+typedef struct vt_image_view {
+    const vt_u8 *pix;   /* w x h indices into pal, row after row */
+    int w, h;
+    const vt_u32 *pal;  /* 0xRRGGBB; entry 0 is the pixels the image left
+                         * unset: draw them in the default background */
+    int npal;
+    int cw, ch;         /* the cell size the image was placed with */
+    int col0;           /* the grid column of the image's left edge on this
+                         * row (negative when a reflow split the image) */
+    int py;             /* the image's pixel row at the top of this row */
+    long serial;        /* different for every image (a pen cache's key) */
+} vt_image_view;
+/* The i-th image on row `row` (vt_row's numbering), the oldest first, so
+ * drawing them in order puts the newest on top. Draw a tile only in the
+ * row's cells with VT_CELL_IMAGE set. 0 when there is no i-th. */
+int      vt_row_image(const vt_term *t, int row, int i, vt_image_view *v);
+/* The largest sixel image, in pixels, and the memory all images share. */
+#define VT_SIXEL_MAX_W 1024
+#define VT_SIXEL_MAX_H 1024
+#define VT_IMAGE_MEMORY (2048L * 1024L)
 
 /* The palette indices a cell draws with, for this personality: default
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,

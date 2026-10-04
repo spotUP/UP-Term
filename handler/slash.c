@@ -17,6 +17,7 @@ static const slash_value v_meta[] = {
     { "amiga", MENU_SET_META_AMIGA, 1 }, { "alt", MENU_SET_META_ALT, 1 }, { 0, 0, 0 }
 };
 static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
+static const slash_value v_reflow[] = ONOFF(MENU_SET_REFLOW);
 static const slash_value v_wheel[] = {
     { "scroll", MENU_SET_WHEEL, 1 }, { "ignore", MENU_SET_WHEEL, 0 }, { 0, 0, 0 }
 };
@@ -72,6 +73,7 @@ static const slash_def table[] = {
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
     { "profile", SL_ARG, SLASH_PROFILE, 1, 0, "NAME", "switch to a profile" },
+    { "reflow", SL_CHOICE, 0, 0, v_reflow, "on | off", "a resize re-wraps the lines and the scrollback" },
     { "reset", SL_ACTION, MENU_RESET, 0, 0, "", "reset the terminal (RIS)" },
     { "save", SL_ACTION, MENU_SET_SAVE, 0, 0, "", "save the settings to the profile" },
     { "screen", SL_CHOICE, 0, 0, v_screen, "workbench | own | fullscreen",

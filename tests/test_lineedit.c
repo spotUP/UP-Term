@@ -378,8 +378,35 @@ static void a_replaced_line_on_a_fresh_prompt_draws_after_it(void)
     vt_free(t);
 }
 
+/* A reflow moves the line being edited (gaps #11): the editor finds its
+ * start again from the cursor, so editing goes on in the right place. */
+static void reflow_moves_the_line_and_editing_follows(void)
+{
+    vt_term *t = h_new(20, 8, VT_XTERM);
+    vt_set_onlcr(t, 1);
+    vt_set_reflow(t, 1);
+    h_put(t, "0123456789012345678901234567890\n$ "); /* two rows at 20, four at 10 */
+    le_init(&le, t, to_term, t);
+    type("abcdefghijklmnopqrstuvwxyz");
+    CHECK_STR(h_row(t, 2), "$ abcdefghijklmnopqr");
+    key(VT_KEY_LEFT, 0);
+    key(VT_KEY_LEFT, 0);
+    key(VT_KEY_LEFT, 0);
+    vt_resize(t, 10, 8);
+    le_resized(&le);
+    type("_");
+    CHECK_STR(h_screen(t), "0123456789|0123456789|0123456789|0|$ abcdefgh|ijklmnopqr|stuvw_xyz");
+    key(VT_KEY_LEFT, VT_MOD_SHIFT); /* to the start */
+    type("^");
+    CHECK_STR(h_row(t, 4), "$ ^abcdefg");
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "^abcdefghijklmnopqrstuvw_xyz\n");
+    vt_free(t);
+}
+
 void suite_lineedit(void)
 {
+    reflow_moves_the_line_and_editing_follows();
     a_replaced_line_on_a_fresh_prompt_draws_after_it();
     kingcon_word_and_quoting();
     kingcon_cycle_and_fncmode();

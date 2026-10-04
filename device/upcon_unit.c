@@ -280,6 +280,7 @@ void upc_unit_entry(void)
     u->w.no_clipboard = u->unitno != CONU_SNIPMAP; /* DD10 */
     u->w.foreign_window = 1;
     vtwin_init(&u->w, &host, u);
+    u->w.reflow = u->unitno != CONU_STANDARD; /* the ROM's charmap units re-wrap (DP4), raw ones do not */
     if (!vtwin_attach(&u->w, u->win)) {
         vtwin_cleanup(&u->w);
         FreeSignal(portsig);
@@ -288,8 +289,6 @@ void upc_unit_entry(void)
         ReplyMsg(m);
         return;
     }
-    if (u->unitno != CONU_STANDARD)
-        vt_set_reflow(u->w.t, 1); /* the ROM's charmap units re-wrap (DP4) */
     u->inner_w = (WORD)(u->win->Width - u->win->BorderLeft - u->win->BorderRight);
     u->inner_h = (WORD)(u->win->Height - u->win->BorderTop - u->win->BorderBottom);
     fill_conunit(u);

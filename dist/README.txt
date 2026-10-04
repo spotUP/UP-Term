@@ -4,7 +4,9 @@ vtcon - a console window for AmigaOS 3.x (68020+)
 XCON: is a console window like CON:, with a modern terminal inside:
 
   - xterm dialect (default): what Unix ports expect - colours (16, 256,
-    RGB), scroll regions, alternate screen, mouse, bracketed paste.
+    RGB), scroll regions, alternate screen, mouse, bracketed paste,
+    sixel images (img2sixel, lsix, gnuplot's sixel terminal), and
+    lines that re-wrap when the window is resized.
     ixemul programs run with TERM=vtcon (less, nano, BitchX ...).
   - Amiga dialect (option AMIGA): the ROM console.device sequences.
     Amiga programs also work in the xterm dialect: the 8-bit CSI ($9B)
@@ -83,6 +85,8 @@ CONFIGURATION (profiles)
      meta = amiga              amiga (Left Amiga = Meta) | alt (the Alt keys)
      copy-on-select = off      on: a drag ends with the selection on the clipboard
      wheel = scroll            scroll | ignore (the mouse wheel moves the scrollback)
+     reflow = on               on | off (a resize re-wraps the lines and the scrollback;
+                               off cuts or pads the rows, as xterm does)
      palette = 1,0x00CD00,4,0x5C5CFF
                                remap ANSI colours: index,RRGGBB pairs
 
