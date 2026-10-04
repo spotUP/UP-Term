@@ -83,6 +83,7 @@ CONFIGURATION (profiles)
      meta = amiga              amiga (Left Amiga = Meta) | alt (the Alt keys)
      copy-on-select = off      on: a drag ends with the selection on the clipboard
      wheel = scroll            scroll | ignore (the mouse wheel moves the scrollback)
+     scrollbar = show          show | hide (the scroll bar in a sizable window's border)
      palette = 1,0x00CD00,4,0x5C5CFF
                                remap ANSI colours: index,RRGGBB pairs
 
@@ -143,7 +144,7 @@ MENU
     View      Bigger font, Smaller font (the font's next size on disk),
               80 x 24, 132 x 43 (the window sized to that grid)
     Settings  Font..., Theme..., Cursor, Bell, Scrollback, Bold is
-              bright, Meta key, Copy on select, Wheel scrolls, Tab
+              bright, Meta key, Copy on select, Wheel scrolls, Scroll bar, Tab
               completion, KingCON style, Profile, Save settings to profile
   Settings are the same as UP-Term Prefs, for this window and at once
   (Prefs keeps them for the profile). With KingCON completion a Complete

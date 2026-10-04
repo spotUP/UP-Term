@@ -20,6 +20,9 @@ static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
 static const slash_value v_wheel[] = {
     { "scroll", MENU_SET_WHEEL, 1 }, { "ignore", MENU_SET_WHEEL, 0 }, { 0, 0, 0 }
 };
+static const slash_value v_scrollbar[] = {
+    { "show", MENU_SET_SCROLLBAR, 1 }, { "hide", MENU_SET_SCROLLBAR, 0 }, { 0, 0, 0 }
+};
 static const slash_value v_completion[] = {
     { "unix", MENU_SET_UNIX, 1 }, { "kingcon", MENU_SET_KINGCON, 1 }, { 0, 0, 0 }
 };
@@ -77,6 +80,7 @@ static const slash_def table[] = {
     { "screen", SL_CHOICE, 0, 0, v_screen, "workbench | own | fullscreen",
       "the window on the Workbench, a screen of its own, or full screen" },
     { "scrollback", SL_ARG, SLASH_SCROLLBACK, 1, 0, "LINES | none", "the lines kept" },
+    { "scrollbar", SL_CHOICE, 0, 0, v_scrollbar, "show | hide", "the scroll bar in the window's border" },
     { "select-all", SL_ACTION, MENU_SELECT_ALL, 0, 0, "", "select the scrollback and the screen" },
     { "selection-bg", SL_ARG, SLASH_SEL_BG, 1, 0, "RRGGBB | none", "the selection's background" },
     { "selection-fg", SL_ARG, SLASH_SEL_FG, 1, 0, "RRGGBB | none", "the selected text's colour" },

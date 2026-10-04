@@ -125,8 +125,8 @@ VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=16
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
-HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/brk.c handler/slash.c $(ENGINE) render/amiga_render.c render/vtwin.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c prefs/prefs_core.c prefs/prefs_dos.c
-HANDLER_HDR := engine/vtengine.h engine/vtwidth.h render/amiga_render.h render/vtwin.h render/glyphmap.h render/glyph_tables.inc render/outline.h render/otag.h \
+HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/brk.c handler/slash.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/sbar.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c prefs/prefs_core.c prefs/prefs_dos.c
+HANDLER_HDR := engine/vtengine.h engine/vtwidth.h render/amiga_render.h render/vtwin.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/lineedit.h handler/complete.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h
 
 amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm
@@ -314,8 +314,8 @@ $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldis
 # UP-Term's console.device (console plan D1.6): upcon_rom.o first (the
 # RomTag and the ROM forwards), no C startup, as the handler.
 DEVICE_SRC := device/upcon_device.c device/upcon_unit.c device/upcon_input.c device/upc_core.c \
-              render/vtwin.c render/amiga_render.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c handler/clip.c $(ENGINE)
-DEVICE_HDR := device/upcon.h device/upc_public.h device/upc_core.h render/vtwin.h render/amiga_render.h render/glyphmap.h \
+              render/vtwin.c render/sbar.c render/amiga_render.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c handler/clip.c $(ENGINE)
+DEVICE_HDR := device/upcon.h device/upc_public.h device/upc_core.h render/vtwin.h render/sbar.h render/amiga_render.h render/glyphmap.h \
               render/glyph_tables.inc handler/clip.h engine/vtengine.h engine/vtwidth.h
 DEVICE_FLAGS := DEBUG=$(DEBUG)
 DEVICE_FLAGS_OLD := $(shell cat $(BUILD)/amiga/device.flags 2>/dev/null)
@@ -331,6 +331,7 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	$(VC) $(if $(DEBUG),-DUPCON_DEBUG) -c -o $(BUILD)/amiga/devobj/upcon_input.o device/upcon_input.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/upc_core.o device/upc_core.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/devobj/vtwin.o render/vtwin.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/sbar.o render/sbar.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/amiga_render.o render/amiga_render.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/glyphmap.o render/glyphmap.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/fontpair.o render/fontpair.c
@@ -340,7 +341,7 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/devobj/vtengine.o $(ENGINE)
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/devobj/upcon_rom.o \
 	  $(BUILD)/amiga/devobj/upcon_device.o $(BUILD)/amiga/devobj/upcon_unit.o $(BUILD)/amiga/devobj/upcon_input.o \
-	  $(BUILD)/amiga/devobj/upc_core.o $(BUILD)/amiga/devobj/vtwin.o $(BUILD)/amiga/devobj/amiga_render.o \
+	  $(BUILD)/amiga/devobj/upc_core.o $(BUILD)/amiga/devobj/vtwin.o $(BUILD)/amiga/devobj/sbar.o $(BUILD)/amiga/devobj/amiga_render.o \
 	  $(BUILD)/amiga/devobj/glyphmap.o $(BUILD)/amiga/devobj/outline.o $(BUILD)/amiga/devobj/otag.o \
 	  $(BUILD)/amiga/devobj/fontpair.o \
 	  $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/vtengine.o \
@@ -442,6 +443,8 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) -DVR_ASM -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/amiga_render_68k.o render/amiga_render_68k.s
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtwin.o render/vtwin.c
+	$(VC) -c -o $(BUILD)/amiga/obj/sbar.o render/sbar.c
+	$(VC) -c -o $(BUILD)/amiga/obj/sbar_gad.o handler/sbar_gad.c
 	$(VC) -c -o $(BUILD)/amiga/obj/glyphmap.o render/glyphmap.c
 	$(VC) -c -o $(BUILD)/amiga/obj/fontpair.o render/fontpair.c
 	$(VC) -c -o $(BUILD)/amiga/obj/outline.o render/outline.c
@@ -456,7 +459,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_core.o prefs/prefs_core.c
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_dos.o prefs/prefs_dos.c
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
-	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/glyphmap.o \
+	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/sbar.o $(BUILD)/amiga/obj/sbar_gad.o $(BUILD)/amiga/obj/glyphmap.o \
 	  $(BUILD)/amiga/obj/outline.o $(BUILD)/amiga/obj/otag.o $(BUILD)/amiga/obj/fontpair.o \
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o \
 	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o \

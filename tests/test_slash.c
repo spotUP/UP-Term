@@ -41,6 +41,11 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(parse("/wheel ignore"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_WHEEL);
     CHECK_INT(cmd.on, 0);
+    CHECK_INT(parse("/scrollbar hide"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_SCROLLBAR);
+    CHECK_INT(cmd.on, 0);
+    CHECK_INT(parse("/scrollbar show"), SLASH_OK);
+    CHECK_INT(cmd.on, 1);
     CHECK_INT(parse("/completion kingcon"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_KINGCON);
     CHECK_INT(parse("/kingcon-cache purge"), SLASH_OK);

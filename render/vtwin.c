@@ -31,6 +31,7 @@ extern struct Device *ConsoleDevice;
 #define SYNC_FRAMES 3       /* the longest a ?2026 frame is waited for */
 
 static void frame_start(vtwin *w);
+static void set_view(vtwin *w, int lines);
 
 /* ---- engine callbacks ------------------------------------------------------- */
 
@@ -255,6 +256,7 @@ void vtwin_render(vtwin *w)
     vt_flush(w->t);
     vr_cursor_on(&w->r);
     vr_mask_end(&w->r);
+    vtwin_knob_sync(w); /* once a frame: the scrollback grew, the alternate screen came */
     if (w->r.has_blink || vr_cursor_blinks(&w->r))
         frame_start(w); /* blinking cells or cursor: the frames keep coming */
 }
@@ -560,6 +562,7 @@ static void bind(vtwin *w, struct Window *win)
 {
     int k;
     w->win = win;
+    w->knob_valid = 0; /* a new window: its scroll bar has not had the knob */
     vr_init(&w->r, win, w->font, w->t, w->pers == VT_PCANSI ? VT_ENC_CP437 : VT_ENC_LATIN1);
     if (w->own_rp) {
         w->r.rp = w->own_rp; /* a shared window: our pens and font, its layer */
@@ -644,10 +647,11 @@ int vtwin_set_scrollback(vtwin *w, int lines)
     if (!w->t)
         return 0;
     if (w->r.view)
-        vr_set_view(&w->r, 0); /* the old view may be past the new size */
+        set_view(w, 0); /* the old view may be past the new size */
     if (!vt_set_scrollback(w->t, lines))
         return 0;
     w->sb_lines = lines ? lines : -1; /* the spec's encoding: 0 is the built-in 500 */
+    vtwin_knob_sync(w);
     return 1;
 }
 
@@ -668,6 +672,7 @@ void vtwin_show(vtwin *w, int on)
               w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
+    vtwin_knob_resend(w); /* a tab shown: the window's scroll bar is its now */
 }
 
 void vtwin_set_inset(vtwin *w, WORD top)
@@ -802,6 +807,7 @@ void vtwin_resize(vtwin *w)
         vr_redraw(&w->r);
         vr_cursor_on(&w->r);
     }
+    vtwin_knob_sync(w); /* other rows: another knob size */
     vtwin_raw_report(w, 12); /* IECLASS_SIZEWINDOW */
 }
 
@@ -956,20 +962,18 @@ static int console_key(vtwin *w, UWORD code, UWORD qual)
         switch (code) {
         case 0x33: if (w->no_clipboard) return 0; copy_selection(w); return 1;
         case 0x34: if (w->no_clipboard) return 0; paste(w); return 1;
-        case 0x4C: vr_set_view(&w->r, w->r.view + 1); return 1;
-        case 0x4D: vr_set_view(&w->r, w->r.view - 1); return 1;
+        case 0x4C: set_view(w, w->r.view + 1); return 1;
+        case 0x4D: set_view(w, w->r.view - 1); return 1;
         default: return 0;
         }
     }
     if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) {
         if (code == 0x48) {
-            vr_set_view(&w->r, w->r.view + page);
+            set_view(w, w->r.view + page);
             return 1;
         }
         if (code == 0x49) {
-            vr_set_view(&w->r, w->r.view - page);
-            if (!w->r.view)
-                vr_cursor_on(&w->r);
+            set_view(w, w->r.view - page);
             return 1;
         }
     }
@@ -1025,7 +1029,7 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
     if (console_key(w, code, qual))
         return; /* copy, paste, scrollback: the console's own keys */
     if (w->r.view)
-        vr_set_view(&w->r, 0);
+        set_view(w, 0);
     if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
         mods |= VT_MOD_SHIFT;
     if (qual & IEQUALIFIER_CONTROL)
@@ -1155,7 +1159,7 @@ void vtwin_wheel(vtwin *w, int up, WORD mx, WORD my)
         w->host->input(w->user, out, n);
         return;
     }
-    vr_set_view(&w->r, w->r.view + (up ? 3 : -3));
+    set_view(w, w->r.view + (up ? 3 : -3));
 }
 
 /* Find: scroll the view to the line a match is on. A match in the live grid
@@ -1176,9 +1180,10 @@ void vtwin_clear_scrollback(vtwin *w)
     if (!w->t)
         return;
     if (w->r.view)
-        vr_set_view(&w->r, 0); /* the view was in what goes */
+        set_view(w, 0); /* the view was in what goes */
     vr_select(&w->r, 0, 0, 0, 0, 0);
     vt_clear_scrollback(w->t);
+    vtwin_knob_sync(w); /* no scrollback: the knob fills the track */
 }
 
 void vtwin_reset(vtwin *w)
@@ -1281,8 +1286,59 @@ int vtwin_find(vtwin *w, const char *q)
     }
     w->find_next = row + 1;
     if (row >= 0)
-        vr_set_view(&w->r, 0); /* the live grid: it is on screen already */
+        set_view(w, 0); /* the live grid: it is on screen already */
     else
-        vr_set_view(&w->r, -row + w->r.rows - 1);
+        set_view(w, -row + w->r.rows - 1);
     return 1;
+}
+
+/* ---- the scroll bar (SB1) ------------------------------------------------------ */
+
+/* The view moved by the user (keys, wheel, find, the scroll bar): drawn,
+ * the cursor back on the live screen, the knob following. */
+static void set_view(vtwin *w, int lines)
+{
+    WORD was = w->r.view;
+    vr_set_view(&w->r, lines);
+    if (was && !w->r.view)
+        vr_cursor_on(&w->r); /* back on the live screen: its cursor too */
+    vtwin_knob_sync(w);
+}
+
+/* Cheap: a few integer operations and a compare; the owner's gadget is
+ * touched only when the knob looks different. */
+void vtwin_knob_sync(vtwin *w)
+{
+    sbar_knob k;
+    if (!w->t || !w->win || w->r.off || !w->host || !w->host->knob)
+        return;
+    sbar_from_view(&k, vt_scrollback_lines(w->t), w->r.rows, w->r.view,
+                   (vt_modes(w->t) & VT_MODE_ALT_SCREEN) != 0);
+    if (w->knob_valid && sbar_equal(&k, &w->knob))
+        return;
+    w->knob = k;
+    w->knob_valid = 1;
+    w->host->knob(w->user, &k);
+}
+
+void vtwin_knob_resend(vtwin *w)
+{
+    w->knob_valid = 0;
+    vtwin_knob_sync(w);
+}
+
+void vtwin_knob_moved(vtwin *w, unsigned long top)
+{
+    if (!w->t || !w->win)
+        return;
+    if (!w->knob_valid)
+        vtwin_knob_sync(w); /* the units the knob is in */
+    set_view(w, sbar_to_view(&w->knob, vt_scrollback_lines(w->t), top));
+}
+
+void vtwin_knob_lines(vtwin *w, int n)
+{
+    if (!w->t || !w->win || !w->knob.live)
+        return; /* the alternate screen, no scrollback: the arrows do nothing */
+    set_view(w, w->r.view + n);
 }
