@@ -1129,6 +1129,8 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
             l->used = (vt_u16)x0;
             t->dirty = 1;
         }
+        if (!x0)
+            l->chonly = 1; /* (after the blanking) all of it the default blank: [0, used) is empty */
         return;
     }
     cells_blank(t, &t->scr[y]->c[x0], x1 - x0);
@@ -1154,23 +1156,26 @@ static void erase_rows(vt_term *t, int y0, int y1)
     }
 }
 
-static void home_limits(vt_term *t, int *y0, int *y1)
-{
-    if (t->origin) {
-        *y0 = t->top;
-        *y1 = t->bot - 1;
-    } else {
-        *y0 = 0;
-        *y1 = t->rows - 1;
-    }
-}
-
 static void move_to(vt_term *t, int x, int y)
 {
-    int y0, y1;
-    home_limits(t, &y0, &y1);
-    t->cy = clampi(y, y0, y1);
-    t->cx = clampi(x, 0, row_cols(t, t->cy) - 1);
+    /* home_limits, clampi and row_cols in place: CUP is in every screen
+     * update (ASM1) */
+    int y0 = 0, y1 = t->rows - 1, x1;
+    if (t->origin) {
+        y0 = t->top;
+        y1 = t->bot - 1;
+    }
+    if (y < y0)
+        y = y0;
+    else if (y > y1)
+        y = y1;
+    t->cy = y;
+    x1 = (t->scr[y]->dbl ? (t->cols + 1) / 2 : t->cols) - 1;
+    if (x < 0)
+        x = 0;
+    else if (x > x1)
+        x = x1;
+    t->cx = x;
     t->wrap_pending = 0;
 }
 
@@ -2147,19 +2152,11 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
 
 /* ---- CSI dispatch ---------------------------------------------------------- */
 
-static long param(const vt_term *t, int i, long def)
-{
-    if (i >= t->np || t->params[i] == 0)
-        return def;
-    return t->params[i];
-}
-
-static long param0(const vt_term *t, int i)
-{
-    if (i >= t->np)
-        return 0;
-    return t->params[i];
-}
+/* Parameter i, or def when it is missing or 0 (param) / 0 when missing
+ * (param0). Macros: every CSI asks one, and a call cost more than the
+ * test (ASM1); the arguments have no side effects at any use. */
+#define param(t, i, def) ((i) < (t)->np && (t)->params[i] ? (t)->params[i] : (long)(def))
+#define param0(t, i) ((i) < (t)->np ? (t)->params[i] : 0L)
 
 static vt_color ext_colour(vt_term *t, int *i)
 {
