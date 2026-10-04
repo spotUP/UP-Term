@@ -2045,6 +2045,7 @@ static void report_mode(vt_term *t)
         vt_u32 bit = 0;
         switch (m) {
         case 1: bit = VT_MODE_APP_CURSOR; break;
+        case 66: bit = VT_MODE_APP_KEYPAD; break; /* DECNKM is DECKPAM's state */
         case 5: bit = VT_MODE_SCREEN_REVERSE; break;
         case 9: bit = VT_MODE_MOUSE_X10; break;
         case 25: bit = VT_MODE_CURSOR_VISIBLE; break;
@@ -3175,6 +3176,7 @@ void vt_reset(vt_term *t)
     soft_reset(t);
     t->sav_1049 = t->sav;
     t->raw_events = 0;
+    t->mok = 0; /* modifyOtherKeys back to xterm's default */
     t->amiga_bg = 0;
     t->scroll_enabled = 1;
     t->state = S_GROUND;

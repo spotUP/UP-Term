@@ -117,6 +117,24 @@ static void focus_events_only_when_asked(void)
     vt_free(t);
 }
 
+/* audit 1: RIS left modifyOtherKeys on (a crashed vim left Ctrl keys as
+ * CSI 27 forms for the shell after `reset`); DECRQM ?66 answered 0 */
+static void reset_turns_modify_other_keys_off_and_decnkm_reports(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_put(t, "\033[>4;2m\033c");
+    CHECK_INT(vt_modify_other_keys(t), 0);
+    CHECK_STR(key(t, 'a', VT_MOD_CTRL), "\001");
+    h_reply_clear();
+    h_put(t, "\033[?66$p");
+    CHECK_STR(h_reply, "\033[?66;2$y");
+    h_put(t, "\033[?66h");
+    h_reply_clear();
+    h_put(t, "\033[?66$p");
+    CHECK_STR(h_reply, "\033[?66;1$y");
+    vt_free(t);
+}
+
 static void utf8_mouse_reaches_past_column_223(void)
 {
     vt_term *t = h_new(400, 24, VT_XTERM);
@@ -273,4 +291,5 @@ void suite_keys(void)
     modify_other_keys_reports_modified_return_and_tab();
     modify_other_keys_takes_ctrl_combinations_from_the_host();
     focus_events_only_when_asked();
+    reset_turns_modify_other_keys_off_and_decnkm_reports();
 }
