@@ -159,7 +159,7 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out)
     if (o->tools && *o->tools) {
         jw_rawz(out, ",\"tools\":");
         jw_rawz(out, o->tools);
-        jw_rawz(out, ",\"tool_choice\":{\"type\":\"auto\"}");
+        jw_rawz(out, o->no_tools ? ",\"tool_choice\":{\"type\":\"none\"}" : ",\"tool_choice\":{\"type\":\"auto\"}");
     }
     jw_rawz(out, ",\"messages\":");
     messages(c, out);

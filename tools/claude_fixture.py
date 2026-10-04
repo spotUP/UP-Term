@@ -9,6 +9,9 @@ stream:
   - the request's last message holds a tool_result  -> tool_final.sse
   - the last prompt mentions "startup" or "tool"      -> tool_use.sse
     (read_file S/Startup-Sequence and list_dir S: start Claude with ROOT=SYS:)
+  - mentions "edit"                                   -> tool_edit.sse
+    (todo_write, then edit_file claude-test.txt "hello" -> "hello from the
+    Amiga": Echo hello >RAM:claude-test.txt, start Claude with ROOT=RAM:)
   - mentions "refuse"                                 -> refusal.sse
   - mentions "busy"                                   -> overloaded.sse
   - anything else                                     -> text.sse
@@ -43,6 +46,8 @@ def pick(body, forced):
     if any(b.get("type") == "tool_result" for b in blocks):
         return "tool_final"
     text = " ".join(b.get("text", "") for b in blocks if b.get("type") == "text").lower()
+    if "edit" in text:
+        return "tool_edit"
     if "startup" in text or "tool" in text:
         return "tool_use"
     if "refuse" in text:

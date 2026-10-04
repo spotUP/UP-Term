@@ -28,6 +28,14 @@ typedef struct cl_io {
     unsigned long (*ms)(void *u);
     /* the debug log (0: none). Never given the API key. */
     void (*log)(void *u, const char *s, long n);
+    /* The screen of its own (ledger A3), 0 for the line mode above:
+     * bytes typed in raw mode -- their count, 0 when none came within
+     * timeout_ms (0: do not wait), -1 at the end of input; */
+    long (*read)(void *u, char *buf, long cap, long timeout_ms);
+    /* the window's size: 0 with *cols, *rows set, -1 unknown; */
+    int (*size)(void *u, int *cols, int *rows);
+    /* raw mode on (1) or back as it was (0): 0, -1 refused */
+    int (*raw)(void *u, int on);
 } cl_io;
 
 typedef struct cl_render {
@@ -37,11 +45,18 @@ typedef struct cl_render {
     void (*end)(void *u);
 } cl_render;
 
+struct cl_tui;
+struct cl_show;
+
 typedef struct cl_ui {
     cl_io *io;
     int col0;                   /* the cursor is at the start of a line */
     int status;                 /* a status line is showing */
     int frame;
+    /* the screen of its own (ledger A3): when set, everything below goes
+     * there instead of the line mode's text */
+    struct cl_tui *tui;
+    struct cl_show *show;
 } cl_ui;
 
 void ui_init(cl_ui *u, cl_io *io);
@@ -54,9 +69,23 @@ void ui_status(cl_ui *u, const char *what);
 void ui_status_clear(cl_ui *u);
 /* the plain-text renderer */
 void ui_plain(cl_ui *u, cl_render *r);
-/* a tool call, shown before it runs */
-void ui_tool(cl_ui *u, const char *tool, const char *what);
-/* the permission question: ASK_NO / ASK_ONCE / ASK_SESSION (tools.h) */
-int ui_ask(cl_ui *u, const char *tool, const char *what, int outside);
+/* a tool call, shown before it runs (tool: T_*, in: its input JSON) */
+void ui_tool(cl_ui *u, int tool, const char *name, const char *what, const char *in, long inn);
+/* the permission question: ASK_NO / ASK_ONCE / ASK_SESSION / ASK_STOP (tools.h) */
+int ui_ask(cl_ui *u, int tool, const char *name, const char *what, int outside);
+/* a write's or an edit's change before it is asked for, and a result */
+void ui_preview(cl_ui *u, int tool, const char *path, const char *before, long bn, const char *after, long an);
+void ui_result(cl_ui *u, int tool, const char *in, long inn, int is_error, const char *text, long n);
+/* a turn runs (the spinner) / is over */
+void ui_busy(cl_ui *u, int on);
+/* tokens of the answer so far (the spinner shows them) */
+void ui_tokens(cl_ui *u, long n);
+/* during a turn: 1 when the user asked to stop (Ctrl+C; in the screen
+ * also Esc); the screen also reads type-ahead and turns the spinner */
+int ui_poll(cl_ui *u);
+/* the user's line, echoed into the transcript (the screen only) */
+void ui_user(cl_ui *u, const char *line);
+/* a choice from a list (/model, /effort): its index, -1 none or no screen */
+int ui_pick(cl_ui *u, const char *title, const char *const *opt, int n, int sel);
 
 #endif

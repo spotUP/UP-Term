@@ -40,6 +40,8 @@ typedef struct cl_opts {
     long max_tokens;
     const char *system;         /* the system prompt text */
     const char *tools;          /* the tools array JSON, "" none */
+    int no_tools;               /* tool_choice none: the tools stay listed (the
+                                 * cached prefix stays the same), none is called */
 } cl_opts;
 
 void conv_init(cl_conv *c);

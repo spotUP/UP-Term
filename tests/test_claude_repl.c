@@ -16,6 +16,9 @@
 #include "../claude/repl.h"
 #include "../claude/sys_posix.h"
 #include "../claude/util.h"
+#include "../claude/tui.h"
+#include "../claude/show.h"
+#include "claude_screen.h"
 
 /* ---- the stub transport: one canned HTTP response per request ---- */
 
@@ -217,6 +220,8 @@ static unsigned long c_ms(void *u)
 typedef struct sentinel {
     cl_render inner;
     int text_calls, end_calls;
+    long *full;                 /* the screen's layout count at each text call (0: no screen) */
+    long fulls[16];
     jw text;
 } sentinel;
 
@@ -225,6 +230,8 @@ static sentinel snt;
 static void sn_text(void *u, const char *s, long n)
 {
     (void)u;
+    if (snt.full && snt.text_calls < 16)
+        snt.fulls[snt.text_calls] = *snt.full;
     snt.text_calls++;
     jw_raw(&snt.text, s, n);
     snt.inner.text(snt.inner.u, s, n);
@@ -355,7 +362,7 @@ static void test_reach(void)
     CHECK(json_get(b, "stream", &x) && json_type(x) == J_TRUE);
     CHECK(json_get(b, "output_config", &x) && json_get(x, "effort", &e) && json_streq(e, "medium"));
     CHECK(json_get(b, "fallbacks", &x) && json_streq(x, "default"));
-    CHECK(json_get(b, "tools", &x) && json_count(x) == 6);
+    CHECK(json_get(b, "tools", &x) && json_count(x) == 7);
     CHECK(json_get(b, "tool_choice", &x) && json_get(x, "type", &e) && json_streq(e, "auto"));
     CHECK(json_get(b, "system", &x));
     CHECK(strstr(sb.body[0], dir) != 0 || strstr(sb.body[0], "claude_repl_") != 0);
@@ -502,12 +509,126 @@ static void test_commands(void)
     }
 }
 
+/* ---- A3: the same program on its screen of its own ----
+ *
+ * The reachability test of ledger A3: repl_screen + repl_run, the code
+ * C:Claude runs in an UP-Term window, driven by typed keys through the
+ * engine (the window) and the recorded streams (the network): an answer in
+ * Markdown, a read and a list with the permission menu answered "2", a
+ * todo list and an edit with its diff asked with Enter, /cost, /exit. The
+ * sentinel counts the renderer's calls; the screen module's own counters
+ * say the transcript went through it and the footer was not repainted per
+ * token. */
+
+#define SB "\342\217\272"   /* the bullet */
+#define SC "\342\216\277"   /* the result corner */
+
+static void test_screen(void)
+{
+    static const char *keys[] = {
+        "hello\r", "show me S/Startup-Sequence\r", "2", "please edit the greeting\r", "\r", "/cost\r", "/exit\r", 0
+    };
+    static cl_repl r;
+    char p[600];
+    FILE *f;
+    char *after = 0;
+    long an = 0, full0;
+    int row;
+    stub_reset();
+    add_stream("text.sse");
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    add_stream("tool_edit.sse");
+    add_stream("tool_final.sse");
+    strcpy(p, dir);
+    strcat(p, "/claude-test.txt");
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("hello\n", f);
+        fclose(f);
+    }
+    cs_open(80, 24, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    CHECK_INT(cs.raw_on, 1);
+    jw_free(&snt.text);
+    memset(&snt, 0, sizeof(snt));
+    jw_init(&snt.text);
+    snt.inner = r.render;
+    r.render.u = 0;
+    r.render.text = sn_text;
+    r.render.end = sn_end;
+    full0 = r.tui->n_full;
+    snt.full = &r.tui->n_full;
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+
+    /* the sentinel: every streamed text went through the renderer, and the
+     * screen's renderer drew it (blocks with the bullet) */
+    CHECK_INT(snt.text_calls, 8);
+    CHECK(r.show->n_text == 8);
+    CHECK(r.show->n_blocks >= 4);
+    CHECK_INT(r.show->n_tools, 3);          /* read, list, edit (todo_write has no header call) */
+    CHECK_INT(r.show->n_diffs, 1);
+    CHECK(r.tui->n_lines > 20);
+    /* five requests, every key used, the edit made */
+    CHECK_INT(sb.nreq, 5);
+    CHECK_INT(cs.next, 7);
+    CHECK_INT(sys.read(sys.u, p, 1000, &after, &an), 0);
+    CHECK_STR(after ? after : "", "hello from the Amiga\n");
+    free(after);
+    /* the reads were allowed for the session with "2": one menu for two calls */
+    CHECK(sb.nreq < 3 || strstr(sb.body[2], "Startup-Sequence  15") != 0);
+    CHECK(r.tools.perm.session & (1u << T_LIST_DIR));
+    /* the todo list and the edit's result reached the history and the screen */
+    CHECK(sb.nreq < 5 || strstr(sb.body[4], "Todos updated.") != 0);
+    CHECK(sb.nreq < 5 || strstr(sb.body[4], "Edited ") != 0);
+    row = cs_find("\342\226\240 Change the greeting");     /* the todo list, in progress */
+    CHECK(row >= 0);
+    CHECK(cs_find(SC "  Updated claude-test.txt with 1 addition and 1 removal") > row);
+    CHECK(cs_find("1 - hello") > row);
+    CHECK(cs_find("1 + hello from the Amiga") > row);
+    CHECK(cs_find("> please edit the greeting") >= 0 || vt_scrollback_lines(cs.vt) > 0);
+    CHECK(cs_find("Requests 5. Tokens:") >= 0);
+    /* the footer is still the box and the status line */
+    CHECK(strstr(cs_row(20), "\342\225\255") != 0);
+    CHECK(strstr(cs_row(23), "ctx: 100% left") != 0);
+    /* economy: the footer was laid out again only when its shape changed
+     * (busy on/off, a menu open/closed), never per token; no screen clear */
+    CHECK(r.tui->n_full - full0 <= 20);
+    /* the first answer streamed in four pieces: the footer kept its shape */
+    CHECK(snt.fulls[0] > full0);
+    CHECK_INT(snt.fulls[3], snt.fulls[0]);
+    CHECK(strstr(cs.sent.p, "\033[2J") == 0);
+    CHECK(strstr(cs.sent.p, "test-key-not-real") == 0);
+    repl_free(&r);
+    /* raw mode off, the scroll region and the modes reset */
+    CHECK_INT(cs.raw_on, 0);
+    CHECK(strstr(cs.sent.p + cs.sent.n - 80, "\033[r") != 0);
+    CHECK(strstr(cs.sent.p + cs.sent.n - 80, "\033[?2004l") != 0);
+    cs_close();
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
     test_reach();
     test_unfinished();
     test_commands();
+    test_screen();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);
