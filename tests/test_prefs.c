@@ -265,6 +265,8 @@ static void stage_cases(void)
     f.kccache = 0;
     CHECK_INT(f.reflow, 1);    /* on unless the file says off (gaps #11) */
     f.reflow = 0;
+    CHECK_INT(f.scrollbar, 1); /* the scroll bar shows unless the file says hide */
+    f.scrollbar = 0;
     strcpy(f.pal[3], "#FFAA00");
     strcpy(f.selbg, "203040");
     CHECK_INT(prefs_validate(&f), 0);
@@ -292,6 +294,8 @@ static void stage_cases(void)
     CHECK_INT(g.kccache, 0);
     CHECK_INT(g.reflow, 0);
     CHECK_STR(upconf_str(&conf, "default", "reflow", "?"), "off");
+    CHECK_INT(g.scrollbar, 0);
+    CHECK_STR(upconf_str(&conf, "default", "scrollbar", "?"), "hide");
     CHECK_STR(g.pal[3], "FFAA00");
     CHECK_STR(g.selbg, "203040");
     CHECK_STR(upconf_str(&conf, "vim", "fg", "?"), "C0C0C0"); /* other profiles kept */

@@ -41,6 +41,7 @@ typedef struct prefs_fields {
     int cursor;     /* PREFS_CURSOR_* */
     int bell;       /* PREFS_BELL_* */
     int blink, bold, meta_alt, copy_sel, wheel, reflow; /* 0 / 1 */
+    int scrollbar;  /* the scroll bar in a sizable window's border (default on) */
     int completion; /* PREFS_COMPLETE_* */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
     int kcinfo;     /* KingCON completion lists .info files too */

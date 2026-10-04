@@ -49,6 +49,7 @@
 #include "../render/amiga_render.h"
 #include "../render/vtwin.h"
 #include "../device/upc_public.h"
+#include "sbar_gad.h"
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
@@ -207,6 +208,12 @@ typedef struct con {
     unsigned long edits;         /* keys that changed the line so far */
     unsigned long comp_edits;    /* edits when the running completion started */
     struct Menu *menustrip;      /* the window's menu (GadTools), 0 without one */
+    /* the scroll bar (SB1): the window owner's gadget in its right border,
+     * showing the active terminal's knob (a tab's arrives by TM_KNOB) */
+    int sbar_on;                 /* the setting: profile scrollbar = show | hide, the menu */
+    sbar_gad sbar;
+    sbar_knob knob_last;         /* the knob the window shows, for a scroll bar turned on */
+    int knob_last_valid;
     char menu[COMPLETE_NAMES];   /* the last completion's names */
     int menu_len, menu_n, menu_i, menu_start;
     /* the find prompt (Right Amiga F): its own small window, open while the
@@ -436,7 +443,9 @@ static void h_resized(void *u)
 
 static void h_titled(void *u);
 static void h_open_link(void *u, const char *uri);
-static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled, h_open_link };
+static void h_knob(void *u, const sbar_knob *k);
+static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled, h_open_link,
+                                 h_knob };
 
 /* ---- the window -------------------------------------------------------------- */
 
@@ -941,6 +950,9 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "backspace", 0);
     if (v)
         c->w.backspace_bs = str_ieq(v, "bs"); /* del (^?, the default) or bs (^H) */
+    v = upconf_str(c->conf, p, "scrollbar", 0);
+    if (v)
+        c->sbar_on = !str_ieq(v, "hide");
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
     c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));
@@ -975,6 +987,7 @@ static void parse_spec(con *c, const char *s)
     c->depth = 0;
     c->wflags = WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT |
                 WFLG_ACTIVATE | WFLG_SMART_REFRESH;
+    c->sbar_on = 1; /* a sizable window shows its scroll bar unless the profile hides it */
     for (;;) {
         int n = 0;
         const char *rest;
@@ -1134,6 +1147,7 @@ static void kc_cyc_end(con *c);
 static int sb_size(const con *c);
 static void watch_take(con *c);
 static void tab_command(con *c, int what);
+static void sbar_apply(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
 static int find_open(con *c);
@@ -1198,7 +1212,7 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 41
+#define MENU_SET_ITEMS 42
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1231,6 +1245,7 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_ITEM, (STRPTR)"Copy on select", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_COPY },
     { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
     { NM_ITEM, (STRPTR)"Reflow on resize", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
+    { NM_ITEM, (STRPTR)"Scroll bar", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_SCROLLBAR },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Tab completion", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Unix", 0, CHECKIT, 2, (APTR)MENU_SET_UNIX },
@@ -1270,6 +1285,7 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_COPY: return c->w.copy_on_select;
     case MENU_SET_WHEEL: return c->w.wheel_scroll;
     case MENU_SET_REFLOW: return c->w.reflow;
+    case MENU_SET_SCROLLBAR: return c->sbar_on;
     case MENU_SET_UNIX: return !c->kingcon;
     case MENU_SET_KINGCON: return c->kingcon;
     case MENU_SET_KC_W: return (c->kc_style & LE_KC_WINDOW) != 0;
@@ -1454,6 +1470,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->copy_sel = c->w.copy_on_select != 0;
     f->wheel = c->w.wheel_scroll != 0;
     f->reflow = c->w.reflow != 0;
+    f->scrollbar = c->sbar_on != 0;
     f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     k = 0;
     if (c->kc_style & LE_KC_WINDOW) f->kcmode[k++] = 'W';
@@ -1585,7 +1602,10 @@ static void profile_switch(con *c, int k)
     c->w.fg_rgb = c->spec_fg;
     c->w.bg_rgb = c->spec_bg;
     c->w.fontname[0] = 0; /* apply_profile sets it only when empty */
+    c->sbar_on = 1;
     apply_profile(c);
+    if (!c->is_tab)
+        sbar_apply(c); /* the profile's scroll bar, live (a tab's window is its host's) */
     if (c->w.fontname[0] && (strcmp(c->w.fontname, oldname) || c->w.fontsize != oldsize)) {
         char want[40];
         WORD wsize = c->w.fontsize;
@@ -1648,6 +1668,10 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_COPY: c->w.copy_on_select = on; break;
     case MENU_SET_WHEEL: c->w.wheel_scroll = on; break;
     case MENU_SET_REFLOW: c->w.reflow = on; restyle = 1; break;
+    case MENU_SET_SCROLLBAR:
+        c->sbar_on = on;
+        tab_command(c, MENU_SET_SCROLLBAR); /* the window's: its owner shows or hides it */
+        break;
     case MENU_SET_UNIX:
     case MENU_SET_KINGCON:
         sel_close(c);
@@ -2099,6 +2123,7 @@ have_window:
     }
     DBG("vt_new", c->w.t, 0);
     menu_add(c, win);
+    sbar_apply(c); /* our own sizable window: the scroll bar in its border */
     le_init(&c->le, c->w.t, le_out, c);
     c->le.utf8 = c->w.pers == VT_XTERM && !c->w.latin1 && !c->w.cp437;
     history_load(c); /* the saved history, read by a worker */
@@ -2113,6 +2138,7 @@ static void window_parts_close(con *c)
 {
     find_close(c); /* the prompt belongs to the window */
     sel_close(c);  /* so does the selection window */
+    sbar_gad_close(&c->sbar); /* and the scroll bar in its border */
     kc_cyc_end(c);
     menu_remove(c, c->w.win);
     if (c->input_io) {
@@ -2213,6 +2239,7 @@ static int screen_switch(con *c, int mode)
     vtwin_rebind(&c->w, win);
     vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
     menu_add(c, win);
+    sbar_apply(c); /* none on the borderless full-screen window: it has no border */
     return c->own_screen == mode;
 }
 
@@ -3999,16 +4026,26 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
     case IDCMP_INACTIVEWINDOW:
         vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
         break;
+    case IDCMP_IDCMPUPDATE:
+        /* the scroll bar (sbar_route): code is the gadget, prev the knob's top */
+        if (code == SBAR_GID_PROP) {
+            if (prev != (ULONG)~0)
+                vtwin_knob_moved(&c->w, prev);
+        } else
+            vtwin_knob_lines(&c->w, code == SBAR_GID_UP ? 1 : -1);
+        break;
     default:
         break;
     }
 }
 
 static int tab_route(con *c, struct IntuiMessage *im, int wheel);
+static void sbar_route(con *c, ULONG id, ULONG top);
 
 static void idcmp(con *c)
 {
     struct IntuiMessage *im;
+    ULONG knob_top = (ULONG)~0; /* the knob's last position in this batch */
     if (c->own_win && c->w.win && !IsListEmpty(&c->own_win->UserPort->mp_MsgList))
         vtwin_render(&c->w); /* resize, refresh, selection: on the current screen */
     while (c->own_win && (im = (struct IntuiMessage *)GetMsg(c->own_win->UserPort))) {
@@ -4022,6 +4059,18 @@ static void idcmp(con *c)
             if (wd->Version == INTUIWHEELDATA_VERSION)
                 wheel = wd->WheelX < 0 ? 1 : -1;
         }
+        if (cls == IDCMP_IDCMPUPDATE) {
+            /* the scroll bar: read now, the tag list goes with the reply */
+            ULONG id, top;
+            if (sbar_gad_event(im, &id, &top)) {
+                if (id == SBAR_GID_PROP)
+                    knob_top = top; /* a drag sends many: the view moves once, to the last */
+                else
+                    sbar_route(c, id, top);
+            }
+            ReplyMsg((struct Message *)im);
+            continue;
+        }
         /* with tabs the host takes its own keys and the bar, and the
          * active tab gets the rest */
         if (!tab_route(c, im, wheel))
@@ -4030,6 +4079,8 @@ static void idcmp(con *c)
                      im->Seconds, im->Micros, im->MouseX, im->MouseY, wheel);
         ReplyMsg((struct Message *)im);
     }
+    if (knob_top != (ULONG)~0 && c->own_win)
+        sbar_route(c, SBAR_GID_PROP, knob_top);
     if (c->auto_shut) {
         c->auto_shut = 0;
         close_window(c);
@@ -4045,7 +4096,8 @@ static void idcmp(con *c)
  * events to the active tab. Messages go both ways; whoever sends one frees
  * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
  * for. */
-enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_INSET };
+enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_INSET,
+       TM_KNOB };
 
 struct tab_msg {
     struct Message msg;
@@ -4059,6 +4111,7 @@ struct tab_msg {
     ULONG prev, secs, mics;
     WORD mx, my;
     int wheel;
+    sbar_knob knob;          /* KNOB: the shown tab's scroll bar knob */
 };
 
 static struct tab_msg *tab_msg(con *c, int type)
@@ -4108,6 +4161,58 @@ static void tab_post(con *c, con *to, int type, WORD inset, struct IntuiMessage 
         t->my = im->MouseY;
         t->wheel = wheel;
     }
+    PutMsg(to->tab_port, &t->msg);
+}
+
+/* ---- the scroll bar (SB1) ---- */
+
+/* The window's scroll bar shown or not, as the setting says: only on the
+ * window this process owns, and only when its right border has room
+ * (sizing gadget there; never the borderless full-screen window). */
+static void sbar_apply(con *c)
+{
+    struct Window *win = c->own_win;
+    if (!c->sbar_on || !win || c->is_tab || win == c->foreign || !sbar_gad_fits(win)) {
+        sbar_gad_close(&c->sbar);
+        return;
+    }
+    if (!c->sbar.win && sbar_gad_open(&c->sbar, win) && c->knob_last_valid)
+        sbar_gad_set(&c->sbar, &c->knob_last);
+}
+
+/* vtwin's knob changed: on our window's scroll bar, or a tab's to its host
+ * (only the shown tab's: a hidden one's vtwin gives none). At most once a
+ * frame. */
+static void h_knob(void *u, const sbar_knob *k)
+{
+    con *c = (con *)u;
+    if (c->is_tab) {
+        struct tab_msg *t = c->host_pub && c->shown ? tab_msg(c, TM_KNOB) : 0;
+        if (t) {
+            t->knob = *k;
+            PutMsg(c->host_pub, &t->msg);
+        }
+        return;
+    }
+    c->knob_last = *k;
+    c->knob_last_valid = 1;
+    sbar_gad_set(&c->sbar, k);
+}
+
+/* The scroll bar moved: to the terminal shown (ours, or the active tab's). */
+static void sbar_route(con *c, ULONG id, ULONG top)
+{
+    con *to = c->ntabs && c->active >= 0 && c->active < c->ntabs ? c->tab_list[c->active] : c;
+    struct tab_msg *t;
+    if (to == c) {
+        dispatch(c, IDCMP_IDCMPUPDATE, (UWORD)id, 0, top, 0, 0, 0, 0, 0);
+        return;
+    }
+    if (!to->tab_port || !(t = tab_msg(c, TM_EVENT)))
+        return;
+    t->cls = IDCMP_IDCMPUPDATE;
+    t->code = (UWORD)id;
+    t->prev = top;
     PutMsg(to->tab_port, &t->msg);
 }
 
@@ -4399,6 +4504,11 @@ static void host_command(con *c, int what, con *from)
         if (c->ntabs >= 2)
             tab_activate(c, (c->active + c->ntabs - 1) % c->ntabs);
         break;
+    case MENU_SET_SCROLLBAR:
+        /* the window's scroll bar, from its own menu or a tab's */
+        c->sbar_on = from->sbar_on;
+        sbar_apply(c);
+        break;
     case MENU_TAB_CLOSE:
         if (c->ntabs >= 2 && c->tab_list[c->active] != c) {
             struct IntuiMessage im;
@@ -4506,6 +4616,13 @@ static void host_msgs(con *c)
             break;
         case TM_COMMAND:
             host_command(c, t->what, t->from);
+            break;
+        case TM_KNOB:
+            if (c->ntabs && c->active >= 0 && c->active < c->ntabs && c->tab_list[c->active] == t->from) {
+                c->knob_last = t->knob;
+                c->knob_last_valid = 1;
+                sbar_gad_set(&c->sbar, &t->knob);
+            }
             break;
         }
         ReplyMsg(&t->msg);

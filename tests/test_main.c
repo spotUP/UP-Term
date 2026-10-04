@@ -29,6 +29,7 @@ void suite_text(void);
 void suite_clip(void);
 void suite_input(void);
 void suite_protocol(void);
+void suite_sbar(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -59,6 +60,7 @@ static const h_suite suites[] = {
     { "clip", suite_clip },
     { "input", suite_input },
     { "protocol", suite_protocol },
+    { "sbar", suite_sbar },
     { 0, 0 }
 };
 

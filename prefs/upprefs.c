@@ -72,7 +72,7 @@ enum {
     ID_PAGE = 1,
     ID_PROF, ID_LOAD, ID_NEW, ID_DEL,
     ID_FONT, ID_SB, ID_CURCOL, ID_FALLBACK,
-    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_REFLOW, ID_COMPLETE, ID_KCMODE, ID_KCINFO, ID_KCCACHE,
+    ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_REFLOW, ID_SCROLLBAR, ID_COMPLETE, ID_KCMODE, ID_KCINFO, ID_KCCACHE,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
     ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME
 };
@@ -97,7 +97,7 @@ struct app {
     struct Gadget *glist_common; /* Page, status, Save / Use / Cancel */
     struct Gadget *glist[2];  /* the General and the Colors page */
     int page;                 /* the page in the window, -1 none yet */
-    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *greflow, *gcomplete, *gkcinfo, *gkccache;
+    struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *greflow, *gscrollbar, *gcomplete, *gkcinfo, *gkccache;
     struct strfield str[N_STR];
     int nstr;
     upconf conf;              /* the file's table, as loaded and as last written */
@@ -192,6 +192,7 @@ static void show_fields(struct app *a)
     set_attr(a, a->gcopy, 0, GTCB_Checked, (ULONG)a->f.copy_sel);
     set_attr(a, a->gwheel, 0, GTCB_Checked, (ULONG)a->f.wheel);
     set_attr(a, a->greflow, 0, GTCB_Checked, (ULONG)a->f.reflow);
+    set_attr(a, a->gscrollbar, 0, GTCB_Checked, (ULONG)a->f.scrollbar);
     set_attr(a, a->gcomplete, 0, GTCY_Active, (ULONG)a->f.completion);
     set_attr(a, a->gkcinfo, 0, GTCB_Checked, (ULONG)a->f.kcinfo);
     set_attr(a, a->gkccache, 0, GTCB_Checked, (ULONG)a->f.kccache);
@@ -479,6 +480,9 @@ static int build_gadgets(struct app *a)
     /* a resize re-wraps the lines and the scrollback (gaps #11) */
     g = a->greflow = gad(a, g, CHECKBOX_KIND, 430, ROW(5) + 1, 26, 11, "Reflow on resize",
                          ID_REFLOW, PLACETEXT_LEFT, 0);
+    /* the scroll bar in the window's border (a sizable window's) */
+    g = a->gscrollbar = gad(a, g, CHECKBOX_KIND, 430, ROW(6) + 1, 26, 11, "Scroll bar",
+                            ID_SCROLLBAR, PLACETEXT_LEFT, 0);
     if (!g)
         return 0;
 
@@ -640,6 +644,9 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
         break;
     case ID_REFLOW:
         a->f.reflow = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_SCROLLBAR:
+        a->f.scrollbar = (g->Flags & GFLG_SELECTED) ? 1 : 0;
         break;
     case ID_SAVE:
         commit(a, 1);

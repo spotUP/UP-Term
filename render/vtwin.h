@@ -28,6 +28,7 @@
 #include "../engine/vtengine.h"
 #include "amiga_render.h"
 #include "vtinput.h"
+#include "sbar.h"
 
 /* With a key to the owner: the physical Alt key was down (VT_MOD_ALT is
  * Meta, which is Left Amiga unless meta_alt). KingCON's Alt+Tab. */
@@ -54,6 +55,10 @@ typedef struct vtwin_host {
     void (*titled)(void *user);
     /* Ctrl + click on an OSC 8 hyperlink: open uri (may be 0: no links) */
     void (*open_link)(void *user, const char *uri);
+    /* the scroll bar's knob changed (scrollback length, rows, view, the
+     * alternate screen): at most once a frame, never per write. May be 0:
+     * a window with no scroll bar (console.device units) */
+    void (*knob)(void *user, const sbar_knob *k);
 } vtwin_host;
 
 typedef struct vtwin {
@@ -127,6 +132,8 @@ typedef struct vtwin {
     ULONG click_secs, click_micros; /* the last left press, for DoubleClick() */
     int sel_whole;               /* the selection is a double-clicked word or triple-clicked line */
     int pointer_on;              /* ReportMouse is on: a drag, or the program wants moves */
+    sbar_knob knob;              /* the knob last given to host->knob */
+    int knob_valid;              /* 0: give it again at the next sync */
     char find_q[VT_FIND_QUERY_MAX]; /* the last find query, for "find next" */
     long find_next;              /* the row to continue from (VT_ROW_NONE: from the oldest) */
     const vtwin_host *host;
@@ -220,6 +227,16 @@ int vtwin_font_step(vtwin *w, int dir);
 /* View > 80 x 24 ...: the window sized to cols x rows cells (the grid
  * follows on the resize); 0 when the screen is too small. */
 int vtwin_set_size(vtwin *w, int cols, int rows);
+/* The scroll bar (SB1). The knob as it should look now goes to host->knob
+ * when it changed: vtwin calls this itself after a render pass and every
+ * view change; _resend gives it again even when unchanged (the window's
+ * gadget was just made, or a tab is shown). _moved: the knob was dragged
+ * (or the track clicked) to top, in the units of the knob last given;
+ * _lines: an arrow, n lines back (negative: towards the live screen). */
+void vtwin_knob_sync(vtwin *w);
+void vtwin_knob_resend(vtwin *w);
+void vtwin_knob_moved(vtwin *w, unsigned long top);
+void vtwin_knob_lines(vtwin *w, int n);
 /* copy the selection to the clipboard / type the clipboard in: Right Amiga
  * C and V, also for an owner's menu (no-ops without a clipboard) */
 void vtwin_copy(vtwin *w);

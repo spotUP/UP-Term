@@ -50,6 +50,7 @@ void prefs_defaults(prefs_fields *f)
     f->bold = 1;
     f->wheel = 1;
     f->reflow = 1;
+    f->scrollbar = 1;
     f->kccache = 1;
 }
 
@@ -84,6 +85,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     f->copy_sel = pc_ieq(upconf_str(c, p, "copy-on-select", "off"), "on");
     f->wheel = !pc_ieq(upconf_str(c, p, "wheel", "scroll"), "ignore");
     f->reflow = !pc_ieq(upconf_str(c, p, "reflow", "on"), "off");
+    f->scrollbar = !pc_ieq(upconf_str(c, p, "scrollbar", "show"), "hide");
     f->completion = pc_ieq(upconf_str(c, p, "completion", "unix"), "kingcon")
                   ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     pc_copy(f->kcmode, upconf_str(c, p, "kingcon-mode", ""), sizeof(f->kcmode));
@@ -237,6 +239,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     upconf_set(w, p, "copy-on-select", f->copy_sel ? "on" : "off");
     upconf_set(w, p, "wheel", f->wheel ? "scroll" : "ignore");
     upconf_set(w, p, "reflow", f->reflow ? "on" : "off");
+    upconf_set(w, p, "scrollbar", f->scrollbar ? "show" : "hide");
     upconf_set(w, p, "completion", f->completion == PREFS_COMPLETE_KINGCON ? "kingcon" : "unix");
     if (f->kcmode[0])
         upconf_set(w, p, "kingcon-mode", f->kcmode);
