@@ -966,7 +966,7 @@ static void pri_widen(vt_term *t)
  * leaving the top of the primary screen go to the scrollback. */
 static void scroll_up(vt_term *t, int top, int bot, int n)
 {
-    int i, h = bot - top, slide, to_sb;
+    int i, h = bot - top, slide, to_sb, dflt;
     vt_line *l;
     if (n <= 0 || h <= 0)
         return;
@@ -985,6 +985,7 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
     }
     /* the lines leaving go to the scrollback (the loop keeps scr == pri) */
     to_sb = top == 0 && t->scr == t->pri && t->pers != VT_AMIGA && t->sb_cap;
+    dflt = vacated_default(t);
     for (i = 0; i < n; i++) {
         vt_line **p = &t->scr[top];
         l = *p;
@@ -1026,7 +1027,14 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
                 l = blank;
             }
         }
-        line_clear(t, l, t->cols);
+        if (!l->used && dflt && !l->img && l->n == t->cols) {
+            /* line_clear's first case in place: nothing written since its
+             * last clear (a flood of newlines; ASM1) */
+            l->wrapped = 0;
+            l->dbl = 0;
+        } else {
+            line_clear(t, l, t->cols);
+        }
         l->dx0 = 0x7FFF;
         l->dx1 = 0;
         t->scr[bot - 1] = l;
@@ -5781,12 +5789,14 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
                         continue;
                     }
                 }
-            } else if (b == 0x0D) {
-                t->cx = 0;
-                t->wrap_pending = 0;
-                i++;
-                continue;
-            } else if (b == 0x0A) {
+            } else if (b == 0x0D || b == 0x0A) {
+                if (b == 0x0D) {
+                    t->cx = 0;
+                    t->wrap_pending = 0;
+                    if (++i >= len || buf[i] != 0x0A)
+                        continue;
+                    /* CR LF: the LF in the same turn of the loop */
+                }
                 /* a run of newlines is one lf_run */
                 k = 1;
                 while (i + k < len && buf[i + k] == 0x0A)
