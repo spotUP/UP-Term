@@ -92,18 +92,32 @@ static int asm_check(void)
     if (vt_asm_put_ch(c, (const vt_u8 *)"\177", 1) != 0 || vt_asm_put_ch(c, (const vt_u8 *)"\200", 1) != 0 ||
         vt_asm_put_ch(c, (const vt_u8 *)" ", 1) != 1 || c[0].ch != ' ' || vt_asm_put_ch(c, (const vt_u8 *)"q", 0) != 0) return 32;
     {
-        /* vr_asm_row_scan: stops at the first cell unlike c[0] or not ASCII */
-        static unsigned char o[12];
-        for (i = 0; i < 12; i++) { c[i].ch = (vt_u16)('a' + i); c[i].fg = 5; c[i].bg = 6; c[i].attr = 0; c[i].width = 1; c[i].deco = 0; c[i].ext = 0; c[i].pad = 0; }
-        if (vr_asm_row_scan(c, 12, o) != 12 || o[0] != 'a' || o[11] != 'l') return 50;
-        c[7].bg = 9;
-        if (vr_asm_row_scan(c, 12, o) != 7) return 51;
-        c[7].bg = 6; c[4].ch = 0x80;
-        if (vr_asm_row_scan(c, 12, o) != 4) return 52;
-        c[4].ch = 0x141;
-        if (vr_asm_row_scan(c, 12, o) != 4) return 53;
-        c[4].ch = 'e'; c[9].deco = 1;
-        if (vr_asm_row_scan(c, 12, o) != 9 || vr_asm_row_scan(c, 0, o) != 0) return 54;
+        /* vt_asm_put_ch against put_ascii_run's C loop: every source
+         * alignment, lengths 0-13, an ending byte (or none) at every place,
+         * the bytes either side of the printable range */
+        static vt_cell w[18], r[18];
+        static vt_u8 src[24];
+        static const vt_u8 bad[6] = { 0x1F, 0x7F, 0x80, 0xFF, 0x00, 0x9F };
+        int al, len, at, kind, k;
+        long got, want;
+        for (al = 0; al < 4; al++)
+            for (len = 0; len <= 13; len++)
+                for (at = -1; at < len; at++)
+                    for (kind = 0; kind < 6; kind++) {
+                        for (i = 0; i < 24; i++) src[i] = (vt_u8)(i & 1 ? 0x7E - i : 0x20 + i);
+                        if (at >= 0) src[al + at] = bad[kind];
+                        for (i = 0; i < 18; i++) {
+                            w[i].ch = ' '; w[i].fg = 0x11u + (vt_color)i; w[i].bg = 0x22u; w[i].attr = 0x3344;
+                            w[i].width = 1; w[i].deco = 5; w[i].ext = 6; w[i].pad = 7;
+                            r[i] = w[i];
+                        }
+                        for (want = 0; want < len && src[al + want] >= 0x20 && src[al + want] < 0x7F; want++)
+                            r[1 + want].ch = src[al + want];
+                        got = vt_asm_put_ch(w + 1, src + al, len);
+                        if (got != want) return 60 + al;
+                        for (k = 0; k < 18; k++)
+                            if (memcmp(&w[k], &r[k], sizeof(vt_cell))) return 64 + al;
+                    }
     }
     for (i = 0; i < 12; i++) c[i].ch = (vt_u16)i;
     p.ch = 'F';
@@ -135,6 +149,29 @@ static int asm_check(void)
         vt_asm_rows_up(r, 0);
         vt_asm_rows_down(r + 5, 0);
         if (r[0] != &m[0] || r[5] != &m[5]) return 14;
+    }
+    return 0;
+}
+
+/* the renderer's assembler (render/, owned by the renderer work) against
+ * its C: reported apart, so a fault there does not stop the engine numbers */
+static int render_check(void)
+{
+    static vt_cell c[12];
+    int i;
+    {
+        /* vr_asm_row_scan: stops at the first cell unlike c[0] or not ASCII */
+        static unsigned char o[12];
+        for (i = 0; i < 12; i++) { c[i].ch = (vt_u16)('a' + i); c[i].fg = 5; c[i].bg = 6; c[i].attr = 0; c[i].width = 1; c[i].deco = 0; c[i].ext = 0; c[i].pad = 0; }
+        if (vr_asm_row_scan(c, 12, o) != 12 || o[0] != 'a' || o[11] != 'l') return 50;
+        c[7].bg = 9;
+        if (vr_asm_row_scan(c, 12, o) != 7) return 51;
+        c[7].bg = 6; c[4].ch = 0x80;
+        if (vr_asm_row_scan(c, 12, o) != 4) return 52;
+        c[4].ch = 0x141;
+        if (vr_asm_row_scan(c, 12, o) != 4) return 53;
+        c[4].ch = 'e'; c[9].deco = 1;
+        if (vr_asm_row_scan(c, 12, o) != 9 || vr_asm_row_scan(c, 0, o) != 0) return 54;
     }
     {
         /* vr_asm_cell against its C: 5 planes of 4 rows x 3 bytes, the
@@ -207,10 +244,18 @@ int main(int argc, char **argv)
     }
     cb.damage = damage;
     cb.scroll = scroll;
-    w = asm_check();
-    Printf((STRPTR)"asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
-    if (w)
-        return 20;
+    /* the checks run unless one workload is asked for (ONLY 0-5: a profile
+     * counts the workload, not the checks; ONLY 9 runs the checks alone).
+     * The engine's assembler must be right or nothing is timed; the
+     * renderer's is reported apart (its own work, its own fault). */
+    if (only < 0 || only > 5) {
+        w = asm_check();
+        Printf((STRPTR)"asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
+        if (w)
+            return 20;
+        w = render_check();
+        Printf((STRPTR)"render asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
+    }
     for (pers = 0; pers < 2; pers++) {
         if (onlypers >= 0 && pers != onlypers)
             continue;
