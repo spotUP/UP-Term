@@ -5,7 +5,7 @@
  * One definition for the engine and for programs that lay text out for it
  * (tmux on AmigaOS: its idea of a width must be the terminal's, or its panes
  * drift from what XCON draws). Header-only so a port compiles it without the
- * engine; needs vt_u8 and vt_u32 (vtengine.h) or typedefs of its own.
+ * engine; needs vt_u32 (vtengine.h) or a typedef of its own.
  *
  * The rules are glibc's wcwidth (localedata/unicode-gen/utf8_gen.py), so the
  * terminal counts cells as the remote program does:
@@ -23,7 +23,7 @@
 #ifndef VTWIDTH_H
 #define VTWIDTH_H
 
-static const vt_u8 vt_width_page[1024] = {
+static const unsigned char vt_width_page[1024] = {
     0, 0, 0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     16, 17, 0, 18, 0, 0, 0, 19, 20, 21, 22, 23, 24, 25, 0, 0,
     26, 0, 0, 27, 0, 28, 29, 30, 0, 0, 0, 31, 32, 33, 34, 35,
@@ -90,7 +90,7 @@ static const vt_u8 vt_width_page[1024] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 104,
 };
 
-static const vt_u8 vt_width_bits[102][64] = {
+static const unsigned char vt_width_bits[102][64] = {
     {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x55, 0x55, 0x55,

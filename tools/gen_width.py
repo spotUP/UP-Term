@@ -105,8 +105,8 @@ def main():
             out.append("    " + ", ".join(fmt % v for v in vals[i:i + per]) + ",")
         return "\n".join(out)
 
-    page_tab = "static const vt_u8 vt_width_page[%d] = {\n%s\n};" % (len(index), rows(index, 16, "%d"))
-    bits_tab = "static const vt_u8 vt_width_bits[%d][64] = {\n%s\n};" % (
+    page_tab = "static const unsigned char vt_width_page[%d] = {\n%s\n};" % (len(index), rows(index, 16, "%d"))
+    bits_tab = "static const unsigned char vt_width_bits[%d][64] = {\n%s\n};" % (
         len(pages), "\n".join("    {\n" + rows(p, 16, "0x%02X").replace("    ", "        ") + "\n    },"
                               for p in pages))
 
@@ -117,7 +117,7 @@ def main():
  * One definition for the engine and for programs that lay text out for it
  * (tmux on AmigaOS: its idea of a width must be the terminal's, or its panes
  * drift from what XCON draws). Header-only so a port compiles it without the
- * engine; needs vt_u8 and vt_u32 (vtengine.h) or typedefs of its own.
+ * engine; needs vt_u32 (vtengine.h) or a typedef of its own.
  *
  * The rules are glibc's wcwidth (localedata/unicode-gen/utf8_gen.py), so the
  * terminal counts cells as the remote program does:
