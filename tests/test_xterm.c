@@ -1039,8 +1039,44 @@ static void synchronized_output_is_a_mode(void)
     vt_free(t);
 }
 
+/* S1: a whole-screen scroll moves a window through twice the rows' slots
+ * and goes back to the start once a page has gone by. Many pages, a
+ * resize and the alternate screen in between must leave every row where
+ * a plain array would have it. */
+static void put_line(vt_term *t, int i)
+{
+    char buf[16] = "\r\nline ";
+    int n = 7;
+    if (i >= 10)
+        buf[n++] = (char)('0' + i / 10);
+    buf[n++] = (char)('0' + i % 10);
+    buf[n] = 0;
+    h_put(t, buf);
+}
+
+static void long_scrolling_keeps_rows_in_order(void)
+{
+    vt_term *t = h_new(20, 5, VT_XTERM);
+    int i;
+    for (i = 0; i < 37; i++) {               /* past the window's end several times */
+        put_line(t, i);
+    }
+    CHECK_STR(h_screen(t), "line 32|line 33|line 34|line 35|line 36");
+    CHECK_STR(h_row(t, 4), "line 36");
+    h_put(t, "\033[?1049h\033[2Jalt\r\n\r\n\r\n\r\n\r\nx\033[?1049l");
+    CHECK_STR(h_row(t, 0), "line 32");
+    vt_resize(t, 20, 7);                     /* the window settles, then a plain array */
+    for (i = 37; i < 50; i++) {
+        put_line(t, i);
+    }
+    CHECK_STR(h_row(t, 6), "line 49");
+    CHECK_STR(h_row(t, 0), "line 43");
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
+    long_scrolling_keeps_rows_in_order();
     synchronized_output_is_a_mode();
     a_sequence_cut_by_a_write_means_the_same();
     a_row_counts_the_cells_in_use();

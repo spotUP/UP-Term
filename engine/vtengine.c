@@ -64,6 +64,14 @@ struct vt_term {
     int cols, rows;
 
     vt_line **scr, **pri, **alt;
+    /* The primary screen's rows as a window sliding through twice as many
+     * slots (pri_mem; 0: pri is a plain array): a scroll of the whole
+     * screen moves the window by one slot instead of every row pointer,
+     * and once a page has gone by the window goes back to the start --
+     * O(1) a line (S1; CCON 1.2.8 does the same). pri_spare: slots left
+     * below the window. */
+    vt_line **pri_mem;
+    int pri_spare;
     vt_line **sb;          /* scrollback ring */
     long scrolled;         /* lines scrolled off the primary screen's top */
     int sb_cap, sb_len, sb_head; /* head: next slot to write */
@@ -521,9 +529,13 @@ static void unwide(vt_term *t, int x, int y)
  * need no drawing: only a BCE erase in another colour does. */
 static int vacated_default(const vt_term *t)
 {
-    vt_cell b;
-    blank_cell(t, &b);
-    return b.bg == VT_COLOR_DEFAULT && b.fg == VT_COLOR_DEFAULT && !b.attr;
+    /* blank_cell's answer without building the cell: it is asked on every
+     * scroll and line clear (S1: a third of a newline's instructions) */
+    if (t->pers == VT_AMIGA)
+        return 1;
+    if (t->bg != VT_COLOR_DEFAULT)
+        return 0;
+    return t->pers != VT_PCANSI || !(t->attr & (VT_ATTR_BLINK | VT_ATTR_INVERSE));
 }
 
 static void damage_rows(vt_term *t, int y0, int y1);
@@ -642,17 +654,55 @@ static void ovf_push(vt_term *t, vt_line *l)
     t->ovf[t->novf++] = l;
 }
 
+/* The primary screen's window back at the start of its slots (pri_mem):
+ * before anything that frees or replaces t->pri, and when the window has
+ * reached the end. */
+static void pri_settle(vt_term *t)
+{
+    int y;
+    if (!t->pri_mem || t->pri == t->pri_mem)
+        return;
+    for (y = 0; y < t->rows; y++) /* forward: the window lies above its new place */
+        t->pri_mem[y] = t->pri[y];
+    if (t->scr == t->pri)
+        t->scr = t->pri_mem;
+    t->pri = t->pri_mem;
+    t->pri_spare = t->rows;
+}
+
+/* The primary screen's rows in twice as many slots, made on its first
+ * whole-screen scroll (and again after a resize replaced the array). No
+ * memory: the rows stay a plain array, scrolled by moving them. */
+static void pri_widen(vt_term *t)
+{
+    vt_line **m = (vt_line **)VT_MALLOC(2 * t->rows * sizeof(vt_line *));
+    int y;
+    if (!m)
+        return;
+    for (y = 0; y < t->rows; y++)
+        m[y] = t->pri[y];
+    if (t->scr == t->pri)
+        t->scr = m;
+    VT_FREE(t->pri);
+    t->pri = t->pri_mem = m;
+    t->pri_spare = t->rows;
+}
+
 /* Rows [top, bot) move up by n; n blank rows enter at the bottom. Lines
  * leaving the top of the primary screen go to the scrollback. */
 static void scroll_up(vt_term *t, int top, int bot, int n)
 {
-    int i, h = bot - top;
+    int i, h = bot - top, slide;
     vt_line *l;
     if (n <= 0 || h <= 0)
         return;
     if (n > h)
         n = h;
     pend_prepare(t, top, bot, n);
+    slide = top == 0 && bot == t->rows && t->scr == t->pri && h > 1;
+    if (slide && !t->pri_mem)
+        pri_widen(t);
+    slide = slide && t->pri_mem;
     if (top == 0 && t->scr == t->pri) {
         t->scrolled += n;
         ovf_drop(t); /* above the rows scrolling out: history first */
@@ -660,15 +710,21 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
     for (i = 0; i < n; i++) {
         vt_line **p = &t->scr[top];
         l = *p;
+        if (slide) {
+            if (!t->pri_spare)
+                pri_settle(t);
+            t->pri++;
+            t->pri_spare--;
+            t->scr = t->pri;
+        } else {
 #ifdef VT_ASM
-        vt_asm_rows_up(p, h - 1);
+            vt_asm_rows_up(p, h - 1);
 #else
-        {
             int k;
             for (k = h - 1; k > 0; k--, p++)
                 p[0] = p[1];
-        }
 #endif
+        }
         if (top == 0 && t->scr == t->pri && t->pers != VT_AMIGA && t->sb_cap) {
             /* Into the scrollback. A full ring hands back its oldest line
              * to become the new blank one, so steady scrolling allocates
@@ -3143,6 +3199,7 @@ void vt_free(vt_term *t)
 {
     if (!t)
         return;
+    pri_settle(t); /* t->pri is the allocation again */
     free_screen(t->pri, t->rows);
     free_screen(t->alt, t->rows);
     ovf_drop(t); /* into the scrollback, freed below */
@@ -3837,6 +3894,7 @@ void vt_resize(vt_term *t, int cols, int rows)
     if (cols < 1 || rows < 1 || (cols == t->cols && rows == t->rows))
         return;
     flush(t);
+    pri_settle(t); /* resize and reflow free or keep t->pri as an allocation */
     if (cols > t->tabs_cap) {
         tabs = (vt_u8 *)VT_MALLOC(cols);
         if (!tabs)
@@ -3893,6 +3951,10 @@ void vt_resize(vt_term *t, int cols, int rows)
     t->cx = clampi(t->cx, 0, cols - 1);
     t->cy = clampi(cy, 0, rows - 1);
     t->wrap_pending = wp;
+    if (t->pri != t->pri_mem) { /* replaced by a plain array: widened again on the next scroll */
+        t->pri_mem = 0;
+        t->pri_spare = 0;
+    }
     mark_rows(t, 0, rows);
     flush(t);
 }
