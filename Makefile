@@ -16,14 +16,14 @@ ICONSPEC := install/iconspec.c
 ZMODEM  := zm/zmodem.c
 # the Claude client's portable core (ledger A2); net_posix is the host transport
 CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
-               claude/path.c claude/tools.c claude/sys_posix.c
+               claude/path.c claude/tools.c claude/sys_posix.c claude/ui.c claude/repl.c
 CLAUDE_HDR := $(wildcard claude/*.h)
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c \
-           tests/claude_load.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c
+           tests/claude_load.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_repl.c
 
 .PHONY: claude-tls-check widths demo-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
@@ -152,7 +152,34 @@ HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/p
 HANDLER_HDR := engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/complete.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Claude
+
+# C:Claude, the native Claude client (ledger A2): the portable core
+# (claude/*.c, host-tested) with bsdsocket and AmigaDOS. bsdsocket's headers
+# are Roadshow's netinclude from NDK3.2R4 (SANA+RoadshowTCP-IP/netinclude;
+# unpack it to vendor/ndk-3.2r4-netinclude, or pass VTCON_NETINCLUDE=); only
+# net_amiga.c sees them (they carry an errno.h of their own). TLS: AmiSSL 5
+# with AMISSL_SDK=<the SDK's top directory> (its include/ inside), else a
+# build without TLS that refuses https (http URLs, the fixture, still work).
+VTCON_NETINCLUDE ?= $(CURDIR)/vendor/ndk-3.2r4-netinclude
+CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
+                   claude/path.c claude/tools.c claude/ui.c claude/repl.c claude/sys_amiga.c claude/main_amiga.c
+ifdef AMISSL_SDK
+CLAUDE_TLS := claude/tls_amissl.c
+CLAUDE_TLS_INC := -I$(AMISSL_SDK)/include
+else
+CLAUDE_TLS := claude/tls_none.c
+endif
+CLAUDE_FLAGS := AMISSL_SDK=$(AMISSL_SDK)
+ifneq ($(CLAUDE_FLAGS),$(shell cat $(BUILD)/amiga/claude.flags 2>/dev/null))
+CLAUDE_FORCE := FORCE
+endif
+$(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(CLAUDE_FORCE)
+	@mkdir -p $(BUILD)/amiga/obj/claude
+	@echo '$(CLAUDE_FLAGS)' > $(BUILD)/amiga/claude.flags
+	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/claude/net_amiga.o claude/net_amiga.c
+	$(VC) -dontwarn=153,65 $(CLAUDE_TLS_INC) -c -o $(BUILD)/amiga/obj/claude/tls.o $(CLAUDE_TLS)
+	$(VC) -dontwarn=153,65 -o $@ $(CLAUDE_PORTABLE) $(BUILD)/amiga/obj/claude/net_amiga.o $(BUILD)/amiga/obj/claude/tls.o
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
