@@ -175,6 +175,8 @@ MENU
               resize, Scroll bar, Backspace key sends, Programs may (the
               clipboard), Tab completion, KingCON style, Profile, Save
               settings to profile
+    Help      Demo tour (a tour of what the terminal does, in a new tab:
+              see DEMO; /demo does the same)
   Settings are the same as UP-Term Prefs, for this window and at once
   (Prefs keeps them for the profile). With KingCON completion a Complete
   menu follows. Every item is also a command (see COMMANDS). The right
@@ -303,6 +305,43 @@ TMUX
   panes (ENV:tmux.conf: default-shell, 256 colours). Your own settings go
   in ~/.tmux.conf.
 
+VIEWING FILES (hl, mdv)
+  hl shows a source file in colour, with line numbers, the language found
+  from the name, the #! line or -l:
+    hl main.c              hl -l asm intro.i      hl -n S:Startup-Sequence
+    hl -p file             (colours, no numbers)  hl --list (the languages)
+  C/C++, 68k assembler (vasm, Devpac), AmigaE, Python, shell and vsh
+  scripts, AmigaDOS scripts, ARexx, Lua, JavaScript/TypeScript, JSON,
+  YAML, TOML, INI and up-term.conf, Makefile, Markdown, HTML, XML, diff,
+  CSS, Rust, Go, Java. Into a pipe or a file hl is cat: the bytes as they
+  are (--color=always and -n keep the colours and numbers there).
+  mdv shows Markdown (a README.md) formatted for the window: headings,
+  bold and italic, lists, quotes, tables fitted to the width, code
+  blocks in colour, links with their address after them (and as OSC 8
+  hyperlinks for terminals that follow them), images as their text:
+    mdv README.md          mdv -w 60 notes.md     mdv -U (no addresses)
+  Through a pager (vshrc): hlp file, mdp README.md -- less -R, or the
+  pager $PAGER names; less is not part of UP-Term (Geek Gadgets, Aminet).
+  Colours: the 16 of the window's profile (theme ansi), so a profile
+  theme changes them too; --theme mono (bold and underline only),
+  --theme rich (24-bit colours, brought down to 256 or 16 where TERM and
+  COLORTERM say the terminal has fewer), or a theme file (also the
+  variable HL_THEME), one line a class:
+    comment = grey italic
+    keyword = bright-blue bold
+    string  = #98c379
+    h1      = magenta bold underline
+  Words: bold dim italic underline reverse strike, a colour (black red
+  green yellow blue magenta cyan white, bright-<name>, grey, 0-255,
+  #rrggbb), "on <colour>" for the background. The classes: plain comment
+  keyword type builtin string escape number preproc function label
+  variable key section tag attr heading emphasis link code meta added
+  removed lineno, and for mdv h1-h6 quote bullet rule codespan codeblock
+  url image table th task. Text in Latin-1 (the Amiga's own) is shown
+  right in a UTF-8 window; --latin1 / --utf8 say what the terminal reads
+  when TERM does not (a ROM CON: window: Latin-1, lines and boxes drawn
+  with + - |). hl --help and mdv --help list the options; Ctrl-C stops hl.
+
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a
   USB serial adapter) to another computer, open a terminal program there
@@ -379,6 +418,28 @@ NETWORK
   under the curl licence. Their COPYING files and sources (or where the
   source is) are in the kit's Files/net drawer.
 
+CLAUDE FROM THE AMIGA
+  Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
+  On the Mac, from an UP-Term source checkout (nothing is installed; it
+  runs until Ctrl-C):
+    (umask 077; mkdir -p ~/.config/uptelnetd; read -rs p; printf '%s\n' "$p" > ~/.config/uptelnetd/password)
+    python3 tools/uptelnetd.py
+  It prints the address it listens on, e.g. 192.168.0.58 port 2323. On the
+  Amiga (TCP/IP stack running), in an UP-Term window:
+    uptelnet 192.168.0.58 2323
+  (vsh: telnet 192.168.0.58 2323). Type the password; you get your Mac
+  shell, where claude runs. uptelnetd --command 'tmux new -A -s claude
+  claude' goes straight into Claude Code in a tmux session that survives a
+  dropped line. uptelnet tells the Mac TERM=xterm-256color and the window's
+  size, and follows a resize. Ctrl-] ends it.
+  UNENCRYPTED: telnet carries everything in clear, the password too. The
+  Mac end listens on its LAN address only and lets in only its own subnet,
+  locks out an address after 5 wrong passwords, and never on 0.0.0.0;
+  still, use it only on a network you trust and never forward the port.
+  The encrypted alternative is ssh (BebboSSH, NETWORK above) to the Mac's
+  Remote Login (System Settings > General > Sharing); not yet tried
+  against macOS's sshd.
+
 DEMO
   UPDemo, typed in an UP-Term window (76 x 20 characters or more), shows
   what the terminal draws: text styles, double-size lines, 256 and 24-bit
@@ -386,6 +447,15 @@ DEMO
   copper bars, plasma, fire, a rotozoomer, vector cubes, a sine scroller,
   palette cycling. Space: the next scene, B: back, Q: quit; UPDemo 5
   starts at scene 5. Your shell comes back as it was.
+  Help > Demo tour (or /demo, or UPDemo TOUR typed in a window) plays
+  a tour of what UP-Term does, about three minutes, a caption on each
+  scene: text styles, 256 and 24-bit colours, line graphics, Latin-1 and
+  UTF-8, wide characters and accents, scroll regions, a tmux split, vsh,
+  Tab completion (Unix and KingCON), themes switched live, mouse reports
+  (click in the window), links, a sixel image, synchronized output, a
+  program resizing the window (from 80 columns), reflow (drag the size
+  gadget when it asks), then some of the effects. From the menu it runs
+  in a tab of its own, which closes when the tour ends; any key ends it.
   UPDemo BENCH runs every scene for three seconds and prints the frames
   a second each reached: a benchmark of the terminal on your machine.
   The full-screen effects need a fast processor (a 68060, a PiStorm, an

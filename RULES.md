@@ -38,7 +38,12 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Rig (FS-UAE A1200, amiagent) | `python3 tools/rig/rig.py setup|start|install|stop|status`; drive with `tools/rig/ami.py` |
 | Cross build (vbcc, 68020) | `make amiga`. Needs the AmigaOS 3.2 SDK headers once: unpack `NDK3.2R4` to `vendor/ndk-3.2r4-Include_H` (gitignored), or pass `make amiga VTCON_NDK=<path-to-Include_H>` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
+| hl and mdv for the host terminal (build/hl, build/mdv; suites `ONLY=hl`, `ONLY=md`) | `make view-host` |
 | Install kit (build/UP-Term.lha: Install with Installer, or Files/install.dos) | `make dist` |
 | Install kit on the rig: Install, check, Uninstall | `python3 tools/rig/install_rig.py` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first) |
 | Width tables (engine/vtwidth.h) from the Unicode database, glibc's wcwidth rules | `make widths` (`UNICODE=16.0.0`; fetches the UCD into build/ucd once) |
+| Mac end for uptelnet (A1, LAN only, unencrypted; password in ~/.config/uptelnetd/password, 0600) | `python3 tools/uptelnetd.py [--command 'tmux new -A -s claude claude']` |
+| Its tests alone | `make test ONLY=uptelnetd` |
+| Re-record Claude Code's screen with the engine answering (asks the model once) | `make build/vtreply && python3 tools/capture_claude.py --dir <a directory Claude Code trusts>` |
+| uptelnet alone (Roadshow headers: `VTCON_NETINC=`, default DCTelnet's copy) | `make build/amiga/uptelnet` |
 | Clean | `make clean` |

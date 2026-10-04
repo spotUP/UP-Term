@@ -495,6 +495,7 @@ Other xterm input reports:
   G1 K3: `vt_encode_focus`, sent by the window on IDCMP_ACTIVEWINDOW /
   INACTIVEWINDOW (XCON:, tabs through the host's routing, console.device units);
   test `focus_events_only_when_asked`.
+  A1 (2026-10-04): vtcon sends them on the window's activation (IDCMP_ACTIVEWINDOW / INACTIVEWINDOW) to a program reading raw or in termios mode (ledger A1.3; Claude Code asks for them).
 - Bracketed paste (`?2004h`): `ESC [ 200 ~` ... `ESC [ 201 ~` around pasted
   text (the Amiga equivalent is `CSI 0 SP v` + clipboard read). While `?2004`
   is on the pasted text carries no ESC, no other C0 control but Tab and line

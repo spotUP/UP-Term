@@ -31,6 +31,11 @@ void suite_input(void);
 void suite_protocol(void);
 void suite_sbar(void);
 void suite_unifont(void);
+void suite_telnet(void);
+void suite_complete(void);
+void suite_winmem(void);
+void suite_hl(void);
+void suite_md(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -63,6 +68,11 @@ static const h_suite suites[] = {
     { "protocol", suite_protocol },
     { "sbar", suite_sbar },
     { "unifont", suite_unifont },
+    { "telnet", suite_telnet },
+    { "complete", suite_complete },
+    { "winmem", suite_winmem },
+    { "hl", suite_hl },
+    { "md", suite_md },
     { 0, 0 }
 };
 

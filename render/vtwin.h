@@ -210,9 +210,6 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
  * go into the report). The program's when it asked for the mouse,
  * otherwise the scrollback by a few lines (the spec's wheel_scroll) */
 void vtwin_wheel(vtwin *w, int up, UWORD qual, WORD mx, WORD my);
-/* The window became active (in 1) or stopped being: the program's focus
- * report when it asked for one (?1004) */
-void vtwin_focus(vtwin *w, int in);
 /* Find (Right Amiga F, or the console's menu): the scrollback and the grid,
  * oldest line first, case-insensitively, and scroll the view so the line the
  * match is on shows. q NULL or empty repeats the last query. 1 when the view
@@ -245,6 +242,9 @@ void vtwin_knob_lines(vtwin *w, int n);
  * C and V, also for an owner's menu (no-ops without a clipboard) */
 void vtwin_copy(vtwin *w);
 void vtwin_paste(vtwin *w);
+/* the window became active (in = 1) or stopped being: a focus report for
+ * a program that asked (?1004) and reads raw; nothing otherwise */
+void vtwin_focus(vtwin *w, int in);
 /* an Amiga input event report for a window class, when the program asked
  * for that class (CSI n {); 1 when it was sent */
 int vtwin_raw_report(vtwin *w, int cls);

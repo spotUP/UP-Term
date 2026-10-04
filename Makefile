@@ -5,7 +5,7 @@ HOSTCFLAGS := -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -fsanitize=address
 BUILD   := build
 
 ENGINE  := engine/vtengine.c
-RENDER  := render/glyphmap.c render/unifont.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c render/vtinput.c
+RENDER  := render/glyphmap.c render/unifont.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c
 SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c
 TTY     := tty/ldisc.c
 DEVICE_CORE := device/upc_core.c
@@ -14,27 +14,50 @@ TERMURL := config/termurl.c
 PREFS_CORE := prefs/prefs_core.c
 ICONSPEC := install/iconspec.c
 ZMODEM  := zm/zmodem.c
+TELNET  := net/tn.c
+# hl and mdv (view/): the lexer, themes, the Markdown renderer
+VIEW_LEX  := view/hl_lex.c view/hl_langs.c view/hl_style.c view/vw_text.c
+VIEW_HL   := $(VIEW_LEX) view/hl_view.c
+VIEW_MD   := $(VIEW_LEX) view/md.c
+VIEW_CORE := $(VIEW_LEX) view/hl_view.c view/md.c
+VIEW_HDR  := view/hl_lex.h view/hl_style.h view/hl_view.h view/vw_text.h view/md.h
+VIEW_CLI  := view/vw_cli.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
-           tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_unifont.c
+           tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_hl.c tests/test_md.c tests/test_unifont.c
 
-.PHONY: unifont widths demo-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
+.PHONY: unifont widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
-test: $(BUILD)/vttest_host
-	./$(BUILD)/vttest_host $(ONLY)
-	$(if $(filter-out unifont,$(ONLY)),,python3 tests/test_gen_unifont.py)
+# ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py)
+test: $(BUILD)/vttest_host $(BUILD)/tn_host
+	@if [ "$(ONLY)" != uptelnetd ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) demo/updemo.c demo/updemo.h zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h render/glyphmap.h render/unifont.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
+$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) demo/updemo.c $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(TESTS)
 
 engine/vtcaps.inc: tools/gen_vtcaps.py terminfo/vtcon.terminfo
 	python3 tools/gen_vtcaps.py
 
+# hl and mdv for the host terminal (and the timings): build/hl, build/mdv
+view-host: $(BUILD)/hl $(BUILD)/mdv
+$(BUILD)/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c
+$(BUILD)/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c
+
 render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
+
+# the themes the UPDemo tour switches between, from themes/ (committed)
+demo/tour_themes.inc: tools/gen_tour_themes.py themes/dracula-default.conf themes/solarized-dark.conf themes/gruvbox-dark.conf themes/nord-default.conf
+	python3 tools/gen_tour_themes.py
 
 # engine/vtwidth.h from the Unicode character database (glibc's wcwidth rules;
 # the UCD files are fetched once into build/ucd/). UNICODE= another version.
@@ -63,6 +86,18 @@ unifont: $(UNIFONT_PAGES)/stamp
 $(BUILD)/vtdump: $(ENGINE) engine/vtengine.h engine/vtwidth.h tests/dump_main.c
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) tests/dump_main.c
+
+# The engine as a live terminal that answers a program's queries
+# (tools/capture_claude.py).
+$(BUILD)/vtreply: $(ENGINE) engine/vtengine.h engine/vtwidth.h tools/vtreply.c
+	@mkdir -p $(BUILD)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(ENGINE) tools/vtreply.c
+
+# uptelnet's protocol on a POSIX socket, for the interop test against
+# tools/uptelnetd.py (tools/test_uptelnetd.py).
+$(BUILD)/tn_host: net/tn.c net/tn.h tools/tn_host.c
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -o $@ net/tn.c tools/tn_host.c
 
 # libvterm (neovim's terminal) as the reference, built from source into build/.
 LIBVTERM := $(BUILD)/third_party/libvterm
@@ -155,11 +190,20 @@ VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=16
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
-HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/brk.c handler/slash.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c
+HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/complete_core.c handler/brk.c handler/slash.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c
 HANDLER_HDR := engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/glyph_tables.inc render/outline.h render/otag.h \
-               handler/clip.h handler/clipfmt.h handler/lineedit.h handler/complete.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h
+               handler/clip.h handler/clipfmt.h handler/lineedit.h handler/complete.h handler/complete_core.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv
+
+# hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
+# vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
+$(BUILD)/amiga/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c
+$(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -303,12 +347,12 @@ $(BUILD)/amiga/dsrtime: tests/amiga/dsrtime.c
 
 # UP-Term's show-off (demo/updemo.h): the Amiga program, and the same
 # scenes for a Unix terminal (make demo-host; build/updemo)
-$(BUILD)/amiga/UPDemo: demo/updemo.c demo/updemo_amiga.c demo/updemo.h
+$(BUILD)/amiga/UPDemo: demo/updemo.c demo/updemo_amiga.c demo/updemo.h demo/tour_themes.inc
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ demo/updemo.c demo/updemo_amiga.c
 
 demo-host: $(BUILD)/updemo
-$(BUILD)/updemo: demo/updemo.c demo/updemo_posix.c demo/updemo.h
+$(BUILD)/updemo: demo/updemo.c demo/updemo_posix.c demo/updemo.h demo/tour_themes.inc
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -O2 -Wall -Wextra -o $@ demo/updemo.c demo/updemo_posix.c
 
@@ -390,6 +434,14 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ handler/upterm.c
 
+# C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
+# Roadshow SDK's network headers ("Freely Distributable"): vendor/ (gitignored)
+# when unpacked there, else DCTelnet's copy, or VTCON_NETINC=<netinclude>.
+VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(HOME)/Code/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
+$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h handler/vtcon_packets.h tty/ldisc.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c
+
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
 $(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h
 	@mkdir -p $(BUILD)/amiga
@@ -414,6 +466,10 @@ $(BUILD)/amiga/stamp: tests/amiga/stamp.c
 $(BUILD)/amiga/memprobe: tests/amiga/memprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/memprobe.c
+
+$(BUILD)/amiga/allocwatch: tests/amiga/allocwatch.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/allocwatch.c
 
 # D4.3's patch (tools/rig/devctl_rig.py; test only)
 $(BUILD)/amiga/patchcon: tests/amiga/patchcon.c
@@ -493,8 +549,9 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -c -o $(BUILD)/amiga/obj/otag.o render/otag.c
 	$(VC) -c -o $(BUILD)/amiga/obj/clip.o handler/clip.c
 	$(VC) -c -o $(BUILD)/amiga/obj/clipfmt.o handler/clipfmt.c
-	$(VC) -c -o $(BUILD)/amiga/obj/lineedit.o handler/lineedit.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/lineedit.o handler/lineedit.c
 	$(VC) -c -o $(BUILD)/amiga/obj/complete.o handler/complete.c
+	$(VC) -c -o $(BUILD)/amiga/obj/complete_core.o handler/complete_core.c
 	$(VC) -c -o $(BUILD)/amiga/obj/brk.o handler/brk.c
 	$(VC) -c -o $(BUILD)/amiga/obj/slash.o handler/slash.c
 	$(VC) -c -o $(BUILD)/amiga/obj/ldisc.o tty/ldisc.c
@@ -505,7 +562,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
 	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/painter.o $(BUILD)/amiga/obj/painter_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/vtinput.o $(BUILD)/amiga/obj/sbar.o $(BUILD)/amiga/obj/sbar_gad.o $(BUILD)/amiga/obj/glyphmap.o $(BUILD)/amiga/obj/unifont.o \
 	  $(BUILD)/amiga/obj/outline.o $(BUILD)/amiga/obj/otag.o $(BUILD)/amiga/obj/fontpair.o \
-	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o \
+	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o $(BUILD)/amiga/obj/complete_core.o \
 	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/termurl.o \
 	  $(BUILD)/amiga/obj/prefs_core.o $(BUILD)/amiga/obj/prefs_dos.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
@@ -550,7 +607,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 $(KIT)/Files/coreutils/
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/

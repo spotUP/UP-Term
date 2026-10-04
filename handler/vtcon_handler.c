@@ -169,7 +169,8 @@ typedef struct con {
     char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
-    upconf *save_work;           /* Save settings to profile: the table once the file is written */
+    upconf *save_work;           /* Save settings to profile: the table once the file is written
+                                  * (while the worker writes it; then the window's c->conf) */
     /* tabs (plans/2026-10-03-tabs.md): a host owns the window, a tab is a
      * process drawing into it */
     struct Window *own_win;      /* the window this process opened and owns (0: a tab's) */
@@ -215,7 +216,7 @@ typedef struct con {
     sbar_gad sbar;
     sbar_knob knob_last;         /* the knob the window shows, for a scroll bar turned on */
     int knob_last_valid;
-    char menu[COMPLETE_NAMES];   /* the last completion's names */
+    char *menu;                  /* the last completion's names (COMPLETE_NAMES, made at the first menu) */
     int menu_len, menu_n, menu_i, menu_start;
     /* the find prompt (Right Amiga F): its own small window, open while the
      * console keeps running -- the program's output must not stop while a
@@ -265,6 +266,14 @@ typedef struct con {
     ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
 #endif
 } con;
+
+/* What one window costs (research/2026-10-04_window-memory.md), held at
+ * compile time in the 68k build itself: the build fails when one of
+ * these climbs back past its bound. Measured 2026-10-04: con 66126 ->
+ * 24402, upconf 56240 -> 17844, a request without lists 11084 -> 852. */
+typedef char con_size_bound[sizeof(con) <= 26000 ? 1 : -1];
+typedef char upconf_size_bound[sizeof(upconf) <= 18500 ? 1 : -1];
+typedef char complete_req_size_bound[sizeof(struct complete_req) <= 1024 ? 1 : -1];
 
 /* No mutable globals below this line except the library bases (the same
  * value in every process): every XCON: window is its own process running
@@ -383,20 +392,32 @@ static void in_append(con *c, const vt_u8 *b, int n)
 
 static int tty_active(con *c);
 static void service_reads(con *c);
+static void rtimer_start(con *c, ULONG tenths);
+
+/* In termios mode the read stream is the line discipline: everything for
+ * the program -- a key, a report, a paste, a mouse or focus report -- goes
+ * through it, as on a Unix tty. 0 when the window is not in termios mode.
+ * Bytes put in the cooked buffer instead were never read there, yet made
+ * WAIT_CHAR answer yes (tmux's select saw input, its read blocked until
+ * the next key); and a paste or a mouse click in a termios program (Claude
+ * Code over uptelnet, tmux) never arrived (ledger A1.3). */
+static int to_tty(con *c, const vt_u8 *b, int n)
+{
+    if (!tty_active(c))
+        return 0;
+    ld_input(&c->ld, b, n);
+    if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
+        rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
+    service_reads(c);
+    return 1;
+}
 
 static void h_reply(void *u, const vt_u8 *b, long n)
 {
     con *c = (con *)u;
-    /* reports enter the read stream, as the console's do. In termios mode
-     * that stream is the line discipline, as for a typed key: in the cooked
-     * buffer they were never read, yet made WAIT_CHAR answer yes -- tmux's
-     * select saw input, its read blocked until the next key, and every key
-     * showed one key late (tmux asks for DA and colours at start) */
-    if (tty_active(c)) {
-        ld_input(&c->ld, b, (int)n);
-        service_reads(c);
+    /* reports enter the read stream, as the console's do */
+    if (to_tty(c, b, (int)n))
         return;
-    }
     in_append(c, b, (int)n);
 }
 
@@ -404,6 +425,8 @@ static void h_reply(void *u, const vt_u8 *b, long n)
 static void h_input(void *u, const vt_u8 *b, long n)
 {
     con *c = (con *)u;
+    if (to_tty(c, b, (int)n))
+        return;
     in_append(c, b, (int)n);
     service_reads(c);
 }
@@ -419,6 +442,8 @@ static void h_key(void *u, const vt_u8 *b, int n, long key, int mods)
 static void h_pasted(void *u, const vt_u8 *b, int n, long key)
 {
     con *c = (con *)u;
+    if (to_tty(c, b, n))
+        return;
     if (c->raw)
         in_append(c, b, n);
     else
@@ -426,9 +451,12 @@ static void h_pasted(void *u, const vt_u8 *b, int n, long key)
     service_reads(c);
 }
 
+/* the program reads bytes, not our line editor: Amiga raw mode, or
+ * termios mode (paste marks and focus reports are for it) */
 static int h_raw(void *u)
 {
-    return ((con *)u)->raw;
+    con *c = (con *)u;
+    return c->raw || tty_active(c);
 }
 
 static void sync_size(con *c);
@@ -639,10 +667,13 @@ static void config_worker(void)
  * ... but per tab"): a watcher process per window holds a DOS notification
  * on ENV:up-term/up-term. When UP-Term Prefs (Use or Save), another
  * window's Save settings to profile or an editor writes it, the watcher
- * reads it into m->conf and hands m over; the window takes the new table
- * and, when its own profile's section changed, applies it live
- * (watch_take). One message goes back and forth, so the table is never
- * read while the other side writes it. Quitting: the window sends m back
+ * reads it into a table of its own (m->conf, allocated then) and hands m
+ * over; the window keeps that table as its own, frees the one it had and,
+ * when its own profile's section changed, applies it live (watch_take).
+ * So a window holds one table, not a second one waiting for a change
+ * that may never come (research/2026-10-04_window-memory.md). One message
+ * goes back and forth, so the table is never read while the other side
+ * writes it. Quitting: the window sends m back
  * with quit set, or signals CTRL_C while the watcher holds m; the watcher
  * answers with done set and ends. */
 struct watch_msg {
@@ -683,10 +714,14 @@ static void watch_worker(void)
             break;
         if (have && watching && (got & (1UL << sig))) {
             Delay(5); /* a writer that renames its new file in: let it finish */
-            upconf_clear(m->conf);
-            read_conf(m->conf);
-            have = 0;
-            ReplyMsg(&m->msg);
+            if (m->conf)
+                FreeVec(m->conf); /* not taken (the window always takes it) */
+            m->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
+            if (m->conf) { /* no memory: this change is missed, the window keeps its table */
+                read_conf(m->conf);
+                have = 0;
+                ReplyMsg(&m->msg);
+            }
         }
     }
     if (watching)
@@ -747,10 +782,8 @@ static void watch_start(con *c)
         return;
     c->watch_port = CreateMsgPort();
     c->watch = (struct watch_msg *)AllocVec(sizeof(struct watch_msg), MEMF_PUBLIC | MEMF_CLEAR);
-    if (c->watch)
-        c->watch->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
-    if (!c->watch_port || !c->watch || !c->watch->conf)
-        goto fail;
+    if (!c->watch_port || !c->watch)
+        goto fail; /* the watcher makes its table when the file changes */
     c->watch->msg.mn_ReplyPort = c->watch_port;
     c->watch->msg.mn_Length = sizeof(struct watch_msg);
     c->watch_task = CreateNewProcTags(NP_Entry, (ULONG)watch_worker, NP_Name, (ULONG)"vtcon watch",
@@ -763,8 +796,6 @@ static void watch_start(con *c)
     return;
 fail:
     if (c->watch) {
-        if (c->watch->conf)
-            FreeVec(c->watch->conf);
         FreeVec(c->watch);
         c->watch = 0;
     }
@@ -795,7 +826,8 @@ static void watch_stop(con *c)
         PutMsg(&c->watch_task->pr_MsgPort, &m->msg);
     }
     c->watch_task = 0;
-    FreeVec(c->watch->conf);
+    if (c->watch->conf)
+        FreeVec(c->watch->conf); /* a table on its way when we quit */
     FreeVec(c->watch);
     c->watch = 0;
     DeleteMsgPort(c->watch_port);
@@ -1217,6 +1249,14 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
     { NM_ITEM, (STRPTR)"Show .info", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_KC_INFO }
 };
 
+/* Help, the strip's last menu: the tour of what the terminal does
+ * (UPDemo TOUR, in a new tab; /demo too) */
+#define MENU_HELP_ITEMS 2
+static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
+    { NM_TITLE, (STRPTR)"Help", 0, 0, 0, 0 },
+    { NM_ITEM, (STRPTR)"Demo tour", 0, 0, 0, (APTR)MENU_DEMO }
+};
+
 /* Settings: what UP-Term Prefs sets for a profile, for this window, live
  * (plan H9). The checkmarks show the window's settings (menu_checked); a
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
@@ -1332,9 +1372,9 @@ static void menu_add(con *c, struct Window *win)
     if (!GadToolsBase || win == c->foreign)
         return; /* a window someone else opened keeps its own menus */
     {
-        /* UP-Term, Settings, and the Complete menu under KingCON completion */
+        /* UP-Term, Settings, the Complete menu under KingCON completion, Help */
         struct NewMenu nm[sizeof(menu_def) / sizeof(menu_def[0]) + MENU_SET_ITEMS + 2 + UC_MAX_PROFILES +
-                          MENU_KC_ITEMS];
+                          MENU_KC_ITEMS + MENU_HELP_ITEMS];
         int n = sizeof(menu_def) / sizeof(menu_def[0]) - 1, i; /* without the NM_END */
         CopyMem((APTR)menu_def, nm, n * sizeof(struct NewMenu));
         CopyMem((APTR)menu_set, nm + n, sizeof(menu_set));
@@ -1378,6 +1418,8 @@ static void menu_add(con *c, struct Window *win)
             CopyMem((APTR)menu_kc, nm + n, sizeof(menu_kc));
             n += MENU_KC_ITEMS;
         }
+        CopyMem((APTR)menu_help, nm + n, sizeof(menu_help));
+        n += MENU_HELP_ITEMS;
         for (i = 0; i < n; i++)
             if ((nm[i].nm_Flags & CHECKIT) && menu_checked(c, (LONG)nm[i].nm_UserData))
                 nm[i].nm_Flags |= CHECKED;
@@ -1444,7 +1486,10 @@ static void prefs_launch(void)
                       NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
 }
 
-static int ensure_worker(con *c);
+#define WORK_COMP 1  /* the completion request (Tab, ASL, font, theme, save) */
+#define WORK_CHECK 2 /* is the first word a command */
+#define WORK_HIST 4  /* the history file */
+static int ensure_worker(con *c, int want);
 static struct Process *opener(con *c);
 
 /* Settings > Font...: the ASL font requester, in the completion worker (it
@@ -1452,7 +1497,7 @@ static struct Process *opener(con *c);
  * in finish_completion. */
 static void font_ask(con *c)
 {
-    if (c->comp_busy || !ensure_worker(c) || !c->w.win)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->w.win)
         return;
     copy_str(c->comp->word, c->w.fontname[0] ? c->w.fontname : "", COMPLETE_MAX);
     c->comp->font_size = c->w.font ? c->w.font->tf_YSize : 8;
@@ -1542,6 +1587,21 @@ static void window_fields(con *c, prefs_fields *f)
         rgb_hex((c->w.pal16[i] & 0x01000000UL) ? (c->w.pal16[i] & 0xFFFFFFUL) : VR_KEEP, f->pal[i]);
 }
 
+/* The file buffer of a save or a theme and the staged table: they live
+ * while the worker has them, not for the rest of the window (16 KB and
+ * 18 KB; research/2026-10-04_window-memory.md). */
+static void comp_data_done(con *c)
+{
+    if (c->comp->data) {
+        FreeVec(c->comp->data);
+        c->comp->data = 0;
+    }
+    if (c->save_work) {
+        FreeVec(c->save_work);
+        c->save_work = 0;
+    }
+}
+
 /* Settings > Save settings to profile: the file staged here (prefs_core,
  * as UP-Term Prefs does it), written by the worker (DOS) into ENV: and
  * ENVARC:; the window's table follows once both are in place. */
@@ -1549,16 +1609,19 @@ static void save_ask(con *c)
 {
     prefs_fields f;
     long len;
-    if (c->comp_busy || !ensure_worker(c) || !c->conf)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->conf)
         return;
     if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
         return;
-    if (!c->save_work && !(c->save_work = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY)))
+    if (!c->save_work && !(c->save_work = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY))) {
+        comp_data_done(c);
         return;
+    }
     window_fields(c, &f);
     len = prefs_validate(&f) ? -1
         : prefs_stage(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1);
     if (len < 0) {
+        comp_data_done(c);
         DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room for it, or the file was not read whole */
         return;
     }
@@ -1567,13 +1630,15 @@ static void save_ask(con *c)
     c->comp->kingcon = 0;
     if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
+    else
+        comp_data_done(c);
 }
 
 /* Settings > Theme...: a theme file picked and read by the worker (DOS),
  * its colours put on the window in finish_completion. */
 static void theme_ask(con *c, const char *name)
 {
-    if (c->comp_busy || !ensure_worker(c) || !c->w.win)
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->w.win)
         return;
     copy_str(c->comp->word, name, COMPLETE_MAX); /* a name: that theme, no requester */
     if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
@@ -1584,6 +1649,8 @@ static void theme_ask(con *c, const char *name)
     c->comp->screen = c->w.win->WScreen;
     if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
+    else
+        comp_data_done(c);
 }
 
 /* The theme's colours on the window, live: one profile section, read as
@@ -1657,7 +1724,9 @@ static void watch_take(con *c)
     struct watch_msg *m;
     while (c->watch_port && (m = (struct watch_msg *)GetMsg(c->watch_port)) != 0) {
         int changed = !upconf_profile_equal(c->conf, m->conf, c->profile);
-        CopyMem(m->conf, c->conf, sizeof(upconf));
+        FreeVec(c->conf); /* the new table is the window's now: no copy, no second table */
+        c->conf = m->conf;
+        m->conf = 0;
         if (c->w.t && c->w.win) {
             if (changed) {
                 const char *names[UC_MAX_PROFILES + 1];
@@ -1789,7 +1858,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_FIND: find_open(c); return 1;
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
-    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE:
+    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -2155,6 +2224,7 @@ have_window:
     DBG("vt_new", c->w.t, 0);
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */
+    le_free(&c->le); /* an AUTO window opening again: the last one's history (reloaded below) */
     le_init(&c->le, c->w.t, le_out, c);
     c->le.utf8 = c->w.pers == VT_XTERM && !c->w.latin1 && !c->w.cp437;
     history_load(c); /* the saved history, read by a worker */
@@ -2579,17 +2649,30 @@ static int copy_latin1(const le_line *le, int a, int b, char *out, int max)
     return k;
 }
 
-static int ensure_worker(con *c)
+/* The worker's reply port and the requests asked for (WORK_*), each made
+ * when it is first needed: the history's at open, the check's at the first
+ * typed word, the completion's (11 KB, with its lists) at the first Tab --
+ * not all three at open (research/2026-10-04_window-memory.md). */
+static int ensure_worker(con *c, int want)
 {
     if (!c->comp_port)
         c->comp_port = CreateMsgPort();
-    if (!c->comp)
-        c->comp = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    if (!c->check)
-        c->check = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    if (!c->hist)
-        c->hist = (struct complete_req *)AllocVec(sizeof(struct complete_req), MEMF_CLEAR);
-    return c->comp_port && c->comp && c->check && c->hist;
+    if ((want & WORK_COMP) && !c->comp)
+        c->comp = complete_req_new(1);
+    if ((want & WORK_CHECK) && !c->check)
+        c->check = complete_req_new(0);
+    if ((want & WORK_HIST) && !c->hist)
+        c->hist = complete_req_new(0);
+    return c->comp_port && (!(want & WORK_COMP) || c->comp) && (!(want & WORK_CHECK) || c->check) &&
+           (!(want & WORK_HIST) || c->hist);
+}
+
+/* The completion menu's names (COMPLETE_NAMES), made at the first menu. */
+static char *menu_buf(con *c)
+{
+    if (!c->menu)
+        c->menu = (char *)AllocVec(COMPLETE_NAMES, MEMF_ANY);
+    return c->menu;
 }
 
 /* The process Ctrl-C goes to and whose directory completion uses
@@ -2696,7 +2779,7 @@ static void start_completion(con *c)
     int a;
     long n = 0;
     const char *extra = 0;
-    if (c->comp_busy || !ensure_worker(c))
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP))
         return;
     a = word_start(le);
     c->menu_start = a;
@@ -2713,7 +2796,7 @@ static void start_completion(con *c)
     c->comp->kingcon = 0;
     c->comp->no_cache = 0;
     c->comp->extra_len = 0;
-    if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
+    if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
         c->comp->extra_len = n;
     }
@@ -2751,7 +2834,7 @@ static void check_command(con *c)
             return;
         }
     }
-    if (!ensure_worker(c))
+    if (!ensure_worker(c, WORK_CHECK))
         return;
     copy_latin1(&c->le, 0, c->le.len, c->check->word, COMPLETE_MAX); /* then cut */
     {
@@ -2775,7 +2858,7 @@ static void check_command(con *c)
 static void history_next(con *c)
 {
     int i;
-    if (c->hist_busy || !c->hist_queue_len || !ensure_worker(c))
+    if (c->hist_busy || !c->hist_queue_len || !ensure_worker(c, WORK_HIST))
         return;
     for (i = 0; i < c->hist_queue_len && c->hist_queue[i] != '\n' && i < COMPLETE_MAX - 1; i++)
         c->hist->word[i] = c->hist_queue[i];
@@ -2804,11 +2887,9 @@ static void history_save(con *c, const unsigned char *line, int n)
 
 static void history_load(con *c)
 {
-    if (!ensure_worker(c) || c->hist_busy)
+    if (!ensure_worker(c, WORK_HIST) || c->hist_busy)
         return;
-    c->hist->data = (char *)AllocVec(HISTORY_KEEP * 2 * 256, MEMF_ANY);
-    if (!c->hist->data)
-        return;
+    c->hist->data = 0; /* the worker makes it at the file's size */
     c->hist->data_max = HISTORY_KEEP * 2 * 256;
     c->hist->mode = HISTORY_LOAD;
     if (complete_start(c->hist, c->comp_port, opener(c)))
@@ -2868,10 +2949,13 @@ static void finish_completion(con *c)
         }
         c->comp_busy = 0;
         if (q->mode == CONFIG_SAVE) {
-            if (q->matches && c->save_work)
-                CopyMem(c->save_work, c->conf, sizeof(upconf)); /* the table is the file's now */
-            else
+            if (q->matches && c->save_work) {
+                FreeVec(c->conf); /* the staged table is the file's now: it becomes the window's */
+                c->conf = c->save_work;
+                c->save_work = 0;
+            } else
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not written: the old file stands */
+            comp_data_done(c);
             continue;
         }
         if (q->mode == COMPLETE_THEME) {
@@ -2879,6 +2963,7 @@ static void finish_completion(con *c)
                 theme_apply(c, q->data, q->data_len);
             else if (q->word[0])
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* "/theme NAME": no such theme */
+            comp_data_done(c);
             continue;
         }
         if (q->mode == COMPLETE_FONT) {
@@ -2897,7 +2982,7 @@ static void finish_completion(con *c)
             kc_finish(c, q);
             continue;
         }
-        if (q->matches > 1 && q->names_len < (int)sizeof(c->menu)) {
+        if (q->matches > 1 && q->names_len < COMPLETE_NAMES && menu_buf(c)) {
             CopyMem(q->names, c->menu, q->names_len);
             c->menu_len = q->names_len;
             c->menu_n = q->matches;
@@ -3130,9 +3215,9 @@ static int slash_tab(con *c)
     int n, from, i, len, common, typed;
     len = copy_latin1(le, 0, le->pos, line, sizeof(line));
     /* the handler's stack is small: the candidates on the heap */
-    if (!(names = (char *)AllocVec(sizeof(c->menu), MEMF_ANY)))
+    if (!(names = (char *)AllocVec(COMPLETE_NAMES, MEMF_ANY)))
         return 0;
-    n = slash_complete(line, len, profiles, np, names, sizeof(c->menu), &from);
+    n = slash_complete(line, len, profiles, np, names, COMPLETE_NAMES, &from);
     if (n <= 0) {
         FreeVec(names);
         return 0; /* not a command line, or nothing fits: the Shell's completion */
@@ -3157,7 +3242,7 @@ static int slash_tab(con *c)
     if (n == 1 && (int)strlen(add) < COMPLETE_MAX - 1)
         strcat(add, " ");
     c->menu_n = 0;
-    if (n > 1) {
+    if (n > 1 && menu_buf(c)) {
         int k = 0;
         for (i = 0; i < n; i++)
             k += (int)strlen(names + k) + 1;
@@ -3302,10 +3387,7 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
         /* a Unix program's terminal: the line discipline takes the key (ISIG
          * makes ^C a break, ^\\ and ^Z signals; the rest is input) */
         DBG("tty key", out[0], (long)((c->ld.t.c_lflag & LD_ISIG) ? c->ld.t.c_cc[LD_VSUSP] : -1));
-        ld_input(&c->ld, out, n);
-        if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
-            rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
-        service_reads(c);
+        to_tty(c, out, n);
         return;
     }
     /* Break keys: Ctrl-C..F signal the opener in cooked mode (and Amiga raw
@@ -3361,7 +3443,7 @@ static void kc_tab(con *c, int mode)
     long n = 0;
     const char *extra = 0;
     int a, q;
-    if (c->comp_busy || !ensure_worker(c))
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP))
         return;
     a = le_kc_word(le, &q);
     c->kc_start = a;
@@ -3388,7 +3470,7 @@ static void kc_tab(con *c, int mode)
     c->comp->show_info = c->kc_info;
     c->comp->no_cache = !c->kc_cache;
     c->comp->extra_len = 0;
-    if (extra && n > 0 && n <= (long)sizeof(c->comp->extra)) {
+    if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
         c->comp->extra_len = n;
     }
@@ -3517,7 +3599,7 @@ static void kc_finish(con *c, struct complete_req *q)
     if (c->kc_list) {
         /* Ctrl+D: the names under the line, then the prompt and the line */
         if (q->matches)
-            le_show_list(&c->le, q->names, q->names_len);
+            le_kc_show_list(&c->le, q->names, q->names_len);
         else
             kc_beep(c);
         return;
@@ -3553,7 +3635,7 @@ static void kc_finish(con *c, struct complete_req *q)
         return;
     }
     if (style & LE_KC_LIST)
-        le_show_list(&c->le, q->names, q->names_len); /* L: the list, before a cycle's first step */
+        le_kc_show_list(&c->le, q->names, q->names_len); /* L: the list, before a cycle's first step */
     if ((style & LE_KC_CYCLE) && kc_cyc_begin(c, q))
         kc_cyc_put(c, 0);
 }
@@ -4425,7 +4507,33 @@ struct tab_spawn_msg {
     struct Message msg;
     char cmd[200];
     char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
+    int demo;                    /* Help > Demo tour: UPDemo's tour in the tab, not a shell */
 };
+
+/* Help > Demo tour: the tab runs UPDemo's tour and closes when it ends.
+ * 1 when the tab is on its way; 0 when C:UPDemo is not there (said in a
+ * requester, as Preferences... says it of the editor). */
+static int tab_demo_script(struct tab_spawn_msg *m)
+{
+    static struct EasyStruct missing = {
+        sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term",
+        (UBYTE *)"The demo is not installed:\nC:UPDemo was not found.\n\n"
+                 "Install UP-Term from its archive to get it.",
+        (UBYTE *)"OK"
+    };
+    BPTR f, lock;
+    if (!(lock = Lock((STRPTR)"C:UPDemo", SHARED_LOCK))) {
+        EasyRequestArgs(0, &missing, 0, 0);
+        return 0;
+    }
+    UnLock(lock);
+    if (!(f = Open((STRPTR)"T:UP-Term-demo", MODE_NEWFILE)))
+        return 0;
+    FPuts(f, (STRPTR)"FailAt 2147483647\nC:UPDemo TOUR\nEndCLI >NIL:\n");
+    Close(f);
+    strcat(m->cmd, " FROM T:UP-Term-demo");
+    return 1;
+}
 
 static void tab_spawner(void)
 {
@@ -4433,6 +4541,13 @@ static void tab_spawner(void)
     BPTR f, lock;
     char host[64], dir[256];
     int vsh, cd;
+    if (m->demo) {
+        if (tab_demo_script(m))
+            run_async(m->cmd);
+        Forbid();
+        FreeVec(m);
+        return;
+    }
     /* vsh in the tab when there is one (the UP-Term icon's shell), else the
      * AmigaDOS Shell; the FROM script ends the shell with it -- whatever vsh
      * returns: its last command's status (127 for a name not found) failed
@@ -4490,11 +4605,12 @@ static void h_open_link(void *u, const char *uri)
     start_worker(link_opener, "UP-Term link", &m->msg);
 }
 
-static void tab_spawn(con *c, const char *profile, con *from)
+/* 1 when the new tab is on its way; demo: the tab plays the tour */
+static int tab_spawn(con *c, const char *profile, con *from, int demo)
 {
     struct tab_spawn_msg *m;
     if (c->ntabs >= TAB_MAX || !c->own_win || c->foreign)
-        return;
+        return 0;
     if (!c->tab_port) {
         /* the public port tabs find us by */
         char hex[9];
@@ -4506,22 +4622,24 @@ static void tab_spawn(con *c, const char *profile, con *from)
         copy_str(c->tab_name, "UPTermTabs.", sizeof(c->tab_name));
         strcat(c->tab_name, hex);
         if (!(c->tab_port = CreateMsgPort()))
-            return;
+            return 0;
         c->tab_port->mp_Node.ln_Name = c->tab_name;
         c->tab_port->mp_Node.ln_Pri = 0;
         AddPort(c->tab_port);
     }
     m = (struct tab_spawn_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
     if (!m)
-        return;
+        return 0;
+    m->demo = demo;
     copy_str(m->cmd, "NewShell \"XCON:0/0/320/100/UP-Term/TAB ", sizeof(m->cmd));
     strcat(m->cmd, c->tab_name);
     strcat(m->cmd, "/PROFILE ");
     strcat(m->cmd, profile);
     strcat(m->cmd, "\"");
-    if (from && from->w.t)
+    if (from && from->w.t && !demo)
         copy_str(m->cwd, vt_cwd(from->w.t), sizeof(m->cwd));
     start_worker(tab_spawner, "UP-Term new tab", &m->msg);
+    return 1;
 }
 
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
@@ -4529,7 +4647,13 @@ static void host_command(con *c, int what, con *from)
 {
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile, from);
+        tab_spawn(c, from->profile, from, 0);
+        break;
+    case MENU_DEMO:
+        /* the tour in a tab of its own: what it does to its screen (the
+         * main screen, a resize) leaves the user's session alone */
+        if (!tab_spawn(c, from->profile, from, 1))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
         break;
     case MENU_TAB_NEXT:
         if (c->ntabs >= 2)
@@ -5489,6 +5613,7 @@ static LONG handler_main(void)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
     watch_stop(c);
+    le_free(&c->le);
     forget_words(c);
     kc_cyc_end(c);
     if (c->kc_snap)
@@ -5502,6 +5627,8 @@ static LONG handler_main(void)
     }
     if (c->check)
         FreeVec(c->check);
+    if (c->menu)
+        FreeVec(c->menu);
     if (c->hist) {
         if (c->hist->data)
             FreeVec(c->hist->data);

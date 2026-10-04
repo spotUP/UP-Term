@@ -178,6 +178,16 @@ typedef struct vt_callbacks {
 
 typedef struct vt_term vt_term;
 
+#ifdef VT_COUNT_ALLOC
+/* Host tests only (built with -DVT_COUNT_ALLOC, tests/harness.c): the
+ * engine's and the line editor's memory goes through these, which count
+ * the bytes held, so a test can say what a window costs. */
+void *vt_count_malloc(unsigned long n);
+void vt_count_free(void *p);
+extern long vt_count_live;   /* bytes held now */
+extern long vt_count_blocks; /* blocks held now */
+#endif
+
 vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void *user);
 void     vt_free(vt_term *t);
 void     vt_set_personality(vt_term *t, enum vt_personality p); /* also resets */

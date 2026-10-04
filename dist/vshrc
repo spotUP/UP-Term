@@ -31,14 +31,17 @@ remote_term() {
 ssh() {
     TERM=$(remote_term) bebbossh "$@"
 }
-telnet() {
-    TERM=$(remote_term) command telnet "$@"
-}
 rlogin() {
     TERM=$(remote_term) command rlogin "$@"
 }
 scp() {
     bebboscp "$@"
+}
+# telnet: C:uptelnet (no ixemul). It tells the far end remote_term's name
+# (its TERM keyword) and the window's size, and follows a resize. Ctrl-]
+# ends it.
+telnet() {
+    uptelnet "$@" TERM "$(remote_term)"
 }
 
 # The Unix commands are GNU coreutils 5.2.1 in SYS:UP-Term/bin (see
@@ -58,6 +61,21 @@ export PATH
 # profile defines.
 alias ls='ls --color=auto'
 alias ll='ls -l'
+
+# hl and mdv (SYS:UP-Term/bin, see the README): a source in colour with
+# line numbers (hl file.c; to a pipe or a file it is plain cat), Markdown
+# formatted for the window (mdv README.md). hlp and mdp page them: less -R
+# keeps the colours (less from Geek Gadgets or Aminet; $PAGER names
+# another pager that shows colours).
+hlp() {
+    hl --color=always -n "$@" | ${PAGER:-less -R}
+}
+mdp() {
+    mdv --color=always "$@" | ${PAGER:-less -R}
+}
+# hl as cat on the console (colours, no numbers; a pipe or a file still
+# gets the bytes as they are), for whoever wants it:
+# alias cat='hl -p'
 
 # The Up Rough banner when an interactive vsh starts on a terminal (not
 # for vsh -c or a script, and not when its output goes elsewhere). Remove

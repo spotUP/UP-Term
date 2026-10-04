@@ -119,10 +119,16 @@ If "{UNIFONT}" EQ "UNIFONT"
   Copy unifont SYS:UP-Term/unifont ALL CLONE QUIET
 EndIf
 Copy upgetty C:upgetty CLONE
+; hl and mdv: a source file in colour, Markdown formatted for the window
+; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
+Copy hl mdv SYS:UP-Term/bin CLONE
 ; UPDemo: the terminal's show-off and benchmark (README, DEMO)
 Copy UPDemo C:UPDemo CLONE
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
 Copy UPTerm C:UPTerm CLONE
+; C:uptelnet: a telnet client for the window (no ixemul; needs a TCP/IP
+; stack), the Amiga end of Claude Code on a Mac (README, CLAUDE FROM THE AMIGA)
+Copy uptelnet C:uptelnet CLONE
 ; The network tools, beside coreutils: BebboSSH 1.45 (bebbossh, bebboscp,
 ; bebbosshkeygen, bebbosshd) and bebboget 1.11, by Stefan Franke, GPL v3+,
 ; and curl 8.22.0 (below):

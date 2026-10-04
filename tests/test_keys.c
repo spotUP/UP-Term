@@ -232,6 +232,27 @@ static void bracketed_paste_only_when_asked(void)
     vt_free(t);
 }
 
+/* ?1004 (Claude Code, vim, tmux ask for it): the window's activation as
+ * ESC [ I / ESC [ O; DECRQM said the mode was set, yet nothing was sent. */
+static void focus_reports_only_when_asked(void)
+{
+    vt_term *t = h_new(10, 2, VT_XTERM);
+    vt_u8 b[8];
+    CHECK_INT(vt_encode_focus(t, 1, b), 0);
+    h_put(t, "\033[?1004h");
+    CHECK_INT(vt_encode_focus(t, 1, b), 3);
+    CHECK(memcmp(b, "\033[I", 3) == 0);
+    CHECK_INT(vt_encode_focus(t, 0, b), 3);
+    CHECK(memcmp(b, "\033[O", 3) == 0);
+    h_put(t, "\033[?1004l");
+    CHECK_INT(vt_encode_focus(t, 0, b), 0);
+    vt_free(t);
+    t = h_new(10, 2, VT_AMIGA); /* the ROM console reports activation as raw events, not this */
+    h_put(t, "\033[?1004h");
+    CHECK_INT(vt_encode_focus(t, 1, b), 0);
+    vt_free(t);
+}
+
 static const char *mouse(vt_term *t, int btn, int kind, int x, int y, int mods)
 {
     static char buf[40];
@@ -316,6 +337,7 @@ void suite_keys(void)
     amiga_keys_use_the_8bit_csi();
     pcansi_keys_are_plain_ansi();
     bracketed_paste_only_when_asked();
+    focus_reports_only_when_asked();
     meta_escape_and_modify_other_keys();
     utf8_mouse_reaches_past_column_223();
     alt_backspace_return_tab_escape_send_the_esc_prefix();

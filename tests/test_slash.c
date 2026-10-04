@@ -57,6 +57,9 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.id, MENU_TAB_PREV);
     CHECK_INT(parse("/clear scrollback"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_CLEAR_SB);
+    CHECK_INT(parse("/demo"), SLASH_OK); /* Help > Demo tour */
+    CHECK_INT(cmd.id, MENU_DEMO);
+    CHECK_INT(parse("/demo now"), SLASH_ERROR);
     CHECK_INT(parse("/font-size bigger"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_FONT_BIGGER);
     CHECK_INT(parse("/size 132x43"), SLASH_OK);
