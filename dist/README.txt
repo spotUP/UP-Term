@@ -83,6 +83,8 @@ CONFIGURATION (profiles)
      meta = amiga              amiga (Left Amiga = Meta) | alt (the Alt keys)
      copy-on-select = off      on: a drag ends with the selection on the clipboard
      wheel = scroll            scroll | ignore (the mouse wheel moves the scrollback)
+     reflow = on               on | off (a resize re-wraps the lines and the scrollback;
+                               off cuts or pads the rows, as xterm does)
      palette = 1,0x00CD00,4,0x5C5CFF
                                remap ANSI colours: index,RRGGBB pairs
 

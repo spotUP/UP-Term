@@ -3973,6 +3973,11 @@ long vt_lines_scrolled(const vt_term *t)
     return t->scrolled;
 }
 
+int vt_wrap_pending(const vt_term *t)
+{
+    return t->wrap_pending != 0;
+}
+
 void vt_cursor(const vt_term *t, int *x, int *y)
 {
     if (x)

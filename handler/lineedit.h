@@ -63,6 +63,10 @@ void le_init(le_line *le, vt_term *t, void (*out)(void *, const unsigned char *,
  * it with the '\n', and the caller takes it and calls le_reset. */
 int  le_key(le_line *le, long key, int mods, const unsigned char *bytes, int n);
 void le_reset(le_line *le);
+/* The window was resized: a reflow may have moved the line. Where it
+ * starts is worked out again from the cursor, which the engine kept on
+ * its character. */
+void le_resized(le_line *le);
 /* The first word of the line (up to the first space): its length, and
  * whether the colouring is still unknown for it. */
 int  le_first_word(const le_line *le, unsigned char *out, int max);

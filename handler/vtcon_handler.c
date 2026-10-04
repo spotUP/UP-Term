@@ -421,6 +421,7 @@ static void h_resized(void *u)
 {
     con *c = (con *)u;
     sync_size(c);
+    le_resized(&c->le); /* a reflow moved the line being edited */
     post_sizewindow(c);
 }
 
@@ -920,6 +921,9 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "wheel", 0);
     if (v)
         c->w.wheel_scroll = !str_ieq(v, "ignore");
+    v = upconf_str(c->conf, p, "reflow", 0);
+    if (v)
+        c->w.reflow = !str_ieq(v, "off");
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
     c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));
@@ -1177,7 +1181,7 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 40
+#define MENU_SET_ITEMS 41
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1209,6 +1213,7 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Alt", 0, CHECKIT, 1, (APTR)MENU_SET_META_ALT },
     { NM_ITEM, (STRPTR)"Copy on select", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_COPY },
     { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
+    { NM_ITEM, (STRPTR)"Reflow on resize", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Tab completion", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Unix", 0, CHECKIT, 2, (APTR)MENU_SET_UNIX },
@@ -1247,6 +1252,7 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_META_ALT: return c->w.meta_alt;
     case MENU_SET_COPY: return c->w.copy_on_select;
     case MENU_SET_WHEEL: return c->w.wheel_scroll;
+    case MENU_SET_REFLOW: return c->w.reflow;
     case MENU_SET_UNIX: return !c->kingcon;
     case MENU_SET_KINGCON: return c->kingcon;
     case MENU_SET_KC_W: return (c->kc_style & LE_KC_WINDOW) != 0;
@@ -1430,6 +1436,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->meta_alt = c->w.meta_alt != 0;
     f->copy_sel = c->w.copy_on_select != 0;
     f->wheel = c->w.wheel_scroll != 0;
+    f->reflow = c->w.reflow != 0;
     f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     k = 0;
     if (c->kc_style & LE_KC_WINDOW) f->kcmode[k++] = 'W';
@@ -1623,6 +1630,7 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_META_ALT: c->w.meta_alt = 1; break;
     case MENU_SET_COPY: c->w.copy_on_select = on; break;
     case MENU_SET_WHEEL: c->w.wheel_scroll = on; break;
+    case MENU_SET_REFLOW: c->w.reflow = on; restyle = 1; break;
     case MENU_SET_UNIX:
     case MENU_SET_KINGCON:
         sel_close(c);

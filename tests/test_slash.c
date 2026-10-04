@@ -38,6 +38,9 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.on, 0);
     CHECK_INT(parse("/bell   visual  "), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_BELL_VISUAL);
+    CHECK_INT(parse("/reflow off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_REFLOW);
+    CHECK_INT(cmd.on, 0);
     CHECK_INT(parse("/wheel ignore"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_WHEEL);
     CHECK_INT(cmd.on, 0);

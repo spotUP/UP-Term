@@ -202,6 +202,9 @@ void     vt_clear_scrollback(vt_term *t);
  * stays on its text while output scrolls). */
 long     vt_lines_scrolled(const vt_term *t);
 void     vt_cursor(const vt_term *t, int *x, int *y);
+/* 1 while the cursor waits on the last column for the next character to
+ * wrap it (xterm's deferred wrap): logically it stands one cell further. */
+int      vt_wrap_pending(const vt_term *t);
 vt_u32   vt_modes(const vt_term *t);
 const char *vt_title(const vt_term *t);
 /* Amiga raw input event classes the host asked for (CSI n {), bit n. */

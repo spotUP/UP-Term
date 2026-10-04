@@ -147,6 +147,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->bell = 1;          /* beep; a profile may choose none or a flash */
     w->bold_bright = 1;   /* xterm SGR 1 takes the bright 8-15 */
     w->wheel_scroll = 1;  /* the wheel moves through the scrollback */
+    w->reflow = 1;        /* a resize re-wraps, as modern terminals do (gaps #11) */
     w->cursor_rgb = VR_KEEP;
     w->sel_fg_rgb = w->sel_bg_rgb = VR_KEEP;
     /* every other profile field too: a window switching profiles must not
@@ -503,6 +504,7 @@ static void settings(vtwin *w)
     /* after report_defaults(): the default colours must be in place so a
      * palette change can re-derive the pens through cb_colors() */
     vt_set_bold_bright(w->t, w->bold_bright);
+    vt_set_reflow(w->t, w->reflow);
     vt_set_cursor_style(w->t, w->cursor_style);
     vt_set_cursor_blink(w->t, w->cursor_blink);
     for (i = 0; i < 16; i++)
@@ -793,6 +795,12 @@ void vtwin_resize(vtwin *w)
     if (!w->t)
         return;
     if (vr_layout(&w->r)) {
+        if (w->reflow && w->r.cols != vt_cols(w->t)) {
+            /* the text moves to other rows and columns: a selection would
+             * stand on other text afterwards (Alacritty clears it too) */
+            w->dragging = 0;
+            vr_select(&w->r, 0, 0, 0, 0, 0);
+        }
         vt_resize(w->t, w->r.cols, w->r.rows);
         if (w->nodraw_resize)
             vt_write(w->t, (const vt_u8 *)"\x0c", 1); /* the ROM clears the unit, cursor home (DP4) */
