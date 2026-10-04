@@ -209,7 +209,13 @@ typedef struct con {
                                   * selection window (research/2026-10-02_kingcon-completion.md) */
     unsigned long edits;         /* keys that changed the line so far */
     unsigned long comp_edits;    /* edits when the running completion started */
-    struct Menu *menustrip;      /* the window's menu (GadTools), 0 without one */
+    int comp_partial;            /* W22: the last command completion was partial (1 unix,
+                                  * 2 kingcon): asked again when the warm-up ends */
+    unsigned long partial_edits; /* edits after its answer: a key since drops the refine */
+    unsigned long partial_gen;   /* complete_warm_gen() its lookup saw */
+    int next_cold;               /* the next completion may read a directory (the refine) */
+    int partial_now;             /* no warm-up to wait for: refine at once */
+    struct Menu *menustrip;     /* the window's menu (GadTools), 0 without one */
     /* the scroll bar (SB1): the window owner's gadget in its right border,
      * showing the active terminal's knob (a tab's arrives by TM_KNOB) */
     int sbar_on;                 /* the setting: profile scrollbar = show | hide, the menu */
@@ -2795,6 +2801,8 @@ static void start_completion(con *c)
     }
     c->comp->kingcon = 0;
     c->comp->no_cache = 0;
+    c->comp->cold = c->next_cold;
+    c->next_cold = 0;
     c->comp->extra_len = 0;
     if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
@@ -2910,6 +2918,55 @@ static void type_text(con *c, const char *s)
     }
 }
 
+static void kc_put(con *c, const char *name);
+static void kc_tab(con *c, int mode);
+
+/* W22: a command completion answered before every command directory was
+ * cached (complete.c never makes a Tab wait for a directory to be read).
+ * What the cached names share goes in, never the space or "/" that would
+ * end the word, with no beep and no menu (they would judge from half a
+ * list); when the warm-up has read the rest, the Tab is asked again --
+ * unless a key came meanwhile. KingCON's window, list and cycle (several
+ * names) work on what is cached, as they always did on KingCON's cache. */
+static void partial_answer(con *c, struct complete_req *q)
+{
+    if (q->kingcon) {
+        if (q->matches > 1) {
+            kc_finish(c, q);
+            return;
+        }
+        if (q->matches == 1)
+            kc_put(c, q->common);
+    } else if (q->add[0]) {
+        type_text(c, q->add);
+        check_command(c);
+    }
+    c->comp_partial = q->kingcon ? 2 : 1;
+    c->partial_edits = c->edits;
+    c->partial_gen = q->warm_gen;
+    c->partial_now = complete_warm_wait(FindTask(0), 1UL << c->comp_port->mp_SigBit, q->warm_gen,
+                                        opener(c));
+}
+
+/* the warm-up ended (its signal is the completion port's): the Tab again,
+ * now allowed to read a directory still missing (it ends there) */
+static void partial_refine(con *c)
+{
+    int kind = c->comp_partial;
+    if (!kind || (!c->partial_now && complete_warm_gen() == c->partial_gen))
+        return;
+    c->comp_partial = 0;
+    c->partial_now = 0;
+    complete_warm_forget(FindTask(0));
+    if (c->edits != c->partial_edits || c->comp_busy || !c->w.t || c->raw)
+        return; /* the line moved on */
+    c->next_cold = 1;
+    if (kind == 2)
+        kc_tab(c, COMPLETE_COMMANDS);
+    else
+        start_completion(c);
+}
+
 static void finish_completion(con *c)
 {
     struct complete_req *q;
@@ -2978,6 +3035,10 @@ static void finish_completion(con *c)
         if (c->edits != c->comp_edits)
             continue; /* the line changed while it ran (rig: typed text got the
                        * answer for an older word): the answer is for no word now */
+        if (q->partial && !q->cold && q->mode == COMPLETE_COMMANDS) { /* a refine is final */
+            partial_answer(c, q);
+            continue;
+        }
         if (q->kingcon) {
             kc_finish(c, q);
             continue;
@@ -2997,6 +3058,7 @@ static void finish_completion(con *c)
         if (q->matches > 1)
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* completed as far as they agree */
     }
+    partial_refine(c); /* a warm-up we waited for has ended */
 }
 
 /* The next Tab after a completion: show the menu, then cycle through it. */
@@ -3469,6 +3531,8 @@ static void kc_tab(con *c, int mode)
     c->comp->kingcon = 1;
     c->comp->show_info = c->kc_info;
     c->comp->no_cache = !c->kc_cache;
+    c->comp->cold = c->next_cold;
+    c->next_cold = 0;
     c->comp->extra_len = 0;
     if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
@@ -5078,6 +5142,8 @@ static void packet(con *c, struct DosPacket *p)
         fh->fh_Port = (struct MsgPort *)DOSTRUE; /* interactive */
         fh->fh_Arg1 = (LONG)c;
         c->opens++;
+        if (!c->ever_opened)
+            complete_warm(opener(c)); /* W22: the command cache read before the first Tab */
         c->ever_opened = 1;
         reply(p, DOSTRUE, 0);
         return;
@@ -5634,6 +5700,7 @@ static LONG handler_main(void)
             FreeVec(c->hist->data);
         FreeVec(c->hist);
     }
+    complete_warm_forget(FindTask(0)); /* its signal is the port's */
     if (c->comp_port)
         DeleteMsgPort(c->comp_port);
     rtimer_stop(c);
