@@ -288,8 +288,29 @@ static void middle_click_pastes_when_nobody_asked(void)
     vt_free(t);
 }
 
+/* gap #12: terminfo's kPRV / kNXT never reached a program -- the window
+ * always took Shift+PgUp/PgDn for its scrollback */
+static void shift_page_keys_reach_full_screen_programs(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    char buf[40];
+    int n;
+    CHECK_INT(vti_page_keys_scroll(t), 1);         /* the shell: the scrollback */
+    h_put(t, "\033[?1049h");
+    CHECK_INT(vti_page_keys_scroll(t), 0);         /* vim, less: theirs */
+    n = vt_encode_key(t, VT_KEY_PAGE_UP, VT_MOD_SHIFT, (vt_u8 *)buf);
+    buf[n] = 0;
+    CHECK_STR(buf, "\033[5;2~");
+    h_put(t, "\033[?1049l\033[?1000h");
+    CHECK_INT(vti_page_keys_scroll(t), 0);         /* a program holding the mouse */
+    h_put(t, "\033[?1000l");
+    CHECK_INT(vti_page_keys_scroll(t), 1);
+    vt_free(t);
+}
+
 void suite_input(void)
 {
+    shift_page_keys_reach_full_screen_programs();
     middle_click_pastes_when_nobody_asked();
     double_click_word_triple_click_line();
     middle_button_and_modifiers_reach_the_program();

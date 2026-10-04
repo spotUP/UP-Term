@@ -182,6 +182,11 @@ void vti_line(const vt_term *t, int y, int *y0, int *y1)
         (*y1)++;
 }
 
+int vti_page_keys_scroll(const vt_term *t)
+{
+    return !(vt_modes(t) & (VT_MODE_ALT_SCREEN | MOUSE_MODES));
+}
+
 int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
               int px, int py, vt_u8 *out, int *lines)
 {

@@ -967,7 +967,9 @@ static int qual_mods(const vtwin *w, UWORD qual)
 }
 
 /* Right Amiga C/V copy and paste, Right Amiga Up/Down and Shift+PgUp/PgDn
- * move through the scrollback. Returns 1 when the key was the console's. */
+ * move through the scrollback (Shift+PgUp/PgDn on the main screen with no
+ * mouse mode: vti_page_keys_scroll). Returns 1 when the key was the
+ * console's. */
 static int console_key(vtwin *w, UWORD code, UWORD qual)
 {
     int page = w->r.rows > 1 ? w->r.rows - 1 : 1;
@@ -980,7 +982,8 @@ static int console_key(vtwin *w, UWORD code, UWORD qual)
         default: return 0;
         }
     }
-    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) {
+    if ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) && vti_page_keys_scroll(w->t)) {
+        /* (a full-screen program gets them: kPRV / kNXT) */
         if (code == 0x48) {
             vr_set_view(&w->r, w->r.view + page);
             return 1;
