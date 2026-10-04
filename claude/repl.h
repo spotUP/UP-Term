@@ -48,6 +48,13 @@ typedef struct cl_repl {
     cl_stream st;
     jw errbody;
     int shown;                  /* answer text went to the screen */
+    /* the screen of its own (ledger A3), 0 in the line mode */
+    struct cl_tui *tui;
+    struct cl_show *show;
+    long ctx_used;              /* the last request's tokens: the context in use */
+    long turn_out;              /* output tokens of the turn's finished requests */
+    long chars;                 /* answer bytes of the request in flight */
+    char session[256];          /* saved after every turn (/resume), "" none */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
     char buf[4096];
@@ -61,6 +68,12 @@ void repl_free(cl_repl *r);
 int repl_line(cl_repl *r, const char *line);
 /* the loop: until /exit or the end of input */
 void repl_run(cl_repl *r);
+/* The screen of its own (Claude Code's look, ledger A3): raw mode, the
+ * input box, the status line. 0 when it started; -1 (out of memory, no
+ * io->read, or the console refused raw mode): the line mode stays. */
+int repl_screen(cl_repl *r);
+/* the model's context window in tokens */
+long repl_window(const char *model);
 /* the transport check: a one-token request, its status and times; 0 when
  * the API answered 200 */
 int repl_ping(cl_repl *r);

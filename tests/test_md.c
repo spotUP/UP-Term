@@ -237,8 +237,80 @@ static void robust(void)
     CHECK_STR(plain("a\r\nb\r\n", 20), "a b\n");
 }
 
+/* The stream (md_open / md_feed / md_close, C:Claude's answers, W32): the
+ * same screen as the whole document, for every split of it into two feeds
+ * and for a byte at a time; a block is drawn as soon as a later line
+ * closes it, not at the end. */
+static void streaming(void)
+{
+    static const char *const docs[] = {
+        "# Plan\n\nRead **the** file, then:\n\n1. one\n2. two `x`\n\n```c\nint a = 1; /* c */\n```\n\n"
+        "| a | b |\n|---|---|\n| 1 | 22 |\n\n> quoted\n> more\n\ntail\twith tab",
+        "- [x] done\n- [ ] open\n\n---\nA [link](http://x.y) and ~~gone~~.\n", 0
+    };
+    static char whole[16384];
+    int d;
+    for (d = 0; docs[d]; d++) {
+        long n = (long)strlen(docs[d]), cut;
+        int ok = 1;
+        strcpy(whole, render(docs[d], 30, VW_UTF8, 16, 1));
+        for (cut = 0; cut <= n && ok; cut++) {
+            vw_out o;
+            md_opts mo;
+            md *m;
+            long k;
+            olen = 0;
+            out[0] = 0;
+            vo_init(&o, sink, 0, VW_UTF8, 16, &theme);
+            o.osc8 = 1;
+            mo.width = 30;
+            mo.urls = 1;
+            m = md_open(&mo, &o);
+            if (cut == n) {
+                for (k = 0; k < n; k++)
+                    md_feed(m, docs[d] + k, 1);
+            } else {
+                md_feed(m, docs[d], cut);
+                md_feed(m, docs[d] + cut, n - cut);
+            }
+            CHECK_INT(md_close(m), 0);
+            vo_flush(&o);
+            if (strcmp(out, whole)) {
+                ok = 0;
+                CHECK_STR(out, whole);
+            }
+        }
+    }
+    /* drawn when closed: the heading at once, the paragraph only once a
+     * blank line ends it */
+    {
+        vw_out o;
+        md_opts mo;
+        md *m;
+        olen = 0;
+        out[0] = 0;
+        vo_init(&o, sink, 0, VW_UTF8, 0, &theme);
+        mo.width = 20;
+        mo.urls = 0;
+        m = md_open(&mo, &o);
+        md_feed(m, "### Head\nsome te", 16);
+        vo_flush(&o);
+        CHECK_STR(out, "### Head\n");
+        CHECK(md_pending(m));
+        md_feed(m, "xt\n", 3);
+        vo_flush(&o);
+        CHECK_STR(out, "### Head\n");
+        md_feed(m, "\n", 1);
+        vo_flush(&o);
+        CHECK_STR(out, "### Head\n\nsome text\n");
+        CHECK(!md_pending(m));
+        CHECK_INT(md_close(m), 0);
+    }
+}
+
 void suite_md(void)
 {
+    streaming();
     headings_and_paragraphs();
     wrapping();
     inlines();

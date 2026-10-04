@@ -24,14 +24,15 @@ VIEW_HDR  := view/hl_lex.h view/hl_style.h view/hl_view.h view/vw_text.h view/md
 VIEW_CLI  := view/vw_cli.c
 # the Claude client's portable core (ledger A2); net_posix is the host transport
 CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
-               claude/path.c claude/tools.c claude/sys_posix.c claude/ui.c claude/repl.c
+               claude/path.c claude/tools.c claude/sys_posix.c claude/ui.c claude/repl.c \
+               claude/keys.c claude/edit.c claude/tui.c claude/show.c
 CLAUDE_HDR := $(wildcard claude/*.h)
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_hl.c tests/test_md.c \
-           tests/claude_load.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_repl.c
+           tests/claude_load.c tests/claude_screen.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_repl.c tests/test_claude_tui.c
 
 .PHONY: claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
@@ -40,7 +41,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host
 	@if [ "$(ONLY)" != uptelnetd ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 
-$(BUILD)/vttest_host: $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
+$(BUILD)/vttest_host: $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
 
@@ -207,7 +208,8 @@ $(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $
 # build without TLS that refuses https (http URLs, the fixture, still work).
 VTCON_NETINCLUDE ?= $(CURDIR)/vendor/ndk-3.2r4-netinclude
 CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
-                   claude/path.c claude/tools.c claude/ui.c claude/repl.c claude/sys_amiga.c claude/main_amiga.c
+                   claude/path.c claude/tools.c claude/ui.c claude/repl.c claude/sys_amiga.c claude/main_amiga.c \
+                   claude/keys.c claude/edit.c claude/tui.c claude/show.c $(VIEW_MD) tty/ldisc.c
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
 AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK
@@ -220,7 +222,7 @@ CLAUDE_FLAGS := AMISSL_SDK=$(AMISSL_SDK)
 ifneq ($(CLAUDE_FLAGS),$(shell cat $(BUILD)/amiga/claude.flags 2>/dev/null))
 CLAUDE_FORCE := FORCE
 endif
-$(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(CLAUDE_FORCE)
+$(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(VIEW_HDR) tty/ldisc.h handler/vtcon_packets.h $(CLAUDE_FORCE)
 	@mkdir -p $(BUILD)/amiga/obj/claude
 	@echo '$(CLAUDE_FLAGS)' > $(BUILD)/amiga/claude.flags
 	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/claude/net_amiga.o claude/net_amiga.c

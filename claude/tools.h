@@ -17,18 +17,30 @@
 #include "json.h"
 #include "sys.h"
 
-enum { T_READ_FILE, T_LIST_DIR, T_GREP, T_WRITE_FILE, T_EDIT_FILE, T_RUN_COMMAND, T_COUNT };
+enum { T_READ_FILE, T_LIST_DIR, T_GREP, T_WRITE_FILE, T_EDIT_FILE, T_RUN_COMMAND, T_TODO_WRITE, T_COUNT };
 
-/* the user's answer to a permission question */
-enum { ASK_NO, ASK_ONCE, ASK_SESSION };
+/* The user's answer to a permission question. ASK_STOP: no, and the user
+ * will tell Claude what to do instead -- this call and the rest of its
+ * round are not run, and the turn ends after their results (stop is set). */
+enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP };
+
+/* The permission mode (Shift+Tab in the screen, ledger A3): the A2 rules;
+ * accept edits -- write_file and edit_file inside the start directory run
+ * without a question; plan -- only the read-only tools run, the others are
+ * refused with a result that says so. todo_write never asks (it changes
+ * nothing but the list the user sees). */
+enum { PERM_DEFAULT, PERM_ACCEPT, PERM_PLAN };
 
 typedef struct cl_perm {
     unsigned session;           /* bit per tool: allowed for the session */
+    int mode;                   /* PERM_* */
 } cl_perm;
 
 int perm_read_only(int tool);
 /* must the user be asked? */
 int perm_must_ask(const cl_perm *p, int tool, int outside);
+/* is the call refused by the mode (plan)? */
+int perm_refused(const cl_perm *p, int tool);
 /* the user chose "always this session" */
 void perm_grant(cl_perm *p, int tool);
 
@@ -40,8 +52,18 @@ typedef struct cl_tools {
     void *u;
     /* the call, shown before anything happens; what is a one-line summary */
     void (*show)(void *u, const char *tool, const char *what);
-    /* the permission question: ASK_NO / ASK_ONCE / ASK_SESSION */
+    /* the permission question: ASK_NO / ASK_ONCE / ASK_SESSION / ASK_STOP */
     int (*ask)(void *u, const char *tool, const char *what, int outside);
+    /* optional: a write or an edit before the question, the file's text
+     * before (0, 0 when it is new) and after, both UTF-8 for an edit */
+    void (*preview)(void *u, int tool, const char *path, const char *before, long bn, const char *after,
+                    long an);
+    /* optional: the call's result as Claude gets it, with its input */
+    void (*result)(void *u, int tool, const char *input, long inn, int is_error, const char *text, long n);
+    int stop;                   /* ASK_STOP was answered this round (reset by the caller) */
+    int cur;                    /* the tool being run (the result hook's) */
+    const char *cur_in;
+    long cur_inn;
 } cl_tools;
 
 /* the "tools" array of the request body */

@@ -60,8 +60,10 @@ static void test_perm(void)
     cl_perm p;
     int i;
     memset(&p, 0, sizeof(p));
-    for (i = 0; i < T_COUNT; i++)
+    for (i = 0; i < T_TODO_WRITE; i++)
         CHECK(perm_must_ask(&p, i, 0));
+    /* the todo list changes nothing but the screen: never asked, even in plan mode */
+    CHECK(!perm_must_ask(&p, T_TODO_WRITE, 0));
     /* one answer allows all three read-only tools */
     perm_grant(&p, T_GREP);
     CHECK(!perm_must_ask(&p, T_READ_FILE, 0));
@@ -77,6 +79,23 @@ static void test_perm(void)
     CHECK(!perm_must_ask(&p, T_WRITE_FILE, 0));
     CHECK(perm_must_ask(&p, T_EDIT_FILE, 0));
     CHECK(perm_must_ask(&p, T_WRITE_FILE, 1));
+    /* accept edits: writes and edits inside the start directory run, a
+     * command and anything outside still ask */
+    memset(&p, 0, sizeof(p));
+    p.mode = PERM_ACCEPT;
+    CHECK(!perm_must_ask(&p, T_WRITE_FILE, 0));
+    CHECK(!perm_must_ask(&p, T_EDIT_FILE, 0));
+    CHECK(perm_must_ask(&p, T_EDIT_FILE, 1));
+    CHECK(perm_must_ask(&p, T_RUN_COMMAND, 0));
+    CHECK(perm_must_ask(&p, T_READ_FILE, 0));
+    CHECK(!perm_refused(&p, T_RUN_COMMAND));
+    /* plan: only the read-only tools (and the todo list) run */
+    p.mode = PERM_PLAN;
+    CHECK(perm_refused(&p, T_WRITE_FILE));
+    CHECK(perm_refused(&p, T_EDIT_FILE));
+    CHECK(perm_refused(&p, T_RUN_COMMAND));
+    CHECK(!perm_refused(&p, T_GREP));
+    CHECK(!perm_refused(&p, T_TODO_WRITE));
 }
 
 static int bad(int tool, const char *in)
@@ -103,6 +122,13 @@ static void test_validate(void)
     CHECK_INT(bad(T_GREP, "{\"pattern\":\"x\",\"ignore_case\":true,\"path\":\"S\"}"), 0);
     CHECK_INT(bad(T_EDIT_FILE, "{\"path\":\"a\",\"old_string\":\"b\"}"), -1);
     CHECK_INT(bad(T_RUN_COMMAND, "{\"command\":\"Version\"}"), 0);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\",\"status\":\"pending\"}]}"), 0);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[]}"), 0);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\",\"status\":\"maybe\"}]}"), -1);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\"}]}"), -1);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[\"a\"]}"), -1);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":\"a\"}"), -1);
+    CHECK_INT(tools_id("todo_write"), T_TODO_WRITE);
     CHECK_INT(tools_id("read_file"), T_READ_FILE);
     CHECK_INT(tools_id("bash"), -1);
 }
@@ -114,7 +140,41 @@ typedef struct asker {
     int answer;
     int outside;
     char last[300];
+    /* the preview: the file before and after (an edit's, a write's) */
+    int previews;
+    char before[200], after[200];
+    /* the result hook */
+    int results, last_error;
 } asker;
+
+static void on_preview(void *u, int tool, const char *path, const char *b, long bn, const char *a, long an)
+{
+    asker *k = (asker *)u;
+    (void)tool;
+    (void)path;
+    k->previews++;
+    k->before[0] = k->after[0] = 0;
+    if (b && bn < 199) {
+        memcpy(k->before, b, (size_t)bn);
+        k->before[bn] = 0;
+    }
+    if (an < 199) {
+        memcpy(k->after, a, (size_t)an);
+        k->after[an] = 0;
+    }
+}
+
+static void on_result(void *u, int tool, const char *in, long inn, int is_error, const char *text, long n)
+{
+    asker *k = (asker *)u;
+    (void)tool;
+    (void)in;
+    (void)inn;
+    (void)text;
+    (void)n;
+    k->results++;
+    k->last_error = is_error;
+}
 
 static void on_show(void *u, const char *tool, const char *what)
 {
@@ -316,6 +376,51 @@ static void test_tree(void)
     CHECK(strstr(out.p, "not valid JSON") != 0);
     jw_free(&out);
     CHECK_INT(a.asked, 0);
+
+    /* the preview: an edit shows the file before and after it, before the
+     * question; the answer "no, and tell Claude" stops the round */
+    t.preview = on_preview;
+    t.result = on_result;
+    a.asked = a.previews = a.results = 0;
+    a.answer = ASK_STOP;
+    CHECK_INT(call(&t, "edit_file", "{\"path\":\"new.txt\",\"old_string\":\"hello\",\"new_string\":\"bye\"}",
+                   text, sizeof(text)), 1);
+    CHECK_INT(a.previews, 1);
+    CHECK_STR(a.before, "hello \xc3\xbc");
+    CHECK_STR(a.after, "bye \xc3\xbc");
+    CHECK(strstr(text, "tell you what to do differently") != 0);
+    CHECK_INT(t.stop, 1);
+    CHECK_INT(get("new.txt", buf, sizeof(buf)), 8);
+    CHECK_STR(buf, "hello \xc3\xbc");
+    /* the rest of that round is not run, not even asked */
+    CHECK_INT(call(&t, "read_file", "{\"path\":\"new.txt\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "not run") != 0);
+    CHECK_INT(a.asked, 1);
+    CHECK_INT(a.results, 2);
+    CHECK_INT(a.last_error, 1);
+    t.stop = 0;
+    /* a write of a new file previews no "before" */
+    a.answer = ASK_ONCE;
+    CHECK_INT(call(&t, "write_file", "{\"path\":\"fresh.txt\",\"content\":\"one\\ntwo\\n\"}", text, sizeof(text)), 0);
+    CHECK_INT(a.previews, 2);
+    CHECK_STR(a.before, "");
+    CHECK_STR(a.after, "one\ntwo\n");
+    /* accept edits: the edit runs without a question */
+    t.perm.mode = PERM_ACCEPT;
+    a.asked = 0;
+    CHECK_INT(call(&t, "edit_file", "{\"path\":\"fresh.txt\",\"old_string\":\"two\",\"new_string\":\"2\"}",
+                   text, sizeof(text)), 0);
+    CHECK_INT(a.asked, 0);
+    CHECK_INT(get("fresh.txt", buf, sizeof(buf)), 6);
+    /* plan mode: a command is refused with a result that says why, unasked */
+    t.perm.mode = PERM_PLAN;
+    CHECK_INT(call(&t, "run_command", "{\"command\":\"echo no\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "plan mode is on") != 0);
+    CHECK_INT(a.asked, 0);
+    CHECK_INT(call(&t, "todo_write", "{\"todos\":[{\"content\":\"x\",\"status\":\"pending\"}]}", text,
+                   sizeof(text)), 0);
+    CHECK(strstr(text, "Todos updated") != 0);
+    t.perm.mode = PERM_DEFAULT;
 
     {
         char cmd[600];

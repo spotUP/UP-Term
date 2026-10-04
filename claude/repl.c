@@ -3,6 +3,8 @@
 #include <string.h>
 #include "repl.h"
 #include "path.h"
+#include "tui.h"
+#include "show.h"
 #include "util.h"
 
 enum { R_OK, R_RETRY, R_FAIL, R_CANCEL };
@@ -22,7 +24,8 @@ static const char sys_c[] =
     "memory: prefer small, targeted reads and searches. ";
 static const char sys_d[] =
     "Every tool call is shown to the user and may need their permission. The terminal shows "
-    "Markdown, 80 columns or fewer; keep answers concise.";
+    "Markdown, 80 columns or fewer; keep answers concise. For a task of several steps keep a "
+    "todo list with todo_write.";
 
 int cl_key_clean(char *key)
 {
@@ -46,6 +49,8 @@ static void st_text(void *u, const char *s, long n)
 {
     cl_repl *r = (cl_repl *)u;
     r->shown = 1;
+    r->chars += n;
+    ui_tokens(&r->ui, r->turn_out + r->chars / 4);
     r->render.text(r->render.u, s, n);
 }
 
@@ -214,7 +219,7 @@ top:
         for (;;) {
             long n = r->net->recv(r->net->u, r->buf, sizeof(r->buf), 250);
             if (n == NET_TIMEOUT) {
-                if (r->io->brk(r->io->u)) {
+                if (ui_poll(&r->ui)) {
                     drop(r);
                     return R_CANCEL;
                 }
@@ -253,7 +258,7 @@ top:
                 show_err(r, "The server's answer was not valid HTTP.", 0);
                 return R_FAIL;
             }
-            if (r->io->brk(r->io->u)) {
+            if (ui_poll(&r->ui)) {
                 drop(r);
                 return R_CANCEL;
             }
@@ -306,6 +311,7 @@ static int request(cl_repl *r, const char *body, long bn)
         long ra;
         int rc;
         r->shown = 0;
+        r->chars = 0;
         rc = post(r, body, bn, &ra);
         if (rc != R_RETRY)
             return rc;
@@ -339,12 +345,56 @@ static int request(cl_repl *r, const char *body, long bn)
 
 static void tool_show(void *u, const char *tool, const char *what)
 {
-    ui_tool(&((cl_repl *)u)->ui, tool, what);
+    cl_repl *r = (cl_repl *)u;
+    ui_tool(&r->ui, r->tools.cur, tool, what, r->tools.cur_in, r->tools.cur_inn);
 }
 
 static int tool_ask(void *u, const char *tool, const char *what, int outside)
 {
-    return ui_ask(&((cl_repl *)u)->ui, tool, what, outside);
+    cl_repl *r = (cl_repl *)u;
+    return ui_ask(&r->ui, r->tools.cur, tool, what, outside);
+}
+
+static void tool_preview(void *u, int tool, const char *path, const char *before, long bn, const char *after,
+                         long an)
+{
+    ui_preview(&((cl_repl *)u)->ui, tool, path, before, bn, after, an);
+}
+
+static void tool_result(void *u, int tool, const char *in, long inn, int is_error, const char *text, long n)
+{
+    ui_result(&((cl_repl *)u)->ui, tool, in, inn, is_error, text, n);
+}
+
+long repl_window(const char *model)
+{
+    return !strncmp(model, "claude-haiku", 12) ? 200000L : 1000000L;
+}
+
+/* the status line's "ctx: N% left" */
+static void ctx_show(cl_repl *r)
+{
+    long w = repl_window(r->model), used = r->ctx_used;
+    if (!r->tui)
+        return;
+    if (used > w)
+        used = w;
+    /* (w - used) * 100 / w without overflow in 32 bits */
+    r->tui->ctx_left = (int)(100 - (used / (w / 100)));
+    if (r->tui->ctx_left < 0)
+        r->tui->ctx_left = 0;
+}
+
+/* the conversation kept for /resume (quietly: a failed save loses nothing yet) */
+static void session_save(cl_repl *r)
+{
+    jw w;
+    if (!r->session[0] || !r->conv.n)
+        return;
+    jw_init(&w);
+    if (!conv_messages(&r->conv, &w))
+        r->sys->write(r->sys->u, r->session, w.p, w.n);
+    jw_free(&w);
 }
 
 static void turn(cl_repl *r, const char *prompt, long pn)
@@ -366,9 +416,12 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     jw_init(&body);
     jw_init(&content);
     r->io->brk(r->io->u);           /* a Ctrl+C from before the turn does not count */
+    r->turn_out = 0;
+    ui_busy(&r->ui, 1);
     for (round = 0; round < 64; round++) {
         int rc, ntools, i;
         const char *stop;
+        r->tools.stop = 0;
         jw_reset(&body);
         if (conv_body(&r->conv, &o, &body)) {
             ui_line(&r->ui, "Out of memory.");
@@ -385,6 +438,9 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             break;
         conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok,
                    r->st.cache_w, r->st.cache_r);
+        r->ctx_used = r->st.in_tok + r->st.cache_r + r->st.cache_w + r->st.out_tok;
+        r->turn_out += r->st.out_tok;
+        ctx_show(r);
         stop = r->st.stop_reason;
         ntools = stream_tools(&r->st);
         if (r->shown)
@@ -432,13 +488,18 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             answered = 0;
             break;
         }
-        if (r->io->brk(r->io->u)) {
+        if (r->tools.stop)
+            break;                  /* the user says what to do instead */
+        if (ui_poll(&r->ui)) {
             ui_line(&r->ui, "Stopped after the tool calls. Type a message to go on.");
             break;
         }
     }
+    ui_busy(&r->ui, 0);
     if (!answered)
         conv_rollback(&r->conv, m0);
+    else
+        session_save(r);
     jw_free(&body);
     jw_free(&content);
     request_free(r);
@@ -493,15 +554,279 @@ static void save(cl_repl *r, const char *arg)
     jw_free(&w);
 }
 
-static const char help[] =
-    "Commands:\n"
-    "  /model [NAME]     show or set the model\n"
-    "  /effort [LEVEL]   show or set the effort: low, medium, high, xhigh, max\n"
-    "  /clear            start a new conversation\n"
-    "  /save FILE        save the conversation as JSON\n"
-    "  /cost             tokens and cost so far\n"
-    "  /exit             leave\n"
-    "Ctrl+C stops an answer or a command. Anything else is sent to Claude.";
+/* the slash commands: the menu's list and /help's */
+static const cl_cmd cmds[] = {
+    { "/help", "Show the commands and the keys" },
+    { "/clear", "Start a new conversation (clears the screen)" },
+    { "/compact", "Summarise the conversation and go on from the summary" },
+    { "/context", "How much of the context window is in use" },
+    { "/cost", "Tokens and cost so far" },
+    { "/effort", "Show or set the effort: low, medium, high, xhigh, max" },
+    { "/exit", "Leave" },
+    { "/init", "Write AMIGA.md: notes on this directory for later sessions" },
+    { "/model", "Show or set the model" },
+    { "/resume", "Load a saved conversation (the last one by default)" },
+    { "/save", "Save the conversation as JSON: /save FILE" }
+};
+#define NCMDS ((int)(sizeof(cmds) / sizeof(cmds[0])))
+
+static const char help_keys[] =
+    "Keys: Enter sends, Shift+Enter (or \\ then Enter, or Ctrl+J) starts a new line; "
+    "Up/Down: earlier lines; Ctrl+A/E start/end, Ctrl+K/U/W cut, Ctrl+Y puts it back; "
+    "Shift+Tab: the permission mode (default, accept edits, plan); Esc stops Claude; "
+    "Ctrl+O shows results in full; Ctrl+C clears the line, twice leaves.";
+
+static const char *const models[] = { "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-1",
+                                      "claude-haiku-4-5" };
+static const char *const efforts[] = { "low", "medium", "high", "xhigh", "max" };
+
+static void context(cl_repl *r)
+{
+    char m[400], num[16];
+    long w = repl_window(r->model), used = r->ctx_used, pct;
+    int i, cells = 30, full;
+    if (used > w)
+        used = w;
+    pct = used / (w / 100);
+    full = (int)(used * cells / w);
+    if (used && !full)
+        full = 1;
+    cl_copy(m, "Context ", sizeof(m));
+    for (i = 0; i < cells; i++)
+        cl_cat(m, i < full ? "\342\226\210" : "\342\226\221", sizeof(m));   /* U+2588, U+2591 */
+    cl_cat(m, "  ", sizeof(m));
+    cl_ltoa(used, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " of ", sizeof(m));
+    cl_ltoa(w, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " tokens (", sizeof(m));
+    cl_ltoa(pct, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, "%), ", sizeof(m));
+    cl_ltoa(100 - pct, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, "% left. Messages: ", sizeof(m));
+    cl_ltoa(r->conv.n, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, used ? ". (As of the last request; /compact makes room.)" : ". (Nothing sent yet.)", sizeof(m));
+    ui_line(&r->ui, m);
+}
+
+static void capture_text(void *u, const char *s, long n)
+{
+    jw_raw((jw *)u, s, n);
+}
+
+static void capture_end(void *u)
+{
+    (void)u;
+}
+
+static const char compact_prompt[] =
+    "Summarise this conversation for a fresh session that will continue it: the user's goals, "
+    "the decisions made, the files and paths involved, what was changed, what is still open, and "
+    "anything the user asked to keep in mind. Be complete but concise. Do not call any tool.";
+
+static const char compact_intro[] =
+    "This session continues an earlier conversation that was compacted. Its summary:\n\n";
+
+/* /compact: one request for a summary, then a NEW conversation seeded with
+ * it -- nothing earlier is edited (the history stays append-only) */
+static void compact(cl_repl *r)
+{
+    cl_mark m0 = conv_mark(&r->conv);
+    cl_opts o;
+    cl_render keep = r->render;
+    jw body, sum;
+    int rc;
+    if (!r->conv.n) {
+        ui_line(&r->ui, "Nothing to compact yet.");
+        return;
+    }
+    if (conv_add_user_text(&r->conv, compact_prompt, (long)sizeof(compact_prompt) - 1)) {
+        ui_line(&r->ui, "Out of memory.");
+        return;
+    }
+    memset(&o, 0, sizeof(o));
+    o.model = r->model;
+    o.effort = r->effort;
+    o.max_tokens = r->max_tokens;
+    o.system = r->system;
+    o.tools = tools_json();
+    o.no_tools = 1;
+    jw_init(&body);
+    jw_init(&sum);
+    r->render.u = &sum;
+    r->render.text = capture_text;
+    r->render.end = capture_end;
+    r->io->brk(r->io->u);
+    ui_busy(&r->ui, 1);
+    rc = conv_body(&r->conv, &o, &body) ? R_FAIL : request(r, body.p, body.n);
+    ui_busy(&r->ui, 0);
+    r->render = keep;
+    if (rc == R_OK && !strcmp(r->st.stop_reason, "end_turn") && sum.n > 0) {
+        jw seed;
+        conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok,
+                   r->st.cache_w, r->st.cache_r);
+        jw_init(&seed);
+        jw_rawz(&seed, compact_intro);
+        jw_raw(&seed, sum.p, sum.n);
+        conv_clear(&r->conv);
+        if (seed.oom || conv_add_user_text(&r->conv, seed.p, seed.n)) {
+            conv_clear(&r->conv);
+            ui_line(&r->ui, "Out of memory: the conversation starts anew.");
+        } else {
+            r->ctx_used = sum.n / 4;
+            ctx_show(r);
+            ui_line(&r->ui, "Compacted. The conversation goes on from its summary (/context for the size).");
+            session_save(r);
+        }
+        jw_free(&seed);
+    } else {
+        conv_rollback(&r->conv, m0);
+        if (rc == R_CANCEL)
+            ui_line(&r->ui, "Stopped. The conversation is as it was.");
+        else if (rc == R_OK)
+            ui_line(&r->ui, "No summary came back; the conversation is as it was.");
+    }
+    jw_free(&body);
+    jw_free(&sum);
+    request_free(r);
+}
+
+static const char init_prompt[] =
+    "Look at the files in the start directory (list_dir, read_file, grep; a few targeted reads, "
+    "the machine is slow) and write AMIGA.md there with write_file: notes for future sessions "
+    "on this directory -- what it is, how it is laid out, how to build, run and test it on the "
+    "Amiga, and conventions you notice. Under 60 lines. If AMIGA.md exists, improve it.";
+
+/* the text blocks of a saved message, shown again (/resume) */
+static void replay(cl_repl *r, jv content, int user)
+{
+    jit it;
+    jv b, x;
+    if (json_type(content) == J_STR) {
+        long l;
+        char *t = json_strdup(content, &l);
+        if (t && user)
+            ui_user(&r->ui, t);
+        free(t);
+        return;
+    }
+    json_iter(content, &it);
+    while (json_next(&it, 0, &b)) {
+        long l;
+        char *t;
+        if (!json_get(b, "type", &x) || !json_streq(x, "text") || !json_get(b, "text", &x))
+            continue;
+        t = json_strdup(x, &l);
+        if (!t)
+            continue;
+        if (user)
+            ui_user(&r->ui, t);
+        else {
+            r->render.text(r->render.u, t, l);
+            r->render.end(r->render.u);
+        }
+        free(t);
+    }
+}
+
+static void resume(cl_repl *r, const char *arg)
+{
+    char full[512], num[16], m[120];
+    char *b = 0;
+    long n = 0;
+    jv v, e, role, content;
+    jit it;
+    cl_conv c;
+    const char *f = *arg ? arg : r->session;
+    if (!*f) {
+        ui_line(&r->ui, "Usage: /resume FILE");
+        return;
+    }
+    if (*arg ? path_join(r->tools.root, arg, full, sizeof(full)) : (cl_copy(full, f, sizeof(full)), 0)) {
+        ui_line(&r->ui, "Not a usable file name.");
+        return;
+    }
+    if (r->sys->read(r->sys->u, full, 8L * 1024 * 1024, &b, &n)) {
+        show_err(r, "Cannot read the saved conversation: ", r->sys->err(r->sys->u));
+        return;
+    }
+    if (json_parse(b, n, &v) || json_type(v) != J_ARR || !json_count(v)) {
+        free(b);
+        ui_line(&r->ui, "That is not a saved conversation (a JSON array of messages).");
+        return;
+    }
+    conv_init(&c);
+    json_iter(v, &it);
+    while (json_next(&it, 0, &e)) {
+        if (!json_get(e, "role", &role) || !json_get(e, "content", &content) ||
+            (!json_streq(role, "user") && !json_streq(role, "assistant"))) {
+            conv_free(&c);
+            free(b);
+            ui_line(&r->ui, "That is not a saved conversation (a message without role or content).");
+            return;
+        }
+        if (json_type(content) == J_STR) {
+            jw w;
+            jw_init(&w);
+            jw_rawz(&w, "[{\"type\":\"text\",\"text\":");
+            jw_raw(&w, content.p, content.n);
+            jw_rawz(&w, "}]");
+            conv_add(&c, json_streq(role, "user"), w.p, w.n);
+            jw_free(&w);
+        } else {
+            conv_add(&c, json_streq(role, "user"), content.p, content.n);
+        }
+    }
+    conv_clear(&r->conv);
+    free(r->conv.m);
+    r->conv.m = c.m;
+    r->conv.n = c.n;
+    r->conv.cap = c.cap;
+    json_iter(v, &it);
+    while (json_next(&it, 0, &e)) {
+        json_get(e, "role", &role);
+        json_get(e, "content", &content);
+        replay(r, content, json_streq(role, "user"));
+    }
+    free(b);
+    cl_copy(m, "Resumed a conversation of ", sizeof(m));
+    cl_ltoa(r->conv.n, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " messages.", sizeof(m));
+    ui_line(&r->ui, m);
+}
+
+/* /help: the command table (the slash menu's too) and the keys */
+static void show_help(cl_repl *r)
+{
+    int i;
+    ui_line(&r->ui, "Commands:");
+    for (i = 0; i < NCMDS; i++) {
+        char m[160];
+        long k;
+        cl_copy(m, "  ", sizeof(m));
+        cl_cat(m, cmds[i].name, sizeof(m));
+        for (k = (long)strlen(m); k < 14; k++)
+            m[k] = ' ';
+        m[k] = 0;
+        cl_cat(m, cmds[i].help, sizeof(m));
+        ui_line(&r->ui, m);
+    }
+    ui_line(&r->ui, r->tui ? help_keys : "Ctrl+C stops an answer or a command. Anything else is sent to Claude.");
+}
+
+static int pick(cl_repl *r, const char *title, const char *const *opt, int n, const char *cur)
+{
+    int i, sel = 0;
+    for (i = 0; i < n; i++)
+        if (!strcmp(opt[i], cur))
+            sel = i;
+    return ui_pick(&r->ui, title, opt, n, sel);
+}
 
 int repl_line(cl_repl *r, const char *line)
 {
@@ -522,10 +847,16 @@ int repl_line(cl_repl *r, const char *line)
     if (!strncmp(line, "/exit", 5) || !strncmp(line, "/quit", 5))
         return 1;
     if (!strncmp(line, "/help", 5))
-        ui_line(&r->ui, help);
+        show_help(r);
     else if (!strncmp(line, "/model", 6)) {
         if (*arg)
             cl_copy(r->model, arg, sizeof(r->model));
+        else {
+            int c = pick(r, "Select a model", models, (int)(sizeof(models) / sizeof(models[0])), r->model);
+            if (c >= 0)
+                cl_copy(r->model, models[c], sizeof(r->model));
+        }
+        ctx_show(r);
         show_err(r, "Model: ", r->model);
     } else if (!strncmp(line, "/effort", 7)) {
         if (*arg) {
@@ -535,12 +866,28 @@ int repl_line(cl_repl *r, const char *line)
                 return 0;
             }
             cl_copy(r->effort, arg, sizeof(r->effort));
+        } else {
+            int c = pick(r, "Select the effort", efforts, 5, r->effort);
+            if (c >= 0)
+                cl_copy(r->effort, efforts[c], sizeof(r->effort));
         }
         show_err(r, "Effort: ", r->effort);
     } else if (!strncmp(line, "/clear", 6)) {
         conv_clear(&r->conv);
+        r->ctx_used = 0;
+        ctx_show(r);
+        if (r->tui)
+            tui_clear(r->tui);
         ui_line(&r->ui, "A new conversation.");
-    } else if (!strncmp(line, "/save", 5))
+    } else if (!strncmp(line, "/compact", 8))
+        compact(r);
+    else if (!strncmp(line, "/context", 8))
+        context(r);
+    else if (!strncmp(line, "/init", 5))
+        turn(r, init_prompt, (long)sizeof(init_prompt) - 1);
+    else if (!strncmp(line, "/resume", 7))
+        resume(r, arg);
+    else if (!strncmp(line, "/save", 5))
         save(r, arg);
     else if (!strncmp(line, "/cost", 5))
         cost(r);
@@ -555,6 +902,19 @@ void repl_run(cl_repl *r)
     char m[200];
     if (!line)
         return;
+    if (r->tui) {
+        show_welcome(r->show, r->model, r->tools.root);
+        for (;;) {
+            long n = tui_read(r->tui, line, 8192);
+            if (n < 0)
+                break;
+            ui_user(&r->ui, line);
+            if (repl_line(r, line))
+                break;
+        }
+        free(line);
+        return;
+    }
     cl_copy(m, "Claude in UP-Term. Model ", sizeof(m));
     cl_cat(m, r->model, sizeof(m));
     cl_cat(m, ", effort ", sizeof(m));
@@ -570,6 +930,45 @@ void repl_run(cl_repl *r)
             break;
     }
     free(line);
+}
+
+int repl_screen(cl_repl *r)
+{
+    cl_tui *t;
+    cl_show *s;
+    if (!r->io->read || r->tui)
+        return -1;
+    t = (cl_tui *)malloc(sizeof(cl_tui));
+    s = (cl_show *)malloc(sizeof(cl_show));
+    if (!t || !s || tui_init(t, r->io)) {
+        if (t)
+            tui_free(t);
+        free(t);
+        free(s);
+        return -1;
+    }
+    t->model = r->model;
+    t->effort = r->effort;
+    t->root = r->tools.root;
+    t->mode = &r->tools.perm.mode;
+    t->cmds = cmds;
+    t->ncmds = NCMDS;
+    show_init(s, t);
+    if (tui_start(t)) {
+        show_free(s);
+        tui_free(t);
+        free(t);
+        free(s);
+        return -1;
+    }
+    r->tui = t;
+    r->show = s;
+    r->ui.tui = t;
+    r->ui.show = s;
+    show_render(s, &r->render);
+    ctx_show(r);
+    tui_frame(t);
+    return 0;
 }
 
 int repl_ping(cl_repl *r)
@@ -640,18 +1039,42 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->tools.u = r;
     r->tools.show = tool_show;
     r->tools.ask = tool_ask;
+    r->tools.preview = tool_preview;
+    r->tools.result = tool_result;
     jw_init(&s);
     jw_rawz(&s, sys_a);
     jw_rawz(&s, sys_b);
     jw_rawz(&s, r->tools.root);
     jw_rawz(&s, sys_c);
     jw_rawz(&s, sys_d);
+    /* AMIGA.md in the start directory: the project's notes (/init writes it) */
+    {
+        char p[512], *notes = 0;
+        long nn = 0;
+        if (path_join(r->tools.root, "AMIGA.md", p, sizeof(p)) == 0 && sys->kind(sys->u, p) == 1 &&
+            sys->read(sys->u, p, 16384, &notes, &nn) == 0) {
+            jw_rawz(&s, "\n\nThe project's notes (AMIGA.md in the start directory):\n\n");
+            jw_raw(&s, notes, nn);
+        }
+        free(notes);
+    }
     r->system = s.p;
     return s.oom ? -1 : 0;
 }
 
 void repl_free(cl_repl *r)
 {
+    if (r->tui) {
+        tui_stop(r->tui);
+        show_free(r->show);
+        tui_free(r->tui);
+        free(r->tui);
+        free(r->show);
+        r->tui = 0;
+        r->show = 0;
+        r->ui.tui = 0;
+        r->ui.show = 0;
+    }
     drop(r);
     request_free(r);
     conv_free(&r->conv);

@@ -43,13 +43,21 @@ static const char *const tools_parts[] = {
     "to 32 KB, with the return code (5 warn, 10 error, 20 failure). Commands that wait for input "
     "get none. Time limit 60 seconds.\",\"strict\":true,\"eager_input_streaming\":true,"
     "\"input_schema\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}},"
-    "\"required\":[\"command\"],\"additionalProperties\":false}}]",
+    "\"required\":[\"command\"],\"additionalProperties\":false}},",
+    "{\"name\":\"todo_write\",\"description\":\"Keep a todo list for a task of several steps: send "
+    "the whole list each time, each item pending, in_progress or completed, one in_progress at a "
+    "time; mark an item completed as soon as it is done. The user sees it as a checklist. Skip it "
+    "for small tasks.\",\"strict\":true,\"eager_input_streaming\":true,\"input_schema\":{\"type\":",
+    "\"object\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\","
+    "\"properties\":{\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":"
+    "[\"pending\",\"in_progress\",\"completed\"]}},\"required\":[\"content\",\"status\"],"
+    "\"additionalProperties\":false}}},\"required\":[\"todos\"],\"additionalProperties\":false}}]",
     0
 };
 
 const char *tools_json(void)
 {
-    static char all[3072];
+    static char all[4096];
     int i;
     if (!all[0])
         for (i = 0; tools_parts[i]; i++)
@@ -60,7 +68,7 @@ const char *tools_json(void)
 typedef struct spec {
     const char *name;
     const char *prop[3];
-    char type[3];               /* 's' string, 'b' boolean */
+    char type[3];               /* 's' string, 'b' boolean, 'a' array */
     unsigned required;          /* bit per prop */
 } spec;
 
@@ -71,6 +79,7 @@ static const spec specs[T_COUNT] = {
     { "write_file", { "path", "content", 0 }, { 's', 's', 0 }, 3 },
     { "edit_file", { "path", "old_string", "new_string" }, { 's', 's', 's' }, 7 },
     { "run_command", { "command", 0, 0 }, { 's', 0, 0 }, 1 },
+    { "todo_write", { "todos", 0, 0 }, { 'a', 0, 0 }, 1 },
 };
 
 int tools_id(const char *name)
@@ -89,9 +98,18 @@ int perm_read_only(int tool)
 
 int perm_must_ask(const cl_perm *p, int tool, int outside)
 {
+    if (tool == T_TODO_WRITE)
+        return 0;
     if (outside)
         return 1;
+    if (p->mode == PERM_ACCEPT && (tool == T_WRITE_FILE || tool == T_EDIT_FILE))
+        return 0;
     return !(p->session & (1u << tool));
+}
+
+int perm_refused(const cl_perm *p, int tool)
+{
+    return p->mode == PERM_PLAN && !perm_read_only(tool) && tool != T_TODO_WRITE;
 }
 
 void perm_grant(cl_perm *p, int tool)
@@ -100,6 +118,41 @@ void perm_grant(cl_perm *p, int tool)
         p->session |= (1u << T_READ_FILE) | (1u << T_LIST_DIR) | (1u << T_GREP);
     else
         p->session |= 1u << tool;
+}
+
+/* todo_write's items: objects with a content string and a status */
+static int todo_items(jv arr, char *err, long cap)
+{
+    jit it;
+    jv e;
+    json_iter(arr, &it);
+    while (json_next(&it, 0, &e)) {
+        jit m;
+        jv k, v;
+        int have = 0;
+        if (json_type(e) != J_OBJ) {
+            cl_copy(err, "each todo must be an object", cap);
+            return -1;
+        }
+        json_iter(e, &m);
+        while (json_next(&m, &k, &v)) {
+            if (json_streq(k, "content") && json_type(v) == J_STR)
+                have |= 1;
+            else if (json_streq(k, "status") &&
+                     (json_streq(v, "pending") || json_streq(v, "in_progress") || json_streq(v, "completed")))
+                have |= 2;
+            else {
+                cl_copy(err, "a todo has content (a string) and status (pending, in_progress, completed) only",
+                        cap);
+                return -1;
+            }
+        }
+        if (have != 3) {
+            cl_copy(err, "a todo needs content and status", cap);
+            return -1;
+        }
+    }
+    return 0;
 }
 
 int tools_validate(int tool, jv in, char *err, long cap)
@@ -132,11 +185,16 @@ int tools_validate(int tool, jv in, char *err, long cap)
             return -1;
         }
         t = json_type(v);
-        if ((s->type[i] == 's' && t != J_STR) || (s->type[i] == 'b' && t != J_TRUE && t != J_FALSE)) {
+        if ((s->type[i] == 's' && t != J_STR) || (s->type[i] == 'b' && t != J_TRUE && t != J_FALSE) ||
+            (s->type[i] == 'a' && t != J_ARR)) {
             cl_copy(err, s->prop[i], cap);
-            cl_cat(err, s->type[i] == 's' ? " must be a string" : " must be true or false", cap);
+            cl_cat(err, s->type[i] == 's' ? " must be a string" : s->type[i] == 'a' ? " must be an array"
+                                                                                     : " must be true or false",
+                   cap);
             return -1;
         }
+        if (s->type[i] == 'a' && todo_items(v, err, cap))
+            return -1;
         seen |= 1u << i;
     }
     for (i = 0; i < 3 && s->prop[i]; i++)
@@ -277,8 +335,10 @@ static int resolve(cl_tools *t, const char *arg, char *full, long cap, int *outs
     return 0;
 }
 
-static void result(jw *out, const char *id, const char *text, long n, int is_error)
+static void result(cl_tools *t, jw *out, const char *id, const char *text, long n, int is_error)
 {
+    if (t->result)
+        t->result(t->u, t->cur, t->cur_in, t->cur_inn, is_error, text, n);
     jw_rawz(out, "{\"type\":\"tool_result\",\"tool_use_id\":");
     jw_strz(out, id);
     jw_rawz(out, ",\"content\":");
@@ -288,13 +348,13 @@ static void result(jw *out, const char *id, const char *text, long n, int is_err
     jw_raw(out, "}", 1);
 }
 
-static void error(jw *out, const char *id, const char *a, const char *b)
+static void error(cl_tools *t, jw *out, const char *id, const char *a, const char *b)
 {
     char msg[600];
     cl_copy(msg, a, sizeof(msg));
     if (b)
         cl_cat(msg, b, sizeof(msg));
-    result(out, id, msg, (long)strlen(msg), 1);
+    result(t, out, id, msg, (long)strlen(msg), 1);
 }
 
 /* ---- the tools ---- */
@@ -305,19 +365,19 @@ static void do_read(cl_tools *t, const char *id, const char *path, jw *out)
     long n = 0;
     int rc = t->sys->read(t->sys->u, path, READ_MAX, &b, &n);
     if (rc == SYS_TOO_BIG) {
-        error(out, id, "the file is larger than 256 KB: ", path);
+        error(t, out, id, "the file is larger than 256 KB: ", path);
         return;
     }
     if (rc) {
-        error(out, id, "cannot read the file: ", t->sys->err(t->sys->u));
+        error(t, out, id, "cannot read the file: ", t->sys->err(t->sys->u));
         return;
     }
     if (is_binary(b, n))
-        error(out, id, "this is a binary file, not text: ", path);
+        error(t, out, id, "this is a binary file, not text: ", path);
     else if (!n)
-        result(out, id, "(the file is empty)", 19, 0);
+        result(t, out, id, "(the file is empty)", 19, 0);
     else
-        result(out, id, b, n, 0);
+        result(t, out, id, b, n, 0);
     free(b);
 }
 
@@ -367,12 +427,12 @@ static void do_list(cl_tools *t, const char *id, const char *path, jw *out)
     int i;
     memset(&l, 0, sizeof(l));
     if (t->sys->kind(t->sys->u, path) != 2) {
-        error(out, id, "not a directory: ", path);
+        error(t, out, id, "not a directory: ", path);
         return;
     }
     if (t->sys->list(t->sys->u, path, collect, &l)) {
         free(l.e);
-        error(out, id, "cannot list the directory: ", t->sys->err(t->sys->u));
+        error(t, out, id, "cannot list the directory: ", t->sys->err(t->sys->u));
         return;
     }
     if (l.n > 1)
@@ -392,7 +452,7 @@ static void do_list(cl_tools *t, const char *id, const char *path, jw *out)
         jw_rawz(&r, "(more entries not shown)\n");
     if (!l.n)
         jw_rawz(&r, "(the directory is empty)");
-    result(out, id, r.p, r.n, 0);
+    result(t, out, id, r.p, r.n, 0);
     jw_free(&r);
     free(l.e);
 }
@@ -534,7 +594,7 @@ static void do_grep(cl_tools *t, const char *id, const char *path, const char *p
     g.icase = icase;
     jw_init(&g.r);
     if (!*pat) {
-        error(out, id, "the pattern is empty", 0);
+        error(t, out, id, "the pattern is empty", 0);
         return;
     }
     if (strchr(pat, '*') || strchr(pat, '?')) {
@@ -560,14 +620,14 @@ static void do_grep(cl_tools *t, const char *id, const char *path, const char *p
             free(g.dirs[--g.nd]);
     } else {
         free(g.wpat);
-        error(out, id, "no such file or directory: ", path);
+        error(t, out, id, "no such file or directory: ", path);
         return;
     }
     if (g.hits >= GREP_HITS || g.files >= GREP_FILES)
         jw_rawz(&g.r, "(the search stopped at its limit: 200 lines or 2000 files)\n");
     if (!g.hits)
         jw_rawz(&g.r, "(no matches)");
-    result(out, id, g.r.p, g.r.n, 0);
+    result(t, out, id, g.r.p, g.r.n, 0);
     jw_free(&g.r);
     free(g.dirs);
     free(g.depth);
@@ -578,11 +638,11 @@ static void do_write(cl_tools *t, const char *id, const char *path, const char *
 {
     char msg[600], num[16];
     if (t->sys->kind(t->sys->u, path) == 2) {
-        error(out, id, "that is a directory: ", path);
+        error(t, out, id, "that is a directory: ", path);
         return;
     }
     if (t->sys->write(t->sys->u, path, s, n)) {
-        error(out, id, "cannot write the file: ", t->sys->err(t->sys->u));
+        error(t, out, id, "cannot write the file: ", t->sys->err(t->sys->u));
         return;
     }
     cl_ltoa(n, num);
@@ -590,7 +650,7 @@ static void do_write(cl_tools *t, const char *id, const char *path, const char *
     cl_cat(msg, num, sizeof(msg));
     cl_cat(msg, " bytes to ", sizeof(msg));
     cl_cat(msg, path, sizeof(msg));
-    result(out, id, msg, (long)strlen(msg), 0);
+    result(t, out, id, msg, (long)strlen(msg), 0);
 }
 
 static long count_of(const char *h, long hn, const char *nd, long nn, long *first)
@@ -607,69 +667,100 @@ static long count_of(const char *h, long hn, const char *nd, long nn, long *firs
     return c;
 }
 
-static void do_edit(cl_tools *t, const char *id, const char *path, const char *olds, long on,
-                    const char *news, long nn, jw *out)
+/* an edit worked out before anything is asked: the file as UTF-8 before
+ * and after (the preview shows them), and whether it is kept as Latin-1 */
+typedef struct pedit {
+    char *before, *after;
+    long bn, an;
+    int latin;
+} pedit;
+
+static int edit_prepare(cl_tools *t, const char *id, const char *path, const char *olds, long on,
+                        const char *news, long nn, jw *out, pedit *e)
 {
-    char *b = 0, *u, *res, msg[600];
-    long n, un, c, at, rn;
-    int latin, rc;
+    char *b = 0;
+    long n, c, at;
+    int rc;
+    memset(e, 0, sizeof(*e));
     if (!on) {
-        error(out, id, "old_string is empty; use write_file to create a file", 0);
-        return;
+        error(t, out, id, "old_string is empty; use write_file to create a file", 0);
+        return -1;
     }
     rc = t->sys->read(t->sys->u, path, EDIT_MAX, &b, &n);
     if (rc) {
-        error(out, id, rc == SYS_TOO_BIG ? "the file is larger than 1 MB: " : "cannot read the file: ",
+        error(t, out, id, rc == SYS_TOO_BIG ? "the file is larger than 1 MB: " : "cannot read the file: ",
               rc == SYS_TOO_BIG ? path : t->sys->err(t->sys->u));
-        return;
+        return -1;
     }
     if (is_binary(b, n)) {
         free(b);
-        error(out, id, "this is a binary file, not text: ", path);
-        return;
+        error(t, out, id, "this is a binary file, not text: ", path);
+        return -1;
     }
-    latin = !valid_utf8(b, n);
-    if (latin) {
-        u = latin1_to_utf8(b, n, &un);
+    e->latin = !valid_utf8(b, n);
+    if (e->latin) {
+        e->before = latin1_to_utf8(b, n, &e->bn);
         free(b);
-        if (!u) {
-            error(out, id, "out of memory", 0);
-            return;
+        if (!e->before) {
+            error(t, out, id, "out of memory", 0);
+            return -1;
         }
     } else {
-        u = b;
-        un = n;
+        e->before = b;
+        e->bn = n;
     }
-    c = count_of(u, un, olds, on, &at);
+    c = count_of(e->before, e->bn, olds, on, &at);
     if (c != 1) {
-        free(u);
-        error(out, id, c ? "old_string occurs more than once; include more surrounding text to make it unique"
-                         : "old_string was not found in the file", 0);
-        return;
+        free(e->before);
+        e->before = 0;
+        error(t, out, id, c ? "old_string occurs more than once; include more surrounding text to make it unique"
+                            : "old_string was not found in the file", 0);
+        return -1;
     }
-    res = (char *)malloc((size_t)(un - on + nn + 1));
-    if (!res) {
-        free(u);
-        error(out, id, "out of memory", 0);
-        return;
+    e->an = e->bn - on + nn;
+    e->after = (char *)malloc((size_t)e->an + 1);
+    if (!e->after) {
+        free(e->before);
+        e->before = 0;
+        error(t, out, id, "out of memory", 0);
+        return -1;
     }
-    memcpy(res, u, (size_t)at);
-    memcpy(res + at, news, (size_t)nn);
-    memcpy(res + at + nn, u + at + on, (size_t)(un - at - on));
-    rn = un - on + nn;
-    free(u);
-    if (latin)
-        rn = utf8_to_latin1(res, rn);
-    rc = t->sys->write(t->sys->u, path, res, rn);
-    free(res);
+    memcpy(e->after, e->before, (size_t)at);
+    memcpy(e->after + at, news, (size_t)nn);
+    memcpy(e->after + at + nn, e->before + at + on, (size_t)(e->bn - at - on));
+    e->after[e->an] = 0;
+    return 0;
+}
+
+static void edit_free(pedit *e)
+{
+    free(e->before);
+    free(e->after);
+    memset(e, 0, sizeof(*e));
+}
+
+static void do_edit(cl_tools *t, const char *id, const char *path, pedit *e, jw *out)
+{
+    char msg[600];
+    long rn = e->an;
+    int rc;
+    if (e->latin)
+        rn = utf8_to_latin1(e->after, rn);
+    rc = t->sys->write(t->sys->u, path, e->after, rn);
     if (rc) {
-        error(out, id, "cannot write the file: ", t->sys->err(t->sys->u));
+        error(t, out, id, "cannot write the file: ", t->sys->err(t->sys->u));
         return;
     }
     cl_copy(msg, "Edited ", sizeof(msg));
     cl_cat(msg, path, sizeof(msg));
-    cl_cat(msg, latin ? ": one occurrence replaced (kept as Latin-1)" : ": one occurrence replaced", sizeof(msg));
-    result(out, id, msg, (long)strlen(msg), 0);
+    cl_cat(msg, e->latin ? ": one occurrence replaced (kept as Latin-1)" : ": one occurrence replaced", sizeof(msg));
+    result(t, out, id, msg, (long)strlen(msg), 0);
+}
+
+static void do_todo(cl_tools *t, const char *id, jw *out)
+{
+    static const char ok[] = "Todos updated. Keep the list current as you work.";
+    result(t, out, id, ok, (long)sizeof(ok) - 1, 0);
 }
 
 static void do_run(cl_tools *t, const char *id, const char *cmd, jw *out)
@@ -680,13 +771,13 @@ static void do_run(cl_tools *t, const char *id, const char *cmd, jw *out)
     jw res;
     char num[16];
     if (!buf) {
-        error(out, id, "out of memory", 0);
+        error(t, out, id, "out of memory", 0);
         return;
     }
     r = t->sys->run(t->sys->u, cmd, t->timeout_s, buf, OUT_MAX, &n, &rc);
     if (r == -1) {
         free(buf);
-        error(out, id, "the command did not start: ", t->sys->err(t->sys->u));
+        error(t, out, id, "the command did not start: ", t->sys->err(t->sys->u));
         return;
     }
     jw_init(&res);
@@ -701,7 +792,7 @@ static void do_run(cl_tools *t, const char *id, const char *cmd, jw *out)
     jw_raw(&res, buf, n);
     if (n >= OUT_MAX)
         jw_rawz(&res, "\n(output cut at 32 KB)");
-    result(out, id, res.p, res.n, r != 0);
+    result(t, out, id, res.p, res.n, r != 0);
     jw_free(&res);
     free(buf);
 }
@@ -714,8 +805,18 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
     char err[200], what[300], full[512];
     char *a = 0, *b = 0, *c = 0;
     long al = 0, bl = 0, cl = 0;
+    pedit pe;
+    memset(&pe, 0, sizeof(pe));
+    t->cur = tool;
+    t->cur_in = raw ? raw : "";
+    t->cur_inn = raw ? rawn : 0;
     if (tool < 0) {
-        error(out, id, "there is no tool named ", name);
+        error(t, out, id, "there is no tool named ", name);
+        return;
+    }
+    if (t->stop) {
+        /* the user stopped this round at an earlier call of it */
+        error(t, out, id, "not run: the user stopped at an earlier tool call and will say what to do instead", 0);
         return;
     }
     if (!input_ok || json_parse(raw, rawn, &in)) {
@@ -723,11 +824,20 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
         long k = rawn < (long)sizeof(cut) - 1 ? rawn : (long)sizeof(cut) - 1;
         memcpy(cut, raw ? raw : "", (size_t)(raw ? k : 0));
         cut[raw ? k : 0] = 0;
-        error(out, id, "the tool input was not valid JSON; send the call again. It began: ", cut);
+        error(t, out, id, "the tool input was not valid JSON; send the call again. It began: ", cut);
         return;
     }
     if (tools_validate(tool, in, err, sizeof(err))) {
-        error(out, id, "invalid input: ", err);
+        error(t, out, id, "invalid input: ", err);
+        return;
+    }
+    if (tool == T_TODO_WRITE) {
+        do_todo(t, id, out);
+        return;
+    }
+    if (perm_refused(&t->perm, tool)) {
+        error(t, out, id, "plan mode is on: only read_file, list_dir and grep run now. Present your plan; the "
+                          "user switches plan mode off (Shift+Tab) to let you carry it out", 0);
         return;
     }
     switch (tool) {
@@ -753,11 +863,11 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
     }
     if ((tool != T_RUN_COMMAND && !b) || (tool != T_READ_FILE && tool != T_LIST_DIR && !a) ||
         (tool == T_EDIT_FILE && !c)) {
-        error(out, id, "out of memory", 0);
+        error(t, out, id, "out of memory", 0);
         goto done;
     }
     if (tool != T_RUN_COMMAND && resolve(t, b, full, sizeof(full), &outside)) {
-        error(out, id, "not a usable path (it climbs above a volume's root): ", b);
+        error(t, out, id, "not a usable path (it climbs above a volume's root): ", b);
         goto done;
     }
     if (tool == T_RUN_COMMAND)
@@ -768,10 +878,30 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
         summary(what, sizeof(what), full, 0);
     if (t->show)
         t->show(t->u, name, what);
+    /* what a write or an edit will do, before the question */
+    if (tool == T_EDIT_FILE) {
+        if (edit_prepare(t, id, full, a, al, c, cl, out, &pe))
+            goto done;
+        if (t->preview)
+            t->preview(t->u, tool, full, pe.before, pe.bn, pe.after, pe.an);
+    } else if (tool == T_WRITE_FILE && t->preview) {
+        char *old = 0;
+        long on = 0;
+        if (t->sys->kind(t->sys->u, full) != 1 || t->sys->read(t->sys->u, full, EDIT_MAX, &old, &on))
+            old = 0;
+        t->preview(t->u, tool, full, old, old ? on : 0, a, al);
+        free(old);
+    }
     if (perm_must_ask(&t->perm, tool, outside)) {
         ans = t->ask ? t->ask(t->u, name, what, outside) : ASK_NO;
+        if (ans == ASK_STOP) {
+            t->stop = 1;
+            error(t, out, id, "the user stopped this tool call and will tell you what to do differently; "
+                              "wait for their message", 0);
+            goto done;
+        }
         if (ans == ASK_NO) {
-            error(out, id, "the user declined this tool call", 0);
+            error(t, out, id, "the user declined this tool call", 0);
             goto done;
         }
         if (ans == ASK_SESSION && !outside)
@@ -793,13 +923,14 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
         do_write(t, id, full, a, al, out);
         break;
     case T_EDIT_FILE:
-        do_edit(t, id, full, a, al, c, cl, out);
+        do_edit(t, id, full, &pe, out);
         break;
     case T_RUN_COMMAND:
         do_run(t, id, a, out);
         break;
     }
 done:
+    edit_free(&pe);
     free(a);
     free(b);
     free(c);
