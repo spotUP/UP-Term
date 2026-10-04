@@ -125,6 +125,61 @@ int vti_motion(vti_mouse *m, const vt_term *t, int x, int y, int mods, vt_u8 *ou
     return n;
 }
 
+/* What a double-click joins: 0 blank, 1 word (letters, digits, beyond
+ * ASCII, and the path and URL characters), else the character itself
+ * (punctuation stands alone). */
+static long word_class(unsigned long c)
+{
+    static const char path[] = "-#%&+,./=?@\\_~:";
+    int i;
+    if (c == ' ' || c == 0 || c == 0xA0)
+        return 0;
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80)
+        return 1;
+    for (i = 0; path[i]; i++)
+        if (c == (unsigned char)path[i])
+            return 1;
+    return (long)c + 2;
+}
+
+/* the class of cell x (the second half of a wide glyph is its first's) */
+static long cell_class(const vt_cell *c, int x)
+{
+    if (x > 0 && c[x].width == 0)
+        x--;
+    return word_class(c[x].ch);
+}
+
+int vti_word(const vt_term *t, int x, int y, int *x0, int *x1)
+{
+    int n;
+    long k;
+    const vt_cell *c = vt_row(t, y, &n);
+    if (!c || n < 1)
+        return 0;
+    if (x >= n)
+        x = n - 1;
+    if (x < 0)
+        x = 0;
+    k = cell_class(c, x);
+    *x0 = *x1 = x;
+    while (*x0 > 0 && cell_class(c, *x0 - 1) == k)
+        (*x0)--;
+    while (*x1 < n - 1 && cell_class(c, *x1 + 1) == k)
+        (*x1)++;
+    return 1;
+}
+
+void vti_line(const vt_term *t, int y, int *y0, int *y1)
+{
+    int top = -vt_scrollback_lines(t), bottom = vt_rows(t) - 1;
+    *y0 = *y1 = y;
+    while (*y0 > top && vt_row_wrapped(t, *y0 - 1))
+        (*y0)--;
+    while (*y1 < bottom && vt_row_wrapped(t, *y1))
+        (*y1)++;
+}
+
 int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
               int px, int py, vt_u8 *out, int *lines)
 {

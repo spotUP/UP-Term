@@ -208,8 +208,63 @@ static void middle_button_and_modifiers_reach_the_program(void)
     vt_free(t);
 }
 
+/* gap #14: double-click selects a word, triple-click the line */
+static void double_click_word_triple_click_line(void)
+{
+    vt_term *t = h_new(20, 4, VT_XTERM);
+    vti_mouse m;
+    int a, n, x0 = -1, x1 = -1, y0 = -1, y1 = -1;
+    vt_u8 buf[40];
+    vti_mouse_reset(&m);
+    h_put(t, "ls ~/src/vt-con.c (x)  ");
+    /* the run of clicks: on the same cell, each within the double-click time */
+    CHECK_INT(vti_button(&m, t, 0, 1, 6, 0, 1, 0, 0, 1, buf, &n), VTI_SELECT);
+    CHECK_INT(m.clicks, 1);                       /* the first click has nothing before it */
+    vti_button(&m, t, 0, 0, 6, 0, 1, 0, 1, 0, buf, &n);
+    CHECK_INT(vti_button(&m, t, 0, 1, 6, 0, 1, 0, 0, 1, buf, &n), VTI_SELECT);
+    CHECK_INT(m.clicks, 2);
+    vti_button(&m, t, 0, 0, 6, 0, 1, 0, 1, 0, buf, &n);
+    vti_button(&m, t, 0, 1, 6, 0, 1, 0, 0, 1, buf, &n);
+    CHECK_INT(m.clicks, 3);
+    vti_button(&m, t, 0, 0, 6, 0, 1, 0, 1, 0, buf, &n);
+    vti_button(&m, t, 0, 1, 6, 0, 1, 0, 0, 1, buf, &n);
+    CHECK_INT(m.clicks, 1);                       /* a fourth starts over */
+    vti_button(&m, t, 0, 0, 6, 0, 1, 0, 1, 0, buf, &n);
+    vti_button(&m, t, 0, 1, 7, 0, 1, 0, 0, 1, buf, &n);
+    CHECK_INT(m.clicks, 1);                       /* another cell: a new run */
+    vti_button(&m, t, 0, 0, 7, 0, 1, 0, 1, 0, buf, &n);
+    vti_button(&m, t, 0, 1, 7, 0, 1, 0, 0, 0, buf, &n);
+    CHECK_INT(m.clicks, 1);                       /* too slow: a new run */
+    a = vti_button(&m, t, 0, 0, 7, 0, 1, 0, 1, 0, buf, &n);
+    CHECK_INT(a, VTI_SELECT_END);
+    /* the word: a path counts as one, brackets and blanks end it */
+    CHECK_INT(vti_word(t, 6, 0, &x0, &x1), 1);
+    CHECK_INT(x0, 3);
+    CHECK_INT(x1, 16);                            /* ~/src/vt-con.c */
+    CHECK_INT(vti_word(t, 19, 0, &x0, &x1), 1);
+    CHECK_INT(x0, 19);                            /* "(x)  " wrapped: ( on col 18 */
+    vti_word(t, 18, 0, &x0, &x1);
+    CHECK_INT(x0, 18);
+    CHECK_INT(x1, 18);                            /* a bracket stands alone */
+    vti_word(t, 0, 1, &x0, &x1);
+    CHECK_INT(x0, 0);
+    CHECK_INT(x1, 0);                             /* ")" */
+    vti_word(t, 2, 1, &x0, &x1);
+    CHECK_INT(x0, 1);                             /* a run of blanks */
+    CHECK_INT(vti_word(t, 0, 9, &x0, &x1), 0);    /* no such row */
+    /* the line: the rows a wrap joined */
+    vti_line(t, 1, &y0, &y1);
+    CHECK_INT(y0, 0);
+    CHECK_INT(y1, 1);
+    vti_line(t, 3, &y0, &y1);
+    CHECK_INT(y0, 3);
+    CHECK_INT(y1, 3);
+    vt_free(t);
+}
+
 void suite_input(void)
 {
+    double_click_word_triple_click_line();
     middle_button_and_modifiers_reach_the_program();
     motion_reaches_the_program_in_the_motion_modes();
     button_motion_mode_has_no_buttonless_moves();

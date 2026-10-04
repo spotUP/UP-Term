@@ -111,6 +111,8 @@ typedef struct vtwin {
     int drag_x, drag_y;          /* the cell the selection ends at now */
     vti_mouse mouse;             /* buttons and moves the program was told about (vtinput) */
     int mouse_mods;              /* VT_MOD_* of the last mouse event (motion polled on the clock) */
+    ULONG click_secs, click_micros; /* the last left press, for DoubleClick() */
+    int sel_whole;               /* the selection is a double-clicked word or triple-clicked line */
     int pointer_on;              /* ReportMouse is on: a drag, or the program wants moves */
     char find_q[VT_FIND_QUERY_MAX]; /* the last find query, for "find next" */
     long find_next;              /* the row to continue from (VT_ROW_NONE: from the oldest) */
@@ -177,8 +179,9 @@ void vtwin_refresh(vtwin *w);
  * previous two down keys (dead keys; 0 when unknown), the event's time */
 void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG micros);
 /* a mouse event: move (1) or button (code SELECTDOWN/UP, MIDDLEDOWN/UP,
- * MENUDOWN/UP) at window coordinates mx, my */
-void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my);
+ * MENUDOWN/UP) at window coordinates mx, my, at the event's time (a run of
+ * clicks selects a word, then a line) */
+void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, ULONG secs, ULONG micros);
 /* the wheel: up (1) / down (0), qual the event's qualifier (Ctrl and Meta
  * go into the report). The program's when it asked for the mouse,
  * otherwise the scrollback by a few lines (the spec's wheel_scroll) */

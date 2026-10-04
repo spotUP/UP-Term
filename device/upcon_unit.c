@@ -178,7 +178,8 @@ static void event(struct upc_unit *u, const upc_event *e)
         if (u->unitno == CONU_SNIPMAP) {
             int button = e->cls == UPC_IE_RAWMOUSE && (e->code & ~IECODE_UP_PREFIX) == IECODE_LBUTTON;
             int was = u->w.dragging;
-            vtwin_mouse(&u->w, !button, e->code, e->qual, u->win->MouseX, u->win->MouseY);
+            vtwin_mouse(&u->w, !button, e->code, e->qual, u->win->MouseX, u->win->MouseY,
+                        e->secs, e->micros);
             u->base->drags += !was && u->w.dragging;
         }
         break;

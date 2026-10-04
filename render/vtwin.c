@@ -1111,8 +1111,8 @@ static int cell_at(const vtwin *w, WORD mx, WORD my, int *x, int *y)
 static void drag_to(vtwin *w, WORD mx, WORD my)
 {
     int x, y;
-    if (!w->dragging || !w->t || !cell_at(w, mx, my, &x, &y))
-        return;
+    if (!w->dragging || w->sel_whole || !w->t || !cell_at(w, mx, my, &x, &y))
+        return; /* a word or line selection is whole as it is */
     if (x == w->drag_x && y == w->drag_y)
         return;
     w->drag_x = x;
@@ -1151,9 +1151,9 @@ static void motion_to(vtwin *w, WORD mx, WORD my)
 
 /* vti_button decides: reports to a program that asked for them (Shift held
  * gives the mouse back to selection, as in xterm), else drag-to-select. */
-void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
+void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, ULONG secs, ULONG micros)
 {
-    int x = 0, y = 0, btn, down, n, in;
+    int x = 0, y = 0, btn, down, n, in, dclick = 0, x0, x1, y0, y1;
     vt_u8 out[40];
     if (!w->t)
         return;
@@ -1168,8 +1168,15 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
     }
     if (!vti_button_code(code, &btn, &down))
         return;
+    if (btn == 0 && down) {
+        /* the run of clicks (word, line) goes by the user's double-click time */
+        dclick = (w->click_secs || w->click_micros) &&
+                 DoubleClick(w->click_secs, w->click_micros, secs, micros);
+        w->click_secs = secs;
+        w->click_micros = micros;
+    }
     switch (vti_button(&w->mouse, w->t, btn, down, x, y, in, w->mouse_mods,
-                       w->dragging, 0, out, &n)) {
+                       w->dragging, dclick, out, &n)) {
     case VTI_REPORT:
         w->host->input(w->user, out, n);
         if (w->mouse.held)
@@ -1177,13 +1184,24 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my)
         break;
     case VTI_SELECT:
         w->dragging = 1;
-        w->drag_moved = 0;
         w->drag_x = x;
         w->drag_y = y;
         w->drag_ax = x;
         w->drag_ay = y - w->r.view;
-        vr_select(&w->r, 0, 0, 0, 0, 0);
-        frame_start(w); /* vtwin_tick follows the pointer */
+        w->sel_whole = w->mouse.clicks > 1;
+        if (w->mouse.clicks == 2 && vti_word(w->t, x, w->drag_ay, &x0, &x1)) {
+            vr_select(&w->r, 1, x0, w->drag_ay, x1, w->drag_ay); /* double-click: the word */
+        } else if (w->mouse.clicks == 3) {
+            vti_line(w->t, w->drag_ay, &y0, &y1);                /* triple-click: the line */
+            if (!vt_row(w->t, y1, &n))
+                n = vt_cols(w->t);
+            vr_select(&w->r, 1, 0, y0, n - 1, y1);
+        } else {
+            w->sel_whole = 0;
+            vr_select(&w->r, 0, 0, 0, 0, 0);
+            frame_start(w); /* vtwin_tick follows the pointer */
+        }
+        w->drag_moved = w->sel_whole; /* a word or line stays selected on release */
         break;
     case VTI_SELECT_END:
         w->dragging = 0;
