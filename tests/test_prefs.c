@@ -213,8 +213,9 @@ static void load_cases(void)
     CHECK(!prefs_load_writable(PREFS_LOAD_TOOBIG));
     CHECK_INT(conf.nprof, 0);
 
-    /* a file of exactly the cap is read whole */
-    memset(buf, ';', UC_MAX_FILE);
+    /* a file of exactly the cap is read whole (blank lines fill it: a
+     * 16 KB comment is more than the table keeps of comments, UC_NOTE_BYTES) */
+    memset(buf, '\n', UC_MAX_FILE);
     memcpy(buf, "[profile a]\nx = 1\n", 18);
     buf[UC_MAX_FILE] = 0;
     CHECK_INT(prefs_load(&conf, buf, UC_MAX_FILE, UC_MAX_FILE), PREFS_LOAD_OK);

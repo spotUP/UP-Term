@@ -18,7 +18,8 @@
  *   font = PARADISEC 8.8.font
  *   bell = none
  *
- * Keys and profile names are case-insensitive; a later [profile] section of
+ * Keys and profile names are case-insensitive; comment lines are kept and
+ * written back where they stood (UC_MAX_NOTES); a later [profile] section of
  * the same name adds to the earlier one (last value wins). The caller decides
  * what a value means: upconf only stores and hands back text, so a new knob
  * needs no change here. A value longer than the caps is kept truncated, not
@@ -50,6 +51,15 @@
 #define UC_MAX_VALUE    160
 #define UC_MAX_FILE     16384
 
+/* Comment lines (; or #) are kept too, so a save writes back what it read:
+ * each one as typed, anchored to the key it stood before (or after the
+ * profile's last key, or before every section). The shipped sample is 45
+ * lines, 2.9 KB; the room is twice that. Blank lines are not kept: the
+ * save puts one between profiles. More comment text than this marks
+ * overflow, so the editor will not write such a file back. */
+#define UC_MAX_NOTES    160
+#define UC_NOTE_BYTES   6144
+
 typedef unsigned long uc_u32;
 
 typedef struct upconf {
@@ -59,6 +69,15 @@ typedef struct upconf {
     int  n[UC_MAX_PROFILES];    /* keys in use in this profile */
     int  nprof;                 /* profiles in use */
     int  overflow;              /* value truncated or table full: set, not fatal */
+    /* the comments, in file order: note_at[i] is where line i starts in
+     * note (NUL-terminated), note_prof[i] its profile (-1: before every
+     * section), note_key[i] the key it stands before (n[]: after the last) */
+    char note[UC_NOTE_BYTES];
+    short note_at[UC_MAX_NOTES];
+    signed char note_prof[UC_MAX_NOTES];
+    unsigned char note_key[UC_MAX_NOTES];
+    int  nnote;                 /* comment lines kept */
+    int  notelen;               /* bytes of note in use */
 } upconf;
 
 /* Parse a whole NUL-terminated file. 0 when buf is NULL (the conf is then
@@ -103,17 +122,19 @@ int  upconf_profiles(const upconf *c, const char **names);
  * exists. 1 on success, 0 when the table is full (overflow marked). Used by
  * the Prefs app and the tests; the parser fills the same table. */
 int  upconf_set(upconf *c, const char *profile, const char *key, const char *value);
-/* Delete a key. 1 when it was there. */
+/* Delete a key; the profile's other keys keep their order and the comments
+ * their place. 1 when it was there. */
 int  upconf_del(upconf *c, const char *profile, const char *key);
-/* Delete a whole profile by name (case-insensitive); the later profiles keep
- * their order. 1 when it was there. */
+/* Delete a whole profile by name (case-insensitive), its comments with it;
+ * the later profiles keep their order. 1 when it was there. */
 int  upconf_rmprof(upconf *c, const char *profile);
 /* Empty the table. */
 void upconf_clear(upconf *c);
 
-/* Write the whole table back, in the format the parser reads: every profile
- * as a "[profile <name>]" line, its keys in the order set as "key = value"
- * lines, a blank line between profiles. Values are left bare: the parser
+/* Write the whole table back, in the format the parser reads: the comments
+ * before every section first, then every profile as a "[profile <name>]"
+ * line, its keys in the order set as "key = value" lines with its comments
+ * where they stood, a blank line between profiles. Values are left bare: the parser
  * reads to end-of-line, so no quoting is needed. Returns the length written
  * (without the terminating NUL), or -1 when it does not fit. */
 long upconf_save(const upconf *c, char *buf, long cap);
