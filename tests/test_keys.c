@@ -73,6 +73,30 @@ static void modify_other_keys_reports_modified_return_and_tab(void)
     vt_free(t);
 }
 
+/* gap #7: the host hands Ctrl and Shift with the unmodified character only
+ * while modifyOtherKeys is on; Shift alone is the character's own */
+static void modify_other_keys_takes_ctrl_combinations_from_the_host(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    CHECK_INT(vt_modify_other_keys(t), 0);
+    h_put(t, "\033[>4;1m");
+    CHECK_INT(vt_modify_other_keys(t), 1);
+    CHECK_STR(key(t, ';', VT_MOD_CTRL), "\033[27;5;59~");
+    CHECK_STR(key(t, 'X', VT_MOD_CTRL | VT_MOD_SHIFT), "\033[27;6;88~");
+    CHECK_STR(key(t, 'x', VT_MOD_CTRL), "\030");
+    h_put(t, "\033[>4;2m");
+    CHECK_INT(vt_modify_other_keys(t), 2);
+    CHECK_STR(key(t, 'A', VT_MOD_SHIFT), "A");                    /* Shift alone: the character */
+    CHECK_STR(key(t, 'A', VT_MOD_SHIFT | VT_MOD_ALT), "\033[27;4;65~");
+    h_put(t, "\033[>4;0m");
+    CHECK_INT(vt_modify_other_keys(t), 0);
+    vt_free(t);
+    t = h_new(80, 24, VT_AMIGA);
+    h_put(t, "\033[>4;2m");
+    CHECK_INT(vt_modify_other_keys(t), 0);                        /* the console's own meaning */
+    vt_free(t);
+}
+
 static void utf8_mouse_reaches_past_column_223(void)
 {
     vt_term *t = h_new(400, 24, VT_XTERM);
@@ -227,4 +251,5 @@ void suite_keys(void)
     utf8_mouse_reaches_past_column_223();
     alt_backspace_return_tab_escape_send_the_esc_prefix();
     modify_other_keys_reports_modified_return_and_tab();
+    modify_other_keys_takes_ctrl_combinations_from_the_host();
 }

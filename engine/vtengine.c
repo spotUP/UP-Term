@@ -3989,6 +3989,11 @@ vt_u32 vt_raw_events(const vt_term *t)
     return t->raw_events;
 }
 
+int vt_modify_other_keys(const vt_term *t)
+{
+    return t->pers == VT_XTERM ? t->mok : 0;
+}
+
 long vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, long max)
 {
     long len = 0;
@@ -4350,8 +4355,9 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
     if (key < 0x110000) { /* a character */
         long c = key;
         /* modifyOtherKeys: CSI 27 ; mod ; code ~ for what the plain forms
-         * cannot say -- level 2 every modified key, level 1 the ambiguous */
-        if (t->pers == VT_XTERM && t->mok && mods && key < 0x110000 &&
+         * cannot say -- level 2 every modified key, level 1 the ambiguous;
+         * Shift alone is never one (the character already says it) */
+        if (t->pers == VT_XTERM && t->mok && (mods & ~VT_MOD_SHIFT) && key < 0x110000 &&
             (t->mok == 2 ||
              ((mods & VT_MOD_CTRL) && ((mods & VT_MOD_SHIFT) ||
                                        !((c >= 'a' && c <= 'z') || (c >= '@' && c <= '_') ||

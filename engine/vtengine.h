@@ -304,6 +304,11 @@ enum vt_key {
 #define VT_MOD_CTRL  4
 /* Writes at most 32 bytes to out; returns the count (0: nothing to send). */
 int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
+/* xterm's modifyOtherKeys level (CSI > 4 ; n m), 0 off. While it is on the
+ * host hands character keys over without Ctrl applied, with VT_MOD_CTRL
+ * (and VT_MOD_SHIFT) in mods: the encoder decides between the control
+ * character and CSI 27 ; m ; c ~. Shift alone never changes a character. */
+int      vt_modify_other_keys(const vt_term *t);
 /* Mouse reports, when the host asked for them (?9, ?1000, ?1002, ?1003,
  * with ?1006 for the SGR form). button: 0 left, 1 middle, 2 right,
  * 64/65 wheel up/down; kind: 0 press, 1 release, 2 motion. x, y are cell

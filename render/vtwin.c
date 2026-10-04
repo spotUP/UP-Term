@@ -947,6 +947,26 @@ void vtwin_paste(vtwin *w)
         paste(w);
 }
 
+/* The modifiers a key or a mouse button carries (VT_MOD_*). Meta (the ESC
+ * prefix, VT_MOD_ALT) is Left Amiga: Alt belongs to the keymap, where many
+ * layouts type ; @ { [ with it (the rig's ';' is Alt + 0x29; Alt-as-Meta
+ * turned it into ESC + o-umlaut). With meta_alt the Alt keys take the Meta
+ * role instead. */
+static int qual_mods(const vtwin *w, UWORD qual)
+{
+    int mods = 0;
+    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
+        mods |= VT_MOD_SHIFT;
+    if (qual & IEQUALIFIER_CONTROL)
+        mods |= VT_MOD_CTRL;
+    if (w->meta_alt) {
+        if (qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
+            mods |= VT_MOD_ALT;
+    } else if (qual & IEQUALIFIER_LCOMMAND)
+        mods |= VT_MOD_ALT;
+    return mods;
+}
+
 /* Right Amiga C/V copy and paste, Right Amiga Up/Down and Shift+PgUp/PgDn
  * move through the scrollback. Returns 1 when the key was the console's. */
 static int console_key(vtwin *w, UWORD code, UWORD qual)
@@ -1026,19 +1046,7 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         return; /* copy, paste, scrollback: the console's own keys */
     if (w->r.view)
         vr_set_view(&w->r, 0);
-    if (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-        mods |= VT_MOD_SHIFT;
-    if (qual & IEQUALIFIER_CONTROL)
-        mods |= VT_MOD_CTRL;
-    /* Meta (the ESC prefix, VT_MOD_ALT) is Left Amiga + key: Alt belongs
-     * to the keymap, where many layouts type ; @ { [ with it (the rig's
-     * ';' is Alt + 0x29; Alt-as-Meta turned it into ESC + o-umlaut).
-     * With meta_alt the Alt keys take the Meta role instead. */
-    if (w->meta_alt) {
-        if (qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-            mods |= VT_MOD_ALT;
-    } else if (qual & IEQUALIFIER_LCOMMAND)
-        mods |= VT_MOD_ALT;
+    mods = qual_mods(w, qual);
     key = special_key(code);
     if (!key && w->pers == VT_XTERM && (vt_modes(w->t) & VT_MODE_APP_KEYPAD))
         key = keypad_key(code); /* DECKPAM: the keypad sends SS3 codes */
@@ -1049,6 +1057,11 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         struct InputEvent ie;
         UBYTE buf[16];
         LONG k, i;
+        /* modifyOtherKeys (xterm, CSI > 4 ; n m): the keymap gives the
+         * character without Ctrl and the encoder gets Ctrl and Shift, so
+         * Ctrl+; or Ctrl+Shift+X can be told apart; otherwise the keymap
+         * applies Ctrl itself (its control characters, as always) */
+        int mok_ctrl = w->pers == VT_XTERM && (mods & VT_MOD_CTRL) && vt_modify_other_keys(w->t);
         ie.ie_NextEvent = 0;
         ie.ie_Class = IECLASS_RAWKEY;
         ie.ie_SubClass = 0;
@@ -1058,12 +1071,15 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         ie.ie_Qualifier = (UWORD)(w->meta_alt ?
                                   (qual & ~(IEQUALIFIER_LALT | IEQUALIFIER_RALT)) :
                                   (qual & ~IEQUALIFIER_LCOMMAND));
+        if (mok_ctrl)
+            ie.ie_Qualifier &= (UWORD)~IEQUALIFIER_CONTROL;
         ie.ie_EventAddress = (APTR)prev;
         k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), w->keymap);
-        for (i = 0; i < k && n < (int)sizeof(out) - 8; i++) {
-            /* The keymap already applied Ctrl: pass the character, with
-             * Meta only (vt_encode_key adds the ESC for xterm). */
-            n += vt_encode_key(w->t, buf[i], (w->pers == VT_XTERM) ? (mods & VT_MOD_ALT) : 0, out + n);
+        for (i = 0; i < k && n < (int)sizeof(out) - 16; i++) {
+            /* Meta (vt_encode_key adds the ESC for xterm), and Ctrl and
+             * Shift when the keymap left Ctrl to the encoder */
+            n += vt_encode_key(w->t, buf[i], (w->pers != VT_XTERM) ? 0 : mok_ctrl ? mods : (mods & VT_MOD_ALT),
+                               out + n);
         }
     }
     if (n)

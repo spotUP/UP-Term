@@ -461,6 +461,7 @@ map Amiga Left/Right Amiga to Meta (vtcon decision, Q7).
 | Return / Enter | 0D (Enter in keypad application mode `ESC =`: `ESC O M`) | | |
 | Keypad digits in DECKPAM | `ESC O p`..`ESC O y`, `ESC O j/k/l/m/n/o` for `* + , - . /` | | |
 | Alt+key | `ESC` prefix (`metaSendsEscape`), vtcon default (Q7) | | |
+| Ctrl / Shift + character keys under modifyOtherKeys (G1 K2) | the keymap applies Ctrl (its control characters) | same | while `CSI > 4 ; 1/2 m` is on the window converts the key without Ctrl and passes Ctrl+Shift: level 1 `ESC [ 27 ; m ; c ~` for Ctrl+Shift+x and Ctrl on keys with no control character (Ctrl+; Ctrl+1), level 2 for every Ctrl/Meta combination; Shift alone is never reported (the character says it). Test `modify_other_keys_takes_ctrl_combinations_from_the_host` |
 | Alt / Ctrl / Shift + Return, Tab, Backspace, Escape (G1 K1) | Alt: `ESC` + the plain key (`ESC 7F`, `ESC CR`, `ESC HT`, `ESC ESC`); Ctrl+Backspace `08`; Shift+Tab `ESC [ Z`; other modifiers: the plain key | same | modifyOtherKeys 1: Ctrl or Shift (not Shift+Tab, not Ctrl+Backspace) `ESC [ 27 ; m ; c ~` with c = 13 / 9 / 127 / 27; level 2: any modifier but Shift+Tab. Test `modify_other_keys_reports_modified_return_and_tab` |
 | HELP (no xterm key) | Proposed `ESC [ 28 ~` (DEC Help, as xterm maps it on LK keyboards) | | |
 | Shift+F1..F10 (Amiga has distinct codes) | Encoded with the modifier form, e.g. Shift+F1 `ESC [ 1 ; 2 P`, Shift+F5 `ESC [ 15 ; 2 ~` | | |
