@@ -661,6 +661,7 @@ static void settings(vtwin *w)
      * palette change can re-derive the pens through cb_colors() */
     vt_set_bold_bright(w->t, w->bold_bright);
     vt_set_reflow(w->t, w->reflow);
+    vt_set_backspace_bs(w->t, w->backspace_bs);
     vt_set_cursor_style(w->t, w->cursor_style);
     vt_set_cursor_blink(w->t, w->cursor_blink);
     vt_set_clipboard_access(w->t, w->no_clipboard ? 0 : w->clip_access);

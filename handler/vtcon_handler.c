@@ -937,6 +937,9 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "reflow", 0);
     if (v)
         c->w.reflow = !str_ieq(v, "off");
+    v = upconf_str(c->conf, p, "backspace", 0);
+    if (v)
+        c->w.backspace_bs = str_ieq(v, "bs"); /* del (^?, the default) or bs (^H) */
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
     c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));

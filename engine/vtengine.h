@@ -170,6 +170,7 @@ typedef struct vt_callbacks {
                                        * a frame; the host holds its drawing until this is reset (or a
                                        * moment has passed), so no half-updated screen is shown */
 #define VT_MODE_ALT_SCROLL   0x200000 /* ?1007: the wheel on the alternate screen sends cursor keys */
+#define VT_MODE_BACKSPACE_BS 0x400000 /* ?67 DECBKM: Backspace sends BS (^H), not DEL */
 /* (0x400000-0x800000 free) */
 #define VT_MODE_MOUSE_URXVT  0x1000000 /* ?1015: CSI Cb;Cx;Cy M in decimal */
 #define VT_MODE_MOUSE_PIXELS 0x2000000 /* ?1016: the SGR form with pixel coordinates */
@@ -201,6 +202,10 @@ void     vt_set_onlcr(vt_term *t, int on);
  * or padded (its program redraws). Off by default (rows are cut or padded,
  * as xterm does); a setting of the host, so vt_reset leaves it. */
 void     vt_set_reflow(vt_term *t, int on);
+/* Backspace's default for the xterm personality: 1 BS (^H), 0 DEL (^?, the
+ * default). The ?67 (DECBKM) a program sets changes it until RIS, which
+ * returns to this. A remote host whose terminfo says kbs=^H wants 1. */
+void     vt_set_backspace_bs(vt_term *t, int bs);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
 /* Frame-paced output: vt_feed changes the grid without telling the

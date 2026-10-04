@@ -274,8 +274,39 @@ static void keypad_follows_deckpam(void)
     vt_free(t);
 }
 
+/* Backspace over ssh: xterm-256color's kbs is ^H upstream and ^? on Debian.
+ * DEL by default; DECBKM (?67) and the profile's backspace = bs make it BS,
+ * Ctrl+Backspace the other one; RIS returns to the profile's choice. */
+static void backspace_follows_decbkm_and_the_profile(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vt_u8 out[16];
+    int n;
+    n = vt_encode_key(t, VT_KEY_BACKSPACE, 0, out);
+    CHECK(n == 1 && out[0] == 0x7F);
+    h_put(t, "\033[?67h");
+    n = vt_encode_key(t, VT_KEY_BACKSPACE, 0, out);
+    CHECK(n == 1 && out[0] == 0x08);
+    n = vt_encode_key(t, VT_KEY_BACKSPACE, VT_MOD_CTRL, out);
+    CHECK(n == 1 && out[0] == 0x7F);
+    h_reply_clear();
+    h_put(t, "\033[?67$p");
+    CHECK_STR(h_reply, "\033[?67;1$y");
+    h_put(t, "\033c");                         /* RIS: back to DEL */
+    n = vt_encode_key(t, VT_KEY_BACKSPACE, 0, out);
+    CHECK(n == 1 && out[0] == 0x7F);
+    vt_set_backspace_bs(t, 1);                  /* the profile says bs */
+    n = vt_encode_key(t, VT_KEY_BACKSPACE, 0, out);
+    CHECK(n == 1 && out[0] == 0x08);
+    h_put(t, "\033[?67l\033c");                 /* RIS keeps the profile's choice */
+    n = vt_encode_key(t, VT_KEY_BACKSPACE, 0, out);
+    CHECK(n == 1 && out[0] == 0x08);
+    vt_free(t);
+}
+
 void suite_keys(void)
 {
+    backspace_follows_decbkm_and_the_profile();
     keypad_follows_deckpam();
     mouse_reports_follow_the_modes();
     xterm_cursor_keys_follow_decckm();

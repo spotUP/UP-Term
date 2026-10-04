@@ -105,6 +105,7 @@ struct vt_term {
      * below the window. */
     vt_line **pri_mem;
     int pri_spare;
+    vt_u8 bs_default;      /* vt_set_backspace_bs: what RIS gives ?67 back */
     vt_line **sb;          /* scrollback ring */
     long scrolled;         /* lines scrolled off the primary screen's top */
     int sb_cap, sb_len, sb_head; /* head: next slot to write */
@@ -2343,10 +2344,11 @@ static void set_mode(vt_term *t, int on)
                     restore_cursor(t, &t->sav_1049);
                 }
                 break;
-            case 8: case 12: case 45: case 1005: case 1007: case 1015: case 1016: case 1034:
+            case 8: case 12: case 45: case 67: case 1005: case 1007: case 1015: case 1016: case 1034:
             case 2031: case 7727: {
                 vt_u32 bit = p == 8 ? VT_MODE_AUTOREPEAT : p == 12 ? VT_MODE_CURSOR_BLINK
-                           : p == 45 ? VT_MODE_REVERSE_WRAP : p == 1005 ? VT_MODE_MOUSE_UTF8
+                           : p == 45 ? VT_MODE_REVERSE_WRAP : p == 67 ? VT_MODE_BACKSPACE_BS
+                           : p == 1005 ? VT_MODE_MOUSE_UTF8
                            : p == 1007 ? VT_MODE_ALT_SCROLL
                            : p == 1015 ? VT_MODE_MOUSE_URXVT : p == 1016 ? VT_MODE_MOUSE_PIXELS
                            : p == 1034 ? VT_MODE_META_8BIT : p == 2031 ? VT_MODE_SCHEME_UPDATES
@@ -2694,6 +2696,7 @@ static void report_mode(vt_term *t)
         case 45: bit = VT_MODE_REVERSE_WRAP; break;
         case 1005: bit = VT_MODE_MOUSE_UTF8; break;
         case 1007: bit = VT_MODE_ALT_SCROLL; break;
+        case 67: bit = VT_MODE_BACKSPACE_BS; break;
         case 1015: bit = VT_MODE_MOUSE_URXVT; break;
         case 1016: bit = VT_MODE_MOUSE_PIXELS; break;
         case 1034: bit = VT_MODE_META_8BIT; break;
@@ -5152,7 +5155,7 @@ void vt_reset(vt_term *t)
         t->cwd = 0;
     }
     t->scr = t->pri;
-    t->modes = VT_MODE_CURSOR_VISIBLE | VT_MODE_AUTOREPEAT;
+    t->modes = VT_MODE_CURSOR_VISIBLE | VT_MODE_AUTOREPEAT | (t->bs_default ? VT_MODE_BACKSPACE_BS : 0);
     if (t->pers == VT_AMIGA)
         t->modes |= VT_MODE_NEWLINE; /* the console's LF starts a new line */
     t->amiga_dfg = VT_COLOR_DEFAULT;
@@ -5344,6 +5347,15 @@ int vt_cursor_style(const vt_term *t)
 void vt_set_onlcr(vt_term *t, int on)
 {
     t->onlcr = on != 0;
+}
+
+void vt_set_backspace_bs(vt_term *t, int bs)
+{
+    t->bs_default = (vt_u8)(bs != 0);
+    if (bs)
+        t->modes |= VT_MODE_BACKSPACE_BS;
+    else
+        t->modes &= ~(vt_u32)VT_MODE_BACKSPACE_BS;
 }
 
 void vt_set_reflow(vt_term *t, int on)
@@ -6436,7 +6448,8 @@ static int c0_key_modified(const vt_term *t, long key, int mods, vt_u8 *out)
     if (mods & VT_MOD_ALT)
         out[n++] = 0x1B; /* Meta: readline's M-DEL, M-RET, M-TAB, M-ESC */
     if (ctrl_bs && t->pers == VT_XTERM) {
-        out[n++] = 0x08; /* xterm: Ctrl+Backspace is BS */
+        /* xterm: Ctrl+Backspace is the other one of BS and DEL */
+        out[n++] = (vt_u8)(t->modes & VT_MODE_BACKSPACE_BS ? 0x7F : 0x08);
         return n;
     }
     return n + legacy_key(t, key, mods & ~(VT_MOD_ALT | VT_MOD_CTRL), out + n);
@@ -6660,7 +6673,8 @@ static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out)
         out[n++] = '\r';
         return n;
     case VT_KEY_BACKSPACE:
-        out[n++] = (vt_u8)(t->pers == VT_XTERM ? 0x7F : 0x08);
+        /* xterm: DEL, or BS under DECBKM (?67) / the profile's backspace = bs */
+        out[n++] = (vt_u8)(t->pers != VT_XTERM || (t->modes & VT_MODE_BACKSPACE_BS) ? 0x08 : 0x7F);
         return n;
     case VT_KEY_TAB:
         if ((mods & VT_MOD_SHIFT) && t->pers == VT_AMIGA) {
