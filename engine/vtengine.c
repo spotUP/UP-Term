@@ -8,6 +8,19 @@
 #include <stddef.h>
 #include <string.h>
 
+#ifdef __VBCC__
+/* vbcc's -O2 is -O=1023. With it, a loop over vt_term fields got every
+ * field's address (t + offset) hoisted out of the loop and, short of
+ * registers, spilled to the stack: each t->x became a load of the address
+ * and then the access, and vt_feed set up fifteen such slots on every
+ * call -- though (d16,An) addressing is free on a 68k. -O=991 (bit 32 off)
+ * keeps the accesses in place: engbench plain lines with 79-byte writes
+ * 19.4 -> 16.5 instructions a byte under vamos (ASM1; -O=895, bit 128
+ * off, does the same but warns 172 in feed()). It sets the whole mask:
+ * this file builds at this level whatever -O the command line gives. */
+#pragma opt 991
+#endif
+
 #if defined(VT_AMIGA_EXEC_ALLOC)
 /* code without a C startup (the handler): exec memory, no libc heap */
 #include <exec/memory.h>
