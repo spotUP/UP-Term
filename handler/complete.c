@@ -29,6 +29,9 @@
 #if CC_FIBF_EXECUTE != FIBF_EXECUTE || CC_FIBF_SCRIPT != FIBF_SCRIPT
 #error "the protection bits of complete_core.h disagree with dos/dos.h"
 #endif
+#if CC_CMD_INTERNAL != CMD_INTERNAL
+#error "CC_CMD_INTERNAL of complete_core.h disagrees with dos/dosextens.h"
+#endif
 #include "../prefs/prefs_dos.h"
 
 static int lower(int c)
@@ -363,8 +366,8 @@ static void scan_residents(struct complete_req *q, const char *prefix)
                 break;
         if (i <= n)
             break;
-        if (seg->seg_UC < 0 && seg->seg_UC != CMD_INTERNAL && seg->seg_UC != CMD_SYSTEM)
-            continue; /* disabled entries */
+        if (!cc_resident_listed(seg->seg_UC))
+            continue; /* the system's segments, disabled entries */
         memcpy(name, seg->seg_Name + 1, n);
         name[n] = 0;
         if (has_prefix(name, prefix))

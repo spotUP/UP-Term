@@ -18,7 +18,19 @@ static void command_list_skips_directories_and_files_without_e_or_s(void)
     CHECK_INT(cc_is_command(4, 0), 0);                          /* a soft link to one */
 }
 
+/* H8.4: residents offered are seg_UC >= 0 or CMD_INTERNAL (-2) only, as
+ * KingCON's resident walk; CMD_SYSTEM (-1) segments are not commands */
+static void command_list_skips_system_and_disabled_residents(void)
+{
+    CHECK_INT(cc_resident_listed(0), 1);      /* resident, not in use */
+    CHECK_INT(cc_resident_listed(3), 1);      /* in use three times */
+    CHECK_INT(cc_resident_listed(-2), 1);     /* CMD_INTERNAL: Alias, CD, ... */
+    CHECK_INT(cc_resident_listed(-1), 0);     /* CMD_SYSTEM */
+    CHECK_INT(cc_resident_listed(-999), 0);   /* CMD_DISABLED */
+}
+
 void suite_complete(void)
 {
     command_list_skips_directories_and_files_without_e_or_s();
+    command_list_skips_system_and_disabled_residents();
 }

@@ -16,4 +16,13 @@
  * script bit; never a directory. */
 int cc_is_command(long entry_type, unsigned long protection);
 
+/* dos/dosextens.h's seg_UC for the Shell's own commands (complete.c
+ * checks it agrees) */
+#define CC_CMD_INTERNAL (-2L)
+
+/* Is a resident list entry a command to offer? seg_UC >= 0 (a resident
+ * program, its use count) or CMD_INTERNAL (the Shell's own); not
+ * CMD_SYSTEM (-1, the system's segments) nor CMD_DISABLED. */
+int cc_resident_listed(long seg_uc);
+
 #endif
