@@ -66,11 +66,12 @@ typedef struct vc_sprite_geom {
  * the image. */
 int vc_sprite_geom_of(int screen_ns, int sprite_ns, int lace, int cw, int ch, vc_sprite_geom *g);
 
-/* MoveSprite's position for screen pixel (x, y) of the ViewPort: lores
- * (140 ns) pixels across, non-laced lines down (RKM Libraries ch. 28:
- * "sprites always appear as low-resolution pixels, and their position is
- * specified in the same way"; laced: two-line steps). 0 when the cell's
- * corner falls between two positions. */
+/* MoveSprite's position for screen pixel (x, y) of the ViewPort: since V39
+ * graphics.library takes the ViewPort's own resolution and converts (seen
+ * on the stock rig 2026-10-04: lores units, as RKM ch. 28 describes for the
+ * hardware, put the cursor at half its x on a hires screen). 0 when the
+ * cell's corner falls between two lores positions (OCS/ECS sprites move in
+ * lores steps) or on an odd laced line: the planes draw the cursor there. */
 #define VC_POS_NS 140
 int vc_sprite_pos(const vc_sprite_geom *g, long x, long y, long *sx, long *sy);
 

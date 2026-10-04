@@ -101,20 +101,20 @@ static void a_cell_that_is_not_whole_sprite_pixels_or_lines_falls_back(void)
     CHECK(!vc_sprite_geom_of(0, 140, 0, 8, 8, &g));   /* an unknown pixel speed (RTG) */
 }
 
-static void the_position_is_lores_pixels_and_whole_lines(void)
+static void the_position_is_the_viewports_own_pixels_and_lines(void)
 {
     vc_sprite_geom g;
     long sx, sy;
     vc_sprite_geom_of(70, 140, 0, 8, 8, &g);
     CHECK(vc_sprite_pos(&g, 100, 33, &sx, &sy));
-    CHECK_INT(sx, 50);
+    CHECK_INT(sx, 100); /* hires pixel 100, not lores 50: the cursor sat at half its x */
     CHECK_INT(sy, 33);
     CHECK(!vc_sprite_pos(&g, 101, 33, &sx, &sy)); /* half a lores pixel: the planes draw it */
     CHECK(!vc_sprite_pos(&g, -2, 0, &sx, &sy));
     vc_sprite_geom_of(140, 140, 1, 8, 16, &g);
     CHECK(vc_sprite_pos(&g, 17, 40, &sx, &sy));
     CHECK_INT(sx, 17);
-    CHECK_INT(sy, 20);
+    CHECK_INT(sy, 40);
     CHECK(!vc_sprite_pos(&g, 17, 41, &sx, &sy));
 }
 
@@ -209,7 +209,7 @@ void suite_chips(void)
     the_cursor_shapes_cover_the_cell_its_bottom_or_its_left();
     a_hires_cell_is_four_lores_sprite_pixels_and_eight_with_hires_sprites();
     a_cell_that_is_not_whole_sprite_pixels_or_lines_falls_back();
-    the_position_is_lores_pixels_and_whole_lines();
+    the_position_is_the_viewports_own_pixels_and_lines();
     a_block_shows_the_glyph_in_colour_two_on_colour_one();
     an_underline_is_two_lines_and_a_bar_one_lores_pixel();
     a_coarse_sprite_shows_a_blank_cell_but_not_a_glyph();

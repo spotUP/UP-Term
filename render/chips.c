@@ -79,8 +79,8 @@ int vc_sprite_pos(const vc_sprite_geom *g, long x, long y, long *sx, long *sy)
 {
     if (x < 0 || y < 0 || (x * g->screen_ns) % VC_POS_NS || (g->lace && (y & 1)))
         return 0;
-    *sx = x * g->screen_ns / VC_POS_NS;
-    *sy = g->lace ? y / 2 : y;
+    *sx = x; /* V39+ MoveSprite takes the ViewPort's own pixels and lines (rig 2026-10-04: */
+    *sy = y; /* lores units put the cursor at half its x on a hires screen) */
     return 1;
 }
 
