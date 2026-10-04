@@ -1641,20 +1641,29 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             }
         }
 #ifdef VR_ASM
-        if (r->planar && r->glyphs && !r->sel && x < xe && c[x].width == 1 && c[x].ch < 0x80) {
-            /* A plain row: its cells checked against the first in one
-             * assembler loop and handed to the painter whole (S1: the
-             * loop below cost ~70 us a cell on a stock A1200). */
-            long k = vr_asm_row_scan(&c[x], xe - x, run);
-            if (k == xe - x && k <= RUN_MAX) {
+        if (r->planar && r->glyphs && !r->sel) {
+            /* Runs of equal cells checked against their first in one
+             * assembler loop and handed to the painter one run at a time
+             * (S1: the C loop below cost ~70 us a cell on a stock A1200).
+             * A plain row is one run; a coloured one (ls, sgr-colour) a
+             * few. Where a run cannot go this way (a wide or non-ASCII
+             * cell, a decorated style, a covered window) the loop below
+             * takes the row on from there. */
+            while (x < xe && c[x].width == 1 && c[x].ch < 0x80) {
+                long k = vr_asm_row_scan(&c[x], xe - x < RUN_MAX ? xe - x : RUN_MAX, run);
                 vr_style fs;
+                if (!k)
+                    break;
                 cell_style(r, &c[x], 0, &fs);
-                if (!fs.attr && !fs.deco && !fs.font && fs.ul == fs.fg &&
-                    painter_run(r, run, (int)k, r->ox + x * r->cw, py, &fs)) {
-                    if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
-                        r->cursor_drawn = 0;
-                    continue;
-                }
+                if (fs.attr || fs.deco || fs.font || fs.ul != fs.fg ||
+                    !painter_run(r, run, (int)k, r->ox + x * r->cw, py, &fs))
+                    break;
+                x += (int)k;
+            }
+            if (x >= xe) {
+                if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
+                    r->cursor_drawn = 0;
+                continue;
             }
         }
 #endif
