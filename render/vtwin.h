@@ -200,6 +200,9 @@ int vtwin_set_size(vtwin *w, int cols, int rows);
  * C and V, also for an owner's menu (no-ops without a clipboard) */
 void vtwin_copy(vtwin *w);
 void vtwin_paste(vtwin *w);
+/* the window became active (in = 1) or stopped being: a focus report for
+ * a program that asked (?1004) and reads raw; nothing otherwise */
+void vtwin_focus(vtwin *w, int in);
 /* an Amiga input event report for a window class, when the program asked
  * for that class (CSI n {); 1 when it was sent */
 int vtwin_raw_report(vtwin *w, int cls);

@@ -311,5 +311,8 @@ int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
 int      vt_encode_mouse(const vt_term *t, int button, int kind, int x, int y, int mods, vt_u8 *out);
 /* Bracketed paste wrapper: writes the prefix or suffix (0 bytes when off). */
 int      vt_encode_paste(const vt_term *t, int end, vt_u8 *out);
+/* Focus report (?1004): ESC [ I when the window became active (in = 1),
+ * ESC [ O when it stopped being; 0 bytes when the program did not ask. */
+int      vt_encode_focus(const vt_term *t, int in, vt_u8 *out);
 
 #endif

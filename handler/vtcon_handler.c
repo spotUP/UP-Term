@@ -366,20 +366,32 @@ static void in_append(con *c, const vt_u8 *b, int n)
 
 static int tty_active(con *c);
 static void service_reads(con *c);
+static void rtimer_start(con *c, ULONG tenths);
+
+/* In termios mode the read stream is the line discipline: everything for
+ * the program -- a key, a report, a paste, a mouse or focus report -- goes
+ * through it, as on a Unix tty. 0 when the window is not in termios mode.
+ * Bytes put in the cooked buffer instead were never read there, yet made
+ * WAIT_CHAR answer yes (tmux's select saw input, its read blocked until
+ * the next key); and a paste or a mouse click in a termios program (Claude
+ * Code over uptelnet, tmux) never arrived (ledger A1.3). */
+static int to_tty(con *c, const vt_u8 *b, int n)
+{
+    if (!tty_active(c))
+        return 0;
+    ld_input(&c->ld, b, n);
+    if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
+        rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
+    service_reads(c);
+    return 1;
+}
 
 static void h_reply(void *u, const vt_u8 *b, long n)
 {
     con *c = (con *)u;
-    /* reports enter the read stream, as the console's do. In termios mode
-     * that stream is the line discipline, as for a typed key: in the cooked
-     * buffer they were never read, yet made WAIT_CHAR answer yes -- tmux's
-     * select saw input, its read blocked until the next key, and every key
-     * showed one key late (tmux asks for DA and colours at start) */
-    if (tty_active(c)) {
-        ld_input(&c->ld, b, (int)n);
-        service_reads(c);
+    /* reports enter the read stream, as the console's do */
+    if (to_tty(c, b, (int)n))
         return;
-    }
     in_append(c, b, (int)n);
 }
 
@@ -387,6 +399,8 @@ static void h_reply(void *u, const vt_u8 *b, long n)
 static void h_input(void *u, const vt_u8 *b, long n)
 {
     con *c = (con *)u;
+    if (to_tty(c, b, (int)n))
+        return;
     in_append(c, b, (int)n);
     service_reads(c);
 }
@@ -402,6 +416,8 @@ static void h_key(void *u, const vt_u8 *b, int n, long key, int mods)
 static void h_pasted(void *u, const vt_u8 *b, int n, long key)
 {
     con *c = (con *)u;
+    if (to_tty(c, b, n))
+        return;
     if (c->raw)
         in_append(c, b, n);
     else
@@ -409,9 +425,12 @@ static void h_pasted(void *u, const vt_u8 *b, int n, long key)
     service_reads(c);
 }
 
+/* the program reads bytes, not our line editor: Amiga raw mode, or
+ * termios mode (paste marks and focus reports are for it) */
 static int h_raw(void *u)
 {
-    return ((con *)u)->raw;
+    con *c = (con *)u;
+    return c->raw || tty_active(c);
 }
 
 static void sync_size(con *c);
@@ -3215,10 +3234,7 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
         /* a Unix program's terminal: the line discipline takes the key (ISIG
          * makes ^C a break, ^\\ and ^Z signals; the rest is input) */
         DBG("tty key", out[0], (long)((c->ld.t.c_lflag & LD_ISIG) ? c->ld.t.c_cc[LD_VSUSP] : -1));
-        ld_input(&c->ld, out, n);
-        if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
-            rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
-        service_reads(c);
+        to_tty(c, out, n);
         return;
     }
     /* Break keys: Ctrl-C..F signal the opener in cooked mode (and Amiga raw
@@ -3969,6 +3985,10 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
     case IDCMP_EXTENDEDMOUSE:
         if (wheel)
             vtwin_wheel(&c->w, wheel > 0, mx, my);
+        break;
+    case IDCMP_ACTIVEWINDOW:
+    case IDCMP_INACTIVEWINDOW:
+        vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: ESC [ I / ESC [ O */
         break;
     default:
         break;

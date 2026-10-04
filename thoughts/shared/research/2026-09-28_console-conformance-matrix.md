@@ -469,7 +469,7 @@ Other xterm input reports:
 - Mouse, SGR mode (`?1000h` + `?1006h`): press `ESC [ < b ; x ; y M`, release
   `... m`, 1-based cells; b = 0/1/2 button, +4 Shift, +8 Meta, +16 Ctrl, +32
   motion, 64/65 wheel.
-- Focus (`?1004h`): `ESC [ I` in, `ESC [ O` out (source: Amiga classes 17/18).
+- Focus (`?1004h`): `ESC [ I` in, `ESC [ O` out (source: Amiga classes 17/18). vtcon sends them on the window's activation (IDCMP_ACTIVEWINDOW / INACTIVEWINDOW) to a program reading raw or in termios mode (ledger A1.3; Claude Code asks for them).
 - Bracketed paste (`?2004h`): `ESC [ 200 ~` ... `ESC [ 201 ~` around pasted
   text (the Amiga equivalent is `CSI 0 SP v` + clipboard read).
 - Window size: xterm has no in-band resize notification; ports learn it via
