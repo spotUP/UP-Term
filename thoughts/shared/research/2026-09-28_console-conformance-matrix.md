@@ -764,3 +764,8 @@ pinned by `tests/test_protocol.c` (`make test ONLY=protocol`). Plan and ledger:
 | LS1R / LS2R / LS3R `ESC ~` / `ESC }` / `ESC |` | G1 / G2 / G3 into GR: in an 8-bit (Latin-1) window bytes A0-FF draw as that set's 20-7F; default (and after DECSTR / RIS) GR is Latin-1 itself. No effect under UTF-8 or CP437 | `locking_shifts_invoke_g2_and_g3` |
 | Media copy `CSI i`, `CSI 4 i`, `CSI ? Ps i` | Accepted, nothing done (no printer) | `printer_controller_mode_keeps_text_off_the_screen` |
 | Printer controller `CSI 5 i` | What follows goes to the (absent) printer, not the screen, until `CSI 4 i` (7- or 8-bit CSI), as a VT102 | same |
+| DECIC / DECDC `CSI Pn ' }` / `CSI Pn ' ~` | Insert / delete Pn columns at the cursor's, in every row of the scroll region (no left/right margins); the cursor stays; nothing when the cursor is outside the region | `decic_and_decdc_move_columns_in_the_region` |
+| DECFRA `CSI Pch;Pt;Pl;Pb;Pr $ x` | Fill the rectangle with Pch (32-126, 160-255; else ignored) in the current rendition | `rectangle_fill_erase_copy_and_attributes` |
+| DECERA / DECSERA `CSI Pt;Pl;Pb;Pr $ z` / `$ {` | Erase the rectangle (BCE blanks); no protected cells, so DECSERA is DECERA | same |
+| DECCRA `CSI Pts;Pls;Pbs;Prs;Pps;Ptd;Pld;Ppd $ v` | Copy the rectangle (one page; overlap safe), clipped at the screen | same |
+| DECCARA / DECRARA `CSI Pt;Pl;Pb;Pr;Ps.. $ r` / `$ t` | Set / reverse bold, underline, blink, inverse (0 all off; 22-27 off) over the stream from first to last cell, or the rectangle after DECSACE `CSI 2 * x` (`0`/`1` stream, the default; RIS back to stream). Rectangle coordinates are region-relative in origin mode | same |

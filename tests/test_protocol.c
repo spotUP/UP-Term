@@ -200,8 +200,77 @@ static void printer_controller_mode_keeps_text_off_the_screen(void)
     vt_free(t);
 }
 
+/* ---- G3-06 / G3-07: VT420 column and rectangle editing ---- */
+
+static void fill_rows(vt_term *t)
+{
+    h_put(t, "\033[H\033[2J\033[1;1Habcdef\033[2;1Hghijkl\033[3;1Hmnopqr\033[4;1Hstuvwx");
+}
+
+/* DECIC / DECDC insert and delete columns at the cursor, in the rows of
+ * the scroll region only; the cursor stays. */
+static void decic_and_decdc_move_columns_in_the_region(void)
+{
+    vt_term *t = h_new(6, 4, VT_XTERM);
+    int x, y;
+    fill_rows(t);
+    h_put(t, "\033[2;3r\033[2;3H\033[2'}");
+    CHECK_STR(h_screen(t), "abcdef|gh  ij|mn  op|stuvwx");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 2);
+    CHECK_INT(y, 1);
+    h_put(t, "\033[1;2H\033[3'~");                 /* outside the region: nothing */
+    CHECK_STR(h_screen(t), "abcdef|gh  ij|mn  op|stuvwx");
+    h_put(t, "\033[3;2H\033[3'~");
+    CHECK_STR(h_screen(t), "abcdef|gij|mop|stuvwx");
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
+/* DECFRA fills, DECERA / DECSERA erase, DECCRA copies a rectangle;
+ * DECCARA / DECRARA set and reverse attributes in it (or, by DECSACE,
+ * in the stream of cells from its first to its last). */
+static void rectangle_fill_erase_copy_and_attributes(void)
+{
+    vt_term *t = h_new(6, 4, VT_XTERM);
+    fill_rows(t);
+    h_put(t, "\033[31m\033[88;2;2;3;4$x");         /* X into rows 2-3, columns 2-4 */
+    CHECK_STR(h_screen(t), "abcdef|gXXXkl|mXXXqr|stuvwx");
+    CHECK_INT(h_cell(t, 1, 1)->fg, 1);             /* in the current rendition */
+    h_put(t, "\033[0m\033[1;5;2;6$z");             /* DECERA: rows 1-2, columns 5-6 */
+    CHECK_STR(h_screen(t), "abcd|gXXX|mXXXqr|stuvwx");
+    h_put(t, "\033[3;5;3;5${");                    /* DECSERA: no protected cells */
+    CHECK_STR(h_screen(t), "abcd|gXXX|mXXX r|stuvwx");
+    h_put(t, "\033[1;1;2;2;1;3;5;1$v");            /* DECCRA: ab/gX to row 3 col 5 */
+    CHECK_STR(h_screen(t), "abcd|gXXX|mXXXab|stuvgX");
+    h_put(t, "\033[?6h\033[2;3r\033[1;1;1;2;1;2;1;1$v\033[?6l\033[r"); /* origin: region-relative */
+    CHECK_STR(h_screen(t), "abcd|gXXX|gXXXab|stuvgX");
+    h_put(t, "\033[2*x\033[1;2;2;3;1;7$r");        /* rectangle: bold + inverse */
+    CHECK_INT(h_cell(t, 1, 0)->attr, VT_ATTR_BOLD | VT_ATTR_INVERSE);
+    CHECK_INT(h_cell(t, 2, 1)->attr, VT_ATTR_BOLD | VT_ATTR_INVERSE);
+    CHECK_INT(h_cell(t, 3, 0)->attr, 0);
+    CHECK_INT(h_cell(t, 0, 1)->attr, 0);
+    h_put(t, "\033[1;2;2;3;7$t");                  /* DECRARA: inverse back off */
+    CHECK_INT(h_cell(t, 1, 0)->attr, VT_ATTR_BOLD);
+    h_put(t, "\033[0*x\033[1;5;2;2;4$r");          /* stream: 1,5 .. 2,2 */
+    CHECK_INT(h_cell(t, 4, 0)->attr & VT_ATTR_UNDERLINE, VT_ATTR_UNDERLINE);
+    CHECK_INT(h_cell(t, 5, 0)->attr & VT_ATTR_UNDERLINE, VT_ATTR_UNDERLINE);
+    CHECK_INT(h_cell(t, 0, 1)->attr & VT_ATTR_UNDERLINE, VT_ATTR_UNDERLINE);
+    CHECK_INT(h_cell(t, 1, 1)->attr & VT_ATTR_UNDERLINE, VT_ATTR_UNDERLINE);
+    CHECK_INT(h_cell(t, 2, 1)->attr & VT_ATTR_UNDERLINE, 0);
+    CHECK_INT(h_cell(t, 3, 0)->attr & VT_ATTR_UNDERLINE, 0);
+    h_put(t, "\033[1;1;4;6;0$r");                  /* 0: every attribute off */
+    CHECK_INT(h_cell(t, 1, 0)->attr, 0);
+    h_put(t, "\033[7;1;1;1;1$x");                  /* a control is no fill character */
+    CHECK_INT(h_cell(t, 0, 0)->ch, 'a');
+    CHECK_INT(vt_unhandled(t, 0, 0, 0), 0);
+    vt_free(t);
+}
+
 void suite_protocol(void)
 {
+    decic_and_decdc_move_columns_in_the_region();
+    rectangle_fill_erase_copy_and_attributes();
     da3_reports_a_unit_id();
     locking_shifts_invoke_g2_and_g3();
     printer_controller_mode_keeps_text_off_the_screen();

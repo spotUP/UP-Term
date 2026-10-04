@@ -90,6 +90,7 @@ struct vt_term {
     int prn_match;         /* S_PRINT: how much of CSI 4 i has come */
     vt_saved sav, sav_1049;
     vt_u8 saved_1048;      /* ?1048 / ?1049 saved a cursor (DECRQM ?1048) */
+    vt_u8 rect_extent;     /* DECSACE 2: DECCARA / DECRARA cover a rectangle, not a stream */
     vt_u16 last_ch;
 
     /* amiga personality */
@@ -2121,6 +2122,180 @@ static void report_mode(vt_term *t)
     reply(t, b, n);
 }
 
+/* ---- VT420 column and rectangle editing (xterm) ---------------------------
+ * No left/right margins (DECSLRM is not implemented, DA1 says VT220), so a
+ * column operation covers the scroll region's rows across the whole width. */
+
+/* DECIC / DECDC: n columns inserted / deleted at the cursor's in every row
+ * of the scroll region; the cursor stays. */
+static void edit_columns(vt_term *t, int n, int insert)
+{
+    int y, cy = t->cy;
+    if (cy < t->top || cy >= t->bot)
+        return;
+    for (y = t->top; y < t->bot; y++) {
+        t->cy = y;
+        if (insert)
+            insert_chars(t, n);
+        else
+            delete_chars(t, n);
+    }
+    t->cy = cy;
+}
+
+/* The rectangle Pt;Pl;Pb;Pr at params[i]: rows [*y0, *y1), columns
+ * [*x0, *x1) of the screen, relative to the region in origin mode, clamped.
+ * 0 when it is empty. */
+static int rect_of(const vt_term *t, int i, int *x0, int *y0, int *x1, int *y1)
+{
+    int org = t->origin ? t->top : 0, lim = t->origin ? t->bot : t->rows;
+    *y0 = clampi((int)param(t, i, 1) - 1 + org, org, lim);
+    *x0 = clampi((int)param(t, i + 1, 1) - 1, 0, t->cols);
+    *y1 = clampi((int)param(t, i + 2, lim - org) + org, org, lim);
+    *x1 = clampi((int)param(t, i + 3, t->cols), 0, t->cols);
+    return *y0 < *y1 && *x0 < *x1;
+}
+
+/* DECFRA (fill with ch in the current rendition) and DECERA / DECSERA
+ * (ch 0: erase, as ECH does). */
+static void rect_fill(vt_term *t, int x0, int y0, int x1, int y1, vt_u32 ch)
+{
+    int y, x;
+    for (y = y0; y < y1; y++) {
+        unwide(t, x0, y);
+        if (x1 < t->cols)
+            unwide(t, x1 - 1, y);
+        for (x = x0; x < x1; x++) {
+            vt_cell *c = cell_at(t, x, y);
+            blank_cell(t, c);
+            if (ch) {
+                c->ch = (vt_u16)ch;
+                c->fg = t->fg;
+                c->bg = t->bg;
+                c->attr = t->attr;
+                c->deco = t->deco;
+                c->ext = t->ext;
+            }
+        }
+        mark(t, x0, y, x1);
+    }
+}
+
+/* DECCRA: the rectangle to the place (dx, dy), overlapping or not. */
+static void rect_copy(vt_term *t, int x0, int y0, int x1, int y1, int dx, int dy)
+{
+    int w = x1 - x0, h = y1 - y0, k, y;
+    if (dx + w > t->cols)
+        w = t->cols - dx;
+    if (dy + h > t->rows)
+        h = t->rows - dy;
+    if (w <= 0 || h <= 0)
+        return;
+    for (k = 0; k < h; k++) {
+        y = dy > y0 ? h - 1 - k : k; /* downwards: the bottom row first */
+        cells_move(&t->scr[dy + y]->c[dx], &t->scr[y0 + y]->c[x0], w);
+        if (t->scr[dy + y]->c[dx].width == 0)
+            t->scr[dy + y]->c[dx].ch = ' ', t->scr[dy + y]->c[dx].width = 1;
+        if (t->scr[dy + y]->c[dx + w - 1].width == 2)
+            t->scr[dy + y]->c[dx + w - 1].ch = ' ', t->scr[dy + y]->c[dx + w - 1].width = 1;
+        mark(t, dx, dy + y, dx + w);
+    }
+}
+
+/* DECCARA (rev 0) sets, DECRARA (rev 1) reverses the attributes the SGR
+ * parameters from params[4] name (0 all off; 1 4 5 7 and their 22 24 25
+ * 27): in the rectangle, or with DECSACE 0/1 in the stream of cells from
+ * its first to its last. */
+static void rect_attrs(vt_term *t, int rev)
+{
+    int x0, y0, x1, y1, y, i;
+    vt_attr set = 0, clr = 0;
+    if (!rect_of(t, 0, &x0, &y0, &x1, &y1) && (t->rect_extent || y0 >= y1 - 1))
+        return; /* a stream may end left of where it starts, on a later row */
+    for (i = 4; i < t->np || i == 4; i++) {
+        long p = param0(t, i);
+        vt_attr a = p == 1 || p == 22 ? VT_ATTR_BOLD : p == 4 || p == 24 ? VT_ATTR_UNDERLINE
+                  : p == 5 || p == 25 ? VT_ATTR_BLINK : p == 7 || p == 27 ? VT_ATTR_INVERSE : 0;
+        if (p == 0)
+            clr = (vt_attr)(VT_ATTR_BOLD | VT_ATTR_UNDERLINE | VT_ATTR_BLINK | VT_ATTR_INVERSE), set = 0;
+        else if (p < 10)
+            set |= a, clr &= (vt_attr)~a;
+        else
+            clr |= a, set &= (vt_attr)~a;
+    }
+    for (y = y0; y < y1; y++) {
+        int a = x0, b = x1, x;
+        if (!t->rect_extent) { /* the stream: whole rows between the ends */
+            a = y == y0 ? x0 : 0;
+            b = y == y1 - 1 ? x1 : t->cols;
+            if (y0 == y1 - 1 && x1 <= x0)
+                break;
+        }
+        for (x = a; x < b; x++) {
+            vt_cell *c = cell_at(t, x, y);
+            if (rev) {
+                c->attr ^= set;
+            } else {
+                c->attr = (vt_attr)((c->attr & ~clr) | set);
+                if (clr & VT_ATTR_UNDERLINE)
+                    c->deco &= ~VT_DECO_UL_MASK;
+                if ((set & VT_ATTR_UNDERLINE) && !(c->deco & VT_DECO_UL_MASK))
+                    c->deco |= VT_UL_SINGLE;
+            }
+        }
+        mark(t, a, y, b);
+    }
+}
+
+/* CSI ... with the intermediate ' or $ or *: the VT420 editing the
+ * xterm personality does. 0 when the sequence is not one of them. */
+static int csi_vt420(vt_term *t, vt_u8 final)
+{
+    int x0, y0, x1, y1;
+    if (t->inter == '\'' && (final == '}' || final == '~')) {
+        edit_columns(t, (int)param(t, 0, 1), final == '}');
+        return 1;
+    }
+    if (t->inter == '*' && final == 'x') { /* DECSACE */
+        t->rect_extent = param0(t, 0) == 2;
+        return 1;
+    }
+    if (t->inter != '$')
+        return 0;
+    switch (final) {
+    case 'x': { /* DECFRA Pch;Pt;Pl;Pb;Pr */
+        long ch = param0(t, 0);
+        int i;
+        if (!((ch >= 32 && ch <= 126) || (ch >= 160 && ch <= 255)))
+            return 1;
+        for (i = 0; i < 4; i++) /* the rectangle starts at the second parameter */
+            t->params[i] = i + 1 < t->np ? t->params[i + 1] : 0;
+        t->np = t->np > 0 ? t->np - 1 : 0;
+        if (rect_of(t, 0, &x0, &y0, &x1, &y1))
+            rect_fill(t, x0, y0, x1, y1, (vt_u32)ch);
+        return 1;
+    }
+    case 'z': /* DECERA */
+    case '{': /* DECSERA: no cell is protected, so the same */
+        if (rect_of(t, 0, &x0, &y0, &x1, &y1))
+            rect_fill(t, x0, y0, x1, y1, 0);
+        return 1;
+    case 'v': { /* DECCRA Pts;Pls;Pbs;Prs;Pps;Ptd;Pld;Ppd: one page */
+        int org = t->origin ? t->top : 0;
+        if (rect_of(t, 0, &x0, &y0, &x1, &y1))
+            rect_copy(t, x0, y0, x1, y1, clampi((int)param(t, 6, 1) - 1, 0, t->cols - 1),
+                      clampi((int)param(t, 5, 1) - 1 + org, org, (t->origin ? t->bot : t->rows) - 1));
+        return 1;
+    }
+    case 'r': /* DECCARA */
+    case 't': /* DECRARA */
+        rect_attrs(t, final == 't');
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static int scheme_of(const vt_term *t);
 
 static void csi_xterm(vt_term *t, vt_u8 final)
@@ -2145,6 +2320,8 @@ static void csi_xterm(vt_term *t, vt_u8 final)
         report_mode(t);
         return;
     }
+    if (t->inter && !t->priv && csi_vt420(t, final))
+        return;
     if (t->inter) {
         note_unhandled(t, 'C', final);
         return;
@@ -3254,6 +3431,7 @@ void vt_reset(vt_term *t)
     soft_reset(t);
     t->sav_1049 = t->sav;
     t->saved_1048 = 0;
+    t->rect_extent = 0;
     t->raw_events = 0;
     t->amiga_bg = 0;
     t->scroll_enabled = 1;
