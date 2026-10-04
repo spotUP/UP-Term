@@ -213,8 +213,9 @@ static void load_cases(void)
     CHECK(!prefs_load_writable(PREFS_LOAD_TOOBIG));
     CHECK_INT(conf.nprof, 0);
 
-    /* a file of exactly the cap is read whole */
-    memset(buf, ';', UC_MAX_FILE);
+    /* a file of exactly the cap is read whole (blank lines fill it: a
+     * 16 KB comment is more than the table keeps of comments, UC_NOTE_BYTES) */
+    memset(buf, '\n', UC_MAX_FILE);
     memcpy(buf, "[profile a]\nx = 1\n", 18);
     buf[UC_MAX_FILE] = 0;
     CHECK_INT(prefs_load(&conf, buf, UC_MAX_FILE, UC_MAX_FILE), PREFS_LOAD_OK);
@@ -267,6 +268,12 @@ static void stage_cases(void)
     f.reflow = 0;
     CHECK_INT(f.scrollbar, 1); /* the scroll bar shows unless the file says hide */
     f.scrollbar = 0;
+    /* the keys the Advanced page added: read as the handler reads them,
+     * written back as it reads them */
+    CHECK_INT(f.aspect, 1);         /* no key: on */
+    f.aspect = 0;
+    CHECK_INT(f.backspace_bs, 0);   /* no key: DEL */
+    f.backspace_bs = 1;
     strcpy(f.pal[3], "#FFAA00");
     strcpy(f.selbg, "203040");
     CHECK_INT(prefs_validate(&f), 0);
@@ -278,12 +285,12 @@ static void stage_cases(void)
     CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
     prefs_from_conf(&g, &conf, "default");
     CHECK_STR(g.font, "TOPAZ 8.8.font");
-    /* the fallback font survives a save (the stage writes the profile afresh) */
+    /* the fallback font survives a save */
     CHECK_STR(g.fallback, "Symbols Nerd Font Mono");
-    CHECK_STR(g.screen, "fullscreen");      /* the screen keys survive a save too */
+    CHECK_INT(g.screen, PREFS_SCREEN_FULL); /* the screen keys survive a save too */
     CHECK_STR(g.screenmode, "0x29004");
     CHECK_STR(g.screendepth, "4");
-    CHECK_STR(g.clipboard, "read-write");   /* OSC 52 access (G3) survives a save */
+    CHECK_INT(g.clipboard, PREFS_CLIP_READ_WRITE); /* OSC 52 access (G3) survives a save */
     CHECK_STR(g.linkopen, "Run >NIL: OpenURL %s"); /* and the OSC 8 link command */
     CHECK_INT(g.cursor, PREFS_CURSOR_BAR);
     CHECK_INT(g.blink, 1);
@@ -293,6 +300,12 @@ static void stage_cases(void)
     CHECK_INT(g.kcinfo, 1);
     CHECK_INT(g.kccache, 0);
     CHECK_INT(g.reflow, 0);
+    CHECK_STR(upconf_str(&conf, "default", "font-aspect", "?"), "off");
+    CHECK_STR(upconf_str(&conf, "default", "backspace", "?"), "bs");
+    CHECK_STR(upconf_str(&conf, "default", "screen", "?"), "fullscreen");
+    CHECK_STR(upconf_str(&conf, "default", "program-clipboard", "?"), "read-write");
+    CHECK_INT(g.aspect, 0);
+    CHECK_INT(g.backspace_bs, 1);
     CHECK_STR(upconf_str(&conf, "default", "reflow", "?"), "off");
     CHECK_INT(g.scrollbar, 0);
     CHECK_STR(upconf_str(&conf, "default", "scrollbar", "?"), "hide");
@@ -342,6 +355,102 @@ static void stage_cases(void)
     }
 }
 
+/* A save keeps what the editor does not own. prefs_stage removed the whole
+ * profile and wrote back only the editor's fields, so backspace,
+ * font-aspect, any hand-typed key and every comment went on each Save,
+ * Use and the window's Save settings to profile (which stages the same
+ * way: prefs_from_conf, the window's values over it, prefs_stage). */
+static void keep_cases(void)
+{
+    static char buf[UC_MAX_FILE + 1];
+    static char again[UC_MAX_FILE + 1];
+    static const char file[] =
+        "; my settings\n"
+        "[profile default]\n"
+        "; the font I like\n"
+        "font = TOPAZ 8.8.font\n"
+        "backspace = bs\n"
+        "font-aspect = off\n"
+        "my-own-key = 42\n"
+        "scrollbar = hide\n"
+        "bell = none\n"
+        "; the end of default\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n"
+        "unknown = 1\n";
+    prefs_fields f;
+    long len, len2;
+
+    CHECK_INT(prefs_load(&conf, file, (long)strlen(file), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    strcpy(f.font, "XEN 11.font");     /* the editor's own keys change */
+    f.bell = PREFS_BELL_VISUAL;
+    CHECK_INT(f.scrollbar, 0);         /* SB1's key: staged in place like the rest */
+    f.scrollbar = 1;
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "font", "?"), "XEN 11.font");
+    CHECK_STR(upconf_str(&conf, "default", "bell", "?"), "visual");
+    /* the keys only the handler reads, and one nobody reads, are still there */
+    CHECK_STR(upconf_str(&conf, "default", "backspace", "?"), "bs");
+    CHECK_STR(upconf_str(&conf, "default", "font-aspect", "?"), "off");
+    CHECK_STR(upconf_str(&conf, "default", "my-own-key", "?"), "42");
+    /* the other profile as it was */
+    CHECK_STR(upconf_str(&conf, "vim", "unknown", "?"), "1");
+    CHECK_STR(upconf_str(&conf, "vim", "fg", "?"), "C0C0C0");
+    /* the comments, and an edited key where it stood, under its comment */
+    CHECK(strstr(buf, "; my settings\n") == buf);
+    CHECK(strstr(buf, "; the font I like\nfont = XEN 11.font\nbackspace = bs\n") != 0);
+    CHECK(strstr(buf, "; the end of default\n") != 0);
+    CHECK(strstr(buf, "# vim's own\nfg = C0C0C0\n") != 0);
+    CHECK(strstr(buf, "my-own-key = 42\nscrollbar = show\nbell = visual\n") != 0);
+
+    /* a field emptied: that key goes (the handler's built-in stands), its
+     * comment and the keys around it stay */
+    prefs_from_conf(&f, &conf, "default");
+    f.font[0] = 0;
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK(upconf_get(&conf, "default", "font") == 0);
+    CHECK(strstr(buf, "; the font I like\nbackspace = bs\n") != 0);
+    CHECK_STR(upconf_str(&conf, "default", "my-own-key", "?"), "42");
+
+    /* round trip: the saved file, loaded and saved unchanged, is the same text */
+    prefs_from_conf(&f, &conf, "default");
+    len2 = prefs_stage(&work, &conf, "default", &f, again, sizeof(again));
+    CHECK_INT(len2, len);
+    CHECK_STR(again, buf);
+
+    /* a new profile: the editor's keys, the file's other profiles and
+     * comments untouched */
+    prefs_defaults(&f);
+    len = prefs_stage(&work, &conf, "emacs", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK(prefs_profile_exists(&conf, "emacs"));
+    CHECK_STR(upconf_str(&conf, "default", "backspace", "?"), "bs");
+    CHECK(strstr(buf, "# vim's own\n") != 0);
+
+    /* a table that did not hold the whole file (the window's own read
+     * keeps what fits: a ninth profile, or a comment store full) is not
+     * written back: the window menu's Save settings to profile staged it
+     * and wrote the file without what had not fit */
+    {
+        static char nine[512];
+        long n = profiles_text(nine, UC_MAX_PROFILES + 1);
+        upconf_parse(&conf, nine, n);
+        CHECK(conf.overflow);
+        CHECK(upconf_get(&conf, "p8", "font") == 0); /* the ninth was not kept */
+        prefs_from_conf(&f, &conf, "p0");
+        memcpy(&before, &conf, sizeof(conf));
+        CHECK_INT(prefs_stage(&work, &conf, "p0", &f, buf, sizeof(buf)), PREFS_STAGE_LOSSY);
+        CHECK(!memcmp(&before, &conf, sizeof(conf)));
+    }
+}
+
 /* A theme file (one .conf in themes/: a profile section of colours) applied to
  * the fields: its colours replace the profile's, the rest of the profile
  * (font, bell, cursor shape...) stays; a colour the theme does not set is
@@ -385,4 +494,5 @@ void suite_prefs(void)
     install_restore_case();
     load_cases();
     stage_cases();
+    keep_cases();
 }

@@ -25,7 +25,6 @@
 typedef struct prefs_fields {
     char font[UC_MAX_VALUE];
     char fallback[UC_MAX_VALUE]; /* font-fallback: outline font for glyphs the font lacks */
-    char screen[UC_MAX_VALUE];   /* screen: workbench | own | fullscreen ("" = workbench) */
     char screenmode[UC_MAX_VALUE];  /* screen-mode: 0xID ("" = the Workbench's) */
     char screendepth[UC_MAX_VALUE]; /* screen-depth: n ("" = 4, or 8 on a card) */
     char sb[UC_MAX_VALUE];
@@ -34,8 +33,6 @@ typedef struct prefs_fields {
     char bg[UC_MAX_VALUE];
     char selfg[UC_MAX_VALUE];
     char selbg[UC_MAX_VALUE];
-    /* kept through a save, not shown: what the window takes as it is */
-    char clipboard[UC_MAX_VALUE];   /* program-clipboard: write | read-write | off (OSC 52) */
     char linkopen[UC_MAX_VALUE];    /* link-open: the command for an OSC 8 link, %s the URL */
     char pal[16][16];
     int cursor;     /* PREFS_CURSOR_* */
@@ -43,6 +40,10 @@ typedef struct prefs_fields {
     int blink, bold, meta_alt, copy_sel, wheel, reflow; /* 0 / 1 */
     int scrollbar;  /* the scroll bar in a sizable window's border (default on) */
     int completion; /* PREFS_COMPLETE_* */
+    int screen;     /* PREFS_SCREEN_*: screen = workbench | own | fullscreen */
+    int aspect;     /* font-aspect: the font fitted to the screen's aspect (on by default) */
+    int backspace_bs; /* backspace = bs: the key sends ^H; 0: del, ^? (the default) */
+    int clipboard;  /* PREFS_CLIP_*: program-clipboard, what OSC 52 may do */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
     int kcinfo;     /* KingCON completion lists .info files too */
     int kccache;    /* KingCON's directory cache (DIRCACHE; on by default) */
@@ -55,6 +56,10 @@ enum { PREFS_BELL_NONE, PREFS_BELL_BEEP, PREFS_BELL_VISUAL };
  * kingcon (KingCON's keys and its selection window;
  * thoughts/shared/research/2026-10-02_kingcon-completion.md) */
 enum { PREFS_COMPLETE_UNIX, PREFS_COMPLETE_KINGCON };
+enum { PREFS_SCREEN_WORKBENCH, PREFS_SCREEN_OWN, PREFS_SCREEN_FULL };
+/* OSC 52: programs may set the clipboard (the default), set and read it,
+ * or neither */
+enum { PREFS_CLIP_WRITE, PREFS_CLIP_READ_WRITE, PREFS_CLIP_OFF };
 
 /* The built-in values (what a window with no file shows). */
 void prefs_defaults(prefs_fields *f);
@@ -96,14 +101,20 @@ int prefs_load(upconf *c, const char *buf, long got, long cap);
 /* 1 when a load result lets the editor write the file back. */
 int prefs_load_writable(int load_result);
 
-/* Stage a save: *work becomes *cur with the named profile replaced by f, and
- * is written into buf (cap bytes, NUL-terminated on success). The length,
- * or PREFS_STAGE_FULL (the table has no room: a key or the profile would be
+/* Stage a save: *work becomes *cur with the editor's keys of the named
+ * profile set from f, each in place (an empty string field deletes its key);
+ * every other key of the profile, the other profiles and the comments stay
+ * as read. *work is written into buf (cap bytes, NUL-terminated on
+ * success). The length, or PREFS_STAGE_LOSSY (*cur is not the whole
+ * file), PREFS_STAGE_FULL (the table has no room: a key or the profile would be
  * dropped) or PREFS_STAGE_SIZE (the file would be over cap). *cur is never
  * touched; the caller copies *work over it once the file is in place.
  * f must have passed prefs_validate. */
 #define PREFS_STAGE_FULL (-1L)
 #define PREFS_STAGE_SIZE (-2L)
+/* *cur did not hold the whole file (its overflow is set: the window's own
+ * read keeps what fits): writing it back would lose the rest */
+#define PREFS_STAGE_LOSSY (-3L)
 long prefs_stage(upconf *work, const upconf *cur, const char *profile,
                  const prefs_fields *f, char *buf, long cap);
 

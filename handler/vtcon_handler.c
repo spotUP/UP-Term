@@ -166,6 +166,7 @@ typedef struct con {
     int auto_shut;               /* the close gadget shut an AUTO window: close it after idcmp() */
     int spec_parsed;
     char profile[UC_NAME];       /* the config profile (spec's PROFILE; "default") */
+    char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
     upconf *save_work;           /* Save settings to profile: the table once the file is written */
@@ -605,11 +606,17 @@ static void read_conf(upconf *conf)
         return;
     /* Read straight up to the cap rather than Seek()ing to the end first:
      * on 3.1 that Seek answers 0 for this file, and the read is skipped. */
-    buf = (char *)AllocVec(CONF_MAX + 1, MEMF_ANY);
+    buf = (char *)AllocVec(CONF_MAX + 2, MEMF_ANY);
     if (buf) {
-        LONG got = Read(f, buf, CONF_MAX);
-        buf[got > 0 ? got : 0] = 0;
-        upconf_parse(conf, buf, got > 0 ? got : 0);
+        /* a byte more than the cap: a longer file is used as far as it
+         * fits, and marked (overflow) so Save settings to profile does not
+         * write it back cut (prefs_stage refuses it) */
+        LONG got = Read(f, buf, CONF_MAX + 1);
+        LONG use = got > CONF_MAX ? CONF_MAX : got > 0 ? got : 0;
+        buf[use] = 0;
+        upconf_parse(conf, buf, use);
+        if (got > CONF_MAX)
+            conf->overflow = 1;
         FreeVec(buf);
     }
     Close(f);
@@ -845,6 +852,7 @@ static void apply_colours(con *c, const upconf *cf, const char *p, int theme)
 static void apply_profile(con *c)
 {
     const char *p, *v;
+    c->link_open[0] = 0; /* none: OpenURL %s (h_open_link) */
     if (!c->conf)
         return;
     p = c->profile;
@@ -852,6 +860,8 @@ static void apply_profile(con *c)
         p = profile_exists(c->conf, "default") ? "default" : 0;
     if (!p)
         return;
+    /* OSC 8: the command a Ctrl + clicked link runs, %s the URL */
+    copy_str(c->link_open, upconf_str(c->conf, p, "link-open", ""), sizeof(c->link_open));
     v = upconf_str(c->conf, p, "font", 0);
     if (v && !c->w.fontname[0]) {
         char f[UC_MAX_VALUE];
@@ -1212,7 +1222,7 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 42
+#define MENU_SET_ITEMS 49
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1246,6 +1256,13 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
     { NM_ITEM, (STRPTR)"Reflow on resize", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
     { NM_ITEM, (STRPTR)"Scroll bar", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_SCROLLBAR },
+    { NM_ITEM, (STRPTR)"Backspace key sends", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Delete", 0, CHECKIT, 2, (APTR)MENU_SET_BS_DEL },
+    { NM_SUB, (STRPTR)"Backspace", 0, CHECKIT, 1, (APTR)MENU_SET_BS_BS },
+    { NM_ITEM, (STRPTR)"Programs may", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Set the clipboard", 0, CHECKIT, 6, (APTR)MENU_SET_CLIP_WRITE },
+    { NM_SUB, (STRPTR)"Set and read the clipboard", 0, CHECKIT, 5, (APTR)MENU_SET_CLIP_READ_WRITE },
+    { NM_SUB, (STRPTR)"Not use the clipboard", 0, CHECKIT, 3, (APTR)MENU_SET_CLIP_OFF },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Tab completion", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Unix", 0, CHECKIT, 2, (APTR)MENU_SET_UNIX },
@@ -1286,6 +1303,11 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_WHEEL: return c->w.wheel_scroll;
     case MENU_SET_REFLOW: return c->w.reflow;
     case MENU_SET_SCROLLBAR: return c->sbar_on;
+    case MENU_SET_BS_DEL: return !c->w.backspace_bs;
+    case MENU_SET_BS_BS: return c->w.backspace_bs;
+    case MENU_SET_CLIP_WRITE: return c->w.clip_access == VT_CLIP_WRITE;
+    case MENU_SET_CLIP_READ_WRITE: return c->w.clip_access == (VT_CLIP_WRITE | VT_CLIP_READ);
+    case MENU_SET_CLIP_OFF: return c->w.clip_access == 0;
     case MENU_SET_UNIX: return !c->kingcon;
     case MENU_SET_KINGCON: return c->kingcon;
     case MENU_SET_KC_W: return (c->kc_style & LE_KC_WINDOW) != 0;
@@ -1472,6 +1494,10 @@ static void window_fields(con *c, prefs_fields *f)
     f->reflow = c->w.reflow != 0;
     f->scrollbar = c->sbar_on != 0;
     f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
+    f->backspace_bs = c->w.backspace_bs != 0;
+    f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
+                 : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
+    copy_str(f->linkopen, c->link_open, sizeof(f->linkopen));
     k = 0;
     if (c->kc_style & LE_KC_WINDOW) f->kcmode[k++] = 'W';
     if (c->kc_style & LE_KC_LIST) f->kcmode[k++] = 'L';
@@ -1533,7 +1559,7 @@ static void save_ask(con *c)
     len = prefs_validate(&f) ? -1
         : prefs_stage(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1);
     if (len < 0) {
-        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room in the file for it */
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no room for it, or the file was not read whole */
         return;
     }
     c->comp->data_len = len;
@@ -1672,6 +1698,11 @@ static int menu_setting(con *c, LONG id, int on)
         c->sbar_on = on;
         tab_command(c, MENU_SET_SCROLLBAR); /* the window's: its owner shows or hides it */
         break;
+    case MENU_SET_BS_DEL: c->w.backspace_bs = 0; restyle = 1; break;
+    case MENU_SET_BS_BS: c->w.backspace_bs = 1; restyle = 1; break;
+    case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
+    case MENU_SET_CLIP_READ_WRITE: c->w.clip_access = VT_CLIP_WRITE | VT_CLIP_READ; restyle = 1; break;
+    case MENU_SET_CLIP_OFF: c->w.clip_access = 0; restyle = 1; break;
     case MENU_SET_UNIX:
     case MENU_SET_KINGCON:
         sel_close(c);
@@ -3025,6 +3056,10 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap)
         kc_cyc_end(c);
         c->kc_style = le_kc_fncmode(cmd.arg);
         break;
+    case SLASH_LINK_OPEN:
+        /* this window's, until Save settings to profile keeps it */
+        copy_str(c->link_open, str_ieq(cmd.arg, "none") ? "" : cmd.arg, sizeof(c->link_open));
+        return 1;
     case SLASH_THEME:
         theme_ask(c, cmd.arg);
         if (!cmd.arg[0])
@@ -4443,11 +4478,11 @@ static void link_opener(void)
 static void h_open_link(void *u, const char *uri)
 {
     con *c = (con *)u;
-    const char *tmpl = c->conf ? upconf_str(c->conf, c->profile, "link-open", 0) : 0;
     struct link_msg *m = (struct link_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
     if (!m)
         return;
-    if (!termurl_link_command(tmpl ? tmpl : "OpenURL %s", uri, m->cmd, sizeof(m->cmd))) {
+    if (!termurl_link_command(c->link_open[0] ? c->link_open : "OpenURL %s", uri, m->cmd,
+                              sizeof(m->cmd))) {
         FreeVec(m); /* a URL a command line cannot quote is not opened */
         DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
         return;

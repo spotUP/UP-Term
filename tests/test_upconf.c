@@ -43,6 +43,132 @@ static void profile_equal(void)
     CHECK(upconf_profile_equal(&a, &b, "nosuch"));   /* absent from both */
 }
 
+/* Save keeps the comments: the parse used to drop every ; and # line and
+ * the save wrote only keys, so the first Prefs save of the shipped sample
+ * (45 lines of documentation) left a bare table. A comment stays where
+ * it was among its profile's keys; one before every section stays first. */
+static void comments_kept(void)
+{
+    static upconf c, back;
+    static char out[UC_MAX_FILE + 1];
+    static char again[UC_MAX_FILE + 1];
+    static const char file[] =
+        "; UP-Term settings\n"
+        "# the head of the file\n"
+        "\n"
+        "[profile default]\n"
+        "; the font I like\n"
+        "font = TOPAZ 8.8.font\n"
+        "  ; indented, kept as typed\n"
+        "bell = none\n"
+        "; backspace = bs\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n";
+    static const char want[] =
+        "; UP-Term settings\n"
+        "# the head of the file\n"
+        "\n"
+        "[profile default]\n"
+        "; the font I like\n"
+        "font = TOPAZ 8.8.font\n"
+        "  ; indented, kept as typed\n"
+        "bell = none\n"
+        "; backspace = bs\n"
+        "\n"
+        "\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n";
+    long len, len2;
+    CHECK(upconf_parse(&c, file, (long)strlen(file)) == 1);
+    CHECK(!c.overflow);
+    CHECK_INT(c.nprof, 2);
+    CHECK_INT(c.n[0], 2); /* comments are not keys: no key slot taken */
+    len = upconf_save(&c, out, sizeof(out) - 1);
+    CHECK(len > 0);
+    out[len > 0 ? len : 0] = 0;
+    CHECK_STR(out, want);
+    /* and the saved file saves the same again: nothing grows or moves */
+    CHECK(upconf_parse(&back, out, len) == 1);
+    len2 = upconf_save(&back, again, sizeof(again) - 1);
+    again[len2 > 0 ? len2 : 0] = 0;
+    CHECK_STR(again, out);
+
+    /* a key deleted: the comment before the next key stays before it, the
+     * keys keep their order; a key added goes last */
+    CHECK(upconf_parse(&c, file, (long)strlen(file)) == 1);
+    CHECK(upconf_set(&c, "default", "scrollback", "900"));
+    CHECK(upconf_del(&c, "default", "font"));
+    len = upconf_save(&c, out, sizeof(out) - 1);
+    out[len > 0 ? len : 0] = 0;
+    CHECK_STR(out,
+        "; UP-Term settings\n"
+        "# the head of the file\n"
+        "\n"
+        "[profile default]\n"
+        "; the font I like\n"
+        "  ; indented, kept as typed\n"
+        "bell = none\n"
+        "; backspace = bs\n"
+        "scrollback = 900\n"
+        "\n"
+        "\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n");
+
+    /* a profile deleted takes its own comments, the others keep theirs */
+    CHECK(upconf_parse(&c, file, (long)strlen(file)) == 1);
+    CHECK(upconf_rmprof(&c, "default"));
+    len = upconf_save(&c, out, sizeof(out) - 1);
+    out[len > 0 ? len : 0] = 0;
+    CHECK_STR(out,
+        "; UP-Term settings\n"
+        "# the head of the file\n"
+        "\n"
+        "[profile vim]\n"
+        "# vim's own\n"
+        "fg = C0C0C0\n");
+
+    /* a section that holds only a comment is kept, as written */
+    CHECK(upconf_parse(&c, "[profile empty]\n; nothing yet\n", 30) == 1);
+    len = upconf_save(&c, out, sizeof(out) - 1);
+    out[len > 0 ? len : 0] = 0;
+    CHECK_STR(out, "[profile empty]\n; nothing yet\n");
+
+    /* a comment longer than a line of settings is kept whole: dropping it
+     * would lose it on the next save */
+    {
+        static char longc[600];
+        int k;
+        longc[0] = ';';
+        for (k = 1; k < 500; k++)
+            longc[k] = 'c';
+        strcpy(longc + 500, "\nbell = none\n");
+        CHECK(upconf_parse(&c, longc, (long)strlen(longc)) == 1);
+        CHECK(!c.overflow);
+        CHECK_STR(upconf_get(&c, "default", "bell"), "none");
+        len = upconf_save(&c, out, sizeof(out) - 1);
+        out[len > 0 ? len : 0] = 0;
+        CHECK(!strncmp(out, longc, 501));
+    }
+
+    /* more comment text than the table holds: marked, so the editor does
+     * not write the file back without it */
+    {
+        static char many[UC_MAX_FILE];
+        long n = 0;
+        while (n + 40 < (long)sizeof(many) - 1) {
+            memcpy(many + n, "; a comment line of forty bytes ......\n", 39);
+            n += 39;
+        }
+        many[n] = 0;
+        CHECK(upconf_parse(&c, many, n) == 1);
+        CHECK(c.overflow);
+    }
+}
+
 void suite_upconf(void)
 {
     upconf c;
@@ -349,12 +475,18 @@ void suite_upconf(void)
     {
         uc_u32 in[16];
         char out[200];
+        long len;
         int k;
         for (k = 0; k < 16; k++)
             in[k] = 0x01000000UL | (uc_u32)(0x111111UL * (uc_u32)(k % 15 + 1));
-        CHECK(palette_str_dirty(in, out, sizeof(out) - 1) > 0);
+        /* the text is not NUL-terminated (upconf.h): the length is the
+         * answer, and strlen of the buffer read on into the junk */
+        len = palette_str_dirty(in, out, sizeof(out) - 1);
+        CHECK_INT(len, 16 * 10 - 1);                  /* "NN,RRGGBB," x 16, no last comma */
+        out[len > 0 ? len : 0] = 0;
         CHECK(!strncmp(out, "00,111111,01,222222,", 20));
-        CHECK_INT((int)strlen(out), 16 * 10 - 1);       /* "NN,RRGGBB," x 16, no last comma */
+        CHECK_STR(out + 150, "15,111111");             /* the last entry whole, nothing after */
     }
     profile_equal();
+    comments_kept();
 }

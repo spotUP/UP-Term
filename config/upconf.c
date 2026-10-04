@@ -63,6 +63,57 @@ static int key_find(const upconf *c, int p, const char *name)
     return -1;
 }
 
+/* A new profile at the end of the table: its index, or -1 when the table
+ * is full (overflow marked). */
+static int prof_add(upconf *c, const char *name)
+{
+    int p;
+    if (c->nprof >= UC_MAX_PROFILES) {
+        c->overflow = 1;
+        return -1;
+    }
+    p = c->nprof++;
+    if (uc_copy(c->prof[p], name, UC_NAME))
+        c->overflow = 1;
+    c->n[p] = 0;
+    return p;
+}
+
+/* Keep a comment line, len bytes of s as typed (a trailing CR dropped),
+ * before key k of profile p (-1: before every section). 0 when there is no
+ * room for it (overflow marked: a save would lose it). */
+static int note_add(upconf *c, int p, int k, const char *s, long len)
+{
+    while (len > 0 && s[len - 1] == '\r')
+        len--;
+    if (c->nnote >= UC_MAX_NOTES || c->notelen + len + 1 > UC_NOTE_BYTES) {
+        c->overflow = 1;
+        return 0;
+    }
+    c->note_at[c->nnote] = (short)c->notelen;
+    c->note_prof[c->nnote] = (signed char)p;
+    c->note_key[c->nnote] = (unsigned char)k;
+    memcpy(c->note + c->notelen, s, (size_t)len);
+    c->note[c->notelen + len] = 0;
+    c->notelen += (int)len + 1;
+    c->nnote++;
+    return 1;
+}
+
+/* Forget comment line i; the later ones keep their order. */
+static void note_drop(upconf *c, int i)
+{
+    int at = c->note_at[i], n = (int)strlen(c->note + at) + 1, j;
+    memmove(c->note + at, c->note + at + n, (size_t)(c->notelen - at - n));
+    c->notelen -= n;
+    for (j = i; j < c->nnote - 1; j++) {
+        c->note_at[j] = (short)(c->note_at[j + 1] - n);
+        c->note_prof[j] = c->note_prof[j + 1];
+        c->note_key[j] = c->note_key[j + 1];
+    }
+    c->nnote--;
+}
+
 /* Copy s through *o while it fits in [o, end); *o advances past it. 0 when
  * it does not fit. */
 static int uc_copyto(char **o, char *end, const char *s)
@@ -81,16 +132,8 @@ int upconf_set(upconf *c, const char *profile, const char *key, const char *valu
     if (!profile || !*profile || !key || !*key)
         return 0;
     p = prof_find(c, profile);
-    if (p < 0) {
-        if (c->nprof >= UC_MAX_PROFILES) {
-            c->overflow = 1;
-            return 0;
-        }
-        p = c->nprof++;
-        if (uc_copy(c->prof[p], profile, UC_NAME))
-            c->overflow = 1;
-        c->n[p] = 0;
-    }
+    if (p < 0 && (p = prof_add(c, profile)) < 0)
+        return 0;
     k = key_find(c, p, key);
     if (k < 0) {
         if (c->n[p] >= UC_MAX_KEYS) {
@@ -108,20 +151,26 @@ int upconf_set(upconf *c, const char *profile, const char *key, const char *valu
 
 int upconf_del(upconf *c, const char *profile, const char *key)
 {
-    int p, k, last;
+    int p, k, i;
+    if (!key || !*key)
+        return 0;
     p = prof_find(c, profile);
     if (p < 0)
         return 0;
     k = key_find(c, p, key);
     if (k < 0)
         return 0;
-    /* Shift the last key of the profile down over it; order is not a promise. */
-    last = c->n[p] - 1;
-    if (k != last) {
-        uc_copy(c->key[p][k], c->key[p][last], UC_NAME);
-        uc_copy(c->val[p][k], c->val[p][last], UC_MAX_VALUE);
+    /* The later keys slide down over it: a save writes them where they were,
+     * and the comments between them stay put (the last key once moved into
+     * the gap, away from the comment above it). */
+    for (i = k; i < c->n[p] - 1; i++) {
+        memcpy(c->key[p][i], c->key[p][i + 1], sizeof(c->key[0][0]));
+        memcpy(c->val[p][i], c->val[p][i + 1], sizeof(c->val[0][0]));
     }
     c->n[p]--;
+    for (i = 0; i < c->nnote; i++)
+        if (c->note_prof[i] == p && c->note_key[i] > k)
+            c->note_key[i]--;
     return 1;
 }
 
@@ -140,6 +189,13 @@ int upconf_rmprof(upconf *c, const char *profile)
         c->n[i] = c->n[j];
     }
     c->nprof--;
+    /* its comments go with it; the later profiles' follow them down */
+    for (i = c->nnote - 1; i >= 0; i--)
+        if (c->note_prof[i] == p)
+            note_drop(c, i);
+    for (i = 0; i < c->nnote; i++)
+        if (c->note_prof[i] > p)
+            c->note_prof[i]--;
     return 1;
 }
 
@@ -153,26 +209,42 @@ int upconf_parse(upconf *c, const char *buf, long len)
     char line[256];
     char curprof[UC_NAME];
     long i = 0;
+    int insec = 0; /* a [profile] line was read */
     upconf_clear(c);
     if (!buf || len <= 0)
         return 0;
     uc_copy(curprof, "default", UC_NAME);
     while (i < len) {
-        long n = 0;
+        long n = 0, e, f;
+        /* a comment is kept as typed, however long, from the buffer itself */
+        for (e = i; e < len && buf[e] != '\n'; e++)
+            ;
+        for (f = i; f < e && (buf[f] == ' ' || buf[f] == '\t'); f++)
+            ;
+        if (f < e && (buf[f] == ';' || buf[f] == '#')) {
+            int p = prof_find(c, curprof);
+            if (p < 0 && insec)
+                p = prof_add(c, curprof); /* a section of comments only is kept */
+            if (p >= 0 || !insec)
+                note_add(c, p, p < 0 ? 0 : c->n[p], buf + i, e - i);
+            i = e < len ? e + 1 : e;
+            continue;
+        }
         while (i < len && buf[i] != '\n' && n < (long)sizeof(line) - 1)
             line[n++] = buf[i++];
         line[n] = 0;
         if (i < len && buf[i] != '\n') {
             /* longer than a line can be: the whole line is dropped -- its
              * tail parsed as a line of its own let a long value smuggle in
-             * a key (2026-10-02 review) */
-            const char *f = line;
+             * a key (2026-10-02 review). A comment never gets here (kept
+             * above, whole); a blank one loses nothing. */
+            const char *b = line;
             while (i < len && buf[i] != '\n')
                 i++;
-            while (*f == ' ' || *f == '\t')
-                f++;
-            if (*f != ';' && *f != '#')
-                c->overflow = 1; /* a setting was lost; a long comment loses nothing */
+            while (*b == ' ' || *b == '\t')
+                b++;
+            if (*b)
+                c->overflow = 1; /* a setting was lost */
             if (i < len)
                 i++;
             continue;
@@ -200,6 +272,7 @@ int upconf_parse(upconf *c, const char *buf, long len)
                 while (*s == ' ')
                     s++;
                 uc_copy(curprof, *s ? s : "default", UC_NAME);
+                insec = 1;
             } else {
                 char *value;
                 eq = strchr(s, '=');
@@ -467,16 +540,33 @@ int upconf_profiles(const upconf *c, const char **names)
     return c->nprof;
 }
 
+/* The comment lines anchored before key k of profile p, each on its line. */
+static int notes_to(const upconf *c, int p, int k, char **o, char *end)
+{
+    int i;
+    for (i = 0; i < c->nnote; i++)
+        if (c->note_prof[i] == p && (p < 0 || c->note_key[i] == k) &&
+            (!uc_copyto(o, end, c->note + c->note_at[i]) || !uc_copyto(o, end, "\n")))
+            return 0;
+    return 1;
+}
+
 long upconf_save(const upconf *c, char *buf, long cap)
 {
     char *o = buf;
     char *end = buf + cap;
     int p, k;
+    if (!notes_to(c, -1, 0, &o, end))
+        return -1;
     for (p = 0; p < c->nprof; p++) {
-        if (!uc_copyto(&o, end, p ? "\n\n[profile " : "[profile ") ||
+        if (!uc_copyto(&o, end, p ? "\n\n[profile " : o > buf ? "\n[profile " : "[profile ") ||
             !uc_copyto(&o, end, c->prof[p]) || !uc_copyto(&o, end, "]\n"))
             return -1;
-        for (k = 0; k < c->n[p]; k++) {
+        for (k = 0; k <= c->n[p]; k++) {
+            if (!notes_to(c, p, k, &o, end))
+                return -1;
+            if (k == c->n[p])
+                break;
             if (!uc_copyto(&o, end, c->key[p][k]) ||
                 !uc_copyto(&o, end, " = ") ||
                 !uc_copyto(&o, end, c->val[p][k]) ||

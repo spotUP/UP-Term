@@ -280,6 +280,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->cursor_blink = 0;
     w->meta_alt = 0;
     w->copy_on_select = 0;
+    w->backspace_bs = 0; /* DEL, ^?: a profile without the key must not keep the last one's bs */
     w->clip_access = VT_CLIP_WRITE; /* OSC 52 sets the clipboard, never reads it */
     for (i = 0; i < 16; i++)
         w->pal16[i] = 0;
