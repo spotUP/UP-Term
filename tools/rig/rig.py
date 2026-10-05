@@ -132,8 +132,10 @@ FAST = "--fast" in sys.argv   # the CPU as fast as the host runs it (an accelera
 STOCK = "--stock" in sys.argv
 # --060: the maxed-out machine next to the stock one (owner 2026-10-05: "max
 # the amiga with 060 too a 020 is not good enough", ledger W41): a 68060 with
-# its FPU, the CPU as fast as the host runs it, 256 MB Zorro III fast RAM.
-# FS-UAE executes the 060's unimplemented integer/FPU instructions itself
+# its FPU, the CPU as fast as the host runs it, 128 MB Zorro III fast RAM.
+# 68060-NOMMU: plain "68060" turns on MMU emulation, which is slow and rules
+# out the JIT (owner 2026-10-05). FS-UAE executes the 060's unimplemented
+# integer/FPU instructions itself
 # (uae_cpu/fpu_no_unimplemented false), so no 68060.library is needed.
 M060 = "--060" in sys.argv
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
@@ -187,11 +189,11 @@ def setup():
         "bsdsocket_library = 1",
     ] if STOCK else [
         "[fs-uae]", "amiga_model = A1200",
-        "cpu = %s" % ("68060" if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
+        "cpu = %s" % ("68060-NOMMU" if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
         "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
-        "zorro_iii_memory = %d" % (262144 if M060 else 65536),
+        "zorro_iii_memory = %d" % (131072 if M060 else 65536),
         "bsdsocket_library = 1", "graphics_card = uaegfx",
         # the RTG card's pointer as a sprite: Picasso96's software pointer is
         # hidden and drawn again around every blit, so it flickered with the
