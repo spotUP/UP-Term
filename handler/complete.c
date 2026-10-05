@@ -835,8 +835,8 @@ static void font_pick(struct complete_req *q)
     CloseLibrary(AslBase);
 }
 
-/* theme file -> q->data, its name in q->add; 0 when it cannot be read */
-static int theme_read(struct complete_req *q, const char *path, const char *name)
+/* theme file -> q->data, its path in q->add; 0 when it cannot be read */
+static int theme_read(struct complete_req *q, const char *path)
 {
     BPTR f = Open((STRPTR)path, MODE_OLDFILE);
     long n;
@@ -849,28 +849,42 @@ static int theme_read(struct complete_req *q, const char *path, const char *name
     q->data_len = n;
     q->data[n] = 0;
     q->matches = 1;
-    strncpy(q->add, name, COMPLETE_MAX - 1);
+    strncpy(q->add, path, COMPLETE_MAX - 1);
     q->add[COMPLETE_MAX - 1] = 0;
     return 1;
 }
 
-/* COMPLETE_THEME: Settings > Theme... -- a theme file from the kit's themes
- * drawer, read into q->data (q->data_max bytes at most). With q->word set
- * (a typed "/theme NAME") that theme, no requester. */
+/* The themes drawer for q (prefs_dos_theme_drawer): the window's theme's
+ * drawer, the kit's, its ENV: copy, or beside the handler's own file. */
+static void theme_dir(struct complete_req *q, char *dir, int cap)
+{
+    char home[COMPLETE_MAX];
+    const char *theme = "";
+    home[0] = 0;
+    if (q->extra && q->extra_len > 0) {
+        theme = q->extra;
+        strncpy(home, theme + strlen(theme) + 1, sizeof(home) - 1);
+        home[sizeof(home) - 1] = 0;
+        *PathPart((STRPTR)home) = 0;
+    }
+    prefs_dos_theme_drawer(theme, home, dir, cap);
+}
+
+/* COMPLETE_THEME: Settings > Theme... -- a theme file from the themes
+ * drawer (prefs_dos_theme_drawer: W30, the requester opened wherever ASL
+ * liked when the kit's drawer was missing), read into q->data
+ * (q->data_max bytes at most). With q->word set (a typed "/theme NAME",
+ * or an entry of /theme's list) that theme, no requester. */
 static void theme_pick(struct complete_req *q)
 {
     struct Library *AslBase;
     struct FileRequester *fr;
-    char path[COMPLETE_MAX];
+    char dir[COMPLETE_MAX], path[COMPLETE_MAX];
     q->data_len = 0;
+    theme_dir(q, dir, sizeof(dir));
     if (q->word[0]) {
-        int l;
-        strcpy(path, "ENVARC:up-term/themes");
-        AddPart((STRPTR)path, (STRPTR)q->word, sizeof(path) - 6);
-        l = (int)strlen(path);
-        if (l < 5 || strcmp(path + l - 5, ".conf"))
-            strcat(path, ".conf");
-        theme_read(q, path, q->word);
+        prefs_theme_file(dir, q->word, path, sizeof(path));
+        theme_read(q, path);
         return;
     }
     AslBase = OpenLibrary((STRPTR)"asl.library", 37);
@@ -878,17 +892,40 @@ static void theme_pick(struct complete_req *q)
         return;
     fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
             ASLFR_Screen, (ULONG)q->screen, ASLFR_TitleText, (ULONG)"UP-Term theme",
-            ASLFR_InitialDrawer, (ULONG)"ENVARC:up-term/themes", ASLFR_InitialPattern,
+            ASLFR_InitialDrawer, (ULONG)dir, ASLFR_InitialPattern,
             (ULONG)"#?.conf", ASLFR_DoPatterns, TRUE, ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (fr && AslRequest(fr, 0) && fr->fr_File[0]) {
         strncpy(path, (const char *)fr->fr_Drawer, sizeof(path) - 2);
         path[sizeof(path) - 2] = 0;
         AddPart((STRPTR)path, fr->fr_File, sizeof(path) - 2);
-        theme_read(q, path, (const char *)fr->fr_File);
+        theme_read(q, path);
     }
     if (fr)
         FreeAslRequest(fr);
     CloseLibrary(AslBase);
+}
+
+/* COMPLETE_THEMES: /theme's list -- the theme names in the themes drawer
+ * (the requester's), sorted (prefs_theme_add), into q->names. */
+static void theme_list(struct complete_req *q)
+{
+    struct FileInfoBlock *fib;
+    BPTR lock;
+    int len = 0;
+    q->names_len = 0;
+    theme_dir(q, q->add, COMPLETE_MAX);
+    if (!q->add[0] || !q->names || !(lock = Lock((STRPTR)q->add, SHARED_LOCK)))
+        return;
+    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (fib && Examine(lock, fib) && fib->fib_DirEntryType > 0)
+        while (ExNext(lock, fib))
+            if (fib->fib_DirEntryType < 0 &&
+                prefs_theme_add(q->names, &len, COMPLETE_NAMES, (const char *)fib->fib_FileName) > 0)
+                q->matches++;
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    UnLock(lock);
+    q->names_len = len;
 }
 
 /* The worker's body: runs as its own process. */
@@ -932,6 +969,8 @@ static void worker(void)
         font_pick(q);
     } else if (q->mode == COMPLETE_THEME) {
         theme_pick(q);
+    } else if (q->mode == COMPLETE_THEMES) {
+        theme_list(q);
     } else if (q->mode == CONFIG_SAVE) {
         int failed;
         q->font_size = prefs_dos_save(q->data, q->data_len, 1, &failed);
