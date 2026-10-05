@@ -3,7 +3,8 @@
 through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (--fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
+  rig.py start    boot it in the background (--060: a 68060 + FPU at the host's speed, 256 MB Z3 (W41);
+                  --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
@@ -129,6 +130,12 @@ FAST = "--fast" in sys.argv   # the CPU as fast as the host runs it (an accelera
 # graphics card, bsdsocket only. Our default rig has 8 MB fast + 64 MB Z3:
 # CCON 1.2.7 ran 38.32 s on it in 77x20 and 86.46 s on his.
 STOCK = "--stock" in sys.argv
+# --060: the maxed-out machine next to the stock one (owner 2026-10-05: "max
+# the amiga with 060 too a 020 is not good enough", ledger W41): a 68060 with
+# its FPU, the CPU as fast as the host runs it, 256 MB Zorro III fast RAM.
+# FS-UAE executes the 060's unimplemented integer/FPU instructions itself
+# (uae_cpu/fpu_no_unimplemented false), so no 68060.library is needed.
+M060 = "--060" in sys.argv
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -179,10 +186,12 @@ def setup():
         "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
         "bsdsocket_library = 1",
     ] if STOCK else [
-        "[fs-uae]", "amiga_model = A1200", "cpu = 68020", "fpu = 68882", "fast_memory = 8192",
+        "[fs-uae]", "amiga_model = A1200",
+        "cpu = %s" % ("68060" if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
+        "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
-        "zorro_iii_memory = 65536",
+        "zorro_iii_memory = %d" % (262144 if M060 else 65536),
         "bsdsocket_library = 1", "graphics_card = uaegfx",
         # the RTG card's pointer as a sprite: Picasso96's software pointer is
         # hidden and drawn again around every blit, so it flickered with the
@@ -192,10 +201,10 @@ def setup():
         # without this FS-UAE runs the A1200's 68020 at about its real speed
         # (no JIT on an ARM host): UPDemo BENCH and cellbench measured a
         # stock machine, 2026-10-04
-        "uae_cpu_speed = %s" % ("max" if FAST else "real"),
+        "uae_cpu_speed = %s" % ("max" if FAST or M060 else "real"),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
-    ]
+    ] + (["uae_cpu_no_unimplemented = false", "uae_fpu_no_unimplemented = false"] if M060 else [])
     CFG.write_text("\n".join(machine + [
         "hard_drive_0 = %s" % (RIG / ("os32" if OS32 else "sys.hdf")),
         # Writable: read-only (--ro) put up "Volume System is write
