@@ -86,8 +86,9 @@ widths:
 
 # GNU Unifont (ledger U2): the .hex fetched once into build/unifont/ and
 # checked against its pinned sha256, then one page file per 256 code points
-# of the BMP into build/unifont/pages/ (tools/gen_unifont.py; the kit's
-# SYS:UP-Term/unifont/). UNIFONT_VER= another release (and UNIFONT_SHA256=).
+# of the BMP ("4E") and of plane 1's emoji blocks U+1F000-1FAFF ("1F6") into
+# build/unifont/pages/ (tools/gen_unifont.py; the kit's SYS:UP-Term/unifont/).
+# UNIFONT_VER= another release (and UNIFONT_SHA256=).
 UNIFONT_VER ?= 17.0.05
 UNIFONT_SHA256 ?= 7b182454966046d35482469b979edce7d262fab5c53c2180e9b1fbb5d0b5e574
 UNIFONT_HEX := $(BUILD)/unifont/unifont_all-$(UNIFONT_VER).hex.gz
@@ -664,7 +665,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/Claude $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts
-	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
+	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
 	cp $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon

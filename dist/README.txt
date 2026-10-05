@@ -142,12 +142,15 @@ OUTLINE FONTS (icons, other scripts)
    profile, or type it in UP-Term Prefs, General page, Fallback font.
    Open windows take it at once.
    What neither font has comes from GNU Unifont, when Install put it in
-   (the "Unifont" part: SYS:UP-Term/unifont, 1.7 MB, SIL Open Font License
+   (the "Unifont" part: SYS:UP-Term/unifont, 1.8 MB, SIL Open Font License
    1.1, see OFL-1.1.txt and SOURCE.txt there): every character up to
-   U+FFFF, drawn 1:1 with a 16-pixel font (TopazPro 16, IBM 16) and at half
-   height, each pair of rows merged, with an 8-pixel one (topaz 8). Other
-   font sizes keep the '?'. A window reads a page of 256 characters the
-   first time it needs one and keeps the last 8 (at most 66 KB).
+   U+FFFF and the emoji (U+1F000-U+1FAFF, in one colour, two cells wide as
+   in any terminal), drawn 1:1 with a 16-pixel font (TopazPro 16, IBM 16)
+   and at half height, each pair of rows merged, with an 8-pixel one
+   (topaz 8). A character with a Latin-1 stand-in keeps it ('>' for the
+   prompt arrow U+276F, '-' for a dash). Other font sizes keep the '?' (a
+   box for an emoji). A window reads a page of 256 characters the first
+   time it needs one and keeps the last 8 (at most 66 KB).
 
 COMMANDS (/cursor bar)
    Every setting of the menus and of Prefs is also a command you type at

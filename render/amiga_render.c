@@ -438,7 +438,7 @@ void vr_set_font(vr_render *r, struct TextFont *font)
     if (r->outline)
         vo_set_cell(r->outline, r->cw, r->ch, r->base); /* its glyphs at the new cell */
     if (r->unifont)
-        uf_set_cell(r->unifont, r->cw, r->ch, r->base);
+        uf_set_cell(r->unifont, r->cw, r->ch);
     if (r->glyphs)
         FreeVec(r->glyphs);
     r->glyphs = 0;
@@ -458,7 +458,7 @@ void vr_set_unifont(vr_render *r, struct uf_cache *c)
 {
     r->unifont = c;
     if (c)
-        uf_set_cell(c, r->cw, r->ch, r->base);
+        uf_set_cell(c, r->cw, r->ch);
     fb_sync(r);
 }
 
@@ -1388,8 +1388,8 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
 }
 
 /* The glyph sources for what the bitmap font cannot show itself, as
- * vt_fallback_glyph asks them: the outline font (render/outline), then
- * Unifont's pages (render/unifont). */
+ * vt_fallback_glyph asks them: the outline font (render/outline), then --
+ * for a character with no stand-in -- Unifont's pages (render/unifont). */
 static const vt_u8 *outline_src(void *f, vt_u32 cp, int cells, int *bpr)
 {
     WORD b = 0;
@@ -1752,7 +1752,8 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 vt_u32 cp[VT_CLUSTER_CPS];
                 int ncp = 1, cells = c[x].width == 2 ? 2 : 1;
                 /* composed, then the font's own, the outline font,
-                 * Unifont, or vt_map_glyph's stand-in (glyphmap.h) */
+                 * vt_map_glyph's stand-in, Unifont (an emoji over its two
+                 * cells), or the replacement (glyphmap.h) */
                 om = vt_cell_glyph(&r->fb, r->t, &c[x], cp, &ncp, &obpr, &g);
                 if (om) {
                     WORD px = (WORD)(r->ox + x * r->cw);

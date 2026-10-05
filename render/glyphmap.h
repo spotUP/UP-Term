@@ -52,8 +52,10 @@ typedef const vt_u8 *(*vt_mask_source)(void *src, vt_u32 cp, int cells, int *bpr
 
 /* The sources asked for what the font cannot show itself, in this order:
  * the outline font the profile names (font-fallback, F1: the user's
- * choice, Nerd Font icons), then GNU Unifont for the BMP (render/unifont,
- * U2). A source left 0 is skipped. */
+ * choice, Nerd Font icons); then, for a code point vt_map_glyph has no
+ * stand-in for ('-' for an en dash, '>' for U+276F), GNU Unifont
+ * (render/unifont, U2: the BMP and plane 1's emoji). A stand-in is never
+ * replaced by Unifont's glyph (ledger W33). A source left 0 is skipped. */
 typedef struct vt_fallback {
     enum vt_font_enc enc;
     vt_mask_source outline;
@@ -63,8 +65,9 @@ typedef struct vt_fallback {
 } vt_fallback;
 
 /* The mask cp draws from over `cells` cells: 0 when the font shows cp
- * itself (vt_glyph_native) or no source has it -- then vt_map_glyph's
- * stand-in or replacement. */
+ * itself (vt_glyph_native), when it has a stand-in and no outline font
+ * draws it, or when no source has it -- then vt_map_glyph's stand-in or
+ * replacement. */
 const vt_u8 *vt_fallback_glyph(const vt_fallback *f, vt_u32 cp, int cells, int *bpr);
 
 /* What a cell with a character past ASCII draws (the renderer's rows and

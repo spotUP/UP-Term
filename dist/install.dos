@@ -111,9 +111,9 @@ Copy coreutils/bin SYS:UP-Term/bin ALL CLONE QUIET
 ; coreutils; C:upgetty: a shell on the serial port (see the README)
 Copy sz rz SYS:UP-Term/bin CLONE
 ; [UNIFONT]: GNU Unifont's glyphs (SIL Open Font License 1.1: OFL-1.1.txt
-; and SOURCE.txt go with them), one file per 256 characters, 1.7 MB: drawn
-; for every character up to U+FFFF the window's font lacks, at 8 and 16
-; pixels high. Not in FONTS: (FixFonts below scans it). Uninstall takes the
+; and SOURCE.txt go with them), one file per 256 characters, 1.8 MB: drawn
+; for every character up to U+FFFF and every emoji (U+1F000-1FAFF) the
+; window's font lacks, at 8 and 16 pixels high. Not in FONTS: (FixFonts below scans it). Uninstall takes the
 ; whole of SYS:UP-Term.
 If "{UNIFONT}" EQ "UNIFONT"
   MakeDir >NIL: SYS:UP-Term/unifont

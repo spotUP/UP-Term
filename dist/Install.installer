@@ -70,10 +70,11 @@
               "Install makes a key (or keeps yours, ENVARC:wasabi.key) and shows it at "
               "the end. Leave it off unless you develop on this Amiga from another "
               "machine. The client for the other machine is in the kit's Files/wasabi.\n\n"
-              "Unifont: GNU Unifont's glyphs (SIL Open Font License 1.1), 1.7 MB in "
+              "Unifont: GNU Unifont's glyphs (SIL Open Font License 1.1), 1.8 MB in "
               "SYS:UP-Term/unifont. UP-Term draws every character up to U+FFFF your "
-              "font lacks from them (Cyrillic, Greek, CJK, symbols) when the font is "
-              "8 or 16 pixels high; without them such characters show as '?'.\n\n"
+              "font lacks from them (Cyrillic, Greek, CJK, symbols), and the emoji, "
+              "two cells wide, when the font is 8 or 16 pixels high; without them "
+              "such characters show as '?' and emoji as a box.\n\n"
               "The UP-Term icon is in SYS:Utilities either way; a second copy can go "
               "beside Shell in SYS:System.\n\n"
               "The Shell icon: its WINDOW tooltype is changed to XCON:, so SYS:System/Shell "
@@ -92,7 +93,7 @@
                  "UP-Term icon also in SYS:System"
                  "Shell icon opens an UP-Term window"
                  (if #amissl "Claude client (AmiSSL 5 found)" "Claude client (needs AmiSSL 5, not found)")
-                 "Unifont: glyphs for every character (1.7 MB)")
+                 "Unifont: glyphs for every character and emoji (1.8 MB)")
         (default (+ 1 2 (if #amissl (+ 4 128) 0) 256))))
 (if (in #opts 0) (set #ssh "SSH"))
 (if (in #opts 1) (set #bget "BEBBOGET"))
