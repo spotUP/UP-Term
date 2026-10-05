@@ -33,9 +33,11 @@ the REPL core (repl_run) covering the wires.
       status line, read default)
 - [x] W7 (coordinator, rig run): WebFetch's screen line is Claude Code's "Received N bytes
       (200 OK)" (cl_tools.brief -> cl_show.brief); the answer goes to Claude only
-- [ ] merge main (d455068: claude_fixture.py --dump, tools/rig/claude_rig2.py) into the branch
+- [x] merge main (d455068: claude_fixture.py --dump, tools/rig/claude_rig2.py) into the branch
+      -- bc6dde5, clean (no C files in it); claude_rig2.py still fits the read default (Read is
+      allowed by its rule there anyway)
 
-Running count: 8 of 9 (merge open).
+Running count: 9 of 9 host-side; rig sighting open (main session).
 
 ## Decisions
 
@@ -79,3 +81,19 @@ Running count: 8 of 9 (merge open).
   padding, multi-line); claude_config WebSearch switch + statusLine fields; claude_tools read
   default, added dirs, provided agent hides a built-in. Mutations checked: r->at, subagent
   policy routing, read default, ext unwired, web_search switch, status row, Fetch brief.
+- 6ff2c80 the wiring; bc6dde5 merge of main d455068. Gate on 6ff2c80: make test (42 suites OK),
+  make test-ref (149 streams, 0 failed), timeout 900 make amiga (exit 0; NDK/netinclude/AmiSSL
+  from the main checkout's vendor/ via VTCON_NDK / VTCON_NETINCLUDE / AMISSL_SDK).
+
+## Rig steps for the main session (fixture, not run here)
+
+1. RAM:.claude/agents/x.md (name, description, tools: Read) -> "send an agent" prompt lists it
+   (the fixture's Task asks for Explore; check /agents and the request body via --dump).
+2. RAM:.claude/skills/s/SKILL.md and a command with a description: the first request body (--dump)
+   declares Skill and SlashCommand with them.
+3. ENVARC:Claude/settings.json {"statusLine":{"type":"command","command":"Echo WIRED"}}: the row
+   "WIRED" under the box, above the facts line; Shift+Tab re-runs it.
+4. permissions.deny ["WebSearch"]: "search the web" body has no web_search tool.
+5. "show me the startup" with no allow rule: Read and Glob run with no menu.
+6. "fetch the page": under Fetch(...) the line "Received N bytes (200 OK)".
+7. "run in background" then /tasks: bash_1 listed with its state.
