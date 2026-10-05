@@ -1,4 +1,4 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SYSICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SYSICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -9,6 +9,8 @@
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
+;     [REMOTE "host port"]  (ENVARC:Claude/remote: plain Claude, with no API
+;               key, connects to Claude Code there -- the NAS; kept if it exists)
 ;     [PYTHON]  (Python 3.14 in SYS:UP-Term/Python3, 15 MB; Python3: assigned at boot)
 ;     [NVIM]    (Neovim 0.12 in SYS:UP-Term/nvim, 32 MB; nvim on vsh's path)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
@@ -181,6 +183,14 @@ EndIf
 Copy Claude C:Claude CLONE QUIET
 If NOT EXISTS ENVARC:Claude
   MakeDir ENVARC:Claude
+EndIf
+; REMOTE: where Claude Code runs (the NAS); plain Claude goes there
+If NOT "{REMOTE}" EQ ""
+  If NOT EXISTS ENVARC:Claude/remote
+    Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"
+    Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."
+    Echo >>ENVARC:Claude/remote "{REMOTE}"
+  EndIf
 EndIf
 ; Python 3.14 (README, PYTHON): SYS:UP-Term/Python3, its programs run as
 ; Python3:bin/python3 or python3 from vsh (vshrc's path); Python3: is

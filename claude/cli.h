@@ -123,6 +123,14 @@ int cli_parse_line(cl_cli *c, const char *line);
 const char *cli_usage(int i);
 const char *cli_version(void);
 
+/* ENVARC:Claude/remote, the address of Claude Code on another computer
+ * (W49: plain "Claude" with no API key connects there with uptelnet).
+ * text: the file; lines starting with ';' or '#' and blank ones are
+ * skipped; the first other line is "host [port]". 1 with host (at most
+ * hcap - 1 characters) and *port (2323 when not given), 0 when the file
+ * names no host or the port is not 1-65535. */
+int cli_remote_parse(const char *text, char *host, long hcap, long *port);
+
 /* After repl_init: everything but the session flags applied to r (the
  * settings layer, the system prompt flags, --tools and --disallowedTools,
  * --agent, the permission mode, --max-turns / --max-budget-usd in print

@@ -219,6 +219,27 @@ static void test_errors(void)
     CHECK_INT(parse("--input-format stream-json"), -1);
 }
 
+/* ENVARC:Claude/remote: plain "Claude" with no key goes to Claude Code on
+ * the NAS (W49) -- the file as Install writes it, and as a user edits it */
+static void test_remote(void)
+{
+    char host[64];
+    long port = 0;
+    CHECK_INT(cli_remote_parse("; Claude Code on the NAS\n192.168.0.198 2323\n", host, sizeof(host), &port), 1);
+    CHECK_STR(host, "192.168.0.198");
+    CHECK_INT(port, 2323);
+    CHECK_INT(cli_remote_parse("\n# comment\n  nas.local\r\n", host, sizeof(host), &port), 1);
+    CHECK_STR(host, "nas.local");
+    CHECK_INT(port, 2323);                        /* the default port */
+    CHECK_INT(cli_remote_parse("megadrive 23\n", host, sizeof(host), &port), 1);
+    CHECK_INT(port, 23);
+    CHECK_INT(cli_remote_parse("; only comments\n\n", host, sizeof(host), &port), 0);
+    CHECK_INT(cli_remote_parse("", host, sizeof(host), &port), 0);
+    CHECK_INT(cli_remote_parse("host 70000\n", host, sizeof(host), &port), 0);
+    CHECK_INT(cli_remote_parse("host 0\n", host, sizeof(host), &port), 0);
+    CHECK_INT(cli_remote_parse("a-very-long-host-name-that-does-not-fit\n", host, 8, &port), 0);
+}
+
 void suite_claude_cli(void)
 {
     cli_init(&c);
@@ -226,5 +247,6 @@ void suite_claude_cli(void)
     test_unix();
     test_amiga();
     test_errors();
+    test_remote();
     cli_free(&c);
 }

@@ -815,6 +815,42 @@ int cli_parse_line(cl_cli *c, const char *line)
     return rc;
 }
 
+int cli_remote_parse(const char *text, char *host, long hcap, long *port)
+{
+    const char *p = text;
+    while (p && *p) {
+        const char *e = p, *h;
+        long n = 0, v = 0;
+        while (*e && *e != '\n')
+            e++;
+        while (p < e && (*p == ' ' || *p == '\t' || *p == '\r'))
+            p++;
+        if (p < e && *p != ';' && *p != '#') {
+            h = p;
+            while (p < e && *p != ' ' && *p != '\t' && *p != '\r')
+                p++;
+            n = (long)(p - h);
+            if (n <= 0 || n >= hcap)
+                return 0;
+            memcpy(host, h, (size_t)n);
+            host[n] = 0;
+            while (p < e && (*p == ' ' || *p == '\t'))
+                p++;
+            if (p < e && *p >= '0' && *p <= '9') {
+                while (p < e && *p >= '0' && *p <= '9' && v <= 65535)
+                    v = v * 10 + (*p++ - '0');
+                if (v < 1 || v > 65535)
+                    return 0;
+            } else
+                v = 2323;
+            *port = v;
+            return 1;
+        }
+        p = *e ? e + 1 : e;
+    }
+    return 0;
+}
+
 const char *cli_version(void)
 {
     return "1.0 (C:Claude, Claude Code for AmigaOS)";

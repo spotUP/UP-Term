@@ -443,7 +443,10 @@ NETWORK
   source is) are in the kit's Files/net drawer.
 
 CLAUDE FROM THE AMIGA
-  Quickest: ClaudeCode (or double-click ClaudeCode in the UP-Term drawer)
+  Quickest: Claude. Install asked where Claude Code runs (the NAS) and
+  wrote it to ENVARC:Claude/remote ("host port"; edit or delete it): with
+  no API key set, Claude connects there in the window. Or ClaudeCode
+  (or double-click ClaudeCode in the UP-Term drawer)
   connects to the NAS at 192.168.0.198 port 2323 -- ClaudeCode HOST PORT
   for another -- asks its password and starts Claude Code in tmux.
   Claude Code runs on your Mac; the Amiga is its terminal over the LAN.

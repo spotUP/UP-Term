@@ -20,7 +20,11 @@
  *
  * The key: ENV:ANTHROPIC_API_KEY, else the file ENVARC:Claude/key. It is
  * never shown, never logged, and cleared from memory at the end. Without
- * one the conversation starts at /login (print mode: an error result).
+ * one, and with ENVARC:Claude/remote naming a computer that runs Claude
+ * Code (Install writes it: "host port", the NAS), plain Claude connects
+ * there with C:uptelnet in this window instead (W49: one command, your
+ * Claude subscription). Otherwise the conversation starts at /login
+ * (print mode: an error result).
  *
  * This file is only the wiring of claude/repl.c, cli.c and print.c
  * (host-tested) to the console, bsdsocket (net_amiga.c) and AmigaDOS
@@ -225,6 +229,34 @@ static int load_key(char *source, long cap)
     return cl_key_clean(key) == 0;
 }
 
+/* ENVARC:Claude/remote names Claude Code on another computer: uptelnet
+ * there in this window, its return code; -1 when the file names none */
+static int remote(void)
+{
+    char text[512], host[200], cmd[260], num[12];
+    long port, i;
+    LONG n, rc;
+    BPTR f = Open((STRPTR)"ENVARC:Claude/remote", MODE_OLDFILE);
+    if (!f)
+        return -1;
+    n = Read(f, text, sizeof(text) - 1);
+    Close(f);
+    text[n > 0 ? n : 0] = 0;
+    if (!cli_remote_parse(text, host, sizeof(host), &port))
+        return -1;
+    i = sizeof(num) - 1;
+    num[i] = 0;
+    do
+        num[--i] = (char)('0' + port % 10);
+    while ((port /= 10) && i > 0);
+    cl_copy(cmd, "uptelnet \"", sizeof(cmd));
+    cl_cat(cmd, host, sizeof(cmd));
+    cl_cat(cmd, "\" ", sizeof(cmd));
+    cl_cat(cmd, num + i, sizeof(cmd));
+    rc = SystemTags((STRPTR)cmd, SYS_Input, Input(), SYS_Output, Output(), SYS_UserShell, TRUE, TAG_END);
+    return rc == -1 ? 20 : (int)rc;
+}
+
 /* ---- print mode: stdout, the error stream, what is piped in ---- */
 
 static void p_out(void *u, const char *s, long n)
@@ -323,6 +355,15 @@ int main(void)
     }
     url = cli.url[0] ? cli.url : CL_DEFAULT_URL;
     have_key = load_key(cli.key_source, sizeof(cli.key_source));
+    /* no key and nothing asked of the API itself: Claude Code on the
+     * computer ENVARC:Claude/remote names, if it names one (W49) */
+    if (!have_key && !cli.print && !cli.ping && !cli.url[0] && !cli.prompt) {
+        int rr = remote();
+        if (rr >= 0) {
+            cli_free(&cli);
+            return rr;
+        }
+    }
     if (cli.root[0]) {
         rootlock = Lock((STRPTR)cli.root, SHARED_LOCK);
         if (!rootlock) {

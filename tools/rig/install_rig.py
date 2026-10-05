@@ -34,7 +34,7 @@ def main():
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE\n")
-    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE SHELLICON SYSICON PYTHON NVIM\n")
+    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE SHELLICON SYSICON PYTHON NVIM REMOTE=\"127.0.0.1 2399\"\n")
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
@@ -45,6 +45,7 @@ def main():
     run('Execute VTC:rununinstall')  # a run that stopped half-way left things behind
     startup_before = run('Type S:User-Startup')[1]
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
+    run('Delete >NIL: ENVARC:Claude/remote QUIET')  # an earlier run's remote (Install keeps one)
     ls_before = run('List >NIL: C:ls')[0] == 0  # Install puts no Unix command in C:
     shell_before = run('VTC:iconprobe SYS:System/Shell')[1]  # SHELLICON must give it back
     tmp_before = run('Assign >NIL: TMP: EXISTS')[0] == 0
@@ -99,6 +100,29 @@ def main():
           'PYTHON: Python3: assigned, and at every boot', '')
     rc, out = run('SYS:UP-Term/nvim/bin/nvim --version', 120)
     check(rc == 0 and 'NVIM v0.12' in out, 'NVIM: nvim runs from SYS:UP-Term/nvim', out[-300:])
+    # REMOTE: plain Claude, no API key, goes to Claude Code where
+    # ENVARC:Claude/remote points (W49) -- here a banner on this Mac
+    rc, out = run('Type ENVARC:Claude/remote')
+    check(rc == 0 and '127.0.0.1 2399' in out, 'REMOTE: Install wrote ENVARC:Claude/remote', out)
+    import socket, threading
+    srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(('127.0.0.1', 2399)); srv.listen(1); srv.settimeout(60)
+    seen = []
+    def banner():
+        try:
+            c, _ = srv.accept(); seen.append(1); c.sendall(b'UPTEST-BANNER\r\n'); time.sleep(2); c.close()
+        except OSError:
+            pass
+    th = threading.Thread(target=banner); th.start()
+    # in a window, as a user types it (uptelnet needs a console)
+    ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/12/700/300/remote/CLOSE"')
+    time.sleep(4)
+    for line in ('Stack 32768', 'C:Claude'):
+        ami.req(0x08, bytes([4]) + line.encode()); time.sleep(0.4); ami.key(0x44); time.sleep(2)
+    th.join(30); srv.close()
+    check(seen == [1], 'REMOTE: plain Claude connects to the computer in ENVARC:Claude/remote', '')
+    ami.req(0x08, bytes([4]) + b'endcli'); time.sleep(0.4); ami.key(0x44); time.sleep(2)
+    run('Delete >NIL: ENVARC:Claude/remote QUIET')
     # SHELLICON: the Shell icon's window on XCON:, nothing else changed
     rc, out = run('VTC:iconprobe SYS:System/Shell')
     want = [l if not l.startswith('tooltype WINDOW=') else

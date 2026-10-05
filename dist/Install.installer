@@ -41,6 +41,7 @@
 (set #bget "")
 (set #curl "")
 (set #wasabi "")
+(set #remote "")
 (set #python "")
 (set #nvim "")
 (set #unifont "")
@@ -110,6 +111,15 @@
 (if (in #opts 4) (set #wasabi "WASABI"))
 (if (in #opts 5) (set #sysicon "SYSICON"))
 (if (and (in #opts 6) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+(set #remote
+    (askstring
+        (prompt "Claude Code on your server (the NAS): its address and port.\n"
+                "Then Claude in a Shell goes straight there. Empty: none.")
+        (help "C:Claude without an API key connects to Claude Code on this "
+              "computer with uptelnet (your Claude subscription, through the "
+              "server). Kept in ENVARC:Claude/remote; edit or delete it later.")
+        (default "192.168.0.198 2323")))
+(if (<> #remote "") (set #remote (cat "REMOTE=\"" #remote "\"")))
 (if (in #opts 7) (set #python "PYTHON"))
 (if (in #opts 10) (set #nvim "NVIM"))
 (if (in #opts 8) (set #unifont "UNIFONT"))
@@ -149,7 +159,7 @@
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #wasabi #python #nvim #cpu040 #cpu060 #unifont #emoji)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #wasabi #python #nvim #remote #cpu040 #cpu060 #unifont #emoji)
 
 (set #done
     (cat "UP-Term is installed.\n\n"
