@@ -178,6 +178,17 @@ int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc)
     return native == Q_NATIVE;
 }
 
+/* A stand-in that is a letter or digit ('E' for the euro sign, 'v' for a
+ * check mark, 'o' for a bullet) is a substitute, not the shape: another
+ * character's meaning. Unifont's real glyph comes before it. A shape
+ * stand-in ('-' for a dash, '>' for an arrow or U+276F, quotes) keeps its
+ * place before Unifont (W33). */
+static int standin_is_letter(vt_u32 cp)
+{
+    int a = approx_find(cp);
+    return a >= 0 && ((a >= '0' && a <= '9') || (a >= 'A' && a <= 'Z') || (a >= 'a' && a <= 'z'));
+}
+
 /* vt_fallback_glyph; with colour non-0 the colour source is asked in
  * Unifont's place for a two-cell cell, *colour set 1 when it has cp */
 static const vt_u8 *fallback(const vt_fallback *f, vt_u32 cp, int cells, int *bpr, int *colour)
@@ -191,8 +202,8 @@ static const vt_u8 *fallback(const vt_fallback *f, vt_u32 cp, int cells, int *bp
         return 0;
     if (f->outline && (m = f->outline(f->outline_src, cp, cells, bpr)) != 0)
         return m;
-    if (q == Q_STANDIN)
-        return 0; /* the stand-in, never Unifont's glyph in its place (W33) */
+    if (q == Q_STANDIN && !standin_is_letter(cp))
+        return 0; /* a shape stand-in, never Unifont's glyph in its place (W33) */
     if (colour && cells == 2 && f->colour && f->colour(f->colour_src, cp, cells)) {
         *colour = 1;
         return 0;
