@@ -634,6 +634,12 @@ static void test_sessions(void)
     /* a new id never takes an existing file */
     sess_new(&s, 0x12345678UL * 1000UL);
     CHECK_STR(s.id, "1234567a");
+    /* a first start: ENVARC:Claude itself is not there yet */
+    at(home, "fresh-home");
+    sess_init(&s, &sys, home, "Work:proj");
+    sess_new(&s, 0x22222222UL * 1000UL);
+    CHECK_INT(sess_save(&s, &c), 0);
+    CHECK_INT(sys.kind(sys.u, s.file), 1);
     conv_free(&c);
     conv_free(&back);
 }

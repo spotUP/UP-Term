@@ -85,11 +85,15 @@ void sess_truncate(cl_session *s, int k)
 
 static int dirs(cl_session *s)
 {
-    char p[300];
+    char p[300], h[300];
     if (!s->sys->mkdir || !s->sys->append)
         return -1;
-    if (path_parent(s->dir, p, sizeof(p)) == 0)
+    /* ENVARC:Claude, its projects/, the root's own */
+    if (path_parent(s->dir, p, sizeof(p)) == 0) {
+        if (path_parent(p, h, sizeof(h)) == 0)
+            s->sys->mkdir(s->sys->u, h);
         s->sys->mkdir(s->sys->u, p);
+    }
     return s->sys->mkdir(s->sys->u, s->dir);
 }
 
