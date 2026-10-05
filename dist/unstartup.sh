@@ -7,8 +7,8 @@ IFS=''
 skip=0
 while read -r l; do
     case "$l" in
-    ';BEGIN UP-Term'|';BEGIN UP-Term console'|';BEGIN UP-Term device'|';BEGIN UP-Term tmp'|';BEGIN UP-Term serial'|';BEGIN UP-Term wasabi') skip=1 ;;
-    ';END UP-Term'|';END UP-Term console'|';END UP-Term device'|';END UP-Term tmp'|';END UP-Term serial'|';END UP-Term wasabi') skip=0 ;;
+    ';BEGIN UP-Term'|';BEGIN UP-Term console'|';BEGIN UP-Term device'|';BEGIN UP-Term tmp'|';BEGIN UP-Term serial'|';BEGIN UP-Term wasabi'|';BEGIN UP-Term python') skip=1 ;;
+    ';END UP-Term'|';END UP-Term console'|';END UP-Term device'|';END UP-Term tmp'|';END UP-Term serial'|';END UP-Term wasabi'|';END UP-Term python') skip=0 ;;
     *) if [ "$skip" = 0 ]; then printf '%s\n' "$l"; fi ;;
     esac
 done <S:User-Startup >T:User-Startup.up-term

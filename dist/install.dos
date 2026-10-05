@@ -1,15 +1,16 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CLAUDE/S,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SYSICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
 ; the patched ixemul.library, the fonts by pixel shape.
 ; Run by the kit's Install (an Installer script), which asks the questions:
 ;   Execute <kit>/Files/install.dos <kit>/Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
-;     [SHELLICON|NOSHELLICON] [SYSICON|NOSYSICON]   (the icons: no unless asked)
-;     [SERIAL|NOSERIAL]   (a serial login at every boot: no unless asked)
+;     [SHELLICON] [SYSICON]   (the icons: no unless asked)
+;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
-;     [CLAUDE]  (C:Claude, the native Claude client; needs AmiSSL 5)
+;     [PYTHON]  (Python 3.14 in SYS:UP-Term/Python3, 15 MB; Python3: assigned at boot)
+;     [NVIM]    (Neovim 0.12 in SYS:UP-Term/nvim, 32 MB; nvim on vsh's path)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
@@ -174,13 +175,35 @@ If "{CURL}" EQ "CURL"
     EndIf
   EndIf
 EndIf
-; C:Claude, the native Claude client (README, Claude); it needs AmiSSL 5.
-; ENVARC:Claude is where its key may go (Install never writes a key).
-If "{CLAUDE}" EQ "CLAUDE"
-  Copy Claude C:Claude CLONE QUIET
-  If NOT EXISTS ENVARC:Claude
-    MakeDir ENVARC:Claude
+; C:Claude, the native Claude client (README, Claude), always: its talking
+; to Anthropic needs AmiSSL 5; ENVARC:Claude is where its settings go
+; (Install never writes a key).
+Copy Claude C:Claude CLONE QUIET
+If NOT EXISTS ENVARC:Claude
+  MakeDir ENVARC:Claude
+EndIf
+; Python 3.14 (README, PYTHON): SYS:UP-Term/Python3, its programs run as
+; Python3:bin/python3 or python3 from vsh (vshrc's path); Python3: is
+; assigned at every boot (a marked block in S:User-Startup).
+If "{PYTHON}" EQ "PYTHON"
+  MakeDir >NIL: SYS:UP-Term/Python3
+  Copy python3 SYS:UP-Term/Python3 ALL CLONE QUIET
+  Assign Python3: SYS:UP-Term/Python3
+  Search >NIL: S:User-Startup ";BEGIN UP-Term python"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term python"
+    Echo >>S:User-Startup "Assign Python3: SYS:UP-Term/Python3"
+    Echo >>S:User-Startup ";END UP-Term python"
   EndIf
+EndIf
+; Neovim 0.12 (README, NEOVIM): SYS:UP-Term/nvim (its runtime beside the
+; binary); nvim from vsh (vshrc's path).
+If "{NVIM}" EQ "NVIM"
+  MakeDir >NIL: SYS:UP-Term/nvim
+  Copy nvim SYS:UP-Term/nvim ALL CLONE QUIET
 EndIf
 ; The fonts by pixel shape (fonts/SOURCE.txt): TopazPro 16, IBM 8 / 11 /
 ; 16 into FONTS:, only the sizes not there yet -- a user's own IBM.font

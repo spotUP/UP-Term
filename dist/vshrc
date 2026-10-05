@@ -52,7 +52,7 @@ telnet() {
 # AmigaDOS Shell keeps C:Sort. Dir, List, Copy, Delete, Type and the other
 # AmigaDOS commands keep their names. A PATH you set is left alone.
 if [ -z "$PATH" ]; then
-    PATH=/SYS/UP-Term/bin:/gg/bin:/c
+    PATH=/SYS/UP-Term/bin:/SYS/UP-Term/Python3/bin:/SYS/UP-Term/nvim/bin:/gg/bin:/c
 fi
 export PATH
 

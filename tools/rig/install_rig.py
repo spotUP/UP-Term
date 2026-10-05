@@ -34,7 +34,7 @@ def main():
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE\n")
-    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE SHELLICON SYSICON\n")
+    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE SHELLICON SYSICON PYTHON NVIM\n")
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
@@ -88,8 +88,17 @@ def main():
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term device"')[0] != 0,
           'Install NODEVICE writes no device block', '')
     # a second Install must not take ours for theirs; this one says yes to CON:
-    rc, out = run('Execute VTC:runinstallcon', 120)
+    rc, out = run('Execute VTC:runinstallcon', 600)
     check(rc == 0 and 'Unknown command' not in out, 'Install CONSOLE again over it runs', out)
+    # PYTHON, NVIM: both run from where Install put them; Python3: is assigned
+    # now and at boot (W49)
+    rc, out = run('Stack 1000000\nSYS:UP-Term/Python3/bin/python3 -c "print(6*7)"', 120)
+    check(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'PYTHON: python3 runs from SYS:UP-Term/Python3', out[-300:])
+    check(run('Assign >NIL: Python3: EXISTS')[0] == 0 and
+          run('Search >NIL: S:User-Startup "Assign Python3: SYS:UP-Term/Python3"')[0] == 0,
+          'PYTHON: Python3: assigned, and at every boot', '')
+    rc, out = run('SYS:UP-Term/nvim/bin/nvim --version', 120)
+    check(rc == 0 and 'NVIM v0.12' in out, 'NVIM: nvim runs from SYS:UP-Term/nvim', out[-300:])
     # SHELLICON: the Shell icon's window on XCON:, nothing else changed
     rc, out = run('VTC:iconprobe SYS:System/Shell')
     want = [l if not l.startswith('tooltype WINDOW=') else

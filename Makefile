@@ -666,6 +666,9 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c han
 KIT := $(BUILD)/dist/UP-Term
 # the patched ixemul (P6): built in ~/Code/ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
+# Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
+PYTHON_DIST ?= $(HOME)/Code/cpython-amiga/build/m68k/dist/Python3
+NVIM_DIST ?= $(HOME)/Code/neovim-amiga/build/v012/dist/nvim
 # ixnet.library from the same build (ixnet refuses an ixemul of another revision)
 IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
@@ -702,6 +705,9 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	python3 tools/mkicon.py $(KIT)/Install.info --tool Installer --plain \
 	  --tooltype APPNAME=UP-Term --tooltype MINUSER=AVERAGE --tooltype DEFUSER=AVERAGE
 	cp dist/Uninstall dist/README.txt $(KIT)/
+	rm -rf $(KIT)/Files/python3 $(KIT)/Files/nvim
+	cp -R $(PYTHON_DIST) $(KIT)/Files/python3
+	cp -R $(NVIM_DIST) $(KIT)/Files/nvim
 	cp dist/ClaudeCode $(KIT)/ClaudeCode
 	cp dist/ClaudeCode $(KIT)/Files/ClaudeCode
 	python3 tools/mkicon.py $(KIT)/ClaudeCode.info --tool C:IconX \
