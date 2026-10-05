@@ -1024,6 +1024,70 @@ static void a_sequence_cut_by_a_write_means_the_same(void)
     }
 }
 
+/* W29: inside one write vt_feed keeps what put_ascii_run may do and, after
+ * an SGR, works out only its pen half (PEN_PLAIN) again. The text after
+ * each SGR must get that SGR's colours and attributes -- plain to
+ * coloured, coloured to plain, bold / inverse / underline combinations --
+ * and an SGR must not let text run past insert mode or a character set.
+ * The oracle: the same bytes one write each (no text mode is kept across
+ * writes, and csi_fast never sees a whole sequence), every cell whole.
+ * The screen is erased first: past a row's `used` (untouched default
+ * blanks) the plain case writes the character alone, so a pen half left
+ * stale there drops the colour. */
+static void text_after_an_sgr_in_one_write_takes_its_pen(void)
+{
+    static const char *const seq[] = {
+        "\033[2J\033[Hplain\033[31mR\033[0mp\033[1;7mB\033[mq\033[44mb\033[1;33;41mX\033[22;27mY\033[39;49mZ"
+        "\033[7mI\033[27mN\033[4mU\033[24mu\033[38;5;196mE\033[48;2;1;2;3mG\033[0mend\r\n"
+        "\033[1mbold\033[0m \033[5;9mbs\033[25;29m \033[2;3mfi\033[m.\033[31m\033[32m\033[0mok",
+        "\033[2J\033[2;1Habcdef\033[2;1Hx\033[31mXY\033[0mZ\033[4l\033[3;1H\033(0q\033[32mqq\033[0mq\033(Bq",
+        "\033[2J\033[2;1Habcdef\033[4h\033[2;1Hx\033[31mXY\033[0mZ\033[4l\033[3;1Hn\033[31m\033[4hab\033[4l\033[0mc"
+    };
+    static const enum vt_personality pers[] = { VT_XTERM, VT_AMIGA, VT_PCANSI };
+    int i, p, x, y, len, bad;
+    for (p = 0; p < 3; p++)
+        for (i = 0; i < 3; i++) {
+            vt_term *a = h_new(40, 4, pers[p]), *b = h_new(40, 4, pers[p]);
+            len = (int)strlen(seq[i]);
+            vt_write(a, (const vt_u8 *)seq[i], len);
+            for (x = 0; x < len; x++)
+                vt_write(b, (const vt_u8 *)seq[i] + x, 1);
+            bad = 0;
+            for (y = 0; y < 4 && !bad; y++)
+                for (x = 0; x < 40 && !bad; x++) {
+                    const vt_cell *c = h_cell(a, x, y), *d = h_cell(b, x, y);
+                    if (c->ch != d->ch || c->fg != d->fg || c->bg != d->bg || c->attr != d->attr ||
+                        c->width != d->width || c->deco != d->deco || c->ext != d->ext || c->pad != d->pad) {
+                        CHECK_INT(p * 1000 + i * 100 + y * 40 + x, -1); /* names the cell */
+                        CHECK_INT(c->fg, d->fg);
+                        CHECK_INT(c->attr, d->attr);
+                        CHECK_INT(c->ch, d->ch);
+                        bad = 1;
+                    }
+                }
+            if (!p && !i) { /* and what the oracle says, spelled out */
+                CHECK_INT(h_cell(a, 5, 0)->ch, 'R');
+                CHECK_INT(h_cell(a, 5, 0)->fg, 1);
+                CHECK_INT(h_cell(a, 6, 0)->fg, VT_COLOR_DEFAULT);
+                CHECK_INT(h_cell(a, 7, 0)->attr, VT_ATTR_BOLD | VT_ATTR_INVERSE);
+                CHECK_INT(h_cell(a, 8, 0)->attr, 0);
+                CHECK_INT(h_cell(a, 9, 0)->bg, 4);
+                CHECK_INT(h_cell(a, 11, 0)->attr, 0); /* 22;27 off again */
+                CHECK_INT(h_cell(a, 11, 0)->fg, 3);
+                CHECK_INT(h_cell(a, 12, 0)->fg, VT_COLOR_DEFAULT);
+            }
+            if (!p && i == 2) { /* insert mode: X and Y pushed abcdef right */
+                CHECK_STR(h_row(a, 1), "xXYZabcdef");
+                CHECK_INT(h_cell(a, 1, 1)->fg, 1);
+                CHECK_STR(h_row(a, 2), "nabc");
+            }
+            if (!p && i == 1)
+                CHECK_INT(h_cell(a, 1, 2)->ch, 0x2500); /* DEC graphics after the SGR */
+            vt_free(a);
+            vt_free(b);
+        }
+}
+
 /* ?2026, synchronized output: the mode the host holds its drawing on */
 static void synchronized_output_is_a_mode(void)
 {
@@ -1165,6 +1229,7 @@ void suite_xterm(void)
     claude_code_session_needs_only_what_we_have();
     synchronized_output_is_a_mode();
     a_sequence_cut_by_a_write_means_the_same();
+    text_after_an_sgr_in_one_write_takes_its_pen();
     a_row_counts_the_cells_in_use();
     rgb_to_256();
     copy_text_joins_wrapped_lines_and_trims_blanks();
