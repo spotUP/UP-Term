@@ -1061,6 +1061,17 @@ int print_run(cl_repl *r, cl_cli *c, cl_pout *p)
                 }
                 jw_free(&piped);
             }
+            repl_setup(r, 0, 1);    /* SessionStart now: its initialUserMessage comes first */
+            if (r->first_msg) {
+                char *f = r->first_msg;
+                r->first_msg = 0;
+                rc = answer(&st, f, (long)strlen(f), 0, 0);
+                free(f);
+                if (!in.n) {
+                    jw_free(&in);
+                    goto out;
+                }
+            }
             if (!in.n) {
                 static const char none[] =
                     "Error: Input must be provided either through stdin or as a prompt argument when using --print\n";

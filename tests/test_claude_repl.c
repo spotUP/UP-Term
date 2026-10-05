@@ -3562,6 +3562,94 @@ static void test_gaps_more(void)
     CHECK(c.prompt && !strcmp(c.prompt, "START-WITH-THIS"));
     cli_free(&c);
     repl_free(&r);
+
+    /* SessionStart's own answers: sessionTitle, initialUserMessage (print
+     * mode's first turn), reloadSkills; terminalSequence (only the allowed
+     * escapes reach the console); PostToolUse's updatedToolOutput */
+    {
+        char s1[600];
+        strcpy(s1, "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"sessionTitle\":\"HOOK-TITLE\","
+                   "\"initialUserMessage\":\"FIRST-FROM-HOOK\",\"reloadSkills\":true},"
+                   "\"terminalSequence\":\"\\\\u001b]0;HOOK-SEQ\\\\u0007\"}'\n");
+        xput(root, "ss.sh", s1);
+        xput(root, "out.sh", "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\","
+                             "\"updatedToolOutput\":\"REPLACED-OUTPUT\"}}'\n");
+        xput(root, "bad.sh", "echo '{\"terminalSequence\":\"\\\\u001b[2J\"}'\n");
+    }
+    strcpy(p, "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/ss.sh\"}]}],\"PostToolUse\":[{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/out.sh\"},{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/bad.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "first done");
+    add_answer("toolu_R5", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p and then", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 0 && strstr(sb.body[0], "FIRST-FROM-HOOK") != 0 && strstr(sb.body[0], "and then") == 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "\"text\":\"and then\"") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "REPLACED-OUTPUT") != 0 && strstr(sb.body[2], "SetPatch QUIET") == 0);
+    CHECK_STR(r.sess.title, "HOOK-TITLE");
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "hello");
+    repl_line(&r, "hi");
+    CHECK(strstr(cn.screen.p, "\033]0;HOOK-SEQ\007") != 0);
+    CHECK(strstr(cn.screen.p, "\033[2J") == 0);      /* not on the allowlist: ignored */
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+
+    /* skills that wait (paths:, a nested .claude/skills) until a matching file is
+     * worked on; a typed skill's effort; a command in a subdirectory is dir:name */
+    xput(root, ".claude/skills/pathsk/SKILL.md", "---\ndescription: For S files\npaths: \"S/*\"\n---\nPATHSK\n");
+    xput(root, "sub2/.claude/skills/nest/SKILL.md", "---\ndescription: Nested one\n---\nNEST\n");
+    xput(root, "sub2/x.txt", "x\n");
+    xput(root, ".claude/skills/eff/SKILL.md", "---\ndescription: Low effort\neffort: low\n---\nEFF-SKILL\n");
+    xput(root, ".claude/commands/grp/cmd.md", "GROUPED-COMMAND\n");
+    setup_in(&r, none, root);
+    add_answer("toolu_S7", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer("toolu_S8", "Read", "{\"file_path\":\"sub2/x.txt\"}", 0);
+    add_answer(0, 0, 0, "done");
+    repl_line(&r, "look around");
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 0 && strstr(sb.body[0], "- pathsk:") == 0 && strstr(sb.body[0], "- nest:") == 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "- pathsk: For S files") != 0 && strstr(sb.body[1], "- nest:") == 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "- nest: Nested one") != 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/eff");
+    CHECK(strstr(sb.body[sb.nreq - 1], "EFF-SKILL") != 0 && strstr(sb.body[sb.nreq - 1], "\"effort\":\"low\"") != 0);
+    CHECK_STR(r.effort, "medium");
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/grp:cmd");
+    CHECK(strstr(sb.body[sb.nreq - 1], "GROUPED-COMMAND") != 0);
+    repl_free(&r);
+
+    /* P9 checkpoints kept across a restart: a file Claude wrote in one run
+     * is taken back by /rewind after a resume in the next */
+    {
+        char id[40], f[700];
+        strcpy(f, root);
+        strcat(f, "/made-by-claude.txt");
+        setup_in(&r, none, root);
+        add_answer("toolu_W9", "Write", "{\"file_path\":\"made-by-claude.txt\",\"content\":\"new\\n\"}", 0);
+        add_answer(0, 0, 0, "written");
+        CHECK_INT(run_print(&r, "-p --allowedTools Write -- write it", 0), 0);
+        CHECK(exists(f));
+        cl_copy(id, r.sess.id, sizeof(id));
+        repl_free(&r);
+        setup_in(&r, none, root);
+        CHECK_INT(repl_resume_session(&r, id), 0);
+        CHECK_INT(r.cp.n, 1);
+        repl_line(&r, "/rewind 1 code");
+        CHECK(!exists(f));
+        repl_free(&r);
+    }
 #undef SCRIPT
 #undef HOOKS
 }

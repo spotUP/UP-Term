@@ -24,6 +24,8 @@ int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer);
  * after it become one summary) and "Summarize up to here" (up_to 1:
  * everything before it does): 0, -1, -2 stopped */
 int repl_summarize(cl_repl *r, int msg, int up_to);
+/* the slash menu built again (a skill loaded on the way) */
+int repl_load_menu(cl_repl *r);
 /* the custom definitions read again (/reload-skills, part of repl_load) */
 int repl_load_defs(cl_repl *r);
 /* the effort a request sends ("" for /effort auto: the model's own) */

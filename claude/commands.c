@@ -34,7 +34,8 @@ void def_free(cl_def *d)
     d->description = d->body = d->tools = d->model = d->hint = 0;
     free(d->arg_names);
     free(d->initial);
-    d->deny_tools = d->skills = d->when = d->arg_names = d->initial = 0;
+    free(d->paths);
+    d->deny_tools = d->skills = d->when = d->arg_names = d->initial = d->paths = 0;
 }
 
 void defs_free(cl_defs *s)
@@ -87,6 +88,8 @@ static char **list_field(cl_def *d, const char *key)
         return &d->skills;
     if (!strcmp(key, "arguments"))
         return &d->arg_names;
+    if (!strcmp(key, "paths"))
+        return &d->paths;
     return 0;
 }
 
@@ -113,9 +116,11 @@ int defs_parse(const char *t, long n, cl_def *d)
         d->arg_names = dupn("", 0);
     if (!d->initial)
         d->initial = dupn("", 0);
+    if (!d->paths)
+        d->paths = dupn("", 0);
     if (!d->when)
         d->when = dupn("", 0);
-    if (!d->description || !d->tools || !d->model || !d->hint || !d->deny_tools || !d->skills || !d->when || !d->arg_names || !d->initial)
+    if (!d->description || !d->tools || !d->model || !d->hint || !d->deny_tools || !d->skills || !d->when || !d->arg_names || !d->initial || !d->paths)
         return -1;
     if (n >= 4 && !strncmp(t, "---", 3) && (t[3] == '\n' || t[3] == '\r')) {
         i = t[3] == '\r' ? 5 : 4;
@@ -191,6 +196,8 @@ int defs_parse(const char *t, long n, cl_def *d)
                     set(&d->when, v);
                 else if (!strcmp(key, "initialPrompt"))
                     set(&d->initial, v);
+                else if (!strcmp(key, "paths"))
+                    set(&d->paths, v);
                 else {
                     if (!strcmp(key, "keep-coding-instructions"))
                         d->keep_coding = !strcmp(v, "true");
@@ -250,7 +257,9 @@ static void load_file(cl_defs *s, cl_sys *sys, int type, int src, const char *pa
     cl_copy(d.path, path, sizeof(d.path));
     if (sys->read(sys->u, path, 128L * 1024, &b, &n))
         return;
-    if (defs_parse(b, n, &d) || add(s, &d))
+    if (defs_parse(b, n, &d) == 0 && type == DEF_COMMAND)
+        cl_copy(d.name, name, sizeof(d.name));     /* Claude Code: a command's name is its file's */
+    if (!d.body || add(s, &d))
         def_free(&d);
     free(b);
 }
@@ -278,7 +287,7 @@ static int md_name(const char *f, char *name, long cap)
     return 0;
 }
 
-static void load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir, int depth)
+static void load_dir_as(cl_defs *s, cl_sys *sys, int type, int src, const char *dir, int depth, const char *prefix)
 {
     scan *sc;
     int i;
@@ -298,12 +307,36 @@ static void load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir
             if (sc->e[i].dir && path_join(p, "SKILL.md", sk, sizeof(sk)) == 0 && sys->kind(sys->u, sk) == 1)
                 load_file(s, sys, type, src, sk, sc->e[i].name);
         } else if (sc->e[i].dir) {
-            if (depth < 2)
-                load_dir(s, sys, type, src, p, depth + 1);
-        } else if (md_name(sc->e[i].name, name, sizeof(name)) == 0)
-            load_file(s, sys, type, src, p, name);
+            if (depth < 2) {
+                /* Claude Code: .claude/commands/frontend/x.md is /frontend:x */
+                char pre[64];
+                cl_copy(pre, prefix, sizeof(pre));
+                if (type == DEF_COMMAND) {
+                    cl_cat(pre, sc->e[i].name, sizeof(pre));
+                    cl_cat(pre, ":", sizeof(pre));
+                }
+                load_dir_as(s, sys, type, src, p, depth + 1, pre);
+            }
+        } else if (md_name(sc->e[i].name, name, sizeof(name)) == 0) {
+            char full[64];
+            cl_copy(full, prefix, sizeof(full));
+            cl_cat(full, name, sizeof(full));
+            load_file(s, sys, type, src, p, full);
+        }
     }
     free(sc);
+}
+
+static void load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir, int depth)
+{
+    load_dir_as(s, sys, type, src, dir, depth, "");
+}
+
+int defs_load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir)
+{
+    int n0 = s->n;
+    load_dir(s, sys, type, src, dir, 0);
+    return s->n - n0;
 }
 
 static const char explanatory[] =
@@ -344,8 +377,9 @@ static void builtin_of(cl_defs *s, int type, const char *name, const char *desc,
     d.when = dupn("", 0);
     d.arg_names = dupn("", 0);
     d.initial = dupn("", 0);
+    d.paths = dupn("", 0);
     if (!d.description || !d.body || !d.tools || !d.model || !d.hint || !d.deny_tools || !d.skills || !d.when ||
-        !d.arg_names || !d.initial || add(s, &d))
+        !d.arg_names || !d.initial || !d.paths || add(s, &d))
         def_free(&d);
 }
 

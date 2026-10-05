@@ -97,7 +97,11 @@ Phase 5 -- the rest the Amiga can do (added after phase 4; the audit's "not buil
       auth status / login / logout, purge
 - [x] P7 /context by category; /skills TEXT with sizes; /goal
 - [x] P8 Bash: a cd persists; WebFetch 15-minute cache
-- [ ] P9 checkpoints kept across a restart (T:) -- not built (see Left)
+- [x] P9 checkpoints kept across a restart (T:Claude-cp/<hash of the session file>/index)
+- [x] P10 SessionStart's sessionTitle / initialUserMessage / reloadSkills; terminalSequence
+      (allowlist); PostToolUse updatedToolOutput
+- [x] P11 commands in subdirectories as dir:name; nested .claude/skills loaded on the way; a
+      skill's paths:; a typed skill's effort
 
 ## Decisions (do not re-litigate)
 
@@ -202,6 +206,14 @@ Phase 5 -- the rest the Amiga can do (added after phase 4; the audit's "not buil
 - A Bash "cd DIR" alone sets where the next commands run (a "cd" line prefixed to each script;
   the AmigaShell's script and vsh both take it); cd is in the read-only set.
 - WebFetch keeps 4 pages for 15 minutes (the page's Markdown; the prompt is answered anew).
+- Checkpoints: each session's snapshots live in T:Claude-cp/<8 hex digits of a hash of the
+  session file's path> with an index rewritten at each change; a saved session keeps them at
+  the end (an unsaved one deletes them); a resume (and --session-id) switches to the session's
+  own directory, so /rewind reaches back before the restart. T: is RAM: on most Amigas: a reboot
+  ends them (Claude Code keeps them 30 days on disk).
+- The tools JSON is built at the start of each round of a turn (a skill loaded by a read in the
+  round must not leave a freed pointer behind -- found by ASan in the nested-skill test).
+- terminalSequence: OSC 0/1/2/9/99/777 and BEL only, written to the console (not in print mode).
 - A skill typed as /name runs as a turn like a command (context: fork applies when Claude calls
   the Skill tool; typed, it runs inline).
 
@@ -246,5 +258,12 @@ Phase 5 -- the rest the Amiga can do (added after phase 4; the audit's "not buil
   (bundled skills), slash_commands /goal /skill-doctor. Mutations: prompt hooks' model off,
   PostToolBatch stop off, the WebFetch cache off each fail. Gate: make test (43 OK), make
   test-ref (149, 0 failed), make amiga rc 0.
+
+- c6 Phase 6 (P9-P11): claude_repl test_gaps_more grew (a resumed session's /rewind takes back
+  a file the earlier run wrote; SessionStart's fields in print mode; terminalSequence on the
+  console, a CSI not; updatedToolOutput; paths: and nested skills offered after the read; a
+  typed skill's effort; /grp:cmd); claude_config: git/commit.md is git:commit. Mutation: the
+  resume's cp_session off fails the suite. Gate: make test (43 OK), make test-ref (149, 0
+  failed), make amiga rc 0.
 
 ## Rig steps (main session)

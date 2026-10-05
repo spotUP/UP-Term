@@ -748,6 +748,32 @@ static int too_full(cl_repl *r)
     return r->auto_compact && r->conv.n > 1 && r->ctx_used > repl_compact_at(r);
 }
 
+/* the turn's tools JSON (read anew each round: a skill may have been
+ * loaded on the way), with --json-schema's StructuredOutput tool */
+static const char *turn_tools_json(cl_repl *r, jw *xtools)
+{
+    const char *t = tools_json(&r->tools, r->model);
+    jw_reset(xtools);
+    if (r->schema && t) {
+        /* --json-schema: Claude Code's StructuredOutput tool, the schema as its input */
+        long tn = (long)strlen(t);
+        if (tn >= 2 && t[tn - 1] == ']') {
+            jw_raw(xtools, t, tn - 1);
+            if (tn > 2)
+                jw_raw(xtools, ",", 1);
+        } else
+            jw_raw(xtools, "[", 1);
+        jw_rawz(xtools, "{\"name\":\"StructuredOutput\",\"description\":\"Use this tool to return your final "
+                        "response in the requested structured format. You MUST call this tool exactly once at "
+                        "the end of your response to provide the structured output.\",\"input_schema\":");
+        jw_rawz(xtools, r->schema);
+        jw_rawz(xtools, "}]");
+        if (!xtools->oom)
+            return xtools->p;
+    }
+    return t;
+}
+
 static void turn(cl_repl *r, const char *prompt, long pn)
 {
     cl_mark m0 = conv_mark(&r->conv);
@@ -780,25 +806,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     o.effort = repl_effort(r);
     o.max_tokens = r->max_tokens;
     o.system = r->system;
-    o.tools = tools_json(&r->tools, r->model);
     jw_init(&xtools);
-    if (r->schema && o.tools) {
-        /* --json-schema: Claude Code's StructuredOutput tool, the schema as its input */
-        long tn = (long)strlen(o.tools);
-        if (tn >= 2 && o.tools[tn - 1] == ']') {
-            jw_raw(&xtools, o.tools, tn - 1);
-            if (tn > 2)
-                jw_raw(&xtools, ",", 1);
-        } else
-            jw_raw(&xtools, "[", 1);
-        jw_rawz(&xtools, "{\"name\":\"StructuredOutput\",\"description\":\"Use this tool to return your final "
-                         "response in the requested structured format. You MUST call this tool exactly once at "
-                         "the end of your response to provide the structured output.\",\"input_schema\":");
-        jw_rawz(&xtools, r->schema);
-        jw_rawz(&xtools, "}]");
-        if (!xtools.oom)
-            o.tools = xtools.p;
-    }
     jw_init(&body);
     jw_init(&content);
     r->io->brk(r->io->u);           /* a Ctrl+C from before the turn does not count */
@@ -808,6 +816,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         int rc, ntools;
         const char *stop;
         r->tools.stop = 0;
+        o.tools = turn_tools_json(r, &xtools);
         jw_reset(&body);
         if (conv_body(&r->conv, &o, &body)) {
             ui_line(&r->ui, "Out of memory.");
@@ -1439,6 +1448,7 @@ static void resumed(cl_repl *r)
     cl_cat(m, ".", sizeof(m));
     ui_line(&r->ui, m);
     r->start_due = 0;               /* Claude Code: a resumed session's source is "resume" */
+    cp_session(&r->cp, r->sess.file);     /* its snapshots: /rewind reaches back before the resume */
     pol_session(r, HK_SESSION_START, "resume");
 }
 
@@ -1781,9 +1791,11 @@ int repl_line(cl_repl *r, const char *line)
         }
         conv_clear(&r->conv);
         conv_usage_reset(&r->conv);         /* a new session's totals */
+        r->cp.keep = r->sess.started && !r->sess.off;
         r->api_ms = 0;
         r->t_start = r->io->ms ? r->io->ms(r->io->u) : 0;
         sess_new(&r->sess, r->io->ms ? r->io->ms(r->io->u) : 0);
+        cp_session(&r->cp, r->sess.file);
         cp_turn(&r->cp, 0);
         r->ctx_used = 0;
         ctx_show(r);
@@ -2156,8 +2168,14 @@ static void repl_defs(cl_repl *r)
     }
 }
 
+int repl_load_menu(cl_repl *r)
+{
+    return menu_build(r);
+}
+
 int repl_load_defs(cl_repl *r)
 {
+    r->n_nested = 0;
     repl_defs(r);
     return menu_build(r) || pol_tools(r) ? -1 : 0;
 }
@@ -2323,6 +2341,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     if (path_join(r->tmp, "Claude-cp", cpdir, sizeof(cpdir)))
         cl_copy(cpdir, "T:Claude-cp", sizeof(cpdir));
     cp_init(&r->cp, sys, cpdir);
+    cp_session(&r->cp, r->sess.file);     /* this session's own directory of snapshots */
     checkpoint_use(&r->cp);
     r->hooks.cfg = &r->cfg;
     r->hooks.sys = sys;
@@ -2368,6 +2387,7 @@ void repl_free(cl_repl *r)
     mem_free(&r->mem);
     pol_ext_free(r);
     defs_free(&r->defs);
+    r->cp.keep = r->sess.started && !r->sess.off;  /* a saved session keeps its snapshots */
     cp_free(&r->cp);
     menu_free(r);
     jw_free(&r->pending);
@@ -2383,7 +2403,8 @@ void repl_free(cl_repl *r)
     free(r->agents_json);
     free(r->schema);
     free(r->structured);
-    r->agents_json = r->schema = r->structured = 0;
+    free(r->first_msg);
+    r->agents_json = r->schema = r->structured = r->first_msg = 0;
 }
 
 int repl_need_key(const cl_repl *r)

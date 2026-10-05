@@ -416,7 +416,7 @@ static void test_defs(void)
     at(root, "proj");
     defs_init(&s);
     defs_load(&s, &sys, home, root);
-    CHECK_INT(defs_count(&s, DEF_COMMAND), 3);     /* review (project hides user), hello, commit */
+    CHECK_INT(defs_count(&s, DEF_COMMAND), 3);     /* review (project hides user), hello, git:commit (its subdirectory: Claude Code's namespace) */
     CHECK_INT(defs_count(&s, DEF_AGENT), 1);
     CHECK_INT(defs_count(&s, DEF_SKILL), 9);       /* one of the project's, eight bundled ones */
     CHECK_INT(defs_count(&s, DEF_STYLE), 6);       /* Default, Proactive, Concise, Explanatory, Learning, Terse */
@@ -425,7 +425,7 @@ static void test_defs(void)
     CHECK(d && !strcmp(d->description, "Review the code") && !strcmp(d->model, "haiku") &&
           !strcmp(d->hint, "[file]") && !strcmp(d->tools, "Bash(git diff:*), Read"));
     CHECK(d && def_has_tool(d, "Bash") && def_has_tool(d, "Read") && !def_has_tool(d, "Edit"));
-    CHECK(defs_find(&s, DEF_COMMAND, "commit") != 0);
+    CHECK(defs_find(&s, DEF_COMMAND, "git:commit") != 0 && !defs_find(&s, DEF_COMMAND, "commit"));
     d = defs_find(&s, DEF_AGENT, "tester");
     CHECK(d && !strcmp(d->tools, "Read, Bash") && !strcmp(d->body, "You test.\n") && !strcmp(d->model, "sonnet"));
     d = defs_find(&s, DEF_SKILL, "pdf-tools");
@@ -447,7 +447,7 @@ static void test_defs(void)
     CHECK_STR(o.p ? o.p : "", "Say hello to Amiga 1200 and world.\n");
     /* no placeholder at all: the arguments are appended */
     jw_reset(&o);
-    d = defs_find(&s, DEF_COMMAND, "commit");
+    d = defs_find(&s, DEF_COMMAND, "git:commit");
     CHECK_INT(cmd_expand(d, "fast", &sys, root, &o, err, sizeof(err)), 0);
     CHECK_STR(o.p ? o.p : "", "Commit it.\n\n\nARGUMENTS: fast");
     jw_free(&o);

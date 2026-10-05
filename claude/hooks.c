@@ -15,6 +15,8 @@ void hookres_init(cl_hookres *r)
     jw_init(&r->context);
     jw_init(&r->shown);
     jw_init(&r->updated);
+    jw_init(&r->output);
+    jw_init(&r->first);
 }
 
 void hookres_free(cl_hookres *r)
@@ -23,6 +25,8 @@ void hookres_free(cl_hookres *r)
     jw_free(&r->context);
     jw_free(&r->shown);
     jw_free(&r->updated);
+    jw_free(&r->output);
+    jw_free(&r->first);
     hookres_init(r);
 }
 
@@ -104,6 +108,42 @@ static void add_line(jw *w, const char *s, long n)
     jw_raw(w, s, n);
 }
 
+/* terminalSequence: only Claude Code's allowlist -- OSC 0/1/2/9/99/777
+ * (ended by BEL or ESC \) and BEL; anything else and it is ignored */
+static int term_ok(const char *s, long n)
+{
+    long i = 0;
+    while (i < n) {
+        if (s[i] == 7) {
+            i++;
+            continue;
+        }
+        if (s[i] == 27 && i + 1 < n && s[i + 1] == ']') {
+            long k = i + 2, num = 0, d = 0;
+            while (k < n && s[k] >= '0' && s[k] <= '9' && d < 4) {
+                num = num * 10 + (s[k++] - '0');
+                d++;
+            }
+            if (!d || k >= n || s[k] != ';' ||
+                !(num == 0 || num == 1 || num == 2 || num == 9 || num == 99 || num == 777))
+                return 0;
+            while (k < n && s[k] != 7 && !(s[k] == 27 && k + 1 < n && s[k + 1] == '\\')) {
+                if ((unsigned char)s[k] < 32)
+                    return 0;
+                k++;
+            }
+            if (k >= n)
+                return 0;
+            i = s[k] == 7 ? k + 1 : k + 2;
+            continue;
+        }
+        return 0;
+    }
+    return n > 0;
+}
+
+static cl_hooks *cur_hooks;     /* the json_answer below hands terminalSequence to it */
+
 /* the output read as Claude Code's JSON answer: 1 when it was one */
 static int json_answer(int event, const char *o, long n, cl_hookres *r)
 {
@@ -120,6 +160,13 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
             json_str(x, m, sizeof(m));
             add_line(&r->shown, m, (long)strlen(m));
         }
+    }
+    if (json_get(v, "terminalSequence", &x) && json_type(x) == J_STR && cur_hooks && cur_hooks->term) {
+        long l;
+        char *t = json_strdup(x, &l);
+        if (t && term_ok(t, l))
+            cur_hooks->term(cur_hooks->u, t, l);
+        free(t);
     }
     if (json_get(v, "systemMessage", &x) && json_type(x) == J_STR) {
         char m[600];
@@ -148,6 +195,26 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
                 r->decision = RULE_ASK;
             else if (json_streq(x, "allow") && r->decision == RULE_NONE)
                 r->decision = RULE_ALLOW;
+        }
+        if (json_get(hs, "updatedToolOutput", &x) && event == HK_POST_TOOL) {
+            jw_reset(&r->output);
+            jw_raw(&r->output, x.p, x.n);
+        }
+        if (event == HK_SESSION_START) {
+            jv y;
+            if (json_get(hs, "sessionTitle", &y) && json_type(y) == J_STR)
+                json_str(y, r->title, sizeof(r->title));
+            if (json_get(hs, "initialUserMessage", &y) && json_type(y) == J_STR) {
+                long l;
+                char *t = json_strdup(y, &l);
+                if (t) {
+                    jw_reset(&r->first);
+                    jw_raw(&r->first, t, l > 10000 ? 10000 : l);
+                }
+                free(t);
+            }
+            if (json_get(hs, "reloadSkills", &y) && json_type(y) == J_TRUE)
+                r->reload = 1;
         }
         if (json_get(hs, "updatedInput", &x) && json_type(x) == J_OBJ && event == HK_PRE_TOOL) {
             jw_reset(&r->updated);
@@ -275,6 +342,7 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
         return 0;
     if (path_join(h->tmp ? h->tmp : "T:", "Claude-hook.json", file, sizeof(file)))
         return 0;
+    cur_hooks = h;
     jw_init(&ev);
     jw_rawz(&ev, "{\"session_id\":");
     jw_strz(&ev, h->session_id ? h->session_id : "");

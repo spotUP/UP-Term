@@ -51,6 +51,8 @@ typedef struct cl_hooks {
     /* optional: each hook run, for --include-hook-events: started (rc -1)
      * and done (its exit code and output) */
     void (*seen)(void *u, int event, const char *cmd, int done, long rc, const char *out, long n);
+    /* optional: a hook's terminalSequence (only OSC 0 1 2 9 99 777 and BEL) */
+    void (*term)(void *u, const char *seq, long n);
     unsigned long once_done[16];    /* the "once" hooks run this session (their hashes) */
     int nonce;
 } cl_hooks;
@@ -66,6 +68,10 @@ typedef struct cl_hookres {
                                  * systemMessage */
     jw updated;                 /* PreToolUse / PermissionRequest updatedInput (a JSON object), "" none */
     int behavior;               /* PermissionRequest decision.behavior: RULE_ALLOW / RULE_DENY, RULE_NONE */
+    jw output;                  /* PostToolUse updatedToolOutput (raw JSON), "" none */
+    char title[96];             /* SessionStart sessionTitle, "" none */
+    jw first;                   /* SessionStart initialUserMessage, "" none */
+    int reload;                 /* SessionStart reloadSkills */
 } cl_hookres;
 
 void hookres_init(cl_hookres *r);

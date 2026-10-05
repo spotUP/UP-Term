@@ -1708,14 +1708,19 @@ int slash_custom(cl_repl *r, const char *w, const char *arg)
     else
         r->n_cmds_run++;
     if (pol_prompt(r, p.p ? p.p : "", p.n) == 0) {
+        char keep_effort[16];
         cl_copy(keep, r->model, sizeof(keep));
+        cl_copy(keep_effort, r->effort, sizeof(keep_effort));
         if (d->model[0])
             cl_copy(r->model, cfg_model(d->model), sizeof(r->model));
+        if (d->effort[0])
+            cl_copy(r->effort, d->effort, sizeof(r->effort));     /* effort: for its turn */
         r->turn_tools = 0;
         pol_turn_tools(r, d);
         repl_turn(r, p.p ? p.p : "", p.n);
         r->turn_tools = 0;
         cl_copy(r->model, keep, sizeof(r->model));
+        cl_copy(r->effort, keep_effort, sizeof(r->effort));
     }
     jw_free(&p);
     return 1;

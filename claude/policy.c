@@ -286,11 +286,71 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
     return 0;
 }
 
+/* A file was read or edited: a .claude/skills between the root and it
+ * loads (Claude Code's nested skills), a skill whose paths match becomes
+ * available. 1 when the list changed. */
+static int skills_for(cl_repl *r, const char *full)
+{
+    char p[300], d[300];
+    int changed = 0, i, k;
+    long rl = (long)strlen(r->tools.root);
+    const char *rel = full;
+    if (path_inside(r->tools.root, full) && (long)strlen(full) > rl) {
+        rel = full + rl;
+        if (*rel == '/')
+            rel++;
+    }
+    /* the directories from the file's up to (not including) the root */
+    if (path_parent(full, p, sizeof(p)) == 0)
+        for (k = 0; k < 8 && path_inside(r->tools.root, p) && !cl_strieq(p, r->tools.root); k++) {
+            char sk[340];
+            int seen = 0;
+            for (i = 0; i < r->n_nested; i++)
+                seen |= cl_strieq(r->nested[i], p);
+            if (!seen && path_join(p, ".claude/skills", sk, sizeof(sk)) == 0 &&
+                r->sys->kind(r->sys->u, sk) == 2 && r->n_nested < 8) {
+                cl_copy(r->nested[r->n_nested++], p, sizeof(r->nested[0]));
+                if (defs_load_dir(&r->defs, r->sys, DEF_SKILL, CFG_PROJECT, sk))
+                    changed = 1;
+            }
+            cl_copy(d, p, sizeof(d));
+            if (path_parent(d, p, sizeof(p)))
+                break;
+        }
+    for (i = 0; i < r->defs.n; i++) {
+        cl_def *s = &r->defs.d[i];
+        const char *g;
+        if (s->type != DEF_SKILL || s->active || !s->paths || !s->paths[0])
+            continue;
+        for (g = s->paths; *g;) {
+            char one[200];
+            int n = 0;
+            while (*g == ' ' || *g == ',')
+                g++;
+            while (*g && *g != ',' && n < (int)sizeof(one) - 1)
+                one[n++] = *g++;
+            while (n && one[n - 1] == ' ')
+                n--;
+            one[n] = 0;
+            if (n && (cfg_glob(one, rel, 1) || cfg_glob(one, full, 1))) {
+                s->active = 1;
+                changed = 1;
+                break;
+            }
+        }
+    }
+    if (changed)
+        repl_load_menu(r);
+    return changed;
+}
+
 /* After it: the result block tools_run appended (blk, n); text for
  * Claude to see after the results goes to extra. */
 static void pol_post(cl_repl *r, cl_tools *tl, const char *id, const char *name, int input_ok, const char *raw,
-                     long rawn, const char *blk, long n, jw *extra)
+                     long rawn, jw *out, long at, jw *extra)
 {
+    const char *blk = out->p + at;
+    long n = out->n - at;
     jv in, b, x;
     const char *cc = cfg_cc_tool(name);
     int is_error, ev;
@@ -324,6 +384,19 @@ static void pol_post(cl_repl *r, cl_tools *tl, const char *id, const char *name,
         shown(r, &h);
         if (h.stop)
             tl->stop = 1;
+        if (h.output.n && !is_error) {
+            /* updatedToolOutput: the tool_result Claude gets is the hook's */
+            jv ov;
+            out->n = at;
+            jw_rawz(out, "{\"type\":\"tool_result\",\"tool_use_id\":");
+            jw_strz(out, id);
+            jw_rawz(out, ",\"content\":");
+            if (json_parse(h.output.p, h.output.n, &ov) == 0 && (json_type(ov) == J_STR || json_type(ov) == J_ARR))
+                jw_raw(out, h.output.p, h.output.n);
+            else
+                jw_str(out, h.output.p, h.output.n);
+            jw_raw(out, "}", 1);
+        }
         if (h.blocked || h.context.n) {
             if (extra->n)
                 jw_rawz(extra, "\n\n");
@@ -361,6 +434,8 @@ static void pol_post(cl_repl *r, cl_tools *tl, const char *id, const char *name,
                 pol_instructions(r, k1, "path_glob_match");
             }
         }
+        if (skills_for(r, full))
+            pol_tools(r);               /* a nested .claude/skills, a skill's paths: now offered */
         if (got && t.n) {
             if (extra->n)
                 jw_rawz(extra, "\n\n");
@@ -434,7 +509,7 @@ void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input
         tl->rule_ask = 0;
     }
     r->rule_now = RULE_NONE;
-    pol_post(r, tl, id, name, input_ok, raw, rawn, out->p + at, out->n - at, extra);
+    pol_post(r, tl, id, name, input_ok, raw, rawn, out, at, extra);
     jw_free(&upd);
     r->at = was;
 }
@@ -500,6 +575,20 @@ void pol_session(cl_repl *r, int event, const char *source)
     shown(r, &h);
     if (envf[0])
         env_file(r, envf);
+    if (event == HK_SESSION_START) {
+        if (h.title[0] && strcmp(source, "clear") && strcmp(source, "compact"))
+            sess_rename(&r->sess, h.title);     /* sessionTitle: as /rename */
+        if (h.first.n && !r->first_msg) {
+            /* initialUserMessage: the session's first turn (print mode) */
+            r->first_msg = (char *)malloc((size_t)h.first.n + 1);
+            if (r->first_msg) {
+                memcpy(r->first_msg, h.first.p, (size_t)h.first.n);
+                r->first_msg[h.first.n] = 0;
+            }
+        }
+        if (h.reload)
+            repl_load_defs(r);              /* reloadSkills: what the hook installed is there now */
+    }
     if (event == HK_SESSION_START && h.context.n) {
         if (r->pending.n)
             jw_rawz(&r->pending, "\n\n");
@@ -950,12 +1039,21 @@ static void pol_hook_seen(void *u, int event, const char *cmd, int done, long rc
         r->feed->hook(r->feed->u, cfg_hook_events[event], cmd, done, rc, out, n);
 }
 
+/* terminalSequence: the allowed escapes (title, notification, bell) to the console */
+static void pol_hook_term(void *u, const char *seq, long n)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (r->io->write && !r->no_person)
+        r->io->write(r->io->u, seq, n);
+}
+
 void pol_attach_hooks(cl_repl *r)
 {
     r->hooks.u = r;
     r->hooks.ask_model = pol_ask_model;
     r->hooks.status = pol_hook_status;
     r->hooks.seen = pol_hook_seen;
+    r->hooks.term = pol_hook_term;
 }
 
 /* "claude-opus-5-5" -> "Opus 5.5" (Claude Code's display name); others as they are */
@@ -1312,7 +1410,7 @@ int pol_tools(cl_repl *r)
     }
     /* disable-model-invocation: only the user runs it */
     for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++)
-        if (!d->no_model) {
+        if (!d->no_model && (!d->paths || !d->paths[0] || d->active)) {
             cl_skill *s = &r->x_skills[r->nx_skills++];
             s->name = d->name;
             s->description = d->description;

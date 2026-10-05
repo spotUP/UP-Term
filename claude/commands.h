@@ -50,6 +50,8 @@ typedef struct cl_def {
     char agent[64];             /* ... with that agent ("" general-purpose) */
     char *arg_names;            /* arguments: the names of $name placeholders, "" none */
     char *initial;              /* an agent's initialPrompt (as the main thread), "" none */
+    char *paths;                /* a skill's paths: globs that make it available, "" always */
+    int active;                 /* a skill with paths: a matching file was worked on */
 } cl_def;
 
 /* the ${CLAUDE_*} values of an expansion (any may be 0: "") */
@@ -79,6 +81,9 @@ int defs_count(const cl_defs *s, int type);
 int defs_parse(const char *text, long n, cl_def *d);
 void def_free(cl_def *d);
 
+/* The definitions of one directory (a nested .claude/skills, ...) added,
+ * as src: their count. */
+int defs_load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir);
 /* Every definition of a type dropped (type -1: every one that is not
  * built in): --bare, --safe-mode, --disable-slash-commands. */
 void defs_drop(cl_defs *s, int type);

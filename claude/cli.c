@@ -1126,8 +1126,11 @@ int cli_apply(cl_cli *c, cl_repl *r)
             r->sess.off = 1;
     }
     /* --session-id: the new session's id (with -c / -r only together with --fork-session: cli_session) */
-    if (c->session_id[0] && !c->cont && !c->resume && sess_use_id(&r->sess, c->session_id))
-        return fail(c, "Error: Session ID ", c->session_id, " is already in use.");
+    if (c->session_id[0] && !c->cont && !c->resume) {
+        if (sess_use_id(&r->sess, c->session_id))
+            return fail(c, "Error: Session ID ", c->session_id, " is already in use.");
+        cp_session(&r->cp, r->sess.file);   /* its snapshots go with its file */
+    }
     return 0;
 }
 

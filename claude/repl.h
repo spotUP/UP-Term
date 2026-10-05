@@ -180,6 +180,9 @@ typedef struct cl_repl {
     long cfg_mtime[3];          /* the settings files' times when read (ConfigChange) */
     int began;                  /* the session has started (SessionStart ran) */
     char goal[400];             /* /goal: the condition Claude works toward, "" none */
+    char *first_msg;            /* a SessionStart hook's initialUserMessage (print mode's first turn), 0 none */
+    char nested[8][300];        /* the directories whose .claude/skills were loaded on the way */
+    int n_nested;
     int goal_rounds;            /* the turns a goal has added (capped) */
     int no_dynamic;             /* --exclude-dynamic-system-prompt-sections: auto memory's place in the
                                  * first prompt, not the system prompt */
