@@ -41,6 +41,7 @@ void suite_claude_stream(void);
 void suite_claude_tools(void);
 void suite_claude_match(void);
 void suite_claude_repl(void);
+void suite_claude_cli(void);
 void suite_claude_tui(void);
 void suite_claude_config(void);
 
@@ -85,6 +86,7 @@ static const h_suite suites[] = {
     { "claude_tools", suite_claude_tools },
     { "claude_match", suite_claude_match },
     { "claude_repl", suite_claude_repl },
+    { "claude_cli", suite_claude_cli },
     { "claude_tui", suite_claude_tui },
     { "claude_config", suite_claude_config },
     { 0, 0 }

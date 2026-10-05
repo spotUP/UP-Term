@@ -169,7 +169,7 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out)
         jw_strz(out, o->system);
         jw_rawz(out, ",\"cache_control\":{\"type\":\"ephemeral\"}}]");
     }
-    if (o->tools && *o->tools) {
+    if (o->tools && *o->tools && strcmp(o->tools, "[]")) {
         jw_rawz(out, ",\"tools\":");
         jw_rawz(out, o->tools);
         jw_rawz(out, o->no_tools ? ",\"tool_choice\":{\"type\":\"none\"}" : ",\"tool_choice\":{\"type\":\"auto\"}");
@@ -226,15 +226,29 @@ static unsigned long micro(long tok, long price)
 void conv_usage(cl_conv *c, const char *model, long in, long out, long cache_w, long cache_r)
 {
     cl_price p;
+    cl_model_use *u;
+    unsigned long cost = 0;
+    int i;
     c->requests++;
     c->in_tok += in;
     c->out_tok += out;
     c->cache_w += cache_w;
     c->cache_r += cache_r;
-    if (conv_price(model, &p))
-        c->cost_micro += micro(in, p.in) + micro(out, p.out) + micro(cache_w, p.cwrite) + micro(cache_r, p.cread);
-    else
+    if (conv_price(model, &p)) {
+        cost = micro(in, p.in) + micro(out, p.out) + micro(cache_w, p.cwrite) + micro(cache_r, p.cread);
+        c->cost_micro += cost;
+    } else
         c->unpriced++;
+    for (i = 0; i < c->nmu && strcmp(c->mu[i].model, model); i++)
+        ;
+    if (i == c->nmu && c->nmu < CONV_MODELS)
+        cl_copy(c->mu[c->nmu++].model, model, sizeof(c->mu[0].model));
+    u = &c->mu[i < c->nmu ? i : c->nmu - 1];
+    u->in += in;
+    u->out += out;
+    u->cache_w += cache_w;
+    u->cache_r += cache_r;
+    u->cost_micro += cost;
 }
 
 void conv_dollars(unsigned long m, char *out, long cap)

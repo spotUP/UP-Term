@@ -185,6 +185,7 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
     if (d == RULE_DENY) {
         char m[500];
         r->n_rule_deny++;
+        repl_denied(r, name, raw, rawn);
         cl_copy(m, "Permission to use ", sizeof(m));
         cl_cat(m, cc, sizeof(m));
         cl_cat(m, " has been denied", sizeof(m));
@@ -201,18 +202,15 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
     }
     if (d == RULE_ASK) {
         int tid = tools_id(name);
-        d = RULE_NONE;              /* tools_run asks as usual */
+        /* tools_run asks as usual (RULE_ASK kept: an explicit ask rule,
+         * which bypassPermissions does not answer) */
         if (tid >= 0 && !perm_refused(&tl->perm, tid) && !perm_must_ask(&tl->perm, tid, 0)) {
             /* it would run without a question: the rule asks */
             int ans;
-            char m[200];
             tl->cur = tid;
             tl->cur_in = raw;
             tl->cur_inn = rawn;
-            cl_copy(m, "Claude needs your permission to use ", sizeof(m));
-            cl_cat(m, cc, sizeof(m));
-            pol_notify(r, m);
-            ans = ui_ask(&r->ui, tid, name, what, 0);
+            ans = repl_ask(r, tid, name, what, 0, 1);
             if (ans == ASK_NO || ans == ASK_STOP) {
                 if (ans == ASK_STOP)
                     tl->stop = 1;
@@ -299,6 +297,7 @@ void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input
     cl_tools *was = r->at;
     long at = out->n;
     r->at = tl;                 /* the screen's callbacks show this call's tool */
+    r->cur_id = id;             /* print mode's permission_denials */
     if (!pol_pre(r, tl, id, name, input_ok, raw, rawn, out))
         tools_run(tl, id, name, input_ok, raw, rawn, out);
     r->rule_now = RULE_NONE;

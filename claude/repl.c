@@ -99,6 +99,8 @@ static void on_event(void *u, const char *ev, const char *data, long n)
 {
     cl_repl *r = (cl_repl *)u;
     log_s(r, ev, data, n);
+    if (r->feed && r->feed->event && !r->quiet_req)
+        r->feed->event(r->feed->u, ev, data, n);    /* A4 WP4: --include-partial-messages */
     stream_event(&r->st, ev, data, n);
 }
 
@@ -181,6 +183,11 @@ static int post(cl_repl *r, const char *body, long bn, long *retry_s)
     sui.block = st_block;
     sui.thinking = st_thinking;
     sui.stop = st_stop;
+    if (repl_need_key(r)) {
+        /* A4 WP4: a keyless start; nothing goes out without the key */
+        show_err(r, "Not logged in: no API key. Type /login, or set ENV:ANTHROPIC_API_KEY.", 0);
+        return R_FAIL;
+    }
 top:
     reused = r->connected;
     if (!r->connected) {
@@ -323,7 +330,7 @@ top:
 }
 
 /* post() with retries and backoff */
-static int request(cl_repl *r, const char *body, long bn)
+static int request_retry(cl_repl *r, const char *body, long bn)
 {
     long delay = 2, wait;
     int attempt;
@@ -362,6 +369,16 @@ static int request(cl_repl *r, const char *body, long bn)
     }
 }
 
+/* ... and the time it took (print mode's duration_api_ms) */
+static int request(cl_repl *r, const char *body, long bn)
+{
+    unsigned long t0 = r->io->ms ? r->io->ms(r->io->u) : 0;
+    int rc = request_retry(r, body, bn);
+    if (r->io->ms)
+        r->api_ms += r->io->ms(r->io->u) - t0;
+    return rc;
+}
+
 /* ---- a turn ---- */
 
 /* the callbacks below serve the conversation's tools and a subagent's:
@@ -372,19 +389,41 @@ static void tool_show(void *u, const char *tool, const char *what)
     ui_tool(&r->ui, r->at->cur, tool, what, r->at->cur_in, r->at->cur_inn);
 }
 
+void repl_denied(cl_repl *r, const char *tool, const char *input, long n)
+{
+    if (r->feed && r->feed->denied)
+        r->feed->denied(r->feed->u, tool, r->cur_id ? r->cur_id : "", input, n);
+}
+
+int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outside, int rule)
+{
+    char m[200];
+    /* A4 WP4: nobody to ask (print mode, dontAsk): denied, but a read in
+     * the start directory runs (Claude Code: no approval needed there);
+     * bypassPermissions: yes, except to an explicit ask rule */
+    if (r->ask_policy == ASKP_BYPASS && !rule)
+        return ASK_ONCE;
+    if (r->no_person || r->ask_policy == ASKP_DENY) {
+        if (!rule && !outside && tid >= 0 && perm_read_only(tid))
+            return ASK_ONCE;
+        repl_denied(r, tool, r->at->cur_in, r->at->cur_inn);
+        return ASK_NO;
+    }
+    cl_copy(m, "Claude needs your permission to use ", sizeof(m));
+    cl_cat(m, cfg_cc_tool(tool), sizeof(m));
+    pol_notify(r, m);
+    return ui_ask(&r->ui, tid, tool, what, outside);
+}
+
 static int tool_ask(void *u, const char *tool, const char *what, int outside)
 {
     cl_repl *r = (cl_repl *)u;
-    char m[200];
     if (r->rule_now == RULE_ALLOW) {
         /* a permission rule (or a hook) allowed it: no question */
         r->n_rule_allow++;
         return ASK_ONCE;
     }
-    cl_copy(m, "Claude needs your permission to use ", sizeof(m));
-    cl_cat(m, cfg_cc_tool(tool), sizeof(m));
-    pol_notify(r, m);
-    return ui_ask(&r->ui, r->at->cur, tool, what, outside);
+    return repl_ask(r, r->at->cur, tool, what, outside, r->rule_now == RULE_ASK);
 }
 
 static void tool_preview(void *u, int tool, const char *path, const char *before, long bn, const char *after,
@@ -416,6 +455,8 @@ static void tool_result(void *u, int tool, const char *in, long inn, int is_erro
 static int tool_choose(void *u, const char *header, const char *question, const char *const *labels,
                        const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap)
 {
+    if (((cl_repl *)u)->no_person)
+        return -1;                  /* print mode: no one to answer */
     return ui_choose(&((cl_repl *)u)->ui, header, question, labels, descs, n, flags, picked, other, cap);
 }
 
@@ -455,7 +496,9 @@ static int api_send(void *u, const char *body, long bn, cl_stream *st)
     r->render.u = 0;
     r->render.text = quiet_text;
     r->render.end = quiet_end;
+    r->quiet_req++;
     rc = request(r, body, bn);
+    r->quiet_req--;
     r->render = rk;
     *st = r->st;
     r->st = keep;
@@ -541,6 +584,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     jw body, content;
     int answered = 0, round, stops = 0;
     const char *turn_tools = r->turn_tools;     /* a SlashCommand's allowed-tools last this turn */
+    r->turn_rc = TURN_FAIL;
     cp_turn(&r->cp, r->conv.n);
     if (conv_add_user_text(&r->conv, prompt, pn) ||
         (r->pending.n && conv_add_user_text(&r->conv, r->pending.p, r->pending.n))) {
@@ -574,6 +618,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             r->render.end(r->render.u);
         if (rc == R_CANCEL) {
             ui_line(&r->ui, "Stopped. The unfinished answer is not kept.");
+            r->turn_rc = TURN_CANCEL;
             break;
         }
         if (rc == R_FAIL && r->busy_fail && r->fallback[0] && strcmp(r->model, r->fallback)) {
@@ -585,6 +630,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         }
         if (rc != R_OK)
             break;
+        r->n_responses++;
         conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok,
                    r->st.cache_w, r->st.cache_r);
         r->ctx_used = r->st.in_tok + r->st.cache_r + r->st.cache_w + r->st.out_tok;
@@ -616,6 +662,9 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             break;
         }
         answered = 1;
+        r->turn_rc = TURN_OK;
+        if (r->feed && r->feed->message)
+            r->feed->message(r->feed->u, 0, content.p, content.n);
         pol_status_event(r);        /* Claude Code: a new assistant message */
         if (!strcmp(stop, "max_tokens"))
             ui_line(&r->ui, "(The answer reached the output limit.)");
@@ -640,6 +689,19 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             /* the tool_use turn is in; without its results the history is
              * invalid, so take the turn back out */
             answered = 0;
+            r->turn_rc = TURN_FAIL;
+            break;
+        }
+        if (r->feed && r->feed->message)
+            r->feed->message(r->feed->u, 1, content.p, content.n);
+        /* A4 WP4: --max-turns, --max-budget-usd (print mode) end the turn
+         * after a tool round, before the next request */
+        if (r->max_turns && round + 1 >= r->max_turns) {
+            r->turn_rc = TURN_MAX_TURNS;
+            break;
+        }
+        if (r->budget_micro && r->conv.cost_micro - r->budget_base >= r->budget_micro) {
+            r->turn_rc = TURN_BUDGET;
             break;
         }
         if (r->tools.stop)
@@ -881,6 +943,8 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     jw_free(&sum);
     request_free(r);
 }
+
+static void start(cl_repl *r);
 
 static const char init_prompt[] =
     "Look at the files in the start directory (Glob, Grep, a few targeted Reads; the machine is "
@@ -1146,6 +1210,8 @@ int repl_line(cl_repl *r, const char *line)
         /* the line after /login is the key, never shown or kept */
         r->await_key = 0;
         slash_run(r, "/login", line);
+        if (r->first && !repl_need_key(r))
+            start(r);                   /* the prompt given at the start goes now */
         return 0;
     }
     {
@@ -1239,6 +1305,7 @@ void repl_run(cl_repl *r)
         return;
     if (r->tui) {
         show_welcome(r->show, r->model, r->tools.root);
+        start(r);
         for (;;) {
             long n = tui_read(r->tui, line, 8192);
             if (n < 0)
@@ -1257,6 +1324,7 @@ void repl_run(cl_repl *r)
     cl_cat(m, r->effort, sizeof(m));
     cl_cat(m, ". Type /help for commands, /exit to leave.", sizeof(m));
     ui_line(&r->ui, m);
+    start(r);
     for (;;) {
         long n;
         ui_puts(&r->ui, r->await_key ? "\n\033[1mKey:\033[0m " : "\n\033[1m>\033[0m ");
@@ -1463,11 +1531,15 @@ int repl_system(cl_repl *r)
     jw s;
     const cl_def *st = r->style[0] ? defs_find(&r->defs, DEF_STYLE, r->style) : 0;
     jw_init(&s);
-    jw_rawz(&s, sys_a);
-    jw_rawz(&s, sys_b);
-    jw_rawz(&s, r->tools.root);
-    jw_rawz(&s, sys_c);
-    jw_rawz(&s, sys_d);
+    if (r->sys_replace)
+        jw_rawz(&s, r->sys_replace);    /* --system-prompt (A4 WP4) */
+    else {
+        jw_rawz(&s, sys_a);
+        jw_rawz(&s, sys_b);
+        jw_rawz(&s, r->tools.root);
+        jw_rawz(&s, sys_c);
+        jw_rawz(&s, sys_d);
+    }
     if (st && st->body[0]) {
         jw_rawz(&s, "\n\n# Output style: ");
         jw_rawz(&s, st->name);
@@ -1477,6 +1549,10 @@ int repl_system(cl_repl *r)
     if (r->mem.text.n) {
         jw_rawz(&s, mem_intro);
         jw_raw(&s, r->mem.text.p, r->mem.text.n);
+    }
+    if (r->sys_append) {
+        jw_rawz(&s, "\n\n");
+        jw_rawz(&s, r->sys_append);     /* --append-system-prompt */
     }
     if (s.oom) {
         jw_free(&s);
@@ -1499,6 +1575,10 @@ int repl_load(cl_repl *r)
     int i;
     cfg_free(&r->cfg);
     cfg_load(&r->cfg, r->sys, r->home, r->tools.root);
+    for (i = 0; i < 2; i++)
+        if (r->layer[i])            /* the command line's layer (A4 WP4): after the files, wins */
+            cfg_merge(&r->cfg, CFG_SESSION, r->layer[i], (long)strlen(r->layer[i]),
+                      i ? "the command line" : "--settings");
     defs_free(&r->defs);
     defs_load(&r->defs, r->sys, r->home, r->tools.root);
     /* the settings: the command line (main) comes after and wins */
@@ -1512,12 +1592,18 @@ int repl_load(cl_repl *r)
         cl_copy(r->style, cl_strieq(r->cfg.output_style, "default") ? "" : r->cfg.output_style, sizeof(r->style));
     if (r->cfg.auto_compact >= 0)
         r->auto_compact = r->cfg.auto_compact;
+    if (r->cfg.default_mode[0])
+        r->ask_policy = ASKP_ASK;
     if (!strcmp(r->cfg.default_mode, "acceptEdits"))
         r->tools.perm.mode = PERM_ACCEPT;
     else if (!strcmp(r->cfg.default_mode, "plan"))
         r->tools.perm.mode = PERM_PLAN;
-    else if (!strcmp(r->cfg.default_mode, "default"))
+    else if (!strcmp(r->cfg.default_mode, "default") || !strcmp(r->cfg.default_mode, "manual"))
         r->tools.perm.mode = PERM_DEFAULT;
+    else if (!strcmp(r->cfg.default_mode, "dontAsk") || !strcmp(r->cfg.default_mode, "bypassPermissions")) {
+        r->tools.perm.mode = PERM_DEFAULT;
+        r->ask_policy = r->cfg.default_mode[0] == 'd' ? ASKP_DENY : ASKP_BYPASS;
+    }
     for (i = 0; i < r->cfg.nenv; i++)
         if (r->sys->setenv)
             r->sys->setenv(r->sys->u, r->cfg.env[i].k, r->cfg.env[i].v);
@@ -1559,10 +1645,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
         show_err(r, "Not a usable URL: ", url);
         return -1;
     }
-    if (r->url.tls && (!key || !*key)) {
-        ui_line(&r->ui, "No API key: set ENV:ANTHROPIC_API_KEY, or put the key in ENVARC:Claude/key (or type /login).");
-        return -1;
-    }
+    /* no key for https: the start goes on to /login (A4 WP4, repl_need_key) */
     /* the key goes only over TLS: a plain http URL (the fixture) never sees it */
     r->key = r->url.tls ? key : 0;
     cl_copy(r->model, CL_DEFAULT_MODEL, sizeof(r->model));
@@ -1641,4 +1724,28 @@ void repl_free(cl_repl *r)
     r->todos = 0;
     r->hooks.cfg = 0;
     memset(r->keybuf, 0, sizeof(r->keybuf));
+    free(r->sys_replace);
+    free(r->sys_append);
+    free(r->layer[0]);
+    free(r->layer[1]);
+    r->sys_replace = r->sys_append = r->layer[0] = r->layer[1] = 0;
+}
+
+int repl_need_key(const cl_repl *r)
+{
+    return r->url.tls && !(r->key && *r->key);
+}
+
+/* A4 WP4: the start -- /login first when there is no key, else the
+ * prompt the session starts with */
+static void start(cl_repl *r)
+{
+    if (repl_need_key(r))
+        repl_line(r, "/login");
+    else if (r->first) {
+        const char *f = r->first;
+        r->first = 0;
+        ui_user(&r->ui, f);
+        repl_line(r, f);
+    }
 }

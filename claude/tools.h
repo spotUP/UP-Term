@@ -162,6 +162,13 @@ int tools_validate(int tool, jv input, char *err, long cap);
 void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
                const char *raw, long rawn, jw *out);
 
+/* A tools list ("Read, Grep", "Bash(make:*) Edit"; "" or "*" all) as a
+ * bit set of T_*, bit T_COUNT for WebSearch; "Agent" names Task. */
+unsigned long tools_mask(const char *list);
+/* An agent by name, case-insensitive: the built-in ones (general-purpose,
+ * Explore, Plan) and the provider's (ext.h). 0 none. */
+const struct cl_agent *tools_agent(const cl_tools *t, const char *name);
+
 /* ---- what the screen shows of a call (show.c, ui.c) ---- */
 
 /* the name Claude Code shows ("Read", "Update", "Search", "Bash", ...) */

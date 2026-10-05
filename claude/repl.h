@@ -35,6 +35,28 @@
 #define CL_TMP            "T:"              /* CLAUDE_CODE_TMPDIR overrides */
 #define CL_COMPACT_PCT    92                /* auto-compact when this much of the window is used */
 
+/* A4 WP4: an observer of the turns (print mode's output, claude/print.c).
+ * Each may be 0. */
+typedef struct cl_feed {
+    void *u;
+    /* a message added to the conversation by a turn: an answer (user 0;
+     * r->st still holds its stream) or a round's tool results (user 1) */
+    void (*message)(void *u, int user, const char *json, long n);
+    /* a raw stream event of the conversation's own requests */
+    void (*event)(void *u, const char *ev, const char *data, long n);
+    /* a tool call refused without a question (a deny rule, no one to ask) */
+    void (*denied)(void *u, const char *tool, const char *id, const char *input, long n);
+} cl_feed;
+
+/* who answers a permission question (A4 WP4) */
+enum {
+    ASKP_ASK,                   /* the user */
+    ASKP_DENY,                  /* nobody: denied (dontAsk; print mode); reads in the root still run */
+    ASKP_BYPASS                 /* yes to all (bypassPermissions); explicit ask rules still ask */
+};
+/* how the last turn ended */
+enum { TURN_OK, TURN_FAIL, TURN_CANCEL, TURN_MAX_TURNS, TURN_BUDGET };
+
 typedef struct cl_repl {
     cl_io *io;
     cl_net *net;
@@ -101,6 +123,22 @@ typedef struct cl_repl {
     int nx_agents, nx_skills, nx_cmds;
     cl_tools *at;               /* the tools whose call runs now: the conversation's or a subagent's */
     long n_rule_allow, n_rule_deny, n_cmds_run;     /* the tests' sentinels */
+    /* A4 WP4: the command line (cli.c) and print mode (print.c) */
+    const cl_feed *feed;
+    int ask_policy;             /* ASKP_* */
+    int no_person;              /* print mode: no one to ask (questions denied, choices declined) */
+    int max_turns;              /* responses a turn may have before it stops, 0 no limit */
+    unsigned long budget_micro; /* spend allowed (US dollars * 1e6), 0 no limit; ... */
+    unsigned long budget_base;  /* ... counted from this cost_micro */
+    int turn_rc;                /* TURN_*: how the last turn ended */
+    long n_responses;           /* answers received (print mode's num_turns) */
+    unsigned long api_ms;       /* time spent in requests */
+    int quiet_req;              /* a tool's own request is in flight (no feed events) */
+    const char *cur_id;         /* the tool_use id being run */
+    char *sys_replace;          /* --system-prompt: replaces the default text, 0 none */
+    char *sys_append;           /* --append-system-prompt: added at the end, 0 none */
+    char *layer[2];             /* --settings and the flags as settings JSON (CFG_SESSION), 0 none */
+    const char *first;          /* the prompt the session starts with (Claude "prompt"), 0 none */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
     char buf[4096];
@@ -139,6 +177,9 @@ int repl_rewind(cl_repl *r, int msg, int code, int conv);
 /* The prompts the conversation can be rewound to: message indexes, the
  * newest first; their count. */
 int repl_prompts(const cl_repl *r, int *msg, int max);
+
+/* A4 WP4: an https endpoint and no key yet (the start goes to /login) */
+int repl_need_key(const cl_repl *r);
 
 /* the start of a key read from a file or a variable, cleaned in place:
  * white space trimmed; 0 when it is usable */

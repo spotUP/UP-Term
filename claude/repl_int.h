@@ -23,6 +23,11 @@ void repl_saved(cl_repl *r);
 int repl_system(cl_repl *r);
 /* the memory files read again, and the system prompt (/memory, /cd) */
 int repl_load_memory(cl_repl *r);
+/* A4 WP4: a permission question as the ask policy says (the user, no
+ * one, yes to all); rule 1: an explicit ask rule asks. ASK_* */
+int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outside, int rule);
+/* a call refused without a question, for print mode's permission_denials */
+void repl_denied(cl_repl *r, const char *tool, const char *input, long n);
 /* the A2 JSON-array conversation file loaded: 0, -1 (shown) */
 int repl_load_json(cl_repl *r, const char *full);
 

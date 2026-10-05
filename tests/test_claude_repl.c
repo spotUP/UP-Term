@@ -15,6 +15,7 @@
 #include "claude_load.h"
 #include "../claude/repl.h"
 #include "../claude/repl_int.h"
+#include "../claude/print.h"
 #include "../claude/sys_posix.h"
 #include "../claude/util.h"
 #include "../claude/tui.h"
@@ -296,6 +297,8 @@ static cl_net net;
 static sys_posix sp;
 static cl_sys sys;
 
+static const char *setup_key = "test-key-not-real";
+
 static void setup_in(cl_repl *r, const char **script, const char *root)
 {
     stub_reset();
@@ -317,7 +320,7 @@ static void setup_in(cl_repl *r, const char **script, const char *root)
     net.close = s_close;
     net.err = s_err;
     sys_posix_init(&sp, &sys);
-    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, setup_key, root), 0);
     jw_free(&snt.text);
     memset(&snt, 0, sizeof(snt));
     jw_init(&snt.text);
@@ -500,10 +503,14 @@ static void test_commands(void)
     CHECK_INT(repl_line(&r, "   "), 0);
     CHECK_INT(sb.nreq, 0);
     repl_free(&r);
-    /* no key for an https URL: refused before anything is sent */
+    /* no key for an https URL (A4 WP4): the start goes on, nothing is sent without one */
     {
         static cl_repl r2;
-        CHECK_INT(repl_init(&r2, &io, &net, &sys, CL_DEFAULT_URL, "", dir), -1);
+        CHECK_INT(repl_init(&r2, &io, &net, &sys, CL_DEFAULT_URL, "", dir), 0);
+        CHECK_INT(repl_need_key(&r2), 1);
+        repl_line(&r2, "hello");
+        CHECK_INT(sb.nreq, 0);
+        CHECK(strstr(cn.screen.p, "Not logged in: no API key") != 0);
         repl_free(&r2);
         CHECK_INT(repl_init(&r2, &io, &net, &sys, "http://10.0.2.2:8080/v1/messages", 0, dir), 0);
         repl_free(&r2);
@@ -1285,6 +1292,653 @@ static void test_wp2(void)
     repl_free(&r);
 }
 
+/* ---- A4 WP4: the command line and print mode, through the REPL core ----
+ *
+ * main_amiga.c's print path, step by step on the host: the words parsed
+ * (cli_parse_line), applied (cli_apply), the run (print_run) against the
+ * recorded streams; the output captured and compared with golden files
+ * (tests/claude/print_*), the run's own values (uuids, the session id,
+ * durations, the temporary directory) blanked first. */
+
+typedef struct pcap {
+    jw out, err;
+    const char *in;
+    long pos;
+} pcap;
+
+static pcap pc;
+
+static void pc_out(void *u, const char *s, long n)
+{
+    (void)u;
+    jw_raw(&pc.out, s, n);
+}
+
+static void pc_err(void *u, const char *s, long n)
+{
+    (void)u;
+    jw_raw(&pc.err, s, n);
+}
+
+/* what is piped in, 7 bytes a read (lines cross reads) */
+static long pc_in(void *u, char *b, long cap)
+{
+    long n = (long)strlen(pc.in) - pc.pos;
+    (void)u;
+    if (n > 7)
+        n = 7;
+    if (n > cap)
+        n = cap;
+    memcpy(b, pc.in + pc.pos, (size_t)n);
+    pc.pos += n;
+    return n;
+}
+
+/* main's print path; the exit code */
+static int run_print(cl_repl *r, const char *args, const char *in)
+{
+    cl_cli c;
+    cl_pout po;
+    int rc;
+    jw_reset(&pc.out);
+    jw_reset(&pc.err);
+    pc.in = in;
+    pc.pos = 0;
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, args), 0);
+    CHECK_INT(cli_apply(&c, r), 0);
+    po.u = 0;
+    po.out = pc_out;
+    po.err = pc_err;
+    po.in = in ? pc_in : 0;
+    rc = print_run(r, &c, &po);
+    cli_free(&c);
+    return rc;
+}
+
+static const char *outp(void)
+{
+    return pc.out.p ? pc.out.p : "";
+}
+
+/* the run's own values blanked: uuids, the session id, durations, the start directory */
+static void norm(const char *s, const char *root, jw *o)
+{
+    static const char *const strs[] = { "\"uuid\":\"", "\"session_id\":\"", 0 };
+    static const char *const nums[] = { "\"duration_ms\":", "\"duration_api_ms\":", 0 };
+    long rl = (long)strlen(root);
+    jw_reset(o);
+    while (*s) {
+        int i, done = 0;
+        if (rl && !strncmp(s, root, (size_t)rl)) {
+            jw_rawz(o, "<ROOT>");
+            s += rl;
+            continue;
+        }
+        for (i = 0; strs[i] && !done; i++)
+            if (!strncmp(s, strs[i], strlen(strs[i]))) {
+                jw_rawz(o, strs[i]);
+                s += strlen(strs[i]);
+                while (*s && *s != '"')
+                    s++;
+                jw_rawz(o, "*");
+                done = 1;
+            }
+        for (i = 0; nums[i] && !done; i++)
+            if (!strncmp(s, nums[i], strlen(nums[i]))) {
+                jw_rawz(o, nums[i]);
+                s += strlen(nums[i]);
+                while (*s >= '0' && *s <= '9')
+                    s++;
+                jw_rawz(o, "0");
+                done = 1;
+            }
+        if (!done)
+            jw_raw(o, s++, 1);
+    }
+}
+
+/* got against tests/claude/<name> (CL_UPDATE_GOLDEN=1 writes it instead) */
+static void golden(const char *name, const char *got)
+{
+    long n;
+    char *want;
+    if (getenv("CL_UPDATE_GOLDEN")) {
+        char p[256];
+        FILE *f;
+        strcpy(p, "tests/claude/");
+        strcat(p, name);
+        f = fopen(p, "wb");
+        if (f) {
+            fputs(got, f);
+            fclose(f);
+        }
+    }
+    want = claude_load(name, &n);
+    CHECK(want != 0);
+    if (want)
+        CHECK_STR(got, want);
+    free(want);
+}
+
+/* every line of the output a JSON object; the count; types: their "type"s, joined by ' ' */
+static int json_lines(const char *s, char *types, long cap)
+{
+    int k = 0;
+    types[0] = 0;
+    while (*s) {
+        const char *e = strchr(s, '\n');
+        jv v, t;
+        char ty[40];
+        if (!e)
+            e = s + strlen(s);
+        CHECK(json_parse(s, (long)(e - s), &v) == 0 && json_type(v) == J_OBJ);
+        if (json_parse(s, (long)(e - s), &v) == 0 && json_get(v, "type", &t) && json_str(t, ty, sizeof(ty)) >= 0) {
+            if (k)
+                cl_cat(types, " ", cap);
+            cl_cat(types, ty, cap);
+        }
+        k++;
+        s = *e ? e + 1 : e;
+    }
+    return k;
+}
+
+/* the result object of an output (its last line) */
+static int result_of(jv *v)
+{
+    const char *s = outp(), *last = s, *p;
+    for (p = s; *p; p++)
+        if (*p == '\n' && p[1])
+            last = p + 1;
+    return json_parse(last, (long)strlen(last), v) == 0 && json_type(*v) == J_OBJ ? 0 : -1;
+}
+
+static int has_rule(const cl_repl *r, const char *text, int kind, int src)
+{
+    int i;
+    for (i = 0; i < r->cfg.nrules; i++)
+        if (!strcmp(r->cfg.rules[i].text, text) && r->cfg.rules[i].kind == kind && r->cfg.rules[i].src == src)
+            return 1;
+    return 0;
+}
+
+static void test_wp4_text(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    jv m, e, x;
+    jit it;
+    /* text: the answer and nothing else */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    golden("print_text.txt", outp());
+    CHECK_INT(sb.nreq, 1);
+    CHECK_INT(pc.err.n, 0);
+    CHECK_INT(snt.text_calls, 4);           /* the sentinel: the stream went through the renderer */
+    CHECK(strstr(cn.screen.p ? cn.screen.p : "", "Hello") == 0);    /* not on the console */
+    repl_free(&r);
+
+    /* text piped in goes after the prompt, a newline between */
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "PRINT explain", "line one\nline two\n"), 0);
+    CHECK_STR(outp(), "Your Startup-Sequence runs SetPatch first.\n");
+    CHECK_INT(sb.nreq, 1);
+    if (sb.nreq == 1 && messages_of(sb.body[0], &m) == 0) {
+        json_iter(m, &it);
+        CHECK(json_next(&it, 0, &e) && json_get(e, "content", &x));
+        CHECK(strstr(x.p, "\"text\":\"explain\\nline one\\nline two\\n\"") != 0);
+    }
+    repl_free(&r);
+
+    /* only what is piped in */
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p", "what is this"), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"what is this\"") != 0);
+    repl_free(&r);
+
+    /* nothing at all: Claude Code's error, nothing sent */
+    setup(&r, none);
+    CHECK_INT(run_print(&r, "-p", 0), 20);
+    CHECK(strstr(pc.err.p ? pc.err.p : "", "Input must be provided either through stdin or as a prompt argument") != 0);
+    CHECK_INT(sb.nreq, 0);
+    CHECK_INT(pc.out.n, 0);
+    repl_free(&r);
+
+    /* --verbose: the transcript on the error stream, the answer alone on the output */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --verbose show me S/Startup-Sequence", 0), 0);
+    CHECK_STR(outp(), "Your Startup-Sequence runs SetPatch first.\n");
+    CHECK(strstr(pc.err.p ? pc.err.p : "", "Read") != 0);
+    CHECK(strstr(pc.err.p ? pc.err.p : "", "Let me look.") != 0);
+    repl_free(&r);
+}
+
+static void test_wp4_json(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    jw n;
+    jv v, x, y;
+    char types[400];
+    jw_init(&n);
+    /* json: one result; the reads in the start directory ran without a question */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format json show me S/Startup-Sequence", 0), 0);
+    CHECK_INT(sb.nreq, 2);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 1);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "session_id", &x) && json_streq(x, r.sess.id));
+    CHECK(json_get(v, "num_turns", &x) && json_long(x, 0) == 2);
+    CHECK(json_get(v, "result", &x) && json_streq(x, "Your Startup-Sequence runs SetPatch first."));
+    CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 0);
+    CHECK(json_get(v, "modelUsage", &x) && json_get(x, "claude-opus-5-5", &y));
+    norm(outp(), r.tools.root, &n);
+    golden("print_json.json", n.p ? n.p : "");
+    CHECK(sb.nreq < 2 || strstr(sb.body[1], "SetPatch QUIET") != 0);
+    repl_free(&r);
+
+    /* stream-json: init, the answers, the tool results, the result */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose show me S/Startup-Sequence", 0), 0);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 5);
+    CHECK_STR(types, "system assistant user assistant result");
+    norm(outp(), r.tools.root, &n);
+    golden("print_stream.jsonl", n.p ? n.p : "");
+    repl_free(&r);
+
+    /* --include-partial-messages: every event of the stream (not the pings) as it came */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose --include-partial-messages hello", 0), 0);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 16);
+    CHECK_STR(types, "system stream_event stream_event stream_event stream_event stream_event stream_event "
+                     "stream_event stream_event stream_event stream_event stream_event stream_event stream_event "
+                     "assistant result");
+    CHECK(strstr(outp(), "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\",") != 0);
+    CHECK(strstr(outp(), "\"type\":\"ping\"") == 0);
+    repl_free(&r);
+    jw_free(&n);
+}
+
+/* --input-format stream-json: a user message a line, each answered with its result */
+static void test_wp4_input(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char types[400];
+    jv m;
+    setup(&r, none);
+    add_stream("text.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --input-format stream-json --output-format stream-json --verbose",
+                        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello\"}}\n"
+                        "{\"type\":\"control_request\"}\n"
+                        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\","
+                        "\"text\":\"and then?\"}]}}"),
+              0);
+    CHECK_INT(sb.nreq, 2);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 5);
+    CHECK_STR(types, "system assistant result assistant result");
+    CHECK(sb.nreq > 1 && messages_of(sb.body[1], &m) == 0 && json_count(m) == 3);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "\"text\":\"and then?\"") != 0);
+    repl_free(&r);
+}
+
+/* --max-turns and --max-budget-usd: the turn stops after a tool round, the history valid */
+static void test_wp4_limits(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    jv v, x;
+    char e[80];
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --max-turns 1 --output-format json show me S/Startup-Sequence", 0), 10);
+    CHECK_INT(sb.nreq, 1);
+    CHECK_INT(r.conv.n, 3);                 /* the prompt, the tool calls, their results */
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "subtype", &x) && json_streq(x, "error_max_turns"));
+    CHECK(json_get(v, "is_error", &x) && json_type(x) == J_TRUE);
+    CHECK(json_get(v, "result", &x) == 0);
+    CHECK(json_get(v, "errors", &x) && json_count(x) == 1);
+    e[0] = 0;
+    if (json_get(v, "errors", &x)) {
+        jit it;
+        jv one;
+        json_iter(x, &it);
+        if (json_next(&it, 0, &one))
+            json_str(one, e, sizeof(e));
+    }
+    CHECK_STR(e, "Reached max turns (1)");
+    repl_free(&r);
+
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    CHECK_INT(run_print(&r, "MAX-TURNS=1 PRINT show me S/Startup-Sequence", 0), 10);
+    CHECK_STR(outp(), "Error: Reached max turns (1)\n");
+    repl_free(&r);
+
+    /* the first answer costs $0.0034: a budget of $0.001 stops before the second request */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --max-budget-usd 0.001 --output-format json show me S/Startup-Sequence", 0), 10);
+    CHECK_INT(sb.nreq, 1);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "subtype", &x) && json_streq(x, "error_max_budget_usd"));
+    CHECK(json_get(v, "total_cost_usd", &x) && x.n == 6 && !memcmp(x.p, "0.0034", 6));
+    repl_free(&r);
+
+    /* a budget not reached, and the limits outside print mode do nothing */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --max-budget-usd 5 --max-turns 2 show me S/Startup-Sequence", 0), 0);
+    CHECK_INT(sb.nreq, 2);
+    repl_free(&r);
+}
+
+/* permissions in print mode: nobody to ask, so a write is denied and listed, unless allowed */
+static void test_wp4_perms(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char p[600], *b = 0;
+    long n = 0;
+    jv v, x, y;
+    FILE *f;
+    strcpy(p, dir);
+    strcat(p, "/claude-test.txt");
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("hello\n", f);
+        fclose(f);
+    }
+    setup(&r, none);
+    add_stream("tool_edit.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format json please edit", 0), 0);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 1);
+    if (json_get(v, "permission_denials", &x) && json_count(x) == 1) {
+        jit it;
+        jv d;
+        json_iter(x, &it);
+        json_next(&it, 0, &d);
+        CHECK(json_get(d, "tool_name", &y) && json_streq(y, "Edit"));
+        CHECK(json_get(d, "tool_use_id", &y) && json_streq(y, "toolu_01Edit"));
+        CHECK(json_get(d, "tool_input", &y) && json_get(y, "file_path", &x) && json_streq(x, "claude-test.txt"));
+    }
+    CHECK(sys.read(sys.u, p, 1000, &b, &n) == 0 && b && !strcmp(b, "hello\n"));
+    free(b);
+    b = 0;
+    repl_free(&r);
+
+    /* --allowedTools Edit: it runs */
+    setup(&r, none);
+    add_stream("tool_edit.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format json --allowedTools Edit -- please edit", 0), 0);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 0);
+    CHECK(sys.read(sys.u, p, 1000, &b, &n) == 0 && b && !strcmp(b, "hello from the Amiga\n"));
+    free(b);
+    b = 0;
+    repl_free(&r);
+
+    /* --dangerously-skip-permissions (bypassPermissions): every question answered yes */
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("hello\n", f);
+        fclose(f);
+    }
+    setup(&r, none);
+    add_stream("tool_edit.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format json --dangerously-skip-permissions please edit", 0), 0);
+    CHECK_INT(r.ask_policy, ASKP_BYPASS);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 0);
+    CHECK(sys.read(sys.u, p, 1000, &b, &n) == 0 && b && !strcmp(b, "hello from the Amiga\n"));
+    free(b);
+    repl_free(&r);
+    remove(p);
+
+    /* --tools and --disallowedTools: what the request declares */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --tools Read,Glob hello", 0), 0);
+    CHECK(sb.nreq == 1 && json_parse(sb.body[0], (long)strlen(sb.body[0]), &v) == 0 && json_get(v, "tools", &x) &&
+          json_count(x) == 2);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "web_search") == 0);
+    repl_load(&r);                          /* a reload (/cd, /permissions) keeps it so */
+    CHECK_INT(r.tools.web_search, 0);
+    repl_free(&r);
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --disallowedTools Bash WebSearch \"Edit(S/*)\" --tools \"\" -- hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"tools\"") == 0);    /* none at all */
+    CHECK(has_rule(&r, "Edit(S/*)", RULE_DENY, CFG_SESSION));
+    repl_free(&r);
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --disallowedTools Bash WebSearch -- hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"Bash\"") == 0 && strstr(sb.body[0], "web_search") == 0 &&
+          strstr(sb.body[0], "{\"name\":\"Read\"") != 0);
+    repl_free(&r);
+}
+
+/* the session flags: --continue restores, --resume NAME, --fork-session, --no-session-persistence */
+static void test_wp4_session(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char first[16];
+    jv v, x, m;
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p -n my-work hello", 0), 0);
+    cl_copy(first, r.sess.id, sizeof(first));
+    CHECK(r.sess.n_appends >= 1);
+    repl_free(&r);
+
+    /* --continue: the conversation comes back, the same session goes on */
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p -c --output-format json go on", 0), 0);
+    CHECK_INT(sb.nreq, 1);
+    CHECK(sb.nreq == 1 && messages_of(sb.body[0], &m) == 0 && json_count(m) == 3);
+    CHECK(sb.nreq && strstr(sb.body[0], "\"text\":\"hello\"") != 0);
+    CHECK(sb.nreq && strstr(sb.body[0], text_content) != 0);       /* the answer replayed byte for byte */
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "session_id", &x) && json_streq(x, first));
+    CHECK_STR(r.sess.id, first);
+    repl_free(&r);
+
+    /* --resume by name, --fork-session: a new session with the whole conversation */
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "PRINT RESUME=my-work FORK-SESSION once more", 0), 0);
+    CHECK_INT(sb.nreq, 1);
+    CHECK(sb.nreq == 1 && messages_of(sb.body[0], &m) == 0 && json_count(m) == 5);
+    CHECK(strcmp(r.sess.id, first) != 0);
+    repl_free(&r);
+
+    /* nothing to resume: Claude Code's error as the result */
+    setup(&r, none);
+    CHECK_INT(run_print(&r, "-p -r nothing-here hi", 0), 10);
+    CHECK_STR(outp(), "No conversation found with session ID: nothing-here\n");
+    CHECK_INT(sb.nreq, 0);
+    repl_free(&r);
+
+    /* --no-session-persistence: nothing written */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --no-session-persistence hello", 0), 0);
+    CHECK_INT(r.sess.n_appends, 0);
+    repl_free(&r);
+}
+
+/* the other flags, applied: the settings layer wins over the files and survives a reload */
+static void test_wp4_apply(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    cl_cli c;
+    char p[600];
+    long l;
+    FILE *f;
+    jv v, x;
+    setup(&r, none);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--system-prompt \"Be brief.\" --append-system-prompt \"Answer in German.\" "
+                                 "--model sonnet --effort high --tools Read,Grep --add-dir S --allowedTools "
+                                 "\"Bash(make *)\" --permission-mode plan --settings "
+                                 "\"{*\"model*\":*\"opus*\",*\"outputStyle*\":*\"Explanatory*\"}\""),
+              0);
+    CHECK_INT(cli_apply(&c, &r), 0);
+    CHECK_STR(r.model, "claude-sonnet-5-5");    /* the flag wins over --settings */
+    CHECK_STR(r.style, "Explanatory");          /* --settings' own key */
+    CHECK_STR(r.effort, "high");
+    CHECK_INT(r.tools.perm.mode, PERM_PLAN);
+    CHECK(r.cfg.ndirs == 1 && !strcmp(r.cfg.dirs[0], "S"));
+    CHECK(has_rule(&r, "Bash(make *)", RULE_ALLOW, CFG_SESSION));
+    CHECK(has_rule(&r, "WebSearch", RULE_DENY, CFG_SESSION));     /* --tools without it */
+    CHECK(!strncmp(r.system, "Be brief.", 9));
+    l = (long)strlen(r.system);
+    CHECK(l > 17 && !strcmp(r.system + l - 17, "Answer in German."));
+    CHECK(strstr(r.system, "Output style: Explanatory") != 0);
+    CHECK(strstr(r.system, "native client on an Amiga") == 0);
+    add_stream("text.sse");
+    repl_line(&r, "hello");
+    CHECK(sb.nreq == 1 && json_parse(sb.body[0], (long)strlen(sb.body[0]), &v) == 0 && json_get(v, "tools", &x) &&
+          json_count(x) == 2);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"model\":\"claude-sonnet-5-5\"") != 0);
+    /* /cd and every reload keep the command line's layer */
+    repl_load(&r);
+    CHECK_STR(r.model, "claude-sonnet-5-5");
+    CHECK_INT(r.tools.perm.mode, PERM_PLAN);
+    cli_free(&c);
+    repl_free(&r);
+
+    /* --agent: its prompt and its tools; --settings from a file; dontAsk */
+    strcpy(p, dir);
+    strcat(p, "/s.json");
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("{\"model\":\"haiku\",\"permissions\":{\"defaultMode\":\"dontAsk\"}}", f);
+        fclose(f);
+    }
+    setup(&r, none);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "AGENT=Explore SETTINGS=s.json"), 0);
+    CHECK_INT(cli_apply(&c, &r), 0);
+    CHECK(!strncmp(r.system, "You are a file search specialist", 32));
+    CHECK_STR(r.model, cfg_model("haiku"));
+    CHECK_INT(r.ask_policy, ASKP_DENY);
+    CHECK_INT((long)r.tools.allowed,
+              (long)((1ul << T_GLOB) | (1ul << T_GREP) | (1ul << T_READ) | (1ul << T_BASH)));
+    CHECK_INT(r.tools.web_search, 0);
+    cli_free(&c);
+    repl_free(&r);
+    remove(p);
+
+    /* what cannot be applied */
+    setup(&r, none);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--add-dir nothere"), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    CHECK_STR(c.err, "Error: --add-dir: not a directory: nothere");
+    cli_free(&c);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--agent nobody"), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    cli_free(&c);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--system-prompt-file missing.txt"), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    CHECK(strstr(c.err, "--system-prompt-file file not found") != 0);
+    cli_free(&c);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--settings \"{not json\""), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    cli_free(&c);
+    repl_free(&r);
+}
+
+/* `Claude "prompt"` starts the session with it; without a key, /login comes first */
+static void test_wp4_start(void)
+{
+    static const char *bye[] = { "/exit", 0 };
+    static const char *login[] = { "sk-ant-api-test-0123456789", "/exit", 0 };
+    static cl_repl r;
+    cl_cli c;
+    jv v, x;
+    setup(&r, bye);
+    add_stream("text.sse");
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "\"hello there\""), 0);
+    CHECK_INT(cli_apply(&c, &r), 0);
+    r.first = c.prompt;
+    repl_run(&r);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"hello there\"") != 0);
+    CHECK_INT(cn.next, 1);                  /* then the prompt, where /exit was typed */
+    cli_free(&c);
+    repl_free(&r);
+
+    setup_key = "";
+    setup(&r, login);
+    setup_key = "test-key-not-real";
+    add_stream("text.sse");
+    CHECK_INT(repl_need_key(&r), 1);
+    r.first = "hello";
+    repl_run(&r);
+    CHECK(strstr(cn.screen.p, "Paste the API key") != 0);
+    CHECK(strstr(cn.screen.p, "sk-ant-api-test") == 0);     /* never shown */
+    CHECK_INT(sb.nreq, 1);
+    CHECK(sb.nreq == 1 && strstr(sb.head[0], "x-api-key: sk-ant-api-test-0123456789\r\n") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"hello\"") != 0);
+    repl_free(&r);
+
+    /* print mode without a key: the error as the result, nothing sent */
+    setup_key = "";
+    setup(&r, bye);
+    setup_key = "test-key-not-real";
+    CHECK_INT(run_print(&r, "-p --output-format json hi", 0), 10);
+    CHECK_INT(sb.nreq, 0);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "is_error", &x) && json_type(x) == J_TRUE);
+    CHECK(json_get(v, "result", &x) && !strncmp(x.p, "\"Not logged in", 14));
+    repl_free(&r);
+}
+
+static void test_wp4(void)
+{
+    jw_init(&pc.out);
+    jw_init(&pc.err);
+    test_wp4_text();
+    test_wp4_json();
+    test_wp4_input();
+    test_wp4_limits();
+    test_wp4_perms();
+    test_wp4_session();
+    test_wp4_apply();
+    test_wp4_start();
+    jw_free(&pc.out);
+    jw_free(&pc.err);
+}
+
 /* ---- A4 wiring: the three packages' seams joined ----
  *
  * The reachability test of the wiring, on the screen: a project with a
@@ -1540,6 +2194,7 @@ void suite_claude_repl(void)
     test_wp2();
     test_wp3();
     test_wp3_commands();
+    test_wp4();
     test_wiring();
     test_fetch_screen();
     stub_reset();
