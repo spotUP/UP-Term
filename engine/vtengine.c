@@ -129,9 +129,18 @@ struct vt_term {
     vt_line **pri_mem;
     int pri_spare;
     vt_u8 bs_default;      /* vt_set_backspace_bs: what RIS gives ?67 back */
-    vt_line **sb;          /* scrollback ring */
+    struct vt_sbl **sb;    /* scrollback ring: lines packed (sb_store) */
     long scrolled;         /* lines scrolled off the primary screen's top */
     int sb_cap, sb_len, sb_head; /* head: next slot to write */
+    struct vt_sbblk *sb_blk;   /* the block new scrollback lines go into */
+    struct vt_sbblk *sb_spare; /* an empty block kept for the next one */
+    vt_u8 *sb_tmp;             /* a styled line's code before it is stored */
+    long sb_tmp_cap;
+    /* scrollback lines decoded into cells again (sb_cells): vt_row's
+     * answers, the reflow's input */
+    struct { const struct vt_sbl *s; vt_line *l; unsigned long use; } sbc[4];
+    unsigned long sbc_clock;   /* sbc[].use: the least recently read goes first */
+    int sbc_any;
 
     int cx, cy, wrap_pending;
     vt_color fg, bg;
@@ -406,16 +415,23 @@ static void place_release(vt_term *t, vt_u16 i)
     t->pl_free = i;
 }
 
-/* Every image on line l let go (the line is cleared or freed). */
-static void place_drop(vt_term *t, vt_line *l)
+/* The placements from entry i on (a line's list) let go. */
+static void place_drop_list(vt_term *t, vt_u16 i)
 {
-    vt_u16 i = l->img, next;
-    l->img = 0;
+    vt_u16 next;
     while (i) {
         next = t->pl[i].next;
         place_release(t, i);
         i = next;
     }
+}
+
+/* Every image on line l let go (the line is cleared or freed). */
+static void place_drop(vt_term *t, vt_line *l)
+{
+    vt_u16 i = l->img;
+    l->img = 0;
+    place_drop_list(t, i);
 }
 
 /* A line's memory back, and its images let go. */
@@ -548,6 +564,8 @@ long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
 void vt_asm_ch_blank(vt_cell *c, long n);
+void vt_asm_pack_ch(const vt_cell *c, vt_u8 *d, long n);
+long vt_asm_pack_run(const vt_cell *c, vt_u8 *o, long n, const vt_cell *proto);
 long vt_asm_csi(const vt_u8 *p, long n, long *params, vt_u8 *sub);
 void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
 void vt_asm_rows_up(struct vt_line **p, long k);
@@ -902,18 +920,466 @@ static void pend_scroll(vt_term *t, int top, int bot, int n)
     }
 }
 
+/* ---- the scrollback, packed (W23) -------------------------------------------
+ * A line that leaves the screen is kept as its characters and the runs of
+ * its style, not as cells: a row of 16-byte cells (1252 bytes at 77
+ * columns) becomes its text plus a small header, so 500 lines of plain
+ * text take about 50 KB instead of 626 KB -- what a 2 MB machine needs.
+ * The lines sit one after another in blocks of VT_SB_BLOCK bytes; a block
+ * goes when its last line has gone, one empty block is kept for the next,
+ * so steady scrolling allocates nothing. Whatever reads a scrollback line
+ * as cells (vt_row, find, copy, the reflow) has it decoded into a small
+ * cache (sb_cells).
+ *
+ * After the header (vt_sbl), a `plain` line holds len bytes: each cell's
+ * ch, everything else the default -- the plain text put_ascii_run leaves
+ * (vt_line.chonly), copied without a look at the rest. Any other line
+ * holds runs of cells with one style: a count (1-255), a byte of flags
+ * naming the style fields that follow (the others are the run before's,
+ * the first run's the default blank's) --
+ *   bits 0-1 fg and 2-3 bg: 0 the same, 1 VT_COLOR_DEFAULT, 2 one byte
+ *   (a palette index), 3 four bytes; bit 4 attr (two bytes), 5 deco,
+ *   6 ext, 7 pad --
+ * then a code a cell:
+ *   00-7F  that character, width 1
+ *   80-BF  and one byte: the character (b & 0x3F) << 8 | byte, width 1
+ *   C0-C2  and two bytes: the character (a cluster entry too), width b - C0
+ *   C3     a space of width 0 (the right half of a wide glyph)
+ * The cells from len to n are the default blank (cell_plain_blank). */
+typedef struct vt_sbblk {
+    long size, top;     /* bytes for lines; bytes handed out */
+    long lines;         /* lines living in it */
+} vt_sbblk;
+
+typedef struct vt_sbl {
+    vt_sbblk *blk;      /* the block it lives in */
+    vt_u16 n;           /* cells the line had */
+    vt_u16 len;         /* cells stored; the rest are the default blank */
+    vt_u16 img;         /* its images (vt_line.img), moved here with it */
+    vt_u8 wrapped, dbl, mark;
+    vt_u8 plain;        /* the payload is len characters, the default style */
+} vt_sbl;
+
+#define VT_SB_BLOCK 2048L
+#define VT_SB_ALIGN ((long)sizeof(void *))
+#define SBL_DATA(s) ((vt_u8 *)((s) + 1))
+#define VT_SBC 4        /* decoded lines cached (vt_term.sbc) */
+/* scrollback row `row` (-1 the newest) */
+#define SB_AT(t, row) ((t)->sb[((t)->sb_head + (t)->sb_cap + (int)(row)) % (t)->sb_cap])
+
+static int cell_plain_blank(const vt_cell *c);
+
+/* A block's last line has gone: the current block starts again, one other
+ * is kept spare, the rest go back. */
+static void sb_blk_drop(vt_term *t, vt_sbblk *b)
+{
+    if (b == t->sb_blk)
+        b->top = 0;
+    else if (!t->sb_spare && b->size == VT_SB_BLOCK)
+        t->sb_spare = b;
+    else
+        VT_FREE(b);
+}
+
+/* A packed line let go: its images, its place in the decode cache, its
+ * share of the block. */
+static void sbl_free(vt_term *t, vt_sbl *s)
+{
+    if (s->img)
+        place_drop_list(t, s->img);
+    if (t->sbc_any) {
+        int k;
+        for (k = 0; k < VT_SBC; k++)
+            if (t->sbc[k].s == s) {
+                t->sbc[k].s = 0;
+                t->sbc[k].use = 0; /* the first to be used again */
+            }
+    }
+    if (!--s->blk->lines)
+        sb_blk_drop(t, s->blk);
+}
+
+/* Room for a line of `need` bytes, header included; 0 when no memory. */
+static vt_sbl *sb_alloc(vt_term *t, long need)
+{
+    vt_sbblk *b = t->sb_blk, *o;
+    vt_sbl *s;
+    need = (need + VT_SB_ALIGN - 1) & ~(VT_SB_ALIGN - 1);
+    if (!b || b->top + need > b->size) {
+        o = b;
+        if (t->sb_spare && t->sb_spare->size >= need) {
+            b = t->sb_spare;
+            t->sb_spare = 0;
+        } else {
+            long size = need > VT_SB_BLOCK ? need : VT_SB_BLOCK;
+            b = (vt_sbblk *)VT_MALLOC(sizeof(vt_sbblk) + size);
+            if (!b)
+                return 0;
+            b->size = size;
+        }
+        b->top = 0;
+        b->lines = 0;
+        t->sb_blk = b;
+        if (o && !o->lines)
+            sb_blk_drop(t, o); /* held nothing: spare, or back */
+    }
+    s = (vt_sbl *)((char *)(b + 1) + b->top);
+    b->top += need;
+    b->lines++;
+    s->blk = b;
+    return s;
+}
+
+/* The styled cells c[0..len) as runs into t->sb_tmp (the format above);
+ * the byte count, -1 when there is no memory for the buffer. */
+static long sb_code(vt_term *t, const vt_cell *c, int len)
+{
+    long need = (long)len * 18; /* a run a cell: 15 bytes of style, 3 of character */
+    vt_u8 *o, *cnt, *fl;
+    vt_color fg = VT_COLOR_DEFAULT, bg = VT_COLOR_DEFAULT;
+    vt_attr attr = 0;
+    vt_u8 deco = 0, ext = 0, pad = 0;
+    int x = 0, run;
+    unsigned ch;
+#ifdef VT_ASM
+    const vt_cell *c0;
+    long k;
+#endif
+    if (need > t->sb_tmp_cap) {
+        if (t->sb_tmp)
+            VT_FREE(t->sb_tmp);
+        t->sb_tmp_cap = 0;
+        if (!(t->sb_tmp = (vt_u8 *)VT_MALLOC(need)))
+            return -1;
+        t->sb_tmp_cap = need;
+    }
+    o = t->sb_tmp;
+    while (x < len) {
+        cnt = o++;
+        fl = o++;
+        *fl = 0;
+        if (c->fg != fg) {
+            fg = c->fg;
+            if (fg == VT_COLOR_DEFAULT) {
+                *fl |= 1;
+            } else if (fg < 0x100) {
+                *fl |= 2;
+                *o++ = (vt_u8)fg;
+            } else {
+                *fl |= 3;
+                *o++ = (vt_u8)(fg >> 24);
+                *o++ = (vt_u8)(fg >> 16);
+                *o++ = (vt_u8)(fg >> 8);
+                *o++ = (vt_u8)fg;
+            }
+        }
+        if (c->bg != bg) {
+            bg = c->bg;
+            if (bg == VT_COLOR_DEFAULT) {
+                *fl |= 1 << 2;
+            } else if (bg < 0x100) {
+                *fl |= 2 << 2;
+                *o++ = (vt_u8)bg;
+            } else {
+                *fl |= 3 << 2;
+                *o++ = (vt_u8)(bg >> 24);
+                *o++ = (vt_u8)(bg >> 16);
+                *o++ = (vt_u8)(bg >> 8);
+                *o++ = (vt_u8)bg;
+            }
+        }
+        if (c->attr != attr) {
+            attr = c->attr;
+            *fl |= 0x10;
+            *o++ = (vt_u8)(attr >> 8);
+            *o++ = (vt_u8)attr;
+        }
+        if (c->deco != deco) {
+            deco = c->deco;
+            *fl |= 0x20;
+            *o++ = deco;
+        }
+        if (c->ext != ext) {
+            ext = c->ext;
+            *fl |= 0x40;
+            *o++ = ext;
+        }
+        if (c->pad != pad) {
+            pad = c->pad;
+            *fl |= 0x80;
+            *o++ = pad;
+        }
+        run = 0;
+#ifdef VT_ASM
+        c0 = c; /* the run's style */
+#endif
+        do {
+#ifdef VT_ASM
+            /* the plain ASCII cells of the run, a byte each, in one loop */
+            k = vt_asm_pack_run(c, o, len - x < 255 - run ? len - x : 255 - run, c0);
+            c += k;
+            x += (int)k;
+            run += (int)k;
+            o += k;
+            if (x >= len || run >= 255 || c->fg != fg || c->bg != bg || c->attr != attr || c->deco != deco ||
+                c->ext != ext || c->pad != pad)
+                break;
+#endif
+            ch = c->ch;
+            if (c->width == 1 && ch < 0x80) {
+                *o++ = (vt_u8)ch;
+            } else if (c->width == 1 && ch < 0x4000) {
+                *o++ = (vt_u8)(0x80 | (ch >> 8));
+                *o++ = (vt_u8)ch;
+            } else if (c->width == 0 && ch == ' ') {
+                *o++ = 0xC3;
+            } else {
+                *o++ = (vt_u8)(0xC0 + c->width);
+                *o++ = (vt_u8)(ch >> 8);
+                *o++ = (vt_u8)ch;
+            }
+            c++;
+            x++;
+            run++;
+        } while (x < len && run < 255 && c->fg == fg && c->bg == bg && c->attr == attr && c->deco == deco &&
+                 c->ext == ext && c->pad == pad);
+        *cnt = (vt_u8)run;
+    }
+    return (long)(o - t->sb_tmp);
+}
+
+/* The default blank: what a stored line's cells past len are. */
+static void plain_blank(vt_cell *c)
+{
+    c->fg = VT_COLOR_DEFAULT;
+    c->bg = VT_COLOR_DEFAULT;
+    c->ch = ' ';
+    c->attr = 0;
+    c->width = 1;
+    c->deco = 0;
+    c->ext = 0;
+    c->pad = 0;
+}
+
+/* A run's colour (the flag bits `mode`) from *pp, which moves past it. */
+static vt_color sb_colour(const vt_u8 **pp, int mode, vt_color was)
+{
+    const vt_u8 *p = *pp;
+    switch (mode) {
+    case 1:
+        return VT_COLOR_DEFAULT;
+    case 2:
+        *pp = p + 1;
+        return p[0];
+    case 3:
+        *pp = p + 4;
+        return ((vt_color)p[0] << 24) | ((vt_color)p[1] << 16) | ((vt_color)p[2] << 8) | p[3];
+    }
+    return was;
+}
+
+/* Packed line s as cells into l (room for s->n cells at least). */
+static void sb_decode(const vt_sbl *s, vt_line *l)
+{
+    const vt_u8 *p = SBL_DATA(s);
+    vt_cell *c = l->c, *e = l->c + s->len, b;
+    plain_blank(&b);
+    if (s->plain) {
+        for (; c < e; c++) {
+            *c = b;
+            c->ch = *p++;
+        }
+    } else {
+        while (c < e) {
+            int run = *p++, f = *p++;
+            b.fg = sb_colour(&p, f & 3, b.fg);
+            b.bg = sb_colour(&p, (f >> 2) & 3, b.bg);
+            if (f & 0x10) {
+                b.attr = (vt_attr)(p[0] << 8 | p[1]);
+                p += 2;
+            }
+            if (f & 0x20)
+                b.deco = *p++;
+            if (f & 0x40)
+                b.ext = *p++;
+            if (f & 0x80)
+                b.pad = *p++;
+            for (; run > 0; run--, c++) {
+                vt_u8 k = *p++;
+                *c = b;
+                if (k < 0x80) {
+                    c->ch = k;
+                } else if (k < 0xC0) {
+                    c->ch = (vt_u16)((k & 0x3F) << 8 | *p++);
+                } else if (k == 0xC3) {
+                    c->width = 0;
+                } else {
+                    c->width = (vt_u8)(k - 0xC0);
+                    c->ch = (vt_u16)(p[0] << 8 | p[1]);
+                    p += 2;
+                }
+            }
+        }
+        plain_blank(&b);
+    }
+    for (e = l->c + s->n; c < e; c++)
+        *c = b;
+    l->n = s->n;
+    l->used = s->len;
+    l->chonly = 0;
+    l->wrapped = s->wrapped;
+    l->dbl = s->dbl;
+    l->mark = s->mark;
+    l->img = s->img; /* to read: the placements stay the packed line's */
+    l->dx0 = 0x7FFF;
+    l->dx1 = 0;
+}
+
+/* Packed line s as cells, from a cache of the VT_SBC lines read last: the
+ * pointer stays good until VT_SBC - 1 other scrollback lines have been
+ * read after it, or the line goes. 0 when there is no memory. */
+static const vt_line *sb_cells(const vt_term *ct, const vt_sbl *s)
+{
+    vt_term *t = (vt_term *)ct; /* the cache only */
+    vt_line *l;
+    int k, old = 0;
+    for (k = 0; k < VT_SBC; k++) {
+        if (t->sbc[k].s == s) {
+            t->sbc[k].use = ++t->sbc_clock;
+            return t->sbc[k].l;
+        }
+        if (t->sbc[k].use < t->sbc[old].use)
+            old = k;
+    }
+    k = old;
+    t->sbc[k].s = 0;
+    t->sbc[k].use = ++t->sbc_clock;
+    l = t->sbc[k].l;
+    if (!l || l->cap < s->n) {
+        l = line_new(s->n > t->cols ? s->n : t->cols);
+        if (!l)
+            return 0;
+        if (t->sbc[k].l)
+            VT_FREE(t->sbc[k].l); /* never line_free: the images are not its own */
+        t->sbc[k].l = l;
+    }
+    sb_decode(s, l);
+    t->sbc[k].s = s;
+    t->sbc_any = 1;
+    return l;
+}
+
+static void sb_cache_free(vt_term *t)
+{
+    int k;
+    for (k = 0; k < VT_SBC; k++) {
+        if (t->sbc[k].l)
+            VT_FREE(t->sbc[k].l);
+        t->sbc[k].l = 0;
+        t->sbc[k].s = 0;
+    }
+    t->sbc_any = 0;
+}
+
+#ifdef VT_CHECK_USED
+/* Host tests only: the packed line decodes to the cells it was made from. */
+static void sb_check(const vt_sbl *s, const vt_line *l)
+{
+    vt_line *d = line_new(s->n);
+    if (!d)
+        return;
+    sb_decode(s, d);
+    if (d->n != l->n || d->wrapped != l->wrapped || d->dbl != l->dbl || d->mark != l->mark ||
+        (l->n && memcmp(d->c, l->c, l->n * sizeof(vt_cell))))
+        abort();
+    VT_FREE(d);
+}
+#endif
+
+/* Line l into the scrollback as its newest line, packed (the oldest goes
+ * when the ring is full); its images go with it. l keeps its cells (the
+ * caller clears or frees it). 0 when there was no memory: not kept. One
+ * pass over the cells it used, no allocation but a new block now and
+ * then: every scrolled line comes through here. */
+static int sb_store(vt_term *t, vt_line *l)
+{
+    int n = l->n, u = l->used < n ? l->used : n;
+    long m;
+    vt_sbl *s;
+    vt_u8 *d;
+    const vt_cell *c = l->c;
+    if (t->sb_len == t->sb_cap) {
+        sbl_free(t, t->sb[t->sb_head]); /* the oldest: its room may take this one */
+        t->sb_len--;
+    }
+    if (l->chonly) {
+        while (u > 0 && c[u - 1].ch == ' ')
+            u--;
+        if (!(s = sb_alloc(t, (long)sizeof(vt_sbl) + u)))
+            return 0;
+        d = SBL_DATA(s);
+#ifdef VT_ASM
+        vt_asm_pack_ch(c, d, u);
+#else
+        {
+            int k;
+            for (k = 0; k < u; k++)
+                d[k] = (vt_u8)c[k].ch;
+        }
+#endif
+        s->plain = 1;
+    } else {
+        while (u > 0 && cell_plain_blank(&c[u - 1]))
+            u--;
+        if ((m = sb_code(t, c, u)) < 0 || !(s = sb_alloc(t, (long)sizeof(vt_sbl) + m)))
+            return 0;
+        memcpy(SBL_DATA(s), t->sb_tmp, m);
+        s->plain = 0;
+    }
+    s->n = (vt_u16)n;
+    s->len = (vt_u16)u;
+    s->wrapped = l->wrapped;
+    s->dbl = l->dbl;
+    s->mark = l->mark;
+    s->img = l->img;
+    l->img = 0;
+#ifdef VT_CHECK_USED
+    sb_check(s, l);
+#endif
+    t->sb[t->sb_head] = s;
+    if (++t->sb_head == t->sb_cap)
+        t->sb_head = 0;
+    t->sb_len++;
+    return 1;
+}
+
+/* Line l into the scrollback where there is one; the line itself goes. */
 static void sb_push(vt_term *t, vt_line *l)
 {
-    if (!t->sb_cap) {
-        line_free(t, l);
-        return;
+    if (t->sb_cap)
+        sb_store(t, l);
+    line_free(t, l);
+}
+
+/* Every scrollback line gone, and the memory they used. */
+static void sb_release(vt_term *t)
+{
+    while (t->sb_len) {
+        t->sb_head = (t->sb_head + t->sb_cap - 1) % t->sb_cap;
+        sbl_free(t, t->sb[t->sb_head]);
+        t->sb_len--;
     }
-    if (t->sb_len == t->sb_cap)
-        line_free(t, t->sb[t->sb_head]);
-    else
-        t->sb_len++;
-    t->sb[t->sb_head] = l;
-    t->sb_head = (t->sb_head + 1) % t->sb_cap;
+    t->sb_head = 0;
+    if (t->sb_blk)
+        VT_FREE(t->sb_blk);
+    if (t->sb_spare)
+        VT_FREE(t->sb_spare);
+    if (t->sb_tmp)
+        VT_FREE(t->sb_tmp);
+    t->sb_blk = t->sb_spare = 0;
+    t->sb_tmp = 0;
+    t->sb_tmp_cap = 0;
+    sb_cache_free(t);
 }
 
 /* The rows a resize pushed out stop being part of the screen: into the
@@ -1040,29 +1506,9 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
                 p[0] = p[1];
 #endif
         }
-        if (to_sb) {
-            /* Into the scrollback. A full ring hands back its oldest line
-             * to become the new blank one, so steady scrolling allocates
-             * nothing. */
-            vt_line *blank = 0;
-            if (t->sb_len == t->sb_cap && t->sb[t->sb_head]->cap >= t->cols) {
-                blank = t->sb[t->sb_head];
-            } else {
-                blank = line_new(t->cols);
-                if (blank) {
-                    if (t->sb_len == t->sb_cap)
-                        line_free(t, t->sb[t->sb_head]);
-                    else
-                        t->sb_len++;
-                }
-            }
-            if (blank) { /* no memory: the line is dropped, not saved */
-                t->sb[t->sb_head] = l;
-                if (++t->sb_head == t->sb_cap)
-                    t->sb_head = 0;
-                l = blank;
-            }
-        }
+        if (to_sb)
+            sb_store(t, l); /* packed into the scrollback (0: no memory, the
+                             * line is not kept); l is the new blank one */
         if (!l->used && dflt && !l->img && l->n == t->cols) {
             /* line_clear's first case in place: nothing written since its
              * last clear (a flood of newlines; ASM1) */
@@ -1433,10 +1879,11 @@ static void delete_lines(vt_term *t, int n)
  * instead of the values. A full table is swept: entries no cell uses any
  * more are dropped and the cells renumbered. */
 
-/* Every line that holds cells a table entry may be named by: the grid, the
- * alternate screen, the scrollback and the rows a reflow keeps above the
- * screen. The sweeps of the side tables (styles here, clusters below)
- * walk them all, or an entry still in use is taken for free. */
+/* Every line of cells that a table entry may be named by: the grid, the
+ * alternate screen and the rows a reflow keeps above the screen; the
+ * scrollback's packed lines are sb_walk's. The sweeps of the side tables
+ * (styles here, clusters below) walk them all, or an entry still in use
+ * is taken for free. */
 static void each_line(vt_term *t, void (*fn)(vt_line *, void *), void *u)
 {
     int i;
@@ -1445,8 +1892,6 @@ static void each_line(vt_term *t, void (*fn)(vt_line *, void *), void *u)
         if (t->alt)
             fn(t->alt[i], u);
     }
-    for (i = 0; i < t->sb_len; i++)
-        fn(t->sb[(t->sb_head + t->sb_cap - t->sb_len + i) % t->sb_cap], u);
     for (i = 0; i < t->novf; i++)
         fn(t->ovf[i], u);
 }
@@ -1456,6 +1901,71 @@ typedef struct {
     vt_u8 *used;
     const vt_u8 *remap;
 } vt_style_sweep;
+
+/* One packed line's styled runs read through (each_line for the
+ * scrollback): with ss, the style entries it names marked used or
+ * renumbered in place; with live, the cluster entries it names marked.
+ * Returns the end of its payload. */
+static const vt_u8 *sbl_scan(vt_sbl *s, const vt_style_sweep *ss, vt_u8 *live)
+{
+    static const vt_u8 colour_bytes[4] = { 0, 0, 1, 4 };
+    int run, f, cells;
+    vt_u8 k, *p = SBL_DATA(s);
+    unsigned ch;
+    if (s->plain)
+        return p + s->len; /* Latin-1 in the default style: no entry of either */
+    for (cells = 0; cells < s->len; cells += run) {
+        run = *p++;
+        f = *p++;
+        p += colour_bytes[f & 3] + colour_bytes[(f >> 2) & 3];
+        if (f & 0x10)
+            p += 2;
+        if (f & 0x20)
+            p++;
+        if (f & 0x40) {
+            if (ss && ss->used)
+                ss->used[*p] = 1;
+            else if (ss)
+                *p = ss->remap[*p];
+            p++;
+        }
+        if (f & 0x80)
+            p++;
+        for (f = run; f > 0; f--) {
+            k = *p++;
+            if (k >= 0x80 && k < 0xC0) {
+                p++;
+            } else if (k >= 0xC0 && k != 0xC3) {
+                ch = (unsigned)(p[0] << 8 | p[1]);
+                p += 2;
+                if (live && (ch & 0xF800) == 0xD800)
+                    live[(ch - VT_CLUSTER_FIRST) >> 3] |= (vt_u8)(1 << ((ch - VT_CLUSTER_FIRST) & 7));
+            }
+        }
+    }
+    return p;
+}
+
+/* sbl_scan over every scrollback line */
+static void sb_walk(vt_term *t, const vt_style_sweep *ss, vt_u8 *live)
+{
+    int i;
+    for (i = 0; i < t->sb_len; i++)
+        sbl_scan(SB_AT(t, i - t->sb_len), ss, live);
+}
+
+#ifdef VT_COUNT_ALLOC
+long vt_count_sb_payload(const vt_term *t)
+{
+    long n = 0;
+    int i;
+    for (i = 0; i < t->sb_len; i++) {
+        vt_sbl *s = SB_AT(t, i - t->sb_len);
+        n += (long)(sbl_scan(s, 0, 0) - SBL_DATA(s));
+    }
+    return n;
+}
+#endif
 
 static void sweep_line_styles(vt_line *l, void *u)
 {
@@ -1480,6 +1990,7 @@ static void sweep_styles(vt_term *t)
     s.used = used;
     s.remap = 0;
     each_line(t, sweep_line_styles, &s);
+    sb_walk(t, &s, 0);
     remap[0] = 0;
     for (i = 1; i <= t->n_styles; i++) {
         remap[i] = 0;
@@ -1492,6 +2003,9 @@ static void sweep_styles(vt_term *t)
     s.used = 0;
     s.remap = remap;
     each_line(t, sweep_line_styles, &s);
+    sb_walk(t, &s, 0);
+    for (i = 0; i < VT_SBC; i++)
+        t->sbc[i].s = 0; /* the decoded lines name the old numbers */
 }
 
 /* The entry for the current underline colour and font (0: both default). */
@@ -1614,6 +2128,7 @@ static int sweep_clusters(vt_term *t)
     int e, freed = 0;
     memset(live, 0, sizeof(live));
     each_line(t, sweep_line_clusters, live);
+    sb_walk(t, 0, live);
     memset(t->clu_hash, 0, VT_CLU_HASH * sizeof(vt_u16));
     for (e = 0; e < t->clu_top; e++) {
         if (!(live[e >> 3] & (1 << (e & 7))))
@@ -3876,29 +4391,19 @@ const char *vt_cell_link(const vt_term *t, const vt_cell *c)
 
 /* ---- OSC 133: semantic prompt marks ----------------------------------------- */
 
-static const vt_line *line_of(const vt_term *t, long row)
-{
-    if (row >= 0)
-        return row < t->rows ? t->scr[row] : 0;
-    if (-row > t->sb_len)
-        return 0;
-    return t->sb[(t->sb_head + t->sb_cap + (int)row) % t->sb_cap];
-}
-
 int vt_row_marks(const vt_term *t, int row)
 {
-    const vt_line *l = line_of(t, row);
-    return l ? l->mark : 0;
+    if (row >= 0)
+        return row < t->rows ? t->scr[row]->mark : 0;
+    return -row <= t->sb_len ? SB_AT(t, row)->mark : 0;
 }
 
 long vt_find_mark(const vt_term *t, long from, int dir, int mark)
 {
     long r, lo = -(long)t->sb_len;
-    for (r = from + dir; r >= lo && r < t->rows; r += dir) {
-        const vt_line *l = line_of(t, r);
-        if (l && (l->mark & mark))
+    for (r = from + dir; r >= lo && r < t->rows; r += dir)
+        if (vt_row_marks(t, (int)r) & mark)
             return r;
-    }
     return VT_ROW_NONE;
 }
 
@@ -4744,7 +5249,6 @@ int vt_images(const vt_term *t)
 
 int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
 {
-    const vt_line *l;
     const vt_image *im;
     vt_u16 k;
     if (!t->n_img)
@@ -4752,13 +5256,13 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
     if (row >= 0) {
         if (row >= t->rows)
             return 0;
-        l = t->scr[row];
+        k = t->scr[row]->img;
     } else {
         if (-row > t->sb_len)
             return 0;
-        l = t->sb[(t->sb_head + t->sb_cap + row) % t->sb_cap];
+        k = SB_AT(t, row)->img;
     }
-    for (k = l->img; k; k = t->pl[k].next) {
+    for (; k; k = t->pl[k].next) {
         im = place_image(t, &t->pl[k]);
         if (!im || i--)
             continue;
@@ -5202,7 +5706,7 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->clip_access = VT_CLIP_WRITE;
     t->sb_cap = scrollback > 0 ? scrollback : 0;
     if (t->sb_cap)
-        t->sb = (vt_line **)VT_MALLOC(t->sb_cap * sizeof(vt_line *));
+        t->sb = (vt_sbl **)VT_MALLOC(t->sb_cap * sizeof(vt_sbl *));
     if (!t->tabs || (t->sb_cap && !t->sb) ||
         !alloc_screen(&t->pri, rows, cols, t)) {
         vt_free(t);
@@ -5215,28 +5719,26 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
 
 void vt_clear_scrollback(vt_term *t)
 {
-    while (t->sb_len) {
-        t->sb_head = (t->sb_head + t->sb_cap - 1) % t->sb_cap;
-        line_free(t, t->sb[t->sb_head]);
-        t->sb_len--;
-    }
+    sb_release(t);
 }
 
 int vt_set_scrollback(vt_term *t, int lines)
 {
-    vt_line **ring = 0;
+    vt_sbl **ring = 0;
     int keep, i;
     if (!t || lines < 0)
         return 0;
     if (lines == t->sb_cap)
         return 1;
-    if (lines && !(ring = (vt_line **)VT_MALLOC(lines * sizeof(vt_line *))))
+    if (lines && !(ring = (vt_sbl **)VT_MALLOC(lines * sizeof(vt_sbl *))))
         return 0;
     keep = t->sb_len < lines ? t->sb_len : lines;
+    if (!keep)
+        sb_release(t); /* nothing kept: the blocks go too */
     /* the oldest lines past the new size go */
     while (t->sb_len > keep) {
         int oldest = (t->sb_head + t->sb_cap - t->sb_len) % t->sb_cap;
-        line_free(t, t->sb[oldest]);
+        sbl_free(t, t->sb[oldest]);
         t->sb_len--;
     }
     /* the rest, oldest first, to the start of the new ring */
@@ -5264,11 +5766,7 @@ void vt_free(vt_term *t)
     ovf_drop(t); /* into the scrollback, freed below */
     if (t->ovf)
         VT_FREE(t->ovf);
-    while (t->sb_len) {
-        t->sb_head = (t->sb_head + t->sb_cap - 1) % t->sb_cap;
-        line_free(t, t->sb[t->sb_head]);
-        t->sb_len--;
-    }
+    sb_release(t);
     if (t->sb)
         VT_FREE(t->sb);
     sixel_abort(t);
@@ -5943,6 +6441,35 @@ static int line_text_len(const vt_line *l, int n)
     return n;
 }
 
+/* The rows a reflow reads, oldest first: the scrollback's packed lines,
+ * decoded as they are reached (sb_cells: never the whole history in cells
+ * at once), then rows of cells -- those an earlier resize pushed out, the
+ * screen. */
+typedef struct vt_rfin {
+    vt_term *t;
+    vt_sbl **sb;    /* the scrollback ring: nsb lines, the oldest in slot sb0 */
+    int sb_cap, sb0, nsb;
+    vt_line **ln;   /* the rows after them */
+    int fail;       /* a packed line found no memory to be decoded into */
+} vt_rfin;
+
+static const vt_line rf_none; /* what a line that could not be decoded reads as */
+
+/* Row i of the reflow's input (OLD(i)): good until VT_SBC - 1 other
+ * scrollback lines have been read after it. */
+static const vt_line *rf_line(vt_rfin *in, int i)
+{
+    const vt_line *l;
+    if (i >= in->nsb)
+        return in->ln[i - in->nsb];
+    l = sb_cells(in->t, in->sb[(in->sb0 + i) % in->sb_cap]);
+    if (l)
+        return l;
+    in->fail = 1;
+    return &rf_none;
+}
+#define OLD(i) rf_line(in, i)
+
 /* A logical line being typed again at a new width. */
 typedef struct vt_rewrap {
     vt_term *t;
@@ -5950,17 +6477,59 @@ typedef struct vt_rewrap {
     int cols;
     int eager;      /* wrap as soon as a row is full (the ROM console) */
     int nx, ny;     /* where the next cell goes */
+    int retire;     /* rows below this are history: packed into the
+                     * scrollback as each is done, so the new history is
+                     * never held in cells either */
+    int retired;    /* rows [0, retired) went there */
+    vt_line *spare; /* a retired row's line, to be the next row */
 } vt_rewrap;
+
+/* The done rows below `upto` that are history into the scrollback. 0 when
+ * out of memory. */
+static int rw_retire(vt_rewrap *w, int upto)
+{
+    vt_line *l;
+    if (upto > w->retire)
+        upto = w->retire;
+    while (w->retired < upto) {
+        l = w->out[w->retired];
+        w->out[w->retired++] = 0;
+        if (!l)
+            continue;
+        if (!sb_store(w->t, l)) {
+            line_free(w->t, l);
+            return 0;
+        }
+        if (!w->spare && l->cap >= w->cols)
+            w->spare = l;
+        else
+            line_free(w->t, l);
+    }
+    return 1;
+}
+
+/* A blank line of w->cols cells for row w->ny (the rows before it are
+ * done). 0 when out of memory. */
+static vt_line *rw_line(vt_rewrap *w)
+{
+    vt_line *l;
+    if (!rw_retire(w, w->ny))
+        return 0;
+    l = w->spare;
+    w->spare = 0;
+    if (!l && !(l = line_new(w->cols)))
+        return 0;
+    line_clear(w->t, l, w->cols);
+    return l;
+}
 
 static int rw_row(vt_rewrap *w)
 {
     vt_line *l;
     if (!w->out)
         return 1;
-    l = line_new(w->cols);
-    if (!l)
+    if (!(l = rw_line(w)))
         return 0;
-    line_clear(w->t, l, w->cols);
     l->used = (vt_u16)w->cols; /* the cells copied in are not marked one by one */
     l->chonly = 0;
     w->out[w->ny] = l;
@@ -5976,7 +6545,7 @@ static int rw_wrap(vt_rewrap *w)
     return rw_row(w);
 }
 
-/* Rows old[s..e], one logical line (each but the last wrapped into the
+/* Rows OLD(s..e), one logical line (each but the last wrapped into the
  * next), typed again from row w->ny on, with the wrap rule of the
  * personality: the amiga one wraps the moment a row fills (a line that
  * ends exactly at the margin owns the empty row after it, where its cursor
@@ -5984,24 +6553,27 @@ static int rw_wrap(vt_rewrap *w)
  * (cx, cy) is on the line, *ncx / *ncy / *nwp get where it lands: on the
  * same character, or as many cells past the text as it was. Leaves w->ny
  * on the line's last row; 0 when out of memory. */
-static int rewrap_line(vt_rewrap *w, vt_line **old, int s, int e, int oc,
+static int rewrap_line(vt_rewrap *w, vt_rfin *in, int s, int e, int oc,
                        int cx, int cy, int wp, int *ncx, int *ncy, int *nwp)
 {
     int r, x, n, last, width, found = 0;
     long d;
     const vt_cell *c;
+    const vt_line *lr;
     vt_cell *o;
     w->nx = 0;
     if (!rw_row(w))
         return 0;
-    last = line_text_len(old[e], old[e]->n);
+    lr = OLD(e);
+    last = line_text_len(lr, lr->n);
     for (r = s; r <= e; r++) {
-        n = r < e ? old[r]->n : last; /* a scrollback row keeps the width it had */
+        lr = OLD(r);
+        n = r < e ? lr->n : last; /* a scrollback row keeps the width it had */
         for (x = 0; x < n; x++) {
-            c = &old[r]->c[x];
+            c = &lr->c[x];
             if (c->width == 0)
                 continue; /* the right half of a wide glyph moves with its left */
-            if (r < e && x == n - 1 && cell_plain_blank(c) && old[r + 1]->c[0].width == 2 &&
+            if (r < e && x == n - 1 && cell_plain_blank(c) && OLD(r + 1)->c[0].width == 2 &&
                 !(r == cy && x == cx))
                 continue; /* put_char's padding before a wide glyph that did not fit */
             width = c->width == 2 && w->cols >= 2 ? 2 : 1;
@@ -6016,7 +6588,7 @@ static int rewrap_line(vt_rewrap *w, vt_line **old, int s, int e, int oc,
                 o = &w->out[w->ny]->c[w->nx];
                 o[0] = *c;
                 if (c->pad & VT_CELL_IMAGE)
-                    place_carry(w->t, old[r], x, w->out[w->ny], w->nx);
+                    place_carry(w->t, lr, x, w->out[w->ny], w->nx);
                 o[0].width = (vt_u8)width;
                 if (width == 2) {
                     o[1] = o[0];
@@ -6057,17 +6629,19 @@ static int rewrap_line(vt_rewrap *w, vt_line **old, int s, int e, int oc,
     return 1;
 }
 
-/* One pass over rows old[0..nold), oldest first: their logical lines typed
- * again into out (NULL: count only). The screen's rows are oc wide; a
- * scrollback row keeps the width it had. Rows below both the cursor and
+/* One pass over rows OLD(0..nold), oldest first: their logical lines
+ * typed again into out (NULL: count only). The screen's rows are oc wide;
+ * a scrollback row keeps the width it had. Rows below both the cursor and
  * the last text are left out (the caller pads with blanks). A double-width
- * or -height row is never joined: it keeps its place, cut or padded.
- * Returns the row count, -1 when out of memory (the rows made so far stay
- * in out). */
-static int reflow_pass(vt_term *t, vt_line **old, int nold, int oc, vt_line **out, int cols, int cx, int cy,
-                       int wp, int *ncx, int *ncy, int *nwp)
+ * or -height row is never joined: it keeps its place, cut or padded. The
+ * new rows below `retire` go to the scrollback as they are done (out[i]
+ * NULL for them). Returns the row count, -1 when out of memory (the rows
+ * made so far stay in out and the scrollback). */
+static int reflow_pass(vt_term *t, vt_rfin *in, int nold, int oc, vt_line **out, int cols, int cx, int cy,
+                       int wp, int *ncx, int *ncy, int *nwp, int retire)
 {
     vt_line *l;
+    const vt_line *o;
     vt_rewrap w;
     int s, e, last, n;
     w.t = t;
@@ -6075,24 +6649,29 @@ static int reflow_pass(vt_term *t, vt_line **old, int nold, int oc, vt_line **ou
     w.cols = cols;
     w.eager = t->pers == VT_AMIGA && t->autowrap;
     w.ny = 0;
-    for (last = nold - 1; last > cy; last--)
-        if (old[last]->wrapped || old[last]->dbl || line_text_len(old[last], old[last]->n))
+    w.retire = retire;
+    w.retired = 0;
+    w.spare = 0;
+    for (last = nold - 1; last > cy; last--) {
+        o = OLD(last);
+        if (o->wrapped || o->dbl || line_text_len(o, o->n))
             break;
+    }
     for (s = 0; s <= last; s = e + 1) {
         e = s;
-        if (old[s]->dbl) {
+        if (OLD(s)->dbl) {
             if (out) {
-                if (!(l = line_new(cols)))
-                    return -1;
-                line_clear(t, l, cols);
-                n = cols < old[s]->n ? cols : old[s]->n;
-                memcpy(l->c, old[s]->c, n * sizeof(vt_cell));
+                if (!(l = rw_line(&w)))
+                    goto fail;
+                o = OLD(s);
+                n = cols < o->n ? cols : o->n;
+                memcpy(l->c, o->c, n * sizeof(vt_cell));
                 if (l->c[cols - 1].width == 2)
                     blank_cell(t, &l->c[cols - 1]);
-                l->dbl = old[s]->dbl;
+                l->dbl = o->dbl;
                 l->used = (vt_u16)cols;
                 l->chonly = 0;
-                l->mark = old[s]->mark;
+                l->mark = o->mark;
                 out[w.ny] = l;
             }
             if (s == cy) {
@@ -6101,14 +6680,22 @@ static int reflow_pass(vt_term *t, vt_line **old, int nold, int oc, vt_line **ou
                 *nwp = 0;
             }
         } else {
-            while (old[e]->wrapped && e + 1 < nold && !old[e + 1]->dbl)
+            while (OLD(e)->wrapped && e + 1 < nold && !OLD(e + 1)->dbl)
                 e++;
-            if (!rewrap_line(&w, old, s, e, oc, cx, cy, wp, ncx, ncy, nwp))
-                return -1;
+            if (!rewrap_line(&w, in, s, e, oc, cx, cy, wp, ncx, ncy, nwp))
+                goto fail;
         }
         w.ny++;
     }
+    if (in->fail || (out && !rw_retire(&w, w.ny)))
+        goto fail;
+    if (w.spare)
+        line_free(t, w.spare);
     return w.ny;
+fail:
+    if (w.spare)
+        line_free(t, w.spare);
+    return -1;
 }
 
 /* vt_resize with reflow, for the primary screen (the alternate one is
@@ -6124,33 +6711,60 @@ static int reflow_pass(vt_term *t, vt_line **old, int nold, int oc, vt_line **ou
  * top, as resize_screen does. 0 when out of memory, nothing changed. */
 static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *wp, int hist)
 {
-    vt_line **nr, **nw, **all;
-    int nsb = hist ? t->sb_len : 0, above = nsb + t->novf, nold = above + t->rows;
-    int total, i, ok, ncx = 0, ncy = 0, nwp = 0, excess, below, drop_top = 0;
+    vt_line **nr = 0, **nw = 0, **ln;
+    vt_sbl **oring = t->sb, **ring = 0;
+    int ocap = t->sb_cap, olen = t->sb_len, ohead = t->sb_head;
+    int nsb = hist ? t->sb_len : 0, above = nsb + t->novf, nold = above + t->rows, nln = t->novf + t->rows;
+    int total, i, ok, ncx = 0, ncy = 0, nwp = 0, excess, below = 0, drop_top = 0;
+    vt_rfin in;
     /* the scrollback (oldest first), the rows an earlier resize pushed out,
      * then the screen: laid out together, as one screen `above` rows taller */
-    all = (vt_line **)VT_MALLOC(nold * sizeof(vt_line *));
-    if (!all)
+    ln = (vt_line **)VT_MALLOC(nln * sizeof(vt_line *));
+    if (!ln)
         return 0;
-    for (i = 0; i < nsb; i++)
-        all[i] = t->sb[(t->sb_head + t->sb_cap - nsb + i) % t->sb_cap];
     if (t->novf)
-        memcpy(all + nsb, t->ovf, t->novf * sizeof(vt_line *));
-    memcpy(all + above, t->pri, t->rows * sizeof(vt_line *));
-    total = reflow_pass(t, all, nold, t->cols, 0, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp);
-    nr = (vt_line **)VT_MALLOC(total * sizeof(vt_line *));
-    nw = (vt_line **)VT_MALLOC(rows * sizeof(vt_line *));
-    if (!nr || !nw) {
+        memcpy(ln, t->ovf, t->novf * sizeof(vt_line *));
+    memcpy(ln + t->novf, t->pri, t->rows * sizeof(vt_line *));
+    in.t = t;
+    in.sb = oring;
+    in.sb_cap = ocap;
+    in.sb0 = nsb ? (ohead + ocap - nsb) % ocap : 0;
+    in.nsb = nsb;
+    in.ln = ln;
+    in.fail = 0;
+    total = reflow_pass(t, &in, nold, t->cols, 0, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp, 0);
+    if (total > rows) { /* rows below the cursor go first, then rows off the top */
+        excess = total - rows;
+        below = total - 1 - ncy;
+        if (below > excess)
+            below = excess;
+        drop_top = excess - below;
+    }
+    if (total >= 0) {
+        nr = (vt_line **)VT_MALLOC((total ? total : 1) * sizeof(vt_line *));
+        nw = (vt_line **)VT_MALLOC(rows * sizeof(vt_line *));
+        if (hist)
+            ring = (vt_sbl **)VT_MALLOC(ocap * sizeof(vt_sbl *));
+    }
+    if (!nr || !nw || (hist && !ring)) {
         if (nr)
             VT_FREE(nr);
         if (nw)
             VT_FREE(nw);
-        VT_FREE(all);
+        if (ring)
+            VT_FREE(ring);
+        VT_FREE(ln);
         return 0;
     }
-    memset(nr, 0, total * sizeof(vt_line *));
+    memset(nr, 0, (total ? total : 1) * sizeof(vt_line *));
     memset(nw, 0, rows * sizeof(vt_line *));
-    ok = reflow_pass(t, all, nold, t->cols, nr, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp) >= 0;
+    if (hist) {
+        /* the new history fills a ring of its own while the old one is read */
+        t->sb = ring;
+        t->sb_len = t->sb_head = 0;
+    }
+    ok = reflow_pass(t, &in, nold, t->cols, nr, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp,
+                     hist ? drop_top : 0) >= 0;
     for (i = total; ok && i < rows; i++) { /* the blank rows below */
         nw[i] = line_new(cols);
         if (nw[i])
@@ -6165,17 +6779,23 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
         for (i = total; i < rows; i++)
             if (nw[i])
                 VT_FREE(nw[i]);
+        if (hist) { /* the new history goes, the old one is back */
+            while (t->sb_len) {
+                t->sb_head = (t->sb_head + ocap - 1) % ocap;
+                sbl_free(t, t->sb[t->sb_head]);
+                t->sb_len--;
+            }
+            VT_FREE(ring);
+            t->sb = oring;
+            t->sb_len = olen;
+            t->sb_head = ohead;
+        }
         VT_FREE(nr);
         VT_FREE(nw);
-        VT_FREE(all);
+        VT_FREE(ln);
         return 0;
     }
     if (total > rows) {
-        excess = total - rows;
-        below = total - 1 - ncy;
-        if (below > excess)
-            below = excess;
-        drop_top = excess - below;
         for (i = total - below; i < total; i++)
             line_free(t, nr[i]);
         total = rows;
@@ -6183,19 +6803,19 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
     }
     /* the old rows (the scrollback's and the pushed-out ones among them)
      * are laid out anew */
-    for (i = 0; i < nold; i++)
-        line_free(t, all[i]);
-    VT_FREE(all);
-    t->novf = 0;
-    if (hist)
-        t->sb_len = t->sb_head = 0;
-    VT_FREE(t->pri);
-    for (i = 0; i < drop_top; i++) {
-        if (hist)
-            sb_push(t, nr[i]); /* history again, oldest first */
-        else
-            ovf_push(t, nr[i]); /* pushed out now: back on a later grow */
+    if (hist) {
+        for (i = 0; i < nsb; i++)
+            sbl_free(t, oring[(in.sb0 + i) % ocap]);
+        VT_FREE(oring);
     }
+    for (i = 0; i < nln; i++)
+        line_free(t, ln[i]);
+    VT_FREE(ln);
+    t->novf = 0;
+    VT_FREE(t->pri);
+    if (!hist) /* (with the history they are in the scrollback already) */
+        for (i = 0; i < drop_top; i++)
+            ovf_push(t, nr[i]); /* pushed out now: back on a later grow */
     for (i = 0; i < total; i++)
         nw[i] = nr[drop_top + i];
     VT_FREE(nr);
@@ -6251,8 +6871,13 @@ static int resize_screen(vt_term *t, vt_line ***scrp, int cols, int rows, int is
                 VT_FREE(l);
                 l = nl;
             }
-            if (cols > l->n)
+            if (cols > l->n) {
                 cells_blank(t, &l->c[l->n], cols - l->n);
+                if (!vacated_default(t)) { /* a coloured blank: the tail is not the default one */
+                    l->used = (vt_u16)cols;
+                    l->chonly = 0;
+                }
+            }
             l->n = (vt_u16)cols;
             if (l->c[cols - 1].width == 2)
                 blank_cell(t, &l->c[cols - 1]);
@@ -6357,15 +6982,14 @@ int vt_rows(const vt_term *t)
 
 const vt_cell *vt_row(const vt_term *t, int row, int *ncells)
 {
-    vt_line *l;
+    const vt_line *l;
     if (row >= 0) {
         if (row >= t->rows)
             return 0;
         l = t->scr[row];
     } else {
-        if (-row > t->sb_len)
+        if (-row > t->sb_len || !(l = sb_cells(t, SB_AT(t, row))))
             return 0;
-        l = t->sb[(t->sb_head + t->sb_cap + row) % t->sb_cap];
     }
     if (ncells)
         *ncells = row >= 0 ? t->cols : l->n;
@@ -6375,19 +6999,13 @@ const vt_cell *vt_row(const vt_term *t, int row, int *ncells)
 int vt_row_used(const vt_term *t, int row)
 {
     const vt_line *l;
-    int n;
     if (row >= 0) {
         if (row >= t->rows)
             return 0;
         l = t->scr[row];
-        n = t->cols;
-    } else {
-        if (-row > t->sb_len)
-            return 0;
-        l = t->sb[(t->sb_head + t->sb_cap + row) % t->sb_cap];
-        n = l->n;
+        return l->used < t->cols ? l->used : t->cols;
     }
-    return l->used < n ? l->used : n;
+    return -row <= t->sb_len ? SB_AT(t, row)->len : 0; /* stored cells, the rest blank */
 }
 
 int vt_row_size(const vt_term *t, int row)
@@ -6401,7 +7019,7 @@ int vt_row_wrapped(const vt_term *t, int row)
         return row < t->rows ? t->scr[row]->wrapped : 0;
     if (-row > t->sb_len)
         return 0;
-    return t->sb[(t->sb_head + t->sb_cap + row) % t->sb_cap]->wrapped;
+    return SB_AT(t, row)->wrapped;
 }
 
 int vt_scrollback_lines(const vt_term *t)

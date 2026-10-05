@@ -117,7 +117,7 @@ const vt_cell *h_cell(vt_term *t, int x, int y)
 
 /* -DVT_COUNT_ALLOC: the engine's and the line editor's blocks, counted.
  * Each block carries its size in front (aligned for anything). */
-long vt_count_live, vt_count_blocks;
+long vt_count_live, vt_count_blocks, vt_count_peak;
 
 typedef union { unsigned long n; double d; void *p; long l; } h_block_head;
 
@@ -129,6 +129,8 @@ void *vt_count_malloc(unsigned long n)
     h->n = n;
     vt_count_live += (long)n;
     vt_count_blocks++;
+    if (vt_count_live > vt_count_peak)
+        vt_count_peak = vt_count_live;
     return h + 1;
 }
 

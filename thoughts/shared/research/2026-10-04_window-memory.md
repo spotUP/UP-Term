@@ -161,4 +161,5 @@ after, bound 76,000. The 68k build fails at compile time if `con`,
       a live Prefs Use still apply; Tab, the KingCON window, the command
       colouring and the saved history still work; an AUTO window closed
       and opened again keeps its history
-- [ ] open: scrollback lines at full width (626 KB at 500 x 77 cells)
+- [x] scrollback lines at full width (626 KB at 500 x 77 cells): W23 packs them, 1296 -> 36-93
+      bytes a line on the 68k (plan ledger W23)

@@ -186,6 +186,10 @@ void *vt_count_malloc(unsigned long n);
 void vt_count_free(void *p);
 extern long vt_count_live;   /* bytes held now */
 extern long vt_count_blocks; /* blocks held now */
+extern long vt_count_peak;   /* the most vt_count_live has been (a test may reset it) */
+/* The bytes of packed lines (text and style runs, the format in
+ * vtengine.c) the scrollback holds, without their headers and blocks. */
+long vt_count_sb_payload(const vt_term *t);
 #endif
 
 vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void *user);
@@ -229,7 +233,11 @@ int      vt_cols(const vt_term *t);
 int      vt_rows(const vt_term *t);
 /* row >= 0: the visible grid; row < 0: scrollback, -1 the newest line.
  * NULL outside. *ncells gets how many cells the row holds: vt_cols() for the
- * grid, the width at the time for a scrollback line. */
+ * grid, the width at the time for a scrollback line. The scrollback keeps
+ * its lines packed (text and style runs) and decodes one into cells when
+ * asked: such a pointer stays good until three other scrollback rows have
+ * been asked for, or the next write (NULL when there was no memory to
+ * decode it in). */
 const vt_cell *vt_row(const vt_term *t, int row, int *ncells);
 /* How many of the row's cells may hold something: from this column on
  * they are default blanks (a space, default colours, no attribute) since
