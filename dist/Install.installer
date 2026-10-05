@@ -26,8 +26,8 @@
     "- vsh, a Unix-style shell, and tmux, screen and ls\n"
     "- PTY:, Unix pseudo-terminals\n"
     "- UP-Term Prefs, with 112 colour themes\n"
-    "- a patched ixemul.library 48.2 (the one there is kept as\n"
-    "  LIBS:ixemul.library.orig; Uninstall puts it back)\n\n"
+    "- a patched ixemul.library and its ixnet.library (the ones\n"
+    "  there are kept as LIBS:<name>.orig; Uninstall puts them back)\n\n"
     "Files go to C:, L:, LIBS:, DEVS:, ENVARC: and SYS:Utilities.")
 
 ; ---- what to install: one page of choices --------------------------------

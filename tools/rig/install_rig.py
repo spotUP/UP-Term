@@ -25,7 +25,7 @@ def check(ok, what, seen=''):
     print('%s %d %s%s' % ('ok' if ok else 'FAIL', total, what, (': ' + seen.strip()) if seen and not ok else ''))
 
 def lib_state():
-    rc, out = run('List LIBS:ixemul.library#? LFORMAT "%N %L"')
+    rc, out = run('List LIBS:(ixemul|ixnet).library#? LFORMAT "%N %L"')
     return dict(l.split() for l in out.splitlines() if l.strip())
 
 def main():
@@ -60,6 +60,8 @@ def main():
     before = lib_state()
     check(before.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in before,
           'before: the original ixemul, no .orig', str(before))
+    ixnet_before = before.get('ixnet.library')  # the rig's own (Install keeps it as .orig)
+    check(ixnet_before and 'ixnet.library.orig' not in before, 'before: an ixnet, no .orig', str(before))
     rc, out = run('Execute VTC:runinstall', 120)
     check(rc == 0 and 'Unknown command' not in out, 'Install runs (no line taken for a command)', out)
     rc, out = run('Assign PTY: EXISTS DEVICES')
@@ -70,6 +72,9 @@ def main():
     check(rc == 0 and 'FAIL' not in out, 'the installed PTY: passes ptytest', out[-300:])
     st = lib_state()
     check(st.get('ixemul.library.orig') == str(ORIG_SIZE), 'the original ixemul kept as .orig', str(st))
+    kit_ixnet = (VTC / "distkit/Files/libs/ixnet.library").stat().st_size
+    check(st.get('ixnet.library.orig') == ixnet_before and st.get('ixnet.library') == str(kit_ixnet),
+          'the kit\'s ixnet in LIBS:, the original kept as .orig', str(st))
     rc, out = run('Search LIBS:ixemul.library UP-Term')
     check('UP-Term' in out, 'the patched ixemul is in LIBS:', out)
     rc, out = run('C:UPConsole STATUS')
@@ -180,6 +185,8 @@ def main():
     st = lib_state()
     check(st.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in st,
           'after Uninstall: the original ixemul back, no .orig', str(st))
+    check(st.get('ixnet.library') == ixnet_before and 'ixnet.library.orig' not in st,
+          'after Uninstall: the original ixnet back, no .orig', str(st))
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == terminfo_before, 'after Uninstall: the TERMINFO from before Install is back', out)
     rc, out = run('Type S:User-Startup')

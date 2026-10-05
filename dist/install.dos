@@ -343,14 +343,22 @@ Copy banner ENVARC:vsh/banner CLONE
 MakeDir >NIL: ENV:vsh
 Copy vshrc ENV:vsh/vshrc CLONE
 Copy banner ENV:vsh/banner CLONE
-; ixemul.library 48.2 with the UP-Term patches (termios, PTY: ptys, job
-; control). The library there is kept once as LIBS:ixemul.library.orig.
+; ixemul.library with the UP-Term patches (termios, PTY: ptys, job
+; control), and ixnet.library from the same build: ixnet refuses an ixemul
+; of another version or revision. Each library there is kept once as
+; LIBS:<name>.orig.
 If NOT EXISTS LIBS:ixemul.library.orig
   If EXISTS LIBS:ixemul.library
     Copy LIBS:ixemul.library LIBS:ixemul.library.orig CLONE
   EndIf
 EndIf
 Copy libs/ixemul.library LIBS:ixemul.library CLONE
+If NOT EXISTS LIBS:ixnet.library.orig
+  If EXISTS LIBS:ixnet.library
+    Copy LIBS:ixnet.library LIBS:ixnet.library.orig CLONE
+  EndIf
+EndIf
+Copy libs/ixnet.library LIBS:ixnet.library CLONE
 Avail >NIL: FLUSH
 ; a DOSDrivers file is mounted by its path ("Mount XCON: FROM file" looks
 ; for an XCON: entry inside, which a DOSDrivers file has not; >NIL: hid

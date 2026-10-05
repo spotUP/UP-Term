@@ -1,5 +1,5 @@
 ; UP-Term uninstall: removes what Install put in and gives back the
-; ixemul.library it replaced. XCON:, PTY: and IXPIPE: stay mounted until a reboot.
+; ixemul.library and ixnet.library it replaced. XCON:, PTY: and IXPIPE: stay mounted until a reboot.
 ; Your history (ENVARC:vtcon.history) and $HOME/.vshrc are kept.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
@@ -154,6 +154,11 @@ Delete >NIL: ENVARC:vsh ENV:vsh ALL QUIET
 If EXISTS LIBS:ixemul.library.orig
   Copy LIBS:ixemul.library.orig LIBS:ixemul.library CLONE
   Delete >NIL: LIBS:ixemul.library.orig QUIET
+  Avail >NIL: FLUSH
+EndIf
+If EXISTS LIBS:ixnet.library.orig
+  Copy LIBS:ixnet.library.orig LIBS:ixnet.library CLONE
+  Delete >NIL: LIBS:ixnet.library.orig QUIET
   Avail >NIL: FLUSH
 EndIf
 Echo "UP-Term removed. Reboot to unmount XCON:, PTY: and IXPIPE:."

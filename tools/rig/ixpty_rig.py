@@ -16,6 +16,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = ROOT / "build/rig/vtc"
 IXEMUL = pathlib.Path(os.environ.get("IXEMUL", pathlib.Path.home() /
     "Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library"))
+# ixnet.library from the same build: ixnet_open refuses (ix_panic) an ixemul
+# of another version or revision, so the two always travel together.
+IXNET = pathlib.Path(os.environ.get("IXNET", IXEMUL.parents[4] /
+    "ixnet/68020/amigaos/ixnet.library"))
 
 def run(cmd, timeout=60):
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'))
@@ -25,6 +29,7 @@ def use_ixemul(orig=False):
     """The patched ixemul first in LIBS: for this boot (or the original)."""
     (VTC / "ixp6").mkdir(exist_ok=True)
     shutil.copyfile(IXEMUL, VTC / "ixp6/ixemul.library")
+    shutil.copyfile(IXNET, VTC / "ixp6/ixnet.library")
     run('Avail >NIL: FLUSH')
     if orig:
         run('Assign LIBS: DH0:Libs')

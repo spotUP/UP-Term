@@ -664,6 +664,8 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c han
 KIT := $(BUILD)/dist/UP-Term
 # the patched ixemul (P6): built in ~/Code/ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
+# ixnet.library from the same build (ixnet refuses an ixemul of another revision)
+IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
 	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] $(CURDIR)/$(KIT)/Files/terminfo/
@@ -672,6 +674,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp $(TMUX_BIN) $(KIT)/Files/tmux
 	cp dist/tmux.conf dist/unstartup.sh $(KIT)/Files/
 	cp $(IXEMUL_LIB) $(KIT)/Files/libs/ixemul.library
+	cp $(IXNET_LIB) $(KIT)/Files/libs/ixnet.library
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(KIT)/Files/banner
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term.info
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
