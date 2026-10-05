@@ -452,15 +452,49 @@ static int tool_ask(void *u, const char *tool, const char *what, int outside)
     return repl_ask(r, r->at->cur, tool, what, outside, r->rule_now == RULE_ASK);
 }
 
+/* the lines a change takes out and puts in (a common start and end
+ * trimmed, as the diff on the screen counts them) */
+static void count_lines(const char *a, long an, const char *b, long bn, long *del, long *add)
+{
+    long p = 0, q = 0, i;
+    while (p < an && p < bn && a[p] == b[p])
+        p++;
+    while (p > 0 && a[p - 1] != '\n')
+        p--;
+    while (q < an - p && q < bn - p && a[an - 1 - q] == b[bn - 1 - q])
+        q++;
+    while (q > 0 && a[an - q] != '\n' && an - q > p)
+        q--;
+    *del = *add = 0;
+    for (i = p; i < an - q; i++)
+        *del += a[i] == '\n';
+    for (i = p; i < bn - q; i++)
+        *add += b[i] == '\n';
+    if (an - q > p && a[an - q - 1] != '\n')
+        (*del)++;
+    if (bn - q > p && b[bn - q - 1] != '\n')
+        (*add)++;
+}
+
 static void tool_preview(void *u, int tool, const char *path, const char *before, long bn, const char *after,
                          long an)
 {
-    ui_preview(&((cl_repl *)u)->ui, tool, path, before, bn, after, an);
+    cl_repl *r = (cl_repl *)u;
+    long d, a;
+    count_lines(before ? before : "", before ? bn : 0, after ? after : "", after ? an : 0, &d, &a);
+    r->pend_del = d;            /* counted when the change is made (tool_result) */
+    r->pend_add = a;
+    ui_preview(&r->ui, tool, path, before, bn, after, an);
 }
 
 static void tool_result(void *u, int tool, const char *in, long inn, int is_error, const char *text, long n)
 {
     cl_repl *r = (cl_repl *)u;
+    if ((tool == T_WRITE || tool == T_EDIT || tool == T_MULTIEDIT) && !is_error) {
+        r->lines_removed += r->pend_del;    /* the status line's cost.total_lines_* */
+        r->lines_added += r->pend_add;
+    }
+    r->pend_del = r->pend_add = 0;
     if (tool == T_TODO_WRITE && !is_error) {
         /* the list as it stands, for /todos */
         char *t = (char *)malloc((size_t)inn + 1);
@@ -1600,6 +1634,7 @@ int repl_screen(cl_repl *r)
     t->ncmds = r->nmenu;
     t->status = r->status_text;     /* the statusLine command's row(s) */
     t->status_pad = r->cfg.status_pad;
+    t->hide_vim = r->cfg.hide_vim;
     t->idle = pol_status_tick;
     t->iu = r;
     show_init(s, t);
@@ -1803,7 +1838,10 @@ int repl_system(cl_repl *r)
         jw_rawz(&s, sys_b);
         jw_rawz(&s, r->tools.root);
         jw_rawz(&s, sys_c);
-        jw_rawz(&s, sys_d);
+        /* a custom output style without keep-coding-instructions: the
+         * machine's facts stay, the way of working goes (Claude Code) */
+        if (!st || st->src == DEF_BUILTIN || st->keep_coding)
+            jw_rawz(&s, sys_d);
     }
     if (st && st->body[0]) {
         jw_rawz(&s, "\n\n# Output style: ");
@@ -1890,8 +1928,12 @@ int repl_load(cl_repl *r)
         cl_copy(r->effort, r->cfg.effort, sizeof(r->effort));
     if (r->cfg.fallback_model[0])
         cl_copy(r->fallback, cfg_model(r->cfg.fallback_model), sizeof(r->fallback));
-    if (r->cfg.output_style[0])
-        cl_copy(r->style, cl_strieq(r->cfg.output_style, "default") ? "" : r->cfg.output_style, sizeof(r->style));
+    if (r->cfg.output_style[0]) {
+        /* Claude Code: the setting is case-sensitive; a name that is no style's is Default */
+        const cl_def *os = defs_find(&r->defs, DEF_STYLE, r->cfg.output_style);
+        cl_copy(r->style, os && !strcmp(os->name, r->cfg.output_style) && strcmp(os->name, "Default") ? os->name : "",
+                sizeof(r->style));
+    }
     if (r->cfg.auto_compact >= 0)
         r->auto_compact = r->cfg.auto_compact;
     if (r->cfg.default_mode[0])
@@ -1911,8 +1953,10 @@ int repl_load(cl_repl *r)
             r->sys->setenv(r->sys->u, r->cfg.env[i].k, r->cfg.env[i].v);
     if (r->cfg.err[0])
         repl_say(r, "Settings: ", r->cfg.err);
-    if (r->tui)
+    if (r->tui) {
         r->tui->status_pad = r->cfg.status_pad;
+        r->tui->hide_vim = r->cfg.hide_vim;
+    }
     if (menu_build(r) || pol_tools(r))
         return -1;
     return repl_load_memory(r);
@@ -1992,6 +2036,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
         return -1;
     r->start_due = 1;            /* SessionStart runs once the command line is applied (--bare, ...) */
     r->t_start = io->ms ? io->ms(io->u) : 0;
+    cl_copy(r->launch_root, r->tools.root, sizeof(r->launch_root));
     return 0;
 }
 

@@ -98,6 +98,7 @@ typedef struct cl_tui {
      * draws it; a change redraws only its row */
     const char *status;
     int status_pad;             /* statusLine.padding */
+    int hide_vim;               /* statusLine.hideVimModeIndicator: no "-- INSERT --" (A4 gaps) */
     /* called while the screen waits for keys (the status line's schedule) */
     void (*idle)(void *u);
     void *iu;

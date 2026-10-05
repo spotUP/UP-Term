@@ -1053,6 +1053,7 @@ int cli_apply(cl_cli *c, cl_repl *r)
         if (repl_system(r))
             return fail(c, "Out of memory.", 0, 0);
     }
+    cl_copy(r->agent_name, a ? a->name : "", sizeof(r->agent_name));
     /* the agent's model, unless --model says otherwise */
     if (a && !c->model[0] && a->model && a->model[0] && strcmp(a->model, "inherit"))
         cl_copy(r->model, cfg_model(a->model), sizeof(r->model));

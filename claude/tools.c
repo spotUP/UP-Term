@@ -353,8 +353,17 @@ static int describe(cl_tools *t, int tool, jw *d)
     if (tool == T_SKILL) {
         const cl_skill *s = 0;
         n = t->ext && t->ext->skills ? t->ext->skills(t->ext->u, &s) : 0;
-        for (i = 0; i < n; i++)
-            list_line(d, s[i].name, s[i].description, 0);
+        for (i = 0; i < n; i++) {
+            /* Claude Code: the description and when_to_use, 1536 characters at most */
+            char text[1540];
+            cl_copy(text, s[i].description ? s[i].description : "", sizeof(text));
+            if (s[i].when && *s[i].when) {
+                cl_cat(text, text[0] ? " " : "", sizeof(text));
+                cl_cat(text, s[i].when, sizeof(text));
+            }
+            text[1536] = 0;
+            list_line(d, s[i].name, text, 0);
+        }
         return n;
     }
     if (tool == T_SLASH) {

@@ -53,8 +53,8 @@ int hooks_match(const char *m, const char *name)
         const char *e = m;
         while (*e && *e != '|')
             e++;
-        if (wild(m, e, name) || wild(m, e, cc))
-            return 1;
+        if (wild(m, e, name) || wild(m, e, cc) || (!strcmp(cc, "Task") && wild(m, e, "Agent")))
+            return 1;               /* "Agent": Claude Code's newer name of Task */
         m = *e ? e + 1 : e;
     }
     return 0;

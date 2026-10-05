@@ -311,6 +311,15 @@ static const char learning[] =
     "user something, leave it to them -- write the surrounding code, mark the spot with a TODO(human) "
     "comment and ask them to fill it in, then review what they wrote.";
 
+static const char proactive[] =
+    "Start on a task as soon as it is given. Make reasonable assumptions about routine decisions instead of "
+    "stopping to ask, and say in a few words which ones you made. Do not switch to plan mode unless the user asks "
+    "for a plan. The user will redirect you when an assumption is wrong.";
+static const char concise[] =
+    "Lead every response with the result: its first sentence says what happened or what the answer is. Leave "
+    "out the lead-in, the step-by-step narration and the closing recap; answer a simple question in one to three "
+    "sentences. Do the engineering work as thoroughly as ever: only the words get fewer.";
+
 static void builtin(cl_defs *s, const char *name, const char *desc, const char *body)
 {
     cl_def d;
@@ -339,6 +348,8 @@ int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
     char base[2][300], p[300];
     int src, t;
     builtin(s, "Default", "Claude Code's own: concise, for doing software work", "");
+    builtin(s, "Proactive", "Starts right away and makes reasonable assumptions instead of asking", proactive);
+    builtin(s, "Concise", "Leads with the result; no preamble, narration or recap", concise);
     builtin(s, "Explanatory", "Explains the choices and the codebase while it works", explanatory);
     builtin(s, "Learning", "Works with you: leaves small pieces for you to write (TODO(human))", learning);
     cl_copy(base[0], home ? home : "", sizeof(base[0]));

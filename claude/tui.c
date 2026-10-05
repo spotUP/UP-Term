@@ -401,7 +401,7 @@ static void status_row(cl_tui *t)
     if (t->hint[0]) {
         r_sgr(&r, DIM);
         r_textz(&r, t->hint);
-    } else if (t->ed.vim == VIM_INSERT) {
+    } else if (t->ed.vim == VIM_INSERT && !t->hide_vim) {
         r_sgr(&r, DIM);
         r_textz(&r, "-- INSERT --");
     } else if (t->box == BOX_BASH) {

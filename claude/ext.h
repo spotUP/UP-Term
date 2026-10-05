@@ -28,6 +28,7 @@ typedef struct cl_skill {
     const char *name;
     const char *description;
     const char *path;           /* its SKILL.md (AmigaOS path) */
+    const char *when;           /* when_to_use, 0 none (listed after the description) */
 } cl_skill;
 
 typedef struct cl_command {

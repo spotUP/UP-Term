@@ -57,15 +57,15 @@ Phase 2 -- slash commands (slash.c repl.c)
 - [x] S18 /debug   - [x] S19 /skill-name typed, skills in the menu, argument-hint shown
 
 Phase 3 -- skills, agents, styles, status line (commands.c subagent.c tools.c policy.c)
-- [ ] X1 the Skill tool expands as a command does (args, !`cmd`, allowed-tools, model)
+- [x] X1 the Skill tool expands as a command does (args, !`cmd`, allowed-tools, model)
 - [x] X2 $N 0-based, $ARGUMENTS[N], \$, ${CLAUDE_SKILL_DIR|SESSION_ID|PROJECT_DIR|EFFORT}
-- [ ] X3 skill user-invocable, when_to_use, context: fork + agent
-- [ ] X4 agent disallowedTools, maxTurns, effort, skills, permissionMode
+- [x] X3 skill user-invocable, when_to_use, context: fork + agent
+- [x] X4 agent disallowedTools, maxTurns, effort, skills, permissionMode
 - [x] X5 CLAUDE.md for subagents (not Explore / Plan)
-- [ ] X6 Agent = Task for rules and hook matchers
+- [x] X6 Agent = Task for rules and hook matchers
 - [x] X7 built-in statusline-setup agent
-- [ ] X8 output styles Proactive, Concise; keep-coding-instructions honoured
-- [ ] X9 status line JSON fields, hideVimModeIndicator
+- [x] X8 output styles Proactive, Concise; keep-coding-instructions honoured
+- [x] X9 status line JSON fields, hideVimModeIndicator
 
 Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c tools.c)
 - [ ] H1 events PermissionRequest PostToolUseFailure SubagentStart PostCompact StopFailure
@@ -123,6 +123,18 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
   auto sends no effort (the model's own).
 - The commands Claude Code has that cannot be here are a table in slash.c; each typed one says why,
   /help lists them in one line. The rewind menu (Esc Esc) got "Summarize from here / up to here".
+- The Skill tool still asks permission (tools-reference: "Permission required: Yes"; skills.md's
+  "Claude can invoke any skill" is about disable-model-invocation); Skill / Skill(name) rules decide.
+- Agent = Task: the tool keeps its declared name Task (the recordings, the fixture); rules and hook
+  matchers naming Agent cover it, as tools_mask already did for --tools / agents' lists.
+- A custom output style without keep-coding-instructions drops sys_d (the way of working: todo
+  list, concise answers) and keeps sys_a..sys_c (the machine's facts: paths, shell, speed).
+  outputStyle in a settings file is case-sensitive (Claude Code); /output-style is not.
+- hideVimModeIndicator: one line in tui.c (feature/a4-input-rest's file), named here:
+  `} else if (t->ed.vim == VIM_INSERT && !t->hide_vim) {` at the "-- INSERT --" hint, and the
+  field hide_vim in tui.h. Set by repl.c from the setting.
+- Status line JSON: total_lines_added/removed count a Write/Edit/MultiEdit only when it succeeds
+  (the preview's counts kept until the result).
 - A skill typed as /name runs as a turn like a command (context: fork applies when Claude calls
   the Skill tool; typed, it runs inline).
 
@@ -140,5 +152,12 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
   the way: /permissions said "allowRead" (no space). Mutations: not_here off, /clear's usage
   reset off, /effort auto sending "auto" each fail the suite. Gate: make test (43 OK), make
   test-ref (149, 0 failed), make amiga rc 0.
+
+- c3 Phase 3 (X1 X3 X4 X6 X8 X9): claude_repl test_gaps_ext (print mode: Skill expanded + its
+  allowed-tools letting Bash run with nobody to ask, context: fork through a subagent, an
+  --agents agent's effort / preloaded skill / plan mode, a deny rule Agent(x) on Task, the five
+  built-in styles and keep-coding-instructions, the status line JSON); claude_config: style count
+  6, hooks_match Agent. Mutations: Skill provider off, Agent alias off, keep-coding off each fail.
+  Gate: make test (43 OK), make test-ref (149, 0 failed), make amiga rc 0.
 
 ## Rig steps (main session)

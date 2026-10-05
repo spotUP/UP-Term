@@ -166,6 +166,10 @@ typedef struct cl_repl {
     unsigned long t_start;      /* the session's start (io->ms), for the durations */
     const char *log_path;       /* where the debug log goes (main sets it; /debug names it), 0 unknown */
     char btw[512];              /* the last /btw answer (/btw alone shows it) */
+    char launch_root[256];      /* the start directory at launch (status line's project_dir; /cd moves the root) */
+    char agent_name[64];        /* --agent / the "agent" setting in force, "" none */
+    long lines_added, lines_removed;    /* Write/Edit lines changed this session (status line's cost) */
+    long pend_add, pend_del;    /* the change being asked about (its preview's counts) */
     long n_copies;              /* the tests' sentinel: /copy runs that reached the clipboard */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];

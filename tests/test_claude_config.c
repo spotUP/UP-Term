@@ -419,7 +419,7 @@ static void test_defs(void)
     CHECK_INT(defs_count(&s, DEF_COMMAND), 3);     /* review (project hides user), hello, commit */
     CHECK_INT(defs_count(&s, DEF_AGENT), 1);
     CHECK_INT(defs_count(&s, DEF_SKILL), 1);
-    CHECK_INT(defs_count(&s, DEF_STYLE), 4);       /* Default, Explanatory, Learning, Terse */
+    CHECK_INT(defs_count(&s, DEF_STYLE), 6);       /* Default, Proactive, Concise, Explanatory, Learning, Terse */
     d = defs_find(&s, DEF_COMMAND, "review");
     CHECK(d && d->src == CFG_PROJECT);
     CHECK(d && !strcmp(d->description, "Review the code") && !strcmp(d->model, "haiku") &&
@@ -845,6 +845,10 @@ static void test_gaps(void)
     defs_drop(&ds, DEF_AGENT);
     CHECK_INT(defs_count(&ds, DEF_AGENT), 0);
     defs_free(&ds);
+    /* X6: a hook matcher "Agent" is Claude Code's newer name of Task */
+    CHECK_INT(hooks_match("Agent", "Task"), 1);
+    CHECK_INT(hooks_match("Bash|Agent", "Task"), 1);
+    CHECK_INT(hooks_match("Agent", "Read"), 0);
 }
 
 void suite_claude_config(void)

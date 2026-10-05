@@ -649,6 +649,8 @@ static int tool_covers(const char *rt, const char *ct)
 {
     if (!strcmp(rt, ct))
         return 1;
+    if (!strcmp(rt, "Agent") || !strcmp(rt, "Task"))
+        return !strcmp(ct, "Task") || !strcmp(ct, "Agent");    /* Claude Code's newer name of Task */
     if (!strcmp(rt, "Edit"))
         return !strcmp(ct, "Write") || !strcmp(ct, "MultiEdit") || !strcmp(ct, "NotebookEdit");
     if (!strcmp(rt, "Read"))

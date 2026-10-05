@@ -460,6 +460,91 @@ void pol_precompact(cl_repl *r, int automatic, const char *focus)
     hookres_free(&h);
 }
 
+/* "claude-opus-5-5" -> "Opus 5.5" (Claude Code's display name); others as they are */
+static const char *model_name(const char *id)
+{
+    static char b[48];
+    static const char *const fam[] = { "opus", "Opus", "sonnet", "Sonnet", "haiku", "Haiku", "fable", "Fable", 0 };
+    int i;
+    if (strncmp(id, "claude-", 7))
+        return id;
+    for (i = 0; fam[i]; i += 2) {
+        long l = (long)strlen(fam[i]);
+        const char *v = id + 7 + l;
+        if (!strncmp(id + 7, fam[i], (size_t)l) && v[0] == '-' && v[1] >= '0' && v[1] <= '9' && v[2] == '-' &&
+            v[3] >= '0' && v[3] <= '9') {
+            cl_copy(b, fam[i + 1], sizeof(b));
+            {
+                long k = (long)strlen(b);
+                b[k] = ' ';
+                b[k + 1] = v[1];
+                b[k + 2] = '.';
+                b[k + 3] = v[3];
+                b[k + 4] = 0;
+            }
+            return b;
+        }
+    }
+    return id;
+}
+
+static void key_num(jw *w, const char *key, long v)
+{
+    jw_raw(w, ",", 1);
+    jw_strz(w, key);
+    jw_raw(w, ":", 1);
+    jw_long(w, v);
+}
+
+/* the rest of the status line's JSON after cost.total_cost_usd: the
+ * times and lines, the context window, effort, thinking, vim, the agent,
+ * the session's name, the version */
+static void status_rest(cl_repl *r, jw *ev)
+{
+    long win = repl_window(r->model), used = r->ctx_used, pct;
+    unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    key_num(ev, "total_duration_ms", (long)(now - r->t_start));
+    key_num(ev, "total_api_duration_ms", (long)r->api_ms);
+    key_num(ev, "total_lines_added", r->lines_added);
+    key_num(ev, "total_lines_removed", r->lines_removed);
+    if (used > win)
+        used = win;
+    pct = (long)(used / (win / 100));
+    jw_rawz(ev, "},\"context_window\":{\"context_window_size\":");
+    jw_long(ev, win);
+    key_num(ev, "total_input_tokens", r->conv.in_tok + r->conv.cache_r + r->conv.cache_w);
+    key_num(ev, "total_output_tokens", r->conv.out_tok);
+    key_num(ev, "used_percentage", pct);
+    key_num(ev, "remaining_percentage", 100 - pct);
+    jw_rawz(ev, ",\"current_usage\":{\"input_tokens\":");
+    jw_long(ev, r->st.in_tok);
+    key_num(ev, "output_tokens", r->st.out_tok);
+    key_num(ev, "cache_creation_input_tokens", r->st.cache_w);
+    key_num(ev, "cache_read_input_tokens", r->st.cache_r);
+    jw_rawz(ev, "}},\"exceeds_200k_tokens\":");
+    jw_rawz(ev, r->ctx_used > 200000L ? "true" : "false");
+    jw_rawz(ev, ",\"effort\":{\"level\":");
+    jw_strz(ev, r->effort);
+    jw_rawz(ev, "},\"thinking\":{\"enabled\":");
+    jw_rawz(ev, conv_caps(r->model) & CAP_ADAPTIVE ? "true" : "false");
+    jw_raw(ev, "}", 1);
+    if (r->tui && r->tui->ed.vim) {
+        jw_rawz(ev, ",\"vim\":{\"mode\":");
+        jw_strz(ev, r->tui->ed.vim == VIM_INSERT ? "INSERT" : "NORMAL");
+        jw_raw(ev, "}", 1);
+    }
+    if (r->agent_name[0]) {
+        jw_rawz(ev, ",\"agent\":{\"name\":");
+        jw_strz(ev, r->agent_name);
+        jw_raw(ev, "}", 1);
+    }
+    if (r->sess.title[0]) {
+        jw_rawz(ev, ",\"session_name\":");
+        jw_strz(ev, r->sess.title);
+    }
+    jw_rawz(ev, ",\"version\":\"1.0.0\"");
+}
+
 void pol_statusline(cl_repl *r)
 {
     char file[300], line[600], d[24];
@@ -478,11 +563,11 @@ void pol_statusline(cl_repl *r)
     jw_rawz(&ev, ",\"model\":{\"id\":");
     jw_strz(&ev, r->model);
     jw_rawz(&ev, ",\"display_name\":");
-    jw_strz(&ev, r->model);
+    jw_strz(&ev, model_name(r->model));
     jw_rawz(&ev, "},\"workspace\":{\"current_dir\":");
     jw_strz(&ev, r->tools.root);
     jw_rawz(&ev, ",\"project_dir\":");
-    jw_strz(&ev, r->tools.root);
+    jw_strz(&ev, r->launch_root[0] ? r->launch_root : r->tools.root);
     jw_rawz(&ev, ",\"added_dirs\":[");
     for (i = 0; i < r->cfg.ndirs; i++) {
         if (i)
@@ -494,7 +579,8 @@ void pol_statusline(cl_repl *r)
     conv_dollars(r->conv.cost_micro, d, sizeof(d));
     jw_rawz(&ev, "},\"cost\":{\"total_cost_usd\":");
     jw_rawz(&ev, d + 1);
-    jw_rawz(&ev, "}}\n");
+    status_rest(r, &ev);
+    jw_rawz(&ev, "}\n");
     o = (char *)malloc(2048);
     if (!o || ev.oom || r->sys->write(r->sys->u, file, ev.p, ev.n)) {
         jw_free(&ev);
@@ -725,6 +811,7 @@ int pol_tools(cl_repl *r)
             s->name = d->name;
             s->description = d->description;
             s->path = d->path;
+            s->when = d->when && d->when[0] ? d->when : 0;
         }
     for (i = 0; (d = defs_nth(&r->defs, DEF_COMMAND, i)) != 0; i++)
         if (!d->no_model) {

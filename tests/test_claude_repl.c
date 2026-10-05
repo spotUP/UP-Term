@@ -2800,6 +2800,148 @@ static void test_gaps_perm_menu(void)
     cs_close();
 }
 
+/* Phase 3: skills, agents, styles, the status line (X1 X3 X4 X6 X8 X9) */
+static void test_gaps_ext(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char root[600], p[700], *b = 0;
+    long bn = 0;
+    strcpy(root, dir);
+    strcat(root, "/gapsext");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, ".claude/skills/echoer/SKILL.md",
+         "---\ndescription: Echoes things\nwhen_to_use: WHEN-ECHO-NEEDED\nallowed-tools: Bash(echo *)\n---\n"
+         "ECHO-SKILL for $0\n");
+    xput(root, ".claude/skills/forked/SKILL.md",
+         "---\ndescription: Looks in a subagent\ncontext: fork\nagent: Explore\n---\nFORKED-SKILL-TEXT $ARGUMENTS\n");
+    xput(root, ".claude/skills/pre/SKILL.md", "---\ndescription: Preloaded\n---\nPRELOADED-SKILL-BODY\n");
+
+    /* X1: the Skill tool expands the skill (arguments put in) and its
+     * allowed-tools let Bash(echo *) run in print mode, where nobody can
+     * say yes; X3: when_to_use in the Skill tool's list */
+    setup_in(&r, none, root);
+    add_answer("toolu_K1", "Skill", "{\"skill\":\"echoer\",\"args\":\"ARGX\"}", 0);
+    add_answer("toolu_B2", "Bash", "{\"command\":\"echo SKILL-RAN\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Skill -- use the skill", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 0 && strstr(sb.body[0], "- echoer: Echoes things WHEN-ECHO-NEEDED") != 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "ECHO-SKILL for ARGX") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "SKILL-RAN") != 0);
+    CHECK_INT((int)r.n_skills_run, 1);
+    repl_free(&r);
+    setup_in(&r, none, root);               /* without the skill: denied */
+    add_answer("toolu_B2", "Bash", "{\"command\":\"echo SKILL-RAN\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p just run it", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "no one can approve it") != 0);
+    repl_free(&r);
+
+    /* X1 context: fork: the skill runs in a subagent (its agent's prompt),
+     * the report is the result */
+    setup_in(&r, none, root);
+    add_answer("toolu_K2", "Skill", "{\"skill\":\"forked\",\"args\":\"S:\"}", 0);
+    add_answer(0, 0, 0, "FORK-REPORT");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Skill -- fork it", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "file search specialist") != 0 &&
+          strstr(sb.body[1], "FORKED-SKILL-TEXT S:") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "FORK-REPORT") != 0);
+    repl_free(&r);
+
+    /* X4 an agent's effort, preloaded skills, permissionMode plan (its Edit refused) */
+    xput(root, "ag.json", "{\"pl\":{\"description\":\"Plans\",\"prompt\":\"PL-PROMPT\",\"effort\":\"low\","
+                          "\"skills\":[\"pre\"],\"permissionMode\":\"plan\"}}");
+    xput(root, "f.txt", "x\n");
+    setup_in(&r, none, root);
+    add_answer("toolu_T3", "Task", "{\"description\":\"P\",\"prompt\":\"Plan it\",\"subagent_type\":\"pl\"}", 0);
+    add_answer("toolu_W3", "Write", "{\"file_path\":\"new.txt\",\"content\":\"y\"}", 0);
+    add_answer(0, 0, 0, "planned");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --agents ag.json plan", 0), 0);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "\"effort\":\"low\"") != 0 &&
+          strstr(sb.body[1], "# Skill: pre") != 0 && strstr(sb.body[1], "PRELOADED-SKILL-BODY") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "plan mode") != 0);
+    strcpy(p, root);
+    strcat(p, "/new.txt");
+    CHECK(!exists(p));
+    CHECK_INT(r.tools.perm.mode, PERM_DEFAULT);     /* the parent's own mode untouched */
+    repl_free(&r);
+
+    /* X6 a deny rule naming Agent covers the Task tool */
+    xput(root, "deny.json", "{\"permissions\":{\"deny\":[\"Agent(pl)\"]}}");
+    setup_in(&r, none, root);
+    add_answer("toolu_T4", "Task", "{\"description\":\"P\",\"prompt\":\"Plan it\",\"subagent_type\":\"pl\"}", 0);
+    add_answer(0, 0, 0, "denied then");
+    CHECK_INT(run_print(&r, "-p --agents ag.json --settings deny.json plan", 0), 0);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"is_error\":true") != 0);
+    repl_free(&r);
+
+    /* X8 the built-in styles Proactive and Concise; a custom style without
+     * keep-coding-instructions drops the way-of-working part; the setting
+     * is case-sensitive */
+    xput(root, ".claude/output-styles/plain.md", "---\nname: Plain\ndescription: x\n---\nPLAIN-STYLE\n");
+    xput(root, ".claude/output-styles/keep.md",
+         "---\nname: Keep\ndescription: x\nkeep-coding-instructions: true\n---\nKEEP-STYLE\n");
+    setup_in(&r, none, root);
+    repl_line(&r, "/output-style Concise");
+    CHECK(strstr(r.system, "Lead every response with the result") != 0);
+    repl_line(&r, "/output-style Proactive");
+    CHECK(strstr(r.system, "Start on a task as soon as it is given") != 0);
+    repl_line(&r, "/output-style Plain");
+    CHECK(strstr(r.system, "PLAIN-STYLE") != 0 && strstr(r.system, "todo list with TodoWrite") == 0);
+    repl_line(&r, "/output-style Keep");
+    CHECK(strstr(r.system, "KEEP-STYLE") != 0 && strstr(r.system, "todo list with TodoWrite") != 0);
+    repl_free(&r);
+    xput(root, ".claude/settings.local.json", "{\"outputStyle\":\"concise\"}");
+    setup_in(&r, none, root);
+    CHECK_STR(r.style, "");                 /* "concise" is no style's exact name: Default */
+    repl_free(&r);
+    xput(root, ".claude/settings.local.json", "{\"outputStyle\":\"Concise\"}");
+    setup_in(&r, none, root);
+    CHECK_STR(r.style, "Concise");
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.local.json");
+    remove(p);
+
+    /* X9 the status line's JSON: Claude Code's fields */
+    strcpy(p, "cat > ");
+    strcat(p, root);
+    strcat(p, "/status-in.json\necho OK\n");
+    xput(root, "st.sh", p);
+    strcpy(p, "{\"statusLine\":{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/st.sh\"}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    sess_rename(&r.sess, "My Session");
+    pol_statusline(&r);
+    CHECK_STR(r.status_text, "OK");
+    strcpy(p, root);
+    strcat(p, "/status-in.json");
+    CHECK_INT(sys.read(sys.u, p, 100000, &b, &bn), 0);
+    if (b) {
+        CHECK(strstr(b, "\"model\":{\"id\":\"claude-opus-5-5\",\"display_name\":\"Opus 5.5\"}") != 0);
+        CHECK(strstr(b, "\"total_lines_added\":0") != 0 && strstr(b, "\"total_api_duration_ms\":") != 0);
+        CHECK(strstr(b, "\"context_window\":{\"context_window_size\":1000000,") != 0);
+        CHECK(strstr(b, "\"used_percentage\":0") != 0 && strstr(b, "\"remaining_percentage\":100") != 0);
+        CHECK(strstr(b, "\"effort\":{\"level\":\"medium\"}") != 0 && strstr(b, "\"thinking\":{\"enabled\":true}") != 0);
+        CHECK(strstr(b, "\"session_name\":\"My Session\"") != 0 && strstr(b, "\"version\":") != 0);
+        CHECK(strstr(b, "\"project_dir\":") != 0);
+    }
+    free(b);
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -2818,6 +2960,7 @@ void suite_claude_repl(void)
     test_gaps_verbose();
     test_gaps_commands();
     test_gaps_perm_menu();
+    test_gaps_ext();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);
