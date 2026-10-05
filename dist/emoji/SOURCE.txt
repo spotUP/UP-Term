@@ -1,0 +1,28 @@
+Twemoji colour emoji pages for UP-Term
+
+The files 1F0 ... 1FA, 23 ... 32 in this drawer are 1192 emoji of Twemoji
+17.0.3: every one named by a single code point that a terminal draws two
+cells wide (U+1F000-U+1FAFF, and the emoji-presentation characters of
+U+2300-U+32FF). UP-Term's tools/gen_emoji.py scaled each from its 72 px
+picture to 16x16 and 16x8 pixels and stored them, one file per 256 code
+points, as a palette and indices (at most 16 colours where that keeps
+every pixel within 48 of 255 of the art, else the exact colours). UP-Term
+draws them over two cells on an RTG screen of 15 bits or more with
+cybergraphics.library (Picasso96 or CyberGraphX); elsewhere it draws the
+one-colour Unifont glyph.
+
+  Emoji:      Twemoji 17.0.3, https://github.com/jdecked/twemoji
+  Taken from: https://github.com/jdecked/twemoji/archive/refs/tags/v17.0.3.tar.gz
+              sha256 a0855654b633045ae2337537e77f1bb4361162f7fcd910e613eaab1d6d9c5fca
+              (assets/72x72)
+  Copyright:  Copyright (c) 2014-2021 Twitter; Copyright (c) 2022-present
+              Jason Sofonia & Justine De Caires, and other contributors.
+
+Licence: the Twemoji graphics are licensed under the Creative Commons
+Attribution 4.0 International licence (CC-BY 4.0; CC-BY-4.0.txt, beside
+this file; https://creativecommons.org/licenses/by/4.0/). Changes made:
+scaled down to 16x16 and 16x8 pixels, reduced to at most 16 colours where
+the error stays small, and stored in UP-Term's page format. No endorsement
+by the licensors is implied.
+
+Rebuild them from the source: make emoji (in the UP-Term source tree).

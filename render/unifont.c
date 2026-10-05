@@ -110,6 +110,15 @@ void uf_init(uf_cache *c, uf_load_fn load, uf_release_fn release, void *user, vt
     c->user = user;
     c->mask = mask;
     c->mask_size = mask_size;
+    c->check = uf_page_check;
+    c->nslots = UF_SLOTS;
+}
+
+void uf_init_pages(uf_cache *c, uf_load_fn load, uf_release_fn release, void *user, uf_check_fn check, int nslots)
+{
+    uf_init(c, load, release, user, 0, 0);
+    c->check = check;
+    c->nslots = nslots < 1 ? 1 : nslots > UF_SLOTS ? UF_SLOTS : nslots;
 }
 
 void uf_flush(uf_cache *c)
@@ -139,7 +148,7 @@ static uf_slot *page_slot(uf_cache *c, int page)
     vt_u8 *buf = 0;
     long n;
     int i;
-    for (i = 0; i < UF_SLOTS; i++)
+    for (i = 0; i < c->nslots; i++)
         if (c->slot[i].buf && c->slot[i].page == page)
             return &c->slot[i];
     if (page >= UF_PAGES || c->absent[page >> 3] & (0x80 >> (page & 7)) || !c->load)
@@ -148,14 +157,14 @@ static uf_slot *page_slot(uf_cache *c, int page)
     c->loads++;
     if (n == -2)
         return 0; /* not now: asked again next time */
-    if (n < 0 || !uf_page_check(buf, n, page)) {
+    if (n < 0 || !c->check(buf, n, page)) {
         if (n >= 0 && buf && c->release)
             c->release(c->user, buf);
         c->absent[page >> 3] |= (vt_u8)(0x80 >> (page & 7));
         return 0;
     }
     s = &c->slot[0];
-    for (i = 0; i < UF_SLOTS; i++) {
+    for (i = 0; i < c->nslots; i++) {
         if (!c->slot[i].buf) {
             s = &c->slot[i]; /* an empty one */
             break;
@@ -171,18 +180,27 @@ static uf_slot *page_slot(uf_cache *c, int page)
     return s;
 }
 
+const vt_u8 *uf_page(uf_cache *c, int page, long *len)
+{
+    uf_slot *s;
+    if (page < 0 || !(s = page_slot(c, page)))
+        return 0;
+    s->used = ++c->clock;
+    *len = s->len;
+    return s->buf;
+}
+
 const vt_u8 *uf_glyph(void *cache, vt_u32 cp, int cells, int *bpr)
 {
     uf_cache *c = (uf_cache *)cache;
-    uf_slot *s;
-    const vt_u8 *g;
+    const vt_u8 *p, *g;
+    long len;
     int wide, b;
     if (!c || !c->mask || cp >= (vt_u32)UF_PAGES << 8 || (c->ch != 16 && c->ch != 8) || c->cw < 1)
         return 0; /* past plane 1, or a cell Unifont cannot be drawn at: no file read for it */
-    if (!(s = page_slot(c, (int)(cp >> 8))))
+    if (!(p = uf_page(c, (int)(cp >> 8), &len)))
         return 0;
-    s->used = ++c->clock;
-    if (!(g = uf_page_glyph(s->buf, (int)(cp & 0xFF), &wide)))
+    if (!(g = uf_page_glyph(p, (int)(cp & 0xFF), &wide)))
         return 0;
     cells = cells == 2 ? 2 : 1;
     b = ((cells * c->cw + 15) >> 4) << 1;

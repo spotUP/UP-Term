@@ -299,21 +299,26 @@ static int outline_sync(vtwin *w)
     return 1;
 }
 
-/* Unifont's page files (U2), read by a glyph worker: the outline font's
- * when there is one, else one of its own (the handler may make no DOS
- * call). A page is read whole and kept in a buffer of its size. */
+/* The glyph worker that reads page files (the handler may make no DOS
+ * call): the outline font's when there is one, else one of its own. */
+static vo_font *page_reader(vtwin *w)
+{
+    if (w->outline)
+        return w->outline;
+    if (!w->reader && w->font)
+        w->reader = vo_open("", w->font->tf_XSize, w->font->tf_YSize, w->font->tf_Baseline);
+    return w->reader;
+}
+
+/* Unifont's page files (U2), read by the glyph worker. A page is read
+ * whole and kept in a buffer of its size. */
 static long uni_load(void *u, int page, vt_u8 **buf)
 {
     vtwin *w = (vtwin *)u;
     char path[32];
     UBYTE *b, *e;
     LONG n;
-    vo_font *f = w->outline;
-    if (!f) {
-        if (!w->reader && w->font)
-            w->reader = vo_open("", w->font->tf_XSize, w->font->tf_YSize, w->font->tf_Baseline);
-        f = w->reader;
-    }
+    vo_font *f = page_reader(w);
     if (!f)
         return -2; /* no worker now: asked again later */
     strcpy(path, UF_DIR);
@@ -340,17 +345,58 @@ static void uni_release(void *u, vt_u8 *buf)
         FreeVec(buf);
 }
 
+/* The colour emoji pages (U4), read by the same worker: the header first
+ * for the page's length (they are up to ~106 KB, not one size), then the
+ * page into a buffer of that length. */
+static long emo_load(void *u, int page, vt_u8 **buf)
+{
+    vtwin *w = (vtwin *)u;
+    char path[32];
+    UBYTE head[CE_HEADER], *b;
+    LONG n, len;
+    vo_font *f = page_reader(w);
+    if (!f)
+        return -2;
+    strcpy(path, CE_DIR);
+    uf_page_name(page, path + strlen(path));
+    n = vo_read(f, path, head, CE_HEADER);
+    if (n <= 0)
+        return -1; /* not installed: Unifont's glyph, and not asked again */
+    if ((len = ce_page_length(head, n)) < 0)
+        return -1;
+    if (!(b = (UBYTE *)AllocVec((ULONG)len, MEMF_ANY)))
+        return -2;
+    if (vo_read(f, path, b, len) != len) {
+        FreeVec(b);
+        return -1;
+    }
+    *buf = b;
+    return len;
+}
+
 /* The Unifont cache on the renderer: made at the first bind, its mask in
- * chip RAM; none without it (the cells look as before U2). */
+ * chip RAM; none without it (the cells look as before U2). The colour
+ * emoji's store beside it, made at the first bind to a screen that shows
+ * colour (none on AGA or 8-bit RTG: ~3.3 KB a window saved); its pages
+ * are read when an emoji is first drawn. */
 static void uni_bind(vtwin *w)
 {
     if (!w->uni_mask && (w->uni_mask = (UBYTE *)AllocVec(UF_MASK_MAX, MEMF_CHIP | MEMF_CLEAR)) != 0)
         uf_init(&w->uni, uni_load, uni_release, w, w->uni_mask, UF_MASK_MAX);
     vr_set_unifont(&w->r, w->uni_mask ? &w->uni : 0);
+    if (!w->emo && vr_can_colour(&w->r) && (w->emo = (struct ce_store *)AllocVec(sizeof(ce_store), MEMF_ANY)) != 0)
+        uf_init_pages(&w->emo->pages, emo_load, uni_release, w, ce_page_check, CE_SLOTS);
+    vr_set_emoji(&w->r, w->emo);
 }
 
 static void uni_free(vtwin *w)
 {
+    vr_set_emoji(&w->r, 0);
+    if (w->emo) {
+        uf_flush(&w->emo->pages);
+        FreeVec(w->emo);
+        w->emo = 0;
+    }
     vr_set_unifont(&w->r, 0);
     if (w->uni_mask) {
         uf_flush(&w->uni);
@@ -849,6 +895,7 @@ void vtwin_unbind(vtwin *w)
     w->pointer_on = 0; /* the window's ReportMouse goes with it */
     vr_set_outline(&w->r, 0);
     vr_set_unifont(&w->r, 0);
+    vr_set_emoji(&w->r, 0);
     vr_free(&w->r);
     w->win = 0;
 }
