@@ -42,15 +42,18 @@
 #include <devices/timer.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <proto/timer.h>
 #include <clib/alib_protos.h> /* NewList */
 
 #include <string.h>
 #include "vtcon_packets.h"
 #include "brk.h"
+#include "waitset.h"
 #include "../tty/ldisc.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
+struct Device *TimerBase; /* GetSysTime: WAIT_CHAR deadlines */
 
 static LONG handler_main(void);
 
@@ -117,7 +120,7 @@ typedef struct pair {
     struct DosPacket *mreads[Q], *sreads[Q], *swrites[Q];
     int nmr, nsr, nsw;
     long swoff;                  /* bytes of swrites[0] already taken */
-    struct DosPacket *mwait, *swait;       /* WAIT_CHAR, one per side */
+    waitset mwait, swait;                  /* WAIT_CHAR, per side, one per task (waitset.h) */
     struct timerequest *mtimer, *stimer;   /* their timeouts */
     struct timerequest *vtimer;            /* VTIME */
     int mtimer_busy, stimer_busy, vtimer_busy, vtimer_fired;
@@ -282,11 +285,33 @@ static int slave_writes(pair *p)
     return moved;
 }
 
-static void finish_wait(struct DosPacket **w, struct timerequest *t, int *busy, LONG result)
+static ws_time now_time(void)
 {
+    struct timeval tv;
+    ws_time t;
+    GetSysTime(&tv);
+    t.s = tv.tv_secs;
+    t.us = tv.tv_micro;
+    return t;
+}
+
+/* the side's timer to the earliest deadline of its waiters, or off */
+static void rearm(waitset *w, struct timerequest *t, int *busy, ws_time now)
+{
+    long next = ws_next(w, now);
+    if (next < 0)
+        timer_stop(t, busy);
+    else
+        timer_start(t, busy, next ? (ULONG)next : 1);
+}
+
+/* input (or the end of it) for one side: every waiter is answered */
+static void finish_waits(waitset *w, struct timerequest *t, int *busy, LONG result)
+{
+    struct DosPacket *d;
     timer_stop(t, busy);
-    reply(*w, result, 0);
-    *w = 0;
+    while ((d = (struct DosPacket *)ws_take(w)) != 0)
+        reply(d, result, 0);
 }
 
 static int master_reads(pair *p)
@@ -309,8 +334,8 @@ static int master_reads(pair *p)
         shift(p->mreads, &p->nmr);
         moved = 1;
     }
-    if (p->mwait && (p->out_len || (p->slave_ever && p->slaves <= 0)))
-        finish_wait(&p->mwait, p->mtimer, &p->mtimer_busy, DOSTRUE);
+    if (p->mwait.n && (p->out_len || (p->slave_ever && p->slaves <= 0)))
+        finish_waits(&p->mwait, p->mtimer, &p->mtimer_busy, DOSTRUE);
     return moved;
 }
 
@@ -337,8 +362,8 @@ static int slave_reads(pair *p)
         shift(p->sreads, &p->nsr);
         moved = 1;
     }
-    if (p->swait && (hung_up(p) || ld_input_pending(&p->ld)))
-        finish_wait(&p->swait, p->stimer, &p->stimer_busy, DOSTRUE);
+    if (p->swait.n && (hung_up(p) || ld_input_pending(&p->ld)))
+        finish_waits(&p->swait, p->stimer, &p->stimer_busy, DOSTRUE);
     return moved;
 }
 
@@ -388,8 +413,8 @@ static pair *new_pair(const char *id)
 static void free_pair(pair *p)
 {
     struct Message *m;
-    timer_stop(p->mtimer, &p->mtimer_busy);
-    timer_stop(p->stimer, &p->stimer_busy);
+    finish_waits(&p->mwait, p->mtimer, &p->mtimer_busy, DOSFALSE);
+    finish_waits(&p->swait, p->stimer, &p->stimer_busy, DOSFALSE);
     timer_stop(p->vtimer, &p->vtimer_busy);
     if (p->mtimer)
         DeleteIORequest((struct IORequest *)p->mtimer);
@@ -526,25 +551,27 @@ static void by_port(struct DosPacket *d, pair *p, int master)
         return;
     }
     {
-        struct DosPacket **w = master ? &p->mwait : &p->swait;
+        waitset *w = master ? &p->mwait : &p->swait;
+        struct timerequest *t = master ? p->mtimer : p->stimer;
+        int *busy = master ? &p->mtimer_busy : &p->stimer_busy;
         int ready = master ? (p->out_len || (p->slave_ever && p->slaves <= 0))
                            : (hung_up(p) || ld_input_pending(&p->ld));
-        /* a newer WAIT_CHAR ends the older one: it is stale (ixemul's
-         * select sends one per call, and one with no timeout before it
-         * closes a file whose select is still out) */
-        if (*w)
-            finish_wait(w, master ? p->mtimer : p->stimer, master ? &p->mtimer_busy : &p->stimer_busy, DOSFALSE);
+        struct DosPacket *old;
+        ws_time now = now_time();
+        /* a newer WAIT_CHAR ends the older one of the same task: it is
+         * stale (ixemul's select sends one per call, and one with no
+         * timeout before it closes a file whose select is still out).
+         * Other tasks' wait on: ixemul 80.x selects per process. */
+        if ((old = (struct DosPacket *)ws_drop_task(w, d->dp_Port->mp_SigTask)) != 0)
+            reply(old, DOSFALSE, 0);
         if (ready) {
             reply(d, DOSTRUE, 0);
         } else if (d->dp_Arg1 <= 0) {
             reply(d, DOSFALSE, 0); /* a poll */
-        } else {
-            *w = d;
-            if (master)
-                timer_start(p->mtimer, &p->mtimer_busy, (ULONG)d->dp_Arg1);
-            else
-                timer_start(p->stimer, &p->stimer_busy, (ULONG)d->dp_Arg1);
+        } else if ((old = (struct DosPacket *)ws_add(w, d, d->dp_Port->mp_SigTask, now, (ULONG)d->dp_Arg1)) != 0) {
+            reply(old, DOSFALSE, 0);   /* the set was full: the oldest goes */
         }
+        rearm(w, t, busy, now);
     }
 }
 
@@ -729,6 +756,16 @@ static void packet(struct DosPacket *d, pair *via, int side)
 
 /* ---- main -------------------------------------------------------------------- */
 
+/* a side's timer is up: the waiters whose time it is hear "no" */
+static void expire(waitset *w, struct timerequest *t, int *busy)
+{
+    struct DosPacket *d;
+    ws_time now = now_time();
+    while ((d = (struct DosPacket *)ws_expired(w, now)) != 0)
+        reply(d, DOSFALSE, 0);
+    rearm(w, t, busy, now);
+}
+
 static void timers_done(void)
 {
     struct MinNode *n;
@@ -737,18 +774,12 @@ static void timers_done(void)
         if (p->mtimer_busy && CheckIO((struct IORequest *)p->mtimer)) {
             WaitIO((struct IORequest *)p->mtimer);
             p->mtimer_busy = 0;
-            if (p->mwait) {
-                reply(p->mwait, DOSFALSE, 0);
-                p->mwait = 0;
-            }
+            expire(&p->mwait, p->mtimer, &p->mtimer_busy);
         }
         if (p->stimer_busy && CheckIO((struct IORequest *)p->stimer)) {
             WaitIO((struct IORequest *)p->stimer);
             p->stimer_busy = 0;
-            if (p->swait) {
-                reply(p->swait, DOSFALSE, 0);
-                p->swait = 0;
-            }
+            expire(&p->swait, p->stimer, &p->stimer_busy);
         }
         if (p->vtimer_busy && CheckIO((struct IORequest *)p->vtimer)) {
             WaitIO((struct IORequest *)p->vtimer);
@@ -785,6 +816,8 @@ static LONG handler_main(void)
             DeleteIORequest((struct IORequest *)timer_proto);
             timer_proto = 0;
         }
+        if (timer_proto)
+            TimerBase = timer_proto->tr_node.io_Device;
     }
     if (!timer_proto || !vers[0]) { /* vers[0]: keeps the $VER string linked in */
         ReplyPkt(d, DOSFALSE, ERROR_NO_FREE_STORE);

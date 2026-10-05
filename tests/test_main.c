@@ -14,6 +14,7 @@ void suite_sh_parse(void);
 void suite_sh_expand(void);
 void suite_sh_exec(void);
 void suite_ldisc(void);
+void suite_waitset(void);
 void suite_upcon(void);
 void suite_upconf(void);
 void suite_prefs(void);
@@ -62,6 +63,7 @@ static const h_suite suites[] = {
     { "sh_expand", suite_sh_expand },
     { "sh_exec", suite_sh_exec },
     { "ldisc", suite_ldisc },
+    { "waitset", suite_waitset },
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
     { "prefs", suite_prefs },

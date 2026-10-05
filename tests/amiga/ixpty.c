@@ -13,6 +13,8 @@
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <stdlib.h>
 
 static int passed, total;
 static volatile int winch, intr;
@@ -90,7 +92,21 @@ static void on_int(int sig)
     intr++;
 }
 
-int main(void)
+/* loop iterations in ms milliseconds: how much CPU this task gets */
+static long spin(long ms)
+{
+    struct timeval a, b;
+    long n = 0, el;
+    gettimeofday(&a, 0);
+    do {
+        n++;
+        gettimeofday(&b, 0);
+        el = (b.tv_sec - a.tv_sec) * 1000 + (b.tv_usec - a.tv_usec) / 1000;
+    } while (el < ms);
+    return n;
+}
+
+int main(int argc, char **argv)
 {
     static const char c1[] = "pqrstu", c2[] = "0123456789abcdef";
     char mname[16], sname[16], seen[80];
@@ -100,6 +116,9 @@ int main(void)
     struct timeval t0, t1;
     long ms;
 
+    /* a child of the two-select check: select the slave it inherited */
+    if (argc > 2 && !strcmp(argv[1], "selwait"))
+        return readable(atoi(argv[2]), 4000000) ? 0 : 1;
     unlink("/RAM/ixpty.log");
     /* the BSD way: the first master that opens is free */
     for (i = 0; c1[i] && m < 0; i++)
@@ -203,6 +222,36 @@ int main(void)
         ms = (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_usec - t0.tv_usec) / 1000;
         sprintf(seen, "%ld ms", ms);
         check(ms < 1000, "closing a slave after a select takes no 10 s", seen);
+    }
+
+    /* two processes select the slave at once (ixemul 80.x has a select
+     * packet out per process): both wait without taking turns ending the
+     * other's -- the CPU stays free -- and both wake on the input */
+    {
+        char fdarg[8];
+        long alone, with;
+        int pid[2], st, ok = 0, k;
+        drain(s);
+        alone = spin(1000);
+        sprintf(fdarg, "%d", s);
+        for (k = 0; k < 2; k++)
+            if ((pid[k] = vfork()) == 0) {
+                execl(argv[0], argv[0], "selwait", fdarg, (char *)0);
+                _exit(2);
+            }
+        with = spin(1000);
+        sprintf(seen, "%ld%% of the CPU left", alone ? with * 100 / alone : 0);
+        check(with * 2 >= alone, "two processes selecting the slave leave the CPU free", seen);
+        write(m, "x\n", 2);
+        gettimeofday(&t0, 0);
+        for (k = 0; k < 2; k++)
+            if (pid[k] > 0 && waitpid(pid[k], &st, 0) == pid[k] && WIFEXITED(st) && WEXITSTATUS(st) == 0)
+                ok++;
+        gettimeofday(&t1, 0);
+        ms = (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_usec - t0.tv_usec) / 1000;
+        sprintf(seen, "%d of 2 after %ld ms", ok, ms);
+        check(ok == 2 && ms < 1000, "both wake on the input", seen);
+        drain(s);
     }
 
     /* hang-up: the master's close is end of file for the slave */

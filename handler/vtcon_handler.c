@@ -56,6 +56,7 @@
 #include "menu_ids.h"
 #include "slash.h"
 #include "brk.h"
+#include "waitset.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../config/termurl.h"
@@ -151,7 +152,7 @@ typedef struct con {
     int nreads;
     struct Task *held[8];        /* ACTION_VTCON_HOLD: their reads wait */
     int nheld;
-    struct DosPacket *waitchar;
+    waitset waitchar;                /* WAIT_CHAR, one per task (waitset.h) */
     struct MsgPort *timer_port;
     struct timerequest *timer;
     int timer_open, timer_busy;
@@ -2598,17 +2599,24 @@ static void output(con *c, const vt_u8 *b, long n)
 
 /* ---- reads ------------------------------------------------------------------ */
 
-static void finish_waitchar(con *c, LONG result)
+static void stop_timer(con *c)
 {
-    if (!c->waitchar)
-        return;
     if (c->timer_busy) {
         AbortIO((struct IORequest *)c->timer);
         WaitIO((struct IORequest *)c->timer);
         c->timer_busy = 0;
     }
-    reply(c->waitchar, result, 0);
-    c->waitchar = 0;
+}
+
+/* input (or its end): every WAIT_CHAR is answered */
+static void finish_waitchar(con *c, LONG result)
+{
+    struct DosPacket *d;
+    if (!c->waitchar.n)
+        return;
+    stop_timer(c);
+    while ((d = (struct DosPacket *)ws_take(&c->waitchar)) != 0)
+        reply(d, result, 0);
 }
 
 static int line_end(con *c)
@@ -2792,7 +2800,7 @@ static void tty_reads(con *c)
         reply(p, n < 0 ? 0 : n, 0);
         drop_read(c, k);
     }
-    if (c->waitchar && ld_input_pending(&c->ld))
+    if (c->waitchar.n && ld_input_pending(&c->ld))
         finish_waitchar(c, DOSTRUE);
 }
 
@@ -2829,7 +2837,7 @@ static void service_reads(con *c)
     next:
         drop_read(c, k);
     }
-    if (c->waitchar && c->in_len)
+    if (c->waitchar.n && c->in_len)
         finish_waitchar(c, DOSTRUE);
 }
 
@@ -5400,13 +5408,31 @@ static struct IOStdReq *rom_console(con *c)
     return c->rom_io;
 }
 
-static void start_timer(con *c, ULONG micros)
+static ws_time now_time(con *c)
 {
-    if (!c->timer_open || c->timer_busy)
+    struct timeval tv;
+    ws_time t;
+    t.s = t.us = 0;
+    if (c->timer_open) {   /* TimerBase is the opened timer.device */
+        GetSysTime(&tv);
+        t.s = tv.tv_secs;
+        t.us = tv.tv_micro;
+    }
+    return t;
+}
+
+/* the WAIT_CHAR timer to the earliest deadline of the waiters, or off */
+static void rearm_timer(con *c, ws_time now)
+{
+    long next = ws_next(&c->waitchar, now);
+    stop_timer(c);
+    if (!c->timer_open || next < 0)
         return;
+    if (!next)
+        next = 1;
     c->timer->tr_node.io_Command = TR_ADDREQUEST;
-    c->timer->tr_time.tv_secs = micros / 1000000;
-    c->timer->tr_time.tv_micro = micros % 1000000;
+    c->timer->tr_time.tv_secs = (ULONG)next / 1000000;
+    c->timer->tr_time.tv_micro = (ULONG)next % 1000000;
     SendIO((struct IORequest *)c->timer);
     c->timer_busy = 1;
 }
@@ -5611,11 +5637,15 @@ static void packet(con *c, struct DosPacket *p)
         service_reads(c);
         return;
     case ACTION_WAIT_CHAR:
-        /* a newer WAIT_CHAR ends the older one: it is stale (ixemul's
-         * select sends one per call, and one with no timeout before it
-         * closes a file whose select is still out) */
-        if (c->waitchar)
-            finish_waitchar(c, DOSFALSE);
+        /* a newer WAIT_CHAR ends the older one of the same task: it is
+         * stale (ixemul's select sends one per call, and one with no
+         * timeout before it closes a file whose select is still out).
+         * Other tasks' wait on: ixemul 80.x selects per process. */
+        {
+            struct DosPacket *old = (struct DosPacket *)ws_drop_task(&c->waitchar, p->dp_Port->mp_SigTask);
+            if (old)
+                reply(old, DOSFALSE, 0);
+        }
         /* a program that looks for input sees its output on screen first,
          * not at the next frame (More and Ed feel it; CCON does the same;
          * and conbench's SYNC barrier is this packet: without the draw
@@ -5631,8 +5661,12 @@ static void packet(con *c, struct DosPacket *p)
         } else if (p->dp_Arg1 <= 0) {
             reply(p, DOSFALSE, 0); /* a poll */
         } else {
-            c->waitchar = p;
-            start_timer(c, (ULONG)p->dp_Arg1);
+            ws_time now = now_time(c);
+            struct DosPacket *old = (struct DosPacket *)ws_add(&c->waitchar, p, p->dp_Port->mp_SigTask,
+                                                               now, (ULONG)p->dp_Arg1);
+            if (old)
+                reply(old, DOSFALSE, 0);   /* the set was full: the oldest goes */
+            rearm_timer(c, now);
         }
         return;
     case ACTION_STACK:
@@ -5935,12 +5969,16 @@ static LONG handler_main(void)
             c->rtimer_fired = 1; /* VTIME is up: the waiting read takes what there is */
         }
         if (c->timer_busy && CheckIO((struct IORequest *)c->timer)) {
+            /* the waiters whose time it is hear "no"; the timer goes on
+             * for the next */
+            struct DosPacket *d;
+            ws_time now;
             WaitIO((struct IORequest *)c->timer);
             c->timer_busy = 0;
-            if (c->waitchar) {
-                reply(c->waitchar, DOSFALSE, 0);
-                c->waitchar = 0;
-            }
+            now = now_time(c);
+            while ((d = (struct DosPacket *)ws_expired(&c->waitchar, now)) != 0)
+                reply(d, DOSFALSE, 0);
+            rearm_timer(c, now);
         }
         service_reads(c);
         }
