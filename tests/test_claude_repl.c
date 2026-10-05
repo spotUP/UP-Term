@@ -5516,6 +5516,69 @@ static void test_gaps3_suggest(void)
     cs_close();
 }
 
+/* The rig's claude2-rewind symptom, C:Claude's side: a prompt typed (with
+ * its Return) while the prompt suggestion's background request is being
+ * answered stops the request and is still sent as one line, and the next
+ * line ("/help") is still a command; the same after the suggestion is
+ * shown. (Passes on main: given '\r' and '/', the box is right. The rig
+ * box -- Return a new line, a keypad '/' gone -- is the window's own
+ * cooked line editor, i.e. the console left termios mode.) */
+static const char *g3_ta_keys[] = { "hi\r", "please edit it\r", "/help\r", "/exit\r", 0 };
+static void g3_typeahead(void)
+{
+    /* typed only while the suggestion's answer is coming in */
+    g3_ta_keys[1] = sb.nreq == 2 && sb.cur == 1 && sb.pos > 0 ? "!please edit it\r" : "please edit it\r";
+}
+
+static void test_gaps3_suggest_typeahead(void)
+{
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "true", 1);
+    g3_screen(&r, g3_ta_keys, "g3suggest_ta", root);
+    add_stream("tool_final.sse");           /* cache_read_input_tokens 1500: warm */
+    add_answer(0, 0, 0, "run the tests\n");
+    add_answer(0, 0, 0, "edited");
+    CHECK_INT(repl_screen(&r), 0);
+    cs.before_read = g3_typeahead;
+    repl_run(&r);
+    cs.before_read = 0;
+    g3_ta_keys[1] = "please edit it\r";
+    setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false", 1);
+    g3_dump();
+    CHECK_INT(cs.next, 4);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "Predict what the user is most likely to type next") != 0);
+    /* the typed prompt went out as one line, its Return no newline */
+    CHECK(sb.nreq >= 3 && strstr(sb.body[2], "{\"type\":\"text\",\"text\":\"please edit it\"}") != 0);
+    CHECK_INT(r.n_suggested, 0);            /* the key dropped it */
+    CHECK(strstr(cs.sent.p, "Not on the Amiga (type one to see why)") != 0);   /* /help ran */
+    repl_free(&r);
+    cs_close();
+    {
+        /* the rig's order: the suggestion (the fixture's text.sse) shown, then typed */
+        static const char *k2[] = { "hi\r", "please edit it", "\r", "/help", "\r", "/exit\r", 0 };
+        stub_reset();
+        setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "true", 1);
+        g3_screen(&r, k2, "g3suggest_ta", root);
+        add_stream("tool_final.sse");
+        add_stream("text.sse");
+        add_answer(0, 0, 0, "edited");
+        CHECK_INT(repl_screen(&r), 0);
+        repl_run(&r);
+        setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false", 1);
+        g3_dump();
+        CHECK_INT(cs.next, 6);
+        CHECK_INT(sb.nreq, 3);
+        CHECK(sb.nreq >= 3 && strstr(sb.body[2], "{\"type\":\"text\",\"text\":\"please edit it\"}") != 0);
+        CHECK_INT(r.n_suggested, 1);
+        CHECK(strstr(cs.sent.p, "Not on the Amiga (type one to see why)") != 0);
+        repl_free(&r);
+        cs_close();
+    }
+}
+
 /* G10: after three prompts, three minutes with no key (the terminal never
  * reported its focus): the recap, made in the background, once; a fourth
  * idle minute makes no second one */
@@ -5652,6 +5715,7 @@ static void test_gaps3(void)
     test_gaps3_keybindings();
     test_gaps3_recap();
     test_gaps3_suggest();
+    test_gaps3_suggest_typeahead();
     test_gaps3_afk();
     test_gaps3_agent_mention();
     test_gaps3_bypass();
