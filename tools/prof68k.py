@@ -6,7 +6,7 @@ before timing anything"). On a stock A1200 every instruction outside the
 function's code footprint are what the speed work is steered by.
 
   tools/prof68k.py build                 engbench with line debug info -> build/prof/engbench
-  tools/prof68k.py run ONLY w PERS p     count one engbench workload (w 0-5, p 0 xterm / 1 amiga)
+  tools/prof68k.py run ONLY w PERS p     count one engbench workload (w 0-6, p 0 xterm / 1 amiga)
         [--bytes N]                      divide by N input bytes as well (instructions a byte)
 
 The program runs once under `vamos -C 68020 -I` (an instruction trace);

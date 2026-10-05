@@ -15,7 +15,7 @@ static void damage(void *u, int x0, int y0, int x1, int y1) { (void)u; (void)x0;
 static void scroll(void *u, int t, int b, int n) { (void)u; (void)t; (void)b; (void)n; }
 
 static char buf[170000];
-static int plain_lines = 816; /* LINES n: workload 0's line count (at most 2000) */
+static int plain_lines = 816; /* LINES n: workload 0's and 6's line count (at most 2000) */
 static long n;
 
 static void s(const char *t) { while (*t) buf[n++] = *t++; }
@@ -48,8 +48,15 @@ static void build(int w)
     case 4: /* position, erase to the end of the line, text: a full-screen repaint */
         for (i = 0; i < 20; i++) for (y = 1; y <= 30; y++) { s("\033["); num(y); s(";1H\033[K"); for (x = 0; x < 50; x++) buf[n++] = (char)('a' + (x + y + i) % 26); }
         break;
-    default: /* insert and delete lines */
+    case 5: /* insert and delete lines */
         for (i = 0; i < 300; i++) s("\033[5;1H\033[L\033[M");
+        break;
+    default: /* LINES lines of ls -l --color: a coloured name after plain text (W23: what
+              * a styled line costs the scrollback) */
+        for (i = 0; i < plain_lines; i++) {
+            s("-rw-r--r--  1 spot  staff  "); num(i % 1000); s("  5 Okt 12:"); num(10 + i % 50);
+            s(" \033[01;34mdirectory_"); num(i % 1000); s("\033[0m\r\n");
+        }
         break;
     }
 }
@@ -302,6 +309,57 @@ static int asm_check(void)
 
 /* the renderer's assembler (render/, owned by the renderer work) against
  * its C: reported apart, so a fault there does not stop the engine numbers */
+/* The packed scrollback (W23) through the assembler build: sb_store's
+ * runs, cut by vt_asm_pack_run where a cell is not plain ASCII and taken on
+ * again after it, decode to the cells they came from. The host suite
+ * (sbpack, VT_CHECK_USED) checks the C build's; this is the only check of
+ * the VT_ASM one. 0 when right, 73 + the case when a line came back
+ * different, 99 when there was no memory. */
+static int sb_check(void)
+{
+    static const char *const cases[] = {
+        "plain ascii text, the common case",
+        "caf\303\251 \303\274ber \303\261 between",                 /* Latin-1 inside an ASCII run */
+        "\033[1;3;4mbold italic under\033[0m plain \033[1mbold again",
+        "\033[38;5;196;48;5;21m256\033[38;2;1;2;3;48;2;250;251;252mrgb\033[39mdflt\033[49mboth\033[0m",
+        "\033]8;;http://example.com/a\033\\link\033]8;;\033\\ between",
+        "ab\344\270\255\346\226\207 wide \344\270\212 cd",          /* CJK: width 2, its right half */
+        "x\360\237\230\200 grin \360\237\221\215\360\237\217\275y", /* clusters beyond the BMP */
+        "e\314\201 n\314\203 combined",                             /* combining marks */
+        "\033[44mblue\033[K",                                       /* a coloured tail */
+        "\033[31m\342\224\214\342\224\200\342\224\220 box \033[32mgreen",
+    };
+    static vt_cell saved[300];
+    vt_term *t;
+    const vt_cell *c;
+    int i, k, n, sn;
+    for (i = 0; i <= (int)(sizeof(cases) / sizeof(cases[0])); i++) {
+        int cols = i < (int)(sizeof(cases) / sizeof(cases[0])) ? 40 : 300;
+        if (!(t = vt_new(cols, 3, 10, 0, 0)))
+            return 99;
+        if (cols == 40) {
+            vt_write(t, (const vt_u8 *)cases[i], (long)strlen(cases[i]));
+        } else { /* 300 bold cells, an ASCII run longer than a run's 255 */
+            vt_write(t, (const vt_u8 *)"\033[1m", 4);
+            for (k = 0; k < 300; k++)
+                vt_write(t, (const vt_u8 *)(k % 7 ? "a" : "\303\251"), k % 7 ? 1 : 2);
+        }
+        c = vt_row(t, 0, &sn);
+        memcpy(saved, c, sn * sizeof(vt_cell));
+        vt_write(t, (const vt_u8 *)"\033[0m\r\n\n\n", 9);
+        c = vt_row(t, -1, &n);
+        if (!c) {
+            vt_free(t);
+            return 99;
+        }
+        k = n != sn || memcmp(saved, c, n * sizeof(vt_cell));
+        vt_free(t);
+        if (k)
+            return 73 + i;
+    }
+    return 0;
+}
+
 static int render_check(void)
 {
     static vt_cell c[12];
@@ -376,12 +434,12 @@ static int render_check(void)
 
 int main(int argc, char **argv)
 {
-    static const char *const name[] = { "plain lines", "newlines", "colour a char", "256 pair a cell", "frame repaint", "ins/del line" };
+    static const char *const name[] = { "plain lines", "newlines", "colour a char", "256 pair a cell", "frame repaint", "ins/del line", "ls -l colour" };
     static vt_callbacks cb;
-    /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-5) and
+    /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-6) and
      * PERS one dialect (0 xterm, 1 amiga) -- for tools/prof68k.py, which
      * counts the instructions of one workload under vamos. LINES n and SB n
-     * (W23): workload 0's line count and the scrollback's size (500), so
+     * (W23): workload 0's and 6's line count and the scrollback's size (500), so
      * the cost of a line scrolled into a full scrollback is the difference
      * of two counts. */
     int sb = 500;
@@ -397,12 +455,14 @@ int main(int argc, char **argv)
     }
     cb.damage = damage;
     cb.scroll = scroll;
-    /* the checks run unless one workload is asked for (ONLY 0-5: a profile
+    /* the checks run unless one workload is asked for (ONLY 0-6: a profile
      * counts the workload, not the checks; ONLY 9 runs the checks alone).
      * The engine's assembler must be right or nothing is timed; the
      * renderer's is reported apart (its own work, its own fault). */
-    if (only < 0 || only > 5) {
+    if (only < 0 || only > 6) {
         w = asm_check();
+        if (!w)
+            w = sb_check();
         Printf((STRPTR)"asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
         if (w)
             return 20;
@@ -413,7 +473,7 @@ int main(int argc, char **argv)
         if (onlypers >= 0 && pers != onlypers)
             continue;
         Printf((STRPTR)"%s\n", (LONG)(pers ? "amiga dialect" : "xterm dialect"));
-        for (w = 0; w < 6; w++) {
+        for (w = 0; w < 7; w++) {
             long best = 0x7FFFFFFF, i;
             if (only >= 0 && w != only)
                 continue;
