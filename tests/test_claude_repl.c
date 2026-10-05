@@ -4941,11 +4941,34 @@ static void test_gaps3_think(void)
     cs_close();
 }
 
+/* G6: /add-dir's argument completed with Tab from the start directory's
+ * subdirectories, through the REPL's own completion (ui_attach) */
+static void test_gaps3_dirs(void)
+{
+    static const char *keys[] = { "/add-dir proj", "\t", "\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_screen(&r, keys, "g3dirs", root);
+    xput(root, "projects/readme.txt", "x\n");
+    xput(root, "proj.txt", "x\n");
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    g3_dump();
+    CHECK_INT(cs.next, 4);
+    CHECK(cs_find("> /add-dir projects/") >= 0);    /* Tab took the directory, not proj.txt */
+    CHECK(cs_find("Claude may now read") >= 0);
+    CHECK(r.cfg.ndirs == 1 && strstr(r.cfg.dirs[0], "g3dirs/projects") != 0);
+    repl_free(&r);
+    cs_close();
+}
+
 static void test_gaps3(void)
 {
     test_gaps3_bypass();
     test_gaps3_color();
     test_gaps3_think();
+    test_gaps3_dirs();
 }
 
 void suite_claude_repl(void)

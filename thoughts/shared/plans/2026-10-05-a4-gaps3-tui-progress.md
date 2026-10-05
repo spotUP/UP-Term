@@ -80,7 +80,7 @@ switch), `tui_menu` (tui.c:2155), the mode names `tui_mode_names[3]` (tui.c:30),
 - [x] G3 bypassPermissions in the Shift+Tab cycle, --allow-dangerously-skip-permissions
 - [x] G4 /color
 - [x] G5 Alt+T thinking toggle
-- [ ] G6 /add-dir and /cd: Tab suggestions of directories
+- [x] G6 /add-dir and /cd: Tab suggestions of directories
 - [ ] G7 @agent-name: typeahead and the mention on submit
 - [ ] G8 askUserQuestionTimeout (focus reports, countdown, auto-continue)
 - [ ] G9 prompt suggestions in the box
@@ -89,7 +89,7 @@ switch), `tui_menu` (tui.c:2155), the mode names `tui_mode_names[3]` (tui.c:30),
 - [ ] G12 N/A rows answered (/focus in na_cmds; ledger reasons)
 - [ ] G13 audit file rows updated, counts
 
-Running count: 5 of 13.
+Running count: 6 of 13.
 
 ## Log
 
@@ -97,3 +97,4 @@ Running count: 5 of 13.
 - G3: PERM_BYPASS replaces ASKP_BYPASS (tools.h perm_name / perm_next one place for the names and the cycle); the status row says bypass permissions on in the error colour; --allow-dangerously-skip-permissions (cli.c). Tests: test_claude_tui idle_prompt, test_claude_repl test_gaps3_bypass (three Shift+Tab, a Write unasked), print-mode flag checks.
 - G4: /color: the named colours moved from repl.c (agent colours) to theme.c theme_named (one table); tui bar overrides the prompt frame (not on monochrome); no argument picks one of the eight. Test: test_gaps3_color (frame colour per read).
 - G5: Alt+T: conv_caps CAP_THINK_ALWAYS (Opus 5.5, Sonnet 5.5, Fable); think_off sends thinking disabled and clamps xhigh/max to high; taken at the turn start (cl_opts copied once a turn). Tests: test_gaps3_think (bodies), test_claude_tui gaps3_think (hint on an always-thinking model).
+- G6: /add-dir and /cd: path_token takes the argument (spaces kept) as the token, the @ list machinery (live once a path is begun, Tab at once) with directories only (input.c comp dirs_only). Tests: test_claude_tui gaps3_dirs, test_claude_repl test_gaps3_dirs.

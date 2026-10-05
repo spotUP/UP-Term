@@ -1358,7 +1358,24 @@ static void search_end(cl_tui *t, int keep)
  * token holding a '/' (Claude Code's file list in shell mode). */
 static int path_token(cl_tui *t, long *start, int *skip)
 {
+    static const char *const dir_cmds[] = { "/add-dir ", "/cd " };
     long s = t->ed.cur;
+    int i;
+    t->comp_dirs = 0;
+    /* /add-dir and /cd (A4 gaps 3): the argument is a directory path,
+     * spaces and all */
+    for (i = 0; t->box == BOX_PROMPT && i < 2; i++) {
+        long l = (long)strlen(dir_cmds[i]);
+        if (t->ed.cur >= l && !strncmp(t->ed.b, dir_cmds[i], (size_t)l) &&
+            !memchr(t->ed.b, '\n', (size_t)t->ed.n)) {
+            while (l < t->ed.cur && t->ed.b[l] == ' ')
+                l++;
+            *start = l;
+            *skip = 0;
+            t->comp_dirs = 1;
+            return 1;
+        }
+    }
     while (s > 0 && t->ed.b[s - 1] != ' ' && t->ed.b[s - 1] != '\n' && t->ed.b[s - 1] != '\t')
         s--;
     *start = s;
@@ -1391,6 +1408,8 @@ static int comp_query(cl_tui *t, long *plen)
     if (!t->complete || !path_token(t, &s, &skip))
         return -1;
     pl = t->ed.cur - s - skip;
+    if (!plen && t->comp_dirs && pl <= 0)
+        return -1;                  /* a directory list opens once a path is begun (Tab: at once) */
     if (pl >= (long)sizeof(tok))
         return -1;
     memcpy(tok, t->ed.b + s + skip, (size_t)pl);

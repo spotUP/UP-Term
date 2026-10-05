@@ -153,6 +153,7 @@ typedef struct cl_tui {
     long ctok;                  /* the token's start in the text */
     int cskip;                  /* 1: an '@' before the path (bash mode: 0) */
     int cclosed;                /* Esc closed the list until the text changes */
+    int comp_dirs;              /* the token is /add-dir's or /cd's argument: directories only */
     /* the directories the list read (input.c fills them): one disk read
      * each per prompt typed; a submitted prompt (epoch) makes them old */
     tui_dir dirs[TUI_DIRS];

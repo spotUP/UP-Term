@@ -1763,6 +1763,69 @@ static void gaps3_think(void)
     cs_close();
 }
 
+/* G6: /add-dir and /cd: the argument's directory suggestions, as typed
+ * and with Tab; files are not offered */
+static void dirs_run(const char **script, cl_ui *u, char *line)
+{
+    screen(60, 16, script);
+    tui.complete = input_complete;
+    tui.cu = u;
+    u->tui = &tui;
+    tui_start(&tui);
+    tui_read(&tui, line, 32);
+}
+
+static void gaps3_dirs(void)
+{
+    static const char *s1[] = { "/add-dir al", 0 };
+    static const char *s2[] = { "/add-dir al", "\t", 0 };
+    static const char *s3[] = { "/cd b", "\t", 0 };
+    static const char *s4[] = { "/add-dir ", 0 };
+    static const char *s5[] = { "/add-dir ", "\t", 0 };
+    static const char *s6[] = { "/add-dir al", "\r", "\r", 0 };
+    static cl_ui u;
+    char line[32], d[600];
+    tpath(d, "ad");
+    mkdir(d, 0700);
+    tfile("ad/alpha.txt", "a\n");
+    tpath(d, "ad/alpine");
+    mkdir(d, 0700);
+    tpath(d, "ad/beta");
+    mkdir(d, 0700);
+    tpath(d, "ad");
+    memset(&u, 0, sizeof(u));
+    u.sys = &tsys;
+    u.root = d;
+    dirs_run(s1, &u, line);
+    dump("add-dir list");
+    CHECK_INT(tui.copen, 1);
+    CHECK_INT(tui.ncomp, 1);                /* alpine/, not alpha.txt */
+    CHECK_STR(cs_row(15), "  alpine/");
+    unscreen();
+    cs_close();
+    dirs_run(s2, &u, line);
+    CHECK_STR(tui.ed.b, "/add-dir alpine/");
+    unscreen();
+    cs_close();
+    dirs_run(s3, &u, line);
+    CHECK_STR(tui.ed.b, "/cd beta/");
+    unscreen();
+    cs_close();
+    dirs_run(s4, &u, line);
+    CHECK_INT(tui.copen, 0);                /* nothing begun: no list */
+    unscreen();
+    cs_close();
+    dirs_run(s5, &u, line);
+    CHECK_INT(tui.copen, 1);                /* Tab: all of them */
+    CHECK_INT(tui.ncomp, 2);
+    unscreen();
+    cs_close();
+    dirs_run(s6, &u, line);
+    CHECK_STR(line, "/add-dir alpine/");    /* Enter takes the row first, then sends */
+    unscreen();
+    cs_close();
+}
+
 void suite_claude_tui(void)
 {
     keys();
@@ -1793,5 +1856,6 @@ void suite_claude_tui(void)
     notifications();
     redraw_editor_todos();
     gaps3_think();
+    gaps3_dirs();
     rm_tdir();
 }

@@ -431,6 +431,7 @@ typedef struct comp {
     const char *base;           /* the typed name's start */
     char (*out)[128];
     int n, max;
+    int dirs_only;              /* /add-dir, /cd: directories only (A4 gaps 3) */
 } comp;
 
 static int comp_one(void *c, const cl_dirent *e)
@@ -441,6 +442,8 @@ static int comp_one(void *c, const cl_dirent *e)
     char cand[128];
     if (k->n >= k->max)
         return 1;
+    if (k->dirs_only && !e->dir)
+        return 0;
     if (!cl_strnieq(e->name, k->base, bl))
         return 0;
     cl_copy(cand, k->dir, sizeof(cand));
@@ -518,6 +521,7 @@ int input_complete(void *uu, const char *tok, char out[][128], int max)
     k.out = out;
     k.n = 0;
     k.max = max;
+    k.dirs_only = u->tui && u->tui->comp_dirs;
     if (u->tui)
         cached(u, full, &k);
     else
