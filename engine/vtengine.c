@@ -5848,14 +5848,25 @@ static int fast_cp(const vt_term *t, const vt_u8 *b, long len, vt_u32 *cp)
     return 0;
 }
 
+/* The pen half of vt_feed's text mode: the colours and attributes are the
+ * default ones, so put_ascii_run may write the characters alone. An SGR
+ * changes this half and none of the other (insert mode, a single shift,
+ * SO, the character set), so after an SGR only this is worked out again
+ * (W29: the whole test cost 30 instructions a coloured character). Tests
+ * in a chain, not or-ed: a colour, what an SGR mostly sets, ends it at the
+ * first compare (vbcc: 19 instructions or-ed, 2 to 10 chained). */
+#define PEN_PLAIN(t) \
+    ((t)->fg == VT_COLOR_DEFAULT && (t)->bg == VT_COLOR_DEFAULT && !(t)->attr && !(t)->deco && !(t)->ext)
+
 void vt_feed(vt_term *t, const vt_u8 *buf, long len)
 {
     long i = 0, k;
     /* what put_ascii_run may do, worked out once and kept while only text,
-     * CR and LF go by (none of them changes it): -1 not known, 0 printable
-     * ASCII needs put_char (a character set, insert mode, SO), 1 it may
-     * run, 2 it may run and the colours are the default ones (ASM1: the
-     * five tests a run cost 17 instructions, twice a line) */
+     * CR, LF and SGR go by (none of them changes it but SGR, which changes
+     * the pen half alone): -1 not known, 0 printable ASCII needs put_char
+     * (a character set, insert mode, SO), 1 it may run, 2 it may run and
+     * the colours are the default ones (ASM1: the five tests a run cost 17
+     * instructions, twice a line) */
     int text = -1;
     while (i < len) {
         vt_u8 b = buf[i];
@@ -5869,8 +5880,8 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
                 if (b < 0x7F) {
                     if (text < 0) /* (or-ed, not ||: one branch each instead of nine) */
                         text = (t->insert | t->single_shift | t->amiga_msb) || t->charset[t->gl] != 'B' ? 0
-                             : ((t->fg ^ VT_COLOR_DEFAULT) | (t->bg ^ VT_COLOR_DEFAULT) | t->attr | t->deco | t->ext) ? 1
-                             : 2;
+                             : PEN_PLAIN(t) ? 2
+                             : 1;
                     if (text) {
                         k = put_ascii_run(t, buf + i, len - i, text == 2); /* as far as printable ASCII goes */
                         if (k) {
@@ -5894,7 +5905,10 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
             } else if (b == 0x1B) {
                 k = csi_fast(t, buf + i, len - i);
                 if (k) {
-                    text = -1;
+                    if (buf[i + k - 1] != 'm')
+                        text = -1; /* not an SGR: all of it worked out again */
+                    else if (text > 0)
+                        text = PEN_PLAIN(t) ? 2 : 1; /* an SGR: its pen half alone (W29) */
                     i += k;
                     continue;
                 }
