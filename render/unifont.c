@@ -77,9 +77,10 @@ int uf_make_mask(const vt_u8 *g, int wide, int cw, int ch, int cells, vt_u8 *mas
     ew = gw / hs;
     x0 = (w - ew) / 2;
     /* down: Unifont's 16 rows are the cell's 16, row for row, or its 8 as
-     * pairs OR'd. Not placed by the font's tf_Baseline: TopazPro 16 says 6
-     * (topaz 8's), which raised every glyph 7 rows and cut its top half
-     * off (ledger W33). */
+     * pairs OR'd. Not placed by the font's tf_Baseline: TopazPro 16 said 6
+     * (topaz 8's; the file is fixed, tests/test_dist_fonts.py), which raised
+     * every glyph 7 rows and cut its top half off (ledger W33) -- any other
+     * font with a wrong baseline would do the same. */
     for (y = 0; y < ch; y++) {
         int dx;
         unsigned row = ch == 16 ? glyph_row(g, wide, y) : glyph_row(g, wide, 2 * y) | glyph_row(g, wide, 2 * y + 1);

@@ -178,6 +178,11 @@ MakeDir >NIL: FONTS:TopazPro FONTS:IBM
 If NOT EXISTS FONTS:TopazPro/16
   Copy fonts/TopazPro/16 FONTS:TopazPro/16 CLONE QUIET
   Echo >ENVARC:up-term/font-TopazPro-16 "installed by UP-Term"
+Else
+  ; ours from an earlier kit: replaced, its baseline is fixed (13, not 6)
+  If EXISTS ENVARC:up-term/font-TopazPro-16
+    Copy fonts/TopazPro/16 FONTS:TopazPro/16 CLONE QUIET
+  EndIf
 EndIf
 If NOT EXISTS FONTS:IBM/8
   Copy fonts/IBM/8 FONTS:IBM/8 CLONE QUIET
