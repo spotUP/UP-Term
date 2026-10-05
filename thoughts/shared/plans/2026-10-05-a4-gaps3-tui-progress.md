@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 gaps 3 (TUI side) -- the audit's remaining screen rows, progress ledger
 tags: [claude, a4, parity, tui, keys]
-status: draft
+status: final
 ---
 
 # A4 gaps 3, TUI side (branch feature/a4-gaps3-tui off main bd75f8d)
@@ -86,10 +86,10 @@ switch), `tui_menu` (tui.c:2155), the mode names `tui_mode_names[3]` (tui.c:30),
 - [x] G9 prompt suggestions in the box
 - [x] G10 session recap after being away
 - [x] G11 keybindings.json + /keybindings
-- [ ] G12 N/A rows answered (/focus in na_cmds; ledger reasons)
-- [ ] G13 audit file rows updated, counts
+- [x] G12 N/A rows answered (/focus in na_cmds; ledger reasons)
+- [x] G13 audit file rows updated, counts
 
-Running count: 11 of 13.
+Running count: 13 of 13.
 
 ## Log
 
@@ -103,3 +103,23 @@ Running count: 11 of 13.
 - G9: prompt suggestions: repl_suggest (print mode's ask moved there; print.c uses it) asked by screen_suggest before the box waits, as a background request (cl_ui.bg: no lines, no spinner, no retries; ui_poll stops it at a typed key, tui_pending keeps the key). Shown dim in the empty box, Tab / Right take it, typing drops it. Skipped: plan mode, a cold cache (cache_read 0), an error, a short conversation; promptSuggestionEnabled / CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION. Not built: the example command at the session start, which Claude Code takes from the repository's history (no version control on the Amiga). The REPL suite turns suggestions and recaps off in its setup (the stub server's scripted answers); the tests that drive them turn them on. Tests: test_gaps3_suggest, test_claude_tui gaps3_suggest, test_claude_config test_gaps3.
 - G10: the away recap: screen_idle (the screen's idle hook: the status line's tick, then away_recap) makes /recap's line in the background (slash_recap, now shared with /recap, capped at 400 characters) three minutes after the last answer when the terminal reports it is unfocused, or, where it never reported focus, after three minutes without a key; three prompts or more; never twice without a turn between; shown as "Recap: ...". awaySummaryEnabled, CLAUDE_CODE_ENABLE_AWAY_SUMMARY. Not built: the /config menu row (/config key=value writes it). Tests: test_gaps3_recap (idle path; a focused window makes none).
 - G11: keybindings: keys.c holds the binding table (cl_keymap): Claude Code's defaults (keybindings.md) per context, the file's blocks over them, chords with the 3 s limit, null unbinds (a fully unbound prefix is a key again), warnings (bad JSON, unknown context / action / key, a misspelled modifier dropped, a reserved key rebound, a duplicate) to the debug log; the actions of contexts C:Claude has no screen for (tabs, footer, diff, scroll, plugin, agents, voice, ...) are accepted and do nothing. tui.c's handle() resolves every key to an action in the active contexts (HistorySearch / Autocomplete / Help / Task / Chat / Global) and dispatches on it; unbound keys go to the editor; vim's NORMAL / VISUAL take plain characters themselves. tui_menu: Confirmation for a permission question, Select (MessageSelector for the rewind list, ThemePicker for /theme first) for the others; tview: transcript:exit / app:toggleTranscript. <home>/keybindings.json (ENVARC:Claude) read at the screen's start and again when it changes (looked at every 2 s while the screen waits); not in --safe-mode. /keybindings writes the defaults when there is no file (Claude Code's format) and opens it in the editor (/memory's launcher, now shared: edit_file). Inert with a written reason: chat:killAgents (no background agents), chat:fastMode (claude.ai plan), chat:imagePaste (no image clipboard), confirm:toggle (options ticked with Enter), historySearch:cycleScope and transcript:toggleShowAll (fullscreen renderer only), theme:toggleSyntaxHighlighting (no syntax highlighting to toggle), permission:toggleDebug. Tests: test_claude_tui gaps3_keymap (defaults, chords, the file, warnings, round trip, a rebinding on the screen), test_claude_repl test_gaps3_keybindings (/keybindings, reload on change, the rebound key opens the picker).
+- G12: /focus in na_cmds with its reason (test_gaps3_na); emoji shortcodes, spell check, Ctrl+X Ctrl+K, Alt+O: N/A with the reasons under Decisions (the two keys say so in the footer through their actions).
+- G13: the audit's rows updated (gaps3: / input-rest: evidence), two rows split (keys: Ctrl+X Ctrl+K and Alt+O out; ?: emoji and spell check out). Counted by a script from the tables' rows, the script checked against round 2's published counts first (200 / 2 / 13 / 34 = 249, matched): after round 3, 251 rows: 211 have, 1 partial (bundled skills), 2 missing (/loop, ScheduleWakeup: the parallel branch's), 37 N/A.
+
+## Unverified (said so, not folded in)
+
+- The @agent-name note's wording (Claude Code's agent_mention attachment) is from memory of its source, not checked.
+- The away-recap and question-timeout "away" signal on the rig: UP-Term sends ?1004 focus reports on window activation (handler/vtcon_handler.c:4232) -- not seen on the rig in this branch. With the window active, the question timer does not run and no recap is made (Claude Code's rule); deactivating the window (click the Workbench) is "away".
+- The countdown and auto-continue wording in the menu and in the tool result is C:Claude's own; Claude Code's text was not available.
+
+## Rig steps (main session; tools/claude_fixture.py where a turn is needed)
+
+1. Start with `Claude --allow-dangerously-skip-permissions`: Shift+Tab four times shows default, accept edits, plan, "bypass permissions on" (red), default.
+2. `/color red`: the box frame turns red; `/color default` grey again; `/color` a random one.
+3. On `MODEL=claude-sonnet-4-6`: Alt+T says "Thinking off" / "Thinking on"; on the default model "Thinking can't be turned off for this model".
+4. Type `/add-dir S` (or `/cd Wo`): the directory list opens as you type, Tab takes one.
+5. With an agent in .claude/agents (e.g. code-reviewer.md): type `@co`: "@agent-code-reviewer" in the list; Tab, then send: Claude calls the Task tool with that agent.
+6. ENVARC:Claude/settings.json `{"askUserQuestionTimeout":"60s"}`, fixture prompt "question": click on the Workbench (window inactive); after 40 s the countdown row shows, at 60 s the menu closes and Claude goes on. With the window active nothing counts.
+7. After a few fixture turns with a warm cache: a greyed suggestion in the empty box; Right takes it. (Needs the real API or a fixture answer with cache_read_input_tokens > 0 and a second answer for the suggestion.)
+8. Three prompts, then deactivate the window for three minutes: "Recap: ..." appears.
+9. `/keybindings`: ENVARC:Claude/keybindings.json is written with the defaults and opened in the editor; add `"ctrl+e": "chat:stash"` in the Chat block, save: within 2 s Ctrl+E stashes the prompt.

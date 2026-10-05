@@ -21,7 +21,10 @@ bypassPermissions rule were confirmed against the docs and the code before actin
 
 Status: **have**, **partial** (what is missing), **missing**, **N/A** (why not on an Amiga).
 "Before" = main e4bc55d; "After" = branch feature/a4-gaps 57613ae, and for the rows whose evidence
-starts "gaps2:" branch feature/a4-gaps2 (ledger thoughts/shared/plans/2026-10-05-a4-gaps2-progress.md). Evidence for "After" is the
+starts "gaps2:" branch feature/a4-gaps2 (ledger thoughts/shared/plans/2026-10-05-a4-gaps2-progress.md), for the rows whose
+evidence starts "gaps3:" branch feature/a4-gaps3-tui (ledger
+thoughts/shared/plans/2026-10-05-a4-gaps3-tui-progress.md, which also re-verified the keys rows that
+feature/a4-input-rest built: "input-rest:"). Evidence for "After" is the
 commit and the host test (tests/test_claude_*.c, all in `make test`); the progress ledger
 thoughts/shared/plans/2026-10-05-a4-gaps-progress.md has the decisions. Keys (the shortcut
 tables, vim) belong to the parallel branch feature/a4-input-rest and are audited, not built.
@@ -30,7 +33,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
-| cmd | /add-dir <path> | partial | partial | slash.c add_dir; no Tab suggestions of directories (input.c, other branch) |
+| cmd | /add-dir <path> | partial | have | gaps3: slash.c add_dir; directory suggestions as typed and on Tab (tui.c path_token, input.c dirs_only; /cd too); test_claude_tui gaps3_dirs, test_gaps3_dirs |
 | cmd | /advisor [model\|off] | missing | have | gaps2: slash.c advisor, the advisor_20260301 server tool + its beta (tools.c, repl.c post), advisorModel, CLAUDE_CODE_DISABLE_ADVISOR_TOOL, the pairing table (conv.c conv_advisor_ok); test_gaps2_more V1 |
 | cmd | /agents | have | have | slash.c list_defs |
 | cmd | /artifact-capabilities, /artifact-diagramming, /artifacts, /design, /design-login, /design-sync, /slides, /dataviz | N/A | N/A | claude.ai artifacts and Claude Design (account, browser); typed, they say so |
@@ -47,7 +50,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | cmd | /claude-api | N/A | N/A | bundled reference of megabytes; WebFetch reaches the docs |
 | cmd | /clear [name] | partial | have | repl.c: names the old session, totals reset |
 | cmd | /code-review, /review, /security-review | N/A | N/A | a git diff or a PR; no git on AmigaOS (/diff shows this session's changes) |
-| cmd | /color [color\|default] | missing | missing | the prompt bar's colour is tui.c (other branch) |
+| cmd | /color [color\|default] | missing | have | gaps3: slash.c color_, tui.c frame (theme.c theme_named, shared with agent colours); no argument a random one; test_gaps3_color |
 | cmd | /compact [instructions] | have | have | repl.c repl_compact (+ PreCompact block, PostCompact) |
 | cmd | /config [key=value ...] | partial | have | slash.c config: key=value, 11 keys in the menu |
 | cmd | /context [all] | partial | have | repl.c context_parts: by category |
@@ -63,7 +66,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | cmd | /export [filename] | have | have | slash.c export_ |
 | cmd | /fast [on\|off] | N/A | N/A | a claude.ai plan feature |
 | cmd | /fewer-permission-prompts | missing | have | bundled skill (commands.c); the audit's first draft had it N/A -- it reads Bash calls, not only MCP |
-| cmd | /focus | missing | missing | a view toggle in tui.c (other branch) |
+| cmd | /focus | missing | N/A | gaps3: Claude Code has the focus view only in its fullscreen renderer (settings viewMode: "needs the fullscreen renderer"); C:Claude is the classic renderer made for UP-Term, as /tui's row; typed, it says so (na_cmds); test_gaps3_na |
 | cmd | /goal [condition\|clear] | missing | have | slash.c goal, repl.c goal_check (Haiku judges) |
 | cmd | /heapdump, /radio, /stickers, /powerup | N/A | N/A | JavaScript heap, browser |
 | cmd | /help | have | have | repl.c show_help (+ the N/A list) |
@@ -72,7 +75,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | cmd | /init | have | have | repl.c |
 | cmd | /insights, /team-onboarding | missing | have | bundled skills (prompts) |
 | cmd | /install-github-app, /install-slack-app | N/A | N/A | OAuth in a browser, gh |
-| cmd | /keybindings | missing | missing | keys.c (other branch) |
+| cmd | /keybindings | missing | have | gaps3: keys.c cl_keymap (Claude Code's defaults, ENVARC:Claude/keybindings.json over them, chords, null, warnings to the debug log, read again on change), tui.c dispatches on actions; /keybindings writes the defaults and opens the editor; test_claude_tui gaps3_keymap, test_gaps3_keybindings |
 | cmd | /login, /logout | have | have | slash.c (API key; OAuth N/A) |
 | cmd | /loop [interval] [prompt] | missing | missing | not built; since round 2 the timer it needs exists (tui.h wake, sched.c, the cron jobs) |
 | cmd | /mcp, /plugin, /reload-plugins, /plugin-authoring | N/A | N/A | MCP stdio servers and plugins are Node/Python; typed, they say so |
@@ -117,7 +120,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | cli | --bare (CLAUDE_CODE_SIMPLE) | missing | have | repl_load, cli_apply |
 | cli | --betas | missing | have | repl.c post |
 | cli | --dangerously-skip-permissions, --permission-mode | have | have | cli.c (auto refused: classifier) |
-| cli | --allow-dangerously-skip-permissions | missing | missing | bypass in the Shift+Tab cycle is tui.c (other branch) |
+| cli | --allow-dangerously-skip-permissions | missing | have | gaps3: PERM_BYPASS a permission mode (tools.c perm_next: in the cycle when allowed), cli.c; test_gaps3_bypass |
 | cli | --debug, --debug-file | partial | have | main_amiga.c logname |
 | cli | --disable-slash-commands | missing | have | repl_defs |
 | cli | --effort, --model, --fallback-model | have | have | the fallback chain: its first model |
@@ -153,19 +156,21 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 |---|---|---|---|---|
 | keys | Ctrl+C, Ctrl+D, Ctrl+G / Ctrl+X Ctrl+E, Ctrl+L, Ctrl+O, Ctrl+R, Ctrl+T, Esc, Esc Esc, Shift+Tab, Up/Down, Ctrl+P/N | have | have | tui.c |
 | keys | Ctrl+A E K U W Y, Alt+B F D, Ctrl+_ | have | have | edit.c |
-| keys | Ctrl+S, Ctrl+B, Ctrl+X Ctrl+K, Ctrl+Enter / Ctrl+X Ctrl+S, Alt+Y, Alt+P, Alt+T, Alt+O | missing | missing | other branch |
+| keys | Ctrl+S, Ctrl+B, Ctrl+Enter / Ctrl+X Ctrl+S, Alt+Y, Alt+P, Alt+T | missing | have | input-rest: c0aa1b2 tui.c stash, tui_wait, send_now, edit.c kill ring, the model picker; gaps3: Alt+T (conv.c CAP_THINK_ALWAYS, thinking disabled); test_claude_tui keys_rest, gaps3_think, test_gaps3_think |
+| keys | Ctrl+X Ctrl+K, Alt+O | missing | N/A | gaps3: Ctrl+X Ctrl+K stops background subagents (C:Claude's run in the foreground, one task); Alt+O is fast mode, a claude.ai plan feature (/fast); both say so in the footer |
 | keys | Ctrl+V image paste | N/A | N/A | no image clipboard path on AmigaOS (IFF -> PNG would be its own feature) |
 | keys | Ctrl+Z | N/A | N/A | no job control on AmigaOS |
-| keys | ? help panel, : emoji shortcodes, spell check | missing | missing | other branch |
+| keys | ? help panel | missing | have | input-rest: c0aa1b2 tui.c help_rows; test_claude_tui keys_rest |
+| keys | : emoji shortcodes, spell check | missing | N/A | gaps3: UP-Term's fonts have no emoji glyphs (and the owner's rule: no emoji in the UI); spell check runs aspell / hunspell / ispell as a child over pipes: none on a stock AmigaOS 3.x, and no two-way pipe to a child here |
 | input | \ + Enter, Shift+Enter, Ctrl+J; / ! @ # | have | have | edit.c, input.c |
 | vim | modes, motions, edits, counts | have | have | vim.c |
-| vim | visual mode, text objects, '.', >> << | missing | missing | other branch |
+| vim | visual mode, text objects, '.', >> << | missing | have | input-rest: c0aa1b2 vim.c; test_claude_tui vim_visual_dot (gaps3 added >> << in NORMAL mode) |
 | hist | history per project, Ctrl+R | have | have | hist.c |
 | bg | background Bash, /tasks | have | have | shells.c |
 | queue | type-ahead queue | have | have | input.c |
 | view | transcript viewer, task list | have | have | tview.c, tui.c |
-| view | prompt suggestions in the box | missing | missing | the box is tui.c (print mode has --prompt-suggestions) |
-| view | session recap after being away | missing | missing | needs the idle tick in tui.c to draw; /recap is built |
+| view | prompt suggestions in the box | missing | have | gaps3: repl.c screen_suggest / repl_suggest (a background request, cl_ui.bg), tui.c box_rows, Tab / Right; promptSuggestionEnabled; the start-of-session example from git history N/A (no git); test_gaps3_suggest, test_claude_tui gaps3_suggest |
+| view | session recap after being away | missing | have | gaps3: repl.c away_recap in the screen's idle hook (focus reports ?1004, else 3 minutes without a key), slash_recap; awaySummaryEnabled; test_gaps3_recap |
 | view | PR review status, issue links, usage-limit wait | N/A | N/A | git hosts, claude.ai limits |
 | view | /diff | missing | have | slash.c diff |
 | view | /btw | missing | have | slash.c btw |
@@ -255,7 +260,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | keys | permissions.*, model, effortLevel, fallbackModel, outputStyle, theme, editorMode, autoCompactEnabled, statusLine, env, hooks | have | have | |
 | keys | disableAllHooks, verbose, agent, autoMemoryEnabled, claudeMdExcludes, autoCompactWindow, statusLine.hideVimModeIndicator | missing | have | config.c |
 | keys | apiKeyHelper, availableModels, bashOutputMaxChars, cleanupPeriodDays | missing | have | config.c, repl.c (cleanup only when set) |
-| keys | askUserQuestionTimeout | missing | missing | needs a timer in the menu (tui.c) |
+| keys | askUserQuestionTimeout | missing | have | gaps3: config.c user_keys, tui_menu's timer (paused while focused, a key restarts, the countdown), CH_AFK / CHOOSE_AWAY, CLAUDE_AFK_TIMEOUT_MS; test_gaps3_afk |
 | keys | attribution, includeGitInstructions, spinnerTipsEnabled | N/A | N/A | git commit trailers; there are no spinner tips |
 | keys | plugins, sandbox, managed-only keys | N/A | N/A | |
 | env | ANTHROPIC_MODEL, BASH_DEFAULT_TIMEOUT_MS, BASH_MAX_TIMEOUT_MS, BASH_MAX_OUTPUT_LENGTH, CLAUDE_CODE_SIMPLE, CLAUDE_CODE_AUTO_COMPACT_WINDOW, CLAUDE_CODE_STOP_HOOK_BLOCK_CAP, CLAUDE_CODE_DISABLE_AUTO_MEMORY | missing | have | |
@@ -284,7 +289,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | agent | background, isolation, mcpServers | N/A | N/A | threads, worktrees, MCP |
 | agent | CLAUDE.md for agents but Explore / Plan | missing | have | subagent.c gets_memory |
 | agent | --agents JSON, "agent" setting | missing | have | |
-| agent | @agent-name in the prompt | missing | missing | input.c (other branch) |
+| agent | @agent-name in the prompt | missing | have | gaps3: input.c agents in the @ list, agent_mention's note on submit (wording UNVERIFIED); test_gaps3_agent_mention |
 | skill | locations, listing, the Skill tool | have | have | |
 | skill | expanded as a command ($ARGUMENTS, $0, $ARGUMENTS[N], $name, \$, ${CLAUDE_*}, !`cmd`) | missing | have | commands.c cmd_expand_vars, policy.c ext_skill |
 | skill | allowed-tools and model; effort when typed | missing | have | pol_turn_tools, slash.c |
@@ -328,19 +333,25 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 
 ## Counts
 
-249 rows (a row may group several features of one kind; the counts are rows). Round 2 split
+251 rows (a row may group several features of one kind; the counts are rows). Round 2 split
 two rows: --advisor out of the N/A flag list (built), ScheduleWakeup out of the task-tools row
-(with /loop, not built); the first round's counts are of the 247 rows then.
+(with /loop, not built); the first round's counts are of the 247 rows then. Round 3 split two:
+the keys row (Ctrl+X Ctrl+K and Alt+O out, N/A) and the ? row (emoji shortcodes and spell
+check out, N/A). Counted from the tables' rows by a script (the After column).
 
 | | have | partial | missing | N/A |
 |---|---|---|---|---|
 | Before (main e4bc55d), 247 rows | 58 | 37 | 119 | 33 |
 | After (feature/a4-gaps), 247 rows | 173 | 8 | 32 | 34 |
 | After round 2 (feature/a4-gaps2), 249 rows | 200 | 2 | 13 | 34 |
+| After round 3 (feature/a4-gaps3-tui), 251 rows | 211 | 1 | 2 | 37 |
 
 Left after round 2: the 13 missing and the 2 partial rows are the input branch's (keys, vim,
 /color, /focus, /keybindings, the box's suggestions, @agent-name, /add-dir's Tab suggestions,
 --allow-dangerously-skip-permissions in the Shift+Tab cycle), the menu timer
 (askUserQuestionTimeout), /loop with ScheduleWakeup, the session recap, and the bundled skills
 that stay N/A.
+
+Left after round 3: /loop and ScheduleWakeup (missing; the parallel branch's) and the bundled
+skills (partial; the others N/A, section 1).
 
