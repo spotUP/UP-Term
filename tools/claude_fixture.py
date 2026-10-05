@@ -11,7 +11,13 @@ stream (A2/A3, and the A4 WP2 tools):
     prompt): its first -> agent_tool.sse (Grep in S), then agent_final.sse
   - the request's last message holds a tool_result: by the call it answers
     EnterPlanMode -> tool_exitplan.sse, a background Bash -> tool_bgout.sse
-    (BashOutput bash_1), anything else -> tool_final.sse
+    (BashOutput bash_1), ScheduleWakeup -> loop_final.sse, anything else ->
+    tool_final.sse
+  - the last prompt mentions "loop test" (checked first: /loop's skill text
+    names other words of this list)               -> tool_loop.sse
+    (ScheduleWakeup, 60 s, prompt "/loop loop test", noop: type
+    "/loop loop test"; a wakeup fires each minute as "Claude resuming /loop
+    wakeup", quiet ones in a row fold into one line, Esc cancels the next)
   - the last prompt mentions "search the web"         -> tool_websearch.sse
     (Claude Code's WebSearch client tool, allowed_domains example.org); the
     search's own request ("performing a web search" in its system prompt)
@@ -67,7 +73,7 @@ PAGE = (b"<html><head><title>UP-Term test page</title></head><body><h1>Hello fro
         b"<ul><li>one</li><li>two</li></ul></body></html>")
 
 # the call a tool_result answers -> the next recording
-AFTER = {"toolu_01EnterPlan": "tool_exitplan", "toolu_01Background": "tool_bgout"}
+AFTER = {"toolu_01EnterPlan": "tool_exitplan", "toolu_01Background": "tool_bgout", "toolu_01Loop": "loop_final"}
 
 
 def system_text(body):
@@ -96,6 +102,8 @@ def pick(body, forced):
     if results:
         return AFTER.get(results[-1].get("tool_use_id"), "tool_final")
     text = " ".join(b.get("text", "") for b in blocks if b.get("type") == "text").lower()
+    if "loop test" in text:
+        return "tool_loop"
     for word, name in (("search the web", "tool_websearch"), ("monitor", "tool_monitor"), ("schedule", "tool_cron"),
                        ("time limit", "tool_timelimit"), ("fetch", "tool_fetch"), ("agent", "tool_task"),
                        ("question", "tool_ask"), ("plan", "tool_enterplan"), ("background", "tool_bg"),

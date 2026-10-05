@@ -138,6 +138,16 @@ int sched_line_mode(cl_repl *r);
 void sched_save(cl_repl *r);
 /* ... and read back: the durable ones, and with resumed the session's */
 void sched_load(cl_repl *r, int resumed);
+/* sched.c (A4 gaps 3): /loop */
+/* the default loop prompt appended to out: .claude/loop.md, else
+ * <home>/loop.md (cut at 25000 bytes): 1; else the built-in one: 0 */
+int sched_loop_default(cl_repl *r, jw *out);
+/* does /loop's input hold a prompt besides its interval? */
+int sched_loop_has_prompt(const char *arg);
+/* tui.h esc_idle: Esc or Ctrl+C on the idle screen cancels a pending wakeup: 1 it did */
+int sched_esc_idle(void *u);
+/* at a turn's end: the fallback wakeup, the loop's end, the screen's fold of quiet iterations */
+void sched_loop_end(cl_repl *r);
 
 /* policy.c (A4 gaps 2): a skill's frontmatter hooks from its first use on;
  * the frontmatter hooks freed */

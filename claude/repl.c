@@ -1309,6 +1309,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     jw_free(&content);
     jw_free(&xtools);
     request_free(r);
+    sched_loop_end(r);              /* A4 gaps 3: /loop's fallback wakeup, its end, quiet iterations folded */
     r->idle_from = r->io->ms ? r->io->ms(r->io->u) : 0;     /* Notification idle_prompt counts from here */
     r->idle_told = 0;
     if (answered && r->turn_rc == TURN_OK && r->goal[0] && !r->no_person)
@@ -2188,6 +2189,7 @@ void repl_run(cl_repl *r)
                 ui_user(&r->ui, line);
             if (repl_line(r, line))
                 break;
+            r->loop_tick = 0;       /* a wakeup's line that ran no turn */
         }
         free(line);
         return;
@@ -2242,6 +2244,7 @@ int repl_screen(cl_repl *r)
     t->idle = pol_status_tick;
     t->iu = r;
     t->wake = sched_tui_wake;       /* A4 gaps 2: a scheduled turn while the screen waits */
+    t->esc_idle = sched_esc_idle;   /* A4 gaps 3: Esc cancels a pending /loop wakeup */
     show_init(s, t);
     s->verbose = &r->verbose;    /* --verbose: results unfolded in place */
     if (tui_start(t)) {

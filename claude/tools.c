@@ -356,6 +356,23 @@ static const char s_cron_delete[] =
 static const char *const d_cron_list[] = { "Lists the scheduled tasks: id, schedule, prompt.", 0 };
 static const char s_cron_list[] = "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}";
 
+static const char *const d_wakeup[] = {
+    "Schedule when to resume work in /loop's self-paced mode (the user ran /loop without an interval and "
+    "you pace the iterations). Call it at the end of each iteration that needs another: delaySeconds is "
+    "how long until the next one (clamped to 60..3600: under 270 s keeps the prompt cache warm; 1200-1800 s "
+    "for idle ticks with nothing specific to watch); reason is one short sentence on why, shown to the ",
+    "user; prompt is the /loop input to run then, verbatim with its \"/loop \" prefix (for a bare /loop "
+    "pass the literal <<autonomous-loop-dynamic>>: it becomes the default loop prompt when it fires); noop "
+    "true when this iteration changed nothing (consecutive quiet ticks fold into one line). To end the loop "
+    "call it with stop: true alone; an iteration that does neither gets one fallback wakeup 20 minutes "
+    "later, and the loop ends if that one does neither too.",
+    0
+};
+static const char s_wakeup[] =
+    "{\"type\":\"object\",\"properties\":{\"delaySeconds\":{\"type\":\"number\"},\"reason\":{\"type\":"
+    "\"string\"},\"prompt\":{\"type\":\"string\"},\"noop\":{\"type\":\"boolean\"},\"stop\":{\"type\":"
+    "\"boolean\"}},\"additionalProperties\":false}";
+
 typedef struct tdef {
     const char *name;
     const char *title;          /* what the screen calls it */
@@ -392,6 +409,7 @@ static const tdef defs[T_COUNT] = {
     { "CronCreate", "Schedule", d_cron_create, s_cron_create, 0 },
     { "CronDelete", "Cancel Schedule", d_cron_delete, s_cron_delete, 0 },
     { "CronList", "Schedules", d_cron_list, s_cron_list, 0 },
+    { "ScheduleWakeup", "Wakeup", d_wakeup, s_wakeup, 0 },
 };
 
 /* the A2 names, for a model that still calls them (a resumed session) */
@@ -468,6 +486,7 @@ static int declared(cl_tools *t, int i)
     case T_CRON_CREATE:
     case T_CRON_DELETE:
     case T_CRON_LIST:
+    case T_SCHEDULE_WAKEUP:
         return !t->no_cron && t->depth == 0 && t->sys && t->sys->now != 0;
     }
     return 1;
@@ -713,7 +732,7 @@ static int never_asks(int tool)
     return tool == T_TODO_WRITE || tool == T_BASH_OUTPUT || tool == T_KILL_SHELL || tool == T_TASK ||
            tool == T_ASK_USER || tool == T_EXIT_PLAN || tool == T_ENTER_PLAN || tool == T_TASK_CREATE ||
            tool == T_TASK_GET || tool == T_TASK_LIST || tool == T_TASK_UPDATE || tool == T_TASK_STOP ||
-           tool == T_CRON_CREATE || tool == T_CRON_DELETE || tool == T_CRON_LIST;
+           tool == T_CRON_CREATE || tool == T_CRON_DELETE || tool == T_CRON_LIST || tool == T_SCHEDULE_WAKEUP;
 }
 
 static int is_edit(int tool)
@@ -2414,6 +2433,7 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
     case T_CRON_CREATE:
     case T_CRON_DELETE:
     case T_CRON_LIST:
+    case T_SCHEDULE_WAKEUP:
         tasks_run(t, tool, out, id, in);
         break;
     }
@@ -2504,6 +2524,9 @@ char *tools_args(int tool, const char *in, long inn)
         case T_CRON_DELETE:
             arg_kv(&w, v, "id", 0);
             break;
+        case T_SCHEDULE_WAKEUP:
+            arg_kv(&w, v, "reason", 0);
+            break;
         }
     }
     r = (char *)malloc((size_t)w.n + 1);
@@ -2591,6 +2614,8 @@ int tools_summary(int tool, const char *in, long inn, const char *p, long n, cha
     case T_CRON_DELETE:
         cl_copy(out, "Cancelled", cap);
         return 1;
+    case T_SCHEDULE_WAKEUP:
+        return first_line(p, n, "", out, cap);
     case T_EXIT_PLAN:
         cl_copy(out, "User approved Claude's plan", cap);
         return 1;

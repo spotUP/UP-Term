@@ -12,6 +12,15 @@
  * fires none. The jobs live in the tools (tasks.c); here they are kept
  * with the session (<session>.cron beside its JSONL file, restored on a
  * resume) and the durable ones in <root>/.claude/scheduled_tasks.json.
+ *
+ * /loop (A4 gaps 3): a self-paced loop's wakeup is a job of the same table
+ * (tasks.c ScheduleWakeup); it fires here as "Claude resuming /loop
+ * wakeup". A bare /loop's sentinel prompts become the default prompt when
+ * they fire (loop.md read again: edits count from the next iteration). At
+ * each turn's end sched_loop_end gives an iteration that set no wakeup one
+ * fallback, ends the loop after a second, and on the screen folds quiet
+ * iterations in a row into one line. Esc on the idle screen cancels the
+ * pending wakeup (sched_esc_idle).
  * Portable C89, host-tested through the REPL suite. */
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +31,8 @@
 #include "util.h"
 
 #define WAKE_AFTER_MS 1000UL        /* the screen waits this long after a turn before one of its own */
+#define LOOP_MD_MAX 25000L          /* Claude Code: loop.md beyond this is cut */
+#define LOOP_MD_READ 1048576L       /* read whole up to this (no partial reads here); a longer one is skipped */
 
 static long now_s(cl_repl *r)
 {
@@ -125,12 +136,179 @@ void sched_load(cl_repl *r, int resumed)
     tasks_changed(r->tools.tasks);
 }
 
+/* ---- /loop ---- */
+
+/* Claude Code's built-in maintenance prompt (its three steps; the pull
+ * request step is what this machine has instead: no git here) */
+static const char maintenance[] =
+    "Work through the following, in order:\n"
+    "- continue any unfinished work from this conversation;\n"
+    "- check on what the session left running or waiting (background commands, monitors, scheduled tasks, "
+    "builds and tests) and deal with what they report;\n"
+    "- when nothing else is pending, run a cleanup pass: hunt for bugs in, or simplify, the code worked on.\n";
+static const char maintenance2[] =
+    "Do not start new initiatives outside that scope. Irreversible actions (deleting, overwriting, sending "
+    "anything out) only proceed when they continue something this conversation already authorized. If there "
+    "is nothing to do, say so in one line.";
+
+int sched_loop_default(cl_repl *r, jw *out)
+{
+    char f[400];
+    int src;
+    for (src = 0; src < 2; src++) {
+        char *b = 0;
+        long n = 0;
+        /* the project's .claude/loop.md first, then the user's (ENVARC:Claude = ~/.claude) */
+        if (src == 0 ? path_join(r->tools.root, ".claude/loop.md", f, sizeof(f))
+                     : path_join(r->home, "loop.md", f, sizeof(f)))
+            continue;
+        if (!r->home[0] && src == 1)
+            continue;
+        if (r->sys->kind(r->sys->u, f) != 1 || r->sys->read(r->sys->u, f, LOOP_MD_READ, &b, &n))
+            continue;
+        jw_raw(out, b, n > LOOP_MD_MAX ? LOOP_MD_MAX : n);
+        free(b);
+        return 1;
+    }
+    jw_rawz(out, maintenance);
+    jw_rawz(out, maintenance2);
+    return 0;
+}
+
+/* a sentinel's prompt at its fire: the default prompt, and for the
+ * self-paced one how to go on */
+static void loop_sentinel(cl_repl *r, jw *prompt, int dynamic)
+{
+    sched_loop_default(r, prompt);
+    if (dynamic)
+        jw_rawz(prompt, "\n\n(An iteration of a self-paced /loop with no prompt of its own. When it needs "
+                        "another, call ScheduleWakeup with prompt " LOOP_DYNAMIC "; to end it, stop: true.)");
+}
+
+static const char *blanks(const char *a)
+{
+    while (*a == ' ' || *a == '\t')
+        a++;
+    return a;
+}
+
+/* "5m", "5 minutes": the end of the time at a, 0 when it is not one */
+static const char *time_at(const char *a)
+{
+    static const char *const words[] = { "seconds", "second", "secs", "sec", "minutes", "minute", "mins", "min",
+                                         "hours", "hour", "hrs", "hr", "days", "day", 0 };
+    const char *p = a;
+    int i;
+    while (*p >= '0' && *p <= '9')
+        p++;
+    if (p == a)
+        return 0;
+    if ((*p == 's' || *p == 'm' || *p == 'h' || *p == 'd') && (!p[1] || p[1] == ' ' || p[1] == '\t'))
+        return p + 1;
+    p = blanks(p);
+    for (i = 0; words[i]; i++) {
+        long l = (long)strlen(words[i]);
+        if (!strncmp(p, words[i], (size_t)l) && (!p[l] || p[l] == ' ' || p[l] == '\t'))
+            return p + l;
+    }
+    return 0;
+}
+
+int sched_loop_has_prompt(const char *a)
+{
+    const char *p;
+    a = blanks(a);
+    /* rule 1, a leading interval token (^\d+[smhd]$): the rest is the prompt */
+    p = a;
+    while (*p >= '0' && *p <= '9')
+        p++;
+    if (p > a && (*p == 's' || *p == 'm' || *p == 'h' || *p == 'd') && (!p[1] || p[1] == ' ' || p[1] == '\t'))
+        return *blanks(p + 1) != 0;
+    /* rule 2, a trailing "every N unit": empty when it is all there is */
+    if (!strncmp(a, "every", 5) && (a[5] == ' ' || a[5] == '\t') && (p = time_at(blanks(a + 5))) != 0 &&
+        !*blanks(p))
+        return 0;
+    return *a != 0;
+}
+
+int sched_esc_idle(void *u)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (!r->tools.tasks || !tasks_wakeup_get(r->tools.tasks))
+        return 0;
+    tasks_wakeup_cancel(r->tools.tasks);
+    r->loop_fallback = 0;
+    r->fold_n = 0;
+    ui_line(&r->ui, "Cancelled the pending /loop wakeup: the loop is stopped (/loop starts it again).");
+    return 1;
+}
+
+void sched_loop_end(cl_repl *r)
+{
+    loop_turn lt;
+    int tick = r->loop_tick;
+    struct cl_tasks *k = r->tools.tasks;
+    r->loop_tick = 0;
+    if (!k)
+        return;
+    tasks_loop_take(k, &lt);
+    if (lt.called)
+        r->loop_fallback = 0;
+    if (tick && !lt.called && tasks_loop_on(k) && !tasks_wakeup_get(k)) {
+        if (r->turn_rc == TURN_CANCEL) {
+            tasks_wakeup_cancel(k);
+            ui_line(&r->ui, "The /loop is stopped: its iteration was interrupted.");
+        } else if (!r->loop_fallback) {
+            char err[200], *again = 0;
+            long now = now_s(r);
+            const char *lp = tasks_loop_prompt(k);
+            again = (char *)malloc(strlen(lp) + 1);
+            if (again) {
+                strcpy(again, lp);
+                if (now >= 0 && tasks_wakeup_set(k, LOOP_FALLBACK_S, again, now, 0, err, sizeof(err)) == 0) {
+                    r->loop_fallback = 1;
+                    ui_line(&r->ui, "This /loop iteration set no next wakeup: one more in 20 minutes, and the loop "
+                                    "ends if that one sets none either (Esc cancels it).");
+                }
+                free(again);
+            }
+        } else {
+            tasks_wakeup_cancel(k);
+            r->loop_fallback = 0;
+            ui_line(&r->ui, "The /loop has ended: its fallback iteration set no next wakeup.");
+        }
+    }
+    if (!r->tui)
+        return;
+    if (tick && lt.called && !lt.stopped && lt.noop) {
+        /* quiet iterations in a row (nothing drawn between them) fold into one line */
+        if (r->fold_n > 0 && r->fold_end == r->loop_mark && tui_takeback(r->tui, r->fold_mark) == 0) {
+            char m[400], num[16];
+            r->fold_n++;
+            cl_copy(m, "Claude resuming /loop wakeup (", sizeof(m));
+            cl_ltoa(r->fold_n, num);
+            cl_cat(m, num, sizeof(m));
+            cl_cat(m, " quiet wake-ups, nothing to do)", sizeof(m));
+            if (lt.reason[0]) {
+                cl_cat(m, ": ", sizeof(m));
+                cl_cat(m, lt.reason, sizeof(m));
+            }
+            ui_line(&r->ui, m);
+        } else {
+            r->fold_mark = r->loop_mark;
+            r->fold_n = 1;
+        }
+        r->fold_end = r->tui->n_lines;
+    } else if (tick)
+        r->fold_n = 0;
+}
+
 int sched_wake(cl_repl *r, jw *prompt, jw *shown)
 {
     char p[2000], id[12];
     long now = now_s(r);
     jw w;
-    int n;
+    int n, due;
     if (r->no_person)
         return 0;                   /* print mode: no turns of its own */
     jw_init(&w);
@@ -143,13 +321,25 @@ int sched_wake(cl_repl *r, jw *prompt, jw *shown)
         return 1;
     }
     jw_free(&w);
-    if (!r->tools.no_cron && r->tools.tasks && tasks_cron_due(r->tools.tasks, now, p, sizeof(p), id, sizeof(id))) {
+    if (!r->tools.no_cron && r->tools.tasks &&
+        (due = tasks_cron_due(r->tools.tasks, now, p, sizeof(p), id, sizeof(id))) != 0) {
+        int sentinel = !strcmp(p, LOOP_DYNAMIC) || !strcmp(p, LOOP_FIXED);
         r->n_cron_fired++;
-        jw_rawz(prompt, p);
-        jw_rawz(shown, "Scheduled task ");
-        jw_rawz(shown, id);
-        jw_rawz(shown, ": ");
-        jw_rawz(shown, p);
+        if (sentinel)
+            loop_sentinel(r, prompt, !strcmp(p, LOOP_DYNAMIC));
+        else
+            jw_rawz(prompt, p);
+        if (due == 2) {
+            /* Claude Code's words for a wakeup */
+            r->loop_tick = 1;
+            r->n_loop_ticks++;
+            jw_rawz(shown, "Claude resuming /loop wakeup");
+        } else {
+            jw_rawz(shown, "Scheduled task ");
+            jw_rawz(shown, id);
+            jw_rawz(shown, ": ");
+            jw_rawz(shown, sentinel ? "/loop (the default loop prompt)" : p);
+        }
         sched_save(r);
         return 1;
     }
@@ -168,6 +358,8 @@ char *sched_tui_wake(void *u)
         return 0;                   /* a moment after a turn: keys typed straight on come first */
     jw_init(&p);
     jw_init(&s);
+    if (r->tui)
+        r->loop_mark = r->tui->n_lines;     /* a /loop iteration's lines start here */
     if (sched_wake(r, &p, &s) && !p.oom && p.n) {
         line = (char *)malloc((size_t)p.n + 1);
         if (line) {
@@ -193,6 +385,7 @@ int sched_line_mode(cl_repl *r)
         r->woke = 1;
         repl_line(r, p.p);
         r->woke = 0;
+        r->loop_tick = 0;
         jw_reset(&p);
         jw_reset(&s);
         ran++;

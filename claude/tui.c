@@ -1092,6 +1092,22 @@ void tui_redraw(cl_tui *t)
     tui_frame(t);
 }
 
+int tui_takeback(cl_tui *t, long mark)
+{
+    long k = t->n_lines - mark;
+    if (k < 0 || k > t->nring)
+        return -1;
+    for (; k > 0; k--) {
+        t->ringat = (t->ringat - 1 + TUI_RING) % TUI_RING;
+        free(t->ring[t->ringat]);
+        t->ring[t->ringat] = 0;
+        t->nring--;
+        t->n_lines--;               /* counted out again: a later mark still points into the copy */
+    }
+    tui_redraw(t);
+    return 0;
+}
+
 int tui_resized(cl_tui *t)
 {
     int c, r;
@@ -1880,6 +1896,8 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         }
         if (busy)
             return H_STOP;
+        if (!t->ed.n && t->esc_idle && t->esc_idle(t->iu))
+            return H_GO;            /* A4 gaps 3: a pending /loop wakeup cancelled */
         if (t->esc_armed && now(t) - t->esc_ms <= 1000) {
             t->esc_armed = 0;
             t->hint[0] = 0;
@@ -1943,6 +1961,8 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
                 box_reset(t);
                 return H_GO;
             }
+            if (t->esc_idle && t->esc_idle(t->iu))
+                return H_GO;        /* A4 gaps 3: a pending /loop wakeup cancelled */
             if (t->quit_armed == 'c')
                 return H_QUIT;
             t->quit_armed = 'c';
