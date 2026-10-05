@@ -82,6 +82,25 @@ def window(title):
             found.setdefault(f[5], (int(f[2]), int(f[3]), w, h))
     return found
 
+PUT_PART = 8 << 20   # a frame holds 16 MiB at most (PROTOCOL.md)
+
+def put(local, remote):
+    # a file onto the Amiga; past PUT_PART in parts that Join puts together
+    data = open(local, 'rb').read()
+    if len(data) <= PUT_PART:
+        p = remote.encode('latin-1'); req(0x04, struct.pack('>H', len(p)) + p + data)
+        return
+    parts = []
+    for i in range(0, len(data), PUT_PART):
+        part = '%s.part%d' % (remote, len(parts))
+        p = part.encode('latin-1'); req(0x04, struct.pack('>H', len(p)) + p + data[i:i + PUT_PART], 600)
+        parts.append(part)
+    cmd = 'Join %s AS "%s"' % (' '.join('"%s"' % x for x in parts), remote)
+    b = req(0x02, struct.pack('>H', 300) + cmd.encode('latin-1'), 600)
+    if struct.unpack('>I', b[:4])[0]:
+        raise SystemExit('Join failed: ' + b[4:].decode('latin-1'))
+    req(0x02, struct.pack('>H', 60) + ('Delete %s QUIET' % ' '.join('"%s"' % x for x in parts)).encode('latin-1'))
+
 def png(path, w, h, rows):
     raw = b''.join(b'\0' + r for r in rows)
     def ch(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d))
@@ -103,7 +122,7 @@ def main(a):
         b = req(0x12, a[1].encode('latin-1')); print('rc', struct.unpack('>I', b[:4])[0], b[4:].decode('latin-1'))
     elif cmd == 'get': open(a[2], 'wb').write(req(0x03, a[1].encode('latin-1')))
     elif cmd == 'put':
-        p = a[2].encode('latin-1'); req(0x04, struct.pack('>H', len(p)) + p + open(a[1], 'rb').read())
+        put(a[1], a[2])
     elif cmd == 'screens':
         b = req(0x0A); print(b.hex())
     elif cmd == 'shot':
