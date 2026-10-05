@@ -138,3 +138,7 @@ Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: me
   ScheduleWakeup). Ledgers: 2026-10-05-a4-gaps3-{tui,loop}-progress.md.
 - NAS (tools/nas): claude-amiga built and running on the DS218+; waits for the owner's setpw and
   the subscription /login (2760876 fixed the README: log in as the claude user, not root).
+- 2026-10-05 owner answers: start screen = the compact one (as built: mascot + 3 lines), no change.
+  NAS reachable away from home = Tailscale (being set up). Merged since: /loop + ScheduleWakeup
+  (aa4a073), one Web Search header (84fe138; the "lost line" was the rig not answering WebSearch's
+  permission question), header above a resumed session (fd7265d). claude_rig2 10/10 on 84fe138.
