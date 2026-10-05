@@ -895,6 +895,12 @@ static void vim_visual_dot(void)
     CHECK(vimcase("one\ntwo\nthree", "VjJ", "one two\nthree"));
     CHECK(vimcase("one two three", "vey$vbp", "one two one"));
     CHECK(vimcase("one\ntwo\nthree", "Vj>", "  one\n  two\nthree"));    /* two blanks, Claude Code's indent */
+    /* gaps 3: >> and << in NORMAL mode, with a count, and '.' after them */
+    CHECK(vimcase("one\ntwo\nthree", ">>", "  one\ntwo\nthree"));
+    CHECK(vimcase("one\ntwo\nthree", "2>>", "  one\n  two\nthree"));
+    CHECK(vimcase("    one\ntwo", "<<", "  one\ntwo"));
+    CHECK(vimcase("one\ntwo", ">>j.", "  one\n  two"));
+    CHECK(vimcase("  one\ntwo", "<<<<", "one\ntwo"));       /* nothing left to take: stays */
     /* '.' and its count */
     CHECK(vimcase("abcdef", "x.", "cdef"));
     CHECK(vimcase("abcdef", "x3.", "ef"));
