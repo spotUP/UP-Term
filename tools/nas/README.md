@@ -37,6 +37,17 @@ Changed Dockerfile or entrypoint.sh: raise the `image:` tag in compose.yaml
 (claude-amiga:4 -> 5), then Project > Action > Build. With the same tag, Build
 reuses the old image.
 
+If a Build leaves DSM showing a container named `<id>_claude-amiga` that it cannot
+stop or clean ("No such container"), remove it as root and recreate it: Control
+Panel > Task Scheduler > Create > Triggered Task > User-defined script (user root,
+not enabled), script `cd /volume1/docker/claude-amiga && for c in $(docker ps -a
+--format '{{.Names}}' | grep claude-amiga); do docker rm -f "$c"; done && docker
+compose up -d`, Run it once, then delete the task. The login on the volume stays.
+
+Tailscale (optional, away from home): the Synology Tailscale package hands what
+reaches the NAS's tailnet address to 127.0.0.1, which is why NAS_IP also lists
+127.0.0.1. Its own page does not open over QuickConnect.
+
 Model, settings and CLAUDE.md live in `/volume1/docker/claude-amiga/home/.claude`.
 Work files: `/home/claude/work` in the container (add a volume for a NAS share if
 Claude should edit files there).

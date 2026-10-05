@@ -142,3 +142,13 @@ Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: me
   NAS reachable away from home = Tailscale (being set up). Merged since: /loop + ScheduleWakeup
   (aa4a073), one Web Search header (84fe138; the "lost line" was the rig not answering WebSearch's
   permission question), header above a resumed session (fd7265d). claude_rig2 10/10 on 84fe138.
+- 2026-10-05 NAS: image claude-amiga:4 (uptelnetd on 192.168.0.198 + 127.0.0.1 for Tailscale; NAS on
+  the owner's tailnet as 100.70.57.29; the owner keeps Tailscale OFF the work Mac). A DSM rebuild
+  left a ghost <id>_claude-amiga container; repaired by a one-off root task (docker rm -f +
+  compose up -d), task and its output files deleted. Old images removed. The owner tests from the
+  Amiga at home: uptelnet 192.168.0.198 2323.
+- 2026-10-05 merged: W30 (22dd0aa), uptelnet goodbye (ec5ea7e), gaps3-tui (e046f46; audit 213 have,
+  1 partial, 0 missing, 37 N/A). Rig: claude_rig 6/6, claude_rig3 2/2, claude_rig2 5/10 -- the
+  long-standing "Return inserts a newline, '/' lost" bug, now deterministic after the prompt
+  suggestion request; agent fixing (fix/claude-input-after-suggestion). Emoji: owner chose real
+  Unifont bitmaps; agent on feature/u2-unifont.
