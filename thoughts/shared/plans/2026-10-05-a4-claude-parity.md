@@ -130,3 +130,11 @@ Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: me
   screenshot that did not reach the agent); it finished all 12 rows (c0aa1b2, 4a5cff3) plus a
   compact mascot header built from memory -- the owner to confirm which Claude Code start screen.
   Main is being merged into that branch by an agent (signature change of the ask callback).
+- 2026-10-05: gaps2 merged to main (07517cb; main merged into it first, 6b6a76a); make test and
+  make amiga pass. Rig checks of 07517cb: see the next entry. The audit had not been updated for
+  input-rest; two agents re-verify and close the rest: feature/a4-gaps3-tui (add-dir Tab, /color,
+  /focus, /keybindings, skip-permissions mode, keys, ? panel, vim leftovers, prompt suggestions,
+  away recap, askUserQuestionTimeout, @agent-name) and feature/a4-gaps3-loop (/loop +
+  ScheduleWakeup). Ledgers: 2026-10-05-a4-gaps3-{tui,loop}-progress.md.
+- NAS (tools/nas): claude-amiga built and running on the DS218+; waits for the owner's setpw and
+  the subscription /login (2760876 fixed the README: log in as the claude user, not root).
