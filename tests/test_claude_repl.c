@@ -1885,13 +1885,29 @@ static void test_wp4_perms(void)
     add_stream("tool_edit.sse");
     add_stream("tool_final.sse");
     CHECK_INT(run_print(&r, "-p --output-format json --dangerously-skip-permissions please edit", 0), 0);
-    CHECK_INT(r.ask_policy, ASKP_BYPASS);
+    CHECK_INT(r.tools.perm.mode, PERM_BYPASS);
+    CHECK_INT(r.tools.perm.can_bypass, 1);
+    CHECK_STR(perm_name(r.tools.perm.mode), "bypassPermissions");
     CHECK_INT(result_of(&v), 0);
     CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 0);
     CHECK(sys.read(sys.u, p, 1000, &b, &n) == 0 && b && !strcmp(b, "hello from the Amiga\n"));
     free(b);
     repl_free(&r);
     remove(p);
+
+    /* gaps 3: --allow-dangerously-skip-permissions: the session starts in
+     * default, bypass is only reachable (Shift+Tab); without the flag not */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --allow-dangerously-skip-permissions hello", 0), 0);
+    CHECK_INT(r.tools.perm.mode, PERM_DEFAULT);
+    CHECK_INT(r.tools.perm.can_bypass, 1);
+    repl_free(&r);
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    CHECK_INT(r.tools.perm.can_bypass, 0);
+    repl_free(&r);
 
     /* --tools and --disallowedTools: what the request declares */
     setup(&r, none);
@@ -4807,6 +4823,68 @@ static void test_gaps2_more(void)
     repl_free(&r);
 }
 
+/* ---- A4 gaps 3 (TUI side): the screen's rows, each driven once through
+ * the REPL core on the engine's screen (ledger
+ * thoughts/shared/plans/2026-10-05-a4-gaps3-tui-progress.md) ---- */
+
+/* a REPL with its screen in root (made), the keys typed in turn */
+static void g3_screen(cl_repl *r, const char **keys, const char *sub_dir, char *root)
+{
+    strcpy(root, dir);
+    strcat(root, "/");
+    strcat(root, sub_dir);
+    mkdir(root, 0700);
+    cs_open(80, 30, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+}
+
+static void g3_dump(void)
+{
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+}
+
+/* G3: --allow-dangerously-skip-permissions puts bypass in Shift+Tab's
+ * cycle; three presses reach it and Claude's Write runs unasked */
+static void test_gaps3_bypass(void)
+{
+    static const char *keys[] = { "\033[Z", "\033[Z", "\033[Z", "write it\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_screen(&r, keys, "g3bypass", root);
+    r.allow_bypass = 1;             /* what cli_apply sets for the flag */
+    repl_load(&r);
+    add_answer("toolu_G3W", "Write", "{\"file_path\":\"g3.txt\",\"content\":\"bypassed\\n\"}", 0);
+    add_answer(0, 0, 0, "Written.");
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    g3_dump();
+    CHECK_INT(cs.next, 5);                  /* no question took a key */
+    CHECK(strstr(cs.sent.p, " bypass permissions on\033[0m\033[2m (shift+tab to cycle)") != 0);
+    CHECK_INT(r.tools.perm.mode, PERM_BYPASS);
+    CHECK(has("g3bypass/g3.txt", "bypassed"));
+    repl_free(&r);
+    cs_close();
+}
+
+static void test_gaps3(void)
+{
+    test_gaps3_bypass();
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -4833,6 +4911,7 @@ void suite_claude_repl(void)
     test_gaps2_tools();
     test_gaps2_hooks();
     test_gaps2_more();
+    test_gaps3();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);

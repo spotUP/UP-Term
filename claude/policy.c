@@ -164,12 +164,9 @@ static void shown(cl_repl *r, cl_hookres *h)
 static const char *mode_name(const cl_repl *r, const cl_tools *tl)
 {
     int pol = tl && tl->ask_policy ? tl->ask_policy - 1 : r->ask_policy;
-    if (pol == ASKP_BYPASS)
-        return "bypassPermissions";
     if (pol == ASKP_DENY)
         return "dontAsk";
-    return (tl ? tl : &r->tools)->perm.mode == PERM_ACCEPT ? "acceptEdits"
-           : (tl ? tl : &r->tools)->perm.mode == PERM_PLAN ? "plan" : "default";
+    return perm_name((tl ? tl : &r->tools)->perm.mode);
 }
 
 /* a tool event's common members: the tool, its input, its id, the mode */

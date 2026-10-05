@@ -593,7 +593,7 @@ int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outsid
     /* A4 WP4: nobody to ask (print mode, dontAsk): denied, but a read in
      * the start directory runs (Claude Code: no approval needed there);
      * bypassPermissions: yes, except to an explicit ask rule */
-    if (pol == ASKP_BYPASS && !rule)
+    if ((r->at ? r->at : &r->tools)->perm.mode == PERM_BYPASS && !rule)
         return ASK_ONCE;
     {
         /* Claude Code: PermissionRequest hooks answer before the dialog
@@ -2233,7 +2233,7 @@ int repl_screen(cl_repl *r)
     t->model = r->model;
     t->effort = r->effort;
     t->root = r->tools.root;
-    t->mode = &r->tools.perm.mode;
+    t->perm = &r->tools.perm;
     t->cmds = r->menu;
     t->ncmds = r->nmenu;
     t->status = r->status_text;     /* the statusLine command's row(s) */
@@ -2814,10 +2814,14 @@ int repl_load(cl_repl *r)
         r->tools.perm.mode = PERM_PLAN;
     else if (!strcmp(r->cfg.default_mode, "default") || !strcmp(r->cfg.default_mode, "manual"))
         r->tools.perm.mode = PERM_DEFAULT;
-    else if (!strcmp(r->cfg.default_mode, "dontAsk") || !strcmp(r->cfg.default_mode, "bypassPermissions")) {
+    else if (!strcmp(r->cfg.default_mode, "dontAsk")) {
         r->tools.perm.mode = PERM_DEFAULT;
-        r->ask_policy = r->cfg.default_mode[0] == 'd' ? ASKP_DENY : ASKP_BYPASS;
-    }
+        r->ask_policy = ASKP_DENY;
+    } else if (!strcmp(r->cfg.default_mode, "bypassPermissions"))
+        r->tools.perm.mode = PERM_BYPASS;
+    /* Shift+Tab reaches bypass when the session may use it (Claude Code:
+     * --dangerously-skip-permissions or --allow-dangerously-skip-permissions) */
+    r->tools.perm.can_bypass = r->allow_bypass || r->tools.perm.mode == PERM_BYPASS;
     for (i = 0; i < r->cfg.nenv; i++)
         if (r->sys->setenv)
             r->sys->setenv(r->sys->u, r->cfg.env[i].k, r->cfg.env[i].v);

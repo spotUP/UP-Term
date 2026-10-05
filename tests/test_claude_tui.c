@@ -166,7 +166,7 @@ static void editor(void)
 static cl_io io;
 static cl_tui tui;
 static cl_show shw;
-static int mode;
+static cl_perm perm;
 
 static void screen(int cols, int rows, const char **script)
 {
@@ -177,8 +177,8 @@ static void screen(int cols, int rows, const char **script)
     tui.effort = "medium";
     tui.root = "Work:Project";
     tui.ctx_left = 92;
-    mode = PERM_DEFAULT;
-    tui.mode = &mode;
+    memset(&perm, 0, sizeof(perm));
+    tui.perm = &perm;
     show_init(&shw, &tui);
 }
 
@@ -238,12 +238,26 @@ static void idle_prompt(void)
     /* the frame is a rounded box in grey */
     CHECK_INT(h_cell(cs.vt, 0, 12)->fg, 8);
     /* Shift+Tab: accept edits, then plan, then back */
-    mode = PERM_ACCEPT;
+    perm.mode = PERM_ACCEPT;
     tui_frame(&tui);
     CHECK(strstr(cs_row(15), "\342\217\265\342\217\265 accept edits on (shift+tab to cycle)") != 0);
-    mode = PERM_PLAN;
+    perm.mode = PERM_PLAN;
     tui_frame(&tui);
     CHECK(strstr(cs_row(15), "|| plan mode on") != 0);
+    /* gaps 3: bypassPermissions, in the error colour, when the session may use it */
+    perm.mode = PERM_BYPASS;
+    tui_frame(&tui);
+    CHECK(strstr(cs_row(15), "\342\217\265\342\217\265 bypass permissions on (shift+tab to cycle)") != 0);
+    CHECK_INT(h_cell(cs.vt, 2, 15)->fg, 1);
+    /* Shift+Tab's cycle: bypass only when it may be used */
+    perm.mode = PERM_PLAN;
+    CHECK_INT(perm_next(&perm), PERM_DEFAULT);
+    perm.can_bypass = 1;
+    CHECK_INT(perm_next(&perm), PERM_BYPASS);
+    perm.mode = PERM_BYPASS;
+    CHECK_INT(perm_next(&perm), PERM_DEFAULT);
+    perm.mode = PERM_DEFAULT;
+    perm.can_bypass = 0;
     unscreen();
     CHECK_INT(cs.raw_on, 0);
     cs_close();

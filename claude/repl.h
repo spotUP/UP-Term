@@ -61,8 +61,8 @@ typedef struct cl_feed {
 /* who answers a permission question (A4 WP4) */
 enum {
     ASKP_ASK,                   /* the user */
-    ASKP_DENY,                  /* nobody: denied (dontAsk; print mode); reads in the root still run */
-    ASKP_BYPASS                 /* yes to all (bypassPermissions); explicit ask rules still ask */
+    ASKP_DENY                   /* nobody: denied (dontAsk; print mode); reads in the root still run */
+    /* (bypassPermissions is a permission mode: cl_perm PERM_BYPASS) */
 };
 /* how the last turn ended */
 enum { TURN_OK, TURN_FAIL, TURN_CANCEL, TURN_MAX_TURNS, TURN_BUDGET, TURN_DEFERRED };
@@ -138,6 +138,7 @@ typedef struct cl_repl {
     /* A4 WP4: the command line (cli.c) and print mode (print.c) */
     const cl_feed *feed;
     int ask_policy;             /* ASKP_* */
+    int allow_bypass;           /* A4 gaps 3: --allow-dangerously-skip-permissions (bypass in the cycle) */
     int no_person;              /* print mode: no one to ask (questions denied, choices declined) */
     int max_turns;              /* responses a turn may have before it stops, 0 no limit */
     unsigned long budget_micro; /* spend allowed (US dollars * 1e6), 0 no limit; ... */

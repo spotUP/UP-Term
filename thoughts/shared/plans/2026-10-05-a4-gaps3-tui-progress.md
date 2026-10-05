@@ -77,7 +77,7 @@ switch), `tui_menu` (tui.c:2155), the mode names `tui_mode_names[3]` (tui.c:30),
 
 - [x] G1 audit rows verified (above); ledger
 - [x] G2 vim >> << normal-mode test
-- [ ] G3 bypassPermissions in the Shift+Tab cycle, --allow-dangerously-skip-permissions
+- [x] G3 bypassPermissions in the Shift+Tab cycle, --allow-dangerously-skip-permissions
 - [ ] G4 /color
 - [ ] G5 Alt+T thinking toggle
 - [ ] G6 /add-dir and /cd: Tab suggestions of directories
@@ -89,8 +89,9 @@ switch), `tui_menu` (tui.c:2155), the mode names `tui_mode_names[3]` (tui.c:30),
 - [ ] G12 N/A rows answered (/focus in na_cmds; ledger reasons)
 - [ ] G13 audit file rows updated, counts
 
-Running count: 2 of 13.
+Running count: 3 of 13.
 
 ## Log
 
 - G1, G2: audit rows verified; vim >> << (count, '.', << with nothing to take) tested in vim_visual_dot.
+- G3: PERM_BYPASS replaces ASKP_BYPASS (tools.h perm_name / perm_next one place for the names and the cycle); the status row says bypass permissions on in the error colour; --allow-dangerously-skip-permissions (cli.c). Tests: test_claude_tui idle_prompt, test_claude_repl test_gaps3_bypass (three Shift+Tab, a Write unasked), print-mode flag checks.

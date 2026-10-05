@@ -391,11 +391,9 @@ static void suggestion(pst *st)
 
 static const char *perm_mode(const cl_repl *r)
 {
-    if (r->ask_policy == ASKP_BYPASS)
-        return "bypassPermissions";
     if (r->ask_policy == ASKP_DENY)
         return "dontAsk";
-    return r->tools.perm.mode == PERM_ACCEPT ? "acceptEdits" : r->tools.perm.mode == PERM_PLAN ? "plan" : "default";
+    return perm_name(r->tools.perm.mode);
 }
 
 static void init_msg(pst *st)

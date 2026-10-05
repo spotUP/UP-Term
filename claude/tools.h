@@ -76,13 +76,22 @@ void tools_search_tool(jw *w, const char *model, const char *allowed, const char
 /* The permission mode (Shift+Tab in the screen, ledger A3): the A2 rules;
  * accept edits -- Write, Edit and MultiEdit inside the start directory run
  * without a question; plan -- only what changes nothing runs, the others
- * are refused with a result that says so. */
-enum { PERM_DEFAULT, PERM_ACCEPT, PERM_PLAN };
+ * are refused with a result that says so; bypass (A4 gaps 3, Claude Code's
+ * bypassPermissions) -- every question answered yes, except an explicit
+ * ask rule's. */
+enum { PERM_DEFAULT, PERM_ACCEPT, PERM_PLAN, PERM_BYPASS };
 
 typedef struct cl_perm {
     unsigned long session;      /* bit per tool: allowed for the session */
     int mode;                   /* PERM_* */
+    int can_bypass;             /* bypass is in the Shift+Tab cycle (--dangerously-skip-permissions,
+                                 * --allow-dangerously-skip-permissions) */
 } cl_perm;
+
+/* the mode's name as Claude Code writes it (settings, hooks, stream-json) */
+const char *perm_name(int mode);
+/* Shift+Tab: the mode after this one (bypass only when it may be) */
+int perm_next(const cl_perm *p);
 
 int perm_read_only(int tool);
 /* must the user be asked? */

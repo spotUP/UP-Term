@@ -27,7 +27,7 @@
 #define BOLD   "\033[1m"
 #define REV    "\033[7m"
 
-const char *const tui_mode_names[3] = { "default", "accept edits", "plan" };
+const char *const tui_mode_names[4] = { "default", "accept edits", "plan", "bypass permissions" };
 
 static const char *const spin[] = {
     G_DOT, "\342\234\242", "\342\234\263", "\342\234\266", "\342\234\273", "\342\234\275",
@@ -403,7 +403,7 @@ static void status_row(cl_tui *t)
 {
     row r;
     char right[200], n[16];
-    int mode = t->mode ? *t->mode : 0, rw, room;
+    int mode = t->perm ? t->perm->mode : 0, rw, room;
     r_init(&r, t->cols);
     r_text(&r, "  ", 2);
     if (t->hint[0]) {
@@ -432,6 +432,13 @@ static void status_row(cl_tui *t)
     } else if (mode == PERM_PLAN) {
         r_sgr(&r, t->th->plan);
         r_textz(&r, "|| plan mode on");
+        r_sgr(&r, SGR0 DIM);
+        r_textz(&r, " (shift+tab to cycle)");
+    } else if (mode == PERM_BYPASS) {
+        r_sgr(&r, t->th->err);
+        r_glyph(&r, G_MODE);
+        r_glyph(&r, G_MODE);
+        r_textz(&r, " bypass permissions on");
         r_sgr(&r, SGR0 DIM);
         r_textz(&r, " (shift+tab to cycle)");
     } else if (t->nq) {
@@ -1217,8 +1224,8 @@ static unsigned long now(cl_tui *t)
 
 static void cycle_mode(cl_tui *t)
 {
-    if (t->mode)
-        *t->mode = (*t->mode + 1) % 3;
+    if (t->perm)
+        t->perm->mode = perm_next(t->perm);
 }
 
 static int next_key(cl_tui *t, cl_key *k, long wait)

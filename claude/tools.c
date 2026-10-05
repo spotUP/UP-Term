@@ -736,6 +736,18 @@ int perm_must_ask(const cl_perm *p, int tool, int outside)
     return !(p->session & (1ul << tool));
 }
 
+const char *perm_name(int mode)
+{
+    return mode == PERM_ACCEPT ? "acceptEdits" : mode == PERM_PLAN ? "plan" : mode == PERM_BYPASS ? "bypassPermissions"
+                                                                                                : "default";
+}
+
+int perm_next(const cl_perm *p)
+{
+    int n = (p->mode + 1) % 4;
+    return n == PERM_BYPASS && !p->can_bypass ? PERM_DEFAULT : n;
+}
+
 int perm_refused(const cl_perm *p, int tool)
 {
     return p->mode == PERM_PLAN && (is_edit(tool) || tool == T_BASH || tool == T_KILL_SHELL || tool == T_TASK_STOP ||

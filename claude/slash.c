@@ -265,8 +265,7 @@ static void status(cl_repl *r)
         cl_cat(m, r->fallback, sizeof(m));
     }
     line2(r, "Model: ", m);
-    line2(r, "Permission mode: ", r->tools.perm.mode == PERM_PLAN ? "plan" : r->tools.perm.mode == PERM_ACCEPT
-                                      ? "accept edits" : "default");
+    line2(r, "Permission mode: ", tui_mode_names[r->tools.perm.mode]);
     line2(r, "Output style: ", r->style[0] ? r->style : "Default");
     cl_copy(m, r->url.host, sizeof(m));
     cl_cat(m, r->url.tls ? " (https)" : " (plain http: no key is sent)", sizeof(m));

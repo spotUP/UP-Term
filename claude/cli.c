@@ -82,7 +82,7 @@ enum {
     O_SYSP, O_SYSPF, O_APPEND, O_APPENDF, O_SETTINGS, O_MAXTURNS, O_BUDGET, O_VERBOSE, O_AGENT, O_VERSION,
     O_HELP, O_SESSID, O_SCHEMA, O_REPLAY, O_BARE, O_SAFE, O_AGENTS, O_SUBAPP, O_SUBAPPF, O_NOSLASH, O_SOURCES,
     O_BETAS, O_AUTOCOMPACT, O_FWDSUB, O_DEBUGFILE, O_PERMPROMPTS, O_INIT, O_INITONLY, O_MAINT, O_HOOKEV,
-    O_SUGGEST, O_NODYN, O_ADVISOR, O_SNAPSHOT
+    O_SUGGEST, O_NODYN, O_ADVISOR, O_SNAPSHOT, O_ALLOWSKIP
 };
 
 /* takes: 0 a switch, 1 a value, 2 an optional value, 3 values (Claude Code's variadic flags) */
@@ -116,6 +116,7 @@ static const opt opts[] = {
     { O_PARTIAL, "include-partial-messages", 0, 0, "INCLUDE-PARTIAL-MESSAGES", 0, 0 },
     { O_PERM, "permission-mode", 0, 0, "PERMISSION-MODE", 0, 1 },
     { O_SKIP, "dangerously-skip-permissions", 0, 0, "DANGEROUSLY-SKIP-PERMISSIONS", 0, 0 },
+    { O_ALLOWSKIP, "allow-dangerously-skip-permissions", 0, 0, "ALLOW-DANGEROUSLY-SKIP-PERMISSIONS", 0, 0 },
     { O_ALLOW, "allowedTools", 0, "allowed-tools", "ALLOWED-TOOLS", 0, 3 },
     { O_DENY, "disallowedTools", 0, "disallowed-tools", "DISALLOWED-TOOLS", 0, 3 },
     { O_TOOLS, "tools", 0, 0, "TOOLS", 0, 1 },
@@ -408,6 +409,9 @@ static int set(cl_cli *c, const opt *o, const char *v, int amiga)
         break;
     case O_SKIP:
         c->skip_perms = 1;
+        break;
+    case O_ALLOWSKIP:
+        c->allow_skip = 1;
         break;
     case O_ALLOW:
         return strs_items(&c->allow, v) ? fail(c, "Out of memory.", 0, 0) : 0;
@@ -837,6 +841,7 @@ static const char *const usage[] = {
     "  --effort low|medium|high|xhigh|max\n",
     "  --permission-mode default|acceptEdits|plan|dontAsk|bypassPermissions\n",
     "  --dangerously-skip-permissions   the same as --permission-mode bypassPermissions\n",
+    "  --allow-dangerously-skip-permissions   bypassPermissions in the Shift+Tab cycle, not at the start\n",
     "  --allowedTools RULES...          allowed without asking: Read \"Bash(make *)\"\n",
     "  --disallowedTools RULES...       denied; a bare tool name removes the tool\n",
     "  --tools LIST                     the tools Claude has: \"\" none, \"default\" all, \"Read,Grep\"\n",
@@ -994,6 +999,7 @@ int cli_apply(cl_cli *c, cl_repl *r)
             r->safe = 1;            /* Claude Code: the variable is --safe-mode */
     }
     r->no_slash = c->no_slash;
+    r->allow_bypass = c->allow_skip || c->skip_perms;  /* bypass reachable with Shift+Tab */
     r->sources = c->has_sources ? c->sources : 0;
     if (c->has_sources && !c->sources)
         r->sources = 8;             /* none of the three: a bit no file has */

@@ -70,7 +70,7 @@ typedef struct cl_cmd {
 } cl_cmd;
 
 /* permission modes, cycled with Shift+Tab (tools.h PERM_*) */
-extern const char *const tui_mode_names[3];
+extern const char *const tui_mode_names[4];
 
 typedef struct cl_tui {
     cl_io *io;
@@ -98,7 +98,7 @@ typedef struct cl_tui {
     /* the status line's facts (the REPL's, read each frame) */
     const char *model, *effort, *root;
     int ctx_left;               /* percent, -1 unknown */
-    int *mode;                  /* PERM_*, cycled here */
+    struct cl_perm *perm;       /* the permission mode (tools.h PERM_*), cycled here */
     /* slash commands */
     const cl_cmd *cmds;
     int ncmds;
