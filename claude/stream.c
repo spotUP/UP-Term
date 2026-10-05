@@ -69,6 +69,8 @@ static int block_type(jv cb)
         return B_TOOL;
     if (json_streq(t, "fallback"))
         return B_FALLBACK;
+    if (json_streq(t, "server_tool_use"))
+        return B_SERVER;
     return B_OTHER;
 }
 
@@ -120,6 +122,7 @@ static int block_start(cl_stream *s, jv ev)
             append_str(&b->sig, v);
         break;
     case B_TOOL:
+    case B_SERVER:
         str_field(cb, "id", b->id, sizeof(b->id));
         str_field(cb, "name", b->name, sizeof(b->name));
         break;
@@ -149,7 +152,8 @@ static int block_delta(cl_stream *s, jv ev)
         if (s->ui.text && l)
             s->ui.text(s->ui.u, txt, l);
         free(txt);
-    } else if (json_streq(t, "input_json_delta") && b->type == B_TOOL && json_get(d, "partial_json", &v))
+    } else if (json_streq(t, "input_json_delta") && (b->type == B_TOOL || b->type == B_SERVER) &&
+             json_get(d, "partial_json", &v))
         append_str(&b->a, v);
     else if (json_streq(t, "thinking_delta") && b->type == B_THINKING && json_get(d, "thinking", &v)) {
         long before = b->a.n;
@@ -173,7 +177,7 @@ static int block_stop(cl_stream *s, jv ev)
     if (!b)
         return -1;
     b->done = 1;
-    if (b->type == B_TOOL) {
+    if (b->type == B_TOOL || b->type == B_SERVER) {
         if (!b->a.n) {
             /* no deltas: the input of content_block_start */
             jv cb;
@@ -182,6 +186,8 @@ static int block_stop(cl_stream *s, jv ev)
         }
         b->input_ok = b->a.n && json_parse(b->a.p, b->a.n, &in) == 0 && json_type(in) == J_OBJ;
     }
+    if (s->ui.stop)
+        s->ui.stop(s->ui.u, b);
     return 0;
 }
 
@@ -276,7 +282,8 @@ int stream_content(cl_stream *s, jw *out)
             jw_raw(out, "}", 1);
             break;
         case B_TOOL:
-            jw_rawz(out, "{\"type\":\"tool_use\",\"id\":");
+        case B_SERVER:
+            jw_rawz(out, b->type == B_TOOL ? "{\"type\":\"tool_use\",\"id\":" : "{\"type\":\"server_tool_use\",\"id\":");
             jw_strz(out, b->id);
             jw_rawz(out, ",\"name\":");
             jw_strz(out, b->name);

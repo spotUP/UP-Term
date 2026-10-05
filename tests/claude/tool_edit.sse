@@ -20,28 +20,37 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":1}
 
 event: content_block_start
-data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01Todos","name":"todo_write","input":{}}}
+data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01Todos","name":"TodoWrite","input":{}}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"todos\":[{\"content\":\"Read the file\",\"status\":\"completed\"},"}}
+data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"todos\":[{\"content\":\"Read the file\",\"activeForm\":\"Reading the file\",\"status\":\"completed\"},"}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"content\":\"Change the greeting\",\"status\":\"in_progress\"},{\"content\":\"Tell the user\",\"status\":\"pending\"}]}"}}
+data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"content\":\"Change the greeting\",\"activeForm\":\"Changing the greeting\",\"status\":\"in_progress\"},{\"content\":\"Tell the user\",\"activeForm\":\"Telling the user\",\"status\":\"pending\"}]}"}}
 
 event: content_block_stop
 data: {"type":"content_block_stop","index":2}
 
 event: content_block_start
-data: {"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"toolu_01Edit","name":"edit_file","input":{}}}
+data: {"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"toolu_01ReadTest","name":"Read","input":{}}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"claude-test.txt\",\"old_string\":\"hello\\n\","}}
-
-event: content_block_delta
-data: {"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"\"new_string\":\"hello from the Amiga\\n\"}"}}
+data: {"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":\"claude-test.txt\"}"}}
 
 event: content_block_stop
 data: {"type":"content_block_stop","index":3}
+
+event: content_block_start
+data: {"type":"content_block_start","index":4,"content_block":{"type":"tool_use","id":"toolu_01Edit","name":"Edit","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":4,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":\"claude-test.txt\",\"old_string\":\"hello\\n\","}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":4,"delta":{"type":"input_json_delta","partial_json":"\"new_string\":\"hello from the Amiga\\n\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":4}
 
 event: message_delta
 data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":140}}

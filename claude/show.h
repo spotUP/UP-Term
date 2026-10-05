@@ -53,6 +53,8 @@ void show_preview(cl_show *s, int tool, const char *path, const char *before, lo
 void show_result(cl_show *s, int tool, const char *input, long inn, int is_error, const char *text, long n);
 /* thinking text as it streams (A4 1.9) */
 void show_think(cl_show *s, const char *p, long n);
+/* a server tool (web_search): its call's header, or its result's summary */
+void show_server(cl_show *s, int call, const char *line);
 /* the display name of a tool ("Read", "Update", ...) */
 const char *show_name(int tool);
 

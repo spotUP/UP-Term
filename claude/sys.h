@@ -9,6 +9,7 @@ typedef struct cl_dirent {
     char name[108];
     int dir;
     long size;
+    long mtime;                 /* seconds since some fixed day, 0 unknown */
 } cl_dirent;
 
 typedef int (*cl_dir_fn)(void *c, const cl_dirent *e);   /* nonzero stops */
@@ -36,6 +37,19 @@ typedef struct cl_sys {
      * SYS_BREAK (Ctrl+C; the command was sent a break). */
     int (*run)(void *u, const char *cmd, int timeout_s, char *out, long cap, long *outn, long *rc);
     const char *(*err)(void *u);
+    /* ---- ledger A4 WP2; each may be 0 (the feature is then refused) ---- */
+    /* the time an object was last changed, seconds since some fixed day: -1 unknown */
+    long (*mtime)(void *u, const char *path);
+    /* A command started in the background (Bash run_in_background), its
+     * output and errors going to a file: 0 with *job set, -1. */
+    int (*bg_start)(void *u, const char *cmd, long *job);
+    /* Its output from byte from on (up to cap): 0 with *outn; *running 1
+     * while it runs, else 0 with its return code in *rc; -1 no such job. */
+    int (*bg_read)(void *u, long job, long from, char *out, long cap, long *outn, int *running, long *rc);
+    /* a break sent to it (Ctrl+C; a POSIX host sends SIGINT then SIGKILL): 0, -1 */
+    int (*bg_kill)(void *u, long job);
+    /* forgotten: its files removed once it has ended (a running one is left alone) */
+    void (*bg_drop)(void *u, long job);
 } cl_sys;
 
 #endif

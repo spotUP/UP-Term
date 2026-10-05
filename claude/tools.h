@@ -1,23 +1,39 @@
-/* tools -- the Claude client's tools, as Claude Code has them: read_file,
- * list_dir, grep, write_file, edit_file (an exact, unique string
- * replaced), run_command (through vsh). Each is a client tool with a
- * strict JSON schema; every input is validated before anything runs; each
- * call is shown and, by the permission rules, confirmed by the user; each
- * ends in one tool_result block (is_error on failure).
+/* tools -- C:Claude's tools, by Claude Code's names and input schemas
+ * (ledger A4 WP2): Read, Write, Edit, MultiEdit, Glob, Grep, Bash,
+ * BashOutput, KillShell, WebFetch, TodoWrite, AskUserQuestion,
+ * ExitPlanMode, EnterPlanMode, Task, Skill, SlashCommand -- client tools
+ * with strict JSON schemas -- and the API's web_search server tool, which
+ * is only declared (the API runs it; its blocks are shown).
  *
- * Permissions: the read-only tools (read_file, list_dir, grep) may be
- * allowed for the session with one answer, which covers all three; a
- * write, an edit or a command asks every time unless the user allowed
- * that tool for the session. A path outside the start directory asks
- * always. No tool runs before the user has answered.
+ * Every input is checked against the schema the tool declares (schema.h:
+ * the declared JSON is the one source of truth) before anything runs;
+ * each call is shown and, by the permission rules, confirmed by the user;
+ * each ends in one tool_result block (is_error on failure).
+ *
+ * Permissions: the read-only tools (Read, Glob, Grep) may be allowed for
+ * the session with one answer, which covers all three; a write, an edit,
+ * a command, a fetch, a skill or a slash command asks every time unless
+ * the user allowed that tool for the session. A path outside the start
+ * directory asks always. No tool runs before the user has answered.
+ * TodoWrite, BashOutput, KillShell and Task never ask (a subagent's own
+ * tool calls do); AskUserQuestion and the plan-mode tools are questions
+ * themselves.
  * Portable C89 over sys.h, host-tested (tests/test_claude_tools.c). */
 #ifndef CL_TOOLS_H
 #define CL_TOOLS_H
 
 #include "json.h"
 #include "sys.h"
+#include "net.h"
+#include "ext.h"
 
-enum { T_READ_FILE, T_LIST_DIR, T_GREP, T_WRITE_FILE, T_EDIT_FILE, T_RUN_COMMAND, T_TODO_WRITE, T_COUNT };
+enum {
+    T_READ, T_WRITE, T_EDIT, T_MULTIEDIT, T_GLOB, T_GREP, T_BASH, T_BASH_OUTPUT, T_KILL_SHELL,
+    T_WEB_FETCH, T_TODO_WRITE, T_ASK_USER, T_EXIT_PLAN, T_ENTER_PLAN, T_TASK, T_SKILL, T_SLASH,
+    T_COUNT
+};
+/* the API's server tool: shown, never run here */
+#define T_WEB_SEARCH T_COUNT
 
 /* The user's answer to a permission question. ASK_STOP: no, and the user
  * will tell Claude what to do instead -- this call and the rest of its
@@ -25,14 +41,13 @@ enum { T_READ_FILE, T_LIST_DIR, T_GREP, T_WRITE_FILE, T_EDIT_FILE, T_RUN_COMMAND
 enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP };
 
 /* The permission mode (Shift+Tab in the screen, ledger A3): the A2 rules;
- * accept edits -- write_file and edit_file inside the start directory run
- * without a question; plan -- only the read-only tools run, the others are
- * refused with a result that says so. todo_write never asks (it changes
- * nothing but the list the user sees). */
+ * accept edits -- Write, Edit and MultiEdit inside the start directory run
+ * without a question; plan -- only what changes nothing runs, the others
+ * are refused with a result that says so. */
 enum { PERM_DEFAULT, PERM_ACCEPT, PERM_PLAN };
 
 typedef struct cl_perm {
-    unsigned session;           /* bit per tool: allowed for the session */
+    unsigned long session;      /* bit per tool: allowed for the session */
     int mode;                   /* PERM_* */
 } cl_perm;
 
@@ -44,11 +59,41 @@ int perm_refused(const cl_perm *p, int tool);
 /* the user chose "always this session" */
 void perm_grant(cl_perm *p, int tool);
 
+/* choose() flags */
+#define CH_MULTI 1              /* several options may be picked */
+#define CH_OTHER 2              /* the user may type an answer of their own */
+
+struct cl_stream;
+struct cl_shells;
+struct cl_readset;
+
+/* One request to the Messages API over the program's own transport, for
+ * WebFetch's small model call and Task's subagent: body as conv_body
+ * writes it; nothing of the answer reaches the screen. 0 with the answer
+ * in *st (the caller stream_free()s it), -1 failed (the reason shown),
+ * -2 stopped by the user. */
+typedef struct cl_api {
+    void *u;
+    int (*send)(void *u, const char *body, long bn, struct cl_stream *st);
+} cl_api;
+
 typedef struct cl_tools {
     cl_sys *sys;
     char root[256];             /* the start directory, canonical */
     cl_perm perm;
-    int timeout_s;              /* run_command */
+    int timeout_s;              /* Bash's default limit */
+    /* shared by a subagent's tools and its parent's (pointers, so both see one) */
+    struct cl_readset *rs;      /* the files read: Write and Edit need a Read first */
+    struct cl_shells *sh;       /* the background shells */
+    cl_net *web;                /* WebFetch's connection (0: no WebFetch) */
+    cl_api api;                 /* (send 0: no WebFetch prompt, no Task) */
+    const cl_ext *ext;          /* agents, skills, commands (WP3's loader; 0: built-ins only) */
+    const char *model;          /* the conversation's model (Task's default) */
+    int web_search;             /* declare the web_search server tool (1 by default) */
+    unsigned long allowed;      /* bit per tool declared and allowed (a subagent's subset) */
+    int depth;                  /* 0 the conversation, 1 inside a subagent (no Task there) */
+    char *json;                 /* the declared tools, built by tools_json */
+    int json_haiku;             /* ... for a Haiku model (the older web_search) */
     void *u;
     /* the call, shown before anything happens; what is a one-line summary */
     void (*show)(void *u, const char *tool, const char *what);
@@ -60,16 +105,32 @@ typedef struct cl_tools {
                     long an);
     /* optional: the call's result as Claude gets it, with its input */
     void (*result)(void *u, int tool, const char *input, long inn, int is_error, const char *text, long n);
+    /* A question with options (AskUserQuestion, the plan-mode tools):
+     * the option picked, n when the user typed an answer of their own (in
+     * other), -1 declined (Esc). CH_MULTI: *picked gets a bit per option
+     * and the result is 0. Absent: the tools that need it answer is_error. */
+    int (*choose)(void *u, const char *header, const char *question, const char *const *labels,
+                  const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap);
+    /* optional: a plan (ExitPlanMode), Markdown, shown whole */
+    void (*plan)(void *u, const char *text, long n);
     int stop;                   /* ASK_STOP was answered this round (reset by the caller) */
     int cur;                    /* the tool being run (the result hook's) */
     const char *cur_in;
     long cur_inn;
 } cl_tools;
 
-/* the "tools" array of the request body */
-const char *tools_json(void);
+/* the shared state (read set, shells) made; 0, -1 out of memory */
+int tools_init(cl_tools *t);
+/* background shells killed, everything freed */
+void tools_free(cl_tools *t);
+
+/* The "tools" array of a request body for that model (web_search's
+ * version depends on it); built once, kept in t->json. */
+const char *tools_json(cl_tools *t, const char *model);
 /* T_*, or -1 */
 int tools_id(const char *name);
+/* the tool's API name */
+const char *tools_name(int tool);
 /* Is input a valid call of that tool? 0, or -1 with the reason in err. */
 int tools_validate(int tool, jv input, char *err, long cap);
 /* One tool_use block: validated, shown, confirmed, run; its tool_result
@@ -77,5 +138,20 @@ int tools_validate(int tool, jv input, char *err, long cap);
  * JSON (raw is what came). */
 void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
                const char *raw, long rawn, jw *out);
+
+/* ---- what the screen shows of a call (show.c, ui.c) ---- */
+
+/* the name Claude Code shows ("Read", "Update", "Search", "Bash", ...) */
+const char *tools_title(int tool);
+/* the call's arguments for its header, plain text, malloc'ed ("" when
+ * none): `src/a.c`, `pattern: "x", path: "S:"`, the command, ... */
+char *tools_args(int tool, const char *in, long inn);
+/* A result's one-line summary into out ("Read 12 lines", "Found 3
+ * files"): 1, or 0 when the result's own text is shown instead. */
+int tools_summary(int tool, const char *in, long inn, const char *text, long n, char *out, long cap);
+/* A server tool block (server_tool_use / web_search_tool_result, its
+ * JSON): its header ("Web Search(\"amiga\")") or summary ("Did 1 search",
+ * "5 results") into out; 0, -1 when it is neither. */
+int tools_server_line(const char *block, long n, char *out, long cap);
 
 #endif

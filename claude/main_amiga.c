@@ -217,8 +217,8 @@ int main(void)
     struct RDArgs *rda;
     struct Task *me = FindTask(0);
     cl_io io;
-    net_amiga na;
-    cl_net net;
+    net_amiga na, wa;
+    cl_net net, wnet;
     sys_amiga sa;
     cl_sys sys;
     cl_repl *r;
@@ -267,6 +267,7 @@ int main(void)
         io.edit = c_edit;
     }
     net_amiga_init(&na, &net);
+    net_amiga_init(&wa, &wnet);     /* WebFetch's own connection (ledger A4 WP2) */
     sys_amiga_init(&sa, &sys);
     r = (cl_repl *)malloc(sizeof(cl_repl));
     if (!r || repl_init(r, &io, &net, &sys, url, have_key ? key : 0, root)) {
@@ -275,6 +276,7 @@ int main(void)
         rc = 20;
     } else {
         r->debug = args[A_DEBUG] != 0;
+        r->tools.web = &wnet;
         if (args[A_MODEL])
             cl_copy(r->model, (const char *)args[A_MODEL], sizeof(r->model));
         if (args[A_EFFORT])
@@ -295,6 +297,7 @@ int main(void)
         free(r);
     }
     c_raw(0, 0);
+    wnet.close(wnet.u);
     net_amiga_exit(&na);
     memset(key, 0, sizeof(key));
     if (logf)

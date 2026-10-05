@@ -389,11 +389,11 @@ static void answer_and_tools(void)
     /* bold in the answer, the code coloured */
     CHECK(h_cell(cs.vt, 10, 1)->attr & VT_ATTR_BOLD);
     /* a command with long output: folded */
-    show_tool(&shw, T_RUN_COMMAND, "{\"command\":\"list\"}", 18, "list");
-    show_result(&shw, T_RUN_COMMAND, "{\"command\":\"list\"}", 18, 0,
+    show_tool(&shw, T_BASH, "{\"command\":\"list\"}", 18, "list");
+    show_result(&shw, T_BASH, "{\"command\":\"list\"}", 18, 0,
                 "Return code 0.\nl1\nl2\nl3\nl4\nl5\nl6\nl7", 35);
     dump("tool");
-    i = cs_find(BULLET " Run(list)");
+    i = cs_find(BULLET " Bash(list)");
     CHECK(i > 0);
     CHECK_STR(cs_row((int)i + 1), "  " CORNER "  l1");
     CHECK_STR(cs_row((int)i + 3), "     l3");
@@ -405,14 +405,14 @@ static void answer_and_tools(void)
     CHECK(strstr(tui.log.p, "     l7") != 0);
     CHECK(strstr(tui.log.p, "ctrl+o to expand") == 0);
     /* a read: one line under the corner */
-    show_tool(&shw, T_READ_FILE, "{\"path\":\"S/Startup-Sequence\"}", 29, "x");
-    show_result(&shw, T_READ_FILE, "", 0, 0, "a\nb\nc\n", 6);
+    show_tool(&shw, T_READ, "{\"file_path\":\"S/Startup-Sequence\"}", 34, "x");
+    show_result(&shw, T_READ, "", 0, 0, "     1\ta\n     2\tb\n     3\tc\n", 27);
     CHECK(cs_find(BULLET " Read(S/Startup-Sequence)") > 0);
     CHECK(cs_find("  " CORNER "  Read 3 lines") > 0);
     /* an error in red */
-    show_tool(&shw, T_LIST_DIR, "{\"path\":\"Nope\"}", 15, "x");
-    show_result(&shw, T_LIST_DIR, "", 0, 1, "not a directory: Nope", 21);
-    i = cs_find("Error: not a directory: Nope");
+    show_tool(&shw, T_GLOB, "{\"pattern\":\"*\",\"path\":\"Nope\"}", 29, "x");
+    show_result(&shw, T_GLOB, "", 0, 1, "no such directory: Nope", 23);
+    i = cs_find("Error: no such directory: Nope");
     CHECK(i > 0);
     CHECK_INT(h_cell(cs.vt, 0, (int)i - 1)->fg, 1);
     cl_copy(out, "", sizeof(out));
@@ -430,9 +430,9 @@ static void edit_diff_and_todos(void)
     int i;
     screen(60, 30, script);
     tui_start(&tui);
-    show_tool(&shw, T_EDIT_FILE, "{\"path\":\"s.txt\"}", 16, "x");
-    show_preview(&shw, T_EDIT_FILE, "Work:s.txt", before, (long)strlen(before), after, (long)strlen(after));
-    show_result(&shw, T_EDIT_FILE, "", 0, 0, "Edited", 6);
+    show_tool(&shw, T_EDIT, "{\"file_path\":\"s.txt\"}", 21, "x");
+    show_preview(&shw, T_EDIT, "Work:s.txt", before, (long)strlen(before), after, (long)strlen(after));
+    show_result(&shw, T_EDIT, "", 0, 0, "Edited", 6);
     dump("diff");
     i = cs_find(BULLET " Update(s.txt)");
     CHECK(i >= 0);
@@ -1080,7 +1080,7 @@ static void themes(void)
     tui.th = theme_get("monochrome");
     tui_start(&tui);
     CHECK_INT(h_cell(cs.vt, 0, 12)->fg, VT_COLOR_DEFAULT);     /* no colour at all */
-    show_preview(&shw, T_EDIT_FILE, "a", "x\n", 2, "y\n", 2);
+    show_preview(&shw, T_EDIT, "a", "x\n", 2, "y\n", 2);
     CHECK(h_cell(cs.vt, 8, cs_find("1 - x"))->attr & VT_ATTR_INVERSE);
     CHECK(theme_get("nonsense") == &cl_themes[0]);
     /* /theme NAME: the screen's colours and the setting */

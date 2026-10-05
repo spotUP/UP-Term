@@ -362,7 +362,13 @@ static void test_reach(void)
     CHECK(json_get(b, "stream", &x) && json_type(x) == J_TRUE);
     CHECK(json_get(b, "output_config", &x) && json_get(x, "effort", &e) && json_streq(e, "medium"));
     CHECK(json_get(b, "fallbacks", &x) && json_streq(x, "default"));
-    CHECK(json_get(b, "tools", &x) && json_count(x) == 7);
+    /* the tools by Claude Code's names: no WebFetch without its connection, no Skill or
+     * SlashCommand without any; the web_search server tool declared */
+    CHECK(json_get(b, "tools", &x) && json_count(x) == 15);
+    CHECK(strstr(sb.body[0], "{\"name\":\"Read\",") != 0);
+    CHECK(strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
+    CHECK(strstr(sb.body[0], "\"type\":\"web_search_20260209\",\"name\":\"web_search\"") != 0);
+    CHECK(strstr(sb.body[0], "\"name\":\"WebFetch\"") == 0);
     CHECK(json_get(b, "tool_choice", &x) && json_get(x, "type", &e) && json_streq(e, "auto"));
     CHECK(json_get(b, "system", &x));
     CHECK(strstr(sb.body[0], dir) != 0 || strstr(sb.body[0], "claude_repl_") != 0);
@@ -400,15 +406,15 @@ static void test_reach(void)
     json_iter(c, &it);
     CHECK(json_next(&it, 0, &x));
     CHECK(json_get(x, "tool_use_id", &e) && json_streq(e, "toolu_01ReadStartup"));
-    CHECK(json_get(x, "content", &e) && json_streq(e, "SetPatch QUIET\n"));
+    CHECK(json_get(x, "content", &e) && json_streq(e, "     1\tSetPatch QUIET\n"));
     CHECK(!json_get(x, "is_error", &e));
     CHECK(json_next(&it, 0, &x));
     CHECK(json_get(x, "tool_use_id", &e) && json_streq(e, "toolu_01ListS"));
-    CHECK(json_get(x, "content", &e) && json_streq(e, "Startup-Sequence  15\n"));
+    CHECK(json_get(x, "content", &e) && json_str(e, s, sizeof(s)) > 0 && strstr(s, "/S/Startup-Sequence\n") != 0);
 
     /* the screen: the tool calls shown, one question asked, the cost */
-    CHECK(strstr(cn.screen.p, "Tool \033[0mread_file") != 0);
-    CHECK(strstr(cn.screen.p, "Tool \033[0mlist_dir") != 0);
+    CHECK(strstr(cn.screen.p, "Tool \033[0mRead") != 0);
+    CHECK(strstr(cn.screen.p, "Tool \033[0mGlob") != 0);
     CHECK(strstr(cn.screen.p, "Always this session (a)") != 0);
     CHECK(strstr(cn.screen.p, "Requests 3. Tokens: input 855, output 150, cache write 1200, cache read 2700. Cost $") != 0);
     CHECK(strstr(cn.screen.p, "test-key-not-real") == 0);
@@ -581,7 +587,7 @@ static void test_screen(void)
     CHECK_INT(snt.text_calls, 8);
     CHECK(r.show->n_text == 8);
     CHECK(r.show->n_blocks >= 4);
-    CHECK_INT(r.show->n_tools, 3);          /* read, list, edit (todo_write has no header call) */
+    CHECK_INT(r.show->n_tools, 4);          /* Read, Glob, Read, Edit (TodoWrite has no header call) */
     CHECK_INT(r.show->n_diffs, 1);
     CHECK(r.tui->n_lines > 20);
     /* five requests, every key used, the edit made */
@@ -591,12 +597,14 @@ static void test_screen(void)
     CHECK_STR(after ? after : "", "hello from the Amiga\n");
     free(after);
     /* the reads were allowed for the session with "2": one menu for two calls */
-    CHECK(sb.nreq < 3 || strstr(sb.body[2], "Startup-Sequence  15") != 0);
-    CHECK(r.tools.perm.session & (1u << T_LIST_DIR));
+    CHECK(sb.nreq < 3 || strstr(sb.body[2], "/S/Startup-Sequence\\n") != 0);
+    CHECK(r.tools.perm.session & (1ul << T_GLOB));
     /* the todo list and the edit's result reached the history and the screen */
-    CHECK(sb.nreq < 5 || strstr(sb.body[4], "Todos updated.") != 0);
-    CHECK(sb.nreq < 5 || strstr(sb.body[4], "Edited ") != 0);
-    row = cs_find("\342\226\240 Change the greeting");     /* the todo list, in progress */
+    CHECK(sb.nreq < 5 || strstr(sb.body[4], "Todos have been modified") != 0);
+    CHECK(sb.nreq < 5 || strstr(sb.body[4], "claude-test.txt has been updated.") != 0);
+    /* the todo list, in progress (it has scrolled into the scrollback by now) */
+    CHECK(strstr(cs.sent.p, "\342\226\240\033[0m \033[1mChange the greeting") != 0);
+    row = cs_find("\342\217\272 Update(claude-test.txt)");
     CHECK(row >= 0);
     CHECK(cs_find(SC "  Updated claude-test.txt with 1 addition and 1 removal") > row);
     CHECK(cs_find("1 - hello") > row);
@@ -702,6 +710,143 @@ static void test_wp1(void)
     cs_close();
 }
 
+/* ---- A4 WP2: the new tools through the REPL core ----
+ *
+ * The reachability test of the tools at Claude Code parity: repl_line,
+ * the code C:Claude runs, over the recorded streams: a web search (the
+ * server tool's blocks shown and kept in the history), a Task subagent
+ * (its two requests nested inside the turn, through repl.c's api_send:
+ * the turn's own stream kept aside, the subagent's Grep asked and run,
+ * its report the Task's result) and a WebFetch (the page from a stub web,
+ * the small model's answer the result). The sentinel counts the renderer:
+ * the subagent's and the small model's text never reach the screen. */
+
+static const char wp2_page[] =
+    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 47\r\n\r\n"
+    "<html><body><h1>Hi</h1><p>hello</p></body></html>";
+static long wp2_pos;
+static int wp2_open_n;
+static char wp2_req[600];
+
+static int wp_open(void *u, const char *host, int port, int tls)
+{
+    (void)u;
+    (void)host;
+    (void)port;
+    (void)tls;
+    wp2_open_n++;
+    wp2_pos = 0;
+    return 0;
+}
+
+static long wp_send(void *u, const char *b, long n)
+{
+    (void)u;
+    if ((long)strlen(wp2_req) + n < (long)sizeof(wp2_req))
+        strncat(wp2_req, b, (size_t)n);
+    return n;
+}
+
+static long wp_recv(void *u, char *b, long cap, int timeout_ms)
+{
+    long n = (long)sizeof(wp2_page) - 1 - wp2_pos;
+    (void)u;
+    (void)timeout_ms;
+    if (n > cap)
+        n = cap;
+    memcpy(b, wp2_page + wp2_pos, (size_t)n);
+    wp2_pos += n;
+    return n;
+}
+
+static void wp_close(void *u)
+{
+    (void)u;
+}
+
+static void test_wp2(void)
+{
+    static const char *script[] = { "search the web for accelerators", "send an agent", "a", "fetch the page", "y",
+                                    "/exit", 0 };
+    static cl_repl r;
+    cl_net web;
+    jv m, e, x, c;
+    jit it;
+    int i;
+    setup(&r, script);
+    web.u = 0;
+    web.open = wp_open;
+    web.send = wp_send;
+    web.recv = wp_recv;
+    web.close = wp_close;
+    web.err = s_err;
+    r.tools.web = &web;
+    free(r.tools.json);         /* WebFetch is declared now that it has its connection */
+    r.tools.json = 0;
+    add_stream("websearch.sse");
+    add_stream("tool_task.sse");
+    add_stream("agent_tool.sse");
+    add_stream("agent_final.sse");
+    add_stream("tool_final.sse");
+    add_stream("tool_fetch.sse");
+    add_stream("fetch_answer.sse");
+    add_stream("tool_final.sse");
+    repl_run(&r);
+    CHECK_INT(sb.nreq, 8);
+    CHECK_INT(cn.next, 6);
+    if (sb.nreq < 8) {
+        repl_free(&r);
+        return;
+    }
+    /* the web search: declared, shown, and its blocks kept for the next request */
+    CHECK(strstr(sb.body[0], "{\"type\":\"web_search_20260209\",\"name\":\"web_search\",\"max_uses\":5}") != 0);
+    CHECK(strstr(sb.body[0], "{\"name\":\"WebFetch\",") != 0);
+    CHECK(strstr(cn.screen.p, "Web Search(\"Amiga 1200 accelerator cards\")") != 0);
+    CHECK(strstr(cn.screen.p, "Did 1 search: 2 results") != 0);
+    CHECK(strstr(sb.body[1], "{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_01Search\",\"name\":\"web_search\","
+                             "\"input\":{\"query\":\"Amiga 1200 accelerator cards\"}}") != 0);
+    CHECK(strstr(sb.body[1], "{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvtoolu_01Search\"") != 0);
+    /* the Task: two nested requests with the subagent's own prompt and tools */
+    CHECK(strstr(sb.body[2], "file search specialist") != 0);
+    CHECK(strstr(sb.body[2], "{\"name\":\"Edit\",") == 0);
+    CHECK(strstr(sb.body[2], "Find the Startup-Sequence in S") != 0);
+    CHECK(strstr(sb.body[3], "/S/Startup-Sequence:1:SetPatch QUIET") != 0);
+    /* the parent's next request: its history untouched, the Task's result added */
+    CHECK_INT(messages_of(sb.body[4], &m), 0);
+    CHECK_INT(json_count(m), 5);
+    {
+        jv m1;
+        messages_of(sb.body[1], &m1);
+        CHECK(!memcmp(m1.p, m.p, (size_t)m1.n - 1));
+    }
+    json_iter(m, &it);
+    for (i = 0; i < 5; i++)
+        json_next(&it, 0, &e);
+    CHECK(json_get(e, "content", &c));
+    json_iter(c, &it);
+    CHECK(json_next(&it, 0, &x));
+    CHECK(json_get(x, "tool_use_id", &e) && json_streq(e, "toolu_01Task"));
+    CHECK(json_get(x, "content", &e) && json_streq(e, "S/Startup-Sequence runs SetPatch first (line 1: SetPatch "
+                                                      "QUIET).\n\n(Agent Explore: 1 tool use.)"));
+    /* the WebFetch: the page fetched, the small model asked, its answer the result */
+    CHECK_INT(wp2_open_n, 1);
+    CHECK(strstr(wp2_req, "GET /page HTTP/1.1\r\nHost: 127.0.0.1:8080\r\n") != 0);
+    CHECK(strstr(sb.body[6], "\"model\":\"claude-haiku-4-5\"") != 0);
+    CHECK(strstr(sb.body[6], "# Hi\\n\\nhello") != 0);
+    CHECK(strstr(sb.body[6], "\"tools\"") == 0);
+    CHECK(strstr(sb.body[7], "\"tool_use_id\":\"toolu_01Fetch\",\"content\":\"The page is the UP-Term test page.") != 0);
+    /* the screen: the calls, the questions; the nested answers not drawn */
+    CHECK(strstr(cn.screen.p, "Tool \033[0mTask") != 0);
+    CHECK(strstr(cn.screen.p, "Tool \033[0mGrep") != 0);
+    CHECK(strstr(cn.screen.p, "Tool \033[0mWebFetch") != 0);
+    CHECK(strstr(snt.text.p ? snt.text.p : "", "SetPatch first (line 1") == 0);
+    CHECK(strstr(snt.text.p ? snt.text.p : "", "UP-Term test page") == 0);
+    CHECK(strstr(snt.text.p ? snt.text.p : "", "Blizzard 1230") != 0);
+    /* every request counted for /cost, the nested ones too */
+    CHECK_INT(r.conv.requests, 8);
+    repl_free(&r);
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -710,6 +855,7 @@ void suite_claude_repl(void)
     test_commands();
     test_screen();
     test_wp1();
+    test_wp2();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);

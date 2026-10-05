@@ -79,7 +79,7 @@ static int bash(cl_ui *u, const char *cmd, jw *out)
         jw_rawz(&t, ".\n");
         jw_raw(&t, buf, n);
         if (u->tui)
-            ui_result(u, T_RUN_COMMAND, "", 0, 0, t.p, t.n);
+            ui_result(u, T_BASH, "", 0, 0, t.p, t.n);
         else
             ui_line(u, buf);
         jw_free(&t);

@@ -139,6 +139,15 @@ int ui_poll(cl_ui *u);
 void ui_user(cl_ui *u, const char *line);
 /* a choice from a list (/model, /effort): its index, -1 none or no screen */
 int ui_pick(cl_ui *u, const char *title, const char *const *opt, int n, int sel);
+/* A tool's question with options (tools.h's choose, CH_* flags): in the
+ * screen a framed menu, in the line mode the options numbered and an
+ * answer typed. The option, n for an answer of the user's own (in other),
+ * -1 declined; CH_MULTI: *picked a bit per option, 0. */
+int ui_choose(cl_ui *u, const char *header, const char *question, const char *const *labels,
+              const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap);
+/* A server tool (web_search) shown: its call (call 1: the block from its
+ * start and the input that streamed in) or its result block. */
+void ui_server(cl_ui *u, int call, const char *block, long bn, const char *input, long inn);
 
 /* ---- A4 (WP1) ---- */
 /* The program's parts the screen's features use: the history loaded into
