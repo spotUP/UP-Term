@@ -122,3 +122,8 @@ Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: me
   (queued and run correctly), 4 looped runs of claude_rig2 with a SERIAL=1 handler that now logs
   "tty enter/leave" (handler/vtcon_handler.c DBG). Next failure: run the loop again with
   `make build/amiga/vtcon-handler SERIAL=1` installed and read build/rig/serial.log.
+- 2026-10-05: the input-leftovers agent (feature/a4-input-rest: vim visual/./text objects, Ctrl+S
+  stash, Alt+Y ring, Ctrl+B background, @ as you type, viewer resize, other keys, /color /focus
+  /keybindings /loop) was STOPPED BY THE OWNER before its first commit. Its partial, uncommitted
+  edits (edit.c/h, tui.c/h, vim.c, tests/test_claude_tui.c) stay in its worktree
+  .claude/worktrees/agent-a44dbe0492b45e53e. Not restarted unless the owner asks.
