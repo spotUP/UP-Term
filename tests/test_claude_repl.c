@@ -741,7 +741,8 @@ static void test_screen(void)
     /* the first answer streamed in four pieces: the footer kept its shape */
     CHECK(snt.fulls[0] > full0);
     CHECK_INT(snt.fulls[3], snt.fulls[0]);
-    CHECK(strstr(cs.sent.p, "\033[2J") == 0);
+    /* one clear only: at the start (W37), none while answers stream */
+    CHECK(strstr(cs.sent.p, "\033[2J") != 0 && strstr(strstr(cs.sent.p, "\033[2J") + 4, "\033[2J") == 0);
     CHECK(strstr(cs.sent.p, "test-key-not-real") == 0);
     repl_free(&r);
     /* raw mode off, the scroll region and the modes reset */
@@ -2515,6 +2516,11 @@ static void test_continue_header_first(void)
     CHECK(head && old && head < old);
     CHECK(head && resumed && head < resumed);
     CHECK_INT(count_of(cs.sent.p, "for the Amiga"), 1);  /* drawn once */
+    /* W37: the window is cleared before the header, so a Shell listing above it is gone */
+    {
+        const char *clr = strstr(cs.sent.p, "\033[H\033[2J");
+        CHECK(clr != 0 && head != 0 && clr < head);
+    }
     repl_free(&r);
     cs_close();
 }

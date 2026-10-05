@@ -1927,6 +1927,7 @@ static void welcome(cl_repl *r)
     if (!r->tui || r->welcomed)
         return;
     r->welcomed = 1;
+    tui_clear(r->tui);              /* the owner (W37): the window starts clean, as Claude Code's does */
     show_welcome(r->show, r->model, env_on(r, "CLAUDE_CODE_HIDE_CWD") ? "" : r->tools.root);
 }
 
