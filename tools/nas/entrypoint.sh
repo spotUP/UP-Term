@@ -5,12 +5,21 @@
 set -e
 mkdir -p /home/claude/.config/uptelnetd /home/claude/work
 chown -R claude:claude /home/claude
+# replaces the shell with "$@" run as the claude user (in a subshell: returns)
+as_claude() {
+    exec setpriv --reuid=claude --regid=claude --init-groups --reset-env \
+        env HOME=/home/claude USER=claude LOGNAME=claude SHELL=/bin/bash LANG=C.UTF-8 PATH="$PATH" \
+        NPM_CONFIG_PREFIX="$NPM_CONFIG_PREFIX" "$@"
+}
+# Claude Code on the volume (its auto-updater writes there): installed once
+if [ ! -x "$NPM_CONFIG_PREFIX/bin/claude" ]; then
+    echo "claude-amiga: installing Claude Code into $NPM_CONFIG_PREFIX"
+    (as_claude npm install -g @anthropic-ai/claude-code)
+fi
 PW=/home/claude/.config/uptelnetd/password
 while [ ! -s "$PW" ] && [ -z "$UPTELNETD_PASSWORD" ]; do
     echo "claude-amiga: no login password yet. In Container Manager > claude-amiga > Terminal, run: setpw"
     sleep 30
 done
-exec setpriv --reuid=claude --regid=claude --init-groups --reset-env \
-    env HOME=/home/claude USER=claude LOGNAME=claude SHELL=/bin/bash LANG=C.UTF-8 PATH="$PATH" \
-    python3 /usr/local/bin/uptelnetd.py --bind "$NAS_IP" --allow "$ALLOW" --port "${PORT:-2323}" \
+as_claude python3 /usr/local/bin/uptelnetd.py --bind "$NAS_IP" --allow "$ALLOW" --port "${PORT:-2323}" \
     --command 'cd ~/work && tmux new -A -s claude claude'

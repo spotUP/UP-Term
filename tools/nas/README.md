@@ -29,6 +29,10 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
 5. On the Amiga: `uptelnet <NAS_IP> 2323`, the password, and you are in Claude Code.
    Ctrl+] leaves; Claude keeps running in tmux for the next connection.
 
+Claude Code itself is installed on the volume (`home/.npm-global`, owned by the
+`claude` user) on the first start, so its auto-updater can write there and updates
+survive a rebuild; delete that folder to force a fresh install.
+
 Model, settings and CLAUDE.md live in `/volume1/docker/claude-amiga/home/.claude`.
 Work files: `/home/claude/work` in the container (add a volume for a NAS share if
 Claude should edit files there).
