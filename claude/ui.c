@@ -206,20 +206,23 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
     }
     if (n == 3 && (tool == T_EDIT || tool == T_MULTIEDIT || tool == T_WRITE))
         u->tui->m_btab = 1;         /* a file's: Shift+Tab allows it for the session */
+    u->tui->m_comment = 1;          /* Tab on Yes / No: a comment for Claude */
     c = tui_menu(u->tui, tools_title(tool), q, opt, n, 0, n - 1);
     tui_title(u->tui, u->tui->busy ? "Claude - working" : "Claude");
+    cl_copy(u->ask_note, u->tui->m_note, sizeof(u->ask_note));
     if (c < 0)
         return ASK_NO;
     if (c == 0)
         return ASK_ONCE;
     if (c == n - 1)
-        return ASK_STOP;
+        return u->ask_note[0] ? ASK_NO : ASK_STOP;  /* No with a comment: Claude goes on with it */
     return ASK_SESSION;
 }
 
 int ui_ask(cl_ui *u, int tool, const char *name, const char *what, int outside)
 {
     char ans[32];
+    u->ask_note[0] = 0;
     if (u->tui)
         return tui_ask(u, tool, what, outside);
     for (;;) {
@@ -306,6 +309,9 @@ void ui_attach(cl_ui *u, cl_sys *sys, const char *root, struct cl_conv *conv)
     v = u->setting ? u->setting(u->su, "editorMode") : 0;
     if (v && !strcmp(v, "vim"))
         ed_set_vim(&t->ed, 1);
+    v = u->setting ? u->setting(u->su, "vimInsertModeRemaps") : 0;
+    if (v)
+        cl_copy(t->ed.vremap, v, sizeof(t->ed.vremap));
     t->full = 1;
     tui_frame(t);
 }

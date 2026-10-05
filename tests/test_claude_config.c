@@ -101,10 +101,12 @@ static void test_settings(void)
     at(root, "proj");
     put("home/settings.json",
         "{\"model\":\"sonnet\",\"effort\":\"low\",\"theme\":\"dark\",\"editorMode\":\"vim\",\"env\":{\"A\":\"1\",\"B\":\"user\"},"
+        "\"vimInsertModeRemaps\":{\"jj\":\"<Esc>\",\"jjj\":\"<Esc>\",\"kj\":\"x\",\"jk\":\"<Esc>\"},"
         "\"permissions\":{\"allow\":[\"Read\"],\"deny\":[\"Bash(rm *)\"]},"
         "\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"check\",\"timeout\":5}]}]}}");
     put("proj/.claude/settings.json",
         "{\"model\":\"opus\",\"outputStyle\":\"Explanatory\",\"env\":{\"B\":\"project\"},"
+        "\"vimInsertModeRemaps\":{\"qq\":\"<Esc>\"},"
         "\"permissions\":{\"allow\":[\"Bash(make *)\"],\"defaultMode\":\"acceptEdits\","
         "\"additionalDirectories\":[\"Work:Lib\"]},\"statusLine\":{\"type\":\"command\",\"command\":\"ctx\"},"
         "\"autoCompactEnabled\":false}");
@@ -116,6 +118,8 @@ static void test_settings(void)
     CHECK_STR(s.effort, "high");
     CHECK_STR(s.theme, "dark");
     CHECK_STR(s.editor_mode, "vim");
+    /* remaps: two characters to <Esc> only, and never from a project's file */
+    CHECK_STR(s.vim_remaps, "jjjk");
     CHECK_STR(s.output_style, "Explanatory");
     CHECK_STR(s.status_cmd, "ctx");
     CHECK_STR(s.default_mode, "acceptEdits");

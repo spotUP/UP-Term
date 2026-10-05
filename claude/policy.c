@@ -443,6 +443,8 @@ static const char *ui_setting(void *u, const char *key)
         return r->cfg.theme[0] ? r->cfg.theme : 0;
     if (!strcmp(key, "editorMode"))
         return r->cfg.editor_mode[0] ? r->cfg.editor_mode : 0;
+    if (!strcmp(key, "vimInsertModeRemaps"))
+        return r->cfg.vim_remaps[0] ? r->cfg.vim_remaps : 0;
     return 0;
 }
 

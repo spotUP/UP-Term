@@ -205,6 +205,29 @@ void vim_escape(cl_edit *e)
     vim_after(e);                   /* an INSERT a command began: the change is complete */
 }
 
+int vim_remap(cl_edit *e, const cl_key *k)
+{
+    int i, c = k->k == K_CHAR ? (int)k->ch : -1, first = e->vrp;
+    unsigned long since = e->now_ms - e->vrp_ms;
+    e->vrp = 0;
+    if (c < 0)
+        return 0;
+    if (first && since <= 1000 && e->cur > 0 && (unsigned char)e->b[e->cur - 1] == first)
+        for (i = 0; e->vremap[i] && e->vremap[i + 1]; i += 2)
+            if ((unsigned char)e->vremap[i] == first && (unsigned char)e->vremap[i + 1] == c) {
+                ed_cut(e, e->cur - 1, e->cur, 0);   /* the pending first key goes */
+                vim_escape(e);
+                return 1;
+            }
+    for (i = 0; e->vremap[i] && e->vremap[i + 1]; i += 2)
+        if ((unsigned char)e->vremap[i] == c) {
+            e->vrp = c;             /* typed now; a second key within a second remaps */
+            e->vrp_ms = e->now_ms;
+            break;
+        }
+    return 0;
+}
+
 void ed_set_vim(cl_edit *e, int on)
 {
     e->vim = on ? VIM_INSERT : VIM_OFF;

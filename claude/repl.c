@@ -370,7 +370,7 @@ static void tool_show(void *u, const char *tool, const char *what)
     ui_tool(&r->ui, r->tools.cur, tool, what, r->tools.cur_in, r->tools.cur_inn);
 }
 
-static int tool_ask(void *u, const char *tool, const char *what, int outside)
+static int tool_ask(void *u, const char *tool, const char *what, int outside, char *note, long cap)
 {
     cl_repl *r = (cl_repl *)u;
     char m[200];
@@ -382,7 +382,11 @@ static int tool_ask(void *u, const char *tool, const char *what, int outside)
     cl_copy(m, "Claude needs your permission to use ", sizeof(m));
     cl_cat(m, cfg_cc_tool(tool), sizeof(m));
     pol_notify(r, m);
-    return ui_ask(&r->ui, r->tools.cur, tool, what, outside);
+    {
+        int a = ui_ask(&r->ui, r->tools.cur, tool, what, outside);
+        cl_copy(note, r->ui.ask_note, cap);     /* Tab's comment on Yes / No */
+        return a;
+    }
 }
 
 static int tool_wait(void *u, long ms)

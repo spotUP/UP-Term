@@ -312,6 +312,8 @@ int ed_key(cl_edit *e, const cl_key *k)
     } else if (e->vim == VIM_INSERT && k->k == K_ESC) {
         vim_escape(e);
         return 1;
+    } else if (e->vim == VIM_INSERT && e->vremap[0] && vim_remap(e, k)) {
+        return 1;
     }
     if (k->k == K_CTRL && k->ch == '_') {
         ed_undo(e);

@@ -112,6 +112,9 @@ typedef struct cl_ui {
     /* the tools (a ! command runs as they run Bash: Ctrl+B moves it to
      * the background); 0: sys->run */
     struct cl_tools *tools;
+    /* the comment the user gave with the last permission answer (Tab on
+     * Yes / No), "" none: ui_ask sets it */
+    char ask_note[200];
 } cl_ui;
 
 void ui_init(cl_ui *u, cl_io *io);

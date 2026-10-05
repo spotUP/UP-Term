@@ -54,11 +54,17 @@ tui.c's status_row is left alone except the vim mode word (one condition).
 - [x] R7 Ctrl+B background (Bash tool and ! commands, shells.c jobs) (keys_rest, test_input_rest)
 - [x] R8 @ list as you type, cached per directory (+ bash mode path list and ! history Tab) (at_completion)
 - [x] R9 Ctrl+O viewer follows a resize (transcript_resize)
-- [ ] R10 other keys from the docs that were missing (list below)
+- [x] R10 other keys from the docs that were missing (list below)
 - [x] R11 reachability through the REPL core (test_claude_repl test_input_rest: Ctrl+B on Claude's Bash
       and on a ! command, Alt+P without an echo)
 
-Running count: 10 of 11.
+- [x] R12 (owner, mid-run: "the cute claude mascot") the start screen as Claude Code's: the mascot
+      (block elements, accent colour) beside "C:Claude for the Amiga", model, directory
+      (welcome_mascot). The owner's screenshot (Image #19) did not reach this agent: built from
+      Claude Code's compact start header as known; the boxed "Welcome back / Tips / Recent activity"
+      variant is NOT built -- owner to say which one the screenshot shows.
+
+Running count: 12 of 12.
 
 ## Other keys in the interactive-mode docs (R10)
 
@@ -68,8 +74,10 @@ Built:
       -- our REPL has no re-entry mid-turn)
 - [x] Shift+Tab on a file's permission question: "Yes, and don't ask again this session"
 - [x] bash mode: Tab completes from earlier ! commands of the project; a token with '/' gets the file list
-- [ ] Tab on a permission question: a comment field on Yes / No that goes to Claude with the answer
-- [ ] vimInsertModeRemaps setting (e.g. "jj" -> Esc within one second; user settings only)
+- [x] Tab on a permission question: a comment field on Yes / No (No with a comment: declined with it,
+      the turn goes on; Yes with one: added to the call's result) (keys_rest, test_claude_tools)
+- [x] vimInsertModeRemaps setting ("jj" -> Esc within one second; user settings and --settings only)
+      (test_claude_config, vim_visual_dot)
 
 Not applicable here (reason):
 - Ctrl+X Ctrl+K: stops background subagents; C:Claude's subagents run in the foreground only (no threads).
@@ -85,6 +93,28 @@ Not applicable here (reason):
 - Voice dictation (Space), `:` emoji shortcodes (no emoji in the fonts; owner rule: no emoji).
 - Ctrl+B pressed twice under tmux: no tmux on the Amiga.
 
+## Unverified (said so, not folded in)
+
+- The tool result text for Ctrl+B ("Command was manually backgrounded by user with ID: bash_N") and
+  for comments ("the user declined this tool call and said: ...") are written from memory of Claude
+  Code's wording, not checked against its source.
+- Amiga: Ctrl+C inside the raw console arrives as a key (handled) or a break signal (io->sleep
+  returns 1 -> stop); both paths stop the command; only the host saw them.
+
+## Rig steps (main session, tools/claude_fixture.py)
+
+1. `slow` prompt -> Bash "Wait 30" asks; Yes; spinner; Ctrl+B -> result "manually backgrounded ...
+   bash_1" at once; BashOutput later. Again with Esc -> "The user stopped the command".
+2. `! Wait 30` then Ctrl+B -> "Moved to the background as bash_N."
+3. /vim, type "one two three", Esc, `0wviwd` -> "one  three"; `u`; `x` then `.`; "-- VISUAL --" shows.
+4. Type "@S/" -> list appears without Tab, narrows per key; a floppy/HD reads the dir once.
+5. Ctrl+S with text: box empties, hint; Ctrl+S again: back. Ctrl+W twice, Ctrl+Y, Alt+Y cycles.
+6. During a fixture answer: type, Ctrl+X Ctrl+S -> answer stops, the queue goes. `?` on empty box.
+7. Ctrl+O, resize the window, the viewer redraws to the new size. Alt+P -> model picker, draft kept.
+8. A permission question: Tab on Yes, type a comment, Enter.
+9. Start: the mascot in the accent colour at the top.
+
 ## Log
 
-- 2026-10-05: R1-R9, R11 built; make test, make test-ref (149 streams), make amiga green.
+- 2026-10-05: R1-R9, R11 built; make test, make test-ref (149 streams), make amiga green (c0aa1b2).
+- 2026-10-05: R10 rest (Tab comments, vimInsertModeRemaps), R12 mascot start header, fixture "slow".

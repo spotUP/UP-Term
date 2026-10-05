@@ -157,6 +157,12 @@ typedef struct cl_tui {
     int keycmd;
     /* a menu's option Shift+Tab chooses (-1 none); tui_menu resets it */
     int m_btab;
+    /* a permission question: Tab on its first (Yes) or last (No) option
+     * opens a comment field (m_noting: that option, -1 closed); the
+     * comment chosen with it stays in m_note after tui_menu ("" none).
+     * m_comment: the caller allows it for the next menu (reset after). */
+    int m_comment, m_noting;
+    char m_note[200];
     /* type-ahead */
     char *queue[TUI_QUEUE];
     int nq;

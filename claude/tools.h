@@ -101,8 +101,10 @@ typedef struct cl_tools {
     void *u;
     /* the call, shown before anything happens; what is a one-line summary */
     void (*show)(void *u, const char *tool, const char *what);
-    /* the permission question: ASK_NO / ASK_ONCE / ASK_SESSION / ASK_STOP */
-    int (*ask)(void *u, const char *tool, const char *what, int outside);
+    /* the permission question: ASK_NO / ASK_ONCE / ASK_SESSION / ASK_STOP;
+     * note (cap bytes, "" set by the caller) gets the comment the user
+     * gave with the answer (Claude Code's Tab on Yes / No), if any */
+    int (*ask)(void *u, const char *tool, const char *what, int outside, char *note, long cap);
     /* optional: a write or an edit before the question, the file's text
      * before (0, 0 when it is new) and after, both UTF-8 for an edit */
     void (*preview)(void *u, int tool, const char *path, const char *before, long bn, const char *after,
@@ -123,6 +125,9 @@ typedef struct cl_tools {
      * (Claude Code's "move to the background"); unset, sys->run. */
     int (*wait)(void *u, long ms);
     int stop;                   /* ASK_STOP was answered this round (reset by the caller) */
+    /* an allowed call's comment from the user (ask's note): tl_result
+     * adds it to the call's result for Claude, then clears it */
+    char note[200];
     int cur;                    /* the tool being run (the result hook's) */
     const char *cur_in;
     long cur_inn;

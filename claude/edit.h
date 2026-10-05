@@ -59,6 +59,12 @@ typedef struct cl_edit {
     long vsnap0;        /* nsnap when the recording started */
     long vcmdcount;     /* the count the last command had, 0 none */
     long vdotcount;     /* ... the last change's */
+    /* vimInsertModeRemaps: two-key INSERT sequences to Esc ("jj"), the
+     * first key typed (vrp) and when; now_ms the key's time (the screen
+     * sets it before each key) */
+    char vremap[17];
+    int vrp;
+    unsigned long vrp_ms, now_ms;
     int oom;
 } cl_edit;
 
@@ -93,6 +99,9 @@ int vim_normal(cl_edit *e, const cl_key *k);
 int vim_idle(const cl_edit *e);
 /* INSERT -> NORMAL (Esc): the cursor steps back onto the last character */
 void vim_escape(cl_edit *e);
+/* INSERT: a typed character that ends a remapped sequence ("jj" within a
+ * second): the first one taken out, NORMAL mode, 1; else 0 (typed) */
+int vim_remap(cl_edit *e, const cl_key *k);
 /* vim mode on (INSERT, as Claude Code starts) or off */
 void ed_set_vim(cl_edit *e, int on);
 /* visual mode: the selection's keys (VISUAL, VLINE); the rest common keys */

@@ -511,26 +511,30 @@ static int last_col(const char *row, const char *g)
     return found;
 }
 
-/* The welcome box: its right side in one column on every row (the first
- * row's width was counted 3 short: its border stood 3 columns out). */
-static void welcome_box_sides_line_up(void)
+/* The start, as Claude Code's: the mascot in the accent colour, beside it
+ * the program, the model and the directory, their text in one column. */
+static void welcome_mascot(void)
 {
     static const char *script[] = { 0 };
-    int r, top = -1, right;
+    int top;
     screen(80, 20, script);
     CHECK_INT(tui_start(&tui), 0);
     show_welcome(&shw, "claude-opus-5-5", "RAM:");
-    for (r = 0; r < cs.rows && top < 0; r++)
-        if (strstr(cs_row(r), "\342\225\255"))
-            top = r;
+    dump("welcome");
+    top = cs_find("\342\226\220\342\226\233\342\226\210\342\226\210\342\226\210\342\226\234\342\226\214");
     CHECK(top >= 0);
-    right = last_col(cs_row(top), "\342\225\256");
-    CHECK(right > 0);
-    for (r = top + 1; r <= top + 5; r++)
-        CHECK_INT(last_col(cs_row(r), V), right);
-    CHECK_INT(last_col(cs_row(top + 6), "\342\225\257"), right);
+    if (top >= 0) {
+        CHECK_STR(cs_row(top), " \342\226\220\342\226\233\342\226\210\342\226\210\342\226\210\342\226\234"
+                               "\342\226\214   C:Claude for the Amiga");
+        CHECK_STR(cs_row(top + 1), "\342\226\235\342\226\234\342\226\210\342\226\210\342\226\210\342\226\210"
+                                   "\342\226\210\342\226\233\342\226\230  claude-opus-5-5 \302\267 API Usage Billing");
+        CHECK_STR(cs_row(top + 2), "  \342\226\230\342\226\230 \342\226\235\342\226\235    RAM:");
+        CHECK_INT(h_cell(cs.vt, 1, top)->fg, 3);            /* the accent (dark: yellow) */
+        CHECK(h_cell(cs.vt, 11, top)->attr & VT_ATTR_BOLD);  /* the name */
+    }
     unscreen();
     cs_close();
+    (void)last_col;
 }
 
 /* ==== A4 WP1: the input box's and the screen's Claude Code features ==== */
@@ -844,6 +848,25 @@ static void vim_visual_dot(void)
     CHECK(vimcase("abcdefghij", "vlld.", "ghij"));
     CHECK(vimcase("one\ntwo\nthree\nfour", "Vjd.", ""));
     CHECK(vimcase("a b c d", "vlU.", "A b c d"));
+    /* vimInsertModeRemaps "jj": the second j within a second leaves INSERT
+     * and takes the first out; later, both stay as typed */
+    ed_init(&e);
+    ed_set_vim(&e, 1);
+    strcpy(e.vremap, "jj");
+    e.now_ms = 1000;
+    type(&e, "hij");
+    e.now_ms = 1400;
+    type(&e, "j");
+    CHECK_STR(e.b, "hi");
+    CHECK_INT(e.vim, VIM_NORMAL);
+    type(&e, "A");
+    e.now_ms = 5000;
+    type(&e, "j");
+    e.now_ms = 6200;
+    type(&e, "j");
+    CHECK_STR(e.b, "hijj");
+    CHECK_INT(e.vim, VIM_INSERT);
+    ed_free(&e);
     /* o swaps the ends, v / V switch, v again leaves; u undoes a visual change */
     ed_init(&e);
     ed_set_vim(&e, 1);
@@ -1107,10 +1130,20 @@ static void queue_while_busy(void)
     cs_close();
 }
 
+/* the comment field seen while the menu is open (before Enter) */
+static int note_row;
+static void note_look(void)
+{
+    if (cs.next == 2 && cs_find("> ok but short") >= 0 && cs_find("enter answers with it") >= 0)
+        note_row = 1;
+}
+
 /* R4-R7, R10: Ctrl+Enter / Ctrl+X Ctrl+S, Ctrl+S, Alt+Y, Ctrl+B, ?,
- * Alt+P, Shift+Tab on a file's permission question */
+ * Alt+P, Shift+Tab and Tab on a permission question */
 static void keys_rest(void)
 {
+    static const char *s_c1[] = { "\t", "ok but short", "\r", 0 };
+    static const char *s_c2[] = { "\t", "\t", "nope", "\t", "\r", 0 };
     static const char *s_q1[] = { "!first\r", "!draft", "!\033[13;5u", 0 };
     static const char *s_q2[] = { "!first\r", "!more", "!\030\023", 0 };
     static const char *s_q3[] = { "!first\r", "!\033[13;5u", 0 };
@@ -1290,6 +1323,27 @@ static void keys_rest(void)
     tui.m_btab = 1;
     CHECK_INT(tui_menu(&tui, "Edit file", "q", opt, 3, 0, 2), 1);
     CHECK_INT(tui.m_btab, -1);
+    unscreen();
+    cs_close();
+    /* Tab on Yes: a comment field; Enter answers Yes with it */
+    screen(70, 18, s_c1);
+    tui_start(&tui);
+    tui.m_comment = 1;
+    cs.before_read = note_look;
+    CHECK_INT(tui_menu(&tui, "Edit file", "q", opt, 3, 0, 2), 0);
+    cs.before_read = 0;
+    CHECK_INT(note_row, 1);
+    CHECK_STR(tui.m_note, "ok but short");
+    CHECK_INT(tui.m_comment, 0);
+    unscreen();
+    cs_close();
+    /* Tab on the middle option moves on; Tab on No, a comment, Tab closes
+     * it (dropped), Enter: No without one */
+    screen(70, 18, s_c2);
+    tui_start(&tui);
+    tui.m_comment = 1;
+    CHECK_INT(tui_menu(&tui, "Edit file", "q", opt, 3, 1, 2), 2);
+    CHECK_STR(tui.m_note, "");
     unscreen();
     cs_close();
 }
@@ -1614,7 +1668,7 @@ void suite_claude_tui(void)
     answer_and_tools();
     edit_diff_and_todos();
     grow_over_transcript();
-    welcome_box_sides_line_up();
+    welcome_mascot();
     mk_tdir();
     history_and_search();
     editor_words_undo();

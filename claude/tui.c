@@ -609,6 +609,30 @@ static void menu_rows(cl_tui *t)
         r_glyph(&r, G_V);
         r_sgr(&r, SGR0);
         want(t, &r);
+        if (i == t->m_noting || (i == t->m_n - 1 && t->m_comment && t->m_noting < 0)) {
+            /* the comment field under its option, or the hint for it */
+            r_init(&r, t->cols);
+            r_sgr(&r, t->th->box);
+            r_glyph(&r, G_V);
+            r_sgr(&r, SGR0);
+            if (i == t->m_noting) {
+                r_textz(&r, "       > ");
+                r_textz(&r, t->m_note);
+                r_sgr(&r, REV);
+                r_text(&r, " ", 1);
+                r_sgr(&r, SGR0 DIM);
+                r_textz(&r, "  enter answers with it, tab closes");
+            } else {
+                r_sgr(&r, DIM);
+                r_textz(&r, "   tab on Yes or No adds a comment for Claude");
+            }
+            r_sgr(&r, SGR0);
+            r_pad(&r, t->cols - 1);
+            r_sgr(&r, t->th->box);
+            r_glyph(&r, G_V);
+            r_sgr(&r, SGR0);
+            want(t, &r);
+        }
     }
     border(t, G_BL, G_BR);
 }
@@ -1543,6 +1567,7 @@ enum { H_GO, H_SUBMIT, H_QUIT, H_STOP };
 static void edit(cl_tui *t, cl_key *k)
 {
     long n0 = t->ed.n, c0 = t->ed.cur;
+    t->ed.now_ms = now(t);          /* vim's remapped sequences are timed */
     ed_key(&t->ed, k);
     if (t->ed.n != n0) {
         t->mclosed = 0;
@@ -2073,6 +2098,8 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
     t->m_n = n;
     t->m_sel = sel;
     t->busy = 0;
+    t->m_noting = -1;
+    t->m_note[0] = 0;
     for (;;) {
         cl_key k;
         int r;
@@ -2082,6 +2109,52 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
             break;
         if (!r) {
             check_size(t);
+            continue;
+        }
+        if (t->m_noting >= 0) {
+            /* the comment field: typed text; Enter answers with it, Tab,
+             * Shift+Tab or Esc close it */
+            long l = (long)strlen(t->m_note);
+            if (k.k == K_CHAR && k.ch >= 0x20) {
+                char u[8];
+                int ul = vw_put_utf8(u, k.ch);
+                if (l + ul < (long)sizeof(t->m_note)) {
+                    memcpy(t->m_note + l, u, (size_t)ul);
+                    t->m_note[l + ul] = 0;
+                }
+                continue;
+            }
+            if (k.k == K_PASTE) {
+                long i;
+                for (i = 0; i < k.n && l + 1 < (long)sizeof(t->m_note); i++)
+                    if ((unsigned char)k.text[i] >= 0x20)
+                        t->m_note[l++] = k.text[i];
+                t->m_note[l] = 0;
+                continue;
+            }
+            if (k.k == K_BS) {
+                while (l > 0 && ((unsigned char)t->m_note[l - 1] & 0xc0) == 0x80)
+                    l--;
+                if (l > 0)
+                    l--;
+                t->m_note[l] = 0;
+                continue;
+            }
+            if (k.k == K_ENTER) {
+                choice = t->m_noting;
+                break;
+            }
+            if (k.k == K_TAB || k.k == K_BTAB || k.k == K_ESC || k.k == K_UP || k.k == K_DOWN) {
+                t->m_noting = -1;
+                t->m_note[0] = 0;
+                if (k.k != K_UP && k.k != K_DOWN)
+                    continue;
+            } else {
+                continue;
+            }
+        }
+        if (k.k == K_TAB && t->m_comment && (t->m_sel == 0 || t->m_sel == n - 1)) {
+            t->m_noting = t->m_sel;     /* a comment on Yes or No */
             continue;
         }
         if (k.k == K_BTAB && t->m_btab >= 0 && t->m_btab < n) {
@@ -2106,6 +2179,10 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
     t->modal = 0;
     t->busy = busy;
     t->m_btab = -1;
+    t->m_comment = 0;
+    if (choice < 0 || choice != t->m_noting)
+        t->m_note[0] = 0;           /* a comment goes only with its own option */
+    t->m_noting = -1;
     tui_frame(t);
     return choice;
 }

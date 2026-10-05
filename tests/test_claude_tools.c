@@ -217,6 +217,7 @@ static void test_validate(void)
 typedef struct asker {
     int asked, shown;
     int answer;
+    char note[64];              /* the comment given with the answer (Tab on Yes / No) */
     int outside;
     char last[300], last_tool[40];
     /* the preview: the file before and after (an edit's, a write's) */
@@ -269,13 +270,14 @@ static void on_show(void *u, const char *tool, const char *what)
     cl_copy(a->last_tool, tool, sizeof(a->last_tool));
 }
 
-static int on_ask(void *u, const char *tool, const char *what, int outside)
+static int on_ask(void *u, const char *tool, const char *what, int outside, char *note, long cap)
 {
     asker *a = (asker *)u;
     (void)tool;
     (void)what;
     a->asked++;
     a->outside = outside;
+    cl_copy(note, a->note, cap);
     return a->answer;
 }
 
@@ -601,6 +603,21 @@ static void test_files(void)
     CHECK(strstr(text, "declined") != 0);
     CHECK_INT(get("new.txt", buf, sizeof(buf)), -1);
     CHECK_INT(a.asked, 1);
+    /* No with a comment: Claude is told it, the turn goes on (no stop) */
+    strcpy(a.note, "call it hello.txt");
+    t.stop = 0;
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"new.txt\",\"content\":\"hello\"}", text, sizeof(text)), 1);
+    CHECK_STR(text, "the user declined this tool call and said: call it hello.txt");
+    CHECK_INT(t.stop, 0);
+    /* Yes with a comment: the call runs, the comment follows its result */
+    a.answer = ASK_ONCE;
+    strcpy(a.note, "keep it short");
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"note.txt\",\"content\":\"x\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "File created successfully at: ") == text);
+    CHECK(strstr(text, "\n\nThe user allowed this call with a comment: keep it short") != 0);
+    CHECK_STR(t.note, "");
+    a.note[0] = 0;
+    a.asked = 1;
     a.answer = ASK_ONCE;
     CHECK_INT(call(&t, "Write", "{\"file_path\":\"new.txt\",\"content\":\"hello \\u00fc\"}", text, sizeof(text)), 0);
     CHECK(!strncmp(text, "File created successfully at: ", 30));
