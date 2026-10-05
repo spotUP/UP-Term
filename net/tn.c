@@ -11,8 +11,45 @@ static void flush(tn *t)
     }
 }
 
+/* follows CSI ? 47/1047/1049 h/l in what is shown: tn_goodbye needs to
+ * know whether the far side left the alternate screen on */
+static void track(tn *t, unsigned char c)
+{
+    int k;
+    switch (t->esc) {
+    case 0:
+        if (c == 0x1b)
+            t->esc = 1;
+        return;
+    case 1:
+        t->esc = c == '[' ? 2 : 0;
+        return;
+    case 2:
+        t->esc = c == '?' ? 3 : 0;
+        t->nparm = 0;
+        t->parm[0] = 0;
+        return;
+    default:
+        if (c >= '0' && c <= '9') {
+            if (t->parm[t->nparm] < 10000)
+                t->parm[t->nparm] = t->parm[t->nparm] * 10 + (c - '0');
+            return;
+        }
+        if (c == ';' && t->nparm < 3) {
+            t->parm[++t->nparm] = 0;
+            return;
+        }
+        if (c == 'h' || c == 'l')
+            for (k = 0; k <= t->nparm; k++)
+                if (t->parm[k] == 47 || t->parm[k] == 1047 || t->parm[k] == 1049)
+                    t->alt = c == 'h';
+        t->esc = c == 0x1b ? 1 : 0;
+    }
+}
+
 static void put(tn *t, unsigned char c)
 {
+    track(t, c);
     if (t->blen == (int)sizeof(t->buf))
         flush(t);
     t->buf[t->blen++] = c;
@@ -170,6 +207,8 @@ void tn_init(tn *t, const char *term, int cols, int rows,
     t->sblen = 0;
     t->cr = 0;
     t->blen = 0;
+    t->esc = t->nparm = t->alt = 0;
+    t->parm[0] = 0;
 }
 
 void tn_start(tn *t)
@@ -273,6 +312,29 @@ void tn_send(tn *t, const unsigned char *b, int n)
         flush(t);
     }
 }
+
+static const char bye_alt[] = "\033[?2026l\033[?1049l";   /* synchronized output off, main screen */
+static const char bye_main[] = "\033[?2026l";
+static const char bye[] =
+    "\0337\033[r\0338"                                /* the whole screen scrolls; DECSTBM homes: kept */
+    "\033[0m\033[?25h\033[?7h"                       /* plain text, cursor shown, wrap */
+    "\033[?1l\033>"                                  /* cursor and keypad keys normal */
+    "\033[?9l\033[?1000l\033[?1002l\033[?1003l"      /* no mouse reports */
+    "\033[?1005l\033[?1006l\033[?1015l"
+    "\033[?1004l\033[?2004l";                        /* no focus reports, no paste marks */
+static char goodbye[sizeof(bye_alt) + sizeof(bye)];
+
+const char *tn_goodbye(const tn *t)
+{
+    const char *a = t->alt ? bye_alt : bye_main;
+    int i = 0, k;
+    for (k = 0; a[k]; k++)
+        goodbye[i++] = a[k];
+    for (k = 0; bye[k]; k++)
+        goodbye[i++] = bye[k];
+    goodbye[i] = 0;
+    return goodbye;
+}                        /* no focus reports, no paste marks */
 
 void tn_size(tn *t, int cols, int rows)
 {

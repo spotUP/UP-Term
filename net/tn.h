@@ -53,6 +53,9 @@ typedef struct tn {
     int cr;                             /* NVT: the last byte shown was CR */
     unsigned char buf[512];             /* data for show(), batched */
     int blen;
+    int esc, nparm;                     /* the CSI ? ... h/l being read (alternate screen) */
+    int parm[4];
+    int alt;                            /* the far side is on the alternate screen */
 } tn;
 
 void tn_init(tn *t, const char *term, int cols, int rows,
@@ -67,6 +70,14 @@ void tn_recv(tn *t, const unsigned char *b, int n);
 void tn_send(tn *t, const unsigned char *b, int n);
 /* The window's size: sent (NAWS) when it changed and NAWS is on. */
 void tn_size(tn *t, int cols, int rows);
+/* What a remote program may have left switched on when the connection
+ * ends without its own goodbye (tmux, Claude Code, vim): the alternate
+ * screen, a scroll region, hidden cursor, mouse and focus reports,
+ * bracketed paste, application keys, synchronized output. Written to the
+ * console after the session so the Shell gets its screen back, as ssh and
+ * mosh clients leave it. The cursor stays where it is; the main screen
+ * comes back only when the far side switched to the alternate one. */
+const char *tn_goodbye(const tn *t);
 /* 1 when that side of the option is on */
 int tn_us(const tn *t, int opt);
 int tn_him(const tn *t, int opt);

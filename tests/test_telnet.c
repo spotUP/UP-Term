@@ -2,6 +2,8 @@
  * TERMINAL-TYPE, IAC escaping and the NVT CR rules. */
 #include "harness.h"
 #include "../net/tn.h"
+#include "../engine/vtengine.h"
+#include <string.h>
 
 static unsigned char sent[1024], shown[1024];
 static int nsent, nshown;
@@ -211,6 +213,70 @@ static void typed_iac_doubles_and_cr_follows_binary(void)
     CHECK_INT(nshown, 0);
 }
 
+/* the owner's screen 2026-10-05: tmux's alternate screen, scroll region and
+ * mouse mode outlived a closed connection; tn_goodbye undoes them, and the
+ * cursor stays put (the first try homed it through DECSTBM) */
+static void session_end_gives_the_shell_its_screen_back(void)
+{
+    static const unsigned char tmux[] = "\033[?1049h\033[3;10r\033[?25l\033[?1000h\033[?1006h"
+                                        "\033[?1004h\033[?2004h\033[?1h\033=\033[?2026h\033[1;7m";
+    static const char before[] = "line one\r\nline two\r\nPassword: ";
+    vt_term *v = vt_new(80, 24, 0, 0, 0);
+    const char *bye;
+    tn t;
+    vt_u32 m;
+    int x0, y0, x, y;
+    CHECK(v != 0);
+    if (!v)
+        return;
+    vt_write(v, (const vt_u8 *)before, (long)strlen(before));
+    vt_cursor(v, &x0, &y0);
+    /* the far side's screen, through tn so it is tracked */
+    fresh(&t, 80, 24);
+    recv_bytewise(&t, tmux, (int)sizeof(tmux) - 1);
+    vt_write(v, tmux, (long)sizeof(tmux) - 1);
+    m = vt_modes(v);
+    CHECK((m & VT_MODE_ALT_SCREEN) && (m & VT_MODE_MOUSE_NORMAL) && !(m & VT_MODE_CURSOR_VISIBLE));
+    bye = tn_goodbye(&t);
+    vt_write(v, (const vt_u8 *)bye, (long)strlen(bye));
+    m = vt_modes(v);
+    CHECK(!(m & VT_MODE_ALT_SCREEN));
+    CHECK(m & VT_MODE_CURSOR_VISIBLE);
+    CHECK(!(m & (VT_MODE_MOUSE_X10 | VT_MODE_MOUSE_NORMAL | VT_MODE_MOUSE_BUTTON | VT_MODE_MOUSE_ANY |
+                 VT_MODE_MOUSE_SGR | VT_MODE_MOUSE_UTF8 | VT_MODE_MOUSE_URXVT)));
+    CHECK(!(m & (VT_MODE_FOCUS | VT_MODE_BRACKET_PASTE | VT_MODE_APP_CURSOR | VT_MODE_APP_KEYPAD |
+                 VT_MODE_SYNC)));
+    vt_cursor(v, &x, &y);
+    CHECK_INT(y, y0);   /* back where the main screen was left */
+    CHECK_INT(x, x0);
+    vt_free(v);
+}
+
+/* a session that never switched screens: the cursor stays where its
+ * output ended, the main screen is not "restored" */
+static void session_end_on_the_main_screen_keeps_the_cursor(void)
+{
+    static const unsigned char out[] = "\033[5;20r\033[20;1Hhello\r\nworld";
+    vt_term *v = vt_new(80, 24, 0, 0, 0);
+    const char *bye;
+    tn t;
+    int x0, y0, x, y;
+    CHECK(v != 0);
+    if (!v)
+        return;
+    fresh(&t, 80, 24);
+    recv_bytewise(&t, out, (int)sizeof(out) - 1);
+    vt_write(v, out, (long)sizeof(out) - 1);
+    vt_cursor(v, &x0, &y0);
+    bye = tn_goodbye(&t);
+    CHECK(strstr(bye, "1049") == 0);
+    vt_write(v, (const vt_u8 *)bye, (long)strlen(bye));
+    vt_cursor(v, &x, &y);
+    CHECK_INT(y, y0);
+    CHECK_INT(x, x0);
+    vt_free(v);
+}
+
 void suite_telnet(void)
 {
     opening_offers_naws_ttype_binary_and_asks_sga();
@@ -225,4 +291,6 @@ void suite_telnet(void)
     subnegotiation_payload_never_shows();
     nvt_cr_nul_shows_as_cr_binary_keeps_nul();
     typed_iac_doubles_and_cr_follows_binary();
+    session_end_gives_the_shell_its_screen_back();
+    session_end_on_the_main_screen_keeps_the_cursor();
 }
