@@ -1,14 +1,24 @@
-/* The Claude client's tools (claude/tools.c): AmigaOS path names, the
- * permission rules, input validation, and every tool against a temporary
- * tree on the host (claude/sys_posix.c). */
+/* The Claude client's tools (claude/tools.c and the modules behind it,
+ * ledger A2 and A4 WP2): AmigaOS path names, the permission rules, the
+ * schema checks, and every tool against a temporary tree on the host
+ * (claude/sys_posix.c): Read Write Edit MultiEdit Glob Grep Bash
+ * BashOutput KillShell TodoWrite AskUserQuestion EnterPlanMode
+ * ExitPlanMode Skill SlashCommand, and Task and WebFetch over stubs of
+ * the API (recorded answers in tests/claude/) and of the web. */
 #define _XOPEN_SOURCE 700
 #define _DARWIN_C_SOURCE
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
+#include <utime.h>
 #include <sys/stat.h>
 #include "harness.h"
+#include "claude_load.h"
 #include "../claude/path.h"
 #include "../claude/tools.h"
+#include "../claude/stream.h"
+#include "../claude/sse.h"
+#include "../claude/util.h"
 #include "../claude/sys_posix.h"
 
 static void test_path(void)
@@ -60,48 +70,56 @@ static void test_perm(void)
     cl_perm p;
     int i;
     memset(&p, 0, sizeof(p));
-    for (i = 0; i < T_TODO_WRITE; i++)
-        CHECK(perm_must_ask(&p, i, 0));
-    /* the todo list changes nothing but the screen: never asked, even in plan mode */
-    CHECK(!perm_must_ask(&p, T_TODO_WRITE, 0));
+    /* what asks: the file tools, Bash, WebFetch, Skill, SlashCommand */
+    for (i = 0; i < T_COUNT; i++) {
+        int asks = i == T_READ || i == T_WRITE || i == T_EDIT || i == T_MULTIEDIT || i == T_GLOB || i == T_GREP ||
+                   i == T_BASH || i == T_WEB_FETCH || i == T_SKILL || i == T_SLASH;
+        CHECK_INT(perm_must_ask(&p, i, 0), asks);
+    }
     /* one answer allows all three read-only tools */
     perm_grant(&p, T_GREP);
-    CHECK(!perm_must_ask(&p, T_READ_FILE, 0));
-    CHECK(!perm_must_ask(&p, T_LIST_DIR, 0));
+    CHECK(!perm_must_ask(&p, T_READ, 0));
+    CHECK(!perm_must_ask(&p, T_GLOB, 0));
     CHECK(!perm_must_ask(&p, T_GREP, 0));
-    CHECK(perm_must_ask(&p, T_WRITE_FILE, 0));
-    CHECK(perm_must_ask(&p, T_EDIT_FILE, 0));
-    CHECK(perm_must_ask(&p, T_RUN_COMMAND, 0));
+    CHECK(perm_must_ask(&p, T_WRITE, 0));
+    CHECK(perm_must_ask(&p, T_EDIT, 0));
+    CHECK(perm_must_ask(&p, T_BASH, 0));
+    CHECK(perm_must_ask(&p, T_WEB_FETCH, 0));
     /* outside the start directory: always */
-    CHECK(perm_must_ask(&p, T_READ_FILE, 1));
+    CHECK(perm_must_ask(&p, T_READ, 1));
     /* a writing tool allowed for the session: that tool only */
-    perm_grant(&p, T_WRITE_FILE);
-    CHECK(!perm_must_ask(&p, T_WRITE_FILE, 0));
-    CHECK(perm_must_ask(&p, T_EDIT_FILE, 0));
-    CHECK(perm_must_ask(&p, T_WRITE_FILE, 1));
-    /* accept edits: writes and edits inside the start directory run, a
-     * command and anything outside still ask */
+    perm_grant(&p, T_WRITE);
+    CHECK(!perm_must_ask(&p, T_WRITE, 0));
+    CHECK(perm_must_ask(&p, T_EDIT, 0));
+    CHECK(perm_must_ask(&p, T_WRITE, 1));
+    /* accept edits: Write, Edit, MultiEdit inside the start directory run */
     memset(&p, 0, sizeof(p));
     p.mode = PERM_ACCEPT;
-    CHECK(!perm_must_ask(&p, T_WRITE_FILE, 0));
-    CHECK(!perm_must_ask(&p, T_EDIT_FILE, 0));
-    CHECK(perm_must_ask(&p, T_EDIT_FILE, 1));
-    CHECK(perm_must_ask(&p, T_RUN_COMMAND, 0));
-    CHECK(perm_must_ask(&p, T_READ_FILE, 0));
-    CHECK(!perm_refused(&p, T_RUN_COMMAND));
-    /* plan: only the read-only tools (and the todo list) run */
+    CHECK(!perm_must_ask(&p, T_WRITE, 0));
+    CHECK(!perm_must_ask(&p, T_EDIT, 0));
+    CHECK(!perm_must_ask(&p, T_MULTIEDIT, 0));
+    CHECK(perm_must_ask(&p, T_EDIT, 1));
+    CHECK(perm_must_ask(&p, T_BASH, 0));
+    CHECK(perm_must_ask(&p, T_READ, 0));
+    CHECK(!perm_refused(&p, T_BASH));
+    /* plan: what changes something is refused */
     p.mode = PERM_PLAN;
-    CHECK(perm_refused(&p, T_WRITE_FILE));
-    CHECK(perm_refused(&p, T_EDIT_FILE));
-    CHECK(perm_refused(&p, T_RUN_COMMAND));
+    CHECK(perm_refused(&p, T_WRITE));
+    CHECK(perm_refused(&p, T_EDIT));
+    CHECK(perm_refused(&p, T_MULTIEDIT));
+    CHECK(perm_refused(&p, T_BASH));
+    CHECK(perm_refused(&p, T_KILL_SHELL));
     CHECK(!perm_refused(&p, T_GREP));
+    CHECK(!perm_refused(&p, T_WEB_FETCH));
+    CHECK(!perm_refused(&p, T_TASK));
     CHECK(!perm_refused(&p, T_TODO_WRITE));
+    CHECK(!perm_refused(&p, T_EXIT_PLAN));
 }
 
 static int bad(int tool, const char *in)
 {
     jv v;
-    char err[200];
+    char err[300];
     if (json_parse(in, (long)strlen(in), &v))
         return -2;
     return tools_validate(tool, v, err, sizeof(err));
@@ -109,28 +127,89 @@ static int bad(int tool, const char *in)
 
 static void test_validate(void)
 {
-    jv v;
-    CHECK_INT(json_parse(tools_json(), (long)strlen(tools_json()), &v), 0);
-    CHECK_INT(json_count(v), T_COUNT);
-    CHECK_INT(bad(T_READ_FILE, "{\"path\":\"S:x\"}"), 0);
-    CHECK_INT(bad(T_READ_FILE, "{}"), -1);
-    CHECK_INT(bad(T_READ_FILE, "[\"S:x\"]"), -1);
-    CHECK_INT(bad(T_READ_FILE, "{\"path\":7}"), -1);
-    CHECK_INT(bad(T_READ_FILE, "{\"path\":\"x\",\"extra\":1}"), -1);
+    jv v, e, x;
+    jit it;
+    cl_tools t;
+    char err[300];
+    int n = 0, server = 0;
+    memset(&t, 0, sizeof(t));
+    CHECK_INT(tools_init(&t), 0);
+    /* every tool declared: no transport here, so no Task and no WebFetch;
+     * no provider, so no Skill and no SlashCommand; the server tool */
+    CHECK_INT(json_parse(tools_json(&t, "claude-opus-5-5"), (long)strlen(tools_json(&t, "claude-opus-5-5")), &v), 0);
+    json_iter(v, &it);
+    while (json_next(&it, 0, &e)) {
+        n++;
+        if (json_get(e, "type", &x) && json_streq(x, "web_search_20260209"))
+            server++;
+        else
+            CHECK(json_get(e, "strict", &x) && json_type(x) == J_TRUE && json_get(e, "input_schema", &x));
+    }
+    CHECK_INT(n, T_COUNT - 4 + 1);
+    CHECK_INT(server, 1);
+    /* Haiku gets the basic web_search; the switch leaves it out */
+    CHECK(strstr(tools_json(&t, "claude-haiku-4-5"), "\"web_search_20250305\"") != 0);
+    t.web_search = 0;
+    free(t.json);
+    t.json = 0;
+    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "web_search") == 0);
+    tools_free(&t);
+
+    CHECK_INT(bad(T_READ, "{\"file_path\":\"S:x\"}"), 0);
+    CHECK_INT(bad(T_READ, "{\"file_path\":\"S:x\",\"offset\":10,\"limit\":5}"), 0);
+    CHECK_INT(bad(T_READ, "{}"), -1);
+    CHECK_INT(bad(T_READ, "[\"S:x\"]"), -1);
+    CHECK_INT(bad(T_READ, "{\"file_path\":7}"), -1);
+    CHECK_INT(bad(T_READ, "{\"file_path\":\"x\",\"extra\":1}"), -1);
+    CHECK_INT(bad(T_READ, "{\"file_path\":\"x\",\"offset\":1.5}"), -1);
+    CHECK_INT(bad(T_READ, "{\"file_path\":\"x\",\"limit\":0}"), -1);
     CHECK_INT(bad(T_GREP, "{\"pattern\":\"x\"}"), 0);
-    CHECK_INT(bad(T_GREP, "{\"pattern\":\"x\",\"ignore_case\":\"yes\"}"), -1);
-    CHECK_INT(bad(T_GREP, "{\"pattern\":\"x\",\"ignore_case\":true,\"path\":\"S\"}"), 0);
-    CHECK_INT(bad(T_EDIT_FILE, "{\"path\":\"a\",\"old_string\":\"b\"}"), -1);
-    CHECK_INT(bad(T_RUN_COMMAND, "{\"command\":\"Version\"}"), 0);
-    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\",\"status\":\"pending\"}]}"), 0);
+    CHECK_INT(bad(T_GREP, "{\"pattern\":\"x\",\"-i\":\"yes\"}"), -1);
+    CHECK_INT(bad(T_GREP, "{\"pattern\":\"x\",\"output_mode\":\"lines\"}"), -1);
+    CHECK_INT(bad(T_GREP, "{\"pattern\":\"x\",\"-C\":-1}"), -1);
+    CHECK_INT(bad(T_GREP, "{\"pattern\":\"x\",\"-i\":true,\"-n\":true,\"-A\":2,\"path\":\"S\",\"glob\":\"*.c\","
+                          "\"output_mode\":\"content\",\"head_limit\":5,\"offset\":1,\"multiline\":false,\"type\":\"c\"}"), 0);
+    CHECK_INT(bad(T_EDIT, "{\"file_path\":\"a\",\"old_string\":\"b\"}"), -1);
+    CHECK_INT(bad(T_EDIT, "{\"file_path\":\"a\",\"old_string\":\"b\",\"new_string\":\"c\",\"replace_all\":true}"), 0);
+    CHECK_INT(bad(T_MULTIEDIT, "{\"file_path\":\"a\",\"edits\":[]}"), -1);
+    CHECK_INT(bad(T_MULTIEDIT, "{\"file_path\":\"a\",\"edits\":[{\"old_string\":\"b\"}]}"), -1);
+    CHECK_INT(bad(T_MULTIEDIT, "{\"file_path\":\"a\",\"edits\":[{\"old_string\":\"b\",\"new_string\":\"c\"}]}"), 0);
+    CHECK_INT(bad(T_BASH, "{\"command\":\"Version\"}"), 0);
+    CHECK_INT(bad(T_BASH, "{\"command\":\"Version\",\"timeout\":700000}"), -1);
+    CHECK_INT(bad(T_BASH, "{\"command\":\"Version\",\"run_in_background\":true,\"description\":\"v\"}"), 0);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\",\"status\":\"pending\",\"activeForm\":\"A\"}]}"), 0);
     CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[]}"), 0);
-    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\",\"status\":\"maybe\"}]}"), -1);
-    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\"}]}"), -1);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\",\"status\":\"maybe\",\"activeForm\":\"A\"}]}"), -1);
+    CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[{\"content\":\"a\",\"status\":\"pending\"}]}"), -1);
     CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":[\"a\"]}"), -1);
     CHECK_INT(bad(T_TODO_WRITE, "{\"todos\":\"a\"}"), -1);
-    CHECK_INT(tools_id("todo_write"), T_TODO_WRITE);
-    CHECK_INT(tools_id("read_file"), T_READ_FILE);
-    CHECK_INT(tools_id("bash"), -1);
+    CHECK_INT(bad(T_ASK_USER, "{\"questions\":[{\"question\":\"q\",\"header\":\"h\",\"multiSelect\":false,"
+                              "\"options\":[{\"label\":\"a\",\"description\":\"\"},{\"label\":\"b\",\"description\":\"\"}]}]}"), 0);
+    CHECK_INT(bad(T_ASK_USER, "{\"questions\":[{\"question\":\"q\",\"header\":\"h\",\"multiSelect\":false,"
+                              "\"options\":[{\"label\":\"a\",\"description\":\"\"}]}]}"), -1);
+    CHECK_INT(bad(T_ASK_USER, "{\"questions\":[]}"), -1);
+    CHECK_INT(bad(T_ENTER_PLAN, "{}"), 0);
+    CHECK_INT(bad(T_ENTER_PLAN, "{\"x\":1}"), -1);
+    CHECK_INT(bad(T_TASK, "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Explore\",\"model\":\"haiku\"}"), 0);
+    CHECK_INT(bad(T_TASK, "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Explore\",\"model\":\"gpt\"}"), -1);
+    CHECK_INT(bad(T_WEB_FETCH, "{\"url\":\"http://x/\"}"), -1);
+    /* the messages say which parameter, as Claude Code's do */
+    CHECK_INT(json_parse("{\"command\":1}", 13, &v), 0);
+    CHECK_INT(tools_validate(T_BASH, v, err, sizeof(err)), -1);
+    CHECK_STR(err, "The parameter `command` must be a string, not a number");
+    CHECK_INT(json_parse("{}", 2, &v), 0);
+    CHECK_INT(tools_validate(T_READ, v, err, sizeof(err)), -1);
+    CHECK_STR(err, "The required parameter `file_path` is missing");
+    {
+        static const char me[] = "{\"file_path\":\"a\",\"edits\":[{\"old_string\":\"b\",\"new_string\":\"c\",\"x\":1}]}";
+        CHECK_INT(json_parse(me, (long)strlen(me), &v), 0);
+    }
+    CHECK_INT(tools_validate(T_MULTIEDIT, v, err, sizeof(err)), -1);
+    CHECK_STR(err, "An unexpected parameter `edits[0].x` was provided");
+    CHECK_INT(tools_id("TodoWrite"), T_TODO_WRITE);
+    CHECK_INT(tools_id("Read"), T_READ);
+    CHECK_INT(tools_id("read_file"), -1);
+    CHECK_STR(tools_name(T_ASK_USER), "AskUserQuestion");
 }
 
 /* ---- the tools on a temporary tree ---- */
@@ -139,12 +218,18 @@ typedef struct asker {
     int asked, shown;
     int answer;
     int outside;
-    char last[300];
+    char last[300], last_tool[40];
     /* the preview: the file before and after (an edit's, a write's) */
     int previews;
     char before[200], after[200];
     /* the result hook */
     int results, last_error;
+    /* the questions */
+    int chooses, choose_ret;
+    unsigned choose_picked;
+    char choose_other[100], choose_q[200], choose_opts[400];
+    int plans;
+    char plan[200];
 } asker;
 
 static void on_preview(void *u, int tool, const char *path, const char *b, long bn, const char *a, long an)
@@ -179,9 +264,9 @@ static void on_result(void *u, int tool, const char *in, long inn, int is_error,
 static void on_show(void *u, const char *tool, const char *what)
 {
     asker *a = (asker *)u;
-    (void)tool;
     a->shown++;
-    strncpy(a->last, what, sizeof(a->last) - 1);
+    cl_copy(a->last, what, sizeof(a->last));
+    cl_copy(a->last_tool, tool, sizeof(a->last_tool));
 }
 
 static int on_ask(void *u, const char *tool, const char *what, int outside)
@@ -192,6 +277,36 @@ static int on_ask(void *u, const char *tool, const char *what, int outside)
     a->asked++;
     a->outside = outside;
     return a->answer;
+}
+
+static int on_choose(void *u, const char *header, const char *question, const char *const *labels,
+                     const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap)
+{
+    asker *a = (asker *)u;
+    int i;
+    (void)header;
+    (void)descs;
+    (void)flags;
+    a->chooses++;
+    cl_copy(a->choose_q, question, sizeof(a->choose_q));
+    a->choose_opts[0] = 0;
+    for (i = 0; i < n; i++) {
+        cl_cat(a->choose_opts, labels[i], sizeof(a->choose_opts));
+        cl_cat(a->choose_opts, "|", sizeof(a->choose_opts));
+    }
+    *picked = a->choose_picked;
+    cl_copy(other, a->choose_other, cap);
+    return a->choose_ret;
+}
+
+static void on_plan(void *u, const char *text, long n)
+{
+    asker *a = (asker *)u;
+    a->plans++;
+    if (n < (long)sizeof(a->plan)) {
+        memcpy(a->plan, text, (size_t)n);
+        a->plan[n] = 0;
+    }
 }
 
 static char dir[512];
@@ -238,6 +353,18 @@ static void sub(const char *rel)
     mkdir(p, 0700);
 }
 
+/* a file's time set (seconds ago), for the newest-first orders */
+static void age(const char *rel, long ago)
+{
+    char p[600];
+    struct utimbuf ut;
+    strcpy(p, dir);
+    strcat(p, "/");
+    strcat(p, rel);
+    ut.actime = ut.modtime = time(0) - ago;
+    utime(p, &ut);
+}
+
 /* run one call; the tool_result's content into text, its is_error back */
 static int call(cl_tools *t, const char *name, const char *in, char *text, long cap)
 {
@@ -258,31 +385,164 @@ static int call(cl_tools *t, const char *name, const char *in, char *text, long 
     return err;
 }
 
-static void test_tree(void)
-{
-    sys_posix sp;
-    cl_sys sys;
-    cl_tools t;
-    asker a;
-    char text[4096], buf[256], *tmp;
-    const char *base = getenv("TMPDIR");
-    jw out;
-    strcpy(dir, base && *base ? base : "/tmp");
-    if (dir[strlen(dir) - 1] == '/')
-        dir[strlen(dir) - 1] = 0;
-    strcat(dir, "/claude_tools_XXXXXX");
-    tmp = mkdtemp(dir);
-    CHECK(tmp != 0);
-    if (!tmp)
-        return;
-    sub("S");
-    sub("sub");
-    sub("sub/deep");
-    put("S/Startup-Sequence", "SetPatch QUIET\nC:Version >NIL:\n", -1);
-    put("notes.txt", "Gr\xfc\xdf" "e Welt\nline two\nline two\n", -1);
-    put("bin.dat", "ab\0cd", 5);
-    put("sub/deep/a.txt", "a needle here\n", -1);
+/* ---- stubs: the API (recorded answers), the web (canned HTTP), the provider ---- */
 
+typedef struct api_stub {
+    const char *queue[8];
+    int n, next;
+    char *body[8];
+    int nbody;
+    int fail_with;              /* 0, or the send's return */
+} api_stub;
+
+static api_stub api;
+
+static void to_stream(void *u, const char *e, const char *d, long n)
+{
+    stream_event((cl_stream *)u, e, d, n);
+}
+
+static int api_send(void *u, const char *body, long bn, cl_stream *st)
+{
+    long n;
+    char *sse_text;
+    sse s;
+    (void)u;
+    if (api.nbody < 8) {
+        api.body[api.nbody] = (char *)malloc((size_t)bn + 1);
+        memcpy(api.body[api.nbody], body, (size_t)bn);
+        api.body[api.nbody++][bn] = 0;
+    }
+    stream_init(st, 0);
+    if (api.fail_with)
+        return api.fail_with;
+    if (api.next >= api.n)
+        return -1;
+    sse_text = claude_load(api.queue[api.next++], &n);
+    if (!sse_text)
+        return -1;
+    sse_init(&s, to_stream, st);
+    sse_feed(&s, sse_text, n);
+    sse_free(&s);
+    free(sse_text);
+    return st->state == ST_DONE ? 0 : -1;
+}
+
+static void api_reset(void)
+{
+    int i;
+    for (i = 0; i < api.nbody; i++)
+        free(api.body[i]);
+    memset(&api, 0, sizeof(api));
+}
+
+typedef struct web_stub {
+    const char *resp[4];
+    int n, next, cur;
+    long pos;
+    char host[128];
+    int port, tls;
+    jw req;
+} web_stub;
+
+static web_stub web;
+
+static int w_open(void *u, const char *host, int port, int tls)
+{
+    (void)u;
+    cl_copy(web.host, host, sizeof(web.host));
+    web.port = port;
+    web.tls = tls;
+    web.cur = web.next < web.n ? web.next++ : -1;
+    web.pos = 0;
+    return web.cur < 0 ? NET_ERROR : 0;
+}
+
+static long w_send(void *u, const char *b, long n)
+{
+    (void)u;
+    jw_raw(&web.req, b, n);
+    return n;
+}
+
+static long w_recv(void *u, char *b, long cap, int timeout_ms)
+{
+    long n;
+    (void)u;
+    (void)timeout_ms;
+    if (web.cur < 0)
+        return 0;
+    n = (long)strlen(web.resp[web.cur]) - web.pos;
+    if (n > 50)
+        n = 50;
+    if (n > cap)
+        n = cap;
+    memcpy(b, web.resp[web.cur] + web.pos, (size_t)n);
+    web.pos += n;
+    return n;
+}
+
+static void w_close(void *u)
+{
+    (void)u;
+    web.cur = -1;
+}
+
+static const char *w_err(void *u)
+{
+    (void)u;
+    return "stub";
+}
+
+static const cl_agent my_agents[] = {
+    { "reviewer", "Reviews a change", "Read, Grep", "haiku", "You review code." }
+};
+static cl_skill my_skills[1];
+static const cl_command my_cmds[] = { { "hello", "Greets someone" }, { "secret", 0 } };
+
+static int x_agents(void *u, const cl_agent **l)
+{
+    (void)u;
+    *l = my_agents;
+    return 1;
+}
+
+static int x_skills(void *u, const cl_skill **l)
+{
+    (void)u;
+    *l = my_skills;
+    return 1;
+}
+
+static int x_commands(void *u, const cl_command **l)
+{
+    (void)u;
+    *l = my_cmds;
+    return 2;
+}
+
+static int x_expand(void *u, const char *name, const char *args, jw *out, char *err, long cap)
+{
+    (void)u;
+    if (strcmp(name, "hello")) {
+        cl_copy(err, name, cap);
+        return -1;
+    }
+    jw_rawz(out, "Say hello to ");
+    jw_rawz(out, args);
+    jw_rawz(out, " in German.");
+    return 0;
+}
+
+static const cl_ext my_ext = { 0, x_agents, x_skills, x_commands, x_expand };
+
+static sys_posix sp;
+static cl_sys sys;
+static cl_tools t;
+static asker a;
+
+static void tools_setup(void)
+{
     sys_posix_init(&sp, &sys);
     memset(&t, 0, sizeof(t));
     memset(&a, 0, sizeof(a));
@@ -292,85 +552,138 @@ static void test_tree(void)
     t.u = &a;
     t.show = on_show;
     t.ask = on_ask;
+    t.choose = on_choose;
+    t.plan = on_plan;
+    CHECK_INT(tools_init(&t), 0);
+}
 
-    /* read: asks, the answer "always" covers the read-only tools */
+static void test_files(void)
+{
+    char text[4096], buf[256];
+    jw out;
+    tools_setup();
+    /* Read: asks, the answer "always" covers the read-only tools; cat -n */
     a.answer = ASK_SESSION;
-    CHECK_INT(call(&t, "read_file", "{\"path\":\"S/Startup-Sequence\"}", text, sizeof(text)), 0);
-    CHECK_STR(text, "SetPatch QUIET\nC:Version >NIL:\n");
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"S/Startup-Sequence\"}", text, sizeof(text)), 0);
+    CHECK_STR(text, "     1\tSetPatch QUIET\n     2\tC:Version >NIL:\n");
     CHECK_INT(a.asked, 1);
     CHECK_INT(a.shown, 1);
-    CHECK_INT(call(&t, "list_dir", "{\"path\":\".\"}", text, sizeof(text)), 0);
+    CHECK_STR(a.last_tool, "Read");
+    /* offset and limit; the rest announced */
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"long.txt\",\"offset\":3,\"limit\":2}", text, sizeof(text)), 0);
+    CHECK_STR(text, "     3\tline 3\n     4\tline 4\n(6 more lines: read on with offset 5)\n");
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"long.txt\",\"offset\":40}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "shorter than the provided offset (40). The file has 10 lines.") != 0);
     CHECK_INT(a.asked, 1);
-    CHECK_STR(text, "bin.dat  5\nnotes.txt  29\nS/\nsub/\n");
-    CHECK_INT(call(&t, "read_file", "{\"path\":\"bin.dat\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"bin.dat\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "binary") != 0);
-    CHECK_INT(call(&t, "read_file", "{\"path\":\"nothere\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"nothere\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "File does not exist") != 0);
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"sub\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "directory") != 0);
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"empty.txt\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "contents are empty") != 0);
+    /* a line longer than 2000 characters is cut */
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"wide.txt\"}", text, sizeof(text)), 0);
+    CHECK_INT((long)strlen(text), 7 + 2000 + 1);
     /* a Latin-1 file reaches Claude as UTF-8 */
-    CHECK_INT(call(&t, "read_file", "{\"path\":\"notes.txt\"}", text, sizeof(text)), 0);
-    CHECK(!strncmp(text, "Gr\xc3\xbc\xc3\x9f" "e Welt\n", 13));
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"notes.txt\"}", text, sizeof(text)), 0);
+    CHECK(!strncmp(text, "     1\tGr\xc3\xbc\xc3\x9f" "e Welt\n", 20));
 
-    /* grep: substring, wildcard, ignoring case, a tree */
-    CHECK_INT(call(&t, "grep", "{\"pattern\":\"needle\"}", text, sizeof(text)), 0);
-    CHECK(strstr(text, "sub/deep/a.txt:1: a needle here\n") != 0);
-    CHECK_INT(call(&t, "grep", "{\"pattern\":\"Set*QUIET\",\"path\":\"S\"}", text, sizeof(text)), 0);
-    CHECK(strstr(text, "Startup-Sequence:1: SetPatch QUIET") != 0);
-    CHECK_INT(call(&t, "grep", "{\"pattern\":\"SETPATCH\",\"ignore_case\":true}", text, sizeof(text)), 0);
-    CHECK(strstr(text, ":1: SetPatch") != 0);
-    CHECK_INT(call(&t, "grep", "{\"pattern\":\"SETPATCH\"}", text, sizeof(text)), 0);
-    CHECK_STR(text, "(no matches)");
-    CHECK_INT(a.asked, 1);
-
-    /* write: asks every time; "no" writes nothing */
+    /* Write: an existing file not read yet is refused, unasked */
+    a.asked = 0;
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"other.txt\",\"content\":\"x\"}", text, sizeof(text)), 1);
+    CHECK_STR(text, "File has not been read yet. Read it first before writing to it.");
+    CHECK_INT(a.asked, 0);
+    /* a new file: asks every time; "no" writes nothing */
     a.answer = ASK_NO;
-    CHECK_INT(call(&t, "write_file", "{\"path\":\"new.txt\",\"content\":\"hello\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"new.txt\",\"content\":\"hello\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "declined") != 0);
     CHECK_INT(get("new.txt", buf, sizeof(buf)), -1);
-    CHECK_INT(a.asked, 2);
+    CHECK_INT(a.asked, 1);
     a.answer = ASK_ONCE;
-    CHECK_INT(call(&t, "write_file", "{\"path\":\"new.txt\",\"content\":\"hello \\u00fc\"}", text, sizeof(text)), 0);
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"new.txt\",\"content\":\"hello \\u00fc\"}", text, sizeof(text)), 0);
+    CHECK(!strncmp(text, "File created successfully at: ", 30));
     CHECK_INT(get("new.txt", buf, sizeof(buf)), 8);
     CHECK_STR(buf, "hello \xc3\xbc");
-    CHECK_INT(a.asked, 3);
+    CHECK_INT(a.asked, 2);
+    /* written by Claude: it may be written again without a Read */
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"new.txt\",\"content\":\"hello \\u00fc\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "has been updated.") != 0);
+    /* changed behind Claude's back since the Read: refused */
+    age("new.txt", 100);
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"new.txt\",\"content\":\"x\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "modified since read") != 0);
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"new.txt\"}", text, sizeof(text)), 0);
 
-    /* edit: unique match; a Latin-1 file stays Latin-1 */
-    CHECK_INT(call(&t, "edit_file", "{\"path\":\"notes.txt\",\"old_string\":\"Gr\\u00fc\\u00dfe Welt\","
-                                   "\"new_string\":\"Gr\\u00fc\\u00dfe World\"}", text, sizeof(text)), 0);
+    /* Edit: unique match; a Latin-1 file stays Latin-1; the snippet */
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"notes.txt\",\"old_string\":\"Gr\\u00fc\\u00dfe Welt\","
+                               "\"new_string\":\"Gr\\u00fc\\u00dfe World\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "has been updated (kept as Latin-1). Here's the result of running `cat -n` on a snippet") != 0);
+    CHECK(strstr(text, "     1\tGr\xc3\xbc\xc3\x9f" "e World\n     2\tline two\n") != 0);
     get("notes.txt", buf, sizeof(buf));
     CHECK_STR(buf, "Gr\xfc\xdf" "e World\nline two\nline two\n");
-    CHECK_INT(call(&t, "edit_file", "{\"path\":\"notes.txt\",\"old_string\":\"line two\",\"new_string\":\"x\"}",
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"notes.txt\",\"old_string\":\"line two\",\"new_string\":\"x\"}",
                    text, sizeof(text)), 1);
-    CHECK(strstr(text, "more than once") != 0);
-    CHECK_INT(call(&t, "edit_file", "{\"path\":\"notes.txt\",\"old_string\":\"absent\",\"new_string\":\"x\"}",
+    CHECK(!strncmp(text, "Found 2 matches of the string to replace, but replace_all is false.", 67));
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"notes.txt\",\"old_string\":\"absent\",\"new_string\":\"x\"}",
                    text, sizeof(text)), 1);
-    CHECK(strstr(text, "not found") != 0);
+    CHECK_STR(text, "String to replace not found in file.\nString: absent");
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"notes.txt\",\"old_string\":\"two\",\"new_string\":\"two\"}",
+                   text, sizeof(text)), 1);
+    CHECK(strstr(text, "No changes to make") != 0);
     get("notes.txt", buf, sizeof(buf));
     CHECK_STR(buf, "Gr\xfc\xdf" "e World\nline two\nline two\n");
+    /* replace_all */
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"notes.txt\",\"old_string\":\"line two\",\"new_string\":\"zwei\","
+                               "\"replace_all\":true}", text, sizeof(text)), 0);
+    get("notes.txt", buf, sizeof(buf));
+    CHECK_STR(buf, "Gr\xfc\xdf" "e World\nzwei\nzwei\n");
+    /* an empty old_string on a new file creates it */
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"made.txt\",\"old_string\":\"\",\"new_string\":\"made\\n\"}",
+                   text, sizeof(text)), 0);
+    CHECK_INT(get("made.txt", buf, sizeof(buf)), 5);
+    /* Edit of a file never read: refused */
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"other.txt\",\"old_string\":\"o\",\"new_string\":\"x\"}", text,
+                   sizeof(text)), 1);
+    CHECK(strstr(text, "has not been read yet") != 0);
+
+    /* MultiEdit: in order, each on the result of the ones before ... */
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"other.txt\"}", text, sizeof(text)), 0);
+    CHECK_INT(call(&t, "MultiEdit", "{\"file_path\":\"other.txt\",\"edits\":[{\"old_string\":\"alpha\",\"new_string\":"
+                                    "\"ALPHA\"},{\"old_string\":\"ALPHA beta\",\"new_string\":\"ab\"},{\"old_string\":"
+                                    "\"g\",\"new_string\":\"G\",\"replace_all\":true}]}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "Applied 3 edits to ") != 0);
+    get("other.txt", buf, sizeof(buf));
+    CHECK_STR(buf, "ab Gamma\nGG\n");
+    /* ... and atomic: one failing edit leaves the file as it was */
+    CHECK_INT(call(&t, "MultiEdit", "{\"file_path\":\"other.txt\",\"edits\":[{\"old_string\":\"ab\",\"new_string\":"
+                                    "\"x\"},{\"old_string\":\"nope\",\"new_string\":\"y\"}]}", text, sizeof(text)), 1);
+    CHECK(!strncmp(text, "Edit 2 of 2 failed, so none was made: String to replace not found", 65));
+    get("other.txt", buf, sizeof(buf));
+    CHECK_STR(buf, "ab Gamma\nGG\n");
 
     /* outside the start directory: asked even though reads are allowed */
     a.asked = 0;
     a.answer = ASK_NO;
-    CHECK_INT(call(&t, "read_file", "{\"path\":\"/outside.txt\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"/outside.txt\"}", text, sizeof(text)), 1);
     CHECK_INT(a.asked, 1);
     CHECK_INT(a.outside, 1);
 
-    /* a command: its output and return code */
-    a.answer = ASK_ONCE;
-    CHECK_INT(call(&t, "run_command", "{\"command\":\"echo hi; exit 5\"}", text, sizeof(text)), 0);
-    CHECK_STR(text, "Return code 5.\nhi\n");
-
-    /* control characters from the model never reach the screen as such */
-    CHECK_INT(call(&t, "run_command", "{\"command\":\"echo \\u001b[2J\"}", text, sizeof(text)), 0);
-    CHECK(strchr(a.last, 0x1b) == 0);
-
-    /* invalid input: an error result, nothing run, nothing asked */
+    /* invalid input: an error result naming the parameter, nothing run, nothing asked */
     a.asked = 0;
-    CHECK_INT(call(&t, "write_file", "{\"path\":\"x\"}", text, sizeof(text)), 1);
-    CHECK(strstr(text, "missing property: content") != 0);
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"x\"}", text, sizeof(text)), 1);
+    CHECK_STR(text, "InputValidationError: Write failed due to the following issue:\n"
+                    "The required parameter `content` is missing");
     CHECK_INT(call(&t, "no_such_tool", "{}", text, sizeof(text)), 1);
+    CHECK_STR(text, "No such tool available: no_such_tool");
+    /* an A2 name (a resumed session's model may still call it) */
+    CHECK_INT(call(&t, "read_file", "{\"path\":\"x\"}", text, sizeof(text)), 1);
+    CHECK_STR(text, "read_file is no longer a tool; use Read instead");
     jw_init(&out);
     {
-        const char cut[] = "{\"path\": \"RAM:x\", \"content\": \"cut";
-        tools_run(&t, "toolu_bad", "write_file", 0, cut, (long)strlen(cut), &out);
+        const char cut[] = "{\"file_path\": \"RAM:x\", \"content\": \"cut";
+        tools_run(&t, "toolu_bad", "Write", 0, cut, (long)strlen(cut), &out);
     }
     CHECK(strstr(out.p, "\"is_error\":true") != 0);
     CHECK(strstr(out.p, "not valid JSON") != 0);
@@ -383,7 +696,7 @@ static void test_tree(void)
     t.result = on_result;
     a.asked = a.previews = a.results = 0;
     a.answer = ASK_STOP;
-    CHECK_INT(call(&t, "edit_file", "{\"path\":\"new.txt\",\"old_string\":\"hello\",\"new_string\":\"bye\"}",
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"new.txt\",\"old_string\":\"hello\",\"new_string\":\"bye\"}",
                    text, sizeof(text)), 1);
     CHECK_INT(a.previews, 1);
     CHECK_STR(a.before, "hello \xc3\xbc");
@@ -391,9 +704,8 @@ static void test_tree(void)
     CHECK(strstr(text, "tell you what to do differently") != 0);
     CHECK_INT(t.stop, 1);
     CHECK_INT(get("new.txt", buf, sizeof(buf)), 8);
-    CHECK_STR(buf, "hello \xc3\xbc");
     /* the rest of that round is not run, not even asked */
-    CHECK_INT(call(&t, "read_file", "{\"path\":\"new.txt\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"new.txt\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "not run") != 0);
     CHECK_INT(a.asked, 1);
     CHECK_INT(a.results, 2);
@@ -401,33 +713,416 @@ static void test_tree(void)
     t.stop = 0;
     /* a write of a new file previews no "before" */
     a.answer = ASK_ONCE;
-    CHECK_INT(call(&t, "write_file", "{\"path\":\"fresh.txt\",\"content\":\"one\\ntwo\\n\"}", text, sizeof(text)), 0);
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"fresh.txt\",\"content\":\"one\\ntwo\\n\"}", text, sizeof(text)), 0);
     CHECK_INT(a.previews, 2);
     CHECK_STR(a.before, "");
     CHECK_STR(a.after, "one\ntwo\n");
     /* accept edits: the edit runs without a question */
     t.perm.mode = PERM_ACCEPT;
     a.asked = 0;
-    CHECK_INT(call(&t, "edit_file", "{\"path\":\"fresh.txt\",\"old_string\":\"two\",\"new_string\":\"2\"}",
+    CHECK_INT(call(&t, "Edit", "{\"file_path\":\"fresh.txt\",\"old_string\":\"two\",\"new_string\":\"2\"}",
                    text, sizeof(text)), 0);
     CHECK_INT(a.asked, 0);
     CHECK_INT(get("fresh.txt", buf, sizeof(buf)), 6);
-    /* plan mode: a command is refused with a result that says why, unasked */
+    /* plan mode: Bash is refused with a result that says why, unasked */
     t.perm.mode = PERM_PLAN;
-    CHECK_INT(call(&t, "run_command", "{\"command\":\"echo no\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo no\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "plan mode is on") != 0);
+    CHECK_INT(call(&t, "Write", "{\"file_path\":\"fresh.txt\",\"content\":\"x\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "plan mode is on") != 0);
     CHECK_INT(a.asked, 0);
-    CHECK_INT(call(&t, "todo_write", "{\"todos\":[{\"content\":\"x\",\"status\":\"pending\"}]}", text,
-                   sizeof(text)), 0);
-    CHECK(strstr(text, "Todos updated") != 0);
+    CHECK_INT(call(&t, "TodoWrite", "{\"todos\":[{\"content\":\"x\",\"status\":\"pending\",\"activeForm\":\"X\"}]}",
+                   text, sizeof(text)), 0);
+    CHECK(strstr(text, "Todos have been modified successfully") != 0);
     t.perm.mode = PERM_DEFAULT;
+    t.preview = 0;
+    t.result = 0;
+    tools_free(&t);
+}
 
-    {
-        char cmd[600];
-        strcpy(cmd, "rm -rf ");
-        strcat(cmd, dir);
-        CHECK_INT(system(cmd), 0);
+static void test_search(void)
+{
+    char text[4096], s[600];
+    tools_setup();
+    a.answer = ASK_SESSION;
+    /* Glob: newest first, full paths, directories marked */
+    CHECK_INT(call(&t, "Glob", "{\"pattern\":\"**/*.c\"}", text, sizeof(text)), 0);
+    cl_copy(s, t.root, sizeof(s));
+    cl_cat(s, "/src/b.c\n", sizeof(s));
+    CHECK(!strncmp(text, s, strlen(s)));        /* b.c is the newest */
+    CHECK(strstr(text, "/src/deep/a.c\n") != 0);
+    CHECK(strstr(text, ".h") == 0);
+    CHECK_INT(call(&t, "Glob", "{\"pattern\":\"src/*.{c,h}\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "/src/b.c\n") != 0 && strstr(text, "/src/b.h\n") != 0 && strstr(text, "deep/a.c") == 0);
+    /* the AmigaDOS form, case ignored, a directory found too */
+    CHECK_INT(call(&t, "Glob", "{\"pattern\":\"#?.C\",\"path\":\"src\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "/src/b.c\n") != 0);
+    CHECK_INT(call(&t, "Glob", "{\"pattern\":\"de#?\",\"path\":\"src\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "/src/deep/\n") != 0);
+    CHECK_INT(call(&t, "Glob", "{\"pattern\":\"*.nothing\"}", text, sizeof(text)), 0);
+    CHECK_STR(text, "No files found");
+    CHECK_INT(call(&t, "Glob", "{\"pattern\":\"*\",\"path\":\"nodir\"}", text, sizeof(text)), 1);
+
+    /* Grep: files_with_matches by default, newest first */
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"needle\"}", text, sizeof(text)), 0);
+    CHECK(!strncmp(text, "Found 2 files\n", 14));
+    CHECK(strstr(text, "/src/b.c\n") < strstr(text, "/src/deep/a.c\n"));
+    /* content with line numbers and context, one file: no file name */
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"ne+dle\",\"path\":\"src/deep/a.c\",\"output_mode\":\"content\","
+                               "\"-n\":true,\"-B\":1}", text, sizeof(text)), 0);
+    CHECK_STR(text, "1-int a;\n2:/* a needle here */\n");
+    /* -C, a separator between groups apart */
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"^x[0-9]$\",\"path\":\"ctx.txt\",\"output_mode\":\"content\","
+                               "\"-n\":true,\"-C\":1}", text, sizeof(text)), 0);
+    CHECK_STR(text, "1-a\n2:x1\n3-b\n--\n5-e\n6:x2\n7-f\n");
+    /* -i, a glob filter, a type filter, count */
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"NEEDLE\",\"-i\":true,\"glob\":\"*.h\"}", text, sizeof(text)), 0);
+    CHECK(!strncmp(text, "Found 1 file\n", 13) && strstr(text, "/src/b.h") != 0);
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"NEEDLE\",\"-i\":true,\"type\":\"c\",\"output_mode\":\"count\"}",
+                   text, sizeof(text)), 0);
+    CHECK(strstr(text, "/src/b.h:1\n") != 0);
+    CHECK(strstr(text, "/src/b.c:2\n") != 0);
+    CHECK(strstr(text, "Found 4 total occurrences across 3 files.") != 0);
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"needle\",\"type\":\"pascal\"}", text, sizeof(text)), 0);
+    CHECK_STR(text, "No files found");
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"x\",\"type\":\"cobol\"}", text, sizeof(text)), 1);
+    /* head_limit and offset over the output lines */
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"[a-z]\",\"path\":\"ctx.txt\",\"output_mode\":\"content\","
+                               "\"head_limit\":2,\"offset\":1}", text, sizeof(text)), 0);
+    CHECK_STR(text, "x1\nb\n");
+    /* multiline: a match across lines */
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"x1.b\",\"path\":\"ctx.txt\",\"output_mode\":\"content\","
+                               "\"multiline\":true,\"-n\":true}", text, sizeof(text)), 0);
+    CHECK_STR(text, "2:x1\n3:b\n");
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"x1.b\",\"path\":\"ctx.txt\",\"output_mode\":\"content\"}",
+                   text, sizeof(text)), 0);
+    CHECK_STR(text, "No matches found");
+    /* a pattern the engine refuses: a reason, not a guess */
+    CHECK_INT(call(&t, "Grep", "{\"pattern\":\"(?=x)\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "look-around") != 0);
+    CHECK_INT(a.asked, 1);
+    tools_free(&t);
+}
+
+static void test_bash(void)
+{
+    char text[4096], seen[400];
+    int k;
+    tools_setup();
+    /* a command: its output and return code; 10 and more is a failure */
+    a.answer = ASK_ONCE;
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo hi; exit 5\",\"description\":\"say hi\"}", text, sizeof(text)), 0);
+    CHECK_STR(text, "Return code 5.\nhi\n");
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo bad; exit 10\"}", text, sizeof(text)), 1);
+    CHECK_STR(text, "Return code 10.\nbad\n");
+    /* control characters from the model never reach the screen as such */
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo \\u001b[2J\"}", text, sizeof(text)), 0);
+    CHECK(strchr(a.last, 0x1b) == 0);
+    /* in the background: an id at once, the output read in pieces */
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo one; sleep 1; echo two\",\"run_in_background\":true}", text,
+                   sizeof(text)), 0);
+    CHECK_STR(text, "Command running in background with ID: bash_1");
+    for (k = 0; k < 400; k++) {
+        struct timespec ts;
+        CHECK_INT(call(&t, "BashOutput", "{\"bash_id\":\"bash_1\"}", text, sizeof(text)), 0);
+        if (strstr(text, "one\n"))
+            break;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 5000000L;
+        nanosleep(&ts, 0);
     }
+    CHECK(strstr(text, "<status>running</status>") != 0);
+    CHECK_STR(strstr(text, "<stdout>") ? strstr(text, "<stdout>") : text, "<stdout>\none\n</stdout>\n");
+    seen[0] = 0;
+    for (k = 0; k < 400; k++) {
+        CHECK_INT(call(&t, "BashOutput", "{\"bash_id\":\"bash_1\",\"filter\":\"t.o\"}", text, sizeof(text)), 0);
+        if (strstr(text, "<stdout>"))
+            cl_cat(seen, strstr(text, "<stdout>"), sizeof(seen));
+        if (strstr(text, "completed"))
+            break;
+        {
+            struct timespec ts;
+            ts.tv_sec = 0;
+            ts.tv_nsec = 10000000L;
+            nanosleep(&ts, 0);
+        }
+    }
+    CHECK(strstr(text, "<status>completed</status>") != 0);
+    CHECK(strstr(text, "<exit_code>0</exit_code>") != 0);
+    /* the new output only, filtered */
+    CHECK_STR(seen, "<stdout>\ntwo\n</stdout>\n");
+    /* KillShell: a long one stopped */
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"sleep 30\",\"run_in_background\":true}", text, sizeof(text)), 0);
+    CHECK_STR(text, "Command running in background with ID: bash_2");
+    CHECK_INT(call(&t, "KillShell", "{\"shell_id\":\"bash_2\"}", text, sizeof(text)), 0);
+    CHECK_STR(text, "Successfully killed shell: bash_2 (sleep 30)");
+    CHECK_INT(call(&t, "BashOutput", "{\"bash_id\":\"bash_2\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "<status>killed</status>") != 0);
+    CHECK_INT(call(&t, "KillShell", "{\"shell_id\":\"bash_2\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "BashOutput", "{\"bash_id\":\"bash_9\"}", text, sizeof(text)), 1);
+    CHECK_STR(text, "No shell found with ID: bash_9");
+    /* still running at the end: stopped by tools_free */
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"sleep 30\",\"run_in_background\":true}", text, sizeof(text)), 0);
+    tools_free(&t);
+    CHECK(!sp.jobs[2].used || sp.jobs[2].ended);
+}
+
+static void test_questions(void)
+{
+    char text[2048];
+    static const char q[] = "{\"questions\":[{\"question\":\"Which size?\",\"header\":\"Size\",\"multiSelect\":false,"
+                            "\"options\":[{\"label\":\"80x24\",\"description\":\"classic\"},{\"label\":\"Full\","
+                            "\"description\":\"whole screen\"}]},{\"question\":\"Which fonts?\",\"header\":\"Fonts\","
+                            "\"multiSelect\":true,\"options\":[{\"label\":\"Topaz\",\"description\":\"\"},"
+                            "{\"label\":\"Unifont\",\"description\":\"\"},{\"label\":\"Fixed\",\"description\":\"\"}]}]}";
+    tools_setup();
+    /* AskUserQuestion: both questions asked; a pick, then several */
+    a.choose_ret = 1;
+    a.choose_picked = 5;
+    CHECK_INT(call(&t, "AskUserQuestion", q, text, sizeof(text)), 0);
+    CHECK_INT(a.chooses, 2);
+    CHECK_STR(text, "User has answered your questions: \"Which size?\"=\"Full\", \"Which fonts?\"=\"Topaz, Fixed\". You can "
+                    "now continue with the user's answers in mind.");
+    /* (the multi-select's answer comes from the bits: 1 and 4, Topaz and Fixed) */
+    a.chooses = 0;
+    a.choose_ret = 2;           /* n: the user's own answer */
+    cl_copy(a.choose_other, "132x50", sizeof(a.choose_other));
+    {
+        static const char one[] = "{\"questions\":[{\"question\":\"Which size?\",\"header\":\"Size\",\"multiSelect\":"
+                                  "false,\"options\":[{\"label\":\"80x24\",\"description\":\"\"},{\"label\":\"Full\","
+                                  "\"description\":\"\"}]}]}";
+        CHECK_INT(call(&t, "AskUserQuestion", one, text, sizeof(text)), 0);
+        CHECK(strstr(text, "\"Which size?\"=\"132x50\"") != 0);
+        a.choose_ret = -1;
+        CHECK_INT(call(&t, "AskUserQuestion", one, text, sizeof(text)), 1);
+        CHECK(strstr(text, "declined") != 0);
+    }
+    CHECK_STR(a.choose_opts, "80x24|Full|");
+    /* EnterPlanMode: asked; yes switches the mode */
+    a.choose_ret = 0;
+    CHECK_INT(call(&t, "EnterPlanMode", "{}", text, sizeof(text)), 0);
+    CHECK_INT(t.perm.mode, PERM_PLAN);
+    CHECK(strstr(text, "Entered plan mode") != 0);
+    CHECK_INT(call(&t, "EnterPlanMode", "{}", text, sizeof(text)), 1);
+    /* ExitPlanMode: the plan shown, "no" keeps planning, "yes, auto-accept" leaves */
+    a.choose_ret = 2;
+    CHECK_INT(call(&t, "ExitPlanMode", "{\"plan\":\"1. Read\\n2. Edit\"}", text, sizeof(text)), 1);
+    CHECK_INT(t.perm.mode, PERM_PLAN);
+    CHECK_INT(a.plans, 1);
+    CHECK_STR(a.plan, "1. Read\n2. Edit");
+    CHECK(strstr(a.choose_opts, "Yes, and auto-accept edits|") != 0);
+    a.choose_ret = 0;
+    CHECK_INT(call(&t, "ExitPlanMode", "{\"plan\":\"1. Read\"}", text, sizeof(text)), 0);
+    CHECK_INT(t.perm.mode, PERM_ACCEPT);
+    CHECK(!strncmp(text, "User has approved your plan.", 28));
+    CHECK_INT(call(&t, "ExitPlanMode", "{\"plan\":\"x\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "not on") != 0);
+    t.perm.mode = PERM_DEFAULT;
+    /* no screen to ask on: an error result, nothing guessed */
+    t.choose = 0;
+    CHECK_INT(call(&t, "AskUserQuestion", q, text, sizeof(text)), 1);
+    tools_free(&t);
+}
+
+static void test_ext(void)
+{
+    char text[2048], p[600];
+    const char *js;
+    tools_setup();
+    strcpy(p, dir);
+    strcat(p, "/greet/SKILL.md");
+    my_skills[0].name = "greet";
+    my_skills[0].description = "Greets in style";
+    my_skills[0].path = p;
+    t.ext = &my_ext;
+    /* the lists go into the descriptions; a command without one is not offered */
+    js = tools_json(&t, "claude-opus-5-5");
+    CHECK(strstr(js, "- greet: Greets in style\\n") != 0);
+    CHECK(strstr(js, "- /hello: Greets someone\\n") != 0);
+    CHECK(strstr(js, "secret") == 0);
+    /* Skill: asked, the body after the frontmatter, the arguments */
+    a.answer = ASK_ONCE;
+    CHECK_INT(call(&t, "Skill", "{\"skill\":\"greet\",\"args\":\"Bob\"}", text, sizeof(text)), 0);
+    CHECK(!strncmp(text, "Launching skill: greet\nBase directory for this skill: ", 54));
+    CHECK_STR(strstr(text, "/greet\n") ? strstr(text, "/greet\n") : text, "/greet\n\nSay Hallo.\n\nARGUMENTS: Bob");
+    CHECK(strstr(text, "name: greet") == 0);
+    CHECK_INT(a.asked, 1);
+    CHECK_INT(call(&t, "Skill", "{\"skill\":\"nope\"}", text, sizeof(text)), 1);
+    CHECK_STR(text, "Unknown skill: nope");
+    /* SlashCommand: the provider's expansion */
+    CHECK_INT(call(&t, "SlashCommand", "{\"command\":\"/hello Amiga fans\"}", text, sizeof(text)), 0);
+    CHECK_STR(text, "Launching command /hello. Carry out these instructions:\n\nSay hello to Amiga fans in German.");
+    CHECK_INT(call(&t, "SlashCommand", "{\"command\":\"/nope\"}", text, sizeof(text)), 1);
+    CHECK_STR(text, "Unknown slash command: /nope");
+    tools_free(&t);
+}
+
+static void test_task(void)
+{
+    char text[4096];
+    jv b, x;
+    tools_setup();
+    api_reset();
+    t.api.send = api_send;
+    t.model = "claude-opus-5-5";
+    t.ext = &my_ext;
+    a.answer = ASK_SESSION;
+    /* the agents in Task's description: the built-ins and the provider's */
+    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "- Explore: Fast agent") != 0);
+    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "- reviewer: Reviews a change (Tools: Read, Grep)") != 0);
+    /* Explore: its own system prompt and tools, a Grep, its report */
+    api.queue[0] = "agent_tool.sse";
+    api.queue[1] = "agent_final.sse";
+    api.n = 2;
+    CHECK_INT(call(&t, "Task", "{\"description\":\"Find startup\",\"prompt\":\"What runs first?\","
+                               "\"subagent_type\":\"Explore\"}", text, sizeof(text)), 0);
+    CHECK_STR(text, "S/Startup-Sequence runs SetPatch first (line 1: SetPatch QUIET).\n\n(Agent Explore: 1 tool use.)");
+    CHECK_INT(api.nbody, 2);
+    if (api.nbody == 2) {
+        CHECK_INT(json_parse(api.body[0], (long)strlen(api.body[0]), &b), 0);
+        CHECK(json_get(b, "model", &x) && json_streq(x, "claude-opus-5-5"));
+        CHECK(strstr(api.body[0], "file search specialist") != 0);
+        CHECK(strstr(api.body[0], "{\"name\":\"Grep\",") != 0);
+        CHECK(strstr(api.body[0], "{\"name\":\"Edit\",") == 0);
+        CHECK(strstr(api.body[0], "{\"name\":\"Task\",") == 0);
+        CHECK(strstr(api.body[0], "web_search") == 0);
+        /* the second request carries the Grep's result */
+        CHECK(strstr(api.body[1], "1:SetPatch QUIET") != 0);
+    }
+    /* the subagent's tool calls were shown and asked like any other */
+    CHECK_STR(a.last_tool, "Grep");
+    CHECK_INT(a.asked, 1);
+    CHECK(t.perm.session & (1ul << T_READ));
+    /* the provider's agent with its model alias */
+    api_reset();
+    t.api.send = api_send;
+    api.queue[0] = "agent_final.sse";
+    api.n = 1;
+    CHECK_INT(call(&t, "Task", "{\"description\":\"Review\",\"prompt\":\"Look.\",\"subagent_type\":\"reviewer\"}",
+                   text, sizeof(text)), 0);
+    CHECK(api.nbody == 1 && strstr(api.body[0], "\"model\":\"claude-haiku-4-5\"") != 0);
+    CHECK(api.nbody == 1 && strstr(api.body[0], "You review code.") != 0);
+    /* unknown agents, a failed request, a stop */
+    CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"nobody\"}", text,
+                   sizeof(text)), 1);
+    CHECK(strstr(text, "Available agents: general-purpose, Explore, Plan, reviewer") != 0);
+    api.fail_with = -2;
+    CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Plan\"}", text,
+                   sizeof(text)), 1);
+    CHECK(strstr(text, "stopped the agent") != 0);
+    /* no Task inside a subagent */
+    t.depth = 1;
+    CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Plan\"}", text,
+                   sizeof(text)), 1);
+    CHECK(strstr(text, "No such tool available here") != 0);
+    t.depth = 0;
+    api_reset();
+    tools_free(&t);
+}
+
+static void test_webfetch(void)
+{
+    char text[4096];
+    static const char redirect[] = "HTTP/1.1 301 Moved\r\nLocation: /page\r\nContent-Length: 0\r\n\r\n";
+    static const char page[] =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 157\r\n\r\n"
+        "<html><head><title>Test</title><script>x=1</script></head><body><h1>Hello</h1><p>From the "
+        "<a href=\"/f\">fixture</a> &amp; more.</p><ul><li>one</li><li>two</li></ul></body></html>";
+    static const char away[] = "HTTP/1.1 302 Found\r\nLocation: https://elsewhere.example/x\r\nContent-Length: 0\r\n\r\n";
+    cl_net wn;
+    tools_setup();
+    api_reset();
+    jw_free(&web.req);
+    memset(&web, 0, sizeof(web));
+    jw_init(&web.req);
+    wn.u = 0;
+    wn.open = w_open;
+    wn.send = w_send;
+    wn.recv = w_recv;
+    wn.close = w_close;
+    wn.err = w_err;
+    t.api.send = api_send;
+    t.web = &wn;
+    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "{\"name\":\"WebFetch\",") != 0);
+    /* a redirect on the same host followed, the page as Markdown for the small model */
+    web.resp[0] = redirect;
+    web.resp[1] = page;
+    web.n = 2;
+    api.queue[0] = "fetch_answer.sse";
+    api.n = 1;
+    a.answer = ASK_ONCE;
+    CHECK_INT(call(&t, "WebFetch", "{\"url\":\"http://test.example:8080/start\",\"prompt\":\"What does it say?\"}",
+                   text, sizeof(text)), 0);
+    CHECK_STR(text, "The page is the UP-Term test page. It says hello from the fixture and lists two items: one and two.");
+    CHECK_INT(a.asked, 1);
+    CHECK_STR(web.host, "test.example");
+    CHECK_INT(web.port, 8080);
+    CHECK(strstr(web.req.p, "GET /start HTTP/1.1\r\nHost: test.example:8080\r\n") != 0);
+    CHECK(strstr(web.req.p, "GET /page HTTP/1.1\r\n") != 0);
+    CHECK(strstr(web.req.p, "x-api-key") == 0);
+    CHECK_INT(api.nbody, 1);
+    if (api.nbody) {
+        CHECK(strstr(api.body[0], "\"model\":\"claude-haiku-4-5\"") != 0);
+        CHECK(strstr(api.body[0], "\"output_config\"") == 0);
+        CHECK(strstr(api.body[0], "# Test\\n\\n# Hello\\n\\nFrom the [fixture](/f) & more.\\n\\n- one\\n- two") != 0);
+        CHECK(strstr(api.body[0], "x=1") == 0);
+        CHECK(strstr(api.body[0], "What does it say?") != 0);
+        CHECK(strstr(api.body[0], "125-character maximum") != 0);
+    }
+    /* another host: told, not followed */
+    web.next = 0;
+    web.resp[0] = away;
+    web.n = 1;
+    CHECK_INT(call(&t, "WebFetch", "{\"url\":\"http://test.example/a\",\"prompt\":\"p\"}", text, sizeof(text)), 0);
+    CHECK(!strncmp(text, "REDIRECT DETECTED: The URL redirects to a different host.", 57));
+    CHECK(strstr(text, "Redirect URL: https://elsewhere.example/x") != 0);
+    CHECK_INT(api.nbody, 1);
+    /* not a URL, a failed connection */
+    CHECK_INT(call(&t, "WebFetch", "{\"url\":\"ftp://x/\",\"prompt\":\"p\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "Invalid URL") != 0);
+    CHECK_INT(call(&t, "WebFetch", "{\"url\":\"http://test.example/a\",\"prompt\":\"p\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "Failed to fetch") != 0);
+    jw_free(&web.req);
+    api_reset();
+    tools_free(&t);
+}
+
+static void mk_tree(void)
+{
+    const char *base = getenv("TMPDIR");
+    char wide[2100];
+    int i;
+    strcpy(dir, base && *base ? base : "/tmp");
+    if (dir[strlen(dir) - 1] == '/')
+        dir[strlen(dir) - 1] = 0;
+    strcat(dir, "/claude_tools_XXXXXX");
+    if (!mkdtemp(dir)) {
+        dir[0] = 0;
+        return;
+    }
+    sub("S");
+    sub("sub");
+    sub("src");
+    sub("src/deep");
+    sub("greet");
+    put("S/Startup-Sequence", "SetPatch QUIET\nC:Version >NIL:\n", -1);
+    put("notes.txt", "Gr\xfc\xdf" "e Welt\nline two\nline two\n", -1);
+    put("bin.dat", "ab\0cd", 5);
+    put("empty.txt", "", 0);
+    put("other.txt", "alpha beta gamma\ngg\n", -1);
+    put("long.txt", "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\n", -1);
+    put("ctx.txt", "a\nx1\nb\nc\ne\nx2\nf\n", -1);
+    for (i = 0; i < 2050; i++)
+        wide[i] = 'w';
+    wide[2050] = '\n';
+    put("wide.txt", wide, 2051);
+    put("src/deep/a.c", "int a;\n/* a needle here */\n", -1);
+    put("src/b.c", "/* needle */\nint b; /* NEEDLE */\n", -1);
+    put("src/b.h", "/* Needle */\n", -1);
+    put("greet/SKILL.md", "---\nname: greet\ndescription: Greets in style\n---\n\nSay Hallo.\n", -1);
+    age("src/deep/a.c", 500);
+    age("src/b.h", 300);
+    age("src/b.c", 10);
 }
 
 void suite_claude_tools(void)
@@ -435,5 +1130,21 @@ void suite_claude_tools(void)
     test_path();
     test_perm();
     test_validate();
-    test_tree();
+    mk_tree();
+    CHECK(dir[0] != 0);
+    if (!dir[0])
+        return;
+    test_files();
+    test_search();
+    test_bash();
+    test_questions();
+    test_ext();
+    test_task();
+    test_webfetch();
+    {
+        char cmd[600];
+        strcpy(cmd, "rm -rf ");
+        strcat(cmd, dir);
+        CHECK_INT(system(cmd), 0);
+    }
 }

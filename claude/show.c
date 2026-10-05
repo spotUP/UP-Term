@@ -27,11 +27,9 @@
 #define C_ADD "\033[30;42m"         /* added lines: black on green */
 #define C_ACCENT "\033[33m"
 
-static const char *const names[T_COUNT] = { "Read", "List", "Search", "Write", "Update", "Run", "Update Todos" };
-
 const char *show_name(int tool)
 {
-    return tool >= 0 && tool < T_COUNT ? names[tool] : "Tool";
+    return tools_title(tool);
 }
 
 /* ---- output helpers ---- */
@@ -303,61 +301,30 @@ static char *input_str(const char *in, long n, const char *key, long *len)
     return json_strdup(x, len);
 }
 
-static void head_arg(jw *h, const char *in, long n, const char *key, const char *label)
-{
-    long l;
-    char *v = input_str(in, n, key, &l);
-    if (!v)
-        return;
-    if (label) {
-        if (h->n && h->p[h->n - 1] != '(')
-            jw_rawz(h, ", ");
-        jw_rawz(h, label);
-        jw_rawz(h, ": \"");
-    }
-    {
-        int w = 0;
-        text(h, v, l, 60, &w);
-    }
-    if (label)
-        jw_rawz(h, "\"");
-    free(v);
-}
-
 void show_tool(cl_show *s, int tool, const char *in, long inn, const char *what)
 {
+    char *args = tools_args(tool, in, inn), *path;
+    long l;
+    int w = 0;
     jw_reset(&s->head);
     s->tool = tool;
     s->head_out = 0;
     s->adds = s->dels = 0;
     s->path[0] = 0;
     s->n_tools++;
+    path = input_str(in, inn, "file_path", &l);
+    if (path) {
+        cl_copy(s->path, path, sizeof(s->path));
+        free(path);
+    }
     jw_rawz(&s->head, BOLD);
     jw_rawz(&s->head, show_name(tool));
     jw_rawz(&s->head, SGR0 "(");
-    switch (tool) {
-    case T_GREP:
-        head_arg(&s->head, in, inn, "pattern", "pattern");
-        head_arg(&s->head, in, inn, "path", "path");
-        break;
-    case T_RUN_COMMAND:
-        head_arg(&s->head, in, inn, "command", 0);
-        break;
-    default: {
-        long l;
-        char *v = input_str(in, inn, "path", &l);
-        if (v) {
-            int w = 0;
-            text(&s->head, v, l, 60, &w);
-            cl_copy(s->path, v, sizeof(s->path));
-            free(v);
-        } else {
-            int w = 0;
-            text(&s->head, what, (long)strlen(what), 60, &w);
-        }
-        break;
-    }
-    }
+    if (args && *args)
+        text(&s->head, args, (long)strlen(args), 60, &w);
+    else if (what && *what && (tool < 0 || tool >= T_COUNT))
+        text(&s->head, what, (long)strlen(what), 60, &w);
+    free(args);
     jw_rawz(&s->head, ")");
 }
 
@@ -586,7 +553,7 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
                 memcpy(m + l, p, (size_t)k);
                 m[l + k] = 0;
             }
-            if (tool == T_RUN_COMMAND)
+            if (tool == T_BASH || tool == T_TASK || tool == T_WEB_FETCH)
                 body(s, p, n, 1);
             else
                 summary(s, RED, m);
@@ -596,32 +563,7 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
         return;
     }
     switch (tool) {
-    case T_READ_FILE:
-        cl_copy(m, "Read ", sizeof(m));
-        cl_ltoa(n == 19 && !memcmp(p, "(the file is empty)", 19) ? 0 : count_lines(p, n), num);
-        cl_cat(m, num, sizeof(m));
-        cl_cat(m, " lines", sizeof(m));
-        summary(s, "", m);
-        break;
-    case T_LIST_DIR:
-        cl_copy(m, "Listed ", sizeof(m));
-        cl_ltoa(n >= 24 && !memcmp(p, "(the directory is empty)", 24) ? 0 : count_lines(p, n), num);
-        cl_cat(m, num, sizeof(m));
-        cl_cat(m, " paths", sizeof(m));
-        summary(s, "", m);
-        break;
-    case T_GREP:
-        if (n == 12 && !memcmp(p, "(no matches)", 12))
-            cl_copy(m, "No matches", sizeof(m));
-        else {
-            cl_copy(m, "Found ", sizeof(m));
-            cl_ltoa(count_lines(p, n), num);
-            cl_cat(m, num, sizeof(m));
-            cl_cat(m, " lines", sizeof(m));
-        }
-        summary(s, "", m);
-        break;
-    case T_WRITE_FILE:
+    case T_WRITE:
         cl_copy(m, "Wrote ", sizeof(m));
         cl_ltoa(s->adds, num);
         cl_cat(m, num, sizeof(m));
@@ -629,7 +571,8 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
         cl_cat(m, s->path, sizeof(m));
         summary(s, "", m);
         break;
-    case T_EDIT_FILE:
+    case T_EDIT:
+    case T_MULTIEDIT:
         cl_copy(m, "Updated ", sizeof(m));
         cl_cat(m, s->path, sizeof(m));
         cl_cat(m, " with ", sizeof(m));
@@ -641,7 +584,7 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
         cl_cat(m, s->dels == 1 ? " removal" : " removals", sizeof(m));
         summary(s, "", m);
         break;
-    case T_RUN_COMMAND: {
+    case T_BASH: {
         /* "Return code N.\n" and the output */
         const char *o = (const char *)memchr(p, '\n', (size_t)n);
         long on = o ? n - (o + 1 - p) : 0;
@@ -661,10 +604,27 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
         break;
     }
     default:
-        body(s, p, n, 1);
+        if (tools_summary(tool, in, inn, p, n, m, sizeof(m)))
+            summary(s, "", m);
+        else
+            body(s, p, n, 1);
         break;
     }
     s->tool = -1;
+    out(s);
+}
+
+void show_server(cl_show *s, int call, const char *line)
+{
+    if (call) {
+        raw(s, "\n" GREEN G_BULLET SGR0 " " BOLD);
+        {
+            int w = 0;
+            text(&s->batch, line, (long)strlen(line), s->t->cols - 4, &w);
+        }
+        raw(s, SGR0 "\n");
+    } else
+        summary(s, "", line);
     out(s);
 }
 

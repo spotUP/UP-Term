@@ -19,13 +19,13 @@ static const char sys_b[] =
     "directories are separated by /, and a leading / or an empty part means the parent directory. "
     "Relative paths start from the start directory: ";
 static const char sys_c[] =
-    ". Commands run through vsh, a Unix-like shell for AmigaOS; AmigaDOS commands work, and return "
-    "codes 5, 10 and 20 mean warning, error and failure. The machine is slow and has little "
-    "memory: prefer small, targeted reads and searches. ";
+    ". Bash runs commands through vsh, a Unix-like shell for AmigaOS (or the AmigaShell when vsh is "
+    "not installed); AmigaDOS commands work, and return codes 5, 10 and 20 mean warning, error and "
+    "failure. The machine is slow and has little memory: prefer Glob, Grep and targeted Reads. ";
 static const char sys_d[] =
     "Every tool call is shown to the user and may need their permission. The terminal shows "
     "Markdown, 80 columns or fewer; keep answers concise. For a task of several steps keep a "
-    "todo list with todo_write.";
+    "todo list with TodoWrite.";
 
 int cl_key_clean(char *key)
 {
@@ -60,6 +60,8 @@ static void st_block(void *u, int type, const char *name)
     char what[96];
     if (type == B_THINKING)
         ui_status(&r->ui, "Thinking");
+    else if (type == B_SERVER)
+        ui_status(&r->ui, "Searching the web");
     else if (type == B_TOOL) {
         if (r->shown)
             r->render.end(r->render.u);
@@ -67,6 +69,14 @@ static void st_block(void *u, int type, const char *name)
         cl_cat(what, name, sizeof(what));
         ui_status(&r->ui, what);
     }
+}
+
+/* a server tool's call or result (web_search), shown when it is complete */
+static void st_stop(void *u, const sblock *b)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (b->type == B_SERVER || (b->type == B_OTHER && b->start.n))
+        ui_server(&r->ui, b->type == B_SERVER, b->start.p, b->start.n, b->a.p, b->a.n);
 }
 
 static void log_s(cl_repl *r, const char *a, const char *b, long bn)
@@ -163,6 +173,7 @@ static int post(cl_repl *r, const char *body, long bn, long *retry_s)
     sui.u = r;
     sui.text = st_text;
     sui.block = st_block;
+    sui.stop = st_stop;
 top:
     reused = r->connected;
     if (!r->connected) {
@@ -366,6 +377,62 @@ static void tool_result(void *u, int tool, const char *in, long inn, int is_erro
     ui_result(&((cl_repl *)u)->ui, tool, in, inn, is_error, text, n);
 }
 
+static int tool_choose(void *u, const char *header, const char *question, const char *const *labels,
+                       const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap)
+{
+    return ui_choose(&((cl_repl *)u)->ui, header, question, labels, descs, n, flags, picked, other, cap);
+}
+
+/* ExitPlanMode's plan, drawn as an answer is (Markdown) */
+static void tool_plan(void *u, const char *text, long n)
+{
+    cl_repl *r = (cl_repl *)u;
+    r->render.text(r->render.u, text, n);
+    r->render.end(r->render.u);
+}
+
+static void quiet_text(void *u, const char *s, long n)
+{
+    (void)u;
+    (void)s;
+    (void)n;
+}
+
+static void quiet_end(void *u)
+{
+    (void)u;
+}
+
+static int request(cl_repl *r, const char *body, long bn);
+
+/* One request for a tool (WebFetch's small model, a Task subagent) while
+ * the turn's own answer is still in use: that stream is kept aside, the
+ * new one handed over whole, nothing of it drawn. */
+static int api_send(void *u, const char *body, long bn, cl_stream *st)
+{
+    cl_repl *r = (cl_repl *)u;
+    cl_stream keep = r->st;
+    cl_render rk = r->render;
+    int shown = r->shown, rc;
+    long chars = r->chars;
+    stream_init(&r->st, 0);
+    r->render.u = 0;
+    r->render.text = quiet_text;
+    r->render.end = quiet_end;
+    rc = request(r, body, bn);
+    r->render = rk;
+    *st = r->st;
+    r->st = keep;
+    r->shown = shown;
+    r->chars = chars;
+    if (rc == R_OK) {
+        conv_usage(&r->conv, st->model[0] ? st->model : r->model, st->in_tok, st->out_tok, st->cache_w,
+                   st->cache_r);
+        return 0;
+    }
+    return rc == R_CANCEL ? -2 : -1;
+}
+
 long repl_window(const char *model)
 {
     return !strncmp(model, "claude-haiku", 12) ? 200000L : 1000000L;
@@ -412,7 +479,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     o.effort = r->effort;
     o.max_tokens = r->max_tokens;
     o.system = r->system;
-    o.tools = tools_json();
+    o.tools = tools_json(&r->tools, r->model);
     jw_init(&body);
     jw_init(&content);
     r->io->brk(r->io->u);           /* a Ctrl+C from before the turn does not count */
@@ -469,6 +536,8 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         answered = 1;
         if (!strcmp(stop, "max_tokens"))
             ui_line(&r->ui, "(The answer reached the output limit.)");
+        if (!ntools && !strcmp(stop, "pause_turn"))
+            continue;               /* a server tool's loop paused: the API goes on from the turn */
         if (!ntools)
             break;
         /* every tool_use answered in one user message, in order */
@@ -653,7 +722,7 @@ static void compact(cl_repl *r)
     o.effort = r->effort;
     o.max_tokens = r->max_tokens;
     o.system = r->system;
-    o.tools = tools_json();
+    o.tools = tools_json(&r->tools, r->model);
     o.no_tools = 1;
     jw_init(&body);
     jw_init(&sum);
@@ -696,8 +765,8 @@ static void compact(cl_repl *r)
 }
 
 static const char init_prompt[] =
-    "Look at the files in the start directory (list_dir, read_file, grep; a few targeted reads, "
-    "the machine is slow) and write AMIGA.md there with write_file: notes for future sessions "
+    "Look at the files in the start directory (Glob, Grep, a few targeted Reads; the machine is "
+    "slow) and write AMIGA.md there with Write: notes for future sessions "
     "on this directory -- what it is, how it is laid out, how to build, run and test it on the "
     "Amiga, and conventions you notice. Under 60 lines. If AMIGA.md exists, improve it.";
 
@@ -1041,6 +1110,15 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->tools.ask = tool_ask;
     r->tools.preview = tool_preview;
     r->tools.result = tool_result;
+    r->tools.choose = tool_choose;
+    r->tools.plan = tool_plan;
+    r->tools.api.u = r;
+    r->tools.api.send = api_send;
+    r->tools.model = r->model;
+    if (tools_init(&r->tools)) {
+        ui_line(&r->ui, "Out of memory.");
+        return -1;
+    }
     jw_init(&s);
     jw_rawz(&s, sys_a);
     jw_rawz(&s, sys_b);
@@ -1077,6 +1155,7 @@ void repl_free(cl_repl *r)
     }
     drop(r);
     request_free(r);
+    tools_free(&r->tools);
     conv_free(&r->conv);
     free(r->system);
     r->system = 0;

@@ -45,6 +45,7 @@ static int replay(const char *name, cl_stream *s, shown *w, long step)
     char *b = claude_load(name, &n);
     sse p;
     cl_stream_ui ui;
+    memset(&ui, 0, sizeof(ui));
     if (!b)
         return -1;
     memset(w, 0, sizeof(*w));
@@ -124,20 +125,20 @@ static void test_tool_use(void)
     if (!t)
         return;
     CHECK_STR(t->id, "toolu_01ReadStartup");
-    CHECK_STR(t->name, "read_file");
+    CHECK_STR(t->name, "Read");
     CHECK(t->input_ok);
     /* the input assembled from the fragments is the object, parsed */
     CHECK_INT(json_parse(t->a.p, t->a.n, &in), 0);
-    CHECK(json_get(in, "path", &p));
+    CHECK(json_get(in, "file_path", &p));
     json_str(p, path, sizeof(path));
     CHECK_STR(path, "S/Startup-Sequence");
     CHECK_INT(json_count(in), 1);
     t = stream_tool(&s, 1);
-    CHECK(t && !strcmp(t->name, "list_dir") && t->input_ok);
+    CHECK(t && !strcmp(t->name, "Glob") && t->input_ok);
     jw_init(&c);
     stream_content(&s, &c);
-    CHECK(strstr(c.p, "{\"type\":\"tool_use\",\"id\":\"toolu_01ReadStartup\",\"name\":\"read_file\","
-                      "\"input\":{\"path\": \"S/Startup-Sequence\"}}") != 0);
+    CHECK(strstr(c.p, "{\"type\":\"tool_use\",\"id\":\"toolu_01ReadStartup\",\"name\":\"Read\","
+                      "\"input\":{\"file_path\": \"S/Startup-Sequence\"}}") != 0);
     CHECK(strstr(c.p, "\"signature\":\"ErUBCkYIBhgCIkDtoolsig==\"") != 0);
     jw_free(&c);
     stream_free(&s);

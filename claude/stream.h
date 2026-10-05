@@ -16,7 +16,10 @@
 
 #include "json.h"
 
-enum { B_TEXT, B_THINKING, B_REDACTED, B_TOOL, B_FALLBACK, B_OTHER };
+/* B_SERVER: a server tool's call (server_tool_use, web_search): its input
+ * collects like a tool's; the API runs it, its result comes as a B_OTHER
+ * block (web_search_tool_result) kept verbatim. */
+enum { B_TEXT, B_THINKING, B_REDACTED, B_TOOL, B_FALLBACK, B_OTHER, B_SERVER };
 
 typedef struct sblock {
     int type;
@@ -35,6 +38,9 @@ typedef struct cl_stream_ui {
     void (*text)(void *u, const char *s, long n);
     /* a block starts: its type, and a tool's name ("" otherwise) */
     void (*block)(void *u, int type, const char *name);
+    /* optional: a block is complete (a server tool's call and result are
+     * shown from here) */
+    void (*stop)(void *u, const struct sblock *b);
 } cl_stream_ui;
 
 enum { ST_WAIT, ST_OPEN, ST_DONE, ST_ERROR, ST_BAD };

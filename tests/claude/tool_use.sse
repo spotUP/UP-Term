@@ -20,13 +20,13 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":1}
 
 event: content_block_start
-data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01ReadStartup","name":"read_file","input":{}}}
+data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01ReadStartup","name":"Read","input":{}}}
 
 event: content_block_delta
 data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":""}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"pa"}}
+data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"file_pa"}}
 
 event: content_block_delta
 data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"th\": \"S/Start"}}
@@ -38,10 +38,10 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":2}
 
 event: content_block_start
-data: {"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"toolu_01ListS","name":"list_dir","input":{}}}
+data: {"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"toolu_01ListS","name":"Glob","input":{}}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"S\"}"}}
+data: {"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{\"pattern\":\"*\",\"path\":\"S\"}"}}
 
 event: content_block_stop
 data: {"type":"content_block_stop","index":3}

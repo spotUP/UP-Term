@@ -4,14 +4,31 @@ plain HTTP on the LAN, for C:Claude on the rig or a real Amiga (ledger A2).
 
 It never talks to Anthropic and needs no key. It answers POST /v1/messages
 with one of tests/claude/*.sse, chunked, a few bytes at a time like the real
-stream:
+stream (A2/A3, and the A4 WP2 tools):
 
-  - the request's last message holds a tool_result  -> tool_final.sse
-  - the last prompt mentions "startup" or "tool"      -> tool_use.sse
-    (read_file S/Startup-Sequence and list_dir S: start Claude with ROOT=SYS:)
+  - a Claude Haiku request (WebFetch's small model)   -> fetch_answer.sse
+  - a Task subagent's request ("file search specialist" in its system
+    prompt): its first -> agent_tool.sse (Grep in S), then agent_final.sse
+  - the request's last message holds a tool_result: by the call it answers
+    EnterPlanMode -> tool_exitplan.sse, a background Bash -> tool_bgout.sse
+    (BashOutput bash_1), anything else -> tool_final.sse
+  - the last prompt mentions "search the web"         -> websearch.sse
+    (the web_search server tool's blocks, no client tool)
+  - mentions "fetch"                                  -> tool_fetch.sse
+    (WebFetch http://127.0.0.1:8080/page -- this server's own GET /page; on a
+    real Amiga run with --bind <LAN address> and --page-host <that address>)
+  - mentions "agent"                                  -> tool_task.sse (Task, Explore)
+  - mentions "question"                               -> tool_ask.sse (AskUserQuestion)
+  - mentions "plan"                                   -> tool_enterplan.sse
+    (EnterPlanMode, then ExitPlanMode with a plan)
+  - mentions "background"                             -> tool_bg.sse (Bash Wait 2 in
+    the background, then BashOutput)
+  - mentions "grep"                                   -> tool_grep.sse (Grep for the Set... commands in S)
   - mentions "edit"                                   -> tool_edit.sse
-    (todo_write, then edit_file claude-test.txt "hello" -> "hello from the
+    (TodoWrite, Read and Edit claude-test.txt "hello" -> "hello from the
     Amiga": Echo hello >RAM:claude-test.txt, start Claude with ROOT=RAM:)
+  - mentions "startup" or "tool"                      -> tool_use.sse
+    (Read S/Startup-Sequence and Glob * in S: start Claude with ROOT=SYS:)
   - mentions "refuse"                                 -> refusal.sse
   - mentions "busy"                                   -> overloaded.sse
   - anything else                                     -> text.sse
@@ -34,18 +51,43 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STREAMS = os.path.join(HERE, "..", "tests", "claude")
 
 
+PAGE = (b"<html><head><title>UP-Term test page</title></head><body><h1>Hello from the fixture</h1>"
+        b"<p>This is the <a href=\"https://example.org/\">UP-Term</a> test page.</p>"
+        b"<ul><li>one</li><li>two</li></ul></body></html>")
+
+# the call a tool_result answers -> the next recording
+AFTER = {"toolu_01EnterPlan": "tool_exitplan", "toolu_01Background": "tool_bgout"}
+
+
+def system_text(body):
+    sysp = body.get("system") or ""
+    if isinstance(sysp, list):
+        return " ".join(b.get("text", "") for b in sysp if isinstance(b, dict))
+    return str(sysp)
+
+
 def pick(body, forced):
     if forced:
         return forced
     msgs = body.get("messages") or []
     if not msgs:
         return "text"
+    if str(body.get("model", "")).startswith("claude-haiku"):
+        return "fetch_answer"
     last = msgs[-1]
     content = last.get("content")
     blocks = content if isinstance(content, list) else [{"type": "text", "text": str(content)}]
-    if any(b.get("type") == "tool_result" for b in blocks):
-        return "tool_final"
+    results = [b for b in blocks if b.get("type") == "tool_result"]
+    if "file search specialist" in system_text(body):
+        return "agent_final" if results else "agent_tool"
+    if results:
+        return AFTER.get(results[-1].get("tool_use_id"), "tool_final")
     text = " ".join(b.get("text", "") for b in blocks if b.get("type") == "text").lower()
+    for word, name in (("search the web", "websearch"), ("fetch", "tool_fetch"), ("agent", "tool_task"),
+                       ("question", "tool_ask"), ("plan", "tool_enterplan"), ("background", "tool_bg"),
+                       ("grep", "tool_grep")):
+        if word in text:
+            return name
     if "edit" in text:
         return "tool_edit"
     if "startup" in text or "tool" in text:
@@ -61,9 +103,22 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     forced = None
     delay = 0.05
+    page_host = None
 
     def log_message(self, fmt, *args):
         pass
+
+    def do_GET(self):
+        # WebFetch's page (tool_fetch.sse asks for /page)
+        if self.path != "/page":
+            self.send_error(404)
+            return
+        print("[INFO] GET /page (WebFetch)", flush=True)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(PAGE)))
+        self.end_headers()
+        self.wfile.write(PAGE)
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", "0"))
@@ -82,6 +137,8 @@ class Handler(BaseHTTPRequestHandler):
             "PRESENT (wrong!)" if self.headers.get("x-api-key") else "none", name), flush=True)
         with open(os.path.join(STREAMS, name + ".sse"), "rb") as f:
             data = f.read()
+        if self.page_host and name == "tool_fetch":
+            data = data.replace(b"127.0.0.1:8080", self.page_host.encode())
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Transfer-Encoding", "chunked")
@@ -105,11 +162,13 @@ def main():
                     help="address to listen on: 127.0.0.1 for the rig (FS-UAE uses the host's stack); the Mac's LAN address for a real Amiga (never 0.0.0.0)")
     ap.add_argument("--stream", help="answer every request with tests/claude/NAME.sse")
     ap.add_argument("--delay", type=float, default=0.05, help="seconds between 64-byte chunks")
+    ap.add_argument("--page-host", help="host:port WebFetch's recorded call fetches /page from (default 127.0.0.1:8080)")
     a = ap.parse_args()
     if a.stream and not os.path.exists(os.path.join(STREAMS, a.stream + ".sse")):
         sys.exit("[ERROR] no tests/claude/%s.sse" % a.stream)
     Handler.forced = a.stream
     Handler.delay = a.delay
+    Handler.page_host = a.page_host
     srv = ThreadingHTTPServer((a.bind, a.port), Handler)
     print("[INFO] serving the recorded streams on port %d (Ctrl+C ends)" % a.port, flush=True)
     try:

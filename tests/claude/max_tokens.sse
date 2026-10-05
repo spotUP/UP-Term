@@ -11,10 +11,10 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
 event: content_block_start
-data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01Cut","name":"write_file","input":{}}}
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01Cut","name":"Write","input":{}}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\": \"RAM:big.txt\", \"content\": \"lots of te"}}
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\": \"RAM:big.txt\", \"content\": \"lots of te"}}
 
 event: content_block_stop
 data: {"type":"content_block_stop","index":1}

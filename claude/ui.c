@@ -1,5 +1,6 @@
 /* ui -- see ui.h. With a screen attached (u->tui, ledger A3) each call
  * goes to it (tui.c, show.c); without one, the A2 line mode below. */
+#include <stdlib.h>
 #include <string.h>
 #include "ui.h"
 #include "tools.h"
@@ -158,8 +159,6 @@ static const char *base(const char *p)
 
 static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
 {
-    static const char *const titles[T_COUNT] = { "Read file", "List directory", "Search files", "Write file",
-                                                 "Edit file", "Run command", "Todos" };
     const char *opt[3];
     char q[400], yes2[80];
     int n, c;
@@ -167,15 +166,15 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
     q[0] = 0;
     if (outside)
         cl_copy(q, "Outside the start directory. ", sizeof(q));
-    if (tool == T_EDIT_FILE) {
+    if (tool == T_EDIT || tool == T_MULTIEDIT) {
         cl_cat(q, "Do you want to make this edit to ", sizeof(q));
         cl_cat(q, base(what), sizeof(q));
         cl_cat(q, "?", sizeof(q));
-    } else if (tool == T_WRITE_FILE) {
+    } else if (tool == T_WRITE) {
         cl_cat(q, "Do you want to write ", sizeof(q));
         cl_cat(q, base(what), sizeof(q));
         cl_cat(q, "?", sizeof(q));
-    } else if (tool == T_RUN_COMMAND) {
+    } else if (tool == T_BASH) {
         cl_cat(q, "Do you want to run it?", sizeof(q));
     } else {
         cl_cat(q, "Do you want to allow this?", sizeof(q));
@@ -192,7 +191,7 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
         opt[2] = "No, and tell Claude what to do differently (esc)";
         n = 3;
     }
-    c = tui_menu(u->tui, tool >= 0 && tool < T_COUNT ? titles[tool] : "Tool", q, opt, n, 0, n - 1);
+    c = tui_menu(u->tui, tools_title(tool), q, opt, n, 0, n - 1);
     if (c < 0)
         return ASK_NO;
     if (c == 0)
@@ -261,4 +260,167 @@ int ui_pick(cl_ui *u, const char *title, const char *const *opt, int n, int sel)
     if (!u->tui)
         return -1;
     return tui_menu(u->tui, title, "", opt, n, sel, -1);
+}
+
+void ui_server(cl_ui *u, int call, const char *block, long bn, const char *input, long inn)
+{
+    char line[300];
+    jw b;
+    /* a server tool's call: its block from the start with the input that
+     * streamed in (the start's input is empty) */
+    jw_init(&b);
+    if (call && input && inn) {
+        jw_rawz(&b, "{\"type\":\"server_tool_use\",\"input\":");
+        jw_raw(&b, input, inn);
+        jw_raw(&b, "}", 1);
+    } else
+        jw_raw(&b, block, bn);
+    if (b.oom || tools_server_line(b.p, b.n, line, sizeof(line))) {
+        jw_free(&b);
+        return;
+    }
+    jw_free(&b);
+    if (u->tui) {
+        show_server(u->show, call, line);
+        return;
+    }
+    ui_status_clear(u);
+    if (!u->col0)
+        out(u, "\n", 1);
+    ui_puts(u, call ? BOLD "Tool " OFF : "  ");
+    ui_puts(u, line);
+    ui_puts(u, "\n");
+}
+
+/* the line mode's question: the options numbered, an answer typed */
+static int line_choose(cl_ui *u, const char *header, const char *question, const char *const *labels,
+                       const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap)
+{
+    char ans[400], num[16];
+    int i;
+    ui_status_clear(u);
+    if (!u->col0)
+        out(u, "\n", 1);
+    if (header && *header) {
+        ui_puts(u, BOLD);
+        ui_puts(u, header);
+        ui_puts(u, OFF "  ");
+    }
+    ui_puts(u, question);
+    ui_puts(u, "\n");
+    for (i = 0; i < n; i++) {
+        cl_ltoa(i + 1, num);
+        ui_puts(u, "  ");
+        ui_puts(u, num);
+        ui_puts(u, ". ");
+        ui_puts(u, labels[i] ? labels[i] : "");
+        if (descs && descs[i] && *descs[i]) {
+            ui_puts(u, DIM " - ");
+            ui_puts(u, descs[i]);
+            ui_puts(u, OFF);
+        }
+        ui_puts(u, "\n");
+    }
+    for (;;) {
+        long k;
+        const char *p;
+        ui_puts(u, flags & CH_MULTI ? "Numbers (1,3), or your own answer: "
+                                    : flags & CH_OTHER ? "A number, or your own answer: " : "A number: ");
+        k = u->io->read_line(u->io->u, ans, sizeof(ans));
+        u->col0 = 1;
+        if (k < 0)
+            return -1;
+        if (!k)
+            continue;
+        /* numbers? */
+        *picked = 0;
+        for (p = ans; *p; p++) {
+            int v;
+            if (*p == ',' || *p == ' ')
+                continue;
+            if (*p < '1' || *p > '9')
+                break;
+            v = *p - '0';
+            if (v > n)
+                break;
+            *picked |= 1u << (v - 1);
+        }
+        if (!*p && *picked) {
+            if (flags & CH_MULTI)
+                return 0;
+            for (i = 0; i < n; i++)
+                if (*picked & (1u << i))
+                    return i;
+        }
+        if (flags & CH_OTHER) {
+            *picked = 0;
+            cl_copy(other, ans, cap);
+            return n;
+        }
+    }
+}
+
+int ui_choose(cl_ui *u, const char *header, const char *question, const char *const *labels,
+              const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap)
+{
+    const char *opt[8];
+    char *text[8];
+    int i, k, c, sel = 0;
+    *picked = 0;
+    if (other && cap)
+        other[0] = 0;
+    if (n > 6)
+        n = 6;
+    if (!u->tui)
+        return line_choose(u, header, question, labels, descs, n, flags, picked, other, cap);
+    /* the screen: the menu; for several answers, the options ticked one by
+     * one until "Done"; "Type something else" reads a line in the box */
+    for (;;) {
+        for (i = 0; i < n; i++) {
+            long l = (long)strlen(labels[i] ? labels[i] : "") + (descs && descs[i] ? (long)strlen(descs[i]) : 0) + 12;
+            text[i] = (char *)malloc((size_t)l);
+            if (!text[i]) {
+                for (k = 0; k < i; k++)
+                    free(text[k]);
+                return -1;
+            }
+            text[i][0] = 0;
+            if (flags & CH_MULTI)
+                cl_copy(text[i], *picked & (1u << i) ? "[x] " : "[ ] ", l);
+            cl_cat(text[i], labels[i] ? labels[i] : "", l);
+            if (descs && descs[i] && *descs[i]) {
+                cl_cat(text[i], " - ", l);
+                cl_cat(text[i], descs[i], l);
+            }
+            opt[i] = text[i];
+        }
+        k = n;
+        if (flags & CH_OTHER)
+            opt[k++] = "Type something else";
+        if (flags & CH_MULTI)
+            opt[k++] = "Done";
+        c = tui_menu(u->tui, header && *header ? header : "Question", question, opt, k, sel, -1);
+        for (i = 0; i < n; i++)
+            free(text[i]);
+        if (c < 0 || c >= k)
+            return -1;
+        if (c < n) {
+            if (!(flags & CH_MULTI))
+                return c;
+            *picked ^= 1u << c;
+            sel = c;
+            continue;
+        }
+        if ((flags & CH_OTHER) && c == n) {
+            long l;
+            show_note(u->show, "Type your answer and press Enter:");
+            l = tui_read(u->tui, other, cap);
+            if (l < 0)
+                return -1;
+            if (!l)
+                continue;
+            return flags & CH_MULTI ? 0 : n;
+        }
+        return 0;                   /* Done */
+    }
 }

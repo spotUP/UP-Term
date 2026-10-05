@@ -1,5 +1,6 @@
 /* sys_posix -- sys.h on POSIX, for the host tests (a temporary tree).
- * run uses popen (no timeout: the tests run short commands). */
+ * run uses popen (no timeout: the tests run short commands); background
+ * jobs are sh -c in their own process group, output to a temporary file. */
 #define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +11,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <time.h>
 #include "sys_posix.h"
 #include "util.h"
 
@@ -90,6 +95,7 @@ static int x_list(void *u, const char *path, cl_dir_fn fn, void *c)
         if (!stat(full, &st)) {
             de.dir = S_ISDIR(st.st_mode);
             de.size = (long)st.st_size;
+            de.mtime = (long)st.st_mtime;
         }
         if (fn(c, &de))
             break;
@@ -139,6 +145,147 @@ static int x_run(void *u, const char *cmd, int timeout_s, char *out, long cap, l
     return 0;
 }
 
+static long x_mtime(void *u, const char *path)
+{
+    struct stat st;
+    (void)u;
+    return stat(path, &st) ? -1 : (long)st.st_mtime;
+}
+
+/* ---- background jobs ---- */
+
+static int x_bg_start(void *u, const char *cmd, long *job)
+{
+    sys_posix *p = (sys_posix *)u;
+    int i, fd;
+    pid_t pid;
+    sp_job *j = 0;
+    for (i = 0; i < SP_JOBS; i++)
+        if (!p->jobs[i].used) {
+            j = &p->jobs[i];
+            break;
+        }
+    if (!j) {
+        cl_copy(p->err, "too many background jobs", sizeof(p->err));
+        return -1;
+    }
+    memset(j, 0, sizeof(*j));
+    strcpy(j->file, "/tmp/claude_bg_XXXXXX");
+    {
+        const char *base = getenv("TMPDIR");
+        if (base && *base && strlen(base) < sizeof(j->file) - 24) {
+            strcpy(j->file, base);
+            if (j->file[strlen(j->file) - 1] != '/')
+                strcat(j->file, "/");
+            strcat(j->file, "claude_bg_XXXXXX");
+        }
+    }
+    fd = mkstemp(j->file);
+    if (fd < 0) {
+        set_err(p, "mkstemp");
+        return -1;
+    }
+    pid = fork();
+    if (pid < 0) {
+        close(fd);
+        unlink(j->file);
+        set_err(p, "fork");
+        return -1;
+    }
+    if (!pid) {
+        int nul = open("/dev/null", O_RDONLY);
+        setpgid(0, 0);
+        dup2(nul, 0);
+        dup2(fd, 1);
+        dup2(fd, 2);
+        execl("/bin/sh", "sh", "-c", cmd, (char *)0);
+        _exit(127);
+    }
+    close(fd);
+    setpgid(pid, pid);
+    j->used = 1;
+    j->pid = (long)pid;
+    *job = i;
+    return 0;
+}
+
+static void reap(sp_job *j)
+{
+    int st;
+    if (!j->ended && waitpid((pid_t)j->pid, &st, WNOHANG) == (pid_t)j->pid) {
+        j->ended = 1;
+        j->rc = WIFEXITED(st) ? WEXITSTATUS(st) : 128 + (WIFSIGNALED(st) ? WTERMSIG(st) : 0);
+    }
+}
+
+static int x_bg_read(void *u, long job, long from, char *out, long cap, long *outn, int *running, long *rc)
+{
+    sys_posix *p = (sys_posix *)u;
+    sp_job *j;
+    FILE *f;
+    if (job < 0 || job >= SP_JOBS || !p->jobs[job].used) {
+        cl_copy(p->err, "no such job", sizeof(p->err));
+        return -1;
+    }
+    j = &p->jobs[job];
+    reap(j);                        /* before the read: what it wrote before it ended is all there */
+    *running = !j->ended;
+    *rc = j->rc;
+    *outn = 0;
+    f = fopen(j->file, "rb");
+    if (!f) {
+        set_err(p, j->file);
+        return -1;
+    }
+    if (!fseek(f, from, SEEK_SET))
+        *outn = (long)fread(out, 1, (size_t)cap, f);
+    fclose(f);
+    return 0;
+}
+
+static int x_bg_kill(void *u, long job)
+{
+    sys_posix *p = (sys_posix *)u;
+    sp_job *j;
+    struct timespec ts;
+    int k;
+    if (job < 0 || job >= SP_JOBS || !p->jobs[job].used)
+        return -1;
+    j = &p->jobs[job];
+    reap(j);
+    if (j->ended)
+        return 0;
+    kill(-(pid_t)j->pid, SIGINT);
+    ts.tv_sec = 0;
+    ts.tv_nsec = 20000000L;
+    for (k = 0; k < 25 && !j->ended; k++) {
+        nanosleep(&ts, 0);
+        reap(j);
+    }
+    if (!j->ended) {
+        int st;
+        kill(-(pid_t)j->pid, SIGKILL);
+        waitpid((pid_t)j->pid, &st, 0);
+        j->ended = 1;
+        j->rc = 137;
+    }
+    return 0;
+}
+
+static void x_bg_drop(void *u, long job)
+{
+    sys_posix *p = (sys_posix *)u;
+    sp_job *j;
+    if (job < 0 || job >= SP_JOBS || !p->jobs[job].used)
+        return;
+    j = &p->jobs[job];
+    reap(j);
+    if (!j->ended)
+        return;
+    unlink(j->file);
+    j->used = 0;
+}
+
 static const char *x_err(void *u)
 {
     return ((sys_posix *)u)->err;
@@ -155,4 +302,9 @@ void sys_posix_init(sys_posix *p, cl_sys *s)
     s->canon = x_canon;
     s->run = x_run;
     s->err = x_err;
+    s->mtime = x_mtime;
+    s->bg_start = x_bg_start;
+    s->bg_read = x_bg_read;
+    s->bg_kill = x_bg_kill;
+    s->bg_drop = x_bg_drop;
 }

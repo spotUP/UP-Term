@@ -51,6 +51,8 @@ void show_head(cl_show *s);
 void show_preview(cl_show *s, int tool, const char *path, const char *before, long bn, const char *after,
                   long an);
 void show_result(cl_show *s, int tool, const char *input, long inn, int is_error, const char *text, long n);
+/* a server tool (web_search): its call's header, or its result's summary */
+void show_server(cl_show *s, int call, const char *line);
 /* Ctrl+O (tui's on_expand) */
 void show_expand(void *u);
 /* the display name of a tool ("Read", "Update", ...) */
