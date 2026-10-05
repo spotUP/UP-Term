@@ -197,6 +197,43 @@ int main(int argc, char **argv)
         printf("%s the reader woke for %d of 5 writes from another process\n", got == 5 ? "ok" : "FAIL", got);
         return got == 5 ? 0 : 1;
     }
+    if (argc > 1 && !strcmp(argv[1], "names")) {
+        /* addresses as GNU screen and tmux give them: a path that fills
+         * the length with no NUL (screen binds with strlen(path) + 2, BSD's
+         * SUN_LEN; 80.1 refused it with EINVAL and screen did not start),
+         * and connect's errors POSIX names (tmux starts its server on
+         * ENOENT or ECONNREFUSED, on nothing else) */
+        int bad = 0, c, e;
+        char *p2 = "/T/ixsock.name";
+        unlink(p2);
+        s = socket(AF_UNIX, SOCK_STREAM, 0);
+        memset(&a, 0xff, sizeof(a));        /* no NUL after the path */
+        a.sun_family = AF_UNIX;
+        memcpy(a.sun_path, p2, strlen(p2));
+        n = bind(s, (struct sockaddr *)&a, strlen(p2) + 2);
+        e = errno;   /* printf writes the log: errno is read once, here */
+        printf("%s bind with the length of the path and no NUL: %d errno %d\n",
+               n == 0 ? "ok" : "FAIL", n, n < 0 ? e : 0);
+        bad |= n != 0;
+        close(s);                           /* leaves the socket file behind */
+        c = socket(AF_UNIX, SOCK_STREAM, 0);
+        n = connect(c, (struct sockaddr *)&a, strlen(p2) + 2);
+        e = errno;
+        printf("%s connect to a file nobody listens on: %d errno %d (ECONNREFUSED %d)\n",
+               n < 0 && e == ECONNREFUSED ? "ok" : "FAIL", n, n < 0 ? e : 0, ECONNREFUSED);
+        bad |= !(n < 0 && e == ECONNREFUSED);
+        close(c);
+        unlink(p2);
+        c = socket(AF_UNIX, SOCK_STREAM, 0);
+        n = connect(c, (struct sockaddr *)&a, strlen(p2) + 2);
+        e = errno;
+        printf("%s connect to no file: %d errno %d (ENOENT %d)\n",
+               n < 0 && e == ENOENT ? "ok" : "FAIL", n, n < 0 ? e : 0, ENOENT);
+        bad |= !(n < 0 && e == ENOENT);
+        close(c);
+        printf("ixsock names: %s\n", bad ? "FAIL" : "all ok");
+        return bad;
+    }
     if (argc > 1 && !strcmp(argv[1], "pair")) {
         /* socketpair: libevent's signal pipe and tmux's client/server pair
          * (48.2 answered EPFNOSUPPORT for every domain) */
