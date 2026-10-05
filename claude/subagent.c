@@ -76,9 +76,11 @@ static int provided(const cl_tools *t, const cl_agent **list)
 
 /* a built-in hidden by a provided agent of its name (Claude Code: the
  * built-ins come last) */
-static int hidden(const cl_agent *l, int n, int b)
+static int hidden(const cl_tools *t, const cl_agent *l, int n, int b)
 {
     int i;
+    if (t->no_explore_plan && (!strcmp(builtins[b].name, "Explore") || !strcmp(builtins[b].name, "Plan")))
+        return 1;                   /* CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS */
     for (i = 0; i < n; i++)
         if (cl_strieq(l[i].name, builtins[b].name))
             return 1;
@@ -90,7 +92,7 @@ int agent_count(const cl_tools *t)
     const cl_agent *l;
     int n = provided(t, &l), b, k = n;
     for (b = 0; b < NBUILTIN; b++)
-        k += !hidden(l, n, b);
+        k += !hidden(t, l, n, b);
     return k;
 }
 
@@ -100,7 +102,7 @@ const cl_agent *agent_get(const cl_tools *t, int i)
     const cl_agent *l;
     int n = provided(t, &l), b;
     for (b = 0; b < NBUILTIN; b++)
-        if (!hidden(l, n, b) && i-- == 0)
+        if (!hidden(t, l, n, b) && i-- == 0)
             return &builtins[b];
     return i >= 0 && i < n ? &l[i] : 0;
 }
@@ -383,9 +385,13 @@ static void agent_run(cl_tools *t, jw *out, const char *id, const cl_agent *a, c
         else if (!strcmp(a->perm_mode, "bypassPermissions"))
             child.ask_policy = 3;
     }
-    model = agent_model_id(alias && *alias ? alias : 0);
+    /* Claude Code's order: the call's model, the agent's, CLAUDE_CODE_SUBAGENT_MODEL,
+     * the conversation's; CLAUDE_CODE_SUBAGENT_MODEL_FORCE puts the variable first */
+    model = t->sub_force && t->sub_model[0] ? t->sub_model : agent_model_id(alias && *alias ? alias : 0);
     if (!model)
-        model = agent_model_id(a->model);
+        model = a->model && !strcmp(a->model, "inherit") ? t->model : agent_model_id(a->model);
+    if (!model && t->sub_model[0])
+        model = t->sub_model;
     if (!model)
         model = t->model ? t->model : "claude-opus-5-5";
     child.model = model;

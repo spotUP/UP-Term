@@ -21,6 +21,8 @@
 #include "path.h"
 #include "util.h"
 
+#define WAKE_AFTER_MS 1000UL        /* the screen waits this long after a turn before one of its own */
+
 static long now_s(cl_repl *r)
 {
     return r->sys->now ? r->sys->now(r->sys->u) : -1;
@@ -162,6 +164,8 @@ char *sched_tui_wake(void *u)
     char *line = 0;
     if (r->in_turn)
         return 0;
+    if (r->idle_from && r->io->ms && r->io->ms(r->io->u) - r->idle_from < WAKE_AFTER_MS)
+        return 0;                   /* a moment after a turn: keys typed straight on come first */
     jw_init(&p);
     jw_init(&s);
     if (sched_wake(r, &p, &s) && !p.oom && p.n) {

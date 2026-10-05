@@ -20,7 +20,8 @@ costs) were read from the code by agents and spot-checked (the $N off-by-one and
 bypassPermissions rule were confirmed against the docs and the code before acting on them).
 
 Status: **have**, **partial** (what is missing), **missing**, **N/A** (why not on an Amiga).
-"Before" = main e4bc55d; "After" = branch feature/a4-gaps 57613ae. Evidence for "After" is the
+"Before" = main e4bc55d; "After" = branch feature/a4-gaps 57613ae, and for the rows whose evidence
+starts "gaps2:" branch feature/a4-gaps2 (ledger thoughts/shared/plans/2026-10-05-a4-gaps2-progress.md). Evidence for "After" is the
 commit and the host test (tests/test_claude_*.c, all in `make test`); the progress ledger
 thoughts/shared/plans/2026-10-05-a4-gaps-progress.md has the decisions. Keys (the shortcut
 tables, vim) belong to the parallel branch feature/a4-input-rest and are audited, not built.
@@ -30,7 +31,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
 | cmd | /add-dir <path> | partial | partial | slash.c add_dir; no Tab suggestions of directories (input.c, other branch) |
-| cmd | /advisor [model\|off] | missing | missing | the advisor server tool's API is not in the reference this work had; not guessed |
+| cmd | /advisor [model\|off] | missing | have | gaps2: slash.c advisor, the advisor_20260301 server tool + its beta (tools.c, repl.c post), advisorModel, CLAUDE_CODE_DISABLE_ADVISOR_TOOL, the pairing table (conv.c conv_advisor_ok); test_gaps2_more V1 |
 | cmd | /agents | have | have | slash.c list_defs |
 | cmd | /artifact-capabilities, /artifact-diagramming, /artifacts, /design, /design-login, /design-sync, /slides, /dataviz | N/A | N/A | claude.ai artifacts and Claude Design (account, browser); typed, they say so |
 | cmd | /auto-mode-setup | N/A | N/A | auto mode needs Anthropic's action classifier (claude.ai plan) |
@@ -73,7 +74,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | cmd | /install-github-app, /install-slack-app | N/A | N/A | OAuth in a browser, gh |
 | cmd | /keybindings | missing | missing | keys.c (other branch) |
 | cmd | /login, /logout | have | have | slash.c (API key; OAuth N/A) |
-| cmd | /loop [interval] [prompt] | missing | missing | needs a timer in the input loop (tui.c, other branch) |
+| cmd | /loop [interval] [prompt] | missing | missing | not built; since round 2 the timer it needs exists (tui.h wake, sched.c, the cron jobs) |
 | cmd | /mcp, /plugin, /reload-plugins, /plugin-authoring | N/A | N/A | MCP stdio servers and plugins are Node/Python; typed, they say so |
 | cmd | /memory | have | have | slash.c memory (+ auto on/off) |
 | cmd | /model [model] | partial | have | kept as the default, availableModels, Pre/PostModelSwitch |
@@ -89,9 +90,9 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | cmd | /rewind (/checkpoint, /undo) | partial | have | Summarize from here / up to here, /undo |
 | cmd | /run, /verify, /run-skill-generator | missing | have | bundled skills |
 | cmd | /sandbox, /scroll-speed, /tui, /setup-bedrock, /setup-vertex | N/A | N/A | OS sandbox; fullscreen renderer; cloud providers' signing |
-| cmd | /simplify | missing | partial | bundled skill: one pass by Claude, not four parallel agents |
-| cmd | /skill-doctor | missing | partial | slash.c skill_doctor: sizes, no use counts kept |
-| cmd | /skills | partial | partial | filter and sizes; no visibility toggle (skillOverrides) |
+| cmd | /simplify | missing | have | gaps2: four review agents (Task), one after another -- one Amiga task runs no parallel agents, the skill says so; test_gaps2_more A4 |
+| cmd | /skill-doctor | missing | have | gaps2: use counts kept in <home>/skill-usage.json (policy.c pol_skill_used), bundled skills not counted, unused flagged; test_gaps2_more A3 |
+| cmd | /skills | partial | have | gaps2: /skills NAME on\|name-only\|user-only\|off and the screen menu, saved to settings.local.json skillOverrides; test_gaps2_more A3 |
 | cmd | /stats | missing | have | slash.c usage |
 | cmd | /status | have | have | slash.c status |
 | cmd | /statusline [description] | partial | have | statusline-setup agent, clear, `command CMD` |
@@ -132,13 +133,14 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | cli | --setting-sources | missing | have | cfg.skip |
 | cli | --verbose (the screen: results unfolded) | partial | have | show.c body |
 | cli | --exclude-dynamic-system-prompt-sections | missing | have | the auto memory section goes with the first prompt |
-| cli | --system-prompt-snapshot | missing | missing | not built: the prompt is built per session, not recorded |
+| cli | --system-prompt-snapshot | missing | have | gaps2: repl.c snap_record / snap_load (<session>.sys, until a compaction; off, --bare); test_gaps2_more C1 |
 | cli | --include-hook-events | missing | have | print.c f_hook |
 | cli | --init, --init-only, --maintenance (Setup hooks) | missing | have | repl_setup, print.c |
 | cli | --prompt-suggestions | missing | have | print.c suggestion |
 | cli | --mcp-config, --strict-mcp-config, --permission-prompt-tool | N/A | N/A | MCP |
-| cli | --chrome, --no-chrome, --ide, --desktop, --cloud, --remote, --teleport, --remote-control, --environment, --ref, --bg, --exec, --tmux, --worktree, --teammate-mode, --channels, --plugin-dir, --plugin-url, --from-pr, --restricted, --ax-screen-reader, --advisor | N/A | N/A | browser, IDE, cloud, background supervisor, git worktrees, plugins, PR hosts, evaluation harness, screen reader |
+| cli | --chrome, --no-chrome, --ide, --desktop, --cloud, --remote, --teleport, --remote-control, --environment, --ref, --bg, --exec, --tmux, --worktree, --teammate-mode, --channels, --plugin-dir, --plugin-url, --from-pr, --restricted, --ax-screen-reader | N/A | N/A | browser, IDE, cloud, background supervisor, git worktrees, plugins, PR hosts, evaluation harness, screen reader |
 | cli | subcommands update, install, gateway, agents, attach, logs, respawn, rm, stop, daemon, auto-mode, remote-control, self-hosted-runner, setup-token, ultrareview, plugin, mcp, import | N/A | N/A | Node installer, background sessions, cloud, OAuth |
+| cli | --advisor MODEL | N/A | have | gaps2: cli.c, refused at launch when it cannot advise the model; test_gaps2_more V1 |
 | cli | subcommands doctor, auth status / login / logout, purge | missing | have | print.c print_subcommand |
 | headless | stream-json: subagent messages (parent_tool_use_id) | missing | have | print.c f_sub |
 | headless | stream-json input: image / document blocks | missing | have | base64 passed through (decided over N/A) |
@@ -175,16 +177,16 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | tool | Agent (declared as Task) | partial | have | rules and matchers naming Agent cover it (config.c tool_covers, hooks.c) |
 | tool | Agent: disallowedTools, maxTurns, effort, skills, permissionMode | partial | have | subagent.c agent_run |
 | tool | Agent: background, resume via SendMessage | missing | N/A | one task, no threads: an agent runs to its end |
-| tool | Agent: nested subagents | missing | missing | not built (an agent has no Task tool here) |
+| tool | Agent: nested subagents | missing | have | gaps2: subagent.c (depth, CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH); test_gaps2_tools T1 |
 | tool | AskUserQuestion | have | have | tools.c |
 | tool | Bash | have | have | tools.c run_bash |
 | tool | Bash: 2-minute default, BASH_DEFAULT_ / BASH_MAX_TIMEOUT_MS | partial | have | repl.c, tools.c |
 | tool | Bash: cd persists | missing | have | tools.c cd_line |
 | tool | Bash: read-only commands without a question | missing | have | tools.c bash_read_only |
-| tool | Bash: output cap; head+tail on failure | partial | partial | the cap is bashOutputMaxChars / BASH_MAX_OUTPUT_LENGTH now; only the head is kept (sys.h run reads the start) |
-| tool | Bash: moved to the background at its time limit | missing | missing | not built |
+| tool | Bash: output cap; head+tail on failure | partial | have | gaps2: shells.c shells_run_fg (a polled job: head and tail; large output kept as a file); test_gaps2_tools T3 |
+| tool | Bash: moved to the background at its time limit | missing | have | gaps2: shells.c (sleep / Wait excepted; --bare, CLAUDE_CODE_DISABLE_BACKGROUND_TASKS stop it); test_gaps2_tools T2 |
 | tool | Edit, Write, MultiEdit | have | have | tools.c |
-| tool | Edit: relaxed stale check, a Bash cat counts as a read | missing | missing | not built |
+| tool | Edit: relaxed stale check, a Bash cat counts as a read | missing | have | gaps2: tools.c rs_check_edit, bash_read_note; test_gaps2_tools T4 |
 | tool | Read | have | have | tools.c run_read |
 | tool | Read: images and PDFs | missing | have | tools.c read_media |
 | tool | Read: notebooks | N/A | N/A | no Jupyter |
@@ -192,16 +194,17 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | tool | Grep/Glob: .gitignore | N/A | N/A | no git |
 | tool | WebFetch | have | have | webfetch.c |
 | tool | WebFetch: 15-minute cache | missing | have | webfetch.c cache_find |
-| tool | WebFetch: preapproved domains, localhost refusal, http -> https | missing | missing | not built |
+| tool | WebFetch: preapproved domains, localhost refusal, http -> https | missing | have | gaps2: webfetch.c; the host list is Claude Code's shipped one (UNVERIFIED: the docs do not list it); http kept when the URL names its own port (deviation); test_gaps2_tools T5 |
 | tool | WebSearch | have | have | the API's server tool |
-| tool | WebSearch: allowed / blocked domains | missing | missing | not built |
+| tool | WebSearch: allowed / blocked domains | missing | have | gaps2: the client WebSearch tool, the server tool in a side request (webfetch.c websearch_run), the session cap; test_gaps2_tools T6 |
 | tool | EnterPlanMode, ExitPlanMode, TodoWrite, Skill | have | have | tools.c |
-| tool | TaskCreate/Get/List/Update, TaskOutput/TaskStop, Monitor, Cron*, ScheduleWakeup | missing | missing | not built (TodoWrite, BashOutput, KillShell are the older ones) |
+| tool | TaskCreate/Get/List/Update, TaskStop, Monitor, CronCreate/Delete/List | missing | have | gaps2: tasks.c, shells.c, sched.c (TaskOutput: removed in Claude Code, Read of the output file instead); test_gaps2_tools T7-T9 |
+| tool | ScheduleWakeup (/loop's self-paced mode) | missing | missing | goes with /loop, not built; the wake hook in tui.c it needs exists now (sched.c) |
 | tool | NotebookEdit, PowerShell, LSP, worktrees, MCP resource tools, ToolSearch, Artifact, RemoteTrigger, PushNotification, SendUserFile, SendFeedback, Workflow, ListAgents | N/A | N/A | Jupyter, pwsh, language servers, git, MCP, claude.ai |
 | rules | Bash(cmd *), Read/Edit globs, deny > ask > allow | have | have | config.c |
 | rules | Agent(x) | partial | have | config.c tool_covers |
 | rules | ~/ in path rules | missing | have | config.c path_match (HOME, else SYS:) |
-| rules | an Edit allow grants Read; a Read deny blocks Edit | missing | missing | not built |
+| rules | an Edit allow grants Read; a Read deny blocks Edit | missing | have | gaps2: config.c rule_match; test_claude_config, test_gaps2_tools T10 |
 
 ## 5. Hooks (hooks.md)
 
@@ -213,33 +216,33 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | event | Notification | partial | have | notification_type permission_prompt, idle_prompt |
 | event | PermissionRequest, PostToolUseFailure, SubagentStart, PostCompact, StopFailure, UserPromptExpansion, CwdChanged, DirectoryAdded | missing | have | policy.c; test_gaps_hooks |
 | event | PreModelSwitch, PostModelSwitch, InstructionsLoaded, PostToolBatch, ConfigChange, Setup | missing | have | policy.c; test_gaps_more |
-| event | FileChanged, MessageDisplay | missing | missing | not built (a file watch: dos notify) |
+| event | FileChanged, MessageDisplay | missing | have | gaps2: watch.c (polled between rounds and turns, 2 s), repl.c md_batch; test_gaps2_hooks H5 H6 |
 | event | PermissionDenied, TaskCreated, TaskCompleted, TeammateIdle, WorktreeCreate/Remove, Elicitation* | N/A | N/A | auto mode, task tools, teams, worktrees, MCP |
 | config | user / project / local; matchers | have | have | config.c |
 | config | matcher rules (exact list, regex unanchored) | partial | have | hooks.c hooks_match + regex.c |
 | config | `if` | missing | have | hooks.c |
 | config | type command | have | have | |
 | config | type prompt | missing | have | hooks.c prompt_hook (Haiku) |
-| config | types agent, http | missing | missing | not built |
+| config | types agent, http | missing | have | gaps2: hooks.c model_hook (a subagent with Read/Grep/Glob), http_hook (POST through the transport, allowedEnvVars); test_gaps2_hooks H1 H2 |
 | config | timeout (600 s command, 30 s prompt) | partial | have | config.c |
 | config | disableAllHooks | missing | have | |
 | config | CLAUDE_PROJECT_DIR | missing | have | hooks.c project_cmd |
 | config | CLAUDE_ENV_FILE | missing | have | policy.c env_file |
 | config | statusMessage, once | missing | have | hooks.c |
-| config | async / asyncRewake | missing | missing | not built (no background hook runs) |
+| config | async / asyncRewake | missing | have | gaps2: hooks.c async_hook (a background job, its answer on a later round or turn); test_gaps2_hooks H3 |
 | config | the same handler from several files once | missing | have | config.c hooks_of |
-| config | hooks in skill / agent frontmatter | missing | missing | not built |
-| config | workspace trust before project hooks | missing | missing | not built |
+| config | hooks in skill / agent frontmatter | missing | have | gaps2: commands.c YAML to JSON, policy.c pol_skill_hooks / pol_agent_hooks (Stop as SubagentStop, once); test_gaps2_hooks H4 |
+| config | workspace trust before project hooks | missing | have | gaps2: trust.c, repl.c repl_trust (asked once per folder, inherited by subfolders, kept in <home>/claude.json; print mode: a warning, project allow rules wait); test_gaps2_hooks H9 |
 | config | /hooks | have | have | |
 | input | session_id, transcript_path, cwd, hook_event_name, stop_hook_active, tool_response, trigger | have | have | |
 | input | permission_mode, tool_use_id | missing | have | policy.c tool_event |
-| input | Stop's last_assistant_message, background_tasks | missing | missing | not built |
+| input | Stop's last_assistant_message, background_tasks | missing | have | gaps2: policy.c stop_members (+ session_crons); test_gaps2_tools H7 |
 | exit | 0 / 2 / other; JSON read on every exit code | partial | have | hooks.c |
 | json | decision/reason, permissionDecision, continue:false, systemMessage, additionalContext (PreToolUse too) | partial | have | hooks.c, policy.c |
 | json | updatedInput (PreToolUse), updatedToolOutput (PostToolUse), terminalSequence | missing | have | |
 | json | SessionStart sessionTitle, initialUserMessage, reloadSkills | missing | have | |
-| json | SessionStart watchPaths, permissionDecision defer | missing | missing | not built |
-| json | PermissionRequest updatedInput | missing | partial | allow/deny honoured; the input is not replaced |
+| json | SessionStart watchPaths, permissionDecision defer | missing | have | gaps2: hooks.c json_answer, print.c tool_deferred + resume; test_gaps2_hooks H5 H8 |
+| json | PermissionRequest updatedInput | missing | have | gaps2: policy.c pol_call runs the call again with it; test_gaps2_hooks H10 |
 | stop | Stop cap 8 (CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) | partial | have | repl.c stop_cap |
 
 ## 6. Settings, memory (settings.md, memory.md)
@@ -256,10 +259,10 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | keys | attribution, includeGitInstructions, spinnerTipsEnabled | N/A | N/A | git commit trailers; there are no spinner tips |
 | keys | plugins, sandbox, managed-only keys | N/A | N/A | |
 | env | ANTHROPIC_MODEL, BASH_DEFAULT_TIMEOUT_MS, BASH_MAX_TIMEOUT_MS, BASH_MAX_OUTPUT_LENGTH, CLAUDE_CODE_SIMPLE, CLAUDE_CODE_AUTO_COMPACT_WINDOW, CLAUDE_CODE_STOP_HOOK_BLOCK_CAP, CLAUDE_CODE_DISABLE_AUTO_MEMORY | missing | have | |
-| env | the other CLAUDE_CODE_* variables | missing | missing | not built |
+| env | the other CLAUDE_CODE_* variables | missing | have | gaps2: repl.c repl_env (one table, the list in its comment); not built: CLAUDE_CODE_SHELL_PREFIX, DISABLE_ATTACHMENTS, DISABLE_TERMINAL_TITLE (see the gaps2 ledger); test_gaps2_more S2 |
 | perm | "Yes, and don't ask again" kept in settings.local.json | partial | have | ui.c ASK_PROJECT, policy.c pol_keep_rule |
 | reload | settings read again when a file changes | missing | have | repl.c settings_changed (+ ConfigChange) |
-| warn | a warning for one malformed entry | missing | missing | not built |
+| warn | a warning for one malformed entry | missing | have | gaps2: config.c cfg_warn, Settings Warning at the start, /doctor; test_gaps2_more S1 |
 | mem | user, ancestors, project, .claude/CLAUDE.md, CLAUDE.local.md, AMIGA.md, nested on read, @imports | have | have | memory.c |
 | mem | CLAUDE.local.md in ancestors and nested directories | missing | have | memory.c dir_files |
 | mem | AGENTS.md only where there is no CLAUDE.md | partial | have | memory.c dir_files |
@@ -267,7 +270,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | mem | .claude/rules, ENVARC:Claude/rules, paths: | missing | have | memory.c rules_in, mem_rules |
 | mem | claudeMdExcludes | missing | have | |
 | mem | auto memory (MEMORY.md) | missing | have | memory.c mem_auto |
-| mem | import depth 4, backslash-escaped spaces, the external-import dialog | partial | partial | depth 5; no escaped spaces; no dialog |
+| mem | import depth 4, backslash-escaped spaces, the external-import dialog | partial | have | gaps2: memory.c imports, repl.c repl_ext_imports; test_gaps2_more M1 |
 
 ## 7. Subagents, skills, output styles, status line
 
@@ -277,7 +280,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | agent | built-ins statusline-setup, claude-code-guide, claude | missing | have | subagent.c builtins |
 | agent | frontmatter name, description, tools, model | have | have | commands.c |
 | agent | disallowedTools, maxTurns, effort, skills, permissionMode, initialPrompt | missing | have | commands.c, subagent.c, cli.c |
-| agent | hooks, memory, color | missing | missing | not built |
+| agent | hooks, memory, color | missing | have | gaps2: subagent.c agent_memory, policy.c pol_agent_hooks, ui.c name_sgr; test_gaps2_more A1, test_gaps2_hooks H4 |
 | agent | background, isolation, mcpServers | N/A | N/A | threads, worktrees, MCP |
 | agent | CLAUDE.md for agents but Explore / Plan | missing | have | subagent.c gets_memory |
 | agent | --agents JSON, "agent" setting | missing | have | |
@@ -289,7 +292,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | skill | paths: | missing | have | policy.c skills_for |
 | skill | nested .claude/skills | missing | have | policy.c skills_for |
 | skill | commands in a subdirectory as dir:name | missing | have | commands.c load_dir_as |
-| skill | hooks; skillOverrides; disableSkillShellExecution | missing | missing | not built |
+| skill | hooks; skillOverrides; disableSkillShellExecution | missing | have | gaps2: policy.c pol_tools / ext_skill, commands.c; test_gaps2_more A2, test_gaps2_hooks H4 |
 | skill | bundled skills | missing | partial | eight as prompts; the others N/A (see section 1) |
 | style | Default, Explanatory, Learning, Proactive, Concise | partial | have | commands.c |
 | style | keep-coding-instructions; outputStyle case-sensitive | partial | have | repl.c repl_system, repl_load |
@@ -325,10 +328,19 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 
 ## Counts
 
-247 rows (a row may group several features of one kind; the counts are rows).
+249 rows (a row may group several features of one kind; the counts are rows). Round 2 split
+two rows: --advisor out of the N/A flag list (built), ScheduleWakeup out of the task-tools row
+(with /loop, not built); the first round's counts are of the 247 rows then.
 
 | | have | partial | missing | N/A |
 |---|---|---|---|---|
-| Before (main e4bc55d) | 58 | 37 | 119 | 33 |
-| After (feature/a4-gaps) | 173 | 8 | 32 | 34 |
+| Before (main e4bc55d), 247 rows | 58 | 37 | 119 | 33 |
+| After (feature/a4-gaps), 247 rows | 173 | 8 | 32 | 34 |
+| After round 2 (feature/a4-gaps2), 249 rows | 200 | 2 | 13 | 34 |
+
+Left after round 2: the 13 missing and the 2 partial rows are the input branch's (keys, vim,
+/color, /focus, /keybindings, the box's suggestions, @agent-name, /add-dir's Tab suggestions,
+--allow-dangerously-skip-permissions in the Shift+Tab cycle), the menu timer
+(askUserQuestionTimeout), /loop with ScheduleWakeup, the session recap, and the bundled skills
+that stay N/A.
 

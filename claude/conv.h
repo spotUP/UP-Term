@@ -52,6 +52,8 @@ typedef struct cl_opts {
     const char *tools;          /* the tools array JSON, "" none */
     int no_tools;               /* tool_choice none: the tools stay listed (the
                                  * cached prefix stays the same), none is called */
+    int no_thinking;            /* A4 gaps 2: no thinking parameter (CLAUDE_CODE_DISABLE_THINKING) */
+    const char *extra;          /* ... a JSON object merged into the body (CLAUDE_CODE_EXTRA_BODY), 0 none */
 } cl_opts;
 
 void conv_init(cl_conv *c);
@@ -77,6 +79,10 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out);
 #define CAP_EFFORT   1
 #define CAP_ADAPTIVE 2
 int conv_caps(const char *model);
+/* /advisor (A4 gaps 2): may adv advise main? 0 yes; 1 it ranks below main
+ * (Claude Code does not attach it); -1 never (an unknown model, a main
+ * model without the advisor, Haiku as the advisor) */
+int conv_advisor_ok(const char *main, const char *adv);
 /* the anthropic-beta header for a model ("" none): server-side
  * fallbacks where the model takes them */
 const char *conv_beta(const char *model);

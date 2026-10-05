@@ -55,7 +55,10 @@ enum {
 /* The user's answer to a permission question. ASK_STOP: no, and the user
  * will tell Claude what to do instead -- this call and the rest of its
  * round are not run, and the turn ends after their results (stop is set). */
-enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP, ASK_PROJECT };
+enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP, ASK_PROJECT, ASK_RERUN };
+/* ASK_RERUN (A4 gaps 2): yes, with another input (a PermissionRequest
+ * hook's updatedInput): the call writes no result and sets rerun; the
+ * caller runs it again with the new input */
 /* ASK_PROJECT (A4 gaps): yes, and don't ask again in this project -- the
  * asker keeps a rule in .claude/settings.local.json and answers ASK_ONCE */
 
@@ -195,9 +198,20 @@ typedef struct cl_tools {
     long max_searches;          /* CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION, 0: 200 */
     char advisor[64];           /* the advisor server tool's model ("" none, /advisor) */
     int run_id;                 /* a subagent's run (its background tasks end with it), 0 the conversation */
+    int rerun;                  /* the question was answered ASK_RERUN: run the call again (pol_call) */
     const char *home;           /* the user's directory (ENVARC:Claude): an agent's user-scope memory */
     int auto_memory;            /* auto memory is on (an agent's memory: field needs it) */
     char mem_dir[300];          /* inside an agent with memory: its directory (Read/Write/Edit free there) */
+    /* the environment variables the tools take (the REPL's repl_env) */
+    char sub_model[64];         /* CLAUDE_CODE_SUBAGENT_MODEL, "" none */
+    int sub_force;              /* CLAUDE_CODE_SUBAGENT_MODEL_FORCE: it wins over everything */
+    int no_fetch;               /* CLAUDE_CODE_DISABLE_WEB_FETCH */
+    long fetch_ttl_ms;          /* CLAUDE_CODE_WEBFETCH_CACHE_TTL_MS, 0: 15 minutes */
+    long fetch_deadline_ms;     /* CLAUDE_CODE_WEBFETCH_DEADLINE_MS, 0 none */
+    int no_cd_keep;             /* CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: a cd does not last */
+    long read_max;              /* CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS * 4: Read's whole-file cap, 0 256 KB */
+    int no_monitor;             /* CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: no Monitor (Claude Code) */
+    int no_explore_plan;        /* CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS */
     /* optional: a subagent's frontmatter hooks registered while it runs
      * (on 1 at its start, 0 at its end; run is its run_id) */
     void (*agent_hooks)(void *u, const struct cl_agent *a, int run, int on);

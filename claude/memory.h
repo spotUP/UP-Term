@@ -6,7 +6,8 @@
  * down, then the root itself -- CLAUDE.md, AMIGA.md (what /init writes on
  * the Amiga), AGENTS.md, .claude/CLAUDE.md -- and CLAUDE.local.md (the
  * private one). A file may import others with @path (relative to it,
- * ~/ the user's directory, depth 5, each file once); imports outside code
+ * ~/ the user's directory, four hops deep, each file once; "\ " is a space
+ * in a name, a quoted name is not imported); imports outside code
  * blocks and spans only, and only names of files that exist.
  *
  * A4 gaps: block-level HTML comments (<!-- -->, outside code blocks) are
@@ -31,7 +32,7 @@
 #define MEM_RULES 32
 #define MEM_AUTO_LINES 200
 #define MEM_FILE_MAX (64L * 1024)
-#define MEM_DEPTH 5
+#define MEM_DEPTH 4                 /* Claude Code: imports four hops deep */
 
 enum { MEM_USER, MEM_PROJECT, MEM_LOCAL, MEM_IMPORT, MEM_NESTED, MEM_RULE, MEM_AUTO };
 
@@ -58,6 +59,14 @@ typedef struct cl_memory {
     cl_memrule *rules;          /* the path-scoped rules not yet loaded */
     int nrules;
     char auto_dir[300];         /* auto memory's directory ("" off) */
+    /* A4 gaps 2: external imports -- an @import in a project's memory file
+     * that resolves outside the start directory loads only once approved
+     * (Claude Code's dialog); the user's own files import freely */
+    int ext_ok;                 /* 1 approved; 0 not asked, 2 declined: held back (set before mem_load) */
+    char ext_list[600];         /* the external imports held back, a line each */
+    int next;                   /* their count */
+    int in_user;                /* loading a user-scope file (its imports are not external) */
+    char root[300];
 } cl_memory;
 
 void mem_init(cl_memory *m);

@@ -142,6 +142,9 @@ const char *cfg_file(const cl_settings *s, int src);
  * valid), or removed (value 0); the file is created when missing, its
  * other keys kept as they were: 0, -1. */
 int cfg_write_key(cl_sys *sys, const char *file, const char *key, const char *value);
+/* A4 gaps 2: a member of a top-level object key set (skillOverrides.NAME),
+ * the object's other members kept: 0, -1 */
+int cfg_write_sub(cl_sys *sys, const char *file, const char *obj, const char *key, const char *value);
 /* A rule added to (add 1) or removed from (add 0) permissions.<allow|ask|
  * deny> of a settings file: 0, -1 (also -1: not there to remove). */
 int cfg_write_rule(cl_sys *sys, const char *file, int kind, const char *rule, int add);

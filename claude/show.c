@@ -351,6 +351,8 @@ void show_tool(cl_show *s, int tool, const char *in, long inn, const char *what)
         free(path);
     }
     jw_rawz(&s->head, BOLD);
+    if (s->name_sgr)
+        jw_rawz(&s->head, s->name_sgr);    /* a subagent's color (its frontmatter) */
     jw_rawz(&s->head, show_name(tool));
     jw_rawz(&s->head, SGR0 "(");
     if (args && *args)

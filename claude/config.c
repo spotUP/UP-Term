@@ -727,6 +727,36 @@ int cfg_write_key(cl_sys *sys, const char *file, const char *key, const char *va
     return rc;
 }
 
+int cfg_write_sub(cl_sys *sys, const char *file, const char *obj, const char *key, const char *value)
+{
+    char *b;
+    jv o, sub;
+    jw w, s;
+    int rc;
+    if (read_obj(sys, file, &b, &o))
+        return -1;
+    if (!json_get(o, obj, &sub) || json_type(sub) != J_OBJ) {
+        sub.p = "{}";
+        sub.n = 2;
+    }
+    jw_init(&s);
+    obj_with(sub, key, value, &s, "  ");
+    jw_init(&w);
+    if (!s.oom) {
+        /* the inner object written whole as the outer key's value */
+        while (s.n && (s.p[s.n - 1] == '\n' || s.p[s.n - 1] == ' '))
+            s.p[--s.n] = 0;
+        obj_with(o, obj, s.p, &w, "");
+    }
+    jw_raw(&w, "\n", 1);
+    free(b);
+    make_parent(sys, file);
+    rc = w.oom || s.oom ? -1 : sys->write(sys->u, file, w.p, w.n);
+    jw_free(&w);
+    jw_free(&s);
+    return rc;
+}
+
 int cfg_write_rule(cl_sys *sys, const char *file, int kind, const char *rule, int add)
 {
     char *b;

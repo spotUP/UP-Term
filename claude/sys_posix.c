@@ -229,7 +229,7 @@ static int x_bg_read(void *u, long job, long from, char *out, long cap, long *ou
     }
     j = &p->jobs[job];
     reap(j);                        /* before the read: what it wrote before it ended is all there */
-    *running = !j->ended;
+    *running = !j->ended || p->bg_hold;
     *rc = j->rc;
     *outn = 0;
     f = fopen(j->file, "rb");

@@ -122,17 +122,24 @@ static void imports(cl_memory *m, cl_sys *sys, const char *file, const char *s, 
         }
         for (j = i; !fence && j < e; j++) {
             char name[300], full[300];
-            long k, l;
+            long k, l, q;
             if (s[j] == '`')
                 tick = !tick;
             if (tick || s[j] != '@' || (j > i && s[j - 1] != ' ' && s[j - 1] != '\t' && s[j - 1] != '('))
                 continue;
-            for (k = j + 1; k < e && s[k] != ' ' && s[k] != '\t' && s[k] != '\r'; k++)
+            if (j + 1 < e && (s[j + 1] == '"' || s[j + 1] == '\''))
+                continue;           /* Claude Code: a quoted path is not imported */
+            /* the name ends at a space, unless a backslash escapes it */
+            for (k = j + 1; k < e && !((s[k] == ' ' || s[k] == '\t') && s[k - 1] != '\\') && s[k] != '\r'; k++)
                 ;
-            l = k - j - 1;
-            if (l <= 0 || l >= (long)sizeof(name))
+            l = 0;
+            for (q = j + 1; q < k && l < (long)sizeof(name) - 1; q++) {
+                if (s[q] == '\\' && q + 1 < k && s[q + 1] == ' ')
+                    continue;       /* "\ " is a space */
+                name[l++] = s[q];
+            }
+            if (l <= 0 || q < k)
                 continue;
-            memcpy(name, s + j + 1, (size_t)l);
             name[l] = 0;
             /* trailing punctuation is the sentence's, unless the name has it */
             for (;;) {
@@ -142,7 +149,16 @@ static void imports(cl_memory *m, cl_sys *sys, const char *file, const char *s, 
                 else
                     ok = path_join(dir, name, full, sizeof(full)) == 0;
                 if (ok && sys->kind(sys->u, full) == 1) {
-                    if (!seen(m, full))
+                    if (!m->in_user && m->root[0] && !path_inside(m->root, full) && m->ext_ok != 1) {
+                        /* an external import from a project's file: held back until approved */
+                        if (!strstr(m->ext_list, full) && (long)(strlen(m->ext_list) + strlen(full)) <
+                                                                (long)sizeof(m->ext_list) - 2) {
+                            if (m->ext_list[0])
+                                cl_cat(m->ext_list, "\n", sizeof(m->ext_list));
+                            cl_cat(m->ext_list, full, sizeof(m->ext_list));
+                            m->next++;
+                        }
+                    } else if (!seen(m, full))
                         add_file(m, sys, full, MEM_IMPORT, depth + 1, out);
                     break;
                 }
@@ -188,7 +204,14 @@ static int add_file(cl_memory *m, cl_sys *sys, const char *path, int kind, int d
     jw_rawz(out, label(kind));
     jw_rawz(out, "):\n\n");
     jw_raw(out, b, n);
-    imports(m, sys, path, b, n, depth, out);
+    {
+        /* the user's own files (ENVARC:Claude) import outside the start directory freely */
+        int was = m->in_user;
+        if (kind == MEM_USER || (kind != MEM_IMPORT && m->home && *m->home && path_inside(m->home, path)))
+            m->in_user = 1;
+        imports(m, sys, path, b, n, depth, out);
+        m->in_user = was;
+    }
     free(b);
     return 1;
 }
@@ -227,6 +250,9 @@ int mem_load(cl_memory *m, cl_sys *sys, const char *home, const char *root)
     char anc[8][300], p[300];
     int na = 0, i, got = 0;
     m->home = home;
+    cl_copy(m->root, root, sizeof(m->root));
+    m->ext_list[0] = 0;
+    m->next = 0;
     if (home && *home)
         got += add_in(m, sys, home, "CLAUDE.md", MEM_USER, &m->text);
     /* the ancestors, the volume's root first */

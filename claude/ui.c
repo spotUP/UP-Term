@@ -126,15 +126,23 @@ void ui_plain(cl_ui *u, cl_render *r)
 
 void ui_tool(cl_ui *u, int tool, const char *name, const char *what, const char *in, long inn)
 {
+    const char *color = u->name_sgr;     /* a subagent's color (its frontmatter's), once */
+    u->name_sgr = 0;
     if (u->tui) {
+        u->show->name_sgr = color;
         show_tool(u->show, tool, in, inn, what);
+        u->show->name_sgr = 0;
         return;
     }
     ui_status_clear(u);
     if (!u->col0)
         out(u, "\n", 1);
     ui_puts(u, BOLD "Tool " OFF);
+    if (color)
+        ui_puts(u, color);
     ui_puts(u, name);
+    if (color)
+        ui_puts(u, OFF);
     ui_puts(u, "  ");
     ui_puts(u, what);
     ui_puts(u, "\n");

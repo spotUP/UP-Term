@@ -19,6 +19,8 @@ typedef struct sys_posix {
     long clipn;
     long fake_now;              /* now() answers this when set (the cron tests) */
     int brk;                    /* pause() reports a Ctrl+C once (the tests) */
+    int bg_hold;                /* background jobs reported running whatever the process does (a test
+                                 * on a fake clock that must not race a real one) */
 } sys_posix;
 
 void sys_posix_init(sys_posix *p, cl_sys *s);

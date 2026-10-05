@@ -451,7 +451,7 @@ static int declared(cl_tools *t, int i)
     case T_TASK:
         return t->depth < (t->max_depth > 0 ? t->max_depth : 3) && t->api.send != 0;
     case T_WEB_FETCH:
-        return t->web && t->api.send;
+        return t->web && t->api.send && !t->no_fetch;
     case T_WEB_SEARCH:
         return t->web_search && t->api.send;
     case T_TODO_WRITE:
@@ -464,7 +464,7 @@ static int declared(cl_tools *t, int i)
     case T_TASK_STOP:
         return !t->no_background && t->sys && t->sys->bg_start != 0;
     case T_MONITOR:
-        return !t->no_background && t->sys && t->sys->bg_start != 0;
+        return !t->no_background && !t->no_monitor && t->sys && t->sys->bg_start != 0;
     case T_CRON_CREATE:
     case T_CRON_DELETE:
     case T_CRON_LIST:
@@ -1143,6 +1143,10 @@ int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, in
     if (!perm_must_ask(&t->perm, tool, outside))
         return 0;
     ans = t->ask ? t->ask(t->u, defs[tool].name, what, outside) : ASK_NO;
+    if (ans == ASK_RERUN) {
+        t->rerun = 1;               /* allowed with another input: the caller runs it again */
+        return -1;
+    }
     if (ans == ASK_STOP) {
         t->stop = 1;
         tl_error(t, out, id, "the user stopped this tool call and will tell you what to do differently; "
@@ -1299,7 +1303,7 @@ static void run_read(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "File does not exist: ", full);
         return;
     }
-    rc = t->sys->read(t->sys->u, full, media_name(full) ? READ_MEDIA : part ? READ_PART : READ_WHOLE, &b, &n);
+    rc = t->sys->read(t->sys->u, full, media_name(full) ? READ_MEDIA : part ? READ_PART : (t->read_max > 0 ? t->read_max : READ_WHOLE), &b, &n);
     if (rc == SYS_TOO_BIG) {
         tl_error(t, out, id, part ? "the file is larger than 2 MB: Grep it, or read it with Bash (Type with a range)"
                                   : "the file is larger than 256 KB: read it in parts with offset and limit, "
@@ -1322,7 +1326,7 @@ static void run_read(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "this is a binary file, not text: ", full);
         return;
     }
-    if (n > READ_WHOLE && !part) {
+    if (n > (t->read_max > 0 ? t->read_max : READ_WHOLE) && !part) {
         /* read whole for its name (an image's), but it is text: the text cap holds */
         free(b);
         tl_error(t, out, id, "the file is larger than 256 KB: read it in parts with offset and limit, "
@@ -1876,7 +1880,7 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         int err = 0;
         jw_init(&res);
         r = shells_run_fg(t, cmd, shown ? shown : cmd, desc ? desc : "", secs, &res, &rc, &err);
-        if (r == 0 && rc == 0 && is_cd) {
+        if (r == 0 && rc == 0 && is_cd && !t->no_cd_keep) {
             char full[512];
             if (path_join(t->cwd[0] ? t->cwd : t->root, cddir, full, sizeof(full)) == 0 &&
                 t->sys->kind(t->sys->u, full) == 2 && t->sys->canon(t->sys->u, full, t->cwd, sizeof(t->cwd)))
@@ -1904,7 +1908,7 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
     if (r == 0 && rc == 0) {
         /* a bare cd: the directory the next commands run in */
         char full[512];
-        if (is_cd && path_join(t->cwd[0] ? t->cwd : t->root, cddir, full, sizeof(full)) == 0 &&
+        if (is_cd && !t->no_cd_keep && path_join(t->cwd[0] ? t->cwd : t->root, cddir, full, sizeof(full)) == 0 &&
             t->sys->kind(t->sys->u, full) == 2 && t->sys->canon(t->sys->u, full, t->cwd, sizeof(t->cwd)))
             cl_copy(t->cwd, full, sizeof(t->cwd));
     }
@@ -2290,8 +2294,8 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
         tl_error(t, out, id, "No such tool available: ", name);
         return;
     }
-    if (!(t->allowed & (1ul << tool)) ||
-        (tool == T_TASK && t->depth >= (t->max_depth > 0 ? t->max_depth : 3))) {
+    if (!(t->allowed & (1ul << tool)) || (tool == T_TASK && t->depth >= (t->max_depth > 0 ? t->max_depth : 3)) ||
+        (tool == T_WEB_FETCH && t->no_fetch) || (tool == T_MONITOR && t->no_monitor)) {
         tl_error(t, out, id, "No such tool available here: ", name);
         return;
     }

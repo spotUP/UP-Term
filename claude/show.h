@@ -37,6 +37,7 @@ typedef struct cl_show {
     /* how often each part ran (the reachability test's sentinel) */
     long n_text, n_blocks, n_tools, n_diffs, n_think;
     const int *verbose;         /* --verbose / "verbose": results and diffs unfolded (0: folded) */
+    const char *name_sgr;       /* A4 gaps 2: the tool name's colour in the header (a subagent's), 0 none */
 } cl_show;
 
 void show_init(cl_show *s, cl_tui *t);

@@ -64,6 +64,11 @@ static void header(const page *p, const char *name, char *out, long cap)
 /* One request (GET, or a POST with a body and headers of its own): 0 with
  * the page, -1 with the reason in err, -2 stopped (Ctrl+C). idle_ms: how
  * long without a byte before it is given up. */
+/* WebFetch's deadline (CLAUDE_CODE_WEBFETCH_DEADLINE_MS): the tools whose
+ * clock counts and the moment, 0 none */
+static const cl_tools *dl_tools;
+static unsigned long dl_end;
+
 static int request(cl_net *net, const http_url *u, const char *post, long pn, const char *headers, page *p,
                    char *err, long cap, long idle_ms)
 {
@@ -129,6 +134,11 @@ static int request(cl_net *net, const http_url *u, const char *post, long pn, co
     jw_free(&head);
     for (;;) {
         long n = net->recv(net->u, buf, sizeof(buf), 250);
+        if (dl_end && dl_tools && dl_tools->clock && dl_tools->clock(dl_tools->u) > dl_end) {
+            net->close(net->u);
+            cl_copy(err, "the page did not arrive before the deadline (CLAUDE_CODE_WEBFETCH_DEADLINE_MS)", cap);
+            return -1;
+        }
         if (n == NET_TIMEOUT) {
             idle += 250;
             if (idle < idle_ms)
@@ -337,7 +347,7 @@ static fentry *cache_find(cl_tools *t, const char *url)
     if (!c || !t->clock)
         return 0;
     for (i = 0; i < CACHE_N; i++)
-        if (c[i].md && !strcmp(c[i].url, url) && now - c[i].ms < CACHE_MS)
+        if (c[i].md && !strcmp(c[i].url, url) && now - c[i].ms < (t->fetch_ttl_ms > 0 ? (unsigned long)t->fetch_ttl_ms : CACHE_MS))
             return &c[i];
     return 0;
 }
@@ -462,7 +472,12 @@ void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
     }
     for (hop = 0;; hop++) {
         page_free(&p);
+        /* Claude Code: the page and its redirects within five minutes (CLAUDE_CODE_WEBFETCH_DEADLINE_MS) */
+        dl_tools = t;
+        if (!hop)
+            dl_end = t->clock && t->fetch_deadline_ms > 0 ? t->clock(t->u) + (unsigned long)t->fetch_deadline_ms : 0;
         rc = get(t->web, &u, &p, err, sizeof(err));
+        dl_tools = 0;
         if (rc == -2) {
             tl_error(t, out, id, "the user stopped the fetch (Ctrl+C)", 0);
             goto done;

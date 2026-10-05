@@ -90,6 +90,8 @@ typedef struct cl_cli {
     int hook_events;                        /* --include-hook-events */
     int suggestions;                        /* --prompt-suggestions */
     int no_dynamic;                         /* --exclude-dynamic-system-prompt-sections */
+    char advisor[64];                       /* --advisor MODEL (A4 gaps 2), "" none */
+    int snapshot;                           /* --system-prompt-snapshot: 1 on, 0 off, -1 not given */
     int sub;                                /* a subcommand: SUB_* (Claude doctor, auth ..., purge) */
     char sub_arg[256];                      /* its argument (purge's path) */
     int text;                               /* auth status --text */

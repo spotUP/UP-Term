@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 gaps round 2 -- the audit's "Not built here, possible" rows (C:Claude vs Claude Code docs)
 tags: [claude, a4, parity, audit, progress]
-status: draft
+status: implemented
 ---
 
 # A4 gaps 2 progress ledger
@@ -22,7 +22,7 @@ the main checkout's vendor/). Do not merge.
 Done = each row built, a host test in the CI glob (tests/test_claude_*.c via make test) driving it
 through repl_line / print_run, gate green, committed, the audit row updated.
 
-## Checklist (11 of 27)
+## Checklist (27 of 27)
 
 Tools
 - [x] T1 nested subagents (Task inside a subagent; CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH, 3 layers)
@@ -43,30 +43,30 @@ Tools
 - [x] T10 an Edit allow grants Read; a Read deny blocks Edit / Write
 
 Hooks
-- [ ] H1 type agent (a subagent with Read/Grep/Glob, ok/reason, 60 s)
-- [ ] H2 type http (POST through the transport; headers, allowedEnvVars; response handling)
-- [ ] H3 async hooks (async: true; results on the next turn)
-- [ ] H4 hooks in skill / agent frontmatter (skill: from its use on, once; agent: while it runs,
+- [x] H1 type agent (a subagent with Read/Grep/Glob, ok/reason, 60 s)
+- [x] H2 type http (POST through the transport; headers, allowedEnvVars; response handling)
+- [x] H3 async hooks (async: true; results on the next turn)
+- [x] H4 hooks in skill / agent frontmatter (skill: from its use on, once; agent: while it runs,
       Stop -> SubagentStop)
-- [ ] H5 FileChanged (matcher file list + watchPaths; change / add / unlink)
-- [ ] H6 MessageDisplay (screen: per batch of lines; print mode: once per message)
+- [x] H5 FileChanged (matcher file list + watchPaths; change / add / unlink)
+- [x] H6 MessageDisplay (screen: per batch of lines; print mode: once per message)
 - [x] H7 Stop's last_assistant_message, background_tasks, session_crons
-- [ ] H8 SessionStart / CwdChanged watchPaths; PreToolUse defer in print mode
-- [ ] H9 workspace trust: the first-run question per directory, remembered; hooks and project
+- [x] H8 SessionStart / CwdChanged watchPaths; PreToolUse defer in print mode
+- [x] H9 workspace trust: the first-run question per directory, remembered; hooks and project
       allow rules held until then; print mode: project allow rules need trust (warning)
-- [ ] H10 PermissionRequest's updatedInput
+- [x] H10 PermissionRequest's updatedInput
 
 Settings, agents, skills, CLI, memory
-- [ ] S1 a warning per malformed settings entry (screen at start; Claude doctor)
-- [ ] S2 the other CLAUDE_CODE_* variables that make sense (one table)
-- [ ] A1 agents' memory (user / project / local) and color
-- [ ] A2 skillOverrides, disableSkillShellExecution
-- [ ] A3 /skill-doctor's use counts; /skills' visibility toggle
-- [ ] A4 /simplify's agents (one after another on the Amiga, said in the skill)
-- [ ] C1 --system-prompt-snapshot (recorded on the first request, kept until a compaction)
-- [ ] M1 memory imports: depth 4, backslash-escaped spaces, quoted paths not imported, the
+- [x] S1 a warning per malformed settings entry (screen at start; Claude doctor)
+- [x] S2 the other CLAUDE_CODE_* variables that make sense (one table)
+- [x] A1 agents' memory (user / project / local) and color
+- [x] A2 skillOverrides, disableSkillShellExecution
+- [x] A3 /skill-doctor's use counts; /skills' visibility toggle
+- [x] A4 /simplify's agents (one after another on the Amiga, said in the skill)
+- [x] C1 --system-prompt-snapshot (recorded on the first request, kept until a compaction)
+- [x] M1 memory imports: depth 4, backslash-escaped spaces, quoted paths not imported, the
       external-import approval
-- [ ] V1 /advisor (the advisor_20260301 server tool: /advisor, advisorModel, --advisor,
+- [x] V1 /advisor (the advisor_20260301 server tool: /advisor, advisorModel, --advisor,
       CLAUDE_CODE_DISABLE_ADVISOR_TOOL) -- the docs describe it as a public API server tool,
       so it is built, not N/A
 
@@ -130,6 +130,58 @@ Settings, agents, skills, CLI, memory
   (running tasks: id, type shell|monitor, status, description, command), session_crons (id,
   schedule, recurring, prompt cut at 1000 with "... [+N chars]").
 
+- Hooks: an http hook POSTs the event's JSON through the same transport (cl_net, http.c);
+  header values interpolate only the variables named in allowedEnvVars (others become empty);
+  a 2xx with a JSON body is read as a command hook's answer, an empty 2xx is success, any other
+  status or a connection failure is a non-blocking error. An agent hook is a subagent with Read,
+  Grep, Glob (not on PermissionRequest) answering {"ok", "reason"}. async: true starts the command
+  as a background job; its answer (additionalContext / systemMessage) reaches Claude beside a
+  later round's results or as a turn of its own between turns.
+- Frontmatter hooks: YAML in the frontmatter converted to the settings' JSON (commands.c
+  yaml_json); a skill's from its first use to the session's end ("once" honoured only there); an
+  agent's while it runs, its Stop run as SubagentStop; a project agent's only in a trusted folder.
+- FileChanged: polled (2 s) between rounds and before a wait for a line -- no dos notify; the
+  matcher names files in the start directory, SessionStart / CwdChanged / FileChanged watchPaths
+  add absolute paths. MessageDisplay: the screen and the line mode hand batches of whole lines to
+  the hook and draw its displayContent instead; print mode runs it once per message (final).
+- defer: print mode only, and only when the round has one call (Claude Code); the run stops with
+  stop_reason tool_deferred and deferred_tool_use; --resume ID (no prompt) runs the pending call
+  through PreToolUse again and continues with CLAUDE_CODE_RESUME_PROMPT ("Continue from where you
+  left off." by default).
+- Workspace trust: asked at the first interactive start in a folder not trusted (nor inside one
+  that is); no ends the program before any hook; yes is kept in <home>/claude.json
+  projects[path].hasTrustDialogAccepted (the home directory: this session only). Print mode never
+  asks: hooks run, the project's allow rules and additionalDirectories wait, a warning on stderr.
+- PermissionRequest allow + updatedInput: the call runs again with the new input, the rules
+  deciding anew (a deny still wins); the conversation keeps the original tool_use.
+- Settings warnings: one line per skipped entry (file: what), shown at the start under "Settings
+  Warning" and in /doctor; the rest of the file stays in effect.
+- Env table: repl.c repl_env and its comment list every CLAUDE_CODE_* variable read. Not built,
+  with reasons: CLAUDE_CODE_SHELL_PREFIX (AmigaDOS has no wrapper convention; Execute takes the
+  line as is), CLAUDE_CODE_DISABLE_ATTACHMENTS (no @-file attachments outside input.c, the other
+  branch), CLAUDE_CODE_DISABLE_TERMINAL_TITLE (the window title is tui.c, other branch). The
+  SessionEnd 1.5 s budget (CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS) is not applied: hooks keep their
+  own timeouts.
+- Agents: memory user (<home>/agent-memory/NAME), project (.claude/agent-memory/NAME), local
+  (.claude/agent-memory-local/NAME); MEMORY.md (200 lines / 25 KB) in its prompt, Read/Write/Edit
+  there without a question; needs auto memory on. color: the call's header in that colour.
+- skillOverrides (on, name-only, user-invocable-only, off) in every settings file; /skills NAME
+  STATE writes settings.local.json. A skill Claude may not call is not listed to it, and the
+  Skill tool answers "Unknown skill". disableSkillShellExecution replaces !`cmd` in non-bundled
+  skills and commands with "[shell command execution disabled by policy]".
+- /skill-doctor: counts kept in <home>/skill-usage.json (a use = the Skill tool or /name), the
+  bundled skills not counted, the costliest first, the unused with a cost flagged.
+- /simplify: four review agents one after another (one Amiga task: no parallel agents), said in
+  the skill text.
+- --system-prompt-snapshot: the --system-prompt / --append-system-prompt text recorded with the
+  session (<session>.sys) on its first request and used by --continue / --resume until a
+  compaction; off uses each launch's flags; --bare records only with on.
+- Memory imports: four hops; "\ " is a space in a path; @"..." / @'...' and code spans are not
+  imports; an import from a project file resolving outside the start directory is held until the
+  dialog's yes (asked once per project, both answers kept in claude.json).
+- Tests on a fake clock with real processes: sys_posix.bg_hold reports background jobs running
+  so the screen's wiring test cannot race "Wait 2" (it flaked about 1 run in 8 under load).
+
 ## Log
 
 - c1 Phase A (T1-T10, H7) + the hook plumbing of phase B (types http/agent, async, frontmatter
@@ -141,6 +193,18 @@ Settings, agents, skills, CLI, memory
   unread edit off -- each fails the suite. Gate: make test (43 OK), make test-ref (149, 0
   failed), timeout 900 make amiga rc 0.
 
+- c2 Phase B/C (H1-H6, H8-H10, S1, S2, A1-A4, C1, M1, V1): claude_repl test_gaps2_hooks and
+  test_gaps2_more (print mode, line mode, repl_run with the trust and import dialogs; an http
+  hook's server stubbed on cl_net). The wiring test's 1-in-8 flake fixed (sys_posix.bg_hold).
+  Mutations, each failing the suite: agent hook, http hook, async, skill hooks, agent hooks,
+  FileChanged, MessageDisplay display, defer, trust "no", updatedInput rerun, settings warning,
+  EXTRA_BODY, agent memory, agent color, skillOverrides listing, no-shell, use counts (typed),
+  snapshot load, import depth 5, external import hold, advisor tool. Gate: make test (43 OK),
+  make test-ref (149, 0 failed), timeout 900 make amiga rc 0.
+
 ## Audit counts
 
-Before (main 54c537e): have 173, partial 8, missing 32, N/A 34.
+Before (main 54c537e): have 173, partial 8, missing 32, N/A 34 (247 rows).
+After (feature/a4-gaps2): have 200, partial 2, missing 13, N/A 34 (249 rows: --advisor split out
+of the N/A flag row, ScheduleWakeup out of the task-tools row). Counted from the tables' After
+column by script, not by grep of the counts row.

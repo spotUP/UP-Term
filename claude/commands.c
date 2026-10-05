@@ -638,9 +638,13 @@ static const char *const sk_simplify[] = {
     "Review the code changed in this session for cleanup, then apply the fixes yourself. The changed files are "
     "the ones you wrote or edited in this conversation; when there are none, or $ARGUMENTS names others, use "
     "those. ",
-    "Look for: helpers that already exist and should be reused instead of new code, code that can be simpler, "
-    "needless work (on this slow machine above all), and code at the wrong level. Quality only: do not hunt for "
-    "bugs. Make the edits, then list what you changed in a few lines.",
+    "Run four reviews with the Task tool (general-purpose agents), one after another -- Claude Code runs them in "
+    "parallel; this machine runs one agent at a time -- each given the file list and one question: (1) reuse: "
+    "helpers that already exist and should be used instead of new code; (2) simplification: code that can be "
+    "simpler; ",
+    "(3) efficiency: needless work (on this slow machine above all); (4) altitude: whether the change sits at the "
+    "right level of abstraction. Each reports findings with file and line, nothing else. Quality only: no hunt "
+    "for bugs. Then weigh the four reports, make the edits worth making, and list what you changed in a few lines.",
     0
 };
 static const char *const sk_update_config[] = {

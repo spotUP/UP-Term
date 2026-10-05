@@ -254,16 +254,21 @@ static void f_sub(void *u, const char *parent, int user, const char *json, long 
     jw *w = &st->line, blocks;
     jv v, b, x;
     jit it;
-    int first = 1, prompt = user && strcmp(st->sub_parent, parent) != 0;
+    int first = 1, prompt = user && strcmp(st->sub_parent, parent) != 0, fwd = st->c->fwd_sub;
     if (st->c->out != CLI_STREAM || json_parse(json, n, &v) || json_type(v) != J_ARR)
         return;
+    if (!fwd && st->r->sys->getenv) {
+        /* CLAUDE_CODE_FORWARD_SUBAGENT_TEXT: the flag's way for a harness that cannot pass it */
+        char e[8];
+        fwd = st->r->sys->getenv(st->r->sys->u, "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT", e, sizeof(e)) > 0 && strcmp(e, "0");
+    }
     if (prompt)
         cl_copy(st->sub_parent, parent, sizeof(st->sub_parent));
     jw_init(&blocks);
     jw_raw(&blocks, "[", 1);
     json_iter(v, &it);
     while (json_next(&it, 0, &b)) {
-        if (!prompt && !st->c->fwd_sub && json_get(b, "type", &x) &&
+        if (!prompt && !fwd && json_get(b, "type", &x) &&
             (json_streq(x, "text") || json_streq(x, "thinking") || json_streq(x, "redacted_thinking")))
             continue;
         if (!first)
@@ -537,12 +542,16 @@ static int answer(pst *st, const char *prompt, long pn, const char *blocks, long
     err[0] = 0;
     if (!z)
         return 10;
-    memcpy(z, prompt, (size_t)pn);
+    if (prompt)
+        memcpy(z, prompt, (size_t)pn);
     z[pn] = 0;
     r->turn_rc = TURN_OK;
+    r->defer_id[0] = 0;
     free(r->structured);
     r->structured = 0;
-    if (blocks)
+    if (!prompt)
+        repl_pending(r);            /* --resume of a deferred call: it runs, the turn goes on */
+    else if (blocks)
         repl_blocks(r, z, pn, blocks, bn);   /* images or documents: no command parsing */
     else
         repl_line(r, z);
@@ -615,7 +624,16 @@ static int answer(pst *st, const char *prompt, long pn, const char *blocks, long
             jw_str(w, res.p ? res.p : "", res.n);
         }
         jw_rawz(w, ",\"stop_reason\":");
-        if (r->n_responses != resp0 && r->st.stop_reason[0])
+        if (r->turn_rc == TURN_DEFERRED) {
+            /* PreToolUse defer: the pending call, for the caller to resume */
+            jw_rawz(w, "\"tool_deferred\",\"deferred_tool_use\":{\"id\":");
+            jw_strz(w, r->defer_id);
+            jw_rawz(w, ",\"name\":");
+            jw_strz(w, r->defer_name);
+            jw_rawz(w, ",\"input\":");
+            jw_rawz(w, r->defer_input && r->defer_input[0] ? r->defer_input : "{}");
+            jw_raw(w, "}", 1);
+        } else if (r->n_responses != resp0 && r->st.stop_reason[0])
             jw_strz(w, r->st.stop_reason);
         else
             jw_rawz(w, "null");
@@ -1019,6 +1037,13 @@ int print_run(cl_repl *r, cl_cli *c, cl_pout *p)
     st.t0 = w_ms(&st);
     st.seed = st.t0 ^ 0x5eedUL;
     st.base = r->conv;
+    repl_trust(r);                  /* print mode is never asked: an untrusted folder's allow rules wait */
+    if (r->trust_warn && p->err) {
+        static const char w[] = "Warning: this workspace has not been trusted: the allow rules and "
+                                "additionalDirectories of its .claude/settings.json were not used. Start Claude "
+                                "here once and trust the folder.\n";
+        p->err(p->u, w, (long)sizeof(w) - 1);
+    }
     if (repl_need_key(r))
         rc = early(&st, "Not logged in: no API key. Set ENV:ANTHROPIC_API_KEY, or start Claude and type /login.");
     else if (cli_session(c, r)) {
@@ -1074,7 +1099,9 @@ int print_run(cl_repl *r, cl_cli *c, cl_pout *p)
                     goto out;
                 }
             }
-            if (!in.n) {
+            if (!in.n && repl_has_pending(r))
+                rc = answer(&st, 0, 0, 0, 0);  /* a deferred call resumed: no prompt needed */
+            else if (!in.n) {
                 static const char none[] =
                     "Error: Input must be provided either through stdin or as a prompt argument when using --print\n";
                 if (p->err)

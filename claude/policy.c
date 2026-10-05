@@ -228,6 +228,26 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
         r->hooks.tool = r->hooks.input = 0;
         jw_free(&ex);
         shown(r, &h);
+        if (h.defer && !h.blocked) {
+            /* "defer" (Claude Code): print mode, one call in the round -- the
+             * run stops here, the call kept for a --resume; elsewhere ignored */
+            if (r->no_person && tl == &r->tools && r->round_ntools == 1) {
+                cl_copy(r->defer_id, id ? id : "", sizeof(r->defer_id));
+                cl_copy(r->defer_name, cfg_cc_tool(name), sizeof(r->defer_name));
+                free(r->defer_input);
+                r->defer_input = (char *)malloc((size_t)rawn + 1);
+                if (r->defer_input) {
+                    memcpy(r->defer_input, raw, (size_t)rawn);
+                    r->defer_input[rawn] = 0;
+                }
+                hookres_free(&h);
+                return 2;
+            }
+            if (r->debug && r->io->log) {
+                static const char m[] = "PreToolUse defer ignored: only print mode with one tool call defers\n";
+                r->io->log(r->io->u, m, (long)sizeof(m) - 1);
+            }
+        }
         if (h.stop)
             tl->stop = 1;           /* "continue": false -- Claude stops after this round */
         if (h.context.n) {
@@ -292,7 +312,23 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
             tl->cur_in = raw;
             tl->cur_inn = rawn;
             ans = repl_ask(r, tid, name, what, 0, 1);
-            if (ans == ASK_NO || ans == ASK_STOP) {
+            if (ans == ASK_RERUN && r->perm_upd.n && json_parse(r->perm_upd.p, r->perm_upd.n, &in) == 0) {
+                /* a PermissionRequest hook's updatedInput: the call goes on with it,
+                 * a deny rule still decides */
+                jw_reset(upd);
+                jw_raw(upd, r->perm_upd.p, r->perm_upd.n);
+                jw_reset(&r->perm_upd);
+                json_parse(upd->p, upd->n, &in);
+                raw = upd->p;
+                rawn = upd->n;
+                r->n_perm_rerun++;
+                if (cfg_decide(&r->cfg, name, in, r->tools.root, &which) == RULE_DENY) {
+                    answer(r, tl, out, id, name, raw, rawn, what, "Permission to use this tool has been denied.");
+                    return 1;
+                }
+                ans = ASK_ONCE;
+            }
+            if (ans == ASK_NO || ans == ASK_STOP || ans == ASK_RERUN) {
                 if (ans == ASK_STOP)
                     tl->stop = 1;
                 answer(r, tl, out, id, name, raw, rawn, what,
@@ -308,7 +344,8 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
     /* the file as it was, for /rewind */
     if (is_edit(cc) && !perm_refused(&tl->perm, tools_id(name) >= 0 ? tools_id(name) : T_WRITE) &&
         call_path(r, in, full, sizeof(full)) == 0)
-        cp_before_write(&r->cp, full);
+        if (!r->no_checkpoints)
+            cp_before_write(&r->cp, full);     /* CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING turns this off */
     return 0;
 }
 
@@ -518,6 +555,7 @@ void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input
     cl_tools *was = r->at;
     long at = out->n;
     jw upd;
+    int pre;
     if (r->schema && tl == &r->tools && !strcmp(name, "StructuredOutput")) {
         structured(r, id, input_ok, raw, rawn, out);
         return;
@@ -525,14 +563,50 @@ void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input
     r->at = tl;                 /* the screen's callbacks show this call's tool */
     r->cur_id = id;             /* print mode's permission_denials */
     jw_init(&upd);
-    if (!pol_pre(r, tl, id, name, input_ok, raw, rawn, out, extra, &upd)) {
+    pre = pol_pre(r, tl, id, name, input_ok, raw, rawn, out, extra, &upd);
+    if (pre == 2) {
+        /* deferred: no result; the turn stops at this call */
+        jw_free(&upd);
+        r->at = was;
+        r->rule_now = RULE_NONE;
+        return;
+    }
+    if (!pre) {
         if (upd.n) {
             raw = upd.p;        /* a PreToolUse hook's updatedInput */
             rawn = upd.n;
         }
         tl->rule_ask = r->rule_now == RULE_ASK;
+        tl->rerun = 0;
         tools_run(tl, id, name, input_ok, raw, rawn, out);
         tl->rule_ask = 0;
+        if (tl->rerun && r->perm_upd.n) {
+            /* a PermissionRequest hook allowed it with updatedInput: the call
+             * again with that input, the rules deciding anew on it (Claude Code) */
+            tl->rerun = 0;
+            out->n = at;
+            jw_reset(&upd);
+            jw_raw(&upd, r->perm_upd.p, r->perm_upd.n);
+            jw_reset(&r->perm_upd);
+            raw = upd.p;
+            rawn = upd.n;
+            r->perm_rerun = 1;
+            {
+                jw upd2;
+                jw_init(&upd2);
+                if (!pol_pre(r, tl, id, name, 1, raw, rawn, out, extra, &upd2)) {
+                    tl->rule_ask = r->rule_now == RULE_ASK;
+                    if (r->rule_now == RULE_NONE)
+                        r->rule_now = RULE_ALLOW;   /* the hook's allow stands for the new input */
+                    tools_run(tl, id, name, 1, raw, rawn, out);
+                    tl->rule_ask = 0;
+                }
+                jw_free(&upd2);
+            }
+            r->perm_rerun = 0;
+            r->n_perm_rerun++;
+        }
+        tl->rerun = 0;
     }
     r->rule_now = RULE_NONE;
     pol_post(r, tl, id, name, input_ok, raw, rawn, out, at, extra);
@@ -966,6 +1040,13 @@ int pol_permission_request(cl_repl *r, const char *tool, const char *input, long
     jw_free(&ex);
     shown(r, &h);
     rc = h.behavior;
+    jw_reset(&r->perm_upd);
+    if (rc == RULE_ALLOW && h.updated.n && !r->perm_rerun) {
+        /* "allow" with updatedInput: the call runs again with it (pol_call) */
+        jv v;
+        if (json_parse(h.updated.p, h.updated.n, &v) == 0 && json_type(v) == J_OBJ)
+            jw_raw(&r->perm_upd, h.updated.p, h.updated.n);
+    }
     if (h.stop && r->at)
         r->at->stop = 1;            /* "interrupt": true */
     hookres_free(&h);
