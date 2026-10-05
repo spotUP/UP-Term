@@ -17,6 +17,16 @@ void conv_clear(cl_conv *c)
     c->n = 0;
 }
 
+void conv_usage_reset(cl_conv *c)
+{
+    c->requests = 0;
+    c->in_tok = c->out_tok = c->cache_w = c->cache_r = 0;
+    c->cost_micro = 0;
+    c->unpriced = 0;
+    c->nmu = 0;
+    memset(c->mu, 0, sizeof(c->mu));
+}
+
 void conv_free(cl_conv *c)
 {
     conv_clear(c);

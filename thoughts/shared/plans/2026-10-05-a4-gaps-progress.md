@@ -44,17 +44,17 @@ Phase 1 -- command line, print mode (cli.c print.c session.c repl.c subagent.c)
 - [x] G18 --verbose at the screen (+ "verbose" setting): results unfolded
 
 Phase 2 -- slash commands (slash.c repl.c)
-- [ ] S1 the N/A commands answer with their reason (/mcp /plugin /bug /feedback ...)
-- [ ] S2 /btw   - [ ] S3 /copy [N]   - [ ] S4 /diff   - [ ] S5 /plan [text]
-- [ ] S6 /recap   - [ ] S7 /release-notes   - [ ] S8 /reload-skills
-- [ ] S9 /usage fuller (per model, durations); /cost and /stats its aliases
-- [ ] S10 /clear [name], totals reset
-- [ ] S11 /config key=value (and more keys: editorMode, verbose, ...)
-- [ ] S12 /effort auto|status   - [ ] S13 /model kept as the default
-- [ ] S14 /permissions editor (menus)   - [ ] S15 /rename without a name
-- [ ] S16 /rewind "Summarize from here", /undo
-- [ ] S17 /statusline DESCRIPTION (statusline-setup agent), /statusline clear
-- [ ] S18 /debug   - [ ] S19 /skill-name typed, skills in the menu, argument-hint shown
+- [x] S1 the N/A commands answer with their reason (/mcp /plugin /bug /feedback ...)
+- [x] S2 /btw   - [x] S3 /copy [N]   - [x] S4 /diff   - [x] S5 /plan [text]
+- [x] S6 /recap   - [x] S7 /release-notes   - [x] S8 /reload-skills
+- [x] S9 /usage fuller (per model, durations); /cost and /stats its aliases
+- [x] S10 /clear [name], totals reset
+- [x] S11 /config key=value (and more keys: editorMode, verbose, ...)
+- [x] S12 /effort auto|status   - [x] S13 /model kept as the default
+- [x] S14 /permissions editor (menus)   - [x] S15 /rename without a name
+- [x] S16 /rewind "Summarize from here", /undo
+- [x] S17 /statusline DESCRIPTION (statusline-setup agent), /statusline clear
+- [x] S18 /debug   - [x] S19 /skill-name typed, skills in the menu, argument-hint shown
 
 Phase 3 -- skills, agents, styles, status line (commands.c subagent.c tools.c policy.c)
 - [ ] X1 the Skill tool expands as a command does (args, !`cmd`, allowed-tools, model)
@@ -63,7 +63,7 @@ Phase 3 -- skills, agents, styles, status line (commands.c subagent.c tools.c po
 - [ ] X4 agent disallowedTools, maxTurns, effort, skills, permissionMode
 - [x] X5 CLAUDE.md for subagents (not Explore / Plan)
 - [ ] X6 Agent = Task for rules and hook matchers
-- [ ] X7 built-in statusline-setup agent
+- [x] X7 built-in statusline-setup agent
 - [ ] X8 output styles Proactive, Concise; keep-coding-instructions honoured
 - [ ] X9 status line JSON fields, hideVimModeIndicator
 
@@ -110,6 +110,19 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
   never changed by it. Explore and Plan get no CLAUDE.md (Claude Code), the others do.
 - $N is 0-based ($0 the first), as Claude Code; a missing index stays as written; the test that
   encoded $1-as-first was changed with it.
+- /cost and /stats are /usage (Claude Code: aliases); /usage adds the per-model rows and the times.
+- /btw /recap /rename (no name) and /rewind's summaries are one side request (repl_side): the
+  conversation copied, tools listed with tool_choice none (the cached prefix kept), nothing added
+  to the conversation; the cost counts.
+- /diff without git: each file's first checkpoint of the session against the file now (screen:
+  the edit preview's diff; line mode: - / + lines). Bash's changes are not tracked (as /rewind).
+- /statusline TEXT asks Claude to use the statusline-setup agent (Claude Code's way), with the
+  JSON fields listed in the prompt; "/statusline command CMD" is C:Claude's direct form; clear,
+  delete, remove, off take the key out.
+- /model writes "model" to the user's settings (Claude Code keeps it for new sessions); /effort
+  auto sends no effort (the model's own).
+- The commands Claude Code has that cannot be here are a table in slash.c; each typed one says why,
+  /help lists them in one line. The rewind menu (Esc Esc) got "Summarize from here / up to here".
 - A skill typed as /name runs as a turn like a command (context: fork applies when Claude calls
   the Skill tool; typed, it runs inline).
 
@@ -120,5 +133,12 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
   $N test changed to 0-based. Mutations checked (each failed the suite): feed->sub unwired,
   StructuredOutput intercept off, bare/safe memory skip off, sess_use_id off. Gate: make test
   (43 suites OK), make test-ref (149 streams, 0 failed), timeout 900 make amiga rc 0.
+
+- c2 Phase 2 (S1-S19): claude_repl test_gaps_commands (line mode through repl_line) and
+  test_gaps_perm_menu (the screen); the screen test looks at the edit's rows before /cost (the
+  longer /usage output scrolls them away); print_stream.jsonl golden: slash_commands grew. Fixed on
+  the way: /permissions said "allowRead" (no space). Mutations: not_here off, /clear's usage
+  reset off, /effort auto sending "auto" each fail the suite. Gate: make test (43 OK), make
+  test-ref (149, 0 failed), make amiga rc 0.
 
 ## Rig steps (main session)

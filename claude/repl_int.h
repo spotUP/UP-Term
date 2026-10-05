@@ -15,6 +15,21 @@ void repl_say(cl_repl *r, const char *a, const char *b);
 /* the conversation's text shown again (after a resume) */
 void repl_replay(cl_repl *r);
 void repl_cost(cl_repl *r);
+/* A side request (/btw, /recap, /rename, /rewind's summaries): messages
+ * from..to-1 of the conversation and the question ask, the tools listed
+ * but none called; the answer's text into answer, nothing kept in the
+ * conversation (the cost is counted). 0, -1 failed (shown), -2 stopped. */
+int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer);
+/* /rewind's "Summarize from here" (up_to 0: the prompt at msg and all
+ * after it become one summary) and "Summarize up to here" (up_to 1:
+ * everything before it does): 0, -1, -2 stopped */
+int repl_summarize(cl_repl *r, int msg, int up_to);
+/* the custom definitions read again (/reload-skills, part of repl_load) */
+int repl_load_defs(cl_repl *r);
+/* the effort a request sends ("" for /effort auto: the model's own) */
+const char *repl_effort(const cl_repl *r);
+/* slash.c: the i-th of Claude Code's commands that are not on the Amiga, 0 past the end */
+const char *slash_na_list(int i);
 /* the context size at which the conversation compacts by itself, tokens */
 long repl_compact_at(cl_repl *r);
 void repl_context(cl_repl *r);

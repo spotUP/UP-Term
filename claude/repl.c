@@ -11,6 +11,11 @@ enum { R_OK, R_RETRY, R_FAIL, R_CANCEL };
 
 static void started(cl_repl *r);
 
+const char *repl_effort(const cl_repl *r)
+{
+    return strcmp(r->effort, "auto") ? r->effort : "";     /* auto: none sent, the model's own */
+}
+
 #define IDLE_LIMIT_MS 180000L   /* no byte for this long: the connection is dead */
 
 static const char sys_a[] =
@@ -634,7 +639,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     jw_reset(&r->pending);
     memset(&o, 0, sizeof(o));
     o.model = r->model;
-    o.effort = r->effort;
+    o.effort = repl_effort(r);
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.tools = tools_json(&r->tools, r->model);
@@ -965,7 +970,7 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     jw_free(&ask);
     memset(&o, 0, sizeof(o));
     o.model = r->model;
-    o.effort = r->effort;
+    o.effort = repl_effort(r);
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.tools = tools_json(&r->tools, r->model);
@@ -1012,6 +1017,119 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     jw_free(&body);
     jw_free(&sum);
     request_free(r);
+}
+
+int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
+{
+    cl_conv c;
+    cl_opts o;
+    cl_render keep = r->render;
+    jw body;
+    int rc, i;
+    conv_init(&c);
+    if (to > r->conv.n)
+        to = r->conv.n;
+    for (i = from; i < to; i++)
+        if (conv_add(&c, r->conv.m[i].user, r->conv.m[i].json, r->conv.m[i].n)) {
+            conv_free(&c);
+            return -1;
+        }
+    /* a range that ends inside a tool round: its tool_use answered by nothing
+     * would be refused, so a range always ends after an answer or a prompt */
+    if (conv_add_user_text(&c, ask, (long)strlen(ask))) {
+        conv_free(&c);
+        return -1;
+    }
+    memset(&o, 0, sizeof(o));
+    o.model = r->model;
+    o.effort = repl_effort(r);
+    o.max_tokens = r->max_tokens;
+    o.system = r->system;
+    o.tools = tools_json(&r->tools, r->model);
+    o.no_tools = 1;                 /* the tools stay listed (the cache), none is called */
+    jw_init(&body);
+    r->render.u = answer;
+    r->render.text = capture_text;
+    r->render.end = capture_end;
+    r->io->brk(r->io->u);
+    ui_busy(&r->ui, 1);
+    rc = conv_body(&c, &o, &body) ? R_FAIL : request(r, body.p, body.n);
+    ui_busy(&r->ui, 0);
+    r->render = keep;
+    if (rc == R_OK)
+        conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok, r->st.cache_w,
+                   r->st.cache_r);
+    jw_free(&body);
+    conv_free(&c);
+    request_free(r);
+    return rc == R_OK && answer->n ? 0 : rc == R_CANCEL ? -2 : -1;
+}
+
+static const char sum_ask[] =
+    "Summarise the conversation above for continuing it: the goals, the decisions, the files and paths, "
+    "what was changed and what is still open. Be complete but concise. Do not call any tool.";
+
+int repl_summarize(cl_repl *r, int msg, int up_to)
+{
+    jw sum, seed;
+    int rc, i;
+    cl_conv c;
+    if (msg < 0 || msg >= r->conv.n || !r->conv.m[msg].user)
+        return -1;
+    jw_init(&sum);
+    rc = up_to ? repl_side(r, 0, msg, sum_ask, &sum) : repl_side(r, msg, r->conv.n, sum_ask, &sum);
+    if (rc) {
+        jw_free(&sum);
+        if (rc == -1)
+            ui_line(&r->ui, "No summary came back; the conversation is as it was.");
+        return rc;
+    }
+    jw_init(&seed);
+    jw_rawz(&seed, up_to ? "Summary of the conversation before this point:\n\n"
+                         : "Summary of the conversation from here on (it was summarised):\n\n");
+    jw_raw(&seed, sum.p, sum.n);
+    jw_free(&sum);
+    conv_init(&c);
+    if (seed.oom)
+        rc = -1;
+    else if (up_to) {
+        /* the summary, then the chosen prompt and everything after it */
+        rc = conv_add_user_text(&c, seed.p, seed.n);
+        for (i = msg; i < r->conv.n && !rc; i++) {
+            const cl_msg *m = &r->conv.m[i];
+            if (i == msg && m->n > 2)
+                rc = conv_add_user_blocks(&c, m->json + 1, m->n - 2);     /* its blocks join the summary's message */
+            else
+                rc = conv_add(&c, m->user, m->json, m->n);
+        }
+    } else {
+        /* everything before the chosen prompt, then the summary of the rest */
+        for (i = 0; i < msg && !rc; i++)
+            rc = conv_add(&c, r->conv.m[i].user, r->conv.m[i].json, r->conv.m[i].n);
+        if (!rc)
+            rc = conv_add_user_text(&c, seed.p, seed.n);
+    }
+    jw_free(&seed);
+    if (rc) {
+        conv_free(&c);
+        ui_line(&r->ui, "Out of memory: the conversation is as it was.");
+        return -1;
+    }
+    /* the counters stay; the messages are the new ones */
+    for (i = 0; i < r->conv.n; i++)
+        free(r->conv.m[i].json);
+    free(r->conv.m);
+    r->conv.m = c.m;
+    r->conv.n = c.n;
+    r->conv.cap = c.cap;
+    sess_truncate(&r->sess, up_to ? 0 : msg);
+    cp_turn(&r->cp, r->conv.n);
+    r->ctx_used = 0;
+    ctx_show(r);
+    session_save(r);
+    ui_line(&r->ui, up_to ? "Summarised the conversation up to that prompt; it goes on from there."
+                          : "Summarised the conversation from that prompt on.");
+    return 0;
 }
 
 static void start(cl_repl *r);
@@ -1268,6 +1386,17 @@ static void show_help(cl_repl *r)
     ui_line(&r->ui, r->tui ? help_keys : "Ctrl+C stops an answer or a command. Anything else is sent to Claude.");
     if (r->tui)
         ui_line(&r->ui, help_keys2);
+    {
+        /* Claude Code's commands that cannot be here: typed, each says why */
+        char m[900];
+        const char *w;
+        cl_copy(m, "Not on the Amiga (type one to see why):", sizeof(m));
+        for (i = 0; (w = slash_na_list(i)) != 0; i++) {
+            cl_cat(m, " ", sizeof(m));
+            cl_cat(m, w, sizeof(m));
+        }
+        ui_line(&r->ui, m);
+    }
 }
 
 int repl_pick(cl_repl *r, const char *title, const char *const *opt, int n, const char *cur)
@@ -1335,20 +1464,38 @@ int repl_line(cl_repl *r, const char *line)
     if (is_cmd(word, "/help"))
         show_help(r);
     else if (is_cmd(word, "/model")) {
+        const char *chosen = 0;
         if (*arg)
-            cl_copy(r->model, cfg_model(arg), sizeof(r->model));
+            chosen = arg;
         else {
             int c = repl_pick(r, "Select a model", models, (int)(sizeof(models) / sizeof(models[0])), r->model);
             if (c >= 0)
-                cl_copy(r->model, models[c], sizeof(r->model));
+                chosen = models[c];
+        }
+        if (chosen) {
+            /* Claude Code: kept as the default for new sessions (the user's settings) */
+            jw v;
+            cl_copy(r->model, cfg_model(chosen), sizeof(r->model));
+            jw_init(&v);
+            jw_strz(&v, chosen);
+            if (r->sys->mkdir)
+                r->sys->mkdir(r->sys->u, r->home);
+            if (!v.oom)
+                cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "model", v.p);
+            jw_free(&v);
         }
         ctx_show(r);
         show_err(r, "Model: ", r->model);
     } else if (is_cmd(word, "/effort")) {
+        if (!strcmp(arg, "status")) {
+            show_err(r, "Effort: ", r->effort);
+            return 0;
+        }
         if (*arg) {
             if (strcmp(arg, "low") && strcmp(arg, "medium") && strcmp(arg, "high") && strcmp(arg, "xhigh") &&
-                strcmp(arg, "max")) {
-                ui_line(&r->ui, "The effort is one of: low, medium, high, xhigh, max.");
+                strcmp(arg, "max") && strcmp(arg, "auto")) {
+                ui_line(&r->ui, "The effort is one of: low, medium, high, xhigh, max, auto (the model's own); "
+                                "/effort status shows it.");
                 return 0;
             }
             cl_copy(r->effort, arg, sizeof(r->effort));
@@ -1360,7 +1507,14 @@ int repl_line(cl_repl *r, const char *line)
         show_err(r, "Effort: ", r->effort);
     } else if (is_cmd(word, "/clear")) {
         pol_session(r, HK_SESSION_END, "clear");
+        if (*arg && r->conv.n) {
+            sess_save(&r->sess, &r->conv);
+            sess_rename(&r->sess, arg);     /* Claude Code: a name for the previous conversation */
+        }
         conv_clear(&r->conv);
+        conv_usage_reset(&r->conv);         /* a new session's totals */
+        r->api_ms = 0;
+        r->t_start = r->io->ms ? r->io->ms(r->io->u) : 0;
         sess_new(&r->sess, r->io->ms ? r->io->ms(r->io->u) : 0);
         cp_turn(&r->cp, 0);
         r->ctx_used = 0;
@@ -1379,8 +1533,6 @@ int repl_line(cl_repl *r, const char *line)
         resume(r, arg);
     else if (is_cmd(word, "/save"))
         save(r, arg);
-    else if (is_cmd(word, "/cost"))
-        repl_cost(r);
     else if (!slash_run(r, word, arg) && !slash_custom(r, word, arg))
         ui_line(&r->ui, "Unknown command. Type /help for the list.");
     return 0;
@@ -1574,36 +1726,59 @@ int repl_ping(cl_repl *r)
 static void menu_free(cl_repl *r)
 {
     int i;
-    for (i = slash_nbuiltin; i < r->nmenu; i++)
+    for (i = slash_nbuiltin; i < r->nmenu; i++) {
         free((char *)r->menu[i].name);
+        free((char *)r->menu[i].help);
+    }
     free(r->menu);
     r->menu = 0;
     r->nmenu = 0;
 }
 
-/* the slash menu: the built-in commands, then the custom ones */
+/* one custom entry: "/name", its description and argument hint */
+static int menu_add(cl_repl *r, int k, const cl_def *d, const char *none)
+{
+    char *nm = (char *)malloc(strlen(d->name) + 2);
+    jw h;
+    if (!nm)
+        return -1;
+    nm[0] = '/';
+    strcpy(nm + 1, d->name);
+    jw_init(&h);
+    jw_rawz(&h, d->description[0] ? d->description : none);
+    if (d->hint && d->hint[0]) {
+        jw_rawz(&h, "  ");
+        jw_rawz(&h, d->hint);      /* argument-hint */
+    }
+    if (h.oom || !h.p) {
+        free(nm);
+        jw_free(&h);
+        return -1;
+    }
+    r->menu[k].name = nm;
+    r->menu[k].help = h.p;
+    return 0;
+}
+
+/* the slash menu: the built-in commands, then the custom ones, then the
+ * skills a user may type (Claude Code: a skill is a command too) */
 static int menu_build(cl_repl *r)
 {
-    int nc = defs_count(&r->defs, DEF_COMMAND), i, k;
+    int nc = defs_count(&r->defs, DEF_COMMAND), ns = defs_count(&r->defs, DEF_SKILL), i, k;
+    const cl_def *d;
     menu_free(r);
-    r->menu = (cl_cmd *)malloc((size_t)(slash_nbuiltin + nc) * sizeof(cl_cmd));
+    r->menu = (cl_cmd *)malloc((size_t)(slash_nbuiltin + nc + ns) * sizeof(cl_cmd));
     if (!r->menu)
         return -1;
     for (i = 0; i < slash_nbuiltin; i++)
         r->menu[i] = slash_builtin[i];
     k = slash_nbuiltin;
-    for (i = 0; i < nc; i++) {
-        const cl_def *d = defs_nth(&r->defs, DEF_COMMAND, i);
-        char *nm = (char *)malloc(strlen(d->name) + 2);
-        if (!nm)
-            break;
-        nm[0] = '/';
-        strcpy(nm + 1, d->name);
-        r->menu[k].name = nm;
-        r->menu[k].help = d->description[0] ? d->description
-                                             : d->src == CFG_PROJECT ? "(a project command)" : "(a user command)";
-        k++;
-    }
+    for (i = 0; (d = defs_nth(&r->defs, DEF_COMMAND, i)) != 0; i++)
+        if (menu_add(r, k, d, d->src == CFG_PROJECT ? "(a project command)" : "(a user command)") == 0)
+            k++;
+    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++)
+        if (!d->no_user && !defs_find(&r->defs, DEF_COMMAND, d->name) && menu_add(r, k, d, "(a skill)") == 0)
+            k++;
     r->nmenu = k;
     if (r->tui) {
         r->tui->cmds = r->menu;
@@ -1662,6 +1837,32 @@ int repl_load_memory(cl_repl *r)
     return repl_system(r);
 }
 
+/* the definitions (commands, agents, skills, styles) with the command
+ * line's say: --bare / --safe-mode none of the files', --disable-slash-
+ * commands no commands or skills, --agents first */
+static void repl_defs(cl_repl *r)
+{
+    defs_free(&r->defs);
+    defs_load(&r->defs, r->sys, r->home, r->tools.root);
+    if (r->bare || r->safe)
+        defs_drop(&r->defs, -1);    /* only the built-in output styles stay */
+    if (r->no_slash) {
+        defs_drop(&r->defs, DEF_COMMAND);
+        defs_drop(&r->defs, DEF_SKILL);
+    }
+    if (r->agents_json) {
+        char err[200];
+        if (defs_add_agents_json(&r->defs, r->agents_json, err, sizeof(err)))
+            repl_say(r, "", err);
+    }
+}
+
+int repl_load_defs(cl_repl *r)
+{
+    repl_defs(r);
+    return menu_build(r) || pol_tools(r) ? -1 : 0;
+}
+
 int repl_load(cl_repl *r)
 {
     int i;
@@ -1677,19 +1878,7 @@ int repl_load(cl_repl *r)
         cfg_drop_hooks(&r->cfg);    /* --bare, --safe-mode, disableAllHooks */
     if (r->safe)
         r->cfg.status_cmd[0] = 0;
-    defs_free(&r->defs);
-    defs_load(&r->defs, r->sys, r->home, r->tools.root);
-    if (r->bare || r->safe)
-        defs_drop(&r->defs, -1);    /* only the built-in output styles stay */
-    if (r->no_slash) {
-        defs_drop(&r->defs, DEF_COMMAND);
-        defs_drop(&r->defs, DEF_SKILL);
-    }
-    if (r->agents_json) {
-        char err[200];
-        if (defs_add_agents_json(&r->defs, r->agents_json, err, sizeof(err)))
-            repl_say(r, "", err);
-    }
+    repl_defs(r);
     if (r->cfg.verbose >= 0 && r->verbose != 2)
         r->verbose = r->cfg.verbose;
     /* the settings: the command line (main) comes after and wins */
@@ -1802,6 +1991,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     if (repl_load(r))
         return -1;
     r->start_due = 1;            /* SessionStart runs once the command line is applied (--bare, ...) */
+    r->t_start = io->ms ? io->ms(io->u) : 0;
     return 0;
 }
 

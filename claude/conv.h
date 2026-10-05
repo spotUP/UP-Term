@@ -57,6 +57,8 @@ typedef struct cl_opts {
 void conv_init(cl_conv *c);
 void conv_free(cl_conv *c);
 void conv_clear(cl_conv *c);
+/* the usage counters back to nothing (/clear: a new session) */
+void conv_usage_reset(cl_conv *c);
 /* a whole message (content array JSON): 0, -1 out of memory */
 int conv_add(cl_conv *c, int user, const char *json, long n);
 /* a prompt: a new user message, or one more text block on a trailing

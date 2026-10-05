@@ -16,17 +16,21 @@ const cl_cmd slash_builtin[] = {
     { "/help", "Show the commands and the keys" },
     { "/add-dir", "Let Claude work in one more directory: /add-dir DIR" },
     { "/agents", "The subagents (.claude/agents)" },
-    { "/autocompact", "Compact by itself when the context is nearly full: on or off" },
+    { "/autocompact", "Compact by itself: on, off, auto, or a window (500k, 1M)" },
     { "/branch", "Go on in a copy of this conversation (a new session)" },
+    { "/btw", "A side question about this conversation, not added to it: /btw QUESTION" },
     { "/cd", "Change the start directory: /cd DIR" },
-    { "/clear", "Start a new conversation (clears the screen)" },
+    { "/clear", "Start a new conversation (clears the screen): /clear [name for the old one]" },
     { "/commands", "The custom commands (.claude/commands)" },
     { "/compact", "Summarise the conversation and go on from it: /compact [what to keep]" },
-    { "/config", "The settings: /config [KEY VALUE [user|project|local]]" },
+    { "/config", "The settings: /config [key=value ...] or /config KEY VALUE [user|project|local]" },
     { "/context", "How much of the context window is in use" },
-    { "/cost", "Tokens and cost so far" },
+    { "/copy", "Claude's last answer (or the Nth last: /copy N) to the clipboard" },
+    { "/cost", "Tokens, cost and time so far (as /usage)" },
+    { "/debug", "Debug logging on for this session; where the log is" },
+    { "/diff", "The changes Claude made to files in this session" },
     { "/doctor", "Check the machine: the network, AmiSSL, the key, the settings" },
-    { "/effort", "Show or set the effort: low, medium, high, xhigh, max" },
+    { "/effort", "Show or set the effort: low, medium, high, xhigh, max, auto, status" },
     { "/exit", "Leave" },
     { "/export", "The conversation as text: to the clipboard, or /export FILE" },
     { "/hooks", "The hooks of the settings" },
@@ -34,21 +38,26 @@ const cl_cmd slash_builtin[] = {
     { "/login", "Store an API key in ENVARC:Claude/key" },
     { "/logout", "Remove the stored API key" },
     { "/memory", "Edit a memory file (CLAUDE.md) in the editor" },
-    { "/model", "Show or set the model (opus, sonnet, haiku, fable, or an id)" },
+    { "/model", "Set the model, kept for new sessions (opus, sonnet, haiku, fable, or an id)" },
     { "/output-style", "Choose the output style: Default, Explanatory, Learning, yours" },
     { "/permissions", "The permission rules: /permissions [allow|ask|deny|remove RULE]" },
-    { "/rename", "Name this conversation: /rename NAME" },
+    { "/plan", "Plan mode on (Claude looks, changes nothing): /plan [what to plan]" },
+    { "/recap", "A one-line summary of this session" },
+    { "/release-notes", "What is new in C:Claude" },
+    { "/reload-skills", "Read the skills and the commands again" },
+    { "/rename", "Name this conversation: /rename [NAME] (none: Claude names it)" },
     { "/resume", "Go on with an earlier conversation of this directory" },
-    { "/rewind", "Go back to an earlier prompt: the files, the conversation, or both" },
+    { "/rewind", "Go back to an earlier prompt: the files, the conversation, both, or a summary" },
     { "/save", "Save the conversation as JSON: /save FILE" },
     { "/skills", "The skills (.claude/skills)" },
+    { "/stats", "Tokens, cost and time so far (as /usage)" },
     { "/status", "The model, the session, the account, the settings in use" },
-    { "/statusline", "A command for the status line: /statusline COMMAND" },
+    { "/statusline", "Set up the status line: /statusline WHAT YOU WANT, or clear" },
     { "/tasks", "The commands running in the background" },
     { "/terminal-setup", "Check the terminal: UP-Term's keys and size" },
     { "/theme", "Change the colours" },
     { "/todos", "The todo list" },
-    { "/usage", "Tokens, cost and the context window" },
+    { "/usage", "Tokens, cost per model, time, and the context window" },
     { "/vim", "Vim editing in the input box, on or off" }
 };
 const int slash_nbuiltin = (int)(sizeof(slash_builtin) / sizeof(slash_builtin[0]));
@@ -127,7 +136,7 @@ static void permissions(cl_repl *r, const char *a)
             }
             cfg_add_rule(&r->cfg, kind, lvl, rule);
             pol_tools(r);           /* a deny of WebSearch takes the server tool away */
-            line2(r, cfg_kind_name(kind), rule);
+            line2(r, kind == RULE_ALLOW ? "Allow: " : kind == RULE_ASK ? "Ask first: " : "Deny: ", rule);
             line2(r, "  saved in ", cfg_file(&r->cfg, lvl));
             return;
         }
@@ -408,7 +417,8 @@ static void export_(cl_repl *r, const char *arg)
 /* ---- /config ---- */
 
 static const char *const cfg_keys[] = { "model", "effortLevel", "outputStyle", "autoCompactEnabled", "theme",
-                                        "fallbackModel", "webSearch" };
+                                        "fallbackModel", "webSearch", "editorMode", "verbose", "autoMemoryEnabled",
+                                        "autoCompactWindow" };
 #define NCFG_KEYS ((int)(sizeof(cfg_keys) / sizeof(cfg_keys[0])))
 
 static void apply_key(cl_repl *r, const char *key, const char *val)
@@ -429,6 +439,19 @@ static void apply_key(cl_repl *r, const char *key, const char *val)
     else if (!strcmp(key, "webSearch")) {
         r->cfg.web_search = strcmp(val, "false") != 0;
         pol_tools(r);
+    } else if (!strcmp(key, "editorMode")) {
+        cl_copy(r->cfg.editor_mode, val, sizeof(r->cfg.editor_mode));
+        if (r->tui)
+            ed_set_vim(&r->tui->ed, !strcmp(val, "vim"));
+    } else if (!strcmp(key, "verbose")) {
+        if (r->verbose != 2)
+            r->verbose = !strcmp(val, "true");
+    } else if (!strcmp(key, "autoMemoryEnabled")) {
+        r->cfg.auto_memory = !strcmp(val, "true");
+        repl_load_memory(r);
+    } else if (!strcmp(key, "autoCompactWindow")) {
+        long t = cfg_window_parse(val);
+        r->cfg.compact_window = t > 0 ? t : 0;
     }
 }
 
@@ -468,6 +491,31 @@ static void config(cl_repl *r, const char *a)
     char arg[400], *val;
     int lvl, c;
     cl_copy(arg, a, sizeof(arg));
+    if (arg[0] && strchr(arg, '=')) {
+        /* Claude Code's form: /config key=value [key=value ...], the user's settings */
+        char *p = arg;
+        while (*p) {
+            char *k, *e, *v;
+            while (*p == ' ')
+                p++;
+            if (!*p)
+                break;
+            k = p;
+            while (*p && *p != ' ')
+                p++;
+            if (*p)
+                *p++ = 0;
+            e = strchr(k, '=');
+            if (!e || e == k) {
+                line2(r, "Not key=value: ", k);
+                continue;
+            }
+            *e = 0;
+            v = e + 1;
+            config_set(r, k, v, CFG_USER);
+        }
+        return;
+    }
     if (arg[0]) {
         lvl = level_of(arg, CFG_USER);
         for (val = arg; *val && *val != ' '; val++)
@@ -487,10 +535,12 @@ static void config(cl_repl *r, const char *a)
         static const char *const onoff[] = { "true", "false" };
         static const char *const themes[] = { "dark", "light", "dark-ansi", "light-ansi" };
         static const char *const mods[] = { "opus", "sonnet", "haiku", "fable" };
-        static const char *const effs[] = { "low", "medium", "high", "xhigh", "max" };
-        int yn = c == 3 || c == 6;  /* autoCompactEnabled, webSearch */
-        const char *const *opt = yn ? onoff : c == 4 ? themes : c == 1 ? effs : mods;
-        int n = yn ? 2 : c == 4 ? 4 : c == 1 ? 5 : 4, v;
+        static const char *const effs[] = { "low", "medium", "high", "xhigh", "max", "auto" };
+        static const char *const eds[] = { "normal", "vim" };
+        static const char *const wins[] = { "200000", "500000", "1000000" };
+        int yn = c == 3 || c == 6 || c == 8 || c == 9;  /* the true/false ones */
+        const char *const *opt = yn ? onoff : c == 4 ? themes : c == 1 ? effs : c == 7 ? eds : c == 10 ? wins : mods;
+        int n = yn ? 2 : c == 4 ? 4 : c == 1 ? 6 : c == 7 ? 2 : c == 10 ? 3 : 4, v;
         if (c == 2) {
             output_style(r, "");
             return;
@@ -514,6 +564,10 @@ static void config(cl_repl *r, const char *a)
         line2(r, "  statusLine: ", r->cfg.status_cmd[0] ? r->cfg.status_cmd : "(none)");
         line2(r, "  webSearch: ", r->tools.web_search ? "true" : "false (or a deny rule for WebSearch)");
         line2(r, "  permissions.defaultMode: ", r->cfg.default_mode[0] ? r->cfg.default_mode : "default");
+        line2(r, "  editorMode: ", r->tui && r->tui->ed.vim ? "vim" : "normal");
+        line2(r, "  verbose: ", r->verbose ? "true" : "false");
+        line2(r, "  autoMemoryEnabled: ", r->cfg.auto_memory == 0 ? "false" : "true");
+        num_line(r, "  autoCompactWindow: ", repl_compact_at(r), " tokens");
     }
 }
 
@@ -745,7 +799,8 @@ static void rewind_(cl_repl *r, const char *arg)
 {
     int msg[32], n = repl_prompts(r, msg, 32), i, c, how;
     static const char *const hows[] = { "Restore the code and the conversation", "Restore the conversation",
-                                        "Restore the code", "Never mind" };
+                                        "Restore the code", "Summarize from here", "Summarize up to here",
+                                        "Never mind" };
     char lab[32][80];
     const char *opt[32];
     if (!n) {
@@ -753,21 +808,25 @@ static void rewind_(cl_repl *r, const char *arg)
         return;
     }
     if (*arg) {
-        /* /rewind N [code|conversation|both]: N prompts back, 1 the last */
+        /* /rewind N [code|conversation|both|summarize|summarize-up]: N prompts back, 1 the last */
         long k = atol(arg);
         const char *w = strchr(arg, ' ');
         if (k < 1 || k > n) {
-            num_line(r, "Usage: /rewind N [code|conversation|both], N from 1 to ", n, ".");
+            num_line(r, "Usage: /rewind N [code|conversation|both|summarize|summarize-up], N from 1 to ", n, ".");
             return;
         }
         while (w && *w == ' ')
             w++;
-        how = !w || !*w || !strcmp(w, "both") ? 0 : !strcmp(w, "conversation") ? 1 : !strcmp(w, "code") ? 2 : 3;
-        if (how == 3) {
-            ui_line(&r->ui, "Usage: /rewind N [code|conversation|both]");
+        how = !w || !*w || !strcmp(w, "both") ? 0 : !strcmp(w, "conversation") ? 1 : !strcmp(w, "code") ? 2
+              : !strcmp(w, "summarize") ? 3 : !strcmp(w, "summarize-up") ? 4 : 5;
+        if (how == 5) {
+            ui_line(&r->ui, "Usage: /rewind N [code|conversation|both|summarize|summarize-up]");
             return;
         }
-        repl_rewind(r, msg[k - 1], how != 1, how != 2);
+        if (how >= 3)
+            repl_summarize(r, msg[k - 1], how == 4);
+        else
+            repl_rewind(r, msg[k - 1], how != 1, how != 2);
         return;
     }
     for (i = 0; i < n; i++) {
@@ -790,7 +849,7 @@ static void rewind_(cl_repl *r, const char *arg)
     }
     c = ui_pick(&r->ui, "Rewind to before which prompt?", opt, n, 0);
     if (c < 0) {
-        ui_line(&r->ui, "Prompts, the most recent first (/rewind N [code|conversation|both]):");
+        ui_line(&r->ui, "Prompts, the most recent first (/rewind N [code|conversation|both|summarize|summarize-up]):");
         for (i = 0; i < n; i++) {
             char m[120], num[16];
             cl_ltoa(i + 1, num);
@@ -802,10 +861,606 @@ static void rewind_(cl_repl *r, const char *arg)
         }
         return;
     }
-    how = ui_pick(&r->ui, "Rewind", hows, 4, 0);
-    if (how < 0 || how == 3)
+    how = ui_pick(&r->ui, "Rewind", hows, 6, 0);
+    if (how < 0 || how == 5)
         return;
-    repl_rewind(r, msg[c], how != 1, how != 2);
+    if (how >= 3)
+        repl_summarize(r, msg[c], how == 4);   /* Claude Code's summaries: the rest, or what came before */
+    else
+        repl_rewind(r, msg[c], how != 1, how != 2);
+}
+
+/* ---- Claude Code's commands that cannot be on an Amiga: they say why ---- */
+
+static const char why_account[] = "needs a claude.ai subscription and its login; C:Claude works with an API key "
+                                  "(billing and limits: console.anthropic.com).";
+static const char why_cloud[] = "runs Claude Code sessions in Anthropic's cloud or in the background beside this one; "
+                                "an Amiga task runs one conversation, here, in this window.";
+static const char why_git[] = "reviews a git diff or a pull request; there is no git on AmigaOS. Ask Claude to "
+                              "review files by name, or see this session's changes with /diff.";
+static const char why_artifact[] = "makes claude.ai artifacts and Claude Design canvases: they need a claude.ai "
+                                   "account and a browser.";
+
+static const struct na_cmd {
+    const char *name, *why;
+} na_cmds[] = {
+    { "/mcp", "MCP servers run as Node or Python processes (stdio), which AmigaOS 3.x does not have; MCP over "
+              "HTTP is not built into C:Claude. Its own tools (Read, Bash, WebFetch, ...) are in every session." },
+    { "/plugin", "plugins are Node packages from Claude Code's marketplace. C:Claude takes skills, agents, "
+                 "commands, hooks and output styles straight from .claude/ and ENVARC:Claude/ instead." },
+    { "/reload-plugins", "there are no plugins here (see /plugin); /reload-skills reads skills and commands again." },
+    { "/plugin-authoring", "there are no plugins here (see /plugin)." },
+    { "/bug", "reports go to Anthropic's feedback service with a claude.ai login. To report something, save "
+              "the conversation with /export FILE and send it from a modern machine." },
+    { "/feedback", "feedback goes to Anthropic's service with a claude.ai login. /export FILE saves this "
+                   "conversation to send from a modern machine." },
+    { "/install-github-app", "installs a GitHub App through a browser and the gh CLI, neither of which runs on "
+                             "AmigaOS." },
+    { "/install-slack-app", "installs the Slack app through a browser OAuth flow." },
+    { "/web-setup", "connects GitHub for cloud sessions through the gh CLI." },
+    { "/ide", "connects to VS Code or JetBrains IDEs, which do not run on AmigaOS." },
+    { "/chrome", "Claude in Chrome needs the Chrome extension." },
+    { "/claude-in-chrome", "Claude in Chrome needs the Chrome extension." },
+    { "/desktop", "the Claude Desktop app is for macOS and Windows." },
+    { "/app", "the Claude Desktop app is for macOS and Windows." },
+    { "/mobile", "shows a QR code for the Claude phone app; there is nothing to install here." },
+    { "/ios", "shows a QR code for the Claude phone app; there is nothing to install here." },
+    { "/android", "shows a QR code for the Claude phone app; there is nothing to install here." },
+    { "/upgrade", why_account },
+    { "/usage-credits", why_account },
+    { "/passes", why_account },
+    { "/privacy-settings", why_account },
+    { "/rate-limit-options", why_account },
+    { "/fast", "fast mode is a claude.ai plan feature." },
+    { "/voice", "voice dictation needs a claude.ai account and streams audio from a microphone." },
+    { "/remote-control", why_cloud },
+    { "/rc", why_cloud },
+    { "/remote-env", why_cloud },
+    { "/teleport", why_cloud },
+    { "/tp", why_cloud },
+    { "/schedule", why_cloud },
+    { "/autofix-pr", why_cloud },
+    { "/ultrareview", why_cloud },
+    { "/background", why_cloud },
+    { "/bg", why_cloud },
+    { "/stop", why_cloud },
+    { "/subtask", why_cloud },
+    { "/list-agents", why_cloud },
+    { "/workflows", "workflows run many agents at once; this Amiga runs one conversation at a time." },
+    { "/deep-research", "a workflow of many agents at once; ask Claude to research it here, step by step." },
+    { "/workflow-authoring", "workflows run many agents at once; this Amiga runs one conversation at a time." },
+    { "/batch", "splits work over parallel agents in git worktrees: no threads for it and no git here." },
+    { "/review", why_git },
+    { "/code-review", why_git },
+    { "/security-review", why_git },
+    { "/sandbox", "the sandbox is the operating system's (Seatbelt, bubblewrap); AmigaOS has no such isolation." },
+    { "/auto-mode-setup", "auto mode needs Anthropic's action classifier of a claude.ai plan; the permission "
+                          "modes here are default, acceptEdits, plan, dontAsk and bypassPermissions." },
+    { "/setup-bedrock", "Amazon Bedrock and Google's Agent Platform sign requests in ways C:Claude does not; it "
+                        "talks to the Anthropic API (or URL= another endpoint of the same API)." },
+    { "/setup-vertex", "Amazon Bedrock and Google's Agent Platform sign requests in ways C:Claude does not; it "
+                       "talks to the Anthropic API (or URL= another endpoint of the same API)." },
+    { "/import", "brings configuration from OpenAI Codex, Gemini CLI or Cursor, none of which runs on an Amiga." },
+    { "/tui", "C:Claude has one renderer, made for UP-Term." },
+    { "/scroll-speed", "the mouse wheel speed is UP-Term's (its Settings)." },
+    { "/artifacts", why_artifact },
+    { "/design", why_artifact },
+    { "/design-login", why_artifact },
+    { "/design-sync", why_artifact },
+    { "/slides", why_artifact },
+    { "/dataviz", why_artifact },
+    { "/artifact-capabilities", why_artifact },
+    { "/artifact-diagramming", why_artifact },
+    { "/claude-api", "loads Claude Code's bundled API reference; ask Claude to fetch the pages it needs with "
+                     "WebFetch instead (platform.claude.com/docs)." },
+    { "/fewer-permission-prompts", "scans Claude Code's transcripts for MCP and Bash calls; add allow rules "
+                                   "here with /permissions." },
+    { "/heapdump", "writes a JavaScript heap snapshot; C:Claude is not JavaScript." },
+    { "/radio", "opens a radio stream in a browser." },
+    { "/stickers", "orders stickers in a browser." },
+    { "/powerup", "Claude Code's animated lessons; /help lists what C:Claude has." }
+};
+#define NNA ((int)(sizeof(na_cmds) / sizeof(na_cmds[0])))
+
+/* 1 when word is one of Claude Code's commands that cannot be here (said why) */
+static int not_here(cl_repl *r, const char *w)
+{
+    int i;
+    for (i = 0; i < NNA; i++)
+        if (!strcmp(w, na_cmds[i].name)) {
+            char m[600];
+            cl_copy(m, w, sizeof(m));
+            cl_cat(m, " is not available on the Amiga: it ", sizeof(m));
+            cl_cat(m, na_cmds[i].why, sizeof(m));
+            ui_line(&r->ui, m);
+            return 1;
+        }
+    return 0;
+}
+
+const char *slash_na_list(int i)
+{
+    return i >= 0 && i < NNA ? na_cmds[i].name : 0;
+}
+
+/* ---- /btw /recap: a side question ---- */
+
+static void say_text(cl_repl *r, const char *p, long n)
+{
+    long a = 0;
+    while (a < n) {
+        long e = a, l;
+        char m[600];
+        while (e < n && p[e] != '\n')
+            e++;
+        l = e - a < (long)sizeof(m) - 1 ? e - a : (long)sizeof(m) - 1;
+        memcpy(m, p + a, (size_t)l);
+        m[l] = 0;
+        ui_line(&r->ui, m);
+        a = e + 1;
+    }
+}
+
+static void btw(cl_repl *r, const char *arg)
+{
+    jw a;
+    if (!*arg) {
+        ui_line(&r->ui, r->btw[0] ? r->btw : "Usage: /btw QUESTION (a side question; the conversation does not "
+                                             "keep it)");
+        return;
+    }
+    jw_init(&a);
+    if (repl_side(r, 0, r->conv.n, arg, &a) == 0) {
+        line2(r, "/btw ", arg);
+        say_text(r, a.p, a.n);
+        cl_copy(r->btw, a.p, sizeof(r->btw));
+    }
+    jw_free(&a);
+}
+
+static const char recap_ask[] =
+    "In one line of at most twenty words, recap this session so far: what we are doing and where it stands. "
+    "Answer with that line only.";
+
+static void recap(cl_repl *r)
+{
+    jw a;
+    if (!r->conv.n) {
+        ui_line(&r->ui, "Nothing to recap yet.");
+        return;
+    }
+    jw_init(&a);
+    if (repl_side(r, 0, r->conv.n, recap_ask, &a) == 0) {
+        long k;
+        for (k = 0; k < a.n; k++)
+            if (a.p[k] == '\n')
+                a.p[k] = ' ';
+        line2(r, "Recap: ", a.p);
+    }
+    jw_free(&a);
+}
+
+/* ---- /copy [N] ---- */
+
+/* the text of the Nth last answer (1 the last) into out: 0, -1 none */
+static int answer_text(cl_repl *r, int nth, jw *out)
+{
+    int i;
+    for (i = r->conv.n - 1; i >= 0; i--) {
+        jv v, b, x;
+        jit it;
+        long before = out->n;
+        if (r->conv.m[i].user || json_parse(r->conv.m[i].json, r->conv.m[i].n, &v))
+            continue;
+        json_iter(v, &it);
+        while (json_next(&it, 0, &b)) {
+            long l;
+            char *t;
+            if (!json_get(b, "type", &x) || !json_streq(x, "text") || !json_get(b, "text", &x))
+                continue;
+            t = json_strdup(x, &l);
+            if (!t)
+                continue;
+            if (out->n)
+                jw_rawz(out, "\n\n");
+            jw_raw(out, t, l);
+            free(t);
+        }
+        if (out->n == before)
+            continue;               /* tool calls only */
+        if (--nth == 0)
+            return 0;
+        jw_reset(out);
+    }
+    return -1;
+}
+
+static void copy_(cl_repl *r, const char *arg)
+{
+    jw t;
+    int nth = *arg ? atoi(arg) : 1, nb = 0, c = 0, i;
+    const char *opt[9];
+    char lab[8][64];
+    long bs[8], be[8], p;
+    if (nth < 1) {
+        ui_line(&r->ui, "Usage: /copy [N] (1 the last answer, 2 the one before, ...)");
+        return;
+    }
+    jw_init(&t);
+    if (answer_text(r, nth, &t)) {
+        ui_line(&r->ui, "No answer of Claude's to copy yet.");
+        jw_free(&t);
+        return;
+    }
+    /* code blocks: a picker of them (Claude Code's), the whole answer first */
+    for (p = 0; p < t.n && nb < 8;) {
+        const char *s = strstr(t.p + p, "```"), *e;
+        if (!s || (s != t.p && s[-1] != '\n'))
+            break;
+        e = strchr(s, '\n');
+        if (!e)
+            break;
+        bs[nb] = (long)(e + 1 - t.p);
+        s = strstr(e + 1, "```");
+        if (!s)
+            break;
+        be[nb] = (long)(s - t.p);
+        cl_copy(lab[nb], "Code block ", sizeof(lab[nb]));
+        {
+            char num[16];
+            cl_ltoa(nb + 1, num);
+            cl_cat(lab[nb], num, sizeof(lab[nb]));
+        }
+        nb++;
+        e = strchr(s + 3, '\n');
+        p = e ? (long)(e + 1 - t.p) : t.n;
+    }
+    if (nb) {
+        opt[0] = "The whole answer";
+        for (i = 0; i < nb; i++)
+            opt[i + 1] = lab[i];
+        c = ui_pick(&r->ui, "Copy what?", opt, nb + 1, 0);
+        if (c < 0)
+            c = 0;
+    }
+    {
+        const char *s = c ? t.p + bs[c - 1] : t.p;
+        long n = c ? be[c - 1] - bs[c - 1] : t.n;
+        if (r->sys->clip && r->sys->clip(r->sys->u, s, n) == 0)
+            ui_line(&r->ui, c ? "The code block is on the clipboard." : "Claude's answer is on the clipboard.");
+        else
+            ui_line(&r->ui, "No clipboard here: /export FILE writes the conversation to a file.");
+        r->n_copies++;
+    }
+    jw_free(&t);
+}
+
+/* ---- /diff: this session's changes, from the checkpoints ---- */
+
+/* the lines of a and b that differ (a common start and end trimmed), as
+ * - and + lines (the line mode; the screen draws its own diff) */
+static void plain_diff(cl_repl *r, const char *a, long an, const char *b, long bn)
+{
+    long p = 0, q = 0, k, ia;
+    int shown = 0;
+    while (p < an && p < bn && a[p] == b[p])
+        p++;
+    while (p > 0 && a[p - 1] != '\n')
+        p--;                        /* to a line's start */
+    while (q < an - p && q < bn - p && a[an - 1 - q] == b[bn - 1 - q])
+        q++;
+    while (q > 0 && an - q < an && a[an - q] != '\n' && an - q > p)
+        q--;                        /* to a line's end */
+    for (k = 0; k < 2; k++) {
+        const char *s = k ? b : a;
+        long e = (k ? bn : an) - q, i = p;
+        while (i < e && shown < 200) {
+            char m[300];
+            long j = i;
+            while (j < e && s[j] != '\n')
+                j++;
+            m[0] = k ? '+' : '-';
+            m[1] = ' ';
+            ia = j - i < (long)sizeof(m) - 3 ? j - i : (long)sizeof(m) - 3;
+            memcpy(m + 2, s + i, (size_t)ia);
+            m[ia + 2] = 0;
+            ui_line(&r->ui, m);
+            shown++;
+            i = j + 1;
+        }
+    }
+}
+
+static void diff(cl_repl *r)
+{
+    int i, j, any = 0;
+    for (i = 0; i < r->cp.n; i++) {
+        const cl_cpent *e = &r->cp.e[i];
+        char *before = 0, *after = 0;
+        long bn = 0, an = 0;
+        for (j = 0; j < i; j++)
+            if (!strcmp(r->cp.e[j].path, e->path))
+                break;
+        if (j < i)
+            continue;               /* the first snapshot of a file is its state before Claude */
+        if (!e->kept && e->existed) {
+            line2(r, e->path, ": changed (too large for a copy to compare)");
+            any = 1;
+            continue;
+        }
+        if (e->existed && r->sys->read(r->sys->u, e->snap, 4L * 1024 * 1024, &before, &bn))
+            continue;
+        if (r->sys->kind(r->sys->u, e->path) == 1)
+            r->sys->read(r->sys->u, e->path, 4L * 1024 * 1024, &after, &an);
+        if (bn == an && (!bn || !memcmp(before, after, (size_t)bn)) && (e->existed == (after != 0))) {
+            free(before);
+            free(after);
+            continue;               /* back as it was */
+        }
+        any = 1;
+        line2(r, !e->existed ? "Created: " : !after ? "Deleted: " : "Changed: ", e->path);
+        if (r->tui)
+            ui_preview(&r->ui, T_EDIT, e->path, before ? before : "", bn, after ? after : "", an);
+        else
+            plain_diff(r, before ? before : "", bn, after ? after : "", an);
+        free(before);
+        free(after);
+    }
+    if (!any)
+        ui_line(&r->ui, "No file changed by Claude in this session (what commands run by Bash change is not "
+                        "tracked).");
+}
+
+/* ---- /usage /cost /stats ---- */
+
+static void usage(cl_repl *r)
+{
+    char m[300], num[16], d[24];
+    int i;
+    unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    repl_cost(r);
+    for (i = 0; i < r->conv.nmu; i++) {
+        const cl_model_use *u = &r->conv.mu[i];
+        cl_copy(m, "  ", sizeof(m));
+        cl_cat(m, u->model, sizeof(m));
+        cl_cat(m, ": ", sizeof(m));
+        cl_ltoa(u->in, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, " in, ", sizeof(m));
+        cl_ltoa(u->out, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, " out, ", sizeof(m));
+        cl_ltoa(u->cache_r, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, " cache read, ", sizeof(m));
+        cl_ltoa(u->cache_w, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, " cache written, ", sizeof(m));
+        conv_dollars(u->cost_micro, d, sizeof(d));
+        cl_cat(m, d, sizeof(m));
+        ui_line(&r->ui, m);
+    }
+    cl_copy(m, "Time: ", sizeof(m));
+    cl_ltoa((long)((now - r->t_start) / 1000), num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " s in this session, ", sizeof(m));
+    cl_ltoa((long)(r->api_ms / 1000), num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " s of it waiting for the API.", sizeof(m));
+    ui_line(&r->ui, m);
+    repl_context(r);
+}
+
+/* ---- /plan /debug /release-notes /reload-skills ---- */
+
+static void plan(cl_repl *r, const char *arg)
+{
+    r->tools.perm.mode = PERM_PLAN;
+    ui_line(&r->ui, "Plan mode on: Claude looks around and proposes a plan; nothing is changed until you accept "
+                    "it (Shift+Tab leaves it).");
+    pol_status_event(r);
+    if (*arg && pol_prompt(r, arg, (long)strlen(arg)) == 0)
+        repl_turn(r, arg, (long)strlen(arg));
+}
+
+static void debug(cl_repl *r)
+{
+    r->debug = 1;
+    line2(r, "Debug logging is on for this session: the requests' headers (key hidden), the stream's events, "
+             "the tools. The log: ",
+          r->log_path ? r->log_path : "the console's log (DEBUG=, --debug-file FILE)");
+}
+
+static const char *const notes[] = {
+    "C:Claude, Claude Code for AmigaOS -- what is new:",
+    "A4 gaps: --json-schema, --session-id, --resume FILE.jsonl, --bare, --safe-mode, --agents, "
+    "--replay-user-messages, images in stream-json input, subagent messages in stream-json, "
+    "--forward-subagent-text, --setting-sources, --betas, --autocompact, --permission-prompts, --verbose at the "
+    "screen.",
+    "A4 gaps: /btw /copy /diff /plan /recap /reload-skills /stats /debug /release-notes; skills typed as "
+    "/name; /permissions as menus; /rewind can summarise; /statusline sets itself up; /config key=value.",
+    "A4 gaps: hooks if, systemMessage, updatedInput and eight more events; .claude/rules; auto memory; Read "
+    "shows images and PDFs to Claude; read-only commands run without a question.",
+    "A4: Claude Code's tools (Read Write Edit MultiEdit Glob Grep Bash WebFetch WebSearch Task Skill ...), "
+    "settings.json, CLAUDE.md, permission rules, hooks, sessions, checkpoints, -p print mode.",
+    "A3: the screen of its own -- the input box, the status line, Markdown, diffs, menus.",
+    "A2: the first C:Claude -- streaming chat over AmiSSL, tools, /compact /resume.",
+    0
+};
+
+static void reload_skills(cl_repl *r)
+{
+    int s0 = defs_count(&r->defs, DEF_SKILL), c0 = defs_count(&r->defs, DEF_COMMAND), s1, c1;
+    char m[200], num[16];
+    if (repl_load_defs(r)) {
+        ui_line(&r->ui, "Out of memory.");
+        return;
+    }
+    s1 = defs_count(&r->defs, DEF_SKILL);
+    c1 = defs_count(&r->defs, DEF_COMMAND);
+    cl_copy(m, "Skills: ", sizeof(m));
+    cl_ltoa(s1, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " (", sizeof(m));
+    cl_ltoa(s1 - s0, num);
+    cl_cat(m, s1 >= s0 ? "+" : "", sizeof(m));
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, "), commands: ", sizeof(m));
+    cl_ltoa(c1, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " (", sizeof(m));
+    cl_ltoa(c1 - c0, num);
+    cl_cat(m, c1 >= c0 ? "+" : "", sizeof(m));
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, ").", sizeof(m));
+    ui_line(&r->ui, m);
+}
+
+/* ---- /rename without a name: Claude names it ---- */
+
+static const char name_ask[] = "Give this conversation a short title of three to six words that says what it is "
+                               "about. Answer with the title only, no quotes.";
+
+static void rename_(cl_repl *r, const char *arg)
+{
+    jw a;
+    char t[96];
+    if (*arg) {
+        sess_rename(&r->sess, arg);
+        line2(r, "This conversation is now called ", arg);
+        return;
+    }
+    if (!r->conv.n) {
+        ui_line(&r->ui, "Nothing to name yet: /rename NAME.");
+        return;
+    }
+    jw_init(&a);
+    if (repl_side(r, 0, r->conv.n, name_ask, &a) == 0) {
+        long k;
+        cl_copy(t, a.p, sizeof(t));
+        for (k = 0; t[k]; k++)
+            if (t[k] == '\n' || t[k] == '"')
+                t[k] = ' ';
+        while (k && t[k - 1] == ' ')
+            t[--k] = 0;
+        sess_rename(&r->sess, t);
+        line2(r, "This conversation is now called ", t);
+    }
+    jw_free(&a);
+}
+
+/* ---- /statusline: Claude sets it up (the statusline-setup agent) ---- */
+
+static void statusline(cl_repl *r, const char *arg)
+{
+    jw p;
+    if (!strcmp(arg, "clear") || !strcmp(arg, "delete") || !strcmp(arg, "remove") || !strcmp(arg, "off")) {
+        if (cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "statusLine", 0) == 0 || !r->cfg.status_cmd[0]) {
+            r->cfg.status_cmd[0] = 0;
+            r->status_text[0] = 0;
+            pol_statusline(r);
+            ui_line(&r->ui, "The status line is off.");
+        } else
+            line2(r, "Cannot write ", cfg_file(&r->cfg, CFG_USER));
+        return;
+    }
+    if (!strncmp(arg, "command ", 8)) {
+        /* C:Claude's direct form: /statusline command CMD */
+        jw v;
+        jw_init(&v);
+        jw_rawz(&v, "{\"type\": \"command\", \"command\": ");
+        jw_strz(&v, arg + 8);
+        jw_rawz(&v, "}");
+        if (r->sys->mkdir)
+            r->sys->mkdir(r->sys->u, r->home);
+        if (cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "statusLine", v.p) == 0) {
+            cl_copy(r->cfg.status_cmd, arg + 8, sizeof(r->cfg.status_cmd));
+            pol_statusline(r);
+            line2(r, "Status line command: ", arg + 8);
+        } else
+            line2(r, "Cannot write ", cfg_file(&r->cfg, CFG_USER));
+        jw_free(&v);
+        return;
+    }
+    /* Claude Code: the statusline-setup agent does it from a description
+     * (none: from the shell's prompt) */
+    jw_init(&p);
+    jw_rawz(&p, "Use the Task tool with subagent_type statusline-setup to configure my status line in ");
+    jw_rawz(&p, cfg_file(&r->cfg, CFG_USER));
+    jw_rawz(&p, ". ");
+    if (*arg) {
+        jw_rawz(&p, "What I want: ");
+        jw_rawz(&p, arg);
+    } else
+        jw_rawz(&p, "Make it like my shell's prompt (vsh's PROMPT variable, or the AmigaShell's): the directory "
+                    "and the model.");
+    jw_rawz(&p, "\n\nThe command gets JSON on its standard input with: model.id, model.display_name, "
+                "workspace.current_dir, workspace.project_dir, session_id, session_name, version, "
+                "output_style.name, cost.total_cost_usd, cost.total_duration_ms, cost.total_api_duration_ms, "
+                "context_window.context_window_size, context_window.used_percentage, "
+                "context_window.remaining_percentage, effort.level, vim.mode, agent.name. Commands that read "
+                "JSON on an Amiga: vsh's own tools, or a small ARexx or C program.");
+    if (!p.oom && pol_prompt(r, p.p, p.n) == 0)
+        repl_turn(r, p.p, p.n);
+    jw_free(&p);
+}
+
+/* ---- /permissions as menus (the screen): view, add, remove, directories ---- */
+
+static void perm_editor(cl_repl *r)
+{
+    static const char *const top[] = { "Allow a tool or command", "Ask before a tool or command",
+                                       "Deny a tool or command", "Remove a rule", "Add a working directory",
+                                       "Show the rules" };
+    static const char *const lv[] = { "This project, only me (.claude/settings.local.json)",
+                                      "This project, everyone (.claude/settings.json)",
+                                      "All my projects (ENVARC:Claude/settings.json)" };
+    static const int lvl[] = { CFG_LOCAL, CFG_PROJECT, CFG_USER };
+    static const char *const ex[] = { "Bash(List *)", "Read", "Edit", "WebFetch(domain:aminet.net)" };
+    char typed[300], line[400];
+    unsigned picked;
+    int c = ui_pick(&r->ui, "Permissions", top, 6, 5), k, i;
+    if (c < 0 || c == 5) {
+        permissions(r, "");
+        return;
+    }
+    if (c == 4) {
+        k = ui_choose(&r->ui, "Directory", "Which directory may Claude work in too?", ex, 0, 0, CH_OTHER, &picked,
+                      typed, sizeof(typed));
+        if (k == 0 && typed[0])
+            add_dir(r, typed);
+        return;
+    }
+    if (c == 3) {
+        const char *opt[24];
+        int n = 0;
+        for (i = 0; i < r->cfg.nrules && n < 24; i++)
+            opt[n++] = r->cfg.rules[i].text;
+        if (!n) {
+            ui_line(&r->ui, "No rules to remove.");
+            return;
+        }
+        k = ui_pick(&r->ui, "Remove which rule?", opt, n, 0);
+        if (k >= 0) {
+            cl_copy(line, "remove ", sizeof(line));
+            cl_cat(line, opt[k], sizeof(line));
+            permissions(r, line);
+        }
+        return;
+    }
+    k = ui_choose(&r->ui, "Rule", "Which tool or command? Tool, or Tool(pattern)", ex, 0, 4, CH_OTHER, &picked,
+                  typed, sizeof(typed));
+    if (k < 0)
+        return;
+    if (k < 4)
+        cl_copy(typed, ex[k], sizeof(typed));
+    i = ui_pick(&r->ui, "Where is it kept?", lv, 3, 0);
+    if (i < 0)
+        return;
+    cl_copy(line, c == 0 ? "allow " : c == 1 ? "ask " : "deny ", sizeof(line));
+    cl_cat(line, typed, sizeof(line));
+    cl_cat(line, lvl[i] == CFG_LOCAL ? " local" : lvl[i] == CFG_PROJECT ? " project" : " user", sizeof(line));
+    permissions(r, line);
 }
 
 /* /autocompact [auto|TOKENS|on|off]: Claude Code's window (saved as
@@ -846,16 +1501,38 @@ static void autocompact(cl_repl *r, const char *arg)
 
 int slash_run(cl_repl *r, const char *w, const char *arg)
 {
-    if (!strcmp(w, "/permissions") || !strcmp(w, "/allowed-tools"))
-        permissions(r, arg);
-    else if (!strcmp(w, "/output-style"))
+    if (!strcmp(w, "/permissions") || !strcmp(w, "/allowed-tools")) {
+        if (!*arg && r->tui)
+            perm_editor(r);         /* Claude Code's dialog: menus */
+        else
+            permissions(r, arg);
+    } else if (!strcmp(w, "/output-style"))
         output_style(r, arg);
     else if (!strcmp(w, "/status"))
         status(r);
-    else if (!strcmp(w, "/usage")) {
-        repl_cost(r);
-        repl_context(r);
-    } else if (!strcmp(w, "/doctor"))
+    else if (!strcmp(w, "/usage") || !strcmp(w, "/cost") || !strcmp(w, "/stats"))
+        usage(r);
+    else if (!strcmp(w, "/btw"))
+        btw(r, arg);
+    else if (!strcmp(w, "/recap"))
+        recap(r);
+    else if (!strcmp(w, "/copy"))
+        copy_(r, arg);
+    else if (!strcmp(w, "/diff"))
+        diff(r);
+    else if (!strcmp(w, "/plan"))
+        plan(r, arg);
+    else if (!strcmp(w, "/debug"))
+        debug(r);
+    else if (!strcmp(w, "/release-notes")) {
+        int i;
+        for (i = 0; notes[i]; i++)
+            ui_line(&r->ui, notes[i]);
+    } else if (!strcmp(w, "/reload-skills"))
+        reload_skills(r);
+    else if (not_here(r, w))
+        ;
+    else if (!strcmp(w, "/doctor"))
         doctor(r);
     else if (!strcmp(w, "/terminal-setup"))
         terminal_setup(r);
@@ -889,14 +1566,9 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
         add_dir(r, arg);
     else if (!strcmp(w, "/cd"))
         cd(r, arg);
-    else if (!strcmp(w, "/rename")) {
-        if (!*arg)
-            ui_line(&r->ui, "Usage: /rename NAME");
-        else {
-            sess_rename(&r->sess, arg);
-            line2(r, "This conversation is now called ", arg);
-        }
-    } else if (!strcmp(w, "/branch") || !strcmp(w, "/fork")) {
+    else if (!strcmp(w, "/rename"))
+        rename_(r, arg);
+    else if (!strcmp(w, "/branch") || !strcmp(w, "/fork")) {
         if (!r->conv.n)
             ui_line(&r->ui, "Nothing to branch yet.");
         else if (sess_branch(&r->sess, &r->conv, r->io->ms ? r->io->ms(r->io->u) : 0) == 0) {
@@ -905,30 +1577,13 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
             line2(r, "Going on in a branch of this conversation: session ", r->sess.id);
         } else
             ui_line(&r->ui, "The branch could not be written.");
-    } else if (!strcmp(w, "/rewind") || !strcmp(w, "/checkpoint"))
+    } else if (!strcmp(w, "/rewind") || !strcmp(w, "/checkpoint") || !strcmp(w, "/undo"))
         rewind_(r, arg);
     else if (!strcmp(w, "/autocompact"))
         autocompact(r, arg);
-    else if (!strcmp(w, "/statusline")) {
-        if (*arg) {
-            jw v;
-            jw_init(&v);
-            jw_rawz(&v, "{\"type\": \"command\", \"command\": ");
-            jw_strz(&v, arg);
-            jw_rawz(&v, "}");
-            if (cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "statusLine", v.p) == 0) {
-                cl_copy(r->cfg.status_cmd, arg, sizeof(r->cfg.status_cmd));
-                pol_statusline(r);
-                line2(r, "Status line command: ", arg);
-            } else
-                line2(r, "Cannot write ", cfg_file(&r->cfg, CFG_USER));
-            jw_free(&v);
-        } else {
-            line2(r, "Status line command: ", r->cfg.status_cmd[0] ? r->cfg.status_cmd : "(none: /statusline COMMAND)");
-            if (r->status_text[0])
-                line2(r, "  it says: ", r->status_text);
-        }
-    } else
+    else if (!strcmp(w, "/statusline"))
+        statusline(r, arg);
+    else
         return 0;
     return 1;
 }

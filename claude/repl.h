@@ -165,6 +165,8 @@ typedef struct cl_repl {
     int prompts_none;           /* --permission-prompts none */
     unsigned long t_start;      /* the session's start (io->ms), for the durations */
     const char *log_path;       /* where the debug log goes (main sets it; /debug names it), 0 unknown */
+    char btw[512];              /* the last /btw answer (/btw alone shows it) */
+    long n_copies;              /* the tests' sentinel: /copy runs that reached the clipboard */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
     char buf[4096];

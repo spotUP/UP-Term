@@ -330,8 +330,8 @@ void ui_rewind(cl_ui *u)
 {
     char lab[9][80], q[120];
     const char *opt[9];
-    const char *what[4];
-    int whatv[4];
+    const char *what[6];
+    int whatv[6];
     int n, first, k, i, c, can, nw = 0;
     if (!u->tui || !u->rw.count)
         return;
@@ -376,6 +376,13 @@ void ui_rewind(cl_ui *u)
         what[nw] = "Restore code";
         whatv[nw++] = RW_CODE;
     }
+    if (can & RW_CONV) {
+        /* Claude Code's summaries: the rest of it, or what came before */
+        what[nw] = "Summarize from here";
+        whatv[nw++] = RW_SUM;
+        what[nw] = "Summarize up to here";
+        whatv[nw++] = RW_SUM_UP;
+    }
     what[nw] = "Never mind";
     whatv[nw++] = 0;
     cl_copy(q, "Back to before: ", sizeof(q));
@@ -394,7 +401,9 @@ void ui_rewind(cl_ui *u)
             ui_line(u, "Could not rewind.");
             return;
         }
-        if (whatv[c] & RW_CONV) {
+        if (whatv[c] & (RW_SUM | RW_SUM_UP))
+            ;                       /* the summary said so itself */
+        else if (whatv[c] & RW_CONV) {
             /* the prompt comes back into the box, to send again or change */
             tui_set_text(u->tui, full);
             ui_line(u, (whatv[c] & RW_CODE) ? "Rewound the conversation and the code." : "Rewound the conversation.");

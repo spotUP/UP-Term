@@ -853,6 +853,8 @@ static int rw_restore(void *u, int i, int what)
     int msg[64], n = rw_points(r, msg, 64);
     if (i < 0 || i >= n)
         return -1;
+    if (what & (RW_SUM | RW_SUM_UP))
+        return repl_summarize(r, msg[i], (what & RW_SUM_UP) != 0);
     return repl_rewind(r, msg[i], (what & RW_CODE) != 0, (what & RW_CONV) != 0);
 }
 

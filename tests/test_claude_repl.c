@@ -530,6 +530,18 @@ static void test_unfinished(void)
     repl_free(&r);
 }
 
+static int has(const char *rel, const char *what);
+
+/* the model /model saved in the user's settings taken out again (the home
+ * is shared by the tests) */
+static void unset_home_model(void)
+{
+    char p[600];
+    strcpy(p, dir);
+    strcat(p, "/home/settings.json");
+    cfg_write_key(&sys, p, "model", 0);
+}
+
 static void test_commands(void)
 {
     static const char *script[] = { 0 };
@@ -537,6 +549,8 @@ static void test_commands(void)
     setup(&r, script);
     CHECK_INT(repl_line(&r, "/model claude-sonnet-5-5"), 0);
     CHECK_STR(r.model, "claude-sonnet-5-5");
+    CHECK(has("home/settings.json", "\"model\": \"claude-sonnet-5-5\""));   /* kept for new sessions */
+    unset_home_model();
     CHECK_INT(repl_line(&r, "/effort huge"), 0);
     CHECK_STR(r.effort, "medium");
     CHECK_INT(repl_line(&r, "/effort high"), 0);
@@ -598,6 +612,19 @@ static void test_commands(void)
 #define SB "\342\217\272"   /* the bullet */
 #define SC "\342\216\277"   /* the result corner */
 
+/* the edit's rows, looked at before /cost (whose /usage lines scroll them away) */
+static int scr_update, scr_summary, scr_minus, scr_plus;
+
+static void screen_before_cost(void)
+{
+    if (cs.next != 4)
+        return;
+    scr_update = cs_find("\342\217\272 Update(claude-test.txt)");
+    scr_summary = cs_find(SC "  Updated claude-test.txt with 1 addition and 1 removal");
+    scr_minus = cs_find("1 - hello");
+    scr_plus = cs_find("1 + hello from the Amiga");
+}
+
 static void test_screen(void)
 {
     static const char *keys[] = {
@@ -623,6 +650,8 @@ static void test_screen(void)
         fclose(f);
     }
     cs_open(80, 24, keys);
+    cs.before_read = screen_before_cost;
+    scr_update = scr_summary = scr_minus = scr_plus = -1;
     cs_io(&io);
     io.log = 0;
     net.u = 0;
@@ -673,11 +702,12 @@ static void test_screen(void)
     CHECK(sb.nreq < 5 || strstr(sb.body[4], "claude-test.txt has been updated.") != 0);
     /* the todo list, in progress (it has scrolled into the scrollback by now) */
     CHECK(strstr(cs.sent.p, "\342\226\240\033[0m \033[1mChange the greeting") != 0);
-    row = cs_find("\342\217\272 Update(claude-test.txt)");
+    cs.before_read = 0;
+    row = scr_update;
     CHECK(row >= 0);
-    CHECK(cs_find(SC "  Updated claude-test.txt with 1 addition and 1 removal") > row);
-    CHECK(cs_find("1 - hello") > row);
-    CHECK(cs_find("1 + hello from the Amiga") > row);
+    CHECK(scr_summary > row);
+    CHECK(scr_minus > row);
+    CHECK(scr_plus > row);
     CHECK(cs_find("> please edit the greeting") >= 0 || vt_scrollback_lines(cs.vt) > 0);
     CHECK(cs_find("Requests 5. Tokens:") >= 0);
     /* the footer is still the box and the status line */
@@ -1008,6 +1038,8 @@ static void test_wp3_commands(void)
     CHECK(has("wp3b/.claude/settings.json", "UserPromptSubmit"));      /* the rest kept */
     repl_line(&r, "/model opus");
     CHECK_STR(r.model, "claude-opus-5-5");
+    CHECK(has("home/settings.json", "\"model\": \"opus\""));
+    unset_home_model();
     repl_line(&r, "/autocompact off");
     CHECK_INT(r.auto_compact, 0);
     repl_line(&r, "/autocompact on");
@@ -1081,7 +1113,7 @@ static void test_wp3_commands(void)
     CHECK(strstr(cn.screen.p, "No commands running in the background.") != 0);
     repl_line(&r, "/todos");
     CHECK(strstr(cn.screen.p, "No todo list") != 0);
-    strcpy(p, "/statusline sh ");
+    strcpy(p, "/statusline command sh ");
     strcat(p, root);
     strcat(p, "/status.sh");
     repl_line(&r, p);
@@ -2590,6 +2622,184 @@ static void test_gaps_verbose(void)
     cli_free(&c);
 }
 
+/* Phase 2: the slash commands (S1-S19), typed through repl_line */
+static void test_gaps_commands(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char p[700], root[600];
+    const char *sc;
+    jv m, e, x;
+    jit it;
+    int n0;
+
+    setup(&r, none);
+    /* S1 Claude Code's commands that cannot be here say why; /help lists them */
+    repl_line(&r, "/mcp");
+    repl_line(&r, "/bug");
+    repl_line(&r, "/install-github-app");
+    repl_line(&r, "/help");
+    sc = cn.screen.p ? cn.screen.p : "";
+    CHECK(strstr(sc, "/mcp is not available on the Amiga: it MCP servers run as Node or Python processes") != 0);
+    CHECK(strstr(sc, "/bug is not available on the Amiga: it reports go to Anthropic's feedback service") != 0);
+    CHECK(strstr(sc, "/install-github-app is not available on the Amiga") != 0);
+    CHECK(strstr(sc, "Not on the Amiga (type one to see why): /mcp /plugin") != 0);
+    CHECK(strstr(sc, "Unknown command") == 0);
+    CHECK_INT(sb.nreq, 0);
+
+    /* a conversation first */
+    add_stream("text.sse");
+    repl_line(&r, "hello");
+    CHECK_INT(r.conv.n, 2);
+    /* S2 /btw: asked with the conversation, answered, not kept */
+    add_answer(0, 0, 0, "SIDE-ANSWER");
+    repl_line(&r, "/btw what was that?");
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"text\":\"what was that?\"") != 0 &&
+          strstr(sb.body[1], "Hello from the Amiga!") != 0 && strstr(sb.body[1], "\"tool_choice\"") != 0);
+    CHECK(strstr(cn.screen.p, "SIDE-ANSWER") != 0);
+    CHECK_INT(r.conv.n, 2);
+    /* S6 /recap */
+    add_answer(0, 0, 0, "We said hello.");
+    repl_line(&r, "/recap");
+    CHECK(strstr(cn.screen.p, "Recap: We said hello.") != 0);
+    CHECK_INT(r.conv.n, 2);
+    /* S15 /rename without a name: Claude names it */
+    add_answer(0, 0, 0, "Amiga Greeting Chat\n");
+    repl_line(&r, "/rename");
+    CHECK_STR(r.sess.title, "Amiga Greeting Chat");
+    /* S3 /copy: the last answer to the clipboard (sys_posix keeps it) */
+    repl_line(&r, "/copy");
+    CHECK(strstr(sp.clip, "Hello from the Amiga!") == sp.clip);
+    CHECK_INT((int)r.n_copies, 1);
+    repl_line(&r, "/copy 2");
+    CHECK(strstr(cn.screen.p, "No answer of Claude's to copy yet.") != 0);
+    /* S9 /usage, /cost and /stats: the totals, per model, the time */
+    repl_line(&r, "/stats");
+    CHECK(strstr(cn.screen.p, "  claude-opus-5-5: ") != 0 && strstr(cn.screen.p, "Time: ") != 0);
+    /* S12 /effort auto: no effort sent (the model's own); status */
+    repl_line(&r, "/effort auto");
+    repl_line(&r, "/effort status");
+    CHECK(strstr(cn.screen.p, "Effort: auto") != 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "again");
+    CHECK(sb.nreq == 5 && strstr(sb.body[4], "\"effort\"") == 0 && strstr(sb.body[0], "\"effort\"") != 0);
+    repl_line(&r, "/effort medium");
+    /* S16 /rewind N summarize: the last prompt on becomes a summary */
+    n0 = r.conv.n;
+    CHECK_INT(n0, 4);
+    add_answer(0, 0, 0, "SUMMARY-OF-THE-REST");
+    repl_line(&r, "/rewind 1 summarize");
+    CHECK_INT(r.conv.n, 3);
+    CHECK(r.conv.n == 3 && strstr(r.conv.m[2].json, "SUMMARY-OF-THE-REST") != 0 && r.conv.m[2].user);
+    /* ... and "up to here": what came before the prompt becomes one */
+    add_answer(0, 0, 0, "ok2");
+    repl_line(&r, "and then");
+    add_answer(0, 0, 0, "SUMMARY-BEFORE");
+    repl_line(&r, "/rewind 1 summarize-up");
+    CHECK(r.conv.n == 2 && strstr(r.conv.m[0].json, "SUMMARY-BEFORE") != 0 && strstr(r.conv.m[0].json, "and then") != 0);
+    /* S10 /clear NAME: the old conversation named, the totals back to nothing */
+    repl_line(&r, "/clear old talk");
+    CHECK_INT(r.conv.n, 0);
+    CHECK_INT((int)r.conv.requests, 0);
+    {
+        cl_sess_info l[8];
+        int k, n = sess_list(&r.sess, l, 8), hit = 0;
+        for (k = 0; k < n; k++)
+            hit |= !strcmp(l[k].title, "old talk");
+        CHECK(hit);
+    }
+    /* S5 /plan, S18 /debug, S7 /release-notes */
+    repl_line(&r, "/plan");
+    CHECK_INT(r.tools.perm.mode, PERM_PLAN);
+    r.tools.perm.mode = PERM_DEFAULT;
+    repl_line(&r, "/debug");
+    CHECK_INT(r.debug, 1);
+    r.debug = 0;
+    repl_line(&r, "/release-notes");
+    CHECK(strstr(cn.screen.p, "A4 gaps: --json-schema") != 0);
+    /* S11 /config key=value */
+    repl_line(&r, "/config verbose=true effortLevel=low");
+    CHECK_INT(r.verbose, 1);
+    CHECK_STR(r.effort, "low");
+    CHECK(has("home/settings.json", "\"verbose\": true"));
+    repl_line(&r, "/config verbose=false effortLevel=medium");
+    /* S17 /statusline: the statusline-setup agent asked to do it; clear */
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/statusline the model and the directory");
+    CHECK(strstr(sb.body[sb.nreq - 1], "subagent_type statusline-setup") != 0 &&
+          strstr(sb.body[sb.nreq - 1], "What I want: the model and the directory") != 0);
+    repl_line(&r, "/statusline command echo X");
+    CHECK_STR(r.cfg.status_cmd, "echo X");
+    repl_line(&r, "/statusline clear");
+    CHECK_STR(r.cfg.status_cmd, "");
+    CHECK(!has("home/settings.json", "statusLine"));
+    repl_free(&r);
+
+    /* S4 /diff: the files Claude changed, from the checkpoints */
+    strcpy(root, dir);
+    strcat(root, "/gapsdiff");
+    mkdir(root, 0700);
+    xput(root, "a.txt", "one\ntwo\nthree\n");
+    setup_in(&r, none, root);
+    repl_line(&r, "/diff");
+    CHECK(strstr(cn.screen.p, "No file changed by Claude in this session") != 0);
+    strcpy(p, root);
+    strcat(p, "/a.txt");
+    cp_turn(&r.cp, 0);
+    CHECK_INT(cp_before_write(&r.cp, p), 0);
+    xput(root, "a.txt", "one\nTWO\nthree\n");
+    repl_line(&r, "/diff");
+    CHECK(strstr(cn.screen.p, "Changed: ") != 0 && strstr(cn.screen.p, "- two\n+ TWO\n") != 0);
+    /* S8 /reload-skills: a skill added on disk is there */
+    xput(root, ".claude/skills/new-one/SKILL.md", "---\ndescription: New\nargument-hint: [file]\n---\nX\n");
+    repl_line(&r, "/reload-skills");
+    CHECK(strstr(cn.screen.p, "Skills: 1 (+1)") != 0);
+    /* S19 the skill is in the menu, with its argument hint */
+    repl_line(&r, "/help");
+    CHECK(strstr(cn.screen.p, "/new-one") != 0 && strstr(cn.screen.p, "New  [file]") != 0);
+    repl_free(&r);
+    (void)m;
+    (void)e;
+    (void)x;
+    (void)it;
+}
+
+/* S14 /permissions as menus at the screen: allow Read, kept locally */
+static void test_gaps_perm_menu(void)
+{
+    static const char *keys[] = { "/permissions\r", "1", "2", "1", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    strcpy(root, dir);
+    strcat(root, "/gapsperm");
+    mkdir(root, 0700);
+    stub_reset();
+    cs_open(80, 30, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, 5);
+    CHECK(has("gapsperm/.claude/settings.local.json", "\"Read\""));
+    CHECK(cs_find("Allow: Read") >= 0 && cs_find("saved in") >= 0);
+    repl_free(&r);
+    cs_close();
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -2606,6 +2816,8 @@ void suite_claude_repl(void)
     test_fetch_screen();
     test_gaps_print();
     test_gaps_verbose();
+    test_gaps_commands();
+    test_gaps_perm_menu();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);
