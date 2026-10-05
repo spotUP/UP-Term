@@ -443,7 +443,7 @@ static void test_reach(void)
     /* the tools by Claude Code's names: no WebFetch without its connection, no
      * SlashCommand without a command (Skill: the bundled ones are always there);
      * the web_search server tool declared */
-    CHECK(json_get(b, "tools", &x) && json_count(x) == 18);
+    CHECK(json_get(b, "tools", &x) && json_count(x) == 19);
     CHECK(strstr(sb.body[0], "- simplify: Review this session's changed code") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Read\",") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
@@ -2859,7 +2859,7 @@ static void test_gaps_commands(void)
     /* S8 /reload-skills: a skill added on disk is there */
     xput(root, ".claude/skills/new-one/SKILL.md", "---\ndescription: New\nargument-hint: [file]\n---\nX\n");
     repl_line(&r, "/reload-skills");
-    CHECK(strstr(cn.screen.p, "Skills: 9 (+1)") != 0);
+    CHECK(strstr(cn.screen.p, "Skills: 10 (+1)") != 0);
     /* S19 the skill is in the menu, with its argument hint */
     repl_line(&r, "/help");
     CHECK(strstr(cn.screen.p, "/new-one") != 0 && strstr(cn.screen.p, "New  [file]") != 0);
@@ -4173,6 +4173,323 @@ static void test_gaps2_tools(void)
     }
 }
 
+/* ---- A4 gaps 3: /loop and ScheduleWakeup
+ * (thoughts/shared/plans/2026-10-05-a4-gaps3-loop-progress.md) ---- */
+
+static const char *last_body(void)
+{
+    return sb.nreq ? sb.body[sb.nreq - 1] : "";
+}
+
+/* request i's last user message (the conversation before it left out) */
+static const char *user_tail(int i)
+{
+    const char *b = i >= 0 && i < sb.nreq ? sb.body[i] : "", *q, *at = b;
+    for (q = b; (q = strstr(q, "\"role\":\"user\"")) != 0; q++)
+        at = q;
+    return at;
+}
+
+/* the user's loop.md (CLAUDE_CONFIG_DIR = ~/.claude) */
+static void user_loop_md(cl_repl *r, const char *text)
+{
+    char p[600];
+    FILE *f;
+    strcpy(p, r->home);
+    strcat(p, "/loop.md");
+    if (!text) {
+        remove(p);
+        return;
+    }
+    f = fopen(p, "wb");
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+/* LS the screen: the clock moves on a minute at each idle tick ("" in the script) */
+static void loop_tick_clock(void)
+{
+    if (cs.script && cs.script[cs.next] && !cs.script[cs.next][0]) {
+        sp.fake_now += 61;
+        cs.clock += 2000;
+    }
+}
+
+/* LS (the reachability test): /loop typed on the screen (repl_screen +
+ * repl_run); its wakeups fire while the screen waits for keys, as
+ * "Claude resuming /loop wakeup", their lines not echoed; three quiet
+ * iterations in a row fold into one line; Esc on the idle box cancels
+ * the pending wakeup */
+static void test_loop_screen(const char *root)
+{
+    static const char *keys[] = { "/loop check the deploy\r", "", "", "", "\033", "/exit\r", 0 };
+    static cl_repl r;
+    int i, echoes = 0;
+    const char *q;
+    stub_reset();
+    add_answer("toolu_LS1", "ScheduleWakeup", "{\"delaySeconds\":60,\"reason\":\"a first look\",\"prompt\":"
+                                             "\"/loop check the deploy\",\"noop\":false}", 0);
+    add_answer(0, 0, 0, "FIRST-LOOK done.");
+    for (i = 0; i < 3; i++) {
+        add_answer("toolu_LSq", "ScheduleWakeup", "{\"delaySeconds\":60,\"reason\":\"still quiet\",\"prompt\":"
+                                                 "\"/loop check the deploy\",\"noop\":true}", 0);
+        add_answer(0, 0, 0, "QUIET-TICK nothing new.");
+    }
+    cs_open(80, 24, keys);
+    cs.before_read = loop_tick_clock;
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    sp.fake_now = 1500000000L;
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, 6);
+    CHECK_INT(sb.nreq, 8);
+    CHECK_INT((int)r.n_loop_ticks, 3);                  /* the sentinel: three wakeups fired */
+    CHECK(sb.nreq == 8 && strstr(sb.body[2], "## Input\\n\\ncheck the deploy") != 0);  /* /loop again */
+    /* typed once; the wakeups' lines are not echoed */
+    for (q = r.tui->log.p; q && (q = strstr(q, "/loop check the deploy")) != 0; q++)
+        echoes++;
+    CHECK_INT(echoes, 1);
+    CHECK(strstr(r.tui->log.p, "Claude resuming /loop wakeup") != 0);
+    /* the three quiet iterations: one line on the screen */
+    CHECK(cs_find("Claude resuming /loop wakeup (3 quiet wake-ups, nothing to do): still") >= 0);
+    CHECK(cs_find("QUIET-TICK") < 0);
+    CHECK(cs_find("FIRST-LOOK done.") >= 0);
+    /* Esc on the idle box: the pending wakeup cancelled */
+    CHECK(cs_find("Cancelled the pending /loop wakeup") >= 0);
+    CHECK(tasks_wakeup_get(r.tools.tasks) == 0 && !tasks_loop_on(r.tools.tasks));
+    repl_free(&r);
+    cs_close();
+}
+
+static void test_gaps3_loop(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char root[600], txt[40000], err[200], id[12];
+    const cron_job *j;
+    long t0 = 1500000000L;
+    jw w;
+    strcpy(root, dir);
+    strcat(root, "/gaps3");
+    mkdir(root, 0700);
+
+    /* L1 the input's prompt beside its interval (rule 1 a leading token,
+     * rule 2 a trailing "every" clause) */
+    CHECK(sched_loop_has_prompt("check the deploy"));
+    CHECK(sched_loop_has_prompt("5m check the deploy"));
+    CHECK(sched_loop_has_prompt("check every PR"));
+    CHECK(sched_loop_has_prompt("run tests every 5 minutes"));
+    CHECK(sched_loop_has_prompt("every PR"));
+    CHECK(!sched_loop_has_prompt(""));
+    CHECK(!sched_loop_has_prompt("  15m "));
+    CHECK(!sched_loop_has_prompt("every 20m"));
+    CHECK(!sched_loop_has_prompt("every 2 hours"));
+
+    /* L2 /loop PROMPT: Claude Code's skill and the input in a turn;
+     * ScheduleWakeup declared; a delay under a minute clamped to 60 s; the
+     * wakeup in Stop's session_crons, not in the session's own cron file */
+    setup_in(&r, none, root);
+    sp.fake_now = t0;
+    add_answer("toolu_W1", "ScheduleWakeup", "{\"delaySeconds\":30,\"reason\":\"the build is short\",\"prompt\":"
+                                            "\"/loop check the deploy\",\"noop\":false}", 0);
+    add_answer(0, 0, 0, "Checked; again in a minute.");
+    repl_line(&r, "/loop check the deploy");
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[0], "# /loop: a recurring or self-paced prompt") != 0 &&
+          strstr(sb.body[0], "## Input\\n\\ncheck the deploy") != 0 &&
+          strstr(sb.body[0], "Default loop prompt") == 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[0], "{\"name\":\"ScheduleWakeup\",") != 0);
+    CHECK(strstr(last_body(), "Next /loop wakeup in 1 minute (the shortest wait is 1 minute): the build is short") != 0);
+    j = tasks_wakeup_get(r.tools.tasks);
+    CHECK(j && j->fire == t0 + 60 && !strcmp(j->prompt, "/loop check the deploy") && !j->recurring);
+    CHECK(tasks_loop_on(r.tools.tasks));
+    jw_init(&w);
+    tasks_crons_json(r.tools.tasks, &w, 0, 1);
+    CHECK(w.p && strstr(w.p, "\"recurring\":false,\"prompt\":\"/loop check the deploy\"") != 0);
+    jw_reset(&w);
+    tasks_crons_json(r.tools.tasks, &w, 0, 0);
+    CHECK_STR(w.p ? w.p : "", "[]");    /* Claude Code: a self-paced loop is not restored on a resume */
+    jw_free(&w);
+
+    /* L3 it fires between turns at its time, not before: "Claude resuming
+     * /loop wakeup", the /loop line again; an hour is the longest wait */
+    add_answer("toolu_W2", "ScheduleWakeup", "{\"delaySeconds\":99999,\"reason\":\"quiet\",\"prompt\":"
+                                            "\"/loop check the deploy\",\"noop\":true}", 0);
+    add_answer(0, 0, 0, "Still quiet.");
+    sp.fake_now = t0 + 59;
+    CHECK_INT(sched_line_mode(&r), 0);
+    sp.fake_now = t0 + 60;
+    CHECK_INT(sched_line_mode(&r), 1);
+    CHECK_INT((int)r.n_loop_ticks, 1);
+    CHECK(strstr(cn.screen.p, "Claude resuming /loop wakeup") != 0);
+    CHECK(strstr(user_tail(2), "## Input\\n\\ncheck the deploy") != 0);
+    CHECK(strstr(last_body(), "Next /loop wakeup in 1 hour (the longest wait is 1 hour): quiet") != 0);
+    j = tasks_wakeup_get(r.tools.tasks);
+    CHECK(j && j->fire == t0 + 60 + 3600);
+
+    /* L4 a prompt typed meanwhile leaves the loop as it is */
+    add_answer(0, 0, 0, "Hello.");
+    repl_line(&r, "hello");
+    CHECK(tasks_wakeup_get(r.tools.tasks) != 0);
+
+    /* L5 an iteration that sets no wakeup: one fallback 20 minutes on, with
+     * the same prompt; the next such iteration ends the loop */
+    add_answer(0, 0, 0, "Forgot to reschedule.");
+    sp.fake_now = t0 + 3660;
+    CHECK_INT(sched_line_mode(&r), 1);
+    j = tasks_wakeup_get(r.tools.tasks);
+    CHECK(j && j->fire == t0 + 3660 + 1200 && !strcmp(j->prompt, "/loop check the deploy"));
+    CHECK(strstr(cn.screen.p, "one more in 20 minutes") != 0);
+    add_answer(0, 0, 0, "Again nothing.");
+    sp.fake_now = t0 + 3660 + 1200;
+    CHECK_INT(sched_line_mode(&r), 1);
+    CHECK(tasks_wakeup_get(r.tools.tasks) == 0 && !tasks_loop_on(r.tools.tasks));
+    CHECK(strstr(cn.screen.p, "The /loop has ended: its fallback iteration set no next wakeup.") != 0);
+    CHECK_INT((int)r.n_loop_ticks, 3);
+
+    /* L6 stop: true alone ends it, the pending wakeup cancelled */
+    add_answer("toolu_W3", "ScheduleWakeup", "{\"delaySeconds\":120,\"reason\":\"r\",\"prompt\":\"/loop x\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/loop x");
+    CHECK(tasks_wakeup_get(r.tools.tasks) != 0);
+    add_answer("toolu_W4", "ScheduleWakeup", "{\"stop\":true}", 0);
+    add_answer(0, 0, 0, "The loop is done.");
+    repl_line(&r, "stop the loop");
+    CHECK(tasks_wakeup_get(r.tools.tasks) == 0 && !tasks_loop_on(r.tools.tasks));
+    CHECK(strstr(last_body(), "Loop stopped: the pending wakeup is cancelled.") != 0);
+    /* ... and a call without its prompt says what it needs */
+    add_answer("toolu_W5", "ScheduleWakeup", "{\"delaySeconds\":120,\"reason\":\"r\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "go");
+    CHECK(strstr(last_body(), "prompt is required") != 0 && tasks_wakeup_get(r.tools.tasks) == 0);
+    repl_free(&r);
+
+    /* L7 bare /loop: the built-in maintenance prompt after the skill; a
+     * loop.md in its place (the project's before the user's, cut at 25000
+     * bytes); the sentinel's fire reads loop.md again; /proactive is /loop */
+    user_loop_md(&r, 0);
+    remove_rel(root, ".claude/loop.md");
+    setup_in(&r, none, root);
+    sp.fake_now = t0;
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/loop");
+    CHECK(strstr(user_tail(sb.nreq - 1), "## Default loop prompt\\n\\nWork through the following, in order:") != 0);
+    user_loop_md(&r, "USER-LOOP-MD");
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/proactive");
+    CHECK(strstr(user_tail(sb.nreq - 1), "# /loop: a recurring") != 0 &&
+          strstr(user_tail(sb.nreq - 1), "USER-LOOP-MD") != 0);
+    xput(root, ".claude/loop.md", "LOOP-MD-ONE");
+    add_answer("toolu_W6", "ScheduleWakeup", "{\"delaySeconds\":300,\"reason\":\"r\",\"prompt\":"
+                                            "\"<<autonomous-loop-dynamic>>\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/loop");
+    CHECK(strstr(user_tail(sb.nreq - 2), "LOOP-MD-ONE") != 0 && strstr(user_tail(sb.nreq - 2), "USER-LOOP-MD") == 0);
+    xput(root, ".claude/loop.md", "LOOP-MD-TWO");        /* edited while it waits */
+    add_answer(0, 0, 0, "stopped by forgetting");
+    sp.fake_now = t0 + 300;
+    CHECK_INT(sched_line_mode(&r), 1);
+    CHECK(strstr(user_tail(sb.nreq - 1), "LOOP-MD-TWO") != 0 && strstr(user_tail(sb.nreq - 1), "LOOP-MD-ONE") == 0 &&
+          strstr(user_tail(sb.nreq - 1), "(An iteration of a self-paced /loop with no prompt of its own.") != 0 &&
+          strstr(user_tail(sb.nreq - 1), "# /loop: a recurring") == 0);
+    {
+        /* loop.md beyond 25000 bytes is cut */
+        static char big[30010];
+        memset(big, 'A', 30000);
+        strcpy(big + 30000, "TAIL");
+        xput(root, ".claude/loop.md", big);
+        add_answer(0, 0, 0, "ok");
+        repl_line(&r, "/loop");
+        CHECK(strstr(user_tail(sb.nreq - 1), "AAAA") != 0 && strstr(user_tail(sb.nreq - 1), "TAIL") == 0);
+    }
+    tasks_wakeup_cancel(r.tools.tasks);
+    repl_free(&r);
+    remove_rel(root, ".claude/loop.md");
+    user_loop_md(&r, 0);
+
+    /* L8 /loop INTERVAL alone: the model's CronCreate with the fixed
+     * sentinel; at its fire the default prompt, with no self-pacing note */
+    setup_in(&r, none, root);
+    sp.fake_now = t0;
+    add_answer("toolu_C1", "CronCreate", "{\"cron\":\"*/15 * * * *\",\"prompt\":\"<<autonomous-loop>>\",\"recurring\":true}",
+               0);
+    add_answer(0, 0, 0, "Scheduled.");
+    repl_line(&r, "/loop 15m");
+    CHECK(sb.nreq == 2 && strstr(sb.body[0], "## Input\\n\\n15m\\n\\n## Default loop prompt\\n\\nWork through") != 0);
+    add_answer(0, 0, 0, "Nothing pending.");
+    sp.fake_now = t0 + 3600;
+    CHECK_INT(sched_line_mode(&r), 1);
+    CHECK_INT((int)r.n_loop_ticks, 0);
+    CHECK(strstr(cn.screen.p, ": /loop (the default loop prompt)") != 0);
+    CHECK(strstr(user_tail(sb.nreq - 1), "Work through the following") != 0 &&
+          strstr(user_tail(sb.nreq - 1), "(An iteration of a self-paced") == 0);
+    repl_free(&r);
+    remove_rel(root, ".claude/scheduled_tasks.json");
+
+    /* L9 seven days: a wakeup past the loop's seventh day is refused and the
+     * loop ends; CronDelete of the wakeup ends it too */
+    setup_in(&r, none, root);
+    CHECK_INT(tasks_wakeup_set(r.tools.tasks, 60, "/loop x", t0, id, err, sizeof(err)), 0);
+    CHECK_INT(tasks_wakeup_set(r.tools.tasks, 3600, "/loop x", t0 + 7L * 86400L - 1000, id, err, sizeof(err)), -1);
+    CHECK(strstr(err, "seven days") != 0 && !tasks_loop_on(r.tools.tasks) && !tasks_wakeup_get(r.tools.tasks));
+    CHECK_INT(tasks_wakeup_set(r.tools.tasks, 60, "/loop x", t0, id, err, sizeof(err)), 0);
+    CHECK_INT(tasks_cron_delete(r.tools.tasks, id), 0);
+    CHECK(!tasks_loop_on(r.tools.tasks));
+    repl_free(&r);
+
+    /* L10 print mode: interactive only, no request; CLAUDE_CODE_DISABLE_CRON:
+     * /loop unavailable, ScheduleWakeup not declared */
+    setup_in(&r, none, root);
+    run_print(&r, "-p /loop check the deploy", 0);
+    CHECK_INT(sb.nreq, 0);
+    cl_copy(txt, outp(), sizeof(txt));
+    cl_cat(txt, pc.err.p ? pc.err.p : "", sizeof(txt));
+    CHECK(strstr(txt, "/loop runs in an interactive session only") != 0);
+    repl_free(&r);
+    setenv("CLAUDE_CODE_DISABLE_CRON", "1", 1);
+    setup_in(&r, none, root);
+    repl_line(&r, "/loop check the deploy");
+    CHECK_INT(sb.nreq, 0);
+    CHECK(strstr(cn.screen.p, "/loop is not available: CLAUDE_CODE_DISABLE_CRON") != 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "hi");
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"ScheduleWakeup\"") == 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_DISABLE_CRON");
+
+    /* L11 the rig's recording (tools/claude_fixture.py, "loop test"):
+     * ScheduleWakeup for a minute with the /loop line again, then the
+     * update */
+    setup_in(&r, none, root);
+    sp.fake_now = t0;
+    add_stream("tool_loop.sse");
+    add_stream("loop_final.sse");
+    repl_line(&r, "/loop loop test");
+    CHECK_INT(sb.nreq, 2);
+    j = tasks_wakeup_get(r.tools.tasks);
+    CHECK(j && j->fire == t0 + 60 && !strcmp(j->prompt, "/loop loop test"));
+    CHECK(strstr(cn.screen.p, "Self-pacing: nothing changed") != 0);
+    repl_free(&r);
+
+    test_loop_screen(root);
+}
+
 /* ---- an http hook's server: one canned answer to each POST, the request kept ---- */
 
 static const char *hk_answer;   /* the whole HTTP response */
@@ -4833,6 +5150,7 @@ void suite_claude_repl(void)
     test_gaps2_tools();
     test_gaps2_hooks();
     test_gaps2_more();
+    test_gaps3_loop();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);

@@ -705,6 +705,52 @@ static const char *const sk_run_gen[] = {
     0
 };
 
+/* /loop (A4 gaps 3): Claude Code's bundled skill, its cloud offer left out (no claude.ai
+ * routines here); the typed /loop adds the default prompt (slash.c loop_) */
+static const char *const sk_loop[] = {
+    "# /loop: a recurring or self-paced prompt\n\nParse the input below into [interval] <prompt...> and "
+    "schedule it.\n\n## Parsing (in priority order)\n\n1. Leading token: if the first whitespace-delimited "
+    "token matches ^\\d+[smhd]$ (5m, 2h), that is the interval; the rest is the prompt.\n",
+    "2. Trailing \"every\" clause: otherwise, if the input ends with every <N><unit> or every <N> "
+    "<unit-word> (every 20m, every 5 minutes, every 2 hours), that is the interval; strip it from the "
+    "prompt. Only when a time follows \"every\": \"check every PR\" has no interval.\n3. No interval: "
+    "otherwise the whole input is the prompt and you pace the loop yourself (dynamic mode below).\n\n",
+    "If the prompt is empty, the loop runs the default loop prompt given after the input: with an interval, "
+    "CronCreate gets the prompt <<autonomous-loop>>; without one, you self-pace and pass "
+    "<<autonomous-loop-dynamic>> as ScheduleWakeup's prompt. The program puts the default prompt in place of "
+    "either when it fires. Run the default prompt now as the first iteration.\n\n",
+    "## Fixed-interval mode (rules 1 and 2)\n\nConvert the interval to a cron expression: Nm with N <= 59: "
+    "*/N * * * *; Nm with N >= 60: 0 */H * * * (H = N/60, must divide 24); Nh with N <= 23: 0 */N * * *; Nd: "
+    "0 0 */N * *; Ns: ceil(N/60)m (cron's grain is one minute). If the interval does not divide its unit "
+    "evenly (7m, 90m), pick the nearest clean one and tell the user what you rounded to.\n\n",
+    "Then: 1. Call CronCreate with cron (the expression), prompt (the parsed prompt verbatim) and recurring: "
+    "true. 2. Confirm briefly: what is scheduled, the cron expression, the cadence in words, that recurring "
+    "tasks end after 7 days, and that CronDelete with the job's id cancels it sooner. 3. Then run the parsed "
+    "prompt now; do not wait for the first fire. A slash command goes through the Skill tool; otherwise act "
+    "on it directly.\n\n",
+    "## Dynamic mode (rule 3: no interval)\n\nYou pace the loop. Decide what makes the next iteration worth "
+    "running: a passage of time, or an event.\n\n1. Run the parsed prompt now (a slash command through the "
+    "Skill tool; otherwise act on it directly).\n2. If the next run waits on an event (a command finishing, "
+    "a log line, a file changing) and no Monitor watches it yet, arm one now with timeout_ms 1800000: its "
+    "events arrive as <task-notification> messages and wake the loop at once. ",
+    "On later iterations look at TaskList first and arm one again only if none for it still runs.\n3. Decide "
+    "whether the loop goes on. If the task needs another iteration, call ScheduleWakeup with delaySeconds "
+    "(with a Monitor armed, the fallback heartbeat, 1200-1800; without one, the cadence, from what you "
+    "observed), reason (one short sentence on the delay), prompt (the full /loop input verbatim with its "
+    "\"/loop \" prefix, e.g. \"/loop check the deploy\") ",
+    "and noop (true when this tick changed nothing, \"still waiting\"; false when it did something worth "
+    "keeping). If no other iteration is needed, stop instead (step 6).\n4. After the wakeup is set, confirm "
+    "briefly as visible text (the user cannot see your thinking): that you are self-pacing, whether a "
+    "Monitor is the main wake signal, that you ran the task now, and the delay you picked. Make it the last "
+    "thing in the turn.\n",
+    "5. Woken by a <task-notification> instead of this prompt: handle the event for the loop's task, then "
+    "decide the same way (the same prompt, 1200-1800 s again), or stop.\n6. To stop (the task is done, more "
+    "iterations cannot help, or the user asked), call ScheduleWakeup with stop: true and nothing else, and "
+    "TaskStop any Monitor you armed. Then write the loop's outcome for the user as visible text: a stopped "
+    "loop has no next tick to say it.\n\n## Input\n\n$ARGUMENTS",
+    0
+};
+
 static void bundled(cl_defs *s, const char *name, const char *desc, const char *const *parts, const char *tools,
                     const char *hint)
 {
@@ -738,6 +784,8 @@ int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
     bundled(s, "team-onboarding", "A guide for a teammate starting on this project", sk_onboarding, "", "");
     bundled(s, "run", "Build and run the program to see a change working", sk_run, "", "[what to check]");
     bundled(s, "verify", "Confirm a change works by running the program", sk_verify, "", "[what to check]");
+    bundled(s, "loop", "Run a prompt again and again: on an interval (/loop 5m PROMPT) or at a pace Claude "
+            "picks (/loop PROMPT)", sk_loop, "", "[interval] [prompt]");
     bundled(s, "run-skill-generator", "Write a project skill that tells how to build and run this program",
             sk_run_gen, "", "");
     cl_copy(base[0], home ? home : "", sizeof(base[0]));

@@ -16,6 +16,14 @@
  * up to half its interval, at most 30 minutes) and ends after seven days;
  * a one-shot job at :00 or :30 may fire up to 90 seconds early. durable:
  * true keeps the job in <root>/.claude/scheduled_tasks.json as well.
+ *
+ * ScheduleWakeup (A4 gaps 3) is /loop's self-paced mode: the model picks
+ * when the next iteration runs, 60 s to an hour out (clamped), and the
+ * pending wakeup is a one-shot job of the same table flagged wakeup --
+ * fired by the same tasks_cron_due between turns, to the second, no
+ * jitter, never kept with the session. stop: true cancels it and ends the
+ * loop. The REPL reads each turn's calls at its end (tasks_loop_take) for
+ * the fallback wakeup and the screen's folding of quiet ticks.
  * Times are seconds since 1978-01-01 (sys.h now, AmigaDOS's epoch, a
  * Sunday).
  * Portable C89, host-tested (tests/test_claude_tools.c, the REPL suite). */
@@ -43,6 +51,11 @@ typedef struct cl_tasks {
     int nc;
     unsigned long seq;
     int changed;                /* the jobs changed since the REPL last looked */
+    /* /loop's self-paced mode */
+    int loop_on;
+    long loop_t0;               /* the loop's first wakeup was set (seven days from here) */
+    char *loop_prompt;          /* its last wakeup's prompt */
+    loop_turn lt;               /* this turn's ScheduleWakeup calls */
 } cl_tasks;
 
 cl_tasks *tasks_new(void)
@@ -72,6 +85,7 @@ void tasks_free(cl_tasks *k)
         task_clear(&k->t[i]);
     for (i = 0; i < k->nc; i++)
         free(k->c[i].prompt);
+    free(k->loop_prompt);
     free(k);
 }
 
@@ -820,6 +834,8 @@ int tasks_cron_delete(cl_tasks *k, const char *id)
     int i;
     for (i = 0; i < k->nc; i++)
         if (cl_strieq(k->c[i].id, id)) {
+            if (k->c[i].wakeup)
+                k->loop_on = 0;     /* CronDelete of the wakeup: the loop ends */
             job_drop(k, i);
             return 0;
         }
@@ -833,6 +849,7 @@ int tasks_cron_due(cl_tasks *k, long now, char *prompt, long cap, char *id, long
         return 0;
     for (i = 0; i < k->nc; i++) {
         cron_job *j = &k->c[i];
+        int wake = j->wakeup;
         if (j->fire < 0 || now < j->fire)
             continue;
         cl_copy(prompt, j->prompt, cap);
@@ -845,7 +862,7 @@ int tasks_cron_due(cl_tasks *k, long now, char *prompt, long cap, char *id, long
             schedule(j, now + 1);
             k->changed = 1;
         }
-        return 1;
+        return wake ? 2 : 1;
     }
     return 0;
 }
@@ -876,6 +893,8 @@ void tasks_crons_json(const cl_tasks *k, jw *w, int durable_only, int stop_shape
         const cron_job *j = &k->c[i];
         if (durable_only && !j->durable)
             continue;
+        if (j->wakeup && !stop_shape)
+            continue;               /* Claude Code: a self-paced /loop is not restored on a resume */
         if (!first)
             jw_raw(w, ",", 1);
         first = 0;
@@ -960,6 +979,104 @@ int tasks_crons_load(cl_tasks *k, const char *json, long n, long now, int only_d
         free(prompt);
     }
     return got;
+}
+
+/* ---- /loop's self-paced mode ---- */
+
+int tasks_wakeup_cancel(cl_tasks *k)
+{
+    int i, had = 0;
+    for (i = 0; k && i < k->nc; i++)
+        if (k->c[i].wakeup) {
+            job_drop(k, i);
+            had = 1;
+            break;
+        }
+    if (k)
+        k->loop_on = 0;
+    return had;
+}
+
+const cron_job *tasks_wakeup_get(const cl_tasks *k)
+{
+    int i;
+    for (i = 0; k && i < k->nc; i++)
+        if (k->c[i].wakeup)
+            return &k->c[i];
+    return 0;
+}
+
+int tasks_loop_on(const cl_tasks *k)
+{
+    return k && k->loop_on;
+}
+
+const char *tasks_loop_prompt(const cl_tasks *k)
+{
+    return k && k->loop_prompt ? k->loop_prompt : "";
+}
+
+void tasks_loop_take(cl_tasks *k, loop_turn *t)
+{
+    if (!k) {
+        memset(t, 0, sizeof(*t));
+        return;
+    }
+    *t = k->lt;
+    memset(&k->lt, 0, sizeof(k->lt));
+}
+
+int tasks_wakeup_set(cl_tasks *k, long delay, const char *prompt, long now, char *id, char *err, long cap)
+{
+    cron_tm tm;
+    char expr[64], num[16], *keep;
+    int i;
+    cron_job *j;
+    if (delay < LOOP_MIN_S)
+        delay = LOOP_MIN_S;
+    if (delay > LOOP_MAX_S)
+        delay = LOOP_MAX_S;
+    if (k->loop_on && now + delay - k->loop_t0 >= WEEK) {
+        tasks_wakeup_cancel(k);
+        cl_copy(err, "the loop is seven days old and has ended (Claude Code's expiry); /loop starts it again", cap);
+        return -1;
+    }
+    keep = dupz(prompt);
+    if (!keep) {
+        cl_copy(err, "out of memory", cap);
+        return -1;
+    }
+    for (i = 0; i < k->nc; i++)
+        if (k->c[i].wakeup) {
+            job_drop(k, i);         /* one pending wakeup: the new one replaces it */
+            break;
+        }
+    /* its expression pins the minute it fires in (CronList, session_crons) */
+    cron_civil(now + delay, &tm);
+    cl_ltoa(tm.min, expr);
+    cl_cat(expr, " ", sizeof(expr));
+    cl_ltoa(tm.hour, num);
+    cl_cat(expr, num, sizeof(expr));
+    cl_cat(expr, " ", sizeof(expr));
+    cl_ltoa(tm.day, num);
+    cl_cat(expr, num, sizeof(expr));
+    cl_cat(expr, " ", sizeof(expr));
+    cl_ltoa(tm.mon, num);
+    cl_cat(expr, num, sizeof(expr));
+    cl_cat(expr, " *", sizeof(expr));
+    if (tasks_cron_add(k, expr, prompt, 0, 0, now, id, err, cap)) {
+        free(keep);
+        return -1;
+    }
+    j = &k->c[k->nc - 1];
+    j->wakeup = 1;
+    j->fire = now + delay;          /* to the second, no jitter */
+    if (!k->loop_on)
+        k->loop_t0 = now;
+    k->loop_on = 1;
+    free(k->loop_prompt);
+    k->loop_prompt = keep;
+    return 0;
 }
 
 /* ---- the tools ---- */
@@ -1064,6 +1181,105 @@ static void cron_list(cl_tools *t, cl_tasks *k, jw *out, const char *id)
     jw_free(&m);
 }
 
+/* "20 minutes", "1 minute 30 seconds", "1 hour" */
+void tasks_span_text(long s, char *out, long cap)
+{
+    char num[16];
+    long h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
+    out[0] = 0;
+    if (h) {
+        cl_ltoa(h, num);
+        cl_cat(out, num, cap);
+        cl_cat(out, h == 1 ? " hour" : " hours", cap);
+    }
+    if (m) {
+        if (out[0])
+            cl_cat(out, " ", cap);
+        cl_ltoa(m, num);
+        cl_cat(out, num, cap);
+        cl_cat(out, m == 1 ? " minute" : " minutes", cap);
+    }
+    if (sec || !out[0]) {
+        if (out[0])
+            cl_cat(out, " ", cap);
+        cl_ltoa(sec, num);
+        cl_cat(out, num, cap);
+        cl_cat(out, sec == 1 ? " second" : " seconds", cap);
+    }
+}
+
+/* ScheduleWakeup: the next iteration of a self-paced /loop, or stop */
+static void schedule_wakeup(cl_tools *t, cl_tasks *k, jw *out, const char *id, jv in)
+{
+    char *prompt = tl_prop(in, "prompt", 0), *reason = tl_prop(in, "reason", 0), err[200], jid[12], span[64];
+    long now = t->sys->now ? t->sys->now(t->sys->u) : -1, asked, delay;
+    int stop = tl_bool(in, "stop"), noop = tl_bool(in, "noop");
+    jv v;
+    jw m;
+    jw_init(&m);
+    if (!prompt || !reason) {
+        tl_error(t, out, id, "out of memory", 0);
+        goto done;
+    }
+    if (t->show)
+        t->show(t->u, "ScheduleWakeup", stop ? "stop" : reason);
+    if (stop) {
+        int had = tasks_wakeup_cancel(k);
+        k->lt.called = k->lt.stopped = 1;
+        k->lt.noop = 0;
+        jw_rawz(&m, had ? "Loop stopped: the pending wakeup is cancelled." : "Loop stopped (no wakeup was pending).");
+        jw_rawz(&m, " Tell the user the loop's outcome in your reply: no later iteration will.");
+        tl_result(t, out, id, m.p ? m.p : "", m.n, 0);
+        goto done;
+    }
+    if (!prompt[0]) {
+        tl_error(t, out, id, "prompt is required: the /loop input to run at the wakeup (\"/loop <input>\"), or "
+                             "stop: true to end the loop", 0);
+        goto done;
+    }
+    if (!json_get(in, "delaySeconds", &v) || json_type(v) != J_NUM) {
+        tl_error(t, out, id, "delaySeconds is required: seconds until the next iteration (60 to 3600)", 0);
+        goto done;
+    }
+    if (now < 0) {
+        tl_error(t, out, id, "the machine's clock is not available: nothing can be scheduled", 0);
+        goto done;
+    }
+    asked = json_long(v, LOOP_MIN_S);
+    delay = asked < LOOP_MIN_S ? LOOP_MIN_S : asked > LOOP_MAX_S ? LOOP_MAX_S : asked;
+    if (tasks_wakeup_set(k, delay, prompt, now, jid, err, sizeof(err))) {
+        k->lt.called = k->lt.stopped = 1;   /* nothing to fall back on: the loop is over */
+        tl_error(t, out, id, err, 0);
+        goto done;
+    }
+    k->lt.called = 1;
+    k->lt.stopped = 0;
+    k->lt.noop = noop;
+    cl_copy(k->lt.reason, reason, sizeof(k->lt.reason));
+    tasks_span_text(delay, span, sizeof(span));
+    jw_rawz(&m, "Next /loop wakeup in ");
+    jw_rawz(&m, span);
+    if (delay != asked)
+        jw_rawz(&m, asked < LOOP_MIN_S ? " (the shortest wait is 1 minute)" : " (the longest wait is 1 hour)");
+    if (reason[0]) {
+        jw_rawz(&m, ": ");
+        jw_rawz(&m, reason);
+    }
+    jw_rawz(&m, "\n{\"id\":");
+    jw_strz(&m, jid);
+    jw_rawz(&m, ",\"delaySeconds\":");
+    jw_long(&m, delay);
+    jw_rawz(&m, ",\"noop\":");
+    jw_rawz(&m, noop ? "true" : "false");
+    jw_rawz(&m, "}\nIt fires between turns while the session is open and idle; Esc cancels it. End the turn with "
+                "a short visible update: what this iteration did and when the next one runs.");
+    tl_result(t, out, id, m.p ? m.p : "", m.n, 0);
+done:
+    jw_free(&m);
+    free(prompt);
+    free(reason);
+}
+
 void tasks_run(cl_tools *t, int tool, jw *out, const char *id, jv in)
 {
     cl_tasks *k = t->tasks;
@@ -1092,6 +1308,9 @@ void tasks_run(cl_tools *t, int tool, jw *out, const char *id, jv in)
         break;
     case T_CRON_LIST:
         cron_list(t, k, out, id);
+        break;
+    case T_SCHEDULE_WAKEUP:
+        schedule_wakeup(t, k, out, id, in);
         break;
     }
 }

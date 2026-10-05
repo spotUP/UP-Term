@@ -1752,6 +1752,38 @@ static void autocompact(cl_repl *r, const char *arg)
              repl_compact_at(r), " tokens of context.");
 }
 
+static void run_def(cl_repl *r, const cl_def *d, const char *arg, const char *more);
+
+/* /loop [interval] [prompt] (A4 gaps 3; alias /proactive): Claude Code's
+ * bundled skill (commands.c); with no prompt, the default loop prompt
+ * after it. The model schedules: CronCreate for an interval, ScheduleWakeup
+ * for a pace of its own (sched.c, tasks.c). */
+static void loop_(cl_repl *r, const char *arg)
+{
+    const cl_def *d = defs_find(&r->defs, DEF_SKILL, "loop");
+    jw more;
+    if (r->tools.no_cron) {
+        ui_line(&r->ui, "/loop is not available: CLAUDE_CODE_DISABLE_CRON turns the scheduler off.");
+        return;
+    }
+    if (r->no_person) {
+        ui_line(&r->ui, "/loop runs in an interactive session only: its iterations come between turns, and print "
+                        "mode ends after one.");
+        return;
+    }
+    if (!d) {
+        ui_line(&r->ui, "Unknown command. Type /help for the list.");
+        return;
+    }
+    jw_init(&more);
+    if (!sched_loop_has_prompt(arg)) {
+        jw_rawz(&more, "\n\n## Default loop prompt\n\n");
+        sched_loop_default(r, &more);
+    }
+    run_def(r, d, arg, more.n ? more.p : 0);
+    jw_free(&more);
+}
+
 int slash_run(cl_repl *r, const char *w, const char *arg)
 {
     if (!strcmp(w, "/permissions") || !strcmp(w, "/allowed-tools")) {
@@ -1777,6 +1809,8 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
         plan(r, arg);
     else if (!strcmp(w, "/debug"))
         debug(r);
+    else if (!strcmp(w, "/loop") || !strcmp(w, "/proactive"))
+        loop_(r, arg);
     else if (!strcmp(w, "/release-notes")) {
         int i;
         for (i = 0; notes[i]; i++)
@@ -1847,35 +1881,29 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
     return 1;
 }
 
-int slash_custom(cl_repl *r, const char *w, const char *arg)
+/* a custom command or a skill typed by its name, run as a turn (more:
+ * text after its expansion, 0 none) */
+static void run_def(cl_repl *r, const cl_def *d, const char *arg, const char *more)
 {
-    const cl_def *d = defs_find(&r->defs, DEF_COMMAND, w + 1);
     char err[300], keep[64];
     jw p;
-    if (!d) {
-        /* a skill typed as /name (Claude Code: skills are commands too),
-         * unless user-invocable: false */
-        d = defs_find(&r->defs, DEF_SKILL, w + 1);
-        if (d && d->no_user)
-            d = 0;
-    }
-    if (!d)
-        return 0;
     if (d->type == DEF_SKILL && !strcmp(cfg_skill_state(&r->cfg, d->name), "off")) {
         /* Claude Code: a skill skillOverrides turns off cannot be run by its name either */
         line2(r, "This skill is turned off by skillOverrides in the settings: ", d->name);
-        return 1;
+        return;
     }
     jw_init(&p);
     if (pol_expand(r, d, arg, &p, err, sizeof(err))) {
         line2(r, d->type == DEF_SKILL ? "The skill could not be expanded: " : "The command could not be expanded: ",
               err);
         jw_free(&p);
-        return 1;
+        return;
     }
+    if (more)
+        jw_rawz(&p, more);
     if (pol_expansion(r, d, arg, p.p ? p.p : "", p.n)) {
         jw_free(&p);
-        return 1;                   /* a UserPromptExpansion hook said no */
+        return;                     /* a UserPromptExpansion hook said no */
     }
     if (d->type == DEF_SKILL) {
         r->n_skills_run++;
@@ -1898,5 +1926,20 @@ int slash_custom(cl_repl *r, const char *w, const char *arg)
         cl_copy(r->effort, keep_effort, sizeof(r->effort));
     }
     jw_free(&p);
+}
+
+int slash_custom(cl_repl *r, const char *w, const char *arg)
+{
+    const cl_def *d = defs_find(&r->defs, DEF_COMMAND, w + 1);
+    if (!d) {
+        /* a skill typed as /name (Claude Code: skills are commands too),
+         * unless user-invocable: false */
+        d = defs_find(&r->defs, DEF_SKILL, w + 1);
+        if (d && d->no_user)
+            d = 0;
+    }
+    if (!d)
+        return 0;
+    run_def(r, d, arg, 0);
     return 1;
 }

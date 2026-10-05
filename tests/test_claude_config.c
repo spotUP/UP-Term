@@ -441,7 +441,7 @@ static void test_defs(void)
     defs_load(&s, &sys, home, root);
     CHECK_INT(defs_count(&s, DEF_COMMAND), 3);     /* review (project hides user), hello, git:commit (its subdirectory: Claude Code's namespace) */
     CHECK_INT(defs_count(&s, DEF_AGENT), 1);
-    CHECK_INT(defs_count(&s, DEF_SKILL), 9);       /* one of the project's, eight bundled ones */
+    CHECK_INT(defs_count(&s, DEF_SKILL), 10);      /* one of the project's, nine bundled ones (loop: A4 gaps 3) */
     CHECK_INT(defs_count(&s, DEF_STYLE), 6);       /* Default, Proactive, Concise, Explanatory, Learning, Terse */
     d = defs_find(&s, DEF_COMMAND, "review");
     CHECK(d && d->src == CFG_PROJECT);

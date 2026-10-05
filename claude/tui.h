@@ -122,6 +122,9 @@ typedef struct cl_tui {
     /* A4 gaps 2: while the screen waits, a turn to run now (a cron job, a
      * background task's news): malloc'ed, 0 none; iu is its argument */
     char *(*wake)(void *u);
+    /* A4 gaps 3: Esc or Ctrl+C on the idle, empty box: 1 when it was taken
+     * (a pending /loop wakeup cancelled); iu is its argument */
+    int (*esc_idle)(void *u);
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
     const cl_theme *th;         /* the colours (/theme) */
@@ -246,6 +249,10 @@ void tui_log(cl_tui *t, const char *s, long n);
 void tui_transcript(cl_tui *t);
 /* Ctrl+L: the screen cleared and the transcript's last lines drawn again */
 void tui_redraw(cl_tui *t);
+/* A4 gaps 3: the transcript lines drawn since n_lines was mark taken back
+ * (the Ctrl+L copy; the screen drawn again without them): 0, -1 when
+ * they are no longer all kept */
+int tui_takeback(cl_tui *t, long mark);
 /* the window's title (OSC 2), sent only when it changes */
 void tui_title(cl_tui *t, const char *s);
 /* the bell and a desktop notification (OSC 9) */
