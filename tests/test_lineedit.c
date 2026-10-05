@@ -3,8 +3,12 @@
 #include "harness.h"
 #include "../handler/lineedit.h"
 
+static long colour_sgrs; /* the command word's green / red written (W44) */
+
 static void to_term(void *u, const unsigned char *b, long n)
 {
+    if (n == 5 && (!memcmp(b, "\033[31m", 5) || !memcmp(b, "\033[32m", 5)))
+        colour_sgrs++;
     vt_write((vt_term *)u, b, n);
 }
 
@@ -280,8 +284,119 @@ static void command_word_gets_colour_until_it_changes(void)
     key(VT_KEY_LEFT, VT_MOD_SHIFT);
     type("x");                           /* the word changed: colour drops */
     CHECK_STR(h_row(t, 0), "> xlist ram:");
+    CHECK_INT(h_cell(t, 3, 0)->fg, VT_COLOR_DEFAULT);
     le_set_command(&le, (const unsigned char *)"xlist", 0);
+    CHECK_INT(h_cell(t, 3, 0)->fg, VT_COLOR_DEFAULT); /* typed: kept until the keys rest */
+    CHECK_INT(le_command_rested(&le, LE_CMD_REST_US), 1);
     CHECK_INT(h_cell(t, 3, 0)->fg, 1);  /* red */
+    vt_free(t);
+}
+
+/* One key of a word typed in a Shell: the handler asks about the first
+ * word at every key and the command cache (W22) answers at once -- known
+ * for `known`, not for the prefixes before it. */
+static void type_asked(const char *s, const char *known, long frame_us)
+{
+    unsigned char w[64];
+    for (; *s; s++) {
+        le_key(&le, (unsigned char)*s, 0, (const unsigned char *)s, 1);
+        le_first_word(&le, w, sizeof(w));
+        if (w[0])
+            le_set_command(&le, w, !strcmp((const char *)w, known));
+        if (frame_us)
+            le_command_rested(&le, frame_us); /* the frame clock ticked before the next key */
+    }
+}
+
+/* W44 (owner 2026-10-05: "it changes back and forth during typing"): a
+ * word typed quickly stays plain; its colour comes once, 300 ms after the
+ * last key -- it was red at l, li, lis and green at list. */
+static void typing_a_word_quickly_colours_it_once_when_the_keys_rest(void)
+{
+    vt_term *t = start(40, 4, "> ");
+    long rested = 60000L;
+    int x, y;
+    colour_sgrs = 0;
+    type_asked("list", "list", 60000L); /* a key every 60 ms */
+    CHECK_STR(h_row(t, 0), "> list");
+    CHECK_INT(colour_sgrs, 0);
+    CHECK_INT(h_cell(t, 2, 0)->fg, VT_COLOR_DEFAULT);
+    while (!le_command_rested(&le, 20000L) && rested < 1000000L) {
+        rested += 20000L; /* 20 ms frames: still nothing */
+        CHECK_INT(colour_sgrs, 0);
+        CHECK_INT(h_cell(t, 5, 0)->fg, VT_COLOR_DEFAULT);
+    }
+    CHECK_INT(rested + 20000L, LE_CMD_REST_US); /* coloured 300 ms after the last key */
+    CHECK_INT(LE_CMD_REST_US, 300000L);
+    CHECK_INT(colour_sgrs, 1);                  /* one change: plain to green */
+    CHECK_INT(h_cell(t, 2, 0)->fg, 2);
+    CHECK_INT(h_cell(t, 5, 0)->fg, 2);
+    CHECK_STR(h_row(t, 0), "> list");
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 6);
+    CHECK_INT(le_command_rested(&le, 300000L), 0); /* nothing more due */
+    CHECK_INT(colour_sgrs, 1);
+    vt_free(t);
+}
+
+/* The word is finished -- a space, Return -- and its colour shows at once,
+ * no rest; an answer that comes after the space too. */
+static void a_finished_word_is_coloured_at_once(void)
+{
+    vt_term *t = start(40, 4, "> ");
+    colour_sgrs = 0;
+    type_asked("list", "list", 30000L);
+    CHECK_INT(colour_sgrs, 0);
+    type(" ");                          /* the space: no clock tick */
+    CHECK_INT(colour_sgrs, 1);
+    CHECK_INT(h_cell(t, 2, 0)->fg, 2);
+    CHECK_INT(h_cell(t, 6, 0)->fg, VT_COLOR_DEFAULT);
+    CHECK_STR(h_row(t, 0), "> list");
+    le_reset(&le);
+    h_put(t, "\r\n> ");
+    colour_sgrs = 0;
+    type("dir ");                       /* the answer is still out */
+    le_set_command(&le, (const unsigned char *)"dir", 1);
+    CHECK_INT(colour_sgrs, 1);
+    CHECK_INT(h_cell(t, 2, 1)->fg, 2);
+    le_reset(&le);
+    h_put(t, "\r\n> ");
+    colour_sgrs = 0;
+    type_asked("dirx", "dir", 30000L);
+    CHECK(key(VT_KEY_RETURN, 0));       /* Return: red before the line goes */
+    CHECK_INT(colour_sgrs, 1);
+    CHECK_INT(h_cell(t, 2, 2)->fg, 1);
+    CHECK_STR(h_row(t, 2), "> dirx");
+    vt_free(t);
+}
+
+/* A word already coloured keeps its colour while the rest of the line is
+ * typed and edited: no flip, its cells not written again. */
+static void a_known_word_does_not_flip_while_typing_goes_on(void)
+{
+    vt_term *t = start(40, 4, "> ");
+    const char *rest = " ram:";
+    char one[2];
+    colour_sgrs = 0;
+    type_asked("list", "list", 60000L);
+    CHECK_INT(le_command_rested(&le, LE_CMD_REST_US), 1);
+    CHECK_INT(colour_sgrs, 1);
+    CHECK_INT(h_cell(t, 2, 0)->fg, 2);
+    one[1] = 0;
+    for (; *rest; rest++) {
+        one[0] = *rest;
+        type_asked(one, "list", 60000L);
+        CHECK_INT(h_cell(t, 2, 0)->fg, 2);
+        CHECK_INT(colour_sgrs, 1);
+    }
+    key(VT_KEY_LEFT, 0);
+    key(VT_KEY_BACKSPACE, 0);           /* an edit in the arguments */
+    CHECK_STR(h_row(t, 0), "> list ra:");
+    CHECK_INT(le_command_rested(&le, LE_CMD_REST_US), 0);
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_INT(colour_sgrs, 1);          /* green once, from l to Return */
+    CHECK_INT(h_cell(t, 5, 0)->fg, 2);
+    CHECK_INT(h_cell(t, 7, 0)->fg, VT_COLOR_DEFAULT);
     vt_free(t);
 }
 
@@ -801,6 +916,9 @@ void suite_lineedit(void)
     kingcon_word_and_quoting();
     kingcon_cycle_and_fncmode();
     command_word_gets_colour_until_it_changes();
+    typing_a_word_quickly_colours_it_once_when_the_keys_rest();
+    a_finished_word_is_coloured_at_once();
+    a_known_word_does_not_flip_while_typing_goes_on();
     a_programs_line_gets_no_command_colour();
     menu_lists_names_and_redraws_prompt_and_line();
     kingcon_list_has_19_char_columns_and_cuts_long_names();
