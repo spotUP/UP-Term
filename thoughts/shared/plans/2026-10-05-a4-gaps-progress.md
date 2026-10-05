@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 gaps -- the parity audit's missing and partial rows built (C:Claude vs Claude Code docs)
 tags: [claude, a4, parity, audit, progress]
-status: draft
+status: final
 ---
 
 # A4 gaps progress ledger
@@ -266,4 +266,54 @@ Phase 5 -- the rest the Amiga can do (added after phase 4; the audit's "not buil
   resume's cp_session off fails the suite. Gate: make test (43 OK), make test-ref (149, 0
   failed), make amiga rc 0.
 
+## Audit counts (thoughts/shared/research/2026-10-05_claude-parity-audit.md, 247 rows)
+
+Before (main e4bc55d): have 58, partial 37, missing 119, N/A 33.
+After (57613ae): have 173, partial 8, missing 32, N/A 34.
+
+## Left (the 32 missing and 8 partial rows), and why
+
+- feature/a4-input-rest's files (vim.c keys.c edit.c tui.c input.c tview.c): /color, /focus,
+  /keybindings, /loop (a timer in the input loop), --allow-dangerously-skip-permissions (the
+  Shift+Tab cycle), the keys rows (Ctrl+S, Ctrl+B, Alt+P/T/O, Ctrl+Enter, Alt+Y, ? panel, :
+  emoji), vim visual mode / text objects / '.', prompt suggestions in the box, the session recap
+  after being away, @agent-name, askUserQuestionTimeout (a timer in the menu), /add-dir's Tab
+  suggestions.
+- Not built here, possible: nested subagents; Bash moved to the background at its time limit and
+  a head+tail cut (sys.h run returns only the start); Edit's relaxed stale check; WebFetch's
+  preapproved domains / localhost refusal / http->https; WebSearch domain lists; the Task* /
+  Monitor / Cron tools; "an Edit allow grants Read"; hook types agent and http, async hooks,
+  hooks in skill/agent frontmatter, FileChanged / MessageDisplay, Stop's extra input fields,
+  watchPaths / defer; workspace trust; a warning per malformed settings entry; the other
+  CLAUDE_CODE_* variables; agents' hooks / memory / color; skills' hooks / skillOverrides /
+  disableSkillShellExecution; --system-prompt-snapshot; /skill-doctor's use counts; /skills'
+  visibility toggle; /simplify's four parallel agents (one pass here); memory imports' depth 4 /
+  escaped spaces / approval dialog; PermissionRequest's updatedInput.
+- Not guessed: /advisor (the advisor tool's API was not in the reference this work had).
+- MCP over HTTP: possible in principle, a project of its own; /mcp says it is not built.
+
 ## Rig steps (main session)
+
+Not run here (no emulator). Fixture answers (tools/claude_fixture.py) exist only for its own
+prompts; steps that need a new answer say so.
+
+1. `Claude ?` -- the template has the new keywords after HELP/S (SESSION-ID/K ... the second
+   line of the template). `Claude doctor` prints the checks; `Claude auth status` prints
+   {"loggedIn":...}.
+2. In the screen: `/help` ends with "Not on the Amiga (type one to see why): /mcp /plugin ...";
+   `/mcp` and `/bug` say why. `/release-notes`, `/stats`, `/context` (By category), `/skills run`,
+   `/skill-doctor`.
+3. "please edit" (ROOT=RAM:, fixture: Edit of RAM:claude-test.txt), `/exit`, `Claude -c ROOT=RAM:`,
+   `/rewind 1 code`: the file is back (checkpoints across a restart; T:Claude-cp/<hash>/index).
+4. `/permissions` with no argument: the menus (Allow -> Read -> This project, only me): RAM:.claude/
+   settings.local.json has "Read"; a Bash question offers "Yes, and don't ask again in this project".
+5. Esc Esc on an empty box: the rewind menu offers "Summarize from here" and "Summarize up to here"
+   (needs a model answer to complete).
+6. ENVARC:Claude/settings.json {"statusLine":{"type":"command","command":"cat"}} under vsh: the
+   row shows the JSON (context_window, effort, version ...); add "hideVimModeIndicator": true and
+   /vim, i: no "-- INSERT --".
+7. A Read of a PNG (needs a fixture answer with Read {"file_path":"x.png"}): the screen says
+   "Read image (N KB)"; --dump shows an image block in the next request.
+8. "show me the startup" with `List S:` asked by a fixture answer: no question (read-only).
+9. `Claude -p --output-format stream-json --verbose --include-hook-events hi` with a SessionStart
+   hook: hook_started / hook_response lines.

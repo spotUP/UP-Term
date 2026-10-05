@@ -2,333 +2,333 @@
 date: 2026-10-05
 topic: C:Claude against Claude Code's documentation, feature by feature (A4 parity audit)
 tags: [claude, a4, parity, audit]
-status: draft
+status: final
 ---
 
 # C:Claude parity audit (2026-10-05)
 
-Source: Claude Code's docs fetched 2026-10-05 as markdown (code.claude.com/docs/en/<page>.md):
+Source: Claude Code's docs fetched 2026-10-05 as Markdown (code.claude.com/docs/en/<page>.md):
 interactive-mode, commands, tools-reference, settings, memory, hooks, slash-commands (= skills),
-sub-agents, skills, output-styles, statusline, cli-reference, headless, checkpointing, costs.
-Compared against the C code in claude/*.c on main e4bc55d (not against the A4 ledgers' claims).
-Sets were counted from their builders: slash commands from `slash_builtin[]` + `repl_line`
-(slash.c, repl.c), flags from `opts[]` (cli.c), tools from `defs[]` (tools.c), hook events from
-`cfg_hook_events` (config.c), settings keys from `cfg_merge` (config.c), frontmatter keys from
-`defs_parse` (commands.c), status-line JSON from `pol_statusline` (policy.c).
+sub-agents, skills, output-styles, statusline, cli-reference, headless, checkpointing, costs, and
+model-config for the auto-compact window. Compared against the C code in claude/*.c, not against
+the A4 ledgers. Sets were counted from their builders: slash commands from `slash_builtin[]` and
+`repl_line` (slash.c, repl.c), flags from `opts[]` (cli.c), tools from `defs[]` (tools.c), hook
+events from `cfg_hook_events` (config.c), settings keys from `cfg_merge` (config.c), frontmatter
+keys from `defs_parse` (commands.c), status-line JSON from `pol_statusline` (policy.c). Two
+sub-audits (tools/hooks/settings/memory; agents/skills/styles/status line/headless/checkpoints/
+costs) were read from the code by agents and spot-checked (the $N off-by-one and the project
+bypassPermissions rule were confirmed against the docs and the code before acting on them).
 
-Status: **have** (file:line), **partial** (what is missing), **missing**, **N/A** (why not on an
-Amiga). "Before" = main e4bc55d; "After" = branch feature/a4-gaps (see
-thoughts/shared/plans/2026-10-05-a4-gaps-progress.md). Keys (interactive-mode's shortcut tables,
-vim) belong to the parallel branch feature/a4-input-rest and are audited here but not built.
-
-Counts are at the end (counted by tools/... no: by the script in the progress ledger's log, from
-the Before/After columns of this file).
+Status: **have**, **partial** (what is missing), **missing**, **N/A** (why not on an Amiga).
+"Before" = main e4bc55d; "After" = branch feature/a4-gaps 57613ae. Evidence for "After" is the
+commit and the host test (tests/test_claude_*.c, all in `make test`); the progress ledger
+thoughts/shared/plans/2026-10-05-a4-gaps-progress.md has the decisions. Keys (the shortcut
+tables, vim) belong to the parallel branch feature/a4-input-rest and are audited, not built.
 
 ## 1. Slash commands (commands.md)
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
-| cmd | /add-dir <path> | partial | partial | slash.c:714 adds; no Tab suggestions of directories (input.c, other branch) |
-| cmd | /advisor [model\|off] | missing | missing | server-side advisor tool; not built: its API beta is not in the claude-api reference used here |
-| cmd | /agents | have | have | slash.c:836 lists agents (Claude Code now prints a reminder; ours lists) |
-| cmd | /artifact-capabilities, /artifact-diagramming, /artifacts | N/A | N/A | claude.ai artifacts (account, browser) |
+| cmd | /add-dir <path> | partial | partial | slash.c add_dir; no Tab suggestions of directories (input.c, other branch) |
+| cmd | /advisor [model\|off] | missing | missing | the advisor server tool's API is not in the reference this work had; not guessed |
+| cmd | /agents | have | have | slash.c list_defs |
+| cmd | /artifact-capabilities, /artifact-diagramming, /artifacts, /design, /design-login, /design-sync, /slides, /dataviz | N/A | N/A | claude.ai artifacts and Claude Design (account, browser); typed, they say so |
 | cmd | /auto-mode-setup | N/A | N/A | auto mode needs Anthropic's action classifier (claude.ai plan) |
-| cmd | /autocompact [auto\|<tokens>] | partial | have | slash.c:874 on/off only; the window size (auto/tokens) missing |
-| cmd | /autofix-pr | N/A | N/A | cloud session watching a GitHub PR |
-| cmd | /background, /fork (background copy), /stop, /subtask | N/A | N/A | background sessions need the agent-view supervisor and concurrent sessions (no threads: one task, one conversation) |
-| cmd | /batch | N/A | N/A | bundled skill: parallel worktree agents (no git, no threads) |
-| cmd | /branch [name] | have | have | slash.c:863 (sess_branch) |
-| cmd | /btw [question] | missing | have | side question not added to the conversation |
-| cmd | /bug, /feedback | N/A | N/A | send reports to Anthropic's feedback endpoint (claude.ai login); before: unknown command, after: explains |
-| cmd | /cd <path> | have | have | slash.c:732 |
-| cmd | /chrome, /claude-in-chrome | N/A | N/A | Chrome extension |
-| cmd | /claude-api | N/A | N/A | bundled reference skill (megabytes of docs; WebFetch reaches them) |
-| cmd | /clear [name] | partial | have | repl.c:1272; name for the previous conversation missing; cost totals not reset |
-| cmd | /code-review, /review, /security-review, /ultrareview | N/A | N/A | git diff / PR / cloud review |
-| cmd | /color [color\|default] | missing | missing | prompt bar colour: tui.c (feature/a4-input-rest's file) |
-| cmd | /compact [instructions] | have | have | repl.c:872 |
-| cmd | /config [key=value ...] | partial | have | slash.c:466 `KEY VALUE` only; 7 keys in the menu |
-| cmd | /context [all] | partial | partial | repl.c:818 bar + used/left; no per-category grid |
-| cmd | /copy [N] | missing | have | Nth-latest answer to the clipboard |
-| cmd | /cost (alias of /usage) | partial | have | repl.c:1293 shows cost only |
-| cmd | /dataviz, /design, /design-login, /design-sync, /slides | N/A | N/A | Claude Design / artifacts |
-| cmd | /debug [description] | missing | have | bundled skill: debug logging on for the session |
-| cmd | /deep-research, /workflows, /workflow-authoring | N/A | N/A | Workflow tool (multi-agent orchestration) |
+| cmd | /autocompact [auto\|<tokens>] | partial | have | slash.c autocompact, autoCompactWindow, test_gaps_print |
+| cmd | /autofix-pr, /ultrareview, /schedule, /remote-control, /remote-env, /teleport, /web-setup | N/A | N/A | cloud sessions, routines, GitHub through gh |
+| cmd | /background, /fork (as a background copy), /stop, /subtask, /list-agents | N/A | N/A | background sessions need a supervisor and concurrent sessions: one Amiga task, one conversation (/fork is /branch here) |
+| cmd | /batch | N/A | N/A | parallel worktree agents (no git, no threads) |
+| cmd | /branch [name] | have | have | slash.c sess_branch |
+| cmd | /btw [question] | missing | have | slash.c btw via repl_side; test_gaps_commands |
+| cmd | /bug, /feedback | N/A | N/A | Anthropic's feedback service needs a claude.ai login; typed, they say so and point to /export |
+| cmd | /cd <path> | have | have | slash.c cd (+ CwdChanged) |
+| cmd | /chrome, /claude-in-chrome | N/A | N/A | the Chrome extension |
+| cmd | /claude-api | N/A | N/A | bundled reference of megabytes; WebFetch reaches the docs |
+| cmd | /clear [name] | partial | have | repl.c: names the old session, totals reset |
+| cmd | /code-review, /review, /security-review | N/A | N/A | a git diff or a PR; no git on AmigaOS (/diff shows this session's changes) |
+| cmd | /color [color\|default] | missing | missing | the prompt bar's colour is tui.c (other branch) |
+| cmd | /compact [instructions] | have | have | repl.c repl_compact (+ PreCompact block, PostCompact) |
+| cmd | /config [key=value ...] | partial | have | slash.c config: key=value, 11 keys in the menu |
+| cmd | /context [all] | partial | have | repl.c context_parts: by category |
+| cmd | /copy [N] | missing | have | slash.c copy_ (code-block picker) |
+| cmd | /cost (alias of /usage) | partial | have | slash.c usage |
+| cmd | /debug [description] | missing | have | slash.c debug (log path from main) |
+| cmd | /deep-research, /workflows, /workflow-authoring | N/A | N/A | the Workflow tool runs many agents at once |
 | cmd | /desktop, /mobile, /ide | N/A | N/A | other apps |
-| cmd | /diff | missing | have | no git: the files Claude changed this session (checkpoints) against now |
-| cmd | /doctor | have | have | slash.c:300 |
-| cmd | /effort [level\|auto\|status] | partial | have | repl.c:1258 levels only; auto/status missing |
-| cmd | /exit, /quit | have | have | repl.c:1244 |
-| cmd | /export [filename] | have | have | slash.c:385 (file or clipboard) |
-| cmd | /fast [on\|off] | N/A | N/A | fast mode is a claude.ai-plan feature on specific models |
-| cmd | /fewer-permission-prompts | N/A | N/A | bundled skill over transcripts + MCP |
-| cmd | /focus | missing | missing | view toggle in tui.c (other branch's file) |
-| cmd | /goal [condition\|clear] | missing | missing | not built (needs an evaluator model call after every turn; listed as left) |
-| cmd | /heapdump | N/A | N/A | JavaScript heap |
-| cmd | /help | have | have | repl.c:1165 |
-| cmd | /hooks | have | have | slash.c:648 read-only list |
-| cmd | /import | N/A | N/A | Codex / Gemini CLI / Cursor configuration do not exist on an Amiga |
-| cmd | /init | have | have | repl.c:1287 |
-| cmd | /insights, /team-onboarding | missing | missing | HTML report over all sessions: not built (low value) |
-| cmd | /install-github-app, /install-slack-app, /web-setup | N/A | N/A | OAuth browser flows, gh CLI |
-| cmd | /keybindings | missing | missing | keybindings file: keys.c (other branch's file) |
-| cmd | /list-agents | N/A | N/A | cross-session messaging |
-| cmd | /login, /logout | have | have | slash.c:583 (API key; OAuth N/A) |
+| cmd | /diff | missing | have | slash.c diff: the checkpoints' first copies against now (no git) |
+| cmd | /doctor | have | have | slash.c doctor |
+| cmd | /effort [level\|auto\|status] | partial | have | repl.c, repl_effort |
+| cmd | /exit, /quit | have | have | repl.c |
+| cmd | /export [filename] | have | have | slash.c export_ |
+| cmd | /fast [on\|off] | N/A | N/A | a claude.ai plan feature |
+| cmd | /fewer-permission-prompts | missing | have | bundled skill (commands.c); the audit's first draft had it N/A -- it reads Bash calls, not only MCP |
+| cmd | /focus | missing | missing | a view toggle in tui.c (other branch) |
+| cmd | /goal [condition\|clear] | missing | have | slash.c goal, repl.c goal_check (Haiku judges) |
+| cmd | /heapdump, /radio, /stickers, /powerup | N/A | N/A | JavaScript heap, browser |
+| cmd | /help | have | have | repl.c show_help (+ the N/A list) |
+| cmd | /hooks | have | have | slash.c hooks_list |
+| cmd | /import | N/A | N/A | Codex / Gemini CLI / Cursor do not run on an Amiga |
+| cmd | /init | have | have | repl.c |
+| cmd | /insights, /team-onboarding | missing | have | bundled skills (prompts) |
+| cmd | /install-github-app, /install-slack-app | N/A | N/A | OAuth in a browser, gh |
+| cmd | /keybindings | missing | missing | keys.c (other branch) |
+| cmd | /login, /logout | have | have | slash.c (API key; OAuth N/A) |
 | cmd | /loop [interval] [prompt] | missing | missing | needs a timer in the input loop (tui.c, other branch) |
-| cmd | /mcp | N/A | N/A | MCP stdio servers need Node; MCP over HTTP not built (see 9.) |
-| cmd | /memory | have | have | slash.c:522 (no auto-memory toggle) |
-| cmd | /model [model] | partial | have | repl.c:1248; not saved as the default for new sessions |
-| cmd | /output-style [style] | have | have | slash.c:190 |
-| cmd | /passes, /privacy-settings, /rate-limit-options, /upgrade, /usage-credits, /stickers, /radio, /powerup | N/A | N/A | claude.ai subscription / browser |
-| cmd | /permissions | partial | have | slash.c:98 text verbs; no interactive editor |
-| cmd | /plan [description] | missing | have | plan mode from the prompt |
-| cmd | /plugin, /reload-plugins, /plugin-authoring | N/A | N/A | plugin marketplace (Node packages) |
-| cmd | /recap | missing | have | one-line summary of the session |
-| cmd | /release-notes | missing | have | C:Claude's own changes |
-| cmd | /reload-skills | missing | have | re-scan skills and commands |
-| cmd | /remote-control, /remote-env, /schedule, /teleport | N/A | N/A | claude.ai cloud |
-| cmd | /rename [name] | partial | have | slash.c:856; without a name: no generated name |
-| cmd | /resume [session] | have | have | repl.c:1097 |
-| cmd | /rewind (aliases /checkpoint, /undo) | partial | have | slash.c:744; no "Summarize from here", no /undo |
-| cmd | /run, /verify, /run-skill-generator | missing | missing | bundled skills (launch the app); not built |
-| cmd | /sandbox | N/A | N/A | OS sandbox (seatbelt / bubblewrap) |
-| cmd | /scroll-speed, /tui | N/A | N/A | fullscreen renderer (C:Claude has one renderer) |
-| cmd | /setup-bedrock, /setup-vertex | N/A | N/A | cloud providers' credentials |
-| cmd | /simplify | missing | missing | bundled skill with four parallel agents: not built |
-| cmd | /skill-doctor | missing | missing | not built |
-| cmd | /skills | partial | partial | slash.c:838 plain list; no filter / visibility toggle |
-| cmd | /stats (alias of /usage) | missing | have | |
-| cmd | /status | have | have | slash.c:237 |
-| cmd | /statusline [description] | partial | have | slash.c:879 takes a literal command; no description -> Claude sets it up; "clear" saved as the command (bug) |
-| cmd | /tasks, /bashes | have | have | slash.c:844 |
-| cmd | /terminal-setup | have | have | slash.c:328 (UP-Term check) |
-| cmd | /theme | have | have | input.c:396 |
-| cmd | /todos (C:Claude) | have | have | slash.c:674 |
-| cmd | /update-config | missing | missing | bundled skill; not built |
-| cmd | /usage | partial | have | slash.c:819; no per-model rows, durations |
-| cmd | /vim (removed in Claude Code; /config editorMode) | have | have | input.c:398; editorMode in /config after |
-| cmd | /voice | N/A | N/A | dictation needs a claude.ai account and audio upload |
-| cmd | N/A commands answer with their reason | missing | have | before: "Unknown command" |
-| cmd | /skill-name typed by the user | missing | have | slash.c:903 looks up commands only |
+| cmd | /mcp, /plugin, /reload-plugins, /plugin-authoring | N/A | N/A | MCP stdio servers and plugins are Node/Python; typed, they say so |
+| cmd | /memory | have | have | slash.c memory (+ auto on/off) |
+| cmd | /model [model] | partial | have | kept as the default, availableModels, Pre/PostModelSwitch |
+| cmd | /output-style [style] | have | have | slash.c output_style |
+| cmd | /passes, /privacy-settings, /rate-limit-options, /upgrade, /usage-credits, /voice | N/A | N/A | claude.ai subscription and account |
+| cmd | /permissions | partial | have | slash.c perm_editor (menus at the screen) |
+| cmd | /plan [description] | missing | have | slash.c plan |
+| cmd | /recap | missing | have | slash.c recap |
+| cmd | /release-notes | missing | have | slash.c notes |
+| cmd | /reload-skills | missing | have | slash.c reload_skills |
+| cmd | /rename [name] | partial | have | slash.c rename_ (Claude names it) |
+| cmd | /resume [session] | have | have | repl.c resume (+ FILE.jsonl) |
+| cmd | /rewind (/checkpoint, /undo) | partial | have | Summarize from here / up to here, /undo |
+| cmd | /run, /verify, /run-skill-generator | missing | have | bundled skills |
+| cmd | /sandbox, /scroll-speed, /tui, /setup-bedrock, /setup-vertex | N/A | N/A | OS sandbox; fullscreen renderer; cloud providers' signing |
+| cmd | /simplify | missing | partial | bundled skill: one pass by Claude, not four parallel agents |
+| cmd | /skill-doctor | missing | partial | slash.c skill_doctor: sizes, no use counts kept |
+| cmd | /skills | partial | partial | filter and sizes; no visibility toggle (skillOverrides) |
+| cmd | /stats | missing | have | slash.c usage |
+| cmd | /status | have | have | slash.c status |
+| cmd | /statusline [description] | partial | have | statusline-setup agent, clear, `command CMD` |
+| cmd | /tasks, /terminal-setup, /theme, /todos, /vim | have | have | slash.c, input.c |
+| cmd | /update-config | missing | have | bundled skill |
+| cmd | /usage | partial | have | per model, durations |
+| cmd | the N/A commands answer with their reason | missing | have | slash.c na_cmds, not_here |
+| cmd | /skill-name typed | missing | have | slash.c slash_custom, menu_build |
 
 ## 2. Command line (cli-reference.md, headless.md)
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
-| cli | `claude`, `claude "query"`, `-p`, piped stdin | have | have | cli.c, print.c:588 |
-| cli | -c / --continue, -r / --resume ID or name, picker | have | have | cli.c:869 |
-| cli | --resume <file.jsonl> | missing | have | ids and names only |
-| cli | --add-dir, --agent, --allowedTools, --disallowedTools, --tools | have | have | cli.c:94-129 |
-| cli | --agents JSON | missing | have | |
-| cli | --append-system-prompt(-file), --system-prompt(-file) | have | have | cli.c:819 |
-| cli | --append-subagent-system-prompt(-file) | missing | have | |
-| cli | --autocompact auto\|tokens | missing | have | |
-| cli | --bare | missing | have | |
-| cli | --betas | missing | have | |
-| cli | --dangerously-skip-permissions, --permission-mode | have | have | cli.c:239 (auto refused: classifier) |
-| cli | --allow-dangerously-skip-permissions | missing | missing | bypass in the Shift+Tab cycle: tui.c (other branch) |
-| cli | --debug, --debug-file | partial | have | DEBUG -> T:Claude.log only |
-| cli | --disable-slash-commands | missing | have | |
-| cli | --effort, --model, --fallback-model | have | have | fallback chain: first model only |
+| cli | `claude`, `claude "query"`, `-p`, piped stdin | have | have | cli.c, print.c |
+| cli | -c, -r ID or name, the picker | have | have | cli.c cli_session |
+| cli | --resume FILE.jsonl | missing | have | session.c sess_load_file |
+| cli | --add-dir, --agent, --allowedTools, --disallowedTools, --tools | have | have | cli.c |
+| cli | --agents JSON (or a file) | missing | have | commands.c defs_add_agents_json |
+| cli | --append-system-prompt(-file), --system-prompt(-file) | have | have | cli.c |
+| cli | --append-subagent-system-prompt(-file) | missing | have | subagent.c agent_run |
+| cli | --autocompact auto\|tokens | missing | have | cfg_window_parse, repl_compact_at |
+| cli | --bare (CLAUDE_CODE_SIMPLE) | missing | have | repl_load, cli_apply |
+| cli | --betas | missing | have | repl.c post |
+| cli | --dangerously-skip-permissions, --permission-mode | have | have | cli.c (auto refused: classifier) |
+| cli | --allow-dangerously-skip-permissions | missing | missing | bypass in the Shift+Tab cycle is tui.c (other branch) |
+| cli | --debug, --debug-file | partial | have | main_amiga.c logname |
+| cli | --disable-slash-commands | missing | have | repl_defs |
+| cli | --effort, --model, --fallback-model | have | have | the fallback chain: its first model |
 | cli | --fork-session, --name, --no-session-persistence | have | have | |
-| cli | --forward-subagent-text | missing | have | |
+| cli | --forward-subagent-text | missing | have | print.c f_sub |
 | cli | --include-partial-messages, --input-format, --output-format | have | have | print.c |
-| cli | --json-schema (structured_output) | missing | have | |
+| cli | --json-schema (structured_output) | missing | have | StructuredOutput tool, policy.c structured |
 | cli | --max-budget-usd, --max-turns | have | have | |
-| cli | --permission-prompts host\|none | missing | have | |
-| cli | --replay-user-messages | missing | have | |
-| cli | --safe-mode | missing | have | |
-| cli | --session-id UUID | missing | have | ids were 8 hex digits |
-| cli | --setting-sources | missing | have | |
-| cli | --verbose (interactive: full turn-by-turn output) | partial | have | print mode only; screen folds results |
-| cli | --version, --help | have | have | |
-| cli | --exclude-dynamic-system-prompt-sections, --system-prompt-snapshot | missing | missing | C:Claude's prompt has no per-user dynamic section and is rebuilt per session; not built |
-| cli | --include-hook-events, --init, --init-only, --maintenance (Setup hooks) | missing | missing | not built (no Setup hook event) |
-| cli | --prompt-suggestions | missing | missing | not built (extra model call per turn) |
-| cli | --mcp-config, --strict-mcp-config, --permission-prompt-tool | N/A | N/A | MCP (see 9.) |
-| cli | --chrome, --no-chrome, --ide, --desktop, --cloud, --remote, --teleport, --remote-control, --rc, --environment, --ref, --bg, --exec, --tmux, --worktree, --teammate-mode, --channels, --plugin-dir, --plugin-url, --from-pr, --restricted, --ax-screen-reader, --advisor | N/A | N/A | browser, IDE, cloud, background supervisor, git worktrees, plugins, PR hosts; --restricted / --ax-screen-reader: evaluation harness and screen reader are not on AmigaOS |
-| cli | subcommands update, install, gateway, agents, attach, logs, respawn, rm, stop, daemon, auto-mode, remote-control, self-hosted-runner, setup-token, ultrareview, plugin, mcp, import | N/A | N/A | Node install, background sessions, cloud, OAuth |
-| cli | subcommands auth status/login/logout, doctor, purge | missing | missing | not built (the in-session /login /logout /doctor do it) |
-| headless | stream-json: subagent messages with parent_tool_use_id | missing | have | print.c:187 always null |
-| headless | stream-json input: image / document blocks | missing | have | text joined, images dropped (decided: base64 pass-through) |
-| headless | system/api_retry event | missing | have | retries silent |
-| headless | system/init, result shapes, exit codes | have | have | print.c:255, 376 (AmigaDOS 10/20 for 1) |
+| cli | --permission-prompts host\|none | missing | have | tools.c tl_gate |
+| cli | --replay-user-messages | missing | have | print.c replay |
+| cli | --safe-mode | missing | have | repl_load |
+| cli | --session-id UUID | missing | have | session.c sess_use_id |
+| cli | --setting-sources | missing | have | cfg.skip |
+| cli | --verbose (the screen: results unfolded) | partial | have | show.c body |
+| cli | --exclude-dynamic-system-prompt-sections | missing | have | the auto memory section goes with the first prompt |
+| cli | --system-prompt-snapshot | missing | missing | not built: the prompt is built per session, not recorded |
+| cli | --include-hook-events | missing | have | print.c f_hook |
+| cli | --init, --init-only, --maintenance (Setup hooks) | missing | have | repl_setup, print.c |
+| cli | --prompt-suggestions | missing | have | print.c suggestion |
+| cli | --mcp-config, --strict-mcp-config, --permission-prompt-tool | N/A | N/A | MCP |
+| cli | --chrome, --no-chrome, --ide, --desktop, --cloud, --remote, --teleport, --remote-control, --environment, --ref, --bg, --exec, --tmux, --worktree, --teammate-mode, --channels, --plugin-dir, --plugin-url, --from-pr, --restricted, --ax-screen-reader, --advisor | N/A | N/A | browser, IDE, cloud, background supervisor, git worktrees, plugins, PR hosts, evaluation harness, screen reader |
+| cli | subcommands update, install, gateway, agents, attach, logs, respawn, rm, stop, daemon, auto-mode, remote-control, self-hosted-runner, setup-token, ultrareview, plugin, mcp, import | N/A | N/A | Node installer, background sessions, cloud, OAuth |
+| cli | subcommands doctor, auth status / login / logout, purge | missing | have | print.c print_subcommand |
+| headless | stream-json: subagent messages (parent_tool_use_id) | missing | have | print.c f_sub |
+| headless | stream-json input: image / document blocks | missing | have | base64 passed through (decided over N/A) |
+| headless | system/api_retry | missing | have | repl.c request_retry |
+| headless | system/init, result shapes, exit codes | have | have | print.c (AmigaDOS 10/20 for 1) |
 
 ## 3. Interactive mode (interactive-mode.md) -- keys are feature/a4-input-rest's
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
-| keys | Ctrl+C, Ctrl+D, Ctrl+G / Ctrl+X Ctrl+E, Ctrl+L, Ctrl+O, Ctrl+R, Ctrl+T, Esc, Esc Esc, Shift+Tab, Up/Down, Ctrl+P/N | have | have | tui.c:1588-1760 |
-| keys | Ctrl+A E K U W Y, Alt+B F D, Ctrl+_ undo | have | have | edit.c:373-440 |
-| keys | Ctrl+S stash, Ctrl+B background, Ctrl+X Ctrl+K, Ctrl+Enter / Ctrl+X Ctrl+S send queued, Alt+Y paste ring, Alt+P model, Alt+T thinking, Alt+O fast | missing | missing | other branch (feature/a4-input-rest) |
+| keys | Ctrl+C, Ctrl+D, Ctrl+G / Ctrl+X Ctrl+E, Ctrl+L, Ctrl+O, Ctrl+R, Ctrl+T, Esc, Esc Esc, Shift+Tab, Up/Down, Ctrl+P/N | have | have | tui.c |
+| keys | Ctrl+A E K U W Y, Alt+B F D, Ctrl+_ | have | have | edit.c |
+| keys | Ctrl+S, Ctrl+B, Ctrl+X Ctrl+K, Ctrl+Enter / Ctrl+X Ctrl+S, Alt+Y, Alt+P, Alt+T, Alt+O | missing | missing | other branch |
 | keys | Ctrl+V image paste | N/A | N/A | no image clipboard path on AmigaOS (IFF -> PNG would be its own feature) |
-| keys | Ctrl+Z suspend | N/A | N/A | no job control on AmigaOS |
+| keys | Ctrl+Z | N/A | N/A | no job control on AmigaOS |
 | keys | ? help panel, : emoji shortcodes, spell check | missing | missing | other branch |
-| input | \ + Enter, Shift+Enter, Ctrl+J newline | have | have | edit.c |
-| input | / commands, ! shell mode, @ mentions, # memory | have | have | input.c |
+| input | \ + Enter, Shift+Enter, Ctrl+J; / ! @ # | have | have | edit.c, input.c |
 | vim | modes, motions, edits, counts | have | have | vim.c |
 | vim | visual mode, text objects, '.', >> << | missing | missing | other branch |
-| hist | history per project, Ctrl+R search | have | have | hist.c |
-| bg | background Bash (run_in_background), /tasks | have | have | shells.c |
-| queue | type-ahead queue, Up takes back | have | have | input.c |
-| view | transcript viewer (Ctrl+O) | have | have | tview.c |
-| view | task list (Ctrl+T) | have | have | tui.c |
-| view | prompt suggestions, session recap after away, PR status, issue links, usage-limit wait | missing | missing | recap command built (/recap); the rest N/A (git hosts, claude.ai limits) or other branch |
-| view | /diff panel | missing | have | as /diff (no git) |
-| view | /btw side questions | missing | have | |
+| hist | history per project, Ctrl+R | have | have | hist.c |
+| bg | background Bash, /tasks | have | have | shells.c |
+| queue | type-ahead queue | have | have | input.c |
+| view | transcript viewer, task list | have | have | tview.c, tui.c |
+| view | prompt suggestions in the box | missing | missing | the box is tui.c (print mode has --prompt-suggestions) |
+| view | session recap after being away | missing | missing | needs the idle tick in tui.c to draw; /recap is built |
+| view | PR review status, issue links, usage-limit wait | N/A | N/A | git hosts, claude.ai limits |
+| view | /diff | missing | have | slash.c diff |
+| view | /btw | missing | have | slash.c btw |
 
 ## 4. Tools (tools-reference.md)
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
-| tool | Agent (named Task here) | partial | have | tools.c:282 named Task; rules/hooks naming Agent did not match Task (config.c:345) |
-| tool | Agent: disallowedTools, maxTurns | partial | have | fixed 60 rounds (subagent.c:15) |
-| tool | Agent: background, resume via SendMessage, nested | missing | missing | one task, no threads; not built |
-| tool | AskUserQuestion | have | have | tools.c:279 |
-| tool | Bash | have | have | tools.c:1314 |
-| tool | Bash: default timeout 2 min (description said 120000, ran 60 s) | partial | have | repl.c:1658 |
-| tool | Bash: cd persists between commands | missing | missing | not built (AmigaShell runs each in the start dir) |
-| tool | Bash: read-only commands without a prompt | missing | have | perm_must_ask always asked |
-| tool | Bash: output head+tail on failure, spill file | partial | partial | cut at 30000 |
-| tool | Edit, Write, MultiEdit | have | have | tools.c:950, 1146 |
-| tool | Read | have | have | tools.c:845 |
-| tool | Read: images, PDFs | missing | have | binary refused (tools.c:885) |
+| tool | Agent (declared as Task) | partial | have | rules and matchers naming Agent cover it (config.c tool_covers, hooks.c) |
+| tool | Agent: disallowedTools, maxTurns, effort, skills, permissionMode | partial | have | subagent.c agent_run |
+| tool | Agent: background, resume via SendMessage | missing | N/A | one task, no threads: an agent runs to its end |
+| tool | Agent: nested subagents | missing | missing | not built (an agent has no Task tool here) |
+| tool | AskUserQuestion | have | have | tools.c |
+| tool | Bash | have | have | tools.c run_bash |
+| tool | Bash: 2-minute default, BASH_DEFAULT_ / BASH_MAX_TIMEOUT_MS | partial | have | repl.c, tools.c |
+| tool | Bash: cd persists | missing | have | tools.c cd_line |
+| tool | Bash: read-only commands without a question | missing | have | tools.c bash_read_only |
+| tool | Bash: output cap; head+tail on failure | partial | partial | the cap is bashOutputMaxChars / BASH_MAX_OUTPUT_LENGTH now; only the head is kept (sys.h run reads the start) |
+| tool | Bash: moved to the background at its time limit | missing | missing | not built |
+| tool | Edit, Write, MultiEdit | have | have | tools.c |
+| tool | Edit: relaxed stale check, a Bash cat counts as a read | missing | missing | not built |
+| tool | Read | have | have | tools.c run_read |
+| tool | Read: images and PDFs | missing | have | tools.c read_media |
 | tool | Read: notebooks | N/A | N/A | no Jupyter |
 | tool | Glob, Grep | have | have | search.c |
+| tool | Grep/Glob: .gitignore | N/A | N/A | no git |
 | tool | WebFetch | have | have | webfetch.c |
-| tool | WebFetch: 15-min cache, preapproved domains | missing | missing | not built |
-| tool | WebSearch | have | have | tools.c:414 |
-| tool | WebSearch: allowed/blocked domains | missing | missing | not built |
+| tool | WebFetch: 15-minute cache | missing | have | webfetch.c cache_find |
+| tool | WebFetch: preapproved domains, localhost refusal, http -> https | missing | missing | not built |
+| tool | WebSearch | have | have | the API's server tool |
+| tool | WebSearch: allowed / blocked domains | missing | missing | not built |
 | tool | EnterPlanMode, ExitPlanMode, TodoWrite, Skill | have | have | tools.c |
-| tool | TaskCreate/Get/List/Update, TaskOutput/TaskStop, Monitor, Cron*, ScheduleWakeup | missing | missing | not built (TodoWrite, BashOutput, KillShell cover the old ones) |
-| tool | NotebookEdit, PowerShell, LSP, EnterWorktree, ExitWorktree, MCP resource tools, ToolSearch, Artifact, RemoteTrigger, PushNotification, SendUserFile, SendFeedback, Workflow, ListAgents | N/A | N/A | Jupyter, pwsh, language servers, git, MCP, claude.ai |
-| rules | Bash(cmd *), Read(...)/Edit(...) globs, deny > ask > allow | have | have | config.c:530-686 |
-| rules | Agent(x) | partial | have | Task(x) only |
-| rules | ~/ in path rules | missing | missing | joined to the root (config.c:611) |
+| tool | TaskCreate/Get/List/Update, TaskOutput/TaskStop, Monitor, Cron*, ScheduleWakeup | missing | missing | not built (TodoWrite, BashOutput, KillShell are the older ones) |
+| tool | NotebookEdit, PowerShell, LSP, worktrees, MCP resource tools, ToolSearch, Artifact, RemoteTrigger, PushNotification, SendUserFile, SendFeedback, Workflow, ListAgents | N/A | N/A | Jupyter, pwsh, language servers, git, MCP, claude.ai |
+| rules | Bash(cmd *), Read/Edit globs, deny > ask > allow | have | have | config.c |
+| rules | Agent(x) | partial | have | config.c tool_covers |
+| rules | ~/ in path rules | missing | have | config.c path_match (HOME, else SYS:) |
+| rules | an Edit allow grants Read; a Read deny blocks Edit | missing | missing | not built |
 
 ## 5. Hooks (hooks.md)
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
 | event | PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, SessionStart | have | have | policy.c |
-| event | SessionEnd | partial | have | reason "exit" is not a documented value |
-| event | PreCompact | partial | have | cannot block (hooks.c:136) |
-| event | Notification | partial | partial | permission prompts only; no notification_type |
-| event | PermissionRequest | missing | have | |
-| event | PostToolUseFailure | missing | have | |
-| event | SubagentStart | missing | have | |
-| event | PostCompact | missing | have | |
-| event | StopFailure | missing | have | |
-| event | UserPromptExpansion | missing | have | |
-| event | CwdChanged, DirectoryAdded | missing | have | |
-| event | PreModelSwitch, PostModelSwitch | missing | missing | not built |
-| event | InstructionsLoaded, PostToolBatch, ConfigChange, FileChanged, Setup, MessageDisplay | missing | missing | not built |
+| event | SessionEnd | partial | have | reasons prompt_input_exit / clear / other |
+| event | PreCompact | partial | have | blocks /compact |
+| event | Notification | partial | have | notification_type permission_prompt, idle_prompt |
+| event | PermissionRequest, PostToolUseFailure, SubagentStart, PostCompact, StopFailure, UserPromptExpansion, CwdChanged, DirectoryAdded | missing | have | policy.c; test_gaps_hooks |
+| event | PreModelSwitch, PostModelSwitch, InstructionsLoaded, PostToolBatch, ConfigChange, Setup | missing | have | policy.c; test_gaps_more |
+| event | FileChanged, MessageDisplay | missing | missing | not built (a file watch: dos notify) |
 | event | PermissionDenied, TaskCreated, TaskCompleted, TeammateIdle, WorktreeCreate/Remove, Elicitation* | N/A | N/A | auto mode, task tools, teams, worktrees, MCP |
-| config | user / project / local hooks; matchers "" * A\|B | have | have | config.c, hooks.c:47 |
-| config | matcher regex (unanchored, ^Edit$) | partial | partial | wildcards only |
-| config | `if` field | missing | have | |
+| config | user / project / local; matchers | have | have | config.c |
+| config | matcher rules (exact list, regex unanchored) | partial | have | hooks.c hooks_match + regex.c |
+| config | `if` | missing | have | hooks.c |
 | config | type command | have | have | |
-| config | types prompt, agent, http | missing | missing | not built |
-| config | timeout (default 600 s for command) | partial | have | default was 60 s |
+| config | type prompt | missing | have | hooks.c prompt_hook (Haiku) |
+| config | types agent, http | missing | missing | not built |
+| config | timeout (600 s command, 30 s prompt) | partial | have | config.c |
 | config | disableAllHooks | missing | have | |
-| config | CLAUDE_PROJECT_DIR | missing | have | |
-| config | CLAUDE_ENV_FILE, async, statusMessage, once | missing | missing | not built |
-| config | /hooks menu | have | have | slash.c:648 |
-| input | session_id, transcript_path, cwd, hook_event_name, stop_hook_active, tool_response, trigger | have | have | hooks.c:160 |
-| input | permission_mode, tool_use_id | missing | have | |
-| exit | 0 / 2 / other, timeout not blocking | have | have | hooks.c:197 |
-| json | decision/reason, permissionDecision | have | have | hooks.c:95 |
-| json | continue:false for tool hooks | partial | have | UserPromptSubmit and Stop only |
-| json | systemMessage | missing | have | |
-| json | additionalContext on PreToolUse | partial | have | |
-| json | updatedInput (PreToolUse) | missing | have | |
-| json | updatedToolOutput, terminalSequence, sessionTitle, watchPaths | missing | missing | not built |
-| stop | Stop continuation cap 8 | partial | have | 3 |
+| config | CLAUDE_PROJECT_DIR | missing | have | hooks.c project_cmd |
+| config | CLAUDE_ENV_FILE | missing | have | policy.c env_file |
+| config | statusMessage, once | missing | have | hooks.c |
+| config | async / asyncRewake | missing | missing | not built (no background hook runs) |
+| config | the same handler from several files once | missing | have | config.c hooks_of |
+| config | hooks in skill / agent frontmatter | missing | missing | not built |
+| config | workspace trust before project hooks | missing | missing | not built |
+| config | /hooks | have | have | |
+| input | session_id, transcript_path, cwd, hook_event_name, stop_hook_active, tool_response, trigger | have | have | |
+| input | permission_mode, tool_use_id | missing | have | policy.c tool_event |
+| input | Stop's last_assistant_message, background_tasks | missing | missing | not built |
+| exit | 0 / 2 / other; JSON read on every exit code | partial | have | hooks.c |
+| json | decision/reason, permissionDecision, continue:false, systemMessage, additionalContext (PreToolUse too) | partial | have | hooks.c, policy.c |
+| json | updatedInput (PreToolUse), updatedToolOutput (PostToolUse), terminalSequence | missing | have | |
+| json | SessionStart sessionTitle, initialUserMessage, reloadSkills | missing | have | |
+| json | SessionStart watchPaths, permissionDecision defer | missing | missing | not built |
+| json | PermissionRequest updatedInput | missing | partial | allow/deny honoured; the input is not replaced |
+| stop | Stop cap 8 (CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) | partial | have | repl.c stop_cap |
 
 ## 6. Settings, memory (settings.md, memory.md)
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
-| files | user / project / local settings, --settings, precedence | have | have | config.c:274 |
-| files | managed settings, ~/.claude.json | N/A | N/A | MDM / OAuth state |
-| sec | bypassPermissions / auto ignored from project and local files | missing | have | repl.c:1597 took it from any file |
-| keys | permissions.*, model, effortLevel, fallbackModel, outputStyle, theme, editorMode, autoCompactEnabled, statusLine, env, hooks | have | have | config.c:253-301 |
-| keys | disableAllHooks, verbose, autoMemoryEnabled, claudeMdExcludes, hideVimModeIndicator (statusLine) | missing | have | |
-| keys | agent | missing | have | |
-| keys | apiKeyHelper, cleanupPeriodDays, attribution, spinnerTipsEnabled, availableModels, askUserQuestionTimeout, bashOutputMaxChars | missing | missing | not built |
+| files | user / project / local, --settings, precedence | have | have | config.c |
+| files | managed settings, ~/.claude.json | N/A | N/A | MDM, OAuth state |
+| sec | bypassPermissions / auto ignored from project and local files | missing | have | config.c cfg_merge |
+| keys | permissions.*, model, effortLevel, fallbackModel, outputStyle, theme, editorMode, autoCompactEnabled, statusLine, env, hooks | have | have | |
+| keys | disableAllHooks, verbose, agent, autoMemoryEnabled, claudeMdExcludes, autoCompactWindow, statusLine.hideVimModeIndicator | missing | have | config.c |
+| keys | apiKeyHelper, availableModels, bashOutputMaxChars, cleanupPeriodDays | missing | have | config.c, repl.c (cleanup only when set) |
+| keys | askUserQuestionTimeout | missing | missing | needs a timer in the menu (tui.c) |
+| keys | attribution, includeGitInstructions, spinnerTipsEnabled | N/A | N/A | git commit trailers; there are no spinner tips |
 | keys | plugins, sandbox, managed-only keys | N/A | N/A | |
-| env | ANTHROPIC_MODEL, BASH_DEFAULT_TIMEOUT_MS, BASH_MAX_TIMEOUT_MS, CLAUDE_CODE_SIMPLE | missing | have | |
-| env | other CLAUDE_CODE_* variables | missing | missing | not built |
-| perm | "don't ask again" kept in settings.local.json | partial | partial | session-only answer (ui.c) |
-| reload | settings re-read when a file changes | missing | missing | not built |
-| mem | user, ancestors, project, .claude/CLAUDE.md, CLAUDE.local.md, AMIGA.md, nested on read, @imports | have | have | memory.c:153-190 |
-| mem | ancestor / nested CLAUDE.local.md | missing | missing | not built |
-| mem | HTML comments stripped | missing | have | |
-| mem | .claude/rules/*.md (+ paths: frontmatter), ENVARC:Claude/rules | missing | have | |
+| env | ANTHROPIC_MODEL, BASH_DEFAULT_TIMEOUT_MS, BASH_MAX_TIMEOUT_MS, BASH_MAX_OUTPUT_LENGTH, CLAUDE_CODE_SIMPLE, CLAUDE_CODE_AUTO_COMPACT_WINDOW, CLAUDE_CODE_STOP_HOOK_BLOCK_CAP, CLAUDE_CODE_DISABLE_AUTO_MEMORY | missing | have | |
+| env | the other CLAUDE_CODE_* variables | missing | missing | not built |
+| perm | "Yes, and don't ask again" kept in settings.local.json | partial | have | ui.c ASK_PROJECT, policy.c pol_keep_rule |
+| reload | settings read again when a file changes | missing | have | repl.c settings_changed (+ ConfigChange) |
+| warn | a warning for one malformed entry | missing | missing | not built |
+| mem | user, ancestors, project, .claude/CLAUDE.md, CLAUDE.local.md, AMIGA.md, nested on read, @imports | have | have | memory.c |
+| mem | CLAUDE.local.md in ancestors and nested directories | missing | have | memory.c dir_files |
+| mem | AGENTS.md only where there is no CLAUDE.md | partial | have | memory.c dir_files |
+| mem | HTML comments left out | missing | have | memory.c strip_comments |
+| mem | .claude/rules, ENVARC:Claude/rules, paths: | missing | have | memory.c rules_in, mem_rules |
 | mem | claudeMdExcludes | missing | have | |
-| mem | auto memory (MEMORY.md) | missing | have | |
-| mem | AGENTS.md only without CLAUDE.md | partial | partial | always loaded |
-| mem | import approval dialog | missing | missing | not built |
+| mem | auto memory (MEMORY.md) | missing | have | memory.c mem_auto |
+| mem | import depth 4, backslash-escaped spaces, the external-import dialog | partial | partial | depth 5; no escaped spaces; no dialog |
 
-## 7. Subagents, skills, output styles, status line (sub-agents.md, skills.md, output-styles.md, statusline.md)
+## 7. Subagents, skills, output styles, status line
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
-| agent | built-ins general-purpose, Explore, Plan; user/project agents; override | have | have | subagent.c:18 |
-| agent | built-in statusline-setup | missing | have | |
-| agent | built-ins claude, claude-code-guide | missing | missing | not built |
-| agent | frontmatter name, description, tools, model | have | have | commands.c:138 |
-| agent | frontmatter disallowedTools, maxTurns, effort, skills, permissionMode | missing | have | |
-| agent | frontmatter hooks, memory, background, color, initialPrompt | missing | missing | not built |
-| agent | frontmatter mcpServers, isolation | N/A | N/A | MCP, worktrees |
-| agent | CLAUDE.md for subagents (not Explore/Plan) | missing | have | |
-| agent | --agents JSON, agent setting | missing | have | |
-| agent | @agent-name mention | missing | missing | input.c (other branch) |
-| skill | locations user/project; listing; Skill tool | have | have | commands.c:236, tools.c:1530 |
-| skill | $ARGUMENTS / $N substitution in skills | missing | have | body returned as is |
-| skill | $N 0-based, $ARGUMENTS[N], \$ (commands too) | partial | have | commands.c:385 1-based |
-| skill | ${CLAUDE_SKILL_DIR}, ${CLAUDE_SESSION_ID}, ${CLAUDE_PROJECT_DIR}, ${CLAUDE_EFFORT} | missing | have | |
-| skill | !`cmd` in skills | missing | have | commands only |
-| skill | allowed-tools of a skill | missing | have | cl_skill had no field |
-| skill | model of a skill | missing | have | |
-| skill | user-invocable, when_to_use | missing | have | |
-| skill | argument-hint shown | partial | have | parsed, never shown |
-| skill | context: fork + agent | missing | have | |
-| skill | hooks, paths, effort | missing | missing | not built |
-| skill | subdirectory namespacing (/a:b) | missing | missing | not built |
-| skill | bundled skills | missing | partial | /debug built in; the rest N/A or not built (see section 1) |
-| style | Default, Explanatory, Learning | have | have | commands.c:251 |
-| style | Proactive, Concise | missing | have | |
-| style | keep-coding-instructions honoured | partial | have | parsed, never read |
-| style | custom styles, /output-style, outputStyle | have | have | slash.c:190 |
-| status | command, padding, refreshInterval, events, 300 ms | have | have | policy.c:420 |
-| status | JSON: context_window, effort, vim, version, session_name, agent, durations, display_name | missing | have | |
-| status | JSON: lines added/removed, rate_limits, pr, worktree | missing | N/A | rate limits: claude.ai; pr/worktree: git (lines counter: not built -> missing) |
+| agent | general-purpose, Explore, Plan; user/project agents override | have | have | subagent.c |
+| agent | built-ins statusline-setup, claude-code-guide, claude | missing | have | subagent.c builtins |
+| agent | frontmatter name, description, tools, model | have | have | commands.c |
+| agent | disallowedTools, maxTurns, effort, skills, permissionMode, initialPrompt | missing | have | commands.c, subagent.c, cli.c |
+| agent | hooks, memory, color | missing | missing | not built |
+| agent | background, isolation, mcpServers | N/A | N/A | threads, worktrees, MCP |
+| agent | CLAUDE.md for agents but Explore / Plan | missing | have | subagent.c gets_memory |
+| agent | --agents JSON, "agent" setting | missing | have | |
+| agent | @agent-name in the prompt | missing | missing | input.c (other branch) |
+| skill | locations, listing, the Skill tool | have | have | |
+| skill | expanded as a command ($ARGUMENTS, $0, $ARGUMENTS[N], $name, \$, ${CLAUDE_*}, !`cmd`) | missing | have | commands.c cmd_expand_vars, policy.c ext_skill |
+| skill | allowed-tools and model; effort when typed | missing | have | pol_turn_tools, slash.c |
+| skill | user-invocable, when_to_use, argument-hint, context: fork + agent | missing | have | |
+| skill | paths: | missing | have | policy.c skills_for |
+| skill | nested .claude/skills | missing | have | policy.c skills_for |
+| skill | commands in a subdirectory as dir:name | missing | have | commands.c load_dir_as |
+| skill | hooks; skillOverrides; disableSkillShellExecution | missing | missing | not built |
+| skill | bundled skills | missing | partial | eight as prompts; the others N/A (see section 1) |
+| style | Default, Explanatory, Learning, Proactive, Concise | partial | have | commands.c |
+| style | keep-coding-instructions; outputStyle case-sensitive | partial | have | repl.c repl_system, repl_load |
+| style | custom styles, /output-style | have | have | |
+| status | command, padding, refreshInterval, events, 300 ms | have | have | policy.c |
+| status | JSON: display name, durations, lines added/removed, context_window, effort, thinking, vim, agent, session_name, version, project_dir | missing | have | policy.c status_rest |
+| status | JSON: rate_limits, pr, worktree, git fields | N/A | N/A | claude.ai limits, git |
+| status | hideVimModeIndicator | missing | have | tui.c one-line hook |
 | status | /statusline clear | missing | have | |
 
-## 8. Checkpointing, costs (checkpointing.md, costs.md)
+## 8. Checkpointing, costs
 
 | Area | Feature | Before | After | Evidence / what is missing |
 |---|---|---|---|---|
-| cp | snapshot per edit, /rewind code/conversation/both, Esc Esc | have | have | checkpoint.c, slash.c:744 |
-| cp | Summarize from here | missing | have | |
-| cp | checkpoints persist across sessions | missing | missing | T: snapshots dropped at exit; not built |
+| cp | a snapshot per edit; /rewind code / conversation / both; Esc Esc | have | have | checkpoint.c |
+| cp | Summarize from here / up to here | missing | have | repl.c repl_summarize |
+| cp | checkpoints across sessions | missing | have | checkpoint.c cp_session (T:, until a reboot) |
 | cost | /usage, /cost, /stats | partial | have | |
-| cost | /context per-category | partial | partial | |
-| cost | /clear resets totals | partial | have | |
+| cost | /context by category | partial | have | |
+| cost | /clear resets the totals | partial | have | |
 | cost | auto-compact, /compact focus | have | have | |
 
 ## 9. Not on the Amiga, with the reason (summary)
 
-- MCP stdio servers: need Node/Python processes. MCP over HTTP: possible in principle (http.c,
-  sse.c, json.c exist) but not built here; /mcp says so.
-- Plugins, marketplace: Node packages.
-- claude.ai account features: OAuth login, /usage plan limits, /passes, /privacy-settings,
-  /upgrade, /voice, remote control, cloud sessions, routines, artifacts, Claude Design.
-- Background sessions, agent teams, parallel subagents: one Amiga task runs one conversation.
-- git-based: worktrees, /diff against git, PR tools, /review.
-- OS integration: sandbox, Chrome, IDEs, desktop/mobile apps, Ctrl+Z, image paste.
+- MCP stdio servers need Node/Python processes; MCP over HTTP is possible in principle (http.c,
+  sse.c, json.c exist) but is a project of its own and not built; /mcp says so.
+- Plugins and their marketplace: Node packages.
+- claude.ai account features: OAuth, plan limits, /passes, /privacy-settings, /upgrade, /voice,
+  remote control, cloud sessions, routines, artifacts, Claude Design, fast mode, auto mode.
+- Background sessions, agent teams, parallel agents: one Amiga task runs one conversation.
+- git: worktrees, PR tools, /review and /security-review, .gitignore.
+- OS integration: sandbox, Chrome, IDEs, desktop and phone apps, Ctrl+Z, image paste.
 
 ## Counts
 
-(filled at the end of the run)
+247 rows (a row may group several features of one kind; the counts are rows).
+
+| | have | partial | missing | N/A |
+|---|---|---|---|---|
+| Before (main e4bc55d) | 58 | 37 | 119 | 33 |
+| After (feature/a4-gaps) | 173 | 8 | 32 | 34 |
+
