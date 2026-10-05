@@ -77,6 +77,9 @@ def main():
           'the kit\'s ixnet in LIBS:, the original kept as .orig', str(st))
     rc, out = run('Search LIBS:ixemul.library UP-Term')
     check('UP-Term' in out, 'the patched ixemul is in LIBS:', out)
+    rc, out = run('List C:ClaudeCode LFORMAT "%A"')
+    check(rc == 0 and out.strip()[1:2].lower() == 's',   # protection bits hsparwed, s second
+          'C:ClaudeCode installed as a script command (s bit)', out)
     rc, out = run('C:UPConsole STATUS')
     check('CON: ROM' in out, 'Install NOCONSOLE leaves CON: the ROM\'s', out)
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term console"')[0] != 0,
@@ -194,7 +197,7 @@ def main():
           'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
-    left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
+    left = [f for f in ('C:ClaudeCode', 'DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
                         'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
                         'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
                         '"C:UP-Term Prefs"', 'SYS:Utilities/UP-Term-Prefs', 'SYS:Utilities/UP-Term-Prefs.info')

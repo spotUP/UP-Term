@@ -75,7 +75,7 @@ EndIf
 If EXISTS SYS:System/FixFonts
   SYS:System/FixFonts
 EndIf
-Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:uptelnet C:UPDemo C:Claude C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
+Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:uptelnet C:ClaudeCode C:UPDemo C:Claude C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
 If EXISTS ENVARC:up-term/sysicon
   Delete >NIL: SYS:System/UP-Term SYS:System/UP-Term.info QUIET

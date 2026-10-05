@@ -135,6 +135,10 @@ Copy hl mdv SYS:UP-Term/bin CLONE
 Copy UPDemo C:UPDemo CLONE
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
 Copy UPTerm C:UPTerm CLONE
+; C:ClaudeCode: Claude Code on the NAS through uptelnet (README, CLAUDE FROM
+; THE AMIGA); a script, so the s bit makes it a command
+Copy ClaudeCode C:ClaudeCode CLONE QUIET
+Protect C:ClaudeCode +s QUIET
 ; C:uptelnet: a telnet client for the window (no ixemul; needs a TCP/IP
 ; stack), the Amiga end of Claude Code on a Mac (README, CLAUDE FROM THE AMIGA)
 Copy uptelnet C:uptelnet CLONE

@@ -702,6 +702,10 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	python3 tools/mkicon.py $(KIT)/Install.info --tool Installer --plain \
 	  --tooltype APPNAME=UP-Term --tooltype MINUSER=AVERAGE --tooltype DEFUSER=AVERAGE
 	cp dist/Uninstall dist/README.txt $(KIT)/
+	cp dist/ClaudeCode $(KIT)/ClaudeCode
+	cp dist/ClaudeCode $(KIT)/Files/ClaudeCode
+	python3 tools/mkicon.py $(KIT)/ClaudeCode.info --tool C:IconX \
+	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE" --tooltype DELAY=0
 	python3 tools/mkicon.py $(KIT)/Uninstall.info --tool C:IconX --plain
 	cd $(BUILD)/dist && rm -f ../UP-Term.lha && lha -aq ../UP-Term.lha UP-Term
 	@ls -la $(BUILD)/UP-Term.lha

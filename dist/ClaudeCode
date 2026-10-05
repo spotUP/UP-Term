@@ -1,0 +1,10 @@
+.KEY HOST,PORT/N
+.BRA {
+.KET }
+; ClaudeCode: Claude Code on the NAS (your Claude subscription), in this
+; window. The NAS asks for the uptelnet password (set on the NAS with
+; setpw; it is never stored here), then Claude Code starts in tmux --
+; quit it or lose the line and the session is still there next time.
+;   ClaudeCode [HOST] [PORT]        default 192.168.0.198 2323
+; From Workbench: double-click its icon (IconX opens an UP-Term window).
+uptelnet {HOST$192.168.0.198} {PORT$2323}
