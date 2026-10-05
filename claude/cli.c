@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cli.h"
+#include "session.h"
+#include "repl_int.h"
 #include "path.h"
 #include "util.h"
 
@@ -78,7 +80,8 @@ enum {
     O_PRINT, O_MODEL, O_EFFORT, O_URL, O_ROOT, O_PING, O_DEBUG, O_PLAIN, O_CONTINUE, O_RESUME, O_NAME, O_FORK,
     O_NOPERSIST, O_FALLBACK, O_OUTFMT, O_INFMT, O_PARTIAL, O_PERM, O_SKIP, O_ALLOW, O_DENY, O_TOOLS, O_ADDDIR,
     O_SYSP, O_SYSPF, O_APPEND, O_APPENDF, O_SETTINGS, O_MAXTURNS, O_BUDGET, O_VERBOSE, O_AGENT, O_VERSION,
-    O_HELP
+    O_HELP, O_SESSID, O_SCHEMA, O_REPLAY, O_BARE, O_SAFE, O_AGENTS, O_SUBAPP, O_SUBAPPF, O_NOSLASH, O_SOURCES,
+    O_BETAS, O_AUTOCOMPACT, O_FWDSUB, O_DEBUGFILE, O_PERMPROMPTS
 };
 
 /* takes: 0 a switch, 1 a value, 2 an optional value, 3 values (Claude Code's variadic flags) */
@@ -126,7 +129,22 @@ static const opt opts[] = {
     { O_VERBOSE, "verbose", 0, 0, "VERBOSE", 0, 0 },
     { O_AGENT, "agent", 0, 0, "AGENT", 0, 1 },
     { O_VERSION, "version", 'v', 0, "VERSION", 0, 0 },
-    { O_HELP, "help", 'h', 0, "HELP", 0, 0 }
+    { O_HELP, "help", 'h', 0, "HELP", 0, 0 },
+    { O_SESSID, "session-id", 0, 0, "SESSION-ID", 0, 1 },
+    { O_SCHEMA, "json-schema", 0, 0, "JSON-SCHEMA", 0, 1 },
+    { O_REPLAY, "replay-user-messages", 0, 0, "REPLAY-USER-MESSAGES", 0, 0 },
+    { O_BARE, "bare", 0, 0, "BARE", 0, 0 },
+    { O_SAFE, "safe-mode", 0, 0, "SAFE-MODE", 0, 0 },
+    { O_AGENTS, "agents", 0, 0, "AGENTS", 0, 1 },
+    { O_SUBAPP, "append-subagent-system-prompt", 0, 0, "APPEND-SUBAGENT-SYSTEM-PROMPT", 0, 1 },
+    { O_SUBAPPF, "append-subagent-system-prompt-file", 0, 0, "APPEND-SUBAGENT-SYSTEM-PROMPT-FILE", 0, 1 },
+    { O_NOSLASH, "disable-slash-commands", 0, 0, "DISABLE-SLASH-COMMANDS", 0, 0 },
+    { O_SOURCES, "setting-sources", 0, 0, "SETTING-SOURCES", 0, 1 },
+    { O_BETAS, "betas", 0, 0, "BETAS", 0, 3 },
+    { O_AUTOCOMPACT, "autocompact", 0, 0, "AUTOCOMPACT", 0, 1 },
+    { O_FWDSUB, "forward-subagent-text", 0, 0, "FORWARD-SUBAGENT-TEXT", 0, 0 },
+    { O_DEBUGFILE, "debug-file", 0, 0, "DEBUG-FILE", 0, 1 },
+    { O_PERMPROMPTS, "permission-prompts", 0, 0, "PERMISSION-PROMPTS", 0, 1 }
 };
 #define NOPTS ((int)(sizeof(opts) / sizeof(opts[0])))
 
@@ -153,6 +171,11 @@ void cli_free(cl_cli *c)
     free(c->app_prompt);
     free(c->app_file);
     free(c->settings);
+    free(c->schema);
+    free(c->agents);
+    free(c->sub_app);
+    free(c->sub_app_file);
+    strs_free(&c->betas);
     strs_free(&c->allow);
     strs_free(&c->deny);
     strs_free(&c->dirs);
@@ -422,6 +445,93 @@ static int set(cl_cli *c, const opt *o, const char *v, int amiga)
     case O_HELP:
         c->help = 1;
         break;
+    case O_SESSID:
+        if (!sess_is_uuid(v))
+            return fail(c, "Error: Invalid session ID. Must be a valid UUID.", 0, 0);
+        cl_copy(c->session_id, v, sizeof(c->session_id));
+        break;
+    case O_SCHEMA:
+        return set_str(&c->schema, v) ? fail(c, "Out of memory.", 0, 0) : 0;
+    case O_REPLAY:
+        c->replay = 1;
+        break;
+    case O_BARE:
+        c->bare = 1;
+        break;
+    case O_SAFE:
+        c->safe = 1;
+        break;
+    case O_AGENTS:
+        return set_str(&c->agents, v) ? fail(c, "Out of memory.", 0, 0) : 0;
+    case O_SUBAPP:
+        return set_str(&c->sub_app, v) ? fail(c, "Out of memory.", 0, 0) : 0;
+    case O_SUBAPPF:
+        return set_str(&c->sub_app_file, v) ? fail(c, "Out of memory.", 0, 0) : 0;
+    case O_NOSLASH:
+        c->no_slash = 1;
+        break;
+    case O_SOURCES: {
+        /* "user,project,local" (any of them, comma or blank separated) */
+        const char *p = v;
+        c->has_sources = 1;
+        c->sources = 0;
+        while (*p) {
+            long k = 0;
+            while (*p == ',' || *p == ' ')
+                p++;
+            while (p[k] && p[k] != ',' && p[k] != ' ')
+                k++;
+            if (!k)
+                break;
+            if (k == 4 && cl_strnieq(p, "user", 4))
+                c->sources |= 1u << CFG_USER;
+            else if (k == 7 && cl_strnieq(p, "project", 7))
+                c->sources |= 1u << CFG_PROJECT;
+            else if (k == 5 && cl_strnieq(p, "local", 5))
+                c->sources |= 1u << CFG_LOCAL;
+            else
+                return fail(c, "Error: Invalid setting source: '", v, "'. Valid options are: user, project, local");
+            p += k;
+        }
+        break;
+    }
+    case O_BETAS:
+        return strs_items(&c->betas, v) ? fail(c, "Out of memory.", 0, 0) : 0;
+    case O_AUTOCOMPACT: {
+        /* "auto", or tokens: 500000, 500k, 1m */
+        long t = 0;
+        const char *p = v;
+        if (cl_strieq(v, "auto")) {
+            c->autocompact = -1;
+            break;
+        }
+        while (*p >= '0' && *p <= '9' && t < 100000000L)
+            t = t * 10 + (*p++ - '0');
+        if (*p == 'k' || *p == 'K') {
+            t *= 1000;
+            p++;
+        } else if (*p == 'm' || *p == 'M') {
+            t *= 1000000L;
+            p++;
+        }
+        if (*p || p == v || t < 1000)
+            return fail(c, "error: --autocompact takes auto or a number of tokens (500000, 500k), not '", v, "'.");
+        c->autocompact = t;
+        break;
+    }
+    case O_FWDSUB:
+        c->fwd_sub = 1;
+        break;
+    case O_DEBUGFILE:
+        cl_copy(c->debug_file, v, sizeof(c->debug_file));
+        c->debug = 1;           /* Claude Code: implies debug mode */
+        break;
+    case O_PERMPROMPTS:
+        if (cl_strieq(v, "none"))
+            c->prompts_none = 1;
+        else if (!cl_strieq(v, "host"))
+            return bad_choice(c, o, amiga, v, "host, none");
+        break;
     }
     return 0;
 }
@@ -616,6 +726,14 @@ int cli_parse(cl_cli *c, int argc, char **argv, const char *quoted)
         return fail(c, "Error: --fork-session requires --continue or --resume", 0, 0);
     if (c->print && c->resume && !c->resume_name[0])
         return fail(c, "Error: --resume needs a session ID or name in print mode", 0, 0);
+    if (c->replay && (c->in != CLI_STREAM || c->out != CLI_STREAM))
+        return fail(c, "Error: --replay-user-messages requires --input-format=stream-json and "
+                       "--output-format=stream-json", 0, 0);
+    if (c->session_id[0] && (c->cont || c->resume) && !c->fork)
+        return fail(c, "Error: --session-id can only be used with --continue or --resume if --fork-session is "
+                       "also specified.", 0, 0);
+    if (c->schema && !c->print)
+        return fail(c, "Error: --json-schema requires --print", 0, 0);
     return 0;
 }
 
@@ -779,9 +897,21 @@ static unsigned long tool_set(const cl_cli *c, const cl_agent *a)
     return m;
 }
 
+/* a flag's text or the file it names: malloc'ed, 0 with c->err */
+static char *text_or_file(cl_cli *c, cl_repl *r, const char *v, const char *flag)
+{
+    jv o;
+    if (v[0] == '{' || v[0] == '[')
+        return dupn(v, (long)strlen(v));
+    if (json_parse(v, (long)strlen(v), &o) == 0)
+        return dupn(v, (long)strlen(v));
+    return read_arg_file(c, r, v, flag);
+}
+
 int cli_apply(cl_cli *c, cl_repl *r)
 {
     const cl_agent *a = 0;
+    const char *agent = c->agent;
     unsigned long m;
     int i;
     for (i = 0; i < c->dirs.n; i++) {
@@ -789,10 +919,63 @@ int cli_apply(cl_cli *c, cl_repl *r)
         if (path_join(r->tools.root, c->dirs.v[i], full, sizeof(full)) || r->sys->kind(r->sys->u, full) != 2)
             return fail(c, "Error: --add-dir: not a directory: ", c->dirs.v[i], 0);
     }
-    if (c->agent[0]) {
-        a = tools_agent(&r->tools, c->agent);
-        if (!a)
-            return fail(c, "Error: no agent named ", c->agent, " (/agents lists them).");
+    /* A4 gaps: what decides what is read at all */
+    r->bare = c->bare;
+    if (!r->bare && r->sys->getenv) {
+        char v[8];
+        if (r->sys->getenv(r->sys->u, "CLAUDE_CODE_SIMPLE", v, sizeof(v)) > 0 && strcmp(v, "0"))
+            r->bare = 1;            /* Claude Code: --bare sets CLAUDE_CODE_SIMPLE */
+    }
+    r->safe = c->safe;
+    r->no_slash = c->no_slash;
+    r->sources = c->has_sources ? c->sources : 0;
+    if (c->has_sources && !c->sources)
+        r->sources = 8;             /* none of the three: a bit no file has */
+    r->prompts_none = c->prompts_none;
+    if (c->verbose)
+        r->verbose = 2;
+    if (c->autocompact)
+        r->compact_window = c->autocompact;
+    r->betas[0] = 0;
+    for (i = 0; i < c->betas.n; i++) {
+        if (i)
+            cl_cat(r->betas, ",", sizeof(r->betas));
+        cl_cat(r->betas, c->betas.v[i], sizeof(r->betas));
+    }
+    free(r->agents_json);
+    r->agents_json = 0;
+    if (c->agents && (r->agents_json = text_or_file(c, r, c->agents, "--agents")) == 0)
+        return -1;
+    free(r->schema);
+    r->schema = 0;
+    if (c->schema && (r->schema = text_or_file(c, r, c->schema, "--json-schema")) == 0)
+        return -1;
+    if (r->schema) {
+        jv sv;
+        if (json_parse(r->schema, (long)strlen(r->schema), &sv) || json_type(sv) != J_OBJ)
+            return fail(c, "Error: --json-schema is not a valid JSON Schema: not a JSON object", 0, 0);
+    }
+    free(r->tools.sub_append);
+    r->tools.sub_append = 0;
+    if (c->sub_app_file || c->sub_app) {
+        /* as --append-system-prompt: the file's text, a blank line, the text */
+        jw w;
+        jw_init(&w);
+        if (c->sub_app_file) {
+            char *f = read_arg_file(c, r, c->sub_app_file, "--append-subagent-system-prompt-file");
+            if (!f) {
+                jw_free(&w);
+                return -1;
+            }
+            jw_rawz(&w, f);
+            free(f);
+        }
+        if (c->sub_app) {
+            if (w.n)
+                jw_rawz(&w, "\n\n");
+            jw_rawz(&w, c->sub_app);
+        }
+        r->tools.sub_append = w.p;
     }
     /* the settings layer: --settings, then the flags (the flags win) */
     if (c->settings) {
@@ -811,12 +994,12 @@ int cli_apply(cl_cli *c, cl_repl *r)
     }
     /* a tool set without WebSearch: also a deny rule, so every reload of
      * the settings (pol_tools) keeps the server tool off */
-    m = tool_set(c, a);
+    m = tool_set(c, 0);
     if (!(m & (1ul << T_COUNT)) && strs_add(&c->deny, "WebSearch", 9))
         return fail(c, "Out of memory.", 0, 0);
     free(r->layer[1]);
     r->layer[1] = flags_json(c);
-    /* the system prompt: --system-prompt(-file), else the agent's; and what is appended */
+    /* the system prompt flags; what is appended */
     free(r->sys_replace);
     r->sys_replace = 0;
     if (c->sys_prompt)
@@ -824,8 +1007,7 @@ int cli_apply(cl_cli *c, cl_repl *r)
     else if (c->sys_file) {
         if ((r->sys_replace = read_arg_file(c, r, c->sys_file, "--system-prompt-file")) == 0)
             return -1;
-    } else if (a && a->prompt && a->prompt[0])
-        r->sys_replace = dupn(a->prompt, (long)strlen(a->prompt));
+    }
     free(r->sys_append);
     r->sys_append = 0;
     if (c->app_file || c->app_prompt) {
@@ -848,13 +1030,36 @@ int cli_apply(cl_cli *c, cl_repl *r)
         }
         r->sys_append = w.p;
     }
+    /* the settings read again with the flags known (--setting-sources may
+     * leave out a file whose model repl_init's first reading took) */
+    cl_copy(r->model, CL_DEFAULT_MODEL, sizeof(r->model));
+    cl_copy(r->effort, CL_DEFAULT_EFFORT, sizeof(r->effort));
     if (repl_load(r))
         return fail(c, "Out of memory.", 0, 0);
+    /* --agent, else the "agent" setting: the conversation as that agent
+     * (its prompt, tools and model); looked up now that --agents and the
+     * files are read */
+    if (!agent[0])
+        agent = r->cfg.agent;
+    if (agent[0]) {
+        a = tools_agent(&r->tools, agent);
+        if (!a && c->agent[0])
+            return fail(c, "Error: no agent named ", c->agent, " (/agents lists them).");
+        if (!a)
+            repl_say(r, "The \"agent\" setting names no agent: ", agent);
+    }
+    if (a && !r->sys_replace && a->prompt && a->prompt[0]) {
+        r->sys_replace = dupn(a->prompt, (long)strlen(a->prompt));
+        if (repl_system(r))
+            return fail(c, "Out of memory.", 0, 0);
+    }
     /* the agent's model, unless --model says otherwise */
     if (a && !c->model[0] && a->model && a->model[0] && strcmp(a->model, "inherit"))
         cl_copy(r->model, cfg_model(a->model), sizeof(r->model));
     /* the tools */
     m = tool_set(c, a);
+    if (r->bare)
+        m &= tools_mask("Bash, Read, Glob, Grep, Edit, Write, MultiEdit");    /* bash, read, edit */
     r->tools.allowed = m & ((1ul << T_COUNT) - 1);
     r->tools.web_search = r->tools.web_search && (m & (1ul << T_COUNT)) != 0;
     free(r->tools.json);
@@ -862,12 +1067,16 @@ int cli_apply(cl_cli *c, cl_repl *r)
     /* print mode */
     if (c->print) {
         r->no_person = 1;
+        r->tools.nobody = c->prompts_none ? 2 : 1;
         r->max_turns = c->max_turns;
         r->budget_micro = c->has_budget ? c->budget_micro : 0;
         r->budget_base = r->conv.cost_micro;
         if (c->no_persist)
             r->sess.off = 1;
     }
+    /* --session-id: the new session's id (with -c / -r only together with --fork-session: cli_session) */
+    if (c->session_id[0] && !c->cont && !c->resume && sess_use_id(&r->sess, c->session_id))
+        return fail(c, "Error: Session ID ", c->session_id, " is already in use.");
     return 0;
 }
 
@@ -876,13 +1085,28 @@ int cli_session(cl_cli *c, cl_repl *r)
     if (c->cont && repl_continue(r))
         return fail(c, "No conversation found to continue", 0, 0);
     if (c->resume) {
-        if (!c->resume_name[0])
-            repl_line(r, "/resume");        /* the picker */
-        else if (repl_resume_session(r, c->resume_name))
+        if (!c->resume_name[0]) {
+            /* the picker; SessionStart says "resume" when one is taken */
+            int due = r->start_due, n0 = r->conv.n;
+            r->start_due = 0;
+            repl_line(r, "/resume");
+            if (r->conv.n == n0)
+                r->start_due = due;
+        } else if (repl_resume_session(r, c->resume_name))
             return fail(c, "No conversation found with session ID: ", c->resume_name, 0);
     }
-    if (c->fork && (c->cont || c->resume) && r->conv.n)
-        sess_branch(&r->sess, &r->conv, r->io->ms ? r->io->ms(r->io->u) : 0);
+    if (c->fork && (c->cont || c->resume) && r->conv.n) {
+        if (c->session_id[0]) {
+            /* --fork-session --session-id: the copy gets that id */
+            char title[96];
+            cl_copy(title, r->sess.title, sizeof(title));
+            if (sess_use_id(&r->sess, c->session_id))
+                return fail(c, "Error: Session ID ", c->session_id, " is already in use.");
+            cl_copy(r->sess.title, title, sizeof(r->sess.title));
+            sess_save(&r->sess, &r->conv);
+        } else
+            sess_branch(&r->sess, &r->conv, r->io->ms ? r->io->ms(r->io->u) : 0);
+    }
     if (c->name[0])
         sess_rename(&r->sess, c->name);
     return 0;

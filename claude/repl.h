@@ -46,6 +46,13 @@ typedef struct cl_feed {
     void (*event)(void *u, const char *ev, const char *data, long n);
     /* a tool call refused without a question (a deny rule, no one to ask) */
     void (*denied)(void *u, const char *tool, const char *id, const char *input, long n);
+    /* A4 gaps: a subagent's message (its prompt, each answer, each round's
+     * tool results); parent the id of the Task call that runs it, st the
+     * answer's stream (0 for a user message) */
+    void (*sub)(void *u, const char *parent, int user, const char *json, long n, const cl_stream *st);
+    /* A4 gaps: a request failed and is tried again (system/api_retry):
+     * attempt from 1, the delay, the HTTP status (0 none), the error kind */
+    void (*retry)(void *u, int attempt, int max, long delay_ms, int status, const char *error);
 } cl_feed;
 
 /* who answers a permission question (A4 WP4) */
@@ -123,6 +130,8 @@ typedef struct cl_repl {
     int nx_agents, nx_skills, nx_cmds;
     cl_tools *at;               /* the tools whose call runs now: the conversation's or a subagent's */
     long n_rule_allow, n_rule_deny, n_cmds_run;     /* the tests' sentinels */
+    long n_skills_run;          /* the tests' sentinel: skills expanded for a turn */
+    char turn_buf[512];         /* turn_tools with its ${CLAUDE_*} put in */
     /* A4 WP4: the command line (cli.c) and print mode (print.c) */
     const cl_feed *feed;
     int ask_policy;             /* ASKP_* */
@@ -139,6 +148,23 @@ typedef struct cl_repl {
     char *sys_append;           /* --append-system-prompt: added at the end, 0 none */
     char *layer[2];             /* --settings and the flags as settings JSON (CFG_SESSION), 0 none */
     const char *first;          /* the prompt the session starts with (Claude "prompt"), 0 none */
+    /* the A4 gaps (thoughts/shared/plans/2026-10-05-a4-gaps-progress.md) */
+    int bare;                   /* --bare: no CLAUDE.md, hooks, commands, skills, agents; Bash, Read, Edit */
+    int safe;                   /* --safe-mode: no customisation (memory, hooks, defs, styles, status line) */
+    int no_slash;               /* --disable-slash-commands: no skills, no custom commands */
+    unsigned sources;           /* --setting-sources: bit per CFG_USER/PROJECT/LOCAL (0: all) */
+    char *agents_json;          /* --agents: {"name": {description, prompt, tools, model}} */
+    char *schema;               /* --json-schema: the StructuredOutput tool's input schema */
+    char *structured;           /* the StructuredOutput call's input (the structured output) */
+    long compact_window;        /* --autocompact: tokens, -1 auto (the model's), 0 not given */
+    int start_due;              /* SessionStart "startup" not run yet (after the flags are applied) */
+    const char *blocks;         /* the next turn's prompt as content blocks (comma-separated), 0 text */
+    long blocks_n;
+    char betas[256];            /* --betas, joined with commas */
+    int verbose;                /* "verbose": results unfolded at the screen; 2 --verbose (wins) */
+    int prompts_none;           /* --permission-prompts none */
+    unsigned long t_start;      /* the session's start (io->ms), for the durations */
+    const char *log_path;       /* where the debug log goes (main sets it; /debug names it), 0 unknown */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
     char buf[4096];
@@ -177,6 +203,11 @@ int repl_rewind(cl_repl *r, int msg, int code, int conv);
 /* The prompts the conversation can be rewound to: message indexes, the
  * newest first; their count. */
 int repl_prompts(const cl_repl *r, int *msg, int max);
+
+/* A4 gaps: a prompt given as content blocks (stream-json input with an
+ * image or a document: the blocks go to the API as sent, base64 and all);
+ * text is its text part, for the UserPromptSubmit hook. 0. */
+int repl_blocks(cl_repl *r, const char *text, long tn, const char *blocks, long bn);
 
 /* A4 WP4: an https endpoint and no key yet (the start goes to /login) */
 int repl_need_key(const cl_repl *r);

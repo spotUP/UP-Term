@@ -115,15 +115,60 @@ static const char *s_err(void *u)
     return "stub";
 }
 
+static void add_sse(const char *sse, long n);
+
 /* a recording as the API sends it: chunked, 100 bytes a chunk */
 static void add_stream(const char *name)
 {
-    long n, i;
+    long n;
     char *sse = claude_load(name, &n);
-    jw w;
-    static const char hex[] = "0123456789abcdef";
     if (!sse)
         return;
+    add_sse(sse, n);
+    free(sse);
+}
+
+/* An answer made here (A4 gaps tests): a tool call, the input JSON as it
+ * is; or (name 0) a text answer. Same events as the recordings. */
+static void add_answer(const char *id, const char *name, const char *input, const char *text)
+{
+    jw s;
+    jw_init(&s);
+    jw_rawz(&s, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_gap\",\"type\":"
+                "\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":"
+                "null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":100,\"cache_creation_input_tokens\":0,"
+                "\"cache_read_input_tokens\":0,\"output_tokens\":1}}}\n\n");
+    if (name) {
+        jw_rawz(&s, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,"
+                    "\"content_block\":{\"type\":\"tool_use\",\"id\":\"");
+        jw_rawz(&s, id);
+        jw_rawz(&s, "\",\"name\":\"");
+        jw_rawz(&s, name);
+        jw_rawz(&s, "\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\","
+                    "\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":");
+        jw_strz(&s, input);
+        jw_rawz(&s, "}}\n\n");
+    } else {
+        jw_rawz(&s, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,"
+                    "\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: "
+                    "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":");
+        jw_strz(&s, text);
+        jw_rawz(&s, "}}\n\n");
+    }
+    jw_rawz(&s, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"");
+    jw_rawz(&s, name ? "tool_use" : "end_turn");
+    jw_rawz(&s, "\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":20}}\n\n"
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
+    add_sse(s.p, s.n);
+    jw_free(&s);
+}
+
+static void add_sse(const char *sse, long n)
+{
+    long i;
+    jw w;
+    static const char hex[] = "0123456789abcdef";
     jw_init(&w);
     jw_rawz(&w, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\n"
                 "Transfer-Encoding: chunked\r\nrequest-id: req_test\r\n\r\n");
@@ -140,7 +185,6 @@ static void add_stream(const char *name)
         jw_raw(&w, "\r\n", 2);
     }
     jw_rawz(&w, "0\r\n\r\n");
-    free(sse);
     sb.resp[sb.nresp] = w.p;
     sb.rlen[sb.nresp++] = w.n;
 }
@@ -1276,7 +1320,7 @@ static void test_wp2(void)
     /* the WebFetch: the page fetched, the small model asked, its answer the result */
     CHECK_INT(wp2_open_n, 1);
     CHECK(strstr(wp2_req, "GET /page HTTP/1.1\r\nHost: 127.0.0.1:8080\r\n") != 0);
-    CHECK(strstr(sb.body[6], "\"model\":\"claude-haiku-4-5\"") != 0);
+    CHECK(strstr(sb.body[6], "\"model\":\"claude-haiku-4-5") != 0);
     CHECK(strstr(sb.body[6], "# Hi\\n\\nhello") != 0);
     CHECK(strstr(sb.body[6], "\"tools\"") == 0);
     CHECK(strstr(sb.body[7], "\"tool_use_id\":\"toolu_01Fetch\",\"content\":\"The page is the UP-Term test page.") != 0);
@@ -2057,7 +2101,7 @@ static void test_wiring(void)
     /* the project agent ran with its prompt, its model and its one tool */
     t = sb.body[1];
     CHECK(strstr(t, "AMIGA-REVIEWER-PROMPT") != 0);
-    CHECK(strstr(t, "\"model\":\"claude-haiku-4-5\"") != 0);
+    CHECK(strstr(t, "\"model\":\"claude-haiku-4-5") != 0);
     CHECK(strstr(t, "{\"name\":\"Read\",") != 0);
     CHECK(strstr(t, "{\"name\":\"Grep\",") == 0);
     CHECK(strstr(t, "{\"name\":\"Task\",") == 0);
@@ -2183,6 +2227,369 @@ static void test_fetch_screen(void)
     cs_close();
 }
 
+/* ---- A4 gaps (thoughts/shared/plans/2026-10-05-a4-gaps-progress.md) ---- */
+
+static int count_of(const char *s, const char *what)
+{
+    int k = 0;
+    long l = (long)strlen(what);
+    while (s && (s = strstr(s, what)) != 0) {
+        k++;
+        s += l;
+    }
+    return k;
+}
+
+static int exists(const char *p)
+{
+    struct stat st;
+    return stat(p, &st) == 0;
+}
+
+/* Phase 1: the command line and print mode (G1-G17), through print_run */
+static void test_gaps_print(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    static const char uuid[] = "550e8400-e29b-41d4-a716-446655440000";
+    char file[400], args[700], types[400], root[600], home[600], p[700];
+    jv v, m, x;
+    cl_cli c;
+
+    /* G1 --resume FILE.jsonl: the transcript's path in place of an id */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    cl_copy(file, r.sess.file, sizeof(file));
+    repl_free(&r);
+    CHECK(exists(file));
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    strcpy(args, "-p -r ");
+    strcat(args, file);
+    strcat(args, " and again");
+    CHECK_INT(run_print(&r, args, 0), 0);
+    CHECK(sb.nreq == 1 && messages_of(sb.body[0], &m) == 0 && json_count(m) == 3);
+    CHECK_STR(r.sess.file, file);
+    repl_free(&r);
+
+    /* G2 --session-id: a UUID as the id, the file named by its first group */
+    setup(&r, none);
+    add_stream("text.sse");
+    strcpy(args, "-p --output-format json --session-id ");
+    strcat(args, uuid);
+    strcat(args, " hello");
+    CHECK_INT(run_print(&r, args, 0), 0);
+    CHECK_STR(r.sess.id, uuid);
+    CHECK(strstr(r.sess.file, "/550e8400.jsonl") != 0 && exists(r.sess.file));
+    CHECK(result_of(&v) == 0 && json_get(v, "session_id", &x) && json_streq(x, uuid));
+    repl_free(&r);
+    setup(&r, none);                    /* in use now */
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, args), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    CHECK(strstr(c.err, "is already in use") != 0);
+    cli_free(&c);
+    repl_free(&r);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "-p --session-id 1234 hi"), -1);
+    CHECK_STR(c.err, "Error: Invalid session ID. Must be a valid UUID.");
+    cli_free(&c);
+    setup(&r, none);                    /* resumed by the whole UUID */
+    add_stream("tool_final.sse");
+    strcpy(args, "-p -r ");
+    strcat(args, uuid);
+    strcat(args, " more");
+    CHECK_INT(run_print(&r, args, 0), 0);
+    CHECK(sb.nreq == 1 && messages_of(sb.body[0], &m) == 0 && json_count(m) == 3);
+    repl_free(&r);
+
+    /* G3 --json-schema: the StructuredOutput tool with the schema as its
+     * input; a wrong answer is sent back, the right one is the result's
+     * structured_output */
+    xput(dir, "schema.json",
+         "{\"type\":\"object\",\"properties\":{\"functions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},"
+         "\"required\":[\"functions\"],\"additionalProperties\":false}");
+    setup(&r, none);
+    add_answer("toolu_S1", "StructuredOutput", "{\"functions\":3}", 0);
+    add_answer("toolu_S2", "StructuredOutput", "{\"functions\":[\"main\",\"loop\"]}", 0);
+    add_answer(0, 0, 0, "Done.");
+    CHECK_INT(run_print(&r, "-p --output-format json --json-schema schema.json list them", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 0 && strstr(sb.body[0], "{\"name\":\"StructuredOutput\",") != 0 &&
+          strstr(sb.body[0], "\"input_schema\":{\"type\":\"object\",\"properties\":{\"functions\"") != 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "does not match the required schema") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "Structured output provided successfully") != 0);
+    CHECK(result_of(&v) == 0 && json_get(v, "subtype", &x) && json_streq(x, "success"));
+    CHECK(json_get(v, "structured_output", &x) && json_get(x, "functions", &m) && json_count(m) == 2);
+    repl_free(&r);
+    /* never called: reminded three times, then Claude Code's error subtype */
+    setup(&r, none);
+    add_answer(0, 0, 0, "No tool.");
+    add_answer(0, 0, 0, "Still no tool.");
+    add_answer(0, 0, 0, "No.");
+    add_answer(0, 0, 0, "Never.");
+    CHECK_INT(run_print(&r, "-p --output-format json --json-schema schema.json list them", 0), 10);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "You have not called the StructuredOutput tool") != 0);
+    CHECK(result_of(&v) == 0 && json_get(v, "subtype", &x) && json_streq(x, "error_max_structured_output_retries"));
+    repl_free(&r);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--json-schema schema.json hi"), -1);  /* print mode only */
+    cli_free(&c);
+
+    /* G4 --replay-user-messages and G5 an image block: echoed, and sent
+     * to the API as it came (base64 untouched) */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --input-format stream-json --output-format stream-json --verbose --replay-user-messages",
+                        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":"
+                        "\"what is this\"},{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":"
+                        "\"image/png\",\"data\":\"iVBORw0KGgo=\"}}]}}\n"),
+              0);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 4);
+    CHECK_STR(types, "system user assistant result");
+    CHECK(strstr(outp(), "\"isReplay\":true") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":"
+                                             "\"image/png\",\"data\":\"iVBORw0KGgo=\"}}") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"what is this\"") != 0);
+    repl_free(&r);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "-p --replay-user-messages hi"), -1);
+    CHECK(strstr(c.err, "--replay-user-messages requires") != 0);
+    cli_free(&c);
+
+    /* G6 a subagent's messages, parent_tool_use_id its Task call: its
+     * prompt, its tool_use and tool_result; its text only with
+     * --forward-subagent-text */
+    setup(&r, none);
+    add_answer("toolu_T1", "Task",
+               "{\"description\":\"Look\",\"prompt\":\"Find the startup\",\"subagent_type\":\"general-purpose\"}", 0);
+    add_answer("toolu_R1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "SUB-REPORT");
+    add_answer(0, 0, 0, "All done.");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose look", 0), 0);
+    CHECK_INT(sb.nreq, 4);
+    json_lines(outp(), types, sizeof(types));
+    CHECK_STR(types, "system assistant user assistant user user assistant result");
+    CHECK_INT(count_of(outp(), "\"parent_tool_use_id\":\"toolu_T1\""), 3);
+    CHECK(strstr(outp(), "\"text\":\"Find the startup\"") != 0);
+    CHECK(strstr(outp(), "\"text\":\"SUB-REPORT\"") == 0);
+    repl_free(&r);
+    setup(&r, none);
+    add_answer("toolu_T1", "Task",
+               "{\"description\":\"Look\",\"prompt\":\"Find the startup\",\"subagent_type\":\"general-purpose\"}", 0);
+    add_answer("toolu_R1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "SUB-REPORT");
+    add_answer(0, 0, 0, "All done.");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose --forward-subagent-text look", 0), 0);
+    json_lines(outp(), types, sizeof(types));
+    CHECK_STR(types, "system assistant user assistant user assistant user assistant result");
+    CHECK_INT(count_of(outp(), "\"parent_tool_use_id\":\"toolu_T1\""), 4);
+    CHECK(strstr(outp(), "\"text\":\"SUB-REPORT\"") != 0);
+    repl_free(&r);
+
+    /* G7 --bare / G8 --safe-mode: no CLAUDE.md, no hooks, no commands; bare
+     * also only Bash, read and edit tools. SessionStart runs at the first
+     * line, once the flags are known. */
+    strcpy(root, dir);
+    strcat(root, "/gaps");
+    mkdir(root, 0700);
+    strcpy(home, dir);
+    strcat(home, "/home");
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, "CLAUDE.md", "GAPS-MEMORY-MARK\n");
+    strcpy(p, "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"touch ");
+    strcat(p, root);
+    strcat(p, "/hook-ran\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    xput(root, ".claude/commands/hi.md", "Say HI-CMD.\n");
+    xput(root, ".claude/skills/sk/SKILL.md", "---\ndescription: A skill\n---\nSKILL-TYPED $0 in ${CLAUDE_SKILL_DIR}\n");
+    strcpy(p, root);
+    strcat(p, "/hook-ran");
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --bare hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "GAPS-MEMORY-MARK") == 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"Task\",") == 0 &&
+          strstr(sb.body[0], "{\"name\":\"WebFetch\",") == 0 && strstr(sb.body[0], "web_search") == 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"Bash\",") != 0 &&
+          strstr(sb.body[0], "{\"name\":\"Edit\",") != 0);
+    CHECK_INT(defs_count(&r.defs, DEF_COMMAND), 0);
+    CHECK(!exists(p));
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "GAPS-MEMORY-MARK") != 0);
+    CHECK(exists(p));                   /* SessionStart ran, after the flags */
+    remove(p);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --safe-mode hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "GAPS-MEMORY-MARK") == 0 && strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
+    CHECK(!exists(p));
+    repl_free(&r);
+    remove(p);
+
+    /* S19 a skill typed as /name, expanded (X2: $0, ${CLAUDE_SKILL_DIR}); G11
+     * --disable-slash-commands: neither commands nor skills */
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p /sk ARG1", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "SKILL-TYPED ARG1 in ") != 0 && strstr(sb.body[0], "/skills/sk") != 0);
+    CHECK_INT((int)r.n_skills_run, 1);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    CHECK_INT(run_print(&r, "-p --disable-slash-commands /hi", 0), 0);
+    CHECK_INT(sb.nreq, 0);
+    CHECK(strstr(outp(), "Unknown command") != 0);
+    repl_free(&r);
+    remove(p);
+
+    /* G9 --agents (a file) with X4 keys, G10 --append-subagent-system-prompt,
+     * X5 CLAUDE.md for the subagent; maxTurns 1 stops it after one round */
+    xput(root, "agents.json",
+         "{\"rev\":{\"description\":\"Reviews\",\"prompt\":\"REV-PROMPT\",\"tools\":[\"Read\",\"Bash\"],"
+         "\"disallowedTools\":[\"Bash\"],\"maxTurns\":1}}");
+    setup_in(&r, none, root);
+    add_answer("toolu_T2", "Task", "{\"description\":\"Review\",\"prompt\":\"Review it\",\"subagent_type\":\"rev\"}",
+               0);
+    add_answer("toolu_R2", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "Parent done.");
+    CHECK_INT(run_print(&r, "-p --agents agents.json --append-subagent-system-prompt SUB-APPEND go", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "REV-PROMPT") != 0 && strstr(sb.body[1], "SUB-APPEND") != 0 &&
+          strstr(sb.body[1], "GAPS-MEMORY-MARK") != 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "{\"name\":\"Read\",") != 0 && strstr(sb.body[1], "{\"name\":\"Bash\",") == 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "did not finish within 1 rounds") != 0);
+    repl_free(&r);
+    setup_in(&r, none, root);           /* --agent with an --agents agent: the conversation as it */
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --agents agents.json --agent rev hi", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"system\":[{\"type\":\"text\",\"text\":\"REV-PROMPT") != 0);
+    repl_free(&r);
+    remove(p);
+
+    /* G12 --setting-sources: the user's file left out */
+    xput(home, "settings.json", "{\"model\":\"haiku\"}");
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --setting-sources project,local hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"model\":\"claude-opus-5-5\"") != 0);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"model\":\"claude-haiku-4-5") != 0);
+    repl_free(&r);
+    strcpy(p, home);
+    strcat(p, "/settings.json");
+    remove(p);
+
+    /* G13 --betas in the anthropic-beta header; G14 --autocompact */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --betas x-test-1 x-test-2 --autocompact 500k hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.head[0], "anthropic-beta: ") != 0 && strstr(sb.head[0], "x-test-1,x-test-2") != 0);
+    CHECK_INT((int)(repl_compact_at(&r) / 1000), 500);
+    repl_line(&r, "/autocompact 300k");     /* saved for later sessions */
+    CHECK_INT((int)(repl_compact_at(&r) / 1000), 300);
+    CHECK(has("home/settings.json", "\"autoCompactWindow\": 300000"));
+    repl_line(&r, "/autocompact auto");
+    CHECK_INT((int)(repl_compact_at(&r) / 1000), 920);
+    repl_free(&r);
+    remove(p);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--autocompact 50 hi"), -1);
+    cli_free(&c);
+
+    /* G16 --permission-prompts none: the denial tells Claude not to retry */
+    setup(&r, none);
+    add_answer("toolu_B1", "Bash", "{\"command\":\"echo hi\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p --permission-prompts none run it", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "Do not retry it") != 0);
+    repl_free(&r);
+    setup(&r, none);
+    add_answer("toolu_B1", "Bash", "{\"command\":\"echo hi\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p run it", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "no one can approve it") != 0);
+    repl_free(&r);
+
+    /* G17 system/api_retry before the second attempt */
+    setup(&r, none);
+    add_raw("HTTP/1.1 529 Overloaded\r\nContent-Type: application/json\r\nContent-Length: 75\r\n\r\n"
+            "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}");
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose hello", 0), 0);
+    json_lines(outp(), types, sizeof(types));
+    CHECK_STR(types, "system system assistant result");
+    CHECK(strstr(outp(), "{\"type\":\"system\",\"subtype\":\"api_retry\",\"attempt\":1,\"max_retries\":4,"
+                         "\"retry_delay_ms\":2000,\"error_status\":529,\"error\":\"overloaded\",") != 0);
+    repl_free(&r);
+}
+
+/* G18 --verbose at the screen: a result unfolded in place (else three
+ * lines and "+N lines (ctrl+o to expand)") */
+static void gaps_verbose_run(int verbose)
+{
+    static const char *keys[] = { "show lines\r", "\r", "/exit\r", 0 };
+    static cl_repl r;
+    stub_reset();
+    add_answer("toolu_V1", "Bash", "{\"command\":\"printf 'L1\\\\nL2\\\\nL3\\\\nL4\\\\nL5\\\\nLAST-LINE\\\\n'\"}", 0);
+    add_answer(0, 0, 0, "Six lines.");
+    cs_open(80, 30, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    r.verbose = verbose;
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(sb.nreq, 2);
+    if (verbose) {
+        CHECK(cs_find("     LAST-LINE") >= 0);
+        CHECK(cs_find("ctrl+o to expand") < 0);
+    } else {
+        CHECK(cs_find("     L4") < 0);
+        CHECK(cs_find("+3 lines (ctrl+o to expand)") >= 0);
+    }
+    repl_free(&r);
+    cs_close();
+}
+
+static void test_gaps_verbose(void)
+{
+    cl_cli c;
+    gaps_verbose_run(0);
+    gaps_verbose_run(2);
+    /* the flag sets it, both syntaxes; --debug-file implies debug */
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--verbose --debug-file RAM:x.log"), 0);
+    CHECK(c.verbose && c.debug);
+    CHECK_STR(c.debug_file, "RAM:x.log");
+    cli_free(&c);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "VERBOSE DEBUG-FILE=RAM:y.log BARE SAFE-MODE SETTING-SOURCES=user AUTOCOMPACT=1M"), 0);
+    CHECK(c.verbose && c.debug && c.bare && c.safe && c.has_sources && c.sources == 1u);
+    CHECK_INT((int)(c.autocompact / 1000), 1000);
+    cli_free(&c);
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -2197,6 +2604,8 @@ void suite_claude_repl(void)
     test_wp4();
     test_wiring();
     test_fetch_screen();
+    test_gaps_print();
+    test_gaps_verbose();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);

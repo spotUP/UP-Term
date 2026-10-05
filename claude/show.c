@@ -472,7 +472,7 @@ void show_preview(cl_show *s, int tool, const char *path, const char *before, lo
     nw = digits(na > nb ? na : nb);
     /* folded for the screen, whole (to 400 lines) for the viewer */
     for (pass = 0; pass < 2; pass++) {
-        limit = pass ? 400 : before ? 24 : 12;
+        limit = pass || (s->verbose && *s->verbose) ? 400 : before ? 24 : 12;
         shown = 0;
         for (k = p - 3 < 0 ? 0 : p - 3; k < p; k++)
             diff_line(s, k + 1, nw, ' ', before + bi[k * 2], bi[k * 2 + 1]);
@@ -521,7 +521,7 @@ static void body(cl_show *s, const char *p, long n, int first_corner)
     int pass;
     out(s);
     for (pass = 0; pass < 2; pass++) {
-        long k = 0, a = 0, limit = pass ? 2000 : SHOW_FOLD;
+        long k = 0, a = 0, limit = pass || (s->verbose && *s->verbose) ? 2000 : SHOW_FOLD;
         while (a < n && k < limit) {
             long e = a;
             int w = 0;

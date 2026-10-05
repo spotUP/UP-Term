@@ -36,6 +36,12 @@
     "ALLOWED-TOOLS/K,DISALLOWED-TOOLS/K,TOOLS/K,ADD-DIR/K,SYSTEM-PROMPT/K,SYSTEM-PROMPT-FILE/K,"                \
     "APPEND-SYSTEM-PROMPT/K,APPEND-SYSTEM-PROMPT-FILE/K,SETTINGS/K,MAX-TURNS/K/N,MAX-BUDGET-USD/K,VERBOSE/S,"   \
     "AGENT/K,VERSION/S,HELP/S"
+/* the template's second half (C89 caps a string literal at 509 characters):
+ * `Claude ?` prints CLI_TEMPLATE then this */
+#define CLI_TEMPLATE_MORE                                                                                      \
+    ",SESSION-ID/K,JSON-SCHEMA/K,REPLAY-USER-MESSAGES/S,BARE/S,SAFE-MODE/S,AGENTS/K,"                          \
+    "APPEND-SUBAGENT-SYSTEM-PROMPT/K,APPEND-SUBAGENT-SYSTEM-PROMPT-FILE/K,DISABLE-SLASH-COMMANDS/S,"            \
+    "SETTING-SOURCES/K,BETAS/K,AUTOCOMPACT/K,FORWARD-SUBAGENT-TEXT/S,DEBUG-FILE/K,PERMISSION-PROMPTS/K"
 
 enum { CLI_TEXT, CLI_JSON, CLI_STREAM };
 
@@ -61,6 +67,21 @@ typedef struct cl_cli {
     char *tools, *sys_prompt, *sys_file, *app_prompt, *app_file, *settings;
     cl_strs allow, deny, dirs;
     char key_source[24];                    /* print mode's apiKeySource (main sets it), "" none */
+    /* the A4 gaps flags */
+    char session_id[40];                    /* --session-id: a UUID */
+    char *schema;                           /* --json-schema: the schema's JSON */
+    int replay;                             /* --replay-user-messages */
+    int bare, safe;                         /* --bare, --safe-mode */
+    char *agents;                           /* --agents: JSON (or a file) of agents */
+    char *sub_app, *sub_app_file;           /* --append-subagent-system-prompt(-file) */
+    int no_slash;                           /* --disable-slash-commands */
+    int has_sources;
+    unsigned sources;                       /* --setting-sources: bit per CFG_USER/PROJECT/LOCAL */
+    cl_strs betas;                          /* --betas */
+    long autocompact;                       /* --autocompact: tokens, -1 auto, 0 not given */
+    int fwd_sub;                            /* --forward-subagent-text */
+    char debug_file[256];                   /* --debug-file */
+    int prompts_none;                       /* --permission-prompts none */
     char err[300];
 } cl_cli;
 

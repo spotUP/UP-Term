@@ -129,6 +129,17 @@ typedef struct cl_tools {
     /* optional: a subagent is done (the SubagentStop hook): 1 when it is to
      * go on, with what to tell it in reason */
     int (*agent_stop)(void *u, const char *agent, int active, jw *reason);
+    /* optional: a subagent's message as it is added to its conversation
+     * (stream-json's subagent messages): parent the Task call's id, user 1
+     * for its prompt and its tool results, st the answer's stream (0 for
+     * a user message) */
+    void (*agent_msg)(void *u, const char *parent, int user, const char *json, long n, struct cl_stream *st);
+    char *sub_append;           /* --append-subagent-system-prompt: added to every subagent's prompt (owned) */
+    const char *memory;         /* the memory files' text (CLAUDE.md ...): subagents get it too, 0 none */
+    int ask_policy;             /* a subagent's permissionMode dontAsk / bypassPermissions: the
+                                 * REPL's ASKP_* + 1; 0 the session's */
+    const char *parent_id;      /* inside a subagent: the Task call's id (stream-json), 0 outside */
+    int nobody;                 /* print mode: 1 a denial was nobody's answer; 2 --permission-prompts none */
     /* the call's one-line summary for the screen when its result's text is
      * for Claude only (WebFetch: "Received 12.3KB (200 OK)", Claude Code's
      * line); "" none. Set by the tool, cleared at each call. */

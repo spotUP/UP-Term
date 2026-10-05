@@ -9,6 +9,8 @@
 
 enum { R_OK, R_RETRY, R_FAIL, R_CANCEL };
 
+static void started(cl_repl *r);
+
 #define IDLE_LIMIT_MS 180000L   /* no byte for this long: the connection is dead */
 
 static const char sys_a[] =
@@ -176,8 +178,10 @@ static int post(cl_repl *r, const char *body, long bn, long *retry_s)
     cl_stream_ui sui;
     long hn, idle = 0;
     int reused, again = 1, got;
+    char beta[320];
     *retry_s = -1;
     request_free(r);
+    r->resp.status = 0;             /* no answer yet (system/api_retry's error_status) */
     sui.u = r;
     sui.text = st_text;
     sui.block = st_block;
@@ -211,6 +215,14 @@ top:
     q.path = r->url.path;
     q.key = r->key;
     q.beta = conv_beta(r->model);
+    if (r->betas[0]) {
+        /* --betas: added to the model's own (anthropic-beta takes a comma list) */
+        cl_copy(beta, q.beta, sizeof(beta));
+        if (beta[0])
+            cl_cat(beta, ",", sizeof(beta));
+        cl_cat(beta, r->betas, sizeof(beta));
+        q.beta = beta;
+    }
     q.body_len = bn;
     hn = http_request_head(&q, r->head, sizeof(r->head));
     if (hn < 0)
@@ -363,6 +375,13 @@ static int request_retry(cl_repl *r, const char *body, long bn)
             cl_cat(m, " of 5). Ctrl+C stops.", sizeof(m));
             ui_line(&r->ui, m);
         }
+        if (r->feed && r->feed->retry && !r->quiet_req) {
+            /* stream-json's system/api_retry (Claude Code's error kinds) */
+            int st = r->resp.status == 200 ? 0 : r->resp.status;
+            r->feed->retry(r->feed->u, attempt, CL_TRIES - 1, wait * 1000, st,
+                           r->busy_fail ? "overloaded" : st == 429 ? "rate_limit" : st >= 500 ? "server_error"
+                                                                                       : "unknown");
+        }
         if (r->io->sleep(r->io->u, wait * 1000))
             return R_CANCEL;
         delay *= 2;
@@ -398,12 +417,14 @@ void repl_denied(cl_repl *r, const char *tool, const char *input, long n)
 int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outside, int rule)
 {
     char m[200];
+    /* a subagent's permissionMode (dontAsk, bypassPermissions) is its own */
+    int pol = r->at && r->at->ask_policy ? r->at->ask_policy - 1 : r->ask_policy;
     /* A4 WP4: nobody to ask (print mode, dontAsk): denied, but a read in
      * the start directory runs (Claude Code: no approval needed there);
      * bypassPermissions: yes, except to an explicit ask rule */
-    if (r->ask_policy == ASKP_BYPASS && !rule)
+    if (pol == ASKP_BYPASS && !rule)
         return ASK_ONCE;
-    if (r->no_person || r->ask_policy == ASKP_DENY) {
+    if (r->no_person || pol == ASKP_DENY) {
         if (!rule && !outside && tid >= 0 && perm_read_only(tid))
             return ASK_ONCE;
         repl_denied(r, tool, r->at->cur_in, r->at->cur_inn);
@@ -570,23 +591,41 @@ static int run_tools(cl_repl *r, int ntools, jw *content)
     return content->oom ? -1 : 0;
 }
 
+long repl_compact_at(cl_repl *r)
+{
+    long w = repl_window(r->model), set = 0;
+    char v[24];
+    /* Claude Code's order: CLAUDE_CODE_AUTO_COMPACT_WINDOW, --autocompact, autoCompactWindow */
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_AUTO_COMPACT_WINDOW", v, sizeof(v)) > 0)
+        set = cfg_window_parse(v);
+    if (!set && r->compact_window)
+        set = r->compact_window;
+    if (!set)
+        set = r->cfg.compact_window;
+    if (set > 0)
+        return set < w ? set : w;   /* capped at the model's window */
+    return (w / 100) * CL_COMPACT_PCT;
+}
+
 /* the auto-compact threshold passed? */
 static int too_full(cl_repl *r)
 {
-    long w = repl_window(r->model);
-    return r->auto_compact && r->conv.n > 1 && r->ctx_used > (w / 100) * CL_COMPACT_PCT;
+    return r->auto_compact && r->conv.n > 1 && r->ctx_used > repl_compact_at(r);
 }
 
 static void turn(cl_repl *r, const char *prompt, long pn)
 {
     cl_mark m0 = conv_mark(&r->conv);
     cl_opts o;
-    jw body, content;
+    jw body, content, xtools;
     int answered = 0, round, stops = 0;
     const char *turn_tools = r->turn_tools;     /* a SlashCommand's allowed-tools last this turn */
+    const char *blocks = r->blocks;     /* a prompt given as content blocks (images: stream-json input) */
+    long bn = r->blocks_n;
+    r->blocks = 0;
     r->turn_rc = TURN_FAIL;
     cp_turn(&r->cp, r->conv.n);
-    if (conv_add_user_text(&r->conv, prompt, pn) ||
+    if ((blocks ? conv_add_user_blocks(&r->conv, blocks, bn) : conv_add_user_text(&r->conv, prompt, pn)) ||
         (r->pending.n && conv_add_user_text(&r->conv, r->pending.p, r->pending.n))) {
         conv_rollback(&r->conv, m0);
         ui_line(&r->ui, "Out of memory.");
@@ -599,6 +638,24 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.tools = tools_json(&r->tools, r->model);
+    jw_init(&xtools);
+    if (r->schema && o.tools) {
+        /* --json-schema: Claude Code's StructuredOutput tool, the schema as its input */
+        long tn = (long)strlen(o.tools);
+        if (tn >= 2 && o.tools[tn - 1] == ']') {
+            jw_raw(&xtools, o.tools, tn - 1);
+            if (tn > 2)
+                jw_raw(&xtools, ",", 1);
+        } else
+            jw_raw(&xtools, "[", 1);
+        jw_rawz(&xtools, "{\"name\":\"StructuredOutput\",\"description\":\"Use this tool to return your final "
+                         "response in the requested structured format. You MUST call this tool exactly once at "
+                         "the end of your response to provide the structured output.\",\"input_schema\":");
+        jw_rawz(&xtools, r->schema);
+        jw_rawz(&xtools, "}]");
+        if (!xtools.oom)
+            o.tools = xtools.p;
+    }
     jw_init(&body);
     jw_init(&content);
     r->io->brk(r->io->u);           /* a Ctrl+C from before the turn does not count */
@@ -728,6 +785,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         session_save(r);
     jw_free(&body);
     jw_free(&content);
+    jw_free(&xtools);
     request_free(r);
     if (answered && too_full(r)) {
         ui_line(&r->ui, "The context window is nearly full: compacting the conversation (/autocompact turns this off).");
@@ -738,6 +796,18 @@ static void turn(cl_repl *r, const char *prompt, long pn)
 void repl_turn(cl_repl *r, const char *prompt, long n)
 {
     turn(r, prompt, n);
+}
+
+int repl_blocks(cl_repl *r, const char *text, long tn, const char *blocks, long bn)
+{
+    started(r);
+    if (pol_prompt(r, text, tn))
+        return 0;
+    r->blocks = blocks;
+    r->blocks_n = bn;
+    turn(r, text, tn);
+    r->blocks = 0;
+    return 0;
 }
 
 /* ---- commands ---- */
@@ -945,6 +1015,7 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
 }
 
 static void start(cl_repl *r);
+static void started(cl_repl *r);
 
 static const char init_prompt[] =
     "Look at the files in the start directory (Glob, Grep, a few targeted Reads; the machine is "
@@ -1061,13 +1132,30 @@ static void resumed(cl_repl *r)
     }
     cl_cat(m, ".", sizeof(m));
     ui_line(&r->ui, m);
+    r->start_due = 0;               /* Claude Code: a resumed session's source is "resume" */
     pol_session(r, HK_SESSION_START, "resume");
 }
 
 int repl_resume_session(cl_repl *r, const char *name)
 {
-    char id[16];
-    int rc = sess_find(&r->sess, name, id, sizeof(id));
+    char id[40];
+    int rc;
+    long nl = (long)strlen(name);
+    if (nl > 6 && cl_strieq(name + nl - 6, ".jsonl")) {
+        /* Claude Code: the path of a session's .jsonl transcript in place of an id */
+        char full[512];
+        if (r->sys->kind(r->sys->u, name) == 1)
+            cl_copy(full, name, sizeof(full));      /* as given (an absolute path) */
+        else if (path_join(r->tools.root, name, full, sizeof(full)))
+            full[0] = 0;
+        if (!full[0] || sess_load_file(&r->sess, full, &r->conv)) {
+            show_err(r, "No session file here: ", name);
+            return -1;
+        }
+        resumed(r);
+        return 0;
+    }
+    rc = sess_find(&r->sess, name, id, sizeof(id));
     if (rc == -2) {
         show_err(r, "More than one session matches ", name);
         return -1;
@@ -1206,6 +1294,7 @@ int repl_line(cl_repl *r, const char *line)
         n--;
     if (!n)
         return 0;
+    started(r);
     if (r->await_key) {
         /* the line after /login is the key, never shown or kept */
         r->await_key = 0;
@@ -1362,6 +1451,7 @@ int repl_screen(cl_repl *r)
     t->idle = pol_status_tick;
     t->iu = r;
     show_init(s, t);
+    s->verbose = &r->verbose;    /* --verbose: results unfolded in place */
     if (tui_start(t)) {
         show_free(s);
         tui_free(t);
@@ -1560,30 +1650,53 @@ int repl_system(cl_repl *r)
     }
     free(r->system);
     r->system = s.p;
+    r->tools.memory = r->mem.text.n ? r->mem.text.p : 0;     /* subagents get CLAUDE.md too */
     return 0;
 }
 
 int repl_load_memory(cl_repl *r)
 {
     mem_free(&r->mem);
-    mem_load(&r->mem, r->sys, r->home, r->tools.root);
+    if (!r->bare && !r->safe)       /* --bare / --safe-mode: no CLAUDE.md */
+        mem_load(&r->mem, r->sys, r->home, r->tools.root);
     return repl_system(r);
 }
 
 int repl_load(cl_repl *r)
 {
     int i;
+    char env[64];
     cfg_free(&r->cfg);
+    r->cfg.skip = r->sources ? ~r->sources & 7u : 0;    /* --setting-sources */
     cfg_load(&r->cfg, r->sys, r->home, r->tools.root);
     for (i = 0; i < 2; i++)
         if (r->layer[i])            /* the command line's layer (A4 WP4): after the files, wins */
             cfg_merge(&r->cfg, CFG_SESSION, r->layer[i], (long)strlen(r->layer[i]),
                       i ? "the command line" : "--settings");
+    if (r->bare || r->safe || r->cfg.no_hooks)
+        cfg_drop_hooks(&r->cfg);    /* --bare, --safe-mode, disableAllHooks */
+    if (r->safe)
+        r->cfg.status_cmd[0] = 0;
     defs_free(&r->defs);
     defs_load(&r->defs, r->sys, r->home, r->tools.root);
+    if (r->bare || r->safe)
+        defs_drop(&r->defs, -1);    /* only the built-in output styles stay */
+    if (r->no_slash) {
+        defs_drop(&r->defs, DEF_COMMAND);
+        defs_drop(&r->defs, DEF_SKILL);
+    }
+    if (r->agents_json) {
+        char err[200];
+        if (defs_add_agents_json(&r->defs, r->agents_json, err, sizeof(err)))
+            repl_say(r, "", err);
+    }
+    if (r->cfg.verbose >= 0 && r->verbose != 2)
+        r->verbose = r->cfg.verbose;
     /* the settings: the command line (main) comes after and wins */
     if (r->cfg.model[0])
         cl_copy(r->model, cfg_model(r->cfg.model), sizeof(r->model));
+    if (r->cfg.model_src != CFG_SESSION && r->sys->getenv && r->sys->getenv(r->sys->u, "ANTHROPIC_MODEL", env, sizeof(env)) > 0)
+        cl_copy(r->model, cfg_model(env), sizeof(r->model));   /* above the files, below --model */
     if (r->cfg.effort[0])
         cl_copy(r->effort, r->cfg.effort, sizeof(r->effort));
     if (r->cfg.fallback_model[0])
@@ -1688,7 +1801,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     pol_attach_tools(r);
     if (repl_load(r))
         return -1;
-    pol_session(r, HK_SESSION_START, "startup");
+    r->start_due = 1;            /* SessionStart runs once the command line is applied (--bare, ...) */
     return 0;
 }
 
@@ -1729,6 +1842,10 @@ void repl_free(cl_repl *r)
     free(r->layer[0]);
     free(r->layer[1]);
     r->sys_replace = r->sys_append = r->layer[0] = r->layer[1] = 0;
+    free(r->agents_json);
+    free(r->schema);
+    free(r->structured);
+    r->agents_json = r->schema = r->structured = 0;
 }
 
 int repl_need_key(const cl_repl *r)
@@ -1738,8 +1855,18 @@ int repl_need_key(const cl_repl *r)
 
 /* A4 WP4: the start -- /login first when there is no key, else the
  * prompt the session starts with */
+/* SessionStart "startup", once, after the command line was applied */
+static void started(cl_repl *r)
+{
+    if (r->start_due) {
+        r->start_due = 0;
+        pol_session(r, HK_SESSION_START, "startup");
+    }
+}
+
 static void start(cl_repl *r)
 {
+    started(r);
     if (repl_need_key(r))
         repl_line(r, "/login");
     else if (r->first) {

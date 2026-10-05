@@ -16,7 +16,10 @@
  * <slug>/sessions is the index the /resume picker reads (not the session
  * files): one JSON line per session created, resumed, renamed or branched;
  * the last line of an id wins, so its order is the order of use.
- * IDs are 8 hex digits of the clock's seconds (FFS names stay short).
+ * IDs are 8 hex digits of the clock's seconds (FFS names stay short);
+ * --session-id gives a UUID, whose file is named by its first 8 hex
+ * digits (a 30-character FFS name could not hold it) -- the head line and
+ * the index keep the whole id.
  * Portable C89 over sys.h, host-tested (tests/test_claude_config.c). */
 #ifndef CL_SESSION_H
 #define CL_SESSION_H
@@ -29,7 +32,7 @@
 typedef struct cl_session {
     cl_sys *sys;
     char dir[300];              /* <home>/projects/<slug> */
-    char id[16];
+    char id[40];                /* 8 hex digits, or a UUID (--session-id) */
     char file[340];
     char title[96];
     int saved;                  /* messages in the file */
@@ -40,7 +43,7 @@ typedef struct cl_session {
 } cl_session;
 
 typedef struct cl_sess_info {
-    char id[16];
+    char id[40];
     char title[96];
     char first[96];             /* the first prompt */
 } cl_sess_info;
@@ -66,6 +69,16 @@ int sess_list(cl_session *s, cl_sess_info *out, int max);
 /* A session's messages into c (cleared first), byte-exact: 0, -1 (not
  * there, or no message in it). The session becomes the current one. */
 int sess_load(cl_session *s, const char *id, cl_conv *c);
+/* --session-id: this UUID is the new session's id (nothing written yet):
+ * 0, -1 a session file of that name exists already */
+int sess_use_id(cl_session *s, const char *id);
+/* Is s a UUID (8-4-4-4-12 hex digits)? */
+int sess_is_uuid(const char *s);
+/* --resume FILE.jsonl: a session file by its path (any directory) loaded
+ * as sess_load does; it becomes the current session (its id from the
+ * file's head line, else its name), the file appended to from now on.
+ * 0, -1. */
+int sess_load_file(cl_session *s, const char *path, cl_conv *c);
 /* An id or a title (exact, else a unique prefix of either) to an id:
  * 0, -1 none, -2 more than one. */
 int sess_find(cl_session *s, const char *name, char *id, long cap);

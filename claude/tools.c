@@ -623,6 +623,8 @@ void tools_free(cl_tools *t)
     t->rs = 0;
     free(t->json);
     t->json = 0;
+    free(t->sub_append);
+    t->sub_append = 0;
 }
 
 /* ---- helpers ---- */
@@ -811,7 +813,12 @@ int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, in
         return -1;
     }
     if (ans == ASK_NO) {
-        tl_error(t, out, id, "the user declined this tool call", 0);
+        /* print mode: nobody was asked (--permission-prompts none: do not retry) */
+        tl_error(t, out, id, t->nobody == 2 ? "permission to use this tool was denied: nobody can approve it in "
+                                              "this unattended run. Do not retry it; go on without it"
+                             : t->nobody ? "permission to use this tool was denied: no one can approve it in this "
+                                           "non-interactive run"
+                                         : "the user declined this tool call", 0);
         return -1;
     }
     if (ans == ASK_SESSION && !outside)
@@ -1551,6 +1558,38 @@ static void run_skill(cl_tools *t, jw *out, const char *id, jv in)
     tl_summary(what, sizeof(what), s[i].name, 0);
     if (tl_gate(t, out, id, T_SKILL, what, 0, 1))
         goto done;
+    if (path_parent(s[i].path, dir, sizeof(dir)))
+        cl_copy(dir, s[i].path, sizeof(dir));
+    if (t->ext->skill) {
+        /* the provider expands it as a command ($ARGUMENTS, !`cmd`, its
+         * allowed-tools and model for the turn); context: fork runs it in a
+         * subagent whose report is the result */
+        char err[300], agent[64];
+        int fork = 0;
+        jw_init(&m);
+        agent[0] = 0;
+        if (t->ext->skill(t->ext->u, s[i].name, args, 1, &m, &fork, agent, sizeof(agent), err, sizeof(err))) {
+            tl_error(t, out, id, "The skill could not be expanded: ", err);
+            jw_free(&m);
+            goto done;
+        }
+        if (fork)
+            agent_fork(t, out, id, agent, m.p ? m.p : "", m.n);
+        else {
+            jw r;
+            jw_init(&r);
+            jw_rawz(&r, "Launching skill: ");
+            jw_rawz(&r, s[i].name);
+            jw_rawz(&r, "\nBase directory for this skill: ");
+            jw_rawz(&r, dir);
+            jw_rawz(&r, "\n\n");
+            jw_raw(&r, m.p ? m.p : "", m.n);
+            tl_result(t, out, id, r.p ? r.p : "", r.n, 0);
+            jw_free(&r);
+        }
+        jw_free(&m);
+        goto done;
+    }
     if (t->sys->read(t->sys->u, s[i].path, 256L * 1024, &b, &bn)) {
         tl_error(t, out, id, "cannot read the skill: ", t->sys->err(t->sys->u));
         goto done;
@@ -1565,8 +1604,6 @@ static void run_skill(cl_tools *t, jw *out, const char *id, jv in)
                 body++;
         }
     }
-    if (path_parent(s[i].path, dir, sizeof(dir)))
-        cl_copy(dir, s[i].path, sizeof(dir));
     jw_init(&m);
     jw_rawz(&m, "Launching skill: ");
     jw_rawz(&m, s[i].name);

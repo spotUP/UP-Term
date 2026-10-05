@@ -50,6 +50,7 @@ typedef struct cl_hook {
     char *matcher;              /* "" all; "Bash", "Edit|Write", ".*" */
     char *cmd;
     int timeout_s;
+    char *cond;                 /* "if": a permission rule the call must match, 0 none */
 } cl_hook;
 
 typedef struct cl_kv {
@@ -58,6 +59,7 @@ typedef struct cl_kv {
 
 typedef struct cl_settings {
     char model[64];
+    int model_src;              /* the level that set model (CFG_*), -1 none */
     char effort[16];
     char output_style[64];
     char theme[32];
@@ -78,6 +80,16 @@ typedef struct cl_settings {
     int nenv, capenv;
     char **dirs;                /* additionalDirectories */
     int ndirs, capdirs;
+    /* A4 gaps */
+    int no_hooks;               /* disableAllHooks: true */
+    int verbose;                /* "verbose": -1 not set, 0, 1 */
+    char agent[64];             /* "agent": the main thread runs as that agent */
+    long compact_window;        /* autoCompactWindow: tokens, 0 not set */
+    int auto_memory;            /* autoMemoryEnabled: -1 not set, 0, 1 */
+    int hide_vim;               /* statusLine.hideVimModeIndicator */
+    char **md_excludes;         /* claudeMdExcludes: globs of memory files not loaded */
+    int nmdx, capmdx;
+    unsigned skip;              /* bit per CFG_USER/PROJECT/LOCAL not read (--setting-sources) */
     char path[CFG_NSRC][300];   /* the files (user, project, local) */
     int found[CFG_NSRC];        /* read and valid */
     char err[300];              /* the last file that did not parse, and why */
@@ -121,6 +133,14 @@ int cfg_decide(const cl_settings *s, const char *tool, jv input, const char *roo
  * API runs it, so there is no call to ask about: an ask rule does not
  * turn it off. */
 int cfg_web_search(const cl_settings *s);
+
+/* An auto-compact window as Claude Code takes it: 200000, 500k, 1M, or a
+ * bare 100..1000 meaning thousands; 100K to 1M. The tokens, -1 for
+ * "auto", 0 when it is none of these. */
+long cfg_window_parse(const char *v);
+
+/* the hooks dropped (disableAllHooks, --bare, --safe-mode) */
+void cfg_drop_hooks(cl_settings *s);
 
 /* opus / sonnet / haiku / fable (also opusplan's model, default) -> the
  * current id; anything else as it is */

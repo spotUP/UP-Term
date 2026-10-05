@@ -30,6 +30,43 @@ void cfg_init(cl_settings *s)
     memset(s, 0, sizeof(*s));
     s->auto_compact = -1;
     s->web_search = -1;
+    s->verbose = -1;
+    s->auto_memory = -1;
+    s->model_src = -1;
+}
+
+void cfg_drop_hooks(cl_settings *s)
+{
+    int i;
+    for (i = 0; i < s->nhooks; i++) {
+        free(s->hooks[i].matcher);
+        free(s->hooks[i].cmd);
+        free(s->hooks[i].cond);
+    }
+    s->nhooks = 0;
+}
+
+long cfg_window_parse(const char *v)
+{
+    long t = 0;
+    const char *p = v;
+    if (!strcmp(v, "auto"))
+        return -1;
+    while (*p >= '0' && *p <= '9' && t < 100000000L)
+        t = t * 10 + (*p++ - '0');
+    if (p == v)
+        return 0;
+    if (*p == 'k' || *p == 'K') {
+        t *= 1000;
+        p++;
+    } else if (*p == 'm' || *p == 'M') {
+        t *= 1000000L;
+        p++;
+    } else if (t >= 100 && t <= 1000)
+        t *= 1000;              /* a bare 100..1000: thousands */
+    if (*p || t < 100000L || t > 1000000L)
+        return 0;
+    return t;
 }
 
 void cfg_free(cl_settings *s)
@@ -37,10 +74,10 @@ void cfg_free(cl_settings *s)
     int i;
     for (i = 0; i < s->nrules; i++)
         free(s->rules[i].text);
-    for (i = 0; i < s->nhooks; i++) {
-        free(s->hooks[i].matcher);
-        free(s->hooks[i].cmd);
-    }
+    cfg_drop_hooks(s);
+    for (i = 0; i < s->nmdx; i++)
+        free(s->md_excludes[i]);
+    free(s->md_excludes);
     for (i = 0; i < s->nenv; i++) {
         free(s->env[i].k);
         free(s->env[i].v);
@@ -148,11 +185,16 @@ static void hooks_of(cl_settings *s, jv hooks, int src)
                 k->src = src;
                 k->cmd = cmd;
                 k->matcher = dupz(matcher);
-                k->timeout_s = json_get(h, "timeout", &x) ? (int)json_long(x, 60) : 60;
+                /* Claude Code: 600 s for a command hook unless it says */
+                k->timeout_s = json_get(h, "timeout", &x) ? (int)json_long(x, 600) : 600;
                 if (k->timeout_s <= 0)
-                    k->timeout_s = 60;
+                    k->timeout_s = 600;
+                k->cond = 0;
+                if (json_get(h, "if", &x) && json_type(x) == J_STR)
+                    k->cond = json_strdup(x, &cl);
                 if (!k->matcher) {
                     free(cmd);
+                    free(k->cond);
                     return;
                 }
                 s->nhooks++;
@@ -207,8 +249,10 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         cl_cat(s->err, " is not a JSON object; it was skipped", sizeof(s->err));
         return -1;
     }
-    if (json_get(o, "model", &x))
+    if (json_get(o, "model", &x)) {
         str_into(x, s->model, sizeof(s->model));
+        s->model_src = src;
+    }
     if (json_get(o, "effortLevel", &x) || json_get(o, "effort", &x))
         str_into(x, s->effort, sizeof(s->effort));
     if (json_get(o, "outputStyle", &x))
@@ -236,6 +280,46 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         if (s->status_refresh_s < 0)
             s->status_refresh_s = 0;
     }
+    if (json_get(o, "disableAllHooks", &x) && (json_type(x) == J_TRUE || json_type(x) == J_FALSE))
+        s->no_hooks = json_type(x) == J_TRUE;
+    if (json_get(o, "verbose", &x) && (json_type(x) == J_TRUE || json_type(x) == J_FALSE))
+        s->verbose = json_type(x) == J_TRUE;
+    if (json_get(o, "autoMemoryEnabled", &x) && (json_type(x) == J_TRUE || json_type(x) == J_FALSE))
+        s->auto_memory = json_type(x) == J_TRUE;
+    if (json_get(o, "agent", &x))
+        str_into(x, s->agent, sizeof(s->agent));
+    if (json_get(o, "autoCompactWindow", &x)) {
+        long w = 0;
+        if (json_type(x) == J_NUM)
+            w = json_long(x, 0);
+        else if (json_type(x) == J_STR) {
+            char b[24];
+            json_str(x, b, sizeof(b));
+            w = cfg_window_parse(b);
+        }
+        s->compact_window = w > 0 ? w : 0;
+    }
+    if (json_get(o, "statusLine", &x) && json_type(x) == J_OBJ) {
+        jv c;
+        if (json_get(x, "hideVimModeIndicator", &c))
+            s->hide_vim = json_type(c) == J_TRUE;
+    }
+    if (json_get(o, "claudeMdExcludes", &x) && json_type(x) == J_ARR) {
+        jit it;
+        jv e;
+        json_iter(x, &it);
+        while (json_next(&it, 0, &e)) {
+            long l;
+            char *g = json_type(e) == J_STR ? json_strdup(e, &l) : 0;
+            if (!g)
+                continue;
+            if (grow((void **)&s->md_excludes, s->nmdx, &s->capmdx, sizeof(char *))) {
+                free(g);
+                break;
+            }
+            s->md_excludes[s->nmdx++] = g;
+        }
+    }
     if (json_get(o, "env", &x) && json_type(x) == J_OBJ)
         env_of(s, x);
     if (json_get(o, "hooks", &x) && json_type(x) == J_OBJ)
@@ -244,8 +328,17 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         rules_of(s, p, "allow", RULE_ALLOW, src);
         rules_of(s, p, "ask", RULE_ASK, src);
         rules_of(s, p, "deny", RULE_DENY, src);
-        if (json_get(p, "defaultMode", &x))
-            str_into(x, s->default_mode, sizeof(s->default_mode));
+        if (json_get(p, "defaultMode", &x)) {
+            char m[24];
+            m[0] = 0;
+            str_into(x, m, sizeof(m));
+            /* Claude Code: bypassPermissions and auto do not take effect from
+             * a project's files (a cloned repository could set them) */
+            if ((src == CFG_PROJECT || src == CFG_LOCAL) && (!strcmp(m, "bypassPermissions") || !strcmp(m, "auto")))
+                ;
+            else if (m[0])
+                cl_copy(s->default_mode, m, sizeof(s->default_mode));
+        }
         if (json_get(p, "additionalDirectories", &x) && json_type(x) == J_ARR) {
             jit it;
             jv e;
@@ -280,6 +373,8 @@ int cfg_load(cl_settings *s, cl_sys *sys, const char *home, const char *root)
         long n = 0;
         if (path_join(i == CFG_USER ? home : root, rel[i], s->path[i], sizeof(s->path[i])))
             continue;
+        if (s->skip & (1u << i))
+            continue;               /* --setting-sources leaves it out */
         if (sys->kind(sys->u, s->path[i]) != 1 || sys->read(sys->u, s->path[i], 256L * 1024, &b, &n))
             continue;
         if (cfg_merge(s, i, b, n, s->path[i]) == 0) {

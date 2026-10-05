@@ -808,6 +808,42 @@ static void rewind_(cl_repl *r, const char *arg)
     repl_rewind(r, msg[c], how != 1, how != 2);
 }
 
+/* /autocompact [auto|TOKENS|on|off]: Claude Code's window (saved as
+ * autoCompactWindow in the user's settings), and C:Claude's on/off */
+static void autocompact(cl_repl *r, const char *arg)
+{
+    long t;
+    if (!strcmp(arg, "on") || !strcmp(arg, "off")) {
+        config_set(r, "autoCompactEnabled", !strcmp(arg, "on") ? "true" : "false", CFG_USER);
+        return;
+    }
+    if (*arg) {
+        t = cfg_window_parse(arg);
+        if (!t) {
+            ui_line(&r->ui, "Usage: /autocompact auto, or a window from 100k to 1M tokens (200000, 500k, 1M), "
+                            "or on / off");
+            return;
+        }
+        if (t < 0)
+            cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "autoCompactWindow", 0);  /* auto: the key goes */
+        else {
+            char num[16];
+            cl_ltoa(t, num);
+            if (r->sys->mkdir)
+                r->sys->mkdir(r->sys->u, r->home);
+            if (cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "autoCompactWindow", num)) {
+                line2(r, "Cannot write ", cfg_file(&r->cfg, CFG_USER));
+                return;
+            }
+        }
+        r->cfg.compact_window = t > 0 ? t : 0;
+        r->compact_window = 0;          /* the session takes the saved value */
+    }
+    num_line(r, r->auto_compact ? "Auto-compact is on: it compacts at " : "Auto-compact is off (/autocompact on); "
+                                                                          "its window would be ",
+             repl_compact_at(r), " tokens of context.");
+}
+
 int slash_run(cl_repl *r, const char *w, const char *arg)
 {
     if (!strcmp(w, "/permissions") || !strcmp(w, "/allowed-tools"))
@@ -871,12 +907,9 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
             ui_line(&r->ui, "The branch could not be written.");
     } else if (!strcmp(w, "/rewind") || !strcmp(w, "/checkpoint"))
         rewind_(r, arg);
-    else if (!strcmp(w, "/autocompact")) {
-        if (!strcmp(arg, "on") || !strcmp(arg, "off"))
-            config_set(r, "autoCompactEnabled", !strcmp(arg, "on") ? "true" : "false", CFG_USER);
-        else
-            line2(r, "Auto-compact is ", r->auto_compact ? "on (/autocompact off)" : "off (/autocompact on)");
-    } else if (!strcmp(w, "/statusline")) {
+    else if (!strcmp(w, "/autocompact"))
+        autocompact(r, arg);
+    else if (!strcmp(w, "/statusline")) {
         if (*arg) {
             jw v;
             jw_init(&v);
@@ -905,20 +938,32 @@ int slash_custom(cl_repl *r, const char *w, const char *arg)
     const cl_def *d = defs_find(&r->defs, DEF_COMMAND, w + 1);
     char err[300], keep[64];
     jw p;
+    if (!d) {
+        /* a skill typed as /name (Claude Code: skills are commands too),
+         * unless user-invocable: false */
+        d = defs_find(&r->defs, DEF_SKILL, w + 1);
+        if (d && d->no_user)
+            d = 0;
+    }
     if (!d)
         return 0;
     jw_init(&p);
-    if (cmd_expand(d, arg, r->sys, r->tools.root, &p, err, sizeof(err))) {
-        line2(r, "The command could not be expanded: ", err);
+    if (pol_expand(r, d, arg, &p, err, sizeof(err))) {
+        line2(r, d->type == DEF_SKILL ? "The skill could not be expanded: " : "The command could not be expanded: ",
+              err);
         jw_free(&p);
         return 1;
     }
-    r->n_cmds_run++;
+    if (d->type == DEF_SKILL)
+        r->n_skills_run++;
+    else
+        r->n_cmds_run++;
     if (pol_prompt(r, p.p ? p.p : "", p.n) == 0) {
         cl_copy(keep, r->model, sizeof(keep));
         if (d->model[0])
             cl_copy(r->model, cfg_model(d->model), sizeof(r->model));
-        r->turn_tools = d->tools[0] ? d->tools : 0;
+        r->turn_tools = 0;
+        pol_turn_tools(r, d);
         repl_turn(r, p.p ? p.p : "", p.n);
         r->turn_tools = 0;
         cl_copy(r->model, keep, sizeof(r->model));

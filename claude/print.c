@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "print.h"
+#include "repl_int.h"
 #include "tui.h"
 #include "util.h"
 
@@ -21,6 +22,7 @@ typedef struct pst {
     unsigned long seed, t0, api0;
     long resp0;
     cl_conv base;               /* the usage when the run started (only the counters) */
+    char sub_parent[64];        /* the Task call whose subagent's prompt went out last */
 } pst;
 
 /* ---- the REPL's console, wrapped: the transcript kept aside ---- */
@@ -241,6 +243,91 @@ static void f_denied(void *u, const char *tool, const char *id, const char *inpu
     jw_raw(&st->denials, "}", 1);
 }
 
+/* a subagent's message (Claude Code: assistant and user messages with
+ * parent_tool_use_id the Task call's id; the prompt that drives it first;
+ * then by default only its tool_use and tool_result blocks, with
+ * --forward-subagent-text its text and thinking too) */
+static void f_sub(void *u, const char *parent, int user, const char *json, long n, const cl_stream *s)
+{
+    pst *st = (pst *)u;
+    jw *w = &st->line, blocks;
+    jv v, b, x;
+    jit it;
+    int first = 1, prompt = user && strcmp(st->sub_parent, parent) != 0;
+    if (st->c->out != CLI_STREAM || json_parse(json, n, &v) || json_type(v) != J_ARR)
+        return;
+    if (prompt)
+        cl_copy(st->sub_parent, parent, sizeof(st->sub_parent));
+    jw_init(&blocks);
+    jw_raw(&blocks, "[", 1);
+    json_iter(v, &it);
+    while (json_next(&it, 0, &b)) {
+        if (!prompt && !st->c->fwd_sub && json_get(b, "type", &x) &&
+            (json_streq(x, "text") || json_streq(x, "thinking") || json_streq(x, "redacted_thinking")))
+            continue;
+        if (!first)
+            jw_raw(&blocks, ",", 1);
+        first = 0;
+        jw_raw(&blocks, b.p, b.n);
+    }
+    jw_raw(&blocks, "]", 1);
+    if (first || blocks.oom) {
+        jw_free(&blocks);
+        return;                     /* nothing of it is forwarded */
+    }
+    jw_reset(w);
+    if (user) {
+        jw_rawz(w, "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":");
+        jw_raw(w, blocks.p, blocks.n);
+        jw_rawz(w, "},\"parent_tool_use_id\":");
+    } else {
+        jw_rawz(w, "{\"type\":\"assistant\",\"message\":{\"id\":");
+        jw_strz(w, s && s->id[0] ? s->id : "");
+        jw_rawz(w, ",\"type\":\"message\",\"role\":\"assistant\",\"model\":");
+        jw_strz(w, s && s->model[0] ? s->model : st->r->model);
+        jw_rawz(w, ",\"content\":");
+        jw_raw(w, blocks.p, blocks.n);
+        jw_rawz(w, ",\"stop_reason\":");
+        if (s && s->stop_reason[0])
+            jw_strz(w, s->stop_reason);
+        else
+            jw_rawz(w, "null");
+        jw_rawz(w, ",\"stop_sequence\":null,\"usage\":{");
+        key_long(w, "input_tokens", s ? s->in_tok : 0, 0);
+        key_long(w, "cache_creation_input_tokens", s ? s->cache_w : 0, 1);
+        key_long(w, "cache_read_input_tokens", s ? s->cache_r : 0, 1);
+        key_long(w, "output_tokens", s ? s->out_tok : 0, 1);
+        jw_rawz(w, "}},\"parent_tool_use_id\":");
+    }
+    jw_strz(w, parent);
+    tail(st, w);
+    emit(st, w);
+    jw_free(&blocks);
+}
+
+/* system/api_retry (Claude Code's headless stream) */
+static void f_retry(void *u, int attempt, int max, long delay_ms, int status, const char *error)
+{
+    pst *st = (pst *)u;
+    jw *w = &st->line;
+    if (st->c->out != CLI_STREAM)
+        return;
+    jw_reset(w);
+    jw_rawz(w, "{\"type\":\"system\",\"subtype\":\"api_retry\"");
+    key_long(w, "attempt", attempt, 1);
+    key_long(w, "max_retries", max, 1);
+    key_long(w, "retry_delay_ms", delay_ms, 1);
+    jw_rawz(w, ",\"error_status\":");
+    if (status)
+        jw_long(w, status);
+    else
+        jw_rawz(w, "null");
+    jw_rawz(w, ",\"error\":");
+    jw_strz(w, error);
+    tail(st, w);
+    emit(st, w);
+}
+
 /* ---- system/init ---- */
 
 static const char *perm_mode(const cl_repl *r)
@@ -373,13 +460,18 @@ static void model_usage(pst *st, jw *w)
 
 /* One prompt answered and its result written: 0, or 10 when the result
  * is an error. */
-static int answer(pst *st, const char *prompt, long pn)
+#define SCHEMA_TRIES 3              /* reminders to call StructuredOutput before giving up */
+
+static const char schema_nudge[] =
+    "You have not called the StructuredOutput tool. Call it now with your final answer in the required format.";
+
+static int answer(pst *st, const char *prompt, long pn, const char *blocks, long bn)
 {
     cl_repl *r = st->r;
     unsigned long ms0 = w_ms(st), api0 = r->api_ms;
     long resp0 = r->n_responses;
     const char *sub = "success";
-    int is_error = 0, rc;
+    int is_error = 0, rc, tries = 0;
     char err[160], num[16];
     jw res, *w = &st->line;
     char *z = (char *)malloc((size_t)pn + 1);
@@ -392,8 +484,26 @@ static int answer(pst *st, const char *prompt, long pn)
     memcpy(z, prompt, (size_t)pn);
     z[pn] = 0;
     r->turn_rc = TURN_OK;
-    repl_line(r, z);
+    free(r->structured);
+    r->structured = 0;
+    if (blocks)
+        repl_blocks(r, z, pn, blocks, bn);   /* images or documents: no command parsing */
+    else
+        repl_line(r, z);
     free(z);
+    /* --json-schema: Claude is reminded until it calls StructuredOutput */
+    while (r->schema && !r->structured && r->turn_rc == TURN_OK && tries < SCHEMA_TRIES) {
+        tries++;
+        repl_turn(r, schema_nudge, (long)sizeof(schema_nudge) - 1);
+    }
+    if (r->schema && !r->structured && r->turn_rc == TURN_OK) {
+        sub = "error_max_structured_output_retries";
+        is_error = 1;
+        cl_copy(err, "Claude did not provide the structured output after ", sizeof(err));
+        cl_ltoa(SCHEMA_TRIES, num);
+        cl_cat(err, num, sizeof(err));
+        cl_cat(err, " reminders", sizeof(err));
+    }
     switch (r->turn_rc) {
     case TURN_MAX_TURNS:
         sub = "error_max_turns";
@@ -465,6 +575,10 @@ static int answer(pst *st, const char *prompt, long pn)
         jw_rawz(w, ",\"permission_denials\":[");
         jw_raw(w, st->denials.p ? st->denials.p : "", st->denials.n);
         jw_raw(w, "]", 1);
+        if (r->structured) {
+            jw_rawz(w, ",\"structured_output\":");    /* --json-schema */
+            jw_rawz(w, r->structured);
+        }
         if (err[0]) {
             jw_rawz(w, ",\"errors\":[");
             jw_strz(w, err);
@@ -525,11 +639,17 @@ static int read_all(pst *st, jw *out)
     return n < 0 ? -1 : 0;
 }
 
-/* one stream-json input line: the user message's text into out; 0, -1 not one */
-static int user_line(const char *s, long n, jw *out)
+/* One stream-json input line: the user message's text into out; when it
+ * has an image or a document block, its blocks (text, image, document;
+ * comma-separated, as sent: base64 data passes through untouched) into
+ * blocks, else blocks stays empty. 0, -1 not one. */
+static int user_line(const char *s, long n, jw *out, jw *blocks)
 {
-    jv v, x, m, c;
+    jv v, x, m, c, b;
+    jit it;
+    int media = 0;
     jw_reset(out);
+    jw_reset(blocks);
     if (json_parse(s, n, &v) || json_type(v) != J_OBJ || !json_get(v, "type", &x) || !json_streq(x, "user") ||
         !json_get(v, "message", &m) || !json_get(m, "content", &c))
         return -1;
@@ -540,19 +660,55 @@ static int user_line(const char *s, long n, jw *out)
             return -1;
         jw_raw(out, t, l);
         free(t);
-    } else
-        content_text(c.p, c.n, out);
+        return out->n ? 0 : -1;
+    }
+    content_text(c.p, c.n, out);
+    if (json_type(c) == J_ARR) {
+        json_iter(c, &it);
+        while (json_next(&it, 0, &b))
+            if (json_get(b, "type", &x) && (json_streq(x, "image") || json_streq(x, "document")))
+                media = 1;
+    }
+    if (media) {
+        json_iter(c, &it);
+        while (json_next(&it, 0, &b)) {
+            if (!json_get(b, "type", &x) ||
+                !(json_streq(x, "text") || json_streq(x, "image") || json_streq(x, "document")))
+                continue;
+            if (blocks->n)
+                jw_raw(blocks, ",", 1);
+            jw_raw(blocks, b.p, b.n);
+        }
+        return blocks->oom ? -1 : 0;
+    }
     return out->n ? 0 : -1;
+}
+
+/* --replay-user-messages: the input's user message echoed (SDK's
+ * SDKUserMessageReplay) */
+static void replay(pst *st, const char *s, long n)
+{
+    jv v, m;
+    jw *w = &st->line;
+    if (json_parse(s, n, &v) || !json_get(v, "message", &m))
+        return;
+    jw_reset(w);
+    jw_rawz(w, "{\"type\":\"user\",\"message\":");
+    jw_raw(w, m.p, m.n);
+    jw_rawz(w, ",\"parent_tool_use_id\":null,\"isReplay\":true");
+    tail(st, w);
+    emit(st, w);
 }
 
 static int stream_in(pst *st)
 {
     char buf[1024];
-    jw acc, msg;
+    jw acc, msg, blocks;
     long n, i;
     int rc = 0, any = 0;
     jw_init(&acc);
     jw_init(&msg);
+    jw_init(&blocks);
     for (;;) {
         n = st->p->in ? st->p->in(st->p->u, buf, sizeof(buf)) : 0;
         if (n > 0)
@@ -569,8 +725,10 @@ static int stream_in(pst *st)
                 break;
             if (e < 0)
                 e = acc.n;
-            if (user_line(acc.p, e, &msg) == 0) {
-                rc = answer(st, msg.p, msg.n);
+            if (user_line(acc.p, e, &msg, &blocks) == 0) {
+                if (st->c->replay)
+                    replay(st, acc.p, e);
+                rc = answer(st, msg.p ? msg.p : "", msg.n, blocks.n ? blocks.p : 0, blocks.n);
                 any = 1;
             }
             memmove(acc.p, acc.p + (e < acc.n ? e + 1 : e), (size_t)(acc.n - (e < acc.n ? e + 1 : e)));
@@ -582,6 +740,7 @@ static int stream_in(pst *st)
     }
     jw_free(&acc);
     jw_free(&msg);
+    jw_free(&blocks);
     return any ? rc : 20;
 }
 
@@ -615,6 +774,8 @@ int print_run(cl_repl *r, cl_cli *c, cl_pout *p)
     st.feed.message = f_message;
     st.feed.event = f_event;
     st.feed.denied = f_denied;
+    st.feed.sub = f_sub;
+    st.feed.retry = f_retry;
     r->io = &st.io;
     r->ui.io = &st.io;
     r->feed = &st.feed;
@@ -669,7 +830,7 @@ int print_run(cl_repl *r, cl_cli *c, cl_pout *p)
             } else if (in.oom)
                 rc = early(&st, "Out of memory.");
             else
-                rc = answer(&st, in.p, in.n);
+                rc = answer(&st, in.p, in.n, 0, 0);
             jw_free(&in);
         }
     }

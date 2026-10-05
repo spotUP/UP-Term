@@ -13,6 +13,7 @@
 #include <string.h>
 #include "repl_int.h"
 #include "path.h"
+#include "schema.h"
 #include "util.h"
 
 static const char *src_name(int src)
@@ -290,12 +291,54 @@ static void pol_post(cl_repl *r, const char *name, int input_ok, const char *raw
     }
 }
 
+static void result_block(jw *out, const char *id, const char *text, int is_error)
+{
+    jw_rawz(out, "{\"type\":\"tool_result\",\"tool_use_id\":");
+    jw_strz(out, id);
+    jw_rawz(out, ",\"content\":");
+    jw_strz(out, text);
+    jw_rawz(out, is_error ? ",\"is_error\":true}" : "}");
+}
+
+/* --json-schema's StructuredOutput call: its input checked against the
+ * schema, kept as the run's structured output */
+static void structured(cl_repl *r, const char *id, int input_ok, const char *raw, long rawn, jw *out)
+{
+    jv s, v;
+    char err[300];
+    if (!input_ok || json_parse(raw, rawn, &v)) {
+        result_block(out, id, "The input is not valid JSON. Call StructuredOutput again with the answer.", 1);
+        return;
+    }
+    if (json_parse(r->schema, (long)strlen(r->schema), &s) == 0 && schema_check(s, v, err, sizeof(err))) {
+        jw m;
+        jw_init(&m);
+        jw_rawz(&m, "The output does not match the required schema: ");
+        jw_rawz(&m, err);
+        jw_rawz(&m, ". Call StructuredOutput again with a corrected answer.");
+        result_block(out, id, m.p ? m.p : err, 1);
+        jw_free(&m);
+        return;
+    }
+    free(r->structured);
+    r->structured = (char *)malloc((size_t)rawn + 1);
+    if (r->structured) {
+        memcpy(r->structured, raw, (size_t)rawn);
+        r->structured[rawn] = 0;
+    }
+    result_block(out, id, "Structured output provided successfully", 0);
+}
+
 void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input_ok, const char *raw, long rawn,
               jw *out, jw *extra)
 {
     cl_repl *r = (cl_repl *)u;
     cl_tools *was = r->at;
     long at = out->n;
+    if (r->schema && tl == &r->tools && !strcmp(name, "StructuredOutput")) {
+        structured(r, id, input_ok, raw, rawn, out);
+        return;
+    }
     r->at = tl;                 /* the screen's callbacks show this call's tool */
     r->cur_id = id;             /* print mode's permission_denials */
     if (!pol_pre(r, tl, id, name, input_ok, raw, rawn, out))
@@ -550,6 +593,44 @@ static int ext_commands(void *u, const cl_command **list)
     return r->nx_cmds;
 }
 
+/* the ${CLAUDE_*} values for a definition's expansion */
+static void vars_of(cl_repl *r, const cl_def *d, cl_cmd_vars *v, char *dir, long cap)
+{
+    if (d->type != DEF_SKILL || path_parent(d->path, dir, cap))
+        dir[0] = 0;
+    v->session_id = r->sess.id;
+    v->effort = r->effort;
+    v->skill_dir = dir;
+    v->project_dir = r->tools.root;
+}
+
+int pol_expand(cl_repl *r, const cl_def *d, const char *args, jw *out, char *err, long cap)
+{
+    cl_cmd_vars v;
+    char dir[300];
+    vars_of(r, d, &v, dir, sizeof(dir));
+    return cmd_expand_vars(d, args, &v, r->sys, r->tools.root, out, err, cap);
+}
+
+/* a definition's allowed-tools in force for the rest of the turn, its
+ * ${CLAUDE_SKILL_DIR} / ${CLAUDE_PROJECT_DIR} put in (Claude Code
+ * substitutes them in the Bash rules too) */
+void pol_turn_tools(cl_repl *r, const cl_def *d)
+{
+    cl_cmd_vars v;
+    char dir[300];
+    jw w;
+    if (!d->tools[0])
+        return;
+    vars_of(r, d, &v, dir, sizeof(dir));
+    jw_init(&w);
+    if (cmd_subst_vars(d->tools, &v, &w) == 0 && w.p) {
+        cl_copy(r->turn_buf, w.p, sizeof(r->turn_buf));
+        r->turn_tools = r->turn_buf;
+    }
+    jw_free(&w);
+}
+
 /* SlashCommand: the command expanded as a typed one is (slash_custom), its
  * allowed-tools in force for the rest of the turn */
 static int ext_expand(void *u, const char *name, const char *args, jw *out, char *err, long cap)
@@ -560,12 +641,44 @@ static int ext_expand(void *u, const char *name, const char *args, jw *out, char
         cl_copy(err, "", cap);      /* no such command (for Claude) */
         return -1;
     }
-    if (cmd_expand(d, args, r->sys, r->tools.root, out, err, cap))
+    if (pol_expand(r, d, args, out, err, cap))
         return -1;
     r->n_cmds_run++;
-    if (d->tools[0])
-        r->turn_tools = d->tools;
+    pol_turn_tools(r, d);
     return 0;
+}
+
+/* Skill: expanded as a command is (A4 gaps X1); its allowed-tools in force
+ * for the rest of the turn; its model is not switched mid-turn (the
+ * turn's thinking belongs to the model that started it), as SlashCommand */
+static int ext_skill(void *u, const char *name, const char *args, int activate, jw *out, int *fork, char *agent,
+                     long acap, char *err, long cap)
+{
+    cl_repl *r = (cl_repl *)u;
+    const cl_def *d = defs_find(&r->defs, DEF_SKILL, name);
+    *fork = 0;
+    agent[0] = 0;
+    if (!d) {
+        cl_copy(err, "no such skill", cap);
+        return -1;
+    }
+    if (pol_expand(r, d, args, out, err, cap))
+        return -1;
+    *fork = d->fork;
+    cl_copy(agent, d->agent, acap);
+    if (activate) {
+        r->n_skills_run++;
+        pol_turn_tools(r, d);
+    }
+    return 0;
+}
+
+/* cl_tools.agent_msg: a subagent's message to print mode's stream */
+static void pol_agent_msg(void *u, const char *parent, int user, const char *json, long n, cl_stream *st)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (r->feed && r->feed->sub)
+        r->feed->sub(r->feed->u, parent, user, json, n, st);
 }
 
 void pol_ext_free(cl_repl *r)
@@ -599,6 +712,11 @@ int pol_tools(cl_repl *r)
         a->tools = d->tools[0] ? d->tools : 0;
         a->model = d->model[0] ? d->model : 0;
         a->prompt = d->body;
+        a->deny_tools = d->deny_tools && d->deny_tools[0] ? d->deny_tools : 0;
+        a->max_turns = d->max_turns;
+        a->effort = d->effort[0] ? d->effort : 0;
+        a->skills = d->skills && d->skills[0] ? d->skills : 0;
+        a->perm_mode = d->perm_mode[0] ? d->perm_mode : 0;
     }
     /* disable-model-invocation: only the user runs it */
     for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++)
@@ -626,6 +744,8 @@ void pol_attach_tools(cl_repl *r)
     r->tools.call = pol_call;
     r->tools.added = pol_added;
     r->tools.agent_stop = pol_agent_stop;
+    r->tools.agent_msg = pol_agent_msg;
+    r->ext.skill = ext_skill;
     r->ext.u = r;
     r->ext.agents = ext_agents;
     r->ext.skills = ext_skills;

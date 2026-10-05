@@ -499,7 +499,7 @@ static const char *w_err(void *u)
 }
 
 static const cl_agent my_agents[] = {
-    { "reviewer", "Reviews a change", "Read, Grep", "haiku", "You review code." }
+    { "reviewer", "Reviews a change", "Read, Grep", "haiku", "You review code.", 0, 0, 0, 0, 0 }
 };
 static cl_skill my_skills[1];
 static const cl_command my_cmds[] = { { "hello", "Greets someone" }, { "secret", 0 } };
@@ -538,17 +538,17 @@ static int x_expand(void *u, const char *name, const char *args, jw *out, char *
     return 0;
 }
 
-static const cl_ext my_ext = { 0, x_agents, x_skills, x_commands, x_expand };
+static const cl_ext my_ext = { 0, x_agents, x_skills, x_commands, x_expand, 0 };
 
 /* a project agent with a built-in's name hides the built-in */
-static const cl_agent plan_agent[] = { { "Plan", "OUR-OWN-PLANNER", "Read", 0, "Plan our way." } };
+static const cl_agent plan_agent[] = { { "Plan", "OUR-OWN-PLANNER", "Read", 0, "Plan our way.", 0, 0, 0, 0, 0 } };
 static int x_plan(void *u, const cl_agent **l)
 {
     (void)u;
     *l = plan_agent;
     return 1;
 }
-static const cl_ext plan_ext = { 0, x_plan, 0, 0, 0 };
+static const cl_ext plan_ext = { 0, x_plan, 0, 0, 0, 0 };
 
 /* an added working directory that holds only outside.txt (in the start
  * directory's parent: "/" is AmigaDOS's parent) */
@@ -1048,7 +1048,7 @@ static void test_task(void)
     /* unknown agents, a failed request, a stop */
     CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"nobody\"}", text,
                    sizeof(text)), 1);
-    CHECK(strstr(text, "Available agents: general-purpose, Explore, Plan, reviewer") != 0);
+    CHECK(strstr(text, "Available agents: general-purpose, Explore, Plan, statusline-setup, reviewer") != 0);
     api.fail_with = -2;
     CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Plan\"}", text,
                    sizeof(text)), 1);

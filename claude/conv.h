@@ -62,6 +62,9 @@ int conv_add(cl_conv *c, int user, const char *json, long n);
 /* a prompt: a new user message, or one more text block on a trailing
  * unanswered user message (a tool_result message left by a cancel) */
 int conv_add_user_text(cl_conv *c, const char *s, long n);
+/* content blocks (JSON objects separated by commas, no brackets) as a
+ * user message, or added to a trailing user message: 0, -1 */
+int conv_add_user_blocks(cl_conv *c, const char *b, long bn);
 cl_mark conv_mark(const cl_conv *c);
 void conv_rollback(cl_conv *c, cl_mark m);
 /* the request body */

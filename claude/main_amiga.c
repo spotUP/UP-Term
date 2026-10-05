@@ -51,6 +51,7 @@ const char stack_cookie[] = "$STACK: 32768";
 
 static char key[512];
 static BPTR logf;
+static char logname[256] = "T:Claude.log";  /* --debug-file; opened at the first line (/debug too) */
 static BPTR errf;               /* print mode's error stream */
 static int errf_opened;
 
@@ -103,6 +104,8 @@ static unsigned long c_ms(void *u)
 static void c_log(void *u, const char *s, long n)
 {
     (void)u;
+    if (!logf)
+        logf = Open((STRPTR)logname, MODE_NEWFILE);     /* DEBUG, --debug-file, /debug */
     if (logf)
         Write(logf, (APTR)s, n);
 }
@@ -268,7 +271,8 @@ static int args(cl_cli *c)
         goto bad;
     if (!c->ask_template)
         return 0;
-    say(CLI_TEMPLATE ": ");
+    say(CLI_TEMPLATE);
+    say(CLI_TEMPLATE_MORE ": ");
     if (!FGets(Input(), (STRPTR)line, sizeof(line)))
         line[0] = 0;
     cli_free(c);
@@ -330,8 +334,8 @@ int main(void)
     }
     if (!NameFromLock(((struct Process *)me)->pr_CurrentDir, (STRPTR)root, sizeof(root)))
         cl_copy(root, "", sizeof(root));
-    if (cli.debug)
-        logf = Open((STRPTR)"T:Claude.log", MODE_NEWFILE);
+    if (cli.debug_file[0])
+        cl_copy(logname, cli.debug_file, sizeof(logname));
     if (cli.print)
         open_err();
     memset(&io, 0, sizeof(io));
@@ -357,6 +361,7 @@ int main(void)
         rc = 20;
     } else {
         r->debug = cli.debug;
+        r->log_path = logname;      /* /debug names it */
         r->tools.web = &wnet;
         /* A2's one saved conversation: /resume takes it over when there is no session yet */
         cl_copy(r->session, "ENVARC:Claude/session.json", sizeof(r->session));

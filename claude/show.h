@@ -36,6 +36,7 @@ typedef struct cl_show {
     unsigned long think_t0;
     /* how often each part ran (the reachability test's sentinel) */
     long n_text, n_blocks, n_tools, n_diffs, n_think;
+    const int *verbose;         /* --verbose / "verbose": results and diffs unfolded (0: folded) */
 } cl_show;
 
 void show_init(cl_show *s, cl_tui *t);

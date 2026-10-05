@@ -43,6 +43,9 @@ void webfetch_run(cl_tools *t, jw *out, const char *id, jv in);
 
 /* subagent.c: Task, and one quiet model call */
 void agent_task(cl_tools *t, jw *out, const char *id, jv in);
+/* a forked skill (context: fork): the prompt run by agent type ("" or 0:
+ * general-purpose), its report the result of the call id */
+void agent_fork(cl_tools *t, jw *out, const char *id, const char *type, const char *prompt, long pn);
 /* The built-in agents and the provider's, in order: the count; *a the i-th. */
 int agent_count(const cl_tools *t);
 const struct cl_agent *agent_get(const cl_tools *t, int i);

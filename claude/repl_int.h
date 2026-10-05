@@ -15,6 +15,8 @@ void repl_say(cl_repl *r, const char *a, const char *b);
 /* the conversation's text shown again (after a resume) */
 void repl_replay(cl_repl *r);
 void repl_cost(cl_repl *r);
+/* the context size at which the conversation compacts by itself, tokens */
+long repl_compact_at(cl_repl *r);
 void repl_context(cl_repl *r);
 int repl_pick(cl_repl *r, const char *title, const char *const *opt, int n, const char *cur);
 /* the conversation saved (its session file) after a change */
@@ -49,6 +51,11 @@ void pol_attach_tools(cl_repl *r);
  * memory. */
 int pol_tools(cl_repl *r);
 void pol_ext_free(cl_repl *r);
+/* a command's or a skill's text with the ${CLAUDE_*} values of this
+ * session (cmd_expand_vars): 0, -1 with err */
+int pol_expand(cl_repl *r, const cl_def *d, const char *args, jw *out, char *err, long cap);
+/* d's allowed-tools in force for the rest of the turn (r->turn_tools) */
+void pol_turn_tools(cl_repl *r, const cl_def *d);
 void pol_session(cl_repl *r, int event, const char *source);
 /* UserPromptSubmit: -1 blocked (shown), 0 go on (context into r->pending) */
 int pol_prompt(cl_repl *r, const char *prompt, long n);
