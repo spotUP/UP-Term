@@ -240,6 +240,11 @@ int main(void)
         GetMsg(s.port);
         s.pkt_busy = 0;
     }
+    /* what the far side left on (alternate screen, scroll region, mouse...) */
+    {
+        const char *bye = tn_goodbye(&s.t);
+        Write(s.out, (APTR)bye, (LONG)strlen(bye));
+    }
     SetMode(s.in, 0); /* cooked again; on an UP-Term window it also ends termios mode */
     PutStr((STRPTR)"\nuptelnet: connection closed\n");
     CloseSocket(s.sock);

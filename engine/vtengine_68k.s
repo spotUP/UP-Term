@@ -16,6 +16,8 @@
 	xdef	_vt_asm_put_run
 	xdef	_vt_asm_put_ch
 	xdef	_vt_asm_fill
+	xdef	_vt_asm_ch_blank
+	xdef	_vt_asm_csi
 	xdef	_vt_asm_rows_up
 	xdef	_vt_asm_cells_move
 
@@ -30,23 +32,23 @@ _vt_asm_cells_move:
 	ble.s	.mnone
 	cmp.l	a1,a0
 	bhi.s	.mback			; dst above src: from the end
+	subq.w	#1,d0			; (dbra: n < 65536, a row's cells)
 .mfwd:	move.l	(a1)+,(a0)+
 	move.l	(a1)+,(a0)+
 	move.l	(a1)+,(a0)+
 	move.l	(a1)+,(a0)+
-	subq.l	#1,d0
-	bne.s	.mfwd
+	dbra	d0,.mfwd
 .mnone:	rts
 .mback:	move.l	d0,d1
 	lsl.l	#4,d1			; n cells of 16 bytes
 	add.l	d1,a0
 	add.l	d1,a1
+	subq.w	#1,d0
 .mbk:	move.l	-(a1),-(a0)
 	move.l	-(a1),-(a0)
 	move.l	-(a1),-(a0)
 	move.l	-(a1),-(a0)
-	subq.l	#1,d0
-	bne.s	.mbk
+	dbra	d0,.mbk
 	rts
 	xdef	_vt_asm_rows_down
 
@@ -58,9 +60,9 @@ _vt_asm_rows_up:
 	move.l	8(sp),d0
 	ble.s	.unone
 	lea	4(a0),a1
+	subq.w	#1,d0			; (dbra: k < 65536 rows)
 .urow:	move.l	(a1)+,(a0)+
-	subq.l	#1,d0
-	bne.s	.urow
+	dbra	d0,.urow
 .unone:	rts
 
 _vt_asm_rows_down:
@@ -69,9 +71,9 @@ _vt_asm_rows_down:
 	ble.s	.dnone
 	addq.l	#4,a0			; one past p[0]
 	lea	-4(a0),a1		; one past p[-1]
+	subq.w	#1,d0
 .drow:	move.l	-(a1),-(a0)
-	subq.l	#1,d0
-	bne.s	.drow
+	dbra	d0,.drow
 .dnone:	rts
 
 ; void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto)
@@ -87,14 +89,124 @@ _vt_asm_fill:
 	move.l	(a1)+,d2
 	move.l	(a1)+,d3
 	move.l	(a1),d4
+	subq.w	#1,d0			; (dbra: n < 65536, a row's cells)
 .fcell:	move.l	d1,(a0)+
 	move.l	d2,(a0)+
 	move.l	d3,(a0)+
 	move.l	d4,(a0)+
-	subq.l	#1,d0
-	bne.s	.fcell
+	dbra	d0,.fcell
 	movem.l	(sp)+,d2-d4
 .fnone:	rts
+
+; long vt_asm_csi(const vt_u8 *p, long n, long *params, vt_u8 *sub)
+;
+; csi_fast's parameter scan (ASM1): the bytes from p (after "ESC [") are
+; digits, ';' and ':' up to the first other byte, the final. Their values
+; go to params / sub as the parser's own CSI states put them (feed): a
+; value saturates at 65535 (VT_PARAM_MAX: from 6553 on the next digit
+; makes it 65535), ':' marks the parameter it starts in sub, the 17th and
+; later parameters run on into the 16th (VT_MAX_PARAMS). No parameter:
+; params[0] = sub[0] = 0. Returns np << 16 | the final's offset from p, or
+; -1 when the n bytes (at most 32767 are looked at) end first. Ten
+; instructions a digit, about twenty a separator: a2 / a3 point at the
+; parameter being read and its mark, so a separator stores without
+; working out an index.
+_vt_asm_csi:
+	movem.l	d2-d7/a2-a3,-(sp)
+	move.l	36(sp),a0		; p
+	move.l	40(sp),d3		; n
+	move.l	44(sp),a2		; &params[0]: the parameter being read
+	move.l	48(sp),a3		; &sub[0]
+	move.l	a0,a1			; p, for the offset
+	moveq	#0,d1			; v: the parameter being read
+	moveq	#0,d2			; np
+	moveq	#0,d0
+	move.w	#6553,d5		; VT_PARAM_MAX / 10
+	moveq	#'0',d6
+	moveq	#9,d7
+	cmp.l	#$7fff,d3
+	bls.s	.cn
+	move.w	#$7fff,d3
+.cn:	subq.w	#1,d3			; the bytes left after the one read
+	bmi	.cout
+	move.b	(a0)+,d0
+	sub.b	d6,d0
+	cmp.b	d7,d0
+	bhi.s	.cnd			; not a digit
+	moveq	#1,d2			; a digit first: the first parameter starts
+	clr.b	(a3)
+.cdig:	cmp.w	d5,d1
+	bcc.s	.csat
+	mulu.w	#10,d1
+	add.w	d0,d1
+.cdn:	subq.w	#1,d3
+	bmi.s	.cout
+	move.b	(a0)+,d0
+	sub.b	d6,d0
+	cmp.b	d7,d0
+	bls.s	.cdig
+.cnd:	cmp.b	#';'-'0',d0
+	beq.s	.csep
+	cmp.b	#':'-'0',d0
+	bne.s	.cfin
+.csep:	tst.w	d2
+	bne.s	.cs1
+	moveq	#1,d2			; a separator first: an empty first parameter
+	clr.b	(a3)
+.cs1:	move.l	d1,(a2)			; params[np - 1] = v
+	cmp.w	#16,d2
+	bcc.s	.cdn			; all 16: the digits go on into the last
+	addq.l	#4,a2
+	addq.l	#1,a3
+	moveq	#';'-'0',d4
+	sub.b	d0,d4			; ';' 0, ':' 1
+	move.b	d4,(a3)			; sub[np] = (c == ':')
+	addq.w	#1,d2
+	moveq	#0,d1
+	bra.s	.cdn
+.csat:	move.w	#-1,d1			; 65535
+	bra.s	.cdn
+.cfin:	move.l	d1,(a2)			; the last parameter (0 when there is none)
+	tst.w	d2
+	bne.s	.cf1
+	clr.b	(a3)
+.cf1:	move.l	a0,d0
+	sub.l	a1,d0
+	subq.l	#1,d0			; the final's offset
+	swap	d2
+	clr.w	d2
+	or.l	d2,d0
+	movem.l	(sp)+,d2-d7/a2-a3
+	rts
+.cout:	moveq	#-1,d0
+	movem.l	(sp)+,d2-d7/a2-a3
+	rts
+
+; void vt_asm_ch_blank(vt_cell *c, long n)
+;
+; line_clear of a chonly line: the characters of n cells back to a space,
+; the rest of each cell is the default blank's already. Four cells a turn
+; of the loop, six instructions (a whole cell is five).
+_vt_asm_ch_blank:
+	move.l	8(sp),d0		; n
+	ble.s	.bnone
+	move.l	4(sp),a0
+	addq.l	#8,a0			; at ch
+	moveq	#3,d1
+	and.w	d0,d1			; the odd cells first
+	lsr.l	#2,d0			; then fours
+	bra.s	.b1e
+.b1:	move.w	#$20,(a0)
+	lea	16(a0),a0
+.b1e:	dbra	d1,.b1
+	bra.s	.b4e
+.b4:	move.w	#$20,(a0)
+	move.w	#$20,16(a0)
+	move.w	#$20,32(a0)
+	move.w	#$20,48(a0)
+	lea	64(a0),a0
+.b4e:	dbra	d0,.b4
+.bnone:	rts
 
 ; long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto)
 ;
@@ -149,31 +261,80 @@ _vt_asm_put_run:
 ;
 ; put_ascii_run's plain case (ledger S1): the cells are untouched default
 ; blanks (past the line's `used`) and the text is in the default colours,
-; so of each cell only the character changes. Printable ASCII is stored as
-; the cell's ch (offset 8) until n or the first other byte; the cells
-; written are returned. Nine instructions and one word write a character,
-; against fifteen and five writes for a whole cell.
+; so of each cell only the character changes -- and of the character only
+; its low byte (a default blank's ch is $0020). Printable ASCII is stored
+; until n or the first other byte; the cells written are returned.
+; Four bytes a long (creep's printable scan; ASM1): a long is all
+; printable when no byte is under $20 and none is $7f or over:
+;   ((x + $01010101) | (x - $20202020)) & $80808080 == 0
+; (the lowest bad byte gets no carry or borrow from the bytes below it,
+; so a bad long is always seen; the byte loop then finds the byte).
+; 17 instructions four characters, against 36. Longs are read from an
+; even address (a 68000 traps on an odd one): an odd start takes a byte.
 _vt_asm_put_ch:
-	move.l	4(sp),a0		; c
-	move.l	8(sp),a1		; b
 	move.l	12(sp),d0		; n
-	ble.s	.pnone
-	move.l	d2,-(sp)
-	move.l	d0,d2
-	moveq	#0,d1
-	addq.l	#8,a0			; at ch
-.pch:	move.b	(a1)+,d1
+	ble	.pnone
+	movem.l	d2-d7,-(sp)
+	move.l	4+24(sp),a0		; c
+	move.l	8+24(sp),a1		; b
+	lea	9(a0),a0		; at ch's low byte
+	move.l	a1,d1
+	btst	#0,d1
+	beq.s	.peven
+	move.b	(a1),d1			; an odd start: one byte first
 	cmp.b	#$20,d1
-	bcs.s	.pstop			; a control
+	bcs	.pdone			; a control
 	cmp.b	#$7f,d1
-	bcc.s	.pstop			; DEL or an 8-bit byte
-	move.w	d1,(a0)
+	bcc	.pdone			; DEL or an 8-bit byte
+	addq.l	#1,a1
+	move.b	d1,(a0)
 	lea	16(a0),a0
 	subq.l	#1,d0
-	bne.s	.pch
-.pstop:	sub.l	d0,d2			; n less what is left
+	beq	.pdone
+.peven:	moveq	#3,d7
+	and.l	d0,d7			; the bytes after the whole longs
+	move.l	d0,d6
+	lsr.l	#2,d6			; whole longs
+	beq.s	.ptail
+	move.l	#$01010101,d3
+	move.l	#$20202020,d4
+	move.l	#$80808080,d5
+	subq.w	#1,d6
+.plong:	move.l	(a1),d2			; b0 b1 b2 b3
+	move.l	d2,d1
+	add.l	d3,d1
 	move.l	d2,d0
-	move.l	(sp)+,d2
+	sub.l	d4,d0
+	or.l	d0,d1
+	and.l	d5,d1
+	bne.s	.pbad			; a byte in it ends the run
+	addq.l	#4,a1
+	move.b	d2,48(a0)		; b3
+	lsr.w	#8,d2
+	move.b	d2,32(a0)		; b2
+	swap	d2
+	move.b	d2,16(a0)		; b1
+	lsr.w	#8,d2
+	move.b	d2,(a0)			; b0
+	lea	64(a0),a0
+	dbra	d6,.plong
+.ptail:	move.l	d7,d0
+	bne.s	.pbyte
+	bra.s	.pdone
+.pbad:	moveq	#4,d0			; the byte that ends it is in this long
+.pbyte:	move.b	(a1),d1
+	cmp.b	#$20,d1
+	bcs.s	.pdone
+	cmp.b	#$7f,d1
+	bcc.s	.pdone
+	addq.l	#1,a1
+	move.b	d1,(a0)
+	lea	16(a0),a0
+	subq.l	#1,d0
+	bne.s	.pbyte
+.pdone:	move.l	a1,d0
+	sub.l	8+24(sp),d0		; the bytes taken: the cells written
+	movem.l	(sp)+,d2-d7
 	rts
 .pnone:	moveq	#0,d0
 	rts

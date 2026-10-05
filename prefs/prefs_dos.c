@@ -72,3 +72,8 @@ int prefs_dos_save(const char *buf, long len, int keep, int *failed)
     }
     return PREFS_INSTALL_OK;
 }
+
+void prefs_dos_theme_drawer(const char *given, const char *home, char *out, int cap)
+{
+    prefs_theme_drawer(&prefs_dos_fs, given, home, out, cap);
+}

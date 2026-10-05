@@ -22,13 +22,25 @@ VIEW_MD   := $(VIEW_LEX) view/md.c
 VIEW_CORE := $(VIEW_LEX) view/hl_view.c view/md.c
 VIEW_HDR  := view/hl_lex.h view/hl_style.h view/hl_view.h view/vw_text.h view/md.h
 VIEW_CLI  := view/vw_cli.c
+# the Claude client's portable core (ledger A2); net_posix is the host transport
+# A4 WP1: the input box's vim mode, history, themes, prompt prefixes, transcript viewer
+CLAUDE_INPUT := claude/vim.c claude/hist.c claude/theme.c claude/input.c claude/tview.c
+CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
+               claude/path.c claude/tools.c claude/sys_posix.c claude/ui.c claude/repl.c \
+               claude/regex.c claude/glob.c claude/schema.c claude/search.c claude/shells.c claude/html.c \
+               claude/webfetch.c claude/subagent.c claude/tasks.c claude/sched.c claude/watch.c claude/trust.c \
+               claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) \
+               claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
+               claude/policy.c claude/slash.c claude/cli.c claude/print.c
+CLAUDE_HDR := $(wildcard claude/*.h)
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
-           tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_hl.c tests/test_md.c tests/test_unifont.c
+           tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_hl.c tests/test_md.c \
+           tests/claude_load.c tests/claude_screen.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c
 
-.PHONY: unifont widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
+.PHONY: unifont claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py)
 test: $(BUILD)/vttest_host $(BUILD)/tn_host
@@ -36,9 +48,16 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
+$(BUILD)/vttest_host: $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
+
+# The OpenSSL half of claude/tls_amissl.c checked against the host's OpenSSL 3
+# (the AmiSSL SDK is not needed for this; OpenSSL's headers want C99).
+OPENSSL_INC ?= /opt/homebrew/opt/openssl@3/include
+claude-tls-check:
+	$(HOSTCC) -std=c99 -Wall -Wextra -Werror -Wdeclaration-after-statement -fsyntax-only \
+	  -DCL_TLS_HOSTCHECK -I$(OPENSSL_INC) claude/tls_amissl.c
 
 engine/vtcaps.inc: tools/gen_vtcaps.py terminfo/vtcon.terminfo
 	python3 tools/gen_vtcaps.py
@@ -194,7 +213,7 @@ HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/p
 HANDLER_HDR := engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/complete.h handler/complete_core.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/Claude
 
 # hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
@@ -204,6 +223,41 @@ $(BUILD)/amiga/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(
 $(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c
+
+# C:Claude, the native Claude client (ledger A2): the portable core
+# (claude/*.c, host-tested) with bsdsocket and AmigaDOS. bsdsocket's headers
+# are Roadshow's netinclude from NDK3.2R4 (SANA+RoadshowTCP-IP/netinclude;
+# unpack it to vendor/ndk-3.2r4-netinclude, or pass VTCON_NETINCLUDE=); only
+# net_amiga.c sees them (they carry an errno.h of their own). TLS: AmiSSL 5
+# with AMISSL_SDK=<the SDK's top directory> (its include/ inside), else a
+# build without TLS that refuses https (http URLs, the fixture, still work).
+VTCON_NETINCLUDE ?= $(CURDIR)/vendor/ndk-3.2r4-netinclude
+CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
+                   claude/path.c claude/tools.c claude/ui.c claude/repl.c claude/sys_amiga.c claude/main_amiga.c \
+                   claude/regex.c claude/glob.c claude/schema.c claude/search.c claude/shells.c claude/html.c \
+                   claude/webfetch.c claude/subagent.c claude/tasks.c claude/sched.c claude/watch.c claude/trust.c \
+                   claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) $(VIEW_MD) tty/ldisc.c \
+                   handler/clip.c handler/clipfmt.c \
+                   claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
+                   claude/policy.c claude/slash.c claude/cli.c claude/print.c
+# the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
+AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
+ifdef AMISSL_SDK
+CLAUDE_TLS := claude/tls_amissl.c
+CLAUDE_TLS_INC := -I$(AMISSL_SDK)/include
+else
+CLAUDE_TLS := claude/tls_none.c
+endif
+CLAUDE_FLAGS := AMISSL_SDK=$(AMISSL_SDK)
+ifneq ($(CLAUDE_FLAGS),$(shell cat $(BUILD)/amiga/claude.flags 2>/dev/null))
+CLAUDE_FORCE := FORCE
+endif
+$(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(VIEW_HDR) tty/ldisc.h handler/vtcon_packets.h $(CLAUDE_FORCE)
+	@mkdir -p $(BUILD)/amiga/obj/claude
+	@echo '$(CLAUDE_FLAGS)' > $(BUILD)/amiga/claude.flags
+	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/claude/net_amiga.o claude/net_amiga.c
+	$(VC) -dontwarn=153,65 $(CLAUDE_TLS_INC) -c -o $(BUILD)/amiga/obj/claude/tls.o $(CLAUDE_TLS)
+	$(VC) -dontwarn=153,65 -o $@ $(CLAUDE_PORTABLE) $(BUILD)/amiga/obj/claude/net_amiga.o $(BUILD)/amiga/obj/claude/tls.o
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -607,7 +661,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 $(KIT)/Files/coreutils/
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/Claude $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/

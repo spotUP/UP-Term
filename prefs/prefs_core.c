@@ -307,3 +307,134 @@ int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
     }
     return PREFS_INSTALL_OK;
 }
+
+/* ---- W30: the themes drawer ------------------------------------------------ */
+
+static int pc_lower(int c)
+{
+    return c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c;
+}
+
+/* the first n bytes of a against all of b, ignoring ASCII case: <0, 0, >0 */
+static int pc_ncmp_i(const char *a, int n, const char *b)
+{
+    int i;
+    for (i = 0; i < n && b[i]; i++) {
+        int x = pc_lower((unsigned char)a[i]), y = pc_lower((unsigned char)b[i]);
+        if (x != y)
+            return x - y;
+    }
+    if (i < n)
+        return 1; /* b ended first */
+    return b[i] ? -1 : 0;
+}
+
+/* the length of s without its ".conf" ending (any case); -1 when it has none */
+static int pc_conf_stem(const char *s)
+{
+    int l = (int)strlen(s);
+    return l >= 5 && pc_ieq(s + l - 5, ".conf") ? l - 5 : -1;
+}
+
+/* dir and file joined as AmigaDOS AddPart does ("VTC:" + "x" = "VTC:x",
+ * "Work:a" + "x" = "Work:a/x", "" + "x" = "x"); 0 when it does not fit */
+static int pc_join(char *out, int cap, const char *dir, const char *file)
+{
+    int d = (int)strlen(dir), f = (int)strlen(file);
+    int slash = d && dir[d - 1] != ':' && dir[d - 1] != '/';
+    if (d + slash + f + 1 > cap)
+        return 0;
+    memmove(out, dir, (size_t)d);
+    if (slash)
+        out[d++] = '/';
+    memcpy(out + d, file, (size_t)f + 1);
+    return 1;
+}
+
+/* the drawer part of path, as AmigaDOS PathPart cuts it (before the last
+ * '/', or up to and with the ':'); 0 when path names no drawer or it does
+ * not fit */
+static int pc_drawer_of(const char *path, char *out, int cap)
+{
+    int i, end = -1;
+    for (i = 0; path[i]; i++)
+        if (path[i] == '/')
+            end = i;
+        else if (path[i] == ':')
+            end = i + 1;
+    if (end <= 0 || end + 1 > cap)
+        return 0;
+    memcpy(out, path, (size_t)end);
+    out[end] = 0;
+    return 1;
+}
+
+void prefs_theme_drawer(const prefs_fs *fs, const char *given, const char *home, char *out, int cap)
+{
+    if (given && given[0] && pc_drawer_of(given, out, cap) && fs->exists(fs->ctx, out))
+        return;
+    if (pc_join(out, cap, "", PREFS_THEMES_DIR) && fs->exists(fs->ctx, out))
+        return;
+    if (pc_join(out, cap, "", PREFS_THEMES_ENV) && fs->exists(fs->ctx, out))
+        return;
+    if (home && home[0]) {
+        if (pc_join(out, cap, home, "themes") && fs->exists(fs->ctx, out))
+            return;
+        if (pc_join(out, cap, "", home) && fs->exists(fs->ctx, out))
+            return;
+    }
+    if (cap > 0)
+        out[0] = 0;
+}
+
+void prefs_theme_file(const char *drawer, const char *name, char *out, int cap)
+{
+    int l;
+    if (cap < 1)
+        return;
+    if (strchr(name, ':') || strchr(name, '/') || !pc_join(out, cap, drawer, name))
+        pc_copy(out, name, cap);
+    l = (int)strlen(out);
+    if (pc_conf_stem(out) < 0 && l + 6 <= cap)
+        strcpy(out + l, ".conf");
+}
+
+int prefs_theme_add(char *names, int *len, int cap, const char *file)
+{
+    int stem = pc_conf_stem(file), at = 0;
+    if (stem <= 0)
+        return 0;
+    while (at < *len) {
+        int c = pc_ncmp_i(file, stem, names + at);
+        if (!c)
+            return 0;
+        if (c < 0)
+            break;
+        at += (int)strlen(names + at) + 1;
+    }
+    if (*len + stem + 1 > cap)
+        return -1;
+    memmove(names + at + stem + 1, names + at, (size_t)(*len - at));
+    memcpy(names + at, file, (size_t)stem);
+    names[at + stem] = 0;
+    *len += stem + 1;
+    return 1;
+}
+
+int prefs_theme_index(const char *names, int n, const char *file)
+{
+    const char *base;
+    int i, stem;
+    if (!file || !file[0])
+        return -1;
+    for (base = file; *file; file++)
+        if (*file == '/' || *file == ':')
+            base = file + 1;
+    stem = pc_conf_stem(base);
+    if (stem < 0)
+        stem = (int)strlen(base);
+    for (i = 0; i < n; i++, names += strlen(names) + 1)
+        if (stem && !pc_ncmp_i(base, stem, names))
+            return i;
+    return -1;
+}

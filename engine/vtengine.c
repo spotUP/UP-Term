@@ -8,6 +8,19 @@
 #include <stddef.h>
 #include <string.h>
 
+#ifdef __VBCC__
+/* vbcc's -O2 is -O=1023. With it, a loop over vt_term fields got every
+ * field's address (t + offset) hoisted out of the loop and, short of
+ * registers, spilled to the stack: each t->x became a load of the address
+ * and then the access, and vt_feed set up fifteen such slots on every
+ * call -- though (d16,An) addressing is free on a 68k. -O=991 (bit 32 off)
+ * keeps the accesses in place: engbench plain lines with 79-byte writes
+ * 19.4 -> 16.5 instructions a byte under vamos (ASM1; -O=895, bit 128
+ * off, does the same but warns 172 in feed()). It sets the whole mask:
+ * this file builds at this level whatever -O the command line gives. */
+#pragma opt 991
+#endif
+
 #if defined(VT_AMIGA_EXEC_ALLOC)
 /* code without a C startup (the handler): exec memory, no libc heap */
 #include <exec/memory.h>
@@ -49,8 +62,13 @@ typedef struct vt_line {
     vt_u8 wrapped;   /* the text continues on the next line */
     vt_u8 dbl;       /* DEC line size: 0 single, VT_LINE_DOUBLE_WIDTH, _TOP, _BOTTOM */
     vt_u8 mark;      /* OSC 133: VT_MARK_* that started on this line */
-    vt_u8 spare;
-    vt_u16 used;     /* cells [used, n) are still the default blank the last
+    vt_u8 chonly;    /* 1: the cells [0, used) differ from the default blank in
+                      * their ch alone (plain text written by put_ascii_run's
+                      * plain case), so a clear resets only ch. mark() makes
+                      * it 0; line_clear to the default blank makes it 1.
+                      * (ASM1: a recycled line's clear wrote 16 bytes a cell
+                      * where 2 had changed.) */
+    vt_u16 used;    /* cells [used, n) are still the default blank the last
                       * line_clear wrote: clearing again need not touch them.
                       * mark() -- every change to a grid cell passes it --
                       * raises it; a line whose cells are not known (new, or
@@ -344,6 +362,7 @@ static vt_line *line_new(int cap)
         l->dbl = 0;
         l->img = 0;
         l->mark = 0;
+        l->chonly = 0;
     }
     return l;
 }
@@ -528,6 +547,8 @@ static void blank_cell(const vt_term *t, vt_cell *c)
 long vt_asm_put_run(vt_cell *c, const vt_u8 *b, long n, const vt_cell *proto);
 long vt_asm_put_ch(vt_cell *c, const vt_u8 *b, long n);
 void vt_asm_fill(vt_cell *c, long n, const vt_cell *proto);
+void vt_asm_ch_blank(vt_cell *c, long n);
+long vt_asm_csi(const vt_u8 *p, long n, long *params, vt_u8 *sub);
 void vt_asm_cells_move(vt_cell *dst, const vt_cell *src, long n);
 void vt_asm_rows_up(struct vt_line **p, long k);
 void vt_asm_rows_down(struct vt_line **p, long k);
@@ -552,36 +573,64 @@ static void cells_blank(const vt_term *t, vt_cell *c, int n)
 #endif
 }
 
-static int vacated_default(const vt_term *t);
+static int vacated_default_at(const vt_term *t);
+
+#ifdef VT_CHECK_USED
+/* Host tests only: the line's cells from `used` to n are the default
+ * blank, and on a chonly line the cells before differ from it in a Latin-1
+ * ch alone -- what a clear that touches less relies on. Aborts on a cell
+ * changed without mark(). */
+static void check_used(const vt_term *t, const vt_line *l, int n)
+{
+    int i;
+    vt_cell b;
+    blank_cell(t, &b);
+    for (i = 0; i < n; i++)
+        if ((i >= l->used && l->c[i].ch != b.ch) || (i < l->used && l->chonly && l->c[i].ch > 0xFF) ||
+            ((i >= l->used || l->chonly) &&
+             (l->c[i].fg != b.fg || l->c[i].bg != b.bg || l->c[i].attr != b.attr || l->c[i].width != b.width ||
+              l->c[i].deco != b.deco || l->c[i].ext != b.ext || l->c[i].pad != b.pad)))
+            abort();
+}
+#endif
+/* the amiga dialect's answer (always) in place, the rest a call */
+#define vacated_default(t) ((t)->pers == VT_AMIGA || vacated_default_at(t))
 
 static void line_clear(vt_term *t, vt_line *l, int n)
 {
+    int dflt = vacated_default(t);
     if (l->img)
         place_drop(t, l); /* one test a line: no images, no cost */
-    if (!l->used && l->n == n && vacated_default(t)) {
+    if (!l->used && l->n == n && dflt) {
         /* nothing written since its last clear: already blank (a flood of
          * newlines clears a blank line each, S1) */
         l->wrapped = 0;
         l->dbl = 0;
         return;
     }
-    if (l->n == n && l->used < n && vacated_default(t)) {
+    if (dflt && l->n == n && (l->used < n || l->chonly)) {
         /* the same width as its last clear, and the blank is the default
-         * one: only the cells written since need it */
+         * one: only the cells written since need it (none after a flood of
+         * newlines, S1), and of plain text only the characters (ASM1) */
 #ifdef VT_CHECK_USED
-        int i;
-        vt_cell b;
-        blank_cell(t, &b);
-        for (i = l->used; i < n; i++)
-            if (l->c[i].ch != b.ch || l->c[i].fg != b.fg || l->c[i].bg != b.bg || l->c[i].attr != b.attr ||
-                l->c[i].width != b.width || l->c[i].deco != b.deco || l->c[i].ext != b.ext)
-                abort(); /* a cell changed without mark(): host tests only */
+        check_used(t, l, n);
 #endif
-        cells_blank(t, l->c, l->used);
+        if (l->chonly) {
+#ifdef VT_ASM
+            vt_asm_ch_blank(l->c, l->used);
+#else
+            int k;
+            for (k = 0; k < l->used; k++)
+                l->c[k].ch = ' ';
+#endif
+        } else {
+            cells_blank(t, l->c, l->used);
+        }
     } else {
         cells_blank(t, l->c, n);
     }
-    l->used = (vt_u16)(vacated_default(t) ? 0 : n);
+    l->used = (vt_u16)(dflt ? 0 : n);
+    l->chonly = (vt_u8)dflt;
     l->n = (vt_u16)n;
     l->wrapped = 0;
     l->dbl = 0;
@@ -610,6 +659,7 @@ static void mark(vt_term *t, int x0, int y, int x1)
             l->dx1 = (short)x1;
         if (l->used < x1)
             l->used = (vt_u16)x1;
+        l->chonly = 0;
     }
     t->dirty = 1;
 }
@@ -758,8 +808,10 @@ static vt_cell *cell_at(vt_term *t, int x, int y)
     return &t->scr[y]->c[x];
 }
 
-/* Overwriting either half of a wide glyph blanks the other half. */
-static void unwide(vt_term *t, int x, int y)
+/* Overwriting either half of a wide glyph blanks the other half. unwide()
+ * is the cell test in place, the call only for a wide glyph's half (ASM1:
+ * every erase and character paid a call for the common plain cell). */
+static void unwide_at(vt_term *t, int x, int y)
 {
     vt_cell *c = t->scr[y]->c;
     if (c[x].width == 0 && x > 0) {
@@ -771,14 +823,20 @@ static void unwide(vt_term *t, int x, int y)
         mark(t, x + 1, y, x + 2);
     }
 }
+#define unwide(t, x, y)                         \
+    do {                                        \
+        if ((t)->scr[y]->c[x].width != 1)       \
+            unwide_at(t, x, y);                 \
+    } while (0)
 
 /* The renderer's scroll fills the rows it vacates with the default
  * background (the contract in vtengine.h), so blank rows in that colour
  * need no drawing: only a BCE erase in another colour does. */
-static int vacated_default(const vt_term *t)
+static int vacated_default_at(const vt_term *t)
 {
     /* blank_cell's answer without building the cell: it is asked on every
-     * scroll and line clear (S1: a third of a newline's instructions) */
+     * scroll and line clear (S1: a third of a newline's instructions); the
+     * amiga dialect's (always) in place, no call (ASM1) */
     if (t->pers == VT_AMIGA)
         return 1;
     if (t->bg != VT_COLOR_DEFAULT)
@@ -793,14 +851,19 @@ static void damage_rows(vt_term *t, int y0, int y1);
  * instead of being moved on screen -- no drawing in the middle of a
  * write: an insert-line / delete-line pair was two blits of its own each
  * time (conbench insdel-line, 9.5 ms a pair on the stock rig; S1). */
-static void pend_prepare(vt_term *t, int top, int bot, int n)
+static void pend_drop(vt_term *t)
 {
-    if (t->cb.scroll && t->pend_n &&
-        (t->pend_top != top || t->pend_bot != bot || (t->pend_n > 0) != (n > 0))) {
-        t->pend_n = 0;
-        damage_rows(t, t->pend_top, t->pend_bot);
-    }
+    t->pend_n = 0;
+    damage_rows(t, t->pend_top, t->pend_bot);
 }
+/* the test in place, the call only when the pending scroll goes (a pending
+ * scroll exists only with cb.scroll: pend_scroll) -- every newline of
+ * scrolling output asked it (ASM1) */
+#define pend_prepare(t, top, bot, n)                                                                  \
+    do {                                                                                              \
+        if ((t)->pend_n && ((t)->pend_top != (top) || (t)->pend_bot != (bot) || ((t)->pend_n > 0) != ((n) > 0))) \
+            pend_drop(t);                                                                             \
+    } while (0)
 
 /* The rows [top, bot) moved by n (up when n > 0): move their dirty spans
  * with them and remember the pixels owe that scroll (see pend_n). */
@@ -940,7 +1003,7 @@ static void pri_widen(vt_term *t)
  * leaving the top of the primary screen go to the scrollback. */
 static void scroll_up(vt_term *t, int top, int bot, int n)
 {
-    int i, h = bot - top, slide;
+    int i, h = bot - top, slide, to_sb, dflt;
     vt_line *l;
     if (n <= 0 || h <= 0)
         return;
@@ -953,8 +1016,12 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
     slide = slide && t->pri_mem;
     if (top == 0 && t->scr == t->pri) {
         t->scrolled += n;
-        ovf_drop(t); /* above the rows scrolling out: history first */
+        if (t->novf)
+            ovf_drop(t); /* above the rows scrolling out: history first */
     }
+    /* the lines leaving go to the scrollback (the loop keeps scr == pri) */
+    to_sb = top == 0 && t->scr == t->pri && t->pers != VT_AMIGA && t->sb_cap;
+    dflt = vacated_default(t);
     for (i = 0; i < n; i++) {
         vt_line **p = &t->scr[top];
         l = *p;
@@ -973,7 +1040,7 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
                 p[0] = p[1];
 #endif
         }
-        if (top == 0 && t->scr == t->pri && t->pers != VT_AMIGA && t->sb_cap) {
+        if (to_sb) {
             /* Into the scrollback. A full ring hands back its oldest line
              * to become the new blank one, so steady scrolling allocates
              * nothing. */
@@ -991,11 +1058,19 @@ static void scroll_up(vt_term *t, int top, int bot, int n)
             }
             if (blank) { /* no memory: the line is dropped, not saved */
                 t->sb[t->sb_head] = l;
-                t->sb_head = (t->sb_head + 1) % t->sb_cap;
+                if (++t->sb_head == t->sb_cap)
+                    t->sb_head = 0;
                 l = blank;
             }
         }
-        line_clear(t, l, t->cols);
+        if (!l->used && dflt && !l->img && l->n == t->cols) {
+            /* line_clear's first case in place: nothing written since its
+             * last clear (a flood of newlines; ASM1) */
+            l->wrapped = 0;
+            l->dbl = 0;
+        } else {
+            line_clear(t, l, t->cols);
+        }
         l->dx0 = 0x7FFF;
         l->dx1 = 0;
         t->scr[bot - 1] = l;
@@ -1034,6 +1109,7 @@ static void scroll_down(vt_term *t, int top, int bot, int n)
 
 static void erase_cells(vt_term *t, int y, int x0, int x1)
 {
+    vt_line *l;
     x0 = clampi(x0, 0, t->cols);
     x1 = clampi(x1, 0, t->cols);
     if (x0 >= x1)
@@ -1041,6 +1117,42 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
     unwide(t, x0, y);
     if (x1 < t->cols)
         unwide(t, x1 - 1, y);
+    l = t->scr[y];
+    if (x1 == t->cols && !l->img && vacated_default(t)) {
+        /* to the end of the row with the default blank: the cells from
+         * `used` on are that blank already, so only [x0, used) changes --
+         * in its characters alone on a chonly line -- and only that needs
+         * drawing (ASM1: a repaint's CSI K blanked and drew 80 cells
+         * where 50 had text). The row is unused again from x0. */
+        int u = l->used < t->cols ? l->used : t->cols;
+#ifdef VT_CHECK_USED
+        if (l->n == t->cols)
+            check_used(t, l, t->cols);
+#endif
+        l->wrapped = 0;
+        if (u > x0) {
+            if (l->chonly) {
+#ifdef VT_ASM
+                vt_asm_ch_blank(&l->c[x0], u - x0);
+#else
+                int k;
+                for (k = x0; k < u; k++)
+                    l->c[k].ch = ' ';
+#endif
+            } else {
+                cells_blank(t, &l->c[x0], u - x0);
+            }
+            if (l->dx0 > x0)
+                l->dx0 = (short)x0;
+            if (l->dx1 < u)
+                l->dx1 = (short)u;
+            l->used = (vt_u16)x0;
+            t->dirty = 1;
+        }
+        if (!x0)
+            l->chonly = 1; /* (after the blanking) all of it the default blank: [0, used) is empty */
+        return;
+    }
     cells_blank(t, &t->scr[y]->c[x0], x1 - x0);
     if (x1 == t->cols) {
         t->scr[y]->wrapped = 0;
@@ -1064,23 +1176,26 @@ static void erase_rows(vt_term *t, int y0, int y1)
     }
 }
 
-static void home_limits(vt_term *t, int *y0, int *y1)
-{
-    if (t->origin) {
-        *y0 = t->top;
-        *y1 = t->bot - 1;
-    } else {
-        *y0 = 0;
-        *y1 = t->rows - 1;
-    }
-}
-
 static void move_to(vt_term *t, int x, int y)
 {
-    int y0, y1;
-    home_limits(t, &y0, &y1);
-    t->cy = clampi(y, y0, y1);
-    t->cx = clampi(x, 0, row_cols(t, t->cy) - 1);
+    /* home_limits, clampi and row_cols in place: CUP is in every screen
+     * update (ASM1) */
+    int y0 = 0, y1 = t->rows - 1, x1;
+    if (t->origin) {
+        y0 = t->top;
+        y1 = t->bot - 1;
+    }
+    if (y < y0)
+        y = y0;
+    else if (y > y1)
+        y = y1;
+    t->cy = y;
+    x1 = (t->scr[y]->dbl ? (t->cols + 1) / 2 : t->cols) - 1;
+    if (x < 0)
+        x = 0;
+    else if (x > x1)
+        x = x1;
+    t->cx = x;
     t->wrap_pending = 0;
 }
 
@@ -1399,6 +1514,9 @@ static vt_u8 style_index(vt_term *t)
     }
     return 0; /* 255 distinct styles on screen at once: drawn plain */
 }
+/* the cells' ext for the current pen: style_index's first answer (both
+ * default: 0) in place, the call only for a rare style (ASM1) */
+#define pen_ext(t) ((t)->ul == VT_COLOR_DEFAULT && !(t)->font && !(t)->link ? 0 : style_index(t))
 
 vt_color vt_cell_underline_color(const vt_term *t, const vt_cell *c)
 {
@@ -1756,7 +1874,7 @@ static void put_char(vt_term *t, vt_u32 cp)
         index_down(t);
     }
     t->wrap_pending = 0;
-    lc = row_cols(t, t->cy);
+    lc = t->scr[t->cy]->dbl ? (t->cols + 1) / 2 : t->cols; /* row_cols: cy is a row */
     if (w == 2 && t->cx == lc - 1) {
         if (t->autowrap) {
             erase_cells(t, t->cy, t->cx, t->cols);
@@ -1774,7 +1892,7 @@ static void put_char(vt_term *t, vt_u32 cp)
     unwide(t, t->cx, t->cy);
     if (w == 2)
         unwide(t, t->cx + 1, t->cy);
-    c = cell_at(t, t->cx, t->cy);
+    c = &t->scr[t->cy]->c[t->cx];
     c->ch = ch;
     c->fg = t->fg;
     c->bg = t->bg;
@@ -1788,7 +1906,21 @@ static void put_char(vt_term *t, vt_u32 cp)
         c[1].ch = ' ';
         c[1].width = 0;
     }
-    mark(t, t->cx, t->cy, t->cx + w);
+    if (w == 1) {
+        /* mark(), its checks known true for one cell at the cursor */
+        vt_line *l = t->scr[t->cy];
+        int x = t->cx;
+        if (l->dx0 > x)
+            l->dx0 = (short)x;
+        if (l->dx1 < x + 1)
+            l->dx1 = (short)(x + 1);
+        if (l->used < x + 1)
+            l->used = (vt_u16)(x + 1);
+        l->chonly = 0;
+        t->dirty = 1;
+    } else {
+        mark(t, t->cx, t->cy, t->cx + w);
+    }
     t->last_ch = cp;
 
     if (t->cx + w >= lc) {
@@ -2040,19 +2172,11 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
 
 /* ---- CSI dispatch ---------------------------------------------------------- */
 
-static long param(const vt_term *t, int i, long def)
-{
-    if (i >= t->np || t->params[i] == 0)
-        return def;
-    return t->params[i];
-}
-
-static long param0(const vt_term *t, int i)
-{
-    if (i >= t->np)
-        return 0;
-    return t->params[i];
-}
+/* Parameter i, or def when it is missing or 0 (param) / 0 when missing
+ * (param0). Macros: every CSI asks one, and a call cost more than the
+ * test (ASM1); the arguments have no side effects at any use. */
+#define param(t, i, def) ((i) < (t)->np && (t)->params[i] ? (t)->params[i] : (long)(def))
+#define param0(t, i) ((i) < (t)->np ? (t)->params[i] : 0L)
 
 static vt_color ext_colour(vt_term *t, int *i)
 {
@@ -2092,6 +2216,17 @@ static void sgr(vt_term *t)
         sgr_reset(t);
         return;
     }
+    if (t->np == 1 && !t->sub[0] && (vt_u32)(t->params[0] - 30) <= 17 && t->params[0] != 38 && t->params[0] != 39) {
+        /* one colour, 30-37 or 40-47, the commonest SGR: what the loop
+         * below does for it (every personality), without the loop */
+        long p = t->params[0];
+        if (p <= 37)
+            t->fg = (vt_color)(p - 30);
+        else
+            t->bg = (vt_color)(p - 40);
+        t->ext = pen_ext(t);
+        return;
+    }
     if (t->pers == VT_PCANSI) {
         for (i = 0; i < t->np; i++)
             if (t->sub[i])
@@ -2110,14 +2245,23 @@ static void sgr(vt_term *t)
             /* the colours first: they are what an SGR mostly holds, and
              * they sat at the end of the chain below (pcansi has its own
              * 38 / 48 just below) */
-            if (p <= 37)
+            if (p == 38 || p == 48) {
+                vt_color col;
+                if (i + 2 < t->np && t->params[i + 1] == 5) {
+                    col = (vt_color)(t->params[i + 2] & 0xFF); /* 38;5;n, ext_colour's first case in place */
+                    i += 2;
+                } else {
+                    col = ext_colour(t, &i);
+                }
+                if (p == 38)
+                    t->fg = col;
+                else
+                    t->bg = col;
+            } else if (p <= 37) {
                 t->fg = (vt_color)(p - 30);
-            else if (p == 38)
-                t->fg = ext_colour(t, &i);
-            else if (p <= 47)
+            } else {
                 t->bg = (vt_color)(p - 40);
-            else
-                t->bg = ext_colour(t, &i);
+            }
             continue;
         }
         if (t->pers == VT_PCANSI && (p == 2 || p == 21)) {
@@ -2238,7 +2382,7 @@ static void sgr(vt_term *t)
             note_value(t, 'S', p);
         }
     }
-    t->ext = style_index(t);
+    t->ext = pen_ext(t);
 }
 
 static void report_size(vt_term *t);
@@ -5375,69 +5519,189 @@ void vt_set_charset(vt_term *t, enum vt_charset cs)
     t->u_need = 0;
 }
 
-/* Plain printable ASCII in the ground state, the bulk of all output, goes
- * straight into the row: no decoding, one dirty mark per run. Anything that
- * needs put_char's care (the last column and wrapping, wide cells being
- * overwritten, character sets, insert mode) takes the general path. */
-static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
+/* A CR, LF or CR LF (and the LFs after it) at b in the ground state, what
+ * exec_c0 does for them: the bytes taken (at least the first). A run of
+ * newlines is one lf_run. */
+static long newlines(vt_term *t, const vt_u8 *b, long n)
 {
-    vt_cell *c;
-    long k, room;
-    if (t->wrap_pending || t->cx >= row_cols(t, t->cy) - 1)
-        return 0;
-    room = row_cols(t, t->cy) - 1 - t->cx;
-    if (n > room)
-        n = room;
-    c = &t->scr[t->cy]->c[t->cx];
-    if (t->cx >= t->scr[t->cy]->used && t->fg == VT_COLOR_DEFAULT && t->bg == VT_COLOR_DEFAULT && !t->attr &&
-        !t->deco && !t->ext) {
-        /* Plain text into the untouched end of a line: those cells are
-         * default blanks (line_clear, `used`), so only their characters
-         * change -- 2 bytes a cell written instead of 16 (S1; plain lines
-         * on a stock A1200 are bound by these writes to chip RAM). */
-#ifdef VT_ASM
-        k = vt_asm_put_ch(c, b, n);
-#else
-        for (k = 0; k < n && b[k] >= 0x20 && b[k] < 0x7F; k++)
-            c[k].ch = b[k];
-#endif
-    } else
-#ifdef VT_ASM
-    {
-        /* the loop below in assembler (vtengine_68k.s): 14 us a character
-         * in C on a 14 MHz 68020 (S1) */
-        vt_cell p;
-        p.fg = t->fg;
-        p.bg = t->bg;
-        p.ch = 0;
-        p.attr = t->attr;
-        p.width = 1;
-        p.deco = t->deco;
-        p.ext = t->ext;
-        p.pad = 0;
-        k = vt_asm_put_run(c, b, n, &p);
+    long i = 0, k;
+    if (b[0] == 0x0D) {
+        t->cx = 0;
+        t->wrap_pending = 0;
+        if (n < 2 || b[1] != 0x0A)
+            return 1;
+        i = 1;
     }
-#else
-    for (k = 0; k < n; k++) {
-        if (b[k] < 0x20 || b[k] >= 0x7F)
-            break; /* the run of printable ASCII ends: the parser's byte */
-        if (c[k].width != 1 || (t->cx + k + 1 < t->cols && c[k + 1].width == 0))
-            break; /* a wide glyph here: put_char unwides it */
-        c[k].ch = b[k];
-        c[k].fg = t->fg;
-        c[k].bg = t->bg;
-        c[k].attr = t->attr;
-        c[k].deco = t->deco;
-        c[k].ext = t->ext;
-        c[k].pad = 0; /* text over an image cell (the assembler copies the proto's 0) */
-    }
-#endif
-    if (k) {
-        mark(t, t->cx, t->cy, t->cx + (int)k);
-        t->cx += (int)k;
-        t->last_ch = b[k - 1];
-    }
+    for (k = i + 1; k < n && b[k] == 0x0A; k++)
+        ;
+    lf_run(t, k - i);
     return k;
+}
+
+/* Plain printable ASCII in the ground state, the bulk of all output, goes
+ * straight into the row: no decoding, one dirty mark per run. The last
+ * column and the wrap are done here too, as put_char does them for a
+ * plain character (ASM1: a long line paid a whole put_char, decode and
+ * feed at every row's end). Anything that needs put_char's care (wide
+ * cells being overwritten, no autowrap with a wrap pending) ends the run
+ * there; the caller has checked the character set and insert mode, and
+ * says whether the colours and attributes are the default ones (plain).
+ * CR and LF between the runs are taken here too (newlines), so a page of
+ * text is one call. */
+static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
+{
+    long done = 0, k, room, last = -1; /* last: the last character written */
+    for (;;) {
+        vt_line *l;
+        vt_cell *c;
+        int x, x1, lc;
+        if (t->wrap_pending) {
+            if (!t->autowrap)
+                break; /* put_char writes the last column again */
+            t->scr[t->cy]->wrapped = 1;
+            t->cx = 0;
+            index_down(t);
+            t->wrap_pending = 0;
+        }
+        l = t->scr[t->cy];
+        x = t->cx;
+        lc = l->dbl ? (t->cols + 1) / 2 : t->cols; /* row_cols */
+        room = lc - 1 - x;                          /* the run stops short of the last column */
+        if (room > n - done)
+            room = n - done;
+        if (room > 0) {
+            c = &l->c[x];
+            if (plain && x >= l->used) {
+                /* Plain text into the untouched end of a line: those cells
+                 * are default blanks (line_clear, `used`), so only their
+                 * characters change -- 2 bytes a cell written instead of
+                 * 16 (S1; plain lines on a stock A1200 are bound by these
+                 * writes to chip RAM). The line stays chonly: its clear
+                 * resets the characters alone. */
+#ifdef VT_ASM
+                k = vt_asm_put_ch(c, b + done, room);
+#else
+                for (k = 0; k < room && b[done + k] >= 0x20 && b[done + k] < 0x7F; k++)
+                    c[k].ch = b[done + k];
+#endif
+            } else if (room == 1 || b[done + 1] < 0x20 || b[done + 1] >= 0x7F) {
+                /* one character (a colour each, as colour output mostly
+                 * has it): the cell in place -- no proto and no call
+                 * (ASM1: 60 instructions the character through the
+                 * assembler loop) */
+                k = 0;
+                if (c->width == 1 && (x + 1 >= t->cols || c[1].width != 0)) {
+                    c->ch = b[done];
+                    c->fg = t->fg;
+                    c->bg = t->bg;
+                    c->attr = t->attr;
+                    c->deco = t->deco;
+                    c->ext = t->ext;
+                    c->pad = 0;
+                    l->chonly = 0;
+                    k = 1;
+                }
+            } else {
+#ifdef VT_ASM
+                /* the loop below in assembler (vtengine_68k.s): 14 us a
+                 * character in C on a 14 MHz 68020 (S1) */
+                vt_cell p;
+                p.fg = t->fg;
+                p.bg = t->bg;
+                p.ch = 0;
+                p.attr = t->attr;
+                p.width = 1;
+                p.deco = t->deco;
+                p.ext = t->ext;
+                p.pad = 0;
+                k = vt_asm_put_run(c, b + done, room, &p);
+#else
+                const vt_u8 *q = b + done;
+                for (k = 0; k < room; k++) {
+                    if (q[k] < 0x20 || q[k] >= 0x7F)
+                        break; /* the run of printable ASCII ends: the parser's byte */
+                    if (c[k].width != 1 || (x + k + 1 < t->cols && c[k + 1].width == 0))
+                        break; /* a wide glyph here: put_char unwides it */
+                    c[k].ch = q[k];
+                    c[k].fg = t->fg;
+                    c[k].bg = t->bg;
+                    c[k].attr = t->attr;
+                    c[k].deco = t->deco;
+                    c[k].ext = t->ext;
+                    c[k].pad = 0; /* text over an image cell (the assembler copies the proto's 0) */
+                }
+#endif
+                if (k)
+                    l->chonly = 0;
+            }
+            if (!k)
+                break;
+            /* mark(), its checks known true here: y is the cursor's row,
+             * and x < x1 < cols */
+            x1 = x + (int)k;
+            if (l->dx0 > x)
+                l->dx0 = (short)x;
+            if (l->dx1 < x1)
+                l->dx1 = (short)x1;
+            if (l->used < x1)
+                l->used = (vt_u16)x1;
+            t->dirty = 1;
+            t->cx = x = x1;
+            done += k;
+            last = done - 1;
+            if (k < room && b[done] != 0x0D && b[done] != 0x0A)
+                break; /* a byte or a cell for the parser or put_char */
+        }
+        if (done < n && (b[done] == 0x0D || b[done] == 0x0A)) {
+            /* the line ends: on to the next one here (ASM1: a line of
+             * output was two more turns of vt_feed and a call) */
+            done += newlines(t, b + done, n - done);
+            if (done >= n || b[done] < 0x20 || b[done] >= 0x7F)
+                break;
+            continue;
+        }
+        /* the last column: put_char's work for a plain character */
+        if (done >= n || x != lc - 1 || b[done] < 0x20 || b[done] >= 0x7F)
+            break;
+        c = &l->c[x];
+        if (c->width != 1)
+            break; /* half of a wide glyph: put_char unwides it */
+        if (plain && x >= l->used) {
+            c->ch = b[done];
+        } else {
+            c->ch = b[done];
+            c->fg = t->fg;
+            c->bg = t->bg;
+            c->attr = t->attr;
+            c->deco = t->deco;
+            c->ext = t->ext;
+            c->pad = 0;
+            l->chonly = 0;
+        }
+        if (l->dx0 > x)
+            l->dx0 = (short)x;
+        if (l->dx1 < x + 1)
+            l->dx1 = (short)(x + 1);
+        if (l->used < x + 1)
+            l->used = (vt_u16)(x + 1);
+        t->dirty = 1;
+        last = done++;
+        if (t->pers == VT_AMIGA && t->autowrap) {
+            /* the ROM console wraps at once, no deferred wrap */
+            l->wrapped = 1;
+            t->cx = 0;
+            index_down(t);
+        } else {
+            t->wrap_pending = 1;
+        }
+        if (done < n && (b[done] == 0x0D || b[done] == 0x0A))
+            done += newlines(t, b + done, n - done);
+        if (done >= n || b[done] < 0x20 || b[done] >= 0x7F)
+            break;
+    }
+    if (last >= 0)
+        t->last_ch = b[last];
+    return done;
 }
 
 /* "ESC [ parameters final" whole in the buffer, the parameters only
@@ -5448,48 +5712,88 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n)
  * control inside, the sequence cut by the end of the write -- returns 0
  * with nothing changed that the parser's own ESC does not set again.
  * The bytes consumed. */
+#ifdef VT_ASM
+#define csi_scan vt_asm_csi
+#else
+/* csi_fast's parameter scan (vtengine_68k.s has it as vt_asm_csi): the
+ * bytes from p (after "ESC [") are digits, ';' and ':' up to the first
+ * other byte, the final. Their values go to params / sub as feed()'s CSI
+ * states put them: a value saturates at VT_PARAM_MAX, ':' marks the
+ * parameter it starts, parameters past VT_MAX_PARAMS run on into the last.
+ * No parameter: params[0] = sub[0] = 0. np << 16 | the final's offset
+ * from p, or -1 when the n bytes (at most 32767 are looked at) end first.
+ * The parameter being read stays in v until its separator. */
+static long csi_scan(const vt_u8 *p, long n, long *params, vt_u8 *sub)
+{
+    long i, v = 0;
+    int np = 0;
+    if (n > 0x7FFF)
+        n = 0x7FFF;
+    for (i = 0; i < n; i++) {
+        vt_u8 c = p[i];
+        if ((vt_u8)(c - '0') <= 9) {
+            v = v < VT_PARAM_MAX / 10 ? v * 10 + (long)(c - '0') : VT_PARAM_MAX;
+            if (!np) {
+                np = 1;
+                sub[0] = 0;
+            }
+        } else if (c == ';' || c == ':') {
+            if (!np) {
+                np = 1;
+                sub[0] = 0;
+            }
+            params[np - 1] = v;
+            if (np < VT_MAX_PARAMS) {
+                sub[np] = (vt_u8)(c == ':');
+                np++;
+                v = 0;
+            } /* else: more digits go on into the last one, as feed() */
+        } else {
+            if (np) {
+                params[np - 1] = v;
+            } else {
+                params[0] = 0;
+                sub[0] = 0;
+            }
+            return (long)np << 16 | i;
+        }
+    }
+    return -1;
+}
+#endif
+
 static long csi_fast(vt_term *t, const vt_u8 *b, long len)
 {
-    long j = 2, v;
-    int np = 0;
+    long r;
+    int np;
     vt_u8 c;
     if (len < 3 || b[1] != '[')
         return 0;
-    clear_params(t);
-    for (;;) {
-        if (j >= len)
-            return 0;
-        c = b[j];
-        if (c >= '0' && c <= '9') {
-            if (!np)
-                np = 1;
-            v = t->params[np - 1];
-            t->params[np - 1] = v < VT_PARAM_MAX / 10 ? v * 10 + (long)(c - '0') : VT_PARAM_MAX;
-        } else if (c == ';' || c == ':') {
-            if (!np)
-                np = 1;
-            if (np < VT_MAX_PARAMS) {
-                t->params[np] = 0;
-                t->sub[np] = (vt_u8)(c == ':');
-                np++;
-            }
-        } else {
-            break;
-        }
-        j++;
-    }
+    r = csi_scan(b + 2, len - 2, t->params, t->sub);
+    if (r < 0)
+        return 0;
+    np = (int)(r >> 16);
+    r = 2 + (r & 0xFFFF); /* the final's offset from ESC */
+    c = b[r];
     if (c < 0x40 || c > 0x7E)
         return 0;
+    /* clear_params' work, now that the sequence is known whole */
     t->np = np;
+    t->have = 0;
+    t->priv = 0;
+    t->inter = 0;
+    t->ninter = 0;
     t->csi8 = 0;
-    /* the state is ground, as after the final byte. An xterm SGR (no
-     * private marker, no intermediate here) is csi_xterm's last case:
-     * straight to it */
-    if (c == 'm' && t->pers == VT_XTERM)
+    /* the state is ground, as after the final byte. With no private marker
+     * and no intermediate every personality takes SGR, CUP and the erases
+     * to the same place: straight there */
+    if (c == 'm')
         sgr(t);
+    else if (c == 'H' || c == 'K' || c == 'J' || c == 'f')
+        csi_common(t, c);
     else
         csi_dispatch(t, c);
-    return j + 1;
+    return r + 1;
 }
 
 void vt_write(vt_term *t, const vt_u8 *buf, long len)
@@ -5503,51 +5807,104 @@ void vt_flush(vt_term *t)
     flush(t);
 }
 
+/* A printable character of U+00A0 and up whole at b, in the ground state:
+ * its code point in *cp and its length in bytes; 0 when it is anything
+ * else (a C1 control, a cut or bad UTF-8 sequence, a surrogate), which
+ * decode() and feed() take as before. decode -> feed -> put_char cost
+ * three calls and a personality switch for every byte of it (ASM1:
+ * UPDemo's half blocks, three UTF-8 bytes a cell). */
+static int fast_cp(const vt_term *t, const vt_u8 *b, long len, vt_u32 *cp)
+{
+    vt_u32 v;
+    vt_u8 c0 = b[0];
+    if (t->pers == VT_PCANSI || (t->pers == VT_XTERM && t->cp437)) {
+        if (c0 < 0x80 || c0 == 0x9B)
+            return 0;
+        *cp = cp437_hi[c0 - 0x80];
+        return *cp >= 0xA0;
+    }
+    if (t->pers == VT_AMIGA || !t->utf8) { /* Latin-1 */
+        *cp = c0;
+        return c0 >= 0xA0;
+    }
+    if ((c0 & 0xE0) == 0xC0 && c0 >= 0xC2) {
+        if (len < 2 || (b[1] & 0xC0) != 0x80)
+            return 0;
+        v = ((vt_u32)(c0 & 0x1F) << 6) | (b[1] & 0x3F);
+        if (v < 0xA0)
+            return 0;
+        *cp = v;
+        return 2;
+    }
+    if ((c0 & 0xF0) == 0xE0) {
+        if (len < 3 || (b[1] & 0xC0) != 0x80 || (b[2] & 0xC0) != 0x80)
+            return 0;
+        v = ((vt_u32)(c0 & 0x0F) << 12) | ((vt_u32)(b[1] & 0x3F) << 6) | (b[2] & 0x3F);
+        if (v < 0xA0 || (v >= 0xD800 && v <= 0xDFFF))
+            return 0;
+        *cp = v;
+        return 3;
+    }
+    return 0;
+}
+
 void vt_feed(vt_term *t, const vt_u8 *buf, long len)
 {
-    long i = 0;
+    long i = 0, k;
+    /* what put_ascii_run may do, worked out once and kept while only text,
+     * CR and LF go by (none of them changes it): -1 not known, 0 printable
+     * ASCII needs put_char (a character set, insert mode, SO), 1 it may
+     * run, 2 it may run and the colours are the default ones (ASM1: the
+     * five tests a run cost 17 instructions, twice a line) */
+    int text = -1;
     while (i < len) {
         vt_u8 b = buf[i];
         if (b != 0x09)
             t->tab_end = 0; /* only a tab right after a tab keeps it */
-        if (b >= 0x20 && b < 0x7F) {
-            if (t->state == S_GROUND && !t->u_need && !t->insert && !t->single_shift &&
-                t->charset[t->gl] == 'B' && !t->amiga_msb) {
-                long k = put_ascii_run(t, buf + i, len - i); /* as far as printable ASCII and the row go */
+        if (t->state == S_GROUND && !t->u_need) {
+            /* the ground state's common bytes straight to their action
+             * (S1): decode -> feed -> put_char / exec_c0 cost three calls
+             * and a personality switch a byte */
+            if (b >= 0x20) {
+                if (b < 0x7F) {
+                    if (text < 0) /* (or-ed, not ||: one branch each instead of nine) */
+                        text = (t->insert | t->single_shift | t->amiga_msb) || t->charset[t->gl] != 'B' ? 0
+                             : ((t->fg ^ VT_COLOR_DEFAULT) | (t->bg ^ VT_COLOR_DEFAULT) | t->attr | t->deco | t->ext) ? 1
+                             : 2;
+                    if (text) {
+                        k = put_ascii_run(t, buf + i, len - i, text == 2); /* as far as printable ASCII goes */
+                        if (k) {
+                            i += k;
+                            continue;
+                        }
+                    }
+                } else if (b >= 0x80) {
+                    vt_u32 cp;
+                    int m = fast_cp(t, buf + i, len - i, &cp);
+                    if (m) {
+                        put_char(t, cp); /* (it ends a single shift) */
+                        text = -1;
+                        i += m;
+                        continue;
+                    }
+                }
+            } else if (b == 0x0D || b == 0x0A) {
+                i += newlines(t, buf + i, len - i); /* CR LF in one turn */
+                continue;
+            } else if (b == 0x1B) {
+                k = csi_fast(t, buf + i, len - i);
                 if (k) {
+                    text = -1;
                     i += k;
                     continue;
                 }
-            } else if (t->state == S_SIXEL && !t->str_esc && !t->u_need) {
-                i += sixel_run(t, buf + i, len - i); /* image data: at least this byte */
-                continue;
             }
-        }
-        if ((b == 0x0D || b == 0x0A) && t->state == S_GROUND && !t->u_need) {
-            /* CR and LF straight to their action: every line of output
-             * has them, and decode -> feed -> exec_c0 cost three calls
-             * and a personality switch each (S1) */
-            if (b == 0x0D) {
-                t->cx = 0;
-                t->wrap_pending = 0;
-                i++;
-            } else {
-                long k = 1;
-                while (i + k < len && buf[i + k] == 0x0A)
-                    k++;
-                lf_run(t, k);
-                i += k;
-            }
+        } else if (t->state == S_SIXEL && b >= 0x20 && b < 0x7F && !t->str_esc && !t->u_need) {
+            i += sixel_run(t, buf + i, len - i); /* image data: at least this byte */
             continue;
         }
-        if (b == 0x1B && t->state == S_GROUND && !t->u_need) {
-            long k = csi_fast(t, buf + i, len - i);
-            if (k) {
-                i += k;
-                continue;
-            }
-        }
         decode(t, b);
+        text = -1;
         i++;
     }
 }
@@ -5591,6 +5948,7 @@ static int rw_row(vt_rewrap *w)
         return 0;
     line_clear(w->t, l, w->cols);
     l->used = (vt_u16)w->cols; /* the cells copied in are not marked one by one */
+    l->chonly = 0;
     w->out[w->ny] = l;
     return 1;
 }
@@ -5719,6 +6077,7 @@ static int reflow_pass(vt_term *t, vt_line **old, int nold, int oc, vt_line **ou
                     blank_cell(t, &l->c[cols - 1]);
                 l->dbl = old[s]->dbl;
                 l->used = (vt_u16)cols;
+                l->chonly = 0;
                 l->mark = old[s]->mark;
                 out[w.ny] = l;
             }
