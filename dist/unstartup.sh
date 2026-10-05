@@ -1,14 +1,17 @@
-# UP-Term: S:User-Startup without the blocks Install added (between the
-# ;BEGIN UP-Term and ;END UP-Term lines, and the console and device ones:
-# ;BEGIN UP-Term console / device / tmp / serial / wasabi, ;END ...), into T:User-Startup.up-term.
+# UP-Term: S:User-Startup without the blocks Install added, into
+# T:User-Startup.up-term. A block runs from ";BEGIN UP-Term" or
+# ";BEGIN UP-Term <name>" to the matching ";END UP-Term[ <name>]". Any name
+# matches, not a fixed list: an older copy of this script in ENVARC:up-term
+# must still remove the blocks a newer kit wrote (the Replay kept
+# ";BEGIN UP-Term python" after an Uninstall whose script predated it).
 # Uninstall runs it with vsh and copies the result back; every other line
 # stays byte for byte (no field splitting, no backslash processing).
 IFS=''
 skip=0
 while read -r l; do
     case "$l" in
-    ';BEGIN UP-Term'|';BEGIN UP-Term console'|';BEGIN UP-Term device'|';BEGIN UP-Term tmp'|';BEGIN UP-Term serial'|';BEGIN UP-Term wasabi'|';BEGIN UP-Term python') skip=1 ;;
-    ';END UP-Term'|';END UP-Term console'|';END UP-Term device'|';END UP-Term tmp'|';END UP-Term serial'|';END UP-Term wasabi'|';END UP-Term python') skip=0 ;;
+    ';BEGIN UP-Term'|';BEGIN UP-Term '*) skip=1 ;;
+    ';END UP-Term'|';END UP-Term '*) skip=0 ;;
     *) if [ "$skip" = 0 ]; then printf '%s\n' "$l"; fi ;;
     esac
 done <S:User-Startup >T:User-Startup.up-term

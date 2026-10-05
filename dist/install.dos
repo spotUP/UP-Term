@@ -62,6 +62,10 @@ Delete >NIL: ENVARC:terminfo/v/vtcon ENV:terminfo/v/vtcon QUIET
 Delete >NIL: ENVARC:terminfo/v ENVARC:terminfo ENV:terminfo/v ENV:terminfo QUIET
 Delete >NIL: ENVARC:termcap.vtcon ENV:termcap.vtcon QUIET
 MakeDir >NIL: ENVARC:up-term ENVARC:up-term/terminfo
+; Uninstall's S:User-Startup filter first, before any block goes in: an
+; Install cut short (the Replay lost its network mid-Install) still leaves
+; the script that takes its blocks out again
+Copy unstartup.sh ENVARC:up-term/unstartup.sh CLONE
 Copy terminfo ENVARC:up-term/terminfo ALL CLONE QUIET
 ; colour themes for UP-Term Prefs' Theme... requester (one profile section
 ; each; ENVARC:up-term goes whole at Uninstall)
@@ -423,7 +427,6 @@ EndIf
 ; every boot from its own marked block in S:User-Startup, and now. Not on
 ; AmigaOS 3.2 yet: its Shell needs medium mode (UPConsole refuses there).
 Copy UPConsole C:UPConsole CLONE
-Copy unstartup.sh ENVARC:up-term/unstartup.sh CLONE
 Version >NIL: dos.library 47
 If WARN
   Set upcon "{CONSOLE}"

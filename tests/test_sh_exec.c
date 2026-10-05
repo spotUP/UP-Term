@@ -758,7 +758,7 @@ static void vshrc_unix_names(void)
     CHECK_STR(with_vshrc("touch new"), "<touch><new>\n");
     CHECK_STR(with_vshrc("echo '  x y' | cat"), "  x y\n");  /* the command, not a function over Type */
     /* the Unix $PATH: UP-Term's bin first, kept when the user set one */
-    CHECK_STR(with_vshrc("echo $PATH"), "/SYS/UP-Term/bin:/gg/bin:/c\n");
+    CHECK_STR(with_vshrc("echo $PATH"), "/SYS/UP-Term/bin:/SYS/UP-Term/Python3/bin:/SYS/UP-Term/nvim/bin:/gg/bin:/c\n");
     vshrc_pre = "PATH=/mine";
     CHECK_STR(with_vshrc("echo $PATH"), "/mine\n");
     vshrc_pre = 0;
@@ -925,6 +925,32 @@ static void a_unix_absolute_name_maps_to_its_volume(void)
     CHECK(!sh_unix_root("/a/very/long/name/here", out, 8)); /* does not fit */
 }
 
+/* Uninstall runs dist/unstartup.sh with vsh to take Install's blocks out of
+ * S:User-Startup. The Replay kept ";BEGIN UP-Term python" after an
+ * Uninstall: the script it ran (an older copy in ENVARC:up-term) listed the
+ * block names it knew. Every ";BEGIN UP-Term <name>" block goes, a name no
+ * kit has used yet included; the user's own lines stay byte for byte. */
+static void uninstall_removes_every_up_term_block(void)
+{
+    FILE *f = fopen("dist/unstartup.sh", "rb");
+    char script[4096];
+    char text[8192];
+    size_t n;
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    n = fread(script, 1, sizeof(script) - 1, f);
+    fclose(f);
+    script[n] = 0;
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' 'Run >NIL: amiagent TOKEN=x' ';BEGIN UP-Term' 'Assign GG: SYS:UP-Term' ';END UP-Term'"
+             " ';BEGIN UP-Term python' 'Assign Python3: SYS:UP-Term/Python3' ';END UP-Term python'"
+             " ';BEGIN UP-Term future' 'C:Future' ';END UP-Term future'"
+             " ';BEGIN UP-Terminal' '  spaced \\\\ line  ' >S:User-Startup\n"
+             "%s\ncat <T:User-Startup.up-term\n", script);
+    CHECK_STR(run(text), "Run >NIL: amiagent TOKEN=x\n;BEGIN UP-Terminal\n  spaced \\\\ line  \n");
+}
+
 void suite_sh_exec(void)
 {
     a_unix_absolute_name_maps_to_its_volume();
@@ -947,5 +973,6 @@ void suite_sh_exec(void)
     command_skips_functions();
     deep_recursion();
     word_lists();
+    uninstall_removes_every_up_term_block();
     sh_shell_free(&sh);
 }
