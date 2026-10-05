@@ -2364,6 +2364,74 @@ static void test_fetch_screen(void)
     cs_close();
 }
 
+/* WebSearch on the screen (rig run 2026-10-05, claude_rig2): it asks first,
+ * as Claude Code does, and a prompt typed while the question is open
+ * answers it (its Enter is the "Yes": the rig's lost "fetch the page").
+ * Answered, the search is one "Web Search("query")" line with the tool's
+ * result under it: the search's own request (api_send) draws nothing (its
+ * server_tool_use and result were drawn a second time, as a header and a
+ * result of their own). The prompt after the turn goes out. */
+static int ws_head, ws_plain, ws_server_result;
+static char ws_under[200];
+
+static void ws_look(void)
+{
+    if (cs.next != 2)
+        return;                     /* the turn is over, the next prompt not typed yet */
+    ws_head = cs_find(SB " Web Search(\"Amiga 1200 accelerator cards\")");
+    ws_plain = cs_find("Web Search(Amiga");
+    ws_server_result = cs_find("Did 1 search: 2 results");
+    cl_copy(ws_under, ws_head >= 0 ? cs_row(ws_head + 1) : "", sizeof(ws_under));
+}
+
+static void test_websearch_screen(void)
+{
+    static const char *keys[] = { "search the web\r", "\r", "the next prompt\r", "/exit\r", 0 };
+    static cl_repl r;
+    stub_reset();
+    add_stream("tool_websearch.sse");
+    add_stream("websearch.sse");
+    add_stream("tool_final.sse");
+    add_stream("text.sse");
+    cs_open(80, 24, keys);
+    cs.before_read = ws_look;
+    ws_head = ws_plain = ws_server_result = -2;
+    ws_under[0] = 0;
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    cs.before_read = 0;
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, 4);
+    /* the question came; its Enter let the search run */
+    CHECK(strstr(cs.sent.p, "Do you want to allow this?") != 0);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq < 2 || strstr(sb.body[1], "You are an assistant for performing a web search tool use.") != 0);
+    /* one header, quoted, with the tool's result under it; nothing of the
+     * search's own request drawn */
+    CHECK(ws_head >= 0);
+    CHECK_STR(ws_under, "  " SC "  Did 1 search");
+    CHECK_INT(ws_plain, -1);
+    CHECK_INT(ws_server_result, -1);
+    /* the prompt after the turn went out */
+    CHECK(sb.nreq < 4 || strstr(sb.body[3], "{\"type\":\"text\",\"text\":\"the next prompt\"}") != 0);
+    repl_free(&r);
+    cs_close();
+}
+
 /* ---- A4 gaps (thoughts/shared/plans/2026-10-05-a4-gaps-progress.md) ---- */
 
 static int count_of(const char *s, const char *what)
@@ -5139,6 +5207,7 @@ void suite_claude_repl(void)
     test_wp4();
     test_wiring();
     test_fetch_screen();
+    test_websearch_screen();
     test_gaps_print();
     test_gaps_verbose();
     test_gaps_commands();

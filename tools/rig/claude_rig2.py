@@ -139,6 +139,8 @@ def main():
         check('@ attaches the file', len(b) > n and 'claude-test.txt' in b[-1] and 'hello' in b[-1])
         # new tools, by eye and by request
         line('search the web', 12)
+        shot('websearch-ask')
+        key(RET, wait=12)  # WebSearch asks first, as Claude Code does: Yes (unanswered, the next prompt's Enter did)
         shot('websearch')
         line('fetch the page', 15)
         shot('webfetch-ask')
@@ -166,6 +168,7 @@ def main():
         check('CONTINUE carries the last session', len(b) > n and len(msgs) > 3, len(msgs))
         key(UP, wait=1)
         shot('history-up')
+        key(0x16, 0x0008)  # Ctrl+U: the recalled prompt out of the box, or /exit is sent as "hello/exit"
         line('/exit', 3)
     finally:
         fx.terminate()

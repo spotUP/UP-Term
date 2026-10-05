@@ -2451,8 +2451,12 @@ static void arg_kv(jw *w, jv in, const char *key, const char *label)
     if (w->n)
         jw_rawz(w, ", ");
     if (label) {
-        jw_rawz(w, label);
-        jw_rawz(w, ": \"");
+        /* "" quotes the value without a name (WebSearch's "query") */
+        if (*label) {
+            jw_rawz(w, label);
+            jw_rawz(w, ": ");
+        }
+        jw_rawz(w, "\"");
     }
     jw_raw(w, s, l);
     if (label)
@@ -2502,7 +2506,7 @@ char *tools_args(int tool, const char *in, long inn)
             arg_kv(&w, v, "command", 0);
             break;
         case T_WEB_SEARCH:
-            arg_kv(&w, v, "query", 0);
+            arg_kv(&w, v, "query", "");     /* Claude Code: Web Search("query") */
             break;
         case T_TASK_STOP:
             arg_kv(&w, v, "task_id", 0);
