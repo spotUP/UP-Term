@@ -1044,6 +1044,21 @@ static const char recap_ask[] =
     "In one line of at most twenty words, recap this session so far: what we are doing and where it stands. "
     "Answer with that line only.";
 
+int slash_recap(cl_repl *r, jw *out)
+{
+    long k;
+    if (repl_side(r, 0, r->conv.n, recap_ask, out))
+        return -1;
+    for (k = 0; k < out->n; k++)
+        if (out->p[k] == '\n')
+            out->p[k] = ' ';
+    if (out->n > 400) {
+        out->n = 400;               /* Claude Code caps a recap at 400 characters */
+        out->p[400] = 0;
+    }
+    return 0;
+}
+
 static void recap(cl_repl *r)
 {
     jw a;
@@ -1052,13 +1067,8 @@ static void recap(cl_repl *r)
         return;
     }
     jw_init(&a);
-    if (repl_side(r, 0, r->conv.n, recap_ask, &a) == 0) {
-        long k;
-        for (k = 0; k < a.n; k++)
-            if (a.p[k] == '\n')
-                a.p[k] = ' ';
+    if (slash_recap(r, &a) == 0)
         line2(r, "Recap: ", a.p);
-    }
     jw_free(&a);
 }
 

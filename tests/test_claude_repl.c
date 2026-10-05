@@ -5077,8 +5077,65 @@ static void test_gaps3_suggest(void)
     cs_close();
 }
 
+/* G10: after three prompts, three minutes with no key (the terminal never
+ * reported its focus): the recap, made in the background, once; a fourth
+ * idle minute makes no second one */
+static void g3_away_clock(void)
+{
+    if (cs.next >= 3 && cs.script[cs.next] && !cs.script[cs.next][0])
+        cs.clock += 61000;          /* each empty read: a minute and a bit */
+}
+
+static void test_gaps3_recap(void)
+{
+    static const char *keys[] = { "one\r", "two\r", "three\r", "", "", "", "", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "1", 1);
+    g3_screen(&r, keys, "g3recap", root);
+    add_answer(0, 0, 0, "1");
+    add_answer(0, 0, 0, "2");
+    add_answer(0, 0, 0, "3");
+    add_answer(0, 0, 0, "We counted to three.");
+    CHECK_INT(repl_screen(&r), 0);
+    cs.before_read = g3_away_clock;
+    repl_run(&r);
+    cs.before_read = 0;
+    setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "0", 1);
+    g3_dump();
+    CHECK_INT(cs.next, 8);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq == 4 && strstr(sb.body[3], "recap this session so far") != 0);
+    CHECK_INT((int)r.n_recaps, 1);
+    CHECK(cs_find("Recap: We counted to three.") >= 0);
+    repl_free(&r);
+    cs_close();
+    {
+        /* the window reports it has the focus: the user is there, no recap */
+        static const char *k2[] = { "one\r", "two\r", "three\r", "\033[I", "", "", "", "/exit\r", 0 };
+        stub_reset();
+        setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "1", 1);
+        g3_screen(&r, k2, "g3recap", root);
+        add_answer(0, 0, 0, "1");
+        add_answer(0, 0, 0, "2");
+        add_answer(0, 0, 0, "3");
+        CHECK_INT(repl_screen(&r), 0);
+        cs.before_read = g3_away_clock;
+        repl_run(&r);
+        cs.before_read = 0;
+        setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "0", 1);
+        CHECK_INT(cs.next, 8);
+        CHECK_INT(sb.nreq, 3);
+        CHECK_INT((int)r.n_recaps, 0);
+        repl_free(&r);
+        cs_close();
+    }
+}
+
 static void test_gaps3(void)
 {
+    test_gaps3_recap();
     test_gaps3_suggest();
     test_gaps3_afk();
     test_gaps3_agent_mention();

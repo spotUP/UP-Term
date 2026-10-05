@@ -228,6 +228,9 @@ typedef struct cl_repl {
     long last_cache_r;          /* the last answer's cache_read_input_tokens (0: cold, no suggestion) */
     long sugg_at;               /* n_responses when a suggestion was last asked for */
     long n_suggested;           /* the tests' sentinel: suggestions shown */
+    long away_resp, recap_resp; /* the away recap: n_responses seen, n_responses recapped */
+    unsigned long away_t0;      /* when the last answer was seen */
+    long n_recaps;              /* the tests' sentinel: away recaps shown */
     char *extra_body;           /* CLAUDE_CODE_EXTRA_BODY: a JSON object merged into every request */
     int no_compact;             /* DISABLE_COMPACT */
     int compact_pct;            /* CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (lower only), CL_COMPACT_PCT */

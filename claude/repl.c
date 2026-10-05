@@ -1598,6 +1598,60 @@ static void screen_suggest(cl_repl *r)
     jw_free(&a);
 }
 
+/* The session recap after being away (A4 gaps 3, Claude Code's): three
+ * minutes after the last answer, the terminal unfocused (or, where it never
+ * reported its focus, three minutes without a key), a session of three
+ * prompts or more, never twice without a turn between: /recap's line made
+ * in the background and shown, ready for the user's return.
+ * awaySummaryEnabled / CLAUDE_CODE_ENABLE_AWAY_SUMMARY (0 off, 1 on). */
+#define AWAY_MS 180000UL
+
+static int away_on(cl_repl *r)
+{
+    char v[16];
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_ENABLE_AWAY_SUMMARY", v, sizeof(v)) > 0) {
+        if (!strcmp(v, "0") || !strcmp(v, "false"))
+            return 0;
+        if (!strcmp(v, "1") || !strcmp(v, "true"))
+            return 1;
+    }
+    return r->cfg.away_summary != 0;
+}
+
+static void away_recap(cl_repl *r)
+{
+    unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    int m[3];
+    jw a;
+    if (r->n_responses != r->away_resp) {
+        r->away_resp = r->n_responses;      /* a turn ended: the time away counts from here */
+        r->away_t0 = now;
+        return;
+    }
+    if (!r->tui || !r->n_responses || r->recap_resp == r->n_responses || now - r->away_t0 < AWAY_MS ||
+        r->tui->focus == 1 || (r->tui->focus < 0 && now - r->tui->key_ms < AWAY_MS) || !away_on(r) ||
+        repl_prompts(r, m, 3) < 3)
+        return;
+    r->recap_resp = r->n_responses;
+    jw_init(&a);
+    r->ui.bg = 1;
+    if (slash_recap(r, &a) == 0) {
+        r->ui.bg = 0;
+        repl_say(r, "Recap: ", a.p);
+        r->n_recaps++;
+    }
+    r->ui.bg = 0;
+    jw_free(&a);
+}
+
+/* while the screen waits for keys: the status line's schedule, the recap */
+static void screen_idle(void *u)
+{
+    cl_repl *r = (cl_repl *)u;
+    pol_status_tick(u);
+    away_recap(r);
+}
+
 int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
 {
     cl_conv c;
@@ -2294,7 +2348,7 @@ int repl_screen(cl_repl *r)
     t->status = r->status_text;     /* the statusLine command's row(s) */
     t->status_pad = r->cfg.status_pad;
     t->hide_vim = r->cfg.hide_vim;
-    t->idle = pol_status_tick;
+    t->idle = screen_idle;          /* the status line's schedule, the away recap (A4 gaps 3) */
     t->iu = r;
     t->wake = sched_tui_wake;       /* A4 gaps 2: a scheduled turn while the screen waits */
     show_init(s, t);
