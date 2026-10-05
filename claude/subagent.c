@@ -49,20 +49,35 @@ static int provided(const cl_tools *t, const cl_agent **list)
     return t->ext && t->ext->agents ? t->ext->agents(t->ext->u, list) : 0;
 }
 
+/* a built-in hidden by a provided agent of its name (Claude Code: the
+ * built-ins come last) */
+static int hidden(const cl_agent *l, int n, int b)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (cl_strieq(l[i].name, builtins[b].name))
+            return 1;
+    return 0;
+}
+
 int agent_count(const cl_tools *t)
 {
     const cl_agent *l;
-    return NBUILTIN + provided(t, &l);
+    int n = provided(t, &l), b, k = n;
+    for (b = 0; b < NBUILTIN; b++)
+        k += !hidden(l, n, b);
+    return k;
 }
 
+/* the built-ins (those not hidden) first, then the provided ones */
 const cl_agent *agent_get(const cl_tools *t, int i)
 {
     const cl_agent *l;
-    int n = provided(t, &l);
-    if (i < NBUILTIN)
-        return &builtins[i];
-    i -= NBUILTIN;
-    return i < n ? &l[i] : 0;
+    int n = provided(t, &l), b;
+    for (b = 0; b < NBUILTIN; b++)
+        if (!hidden(l, n, b) && i-- == 0)
+            return &builtins[b];
+    return i >= 0 && i < n ? &l[i] : 0;
 }
 
 const char *agent_model_id(const char *a)
@@ -182,8 +197,8 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
     cl_tools child;
     cl_conv c;
     cl_opts o;
-    jw body, content, sys, final;
-    int i, n, round, uses = 0, ok = 0;
+    jw body, content, sys, final, extra;
+    int i, n, round, uses = 0, ok = 0, stops = 0;
     long pn = 0;
     unsigned long mask;
     const char *model;
@@ -192,6 +207,7 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
     jw_init(&content);
     jw_init(&sys);
     jw_init(&final);
+    jw_init(&extra);
     conv_init(&c);
     memset(&child, 0, sizeof(child));
     if (!desc || !prompt || !type || !alias) {
@@ -290,19 +306,41 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
             continue;               /* the server's own tool loop goes on */
         }
         if (!ntools) {
+            jw why;
+            int again;
+            jw_init(&why);
+            /* a SubagentStop hook may send it on (Claude Code's exit 2) */
+            again = stops < 3 && t->agent_stop && t->agent_stop(t->u, a->name, stops > 0, &why);
+            if (again && !why.oom && conv_add_user_text(&c, why.p, why.n) == 0) {
+                stops++;
+                jw_free(&why);
+                stream_free(&st);
+                continue;
+            }
+            jw_free(&why);
             answer_text(&st, &final);
             stream_free(&st);
             ok = 1;
             break;
         }
         jw_reset(&content);
+        jw_reset(&extra);
         jw_raw(&content, "[", 1);
         for (k = 0; k < ntools; k++) {
             sblock *b = stream_tool(&st, k);
             if (k)
                 jw_raw(&content, ",", 1);
-            tools_run(&child, b->id, b->name, b->input_ok, b->a.p, b->a.n, &content);
+            /* the policy (rules, hooks, checkpoints) as for the conversation's calls */
+            if (t->call)
+                t->call(t->u, &child, b->id, b->name, b->input_ok, b->a.p, b->a.n, &content, &extra);
+            else
+                tools_run(&child, b->id, b->name, b->input_ok, b->a.p, b->a.n, &content);
             uses++;
+        }
+        if (extra.n) {
+            jw_rawz(&content, ",{\"type\":\"text\",\"text\":");
+            jw_str(&content, extra.p, extra.n);
+            jw_raw(&content, "}", 1);
         }
         jw_raw(&content, "]", 1);
         stream_free(&st);
@@ -339,6 +377,7 @@ done:
     jw_free(&content);
     jw_free(&sys);
     jw_free(&final);
+    jw_free(&extra);
     free(desc);
     free(prompt);
     free(type);

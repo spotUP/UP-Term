@@ -86,9 +86,20 @@ typedef struct cl_repl {
     char *todos;                /* the last todo_write input (/todos) */
     char keybuf[512];           /* a key from /login */
     int await_key;              /* the next line typed is the key (/login) */
-    char status_text[160];      /* the statusLine command's last output, for the status line */
-    void (*bg_list)(void *u, char *out, long cap);  /* /tasks: WP2's background shells */
-    void *bg_u;
+    char status_text[512];      /* the statusLine command's last output (its lines, SGR kept):
+                                 * the footer's own row(s) above the status line */
+    unsigned long status_ms;    /* when it last ran (io->ms), 0 never */
+    int status_due;             /* an event asked for a run the 300 ms throttle held back */
+    int status_mode, status_vim;    /* the permission mode and vim state it last saw */
+    long n_status_runs;         /* the tests' sentinel */
+    /* the extensions WP2's Task / Skill / SlashCommand tools see (ext.h),
+     * built from defs at each repl_load (policy.c) */
+    cl_ext ext;
+    cl_agent *x_agents;
+    cl_skill *x_skills;
+    cl_command *x_cmds;
+    int nx_agents, nx_skills, nx_cmds;
+    cl_tools *at;               /* the tools whose call runs now: the conversation's or a subagent's */
     long n_rule_allow, n_rule_deny, n_cmds_run;     /* the tests' sentinels */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];

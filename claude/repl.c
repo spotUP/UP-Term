@@ -364,10 +364,12 @@ static int request(cl_repl *r, const char *body, long bn)
 
 /* ---- a turn ---- */
 
+/* the callbacks below serve the conversation's tools and a subagent's:
+ * r->at is the one whose call runs (pol_call sets it) */
 static void tool_show(void *u, const char *tool, const char *what)
 {
     cl_repl *r = (cl_repl *)u;
-    ui_tool(&r->ui, r->tools.cur, tool, what, r->tools.cur_in, r->tools.cur_inn);
+    ui_tool(&r->ui, r->at->cur, tool, what, r->at->cur_in, r->at->cur_inn);
 }
 
 static int tool_ask(void *u, const char *tool, const char *what, int outside)
@@ -382,7 +384,7 @@ static int tool_ask(void *u, const char *tool, const char *what, int outside)
     cl_copy(m, "Claude needs your permission to use ", sizeof(m));
     cl_cat(m, cfg_cc_tool(tool), sizeof(m));
     pol_notify(r, m);
-    return ui_ask(&r->ui, r->tools.cur, tool, what, outside);
+    return ui_ask(&r->ui, r->at->cur, tool, what, outside);
 }
 
 static void tool_preview(void *u, int tool, const char *path, const char *before, long bn, const char *after,
@@ -404,7 +406,11 @@ static void tool_result(void *u, int tool, const char *in, long inn, int is_erro
             r->todos = t;
         }
     }
+    if (r->show)
+        r->show->brief = r->at->brief;
     ui_result(&r->ui, tool, in, inn, is_error, text, n);
+    if (r->show)
+        r->show->brief = 0;
 }
 
 static int tool_choose(void *u, const char *header, const char *question, const char *const *labels,
@@ -488,7 +494,6 @@ static void session_save(cl_repl *r)
 {
     if (r->conv.n)
         sess_save(&r->sess, &r->conv);
-    pol_statusline(r);
 }
 
 void repl_saved(cl_repl *r)
@@ -508,14 +513,9 @@ static int run_tools(cl_repl *r, int ntools, jw *content)
     jw_raw(content, "[", 1);
     for (i = 0; i < ntools; i++) {
         sblock *t = stream_tool(&r->st, i);
-        long at;
         if (i)
             jw_raw(content, ",", 1);
-        at = content->n;
-        if (!pol_pre(r, t->id, t->name, t->input_ok, t->a.p, t->a.n, content))
-            tools_run(&r->tools, t->id, t->name, t->input_ok, t->a.p, t->a.n, content);
-        r->rule_now = RULE_NONE;
-        pol_post(r, t->name, t->input_ok, t->a.p, t->a.n, content->p + at, content->n - at, &extra);
+        pol_call(r, &r->tools, t->id, t->name, t->input_ok, t->a.p, t->a.n, content, &extra);
     }
     if (extra.n) {
         jw_rawz(content, ",{\"type\":\"text\",\"text\":");
@@ -540,6 +540,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     cl_opts o;
     jw body, content;
     int answered = 0, round, stops = 0;
+    const char *turn_tools = r->turn_tools;     /* a SlashCommand's allowed-tools last this turn */
     cp_turn(&r->cp, r->conv.n);
     if (conv_add_user_text(&r->conv, prompt, pn) ||
         (r->pending.n && conv_add_user_text(&r->conv, r->pending.p, r->pending.n))) {
@@ -615,6 +616,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             break;
         }
         answered = 1;
+        pol_status_event(r);        /* Claude Code: a new assistant message */
         if (!strcmp(stop, "max_tokens"))
             ui_line(&r->ui, "(The answer reached the output limit.)");
         if (!ntools && !strcmp(stop, "pause_turn"))
@@ -657,6 +659,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         }
     }
     ui_busy(&r->ui, 0);
+    r->turn_tools = turn_tools;
     if (!answered)
         conv_rollback(&r->conv, m0);
     else
@@ -863,6 +866,7 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
             ctx_show(r);
             ui_line(&r->ui, "Compacted. The conversation goes on from its summary (/context for the size).");
             session_save(r);
+            pol_status_event(r);    /* Claude Code: /compact finished */
             pol_session(r, HK_SESSION_START, "compact");
         }
         jw_free(&seed);
@@ -1285,6 +1289,10 @@ int repl_screen(cl_repl *r)
     t->mode = &r->tools.perm.mode;
     t->cmds = r->menu;
     t->ncmds = r->nmenu;
+    t->status = r->status_text;     /* the statusLine command's row(s) */
+    t->status_pad = r->cfg.status_pad;
+    t->idle = pol_status_tick;
+    t->iu = r;
     show_init(s, t);
     if (tui_start(t)) {
         show_free(s);
@@ -1301,6 +1309,7 @@ int repl_screen(cl_repl *r)
     ui_attach(&r->ui, r->sys, r->tools.root, &r->conv);    /* A4: history, @, rewind, settings */
     ctx_show(r);
     tui_frame(t);
+    pol_status_event(r);            /* Claude Code: the session started */
     return 0;
 }
 
@@ -1354,6 +1363,15 @@ int repl_rewind(cl_repl *r, int msg, int code, int conv)
         conv_rollback(&r->conv, mk);
         sess_truncate(&r->sess, msg);
         cp_turn(&r->cp, r->conv.n);
+        {
+            /* the context left: estimated (4 bytes a token) until the next request says */
+            long b = r->system ? (long)strlen(r->system) : 0;
+            int i;
+            for (i = 0; i < r->conv.n; i++)
+                b += r->conv.m[i].n;
+            r->ctx_used = r->conv.n ? b / 4 : 0;
+            ctx_show(r);
+        }
         if (r->conv.n)
             session_save(r);
         ui_line(&r->ui, "The conversation is back to before that prompt.");
@@ -1505,7 +1523,9 @@ int repl_load(cl_repl *r)
             r->sys->setenv(r->sys->u, r->cfg.env[i].k, r->cfg.env[i].v);
     if (r->cfg.err[0])
         repl_say(r, "Settings: ", r->cfg.err);
-    if (menu_build(r))
+    if (r->tui)
+        r->tui->status_pad = r->cfg.status_pad;
+    if (menu_build(r) || pol_tools(r))
         return -1;
     return repl_load_memory(r);
 }
@@ -1582,6 +1602,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->hooks.cwd = r->tools.root;
     r->hooks.tmp = r->tmp;
     pol_attach_ui(r);
+    pol_attach_tools(r);
     if (repl_load(r))
         return -1;
     pol_session(r, HK_SESSION_START, "startup");
@@ -1611,6 +1632,7 @@ void repl_free(cl_repl *r)
     r->system = 0;
     cfg_free(&r->cfg);
     mem_free(&r->mem);
+    pol_ext_free(r);
     defs_free(&r->defs);
     cp_free(&r->cp);
     menu_free(r);

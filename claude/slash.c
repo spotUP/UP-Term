@@ -126,6 +126,7 @@ static void permissions(cl_repl *r, const char *a)
                 return;
             }
             cfg_add_rule(&r->cfg, kind, lvl, rule);
+            pol_tools(r);           /* a deny of WebSearch takes the server tool away */
             line2(r, cfg_kind_name(kind), rule);
             line2(r, "  saved in ", cfg_file(&r->cfg, lvl));
             return;
@@ -144,6 +145,7 @@ static void permissions(cl_repl *r, const char *a)
                     r->cfg.nrules--;
                     gone++;
                 }
+            pol_tools(r);
             line2(r, gone ? "Removed the rule " : "No such rule: ", rule);
         }
         return;
@@ -406,7 +408,8 @@ static void export_(cl_repl *r, const char *arg)
 /* ---- /config ---- */
 
 static const char *const cfg_keys[] = { "model", "effortLevel", "outputStyle", "autoCompactEnabled", "theme",
-                                        "fallbackModel" };
+                                        "fallbackModel", "webSearch" };
+#define NCFG_KEYS ((int)(sizeof(cfg_keys) / sizeof(cfg_keys[0])))
 
 static void apply_key(cl_repl *r, const char *key, const char *val)
 {
@@ -423,6 +426,10 @@ static void apply_key(cl_repl *r, const char *key, const char *val)
         cl_copy(r->cfg.theme, val, sizeof(r->cfg.theme));
     else if (!strcmp(key, "fallbackModel"))
         cl_copy(r->fallback, cfg_model(val), sizeof(r->fallback));
+    else if (!strcmp(key, "webSearch")) {
+        r->cfg.web_search = strcmp(val, "false") != 0;
+        pol_tools(r);
+    }
 }
 
 /* KEY VALUE written to the file of a level, as JSON (true, false, a
@@ -475,14 +482,15 @@ static void config(cl_repl *r, const char *a)
         config_set(r, arg, val, lvl);
         return;
     }
-    c = ui_pick(&r->ui, "Settings: choose one to change", cfg_keys, 6, 0);
+    c = ui_pick(&r->ui, "Settings: choose one to change", cfg_keys, NCFG_KEYS, 0);
     if (c >= 0) {
         static const char *const onoff[] = { "true", "false" };
         static const char *const themes[] = { "dark", "light", "dark-ansi", "light-ansi" };
         static const char *const mods[] = { "opus", "sonnet", "haiku", "fable" };
         static const char *const effs[] = { "low", "medium", "high", "xhigh", "max" };
-        const char *const *opt = c == 3 ? onoff : c == 4 ? themes : c == 1 ? effs : mods;
-        int n = c == 3 ? 2 : c == 4 ? 4 : c == 1 ? 5 : 4, v;
+        int yn = c == 3 || c == 6;  /* autoCompactEnabled, webSearch */
+        const char *const *opt = yn ? onoff : c == 4 ? themes : c == 1 ? effs : mods;
+        int n = yn ? 2 : c == 4 ? 4 : c == 1 ? 5 : 4, v;
         if (c == 2) {
             output_style(r, "");
             return;
@@ -504,6 +512,7 @@ static void config(cl_repl *r, const char *a)
         line2(r, "  theme: ", r->cfg.theme[0] ? r->cfg.theme : "(the screen's own)");
         line2(r, "  fallbackModel: ", r->fallback[0] ? r->fallback : "(none)");
         line2(r, "  statusLine: ", r->cfg.status_cmd[0] ? r->cfg.status_cmd : "(none)");
+        line2(r, "  webSearch: ", r->tools.web_search ? "true" : "false (or a deny rule for WebSearch)");
         line2(r, "  permissions.defaultMode: ", r->cfg.default_mode[0] ? r->cfg.default_mode : "default");
     }
 }
@@ -833,10 +842,10 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
     else if (!strcmp(w, "/hooks"))
         hooks_list(r);
     else if (!strcmp(w, "/tasks") || !strcmp(w, "/bashes")) {
-        char m[1000];
-        m[0] = 0;
-        if (r->bg_list)
-            r->bg_list(r->bg_u, m, sizeof(m));
+        char m[2000];
+        tools_shells(&r->tools, m, sizeof(m));     /* Bash run_in_background's shells (shells.c) */
+        if (m[0])
+            ui_line(&r->ui, "Background shells (BashOutput reads one, KillShell stops one):");
         ui_line(&r->ui, m[0] ? m : "No commands running in the background.");
     } else if (!strcmp(w, "/todos"))
         todos(r);

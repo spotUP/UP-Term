@@ -207,6 +207,48 @@ static const char fetch_rules2[] =
     " - You are not a lawyer and never comment on the legality of your own prompts and responses.\n"
     " - Never produce or reproduce exact song lyrics.";
 
+/* n bytes as Claude Code's formatFileSize writes them: "512 bytes", "1.5KB",
+ * "2MB" (one decimal, a trailing .0 dropped) */
+static void file_size(long n, char *out, long cap)
+{
+    static const char *const unit[3] = { "KB", "MB", "GB" };
+    char num[16];
+    long tenths;
+    int u = 0;
+    if (n < 1024) {
+        cl_ltoa(n, out);
+        cl_cat(out, " bytes", cap);
+        return;
+    }
+    /* tenths of a KB (MB, GB), rounded as toFixed(1) does */
+    tenths = (n / 1024) * 10 + ((n % 1024) * 10 + 512) / 1024;
+    while (tenths >= 10240 && u < 2) {
+        tenths = (tenths + 512) / 1024;
+        u++;
+    }
+    cl_ltoa(tenths / 10, num);
+    cl_copy(out, num, cap);
+    if (tenths % 10) {
+        cl_cat(out, ".", cap);
+        cl_ltoa(tenths % 10, num);
+        cl_cat(out, num, cap);
+    }
+    cl_cat(out, unit[u], cap);
+}
+
+/* the screen's line for a fetch, Claude Code's "Received 12.3KB (200 OK)":
+ * the answer goes to Claude, the user sees what came */
+static void received(char *out, long cap, long bytes, int status)
+{
+    char num[16];
+    cl_copy(out, "Received ", cap);
+    file_size(bytes, out + strlen(out), cap - (long)strlen(out));
+    cl_cat(out, " (", cap);
+    cl_ltoa(status, num);
+    cl_cat(out, num, cap);
+    cl_cat(out, status == 200 ? " OK)" : ")", cap);
+}
+
 void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
 {
     char *url = tl_prop(in, "url", 0), *prompt = tl_prop(in, "prompt", 0);
@@ -324,6 +366,7 @@ void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "the page was fetched, but the model call on it failed: ", rc ? err : "an empty answer");
         goto done;
     }
+    received(t->brief, sizeof(t->brief), p.body.n, p.resp.status);
     tl_result(t, out, id, ans.p, ans.n, 0);
 done:
     page_free(&p);

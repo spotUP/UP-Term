@@ -70,17 +70,21 @@ static void test_perm(void)
     cl_perm p;
     int i;
     memset(&p, 0, sizeof(p));
-    /* what asks: the file tools, Bash, WebFetch, Skill, SlashCommand */
+    /* what asks: the writing tools, Bash, WebFetch, Skill, SlashCommand; the
+     * read-only tools inside the working directories never (Claude Code) */
     for (i = 0; i < T_COUNT; i++) {
-        int asks = i == T_READ || i == T_WRITE || i == T_EDIT || i == T_MULTIEDIT || i == T_GLOB || i == T_GREP ||
-                   i == T_BASH || i == T_WEB_FETCH || i == T_SKILL || i == T_SLASH;
+        int asks = i == T_WRITE || i == T_EDIT || i == T_MULTIEDIT || i == T_BASH || i == T_WEB_FETCH ||
+                   i == T_SKILL || i == T_SLASH;
         CHECK_INT(perm_must_ask(&p, i, 0), asks);
     }
-    /* one answer allows all three read-only tools */
-    perm_grant(&p, T_GREP);
     CHECK(!perm_must_ask(&p, T_READ, 0));
     CHECK(!perm_must_ask(&p, T_GLOB, 0));
     CHECK(!perm_must_ask(&p, T_GREP, 0));
+    /* outside them: always, whatever was granted */
+    CHECK(perm_must_ask(&p, T_READ, 1));
+    CHECK(perm_must_ask(&p, T_GLOB, 1));
+    perm_grant(&p, T_GREP);
+    CHECK(perm_must_ask(&p, T_GREP, 1));
     CHECK(perm_must_ask(&p, T_WRITE, 0));
     CHECK(perm_must_ask(&p, T_EDIT, 0));
     CHECK(perm_must_ask(&p, T_BASH, 0));
@@ -100,7 +104,7 @@ static void test_perm(void)
     CHECK(!perm_must_ask(&p, T_MULTIEDIT, 0));
     CHECK(perm_must_ask(&p, T_EDIT, 1));
     CHECK(perm_must_ask(&p, T_BASH, 0));
-    CHECK(perm_must_ask(&p, T_READ, 0));
+    CHECK(!perm_must_ask(&p, T_READ, 0));
     CHECK(!perm_refused(&p, T_BASH));
     /* plan: what changes something is refused */
     p.mode = PERM_PLAN;
@@ -536,6 +540,25 @@ static int x_expand(void *u, const char *name, const char *args, jw *out, char *
 
 static const cl_ext my_ext = { 0, x_agents, x_skills, x_commands, x_expand };
 
+/* a project agent with a built-in's name hides the built-in */
+static const cl_agent plan_agent[] = { { "Plan", "OUR-OWN-PLANNER", "Read", 0, "Plan our way." } };
+static int x_plan(void *u, const cl_agent **l)
+{
+    (void)u;
+    *l = plan_agent;
+    return 1;
+}
+static const cl_ext plan_ext = { 0, x_plan, 0, 0, 0 };
+
+/* an added working directory that holds only outside.txt (in the start
+ * directory's parent: "/" is AmigaDOS's parent) */
+static int added_root_file(void *u, const char *full)
+{
+    const char *e = full + strlen(full) - 12;
+    (void)u;
+    return e >= full && !strcmp(e, "/outside.txt");
+}
+
 static sys_posix sp;
 static cl_sys sys;
 static cl_tools t;
@@ -562,11 +585,11 @@ static void test_files(void)
     char text[4096], buf[256];
     jw out;
     tools_setup();
-    /* Read: asks, the answer "always" covers the read-only tools; cat -n */
+    /* Read: inside the start directory it does not ask (Claude Code); cat -n */
     a.answer = ASK_SESSION;
     CHECK_INT(call(&t, "Read", "{\"file_path\":\"S/Startup-Sequence\"}", text, sizeof(text)), 0);
     CHECK_STR(text, "     1\tSetPatch QUIET\n     2\tC:Version >NIL:\n");
-    CHECK_INT(a.asked, 1);
+    CHECK_INT(a.asked, 0);
     CHECK_INT(a.shown, 1);
     CHECK_STR(a.last_tool, "Read");
     /* offset and limit; the rest announced */
@@ -574,7 +597,7 @@ static void test_files(void)
     CHECK_STR(text, "     3\tline 3\n     4\tline 4\n(6 more lines: read on with offset 5)\n");
     CHECK_INT(call(&t, "Read", "{\"file_path\":\"long.txt\",\"offset\":40}", text, sizeof(text)), 0);
     CHECK(strstr(text, "shorter than the provided offset (40). The file has 10 lines.") != 0);
-    CHECK_INT(a.asked, 1);
+    CHECK_INT(a.asked, 0);
     CHECK_INT(call(&t, "Read", "{\"file_path\":\"bin.dat\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "binary") != 0);
     CHECK_INT(call(&t, "Read", "{\"file_path\":\"nothere\"}", text, sizeof(text)), 1);
@@ -669,6 +692,13 @@ static void test_files(void)
     CHECK_INT(call(&t, "Read", "{\"file_path\":\"/outside.txt\"}", text, sizeof(text)), 1);
     CHECK_INT(a.asked, 1);
     CHECK_INT(a.outside, 1);
+    /* ... unless it lies in an added working directory (--add-dir, /add-dir) */
+    a.asked = 0;
+    t.added = added_root_file;
+    CHECK_INT(call(&t, "Read", "{\"file_path\":\"/outside.txt\"}", text, sizeof(text)), 1);
+    CHECK(strstr(text, "File does not exist") != 0);
+    CHECK_INT(a.asked, 0);
+    t.added = 0;
 
     /* invalid input: an error result naming the parameter, nothing run, nothing asked */
     a.asked = 0;
@@ -800,7 +830,7 @@ static void test_search(void)
     /* a pattern the engine refuses: a reason, not a guess */
     CHECK_INT(call(&t, "Grep", "{\"pattern\":\"(?=x)\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "look-around") != 0);
-    CHECK_INT(a.asked, 1);
+    CHECK_INT(a.asked, 0);
     tools_free(&t);
 }
 
@@ -970,6 +1000,20 @@ static void test_task(void)
     /* the agents in Task's description: the built-ins and the provider's */
     CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "- Explore: Fast agent") != 0);
     CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "- reviewer: Reviews a change (Tools: Read, Grep)") != 0);
+    {
+        /* a provided "Plan" takes the built-in's place, once */
+        const char *js;
+        const char *keep_json = t.json;
+        t.json = 0;
+        t.ext = &plan_ext;
+        js = tools_json(&t, "claude-opus-5-5");
+        CHECK(strstr(js, "- Plan: OUR-OWN-PLANNER (Tools: Read)") != 0);
+        CHECK(strstr(js, "- Plan: Software architect") == 0);
+        CHECK(strstr(js, "- Explore: Fast agent") != 0);
+        free(t.json);
+        t.json = (char *)keep_json;
+        t.ext = &my_ext;
+    }
     /* Explore: its own system prompt and tools, a Grep, its report */
     api.queue[0] = "agent_tool.sse";
     api.queue[1] = "agent_final.sse";
@@ -989,10 +1033,9 @@ static void test_task(void)
         /* the second request carries the Grep's result */
         CHECK(strstr(api.body[1], "1:SetPatch QUIET") != 0);
     }
-    /* the subagent's tool calls were shown and asked like any other */
+    /* the subagent's tool calls were shown; a read inside the start directory asks nothing */
     CHECK_STR(a.last_tool, "Grep");
-    CHECK_INT(a.asked, 1);
-    CHECK(t.perm.session & (1ul << T_READ));
+    CHECK_INT(a.asked, 0);
     /* the provider's agent with its model alias */
     api_reset();
     t.api.send = api_send;

@@ -5,7 +5,8 @@
  * (<root>/.claude/settings.json) and the project's local one
  * (<root>/.claude/settings.local.json). The keys are Claude Code's: a scalar
  * from a later file wins (model, effort/effortLevel, outputStyle, theme,
- * statusLine, autoCompactEnabled, fallbackModel, permissions.defaultMode);
+ * statusLine {command, padding, refreshInterval}, autoCompactEnabled,
+ * fallbackModel, permissions.defaultMode, and C:Claude's webSearch);
  * lists add up (permissions allow / deny / ask, permissions
  * .additionalDirectories, hooks, env).
  *
@@ -62,6 +63,10 @@ typedef struct cl_settings {
     char theme[32];
     char editor_mode[16];       /* editorMode: "vim" or "normal" */
     char status_cmd[256];       /* statusLine.command */
+    int status_pad;             /* statusLine.padding: columns before its text */
+    int status_refresh_s;       /* statusLine.refreshInterval: seconds, 0 only on events */
+    int web_search;             /* "webSearch" (C:Claude's switch; Claude Code's way is the
+                                 * deny rule "WebSearch"): -1 not set, 0 off, 1 on */
     char default_mode[24];      /* default / acceptEdits / plan */
     char fallback_model[64];
     int auto_compact;           /* -1 not set, 0 off, 1 on */
@@ -110,6 +115,12 @@ int cfg_rule_match(const char *rule, const char *tool, jv input, const char *roo
 /* The rules' answer for a call: RULE_NONE (ask as usual), ALLOW, ASK,
  * DENY; *which the deciding rule (or 0). */
 int cfg_decide(const cl_settings *s, const char *tool, jv input, const char *root, const cl_rule **which);
+
+/* Is the web_search server tool on? Off by "webSearch": false or by a
+ * deny rule naming WebSearch alone (Claude Code's way to turn it off). The
+ * API runs it, so there is no call to ask about: an ask rule does not
+ * turn it off. */
+int cfg_web_search(const cl_settings *s);
 
 /* opus / sonnet / haiku / fable (also opusplan's model, default) -> the
  * current id; anything else as it is */
