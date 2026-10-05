@@ -1,5 +1,7 @@
 /* claude_screen -- see claude_screen.h. */
+#define _XOPEN_SOURCE 700
 #include <stdlib.h>
+#include <time.h>
 #include "claude_screen.h"
 
 cscreen cs;
@@ -97,10 +99,19 @@ static int brk(void *u)
     return b;
 }
 
+/* the clock moves on; a short wait (a command polled in the foreground,
+ * at most 100 ms) also passes for real, so the child process it waits
+ * for gets the time (a retry's seconds stay make-believe) */
 static int slp(void *u, long n)
 {
     (void)u;
     cs.clock += (unsigned long)n;
+    if (n > 0 && n <= 100) {
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = n * 1000000L;
+        nanosleep(&ts, 0);
+    }
     return 0;
 }
 

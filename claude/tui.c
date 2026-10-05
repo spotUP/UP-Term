@@ -133,6 +133,7 @@ static void get_size(cl_tui *t, int *c, int *r)
 
 int tui_init(cl_tui *t, cl_io *io)
 {
+    int i;
     memset(t, 0, sizeof(*t));
     t->io = io;
     jw_init(&t->o);
@@ -147,6 +148,9 @@ int tui_init(cl_tui *t, cl_io *io)
     hist_init(&t->hist);
     jw_init(&t->todos);
     jw_init(&t->log);
+    for (i = 0; i < TUI_DIRS; i++)
+        jw_init(&t->dirs[i].names);
+    t->m_btab = -1;
     t->notify_after_s = 10;
     t->edit_path = "T:claude-prompt.txt";
     return t->ed.b ? 0 : -1;
@@ -169,6 +173,10 @@ void tui_free(cl_tui *t)
     }
     free(t->saved);
     t->saved = 0;
+    free(t->stash);
+    t->stash = 0;
+    for (i = 0; i < TUI_DIRS; i++)
+        jw_free(&t->dirs[i].names);
     hist_free(&t->hist);
     jw_free(&t->todos);
     jw_free(&t->log);
@@ -401,9 +409,9 @@ static void status_row(cl_tui *t)
     if (t->hint[0]) {
         r_sgr(&r, DIM);
         r_textz(&r, t->hint);
-    } else if (t->ed.vim == VIM_INSERT && !t->hide_vim) {
+    } else if (vim_label(&t->ed) && !t->hide_vim) {
         r_sgr(&r, DIM);
-        r_textz(&r, "-- INSERT --");
+        r_textz(&r, vim_label(&t->ed));
     } else if (t->box == BOX_BASH) {
         r_sgr(&r, t->th->bash);
         r_textz(&r, "! for bash mode");
@@ -528,13 +536,17 @@ static void slash_rows(cl_tui *t, int *idx, int n)
     }
 }
 
-/* a row of the box's text; Ctrl+R's query shown in reverse in the match */
+/* a row of the box's text; Ctrl+R's query shown in reverse in the
+ * match, vim's visual selection in reverse */
 static void box_text(cl_tui *t, row *r, long a, long z)
 {
-    long m = -1, ml = (long)strlen(t->sq);
+    long m = -1, ml = (long)strlen(t->sq), sa, sz;
     if (t->search && ml) {
         const char *f = strstr(t->ed.b, t->sq);
         m = f ? (long)(f - t->ed.b) : -1;
+    } else if (vim_selection(&t->ed, &sa, &sz)) {
+        m = sa;
+        ml = sz - sa;
     }
     if (m < 0 || m >= z || m + ml <= a) {
         r_text(r, t->ed.b + a, z - a);
@@ -658,6 +670,30 @@ static void menu_rows(cl_tui *t)
         r_glyph(&r, G_V);
         r_sgr(&r, SGR0);
         want(t, &r);
+        if (i == t->m_noting || (i == t->m_n - 1 && t->m_comment && t->m_noting < 0)) {
+            /* the comment field under its option, or the hint for it */
+            r_init(&r, t->cols);
+            r_sgr(&r, t->th->box);
+            r_glyph(&r, G_V);
+            r_sgr(&r, SGR0);
+            if (i == t->m_noting) {
+                r_textz(&r, "       > ");
+                r_textz(&r, t->m_note);
+                r_sgr(&r, REV);
+                r_text(&r, " ", 1);
+                r_sgr(&r, SGR0 DIM);
+                r_textz(&r, "  enter answers with it, tab closes");
+            } else {
+                r_sgr(&r, DIM);
+                r_textz(&r, "   tab on Yes or No adds a comment for Claude");
+            }
+            r_sgr(&r, SGR0);
+            r_pad(&r, t->cols - 1);
+            r_sgr(&r, t->th->box);
+            r_glyph(&r, G_V);
+            r_sgr(&r, SGR0);
+            want(t, &r);
+        }
     }
     border(t, G_BL, G_BR);
 }
@@ -702,8 +738,44 @@ static void comp_rows(cl_tui *t)
         r_init(&r, t->cols);
         r_text(&r, "  ", 2);
         r_sgr(&r, i == t->csel ? t->th->sel : DIM);
-        r_text(&r, "@", 1);
+        if (t->cskip)
+            r_text(&r, "@", 1);
         r_textz(&r, t->comp[i]);
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
+}
+
+/* ?: Claude Code's shortcuts, in as many columns as the window takes */
+static const char *const help_items[] = {
+    "! for bash mode",          "/ for commands",          "@ for file paths",
+    "# to memorize",            "\\ + enter for newline",  "double tap esc to clear input",
+    "shift+tab to cycle modes", "ctrl+o for the transcript", "ctrl+t to show todos",
+    "ctrl+r to search history", "ctrl+g to edit in $EDITOR", "ctrl+s to stash the prompt",
+    "ctrl+_ to undo",           "ctrl+y / alt+y to paste", "ctrl+b to background a command",
+    "ctrl+enter to send now",   "alt+p to switch model",   "ctrl+l to redraw"
+};
+#define NHELP ((int)(sizeof(help_items) / sizeof(help_items[0])))
+
+static void help_rows(cl_tui *t)
+{
+    int cw = 32, ncol = (t->cols - 2) / cw, nrow, i, c;
+    if (ncol < 1)
+        ncol = 1;
+    if (ncol > 3)
+        ncol = 3;
+    nrow = (NHELP + ncol - 1) / ncol;
+    for (i = 0; i < nrow; i++) {
+        row r;
+        r_init(&r, t->cols);
+        r_sgr(&r, DIM);
+        for (c = 0; c < ncol; c++) {
+            int k = c * nrow + i;
+            if (k >= NHELP)
+                break;
+            r_pad(&r, 2 + c * cw);
+            r_textz(&r, help_items[k]);
+        }
         r_sgr(&r, SGR0);
         want(t, &r);
     }
@@ -783,6 +855,10 @@ static void build(cl_tui *t)
     box_rows(t, t->nwant);
     if (t->copen && t->ncomp) {
         comp_rows(t);
+        return;
+    }
+    if (t->show_help) {
+        help_rows(t);
         return;
     }
     nm = slash_matches(t, idx, 8);
@@ -1016,12 +1092,12 @@ void tui_redraw(cl_tui *t)
     tui_frame(t);
 }
 
-static void check_size(cl_tui *t)
+int tui_resized(cl_tui *t)
 {
     int c, r;
     get_size(t, &c, &r);
     if (c == t->cols && r == t->rows)
-        return;
+        return 0;
     t->cols = c;
     t->rows = r;
     put(t, "\033[r");
@@ -1029,6 +1105,12 @@ static void check_size(cl_tui *t)
     if (t->tr > r)
         t->tr = r;
     t->full = 1;
+    return 1;
+}
+
+static void check_size(cl_tui *t)
+{
+    tui_resized(t);
 }
 
 void tui_title(cl_tui *t, const char *s)
@@ -1259,39 +1341,99 @@ static void search_end(cl_tui *t, int keep)
 
 /* ---- @-completion ---- */
 
-/* the "@..." token that ends at the cursor: 1 with *start at its '@' */
-static int at_token(cl_tui *t, long *start)
+/* The path token that ends at the cursor: 1 with *start at its start and
+ * *skip 1 when it is an "@path" of a prompt, 0 when it is a bash-mode
+ * token holding a '/' (Claude Code's file list in shell mode). */
+static int path_token(cl_tui *t, long *start, int *skip)
 {
     long s = t->ed.cur;
     while (s > 0 && t->ed.b[s - 1] != ' ' && t->ed.b[s - 1] != '\n' && t->ed.b[s - 1] != '\t')
         s--;
     *start = s;
-    return s < t->ed.cur && t->ed.b[s] == '@';
+    if (s >= t->ed.cur)
+        return 0;
+    if (t->box == BOX_PROMPT && t->ed.b[s] == '@') {
+        *skip = 1;
+        return 1;
+    }
+    *skip = 0;
+    return t->box == BOX_BASH && memchr(t->ed.b + s, '/', (size_t)(t->ed.cur - s)) != 0;
 }
 
 static void comp_apply(cl_tui *t, const char *rep, int final)
 {
     long l = (long)strlen(rep);
-    ed_cut(&t->ed, t->ctok + 1, t->ed.cur, 0);
+    ed_cut(&t->ed, t->ctok + t->cskip, t->ed.cur, 0);
     ed_insert(&t->ed, rep, l);
     if (final && l && rep[l - 1] != '/' && rep[l - 1] != ':')
         ed_insert(&t->ed, " ", 1);
 }
 
-static int comp_tab(cl_tui *t)
+/* the paths the token at the cursor may become: their count (0 none),
+ * -1 when there is no token; the list's state set for it */
+static int comp_query(cl_tui *t, long *plen)
 {
     long s, pl;
-    int n, i;
+    int skip, n;
     char tok[128];
-    if (!t->complete || !at_token(t, &s))
-        return 0;
-    pl = t->ed.cur - s - 1;
+    if (!t->complete || !path_token(t, &s, &skip))
+        return -1;
+    pl = t->ed.cur - s - skip;
     if (pl >= (long)sizeof(tok))
-        return 1;
-    memcpy(tok, t->ed.b + s + 1, (size_t)pl);
+        return -1;
+    memcpy(tok, t->ed.b + s + skip, (size_t)pl);
     tok[pl] = 0;
     n = t->complete(t->cu, tok, t->comp, TUI_COMP);
     t->ctok = s;
+    t->cskip = skip;
+    t->ncomp = n > 0 ? n : 0;
+    if (t->csel >= t->ncomp)
+        t->csel = 0;
+    if (plen)
+        *plen = pl;
+    return n > 0 ? n : 0;
+}
+
+/* After a key changed the text or moved the cursor: the list follows the
+ * token at the cursor, narrowed to what is typed (each directory read
+ * once a prompt: input.c's cache in t->dirs) */
+static void comp_live(cl_tui *t)
+{
+    int n;
+    if (t->modal || t->search || t->cclosed) {
+        t->copen = 0;
+        return;
+    }
+    n = comp_query(t, 0);
+    t->copen = n > 0;
+}
+
+/* Tab in bash mode on a command without a path: the newest earlier !
+ * command of this project that starts with what is typed */
+static int bash_hist_tab(cl_tui *t)
+{
+    int i;
+    for (i = t->hist.n - 1; i >= 0; i--) {
+        const char *d = t->hist.d[i];
+        if (d[0] != '!' || strncmp(d + 1, t->ed.b, (size_t)t->ed.n) || !d[1 + t->ed.n] ||
+            strcmp(t->hist.p[i] ? t->hist.p[i] : "", t->project ? t->project : ""))
+            continue;
+        ed_set(&t->ed, d + 1);
+        return 1;
+    }
+    cl_copy(t->hint, "No earlier command starts so", sizeof(t->hint));
+    return 1;
+}
+
+/* Tab with the list closed: one match taken, several: their common start
+ * and the list */
+static int comp_tab(cl_tui *t)
+{
+    long pl;
+    int n, i;
+    n = comp_query(t, &pl);
+    if (n < 0)
+        return 0;
     t->copen = 0;
     if (n <= 0) {
         cl_copy(t->hint, "No matching files", sizeof(t->hint));
@@ -1320,7 +1462,37 @@ static int comp_tab(cl_tui *t)
     t->ncomp = n;
     t->csel = 0;
     t->copen = 1;
+    t->cclosed = 0;
     return 1;
+}
+
+/* the @ list's directory cache (input.c reads, these keep) */
+tui_dir *tui_dir_get(cl_tui *t, const char *full)
+{
+    int i;
+    for (i = 0; i < TUI_DIRS; i++)
+        if (t->dirs[i].path[0] && t->dirs[i].epoch == t->epoch && !strcmp(t->dirs[i].path, full))
+            return &t->dirs[i];
+    return 0;
+}
+
+tui_dir *tui_dir_put(cl_tui *t, const char *full)
+{
+    tui_dir *d = 0;
+    int i;
+    for (i = 0; i < TUI_DIRS && !d; i++)
+        if (!strcmp(t->dirs[i].path, full))
+            d = &t->dirs[i];        /* read for an earlier prompt: again */
+    if (!d) {
+        d = &t->dirs[t->dir_next];
+        t->dir_next = (t->dir_next + 1) % TUI_DIRS;
+    }
+    cl_copy(d->path, full, sizeof(d->path));
+    jw_reset(&d->names);
+    d->n = 0;
+    d->epoch = t->epoch;
+    t->n_lists++;
+    return d;
 }
 
 /* ---- the queue ---- */
@@ -1456,12 +1628,80 @@ enum { H_GO, H_SUBMIT, H_QUIT, H_STOP };
 /* the editor's key; a change of text reopens the slash menu */
 static void edit(cl_tui *t, cl_key *k)
 {
-    long n0 = t->ed.n;
+    long n0 = t->ed.n, c0 = t->ed.cur;
+    t->ed.now_ms = now(t);          /* vim's remapped sequences are timed */
     ed_key(&t->ed, k);
     if (t->ed.n != n0) {
         t->mclosed = 0;
         t->msel = 0;
+        t->cclosed = 0;
     }
+    if (t->ed.n != n0 || t->ed.cur != c0)
+        comp_live(t);
+}
+
+/* the box's text taken as a submitted line (the history has it, the box
+ * is empty again, the @ list's directories will be read anew): 0 when
+ * there is nothing */
+static char *take_box(cl_tui *t)
+{
+    char *line;
+    complete(t);
+    if (!t->ed.n)
+        return 0;
+    line = box_line(t);
+    if (!line)
+        return 0;
+    remember(t, line);
+    box_reset(t);
+    t->hint[0] = 0;
+    t->epoch++;
+    return line;
+}
+
+/* Ctrl+Enter / Ctrl+X Ctrl+S while Claude works: what is queued goes now,
+ * the draft queued behind it. A ! queued ahead of the messages stops the
+ * turn; a command running in the foreground moves to the background (the
+ * messages go into the same turn); anything else stops the turn and the
+ * queue is sent next. In bash mode the key only queues. */
+static int send_now(cl_tui *t)
+{
+    char *line = take_box(t);
+    int i, bash = line && line[0] == '!';
+    if (line)
+        enqueue(t, line);
+    if (bash || !t->nq)
+        return H_GO;
+    for (i = 0; i < t->nq && is_command(t->queue[i]); i++)
+        if (t->queue[i][0] == '!')
+            return H_STOP;
+    if (t->bgable) {
+        t->bg_req = 1;
+        return H_GO;
+    }
+    return H_STOP;
+}
+
+/* Ctrl+S: the text put aside (with its cursor and mode), or back */
+static void stash(cl_tui *t)
+{
+    if (t->ed.n) {
+        free(t->stash);
+        t->stash = dupn(t->ed.b, t->ed.n);
+        t->stash_cur = t->ed.cur;
+        t->stash_box = t->box;
+        box_reset(t);
+        cl_copy(t->hint, "Prompt stashed (ctrl+s on an empty prompt brings it back)", sizeof(t->hint));
+        return;
+    }
+    if (!t->stash)
+        return;
+    box_reset(t);
+    ed_set(&t->ed, t->stash);
+    t->ed.cur = t->stash_cur <= t->ed.n ? t->stash_cur : t->ed.n;
+    t->box = t->stash_box;
+    free(t->stash);
+    t->stash = 0;
 }
 
 static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
@@ -1475,14 +1715,29 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         t->hint[0] = 0;
         t->quit_armed = 0;
     }
+    if (t->show_help) {
+        /* the panel goes with the next key; ? only closes it */
+        t->show_help = 0;
+        if (k->k == K_CHAR && k->ch == '?')
+            return H_GO;
+    }
     if (t->ctrlx) {
         t->ctrlx = 0;
         if (k->k == K_CTRL && k->ch == 'e') {
             external_edit(t);
             return H_GO;
         }
+        if (k->k == K_CTRL && k->ch == 's') {
+            cl_key enter;
+            if (busy)
+                return send_now(t);
+            memset(&enter, 0, sizeof(enter));
+            enter.k = K_ENTER;
+            k = &enter;
+            return handle(t, k, busy, buf, cap);
+        }
         if (k->k == K_CTRL)
-            return H_GO;            /* Ctrl+X Ctrl+K / S: nothing to stop or send now here */
+            return H_GO;            /* Ctrl+X Ctrl+K: no background subagents here */
     }
     if (t->search) {
         switch (k->k) {
@@ -1539,22 +1794,35 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
             t->csel = (t->csel + 1) % t->ncomp;
             return H_GO;
         case K_TAB:
-        case K_ENTER:
             comp_apply(t, t->comp[t->csel], 1);
             t->copen = 0;
             return H_GO;
-        case K_ESC:
+        case K_ENTER: {
+            /* the row taken, unless it is what is typed: then Enter sends */
+            long have = t->ed.cur - t->ctok - t->cskip;
+            if (k->mods & KM_CTRL || ((long)strlen(t->comp[t->csel]) == have &&
+                                      !strncmp(t->comp[t->csel], t->ed.b + t->ctok + t->cskip, (size_t)have))) {
+                t->copen = 0;
+                break;
+            }
+            comp_apply(t, t->comp[t->csel], 1);
             t->copen = 0;
             return H_GO;
-        default:
+        }
+        case K_ESC:
             t->copen = 0;
-            break;
+            t->cclosed = 1;
+            return H_GO;
+        default:
+            break;                  /* typing narrows it (edit -> comp_live) */
         }
     }
     switch (k->k) {
     case K_ENTER: {
         char *line;
-        if (t->ed.vim != VIM_NORMAL && t->ed.cur > 0 && t->ed.b[t->ed.cur - 1] == '\\') {
+        if ((k->mods & KM_CTRL) && busy)
+            return send_now(t);     /* Ctrl+Enter */
+        if ((t->ed.vim == VIM_OFF || t->ed.vim == VIM_INSERT) && t->ed.cur > 0 && t->ed.b[t->ed.cur - 1] == '\\') {
             cl_key bs;
             memset(&bs, 0, sizeof(bs));
             bs.k = K_BS;
@@ -1562,15 +1830,9 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
             ed_insert(&t->ed, "\n", 1);
             return H_GO;
         }
-        complete(t);
-        if (!t->ed.n)
-            return H_GO;
-        line = box_line(t);
+        line = take_box(t);
         if (!line)
             return H_GO;
-        remember(t, line);
-        box_reset(t);
-        t->hint[0] = 0;
         if (busy || !buf) {
             enqueue(t, line);
             return H_GO;
@@ -1582,8 +1844,8 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
     case K_TAB:
         if (complete(t))
             ed_insert(&t->ed, " ", 1);
-        else
-            comp_tab(t);
+        else if (!comp_tab(t) && t->box == BOX_BASH && t->ed.n)
+            bash_hist_tab(t);
         return H_GO;
     case K_BTAB:
         cycle_mode(t);
@@ -1603,7 +1865,8 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         return H_GO;
     }
     case K_ESC:
-        if (t->ed.vim == VIM_INSERT || (t->ed.vim == VIM_NORMAL && !vim_idle(&t->ed))) {
+        if (t->ed.vim == VIM_INSERT || t->ed.vim == VIM_VISUAL || t->ed.vim == VIM_VLINE ||
+            (t->ed.vim == VIM_NORMAL && !vim_idle(&t->ed))) {
             edit(t, k);
             return H_GO;
         }
@@ -1645,8 +1908,13 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         edit(t, k);
         return H_GO;
     case K_CHAR:
-        if (!t->ed.n && t->box == BOX_PROMPT && t->ed.vim != VIM_NORMAL && (k->ch == '!' || k->ch == '#')) {
+        if (!t->ed.n && t->box == BOX_PROMPT && (t->ed.vim == VIM_OFF || t->ed.vim == VIM_INSERT) &&
+            (k->ch == '!' || k->ch == '#')) {
             t->box = k->ch == '!' ? BOX_BASH : BOX_MEMORY;
+            return H_GO;
+        }
+        if (!t->ed.n && t->box == BOX_PROMPT && t->ed.vim != VIM_NORMAL && k->ch == '?') {
+            t->show_help = 1;       /* the shortcuts panel (? again or any key closes it) */
             return H_GO;
         }
         if (t->ed.vim == VIM_NORMAL && vim_idle(&t->ed) && k->ch == '/') {
@@ -1711,6 +1979,19 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         case 'r':
             search_start(t);
             return H_GO;
+        case 's':
+            stash(t);
+            return H_GO;
+        case 'b':
+            if (!busy) {
+                edit(t, k);         /* nothing runs: back one character */
+                return H_GO;
+            }
+            if (t->bgable)
+                t->bg_req = 1;
+            else
+                cl_copy(t->hint, "Nothing to move to the background now", sizeof(t->hint));
+            return H_GO;
         case 'u':
             if (!t->ed.n && t->box != BOX_PROMPT) {
                 t->box = BOX_PROMPT;
@@ -1722,6 +2003,21 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
             edit(t, k);
             return H_GO;
         }
+    case K_ALT:
+        if (k->ch == 'p') {
+            /* Alt+P: the model picker, the draft left in the box */
+            if (busy || !buf) {
+                char *m = dupn("/model", 6);
+                if (m)
+                    enqueue(t, m);
+                return H_GO;
+            }
+            cl_copy(buf, "/model", cap);
+            t->keycmd = 1;
+            return H_SUBMIT;
+        }
+        edit(t, k);
+        return H_GO;
     default:
         edit(t, k);
         return H_GO;
@@ -1732,6 +2028,7 @@ long tui_read(cl_tui *t, char *buf, long cap)
 {
     char *q;
     t->hint[0] = 0;
+    t->keycmd = 0;
     q = tui_dequeue(t, 0);
     if (q) {
         cl_copy(buf, q, cap);
@@ -1773,6 +2070,31 @@ int tui_poll(cl_tui *t)
         stop = 1;
     tui_tick(t);
     return stop;
+}
+
+int tui_wait(cl_tui *t, long ms)
+{
+    int res = TW_GO, r, any = 0;
+    cl_key k;
+    t->bgable = 1;
+    t->bg_req = 0;
+    /* the keys typed meanwhile (as tui_poll), then the rest of the time
+     * asleep: the console keeps what is typed until the next look */
+    while ((r = next_key(t, &k, 0)) > 0) {
+        any = 1;
+        if (handle(t, &k, 1, 0, 0) == H_STOP)
+            res = TW_STOP;
+    }
+    if (r < 0)
+        res = TW_STOP;
+    else if (!any && res == TW_GO && !t->bg_req && t->io->sleep && t->io->sleep(t->io->u, ms))
+        res = TW_STOP;              /* a Ctrl+C break signal while asleep */
+    if (t->bg_req && res == TW_GO)
+        res = TW_BACKGROUND;
+    t->bgable = 0;
+    t->bg_req = 0;
+    tui_tick(t);
+    return res;
 }
 
 void tui_tick(cl_tui *t)
@@ -1840,6 +2162,8 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
     t->m_n = n;
     t->m_sel = sel;
     t->busy = 0;
+    t->m_noting = -1;
+    t->m_note[0] = 0;
     for (;;) {
         cl_key k;
         int r;
@@ -1850,6 +2174,56 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
         if (!r) {
             check_size(t);
             continue;
+        }
+        if (t->m_noting >= 0) {
+            /* the comment field: typed text; Enter answers with it, Tab,
+             * Shift+Tab or Esc close it */
+            long l = (long)strlen(t->m_note);
+            if (k.k == K_CHAR && k.ch >= 0x20) {
+                char u[8];
+                int ul = vw_put_utf8(u, k.ch);
+                if (l + ul < (long)sizeof(t->m_note)) {
+                    memcpy(t->m_note + l, u, (size_t)ul);
+                    t->m_note[l + ul] = 0;
+                }
+                continue;
+            }
+            if (k.k == K_PASTE) {
+                long i;
+                for (i = 0; i < k.n && l + 1 < (long)sizeof(t->m_note); i++)
+                    if ((unsigned char)k.text[i] >= 0x20)
+                        t->m_note[l++] = k.text[i];
+                t->m_note[l] = 0;
+                continue;
+            }
+            if (k.k == K_BS) {
+                while (l > 0 && ((unsigned char)t->m_note[l - 1] & 0xc0) == 0x80)
+                    l--;
+                if (l > 0)
+                    l--;
+                t->m_note[l] = 0;
+                continue;
+            }
+            if (k.k == K_ENTER) {
+                choice = t->m_noting;
+                break;
+            }
+            if (k.k == K_TAB || k.k == K_BTAB || k.k == K_ESC || k.k == K_UP || k.k == K_DOWN) {
+                t->m_noting = -1;
+                t->m_note[0] = 0;
+                if (k.k != K_UP && k.k != K_DOWN)
+                    continue;
+            } else {
+                continue;
+            }
+        }
+        if (k.k == K_TAB && t->m_comment && (t->m_sel == 0 || t->m_sel == n - 1)) {
+            t->m_noting = t->m_sel;     /* a comment on Yes or No */
+            continue;
+        }
+        if (k.k == K_BTAB && t->m_btab >= 0 && t->m_btab < n) {
+            choice = t->m_btab;     /* a file permission: allowed for the session */
+            break;
         }
         if (k.k == K_UP)
             t->m_sel = (t->m_sel + n - 1) % n;
@@ -1868,6 +2242,11 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
     }
     t->modal = 0;
     t->busy = busy;
+    t->m_btab = -1;
+    t->m_comment = 0;
+    if (choice < 0 || choice != t->m_noting)
+        t->m_note[0] = 0;           /* a comment goes only with its own option */
+    t->m_noting = -1;
     tui_frame(t);
     return choice;
 }

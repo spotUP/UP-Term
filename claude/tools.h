@@ -64,6 +64,10 @@ int perm_refused(const cl_perm *p, int tool);
 /* the user chose "always this session" */
 void perm_grant(cl_perm *p, int tool);
 
+/* wait()'s answers: go on waiting, stop the command (Esc, Ctrl+C), move
+ * it to the background (Ctrl+B, Ctrl+Enter) */
+enum { TW_GO, TW_STOP, TW_BACKGROUND };
+
 /* choose() flags */
 #define CH_MULTI 1              /* several options may be picked */
 #define CH_OTHER 2              /* the user may type an answer of their own */
@@ -102,8 +106,10 @@ typedef struct cl_tools {
     void *u;
     /* the call, shown before anything happens; what is a one-line summary */
     void (*show)(void *u, const char *tool, const char *what);
-    /* the permission question: ASK_NO / ASK_ONCE / ASK_SESSION / ASK_STOP */
-    int (*ask)(void *u, const char *tool, const char *what, int outside);
+    /* the permission question: ASK_NO / ASK_ONCE / ASK_SESSION / ASK_STOP;
+     * note (cap bytes, "" set by the caller) gets the comment the user
+     * gave with the answer (Claude Code's Tab on Yes / No), if any */
+    int (*ask)(void *u, const char *tool, const char *what, int outside, char *note, long cap);
     /* optional: a write or an edit before the question, the file's text
      * before (0, 0 when it is new) and after, both UTF-8 for an edit */
     void (*preview)(void *u, int tool, const char *path, const char *before, long bn, const char *after,
@@ -118,6 +124,11 @@ typedef struct cl_tools {
                   const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap);
     /* optional: a plan (ExitPlanMode), Markdown, shown whole */
     void (*plan)(void *u, const char *text, long n);
+    /* optional (the screen): while a Bash command runs in the foreground,
+     * the user's keys for up to ms: TW_*. Set, the command runs as a
+     * background shell the tool waits on, so Ctrl+B can leave it running
+     * (Claude Code's "move to the background"); unset, sys->run. */
+    int (*wait)(void *u, long ms);
     /* optional: is full (canonical) inside a directory added to the working
      * ones (--add-dir, /add-dir, permissions.additionalDirectories)? Such a
      * path is not "outside". */
@@ -157,6 +168,9 @@ typedef struct cl_tools {
      * line); "" none. Set by the tool, cleared at each call. */
     char brief[96];
     int stop;                   /* ASK_STOP was answered this round (reset by the caller) */
+    /* an allowed call's comment from the user (ask's note): tl_result
+     * adds it to the call's result for Claude, then clears it */
+    char note[200];
     int cur;                    /* the tool being run (the result hook's) */
     const char *cur_in;
     long cur_inn;
@@ -166,6 +180,16 @@ typedef struct cl_tools {
 int tools_init(cl_tools *t);
 /* background shells killed, everything freed */
 void tools_free(cl_tools *t);
+
+/* A command in the foreground (Bash, a ! line), shells.c: with t->wait it
+ * runs as a background shell the user can stop (Esc, Ctrl+C) or leave
+ * running (Ctrl+B): sys->run's results (0, -1, SYS_TIMEOUT, SYS_BREAK),
+ * or SHELL_MOVED with its id ("bash_N") in id. A command that does not
+ * end after a break is kept as a shell too: id set, SYS_*. Without
+ * t->wait: sys->run. */
+#define SHELL_MOVED 1
+int tools_run_fg(cl_tools *t, const char *cmd, int secs, char *out, long cap, long *outn, long *rc, char *id,
+                 long idcap);
 
 /* The "tools" array of a request body for that model (web_search's
  * version depends on it); built once, kept in t->json. */

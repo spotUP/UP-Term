@@ -437,7 +437,8 @@ void repl_denied(cl_repl *r, const char *tool, const char *input, long n)
         r->feed->denied(r->feed->u, tool, r->cur_id ? r->cur_id : "", input, n);
 }
 
-int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outside, int rule)
+int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outside, int rule, char *note,
+             long cap)
 {
     char m[200];
     /* a subagent's permissionMode (dontAsk, bypassPermissions) is its own */
@@ -469,6 +470,8 @@ int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outsid
     pol_notify(r, "permission_prompt", m);
     {
         int ans = ui_ask(&r->ui, tid, tool, what, outside);
+        if (note && cap)
+            cl_copy(note, r->ui.ask_note, cap);     /* Tab's comment on Yes / No */
         if (ans == ASK_PROJECT) {
             pol_keep_rule(r, tool, r->at ? r->at->cur_in : 0, r->at ? r->at->cur_inn : 0);
             ans = ASK_ONCE;
@@ -477,7 +480,7 @@ int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outsid
     }
 }
 
-static int tool_ask(void *u, const char *tool, const char *what, int outside)
+static int tool_ask(void *u, const char *tool, const char *what, int outside, char *note, long cap)
 {
     cl_repl *r = (cl_repl *)u;
     if (r->rule_now == RULE_ALLOW) {
@@ -485,7 +488,12 @@ static int tool_ask(void *u, const char *tool, const char *what, int outside)
         r->n_rule_allow++;
         return ASK_ONCE;
     }
-    return repl_ask(r, r->at->cur, tool, what, outside, r->rule_now == RULE_ASK);
+    return repl_ask(r, r->at->cur, tool, what, outside, r->rule_now == RULE_ASK, note, cap);
+}
+
+static int tool_wait(void *u, long ms)
+{
+    return ui_wait(&((cl_repl *)u)->ui, ms);
 }
 
 /* the lines a change takes out and puts in (a common start and end
@@ -1835,8 +1843,8 @@ void repl_run(cl_repl *r)
             long n = tui_read(r->tui, line, 8192);
             if (n < 0)
                 break;
-            if (!r->await_key)
-                ui_user(&r->ui, line);
+            if (!r->await_key && !r->tui->keycmd)
+                ui_user(&r->ui, line);  /* (not a key's command: Alt+P) */
             if (repl_line(r, line))
                 break;
         }
@@ -1902,6 +1910,8 @@ int repl_screen(cl_repl *r)
     r->ui.show = s;
     show_render(s, &r->render);
     ui_attach(&r->ui, r->sys, r->tools.root, &r->conv);    /* A4: history, @, rewind, settings */
+    r->tools.wait = tool_wait;      /* Bash and ! lines: Esc, Ctrl+B while they run */
+    r->ui.tools = &r->tools;
     ctx_show(r);
     tui_frame(t);
     pol_status_event(r);            /* Claude Code: the session started */

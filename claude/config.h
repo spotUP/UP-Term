@@ -74,6 +74,10 @@ typedef struct cl_settings {
     char output_style[64];
     char theme[32];
     char editor_mode[16];       /* editorMode: "vim" or "normal" */
+    /* vimInsertModeRemaps: the two-key INSERT sequences mapped to Esc, two
+     * characters each ("jjkj"); read from the user's settings and
+     * --settings only (a project's cannot remap keys), as Claude Code's */
+    char vim_remaps[17];
     char status_cmd[256];       /* statusLine.command */
     int status_pad;             /* statusLine.padding: columns before its text */
     int status_refresh_s;       /* statusLine.refreshInterval: seconds, 0 only on events */

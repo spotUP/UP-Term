@@ -568,26 +568,30 @@ static int last_col(const char *row, const char *g)
     return found;
 }
 
-/* The welcome box: its right side in one column on every row (the first
- * row's width was counted 3 short: its border stood 3 columns out). */
-static void welcome_box_sides_line_up(void)
+/* The start, as Claude Code's: the mascot in the accent colour, beside it
+ * the program, the model and the directory, their text in one column. */
+static void welcome_mascot(void)
 {
     static const char *script[] = { 0 };
-    int r, top = -1, right;
+    int top;
     screen(80, 20, script);
     CHECK_INT(tui_start(&tui), 0);
     show_welcome(&shw, "claude-opus-5-5", "RAM:");
-    for (r = 0; r < cs.rows && top < 0; r++)
-        if (strstr(cs_row(r), "\342\225\255"))
-            top = r;
+    dump("welcome");
+    top = cs_find("\342\226\220\342\226\233\342\226\210\342\226\210\342\226\210\342\226\234\342\226\214");
     CHECK(top >= 0);
-    right = last_col(cs_row(top), "\342\225\256");
-    CHECK(right > 0);
-    for (r = top + 1; r <= top + 5; r++)
-        CHECK_INT(last_col(cs_row(r), V), right);
-    CHECK_INT(last_col(cs_row(top + 6), "\342\225\257"), right);
+    if (top >= 0) {
+        CHECK_STR(cs_row(top), " \342\226\220\342\226\233\342\226\210\342\226\210\342\226\210\342\226\234"
+                               "\342\226\214   C:Claude for the Amiga");
+        CHECK_STR(cs_row(top + 1), "\342\226\235\342\226\234\342\226\210\342\226\210\342\226\210\342\226\210"
+                                   "\342\226\210\342\226\233\342\226\230  claude-opus-5-5 \302\267 API Usage Billing");
+        CHECK_STR(cs_row(top + 2), "  \342\226\230\342\226\230 \342\226\235\342\226\235    RAM:");
+        CHECK_INT(h_cell(cs.vt, 1, top)->fg, 3);            /* the accent (dark: yellow) */
+        CHECK(h_cell(cs.vt, 11, top)->attr & VT_ATTR_BOLD);  /* the name */
+    }
     unscreen();
     cs_close();
+    (void)last_col;
 }
 
 /* ==== A4 WP1: the input box's and the screen's Claude Code features ==== */
@@ -829,6 +833,141 @@ static void vim_mode(void)
     cs_close();
 }
 
+/* vim in NORMAL mode at the start of text, then the keys; each '|' in
+ * keys is a pause (an Esc must not run into the next key as Alt+key).
+ * The results are vim 9.1's for the same keys (scratch oracle, -u NONE). */
+static void vimrun(cl_edit *e, const char *text, const char *keys)
+{
+    char part[64];
+    const char *p = keys;
+    ed_set(e, text);
+    e->vim = VIM_NORMAL;
+    e->cur = 0;
+    while (*p) {
+        const char *bar = strchr(p, '|');
+        long n = bar ? (long)(bar - p) : (long)strlen(p);
+        memcpy(part, p, (size_t)n);
+        part[n] = 0;
+        type(e, part);
+        p += n + (bar ? 1 : 0);
+    }
+}
+
+static int vimcase(const char *text, const char *keys, const char *want)
+{
+    cl_edit e;
+    int ok;
+    ed_init(&e);
+    ed_set_vim(&e, 1);
+    vimrun(&e, text, keys);
+    ok = !strcmp(e.b, want);
+    if (!ok)
+        printf("  vim \"%s\" %s: got \"%s\", want \"%s\"\n", text, keys, e.b, want);
+    ed_free(&e);
+    return ok;
+}
+
+/* R1-R3: vim's visual mode, '.', the quote and bracket objects, counts */
+static void vim_visual_dot(void)
+{
+    static const char *s1[] = { "hello world", "\033", "0vll", 0 };
+    static const char *s2[] = { "one\ntwo", "\033", "V", 0 };
+    char line[32];
+    cl_edit e;
+    long a, z;
+    /* text objects */
+    CHECK(vimcase("say \"hello there\" (a (b c) d)", "fhdi\"", "say \"\" (a (b c) d)"));
+    CHECK(vimcase("say \"hello there\" (a (b c) d)", "fhda\"", "say (a (b c) d)"));
+    CHECK(vimcase("say \"hello there\" (a (b c) d)", "fbdi(", "say \"hello there\" (a () d)"));
+    CHECK(vimcase("say \"hello there\" (a (b c) d)", "fb2di(", "say \"hello there\" ()"));
+    CHECK(vimcase("say \"hello there\" (a (b c) d)", "fbca)x\033", "say \"hello there\" (a x d)"));
+    CHECK(vimcase("x = {a, [1, 2]}", "f1di[", "x = {a, []}"));
+    CHECK(vimcase("x = {a, [1, 2]}", "f1da{", "x = "));
+    CHECK(vimcase("it's 'quoted' here", "fqci'new\033", "it's 'new' here"));
+    CHECK(vimcase("one two three", "wd2aw", "one"));
+    CHECK(vimcase("one two three four", "d3w", "four"));
+    /* visual */
+    CHECK(vimcase("one two three", "wvld", "one o three"));
+    CHECK(vimcase("one two three", "veU", "ONE two three"));
+    CHECK(vimcase("one two three", "vllrx", "xxx two three"));
+    CHECK(vimcase("one two three", "wviwd", "one  three"));
+    CHECK(vimcase("one\ntwo\nthree", "jVjd", "one"));
+    CHECK(vimcase("one\ntwo\nthree", "VjJ", "one two\nthree"));
+    CHECK(vimcase("one two three", "vey$vbp", "one two one"));
+    CHECK(vimcase("one\ntwo\nthree", "Vj>", "  one\n  two\nthree"));    /* two blanks, Claude Code's indent */
+    /* '.' and its count */
+    CHECK(vimcase("abcdef", "x.", "cdef"));
+    CHECK(vimcase("abcdef", "x3.", "ef"));
+    CHECK(vimcase("abcdef", "2x.", "ef"));
+    CHECK(vimcase("abcdef", "2x3.", "f"));
+    CHECK(vimcase("one two three four", "cwfoo\033|w.", "foo foo three four"));
+    CHECK(vimcase("a\nb\nc\nd", "dd.", "c\nd"));
+    CHECK(vimcase("abcdefghij", "vlld.", "ghij"));
+    CHECK(vimcase("one\ntwo\nthree\nfour", "Vjd.", ""));
+    CHECK(vimcase("a b c d", "vlU.", "A b c d"));
+    /* vimInsertModeRemaps "jj": the second j within a second leaves INSERT
+     * and takes the first out; later, both stay as typed */
+    ed_init(&e);
+    ed_set_vim(&e, 1);
+    strcpy(e.vremap, "jj");
+    e.now_ms = 1000;
+    type(&e, "hij");
+    e.now_ms = 1400;
+    type(&e, "j");
+    CHECK_STR(e.b, "hi");
+    CHECK_INT(e.vim, VIM_NORMAL);
+    type(&e, "A");
+    e.now_ms = 5000;
+    type(&e, "j");
+    e.now_ms = 6200;
+    type(&e, "j");
+    CHECK_STR(e.b, "hijj");
+    CHECK_INT(e.vim, VIM_INSERT);
+    ed_free(&e);
+    /* o swaps the ends, v / V switch, v again leaves; u undoes a visual change */
+    ed_init(&e);
+    ed_set_vim(&e, 1);
+    vimrun(&e, "one two three", "wvl");
+    CHECK(vim_selection(&e, &a, &z) && a == 4 && z == 6);
+    type(&e, "o");
+    CHECK_INT(e.cur, 4);
+    CHECK_INT(e.vanchor, 5);
+    type(&e, "V");
+    CHECK_INT(e.vim, VIM_VLINE);
+    CHECK(vim_selection(&e, &a, &z) && a == 0 && z == 13);
+    type(&e, "v");
+    CHECK_INT(e.vim, VIM_VISUAL);
+    type(&e, "v");
+    CHECK_INT(e.vim, VIM_NORMAL);
+    CHECK(!vim_selection(&e, &a, &z));
+    type(&e, "v");
+    type(&e, "\033");
+    CHECK_INT(e.vim, VIM_NORMAL);
+    type(&e, "veduu");
+    CHECK_STR(e.b, "one two three");
+    ed_free(&e);
+    /* on the screen: the mode's word where -- INSERT -- is, the selection
+     * in reverse */
+    screen(60, 16, s1);
+    ed_set_vim(&tui.ed, 1);
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    dump("vim visual");
+    CHECK(!strncmp(cs_row(15), "  -- VISUAL --", 14));
+    CHECK(h_cell(cs.vt, 4, 13)->attr & VT_ATTR_INVERSE);      /* "hel" */
+    CHECK(h_cell(cs.vt, 6, 13)->attr & VT_ATTR_INVERSE);
+    CHECK(!(h_cell(cs.vt, 7, 13)->attr & VT_ATTR_INVERSE));
+    unscreen();
+    cs_close();
+    screen(60, 16, s2);
+    ed_set_vim(&tui.ed, 1);
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK(!strncmp(cs_row(15), "  -- VISUAL LINE --", 19));
+    unscreen();
+    cs_close();
+}
+
 /* 1.3 / 1.4: ! and # turn the box into bash and memory mode */
 static void bash_and_memory_box(void)
 {
@@ -877,12 +1016,18 @@ static void bash_and_memory_box(void)
     cs_close();
 }
 
-/* 1.2: Tab after @ completes a path; several matches: a list */
+/* 1.2 / R8: the @ list opens and narrows as the path is typed; Tab or
+ * Enter takes the row; each directory read once a prompt */
 static void at_completion(void)
 {
-    static const char *s1[] = { "see @al", "\t", 0 };
-    static const char *s2[] = { "see @al", "\t", "\033[B", "\t", 0 };
+    static const char *s1[] = { "see @al", 0 };
+    static const char *s2[] = { "see @al", "\033[B", "\t", 0 };
     static const char *s3[] = { "@be", "\t", 0 };
+    static const char *s4[] = { "see @al", "\033", "\t", 0 };
+    static const char *s5[] = { "@a", "l", "p", "h", "\177", "\r", "\r", "@a", 0 };
+    static const char *s6[] = { "@beta", "\r", 0 };
+    static const char *s7[] = { "!!", "ls at/al", 0 };
+    static const char *s8[] = { "!!", "ech", "\t", 0 };
     static cl_ui u;
     char line[32], d[600];
     tpath(d, "at");
@@ -901,7 +1046,8 @@ static void at_completion(void)
     tui_start(&tui);
     tui_read(&tui, line, sizeof(line));
     dump("@ list");
-    CHECK_STR(tui.ed.b, "see @alp");
+    /* typed, no Tab: the list is there, the text as typed */
+    CHECK_STR(tui.ed.b, "see @al");
     CHECK_INT(tui.ncomp, 2);
     CHECK_STR(cs_row(14), "  @alpha.txt");
     CHECK_STR(cs_row(15), "  @alpine/");
@@ -914,7 +1060,6 @@ static void at_completion(void)
     tui_start(&tui);
     tui_read(&tui, line, sizeof(line));
     CHECK_STR(tui.ed.b, "see @alpine/");
-    CHECK_INT(tui.copen, 0);
     unscreen();
     cs_close();
     screen(60, 16, s3);
@@ -925,6 +1070,67 @@ static void at_completion(void)
     CHECK_STR(tui.ed.b, "@beta ");
     unscreen();
     cs_close();
+    /* Esc closes it; Tab then: the common start and the list again */
+    screen(60, 16, s4);
+    tui.complete = input_complete;
+    tui.cu = &u;
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "see @alp");
+    CHECK_INT(tui.copen, 1);
+    unscreen();
+    cs_close();
+    /* the screen's cache: four keys, one directory read; a sent prompt
+     * makes it old (a new file is seen at the next prompt) */
+    screen(60, 16, s5);
+    u.tui = &tui;
+    tui.complete = input_complete;
+    tui.cu = &u;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), 11);     /* Enter took the row, Enter sent */
+    CHECK_STR(line, "@alpha.txt ");
+    CHECK_INT(tui.n_lists, 1);
+    tfile("at/apple", "c\n");
+    tui_read(&tui, line, sizeof(line));
+    CHECK_INT(tui.n_lists, 2);
+    CHECK_INT(tui.ncomp, 3);
+    unscreen();
+    cs_close();
+    /* Enter on a row that is what is typed sends it */
+    screen(60, 16, s6);
+    u.tui = &tui;
+    tui.complete = input_complete;
+    tui.cu = &u;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), 5);
+    CHECK_STR(line, "@beta");
+    unscreen();
+    cs_close();
+    /* bash mode: a token with a '/' gets the list (no '@') */
+    u.root = tdir;
+    screen(60, 16, s7);
+    u.tui = &tui;
+    tui.complete = input_complete;
+    tui.cu = &u;
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    dump("bash path list");
+    CHECK_INT(tui.ncomp, 2);
+    CHECK_STR(cs_row(14), "  at/alpha.txt");
+    unscreen();
+    cs_close();
+    /* bash mode, Tab on a command: the newest earlier ! command so started */
+    screen(60, 16, s8);
+    tui.project = "P";
+    hist_add(&tui.hist, &tsys, 0, "!echo hello", "P");
+    hist_add(&tui.hist, &tsys, 0, "!echo other", "Q");
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "echo hello");
+    CHECK_INT(tui.box, BOX_BASH);
+    unscreen();
+    cs_close();
+    u.tui = 0;
 }
 
 /* 1.5: Enter while a turn runs queues the prompt */
@@ -977,6 +1183,260 @@ static void queue_while_busy(void)
     tui_poll(&tui);
     CHECK_INT(tui.nq, 0);
     CHECK_STR(tui.ed.b, "a\nb");
+    unscreen();
+    cs_close();
+}
+
+/* the comment field seen while the menu is open (before Enter) */
+static int note_row;
+static void note_look(void)
+{
+    if (cs.next == 2 && cs_find("> ok but short") >= 0 && cs_find("enter answers with it") >= 0)
+        note_row = 1;
+}
+
+/* R4-R7, R10: Ctrl+Enter / Ctrl+X Ctrl+S, Ctrl+S, Alt+Y, Ctrl+B, ?,
+ * Alt+P, Shift+Tab and Tab on a permission question */
+static void keys_rest(void)
+{
+    static const char *s_c1[] = { "\t", "ok but short", "\r", 0 };
+    static const char *s_c2[] = { "\t", "\t", "nope", "\t", "\r", 0 };
+    static const char *s_q1[] = { "!first\r", "!draft", "!\033[13;5u", 0 };
+    static const char *s_q2[] = { "!first\r", "!more", "!\030\023", 0 };
+    static const char *s_q3[] = { "!first\r", "!\033[13;5u", 0 };
+    static const char *s_q4[] = { "!!", "!ls", "!\033[27;5;13~", 0 };
+    static const char *s_q5[] = { "!/cost\r", "!!x\r", "!hi\r", "!\033[13;5u", 0 };
+    static const char *s_b1[] = { "!\002", 0 };
+    static const char *s_b2[] = { "!\033", 0 };
+    static const char *s_b3[] = { "!x", 0 };
+    static const char *s_b4[] = { "!\002", 0 };
+    static const char *s_s1[] = { "draft one", "\023", 0 };
+    static const char *s_s2[] = { "draft one", "\033[D", "\023", "\023", 0 };
+    static const char *s_s3[] = { "!!", "ls", "\023", "\023", 0 };
+    static const char *s_h1[] = { "?", 0 };
+    static const char *s_h2[] = { "?", "x", 0 };
+    static const char *s_p[] = { "draft", "\033p", 0 };
+    static const char *s_m[] = { "\033[Z", 0 };
+    static const char *const opt[] = { "Yes", "Yes, and don't ask again this session", "No" };
+    char line[64];
+    cl_key k;
+    cl_edit e;
+    /* the keys: Ctrl+Enter (kitty, modifyOtherKeys) is Enter with Ctrl;
+     * Shift+Enter stays a newline */
+    CHECK(key1("\033[13;5u", &k) && k.k == K_ENTER && k.mods == KM_CTRL);
+    CHECK(key1("\033[27;5;13~", &k) && k.k == K_ENTER && k.mods == KM_CTRL);
+    CHECK(key1("\033[13;6u", &k) && k.k == K_NEWLINE);
+    /* Ctrl+Enter while Claude writes: the draft queued behind, the turn
+     * stopped so the queue goes next */
+    screen(60, 16, s_q1);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    CHECK_INT(tui_poll(&tui), 1);           /* (one poll reads all that was typed) */
+    CHECK_INT(tui.nq, 2);
+    CHECK_STR(tui.queue[1], "draft");
+    CHECK_INT(tui.ed.n, 0);
+    unscreen();
+    cs_close();
+    /* Ctrl+X Ctrl+S, the same in any terminal */
+    screen(60, 16, s_q2);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    CHECK_INT(tui_poll(&tui), 1);
+    CHECK_INT(tui.nq, 2);
+    unscreen();
+    cs_close();
+    /* a command running in the foreground: it moves to the background, the
+     * turn goes on (the messages go in after the tool round) */
+    screen(60, 16, s_q3);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    CHECK_INT(tui_wait(&tui, 10), TW_BACKGROUND);
+    CHECK_INT(tui.nq, 1);
+    unscreen();
+    cs_close();
+    /* bash mode: the key only queues */
+    screen(60, 16, s_q4);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    tui_poll(&tui);
+    tui_poll(&tui);
+    CHECK_INT(tui_poll(&tui), 0);
+    CHECK_INT(tui.nq, 1);
+    CHECK_STR(tui.queue[0], "!ls");
+    unscreen();
+    cs_close();
+    /* a ! queued ahead of the messages: the turn is stopped */
+    screen(60, 16, s_q5);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    CHECK_INT(tui_wait(&tui, 10), TW_STOP);
+    CHECK_INT(tui.nq, 3);
+    unscreen();
+    cs_close();
+    /* Ctrl+B while a command runs: background; Esc: stop; nothing: go on */
+    screen(60, 16, s_b1);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    CHECK_INT(tui_wait(&tui, 10), TW_BACKGROUND);
+    unscreen();
+    cs_close();
+    screen(60, 16, s_b2);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    CHECK_INT(tui_wait(&tui, 10), TW_STOP);
+    unscreen();
+    cs_close();
+    screen(60, 16, s_b3);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    CHECK_INT(tui_wait(&tui, 10), TW_GO);
+    CHECK_STR(tui.ed.b, "x");               /* typed ahead into the box */
+    CHECK_INT(tui_wait(&tui, 10), TW_GO);
+    unscreen();
+    cs_close();
+    /* Ctrl+B while Claude only writes: nothing to move, a word why */
+    screen(60, 16, s_b4);
+    tui_start(&tui);
+    tui_busy(&tui, 1);
+    CHECK_INT(tui_poll(&tui), 0);
+    CHECK(strstr(tui.hint, "Nothing to move") != 0);
+    unscreen();
+    cs_close();
+    /* Ctrl+S: the prompt put aside, the box empty; again: back, with its
+     * cursor and its mode */
+    screen(60, 16, s_s1);
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    dump("stash");
+    CHECK_INT(tui.ed.n, 0);
+    CHECK_STR(tui.stash ? tui.stash : "", "draft one");
+    CHECK(strstr(cs_row(15), "Prompt stashed") != 0);
+    unscreen();
+    cs_close();
+    screen(60, 16, s_s2);
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "draft one");
+    CHECK_INT(tui.ed.cur, 8);
+    CHECK(tui.stash == 0);
+    unscreen();
+    cs_close();
+    screen(60, 16, s_s3);
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "ls");
+    CHECK_INT(tui.box, BOX_BASH);
+    unscreen();
+    cs_close();
+    /* Alt+Y after Ctrl+Y: the older kills in turn, round the ring */
+    ed_init(&e);
+    type(&e, "aaa bbb ccc");
+    type(&e, "\027\027");                   /* Ctrl+W twice: "ccc", "bbb " */
+    CHECK_STR(e.b, "aaa ");
+    type(&e, "\033y");                      /* Alt+Y alone: nothing */
+    CHECK_STR(e.b, "aaa ");
+    type(&e, "\031");
+    CHECK_STR(e.b, "aaa bbb ");
+    type(&e, "\033y");
+    CHECK_STR(e.b, "aaa ccc");
+    type(&e, "\033y");
+    CHECK_STR(e.b, "aaa bbb ");
+    type(&e, "\037");                       /* undo: the Alt+Y before */
+    CHECK_STR(e.b, "aaa ccc");
+    type(&e, "x\033y");                     /* a key between: Alt+Y does nothing */
+    CHECK_STR(e.b, "aaa cccx");
+    ed_free(&e);
+    /* ?: the shortcuts under the box; any key closes them */
+    screen(80, 16, s_h1);
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    dump("shortcuts");
+    CHECK_INT(tui.show_help, 1);
+    CHECK(cs_find("! for bash mode") >= 0 && cs_find("ctrl+s to stash the prompt") >= 0);
+    CHECK(cs_find("ctx:") < 0);
+    CHECK_INT(tui.ed.n, 0);
+    unscreen();
+    cs_close();
+    screen(80, 16, s_h2);
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_INT(tui.show_help, 0);
+    CHECK_STR(tui.ed.b, "x");
+    CHECK(cs_find("ctx:") >= 0);
+    unscreen();
+    cs_close();
+    /* Alt+P: /model comes back as a key's line, the draft stays */
+    screen(60, 16, s_p);
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), 6);
+    CHECK_STR(line, "/model");
+    CHECK_INT(tui.keycmd, 1);
+    CHECK_STR(tui.ed.b, "draft");
+    unscreen();
+    cs_close();
+    /* Shift+Tab on a file's permission question: allowed for the session */
+    screen(70, 18, s_m);
+    tui_start(&tui);
+    tui.m_btab = 1;
+    CHECK_INT(tui_menu(&tui, "Edit file", "q", opt, 3, 0, 2), 1);
+    CHECK_INT(tui.m_btab, -1);
+    unscreen();
+    cs_close();
+    /* Tab on Yes: a comment field; Enter answers Yes with it */
+    screen(70, 18, s_c1);
+    tui_start(&tui);
+    tui.m_comment = 1;
+    cs.before_read = note_look;
+    CHECK_INT(tui_menu(&tui, "Edit file", "q", opt, 3, 0, 2), 0);
+    cs.before_read = 0;
+    CHECK_INT(note_row, 1);
+    CHECK_STR(tui.m_note, "ok but short");
+    CHECK_INT(tui.m_comment, 0);
+    unscreen();
+    cs_close();
+    /* Tab on the middle option moves on; Tab on No, a comment, Tab closes
+     * it (dropped), Enter: No without one */
+    screen(70, 18, s_c2);
+    tui_start(&tui);
+    tui.m_comment = 1;
+    CHECK_INT(tui_menu(&tui, "Edit file", "q", opt, 3, 1, 2), 2);
+    CHECK_STR(tui.m_note, "");
+    unscreen();
+    cs_close();
+}
+
+/* R9: the viewer follows a resize while it is open */
+static int rs_status, rs_seen;
+static void rs_look(void)
+{
+    if (cs.next == 1)
+        cs_resize(70, 14);
+    if (cs.next == 2) {
+        rs_seen = 1;
+        rs_status = cs_find(" Transcript ");
+    }
+}
+
+static void transcript_resize(void)
+{
+    static const char *script[] = { "\033[A", "x", "q", 0 };
+    int k;
+    screen(60, 12, script);
+    tui_start(&tui);
+    for (k = 1; k <= 40; k++) {
+        char l[16];
+        cl_copy(l, "line ", sizeof(l));
+        cl_ltoa(k, l + 5);
+        cl_cat(l, "\n", sizeof(l));
+        tui_lines(&tui, l, (long)strlen(l));
+    }
+    cs.before_read = rs_look;
+    tui_transcript(&tui);
+    cs.before_read = 0;
+    CHECK_INT(rs_seen, 1);
+    CHECK_INT(rs_status, 13);           /* the status row on the new last row */
+    CHECK_INT(tui.rows, 14);
+    CHECK(cs_find(PROMPT) >= 0);        /* back: the footer drawn at the new size */
     unscreen();
     cs_close();
 }
@@ -1266,15 +1726,18 @@ void suite_claude_tui(void)
     answer_and_tools();
     edit_diff_and_todos();
     grow_over_transcript();
-    welcome_box_sides_line_up();
+    welcome_mascot();
     mk_tdir();
     history_and_search();
     editor_words_undo();
     vim_mode();
+    vim_visual_dot();
     bash_and_memory_box();
     at_completion();
     queue_while_busy();
+    keys_rest();
     transcript_view();
+    transcript_resize();
     esc_esc();
     thinking_shown();
     themes();

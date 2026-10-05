@@ -24,6 +24,8 @@ stream (A2/A3, and the A4 WP2 tools):
   - mentions "background"                             -> tool_bg.sse (Bash Wait 2 in
     the background, then BashOutput)
   - mentions "grep"                                   -> tool_grep.sse (Grep for the Set... commands in S)
+  - mentions "slow"                                   -> tool_slow.sse (Bash Wait 30 in the
+    foreground: Ctrl+B moves it to the background, Esc stops it)
   - mentions "edit"                                   -> tool_edit.sse
     (TodoWrite, Read and Edit claude-test.txt "hello" -> "hello from the
     Amiga": Echo hello >RAM:claude-test.txt, start Claude with ROOT=RAM:)
@@ -85,7 +87,7 @@ def pick(body, forced):
     text = " ".join(b.get("text", "") for b in blocks if b.get("type") == "text").lower()
     for word, name in (("search the web", "websearch"), ("fetch", "tool_fetch"), ("agent", "tool_task"),
                        ("question", "tool_ask"), ("plan", "tool_enterplan"), ("background", "tool_bg"),
-                       ("grep", "tool_grep")):
+                       ("grep", "tool_grep"), ("slow", "tool_slow")):
         if word in text:
             return name
     if "edit" in text:

@@ -281,6 +281,24 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         str_into(x, s->output_style, sizeof(s->output_style));
     if (json_get(o, "editorMode", &x))
         str_into(x, s->editor_mode, sizeof(s->editor_mode));
+    if ((src == CFG_USER || src == CFG_SESSION) && json_get(o, "vimInsertModeRemaps", &x) &&
+        json_type(x) == J_OBJ) {
+        /* two printable characters -> "<Esc>"; anything else is ignored */
+        jit it;
+        jv k, v;
+        long n = 0;
+        json_iter(x, &it);
+        while (json_next(&it, &k, &v) && n + 2 < (long)sizeof(s->vim_remaps)) {
+            char key[8];
+            if (json_type(k) != J_STR || json_str(k, key, sizeof(key)) != 2 || !json_streq(v, "<Esc>") ||
+                (unsigned char)key[0] < 0x21 || (unsigned char)key[0] > 0x7e ||
+                (unsigned char)key[1] < 0x21 || (unsigned char)key[1] > 0x7e)
+                continue;
+            s->vim_remaps[n++] = key[0];
+            s->vim_remaps[n++] = key[1];
+            s->vim_remaps[n] = 0;
+        }
+    }
     if (json_get(o, "theme", &x))
         str_into(x, s->theme, sizeof(s->theme));
     if (json_get(o, "fallbackModel", &x))

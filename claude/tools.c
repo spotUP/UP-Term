@@ -787,7 +787,19 @@ void tl_result(cl_tools *t, jw *out, const char *id, const char *text, long n, i
     jw_rawz(out, "{\"type\":\"tool_result\",\"tool_use_id\":");
     jw_strz(out, id);
     jw_rawz(out, ",\"content\":");
-    jw_str(out, text, n);
+    if (t->note[0]) {
+        /* the user allowed the call with a comment (Tab on Yes) */
+        jw w;
+        jw_init(&w);
+        jw_raw(&w, text, n);
+        jw_rawz(&w, "\n\nThe user allowed this call with a comment: ");
+        jw_rawz(&w, t->note);
+        jw_str(out, w.p ? w.p : text, w.p ? w.n : n);
+        jw_free(&w);
+        t->note[0] = 0;
+    } else {
+        jw_str(out, text, n);
+    }
     if (is_error)
         jw_rawz(out, ",\"is_error\":true");
     jw_raw(out, "}", 1);
@@ -807,6 +819,7 @@ void tl_error(cl_tools *t, jw *out, const char *id, const char *a, const char *b
 int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, int outside, int show)
 {
     int ans;
+    char note[200];
     if (perm_refused(&t->perm, tool)) {
         tl_error(t, out, id, "plan mode is on: only tools that change nothing run now (Read, Glob, Grep, "
                              "WebFetch, Task, the questions). Present your plan with ExitPlanMode; the user "
@@ -817,7 +830,15 @@ int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, in
         t->show(t->u, defs[tool].name, what);
     if (!perm_must_ask(&t->perm, tool, outside))
         return 0;
-    ans = t->ask ? t->ask(t->u, defs[tool].name, what, outside) : ASK_NO;
+    note[0] = 0;
+    ans = t->ask ? t->ask(t->u, defs[tool].name, what, outside, note, sizeof(note)) : ASK_NO;
+    if (ans == ASK_NO && note[0]) {
+        /* No with a comment: Claude is told why and goes on */
+        tl_error(t, out, id, "the user declined this tool call and said: ", note);
+        return -1;
+    }
+    if (ans != ASK_NO && ans != ASK_STOP)
+        cl_copy(t->note, note, sizeof(t->note));    /* Yes with a comment: with the result */
     if (ans == ASK_STOP) {
         t->stop = 1;
         tl_error(t, out, id, "the user stopped this tool call and will tell you what to do differently; "
@@ -1493,7 +1514,7 @@ static int cd_line(const char *cmd, char *dir, long cap)
 
 static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
 {
-    char what[300], num[16];
+    char what[300], num[16], shell[24];
     char *cmd = tl_prop(in, "command", 0), *buf;
     long n = 0, rc = 0, ms = tl_num(in, "timeout", 0), omax = t->out_max > 0 ? t->out_max : TL_OUT_MAX;
     char cddir[256];
@@ -1541,7 +1562,7 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "out of memory", 0);
         return;
     }
-    r = t->sys->run(t->sys->u, cmd, secs, buf, omax, &n, &rc);
+    r = tools_run_fg(t, cmd, secs, buf, omax, &n, &rc, shell, sizeof(shell));
     if (r == 0 && rc == 0) {
         /* a bare cd: the directory the next commands run in */
         char full[512];
@@ -1555,6 +1576,17 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "the command did not start: ", t->sys->err(t->sys->u));
         return;
     }
+    if (r == SHELL_MOVED) {
+        /* Ctrl+B: the user moved it to the background */
+        free(buf);
+        jw_init(&res);
+        jw_rawz(&res, "Command was manually backgrounded by user with ID: ");
+        jw_rawz(&res, shell);
+        jw_rawz(&res, ". Read its output with BashOutput, stop it with KillShell.");
+        tl_result(t, out, id, res.p, res.n, 0);
+        jw_free(&res);
+        return;
+    }
     jw_init(&res);
     if (r == SYS_TIMEOUT) {
         jw_rawz(&res, "The command ran out of time (");
@@ -1563,6 +1595,13 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         jw_rawz(&res, " s) and was sent a break (Ctrl+C).\n");
     } else if (r == SYS_BREAK)
         jw_rawz(&res, "The user stopped the command (Ctrl+C).\n");
+    if (shell[0]) {
+        jw_rawz(&res, "It did not end after the break; it runs on as the background shell ");
+        jw_rawz(&res, shell);
+        jw_rawz(&res, ".\n");
+    }
+    if (r == SYS_BREAK && t->wait)
+        t->stop = 1;                /* stopped from the screen: the user says what next */
     jw_rawz(&res, "Return code ");
     cl_ltoa(rc, num);
     jw_rawz(&res, num);

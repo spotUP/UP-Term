@@ -69,32 +69,35 @@ static void id_text(const shell *s, char *out)
     strcat(out, num);
 }
 
+/* a free slot (an ended shell's when none is free), 0 none */
+static shell *grab(cl_tools *t)
+{
+    cl_shells *sh = t->sh;
+    int i;
+    for (i = 0; i < SHELLS_MAX; i++)
+        if (!sh->s[i].id)
+            return &sh->s[i];
+    /* reuse the oldest ended one */
+    for (i = 0; i < SHELLS_MAX; i++)
+        if (sh->s[i].ended) {
+            if (t->sys->bg_drop)
+                t->sys->bg_drop(t->sys->u, sh->s[i].job);
+            return &sh->s[i];
+        }
+    return 0;
+}
+
 void shells_start(cl_tools *t, jw *out, const char *id, const char *cmd)
 {
     cl_shells *sh = t->sh;
-    shell *s = 0;
-    int i;
+    shell *s;
     char name[24];
     jw m;
     if (!sh || !t->sys->bg_start) {
         tl_error(t, out, id, "background shells are not available here; run the command in the foreground", 0);
         return;
     }
-    for (i = 0; i < SHELLS_MAX; i++)
-        if (!sh->s[i].id) {
-            s = &sh->s[i];
-            break;
-        }
-    if (!s) {
-        /* reuse the oldest ended one */
-        for (i = 0; i < SHELLS_MAX; i++)
-            if (sh->s[i].ended) {
-                if (t->sys->bg_drop)
-                    t->sys->bg_drop(t->sys->u, sh->s[i].job);
-                s = &sh->s[i];
-                break;
-            }
-    }
+    s = grab(t);
     if (!s) {
         tl_error(t, out, id, "16 background shells are running already; stop one with KillShell first", 0);
         return;
@@ -112,6 +115,66 @@ void shells_start(cl_tools *t, jw *out, const char *id, const char *cmd)
     jw_rawz(&m, name);
     tl_result(t, out, id, m.p, m.n, 0);
     jw_free(&m);
+}
+
+int tools_run_fg(cl_tools *t, const char *cmd, int secs, char *out, long cap, long *outn, long *rc, char *id,
+                 long idcap)
+{
+    cl_sys *sys = t->sys;
+    shell *s;
+    long waited = 0, limit = (long)secs * 1000L, n = 0;
+    int running = 1, broke = 0;
+    *outn = 0;
+    *rc = -1;
+    if (id && idcap)
+        id[0] = 0;
+    if (!t->wait || !t->sh || !sys->bg_start || !sys->bg_read || !sys->bg_kill || !(s = grab(t)))
+        return sys->run(sys->u, cmd, secs, out, cap, outn, rc);
+    memset(s, 0, sizeof(*s));
+    if (sys->bg_start(sys->u, cmd, &s->job))
+        return -1;
+    s->id = -1;                     /* taken; no id until it moves to the background */
+    cl_copy(s->cmd, cmd, sizeof(s->cmd));
+    for (;;) {
+        int w;
+        if (sys->bg_read(sys->u, s->job, 0, out, 0, &n, &running, rc) || !running)
+            break;
+        if (broke) {
+            if (waited >= limit)
+                break;              /* it does not end after a break: left running */
+        } else if (waited >= limit) {
+            sys->bg_kill(sys->u, s->job);
+            broke = SYS_TIMEOUT;
+            limit = waited + 10000;
+        }
+        w = t->wait(t->u, 100);
+        waited += 100;
+        if (w == TW_STOP && !broke) {
+            sys->bg_kill(sys->u, s->job);
+            broke = SYS_BREAK;
+            limit = waited + 10000;
+        } else if (w == TW_BACKGROUND && !broke) {
+            /* Ctrl+B: it runs on as a background shell */
+            s->id = t->sh->next++;
+            if (id && idcap > 16)
+                id_text(s, id);
+            return SHELL_MOVED;
+        }
+    }
+    if (running) {
+        /* it does not end after the break: kept as a background shell (so
+         * C:Claude's end stops it), its output so far */
+        s->id = t->sh->next++;
+        if (id && idcap > 16)
+            id_text(s, id);
+        sys->bg_read(sys->u, s->job, 0, out, cap, outn, &running, rc);
+        return broke;
+    }
+    sys->bg_read(sys->u, s->job, 0, out, cap, outn, &running, rc);
+    if (sys->bg_drop)
+        sys->bg_drop(sys->u, s->job);
+    memset(s, 0, sizeof(*s));
+    return broke;
 }
 
 /* the lines of s[0..n) that match re, appended to w */
