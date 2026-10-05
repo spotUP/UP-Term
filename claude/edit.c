@@ -26,6 +26,8 @@ void ed_free(cl_edit *e)
     int i;
     for (i = 0; i < e->nh; i++)
         free(e->hist[i]);
+    for (i = 0; i < e->nundo; i++)
+        free(e->undo[i].b);
     free(e->b);
     free(e->draft);
     free(e->kill);
@@ -58,6 +60,14 @@ void ed_clear(cl_edit *e)
     if (e->b)
         e->b[0] = 0;
     e->hpos = e->nh;
+    while (e->nundo) {
+        free(e->undo[--e->nundo].b);
+        e->undo[e->nundo].b = 0;
+    }
+    e->lastk = 0;
+    if (e->vim)
+        e->vim = VIM_INSERT;    /* a new prompt starts in INSERT, as Claude Code's */
+    e->vcount = e->vopcount = e->vop = e->vpend = 0;
 }
 
 void ed_set(cl_edit *e, const char *s)
@@ -80,7 +90,7 @@ void ed_insert(cl_edit *e, const char *s, long n)
     e->cur += n;
 }
 
-static void cut(cl_edit *e, long a, long z, int keep)
+void ed_cut(cl_edit *e, long a, long z, int keep)
 {
     if (z <= a)
         return;
@@ -93,7 +103,7 @@ static void cut(cl_edit *e, long a, long z, int keep)
     e->cur = a;
 }
 
-static long prev_char(const cl_edit *e, long i)
+long ed_prev(const cl_edit *e, long i)
 {
     if (i <= 0)
         return 0;
@@ -103,7 +113,7 @@ static long prev_char(const cl_edit *e, long i)
     return i;
 }
 
-static long next_char(const cl_edit *e, long i)
+long ed_next(const cl_edit *e, long i)
 {
     unsigned long cp;
     if (i >= e->n)
@@ -111,23 +121,30 @@ static long next_char(const cl_edit *e, long i)
     return i + vw_char(e->b + i, e->n - i, &cp);
 }
 
-static long line_start(const cl_edit *e, long i)
+long ed_lstart(const cl_edit *e, long i)
 {
     while (i > 0 && e->b[i - 1] != '\n')
         i--;
     return i;
 }
 
-static long line_end(const cl_edit *e, long i)
+long ed_lend(const cl_edit *e, long i)
 {
     while (i < e->n && e->b[i] != '\n')
         i++;
     return i;
 }
 
+/* Alt+B/F/D: a word is a run of letters and digits (any non-ASCII
+ * character counts as a letter); Ctrl+W: back to the previous white space */
 static int is_word(int c)
 {
-    return c && c != ' ' && c != '\t' && c != '\n' && c != '/' && c != ':';
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80;
+}
+
+static int is_blank(int c)
+{
+    return c == ' ' || c == '\t' || c == '\n';
 }
 
 static long word_back(const cl_edit *e, long i)
@@ -135,6 +152,15 @@ static long word_back(const cl_edit *e, long i)
     while (i > 0 && !is_word((unsigned char)e->b[i - 1]))
         i--;
     while (i > 0 && is_word((unsigned char)e->b[i - 1]))
+        i--;
+    return i;
+}
+
+static long blank_back(const cl_edit *e, long i)
+{
+    while (i > 0 && is_blank((unsigned char)e->b[i - 1]))
+        i--;
+    while (i > 0 && !is_blank((unsigned char)e->b[i - 1]))
         i--;
     return i;
 }
@@ -154,7 +180,7 @@ static long chars_between(const cl_edit *e, long a, long z)
 {
     long c = 0;
     while (a < z) {
-        a = next_char(e, a);
+        a = ed_next(e, a);
         c++;
     }
     return c;
@@ -162,13 +188,13 @@ static long chars_between(const cl_edit *e, long a, long z)
 
 static long at_col(const cl_edit *e, long s, long col)
 {
-    long end = line_end(e, s);
+    long end = ed_lend(e, s);
     while (col-- > 0 && s < end)
-        s = next_char(e, s);
+        s = ed_next(e, s);
     return s;
 }
 
-static void hist_go(cl_edit *e, int to)
+void ed_hist_go(cl_edit *e, int to)
 {
     if (to < 0 || to > e->nh || to == e->hpos)
         return;
@@ -199,7 +225,88 @@ void ed_remember(cl_edit *e, const char *s)
     e->hpos = e->nh;
 }
 
+void ed_snap(cl_edit *e)
+{
+    char *d = dup(e->b, e->n);
+    if (!d)
+        return;
+    if (e->nundo == ED_UNDO) {
+        free(e->undo[0].b);
+        memmove(e->undo, e->undo + 1, sizeof(e->undo[0]) * (ED_UNDO - 1));
+        e->nundo--;
+    }
+    e->undo[e->nundo].b = d;
+    e->undo[e->nundo].cur = e->cur;
+    e->nundo++;
+}
+
+int ed_undo(cl_edit *e)
+{
+    ed_snapshot *s;
+    if (!e->nundo)
+        return 0;
+    s = &e->undo[--e->nundo];
+    ed_set(e, s->b);
+    e->cur = s->cur <= e->n ? s->cur : e->n;
+    free(s->b);
+    s->b = 0;
+    return 1;
+}
+
+static int changes(const cl_key *k)
+{
+    switch (k->k) {
+    case K_CHAR:
+    case K_NEWLINE:
+    case K_PASTE:
+    case K_BS:
+    case K_DEL:
+        return 1;
+    case K_ALT:
+        return k->ch == 0x7f || k->ch == 'd';
+    case K_CTRL:
+        return k->ch == 'k' || k->ch == 'u' || k->ch == 'w' || k->ch == 'h' || k->ch == 'y' || k->ch == 'd';
+    default:
+        return 0;
+    }
+}
+
+static int edit_key(cl_edit *e, const cl_key *k);
+
 int ed_key(cl_edit *e, const cl_key *k)
+{
+    int r, snapped = 0;
+    long n0 = e->n, c0 = e->cur;
+    if (e->vim == VIM_NORMAL) {
+        r = vim_normal(e, k);
+        if (r >= 0)
+            return r;
+    } else if (e->vim == VIM_INSERT && k->k == K_ESC) {
+        vim_escape(e);
+        return 1;
+    }
+    if (k->k == K_CTRL && k->ch == '_') {
+        ed_undo(e);
+        e->lastk = 0;
+        return 1;
+    }
+    /* typed characters in a row undo as one; in vim the command that
+     * started INSERT took the snapshot */
+    if (changes(k) && e->vim != VIM_INSERT && !(k->k == K_CHAR && e->lastk == K_CHAR)) {
+        ed_snap(e);
+        snapped = 1;
+    }
+    r = edit_key(e, k);
+    if (snapped && e->n == n0 && e->cur == c0 && e->nundo && !strcmp(e->undo[e->nundo - 1].b, e->b)) {
+        /* nothing changed: no undo step */
+        free(e->undo[--e->nundo].b);
+        e->undo[e->nundo].b = 0;
+    }
+    e->lastk = changes(k) ? k->k : 0;
+    return r;
+}
+
+static int edit_key(cl_edit *e, const cl_key *k)
 {
     char u[8];
     switch (k->k) {
@@ -228,44 +335,44 @@ int ed_key(cl_edit *e, const cl_key *k)
         return 1;
     }
     case K_BS:
-        cut(e, prev_char(e, e->cur), e->cur, 0);
+        ed_cut(e, ed_prev(e, e->cur), e->cur, 0);
         return 1;
     case K_DEL:
-        cut(e, e->cur, next_char(e, e->cur), 0);
+        ed_cut(e, e->cur, ed_next(e, e->cur), 0);
         return 1;
     case K_LEFT:
-        e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_back(e, e->cur) : prev_char(e, e->cur);
+        e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_back(e, e->cur) : ed_prev(e, e->cur);
         return 1;
     case K_RIGHT:
-        e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_fwd(e, e->cur) : next_char(e, e->cur);
+        e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_fwd(e, e->cur) : ed_next(e, e->cur);
         return 1;
     case K_HOME:
-        e->cur = line_start(e, e->cur);
+        e->cur = ed_lstart(e, e->cur);
         return 1;
     case K_END:
-        e->cur = line_end(e, e->cur);
+        e->cur = ed_lend(e, e->cur);
         return 1;
     case K_UP: {
-        long s = line_start(e, e->cur);
+        long s = ed_lstart(e, e->cur);
         if (s == 0) {
-            hist_go(e, e->hpos - 1);
+            ed_hist_go(e, e->hpos - 1);
             return 1;
         }
-        e->cur = at_col(e, line_start(e, s - 1), chars_between(e, s, e->cur));
+        e->cur = at_col(e, ed_lstart(e, s - 1), chars_between(e, s, e->cur));
         return 1;
     }
     case K_DOWN: {
-        long z = line_end(e, e->cur);
+        long z = ed_lend(e, e->cur);
         if (z == e->n) {
-            hist_go(e, e->hpos + 1);
+            ed_hist_go(e, e->hpos + 1);
             return 1;
         }
-        e->cur = at_col(e, z + 1, chars_between(e, line_start(e, e->cur), e->cur));
+        e->cur = at_col(e, z + 1, chars_between(e, ed_lstart(e, e->cur), e->cur));
         return 1;
     }
     case K_ALT:
         if (k->ch == 0x7f) {
-            cut(e, word_back(e, e->cur), e->cur, 1);
+            ed_cut(e, word_back(e, e->cur), e->cur, 1);
             return 1;
         }
         if (k->ch == 'b') {
@@ -277,48 +384,55 @@ int ed_key(cl_edit *e, const cl_key *k)
             return 1;
         }
         if (k->ch == 'd') {
-            cut(e, e->cur, word_fwd(e, e->cur), 1);
+            ed_cut(e, e->cur, word_fwd(e, e->cur), 1);
             return 1;
         }
         return 0;
     case K_CTRL:
         switch (k->ch) {
         case 'a':
-            e->cur = line_start(e, e->cur);
+            e->cur = ed_lstart(e, e->cur);
             return 1;
         case 'e':
-            e->cur = line_end(e, e->cur);
+            e->cur = ed_lend(e, e->cur);
             return 1;
         case 'b':
-            e->cur = prev_char(e, e->cur);
+            e->cur = ed_prev(e, e->cur);
             return 1;
         case 'f':
-            e->cur = next_char(e, e->cur);
+            e->cur = ed_next(e, e->cur);
             return 1;
         case 'k': {
-            long z = line_end(e, e->cur);
+            long z = ed_lend(e, e->cur);
             /* at a line's end Ctrl+K joins the next line */
-            cut(e, e->cur, z == e->cur && z < e->n ? z + 1 : z, 1);
+            ed_cut(e, e->cur, z == e->cur && z < e->n ? z + 1 : z, 1);
             return 1;
         }
-        case 'u':
-            cut(e, line_start(e, e->cur), e->cur, 1);
+        case 'u': {
+            long a = ed_lstart(e, e->cur);
+            /* at a line's start it joins the line above: repeated, it
+             * clears a multi-line text */
+            ed_cut(e, a == e->cur && a > 0 ? a - 1 : a, e->cur, 1);
             return 1;
+        }
         case 'w':
-            cut(e, word_back(e, e->cur), e->cur, 1);
+            ed_cut(e, blank_back(e, e->cur), e->cur, 1);
+            return 1;
+        case 'd':
+            ed_cut(e, e->cur, ed_next(e, e->cur), 0);
             return 1;
         case 'h':
-            cut(e, prev_char(e, e->cur), e->cur, 0);
+            ed_cut(e, ed_prev(e, e->cur), e->cur, 0);
             return 1;
         case 'y':
             if (e->kill)
                 ed_insert(e, e->kill, (long)strlen(e->kill));
             return 1;
         case 'p':
-            hist_go(e, e->hpos - 1);
+            ed_hist_go(e, e->hpos - 1);
             return 1;
         case 'n':
-            hist_go(e, e->hpos + 1);
+            ed_hist_go(e, e->hpos + 1);
             return 1;
         default:
             return 0;

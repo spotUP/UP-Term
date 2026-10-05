@@ -42,6 +42,8 @@ int pol_prompt(cl_repl *r, const char *prompt, long n);
 int pol_stop(cl_repl *r, int active, jw *reason);
 void pol_notify(cl_repl *r, const char *message);
 void pol_precompact(cl_repl *r, int automatic, const char *focus);
+/* the screen's settings, memory files and rewind points (ui.h, WP1) */
+void pol_attach_ui(cl_repl *r);
 /* the statusLine command run, its first line into r->status_text */
 void pol_statusline(cl_repl *r);
 

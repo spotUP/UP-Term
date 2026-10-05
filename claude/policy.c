@@ -433,3 +433,120 @@ void pol_statusline(cl_repl *r)
     if (r->sys->remove)
         r->sys->remove(r->sys->u, file);
 }
+
+/* ---- what the screen (WP1, ui.h "A4 (WP1)") takes from WP3 ---- */
+
+static const char *ui_setting(void *u, const char *key)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (!strcmp(key, "theme"))
+        return r->cfg.theme[0] ? r->cfg.theme : 0;
+    if (!strcmp(key, "editorMode"))
+        return r->cfg.editor_mode[0] ? r->cfg.editor_mode : 0;
+    return 0;
+}
+
+/* /theme and /vim keep their choice in the user's settings */
+static void ui_set_setting(void *u, const char *key, const char *value)
+{
+    cl_repl *r = (cl_repl *)u;
+    jw v;
+    jw_init(&v);
+    jw_strz(&v, value);
+    if (!v.oom)
+        cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), key, v.p);
+    jw_free(&v);
+    if (!strcmp(key, "theme"))
+        cl_copy(r->cfg.theme, value, sizeof(r->cfg.theme));
+    else if (!strcmp(key, "editorMode"))
+        cl_copy(r->cfg.editor_mode, value, sizeof(r->cfg.editor_mode));
+}
+
+static int ui_memory_files(void *u, cl_memfile *out, int max)
+{
+    static const char *const lab[3] = { "Project memory (CLAUDE.md)", "User memory (ENVARC:Claude/CLAUDE.md)",
+                                        "Local project memory (CLAUDE.local.md)" };
+    static const int kind[3] = { MEM_PROJECT, MEM_USER, MEM_LOCAL };
+    cl_repl *r = (cl_repl *)u;
+    int i;
+    for (i = 0; i < 3 && i < max; i++) {
+        cl_copy(out[i].label, lab[i], sizeof(out[i].label));
+        mem_file_of(kind[i], r->home, r->tools.root, out[i].path, sizeof(out[i].path));
+    }
+    return i;
+}
+
+static void ui_memory_changed(void *u, const char *path)
+{
+    (void)path;
+    repl_load_memory((cl_repl *)u);
+}
+
+/* the rewind points: the prompts, oldest first */
+static int rw_points(cl_repl *r, int *msg, int max)
+{
+    int n = repl_prompts(r, msg, max), i;
+    for (i = 0; i < n / 2; i++) {
+        int t = msg[i];
+        msg[i] = msg[n - 1 - i];
+        msg[n - 1 - i] = t;
+    }
+    return n;
+}
+
+static int rw_count(void *u)
+{
+    int msg[64];
+    return rw_points((cl_repl *)u, msg, 64);
+}
+
+static int rw_label(void *u, int i, char *out, long cap)
+{
+    cl_repl *r = (cl_repl *)u;
+    int msg[64], n = rw_points(r, msg, 64);
+    jv v, b, x;
+    jit it;
+    long k;
+    if (i < 0 || i >= n || json_parse(r->conv.m[msg[i]].json, r->conv.m[msg[i]].n, &v))
+        return -1;
+    json_iter(v, &it);
+    if (!json_next(&it, 0, &b) || !json_get(b, "text", &x) || json_str(x, out, cap) < 0)
+        return -1;
+    for (k = 0; out[k]; k++)
+        if (out[k] == '\n' || out[k] == '\r')
+            out[k] = ' ';
+    return 0;
+}
+
+static int rw_can(void *u, int i)
+{
+    cl_repl *r = (cl_repl *)u;
+    int msg[64], n = rw_points(r, msg, 64);
+    if (i < 0 || i >= n)
+        return 0;
+    return RW_CONV | (cp_files_since(&r->cp, msg[i]) ? RW_CODE : 0);
+}
+
+static int rw_restore(void *u, int i, int what)
+{
+    cl_repl *r = (cl_repl *)u;
+    int msg[64], n = rw_points(r, msg, 64);
+    if (i < 0 || i >= n)
+        return -1;
+    return repl_rewind(r, msg[i], (what & RW_CODE) != 0, (what & RW_CONV) != 0);
+}
+
+void pol_attach_ui(cl_repl *r)
+{
+    r->ui.setting = ui_setting;
+    r->ui.set_setting = ui_set_setting;
+    r->ui.su = r;
+    r->ui.memory_files = ui_memory_files;
+    r->ui.memory_changed = ui_memory_changed;
+    r->ui.mu = r;
+    r->ui.rw.u = r;
+    r->ui.rw.count = rw_count;
+    r->ui.rw.label = rw_label;
+    r->ui.rw.can = rw_can;
+    r->ui.rw.restore = rw_restore;
+}

@@ -11,7 +11,8 @@ Owner 2026-10-05: "Ok don't stop until claude cli is finished." / "Definition of
 claude cli clone has all feats of the real claude cli, at least what is possible on the amiga."
 
 DONE = every row below is [x] (built, host-tested in the CI glob, and seen on the rig against
-tools/claude_fixture.py) or [N/A] with its reason. Real-API checks use Haiku 4.5 (owner rule).
+tools/claude_fixture.py) or [N/A] with its reason. Real-API checks use the default model
+(the owner withdrew the Haiku-only test rule 2026-10-05).
 Source of the feature list: code.claude.com docs (interactive-mode, commands, tools-reference,
 memory, settings-reference, sessions, cli-reference, headless), fetched 2026-10-05.
 
@@ -96,10 +97,11 @@ shell = vsh when present, else AmigaShell (SystemTags); paths AmigaDOS and /Unix
        --append-system-prompt(-file) --system-prompt(-file) --settings --max-turns --max-budget-usd
        --verbose --agent
 - [ ] 4.5 both forms: Unix flags and AmigaDOS ReadArgs keywords (MODEL=, PRINT/S ...)
-- [ ] 4.6 Haiku 4.5 requests valid: no fields it rejects (effort/output_config, fallbacks beta)
+- [ ] 4.6 every model the aliases reach gets a valid request (fields a model rejects, e.g. effort
+       on Haiku 4.5, left out for that model)
 - [N/A] --chrome, --worktree (no git), --cloud/--teleport/--remote-control, --ide, update/install
 
 ## Order and agents (owner cap: max 3 running, one new per finished)
 Round 1 (parallel, separate files): WP2 tools; WP3 memory/config/sessions; WP1 input/screen.
 Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: merges, rig checks
-(fixture), one real-API smoke test on Haiku 4.5 once the owner has a key on the rig.
+(fixture), one real-API smoke test once the owner has a key on the rig.

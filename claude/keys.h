@@ -22,7 +22,7 @@
 enum {
     K_NONE, K_CHAR, K_ENTER, K_NEWLINE, K_TAB, K_BTAB, K_BS, K_DEL, K_ESC,
     K_UP, K_DOWN, K_LEFT, K_RIGHT, K_HOME, K_END, K_PGUP, K_PGDN, K_INS,
-    K_CTRL,             /* ch: 'a'..'z' (Ctrl+letter, not Tab/Return/^J) */
+    K_CTRL,             /* ch: 'a'..'z' (Ctrl+letter, not Tab/Return/^J), '_' (Ctrl+_) */
     K_ALT,              /* ch: the character with Meta (ESC prefix) */
     K_PASTE,            /* text, n: the pasted bytes */
     K_CPR               /* row, col: a cursor position report */

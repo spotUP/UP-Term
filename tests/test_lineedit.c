@@ -285,6 +285,20 @@ static void command_word_gets_colour_until_it_changes(void)
     vt_free(t);
 }
 
+/* W31: a program's cooked read (Ask, C:Claude PLAIN) is not a command
+ * line: the word's colour goes and the text stays. */
+static void a_programs_line_gets_no_command_colour(void)
+{
+    vt_term *t = start(40, 4, "? ");
+    type("hello there");
+    le_set_command(&le, (const unsigned char *)"hello", 0);
+    CHECK_INT(h_cell(t, 2, 0)->fg, 1);  /* red, as before the fix */
+    le_no_command(&le);
+    CHECK_INT(h_cell(t, 2, 0)->fg, VT_COLOR_DEFAULT);
+    CHECK_STR(h_row(t, 0), "? hello there");
+    vt_free(t);
+}
+
 static void menu_lists_names_and_redraws_prompt_and_line(void)
 {
     vt_term *t = start(30, 8, "1.SYS:> ");
@@ -518,6 +532,7 @@ void suite_lineedit(void)
     kingcon_word_and_quoting();
     kingcon_cycle_and_fncmode();
     command_word_gets_colour_until_it_changes();
+    a_programs_line_gets_no_command_colour();
     menu_lists_names_and_redraws_prompt_and_line();
     kingcon_list_has_19_char_columns_and_cuts_long_names();
     replace_word_for_menu_cycling();

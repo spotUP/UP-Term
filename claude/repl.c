@@ -54,6 +54,12 @@ static void st_text(void *u, const char *s, long n)
     r->render.text(r->render.u, s, n);
 }
 
+/* A4 1.9: the thinking text, for the transcript viewer */
+static void st_thinking(void *u, const char *s, long n)
+{
+    ui_thinking(&((cl_repl *)u)->ui, s, n);
+}
+
 static void st_block(void *u, int type, const char *name)
 {
     cl_repl *r = (cl_repl *)u;
@@ -163,6 +169,7 @@ static int post(cl_repl *r, const char *body, long bn, long *retry_s)
     sui.u = r;
     sui.text = st_text;
     sui.block = st_block;
+    sui.thinking = st_thinking;
 top:
     reused = r->connected;
     if (!r->connected) {
@@ -570,6 +577,15 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             ui_line(&r->ui, "Stopped after the tool calls. Type a message to go on.");
             break;
         }
+        {
+            /* A4 1.5: prompts typed ahead during the round go in now, with
+             * the tool results, as Claude Code's queue does */
+            jw q;
+            jw_init(&q);
+            if (ui_take_queued(&r->ui, &q) && !q.oom)
+                conv_add_user_text(&r->conv, q.p, q.n);
+            jw_free(&q);
+        }
     }
     ui_busy(&r->ui, 0);
     if (!answered)
@@ -651,9 +667,15 @@ static void save(cl_repl *r, const char *arg)
 
 static const char help_keys[] =
     "Keys: Enter sends, Shift+Enter (or \\ then Enter, or Ctrl+J) starts a new line; "
-    "Up/Down: earlier lines; Ctrl+A/E start/end, Ctrl+K/U/W cut, Ctrl+Y puts it back; "
-    "Shift+Tab: the permission mode (default, accept edits, plan); Esc stops Claude; "
-    "Ctrl+O shows results in full; Ctrl+C clears the line, twice leaves.";
+    "Up/Down: earlier prompts, Ctrl+R searches them; Ctrl+A/E start/end, Ctrl+K/U/W cut, "
+    "Ctrl+Y puts it back, Ctrl+_ undoes; Shift+Tab: the permission mode (default, accept edits, "
+    "plan); Esc stops Claude, Esc Esc clears the box or rewinds.";
+/* A4 (WP1)'s keys and prefixes */
+static const char help_keys2[] =
+    "Enter while Claude works queues the prompt; Ctrl+O: the transcript in full; Ctrl+T: the "
+    "todo list; Ctrl+L redraws; Ctrl+G edits the prompt in your editor; Ctrl+C clears the line, "
+    "twice leaves. A line starting with ! runs a command, # saves a memory; @path attaches a "
+    "file (Tab completes it).";
 
 static const char *const models[] = { "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-1",
                                       "claude-haiku-4-5" };
@@ -1019,6 +1041,8 @@ static void show_help(cl_repl *r)
         ui_line(&r->ui, m);
     }
     ui_line(&r->ui, r->tui ? help_keys : "Ctrl+C stops an answer or a command. Anything else is sent to Claude.");
+    if (r->tui)
+        ui_line(&r->ui, help_keys2);
 }
 
 int repl_pick(cl_repl *r, const char *title, const char *const *opt, int n, const char *cur)
@@ -1050,6 +1074,18 @@ int repl_line(cl_repl *r, const char *line)
         r->await_key = 0;
         slash_run(r, "/login", line);
         return 0;
+    }
+    {
+        /* A4: ! commands, # memories, @ mentions, /theme, /vim (input.c) */
+        jw x;
+        int in;
+        jw_init(&x);
+        in = ui_input(&r->ui, line, &x);
+        if (in == IN_SEND && !x.oom && pol_prompt(r, x.p, x.n) == 0)
+            turn(r, x.p, x.n);
+        jw_free(&x);
+        if (in != IN_PASS)
+            return 0;
     }
     if (line[0] != '/') {
         if (pol_prompt(r, line, n))
@@ -1193,6 +1229,7 @@ int repl_screen(cl_repl *r)
     r->ui.tui = t;
     r->ui.show = s;
     show_render(s, &r->render);
+    ui_attach(&r->ui, r->sys, r->tools.root, &r->conv);    /* A4: history, @, rewind, settings */
     ctx_show(r);
     tui_frame(t);
     return 0;
@@ -1466,6 +1503,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->hooks.transcript = r->sess.file;
     r->hooks.cwd = r->tools.root;
     r->hooks.tmp = r->tmp;
+    pol_attach_ui(r);
     if (repl_load(r))
         return -1;
     pol_session(r, HK_SESSION_START, "startup");

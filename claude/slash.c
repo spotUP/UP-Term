@@ -46,8 +46,10 @@ const cl_cmd slash_builtin[] = {
     { "/statusline", "A command for the status line: /statusline COMMAND" },
     { "/tasks", "The commands running in the background" },
     { "/terminal-setup", "Check the terminal: UP-Term's keys and size" },
+    { "/theme", "Change the colours" },
     { "/todos", "The todo list" },
-    { "/usage", "Tokens, cost and the context window" }
+    { "/usage", "Tokens, cost and the context window" },
+    { "/vim", "Vim editing in the input box, on or off" }
 };
 const int slash_nbuiltin = (int)(sizeof(slash_builtin) / sizeof(slash_builtin[0]));
 
@@ -535,6 +537,23 @@ static void memory(cl_repl *r, const char *arg)
         if (kinds[c] == MEM_USER && r->sys->mkdir)
             r->sys->mkdir(r->sys->u, r->home);
         r->sys->write(r->sys->u, file, head, (long)sizeof(head) - 1);
+    }
+    if (r->io->edit) {
+        /* WP1's editor launcher (Ctrl+G's): a console editor works too */
+        int bad;
+        line2(r, "Editing ", file);
+        if (r->io->raw && r->tui)
+            r->io->raw(r->io->u, 0);
+        bad = r->io->edit(r->io->u, file);
+        if (r->io->raw && r->tui)
+            r->io->raw(r->io->u, 1);
+        if (r->tui)
+            tui_redraw(r->tui);
+        if (bad)
+            line2(r, "The editor did not run for ", file);
+        repl_load_memory(r);
+        num_line(r, "Memory read again: ", r->mem.n, r->mem.n == 1 ? " file." : " files.");
+        return;
     }
     if (!r->sys->getenv || r->sys->getenv(r->sys->u, "EDITOR", ed, sizeof(ed)) <= 0)
         cl_copy(ed, "Ed", sizeof(ed));

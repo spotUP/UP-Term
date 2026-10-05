@@ -48,6 +48,7 @@ static int replay(const char *name, cl_stream *s, shown *w, long step)
     if (!b)
         return -1;
     memset(w, 0, sizeof(*w));
+    memset(&ui, 0, sizeof(ui));
     ui.u = w;
     ui.text = ui_text;
     ui.block = ui_block;

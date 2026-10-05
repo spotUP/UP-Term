@@ -30,8 +30,9 @@ minimal wiring. No emulator, no real API call, no key.
 - [x] 3.12 prompt caching kept on
 - [x] reachability test (CLAUDE.md in body, rule skips question, command expands, hook blocks)
 - [x] coordinator addition: thinking adaptive + summarized, fields per model, body per alias
-- [ ] WP1 interfaces (after main has WP1): ui.setting/set_setting, ui.memory_files +
-      memory_changed, ui.rw rewind with RW_CODE
+- [x] WP1 interfaces (main 9bc4289 merged in): ui.setting/set_setting (theme, editorMode,
+      kept in the user's settings), ui.memory_files + memory_changed (reload), ui.rw with
+      RW_CODE from the checkpoints (policy.c pol_attach_ui); /memory uses io->edit
 
 ## Decisions (do not re-litigate)
 
@@ -74,8 +75,11 @@ minimal wiring. No emulator, no real API call, no key.
   every request.
 - Request body (coordinator 2026-10-05): thinking {type adaptive, display summarized} for
   every model that takes it; Haiku 4.5 gets neither thinking nor effort (conv_caps).
-- /memory runs $EDITOR (else Ed) through sys->run: Ed (its own window) works; a console
-  editor needs WP1's interactive launcher (Ctrl+G) -- switch /memory to it after the merge.
+- /memory edits through WP1's io->edit (Ctrl+G's launcher, raw mode off meanwhile); only
+  without one does it fall back to $EDITOR (else Ed) through sys->run.
+- Merge with WP1: the A3 cmds[] table is gone; /theme and /vim are in slash.c's table
+  (input.c handles them). A prompt from ui_input (! output, @ files) also goes through the
+  UserPromptSubmit hook. memory.h's record is cl_memsrc (cl_memfile is ui.h's).
 
 ## Done
 

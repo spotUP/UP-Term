@@ -646,6 +646,8 @@ static void test_screen(void)
  * prompt, /todos, /rewind of the edit, /exit -- with no permission answer
  * in the script at all. Then a new REPL continues the saved session. */
 
+static int has(const char *rel, const char *what);
+
 static void wput(const char *rel, const char *text)
 {
     char p[700];
@@ -803,6 +805,42 @@ static void test_wp3(void)
         jw_free(&was);
     }
     repl_free(&r2);
+
+    /* the screen's side (WP1's Esc Esc menu, /theme, # memory) through the
+     * cl_ui fields WP3 fills: a rewind point that can restore the code */
+    {
+        static const char *one[] = { 0 };
+        static cl_repl r3;
+        cl_memfile mf[6];
+        char lab[100];
+        int k;
+        setup_in(&r3, one, root);
+        add_stream("tool_edit.sse");
+        add_stream("tool_final.sse");
+        repl_line(&r3, "please edit the greeting");
+        k = r3.ui.rw.count(r3.ui.rw.u);
+        CHECK_INT(k, 1);
+        CHECK_INT(r3.ui.rw.can(r3.ui.rw.u, 0), RW_CONV | RW_CODE);
+        CHECK_INT(r3.ui.rw.label(r3.ui.rw.u, 0, lab, sizeof(lab)), 0);
+        CHECK_STR(lab, "please edit the greeting");
+        CHECK_INT(r3.ui.rw.restore(r3.ui.rw.u, 0, RW_CODE | RW_CONV), 0);
+        CHECK_INT(r3.conv.n, 0);
+        strcpy(p, root);
+        strcat(p, "/claude-test.txt");
+        after = 0;
+        CHECK_INT(sys.read(sys.u, p, 1000, &after, &an), 0);
+        CHECK_STR(after ? after : "", "hello\n");
+        free(after);
+        r3.ui.set_setting(r3.ui.su, "theme", "light");
+        CHECK_STR(r3.ui.setting(r3.ui.su, "theme"), "light");
+        CHECK(has("home/settings.json", "\"theme\": \"light\""));
+        CHECK_INT(r3.ui.memory_files(r3.ui.mu, mf, 6), 3);
+        CHECK(strstr(mf[0].path, "/wp3/CLAUDE.md") != 0);
+        wput("CLAUDE.md", "CHANGED-MEMORY\n");
+        r3.ui.memory_changed(r3.ui.mu, mf[0].path);
+        CHECK(strstr(r3.system, "CHANGED-MEMORY") != 0);
+        repl_free(&r3);
+    }
     remove(user_md);
 }
 
@@ -822,6 +860,21 @@ static int has(const char *rel, const char *what)
     ok = strstr(b, what) != 0;
     free(b);
     return ok;
+}
+
+static int edits;
+
+/* the editor: appends a line */
+static int ed_stub(void *u, const char *path)
+{
+    FILE *f = fopen(path, "ab");
+    (void)u;
+    edits++;
+    if (!f)
+        return -1;
+    fputs("EDITED-IN-EDITOR\n", f);
+    fclose(f);
+    return 0;
 }
 
 static void test_wp3_commands(void)
@@ -971,6 +1024,13 @@ static void test_wp3_commands(void)
     CHECK_STR(r.status_text, "STATUS-LINE-OK");
     repl_line(&r, "/memory");
     CHECK(strstr(cn.screen.p, "/memory user, /memory project or /memory local") != 0);
+    /* /memory local: made, edited in the editor (WP1's io->edit), read again */
+    io.edit = ed_stub;
+    repl_line(&r, "/memory local");
+    io.edit = 0;
+    CHECK_INT(edits, 1);
+    CHECK(has("wp3b/CLAUDE.local.md", "EDITED-IN-EDITOR"));
+    CHECK(strstr(r.system, "EDITED-IN-EDITOR") != 0);
     repl_line(&r, "/help");
     for (i = 0; i < slash_nbuiltin; i++)
         CHECK(strstr(cn.screen.p, slash_builtin[i].name) != 0);
@@ -995,6 +1055,86 @@ static void test_wp3_commands(void)
     repl_free(&r);
 }
 
+/* ---- A4 WP1: the prompt's prefixes and keys through the whole program ----
+ *
+ * repl_screen + repl_run, keys typed into the engine: "! echo hi" runs the
+ * command and Claude gets its output; "# remember the milk" goes into the
+ * project's CLAUDE.md through the "where" menu; "@S/Startup-Sequence"
+ * attaches the file; a prompt typed while a tool round runs goes into the
+ * same turn with the tool results; Ctrl+O opens the transcript viewer and
+ * q closes it. The history file keeps the prompts. Sentinels: the request
+ * bodies, the files on disk, the viewer's open count. */
+static void test_wp1(void)
+{
+    static const char *keys[] = {
+        "!!echo hi\r",                                  /* ! bash mode */
+        "#remember the milk\r", "\r",                   /* # memory, the project's file */
+        "explain @S/Startup-Sequence\r",                /* @ mention */
+        "show me S/Startup-Sequence\r", "!also say hi\r", "2",   /* typed ahead during the tool round */
+        "\017", "q",                                    /* Ctrl+O, q */
+        "/exit\r", 0
+    };
+    static cl_repl r;
+    char p[600], hp[600];
+    char *b = 0;
+    long n = 0;
+    stub_reset();
+    add_stream("text.sse");
+    add_stream("text.sse");
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    strcpy(hp, dir);
+    strcat(hp, "/history");
+    cs_open(80, 24, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    cl_copy(r.ui.histfile, hp, sizeof(r.ui.histfile));
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, 10);                 /* every key used */
+    CHECK_INT(sb.nreq, 4);
+    /* !: the command ran, Claude got its output as Claude Code sends it */
+    CHECK(sb.nreq < 1 || strstr(sb.body[0], "<bash-input>echo hi</bash-input>\\n<bash-stdout>hi\\n</bash-stdout>") != 0);
+    CHECK(cs_find("! echo hi") >= 0 || vt_scrollback_lines(cs.vt) > 0);
+    /* #: appended to the project's memory file */
+    strcpy(p, dir);
+    strcat(p, "/CLAUDE.md");
+    CHECK_INT(sys.read(sys.u, p, 1000, &b, &n), 0);
+    CHECK_STR(b ? b : "", "- remember the milk\n");
+    free(b);
+    b = 0;
+    /* @: the file's text went with the prompt */
+    CHECK(sb.nreq < 2 ||
+          strstr(sb.body[1], "explain @S/Startup-Sequence\\n\\n<file path=\\\"S/Startup-Sequence\\\">\\nSetPatch QUIET\\n</file>") != 0);
+    /* type-ahead: in the same turn, after the tool results */
+    CHECK(sb.nreq < 4 || strstr(sb.body[3], "{\"type\":\"text\",\"text\":\"also say hi\"}]}]") != 0);
+    CHECK(sb.nreq < 3 || strstr(sb.body[2], "also say hi") == 0);
+    /* Ctrl+O: the viewer opened once and closed */
+    CHECK_INT(r.tui->n_views, 1);
+    CHECK(strstr(cs.sent.p, "\033[?1049h") != 0 && strstr(cs.sent.p, "\033[?1049l") != 0);
+    /* the history file has the prompts, as typed */
+    CHECK_INT(sys.read(sys.u, hp, 10000, &b, &n), 0);
+    CHECK(b && strstr(b, "{\"display\":\"!echo hi\",") != 0);
+    CHECK(b && strstr(b, "{\"display\":\"#remember the milk\",") != 0);
+    CHECK(b && strstr(b, "{\"display\":\"also say hi\",") != 0);
+    free(b);
+    repl_free(&r);
+    cs_close();
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -1002,6 +1142,7 @@ void suite_claude_repl(void)
     test_unfinished();
     test_commands();
     test_screen();
+    test_wp1();
     test_wp3();
     test_wp3_commands();
     stub_reset();

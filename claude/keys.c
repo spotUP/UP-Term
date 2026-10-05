@@ -67,6 +67,10 @@ static int code_key(cl_key *key, long code, int mods)
         return (mods & (KM_ALT | KM_CTRL)) ? set(key, K_ALT, 0x7f, mods) : set(key, K_BS, 0, mods);
     if (code >= 57344 && code <= 63743)
         return 0;                           /* kitty's private-use keys: not ours */
+    if ((mods & KM_CTRL) && code == '[')
+        return set(key, K_ESC, 0, mods);    /* Ctrl+[ is Escape */
+    if ((mods & KM_CTRL) && (code == '_' || code == '-'))
+        return set(key, K_CTRL, '_', mods); /* Ctrl+_ / Ctrl+Shift+-: undo */
     if ((mods & KM_CTRL) && ((code >= 'a' && code <= 'z') || (code >= 'A' && code <= 'Z')))
         return set(key, K_CTRL, (unsigned long)(code | 0x20), mods);
     if (mods & (KM_ALT | KM_CTRL))
@@ -345,6 +349,8 @@ int keys_next(cl_keys *k, cl_key *key, int idle)
                 return set(key, K_BS, 0, 0);
             case 0:
                 continue;
+            case 0x1f:
+                return set(key, K_CTRL, '_', KM_CTRL);
             default:
                 if (c <= 26)
                     return set(key, K_CTRL, (unsigned long)('a' + c - 1), KM_CTRL);

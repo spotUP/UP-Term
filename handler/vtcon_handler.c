@@ -204,6 +204,7 @@ typedef struct con {
     char *words[3];              /* ACTION_VTCON_WORDS lists by kind (1, 2), AllocVec'd */
     long words_len[3];
     struct Task *words_owner;    /* the shell that sent them: valid while it lives */
+    int reader_shell;            /* the last ACTION_READ came from a shell (W31: colour its first word) */
     int tabs;                    /* Tabs in a row */
     int kingcon;                 /* profile completion = kingcon: KingCON's keys and
                                   * selection window (research/2026-10-02_kingcon-completion.md) */
@@ -2814,11 +2815,32 @@ static void start_completion(con *c)
         c->comp_busy = 1;
 }
 
+/* A shell is reading: an AmigaShell between commands (its CLI has no
+ * command loaded), or the shell that told us its words (vsh, which runs as
+ * a command). Any other program reading a line (Ask, C:Claude PLAIN, an
+ * installer) gets its line without command colours (W31). */
+static int task_is_shell(con *c, struct Task *t)
+{
+    struct CommandLineInterface *cli;
+    if (!t)
+        return 1; /* unknown: keep the old behaviour */
+    if (t == c->words_owner)
+        return 1;
+    if (t->tc_Node.ln_Type != NT_PROCESS || !((struct Process *)t)->pr_CLI)
+        return 0;
+    cli = (struct CommandLineInterface *)BADDR(((struct Process *)t)->pr_CLI);
+    return cli->cli_Module == 0;
+}
+
 /* Is the first word a command? Asked whenever it changes (the answer
  * colours it green or red, see le_set_command). */
 static void check_command(con *c)
 {
     unsigned char w[64];
+    if (!c->reader_shell) {
+        le_no_command(&c->le);
+        return;
+    }
     le_first_word(&c->le, w, sizeof(w));
     if (!w[0] || c->check_busy || !strcmp((const char *)w, c->checked))
         return;
@@ -5199,6 +5221,7 @@ static void packet(con *c, struct DosPacket *p)
         }
         vtwin_render(&c->w); /* what was written is on screen before the read waits */
         if (c->nreads < READ_Q) {
+            c->reader_shell = task_is_shell(c, p->dp_Port ? (struct Task *)p->dp_Port->mp_SigTask : 0);
             c->reads[c->nreads++] = p;
 #ifdef VTCON_DEBUG
             dbg("READ task/nreads", (LONG)p->dp_Port->mp_SigTask, c->nreads);
@@ -5489,6 +5512,7 @@ static LONG handler_main(void)
     if (!c)
         return 0; /* cannot even reply: DOS will see the process end */
     c->port = &me->pr_MsgPort;
+    c->reader_shell = 1; /* until the first read says who reads */
 
     DOSBase = (struct DosLibrary *)OpenLibrary((STRPTR)"dos.library", 39);
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
