@@ -21,5 +21,11 @@ while [ ! -s "$PW" ] && [ -z "$UPTELNETD_PASSWORD" ]; do
     echo "claude-amiga: no login password yet. In Container Manager > claude-amiga > Terminal, run: setpw"
     sleep 30
 done
-as_claude python3 /usr/local/bin/uptelnetd.py --bind "$NAS_IP" --allow "$ALLOW" --port "${PORT:-2323}" \
+# NAS_IP and ALLOW may each hold several, space-separated: the LAN address
+# and 127.0.0.1, where Synology's Tailscale (userspace networking) hands over
+# the connections that reach the NAS's tailnet address
+set --
+for b in $NAS_IP; do set -- "$@" --bind "$b"; done
+for n in $ALLOW; do set -- "$@" --allow "$n"; done
+as_claude python3 /usr/local/bin/uptelnetd.py "$@" --port "${PORT:-2323}" \
     --command 'cd ~/work && tmux new -A -s claude claude'

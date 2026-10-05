@@ -22,9 +22,11 @@ interactive rc, so a shell FUNCTION named claude is not there -- write what
 it does (e.g. --command 'tmux new -A -s claude env CLAUDE_CONFIG_DIR=$HOME/.claude-private claude').
 
 Safety, all enforced here:
-  * It listens on ONE address of a private network (the Mac's own LAN
-    address by default, found with `ipconfig getifaddr en0`), never on
-    0.0.0.0 or ::, and refuses a public address outright.
+  * It listens on addresses of a private network (the Mac's own LAN
+    address by default, found with `ipconfig getifaddr en0`; --bind again
+    for each further one, e.g. 127.0.0.1 where a VPN such as Tailscale hands
+    its connections to loopback), never on 0.0.0.0 or ::, and refuses a
+    public address outright.
   * Only peers in the allowlist get a prompt: the bind address's own
     subnet by default (`ipconfig getoption <if> subnet_mask`), or the
     --allow networks, which must be private too. Others are closed at once.
@@ -571,8 +573,8 @@ class Server:
 
 def parse_args(argv):
     ap = argparse.ArgumentParser(description="LAN-only telnet server for UP-Term's uptelnet (UNENCRYPTED).")
-    ap.add_argument("--bind", default="auto",
-                    help="the private address to listen on (default: the Mac's LAN address, en0/en1)")
+    ap.add_argument("--bind", action="append", default=[],
+                    help="a private address to listen on (repeatable; default: the Mac's LAN address, en0/en1)")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT, help="TCP port (default %d)" % DEFAULT_PORT)
     ap.add_argument("--allow", action="append", default=[],
                     help="a private network allowed to connect (repeatable; default: the bind address's subnet)")
@@ -585,30 +587,41 @@ def parse_args(argv):
 
 
 def configure(a, env=None):
-    """(bind, nets, password, shell) from the arguments, or ConfigError."""
+    """(binds, nets, password, shell) from the arguments, or ConfigError."""
     env = os.environ if env is None else env
     mask = None
-    if a.bind == "auto":
+    if not a.bind or a.bind == ["auto"]:
         addr, ifname = lan_address()
         if not addr:
             raise ConfigError("no LAN address on en0 or en1: pass --bind <the Mac's LAN address>")
         mask = _run(["ipconfig", "getoption", ifname, "subnet_mask"]) or None
-        bind = check_bind(addr)
+        binds = [check_bind(addr)]
     else:
-        bind = check_bind(a.bind)
-    nets = [check_allow(c) for c in a.allow] if a.allow else default_allow(bind, mask)
+        binds = []
+        for b in a.bind:
+            b = check_bind(b)
+            if b not in binds:
+                binds.append(b)
+    if a.allow:
+        nets = [check_allow(c) for c in a.allow]
+    else:
+        nets = []
+        for b in binds:
+            for n in default_allow(b, mask if b == binds[0] else None):
+                if n not in nets:
+                    nets.append(n)
     password = load_password(env, a.password_file)
     shell = a.shell or env.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell or "/bin/sh"
-    return bind, nets, password, shell
+    return binds, nets, password, shell
 
 
-async def serve(a, bind, nets, password, shell):
+async def serve(a, binds, nets, password, shell):
     srv = Server(password, nets, shell, a.command)
-    server = await asyncio.start_server(srv.handle, host=bind, port=a.port, reuse_address=True)
+    server = await asyncio.start_server(srv.handle, host=binds, port=a.port, reuse_address=True)
     port = server.sockets[0].getsockname()[1]
     print("uptelnetd: listening on %s port %d (UNENCRYPTED telnet), allowing %s" %
-          (bind, port, ", ".join(str(n) for n in nets)), flush=True)
-    print("uptelnetd: on the Amiga, in an UP-Term window: uptelnet %s %d" % (bind, port), flush=True)
+          (", ".join(binds), port, ", ".join(str(n) for n in nets)), flush=True)
+    print("uptelnetd: on the Amiga, in an UP-Term window: uptelnet %s %d" % (binds[0], port), flush=True)
     async with server:
         await server.serve_forever()
 
@@ -616,7 +629,7 @@ async def serve(a, bind, nets, password, shell):
 def main(argv=None):
     a = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        bind, nets, password, shell = configure(a)
+        binds, nets, password, shell = configure(a)
     except ConfigError as e:
         sys.stderr.write("uptelnetd: %s\n" % e)
         return 2
@@ -625,11 +638,11 @@ def main(argv=None):
     loop = asyncio.SelectorEventLoop(selectors.SelectSelector())
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(serve(a, bind, nets, password, shell))
+        loop.run_until_complete(serve(a, binds, nets, password, shell))
     except KeyboardInterrupt:
         pass
     except OSError as e:
-        sys.stderr.write("uptelnetd: cannot listen on %s port %d: %s\n" % (bind, a.port, e.strerror or e))
+        sys.stderr.write("uptelnetd: cannot listen on %s port %d: %s\n" % (", ".join(binds), a.port, e.strerror or e))
         return 1
     finally:
         loop.close()

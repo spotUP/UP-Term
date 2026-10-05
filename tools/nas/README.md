@@ -34,7 +34,7 @@ Claude Code itself is installed on the volume (`home/.npm-global`, owned by the
 survive a rebuild; delete that folder to force a fresh install.
 
 Changed Dockerfile or entrypoint.sh: raise the `image:` tag in compose.yaml
-(claude-amiga:3 -> 4), then Project > Action > Build. With the same tag, Build
+(claude-amiga:4 -> 5), then Project > Action > Build. With the same tag, Build
 reuses the old image.
 
 Model, settings and CLAUDE.md live in `/volume1/docker/claude-amiga/home/.claude`.
