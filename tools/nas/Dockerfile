@@ -8,7 +8,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && useradd -m -s /bin/bash claude \
  && printf 'export NPM_CONFIG_PREFIX=/home/claude/.npm-global\nexport PATH=/home/claude/.npm-global/bin:$PATH\n' \
-    > /etc/profile.d/claude-code.sh
+    > /etc/profile.d/claude-code.sh \
+ && printf 'set -g mouse on\nset -g focus-events on\n' > /etc/tmux.conf
+
+# tmux as Claude Code asks for it: mouse on (the wheel scrolls; in UP-Term
+# Shift+drag still selects text) and focus events passed through.
 
 # Claude Code itself lives on the volume, owned by the claude user, so its
 # auto-updater can write there and an update survives a rebuild. The

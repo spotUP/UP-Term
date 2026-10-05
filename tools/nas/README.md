@@ -33,6 +33,10 @@ Claude Code itself is installed on the volume (`home/.npm-global`, owned by the
 `claude` user) on the first start, so its auto-updater can write there and updates
 survive a rebuild; delete that folder to force a fresh install.
 
+Changed Dockerfile or entrypoint.sh: raise the `image:` tag in compose.yaml
+(claude-amiga:3 -> 4), then Project > Action > Build. With the same tag, Build
+reuses the old image.
+
 Model, settings and CLAUDE.md live in `/volume1/docker/claude-amiga/home/.claude`.
 Work files: `/home/claude/work` in the container (add a volume for a NAS share if
 Claude should edit files there).
