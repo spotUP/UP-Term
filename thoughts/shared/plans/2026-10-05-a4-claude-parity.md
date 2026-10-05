@@ -126,4 +126,7 @@ Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: me
   stash, Alt+Y ring, Ctrl+B background, @ as you type, viewer resize, other keys, /color /focus
   /keybindings /loop) was STOPPED BY THE OWNER before its first commit. Its partial, uncommitted
   edits (edit.c/h, tui.c/h, vim.c, tests/test_claude_tui.c) stay in its worktree
-  .claude/worktrees/agent-a44dbe0492b45e53e. Not restarted unless the owner asks.
+  .claude/worktrees/agent-a44dbe0492b45e53e. UPDATE: the owner resumed it (with a mascot start-screen
+  screenshot that did not reach the agent); it finished all 12 rows (c0aa1b2, 4a5cff3) plus a
+  compact mascot header built from memory -- the owner to confirm which Claude Code start screen.
+  Main is being merged into that branch by an agent (signature change of the ask callback).
