@@ -69,6 +69,11 @@ typedef struct le_line {
      * valid while the first word is still cmd_word */
     int cmd_state;
     unsigned char cmd_word[64];
+    /* W44: the first word is being typed -- what the keys must still rest
+     * before its colour shows (0: it shows once its answer is in) -- and
+     * the colour its cells have on screen (0 plain, as cmd_state) */
+    long cmd_rest_us;
+    int cmd_drawn;
     /* what the editor writes to the screen (echo) */
     void (*out)(void *user, const unsigned char *b, long n);
     void *user;
@@ -92,8 +97,23 @@ void le_resized(le_line *le);
  * whether the colouring is still unknown for it. */
 int  le_first_word(const le_line *le, unsigned char *out, int max);
 /* The answer to "is the first word a command": green or red on screen,
- * applied only if the first word is still `word`. */
+ * applied only if the first word is still `word`. While the word is being
+ * typed it stays plain (the answer kept) until le_command_rested. */
 void le_set_command(le_line *le, const unsigned char *word, int found);
+/* W44 (owner 2026-10-05: the colour flipped red and green while a word was
+ * typed): a key that changes the first word with the cursor in it shows
+ * the word plain and starts a rest of LE_CMD_REST_US; a key that leaves
+ * the word (a space, Return, a move out of it) ends the rest at once, and
+ * a coloured word nobody edits keeps its colour. */
+#define LE_CMD_REST_US 300000L
+/* The caller's clock waited waited_us (the frame clock, as le_menu_rested):
+ * once the keys have rested LE_CMD_REST_US, the word's colour goes on
+ * screen -- its cells only -- if its answer is in (else when it comes).
+ * 1 when the rest ended, then 0 until a key starts another. */
+int  le_command_rested(le_line *le, long waited_us);
+/* The word was put in, not typed (a completion, a stuffed line): no rest,
+ * its colour at once. */
+void le_command_now(le_line *le);
 /* The line is read by a program, not a shell: the first word plain again
  * (W31: C:Claude's "hello" showed red as an unknown command). */
 void le_no_command(le_line *le);

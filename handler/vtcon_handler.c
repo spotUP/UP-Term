@@ -3099,6 +3099,31 @@ static void check_command(con *c)
         c->check_busy = 1;
 }
 
+/* W44: a key changed the first word as it is typed -- the word stays plain
+ * and its colour waits for the keys to rest, counted on the frame clock
+ * (command_wait), as /theme's list counts its rest; with no clock, at once. */
+static void command_clock(con *c)
+{
+    if (c->le.cmd_rest_us <= 0)
+        return;
+    if (c->w.frame_open)
+        vtwin_clock(&c->w);
+    else
+        le_command_now(&c->le);
+}
+
+/* The frame clock waited us: once the keys have rested, the word's colour
+ * on screen (its cells only); still counting, the clock keeps running. */
+static void command_wait(con *c, ULONG us)
+{
+    if (c->raw || !c->w.t) {
+        c->le.cmd_rest_us = 0; /* no line being edited to colour */
+        return;
+    }
+    if (!le_command_rested(&c->le, (long)us) && c->le.cmd_rest_us > 0)
+        vtwin_clock(&c->w);
+}
+
 /* The history file: loaded once when the window opens, then each entered
  * line appended (one worker at a time; lines queue meanwhile). */
 static void history_next(con *c)
@@ -3154,6 +3179,8 @@ static void type_text(con *c, const char *s)
             le_reset(&c->le);
         }
     }
+    if (!c->raw)
+        le_command_now(&c->le); /* a completion, not typing: the word's colour at once */
 }
 
 static void kc_put(con *c, const char *name);
@@ -3705,6 +3732,7 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
         return;
     }
     check_command(c);
+    command_clock(c); /* a word being typed: its colour when the keys rest */
 }
 
 /* ---- keyboard ------------------------------------------------------------------- */
@@ -5541,6 +5569,7 @@ static void packet(con *c, struct DosPacket *p)
             for (k = 0; k < n; k++)
                 if (b[k] >= 0x20)
                     le_key(&c->le, b[k], 0, &b[k], 1);
+            le_command_now(&c->le); /* put in, not typed: no rest */
         }
         c->checked[0] = 0;
         check_command(c);
@@ -5889,6 +5918,8 @@ static LONG handler_main(void)
         waited = vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
         if (waited && c->tm)
             theme_menu_wait(c, waited); /* /theme's list: has the bar rested? */
+        if (waited && c->le.cmd_rest_us > 0)
+            command_wait(c, waited); /* W44: the command word's keys rested? */
         find_idcmp(c); /* the find prompt, while it is open */
         sel_idcmp(c);  /* KingCON's selection window, while it is open */
         watch_take(c); /* the profile file changed: this window's profile, live */

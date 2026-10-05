@@ -290,6 +290,77 @@ static void check_command_word(le_line *le)
         le->cmd_state = 0;
 }
 
+/* A countdown on the caller's clock (the /theme list's rest, the command
+ * word's): 1 once *rest_us has run out, then 0 until it is set again. */
+static int rest_down(long *rest_us, long waited_us)
+{
+    if (*rest_us <= 0)
+        return 0;
+    *rest_us -= waited_us;
+    if (*rest_us > 0)
+        return 0;
+    *rest_us = 0;
+    return 1;
+}
+
+/* The cursor is in the first word: at its start, inside, or right after it. */
+static int in_first_word(const le_line *le)
+{
+    int a = 0, b = first_word_len(le);
+    while (a < b && le->buf[a] == ' ')
+        a++;
+    return b > a && le->pos >= a && le->pos <= b;
+}
+
+/* The colour the first word shows: its answer, once the keys have rested. */
+static int cmd_colour(const le_line *le)
+{
+    return le->cmd_rest_us > 0 ? 0 : le->cmd_state;
+}
+
+/* The first word (from the line's start) written in colour col (0 plain);
+ * the cursor after it. */
+static void paint_word(le_line *le, int fw, int col)
+{
+    go(le, 0);
+    if (col)
+        out(le, col == 1 ? "\033[32m" : "\033[31m", 5); /* green / red */
+    out(le, le->buf, fw);
+    if (col)
+        out(le, "\033[39m", 5);
+    le->cmd_drawn = col;
+}
+
+/* The first word's cells made what they should show, and nothing else.
+ * 1 when they were written (the cursor is then after the word). */
+static int cmd_show(le_line *le)
+{
+    int fw, col;
+    if (!le->started)
+        return 0;
+    check_command_word(le);
+    fw = first_word_len(le);
+    col = cmd_colour(le);
+    if (!fw || col == le->cmd_drawn)
+        return 0;
+    paint_word(le, fw, col);
+    return 1;
+}
+
+/* A typed edit (the first word was `before`): the word changed with the
+ * cursor in it -- plain until the keys rest; the cursor out of the word --
+ * its colour at once. */
+static void cmd_typed(le_line *le, const unsigned char *before)
+{
+    unsigned char w[64];
+    int in = in_first_word(le);
+    le_first_word(le, w, sizeof(w));
+    if (in && strcmp((const char *)w, (const char *)before))
+        le->cmd_rest_us = LE_CMD_REST_US;
+    else if (!in)
+        le->cmd_rest_us = 0;
+}
+
 /* ---- drawing ------------------------------------------------------------ */
 
 /* Show the line from byte p on, then its grey tail, blank the cells it no
@@ -297,22 +368,25 @@ static void check_command_word(le_line *le)
 static void redraw_from(le_line *le, int p)
 {
     const unsigned char *sug;
-    int now, i, fw;
+    int now, i, fw, col;
     check_command_word(le);
     sug = suggestion(le);
     now = cells(le, le->len);
     fw = first_word_len(le);
-    if (le->cmd_state && p < fw)
-        p = 0; /* the command word is drawn whole, in its colour */
-    go(le, p);
-    if (le->cmd_state && p < fw) {
-        out(le, le->cmd_state == 1 ? "\033[32m" : "\033[31m", 5); /* green / red */
-        out(le, le->buf, fw);
-        out(le, "\033[39m", 5);
-        out(le, le->buf + fw, le->len - fw);
+    col = cmd_colour(le);
+    if (fw && (col || le->cmd_drawn) && (p < fw || col != le->cmd_drawn)) {
+        /* the command word drawn whole, in its colour (or plain again) */
+        paint_word(le, fw, col);
+        if (p < fw)
+            p = fw;
+        else if (p > fw)
+            go(le, p);
     } else {
-        out(le, le->buf + p, le->len - p);
+        if (!fw)
+            le->cmd_drawn = 0;
+        go(le, p);
     }
+    out(le, le->buf + p, le->len - p);
     if (sug || le->searching) {
         out(le, "\033[2m", 4); /* faint: grey */
         if (sug) {
@@ -345,6 +419,7 @@ static void load_state(le_line *le, const le_state *s)
     memcpy(le->buf, s->buf, s->len);
     le->len = s->len;
     le->pos = s->pos;
+    le->cmd_rest_us = 0;
     redraw_from(le, 0);
 }
 
@@ -390,21 +465,25 @@ static void pop_undo(le_line *le)
     le->len = u->len;
     le->pos = u->pos;
     le->undo_used = u->at;
+    le->cmd_rest_us = 0;
     redraw_from(le, 0);
 }
 
 static void erase(le_line *le, int a, int b)
 {
+    unsigned char before[64];
     if (b <= a)
         return;
     push_undo(le);
     le->typing = 0;
+    le_first_word(le, before, sizeof(before));
     memmove(le->buf + a, le->buf + b, le->len - b);
     le->len -= b - a;
     if (le->pos > b)
         le->pos -= b - a;
     else if (le->pos > a)
         le->pos = a;
+    cmd_typed(le, before);
     redraw_from(le, a);
 }
 
@@ -416,6 +495,7 @@ static void set_line(le_line *le, const unsigned char *s, int pos)
     memcpy(le->buf, s, n);
     le->len = n;
     le->pos = pos < 0 || pos > n ? n : pos;
+    le->cmd_rest_us = 0; /* history, a search: not typed */
     redraw_from(le, 0);
 }
 
@@ -424,28 +504,40 @@ static void move_to(le_line *le, int p)
     int had = suggestion(le) != 0;
     le->pos = p;
     le->typing = 0;
-    if (had || suggestion(le))
+    if (!in_first_word(le))
+        le->cmd_rest_us = 0; /* the cursor left the word: its colour now */
+    if (had || suggestion(le)) {
         redraw_from(le, 0); /* the grey tail shows only at the end */
-    else
+    } else {
+        cmd_show(le);
         go(le, p);
+    }
 }
 
-static void insert(le_line *le, const unsigned char *b, int n)
+/* typed: a key's character (the command word rests while it is typed);
+ * else a suggestion taken, coloured at once */
+static void insert(le_line *le, const unsigned char *b, int n, int typed)
 {
     const unsigned char *sug;
+    unsigned char before[64];
     if (le->len + n > LE_MAX - 2)
         return;
     if (!le->typing)
         push_undo(le);
     le->typing = 1;
     sug = suggestion(le);
+    le_first_word(le, before, sizeof(before));
     memmove(le->buf + le->pos + n, le->buf + le->pos, le->len - le->pos);
     memcpy(le->buf + le->pos, b, n);
     le->len += n;
     le->pos += n;
+    if (typed)
+        cmd_typed(le, before);
+    else
+        le->cmd_rest_us = 0;
     check_command_word(le);
     if (le->pos == le->len && !sug && !suggestion(le) && le->shown <= cells(le, le->len - n) &&
-        (!le->cmd_state || le->pos - n >= first_word_len(le))) {
+        cmd_colour(le) == le->cmd_drawn && (!le->cmd_drawn || le->pos - n >= first_word_len(le))) {
         /* typing at the end with no grey tail: just echo, the engine
          * wraps and scrolls */
         le->shown = cells(le, le->len);
@@ -519,6 +611,7 @@ static void clear_screen(le_line *le)
     out(le, "\033[H\033[2J", 7);
     out(le, prompt, k);
     le->started = 0;
+    le->cmd_drawn = 0; /* the screen lost it */
     start(le);
     redraw_from(le, 0);
 }
@@ -557,6 +650,8 @@ void le_reset(le_line *le)
     le->undo_n = 0;
     le->undo_used = 0;
     le->typing = 0;
+    le->cmd_rest_us = 0;
+    le->cmd_drawn = 0;
 }
 
 void le_resized(le_line *le)
@@ -614,12 +709,14 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
     if (key == VT_KEY_RETURN || key == VT_KEY_KP_ENTER) {
         le->pos = le->len;
         le->searching = 0;
+        le->cmd_rest_us = 0; /* the line is finished: the word's colour now */
         if (le->shown > cells(le, le->len)) {
             int keep = le->suggest;
             le->suggest = 0; /* the grey tail goes, the line stays */
             redraw_from(le, le->len);
             le->suggest = keep;
         }
+        cmd_show(le);
         go(le, le->pos);
         out(le, "\r\n", 2);
         le_hist_add(le, le->buf, le->len);
@@ -633,7 +730,7 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
     case VT_KEY_RIGHT:
         if (!shift && !ctrl && le->pos == le->len && suggestion(le)) {
             const unsigned char *s = suggestion(le);
-            insert(le, s, (int)strlen((const char *)s)); /* take the suggestion */
+            insert(le, s, (int)strlen((const char *)s), 0); /* take the suggestion */
             return 0;
         }
         move_to(le, shift ? le->len : ctrl ? word_forward(le, le->pos) : next_char(le, le->pos));
@@ -644,7 +741,7 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
     case VT_KEY_END:
         if (le->pos == le->len && suggestion(le)) {
             const unsigned char *s = suggestion(le);
-            insert(le, s, (int)strlen((const char *)s));
+            insert(le, s, (int)strlen((const char *)s), 0);
             return 0;
         }
         move_to(le, le->len);
@@ -684,7 +781,7 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
         case 0x05:                                            /* Ctrl-E */
             if (le->pos == le->len && suggestion(le)) {
                 const unsigned char *s = suggestion(le);
-                insert(le, s, (int)strlen((const char *)s));
+                insert(le, s, (int)strlen((const char *)s), 0);
             } else {
                 move_to(le, le->len);
             }
@@ -720,7 +817,7 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
         }
         return 0;
     }
-    insert(le, b, n);
+    insert(le, b, n, 1);
     return 0;
 }
 
@@ -734,7 +831,8 @@ void le_set_command(le_line *le, const unsigned char *word, int found)
     if (le->cmd_state == (found ? 1 : 2))
         return;
     le->cmd_state = found ? 1 : 2;
-    redraw_from(le, 0);
+    if (cmd_show(le)) /* kept while the word is typed: le_command_rested shows it */
+        go(le, le->pos);
 }
 
 void le_no_command(le_line *le)
@@ -742,7 +840,24 @@ void le_no_command(le_line *le)
     if (!le->cmd_state)
         return;
     le->cmd_state = 0; /* a program's line, not the shell's: no command colour */
-    redraw_from(le, 0);
+    if (cmd_show(le))
+        go(le, le->pos);
+}
+
+int le_command_rested(le_line *le, long waited_us)
+{
+    if (!rest_down(&le->cmd_rest_us, waited_us))
+        return 0;
+    if (cmd_show(le))
+        go(le, le->pos);
+    return 1;
+}
+
+void le_command_now(le_line *le)
+{
+    le->cmd_rest_us = 0;
+    if (cmd_show(le))
+        go(le, le->pos);
 }
 
 void le_replace_word(le_line *le, int from, const unsigned char *s, int n)
@@ -752,6 +867,7 @@ void le_replace_word(le_line *le, int from, const unsigned char *s, int n)
     start(le); /* a line put into a fresh prompt (ACTION_FORCE) begins here */
     push_undo(le);
     le->typing = 0;
+    le->cmd_rest_us = 0; /* put in, not typed: its colour at once */
     memmove(le->buf + from + n, le->buf + le->pos, le->len - le->pos);
     le->len += n - (le->pos - from);
     memcpy(le->buf + from, s, n);
@@ -870,6 +986,7 @@ static void show_columns(le_line *le, const char *names, int len, int colw, int 
     le->started = 0;
     start(le);
     le->shown = 0;
+    le->cmd_drawn = 0; /* the line is drawn anew below the list */
     redraw_from(le, 0);
 }
 
@@ -920,13 +1037,7 @@ static int menu_to(le_menu *m, int to, int wrap)
 
 int le_menu_rested(le_menu *m, long waited_us)
 {
-    if (!m->open || m->rest_us <= 0)
-        return 0;
-    m->rest_us -= waited_us;
-    if (m->rest_us > 0)
-        return 0;
-    m->rest_us = 0;
-    return 1;
+    return m->open && rest_down(&m->rest_us, waited_us);
 }
 
 int le_menu_key(le_menu *m, long key, int mods, const unsigned char *b, int nb)
