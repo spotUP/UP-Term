@@ -682,12 +682,10 @@ const char *cli_usage(int i)
 
 /* ---- applied to the REPL ---- */
 
-static void put_list(jw *w, const char *key, const cl_strs *s, int bare_too, int *first)
+static void put_list(jw *w, const char *key, const cl_strs *s, int *first)
 {
     int i, any = 0;
     for (i = 0; i < s->n; i++) {
-        if (!bare_too && !strchr(s->v[i], '('))
-            continue;
         if (!any) {
             if (!*first)
                 jw_raw(w, ",", 1);
@@ -730,9 +728,9 @@ static char *flags_json(cl_cli *c)
         int pf = 1;
         jw_rawz(&w, first ? "\"permissions\":{" : ",\"permissions\":{");
         first = 0;
-        put_list(&w, "allow", &c->allow, 1, &pf);
-        put_list(&w, "deny", &c->deny, 0, &pf);    /* a bare name removes the tool instead */
-        put_list(&w, "additionalDirectories", &c->dirs, 1, &pf);
+        put_list(&w, "allow", &c->allow, &pf);
+        put_list(&w, "deny", &c->deny, &pf);    /* a bare name also removes the tool (tool_set) */
+        put_list(&w, "additionalDirectories", &c->dirs, &pf);
         if (mode[0]) {
             jw_rawz(&w, pf ? "\"defaultMode\":" : ",\"defaultMode\":");
             jw_strz(&w, mode);
