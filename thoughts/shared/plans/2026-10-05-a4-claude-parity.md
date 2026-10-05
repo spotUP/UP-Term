@@ -152,3 +152,8 @@ Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: me
   long-standing "Return inserts a newline, '/' lost" bug, now deterministic after the prompt
   suggestion request; agent fixing (fix/claude-input-after-suggestion). Emoji: owner chose real
   Unifont bitmaps; agent on feature/u2-unifont.
+- 2026-10-05 the intermittent "Return makes a new line, '/' lost": C:Claude's input was not at
+  fault (test d3254c4 passes on main). Cause found in the handler: task_alive walked Exec's task
+  lists under Forbid(), so an interrupt's Signal() could hide a live task -> the console left
+  termios mode. Fixed under Disable() (b7f3298). claude_rig2 10/10 on b7f3298 (and 10/10 twice
+  before it: the race is timing-bound, more frequent with network traffic).
