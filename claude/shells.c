@@ -310,3 +310,50 @@ void shells_kill(cl_tools *t, jw *out, const char *id, jv in)
     jw_free(&m);
     free(name);
 }
+
+/* /tasks: every shell started this session, oldest first, with its state
+ * as it is now (a running one asked again; its output is left for
+ * BashOutput) */
+void tools_shells(cl_tools *t, char *out, long cap)
+{
+    cl_shells *sh = t->sh;
+    int i, k, order[SHELLS_MAX], n = 0;
+    out[0] = 0;
+    if (!sh)
+        return;
+    for (i = 0; i < SHELLS_MAX; i++)
+        if (sh->s[i].id) {
+            for (k = n; k > 0 && sh->s[order[k - 1]].id > sh->s[i].id; k--)
+                order[k] = order[k - 1];
+            order[k] = i;
+            n++;
+        }
+    for (k = 0; k < n; k++) {
+        shell *s = &sh->s[order[k]];
+        char name[24], num[16], one[1];
+        if (!s->ended && t->sys->bg_read) {
+            long got = 0, rc = 0;
+            int running = 1;
+            if (t->sys->bg_read(t->sys->u, s->job, s->pos, one, 0, &got, &running, &rc) == 0 && !running) {
+                s->ended = 1;
+                s->rc = rc;
+            }
+        }
+        id_text(s, name);
+        if (out[0])
+            cl_cat(out, "\n", cap);
+        cl_cat(out, "  ", cap);
+        cl_cat(out, name, cap);
+        if (!s->ended)
+            cl_cat(out, "  running  ", cap);
+        else if (s->killed)
+            cl_cat(out, "  killed  ", cap);
+        else {
+            cl_cat(out, "  completed (exit ", cap);
+            cl_ltoa(s->rc, num);
+            cl_cat(out, num, cap);
+            cl_cat(out, ")  ", cap);
+        }
+        cl_cat(out, s->cmd, cap);
+    }
+}

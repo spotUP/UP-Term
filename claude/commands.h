@@ -38,7 +38,26 @@ typedef struct cl_def {
     int keep_coding;            /* an output style keeps the coding instructions */
     int no_model;               /* disable-model-invocation */
     char path[300];
+    /* A4 gaps: Claude Code's other frontmatter keys */
+    char *deny_tools;           /* disallowedTools / disallowed-tools, "" none */
+    char *skills;               /* an agent's skills to preload, "" none */
+    char *when;                 /* a skill's when_to_use, "" none */
+    int max_turns;              /* an agent's maxTurns, 0 the default */
+    char effort[16];            /* effort, "" the session's */
+    char perm_mode[24];         /* an agent's permissionMode, "" the session's */
+    int no_user;                /* user-invocable: false (not in the / menu) */
+    int fork;                   /* a skill's context: fork (runs in a subagent) */
+    char agent[64];             /* ... with that agent ("" general-purpose) */
+    char *arg_names;            /* arguments: the names of $name placeholders, "" none */
+    char *initial;              /* an agent's initialPrompt (as the main thread), "" none */
+    char *paths;                /* a skill's paths: globs that make it available, "" always */
+    int active;                 /* a skill with paths: a matching file was worked on */
 } cl_def;
+
+/* the ${CLAUDE_*} values of an expansion (any may be 0: "") */
+typedef struct cl_cmd_vars {
+    const char *session_id, *effort, *skill_dir, *project_dir;
+} cl_cmd_vars;
 
 typedef struct cl_defs {
     cl_def *d;
@@ -62,8 +81,29 @@ int defs_count(const cl_defs *s, int type);
 int defs_parse(const char *text, long n, cl_def *d);
 void def_free(cl_def *d);
 
+/* The definitions of one directory (a nested .claude/skills, ...) added,
+ * as src: their count. */
+int defs_load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir);
+/* Every definition of a type dropped (type -1: every one that is not
+ * built in): --bare, --safe-mode, --disable-slash-commands. */
+void defs_drop(cl_defs *s, int type);
+/* --agents: {"name": {"description", "prompt", "tools", "disallowedTools",
+ * "model", "maxTurns", "effort", "skills", "permissionMode"}} added as
+ * agents of the session, before the files' (they win). 0, -1 with err. */
+int defs_add_agents_json(cl_defs *s, const char *json, char *err, long cap);
+/* The extra keys of an agent given as JSON (--agents) into d. */
+void def_extra_json(cl_def *d, jv a);
+
 /* A command's prompt: 0, or -1 with err. root resolves @file. */
 int cmd_expand(const cl_def *d, const char *args, cl_sys *sys, const char *root, jw *out, char *err, long cap);
+/* ... with the ${CLAUDE_SESSION_ID} ${CLAUDE_EFFORT} ${CLAUDE_SKILL_DIR}
+ * ${CLAUDE_PROJECT_DIR} values (Claude Code's skill substitutions; $N
+ * and $ARGUMENTS[N] 0-based, an index with no argument left as it is,
+ * \$ a dollar sign, $name from the arguments frontmatter) */
+int cmd_expand_vars(const cl_def *d, const char *args, const cl_cmd_vars *v, cl_sys *sys, const char *root,
+                    jw *out, char *err, long cap);
+/* the ${CLAUDE_*} variables of in replaced (an allowed-tools rule): 0, -1 */
+int cmd_subst_vars(const char *in, const cl_cmd_vars *v, jw *out);
 /* Does a definition's tools list (allowed-tools) name this tool (Claude
  * Code's name, "Bash" also for "Bash(git:*)")? */
 int def_has_tool(const cl_def *d, const char *tool);

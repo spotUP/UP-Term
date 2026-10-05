@@ -106,6 +106,8 @@ class Handler(BaseHTTPRequestHandler):
     forced = None
     delay = 0.05
     page_host = None
+    dump = None
+    ndump = 0
 
     def log_message(self, fmt, *args):
         pass
@@ -131,6 +133,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(400, "the body is not JSON")
             return
         name = pick(body, self.forced)
+        if self.dump:
+            # every request body as it came, numbered, for the rig checks to read
+            Handler.ndump += 1
+            with open(os.path.join(self.dump, "%03d.json" % Handler.ndump), "wb") as f:
+                f.write(raw)
         msgs = body.get("messages") or []
         results = sum(1 for m in msgs if isinstance(m.get("content"), list)
                       for b in m["content"] if b.get("type") == "tool_result")
@@ -164,6 +171,7 @@ def main():
                     help="address to listen on: 127.0.0.1 for the rig (FS-UAE uses the host's stack); the Mac's LAN address for a real Amiga (never 0.0.0.0)")
     ap.add_argument("--stream", help="answer every request with tests/claude/NAME.sse")
     ap.add_argument("--delay", type=float, default=0.05, help="seconds between 64-byte chunks")
+    ap.add_argument("--dump", help="write each request body to DIR/NNN.json (tools/rig/claude_rig.py reads them)")
     ap.add_argument("--page-host", help="host:port WebFetch's recorded call fetches /page from (default 127.0.0.1:8080)")
     a = ap.parse_args()
     if a.stream and not os.path.exists(os.path.join(STREAMS, a.stream + ".sse")):
@@ -171,6 +179,10 @@ def main():
     Handler.forced = a.stream
     Handler.delay = a.delay
     Handler.page_host = a.page_host
+    Handler.dump = a.dump
+    Handler.ndump = 0
+    if a.dump:
+        os.makedirs(a.dump, exist_ok=True)
     srv = ThreadingHTTPServer((a.bind, a.port), Handler)
     print("[INFO] serving the recorded streams on port %d (Ctrl+C ends)" % a.port, flush=True)
     try:

@@ -164,7 +164,7 @@ static const char *base(const char *p)
 
 static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
 {
-    const char *opt[3];
+    const char *opt[4];
     char q[400], yes2[80];
     int n, c;
     show_head(u->show);
@@ -191,6 +191,12 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
     if (outside) {
         opt[1] = "No, and tell Claude what to do differently (esc)";
         n = 2;
+    } else if (!perm_read_only(tool) && tool != T_EDIT && tool != T_MULTIEDIT && tool != T_WRITE) {
+        /* Claude Code: a rule kept in .claude/settings.local.json */
+        opt[1] = yes2;
+        opt[2] = "Yes, and don't ask again in this project";
+        opt[3] = "No, and tell Claude what to do differently (esc)";
+        n = 4;
     } else {
         opt[1] = yes2;
         opt[2] = "No, and tell Claude what to do differently (esc)";
@@ -216,7 +222,7 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
         return ASK_ONCE;
     if (c == n - 1)
         return u->ask_note[0] ? ASK_NO : ASK_STOP;  /* No with a comment: Claude goes on with it */
-    return ASK_SESSION;
+    return n == 4 && c == 2 ? ASK_PROJECT : ASK_SESSION;
 }
 
 int ui_ask(cl_ui *u, int tool, const char *name, const char *what, int outside)
@@ -232,7 +238,7 @@ int ui_ask(cl_ui *u, int tool, const char *name, const char *what, int outside)
             ui_puts(u, "This is outside the start directory. ");
         ui_puts(u, BOLD "Allow " OFF);
         ui_puts(u, name);
-        ui_puts(u, outside ? "? Yes once (y), No (n): " : "? Yes once (y), Always this session (a), No (n): ");
+        ui_puts(u, outside ? "? Yes once (y), No (n): " : "? Yes once (y), Always this session (a), Always in this project (p), No (n): ");
         n = u->io->read_line(u->io->u, ans, sizeof(ans));
         u->col0 = 1;
         if (n < 0)
@@ -243,6 +249,8 @@ int ui_ask(cl_ui *u, int tool, const char *name, const char *what, int outside)
             return ASK_ONCE;
         if ((ans[0] == 'a' || ans[0] == 'A') && !outside)
             return ASK_SESSION;
+        if ((ans[0] == 'p' || ans[0] == 'P') && !outside)
+            return ASK_PROJECT;     /* a rule in .claude/settings.local.json */
         if (ans[0] == 'n' || ans[0] == 'N')
             return ASK_NO;
     }
@@ -347,8 +355,8 @@ void ui_rewind(cl_ui *u)
 {
     char lab[9][80], q[120];
     const char *opt[9];
-    const char *what[4];
-    int whatv[4];
+    const char *what[6];
+    int whatv[6];
     int n, first, k, i, c, can, nw = 0;
     if (!u->tui || !u->rw.count)
         return;
@@ -393,6 +401,13 @@ void ui_rewind(cl_ui *u)
         what[nw] = "Restore code";
         whatv[nw++] = RW_CODE;
     }
+    if (can & RW_CONV) {
+        /* Claude Code's summaries: the rest of it, or what came before */
+        what[nw] = "Summarize from here";
+        whatv[nw++] = RW_SUM;
+        what[nw] = "Summarize up to here";
+        whatv[nw++] = RW_SUM_UP;
+    }
     what[nw] = "Never mind";
     whatv[nw++] = 0;
     cl_copy(q, "Back to before: ", sizeof(q));
@@ -411,7 +426,9 @@ void ui_rewind(cl_ui *u)
             ui_line(u, "Could not rewind.");
             return;
         }
-        if (whatv[c] & RW_CONV) {
+        if (whatv[c] & (RW_SUM | RW_SUM_UP))
+            ;                       /* the summary said so itself */
+        else if (whatv[c] & RW_CONV) {
             /* the prompt comes back into the box, to send again or change */
             tui_set_text(u->tui, full);
             ui_line(u, (whatv[c] & RW_CODE) ? "Rewound the conversation and the code." : "Rewound the conversation.");

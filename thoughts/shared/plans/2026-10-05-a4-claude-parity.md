@@ -105,3 +105,28 @@ shell = vsh when present, else AmigaShell (SystemTags); paths AmigaDOS and /Unix
 Round 1 (parallel, separate files): WP2 tools; WP3 memory/config/sessions; WP1 input/screen.
 Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: merges, rig checks
 (fixture), one real-API smoke test once the owner has a key on the rig.
+
+## Rig log
+- 2026-10-05 merged WP1 (9bc4289), WP2 (b746544), WP3 (d3683b4). tools/rig/claude_rig.py 5/5 and
+  tools/rig/claude_rig2.py 10/10 on the default rig against the fixture (--dump bodies): CLAUDE.md
+  user+project in the system prompt, /greet expanded, an allow rule skipping the question, a
+  PreToolUse hook blocking Glob, an edit and /rewind putting it back, ! runs, # writes CLAUDE.md,
+  @ attaches, WebFetch (GET /page + a claude-haiku-4-5 call, after its permission question),
+  CONTINUE carries the session. By eye: Web Search header + "Did 1 search", AskUserQuestion menu.
+- Small gaps seen: the Fetch result line shows the answer cut at the window edge (Claude Code:
+  "Received N bytes (200 OK)"); rig harness hangs once in a while (amiagent socket), rerun passes.
+- OPEN, intermittent (2 of ~12 rig runs, 2026-10-05): after the edit step a typed "/cmd" lost its
+  '/' and Return inserted a new line instead of sending (looks like Return arriving as '\n' and the
+  window's own line editor taking '/': raw mode dropped?). Not reproduced by: an empty Return
+  during a turn, a fixture restart, Shift+Tab/slash/Esc, a slash command typed during a turn
+  (queued and run correctly), 4 looped runs of claude_rig2 with a SERIAL=1 handler that now logs
+  "tty enter/leave" (handler/vtcon_handler.c DBG). Next failure: run the loop again with
+  `make build/amiga/vtcon-handler SERIAL=1` installed and read build/rig/serial.log.
+- 2026-10-05: the input-leftovers agent (feature/a4-input-rest: vim visual/./text objects, Ctrl+S
+  stash, Alt+Y ring, Ctrl+B background, @ as you type, viewer resize, other keys, /color /focus
+  /keybindings /loop) was STOPPED BY THE OWNER before its first commit. Its partial, uncommitted
+  edits (edit.c/h, tui.c/h, vim.c, tests/test_claude_tui.c) stay in its worktree
+  .claude/worktrees/agent-a44dbe0492b45e53e. UPDATE: the owner resumed it (with a mascot start-screen
+  screenshot that did not reach the agent); it finished all 12 rows (c0aa1b2, 4a5cff3) plus a
+  compact mascot header built from memory -- the owner to confirm which Claude Code start screen.
+  Main is being merged into that branch by an agent (signature change of the ask callback).

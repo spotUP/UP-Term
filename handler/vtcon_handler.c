@@ -2507,6 +2507,7 @@ static void tty_leave(con *c)
     int eof;
     if (!c->tty)
         return;
+    DBG("tty leave owner/alive", (long)c->tty_owner, task_alive(c->tty_owner));
     c->ld.t.c_lflag &= ~(ld_flag)LD_ICANON; /* whole lines and a partial one, as bytes */
     ld_set(&c->ld, &c->ld.t, LD_TCSANOW);
     while ((n = ld_read(&c->ld, b, sizeof(b), &eof)) > 0)
@@ -2534,6 +2535,7 @@ static int tty_active(con *c)
 
 static void tty_enter(con *c, struct Task *owner)
 {
+    DBG("tty enter owner/was", (long)owner, c->tty);
     if (!c->tty) {
         /* typed ahead: input as it stands, not echoed again */
         void (*e)(void *, const unsigned char *, int) = c->ld.echo;

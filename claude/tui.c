@@ -342,6 +342,63 @@ static int right_width(const char *s)
     return w;
 }
 
+/* text with its SGR sequences kept (they take no column); other escape
+ * sequences (cursor moves, OSC) dropped, controls as r_text has them */
+static void r_ansi(row *r, const char *s, long n)
+{
+    long i = 0, run = 0;
+    while (i < n) {
+        if (s[i] != '\033') {
+            i++;
+            run++;
+            continue;
+        }
+        r_text(r, s + i - run, run);
+        run = 0;
+        if (i + 1 < n && s[i + 1] == '[') {
+            long e = i + 2;
+            while (e < n && ((unsigned char)s[e] < 0x40 || (unsigned char)s[e] > 0x7e))
+                e++;
+            if (e < n && s[e] == 'm') {
+                jw_raw(&r->b, s + i, e + 1 - i);
+                i = e + 1;
+            } else
+                i = e < n ? e + 1 : n;
+        } else if (i + 1 < n && s[i + 1] == ']') {
+            long e = i + 2;
+            while (e < n && s[e] != '\007' && !(s[e] == '\033' && e + 1 < n && s[e + 1] == '\\'))
+                e++;
+            i = e < n ? (s[e] == '\007' ? e + 1 : e + 2) : n;
+        } else
+            i += i + 1 < n ? 2 : 1;
+    }
+    r_text(r, s + i - run, run);
+}
+
+#define STATUS_ROWS 4           /* the statusLine command's lines drawn at most */
+
+/* the statusLine command's output: a row per line */
+static void status_text_rows(cl_tui *t)
+{
+    const char *p = t->status, *e;
+    int k = 0;
+    if (!p)
+        return;
+    while (*p && k < STATUS_ROWS) {
+        row r;
+        for (e = p; *e && *e != '\n'; e++)
+            ;
+        r_init(&r, t->cols);
+        r_text(&r, "  ", 2);
+        r_pad(&r, 2 + t->status_pad);
+        r_ansi(&r, p, (long)(e - p));
+        r_sgr(&r, SGR0);
+        want(t, &r);
+        k++;
+        p = *e ? e + 1 : e;
+    }
+}
+
 static void status_row(cl_tui *t)
 {
     row r;
@@ -352,7 +409,7 @@ static void status_row(cl_tui *t)
     if (t->hint[0]) {
         r_sgr(&r, DIM);
         r_textz(&r, t->hint);
-    } else if (vim_label(&t->ed)) {
+    } else if (vim_label(&t->ed) && !t->hide_vim) {
         r_sgr(&r, DIM);
         r_textz(&r, vim_label(&t->ed));
     } else if (t->box == BOX_BASH) {
@@ -377,9 +434,13 @@ static void status_row(cl_tui *t)
         r_textz(&r, "|| plan mode on");
         r_sgr(&r, SGR0 DIM);
         r_textz(&r, " (shift+tab to cycle)");
-    } else {
+    } else if (t->nq) {
         r_sgr(&r, DIM);
-        r_textz(&r, t->nq ? "queued: sent when Claude is done (up takes them back)" : "/ for commands");
+        r_textz(&r, "queued: sent when Claude is done (up takes them back)");
+    } else if (!t->status || !t->status[0]) {
+        /* Claude Code drops this hint when a status line is configured */
+        r_sgr(&r, DIM);
+        r_textz(&r, "/ for commands");
     }
     r_sgr(&r, SGR0);
     /* the facts on the right, the least needed dropped first */
@@ -808,6 +869,7 @@ static void build(cl_tui *t)
         return;
     }
     todo_rows(t);
+    status_text_rows(t);
     if (t->search)
         search_row(t);
     else
@@ -1977,6 +2039,8 @@ long tui_read(cl_tui *t, char *buf, long cap)
     for (;;) {
         cl_key k;
         int r, h;
+        if (t->idle)
+            t->idle(t->iu);         /* the status line's schedule */
         tui_frame(t);
         r = next_key(t, &k, 500);
         if (r < 0)

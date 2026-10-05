@@ -14,6 +14,7 @@
 
 #define READ_WHOLE (256L * 1024)     /* Read without offset/limit */
 #define READ_PART  (2048L * 1024)    /* Read with them */
+#define READ_MEDIA (3840L * 1024)    /* an image or a PDF: the API takes 5 MB of base64 */
 #define READ_LINES 2000
 #define LINE_MAX_CH 2000
 #define EDIT_MAX   (1024L * 1024)
@@ -27,8 +28,9 @@ static const char *const d_read[] = {
     "line, 1-based) and limit read a part: use them for long files. Lines longer than 2000 characters "
     "are cut. ",
     "The result is in cat -n format: the line number, a tab, the line. Files up to 256 KB are read "
-    "whole, larger ones (to 2 MB) only with offset and limit. Binary files are refused. Read a file "
-    "before you Edit or Write it. Read several files in one answer when they may all be useful.",
+    "whole, larger ones (to 2 MB) only with offset and limit. PNG, JPEG, GIF and WebP images and PDF "
+    "files (to 3.75 MB) are shown to you as they are; other binary files are refused. ",
+    "Read a file before you Edit or Write it. Read several files in one answer when they may all be useful.",
     0
 };
 static const char s_read[] =
@@ -353,8 +355,17 @@ static int describe(cl_tools *t, int tool, jw *d)
     if (tool == T_SKILL) {
         const cl_skill *s = 0;
         n = t->ext && t->ext->skills ? t->ext->skills(t->ext->u, &s) : 0;
-        for (i = 0; i < n; i++)
-            list_line(d, s[i].name, s[i].description, 0);
+        for (i = 0; i < n; i++) {
+            /* Claude Code: the description and when_to_use, 1536 characters at most */
+            char text[1540];
+            cl_copy(text, s[i].description ? s[i].description : "", sizeof(text));
+            if (s[i].when && *s[i].when) {
+                cl_cat(text, text[0] ? " " : "", sizeof(text));
+                cl_cat(text, s[i].when, sizeof(text));
+            }
+            text[1536] = 0;
+            list_line(d, s[i].name, text, 0);
+        }
         return n;
     }
     if (tool == T_SLASH) {
@@ -515,6 +526,8 @@ int perm_must_ask(const cl_perm *p, int tool, int outside)
         return 0;
     if (outside)
         return 1;
+    if (perm_read_only(tool))
+        return 0;                   /* Claude Code: reads inside the working directories never ask */
     if (p->mode == PERM_ACCEPT && is_edit(tool))
         return 0;
     return !(p->session & (1ul << tool));
@@ -621,6 +634,9 @@ void tools_free(cl_tools *t)
     t->rs = 0;
     free(t->json);
     t->json = 0;
+    free(t->sub_append);
+    t->sub_append = 0;
+    webfetch_cache_free(t);
 }
 
 /* ---- helpers ---- */
@@ -732,6 +748,12 @@ static long utf8_to_latin1(char *s, long n)
     return k;
 }
 
+/* outside the working directories: the start directory and the added ones */
+static int is_outside(cl_tools *t, const char *p)
+{
+    return !path_inside(t->root, p) && !(t->added && t->added(t->u, p));
+}
+
 int tl_resolve(cl_tools *t, const char *arg, char *full, long cap, int *outside)
 {
     char canon[512], parent[512];
@@ -739,7 +761,7 @@ int tl_resolve(cl_tools *t, const char *arg, char *full, long cap, int *outside)
     if (path_join(t->root, *arg ? arg : "", full, cap))
         return -1;
     if (t->sys->canon(t->sys->u, full, canon, sizeof(canon)) == 0) {
-        *outside = !path_inside(t->root, canon);
+        *outside = is_outside(t, canon);
         return 0;
     }
     /* not there yet (a new file): its directory's canonical name */
@@ -751,10 +773,10 @@ int tl_resolve(cl_tools *t, const char *arg, char *full, long cap, int *outside)
         cl_cat(canon, canon[0] && canon[strlen(canon) - 1] != ':' && canon[strlen(canon) - 1] != '/' ? "/" : "",
                sizeof(canon));
         cl_cat(canon, name, sizeof(canon));
-        *outside = !path_inside(t->root, canon);
+        *outside = is_outside(t, canon);
         return 0;
     }
-    *outside = !path_inside(t->root, full);
+    *outside = is_outside(t, full);
     return 0;
 }
 
@@ -824,7 +846,12 @@ int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, in
         return -1;
     }
     if (ans == ASK_NO) {
-        tl_error(t, out, id, "the user declined this tool call", 0);
+        /* print mode: nobody was asked (--permission-prompts none: do not retry) */
+        tl_error(t, out, id, t->nobody == 2 ? "permission to use this tool was denied: nobody can approve it in "
+                                              "this unattended run. Do not retry it; go on without it"
+                             : t->nobody ? "permission to use this tool was denied: no one can approve it in this "
+                                           "non-interactive run"
+                                         : "the user declined this tool call", 0);
         return -1;
     }
     if (ans == ASK_SESSION && !outside)
@@ -853,6 +880,88 @@ static long cut_at(const char *s, long n, long max)
     while (max > 0 && ((unsigned char)s[max] & 0xc0) == 0x80)
         max--;
     return max;
+}
+
+/* an image's or a PDF's media type by its first bytes (Claude Code
+ * reads PNG, JPEG, GIF, WebP and PDF files as such), 0 none */
+static const char *media_of(const unsigned char *b, long n)
+{
+    if (n >= 8 && !memcmp(b, "\211PNG\r\n\032\n", 8))
+        return "image/png";
+    if (n >= 3 && b[0] == 0xff && b[1] == 0xd8 && b[2] == 0xff)
+        return "image/jpeg";
+    if (n >= 6 && (!memcmp(b, "GIF87a", 6) || !memcmp(b, "GIF89a", 6)))
+        return "image/gif";
+    if (n >= 12 && !memcmp(b, "RIFF", 4) && !memcmp(b + 8, "WEBP", 4))
+        return "image/webp";
+    if (n >= 5 && !memcmp(b, "%PDF-", 5))
+        return "application/pdf";
+    return 0;
+}
+
+/* is the name one an image or a PDF has? (the file is read whole then) */
+static int media_name(const char *p)
+{
+    static const char *const ext[] = { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", 0 };
+    long l = (long)strlen(p);
+    int i;
+    for (i = 0; ext[i]; i++) {
+        long k = (long)strlen(ext[i]);
+        if (l > k && cl_strieq(p + l - k, ext[i]))
+            return 1;
+    }
+    return 0;
+}
+
+static void base64(jw *w, const unsigned char *p, long n)
+{
+    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    char q[4];
+    long i;
+    for (i = 0; i + 2 < n; i += 3) {
+        q[0] = a[p[i] >> 2];
+        q[1] = a[((p[i] & 3) << 4) | (p[i + 1] >> 4)];
+        q[2] = a[((p[i + 1] & 15) << 2) | (p[i + 2] >> 6)];
+        q[3] = a[p[i + 2] & 63];
+        jw_raw(w, q, 4);
+    }
+    if (n - i == 1) {
+        q[0] = a[p[i] >> 2];
+        q[1] = a[(p[i] & 3) << 4];
+        q[2] = q[3] = '=';
+        jw_raw(w, q, 4);
+    } else if (n - i == 2) {
+        q[0] = a[p[i] >> 2];
+        q[1] = a[((p[i] & 3) << 4) | (p[i + 1] >> 4)];
+        q[2] = a[(p[i + 1] & 15) << 2];
+        q[3] = '=';
+        jw_raw(w, q, 4);
+    }
+}
+
+/* Read of an image or a PDF: Claude sees it (a base64 image or document
+ * block in the tool_result), the screen a one-line summary */
+static void read_media(cl_tools *t, jw *out, const char *id, const char *full, const char *type, const char *b,
+                       long n)
+{
+    char m[96], num[16];
+    int pdf = !strcmp(type, "application/pdf");
+    jw_rawz(out, "{\"type\":\"tool_result\",\"tool_use_id\":");
+    jw_strz(out, id);
+    jw_rawz(out, pdf ? ",\"content\":[{\"type\":\"document\",\"source\":{\"type\":\"base64\",\"media_type\":"
+                     : ",\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":");
+    jw_strz(out, type);
+    jw_rawz(out, ",\"data\":\"");
+    base64(out, (const unsigned char *)b, n);
+    jw_rawz(out, "\"}}]}");
+    cl_copy(m, pdf ? "Read PDF (" : "Read image (", sizeof(m));
+    cl_ltoa((n + 1023) / 1024, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " KB)", sizeof(m));
+    cl_copy(t->brief, m, sizeof(t->brief));
+    if (t->result)
+        t->result(t->u, t->cur, t->cur_in, t->cur_inn, 0, m, (long)strlen(m));
+    (void)full;
 }
 
 static void run_read(cl_tools *t, jw *out, const char *id, jv in)
@@ -884,7 +993,7 @@ static void run_read(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "File does not exist: ", full);
         return;
     }
-    rc = t->sys->read(t->sys->u, full, part ? READ_PART : READ_WHOLE, &b, &n);
+    rc = t->sys->read(t->sys->u, full, media_name(full) ? READ_MEDIA : part ? READ_PART : READ_WHOLE, &b, &n);
     if (rc == SYS_TOO_BIG) {
         tl_error(t, out, id, part ? "the file is larger than 2 MB: Grep it, or read it with Bash (Type with a range)"
                                   : "the file is larger than 256 KB: read it in parts with offset and limit, "
@@ -896,9 +1005,22 @@ static void run_read(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "cannot read the file: ", t->sys->err(t->sys->u));
         return;
     }
+    if (media_of((const unsigned char *)b, n)) {
+        rs_note(t, full);
+        read_media(t, out, id, full, media_of((const unsigned char *)b, n), b, n);
+        free(b);
+        return;
+    }
     if (tl_is_binary(b, n)) {
         free(b);
         tl_error(t, out, id, "this is a binary file, not text: ", full);
+        return;
+    }
+    if (n > READ_WHOLE && !part) {
+        /* read whole for its name (an image's), but it is text: the text cap holds */
+        free(b);
+        tl_error(t, out, id, "the file is larger than 256 KB: read it in parts with offset and limit, "
+                             "or Grep for what you need", 0);
         return;
     }
     rs_note(t, full);
@@ -1324,11 +1446,79 @@ done:
 
 /* ---- Bash (in the foreground) ---- */
 
+/* Commands that only look (Claude Code's read-only command set, the
+ * AmigaDOS ones and vsh's): they run without a question, also in plan
+ * mode. A line counts only when every part of it (; && || |) is one,
+ * nothing is redirected into a file and nothing is substituted. */
+static const char *const ro_cmds[] = { "list", "dir", "type", "info", "which", "echo", "version", "search", "avail",
+                                       "date", "ls", "cat", "head", "tail", "grep", "wc", "pwd", "file", "cmp",
+                                       "diff", "whoami", "uname", "status", "show", "cd", 0 };
+
+int bash_read_only(const char *cmd)
+{
+    const char *p = cmd;
+    if (strchr(cmd, '>') || strchr(cmd, '`') || strstr(cmd, "$("))
+        return 0;
+    while (*p) {
+        char w[16];
+        int k = 0, i, ok = 0;
+        while (*p == ' ' || *p == '\t' || *p == ';' || *p == '&' || *p == '|')
+            p++;
+        if (!*p)
+            break;
+        while (*p && *p != ' ' && *p != '\t' && *p != ';' && *p != '&' && *p != '|' && k < (int)sizeof(w) - 1)
+            w[k++] = *p++;
+        w[k] = 0;
+        if (k && strchr(w, '/') == 0 && strchr(w, ':') == 0)
+            for (i = 0; ro_cmds[i]; i++)
+                if (cl_strieq(w, ro_cmds[i]))
+                    ok = 1;
+        if (!ok)
+            return 0;
+        while (*p && *p != ';' && *p != '&' && *p != '|')
+            p++;
+    }
+    return 1;
+}
+
+/* Is the line one "cd DIR" alone (no other command after it)? Its
+ * directory into dir (cap 0: only the question). */
+static int cd_line(const char *cmd, char *dir, long cap)
+{
+    const char *p = cmd, *e;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (!((p[0] == 'c' || p[0] == 'C') && (p[1] == 'd' || p[1] == 'D') && (p[2] == ' ' || p[2] == '\t')))
+        return 0;
+    p += 3;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (strpbrk(p, ";&|\n`"))
+        return 0;
+    e = p + strlen(p);
+    while (e > p && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r'))
+        e--;
+    if (e > p + 1 && *p == '"' && e[-1] == '"') {
+        p++;
+        e--;
+    }
+    if (e == p)
+        return 0;
+    if (cap) {
+        long l = (long)(e - p) < cap - 1 ? (long)(e - p) : cap - 1;
+        memcpy(dir, p, (size_t)l);
+        dir[l] = 0;
+    }
+    return 1;
+}
+
 static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
 {
     char what[300], num[16], shell[24];
     char *cmd = tl_prop(in, "command", 0), *buf;
-    long n = 0, rc = 0, ms = tl_num(in, "timeout", 0);
+    long n = 0, rc = 0, ms = tl_num(in, "timeout", 0), omax = t->out_max > 0 ? t->out_max : TL_OUT_MAX;
+    char cddir[256];
+    int is_cd;
     int r, secs;
     jw res;
     if (!cmd) {
@@ -1336,7 +1526,10 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         return;
     }
     tl_summary(what, sizeof(what), cmd, 0);
-    if (tl_gate(t, out, id, T_BASH, what, 0, 1)) {
+    if (!t->rule_ask && bash_read_only(cmd) && !tl_bool(in, "run_in_background")) {
+        if (t->show)
+            t->show(t->u, defs[T_BASH].name, what);     /* only looks: no question, plan mode too */
+    } else if (tl_gate(t, out, id, T_BASH, what, 0, 1)) {
         free(cmd);
         return;
     }
@@ -1345,14 +1538,38 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         free(cmd);
         return;
     }
+    if (t->max_timeout_ms > 0 && ms > t->max_timeout_ms)
+        ms = t->max_timeout_ms;     /* BASH_MAX_TIMEOUT_MS */
     secs = ms > 0 ? (int)((ms + 999) / 1000) : t->timeout_s > 0 ? t->timeout_s : 120;
-    buf = (char *)malloc(TL_OUT_MAX + 1);
+    is_cd = cd_line(cmd, cddir, sizeof(cddir));
+    if (t->cwd[0] || is_cd) {
+        /* Claude Code: a cd persists between commands (the script runs there
+         * first); a cd itself starts from where the last one left */
+        const char *from = t->cwd[0] ? t->cwd : t->root;
+        char *c2 = (char *)malloc(strlen(cmd) + strlen(from) + 8);
+        if (c2) {
+            strcpy(c2, "cd \"");
+            strcat(c2, from);
+            strcat(c2, "\"\n");
+            strcat(c2, cmd);
+            free(cmd);
+            cmd = c2;
+        }
+    }
+    buf = (char *)malloc((size_t)omax + 1);
     if (!buf) {
         free(cmd);
         tl_error(t, out, id, "out of memory", 0);
         return;
     }
-    r = tools_run_fg(t, cmd, secs, buf, TL_OUT_MAX, &n, &rc, shell, sizeof(shell));
+    r = tools_run_fg(t, cmd, secs, buf, omax, &n, &rc, shell, sizeof(shell));
+    if (r == 0 && rc == 0) {
+        /* a bare cd: the directory the next commands run in */
+        char full[512];
+        if (is_cd && path_join(t->cwd[0] ? t->cwd : t->root, cddir, full, sizeof(full)) == 0 &&
+            t->sys->kind(t->sys->u, full) == 2 && t->sys->canon(t->sys->u, full, t->cwd, sizeof(t->cwd)))
+            cl_copy(t->cwd, full, sizeof(t->cwd));
+    }
     free(cmd);
     if (r == -1) {
         free(buf);
@@ -1390,8 +1607,12 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
     jw_rawz(&res, num);
     jw_rawz(&res, ".\n");
     jw_raw(&res, buf, n);
-    if (n >= TL_OUT_MAX)
-        jw_rawz(&res, "\n(output cut at 30000 characters)");
+    if (n >= omax) {
+        jw_rawz(&res, "\n(output cut at ");
+        cl_ltoa(omax, num);
+        jw_rawz(&res, num);
+        jw_rawz(&res, " characters)");
+    }
     tl_result(t, out, id, res.p, res.n, r != 0 || rc >= 10);
     jw_free(&res);
     free(buf);
@@ -1582,6 +1803,38 @@ static void run_skill(cl_tools *t, jw *out, const char *id, jv in)
     tl_summary(what, sizeof(what), s[i].name, 0);
     if (tl_gate(t, out, id, T_SKILL, what, 0, 1))
         goto done;
+    if (path_parent(s[i].path, dir, sizeof(dir)))
+        cl_copy(dir, s[i].path, sizeof(dir));
+    if (t->ext->skill) {
+        /* the provider expands it as a command ($ARGUMENTS, !`cmd`, its
+         * allowed-tools and model for the turn); context: fork runs it in a
+         * subagent whose report is the result */
+        char err[300], agent[64];
+        int fork = 0;
+        jw_init(&m);
+        agent[0] = 0;
+        if (t->ext->skill(t->ext->u, s[i].name, args, 1, &m, &fork, agent, sizeof(agent), err, sizeof(err))) {
+            tl_error(t, out, id, "The skill could not be expanded: ", err);
+            jw_free(&m);
+            goto done;
+        }
+        if (fork)
+            agent_fork(t, out, id, agent, m.p ? m.p : "", m.n);
+        else {
+            jw r;
+            jw_init(&r);
+            jw_rawz(&r, "Launching skill: ");
+            jw_rawz(&r, s[i].name);
+            jw_rawz(&r, "\nBase directory for this skill: ");
+            jw_rawz(&r, dir);
+            jw_rawz(&r, "\n\n");
+            jw_raw(&r, m.p ? m.p : "", m.n);
+            tl_result(t, out, id, r.p ? r.p : "", r.n, 0);
+            jw_free(&r);
+        }
+        jw_free(&m);
+        goto done;
+    }
     if (t->sys->read(t->sys->u, s[i].path, 256L * 1024, &b, &bn)) {
         tl_error(t, out, id, "cannot read the skill: ", t->sys->err(t->sys->u));
         goto done;
@@ -1596,8 +1849,6 @@ static void run_skill(cl_tools *t, jw *out, const char *id, jv in)
                 body++;
         }
     }
-    if (path_parent(s[i].path, dir, sizeof(dir)))
-        cl_copy(dir, s[i].path, sizeof(dir));
     jw_init(&m);
     jw_rawz(&m, "Launching skill: ");
     jw_rawz(&m, s[i].name);
@@ -1660,9 +1911,18 @@ static void run_slash(cl_tools *t, jw *out, const char *id, jv in)
     jw_rawz(&m, name);
     jw_rawz(&m, ". Carry out these instructions:\n\n");
     err[0] = 0;
-    if (t->ext->expand(t->ext->u, name, args, &m, err, sizeof(err)))
-        tl_error(t, out, id, "Unknown slash command: /", err[0] ? err : name);
-    else
+    if (t->ext->expand(t->ext->u, name, args, &m, err, sizeof(err))) {
+        if (!err[0] || cl_strieq(err, name))
+            tl_error(t, out, id, "Unknown slash command: /", name);
+        else {
+            /* it is there but could not be expanded (a !`cmd` without Bash, ...) */
+            char w[100];
+            cl_copy(w, "/", sizeof(w));
+            cl_cat(w, name, sizeof(w));
+            cl_cat(w, " could not run: ", sizeof(w));
+            tl_error(t, out, id, w, err);
+        }
+    } else
         tl_result(t, out, id, m.p, m.n, 0);
     jw_free(&m);
     free(line);
@@ -1677,6 +1937,7 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
     jv in;
     char err[300];
     t->cur = tool;
+    t->brief[0] = 0;
     t->cur_in = raw ? raw : "";
     t->cur_inn = raw ? rawn : 0;
     if (tool < 0) {

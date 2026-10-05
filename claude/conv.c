@@ -17,6 +17,16 @@ void conv_clear(cl_conv *c)
     c->n = 0;
 }
 
+void conv_usage_reset(cl_conv *c)
+{
+    c->requests = 0;
+    c->in_tok = c->out_tok = c->cache_w = c->cache_r = 0;
+    c->cost_micro = 0;
+    c->unpriced = 0;
+    c->nmu = 0;
+    memset(c->mu, 0, sizeof(c->mu));
+}
+
 void conv_free(cl_conv *c)
 {
     conv_clear(c);
@@ -47,6 +57,35 @@ int conv_add(cl_conv *c, int user, const char *json, long n)
     return 0;
 }
 
+int conv_add_user_blocks(cl_conv *c, const char *b, long bn)
+{
+    int rc;
+    if (c->n && c->m[c->n - 1].user) {
+        cl_msg *m = &c->m[c->n - 1];
+        char *j = (char *)realloc(m->json, (size_t)(m->n + bn + 2));
+        if (!j)
+            return -1;
+        m->json = j;
+        /* "[...]" -> "[..., new]" */
+        j[m->n - 1] = ',';
+        memcpy(j + m->n, b, (size_t)bn);
+        m->n += bn;
+        j[m->n++] = ']';
+        j[m->n] = 0;
+        return 0;
+    }
+    {
+        jw a;
+        jw_init(&a);
+        jw_raw(&a, "[", 1);
+        jw_raw(&a, b, bn);
+        jw_raw(&a, "]", 1);
+        rc = a.oom ? -1 : conv_add(c, 1, a.p, a.n);
+        jw_free(&a);
+    }
+    return rc;
+}
+
 int conv_add_user_text(cl_conv *c, const char *s, long n)
 {
     jw w;
@@ -55,36 +94,7 @@ int conv_add_user_text(cl_conv *c, const char *s, long n)
     jw_rawz(&w, "{\"type\":\"text\",\"text\":");
     jw_str(&w, s, n);
     jw_raw(&w, "}", 1);
-    if (w.oom) {
-        jw_free(&w);
-        return -1;
-    }
-    if (c->n && c->m[c->n - 1].user) {
-        cl_msg *m = &c->m[c->n - 1];
-        char *j = (char *)realloc(m->json, (size_t)(m->n + w.n + 2));
-        if (!j) {
-            jw_free(&w);
-            return -1;
-        }
-        m->json = j;
-        /* "[...]" -> "[..., new]" */
-        j[m->n - 1] = ',';
-        memcpy(j + m->n, w.p, (size_t)w.n);
-        m->n += w.n;
-        j[m->n++] = ']';
-        j[m->n] = 0;
-        jw_free(&w);
-        return 0;
-    }
-    {
-        jw a;
-        jw_init(&a);
-        jw_raw(&a, "[", 1);
-        jw_raw(&a, w.p, w.n);
-        jw_raw(&a, "]", 1);
-        rc = a.oom ? -1 : conv_add(c, 1, a.p, a.n);
-        jw_free(&a);
-    }
+    rc = w.oom ? -1 : conv_add_user_blocks(c, w.p, w.n);
     jw_free(&w);
     return rc;
 }
@@ -169,7 +179,7 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out)
         jw_strz(out, o->system);
         jw_rawz(out, ",\"cache_control\":{\"type\":\"ephemeral\"}}]");
     }
-    if (o->tools && *o->tools) {
+    if (o->tools && *o->tools && strcmp(o->tools, "[]")) {
         jw_rawz(out, ",\"tools\":");
         jw_rawz(out, o->tools);
         jw_rawz(out, o->no_tools ? ",\"tool_choice\":{\"type\":\"none\"}" : ",\"tool_choice\":{\"type\":\"auto\"}");
@@ -226,15 +236,29 @@ static unsigned long micro(long tok, long price)
 void conv_usage(cl_conv *c, const char *model, long in, long out, long cache_w, long cache_r)
 {
     cl_price p;
+    cl_model_use *u;
+    unsigned long cost = 0;
+    int i;
     c->requests++;
     c->in_tok += in;
     c->out_tok += out;
     c->cache_w += cache_w;
     c->cache_r += cache_r;
-    if (conv_price(model, &p))
-        c->cost_micro += micro(in, p.in) + micro(out, p.out) + micro(cache_w, p.cwrite) + micro(cache_r, p.cread);
-    else
+    if (conv_price(model, &p)) {
+        cost = micro(in, p.in) + micro(out, p.out) + micro(cache_w, p.cwrite) + micro(cache_r, p.cread);
+        c->cost_micro += cost;
+    } else
         c->unpriced++;
+    for (i = 0; i < c->nmu && strcmp(c->mu[i].model, model); i++)
+        ;
+    if (i == c->nmu && c->nmu < CONV_MODELS)
+        cl_copy(c->mu[c->nmu++].model, model, sizeof(c->mu[0].model));
+    u = &c->mu[i < c->nmu ? i : c->nmu - 1];
+    u->in += in;
+    u->out += out;
+    u->cache_w += cache_w;
+    u->cache_r += cache_r;
+    u->cost_micro += cost;
 }
 
 void conv_dollars(unsigned long m, char *out, long cap)

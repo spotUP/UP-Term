@@ -5,7 +5,8 @@
  * (<root>/.claude/settings.json) and the project's local one
  * (<root>/.claude/settings.local.json). The keys are Claude Code's: a scalar
  * from a later file wins (model, effort/effortLevel, outputStyle, theme,
- * statusLine, autoCompactEnabled, fallbackModel, permissions.defaultMode);
+ * statusLine {command, padding, refreshInterval}, autoCompactEnabled,
+ * fallbackModel, permissions.defaultMode, and C:Claude's webSearch);
  * lists add up (permissions allow / deny / ask, permissions
  * .additionalDirectories, hooks, env).
  *
@@ -33,7 +34,11 @@ enum { RULE_NONE, RULE_ALLOW, RULE_ASK, RULE_DENY };
 /* hook events, Claude Code's names (hooks.h runs them) */
 enum {
     HK_PRE_TOOL, HK_POST_TOOL, HK_PROMPT, HK_STOP, HK_SUBAGENT_STOP, HK_SESSION_START, HK_SESSION_END,
-    HK_PRE_COMPACT, HK_NOTIFICATION, HK_COUNT
+    HK_PRE_COMPACT, HK_NOTIFICATION,
+    /* A4 gaps: Claude Code's other events that exist here */
+    HK_PERMISSION_REQUEST, HK_POST_TOOL_FAILURE, HK_SUBAGENT_START, HK_POST_COMPACT, HK_STOP_FAILURE,
+    HK_PROMPT_EXPANSION, HK_CWD_CHANGED, HK_DIR_ADDED, HK_PRE_MODEL_SWITCH, HK_POST_MODEL_SWITCH,
+    HK_INSTRUCTIONS_LOADED, HK_POST_TOOL_BATCH, HK_CONFIG_CHANGE, HK_SETUP, HK_COUNT
 };
 extern const char *const cfg_hook_events[HK_COUNT];
 
@@ -49,7 +54,14 @@ typedef struct cl_hook {
     char *matcher;              /* "" all; "Bash", "Edit|Write", ".*" */
     char *cmd;
     int timeout_s;
+    char *cond;                 /* "if": a permission rule the call must match, 0 none */
+    int kind;                   /* HOOK_COMMAND, HOOK_PROMPT (cmd holds the prompt) */
+    char *model;                /* a prompt hook's model, 0 the small one */
+    char *status;               /* statusMessage: shown while it runs, 0 none */
+    int once;                   /* "once": true -- runs once a session */
 } cl_hook;
+
+enum { HOOK_COMMAND, HOOK_PROMPT };
 
 typedef struct cl_kv {
     char *k, *v;
@@ -57,6 +69,7 @@ typedef struct cl_kv {
 
 typedef struct cl_settings {
     char model[64];
+    int model_src;              /* the level that set model (CFG_*), -1 none */
     char effort[16];
     char output_style[64];
     char theme[32];
@@ -66,6 +79,10 @@ typedef struct cl_settings {
      * --settings only (a project's cannot remap keys), as Claude Code's */
     char vim_remaps[17];
     char status_cmd[256];       /* statusLine.command */
+    int status_pad;             /* statusLine.padding: columns before its text */
+    int status_refresh_s;       /* statusLine.refreshInterval: seconds, 0 only on events */
+    int web_search;             /* "webSearch" (C:Claude's switch; Claude Code's way is the
+                                 * deny rule "WebSearch"): -1 not set, 0 off, 1 on */
     char default_mode[24];      /* default / acceptEdits / plan */
     char fallback_model[64];
     int auto_compact;           /* -1 not set, 0 off, 1 on */
@@ -77,6 +94,20 @@ typedef struct cl_settings {
     int nenv, capenv;
     char **dirs;                /* additionalDirectories */
     int ndirs, capdirs;
+    /* A4 gaps */
+    int no_hooks;               /* disableAllHooks: true */
+    int verbose;                /* "verbose": -1 not set, 0, 1 */
+    char agent[64];             /* "agent": the main thread runs as that agent */
+    long compact_window;        /* autoCompactWindow: tokens, 0 not set */
+    int auto_memory;            /* autoMemoryEnabled: -1 not set, 0, 1 */
+    int hide_vim;               /* statusLine.hideVimModeIndicator */
+    char **md_excludes;         /* claudeMdExcludes: globs of memory files not loaded */
+    int nmdx, capmdx;
+    unsigned skip;              /* bit per CFG_USER/PROJECT/LOCAL not read (--setting-sources) */
+    char key_helper[256];       /* apiKeyHelper: a command whose output is the API key */
+    char avail_models[256];     /* availableModels, comma-separated ("" all) */
+    long bash_max_chars;        /* bashOutputMaxChars, 0 the default */
+    int cleanup_days;           /* cleanupPeriodDays, -1 not set */
     char path[CFG_NSRC][300];   /* the files (user, project, local) */
     int found[CFG_NSRC];        /* read and valid */
     char err[300];              /* the last file that did not parse, and why */
@@ -114,6 +145,23 @@ int cfg_rule_match(const char *rule, const char *tool, jv input, const char *roo
 /* The rules' answer for a call: RULE_NONE (ask as usual), ALLOW, ASK,
  * DENY; *which the deciding rule (or 0). */
 int cfg_decide(const cl_settings *s, const char *tool, jv input, const char *root, const cl_rule **which);
+
+/* Is the web_search server tool on? Off by "webSearch": false or by a
+ * deny rule naming WebSearch alone (Claude Code's way to turn it off). The
+ * API runs it, so there is no call to ask about: an ask rule does not
+ * turn it off. */
+int cfg_web_search(const cl_settings *s);
+
+/* An auto-compact window as Claude Code takes it: 200000, 500k, 1M, or a
+ * bare 100..1000 meaning thousands; 100K to 1M. The tokens, -1 for
+ * "auto", 0 when it is none of these. */
+long cfg_window_parse(const char *v);
+
+/* the user's home for ~/ in path rules (HOME, else SYS:) */
+void cfg_set_home(const char *dir);
+
+/* the hooks dropped (disableAllHooks, --bare, --safe-mode) */
+void cfg_drop_hooks(cl_settings *s);
 
 /* opus / sonnet / haiku / fable (also opusplan's model, default) -> the
  * current id; anything else as it is */

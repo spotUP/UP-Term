@@ -26,6 +26,7 @@ typedef struct cl_show {
     jw batch;                   /* lines ready for the screen */
     /* the tool call in progress */
     int tool;
+    const char *brief;          /* the tool's own summary of the next result (cl_tools.brief), 0 none */
     jw head;                    /* its header line, not yet shown */
     int head_out;
     int adds, dels;             /* its preview's counts */
@@ -35,6 +36,7 @@ typedef struct cl_show {
     unsigned long think_t0;
     /* how often each part ran (the reachability test's sentinel) */
     long n_text, n_blocks, n_tools, n_diffs, n_think;
+    const int *verbose;         /* --verbose / "verbose": results and diffs unfolded (0: folded) */
 } cl_show;
 
 void show_init(cl_show *s, cl_tui *t);

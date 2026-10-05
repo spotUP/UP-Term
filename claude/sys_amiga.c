@@ -573,8 +573,11 @@ static int a_info(void *u, const char *what, char *out, long cap)
         return lib_check("amisslmaster.library", 5, out, cap);
     if (!strcmp(what, "vsh")) {
         int k = a_kind(u, "C:vsh");
-        cl_copy(out, k == 1 ? "C:vsh is there" : "C:vsh is not there (commands need vsh)", cap);
-        return k == 1;
+        /* without vsh the Bash tool runs commands in the AmigaShell (run_cmd's
+         * fallback): a note, not an error */
+        cl_copy(out, k == 1 ? "C:vsh is there" : "C:vsh is not there: commands run in the AmigaShell "
+                                                 "(install the UP-Term kit for Unix-style commands)", cap);
+        return k == 1 ? 1 : -1;
     }
     cl_copy(out, "unknown", cap);
     return -1;

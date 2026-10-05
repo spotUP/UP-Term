@@ -35,6 +35,38 @@
 #define CL_TMP            "T:"              /* CLAUDE_CODE_TMPDIR overrides */
 #define CL_COMPACT_PCT    92                /* auto-compact when this much of the window is used */
 
+/* A4 WP4: an observer of the turns (print mode's output, claude/print.c).
+ * Each may be 0. */
+typedef struct cl_feed {
+    void *u;
+    /* a message added to the conversation by a turn: an answer (user 0;
+     * r->st still holds its stream) or a round's tool results (user 1) */
+    void (*message)(void *u, int user, const char *json, long n);
+    /* a raw stream event of the conversation's own requests */
+    void (*event)(void *u, const char *ev, const char *data, long n);
+    /* a tool call refused without a question (a deny rule, no one to ask) */
+    void (*denied)(void *u, const char *tool, const char *id, const char *input, long n);
+    /* A4 gaps: a subagent's message (its prompt, each answer, each round's
+     * tool results); parent the id of the Task call that runs it, st the
+     * answer's stream (0 for a user message) */
+    void (*sub)(void *u, const char *parent, int user, const char *json, long n, const cl_stream *st);
+    /* A4 gaps: a request failed and is tried again (system/api_retry):
+     * attempt from 1, the delay, the HTTP status (0 none), the error kind */
+    void (*retry)(void *u, int attempt, int max, long delay_ms, int status, const char *error);
+    /* A4 gaps: a hook started (done 0) or finished (its exit code and
+     * output): --include-hook-events */
+    void (*hook)(void *u, const char *event, const char *cmd, int done, long rc, const char *out, long n);
+} cl_feed;
+
+/* who answers a permission question (A4 WP4) */
+enum {
+    ASKP_ASK,                   /* the user */
+    ASKP_DENY,                  /* nobody: denied (dontAsk; print mode); reads in the root still run */
+    ASKP_BYPASS                 /* yes to all (bypassPermissions); explicit ask rules still ask */
+};
+/* how the last turn ended */
+enum { TURN_OK, TURN_FAIL, TURN_CANCEL, TURN_MAX_TURNS, TURN_BUDGET };
+
 typedef struct cl_repl {
     cl_io *io;
     cl_net *net;
@@ -86,10 +118,75 @@ typedef struct cl_repl {
     char *todos;                /* the last todo_write input (/todos) */
     char keybuf[512];           /* a key from /login */
     int await_key;              /* the next line typed is the key (/login) */
-    char status_text[160];      /* the statusLine command's last output, for the status line */
-    void (*bg_list)(void *u, char *out, long cap);  /* /tasks: WP2's background shells */
-    void *bg_u;
+    char status_text[512];      /* the statusLine command's last output (its lines, SGR kept):
+                                 * the footer's own row(s) above the status line */
+    unsigned long status_ms;    /* when it last ran (io->ms), 0 never */
+    int status_due;             /* an event asked for a run the 300 ms throttle held back */
+    int status_mode, status_vim;    /* the permission mode and vim state it last saw */
+    long n_status_runs;         /* the tests' sentinel */
+    /* the extensions WP2's Task / Skill / SlashCommand tools see (ext.h),
+     * built from defs at each repl_load (policy.c) */
+    cl_ext ext;
+    cl_agent *x_agents;
+    cl_skill *x_skills;
+    cl_command *x_cmds;
+    int nx_agents, nx_skills, nx_cmds;
+    cl_tools *at;               /* the tools whose call runs now: the conversation's or a subagent's */
     long n_rule_allow, n_rule_deny, n_cmds_run;     /* the tests' sentinels */
+    long n_skills_run;          /* the tests' sentinel: skills expanded for a turn */
+    char turn_buf[512];         /* turn_tools with its ${CLAUDE_*} put in */
+    /* A4 WP4: the command line (cli.c) and print mode (print.c) */
+    const cl_feed *feed;
+    int ask_policy;             /* ASKP_* */
+    int no_person;              /* print mode: no one to ask (questions denied, choices declined) */
+    int max_turns;              /* responses a turn may have before it stops, 0 no limit */
+    unsigned long budget_micro; /* spend allowed (US dollars * 1e6), 0 no limit; ... */
+    unsigned long budget_base;  /* ... counted from this cost_micro */
+    int turn_rc;                /* TURN_*: how the last turn ended */
+    long n_responses;           /* answers received (print mode's num_turns) */
+    unsigned long api_ms;       /* time spent in requests */
+    int quiet_req;              /* a tool's own request is in flight (no feed events) */
+    const char *cur_id;         /* the tool_use id being run */
+    char *sys_replace;          /* --system-prompt: replaces the default text, 0 none */
+    char *sys_append;           /* --append-system-prompt: added at the end, 0 none */
+    char *layer[2];             /* --settings and the flags as settings JSON (CFG_SESSION), 0 none */
+    const char *first;          /* the prompt the session starts with (Claude "prompt"), 0 none */
+    /* the A4 gaps (thoughts/shared/plans/2026-10-05-a4-gaps-progress.md) */
+    int bare;                   /* --bare: no CLAUDE.md, hooks, commands, skills, agents; Bash, Read, Edit */
+    int safe;                   /* --safe-mode: no customisation (memory, hooks, defs, styles, status line) */
+    int no_slash;               /* --disable-slash-commands: no skills, no custom commands */
+    unsigned sources;           /* --setting-sources: bit per CFG_USER/PROJECT/LOCAL (0: all) */
+    char *agents_json;          /* --agents: {"name": {description, prompt, tools, model}} */
+    char *schema;               /* --json-schema: the StructuredOutput tool's input schema */
+    char *structured;           /* the StructuredOutput call's input (the structured output) */
+    long compact_window;        /* --autocompact: tokens, -1 auto (the model's), 0 not given */
+    int start_due;              /* SessionStart "startup" not run yet (after the flags are applied) */
+    const char *blocks;         /* the next turn's prompt as content blocks (comma-separated), 0 text */
+    long blocks_n;
+    char betas[256];            /* --betas, joined with commas */
+    int verbose;                /* "verbose": results unfolded at the screen; 2 --verbose (wins) */
+    int prompts_none;           /* --permission-prompts none */
+    unsigned long t_start;      /* the session's start (io->ms), for the durations */
+    const char *log_path;       /* where the debug log goes (main sets it; /debug names it), 0 unknown */
+    char btw[512];              /* the last /btw answer (/btw alone shows it) */
+    char launch_root[256];      /* the start directory at launch (status line's project_dir; /cd moves the root) */
+    char agent_name[64];        /* --agent / the "agent" setting in force, "" none */
+    long lines_added, lines_removed;    /* Write/Edit lines changed this session (status line's cost) */
+    long pend_add, pend_del;    /* the change being asked about (its preview's counts) */
+    const char *api_failed;     /* the turn's request failed: StopFailure's error kind, 0 none */
+    const char *end_reason;     /* SessionEnd's reason: prompt_input_exit after /exit, else other */
+    unsigned long idle_from;    /* when Claude last finished (io->ms): Notification idle_prompt */
+    int idle_told;
+    long cfg_mtime[3];          /* the settings files' times when read (ConfigChange) */
+    int began;                  /* the session has started (SessionStart ran) */
+    char goal[400];             /* /goal: the condition Claude works toward, "" none */
+    char *first_msg;            /* a SessionStart hook's initialUserMessage (print mode's first turn), 0 none */
+    char nested[8][300];        /* the directories whose .claude/skills were loaded on the way */
+    int n_nested;
+    int goal_rounds;            /* the turns a goal has added (capped) */
+    int no_dynamic;             /* --exclude-dynamic-system-prompt-sections: auto memory's place in the
+                                 * first prompt, not the system prompt */
+    long n_copies;              /* the tests' sentinel: /copy runs that reached the clipboard */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
     char buf[4096];
@@ -128,6 +225,17 @@ int repl_rewind(cl_repl *r, int msg, int code, int conv);
 /* The prompts the conversation can be rewound to: message indexes, the
  * newest first; their count. */
 int repl_prompts(const cl_repl *r, int *msg, int max);
+
+/* A4 gaps: a prompt given as content blocks (stream-json input with an
+ * image or a document: the blocks go to the API as sent, base64 and all);
+ * text is its text part, for the UserPromptSubmit hook. 0. */
+int repl_blocks(cl_repl *r, const char *text, long tn, const char *blocks, long bn);
+
+/* Setup hooks of a trigger ("init", "maintenance"; 0 none), and with start
+ * SessionStart as at the first line (--init-only) */
+void repl_setup(cl_repl *r, const char *trigger, int start);
+/* A4 WP4: an https endpoint and no key yet (the start goes to /login) */
+int repl_need_key(const cl_repl *r);
 
 /* the start of a key read from a file or a variable, cleaned in place:
  * white space trimmed; 0 when it is usable */

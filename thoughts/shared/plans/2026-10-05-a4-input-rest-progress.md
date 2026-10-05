@@ -118,3 +118,10 @@ Not applicable here (reason):
 
 - 2026-10-05: R1-R9, R11 built; make test, make test-ref (149 streams), make amiga green (c0aa1b2).
 - 2026-10-05: R10 rest (Tab comments, vimInsertModeRemaps), R12 mascot start header, fixture "slow".
+- 2026-10-05: main 3513693 (wiring, WP4, gaps) merged in. Conflicts: tools.h (wait kept beside
+  main's added/call/agent_* fields), tools.c run_bash (tools_run_fg with main's bashOutputMaxChars
+  cap, then main's persistent cd), ui.c (No with a comment -> ASK_NO kept; main's 4th option
+  ASK_PROJECT kept), tui.c (vim_label + main's hideVimModeIndicator), repl.c (main's repl_ask
+  route kept; tool_wait kept). repl_ask got note/cap; policy.c's ask-rule question now takes
+  Tab's comment too (test_claude_repl test_rule_ask_comment; fails with the note dropped).
+  Gate: make test (43 OK), make test-ref (149, 0 failed), timeout 900 make amiga rc 0.

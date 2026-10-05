@@ -65,6 +65,8 @@ typedef struct cl_memfile {
 
 #define RW_CONV 1               /* the conversation can go back to that point */
 #define RW_CODE 2               /* the files can */
+#define RW_SUM 4                /* restore's "what": summarise from that point on (A4 gaps) */
+#define RW_SUM_UP 8             /* ... or everything before it */
 
 typedef struct cl_rewind {
     void *u;

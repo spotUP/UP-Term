@@ -5,9 +5,20 @@
 #include "path.h"
 #include "tui.h"
 #include "show.h"
+#include "tools_int.h"
 #include "util.h"
 
 enum { R_OK, R_RETRY, R_FAIL, R_CANCEL };
+
+static void started(cl_repl *r);
+static void turn(cl_repl *r, const char *prompt, long pn);
+static void settings_changed(cl_repl *r);
+static void cfg_times(cl_repl *r);
+
+const char *repl_effort(const cl_repl *r)
+{
+    return strcmp(r->effort, "auto") ? r->effort : "";     /* auto: none sent, the model's own */
+}
 
 #define IDLE_LIMIT_MS 180000L   /* no byte for this long: the connection is dead */
 
@@ -26,6 +37,14 @@ static const char sys_d[] =
     "Every tool call is shown to the user and may need their permission. The terminal shows "
     "Markdown, 80 columns or fewer; keep answers concise. For a task of several steps keep a "
     "todo list with TodoWrite.";
+
+static const char auto_a[] =
+    "\n\n# Auto memory\n\nYou have a memory directory of your own for this project: ";
+static const char auto_b[] =
+    " (it may not exist yet; Write makes it). Keep in it what is worth knowing in a later session -- the "
+    "user's preferences, facts about this project and this machine, what was learned the hard way -- one "
+    "topic a file, and MEMORY.md as the index (its first 200 lines are read at every start). Update or remove "
+    "what turns out wrong. Do not save what the code or the conversation already makes plain.";
 
 int cl_key_clean(char *key)
 {
@@ -99,6 +118,8 @@ static void on_event(void *u, const char *ev, const char *data, long n)
 {
     cl_repl *r = (cl_repl *)u;
     log_s(r, ev, data, n);
+    if (r->feed && r->feed->event && !r->quiet_req)
+        r->feed->event(r->feed->u, ev, data, n);    /* A4 WP4: --include-partial-messages */
     stream_event(&r->st, ev, data, n);
 }
 
@@ -174,13 +195,20 @@ static int post(cl_repl *r, const char *body, long bn, long *retry_s)
     cl_stream_ui sui;
     long hn, idle = 0;
     int reused, again = 1, got;
+    char beta[320];
     *retry_s = -1;
     request_free(r);
+    r->resp.status = 0;             /* no answer yet (system/api_retry's error_status) */
     sui.u = r;
     sui.text = st_text;
     sui.block = st_block;
     sui.thinking = st_thinking;
     sui.stop = st_stop;
+    if (repl_need_key(r)) {
+        /* A4 WP4: a keyless start; nothing goes out without the key */
+        show_err(r, "Not logged in: no API key. Type /login, or set ENV:ANTHROPIC_API_KEY.", 0);
+        return R_FAIL;
+    }
 top:
     reused = r->connected;
     if (!r->connected) {
@@ -204,6 +232,14 @@ top:
     q.path = r->url.path;
     q.key = r->key;
     q.beta = conv_beta(r->model);
+    if (r->betas[0]) {
+        /* --betas: added to the model's own (anthropic-beta takes a comma list) */
+        cl_copy(beta, q.beta, sizeof(beta));
+        if (beta[0])
+            cl_cat(beta, ",", sizeof(beta));
+        cl_cat(beta, r->betas, sizeof(beta));
+        q.beta = beta;
+    }
     q.body_len = bn;
     hn = http_request_head(&q, r->head, sizeof(r->head));
     if (hn < 0)
@@ -323,7 +359,7 @@ top:
 }
 
 /* post() with retries and backoff */
-static int request(cl_repl *r, const char *body, long bn)
+static int request_retry(cl_repl *r, const char *body, long bn)
 {
     long delay = 2, wait;
     int attempt;
@@ -356,37 +392,103 @@ static int request(cl_repl *r, const char *body, long bn)
             cl_cat(m, " of 5). Ctrl+C stops.", sizeof(m));
             ui_line(&r->ui, m);
         }
+        if (r->feed && r->feed->retry && !r->quiet_req) {
+            /* stream-json's system/api_retry (Claude Code's error kinds) */
+            int st = r->resp.status == 200 ? 0 : r->resp.status;
+            r->feed->retry(r->feed->u, attempt, CL_TRIES - 1, wait * 1000, st,
+                           r->busy_fail ? "overloaded" : st == 429 ? "rate_limit" : st >= 500 ? "server_error"
+                                                                                       : "unknown");
+        }
         if (r->io->sleep(r->io->u, wait * 1000))
             return R_CANCEL;
         delay *= 2;
     }
 }
 
+/* ... and the time it took (print mode's duration_api_ms) */
+static int request(cl_repl *r, const char *body, long bn)
+{
+    unsigned long t0 = r->io->ms ? r->io->ms(r->io->u) : 0;
+    int rc = request_retry(r, body, bn);
+    if (r->io->ms)
+        r->api_ms += r->io->ms(r->io->u) - t0;
+    return rc;
+}
+
 /* ---- a turn ---- */
+
+/* the callbacks below serve the conversation's tools and a subagent's:
+ * r->at is the one whose call runs (pol_call sets it) */
+static unsigned long tool_clock(void *u)
+{
+    cl_repl *r = (cl_repl *)u;
+    return r->io->ms ? r->io->ms(r->io->u) : 0;
+}
 
 static void tool_show(void *u, const char *tool, const char *what)
 {
     cl_repl *r = (cl_repl *)u;
-    ui_tool(&r->ui, r->tools.cur, tool, what, r->tools.cur_in, r->tools.cur_inn);
+    ui_tool(&r->ui, r->at->cur, tool, what, r->at->cur_in, r->at->cur_inn);
+}
+
+void repl_denied(cl_repl *r, const char *tool, const char *input, long n)
+{
+    if (r->feed && r->feed->denied)
+        r->feed->denied(r->feed->u, tool, r->cur_id ? r->cur_id : "", input, n);
+}
+
+int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outside, int rule, char *note,
+             long cap)
+{
+    char m[200];
+    /* a subagent's permissionMode (dontAsk, bypassPermissions) is its own */
+    int pol = r->at && r->at->ask_policy ? r->at->ask_policy - 1 : r->ask_policy;
+    /* A4 WP4: nobody to ask (print mode, dontAsk): denied, but a read in
+     * the start directory runs (Claude Code: no approval needed there);
+     * bypassPermissions: yes, except to an explicit ask rule */
+    if (pol == ASKP_BYPASS && !rule)
+        return ASK_ONCE;
+    {
+        /* Claude Code: PermissionRequest hooks answer before the dialog
+         * (in print mode, before the "no" nobody would say) */
+        int hk = pol_permission_request(r, tool, r->at ? r->at->cur_in : 0, r->at ? r->at->cur_inn : 0);
+        if (hk == RULE_ALLOW)
+            return ASK_ONCE;
+        if (hk == RULE_DENY) {
+            repl_denied(r, tool, r->at ? r->at->cur_in : 0, r->at ? r->at->cur_inn : 0);
+            return ASK_NO;
+        }
+    }
+    if (r->no_person || pol == ASKP_DENY) {
+        if (!rule && !outside && tid >= 0 && perm_read_only(tid))
+            return ASK_ONCE;
+        repl_denied(r, tool, r->at->cur_in, r->at->cur_inn);
+        return ASK_NO;
+    }
+    cl_copy(m, "Claude needs your permission to use ", sizeof(m));
+    cl_cat(m, cfg_cc_tool(tool), sizeof(m));
+    pol_notify(r, "permission_prompt", m);
+    {
+        int ans = ui_ask(&r->ui, tid, tool, what, outside);
+        if (note && cap)
+            cl_copy(note, r->ui.ask_note, cap);     /* Tab's comment on Yes / No */
+        if (ans == ASK_PROJECT) {
+            pol_keep_rule(r, tool, r->at ? r->at->cur_in : 0, r->at ? r->at->cur_inn : 0);
+            ans = ASK_ONCE;
+        }
+        return ans;
+    }
 }
 
 static int tool_ask(void *u, const char *tool, const char *what, int outside, char *note, long cap)
 {
     cl_repl *r = (cl_repl *)u;
-    char m[200];
     if (r->rule_now == RULE_ALLOW) {
         /* a permission rule (or a hook) allowed it: no question */
         r->n_rule_allow++;
         return ASK_ONCE;
     }
-    cl_copy(m, "Claude needs your permission to use ", sizeof(m));
-    cl_cat(m, cfg_cc_tool(tool), sizeof(m));
-    pol_notify(r, m);
-    {
-        int a = ui_ask(&r->ui, r->tools.cur, tool, what, outside);
-        cl_copy(note, r->ui.ask_note, cap);     /* Tab's comment on Yes / No */
-        return a;
-    }
+    return repl_ask(r, r->at->cur, tool, what, outside, r->rule_now == RULE_ASK, note, cap);
 }
 
 static int tool_wait(void *u, long ms)
@@ -394,15 +496,49 @@ static int tool_wait(void *u, long ms)
     return ui_wait(&((cl_repl *)u)->ui, ms);
 }
 
+/* the lines a change takes out and puts in (a common start and end
+ * trimmed, as the diff on the screen counts them) */
+static void count_lines(const char *a, long an, const char *b, long bn, long *del, long *add)
+{
+    long p = 0, q = 0, i;
+    while (p < an && p < bn && a[p] == b[p])
+        p++;
+    while (p > 0 && a[p - 1] != '\n')
+        p--;
+    while (q < an - p && q < bn - p && a[an - 1 - q] == b[bn - 1 - q])
+        q++;
+    while (q > 0 && a[an - q] != '\n' && an - q > p)
+        q--;
+    *del = *add = 0;
+    for (i = p; i < an - q; i++)
+        *del += a[i] == '\n';
+    for (i = p; i < bn - q; i++)
+        *add += b[i] == '\n';
+    if (an - q > p && a[an - q - 1] != '\n')
+        (*del)++;
+    if (bn - q > p && b[bn - q - 1] != '\n')
+        (*add)++;
+}
+
 static void tool_preview(void *u, int tool, const char *path, const char *before, long bn, const char *after,
                          long an)
 {
-    ui_preview(&((cl_repl *)u)->ui, tool, path, before, bn, after, an);
+    cl_repl *r = (cl_repl *)u;
+    long d, a;
+    count_lines(before ? before : "", before ? bn : 0, after ? after : "", after ? an : 0, &d, &a);
+    r->pend_del = d;            /* counted when the change is made (tool_result) */
+    r->pend_add = a;
+    ui_preview(&r->ui, tool, path, before, bn, after, an);
 }
 
 static void tool_result(void *u, int tool, const char *in, long inn, int is_error, const char *text, long n)
 {
     cl_repl *r = (cl_repl *)u;
+    if ((tool == T_WRITE || tool == T_EDIT || tool == T_MULTIEDIT) && !is_error) {
+        r->lines_removed += r->pend_del;    /* the status line's cost.total_lines_* */
+        r->lines_added += r->pend_add;
+    }
+    r->pend_del = r->pend_add = 0;
     if (tool == T_TODO_WRITE && !is_error) {
         /* the list as it stands, for /todos */
         char *t = (char *)malloc((size_t)inn + 1);
@@ -413,12 +549,18 @@ static void tool_result(void *u, int tool, const char *in, long inn, int is_erro
             r->todos = t;
         }
     }
+    if (r->show)
+        r->show->brief = r->at->brief;
     ui_result(&r->ui, tool, in, inn, is_error, text, n);
+    if (r->show)
+        r->show->brief = 0;
 }
 
 static int tool_choose(void *u, const char *header, const char *question, const char *const *labels,
                        const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap)
 {
+    if (((cl_repl *)u)->no_person)
+        return -1;                  /* print mode: no one to answer */
     return ui_choose(&((cl_repl *)u)->ui, header, question, labels, descs, n, flags, picked, other, cap);
 }
 
@@ -458,7 +600,9 @@ static int api_send(void *u, const char *body, long bn, cl_stream *st)
     r->render.u = 0;
     r->render.text = quiet_text;
     r->render.end = quiet_end;
+    r->quiet_req++;
     rc = request(r, body, bn);
+    r->quiet_req--;
     r->render = rk;
     *st = r->st;
     r->st = keep;
@@ -497,7 +641,6 @@ static void session_save(cl_repl *r)
 {
     if (r->conv.n)
         sess_save(&r->sess, &r->conv);
-    pol_statusline(r);
 }
 
 void repl_saved(cl_repl *r)
@@ -517,14 +660,9 @@ static int run_tools(cl_repl *r, int ntools, jw *content)
     jw_raw(content, "[", 1);
     for (i = 0; i < ntools; i++) {
         sblock *t = stream_tool(&r->st, i);
-        long at;
         if (i)
             jw_raw(content, ",", 1);
-        at = content->n;
-        if (!pol_pre(r, t->id, t->name, t->input_ok, t->a.p, t->a.n, content))
-            tools_run(&r->tools, t->id, t->name, t->input_ok, t->a.p, t->a.n, content);
-        r->rule_now = RULE_NONE;
-        pol_post(r, t->name, t->input_ok, t->a.p, t->a.n, content->p + at, content->n - at, &extra);
+        pol_call(r, &r->tools, t->id, t->name, t->input_ok, t->a.p, t->a.n, content, &extra);
     }
     if (extra.n) {
         jw_rawz(content, ",{\"type\":\"text\",\"text\":");
@@ -536,21 +674,135 @@ static int run_tools(cl_repl *r, int ntools, jw *content)
     return content->oom ? -1 : 0;
 }
 
+long repl_compact_at(cl_repl *r)
+{
+    long w = repl_window(r->model), set = 0;
+    char v[24];
+    /* Claude Code's order: CLAUDE_CODE_AUTO_COMPACT_WINDOW, --autocompact, autoCompactWindow */
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_AUTO_COMPACT_WINDOW", v, sizeof(v)) > 0)
+        set = cfg_window_parse(v);
+    if (!set && r->compact_window)
+        set = r->compact_window;
+    if (!set)
+        set = r->cfg.compact_window;
+    if (set > 0)
+        return set < w ? set : w;   /* capped at the model's window */
+    return (w / 100) * CL_COMPACT_PCT;
+}
+
 /* the auto-compact threshold passed? */
+#define GOAL_ROUNDS 10
+
+/* /goal: has the turn met the condition? A small model reads the last
+ * answer; when not, Claude goes on (at most GOAL_ROUNDS turns a goal) */
+static void goal_check(cl_repl *r)
+{
+    jw q, a, last;
+    char err[120];
+    int i;
+    if (r->goal_rounds >= GOAL_ROUNDS) {
+        repl_say(r, "The goal is still open after ten more turns; it stays set (/goal clear ends it): ", r->goal);
+        r->goal_rounds = 0;
+        return;
+    }
+    jw_init(&q);
+    jw_init(&a);
+    jw_init(&last);
+    for (i = r->conv.n - 1; i >= 0 && !last.n; i--)
+        if (!r->conv.m[i].user)
+            jw_raw(&last, r->conv.m[i].json, r->conv.m[i].n > 8000 ? 8000 : r->conv.m[i].n);
+    jw_rawz(&q, "The goal: ");
+    jw_rawz(&q, r->goal);
+    jw_rawz(&q, "\n\nThe assistant's last answer (content blocks):\n");
+    jw_raw(&q, last.p ? last.p : "", last.n);
+    jw_rawz(&q, "\n\nIs the goal met? Answer MET, or NOT MET and in one sentence what is missing.");
+    if (!q.oom && agent_query(&r->tools, "claude-haiku-4-5", "You judge whether a goal is reached.", q.p, q.n, &a, err,
+                              sizeof(err)) == 0) {
+        if (a.n >= 3 && !strncmp(a.p, "MET", 3)) {
+            repl_say(r, "Goal met: ", r->goal);
+            r->goal[0] = 0;
+            r->goal_rounds = 0;
+        } else {
+            jw go;
+            jw_init(&go);
+            jw_rawz(&go, "Keep working toward the goal: ");
+            jw_rawz(&go, r->goal);
+            jw_rawz(&go, "\nNot met yet: ");
+            jw_raw(&go, a.p ? a.p : "", a.n);
+            r->goal_rounds++;
+            if (!go.oom)
+                turn(r, go.p, go.n);
+            jw_free(&go);
+        }
+    }
+    jw_free(&q);
+    jw_free(&a);
+    jw_free(&last);
+}
+
+/* Stop hooks may send Claude on this often a turn (Claude Code: 8,
+ * CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) */
+static int stop_cap(cl_repl *r)
+{
+    char v[16];
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP", v, sizeof(v)) > 0 &&
+        atoi(v) > 0)
+        return atoi(v);
+    return 8;
+}
+
 static int too_full(cl_repl *r)
 {
-    long w = repl_window(r->model);
-    return r->auto_compact && r->conv.n > 1 && r->ctx_used > (w / 100) * CL_COMPACT_PCT;
+    return r->auto_compact && r->conv.n > 1 && r->ctx_used > repl_compact_at(r);
+}
+
+/* the turn's tools JSON (read anew each round: a skill may have been
+ * loaded on the way), with --json-schema's StructuredOutput tool */
+static const char *turn_tools_json(cl_repl *r, jw *xtools)
+{
+    const char *t = tools_json(&r->tools, r->model);
+    jw_reset(xtools);
+    if (r->schema && t) {
+        /* --json-schema: Claude Code's StructuredOutput tool, the schema as its input */
+        long tn = (long)strlen(t);
+        if (tn >= 2 && t[tn - 1] == ']') {
+            jw_raw(xtools, t, tn - 1);
+            if (tn > 2)
+                jw_raw(xtools, ",", 1);
+        } else
+            jw_raw(xtools, "[", 1);
+        jw_rawz(xtools, "{\"name\":\"StructuredOutput\",\"description\":\"Use this tool to return your final "
+                        "response in the requested structured format. You MUST call this tool exactly once at "
+                        "the end of your response to provide the structured output.\",\"input_schema\":");
+        jw_rawz(xtools, r->schema);
+        jw_rawz(xtools, "}]");
+        if (!xtools->oom)
+            return xtools->p;
+    }
+    return t;
 }
 
 static void turn(cl_repl *r, const char *prompt, long pn)
 {
     cl_mark m0 = conv_mark(&r->conv);
     cl_opts o;
-    jw body, content;
+    jw body, content, xtools;
     int answered = 0, round, stops = 0;
+    const char *turn_tools = r->turn_tools;     /* a SlashCommand's allowed-tools last this turn */
+    const char *blocks = r->blocks;     /* a prompt given as content blocks (images: stream-json input) */
+    long bn = r->blocks_n;
+    r->blocks = 0;
+    r->turn_rc = TURN_FAIL;
+    if (!r->conv.n && r->no_dynamic && r->mem.auto_dir[0]) {
+        /* --exclude-dynamic-system-prompt-sections: the per-user part goes with the first prompt */
+        if (r->pending.n)
+            jw_rawz(&r->pending, "\n\n");
+        jw_rawz(&r->pending, auto_a + 2);
+        jw_rawz(&r->pending, r->mem.auto_dir);
+        jw_rawz(&r->pending, auto_b);
+    }
     cp_turn(&r->cp, r->conv.n);
-    if (conv_add_user_text(&r->conv, prompt, pn) ||
+    if ((blocks ? conv_add_user_blocks(&r->conv, blocks, bn) : conv_add_user_text(&r->conv, prompt, pn)) ||
         (r->pending.n && conv_add_user_text(&r->conv, r->pending.p, r->pending.n))) {
         conv_rollback(&r->conv, m0);
         ui_line(&r->ui, "Out of memory.");
@@ -559,10 +811,10 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     jw_reset(&r->pending);
     memset(&o, 0, sizeof(o));
     o.model = r->model;
-    o.effort = r->effort;
+    o.effort = repl_effort(r);
     o.max_tokens = r->max_tokens;
     o.system = r->system;
-    o.tools = tools_json(&r->tools, r->model);
+    jw_init(&xtools);
     jw_init(&body);
     jw_init(&content);
     r->io->brk(r->io->u);           /* a Ctrl+C from before the turn does not count */
@@ -572,6 +824,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         int rc, ntools;
         const char *stop;
         r->tools.stop = 0;
+        o.tools = turn_tools_json(r, &xtools);
         jw_reset(&body);
         if (conv_body(&r->conv, &o, &body)) {
             ui_line(&r->ui, "Out of memory.");
@@ -582,6 +835,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             r->render.end(r->render.u);
         if (rc == R_CANCEL) {
             ui_line(&r->ui, "Stopped. The unfinished answer is not kept.");
+            r->turn_rc = TURN_CANCEL;
             break;
         }
         if (rc == R_FAIL && r->busy_fail && r->fallback[0] && strcmp(r->model, r->fallback)) {
@@ -591,8 +845,16 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             ctx_show(r);
             continue;
         }
-        if (rc != R_OK)
+        if (rc != R_OK) {
+            if (rc == R_FAIL) {
+                int st = r->resp.status;
+                r->api_failed = st == 401 || st == 403 ? "authentication_failed" : st == 429 ? "rate_limit"
+                                : st == 400 ? "invalid_request" : st == 402 ? "billing_error"
+                                : st >= 500 || r->busy_fail ? "server_error" : "unknown";
+            }
             break;
+        }
+        r->n_responses++;
         conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok,
                    r->st.cache_w, r->st.cache_r);
         r->ctx_used = r->st.in_tok + r->st.cache_r + r->st.cache_w + r->st.out_tok;
@@ -624,6 +886,10 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             break;
         }
         answered = 1;
+        r->turn_rc = TURN_OK;
+        if (r->feed && r->feed->message)
+            r->feed->message(r->feed->u, 0, content.p, content.n);
+        pol_status_event(r);        /* Claude Code: a new assistant message */
         if (!strcmp(stop, "max_tokens"))
             ui_line(&r->ui, "(The answer reached the output limit.)");
         if (!ntools && !strcmp(stop, "pause_turn"))
@@ -633,7 +899,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             jw why;
             int again;
             jw_init(&why);
-            again = stops < 3 && pol_stop(r, stops > 0, &why);
+            again = stops < stop_cap(r) && pol_stop(r, stops > 0, &why);
             if (again && conv_add_user_text(&r->conv, why.p, why.n) == 0) {
                 stops++;
                 jw_free(&why);
@@ -647,6 +913,50 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             /* the tool_use turn is in; without its results the history is
              * invalid, so take the turn back out */
             answered = 0;
+            r->turn_rc = TURN_FAIL;
+            break;
+        }
+        if (r->feed && r->feed->message)
+            r->feed->message(r->feed->u, 1, content.p, content.n);
+        {
+            /* PostToolBatch: once with the whole round (a block ends the turn) */
+            jw calls, why;
+            int k, stop;
+            jw_init(&calls);
+            jw_init(&why);
+            jw_raw(&calls, "[", 1);
+            for (k = 0; k < ntools; k++) {
+                sblock *tb = stream_tool(&r->st, k);
+                if (k)
+                    jw_raw(&calls, ",", 1);
+                jw_rawz(&calls, "{\"tool_name\":");
+                jw_strz(&calls, cfg_cc_tool(tb->name));
+                jw_rawz(&calls, ",\"tool_input\":");
+                if (tb->input_ok && tb->a.n)
+                    jw_raw(&calls, tb->a.p, tb->a.n);
+                else
+                    jw_rawz(&calls, "{}");
+                jw_rawz(&calls, ",\"tool_use_id\":");
+                jw_strz(&calls, tb->id);
+                jw_raw(&calls, "}", 1);
+            }
+            jw_raw(&calls, "]", 1);
+            stop = !calls.oom && pol_batch(r, calls.p, calls.n, &why);
+            if (stop && why.n)
+                conv_add_user_text(&r->conv, why.p, why.n);     /* Claude sees why, next time */
+            jw_free(&calls);
+            jw_free(&why);
+            if (stop)
+                break;
+        }
+        /* A4 WP4: --max-turns, --max-budget-usd (print mode) end the turn
+         * after a tool round, before the next request */
+        if (r->max_turns && round + 1 >= r->max_turns) {
+            r->turn_rc = TURN_MAX_TURNS;
+            break;
+        }
+        if (r->budget_micro && r->conv.cost_micro - r->budget_base >= r->budget_micro) {
+            r->turn_rc = TURN_BUDGET;
             break;
         }
         if (r->tools.stop)
@@ -666,13 +976,22 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         }
     }
     ui_busy(&r->ui, 0);
+    r->turn_tools = turn_tools;
+    if (r->turn_rc == TURN_FAIL && r->api_failed)
+        pol_stop_failure(r, r->api_failed);    /* the turn ended on an API error */
+    r->api_failed = 0;
     if (!answered)
         conv_rollback(&r->conv, m0);
     else
         session_save(r);
     jw_free(&body);
     jw_free(&content);
+    jw_free(&xtools);
     request_free(r);
+    r->idle_from = r->io->ms ? r->io->ms(r->io->u) : 0;     /* Notification idle_prompt counts from here */
+    r->idle_told = 0;
+    if (answered && r->turn_rc == TURN_OK && r->goal[0] && !r->no_person)
+        goal_check(r);
     if (answered && too_full(r)) {
         ui_line(&r->ui, "The context window is nearly full: compacting the conversation (/autocompact turns this off).");
         repl_compact(r, "", 1);
@@ -682,6 +1001,18 @@ static void turn(cl_repl *r, const char *prompt, long pn)
 void repl_turn(cl_repl *r, const char *prompt, long n)
 {
     turn(r, prompt, n);
+}
+
+int repl_blocks(cl_repl *r, const char *text, long tn, const char *blocks, long bn)
+{
+    started(r);
+    if (pol_prompt(r, text, tn))
+        return 0;
+    r->blocks = blocks;
+    r->blocks_n = bn;
+    turn(r, text, tn);
+    r->blocks = 0;
+    return 0;
 }
 
 /* ---- commands ---- */
@@ -824,7 +1155,8 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
         ui_line(&r->ui, "Nothing to compact yet.");
         return;
     }
-    pol_precompact(r, automatic, focus);
+    if (pol_precompact(r, automatic, focus))
+        return;                     /* a PreCompact hook said no */
     jw_init(&ask);
     jw_rawz(&ask, compact_prompt);
     if (focus && *focus) {
@@ -839,7 +1171,7 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     jw_free(&ask);
     memset(&o, 0, sizeof(o));
     o.model = r->model;
-    o.effort = r->effort;
+    o.effort = repl_effort(r);
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.tools = tools_json(&r->tools, r->model);
@@ -872,6 +1204,8 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
             ctx_show(r);
             ui_line(&r->ui, "Compacted. The conversation goes on from its summary (/context for the size).");
             session_save(r);
+            pol_postcompact(r, automatic, sum.p, sum.n);
+            pol_status_event(r);    /* Claude Code: /compact finished */
             pol_session(r, HK_SESSION_START, "compact");
         }
         jw_free(&seed);
@@ -886,6 +1220,125 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     jw_free(&sum);
     request_free(r);
 }
+
+int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
+{
+    cl_conv c;
+    cl_opts o;
+    cl_render keep = r->render;
+    jw body;
+    int rc, i;
+    conv_init(&c);
+    if (to > r->conv.n)
+        to = r->conv.n;
+    for (i = from; i < to; i++)
+        if (conv_add(&c, r->conv.m[i].user, r->conv.m[i].json, r->conv.m[i].n)) {
+            conv_free(&c);
+            return -1;
+        }
+    /* a range that ends inside a tool round: its tool_use answered by nothing
+     * would be refused, so a range always ends after an answer or a prompt */
+    if (conv_add_user_text(&c, ask, (long)strlen(ask))) {
+        conv_free(&c);
+        return -1;
+    }
+    memset(&o, 0, sizeof(o));
+    o.model = r->model;
+    o.effort = repl_effort(r);
+    o.max_tokens = r->max_tokens;
+    o.system = r->system;
+    o.tools = tools_json(&r->tools, r->model);
+    o.no_tools = 1;                 /* the tools stay listed (the cache), none is called */
+    jw_init(&body);
+    r->render.u = answer;
+    r->render.text = capture_text;
+    r->render.end = capture_end;
+    r->io->brk(r->io->u);
+    ui_busy(&r->ui, 1);
+    rc = conv_body(&c, &o, &body) ? R_FAIL : request(r, body.p, body.n);
+    ui_busy(&r->ui, 0);
+    r->render = keep;
+    if (rc == R_OK)
+        conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok, r->st.cache_w,
+                   r->st.cache_r);
+    jw_free(&body);
+    conv_free(&c);
+    request_free(r);
+    return rc == R_OK && answer->n ? 0 : rc == R_CANCEL ? -2 : -1;
+}
+
+static const char sum_ask[] =
+    "Summarise the conversation above for continuing it: the goals, the decisions, the files and paths, "
+    "what was changed and what is still open. Be complete but concise. Do not call any tool.";
+
+int repl_summarize(cl_repl *r, int msg, int up_to)
+{
+    jw sum, seed;
+    int rc, i;
+    cl_conv c;
+    if (msg < 0 || msg >= r->conv.n || !r->conv.m[msg].user)
+        return -1;
+    jw_init(&sum);
+    rc = up_to ? repl_side(r, 0, msg, sum_ask, &sum) : repl_side(r, msg, r->conv.n, sum_ask, &sum);
+    if (rc) {
+        jw_free(&sum);
+        if (rc == -1)
+            ui_line(&r->ui, "No summary came back; the conversation is as it was.");
+        return rc;
+    }
+    jw_init(&seed);
+    jw_rawz(&seed, up_to ? "Summary of the conversation before this point:\n\n"
+                         : "Summary of the conversation from here on (it was summarised):\n\n");
+    jw_raw(&seed, sum.p, sum.n);
+    jw_free(&sum);
+    conv_init(&c);
+    if (seed.oom)
+        rc = -1;
+    else if (up_to) {
+        /* the summary, then the chosen prompt and everything after it */
+        rc = conv_add_user_text(&c, seed.p, seed.n);
+        for (i = msg; i < r->conv.n && !rc; i++) {
+            const cl_msg *m = &r->conv.m[i];
+            if (i == msg && m->n > 2)
+                rc = conv_add_user_blocks(&c, m->json + 1, m->n - 2);     /* its blocks join the summary's message */
+            else
+                rc = conv_add(&c, m->user, m->json, m->n);
+        }
+    } else {
+        /* everything before the chosen prompt, then the summary of the rest */
+        for (i = 0; i < msg && !rc; i++)
+            rc = conv_add(&c, r->conv.m[i].user, r->conv.m[i].json, r->conv.m[i].n);
+        if (!rc)
+            rc = conv_add_user_text(&c, seed.p, seed.n);
+    }
+    jw_free(&seed);
+    if (rc) {
+        conv_free(&c);
+        ui_line(&r->ui, "Out of memory: the conversation is as it was.");
+        return -1;
+    }
+    /* the counters stay; the messages are the new ones */
+    for (i = 0; i < r->conv.n; i++)
+        free(r->conv.m[i].json);
+    free(r->conv.m);
+    r->conv.m = c.m;
+    r->conv.n = c.n;
+    r->conv.cap = c.cap;
+    sess_truncate(&r->sess, up_to ? 0 : msg);
+    cp_turn(&r->cp, r->conv.n);
+    r->ctx_used = 0;
+    ctx_show(r);
+    session_save(r);
+    ui_line(&r->ui, up_to ? "Summarised the conversation up to that prompt; it goes on from there."
+                          : "Summarised the conversation from that prompt on.");
+    return 0;
+}
+
+static void start(cl_repl *r);
+static void started(cl_repl *r);
+static void turn(cl_repl *r, const char *prompt, long pn);
+static void settings_changed(cl_repl *r);
+static void cfg_times(cl_repl *r);
 
 static const char init_prompt[] =
     "Look at the files in the start directory (Glob, Grep, a few targeted Reads; the machine is "
@@ -1002,13 +1455,31 @@ static void resumed(cl_repl *r)
     }
     cl_cat(m, ".", sizeof(m));
     ui_line(&r->ui, m);
+    r->start_due = 0;               /* Claude Code: a resumed session's source is "resume" */
+    cp_session(&r->cp, r->sess.file);     /* its snapshots: /rewind reaches back before the resume */
     pol_session(r, HK_SESSION_START, "resume");
 }
 
 int repl_resume_session(cl_repl *r, const char *name)
 {
-    char id[16];
-    int rc = sess_find(&r->sess, name, id, sizeof(id));
+    char id[40];
+    int rc;
+    long nl = (long)strlen(name);
+    if (nl > 6 && cl_strieq(name + nl - 6, ".jsonl")) {
+        /* Claude Code: the path of a session's .jsonl transcript in place of an id */
+        char full[512];
+        if (r->sys->kind(r->sys->u, name) == 1)
+            cl_copy(full, name, sizeof(full));      /* as given (an absolute path) */
+        else if (path_join(r->tools.root, name, full, sizeof(full)))
+            full[0] = 0;
+        if (!full[0] || sess_load_file(&r->sess, full, &r->conv)) {
+            show_err(r, "No session file here: ", name);
+            return -1;
+        }
+        resumed(r);
+        return 0;
+    }
+    rc = sess_find(&r->sess, name, id, sizeof(id));
     if (rc == -2) {
         show_err(r, "More than one session matches ", name);
         return -1;
@@ -1115,12 +1586,25 @@ static void show_help(cl_repl *r)
         for (k = (long)strlen(m); k < 18; k++)
             m[k] = ' ';
         m[k] = 0;
+        if (m[k - 1] != ' ')
+            cl_cat(m, "  ", sizeof(m)); /* a name wider than the column: still a gap */
         cl_cat(m, r->menu[i].help, sizeof(m));
         ui_line(&r->ui, m);
     }
     ui_line(&r->ui, r->tui ? help_keys : "Ctrl+C stops an answer or a command. Anything else is sent to Claude.");
     if (r->tui)
         ui_line(&r->ui, help_keys2);
+    {
+        /* Claude Code's commands that cannot be here: typed, each says why */
+        char m[900];
+        const char *w;
+        cl_copy(m, "Not on the Amiga (type one to see why):", sizeof(m));
+        for (i = 0; (w = slash_na_list(i)) != 0; i++) {
+            cl_cat(m, " ", sizeof(m));
+            cl_cat(m, w, sizeof(m));
+        }
+        ui_line(&r->ui, m);
+    }
 }
 
 int repl_pick(cl_repl *r, const char *title, const char *const *opt, int n, const char *cur)
@@ -1130,6 +1614,73 @@ int repl_pick(cl_repl *r, const char *title, const char *const *opt, int n, cons
         if (!strcmp(opt[i], cur))
             sel = i;
     return ui_pick(&r->ui, title, opt, n, sel);
+}
+
+/* one /context line: what, ~tokens, the share of the window */
+static void part_line(cl_repl *r, const char *what, long bytes)
+{
+    char m[200], num[16];
+    long tok = (bytes + 3) / 4, w = repl_window(r->model);
+    cl_copy(m, "  ", sizeof(m));
+    cl_cat(m, what, sizeof(m));
+    while ((long)strlen(m) < 22)
+        cl_cat(m, " ", sizeof(m));
+    cl_ltoa(tok, num);
+    cl_cat(m, "~", sizeof(m));
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, " tokens (", sizeof(m));
+    cl_ltoa(tok * 1000 / w / 10, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, ".", sizeof(m));
+    cl_ltoa(tok * 1000 / w % 10, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, "%)", sizeof(m));
+    ui_line(&r->ui, m);
+}
+
+/* /context's categories, estimated from the text sizes (4 bytes a token) */
+static void context_parts(cl_repl *r)
+{
+    const char *tj = tools_json(&r->tools, r->model);
+    const cl_def *st = r->style[0] ? defs_find(&r->defs, DEF_STYLE, r->style) : 0;
+    long sys = r->system ? (long)strlen(r->system) : 0, mem = r->mem.text.n, sty = st ? (long)strlen(st->body) : 0;
+    long msgs = 0, skills = 0;
+    int i;
+    const cl_def *d;
+    for (i = 0; i < r->conv.n; i++)
+        msgs += r->conv.m[i].n;
+    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++)
+        skills += (long)strlen(d->name) + (long)strlen(d->description) + 4;
+    ui_line(&r->ui, "By category (estimated):");
+    part_line(r, "System prompt", sys - mem - sty > 0 ? sys - mem - sty : 0);
+    part_line(r, "Memory files", mem);
+    if (sty)
+        part_line(r, "Output style", sty);
+    part_line(r, "Tools", tj ? (long)strlen(tj) - skills : 0);
+    part_line(r, "Skills (listed)", skills);
+    part_line(r, "Messages", msgs);
+    if (mem > 40000L)
+        ui_line(&r->ui, "  The memory files are large: /memory shows them; claudeMdExcludes leaves some out.");
+}
+
+/* availableModels: is this model one of them (by alias or id)? */
+static int model_allowed(const cl_repl *r, const char *m)
+{
+    const char *p = r->cfg.avail_models;
+    if (!*p)
+        return 1;
+    while (*p) {
+        char one[64];
+        int k = 0;
+        while (*p == ',' || *p == ' ')
+            p++;
+        while (*p && *p != ',' && k < (int)sizeof(one) - 1)
+            one[k++] = *p++;
+        one[k] = 0;
+        if (k && (cl_strieq(one, m) || !strcmp(cfg_model(one), cfg_model(m))))
+            return 1;
+    }
+    return 0;
 }
 
 /* the word "/name" of a command line, exactly */
@@ -1147,10 +1698,15 @@ int repl_line(cl_repl *r, const char *line)
         n--;
     if (!n)
         return 0;
+    started(r);
+    r->idle_from = 0;
+    settings_changed(r);            /* ConfigChange: a settings file edited meanwhile */
     if (r->await_key) {
         /* the line after /login is the key, never shown or kept */
         r->await_key = 0;
         slash_run(r, "/login", line);
+        if (r->first && !repl_need_key(r))
+            start(r);                   /* the prompt given at the start goes now */
         return 0;
     }
     {
@@ -1180,25 +1736,54 @@ int repl_line(cl_repl *r, const char *line)
     word[wl] = 0;
     while (*arg == ' ')
         arg++;
-    if (is_cmd(word, "/exit") || is_cmd(word, "/quit"))
+    if (is_cmd(word, "/exit") || is_cmd(word, "/quit")) {
+        r->end_reason = "prompt_input_exit";    /* SessionEnd's reason (Claude Code's values) */
         return 1;
+    }
     if (is_cmd(word, "/help"))
         show_help(r);
     else if (is_cmd(word, "/model")) {
+        const char *chosen = 0;
         if (*arg)
-            cl_copy(r->model, cfg_model(arg), sizeof(r->model));
+            chosen = arg;
         else {
             int c = repl_pick(r, "Select a model", models, (int)(sizeof(models) / sizeof(models[0])), r->model);
             if (c >= 0)
-                cl_copy(r->model, models[c], sizeof(r->model));
+                chosen = models[c];
+        }
+        if (chosen && !model_allowed(r, chosen)) {
+            show_err(r, "Not in availableModels (the settings): ", chosen);
+            chosen = 0;
+        }
+        if (chosen && pol_model_switch(r, r->model, cfg_model(chosen), chosen, 0))
+            chosen = 0;             /* a PreModelSwitch hook said no */
+        if (chosen) {
+            /* Claude Code: kept as the default for new sessions (the user's settings) */
+            jw v;
+            char from[64];
+            cl_copy(from, r->model, sizeof(from));
+            cl_copy(r->model, cfg_model(chosen), sizeof(r->model));
+            pol_model_switch(r, from, r->model, chosen, 1);
+            jw_init(&v);
+            jw_strz(&v, chosen);
+            if (r->sys->mkdir)
+                r->sys->mkdir(r->sys->u, r->home);
+            if (!v.oom)
+                cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "model", v.p);
+            jw_free(&v);
         }
         ctx_show(r);
         show_err(r, "Model: ", r->model);
     } else if (is_cmd(word, "/effort")) {
+        if (!strcmp(arg, "status")) {
+            show_err(r, "Effort: ", r->effort);
+            return 0;
+        }
         if (*arg) {
             if (strcmp(arg, "low") && strcmp(arg, "medium") && strcmp(arg, "high") && strcmp(arg, "xhigh") &&
-                strcmp(arg, "max")) {
-                ui_line(&r->ui, "The effort is one of: low, medium, high, xhigh, max.");
+                strcmp(arg, "max") && strcmp(arg, "auto")) {
+                ui_line(&r->ui, "The effort is one of: low, medium, high, xhigh, max, auto (the model's own); "
+                                "/effort status shows it.");
                 return 0;
             }
             cl_copy(r->effort, arg, sizeof(r->effort));
@@ -1210,8 +1795,17 @@ int repl_line(cl_repl *r, const char *line)
         show_err(r, "Effort: ", r->effort);
     } else if (is_cmd(word, "/clear")) {
         pol_session(r, HK_SESSION_END, "clear");
+        if (*arg && r->conv.n) {
+            sess_save(&r->sess, &r->conv);
+            sess_rename(&r->sess, arg);     /* Claude Code: a name for the previous conversation */
+        }
         conv_clear(&r->conv);
+        conv_usage_reset(&r->conv);         /* a new session's totals */
+        r->cp.keep = r->sess.started && !r->sess.off;
+        r->api_ms = 0;
+        r->t_start = r->io->ms ? r->io->ms(r->io->u) : 0;
         sess_new(&r->sess, r->io->ms ? r->io->ms(r->io->u) : 0);
+        cp_session(&r->cp, r->sess.file);
         cp_turn(&r->cp, 0);
         r->ctx_used = 0;
         ctx_show(r);
@@ -1221,16 +1815,16 @@ int repl_line(cl_repl *r, const char *line)
         pol_session(r, HK_SESSION_START, "clear");
     } else if (is_cmd(word, "/compact"))
         repl_compact(r, arg, 0);
-    else if (is_cmd(word, "/context"))
+    else if (is_cmd(word, "/context")) {
         repl_context(r);
+        context_parts(r);           /* Claude Code's breakdown by category */
+    }
     else if (is_cmd(word, "/init"))
         turn(r, init_prompt, (long)sizeof(init_prompt) - 1);
     else if (is_cmd(word, "/resume"))
         resume(r, arg);
     else if (is_cmd(word, "/save"))
         save(r, arg);
-    else if (is_cmd(word, "/cost"))
-        repl_cost(r);
     else if (!slash_run(r, word, arg) && !slash_custom(r, word, arg))
         ui_line(&r->ui, "Unknown command. Type /help for the list.");
     return 0;
@@ -1244,6 +1838,7 @@ void repl_run(cl_repl *r)
         return;
     if (r->tui) {
         show_welcome(r->show, r->model, r->tools.root);
+        start(r);
         for (;;) {
             long n = tui_read(r->tui, line, 8192);
             if (n < 0)
@@ -1262,6 +1857,7 @@ void repl_run(cl_repl *r)
     cl_cat(m, r->effort, sizeof(m));
     cl_cat(m, ". Type /help for commands, /exit to leave.", sizeof(m));
     ui_line(&r->ui, m);
+    start(r);
     for (;;) {
         long n;
         ui_puts(&r->ui, r->await_key ? "\n\033[1mKey:\033[0m " : "\n\033[1m>\033[0m ");
@@ -1294,7 +1890,13 @@ int repl_screen(cl_repl *r)
     t->mode = &r->tools.perm.mode;
     t->cmds = r->menu;
     t->ncmds = r->nmenu;
+    t->status = r->status_text;     /* the statusLine command's row(s) */
+    t->status_pad = r->cfg.status_pad;
+    t->hide_vim = r->cfg.hide_vim;
+    t->idle = pol_status_tick;
+    t->iu = r;
     show_init(s, t);
+    s->verbose = &r->verbose;    /* --verbose: results unfolded in place */
     if (tui_start(t)) {
         show_free(s);
         tui_free(t);
@@ -1312,6 +1914,7 @@ int repl_screen(cl_repl *r)
     r->ui.tools = &r->tools;
     ctx_show(r);
     tui_frame(t);
+    pol_status_event(r);            /* Claude Code: the session started */
     return 0;
 }
 
@@ -1365,6 +1968,15 @@ int repl_rewind(cl_repl *r, int msg, int code, int conv)
         conv_rollback(&r->conv, mk);
         sess_truncate(&r->sess, msg);
         cp_turn(&r->cp, r->conv.n);
+        {
+            /* the context left: estimated (4 bytes a token) until the next request says */
+            long b = r->system ? (long)strlen(r->system) : 0;
+            int i;
+            for (i = 0; i < r->conv.n; i++)
+                b += r->conv.m[i].n;
+            r->ctx_used = r->conv.n ? b / 4 : 0;
+            ctx_show(r);
+        }
         if (r->conv.n)
             session_save(r);
         ui_line(&r->ui, "The conversation is back to before that prompt.");
@@ -1409,36 +2021,59 @@ int repl_ping(cl_repl *r)
 static void menu_free(cl_repl *r)
 {
     int i;
-    for (i = slash_nbuiltin; i < r->nmenu; i++)
+    for (i = slash_nbuiltin; i < r->nmenu; i++) {
         free((char *)r->menu[i].name);
+        free((char *)r->menu[i].help);
+    }
     free(r->menu);
     r->menu = 0;
     r->nmenu = 0;
 }
 
-/* the slash menu: the built-in commands, then the custom ones */
+/* one custom entry: "/name", its description and argument hint */
+static int menu_add(cl_repl *r, int k, const cl_def *d, const char *none)
+{
+    char *nm = (char *)malloc(strlen(d->name) + 2);
+    jw h;
+    if (!nm)
+        return -1;
+    nm[0] = '/';
+    strcpy(nm + 1, d->name);
+    jw_init(&h);
+    jw_rawz(&h, d->description[0] ? d->description : none);
+    if (d->hint && d->hint[0]) {
+        jw_rawz(&h, "  ");
+        jw_rawz(&h, d->hint);      /* argument-hint */
+    }
+    if (h.oom || !h.p) {
+        free(nm);
+        jw_free(&h);
+        return -1;
+    }
+    r->menu[k].name = nm;
+    r->menu[k].help = h.p;
+    return 0;
+}
+
+/* the slash menu: the built-in commands, then the custom ones, then the
+ * skills a user may type (Claude Code: a skill is a command too) */
 static int menu_build(cl_repl *r)
 {
-    int nc = defs_count(&r->defs, DEF_COMMAND), i, k;
+    int nc = defs_count(&r->defs, DEF_COMMAND), ns = defs_count(&r->defs, DEF_SKILL), i, k;
+    const cl_def *d;
     menu_free(r);
-    r->menu = (cl_cmd *)malloc((size_t)(slash_nbuiltin + nc) * sizeof(cl_cmd));
+    r->menu = (cl_cmd *)malloc((size_t)(slash_nbuiltin + nc + ns) * sizeof(cl_cmd));
     if (!r->menu)
         return -1;
     for (i = 0; i < slash_nbuiltin; i++)
         r->menu[i] = slash_builtin[i];
     k = slash_nbuiltin;
-    for (i = 0; i < nc; i++) {
-        const cl_def *d = defs_nth(&r->defs, DEF_COMMAND, i);
-        char *nm = (char *)malloc(strlen(d->name) + 2);
-        if (!nm)
-            break;
-        nm[0] = '/';
-        strcpy(nm + 1, d->name);
-        r->menu[k].name = nm;
-        r->menu[k].help = d->description[0] ? d->description
-                                             : d->src == CFG_PROJECT ? "(a project command)" : "(a user command)";
-        k++;
-    }
+    for (i = 0; (d = defs_nth(&r->defs, DEF_COMMAND, i)) != 0; i++)
+        if (menu_add(r, k, d, d->src == CFG_PROJECT ? "(a project command)" : "(a user command)") == 0)
+            k++;
+    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++)
+        if (!d->no_user && !defs_find(&r->defs, DEF_COMMAND, d->name) && menu_add(r, k, d, "(a skill)") == 0)
+            k++;
     r->nmenu = k;
     if (r->tui) {
         r->tui->cmds = r->menu;
@@ -1456,11 +2091,18 @@ int repl_system(cl_repl *r)
     jw s;
     const cl_def *st = r->style[0] ? defs_find(&r->defs, DEF_STYLE, r->style) : 0;
     jw_init(&s);
-    jw_rawz(&s, sys_a);
-    jw_rawz(&s, sys_b);
-    jw_rawz(&s, r->tools.root);
-    jw_rawz(&s, sys_c);
-    jw_rawz(&s, sys_d);
+    if (r->sys_replace)
+        jw_rawz(&s, r->sys_replace);    /* --system-prompt (A4 WP4) */
+    else {
+        jw_rawz(&s, sys_a);
+        jw_rawz(&s, sys_b);
+        jw_rawz(&s, r->tools.root);
+        jw_rawz(&s, sys_c);
+        /* a custom output style without keep-coding-instructions: the
+         * machine's facts stay, the way of working goes (Claude Code) */
+        if (!st || st->src == DEF_BUILTIN || st->keep_coding)
+            jw_rawz(&s, sys_d);
+    }
     if (st && st->body[0]) {
         jw_rawz(&s, "\n\n# Output style: ");
         jw_rawz(&s, st->name);
@@ -1471,53 +2113,169 @@ int repl_system(cl_repl *r)
         jw_rawz(&s, mem_intro);
         jw_raw(&s, r->mem.text.p, r->mem.text.n);
     }
+    if (r->mem.auto_dir[0] && !r->no_dynamic) {
+        jw_rawz(&s, auto_a);
+        jw_rawz(&s, r->mem.auto_dir);
+        jw_rawz(&s, auto_b);
+    }
+    if (r->sys_append) {
+        jw_rawz(&s, "\n\n");
+        jw_rawz(&s, r->sys_append);     /* --append-system-prompt */
+    }
     if (s.oom) {
         jw_free(&s);
         return -1;
     }
     free(r->system);
     r->system = s.p;
+    r->tools.memory = r->mem.text.n ? r->mem.text.p : 0;     /* subagents get CLAUDE.md too */
     return 0;
+}
+
+/* auto memory on? (autoMemoryEnabled, CLAUDE_CODE_DISABLE_AUTO_MEMORY; on by default) */
+static int auto_memory(cl_repl *r)
+{
+    char v[8];
+    if (r->bare || r->safe || r->cfg.auto_memory == 0)
+        return 0;
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_DISABLE_AUTO_MEMORY", v, sizeof(v)) > 0 &&
+        strcmp(v, "0"))
+        return 0;
+    return 1;
 }
 
 int repl_load_memory(cl_repl *r)
 {
     mem_free(&r->mem);
-    mem_load(&r->mem, r->sys, r->home, r->tools.root);
+    r->mem.excl = r->cfg.md_excludes;           /* claudeMdExcludes */
+    r->mem.nexcl = r->cfg.nmdx;
+    if (!r->bare && !r->safe)       /* --bare / --safe-mode: no CLAUDE.md */
+        mem_load(&r->mem, r->sys, r->home, r->tools.root);
+    if (auto_memory(r)) {
+        /* Claude Code's auto memory: <home>/projects/<project>/memory/ */
+        char d[340];
+        if (path_join(r->sess.dir, "memory", d, sizeof(d)) == 0)
+            mem_auto(&r->mem, r->sys, d);
+    }
     return repl_system(r);
+}
+
+/* the definitions (commands, agents, skills, styles) with the command
+ * line's say: --bare / --safe-mode none of the files', --disable-slash-
+ * commands no commands or skills, --agents first */
+static void repl_defs(cl_repl *r)
+{
+    defs_free(&r->defs);
+    defs_load(&r->defs, r->sys, r->home, r->tools.root);
+    if (r->bare || r->safe)
+        defs_drop(&r->defs, -1);    /* only the built-in output styles stay */
+    if (r->no_slash) {
+        defs_drop(&r->defs, DEF_COMMAND);
+        defs_drop(&r->defs, DEF_SKILL);
+    }
+    if (r->agents_json) {
+        char err[200];
+        if (defs_add_agents_json(&r->defs, r->agents_json, err, sizeof(err)))
+            repl_say(r, "", err);
+    }
+}
+
+int repl_load_menu(cl_repl *r)
+{
+    return menu_build(r);
+}
+
+int repl_load_defs(cl_repl *r)
+{
+    r->n_nested = 0;
+    repl_defs(r);
+    return menu_build(r) || pol_tools(r) ? -1 : 0;
 }
 
 int repl_load(cl_repl *r)
 {
     int i;
+    char env[64];
     cfg_free(&r->cfg);
+    r->cfg.skip = r->sources ? ~r->sources & 7u : 0;    /* --setting-sources */
     cfg_load(&r->cfg, r->sys, r->home, r->tools.root);
-    defs_free(&r->defs);
-    defs_load(&r->defs, r->sys, r->home, r->tools.root);
+    for (i = 0; i < 2; i++)
+        if (r->layer[i])            /* the command line's layer (A4 WP4): after the files, wins */
+            cfg_merge(&r->cfg, CFG_SESSION, r->layer[i], (long)strlen(r->layer[i]),
+                      i ? "the command line" : "--settings");
+    if (r->bare || r->safe || r->cfg.no_hooks)
+        cfg_drop_hooks(&r->cfg);    /* --bare, --safe-mode, disableAllHooks */
+    if (r->safe)
+        r->cfg.status_cmd[0] = 0;
+    repl_defs(r);
+    if (r->cfg.verbose >= 0 && r->verbose != 2)
+        r->verbose = r->cfg.verbose;
     /* the settings: the command line (main) comes after and wins */
     if (r->cfg.model[0])
         cl_copy(r->model, cfg_model(r->cfg.model), sizeof(r->model));
+    if (r->cfg.model_src != CFG_SESSION && r->sys->getenv && r->sys->getenv(r->sys->u, "ANTHROPIC_MODEL", env, sizeof(env)) > 0)
+        cl_copy(r->model, cfg_model(env), sizeof(r->model));   /* above the files, below --model */
     if (r->cfg.effort[0])
         cl_copy(r->effort, r->cfg.effort, sizeof(r->effort));
     if (r->cfg.fallback_model[0])
         cl_copy(r->fallback, cfg_model(r->cfg.fallback_model), sizeof(r->fallback));
-    if (r->cfg.output_style[0])
-        cl_copy(r->style, cl_strieq(r->cfg.output_style, "default") ? "" : r->cfg.output_style, sizeof(r->style));
+    if (r->cfg.output_style[0]) {
+        /* Claude Code: the setting is case-sensitive; a name that is no style's is Default */
+        const cl_def *os = defs_find(&r->defs, DEF_STYLE, r->cfg.output_style);
+        cl_copy(r->style, os && !strcmp(os->name, r->cfg.output_style) && strcmp(os->name, "Default") ? os->name : "",
+                sizeof(r->style));
+    }
     if (r->cfg.auto_compact >= 0)
         r->auto_compact = r->cfg.auto_compact;
+    if (r->cfg.default_mode[0])
+        r->ask_policy = ASKP_ASK;
     if (!strcmp(r->cfg.default_mode, "acceptEdits"))
         r->tools.perm.mode = PERM_ACCEPT;
     else if (!strcmp(r->cfg.default_mode, "plan"))
         r->tools.perm.mode = PERM_PLAN;
-    else if (!strcmp(r->cfg.default_mode, "default"))
+    else if (!strcmp(r->cfg.default_mode, "default") || !strcmp(r->cfg.default_mode, "manual"))
         r->tools.perm.mode = PERM_DEFAULT;
+    else if (!strcmp(r->cfg.default_mode, "dontAsk") || !strcmp(r->cfg.default_mode, "bypassPermissions")) {
+        r->tools.perm.mode = PERM_DEFAULT;
+        r->ask_policy = r->cfg.default_mode[0] == 'd' ? ASKP_DENY : ASKP_BYPASS;
+    }
     for (i = 0; i < r->cfg.nenv; i++)
         if (r->sys->setenv)
             r->sys->setenv(r->sys->u, r->cfg.env[i].k, r->cfg.env[i].v);
+    if (r->cfg.key_helper[0] && r->url.tls) {
+        /* apiKeyHelper: its output is the key (it wins over a stored one) */
+        char *o = (char *)malloc(1024);
+        long on = 0, rc = 0;
+        if (o && r->sys->run(r->sys->u, r->cfg.key_helper, 30, o, 1023, &on, &rc) == 0 && rc == 0) {
+            o[on] = 0;
+            cl_copy(r->keybuf, o, sizeof(r->keybuf));
+            if (cl_key_clean(r->keybuf) == 0)
+                r->key = r->keybuf;
+            else
+                repl_say(r, "apiKeyHelper gave no usable key: ", r->cfg.key_helper);
+        } else
+            repl_say(r, "apiKeyHelper did not run: ", r->cfg.key_helper);
+        if (o)
+            memset(o, 0, 1024);
+        free(o);
+    }
+    {
+        char v[24];
+        r->tools.out_max = r->cfg.bash_max_chars;   /* bashOutputMaxChars, BASH_MAX_OUTPUT_LENGTH */
+        if (r->sys->getenv && r->sys->getenv(r->sys->u, "BASH_MAX_OUTPUT_LENGTH", v, sizeof(v)) > 0 && atol(v) > 0)
+            r->tools.out_max = atol(v);
+        if (r->tools.out_max > 1024L * 1024)
+            r->tools.out_max = 1024L * 1024;
+    }
     if (r->cfg.err[0])
         repl_say(r, "Settings: ", r->cfg.err);
-    if (menu_build(r))
+    if (r->tui) {
+        r->tui->status_pad = r->cfg.status_pad;
+        r->tui->hide_vim = r->cfg.hide_vim;
+    }
+    if (menu_build(r) || pol_tools(r))
         return -1;
+    cfg_times(r);
     return repl_load_memory(r);
 }
 
@@ -1550,10 +2308,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
         show_err(r, "Not a usable URL: ", url);
         return -1;
     }
-    if (r->url.tls && (!key || !*key)) {
-        ui_line(&r->ui, "No API key: set ENV:ANTHROPIC_API_KEY, or put the key in ENVARC:Claude/key (or type /login).");
-        return -1;
-    }
+    /* no key for https: the start goes on to /login (A4 WP4, repl_need_key) */
     /* the key goes only over TLS: a plain http URL (the fixture) never sees it */
     r->key = r->url.tls ? key : 0;
     cl_copy(r->model, CL_DEFAULT_MODEL, sizeof(r->model));
@@ -1563,8 +2318,16 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->tools.sys = sys;
     if (sys->canon(sys->u, root, r->tools.root, sizeof(r->tools.root)))
         cl_copy(r->tools.root, root, sizeof(r->tools.root));
-    r->tools.timeout_s = 60;
+    r->tools.timeout_s = 120;       /* Claude Code: 2 minutes (BASH_DEFAULT_TIMEOUT_MS) */
+    {
+        char v[24];
+        if (sys->getenv && sys->getenv(sys->u, "BASH_DEFAULT_TIMEOUT_MS", v, sizeof(v)) > 0 && atol(v) > 0)
+            r->tools.timeout_s = (int)((atol(v) + 999) / 1000);
+        if (sys->getenv && sys->getenv(sys->u, "BASH_MAX_TIMEOUT_MS", v, sizeof(v)) > 0 && atol(v) > 0)
+            r->tools.max_timeout_ms = atol(v);
+    }
     r->tools.u = r;
+    r->tools.clock = tool_clock;
     r->tools.show = tool_show;
     r->tools.ask = tool_ask;
     r->tools.preview = tool_preview;
@@ -1579,12 +2342,18 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
         return -1;
     }
     var_or(sys, "CLAUDE_CONFIG_DIR", CL_HOME, r->home, sizeof(r->home));
+    {
+        char hd[256];
+        var_or(sys, "HOME", "SYS:", hd, sizeof(hd));
+        cfg_set_home(hd);           /* ~/ in permission rules */
+    }
     var_or(sys, "CLAUDE_CODE_TMPDIR", CL_TMP, r->tmp, sizeof(r->tmp));
     sess_init(&r->sess, sys, r->home, r->tools.root);
     sess_new(&r->sess, io->ms ? io->ms(io->u) : 0);
     if (path_join(r->tmp, "Claude-cp", cpdir, sizeof(cpdir)))
         cl_copy(cpdir, "T:Claude-cp", sizeof(cpdir));
     cp_init(&r->cp, sys, cpdir);
+    cp_session(&r->cp, r->sess.file);     /* this session's own directory of snapshots */
     checkpoint_use(&r->cp);
     r->hooks.cfg = &r->cfg;
     r->hooks.sys = sys;
@@ -1592,17 +2361,23 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->hooks.transcript = r->sess.file;
     r->hooks.cwd = r->tools.root;
     r->hooks.tmp = r->tmp;
+    r->hooks.project_dir = r->launch_root;      /* CLAUDE_PROJECT_DIR */
     pol_attach_ui(r);
+    pol_attach_tools(r);
+    pol_attach_hooks(r);
     if (repl_load(r))
         return -1;
-    pol_session(r, HK_SESSION_START, "startup");
+    r->start_due = 1;
+    r->began = 0;            /* SessionStart runs once the command line is applied (--bare, ...) */
+    r->t_start = io->ms ? io->ms(io->u) : 0;
+    cl_copy(r->launch_root, r->tools.root, sizeof(r->launch_root));
     return 0;
 }
 
 void repl_free(cl_repl *r)
 {
     if (r->hooks.cfg)
-        pol_session(r, HK_SESSION_END, "exit");
+        pol_session(r, HK_SESSION_END, r->end_reason ? r->end_reason : "other");
     if (r->tui) {
         tui_stop(r->tui);
         show_free(r->show);
@@ -1622,7 +2397,9 @@ void repl_free(cl_repl *r)
     r->system = 0;
     cfg_free(&r->cfg);
     mem_free(&r->mem);
+    pol_ext_free(r);
     defs_free(&r->defs);
+    r->cp.keep = r->sess.started && !r->sess.off;  /* a saved session keeps its snapshots */
     cp_free(&r->cp);
     menu_free(r);
     jw_free(&r->pending);
@@ -1630,4 +2407,84 @@ void repl_free(cl_repl *r)
     r->todos = 0;
     r->hooks.cfg = 0;
     memset(r->keybuf, 0, sizeof(r->keybuf));
+    free(r->sys_replace);
+    free(r->sys_append);
+    free(r->layer[0]);
+    free(r->layer[1]);
+    r->sys_replace = r->sys_append = r->layer[0] = r->layer[1] = 0;
+    free(r->agents_json);
+    free(r->schema);
+    free(r->structured);
+    free(r->first_msg);
+    r->agents_json = r->schema = r->structured = r->first_msg = 0;
+}
+
+int repl_need_key(const cl_repl *r)
+{
+    return r->url.tls && !(r->key && *r->key);
+}
+
+/* A4 WP4: the start -- /login first when there is no key, else the
+ * prompt the session starts with */
+/* SessionStart "startup", once, after the command line was applied;
+ * InstructionsLoaded for the memory read at the start */
+static void started(cl_repl *r)
+{
+    if (r->start_due) {
+        r->start_due = 0;
+        r->began = 1;
+        if (r->cfg.cleanup_days > 0)
+            sess_cleanup(&r->sess, r->tmp, (long)r->cfg.cleanup_days * 86400L);
+        pol_session(r, HK_SESSION_START, "startup");
+        pol_instructions(r, 0, "session_start");
+    }
+}
+
+/* the settings files' times, as read */
+static void cfg_times(cl_repl *r)
+{
+    int i;
+    for (i = 0; i < 3; i++)
+        r->cfg_mtime[i] = r->sys->mtime && r->cfg.path[i][0] ? r->sys->mtime(r->sys->u, r->cfg.path[i]) : 0;
+}
+
+/* A settings file changed on disk since it was read: its ConfigChange
+ * hooks, then the settings read again (unless a hook blocks it) */
+static void settings_changed(cl_repl *r)
+{
+    int i;
+    if (!r->sys->mtime)
+        return;
+    for (i = 0; i < 3; i++) {
+        long t = r->cfg.path[i][0] ? r->sys->mtime(r->sys->u, r->cfg.path[i]) : 0;
+        if (t == r->cfg_mtime[i])
+            continue;
+        r->cfg_mtime[i] = t;
+        if (pol_config_change(r, i, r->cfg.path[i]) == 0) {
+            repl_load(r);
+            repl_say(r, "Settings changed on disk, read again: ", r->cfg.path[i]);
+        }
+        return;
+    }
+}
+
+void repl_setup(cl_repl *r, const char *trigger, int start)
+{
+    if (trigger)
+        pol_setup(r, trigger);      /* Setup hooks: --init, --maintenance */
+    if (start)
+        started(r);                 /* --init-only: SessionStart too, then nothing */
+}
+
+static void start(cl_repl *r)
+{
+    started(r);
+    if (repl_need_key(r))
+        repl_line(r, "/login");
+    else if (r->first) {
+        const char *f = r->first;
+        r->first = 0;
+        ui_user(&r->ui, f);
+        repl_line(r, f);
+    }
 }

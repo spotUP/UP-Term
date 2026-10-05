@@ -4,8 +4,9 @@
  * above, written only as whole lines at its bottom so the terminal itself
  * scrolls it (and keeps what leaves row 1 in its scrollback), and a footer
  * fixed below it -- the spinner line while a turn runs, the input box
- * (rounded frame, "> " prompt, the editor's text), and the status line or
- * the slash-command menu; or, while a question is open, a framed menu.
+ * (rounded frame, "> " prompt, the editor's text), the statusLine
+ * command's own row(s) when there is one, and the status line or the
+ * slash-command menu; or, while a question is open, a framed menu.
  *
  * The footer is built as one string per row each frame and only the rows
  * that differ from what is on the screen are sent: a spinner tick is one
@@ -109,6 +110,15 @@ typedef struct cl_tui {
     const char *const *m_opt;
     int m_n, m_sel;
     char hint[96];              /* replaces the status line's left side once */
+    /* the statusLine command's output (the REPL's; "" or 0 none): each line
+     * its own row above the status line, SGR colours kept, as Claude Code
+     * draws it; a change redraws only its row */
+    const char *status;
+    int status_pad;             /* statusLine.padding */
+    int hide_vim;               /* statusLine.hideVimModeIndicator: no "-- INSERT --" (A4 gaps) */
+    /* called while the screen waits for keys (the status line's schedule) */
+    void (*idle)(void *u);
+    void *iu;
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
     const cl_theme *th;         /* the colours (/theme) */

@@ -20,6 +20,14 @@ typedef struct cl_msg {
     long n;
 } cl_msg;
 
+/* one model's share of the usage (print mode's modelUsage, A4 WP4) */
+#define CONV_MODELS 6
+typedef struct cl_model_use {
+    char model[48];
+    long in, out, cache_w, cache_r;
+    unsigned long cost_micro;
+} cl_model_use;
+
 typedef struct cl_conv {
     cl_msg *m;
     int n, cap;
@@ -27,6 +35,8 @@ typedef struct cl_conv {
     long in_tok, out_tok, cache_w, cache_r;
     unsigned long cost_micro;   /* US dollars * 1e6, the priced requests */
     int unpriced;               /* requests on a model without a price here */
+    cl_model_use mu[CONV_MODELS];   /* per model, in the order first used (the rest in the last) */
+    int nmu;
 } cl_conv;
 
 typedef struct cl_mark {
@@ -47,11 +57,16 @@ typedef struct cl_opts {
 void conv_init(cl_conv *c);
 void conv_free(cl_conv *c);
 void conv_clear(cl_conv *c);
+/* the usage counters back to nothing (/clear: a new session) */
+void conv_usage_reset(cl_conv *c);
 /* a whole message (content array JSON): 0, -1 out of memory */
 int conv_add(cl_conv *c, int user, const char *json, long n);
 /* a prompt: a new user message, or one more text block on a trailing
  * unanswered user message (a tool_result message left by a cancel) */
 int conv_add_user_text(cl_conv *c, const char *s, long n);
+/* content blocks (JSON objects separated by commas, no brackets) as a
+ * user message, or added to a trailing user message: 0, -1 */
+int conv_add_user_blocks(cl_conv *c, const char *b, long bn);
 cl_mark conv_mark(const cl_conv *c);
 void conv_rollback(cl_conv *c, cl_mark m);
 /* the request body */

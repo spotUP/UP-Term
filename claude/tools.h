@@ -10,11 +10,14 @@
  * each call is shown and, by the permission rules, confirmed by the user;
  * each ends in one tool_result block (is_error on failure).
  *
- * Permissions: the read-only tools (Read, Glob, Grep) may be allowed for
- * the session with one answer, which covers all three; a write, an edit,
- * a command, a fetch, a skill or a slash command asks every time unless
- * the user allowed that tool for the session. A path outside the start
- * directory asks always. No tool runs before the user has answered.
+ * Permissions (Claude Code's defaults): the read-only tools (Read, Glob,
+ * Grep) run without a question inside the working directories -- the
+ * start directory and the added ones (t->added); a write, an edit, a
+ * command, a fetch, a skill or a slash command asks every time unless the
+ * user allowed that tool for the session. A path outside the working
+ * directories asks always. The permission rules (settings.json) and the
+ * PreToolUse hooks decide before any of this (t->call, the REPL's
+ * policy.c). No tool runs before the user has answered.
  * TodoWrite, BashOutput, KillShell and Task never ask (a subagent's own
  * tool calls do); AskUserQuestion and the plan-mode tools are questions
  * themselves.
@@ -38,7 +41,9 @@ enum {
 /* The user's answer to a permission question. ASK_STOP: no, and the user
  * will tell Claude what to do instead -- this call and the rest of its
  * round are not run, and the turn ends after their results (stop is set). */
-enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP };
+enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP, ASK_PROJECT };
+/* ASK_PROJECT (A4 gaps): yes, and don't ask again in this project -- the
+ * asker keeps a rule in .claude/settings.local.json and answers ASK_ONCE */
 
 /* The permission mode (Shift+Tab in the screen, ledger A3): the A2 rules;
  * accept edits -- Write, Edit and MultiEdit inside the start directory run
@@ -124,6 +129,44 @@ typedef struct cl_tools {
      * background shell the tool waits on, so Ctrl+B can leave it running
      * (Claude Code's "move to the background"); unset, sys->run. */
     int (*wait)(void *u, long ms);
+    /* optional: is full (canonical) inside a directory added to the working
+     * ones (--add-dir, /add-dir, permissions.additionalDirectories)? Such a
+     * path is not "outside". */
+    int (*added)(void *u, const char *full);
+    /* optional: one call with the policy around it (permission rules,
+     * hooks, checkpoints -- the REPL's): a subagent's calls go through it
+     * as the conversation's do; text for Claude after the round's results
+     * goes to extra. Absent: tools_run alone. */
+    void (*call)(void *u, struct cl_tools *t, const char *id, const char *name, int input_ok, const char *raw,
+                 long rawn, jw *out, jw *extra);
+    /* optional: a subagent starts (the SubagentStart hook): text for it
+     * into context (its system prompt gets it) */
+    void (*agent_start)(void *u, const char *agent, const char *id, jw *context);
+    /* optional: a subagent is done (the SubagentStop hook): 1 when it is to
+     * go on, with what to tell it in reason */
+    int (*agent_stop)(void *u, const char *agent, int active, jw *reason);
+    /* optional: a subagent's message as it is added to its conversation
+     * (stream-json's subagent messages): parent the Task call's id, user 1
+     * for its prompt and its tool results, st the answer's stream (0 for
+     * a user message) */
+    void (*agent_msg)(void *u, const char *parent, int user, const char *json, long n, struct cl_stream *st);
+    char *sub_append;           /* --append-subagent-system-prompt: added to every subagent's prompt (owned) */
+    const char *memory;         /* the memory files' text (CLAUDE.md ...): subagents get it too, 0 none */
+    int ask_policy;             /* a subagent's permissionMode dontAsk / bypassPermissions: the
+                                 * REPL's ASKP_* + 1; 0 the session's */
+    const char *parent_id;      /* inside a subagent: the Task call's id (stream-json), 0 outside */
+    int nobody;                 /* print mode: 1 a denial was nobody's answer; 2 --permission-prompts none */
+    int rule_ask;               /* the call has an explicit ask rule (a read-only command asks then too) */
+    long max_timeout_ms;        /* BASH_MAX_TIMEOUT_MS, 0: 600000 */
+    long out_max;               /* bashOutputMaxChars / BASH_MAX_OUTPUT_LENGTH, 0: 30000 */
+    char cwd[256];              /* where Bash's commands run: a "cd" persists (Claude Code), "" the root */
+    unsigned long (*clock)(void *u);    /* optional: milliseconds (WebFetch's 15-minute cache) */
+    void *fetch_cache;          /* WebFetch's pages (webfetch.c), shared with subagents' copies */
+    long n_fetch_cached;        /* the tests' sentinel: fetches answered from the cache */
+    /* the call's one-line summary for the screen when its result's text is
+     * for Claude only (WebFetch: "Received 12.3KB (200 OK)", Claude Code's
+     * line); "" none. Set by the tool, cleared at each call. */
+    char brief[96];
     int stop;                   /* ASK_STOP was answered this round (reset by the caller) */
     /* an allowed call's comment from the user (ask's note): tl_result
      * adds it to the call's result for Claude, then clears it */
@@ -151,6 +194,12 @@ int tools_run_fg(cl_tools *t, const char *cmd, int secs, char *out, long cap, lo
 /* The "tools" array of a request body for that model (web_search's
  * version depends on it); built once, kept in t->json. */
 const char *tools_json(cl_tools *t, const char *model);
+/* The background shells (Bash run_in_background), one line each --
+ * "bash_1  running  Wait 2" -- into out ("" none): /tasks's list. */
+void tools_shells(cl_tools *t, char *out, long cap);
+/* Does a Bash line only look (List, Type, Echo, ls, cat, ... in every
+ * part, no redirection into a file)? It runs without a question. */
+int bash_read_only(const char *cmd);
 /* T_*, or -1 */
 int tools_id(const char *name);
 /* the tool's API name */
@@ -162,6 +211,13 @@ int tools_validate(int tool, jv input, char *err, long cap);
  * JSON (raw is what came). */
 void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
                const char *raw, long rawn, jw *out);
+
+/* A tools list ("Read, Grep", "Bash(make:*) Edit"; "" or "*" all) as a
+ * bit set of T_*, bit T_COUNT for WebSearch; "Agent" names Task. */
+unsigned long tools_mask(const char *list);
+/* An agent by name, case-insensitive: the built-in ones (general-purpose,
+ * Explore, Plan) and the provider's (ext.h). 0 none. */
+const struct cl_agent *tools_agent(const cl_tools *t, const char *name);
 
 /* ---- what the screen shows of a call (show.c, ui.c) ---- */
 

@@ -11,10 +11,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <utime.h>
 #include "harness.h"
 #include "claude_load.h"
 #include "../claude/repl.h"
 #include "../claude/repl_int.h"
+#include "../claude/print.h"
 #include "../claude/sys_posix.h"
 #include "../claude/util.h"
 #include "../claude/tui.h"
@@ -23,13 +25,15 @@
 
 /* ---- the stub transport: one canned HTTP response per request ---- */
 
+#define SB_MAX 16               /* responses and requests a test may have */
+
 typedef struct stub {
-    char *resp[8];
-    long rlen[8];
+    char *resp[SB_MAX];
+    long rlen[SB_MAX];
     int nresp, next, cur;
     long pos;
     jw req;                     /* the request being received */
-    char *head[8], *body[8];
+    char *head[SB_MAX], *body[SB_MAX];
     int nreq;
     int opens;
     long chunk;                 /* bytes per recv */
@@ -58,7 +62,7 @@ static long s_send(void *u, const char *b, long n)
     if (e) {
         char *cl = strstr(sb.req.p, "Content-Length: ");
         long hl = (long)(e + 4 - sb.req.p), bl = cl ? atol(cl + 16) : 0;
-        if (sb.req.n >= hl + bl && sb.nreq < 8) {
+        if (sb.req.n >= hl + bl && sb.nreq < SB_MAX) {
             sb.head[sb.nreq] = (char *)malloc((size_t)hl + 1);
             memcpy(sb.head[sb.nreq], sb.req.p, (size_t)hl);
             sb.head[sb.nreq][hl] = 0;
@@ -112,15 +116,60 @@ static const char *s_err(void *u)
     return "stub";
 }
 
+static void add_sse(const char *sse, long n);
+
 /* a recording as the API sends it: chunked, 100 bytes a chunk */
 static void add_stream(const char *name)
 {
-    long n, i;
+    long n;
     char *sse = claude_load(name, &n);
-    jw w;
-    static const char hex[] = "0123456789abcdef";
     if (!sse)
         return;
+    add_sse(sse, n);
+    free(sse);
+}
+
+/* An answer made here (A4 gaps tests): a tool call, the input JSON as it
+ * is; or (name 0) a text answer. Same events as the recordings. */
+static void add_answer(const char *id, const char *name, const char *input, const char *text)
+{
+    jw s;
+    jw_init(&s);
+    jw_rawz(&s, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_gap\",\"type\":"
+                "\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":"
+                "null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":100,\"cache_creation_input_tokens\":0,"
+                "\"cache_read_input_tokens\":0,\"output_tokens\":1}}}\n\n");
+    if (name) {
+        jw_rawz(&s, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,"
+                    "\"content_block\":{\"type\":\"tool_use\",\"id\":\"");
+        jw_rawz(&s, id);
+        jw_rawz(&s, "\",\"name\":\"");
+        jw_rawz(&s, name);
+        jw_rawz(&s, "\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\","
+                    "\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":");
+        jw_strz(&s, input);
+        jw_rawz(&s, "}}\n\n");
+    } else {
+        jw_rawz(&s, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,"
+                    "\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: "
+                    "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":");
+        jw_strz(&s, text);
+        jw_rawz(&s, "}}\n\n");
+    }
+    jw_rawz(&s, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"");
+    jw_rawz(&s, name ? "tool_use" : "end_turn");
+    jw_rawz(&s, "\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":20}}\n\n"
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
+    add_sse(s.p, s.n);
+    jw_free(&s);
+}
+
+static void add_sse(const char *sse, long n)
+{
+    long i;
+    jw w;
+    static const char hex[] = "0123456789abcdef";
     jw_init(&w);
     jw_rawz(&w, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\n"
                 "Transfer-Encoding: chunked\r\nrequest-id: req_test\r\n\r\n");
@@ -137,7 +186,6 @@ static void add_stream(const char *name)
         jw_raw(&w, "\r\n", 2);
     }
     jw_rawz(&w, "0\r\n\r\n");
-    free(sse);
     sb.resp[sb.nresp] = w.p;
     sb.rlen[sb.nresp++] = w.n;
 }
@@ -294,6 +342,8 @@ static cl_net net;
 static sys_posix sp;
 static cl_sys sys;
 
+static const char *setup_key = "test-key-not-real";
+
 static void setup_in(cl_repl *r, const char **script, const char *root)
 {
     stub_reset();
@@ -315,7 +365,7 @@ static void setup_in(cl_repl *r, const char **script, const char *root)
     net.close = s_close;
     net.err = s_err;
     sys_posix_init(&sp, &sys);
-    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, setup_key, root), 0);
     jw_free(&snt.text);
     memset(&snt, 0, sizeof(snt));
     jw_init(&snt.text);
@@ -344,7 +394,7 @@ static const char text_content[] =
 
 static void test_reach(void)
 {
-    static const char *script[] = { "hello", "show me S/Startup-Sequence", "a", "/cost", "/exit", 0 };
+    static const char *script[] = { "hello", "show me S/Startup-Sequence", "/cost", "/exit", 0 };
     static cl_repl r;
     jv m, e, c, x, b;
     jit it;
@@ -377,9 +427,11 @@ static void test_reach(void)
     CHECK(json_get(b, "stream", &x) && json_type(x) == J_TRUE);
     CHECK(json_get(b, "output_config", &x) && json_get(x, "effort", &e) && json_streq(e, "medium"));
     CHECK(json_get(b, "fallbacks", &x) && json_streq(x, "default"));
-    /* the tools by Claude Code's names: no WebFetch without its connection, no Skill or
-     * SlashCommand without any; the web_search server tool declared */
-    CHECK(json_get(b, "tools", &x) && json_count(x) == 15);
+    /* the tools by Claude Code's names: no WebFetch without its connection, no
+     * SlashCommand without a command (Skill: the bundled ones are always there);
+     * the web_search server tool declared */
+    CHECK(json_get(b, "tools", &x) && json_count(x) == 16);
+    CHECK(strstr(sb.body[0], "- simplify: Review this session's changed code") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Read\",") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
     CHECK(strstr(sb.body[0], "\"type\":\"web_search_20260209\",\"name\":\"web_search\"") != 0);
@@ -427,14 +479,15 @@ static void test_reach(void)
     CHECK(json_get(x, "tool_use_id", &e) && json_streq(e, "toolu_01ListS"));
     CHECK(json_get(x, "content", &e) && json_str(e, s, sizeof(s)) > 0 && strstr(s, "/S/Startup-Sequence\n") != 0);
 
-    /* the screen: the tool calls shown, one question asked, the cost */
+    /* the screen: the tool calls shown, no question (reads inside the start
+     * directory run without one, as in Claude Code), the cost */
     CHECK(strstr(cn.screen.p, "Tool \033[0mRead") != 0);
     CHECK(strstr(cn.screen.p, "Tool \033[0mGlob") != 0);
-    CHECK(strstr(cn.screen.p, "Always this session (a)") != 0);
+    CHECK(strstr(cn.screen.p, "Allow ") == 0);
     CHECK(strstr(cn.screen.p, "Requests 3. Tokens: input 855, output 150, cache write 1200, cache read 2700. Cost $") != 0);
     CHECK(strstr(cn.screen.p, "test-key-not-real") == 0);
     CHECK_INT(r.conv.n, 6);
-    CHECK_INT(cn.next, 5);
+    CHECK_INT(cn.next, 4);
     /* the cost: 855*4 + 150*20 + 1200*5 + 2700*0.2 = 3420 + 3000 + 6000 + 540 micro-dollars */
     CHECK_INT((long)r.conv.cost_micro, 12960L);
     conv_dollars(r.conv.cost_micro, s, sizeof(s));
@@ -480,6 +533,18 @@ static void test_unfinished(void)
     repl_free(&r);
 }
 
+static int has(const char *rel, const char *what);
+
+/* the model /model saved in the user's settings taken out again (the home
+ * is shared by the tests) */
+static void unset_home_model(void)
+{
+    char p[600];
+    strcpy(p, dir);
+    strcat(p, "/home/settings.json");
+    cfg_write_key(&sys, p, "model", 0);
+}
+
 static void test_commands(void)
 {
     static const char *script[] = { 0 };
@@ -487,6 +552,8 @@ static void test_commands(void)
     setup(&r, script);
     CHECK_INT(repl_line(&r, "/model claude-sonnet-5-5"), 0);
     CHECK_STR(r.model, "claude-sonnet-5-5");
+    CHECK(has("home/settings.json", "\"model\": \"claude-sonnet-5-5\""));   /* kept for new sessions */
+    unset_home_model();
     CHECK_INT(repl_line(&r, "/effort huge"), 0);
     CHECK_STR(r.effort, "medium");
     CHECK_INT(repl_line(&r, "/effort high"), 0);
@@ -497,10 +564,14 @@ static void test_commands(void)
     CHECK_INT(repl_line(&r, "   "), 0);
     CHECK_INT(sb.nreq, 0);
     repl_free(&r);
-    /* no key for an https URL: refused before anything is sent */
+    /* no key for an https URL (A4 WP4): the start goes on, nothing is sent without one */
     {
         static cl_repl r2;
-        CHECK_INT(repl_init(&r2, &io, &net, &sys, CL_DEFAULT_URL, "", dir), -1);
+        CHECK_INT(repl_init(&r2, &io, &net, &sys, CL_DEFAULT_URL, "", dir), 0);
+        CHECK_INT(repl_need_key(&r2), 1);
+        repl_line(&r2, "hello");
+        CHECK_INT(sb.nreq, 0);
+        CHECK(strstr(cn.screen.p, "Not logged in: no API key") != 0);
         repl_free(&r2);
         CHECK_INT(repl_init(&r2, &io, &net, &sys, "http://10.0.2.2:8080/v1/messages", 0, dir), 0);
         repl_free(&r2);
@@ -544,10 +615,23 @@ static void test_commands(void)
 #define SB "\342\217\272"   /* the bullet */
 #define SC "\342\216\277"   /* the result corner */
 
+/* the edit's rows, looked at before /cost (whose /usage lines scroll them away) */
+static int scr_update, scr_summary, scr_minus, scr_plus;
+
+static void screen_before_cost(void)
+{
+    if (cs.next != 4)
+        return;
+    scr_update = cs_find("\342\217\272 Update(claude-test.txt)");
+    scr_summary = cs_find(SC "  Updated claude-test.txt with 1 addition and 1 removal");
+    scr_minus = cs_find("1 - hello");
+    scr_plus = cs_find("1 + hello from the Amiga");
+}
+
 static void test_screen(void)
 {
     static const char *keys[] = {
-        "hello\r", "show me S/Startup-Sequence\r", "2", "please edit the greeting\r", "\r", "/cost\r", "/exit\r", 0
+        "hello\r", "show me S/Startup-Sequence\r", "please edit the greeting\r", "\r", "/cost\r", "/exit\r", 0
     };
     static cl_repl r;
     char p[600];
@@ -569,6 +653,8 @@ static void test_screen(void)
         fclose(f);
     }
     cs_open(80, 24, keys);
+    cs.before_read = screen_before_cost;
+    scr_update = scr_summary = scr_minus = scr_plus = -1;
     cs_io(&io);
     io.log = 0;
     net.u = 0;
@@ -607,23 +693,24 @@ static void test_screen(void)
     CHECK(r.tui->n_lines > 20);
     /* five requests, every key used, the edit made */
     CHECK_INT(sb.nreq, 5);
-    CHECK_INT(cs.next, 7);
+    CHECK_INT(cs.next, 6);
     CHECK_INT(sys.read(sys.u, p, 1000, &after, &an), 0);
     CHECK_STR(after ? after : "", "hello from the Amiga\n");
     free(after);
-    /* the reads were allowed for the session with "2": one menu for two calls */
+    /* the reads ran without a menu (Claude Code's default inside the start directory) */
     CHECK(sb.nreq < 3 || strstr(sb.body[2], "/S/Startup-Sequence\\n") != 0);
-    CHECK(r.tools.perm.session & (1ul << T_GLOB));
+    CHECK(!(r.tools.perm.session & (1ul << T_GLOB)));
     /* the todo list and the edit's result reached the history and the screen */
     CHECK(sb.nreq < 5 || strstr(sb.body[4], "Todos have been modified") != 0);
     CHECK(sb.nreq < 5 || strstr(sb.body[4], "claude-test.txt has been updated.") != 0);
     /* the todo list, in progress (it has scrolled into the scrollback by now) */
     CHECK(strstr(cs.sent.p, "\342\226\240\033[0m \033[1mChange the greeting") != 0);
-    row = cs_find("\342\217\272 Update(claude-test.txt)");
+    cs.before_read = 0;
+    row = scr_update;
     CHECK(row >= 0);
-    CHECK(cs_find(SC "  Updated claude-test.txt with 1 addition and 1 removal") > row);
-    CHECK(cs_find("1 - hello") > row);
-    CHECK(cs_find("1 + hello from the Amiga") > row);
+    CHECK(scr_summary > row);
+    CHECK(scr_minus > row);
+    CHECK(scr_plus > row);
     CHECK(cs_find("> please edit the greeting") >= 0 || vt_scrollback_lines(cs.vt) > 0);
     CHECK(cs_find("Requests 5. Tokens:") >= 0);
     /* the footer is still the box and the status line */
@@ -747,7 +834,7 @@ static void test_wp3(void)
     /* the permission rules answered: no question was asked at all */
     CHECK(strstr(cn.screen.p, "Always this session") == 0);
     CHECK(strstr(cn.screen.p, "Allow?") == 0);
-    CHECK_INT(r.n_rule_allow, 3);               /* Read twice (startup, then the edit's read), Edit(claude-test.txt) */
+    CHECK_INT(r.n_rule_allow, 1);               /* Edit(claude-test.txt); the reads never ask */
 
     /* the hook blocked Glob: its reason went to Claude as the result */
     CHECK_INT(r.hooks.n_run, 1);
@@ -826,6 +913,7 @@ static void test_wp3(void)
         add_stream("tool_edit.sse");
         add_stream("tool_final.sse");
         repl_line(&r3, "please edit the greeting");
+        CHECK(r3.ctx_used > 0);
         k = r3.ui.rw.count(r3.ui.rw.u);
         CHECK_INT(k, 1);
         CHECK_INT(r3.ui.rw.can(r3.ui.rw.u, 0), RW_CONV | RW_CODE);
@@ -833,6 +921,7 @@ static void test_wp3(void)
         CHECK_STR(lab, "please edit the greeting");
         CHECK_INT(r3.ui.rw.restore(r3.ui.rw.u, 0, RW_CODE | RW_CONV), 0);
         CHECK_INT(r3.conv.n, 0);
+        CHECK_INT(r3.ctx_used, 0);      /* the context in use goes back with the conversation */
         strcpy(p, root);
         strcat(p, "/claude-test.txt");
         after = 0;
@@ -952,6 +1041,8 @@ static void test_wp3_commands(void)
     CHECK(has("wp3b/.claude/settings.json", "UserPromptSubmit"));      /* the rest kept */
     repl_line(&r, "/model opus");
     CHECK_STR(r.model, "claude-opus-5-5");
+    CHECK(has("home/settings.json", "\"model\": \"opus\""));
+    unset_home_model();
     repl_line(&r, "/autocompact off");
     CHECK_INT(r.auto_compact, 0);
     repl_line(&r, "/autocompact on");
@@ -1013,7 +1104,7 @@ static void test_wp3_commands(void)
     CHECK(strstr(cn.screen.p, "No custom commands") != 0);
     repl_line(&r, "/agents");
     repl_line(&r, "/skills");
-    CHECK(strstr(cn.screen.p, "No skills") != 0);
+    CHECK(strstr(cn.screen.p, "  simplify (built-in)  Review this session's changed code") != 0);
     repl_line(&r, "/doctor");
     CHECK(strstr(cn.screen.p, "[OK]    System: a POSIX host") != 0);
     CHECK(strstr(cn.screen.p, "[OK]    Settings") != 0);
@@ -1025,7 +1116,7 @@ static void test_wp3_commands(void)
     CHECK(strstr(cn.screen.p, "No commands running in the background.") != 0);
     repl_line(&r, "/todos");
     CHECK(strstr(cn.screen.p, "No todo list") != 0);
-    strcpy(p, "/statusline sh ");
+    strcpy(p, "/statusline command sh ");
     strcat(p, root);
     strcat(p, "/status.sh");
     repl_line(&r, p);
@@ -1042,6 +1133,10 @@ static void test_wp3_commands(void)
     repl_line(&r, "/help");
     for (i = 0; i < slash_nbuiltin; i++)
         CHECK(strstr(cn.screen.p, slash_builtin[i].name) != 0);
+    /* a name as long as the column keeps a gap before its help (the rig showed
+     * "/run-skill-generatorWrite a project skill ...") */
+    CHECK(strstr(cn.screen.p, "/run-skill-generatorWrite") == 0);
+    CHECK(strstr(cn.screen.p, "/run-skill-generator  Write") != 0);
     repl_line(&r, "/cd lib");
     CHECK(strstr(r.tools.root, "/wp3b/lib") != 0);
     CHECK(strstr(r.system, "/wp3b/lib") != 0);
@@ -1078,7 +1173,7 @@ static void test_wp1(void)
         "!!echo hi\r",                                  /* ! bash mode */
         "#remember the milk\r", "\r",                   /* # memory, the project's file */
         "explain @S/Startup-Sequence\r",                /* @ mention */
-        "show me S/Startup-Sequence\r", "!also say hi\r", "2",   /* typed ahead during the tool round */
+        "show me S/Startup-Sequence\r", "!also say hi\r",        /* typed ahead during the tool round */
         "\017", "q",                                    /* Ctrl+O, q */
         "/exit\r", 0
     };
@@ -1112,7 +1207,7 @@ static void test_wp1(void)
         for (k = 0; k < cs.rows; k++)
             printf("%2d|%s\n", k, cs_row(k));
     }
-    CHECK_INT(cs.next, 10);                 /* every key used */
+    CHECK_INT(cs.next, 9);                  /* every key used */
     CHECK_INT(sb.nreq, 4);
     /* !: the command ran, Claude got its output as Claude Code sends it */
     CHECK(sb.nreq < 1 || strstr(sb.body[0], "<bash-input>echo hi</bash-input>\\n<bash-stdout>hi\\n</bash-stdout>") != 0);
@@ -1343,7 +1438,7 @@ static void test_wp2(void)
     /* the WebFetch: the page fetched, the small model asked, its answer the result */
     CHECK_INT(wp2_open_n, 1);
     CHECK(strstr(wp2_req, "GET /page HTTP/1.1\r\nHost: 127.0.0.1:8080\r\n") != 0);
-    CHECK(strstr(sb.body[6], "\"model\":\"claude-haiku-4-5\"") != 0);
+    CHECK(strstr(sb.body[6], "\"model\":\"claude-haiku-4-5") != 0);
     CHECK(strstr(sb.body[6], "# Hi\\n\\nhello") != 0);
     CHECK(strstr(sb.body[6], "\"tools\"") == 0);
     CHECK(strstr(sb.body[7], "\"tool_use_id\":\"toolu_01Fetch\",\"content\":\"The page is the UP-Term test page.") != 0);
@@ -1359,6 +1454,2338 @@ static void test_wp2(void)
     repl_free(&r);
 }
 
+/* ---- A4 WP4: the command line and print mode, through the REPL core ----
+ *
+ * main_amiga.c's print path, step by step on the host: the words parsed
+ * (cli_parse_line), applied (cli_apply), the run (print_run) against the
+ * recorded streams; the output captured and compared with golden files
+ * (tests/claude/print_*), the run's own values (uuids, the session id,
+ * durations, the temporary directory) blanked first. */
+
+typedef struct pcap {
+    jw out, err;
+    const char *in;
+    long pos;
+} pcap;
+
+static pcap pc;
+
+static void pc_out(void *u, const char *s, long n)
+{
+    (void)u;
+    jw_raw(&pc.out, s, n);
+}
+
+static void pc_err(void *u, const char *s, long n)
+{
+    (void)u;
+    jw_raw(&pc.err, s, n);
+}
+
+/* what is piped in, 7 bytes a read (lines cross reads) */
+static long pc_in(void *u, char *b, long cap)
+{
+    long n = (long)strlen(pc.in) - pc.pos;
+    (void)u;
+    if (n > 7)
+        n = 7;
+    if (n > cap)
+        n = cap;
+    memcpy(b, pc.in + pc.pos, (size_t)n);
+    pc.pos += n;
+    return n;
+}
+
+/* main's print path; the exit code */
+static int run_print(cl_repl *r, const char *args, const char *in)
+{
+    cl_cli c;
+    cl_pout po;
+    int rc;
+    jw_reset(&pc.out);
+    jw_reset(&pc.err);
+    pc.in = in;
+    pc.pos = 0;
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, args), 0);
+    CHECK_INT(cli_apply(&c, r), 0);
+    po.u = 0;
+    po.out = pc_out;
+    po.err = pc_err;
+    po.in = in ? pc_in : 0;
+    rc = print_run(r, &c, &po);
+    cli_free(&c);
+    return rc;
+}
+
+static const char *outp(void)
+{
+    return pc.out.p ? pc.out.p : "";
+}
+
+/* the run's own values blanked: uuids, the session id, durations, the start directory */
+static void norm(const char *s, const char *root, jw *o)
+{
+    static const char *const strs[] = { "\"uuid\":\"", "\"session_id\":\"", 0 };
+    static const char *const nums[] = { "\"duration_ms\":", "\"duration_api_ms\":", 0 };
+    long rl = (long)strlen(root);
+    jw_reset(o);
+    while (*s) {
+        int i, done = 0;
+        if (rl && !strncmp(s, root, (size_t)rl)) {
+            jw_rawz(o, "<ROOT>");
+            s += rl;
+            continue;
+        }
+        for (i = 0; strs[i] && !done; i++)
+            if (!strncmp(s, strs[i], strlen(strs[i]))) {
+                jw_rawz(o, strs[i]);
+                s += strlen(strs[i]);
+                while (*s && *s != '"')
+                    s++;
+                jw_rawz(o, "*");
+                done = 1;
+            }
+        for (i = 0; nums[i] && !done; i++)
+            if (!strncmp(s, nums[i], strlen(nums[i]))) {
+                jw_rawz(o, nums[i]);
+                s += strlen(nums[i]);
+                while (*s >= '0' && *s <= '9')
+                    s++;
+                jw_rawz(o, "0");
+                done = 1;
+            }
+        if (!done)
+            jw_raw(o, s++, 1);
+    }
+}
+
+/* got against tests/claude/<name> (CL_UPDATE_GOLDEN=1 writes it instead) */
+static void golden(const char *name, const char *got)
+{
+    long n;
+    char *want;
+    if (getenv("CL_UPDATE_GOLDEN")) {
+        char p[256];
+        FILE *f;
+        strcpy(p, "tests/claude/");
+        strcat(p, name);
+        f = fopen(p, "wb");
+        if (f) {
+            fputs(got, f);
+            fclose(f);
+        }
+    }
+    want = claude_load(name, &n);
+    CHECK(want != 0);
+    if (want)
+        CHECK_STR(got, want);
+    free(want);
+}
+
+/* every line of the output a JSON object; the count; types: their "type"s, joined by ' ' */
+static int json_lines(const char *s, char *types, long cap)
+{
+    int k = 0;
+    types[0] = 0;
+    while (*s) {
+        const char *e = strchr(s, '\n');
+        jv v, t;
+        char ty[40];
+        if (!e)
+            e = s + strlen(s);
+        CHECK(json_parse(s, (long)(e - s), &v) == 0 && json_type(v) == J_OBJ);
+        if (json_parse(s, (long)(e - s), &v) == 0 && json_get(v, "type", &t) && json_str(t, ty, sizeof(ty)) >= 0) {
+            if (k)
+                cl_cat(types, " ", cap);
+            cl_cat(types, ty, cap);
+        }
+        k++;
+        s = *e ? e + 1 : e;
+    }
+    return k;
+}
+
+/* the result object of an output (its last line) */
+static int result_of(jv *v)
+{
+    const char *s = outp(), *last = s, *p;
+    for (p = s; *p; p++)
+        if (*p == '\n' && p[1])
+            last = p + 1;
+    return json_parse(last, (long)strlen(last), v) == 0 && json_type(*v) == J_OBJ ? 0 : -1;
+}
+
+static int has_rule(const cl_repl *r, const char *text, int kind, int src)
+{
+    int i;
+    for (i = 0; i < r->cfg.nrules; i++)
+        if (!strcmp(r->cfg.rules[i].text, text) && r->cfg.rules[i].kind == kind && r->cfg.rules[i].src == src)
+            return 1;
+    return 0;
+}
+
+static void test_wp4_text(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    jv m, e, x;
+    jit it;
+    /* text: the answer and nothing else */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    golden("print_text.txt", outp());
+    CHECK_INT(sb.nreq, 1);
+    CHECK_INT(pc.err.n, 0);
+    CHECK_INT(snt.text_calls, 4);           /* the sentinel: the stream went through the renderer */
+    CHECK(strstr(cn.screen.p ? cn.screen.p : "", "Hello") == 0);    /* not on the console */
+    repl_free(&r);
+
+    /* text piped in goes after the prompt, a newline between */
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "PRINT explain", "line one\nline two\n"), 0);
+    CHECK_STR(outp(), "Your Startup-Sequence runs SetPatch first.\n");
+    CHECK_INT(sb.nreq, 1);
+    if (sb.nreq == 1 && messages_of(sb.body[0], &m) == 0) {
+        json_iter(m, &it);
+        CHECK(json_next(&it, 0, &e) && json_get(e, "content", &x));
+        CHECK(strstr(x.p, "\"text\":\"explain\\nline one\\nline two\\n\"") != 0);
+    }
+    repl_free(&r);
+
+    /* only what is piped in */
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p", "what is this"), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"what is this\"") != 0);
+    repl_free(&r);
+
+    /* nothing at all: Claude Code's error, nothing sent */
+    setup(&r, none);
+    CHECK_INT(run_print(&r, "-p", 0), 20);
+    CHECK(strstr(pc.err.p ? pc.err.p : "", "Input must be provided either through stdin or as a prompt argument") != 0);
+    CHECK_INT(sb.nreq, 0);
+    CHECK_INT(pc.out.n, 0);
+    repl_free(&r);
+
+    /* --verbose: the transcript on the error stream, the answer alone on the output */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --verbose show me S/Startup-Sequence", 0), 0);
+    CHECK_STR(outp(), "Your Startup-Sequence runs SetPatch first.\n");
+    CHECK(strstr(pc.err.p ? pc.err.p : "", "Read") != 0);
+    CHECK(strstr(pc.err.p ? pc.err.p : "", "Let me look.") != 0);
+    repl_free(&r);
+}
+
+static void test_wp4_json(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    jw n;
+    jv v, x, y;
+    char types[400];
+    jw_init(&n);
+    /* json: one result; the reads in the start directory ran without a question */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format json show me S/Startup-Sequence", 0), 0);
+    CHECK_INT(sb.nreq, 2);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 1);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "session_id", &x) && json_streq(x, r.sess.id));
+    CHECK(json_get(v, "num_turns", &x) && json_long(x, 0) == 2);
+    CHECK(json_get(v, "result", &x) && json_streq(x, "Your Startup-Sequence runs SetPatch first."));
+    CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 0);
+    CHECK(json_get(v, "modelUsage", &x) && json_get(x, "claude-opus-5-5", &y));
+    norm(outp(), r.tools.root, &n);
+    golden("print_json.json", n.p ? n.p : "");
+    CHECK(sb.nreq < 2 || strstr(sb.body[1], "SetPatch QUIET") != 0);
+    repl_free(&r);
+
+    /* stream-json: init, the answers, the tool results, the result */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose show me S/Startup-Sequence", 0), 0);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 5);
+    CHECK_STR(types, "system assistant user assistant result");
+    norm(outp(), r.tools.root, &n);
+    golden("print_stream.jsonl", n.p ? n.p : "");
+    repl_free(&r);
+
+    /* --include-partial-messages: every event of the stream (not the pings) as it came */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose --include-partial-messages hello", 0), 0);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 16);
+    CHECK_STR(types, "system stream_event stream_event stream_event stream_event stream_event stream_event "
+                     "stream_event stream_event stream_event stream_event stream_event stream_event stream_event "
+                     "assistant result");
+    CHECK(strstr(outp(), "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\",") != 0);
+    CHECK(strstr(outp(), "\"type\":\"ping\"") == 0);
+    repl_free(&r);
+    jw_free(&n);
+}
+
+/* --input-format stream-json: a user message a line, each answered with its result */
+static void test_wp4_input(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char types[400];
+    jv m;
+    setup(&r, none);
+    add_stream("text.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --input-format stream-json --output-format stream-json --verbose",
+                        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello\"}}\n"
+                        "{\"type\":\"control_request\"}\n"
+                        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\","
+                        "\"text\":\"and then?\"}]}}"),
+              0);
+    CHECK_INT(sb.nreq, 2);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 5);
+    CHECK_STR(types, "system assistant result assistant result");
+    CHECK(sb.nreq > 1 && messages_of(sb.body[1], &m) == 0 && json_count(m) == 3);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "\"text\":\"and then?\"") != 0);
+    repl_free(&r);
+}
+
+/* --max-turns and --max-budget-usd: the turn stops after a tool round, the history valid */
+static void test_wp4_limits(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    jv v, x;
+    char e[80];
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --max-turns 1 --output-format json show me S/Startup-Sequence", 0), 10);
+    CHECK_INT(sb.nreq, 1);
+    CHECK_INT(r.conv.n, 3);                 /* the prompt, the tool calls, their results */
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "subtype", &x) && json_streq(x, "error_max_turns"));
+    CHECK(json_get(v, "is_error", &x) && json_type(x) == J_TRUE);
+    CHECK(json_get(v, "result", &x) == 0);
+    CHECK(json_get(v, "errors", &x) && json_count(x) == 1);
+    e[0] = 0;
+    if (json_get(v, "errors", &x)) {
+        jit it;
+        jv one;
+        json_iter(x, &it);
+        if (json_next(&it, 0, &one))
+            json_str(one, e, sizeof(e));
+    }
+    CHECK_STR(e, "Reached max turns (1)");
+    repl_free(&r);
+
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    CHECK_INT(run_print(&r, "MAX-TURNS=1 PRINT show me S/Startup-Sequence", 0), 10);
+    CHECK_STR(outp(), "Error: Reached max turns (1)\n");
+    repl_free(&r);
+
+    /* the first answer costs $0.0034: a budget of $0.001 stops before the second request */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --max-budget-usd 0.001 --output-format json show me S/Startup-Sequence", 0), 10);
+    CHECK_INT(sb.nreq, 1);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "subtype", &x) && json_streq(x, "error_max_budget_usd"));
+    CHECK(json_get(v, "total_cost_usd", &x) && x.n == 6 && !memcmp(x.p, "0.0034", 6));
+    repl_free(&r);
+
+    /* a budget not reached, and the limits outside print mode do nothing */
+    setup(&r, none);
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --max-budget-usd 5 --max-turns 2 show me S/Startup-Sequence", 0), 0);
+    CHECK_INT(sb.nreq, 2);
+    repl_free(&r);
+}
+
+/* permissions in print mode: nobody to ask, so a write is denied and listed, unless allowed */
+static void test_wp4_perms(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char p[600], *b = 0;
+    long n = 0;
+    jv v, x, y;
+    FILE *f;
+    strcpy(p, dir);
+    strcat(p, "/claude-test.txt");
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("hello\n", f);
+        fclose(f);
+    }
+    setup(&r, none);
+    add_stream("tool_edit.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format json please edit", 0), 0);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 1);
+    if (json_get(v, "permission_denials", &x) && json_count(x) == 1) {
+        jit it;
+        jv d;
+        json_iter(x, &it);
+        json_next(&it, 0, &d);
+        CHECK(json_get(d, "tool_name", &y) && json_streq(y, "Edit"));
+        CHECK(json_get(d, "tool_use_id", &y) && json_streq(y, "toolu_01Edit"));
+        CHECK(json_get(d, "tool_input", &y) && json_get(y, "file_path", &x) && json_streq(x, "claude-test.txt"));
+    }
+    CHECK(sys.read(sys.u, p, 1000, &b, &n) == 0 && b && !strcmp(b, "hello\n"));
+    free(b);
+    b = 0;
+    repl_free(&r);
+
+    /* --allowedTools Edit: it runs */
+    setup(&r, none);
+    add_stream("tool_edit.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format json --allowedTools Edit -- please edit", 0), 0);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 0);
+    CHECK(sys.read(sys.u, p, 1000, &b, &n) == 0 && b && !strcmp(b, "hello from the Amiga\n"));
+    free(b);
+    b = 0;
+    repl_free(&r);
+
+    /* --dangerously-skip-permissions (bypassPermissions): every question answered yes */
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("hello\n", f);
+        fclose(f);
+    }
+    setup(&r, none);
+    add_stream("tool_edit.sse");
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p --output-format json --dangerously-skip-permissions please edit", 0), 0);
+    CHECK_INT(r.ask_policy, ASKP_BYPASS);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 0);
+    CHECK(sys.read(sys.u, p, 1000, &b, &n) == 0 && b && !strcmp(b, "hello from the Amiga\n"));
+    free(b);
+    repl_free(&r);
+    remove(p);
+
+    /* --tools and --disallowedTools: what the request declares */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --tools Read,Glob hello", 0), 0);
+    CHECK(sb.nreq == 1 && json_parse(sb.body[0], (long)strlen(sb.body[0]), &v) == 0 && json_get(v, "tools", &x) &&
+          json_count(x) == 2);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "web_search") == 0);
+    repl_load(&r);                          /* a reload (/cd, /permissions) keeps it so */
+    CHECK_INT(r.tools.web_search, 0);
+    repl_free(&r);
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --disallowedTools Bash WebSearch \"Edit(S/*)\" --tools \"\" -- hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"tools\"") == 0);    /* none at all */
+    CHECK(has_rule(&r, "Edit(S/*)", RULE_DENY, CFG_SESSION));
+    repl_free(&r);
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --disallowedTools Bash WebSearch -- hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"Bash\"") == 0 && strstr(sb.body[0], "web_search") == 0 &&
+          strstr(sb.body[0], "{\"name\":\"Read\"") != 0);
+    repl_free(&r);
+}
+
+/* the session flags: --continue restores, --resume NAME, --fork-session, --no-session-persistence */
+static void test_wp4_session(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char first[16];
+    jv v, x, m;
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p -n my-work hello", 0), 0);
+    cl_copy(first, r.sess.id, sizeof(first));
+    CHECK(r.sess.n_appends >= 1);
+    repl_free(&r);
+
+    /* --continue: the conversation comes back, the same session goes on */
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "-p -c --output-format json go on", 0), 0);
+    CHECK_INT(sb.nreq, 1);
+    CHECK(sb.nreq == 1 && messages_of(sb.body[0], &m) == 0 && json_count(m) == 3);
+    CHECK(sb.nreq && strstr(sb.body[0], "\"text\":\"hello\"") != 0);
+    CHECK(sb.nreq && strstr(sb.body[0], text_content) != 0);       /* the answer replayed byte for byte */
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "session_id", &x) && json_streq(x, first));
+    CHECK_STR(r.sess.id, first);
+    repl_free(&r);
+
+    /* --resume by name, --fork-session: a new session with the whole conversation */
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    CHECK_INT(run_print(&r, "PRINT RESUME=my-work FORK-SESSION once more", 0), 0);
+    CHECK_INT(sb.nreq, 1);
+    CHECK(sb.nreq == 1 && messages_of(sb.body[0], &m) == 0 && json_count(m) == 5);
+    CHECK(strcmp(r.sess.id, first) != 0);
+    repl_free(&r);
+
+    /* nothing to resume: Claude Code's error as the result */
+    setup(&r, none);
+    CHECK_INT(run_print(&r, "-p -r nothing-here hi", 0), 10);
+    CHECK_STR(outp(), "No conversation found with session ID: nothing-here\n");
+    CHECK_INT(sb.nreq, 0);
+    repl_free(&r);
+
+    /* --no-session-persistence: nothing written */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --no-session-persistence hello", 0), 0);
+    CHECK_INT(r.sess.n_appends, 0);
+    repl_free(&r);
+}
+
+/* the other flags, applied: the settings layer wins over the files and survives a reload */
+static void test_wp4_apply(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    cl_cli c;
+    char p[600];
+    long l;
+    FILE *f;
+    jv v, x;
+    setup(&r, none);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--system-prompt \"Be brief.\" --append-system-prompt \"Answer in German.\" "
+                                 "--model sonnet --effort high --tools Read,Grep --add-dir S --allowedTools "
+                                 "\"Bash(make *)\" --permission-mode plan --settings "
+                                 "\"{*\"model*\":*\"opus*\",*\"outputStyle*\":*\"Explanatory*\"}\""),
+              0);
+    CHECK_INT(cli_apply(&c, &r), 0);
+    CHECK_STR(r.model, "claude-sonnet-5-5");    /* the flag wins over --settings */
+    CHECK_STR(r.style, "Explanatory");          /* --settings' own key */
+    CHECK_STR(r.effort, "high");
+    CHECK_INT(r.tools.perm.mode, PERM_PLAN);
+    CHECK(r.cfg.ndirs == 1 && !strcmp(r.cfg.dirs[0], "S"));
+    CHECK(has_rule(&r, "Bash(make *)", RULE_ALLOW, CFG_SESSION));
+    CHECK(has_rule(&r, "WebSearch", RULE_DENY, CFG_SESSION));     /* --tools without it */
+    CHECK(!strncmp(r.system, "Be brief.", 9));
+    l = (long)strlen(r.system);
+    CHECK(l > 17 && !strcmp(r.system + l - 17, "Answer in German."));
+    CHECK(strstr(r.system, "Output style: Explanatory") != 0);
+    CHECK(strstr(r.system, "native client on an Amiga") == 0);
+    add_stream("text.sse");
+    repl_line(&r, "hello");
+    CHECK(sb.nreq == 1 && json_parse(sb.body[0], (long)strlen(sb.body[0]), &v) == 0 && json_get(v, "tools", &x) &&
+          json_count(x) == 2);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"model\":\"claude-sonnet-5-5\"") != 0);
+    /* /cd and every reload keep the command line's layer */
+    repl_load(&r);
+    CHECK_STR(r.model, "claude-sonnet-5-5");
+    CHECK_INT(r.tools.perm.mode, PERM_PLAN);
+    cli_free(&c);
+    repl_free(&r);
+
+    /* --agent: its prompt and its tools; --settings from a file; dontAsk */
+    strcpy(p, dir);
+    strcat(p, "/s.json");
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("{\"model\":\"haiku\",\"permissions\":{\"defaultMode\":\"dontAsk\"}}", f);
+        fclose(f);
+    }
+    setup(&r, none);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "AGENT=Explore SETTINGS=s.json"), 0);
+    CHECK_INT(cli_apply(&c, &r), 0);
+    CHECK(!strncmp(r.system, "You are a file search specialist", 32));
+    CHECK_STR(r.model, cfg_model("haiku"));
+    CHECK_INT(r.ask_policy, ASKP_DENY);
+    CHECK_INT((long)r.tools.allowed,
+              (long)((1ul << T_GLOB) | (1ul << T_GREP) | (1ul << T_READ) | (1ul << T_BASH)));
+    CHECK_INT(r.tools.web_search, 0);
+    cli_free(&c);
+    repl_free(&r);
+    remove(p);
+
+    /* what cannot be applied */
+    setup(&r, none);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--add-dir nothere"), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    CHECK_STR(c.err, "Error: --add-dir: not a directory: nothere");
+    cli_free(&c);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--agent nobody"), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    cli_free(&c);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--system-prompt-file missing.txt"), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    CHECK(strstr(c.err, "--system-prompt-file file not found") != 0);
+    cli_free(&c);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--settings \"{not json\""), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    cli_free(&c);
+    repl_free(&r);
+}
+
+/* `Claude "prompt"` starts the session with it; without a key, /login comes first */
+static void test_wp4_start(void)
+{
+    static const char *bye[] = { "/exit", 0 };
+    static const char *login[] = { "sk-ant-api-test-0123456789", "/exit", 0 };
+    static cl_repl r;
+    cl_cli c;
+    jv v, x;
+    setup(&r, bye);
+    add_stream("text.sse");
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "\"hello there\""), 0);
+    CHECK_INT(cli_apply(&c, &r), 0);
+    r.first = c.prompt;
+    repl_run(&r);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"hello there\"") != 0);
+    CHECK_INT(cn.next, 1);                  /* then the prompt, where /exit was typed */
+    cli_free(&c);
+    repl_free(&r);
+
+    setup_key = "";
+    setup(&r, login);
+    setup_key = "test-key-not-real";
+    add_stream("text.sse");
+    CHECK_INT(repl_need_key(&r), 1);
+    r.first = "hello";
+    repl_run(&r);
+    CHECK(strstr(cn.screen.p, "Paste the API key") != 0);
+    CHECK(strstr(cn.screen.p, "sk-ant-api-test") == 0);     /* never shown */
+    CHECK_INT(sb.nreq, 1);
+    CHECK(sb.nreq == 1 && strstr(sb.head[0], "x-api-key: sk-ant-api-test-0123456789\r\n") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"hello\"") != 0);
+    repl_free(&r);
+
+    /* print mode without a key: the error as the result, nothing sent */
+    setup_key = "";
+    setup(&r, bye);
+    setup_key = "test-key-not-real";
+    CHECK_INT(run_print(&r, "-p --output-format json hi", 0), 10);
+    CHECK_INT(sb.nreq, 0);
+    CHECK_INT(result_of(&v), 0);
+    CHECK(json_get(v, "is_error", &x) && json_type(x) == J_TRUE);
+    CHECK(json_get(v, "result", &x) && !strncmp(x.p, "\"Not logged in", 14));
+    repl_free(&r);
+}
+
+static void test_wp4(void)
+{
+    jw_init(&pc.out);
+    jw_init(&pc.err);
+    test_wp4_text();
+    test_wp4_json();
+    test_wp4_input();
+    test_wp4_limits();
+    test_wp4_perms();
+    test_wp4_session();
+    test_wp4_apply();
+    test_wp4_start();
+    jw_free(&pc.out);
+    jw_free(&pc.err);
+}
+
+/* ---- A4 wiring: the three packages' seams joined ----
+ *
+ * The reachability test of the wiring, on the screen: a project with a
+ * subagent (.claude/agents), two skills (one only the user may run), a
+ * custom command with allowed-tools, a settings file with a status line,
+ * a deny rule for WebSearch and one for a file; and a user subagent in
+ * the user's directory. Typed: a prompt Claude answers with a Task for the
+ * project's agent (whose reads run without a question, one of them denied
+ * by the rule inside the agent), one answered with the Skill tool, one
+ * with SlashCommand (whose allowed-tools let the Bash call that follows
+ * run without a question), /tasks, /exit. */
+
+/* text into root/rel, the directories on the way made */
+static void xput(const char *root, const char *rel, const char *text)
+{
+    char p[800];
+    char *s;
+    FILE *f;
+    strcpy(p, root);
+    strcat(p, "/");
+    strcat(p, rel);
+    for (s = p + strlen(root) + 1; *s; s++)
+        if (*s == '/') {
+            *s = 0;
+            mkdir(p, 0700);
+            *s = '/';
+        }
+    f = fopen(p, "wb");
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+static void test_wiring(void)
+{
+    static const char *keys[] = { "review the startup\r", "check it\r", "\r", "greet\r", "\r", "/tasks\r",
+                                  "/exit\r", 0 };
+    static cl_repl r;
+    char root[600], home[600], p[700];
+    int row, box;
+    const char *t;
+    strcpy(root, dir);
+    strcat(root, "/wire");
+    mkdir(root, 0700);
+    strcpy(home, dir);
+    strcat(home, "/home");
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, "secret.txt", "SECRET-CONTENT\n");
+    xput(root, ".claude/agents/amiga-reviewer.md",
+         "---\nname: amiga-reviewer\ndescription: Reviews Amiga startup files\ntools: Read\nmodel: haiku\n---\n"
+         "AMIGA-REVIEWER-PROMPT: you review AmigaDOS scripts.\n");
+    xput(home, "agents/user-helper.md", "---\nname: user-helper\ndescription: The user's own helper\n---\nHelp.\n");
+    xput(root, ".claude/skills/startup-check/SKILL.md",
+         "---\nname: startup-check\ndescription: Checks a Startup-Sequence\n---\n"
+         "SKILL-BODY-SENTINEL: read S/Startup-Sequence first.\n");
+    xput(root, ".claude/skills/only-me/SKILL.md",
+         "---\nname: only-me\ndescription: ONLY-THE-USER\ndisable-model-invocation: true\n---\nNo.\n");
+    xput(root, ".claude/commands/greet.md",
+         "---\ndescription: Greet someone\nallowed-tools: Bash(Wait:*)\n---\nSay hello to $ARGUMENTS.\n");
+    xput(root, ".claude/settings.json",
+         "{\"statusLine\":{\"type\":\"command\",\"command\":\"echo WIRED-STATUS\"},"
+         "\"permissions\":{\"deny\":[\"WebSearch\",\"Read(secret.txt)\"]}}\n");
+
+    stub_reset();
+    add_stream("wire_task.sse");
+    add_stream("wire_agent_reads.sse");
+    add_stream("agent_final.sse");
+    add_stream("tool_final.sse");
+    add_stream("wire_skill.sse");
+    add_stream("tool_final.sse");
+    add_stream("wire_slash.sse");
+    add_stream("tool_bg.sse");
+    add_stream("tool_final.sse");
+    cs_open(80, 24, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    /* every key used: no question the script did not expect (the reads asked nothing) */
+    CHECK_INT(cs.next, 7);
+    CHECK_INT(sb.nreq, 9);
+    if (sb.nreq < 9) {
+        repl_free(&r);
+        cs_close();
+        return;
+    }
+
+    /* the first request: Task offers the project's and the user's agents beside the
+     * built-ins; Skill lists the model's skills only; SlashCommand the command; no
+     * web_search (the deny rule) */
+    t = sb.body[0];
+    CHECK(strstr(t, "- amiga-reviewer: Reviews Amiga startup files (Tools: Read)") != 0);
+    CHECK(strstr(t, "- user-helper: The user's own helper") != 0);
+    CHECK(strstr(t, "- general-purpose: ") != 0);
+    CHECK(strstr(t, "{\"name\":\"Skill\",") != 0);
+    CHECK(strstr(t, "- startup-check: Checks a Startup-Sequence") != 0);
+    CHECK(strstr(t, "ONLY-THE-USER") == 0);
+    CHECK(strstr(t, "{\"name\":\"SlashCommand\",") != 0);
+    CHECK(strstr(t, "- /greet: Greet someone") != 0);
+    CHECK(strstr(t, "web_search") == 0);
+
+    /* the project agent ran with its prompt, its model and its one tool */
+    t = sb.body[1];
+    CHECK(strstr(t, "AMIGA-REVIEWER-PROMPT") != 0);
+    CHECK(strstr(t, "\"model\":\"claude-haiku-4-5") != 0);
+    CHECK(strstr(t, "{\"name\":\"Read\",") != 0);
+    CHECK(strstr(t, "{\"name\":\"Grep\",") == 0);
+    CHECK(strstr(t, "{\"name\":\"Task\",") == 0);
+    /* its calls went through the policy: the read ran, the rule denied secret.txt */
+    t = sb.body[2];
+    CHECK(strstr(t, "\"tool_use_id\":\"toolu_01WireRead\",\"content\":\"     1\\tSetPatch QUIET\\n\"") != 0);
+    CHECK(strstr(t, "Permission to use Read has been denied by the rule Read(secret.txt) (project settings).") !=
+          0);
+    CHECK(strstr(t, "SECRET-CONTENT") == 0);
+    CHECK_INT(r.n_rule_deny, 1);
+    /* ... and the screen showed the agent's Read as a Read, not as its Task */
+    CHECK(strstr(cs.sent.p, "Read\033[0m(S/Startup-Sequence)") != 0 || strstr(cs.sent.p, "Read(S/Startup-Sequence)") != 0);
+    CHECK(strstr(sb.body[3], "(Agent amiga-reviewer: 2 tool uses.)") != 0);
+
+    /* the skill: its body (no frontmatter) and the arguments came back */
+    t = sb.body[5];
+    CHECK(strstr(t, "Launching skill: startup-check") != 0);
+    CHECK(strstr(t, "SKILL-BODY-SENTINEL: read S/Startup-Sequence first.") != 0);
+    CHECK(strstr(t, "ARGUMENTS: S:") != 0);
+    CHECK(strstr(t, "description: Checks") == 0);
+
+    /* the custom command through SlashCommand, expanded */
+    t = sb.body[7];
+    CHECK(strstr(t, "Launching command /greet. Carry out these instructions:\\n\\nSay hello to Amiga.") != 0);
+    CHECK_INT(r.n_cmds_run, 1);
+    /* its allowed-tools let the Bash call in the same turn run without a question */
+    CHECK(strstr(sb.body[8], "Command running in background with ID: bash_1") != 0);
+    CHECK_INT(r.n_rule_allow, 1);
+    CHECK(r.turn_tools == 0);       /* only for that turn */
+
+    /* /tasks: the background shell in the one list */
+    CHECK(strstr(cs.sent.p, "bash_1") != 0);
+    CHECK(strstr(cs.sent.p, "Background shells") != 0);
+
+    /* the status line: the command ran on its events, its row under the box */
+    CHECK_STR(r.status_text, "WIRED-STATUS");
+    CHECK(r.n_status_runs >= 2);
+    row = cs_find("WIRED-STATUS");
+    box = cs_find("\342\225\260");
+    CHECK(row >= 0 && box >= 0 && row == box + 1);
+    CHECK(row >= 0 && strstr(cs_row(row + 1), "ctx:") != 0);
+    /* its schedule: nothing changed, no run; a mode change (Shift+Tab) runs it;
+     * an event within 300 ms waits for the next tick; refreshInterval */
+    {
+        long n0 = r.n_status_runs;
+        cs.clock += 1000;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0);
+        r.tools.perm.mode = PERM_ACCEPT;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0 + 1);
+        pol_status_event(&r);
+        CHECK_INT(r.n_status_runs, n0 + 1);
+        CHECK_INT(r.status_due, 1);
+        cs.clock += 400;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0 + 2);
+        r.cfg.status_refresh_s = 2;
+        cs.clock += 1000;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0 + 2);
+        cs.clock += 1500;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0 + 3);
+    }
+    repl_free(&r);
+    cs_close();
+    strcpy(p, home);
+    strcat(p, "/agents/user-helper.md");
+    remove(p);
+}
+
+/* WebFetch on the screen: under "Fetch(url)" Claude Code's line "Received
+ * N bytes (200 OK)" -- the small model's answer goes to Claude only (it
+ * used to be drawn there, cut at the window's edge: rig run 2026-10-05) */
+static void test_fetch_screen(void)
+{
+    static const char *keys[] = { "fetch the page\r", "\r", "/exit\r", 0 };
+    static cl_repl r;
+    cl_net web;
+    int row;
+    stub_reset();
+    add_stream("tool_fetch.sse");
+    add_stream("fetch_answer.sse");
+    add_stream("tool_final.sse");
+    wp2_open_n = 0;
+    cs_open(80, 24, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    web = net;
+    web.open = wp_open;
+    web.send = wp_send;
+    web.recv = wp_recv;
+    web.close = wp_close;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    r.tools.web = &web;
+    free(r.tools.json);
+    r.tools.json = 0;
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, 3);
+    CHECK_INT(sb.nreq, 3);
+    CHECK_INT(wp2_open_n, 1);
+    /* Claude got the answer; the screen got the summary */
+    CHECK(sb.nreq < 3 || strstr(sb.body[2], "The page is the UP-Term test page.") != 0);
+    row = cs_find(SB " Fetch(http://127.0.0.1:8080/page)");
+    CHECK(row >= 0);
+    CHECK_STR(row >= 0 ? cs_row(row + 1) : "", "  " SC "  Received 47 bytes (200 OK)");
+    CHECK(cs_find("The page is the UP-Term test page.") < 0);
+    repl_free(&r);
+    cs_close();
+}
+
+/* ---- A4 gaps (thoughts/shared/plans/2026-10-05-a4-gaps-progress.md) ---- */
+
+static int count_of(const char *s, const char *what)
+{
+    int k = 0;
+    long l = (long)strlen(what);
+    while (s && (s = strstr(s, what)) != 0) {
+        k++;
+        s += l;
+    }
+    return k;
+}
+
+static int exists(const char *p)
+{
+    struct stat st;
+    return stat(p, &st) == 0;
+}
+
+/* Phase 1: the command line and print mode (G1-G17), through print_run */
+static void test_gaps_print(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    static const char uuid[] = "550e8400-e29b-41d4-a716-446655440000";
+    char file[400], args[700], types[400], root[600], home[600], p[700];
+    jv v, m, x;
+    cl_cli c;
+
+    /* G1 --resume FILE.jsonl: the transcript's path in place of an id */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    cl_copy(file, r.sess.file, sizeof(file));
+    repl_free(&r);
+    CHECK(exists(file));
+    setup(&r, none);
+    add_stream("tool_final.sse");
+    strcpy(args, "-p -r ");
+    strcat(args, file);
+    strcat(args, " and again");
+    CHECK_INT(run_print(&r, args, 0), 0);
+    CHECK(sb.nreq == 1 && messages_of(sb.body[0], &m) == 0 && json_count(m) == 3);
+    CHECK_STR(r.sess.file, file);
+    repl_free(&r);
+
+    /* G2 --session-id: a UUID as the id, the file named by its first group */
+    setup(&r, none);
+    add_stream("text.sse");
+    strcpy(args, "-p --output-format json --session-id ");
+    strcat(args, uuid);
+    strcat(args, " hello");
+    CHECK_INT(run_print(&r, args, 0), 0);
+    CHECK_STR(r.sess.id, uuid);
+    CHECK(strstr(r.sess.file, "/550e8400.jsonl") != 0 && exists(r.sess.file));
+    CHECK(result_of(&v) == 0 && json_get(v, "session_id", &x) && json_streq(x, uuid));
+    repl_free(&r);
+    setup(&r, none);                    /* in use now */
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, args), 0);
+    CHECK_INT(cli_apply(&c, &r), -1);
+    CHECK(strstr(c.err, "is already in use") != 0);
+    cli_free(&c);
+    repl_free(&r);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "-p --session-id 1234 hi"), -1);
+    CHECK_STR(c.err, "Error: Invalid session ID. Must be a valid UUID.");
+    cli_free(&c);
+    setup(&r, none);                    /* resumed by the whole UUID */
+    add_stream("tool_final.sse");
+    strcpy(args, "-p -r ");
+    strcat(args, uuid);
+    strcat(args, " more");
+    CHECK_INT(run_print(&r, args, 0), 0);
+    CHECK(sb.nreq == 1 && messages_of(sb.body[0], &m) == 0 && json_count(m) == 3);
+    repl_free(&r);
+
+    /* G3 --json-schema: the StructuredOutput tool with the schema as its
+     * input; a wrong answer is sent back, the right one is the result's
+     * structured_output */
+    xput(dir, "schema.json",
+         "{\"type\":\"object\",\"properties\":{\"functions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},"
+         "\"required\":[\"functions\"],\"additionalProperties\":false}");
+    setup(&r, none);
+    add_answer("toolu_S1", "StructuredOutput", "{\"functions\":3}", 0);
+    add_answer("toolu_S2", "StructuredOutput", "{\"functions\":[\"main\",\"loop\"]}", 0);
+    add_answer(0, 0, 0, "Done.");
+    CHECK_INT(run_print(&r, "-p --output-format json --json-schema schema.json list them", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 0 && strstr(sb.body[0], "{\"name\":\"StructuredOutput\",") != 0 &&
+          strstr(sb.body[0], "\"input_schema\":{\"type\":\"object\",\"properties\":{\"functions\"") != 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "does not match the required schema") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "Structured output provided successfully") != 0);
+    CHECK(result_of(&v) == 0 && json_get(v, "subtype", &x) && json_streq(x, "success"));
+    CHECK(json_get(v, "structured_output", &x) && json_get(x, "functions", &m) && json_count(m) == 2);
+    repl_free(&r);
+    /* never called: reminded three times, then Claude Code's error subtype */
+    setup(&r, none);
+    add_answer(0, 0, 0, "No tool.");
+    add_answer(0, 0, 0, "Still no tool.");
+    add_answer(0, 0, 0, "No.");
+    add_answer(0, 0, 0, "Never.");
+    CHECK_INT(run_print(&r, "-p --output-format json --json-schema schema.json list them", 0), 10);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "You have not called the StructuredOutput tool") != 0);
+    CHECK(result_of(&v) == 0 && json_get(v, "subtype", &x) && json_streq(x, "error_max_structured_output_retries"));
+    repl_free(&r);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--json-schema schema.json hi"), -1);  /* print mode only */
+    cli_free(&c);
+
+    /* G4 --replay-user-messages and G5 an image block: echoed, and sent
+     * to the API as it came (base64 untouched) */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --input-format stream-json --output-format stream-json --verbose --replay-user-messages",
+                        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":"
+                        "\"what is this\"},{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":"
+                        "\"image/png\",\"data\":\"iVBORw0KGgo=\"}}]}}\n"),
+              0);
+    CHECK_INT(json_lines(outp(), types, sizeof(types)), 4);
+    CHECK_STR(types, "system user assistant result");
+    CHECK(strstr(outp(), "\"isReplay\":true") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":"
+                                             "\"image/png\",\"data\":\"iVBORw0KGgo=\"}}") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"what is this\"") != 0);
+    repl_free(&r);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "-p --replay-user-messages hi"), -1);
+    CHECK(strstr(c.err, "--replay-user-messages requires") != 0);
+    cli_free(&c);
+
+    /* G6 a subagent's messages, parent_tool_use_id its Task call: its
+     * prompt, its tool_use and tool_result; its text only with
+     * --forward-subagent-text */
+    setup(&r, none);
+    add_answer("toolu_T1", "Task",
+               "{\"description\":\"Look\",\"prompt\":\"Find the startup\",\"subagent_type\":\"general-purpose\"}", 0);
+    add_answer("toolu_R1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "SUB-REPORT");
+    add_answer(0, 0, 0, "All done.");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose look", 0), 0);
+    CHECK_INT(sb.nreq, 4);
+    json_lines(outp(), types, sizeof(types));
+    CHECK_STR(types, "system assistant user assistant user user assistant result");
+    CHECK_INT(count_of(outp(), "\"parent_tool_use_id\":\"toolu_T1\""), 3);
+    CHECK(strstr(outp(), "\"text\":\"Find the startup\"") != 0);
+    CHECK(strstr(outp(), "\"text\":\"SUB-REPORT\"") == 0);
+    repl_free(&r);
+    setup(&r, none);
+    add_answer("toolu_T1", "Task",
+               "{\"description\":\"Look\",\"prompt\":\"Find the startup\",\"subagent_type\":\"general-purpose\"}", 0);
+    add_answer("toolu_R1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "SUB-REPORT");
+    add_answer(0, 0, 0, "All done.");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose --forward-subagent-text look", 0), 0);
+    json_lines(outp(), types, sizeof(types));
+    CHECK_STR(types, "system assistant user assistant user assistant user assistant result");
+    CHECK_INT(count_of(outp(), "\"parent_tool_use_id\":\"toolu_T1\""), 4);
+    CHECK(strstr(outp(), "\"text\":\"SUB-REPORT\"") != 0);
+    repl_free(&r);
+
+    /* G7 --bare / G8 --safe-mode: no CLAUDE.md, no hooks, no commands; bare
+     * also only Bash, read and edit tools. SessionStart runs at the first
+     * line, once the flags are known. */
+    strcpy(root, dir);
+    strcat(root, "/gaps");
+    mkdir(root, 0700);
+    strcpy(home, dir);
+    strcat(home, "/home");
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, "CLAUDE.md", "GAPS-MEMORY-MARK\n");
+    strcpy(p, "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"touch ");
+    strcat(p, root);
+    strcat(p, "/hook-ran\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    xput(root, ".claude/commands/hi.md", "Say HI-CMD.\n");
+    xput(root, ".claude/skills/sk/SKILL.md", "---\ndescription: A skill\n---\nSKILL-TYPED $0 in ${CLAUDE_SKILL_DIR}\n");
+    strcpy(p, root);
+    strcat(p, "/hook-ran");
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --bare hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "GAPS-MEMORY-MARK") == 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"Task\",") == 0 &&
+          strstr(sb.body[0], "{\"name\":\"WebFetch\",") == 0 && strstr(sb.body[0], "web_search") == 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"Bash\",") != 0 &&
+          strstr(sb.body[0], "{\"name\":\"Edit\",") != 0);
+    CHECK_INT(defs_count(&r.defs, DEF_COMMAND), 0);
+    CHECK(!exists(p));
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "GAPS-MEMORY-MARK") != 0);
+    CHECK(exists(p));                   /* SessionStart ran, after the flags */
+    remove(p);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --safe-mode hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "GAPS-MEMORY-MARK") == 0 && strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
+    CHECK(!exists(p));
+    repl_free(&r);
+    remove(p);
+
+    /* S19 a skill typed as /name, expanded (X2: $0, ${CLAUDE_SKILL_DIR}); G11
+     * --disable-slash-commands: neither commands nor skills */
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p /sk ARG1", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "SKILL-TYPED ARG1 in ") != 0 && strstr(sb.body[0], "/skills/sk") != 0);
+    CHECK_INT((int)r.n_skills_run, 1);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    CHECK_INT(run_print(&r, "-p --disable-slash-commands /hi", 0), 0);
+    CHECK_INT(sb.nreq, 0);
+    CHECK(strstr(outp(), "Unknown command") != 0);
+    repl_free(&r);
+    remove(p);
+
+    /* G9 --agents (a file) with X4 keys, G10 --append-subagent-system-prompt,
+     * X5 CLAUDE.md for the subagent; maxTurns 1 stops it after one round */
+    xput(root, "agents.json",
+         "{\"rev\":{\"description\":\"Reviews\",\"prompt\":\"REV-PROMPT\",\"tools\":[\"Read\",\"Bash\"],"
+         "\"disallowedTools\":[\"Bash\"],\"maxTurns\":1}}");
+    setup_in(&r, none, root);
+    add_answer("toolu_T2", "Task", "{\"description\":\"Review\",\"prompt\":\"Review it\",\"subagent_type\":\"rev\"}",
+               0);
+    add_answer("toolu_R2", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "Parent done.");
+    CHECK_INT(run_print(&r, "-p --agents agents.json --append-subagent-system-prompt SUB-APPEND go", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "REV-PROMPT") != 0 && strstr(sb.body[1], "SUB-APPEND") != 0 &&
+          strstr(sb.body[1], "GAPS-MEMORY-MARK") != 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "{\"name\":\"Read\",") != 0 && strstr(sb.body[1], "{\"name\":\"Bash\",") == 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "did not finish within 1 rounds") != 0);
+    repl_free(&r);
+    setup_in(&r, none, root);           /* --agent with an --agents agent: the conversation as it */
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --agents agents.json --agent rev hi", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"system\":[{\"type\":\"text\",\"text\":\"REV-PROMPT") != 0);
+    repl_free(&r);
+    remove(p);
+
+    /* G12 --setting-sources: the user's file left out */
+    xput(home, "settings.json", "{\"model\":\"haiku\"}");
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --setting-sources project,local hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"model\":\"claude-opus-5-5\"") != 0);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"model\":\"claude-haiku-4-5") != 0);
+    repl_free(&r);
+    strcpy(p, home);
+    strcat(p, "/settings.json");
+    remove(p);
+
+    /* G13 --betas in the anthropic-beta header; G14 --autocompact */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --betas x-test-1 x-test-2 --autocompact 500k hello", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.head[0], "anthropic-beta: ") != 0 && strstr(sb.head[0], "x-test-1,x-test-2") != 0);
+    CHECK_INT((int)(repl_compact_at(&r) / 1000), 500);
+    repl_line(&r, "/autocompact 300k");     /* saved for later sessions */
+    CHECK_INT((int)(repl_compact_at(&r) / 1000), 300);
+    CHECK(has("home/settings.json", "\"autoCompactWindow\": 300000"));
+    repl_line(&r, "/autocompact auto");
+    CHECK_INT((int)(repl_compact_at(&r) / 1000), 920);
+    repl_free(&r);
+    remove(p);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--autocompact 50 hi"), -1);
+    cli_free(&c);
+
+    /* G16 --permission-prompts none: the denial tells Claude not to retry */
+    setup(&r, none);
+    add_answer("toolu_B1", "Bash", "{\"command\":\"makedir NEWDIR\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p --permission-prompts none run it", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "Do not retry it") != 0);
+    repl_free(&r);
+    setup(&r, none);
+    add_answer("toolu_B1", "Bash", "{\"command\":\"makedir NEWDIR\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p run it", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "no one can approve it") != 0);
+    repl_free(&r);
+
+    /* G17 system/api_retry before the second attempt */
+    setup(&r, none);
+    add_raw("HTTP/1.1 529 Overloaded\r\nContent-Type: application/json\r\nContent-Length: 75\r\n\r\n"
+            "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}");
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose hello", 0), 0);
+    json_lines(outp(), types, sizeof(types));
+    CHECK_STR(types, "system system assistant result");
+    CHECK(strstr(outp(), "{\"type\":\"system\",\"subtype\":\"api_retry\",\"attempt\":1,\"max_retries\":4,"
+                         "\"retry_delay_ms\":2000,\"error_status\":529,\"error\":\"overloaded\",") != 0);
+    repl_free(&r);
+}
+
+/* G18 --verbose at the screen: a result unfolded in place (else three
+ * lines and "+N lines (ctrl+o to expand)") */
+static void gaps_verbose_run(int verbose)
+{
+    static const char *keys[] = { "show lines\r", "\r", "/exit\r", 0 };
+    static cl_repl r;
+    stub_reset();
+    add_answer("toolu_V1", "Bash", "{\"command\":\"printf 'L1\\\\nL2\\\\nL3\\\\nL4\\\\nL5\\\\nLAST-LINE\\\\n'\"}", 0);
+    add_answer(0, 0, 0, "Six lines.");
+    cs_open(80, 30, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    r.verbose = verbose;
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(sb.nreq, 2);
+    if (verbose) {
+        CHECK(cs_find("     LAST-LINE") >= 0);
+        CHECK(cs_find("ctrl+o to expand") < 0);
+    } else {
+        CHECK(cs_find("     L4") < 0);
+        CHECK(cs_find("+3 lines (ctrl+o to expand)") >= 0);
+    }
+    repl_free(&r);
+    cs_close();
+}
+
+static void test_gaps_verbose(void)
+{
+    cl_cli c;
+    gaps_verbose_run(0);
+    gaps_verbose_run(2);
+    /* the flag sets it, both syntaxes; --debug-file implies debug */
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--verbose --debug-file RAM:x.log"), 0);
+    CHECK(c.verbose && c.debug);
+    CHECK_STR(c.debug_file, "RAM:x.log");
+    cli_free(&c);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "VERBOSE DEBUG-FILE=RAM:y.log BARE SAFE-MODE SETTING-SOURCES=user AUTOCOMPACT=1M"), 0);
+    CHECK(c.verbose && c.debug && c.bare && c.safe && c.has_sources && c.sources == 1u);
+    CHECK_INT((int)(c.autocompact / 1000), 1000);
+    cli_free(&c);
+}
+
+/* Phase 2: the slash commands (S1-S19), typed through repl_line */
+static void test_gaps_commands(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char p[700], root[600];
+    const char *sc;
+    jv m, e, x;
+    jit it;
+    int n0;
+
+    setup(&r, none);
+    /* S1 Claude Code's commands that cannot be here say why; /help lists them */
+    repl_line(&r, "/mcp");
+    repl_line(&r, "/bug");
+    repl_line(&r, "/install-github-app");
+    repl_line(&r, "/help");
+    sc = cn.screen.p ? cn.screen.p : "";
+    CHECK(strstr(sc, "/mcp is not available on the Amiga: it MCP servers run as Node or Python processes") != 0);
+    CHECK(strstr(sc, "/bug is not available on the Amiga: it reports go to Anthropic's feedback service") != 0);
+    CHECK(strstr(sc, "/install-github-app is not available on the Amiga") != 0);
+    CHECK(strstr(sc, "Not on the Amiga (type one to see why): /mcp /plugin") != 0);
+    CHECK(strstr(sc, "Unknown command") == 0);
+    CHECK_INT(sb.nreq, 0);
+
+    /* a conversation first */
+    add_stream("text.sse");
+    repl_line(&r, "hello");
+    CHECK_INT(r.conv.n, 2);
+    /* S2 /btw: asked with the conversation, answered, not kept */
+    add_answer(0, 0, 0, "SIDE-ANSWER");
+    repl_line(&r, "/btw what was that?");
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"text\":\"what was that?\"") != 0 &&
+          strstr(sb.body[1], "Hello from the Amiga!") != 0 && strstr(sb.body[1], "\"tool_choice\"") != 0);
+    CHECK(strstr(cn.screen.p, "SIDE-ANSWER") != 0);
+    CHECK_INT(r.conv.n, 2);
+    /* S6 /recap */
+    add_answer(0, 0, 0, "We said hello.");
+    repl_line(&r, "/recap");
+    CHECK(strstr(cn.screen.p, "Recap: We said hello.") != 0);
+    CHECK_INT(r.conv.n, 2);
+    /* S15 /rename without a name: Claude names it */
+    add_answer(0, 0, 0, "Amiga Greeting Chat\n");
+    repl_line(&r, "/rename");
+    CHECK_STR(r.sess.title, "Amiga Greeting Chat");
+    /* S3 /copy: the last answer to the clipboard (sys_posix keeps it) */
+    repl_line(&r, "/copy");
+    CHECK(strstr(sp.clip, "Hello from the Amiga!") == sp.clip);
+    CHECK_INT((int)r.n_copies, 1);
+    repl_line(&r, "/copy 2");
+    CHECK(strstr(cn.screen.p, "No answer of Claude's to copy yet.") != 0);
+    /* S9 /usage, /cost and /stats: the totals, per model, the time */
+    repl_line(&r, "/stats");
+    CHECK(strstr(cn.screen.p, "  claude-opus-5-5: ") != 0 && strstr(cn.screen.p, "Time: ") != 0);
+    /* S12 /effort auto: no effort sent (the model's own); status */
+    repl_line(&r, "/effort auto");
+    repl_line(&r, "/effort status");
+    CHECK(strstr(cn.screen.p, "Effort: auto") != 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "again");
+    CHECK(sb.nreq == 5 && strstr(sb.body[4], "\"effort\"") == 0 && strstr(sb.body[0], "\"effort\"") != 0);
+    repl_line(&r, "/effort medium");
+    /* S16 /rewind N summarize: the last prompt on becomes a summary */
+    n0 = r.conv.n;
+    CHECK_INT(n0, 4);
+    add_answer(0, 0, 0, "SUMMARY-OF-THE-REST");
+    repl_line(&r, "/rewind 1 summarize");
+    CHECK_INT(r.conv.n, 3);
+    CHECK(r.conv.n == 3 && strstr(r.conv.m[2].json, "SUMMARY-OF-THE-REST") != 0 && r.conv.m[2].user);
+    /* ... and "up to here": what came before the prompt becomes one */
+    add_answer(0, 0, 0, "ok2");
+    repl_line(&r, "and then");
+    add_answer(0, 0, 0, "SUMMARY-BEFORE");
+    repl_line(&r, "/rewind 1 summarize-up");
+    CHECK(r.conv.n == 2 && strstr(r.conv.m[0].json, "SUMMARY-BEFORE") != 0 && strstr(r.conv.m[0].json, "and then") != 0);
+    /* S10 /clear NAME: the old conversation named, the totals back to nothing */
+    repl_line(&r, "/clear old talk");
+    CHECK_INT(r.conv.n, 0);
+    CHECK_INT((int)r.conv.requests, 0);
+    {
+        cl_sess_info l[8];
+        int k, n = sess_list(&r.sess, l, 8), hit = 0;
+        for (k = 0; k < n; k++)
+            hit |= !strcmp(l[k].title, "old talk");
+        CHECK(hit);
+    }
+    /* S5 /plan, S18 /debug, S7 /release-notes */
+    repl_line(&r, "/plan");
+    CHECK_INT(r.tools.perm.mode, PERM_PLAN);
+    r.tools.perm.mode = PERM_DEFAULT;
+    repl_line(&r, "/debug");
+    CHECK_INT(r.debug, 1);
+    r.debug = 0;
+    repl_line(&r, "/release-notes");
+    CHECK(strstr(cn.screen.p, "A4 gaps: --json-schema") != 0);
+    /* S11 /config key=value */
+    repl_line(&r, "/config verbose=true effortLevel=low");
+    CHECK_INT(r.verbose, 1);
+    CHECK_STR(r.effort, "low");
+    CHECK(has("home/settings.json", "\"verbose\": true"));
+    repl_line(&r, "/config verbose=false effortLevel=medium");
+    /* S17 /statusline: the statusline-setup agent asked to do it; clear */
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/statusline the model and the directory");
+    CHECK(strstr(sb.body[sb.nreq - 1], "subagent_type statusline-setup") != 0 &&
+          strstr(sb.body[sb.nreq - 1], "What I want: the model and the directory") != 0);
+    repl_line(&r, "/statusline command echo X");
+    CHECK_STR(r.cfg.status_cmd, "echo X");
+    repl_line(&r, "/statusline clear");
+    CHECK_STR(r.cfg.status_cmd, "");
+    CHECK(!has("home/settings.json", "statusLine"));
+    repl_free(&r);
+
+    /* S4 /diff: the files Claude changed, from the checkpoints */
+    strcpy(root, dir);
+    strcat(root, "/gapsdiff");
+    mkdir(root, 0700);
+    xput(root, "a.txt", "one\ntwo\nthree\n");
+    setup_in(&r, none, root);
+    repl_line(&r, "/diff");
+    CHECK(strstr(cn.screen.p, "No file changed by Claude in this session") != 0);
+    strcpy(p, root);
+    strcat(p, "/a.txt");
+    cp_turn(&r.cp, 0);
+    CHECK_INT(cp_before_write(&r.cp, p), 0);
+    xput(root, "a.txt", "one\nTWO\nthree\n");
+    repl_line(&r, "/diff");
+    CHECK(strstr(cn.screen.p, "Changed: ") != 0 && strstr(cn.screen.p, "- two\n+ TWO\n") != 0);
+    /* S8 /reload-skills: a skill added on disk is there */
+    xput(root, ".claude/skills/new-one/SKILL.md", "---\ndescription: New\nargument-hint: [file]\n---\nX\n");
+    repl_line(&r, "/reload-skills");
+    CHECK(strstr(cn.screen.p, "Skills: 9 (+1)") != 0);
+    /* S19 the skill is in the menu, with its argument hint */
+    repl_line(&r, "/help");
+    CHECK(strstr(cn.screen.p, "/new-one") != 0 && strstr(cn.screen.p, "New  [file]") != 0);
+    repl_free(&r);
+    (void)m;
+    (void)e;
+    (void)x;
+    (void)it;
+}
+
+/* S14 /permissions as menus at the screen: allow Read, kept locally */
+static void test_gaps_perm_menu(void)
+{
+    static const char *keys[] = { "/permissions\r", "1", "2", "1", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    strcpy(root, dir);
+    strcat(root, "/gapsperm");
+    mkdir(root, 0700);
+    stub_reset();
+    cs_open(80, 30, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, 5);
+    CHECK(has("gapsperm/.claude/settings.local.json", "\"Read\""));
+    CHECK(cs_find("Allow: Read") >= 0 && cs_find("saved in") >= 0);
+    repl_free(&r);
+    cs_close();
+}
+
+/* An ask rule's question (policy.c, through repl_ask) takes Tab's comment
+ * as the tools' own question does: Yes with one -> the comment follows the
+ * call's result; No with one -> Claude is told it and the turn goes on. */
+static void rule_note_run(const char *const *keys, int nkeys, const char *want)
+{
+    static cl_repl r;
+    char root[600];
+    strcpy(root, dir);
+    strcat(root, "/rulenote");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, ".claude/settings.json", "{\"permissions\":{\"ask\":[\"Read\"]}}");
+    stub_reset();
+    add_stream("tool_use.sse");
+    add_stream("text.sse");
+    cs_open(80, 30, (const char **)keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, nkeys);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq < 2 || strstr(sb.body[1], want) != 0);
+    repl_free(&r);
+    cs_close();
+}
+
+static void test_rule_ask_comment(void)
+{
+    static const char *yes[] = { "show me the startup\r", "\t", "keep it short", "\r", "/exit\r", 0 };
+    static const char *no[] = { "show me the startup\r", "\033[B", "\033[B", "\t", "not that file", "\r",
+                                "/exit\r", 0 };
+    rule_note_run(yes, 5, "SetPatch QUIET\\n\\n\\nThe user allowed this call with a comment: keep it short");
+    rule_note_run(no, 7, "\"content\":\"the user declined this tool call and said: not that file\",\"is_error\":true");
+}
+
+/* Phase 3: skills, agents, styles, the status line (X1 X3 X4 X6 X8 X9) */
+static void test_gaps_ext(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char root[600], p[700], *b = 0;
+    long bn = 0;
+    strcpy(root, dir);
+    strcat(root, "/gapsext");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, ".claude/skills/echoer/SKILL.md",
+         "---\ndescription: Echoes things\nwhen_to_use: WHEN-ECHO-NEEDED\nallowed-tools: Bash(printf *)\n---\n"
+         "ECHO-SKILL for $0\n");
+    xput(root, ".claude/skills/forked/SKILL.md",
+         "---\ndescription: Looks in a subagent\ncontext: fork\nagent: Explore\n---\nFORKED-SKILL-TEXT $ARGUMENTS\n");
+    xput(root, ".claude/skills/pre/SKILL.md", "---\ndescription: Preloaded\n---\nPRELOADED-SKILL-BODY\n");
+
+    /* X1: the Skill tool expands the skill (arguments put in) and its
+     * allowed-tools let Bash(echo *) run in print mode, where nobody can
+     * say yes; X3: when_to_use in the Skill tool's list */
+    setup_in(&r, none, root);
+    add_answer("toolu_K1", "Skill", "{\"skill\":\"echoer\",\"args\":\"ARGX\"}", 0);
+    add_answer("toolu_B2", "Bash", "{\"command\":\"printf SKILL-RAN\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Skill -- use the skill", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 0 && strstr(sb.body[0], "- echoer: Echoes things WHEN-ECHO-NEEDED") != 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "ECHO-SKILL for ARGX") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "SKILL-RAN") != 0);
+    CHECK_INT((int)r.n_skills_run, 1);
+    repl_free(&r);
+    setup_in(&r, none, root);               /* without the skill: denied */
+    add_answer("toolu_B2", "Bash", "{\"command\":\"printf SKILL-RAN\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p just run it", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "no one can approve it") != 0);
+    repl_free(&r);
+
+    /* X1 context: fork: the skill runs in a subagent (its agent's prompt),
+     * the report is the result */
+    setup_in(&r, none, root);
+    add_answer("toolu_K2", "Skill", "{\"skill\":\"forked\",\"args\":\"S:\"}", 0);
+    add_answer(0, 0, 0, "FORK-REPORT");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Skill -- fork it", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "file search specialist") != 0 &&
+          strstr(sb.body[1], "FORKED-SKILL-TEXT S:") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "FORK-REPORT") != 0);
+    repl_free(&r);
+
+    /* X4 an agent's effort, preloaded skills, permissionMode plan (its Edit refused) */
+    xput(root, "ag.json", "{\"pl\":{\"description\":\"Plans\",\"prompt\":\"PL-PROMPT\",\"effort\":\"low\","
+                          "\"skills\":[\"pre\"],\"permissionMode\":\"plan\"}}");
+    xput(root, "f.txt", "x\n");
+    setup_in(&r, none, root);
+    add_answer("toolu_T3", "Task", "{\"description\":\"P\",\"prompt\":\"Plan it\",\"subagent_type\":\"pl\"}", 0);
+    add_answer("toolu_W3", "Write", "{\"file_path\":\"new.txt\",\"content\":\"y\"}", 0);
+    add_answer(0, 0, 0, "planned");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --agents ag.json plan", 0), 0);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "\"effort\":\"low\"") != 0 &&
+          strstr(sb.body[1], "# Skill: pre") != 0 && strstr(sb.body[1], "PRELOADED-SKILL-BODY") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "plan mode") != 0);
+    strcpy(p, root);
+    strcat(p, "/new.txt");
+    CHECK(!exists(p));
+    CHECK_INT(r.tools.perm.mode, PERM_DEFAULT);     /* the parent's own mode untouched */
+    repl_free(&r);
+
+    /* X6 a deny rule naming Agent covers the Task tool */
+    xput(root, "deny.json", "{\"permissions\":{\"deny\":[\"Agent(pl)\"]}}");
+    setup_in(&r, none, root);
+    add_answer("toolu_T4", "Task", "{\"description\":\"P\",\"prompt\":\"Plan it\",\"subagent_type\":\"pl\"}", 0);
+    add_answer(0, 0, 0, "denied then");
+    CHECK_INT(run_print(&r, "-p --agents ag.json --settings deny.json plan", 0), 0);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"is_error\":true") != 0);
+    repl_free(&r);
+
+    /* X8 the built-in styles Proactive and Concise; a custom style without
+     * keep-coding-instructions drops the way-of-working part; the setting
+     * is case-sensitive */
+    xput(root, ".claude/output-styles/plain.md", "---\nname: Plain\ndescription: x\n---\nPLAIN-STYLE\n");
+    xput(root, ".claude/output-styles/keep.md",
+         "---\nname: Keep\ndescription: x\nkeep-coding-instructions: true\n---\nKEEP-STYLE\n");
+    setup_in(&r, none, root);
+    repl_line(&r, "/output-style Concise");
+    CHECK(strstr(r.system, "Lead every response with the result") != 0);
+    repl_line(&r, "/output-style Proactive");
+    CHECK(strstr(r.system, "Start on a task as soon as it is given") != 0);
+    repl_line(&r, "/output-style Plain");
+    CHECK(strstr(r.system, "PLAIN-STYLE") != 0 && strstr(r.system, "todo list with TodoWrite") == 0);
+    repl_line(&r, "/output-style Keep");
+    CHECK(strstr(r.system, "KEEP-STYLE") != 0 && strstr(r.system, "todo list with TodoWrite") != 0);
+    repl_free(&r);
+    xput(root, ".claude/settings.local.json", "{\"outputStyle\":\"concise\"}");
+    setup_in(&r, none, root);
+    CHECK_STR(r.style, "");                 /* "concise" is no style's exact name: Default */
+    repl_free(&r);
+    xput(root, ".claude/settings.local.json", "{\"outputStyle\":\"Concise\"}");
+    setup_in(&r, none, root);
+    CHECK_STR(r.style, "Concise");
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.local.json");
+    remove(p);
+
+    /* X9 the status line's JSON: Claude Code's fields */
+    strcpy(p, "cat > ");
+    strcat(p, root);
+    strcat(p, "/status-in.json\necho OK\n");
+    xput(root, "st.sh", p);
+    strcpy(p, "{\"statusLine\":{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/st.sh\"}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    sess_rename(&r.sess, "My Session");
+    pol_statusline(&r);
+    CHECK_STR(r.status_text, "OK");
+    strcpy(p, root);
+    strcat(p, "/status-in.json");
+    CHECK_INT(sys.read(sys.u, p, 100000, &b, &bn), 0);
+    if (b) {
+        CHECK(strstr(b, "\"model\":{\"id\":\"claude-opus-5-5\",\"display_name\":\"Opus 5.5\"}") != 0);
+        CHECK(strstr(b, "\"total_lines_added\":0") != 0 && strstr(b, "\"total_api_duration_ms\":") != 0);
+        CHECK(strstr(b, "\"context_window\":{\"context_window_size\":1000000,") != 0);
+        CHECK(strstr(b, "\"used_percentage\":0") != 0 && strstr(b, "\"remaining_percentage\":100") != 0);
+        CHECK(strstr(b, "\"effort\":{\"level\":\"medium\"}") != 0 && strstr(b, "\"thinking\":{\"enabled\":true}") != 0);
+        CHECK(strstr(b, "\"session_name\":\"My Session\"") != 0 && strstr(b, "\"version\":") != 0);
+        CHECK(strstr(b, "\"project_dir\":") != 0);
+    }
+    free(b);
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+}
+
+/* a hook's settings line: event, matcher, an "if" rule (0 none), the script */
+static void hook_json(jw *w, const char *event, const char *matcher, const char *cond, const char *root,
+                      const char *script)
+{
+    if (w->n && w->p[w->n - 1] != '{')
+        jw_raw(w, ",", 1);
+    jw_strz(w, event);
+    jw_rawz(w, ":[{\"matcher\":");
+    jw_strz(w, matcher);
+    jw_rawz(w, ",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(w, root);
+    jw_raw(w, "/", 1);
+    jw_rawz(w, script);
+    jw_raw(w, "\"", 1);
+    if (cond) {
+        jw_rawz(w, ",\"if\":");
+        jw_strz(w, cond);
+    }
+    jw_rawz(w, "}]}]");
+}
+
+static int marker(const char *root, const char *name)
+{
+    char p[700];
+    strcpy(p, root);
+    strcat(p, "/");
+    strcat(p, name);
+    return exists(p);
+}
+
+/* Phase 4: hooks (H1-H4), Bash (H6 H7), Read media (H8), memory (M1-M4) */
+static void test_gaps_hooks(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char root[600], p[900], m[700];
+    jw w;
+    strcpy(root, dir);
+    strcat(root, "/gapshk");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    /* the scripts: each leaves a marker; some answer with JSON or exit 2 */
+#define SCRIPT(name, body)                                                                                         \
+    do {                                                                                                           \
+        strcpy(m, "cd ");                                                                                          \
+        strcat(m, root);                                                                                           \
+        strcat(m, "\n");                                                                                           \
+        strcat(m, body);                                                                                           \
+        xput(root, name, m);                                                                                       \
+    } while (0)
+    SCRIPT("fail.sh", "cat > m-failure.json\n");
+    SCRIPT("perm.sh", "cat > m-perm.json\necho '{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\","
+                      "\"decision\":{\"behavior\":\"allow\"}}}'\n");
+    SCRIPT("sub.sh", "cat > m-substart.json\necho '{\"hookSpecificOutput\":{\"hookEventName\":\"SubagentStart\","
+                     "\"additionalContext\":\"SUBSTART-CONTEXT\"}}'\n");
+    SCRIPT("cwd.sh", "cat > m-cwd.json\n");
+    SCRIPT("dir.sh", "cat > m-dir.json\n");
+    SCRIPT("exp.sh", "cat > m-exp.json\necho no expansion today\nexit 2\n");
+    SCRIPT("ifblock.sh", "cat > m-if.json\necho blocked by if\nexit 2\n");
+    SCRIPT("pre.sh", "echo '{\"systemMessage\":\"SYSTEM-MESSAGE-SHOWN\",\"hookSpecificOutput\":{\"hookEventName\":"
+                     "\"PreToolUse\",\"additionalContext\":\"PRE-CONTEXT\",\"updatedInput\":{\"file_path\":"
+                     "\"S/Startup-Sequence\"}}}'\n");
+    SCRIPT("pd.sh", "echo \"$CLAUDE_PROJECT_DIR\" > m-pd.txt\n");
+    SCRIPT("end.sh", "cat > m-end.json\n");
+    SCRIPT("stopf.sh", "cat > m-stopfail.json\n");
+#undef SCRIPT
+    jw_init(&w);
+    jw_rawz(&w, "{\"hooks\":{");
+    hook_json(&w, "PostToolUseFailure", "Read", 0, root, "fail.sh");
+    hook_json(&w, "PermissionRequest", "Bash", 0, root, "perm.sh");
+    hook_json(&w, "SubagentStart", "general-purpose", 0, root, "sub.sh");
+    hook_json(&w, "CwdChanged", "", 0, root, "cwd.sh");
+    hook_json(&w, "DirectoryAdded", "slash_command", 0, root, "dir.sh");
+    hook_json(&w, "UserPromptExpansion", "hi", 0, root, "exp.sh");
+    hook_json(&w, "SessionEnd", "prompt_input_exit", 0, root, "end.sh");
+    hook_json(&w, "StopFailure", "invalid_request", 0, root, "stopf.sh");
+    jw_rawz(&w, ",\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&w, root);
+    jw_rawz(&w, "/ifblock.sh\",\"if\":\"Bash(makedir *)\"}]},{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\","
+                "\"command\":\"sh ");
+    jw_rawz(&w, root);
+    jw_rawz(&w, "/pre.sh\"},{\"type\":\"command\",\"command\":\"sh ${CLAUDE_PROJECT_DIR}/pd.sh\"}]}]");
+    jw_rawz(&w, "}}");
+    xput(root, ".claude/settings.json", w.p);
+    jw_free(&w);
+    xput(root, ".claude/commands/hi.md", "Say HI.\n");
+
+    /* H1 PostToolUseFailure on a failed Read (not PostToolUse); H3 the
+     * PreToolUse answer: updatedInput (the Read reads another file),
+     * additionalContext for Claude, systemMessage for the user; H4
+     * CLAUDE_PROJECT_DIR set and substituted */
+    setup_in(&r, none, root);
+    add_answer("toolu_R9", "Read", "{\"file_path\":\"nothere.txt\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "read it");
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "SetPatch QUIET") != 0);       /* the updated input's file */
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "PRE-CONTEXT") != 0);
+    CHECK(strstr(cn.screen.p, "SYSTEM-MESSAGE-SHOWN") != 0);
+    CHECK(!marker(root, "m-failure.json"));                              /* it did not fail after all */
+    strcpy(p, root);
+    strcat(p, "/m-pd.txt");
+    {
+        char *b = 0;
+        long bn = 0;
+        CHECK_INT(sys.read(sys.u, p, 1000, &b, &bn), 0);
+        CHECK(b && strstr(b, "/gapshk") != 0);     /* the project's directory (canonical) */
+        free(b);
+    }
+    repl_free(&r);
+    /* ... a Read the hook does not rewrite (Glob is no Read): PostToolUseFailure on the failure */
+    xput(root, ".claude/settings.local.json", "{\"hooks\":{\"PostToolUseFailure\":[{\"matcher\":\"Grep\",\"hooks\":"
+                                               "[{\"type\":\"command\",\"command\":\"echo FAILURE-SEEN\"}]}]}}");
+    setup_in(&r, none, root);
+    add_answer("toolu_G9", "Grep", "{\"pattern\":\"(\",\"path\":\"nowhere\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "grep it");
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"is_error\":true") != 0);
+    CHECK_INT((int)r.hooks.n_run, 1);
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.local.json");
+    remove(p);
+
+    /* H2 "if": the PreToolUse hook runs for Bash(makedir *) only, and blocks it;
+     * H1 PermissionRequest: its allow answers the question in print mode */
+    setup_in(&r, none, root);
+    add_answer("toolu_B5", "Bash", "{\"command\":\"makedir NEWDIR\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p make it", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "blocked by if") != 0);
+    CHECK(marker(root, "m-if.json"));
+    repl_free(&r);
+    setup_in(&r, none, root);
+    strcpy(p, "{\"command\":\"touch ");
+    strcat(p, root);
+    strcat(p, "/NEWFILE\"}");
+    add_answer("toolu_B6", "Bash", p, 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p touch it", 0), 0);
+    CHECK(marker(root, "m-perm.json"));         /* asked the hook, not nobody */
+    CHECK(marker(root, "NEWFILE"));             /* and it ran */
+    repl_free(&r);
+
+    /* H1 SubagentStart: its additionalContext in the agent's system prompt */
+    setup_in(&r, none, root);
+    add_answer("toolu_T9", "Task", "{\"description\":\"x\",\"prompt\":\"Look\",\"subagent_type\":\"general-purpose\"}",
+               0);
+    add_answer(0, 0, 0, "agent done");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "SUBSTART-CONTEXT") != 0);
+    CHECK(marker(root, "m-substart.json"));
+    repl_free(&r);
+
+    /* H1 CwdChanged (/cd), DirectoryAdded (/add-dir), UserPromptExpansion
+     * (exit 2 blocks /hi), StopFailure (an API error), SessionEnd's reason */
+    setup_in(&r, none, root);
+    repl_line(&r, "/add-dir S");
+    CHECK(marker(root, "m-dir.json"));
+    repl_line(&r, "/hi");
+    CHECK_INT(sb.nreq, 0);
+    CHECK(strstr(cn.screen.p, "A UserPromptExpansion hook blocked /hi") != 0);
+    add_raw("HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 82\r\n\r\n"
+            "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad request!\"}}");
+    repl_line(&r, "fail please");
+    CHECK(marker(root, "m-stopfail.json"));
+    repl_line(&r, "/exit");
+    repl_free(&r);
+    CHECK(marker(root, "m-end.json"));
+    setup_in(&r, none, root);
+    repl_line(&r, "/cd S");
+    CHECK(marker(root, "m-cwd.json"));
+    repl_free(&r);
+
+    /* H8 Read of an image and a PDF: base64 blocks for Claude */
+    xput(root, "pic.png", "\211PNG\r\n\032\nIHDRxxxx");
+    xput(root, "doc.pdf", "%PDF-1.4 x");
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+    setup_in(&r, none, root);
+    add_answer("toolu_P1", "Read", "{\"file_path\":\"pic.png\"}", 0);
+    add_answer("toolu_P2", "Read", "{\"file_path\":\"doc.pdf\"}", 0);
+    add_answer(0, 0, 0, "a picture and a document");
+    CHECK_INT(run_print(&r, "-p look", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[1], "\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\","
+                                             "\"media_type\":\"image/png\",\"data\":\"iVBORw0KGgpJSERSeHh4eA==\"}}]") != 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "{\"type\":\"document\",\"source\":{\"type\":\"base64\",\"media_type\":"
+                                             "\"application/pdf\",\"data\":\"JVBERi0xLjQgeA==\"}") != 0);
+    repl_free(&r);
+
+    /* H6 Bash's default time, from BASH_DEFAULT_TIMEOUT_MS */
+    setup_in(&r, none, root);
+    CHECK_INT(r.tools.timeout_s, 120);
+    repl_free(&r);
+    setenv("BASH_DEFAULT_TIMEOUT_MS", "30000", 1);
+    setenv("BASH_MAX_TIMEOUT_MS", "90000", 1);
+    setup_in(&r, none, root);
+    CHECK_INT(r.tools.timeout_s, 30);
+    CHECK_INT((int)r.tools.max_timeout_ms, 90000);
+    repl_free(&r);
+    unsetenv("BASH_DEFAULT_TIMEOUT_MS");
+    unsetenv("BASH_MAX_TIMEOUT_MS");
+
+    /* M1-M4: HTML comments out, rules (always / by paths:), claudeMdExcludes, auto memory */
+    xput(root, "CLAUDE.md", "VISIBLE-MEMORY\n<!-- HIDDEN-COMMENT\nstill hidden -->\nAFTER-COMMENT\n");
+    xput(root, "CLAUDE.local.md", "LOCAL-EXCLUDED\n");
+    xput(root, ".claude/rules/always.md", "RULE-ALWAYS\n");
+    xput(root, ".claude/rules/sub/scoped.md", "---\npaths:\n  - \"S/*\"\n---\nRULE-FOR-S\n");
+    strcpy(p, "{\"claudeMdExcludes\":[\"**/CLAUDE.local.md\"]}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    CHECK(strstr(r.system, "VISIBLE-MEMORY") != 0 && strstr(r.system, "AFTER-COMMENT") != 0);
+    CHECK(strstr(r.system, "HIDDEN-COMMENT") == 0 && strstr(r.system, "still hidden") == 0);
+    CHECK(strstr(r.system, "RULE-ALWAYS") != 0 && strstr(r.system, "RULE-FOR-S") == 0);
+    CHECK(strstr(r.system, "LOCAL-EXCLUDED") == 0);
+    CHECK(strstr(r.system, "# Auto memory") != 0);
+    add_answer("toolu_R7", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "read the startup");
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "RULE-FOR-S") != 0);
+    /* auto memory: MEMORY.md read at the start; Claude writes in its directory unasked */
+    cl_copy(m, r.mem.auto_dir, sizeof(m));
+    repl_free(&r);
+    {
+        char mp[800];
+        strcpy(mp, m);
+        strcat(mp, "/MEMORY.md");
+        CHECK(m[0] != 0);
+        mkdir(m, 0700);
+        {
+            FILE *f = fopen(mp, "wb");
+            if (f) {
+                fputs("- AUTO-MEMORY-FACT\n", f);
+                fclose(f);
+            }
+        }
+        setup_in(&r, none, root);
+        CHECK(strstr(r.system, "AUTO-MEMORY-FACT") != 0);
+        strcpy(p, "{\"file_path\":\"/");    /* AmigaDOS: a leading / is the start directory's parent: <dir> */
+        strcat(p, m + strlen(dir) + 1);
+        strcat(p, "/topic.md\",\"content\":\"x\"}");
+        add_answer("toolu_W7", "Write", p, 0);
+        add_answer(0, 0, 0, "saved");
+        CHECK_INT(run_print(&r, "-p remember", 0), 0);
+        strcpy(mp, m);
+        strcat(mp, "/topic.md");
+        CHECK(exists(mp));
+        repl_free(&r);
+    }
+    xput(root, ".claude/settings.json", "{\"autoMemoryEnabled\":false}");
+    setup_in(&r, none, root);
+    CHECK(strstr(r.system, "# Auto memory") == 0 && strstr(r.system, "AUTO-MEMORY-FACT") == 0);
+    repl_free(&r);
+
+    /* H4 PreCompact can block; H3 continue:false on PostToolUse ends the turn after the round */
+    xput(root, "noc.sh", "echo not now\nexit 2\n");
+    xput(root, "halt.sh", "echo '{\"continue\":false,\"stopReason\":\"HALTED-BY-HOOK\"}'\n");
+    strcpy(p, "{\"hooks\":{\"PreCompact\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/noc.sh\"}]}],\"PostToolUse\":[{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/halt.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    add_answer("toolu_R8", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "never asked for");
+    repl_line(&r, "read and halt");
+    CHECK_INT(sb.nreq, 1);                  /* no request after the round */
+    CHECK(strstr(cn.screen.p, "HALTED-BY-HOOK") != 0);
+    repl_line(&r, "/compact");
+    CHECK_INT(sb.nreq, 1);
+    CHECK(strstr(cn.screen.p, "A PreCompact hook blocked the compaction: not now") != 0);
+    repl_line(&r, "/memory auto off");
+    CHECK(has("home/settings.json", "\"autoMemoryEnabled\": false"));
+    repl_free(&r);
+    strcpy(p, dir);
+    strcat(p, "/home/settings.json");
+    cfg_write_key(&sys, p, "autoMemoryEnabled", 0);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+}
+
+/* a file's time set seconds before now (cleanupPeriodDays, ConfigChange) */
+static void age_file(const char *p, long secs)
+{
+    struct utimbuf u;
+    struct stat st;
+    if (stat(p, &st))
+        return;
+    u.actime = st.st_atime - secs;
+    u.modtime = st.st_mtime - secs;
+    utime(p, &u);
+}
+
+/* Phase 5: the rest the Amiga can do (P1-P8) */
+static void test_gaps_more(void)
+{
+    static const char *none[] = { 0 };
+    static const char *yes[] = { "y", 0 };
+    static const char *proj[] = { "p", 0 };
+    static cl_repl r;
+    char root[600], p[900], m[700], home0[600];
+    const char *env;
+    cl_cli c;
+    cl_net web;
+    strcpy(root, dir);
+    strcat(root, "/gapsmore");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+#define SCRIPT(name, body)                                                                                         \
+    do {                                                                                                           \
+        strcpy(m, "cd ");                                                                                          \
+        strcat(m, root);                                                                                           \
+        strcat(m, "\n");                                                                                           \
+        strcat(m, body);                                                                                           \
+        xput(root, name, m);                                                                                       \
+    } while (0)
+#define HOOKS(json)                                                                                                \
+    do {                                                                                                           \
+        xput(root, ".claude/settings.json", json);                                                                 \
+    } while (0)
+    SCRIPT("mark.sh", "cat > m-$1.json\n");
+    SCRIPT("envf.sh", "echo 'export GAPS_ENV_VAR=from-hook' >> \"$CLAUDE_ENV_FILE\"\n");
+    SCRIPT("batch.sh", "echo '{\"decision\":\"block\",\"reason\":\"BATCH-STOP\"}'\n");
+    SCRIPT("nohaiku.sh", "echo no haiku here\nexit 2\n");
+
+    /* P2 a prompt hook on Stop: the small model says not yet, Claude goes on with its reason */
+    strcpy(p, "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"prompt\",\"prompt\":\"Done? $ARGUMENTS\"}]}]}}");
+    HOOKS(p);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "first answer");
+    add_answer(0, 0, 0, "{\"ok\": false, \"reason\": \"KEEP-GOING\"}");
+    add_answer(0, 0, 0, "second answer");
+    add_answer(0, 0, 0, "{\"ok\": true}");
+    repl_line(&r, "work");
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "claude-haiku-4-5") != 0 && strstr(sb.body[1], "Done? {") != 0 &&
+          strstr(sb.body[1], "hook_event_name") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "KEEP-GOING") != 0);
+    repl_free(&r);
+
+    /* P2 once, matchers (a plain list, a regular expression), CLAUDE_ENV_FILE,
+     * InstructionsLoaded, Notification's types, PostToolBatch */
+    xput(root, "CLAUDE.md", "MEM\n");
+    strcpy(p, "{\"hooks\":{\"PostToolUse\":[{\"matcher\":\"Grep, Read\",\"hooks\":[{\"type\":\"command\",\"once\":true,"
+              "\"statusMessage\":\"Checking\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh once\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/envf.sh\"}]}],\"InstructionsLoaded\":[{\"matcher\":\"session_start\",\"hooks\":[{\"type\":\"command\","
+              "\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh instr\"}]}],\"Notification\":[{\"matcher\":\"^idle_\",\"hooks\":[{\"type\":\"command\","
+              "\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh idle\"}]}],\"PostToolBatch\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/batch.sh\"}]}]}}");
+    HOOKS(p);
+    setup_in(&r, none, root);
+    add_answer("toolu_A1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "never");
+    repl_line(&r, "read twice");
+    CHECK_INT(sb.nreq, 1);                          /* PostToolBatch blocked the next request */
+    CHECK(marker(root, "m-once.json") && marker(root, "m-instr.json"));
+    env = getenv("GAPS_ENV_VAR");
+    CHECK(env && !strcmp(env, "from-hook"));
+    add_answer("toolu_A2", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "x");
+    strcpy(p, root);
+    strcat(p, "/m-once.json");
+    remove(p);
+    repl_line(&r, "again");
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "BATCH-STOP") != 0);     /* Claude was told why */
+    CHECK(!marker(root, "m-once.json"));            /* once: not again */
+    r.idle_from = 1;
+    cn.clock += 70000;
+    pol_status_tick(&r);
+    CHECK(marker(root, "m-idle.json"));
+    repl_free(&r);
+    unsetenv("GAPS_ENV_VAR");
+
+    /* P2 Pre/PostModelSwitch; ConfigChange reads a changed file again */
+    strcpy(p, "{\"hooks\":{\"PreModelSwitch\":[{\"matcher\":\".*haiku.*\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/nohaiku.sh\"}]}],\"PostModelSwitch\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh postswitch\"}]}]}}");
+    HOOKS(p);
+    setup_in(&r, none, root);
+    repl_line(&r, "/model haiku");
+    CHECK_STR(r.model, "claude-opus-5-5");
+    CHECK(strstr(cn.screen.p, "A PreModelSwitch hook blocked the switch: no haiku here") != 0);
+    repl_line(&r, "/model sonnet");
+    CHECK_STR(r.model, "claude-sonnet-5-5");
+    CHECK(marker(root, "m-postswitch.json"));
+    unset_home_model();
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    age_file(p, 100);
+    r.cfg_mtime[CFG_PROJECT] = 0;               /* as if read before the file changed */
+    repl_line(&r, "/status");
+    CHECK(strstr(cn.screen.p, "Settings changed on disk, read again:") != 0);
+    repl_free(&r);
+    remove(p);
+
+    /* P2 Setup (--init-only) and --include-hook-events; P6 --prompt-suggestions,
+     * --exclude-dynamic-system-prompt-sections */
+    strcpy(p, "{\"hooks\":{\"Setup\":[{\"matcher\":\"init\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh setup\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"echo STARTED\"}]}]}}");
+    HOOKS(p);
+    setup_in(&r, none, root);
+    CHECK_INT(run_print(&r, "-p --init-only", 0), 0);
+    CHECK(marker(root, "m-setup.json"));
+    CHECK_INT(sb.nreq, 0);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "hello there");
+    add_answer(0, 0, 0, "what next?");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose --include-hook-events --prompt-suggestions "
+                            "--exclude-dynamic-system-prompt-sections hi",
+                        0),
+              0);
+    CHECK(strstr(outp(), "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_name\":\"echo STARTED\"") != 0);
+    CHECK(strstr(outp(), "\"subtype\":\"hook_response\"") != 0 && strstr(outp(), "STARTED") != 0);
+    CHECK(strstr(outp(), "{\"type\":\"prompt_suggestion\",\"suggestion\":\"what next?\"") != 0);
+    CHECK(sb.nreq >= 1 && strstr(sb.body[0], "\"system\":") != 0);
+    if (sb.nreq >= 1) {
+        const char *msgs = strstr(sb.body[0], "\"messages\":");
+        CHECK(msgs && strstr(msgs, "# Auto memory") != 0);       /* with the first prompt ... */
+        CHECK(strstr(r.system, "# Auto memory") == 0);            /* ... not in the system prompt */
+    }
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+
+    /* P3 "don't ask again in this project" kept as a rule; ~/ in rules; apiKeyHelper,
+     * availableModels, bashOutputMaxChars, cleanupPeriodDays */
+    setup_in(&r, proj, root);
+    add_answer("toolu_B7", "Bash", "{\"command\":\"makedir NEWDIR\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "make a dir");
+    CHECK(has("gapsmore/.claude/settings.local.json", "\"Bash(makedir *)\""));
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.local.json");
+    remove(p);
+    strcpy(p, "{\"apiKeyHelper\":\"echo sk-from-helper-1234\",\"availableModels\":[\"sonnet\"],"
+              "\"bashOutputMaxChars\":100,\"cleanupPeriodDays\":5,\"permissions\":{\"deny\":[\"Read(~/secret.txt)\"]}}");
+    HOOKS(p);
+    xput(root, "secret.txt", "SECRET\n");
+    {
+        char real[700];
+        const char *h0 = getenv("HOME");
+        cl_copy(home0, h0 ? h0 : "", sizeof(home0));
+        if (realpath(root, real))
+            setenv("HOME", real, 1);    /* the start directory as the tools see it (canonical) */
+    }
+    setup_in(&r, none, root);
+    CHECK(r.key && !strcmp(r.key, "sk-from-helper-1234"));
+    {
+        /* an old session file of this project: gone at the start (the first line) */
+        char old[700];
+        strcpy(old, r.sess.dir);
+        strcat(old, "/0000beef.jsonl");
+        mkdir(r.sess.dir, 0700);
+        xput(r.sess.dir, "0000beef.jsonl", "{}\n");
+        age_file(old, 10L * 86400);
+        repl_line(&r, "/model opus");
+        CHECK_STR(r.model, "claude-opus-5-5");
+        CHECK(strstr(cn.screen.p, "Not in availableModels") != 0);
+        add_answer("toolu_B8", "Bash", "{\"command\":\"printf '%0200d' 0\"}", 0);
+        add_answer("toolu_R8", "Read", "{\"file_path\":\"secret.txt\"}", 0);
+        add_answer(0, 0, 0, "ok");
+        CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+        CHECK(!exists(old));
+        CHECK(sb.nreq >= 2 && strstr(sb.body[1], "(output cut at 100 characters)") != 0);
+        CHECK(sb.nreq >= 3 && strstr(sb.body[2], "has been denied by the rule Read(~/secret.txt)") != 0);
+    }
+    repl_free(&r);
+    if (home0[0])
+        setenv("HOME", home0, 1);
+    else
+        unsetenv("HOME");
+    remove(p);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+
+    /* P4 AGENTS.md only where no CLAUDE.md is; CLAUDE.local.md in a subdirectory */
+    xput(root, "AGENTS.md", "ROOT-AGENTS\n");
+    xput(root, "sub/AGENTS.md", "SUB-AGENTS\n");
+    xput(root, "sub/CLAUDE.local.md", "SUB-LOCAL\n");
+    xput(root, "sub/f.txt", "x\n");
+    setup_in(&r, none, root);
+    CHECK(strstr(r.system, "ROOT-AGENTS") == 0);    /* CLAUDE.md is there */
+    add_answer("toolu_R9", "Read", "{\"file_path\":\"sub/f.txt\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "read sub");
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "SUB-AGENTS") != 0 && strstr(sb.body[1], "SUB-LOCAL") != 0);
+    /* P5 the built-in agents */
+    CHECK(tools_agent(&r.tools, "claude-code-guide") != 0 && tools_agent(&r.tools, "claude") != 0);
+    /* P1 a bundled skill typed; P7 /skills with a filter, /skill-doctor, /context's categories */
+    add_answer(0, 0, 0, "simplified");
+    repl_line(&r, "/simplify");
+    CHECK(strstr(sb.body[sb.nreq - 1], "Review the code changed in this session for cleanup") != 0);
+    repl_line(&r, "/skills run");
+    CHECK(strstr(cn.screen.p, "  run (built-in)") != 0 && strstr(cn.screen.p, "  insights (built-in)") == 0);
+    repl_line(&r, "/skill-doctor");
+    CHECK(strstr(cn.screen.p, "Listing in all: ~") != 0);
+    repl_line(&r, "/context");
+    CHECK(strstr(cn.screen.p, "By category (estimated):") != 0 && strstr(cn.screen.p, "  Memory files") != 0);
+    /* P7 /goal: a small model judges after the turn; not met: one more turn */
+    add_answer(0, 0, 0, "half done");
+    add_answer(0, 0, 0, "NOT MET: the second half is missing");
+    add_answer(0, 0, 0, "all done");
+    add_answer(0, 0, 0, "MET");
+    {
+        int n0 = sb.nreq;
+        repl_line(&r, "/goal both halves are done");
+        CHECK_INT(sb.nreq - n0, 4);
+        CHECK(strstr(sb.body[n0 + 2], "Keep working toward the goal: both halves are done") != 0);
+        CHECK_STR(r.goal, "");
+    }
+    repl_free(&r);
+
+    /* P8 Bash: a cd persists */
+    setup_in(&r, none, root);
+    add_answer("toolu_C1", "Bash", "{\"command\":\"cd S\"}", 0);
+    add_answer("toolu_C2", "Bash", "{\"command\":\"pwd\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "gapsmore/S\\n") != 0);
+    repl_free(&r);
+
+    /* P8 WebFetch: the same page within 15 minutes is not fetched again */
+    setup_in(&r, none, root);
+    web.u = 0;
+    web.open = wp_open;
+    web.send = wp_send;
+    web.recv = wp_recv;
+    web.close = wp_close;
+    web.err = s_err;
+    r.tools.web = &web;
+    free(r.tools.json);
+    r.tools.json = 0;
+    wp2_open_n = 0;
+    add_answer("toolu_F1", "WebFetch", "{\"url\":\"http://127.0.0.1:8080/page\",\"prompt\":\"what is it\"}", 0);
+    add_answer(0, 0, 0, "a page");
+    add_answer("toolu_F2", "WebFetch", "{\"url\":\"http://127.0.0.1:8080/page\",\"prompt\":\"and again\"}", 0);
+    add_answer(0, 0, 0, "the same page");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools WebFetch -- fetch twice", 0), 0);
+    CHECK_INT(wp2_open_n, 1);
+    CHECK_INT((int)r.tools.n_fetch_cached, 1);
+    repl_free(&r);
+
+    /* P6 the subcommands: doctor, auth status, purge */
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "doctor"), 0);
+    CHECK_INT(c.sub, SUB_DOCTOR);
+    cli_free(&c);
+    setup_in(&r, none, root);
+    cli_init(&c);
+    cli_parse_line(&c, "auth status");
+    {
+        cl_pout po;
+        jw_reset(&pc.out);
+        po.u = 0;
+        po.out = pc_out;
+        po.err = 0;
+        po.in = 0;
+        CHECK_INT(print_subcommand(&r, &c, &po), 0);
+        CHECK(strstr(outp(), "{\"loggedIn\":true,\"authMethod\":\"api_key\"") != 0);
+        cli_free(&c);
+        cli_init(&c);
+        cli_parse_line(&c, "doctor");
+        jw_reset(&pc.out);
+        print_subcommand(&r, &c, &po);
+        CHECK(strstr(outp(), "[OK]    System") != 0);
+    }
+    cli_free(&c);
+    repl_free(&r);
+    setup_in(&r, yes, root);
+    cli_init(&c);
+    cli_parse_line(&c, "purge");
+    {
+        cl_pout po;
+        po.u = 0;
+        po.out = pc_out;
+        po.err = 0;
+        po.in = 0;
+        mkdir(r.sess.dir, 0700);
+        xput(r.sess.dir, "1234abcd.jsonl", "{}\n");
+        jw_reset(&pc.out);
+        CHECK_INT(print_subcommand(&r, &c, &po), 0);
+        CHECK(strstr(outp(), "Removed ") != 0);
+        strcpy(p, r.sess.dir);
+        strcat(p, "/1234abcd.jsonl");
+        CHECK(!exists(p));
+    }
+    cli_free(&c);
+    repl_free(&r);
+    /* P5 initialPrompt: an --agents agent starts the session with it */
+    xput(root, "ip.json", "{\"ip\":{\"description\":\"x\",\"prompt\":\"IP\",\"initialPrompt\":\"START-WITH-THIS\"}}");
+    setup_in(&r, none, root);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--agents ip.json --agent ip"), 0);
+    CHECK_INT(cli_apply(&c, &r), 0);
+    CHECK(c.prompt && !strcmp(c.prompt, "START-WITH-THIS"));
+    cli_free(&c);
+    repl_free(&r);
+
+    /* SessionStart's own answers: sessionTitle, initialUserMessage (print
+     * mode's first turn), reloadSkills; terminalSequence (only the allowed
+     * escapes reach the console); PostToolUse's updatedToolOutput */
+    {
+        char s1[600];
+        strcpy(s1, "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"sessionTitle\":\"HOOK-TITLE\","
+                   "\"initialUserMessage\":\"FIRST-FROM-HOOK\",\"reloadSkills\":true},"
+                   "\"terminalSequence\":\"\\\\u001b]0;HOOK-SEQ\\\\u0007\"}'\n");
+        xput(root, "ss.sh", s1);
+        xput(root, "out.sh", "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\","
+                             "\"updatedToolOutput\":\"REPLACED-OUTPUT\"}}'\n");
+        xput(root, "bad.sh", "echo '{\"terminalSequence\":\"\\\\u001b[2J\"}'\n");
+    }
+    strcpy(p, "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/ss.sh\"}]}],\"PostToolUse\":[{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/out.sh\"},{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/bad.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "first done");
+    add_answer("toolu_R5", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p and then", 0), 0);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 0 && strstr(sb.body[0], "FIRST-FROM-HOOK") != 0 && strstr(sb.body[0], "and then") == 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "\"text\":\"and then\"") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "REPLACED-OUTPUT") != 0 && strstr(sb.body[2], "SetPatch QUIET") == 0);
+    CHECK_STR(r.sess.title, "HOOK-TITLE");
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "hello");
+    repl_line(&r, "hi");
+    CHECK(strstr(cn.screen.p, "\033]0;HOOK-SEQ\007") != 0);
+    CHECK(strstr(cn.screen.p, "\033[2J") == 0);      /* not on the allowlist: ignored */
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+
+    /* skills that wait (paths:, a nested .claude/skills) until a matching file is
+     * worked on; a typed skill's effort; a command in a subdirectory is dir:name */
+    xput(root, ".claude/skills/pathsk/SKILL.md", "---\ndescription: For S files\npaths: \"S/*\"\n---\nPATHSK\n");
+    xput(root, "sub2/.claude/skills/nest/SKILL.md", "---\ndescription: Nested one\n---\nNEST\n");
+    xput(root, "sub2/x.txt", "x\n");
+    xput(root, ".claude/skills/eff/SKILL.md", "---\ndescription: Low effort\neffort: low\n---\nEFF-SKILL\n");
+    xput(root, ".claude/commands/grp/cmd.md", "GROUPED-COMMAND\n");
+    setup_in(&r, none, root);
+    add_answer("toolu_S7", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer("toolu_S8", "Read", "{\"file_path\":\"sub2/x.txt\"}", 0);
+    add_answer(0, 0, 0, "done");
+    repl_line(&r, "look around");
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq > 0 && strstr(sb.body[0], "- pathsk:") == 0 && strstr(sb.body[0], "- nest:") == 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "- pathsk: For S files") != 0 && strstr(sb.body[1], "- nest:") == 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "- nest: Nested one") != 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/eff");
+    CHECK(strstr(sb.body[sb.nreq - 1], "EFF-SKILL") != 0 && strstr(sb.body[sb.nreq - 1], "\"effort\":\"low\"") != 0);
+    CHECK_STR(r.effort, "medium");
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/grp:cmd");
+    CHECK(strstr(sb.body[sb.nreq - 1], "GROUPED-COMMAND") != 0);
+    repl_free(&r);
+
+    /* P9 checkpoints kept across a restart: a file Claude wrote in one run
+     * is taken back by /rewind after a resume in the next */
+    {
+        char id[40], f[700];
+        strcpy(f, root);
+        strcat(f, "/made-by-claude.txt");
+        setup_in(&r, none, root);
+        add_answer("toolu_W9", "Write", "{\"file_path\":\"made-by-claude.txt\",\"content\":\"new\\n\"}", 0);
+        add_answer(0, 0, 0, "written");
+        CHECK_INT(run_print(&r, "-p --allowedTools Write -- write it", 0), 0);
+        CHECK(exists(f));
+        cl_copy(id, r.sess.id, sizeof(id));
+        repl_free(&r);
+        setup_in(&r, none, root);
+        CHECK_INT(repl_resume_session(&r, id), 0);
+        CHECK_INT(r.cp.n, 1);
+        repl_line(&r, "/rewind 1 code");
+        CHECK(!exists(f));
+        repl_free(&r);
+    }
+#undef SCRIPT
+#undef HOOKS
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -1371,6 +3798,17 @@ void suite_claude_repl(void)
     test_wp2();
     test_wp3();
     test_wp3_commands();
+    test_wp4();
+    test_wiring();
+    test_fetch_screen();
+    test_gaps_print();
+    test_gaps_verbose();
+    test_gaps_commands();
+    test_gaps_perm_menu();
+    test_rule_ask_comment();
+    test_gaps_ext();
+    test_gaps_hooks();
+    test_gaps_more();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);

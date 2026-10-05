@@ -23,7 +23,7 @@ static const cl_agent builtins[] = {
       "You are an agent for C:Claude, Claude Code on an Amiga. Given the user's message, use the tools "
       "available to complete the task. Do what has been asked; nothing more, nothing less. When you have "
       "completed the task, respond with a concise report of what was done and any key findings: the "
-      "caller relays it to the user, so it needs only the essentials, with full AmigaOS paths." },
+      "caller relays it to the user, so it needs only the essentials, with full AmigaOS paths.", 0, 0, 0, 0, 0, 0 },
     { "Explore",
       "Fast agent for exploring a code base: finding files by patterns, searching code for keywords, "
       "answering questions about the code. Say how thorough it should be: quick, medium or very thorough.",
@@ -31,7 +31,7 @@ static const cl_agent builtins[] = {
       "You are a file search specialist for C:Claude on an Amiga. You search and read; you never create, "
       "change or delete files, and run only commands that change nothing. Use Glob for names, Grep for "
       "contents, Read for a known file. Search broadly, then narrow down. Report what you found, with "
-      "full AmigaOS paths, concisely: the caller sees only your final message." },
+      "full AmigaOS paths, concisely: the caller sees only your final message.", 0, 0, 0, 0, 0, 0 },
     { "Plan",
       "Software architect agent for designing implementation plans: returns a step-by-step plan, the "
       "critical files and the trade-offs.",
@@ -39,7 +39,29 @@ static const cl_agent builtins[] = {
       "You are a software architect for C:Claude on an Amiga. Explore the code (Glob, Grep, Read; "
       "commands that change nothing), understand the requirement, and design an implementation plan: "
       "the steps in order, the files to change, the risks and the trade-offs. You change no file. "
-      "Your final message is the plan." }
+      "Your final message is the plan.", 0, 0, 0, 0, 0, 0 },
+    { "statusline-setup",
+      "Use this agent to configure the user's C:Claude status line setting.",
+      "Read, Edit, Write", "sonnet",
+      "You configure C:Claude's status line: the statusLine key of the user's settings file, "
+      "{\"type\": \"command\", \"command\": \"...\"}. The command is an AmigaDOS command line; it gets "
+      "a JSON object on its standard input (the request lists its fields) and what it prints is the "
+      "status line. Read the settings file first (it may not exist yet), keep every other key, write "
+      "valid JSON. For more than one command line, write a small script beside the settings and point "
+      "the command at it. Report the command you set.", 0, 0, 0, 0, 0, 0 },
+    { "claude-code-guide",
+      "Use this agent for questions about Claude Code or C:Claude: features, hooks, slash commands, settings, "
+      "skills, subagents, the command line.",
+      "Glob, Grep, Read, WebFetch, WebSearch", "haiku",
+      "You answer questions about Claude Code and C:Claude, its AmigaOS port. Claude Code's documentation is at "
+      "https://code.claude.com/docs/en/ (a page's Markdown: add .md, for example "
+      "https://code.claude.com/docs/en/hooks.md); fetch the pages that answer the question with WebFetch. "
+      "Say where C:Claude differs when you know (paths ENVARC:Claude for ~/.claude, AmigaDOS commands). Answer "
+      "concisely with the page you used.", 0, 0, 0, 0, 0, 0 },
+    { "claude",
+      "Catch-all for any task that does not fit a more specific agent.", 0, 0,
+      "You are an agent for C:Claude, Claude Code on an Amiga. Do the task you are given with the tools you "
+      "have, completely, and report what you did and found concisely, with full AmigaOS paths.", 0, 0, 0, 0, 0, 0 }
 };
 #define NBUILTIN ((int)(sizeof(builtins) / sizeof(builtins[0])))
 
@@ -49,20 +71,35 @@ static int provided(const cl_tools *t, const cl_agent **list)
     return t->ext && t->ext->agents ? t->ext->agents(t->ext->u, list) : 0;
 }
 
+/* a built-in hidden by a provided agent of its name (Claude Code: the
+ * built-ins come last) */
+static int hidden(const cl_agent *l, int n, int b)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (cl_strieq(l[i].name, builtins[b].name))
+            return 1;
+    return 0;
+}
+
 int agent_count(const cl_tools *t)
 {
     const cl_agent *l;
-    return NBUILTIN + provided(t, &l);
+    int n = provided(t, &l), b, k = n;
+    for (b = 0; b < NBUILTIN; b++)
+        k += !hidden(l, n, b);
+    return k;
 }
 
+/* the built-ins (those not hidden) first, then the provided ones */
 const cl_agent *agent_get(const cl_tools *t, int i)
 {
     const cl_agent *l;
-    int n = provided(t, &l);
-    if (i < NBUILTIN)
-        return &builtins[i];
-    i -= NBUILTIN;
-    return i < n ? &l[i] : 0;
+    int n = provided(t, &l), b;
+    for (b = 0; b < NBUILTIN; b++)
+        if (!hidden(l, n, b) && i-- == 0)
+            return &builtins[b];
+    return i >= 0 && i < n ? &l[i] : 0;
 }
 
 const char *agent_model_id(const char *a)
@@ -78,6 +115,17 @@ const char *agent_model_id(const char *a)
     if (!strcmp(a, "fable"))
         return "claude-fable-5-1";
     return a;
+}
+
+const cl_agent *tools_agent(const cl_tools *t, const char *name)
+{
+    int i, n = agent_count(t);
+    for (i = 0; i < n; i++) {
+        const cl_agent *x = agent_get(t, i);
+        if (x && cl_strieq(x->name, name))
+            return x;
+    }
+    return 0;
 }
 
 /* the text blocks of an answer, appended to w */
@@ -137,8 +185,7 @@ int agent_query(cl_tools *t, const char *model, const char *system, const char *
     return 0;
 }
 
-/* the tools a definition names ("Read, Grep" or "Bash(git:*) Read"): a bit set */
-static unsigned long tool_mask(const char *list)
+unsigned long tools_mask(const char *list)
 {
     unsigned long m = 0;
     const char *p = list;
@@ -159,6 +206,8 @@ static unsigned long tool_mask(const char *list)
                 p++;
         }
         id = tools_id(name);
+        if (id < 0 && !strcmp(name, "Agent"))
+            id = T_TASK;            /* Claude Code's newer name of Task */
         if (id >= 0)
             m |= 1ul << id;
         else if (!strcmp(name, "WebSearch"))
@@ -174,17 +223,73 @@ static const char env_note2[] =
     ". The machine is slow and has little memory: prefer targeted searches and reads. Your final message "
     "is all the caller sees: make it a complete, concise report.";
 
-void agent_task(cl_tools *t, jw *out, const char *id, jv in)
+/* the memory files' text goes to every agent but the read-only search
+ * ones (Claude Code: Explore and Plan skip CLAUDE.md) */
+static int gets_memory(const cl_agent *a)
 {
-    char *desc = tl_prop(in, "description", 0), *prompt = tl_prop(in, "prompt", 0);
-    char *type = tl_prop(in, "subagent_type", 0), *alias = tl_prop(in, "model", 0);
-    const cl_agent *a = 0;
+    return strcmp(a->name, "Explore") && strcmp(a->name, "Plan");
+}
+
+/* a subagent's message to the observer (stream-json) */
+static void forward(cl_tools *t, const char *id, int user, const char *json, long n, cl_stream *st)
+{
+    if (t->agent_msg)
+        t->agent_msg(t->u, id, user, json, n, st);
+}
+
+/* the user message that starts a subagent: its prompt as a text block */
+static void forward_prompt(cl_tools *t, const char *id, const char *prompt, long pn)
+{
+    jw w;
+    if (!t->agent_msg)
+        return;
+    jw_init(&w);
+    jw_rawz(&w, "[{\"type\":\"text\",\"text\":");
+    jw_str(&w, prompt, pn);
+    jw_rawz(&w, "}]");
+    if (!w.oom)
+        forward(t, id, 1, w.p, w.n, 0);
+    jw_free(&w);
+}
+
+/* The agent's skills (frontmatter "skills"): each one's text appended to
+ * its system prompt, as Claude Code preloads them. */
+static void preload(cl_tools *t, const cl_agent *a, jw *sys)
+{
+    const char *p = a->skills;
+    while (p && *p) {
+        char name[64], err[160], agent[64];
+        int k = 0, fork = 0;
+        jw body;
+        while (*p == ' ' || *p == ',')
+            p++;
+        while (*p && *p != ',' && *p != ' ' && k < (int)sizeof(name) - 1)
+            name[k++] = *p++;
+        name[k] = 0;
+        if (!k || !t->ext || !t->ext->skill)
+            continue;
+        jw_init(&body);
+        if (t->ext->skill(t->ext->u, name, "", 0, &body, &fork, agent, sizeof(agent), err, sizeof(err)) == 0 &&
+            body.n) {
+            jw_rawz(sys, "\n\n# Skill: ");
+            jw_rawz(sys, name);
+            jw_rawz(sys, "\n\n");
+            jw_raw(sys, body.p, body.n);
+        }
+        jw_free(&body);
+    }
+}
+
+/* One subagent run to its end: agent a on the prompt, its final text the
+ * tool_result of the call id. alias: the call's model ("" the agent's). */
+static void agent_run(cl_tools *t, jw *out, const char *id, const cl_agent *a, const char *prompt, long pn,
+                      const char *alias)
+{
     cl_tools child;
     cl_conv c;
     cl_opts o;
-    jw body, content, sys, final;
-    int i, n, round, uses = 0, ok = 0;
-    long pn = 0;
+    jw body, content, sys, final, extra;
+    int round, uses = 0, ok = 0, stops = 0, rounds;
     unsigned long mask;
     const char *model;
     char num[16];
@@ -192,38 +297,9 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
     jw_init(&content);
     jw_init(&sys);
     jw_init(&final);
+    jw_init(&extra);
     conv_init(&c);
     memset(&child, 0, sizeof(child));
-    if (!desc || !prompt || !type || !alias) {
-        tl_error(t, out, id, "out of memory", 0);
-        goto done;
-    }
-    pn = (long)strlen(prompt);
-    n = agent_count(t);
-    for (i = 0; i < n; i++) {
-        const cl_agent *x = agent_get(t, i);
-        if (x && cl_strieq(x->name, type)) {
-            a = x;
-            break;
-        }
-    }
-    if (t->show)
-        t->show(t->u, "Task", desc);
-    if (!a) {
-        jw m;
-        jw_init(&m);
-        jw_rawz(&m, "Agent type '");
-        jw_rawz(&m, type);
-        jw_rawz(&m, "' not found. Available agents: ");
-        for (i = 0; i < n; i++) {
-            if (i)
-                jw_rawz(&m, ", ");
-            jw_rawz(&m, agent_get(t, i)->name);
-        }
-        tl_error(t, out, id, m.p ? m.p : "out of memory", 0);
-        jw_free(&m);
-        goto done;
-    }
     if (!t->api.send) {
         tl_error(t, out, id, "subagents are not available here", 0);
         goto done;
@@ -233,30 +309,70 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
     child.depth = 1;
     child.json = 0;
     child.stop = 0;
-    mask = tool_mask(a->tools);
+    child.sub_append = 0;           /* the parent owns it */
+    child.parent_id = id;
+    mask = tools_mask(a->tools);
+    if (a->deny_tools && a->deny_tools[0])
+        mask &= ~tools_mask(a->deny_tools);     /* disallowedTools */
     child.allowed = t->allowed & mask & ~((1ul << T_TASK) | (1ul << T_ASK_USER) | (1ul << T_EXIT_PLAN) |
                                           (1ul << T_ENTER_PLAN));
     child.web_search = t->web_search && (mask & (1ul << T_COUNT)) != 0;
-    model = agent_model_id(*alias ? alias : 0);
+    /* permissionMode: the edits and plan modes are the tools' own; nobody
+     * asked / yes to all are the REPL's ask policies */
+    if (a->perm_mode) {
+        if (!strcmp(a->perm_mode, "acceptEdits"))
+            child.perm.mode = PERM_ACCEPT;
+        else if (!strcmp(a->perm_mode, "plan"))
+            child.perm.mode = PERM_PLAN;
+        else if (!strcmp(a->perm_mode, "default"))
+            child.perm.mode = PERM_DEFAULT;
+        else if (!strcmp(a->perm_mode, "dontAsk"))
+            child.ask_policy = 2;
+        else if (!strcmp(a->perm_mode, "bypassPermissions"))
+            child.ask_policy = 3;
+    }
+    model = agent_model_id(alias && *alias ? alias : 0);
     if (!model)
         model = agent_model_id(a->model);
     if (!model)
         model = t->model ? t->model : "claude-opus-5-5";
     child.model = model;
+    rounds = a->max_turns > 0 ? a->max_turns : AGENT_ROUNDS;
     jw_rawz(&sys, a->prompt ? a->prompt : "");
     jw_rawz(&sys, env_note);
     jw_rawz(&sys, t->root);
     jw_rawz(&sys, env_note2);
+    preload(t, a, &sys);
+    if (t->memory && *t->memory && gets_memory(a)) {
+        jw_rawz(&sys, "\n\nCodebase and user instructions (CLAUDE.md):\n\n");
+        jw_rawz(&sys, t->memory);
+    }
+    if (t->sub_append && *t->sub_append) {
+        jw_rawz(&sys, "\n\n");
+        jw_rawz(&sys, t->sub_append);   /* --append-subagent-system-prompt */
+    }
+    if (t->agent_start) {
+        /* SubagentStart hooks: their additionalContext is the agent's */
+        jw ctx;
+        jw_init(&ctx);
+        t->agent_start(t->u, a->name, id, &ctx);
+        if (ctx.n) {
+            jw_rawz(&sys, "\n\n");
+            jw_raw(&sys, ctx.p, ctx.n);
+        }
+        jw_free(&ctx);
+    }
     memset(&o, 0, sizeof(o));
     o.model = model;
-    o.effort = "";
+    o.effort = a->effort ? a->effort : "";
     o.max_tokens = 32000L;
     o.system = sys.p;
     if (sys.oom || conv_add_user_text(&c, prompt, pn)) {
         tl_error(t, out, id, "out of memory", 0);
         goto done;
     }
-    for (round = 0; round < AGENT_ROUNDS; round++) {
+    forward_prompt(t, id, prompt, pn);
+    for (round = 0; round < rounds; round++) {
         cl_stream st;
         int rc, ntools, k;
         o.tools = tools_json(&child, model);
@@ -284,25 +400,48 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
             tl_error(t, out, id, "out of memory", 0);
             goto done;
         }
+        forward(t, id, 0, content.p, content.n, &st);
         ntools = stream_tools(&st);
         if (!ntools && !strcmp(st.stop_reason, "pause_turn")) {
             stream_free(&st);
             continue;               /* the server's own tool loop goes on */
         }
         if (!ntools) {
+            jw why;
+            int again;
+            jw_init(&why);
+            /* a SubagentStop hook may send it on (Claude Code's exit 2) */
+            again = stops < 3 && t->agent_stop && t->agent_stop(t->u, a->name, stops > 0, &why);
+            if (again && !why.oom && conv_add_user_text(&c, why.p, why.n) == 0) {
+                stops++;
+                jw_free(&why);
+                stream_free(&st);
+                continue;
+            }
+            jw_free(&why);
             answer_text(&st, &final);
             stream_free(&st);
             ok = 1;
             break;
         }
         jw_reset(&content);
+        jw_reset(&extra);
         jw_raw(&content, "[", 1);
         for (k = 0; k < ntools; k++) {
             sblock *b = stream_tool(&st, k);
             if (k)
                 jw_raw(&content, ",", 1);
-            tools_run(&child, b->id, b->name, b->input_ok, b->a.p, b->a.n, &content);
+            /* the policy (rules, hooks, checkpoints) as for the conversation's calls */
+            if (t->call)
+                t->call(t->u, &child, b->id, b->name, b->input_ok, b->a.p, b->a.n, &content, &extra);
+            else
+                tools_run(&child, b->id, b->name, b->input_ok, b->a.p, b->a.n, &content);
             uses++;
+        }
+        if (extra.n) {
+            jw_rawz(&content, ",{\"type\":\"text\",\"text\":");
+            jw_str(&content, extra.p, extra.n);
+            jw_raw(&content, "}", 1);
         }
         jw_raw(&content, "]", 1);
         stream_free(&st);
@@ -310,6 +449,7 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
             tl_error(t, out, id, "out of memory", 0);
             goto done;
         }
+        forward(t, id, 1, content.p, content.n, 0);
         if (child.stop) {
             t->stop = 1;            /* the parent's round ends too: the user has the word */
             tl_error(t, out, id, "The user stopped one of the agent's tool calls and will say what to do "
@@ -318,7 +458,12 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
         }
     }
     if (!ok) {
-        tl_error(t, out, id, "The agent did not finish within 60 rounds.", 0);
+        cl_ltoa(rounds, num);
+        jw_reset(&final);
+        jw_rawz(&final, "The agent did not finish within ");
+        jw_rawz(&final, num);
+        jw_rawz(&final, " rounds.");
+        tl_error(t, out, id, final.p ? final.p : "The agent did not finish.", 0);
         goto done;
     }
     if (!final.n)
@@ -331,16 +476,67 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
     jw_rawz(&final, uses == 1 ? " tool use.)" : " tool uses.)");
     tl_result(t, out, id, final.p, final.n, 0);
 done:
-    if (child.depth)
-        t->perm = child.perm;   /* the answers given count for the session */
+    if (child.depth && !t->fetch_cache)
+        t->fetch_cache = child.fetch_cache;    /* a cache the agent's WebFetch made is the session's */
+    if (child.depth) {
+        int mode = t->perm.mode;
+        t->perm = child.perm;   /* the answers given count for the session ... */
+        t->perm.mode = mode;    /* ... not the agent's own permission mode */
+    }
     free(child.json);
     conv_free(&c);
     jw_free(&body);
     jw_free(&content);
     jw_free(&sys);
     jw_free(&final);
+    jw_free(&extra);
+}
+
+/* the "not found" error, with the agents there are */
+static void no_agent(cl_tools *t, jw *out, const char *id, const char *type)
+{
+    jw m;
+    int i, n = agent_count(t);
+    jw_init(&m);
+    jw_rawz(&m, "Agent type '");
+    jw_rawz(&m, type);
+    jw_rawz(&m, "' not found. Available agents: ");
+    for (i = 0; i < n; i++) {
+        if (i)
+            jw_rawz(&m, ", ");
+        jw_rawz(&m, agent_get(t, i)->name);
+    }
+    tl_error(t, out, id, m.p ? m.p : "out of memory", 0);
+    jw_free(&m);
+}
+
+void agent_task(cl_tools *t, jw *out, const char *id, jv in)
+{
+    char *desc = tl_prop(in, "description", 0), *prompt = tl_prop(in, "prompt", 0);
+    char *type = tl_prop(in, "subagent_type", 0), *alias = tl_prop(in, "model", 0);
+    const cl_agent *a;
+    if (!desc || !prompt || !type || !alias)
+        tl_error(t, out, id, "out of memory", 0);
+    else {
+        a = tools_agent(t, type);
+        if (t->show)
+            t->show(t->u, "Task", desc);
+        if (!a)
+            no_agent(t, out, id, type);
+        else
+            agent_run(t, out, id, a, prompt, (long)strlen(prompt), alias);
+    }
     free(desc);
     free(prompt);
     free(type);
     free(alias);
+}
+
+void agent_fork(cl_tools *t, jw *out, const char *id, const char *type, const char *prompt, long pn)
+{
+    const cl_agent *a = tools_agent(t, type && *type ? type : "general-purpose");
+    if (!a)
+        no_agent(t, out, id, type);
+    else
+        agent_run(t, out, id, a, prompt, pn, "");
 }
