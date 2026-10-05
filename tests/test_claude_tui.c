@@ -249,6 +249,63 @@ static void idle_prompt(void)
     cs_close();
 }
 
+/* The statusLine command's output (the REPL puts it in tui.status): its own
+ * row between the box and the status line, colours kept, other escapes
+ * dropped; "/ for commands" gone, as Claude Code drops its hint; a new
+ * text redraws that one row; a second line grows the footer by one. */
+static int idles;
+static void idle_cb(void *u)
+{
+    (void)u;
+    idles++;
+}
+
+static void status_line_row(void)
+{
+    static const char *script[] = { "x\r", 0 };
+    static char st[200];
+    char line[16];
+    long rows0, full0;
+    screen(60, 16, script);
+    strcpy(st, "\033[32mmain\033[0m \033[2J\033]0;t\007ok");
+    tui.status = st;
+    tui.idle = idle_cb;
+    idles = 0;
+    CHECK_INT(tui_start(&tui), 0);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), 1);
+    CHECK(idles >= 1);                      /* the schedule's tick runs while keys are awaited */
+    dump("status line");
+    CHECK(!strncmp(cs_row(11), "\342\225\255", 3));    /* the box moved up one row for it */
+    CHECK_STR(cs_row(14), "  main ok");
+    CHECK_INT(h_cell(cs.vt, 2, 14)->fg, 2);             /* green, as the command printed it */
+    CHECK_INT(h_cell(cs.vt, 7, 14)->fg, VT_COLOR_DEFAULT);
+    CHECK(strstr(cs_row(15), "/ for commands") == 0);
+    CHECK(strstr(cs_row(15), "ctx: 92% left") != 0);
+    CHECK(strstr(cs.sent.p, "\033[2J") == 0);
+    /* a new output: one row sent, no layout */
+    rows0 = tui.n_rows;
+    full0 = tui.n_full;
+    strcpy(st, "\033[33mdev\033[0m ok");
+    tui_frame(&tui);
+    CHECK_INT(tui.n_rows - rows0, 1);
+    CHECK_INT(tui.n_full - full0, 0);
+    CHECK_STR(cs_row(14), "  dev ok");
+    CHECK_INT(h_cell(cs.vt, 2, 14)->fg, 3);
+    /* two lines: two rows; padding moves the text */
+    strcpy(st, "one\ntwo");
+    tui.status_pad = 2;
+    tui_frame(&tui);
+    CHECK_STR(cs_row(13), "    one");
+    CHECK_STR(cs_row(14), "    two");
+    /* none: the row goes and the hint comes back */
+    st[0] = 0;
+    tui_frame(&tui);
+    CHECK(strstr(cs_row(15), "/ for commands") != 0);
+    CHECK(!strncmp(cs_row(12), "\342\225\255", 3));
+    unscreen();
+    cs_close();
+}
+
 static void typing_and_slash_menu(void)
 {
     static const char *script[] = { "/c", 0 };
@@ -1202,6 +1259,7 @@ void suite_claude_tui(void)
     keys();
     editor();
     idle_prompt();
+    status_line_row();
     typing_and_slash_menu();
     permission_menu();
     spinner();

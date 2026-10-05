@@ -614,7 +614,12 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
         out(s);
         return;
     }
+    if (s->brief && s->brief[0])
+        tool = -1;                  /* the tool said what to show (WebFetch's "Received ...") */
     switch (tool) {
+    case -1:
+        summary(s, "", s->brief);
+        break;
     case T_WRITE:
         cl_copy(m, "Wrote ", sizeof(m));
         cl_ltoa(s->adds, num);

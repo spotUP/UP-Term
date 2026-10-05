@@ -169,6 +169,35 @@ static void test_settings(void)
         CHECK(f && strstr(f, "\"ask\": [\"Bash\"]") != 0);
         free(f);
     }
+    /* the WebSearch switch: on unless "webSearch": false or a deny rule names
+     * WebSearch alone; an ask rule or a pattern does not turn it off; the
+     * statusLine's padding and refreshInterval */
+    {
+        static const char *const on[] = { "{}", "{\"webSearch\":true}", "{\"permissions\":{\"ask\":[\"WebSearch\"]}}",
+                                          "{\"permissions\":{\"deny\":[\"WebFetch\",\"WebSearch(domain:x.org)\"]}}" };
+        static const char *const off[] = { "{\"webSearch\":false}", "{\"permissions\":{\"deny\":[\"WebSearch\"]}}",
+                                           "{\"permissions\":{\"deny\":[\"WebSearch(*)\"]}}" };
+        const char *sl = "{\"statusLine\":{\"type\":\"command\",\"command\":\"x\",\"padding\":2,\"refreshInterval\":5}}";
+        int k;
+        for (k = 0; k < 4; k++) {
+            cfg_init(&s);
+            CHECK_INT(cfg_merge(&s, CFG_USER, on[k], (long)strlen(on[k]), "x"), 0);
+            CHECK_INT(cfg_web_search(&s), 1);
+            cfg_free(&s);
+        }
+        for (k = 0; k < 3; k++) {
+            cfg_init(&s);
+            CHECK_INT(cfg_merge(&s, CFG_USER, off[k], (long)strlen(off[k]), "x"), 0);
+            CHECK_INT(cfg_web_search(&s), 0);
+            cfg_free(&s);
+        }
+        cfg_init(&s);
+        CHECK_INT(cfg_merge(&s, CFG_USER, sl, (long)strlen(sl), "x"), 0);
+        CHECK_STR(s.status_cmd, "x");
+        CHECK_INT(s.status_pad, 2);
+        CHECK_INT(s.status_refresh_s, 5);
+        cfg_free(&s);
+    }
 }
 
 static void test_rules(void)

@@ -1,8 +1,11 @@
 /* policy -- what C:Claude does around a tool call and at the session's
  * events (A4 WP3, rows 3.1 3.3 3.6 3.9): the permission rules, the hooks,
  * the checkpoints before a write, the memory of a directory a read
- * reaches. Called from repl.c's turn (see repl_int.h); the tools
- * themselves (tools.c) know nothing of it: a deny or a hook's block
+ * reaches -- for the conversation's calls and a subagent's alike (the
+ * tools' call hook); and what the REPL hands the tools and the screen:
+ * the extensions (.claude/agents, skills, commands -> ext.h), the
+ * added directories, the WebSearch switch, the status line. The tools
+ * themselves (tools.c) know nothing of the rules: a deny or a hook's block
  * answers the tool_use here, an allow answers tools.c's question through
  * the ask callback (r->rule_now).
  * Portable C89, host-tested through the REPL suite. */
@@ -54,12 +57,12 @@ static int is_read(const char *cc)
 }
 
 /* the call answered here: shown, and its tool_result an error */
-static void answer(cl_repl *r, jw *out, const char *id, const char *name, const char *raw, long rawn,
+static void answer(cl_repl *r, cl_tools *tl, jw *out, const char *id, const char *name, const char *raw, long rawn,
                    const char *what, const char *text)
 {
     int tid = tools_id(name);
     long n = (long)strlen(text);
-    r->tools.cur = tid;
+    tl->cur = tid;
     ui_tool(&r->ui, tid, name, what, raw, rawn);
     ui_result(&r->ui, tid, raw, rawn, 1, text, n);
     jw_rawz(out, "{\"type\":\"tool_result\",\"tool_use_id\":");
@@ -85,17 +88,19 @@ static void what_of(cl_repl *r, const char *cc, jv in, char *out, long cap)
         cl_copy(out + 67, "...", 4);
 }
 
-/* is the call's path inside a directory added with /add-dir or
- * permissions.additionalDirectories? */
-static int in_added(cl_repl *r, jv in)
+/* cl_tools.added: is full (canonical) inside a directory added with
+ * /add-dir, --add-dir or permissions.additionalDirectories? */
+static int pol_added(void *u, const char *full)
 {
-    char full[512];
+    cl_repl *r = (cl_repl *)u;
     int i;
-    if (call_path(r, in, full, sizeof(full)))
-        return 0;
     for (i = 0; i < r->cfg.ndirs; i++) {
-        char d[300];
-        if (path_join(r->tools.root, r->cfg.dirs[i], d, sizeof(d)) == 0 && path_inside(d, full))
+        char d[300], c[300];
+        if (path_join(r->tools.root, r->cfg.dirs[i], d, sizeof(d)))
+            continue;
+        if (r->sys->canon(r->sys->u, d, c, sizeof(c)))
+            cl_copy(c, d, sizeof(c));
+        if (path_inside(c, full))
             return 1;
     }
     return 0;
@@ -132,7 +137,10 @@ static void shown(cl_repl *r, cl_hookres *h)
         ui_line(&r->ui, h->shown.p);
 }
 
-int pol_pre(cl_repl *r, const char *id, const char *name, int input_ok, const char *raw, long rawn, jw *out)
+/* Before tools_run: 1 when the call was answered here (denied by a rule,
+ * blocked by a PreToolUse hook): its tool_result is in out. */
+static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, int input_ok, const char *raw,
+                   long rawn, jw *out)
 {
     jv in;
     const char *cc = cfg_cc_tool(name);
@@ -144,8 +152,6 @@ int pol_pre(cl_repl *r, const char *id, const char *name, int input_ok, const ch
         return 0;                   /* tools_run says what is wrong with it */
     d = cfg_decide(&r->cfg, name, in, r->tools.root, &which);
     if (d == RULE_NONE && r->turn_tools && turn_allows(r, name, in))
-        d = RULE_ALLOW;
-    if (d == RULE_NONE && in_added(r, in) && (is_read(cc) || (is_edit(cc) && r->tools.perm.mode == PERM_ACCEPT)))
         d = RULE_ALLOW;
     what_of(r, cc, in, what, sizeof(what));
     if (hooks_any(&r->hooks, HK_PRE_TOOL, name)) {
@@ -165,7 +171,7 @@ int pol_pre(cl_repl *r, const char *id, const char *name, int input_ok, const ch
             jw_init(&t);
             jw_rawz(&t, "PreToolUse hook blocked this call: ");
             jw_raw(&t, h.reason.n ? h.reason.p : "(no reason given)", h.reason.n ? h.reason.n : 17);
-            answer(r, out, id, name, raw, rawn, what, t.p ? t.p : "blocked");
+            answer(r, tl, out, id, name, raw, rawn, what, t.p ? t.p : "blocked");
             jw_free(&t);
             hookres_free(&h);
             return 1;
@@ -190,27 +196,27 @@ int pol_pre(cl_repl *r, const char *id, const char *name, int input_ok, const ch
             cl_cat(m, ")", sizeof(m));
         }
         cl_cat(m, ".", sizeof(m));
-        answer(r, out, id, name, raw, rawn, what, m);
+        answer(r, tl, out, id, name, raw, rawn, what, m);
         return 1;
     }
     if (d == RULE_ASK) {
         int tid = tools_id(name);
         d = RULE_NONE;              /* tools_run asks as usual */
-        if (tid >= 0 && !perm_refused(&r->tools.perm, tid) && !perm_must_ask(&r->tools.perm, tid, 0)) {
+        if (tid >= 0 && !perm_refused(&tl->perm, tid) && !perm_must_ask(&tl->perm, tid, 0)) {
             /* it would run without a question: the rule asks */
             int ans;
             char m[200];
-            r->tools.cur = tid;
-            r->tools.cur_in = raw;
-            r->tools.cur_inn = rawn;
+            tl->cur = tid;
+            tl->cur_in = raw;
+            tl->cur_inn = rawn;
             cl_copy(m, "Claude needs your permission to use ", sizeof(m));
             cl_cat(m, cc, sizeof(m));
             pol_notify(r, m);
             ans = ui_ask(&r->ui, tid, name, what, 0);
             if (ans == ASK_NO || ans == ASK_STOP) {
                 if (ans == ASK_STOP)
-                    r->tools.stop = 1;
-                answer(r, out, id, name, raw, rawn, what,
+                    tl->stop = 1;
+                answer(r, tl, out, id, name, raw, rawn, what,
                        ans == ASK_STOP ? "the user stopped this tool call and will tell you what to do differently; "
                                          "wait for their message"
                                        : "the user declined this tool call");
@@ -221,14 +227,16 @@ int pol_pre(cl_repl *r, const char *id, const char *name, int input_ok, const ch
     }
     r->rule_now = d;
     /* the file as it was, for /rewind */
-    if (is_edit(cc) && !perm_refused(&r->tools.perm, tools_id(name) >= 0 ? tools_id(name) : T_WRITE) &&
+    if (is_edit(cc) && !perm_refused(&tl->perm, tools_id(name) >= 0 ? tools_id(name) : T_WRITE) &&
         call_path(r, in, full, sizeof(full)) == 0)
         cp_before_write(&r->cp, full);
     return 0;
 }
 
-void pol_post(cl_repl *r, const char *name, int input_ok, const char *raw, long rawn, const char *blk, long n,
-              jw *extra)
+/* After it: the result block tools_run appended (blk, n); text for
+ * Claude to see after the results goes to extra. */
+static void pol_post(cl_repl *r, const char *name, int input_ok, const char *raw, long rawn, const char *blk, long n,
+                     jw *extra)
 {
     jv in, b, x;
     const char *cc = cfg_cc_tool(name);
@@ -284,6 +292,20 @@ void pol_post(cl_repl *r, const char *name, int input_ok, const char *raw, long 
     }
 }
 
+void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input_ok, const char *raw, long rawn,
+              jw *out, jw *extra)
+{
+    cl_repl *r = (cl_repl *)u;
+    cl_tools *was = r->at;
+    long at = out->n;
+    r->at = tl;                 /* the screen's callbacks show this call's tool */
+    if (!pol_pre(r, tl, id, name, input_ok, raw, rawn, out))
+        tools_run(tl, id, name, input_ok, raw, rawn, out);
+    r->rule_now = RULE_NONE;
+    pol_post(r, name, input_ok, raw, rawn, out->p + at, out->n - at, extra);
+    r->at = was;
+}
+
 void pol_session(cl_repl *r, int event, const char *source)
 {
     cl_hookres h;
@@ -331,22 +353,34 @@ int pol_prompt(cl_repl *r, const char *prompt, long n)
     return rc;
 }
 
-int pol_stop(cl_repl *r, int active, jw *reason)
+/* Stop and SubagentStop: 1 when a hook sends Claude on */
+static int stop_hook(cl_repl *r, int event, const char *name, int active, jw *reason)
 {
     cl_hookres h;
     int rc = 0;
-    if (!hooks_any(&r->hooks, HK_STOP, ""))
+    if (!hooks_any(&r->hooks, event, name))
         return 0;
     hookres_init(&h);
-    hooks_run(&r->hooks, HK_STOP, "", active ? ",\"stop_hook_active\":true" : ",\"stop_hook_active\":false", &h);
+    hooks_run(&r->hooks, event, name, active ? ",\"stop_hook_active\":true" : ",\"stop_hook_active\":false", &h);
     shown(r, &h);
     if (h.blocked && !h.stop) {
-        jw_rawz(reason, "Stop hook feedback: ");
+        jw_rawz(reason, event == HK_SUBAGENT_STOP ? "SubagentStop hook feedback: " : "Stop hook feedback: ");
         jw_raw(reason, h.reason.n ? h.reason.p : "go on", h.reason.n ? h.reason.n : 5);
         rc = 1;
     }
     hookres_free(&h);
     return rc;
+}
+
+int pol_stop(cl_repl *r, int active, jw *reason)
+{
+    return stop_hook(r, HK_STOP, "", active, reason);
+}
+
+/* cl_tools.agent_stop */
+static int pol_agent_stop(void *u, const char *agent, int active, jw *reason)
+{
+    return stop_hook((cl_repl *)u, HK_SUBAGENT_STOP, agent, active, reason);
 }
 
 void pol_notify(cl_repl *r, const char *message)
@@ -407,7 +441,13 @@ void pol_statusline(cl_repl *r)
     jw_strz(&ev, r->tools.root);
     jw_rawz(&ev, ",\"project_dir\":");
     jw_strz(&ev, r->tools.root);
-    jw_rawz(&ev, "},\"output_style\":{\"name\":");
+    jw_rawz(&ev, ",\"added_dirs\":[");
+    for (i = 0; i < r->cfg.ndirs; i++) {
+        if (i)
+            jw_raw(&ev, ",", 1);
+        jw_strz(&ev, r->cfg.dirs[i]);
+    }
+    jw_rawz(&ev, "]},\"output_style\":{\"name\":");
     jw_strz(&ev, r->style[0] ? r->style : "default");
     conv_dollars(r->conv.cost_micro, d, sizeof(d));
     jw_rawz(&ev, "},\"cost\":{\"total_cost_usd\":");
@@ -423,15 +463,176 @@ void pol_statusline(cl_repl *r)
     cl_copy(line, r->cfg.status_cmd, sizeof(line) - 320);
     cl_cat(line, " < ", sizeof(line));
     cl_cat(line, file, sizeof(line));
+    if (r->tui && r->sys->setenv) {
+        /* the script cannot ask the console its size: Claude Code's variables */
+        char num[16];
+        cl_ltoa(r->tui->cols, num);
+        r->sys->setenv(r->sys->u, "COLUMNS", num);
+        cl_ltoa(r->tui->rows, num);
+        r->sys->setenv(r->sys->u, "LINES", num);
+    }
+    r->n_status_runs++;
+    r->status_text[0] = 0;          /* a failure or no output: the row goes blank */
     if (r->sys->run(r->sys->u, line, 5, o, 2047, &on, &rc) == 0 && rc == 0) {
-        for (i = 0; i < on && o[i] != '\n' && o[i] != '\r'; i++)
-            ;
-        o[i] = 0;
-        cl_copy(r->status_text, o, sizeof(r->status_text));
+        long k = 0;
+        /* its lines, each its own row: carriage returns out, the last newline too */
+        for (i = 0; i < on && k < (long)sizeof(r->status_text) - 1; i++)
+            if (o[i] != '\r')
+                r->status_text[k++] = o[i];
+        while (k > 0 && r->status_text[k - 1] == '\n')
+            k--;
+        r->status_text[k] = 0;
     }
     free(o);
     if (r->sys->remove)
         r->sys->remove(r->sys->u, file);
+    r->status_ms = r->io->ms ? r->io->ms(r->io->u) : 1;
+    if (!r->status_ms)
+        r->status_ms = 1;
+    r->status_due = 0;
+    if (r->tui) {
+        r->status_mode = r->tools.perm.mode;
+        r->status_vim = r->tui->ed.vim;
+        tui_frame(r->tui);          /* only the rows that changed go out */
+    }
+}
+
+#define STATUS_DEBOUNCE_MS 300UL
+
+void pol_status_event(cl_repl *r)
+{
+    unsigned long now;
+    if (!r->cfg.status_cmd[0])
+        return;
+    now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    if (r->status_ms && now - r->status_ms < STATUS_DEBOUNCE_MS) {
+        r->status_due = 1;          /* the next tick runs it */
+        return;
+    }
+    pol_statusline(r);
+}
+
+void pol_status_tick(void *u)
+{
+    cl_repl *r = (cl_repl *)u;
+    unsigned long now;
+    if (!r->cfg.status_cmd[0])
+        return;
+    if (r->tui && (r->status_mode != r->tools.perm.mode || r->status_vim != r->tui->ed.vim))
+        r->status_due = 1;          /* Shift+Tab, a vim mode change */
+    now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    if (r->cfg.status_refresh_s > 0 && r->status_ms &&
+        now - r->status_ms >= (unsigned long)r->cfg.status_refresh_s * 1000UL)
+        r->status_due = 1;
+    if (r->status_due && (!r->status_ms || now - r->status_ms >= STATUS_DEBOUNCE_MS))
+        pol_statusline(r);
+}
+
+/* ---- the extensions the tools see (ext.h): .claude/agents, skills, commands ---- */
+
+static int ext_agents(void *u, const cl_agent **list)
+{
+    cl_repl *r = (cl_repl *)u;
+    *list = r->x_agents;
+    return r->nx_agents;
+}
+
+static int ext_skills(void *u, const cl_skill **list)
+{
+    cl_repl *r = (cl_repl *)u;
+    *list = r->x_skills;
+    return r->nx_skills;
+}
+
+static int ext_commands(void *u, const cl_command **list)
+{
+    cl_repl *r = (cl_repl *)u;
+    *list = r->x_cmds;
+    return r->nx_cmds;
+}
+
+/* SlashCommand: the command expanded as a typed one is (slash_custom), its
+ * allowed-tools in force for the rest of the turn */
+static int ext_expand(void *u, const char *name, const char *args, jw *out, char *err, long cap)
+{
+    cl_repl *r = (cl_repl *)u;
+    const cl_def *d = defs_find(&r->defs, DEF_COMMAND, name);
+    if (!d || d->no_model) {
+        cl_copy(err, "", cap);      /* no such command (for Claude) */
+        return -1;
+    }
+    if (cmd_expand(d, args, r->sys, r->tools.root, out, err, cap))
+        return -1;
+    r->n_cmds_run++;
+    if (d->tools[0])
+        r->turn_tools = d->tools;
+    return 0;
+}
+
+void pol_ext_free(cl_repl *r)
+{
+    free(r->x_agents);
+    free(r->x_skills);
+    free(r->x_cmds);
+    r->x_agents = 0;
+    r->x_skills = 0;
+    r->x_cmds = 0;
+    r->nx_agents = r->nx_skills = r->nx_cmds = 0;
+}
+
+int pol_tools(cl_repl *r)
+{
+    int na = defs_count(&r->defs, DEF_AGENT), ns = defs_count(&r->defs, DEF_SKILL);
+    int nc = defs_count(&r->defs, DEF_COMMAND), i;
+    const cl_def *d;
+    pol_ext_free(r);
+    r->x_agents = (cl_agent *)calloc((size_t)na + 1, sizeof(cl_agent));
+    r->x_skills = (cl_skill *)calloc((size_t)ns + 1, sizeof(cl_skill));
+    r->x_cmds = (cl_command *)calloc((size_t)nc + 1, sizeof(cl_command));
+    if (!r->x_agents || !r->x_skills || !r->x_cmds) {
+        pol_ext_free(r);
+        return -1;
+    }
+    for (i = 0; (d = defs_nth(&r->defs, DEF_AGENT, i)) != 0; i++) {
+        cl_agent *a = &r->x_agents[r->nx_agents++];
+        a->name = d->name;
+        a->description = d->description;
+        a->tools = d->tools[0] ? d->tools : 0;
+        a->model = d->model[0] ? d->model : 0;
+        a->prompt = d->body;
+    }
+    /* disable-model-invocation: only the user runs it */
+    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++)
+        if (!d->no_model) {
+            cl_skill *s = &r->x_skills[r->nx_skills++];
+            s->name = d->name;
+            s->description = d->description;
+            s->path = d->path;
+        }
+    for (i = 0; (d = defs_nth(&r->defs, DEF_COMMAND, i)) != 0; i++)
+        if (!d->no_model) {
+            cl_command *c = &r->x_cmds[r->nx_cmds++];
+            c->name = d->name;
+            c->description = d->description;
+        }
+    r->tools.web_search = cfg_web_search(&r->cfg);
+    free(r->tools.json);            /* declared anew at the next request */
+    r->tools.json = 0;
+    return 0;
+}
+
+void pol_attach_tools(cl_repl *r)
+{
+    r->at = &r->tools;
+    r->tools.call = pol_call;
+    r->tools.added = pol_added;
+    r->tools.agent_stop = pol_agent_stop;
+    r->ext.u = r;
+    r->ext.agents = ext_agents;
+    r->ext.skills = ext_skills;
+    r->ext.commands = ext_commands;
+    r->ext.expand = ext_expand;
+    r->tools.ext = &r->ext;
 }
 
 /* ---- what the screen (WP1, ui.h "A4 (WP1)") takes from WP3 ---- */

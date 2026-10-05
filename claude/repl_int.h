@@ -28,13 +28,22 @@ int repl_load_json(cl_repl *r, const char *full);
 
 /* policy.c: permission rules, hooks, checkpoints, nested memory around a
  * tool call, and the session's hook events */
-/* Before tools_run: 1 when the call was answered here (denied by a rule,
- * blocked by a PreToolUse hook): its tool_result is in out. */
-int pol_pre(cl_repl *r, const char *id, const char *name, int input_ok, const char *raw, long rawn, jw *out);
-/* After it: the result block tools_run appended (blk, n); text for
- * Claude to see after the results goes to extra. */
-void pol_post(cl_repl *r, const char *name, int input_ok, const char *raw, long rawn, const char *blk, long n,
-              jw *extra);
+/* One tool call of tl (the conversation's tools or a subagent's) with the
+ * policy around it: the rules and the PreToolUse hooks first (a deny or a
+ * block answers it here), then tools_run, then the PostToolUse hooks and
+ * the nested memory (text for Claude after the round's results into
+ * extra). Its tool_result block is appended to out. cl_tools.call. */
+void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input_ok, const char *raw, long rawn,
+              jw *out, jw *extra);
+/* The REPL's hooks into the tools (the policy for subagents' calls, the
+ * added directories, SubagentStop, the extensions): once, at repl_init. */
+void pol_attach_tools(cl_repl *r);
+/* After the settings or the definitions changed: the extensions' lists
+ * built again from r->defs, the WebSearch switch from the settings, the
+ * tools JSON dropped so the next request declares it anew. 0, -1 out of
+ * memory. */
+int pol_tools(cl_repl *r);
+void pol_ext_free(cl_repl *r);
 void pol_session(cl_repl *r, int event, const char *source);
 /* UserPromptSubmit: -1 blocked (shown), 0 go on (context into r->pending) */
 int pol_prompt(cl_repl *r, const char *prompt, long n);
@@ -44,8 +53,17 @@ void pol_notify(cl_repl *r, const char *message);
 void pol_precompact(cl_repl *r, int automatic, const char *focus);
 /* the screen's settings, memory files and rewind points (ui.h, WP1) */
 void pol_attach_ui(cl_repl *r);
-/* the statusLine command run, its first line into r->status_text */
+/* the statusLine command run now, its output into r->status_text (blank
+ * when it fails or says nothing, as Claude Code's), the footer redrawn
+ * where it changed */
 void pol_statusline(cl_repl *r);
+/* One of Claude Code's status line events (the session started, an
+ * assistant message, /compact done): the command runs, or -- within
+ * 300 ms of its last run -- at the next tick. */
+void pol_status_event(cl_repl *r);
+/* The idle tick (the screen waiting for keys): a held-back event, a
+ * permission mode or vim change, statusLine.refreshInterval. */
+void pol_status_tick(void *u);
 
 /* slash.c: the command table and the A4 commands */
 extern const struct cl_cmd slash_builtin[];
