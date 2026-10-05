@@ -17,10 +17,13 @@
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/dostags.h>
+#include <dos/var.h>
+#include <exec/execbase.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "sys_amiga.h"
 #include "util.h"
+#include "../handler/clip.h"
 
 static void set_err(sys_amiga *s, const char *what)
 {
@@ -451,6 +454,132 @@ static long a_mtime(void *u, const char *path)
     return t;
 }
 
+/* ---- A4 WP3: append, directories, variables, the clipboard, /doctor ---- */
+
+static int a_append(void *u, const char *path, const char *str, long n)
+{
+    sys_amiga *s = (sys_amiga *)u;
+    BPTR f = Open((STRPTR)path, MODE_READWRITE);
+    LONG w;
+    if (!f) {
+        set_err(s, path);
+        return -1;
+    }
+    Seek(f, 0, OFFSET_END);
+    w = n ? Write(f, (APTR)str, n) : 0;
+    if (w != n) {
+        set_err(s, path);
+        Close(f);
+        return -1;
+    }
+    return Close(f) ? 0 : -1;
+}
+
+static int a_mkdir(void *u, const char *path)
+{
+    sys_amiga *s = (sys_amiga *)u;
+    BPTR l;
+    if (a_kind(u, path) == 2)
+        return 0;
+    l = CreateDir((STRPTR)path);
+    if (!l) {
+        set_err(s, path);
+        return -1;
+    }
+    UnLock(l);
+    return 0;
+}
+
+static int a_remove(void *u, const char *path)
+{
+    sys_amiga *s = (sys_amiga *)u;
+    if (!DeleteFile((STRPTR)path)) {
+        set_err(s, path);
+        return -1;
+    }
+    return 0;
+}
+
+static long a_getenv(void *u, const char *name, char *out, long cap)
+{
+    LONG n = GetVar((STRPTR)name, (STRPTR)out, cap, 0);
+    (void)u;
+    return n < 0 ? -1 : (long)n;
+}
+
+/* a local variable: the commands started from here (vsh, hooks) inherit it */
+static int a_setenv(void *u, const char *name, const char *value)
+{
+    (void)u;
+    return SetVar((STRPTR)name, (STRPTR)value, -1, GVF_LOCAL_ONLY) ? 0 : -1;
+}
+
+static int a_clip(void *u, const char *str, long n)
+{
+    sys_amiga *s = (sys_amiga *)u;
+    if (!clip_write(str, n)) {
+        cl_copy(s->err, "the clipboard (clipboard.device unit 0) did not take the text", sizeof(s->err));
+        return -1;
+    }
+    return 0;
+}
+
+static int lib_check(const char *name, long ver, char *out, long cap)
+{
+    struct Library *b = OpenLibrary((STRPTR)name, 0);
+    char num[16];
+    long v;
+    if (!b) {
+        cl_copy(out, name, cap);
+        cl_cat(out, " is not there", cap);
+        return 0;
+    }
+    cl_copy(out, name, cap);
+    cl_cat(out, " ", cap);
+    v = (long)b->lib_Version;
+    cl_ltoa(v, num);
+    cl_cat(out, num, cap);
+    cl_cat(out, ".", cap);
+    cl_ltoa((long)b->lib_Revision, num);
+    cl_cat(out, num, cap);
+    CloseLibrary(b);
+    if (v < ver) {
+        cl_cat(out, " (too old)", cap);
+        return 0;
+    }
+    return 1;
+}
+
+static int a_info(void *u, const char *what, char *out, long cap)
+{
+    char num[16];
+    (void)u;
+    if (!strcmp(what, "os")) {
+        cl_copy(out, "exec ", cap);
+        cl_ltoa((long)SysBase->LibNode.lib_Version, num);
+        cl_cat(out, num, cap);
+        cl_cat(out, ".", cap);
+        cl_ltoa((long)SysBase->LibNode.lib_Revision, num);
+        cl_cat(out, num, cap);
+        cl_cat(out, ", CPU ", cap);
+        cl_cat(out, (SysBase->AttnFlags & AFF_68060) ? "68060" : (SysBase->AttnFlags & AFF_68040) ? "68040"
+                    : (SysBase->AttnFlags & AFF_68030) ? "68030" : (SysBase->AttnFlags & AFF_68020) ? "68020"
+                    : "68000", cap);
+        return SysBase->LibNode.lib_Version >= 39 ? 1 : 0;
+    }
+    if (!strcmp(what, "bsdsocket"))
+        return lib_check("bsdsocket.library", 4, out, cap);
+    if (!strcmp(what, "amissl"))
+        return lib_check("amisslmaster.library", 5, out, cap);
+    if (!strcmp(what, "vsh")) {
+        int k = a_kind(u, "C:vsh");
+        cl_copy(out, k == 1 ? "C:vsh is there" : "C:vsh is not there (commands need vsh)", cap);
+        return k == 1;
+    }
+    cl_copy(out, "unknown", cap);
+    return -1;
+}
+
 static const char *a_err(void *u)
 {
     return ((sys_amiga *)u)->err;
@@ -472,4 +601,11 @@ void sys_amiga_init(sys_amiga *s, cl_sys *sys)
     sys->bg_read = a_bg_read;
     sys->bg_kill = a_bg_kill;
     sys->bg_drop = a_bg_drop;
+    sys->append = a_append;
+    sys->mkdir = a_mkdir;
+    sys->remove = a_remove;
+    sys->getenv = a_getenv;
+    sys->setenv = a_setenv;
+    sys->clip = a_clip;
+    sys->info = a_info;
 }

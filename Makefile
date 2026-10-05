@@ -29,14 +29,16 @@ CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c clau
                claude/path.c claude/tools.c claude/sys_posix.c claude/ui.c claude/repl.c \
                claude/regex.c claude/glob.c claude/schema.c claude/search.c claude/shells.c claude/html.c \
                claude/webfetch.c claude/subagent.c \
-               claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT)
+               claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) \
+               claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
+               claude/policy.c claude/slash.c
 CLAUDE_HDR := $(wildcard claude/*.h)
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_hl.c tests/test_md.c \
-           tests/claude_load.c tests/claude_screen.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_repl.c tests/test_claude_tui.c
+           tests/claude_load.c tests/claude_screen.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_claude_repl.c tests/test_claude_tui.c
 
 .PHONY: claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
 
@@ -215,7 +217,10 @@ CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude
                    claude/path.c claude/tools.c claude/ui.c claude/repl.c claude/sys_amiga.c claude/main_amiga.c \
                    claude/regex.c claude/glob.c claude/schema.c claude/search.c claude/shells.c claude/html.c \
                    claude/webfetch.c claude/subagent.c \
-                   claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) $(VIEW_MD) tty/ldisc.c
+                   claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) $(VIEW_MD) tty/ldisc.c \
+                   handler/clip.c handler/clipfmt.c \
+                   claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
+                   claude/policy.c claude/slash.c
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
 AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK

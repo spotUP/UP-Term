@@ -19,12 +19,21 @@
 #include "conv.h"
 #include "tools.h"
 #include "ui.h"
+#include "config.h"
+#include "memory.h"
+#include "commands.h"
+#include "hooks.h"
+#include "session.h"
+#include "checkpoint.h"
 
 #define CL_DEFAULT_URL    "https://api.anthropic.com/v1/messages"
 #define CL_DEFAULT_MODEL  "claude-opus-5-5"
 #define CL_DEFAULT_EFFORT "medium"
 #define CL_MAX_TOKENS     64000L
 #define CL_TRIES          5
+#define CL_HOME           "ENVARC:Claude"   /* Claude Code's ~/.claude; CLAUDE_CONFIG_DIR overrides */
+#define CL_TMP            "T:"              /* CLAUDE_CODE_TMPDIR overrides */
+#define CL_COMPACT_PCT    92                /* auto-compact when this much of the window is used */
 
 typedef struct cl_repl {
     cl_io *io;
@@ -54,7 +63,33 @@ typedef struct cl_repl {
     long ctx_used;              /* the last request's tokens: the context in use */
     long turn_out;              /* output tokens of the turn's finished requests */
     long chars;                 /* answer bytes of the request in flight */
-    char session[256];          /* saved after every turn (/resume), "" none */
+    char session[256];          /* A2's single saved conversation: read by /resume when there
+                                 * is no session yet (the migration), no longer written */
+    /* A4 WP3: settings, memory, definitions, hooks, sessions, checkpoints */
+    char home[256];             /* ENVARC:Claude */
+    char tmp[256];              /* T: */
+    cl_settings cfg;
+    cl_memory mem;
+    cl_defs defs;
+    cl_hooks hooks;
+    cl_session sess;
+    cl_checkpoints cp;
+    struct cl_cmd *menu;              /* the slash menu: the built-in commands and the custom ones */
+    int nmenu;
+    char style[64];             /* the output style, "" Default */
+    char fallback[64];          /* the fallback model, "" none */
+    int auto_compact;           /* 1 on (the default) */
+    int busy_fail;              /* the last request failed as overloaded */
+    int rule_now;               /* RULE_* for the call being run: ALLOW answers the question */
+    const char *turn_tools;     /* a custom command's allowed-tools for its turn, 0 none */
+    jw pending;                 /* context for the next prompt (SessionStart and prompt hooks) */
+    char *todos;                /* the last todo_write input (/todos) */
+    char keybuf[512];           /* a key from /login */
+    int await_key;              /* the next line typed is the key (/login) */
+    char status_text[160];      /* the statusLine command's last output, for the status line */
+    void (*bg_list)(void *u, char *out, long cap);  /* /tasks: WP2's background shells */
+    void *bg_u;
+    long n_rule_allow, n_rule_deny, n_cmds_run;     /* the tests' sentinels */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
     char buf[4096];
@@ -77,6 +112,23 @@ long repl_window(const char *model);
 /* the transport check: a one-token request, its status and times; 0 when
  * the API answered 200 */
 int repl_ping(cl_repl *r);
+/* A4 WP3. The settings, memory, custom commands, agents, skills and output
+ * styles (re)read for the root, the system prompt built again, the slash
+ * menu rebuilt: 0, -1 out of memory. repl_init calls it. */
+int repl_load(cl_repl *r);
+/* the most recent session of this root resumed (--continue): 0, -1 none */
+int repl_continue(cl_repl *r);
+/* A session by id or title resumed: 0, -1 */
+int repl_resume_session(cl_repl *r, const char *name);
+/* Rewind to before the user message at index msg (a prompt that starts a
+ * user message): the files written since put back (code), the
+ * conversation cut there (conv). 0, -1 not a prompt. The Esc Esc menu
+ * (WP1 1.7) calls this with the message the user picked. */
+int repl_rewind(cl_repl *r, int msg, int code, int conv);
+/* The prompts the conversation can be rewound to: message indexes, the
+ * newest first; their count. */
+int repl_prompts(const cl_repl *r, int *msg, int max);
+
 /* the start of a key read from a file or a variable, cleaned in place:
  * white space trimmed; 0 when it is usable */
 int cl_key_clean(char *key);

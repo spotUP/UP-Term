@@ -50,6 +50,22 @@ typedef struct cl_sys {
     int (*bg_kill)(void *u, long job);
     /* forgotten: its files removed once it has ended (a running one is left alone) */
     void (*bg_drop)(void *u, long job);
+    /* A4 WP3, optional (0 when the platform has none; callers check):
+     * appends to a file, creating it: 0, -1 */
+    int (*append)(void *u, const char *path, const char *s, long n);
+    /* makes a directory (one level; one that exists is fine): 0, -1 */
+    int (*mkdir)(void *u, const char *path);
+    /* deletes a file or an empty directory: 0, -1 */
+    int (*remove)(void *u, const char *path);
+    /* a variable (ENV: on the Amiga): its length, -1 when unset */
+    long (*getenv)(void *u, const char *name, char *out, long cap);
+    /* sets a variable for this program and what it runs: 0, -1 */
+    int (*setenv)(void *u, const char *name, const char *value);
+    /* text to the clipboard (clipboard.device unit 0): 0, -1 */
+    int (*clip)(void *u, const char *s, long n);
+    /* a fact about the machine for /doctor ("os", "bsdsocket", "amissl",
+     * "vsh", "console"): 1 good, 0 bad, -1 unknown; out says what */
+    int (*info)(void *u, const char *what, char *out, long cap);
 } cl_sys;
 
 #endif

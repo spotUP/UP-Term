@@ -42,6 +42,7 @@ void suite_claude_tools(void);
 void suite_claude_match(void);
 void suite_claude_repl(void);
 void suite_claude_tui(void);
+void suite_claude_config(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -85,6 +86,7 @@ static const h_suite suites[] = {
     { "claude_match", suite_claude_match },
     { "claude_repl", suite_claude_repl },
     { "claude_tui", suite_claude_tui },
+    { "claude_config", suite_claude_config },
     { 0, 0 }
 };
 

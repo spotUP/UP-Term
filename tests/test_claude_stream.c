@@ -200,6 +200,7 @@ static void test_stops(void)
 
 static const char body_want[] =
     "{\"model\":\"claude-opus-5-5\",\"max_tokens\":64000,\"stream\":true,"
+    "\"thinking\":{\"type\":\"adaptive\",\"display\":\"summarized\"},"
     "\"output_config\":{\"effort\":\"medium\"},\"fallbacks\":\"default\","
     "\"cache_control\":{\"type\":\"ephemeral\"},"
     "\"system\":[{\"type\":\"text\",\"text\":\"You are on an Amiga.\",\"cache_control\":{\"type\":\"ephemeral\"}}],"

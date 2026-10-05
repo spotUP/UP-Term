@@ -109,6 +109,16 @@ void conv_rollback(cl_conv *c, cl_mark m)
     }
 }
 
+int conv_caps(const char *model)
+{
+    /* Haiku 4.5 (and the 3.x models) take neither an effort nor adaptive
+     * thinking (theirs is budget_tokens); every current 4.6+ / 5.x model
+     * takes both (claude-api skill, model notes 2026-09-25) */
+    if (!strncmp(model, "claude-haiku", 12) || !strncmp(model, "claude-3", 8))
+        return 0;
+    return CAP_EFFORT | CAP_ADAPTIVE;
+}
+
 const char *conv_beta(const char *model)
 {
     static const char *const fb[] = {
@@ -142,8 +152,11 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out)
     jw_rawz(out, ",\"max_tokens\":");
     jw_long(out, o->max_tokens);
     jw_rawz(out, ",\"stream\":true");
-    /* Haiku 4.5 refuses an effort */
-    if (o->effort && *o->effort && strncmp(o->model, "claude-haiku", 12)) {
+    /* adaptive thinking with its text summarised (the thinking view shows
+     * it; the 5.x models leave it empty by default) */
+    if (conv_caps(o->model) & CAP_ADAPTIVE)
+        jw_rawz(out, ",\"thinking\":{\"type\":\"adaptive\",\"display\":\"summarized\"}");
+    if (o->effort && *o->effort && (conv_caps(o->model) & CAP_EFFORT)) {
         jw_rawz(out, ",\"output_config\":{\"effort\":");
         jw_strz(out, o->effort);
         jw_raw(out, "}", 1);
@@ -186,14 +199,18 @@ int conv_price(const char *model, cl_price *p)
         { 0, 0, 0, 0, 0 }
     };
     int i;
-    for (i = 0; t[i].m; i++)
-        if (!strcmp(model, t[i].m)) {
-            p->in = t[i].in;
-            p->out = t[i].out;
-            p->cread = t[i].cread;
-            p->cwrite = t[i].cwrite;
-            return 1;
-        }
+    for (i = 0; t[i].m; i++) {
+        size_t l = strlen(t[i].m);
+        /* the id itself, or its dated snapshot ("claude-haiku-4-5-20251001") */
+        if (strncmp(model, t[i].m, l) || (model[l] && (model[l] != '-' || strlen(model + l + 1) != 8 ||
+                                                       model[l + 1] < '0' || model[l + 1] > '9')))
+            continue;
+        p->in = t[i].in;
+        p->out = t[i].out;
+        p->cread = t[i].cread;
+        p->cwrite = t[i].cwrite;
+        return 1;
+    }
     memset(p, 0, sizeof(*p));
     return 0;
 }

@@ -15,6 +15,8 @@ typedef struct sp_job {
 typedef struct sys_posix {
     char err[200];
     sp_job jobs[SP_JOBS];
+    char clip[4096];            /* what clip() was given (the tests read it) */
+    long clipn;
 } sys_posix;
 
 void sys_posix_init(sys_posix *p, cl_sys *s);
