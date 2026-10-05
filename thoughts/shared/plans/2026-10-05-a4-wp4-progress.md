@@ -82,8 +82,8 @@ Running count: 8 of 8 built and host-tested; rig check open (main session).
 - Unverified against Claude Code itself (the docs do not say): the piped text joined after the
   prompt with one newline; the text-mode line "Error: Reached max turns (N)"; is_error true on
   error_max_turns; one assistant message per API response (newer Claude Code splits per block).
-- --agent with a custom agent (.claude/agents) needs the provider (ext.h) the wiring package
-  sets; built-in agents work now.
+- --agent finds custom agents through the wiring's provider (feature/a4-wiring merged in,
+  125265e); only the built-in Explore is host-tested.
 
 ## repl.c touch points (for the parallel agents' merge)
 
@@ -110,6 +110,10 @@ Running count: 8 of 8 built and host-tested; rig check open (main session).
   (print mode text/json/stream-json/partial, stream-json input, limits, permissions, sessions,
   apply, start/keyless). Mutation-checked: max-turns stop, settings layer, bypass, feed
   messages, start(), session title fix each fail the suite when removed.
+- c76a6fe WP4; bdc5344 main (d455068) merged; c63a6fb bare --disallowedTools names as deny
+  rules; 125265e feature/a4-wiring merged (coordinator: wiring goes to main): repl_ask through
+  r->at, cur_id in pol_call, --tools without WebSearch kept off across reloads by a deny rule.
+  Gates after the merge: make test, make test-ref, make amiga green.
 
 
 ## Rig steps (main session; fixture: python3 tools/claude_fixture.py, U = URL=http://<mac>:8080/v1/messages)
