@@ -418,7 +418,7 @@ static void test_defs(void)
     defs_load(&s, &sys, home, root);
     CHECK_INT(defs_count(&s, DEF_COMMAND), 3);     /* review (project hides user), hello, commit */
     CHECK_INT(defs_count(&s, DEF_AGENT), 1);
-    CHECK_INT(defs_count(&s, DEF_SKILL), 1);
+    CHECK_INT(defs_count(&s, DEF_SKILL), 9);       /* one of the project's, eight bundled ones */
     CHECK_INT(defs_count(&s, DEF_STYLE), 6);       /* Default, Proactive, Concise, Explanatory, Learning, Terse */
     d = defs_find(&s, DEF_COMMAND, "review");
     CHECK(d && d->src == CFG_PROJECT);
@@ -849,6 +849,14 @@ static void test_gaps(void)
     CHECK_INT(hooks_match("Agent", "Task"), 1);
     CHECK_INT(hooks_match("Bash|Agent", "Task"), 1);
     CHECK_INT(hooks_match("Agent", "Read"), 0);
+    /* Claude Code's matcher rules: a plain list is exact names, anything
+     * else a regular expression, unanchored */
+    CHECK_INT(hooks_match("Bash", "BashOutput"), 0);
+    CHECK_INT(hooks_match("Edit, Write", "Write"), 1);
+    CHECK_INT(hooks_match("Edit.*", "MultiEdit"), 1);
+    CHECK_INT(hooks_match("^Edit$", "MultiEdit"), 0);
+    CHECK_INT(hooks_match("^Edit$", "Edit"), 1);
+    CHECK_INT(hooks_match("^(Read|Grep)$", "Grep"), 1);
 }
 
 void suite_claude_config(void)

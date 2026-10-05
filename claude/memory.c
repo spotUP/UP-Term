@@ -199,6 +199,19 @@ static int add_in(cl_memory *m, cl_sys *sys, const char *dir, const char *name, 
     return path_join(dir, name, p, sizeof(p)) == 0 ? add_file(m, sys, p, kind, 0, out) : 0;
 }
 
+/* One directory's memory: CLAUDE.md and AMIGA.md, AGENTS.md only when
+ * neither is there (Claude Code reads AGENTS.md in place of a missing
+ * CLAUDE.md), and the private CLAUDE.local.md */
+static int dir_files(cl_memory *m, cl_sys *sys, const char *dir, int kind, jw *out)
+{
+    int got = add_in(m, sys, dir, "CLAUDE.md", kind, out);
+    got += add_in(m, sys, dir, "AMIGA.md", kind, out);
+    if (!got)
+        got += add_in(m, sys, dir, "AGENTS.md", kind, out);
+    got += add_in(m, sys, dir, "CLAUDE.local.md", MEM_LOCAL, out);
+    return got;
+}
+
 void mem_file_of(int kind, const char *home, const char *root, char *out, long cap)
 {
     if (kind == MEM_USER)
@@ -222,15 +235,10 @@ int mem_load(cl_memory *m, cl_sys *sys, const char *home, const char *root)
         cl_copy(p, anc[na], sizeof(p));
         na++;
     }
-    for (i = na - 1; i >= 0; i--) {
-        got += add_in(m, sys, anc[i], "CLAUDE.md", MEM_PROJECT, &m->text);
-        got += add_in(m, sys, anc[i], "AMIGA.md", MEM_PROJECT, &m->text);
-    }
-    got += add_in(m, sys, root, "CLAUDE.md", MEM_PROJECT, &m->text);
-    got += add_in(m, sys, root, "AMIGA.md", MEM_PROJECT, &m->text);
-    got += add_in(m, sys, root, "AGENTS.md", MEM_PROJECT, &m->text);
+    for (i = na - 1; i >= 0; i--)
+        got += dir_files(m, sys, anc[i], MEM_PROJECT, &m->text);
+    got += dir_files(m, sys, root, MEM_PROJECT, &m->text);
     got += add_in(m, sys, root, ".claude/CLAUDE.md", MEM_PROJECT, &m->text);
-    got += add_in(m, sys, root, "CLAUDE.local.md", MEM_LOCAL, &m->text);
     /* the rules: the user's, then the project's */
     if (home && *home && path_join(home, "rules", p, sizeof(p)) == 0)
         rules_in(m, sys, p, 0);
@@ -427,9 +435,7 @@ int mem_nested(cl_memory *m, cl_sys *sys, const char *root, const char *path, jw
         if (path_parent(dirs[nd - 1], p, sizeof(p)))
             break;
     }
-    for (i = nd - 1; i >= 0; i--) {
-        got += add_in(m, sys, dirs[i], "CLAUDE.md", MEM_NESTED, out);
-        got += add_in(m, sys, dirs[i], "AMIGA.md", MEM_NESTED, out);
-    }
+    for (i = nd - 1; i >= 0; i--)
+        got += dir_files(m, sys, dirs[i], MEM_NESTED, out);
     return got;
 }

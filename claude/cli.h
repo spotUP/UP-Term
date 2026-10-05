@@ -41,9 +41,13 @@
 #define CLI_TEMPLATE_MORE                                                                                      \
     ",SESSION-ID/K,JSON-SCHEMA/K,REPLAY-USER-MESSAGES/S,BARE/S,SAFE-MODE/S,AGENTS/K,"                          \
     "APPEND-SUBAGENT-SYSTEM-PROMPT/K,APPEND-SUBAGENT-SYSTEM-PROMPT-FILE/K,DISABLE-SLASH-COMMANDS/S,"            \
-    "SETTING-SOURCES/K,BETAS/K,AUTOCOMPACT/K,FORWARD-SUBAGENT-TEXT/S,DEBUG-FILE/K,PERMISSION-PROMPTS/K"
+    "SETTING-SOURCES/K,BETAS/K,AUTOCOMPACT/K,FORWARD-SUBAGENT-TEXT/S,DEBUG-FILE/K,PERMISSION-PROMPTS/K,"        \
+    "INIT/S,INIT-ONLY/S,MAINTENANCE/S,INCLUDE-HOOK-EVENTS/S,PROMPT-SUGGESTIONS/S,"                              \
+    "EXCLUDE-DYNAMIC-SYSTEM-PROMPT-SECTIONS/S"
 
 enum { CLI_TEXT, CLI_JSON, CLI_STREAM };
+/* Claude Code's subcommands that exist here */
+enum { SUB_NONE, SUB_DOCTOR, SUB_AUTH_STATUS, SUB_AUTH_LOGIN, SUB_AUTH_LOGOUT, SUB_PURGE };
 
 typedef struct cl_strs {
     char **v;
@@ -82,6 +86,13 @@ typedef struct cl_cli {
     int fwd_sub;                            /* --forward-subagent-text */
     char debug_file[256];                   /* --debug-file */
     int prompts_none;                       /* --permission-prompts none */
+    int init, init_only, maintenance;       /* Setup hooks: --init, --init-only, --maintenance */
+    int hook_events;                        /* --include-hook-events */
+    int suggestions;                        /* --prompt-suggestions */
+    int no_dynamic;                         /* --exclude-dynamic-system-prompt-sections */
+    int sub;                                /* a subcommand: SUB_* (Claude doctor, auth ..., purge) */
+    char sub_arg[256];                      /* its argument (purge's path) */
+    int text;                               /* auth status --text */
     char err[300];
 } cl_cli;
 

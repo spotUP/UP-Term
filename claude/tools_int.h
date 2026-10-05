@@ -40,6 +40,8 @@ void shells_kill(cl_tools *t, jw *out, const char *id, jv in);
 
 /* webfetch.c */
 void webfetch_run(cl_tools *t, jw *out, const char *id, jv in);
+/* WebFetch's cache freed (tools_free) */
+void webfetch_cache_free(cl_tools *t);
 
 /* subagent.c: Task, and one quiet model call */
 void agent_task(cl_tools *t, jw *out, const char *id, jv in);

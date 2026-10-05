@@ -4,6 +4,7 @@
 #include "print.h"
 #include "repl_int.h"
 #include "tui.h"
+#include "path.h"
 #include "util.h"
 
 #define NOTES_MAX 4096L
@@ -328,6 +329,59 @@ static void f_retry(void *u, int attempt, int max, long delay_ms, int status, co
     emit(st, w);
 }
 
+/* --include-hook-events: system/hook_started and system/hook_response */
+static void f_hook(void *u, const char *event, const char *cmd, int done, long rc, const char *out, long n)
+{
+    pst *st = (pst *)u;
+    jw *w = &st->line;
+    if (st->c->out != CLI_STREAM || !st->c->hook_events)
+        return;
+    jw_reset(w);
+    jw_rawz(w, done ? "{\"type\":\"system\",\"subtype\":\"hook_response\",\"hook_name\":"
+                    : "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_name\":");
+    jw_strz(w, cmd);
+    jw_rawz(w, ",\"hook_event\":");
+    jw_strz(w, event);
+    if (done) {
+        jw_rawz(w, ",\"output\":");
+        jw_str(w, out ? out : "", n);
+        jw_rawz(w, ",\"stdout\":");
+        jw_str(w, out ? out : "", n);
+        jw_rawz(w, ",\"stderr\":\"\"");    /* AmigaDOS: one stream */
+        key_long(w, "exit_code", rc, 1);
+        jw_rawz(w, ",\"outcome\":");
+        jw_strz(w, rc == 0 ? "success" : rc == 2 ? "blocked" : "error");
+    }
+    tail(st, w);
+    emit(st, w);
+}
+
+static const char suggest_ask[] =
+    "Predict what the user is most likely to type next in this conversation, as they would type it: one short "
+    "prompt, no quotes, nothing else. If there is no likely next prompt, answer NONE.";
+
+/* --prompt-suggestions: a prompt_suggestion after a turn */
+static void suggestion(pst *st)
+{
+    cl_repl *r = st->r;
+    jw a, *w = &st->line;
+    long k;
+    if (!st->c->suggestions || st->c->out != CLI_STREAM || r->turn_rc != TURN_OK || r->conv.n < 2)
+        return;
+    jw_init(&a);
+    if (repl_side(r, 0, r->conv.n, suggest_ask, &a) == 0 && a.n && strncmp(a.p, "NONE", 4)) {
+        for (k = 0; k < a.n; k++)
+            if (a.p[k] == '\n')
+                a.p[k] = ' ';
+        jw_reset(w);
+        jw_rawz(w, "{\"type\":\"prompt_suggestion\",\"suggestion\":");
+        jw_str(w, a.p, a.n);
+        tail(st, w);
+        emit(st, w);
+    }
+    jw_free(&a);
+}
+
 /* ---- system/init ---- */
 
 static const char *perm_mode(const cl_repl *r)
@@ -592,6 +646,7 @@ static int answer(pst *st, const char *prompt, long pn, const char *blocks, long
     rc = is_error ? 10 : 0;
     jw_free(&res);
     jw_reset(&st->denials);
+    suggestion(st);
     return rc;
 }
 
@@ -744,6 +799,184 @@ static int stream_in(pst *st)
     return any ? rc : 20;
 }
 
+/* the REPL's notes straight to the output (a subcommand's) */
+static void s_write(void *u, const char *s, long n)
+{
+    pst *st = (pst *)u;
+    if (n > 0 && s[0] != '\r')
+        st->p->out(st->p->u, s, n);
+}
+
+static long s_read_line(void *u, char *buf, long cap)
+{
+    cl_io *o = ((pst *)u)->orig;
+    return o->read_line ? o->read_line(o->u, buf, cap) : -1;
+}
+
+/* the files of a project's directory (sessions, memory/) removed */
+typedef struct purge_ls {
+    cl_dirent e[128];
+    int n;
+} purge_ls;
+
+static int purge_one(void *c, const cl_dirent *e)
+{
+    purge_ls *l = (purge_ls *)c;
+    if (l->n < 128)
+        l->e[l->n++] = *e;
+    return 0;
+}
+
+static int purge_dir(cl_sys *sys, const char *dir)
+{
+    purge_ls *l = (purge_ls *)malloc(sizeof(purge_ls));
+    int i, gone = 0;
+    if (!l || sys->kind(sys->u, dir) != 2) {
+        free(l);
+        return 0;
+    }
+    l->n = 0;
+    sys->list(sys->u, dir, purge_one, l);
+    for (i = 0; i < l->n; i++) {
+        char p[400];
+        if (path_join(dir, l->e[i].name, p, sizeof(p)))
+            continue;
+        if (l->e[i].dir)
+            gone += purge_dir(sys, p);
+        if (sys->remove && sys->remove(sys->u, p) == 0)
+            gone++;
+    }
+    free(l);
+    return gone;
+}
+
+/* the history's lines of a project dropped (the rest kept as it was) */
+static int purge_history(cl_sys *sys, const char *file, const char *project)
+{
+    char *b = 0;
+    long n = 0, i = 0;
+    int gone = 0;
+    jw keep;
+    if (!file || !*file || sys->kind(sys->u, file) != 1 || sys->read(sys->u, file, 4L * 1024 * 1024, &b, &n))
+        return 0;
+    jw_init(&keep);
+    while (i < n) {
+        long e = i;
+        jv v, x;
+        char pr[300];
+        while (e < n && b[e] != '\n')
+            e++;
+        pr[0] = 0;
+        if (json_parse(b + i, e - i, &v) == 0 && json_get(v, "project", &x))
+            json_str(x, pr, sizeof(pr));
+        if (pr[0] && cl_strieq(pr, project))
+            gone++;
+        else {
+            jw_raw(&keep, b + i, e - i);
+            jw_raw(&keep, "\n", 1);
+        }
+        i = e + 1;
+    }
+    if (gone && !keep.oom)
+        sys->write(sys->u, file, keep.p ? keep.p : "", keep.n);
+    jw_free(&keep);
+    free(b);
+    return gone;
+}
+
+int print_subcommand(cl_repl *r, cl_cli *c, cl_pout *p)
+{
+    pst st;
+    cl_io *orig = r->io;
+    int rc = 0;
+    memset(&st, 0, sizeof(st));
+    st.r = r;
+    st.c = c;
+    st.p = p;
+    st.orig = orig;
+    st.io = *orig;
+    st.io.u = &st;
+    st.io.write = s_write;
+    st.io.read_line = s_read_line;
+    st.io.read = 0;
+    st.io.raw = 0;
+    r->io = &st.io;
+    r->ui.io = &st.io;
+    if (c->sub == SUB_DOCTOR)
+        repl_line(r, "/doctor");
+    else if (c->sub == SUB_AUTH_STATUS) {
+        int in = r->key && *r->key;
+        jw w;
+        jw_init(&w);
+        if (c->text) {
+            jw_rawz(&w, in ? "Logged in with an API key" : "Not logged in (Claude auth login, or ENV:ANTHROPIC_API_KEY)");
+            jw_rawz(&w, ".\nSettings directory: ");
+            jw_rawz(&w, r->home);
+            jw_rawz(&w, "\n");
+        } else {
+            jw_rawz(&w, in ? "{\"loggedIn\":true,\"authMethod\":\"api_key\",\"apiKeySource\":"
+                           : "{\"loggedIn\":false,\"authMethod\":\"none\",\"apiKeySource\":");
+            jw_strz(&w, c->key_source[0] ? c->key_source : in ? "user" : "none");
+            jw_rawz(&w, ",\"configDirectory\":");
+            jw_strz(&w, r->home);
+            jw_rawz(&w, "}\n");
+        }
+        if (!w.oom)
+            p->out(p->u, w.p, w.n);
+        jw_free(&w);
+        rc = in ? 0 : 10;
+    } else if (c->sub == SUB_AUTH_LOGIN) {
+        char key[512];
+        repl_line(r, "/login");
+        if (s_read_line(&st, key, sizeof(key)) > 0)
+            repl_line(r, key);          /* the line after /login is the key */
+        memset(key, 0, sizeof(key));
+        rc = r->key && *r->key ? 0 : 10;
+    } else if (c->sub == SUB_AUTH_LOGOUT)
+        repl_line(r, "/logout");
+    else if (c->sub == SUB_PURGE) {
+        char dir[300], ans[16], num[16];
+        cl_session s;
+        jw m;
+        if (c->sub_arg[0] && (path_join(r->tools.root, c->sub_arg, dir, sizeof(dir)) || r->sys->kind(r->sys->u, dir) != 2)) {
+            static const char no[] = "Not a directory.\n";
+            p->out(p->u, no, (long)sizeof(no) - 1);
+            rc = 20;
+        } else {
+            if (!c->sub_arg[0] || r->sys->canon(r->sys->u, dir, dir, sizeof(dir)))
+                cl_copy(dir, c->sub_arg[0] ? dir : r->tools.root, sizeof(dir));
+            sess_init(&s, r->sys, r->home, dir);
+            jw_init(&m);
+            jw_rawz(&m, "This removes C:Claude's sessions, auto memory and prompt history of ");
+            jw_rawz(&m, dir);
+            jw_rawz(&m, " (");
+            jw_rawz(&m, s.dir);
+            jw_rawz(&m, "). Go on? (y/n) ");
+            p->out(p->u, m.p ? m.p : "", m.n);
+            jw_free(&m);
+            if (s_read_line(&st, ans, sizeof(ans)) > 0 && (ans[0] == 'y' || ans[0] == 'Y')) {
+                int gone = purge_dir(r->sys, s.dir);
+                if (r->sys->remove)
+                    r->sys->remove(r->sys->u, s.dir);
+                gone += purge_history(r->sys, r->ui.histfile, dir);
+                jw_init(&m);
+                jw_rawz(&m, "Removed ");
+                cl_ltoa(gone, num);
+                jw_rawz(&m, num);
+                jw_rawz(&m, gone == 1 ? " file or line.\n" : " files and lines.\n");
+                p->out(p->u, m.p ? m.p : "", m.n);
+                jw_free(&m);
+            } else {
+                static const char kept[] = "Nothing removed.\n";
+                p->out(p->u, kept, (long)sizeof(kept) - 1);
+            }
+        }
+    }
+    r->io = orig;
+    r->ui.io = orig;
+    return rc;
+}
+
 int print_run(cl_repl *r, cl_cli *c, cl_pout *p)
 {
     pst st;
@@ -776,6 +1009,7 @@ int print_run(cl_repl *r, cl_cli *c, cl_pout *p)
     st.feed.denied = f_denied;
     st.feed.sub = f_sub;
     st.feed.retry = f_retry;
+    st.feed.hook = f_hook;
     r->io = &st.io;
     r->ui.io = &st.io;
     r->feed = &st.feed;
@@ -791,8 +1025,14 @@ int print_run(cl_repl *r, cl_cli *c, cl_pout *p)
             p->err(p->u, "\n", 1);
         }
         rc = early(&st, c->err);
+    } else if (c->init_only) {
+        /* --init-only: Setup and SessionStart hooks, no conversation */
+        repl_setup(r, "init", 1);
+        rc = 0;
     } else {
         st.base = r->conv;      /* a resumed conversation's own cost is not this run's */
+        if (c->init || c->maintenance)
+            repl_setup(r, c->maintenance ? "maintenance" : "init", 0);     /* Setup hooks first */
         if (c->out == CLI_STREAM)
             init_msg(&st);
         if (c->in == CLI_STREAM)

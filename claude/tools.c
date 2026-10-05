@@ -636,6 +636,7 @@ void tools_free(cl_tools *t)
     t->json = 0;
     free(t->sub_append);
     t->sub_append = 0;
+    webfetch_cache_free(t);
 }
 
 /* ---- helpers ---- */
@@ -1430,7 +1431,7 @@ done:
  * nothing is redirected into a file and nothing is substituted. */
 static const char *const ro_cmds[] = { "list", "dir", "type", "info", "which", "echo", "version", "search", "avail",
                                        "date", "ls", "cat", "head", "tail", "grep", "wc", "pwd", "file", "cmp",
-                                       "diff", "whoami", "uname", "status", "show", 0 };
+                                       "diff", "whoami", "uname", "status", "show", "cd", 0 };
 
 int bash_read_only(const char *cmd)
 {
@@ -1459,11 +1460,44 @@ int bash_read_only(const char *cmd)
     return 1;
 }
 
+/* Is the line one "cd DIR" alone (no other command after it)? Its
+ * directory into dir (cap 0: only the question). */
+static int cd_line(const char *cmd, char *dir, long cap)
+{
+    const char *p = cmd, *e;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (!((p[0] == 'c' || p[0] == 'C') && (p[1] == 'd' || p[1] == 'D') && (p[2] == ' ' || p[2] == '\t')))
+        return 0;
+    p += 3;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (strpbrk(p, ";&|\n`"))
+        return 0;
+    e = p + strlen(p);
+    while (e > p && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r'))
+        e--;
+    if (e > p + 1 && *p == '"' && e[-1] == '"') {
+        p++;
+        e--;
+    }
+    if (e == p)
+        return 0;
+    if (cap) {
+        long l = (long)(e - p) < cap - 1 ? (long)(e - p) : cap - 1;
+        memcpy(dir, p, (size_t)l);
+        dir[l] = 0;
+    }
+    return 1;
+}
+
 static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
 {
     char what[300], num[16];
     char *cmd = tl_prop(in, "command", 0), *buf;
-    long n = 0, rc = 0, ms = tl_num(in, "timeout", 0);
+    long n = 0, rc = 0, ms = tl_num(in, "timeout", 0), omax = t->out_max > 0 ? t->out_max : TL_OUT_MAX;
+    char cddir[256];
+    int is_cd;
     int r, secs;
     jw res;
     if (!cmd) {
@@ -1486,13 +1520,35 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
     if (t->max_timeout_ms > 0 && ms > t->max_timeout_ms)
         ms = t->max_timeout_ms;     /* BASH_MAX_TIMEOUT_MS */
     secs = ms > 0 ? (int)((ms + 999) / 1000) : t->timeout_s > 0 ? t->timeout_s : 120;
-    buf = (char *)malloc(TL_OUT_MAX + 1);
+    is_cd = cd_line(cmd, cddir, sizeof(cddir));
+    if (t->cwd[0] || is_cd) {
+        /* Claude Code: a cd persists between commands (the script runs there
+         * first); a cd itself starts from where the last one left */
+        const char *from = t->cwd[0] ? t->cwd : t->root;
+        char *c2 = (char *)malloc(strlen(cmd) + strlen(from) + 8);
+        if (c2) {
+            strcpy(c2, "cd \"");
+            strcat(c2, from);
+            strcat(c2, "\"\n");
+            strcat(c2, cmd);
+            free(cmd);
+            cmd = c2;
+        }
+    }
+    buf = (char *)malloc((size_t)omax + 1);
     if (!buf) {
         free(cmd);
         tl_error(t, out, id, "out of memory", 0);
         return;
     }
-    r = t->sys->run(t->sys->u, cmd, secs, buf, TL_OUT_MAX, &n, &rc);
+    r = t->sys->run(t->sys->u, cmd, secs, buf, omax, &n, &rc);
+    if (r == 0 && rc == 0) {
+        /* a bare cd: the directory the next commands run in */
+        char full[512];
+        if (is_cd && path_join(t->cwd[0] ? t->cwd : t->root, cddir, full, sizeof(full)) == 0 &&
+            t->sys->kind(t->sys->u, full) == 2 && t->sys->canon(t->sys->u, full, t->cwd, sizeof(t->cwd)))
+            cl_copy(t->cwd, full, sizeof(t->cwd));
+    }
     free(cmd);
     if (r == -1) {
         free(buf);
@@ -1512,8 +1568,12 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
     jw_rawz(&res, num);
     jw_rawz(&res, ".\n");
     jw_raw(&res, buf, n);
-    if (n >= TL_OUT_MAX)
-        jw_rawz(&res, "\n(output cut at 30000 characters)");
+    if (n >= omax) {
+        jw_rawz(&res, "\n(output cut at ");
+        cl_ltoa(omax, num);
+        jw_rawz(&res, num);
+        jw_rawz(&res, " characters)");
+    }
     tl_result(t, out, id, res.p, res.n, r != 0 || rc >= 10);
     jw_free(&res);
     free(buf);

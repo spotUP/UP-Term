@@ -372,7 +372,17 @@ int main(void)
             rc = 20;
         } else if (cli.ping)
             rc = repl_ping(r) ? 10 : 0;
-        else if (cli.print) {
+        else if (cli.sub) {
+            cl_pout po;
+            po.u = 0;
+            po.out = p_out;
+            po.err = 0;
+            po.in = 0;
+            rc = print_subcommand(r, &cli, &po);  /* Claude doctor, auth ..., purge */
+        } else if (cli.init_only) {
+            repl_setup(r, "init", 1);   /* --init-only: Setup and SessionStart hooks, then nothing */
+            rc = 0;
+        } else if (cli.print) {
             cl_pout po;
             po.u = 0;
             po.out = p_out;

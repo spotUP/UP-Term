@@ -23,7 +23,7 @@ static const cl_agent builtins[] = {
       "You are an agent for C:Claude, Claude Code on an Amiga. Given the user's message, use the tools "
       "available to complete the task. Do what has been asked; nothing more, nothing less. When you have "
       "completed the task, respond with a concise report of what was done and any key findings: the "
-      "caller relays it to the user, so it needs only the essentials, with full AmigaOS paths.", 0, 0, 0, 0, 0 },
+      "caller relays it to the user, so it needs only the essentials, with full AmigaOS paths.", 0, 0, 0, 0, 0, 0 },
     { "Explore",
       "Fast agent for exploring a code base: finding files by patterns, searching code for keywords, "
       "answering questions about the code. Say how thorough it should be: quick, medium or very thorough.",
@@ -31,7 +31,7 @@ static const cl_agent builtins[] = {
       "You are a file search specialist for C:Claude on an Amiga. You search and read; you never create, "
       "change or delete files, and run only commands that change nothing. Use Glob for names, Grep for "
       "contents, Read for a known file. Search broadly, then narrow down. Report what you found, with "
-      "full AmigaOS paths, concisely: the caller sees only your final message.", 0, 0, 0, 0, 0 },
+      "full AmigaOS paths, concisely: the caller sees only your final message.", 0, 0, 0, 0, 0, 0 },
     { "Plan",
       "Software architect agent for designing implementation plans: returns a step-by-step plan, the "
       "critical files and the trade-offs.",
@@ -39,7 +39,7 @@ static const cl_agent builtins[] = {
       "You are a software architect for C:Claude on an Amiga. Explore the code (Glob, Grep, Read; "
       "commands that change nothing), understand the requirement, and design an implementation plan: "
       "the steps in order, the files to change, the risks and the trade-offs. You change no file. "
-      "Your final message is the plan.", 0, 0, 0, 0, 0 },
+      "Your final message is the plan.", 0, 0, 0, 0, 0, 0 },
     { "statusline-setup",
       "Use this agent to configure the user's C:Claude status line setting.",
       "Read, Edit, Write", "sonnet",
@@ -48,7 +48,20 @@ static const cl_agent builtins[] = {
       "a JSON object on its standard input (the request lists its fields) and what it prints is the "
       "status line. Read the settings file first (it may not exist yet), keep every other key, write "
       "valid JSON. For more than one command line, write a small script beside the settings and point "
-      "the command at it. Report the command you set.", 0, 0, 0, 0, 0 }
+      "the command at it. Report the command you set.", 0, 0, 0, 0, 0, 0 },
+    { "claude-code-guide",
+      "Use this agent for questions about Claude Code or C:Claude: features, hooks, slash commands, settings, "
+      "skills, subagents, the command line.",
+      "Glob, Grep, Read, WebFetch, WebSearch", "haiku",
+      "You answer questions about Claude Code and C:Claude, its AmigaOS port. Claude Code's documentation is at "
+      "https://code.claude.com/docs/en/ (a page's Markdown: add .md, for example "
+      "https://code.claude.com/docs/en/hooks.md); fetch the pages that answer the question with WebFetch. "
+      "Say where C:Claude differs when you know (paths ENVARC:Claude for ~/.claude, AmigaDOS commands). Answer "
+      "concisely with the page you used.", 0, 0, 0, 0, 0, 0 },
+    { "claude",
+      "Catch-all for any task that does not fit a more specific agent.", 0, 0,
+      "You are an agent for C:Claude, Claude Code on an Amiga. Do the task you are given with the tools you "
+      "have, completely, and report what you did and found concisely, with full AmigaOS paths.", 0, 0, 0, 0, 0, 0 }
 };
 #define NBUILTIN ((int)(sizeof(builtins) / sizeof(builtins[0])))
 
@@ -463,6 +476,8 @@ static void agent_run(cl_tools *t, jw *out, const char *id, const cl_agent *a, c
     jw_rawz(&final, uses == 1 ? " tool use.)" : " tool uses.)");
     tl_result(t, out, id, final.p, final.n, 0);
 done:
+    if (child.depth && !t->fetch_cache)
+        t->fetch_cache = child.fetch_cache;    /* a cache the agent's WebFetch made is the session's */
     if (child.depth) {
         int mode = t->perm.mode;
         t->perm = child.perm;   /* the answers given count for the session ... */

@@ -33,7 +33,8 @@ void def_free(cl_def *d)
     free(d->when);
     d->description = d->body = d->tools = d->model = d->hint = 0;
     free(d->arg_names);
-    d->deny_tools = d->skills = d->when = d->arg_names = 0;
+    free(d->initial);
+    d->deny_tools = d->skills = d->when = d->arg_names = d->initial = 0;
 }
 
 void defs_free(cl_defs *s)
@@ -110,9 +111,11 @@ int defs_parse(const char *t, long n, cl_def *d)
         d->skills = dupn("", 0);
     if (!d->arg_names)
         d->arg_names = dupn("", 0);
+    if (!d->initial)
+        d->initial = dupn("", 0);
     if (!d->when)
         d->when = dupn("", 0);
-    if (!d->description || !d->tools || !d->model || !d->hint || !d->deny_tools || !d->skills || !d->when || !d->arg_names)
+    if (!d->description || !d->tools || !d->model || !d->hint || !d->deny_tools || !d->skills || !d->when || !d->arg_names || !d->initial)
         return -1;
     if (n >= 4 && !strncmp(t, "---", 3) && (t[3] == '\n' || t[3] == '\r')) {
         i = t[3] == '\r' ? 5 : 4;
@@ -186,6 +189,8 @@ int defs_parse(const char *t, long n, cl_def *d)
                     set(&d->skills, v);
                 else if (!strcmp(key, "when_to_use"))
                     set(&d->when, v);
+                else if (!strcmp(key, "initialPrompt"))
+                    set(&d->initial, v);
                 else {
                     if (!strcmp(key, "keep-coding-instructions"))
                         d->keep_coding = !strcmp(v, "true");
@@ -320,26 +325,115 @@ static const char concise[] =
     "out the lead-in, the step-by-step narration and the closing recap; answer a simple question in one to three "
     "sentences. Do the engineering work as thoroughly as ever: only the words get fewer.";
 
-static void builtin(cl_defs *s, const char *name, const char *desc, const char *body)
+static void builtin_of(cl_defs *s, int type, const char *name, const char *desc, const char *body,
+                       const char *tools, const char *hint)
 {
     cl_def d;
     memset(&d, 0, sizeof(d));
-    d.type = DEF_STYLE;
+    d.type = type;
     d.src = DEF_BUILTIN;
     d.keep_coding = 1;
     cl_copy(d.name, name, sizeof(d.name));
     d.description = dupn(desc, (long)strlen(desc));
     d.body = dupn(body, (long)strlen(body));
-    d.tools = dupn("", 0);
+    d.tools = dupn(tools, (long)strlen(tools));
     d.model = dupn("", 0);
-    d.hint = dupn("", 0);
+    d.hint = dupn(hint, (long)strlen(hint));
     d.deny_tools = dupn("", 0);
     d.skills = dupn("", 0);
     d.when = dupn("", 0);
     d.arg_names = dupn("", 0);
-    if (!d.description || !d.body || !d.tools || !d.model || !d.hint || !d.deny_tools || !d.skills || !d.when || !d.arg_names ||
-        add(s, &d))
+    d.initial = dupn("", 0);
+    if (!d.description || !d.body || !d.tools || !d.model || !d.hint || !d.deny_tools || !d.skills || !d.when ||
+        !d.arg_names || !d.initial || add(s, &d))
         def_free(&d);
+}
+
+static void builtin(cl_defs *s, const char *name, const char *desc, const char *body)
+{
+    builtin_of(s, DEF_STYLE, name, desc, body, "", "");
+}
+
+/* Claude Code's bundled skills that make sense on an Amiga, as prompts
+ * (each part under C89's 509 characters, joined) */
+static const char *const sk_simplify[] = {
+    "Review the code changed in this session for cleanup, then apply the fixes yourself. The changed files are "
+    "the ones you wrote or edited in this conversation; when there are none, or $ARGUMENTS names others, use "
+    "those. ",
+    "Look for: helpers that already exist and should be reused instead of new code, code that can be simpler, "
+    "needless work (on this slow machine above all), and code at the wrong level. Quality only: do not hunt for "
+    "bugs. Make the edits, then list what you changed in a few lines.",
+    0
+};
+static const char *const sk_update_config[] = {
+    "Make this change to C:Claude's settings: $ARGUMENTS\n\nThe settings files are ENVARC:Claude/settings.json "
+    "(the user's, all projects), .claude/settings.json (the project's, shared) and .claude/settings.local.json "
+    "(the project's, private). ",
+    "The keys are Claude Code's: permissions.allow / ask / deny (rules like Bash(make *) or Edit(src/**)), env, "
+    "hooks, model, effortLevel, outputStyle, statusLine, autoCompactEnabled, and the others of Claude Code's "
+    "settings reference. Read the file first, keep every other key, write valid JSON, and say which file you "
+    "changed and why that one.",
+    0
+};
+static const char *const sk_fewer_prompts[] = {
+    "Find the permission questions that keep coming back and propose allow rules for them. Read this project's "
+    "session files (ENVARC:Claude/projects/<this directory's name>/*.jsonl; the newest few are enough) and "
+    "collect the Bash commands and tools used again and again. ",
+    "Propose rules only for what is safe: commands that read, build or test, never ones that delete or "
+    "publish. Show the list; when the user agrees, add the rules to .claude/settings.json under "
+    "permissions.allow, keeping the file's other keys.",
+    0
+};
+static const char *const sk_insights[] = {
+    "Write a short HTML report on how C:Claude is used on this machine: read the session indexes "
+    "(ENVARC:Claude/projects/*/sessions) and a sample of the sessions (*.jsonl). ",
+    "Cover the projects worked on, what kind of work, what went wrong (errors, denied tools, stopped answers) "
+    "and features worth trying. Save it as RAM:claude-insights.html and say where it is.",
+    0
+};
+static const char *const sk_onboarding[] = {
+    "Write a Markdown onboarding guide for a teammate starting on this project, to paste as their first "
+    "message to Claude: what the project is, how it is built, run and tested on this machine, its conventions "
+    "and its pitfalls. ",
+    "Use the project's files and its CLAUDE.md / AMIGA.md, and this project's past sessions "
+    "(ENVARC:Claude/projects/...) for what was learned. Save it as .claude/onboarding.md.",
+    0
+};
+static const char *const sk_run[] = {
+    "Launch this project's program and see the change working, not only compiling: find how it is built and "
+    "started (a Makefile or smakefile, an Install script, the README, CLAUDE.md / AMIGA.md, or a project skill "
+    "named run), build it, run it with Bash, and check what it does. $ARGUMENTS ",
+    "Report what you ran and what you saw. If it needs a person (a window, a sound), say exactly what to look "
+    "for.",
+    0
+};
+static const char *const sk_verify[] = {
+    "Confirm that the change does what it should by building the program and running it, not by reading the "
+    "code or by the tests alone. $ARGUMENTS ",
+    "Find the build and start commands (a Makefile, the README, CLAUDE.md, a project skill named run), run the "
+    "path the change affects, and compare what happens with what was asked. Report pass or fail with the "
+    "evidence.",
+    0
+};
+static const char *const sk_run_gen[] = {
+    "Write a project skill that teaches you to build, start and check this program from scratch: find the "
+    "commands (Makefile, smakefile, Install scripts, README) and try them. ",
+    "Save it as .claude/skills/run/SKILL.md with a frontmatter (description: how to build and run this "
+    "project) and steps a fresh session can follow on this machine. Say what you could not check.",
+    0
+};
+
+static void bundled(cl_defs *s, const char *name, const char *desc, const char *const *parts, const char *tools,
+                    const char *hint)
+{
+    jw b;
+    int i;
+    jw_init(&b);
+    for (i = 0; parts[i]; i++)
+        jw_rawz(&b, parts[i]);
+    if (!b.oom && b.p)
+        builtin_of(s, DEF_SKILL, name, desc, b.p, tools, hint);
+    jw_free(&b);
 }
 
 int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
@@ -352,6 +446,18 @@ int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
     builtin(s, "Concise", "Leads with the result; no preamble, narration or recap", concise);
     builtin(s, "Explanatory", "Explains the choices and the codebase while it works", explanatory);
     builtin(s, "Learning", "Works with you: leaves small pieces for you to write (TODO(human))", learning);
+    bundled(s, "simplify", "Review this session's changed code for reuse, simplicity and efficiency, and fix it",
+            sk_simplify, "", "[files]");
+    bundled(s, "update-config", "Change C:Claude's settings (permissions, env, hooks, ...) as described", sk_update_config,
+            "", "<what to change>");
+    bundled(s, "fewer-permission-prompts", "Propose allow rules for the questions that keep coming back",
+            sk_fewer_prompts, "", "");
+    bundled(s, "insights", "An HTML report on how C:Claude is used on this machine", sk_insights, "", "");
+    bundled(s, "team-onboarding", "A guide for a teammate starting on this project", sk_onboarding, "", "");
+    bundled(s, "run", "Build and run the program to see a change working", sk_run, "", "[what to check]");
+    bundled(s, "verify", "Confirm a change works by running the program", sk_verify, "", "[what to check]");
+    bundled(s, "run-skill-generator", "Write a project skill that tells how to build and run this program",
+            sk_run_gen, "", "");
     cl_copy(base[0], home ? home : "", sizeof(base[0]));
     if (path_join(root, ".claude", base[1], sizeof(base[1])))
         base[1][0] = 0;
@@ -422,6 +528,10 @@ void def_extra_json(cl_def *d, jv a)
         json_str(x, d->effort, sizeof(d->effort));
     if (json_get(a, "permissionMode", &x))
         json_str(x, d->perm_mode, sizeof(d->perm_mode));
+    if (json_get(a, "initialPrompt", &x) && json_type(x) == J_STR) {
+        long l;
+        set(&d->initial, json_strdup(x, &l));
+    }
 }
 
 int defs_add_agents_json(cl_defs *s, const char *json, char *err, long cap)

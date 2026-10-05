@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <utime.h>
 #include "harness.h"
 #include "claude_load.h"
 #include "../claude/repl.h"
@@ -426,9 +427,11 @@ static void test_reach(void)
     CHECK(json_get(b, "stream", &x) && json_type(x) == J_TRUE);
     CHECK(json_get(b, "output_config", &x) && json_get(x, "effort", &e) && json_streq(e, "medium"));
     CHECK(json_get(b, "fallbacks", &x) && json_streq(x, "default"));
-    /* the tools by Claude Code's names: no WebFetch without its connection, no Skill or
-     * SlashCommand without any; the web_search server tool declared */
-    CHECK(json_get(b, "tools", &x) && json_count(x) == 15);
+    /* the tools by Claude Code's names: no WebFetch without its connection, no
+     * SlashCommand without a command (Skill: the bundled ones are always there);
+     * the web_search server tool declared */
+    CHECK(json_get(b, "tools", &x) && json_count(x) == 16);
+    CHECK(strstr(sb.body[0], "- simplify: Review this session's changed code") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Read\",") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
     CHECK(strstr(sb.body[0], "\"type\":\"web_search_20260209\",\"name\":\"web_search\"") != 0);
@@ -1101,7 +1104,7 @@ static void test_wp3_commands(void)
     CHECK(strstr(cn.screen.p, "No custom commands") != 0);
     repl_line(&r, "/agents");
     repl_line(&r, "/skills");
-    CHECK(strstr(cn.screen.p, "No skills") != 0);
+    CHECK(strstr(cn.screen.p, "  simplify (built-in)  Review this session's changed code") != 0);
     repl_line(&r, "/doctor");
     CHECK(strstr(cn.screen.p, "[OK]    System: a POSIX host") != 0);
     CHECK(strstr(cn.screen.p, "[OK]    Settings") != 0);
@@ -2754,7 +2757,7 @@ static void test_gaps_commands(void)
     /* S8 /reload-skills: a skill added on disk is there */
     xput(root, ".claude/skills/new-one/SKILL.md", "---\ndescription: New\nargument-hint: [file]\n---\nX\n");
     repl_line(&r, "/reload-skills");
-    CHECK(strstr(cn.screen.p, "Skills: 1 (+1)") != 0);
+    CHECK(strstr(cn.screen.p, "Skills: 9 (+1)") != 0);
     /* S19 the skill is in the menu, with its argument hint */
     repl_line(&r, "/help");
     CHECK(strstr(cn.screen.p, "/new-one") != 0 && strstr(cn.screen.p, "New  [file]") != 0);
@@ -3227,6 +3230,342 @@ static void test_gaps_hooks(void)
     remove(p);
 }
 
+/* a file's time set seconds before now (cleanupPeriodDays, ConfigChange) */
+static void age_file(const char *p, long secs)
+{
+    struct utimbuf u;
+    struct stat st;
+    if (stat(p, &st))
+        return;
+    u.actime = st.st_atime - secs;
+    u.modtime = st.st_mtime - secs;
+    utime(p, &u);
+}
+
+/* Phase 5: the rest the Amiga can do (P1-P8) */
+static void test_gaps_more(void)
+{
+    static const char *none[] = { 0 };
+    static const char *yes[] = { "y", 0 };
+    static const char *proj[] = { "p", 0 };
+    static cl_repl r;
+    char root[600], p[900], m[700], home0[600];
+    const char *env;
+    cl_cli c;
+    cl_net web;
+    strcpy(root, dir);
+    strcat(root, "/gapsmore");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+#define SCRIPT(name, body)                                                                                         \
+    do {                                                                                                           \
+        strcpy(m, "cd ");                                                                                          \
+        strcat(m, root);                                                                                           \
+        strcat(m, "\n");                                                                                           \
+        strcat(m, body);                                                                                           \
+        xput(root, name, m);                                                                                       \
+    } while (0)
+#define HOOKS(json)                                                                                                \
+    do {                                                                                                           \
+        xput(root, ".claude/settings.json", json);                                                                 \
+    } while (0)
+    SCRIPT("mark.sh", "cat > m-$1.json\n");
+    SCRIPT("envf.sh", "echo 'export GAPS_ENV_VAR=from-hook' >> \"$CLAUDE_ENV_FILE\"\n");
+    SCRIPT("batch.sh", "echo '{\"decision\":\"block\",\"reason\":\"BATCH-STOP\"}'\n");
+    SCRIPT("nohaiku.sh", "echo no haiku here\nexit 2\n");
+
+    /* P2 a prompt hook on Stop: the small model says not yet, Claude goes on with its reason */
+    strcpy(p, "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"prompt\",\"prompt\":\"Done? $ARGUMENTS\"}]}]}}");
+    HOOKS(p);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "first answer");
+    add_answer(0, 0, 0, "{\"ok\": false, \"reason\": \"KEEP-GOING\"}");
+    add_answer(0, 0, 0, "second answer");
+    add_answer(0, 0, 0, "{\"ok\": true}");
+    repl_line(&r, "work");
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "claude-haiku-4-5") != 0 && strstr(sb.body[1], "Done? {") != 0 &&
+          strstr(sb.body[1], "hook_event_name") != 0);
+    CHECK(sb.nreq > 2 && strstr(sb.body[2], "KEEP-GOING") != 0);
+    repl_free(&r);
+
+    /* P2 once, matchers (a plain list, a regular expression), CLAUDE_ENV_FILE,
+     * InstructionsLoaded, Notification's types, PostToolBatch */
+    xput(root, "CLAUDE.md", "MEM\n");
+    strcpy(p, "{\"hooks\":{\"PostToolUse\":[{\"matcher\":\"Grep, Read\",\"hooks\":[{\"type\":\"command\",\"once\":true,"
+              "\"statusMessage\":\"Checking\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh once\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/envf.sh\"}]}],\"InstructionsLoaded\":[{\"matcher\":\"session_start\",\"hooks\":[{\"type\":\"command\","
+              "\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh instr\"}]}],\"Notification\":[{\"matcher\":\"^idle_\",\"hooks\":[{\"type\":\"command\","
+              "\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh idle\"}]}],\"PostToolBatch\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/batch.sh\"}]}]}}");
+    HOOKS(p);
+    setup_in(&r, none, root);
+    add_answer("toolu_A1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "never");
+    repl_line(&r, "read twice");
+    CHECK_INT(sb.nreq, 1);                          /* PostToolBatch blocked the next request */
+    CHECK(marker(root, "m-once.json") && marker(root, "m-instr.json"));
+    env = getenv("GAPS_ENV_VAR");
+    CHECK(env && !strcmp(env, "from-hook"));
+    add_answer("toolu_A2", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "x");
+    strcpy(p, root);
+    strcat(p, "/m-once.json");
+    remove(p);
+    repl_line(&r, "again");
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "BATCH-STOP") != 0);     /* Claude was told why */
+    CHECK(!marker(root, "m-once.json"));            /* once: not again */
+    r.idle_from = 1;
+    cn.clock += 70000;
+    pol_status_tick(&r);
+    CHECK(marker(root, "m-idle.json"));
+    repl_free(&r);
+    unsetenv("GAPS_ENV_VAR");
+
+    /* P2 Pre/PostModelSwitch; ConfigChange reads a changed file again */
+    strcpy(p, "{\"hooks\":{\"PreModelSwitch\":[{\"matcher\":\".*haiku.*\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/nohaiku.sh\"}]}],\"PostModelSwitch\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh postswitch\"}]}]}}");
+    HOOKS(p);
+    setup_in(&r, none, root);
+    repl_line(&r, "/model haiku");
+    CHECK_STR(r.model, "claude-opus-5-5");
+    CHECK(strstr(cn.screen.p, "A PreModelSwitch hook blocked the switch: no haiku here") != 0);
+    repl_line(&r, "/model sonnet");
+    CHECK_STR(r.model, "claude-sonnet-5-5");
+    CHECK(marker(root, "m-postswitch.json"));
+    unset_home_model();
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    age_file(p, 100);
+    r.cfg_mtime[CFG_PROJECT] = 0;               /* as if read before the file changed */
+    repl_line(&r, "/status");
+    CHECK(strstr(cn.screen.p, "Settings changed on disk, read again:") != 0);
+    repl_free(&r);
+    remove(p);
+
+    /* P2 Setup (--init-only) and --include-hook-events; P6 --prompt-suggestions,
+     * --exclude-dynamic-system-prompt-sections */
+    strcpy(p, "{\"hooks\":{\"Setup\":[{\"matcher\":\"init\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh setup\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"echo STARTED\"}]}]}}");
+    HOOKS(p);
+    setup_in(&r, none, root);
+    CHECK_INT(run_print(&r, "-p --init-only", 0), 0);
+    CHECK(marker(root, "m-setup.json"));
+    CHECK_INT(sb.nreq, 0);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "hello there");
+    add_answer(0, 0, 0, "what next?");
+    CHECK_INT(run_print(&r, "-p --output-format stream-json --verbose --include-hook-events --prompt-suggestions "
+                            "--exclude-dynamic-system-prompt-sections hi",
+                        0),
+              0);
+    CHECK(strstr(outp(), "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_name\":\"echo STARTED\"") != 0);
+    CHECK(strstr(outp(), "\"subtype\":\"hook_response\"") != 0 && strstr(outp(), "STARTED") != 0);
+    CHECK(strstr(outp(), "{\"type\":\"prompt_suggestion\",\"suggestion\":\"what next?\"") != 0);
+    CHECK(sb.nreq >= 1 && strstr(sb.body[0], "\"system\":") != 0);
+    if (sb.nreq >= 1) {
+        const char *msgs = strstr(sb.body[0], "\"messages\":");
+        CHECK(msgs && strstr(msgs, "# Auto memory") != 0);       /* with the first prompt ... */
+        CHECK(strstr(r.system, "# Auto memory") == 0);            /* ... not in the system prompt */
+    }
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+
+    /* P3 "don't ask again in this project" kept as a rule; ~/ in rules; apiKeyHelper,
+     * availableModels, bashOutputMaxChars, cleanupPeriodDays */
+    setup_in(&r, proj, root);
+    add_answer("toolu_B7", "Bash", "{\"command\":\"makedir NEWDIR\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "make a dir");
+    CHECK(has("gapsmore/.claude/settings.local.json", "\"Bash(makedir *)\""));
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.local.json");
+    remove(p);
+    strcpy(p, "{\"apiKeyHelper\":\"echo sk-from-helper-1234\",\"availableModels\":[\"sonnet\"],"
+              "\"bashOutputMaxChars\":100,\"cleanupPeriodDays\":5,\"permissions\":{\"deny\":[\"Read(~/secret.txt)\"]}}");
+    HOOKS(p);
+    xput(root, "secret.txt", "SECRET\n");
+    {
+        char real[700];
+        const char *h0 = getenv("HOME");
+        cl_copy(home0, h0 ? h0 : "", sizeof(home0));
+        if (realpath(root, real))
+            setenv("HOME", real, 1);    /* the start directory as the tools see it (canonical) */
+    }
+    setup_in(&r, none, root);
+    CHECK(r.key && !strcmp(r.key, "sk-from-helper-1234"));
+    {
+        /* an old session file of this project: gone at the start (the first line) */
+        char old[700];
+        strcpy(old, r.sess.dir);
+        strcat(old, "/0000beef.jsonl");
+        mkdir(r.sess.dir, 0700);
+        xput(r.sess.dir, "0000beef.jsonl", "{}\n");
+        age_file(old, 10L * 86400);
+        repl_line(&r, "/model opus");
+        CHECK_STR(r.model, "claude-opus-5-5");
+        CHECK(strstr(cn.screen.p, "Not in availableModels") != 0);
+        add_answer("toolu_B8", "Bash", "{\"command\":\"printf '%0200d' 0\"}", 0);
+        add_answer("toolu_R8", "Read", "{\"file_path\":\"secret.txt\"}", 0);
+        add_answer(0, 0, 0, "ok");
+        CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+        CHECK(!exists(old));
+        CHECK(sb.nreq >= 2 && strstr(sb.body[1], "(output cut at 100 characters)") != 0);
+        CHECK(sb.nreq >= 3 && strstr(sb.body[2], "has been denied by the rule Read(~/secret.txt)") != 0);
+    }
+    repl_free(&r);
+    if (home0[0])
+        setenv("HOME", home0, 1);
+    else
+        unsetenv("HOME");
+    remove(p);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+
+    /* P4 AGENTS.md only where no CLAUDE.md is; CLAUDE.local.md in a subdirectory */
+    xput(root, "AGENTS.md", "ROOT-AGENTS\n");
+    xput(root, "sub/AGENTS.md", "SUB-AGENTS\n");
+    xput(root, "sub/CLAUDE.local.md", "SUB-LOCAL\n");
+    xput(root, "sub/f.txt", "x\n");
+    setup_in(&r, none, root);
+    CHECK(strstr(r.system, "ROOT-AGENTS") == 0);    /* CLAUDE.md is there */
+    add_answer("toolu_R9", "Read", "{\"file_path\":\"sub/f.txt\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "read sub");
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "SUB-AGENTS") != 0 && strstr(sb.body[1], "SUB-LOCAL") != 0);
+    /* P5 the built-in agents */
+    CHECK(tools_agent(&r.tools, "claude-code-guide") != 0 && tools_agent(&r.tools, "claude") != 0);
+    /* P1 a bundled skill typed; P7 /skills with a filter, /skill-doctor, /context's categories */
+    add_answer(0, 0, 0, "simplified");
+    repl_line(&r, "/simplify");
+    CHECK(strstr(sb.body[sb.nreq - 1], "Review the code changed in this session for cleanup") != 0);
+    repl_line(&r, "/skills run");
+    CHECK(strstr(cn.screen.p, "  run (built-in)") != 0 && strstr(cn.screen.p, "  insights (built-in)") == 0);
+    repl_line(&r, "/skill-doctor");
+    CHECK(strstr(cn.screen.p, "Listing in all: ~") != 0);
+    repl_line(&r, "/context");
+    CHECK(strstr(cn.screen.p, "By category (estimated):") != 0 && strstr(cn.screen.p, "  Memory files") != 0);
+    /* P7 /goal: a small model judges after the turn; not met: one more turn */
+    add_answer(0, 0, 0, "half done");
+    add_answer(0, 0, 0, "NOT MET: the second half is missing");
+    add_answer(0, 0, 0, "all done");
+    add_answer(0, 0, 0, "MET");
+    {
+        int n0 = sb.nreq;
+        repl_line(&r, "/goal both halves are done");
+        CHECK_INT(sb.nreq - n0, 4);
+        CHECK(strstr(sb.body[n0 + 2], "Keep working toward the goal: both halves are done") != 0);
+        CHECK_STR(r.goal, "");
+    }
+    repl_free(&r);
+
+    /* P8 Bash: a cd persists */
+    setup_in(&r, none, root);
+    add_answer("toolu_C1", "Bash", "{\"command\":\"cd S\"}", 0);
+    add_answer("toolu_C2", "Bash", "{\"command\":\"pwd\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "gapsmore/S\\n") != 0);
+    repl_free(&r);
+
+    /* P8 WebFetch: the same page within 15 minutes is not fetched again */
+    setup_in(&r, none, root);
+    web.u = 0;
+    web.open = wp_open;
+    web.send = wp_send;
+    web.recv = wp_recv;
+    web.close = wp_close;
+    web.err = s_err;
+    r.tools.web = &web;
+    free(r.tools.json);
+    r.tools.json = 0;
+    wp2_open_n = 0;
+    add_answer("toolu_F1", "WebFetch", "{\"url\":\"http://127.0.0.1:8080/page\",\"prompt\":\"what is it\"}", 0);
+    add_answer(0, 0, 0, "a page");
+    add_answer("toolu_F2", "WebFetch", "{\"url\":\"http://127.0.0.1:8080/page\",\"prompt\":\"and again\"}", 0);
+    add_answer(0, 0, 0, "the same page");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools WebFetch -- fetch twice", 0), 0);
+    CHECK_INT(wp2_open_n, 1);
+    CHECK_INT((int)r.tools.n_fetch_cached, 1);
+    repl_free(&r);
+
+    /* P6 the subcommands: doctor, auth status, purge */
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "doctor"), 0);
+    CHECK_INT(c.sub, SUB_DOCTOR);
+    cli_free(&c);
+    setup_in(&r, none, root);
+    cli_init(&c);
+    cli_parse_line(&c, "auth status");
+    {
+        cl_pout po;
+        jw_reset(&pc.out);
+        po.u = 0;
+        po.out = pc_out;
+        po.err = 0;
+        po.in = 0;
+        CHECK_INT(print_subcommand(&r, &c, &po), 0);
+        CHECK(strstr(outp(), "{\"loggedIn\":true,\"authMethod\":\"api_key\"") != 0);
+        cli_free(&c);
+        cli_init(&c);
+        cli_parse_line(&c, "doctor");
+        jw_reset(&pc.out);
+        print_subcommand(&r, &c, &po);
+        CHECK(strstr(outp(), "[OK]    System") != 0);
+    }
+    cli_free(&c);
+    repl_free(&r);
+    setup_in(&r, yes, root);
+    cli_init(&c);
+    cli_parse_line(&c, "purge");
+    {
+        cl_pout po;
+        po.u = 0;
+        po.out = pc_out;
+        po.err = 0;
+        po.in = 0;
+        mkdir(r.sess.dir, 0700);
+        xput(r.sess.dir, "1234abcd.jsonl", "{}\n");
+        jw_reset(&pc.out);
+        CHECK_INT(print_subcommand(&r, &c, &po), 0);
+        CHECK(strstr(outp(), "Removed ") != 0);
+        strcpy(p, r.sess.dir);
+        strcat(p, "/1234abcd.jsonl");
+        CHECK(!exists(p));
+    }
+    cli_free(&c);
+    repl_free(&r);
+    /* P5 initialPrompt: an --agents agent starts the session with it */
+    xput(root, "ip.json", "{\"ip\":{\"description\":\"x\",\"prompt\":\"IP\",\"initialPrompt\":\"START-WITH-THIS\"}}");
+    setup_in(&r, none, root);
+    cli_init(&c);
+    CHECK_INT(cli_parse_line(&c, "--agents ip.json --agent ip"), 0);
+    CHECK_INT(cli_apply(&c, &r), 0);
+    CHECK(c.prompt && !strcmp(c.prompt, "START-WITH-THIS"));
+    cli_free(&c);
+    repl_free(&r);
+#undef SCRIPT
+#undef HOOKS
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -3247,6 +3586,7 @@ void suite_claude_repl(void)
     test_gaps_perm_menu();
     test_gaps_ext();
     test_gaps_hooks();
+    test_gaps_more();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);

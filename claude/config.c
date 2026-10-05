@@ -8,7 +8,8 @@
 const char *const cfg_hook_events[HK_COUNT] = {
     "PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop", "SessionStart", "SessionEnd",
     "PreCompact", "Notification", "PermissionRequest", "PostToolUseFailure", "SubagentStart", "PostCompact",
-    "StopFailure", "UserPromptExpansion", "CwdChanged", "DirectoryAdded"
+    "StopFailure", "UserPromptExpansion", "CwdChanged", "DirectoryAdded", "PreModelSwitch", "PostModelSwitch",
+    "InstructionsLoaded", "PostToolBatch", "ConfigChange", "Setup"
 };
 
 static char *dupn(const char *s, long n)
@@ -34,6 +35,7 @@ void cfg_init(cl_settings *s)
     s->verbose = -1;
     s->auto_memory = -1;
     s->model_src = -1;
+    s->cleanup_days = -1;
 }
 
 void cfg_drop_hooks(cl_settings *s)
@@ -43,6 +45,8 @@ void cfg_drop_hooks(cl_settings *s)
         free(s->hooks[i].matcher);
         free(s->hooks[i].cmd);
         free(s->hooks[i].cond);
+        free(s->hooks[i].model);
+        free(s->hooks[i].status);
     }
     s->nhooks = 0;
 }
@@ -173,10 +177,21 @@ static void hooks_of(cl_settings *s, jv hooks, int src)
                 long cl;
                 char *cmd;
                 cl_hook *k;
-                if (json_get(h, "type", &x) && !json_streq(x, "command"))
+                int kind = HOOK_COMMAND, i;
+                if (json_get(h, "type", &x) && json_streq(x, "prompt"))
+                    kind = HOOK_PROMPT;
+                else if (json_get(h, "type", &x) && !json_streq(x, "command"))
+                    continue;           /* http, agent, mcp_tool: not here */
+                if (!json_get(h, kind == HOOK_PROMPT ? "prompt" : "command", &x) || (cmd = json_strdup(x, &cl)) == 0)
                     continue;
-                if (!json_get(h, "command", &x) || (cmd = json_strdup(x, &cl)) == 0)
+                for (i = 0; i < s->nhooks; i++)
+                    if (s->hooks[i].event == ev && !strcmp(s->hooks[i].cmd, cmd) &&
+                        !strcmp(s->hooks[i].matcher, matcher))
+                        break;
+                if (i < s->nhooks) {
+                    free(cmd);          /* Claude Code: the same handler from several files runs once */
                     continue;
+                }
                 if (grow((void **)&s->hooks, s->nhooks, &s->caphooks, sizeof(cl_hook))) {
                     free(cmd);
                     return;
@@ -193,6 +208,12 @@ static void hooks_of(cl_settings *s, jv hooks, int src)
                 k->cond = 0;
                 if (json_get(h, "if", &x) && json_type(x) == J_STR)
                     k->cond = json_strdup(x, &cl);
+                k->kind = kind;
+                k->model = json_get(h, "model", &x) && json_type(x) == J_STR ? json_strdup(x, &cl) : 0;
+                k->status = json_get(h, "statusMessage", &x) && json_type(x) == J_STR ? json_strdup(x, &cl) : 0;
+                k->once = json_get(h, "once", &x) && json_type(x) == J_TRUE;
+                if (kind == HOOK_PROMPT && !json_get(h, "timeout", &x))
+                    k->timeout_s = 30;  /* Claude Code: a prompt hook's 30 s */
                 if (!k->matcher) {
                     free(cmd);
                     free(k->cond);
@@ -289,6 +310,26 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         s->auto_memory = json_type(x) == J_TRUE;
     if (json_get(o, "agent", &x))
         str_into(x, s->agent, sizeof(s->agent));
+    if (json_get(o, "apiKeyHelper", &x))
+        str_into(x, s->key_helper, sizeof(s->key_helper));
+    if (json_get(o, "bashOutputMaxChars", &x) && json_type(x) == J_NUM)
+        s->bash_max_chars = json_long(x, 0);
+    if (json_get(o, "cleanupPeriodDays", &x) && json_type(x) == J_NUM)
+        s->cleanup_days = (int)json_long(x, -1);
+    if (json_get(o, "availableModels", &x) && json_type(x) == J_ARR) {
+        jit it;
+        jv e;
+        s->avail_models[0] = 0;
+        json_iter(x, &it);
+        while (json_next(&it, 0, &e)) {
+            char m[64];
+            if (json_type(e) != J_STR || json_str(e, m, sizeof(m)) < 1)
+                continue;
+            if (s->avail_models[0])
+                cl_cat(s->avail_models, ",", sizeof(s->avail_models));
+            cl_cat(s->avail_models, m, sizeof(s->avail_models));
+        }
+    }
     if (json_get(o, "autoCompactWindow", &x)) {
         long w = 0;
         if (json_type(x) == J_NUM)
@@ -750,11 +791,24 @@ static int bash_match(const char *pat, const char *cmd, int all)
 }
 
 /* a path pattern against a call's path, both resolved against root */
+static char home_dir[256] = "SYS:";
+
+void cfg_set_home(const char *dir)
+{
+    cl_copy(home_dir, dir && *dir ? dir : "SYS:", sizeof(home_dir));
+}
+
 static int path_match(const char *pat, const char *path, const char *root)
 {
     char full[600], pp[600];
     const char *p = pat;
-    if (!strchr(p, ':')) {
+    if (p[0] == '~' && p[1] == '/') {
+        /* ~/x: from the user's home (HOME, else SYS:), as Claude Code's */
+        cl_copy(pp, home_dir, sizeof(pp));
+        if (pp[0] && pp[strlen(pp) - 1] != ':' && pp[strlen(pp) - 1] != '/')
+            cl_cat(pp, "/", sizeof(pp));
+        cl_cat(pp, p + 2, sizeof(pp));
+    } else if (!strchr(p, ':')) {
         if (!strncmp(p, "./", 2))
             p += 2;
         else if (p[0] == '/' && p[1] == '/')

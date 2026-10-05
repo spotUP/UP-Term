@@ -326,6 +326,50 @@ int sess_list(cl_session *s, cl_sess_info *out, int max)
     return k;
 }
 
+typedef struct oldf {
+    cl_dirent e[64];
+    int n;
+} oldf;
+
+static int old_one(void *c, const cl_dirent *e)
+{
+    oldf *o = (oldf *)c;
+    if (o->n < 64)
+        o->e[o->n++] = *e;
+    return 0;
+}
+
+int sess_cleanup(cl_session *s, const char *tmp, long age)
+{
+    char clock[300], p[340];
+    long now;
+    int i, gone = 0;
+    oldf *o;
+    if (!s->sys->mtime || !s->sys->list || !s->sys->remove || path_join(tmp, "Claude-clock", clock, sizeof(clock)) ||
+        s->sys->write(s->sys->u, clock, "x", 1))
+        return 0;
+    now = s->sys->mtime(s->sys->u, clock);     /* sys.h has no clock of seconds: a new file's time is now */
+    s->sys->remove(s->sys->u, clock);
+    o = (oldf *)malloc(sizeof(oldf));
+    if (!now || !o) {
+        free(o);
+        return 0;
+    }
+    o->n = 0;
+    s->sys->list(s->sys->u, s->dir, old_one, o);
+    for (i = 0; i < o->n; i++) {
+        long l = (long)strlen(o->e[i].name);
+        if (o->e[i].dir || l < 7 || !cl_strieq(o->e[i].name + l - 6, ".jsonl") || !o->e[i].mtime ||
+            now - o->e[i].mtime < age)
+            continue;
+        if (path_join(s->dir, o->e[i].name, p, sizeof(p)) == 0 && strcmp(p, s->file) &&
+            s->sys->remove(s->sys->u, p) == 0)
+            gone++;
+    }
+    free(o);
+    return gone;
+}
+
 int sess_find(cl_session *s, const char *name, char *id, long cap)
 {
     cl_sess_info *l = (cl_sess_info *)malloc(SESS_LIST * sizeof(cl_sess_info));

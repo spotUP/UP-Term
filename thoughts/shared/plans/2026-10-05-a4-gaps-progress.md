@@ -81,6 +81,24 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
 - [x] M1 HTML comments stripped   - [x] M2 .claude/rules (+ paths:), ENVARC:Claude/rules
 - [x] M3 claudeMdExcludes   - [x] M4 auto memory (MEMORY.md)
 
+Phase 5 -- the rest the Amiga can do (added after phase 4; the audit's "not built" rows)
+- [x] P1 bundled skills as prompts: simplify, update-config, fewer-permission-prompts, insights,
+      team-onboarding, run, verify, run-skill-generator; /skill-doctor
+- [x] P2 hooks: prompt type, once, statusMessage, Claude Code's matcher rules (exact list /
+      regex), Notification types + idle_prompt, PreModelSwitch / PostModelSwitch,
+      InstructionsLoaded, PostToolBatch, ConfigChange (+ settings re-read on change),
+      CLAUDE_ENV_FILE, Setup with --init / --init-only / --maintenance, --include-hook-events,
+      the same handler from several files once
+- [x] P3 settings: apiKeyHelper, availableModels, bashOutputMaxChars (+ BASH_MAX_OUTPUT_LENGTH),
+      cleanupPeriodDays; "don't ask again in this project" kept as a rule; ~/ in path rules
+- [x] P4 memory: AGENTS.md only where no CLAUDE.md is; CLAUDE.local.md in every directory
+- [x] P5 agents: claude-code-guide and claude built-ins; initialPrompt
+- [x] P6 CLI: --exclude-dynamic-system-prompt-sections, --prompt-suggestions; Claude doctor,
+      auth status / login / logout, purge
+- [x] P7 /context by category; /skills TEXT with sizes; /goal
+- [x] P8 Bash: a cd persists; WebFetch 15-minute cache
+- [ ] P9 checkpoints kept across a restart (T:) -- not built (see Left)
+
 ## Decisions (do not re-litigate)
 
 - --session-id: the UUID is the id; its file is <first 8 hex digits>.jsonl (FFS's 30-character
@@ -157,6 +175,33 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
   by default (autoMemoryEnabled false or CLAUDE_CODE_DISABLE_AUTO_MEMORY turn it off): MEMORY.md's
   first 200 lines, the directory named in the system prompt, Write/Edit/Read there need no
   question; /memory auto on|off.
+- Bundled skills are built-in DEF_SKILL definitions (src built-in): prompts adapted to the Amiga
+  (no git: simplify reviews the files changed in the conversation). /review, /code-review,
+  /security-review, /batch stay N/A (git, worktrees, parallel agents).
+- Prompt hooks ask claude-haiku-4-5 (or their "model") through agent_query; ok:false blocks
+  like exit 2 (PreToolUse: the call is refused and the turn goes on -- Claude Code's
+  continueOnBlock behaviour, its default ends the turn); impossible:true lets a Stop end.
+  http and agent hook types are not built.
+- Hook matchers follow hooks.md: "" / "*" all; letters, digits, _ - space , | an exact list;
+  anything else a regular expression (claude/regex.c), unanchored.
+- ConfigChange: the three files' times are taken at each load and compared at each typed line;
+  a change runs the hooks and (unless blocked) reads the settings again. Our own writes count too.
+- idle_prompt: from the screen's idle tick, 60 s after a turn ended, once per wait.
+- cleanupPeriodDays is honoured when set; C:Claude does not apply Claude Code's default of 30
+  days (a decision: no session is deleted unless the user asks for it in the settings). The
+  clock is a new T: file's time (sys.h has no clock of seconds).
+- "Yes, and don't ask again in this project" (screen: 3rd option for non-edit tools; line mode:
+  p) writes Bash(<first word> *), WebFetch(domain:<host>) or the tool's name to
+  .claude/settings.local.json.
+- ~/ in a path rule is HOME (vsh sets it), else SYS:.
+- --exclude-dynamic-system-prompt-sections moves the auto memory section (the per-user part)
+  into the first prompt.
+- Subcommands are recognised when the whole prompt is "doctor", "auth status [--text]",
+  "auth login", "auth logout", "purge [dir]" (not in print mode). purge asks y/n first and removes
+  the project's directory under ENVARC:Claude/projects (sessions, auto memory) and its history lines.
+- A Bash "cd DIR" alone sets where the next commands run (a "cd" line prefixed to each script;
+  the AmigaShell's script and vsh both take it); cd is in the read-only set.
+- WebFetch keeps 4 pages for 15 minutes (the page's Markdown; the prompt is answered anew).
 - A skill typed as /name runs as a turn like a command (context: fork applies when Claude calls
   the Skill tool; typed, it runs inline).
 
@@ -190,5 +235,16 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
   use makedir / printf (echo is read-only now). Mutations: if off, PermissionRequest off,
   comment stripping off, the updatedInput swap off, rules off each fail. Gate: make test (43 OK),
   make test-ref (149, 0 failed), make amiga rc 0.
+
+- c5 Phase 5 (P1-P8): claude_repl test_gaps_more (prompt hook on Stop, once, matchers,
+  CLAUDE_ENV_FILE, InstructionsLoaded, idle_prompt, PostToolBatch, Pre/PostModelSwitch,
+  ConfigChange, --init-only, --include-hook-events, --prompt-suggestions,
+  --exclude-dynamic-system-prompt-sections, the kept rule, apiKeyHelper, availableModels,
+  bashOutputMaxChars, cleanupPeriodDays, ~/ rule, AGENTS.md / CLAUDE.local.md, built-in agents,
+  /simplify, /skills TEXT, /skill-doctor, /context, /goal, cd, WebFetch cache, doctor / auth
+  status / purge, initialPrompt); claude_config: matcher rules; goldens: tools gained Skill
+  (bundled skills), slash_commands /goal /skill-doctor. Mutations: prompt hooks' model off,
+  PostToolBatch stop off, the WebFetch cache off each fail. Gate: make test (43 OK), make
+  test-ref (149, 0 failed), make amiga rc 0.
 
 ## Rig steps (main session)

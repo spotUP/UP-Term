@@ -41,7 +41,9 @@ enum {
 /* The user's answer to a permission question. ASK_STOP: no, and the user
  * will tell Claude what to do instead -- this call and the rest of its
  * round are not run, and the turn ends after their results (stop is set). */
-enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP };
+enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP, ASK_PROJECT };
+/* ASK_PROJECT (A4 gaps): yes, and don't ask again in this project -- the
+ * asker keeps a rule in .claude/settings.local.json and answers ASK_ONCE */
 
 /* The permission mode (Shift+Tab in the screen, ledger A3): the A2 rules;
  * accept edits -- Write, Edit and MultiEdit inside the start directory run
@@ -145,6 +147,11 @@ typedef struct cl_tools {
     int nobody;                 /* print mode: 1 a denial was nobody's answer; 2 --permission-prompts none */
     int rule_ask;               /* the call has an explicit ask rule (a read-only command asks then too) */
     long max_timeout_ms;        /* BASH_MAX_TIMEOUT_MS, 0: 600000 */
+    long out_max;               /* bashOutputMaxChars / BASH_MAX_OUTPUT_LENGTH, 0: 30000 */
+    char cwd[256];              /* where Bash's commands run: a "cd" persists (Claude Code), "" the root */
+    unsigned long (*clock)(void *u);    /* optional: milliseconds (WebFetch's 15-minute cache) */
+    void *fetch_cache;          /* WebFetch's pages (webfetch.c), shared with subagents' copies */
+    long n_fetch_cached;        /* the tests' sentinel: fetches answered from the cache */
     /* the call's one-line summary for the screen when its result's text is
      * for Claude only (WebFetch: "Received 12.3KB (200 OK)", Claude Code's
      * line); "" none. Set by the tool, cleared at each call. */

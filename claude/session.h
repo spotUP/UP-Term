@@ -79,6 +79,9 @@ int sess_is_uuid(const char *s);
  * file's head line, else its name), the file appended to from now on.
  * 0, -1. */
 int sess_load_file(cl_session *s, const char *path, cl_conv *c);
+/* cleanupPeriodDays: this project's session files not changed for age
+ * seconds removed (the clock read from a file written in tmp). Their count. */
+int sess_cleanup(cl_session *s, const char *tmp, long age);
 /* An id or a title (exact, else a unique prefix of either) to an id:
  * 0, -1 none, -2 more than one. */
 int sess_find(cl_session *s, const char *name, char *id, long cap);

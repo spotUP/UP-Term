@@ -81,7 +81,8 @@ enum {
     O_NOPERSIST, O_FALLBACK, O_OUTFMT, O_INFMT, O_PARTIAL, O_PERM, O_SKIP, O_ALLOW, O_DENY, O_TOOLS, O_ADDDIR,
     O_SYSP, O_SYSPF, O_APPEND, O_APPENDF, O_SETTINGS, O_MAXTURNS, O_BUDGET, O_VERBOSE, O_AGENT, O_VERSION,
     O_HELP, O_SESSID, O_SCHEMA, O_REPLAY, O_BARE, O_SAFE, O_AGENTS, O_SUBAPP, O_SUBAPPF, O_NOSLASH, O_SOURCES,
-    O_BETAS, O_AUTOCOMPACT, O_FWDSUB, O_DEBUGFILE, O_PERMPROMPTS
+    O_BETAS, O_AUTOCOMPACT, O_FWDSUB, O_DEBUGFILE, O_PERMPROMPTS, O_INIT, O_INITONLY, O_MAINT, O_HOOKEV,
+    O_SUGGEST, O_NODYN
 };
 
 /* takes: 0 a switch, 1 a value, 2 an optional value, 3 values (Claude Code's variadic flags) */
@@ -144,7 +145,13 @@ static const opt opts[] = {
     { O_AUTOCOMPACT, "autocompact", 0, 0, "AUTOCOMPACT", 0, 1 },
     { O_FWDSUB, "forward-subagent-text", 0, 0, "FORWARD-SUBAGENT-TEXT", 0, 0 },
     { O_DEBUGFILE, "debug-file", 0, 0, "DEBUG-FILE", 0, 1 },
-    { O_PERMPROMPTS, "permission-prompts", 0, 0, "PERMISSION-PROMPTS", 0, 1 }
+    { O_PERMPROMPTS, "permission-prompts", 0, 0, "PERMISSION-PROMPTS", 0, 1 },
+    { O_INIT, "init", 0, 0, "INIT", 0, 0 },
+    { O_INITONLY, "init-only", 0, 0, "INIT-ONLY", 0, 0 },
+    { O_MAINT, "maintenance", 0, 0, "MAINTENANCE", 0, 0 },
+    { O_HOOKEV, "include-hook-events", 0, 0, "INCLUDE-HOOK-EVENTS", 0, 0 },
+    { O_SUGGEST, "prompt-suggestions", 0, 0, "PROMPT-SUGGESTIONS", 0, 0 },
+    { O_NODYN, "exclude-dynamic-system-prompt-sections", 0, 0, "EXCLUDE-DYNAMIC-SYSTEM-PROMPT-SECTIONS", 0, 0 }
 };
 #define NOPTS ((int)(sizeof(opts) / sizeof(opts[0])))
 
@@ -526,6 +533,24 @@ static int set(cl_cli *c, const opt *o, const char *v, int amiga)
         cl_copy(c->debug_file, v, sizeof(c->debug_file));
         c->debug = 1;           /* Claude Code: implies debug mode */
         break;
+    case O_INIT:
+        c->init = 1;
+        break;
+    case O_INITONLY:
+        c->init_only = 1;
+        break;
+    case O_MAINT:
+        c->maintenance = 1;
+        break;
+    case O_HOOKEV:
+        c->hook_events = 1;
+        break;
+    case O_SUGGEST:
+        c->suggestions = 1;
+        break;
+    case O_NODYN:
+        c->no_dynamic = 1;
+        break;
     case O_PERMPROMPTS:
         if (cl_strieq(v, "none"))
             c->prompts_none = 1;
@@ -713,6 +738,23 @@ int cli_parse(cl_cli *c, int argc, char **argv, const char *quoted)
         if (add_prompt(c, w))
             return -1;
     }
+    /* Claude Code's subcommands: "doctor", "auth status|login|logout", "purge [path]" as the whole prompt */
+    if (c->prompt && !c->print) {
+        const char *p = c->prompt;
+        if (!strcmp(p, "doctor"))
+            c->sub = SUB_DOCTOR;
+        else if (!strcmp(p, "auth status") || !strcmp(p, "auth status --text") || !strcmp(p, "auth"))
+            c->sub = SUB_AUTH_STATUS;
+        else if (!strcmp(p, "auth login"))
+            c->sub = SUB_AUTH_LOGIN;
+        else if (!strcmp(p, "auth logout"))
+            c->sub = SUB_AUTH_LOGOUT;
+        else if (!strcmp(p, "purge") || !strncmp(p, "purge ", 6)) {
+            c->sub = SUB_PURGE;
+            cl_copy(c->sub_arg, p[5] ? p + 6 : "", sizeof(c->sub_arg));
+        }
+        c->text = c->sub == SUB_AUTH_STATUS && strstr(p, "--text") != 0;
+    }
     /* the combinations Claude Code refuses */
     if (c->out == CLI_STREAM && c->print && !c->verbose)
         return fail(c, "Error: When using --print, --output-format=stream-json requires --verbose", 0, 0);
@@ -734,6 +776,11 @@ int cli_parse(cl_cli *c, int argc, char **argv, const char *quoted)
                        "also specified.", 0, 0);
     if (c->schema && !c->print)
         return fail(c, "Error: --json-schema requires --print", 0, 0);
+    if ((c->init || c->maintenance) && !c->print)
+        return fail(c, "Error: --init and --maintenance run Setup hooks in print mode only (--init-only works "
+                       "anywhere)", 0, 0);
+    if (c->suggestions && (!c->print || c->out != CLI_STREAM))
+        return fail(c, "Error: --prompt-suggestions requires --print and --output-format=stream-json", 0, 0);
     return 0;
 }
 
@@ -932,6 +979,7 @@ int cli_apply(cl_cli *c, cl_repl *r)
     if (c->has_sources && !c->sources)
         r->sources = 8;             /* none of the three: a bit no file has */
     r->prompts_none = c->prompts_none;
+    r->no_dynamic = c->no_dynamic;
     if (c->verbose)
         r->verbose = 2;
     if (c->autocompact)
@@ -1054,6 +1102,8 @@ int cli_apply(cl_cli *c, cl_repl *r)
             return fail(c, "Out of memory.", 0, 0);
     }
     cl_copy(r->agent_name, a ? a->name : "", sizeof(r->agent_name));
+    if (a && a->initial && !c->prompt && !c->print && set_str(&c->prompt, a->initial))
+        return fail(c, "Out of memory.", 0, 0);     /* initialPrompt: the session starts with it */
     /* the agent's model, unless --model says otherwise */
     if (a && !c->model[0] && a->model && a->model[0] && strcmp(a->model, "inherit"))
         cl_copy(r->model, cfg_model(a->model), sizeof(r->model));

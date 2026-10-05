@@ -42,6 +42,17 @@ typedef struct cl_hooks {
     const char *tool, *input;
     long input_n;
     const char *project_dir;    /* CLAUDE_PROJECT_DIR for the commands (0: cwd) */
+    void *u;
+    /* optional: a prompt hook's question to a model (the text has the
+     * event's JSON in it): 0 with the answer's text in answer, -1 */
+    int (*ask_model)(void *u, const char *model, const char *prompt, jw *answer);
+    /* optional: a hook's statusMessage while it runs (0 when it is done) */
+    void (*status)(void *u, const char *msg);
+    /* optional: each hook run, for --include-hook-events: started (rc -1)
+     * and done (its exit code and output) */
+    void (*seen)(void *u, int event, const char *cmd, int done, long rc, const char *out, long n);
+    unsigned long once_done[16];    /* the "once" hooks run this session (their hashes) */
+    int nonce;
 } cl_hooks;
 
 typedef struct cl_hookres {

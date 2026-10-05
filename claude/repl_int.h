@@ -76,7 +76,18 @@ void pol_session(cl_repl *r, int event, const char *source);
 int pol_prompt(cl_repl *r, const char *prompt, long n);
 /* Stop: 1 when a hook asks Claude to go on (the reason in reason) */
 int pol_stop(cl_repl *r, int active, jw *reason);
-void pol_notify(cl_repl *r, const char *message);
+/* Notification of a type (Claude Code's: permission_prompt, idle_prompt) */
+void pol_notify(cl_repl *r, const char *type, const char *message);
+int pol_model_switch(cl_repl *r, const char *from, const char *to, const char *requested, int after);
+/* "Yes, and don't ask again in this project": the call's rule (Bash(word *),
+ * WebFetch(domain:x), else the tool) kept in .claude/settings.local.json */
+void pol_keep_rule(cl_repl *r, const char *tool, const char *input, long n);
+void pol_instructions(cl_repl *r, int k, const char *reason);
+int pol_batch(cl_repl *r, const char *calls, long n, jw *extra);
+int pol_config_change(cl_repl *r, int src, const char *file);
+void pol_setup(cl_repl *r, const char *trigger);
+/* the hooks' callbacks (prompt hooks' model, statusMessage, --include-hook-events) */
+void pol_attach_hooks(cl_repl *r);
 /* PreCompact: -1 a hook blocked the compaction (shown), 0 go on */
 int pol_precompact(cl_repl *r, int automatic, const char *focus);
 /* A4 gaps: Claude Code's other hook events */

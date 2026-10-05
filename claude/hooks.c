@@ -3,6 +3,7 @@
 #include <string.h>
 #include "hooks.h"
 #include "path.h"
+#include "regex.h"
 #include "util.h"
 
 #define HOOK_OUT 16384
@@ -25,41 +26,60 @@ void hookres_free(cl_hookres *r)
     hookres_init(r);
 }
 
-/* * and .* stand for any text */
-static int wild(const char *p, const char *pe, const char *s)
+/* is the matcher a plain list (letters, digits, _ - space , |)? */
+static int plain(const char *m)
 {
-    while (p < pe) {
-        if (*p == '*' || (p[0] == '.' && p + 1 < pe && p[1] == '*')) {
-            p += *p == '*' ? 1 : 2;
-            for (;; s++) {
-                if (wild(p, pe, s))
-                    return 1;
-                if (!*s)
-                    return 0;
-            }
-        }
-        if (*p != *s)
+    for (; *m; m++)
+        if (!((*m >= 'a' && *m <= 'z') || (*m >= 'A' && *m <= 'Z') || (*m >= '0' && *m <= '9') || *m == '_' ||
+              *m == '-' || *m == ' ' || *m == ',' || *m == '|'))
             return 0;
-        p++;
-        s++;
-    }
-    return !*s;
+    return 1;
 }
 
+static int is_name(const char *a, long n, const char *name)
+{
+    return (long)strlen(name) == n && !strncmp(a, name, (size_t)n);
+}
+
+/* Claude Code's matcher rules (hooks.md "Matcher patterns"): "" or "*"
+ * all; only letters, digits, _ - space , | an exact name or a list of
+ * them; anything else a regular expression, unanchored. The name is
+ * tried as given and as Claude Code calls it (Task also as Agent). */
 int hooks_match(const char *m, const char *name)
 {
-    const char *cc = cfg_cc_tool(name);
+    const char *cc = cfg_cc_tool(name), *alias = !strcmp(cc, "Task") ? "Agent" : 0;
     if (!m[0] || !strcmp(m, "*"))
         return 1;
-    while (*m) {
-        const char *e = m;
-        while (*e && *e != '|')
-            e++;
-        if (wild(m, e, name) || wild(m, e, cc) || (!strcmp(cc, "Task") && wild(m, e, "Agent")))
-            return 1;               /* "Agent": Claude Code's newer name of Task */
-        m = *e ? e + 1 : e;
+    if (plain(m)) {
+        while (*m) {
+            const char *e;
+            long n;
+            while (*m == ' ' || *m == ',' || *m == '|')
+                m++;
+            for (e = m; *e && *e != ',' && *e != '|'; e++)
+                ;
+            n = (long)(e - m);
+            while (n && m[n - 1] == ' ')
+                n--;
+            if (n && (is_name(m, n, name) || is_name(m, n, cc) || (alias && is_name(m, n, alias))))
+                return 1;
+            m = e;
+        }
+        return 0;
     }
-    return 0;
+    {
+        char err[100];
+        cl_re *re = re_compile(m, 0, err, sizeof(err));
+        long ms, me;
+        int hit;
+        if (!re)
+            return 0;               /* not a usable expression: matches nothing */
+        hit = re_search(re, name, (long)strlen(name), 0, &ms, &me) == 1 ||
+              re_search(re, cc, (long)strlen(cc), 0, &ms, &me) == 1 ||
+              (alias && re_search(re, alias, (long)strlen(alias), 0, &ms, &me) == 1);
+        re_free(re);
+        return hit;
+    }
 }
 
 int hooks_any(const cl_hooks *h, int event, const char *name)
@@ -162,7 +182,8 @@ static int can_block(int event)
 {
     return event == HK_PRE_TOOL || event == HK_POST_TOOL || event == HK_PROMPT || event == HK_STOP ||
            event == HK_SUBAGENT_STOP || event == HK_PRE_COMPACT || event == HK_PROMPT_EXPANSION ||
-           event == HK_POST_TOOL_FAILURE;
+           event == HK_POST_TOOL_FAILURE || event == HK_PRE_MODEL_SWITCH || event == HK_POST_TOOL_BATCH ||
+           event == HK_CONFIG_CHANGE;
 }
 
 /* the command with ${CLAUDE_PROJECT_DIR} and $CLAUDE_PROJECT_DIR put in
@@ -186,6 +207,62 @@ static void project_cmd(cl_hooks *h, const char *cmd, char *out, long cap)
             out[k++] = *cmd++;
     }
     out[k] = 0;
+}
+
+/* A prompt hook: its text with $ARGUMENTS (else appended) the event's
+ * JSON, asked of a model; {"ok": false, "reason": ...} blocks (Stop: sends
+ * Claude on), unless "impossible" says the condition can never be met. */
+static void prompt_hook(cl_hooks *h, const cl_hook *k, int event, const char *file, cl_hookres *r)
+{
+    char *in = 0;
+    long n = 0, i;
+    jw q, a;
+    jv v, x;
+    if (!h->ask_model || h->sys->read(h->sys->u, file, 256L * 1024, &in, &n))
+        return;
+    jw_init(&q);
+    jw_init(&a);
+    for (i = 0; k->cmd[i];) {
+        if (!strncmp(k->cmd + i, "$ARGUMENTS", 10)) {
+            jw_raw(&q, in, n);
+            i += 10;
+        } else
+            jw_raw(&q, k->cmd + i++, 1);
+    }
+    if (!strstr(k->cmd, "$ARGUMENTS")) {
+        jw_rawz(&q, "\n\n");
+        jw_raw(&q, in, n);
+    }
+    jw_rawz(&q, "\n\nRespond with JSON only: {\"ok\": true} or {\"ok\": false, \"reason\": \"...\"}.");
+    free(in);
+    h->n_run++;
+    r->ran++;
+    if (!q.oom && h->ask_model(h->u, k->model, q.p, &a) == 0) {
+        long s = 0, e = a.n;
+        while (s < e && a.p[s] != '{')
+            s++;
+        while (e > s && a.p[e - 1] != '}')
+            e--;
+        if (e > s && json_parse(a.p + s, e - s, &v) == 0 && json_get(v, "ok", &x) && json_type(x) == J_FALSE) {
+            jv im;
+            if (!(json_get(v, "impossible", &im) && json_type(im) == J_TRUE) && can_block(event)) {
+                char m[600];
+                m[0] = 0;
+                if (json_get(v, "reason", &x))
+                    json_str(x, m, sizeof(m));
+                r->blocked = 1;
+                add_line(&r->reason, m[0] ? m : "a prompt hook said no", m[0] ? (long)strlen(m) : 20);
+            }
+        }
+        if (h->seen)
+            h->seen(h->u, event, k->cmd, 1, 0, a.p ? a.p : "", a.n);
+    } else {
+        add_line(&r->shown, "A prompt hook could not ask its model.", 38);
+        if (h->seen)
+            h->seen(h->u, event, k->cmd, 1, -1, "", 0);
+    }
+    jw_free(&q);
+    jw_free(&a);
 }
 
 int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_hookres *r)
@@ -230,10 +307,40 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
                 !cfg_rule_match(k->cond, h->tool, in, h->cwd ? h->cwd : ""))
                 continue;
         }
+        if (k->once) {
+            /* "once": the first run of the session only */
+            unsigned long hs = 5381;
+            const char *c;
+            int j, done = 0;
+            for (c = k->cmd; *c; c++)
+                hs = hs * 33 + (unsigned char)*c;
+            hs = hs * 33 + (unsigned long)event;
+            for (j = 0; j < h->nonce; j++)
+                done |= h->once_done[j] == hs;
+            if (done)
+                continue;
+            if (h->nonce < 16)
+                h->once_done[h->nonce++] = hs;
+        }
+        if (k->status && h->status)
+            h->status(h->u, k->status);
+        if (h->seen)
+            h->seen(h->u, event, k->cmd, 0, -1, "", 0);
+        if (k->kind == HOOK_PROMPT) {
+            /* a prompt hook: the model says {"ok": ...}; ok false is a block */
+            prompt_hook(h, k, event, file, r);
+            if (k->status && h->status)
+                h->status(h->u, 0);
+            continue;
+        }
         project_cmd(h, k->cmd, line, sizeof(line) - 320);
         cl_cat(line, " < ", sizeof(line));
         cl_cat(line, file, sizeof(line));
         st = h->sys->run(h->sys->u, line, k->timeout_s, o, HOOK_OUT - 1, &on, &rc);
+        if (k->status && h->status)
+            h->status(h->u, 0);
+        if (h->seen)
+            h->seen(h->u, event, k->cmd, 1, st < 0 ? -1 : rc, o, st < 0 ? 0 : on);
         h->n_run++;
         r->ran++;
         if (st < 0) {

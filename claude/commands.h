@@ -49,6 +49,7 @@ typedef struct cl_def {
     int fork;                   /* a skill's context: fork (runs in a subagent) */
     char agent[64];             /* ... with that agent ("" general-purpose) */
     char *arg_names;            /* arguments: the names of $name placeholders, "" none */
+    char *initial;              /* an agent's initialPrompt (as the main thread), "" none */
 } cl_def;
 
 /* the ${CLAUDE_*} values of an expansion (any may be 0: "") */

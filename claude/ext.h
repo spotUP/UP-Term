@@ -22,6 +22,7 @@ typedef struct cl_agent {
     const char *effort;         /* effort for its requests */
     const char *skills;         /* skills whose text it starts with */
     const char *perm_mode;      /* permissionMode: default, acceptEdits, plan, dontAsk, bypassPermissions */
+    const char *initial;        /* initialPrompt: sent first when it runs the session (--agent) */
 } cl_agent;
 
 typedef struct cl_skill {

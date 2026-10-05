@@ -37,7 +37,8 @@ enum {
     HK_PRE_COMPACT, HK_NOTIFICATION,
     /* A4 gaps: Claude Code's other events that exist here */
     HK_PERMISSION_REQUEST, HK_POST_TOOL_FAILURE, HK_SUBAGENT_START, HK_POST_COMPACT, HK_STOP_FAILURE,
-    HK_PROMPT_EXPANSION, HK_CWD_CHANGED, HK_DIR_ADDED, HK_COUNT
+    HK_PROMPT_EXPANSION, HK_CWD_CHANGED, HK_DIR_ADDED, HK_PRE_MODEL_SWITCH, HK_POST_MODEL_SWITCH,
+    HK_INSTRUCTIONS_LOADED, HK_POST_TOOL_BATCH, HK_CONFIG_CHANGE, HK_SETUP, HK_COUNT
 };
 extern const char *const cfg_hook_events[HK_COUNT];
 
@@ -54,7 +55,13 @@ typedef struct cl_hook {
     char *cmd;
     int timeout_s;
     char *cond;                 /* "if": a permission rule the call must match, 0 none */
+    int kind;                   /* HOOK_COMMAND, HOOK_PROMPT (cmd holds the prompt) */
+    char *model;                /* a prompt hook's model, 0 the small one */
+    char *status;               /* statusMessage: shown while it runs, 0 none */
+    int once;                   /* "once": true -- runs once a session */
 } cl_hook;
+
+enum { HOOK_COMMAND, HOOK_PROMPT };
 
 typedef struct cl_kv {
     char *k, *v;
@@ -93,6 +100,10 @@ typedef struct cl_settings {
     char **md_excludes;         /* claudeMdExcludes: globs of memory files not loaded */
     int nmdx, capmdx;
     unsigned skip;              /* bit per CFG_USER/PROJECT/LOCAL not read (--setting-sources) */
+    char key_helper[256];       /* apiKeyHelper: a command whose output is the API key */
+    char avail_models[256];     /* availableModels, comma-separated ("" all) */
+    long bash_max_chars;        /* bashOutputMaxChars, 0 the default */
+    int cleanup_days;           /* cleanupPeriodDays, -1 not set */
     char path[CFG_NSRC][300];   /* the files (user, project, local) */
     int found[CFG_NSRC];        /* read and valid */
     char err[300];              /* the last file that did not parse, and why */
@@ -141,6 +152,9 @@ int cfg_web_search(const cl_settings *s);
  * bare 100..1000 meaning thousands; 100K to 1M. The tokens, -1 for
  * "auto", 0 when it is none of these. */
 long cfg_window_parse(const char *v);
+
+/* the user's home for ~/ in path rules (HOME, else SYS:) */
+void cfg_set_home(const char *dir);
 
 /* the hooks dropped (disableAllHooks, --bare, --safe-mode) */
 void cfg_drop_hooks(cl_settings *s);

@@ -33,6 +33,7 @@ const cl_cmd slash_builtin[] = {
     { "/effort", "Show or set the effort: low, medium, high, xhigh, max, auto, status" },
     { "/exit", "Leave" },
     { "/export", "The conversation as text: to the clipboard, or /export FILE" },
+    { "/goal", "Claude keeps working until a condition holds: /goal CONDITION, /goal clear" },
     { "/hooks", "The hooks of the settings" },
     { "/init", "Write AMIGA.md: notes on this directory for later sessions" },
     { "/login", "Store an API key in ENVARC:Claude/key" },
@@ -50,6 +51,7 @@ const cl_cmd slash_builtin[] = {
     { "/rewind", "Go back to an earlier prompt: the files, the conversation, both, or a summary" },
     { "/save", "Save the conversation as JSON: /save FILE" },
     { "/skills", "The skills (.claude/skills)" },
+    { "/skill-doctor", "What each skill costs in context" },
     { "/stats", "Tokens, cost and time so far (as /usage)" },
     { "/status", "The model, the session, the account, the settings in use" },
     { "/statusline", "Set up the status line: /statusline WHAT YOU WANT, or clear" },
@@ -1474,6 +1476,79 @@ static void perm_editor(cl_repl *r)
     permissions(r, line);
 }
 
+/* /skills [text]: the skills (those whose name, description or source
+ * has the text), each with its size in context */
+static void skills(cl_repl *r, const char *arg)
+{
+    int i, k = 0;
+    const cl_def *d;
+    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++) {
+        char m[500], num[16];
+        const char *src = src_word(d->src);
+        if (*arg && !strstr(d->name, arg) && !strstr(d->description, arg) && !strstr(src, arg))
+            continue;
+        cl_copy(m, "  ", sizeof(m));
+        cl_cat(m, d->name, sizeof(m));
+        cl_cat(m, " (", sizeof(m));
+        cl_cat(m, src, sizeof(m));
+        cl_cat(m, ")  ", sizeof(m));
+        cl_cat(m, d->description, sizeof(m));
+        cl_cat(m, "  [~", sizeof(m));
+        cl_ltoa(((long)strlen(d->body) + 3) / 4, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, d->no_model ? " tokens; only you call it]" : " tokens when used]", sizeof(m));
+        ui_line(&r->ui, m);
+        k++;
+    }
+    if (!k)
+        ui_line(&r->ui, *arg ? "No skill matches." : "No skills: put them in .claude/skills/NAME/SKILL.md (or "
+                                                     "ENVARC:Claude/skills).");
+}
+
+/* /skill-doctor: what each skill costs in context (its listing, always;
+ * its body, when used) */
+static void skill_doctor(cl_repl *r)
+{
+    int i;
+    long all = 0;
+    const cl_def *d;
+    char m[300], num[16];
+    ui_line(&r->ui, "Skills by what they cost in context (~tokens: listed every request / body when used):");
+    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++) {
+        long l = d->no_model ? 0 : ((long)strlen(d->name) + (long)strlen(d->description) + (long)strlen(d->when) + 7) / 4;
+        all += l;
+        cl_copy(m, "  ", sizeof(m));
+        cl_cat(m, d->name, sizeof(m));
+        cl_cat(m, ": ", sizeof(m));
+        cl_ltoa(l, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, " / ", sizeof(m));
+        cl_ltoa(((long)strlen(d->body) + 3) / 4, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, d->no_model ? " (disable-model-invocation: not listed)" : "", sizeof(m));
+        ui_line(&r->ui, m);
+    }
+    num_line(r, "Listing in all: ~", all, " tokens a request. disable-model-invocation: true takes a skill out of it.");
+}
+
+/* /goal [condition|clear]: Claude keeps working until the condition is met */
+static void goal(cl_repl *r, const char *arg)
+{
+    if (!*arg) {
+        line2(r, "Goal: ", r->goal[0] ? r->goal : "(none: /goal CONDITION)");
+        return;
+    }
+    if (!strcmp(arg, "clear")) {
+        r->goal[0] = 0;
+        ui_line(&r->ui, "Goal cleared.");
+        return;
+    }
+    cl_copy(r->goal, arg, sizeof(r->goal));
+    line2(r, "Goal set: Claude keeps working until this holds: ", r->goal);
+    if (pol_prompt(r, arg, (long)strlen(arg)) == 0)
+        repl_turn(r, arg, (long)strlen(arg));
+}
+
 /* /autocompact [auto|TOKENS|on|off]: Claude Code's window (saved as
  * autoCompactWindow in the user's settings), and C:Claude's on/off */
 static void autocompact(cl_repl *r, const char *arg)
@@ -1560,7 +1635,11 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
     else if (!strcmp(w, "/agents"))
         list_defs(r, DEF_AGENT, "No subagents: put them in .claude/agents/NAME.md (or ENVARC:Claude/agents).");
     else if (!strcmp(w, "/skills"))
-        list_defs(r, DEF_SKILL, "No skills: put them in .claude/skills/NAME/SKILL.md (or ENVARC:Claude/skills).");
+        skills(r, arg);
+    else if (!strcmp(w, "/skill-doctor"))
+        skill_doctor(r);
+    else if (!strcmp(w, "/goal"))
+        goal(r, arg);
     else if (!strcmp(w, "/commands"))
         list_defs(r, DEF_COMMAND, "No custom commands: put them in .claude/commands/NAME.md (or ENVARC:Claude/commands).");
     else if (!strcmp(w, "/hooks"))

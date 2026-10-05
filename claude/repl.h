@@ -53,6 +53,9 @@ typedef struct cl_feed {
     /* A4 gaps: a request failed and is tried again (system/api_retry):
      * attempt from 1, the delay, the HTTP status (0 none), the error kind */
     void (*retry)(void *u, int attempt, int max, long delay_ms, int status, const char *error);
+    /* A4 gaps: a hook started (done 0) or finished (its exit code and
+     * output): --include-hook-events */
+    void (*hook)(void *u, const char *event, const char *cmd, int done, long rc, const char *out, long n);
 } cl_feed;
 
 /* who answers a permission question (A4 WP4) */
@@ -172,6 +175,14 @@ typedef struct cl_repl {
     long pend_add, pend_del;    /* the change being asked about (its preview's counts) */
     const char *api_failed;     /* the turn's request failed: StopFailure's error kind, 0 none */
     const char *end_reason;     /* SessionEnd's reason: prompt_input_exit after /exit, else other */
+    unsigned long idle_from;    /* when Claude last finished (io->ms): Notification idle_prompt */
+    int idle_told;
+    long cfg_mtime[3];          /* the settings files' times when read (ConfigChange) */
+    int began;                  /* the session has started (SessionStart ran) */
+    char goal[400];             /* /goal: the condition Claude works toward, "" none */
+    int goal_rounds;            /* the turns a goal has added (capped) */
+    int no_dynamic;             /* --exclude-dynamic-system-prompt-sections: auto memory's place in the
+                                 * first prompt, not the system prompt */
     long n_copies;              /* the tests' sentinel: /copy runs that reached the clipboard */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
@@ -217,6 +228,9 @@ int repl_prompts(const cl_repl *r, int *msg, int max);
  * text is its text part, for the UserPromptSubmit hook. 0. */
 int repl_blocks(cl_repl *r, const char *text, long tn, const char *blocks, long bn);
 
+/* Setup hooks of a trigger ("init", "maintenance"; 0 none), and with start
+ * SessionStart as at the first line (--init-only) */
+void repl_setup(cl_repl *r, const char *trigger, int start);
 /* A4 WP4: an https endpoint and no key yet (the start goes to /login) */
 int repl_need_key(const cl_repl *r);
 
