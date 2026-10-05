@@ -2451,6 +2451,53 @@ static int exists(const char *p)
     return stat(p, &st) == 0;
 }
 
+/* -c on the screen: the start header comes first, the resumed
+ * conversation and its "Resumed ..." line under it (the owner saw the old
+ * session drawn above the header, 2026-10-05) */
+static void test_continue_header_first(void)
+{
+    static const char *first[] = { "hello\r", "/exit\r", 0 };
+    static const char *second[] = { "/exit\r", 0 };
+    static cl_repl r;
+    const char *head, *resumed, *old;
+    stub_reset();
+    add_stream("text.sse");
+    cs_open(80, 24, first);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    repl_free(&r);
+    cs_close();
+
+    stub_reset();
+    cs_open(80, 24, second);
+    cs_io(&io);
+    io.log = 0;
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    CHECK_INT(repl_continue(&r), 0);
+    repl_run(&r);
+    head = strstr(cs.sent.p, "for the Amiga");
+    resumed = strstr(cs.sent.p, "Resumed a conversation of");
+    old = strstr(cs.sent.p, "Hello from the Amiga!");
+    CHECK(head != 0 && resumed != 0 && old != 0);
+    CHECK(head && old && head < old);
+    CHECK(head && resumed && head < resumed);
+    CHECK_INT(count_of(cs.sent.p, "for the Amiga"), 1);  /* drawn once */
+    repl_free(&r);
+    cs_close();
+}
+
+
 /* Phase 1: the command line and print mode (G1-G17), through print_run */
 static void test_gaps_print(void)
 {
@@ -5208,6 +5255,7 @@ void suite_claude_repl(void)
     test_wiring();
     test_fetch_screen();
     test_websearch_screen();
+    test_continue_header_first();
     test_gaps_print();
     test_gaps_verbose();
     test_gaps_commands();

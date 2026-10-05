@@ -161,6 +161,7 @@ typedef struct cl_repl {
     char *structured;           /* the StructuredOutput call's input (the structured output) */
     long compact_window;        /* --autocompact: tokens, -1 auto (the model's), 0 not given */
     int start_due;              /* SessionStart "startup" not run yet (after the flags are applied) */
+    int welcomed;               /* the start header is on the screen (drawn once, first) */
     const char *blocks;         /* the next turn's prompt as content blocks (comma-separated), 0 text */
     long blocks_n;
     char betas[256];            /* --betas, joined with commas */

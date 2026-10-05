@@ -1773,9 +1773,20 @@ int repl_load_json(cl_repl *r, const char *full)
     return 0;
 }
 
+/* the start header, drawn once and first: before a resumed conversation
+ * (-c / -r run before the prompt loop) as before an empty one */
+static void welcome(cl_repl *r)
+{
+    if (!r->tui || r->welcomed)
+        return;
+    r->welcomed = 1;
+    show_welcome(r->show, r->model, env_on(r, "CLAUDE_CODE_HIDE_CWD") ? "" : r->tools.root);
+}
+
 static void resumed(cl_repl *r)
 {
     char m[160], num[16];
+    welcome(r);
     repl_replay(r);
     cp_turn(&r->cp, r->conv.n);
     cl_copy(m, "Resumed a conversation of ", sizeof(m));
@@ -2174,7 +2185,7 @@ void repl_run(cl_repl *r)
     if (!line)
         return;
     if (r->tui) {
-        show_welcome(r->show, r->model, env_on(r, "CLAUDE_CODE_HIDE_CWD") ? "" : r->tools.root);
+        welcome(r);
         if (start(r)) {
             free(line);
             return;
