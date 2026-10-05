@@ -4,6 +4,7 @@
  * through the public API only -- vt_write, the scroll, vt_row -- and hold
  * the memory it saves with a bound that fails if it climbs. */
 #include "harness.h"
+#include "../render/vtinput.h"
 #include <stdlib.h>
 
 /* v in decimal at b; the bytes written (C89 has no snprintf) */
@@ -198,6 +199,41 @@ static void a_scrolled_line_is_packed_and_read_back(void)
     vt_free(t);
 }
 
+/* What reads the history as text -- the window's Find, a selection's copy,
+ * a double-click's word, a Ctrl + click's link -- reads the packed lines: a
+ * styled line with wide, combined and linked text, wrapped over seven rows
+ * (more than the VT_SBC lines the decode cache holds), is found across its
+ * wraps, copied back to the byte, and its word and link resolve. */
+#define SB_TEXT "red \xe4\xb8\xad\xe6\x96\x87 e\xcc\x81t\xc3\xa9 link needle-in-the-hay tail end of it and more words"
+
+static void find_copy_and_word_read_the_packed_history(void)
+{
+    vt_term *t = h_new(10, 3, VT_XTERM);
+    char buf[256];
+    const vt_cell *c;
+    int n, x0 = -1, x1 = -1, y0 = 0, y1 = 0;
+    long top;
+    h_put(t, "\033[31mred \xe4\xb8\xad\xe6\x96\x87 e\xcc\x81t\xc3\xa9 \033]8;;http://x/\033\\link\033]8;;\033\\ "
+             "\033[1;44mneedle-in-the-hay\033[0m tail end of it and more words\r\n\n\n");
+    CHECK_INT(vt_scrollback_lines(t), 7);
+    top = -(long)vt_scrollback_lines(t);
+    CHECK_INT(vt_find(t, "needle-in-the-hay", top), top); /* a match on a wrapped line: its first row */
+    CHECK_INT(vt_find(t, "HAY TAIL END", top), top);      /* across a wrap, case folded */
+    CHECK_INT(vt_find(t, "t\xc3\xa9 link", top), top);    /* Latin-1 in a styled run */
+    vti_line(t, -4, &y0, &y1);                              /* triple-click: the whole line */
+    CHECK_INT(y0, top);
+    CHECK_INT(y1, -1);
+    CHECK(vt_copy_text(t, 0, y0, 9, y1, buf, sizeof(buf)) > 0);
+    CHECK_STR(buf, SB_TEXT);
+    CHECK(vti_word(t, 4, -6, &x0, &x1));                   /* "t\xc3\xa9 link ne": the link */
+    CHECK_INT(x0, 3);
+    CHECK_INT(x1, 6);
+    c = vt_row(t, -6, &n);
+    CHECK(c != 0 && n == 10);
+    CHECK_STR(c && vt_cell_link(t, &c[4]) ? vt_cell_link(t, &c[4]) : "(none)", "http://x/");
+    vt_free(t);
+}
+
 static void feed_file(vt_term *t, const char *path, int times)
 {
     static vt_u8 data[1 << 16];
@@ -333,6 +369,7 @@ void suite_sbpack(void)
     links_clusters_and_styles_resolve_from_the_scrollback();
     wraps_padding_and_long_runs_come_back();
     table_sweeps_keep_what_the_scrollback_names();
+    find_copy_and_word_read_the_packed_history();
     a_scrolled_line_is_packed_and_read_back();
     plain_text_scrollback_stays_under_its_bound();
     measured_ratios_for_real_output();
