@@ -307,18 +307,45 @@ def retry_wb_reset():
     """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
     to reset the Workbench screen ... close all windows" requester (IPrefs'
     switch to the saved RTG mode raced a window; ledger W43). Retry then
-    succeeds (the owner, 2026-10-05): click it while the screen is the PAL
-    one. The requester's Retry sits at (45,69) on the 640x256 screen."""
+    succeeds (the owner, 2026-10-05). The requester shows a while after
+    amiagent answers, so wait for it (up to two minutes) and click the
+    gadget labelled Retry.
+    What it saw goes to build/rig/retry.log."""
     sys.path.insert(0, str(ROOT / "tools/rig"))
     import ami
-    for _ in range(10):
+    log = open(RIG / "retry.log", "a")
+    t0 = time.time()
+    while time.time() - t0 < 120:
         b = ami.req(0x0A)
-        if int.from_bytes(b[2:4], "big") != 640:
-            return
-        kx, ky = ami.pointer_scale()
-        ami.script(("move", int(45 * kx), int(69 * ky)), ("wait", 2), ("button", 0, 1),
-                   ("wait", 2), ("button", 0, 0), ("wait", 5))
-        time.sleep(4)
+        width = int.from_bytes(b[2:4], "big")
+        if width != 640:
+            if time.time() - t0 > 20:   # RTG, and nothing came for 20 s
+                log.write("%.0fs RTG %d\n" % (time.time() - t0, width))
+                return
+            time.sleep(2)
+            continue
+        tree = ami.req(0x0D).decode("latin-1").splitlines()
+        log.write("%.0fs PAL\n%s\n" % (time.time() - t0, "\n".join(tree[:20])))
+        # the requester: the gadget labelled Retry; UITREE gives gadgets
+        # relative to their window
+        win, gads = None, []
+        for line in tree:
+            f = line.split()
+            if line.startswith("W "):
+                win = (int(f[2]), int(f[3]))
+            elif line.startswith("G ") and win and line.rstrip().endswith('"Retry"'):
+                w, h = map(int, f[4].split("x"))
+                gads.append((win[0] + int(f[2]), win[1] + int(f[3]), w, h))
+        if gads:
+            x, y, w, h = min(gads)
+            kx, ky = ami.pointer_scale()
+            cx, cy = x + w // 2, y + h // 2
+            log.write("click %d,%d\n" % (cx, cy))
+            ami.script(("move", int(cx * kx), int(cy * ky)), ("wait", 2), ("button", 0, 1),
+                       ("wait", 2), ("button", 0, 0), ("wait", 5))
+            time.sleep(6)
+        else:
+            time.sleep(2)
     print("[WARN] the Workbench stayed PAL (W43)")
 
 def stop():
