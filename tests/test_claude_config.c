@@ -403,7 +403,7 @@ static void test_defs(void)
     mk("proj/.claude/skills/pdf");
     mk("proj/.claude/output-styles");
     put("home/commands/review.md", "---\ndescription: user review\n---\nUSER $ARGUMENTS\n");
-    put("home/commands/hello.md", "Say hello to $1 and $2.\n");
+    put("home/commands/hello.md", "Say hello to $0 and $1.\n");
     put("proj/.claude/commands/review.md",
         "---\ndescription: \"Review the code\"\nallowed-tools: Bash(git diff:*), Read\nmodel: haiku\n"
         "argument-hint: [file]\n---\n\nReview $ARGUMENTS. Diff: !`echo DIFF-OUT`\nAlso @notes.md here.\n");
@@ -416,16 +416,16 @@ static void test_defs(void)
     at(root, "proj");
     defs_init(&s);
     defs_load(&s, &sys, home, root);
-    CHECK_INT(defs_count(&s, DEF_COMMAND), 3);     /* review (project hides user), hello, commit */
+    CHECK_INT(defs_count(&s, DEF_COMMAND), 3);     /* review (project hides user), hello, git:commit (its subdirectory: Claude Code's namespace) */
     CHECK_INT(defs_count(&s, DEF_AGENT), 1);
-    CHECK_INT(defs_count(&s, DEF_SKILL), 1);
-    CHECK_INT(defs_count(&s, DEF_STYLE), 4);       /* Default, Explanatory, Learning, Terse */
+    CHECK_INT(defs_count(&s, DEF_SKILL), 9);       /* one of the project's, eight bundled ones */
+    CHECK_INT(defs_count(&s, DEF_STYLE), 6);       /* Default, Proactive, Concise, Explanatory, Learning, Terse */
     d = defs_find(&s, DEF_COMMAND, "review");
     CHECK(d && d->src == CFG_PROJECT);
     CHECK(d && !strcmp(d->description, "Review the code") && !strcmp(d->model, "haiku") &&
           !strcmp(d->hint, "[file]") && !strcmp(d->tools, "Bash(git diff:*), Read"));
     CHECK(d && def_has_tool(d, "Bash") && def_has_tool(d, "Read") && !def_has_tool(d, "Edit"));
-    CHECK(defs_find(&s, DEF_COMMAND, "commit") != 0);
+    CHECK(defs_find(&s, DEF_COMMAND, "git:commit") != 0 && !defs_find(&s, DEF_COMMAND, "commit"));
     d = defs_find(&s, DEF_AGENT, "tester");
     CHECK(d && !strcmp(d->tools, "Read, Bash") && !strcmp(d->body, "You test.\n") && !strcmp(d->model, "sonnet"));
     d = defs_find(&s, DEF_SKILL, "pdf-tools");
@@ -440,14 +440,14 @@ static void test_defs(void)
     d = defs_find(&s, DEF_COMMAND, "review");
     CHECK_INT(cmd_expand(d, "main.c", &sys, root, &o, err, sizeof(err)), 0);
     CHECK_STR(o.p ? o.p : "", "Review main.c. Diff: DIFF-OUT\nAlso notes.md:\n```\nNOTES\n```\n here.\n");
-    /* $1 $2, quoted words; no $ARGUMENTS: nothing appended when $n used */
+    /* $0 $1 (0-based, Claude Code), quoted words; no $ARGUMENTS: nothing appended when $n used */
     jw_reset(&o);
     d = defs_find(&s, DEF_COMMAND, "hello");
     CHECK_INT(cmd_expand(d, "\"Amiga 1200\" world", &sys, root, &o, err, sizeof(err)), 0);
     CHECK_STR(o.p ? o.p : "", "Say hello to Amiga 1200 and world.\n");
     /* no placeholder at all: the arguments are appended */
     jw_reset(&o);
-    d = defs_find(&s, DEF_COMMAND, "commit");
+    d = defs_find(&s, DEF_COMMAND, "git:commit");
     CHECK_INT(cmd_expand(d, "fast", &sys, root, &o, err, sizeof(err)), 0);
     CHECK_STR(o.p ? o.p : "", "Commit it.\n\n\nARGUMENTS: fast");
     jw_free(&o);
@@ -458,6 +458,30 @@ static void test_defs(void)
     CHECK_INT(cmd_expand(&x, "", &sys, root, &o, err, sizeof(err)), -1);
     CHECK(strstr(err, "has no Bash") != 0);
     jw_free(&o);
+    def_free(&x);
+    {
+        /* Claude Code's skill substitutions (A4 gaps X2): $ARGUMENTS[N] and $N
+         * 0-based, an index with no argument stays, \$ a dollar, $name from
+         * the arguments list (empty when missing), the ${CLAUDE_*} values;
+         * an argument's own $1 is not expanded again */
+        static const char t[] = "---\narguments: [issue, branch, extra]\n---\n"
+                                "A=$ARGUMENTS[1] B=$0 C=$5 D=\\$1 E=$issue F=$extra G=${CLAUDE_SKILL_DIR}/s "
+                                "H=${CLAUDE_SESSION_ID} I=${CLAUDE_EFFORT} J=${CLAUDE_PROJECT_DIR}";
+        cl_cmd_vars v;
+        v.session_id = "abc123";
+        v.effort = "high";
+        v.skill_dir = "S:skills/x";
+        v.project_dir = "Work:proj";
+        memset(&x, 0, sizeof(x));
+        CHECK_INT(defs_parse(t, (long)sizeof(t) - 1, &x), 0);
+        CHECK_STR(x.arg_names, "issue, branch, extra");
+        jw_init(&o);
+        CHECK_INT(cmd_expand_vars(&x, "\"$1 lit\" two", &v, &sys, root, &o, err, sizeof(err)), 0);
+        CHECK_STR(o.p ? o.p : "", "A=two B=$1 lit C=$5 D=$1 E=$1 lit F= G=S:skills/x/s H=abc123 I=high J=Work:proj");
+        jw_free(&o);
+        def_free(&x);
+        memset(&x, 0, sizeof(x));
+    }
     def_free(&x);
     defs_free(&s);
 }
@@ -733,6 +757,108 @@ static void test_checkpoints(void)
     CHECK_INT(checkpoint_before_write(a), 0);   /* none in use: nothing */
 }
 
+/* A4 gaps: the new settings keys, bypassPermissions kept out of a
+ * project's files (H5), the auto-compact window's forms, --setting-sources'
+ * skip, the agent and skill frontmatter keys (X3 X4), --agents JSON */
+static void test_gaps(void)
+{
+    cl_settings s;
+    cl_defs ds;
+    cl_def d;
+    char home[600], root[600], err[200];
+    static const char agent[] = "---\nname: rev\ndescription: Reviews\ntools: Read, Bash\n"
+                                "disallowedTools:\n  - Bash\nmaxTurns: 7\neffort: high\nskills: [a, b]\n"
+                                "permissionMode: acceptEdits\n---\nPROMPT\n";
+    static const char skill[] = "---\ndescription: A skill\nwhen_to_use: when asked\nuser-invocable: false\n"
+                                "context: fork\nagent: Explore\narguments: [x]\n---\nBODY\n";
+    at(home, "gh");
+    at(root, "gp");
+    mk("gh");
+    mk("gp");
+    mk("gp/.claude");
+    put("gh/settings.json", "{\"disableAllHooks\":true,\"verbose\":true,\"agent\":\"rev\",\"autoCompactWindow\":\"500k\","
+                            "\"autoMemoryEnabled\":false,\"statusLine\":{\"command\":\"x\",\"hideVimModeIndicator\":true},"
+                            "\"claudeMdExcludes\":[\"**/other/CLAUDE.md\"],\"permissions\":{\"defaultMode\":\"plan\"}}");
+    put("gp/.claude/settings.json", "{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}");
+    put("gp/.claude/settings.local.json", "{\"permissions\":{\"defaultMode\":\"auto\"}}");
+    cfg_init(&s);
+    CHECK_INT(cfg_load(&s, &sys, home, root), 3);
+    CHECK_INT(s.no_hooks, 1);
+    CHECK_INT(s.verbose, 1);
+    CHECK_STR(s.agent, "rev");
+    CHECK_INT((int)(s.compact_window / 1000), 500);
+    CHECK_INT(s.auto_memory, 0);
+    CHECK_INT(s.hide_vim, 1);
+    CHECK(s.nmdx == 1 && !strcmp(s.md_excludes[0], "**/other/CLAUDE.md"));
+    CHECK_STR(s.default_mode, "plan");      /* the project's bypassPermissions and auto do not count */
+    CHECK_INT(s.model_src, -1);
+    cfg_free(&s);
+    /* --setting-sources user: the project's files are not read */
+    cfg_init(&s);
+    s.skip = (1u << CFG_PROJECT) | (1u << CFG_LOCAL);
+    CHECK_INT(cfg_load(&s, &sys, home, root), 1);
+    cfg_free(&s);
+    /* the auto-compact window's forms (Claude Code's) */
+    CHECK_INT((int)cfg_window_parse("200000"), 200000);
+    CHECK_INT((int)cfg_window_parse("500k"), 500000);
+    CHECK_INT((int)cfg_window_parse("1M"), 1000000);
+    CHECK_INT((int)cfg_window_parse("200"), 200000);
+    CHECK_INT((int)cfg_window_parse("auto"), -1);
+    CHECK_INT((int)cfg_window_parse("50"), 0);
+    CHECK_INT((int)cfg_window_parse("2M"), 0);
+    /* the agent's and the skill's keys */
+    memset(&d, 0, sizeof(d));
+    CHECK_INT(defs_parse(agent, (long)sizeof(agent) - 1, &d), 0);
+    CHECK_STR(d.tools, "Read, Bash");
+    CHECK_STR(d.deny_tools, "Bash");
+    CHECK_INT(d.max_turns, 7);
+    CHECK_STR(d.effort, "high");
+    CHECK_STR(d.skills, "a, b");
+    CHECK_STR(d.perm_mode, "acceptEdits");
+    def_free(&d);
+    memset(&d, 0, sizeof(d));
+    CHECK_INT(defs_parse(skill, (long)sizeof(skill) - 1, &d), 0);
+    CHECK_STR(d.when, "when asked");
+    CHECK_INT(d.no_user, 1);
+    CHECK_INT(d.fork, 1);
+    CHECK_STR(d.agent, "Explore");
+    CHECK_STR(d.arg_names, "x");
+    def_free(&d);
+    /* --agents: inline JSON, first in the list (it hides a file's agent of its name) */
+    defs_init(&ds);
+    CHECK_INT(defs_add_agents_json(&ds, "{\"j\":{\"description\":\"J agent\",\"prompt\":\"JP\",\"tools\":[\"Read\","
+                                        "\"Grep\"],\"maxTurns\":3,\"permissionMode\":\"plan\"}}",
+                                   err, sizeof(err)),
+              0);
+    CHECK(defs_find(&ds, DEF_AGENT, "j") != 0);
+    if (defs_find(&ds, DEF_AGENT, "j")) {
+        const cl_def *j = defs_find(&ds, DEF_AGENT, "j");
+        CHECK_STR(j->body, "JP");
+        CHECK_STR(j->tools, "Read, Grep");
+        CHECK_INT(j->max_turns, 3);
+        CHECK_STR(j->perm_mode, "plan");
+        CHECK_INT(j->src, CFG_SESSION);
+    }
+    CHECK_INT(defs_add_agents_json(&ds, "{\"k\":{\"prompt\":\"no description\"}}", err, sizeof(err)), -1);
+    CHECK(strstr(err, "needs a description and a prompt") != 0);
+    CHECK_INT(defs_add_agents_json(&ds, "[1]", err, sizeof(err)), -1);
+    defs_drop(&ds, DEF_AGENT);
+    CHECK_INT(defs_count(&ds, DEF_AGENT), 0);
+    defs_free(&ds);
+    /* X6: a hook matcher "Agent" is Claude Code's newer name of Task */
+    CHECK_INT(hooks_match("Agent", "Task"), 1);
+    CHECK_INT(hooks_match("Bash|Agent", "Task"), 1);
+    CHECK_INT(hooks_match("Agent", "Read"), 0);
+    /* Claude Code's matcher rules: a plain list is exact names, anything
+     * else a regular expression, unanchored */
+    CHECK_INT(hooks_match("Bash", "BashOutput"), 0);
+    CHECK_INT(hooks_match("Edit, Write", "Write"), 1);
+    CHECK_INT(hooks_match("Edit.*", "MultiEdit"), 1);
+    CHECK_INT(hooks_match("^Edit$", "MultiEdit"), 0);
+    CHECK_INT(hooks_match("^Edit$", "Edit"), 1);
+    CHECK_INT(hooks_match("^(Read|Grep)$", "Grep"), 1);
+}
+
 void suite_claude_config(void)
 {
     char cmd[600];
@@ -745,6 +871,7 @@ void suite_claude_config(void)
     test_hooks();
     test_sessions();
     test_checkpoints();
+    test_gaps();
     strcpy(cmd, "rm -rf ");
     strcat(cmd, dir);
     if (system(cmd))

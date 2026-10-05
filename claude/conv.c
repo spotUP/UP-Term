@@ -17,6 +17,16 @@ void conv_clear(cl_conv *c)
     c->n = 0;
 }
 
+void conv_usage_reset(cl_conv *c)
+{
+    c->requests = 0;
+    c->in_tok = c->out_tok = c->cache_w = c->cache_r = 0;
+    c->cost_micro = 0;
+    c->unpriced = 0;
+    c->nmu = 0;
+    memset(c->mu, 0, sizeof(c->mu));
+}
+
 void conv_free(cl_conv *c)
 {
     conv_clear(c);
@@ -47,6 +57,35 @@ int conv_add(cl_conv *c, int user, const char *json, long n)
     return 0;
 }
 
+int conv_add_user_blocks(cl_conv *c, const char *b, long bn)
+{
+    int rc;
+    if (c->n && c->m[c->n - 1].user) {
+        cl_msg *m = &c->m[c->n - 1];
+        char *j = (char *)realloc(m->json, (size_t)(m->n + bn + 2));
+        if (!j)
+            return -1;
+        m->json = j;
+        /* "[...]" -> "[..., new]" */
+        j[m->n - 1] = ',';
+        memcpy(j + m->n, b, (size_t)bn);
+        m->n += bn;
+        j[m->n++] = ']';
+        j[m->n] = 0;
+        return 0;
+    }
+    {
+        jw a;
+        jw_init(&a);
+        jw_raw(&a, "[", 1);
+        jw_raw(&a, b, bn);
+        jw_raw(&a, "]", 1);
+        rc = a.oom ? -1 : conv_add(c, 1, a.p, a.n);
+        jw_free(&a);
+    }
+    return rc;
+}
+
 int conv_add_user_text(cl_conv *c, const char *s, long n)
 {
     jw w;
@@ -55,36 +94,7 @@ int conv_add_user_text(cl_conv *c, const char *s, long n)
     jw_rawz(&w, "{\"type\":\"text\",\"text\":");
     jw_str(&w, s, n);
     jw_raw(&w, "}", 1);
-    if (w.oom) {
-        jw_free(&w);
-        return -1;
-    }
-    if (c->n && c->m[c->n - 1].user) {
-        cl_msg *m = &c->m[c->n - 1];
-        char *j = (char *)realloc(m->json, (size_t)(m->n + w.n + 2));
-        if (!j) {
-            jw_free(&w);
-            return -1;
-        }
-        m->json = j;
-        /* "[...]" -> "[..., new]" */
-        j[m->n - 1] = ',';
-        memcpy(j + m->n, w.p, (size_t)w.n);
-        m->n += w.n;
-        j[m->n++] = ']';
-        j[m->n] = 0;
-        jw_free(&w);
-        return 0;
-    }
-    {
-        jw a;
-        jw_init(&a);
-        jw_raw(&a, "[", 1);
-        jw_raw(&a, w.p, w.n);
-        jw_raw(&a, "]", 1);
-        rc = a.oom ? -1 : conv_add(c, 1, a.p, a.n);
-        jw_free(&a);
-    }
+    rc = w.oom ? -1 : conv_add_user_blocks(c, w.p, w.n);
     jw_free(&w);
     return rc;
 }

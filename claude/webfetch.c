@@ -249,13 +249,80 @@ static void received(char *out, long cap, long bytes, int status)
     cl_cat(out, status == 200 ? " OK)" : ")", cap);
 }
 
+/* Claude Code keeps a fetched page 15 minutes: the same URL again is not
+ * fetched again (the prompt is still answered anew) */
+#define CACHE_N 4
+#define CACHE_MS (15UL * 60 * 1000)
+
+typedef struct fentry {
+    char url[600];
+    unsigned long ms;
+    char *md;
+    long n, body_n;
+    int cut;
+} fentry;
+
+void webfetch_cache_free(cl_tools *t)
+{
+    fentry *c = (fentry *)t->fetch_cache;
+    int i;
+    if (!c)
+        return;
+    for (i = 0; i < CACHE_N; i++)
+        free(c[i].md);
+    free(c);
+    t->fetch_cache = 0;
+}
+
+static fentry *cache_find(cl_tools *t, const char *url)
+{
+    fentry *c = (fentry *)t->fetch_cache;
+    unsigned long now = t->clock ? t->clock(t->u) : 0;
+    int i;
+    if (!c || !t->clock)
+        return 0;
+    for (i = 0; i < CACHE_N; i++)
+        if (c[i].md && !strcmp(c[i].url, url) && now - c[i].ms < CACHE_MS)
+            return &c[i];
+    return 0;
+}
+
+static void cache_put(cl_tools *t, const char *url, const char *md, long n, long body_n, int cut)
+{
+    fentry *c = (fentry *)t->fetch_cache, *e;
+    int i, old = 0;
+    if (!t->clock)
+        return;
+    if (!c) {
+        c = (fentry *)calloc(CACHE_N, sizeof(fentry));
+        if (!c)
+            return;
+        t->fetch_cache = c;
+    }
+    for (i = 1; i < CACHE_N; i++)
+        if (!c[i].md || c[i].ms < c[old].ms)
+            old = i;
+    e = &c[old];
+    free(e->md);
+    e->md = (char *)malloc((size_t)n + 1);
+    if (!e->md)
+        return;
+    memcpy(e->md, md, (size_t)n);
+    e->md[n] = 0;
+    e->n = n;
+    e->body_n = body_n;
+    e->cut = cut;
+    cl_copy(e->url, url, sizeof(e->url));
+    e->ms = t->clock(t->u);
+}
+
 void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
 {
     char *url = tl_prop(in, "url", 0), *prompt = tl_prop(in, "prompt", 0);
     char cur[600], loc[600], next[600], ctype[120], what[400], err[300], num[16];
     http_url u, nu;
     page p;
-    int hop, rc;
+    int hop, rc, cached = 0;
     jw md, q, ans;
     memset(&p, 0, sizeof(p));
     jw_init(&md);
@@ -276,6 +343,18 @@ void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
     if (http_parse_url(cur, &u) || (long)strlen(url) >= (long)sizeof(u.path)) {
         tl_error(t, out, id, "Invalid URL (a full http:// or https:// URL, under 250 characters): ", url);
         goto done;
+    }
+    {
+        fentry *hit = cache_find(t, url);
+        if (hit) {
+            jw_raw(&md, hit->md, hit->n);
+            p.body.n = hit->body_n;
+            p.cut = hit->cut;
+            p.resp.status = 200;
+            cached = 1;
+            t->n_fetch_cached++;
+            goto answer;
+        }
     }
     for (hop = 0;; hop++) {
         page_free(&p);
@@ -344,6 +423,9 @@ void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "WebFetch reads text and web pages only; this is ", ctype);
         goto done;
     }
+    if (!md.oom)
+        cache_put(t, url, md.p ? md.p : "", md.n, p.body.n, p.cut);
+answer:
     /* the small model's prompt, as Claude Code words it */
     jw_rawz(&q, "Web page content:\n---\n");
     jw_raw(&q, md.p ? md.p : "", md.n);
@@ -367,6 +449,8 @@ void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
         goto done;
     }
     received(t->brief, sizeof(t->brief), p.body.n, p.resp.status);
+    if (cached)
+        cl_cat(t->brief, " (cached)", sizeof(t->brief));
     tl_result(t, out, id, ans.p, ans.n, 0);
 done:
     page_free(&p);

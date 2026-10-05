@@ -8,6 +8,11 @@
  * a file too large to keep is noted as such. cp_restore puts every file
  * written since a turn back as it was before it (a file created since is
  * deleted). Commands run by Bash are not tracked, as in Claude Code.
+ *
+ * A4 gaps: each session's snapshots are kept under <dir>/<session>/ with
+ * an index, so a resumed session can still be rewound (Claude Code keeps
+ * checkpoints across sessions); a session that saved nothing leaves
+ * nothing behind.
  * Portable C89 over sys.h, host-tested (tests/test_claude_config.c). */
 #ifndef CL_CHECKPOINT_H
 #define CL_CHECKPOINT_H
@@ -27,7 +32,9 @@ typedef struct cl_cpent {
 
 typedef struct cl_checkpoints {
     cl_sys *sys;
-    char dir[300];
+    char base[300];             /* T:Claude-cp */
+    char dir[300];              /* base/<session>: this session's snapshots and index */
+    int keep;                   /* cp_free leaves the files (the session was saved) */
     cl_cpent *e;
     int n, cap;
     int turn;                   /* the turn being run */
@@ -40,6 +47,10 @@ void cp_init(cl_checkpoints *c, cl_sys *sys, const char *dir);
 /* the snapshots deleted */
 void cp_free(cl_checkpoints *c);
 void cp_turn(cl_checkpoints *c, int turn);
+/* The session whose snapshots these are (id: its session file's path, its
+ * directory named by a hash of it): the entries of another session
+ * forgotten (its files stay), this one's read from its index. */
+void cp_session(cl_checkpoints *c, const char *id);
 /* Before a write or an edit of path (resolved): 0 (also: one taken this
  * turn already), -1 the snapshot could not be made (the write still may
  * go on; /rewind will say it cannot restore that file). */

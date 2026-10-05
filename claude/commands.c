@@ -28,7 +28,14 @@ void def_free(cl_def *d)
     free(d->tools);
     free(d->model);
     free(d->hint);
+    free(d->deny_tools);
+    free(d->skills);
+    free(d->when);
     d->description = d->body = d->tools = d->model = d->hint = 0;
+    free(d->arg_names);
+    free(d->initial);
+    free(d->paths);
+    d->deny_tools = d->skills = d->when = d->arg_names = d->initial = d->paths = 0;
 }
 
 void defs_free(cl_defs *s)
@@ -69,6 +76,23 @@ static void set(char **f, char *v)
     *f = v;
 }
 
+/* the field a YAML list under key goes to (tools, disallowedTools,
+ * skills), 0 for a key that holds no list */
+static char **list_field(cl_def *d, const char *key)
+{
+    if (!strcmp(key, "tools") || !strcmp(key, "allowed-tools"))
+        return &d->tools;
+    if (!strcmp(key, "disallowedTools") || !strcmp(key, "disallowed-tools"))
+        return &d->deny_tools;
+    if (!strcmp(key, "skills"))
+        return &d->skills;
+    if (!strcmp(key, "arguments"))
+        return &d->arg_names;
+    if (!strcmp(key, "paths"))
+        return &d->paths;
+    return 0;
+}
+
 int defs_parse(const char *t, long n, cl_def *d)
 {
     long i = 0, body = 0;
@@ -84,7 +108,19 @@ int defs_parse(const char *t, long n, cl_def *d)
         d->model = dupn("", 0);
     if (!d->hint)
         d->hint = dupn("", 0);
-    if (!d->description || !d->tools || !d->model || !d->hint)
+    if (!d->deny_tools)
+        d->deny_tools = dupn("", 0);
+    if (!d->skills)
+        d->skills = dupn("", 0);
+    if (!d->arg_names)
+        d->arg_names = dupn("", 0);
+    if (!d->initial)
+        d->initial = dupn("", 0);
+    if (!d->paths)
+        d->paths = dupn("", 0);
+    if (!d->when)
+        d->when = dupn("", 0);
+    if (!d->description || !d->tools || !d->model || !d->hint || !d->deny_tools || !d->skills || !d->when || !d->arg_names || !d->initial || !d->paths)
         return -1;
     if (n >= 4 && !strncmp(t, "---", 3) && (t[3] == '\n' || t[3] == '\r')) {
         i = t[3] == '\r' ? 5 : 4;
@@ -122,10 +158,8 @@ int defs_parse(const char *t, long n, cl_def *d)
                     kl = (long)sizeof(key) - 1;
                 memcpy(key, t + i, (size_t)kl);
                 key[kl] = 0;
-                if (lkey[0] && lw.n) {
-                    if (!strcmp(lkey, "tools") || !strcmp(lkey, "allowed-tools"))
-                        set(&d->tools, dupn(lw.p, lw.n));
-                }
+                if (lkey[0] && lw.n && list_field(d, lkey))
+                    set(list_field(d, lkey), dupn(lw.p, lw.n));
                 jw_reset(&lw);
                 lkey[0] = 0;
                 v = value(t + c + 1, e - c - 1);
@@ -135,28 +169,59 @@ int defs_parse(const char *t, long n, cl_def *d)
                 }
                 if (!*v)
                     cl_copy(lkey, key, sizeof(lkey));
+                if (list_field(d, key) && v[0] == '[') {
+                    /* a flow list: [a, b] */
+                    long vl = (long)strlen(v);
+                    memmove(v, v + 1, (size_t)vl);
+                    if (vl > 1 && v[vl - 2] == ']')
+                        v[vl - 2] = 0;
+                }
                 if (!strcmp(key, "name") && *v)
                     cl_copy(d->name, v, sizeof(d->name));
                 if (!strcmp(key, "description"))
                     set(&d->description, v);
+                else if (!strcmp(key, "arguments"))
+                    set(&d->arg_names, v);
                 else if (!strcmp(key, "allowed-tools") || !strcmp(key, "tools"))
                     set(&d->tools, v);
                 else if (!strcmp(key, "model"))
                     set(&d->model, v);
                 else if (!strcmp(key, "argument-hint"))
                     set(&d->hint, v);
+                else if (!strcmp(key, "disallowedTools") || !strcmp(key, "disallowed-tools"))
+                    set(&d->deny_tools, v);
+                else if (!strcmp(key, "skills"))
+                    set(&d->skills, v);
+                else if (!strcmp(key, "when_to_use"))
+                    set(&d->when, v);
+                else if (!strcmp(key, "initialPrompt"))
+                    set(&d->initial, v);
+                else if (!strcmp(key, "paths"))
+                    set(&d->paths, v);
                 else {
                     if (!strcmp(key, "keep-coding-instructions"))
                         d->keep_coding = !strcmp(v, "true");
                     else if (!strcmp(key, "disable-model-invocation"))
                         d->no_model = !strcmp(v, "true");
+                    else if (!strcmp(key, "user-invocable"))
+                        d->no_user = !strcmp(v, "false");
+                    else if (!strcmp(key, "maxTurns"))
+                        d->max_turns = atoi(v);
+                    else if (!strcmp(key, "effort"))
+                        cl_copy(d->effort, v, sizeof(d->effort));
+                    else if (!strcmp(key, "permissionMode"))
+                        cl_copy(d->perm_mode, v, sizeof(d->perm_mode));
+                    else if (!strcmp(key, "context"))
+                        d->fork = !strcmp(v, "fork");
+                    else if (!strcmp(key, "agent"))
+                        cl_copy(d->agent, v, sizeof(d->agent));
                     free(v);
                 }
             }
             i = e + 1;
         }
-        if (lkey[0] && lw.n && (!strcmp(lkey, "tools") || !strcmp(lkey, "allowed-tools")))
-            set(&d->tools, dupn(lw.p, lw.n));
+        if (lkey[0] && lw.n && list_field(d, lkey))
+            set(list_field(d, lkey), dupn(lw.p, lw.n));
     }
     jw_free(&lw);
     while (body < n && (t[body] == '\n' || t[body] == '\r'))
@@ -192,7 +257,9 @@ static void load_file(cl_defs *s, cl_sys *sys, int type, int src, const char *pa
     cl_copy(d.path, path, sizeof(d.path));
     if (sys->read(sys->u, path, 128L * 1024, &b, &n))
         return;
-    if (defs_parse(b, n, &d) || add(s, &d))
+    if (defs_parse(b, n, &d) == 0 && type == DEF_COMMAND)
+        cl_copy(d.name, name, sizeof(d.name));     /* Claude Code: a command's name is its file's */
+    if (!d.body || add(s, &d))
         def_free(&d);
     free(b);
 }
@@ -220,7 +287,7 @@ static int md_name(const char *f, char *name, long cap)
     return 0;
 }
 
-static void load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir, int depth)
+static void load_dir_as(cl_defs *s, cl_sys *sys, int type, int src, const char *dir, int depth, const char *prefix)
 {
     scan *sc;
     int i;
@@ -240,12 +307,36 @@ static void load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir
             if (sc->e[i].dir && path_join(p, "SKILL.md", sk, sizeof(sk)) == 0 && sys->kind(sys->u, sk) == 1)
                 load_file(s, sys, type, src, sk, sc->e[i].name);
         } else if (sc->e[i].dir) {
-            if (depth < 2)
-                load_dir(s, sys, type, src, p, depth + 1);
-        } else if (md_name(sc->e[i].name, name, sizeof(name)) == 0)
-            load_file(s, sys, type, src, p, name);
+            if (depth < 2) {
+                /* Claude Code: .claude/commands/frontend/x.md is /frontend:x */
+                char pre[64];
+                cl_copy(pre, prefix, sizeof(pre));
+                if (type == DEF_COMMAND) {
+                    cl_cat(pre, sc->e[i].name, sizeof(pre));
+                    cl_cat(pre, ":", sizeof(pre));
+                }
+                load_dir_as(s, sys, type, src, p, depth + 1, pre);
+            }
+        } else if (md_name(sc->e[i].name, name, sizeof(name)) == 0) {
+            char full[64];
+            cl_copy(full, prefix, sizeof(full));
+            cl_cat(full, name, sizeof(full));
+            load_file(s, sys, type, src, p, full);
+        }
     }
     free(sc);
+}
+
+static void load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir, int depth)
+{
+    load_dir_as(s, sys, type, src, dir, depth, "");
+}
+
+int defs_load_dir(cl_defs *s, cl_sys *sys, int type, int src, const char *dir)
+{
+    int n0 = s->n;
+    load_dir(s, sys, type, src, dir, 0);
+    return s->n - n0;
 }
 
 static const char explanatory[] =
@@ -258,21 +349,125 @@ static const char learning[] =
     "user something, leave it to them -- write the surrounding code, mark the spot with a TODO(human) "
     "comment and ask them to fill it in, then review what they wrote.";
 
-static void builtin(cl_defs *s, const char *name, const char *desc, const char *body)
+static const char proactive[] =
+    "Start on a task as soon as it is given. Make reasonable assumptions about routine decisions instead of "
+    "stopping to ask, and say in a few words which ones you made. Do not switch to plan mode unless the user asks "
+    "for a plan. The user will redirect you when an assumption is wrong.";
+static const char concise[] =
+    "Lead every response with the result: its first sentence says what happened or what the answer is. Leave "
+    "out the lead-in, the step-by-step narration and the closing recap; answer a simple question in one to three "
+    "sentences. Do the engineering work as thoroughly as ever: only the words get fewer.";
+
+static void builtin_of(cl_defs *s, int type, const char *name, const char *desc, const char *body,
+                       const char *tools, const char *hint)
 {
     cl_def d;
     memset(&d, 0, sizeof(d));
-    d.type = DEF_STYLE;
+    d.type = type;
     d.src = DEF_BUILTIN;
     d.keep_coding = 1;
     cl_copy(d.name, name, sizeof(d.name));
     d.description = dupn(desc, (long)strlen(desc));
     d.body = dupn(body, (long)strlen(body));
-    d.tools = dupn("", 0);
+    d.tools = dupn(tools, (long)strlen(tools));
     d.model = dupn("", 0);
-    d.hint = dupn("", 0);
-    if (!d.description || !d.body || !d.tools || !d.model || !d.hint || add(s, &d))
+    d.hint = dupn(hint, (long)strlen(hint));
+    d.deny_tools = dupn("", 0);
+    d.skills = dupn("", 0);
+    d.when = dupn("", 0);
+    d.arg_names = dupn("", 0);
+    d.initial = dupn("", 0);
+    d.paths = dupn("", 0);
+    if (!d.description || !d.body || !d.tools || !d.model || !d.hint || !d.deny_tools || !d.skills || !d.when ||
+        !d.arg_names || !d.initial || !d.paths || add(s, &d))
         def_free(&d);
+}
+
+static void builtin(cl_defs *s, const char *name, const char *desc, const char *body)
+{
+    builtin_of(s, DEF_STYLE, name, desc, body, "", "");
+}
+
+/* Claude Code's bundled skills that make sense on an Amiga, as prompts
+ * (each part under C89's 509 characters, joined) */
+static const char *const sk_simplify[] = {
+    "Review the code changed in this session for cleanup, then apply the fixes yourself. The changed files are "
+    "the ones you wrote or edited in this conversation; when there are none, or $ARGUMENTS names others, use "
+    "those. ",
+    "Look for: helpers that already exist and should be reused instead of new code, code that can be simpler, "
+    "needless work (on this slow machine above all), and code at the wrong level. Quality only: do not hunt for "
+    "bugs. Make the edits, then list what you changed in a few lines.",
+    0
+};
+static const char *const sk_update_config[] = {
+    "Make this change to C:Claude's settings: $ARGUMENTS\n\nThe settings files are ENVARC:Claude/settings.json "
+    "(the user's, all projects), .claude/settings.json (the project's, shared) and .claude/settings.local.json "
+    "(the project's, private). ",
+    "The keys are Claude Code's: permissions.allow / ask / deny (rules like Bash(make *) or Edit(src/**)), env, "
+    "hooks, model, effortLevel, outputStyle, statusLine, autoCompactEnabled, and the others of Claude Code's "
+    "settings reference. Read the file first, keep every other key, write valid JSON, and say which file you "
+    "changed and why that one.",
+    0
+};
+static const char *const sk_fewer_prompts[] = {
+    "Find the permission questions that keep coming back and propose allow rules for them. Read this project's "
+    "session files (ENVARC:Claude/projects/<this directory's name>/*.jsonl; the newest few are enough) and "
+    "collect the Bash commands and tools used again and again. ",
+    "Propose rules only for what is safe: commands that read, build or test, never ones that delete or "
+    "publish. Show the list; when the user agrees, add the rules to .claude/settings.json under "
+    "permissions.allow, keeping the file's other keys.",
+    0
+};
+static const char *const sk_insights[] = {
+    "Write a short HTML report on how C:Claude is used on this machine: read the session indexes "
+    "(ENVARC:Claude/projects/*/sessions) and a sample of the sessions (*.jsonl). ",
+    "Cover the projects worked on, what kind of work, what went wrong (errors, denied tools, stopped answers) "
+    "and features worth trying. Save it as RAM:claude-insights.html and say where it is.",
+    0
+};
+static const char *const sk_onboarding[] = {
+    "Write a Markdown onboarding guide for a teammate starting on this project, to paste as their first "
+    "message to Claude: what the project is, how it is built, run and tested on this machine, its conventions "
+    "and its pitfalls. ",
+    "Use the project's files and its CLAUDE.md / AMIGA.md, and this project's past sessions "
+    "(ENVARC:Claude/projects/...) for what was learned. Save it as .claude/onboarding.md.",
+    0
+};
+static const char *const sk_run[] = {
+    "Launch this project's program and see the change working, not only compiling: find how it is built and "
+    "started (a Makefile or smakefile, an Install script, the README, CLAUDE.md / AMIGA.md, or a project skill "
+    "named run), build it, run it with Bash, and check what it does. $ARGUMENTS ",
+    "Report what you ran and what you saw. If it needs a person (a window, a sound), say exactly what to look "
+    "for.",
+    0
+};
+static const char *const sk_verify[] = {
+    "Confirm that the change does what it should by building the program and running it, not by reading the "
+    "code or by the tests alone. $ARGUMENTS ",
+    "Find the build and start commands (a Makefile, the README, CLAUDE.md, a project skill named run), run the "
+    "path the change affects, and compare what happens with what was asked. Report pass or fail with the "
+    "evidence.",
+    0
+};
+static const char *const sk_run_gen[] = {
+    "Write a project skill that teaches you to build, start and check this program from scratch: find the "
+    "commands (Makefile, smakefile, Install scripts, README) and try them. ",
+    "Save it as .claude/skills/run/SKILL.md with a frontmatter (description: how to build and run this "
+    "project) and steps a fresh session can follow on this machine. Say what you could not check.",
+    0
+};
+
+static void bundled(cl_defs *s, const char *name, const char *desc, const char *const *parts, const char *tools,
+                    const char *hint)
+{
+    jw b;
+    int i;
+    jw_init(&b);
+    for (i = 0; parts[i]; i++)
+        jw_rawz(&b, parts[i]);
+    if (!b.oom && b.p)
+        builtin_of(s, DEF_SKILL, name, desc, b.p, tools, hint);
+    jw_free(&b);
 }
 
 int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
@@ -281,8 +476,22 @@ int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
     char base[2][300], p[300];
     int src, t;
     builtin(s, "Default", "Claude Code's own: concise, for doing software work", "");
+    builtin(s, "Proactive", "Starts right away and makes reasonable assumptions instead of asking", proactive);
+    builtin(s, "Concise", "Leads with the result; no preamble, narration or recap", concise);
     builtin(s, "Explanatory", "Explains the choices and the codebase while it works", explanatory);
     builtin(s, "Learning", "Works with you: leaves small pieces for you to write (TODO(human))", learning);
+    bundled(s, "simplify", "Review this session's changed code for reuse, simplicity and efficiency, and fix it",
+            sk_simplify, "", "[files]");
+    bundled(s, "update-config", "Change C:Claude's settings (permissions, env, hooks, ...) as described", sk_update_config,
+            "", "<what to change>");
+    bundled(s, "fewer-permission-prompts", "Propose allow rules for the questions that keep coming back",
+            sk_fewer_prompts, "", "");
+    bundled(s, "insights", "An HTML report on how C:Claude is used on this machine", sk_insights, "", "");
+    bundled(s, "team-onboarding", "A guide for a teammate starting on this project", sk_onboarding, "", "");
+    bundled(s, "run", "Build and run the program to see a change working", sk_run, "", "[what to check]");
+    bundled(s, "verify", "Confirm a change works by running the program", sk_verify, "", "[what to check]");
+    bundled(s, "run-skill-generator", "Write a project skill that tells how to build and run this program",
+            sk_run_gen, "", "");
     cl_copy(base[0], home ? home : "", sizeof(base[0]));
     if (path_join(root, ".claude", base[1], sizeof(base[1])))
         base[1][0] = 0;
@@ -295,6 +504,122 @@ int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
                 load_dir(s, sys, t, src ? CFG_PROJECT : CFG_USER, p, 0);
     }
     return s->n;
+}
+
+void defs_drop(cl_defs *s, int type)
+{
+    int i, k = 0;
+    for (i = 0; i < s->n; i++) {
+        int go = type < 0 ? s->d[i].src != DEF_BUILTIN : s->d[i].type == type;
+        if (go)
+            def_free(&s->d[i]);
+        else
+            s->d[k++] = s->d[i];
+    }
+    s->n = k;
+}
+
+/* a JSON string or array of strings as "a, b" (0 when it is neither) */
+static char *str_or_list(jv v)
+{
+    long l;
+    if (json_type(v) == J_STR)
+        return json_strdup(v, &l);
+    if (json_type(v) == J_ARR) {
+        jw w;
+        jv e;
+        jit it;
+        jw_init(&w);
+        json_iter(v, &it);
+        while (json_next(&it, 0, &e)) {
+            char *t = json_type(e) == J_STR ? json_strdup(e, &l) : 0;
+            if (!t)
+                continue;
+            if (w.n)
+                jw_rawz(&w, ", ");
+            jw_rawz(&w, t);
+            free(t);
+        }
+        if (w.oom) {
+            jw_free(&w);
+            return 0;
+        }
+        return w.p ? w.p : dupn("", 0);
+    }
+    return 0;
+}
+
+void def_extra_json(cl_def *d, jv a)
+{
+    jv x;
+    if (json_get(a, "disallowedTools", &x))
+        set(&d->deny_tools, str_or_list(x));
+    if (json_get(a, "skills", &x))
+        set(&d->skills, str_or_list(x));
+    if (json_get(a, "maxTurns", &x))
+        d->max_turns = (int)json_long(x, 0);
+    if (json_get(a, "effort", &x))
+        json_str(x, d->effort, sizeof(d->effort));
+    if (json_get(a, "permissionMode", &x))
+        json_str(x, d->perm_mode, sizeof(d->perm_mode));
+    if (json_get(a, "initialPrompt", &x) && json_type(x) == J_STR) {
+        long l;
+        set(&d->initial, json_strdup(x, &l));
+    }
+}
+
+int defs_add_agents_json(cl_defs *s, const char *json, char *err, long cap)
+{
+    jv o, a, x;
+    jit it;
+    char name[64];
+    if (json_parse(json, (long)strlen(json), &o) || json_type(o) != J_OBJ) {
+        cl_copy(err, "--agents is not a JSON object of agents", cap);
+        return -1;
+    }
+    json_iter(o, &it);
+    while (json_next(&it, &x, &a)) {
+        cl_def d;
+        long l;
+        char *t;
+        if (json_type(a) != J_OBJ || json_str(x, name, sizeof(name)) < 1) {
+            cl_copy(err, "--agents: each agent is \"name\": {\"description\": ..., \"prompt\": ...}", cap);
+            return -1;
+        }
+        memset(&d, 0, sizeof(d));
+        d.type = DEF_AGENT;
+        d.src = CFG_SESSION;
+        cl_copy(d.name, name, sizeof(d.name));
+        cl_copy(d.path, "--agents", sizeof(d.path));
+        if (defs_parse("", 0, &d)) {
+            def_free(&d);
+            return -1;
+        }
+        if (!json_get(a, "description", &x) || !json_get(a, "prompt", &x)) {
+            def_free(&d);
+            cl_copy(err, "--agents: agent ", cap);
+            cl_cat(err, name, cap);
+            cl_cat(err, " needs a description and a prompt", cap);
+            return -1;
+        }
+        if (json_get(a, "description", &x) && (t = json_strdup(x, &l)) != 0)
+            set(&d.description, t);
+        if (json_get(a, "prompt", &x) && (t = json_strdup(x, &l)) != 0)
+            set(&d.body, t);
+        if (json_get(a, "tools", &x))
+            set(&d.tools, str_or_list(x));
+        if (json_get(a, "model", &x) && (t = json_strdup(x, &l)) != 0)
+            set(&d.model, t);
+        def_extra_json(&d, a);
+        /* the command line's agents come first: they hide the files' of the same name */
+        if (add(s, &d)) {
+            def_free(&d);
+            return -1;
+        }
+        memmove(&s->d[1], &s->d[0], (size_t)(s->n - 1) * sizeof(cl_def));
+        s->d[0] = d;
+    }
+    return 0;
 }
 
 const cl_def *defs_find(const cl_defs *s, int type, const char *name)
@@ -348,10 +673,11 @@ int def_has_tool(const cl_def *d, const char *tool)
 }
 
 /* the arguments split like a shell's words ("a b" is one) */
-static int split(const char *a, char w[9][256])
+#define NWORDS 16
+static int split(const char *a, char w[NWORDS][256])
 {
     int n = 0;
-    while (*a && n < 9) {
+    while (*a && n < NWORDS) {
         long k = 0;
         char q = 0;
         while (*a == ' ' || *a == '\t')
@@ -373,23 +699,121 @@ static int split(const char *a, char w[9][256])
     return n;
 }
 
-int cmd_expand(const cl_def *d, const char *args, cl_sys *sys, const char *root, jw *out, char *err, long cap)
+/* ${CLAUDE_...} at s: its value appended, the length of the name taken
+ * (0: not one of ours) */
+static long claude_var(const char *s, const cl_cmd_vars *v, jw *out)
+{
+    static const char *const names[] = { "${CLAUDE_SESSION_ID}", "${CLAUDE_EFFORT}", "${CLAUDE_SKILL_DIR}",
+                                         "${CLAUDE_PROJECT_DIR}", 0 };
+    int i;
+    for (i = 0; names[i]; i++) {
+        long l = (long)strlen(names[i]);
+        if (!strncmp(s, names[i], (size_t)l)) {
+            const char *val = !v ? "" : i == 0 ? v->session_id : i == 1 ? v->effort : i == 2 ? v->skill_dir
+                                                                                             : v->project_dir;
+            jw_rawz(out, val ? val : "");
+            return l;
+        }
+    }
+    return 0;
+}
+
+int cmd_subst_vars(const char *in, const cl_cmd_vars *v, jw *out)
+{
+    while (*in) {
+        long l = *in == '$' ? claude_var(in, v, out) : 0;
+        if (l)
+            in += l;
+        else
+            jw_raw(out, in++, 1);
+    }
+    return out->oom ? -1 : 0;
+}
+
+/* $name of the arguments frontmatter at s: its index, *len its length; -1 none */
+static int named_arg(const cl_def *d, const char *s, long *len)
+{
+    const char *p = d->arg_names;
+    int k = 0;
+    while (p && *p) {
+        const char *e;
+        while (*p == ' ' || *p == ',')
+            p++;
+        e = p;
+        while (*e && *e != ' ' && *e != ',')
+            e++;
+        if (e > p && !strncmp(s + 1, p, (size_t)(e - p))) {
+            char c = s[1 + (e - p)];
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) {
+                *len = 1 + (long)(e - p);
+                return k;
+            }
+        }
+        if (e > p)
+            k++;
+        p = e;
+    }
+    return -1;
+}
+
+int cmd_expand_vars(const cl_def *d, const char *args, const cl_cmd_vars *v, cl_sys *sys, const char *root,
+                    jw *out, char *err, long cap)
 {
     const char *s = d->body;
-    char w[9][256];
-    int nw = split(args ? args : "", w), had_args = 0;
+    char (*w)[256] = (char (*)[256])malloc(NWORDS * 256);
+    int nw, had_args = 0;
+    long l;
     err[0] = 0;
+    if (!w) {
+        cl_copy(err, "out of memory", cap);
+        return -1;
+    }
+    nw = split(args ? args : "", w);
     while (*s) {
-        if (s[0] == '$' && !strncmp(s, "$ARGUMENTS", 10)) {
+        if (s[0] == '\\' && s[1] == '$') {
+            jw_raw(out, "$", 1);        /* \$ is a dollar sign */
+            s += 2;
+        } else if (s[0] == '$' && !strncmp(s, "$ARGUMENTS[", 11) && s[11] >= '0' && s[11] <= '9') {
+            /* $ARGUMENTS[N], 0-based */
+            const char *e = s + 11;
+            int k = 0;
+            while (*e >= '0' && *e <= '9')
+                k = k * 10 + (*e++ - '0');
+            if (*e == ']') {
+                if (k < nw)
+                    jw_rawz(out, w[k]);
+                else
+                    jw_raw(out, s, (long)(e + 1 - s));  /* no such argument: as it is */
+                had_args = 1;
+                s = e + 1;
+            } else {
+                jw_raw(out, s, 1);
+                s++;
+            }
+        } else if (s[0] == '$' && !strncmp(s, "$ARGUMENTS", 10)) {
             jw_rawz(out, args ? args : "");
             had_args = 1;
             s += 10;
-        } else if (s[0] == '$' && s[1] >= '1' && s[1] <= '9') {
-            int k = s[1] - '1';
+        } else if (s[0] == '$' && s[1] >= '0' && s[1] <= '9') {
+            /* $N: 0-based (Claude Code: $0 is the first argument) */
+            const char *e = s + 1;
+            int k = 0;
+            while (*e >= '0' && *e <= '9')
+                k = k * 10 + (*e++ - '0');
             if (k < nw)
                 jw_rawz(out, w[k]);
+            else
+                jw_raw(out, s, (long)(e - s));  /* no such argument: stays unchanged */
             had_args = 1;
-            s += 2;
+            s = e;
+        } else if (s[0] == '$' && s[1] == '{' && (l = claude_var(s, v, out)) != 0) {
+            s += l;
+        } else if (s[0] == '$' && named_arg(d, s, &l) >= 0) {
+            int k = named_arg(d, s, &l);
+            if (k < nw)
+                jw_rawz(out, w[k]);         /* a named one with no argument: empty */
+            had_args = 1;
+            s += l;
         } else if (s[0] == '!' && s[1] == '`') {
             const char *e = strchr(s + 2, '`');
             char cmd[512];
@@ -408,23 +832,31 @@ int cmd_expand(const cl_def *d, const char *args, cl_sys *sys, const char *root,
                 cl_copy(err, "the command runs !`", cap);
                 cl_cat(err, cmd, cap);
                 cl_cat(err, "` but its allowed-tools has no Bash", cap);
+                free(w);
                 return -1;
             }
             {
                 char *o = (char *)malloc(16384);
                 long on = 0, rc = 0;
+                jw c;
                 if (!o) {
                     cl_copy(err, "out of memory", cap);
+                    free(w);
                     return -1;
                 }
-                if (sys->run(sys->u, cmd, 30, o, 16383, &on, &rc) < 0) {
+                jw_init(&c);
+                cmd_subst_vars(cmd, v, &c);     /* ${CLAUDE_SKILL_DIR}/scripts/x */
+                if (c.oom || sys->run(sys->u, c.p ? c.p : cmd, 30, o, 16383, &on, &rc) < 0) {
                     cl_copy(err, "!`", cap);
                     cl_cat(err, cmd, cap);
                     cl_cat(err, "` did not run: ", cap);
                     cl_cat(err, sys->err(sys->u), cap);
                     free(o);
+                    jw_free(&c);
+                    free(w);
                     return -1;
                 }
+                jw_free(&c);
                 while (on && (o[on - 1] == '\n' || o[on - 1] == '\r'))
                     on--;
                 jw_raw(out, o, on);
@@ -465,6 +897,7 @@ int cmd_expand(const cl_def *d, const char *args, cl_sys *sys, const char *root,
             s++;
         }
     }
+    free(w);
     if (!had_args && args && *args) {
         jw_rawz(out, "\n\nARGUMENTS: ");
         jw_rawz(out, args);
@@ -474,4 +907,9 @@ int cmd_expand(const cl_def *d, const char *args, cl_sys *sys, const char *root,
         return -1;
     }
     return 0;
+}
+
+int cmd_expand(const cl_def *d, const char *args, cl_sys *sys, const char *root, jw *out, char *err, long cap)
+{
+    return cmd_expand_vars(d, args, 0, sys, root, out, err, cap);
 }

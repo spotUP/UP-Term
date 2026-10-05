@@ -499,7 +499,7 @@ static const char *w_err(void *u)
 }
 
 static const cl_agent my_agents[] = {
-    { "reviewer", "Reviews a change", "Read, Grep", "haiku", "You review code." }
+    { "reviewer", "Reviews a change", "Read, Grep", "haiku", "You review code.", 0, 0, 0, 0, 0, 0 }
 };
 static cl_skill my_skills[1];
 static const cl_command my_cmds[] = { { "hello", "Greets someone" }, { "secret", 0 } };
@@ -538,17 +538,17 @@ static int x_expand(void *u, const char *name, const char *args, jw *out, char *
     return 0;
 }
 
-static const cl_ext my_ext = { 0, x_agents, x_skills, x_commands, x_expand };
+static const cl_ext my_ext = { 0, x_agents, x_skills, x_commands, x_expand, 0 };
 
 /* a project agent with a built-in's name hides the built-in */
-static const cl_agent plan_agent[] = { { "Plan", "OUR-OWN-PLANNER", "Read", 0, "Plan our way." } };
+static const cl_agent plan_agent[] = { { "Plan", "OUR-OWN-PLANNER", "Read", 0, "Plan our way.", 0, 0, 0, 0, 0, 0 } };
 static int x_plan(void *u, const cl_agent **l)
 {
     (void)u;
     *l = plan_agent;
     return 1;
 }
-static const cl_ext plan_ext = { 0, x_plan, 0, 0, 0 };
+static const cl_ext plan_ext = { 0, x_plan, 0, 0, 0, 0 };
 
 /* an added working directory that holds only outside.txt (in the start
  * directory's parent: "/" is AmigaDOS's parent) */
@@ -754,10 +754,18 @@ static void test_files(void)
                    text, sizeof(text)), 0);
     CHECK_INT(a.asked, 0);
     CHECK_INT(get("fresh.txt", buf, sizeof(buf)), 6);
-    /* plan mode: Bash is refused with a result that says why, unasked */
+    /* plan mode: Bash is refused with a result that says why, unasked --
+     * but a command that only looks runs (Claude Code's read-only set) */
     t.perm.mode = PERM_PLAN;
-    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo no\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"rm no\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "plan mode is on") != 0);
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo looks\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "looks") != 0);
+    CHECK_INT(bash_read_only("List S: ; type s:startup-sequence | grep x"), 1);
+    CHECK_INT(bash_read_only("echo x >RAM:f"), 0);         /* writes a file */
+    CHECK_INT(bash_read_only("ls && rm x"), 0);            /* one part changes things */
+    CHECK_INT(bash_read_only("C:List S:"), 0);             /* a path is not the read-only List */
+    CHECK_INT(bash_read_only("echo `delete x`"), 0);
     CHECK_INT(call(&t, "Write", "{\"file_path\":\"fresh.txt\",\"content\":\"x\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "plan mode is on") != 0);
     CHECK_INT(a.asked, 0);
@@ -1048,7 +1056,7 @@ static void test_task(void)
     /* unknown agents, a failed request, a stop */
     CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"nobody\"}", text,
                    sizeof(text)), 1);
-    CHECK(strstr(text, "Available agents: general-purpose, Explore, Plan, reviewer") != 0);
+    CHECK(strstr(text, "Available agents: general-purpose, Explore, Plan, statusline-setup, claude-code-guide, claude, reviewer") != 0);
     api.fail_with = -2;
     CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Plan\"}", text,
                    sizeof(text)), 1);

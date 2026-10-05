@@ -46,19 +46,56 @@ void sess_init(cl_session *s, cl_sys *sys, const char *home, const char *root)
         s->off = 1;
 }
 
+/* the file of an id: <dir>/<its first 8 characters>.jsonl (an 8-digit
+ * id whole; a UUID by its first group) */
+static void id_file(const cl_session *s, const char *id, char *out, long cap)
+{
+    char stem[9];
+    cl_copy(stem, id, sizeof(stem));
+    cl_copy(out, s->dir, cap);
+    cl_cat(out, "/", cap);
+    cl_cat(out, stem, cap);
+    cl_cat(out, ".jsonl", cap);
+}
+
 static void set_id(cl_session *s, const char *id)
 {
     cl_copy(s->id, id, sizeof(s->id));
-    cl_copy(s->file, s->dir, sizeof(s->file));
-    cl_cat(s->file, "/", sizeof(s->file));
-    cl_cat(s->file, id, sizeof(s->file));
-    cl_cat(s->file, ".jsonl", sizeof(s->file));
+    id_file(s, id, s->file, sizeof(s->file));
+}
+
+int sess_is_uuid(const char *s)
+{
+    int i;
+    for (i = 0; i < 36; i++) {
+        char ch = s[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (ch != '-')
+                return 0;
+        } else if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')))
+            return 0;
+    }
+    return s[36] == 0;
+}
+
+int sess_use_id(cl_session *s, const char *id)
+{
+    char f[340];
+    id_file(s, id, f, sizeof(f));
+    if (s->sys->kind(s->sys->u, f) != 0)
+        return -1;
+    set_id(s, id);
+    s->title[0] = 0;
+    s->saved = 0;
+    s->last_n = 0;
+    s->started = 0;
+    return 0;
 }
 
 void sess_new(cl_session *s, unsigned long ms)
 {
     unsigned long t = ms / 1000;
-    char id[16];
+    char id[40];
     int i;
     for (;;) {
         for (i = 0; i < 8; i++)
@@ -238,7 +275,7 @@ int sess_list(cl_session *s, cl_sess_info *out, int max)
     for (e = n; e > 0 && k < max; e = i) {
         long st;
         jv v, x;
-        char id[16];
+        char id[40];
         for (i = e - 1; i > 0 && b[i - 1] != '\n'; i--)
             ;
         st = i;
@@ -257,10 +294,7 @@ int sess_list(cl_session *s, cl_sess_info *out, int max)
         }
         {
             char f[340];
-            cl_copy(f, s->dir, sizeof(f));
-            cl_cat(f, "/", sizeof(f));
-            cl_cat(f, id, sizeof(f));
-            cl_cat(f, ".jsonl", sizeof(f));
+            id_file(s, id, f, sizeof(f));
             if (s->sys->kind(s->sys->u, f) != 1)
                 continue;           /* deleted */
         }
@@ -276,7 +310,7 @@ int sess_list(cl_session *s, cl_sess_info *out, int max)
     for (e = n; e > 0; e = i) {
         long st;
         jv v, x;
-        char id[16];
+        char id[40];
         for (i = e - 1; i > 0 && b[i - 1] != '\n'; i--)
             ;
         st = i;
@@ -290,6 +324,50 @@ int sess_list(cl_session *s, cl_sess_info *out, int max)
     }
     free(b);
     return k;
+}
+
+typedef struct oldf {
+    cl_dirent e[64];
+    int n;
+} oldf;
+
+static int old_one(void *c, const cl_dirent *e)
+{
+    oldf *o = (oldf *)c;
+    if (o->n < 64)
+        o->e[o->n++] = *e;
+    return 0;
+}
+
+int sess_cleanup(cl_session *s, const char *tmp, long age)
+{
+    char clock[300], p[340];
+    long now;
+    int i, gone = 0;
+    oldf *o;
+    if (!s->sys->mtime || !s->sys->list || !s->sys->remove || path_join(tmp, "Claude-clock", clock, sizeof(clock)) ||
+        s->sys->write(s->sys->u, clock, "x", 1))
+        return 0;
+    now = s->sys->mtime(s->sys->u, clock);     /* sys.h has no clock of seconds: a new file's time is now */
+    s->sys->remove(s->sys->u, clock);
+    o = (oldf *)malloc(sizeof(oldf));
+    if (!now || !o) {
+        free(o);
+        return 0;
+    }
+    o->n = 0;
+    s->sys->list(s->sys->u, s->dir, old_one, o);
+    for (i = 0; i < o->n; i++) {
+        long l = (long)strlen(o->e[i].name);
+        if (o->e[i].dir || l < 7 || !cl_strieq(o->e[i].name + l - 6, ".jsonl") || !o->e[i].mtime ||
+            now - o->e[i].mtime < age)
+            continue;
+        if (path_join(s->dir, o->e[i].name, p, sizeof(p)) == 0 && strcmp(p, s->file) &&
+            s->sys->remove(s->sys->u, p) == 0)
+            gone++;
+    }
+    free(o);
+    return gone;
 }
 
 int sess_find(cl_session *s, const char *name, char *id, long cap)
@@ -317,17 +395,14 @@ int sess_find(cl_session *s, const char *name, char *id, long cap)
     return hits == 1 ? 0 : hits ? -2 : -1;
 }
 
-int sess_load(cl_session *s, const char *id, cl_conv *c)
+/* A session file's messages into c (cleared first); its id (the head
+ * line's) into id, its title into title: 0, -1 */
+static int load_path(cl_session *s, const char *f, cl_conv *c, char *id, long idcap, char *title, long tcap)
 {
-    char f[340], *b = 0;
+    char *b = 0;
     long n = 0, i = 0;
     cl_conv t;
-    char title[96];
     title[0] = 0;
-    cl_copy(f, s->dir, sizeof(f));
-    cl_cat(f, "/", sizeof(f));
-    cl_cat(f, id, sizeof(f));
-    cl_cat(f, ".jsonl", sizeof(f));
     if (s->sys->kind(s->sys->u, f) != 1 || s->sys->read(s->sys->u, f, 16L * 1024 * 1024, &b, &n))
         return -1;
     conv_init(&t);
@@ -339,7 +414,9 @@ int sess_load(cl_session *s, const char *id, cl_conv *c)
         /* a line cut by a crash is skipped */
         if (e > i && json_parse(b + i, e - i, &v) == 0 && json_get(v, "type", &x)) {
             if (json_streq(x, "title") && json_get(v, "title", &m))
-                json_str(m, title, sizeof(title));
+                json_str(m, title, tcap);
+            else if (json_streq(x, "session") && json_get(v, "id", &m))
+                json_str(m, id, idcap);
             else if ((json_streq(x, "user") || json_streq(x, "assistant")) && json_get(v, "index", &m) &&
                      json_get(v, "message", &ct) && json_get(ct, "content", &ct) && json_type(ct) == J_ARR) {
                 long k = json_long(m, -1);
@@ -368,12 +445,51 @@ int sess_load(cl_session *s, const char *id, cl_conv *c)
     c->m = t.m;
     c->n = t.n;
     c->cap = t.cap;
-    set_id(s, id);
+    return 0;
+}
+
+static void loaded(cl_session *s, const cl_conv *c, const char *title)
+{
     cl_copy(s->title, title, sizeof(s->title));
     s->started = 1;
     s->saved = c->n;
     s->last_n = c->m[c->n - 1].n;
     if (!s->off)
         index_line(s, "");
+}
+
+int sess_load(cl_session *s, const char *id, cl_conv *c)
+{
+    char f[340], title[96], hid[40];
+    hid[0] = 0;
+    id_file(s, id, f, sizeof(f));
+    if (load_path(s, f, c, hid, sizeof(hid), title, sizeof(title)))
+        return -1;
+    set_id(s, id);
+    loaded(s, c, title);
+    return 0;
+}
+
+int sess_load_file(cl_session *s, const char *path, cl_conv *c)
+{
+    char title[96], hid[40];
+    hid[0] = 0;
+    if (load_path(s, path, c, hid, sizeof(hid), title, sizeof(title)))
+        return -1;
+    if (!hid[0]) {
+        /* no head line: the file's name without .jsonl */
+        const char *b = path, *p;
+        long k;
+        for (p = path; *p; p++)
+            if (*p == '/' || *p == ':')
+                b = p + 1;
+        cl_copy(hid, b, sizeof(hid));
+        k = (long)strlen(hid);
+        if (k > 6 && cl_strieq(hid + k - 6, ".jsonl"))
+            hid[k - 6] = 0;
+    }
+    cl_copy(s->id, hid, sizeof(s->id));
+    cl_copy(s->file, path, sizeof(s->file));    /* the conversation goes on in that file */
+    loaded(s, c, title);
     return 0;
 }

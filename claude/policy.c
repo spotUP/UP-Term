@@ -13,6 +13,8 @@
 #include <string.h>
 #include "repl_int.h"
 #include "path.h"
+#include "schema.h"
+#include "tools_int.h"
 #include "util.h"
 
 static const char *src_name(int src)
@@ -139,8 +141,33 @@ static void shown(cl_repl *r, cl_hookres *h)
 
 /* Before tools_run: 1 when the call was answered here (denied by a rule,
  * blocked by a PreToolUse hook): its tool_result is in out. */
+/* the permission mode's name, Claude Code's (the hooks' permission_mode) */
+static const char *mode_name(const cl_repl *r, const cl_tools *tl)
+{
+    int pol = tl && tl->ask_policy ? tl->ask_policy - 1 : r->ask_policy;
+    if (pol == ASKP_BYPASS)
+        return "bypassPermissions";
+    if (pol == ASKP_DENY)
+        return "dontAsk";
+    return (tl ? tl : &r->tools)->perm.mode == PERM_ACCEPT ? "acceptEdits"
+           : (tl ? tl : &r->tools)->perm.mode == PERM_PLAN ? "plan" : "default";
+}
+
+/* a tool event's common members: the tool, its input, its id, the mode */
+static void tool_event(cl_repl *r, cl_tools *tl, jw *ex, const char *cc, const char *id, const char *raw, long rawn)
+{
+    jw_rawz(ex, ",\"tool_name\":");
+    jw_strz(ex, cc);
+    jw_rawz(ex, ",\"tool_input\":");
+    jw_raw(ex, raw, rawn);
+    jw_rawz(ex, ",\"tool_use_id\":");
+    jw_strz(ex, id ? id : "");
+    jw_rawz(ex, ",\"permission_mode\":");
+    jw_strz(ex, mode_name(r, tl));
+}
+
 static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, int input_ok, const char *raw,
-                   long rawn, jw *out)
+                   long rawn, jw *out, jw *extra, jw *upd)
 {
     jv in;
     const char *cc = cfg_cc_tool(name);
@@ -153,19 +180,47 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
     d = cfg_decide(&r->cfg, name, in, r->tools.root, &which);
     if (d == RULE_NONE && r->turn_tools && turn_allows(r, name, in))
         d = RULE_ALLOW;
+    if (d == RULE_NONE && r->mem.auto_dir[0] && (is_edit(cc) || is_read(cc)) &&
+        call_path(r, in, full, sizeof(full)) == 0) {
+        /* auto memory: Claude's own directory (as written, or canonical when it exists) */
+        char ad[300];
+        if (path_inside(r->mem.auto_dir, full) ||
+            (r->sys->canon(r->sys->u, r->mem.auto_dir, ad, sizeof(ad)) == 0 && path_inside(ad, full)))
+            d = RULE_ALLOW;
+    }
     what_of(r, cc, in, what, sizeof(what));
     if (hooks_any(&r->hooks, HK_PRE_TOOL, name)) {
         cl_hookres h;
         jw ex;
         hookres_init(&h);
         jw_init(&ex);
-        jw_rawz(&ex, ",\"tool_name\":");
-        jw_strz(&ex, cc);
-        jw_rawz(&ex, ",\"tool_input\":");
-        jw_raw(&ex, raw, rawn);
+        tool_event(r, tl, &ex, cc, id, raw, rawn);
+        r->hooks.tool = name;
+        r->hooks.input = raw;
+        r->hooks.input_n = rawn;
         hooks_run(&r->hooks, HK_PRE_TOOL, name, ex.p, &h);
+        r->hooks.tool = r->hooks.input = 0;
         jw_free(&ex);
         shown(r, &h);
+        if (h.stop)
+            tl->stop = 1;           /* "continue": false -- Claude stops after this round */
+        if (h.context.n) {
+            /* additionalContext: for Claude, beside the round's results */
+            if (extra->n)
+                jw_rawz(extra, "\n\n");
+            jw_raw(extra, h.context.p, h.context.n);
+        }
+        if (!h.blocked && h.updated.n && json_parse(h.updated.p, h.updated.n, &in) == 0 && json_type(in) == J_OBJ) {
+            /* updatedInput: the call runs with it, the rules decide again on it */
+            jw_reset(upd);
+            jw_raw(upd, h.updated.p, h.updated.n);
+            raw = upd->p;
+            rawn = upd->n;
+            d = cfg_decide(&r->cfg, name, in, r->tools.root, &which);
+            if (d == RULE_NONE && r->turn_tools && turn_allows(r, name, in))
+                d = RULE_ALLOW;
+            what_of(r, cc, in, what, sizeof(what));
+        }
         if (h.blocked) {
             jw t;
             jw_init(&t);
@@ -231,36 +286,122 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
     return 0;
 }
 
+/* A file was read or edited: a .claude/skills between the root and it
+ * loads (Claude Code's nested skills), a skill whose paths match becomes
+ * available. 1 when the list changed. */
+static int skills_for(cl_repl *r, const char *full)
+{
+    char p[300], d[300];
+    int changed = 0, i, k;
+    long rl = (long)strlen(r->tools.root);
+    const char *rel = full;
+    if (path_inside(r->tools.root, full) && (long)strlen(full) > rl) {
+        rel = full + rl;
+        if (*rel == '/')
+            rel++;
+    }
+    /* the directories from the file's up to (not including) the root */
+    if (path_parent(full, p, sizeof(p)) == 0)
+        for (k = 0; k < 8 && path_inside(r->tools.root, p) && !cl_strieq(p, r->tools.root); k++) {
+            char sk[340];
+            int seen = 0;
+            for (i = 0; i < r->n_nested; i++)
+                seen |= cl_strieq(r->nested[i], p);
+            if (!seen && path_join(p, ".claude/skills", sk, sizeof(sk)) == 0 &&
+                r->sys->kind(r->sys->u, sk) == 2 && r->n_nested < 8) {
+                cl_copy(r->nested[r->n_nested++], p, sizeof(r->nested[0]));
+                if (defs_load_dir(&r->defs, r->sys, DEF_SKILL, CFG_PROJECT, sk))
+                    changed = 1;
+            }
+            cl_copy(d, p, sizeof(d));
+            if (path_parent(d, p, sizeof(p)))
+                break;
+        }
+    for (i = 0; i < r->defs.n; i++) {
+        cl_def *s = &r->defs.d[i];
+        const char *g;
+        if (s->type != DEF_SKILL || s->active || !s->paths || !s->paths[0])
+            continue;
+        for (g = s->paths; *g;) {
+            char one[200];
+            int n = 0;
+            while (*g == ' ' || *g == ',')
+                g++;
+            while (*g && *g != ',' && n < (int)sizeof(one) - 1)
+                one[n++] = *g++;
+            while (n && one[n - 1] == ' ')
+                n--;
+            one[n] = 0;
+            if (n && (cfg_glob(one, rel, 1) || cfg_glob(one, full, 1))) {
+                s->active = 1;
+                changed = 1;
+                break;
+            }
+        }
+    }
+    if (changed)
+        repl_load_menu(r);
+    return changed;
+}
+
 /* After it: the result block tools_run appended (blk, n); text for
  * Claude to see after the results goes to extra. */
-static void pol_post(cl_repl *r, const char *name, int input_ok, const char *raw, long rawn, const char *blk, long n,
-                     jw *extra)
+static void pol_post(cl_repl *r, cl_tools *tl, const char *id, const char *name, int input_ok, const char *raw,
+                     long rawn, jw *out, long at, jw *extra)
 {
+    const char *blk = out->p + at;
+    long n = out->n - at;
     jv in, b, x;
     const char *cc = cfg_cc_tool(name);
-    int is_error;
+    int is_error, ev;
     if (!input_ok || json_parse(raw, rawn, &in) || json_type(in) != J_OBJ || json_parse(blk, n, &b))
         return;
     is_error = json_get(b, "is_error", &x) && json_type(x) == J_TRUE;
-    if (hooks_any(&r->hooks, HK_POST_TOOL, name)) {
+    ev = is_error ? HK_POST_TOOL_FAILURE : HK_POST_TOOL;     /* Claude Code: a failed call has its own event */
+    if (hooks_any(&r->hooks, ev, name)) {
         cl_hookres h;
         jw ex;
         hookres_init(&h);
         jw_init(&ex);
-        jw_rawz(&ex, ",\"tool_name\":");
-        jw_strz(&ex, cc);
-        jw_rawz(&ex, ",\"tool_input\":");
-        jw_raw(&ex, raw, rawn);
-        jw_rawz(&ex, ",\"tool_response\":");
-        jw_raw(&ex, blk, n);
-        hooks_run(&r->hooks, HK_POST_TOOL, name, ex.p, &h);
+        tool_event(r, tl, &ex, cc, id, raw, rawn);
+        if (is_error) {
+            jw_rawz(&ex, ",\"error\":");
+            if (json_get(b, "content", &x) && json_type(x) == J_STR)
+                jw_raw(&ex, x.p, x.n);
+            else
+                jw_rawz(&ex, "\"\"");
+            jw_rawz(&ex, ",\"is_interrupt\":false");
+        } else {
+            jw_rawz(&ex, ",\"tool_response\":");
+            jw_raw(&ex, blk, n);
+        }
+        r->hooks.tool = name;
+        r->hooks.input = raw;
+        r->hooks.input_n = rawn;
+        hooks_run(&r->hooks, ev, name, ex.p, &h);
+        r->hooks.tool = r->hooks.input = 0;
         jw_free(&ex);
         shown(r, &h);
+        if (h.stop)
+            tl->stop = 1;
+        if (h.output.n && !is_error) {
+            /* updatedToolOutput: the tool_result Claude gets is the hook's */
+            jv ov;
+            out->n = at;
+            jw_rawz(out, "{\"type\":\"tool_result\",\"tool_use_id\":");
+            jw_strz(out, id);
+            jw_rawz(out, ",\"content\":");
+            if (json_parse(h.output.p, h.output.n, &ov) == 0 && (json_type(ov) == J_STR || json_type(ov) == J_ARR))
+                jw_raw(out, h.output.p, h.output.n);
+            else
+                jw_str(out, h.output.p, h.output.n);
+            jw_raw(out, "}", 1);
+        }
         if (h.blocked || h.context.n) {
             if (extra->n)
                 jw_rawz(extra, "\n\n");
             if (h.blocked) {
-                jw_rawz(extra, "PostToolUse hook feedback on ");
+                jw_rawz(extra, is_error ? "PostToolUseFailure hook feedback on " : "PostToolUse hook feedback on ");
                 jw_rawz(extra, cc);
                 jw_rawz(extra, ": ");
                 jw_raw(extra, h.reason.p ? h.reason.p : "", h.reason.n);
@@ -273,13 +414,29 @@ static void pol_post(cl_repl *r, const char *name, int input_ok, const char *raw
         }
         hookres_free(&h);
     }
-    if (!is_error && (is_read(cc) || is_edit(cc))) {
-        /* a directory below the root with memory of its own: now it counts */
+    if (!is_error && (is_read(cc) || is_edit(cc)) && !r->bare) {
+        /* a directory below the root with memory of its own, a rule whose
+         * paths: match the file: now they count */
         char full[512];
         jw t;
+        int k0 = r->mem.n, k1 = 0, got = 0;
         jw_init(&t);
-        if (call_path(r, in, full, sizeof(full)) == 0 && mem_nested(&r->mem, r->sys, r->tools.root, full, &t) &&
-            t.n) {
+        if (call_path(r, in, full, sizeof(full)) == 0) {
+            got = mem_nested(&r->mem, r->sys, r->tools.root, full, &t);
+            k1 = r->mem.n;
+            got += mem_rules(&r->mem, r->sys, r->tools.root, full, &t);
+            if (got) {
+                /* InstructionsLoaded for each (no decision) */
+                int k2 = r->mem.n;
+                r->mem.n = k1;
+                pol_instructions(r, k0, "nested_traversal");
+                r->mem.n = k2;
+                pol_instructions(r, k1, "path_glob_match");
+            }
+        }
+        if (skills_for(r, full))
+            pol_tools(r);               /* a nested .claude/skills, a skill's paths: now offered */
+        if (got && t.n) {
             if (extra->n)
                 jw_rawz(extra, "\n\n");
             jw_rawz(extra, "<system-reminder>\n");
@@ -290,34 +447,148 @@ static void pol_post(cl_repl *r, const char *name, int input_ok, const char *raw
     }
 }
 
+static void result_block(jw *out, const char *id, const char *text, int is_error)
+{
+    jw_rawz(out, "{\"type\":\"tool_result\",\"tool_use_id\":");
+    jw_strz(out, id);
+    jw_rawz(out, ",\"content\":");
+    jw_strz(out, text);
+    jw_rawz(out, is_error ? ",\"is_error\":true}" : "}");
+}
+
+/* --json-schema's StructuredOutput call: its input checked against the
+ * schema, kept as the run's structured output */
+static void structured(cl_repl *r, const char *id, int input_ok, const char *raw, long rawn, jw *out)
+{
+    jv s, v;
+    char err[300];
+    if (!input_ok || json_parse(raw, rawn, &v)) {
+        result_block(out, id, "The input is not valid JSON. Call StructuredOutput again with the answer.", 1);
+        return;
+    }
+    if (json_parse(r->schema, (long)strlen(r->schema), &s) == 0 && schema_check(s, v, err, sizeof(err))) {
+        jw m;
+        jw_init(&m);
+        jw_rawz(&m, "The output does not match the required schema: ");
+        jw_rawz(&m, err);
+        jw_rawz(&m, ". Call StructuredOutput again with a corrected answer.");
+        result_block(out, id, m.p ? m.p : err, 1);
+        jw_free(&m);
+        return;
+    }
+    free(r->structured);
+    r->structured = (char *)malloc((size_t)rawn + 1);
+    if (r->structured) {
+        memcpy(r->structured, raw, (size_t)rawn);
+        r->structured[rawn] = 0;
+    }
+    result_block(out, id, "Structured output provided successfully", 0);
+}
+
 void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input_ok, const char *raw, long rawn,
               jw *out, jw *extra)
 {
     cl_repl *r = (cl_repl *)u;
     cl_tools *was = r->at;
     long at = out->n;
+    jw upd;
+    if (r->schema && tl == &r->tools && !strcmp(name, "StructuredOutput")) {
+        structured(r, id, input_ok, raw, rawn, out);
+        return;
+    }
     r->at = tl;                 /* the screen's callbacks show this call's tool */
     r->cur_id = id;             /* print mode's permission_denials */
-    if (!pol_pre(r, tl, id, name, input_ok, raw, rawn, out))
+    jw_init(&upd);
+    if (!pol_pre(r, tl, id, name, input_ok, raw, rawn, out, extra, &upd)) {
+        if (upd.n) {
+            raw = upd.p;        /* a PreToolUse hook's updatedInput */
+            rawn = upd.n;
+        }
+        tl->rule_ask = r->rule_now == RULE_ASK;
         tools_run(tl, id, name, input_ok, raw, rawn, out);
+        tl->rule_ask = 0;
+    }
     r->rule_now = RULE_NONE;
-    pol_post(r, name, input_ok, raw, rawn, out->p + at, out->n - at, extra);
+    pol_post(r, tl, id, name, input_ok, raw, rawn, out, at, extra);
+    jw_free(&upd);
     r->at = was;
+}
+
+/* CLAUDE_ENV_FILE's lines ("export NAME=value" or "NAME=value") set
+ * for the rest of the session (the commands Bash runs see them) */
+static void env_file(cl_repl *r, const char *f)
+{
+    char *b = 0;
+    long n = 0, i = 0;
+    if (r->sys->kind(r->sys->u, f) != 1 || r->sys->read(r->sys->u, f, 16384, &b, &n))
+        return;
+    while (i < n) {
+        long e = i, eq;
+        char name[64], val[512];
+        while (e < n && b[e] != '\n')
+            e++;
+        if (e - i > 7 && !strncmp(b + i, "export ", 7))
+            i += 7;
+        for (eq = i; eq < e && b[eq] != '='; eq++)
+            ;
+        if (eq < e && eq - i > 0 && eq - i < (long)sizeof(name)) {
+            long vl = e - eq - 1;
+            const char *v = b + eq + 1;
+            if (vl >= 2 && (v[0] == '"' || v[0] == '\'') && v[vl - 1] == v[0]) {
+                v++;
+                vl -= 2;
+            }
+            if (vl >= 0 && vl < (long)sizeof(val)) {
+                memcpy(name, b + i, (size_t)(eq - i));
+                name[eq - i] = 0;
+                memcpy(val, v, (size_t)vl);
+                val[vl] = 0;
+                if (val[0] && val[strlen(val) - 1] == '\r')
+                    val[strlen(val) - 1] = 0;
+                r->sys->setenv(r->sys->u, name, val);
+            }
+        }
+        i = e + 1;
+    }
+    free(b);
 }
 
 void pol_session(cl_repl *r, int event, const char *source)
 {
     cl_hookres h;
     jw ex;
+    char envf[300];
     if (!hooks_any(&r->hooks, event, source))
         return;
     hookres_init(&h);
     jw_init(&ex);
     jw_rawz(&ex, event == HK_SESSION_END ? ",\"reason\":" : ",\"source\":");
     jw_strz(&ex, source);
+    if (event == HK_SESSION_START && r->sys->setenv && path_join(r->tmp, "Claude-env.sh", envf, sizeof(envf)) == 0) {
+        if (r->sys->remove)
+            r->sys->remove(r->sys->u, envf);
+        r->sys->setenv(r->sys->u, "CLAUDE_ENV_FILE", envf);
+    } else
+        envf[0] = 0;
     hooks_run(&r->hooks, event, source, ex.p, &h);
     jw_free(&ex);
     shown(r, &h);
+    if (envf[0])
+        env_file(r, envf);
+    if (event == HK_SESSION_START) {
+        if (h.title[0] && strcmp(source, "clear") && strcmp(source, "compact"))
+            sess_rename(&r->sess, h.title);     /* sessionTitle: as /rename */
+        if (h.first.n && !r->first_msg) {
+            /* initialUserMessage: the session's first turn (print mode) */
+            r->first_msg = (char *)malloc((size_t)h.first.n + 1);
+            if (r->first_msg) {
+                memcpy(r->first_msg, h.first.p, (size_t)h.first.n);
+                r->first_msg[h.first.n] = 0;
+            }
+        }
+        if (h.reload)
+            repl_load_defs(r);              /* reloadSkills: what the hook installed is there now */
+    }
     if (event == HK_SESSION_START && h.context.n) {
         if (r->pending.n)
             jw_rawz(&r->pending, "\n\n");
@@ -376,35 +647,60 @@ int pol_stop(cl_repl *r, int active, jw *reason)
     return stop_hook(r, HK_STOP, "", active, reason);
 }
 
+/* cl_tools.agent_start: SubagentStart (matcher the agent type) */
+static void pol_agent_start(void *u, const char *agent, const char *id, jw *context)
+{
+    cl_repl *r = (cl_repl *)u;
+    cl_hookres h;
+    jw ex;
+    if (!hooks_any(&r->hooks, HK_SUBAGENT_START, agent))
+        return;
+    hookres_init(&h);
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"agent_id\":");
+    jw_strz(&ex, id);
+    jw_rawz(&ex, ",\"agent_type\":");
+    jw_strz(&ex, agent);
+    hooks_run(&r->hooks, HK_SUBAGENT_START, agent, ex.p, &h);
+    jw_free(&ex);
+    shown(r, &h);
+    if (h.context.n)
+        jw_raw(context, h.context.p, h.context.n);
+    hookres_free(&h);
+}
+
 /* cl_tools.agent_stop */
 static int pol_agent_stop(void *u, const char *agent, int active, jw *reason)
 {
     return stop_hook((cl_repl *)u, HK_SUBAGENT_STOP, agent, active, reason);
 }
 
-void pol_notify(cl_repl *r, const char *message)
+void pol_notify(cl_repl *r, const char *type, const char *message)
 {
     cl_hookres h;
     jw ex;
-    if (!hooks_any(&r->hooks, HK_NOTIFICATION, ""))
+    if (!hooks_any(&r->hooks, HK_NOTIFICATION, type))
         return;
     hookres_init(&h);
     jw_init(&ex);
     jw_rawz(&ex, ",\"message\":");
     jw_strz(&ex, message);
-    hooks_run(&r->hooks, HK_NOTIFICATION, "", ex.p, &h);
+    jw_rawz(&ex, ",\"title\":\"Claude\",\"notification_type\":");
+    jw_strz(&ex, type);
+    hooks_run(&r->hooks, HK_NOTIFICATION, type, ex.p, &h);
     jw_free(&ex);
     shown(r, &h);
     hookres_free(&h);
 }
 
-void pol_precompact(cl_repl *r, int automatic, const char *focus)
+int pol_precompact(cl_repl *r, int automatic, const char *focus)
 {
     cl_hookres h;
     jw ex;
+    int rc = 0;
     const char *trig = automatic ? "auto" : "manual";
     if (!hooks_any(&r->hooks, HK_PRE_COMPACT, trig))
-        return;
+        return 0;
     hookres_init(&h);
     jw_init(&ex);
     jw_rawz(&ex, ",\"trigger\":");
@@ -414,7 +710,435 @@ void pol_precompact(cl_repl *r, int automatic, const char *focus)
     hooks_run(&r->hooks, HK_PRE_COMPACT, trig, ex.p, &h);
     jw_free(&ex);
     shown(r, &h);
+    if (h.blocked || h.stop) {
+        repl_say(r, "A PreCompact hook blocked the compaction: ", h.reason.n ? h.reason.p : "(no reason given)");
+        rc = -1;
+    }
     hookres_free(&h);
+    return rc;
+}
+
+/* an event whose hooks only run (and show what they say): name the
+ * matcher's value, extra its members */
+static void just_run(cl_repl *r, int event, const char *name, const char *extra)
+{
+    cl_hookres h;
+    if (!hooks_any(&r->hooks, event, name))
+        return;
+    hookres_init(&h);
+    hooks_run(&r->hooks, event, name, extra, &h);
+    shown(r, &h);
+    hookres_free(&h);
+}
+
+void pol_postcompact(cl_repl *r, int automatic, const char *summary, long n)
+{
+    jw ex;
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"trigger\":");
+    jw_strz(&ex, automatic ? "auto" : "manual");
+    jw_rawz(&ex, ",\"compact_summary\":");
+    jw_str(&ex, summary, n);
+    if (!ex.oom)
+        just_run(r, HK_POST_COMPACT, automatic ? "auto" : "manual", ex.p);
+    jw_free(&ex);
+}
+
+void pol_stop_failure(cl_repl *r, const char *error)
+{
+    jw ex;
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"error\":");
+    jw_strz(&ex, error);
+    if (!ex.oom)
+        just_run(r, HK_STOP_FAILURE, error, ex.p);
+    jw_free(&ex);
+}
+
+void pol_cwd_changed(cl_repl *r, const char *old_cwd, const char *new_cwd)
+{
+    jw ex;
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"old_cwd\":");
+    jw_strz(&ex, old_cwd);
+    jw_rawz(&ex, ",\"new_cwd\":");
+    jw_strz(&ex, new_cwd);
+    if (!ex.oom)
+        just_run(r, HK_CWD_CHANGED, "", ex.p);
+    jw_free(&ex);
+}
+
+void pol_dir_added(cl_repl *r, const char *dir)
+{
+    jw ex;
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"directory\":");
+    jw_strz(&ex, dir);
+    jw_rawz(&ex, ",\"source\":\"slash_command\"");
+    if (!ex.oom)
+        just_run(r, HK_DIR_ADDED, "slash_command", ex.p);
+    jw_free(&ex);
+}
+
+int pol_expansion(cl_repl *r, const cl_def *d, const char *args, const char *prompt, long n)
+{
+    cl_hookres h;
+    jw ex;
+    int rc = 0;
+    if (!hooks_any(&r->hooks, HK_PROMPT_EXPANSION, d->name))
+        return 0;
+    hookres_init(&h);
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"expansion_type\":\"slash_command\",\"command_name\":");
+    jw_strz(&ex, d->name);
+    jw_rawz(&ex, ",\"command_args\":");
+    jw_strz(&ex, args);
+    jw_rawz(&ex, ",\"command_source\":");
+    jw_strz(&ex, d->src == CFG_PROJECT ? "project" : d->src == CFG_USER ? "user" : "session");
+    jw_rawz(&ex, ",\"prompt\":");
+    jw_str(&ex, prompt, n);
+    jw_rawz(&ex, ",\"permission_mode\":");
+    jw_strz(&ex, mode_name(r, 0));
+    hooks_run(&r->hooks, HK_PROMPT_EXPANSION, d->name, ex.p, &h);
+    jw_free(&ex);
+    shown(r, &h);
+    if (h.blocked || h.stop) {
+        repl_say(r, "A UserPromptExpansion hook blocked /", d->name);
+        if (h.reason.n)
+            repl_say(r, "  ", h.reason.p);
+        rc = -1;
+    } else if (h.context.n) {
+        if (r->pending.n)
+            jw_rawz(&r->pending, "\n\n");
+        jw_raw(&r->pending, h.context.p, h.context.n);
+    }
+    hookres_free(&h);
+    return rc;
+}
+
+int pol_permission_request(cl_repl *r, const char *tool, const char *input, long n)
+{
+    cl_hookres h;
+    jw ex;
+    int rc = RULE_NONE;
+    const char *cc = cfg_cc_tool(tool);
+    if (!hooks_any(&r->hooks, HK_PERMISSION_REQUEST, tool))
+        return RULE_NONE;
+    hookres_init(&h);
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"tool_name\":");
+    jw_strz(&ex, cc);
+    jw_rawz(&ex, ",\"tool_input\":");
+    if (input && n > 0)
+        jw_raw(&ex, input, n);
+    else
+        jw_rawz(&ex, "{}");
+    jw_rawz(&ex, ",\"permission_mode\":");
+    jw_strz(&ex, mode_name(r, r->at));
+    r->hooks.tool = tool;
+    r->hooks.input = input;
+    r->hooks.input_n = n;
+    hooks_run(&r->hooks, HK_PERMISSION_REQUEST, tool, ex.p, &h);
+    r->hooks.tool = r->hooks.input = 0;
+    jw_free(&ex);
+    shown(r, &h);
+    rc = h.behavior;
+    if (h.stop && r->at)
+        r->at->stop = 1;            /* "interrupt": true */
+    hookres_free(&h);
+    return rc;
+}
+
+void pol_keep_rule(cl_repl *r, const char *tool, const char *input, long n)
+{
+    const char *cc = cfg_cc_tool(tool);
+    char rule[300], word[64];
+    jv in, x;
+    cl_copy(rule, cc, sizeof(rule));
+    if (input && n > 0 && json_parse(input, n, &in) == 0) {
+        if (!strcmp(cc, "Bash") && json_get(in, "command", &x)) {
+            /* Claude Code's prefix rule: the command's first word */
+            char cmd[200];
+            int k = 0;
+            json_str(x, cmd, sizeof(cmd));
+            while (cmd[k] && cmd[k] != ' ' && cmd[k] != ';' && cmd[k] != '|' && cmd[k] != '&' &&
+                   k < (int)sizeof(word) - 1) {
+                word[k] = cmd[k];
+                k++;
+            }
+            word[k] = 0;
+            if (k) {
+                cl_copy(rule, "Bash(", sizeof(rule));
+                cl_cat(rule, word, sizeof(rule));
+                cl_cat(rule, " *)", sizeof(rule));
+            }
+        } else if (!strcmp(cc, "WebFetch") && json_get(in, "url", &x)) {
+            char url[300], *h, *e;
+            json_str(x, url, sizeof(url));
+            h = strstr(url, "://");
+            if (h) {
+                h += 3;
+                for (e = h; *e && *e != '/' && *e != ':'; e++)
+                    ;
+                *e = 0;
+                cl_copy(rule, "WebFetch(domain:", sizeof(rule));
+                cl_cat(rule, h, sizeof(rule));
+                cl_cat(rule, ")", sizeof(rule));
+            }
+        }
+    }
+    if (cfg_write_rule(r->sys, cfg_file(&r->cfg, CFG_LOCAL), RULE_ALLOW, rule, 1) == 0) {
+        cfg_add_rule(&r->cfg, RULE_ALLOW, CFG_LOCAL, rule);
+        repl_say(r, "Allowed from now on in this project: ", rule);
+    } else
+        repl_say(r, "The rule could not be kept: ", cfg_file(&r->cfg, CFG_LOCAL));
+}
+
+/* PreModelSwitch: -1 a hook cancelled the switch (shown); PostModelSwitch after it */
+int pol_model_switch(cl_repl *r, const char *from, const char *to, const char *requested, int after)
+{
+    cl_hookres h;
+    jw ex;
+    int ev = after ? HK_POST_MODEL_SWITCH : HK_PRE_MODEL_SWITCH, rc = 0;
+    if (!hooks_any(&r->hooks, ev, to))
+        return 0;
+    hookres_init(&h);
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"from_model\":");
+    jw_strz(&ex, from);
+    jw_rawz(&ex, ",\"to_model\":");
+    jw_strz(&ex, to);
+    jw_rawz(&ex, ",\"requested_model\":");
+    jw_strz(&ex, requested);
+    jw_rawz(&ex, ",\"source\":\"user\"");
+    hooks_run(&r->hooks, ev, to, ex.p, &h);
+    jw_free(&ex);
+    shown(r, &h);
+    if (!after && (h.blocked || h.stop)) {
+        repl_say(r, "A PreModelSwitch hook blocked the switch: ", h.reason.n ? h.reason.p : "(no reason given)");
+        rc = -1;
+    }
+    hookres_free(&h);
+    return rc;
+}
+
+/* InstructionsLoaded for the memory files from index k on (no decision) */
+void pol_instructions(cl_repl *r, int k, const char *reason)
+{
+    for (; k < r->mem.n; k++) {
+        const cl_memsrc *f = &r->mem.f[k];
+        jw ex;
+        if (!hooks_any(&r->hooks, HK_INSTRUCTIONS_LOADED, reason))
+            return;
+        jw_init(&ex);
+        jw_rawz(&ex, ",\"file_path\":");
+        jw_strz(&ex, f->path);
+        jw_rawz(&ex, ",\"memory_type\":");
+        jw_strz(&ex, f->kind == MEM_USER ? "User" : f->kind == MEM_LOCAL ? "Local" : "Project");
+        jw_rawz(&ex, ",\"load_reason\":");
+        jw_strz(&ex, f->kind == MEM_IMPORT ? "include" : reason);
+        if (!ex.oom)
+            just_run(r, HK_INSTRUCTIONS_LOADED, f->kind == MEM_IMPORT ? "include" : reason, ex.p);
+        jw_free(&ex);
+    }
+}
+
+/* PostToolBatch after a round: 1 when a hook stops the loop (its reason
+ * kept for Claude in extra) */
+int pol_batch(cl_repl *r, const char *calls, long n, jw *extra)
+{
+    cl_hookres h;
+    jw ex;
+    int rc = 0;
+    if (!hooks_any(&r->hooks, HK_POST_TOOL_BATCH, ""))
+        return 0;
+    hookres_init(&h);
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"tool_calls\":");
+    jw_raw(&ex, calls, n);
+    jw_rawz(&ex, ",\"permission_mode\":");
+    jw_strz(&ex, mode_name(r, 0));
+    hooks_run(&r->hooks, HK_POST_TOOL_BATCH, "", ex.p, &h);
+    jw_free(&ex);
+    shown(r, &h);
+    if (h.blocked || h.stop) {
+        repl_say(r, "A PostToolBatch hook stopped the turn: ", h.reason.n ? h.reason.p : "(no reason given)");
+        if (h.reason.n) {
+            if (extra->n)
+                jw_rawz(extra, "\n\n");
+            jw_rawz(extra, "PostToolBatch hook: ");
+            jw_raw(extra, h.reason.p, h.reason.n);
+        }
+        rc = 1;
+    }
+    hookres_free(&h);
+    return rc;
+}
+
+/* ConfigChange: -1 a hook blocks the new settings (nothing is said) */
+int pol_config_change(cl_repl *r, int src, const char *file)
+{
+    cl_hookres h;
+    jw ex;
+    int rc = 0;
+    const char *source = src == CFG_USER ? "user_settings" : src == CFG_PROJECT ? "project_settings" : "local_settings";
+    if (!hooks_any(&r->hooks, HK_CONFIG_CHANGE, source))
+        return 0;
+    hookres_init(&h);
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"source\":");
+    jw_strz(&ex, source);
+    jw_rawz(&ex, ",\"file_path\":");
+    jw_strz(&ex, file);
+    hooks_run(&r->hooks, HK_CONFIG_CHANGE, source, ex.p, &h);
+    jw_free(&ex);
+    if (h.blocked)
+        rc = -1;
+    hookres_free(&h);
+    return rc;
+}
+
+/* Setup (--init, --init-only, --maintenance): runs, cannot block */
+void pol_setup(cl_repl *r, const char *trigger)
+{
+    jw ex;
+    jw_init(&ex);
+    jw_rawz(&ex, ",\"trigger\":");
+    jw_strz(&ex, trigger);
+    if (!ex.oom)
+        just_run(r, HK_SETUP, trigger, ex.p);
+    jw_free(&ex);
+}
+
+/* a prompt hook's question: the small model, no tools */
+static int pol_ask_model(void *u, const char *model, const char *prompt, jw *answer)
+{
+    cl_repl *r = (cl_repl *)u;
+    char err[120];
+    return agent_query(&r->tools, model && *model ? cfg_model(model) : "claude-haiku-4-5",
+                       "You evaluate a condition for a hook of C:Claude (Claude Code on an Amiga). Answer with the "
+                       "JSON object asked for, nothing else.",
+                       prompt, (long)strlen(prompt), answer, err, sizeof(err))
+               ? -1
+               : 0;
+}
+
+static void pol_hook_status(void *u, const char *msg)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (msg)
+        ui_status(&r->ui, msg);
+    else
+        ui_status_clear(&r->ui);
+}
+
+static void pol_hook_seen(void *u, int event, const char *cmd, int done, long rc, const char *out, long n)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (r->feed && r->feed->hook)
+        r->feed->hook(r->feed->u, cfg_hook_events[event], cmd, done, rc, out, n);
+}
+
+/* terminalSequence: the allowed escapes (title, notification, bell) to the console */
+static void pol_hook_term(void *u, const char *seq, long n)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (r->io->write && !r->no_person)
+        r->io->write(r->io->u, seq, n);
+}
+
+void pol_attach_hooks(cl_repl *r)
+{
+    r->hooks.u = r;
+    r->hooks.ask_model = pol_ask_model;
+    r->hooks.status = pol_hook_status;
+    r->hooks.seen = pol_hook_seen;
+    r->hooks.term = pol_hook_term;
+}
+
+/* "claude-opus-5-5" -> "Opus 5.5" (Claude Code's display name); others as they are */
+static const char *model_name(const char *id)
+{
+    static char b[48];
+    static const char *const fam[] = { "opus", "Opus", "sonnet", "Sonnet", "haiku", "Haiku", "fable", "Fable", 0 };
+    int i;
+    if (strncmp(id, "claude-", 7))
+        return id;
+    for (i = 0; fam[i]; i += 2) {
+        long l = (long)strlen(fam[i]);
+        const char *v = id + 7 + l;
+        if (!strncmp(id + 7, fam[i], (size_t)l) && v[0] == '-' && v[1] >= '0' && v[1] <= '9' && v[2] == '-' &&
+            v[3] >= '0' && v[3] <= '9') {
+            cl_copy(b, fam[i + 1], sizeof(b));
+            {
+                long k = (long)strlen(b);
+                b[k] = ' ';
+                b[k + 1] = v[1];
+                b[k + 2] = '.';
+                b[k + 3] = v[3];
+                b[k + 4] = 0;
+            }
+            return b;
+        }
+    }
+    return id;
+}
+
+static void key_num(jw *w, const char *key, long v)
+{
+    jw_raw(w, ",", 1);
+    jw_strz(w, key);
+    jw_raw(w, ":", 1);
+    jw_long(w, v);
+}
+
+/* the rest of the status line's JSON after cost.total_cost_usd: the
+ * times and lines, the context window, effort, thinking, vim, the agent,
+ * the session's name, the version */
+static void status_rest(cl_repl *r, jw *ev)
+{
+    long win = repl_window(r->model), used = r->ctx_used, pct;
+    unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    key_num(ev, "total_duration_ms", (long)(now - r->t_start));
+    key_num(ev, "total_api_duration_ms", (long)r->api_ms);
+    key_num(ev, "total_lines_added", r->lines_added);
+    key_num(ev, "total_lines_removed", r->lines_removed);
+    if (used > win)
+        used = win;
+    pct = (long)(used / (win / 100));
+    jw_rawz(ev, "},\"context_window\":{\"context_window_size\":");
+    jw_long(ev, win);
+    key_num(ev, "total_input_tokens", r->conv.in_tok + r->conv.cache_r + r->conv.cache_w);
+    key_num(ev, "total_output_tokens", r->conv.out_tok);
+    key_num(ev, "used_percentage", pct);
+    key_num(ev, "remaining_percentage", 100 - pct);
+    jw_rawz(ev, ",\"current_usage\":{\"input_tokens\":");
+    jw_long(ev, r->st.in_tok);
+    key_num(ev, "output_tokens", r->st.out_tok);
+    key_num(ev, "cache_creation_input_tokens", r->st.cache_w);
+    key_num(ev, "cache_read_input_tokens", r->st.cache_r);
+    jw_rawz(ev, "}},\"exceeds_200k_tokens\":");
+    jw_rawz(ev, r->ctx_used > 200000L ? "true" : "false");
+    jw_rawz(ev, ",\"effort\":{\"level\":");
+    jw_strz(ev, r->effort);
+    jw_rawz(ev, "},\"thinking\":{\"enabled\":");
+    jw_rawz(ev, conv_caps(r->model) & CAP_ADAPTIVE ? "true" : "false");
+    jw_raw(ev, "}", 1);
+    if (r->tui && r->tui->ed.vim) {
+        jw_rawz(ev, ",\"vim\":{\"mode\":");
+        jw_strz(ev, r->tui->ed.vim == VIM_INSERT ? "INSERT" : "NORMAL");
+        jw_raw(ev, "}", 1);
+    }
+    if (r->agent_name[0]) {
+        jw_rawz(ev, ",\"agent\":{\"name\":");
+        jw_strz(ev, r->agent_name);
+        jw_raw(ev, "}", 1);
+    }
+    if (r->sess.title[0]) {
+        jw_rawz(ev, ",\"session_name\":");
+        jw_strz(ev, r->sess.title);
+    }
+    jw_rawz(ev, ",\"version\":\"1.0.0\"");
 }
 
 void pol_statusline(cl_repl *r)
@@ -435,11 +1159,11 @@ void pol_statusline(cl_repl *r)
     jw_rawz(&ev, ",\"model\":{\"id\":");
     jw_strz(&ev, r->model);
     jw_rawz(&ev, ",\"display_name\":");
-    jw_strz(&ev, r->model);
+    jw_strz(&ev, model_name(r->model));
     jw_rawz(&ev, "},\"workspace\":{\"current_dir\":");
     jw_strz(&ev, r->tools.root);
     jw_rawz(&ev, ",\"project_dir\":");
-    jw_strz(&ev, r->tools.root);
+    jw_strz(&ev, r->launch_root[0] ? r->launch_root : r->tools.root);
     jw_rawz(&ev, ",\"added_dirs\":[");
     for (i = 0; i < r->cfg.ndirs; i++) {
         if (i)
@@ -451,7 +1175,8 @@ void pol_statusline(cl_repl *r)
     conv_dollars(r->conv.cost_micro, d, sizeof(d));
     jw_rawz(&ev, "},\"cost\":{\"total_cost_usd\":");
     jw_rawz(&ev, d + 1);
-    jw_rawz(&ev, "}}\n");
+    status_rest(r, &ev);
+    jw_rawz(&ev, "}\n");
     o = (char *)malloc(2048);
     if (!o || ev.oom || r->sys->write(r->sys->u, file, ev.p, ev.n)) {
         jw_free(&ev);
@@ -497,6 +1222,7 @@ void pol_statusline(cl_repl *r)
 }
 
 #define STATUS_DEBOUNCE_MS 300UL
+#define IDLE_PROMPT_MS 60000UL   /* Claude Code: idle_prompt after a minute of waiting */
 
 void pol_status_event(cl_repl *r)
 {
@@ -515,6 +1241,12 @@ void pol_status_tick(void *u)
 {
     cl_repl *r = (cl_repl *)u;
     unsigned long now;
+    now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    if (r->idle_from && !r->idle_told && now - r->idle_from >= IDLE_PROMPT_MS) {
+        /* Claude Code's idle_prompt: Claude has waited a minute for the user */
+        r->idle_told = 1;
+        pol_notify(r, "idle_prompt", "Claude is waiting for your input");
+    }
     if (!r->cfg.status_cmd[0])
         return;
     if (r->tui && (r->status_mode != r->tools.perm.mode || r->status_vim != r->tui->ed.vim))
@@ -550,6 +1282,44 @@ static int ext_commands(void *u, const cl_command **list)
     return r->nx_cmds;
 }
 
+/* the ${CLAUDE_*} values for a definition's expansion */
+static void vars_of(cl_repl *r, const cl_def *d, cl_cmd_vars *v, char *dir, long cap)
+{
+    if (d->type != DEF_SKILL || path_parent(d->path, dir, cap))
+        dir[0] = 0;
+    v->session_id = r->sess.id;
+    v->effort = r->effort;
+    v->skill_dir = dir;
+    v->project_dir = r->tools.root;
+}
+
+int pol_expand(cl_repl *r, const cl_def *d, const char *args, jw *out, char *err, long cap)
+{
+    cl_cmd_vars v;
+    char dir[300];
+    vars_of(r, d, &v, dir, sizeof(dir));
+    return cmd_expand_vars(d, args, &v, r->sys, r->tools.root, out, err, cap);
+}
+
+/* a definition's allowed-tools in force for the rest of the turn, its
+ * ${CLAUDE_SKILL_DIR} / ${CLAUDE_PROJECT_DIR} put in (Claude Code
+ * substitutes them in the Bash rules too) */
+void pol_turn_tools(cl_repl *r, const cl_def *d)
+{
+    cl_cmd_vars v;
+    char dir[300];
+    jw w;
+    if (!d->tools[0])
+        return;
+    vars_of(r, d, &v, dir, sizeof(dir));
+    jw_init(&w);
+    if (cmd_subst_vars(d->tools, &v, &w) == 0 && w.p) {
+        cl_copy(r->turn_buf, w.p, sizeof(r->turn_buf));
+        r->turn_tools = r->turn_buf;
+    }
+    jw_free(&w);
+}
+
 /* SlashCommand: the command expanded as a typed one is (slash_custom), its
  * allowed-tools in force for the rest of the turn */
 static int ext_expand(void *u, const char *name, const char *args, jw *out, char *err, long cap)
@@ -560,12 +1330,44 @@ static int ext_expand(void *u, const char *name, const char *args, jw *out, char
         cl_copy(err, "", cap);      /* no such command (for Claude) */
         return -1;
     }
-    if (cmd_expand(d, args, r->sys, r->tools.root, out, err, cap))
+    if (pol_expand(r, d, args, out, err, cap))
         return -1;
     r->n_cmds_run++;
-    if (d->tools[0])
-        r->turn_tools = d->tools;
+    pol_turn_tools(r, d);
     return 0;
+}
+
+/* Skill: expanded as a command is (A4 gaps X1); its allowed-tools in force
+ * for the rest of the turn; its model is not switched mid-turn (the
+ * turn's thinking belongs to the model that started it), as SlashCommand */
+static int ext_skill(void *u, const char *name, const char *args, int activate, jw *out, int *fork, char *agent,
+                     long acap, char *err, long cap)
+{
+    cl_repl *r = (cl_repl *)u;
+    const cl_def *d = defs_find(&r->defs, DEF_SKILL, name);
+    *fork = 0;
+    agent[0] = 0;
+    if (!d) {
+        cl_copy(err, "no such skill", cap);
+        return -1;
+    }
+    if (pol_expand(r, d, args, out, err, cap))
+        return -1;
+    *fork = d->fork;
+    cl_copy(agent, d->agent, acap);
+    if (activate) {
+        r->n_skills_run++;
+        pol_turn_tools(r, d);
+    }
+    return 0;
+}
+
+/* cl_tools.agent_msg: a subagent's message to print mode's stream */
+static void pol_agent_msg(void *u, const char *parent, int user, const char *json, long n, cl_stream *st)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (r->feed && r->feed->sub)
+        r->feed->sub(r->feed->u, parent, user, json, n, st);
 }
 
 void pol_ext_free(cl_repl *r)
@@ -599,14 +1401,21 @@ int pol_tools(cl_repl *r)
         a->tools = d->tools[0] ? d->tools : 0;
         a->model = d->model[0] ? d->model : 0;
         a->prompt = d->body;
+        a->deny_tools = d->deny_tools && d->deny_tools[0] ? d->deny_tools : 0;
+        a->max_turns = d->max_turns;
+        a->effort = d->effort[0] ? d->effort : 0;
+        a->skills = d->skills && d->skills[0] ? d->skills : 0;
+        a->perm_mode = d->perm_mode[0] ? d->perm_mode : 0;
+        a->initial = d->initial && d->initial[0] ? d->initial : 0;
     }
     /* disable-model-invocation: only the user runs it */
     for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++)
-        if (!d->no_model) {
+        if (!d->no_model && (!d->paths || !d->paths[0] || d->active)) {
             cl_skill *s = &r->x_skills[r->nx_skills++];
             s->name = d->name;
             s->description = d->description;
             s->path = d->path;
+            s->when = d->when && d->when[0] ? d->when : 0;
         }
     for (i = 0; (d = defs_nth(&r->defs, DEF_COMMAND, i)) != 0; i++)
         if (!d->no_model) {
@@ -626,6 +1435,9 @@ void pol_attach_tools(cl_repl *r)
     r->tools.call = pol_call;
     r->tools.added = pol_added;
     r->tools.agent_stop = pol_agent_stop;
+    r->tools.agent_start = pol_agent_start;
+    r->tools.agent_msg = pol_agent_msg;
+    r->ext.skill = ext_skill;
     r->ext.u = r;
     r->ext.agents = ext_agents;
     r->ext.skills = ext_skills;
@@ -733,6 +1545,8 @@ static int rw_restore(void *u, int i, int what)
     int msg[64], n = rw_points(r, msg, 64);
     if (i < 0 || i >= n)
         return -1;
+    if (what & (RW_SUM | RW_SUM_UP))
+        return repl_summarize(r, msg[i], (what & RW_SUM_UP) != 0);
     return repl_rewind(r, msg[i], (what & RW_CODE) != 0, (what & RW_CONV) != 0);
 }
 

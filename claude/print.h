@@ -40,4 +40,11 @@ typedef struct cl_pout {
  * result is an error, 20 when there was nothing to do). */
 int print_run(cl_repl *r, cl_cli *c, cl_pout *p);
 
+/* Claude Code's subcommands (c->sub): `Claude doctor` (the checks, then
+ * the end), `Claude auth status [--text]` (JSON, or text; 10 when not
+ * logged in), `auth login` (the key read from the console), `auth logout`,
+ * `Claude purge [dir]` (this project's sessions, auto memory and history
+ * lines removed, after a yes). The exit code. */
+int print_subcommand(cl_repl *r, cl_cli *c, cl_pout *p);
+
 #endif

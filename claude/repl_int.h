@@ -15,6 +15,25 @@ void repl_say(cl_repl *r, const char *a, const char *b);
 /* the conversation's text shown again (after a resume) */
 void repl_replay(cl_repl *r);
 void repl_cost(cl_repl *r);
+/* A side request (/btw, /recap, /rename, /rewind's summaries): messages
+ * from..to-1 of the conversation and the question ask, the tools listed
+ * but none called; the answer's text into answer, nothing kept in the
+ * conversation (the cost is counted). 0, -1 failed (shown), -2 stopped. */
+int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer);
+/* /rewind's "Summarize from here" (up_to 0: the prompt at msg and all
+ * after it become one summary) and "Summarize up to here" (up_to 1:
+ * everything before it does): 0, -1, -2 stopped */
+int repl_summarize(cl_repl *r, int msg, int up_to);
+/* the slash menu built again (a skill loaded on the way) */
+int repl_load_menu(cl_repl *r);
+/* the custom definitions read again (/reload-skills, part of repl_load) */
+int repl_load_defs(cl_repl *r);
+/* the effort a request sends ("" for /effort auto: the model's own) */
+const char *repl_effort(const cl_repl *r);
+/* slash.c: the i-th of Claude Code's commands that are not on the Amiga, 0 past the end */
+const char *slash_na_list(int i);
+/* the context size at which the conversation compacts by itself, tokens */
+long repl_compact_at(cl_repl *r);
 void repl_context(cl_repl *r);
 int repl_pick(cl_repl *r, const char *title, const char *const *opt, int n, const char *cur);
 /* the conversation saved (its session file) after a change */
@@ -49,13 +68,40 @@ void pol_attach_tools(cl_repl *r);
  * memory. */
 int pol_tools(cl_repl *r);
 void pol_ext_free(cl_repl *r);
+/* a command's or a skill's text with the ${CLAUDE_*} values of this
+ * session (cmd_expand_vars): 0, -1 with err */
+int pol_expand(cl_repl *r, const cl_def *d, const char *args, jw *out, char *err, long cap);
+/* d's allowed-tools in force for the rest of the turn (r->turn_tools) */
+void pol_turn_tools(cl_repl *r, const cl_def *d);
 void pol_session(cl_repl *r, int event, const char *source);
 /* UserPromptSubmit: -1 blocked (shown), 0 go on (context into r->pending) */
 int pol_prompt(cl_repl *r, const char *prompt, long n);
 /* Stop: 1 when a hook asks Claude to go on (the reason in reason) */
 int pol_stop(cl_repl *r, int active, jw *reason);
-void pol_notify(cl_repl *r, const char *message);
-void pol_precompact(cl_repl *r, int automatic, const char *focus);
+/* Notification of a type (Claude Code's: permission_prompt, idle_prompt) */
+void pol_notify(cl_repl *r, const char *type, const char *message);
+int pol_model_switch(cl_repl *r, const char *from, const char *to, const char *requested, int after);
+/* "Yes, and don't ask again in this project": the call's rule (Bash(word *),
+ * WebFetch(domain:x), else the tool) kept in .claude/settings.local.json */
+void pol_keep_rule(cl_repl *r, const char *tool, const char *input, long n);
+void pol_instructions(cl_repl *r, int k, const char *reason);
+int pol_batch(cl_repl *r, const char *calls, long n, jw *extra);
+int pol_config_change(cl_repl *r, int src, const char *file);
+void pol_setup(cl_repl *r, const char *trigger);
+/* the hooks' callbacks (prompt hooks' model, statusMessage, --include-hook-events) */
+void pol_attach_hooks(cl_repl *r);
+/* PreCompact: -1 a hook blocked the compaction (shown), 0 go on */
+int pol_precompact(cl_repl *r, int automatic, const char *focus);
+/* A4 gaps: Claude Code's other hook events */
+void pol_postcompact(cl_repl *r, int automatic, const char *summary, long n);
+void pol_stop_failure(cl_repl *r, const char *error);
+void pol_cwd_changed(cl_repl *r, const char *old_cwd, const char *new_cwd);
+void pol_dir_added(cl_repl *r, const char *dir);
+/* UserPromptExpansion before a typed /command or /skill runs: -1 blocked */
+int pol_expansion(cl_repl *r, const cl_def *d, const char *args, const char *prompt, long n);
+/* PermissionRequest before a question: RULE_ALLOW / RULE_DENY from a
+ * hook's decision.behavior, RULE_NONE ask as usual */
+int pol_permission_request(cl_repl *r, const char *tool, const char *input, long n);
 /* the screen's settings, memory files and rewind points (ui.h, WP1) */
 void pol_attach_ui(cl_repl *r);
 /* the statusLine command run now, its output into r->status_text (blank
