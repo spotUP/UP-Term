@@ -60,6 +60,7 @@ typedef struct cl_settings {
     char effort[16];
     char output_style[64];
     char theme[32];
+    char editor_mode[16];       /* editorMode: "vim" or "normal" */
     char status_cmd[256];       /* statusLine.command */
     char default_mode[24];      /* default / acceptEdits / plan */
     char fallback_model[64];

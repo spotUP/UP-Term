@@ -212,6 +212,8 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         str_into(x, s->effort, sizeof(s->effort));
     if (json_get(o, "outputStyle", &x))
         str_into(x, s->output_style, sizeof(s->output_style));
+    if (json_get(o, "editorMode", &x))
+        str_into(x, s->editor_mode, sizeof(s->editor_mode));
     if (json_get(o, "theme", &x))
         str_into(x, s->theme, sizeof(s->theme));
     if (json_get(o, "fallbackModel", &x))

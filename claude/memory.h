@@ -26,14 +26,14 @@
 
 enum { MEM_USER, MEM_PROJECT, MEM_LOCAL, MEM_IMPORT, MEM_NESTED };
 
-typedef struct cl_memfile {
+typedef struct cl_memsrc {
     char path[300];
     int kind;                   /* MEM_* */
     long size;
-} cl_memfile;
+} cl_memsrc;
 
 typedef struct cl_memory {
-    cl_memfile f[MEM_FILES];
+    cl_memsrc f[MEM_FILES];
     int n;
     jw text;                    /* everything read at the start, for the system prompt */
     const char *home;           /* for ~/ in imports */

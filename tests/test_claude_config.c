@@ -100,7 +100,7 @@ static void test_settings(void)
     at(home, "home");
     at(root, "proj");
     put("home/settings.json",
-        "{\"model\":\"sonnet\",\"effort\":\"low\",\"theme\":\"dark\",\"env\":{\"A\":\"1\",\"B\":\"user\"},"
+        "{\"model\":\"sonnet\",\"effort\":\"low\",\"theme\":\"dark\",\"editorMode\":\"vim\",\"env\":{\"A\":\"1\",\"B\":\"user\"},"
         "\"permissions\":{\"allow\":[\"Read\"],\"deny\":[\"Bash(rm *)\"]},"
         "\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"check\",\"timeout\":5}]}]}}");
     put("proj/.claude/settings.json",
@@ -115,6 +115,7 @@ static void test_settings(void)
     CHECK_STR(s.model, "opus");
     CHECK_STR(s.effort, "high");
     CHECK_STR(s.theme, "dark");
+    CHECK_STR(s.editor_mode, "vim");
     CHECK_STR(s.output_style, "Explanatory");
     CHECK_STR(s.status_cmd, "ctx");
     CHECK_STR(s.default_mode, "acceptEdits");
