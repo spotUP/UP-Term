@@ -115,3 +115,10 @@ Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: me
   CONTINUE carries the session. By eye: Web Search header + "Did 1 search", AskUserQuestion menu.
 - Small gaps seen: the Fetch result line shows the answer cut at the window edge (Claude Code:
   "Received N bytes (200 OK)"); rig harness hangs once in a while (amiagent socket), rerun passes.
+- OPEN, intermittent (2 of ~12 rig runs, 2026-10-05): after the edit step a typed "/cmd" lost its
+  '/' and Return inserted a new line instead of sending (looks like Return arriving as '\n' and the
+  window's own line editor taking '/': raw mode dropped?). Not reproduced by: an empty Return
+  during a turn, a fixture restart, Shift+Tab/slash/Esc, a slash command typed during a turn
+  (queued and run correctly), 4 looped runs of claude_rig2 with a SERIAL=1 handler that now logs
+  "tty enter/leave" (handler/vtcon_handler.c DBG). Next failure: run the loop again with
+  `make build/amiga/vtcon-handler SERIAL=1` installed and read build/rig/serial.log.
