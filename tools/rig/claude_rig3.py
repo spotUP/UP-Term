@@ -21,6 +21,7 @@ def main():
     time.sleep(1)
     c.run('Echo >RAM:claude-test.txt hello')
     c.run('MakeDir >NIL: ENVARC:Claude')
+    r2.trust_ram()
     r2.put('ENVARC:Claude/settings.json', json.dumps({"statusLine": {"type": "command", "command": "Echo STATUS-ROW-OK"}}))
     try:
         r2.start_claude('c3a')

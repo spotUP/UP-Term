@@ -12,6 +12,8 @@ Asserted (from the fixture's log and the Amiga's files, not from pixels):
   4. Esc during a slow answer: the turn is dropped whole (the next request
      carries the same history as the interrupted one)
   5. Ctrl+C twice: back in the Shell (an Echo after it writes its file)
+  0. first start in a folder: the workspace trust question, Yes stored in
+     ENVARC:Claude/claude.json (as Claude Code keeps it in ~/.claude.json)
 By eye (screenshots): the input box and status line, the slash menu,
 Shift+Tab's mode text, the diff and todo list, the spinner.
 
@@ -90,9 +92,14 @@ def window(title, root):
 
 def main():
     c.run('Echo >RAM:claude-test.txt hello')
+    c.run('Delete >NIL: ENVARC:Claude/claude.json QUIET')  # forget RAM:'s trust: the question comes
     proc = fixture(0.05)
     try:
         window('claude1', 'RAM:')
+        shot('trust')
+        key(RET, wait=3)  # 1. Yes, proceed
+        got = c.run('Type ENVARC:Claude/claude.json')[1]
+        check('workspace trust: Yes stored for the folder', '"Ram Disk:":{"hasTrustDialogAccepted":true}' in got, got)
         shot('idle')
         n0 = len(requests())
         typ('hello')

@@ -70,6 +70,11 @@ def amiga_text(path):
     return out.strip() if rc == 0 else None
 
 
+def trust_ram():
+    """RAM: trusted as a Yes at the trust question leaves it (claude_rig.py checks the question)"""
+    put('ENVARC:Claude/claude.json', json.dumps({"projects": {"Ram Disk:": {"hasTrustDialogAccepted": True}}}))
+
+
 def start_claude(title, extra=''):
     c.run('Run >NIL: NewShell "XCON:0/12/760/440/%s/CLOSE"' % title)
     time.sleep(5)
@@ -92,6 +97,7 @@ def main():
     time.sleep(1)
     c.run('Echo >RAM:claude-test.txt hello')
     c.run('MakeDir >NIL: RAM:.claude RAM:.claude/commands ENVARC:Claude')
+    trust_ram()
     put('RAM:CLAUDE.md', 'PROJECT-MEMORY-SENTINEL\n')
     put('ENVARC:Claude/CLAUDE.md', 'USER-MEMORY-SENTINEL\n')
     put('RAM:.claude/commands/greet.md', '---\ndescription: Greet someone\n---\nSay hello to $ARGUMENTS.\n')
