@@ -105,3 +105,13 @@ shell = vsh when present, else AmigaShell (SystemTags); paths AmigaDOS and /Unix
 Round 1 (parallel, separate files): WP2 tools; WP3 memory/config/sessions; WP1 input/screen.
 Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: merges, rig checks
 (fixture), one real-API smoke test once the owner has a key on the rig.
+
+## Rig log
+- 2026-10-05 merged WP1 (9bc4289), WP2 (b746544), WP3 (d3683b4). tools/rig/claude_rig.py 5/5 and
+  tools/rig/claude_rig2.py 10/10 on the default rig against the fixture (--dump bodies): CLAUDE.md
+  user+project in the system prompt, /greet expanded, an allow rule skipping the question, a
+  PreToolUse hook blocking Glob, an edit and /rewind putting it back, ! runs, # writes CLAUDE.md,
+  @ attaches, WebFetch (GET /page + a claude-haiku-4-5 call, after its permission question),
+  CONTINUE carries the session. By eye: Web Search header + "Did 1 search", AskUserQuestion menu.
+- Small gaps seen: the Fetch result line shows the answer cut at the window edge (Claude Code:
+  "Received N bytes (200 OK)"); rig harness hangs once in a while (amiagent socket), rerun passes.
