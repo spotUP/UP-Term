@@ -108,14 +108,17 @@ static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.26) " STR(VTCON_BUILD)
 #define TAB_MAX 9 /* tabs in one window */
 
 /* /theme with no name (W30): the themes drawer's list under the line
- * (lineedit's le_menu), each entry's colours on the window as it is
- * chosen, Escape putting the window's own back. Allocated with the names
- * after it while the list is up and until the last theme read is in. */
+ * (lineedit's le_menu), the chosen entry's colours on the window once the
+ * bar rests (le_menu_rested on the frame clock: a theme is a full repaint,
+ * and holding Down put every theme passed on the window -- owner
+ * 2026-10-05), Escape putting the window's own back at once. Allocated with
+ * the names after it while the list is up and until the last theme read
+ * is in. */
 struct theme_menu {
     le_menu m;
     ULONG fg, bg, cur, sfg, sbg, pal[16]; /* the window's colours when it opened */
     int asked;                   /* the entry a read is out for (-1 none) */
-    int last;                    /* the entry read last, found or not (-1 none) */
+    int last;                    /* the entry read and taken last, a theme or not (-1 none) */
     int shown;                   /* the entry whose colours the window has (-1: its own) */
     int end;                     /* LE_MENU_TAKE / _CANCEL once the list is closed */
     char shown_path[COMPLETE_MAX]; /* the file `shown` was read from */
@@ -492,6 +495,8 @@ static void h_resized(void *u)
     con *c = (con *)u;
     sync_size(c);
     le_resized(&c->le); /* a reflow moved the line being edited */
+    if (c->tm && c->tm->m.open)
+        c->tm->m.drawn_top = -1; /* and /theme's list: whole at the next key */
     post_sizewindow(c);
 }
 
@@ -1761,15 +1766,36 @@ static void theme_menu_read(con *c, int i)
         tm->asked = i;
 }
 
-/* The list is closed: once no read is out, the chosen theme stays (and is
- * the window's theme from now on) or, cancelled or not readable, the
- * window's own colours come back. */
+/* The window's own colours back, if an entry's are on it. */
+static void theme_menu_restore(con *c)
+{
+    struct theme_menu *tm = c->tm;
+    int i;
+    if (tm->shown < 0 || !c->w.t)
+        return;
+    c->w.fg_rgb = tm->fg;
+    c->w.bg_rgb = tm->bg;
+    c->w.cursor_rgb = tm->cur;
+    c->w.sel_fg_rgb = tm->sfg;
+    c->w.sel_bg_rgb = tm->sbg;
+    for (i = 0; i < 16; i++)
+        c->w.pal16[i] = tm->pal[i];
+    vtwin_apply_settings(&c->w);
+    tm->shown = -1;
+}
+
+/* The list is closed. Taken: the chosen theme is read now if it is not on
+ * the window yet (a preview still waiting for the rest is not waited for),
+ * and stays -- the window's theme from now on. Cancelled: the window's own
+ * colours come back at once, a read still out is dropped when it comes. */
 static void theme_menu_settle(con *c)
 {
     struct theme_menu *tm = c->tm;
-    int sel = tm->m.sel, i;
+    int sel = tm->m.sel;
     if (tm->end == LE_MENU_TAKE)
         theme_menu_read(c, sel); /* not on the window yet */
+    else
+        theme_menu_restore(c);
     if (tm->asked >= 0)
         return; /* finish_completion comes back here */
     if (tm->end == LE_MENU_TAKE && tm->shown == sel) {
@@ -1777,16 +1803,7 @@ static void theme_menu_settle(con *c)
     } else {
         if (tm->end == LE_MENU_TAKE)
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* that file is no theme */
-        if (tm->shown >= 0 && c->w.t) {
-            c->w.fg_rgb = tm->fg;
-            c->w.bg_rgb = tm->bg;
-            c->w.cursor_rgb = tm->cur;
-            c->w.sel_fg_rgb = tm->sfg;
-            c->w.sel_bg_rgb = tm->sbg;
-            for (i = 0; i < 16; i++)
-                c->w.pal16[i] = tm->pal[i];
-            vtwin_apply_settings(&c->w);
-        }
+        theme_menu_restore(c);
     }
     FreeVec(tm);
     c->tm = 0;
@@ -1836,21 +1853,38 @@ static void theme_menu_open(con *c, struct complete_req *q)
     le_menu_open(&c->le, &tm->m, names, q->matches, i, i);
 }
 
-/* A key while the list is up: move (the entry's colours on the window as
- * it goes), take, or cancel. */
+/* A key while the list is up: move (the rows that changed drawn, the
+ * entry's colours on the window once the bar rests), take, or cancel. */
 static void theme_menu_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
     struct theme_menu *tm = c->tm;
     int r = le_menu_key(&tm->m, key ? key : (n ? (long)b[0] : 0), mods, b, n);
     if (r == LE_MENU_MOVED) {
         le_menu_draw(&c->le, &tm->m);
-        theme_menu_read(c, tm->m.sel);
+        if (c->w.frame_open)
+            vtwin_clock(&c->w); /* the rest is counted on the frame clock (theme_menu_wait) */
+        else
+            theme_menu_read(c, tm->m.sel); /* no clock to wait on: at once */
     } else if (r == LE_MENU_TAKE || r == LE_MENU_CANCEL) {
         tm->end = r;
         le_menu_close(&c->le, &tm->m);
         theme_line_release(c);
         theme_menu_settle(c);
     }
+}
+
+/* The frame clock waited us: once the bar has rested, the chosen entry's
+ * colours go on the window -- one full repaint where the bar stops, not
+ * one for every theme it passed. */
+static void theme_menu_wait(con *c, ULONG us)
+{
+    struct theme_menu *tm = c->tm;
+    if (!tm || !tm->m.open)
+        return;
+    if (le_menu_rested(&tm->m, (long)us))
+        theme_menu_read(c, tm->m.sel);
+    else if (tm->m.rest_us > 0)
+        vtwin_clock(&c->w); /* still counting: the clock keeps running */
 }
 
 /* Settings > Profile: the window takes the file's k-th profile, live --
@@ -3224,16 +3258,18 @@ static void finish_completion(con *c)
             struct theme_menu *tm = c->tm;
             int got = tm->asked;
             tm->asked = -1;
-            tm->last = got;
-            if (q->matches && c->w.t && theme_apply(c, q->data, q->data_len)) {
-                tm->shown = got;
-                copy_str(tm->shown_path, q->add, COMPLETE_MAX);
-            }
+            if (tm->end != LE_MENU_CANCEL && got == tm->m.sel) {
+                tm->last = got;
+                if (q->matches && c->w.t && theme_apply(c, q->data, q->data_len)) {
+                    tm->shown = got;
+                    copy_str(tm->shown_path, q->add, COMPLETE_MAX);
+                }
+            } /* else cancelled, or the bar moved on: no repaint for it */
             comp_data_done(c);
             if (tm->end)
                 theme_menu_settle(c);
-            else
-                theme_menu_read(c, tm->m.sel); /* moved on meanwhile */
+            else if (!tm->m.rest_us)
+                theme_menu_read(c, tm->m.sel); /* moved and rested meanwhile */
             continue;
         }
         if (q->mode == COMPLETE_THEME) {
@@ -5790,7 +5826,7 @@ static LONG handler_main(void)
     watch_start(c); /* and its changes, live (watch_worker) */
 
     for (;;) {
-        ULONG wait = 1UL << c->port->mp_SigBit;
+        ULONG wait = 1UL << c->port->mp_SigBit, waited;
         struct Message *m;
         if (c->own_win)
             wait |= 1UL << c->own_win->UserPort->mp_SigBit;
@@ -5850,7 +5886,9 @@ static LONG handler_main(void)
             if (c->opens > 0 || !c->ever_opened)
                 continue;
         } else {
-        vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
+        waited = vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
+        if (waited && c->tm)
+            theme_menu_wait(c, waited); /* /theme's list: has the bar rested? */
         find_idcmp(c); /* the find prompt, while it is open */
         sel_idcmp(c);  /* KingCON's selection window, while it is open */
         watch_take(c); /* the profile file changed: this window's profile, live */

@@ -912,7 +912,21 @@ static int menu_to(le_menu *m, int to, int wrap)
     else if (to > m->n - 1)
         to = m->n - 1;
     m->sel = to;
-    return to == was ? LE_MENU_NONE : LE_MENU_MOVED;
+    if (to == was)
+        return LE_MENU_NONE;
+    m->rest_us = LE_MENU_REST_US;
+    return LE_MENU_MOVED;
+}
+
+int le_menu_rested(le_menu *m, long waited_us)
+{
+    if (!m->open || m->rest_us <= 0)
+        return 0;
+    m->rest_us -= waited_us;
+    if (m->rest_us > 0)
+        return 0;
+    m->rest_us = 0;
+    return 1;
 }
 
 int le_menu_key(le_menu *m, long key, int mods, const unsigned char *b, int nb)
@@ -947,60 +961,129 @@ int le_menu_key(le_menu *m, long key, int mods, const unsigned char *b, int nb)
     return LE_MENU_NONE;
 }
 
+/* the bar's width: the widest name, cut to the window */
+static int menu_width(const le_line *le, const le_menu *m)
+{
+    int cols = vt_cols(le->t), k, l, w = 0;
+    const char *s = m->names;
+    for (k = 0; k < m->n; k++, s += l + 1)
+        if ((l = (int)strlen(s)) > w)
+            w = l;
+    if (w > cols - 3)
+        w = cols - 3;
+    return w < 0 ? 0 : w;
+}
+
+/* Row i of the list (i == m->rows: "k of n" and the keys) at screen row y. */
+static void menu_row(le_line *le, le_menu *m, long y, int i)
+{
+    int cols = vt_cols(le->t), k = m->top + i, l;
+    char help[96];
+    cup(le, y < 0 ? 0 : y, 0);
+    out(le, "\033[2K", 4);
+    if (i == m->rows) {
+        /* where the list is, and the keys */
+        int n = 0;
+        const char *s = ": Up/Down choose, Enter applies, Escape cancels";
+        num(help, &n, m->sel + 1);
+        memcpy(help + n, " of ", 4);
+        n += 4;
+        num(help, &n, m->n);
+        l = (int)strlen(s);
+        memcpy(help + n, s, (size_t)l);
+        n += l;
+        out(le, "\033[2m", 4);
+        out(le, help, n < cols - 1 ? n : cols - 1);
+        out(le, "\033[22m", 5);
+    } else if (k < m->n) {
+        const char *name = le_menu_name(m, k);
+        l = (int)strlen(name);
+        if (l > m->w)
+            l = m->w;
+        if (k == m->sel)
+            out(le, "\033[7m", 4);
+        out(le, k == m->mark ? "* " : "  ", 2);
+        out(le, name, l);
+        if (k == m->sel) {
+            for (; l < m->w; l++)
+                out(le, " ", 1); /* a bar as wide as the widest name */
+            out(le, " \033[27m", 6);
+        }
+    }
+}
+
+/* Nothing on grid row y but default blanks (a row never written may still
+ * count its cells as used: they are looked at). */
+static int row_blank(vt_term *t, int y)
+{
+    int n, i, used = vt_row_used(t, y);
+    const vt_cell *c = vt_row(t, y, &n);
+    for (i = 0; c && i < used; i++)
+        if (c[i].ch != ' ' || c[i].bg != VT_COLOR_DEFAULT || c[i].attr || c[i].pad)
+            return 0;
+    return 1;
+}
+
+/* CSI n final */
+static void csi_n(le_line *le, int n, char final)
+{
+    char b[16];
+    int k = 0;
+    b[k++] = 0x1B;
+    b[k++] = '[';
+    num(b, &k, n);
+    b[k++] = final;
+    out(le, b, k);
+}
+
 void le_menu_draw(le_line *le, le_menu *m)
 {
-    int cols = vt_cols(le->t), i, k, l, w = 0;
-    long top = m->at - vt_lines_scrolled(le->t);
-    char help[96];
+    int rows = vt_rows(le->t), i, d, from = 0, to = 0, whole;
+    long top = m->at - vt_lines_scrolled(le->t), help;
     if (!m->open)
         return;
     if (m->sel < m->top)
         m->top = m->sel;
     if (m->sel >= m->top + m->rows)
         m->top = m->sel - m->rows + 1;
-    for (k = 0; k < m->n; k++) {
-        l = (int)strlen(le_menu_name(m, k));
-        if (l > w)
-            w = l;
-    }
-    if (w > cols - 3)
-        w = cols - 3;
-    if (w < 0)
-        w = 0;
-    for (i = 0; i <= m->rows; i++) {
-        cup(le, top + i < 0 ? 0 : top + i, 0);
-        out(le, "\033[2K", 4);
-        k = m->top + i;
-        if (i == m->rows) {
-            /* where the list is, and the keys */
-            int n = 0;
-            const char *s = ": Up/Down choose, Enter applies, Escape cancels";
-            num(help, &n, m->sel + 1);
-            memcpy(help + n, " of ", 4);
-            n += 4;
-            num(help, &n, m->n);
-            l = (int)strlen(s);
-            memcpy(help + n, s, (size_t)l);
-            n += l;
-            out(le, "\033[2m", 4);
-            out(le, help, n < cols - 1 ? n : cols - 1);
-            out(le, "\033[22m", 5);
-        } else if (k < m->n) {
-            const char *name = le_menu_name(m, k);
-            l = (int)strlen(name);
-            if (l > w)
-                l = w;
-            if (k == m->sel)
-                out(le, "\033[7m", 4);
-            out(le, k == m->mark ? "* " : "  ", 2);
-            out(le, name, l);
-            if (k == m->sel) {
-                for (; l < w; l++)
-                    out(le, " ", 1); /* a bar as wide as the widest name */
-                out(le, " \033[27m", 6);
-            }
+    help = top + m->rows;
+    d = m->top - m->drawn_top;
+    whole = m->drawn_top < 0 || top < 0 || help >= rows || d >= m->rows || -d >= m->rows;
+    for (i = (int)help + 1; d && !whole && i < rows; i++)
+        whole = !row_blank(le->t, i); /* DL / IL would move it */
+    if (whole) {
+        m->w = menu_width(le, m);
+        for (i = 0; i <= m->rows; i++)
+            menu_row(le, m, top + i, i);
+    } else {
+        if (d > 0) {
+            /* the names move up d rows (one blit), the last d come in */
+            cup(le, top, 0);
+            csi_n(le, d, 'M');
+            from = m->rows - d;
+            to = m->rows;
+        } else if (d < 0) {
+            /* down: the first -d come in; the help row was pushed under */
+            cup(le, top, 0);
+            csi_n(le, -d, 'L');
+            to = -d;
+        }
+        for (i = from; i < to; i++)
+            menu_row(le, m, top + i, i);
+        i = m->drawn_sel - m->top; /* the row the bar left, if still shown */
+        if (m->drawn_sel != m->sel && i >= 0 && i < m->rows && (i < from || i >= to))
+            menu_row(le, m, top + i, i);
+        i = m->sel - m->top;       /* the bar */
+        if (i < from || i >= to)
+            menu_row(le, m, top + i, i);
+        menu_row(le, m, help, m->rows); /* "k of n" */
+        if (d < 0 && help + 1 < rows) {
+            cup(le, help + 1, 0);
+            out(le, "\033[J", 3); /* what IL pushed under the help row: it was blank */
         }
     }
+    m->drawn_top = m->top;
+    m->drawn_sel = m->sel;
     cup(le, top + (m->sel - m->top) < 0 ? 0 : top + (m->sel - m->top), 0);
 }
 
@@ -1012,6 +1095,8 @@ void le_menu_open(le_line *le, le_menu *m, const char *names, int n, int sel, in
     m->sel = sel >= 0 && sel < n ? sel : 0;
     m->mark = mark;
     m->top = 0;
+    m->drawn_top = m->drawn_sel = -1; /* the first draw is whole */
+    m->rest_us = 0;
     m->rows = n < LE_MENU_ROWS ? n : LE_MENU_ROWS;
     if (m->rows > vt_rows(le->t) - 2)
         m->rows = vt_rows(le->t) - 2;
@@ -1039,4 +1124,5 @@ void le_menu_close(le_line *le, le_menu *m)
     cup(le, top < 0 ? 0 : top, 0);
     out(le, "\033[J", 3);
     m->open = 0;
+    m->rest_us = 0;
 }

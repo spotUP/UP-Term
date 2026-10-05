@@ -536,11 +536,18 @@ static void drag_to(vtwin *w, WORD mx, WORD my);
 static void motion_to(vtwin *w, WORD mx, WORD my);
 static void pointer_sync(vtwin *w);
 
-void vtwin_tick(vtwin *w)
+void vtwin_clock(vtwin *w)
 {
+    frame_start(w);
+}
+
+ULONG vtwin_tick(vtwin *w)
+{
+    ULONG waited = 0;
     if (w->frame_busy && CheckIO((struct IORequest *)w->frame)) {
         WaitIO((struct IORequest *)w->frame);
         w->frame_busy = 0;
+        waited = w->frame_wait; /* (a frame_start below sets the next one) */
         int pending = w->render_pending;
         if (w->render_pending && w->t && (vt_modes(w->t) & VT_MODE_SYNC))
             w->sync_held += (long)w->frame_wait; /* a ?2026 frame waited this long */
@@ -571,6 +578,7 @@ void vtwin_tick(vtwin *w)
         motion_to(w, w->win->MouseX, w->win->MouseY); /* the same for a program's ?1002 drag */
         frame_start(w);
     }
+    return waited;
 }
 
 /* A fixed-width font by name ("topaz" or "topaz.font") and size; 0 if it

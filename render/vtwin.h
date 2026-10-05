@@ -174,8 +174,13 @@ void vtwin_cleanup(vtwin *w);
 void vtwin_show_title(vtwin *w);
 /* the frame clock's signal (0 without one) */
 ULONG vtwin_sigmask(const vtwin *w);
-/* call after a Wait() that may have been the frame clock */
-void vtwin_tick(vtwin *w);
+/* call after a Wait() that may have been the frame clock. Returns the
+ * microseconds of the clock's wait that just ended (0: it had not): an
+ * owner's countdown runs on them (the /theme list's rest, le_menu_rested) */
+ULONG vtwin_tick(vtwin *w);
+/* The frame clock waits once more (if it is not waiting already): an owner
+ * counting down on vtwin_tick's waits keeps it running with this. */
+void vtwin_clock(vtwin *w);
 
 struct TextFont *vtwin_open_font(vtwin *w);
 /* The screen the window is on, before vtwin_open_font: square pixels or

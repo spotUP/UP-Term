@@ -114,7 +114,8 @@ CONFIGURATION (profiles)
    go into the profile you are editing; Save (or Use) applies them to the
    windows opened after. In a window, Settings > Theme... puts one on
    that window; /theme with no name lists them under the line: Up and
-   Down show each on the window, Enter keeps it, Escape puts the window's
+   Down move through them, and the one the bar stops on (a quarter of a
+   second) shows on the window; Enter keeps it, Escape puts the window's
    own colours back. Every theme requester opens in the drawer of the
    theme you chose last, else ENVARC:up-term/themes, else its copy in
    ENV:, else a themes drawer beside the program.
