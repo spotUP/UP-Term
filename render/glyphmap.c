@@ -178,7 +178,9 @@ int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc)
     return native == Q_NATIVE;
 }
 
-const vt_u8 *vt_fallback_glyph(const vt_fallback *f, vt_u32 cp, int cells, int *bpr)
+/* vt_fallback_glyph; with colour non-0 the colour source is asked in
+ * Unifont's place for a two-cell cell, *colour set 1 when it has cp */
+static const vt_u8 *fallback(const vt_fallback *f, vt_u32 cp, int cells, int *bpr, int *colour)
 {
     const vt_u8 *m;
     int q;
@@ -191,23 +193,37 @@ const vt_u8 *vt_fallback_glyph(const vt_fallback *f, vt_u32 cp, int cells, int *
         return m;
     if (q == Q_STANDIN)
         return 0; /* the stand-in, never Unifont's glyph in its place (W33) */
+    if (colour && cells == 2 && f->colour && f->colour(f->colour_src, cp, cells)) {
+        *colour = 1;
+        return 0;
+    }
     if (f->unifont && (m = f->unifont(f->unifont_src, cp, cells, bpr)) != 0)
         return m;
     return 0;
+}
+
+const vt_u8 *vt_fallback_glyph(const vt_fallback *f, vt_u32 cp, int cells, int *bpr)
+{
+    return fallback(f, cp, cells, bpr, 0);
 }
 
 const vt_u8 *vt_cell_glyph(const vt_fallback *f, vt_term *t, const vt_cell *c, vt_u32 *cp, int *ncp,
                            int *bpr, vt_glyph *g)
 {
     const vt_u8 *m;
-    int cells = c->width == 2 ? 2 : 1;
+    int cells = c->width == 2 ? 2 : 1, colour = 0;
     cp[0] = c->ch;
     *ncp = 1;
     if (VT_CELL_IS_CLUSTER(c)) /* beyond the BMP, or with marks */
         *ncp = vt_compose_cell(cp, vt_cell_text(t, c, cp));
-    m = vt_fallback_glyph(f, cp[0], cells, bpr);
+    m = fallback(f, cp[0], cells, bpr, &colour);
     if (m)
         return m;
+    if (colour) {
+        g->kind = VT_GLYPH_COLOUR;
+        g->code = (vt_u8)cells;
+        return 0;
+    }
     *g = vt_map_glyph(cp[0], f ? f->enc : VT_ENC_LATIN1);
     if (g->kind == VT_GLYPH_MISSING)
         g->code = (vt_u8)cells;

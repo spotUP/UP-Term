@@ -18,8 +18,10 @@ enum vt_glyph_kind {
     VT_GLYPH_DIAGONAL,  /* `code` 1 = /, 2 = \\, 3 = X */
     VT_GLYPH_DIAMOND,   /* the DEC graphics diamond */
     VT_GLYPH_HLINE,     /* a light horizontal line `code` eighths down (DEC scan lines) */
-    VT_GLYPH_MISSING    /* a replacement box (a character beyond the BMP no font has);
+    VT_GLYPH_MISSING,   /* a replacement box (a character beyond the BMP no font has);
                          * the renderer sets `code` to the cells it spans, 1 or 2 */
+    VT_GLYPH_COLOUR     /* the colour source has it (render/emoji: ce_paint draws
+                         * it); `code` is the cells it spans, 2 */
 };
 
 typedef struct vt_glyph {
@@ -49,19 +51,27 @@ int vt_compose_cell(vt_u32 *cp, int n);
  * as the cell's height of rows, *bpr bytes each, set bits the ink; 0 when
  * it has no glyph for cp. */
 typedef const vt_u8 *(*vt_mask_source)(void *src, vt_u32 cp, int cells, int *bpr);
+/* A glyph source that draws in colour itself: 1 when it has cp over
+ * `cells` cells (and keeps it for drawing), 0 when not. */
+typedef int (*vt_colour_source)(void *src, vt_u32 cp, int cells);
 
 /* The sources asked for what the font cannot show itself, in this order:
  * the outline font the profile names (font-fallback, F1: the user's
  * choice, Nerd Font icons); then, for a code point vt_map_glyph has no
  * stand-in for ('-' for an en dash, '>' for U+276F), GNU Unifont
  * (render/unifont, U2: the BMP and plane 1's emoji). A stand-in is never
- * replaced by Unifont's glyph (ledger W33). A source left 0 is skipped. */
+ * replaced by Unifont's glyph (ledger W33). In Unifont's place, for a
+ * two-cell cell, the colour source first (render/emoji, U4: Twemoji on a
+ * true-colour RTG screen; it answers nothing anywhere else, and Unifont's
+ * glyph is drawn). A source left 0 is skipped. */
 typedef struct vt_fallback {
     enum vt_font_enc enc;
     vt_mask_source outline;
     void *outline_src;
     vt_mask_source unifont;
     void *unifont_src;
+    vt_colour_source colour;
+    void *colour_src;
 } vt_fallback;
 
 /* The mask cp draws from over `cells` cells: 0 when the font shows cp
@@ -75,7 +85,8 @@ const vt_u8 *vt_fallback_glyph(const vt_fallback *f, vt_u32 cp, int cells, int *
  * (vt_compose_cell: cp[0] the character, then the marks to draw over it),
  * *ncp how many; the mask from vt_fallback_glyph over the cell's width
  * (the engine's width table: 2 for a wide character), or 0 and *g what
- * vt_map_glyph gives. */
+ * vt_map_glyph gives -- or VT_GLYPH_COLOUR when the colour source has the
+ * character (it draws it: ce_paint). */
 const vt_u8 *vt_cell_glyph(const vt_fallback *f, vt_term *t, const vt_cell *c, vt_u32 *cp, int *ncp,
                            int *bpr, vt_glyph *g);
 

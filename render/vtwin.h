@@ -110,6 +110,8 @@ typedef struct vtwin {
                                   * is no outline font (U2; opened at the first page read) */
     uf_cache uni;                /* Unifont's pages (U2), while attached */
     UBYTE *uni_mask;             /* their glyphs' mask, chip RAM for BltTemplate */
+    struct ce_store *emo;        /* the colour emoji pages and scratch (U4), while
+                                  * attached to a screen that shows colour; 0 none */
     vt_term *t;
     vr_render r;
     WORD want_cols;              /* DECCOLM asked for this width (0: none) */
