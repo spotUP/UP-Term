@@ -100,6 +100,9 @@ If WARN
 EndIf
 If EXISTS VTC:gg/bin/sh
   C:Assign >NIL: GG: VTC:gg
+  ; the Unix commands (ls, dircolors, ...) on the command path, as the kit
+  ; puts SYS:UP-Term/bin there: amiagent and the shells it starts inherit it
+  C:Path >NIL: VTC:gg/bin ADD
 EndIf
 C:SetEnv TERM vtcon
 C:SetEnv TERMINFO /VTC/terminfo
