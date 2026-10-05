@@ -17,6 +17,7 @@
 #include "glyphmap.h"
 #include "outline.h"
 #include "unifont.h"
+#include "emoji.h"
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
@@ -111,7 +112,11 @@ typedef struct vr_render {
     /* GNU Unifont's pages for the BMP the font and the outline font lack
      * (U2), 0 for none; the owner keeps it (vr_set_unifont) */
     struct uf_cache *unifont;
-    vt_fallback fb;       /* the sources in their order (glyphmap.h), from the two above */
+    /* colour emoji (U4): the painter on this window's target (an RTG screen
+     * of 15 bits or more, cybergraphics' WriteLUTPixelArray) and the colour
+     * pages the owner keeps (vr_set_emoji), emoji.store 0 for none */
+    ce_painter emoji;
+    vt_fallback fb;       /* the sources in their order (glyphmap.h), from the three above */
     /* selection, inclusive, rows as grid row + vt_lines_scrolled() at the
      * time (so it stays on its text while output scrolls) */
     BYTE sel;
@@ -171,6 +176,13 @@ void vr_set_outline(vr_render *r, struct vo_font *f);
 /* The Unifont page cache for glyphs neither font has (0: none); the caller
  * keeps it and redraws. Its cell follows vr_set_font. */
 void vr_set_unifont(vr_render *r, struct uf_cache *c);
+/* The colour emoji pages and scratch (0: none); the caller keeps them and
+ * redraws. Drawn only where the screen can (vr_can_colour), else
+ * Unifont's glyph. */
+void vr_set_emoji(vr_render *r, struct ce_store *s);
+/* 1 when this window's screen can show colour emoji (RTG, 15 bits or
+ * more, cybergraphics): the owner then gives it a store. */
+int vr_can_colour(const vr_render *r);
 /* A tab's renderer: off (another tab is shown) draws nothing at all; the
  * caller redraws when it is on again. */
 void vr_set_off(vr_render *r, int off);

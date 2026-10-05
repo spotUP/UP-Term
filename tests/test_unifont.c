@@ -335,6 +335,7 @@ static void fallback_asks_outline_then_unifont_after_the_font(void)
     f.outline_src = 0;
     f.unifont = fake_unifont;
     f.unifont_src = 0;
+    f.colour = 0;
     n_outline = n_unifont = 0;
     /* the font's own and the drawn ones: no source asked */
     CHECK(vt_fallback_glyph(&f, 'A', 1, &bpr) == 0);
@@ -376,6 +377,7 @@ static void stand_in_cells_keep_their_stand_in_not_unifont(void)
     f.outline_src = 0;
     f.unifont = fake_unifont;
     f.unifont_src = 0;
+    f.colour = 0;
     n_outline = n_unifont = 0;
     h_put(t, "\xE2\x9D\xAF\xE2\x80\x93\xE2\x8F\xB5\xC2\xB7"); /* ❯–⏵· */
     row = vt_row(t, 0, &n);
@@ -399,6 +401,37 @@ static void stand_in_cells_keep_their_stand_in_not_unifont(void)
     vt_free(t);
 }
 
+/* The owner (2026-10-05): the euro sign showed as 'E'. A letter stand-in
+ * is a substitute: Unifont's real glyph comes first; with no Unifont the
+ * stand-in still draws. A shape stand-in ('-' for the en dash) keeps its
+ * place (the test above). */
+static void letter_stand_ins_give_way_to_unifont(void)
+{
+    static const vt_u32 cps[3] = { 0x20AC, 0x2713, 0x25CF }; /* euro, check mark, black circle */
+    static const int standin[3] = { 'E', 'v', 'o' };
+    vt_fallback f;
+    int i, bpr;
+    f.enc = VT_ENC_LATIN1;
+    f.outline = 0;
+    f.outline_src = 0;
+    f.unifont = fake_unifont;
+    f.unifont_src = 0;
+    f.colour = 0;
+    for (i = 0; i < 3; i++) {
+        n_unifont = 0;
+        CHECK(vt_fallback_glyph(&f, cps[i], 1, &bpr) != 0);
+        CHECK_INT(n_unifont, 1);
+    }
+    /* no Unifont pages: the stand-in, as before */
+    f.unifont = 0;
+    for (i = 0; i < 3; i++) {
+        vt_glyph g = vt_map_glyph(cps[i], VT_ENC_LATIN1);
+        CHECK(vt_fallback_glyph(&f, cps[i], 1, &bpr) == 0);
+        CHECK_INT(g.kind, VT_GLYPH_FONT);
+        CHECK_INT(g.code, standin[i]);
+    }
+}
+
 /* An emoji (plane 1) has no stand-in: Unifont is asked, over its two cells. */
 static void emoji_asks_unifont_over_two_cells(void)
 {
@@ -409,6 +442,7 @@ static void emoji_asks_unifont_over_two_cells(void)
     f.outline_src = 0;
     f.unifont = fake_unifont;
     f.unifont_src = 0;
+    f.colour = 0;
     n_unifont = 0;
     CHECK(vt_fallback_glyph(&f, 0x1F600, 2, &bpr) == fake_mask + 16);
     CHECK_INT(n_unifont, 1);
@@ -478,6 +512,7 @@ static void text_reaches_the_unifont_pages(void)
     f.outline_src = 0;
     f.unifont = uf_glyph;
     f.unifont_src = &c;
+    f.colour = 0;
     h_put(t, "a\xD0\x96\xE4\xB8\xAD\xE2\x80\x93\xE2\x98\x83\xC3\xA9\xF0\x9F\x98\x80"); /* aЖ中–☃é😀 */
     for (pass = 0; pass < 2; pass++) { /* a redraw reads nothing again */
         int n, x;
@@ -539,6 +574,7 @@ void suite_unifont(void)
     corrupt_page_is_given_back_and_remembered();
     fallback_asks_outline_then_unifont_after_the_font();
     stand_in_cells_keep_their_stand_in_not_unifont();
+    letter_stand_ins_give_way_to_unifont();
     emoji_asks_unifont_over_two_cells();
     emoji_page_gives_a_glyph_two_cells_wide();
     text_reaches_the_unifont_pages();

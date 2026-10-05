@@ -151,6 +151,17 @@ OUTLINE FONTS (icons, other scripts)
    prompt arrow U+276F, '-' for a dash). Other font sizes keep the '?' (a
    box for an emoji). A window reads a page of 256 characters the first
    time it needs one and keeps the last 8 (at most 66 KB).
+   Colour emoji: on an RTG screen of 15 bits or more (16, 24 or 32 bit
+   modes of Picasso96 or CyberGraphX, which offer cybergraphics.library)
+   the emoji are drawn in colour over their two cells, from Twemoji, when
+   Install put them in (the "Colour emoji" part: SYS:UP-Term/emoji, 0.5 MB,
+   CC-BY 4.0 by Twitter and contributors, see CC-BY-4.0.txt and SOURCE.txt
+   there). 16x16 pixels with a 16-pixel font, 16x8 with an 8-pixel one,
+   centred in the two cells for other sizes, over the cell's background
+   (also when it is reversed or selected). Sequences (skin tones, flags,
+   joined emoji) show their first emoji. Planar screens (OCS, ECS, AGA) and
+   8-bit RTG modes keep the one-colour Unifont glyph. A window keeps the
+   last 4 pages it read (at most about 0.4 MB).
 
 COMMANDS (/cursor bar)
    Every setting of the menus and of Prefs is also a command you type at

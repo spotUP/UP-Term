@@ -176,6 +176,22 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
 static void extract_glyphs(vr_render *r);
 static void fb_sync(vr_render *r);
 
+/* The colour an ink shows, 0xRRGGBB: a direct colour's own, a pen's from
+ * the colour map. */
+static ULONG ink_rgb(vr_render *r, ULONG ink)
+{
+    return ink & VR_INK_RGB ? ink & 0xFFFFFFUL : vr_pen_rgb(r, (UBYTE)ink);
+}
+
+/* The colour emoji painter's target call (render/emoji): the box's indices
+ * through the blended table, WriteLUTPixelArray as the sixel images. */
+static void emoji_lut(void *u, const vt_u8 *idx, int w, int h, const vt_u32 *ctab, int px, int py)
+{
+    vr_render *r = (vr_render *)u;
+    vr_cgx_write_lut(r->cgx, (APTR)idx, 0, 0, (UWORD)w, r->rp, (APTR)ctab, (UWORD)px, (UWORD)py, (UWORD)w,
+                     (UWORD)h, VR_CTABFMT_XRGB8);
+}
+
 /* ---- setup ---------------------------------------------------------------- */
 
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
@@ -264,6 +280,14 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     /* true colour: images straight from their indices (P96 and CGX both
      * offer cybergraphics.library); else the pens path below */
     r->cgx = r->truecolor ? OpenLibrary((STRPTR)"cybergraphics.library", 41) : 0;
+    /* colour emoji (U4) through the same call; ce_has asks for RTG of 15
+     * bits or more and the call, so AGA and 8-bit RTG keep Unifont's glyph */
+    r->emoji.tg.rtg = !r->planar;
+    r->emoji.tg.depth = (int)GetBitMapAttr(win->RPort->BitMap, BMA_DEPTH);
+    r->emoji.tg.write_lut = r->cgx ? emoji_lut : 0;
+    r->emoji.tg.user = r;
+    r->emoji.cur = 0;
+    ce_set_cell(&r->emoji, r->cw, r->ch);
     vr_layout(r);
 }
 
@@ -439,6 +463,7 @@ void vr_set_font(vr_render *r, struct TextFont *font)
         vo_set_cell(r->outline, r->cw, r->ch, r->base); /* its glyphs at the new cell */
     if (r->unifont)
         uf_set_cell(r->unifont, r->cw, r->ch);
+    ce_set_cell(&r->emoji, r->cw, r->ch);
     if (r->glyphs)
         FreeVec(r->glyphs);
     r->glyphs = 0;
@@ -460,6 +485,18 @@ void vr_set_unifont(vr_render *r, struct uf_cache *c)
     if (c)
         uf_set_cell(c, r->cw, r->ch);
     fb_sync(r);
+}
+
+void vr_set_emoji(vr_render *r, struct ce_store *s)
+{
+    r->emoji.store = s;
+    r->emoji.cur = 0;
+    fb_sync(r);
+}
+
+int vr_can_colour(const vr_render *r)
+{
+    return ce_target_ok(&r->emoji.tg);
 }
 
 void vr_set_off(vr_render *r, int off)
@@ -1411,6 +1448,8 @@ static void fb_sync(vr_render *r)
     r->fb.outline_src = r->outline;
     r->fb.unifont = r->unifont ? unifont_src : 0;
     r->fb.unifont_src = r->unifont;
+    r->fb.colour = r->emoji.store ? ce_has : 0;
+    r->fb.colour_src = &r->emoji;
 }
 
 /* The marks left over a drawn cell (vt_compose_cell could not fold them
@@ -1450,6 +1489,23 @@ static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bp
     r->blank = 0;
 }
 
+/* A colour emoji over two cells (render/emoji; ce_has found it): blended
+ * over the cell's background -- st->bg is the effective one, inverse,
+ * selection and the bell's flash already in it -- then the lines. Hidden
+ * text (conceal, the blink's off phase: fg is bg) is the background
+ * alone. 0 when nothing could be drawn (the caller draws the box). */
+static int draw_colour(vr_render *r, WORD px, WORD py, const vr_style *st)
+{
+    if (st->fg == st->bg)
+        fill(r, px, py, (WORD)(px + 2 * r->cw - 1), (WORD)(py + r->ch - 1), st->bg);
+    else if (!ce_paint(&r->emoji, px, py, ink_rgb(r, st->bg)))
+        return 0;
+    if ((st->attr & LINE_ATTRS) || (st->deco & VT_DECO_IDEO_MASK))
+        decorate(r, 2, px, py, st);
+    r->blank = 0;
+    return 1;
+}
+
 /* ---- images (sixel) -------------------------------------------------------- */
 
 /* The pen for an image colour on a palette screen: one obtained for it
@@ -1481,7 +1537,7 @@ static UBYTE img_pen_for(vr_render *r, ULONG rgb)
 /* The image's colours for this screen, once per image (and background). */
 static void img_colours(vr_render *r, const vt_image_view *v)
 {
-    ULONG bgrgb = r->bg_ink & VR_INK_RGB ? r->bg_ink & 0xFFFFFFUL : vr_pen_rgb(r, (UBYTE)r->bg_ink);
+    ULONG bgrgb = ink_rgb(r, r->bg_ink);
     int i;
     if (r->img_serial == v->serial && r->img_bgrgb == bgrgb)
         return;
@@ -1684,7 +1740,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         n = 0;
         nd = 0;
         x = x0;
-        if (x > 0 && x < ncells && c[x].width == 0 && (r->outline || r->unifont))
+        if (x > 0 && x < ncells && c[x].width == 0 && (r->outline || r->unifont || r->emoji.store))
             x--; /* the right half of a wide glyph: a mask glyph spans both, draw it whole */
         xe = x1 < ncells ? x1 : ncells;
         if (tail_ok) {
@@ -1764,6 +1820,18 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                     if (cells == 2 && x + 1 < ncells && c[x + 1].width == 0)
                         x++; /* its right half is drawn */
                     continue;
+                }
+                if (g.kind == VT_GLYPH_COLOUR) {
+                    /* a colour emoji (U4), its base character only: the
+                     * marks of a sequence (skin tone, ZWJ parts) are not drawn */
+                    flush_run(r, run, n, run_x, py, &run_st);
+                    n = 0;
+                    if (draw_colour(r, (WORD)(r->ox + x * r->cw), py, &st)) {
+                        if (x + 1 < ncells && c[x + 1].width == 0)
+                            x++; /* its right half is drawn */
+                        continue;
+                    }
+                    g.kind = VT_GLYPH_MISSING; /* code 2: the box below */
                 }
                 if (ncp > 1 && r->outline) {
                     /* marks to draw over it: the cell now, alone */

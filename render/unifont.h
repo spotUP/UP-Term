@@ -36,10 +36,18 @@ typedef struct uf_slot {
     unsigned long used; /* the cache's clock at the last lookup: the smallest goes first */
 } uf_slot;
 
+/* 1 when p (len bytes) is a good page file for `page` (uf_page_check for
+ * Unifont's pages; render/emoji's ce_page_check for the colour ones). */
+typedef int (*uf_check_fn)(const vt_u8 *p, long len, int page);
+
+/* A cache of page files read through the owner's loader: Unifont's (U2) and
+ * the colour emoji's (E1) are each one, of their own check and size. */
 typedef struct uf_cache {
     uf_load_fn load;
     uf_release_fn release;
     void *user;
+    uf_check_fn check;
+    int nslots;      /* slots in use, at most UF_SLOTS: the cache's RAM cap */
     vt_u8 *mask;     /* the owner's buffer the glyphs are made in (chip RAM on the Amiga) */
     int mask_size;
     int cw, ch;      /* the window font's cell */
@@ -51,6 +59,12 @@ typedef struct uf_cache {
 
 /* An empty cache on the owner's loader and mask buffer; no file is read yet. */
 void uf_init(uf_cache *c, uf_load_fn load, uf_release_fn release, void *user, vt_u8 *mask, int mask_size);
+/* An empty cache of other pages (no mask): `check` says a file is good, at
+ * most `nslots` pages (1 to UF_SLOTS) are kept. */
+void uf_init_pages(uf_cache *c, uf_load_fn load, uf_release_fn release, void *user, uf_check_fn check, int nslots);
+/* Page `page`'s file (*len its bytes), read now when it is not kept, the
+ * least recently used given up for it; 0 when there is no good file. */
+const vt_u8 *uf_page(uf_cache *c, int page, long *len);
 /* Every page given back to the loader; the cache is empty and stays usable. */
 void uf_flush(uf_cache *c);
 /* The window font's cell: glyphs are made for it from now on. */
