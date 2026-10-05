@@ -112,7 +112,12 @@ CONFIGURATION (profiles)
    Themes: the kit installs 112 colour themes in ENVARC:up-term/themes.
    In UP-Term Prefs, Colors page, press Theme... and pick one: its colours
    go into the profile you are editing; Save (or Use) applies them to the
-   windows opened after.
+   windows opened after. In a window, Settings > Theme... puts one on
+   that window; /theme with no name lists them under the line: Up and
+   Down show each on the window, Enter keeps it, Escape puts the window's
+   own colours back. Every theme requester opens in the drawer of the
+   theme you chose last, else ENVARC:up-term/themes, else its copy in
+   ENV:, else a themes drawer beside the program.
 
    Themes from another terminal convert to a profile section with
    tools/theme_import.py in the source tree; it reads the Terminal.app,

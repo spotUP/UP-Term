@@ -311,6 +311,104 @@ static void menu_lists_names_and_redraws_prompt_and_line(void)
     vt_free(t);
 }
 
+/* W30: /theme with no name -- the themes under the finished line, one a
+ * row, chosen with the arrows and Return, Escape leaving the screen as it
+ * was. */
+static int menu_key(le_menu *m, long k, int mods, const char *b)
+{
+    return le_menu_key(m, k, mods, (const unsigned char *)b, b ? (int)strlen(b) : 0);
+}
+
+static void theme_menu_chosen_with_arrows_and_return(void)
+{
+    static const char names[] = "ayu-dark\0dracula\0nord\0solarized\0";
+    le_menu m;
+    vt_term *t = start(40, 8, "1.SYS:> ");
+    type("/theme");
+    CHECK(key(VT_KEY_RETURN, 0));
+    le_reset(&le);
+    memset(&m, 0, sizeof(m));
+    le_menu_open(&le, &m, names, 4, 2, 2);  /* the window has nord: on it, marked */
+    CHECK_STR(h_row(t, 0), "1.SYS:> /theme");
+    CHECK_STR(h_row(t, 1), "  ayu-dark");
+    CHECK_STR(h_row(t, 2), "  dracula");
+    CHECK_STR(h_row(t, 3), "* nord");
+    CHECK_STR(h_row(t, 4), "  solarized");
+    CHECK_STR(h_row(t, 5), "3 of 4: Up/Down choose, Enter applies,");
+    CHECK(h_cell(t, 2, 3)->attr & VT_ATTR_INVERSE);
+    CHECK(h_cell(t, 11, 3)->attr & VT_ATTR_INVERSE);  /* the bar: the widest name and one */
+    CHECK(!(h_cell(t, 2, 2)->attr & VT_ATTR_INVERSE));
+    /* the keys: state only */
+    CHECK_INT(menu_key(&m, VT_KEY_DOWN, 0, 0), LE_MENU_MOVED);
+    CHECK_INT(m.sel, 3);
+    CHECK_INT(menu_key(&m, VT_KEY_DOWN, 0, 0), LE_MENU_MOVED);
+    CHECK_INT(m.sel, 0);                              /* wraps to the top */
+    CHECK_INT(menu_key(&m, VT_KEY_UP, 0, 0), LE_MENU_MOVED);
+    CHECK_INT(m.sel, 3);                              /* and back to the bottom */
+    CHECK_INT(menu_key(&m, VT_KEY_HOME, 0, 0), LE_MENU_MOVED);
+    CHECK_INT(menu_key(&m, VT_KEY_HOME, 0, 0), LE_MENU_NONE);
+    CHECK_INT(menu_key(&m, 0, 0, "D"), LE_MENU_MOVED);
+    CHECK_INT(m.sel, 1);                              /* a letter: the next starting so */
+    CHECK_INT(menu_key(&m, VT_KEY_DOWN, VT_MOD_SHIFT, 0), LE_MENU_MOVED);
+    CHECK_INT(m.sel, 3);                              /* a page, stopping at the end */
+    CHECK_INT(menu_key(&m, VT_KEY_LEFT, 0, 0), LE_MENU_NONE);
+    le_menu_draw(&le, &m);
+    CHECK(h_cell(t, 2, 4)->attr & VT_ATTR_INVERSE);
+    CHECK(!(h_cell(t, 2, 3)->attr & VT_ATTR_INVERSE));
+    CHECK_STR(h_row(t, 3), "* nord");
+    CHECK_INT(menu_key(&m, VT_KEY_RETURN, 0, "\r"), LE_MENU_TAKE);
+    CHECK_INT(menu_key(&m, 0, 0, "\r"), LE_MENU_TAKE);
+    CHECK_INT(menu_key(&m, VT_KEY_ESCAPE, 0, "\033"), LE_MENU_CANCEL);
+    CHECK_INT(menu_key(&m, 0, 0, "\033"), LE_MENU_CANCEL);
+    CHECK_STR(le_menu_name(&m, m.sel), "solarized");
+    /* closed: the rows gone, the cursor where the reader's prompt goes */
+    le_menu_close(&le, &m);
+    CHECK(!m.open);
+    CHECK_STR(h_screen(t), "1.SYS:> /theme");
+    {
+        int x, y;
+        vt_cursor(t, &x, &y);
+        CHECK_INT(x, 0);
+        CHECK_INT(y, 1);
+    }
+    vt_free(t);
+}
+
+static void theme_menu_scrolls_a_long_list_at_the_bottom(void)
+{
+    char names[40 * 4];
+    int i, n = 0, x, y;
+    le_menu m;
+    vt_term *t = start(30, 6, "> ");
+    for (i = 0; i < 40; i++) {                        /* t00 .. t39 */
+        names[n++] = 't';
+        names[n++] = (char)('0' + i / 10);
+        names[n++] = (char)('0' + i % 10);
+        names[n++] = 0;
+    }
+    h_put(t, "\r\n\r\n\r\n\r\n> ");                    /* the prompt on the bottom row */
+    type("/theme");
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    memset(&m, 0, sizeof(m));
+    le_menu_open(&le, &m, names, 40, 0, -1);
+    CHECK_INT(m.rows, 4);                             /* 6 rows: the line and the help */
+    CHECK_STR(h_row(t, 0), "> /theme");               /* the screen moved up for it */
+    CHECK_STR(h_row(t, 1), "  t00");
+    CHECK_STR(h_row(t, 4), "  t03");
+    CHECK_STR(h_row(t, 5), "1 of 40: Up/Down choose, Ente");
+    CHECK_INT(menu_key(&m, VT_KEY_END, 0, 0), LE_MENU_MOVED);
+    le_menu_draw(&le, &m);
+    CHECK_STR(h_row(t, 1), "  t36");
+    CHECK_STR(h_row(t, 4), "  t39");
+    CHECK(h_cell(t, 2, 4)->attr & VT_ATTR_INVERSE);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 4);                                  /* on the chosen row */
+    le_menu_close(&le, &m);
+    CHECK_STR(h_screen(t), "> /theme");
+    vt_free(t);
+}
+
 /* H8.1: KingCON prints its list (FNCMODE L, Ctrl+D) in 19-character
  * columns, (width + 1) / 19 a row, and cuts a name over 18 (its suffix
  * counted) to 15 + "..." -- not sized to the widest name. */
@@ -550,4 +648,6 @@ void suite_lineedit(void)
     history_and_prefix_search();
     utf8_characters_move_as_one();
     history_and_undo_grow_and_free();
+    theme_menu_chosen_with_arrows_and_return();
+    theme_menu_scrolls_a_long_list_at_the_bottom();
 }

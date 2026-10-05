@@ -487,8 +487,99 @@ static void theme_cases(void)
     CHECK_INT(prefs_apply_theme(&f, &work, "", 0), 0);
 }
 
+/* W30 (owner 2026-10-04: "the theme selector doesn't open the theme dir"):
+ * every theme requester and /theme open the drawer prefs_theme_drawer
+ * names. The rig had no ENVARC:up-term/themes (the kit is not installed
+ * there), and the requesters named that drawer whatever was on disk. */
+static void theme_requester_opens_the_themes_drawer(void)
+{
+    memfs m;
+    prefs_fs fs;
+    char d[64];
+    /* the kit installed: its drawer, whatever else is there */
+    mf_init(&m, &fs);
+    mf_put(&m, "ENVARC:up-term/themes", "");
+    mf_put(&m, "ENV:up-term/themes", "");
+    mf_put(&m, "VTC:themes", "");
+    prefs_theme_drawer(&fs, "", "VTC:", d, sizeof(d));
+    CHECK_STR(d, "ENVARC:up-term/themes");
+    /* a theme already chosen: its drawer first */
+    mf_put(&m, "Work:mythemes", "");
+    prefs_theme_drawer(&fs, "Work:mythemes/night.conf", "VTC:", d, sizeof(d));
+    CHECK_STR(d, "Work:mythemes");
+    prefs_theme_drawer(&fs, "Gone:old/night.conf", "VTC:", d, sizeof(d));
+    CHECK_STR(d, "ENVARC:up-term/themes");      /* that drawer is gone: the kit's */
+    prefs_theme_drawer(&fs, "night.conf", 0, d, sizeof(d));
+    CHECK_STR(d, "ENVARC:up-term/themes");      /* a bare name names no drawer */
+    /* the kit's drawer missing (the rig): its ENV: copy, then the program's
+     * themes drawer, then the program's drawer -- never the requester's
+     * own choice while one of them is there */
+    mf_init(&m, &fs);
+    mf_put(&m, "ENV:up-term/themes", "");
+    mf_put(&m, "VTC:themes", "");
+    prefs_theme_drawer(&fs, 0, "VTC:", d, sizeof(d));
+    CHECK_STR(d, "ENV:up-term/themes");
+    mf_init(&m, &fs);
+    mf_put(&m, "VTC:themes", "");
+    mf_put(&m, "VTC:", "");
+    prefs_theme_drawer(&fs, 0, "VTC:", d, sizeof(d));
+    CHECK_STR(d, "VTC:themes");
+    mf_put(&m, "Work:UP-Term/themes", "");
+    prefs_theme_drawer(&fs, 0, "Work:UP-Term", d, sizeof(d));
+    CHECK_STR(d, "Work:UP-Term/themes");        /* a drawer, not a volume: a '/' */
+    mf_init(&m, &fs);
+    mf_put(&m, "VTC:", "");
+    prefs_theme_drawer(&fs, 0, "VTC:", d, sizeof(d));
+    CHECK_STR(d, "VTC:");
+    mf_init(&m, &fs);
+    prefs_theme_drawer(&fs, "Work:x/y.conf", "VTC:", d, sizeof(d));
+    CHECK_STR(d, "");                           /* nothing there at all */
+    /* /theme NAME: a name in the drawer, a path as it is, .conf added once */
+    prefs_theme_file("ENVARC:up-term/themes", "nord-default", d, sizeof(d));
+    CHECK_STR(d, "ENVARC:up-term/themes/nord-default.conf");
+    prefs_theme_file("VTC:themes", "Nord-Default.CONF", d, sizeof(d));
+    CHECK_STR(d, "VTC:themes/Nord-Default.CONF");
+    prefs_theme_file("ENVARC:up-term/themes", "Work:t/mine", d, sizeof(d));
+    CHECK_STR(d, "Work:t/mine.conf");
+    prefs_theme_file("", "mine", d, sizeof(d));
+    CHECK_STR(d, "mine.conf");
+}
+
+/* /theme's list: a drawer's names to the themes in it, sorted. */
+static void theme_list_from_a_drawer(void)
+{
+    char names[64];
+    int len = 0;
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), "nord-default.conf"), 1);
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), "ATTRIBUTION.md"), 0);
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), "ayu-dark.conf"), 1);
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), "Dracula.CONF"), 1);
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), "ayu-dark.yaml"), 0);
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), ".conf"), 0);
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), "AYU-DARK.conf"), 0); /* a repeat */
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), "ayu.conf"), 1);      /* a prefix sorts first */
+    CHECK_INT(len, 34);
+    CHECK_STR(names, "ayu");
+    CHECK_STR(names + 4, "ayu-dark");
+    CHECK_STR(names + 13, "Dracula");
+    CHECK_STR(names + 21, "nord-default");
+    CHECK_INT(prefs_theme_add(names, &len, sizeof(names), "solarized-light-and-more-than-fits.conf"), -1);
+    CHECK_INT(len, 34);
+    CHECK_STR(names + 21, "nord-default");
+    /* the window's theme marked in it: by path, by name, any case */
+    CHECK_INT(prefs_theme_index(names, 4, "ENVARC:up-term/themes/dracula.conf"), 2);
+    CHECK_INT(prefs_theme_index(names, 4, "VTC:AYU-DARK.CONF"), 1);
+    CHECK_INT(prefs_theme_index(names, 4, "ayu"), 0);
+    CHECK_INT(prefs_theme_index(names, 4, "Work:t/ayu-light.conf"), -1);
+    CHECK_INT(prefs_theme_index(names, 4, "Work:t/"), -1);
+    CHECK_INT(prefs_theme_index(names, 4, ""), -1);
+    CHECK_INT(prefs_theme_index(names, 4, 0), -1);
+}
+
 void suite_prefs(void)
 {
+    theme_requester_opens_the_themes_drawer();
+    theme_list_from_a_drawer();
     theme_cases();
     install_cases();
     install_restore_case();

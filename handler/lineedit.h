@@ -140,4 +140,34 @@ void le_kc_redo(le_line *le, const unsigned char *snap, int snap_pos, int start,
 int  le_kc_fncmode(const char *letters);
 void le_hist_add(le_line *le, const unsigned char *s, int n);
 
+/* A list to choose from with the keys, drawn under a finished line (W30:
+ * /theme with no name): one name a row, the chosen one as a reverse bar,
+ * the marked one (what the window has now) with a '*', a faint row under
+ * them ("k of n: " and the keys); past LE_MENU_ROWS names it scrolls. Keys: Up and
+ * Down (both ends wrap), Shift+Up/Down or Page Up/Down a page, Home/End,
+ * a letter the next name starting with it, Return or Enter takes it,
+ * Escape or Ctrl-G cancels. The menu is the caller's (the line editor is
+ * not in it): the caller routes keys to le_menu_key while m->open. */
+#define LE_MENU_ROWS 12
+typedef struct le_menu {
+    const char *names;  /* NUL-separated, n of them: the caller's, kept while open */
+    int n, sel, mark;   /* mark -1: none */
+    int top, rows;      /* the first name shown, the rows of names shown */
+    long at;            /* the first row, absolute (grid row + vt_lines_scrolled) */
+    int open;
+} le_menu;
+enum { LE_MENU_NONE, LE_MENU_MOVED, LE_MENU_TAKE, LE_MENU_CANCEL };
+/* Open at the cursor (a row's start: the line was ended), drawn; sel the
+ * name chosen first. Nothing opens for n 0. */
+void le_menu_open(le_line *le, le_menu *m, const char *names, int n, int sel, int mark);
+/* One key, as le_key takes it: what it did to m (no drawing: MOVED wants
+ * le_menu_draw). */
+int  le_menu_key(le_menu *m, long key, int mods, const unsigned char *b, int nb);
+void le_menu_draw(le_line *le, le_menu *m);
+/* Off the screen, the cursor where its first row was (the reader's next
+ * prompt goes there); m->open 0. */
+void le_menu_close(le_line *le, le_menu *m);
+/* name i */
+const char *le_menu_name(const le_menu *m, int i);
+
 #endif
