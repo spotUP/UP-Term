@@ -35,7 +35,211 @@ void def_free(cl_def *d)
     free(d->arg_names);
     free(d->initial);
     free(d->paths);
-    d->deny_tools = d->skills = d->when = d->arg_names = d->initial = d->paths = 0;
+    free(d->hooks);
+    d->deny_tools = d->skills = d->when = d->arg_names = d->initial = d->paths = d->hooks = 0;
+}
+
+/* ---- a YAML block (the frontmatter's hooks:) as JSON (A4 gaps 2) ----
+ * The subset a hooks block uses: mappings (key: value, key: and a nested
+ * block), sequences (- item, - key: value ...), scalars (plain, quoted,
+ * true / false / null, numbers) and flow values written as JSON. */
+
+#define YL_MAX 200
+
+typedef struct yline {
+    int ind;                    /* its indentation */
+    const char *s;              /* its text after the indentation */
+    long n;
+} yline;
+
+static void y_scalar(const char *s, long n, jw *out)
+{
+    jv v;
+    long k;
+    while (n && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\r'))
+        n--;
+    if (n && (s[0] == '{' || s[0] == '[') && json_parse(s, n, &v) == 0) {
+        jw_raw(out, s, n);          /* a flow value written as JSON */
+        return;
+    }
+    if (n >= 2 && s[0] == '"' && s[n - 1] == '"' && json_parse(s, n, &v) == 0) {
+        jw_raw(out, s, n);
+        return;
+    }
+    if (n >= 2 && s[0] == '\'' && s[n - 1] == '\'') {
+        jw t;
+        jw_init(&t);
+        for (k = 1; k < n - 1; k++) {
+            jw_raw(&t, s + k, 1);
+            if (s[k] == '\'' && s[k + 1] == '\'')
+                k++;
+        }
+        jw_str(out, t.p ? t.p : "", t.n);
+        jw_free(&t);
+        return;
+    }
+    /* a comment after a plain value */
+    for (k = 0; k < n; k++)
+        if (s[k] == '#' && k > 0 && (s[k - 1] == ' ' || s[k - 1] == '\t')) {
+            n = k;
+            while (n && (s[n - 1] == ' ' || s[n - 1] == '\t'))
+                n--;
+            break;
+        }
+    if ((n == 4 && !strncmp(s, "true", 4)) || (n == 5 && !strncmp(s, "false", 5)) || (n == 4 && !strncmp(s, "null", 4))) {
+        jw_raw(out, s, n);
+        return;
+    }
+    for (k = s[0] == '-' ? 1 : 0; k < n && s[k] >= '0' && s[k] <= '9'; k++)
+        ;
+    if (n && k == n && (s[0] != '-' || n > 1)) {
+        jw_raw(out, s, n);
+        return;
+    }
+    jw_str(out, s, n);
+}
+
+/* the "key: value" split: the key's length, the value after it (0 when the
+ * line is no mapping entry) */
+static long y_key(const char *s, long n, const char **val, long *vn)
+{
+    long i;
+    int q = 0;
+    for (i = 0; i < n; i++) {
+        if (s[i] == '"' || s[i] == '\'')
+            q = !q;
+        if (!q && s[i] == ':' && (i + 1 == n || s[i + 1] == ' ' || s[i + 1] == '\t')) {
+            const char *v = s + i + 1;
+            long l = n - i - 1;
+            while (l && (*v == ' ' || *v == '\t')) {
+                v++;
+                l--;
+            }
+            *val = v;
+            *vn = l;
+            return i;
+        }
+    }
+    return 0;
+}
+
+static void y_node(yline *L, int n, int *i, int ind, jw *out);
+
+/* a mapping whose entries are at indentation ind */
+static void y_map(yline *L, int n, int *i, int ind, jw *out)
+{
+    int first = 1;
+    jw_raw(out, "{", 1);
+    while (*i < n && L[*i].ind == ind && !(L[*i].s[0] == '-' && (L[*i].n == 1 || L[*i].s[1] == ' '))) {
+        const char *v;
+        long vn, kl = y_key(L[*i].s, L[*i].n, &v, &vn);
+        if (kl <= 0) {
+            (*i)++;
+            continue;
+        }
+        if (!first)
+            jw_raw(out, ",", 1);
+        first = 0;
+        {
+            const char *k = L[*i].s;
+            long kn = kl;
+            if (kn >= 2 && (k[0] == '"' || k[0] == '\'') && k[kn - 1] == k[0]) {
+                k++;
+                kn -= 2;
+            }
+            jw_str(out, k, kn);
+        }
+        jw_raw(out, ":", 1);
+        (*i)++;
+        if (vn)
+            y_scalar(v, vn, out);
+        else if (*i < n && (L[*i].ind > ind || (L[*i].ind == ind && L[*i].s[0] == '-')))
+            y_node(L, n, i, L[*i].ind, out);
+        else
+            jw_rawz(out, "null");
+    }
+    jw_raw(out, "}", 1);
+}
+
+/* a sequence whose dashes are at indentation ind */
+static void y_seq(yline *L, int n, int *i, int ind, jw *out)
+{
+    int first = 1;
+    jw_raw(out, "[", 1);
+    while (*i < n && L[*i].ind == ind && L[*i].s[0] == '-' && (L[*i].n == 1 || L[*i].s[1] == ' ')) {
+        const char *s = L[*i].s + 1, *v;
+        long sn = L[*i].n - 1, vn;
+        int off = 1;
+        if (!first)
+            jw_raw(out, ",", 1);
+        first = 0;
+        while (sn && (*s == ' ' || *s == '\t')) {
+            s++;
+            sn--;
+            off++;
+        }
+        if (!sn) {
+            (*i)++;
+            if (*i < n && L[*i].ind > ind)
+                y_node(L, n, i, L[*i].ind, out);
+            else
+                jw_rawz(out, "null");
+        } else if (y_key(s, sn, &v, &vn) > 0) {
+            /* "- key: value": a mapping whose first entry sits after the dash */
+            L[*i].ind = ind + off;
+            L[*i].s = s;
+            L[*i].n = sn;
+            y_map(L, n, i, ind + off, out);
+        } else {
+            y_scalar(s, sn, out);
+            (*i)++;
+        }
+    }
+    jw_raw(out, "]", 1);
+}
+
+static void y_node(yline *L, int n, int *i, int ind, jw *out)
+{
+    if (*i < n && L[*i].s[0] == '-' && (L[*i].n == 1 || L[*i].s[1] == ' '))
+        y_seq(L, n, i, ind, out);
+    else
+        y_map(L, n, i, ind, out);
+}
+
+/* the lines s[0..n) (a block) as one JSON value into out: 0, -1 */
+static int yaml_json(const char *s, long n, jw *out)
+{
+    yline *L = (yline *)malloc(sizeof(yline) * YL_MAX);
+    int k = 0, i = 0;
+    long p = 0;
+    if (!L)
+        return -1;
+    while (p < n && k < YL_MAX) {
+        long e = p, a = p;
+        int ind = 0;
+        while (e < n && s[e] != '\n')
+            e++;
+        while (a < e && (s[a] == ' ' || s[a] == '\t')) {
+            ind++;
+            a++;
+        }
+        while (e > a && (s[e - 1] == '\r' || s[e - 1] == ' '))
+            e--;
+        if (a < e && s[a] != '#') {
+            L[k].ind = ind;
+            L[k].s = s + a;
+            L[k].n = e - a;
+            k++;
+        }
+        p = e;
+        while (p < n && s[p] != '\n')
+            p++;
+        p++;
+    }
+    if (k)
+        y_node(L, k, &i, L[0].ind, out);
+    free(L);
+    return k && !out->oom ? 0 : -1;
 }
 
 void defs_free(cl_defs *s)
@@ -167,6 +371,42 @@ int defs_parse(const char *t, long n, cl_def *d)
                     jw_free(&lw);
                     return -1;
                 }
+                if (!strcmp(key, "hooks")) {
+                    /* A4 gaps 2: hooks as a nested YAML block (or a JSON flow value) */
+                    jw hj;
+                    jv hv;
+                    jw_init(&hj);
+                    if (*v) {
+                        if (json_parse(v, (long)strlen(v), &hv) == 0 && json_type(hv) == J_OBJ)
+                            jw_rawz(&hj, v);
+                    } else {
+                        long b = e + 1, be = b;
+                        while (be < n) {
+                            long le = be;
+                            while (le < n && t[le] != '\n')
+                                le++;
+                            if (le - be >= 3 && !strncmp(t + be, "---", 3))
+                                break;
+                            if (le > be && t[be] != ' ' && t[be] != '\t' && t[be] != '\r')
+                                break;      /* the next top-level key */
+                            be = le + 1;
+                        }
+                        if (be > n)
+                            be = n;
+                        if (be > b && yaml_json(t + b, be - b, &hj) == 0 &&
+                            (json_parse(hj.p, hj.n, &hv) || json_type(hv) != J_OBJ))
+                            jw_reset(&hj);
+                        e = be > b ? be - 1 : e;
+                    }
+                    if (hj.n && !hj.oom) {
+                        free(d->hooks);
+                        d->hooks = dupn(hj.p, hj.n);
+                    }
+                    jw_free(&hj);
+                    free(v);
+                    i = e + 1;
+                    continue;
+                }
                 if (!*v)
                     cl_copy(lkey, key, sizeof(lkey));
                 if (list_field(d, key) && v[0] == '[') {
@@ -215,6 +455,10 @@ int defs_parse(const char *t, long n, cl_def *d)
                         d->fork = !strcmp(v, "fork");
                     else if (!strcmp(key, "agent"))
                         cl_copy(d->agent, v, sizeof(d->agent));
+                    else if (!strcmp(key, "memory"))
+                        cl_copy(d->memory, v, sizeof(d->memory));
+                    else if (!strcmp(key, "color"))
+                        cl_copy(d->color, v, sizeof(d->color));
                     free(v);
                 }
             }
@@ -566,6 +810,14 @@ void def_extra_json(cl_def *d, jv a)
         long l;
         set(&d->initial, json_strdup(x, &l));
     }
+    if (json_get(a, "hooks", &x) && json_type(x) == J_OBJ) {
+        free(d->hooks);
+        d->hooks = dupn(x.p, x.n);
+    }
+    if (json_get(a, "memory", &x) && json_type(x) == J_STR)
+        json_str(x, d->memory, sizeof(d->memory));
+    if (json_get(a, "color", &x) && json_type(x) == J_STR)
+        json_str(x, d->color, sizeof(d->color));
 }
 
 int defs_add_agents_json(cl_defs *s, const char *json, char *err, long cap)
@@ -828,6 +1080,12 @@ int cmd_expand_vars(const cl_def *d, const char *args, const cl_cmd_vars *v, cl_
                 cl = (long)sizeof(cmd) - 1;
             memcpy(cmd, s + 2, (size_t)cl);
             cmd[cl] = 0;
+            if (v && v->no_shell && d->src != DEF_BUILTIN) {
+                /* disableSkillShellExecution (Claude Code): the command is not run */
+                jw_rawz(out, "[shell command execution disabled by policy]");
+                s = e + 1;
+                continue;
+            }
             if (!def_has_tool(d, "Bash") && !def_has_tool(d, "run_command")) {
                 cl_copy(err, "the command runs !`", cap);
                 cl_cat(err, cmd, cap);

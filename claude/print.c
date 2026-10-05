@@ -397,11 +397,13 @@ static void init_msg(pst *st)
 {
     cl_repl *r = st->r;
     jw *w = &st->line;
-    const char *tj = tools_json(&r->tools, r->model);
+    const char *tj;
     jv tools, t, x;
     jit it;
     int i, first = 1;
     const cl_def *d;
+    r->tools.todo_mode = repl_todo_mode(r);     /* the task tools this model has */
+    tj = tools_json(&r->tools, r->model);
     jw_reset(w);
     jw_rawz(w, "{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":");
     jw_strz(w, r->tools.root);

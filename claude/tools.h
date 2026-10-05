@@ -10,6 +10,18 @@
  * each call is shown and, by the permission rules, confirmed by the user;
  * each ends in one tool_result block (is_error on failure).
  *
+ * A4 gaps 2: WebSearch is Claude Code's client tool (query,
+ * allowed_domains, blocked_domains) whose search runs as the API's
+ * web_search server tool in a request of its own; TaskCreate / TaskGet /
+ * TaskList / TaskUpdate keep the task list (on the models Claude Code
+ * gives them to; TodoWrite with CLAUDE_CODE_ENABLE_TASKS=0); TaskStop
+ * stops a background task; Monitor watches a command's output lines;
+ * CronCreate / CronDelete / CronList schedule prompts for the session
+ * (the REPL fires them, sched.c). BashOutput and KillShell, the older
+ * names, still run but are no longer declared. A subagent may launch
+ * subagents of its own, CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH layers deep
+ * (3 by default).
+ *
  * Permissions (Claude Code's defaults): the read-only tools (Read, Glob,
  * Grep) run without a question inside the working directories -- the
  * start directory and the added ones (t->added); a write, an edit, a
@@ -33,10 +45,12 @@
 enum {
     T_READ, T_WRITE, T_EDIT, T_MULTIEDIT, T_GLOB, T_GREP, T_BASH, T_BASH_OUTPUT, T_KILL_SHELL,
     T_WEB_FETCH, T_TODO_WRITE, T_ASK_USER, T_EXIT_PLAN, T_ENTER_PLAN, T_TASK, T_SKILL, T_SLASH,
+    /* A4 gaps 2: Claude Code's WebSearch (the server tool run in a request of
+     * its own), the task list, TaskStop, Monitor, the session's cron jobs */
+    T_WEB_SEARCH, T_TASK_CREATE, T_TASK_GET, T_TASK_LIST, T_TASK_UPDATE, T_TASK_STOP, T_MONITOR,
+    T_CRON_CREATE, T_CRON_DELETE, T_CRON_LIST,
     T_COUNT
 };
-/* the API's server tool: shown, never run here */
-#define T_WEB_SEARCH T_COUNT
 
 /* The user's answer to a permission question. ASK_STOP: no, and the user
  * will tell Claude what to do instead -- this call and the rest of its
@@ -44,6 +58,17 @@ enum {
 enum { ASK_NO, ASK_ONCE, ASK_SESSION, ASK_STOP, ASK_PROJECT };
 /* ASK_PROJECT (A4 gaps): yes, and don't ask again in this project -- the
  * asker keeps a rule in .claude/settings.local.json and answers ASK_ONCE */
+
+/* Which task tools a session has (Claude Code's "task tool availability"):
+ * TaskCreate/Get/List/Update, TodoWrite instead (CLAUDE_CODE_ENABLE_TASKS=0),
+ * or none (the newer models, unless asked for) */
+enum { TODO_TASKS, TODO_WRITE, TODO_NONE };
+/* the default for a model: TODO_TASKS on Claude 3.x, Opus 4 to 4.7,
+ * Sonnet 4 to 4.6 and Haiku 4.5, TODO_NONE on the others */
+int tools_todo_default(const char *model);
+/* WebSearch's request: the web_search server tool's JSON for a model, with
+ * a domain list (raw JSON arrays, 0 none) */
+void tools_search_tool(jw *w, const char *model, const char *allowed, const char *blocked);
 
 /* The permission mode (Shift+Tab in the screen, ledger A3): the A2 rules;
  * accept edits -- Write, Edit and MultiEdit inside the start directory run
@@ -133,7 +158,7 @@ typedef struct cl_tools {
     void (*agent_start)(void *u, const char *agent, const char *id, jw *context);
     /* optional: a subagent is done (the SubagentStop hook): 1 when it is to
      * go on, with what to tell it in reason */
-    int (*agent_stop)(void *u, const char *agent, int active, jw *reason);
+    int (*agent_stop)(void *u, const char *agent, const char *id, int active, const char *last, long ln, jw *reason);
     /* optional: a subagent's message as it is added to its conversation
      * (stream-json's subagent messages): parent the Task call's id, user 1
      * for its prompt and its tool results, st the answer's stream (0 for
@@ -156,6 +181,29 @@ typedef struct cl_tools {
      * for Claude only (WebFetch: "Received 12.3KB (200 OK)", Claude Code's
      * line); "" none. Set by the tool, cleared at each call. */
     char brief[96];
+    /* A4 gaps 2 */
+    int max_depth;              /* subagent layers below the conversation
+                                 * (CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH), 0: 3 */
+    int no_background;          /* --bare, CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: no background tasks, a
+                                 * command stops at its time limit */
+    long bg_limit_ms;           /* an unattended run's background time limit (Claude Code: 30 min), 0 none */
+    long out_inline;            /* bashOutputMaxChars: a valid result's inline ceiling, 0: 30000 */
+    struct cl_tasks *tasks;     /* the task list and the cron jobs (subagents share them) */
+    int todo_mode;              /* TODO_*: the task tools declared (tools_todo_mode) */
+    int no_cron;                /* CLAUDE_CODE_DISABLE_CRON: no Cron tools */
+    long *searches;             /* WebSearch calls this session (subagents' too) */
+    long max_searches;          /* CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION, 0: 200 */
+    char advisor[64];           /* the advisor server tool's model ("" none, /advisor) */
+    int run_id;                 /* a subagent's run (its background tasks end with it), 0 the conversation */
+    const char *home;           /* the user's directory (ENVARC:Claude): an agent's user-scope memory */
+    int auto_memory;            /* auto memory is on (an agent's memory: field needs it) */
+    char mem_dir[300];          /* inside an agent with memory: its directory (Read/Write/Edit free there) */
+    /* optional: a subagent's frontmatter hooks registered while it runs
+     * (on 1 at its start, 0 at its end; run is its run_id) */
+    void (*agent_hooks)(void *u, const struct cl_agent *a, int run, int on);
+    /* optional: may Read run on full without a question (no rule against it)?
+     * Edit's relaxed check (an unread or changed file) needs it */
+    int (*can_read)(void *u, const char *full);
     int stop;                   /* ASK_STOP was answered this round (reset by the caller) */
     int cur;                    /* the tool being run (the result hook's) */
     const char *cur_in;

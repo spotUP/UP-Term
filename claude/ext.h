@@ -23,6 +23,11 @@ typedef struct cl_agent {
     const char *skills;         /* skills whose text it starts with */
     const char *perm_mode;      /* permissionMode: default, acceptEdits, plan, dontAsk, bypassPermissions */
     const char *initial;        /* initialPrompt: sent first when it runs the session (--agent) */
+    /* A4 gaps 2 */
+    const char *hooks;          /* its frontmatter's hooks as a JSON object (they run while it runs), 0 none */
+    const char *memory;         /* memory: user, project or local (its own MEMORY.md), 0 none */
+    const char *color;          /* color: red, blue, green, yellow, purple, orange, pink, cyan; 0 none */
+    int project;                /* defined in the project's .claude/agents (its hooks need workspace trust) */
 } cl_agent;
 
 typedef struct cl_skill {

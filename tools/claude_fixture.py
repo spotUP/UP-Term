@@ -12,8 +12,16 @@ stream (A2/A3, and the A4 WP2 tools):
   - the request's last message holds a tool_result: by the call it answers
     EnterPlanMode -> tool_exitplan.sse, a background Bash -> tool_bgout.sse
     (BashOutput bash_1), anything else -> tool_final.sse
-  - the last prompt mentions "search the web"         -> websearch.sse
-    (the web_search server tool's blocks, no client tool)
+  - the last prompt mentions "search the web"         -> tool_websearch.sse
+    (Claude Code's WebSearch client tool, allowed_domains example.org); the
+    search's own request ("performing a web search" in its system prompt)
+    -> websearch.sse (the web_search server tool's blocks)
+  - mentions "monitor"                                -> tool_monitor.sse (Monitor: three
+    ticks a second apart, each an event between turns)
+  - mentions "schedule"                               -> tool_cron.sse (CronCreate, once, the
+    next minute: the prompt fires between turns)
+  - mentions "slow"                                   -> tool_slow.sse (Bash List SYS: ALL with a
+    1 s timeout: moved to the background, its end reported later)
   - mentions "fetch"                                  -> tool_fetch.sse
     (WebFetch http://127.0.0.1:8080/page -- this server's own GET /page; on a
     real Amiga run with --bind <LAN address> and --page-host <that address>)
@@ -78,12 +86,15 @@ def pick(body, forced):
     content = last.get("content")
     blocks = content if isinstance(content, list) else [{"type": "text", "text": str(content)}]
     results = [b for b in blocks if b.get("type") == "tool_result"]
+    if "performing a web search" in system_text(body):
+        return "websearch"
     if "file search specialist" in system_text(body):
         return "agent_final" if results else "agent_tool"
     if results:
         return AFTER.get(results[-1].get("tool_use_id"), "tool_final")
     text = " ".join(b.get("text", "") for b in blocks if b.get("type") == "text").lower()
-    for word, name in (("search the web", "websearch"), ("fetch", "tool_fetch"), ("agent", "tool_task"),
+    for word, name in (("search the web", "tool_websearch"), ("monitor", "tool_monitor"), ("schedule", "tool_cron"),
+                       ("slow", "tool_slow"), ("fetch", "tool_fetch"), ("agent", "tool_task"),
                        ("question", "tool_ask"), ("plan", "tool_enterplan"), ("background", "tool_bg"),
                        ("grep", "tool_grep")):
         if word in text:

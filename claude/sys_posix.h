@@ -17,6 +17,8 @@ typedef struct sys_posix {
     sp_job jobs[SP_JOBS];
     char clip[4096];            /* what clip() was given (the tests read it) */
     long clipn;
+    long fake_now;              /* now() answers this when set (the cron tests) */
+    int brk;                    /* pause() reports a Ctrl+C once (the tests) */
 } sys_posix;
 
 void sys_posix_init(sys_posix *p, cl_sys *s);

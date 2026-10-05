@@ -7,6 +7,15 @@
 #include "util.h"
 
 #define HOOK_OUT 16384
+#define ASYNC_MAX 8
+
+/* an async hook in flight (A4 gaps 2) */
+typedef struct hk_async {
+    long job;
+    int event;
+    char file[300];             /* its input file (removed when it is collected) */
+    char cmd[120];
+} hk_async;
 
 void hookres_init(cl_hookres *r)
 {
@@ -17,6 +26,8 @@ void hookres_init(cl_hookres *r)
     jw_init(&r->updated);
     jw_init(&r->output);
     jw_init(&r->first);
+    jw_init(&r->watch);
+    jw_init(&r->display);
 }
 
 void hookres_free(cl_hookres *r)
@@ -27,6 +38,8 @@ void hookres_free(cl_hookres *r)
     jw_free(&r->updated);
     jw_free(&r->output);
     jw_free(&r->first);
+    jw_free(&r->watch);
+    jw_free(&r->display);
     hookres_init(r);
 }
 
@@ -86,13 +99,62 @@ int hooks_match(const char *m, const char *name)
     }
 }
 
+/* the i-th hook of both lists (the settings', then the frontmatter's); 0
+ * past the end. The settings' are skipped while they are held. */
+static cl_hook *hook_at(const cl_hooks *h, int i)
+{
+    int n = h->cfg && !h->held ? h->cfg->nhooks : 0;
+    if (i < n)
+        return &h->cfg->hooks[i];
+    i -= n;
+    return h->extra && i < h->extra->nhooks ? &h->extra->hooks[i] : 0;
+}
+
+/* a "once" hook already done? (Claude Code honours once in a skill's frontmatter only) */
+static unsigned long once_hash(const cl_hook *k)
+{
+    unsigned long hs = 5381;
+    const char *c;
+    for (c = k->cmd; *c; c++)
+        hs = hs * 33 + (unsigned char)*c;
+    return hs * 33 + (unsigned long)k->event + (unsigned long)k->owner * 7;
+}
+
+static int once_done(const cl_hooks *h, const cl_hook *k)
+{
+    int j;
+    unsigned long hs;
+    if (!k->once || k->owner <= 0)
+        return 0;
+    hs = once_hash(k);
+    for (j = 0; j < h->nonce; j++)
+        if (h->once_done[j] == hs)
+            return 1;
+    return 0;
+}
+
+static void once_mark(cl_hooks *h, const cl_hook *k)
+{
+    if (k->once && k->owner > 0 && h->nonce < 16 && !once_done(h, k))
+        h->once_done[h->nonce++] = once_hash(k);
+}
+
+int hooks_has(const cl_hooks *h, int event)
+{
+    int i;
+    cl_hook *k;
+    for (i = 0; (k = hook_at(h, i)) != 0; i++)
+        if (k->event == event && !once_done(h, k))
+            return 1;
+    return 0;
+}
+
 int hooks_any(const cl_hooks *h, int event, const char *name)
 {
     int i;
-    if (!h->cfg)
-        return 0;
-    for (i = 0; i < h->cfg->nhooks; i++)
-        if (h->cfg->hooks[i].event == event && hooks_match(h->cfg->hooks[i].matcher, name ? name : ""))
+    cl_hook *k;
+    for (i = 0; (k = hook_at(h, i)) != 0; i++)
+        if (k->event == event && hooks_match(k->matcher, name ? name : "") && !once_done(h, k))
             return 1;
     return 0;
 }
@@ -153,7 +215,8 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
         i++;
     if (i >= n || o[i] != '{' || json_parse(o + i, n - i, &v) || json_type(v) != J_OBJ)
         return 0;
-    if (json_get(v, "continue", &x) && json_type(x) == J_FALSE) {
+    if (json_get(v, "continue", &x) && json_type(x) == J_FALSE && event != HK_MESSAGE_DISPLAY &&
+        event != HK_FILE_CHANGED && event != HK_CWD_CHANGED) {
         r->stop = 1;
         if (json_get(v, "stopReason", &x) && json_type(x) == J_STR) {
             char m[300];
@@ -168,7 +231,7 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
             cur_hooks->term(cur_hooks->u, t, l);
         free(t);
     }
-    if (json_get(v, "systemMessage", &x) && json_type(x) == J_STR) {
+    if (json_get(v, "systemMessage", &x) && json_type(x) == J_STR && event != HK_MESSAGE_DISPLAY) {
         char m[600];
         json_str(x, m, sizeof(m));
         add_line(&r->shown, m, (long)strlen(m));    /* for the user */
@@ -191,7 +254,9 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
                 r->decision = RULE_DENY;
                 r->blocked = 1;
                 add_line(&r->reason, m, (long)strlen(m));
-            } else if (json_streq(x, "ask") && r->decision != RULE_DENY)
+            } else if (json_streq(x, "defer"))
+                r->defer = 1;       /* print mode: the run stops at this call (tool_deferred) */
+            else if (json_streq(x, "ask") && r->decision != RULE_DENY)
                 r->decision = RULE_ASK;
             else if (json_streq(x, "allow") && r->decision == RULE_NONE)
                 r->decision = RULE_ALLOW;
@@ -199,6 +264,22 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
         if (json_get(hs, "updatedToolOutput", &x) && event == HK_POST_TOOL) {
             jw_reset(&r->output);
             jw_raw(&r->output, x.p, x.n);
+        }
+        if (json_get(hs, "watchPaths", &x) && json_type(x) == J_ARR &&
+            (event == HK_SESSION_START || event == HK_CWD_CHANGED || event == HK_FILE_CHANGED)) {
+            jw_reset(&r->watch);
+            jw_raw(&r->watch, x.p, x.n);
+            r->has_watch = 1;
+        }
+        if (json_get(hs, "displayContent", &x) && json_type(x) == J_STR && event == HK_MESSAGE_DISPLAY) {
+            long l;
+            char *t = json_strdup(x, &l);
+            if (t) {
+                jw_reset(&r->display);
+                jw_raw(&r->display, t, l);
+                r->has_display = 1;
+            }
+            free(t);
         }
         if (event == HK_SESSION_START) {
             jv y;
@@ -231,8 +312,14 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
                 add_line(&r->reason, m, (long)strlen(m));
                 if (json_get(x, "interrupt", &b) && json_type(b) == J_TRUE)
                     r->stop = 1;
-            } else if (json_get(x, "behavior", &b) && json_streq(b, "allow") && r->behavior != RULE_DENY)
+            } else if (json_get(x, "behavior", &b) && json_streq(b, "allow") && r->behavior != RULE_DENY) {
                 r->behavior = RULE_ALLOW;
+                /* "allow" with updatedInput: the call runs with it (A4 gaps 2) */
+                if (json_get(x, "updatedInput", &b) && json_type(b) == J_OBJ) {
+                    jw_reset(&r->updated);
+                    jw_raw(&r->updated, b.p, b.n);
+                }
+            }
         }
         if (json_get(hs, "additionalContext", &x) && json_type(x) == J_STR) {
             long l;
@@ -276,60 +363,343 @@ static void project_cmd(cl_hooks *h, const char *cmd, char *out, long cap)
     out[k] = 0;
 }
 
-/* A prompt hook: its text with $ARGUMENTS (else appended) the event's
- * JSON, asked of a model; {"ok": false, "reason": ...} blocks (Stop: sends
- * Claude on), unless "impossible" says the condition can never be met. */
-static void prompt_hook(cl_hooks *h, const cl_hook *k, int event, const char *file, cl_hookres *r)
+/* $ARGUMENTS in a prompt or agent hook's text: the event's JSON (else
+ * appended); \$ a dollar sign */
+static void with_args(const char *text, const char *in, long n, jw *q)
 {
-    char *in = 0;
-    long n = 0, i;
-    jw q, a;
-    jv v, x;
-    if (!h->ask_model || h->sys->read(h->sys->u, file, 256L * 1024, &in, &n))
-        return;
-    jw_init(&q);
-    jw_init(&a);
-    for (i = 0; k->cmd[i];) {
-        if (!strncmp(k->cmd + i, "$ARGUMENTS", 10)) {
-            jw_raw(&q, in, n);
+    long i;
+    for (i = 0; text[i];) {
+        if (text[i] == '\\' && text[i + 1] == '$') {
+            jw_raw(q, "$", 1);
+            i += 2;
+        } else if (!strncmp(text + i, "$ARGUMENTS", 10)) {
+            jw_raw(q, in, n);
             i += 10;
         } else
-            jw_raw(&q, k->cmd + i++, 1);
+            jw_raw(q, text + i++, 1);
     }
-    if (!strstr(k->cmd, "$ARGUMENTS")) {
-        jw_rawz(&q, "\n\n");
-        jw_raw(&q, in, n);
+    if (!strstr(text, "$ARGUMENTS")) {
+        jw_rawz(q, "\n\n");
+        jw_raw(q, in, n);
     }
+}
+
+/* the {"ok": ...} answer of a prompt or an agent hook: 1 run (ok or not),
+ * 0 no usable answer */
+static int ok_answer(const char *a, long an, int event, int impossible_ok, cl_hookres *r)
+{
+    long s = 0, e = an;
+    jv v, x;
+    while (s < e && a[s] != '{')
+        s++;
+    while (e > s && a[e - 1] != '}')
+        e--;
+    if (e <= s || json_parse(a + s, e - s, &v) || !json_get(v, "ok", &x))
+        return 0;
+    if (json_type(x) == J_FALSE) {
+        jv im;
+        if (!(impossible_ok && json_get(v, "impossible", &im) && json_type(im) == J_TRUE) && can_block(event)) {
+            char m[600];
+            m[0] = 0;
+            if (json_get(v, "reason", &x))
+                json_str(x, m, sizeof(m));
+            r->blocked = 1;
+            add_line(&r->reason, m[0] ? m : "a hook said no", m[0] ? (long)strlen(m) : 15);
+        }
+    }
+    return 1;
+}
+
+/* A prompt hook: its text with $ARGUMENTS (else appended) the event's
+ * JSON, asked of a model; {"ok": false, "reason": ...} blocks (Stop: sends
+ * Claude on), unless "impossible" says the condition can never be met.
+ * An agent hook: the same question to a subagent that can Read, Grep and
+ * Glob (Claude Code's 50 turns); no "impossible". */
+static int model_hook(cl_hooks *h, const cl_hook *k, int event, const char *file, cl_hookres *r)
+{
+    char *in = 0;
+    long n = 0;
+    int agent = k->kind == HOOK_AGENT, rc, ok = 0;
+    jw q, a;
+    if ((agent ? !h->ask_agent : !h->ask_model) || h->sys->read(h->sys->u, file, 256L * 1024, &in, &n))
+        return 0;
+    jw_init(&q);
+    jw_init(&a);
+    with_args(k->cmd, in, n, &q);
     jw_rawz(&q, "\n\nRespond with JSON only: {\"ok\": true} or {\"ok\": false, \"reason\": \"...\"}.");
     free(in);
     h->n_run++;
     r->ran++;
-    if (!q.oom && h->ask_model(h->u, k->model, q.p, &a) == 0) {
-        long s = 0, e = a.n;
-        while (s < e && a.p[s] != '{')
-            s++;
-        while (e > s && a.p[e - 1] != '}')
-            e--;
-        if (e > s && json_parse(a.p + s, e - s, &v) == 0 && json_get(v, "ok", &x) && json_type(x) == J_FALSE) {
-            jv im;
-            if (!(json_get(v, "impossible", &im) && json_type(im) == J_TRUE) && can_block(event)) {
-                char m[600];
-                m[0] = 0;
-                if (json_get(v, "reason", &x))
-                    json_str(x, m, sizeof(m));
-                r->blocked = 1;
-                add_line(&r->reason, m[0] ? m : "a prompt hook said no", m[0] ? (long)strlen(m) : 20);
-            }
-        }
+    rc = q.oom ? -1 : agent ? h->ask_agent(h->u, k->model, q.p, &a) : h->ask_model(h->u, k->model, q.p, &a);
+    if (rc == 0 && ok_answer(a.p ? a.p : "", a.n, event, !agent, r)) {
+        ok = !r->blocked;
         if (h->seen)
             h->seen(h->u, event, k->cmd, 1, 0, a.p ? a.p : "", a.n);
     } else {
-        add_line(&r->shown, "A prompt hook could not ask its model.", 38);
+        add_line(&r->shown, agent ? "An agent hook could not reach a decision." : "A prompt hook could not ask its model.",
+                 agent ? 41 : 38);
         if (h->seen)
             h->seen(h->u, event, k->cmd, 1, -1, "", 0);
     }
     jw_free(&q);
     jw_free(&a);
+    return ok;
+}
+
+/* an http hook's headers: the object's values with $VAR / ${VAR} put in for
+ * the variables allowedEnvVars names (the others empty), as header lines */
+static void http_headers(cl_hooks *h, const cl_hook *k, jw *out)
+{
+    jv o, key, val;
+    jit it;
+    if (!k->headers || json_parse(k->headers, (long)strlen(k->headers), &o) || json_type(o) != J_OBJ)
+        return;
+    json_iter(o, &it);
+    while (json_next(&it, &key, &val)) {
+        char name[64], v[512];
+        long i;
+        if (json_type(val) != J_STR)
+            continue;
+        json_str(key, name, sizeof(name));
+        json_str(val, v, sizeof(v));
+        if (strpbrk(name, "\r\n:") || strpbrk(v, "\r\n"))
+            continue;               /* no header injection */
+        jw_rawz(out, name);
+        jw_rawz(out, ": ");
+        for (i = 0; v[i];) {
+            if (v[i] == '$' && (v[i + 1] == '{' || (v[i + 1] >= 'A' && v[i + 1] <= 'Z') || v[i + 1] == '_')) {
+                char var[64], got[256];
+                long s = i + 1, e, l;
+                int brace = v[s] == '{';
+                if (brace)
+                    s++;
+                for (e = s; v[e] && ((v[e] >= 'A' && v[e] <= 'Z') || (v[e] >= 'a' && v[e] <= 'z') ||
+                                     (v[e] >= '0' && v[e] <= '9') || v[e] == '_');
+                     e++)
+                    ;
+                l = e - s;
+                if (l <= 0 || l >= (long)sizeof(var) || (brace && v[e] != '}')) {
+                    jw_raw(out, v + i++, 1);
+                    continue;
+                }
+                memcpy(var, v + s, (size_t)l);
+                var[l] = 0;
+                got[0] = 0;
+                if (k->env_ok) {
+                    /* only a variable named in allowedEnvVars is read */
+                    const char *p = k->env_ok;
+                    while (*p) {
+                        long wl = (long)strcspn(p, ",");
+                        if (wl == l && !strncmp(p, var, (size_t)l)) {
+                            if (!h->sys->getenv || h->sys->getenv(h->sys->u, var, got, sizeof(got)) < 0)
+                                got[0] = 0;
+                            break;
+                        }
+                        p += wl;
+                        if (*p)
+                            p++;
+                    }
+                }
+                if (!strpbrk(got, "\r\n"))
+                    jw_rawz(out, got);
+                i = brace ? e + 1 : e;
+            } else
+                jw_raw(out, v + i++, 1);
+        }
+        jw_rawz(out, "\r\n");
+    }
+}
+
+/* An http hook: the event's JSON POSTed to its URL. 2xx and an empty body
+ * is success, 2xx and a JSON object is read as a command hook's answer;
+ * anything else is a non-blocking error (shown), never a block. 1 when it
+ * succeeded. */
+static int http_hook(cl_hooks *h, const cl_hook *k, int event, const char *body, long bn, cl_hookres *r)
+{
+    jw hd, resp;
+    char err[200];
+    int status = 0, rc, ok = 0;
+    if (!h->post) {
+        add_line(&r->shown, "An http hook could not run: there is no network here.", 54);
+        return 0;
+    }
+    jw_init(&hd);
+    jw_init(&resp);
+    http_headers(h, k, &hd);
+    h->n_run++;
+    r->ran++;
+    rc = h->post(h->u, k->cmd, hd.p ? hd.p : "", body, bn, k->timeout_s, &status, &resp, err, sizeof(err));
+    if (h->seen)
+        h->seen(h->u, event, k->cmd, 1, rc ? -1 : status, resp.p ? resp.p : "", resp.n);
+    if (rc) {
+        char m[400];
+        cl_copy(m, "The http hook ", sizeof(m));
+        cl_cat(m, k->cmd, sizeof(m));
+        cl_cat(m, " failed: ", sizeof(m));
+        cl_cat(m, err, sizeof(m));
+        add_line(&r->shown, m, (long)strlen(m));
+    } else if (status < 200 || status > 299) {
+        char m[400], num[16];
+        cl_copy(m, "The http hook ", sizeof(m));
+        cl_cat(m, k->cmd, sizeof(m));
+        cl_cat(m, " answered HTTP ", sizeof(m));
+        cl_ltoa(status, num);
+        cl_cat(m, num, sizeof(m));
+        add_line(&r->shown, m, (long)strlen(m));
+    } else {
+        long i = 0;
+        while (i < resp.n && (resp.p[i] == ' ' || resp.p[i] == '\n' || resp.p[i] == '\r' || resp.p[i] == '\t'))
+            i++;
+        if (i >= resp.n || json_answer(event, resp.p, resp.n, r))
+            ok = 1;
+        else {
+            char m[300];
+            cl_copy(m, "The http hook ", sizeof(m));
+            cl_cat(m, k->cmd, sizeof(m));
+            cl_cat(m, " answered with something that is not a JSON object; ignored", sizeof(m));
+            add_line(&r->shown, m, (long)strlen(m));
+        }
+    }
+    jw_free(&hd);
+    jw_free(&resp);
+    return ok;
+}
+
+/* An async hook: started in the background on a copy of the event file;
+ * its answer is collected later (hooks_async_poll). 1 started. */
+static int async_hook(cl_hooks *h, const cl_hook *k, int event, const char *file, const char *line_fmt)
+{
+    hk_async *a;
+    char copy[300], num[16], line[1200];
+    char *b = 0;
+    long n = 0, job;
+    if (!h->sys->bg_start || h->nasync >= ASYNC_MAX)
+        return 0;
+    if (!h->async) {
+        h->async = (hk_async *)calloc(ASYNC_MAX, sizeof(hk_async));
+        if (!h->async)
+            return 0;
+    }
+    /* the input file of its own (the shared one is removed when the event's hooks are done) */
+    cl_copy(copy, file, sizeof(copy) - 16);
+    cl_cat(copy, "-a", sizeof(copy));
+    cl_ltoa(h->n_async + 1, num);
+    cl_cat(copy, num, sizeof(copy));
+    if (h->sys->read(h->sys->u, file, 256L * 1024, &b, &n) || h->sys->write(h->sys->u, copy, b, n)) {
+        free(b);
+        return 0;
+    }
+    free(b);
+    cl_copy(line, line_fmt, sizeof(line) - 320);
+    cl_cat(line, " < ", sizeof(line));
+    cl_cat(line, copy, sizeof(line));
+    if (h->sys->bg_start(h->sys->u, line, &job)) {
+        if (h->sys->remove)
+            h->sys->remove(h->sys->u, copy);
+        return 0;
+    }
+    a = &h->async[h->nasync++];
+    a->job = job;
+    a->event = event;
+    cl_copy(a->file, copy, sizeof(a->file));
+    cl_copy(a->cmd, k->cmd, sizeof(a->cmd));
+    h->n_async++;
+    return 1;
+}
+
+int hooks_async_poll(cl_hooks *h, jw *w)
+{
+    int i, got = 0;
+    if (!h->async || !h->sys->bg_read)
+        return 0;
+    for (i = 0; i < h->nasync;) {
+        hk_async *a = &h->async[i];
+        char *o = (char *)malloc(HOOK_OUT);
+        long n = 0, rc = 0;
+        int running = 1;
+        if (!o)
+            return got;
+        if (h->sys->bg_read(h->sys->u, a->job, 0, o, HOOK_OUT - 1, &n, &running, &rc) || running) {
+            free(o);
+            i++;
+            continue;
+        }
+        o[n] = 0;
+        {
+            /* Claude Code: additionalContext and systemMessage reach Claude on the next turn */
+            cl_hookres r;
+            hookres_init(&r);
+            json_answer(a->event, o, n, &r);
+            if (r.shown.n || r.context.n || (rc == 2 && n)) {
+                if (w->n)
+                    jw_raw(w, "\n", 1);
+                jw_rawz(w, "Async hook (");
+                jw_rawz(w, cfg_hook_events[a->event]);
+                jw_rawz(w, ") \"");
+                jw_rawz(w, a->cmd);
+                jw_rawz(w, rc == 2 ? "\" exited with 2: " : "\" finished: ");
+                if (r.shown.n)
+                    jw_raw(w, r.shown.p, r.shown.n);
+                if (r.context.n) {
+                    if (r.shown.n)
+                        jw_raw(w, "\n", 1);
+                    jw_raw(w, r.context.p, r.context.n);
+                }
+                if (!r.shown.n && !r.context.n)
+                    jw_raw(w, o, n > 2000 ? 2000 : n);
+                got++;
+            }
+            hookres_free(&r);
+        }
+        free(o);
+        if (h->sys->bg_drop)
+            h->sys->bg_drop(h->sys->u, a->job);
+        if (h->sys->remove)
+            h->sys->remove(h->sys->u, a->file);
+        h->async[i] = h->async[--h->nasync];
+    }
+    return got;
+}
+
+void hooks_async_stop(cl_hooks *h)
+{
+    int i;
+    for (i = 0; h->async && i < h->nasync; i++) {
+        if (h->sys->bg_kill)
+            h->sys->bg_kill(h->sys->u, h->async[i].job);
+        if (h->sys->bg_drop)
+            h->sys->bg_drop(h->sys->u, h->async[i].job);
+        if (h->sys->remove)
+            h->sys->remove(h->sys->u, h->async[i].file);
+    }
+    free(h->async);
+    h->async = 0;
+    h->nasync = 0;
+}
+
+int hooks_watch_names(const cl_hooks *h, void (*fn)(void *c, const char *name), void *c)
+{
+    int i, n = 0;
+    cl_hook *k;
+    for (i = 0; (k = hook_at(h, i)) != 0; i++) {
+        const char *p = k->matcher;
+        if (k->event != HK_FILE_CHANGED)
+            continue;
+        while (*p) {
+            char name[200];
+            long l = (long)strcspn(p, "|");
+            if (l > 0 && l < (long)sizeof(name)) {
+                memcpy(name, p, (size_t)l);
+                name[l] = 0;
+                fn(c, name);
+                n++;
+            }
+            p += l;
+            if (*p)
+                p++;
+        }
+    }
+    return n;
 }
 
 int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_hookres *r)
@@ -338,6 +708,7 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
     char *o = 0;
     jw ev;
     int i;
+    cl_hook *k;
     if (!hooks_any(h, event, name))
         return 0;
     if (path_join(h->tmp ? h->tmp : "T:", "Claude-hook.json", file, sizeof(file)))
@@ -361,47 +732,52 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
         free(o);
         return 0;
     }
-    jw_free(&ev);
-    for (i = 0; i < h->cfg->nhooks; i++) {
-        const cl_hook *k = &h->cfg->hooks[i];
+    for (i = 0; (k = hook_at(h, i)) != 0; i++) {
         long on = 0, rc = 0;
-        int st;
-        if (k->event != event || !hooks_match(k->matcher, name ? name : ""))
+        int st, ok = 0;
+        if (k->event != event || !hooks_match(k->matcher, name ? name : "") || once_done(h, k))
             continue;
         if (k->cond && *k->cond) {
             /* "if": a permission rule the tool call must match */
             jv in;
             if (!h->tool || !h->input || json_parse(h->input, h->input_n, &in) ||
-                !cfg_rule_match(k->cond, h->tool, in, h->cwd ? h->cwd : ""))
+                !cfg_rule_match_any(k->cond, h->tool, in, h->cwd ? h->cwd : ""))
                 continue;
-        }
-        if (k->once) {
-            /* "once": the first run of the session only */
-            unsigned long hs = 5381;
-            const char *c;
-            int j, done = 0;
-            for (c = k->cmd; *c; c++)
-                hs = hs * 33 + (unsigned char)*c;
-            hs = hs * 33 + (unsigned long)event;
-            for (j = 0; j < h->nonce; j++)
-                done |= h->once_done[j] == hs;
-            if (done)
-                continue;
-            if (h->nonce < 16)
-                h->once_done[h->nonce++] = hs;
         }
         if (k->status && h->status)
             h->status(h->u, k->status);
         if (h->seen)
             h->seen(h->u, event, k->cmd, 0, -1, "", 0);
-        if (k->kind == HOOK_PROMPT) {
-            /* a prompt hook: the model says {"ok": ...}; ok false is a block */
-            prompt_hook(h, k, event, file, r);
+        if (k->kind == HOOK_PROMPT || k->kind == HOOK_AGENT) {
+            /* the model (or a subagent) says {"ok": ...}; ok false is a block */
+            ok = model_hook(h, k, event, file, r);
             if (k->status && h->status)
                 h->status(h->u, 0);
+            if (ok)
+                once_mark(h, k);
+            continue;
+        }
+        if (k->kind == HOOK_HTTP) {
+            ok = http_hook(h, k, event, ev.p, ev.n - 1, r);
+            if (k->status && h->status)
+                h->status(h->u, 0);
+            if (ok)
+                once_mark(h, k);
             continue;
         }
         project_cmd(h, k->cmd, line, sizeof(line) - 320);
+        if (k->async) {
+            /* async: true -- started, not waited for; its answer comes on a later turn */
+            if (k->status && h->status)
+                h->status(h->u, 0);
+            if (async_hook(h, k, event, file, line)) {
+                h->n_run++;
+                r->ran++;
+                once_mark(h, k);
+            } else
+                add_line(&r->shown, "An async hook could not be started in the background.", 53);
+            continue;
+        }
         cl_cat(line, " < ", sizeof(line));
         cl_cat(line, file, sizeof(line));
         st = h->sys->run(h->sys->u, line, k->timeout_s, o, HOOK_OUT - 1, &on, &rc);
@@ -426,6 +802,7 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
         if (rc == 0) {
             if (!json_answer(event, o, on, r) && (event == HK_PROMPT || event == HK_SESSION_START))
                 add_line(&r->context, o, on);
+            once_mark(h, k);        /* Claude Code: a once hook goes after its first successful run */
         } else if (rc == 2 && can_block(event)) {
             /* Claude Code reads JSON on every exit code; exit 2 blocks whatever it says */
             long had = r->reason.n;
@@ -434,7 +811,7 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
                 add_line(&r->reason, o, on);
         } else if (json_answer(event, o, on, r)) {
             ;                       /* a JSON answer: its fields say what happens */
-        } else {
+        } else if (event != HK_MESSAGE_DISPLAY) {
             char m[400];
             cl_copy(m, cfg_hook_events[event], sizeof(m));
             cl_cat(m, " hook \"", sizeof(m));
@@ -453,6 +830,7 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
             }
         }
     }
+    jw_free(&ev);
     free(o);
     if (h->sys->remove)
         h->sys->remove(h->sys->u, file);

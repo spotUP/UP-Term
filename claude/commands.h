@@ -52,11 +52,16 @@ typedef struct cl_def {
     char *initial;              /* an agent's initialPrompt (as the main thread), "" none */
     char *paths;                /* a skill's paths: globs that make it available, "" always */
     int active;                 /* a skill with paths: a matching file was worked on */
+    /* A4 gaps 2 */
+    char *hooks;                /* hooks: in the frontmatter (YAML), as a JSON object; 0 none */
+    char memory[16];            /* an agent's memory: user, project, local; "" none */
+    char color[16];             /* an agent's color */
 } cl_def;
 
 /* the ${CLAUDE_*} values of an expansion (any may be 0: "") */
 typedef struct cl_cmd_vars {
     const char *session_id, *effort, *skill_dir, *project_dir;
+    int no_shell;               /* disableSkillShellExecution: !`cmd` not run (a placeholder instead) */
 } cl_cmd_vars;
 
 typedef struct cl_defs {

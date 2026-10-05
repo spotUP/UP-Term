@@ -116,6 +116,56 @@ void pol_status_event(cl_repl *r);
  * permission mode or vim change, statusLine.refreshInterval. */
 void pol_status_tick(void *u);
 
+/* repl.c (A4 gaps 2): the task tools this session declares (TODO_*) */
+int repl_todo_mode(cl_repl *r);
+
+/* sched.c (A4 gaps 2): background news, cron jobs */
+/* the news since the last look (tasks, async hooks, watched files) as
+ * lines appended to w: their count */
+int sched_collect(cl_repl *r, jw *w);
+/* during a turn: the news framed as a task notification appended to extra */
+int sched_news(cl_repl *r, jw *extra);
+/* between turns: 1 with a turn to run -- the news framed, or a due cron
+ * job's prompt -- in prompt, what the user sees of it in shown */
+int sched_wake(cl_repl *r, jw *prompt, jw *shown);
+/* tui.h wake */
+char *sched_tui_wake(void *u);
+/* the line mode, before it waits for a line: the due turns run; their count */
+int sched_line_mode(cl_repl *r);
+/* the cron jobs kept (the session's, the durable ones) when they changed */
+void sched_save(cl_repl *r);
+/* ... and read back: the durable ones, and with resumed the session's */
+void sched_load(cl_repl *r, int resumed);
+
+/* policy.c (A4 gaps 2): a skill's frontmatter hooks from its first use on;
+ * the frontmatter hooks freed */
+void pol_skill_hooks(cl_repl *r, const cl_def *d);
+/* cl_tools.can_read */
+int pol_can_read(void *u, const char *full);
+void pol_hooks_free(cl_repl *r);
+/* a skill was run (typed or by the Skill tool): its use counted for
+ * /skill-doctor, its frontmatter hooks registered */
+void pol_skill_used(cl_repl *r, const cl_def *d);
+/* how often a skill was run, all sessions together */
+long pol_skill_count(cl_repl *r, const char *name);
+
+/* watch.c (A4 gaps 2): async hooks, FileChanged */
+void watch_free(cl_repl *r);
+/* watchPaths (a JSON array of absolute paths): the dynamic watch list replaced */
+void watch_set(cl_repl *r, const char *json, long n);
+/* the session started: the watched files' times remembered */
+void watch_start(cl_repl *r);
+/* CLAUDE_ENV_FILE for the hooks about to run (SessionStart, CwdChanged,
+ * FileChanged), and what they wrote into it set for the session after */
+void pol_env_prepare(cl_repl *r);
+void pol_env_apply(cl_repl *r);
+/* async hooks that finished: their additionalContext / systemMessage for
+ * Claude appended to w; their count */
+int pol_async_collect(cl_repl *r, jw *w);
+/* watched files that changed: their FileChanged hooks run (news for Claude
+ * appended to w); their count */
+int pol_files_changed(cl_repl *r, jw *w);
+
 /* slash.c: the command table and the A4 commands */
 extern const struct cl_cmd slash_builtin[];
 extern const int slash_nbuiltin;

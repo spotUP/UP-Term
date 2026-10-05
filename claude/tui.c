@@ -1744,6 +1744,7 @@ long tui_read(cl_tui *t, char *buf, long cap)
         int r, h;
         if (t->idle)
             t->idle(t->iu);         /* the status line's schedule */
+        if (t->wake && !t->ed.n && (q = t->wake(t->iu)) != 0) { cl_copy(buf, q, cap); free(q); tui_frame(t); return (long)strlen(buf); }   /* A4 gaps 2: a scheduled turn */
         tui_frame(t);
         r = next_key(t, &k, 500);
         if (r < 0)

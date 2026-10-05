@@ -1692,6 +1692,11 @@ int slash_custom(cl_repl *r, const char *w, const char *arg)
     }
     if (!d)
         return 0;
+    if (d->type == DEF_SKILL && !strcmp(cfg_skill_state(&r->cfg, d->name), "off")) {
+        /* Claude Code: a skill skillOverrides turns off cannot be run by its name either */
+        line2(r, "This skill is turned off by skillOverrides in the settings: ", d->name);
+        return 1;
+    }
     jw_init(&p);
     if (pol_expand(r, d, arg, &p, err, sizeof(err))) {
         line2(r, d->type == DEF_SKILL ? "The skill could not be expanded: " : "The command could not be expanded: ",
@@ -1703,9 +1708,10 @@ int slash_custom(cl_repl *r, const char *w, const char *arg)
         jw_free(&p);
         return 1;                   /* a UserPromptExpansion hook said no */
     }
-    if (d->type == DEF_SKILL)
+    if (d->type == DEF_SKILL) {
         r->n_skills_run++;
-    else
+        pol_skill_used(r, d);       /* /skill-doctor's counts; its frontmatter hooks from now on */
+    } else
         r->n_cmds_run++;
     if (pol_prompt(r, p.p ? p.p : "", p.n) == 0) {
         char keep_effort[16];

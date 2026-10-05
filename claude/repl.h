@@ -187,6 +187,17 @@ typedef struct cl_repl {
     int no_dynamic;             /* --exclude-dynamic-system-prompt-sections: auto memory's place in the
                                  * first prompt, not the system prompt */
     long n_copies;              /* the tests' sentinel: /copy runs that reached the clipboard */
+    /* A4 gaps 2 (thoughts/shared/plans/2026-10-05-a4-gaps2-progress.md) */
+    int in_turn;                /* a turn runs (the idle tick does not start one) */
+    int woke;                   /* the line came from sched_wake, not the keyboard */
+    long n_cron_fired;          /* the tests' sentinel: cron jobs fired */
+    int todo_optin;             /* --allowedTools / --tools named a task tool */
+    struct cl_watch *watch;     /* FileChanged's watched files (watch.c) */
+    int untrusted;              /* the workspace trust question not (yet) answered yes: held back --
+                                 * interactive: every settings file's hooks; both: the project's allow
+                                 * rules and additionalDirectories */
+    int trusted_dir;            /* the start directory is trusted (remembered, or answered now) */
+    long n_file_changed;        /* the tests' sentinel: FileChanged events */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
     char buf[4096];

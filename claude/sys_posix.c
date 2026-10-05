@@ -368,6 +368,65 @@ static const char *x_err(void *u)
     return ((sys_posix *)u)->err;
 }
 
+/* ---- A4 gaps 2 ---- */
+
+/* the local time in seconds since 1978-01-01 (2922 days after 1970); a
+ * test may set fake_now */
+static long x_now(void *u)
+{
+    sys_posix *p = (sys_posix *)u;
+    time_t t;
+    struct tm g;
+    long off;
+    if (p->fake_now)
+        return p->fake_now;
+    t = time(0);
+    if (!gmtime_r(&t, &g))
+        return -1;
+    g.tm_isdst = -1;
+    off = (long)(t - mktime(&g));   /* the local zone's offset from UTC */
+    return (long)t + off - 2922L * 86400L;
+}
+
+static int x_pause(void *u, long ms)
+{
+    sys_posix *p = (sys_posix *)u;
+    struct timespec ts;
+    if (p->brk) {
+        p->brk = 0;
+        return 1;
+    }
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+    nanosleep(&ts, 0);
+    return 0;
+}
+
+static long x_bg_size(void *u, long job)
+{
+    sys_posix *p = (sys_posix *)u;
+    struct stat st;
+    if (job < 0 || job >= SP_JOBS || !p->jobs[job].used)
+        return -1;
+    return stat(p->jobs[job].file, &st) ? 0 : (long)st.st_size;
+}
+
+static const char *x_bg_file(void *u, long job)
+{
+    sys_posix *p = (sys_posix *)u;
+    return job >= 0 && job < SP_JOBS && p->jobs[job].used ? p->jobs[job].file : "";
+}
+
+static int x_rename(void *u, const char *from, const char *to)
+{
+    sys_posix *p = (sys_posix *)u;
+    if (rename(from, to)) {
+        set_err(p, from);
+        return -1;
+    }
+    return 0;
+}
+
 void sys_posix_init(sys_posix *p, cl_sys *s)
 {
     memset(p, 0, sizeof(*p));
@@ -391,4 +450,9 @@ void sys_posix_init(sys_posix *p, cl_sys *s)
     s->setenv = x_setenv;
     s->clip = x_clip;
     s->info = x_info;
+    s->now = x_now;
+    s->pause = x_pause;
+    s->bg_size = x_bg_size;
+    s->bg_file = x_bg_file;
+    s->rename = x_rename;
 }

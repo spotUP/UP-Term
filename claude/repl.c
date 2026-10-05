@@ -36,7 +36,7 @@ static const char sys_c[] =
 static const char sys_d[] =
     "Every tool call is shown to the user and may need their permission. The terminal shows "
     "Markdown, 80 columns or fewer; keep answers concise. For a task of several steps keep a "
-    "todo list with TodoWrite.";
+    "task list with the task tools when you have them (TaskCreate and TaskUpdate, or TodoWrite).";
 
 static const char auto_a[] =
     "\n\n# Auto memory\n\nYou have a memory directory of your own for this project: ";
@@ -85,7 +85,13 @@ static void st_block(void *u, int type, const char *name)
     char what[96];
     if (type == B_THINKING)
         ui_status(&r->ui, "Thinking");
-    else if (type == B_SERVER)
+    else if (type == B_SERVER && !strcmp(name, "advisor")) {
+        /* Claude Code's "Advising" line, with the advisor model's name */
+        cl_copy(what, "Advising (", sizeof(what));
+        cl_cat(what, r->tools.advisor, sizeof(what));
+        cl_cat(what, ")", sizeof(what));
+        ui_status(&r->ui, what);
+    } else if (type == B_SERVER)
         ui_status(&r->ui, "Searching the web");
     else if (type == B_TOOL) {
         if (r->shown)
@@ -232,12 +238,20 @@ top:
     q.path = r->url.path;
     q.key = r->key;
     q.beta = conv_beta(r->model);
-    if (r->betas[0]) {
-        /* --betas: added to the model's own (anthropic-beta takes a comma list) */
+    if (r->betas[0] || (r->tools.advisor[0] && strstr(body, "\"advisor_20260301\""))) {
+        /* --betas: added to the model's own (anthropic-beta takes a comma list);
+         * the advisor tool's beta when the request declares it (/advisor) */
         cl_copy(beta, q.beta, sizeof(beta));
-        if (beta[0])
-            cl_cat(beta, ",", sizeof(beta));
-        cl_cat(beta, r->betas, sizeof(beta));
+        if (r->tools.advisor[0] && strstr(body, "\"advisor_20260301\"")) {
+            if (beta[0])
+                cl_cat(beta, ",", sizeof(beta));
+            cl_cat(beta, "advisor-tool-2026-03-01", sizeof(beta));
+        }
+        if (r->betas[0]) {
+            if (beta[0])
+                cl_cat(beta, ",", sizeof(beta));
+            cl_cat(beta, r->betas, sizeof(beta));
+        }
         q.beta = beta;
     }
     q.body_len = bn;
@@ -541,11 +555,35 @@ static void tool_result(void *u, int tool, const char *in, long inn, int is_erro
             r->todos = t;
         }
     }
+    if ((tool == T_TASK_CREATE || tool == T_TASK_UPDATE) && !is_error) {
+        /* the task list as TodoWrite's: /todos and the screen's list (Ctrl+T) show it */
+        char *td = tasks_todos(r->at->tasks);
+        free(r->todos);
+        r->todos = td;
+        ui_result(&r->ui, T_TODO_WRITE, td ? td : "{\"todos\":[]}", td ? (long)strlen(td) : 12, 0, text, n);
+        return;
+    }
     if (r->show)
         r->show->brief = r->at->brief;
     ui_result(&r->ui, tool, in, inn, is_error, text, n);
     if (r->show)
         r->show->brief = 0;
+}
+
+/* Claude Code's task tool availability: the model's default, or asked for
+ * (CLAUDE_CODE_ENABLE_TODO_TOOLS=1, --allowedTools / --tools naming one);
+ * CLAUDE_CODE_ENABLE_TASKS=0 gives TodoWrite in their place */
+int repl_todo_mode(cl_repl *r)
+{
+    char v[8];
+    int avail = tools_todo_default(r->model) == TODO_TASKS || r->todo_optin ||
+                (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_ENABLE_TODO_TOOLS", v, sizeof(v)) > 0 &&
+                 strcmp(v, "0"));
+    if (!avail)
+        return TODO_NONE;
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_ENABLE_TASKS", v, sizeof(v)) > 0 && !strcmp(v, "0"))
+        return TODO_WRITE;
+    return TODO_TASKS;
 }
 
 static int tool_choose(void *u, const char *header, const char *question, const char *const *labels,
@@ -633,6 +671,7 @@ static void session_save(cl_repl *r)
 {
     if (r->conv.n)
         sess_save(&r->sess, &r->conv);
+    sched_save(r);                  /* the cron jobs, when they changed */
 }
 
 void repl_saved(cl_repl *r)
@@ -656,6 +695,7 @@ static int run_tools(cl_repl *r, int ntools, jw *content)
             jw_raw(content, ",", 1);
         pol_call(r, &r->tools, t->id, t->name, t->input_ok, t->a.p, t->a.n, content, &extra);
     }
+    sched_news(r, &extra);          /* background tasks, async hooks: news beside the results */
     if (extra.n) {
         jw_rawz(content, ",{\"type\":\"text\",\"text\":");
         jw_str(content, extra.p, extra.n);
@@ -811,11 +851,13 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     jw_init(&content);
     r->io->brk(r->io->u);           /* a Ctrl+C from before the turn does not count */
     r->turn_out = 0;
+    r->in_turn = 1;
     ui_busy(&r->ui, 1);
     for (round = 0; round < 64; round++) {
         int rc, ntools;
         const char *stop;
         r->tools.stop = 0;
+        r->tools.todo_mode = repl_todo_mode(r);
         o.tools = turn_tools_json(r, &xtools);
         jw_reset(&body);
         if (conv_body(&r->conv, &o, &body)) {
@@ -968,6 +1010,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         }
     }
     ui_busy(&r->ui, 0);
+    r->in_turn = 0;
     r->turn_tools = turn_tools;
     if (r->turn_rc == TURN_FAIL && r->api_failed)
         pol_stop_failure(r, r->api_failed);    /* the turn ended on an API error */
@@ -1450,6 +1493,8 @@ static void resumed(cl_repl *r)
     r->start_due = 0;               /* Claude Code: a resumed session's source is "resume" */
     cp_session(&r->cp, r->sess.file);     /* its snapshots: /rewind reaches back before the resume */
     pol_session(r, HK_SESSION_START, "resume");
+    sched_load(r, 1);               /* Claude Code: a resume restores the session's cron jobs */
+    watch_start(r);
 }
 
 int repl_resume_session(cl_repl *r, const char *name)
@@ -1831,10 +1876,12 @@ void repl_run(cl_repl *r)
         start(r);
         for (;;) {
             long n = tui_read(r->tui, line, 8192);
+            int woke = r->woke;
             if (n < 0)
                 break;
-            if (!r->await_key)
-                ui_user(&r->ui, line);
+            r->woke = 0;
+            if (!r->await_key && !woke)
+                ui_user(&r->ui, line);  /* a scheduled turn was announced by sched_tui_wake */
             if (repl_line(r, line))
                 break;
         }
@@ -1850,6 +1897,8 @@ void repl_run(cl_repl *r)
     start(r);
     for (;;) {
         long n;
+        if (!r->await_key)
+            sched_line_mode(r);     /* due cron jobs, background news: before the wait for a line */
         ui_puts(&r->ui, r->await_key ? "\n\033[1mKey:\033[0m " : "\n\033[1m>\033[0m ");
         n = r->io->read_line(r->io->u, line, 8192);
         r->ui.col0 = 1;
@@ -1885,6 +1934,7 @@ int repl_screen(cl_repl *r)
     t->hide_vim = r->cfg.hide_vim;
     t->idle = pol_status_tick;
     t->iu = r;
+    t->wake = sched_tui_wake;       /* A4 gaps 2: a scheduled turn while the screen waits */
     show_init(s, t);
     s->verbose = &r->verbose;    /* --verbose: results unfolded in place */
     if (tui_start(t)) {
@@ -2139,6 +2189,7 @@ int repl_load_memory(cl_repl *r)
     r->mem.nexcl = r->cfg.nmdx;
     if (!r->bare && !r->safe)       /* --bare / --safe-mode: no CLAUDE.md */
         mem_load(&r->mem, r->sys, r->home, r->tools.root);
+    r->tools.auto_memory = auto_memory(r);      /* an agent's memory: needs auto memory on */
     if (auto_memory(r)) {
         /* Claude Code's auto memory: <home>/projects/<project>/memory/ */
         char d[340];
@@ -2180,12 +2231,49 @@ int repl_load_defs(cl_repl *r)
     return menu_build(r) || pol_tools(r) ? -1 : 0;
 }
 
+/* ---- the environment variables (A4 gaps 2): Claude Code's CLAUDE_CODE_*
+ * that mean something on the Amiga, read in one place -- at each load, so
+ * a settings file's "env" block counts too ---- */
+
+static long env_num(cl_repl *r, const char *name, long def)
+{
+    char v[32];
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, name, v, sizeof(v)) > 0 && v[0] >= '0' && v[0] <= '9')
+        return atol(v);
+    return def;
+}
+
+/* a switch variable: set to something other than 0 / false / "" */
+static int env_on(cl_repl *r, const char *name)
+{
+    char v[16];
+    return r->sys->getenv && r->sys->getenv(r->sys->u, name, v, sizeof(v)) > 0 && strcmp(v, "0") &&
+           !cl_strieq(v, "false") && !cl_strieq(v, "no");
+}
+
+static void repl_env(cl_repl *r)
+{
+    long v;
+    /* BASH_DEFAULT_TIMEOUT_MS, BASH_MAX_TIMEOUT_MS: Bash's limits */
+    v = env_num(r, "BASH_DEFAULT_TIMEOUT_MS", 0);
+    r->tools.timeout_s = v > 0 ? (int)((v + 999) / 1000) : 120;
+    r->tools.max_timeout_ms = env_num(r, "BASH_MAX_TIMEOUT_MS", 0);
+    /* nested subagents: layers below the conversation (1 turns nesting off) */
+    r->tools.max_depth = (int)env_num(r, "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", 0);
+    /* no background tasks (--bare too): a command stops at its time limit */
+    r->tools.no_background = r->bare || env_on(r, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+    r->tools.no_cron = env_on(r, "CLAUDE_CODE_DISABLE_CRON");
+    r->tools.max_searches = env_num(r, "CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION", 0);
+}
+
 int repl_load(cl_repl *r)
 {
     int i;
     char env[64];
     cfg_free(&r->cfg);
     r->cfg.skip = r->sources ? ~r->sources & 7u : 0;    /* --setting-sources */
+    r->cfg.untrusted = r->untrusted;    /* workspace trust: the project's allow rules wait for it */
+    r->hooks.held = r->untrusted && !r->no_person;      /* interactive: hooks wait for it too */
     cfg_load(&r->cfg, r->sys, r->home, r->tools.root);
     for (i = 0; i < 2; i++)
         if (r->layer[i])            /* the command line's layer (A4 WP4): after the files, wins */
@@ -2248,13 +2336,18 @@ int repl_load(cl_repl *r)
         free(o);
     }
     {
+        /* Claude Code: bashOutputMaxChars sizes the inline ceiling and the
+         * read-back window together (to 128000) and BASH_MAX_OUTPUT_LENGTH is
+         * then ignored; alone, the variable sets the window (to 150000) */
         char v[24];
-        r->tools.out_max = r->cfg.bash_max_chars;   /* bashOutputMaxChars, BASH_MAX_OUTPUT_LENGTH */
-        if (r->sys->getenv && r->sys->getenv(r->sys->u, "BASH_MAX_OUTPUT_LENGTH", v, sizeof(v)) > 0 && atol(v) > 0)
-            r->tools.out_max = atol(v);
-        if (r->tools.out_max > 1024L * 1024)
-            r->tools.out_max = 1024L * 1024;
+        r->tools.out_max = r->tools.out_inline = 0;
+        if (r->cfg.bash_max_chars > 0)
+            r->tools.out_max = r->tools.out_inline = r->cfg.bash_max_chars > 128000L ? 128000L : r->cfg.bash_max_chars;
+        else if (r->sys->getenv && r->sys->getenv(r->sys->u, "BASH_MAX_OUTPUT_LENGTH", v, sizeof(v)) > 0 &&
+                 atol(v) > 0)
+            r->tools.out_max = atol(v) > 150000L ? 150000L : atol(v);
     }
+    repl_env(r);                    /* the CLAUDE_CODE_* variables (the env block of the settings included) */
     if (r->cfg.err[0])
         repl_say(r, "Settings: ", r->cfg.err);
     if (r->tui) {
@@ -2306,15 +2399,9 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->tools.sys = sys;
     if (sys->canon(sys->u, root, r->tools.root, sizeof(r->tools.root)))
         cl_copy(r->tools.root, root, sizeof(r->tools.root));
-    r->tools.timeout_s = 120;       /* Claude Code: 2 minutes (BASH_DEFAULT_TIMEOUT_MS) */
-    {
-        char v[24];
-        if (sys->getenv && sys->getenv(sys->u, "BASH_DEFAULT_TIMEOUT_MS", v, sizeof(v)) > 0 && atol(v) > 0)
-            r->tools.timeout_s = (int)((atol(v) + 999) / 1000);
-        if (sys->getenv && sys->getenv(sys->u, "BASH_MAX_TIMEOUT_MS", v, sizeof(v)) > 0 && atol(v) > 0)
-            r->tools.max_timeout_ms = atol(v);
-    }
+    r->tools.timeout_s = 120;       /* Claude Code: 2 minutes (repl_env: BASH_DEFAULT_TIMEOUT_MS) */
     r->tools.u = r;
+    r->tools.can_read = pol_can_read;
     r->tools.clock = tool_clock;
     r->tools.show = tool_show;
     r->tools.ask = tool_ask;
@@ -2330,6 +2417,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
         return -1;
     }
     var_or(sys, "CLAUDE_CONFIG_DIR", CL_HOME, r->home, sizeof(r->home));
+    r->tools.home = r->home;
     {
         char hd[256];
         var_or(sys, "HOME", "SYS:", hd, sizeof(hd));
@@ -2366,6 +2454,11 @@ void repl_free(cl_repl *r)
 {
     if (r->hooks.cfg)
         pol_session(r, HK_SESSION_END, r->end_reason ? r->end_reason : "other");
+    if (r->tools.tasks)
+        sched_save(r);
+    hooks_async_stop(&r->hooks);    /* Claude Code: async hooks still running at the end are cancelled */
+    watch_free(r);
+    pol_hooks_free(r);
     if (r->tui) {
         tui_stop(r->tui);
         show_free(r->show);
@@ -2425,6 +2518,8 @@ static void started(cl_repl *r)
             sess_cleanup(&r->sess, r->tmp, (long)r->cfg.cleanup_days * 86400L);
         pol_session(r, HK_SESSION_START, "startup");
         pol_instructions(r, 0, "session_start");
+        sched_load(r, 0);           /* the project's durable cron jobs */
+        watch_start(r);             /* FileChanged: the watched files as they are now */
     }
 }
 

@@ -928,7 +928,7 @@ static char *read_arg_file(cl_cli *c, cl_repl *r, const char *name, const char *
 /* the tools Claude is given: --tools, then --disallowedTools' bare names, then the agent's list */
 static unsigned long tool_set(const cl_cli *c, const cl_agent *a)
 {
-    unsigned long m = (1ul << (T_COUNT + 1)) - 1;
+    unsigned long m = (1ul << T_COUNT) - 1;
     int i;
     if (c->has_tools) {
         if (!c->tools[0])
@@ -1043,7 +1043,7 @@ int cli_apply(cl_cli *c, cl_repl *r)
     /* a tool set without WebSearch: also a deny rule, so every reload of
      * the settings (pol_tools) keeps the server tool off */
     m = tool_set(c, 0);
-    if (!(m & (1ul << T_COUNT)) && strs_add(&c->deny, "WebSearch", 9))
+    if (!(m & (1ul << T_WEB_SEARCH)) && strs_add(&c->deny, "WebSearch", 9))
         return fail(c, "Out of memory.", 0, 0);
     free(r->layer[1]);
     r->layer[1] = flags_json(c);
@@ -1111,12 +1111,26 @@ int cli_apply(cl_cli *c, cl_repl *r)
     m = tool_set(c, a);
     if (r->bare)
         m &= tools_mask("Bash, Read, Glob, Grep, Edit, Write, MultiEdit");    /* bash, read, edit */
-    r->tools.allowed = m & ((1ul << T_COUNT) - 1);
-    r->tools.web_search = r->tools.web_search && (m & (1ul << T_COUNT)) != 0;
+    r->tools.allowed = m;
+    r->tools.web_search = r->tools.web_search && (m & (1ul << T_WEB_SEARCH)) != 0;
     free(r->tools.json);
     r->tools.json = 0;
+    {
+        /* Claude Code: naming a task tool in --allowedTools or --tools opts the
+         * session into them on any model */
+        static const char *const tt[] = { "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TodoWrite", 0 };
+        int i, k;
+        for (k = 0; tt[k]; k++) {
+            for (i = 0; i < c->allow.n; i++)
+                if (!strncmp(c->allow.v[i], tt[k], strlen(tt[k])))
+                    r->todo_optin = 1;
+            if (c->has_tools && c->tools && strstr(c->tools, tt[k]))
+                r->todo_optin = 1;
+        }
+    }
     /* print mode */
     if (c->print) {
+        r->tools.bg_limit_ms = 30L * 60 * 1000;     /* an unattended run's background time limit */
         r->no_person = 1;
         r->tools.nobody = c->prompts_none ? 2 : 1;
         r->max_turns = c->max_turns;

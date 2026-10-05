@@ -16,6 +16,7 @@
 #include "claude_load.h"
 #include "../claude/repl.h"
 #include "../claude/repl_int.h"
+#include "../claude/tasks.h"
 #include "../claude/print.h"
 #include "../claude/sys_posix.h"
 #include "../claude/util.h"
@@ -430,11 +431,11 @@ static void test_reach(void)
     /* the tools by Claude Code's names: no WebFetch without its connection, no
      * SlashCommand without a command (Skill: the bundled ones are always there);
      * the web_search server tool declared */
-    CHECK(json_get(b, "tools", &x) && json_count(x) == 16);
+    CHECK(json_get(b, "tools", &x) && json_count(x) == 18);
     CHECK(strstr(sb.body[0], "- simplify: Review this session's changed code") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Read\",") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
-    CHECK(strstr(sb.body[0], "\"type\":\"web_search_20260209\",\"name\":\"web_search\"") != 0);
+    CHECK(strstr(sb.body[0], "{\"name\":\"WebSearch\",") != 0 && strstr(sb.body[0], "web_search_2026") == 0);
     CHECK(strstr(sb.body[0], "\"name\":\"WebFetch\"") == 0);
     CHECK(json_get(b, "tool_choice", &x) && json_get(x, "type", &e) && json_streq(e, "auto"));
     CHECK(json_get(b, "system", &x));
@@ -1250,6 +1251,7 @@ static const char wp2_page[] =
     "<html><body><h1>Hi</h1><p>hello</p></body></html>";
 static long wp2_pos;
 static int wp2_open_n;
+static int wp2_tls;             /* the last open's TLS flag (WebFetch's http -> https) */
 static char wp2_req[600];
 
 static int wp_open(void *u, const char *host, int port, int tls)
@@ -1257,7 +1259,7 @@ static int wp_open(void *u, const char *host, int port, int tls)
     (void)u;
     (void)host;
     (void)port;
-    (void)tls;
+    wp2_tls = tls;
     wp2_open_n++;
     wp2_pos = 0;
     return 0;
@@ -1323,7 +1325,7 @@ static void test_wp2(void)
         return;
     }
     /* the web search: declared, shown, and its blocks kept for the next request */
-    CHECK(strstr(sb.body[0], "{\"type\":\"web_search_20260209\",\"name\":\"web_search\",\"max_uses\":5}") != 0);
+    CHECK(strstr(sb.body[0], "{\"name\":\"WebSearch\",") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"WebFetch\",") != 0);
     CHECK(strstr(cn.screen.p, "Web Search(\"Amiga 1200 accelerator cards\")") != 0);
     CHECK(strstr(cn.screen.p, "Did 1 search: 2 results") != 0);
@@ -2897,9 +2899,9 @@ static void test_gaps_ext(void)
     repl_line(&r, "/output-style Proactive");
     CHECK(strstr(r.system, "Start on a task as soon as it is given") != 0);
     repl_line(&r, "/output-style Plain");
-    CHECK(strstr(r.system, "PLAIN-STYLE") != 0 && strstr(r.system, "todo list with TodoWrite") == 0);
+    CHECK(strstr(r.system, "PLAIN-STYLE") != 0 && strstr(r.system, "task list with the task tools") == 0);
     repl_line(&r, "/output-style Keep");
-    CHECK(strstr(r.system, "KEEP-STYLE") != 0 && strstr(r.system, "todo list with TodoWrite") != 0);
+    CHECK(strstr(r.system, "KEEP-STYLE") != 0 && strstr(r.system, "task list with the task tools") != 0);
     repl_free(&r);
     xput(root, ".claude/settings.local.json", "{\"outputStyle\":\"concise\"}");
     setup_in(&r, none, root);
@@ -3426,7 +3428,7 @@ static void test_gaps_more(void)
         add_answer(0, 0, 0, "ok");
         CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
         CHECK(!exists(old));
-        CHECK(sb.nreq >= 2 && strstr(sb.body[1], "(output cut at 100 characters)") != 0);
+        CHECK(sb.nreq >= 2 && strstr(sb.body[1], "Output too large (200 characters). Full output saved to: ") != 0);
         CHECK(sb.nreq >= 3 && strstr(sb.body[2], "has been denied by the rule Read(~/secret.txt)") != 0);
     }
     repl_free(&r);
@@ -3654,6 +3656,374 @@ static void test_gaps_more(void)
 #undef HOOKS
 }
 
+/* ---- A4 gaps 2 (thoughts/shared/plans/2026-10-05-a4-gaps2-progress.md) ---- */
+
+/* WebSearch's own request answered: one search, one result, a summary */
+static void add_search_answer(void)
+{
+    static const char *const s[] = {
+        "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_srch\",\"type\":\"message\","
+        "\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,"
+        "\"usage\":{\"input_tokens\":50,\"output_tokens\":1}}}\n\n",
+        "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":"
+        "\"server_tool_use\",\"id\":\"srvtoolu_G2\",\"name\":\"web_search\",\"input\":{}}}\n\n",
+        "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":"
+        "\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"amiga\\\"}\"}}\n\n"
+        "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":"
+        "\"web_search_tool_result\",\"tool_use_id\":\"srvtoolu_G2\",\"content\":[{\"type\":\"web_search_result\","
+        "\"title\":\"Aminet\",\"url\":\"https://aminet.net/\",\"encrypted_content\":\"x\"}]}}\n\n",
+        "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n"
+        "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":"
+        "\"text\",\"text\":\"\"}}\n\n",
+        "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":"
+        "\"text_delta\",\"text\":\"Aminet is the archive.\"}}\n\n"
+        "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":2}\n\n",
+        "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\","
+        "\"stop_sequence\":null},\"usage\":{\"output_tokens\":20}}\n\n"
+        "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+        0
+    };
+    jw w;
+    int i;
+    jw_init(&w);
+    for (i = 0; s[i]; i++)
+        jw_rawz(&w, s[i]);
+    add_sse(w.p, w.n);
+    jw_free(&w);
+}
+
+static void remove_rel(const char *root, const char *rel)
+{
+    char p[800];
+    strcpy(p, root);
+    strcat(p, "/");
+    strcat(p, rel);
+    remove(p);
+}
+
+/* the whole text of a file in the tree ("" none) */
+static void slurp(const char *root, const char *rel, char *out, long cap)
+{
+    char p[800];
+    FILE *f;
+    long n = 0;
+    strcpy(p, root);
+    strcat(p, "/");
+    strcat(p, rel);
+    out[0] = 0;
+    f = fopen(p, "rb");
+    if (!f)
+        return;
+    n = (long)fread(out, 1, (size_t)cap - 1, f);
+    out[n] = 0;
+    fclose(f);
+}
+
+/* Tools: T1 nested subagents, T2 T3 Bash's background move and limits, T4
+ * Edit's relaxed check, T5 WebFetch, T6 WebSearch, T7 the task tools and
+ * TaskStop, T8 Monitor, T9 cron, T10 Edit and Read rules, H7 Stop's fields */
+static void test_gaps2_tools(void)
+{
+    static const char *none[] = { 0 };
+    static const char *planit[] = { "plan it", 0 };
+    static cl_repl r;
+    char root[600], p[900], txt[4096];
+    cl_net web;
+    strcpy(root, dir);
+    strcat(root, "/gaps2");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+
+    /* T1 nested subagents: the subagent may launch one of its own (three
+     * layers below the conversation by default) */
+    setup_in(&r, none, root);
+    add_answer("toolu_N1", "Task", "{\"description\":\"outer\",\"prompt\":\"look deeper\",\"subagent_type\":"
+                                   "\"general-purpose\"}", 0);
+    add_answer("toolu_N2", "Task", "{\"description\":\"inner\",\"prompt\":\"find it\",\"subagent_type\":\"Explore\"}", 0);
+    add_answer(0, 0, 0, "INNER-REPORT");
+    add_answer(0, 0, 0, "OUTER-REPORT");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK_INT(sb.nreq, 5);
+    CHECK(sb.nreq == 5 && strstr(sb.body[1], "{\"name\":\"Task\",") != 0);    /* layer 1 may delegate */
+    CHECK(sb.nreq == 5 && strstr(sb.body[2], "file search specialist") != 0 && strstr(sb.body[2], "find it") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[3], "INNER-REPORT") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[4], "OUTER-REPORT") != 0);
+    repl_free(&r);
+    setenv("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "1", 1);     /* nesting off */
+    setup_in(&r, none, root);
+    add_answer("toolu_N3", "Task", "{\"description\":\"outer\",\"prompt\":\"p\",\"subagent_type\":\"general-purpose\"}", 0);
+    add_answer(0, 0, 0, "R");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[1], "{\"name\":\"Task\",") == 0 && strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH");
+
+    /* T2 a command still running at its time limit moves to the background
+     * (cd noted), its end is news beside a later round's results; a sleep
+     * stops instead; T3 a failure's long output: its head and its tail */
+    setenv("BASH_DEFAULT_TIMEOUT_MS", "1000", 1);
+    setup_in(&r, none, root);
+    add_answer("toolu_B1", "Bash", "{\"command\":\"cd S; echo start; sleep 2; echo late\"}", 0);
+    add_answer("toolu_B2", "Bash", "{\"command\":\"sleep 2\",\"timeout\":5000}", 0);
+    add_answer("toolu_B3", "Bash", "{\"command\":\"sleep 3\",\"timeout\":1000}", 0);
+    add_answer("toolu_B4", "Bash", "{\"command\":\"yes a | head -n 6000; echo TAILEND; exit 10\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+    CHECK_INT(sb.nreq, 5);
+    CHECK(sb.nreq == 5 && strstr(sb.body[1], "Command did not complete within its 1s timeout and was moved to the "
+                                             "background with ID: bash_1") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[1], "Session cwd remains ") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[2], "No human input has occurred") != 0 &&
+          strstr(sb.body[2], "Background command bash_1 (\\\"cd S; echo start; sleep 2; echo late\\\") completed with "
+                             "exit code 0") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[3], "\"tool_use_id\":\"toolu_B3\",\"content\":\"The command ran out of time (1 s)") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[4], "characters cut from the middle") != 0 &&
+          strstr(sb.body[4], "TAILEND") != 0 && strstr(sb.body[4], "Return code 10.") != 0);
+    repl_free(&r);
+    setenv("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1", 1);
+    setup_in(&r, none, root);
+    add_answer("toolu_B5", "Bash", "{\"command\":\"echo s; sleep 3\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "ran out of time (1 s)") != 0 &&
+          strstr(sb.body[0], "{\"name\":\"Monitor\",") == 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+    unsetenv("BASH_DEFAULT_TIMEOUT_MS");
+
+    /* T4 Edit: an unread file edited by a newer model; a file changed since
+     * its read edited when old_string still matches, with a note; Claude
+     * Haiku 4.5 reads first -- a cat of the file counts as the read */
+    xput(root, "un.txt", "alpha\n");
+    xput(root, "c.txt", "one\ntwo\n");
+    xput(root, "h.txt", "h\n");
+    xput(root, "h2.txt", "h2\n");
+    setup_in(&r, none, root);
+    r.tools.perm.mode = PERM_ACCEPT;
+    add_answer("toolu_E1", "Edit", "{\"file_path\":\"un.txt\",\"old_string\":\"alpha\",\"new_string\":\"beta\"}", 0);
+    add_answer("toolu_R1", "Read", "{\"file_path\":\"c.txt\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "edit it");
+    slurp(root, "un.txt", txt, sizeof(txt));
+    CHECK_STR(txt, "beta\n");
+    xput(root, "c.txt", "one\ntwo\nthree\n");
+    strcpy(p, root);
+    strcat(p, "/c.txt");
+    age_file(p, 100);
+    add_answer("toolu_E2", "Edit", "{\"file_path\":\"c.txt\",\"old_string\":\"two\",\"new_string\":\"TWO\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "edit c");
+    slurp(root, "c.txt", txt, sizeof(txt));
+    CHECK_STR(txt, "one\nTWO\nthree\n");
+    CHECK(sb.nreq == 5 && strstr(sb.body[4], "Note: the file had changed on disk since you last read it") != 0);
+    cl_copy(r.model, "claude-haiku-4-5", sizeof(r.model));
+    add_answer("toolu_E3", "Edit", "{\"file_path\":\"h.txt\",\"old_string\":\"h\",\"new_string\":\"H\"}", 0);
+    add_answer("toolu_B6", "Bash", "{\"command\":\"cat h2.txt\"}", 0);
+    add_answer("toolu_E4", "Edit", "{\"file_path\":\"h2.txt\",\"old_string\":\"h2\",\"new_string\":\"H2\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "edit h");
+    CHECK(sb.nreq == 9 && strstr(sb.body[6], "File has not been read yet") != 0);
+    slurp(root, "h2.txt", txt, sizeof(txt));
+    CHECK_STR(txt, "H2\n");
+    repl_free(&r);
+
+    /* T10 a Read deny rule blocks Write too; an Edit allow rule grants Read
+     * (a read outside the working directories, in print mode: no one asks) */
+    {
+        char outside[600], home[600];
+        const char *hv = getenv("HOME");
+        strcpy(outside, dir);
+        strcat(outside, "/outside");
+        mkdir(outside, 0700);
+        xput(dir, "outside/o.txt", "OUTSIDE-TEXT\n");
+        cl_copy(home, hv ? hv : "", sizeof(home));
+        if (!realpath(dir, p))
+            strcpy(p, dir);
+        setenv("HOME", p, 1);       /* canonical, as the start directory is */
+        xput(root, ".claude/settings.json", "{\"permissions\":{\"deny\":[\"Read(secret.txt)\"],\"allow\":"
+                                            "[\"Edit(~/outside/**)\"]}}");
+        setup_in(&r, none, root);
+        strcpy(p, "{\"file_path\":\"/outside/o.txt\"}");    /* AmigaOS: / is the parent */
+        add_answer("toolu_W1", "Write", "{\"file_path\":\"secret.txt\",\"content\":\"x\"}", 0);
+        add_answer("toolu_R2", "Read", p, 0);
+        add_answer(0, 0, 0, "done");
+        CHECK_INT(run_print(&r, "-p --allowedTools Write -- go", 0), 0);
+        CHECK(sb.nreq == 3 && strstr(sb.body[1], "has been denied by the rule Read(secret.txt)") != 0);
+        CHECK(sb.nreq == 3 && strstr(sb.body[2], "OUTSIDE-TEXT") != 0);
+        repl_free(&r);
+        if (hv)
+            setenv("HOME", home, 1);
+        else
+            unsetenv("HOME");
+        strcpy(p, root);
+        strcat(p, "/.claude/settings.json");
+        remove(p);
+    }
+
+    /* T5 WebFetch: localhost refused before any request; http upgraded to
+     * https; a preapproved documentation host fetched with no one to ask,
+     * another host denied */
+    setup_in(&r, none, root);
+    web.u = 0;
+    web.open = wp_open;
+    web.send = wp_send;
+    web.recv = wp_recv;
+    web.close = wp_close;
+    web.err = s_err;
+    r.tools.web = &web;
+    free(r.tools.json);
+    r.tools.json = 0;
+    wp2_open_n = 0;
+    wp2_tls = 0;
+    wp2_req[0] = 0;
+    add_answer("toolu_F1", "WebFetch", "{\"url\":\"http://localhost:3000/x\",\"prompt\":\"p\"}", 0);
+    add_answer("toolu_F2", "WebFetch", "{\"url\":\"http://docs.python.org/3/\",\"prompt\":\"p\"}", 0);
+    add_answer(0, 0, 0, "a python page");
+    add_answer("toolu_F3", "WebFetch", "{\"url\":\"https://example.com/\",\"prompt\":\"p\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK_INT(wp2_open_n, 1);
+    CHECK_INT(wp2_tls, 1);
+    CHECK(strstr(wp2_req, "Host: docs.python.org") != 0);
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "WebFetch cannot fetch localhost or other hostnames without a dot") != 0);
+    CHECK(sb.nreq >= 5 && strstr(sb.body[3], "a python page") != 0);
+    CHECK(sb.nreq >= 5 && strstr(sb.body[4], "permission to use this tool was denied") != 0);
+    repl_free(&r);
+
+    /* T6 WebSearch: Claude Code's client tool, its search the server tool in
+     * a request of its own with the domains; the session's cap */
+    setenv("CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION", "1", 1);
+    setup_in(&r, none, root);
+    add_answer("toolu_S1", "WebSearch", "{\"query\":\"amiga\",\"allowed_domains\":[\"aminet.net\"]}", 0);
+    add_search_answer();
+    add_answer("toolu_S2", "WebSearch", "{\"query\":\"again\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools WebSearch -- search", 0), 0);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq == 4 && strstr(sb.body[1], "\"allowed_domains\":[\"aminet.net\"]") != 0 &&
+          strstr(sb.body[1], "Perform a web search for the query: amiga") != 0 &&
+          strstr(sb.body[1], "\"web_search_2026") != 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[2], "Links: [{\\\"title\\\":\\\"Aminet\\\",\\\"url\\\":\\\"https://aminet.net/\\\"}]") != 0 &&
+          strstr(sb.body[2], "Aminet is the archive.") != 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[3], "The web search limit of this session is reached") != 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION");
+
+    /* T7 the task tools on a model that has them (Claude Haiku 4.5), the list
+     * the screen's task list shows; TodoWrite with CLAUDE_CODE_ENABLE_TASKS=0;
+     * none on a newer model unless asked for; TaskStop */
+    setup_in(&r, none, root);
+    cl_copy(r.model, "claude-haiku-4-5", sizeof(r.model));
+    add_answer("toolu_T1", "TaskCreate", "{\"subject\":\"Run the tests\",\"description\":\"all suites\","
+                                         "\"activeForm\":\"Running the tests\"}", 0);
+    add_answer("toolu_T2", "TaskUpdate", "{\"taskId\":\"1\",\"status\":\"in_progress\"}", 0);
+    add_answer("toolu_T3", "TaskList", "{}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "track it");
+    CHECK(sb.nreq == 4 && strstr(sb.body[0], "{\"name\":\"TaskCreate\",") != 0 &&
+          strstr(sb.body[0], "{\"name\":\"TodoWrite\",") == 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[1], "Task #1 created successfully: Run the tests") != 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[3], "#1 [in_progress] Run the tests") != 0);
+    CHECK(r.todos && strstr(r.todos, "\"status\":\"in_progress\"") != 0 && strstr(r.todos, "Running the tests") != 0);
+    repl_free(&r);
+    setenv("CLAUDE_CODE_ENABLE_TASKS", "0", 1);
+    setup_in(&r, none, root);
+    cl_copy(r.model, "claude-haiku-4-5", sizeof(r.model));
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "hi");
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"TodoWrite\",") != 0 &&
+          strstr(sb.body[0], "{\"name\":\"TaskCreate\",") == 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_ENABLE_TASKS");
+    setup_in(&r, none, root);
+    add_answer("toolu_K1", "Bash", "{\"command\":\"sleep 30\",\"run_in_background\":true}", 0);
+    add_answer("toolu_K2", "TaskStop", "{\"task_id\":\"bash_1\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash,TaskCreate -- go", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[0], "{\"name\":\"TaskCreate\",") != 0);     /* asked for on Opus */
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "Successfully stopped task: bash_1") != 0);
+    repl_free(&r);
+
+    /* T8 Monitor: each line its command prints comes to Claude as news */
+    setup_in(&r, none, root);
+    add_answer("toolu_M1", "Monitor", "{\"description\":\"watch\",\"command\":\"echo EV-ONE; echo EV-TWO\","
+                                      "\"timeout_ms\":60000}", 0);
+    add_answer("toolu_M2", "Bash", "{\"command\":\"sleep 1\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- watch", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[1], "\\\"taskId\\\":\\\"monitor_1\\\"") != 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "Monitor monitor_1 (watch): EV-ONE") != 0 &&
+          strstr(sb.body[2], "Monitor monitor_1 (watch): EV-TWO") != 0 && strstr(sb.body[2], "ended") != 0);
+    repl_free(&r);
+
+    /* T9 cron: a one-shot job fires between turns (the line mode looks before
+     * it waits for a line); a durable one is kept in the project; the
+     * session's are restored on a resume; the screen's idle tick hands a due
+     * one over; H7 Stop's background_tasks and session_crons */
+    {
+        cron_spec cs;
+        char err[100], id[40];
+        long due;
+        char *w;
+        CHECK_INT(cron_parse("7 10 * * *", &cs, err, sizeof(err)), 0);
+        due = cron_next(&cs, 1500000000L);
+        setup_in(&r, planit, root);
+        sp.fake_now = due;
+        add_answer("toolu_C1", "CronCreate", "{\"cron\":\"7 10 * * *\",\"prompt\":\"CRON-PROMPT\",\"recurring\":false}", 0);
+        add_answer("toolu_C2", "CronCreate", "{\"cron\":\"*/5 * * * *\",\"prompt\":\"KEEP-PROMPT\",\"durable\":true}", 0);
+        add_answer(0, 0, 0, "scheduled");
+        add_answer(0, 0, 0, "cron ran");
+        repl_run(&r);
+        CHECK_INT((int)r.n_cron_fired, 1);
+        CHECK(sb.nreq == 4 && strstr(sb.body[3], "CRON-PROMPT") != 0);
+        CHECK(strstr(cn.screen.p, "Scheduled task ") != 0);
+        slurp(root, ".claude/scheduled_tasks.json", txt, sizeof(txt));
+        CHECK(strstr(txt, "KEEP-PROMPT") != 0 && strstr(txt, "CRON-PROMPT") == 0);
+        CHECK_INT(tasks_cron_count(r.tools.tasks), 1);
+        cl_copy(id, r.sess.id, sizeof(id));
+        repl_free(&r);
+        remove_rel(root, ".claude/scheduled_tasks.json");
+        setup_in(&r, none, root);
+        sp.fake_now = due;
+        CHECK_INT(repl_resume_session(&r, id), 0);
+        CHECK_INT(tasks_cron_count(r.tools.tasks), 1);  /* the recurring one, back */
+        /* the screen: a due job handed over while it waits for keys */
+        CHECK_INT(tasks_cron_add(r.tools.tasks, "* * * * *", "TUI-PROMPT", 0, 0, due, 0, err, sizeof(err)), 0);
+        sp.fake_now = due + 120;
+        w = sched_tui_wake(&r);
+        CHECK(w && !strcmp(w, "TUI-PROMPT"));
+        CHECK_INT(r.woke, 1);
+        free(w);
+        r.woke = 0;
+        repl_free(&r);
+    }
+    {
+        /* H7: Stop's last_assistant_message, background_tasks, session_crons */
+        strcpy(p, "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cat > ");
+        strcat(p, root);
+        strcat(p, "/stop.json\"}]}]}}");
+        xput(root, ".claude/settings.json", p);
+        setup_in(&r, none, root);
+        sp.fake_now = 1500000000L;
+        add_answer("toolu_H1", "Bash", "{\"command\":\"sleep 30\",\"run_in_background\":true,\"description\":\"wait\"}", 0);
+        add_answer("toolu_H2", "CronCreate", "{\"cron\":\"*/5 * * * *\",\"prompt\":\"check the build\"}", 0);
+        add_answer(0, 0, 0, "FINAL-TEXT");
+        CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+        slurp(root, "stop.json", txt, sizeof(txt));
+        CHECK(strstr(txt, "\"last_assistant_message\":\"FINAL-TEXT\"") != 0);
+        CHECK(strstr(txt, "\"background_tasks\":[{\"id\":\"bash_1\",\"type\":\"shell\",\"status\":\"running\","
+                          "\"description\":\"wait\",\"command\":\"sleep 30\"}]") != 0);
+        CHECK(strstr(txt, "\"session_crons\":[{\"id\":\"") != 0 &&
+              strstr(txt, "\"schedule\":\"*/5 * * * *\",\"recurring\":true,\"prompt\":\"check the build\"}]") != 0);
+        repl_free(&r);
+        remove_rel(root, ".claude/settings.json");
+        remove_rel(root, ".claude/scheduled_tasks.json");
+    }
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -3675,6 +4045,7 @@ void suite_claude_repl(void)
     test_gaps_ext();
     test_gaps_hooks();
     test_gaps_more();
+    test_gaps2_tools();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);
