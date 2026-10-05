@@ -7,7 +7,8 @@
 
 const char *const cfg_hook_events[HK_COUNT] = {
     "PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop", "SessionStart", "SessionEnd",
-    "PreCompact", "Notification"
+    "PreCompact", "Notification", "PermissionRequest", "PostToolUseFailure", "SubagentStart", "PostCompact",
+    "StopFailure", "UserPromptExpansion", "CwdChanged", "DirectoryAdded"
 };
 
 static char *dupn(const char *s, long n)

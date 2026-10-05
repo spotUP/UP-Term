@@ -16,7 +16,12 @@
  * other code is an error shown to the user, and nothing is blocked. A
  * JSON object on the output is read as Claude Code's: "decision":"block"
  * with "reason", "continue":false, hookSpecificOutput.permissionDecision
- * (allow / deny / ask) and .additionalContext. AmigaDOS gives one output
+ * (allow / deny / ask), .additionalContext, .updatedInput, systemMessage
+ * (shown to the user), and PermissionRequest's decision.behavior; JSON is
+ * read whatever the exit code (exit 2 still blocks). A hook's "if" (a
+ * permission rule, "Bash(git *)") limits a tool event's hook to the calls
+ * it matches. The commands get CLAUDE_PROJECT_DIR (also ${...}-substituted
+ * in the command line, for the AmigaShell). AmigaDOS gives one output
  * stream, so stdout and stderr are the same text here.
  * Portable C89 over sys.h, host-tested (tests/test_claude_config.c). */
 #ifndef CL_HOOKS_H
@@ -32,6 +37,11 @@ typedef struct cl_hooks {
     const char *cwd;
     const char *tmp;            /* where the event file goes (T:) */
     long n_run;                 /* commands run (the tests' sentinel) */
+    /* A4 gaps: the tool call a hook's "if" rule is matched against (set
+     * around a tool event's hooks_run, 0 otherwise) */
+    const char *tool, *input;
+    long input_n;
+    const char *project_dir;    /* CLAUDE_PROJECT_DIR for the commands (0: cwd) */
 } cl_hooks;
 
 typedef struct cl_hookres {
@@ -41,7 +51,10 @@ typedef struct cl_hookres {
     int stop;                   /* "continue": false */
     jw reason;                  /* for Claude: why it was blocked */
     jw context;                 /* for Claude: text to add to the conversation */
-    jw shown;                   /* for the user: errors, a block's reason where Claude gets none */
+    jw shown;                   /* for the user: errors, a block's reason where Claude gets none,
+                                 * systemMessage */
+    jw updated;                 /* PreToolUse / PermissionRequest updatedInput (a JSON object), "" none */
+    int behavior;               /* PermissionRequest decision.behavior: RULE_ALLOW / RULE_DENY, RULE_NONE */
 } cl_hookres;
 
 void hookres_init(cl_hookres *r);

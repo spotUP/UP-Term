@@ -338,6 +338,17 @@ static void agent_run(cl_tools *t, jw *out, const char *id, const cl_agent *a, c
         jw_rawz(&sys, "\n\n");
         jw_rawz(&sys, t->sub_append);   /* --append-subagent-system-prompt */
     }
+    if (t->agent_start) {
+        /* SubagentStart hooks: their additionalContext is the agent's */
+        jw ctx;
+        jw_init(&ctx);
+        t->agent_start(t->u, a->name, id, &ctx);
+        if (ctx.n) {
+            jw_rawz(&sys, "\n\n");
+            jw_raw(&sys, ctx.p, ctx.n);
+        }
+        jw_free(&ctx);
+    }
     memset(&o, 0, sizeof(o));
     o.model = model;
     o.effort = a->effort ? a->effort : "";

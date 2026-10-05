@@ -77,7 +77,18 @@ int pol_prompt(cl_repl *r, const char *prompt, long n);
 /* Stop: 1 when a hook asks Claude to go on (the reason in reason) */
 int pol_stop(cl_repl *r, int active, jw *reason);
 void pol_notify(cl_repl *r, const char *message);
-void pol_precompact(cl_repl *r, int automatic, const char *focus);
+/* PreCompact: -1 a hook blocked the compaction (shown), 0 go on */
+int pol_precompact(cl_repl *r, int automatic, const char *focus);
+/* A4 gaps: Claude Code's other hook events */
+void pol_postcompact(cl_repl *r, int automatic, const char *summary, long n);
+void pol_stop_failure(cl_repl *r, const char *error);
+void pol_cwd_changed(cl_repl *r, const char *old_cwd, const char *new_cwd);
+void pol_dir_added(cl_repl *r, const char *dir);
+/* UserPromptExpansion before a typed /command or /skill runs: -1 blocked */
+int pol_expansion(cl_repl *r, const cl_def *d, const char *args, const char *prompt, long n);
+/* PermissionRequest before a question: RULE_ALLOW / RULE_DENY from a
+ * hook's decision.behavior, RULE_NONE ask as usual */
+int pol_permission_request(cl_repl *r, const char *tool, const char *input, long n);
 /* the screen's settings, memory files and rewind points (ui.h, WP1) */
 void pol_attach_ui(cl_repl *r);
 /* the statusLine command run now, its output into r->status_text (blank

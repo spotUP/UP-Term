@@ -2539,13 +2539,13 @@ static void test_gaps_print(void)
 
     /* G16 --permission-prompts none: the denial tells Claude not to retry */
     setup(&r, none);
-    add_answer("toolu_B1", "Bash", "{\"command\":\"echo hi\"}", 0);
+    add_answer("toolu_B1", "Bash", "{\"command\":\"makedir NEWDIR\"}", 0);
     add_answer(0, 0, 0, "ok");
     CHECK_INT(run_print(&r, "-p --permission-prompts none run it", 0), 0);
     CHECK(sb.nreq == 2 && strstr(sb.body[1], "Do not retry it") != 0);
     repl_free(&r);
     setup(&r, none);
-    add_answer("toolu_B1", "Bash", "{\"command\":\"echo hi\"}", 0);
+    add_answer("toolu_B1", "Bash", "{\"command\":\"makedir NEWDIR\"}", 0);
     add_answer(0, 0, 0, "ok");
     CHECK_INT(run_print(&r, "-p run it", 0), 0);
     CHECK(sb.nreq == 2 && strstr(sb.body[1], "no one can approve it") != 0);
@@ -2812,7 +2812,7 @@ static void test_gaps_ext(void)
     mkdir(root, 0700);
     xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
     xput(root, ".claude/skills/echoer/SKILL.md",
-         "---\ndescription: Echoes things\nwhen_to_use: WHEN-ECHO-NEEDED\nallowed-tools: Bash(echo *)\n---\n"
+         "---\ndescription: Echoes things\nwhen_to_use: WHEN-ECHO-NEEDED\nallowed-tools: Bash(printf *)\n---\n"
          "ECHO-SKILL for $0\n");
     xput(root, ".claude/skills/forked/SKILL.md",
          "---\ndescription: Looks in a subagent\ncontext: fork\nagent: Explore\n---\nFORKED-SKILL-TEXT $ARGUMENTS\n");
@@ -2823,7 +2823,7 @@ static void test_gaps_ext(void)
      * say yes; X3: when_to_use in the Skill tool's list */
     setup_in(&r, none, root);
     add_answer("toolu_K1", "Skill", "{\"skill\":\"echoer\",\"args\":\"ARGX\"}", 0);
-    add_answer("toolu_B2", "Bash", "{\"command\":\"echo SKILL-RAN\"}", 0);
+    add_answer("toolu_B2", "Bash", "{\"command\":\"printf SKILL-RAN\"}", 0);
     add_answer(0, 0, 0, "done");
     CHECK_INT(run_print(&r, "-p --allowedTools Skill -- use the skill", 0), 0);
     CHECK_INT(sb.nreq, 3);
@@ -2833,7 +2833,7 @@ static void test_gaps_ext(void)
     CHECK_INT((int)r.n_skills_run, 1);
     repl_free(&r);
     setup_in(&r, none, root);               /* without the skill: denied */
-    add_answer("toolu_B2", "Bash", "{\"command\":\"echo SKILL-RAN\"}", 0);
+    add_answer("toolu_B2", "Bash", "{\"command\":\"printf SKILL-RAN\"}", 0);
     add_answer(0, 0, 0, "done");
     CHECK_INT(run_print(&r, "-p just run it", 0), 0);
     CHECK(sb.nreq == 2 && strstr(sb.body[1], "no one can approve it") != 0);
@@ -2942,6 +2942,291 @@ static void test_gaps_ext(void)
     remove(p);
 }
 
+/* a hook's settings line: event, matcher, an "if" rule (0 none), the script */
+static void hook_json(jw *w, const char *event, const char *matcher, const char *cond, const char *root,
+                      const char *script)
+{
+    if (w->n && w->p[w->n - 1] != '{')
+        jw_raw(w, ",", 1);
+    jw_strz(w, event);
+    jw_rawz(w, ":[{\"matcher\":");
+    jw_strz(w, matcher);
+    jw_rawz(w, ",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(w, root);
+    jw_raw(w, "/", 1);
+    jw_rawz(w, script);
+    jw_raw(w, "\"", 1);
+    if (cond) {
+        jw_rawz(w, ",\"if\":");
+        jw_strz(w, cond);
+    }
+    jw_rawz(w, "}]}]");
+}
+
+static int marker(const char *root, const char *name)
+{
+    char p[700];
+    strcpy(p, root);
+    strcat(p, "/");
+    strcat(p, name);
+    return exists(p);
+}
+
+/* Phase 4: hooks (H1-H4), Bash (H6 H7), Read media (H8), memory (M1-M4) */
+static void test_gaps_hooks(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char root[600], p[900], m[700];
+    jw w;
+    strcpy(root, dir);
+    strcat(root, "/gapshk");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    /* the scripts: each leaves a marker; some answer with JSON or exit 2 */
+#define SCRIPT(name, body)                                                                                         \
+    do {                                                                                                           \
+        strcpy(m, "cd ");                                                                                          \
+        strcat(m, root);                                                                                           \
+        strcat(m, "\n");                                                                                           \
+        strcat(m, body);                                                                                           \
+        xput(root, name, m);                                                                                       \
+    } while (0)
+    SCRIPT("fail.sh", "cat > m-failure.json\n");
+    SCRIPT("perm.sh", "cat > m-perm.json\necho '{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\","
+                      "\"decision\":{\"behavior\":\"allow\"}}}'\n");
+    SCRIPT("sub.sh", "cat > m-substart.json\necho '{\"hookSpecificOutput\":{\"hookEventName\":\"SubagentStart\","
+                     "\"additionalContext\":\"SUBSTART-CONTEXT\"}}'\n");
+    SCRIPT("cwd.sh", "cat > m-cwd.json\n");
+    SCRIPT("dir.sh", "cat > m-dir.json\n");
+    SCRIPT("exp.sh", "cat > m-exp.json\necho no expansion today\nexit 2\n");
+    SCRIPT("ifblock.sh", "cat > m-if.json\necho blocked by if\nexit 2\n");
+    SCRIPT("pre.sh", "echo '{\"systemMessage\":\"SYSTEM-MESSAGE-SHOWN\",\"hookSpecificOutput\":{\"hookEventName\":"
+                     "\"PreToolUse\",\"additionalContext\":\"PRE-CONTEXT\",\"updatedInput\":{\"file_path\":"
+                     "\"S/Startup-Sequence\"}}}'\n");
+    SCRIPT("pd.sh", "echo \"$CLAUDE_PROJECT_DIR\" > m-pd.txt\n");
+    SCRIPT("end.sh", "cat > m-end.json\n");
+    SCRIPT("stopf.sh", "cat > m-stopfail.json\n");
+#undef SCRIPT
+    jw_init(&w);
+    jw_rawz(&w, "{\"hooks\":{");
+    hook_json(&w, "PostToolUseFailure", "Read", 0, root, "fail.sh");
+    hook_json(&w, "PermissionRequest", "Bash", 0, root, "perm.sh");
+    hook_json(&w, "SubagentStart", "general-purpose", 0, root, "sub.sh");
+    hook_json(&w, "CwdChanged", "", 0, root, "cwd.sh");
+    hook_json(&w, "DirectoryAdded", "slash_command", 0, root, "dir.sh");
+    hook_json(&w, "UserPromptExpansion", "hi", 0, root, "exp.sh");
+    hook_json(&w, "SessionEnd", "prompt_input_exit", 0, root, "end.sh");
+    hook_json(&w, "StopFailure", "invalid_request", 0, root, "stopf.sh");
+    jw_rawz(&w, ",\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&w, root);
+    jw_rawz(&w, "/ifblock.sh\",\"if\":\"Bash(makedir *)\"}]},{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\","
+                "\"command\":\"sh ");
+    jw_rawz(&w, root);
+    jw_rawz(&w, "/pre.sh\"},{\"type\":\"command\",\"command\":\"sh ${CLAUDE_PROJECT_DIR}/pd.sh\"}]}]");
+    jw_rawz(&w, "}}");
+    xput(root, ".claude/settings.json", w.p);
+    jw_free(&w);
+    xput(root, ".claude/commands/hi.md", "Say HI.\n");
+
+    /* H1 PostToolUseFailure on a failed Read (not PostToolUse); H3 the
+     * PreToolUse answer: updatedInput (the Read reads another file),
+     * additionalContext for Claude, systemMessage for the user; H4
+     * CLAUDE_PROJECT_DIR set and substituted */
+    setup_in(&r, none, root);
+    add_answer("toolu_R9", "Read", "{\"file_path\":\"nothere.txt\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "read it");
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "SetPatch QUIET") != 0);       /* the updated input's file */
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "PRE-CONTEXT") != 0);
+    CHECK(strstr(cn.screen.p, "SYSTEM-MESSAGE-SHOWN") != 0);
+    CHECK(!marker(root, "m-failure.json"));                              /* it did not fail after all */
+    strcpy(p, root);
+    strcat(p, "/m-pd.txt");
+    {
+        char *b = 0;
+        long bn = 0;
+        CHECK_INT(sys.read(sys.u, p, 1000, &b, &bn), 0);
+        CHECK(b && strstr(b, "/gapshk") != 0);     /* the project's directory (canonical) */
+        free(b);
+    }
+    repl_free(&r);
+    /* ... a Read the hook does not rewrite (Glob is no Read): PostToolUseFailure on the failure */
+    xput(root, ".claude/settings.local.json", "{\"hooks\":{\"PostToolUseFailure\":[{\"matcher\":\"Grep\",\"hooks\":"
+                                               "[{\"type\":\"command\",\"command\":\"echo FAILURE-SEEN\"}]}]}}");
+    setup_in(&r, none, root);
+    add_answer("toolu_G9", "Grep", "{\"pattern\":\"(\",\"path\":\"nowhere\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "grep it");
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"is_error\":true") != 0);
+    CHECK_INT((int)r.hooks.n_run, 1);
+    repl_free(&r);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.local.json");
+    remove(p);
+
+    /* H2 "if": the PreToolUse hook runs for Bash(makedir *) only, and blocks it;
+     * H1 PermissionRequest: its allow answers the question in print mode */
+    setup_in(&r, none, root);
+    add_answer("toolu_B5", "Bash", "{\"command\":\"makedir NEWDIR\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p make it", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "blocked by if") != 0);
+    CHECK(marker(root, "m-if.json"));
+    repl_free(&r);
+    setup_in(&r, none, root);
+    strcpy(p, "{\"command\":\"touch ");
+    strcat(p, root);
+    strcat(p, "/NEWFILE\"}");
+    add_answer("toolu_B6", "Bash", p, 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p touch it", 0), 0);
+    CHECK(marker(root, "m-perm.json"));         /* asked the hook, not nobody */
+    CHECK(marker(root, "NEWFILE"));             /* and it ran */
+    repl_free(&r);
+
+    /* H1 SubagentStart: its additionalContext in the agent's system prompt */
+    setup_in(&r, none, root);
+    add_answer("toolu_T9", "Task", "{\"description\":\"x\",\"prompt\":\"Look\",\"subagent_type\":\"general-purpose\"}",
+               0);
+    add_answer(0, 0, 0, "agent done");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK(sb.nreq > 1 && strstr(sb.body[1], "SUBSTART-CONTEXT") != 0);
+    CHECK(marker(root, "m-substart.json"));
+    repl_free(&r);
+
+    /* H1 CwdChanged (/cd), DirectoryAdded (/add-dir), UserPromptExpansion
+     * (exit 2 blocks /hi), StopFailure (an API error), SessionEnd's reason */
+    setup_in(&r, none, root);
+    repl_line(&r, "/add-dir S");
+    CHECK(marker(root, "m-dir.json"));
+    repl_line(&r, "/hi");
+    CHECK_INT(sb.nreq, 0);
+    CHECK(strstr(cn.screen.p, "A UserPromptExpansion hook blocked /hi") != 0);
+    add_raw("HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 82\r\n\r\n"
+            "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad request!\"}}");
+    repl_line(&r, "fail please");
+    CHECK(marker(root, "m-stopfail.json"));
+    repl_line(&r, "/exit");
+    repl_free(&r);
+    CHECK(marker(root, "m-end.json"));
+    setup_in(&r, none, root);
+    repl_line(&r, "/cd S");
+    CHECK(marker(root, "m-cwd.json"));
+    repl_free(&r);
+
+    /* H8 Read of an image and a PDF: base64 blocks for Claude */
+    xput(root, "pic.png", "\211PNG\r\n\032\nIHDRxxxx");
+    xput(root, "doc.pdf", "%PDF-1.4 x");
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+    setup_in(&r, none, root);
+    add_answer("toolu_P1", "Read", "{\"file_path\":\"pic.png\"}", 0);
+    add_answer("toolu_P2", "Read", "{\"file_path\":\"doc.pdf\"}", 0);
+    add_answer(0, 0, 0, "a picture and a document");
+    CHECK_INT(run_print(&r, "-p look", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[1], "\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\","
+                                             "\"media_type\":\"image/png\",\"data\":\"iVBORw0KGgpJSERSeHh4eA==\"}}]") != 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "{\"type\":\"document\",\"source\":{\"type\":\"base64\",\"media_type\":"
+                                             "\"application/pdf\",\"data\":\"JVBERi0xLjQgeA==\"}") != 0);
+    repl_free(&r);
+
+    /* H6 Bash's default time, from BASH_DEFAULT_TIMEOUT_MS */
+    setup_in(&r, none, root);
+    CHECK_INT(r.tools.timeout_s, 120);
+    repl_free(&r);
+    setenv("BASH_DEFAULT_TIMEOUT_MS", "30000", 1);
+    setenv("BASH_MAX_TIMEOUT_MS", "90000", 1);
+    setup_in(&r, none, root);
+    CHECK_INT(r.tools.timeout_s, 30);
+    CHECK_INT((int)r.tools.max_timeout_ms, 90000);
+    repl_free(&r);
+    unsetenv("BASH_DEFAULT_TIMEOUT_MS");
+    unsetenv("BASH_MAX_TIMEOUT_MS");
+
+    /* M1-M4: HTML comments out, rules (always / by paths:), claudeMdExcludes, auto memory */
+    xput(root, "CLAUDE.md", "VISIBLE-MEMORY\n<!-- HIDDEN-COMMENT\nstill hidden -->\nAFTER-COMMENT\n");
+    xput(root, "CLAUDE.local.md", "LOCAL-EXCLUDED\n");
+    xput(root, ".claude/rules/always.md", "RULE-ALWAYS\n");
+    xput(root, ".claude/rules/sub/scoped.md", "---\npaths:\n  - \"S/*\"\n---\nRULE-FOR-S\n");
+    strcpy(p, "{\"claudeMdExcludes\":[\"**/CLAUDE.local.md\"]}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    CHECK(strstr(r.system, "VISIBLE-MEMORY") != 0 && strstr(r.system, "AFTER-COMMENT") != 0);
+    CHECK(strstr(r.system, "HIDDEN-COMMENT") == 0 && strstr(r.system, "still hidden") == 0);
+    CHECK(strstr(r.system, "RULE-ALWAYS") != 0 && strstr(r.system, "RULE-FOR-S") == 0);
+    CHECK(strstr(r.system, "LOCAL-EXCLUDED") == 0);
+    CHECK(strstr(r.system, "# Auto memory") != 0);
+    add_answer("toolu_R7", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "read the startup");
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "RULE-FOR-S") != 0);
+    /* auto memory: MEMORY.md read at the start; Claude writes in its directory unasked */
+    cl_copy(m, r.mem.auto_dir, sizeof(m));
+    repl_free(&r);
+    {
+        char mp[800];
+        strcpy(mp, m);
+        strcat(mp, "/MEMORY.md");
+        CHECK(m[0] != 0);
+        mkdir(m, 0700);
+        {
+            FILE *f = fopen(mp, "wb");
+            if (f) {
+                fputs("- AUTO-MEMORY-FACT\n", f);
+                fclose(f);
+            }
+        }
+        setup_in(&r, none, root);
+        CHECK(strstr(r.system, "AUTO-MEMORY-FACT") != 0);
+        strcpy(p, "{\"file_path\":\"/");    /* AmigaDOS: a leading / is the start directory's parent: <dir> */
+        strcat(p, m + strlen(dir) + 1);
+        strcat(p, "/topic.md\",\"content\":\"x\"}");
+        add_answer("toolu_W7", "Write", p, 0);
+        add_answer(0, 0, 0, "saved");
+        CHECK_INT(run_print(&r, "-p remember", 0), 0);
+        strcpy(mp, m);
+        strcat(mp, "/topic.md");
+        CHECK(exists(mp));
+        repl_free(&r);
+    }
+    xput(root, ".claude/settings.json", "{\"autoMemoryEnabled\":false}");
+    setup_in(&r, none, root);
+    CHECK(strstr(r.system, "# Auto memory") == 0 && strstr(r.system, "AUTO-MEMORY-FACT") == 0);
+    repl_free(&r);
+
+    /* H4 PreCompact can block; H3 continue:false on PostToolUse ends the turn after the round */
+    xput(root, "noc.sh", "echo not now\nexit 2\n");
+    xput(root, "halt.sh", "echo '{\"continue\":false,\"stopReason\":\"HALTED-BY-HOOK\"}'\n");
+    strcpy(p, "{\"hooks\":{\"PreCompact\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/noc.sh\"}]}],\"PostToolUse\":[{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/halt.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    add_answer("toolu_R8", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "never asked for");
+    repl_line(&r, "read and halt");
+    CHECK_INT(sb.nreq, 1);                  /* no request after the round */
+    CHECK(strstr(cn.screen.p, "HALTED-BY-HOOK") != 0);
+    repl_line(&r, "/compact");
+    CHECK_INT(sb.nreq, 1);
+    CHECK(strstr(cn.screen.p, "A PreCompact hook blocked the compaction: not now") != 0);
+    repl_line(&r, "/memory auto off");
+    CHECK(has("home/settings.json", "\"autoMemoryEnabled\": false"));
+    repl_free(&r);
+    strcpy(p, dir);
+    strcat(p, "/home/settings.json");
+    cfg_write_key(&sys, p, "autoMemoryEnabled", 0);
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    remove(p);
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -2961,6 +3246,7 @@ void suite_claude_repl(void)
     test_gaps_commands();
     test_gaps_perm_menu();
     test_gaps_ext();
+    test_gaps_hooks();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);

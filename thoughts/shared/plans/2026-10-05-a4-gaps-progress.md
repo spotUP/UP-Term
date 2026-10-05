@@ -68,18 +68,18 @@ Phase 3 -- skills, agents, styles, status line (commands.c subagent.c tools.c po
 - [x] X9 status line JSON fields, hideVimModeIndicator
 
 Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c tools.c)
-- [ ] H1 events PermissionRequest PostToolUseFailure SubagentStart PostCompact StopFailure
+- [x] H1 events PermissionRequest PostToolUseFailure SubagentStart PostCompact StopFailure
       UserPromptExpansion CwdChanged DirectoryAdded
-- [ ] H2 hook "if"
-- [ ] H3 systemMessage, PreToolUse additionalContext, updatedInput, continue:false on tool hooks
-- [ ] H4 disableAllHooks, CLAUDE_PROJECT_DIR, timeout 600 s, Stop cap 8, PreCompact blocks,
+- [x] H2 hook "if"
+- [x] H3 systemMessage, PreToolUse additionalContext, updatedInput, continue:false on tool hooks
+- [x] H4 disableAllHooks, CLAUDE_PROJECT_DIR, timeout 600 s, Stop cap 8, PreCompact blocks,
       SessionEnd reason, permission_mode + tool_use_id in the input
 - [x] H5 bypassPermissions / auto from project or local settings ignored
-- [ ] H6 Bash default 120 s, BASH_DEFAULT_TIMEOUT_MS / BASH_MAX_TIMEOUT_MS, ANTHROPIC_MODEL
-- [ ] H7 read-only commands run without a question
-- [ ] H8 Read: images and PDFs as base64 blocks
-- [ ] M1 HTML comments stripped   - [ ] M2 .claude/rules (+ paths:), ENVARC:Claude/rules
-- [ ] M3 claudeMdExcludes   - [ ] M4 auto memory (MEMORY.md)
+- [x] H6 Bash default 120 s, BASH_DEFAULT_TIMEOUT_MS / BASH_MAX_TIMEOUT_MS, ANTHROPIC_MODEL
+- [x] H7 read-only commands run without a question
+- [x] H8 Read: images and PDFs as base64 blocks
+- [x] M1 HTML comments stripped   - [x] M2 .claude/rules (+ paths:), ENVARC:Claude/rules
+- [x] M3 claudeMdExcludes   - [x] M4 auto memory (MEMORY.md)
 
 ## Decisions (do not re-litigate)
 
@@ -135,6 +135,28 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
   field hide_vim in tui.h. Set by repl.c from the setting.
 - Status line JSON: total_lines_added/removed count a Write/Edit/MultiEdit only when it succeeds
   (the preview's counts kept until the result).
+- Hooks: JSON is read on every exit code (hooks.md); exit 2 still blocks. "if" is a permission
+  rule matched against the tool call (cfg_rule_match). updatedInput replaces the input and the
+  rules decide again on it. continue:false on a tool hook ends the turn after the round
+  (tools.stop). PermissionRequest runs before any question, in print mode before nobody's no;
+  its updatedInput is not applied (the call's input is fixed by then: partial). PreCompact exit 2
+  blocks /compact. CwdChanged runs with the hooks of the directory being left (the new one's
+  settings are read after). SessionEnd's reason: prompt_input_exit after /exit, else other.
+  CLAUDE_PROJECT_DIR = the launch directory, set for the command and substituted as text
+  (${CLAUDE_PROJECT_DIR} and $CLAUDE_PROJECT_DIR: the AmigaShell knows no ${}).
+  The default hook timeout is Claude Code's 600 s.
+- Read-only commands (List Dir Type Info Which Echo Version Search Avail Date Status, ls cat head
+  tail grep wc pwd file cmp diff whoami uname) run without a question, also in plan mode, when every
+  part of the line is one and nothing is redirected into a file or substituted; an explicit ask
+  rule still asks (tools.rule_ask). Bash's default time is 120 s (was 60).
+- Read: PNG/JPEG/GIF/WebP/PDF by their first bytes, read whole to 3.75 MB (the API's 5 MB of
+  base64), sent as an image / document block in the tool_result; the screen says "Read image (N KB)".
+- Memory: HTML comments a line starts with are left out (code blocks kept); rules from
+  ENVARC:Claude/rules and <root>/.claude/rules (*.md, 3 levels of subdirectories), paths: rules
+  loaded when a Read/Edit file matches (relative to the root, or the whole path); auto memory on
+  by default (autoMemoryEnabled false or CLAUDE_CODE_DISABLE_AUTO_MEMORY turn it off): MEMORY.md's
+  first 200 lines, the directory named in the system prompt, Write/Edit/Read there need no
+  question; /memory auto on|off.
 - A skill typed as /name runs as a turn like a command (context: fork applies when Claude calls
   the Skill tool; typed, it runs inline).
 
@@ -159,5 +181,14 @@ Phase 4 -- hooks, settings, memory, tools (hooks.c config.c policy.c memory.c to
   built-in styles and keep-coding-instructions, the status line JSON); claude_config: style count
   6, hooks_match Agent. Mutations: Skill provider off, Agent alias off, keep-coding off each fail.
   Gate: make test (43 OK), make test-ref (149, 0 failed), make amiga rc 0.
+
+- c4 Phase 4 (H1-H4 H6-H8 M1-M4): claude_repl test_gaps_hooks (the eight new events through the
+  REPL and print mode, if, updatedInput, additionalContext, systemMessage, continue:false,
+  PreCompact block, CLAUDE_PROJECT_DIR, Read of a PNG and a PDF, Bash's default and max time,
+  HTML comments, rules always / by paths:, claudeMdExcludes, auto memory and its writes);
+  claude_tools: read-only commands. Tests that used "echo" as a command needing a question now
+  use makedir / printf (echo is read-only now). Mutations: if off, PermissionRequest off,
+  comment stripping off, the updatedInput swap off, rules off each fail. Gate: make test (43 OK),
+  make test-ref (149, 0 failed), make amiga rc 0.
 
 ## Rig steps (main session)

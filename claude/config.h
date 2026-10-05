@@ -34,7 +34,10 @@ enum { RULE_NONE, RULE_ALLOW, RULE_ASK, RULE_DENY };
 /* hook events, Claude Code's names (hooks.h runs them) */
 enum {
     HK_PRE_TOOL, HK_POST_TOOL, HK_PROMPT, HK_STOP, HK_SUBAGENT_STOP, HK_SESSION_START, HK_SESSION_END,
-    HK_PRE_COMPACT, HK_NOTIFICATION, HK_COUNT
+    HK_PRE_COMPACT, HK_NOTIFICATION,
+    /* A4 gaps: Claude Code's other events that exist here */
+    HK_PERMISSION_REQUEST, HK_POST_TOOL_FAILURE, HK_SUBAGENT_START, HK_POST_COMPACT, HK_STOP_FAILURE,
+    HK_PROMPT_EXPANSION, HK_CWD_CHANGED, HK_DIR_ADDED, HK_COUNT
 };
 extern const char *const cfg_hook_events[HK_COUNT];
 

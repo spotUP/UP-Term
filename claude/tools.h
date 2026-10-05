@@ -126,6 +126,9 @@ typedef struct cl_tools {
      * goes to extra. Absent: tools_run alone. */
     void (*call)(void *u, struct cl_tools *t, const char *id, const char *name, int input_ok, const char *raw,
                  long rawn, jw *out, jw *extra);
+    /* optional: a subagent starts (the SubagentStart hook): text for it
+     * into context (its system prompt gets it) */
+    void (*agent_start)(void *u, const char *agent, const char *id, jw *context);
     /* optional: a subagent is done (the SubagentStop hook): 1 when it is to
      * go on, with what to tell it in reason */
     int (*agent_stop)(void *u, const char *agent, int active, jw *reason);
@@ -140,6 +143,8 @@ typedef struct cl_tools {
                                  * REPL's ASKP_* + 1; 0 the session's */
     const char *parent_id;      /* inside a subagent: the Task call's id (stream-json), 0 outside */
     int nobody;                 /* print mode: 1 a denial was nobody's answer; 2 --permission-prompts none */
+    int rule_ask;               /* the call has an explicit ask rule (a read-only command asks then too) */
+    long max_timeout_ms;        /* BASH_MAX_TIMEOUT_MS, 0: 600000 */
     /* the call's one-line summary for the screen when its result's text is
      * for Claude only (WebFetch: "Received 12.3KB (200 OK)", Claude Code's
      * line); "" none. Set by the tool, cleared at each call. */
@@ -161,6 +166,9 @@ const char *tools_json(cl_tools *t, const char *model);
 /* The background shells (Bash run_in_background), one line each --
  * "bash_1  running  Wait 2" -- into out ("" none): /tasks's list. */
 void tools_shells(cl_tools *t, char *out, long cap);
+/* Does a Bash line only look (List, Type, Echo, ls, cat, ... in every
+ * part, no redirection into a file)? It runs without a question. */
+int bash_read_only(const char *cmd);
 /* T_*, or -1 */
 int tools_id(const char *name);
 /* the tool's API name */

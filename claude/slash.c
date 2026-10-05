@@ -582,13 +582,21 @@ static void memory(cl_repl *r, const char *arg)
     long on = 0, rc = 0;
     int c = !strcmp(arg, "user") ? 0 : !strcmp(arg, "project") ? 1 : !strcmp(arg, "local") ? 2 : -1;
     int i;
+    if (!strcmp(arg, "auto on") || !strcmp(arg, "auto off")) {
+        /* Claude Code's /memory switches auto memory too */
+        config_set(r, "autoMemoryEnabled", arg[6] == 'n' ? "true" : "false", CFG_USER);
+        line2(r, "Auto memory: ", r->mem.auto_dir[0] ? r->mem.auto_dir : "off");
+        return;
+    }
     if (c < 0 && !*arg)
         c = ui_pick(&r->ui, "Edit which memory file?", opt, 3, 1);
     if (c < 0) {
         ui_line(&r->ui, "Memory files in use:");
         for (i = 0; i < r->mem.n; i++)
             line2(r, "  ", r->mem.f[i].path);
-        ui_line(&r->ui, "/memory user, /memory project or /memory local opens one in the editor.");
+        if (r->mem.auto_dir[0])
+            line2(r, "  auto memory: ", r->mem.auto_dir);
+        ui_line(&r->ui, "/memory user, /memory project or /memory local opens one in the editor; /memory auto on|off.");
         return;
     }
     mem_file_of(kinds[c], r->home, r->tools.root, file, sizeof(file));
@@ -781,13 +789,16 @@ static void add_dir(cl_repl *r, const char *arg)
         return;
     strcpy(q[r->cfg.ndirs++], d);
     line2(r, "Claude may now read (and, in accept-edits mode, edit) in ", d);
+    pol_dir_added(r, d);
 }
 
 static void cd(cl_repl *r, const char *arg)
 {
-    char d[300];
+    char d[300], old[256];
     if (dir_of(r, arg, d, sizeof(d)))
         return;
+    cl_copy(old, r->tools.root, sizeof(old));
+    pol_cwd_changed(r, old, d);     /* the hooks of the directory being left (the new one's are read next) */
     cl_copy(r->tools.root, d, sizeof(r->tools.root));
     repl_load(r);
     line2(r, "Start directory: ", r->tools.root);
@@ -1608,6 +1619,10 @@ int slash_custom(cl_repl *r, const char *w, const char *arg)
               err);
         jw_free(&p);
         return 1;
+    }
+    if (pol_expansion(r, d, arg, p.p ? p.p : "", p.n)) {
+        jw_free(&p);
+        return 1;                   /* a UserPromptExpansion hook said no */
     }
     if (d->type == DEF_SKILL)
         r->n_skills_run++;

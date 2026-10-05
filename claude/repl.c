@@ -429,6 +429,17 @@ int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outsid
      * bypassPermissions: yes, except to an explicit ask rule */
     if (pol == ASKP_BYPASS && !rule)
         return ASK_ONCE;
+    {
+        /* Claude Code: PermissionRequest hooks answer before the dialog
+         * (in print mode, before the "no" nobody would say) */
+        int hk = pol_permission_request(r, tool, r->at ? r->at->cur_in : 0, r->at ? r->at->cur_inn : 0);
+        if (hk == RULE_ALLOW)
+            return ASK_ONCE;
+        if (hk == RULE_DENY) {
+            repl_denied(r, tool, r->at ? r->at->cur_in : 0, r->at ? r->at->cur_inn : 0);
+            return ASK_NO;
+        }
+    }
     if (r->no_person || pol == ASKP_DENY) {
         if (!rule && !outside && tid >= 0 && perm_read_only(tid))
             return ASK_ONCE;
@@ -647,6 +658,17 @@ long repl_compact_at(cl_repl *r)
 }
 
 /* the auto-compact threshold passed? */
+/* Stop hooks may send Claude on this often a turn (Claude Code: 8,
+ * CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) */
+static int stop_cap(cl_repl *r)
+{
+    char v[16];
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP", v, sizeof(v)) > 0 &&
+        atoi(v) > 0)
+        return atoi(v);
+    return 8;
+}
+
 static int too_full(cl_repl *r)
 {
     return r->auto_compact && r->conv.n > 1 && r->ctx_used > repl_compact_at(r);
@@ -724,8 +746,15 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             ctx_show(r);
             continue;
         }
-        if (rc != R_OK)
+        if (rc != R_OK) {
+            if (rc == R_FAIL) {
+                int st = r->resp.status;
+                r->api_failed = st == 401 || st == 403 ? "authentication_failed" : st == 429 ? "rate_limit"
+                                : st == 400 ? "invalid_request" : st == 402 ? "billing_error"
+                                : st >= 500 || r->busy_fail ? "server_error" : "unknown";
+            }
             break;
+        }
         r->n_responses++;
         conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok,
                    r->st.cache_w, r->st.cache_r);
@@ -771,7 +800,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             jw why;
             int again;
             jw_init(&why);
-            again = stops < 3 && pol_stop(r, stops > 0, &why);
+            again = stops < stop_cap(r) && pol_stop(r, stops > 0, &why);
             if (again && conv_add_user_text(&r->conv, why.p, why.n) == 0) {
                 stops++;
                 jw_free(&why);
@@ -818,6 +847,9 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     }
     ui_busy(&r->ui, 0);
     r->turn_tools = turn_tools;
+    if (r->turn_rc == TURN_FAIL && r->api_failed)
+        pol_stop_failure(r, r->api_failed);    /* the turn ended on an API error */
+    r->api_failed = 0;
     if (!answered)
         conv_rollback(&r->conv, m0);
     else
@@ -989,7 +1021,8 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
         ui_line(&r->ui, "Nothing to compact yet.");
         return;
     }
-    pol_precompact(r, automatic, focus);
+    if (pol_precompact(r, automatic, focus))
+        return;                     /* a PreCompact hook said no */
     jw_init(&ask);
     jw_rawz(&ask, compact_prompt);
     if (focus && *focus) {
@@ -1037,6 +1070,7 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
             ctx_show(r);
             ui_line(&r->ui, "Compacted. The conversation goes on from its summary (/context for the size).");
             session_save(r);
+            pol_postcompact(r, automatic, sum.p, sum.n);
             pol_status_event(r);    /* Claude Code: /compact finished */
             pol_session(r, HK_SESSION_START, "compact");
         }
@@ -1493,8 +1527,10 @@ int repl_line(cl_repl *r, const char *line)
     word[wl] = 0;
     while (*arg == ' ')
         arg++;
-    if (is_cmd(word, "/exit") || is_cmd(word, "/quit"))
+    if (is_cmd(word, "/exit") || is_cmd(word, "/quit")) {
+        r->end_reason = "prompt_input_exit";    /* SessionEnd's reason (Claude Code's values) */
         return 1;
+    }
     if (is_cmd(word, "/help"))
         show_help(r);
     else if (is_cmd(word, "/model")) {
@@ -1822,6 +1858,14 @@ static int menu_build(cl_repl *r)
     return 0;
 }
 
+static const char auto_a[] =
+    "\n\n# Auto memory\n\nYou have a memory directory of your own for this project: ";
+static const char auto_b[] =
+    " (it may not exist yet; Write makes it). Keep in it what is worth knowing in a later session -- the "
+    "user's preferences, facts about this project and this machine, what was learned the hard way -- one "
+    "topic a file, and MEMORY.md as the index (its first 200 lines are read at every start). Update or remove "
+    "what turns out wrong. Do not save what the code or the conversation already makes plain.";
+
 static const char mem_intro[] =
     "\n\nCodebase and user instructions are shown below. Be sure to adhere to these instructions. "
     "IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written.\n\n";
@@ -1853,6 +1897,11 @@ int repl_system(cl_repl *r)
         jw_rawz(&s, mem_intro);
         jw_raw(&s, r->mem.text.p, r->mem.text.n);
     }
+    if (r->mem.auto_dir[0]) {
+        jw_rawz(&s, auto_a);
+        jw_rawz(&s, r->mem.auto_dir);
+        jw_rawz(&s, auto_b);
+    }
     if (r->sys_append) {
         jw_rawz(&s, "\n\n");
         jw_rawz(&s, r->sys_append);     /* --append-system-prompt */
@@ -1867,11 +1916,31 @@ int repl_system(cl_repl *r)
     return 0;
 }
 
+/* auto memory on? (autoMemoryEnabled, CLAUDE_CODE_DISABLE_AUTO_MEMORY; on by default) */
+static int auto_memory(cl_repl *r)
+{
+    char v[8];
+    if (r->bare || r->safe || r->cfg.auto_memory == 0)
+        return 0;
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_DISABLE_AUTO_MEMORY", v, sizeof(v)) > 0 &&
+        strcmp(v, "0"))
+        return 0;
+    return 1;
+}
+
 int repl_load_memory(cl_repl *r)
 {
     mem_free(&r->mem);
+    r->mem.excl = r->cfg.md_excludes;           /* claudeMdExcludes */
+    r->mem.nexcl = r->cfg.nmdx;
     if (!r->bare && !r->safe)       /* --bare / --safe-mode: no CLAUDE.md */
         mem_load(&r->mem, r->sys, r->home, r->tools.root);
+    if (auto_memory(r)) {
+        /* Claude Code's auto memory: <home>/projects/<project>/memory/ */
+        char d[340];
+        if (path_join(r->sess.dir, "memory", d, sizeof(d)) == 0)
+            mem_auto(&r->mem, r->sys, d);
+    }
     return repl_system(r);
 }
 
@@ -2001,7 +2070,14 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->tools.sys = sys;
     if (sys->canon(sys->u, root, r->tools.root, sizeof(r->tools.root)))
         cl_copy(r->tools.root, root, sizeof(r->tools.root));
-    r->tools.timeout_s = 60;
+    r->tools.timeout_s = 120;       /* Claude Code: 2 minutes (BASH_DEFAULT_TIMEOUT_MS) */
+    {
+        char v[24];
+        if (sys->getenv && sys->getenv(sys->u, "BASH_DEFAULT_TIMEOUT_MS", v, sizeof(v)) > 0 && atol(v) > 0)
+            r->tools.timeout_s = (int)((atol(v) + 999) / 1000);
+        if (sys->getenv && sys->getenv(sys->u, "BASH_MAX_TIMEOUT_MS", v, sizeof(v)) > 0 && atol(v) > 0)
+            r->tools.max_timeout_ms = atol(v);
+    }
     r->tools.u = r;
     r->tools.show = tool_show;
     r->tools.ask = tool_ask;
@@ -2030,6 +2106,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->hooks.transcript = r->sess.file;
     r->hooks.cwd = r->tools.root;
     r->hooks.tmp = r->tmp;
+    r->hooks.project_dir = r->launch_root;      /* CLAUDE_PROJECT_DIR */
     pol_attach_ui(r);
     pol_attach_tools(r);
     if (repl_load(r))
@@ -2043,7 +2120,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
 void repl_free(cl_repl *r)
 {
     if (r->hooks.cfg)
-        pol_session(r, HK_SESSION_END, "exit");
+        pol_session(r, HK_SESSION_END, r->end_reason ? r->end_reason : "other");
     if (r->tui) {
         tui_stop(r->tui);
         show_free(r->show);

@@ -170,6 +170,8 @@ typedef struct cl_repl {
     char agent_name[64];        /* --agent / the "agent" setting in force, "" none */
     long lines_added, lines_removed;    /* Write/Edit lines changed this session (status line's cost) */
     long pend_add, pend_del;    /* the change being asked about (its preview's counts) */
+    const char *api_failed;     /* the turn's request failed: StopFailure's error kind, 0 none */
+    const char *end_reason;     /* SessionEnd's reason: prompt_input_exit after /exit, else other */
     long n_copies;              /* the tests' sentinel: /copy runs that reached the clipboard */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];

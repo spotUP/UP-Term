@@ -13,6 +13,7 @@ void hookres_init(cl_hookres *r)
     jw_init(&r->reason);
     jw_init(&r->context);
     jw_init(&r->shown);
+    jw_init(&r->updated);
 }
 
 void hookres_free(cl_hookres *r)
@@ -20,6 +21,7 @@ void hookres_free(cl_hookres *r)
     jw_free(&r->reason);
     jw_free(&r->context);
     jw_free(&r->shown);
+    jw_free(&r->updated);
     hookres_init(r);
 }
 
@@ -99,6 +101,11 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
             add_line(&r->shown, m, (long)strlen(m));
         }
     }
+    if (json_get(v, "systemMessage", &x) && json_type(x) == J_STR) {
+        char m[600];
+        json_str(x, m, sizeof(m));
+        add_line(&r->shown, m, (long)strlen(m));    /* for the user */
+    }
     if (json_get(v, "decision", &x) && json_streq(x, "block")) {
         char m[1000];
         r->blocked = 1;
@@ -122,6 +129,24 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
             else if (json_streq(x, "allow") && r->decision == RULE_NONE)
                 r->decision = RULE_ALLOW;
         }
+        if (json_get(hs, "updatedInput", &x) && json_type(x) == J_OBJ && event == HK_PRE_TOOL) {
+            jw_reset(&r->updated);
+            jw_raw(&r->updated, x.p, x.n);
+        }
+        if (json_get(hs, "decision", &x) && json_type(x) == J_OBJ && event == HK_PERMISSION_REQUEST) {
+            jv b;
+            if (json_get(x, "behavior", &b) && json_streq(b, "deny")) {
+                char m[600];
+                r->behavior = RULE_DENY;
+                m[0] = 0;
+                if (json_get(x, "message", &b))
+                    json_str(b, m, sizeof(m));
+                add_line(&r->reason, m, (long)strlen(m));
+                if (json_get(x, "interrupt", &b) && json_type(b) == J_TRUE)
+                    r->stop = 1;
+            } else if (json_get(x, "behavior", &b) && json_streq(b, "allow") && r->behavior != RULE_DENY)
+                r->behavior = RULE_ALLOW;
+        }
         if (json_get(hs, "additionalContext", &x) && json_type(x) == J_STR) {
             long l;
             char *t = json_strdup(x, &l);
@@ -136,7 +161,31 @@ static int json_answer(int event, const char *o, long n, cl_hookres *r)
 static int can_block(int event)
 {
     return event == HK_PRE_TOOL || event == HK_POST_TOOL || event == HK_PROMPT || event == HK_STOP ||
-           event == HK_SUBAGENT_STOP;
+           event == HK_SUBAGENT_STOP || event == HK_PRE_COMPACT || event == HK_PROMPT_EXPANSION ||
+           event == HK_POST_TOOL_FAILURE;
+}
+
+/* the command with ${CLAUDE_PROJECT_DIR} and $CLAUDE_PROJECT_DIR put in
+ * (the AmigaShell knows no ${...}), the variable also set for it */
+static void project_cmd(cl_hooks *h, const char *cmd, char *out, long cap)
+{
+    const char *pd = h->project_dir ? h->project_dir : h->cwd ? h->cwd : "";
+    long k = 0;
+    if (h->sys->setenv)
+        h->sys->setenv(h->sys->u, "CLAUDE_PROJECT_DIR", pd);
+    while (*cmd && k < cap - 1) {
+        long l = !strncmp(cmd, "${CLAUDE_PROJECT_DIR}", 21) ? 21 : !strncmp(cmd, "$CLAUDE_PROJECT_DIR", 19) ? 19 : 0;
+        if (l) {
+            long pl = (long)strlen(pd);
+            if (k + pl >= cap - 1)
+                break;
+            memcpy(out + k, pd, (size_t)pl);
+            k += pl;
+            cmd += l;
+        } else
+            out[k++] = *cmd++;
+    }
+    out[k] = 0;
 }
 
 int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_hookres *r)
@@ -174,7 +223,14 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
         int st;
         if (k->event != event || !hooks_match(k->matcher, name ? name : ""))
             continue;
-        cl_copy(line, k->cmd, sizeof(line) - 320);
+        if (k->cond && *k->cond) {
+            /* "if": a permission rule the tool call must match */
+            jv in;
+            if (!h->tool || !h->input || json_parse(h->input, h->input_n, &in) ||
+                !cfg_rule_match(k->cond, h->tool, in, h->cwd ? h->cwd : ""))
+                continue;
+        }
+        project_cmd(h, k->cmd, line, sizeof(line) - 320);
         cl_cat(line, " < ", sizeof(line));
         cl_cat(line, file, sizeof(line));
         st = h->sys->run(h->sys->u, line, k->timeout_s, o, HOOK_OUT - 1, &on, &rc);
@@ -196,8 +252,13 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
             if (!json_answer(event, o, on, r) && (event == HK_PROMPT || event == HK_SESSION_START))
                 add_line(&r->context, o, on);
         } else if (rc == 2 && can_block(event)) {
+            /* Claude Code reads JSON on every exit code; exit 2 blocks whatever it says */
+            long had = r->reason.n;
             r->blocked = 1;
-            add_line(&r->reason, o, on);
+            if (!json_answer(event, o, on, r) || r->reason.n == had)
+                add_line(&r->reason, o, on);
+        } else if (json_answer(event, o, on, r)) {
+            ;                       /* a JSON answer: its fields say what happens */
         } else {
             char m[400];
             cl_copy(m, cfg_hook_events[event], sizeof(m));

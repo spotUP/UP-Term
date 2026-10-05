@@ -754,10 +754,18 @@ static void test_files(void)
                    text, sizeof(text)), 0);
     CHECK_INT(a.asked, 0);
     CHECK_INT(get("fresh.txt", buf, sizeof(buf)), 6);
-    /* plan mode: Bash is refused with a result that says why, unasked */
+    /* plan mode: Bash is refused with a result that says why, unasked --
+     * but a command that only looks runs (Claude Code's read-only set) */
     t.perm.mode = PERM_PLAN;
-    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo no\"}", text, sizeof(text)), 1);
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"rm no\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "plan mode is on") != 0);
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo looks\"}", text, sizeof(text)), 0);
+    CHECK(strstr(text, "looks") != 0);
+    CHECK_INT(bash_read_only("List S: ; type s:startup-sequence | grep x"), 1);
+    CHECK_INT(bash_read_only("echo x >RAM:f"), 0);         /* writes a file */
+    CHECK_INT(bash_read_only("ls && rm x"), 0);            /* one part changes things */
+    CHECK_INT(bash_read_only("C:List S:"), 0);             /* a path is not the read-only List */
+    CHECK_INT(bash_read_only("echo `delete x`"), 0);
     CHECK_INT(call(&t, "Write", "{\"file_path\":\"fresh.txt\",\"content\":\"x\"}", text, sizeof(text)), 1);
     CHECK(strstr(text, "plan mode is on") != 0);
     CHECK_INT(a.asked, 0);
