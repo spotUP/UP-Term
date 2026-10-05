@@ -1,6 +1,7 @@
 /* C:Claude -- a native Claude client for AmigaOS 3.x (68020+), ledger A2.
  *
  *   Claude [PROMPT] [MODEL=name] [EFFORT=level] [URL=url] [ROOT=dir] [PING] [DEBUG] [PLAIN]
+ *          [CONTINUE] [FALLBACK=model]
  *
  * With no PROMPT: a conversation on a screen of its own in the window, as
  * Claude Code draws it (ledger A3): raw mode, an input box with its own
@@ -11,7 +12,10 @@
  * check). DEBUG: a log in T:Claude.log (request heads with the key blanked,
  * the stream's events). URL: another endpoint, e.g. http://host:8080/... for
  * tools/claude_fixture.py (recorded answers, no key needed). ROOT: the
- * start directory (default: the current one).
+ * start directory (default: the current one). CONTINUE: the most recent
+ * conversation of this directory goes on (Claude Code's --continue).
+ * MODEL and FALLBACK take the aliases opus, sonnet, haiku, fable;
+ * FALLBACK is the model a turn goes on with when the first is overloaded.
  *
  * The key: ENV:ANTHROPIC_API_KEY, else the file ENVARC:Claude/key. It is
  * never shown, never logged, and cleared from memory at the end.
@@ -38,8 +42,8 @@
 static const char vers[] = "$VER: Claude 1.0 (4.10.2026) UP-Term";
 const char stack_cookie[] = "$STACK: 32768";
 
-#define TEMPLATE "PROMPT/F,MODEL/K,EFFORT/K,URL/K,ROOT/K,PING/S,DEBUG/S,PLAIN/S"
-enum { A_PROMPT, A_MODEL, A_EFFORT, A_URL, A_ROOT, A_PING, A_DEBUG, A_PLAIN, A_COUNT };
+#define TEMPLATE "PROMPT/F,MODEL/K,EFFORT/K,URL/K,ROOT/K,PING/S,DEBUG/S,PLAIN/S,CONTINUE/S,FALLBACK/K"
+enum { A_PROMPT, A_MODEL, A_EFFORT, A_URL, A_ROOT, A_PING, A_DEBUG, A_PLAIN, A_CONTINUE, A_FALLBACK, A_COUNT };
 
 #define MIN_STACK 16000
 
@@ -257,16 +261,23 @@ int main(void)
     } else {
         r->debug = args[A_DEBUG] != 0;
         if (args[A_MODEL])
-            cl_copy(r->model, (const char *)args[A_MODEL], sizeof(r->model));
+            cl_copy(r->model, cfg_model((const char *)args[A_MODEL]), sizeof(r->model));
+        if (args[A_FALLBACK])
+            cl_copy(r->fallback, cfg_model((const char *)args[A_FALLBACK]), sizeof(r->fallback));
         if (args[A_EFFORT])
             cl_copy(r->effort, (const char *)args[A_EFFORT], sizeof(r->effort));
+        /* A2's one saved conversation: /resume takes it over when there is no session yet */
         cl_copy(r->session, "ENVARC:Claude/session.json", sizeof(r->session));
         if (args[A_PING])
             rc = repl_ping(r) ? 10 : 0;
-        else if (args[A_PROMPT])
+        else if (args[A_PROMPT]) {
+            if (args[A_CONTINUE])
+                repl_continue(r);
             repl_line(r, (const char *)args[A_PROMPT]);
-        else {
+        } else {
             repl_screen(r);         /* the line mode stays when the console says no */
+            if (args[A_CONTINUE])
+                repl_continue(r);
             repl_run(r);
         }
     }

@@ -139,6 +139,83 @@ static int x_run(void *u, const char *cmd, int timeout_s, char *out, long cap, l
     return 0;
 }
 
+static int x_append(void *u, const char *path, const char *s, long n)
+{
+    sys_posix *p = (sys_posix *)u;
+    FILE *f = fopen(path, "ab");
+    if (!f) {
+        set_err(p, path);
+        return -1;
+    }
+    if ((long)fwrite(s, 1, (size_t)n, f) != n) {
+        fclose(f);
+        set_err(p, path);
+        return -1;
+    }
+    return fclose(f) ? -1 : 0;
+}
+
+static int x_mkdir(void *u, const char *path)
+{
+    sys_posix *p = (sys_posix *)u;
+    struct stat st;
+    if (!stat(path, &st) && S_ISDIR(st.st_mode))
+        return 0;
+    if (mkdir(path, 0700)) {
+        set_err(p, path);
+        return -1;
+    }
+    return 0;
+}
+
+static int x_remove(void *u, const char *path)
+{
+    sys_posix *p = (sys_posix *)u;
+    if (remove(path)) {
+        set_err(p, path);
+        return -1;
+    }
+    return 0;
+}
+
+static long x_getenv(void *u, const char *name, char *out, long cap)
+{
+    const char *v = getenv(name);
+    (void)u;
+    if (!v)
+        return -1;
+    cl_copy(out, v, cap);
+    return (long)strlen(out);
+}
+
+static int x_setenv(void *u, const char *name, const char *value)
+{
+    (void)u;
+    return setenv(name, value, 1) ? -1 : 0;
+}
+
+static int x_clip(void *u, const char *s, long n)
+{
+    sys_posix *p = (sys_posix *)u;
+    if (n > (long)sizeof(p->clip) - 1)
+        n = (long)sizeof(p->clip) - 1;
+    memcpy(p->clip, s, (size_t)n);
+    p->clip[n] = 0;
+    p->clipn = n;
+    return 0;
+}
+
+static int x_info(void *u, const char *what, char *out, long cap)
+{
+    (void)u;
+    if (!strcmp(what, "os")) {
+        cl_copy(out, "a POSIX host (the test build)", cap);
+        return 1;
+    }
+    cl_copy(out, "not on this machine", cap);
+    return -1;
+}
+
 static const char *x_err(void *u)
 {
     return ((sys_posix *)u)->err;
@@ -155,4 +232,11 @@ void sys_posix_init(sys_posix *p, cl_sys *s)
     s->canon = x_canon;
     s->run = x_run;
     s->err = x_err;
+    s->append = x_append;
+    s->mkdir = x_mkdir;
+    s->remove = x_remove;
+    s->getenv = x_getenv;
+    s->setenv = x_setenv;
+    s->clip = x_clip;
+    s->info = x_info;
 }

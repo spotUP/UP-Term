@@ -1,0 +1,903 @@
+/* slash -- the slash command table, and the commands of A4 WP3 (rows 3.3
+ * 3.5 3.7 3.8 3.9 3.10): /permissions /output-style /rename /branch
+ * /rewind /autocompact /status /usage /export /config /memory /add-dir
+ * /doctor /statusline /terminal-setup /login /logout /agents /skills
+ * /commands /hooks /tasks /todos /cd, and the custom commands of
+ * .claude/commands. The A2/A3 commands stay in repl.c.
+ * Portable C89, host-tested through the REPL suite. */
+#include <stdlib.h>
+#include <string.h>
+#include "repl_int.h"
+#include "tui.h"
+#include "path.h"
+#include "util.h"
+
+const cl_cmd slash_builtin[] = {
+    { "/help", "Show the commands and the keys" },
+    { "/add-dir", "Let Claude work in one more directory: /add-dir DIR" },
+    { "/agents", "The subagents (.claude/agents)" },
+    { "/autocompact", "Compact by itself when the context is nearly full: on or off" },
+    { "/branch", "Go on in a copy of this conversation (a new session)" },
+    { "/cd", "Change the start directory: /cd DIR" },
+    { "/clear", "Start a new conversation (clears the screen)" },
+    { "/commands", "The custom commands (.claude/commands)" },
+    { "/compact", "Summarise the conversation and go on from it: /compact [what to keep]" },
+    { "/config", "The settings: /config [KEY VALUE [user|project|local]]" },
+    { "/context", "How much of the context window is in use" },
+    { "/cost", "Tokens and cost so far" },
+    { "/doctor", "Check the machine: the network, AmiSSL, the key, the settings" },
+    { "/effort", "Show or set the effort: low, medium, high, xhigh, max" },
+    { "/exit", "Leave" },
+    { "/export", "The conversation as text: to the clipboard, or /export FILE" },
+    { "/hooks", "The hooks of the settings" },
+    { "/init", "Write AMIGA.md: notes on this directory for later sessions" },
+    { "/login", "Store an API key in ENVARC:Claude/key" },
+    { "/logout", "Remove the stored API key" },
+    { "/memory", "Edit a memory file (CLAUDE.md) in the editor" },
+    { "/model", "Show or set the model (opus, sonnet, haiku, fable, or an id)" },
+    { "/output-style", "Choose the output style: Default, Explanatory, Learning, yours" },
+    { "/permissions", "The permission rules: /permissions [allow|ask|deny|remove RULE]" },
+    { "/rename", "Name this conversation: /rename NAME" },
+    { "/resume", "Go on with an earlier conversation of this directory" },
+    { "/rewind", "Go back to an earlier prompt: the files, the conversation, or both" },
+    { "/save", "Save the conversation as JSON: /save FILE" },
+    { "/skills", "The skills (.claude/skills)" },
+    { "/status", "The model, the session, the account, the settings in use" },
+    { "/statusline", "A command for the status line: /statusline COMMAND" },
+    { "/tasks", "The commands running in the background" },
+    { "/terminal-setup", "Check the terminal: UP-Term's keys and size" },
+    { "/todos", "The todo list" },
+    { "/usage", "Tokens, cost and the context window" }
+};
+const int slash_nbuiltin = (int)(sizeof(slash_builtin) / sizeof(slash_builtin[0]));
+
+static void line2(cl_repl *r, const char *a, const char *b)
+{
+    repl_say(r, a, b);
+}
+
+static void num_line(cl_repl *r, const char *a, long v, const char *b)
+{
+    char m[300], num[16];
+    cl_copy(m, a, sizeof(m));
+    cl_ltoa(v, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, b, sizeof(m));
+    ui_line(&r->ui, m);
+}
+
+static const char *src_word(int src)
+{
+    return src == CFG_USER ? "user" : src == CFG_PROJECT ? "project" : src == CFG_LOCAL ? "local"
+           : src == DEF_BUILTIN ? "built-in" : "session";
+}
+
+/* "user" / "project" / "local" at the end of an argument: the level (and
+ * the argument shortened), else def */
+static int level_of(char *arg, int def)
+{
+    long n = (long)strlen(arg);
+    static const char *const w[3] = { "user", "project", "local" };
+    int i;
+    for (i = 0; i < 3; i++) {
+        long l = (long)strlen(w[i]);
+        if (n > l && arg[n - l - 1] == ' ' && !strcmp(arg + n - l, w[i])) {
+            arg[n - l - 1] = 0;
+            while (n && arg[strlen(arg) - 1] == ' ')
+                arg[strlen(arg) - 1] = 0;
+            return i;
+        }
+    }
+    return def;
+}
+
+/* ---- /permissions ---- */
+
+static void permissions(cl_repl *r, const char *a)
+{
+    char arg[400], verb[16];
+    int kind = -1, lvl, i;
+    const char *rest;
+    cl_copy(arg, a, sizeof(arg));
+    for (rest = arg; *rest && *rest != ' '; rest++)
+        ;
+    cl_copy(verb, arg, (long)(rest - arg) + 1 < (long)sizeof(verb) ? (long)(rest - arg) + 1 : (long)sizeof(verb));
+    while (*rest == ' ')
+        rest++;
+    if (!strcmp(verb, "allow"))
+        kind = RULE_ALLOW;
+    else if (!strcmp(verb, "ask"))
+        kind = RULE_ASK;
+    else if (!strcmp(verb, "deny"))
+        kind = RULE_DENY;
+    if (kind >= 0 || !strcmp(verb, "remove")) {
+        char rule[300], t[64], p[300];
+        cl_copy(rule, rest, sizeof(rule));
+        lvl = level_of(rule, CFG_LOCAL);
+        if (!rule[0] || cfg_rule_parse(rule, t, sizeof(t), p, sizeof(p))) {
+            ui_line(&r->ui, "A rule is Tool or Tool(pattern), e.g. Bash(make *), Edit(src/**), Read.");
+            return;
+        }
+        if (kind >= 0) {
+            if (cfg_write_rule(r->sys, cfg_file(&r->cfg, lvl), kind, rule, 1)) {
+                line2(r, "Cannot write the rule to ", cfg_file(&r->cfg, lvl));
+                return;
+            }
+            cfg_add_rule(&r->cfg, kind, lvl, rule);
+            line2(r, cfg_kind_name(kind), rule);
+            line2(r, "  saved in ", cfg_file(&r->cfg, lvl));
+            return;
+        }
+        {
+            int gone = 0, k, s;
+            for (s = 0; s < 3; s++)
+                for (k = RULE_ALLOW; k <= RULE_DENY; k++)
+                    if (cfg_write_rule(r->sys, cfg_file(&r->cfg, s), k, rule, 0) == 0)
+                        gone++;
+            for (i = r->cfg.nrules - 1; i >= 0; i--)
+                if (!strcmp(r->cfg.rules[i].text, rule)) {
+                    free(r->cfg.rules[i].text);
+                    memmove(&r->cfg.rules[i], &r->cfg.rules[i + 1],
+                            (size_t)(r->cfg.nrules - i - 1) * sizeof(cl_rule));
+                    r->cfg.nrules--;
+                    gone++;
+                }
+            line2(r, gone ? "Removed the rule " : "No such rule: ", rule);
+        }
+        return;
+    }
+    if (arg[0]) {
+        ui_line(&r->ui, "Usage: /permissions [allow|ask|deny RULE [user|project|local]] or /permissions remove RULE");
+        return;
+    }
+    ui_line(&r->ui, "Permission rules (deny wins over ask, ask over allow):");
+    if (!r->cfg.nrules)
+        ui_line(&r->ui, "  none. Add one: /permissions allow Bash(make *)");
+    for (kind = RULE_DENY; kind >= RULE_ALLOW; kind--)
+        for (i = 0; i < r->cfg.nrules; i++)
+            if (r->cfg.rules[i].kind == kind) {
+                char m[400];
+                cl_copy(m, "  ", sizeof(m));
+                cl_cat(m, cfg_kind_name(kind), sizeof(m));
+                cl_cat(m, "  ", sizeof(m));
+                cl_cat(m, r->cfg.rules[i].text, sizeof(m));
+                cl_cat(m, "  (", sizeof(m));
+                cl_cat(m, src_word(r->cfg.rules[i].src), sizeof(m));
+                cl_cat(m, ")", sizeof(m));
+                ui_line(&r->ui, m);
+            }
+    if (r->tools.perm.session) {
+        char m[300];
+        int t;
+        cl_copy(m, "  allowed for this session by an answer:", sizeof(m));
+        for (t = 0; t < T_COUNT; t++)
+            if (r->tools.perm.session & (1u << t)) {
+                cl_cat(m, " ", sizeof(m));
+                cl_cat(m, cfg_cc_tool(t == T_READ_FILE ? "read_file" : t == T_LIST_DIR ? "list_dir"
+                                      : t == T_GREP ? "grep" : t == T_WRITE_FILE ? "write_file"
+                                      : t == T_EDIT_FILE ? "edit_file" : t == T_RUN_COMMAND ? "run_command"
+                                      : "todo_write"), sizeof(m));
+            }
+        ui_line(&r->ui, m);
+    }
+    for (i = 0; i < r->cfg.ndirs; i++)
+        line2(r, "  additional directory: ", r->cfg.dirs[i]);
+}
+
+/* ---- /output-style ---- */
+
+static void output_style(cl_repl *r, const char *arg)
+{
+    const cl_def *d;
+    const char *opt[24];
+    int n = 0, i, c, cur = 0;
+    char v[96];
+    if (*arg)
+        d = defs_find(&r->defs, DEF_STYLE, arg);
+    else {
+        for (i = 0; i < 24 && defs_nth(&r->defs, DEF_STYLE, i); i++) {
+            opt[n] = defs_nth(&r->defs, DEF_STYLE, i)->name;
+            if (cl_strieq(opt[n], r->style[0] ? r->style : "Default"))
+                cur = n;
+            n++;
+        }
+        c = ui_pick(&r->ui, "Choose the output style", opt, n, cur);
+        if (c < 0) {
+            ui_line(&r->ui, "Output styles (/output-style NAME):");
+            for (i = 0; i < n; i++) {
+                char m[300];
+                const cl_def *s = defs_nth(&r->defs, DEF_STYLE, i);
+                cl_copy(m, i == cur ? "* " : "  ", sizeof(m));
+                cl_cat(m, s->name, sizeof(m));
+                cl_cat(m, "  ", sizeof(m));
+                cl_cat(m, s->description, sizeof(m));
+                ui_line(&r->ui, m);
+            }
+            return;
+        }
+        d = defs_nth(&r->defs, DEF_STYLE, c);
+    }
+    if (!d) {
+        line2(r, "No output style named ", arg);
+        return;
+    }
+    cl_copy(r->style, cl_strieq(d->name, "Default") ? "" : d->name, sizeof(r->style));
+    repl_system(r);
+    /* kept for this project, as Claude Code keeps it */
+    cl_copy(v, "\"", sizeof(v));
+    cl_cat(v, d->name, sizeof(v));
+    cl_cat(v, "\"", sizeof(v));
+    cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_LOCAL), "outputStyle", v);
+    line2(r, "Output style: ", d->name);
+}
+
+/* ---- /status /usage /doctor /terminal-setup ---- */
+
+static void status(cl_repl *r)
+{
+    char m[400], num[16];
+    int i;
+    ui_line(&r->ui, "C:Claude for AmigaOS (A4), Claude Code's features as far as an Amiga allows.");
+    line2(r, "Session: ", r->sess.id);
+    if (r->sess.title[0])
+        line2(r, "  named: ", r->sess.title);
+    line2(r, "Start directory: ", r->tools.root);
+    for (i = 0; i < r->cfg.ndirs; i++)
+        line2(r, "  and: ", r->cfg.dirs[i]);
+    cl_copy(m, r->model, sizeof(m));
+    cl_cat(m, ", effort ", sizeof(m));
+    cl_cat(m, r->effort, sizeof(m));
+    if (r->fallback[0]) {
+        cl_cat(m, ", fallback ", sizeof(m));
+        cl_cat(m, r->fallback, sizeof(m));
+    }
+    line2(r, "Model: ", m);
+    line2(r, "Permission mode: ", r->tools.perm.mode == PERM_PLAN ? "plan" : r->tools.perm.mode == PERM_ACCEPT
+                                      ? "accept edits" : "default");
+    line2(r, "Output style: ", r->style[0] ? r->style : "Default");
+    cl_copy(m, r->url.host, sizeof(m));
+    cl_cat(m, r->url.tls ? " (https)" : " (plain http: no key is sent)", sizeof(m));
+    line2(r, "API: ", m);
+    line2(r, "API key: ", r->key && *r->key ? "set" : r->url.tls ? "none (/login)" : "not needed here");
+    for (i = 0; i < 3; i++)
+        if (r->cfg.found[i])
+            line2(r, "Settings: ", r->cfg.path[i]);
+    for (i = 0; i < r->mem.n; i++)
+        line2(r, "Memory: ", r->mem.f[i].path);
+    cl_copy(m, "Rules ", sizeof(m));
+    cl_ltoa(r->cfg.nrules, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, ", hooks ", sizeof(m));
+    cl_ltoa(r->cfg.nhooks, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, ", custom commands ", sizeof(m));
+    cl_ltoa(defs_count(&r->defs, DEF_COMMAND), num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, ", agents ", sizeof(m));
+    cl_ltoa(defs_count(&r->defs, DEF_AGENT), num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, ", skills ", sizeof(m));
+    cl_ltoa(defs_count(&r->defs, DEF_SKILL), num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, ".", sizeof(m));
+    ui_line(&r->ui, m);
+    line2(r, "Auto-compact: ", r->auto_compact ? "on" : "off");
+}
+
+static void check(cl_repl *r, int ok, const char *what, const char *detail)
+{
+    char m[400];
+    cl_copy(m, ok > 0 ? "[OK]    " : ok == 0 ? "[ERROR] " : "[INFO]  ", sizeof(m));
+    cl_cat(m, what, sizeof(m));
+    if (detail && *detail) {
+        cl_cat(m, ": ", sizeof(m));
+        cl_cat(m, detail, sizeof(m));
+    }
+    ui_line(&r->ui, m);
+}
+
+static void doctor(cl_repl *r)
+{
+    char m[200];
+    int ok;
+    if (r->sys->info) {
+        ok = r->sys->info(r->sys->u, "os", m, sizeof(m));
+        check(r, ok, "System", m);
+        ok = r->sys->info(r->sys->u, "bsdsocket", m, sizeof(m));
+        check(r, ok, "TCP/IP stack", m);
+        if (r->url.tls) {
+            ok = r->sys->info(r->sys->u, "amissl", m, sizeof(m));
+            check(r, ok, "AmiSSL (https)", m);
+        }
+        ok = r->sys->info(r->sys->u, "vsh", m, sizeof(m));
+        check(r, ok, "Shell for commands", m);
+    }
+    cl_copy(m, r->url.host, sizeof(m));
+    check(r, 1, "API host", m);
+    if (r->url.tls)
+        check(r, r->key && *r->key ? 1 : 0, "API key",
+              r->key && *r->key ? "set" : "none: /login, ENV:ANTHROPIC_API_KEY or ENVARC:Claude/key");
+    check(r, r->cfg.err[0] ? 0 : 1, "Settings", r->cfg.err[0] ? r->cfg.err : "every file read is valid JSON");
+    check(r, r->sys->kind(r->sys->u, r->home) == 2 ? 1 : -1, "User directory",
+          r->sys->kind(r->sys->u, r->home) == 2 ? r->home : "not there yet (made at the first save)");
+    check(r, r->tui ? 1 : -1, "Screen", r->tui ? "UP-Term, raw mode" : "line mode (PLAIN, or a console that is not UP-Term's)");
+    check(r, -1, "Network check", "Claude PING sends one request of one token and times it");
+}
+
+static void terminal_setup(cl_repl *r)
+{
+    int cols = 0, rows = 0;
+    char m[200], num[16];
+    if (r->io->size && r->io->size(r->io->u, &cols, &rows) == 0) {
+        cl_copy(m, "", sizeof(m));
+        cl_ltoa(cols, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, " x ", sizeof(m));
+        cl_ltoa(rows, num);
+        cl_cat(m, num, sizeof(m));
+        check(r, cols >= 80 ? 1 : 0, "Window size", cols >= 80 ? m : "narrower than 80 columns: widen the window");
+    } else
+        check(r, 0, "Window size", "the console does not say (not UP-Term?)");
+    check(r, r->tui ? 1 : 0, "Raw keys", r->tui ? "UP-Term's line discipline: Shift+Enter, Esc, Shift+Tab work"
+                                                : "not available: the line mode is used (start Claude in UP-Term)");
+    check(r, -1, "New line in a prompt", "Shift+Enter; or \\ then Enter, or Ctrl+J, in any console");
+    check(r, -1, "Colours", "UP-Term: Settings > Colours, 256 colours or true colour for the diffs");
+}
+
+/* ---- /export ---- */
+
+static void transcript(cl_repl *r, jw *w)
+{
+    int i;
+    for (i = 0; i < r->conv.n; i++) {
+        jv v, b, x;
+        jit it;
+        if (json_parse(r->conv.m[i].json, r->conv.m[i].n, &v))
+            continue;
+        json_iter(v, &it);
+        while (json_next(&it, 0, &b)) {
+            long l;
+            char *t;
+            if (!json_get(b, "type", &x))
+                continue;
+            if (json_streq(x, "text") && json_get(b, "text", &x) && (t = json_strdup(x, &l)) != 0) {
+                jw_rawz(w, r->conv.m[i].user ? "> " : "");
+                jw_raw(w, t, l);
+                jw_rawz(w, "\n\n");
+                free(t);
+            } else if (json_streq(x, "tool_use") && json_get(b, "name", &x) && (t = json_strdup(x, &l)) != 0) {
+                jv in;
+                jw_rawz(w, "* ");
+                jw_rawz(w, cfg_cc_tool(t));
+                if (json_get(b, "input", &in)) {
+                    jw_raw(w, "(", 1);
+                    jw_raw(w, in.p, in.n > 200 ? 200 : in.n);
+                    jw_raw(w, ")", 1);
+                }
+                jw_rawz(w, "\n\n");
+                free(t);
+            }
+        }
+    }
+}
+
+static void export_(cl_repl *r, const char *arg)
+{
+    jw w;
+    jw_init(&w);
+    transcript(r, &w);
+    if (!w.n) {
+        jw_free(&w);
+        ui_line(&r->ui, "Nothing to export yet.");
+        return;
+    }
+    if (*arg) {
+        char full[512];
+        if (path_join(r->tools.root, arg, full, sizeof(full)) || r->sys->write(r->sys->u, full, w.p, w.n))
+            line2(r, "Cannot write the export: ", r->sys->err(r->sys->u));
+        else
+            line2(r, "The conversation is in ", full);
+    } else if (r->sys->clip && r->sys->clip(r->sys->u, w.p, w.n) == 0)
+        ui_line(&r->ui, "The conversation is on the clipboard.");
+    else
+        ui_line(&r->ui, "No clipboard here: /export FILE writes it to a file.");
+    jw_free(&w);
+}
+
+/* ---- /config ---- */
+
+static const char *const cfg_keys[] = { "model", "effortLevel", "outputStyle", "autoCompactEnabled", "theme",
+                                        "fallbackModel" };
+
+static void apply_key(cl_repl *r, const char *key, const char *val)
+{
+    if (!strcmp(key, "model"))
+        cl_copy(r->model, cfg_model(val), sizeof(r->model));
+    else if (!strcmp(key, "effortLevel") || !strcmp(key, "effort"))
+        cl_copy(r->effort, val, sizeof(r->effort));
+    else if (!strcmp(key, "outputStyle")) {
+        cl_copy(r->style, cl_strieq(val, "default") ? "" : val, sizeof(r->style));
+        repl_system(r);
+    } else if (!strcmp(key, "autoCompactEnabled"))
+        r->auto_compact = !strcmp(val, "true");
+    else if (!strcmp(key, "theme"))
+        cl_copy(r->cfg.theme, val, sizeof(r->cfg.theme));
+    else if (!strcmp(key, "fallbackModel"))
+        cl_copy(r->fallback, cfg_model(val), sizeof(r->fallback));
+}
+
+/* KEY VALUE written to the file of a level, as JSON (true, false, a
+ * number or a string) */
+static void config_set(cl_repl *r, const char *key, const char *val, int lvl)
+{
+    jw v;
+    const char *p;
+    int num = *val != 0;
+    for (p = val; *p; p++)
+        if (*p < '0' || *p > '9')
+            num = 0;
+    jw_init(&v);
+    if (!strcmp(val, "true") || !strcmp(val, "false") || num)
+        jw_rawz(&v, val);
+    else
+        jw_strz(&v, val);
+    if (v.oom || cfg_write_key(r->sys, cfg_file(&r->cfg, lvl), key, v.p))
+        line2(r, "Cannot write ", cfg_file(&r->cfg, lvl));
+    else {
+        char m[300];
+        apply_key(r, key, val);
+        cl_copy(m, key, sizeof(m));
+        cl_cat(m, " = ", sizeof(m));
+        cl_cat(m, v.p, sizeof(m));
+        cl_cat(m, "  (", sizeof(m));
+        cl_cat(m, cfg_file(&r->cfg, lvl), sizeof(m));
+        cl_cat(m, ")", sizeof(m));
+        ui_line(&r->ui, m);
+    }
+    jw_free(&v);
+}
+
+static void config(cl_repl *r, const char *a)
+{
+    char arg[400], *val;
+    int lvl, c;
+    cl_copy(arg, a, sizeof(arg));
+    if (arg[0]) {
+        lvl = level_of(arg, CFG_USER);
+        for (val = arg; *val && *val != ' '; val++)
+            ;
+        if (!*val) {
+            ui_line(&r->ui, "Usage: /config KEY VALUE [user|project|local]");
+            return;
+        }
+        *val++ = 0;
+        while (*val == ' ')
+            val++;
+        config_set(r, arg, val, lvl);
+        return;
+    }
+    c = ui_pick(&r->ui, "Settings: choose one to change", cfg_keys, 6, 0);
+    if (c >= 0) {
+        static const char *const onoff[] = { "true", "false" };
+        static const char *const themes[] = { "dark", "light", "dark-ansi", "light-ansi" };
+        static const char *const mods[] = { "opus", "sonnet", "haiku", "fable" };
+        static const char *const effs[] = { "low", "medium", "high", "xhigh", "max" };
+        const char *const *opt = c == 3 ? onoff : c == 4 ? themes : c == 1 ? effs : mods;
+        int n = c == 3 ? 2 : c == 4 ? 4 : c == 1 ? 5 : 4, v;
+        if (c == 2) {
+            output_style(r, "");
+            return;
+        }
+        v = ui_pick(&r->ui, cfg_keys[c], opt, n, 0);
+        if (v >= 0)
+            config_set(r, cfg_keys[c], opt[v], CFG_USER);
+        return;
+    }
+    {
+        int i;
+        ui_line(&r->ui, "Settings in use (/config KEY VALUE [user|project|local] changes one):");
+        for (i = 0; i < 3; i++)
+            line2(r, r->cfg.found[i] ? "  read:    " : "  missing: ", r->cfg.path[i]);
+        line2(r, "  model: ", r->model);
+        line2(r, "  effortLevel: ", r->effort);
+        line2(r, "  outputStyle: ", r->style[0] ? r->style : "Default");
+        line2(r, "  autoCompactEnabled: ", r->auto_compact ? "true" : "false");
+        line2(r, "  theme: ", r->cfg.theme[0] ? r->cfg.theme : "(the screen's own)");
+        line2(r, "  fallbackModel: ", r->fallback[0] ? r->fallback : "(none)");
+        line2(r, "  statusLine: ", r->cfg.status_cmd[0] ? r->cfg.status_cmd : "(none)");
+        line2(r, "  permissions.defaultMode: ", r->cfg.default_mode[0] ? r->cfg.default_mode : "default");
+    }
+}
+
+/* ---- /memory ---- */
+
+static void memory(cl_repl *r, const char *arg)
+{
+    static const char *const opt[] = { "User memory (ENVARC:Claude/CLAUDE.md)", "Project memory (CLAUDE.md)",
+                                       "Local project memory (CLAUDE.local.md, private)" };
+    static const int kinds[] = { MEM_USER, MEM_PROJECT, MEM_LOCAL };
+    char file[300], ed[200], line[600], *o;
+    long on = 0, rc = 0;
+    int c = !strcmp(arg, "user") ? 0 : !strcmp(arg, "project") ? 1 : !strcmp(arg, "local") ? 2 : -1;
+    int i;
+    if (c < 0 && !*arg)
+        c = ui_pick(&r->ui, "Edit which memory file?", opt, 3, 1);
+    if (c < 0) {
+        ui_line(&r->ui, "Memory files in use:");
+        for (i = 0; i < r->mem.n; i++)
+            line2(r, "  ", r->mem.f[i].path);
+        ui_line(&r->ui, "/memory user, /memory project or /memory local opens one in the editor.");
+        return;
+    }
+    mem_file_of(kinds[c], r->home, r->tools.root, file, sizeof(file));
+    if (r->sys->kind(r->sys->u, file) == 0) {
+        static const char head[] = "# Memory\n\nNotes for Claude: what to keep in mind here.\n";
+        if (kinds[c] == MEM_USER && r->sys->mkdir)
+            r->sys->mkdir(r->sys->u, r->home);
+        r->sys->write(r->sys->u, file, head, (long)sizeof(head) - 1);
+    }
+    if (!r->sys->getenv || r->sys->getenv(r->sys->u, "EDITOR", ed, sizeof(ed)) <= 0)
+        cl_copy(ed, "Ed", sizeof(ed));
+    cl_copy(line, ed, sizeof(line));
+    cl_cat(line, " \"", sizeof(line));
+    cl_cat(line, file, sizeof(line));
+    cl_cat(line, "\"", sizeof(line));
+    o = (char *)malloc(1024);
+    if (!o)
+        return;
+    line2(r, "Editing ", file);
+    if (r->sys->run(r->sys->u, line, 3600, o, 1023, &on, &rc) < 0 || rc >= 10)
+        line2(r, "The editor did not run: ", line);
+    free(o);
+    repl_load_memory(r);
+    num_line(r, "Memory read again: ", r->mem.n, r->mem.n == 1 ? " file." : " files.");
+}
+
+/* ---- /login /logout ---- */
+
+static void login(cl_repl *r, const char *arg)
+{
+    char file[300];
+    if (!*arg) {
+        r->await_key = 1;
+        ui_line(&r->ui, "Paste the API key (from console.anthropic.com) and press Enter. It is stored in "
+                        "ENVARC:Claude/key and never shown.");
+        return;
+    }
+    cl_copy(r->keybuf, arg, sizeof(r->keybuf));
+    if (cl_key_clean(r->keybuf)) {
+        memset(r->keybuf, 0, sizeof(r->keybuf));
+        ui_line(&r->ui, "That is not a usable key (no spaces, at least 8 characters).");
+        return;
+    }
+    if (path_join(r->home, "key", file, sizeof(file)) == 0) {
+        if (r->sys->mkdir)
+            r->sys->mkdir(r->sys->u, r->home);
+        if (r->sys->write(r->sys->u, file, r->keybuf, (long)strlen(r->keybuf)))
+            line2(r, "The key is used now but could not be stored: ", r->sys->err(r->sys->u));
+        else
+            line2(r, "The key is stored in ", file);
+    }
+    if (r->url.tls)
+        r->key = r->keybuf;
+}
+
+static void logout(cl_repl *r)
+{
+    char file[300];
+    if (path_join(r->home, "key", file, sizeof(file)) == 0 && r->sys->kind(r->sys->u, file) == 1 &&
+        (!r->sys->remove || r->sys->remove(r->sys->u, file))) {
+        line2(r, "Cannot remove ", file);
+        return;
+    }
+    memset(r->keybuf, 0, sizeof(r->keybuf));
+    r->key = 0;
+    ui_line(&r->ui, "Logged out: the stored key is gone. (ENV:ANTHROPIC_API_KEY, if set, counts at the next start.)");
+}
+
+/* ---- the definition lists ---- */
+
+static void list_defs(cl_repl *r, int type, const char *none)
+{
+    int i;
+    const cl_def *d;
+    for (i = 0; (d = defs_nth(&r->defs, type, i)) != 0; i++) {
+        char m[400];
+        cl_copy(m, type == DEF_COMMAND ? "  /" : "  ", sizeof(m));
+        cl_cat(m, d->name, sizeof(m));
+        cl_cat(m, " (", sizeof(m));
+        cl_cat(m, src_word(d->src), sizeof(m));
+        cl_cat(m, ")  ", sizeof(m));
+        cl_cat(m, d->description, sizeof(m));
+        if (d->model[0]) {
+            cl_cat(m, "  [model ", sizeof(m));
+            cl_cat(m, d->model, sizeof(m));
+            cl_cat(m, "]", sizeof(m));
+        }
+        ui_line(&r->ui, m);
+    }
+    if (!i)
+        ui_line(&r->ui, none);
+}
+
+static void hooks_list(cl_repl *r)
+{
+    int i;
+    if (!r->cfg.nhooks) {
+        ui_line(&r->ui, "No hooks. They are set in settings.json under \"hooks\", as in Claude Code.");
+        return;
+    }
+    for (i = 0; i < r->cfg.nhooks; i++) {
+        char m[500];
+        const cl_hook *h = &r->cfg.hooks[i];
+        cl_copy(m, "  ", sizeof(m));
+        cl_cat(m, cfg_hook_events[h->event], sizeof(m));
+        if (h->matcher[0]) {
+            cl_cat(m, " [", sizeof(m));
+            cl_cat(m, h->matcher, sizeof(m));
+            cl_cat(m, "]", sizeof(m));
+        }
+        cl_cat(m, "  ", sizeof(m));
+        cl_cat(m, h->cmd, sizeof(m));
+        cl_cat(m, "  (", sizeof(m));
+        cl_cat(m, src_word(h->src), sizeof(m));
+        cl_cat(m, ")", sizeof(m));
+        ui_line(&r->ui, m);
+    }
+}
+
+static void todos(cl_repl *r)
+{
+    jv v, arr, e, x;
+    jit it;
+    if (!r->todos || json_parse(r->todos, (long)strlen(r->todos), &v) || !json_get(v, "todos", &arr)) {
+        ui_line(&r->ui, "No todo list in this conversation.");
+        return;
+    }
+    json_iter(arr, &it);
+    while (json_next(&it, 0, &e)) {
+        char m[300], c[240];
+        c[0] = 0;
+        if (json_get(e, "content", &x))
+            json_str(x, c, sizeof(c));
+        cl_copy(m, "  [ ] ", sizeof(m));
+        if (json_get(e, "status", &x)) {
+            if (json_streq(x, "completed"))
+                m[3] = 'x';
+            else if (json_streq(x, "in_progress"))
+                m[3] = '>';
+        }
+        cl_cat(m, c, sizeof(m));
+        ui_line(&r->ui, m);
+    }
+}
+
+/* ---- /add-dir /cd ---- */
+
+static int dir_of(cl_repl *r, const char *arg, char *out, long cap)
+{
+    char p[512];
+    if (!*arg || path_join(r->tools.root, arg, p, sizeof(p)) || r->sys->kind(r->sys->u, p) != 2) {
+        line2(r, "Not a directory: ", arg);
+        return -1;
+    }
+    if (r->sys->canon(r->sys->u, p, out, cap))
+        cl_copy(out, p, cap);
+    return 0;
+}
+
+static void add_dir(cl_repl *r, const char *arg)
+{
+    char d[300];
+    char **q;
+    if (dir_of(r, arg, d, sizeof(d)))
+        return;
+    q = (char **)realloc(r->cfg.dirs, (size_t)(r->cfg.ndirs + 1) * sizeof(char *));
+    if (!q)
+        return;
+    r->cfg.dirs = q;
+    r->cfg.capdirs = r->cfg.ndirs + 1;
+    q[r->cfg.ndirs] = (char *)malloc(strlen(d) + 1);
+    if (!q[r->cfg.ndirs])
+        return;
+    strcpy(q[r->cfg.ndirs++], d);
+    line2(r, "Claude may now read (and, in accept-edits mode, edit) in ", d);
+}
+
+static void cd(cl_repl *r, const char *arg)
+{
+    char d[300];
+    if (dir_of(r, arg, d, sizeof(d)))
+        return;
+    cl_copy(r->tools.root, d, sizeof(r->tools.root));
+    repl_load(r);
+    line2(r, "Start directory: ", r->tools.root);
+}
+
+/* ---- /rename /branch /rewind /autocompact ---- */
+
+static void rewind_(cl_repl *r, const char *arg)
+{
+    int msg[32], n = repl_prompts(r, msg, 32), i, c, how;
+    static const char *const hows[] = { "Restore the code and the conversation", "Restore the conversation",
+                                        "Restore the code", "Never mind" };
+    char lab[32][80];
+    const char *opt[32];
+    if (!n) {
+        ui_line(&r->ui, "No earlier prompt to go back to.");
+        return;
+    }
+    if (*arg) {
+        /* /rewind N [code|conversation|both]: N prompts back, 1 the last */
+        long k = atol(arg);
+        const char *w = strchr(arg, ' ');
+        if (k < 1 || k > n) {
+            num_line(r, "Usage: /rewind N [code|conversation|both], N from 1 to ", n, ".");
+            return;
+        }
+        while (w && *w == ' ')
+            w++;
+        how = !w || !*w || !strcmp(w, "both") ? 0 : !strcmp(w, "conversation") ? 1 : !strcmp(w, "code") ? 2 : 3;
+        if (how == 3) {
+            ui_line(&r->ui, "Usage: /rewind N [code|conversation|both]");
+            return;
+        }
+        repl_rewind(r, msg[k - 1], how != 1, how != 2);
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        jv v, b, x;
+        jit it;
+        lab[i][0] = 0;
+        if (json_parse(r->conv.m[msg[i]].json, r->conv.m[msg[i]].n, &v) == 0) {
+            json_iter(v, &it);
+            if (json_next(&it, 0, &b) && json_get(b, "text", &x)) {
+                long k;
+                json_str(x, lab[i], 70);
+                for (k = 0; lab[i][k]; k++)
+                    if (lab[i][k] == '\n')
+                        lab[i][k] = ' ';
+            }
+        }
+        if (cp_files_since(&r->cp, msg[i]))
+            cl_cat(lab[i], "  (files changed since)", sizeof(lab[i]));
+        opt[i] = lab[i];
+    }
+    c = ui_pick(&r->ui, "Rewind to before which prompt?", opt, n, 0);
+    if (c < 0) {
+        ui_line(&r->ui, "Prompts, the most recent first (/rewind N [code|conversation|both]):");
+        for (i = 0; i < n; i++) {
+            char m[120], num[16];
+            cl_ltoa(i + 1, num);
+            cl_copy(m, "  ", sizeof(m));
+            cl_cat(m, num, sizeof(m));
+            cl_cat(m, ". ", sizeof(m));
+            cl_cat(m, lab[i], sizeof(m));
+            ui_line(&r->ui, m);
+        }
+        return;
+    }
+    how = ui_pick(&r->ui, "Rewind", hows, 4, 0);
+    if (how < 0 || how == 3)
+        return;
+    repl_rewind(r, msg[c], how != 1, how != 2);
+}
+
+int slash_run(cl_repl *r, const char *w, const char *arg)
+{
+    if (!strcmp(w, "/permissions") || !strcmp(w, "/allowed-tools"))
+        permissions(r, arg);
+    else if (!strcmp(w, "/output-style"))
+        output_style(r, arg);
+    else if (!strcmp(w, "/status"))
+        status(r);
+    else if (!strcmp(w, "/usage")) {
+        repl_cost(r);
+        repl_context(r);
+    } else if (!strcmp(w, "/doctor"))
+        doctor(r);
+    else if (!strcmp(w, "/terminal-setup"))
+        terminal_setup(r);
+    else if (!strcmp(w, "/export"))
+        export_(r, arg);
+    else if (!strcmp(w, "/config"))
+        config(r, arg);
+    else if (!strcmp(w, "/memory"))
+        memory(r, arg);
+    else if (!strcmp(w, "/login"))
+        login(r, arg);
+    else if (!strcmp(w, "/logout"))
+        logout(r);
+    else if (!strcmp(w, "/agents"))
+        list_defs(r, DEF_AGENT, "No subagents: put them in .claude/agents/NAME.md (or ENVARC:Claude/agents).");
+    else if (!strcmp(w, "/skills"))
+        list_defs(r, DEF_SKILL, "No skills: put them in .claude/skills/NAME/SKILL.md (or ENVARC:Claude/skills).");
+    else if (!strcmp(w, "/commands"))
+        list_defs(r, DEF_COMMAND, "No custom commands: put them in .claude/commands/NAME.md (or ENVARC:Claude/commands).");
+    else if (!strcmp(w, "/hooks"))
+        hooks_list(r);
+    else if (!strcmp(w, "/tasks") || !strcmp(w, "/bashes")) {
+        char m[1000];
+        m[0] = 0;
+        if (r->bg_list)
+            r->bg_list(r->bg_u, m, sizeof(m));
+        ui_line(&r->ui, m[0] ? m : "No commands running in the background.");
+    } else if (!strcmp(w, "/todos"))
+        todos(r);
+    else if (!strcmp(w, "/add-dir"))
+        add_dir(r, arg);
+    else if (!strcmp(w, "/cd"))
+        cd(r, arg);
+    else if (!strcmp(w, "/rename")) {
+        if (!*arg)
+            ui_line(&r->ui, "Usage: /rename NAME");
+        else {
+            sess_rename(&r->sess, arg);
+            line2(r, "This conversation is now called ", arg);
+        }
+    } else if (!strcmp(w, "/branch") || !strcmp(w, "/fork")) {
+        if (!r->conv.n)
+            ui_line(&r->ui, "Nothing to branch yet.");
+        else if (sess_branch(&r->sess, &r->conv, r->io->ms ? r->io->ms(r->io->u) : 0) == 0) {
+            if (*arg)
+                sess_rename(&r->sess, arg);
+            line2(r, "Going on in a branch of this conversation: session ", r->sess.id);
+        } else
+            ui_line(&r->ui, "The branch could not be written.");
+    } else if (!strcmp(w, "/rewind") || !strcmp(w, "/checkpoint"))
+        rewind_(r, arg);
+    else if (!strcmp(w, "/autocompact")) {
+        if (!strcmp(arg, "on") || !strcmp(arg, "off"))
+            config_set(r, "autoCompactEnabled", !strcmp(arg, "on") ? "true" : "false", CFG_USER);
+        else
+            line2(r, "Auto-compact is ", r->auto_compact ? "on (/autocompact off)" : "off (/autocompact on)");
+    } else if (!strcmp(w, "/statusline")) {
+        if (*arg) {
+            jw v;
+            jw_init(&v);
+            jw_rawz(&v, "{\"type\": \"command\", \"command\": ");
+            jw_strz(&v, arg);
+            jw_rawz(&v, "}");
+            if (cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "statusLine", v.p) == 0) {
+                cl_copy(r->cfg.status_cmd, arg, sizeof(r->cfg.status_cmd));
+                pol_statusline(r);
+                line2(r, "Status line command: ", arg);
+            } else
+                line2(r, "Cannot write ", cfg_file(&r->cfg, CFG_USER));
+            jw_free(&v);
+        } else {
+            line2(r, "Status line command: ", r->cfg.status_cmd[0] ? r->cfg.status_cmd : "(none: /statusline COMMAND)");
+            if (r->status_text[0])
+                line2(r, "  it says: ", r->status_text);
+        }
+    } else
+        return 0;
+    return 1;
+}
+
+int slash_custom(cl_repl *r, const char *w, const char *arg)
+{
+    const cl_def *d = defs_find(&r->defs, DEF_COMMAND, w + 1);
+    char err[300], keep[64];
+    jw p;
+    if (!d)
+        return 0;
+    jw_init(&p);
+    if (cmd_expand(d, arg, r->sys, r->tools.root, &p, err, sizeof(err))) {
+        line2(r, "The command could not be expanded: ", err);
+        jw_free(&p);
+        return 1;
+    }
+    r->n_cmds_run++;
+    if (pol_prompt(r, p.p ? p.p : "", p.n) == 0) {
+        cl_copy(keep, r->model, sizeof(keep));
+        if (d->model[0])
+            cl_copy(r->model, cfg_model(d->model), sizeof(r->model));
+        r->turn_tools = d->tools[0] ? d->tools : 0;
+        repl_turn(r, p.p ? p.p : "", p.n);
+        r->turn_tools = 0;
+        cl_copy(r->model, keep, sizeof(r->model));
+    }
+    jw_free(&p);
+    return 1;
+}

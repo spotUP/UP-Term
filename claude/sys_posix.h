@@ -6,6 +6,8 @@
 
 typedef struct sys_posix {
     char err[200];
+    char clip[4096];            /* what clip() was given (the tests read it) */
+    long clipn;
 } sys_posix;
 
 void sys_posix_init(sys_posix *p, cl_sys *s);

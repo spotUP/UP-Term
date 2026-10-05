@@ -1,7 +1,7 @@
 /* repl -- see repl.h. */
 #include <stdlib.h>
 #include <string.h>
-#include "repl.h"
+#include "repl_int.h"
 #include "path.h"
 #include "tui.h"
 #include "show.h"
@@ -279,6 +279,7 @@ top:
             return R_OK;
         if (r->st.state == ST_ERROR) {
             int busy = !strcmp(r->st.err_type, "overloaded_error") || !strcmp(r->st.err_type, "api_error");
+            r->busy_fail = busy && !r->st.nb;
             show_err(r, busy && !r->st.nb ? "Claude is busy (" : "The answer stopped with an error (", r->st.err_type);
             if (r->st.err_msg[0])
                 show_err(r, "  ", r->st.err_msg);
@@ -293,6 +294,7 @@ top:
         return R_RETRY;
     }
     *retry_s = r->resp.retry_after;
+    r->busy_fail = r->resp.status == 529;
     if (r->resp.status == 429 || r->resp.status == 529 || r->resp.status == 408 ||
         (r->resp.status >= 500 && r->resp.status <= 599)) {
         api_error(r);
@@ -307,6 +309,7 @@ static int request(cl_repl *r, const char *body, long bn)
 {
     long delay = 2, wait;
     int attempt;
+    r->busy_fail = 0;
     for (attempt = 1;; attempt++) {
         long ra;
         int rc;
@@ -352,6 +355,15 @@ static void tool_show(void *u, const char *tool, const char *what)
 static int tool_ask(void *u, const char *tool, const char *what, int outside)
 {
     cl_repl *r = (cl_repl *)u;
+    char m[200];
+    if (r->rule_now == RULE_ALLOW) {
+        /* a permission rule (or a hook) allowed it: no question */
+        r->n_rule_allow++;
+        return ASK_ONCE;
+    }
+    cl_copy(m, "Claude needs your permission to use ", sizeof(m));
+    cl_cat(m, cfg_cc_tool(tool), sizeof(m));
+    pol_notify(r, m);
     return ui_ask(&r->ui, r->tools.cur, tool, what, outside);
 }
 
@@ -363,7 +375,18 @@ static void tool_preview(void *u, int tool, const char *path, const char *before
 
 static void tool_result(void *u, int tool, const char *in, long inn, int is_error, const char *text, long n)
 {
-    ui_result(&((cl_repl *)u)->ui, tool, in, inn, is_error, text, n);
+    cl_repl *r = (cl_repl *)u;
+    if (tool == T_TODO_WRITE && !is_error) {
+        /* the list as it stands, for /todos */
+        char *t = (char *)malloc((size_t)inn + 1);
+        if (t) {
+            memcpy(t, in, (size_t)inn);
+            t[inn] = 0;
+            free(r->todos);
+            r->todos = t;
+        }
+    }
+    ui_result(&r->ui, tool, in, inn, is_error, text, n);
 }
 
 long repl_window(const char *model)
@@ -385,16 +408,56 @@ static void ctx_show(cl_repl *r)
         r->tui->ctx_left = 0;
 }
 
-/* the conversation kept for /resume (quietly: a failed save loses nothing yet) */
+/* the conversation appended to its session file (quietly: a failed save
+ * loses nothing yet, the next turn writes what is missing) */
 static void session_save(cl_repl *r)
 {
-    jw w;
-    if (!r->session[0] || !r->conv.n)
-        return;
-    jw_init(&w);
-    if (!conv_messages(&r->conv, &w))
-        r->sys->write(r->sys->u, r->session, w.p, w.n);
-    jw_free(&w);
+    if (r->conv.n)
+        sess_save(&r->sess, &r->conv);
+    pol_statusline(r);
+}
+
+void repl_saved(cl_repl *r)
+{
+    session_save(r);
+}
+
+/* the tools' results of one round: every tool_use answered in one user
+ * message, in order, then the text the policy adds (hook feedback, the
+ * memory of a directory a read reached) */
+static int run_tools(cl_repl *r, int ntools, jw *content)
+{
+    jw extra;
+    int i;
+    jw_init(&extra);
+    jw_reset(content);
+    jw_raw(content, "[", 1);
+    for (i = 0; i < ntools; i++) {
+        sblock *t = stream_tool(&r->st, i);
+        long at;
+        if (i)
+            jw_raw(content, ",", 1);
+        at = content->n;
+        if (!pol_pre(r, t->id, t->name, t->input_ok, t->a.p, t->a.n, content))
+            tools_run(&r->tools, t->id, t->name, t->input_ok, t->a.p, t->a.n, content);
+        r->rule_now = RULE_NONE;
+        pol_post(r, t->name, t->input_ok, t->a.p, t->a.n, content->p + at, content->n - at, &extra);
+    }
+    if (extra.n) {
+        jw_rawz(content, ",{\"type\":\"text\",\"text\":");
+        jw_str(content, extra.p, extra.n);
+        jw_raw(content, "}", 1);
+    }
+    jw_raw(content, "]", 1);
+    jw_free(&extra);
+    return content->oom ? -1 : 0;
+}
+
+/* the auto-compact threshold passed? */
+static int too_full(cl_repl *r)
+{
+    long w = repl_window(r->model);
+    return r->auto_compact && r->conv.n > 1 && r->ctx_used > (w / 100) * CL_COMPACT_PCT;
 }
 
 static void turn(cl_repl *r, const char *prompt, long pn)
@@ -402,11 +465,15 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     cl_mark m0 = conv_mark(&r->conv);
     cl_opts o;
     jw body, content;
-    int answered = 0, round;
-    if (conv_add_user_text(&r->conv, prompt, pn)) {
+    int answered = 0, round, stops = 0;
+    cp_turn(&r->cp, r->conv.n);
+    if (conv_add_user_text(&r->conv, prompt, pn) ||
+        (r->pending.n && conv_add_user_text(&r->conv, r->pending.p, r->pending.n))) {
+        conv_rollback(&r->conv, m0);
         ui_line(&r->ui, "Out of memory.");
         return;
     }
+    jw_reset(&r->pending);
     memset(&o, 0, sizeof(o));
     o.model = r->model;
     o.effort = r->effort;
@@ -419,7 +486,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     r->turn_out = 0;
     ui_busy(&r->ui, 1);
     for (round = 0; round < 64; round++) {
-        int rc, ntools, i;
+        int rc, ntools;
         const char *stop;
         r->tools.stop = 0;
         jw_reset(&body);
@@ -433,6 +500,13 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         if (rc == R_CANCEL) {
             ui_line(&r->ui, "Stopped. The unfinished answer is not kept.");
             break;
+        }
+        if (rc == R_FAIL && r->busy_fail && r->fallback[0] && strcmp(r->model, r->fallback)) {
+            /* --fallback-model: the model is overloaded, the turn goes on with the other */
+            cl_copy(r->model, r->fallback, sizeof(r->model));
+            repl_say(r, "The model is overloaded; going on with the fallback model ", r->model);
+            ctx_show(r);
+            continue;
         }
         if (rc != R_OK)
             break;
@@ -469,19 +543,21 @@ static void turn(cl_repl *r, const char *prompt, long pn)
         answered = 1;
         if (!strcmp(stop, "max_tokens"))
             ui_line(&r->ui, "(The answer reached the output limit.)");
-        if (!ntools)
+        if (!ntools) {
+            /* a Stop hook may send Claude on (Claude Code's exit 2) */
+            jw why;
+            int again;
+            jw_init(&why);
+            again = stops < 3 && pol_stop(r, stops > 0, &why);
+            if (again && conv_add_user_text(&r->conv, why.p, why.n) == 0) {
+                stops++;
+                jw_free(&why);
+                continue;
+            }
+            jw_free(&why);
             break;
-        /* every tool_use answered in one user message, in order */
-        jw_reset(&content);
-        jw_raw(&content, "[", 1);
-        for (i = 0; i < ntools; i++) {
-            sblock *t = stream_tool(&r->st, i);
-            if (i)
-                jw_raw(&content, ",", 1);
-            tools_run(&r->tools, t->id, t->name, t->input_ok, t->a.p, t->a.n, &content);
         }
-        jw_raw(&content, "]", 1);
-        if (content.oom || conv_add(&r->conv, 1, content.p, content.n)) {
+        if (run_tools(r, ntools, &content) || conv_add(&r->conv, 1, content.p, content.n)) {
             ui_line(&r->ui, "Out of memory.");
             /* the tool_use turn is in; without its results the history is
              * invalid, so take the turn back out */
@@ -503,11 +579,30 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     jw_free(&body);
     jw_free(&content);
     request_free(r);
+    if (answered && too_full(r)) {
+        ui_line(&r->ui, "The context window is nearly full: compacting the conversation (/autocompact turns this off).");
+        repl_compact(r, "", 1);
+    }
+}
+
+void repl_turn(cl_repl *r, const char *prompt, long n)
+{
+    turn(r, prompt, n);
 }
 
 /* ---- commands ---- */
 
-static void cost(cl_repl *r)
+void repl_say(cl_repl *r, const char *a, const char *b)
+{
+    show_err(r, a, b);
+}
+
+void repl_ctx(cl_repl *r)
+{
+    ctx_show(r);
+}
+
+void repl_cost(cl_repl *r)
 {
     char m[300], num[16], d[24];
     cl_copy(m, "Requests ", sizeof(m));
@@ -554,22 +649,6 @@ static void save(cl_repl *r, const char *arg)
     jw_free(&w);
 }
 
-/* the slash commands: the menu's list and /help's */
-static const cl_cmd cmds[] = {
-    { "/help", "Show the commands and the keys" },
-    { "/clear", "Start a new conversation (clears the screen)" },
-    { "/compact", "Summarise the conversation and go on from the summary" },
-    { "/context", "How much of the context window is in use" },
-    { "/cost", "Tokens and cost so far" },
-    { "/effort", "Show or set the effort: low, medium, high, xhigh, max" },
-    { "/exit", "Leave" },
-    { "/init", "Write AMIGA.md: notes on this directory for later sessions" },
-    { "/model", "Show or set the model" },
-    { "/resume", "Load a saved conversation (the last one by default)" },
-    { "/save", "Save the conversation as JSON: /save FILE" }
-};
-#define NCMDS ((int)(sizeof(cmds) / sizeof(cmds[0])))
-
 static const char help_keys[] =
     "Keys: Enter sends, Shift+Enter (or \\ then Enter, or Ctrl+J) starts a new line; "
     "Up/Down: earlier lines; Ctrl+A/E start/end, Ctrl+K/U/W cut, Ctrl+Y puts it back; "
@@ -580,7 +659,7 @@ static const char *const models[] = { "claude-opus-5-5", "claude-opus-5", "claud
                                       "claude-haiku-4-5" };
 static const char *const efforts[] = { "low", "medium", "high", "xhigh", "max" };
 
-static void context(cl_repl *r)
+void repl_context(cl_repl *r)
 {
     char m[400], num[16];
     long w = repl_window(r->model), used = r->ctx_used, pct;
@@ -631,23 +710,33 @@ static const char compact_prompt[] =
 static const char compact_intro[] =
     "This session continues an earlier conversation that was compacted. Its summary:\n\n";
 
-/* /compact: one request for a summary, then a NEW conversation seeded with
- * it -- nothing earlier is edited (the history stays append-only) */
-static void compact(cl_repl *r)
+/* /compact [focus]: one request for a summary, then a NEW conversation
+ * seeded with it -- nothing earlier is edited (the history stays
+ * append-only; the session file gets the new start as one more line) */
+void repl_compact(cl_repl *r, const char *focus, int automatic)
 {
     cl_mark m0 = conv_mark(&r->conv);
     cl_opts o;
     cl_render keep = r->render;
-    jw body, sum;
+    jw body, sum, ask;
     int rc;
     if (!r->conv.n) {
         ui_line(&r->ui, "Nothing to compact yet.");
         return;
     }
-    if (conv_add_user_text(&r->conv, compact_prompt, (long)sizeof(compact_prompt) - 1)) {
+    pol_precompact(r, automatic, focus);
+    jw_init(&ask);
+    jw_rawz(&ask, compact_prompt);
+    if (focus && *focus) {
+        jw_rawz(&ask, " Focus the summary on: ");
+        jw_rawz(&ask, focus);
+    }
+    if (ask.oom || conv_add_user_text(&r->conv, ask.p, ask.n)) {
+        jw_free(&ask);
         ui_line(&r->ui, "Out of memory.");
         return;
     }
+    jw_free(&ask);
     memset(&o, 0, sizeof(o));
     o.model = r->model;
     o.effort = r->effort;
@@ -673,6 +762,8 @@ static void compact(cl_repl *r)
         jw_rawz(&seed, compact_intro);
         jw_raw(&seed, sum.p, sum.n);
         conv_clear(&r->conv);
+        sess_truncate(&r->sess, 0);
+        cp_turn(&r->cp, 0);
         if (seed.oom || conv_add_user_text(&r->conv, seed.p, seed.n)) {
             conv_clear(&r->conv);
             ui_line(&r->ui, "Out of memory: the conversation starts anew.");
@@ -681,6 +772,7 @@ static void compact(cl_repl *r)
             ctx_show(r);
             ui_line(&r->ui, "Compacted. The conversation goes on from its summary (/context for the size).");
             session_save(r);
+            pol_session(r, HK_SESSION_START, "compact");
         }
         jw_free(&seed);
     } else {
@@ -733,31 +825,32 @@ static void replay(cl_repl *r, jv content, int user)
     }
 }
 
-static void resume(cl_repl *r, const char *arg)
+void repl_replay(cl_repl *r)
 {
-    char full[512], num[16], m[120];
+    int i;
+    for (i = 0; i < r->conv.n; i++) {
+        jv v;
+        if (json_parse(r->conv.m[i].json, r->conv.m[i].n, &v) == 0)
+            replay(r, v, r->conv.m[i].user);
+    }
+}
+
+/* the A2 format: a JSON array of messages (/save writes it) */
+int repl_load_json(cl_repl *r, const char *full)
+{
     char *b = 0;
     long n = 0;
     jv v, e, role, content;
     jit it;
     cl_conv c;
-    const char *f = *arg ? arg : r->session;
-    if (!*f) {
-        ui_line(&r->ui, "Usage: /resume FILE");
-        return;
-    }
-    if (*arg ? path_join(r->tools.root, arg, full, sizeof(full)) : (cl_copy(full, f, sizeof(full)), 0)) {
-        ui_line(&r->ui, "Not a usable file name.");
-        return;
-    }
     if (r->sys->read(r->sys->u, full, 8L * 1024 * 1024, &b, &n)) {
         show_err(r, "Cannot read the saved conversation: ", r->sys->err(r->sys->u));
-        return;
+        return -1;
     }
     if (json_parse(b, n, &v) || json_type(v) != J_ARR || !json_count(v)) {
         free(b);
         ui_line(&r->ui, "That is not a saved conversation (a JSON array of messages).");
-        return;
+        return -1;
     }
     conv_init(&c);
     json_iter(v, &it);
@@ -767,7 +860,7 @@ static void resume(cl_repl *r, const char *arg)
             conv_free(&c);
             free(b);
             ui_line(&r->ui, "That is not a saved conversation (a message without role or content).");
-            return;
+            return -1;
         }
         if (json_type(content) == J_STR) {
             jw w;
@@ -781,23 +874,132 @@ static void resume(cl_repl *r, const char *arg)
             conv_add(&c, json_streq(role, "user"), content.p, content.n);
         }
     }
+    free(b);
     conv_clear(&r->conv);
     free(r->conv.m);
     r->conv.m = c.m;
     r->conv.n = c.n;
     r->conv.cap = c.cap;
-    json_iter(v, &it);
-    while (json_next(&it, 0, &e)) {
-        json_get(e, "role", &role);
-        json_get(e, "content", &content);
-        replay(r, content, json_streq(role, "user"));
-    }
-    free(b);
+    /* it goes on in a new session of its own */
+    sess_new(&r->sess, r->io->ms ? r->io->ms(r->io->u) : 0);
+    session_save(r);
+    return 0;
+}
+
+static void resumed(cl_repl *r)
+{
+    char m[160], num[16];
+    repl_replay(r);
+    cp_turn(&r->cp, r->conv.n);
     cl_copy(m, "Resumed a conversation of ", sizeof(m));
     cl_ltoa(r->conv.n, num);
     cl_cat(m, num, sizeof(m));
-    cl_cat(m, " messages.", sizeof(m));
+    cl_cat(m, " messages", sizeof(m));
+    if (r->sess.title[0]) {
+        cl_cat(m, " (", sizeof(m));
+        cl_cat(m, r->sess.title, sizeof(m));
+        cl_cat(m, ")", sizeof(m));
+    }
+    cl_cat(m, ".", sizeof(m));
     ui_line(&r->ui, m);
+    pol_session(r, HK_SESSION_START, "resume");
+}
+
+int repl_resume_session(cl_repl *r, const char *name)
+{
+    char id[16];
+    int rc = sess_find(&r->sess, name, id, sizeof(id));
+    if (rc == -2) {
+        show_err(r, "More than one session matches ", name);
+        return -1;
+    }
+    if (rc || sess_load(&r->sess, id, &r->conv)) {
+        show_err(r, "No session here by that name or id: ", name);
+        return -1;
+    }
+    resumed(r);
+    return 0;
+}
+
+int repl_continue(cl_repl *r)
+{
+    cl_sess_info one;
+    if (sess_list(&r->sess, &one, 1) < 1 || sess_load(&r->sess, one.id, &r->conv)) {
+        ui_line(&r->ui, "No earlier conversation in this directory to continue.");
+        return -1;
+    }
+    resumed(r);
+    return 0;
+}
+
+/* /resume: a picker over this directory's sessions; /resume NAME|ID; and
+ * A2's JSON files (/resume FILE.json, and ENVARC:Claude/session.json
+ * when there is no session yet) */
+static void resume(cl_repl *r, const char *arg)
+{
+    cl_sess_info *l;
+    int n, i, c;
+    long al = (long)strlen(arg);
+    if (*arg) {
+        char full[512];
+        if (al > 5 && cl_strieq(arg + al - 5, ".json")) {
+            if (path_join(r->tools.root, arg, full, sizeof(full))) {
+                ui_line(&r->ui, "Not a usable file name.");
+                return;
+            }
+            if (repl_load_json(r, full) == 0)
+                resumed(r);
+            return;
+        }
+        repl_resume_session(r, arg);
+        return;
+    }
+    l = (cl_sess_info *)malloc(SESS_LIST * sizeof(cl_sess_info));
+    if (!l) {
+        ui_line(&r->ui, "Out of memory.");
+        return;
+    }
+    n = sess_list(&r->sess, l, SESS_LIST);
+    if (!n) {
+        free(l);
+        if (r->session[0] && r->sys->kind(r->sys->u, r->session) == 1) {
+            /* A2's one saved conversation: taken over as a session */
+            if (repl_load_json(r, r->session) == 0)
+                resumed(r);
+            return;
+        }
+        ui_line(&r->ui, "No saved conversation in this directory yet.");
+        return;
+    }
+    {
+        char (*lab)[120] = (char (*)[120])malloc((size_t)n * 120);
+        const char *opt[SESS_LIST];
+        if (!lab) {
+            free(l);
+            ui_line(&r->ui, "Out of memory.");
+            return;
+        }
+        for (i = 0; i < n; i++) {
+            cl_copy(lab[i], l[i].title[0] ? l[i].title : l[i].first[0] ? l[i].first : "(no prompt)", 90);
+            cl_cat(lab[i], "  [", 120);
+            cl_cat(lab[i], l[i].id, 120);
+            cl_cat(lab[i], "]", 120);
+            opt[i] = lab[i];
+        }
+        c = ui_pick(&r->ui, "Resume a conversation", opt, n, 0);
+        if (c < 0) {
+            /* the line mode: the list, and how to pick */
+            ui_line(&r->ui, "Conversations in this directory, the most recent first:");
+            for (i = 0; i < n; i++)
+                show_err(r, "  ", lab[i]);
+            ui_line(&r->ui, "Type /resume ID or /resume NAME to go on with one.");
+        } else if (sess_load(&r->sess, l[c].id, &r->conv) == 0)
+            resumed(r);
+        else
+            ui_line(&r->ui, "That conversation could not be read.");
+        free(lab);
+    }
+    free(l);
 }
 
 /* /help: the command table (the slash menu's too) and the keys */
@@ -805,21 +1007,21 @@ static void show_help(cl_repl *r)
 {
     int i;
     ui_line(&r->ui, "Commands:");
-    for (i = 0; i < NCMDS; i++) {
-        char m[160];
+    for (i = 0; i < r->nmenu; i++) {
+        char m[200];
         long k;
         cl_copy(m, "  ", sizeof(m));
-        cl_cat(m, cmds[i].name, sizeof(m));
-        for (k = (long)strlen(m); k < 14; k++)
+        cl_cat(m, r->menu[i].name, sizeof(m));
+        for (k = (long)strlen(m); k < 18; k++)
             m[k] = ' ';
         m[k] = 0;
-        cl_cat(m, cmds[i].help, sizeof(m));
+        cl_cat(m, r->menu[i].help, sizeof(m));
         ui_line(&r->ui, m);
     }
     ui_line(&r->ui, r->tui ? help_keys : "Ctrl+C stops an answer or a command. Anything else is sent to Claude.");
 }
 
-static int pick(cl_repl *r, const char *title, const char *const *opt, int n, const char *cur)
+int repl_pick(cl_repl *r, const char *title, const char *const *opt, int n, const char *cur)
 {
     int i, sel = 0;
     for (i = 0; i < n; i++)
@@ -828,37 +1030,57 @@ static int pick(cl_repl *r, const char *title, const char *const *opt, int n, co
     return ui_pick(&r->ui, title, opt, n, sel);
 }
 
+/* the word "/name" of a command line, exactly */
+static int is_cmd(const char *word, const char *name)
+{
+    return !strcmp(word, name);
+}
+
 int repl_line(cl_repl *r, const char *line)
 {
     const char *arg;
-    long n = (long)strlen(line);
+    char word[64];
+    long n = (long)strlen(line), wl;
     while (n && (line[n - 1] == ' ' || line[n - 1] == '\t'))
         n--;
     if (!n)
         return 0;
+    if (r->await_key) {
+        /* the line after /login is the key, never shown or kept */
+        r->await_key = 0;
+        slash_run(r, "/login", line);
+        return 0;
+    }
     if (line[0] != '/') {
+        if (pol_prompt(r, line, n))
+            return 0;
         turn(r, line, n);
         return 0;
     }
     for (arg = line; *arg && *arg != ' '; arg++)
         ;
+    wl = (long)(arg - line);
+    if (wl >= (long)sizeof(word))
+        wl = (long)sizeof(word) - 1;
+    memcpy(word, line, (size_t)wl);
+    word[wl] = 0;
     while (*arg == ' ')
         arg++;
-    if (!strncmp(line, "/exit", 5) || !strncmp(line, "/quit", 5))
+    if (is_cmd(word, "/exit") || is_cmd(word, "/quit"))
         return 1;
-    if (!strncmp(line, "/help", 5))
+    if (is_cmd(word, "/help"))
         show_help(r);
-    else if (!strncmp(line, "/model", 6)) {
+    else if (is_cmd(word, "/model")) {
         if (*arg)
-            cl_copy(r->model, arg, sizeof(r->model));
+            cl_copy(r->model, cfg_model(arg), sizeof(r->model));
         else {
-            int c = pick(r, "Select a model", models, (int)(sizeof(models) / sizeof(models[0])), r->model);
+            int c = repl_pick(r, "Select a model", models, (int)(sizeof(models) / sizeof(models[0])), r->model);
             if (c >= 0)
                 cl_copy(r->model, models[c], sizeof(r->model));
         }
         ctx_show(r);
         show_err(r, "Model: ", r->model);
-    } else if (!strncmp(line, "/effort", 7)) {
+    } else if (is_cmd(word, "/effort")) {
         if (*arg) {
             if (strcmp(arg, "low") && strcmp(arg, "medium") && strcmp(arg, "high") && strcmp(arg, "xhigh") &&
                 strcmp(arg, "max")) {
@@ -867,31 +1089,35 @@ int repl_line(cl_repl *r, const char *line)
             }
             cl_copy(r->effort, arg, sizeof(r->effort));
         } else {
-            int c = pick(r, "Select the effort", efforts, 5, r->effort);
+            int c = repl_pick(r, "Select the effort", efforts, 5, r->effort);
             if (c >= 0)
                 cl_copy(r->effort, efforts[c], sizeof(r->effort));
         }
         show_err(r, "Effort: ", r->effort);
-    } else if (!strncmp(line, "/clear", 6)) {
+    } else if (is_cmd(word, "/clear")) {
+        pol_session(r, HK_SESSION_END, "clear");
         conv_clear(&r->conv);
+        sess_new(&r->sess, r->io->ms ? r->io->ms(r->io->u) : 0);
+        cp_turn(&r->cp, 0);
         r->ctx_used = 0;
         ctx_show(r);
         if (r->tui)
             tui_clear(r->tui);
         ui_line(&r->ui, "A new conversation.");
-    } else if (!strncmp(line, "/compact", 8))
-        compact(r);
-    else if (!strncmp(line, "/context", 8))
-        context(r);
-    else if (!strncmp(line, "/init", 5))
+        pol_session(r, HK_SESSION_START, "clear");
+    } else if (is_cmd(word, "/compact"))
+        repl_compact(r, arg, 0);
+    else if (is_cmd(word, "/context"))
+        repl_context(r);
+    else if (is_cmd(word, "/init"))
         turn(r, init_prompt, (long)sizeof(init_prompt) - 1);
-    else if (!strncmp(line, "/resume", 7))
+    else if (is_cmd(word, "/resume"))
         resume(r, arg);
-    else if (!strncmp(line, "/save", 5))
+    else if (is_cmd(word, "/save"))
         save(r, arg);
-    else if (!strncmp(line, "/cost", 5))
-        cost(r);
-    else
+    else if (is_cmd(word, "/cost"))
+        repl_cost(r);
+    else if (!slash_run(r, word, arg) && !slash_custom(r, word, arg))
         ui_line(&r->ui, "Unknown command. Type /help for the list.");
     return 0;
 }
@@ -908,7 +1134,8 @@ void repl_run(cl_repl *r)
             long n = tui_read(r->tui, line, 8192);
             if (n < 0)
                 break;
-            ui_user(&r->ui, line);
+            if (!r->await_key)
+                ui_user(&r->ui, line);
             if (repl_line(r, line))
                 break;
         }
@@ -923,7 +1150,7 @@ void repl_run(cl_repl *r)
     ui_line(&r->ui, m);
     for (;;) {
         long n;
-        ui_puts(&r->ui, "\n\033[1m>\033[0m ");
+        ui_puts(&r->ui, r->await_key ? "\n\033[1mKey:\033[0m " : "\n\033[1m>\033[0m ");
         n = r->io->read_line(r->io->u, line, 8192);
         r->ui.col0 = 1;
         if (n < 0 || repl_line(r, line))
@@ -951,8 +1178,8 @@ int repl_screen(cl_repl *r)
     t->effort = r->effort;
     t->root = r->tools.root;
     t->mode = &r->tools.perm.mode;
-    t->cmds = cmds;
-    t->ncmds = NCMDS;
+    t->cmds = r->menu;
+    t->ncmds = r->nmenu;
     show_init(s, t);
     if (tui_start(t)) {
         show_free(s);
@@ -968,6 +1195,63 @@ int repl_screen(cl_repl *r)
     show_render(s, &r->render);
     ctx_show(r);
     tui_frame(t);
+    return 0;
+}
+
+/* ---- rewind ---- */
+
+/* does message i start with a prompt (a text block, no tool results)? */
+static int is_prompt(const cl_repl *r, int i)
+{
+    jv v, b, x;
+    jit it;
+    if (i < 0 || i >= r->conv.n || !r->conv.m[i].user || json_parse(r->conv.m[i].json, r->conv.m[i].n, &v))
+        return 0;
+    json_iter(v, &it);
+    return json_next(&it, 0, &b) && json_get(b, "type", &x) && json_streq(x, "text");
+}
+
+int repl_prompts(const cl_repl *r, int *msg, int max)
+{
+    int i, k = 0;
+    for (i = r->conv.n - 1; i >= 0 && k < max; i--)
+        if (is_prompt(r, i))
+            msg[k++] = i;
+    return k;
+}
+
+int repl_rewind(cl_repl *r, int msg, int code, int conv)
+{
+    char rep[600];
+    if (!is_prompt(r, msg))
+        return -1;
+    if (code) {
+        int lost = 0, n = cp_restore(&r->cp, msg, &lost, rep, sizeof(rep));
+        char m[120], num[16];
+        cl_copy(m, "Files put back: ", sizeof(m));
+        cl_ltoa(n, num);
+        cl_cat(m, num, sizeof(m));
+        if (lost) {
+            cl_cat(m, "; could not put back: ", sizeof(m));
+            cl_ltoa(lost, num);
+            cl_cat(m, num, sizeof(m));
+        }
+        cl_cat(m, ".", sizeof(m));
+        ui_line(&r->ui, m);
+        if (rep[0])
+            ui_line(&r->ui, rep);
+    }
+    if (conv) {
+        cl_mark mk;
+        mk.n = msg;
+        mk.last = msg ? r->conv.m[msg - 1].n : 0;
+        conv_rollback(&r->conv, mk);
+        sess_truncate(&r->sess, msg);
+        cp_turn(&r->cp, r->conv.n);
+        if (r->conv.n)
+            session_save(r);
+        ui_line(&r->ui, "The conversation is back to before that prompt.");
+    }
     return 0;
 }
 
@@ -1005,10 +1289,132 @@ int repl_ping(cl_repl *r)
     return rc == R_OK ? 0 : -1;
 }
 
+static void menu_free(cl_repl *r)
+{
+    int i;
+    for (i = slash_nbuiltin; i < r->nmenu; i++)
+        free((char *)r->menu[i].name);
+    free(r->menu);
+    r->menu = 0;
+    r->nmenu = 0;
+}
+
+/* the slash menu: the built-in commands, then the custom ones */
+static int menu_build(cl_repl *r)
+{
+    int nc = defs_count(&r->defs, DEF_COMMAND), i, k;
+    menu_free(r);
+    r->menu = (cl_cmd *)malloc((size_t)(slash_nbuiltin + nc) * sizeof(cl_cmd));
+    if (!r->menu)
+        return -1;
+    for (i = 0; i < slash_nbuiltin; i++)
+        r->menu[i] = slash_builtin[i];
+    k = slash_nbuiltin;
+    for (i = 0; i < nc; i++) {
+        const cl_def *d = defs_nth(&r->defs, DEF_COMMAND, i);
+        char *nm = (char *)malloc(strlen(d->name) + 2);
+        if (!nm)
+            break;
+        nm[0] = '/';
+        strcpy(nm + 1, d->name);
+        r->menu[k].name = nm;
+        r->menu[k].help = d->description[0] ? d->description
+                                             : d->src == CFG_PROJECT ? "(a project command)" : "(a user command)";
+        k++;
+    }
+    r->nmenu = k;
+    if (r->tui) {
+        r->tui->cmds = r->menu;
+        r->tui->ncmds = r->nmenu;
+    }
+    return 0;
+}
+
+static const char mem_intro[] =
+    "\n\nCodebase and user instructions are shown below. Be sure to adhere to these instructions. "
+    "IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written.\n\n";
+
+int repl_system(cl_repl *r)
+{
+    jw s;
+    const cl_def *st = r->style[0] ? defs_find(&r->defs, DEF_STYLE, r->style) : 0;
+    jw_init(&s);
+    jw_rawz(&s, sys_a);
+    jw_rawz(&s, sys_b);
+    jw_rawz(&s, r->tools.root);
+    jw_rawz(&s, sys_c);
+    jw_rawz(&s, sys_d);
+    if (st && st->body[0]) {
+        jw_rawz(&s, "\n\n# Output style: ");
+        jw_rawz(&s, st->name);
+        jw_rawz(&s, "\n\n");
+        jw_rawz(&s, st->body);
+    }
+    if (r->mem.text.n) {
+        jw_rawz(&s, mem_intro);
+        jw_raw(&s, r->mem.text.p, r->mem.text.n);
+    }
+    if (s.oom) {
+        jw_free(&s);
+        return -1;
+    }
+    free(r->system);
+    r->system = s.p;
+    return 0;
+}
+
+int repl_load_memory(cl_repl *r)
+{
+    mem_free(&r->mem);
+    mem_load(&r->mem, r->sys, r->home, r->tools.root);
+    return repl_system(r);
+}
+
+int repl_load(cl_repl *r)
+{
+    int i;
+    cfg_free(&r->cfg);
+    cfg_load(&r->cfg, r->sys, r->home, r->tools.root);
+    defs_free(&r->defs);
+    defs_load(&r->defs, r->sys, r->home, r->tools.root);
+    /* the settings: the command line (main) comes after and wins */
+    if (r->cfg.model[0])
+        cl_copy(r->model, cfg_model(r->cfg.model), sizeof(r->model));
+    if (r->cfg.effort[0])
+        cl_copy(r->effort, r->cfg.effort, sizeof(r->effort));
+    if (r->cfg.fallback_model[0])
+        cl_copy(r->fallback, cfg_model(r->cfg.fallback_model), sizeof(r->fallback));
+    if (r->cfg.output_style[0])
+        cl_copy(r->style, cl_strieq(r->cfg.output_style, "default") ? "" : r->cfg.output_style, sizeof(r->style));
+    if (r->cfg.auto_compact >= 0)
+        r->auto_compact = r->cfg.auto_compact;
+    if (!strcmp(r->cfg.default_mode, "acceptEdits"))
+        r->tools.perm.mode = PERM_ACCEPT;
+    else if (!strcmp(r->cfg.default_mode, "plan"))
+        r->tools.perm.mode = PERM_PLAN;
+    else if (!strcmp(r->cfg.default_mode, "default"))
+        r->tools.perm.mode = PERM_DEFAULT;
+    for (i = 0; i < r->cfg.nenv; i++)
+        if (r->sys->setenv)
+            r->sys->setenv(r->sys->u, r->cfg.env[i].k, r->cfg.env[i].v);
+    if (r->cfg.err[0])
+        repl_say(r, "Settings: ", r->cfg.err);
+    if (menu_build(r))
+        return -1;
+    return repl_load_memory(r);
+}
+
+/* a variable or the default */
+static void var_or(cl_sys *sys, const char *name, const char *def, char *out, long cap)
+{
+    if (!sys->getenv || sys->getenv(sys->u, name, out, cap) <= 0)
+        cl_copy(out, def, cap);
+}
+
 int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, const char *key,
               const char *root)
 {
-    jw s;
+    char cpdir[300];
     memset(r, 0, sizeof(*r));
     r->io = io;
     r->net = net;
@@ -1017,14 +1423,18 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     ui_plain(&r->ui, &r->render);
     conv_init(&r->conv);
     jw_init(&r->errbody);
+    jw_init(&r->pending);
     sse_init(&r->sse, on_event, r);
     stream_init(&r->st, 0);
+    cfg_init(&r->cfg);
+    mem_init(&r->mem);
+    defs_init(&r->defs);
     if (http_parse_url(url, &r->url)) {
         show_err(r, "Not a usable URL: ", url);
         return -1;
     }
     if (r->url.tls && (!key || !*key)) {
-        ui_line(&r->ui, "No API key: set ENV:ANTHROPIC_API_KEY, or put the key in ENVARC:Claude/key.");
+        ui_line(&r->ui, "No API key: set ENV:ANTHROPIC_API_KEY, or put the key in ENVARC:Claude/key (or type /login).");
         return -1;
     }
     /* the key goes only over TLS: a plain http URL (the fixture) never sees it */
@@ -1032,6 +1442,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     cl_copy(r->model, CL_DEFAULT_MODEL, sizeof(r->model));
     cl_copy(r->effort, CL_DEFAULT_EFFORT, sizeof(r->effort));
     r->max_tokens = CL_MAX_TOKENS;
+    r->auto_compact = 1;
     r->tools.sys = sys;
     if (sys->canon(sys->u, root, r->tools.root, sizeof(r->tools.root)))
         cl_copy(r->tools.root, root, sizeof(r->tools.root));
@@ -1041,29 +1452,30 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     r->tools.ask = tool_ask;
     r->tools.preview = tool_preview;
     r->tools.result = tool_result;
-    jw_init(&s);
-    jw_rawz(&s, sys_a);
-    jw_rawz(&s, sys_b);
-    jw_rawz(&s, r->tools.root);
-    jw_rawz(&s, sys_c);
-    jw_rawz(&s, sys_d);
-    /* AMIGA.md in the start directory: the project's notes (/init writes it) */
-    {
-        char p[512], *notes = 0;
-        long nn = 0;
-        if (path_join(r->tools.root, "AMIGA.md", p, sizeof(p)) == 0 && sys->kind(sys->u, p) == 1 &&
-            sys->read(sys->u, p, 16384, &notes, &nn) == 0) {
-            jw_rawz(&s, "\n\nThe project's notes (AMIGA.md in the start directory):\n\n");
-            jw_raw(&s, notes, nn);
-        }
-        free(notes);
-    }
-    r->system = s.p;
-    return s.oom ? -1 : 0;
+    var_or(sys, "CLAUDE_CONFIG_DIR", CL_HOME, r->home, sizeof(r->home));
+    var_or(sys, "CLAUDE_CODE_TMPDIR", CL_TMP, r->tmp, sizeof(r->tmp));
+    sess_init(&r->sess, sys, r->home, r->tools.root);
+    sess_new(&r->sess, io->ms ? io->ms(io->u) : 0);
+    if (path_join(r->tmp, "Claude-cp", cpdir, sizeof(cpdir)))
+        cl_copy(cpdir, "T:Claude-cp", sizeof(cpdir));
+    cp_init(&r->cp, sys, cpdir);
+    checkpoint_use(&r->cp);
+    r->hooks.cfg = &r->cfg;
+    r->hooks.sys = sys;
+    r->hooks.session_id = r->sess.id;
+    r->hooks.transcript = r->sess.file;
+    r->hooks.cwd = r->tools.root;
+    r->hooks.tmp = r->tmp;
+    if (repl_load(r))
+        return -1;
+    pol_session(r, HK_SESSION_START, "startup");
+    return 0;
 }
 
 void repl_free(cl_repl *r)
 {
+    if (r->hooks.cfg)
+        pol_session(r, HK_SESSION_END, "exit");
     if (r->tui) {
         tui_stop(r->tui);
         show_free(r->show);
@@ -1080,4 +1492,14 @@ void repl_free(cl_repl *r)
     conv_free(&r->conv);
     free(r->system);
     r->system = 0;
+    cfg_free(&r->cfg);
+    mem_free(&r->mem);
+    defs_free(&r->defs);
+    cp_free(&r->cp);
+    menu_free(r);
+    jw_free(&r->pending);
+    free(r->todos);
+    r->todos = 0;
+    r->hooks.cfg = 0;
+    memset(r->keybuf, 0, sizeof(r->keybuf));
 }

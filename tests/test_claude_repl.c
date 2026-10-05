@@ -14,6 +14,7 @@
 #include "harness.h"
 #include "claude_load.h"
 #include "../claude/repl.h"
+#include "../claude/repl_int.h"
 #include "../claude/sys_posix.h"
 #include "../claude/util.h"
 #include "../claude/tui.h"
@@ -259,6 +260,15 @@ static void mk_tree(void)
     strcat(dir, "/claude_repl_XXXXXX");
     if (!mkdtemp(dir))
         return;
+    /* the user's directory (ENVARC:Claude) and T: inside the tree */
+    strcpy(p, dir);
+    strcat(p, "/home");
+    mkdir(p, 0700);
+    setenv("CLAUDE_CONFIG_DIR", p, 1);
+    strcpy(p, dir);
+    strcat(p, "/t");
+    mkdir(p, 0700);
+    setenv("CLAUDE_CODE_TMPDIR", p, 1);
     strcpy(p, dir);
     strcat(p, "/S");
     mkdir(p, 0700);
@@ -284,7 +294,7 @@ static cl_net net;
 static sys_posix sp;
 static cl_sys sys;
 
-static void setup(cl_repl *r, const char **script)
+static void setup_in(cl_repl *r, const char **script, const char *root)
 {
     stub_reset();
     jw_free(&cn.screen);
@@ -305,7 +315,7 @@ static void setup(cl_repl *r, const char **script)
     net.close = s_close;
     net.err = s_err;
     sys_posix_init(&sp, &sys);
-    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
     jw_free(&snt.text);
     memset(&snt, 0, sizeof(snt));
     jw_init(&snt.text);
@@ -313,6 +323,11 @@ static void setup(cl_repl *r, const char **script)
     r->render.u = 0;
     r->render.text = sn_text;
     r->render.end = sn_end;
+}
+
+static void setup(cl_repl *r, const char **script)
+{
+    setup_in(r, script, dir);
 }
 
 /* the "messages" array of a request body */
@@ -622,6 +637,364 @@ static void test_screen(void)
     cs_close();
 }
 
+/* ---- A4 WP3: the project's own settings, memory, commands and hooks ----
+ *
+ * The reachability test of WP3: the REPL core with a project that has
+ * CLAUDE.md (importing notes.md) and the user's CLAUDE.md, a settings
+ * file that allows Read and one Edit and hooks list_dir away (exit 2), and
+ * a custom command. Typed: the command, a read-and-list prompt, an edit
+ * prompt, /todos, /rewind of the edit, /exit -- with no permission answer
+ * in the script at all. Then a new REPL continues the saved session. */
+
+static void wput(const char *rel, const char *text)
+{
+    char p[700];
+    FILE *f;
+    strcpy(p, dir);
+    strcat(p, "/wp3/");
+    strcat(p, rel);
+    f = fopen(p, "wb");
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+static void test_wp3(void)
+{
+    static const char *script[] = { "/greet Amiga", "show me S/Startup-Sequence", "please edit the greeting",
+                                    "/todos", "/rewind 1 code", "/exit", 0 };
+    static cl_repl r, r2;
+    char root[600], p[700], hook[1400], user_md[700];
+    char *after = 0;
+    long an = 0;
+    jv b, x, m, e, c;
+    jit it;
+    int i, found = 0;
+    FILE *f;
+    strcpy(root, dir);
+    strcat(root, "/wp3");
+    mkdir(root, 0700);
+    strcpy(p, root);
+    strcat(p, "/S");
+    mkdir(p, 0700);
+    strcpy(p, root);
+    strcat(p, "/.claude");
+    mkdir(p, 0700);
+    strcat(p, "/commands");
+    mkdir(p, 0700);
+    wput("S/Startup-Sequence", "SetPatch QUIET\n");
+    wput("claude-test.txt", "hello\n");
+    wput("CLAUDE.md", "PROJECT-MEMORY-SENTINEL: build with smake. See @notes.md\n");
+    wput("notes.md", "IMPORTED-SENTINEL\n");
+    wput(".claude/commands/greet.md", "---\ndescription: Greet someone\n---\nSay hello to $ARGUMENTS.\n");
+    wput("nolist.sh", "cat >/dev/null\necho 'listing is not allowed here'\nexit 2\n");
+    strcpy(hook, "{\"permissions\":{\"allow\":[\"Read\",\"Edit(claude-test.txt)\"]},"
+                 "\"hooks\":{\"PreToolUse\":[{\"matcher\":\"LS\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(hook, root);
+    strcat(hook, "/nolist.sh\"}]}]}}\n");
+    wput(".claude/settings.json", hook);
+    strcpy(user_md, dir);
+    strcat(user_md, "/home/CLAUDE.md");
+    f = fopen(user_md, "wb");
+    if (f) {
+        fputs("USER-MEMORY-SENTINEL\n", f);
+        fclose(f);
+    }
+
+    setup_in(&r, script, root);
+    add_stream("text.sse");
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    add_stream("tool_edit.sse");
+    add_stream("tool_final.sse");
+    repl_run(&r);
+    CHECK_INT(sb.nreq, 5);
+    CHECK_INT(cn.next, 6);
+    if (sb.nreq < 5)
+        return;
+
+    /* CLAUDE.md (user, project, its import) reached the request body */
+    CHECK_INT(json_parse(sb.body[0], (long)strlen(sb.body[0]), &b), 0);
+    CHECK(json_get(b, "system", &x));
+    CHECK(strstr(sb.body[0], "USER-MEMORY-SENTINEL") != 0);
+    CHECK(strstr(sb.body[0], "PROJECT-MEMORY-SENTINEL") != 0);
+    CHECK(strstr(sb.body[0], "IMPORTED-SENTINEL") != 0);
+    CHECK(strstr(sb.body[0], "USER-MEMORY-SENTINEL") < strstr(sb.body[0], "PROJECT-MEMORY-SENTINEL"));
+    /* ... in the system prompt, ahead of its cache breakpoint, the same every request */
+    CHECK(strstr(sb.body[0], "\"cache_control\":{\"type\":\"ephemeral\"}}],\"tools\"") != 0);
+    {
+        const char *s0 = strstr(sb.body[0], "\"system\":"), *s4 = strstr(sb.body[4], "\"system\":");
+        const char *e0 = s0 ? strstr(s0, "\"tools\"") : 0;
+        CHECK(s0 && s4 && e0 && !strncmp(s0, s4, (size_t)(e0 - s0)));
+    }
+
+    /* the custom command expanded into the first prompt */
+    CHECK_INT(r.n_cmds_run, 1);
+    CHECK_INT(messages_of(sb.body[0], &m), 0);
+    CHECK(strstr(sb.body[0], "Say hello to Amiga.") != 0);
+
+    /* the permission rules answered: no question was asked at all */
+    CHECK(strstr(cn.screen.p, "Always this session") == 0);
+    CHECK(strstr(cn.screen.p, "Allow?") == 0);
+    CHECK_INT(r.n_rule_allow, 2);               /* read_file (Read), edit_file (Edit(claude-test.txt)) */
+
+    /* the hook blocked list_dir: its reason went to Claude as the result */
+    CHECK_INT(r.hooks.n_run, 1);
+    CHECK_INT(messages_of(sb.body[2], &m), 0);
+    json_iter(m, &it);
+    while (json_next(&it, 0, &e))
+        ;
+    CHECK(json_get(e, "content", &c));
+    json_iter(c, &it);
+    while (json_next(&it, 0, &x)) {
+        jv id, ct;
+        if (json_get(x, "tool_use_id", &id) && json_streq(id, "toolu_01ListS")) {
+            found++;
+            CHECK(json_get(x, "is_error", &ct) && json_type(ct) == J_TRUE);
+            CHECK(json_get(x, "content", &ct) &&
+                  json_streq(ct, "PreToolUse hook blocked this call: listing is not allowed here"));
+        }
+        if (json_get(x, "tool_use_id", &id) && json_streq(id, "toolu_01ReadStartup")) {
+            found++;
+            CHECK(json_get(x, "content", &ct) && json_streq(ct, "SetPatch QUIET\n"));
+        }
+    }
+    CHECK_INT(found, 2);
+
+    /* the edit ran (its result reached Claude), /todos showed the list,
+     * /rewind put the file back from its checkpoint */
+    CHECK(strstr(sb.body[4], "Edited ") != 0);
+    CHECK(strstr(cn.screen.p, "[>] Change the greeting") != 0);
+    CHECK(strstr(cn.screen.p, "[x] Read the file") != 0);
+    CHECK(strstr(cn.screen.p, "Files put back: 1.") != 0);
+    CHECK_INT(r.cp.n_snaps, 1);
+    strcpy(p, root);
+    strcat(p, "/claude-test.txt");
+    CHECK_INT(sys.read(sys.u, p, 1000, &after, &an), 0);
+    CHECK_STR(after ? after : "", "hello\n");
+    free(after);
+
+    /* the session: one append per completed turn, never per key */
+    CHECK_INT(r.sess.n_appends, 3);
+    CHECK_INT(sys.kind(sys.u, r.sess.file), 1);
+    CHECK_INT(r.conv.n, 10);
+    {
+        /* the history as it stood, to compare with the resumed one */
+        jw was;
+        jw_init(&was);
+        conv_messages(&r.conv, &was);
+        repl_free(&r);
+
+        /* a new start continues it, every message byte for byte */
+        setup_in(&r2, script, root);
+        CHECK_INT(repl_continue(&r2), 0);
+        CHECK_INT(r2.conv.n, 10);
+        {
+            jw now;
+            jw_init(&now);
+            conv_messages(&r2.conv, &now);
+            CHECK(was.p && now.p && was.n == now.n && !memcmp(was.p, now.p, (size_t)was.n));
+            jw_free(&now);
+        }
+        CHECK(strstr(cn.screen.p, "Resumed a conversation of 10 messages.") != 0);
+        for (i = 0; i < r2.conv.n; i++)
+            CHECK(r2.conv.m[i].n > 2);
+        jw_free(&was);
+    }
+    repl_free(&r2);
+    remove(user_md);
+}
+
+/* the commands of WP3, each through repl_line, in the line mode (no
+ * picker: they list instead), and auto-compact, a prompt hook, the
+ * fallback model */
+static int has(const char *rel, const char *what)
+{
+    char p[700], *b = 0;
+    long n = 0;
+    int ok;
+    strcpy(p, dir);
+    strcat(p, "/");
+    strcat(p, rel);
+    if (sys.read(sys.u, p, 1L << 20, &b, &n))
+        return 0;
+    ok = strstr(b, what) != 0;
+    free(b);
+    return ok;
+}
+
+static void test_wp3_commands(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char root[600], p[700], id0[16], hook[1200];
+    FILE *f;
+    int i;
+    strcpy(root, dir);
+    strcat(root, "/wp3b");
+    mkdir(root, 0700);
+    strcpy(p, root);
+    strcat(p, "/lib");
+    mkdir(p, 0700);
+    strcpy(p, root);
+    strcat(p, "/.claude");
+    mkdir(p, 0700);
+    strcpy(p, root);
+    strcat(p, "/ctx.sh");
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("cat >/dev/null\necho HOOK-CONTEXT\n", f);
+        fclose(f);
+    }
+    strcpy(p, root);
+    strcat(p, "/status.sh");
+    f = fopen(p, "wb");
+    if (f) {
+        fputs("grep -q '\"current_dir\"' && echo STATUS-LINE-OK\n", f);
+        fclose(f);
+    }
+    strcpy(hook, "{\"hooks\":{\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(hook, root);
+    strcat(hook, "/ctx.sh\"}]}]}}");
+    strcpy(p, root);
+    strcat(p, "/.claude/settings.json");
+    f = fopen(p, "wb");
+    if (f) {
+        fputs(hook, f);
+        fclose(f);
+    }
+    setup_in(&r, none, root);
+
+    /* 3.3 a rule written to the local settings, listed */
+    repl_line(&r, "/permissions allow Bash(make *)");
+    CHECK(has("wp3b/.claude/settings.local.json", "\"allow\": [\"Bash(make *)\"]"));
+    CHECK(r.cfg.nrules == 1 && r.cfg.rules[0].kind == RULE_ALLOW);
+    repl_line(&r, "/permissions");
+    CHECK(strstr(cn.screen.p, "allow  Bash(make *)  (local)") != 0);
+    repl_line(&r, "/permissions remove Bash(make *)");
+    CHECK_INT(r.cfg.nrules, 0);
+    CHECK(!has("wp3b/.claude/settings.local.json", "make"));
+    /* 3.5 an output style: into the system prompt, kept for the project */
+    repl_line(&r, "/output-style Explanatory");
+    CHECK(strstr(r.system, "# Output style: Explanatory") != 0);
+    CHECK(has("wp3b/.claude/settings.local.json", "\"outputStyle\": \"Explanatory\""));
+    repl_line(&r, "/output-style");
+    CHECK(strstr(cn.screen.p, "* Explanatory") != 0);
+    /* 3.10 /config, /autocompact */
+    repl_line(&r, "/config effortLevel high");
+    CHECK_STR(r.effort, "high");
+    CHECK(has("home/settings.json", "\"effortLevel\": \"high\""));
+    repl_line(&r, "/config model haiku project");
+    CHECK_STR(r.model, "claude-haiku-4-5-20251001");
+    CHECK(has("wp3b/.claude/settings.json", "\"model\": \"haiku\""));
+    CHECK(has("wp3b/.claude/settings.json", "UserPromptSubmit"));      /* the rest kept */
+    repl_line(&r, "/model opus");
+    CHECK_STR(r.model, "claude-opus-5-5");
+    repl_line(&r, "/autocompact off");
+    CHECK_INT(r.auto_compact, 0);
+    repl_line(&r, "/autocompact on");
+    CHECK_INT(r.auto_compact, 1);
+    /* 3.7 a name */
+    repl_line(&r, "/rename Amiga work");
+    CHECK_STR(r.sess.title, "Amiga work");
+    cl_copy(id0, r.sess.id, sizeof(id0));
+
+    /* 3.6 + 3.8: the prompt hook's context goes with the prompt; the answer
+     * fills the window past the threshold: compacted by itself */
+    add_stream("full.sse");
+    add_stream("text.sse");
+    repl_line(&r, "hello");
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq >= 1 && strstr(sb.body[0], "HOOK-CONTEXT") != 0);
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "Summarise this conversation") != 0);
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "\"tool_choice\":{\"type\":\"none\"}") != 0);
+    CHECK(strstr(cn.screen.p, "The context window is nearly full: compacting") != 0);
+    CHECK(strstr(cn.screen.p, "Compacted.") != 0);
+    CHECK_INT(r.conv.n, 1);
+    CHECK(strstr(r.conv.m[0].json, "compacted") != 0);
+
+    /* 3.10 /export to a file and to the clipboard */
+    repl_line(&r, "/export out.txt");
+    CHECK(has("wp3b/out.txt", "> This session continues an earlier conversation"));
+    repl_line(&r, "/export");
+    CHECK(strstr(sp.clip, "This session continues") != 0);
+    /* 3.7 /branch, then /resume by name goes back to the first */
+    repl_line(&r, "/branch");
+    CHECK(strcmp(r.sess.id, id0) != 0);
+    CHECK_STR(r.sess.title, "Amiga work (branch)");
+    CHECK_INT(sys.kind(sys.u, r.sess.file), 1);
+    repl_line(&r, "/resume Amiga work");
+    CHECK_STR(r.sess.id, id0);
+    CHECK_INT(r.conv.n, 1);
+    repl_line(&r, "/resume");
+    CHECK(strstr(cn.screen.p, "Amiga work (branch)  [") != 0);
+    /* 3.10 the rest */
+    repl_line(&r, "/status");
+    CHECK(strstr(cn.screen.p, "Output style: Explanatory") != 0);
+    CHECK(strstr(cn.screen.p, "Session: ") != 0);
+    repl_line(&r, "/login sk-ant-test-12345678");
+    CHECK(has("home/key", "sk-ant-test-12345678"));
+    CHECK(r.key && !strcmp(r.key, "sk-ant-test-12345678"));
+    repl_line(&r, "/logout");
+    CHECK(!has("home/key", "sk"));
+    CHECK(r.key == 0);
+    repl_line(&r, "/login");
+    CHECK_INT(r.await_key, 1);
+    repl_line(&r, "sk-ant-typed-87654321");
+    CHECK(r.key && !strcmp(r.key, "sk-ant-typed-87654321"));
+    CHECK_INT(sb.nreq, 2);                     /* the key line was never sent */
+    repl_line(&r, "/add-dir lib");
+    CHECK_INT(r.cfg.ndirs, 1);
+    repl_line(&r, "/hooks");
+    CHECK(strstr(cn.screen.p, "UserPromptSubmit  sh ") != 0);
+    repl_line(&r, "/commands");
+    CHECK(strstr(cn.screen.p, "No custom commands") != 0);
+    repl_line(&r, "/agents");
+    repl_line(&r, "/skills");
+    CHECK(strstr(cn.screen.p, "No skills") != 0);
+    repl_line(&r, "/doctor");
+    CHECK(strstr(cn.screen.p, "[OK]    System: a POSIX host") != 0);
+    CHECK(strstr(cn.screen.p, "[OK]    Settings") != 0);
+    repl_line(&r, "/terminal-setup");
+    CHECK(strstr(cn.screen.p, "Raw keys") != 0);
+    repl_line(&r, "/usage");
+    CHECK(strstr(cn.screen.p, "Context ") != 0);
+    repl_line(&r, "/tasks");
+    CHECK(strstr(cn.screen.p, "No commands running in the background.") != 0);
+    repl_line(&r, "/todos");
+    CHECK(strstr(cn.screen.p, "No todo list") != 0);
+    strcpy(p, "/statusline sh ");
+    strcat(p, root);
+    strcat(p, "/status.sh");
+    repl_line(&r, p);
+    CHECK_STR(r.status_text, "STATUS-LINE-OK");
+    repl_line(&r, "/memory");
+    CHECK(strstr(cn.screen.p, "/memory user, /memory project or /memory local") != 0);
+    repl_line(&r, "/help");
+    for (i = 0; i < slash_nbuiltin; i++)
+        CHECK(strstr(cn.screen.p, slash_builtin[i].name) != 0);
+    repl_line(&r, "/cd lib");
+    CHECK(strstr(r.tools.root, "/wp3b/lib") != 0);
+    CHECK(strstr(r.system, "/wp3b/lib") != 0);
+    repl_free(&r);
+
+    /* 3.11 the fallback model: overloaded five times, the turn goes on with it */
+    setup_in(&r, none, root);
+    cl_copy(r.fallback, cfg_model("sonnet"), sizeof(r.fallback));
+    for (i = 0; i < 5; i++)
+        add_raw("HTTP/1.1 529 Overloaded\r\nContent-Type: application/json\r\nContent-Length: 75\r\n\r\n"
+                "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}");
+    add_stream("text.sse");
+    repl_line(&r, "hi");
+    CHECK_INT(sb.nreq, 6);
+    CHECK_STR(r.model, "claude-sonnet-5-5");
+    CHECK(sb.nreq == 6 && strstr(sb.body[5], "\"model\":\"claude-sonnet-5-5\"") != 0);
+    CHECK(strstr(cn.screen.p, "going on with the fallback model claude-sonnet-5-5") != 0);
+    CHECK_INT(r.conv.n, 2);
+    repl_free(&r);
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -629,6 +1002,8 @@ void suite_claude_repl(void)
     test_unfinished();
     test_commands();
     test_screen();
+    test_wp3();
+    test_wp3_commands();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);
