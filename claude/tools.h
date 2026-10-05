@@ -10,11 +10,14 @@
  * each call is shown and, by the permission rules, confirmed by the user;
  * each ends in one tool_result block (is_error on failure).
  *
- * Permissions: the read-only tools (Read, Glob, Grep) may be allowed for
- * the session with one answer, which covers all three; a write, an edit,
- * a command, a fetch, a skill or a slash command asks every time unless
- * the user allowed that tool for the session. A path outside the start
- * directory asks always. No tool runs before the user has answered.
+ * Permissions (Claude Code's defaults): the read-only tools (Read, Glob,
+ * Grep) run without a question inside the working directories -- the
+ * start directory and the added ones (t->added); a write, an edit, a
+ * command, a fetch, a skill or a slash command asks every time unless the
+ * user allowed that tool for the session. A path outside the working
+ * directories asks always. The permission rules (settings.json) and the
+ * PreToolUse hooks decide before any of this (t->call, the REPL's
+ * policy.c). No tool runs before the user has answered.
  * TodoWrite, BashOutput, KillShell and Task never ask (a subagent's own
  * tool calls do); AskUserQuestion and the plan-mode tools are questions
  * themselves.
@@ -113,6 +116,23 @@ typedef struct cl_tools {
                   const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap);
     /* optional: a plan (ExitPlanMode), Markdown, shown whole */
     void (*plan)(void *u, const char *text, long n);
+    /* optional: is full (canonical) inside a directory added to the working
+     * ones (--add-dir, /add-dir, permissions.additionalDirectories)? Such a
+     * path is not "outside". */
+    int (*added)(void *u, const char *full);
+    /* optional: one call with the policy around it (permission rules,
+     * hooks, checkpoints -- the REPL's): a subagent's calls go through it
+     * as the conversation's do; text for Claude after the round's results
+     * goes to extra. Absent: tools_run alone. */
+    void (*call)(void *u, struct cl_tools *t, const char *id, const char *name, int input_ok, const char *raw,
+                 long rawn, jw *out, jw *extra);
+    /* optional: a subagent is done (the SubagentStop hook): 1 when it is to
+     * go on, with what to tell it in reason */
+    int (*agent_stop)(void *u, const char *agent, int active, jw *reason);
+    /* the call's one-line summary for the screen when its result's text is
+     * for Claude only (WebFetch: "Received 12.3KB (200 OK)", Claude Code's
+     * line); "" none. Set by the tool, cleared at each call. */
+    char brief[96];
     int stop;                   /* ASK_STOP was answered this round (reset by the caller) */
     int cur;                    /* the tool being run (the result hook's) */
     const char *cur_in;
@@ -127,6 +147,9 @@ void tools_free(cl_tools *t);
 /* The "tools" array of a request body for that model (web_search's
  * version depends on it); built once, kept in t->json. */
 const char *tools_json(cl_tools *t, const char *model);
+/* The background shells (Bash run_in_background), one line each --
+ * "bash_1  running  Wait 2" -- into out ("" none): /tasks's list. */
+void tools_shells(cl_tools *t, char *out, long cap);
 /* T_*, or -1 */
 int tools_id(const char *name);
 /* the tool's API name */

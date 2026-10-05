@@ -515,6 +515,8 @@ int perm_must_ask(const cl_perm *p, int tool, int outside)
         return 0;
     if (outside)
         return 1;
+    if (perm_read_only(tool))
+        return 0;                   /* Claude Code: reads inside the working directories never ask */
     if (p->mode == PERM_ACCEPT && is_edit(tool))
         return 0;
     return !(p->session & (1ul << tool));
@@ -732,6 +734,12 @@ static long utf8_to_latin1(char *s, long n)
     return k;
 }
 
+/* outside the working directories: the start directory and the added ones */
+static int is_outside(cl_tools *t, const char *p)
+{
+    return !path_inside(t->root, p) && !(t->added && t->added(t->u, p));
+}
+
 int tl_resolve(cl_tools *t, const char *arg, char *full, long cap, int *outside)
 {
     char canon[512], parent[512];
@@ -739,7 +747,7 @@ int tl_resolve(cl_tools *t, const char *arg, char *full, long cap, int *outside)
     if (path_join(t->root, *arg ? arg : "", full, cap))
         return -1;
     if (t->sys->canon(t->sys->u, full, canon, sizeof(canon)) == 0) {
-        *outside = !path_inside(t->root, canon);
+        *outside = is_outside(t, canon);
         return 0;
     }
     /* not there yet (a new file): its directory's canonical name */
@@ -751,10 +759,10 @@ int tl_resolve(cl_tools *t, const char *arg, char *full, long cap, int *outside)
         cl_cat(canon, canon[0] && canon[strlen(canon) - 1] != ':' && canon[strlen(canon) - 1] != '/' ? "/" : "",
                sizeof(canon));
         cl_cat(canon, name, sizeof(canon));
-        *outside = !path_inside(t->root, canon);
+        *outside = is_outside(t, canon);
         return 0;
     }
-    *outside = !path_inside(t->root, full);
+    *outside = is_outside(t, full);
     return 0;
 }
 
@@ -1621,9 +1629,18 @@ static void run_slash(cl_tools *t, jw *out, const char *id, jv in)
     jw_rawz(&m, name);
     jw_rawz(&m, ". Carry out these instructions:\n\n");
     err[0] = 0;
-    if (t->ext->expand(t->ext->u, name, args, &m, err, sizeof(err)))
-        tl_error(t, out, id, "Unknown slash command: /", err[0] ? err : name);
-    else
+    if (t->ext->expand(t->ext->u, name, args, &m, err, sizeof(err))) {
+        if (!err[0] || cl_strieq(err, name))
+            tl_error(t, out, id, "Unknown slash command: /", name);
+        else {
+            /* it is there but could not be expanded (a !`cmd` without Bash, ...) */
+            char w[100];
+            cl_copy(w, "/", sizeof(w));
+            cl_cat(w, name, sizeof(w));
+            cl_cat(w, " could not run: ", sizeof(w));
+            tl_error(t, out, id, w, err);
+        }
+    } else
         tl_result(t, out, id, m.p, m.n, 0);
     jw_free(&m);
     free(line);
@@ -1638,6 +1655,7 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
     jv in;
     char err[300];
     t->cur = tool;
+    t->brief[0] = 0;
     t->cur_in = raw ? raw : "";
     t->cur_inn = raw ? rawn : 0;
     if (tool < 0) {

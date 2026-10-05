@@ -809,6 +809,11 @@ int cli_apply(cl_cli *c, cl_repl *r)
         free(r->layer[0]);
         r->layer[0] = s;
     }
+    /* a tool set without WebSearch: also a deny rule, so every reload of
+     * the settings (pol_tools) keeps the server tool off */
+    m = tool_set(c, a);
+    if (!(m & (1ul << T_COUNT)) && strs_add(&c->deny, "WebSearch", 9))
+        return fail(c, "Out of memory.", 0, 0);
     free(r->layer[1]);
     r->layer[1] = flags_json(c);
     /* the system prompt: --system-prompt(-file), else the agent's; and what is appended */

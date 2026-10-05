@@ -26,6 +26,7 @@ typedef struct cl_show {
     jw batch;                   /* lines ready for the screen */
     /* the tool call in progress */
     int tool;
+    const char *brief;          /* the tool's own summary of the next result (cl_tools.brief), 0 none */
     jw head;                    /* its header line, not yet shown */
     int head_out;
     int adds, dels;             /* its preview's counts */

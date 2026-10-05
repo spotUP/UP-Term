@@ -29,6 +29,7 @@ void cfg_init(cl_settings *s)
 {
     memset(s, 0, sizeof(*s));
     s->auto_compact = -1;
+    s->web_search = -1;
 }
 
 void cfg_free(cl_settings *s)
@@ -220,10 +221,20 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         str_into(x, s->fallback_model, sizeof(s->fallback_model));
     if (json_get(o, "autoCompactEnabled", &x) && (json_type(x) == J_TRUE || json_type(x) == J_FALSE))
         s->auto_compact = json_type(x) == J_TRUE;
+    if (json_get(o, "webSearch", &x) && (json_type(x) == J_TRUE || json_type(x) == J_FALSE))
+        s->web_search = json_type(x) == J_TRUE;
     if (json_get(o, "statusLine", &x)) {
         jv c;
         if (json_type(x) == J_OBJ && json_get(x, "command", &c))
             str_into(c, s->status_cmd, sizeof(s->status_cmd));
+        if (json_type(x) == J_OBJ && json_get(x, "padding", &c) && json_type(c) == J_NUM)
+            s->status_pad = (int)json_long(c, 0);
+        if (json_type(x) == J_OBJ && json_get(x, "refreshInterval", &c) && json_type(c) == J_NUM)
+            s->status_refresh_s = (int)json_long(c, 0);
+        if (s->status_pad < 0 || s->status_pad > 40)
+            s->status_pad = 0;
+        if (s->status_refresh_s < 0)
+            s->status_refresh_s = 0;
     }
     if (json_get(o, "env", &x) && json_type(x) == J_OBJ)
         env_of(s, x);
@@ -744,6 +755,21 @@ int cfg_decide(const cl_settings *s, const char *tool, jv input, const char *roo
                 return order[k];
             }
     return RULE_NONE;
+}
+
+int cfg_web_search(const cl_settings *s)
+{
+    int i;
+    if (s->web_search == 0)
+        return 0;
+    for (i = 0; i < s->nrules; i++) {
+        char tool[40], pat[200];
+        if (s->rules[i].kind == RULE_DENY &&
+            cfg_rule_parse(s->rules[i].text, tool, sizeof(tool), pat, sizeof(pat)) == 0 &&
+            !strcmp(tool, "WebSearch") && (!pat[0] || !strcmp(pat, "*")))
+            return 0;
+    }
+    return 1;
 }
 
 const char *cfg_model(const char *name)

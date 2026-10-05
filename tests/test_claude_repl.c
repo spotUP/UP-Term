@@ -24,13 +24,15 @@
 
 /* ---- the stub transport: one canned HTTP response per request ---- */
 
+#define SB_MAX 16               /* responses and requests a test may have */
+
 typedef struct stub {
-    char *resp[8];
-    long rlen[8];
+    char *resp[SB_MAX];
+    long rlen[SB_MAX];
     int nresp, next, cur;
     long pos;
     jw req;                     /* the request being received */
-    char *head[8], *body[8];
+    char *head[SB_MAX], *body[SB_MAX];
     int nreq;
     int opens;
     long chunk;                 /* bytes per recv */
@@ -59,7 +61,7 @@ static long s_send(void *u, const char *b, long n)
     if (e) {
         char *cl = strstr(sb.req.p, "Content-Length: ");
         long hl = (long)(e + 4 - sb.req.p), bl = cl ? atol(cl + 16) : 0;
-        if (sb.req.n >= hl + bl && sb.nreq < 8) {
+        if (sb.req.n >= hl + bl && sb.nreq < SB_MAX) {
             sb.head[sb.nreq] = (char *)malloc((size_t)hl + 1);
             memcpy(sb.head[sb.nreq], sb.req.p, (size_t)hl);
             sb.head[sb.nreq][hl] = 0;
@@ -347,7 +349,7 @@ static const char text_content[] =
 
 static void test_reach(void)
 {
-    static const char *script[] = { "hello", "show me S/Startup-Sequence", "a", "/cost", "/exit", 0 };
+    static const char *script[] = { "hello", "show me S/Startup-Sequence", "/cost", "/exit", 0 };
     static cl_repl r;
     jv m, e, c, x, b;
     jit it;
@@ -430,14 +432,15 @@ static void test_reach(void)
     CHECK(json_get(x, "tool_use_id", &e) && json_streq(e, "toolu_01ListS"));
     CHECK(json_get(x, "content", &e) && json_str(e, s, sizeof(s)) > 0 && strstr(s, "/S/Startup-Sequence\n") != 0);
 
-    /* the screen: the tool calls shown, one question asked, the cost */
+    /* the screen: the tool calls shown, no question (reads inside the start
+     * directory run without one, as in Claude Code), the cost */
     CHECK(strstr(cn.screen.p, "Tool \033[0mRead") != 0);
     CHECK(strstr(cn.screen.p, "Tool \033[0mGlob") != 0);
-    CHECK(strstr(cn.screen.p, "Always this session (a)") != 0);
+    CHECK(strstr(cn.screen.p, "Allow ") == 0);
     CHECK(strstr(cn.screen.p, "Requests 3. Tokens: input 855, output 150, cache write 1200, cache read 2700. Cost $") != 0);
     CHECK(strstr(cn.screen.p, "test-key-not-real") == 0);
     CHECK_INT(r.conv.n, 6);
-    CHECK_INT(cn.next, 5);
+    CHECK_INT(cn.next, 4);
     /* the cost: 855*4 + 150*20 + 1200*5 + 2700*0.2 = 3420 + 3000 + 6000 + 540 micro-dollars */
     CHECK_INT((long)r.conv.cost_micro, 12960L);
     conv_dollars(r.conv.cost_micro, s, sizeof(s));
@@ -554,7 +557,7 @@ static void test_commands(void)
 static void test_screen(void)
 {
     static const char *keys[] = {
-        "hello\r", "show me S/Startup-Sequence\r", "2", "please edit the greeting\r", "\r", "/cost\r", "/exit\r", 0
+        "hello\r", "show me S/Startup-Sequence\r", "please edit the greeting\r", "\r", "/cost\r", "/exit\r", 0
     };
     static cl_repl r;
     char p[600];
@@ -614,13 +617,13 @@ static void test_screen(void)
     CHECK(r.tui->n_lines > 20);
     /* five requests, every key used, the edit made */
     CHECK_INT(sb.nreq, 5);
-    CHECK_INT(cs.next, 7);
+    CHECK_INT(cs.next, 6);
     CHECK_INT(sys.read(sys.u, p, 1000, &after, &an), 0);
     CHECK_STR(after ? after : "", "hello from the Amiga\n");
     free(after);
-    /* the reads were allowed for the session with "2": one menu for two calls */
+    /* the reads ran without a menu (Claude Code's default inside the start directory) */
     CHECK(sb.nreq < 3 || strstr(sb.body[2], "/S/Startup-Sequence\\n") != 0);
-    CHECK(r.tools.perm.session & (1ul << T_GLOB));
+    CHECK(!(r.tools.perm.session & (1ul << T_GLOB)));
     /* the todo list and the edit's result reached the history and the screen */
     CHECK(sb.nreq < 5 || strstr(sb.body[4], "Todos have been modified") != 0);
     CHECK(sb.nreq < 5 || strstr(sb.body[4], "claude-test.txt has been updated.") != 0);
@@ -754,7 +757,7 @@ static void test_wp3(void)
     /* the permission rules answered: no question was asked at all */
     CHECK(strstr(cn.screen.p, "Always this session") == 0);
     CHECK(strstr(cn.screen.p, "Allow?") == 0);
-    CHECK_INT(r.n_rule_allow, 3);               /* Read twice (startup, then the edit's read), Edit(claude-test.txt) */
+    CHECK_INT(r.n_rule_allow, 1);               /* Edit(claude-test.txt); the reads never ask */
 
     /* the hook blocked Glob: its reason went to Claude as the result */
     CHECK_INT(r.hooks.n_run, 1);
@@ -833,6 +836,7 @@ static void test_wp3(void)
         add_stream("tool_edit.sse");
         add_stream("tool_final.sse");
         repl_line(&r3, "please edit the greeting");
+        CHECK(r3.ctx_used > 0);
         k = r3.ui.rw.count(r3.ui.rw.u);
         CHECK_INT(k, 1);
         CHECK_INT(r3.ui.rw.can(r3.ui.rw.u, 0), RW_CONV | RW_CODE);
@@ -840,6 +844,7 @@ static void test_wp3(void)
         CHECK_STR(lab, "please edit the greeting");
         CHECK_INT(r3.ui.rw.restore(r3.ui.rw.u, 0, RW_CODE | RW_CONV), 0);
         CHECK_INT(r3.conv.n, 0);
+        CHECK_INT(r3.ctx_used, 0);      /* the context in use goes back with the conversation */
         strcpy(p, root);
         strcat(p, "/claude-test.txt");
         after = 0;
@@ -1085,7 +1090,7 @@ static void test_wp1(void)
         "!!echo hi\r",                                  /* ! bash mode */
         "#remember the milk\r", "\r",                   /* # memory, the project's file */
         "explain @S/Startup-Sequence\r",                /* @ mention */
-        "show me S/Startup-Sequence\r", "!also say hi\r", "2",   /* typed ahead during the tool round */
+        "show me S/Startup-Sequence\r", "!also say hi\r",        /* typed ahead during the tool round */
         "\017", "q",                                    /* Ctrl+O, q */
         "/exit\r", 0
     };
@@ -1119,7 +1124,7 @@ static void test_wp1(void)
         for (k = 0; k < cs.rows; k++)
             printf("%2d|%s\n", k, cs_row(k));
     }
-    CHECK_INT(cs.next, 10);                 /* every key used */
+    CHECK_INT(cs.next, 9);                  /* every key used */
     CHECK_INT(sb.nreq, 4);
     /* !: the command ran, Claude got its output as Claude Code sends it */
     CHECK(sb.nreq < 1 || strstr(sb.body[0], "<bash-input>echo hi</bash-input>\\n<bash-stdout>hi\\n</bash-stdout>") != 0);
@@ -1449,6 +1454,15 @@ static int result_of(jv *v)
     return json_parse(last, (long)strlen(last), v) == 0 && json_type(*v) == J_OBJ ? 0 : -1;
 }
 
+static int has_rule(const cl_repl *r, const char *text, int kind, int src)
+{
+    int i;
+    for (i = 0; i < r->cfg.nrules; i++)
+        if (!strcmp(r->cfg.rules[i].text, text) && r->cfg.rules[i].kind == kind && r->cfg.rules[i].src == src)
+            return 1;
+    return 0;
+}
+
 static void test_wp4_text(void)
 {
     static const char *none[] = { 0 };
@@ -1708,13 +1722,14 @@ static void test_wp4_perms(void)
     CHECK(sb.nreq == 1 && json_parse(sb.body[0], (long)strlen(sb.body[0]), &v) == 0 && json_get(v, "tools", &x) &&
           json_count(x) == 2);
     CHECK(sb.nreq == 1 && strstr(sb.body[0], "web_search") == 0);
+    repl_load(&r);                          /* a reload (/cd, /permissions) keeps it so */
+    CHECK_INT(r.tools.web_search, 0);
     repl_free(&r);
     setup(&r, none);
     add_stream("text.sse");
     CHECK_INT(run_print(&r, "-p --disallowedTools Bash WebSearch \"Edit(S/*)\" --tools \"\" -- hello", 0), 0);
     CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"tools\"") == 0);    /* none at all */
-    CHECK(r.cfg.nrules >= 1 && !strcmp(r.cfg.rules[r.cfg.nrules - 1].text, "Edit(S/*)") &&
-          r.cfg.rules[r.cfg.nrules - 1].kind == RULE_DENY);
+    CHECK(has_rule(&r, "Edit(S/*)", RULE_DENY, CFG_SESSION));
     repl_free(&r);
     setup(&r, none);
     add_stream("text.sse");
@@ -1798,8 +1813,8 @@ static void test_wp4_apply(void)
     CHECK_STR(r.effort, "high");
     CHECK_INT(r.tools.perm.mode, PERM_PLAN);
     CHECK(r.cfg.ndirs == 1 && !strcmp(r.cfg.dirs[0], "S"));
-    CHECK(r.cfg.nrules >= 1 && !strcmp(r.cfg.rules[r.cfg.nrules - 1].text, "Bash(make *)") &&
-          r.cfg.rules[r.cfg.nrules - 1].src == CFG_SESSION);
+    CHECK(has_rule(&r, "Bash(make *)", RULE_ALLOW, CFG_SESSION));
+    CHECK(has_rule(&r, "WebSearch", RULE_DENY, CFG_SESSION));     /* --tools without it */
     CHECK(!strncmp(r.system, "Be brief.", 9));
     l = (long)strlen(r.system);
     CHECK(l > 17 && !strcmp(r.system + l - 17, "Answer in German."));
@@ -1924,6 +1939,250 @@ static void test_wp4(void)
     jw_free(&pc.err);
 }
 
+/* ---- A4 wiring: the three packages' seams joined ----
+ *
+ * The reachability test of the wiring, on the screen: a project with a
+ * subagent (.claude/agents), two skills (one only the user may run), a
+ * custom command with allowed-tools, a settings file with a status line,
+ * a deny rule for WebSearch and one for a file; and a user subagent in
+ * the user's directory. Typed: a prompt Claude answers with a Task for the
+ * project's agent (whose reads run without a question, one of them denied
+ * by the rule inside the agent), one answered with the Skill tool, one
+ * with SlashCommand (whose allowed-tools let the Bash call that follows
+ * run without a question), /tasks, /exit. */
+
+/* text into root/rel, the directories on the way made */
+static void xput(const char *root, const char *rel, const char *text)
+{
+    char p[800];
+    char *s;
+    FILE *f;
+    strcpy(p, root);
+    strcat(p, "/");
+    strcat(p, rel);
+    for (s = p + strlen(root) + 1; *s; s++)
+        if (*s == '/') {
+            *s = 0;
+            mkdir(p, 0700);
+            *s = '/';
+        }
+    f = fopen(p, "wb");
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+static void test_wiring(void)
+{
+    static const char *keys[] = { "review the startup\r", "check it\r", "\r", "greet\r", "\r", "/tasks\r",
+                                  "/exit\r", 0 };
+    static cl_repl r;
+    char root[600], home[600], p[700];
+    int row, box;
+    const char *t;
+    strcpy(root, dir);
+    strcat(root, "/wire");
+    mkdir(root, 0700);
+    strcpy(home, dir);
+    strcat(home, "/home");
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, "secret.txt", "SECRET-CONTENT\n");
+    xput(root, ".claude/agents/amiga-reviewer.md",
+         "---\nname: amiga-reviewer\ndescription: Reviews Amiga startup files\ntools: Read\nmodel: haiku\n---\n"
+         "AMIGA-REVIEWER-PROMPT: you review AmigaDOS scripts.\n");
+    xput(home, "agents/user-helper.md", "---\nname: user-helper\ndescription: The user's own helper\n---\nHelp.\n");
+    xput(root, ".claude/skills/startup-check/SKILL.md",
+         "---\nname: startup-check\ndescription: Checks a Startup-Sequence\n---\n"
+         "SKILL-BODY-SENTINEL: read S/Startup-Sequence first.\n");
+    xput(root, ".claude/skills/only-me/SKILL.md",
+         "---\nname: only-me\ndescription: ONLY-THE-USER\ndisable-model-invocation: true\n---\nNo.\n");
+    xput(root, ".claude/commands/greet.md",
+         "---\ndescription: Greet someone\nallowed-tools: Bash(Wait:*)\n---\nSay hello to $ARGUMENTS.\n");
+    xput(root, ".claude/settings.json",
+         "{\"statusLine\":{\"type\":\"command\",\"command\":\"echo WIRED-STATUS\"},"
+         "\"permissions\":{\"deny\":[\"WebSearch\",\"Read(secret.txt)\"]}}\n");
+
+    stub_reset();
+    add_stream("wire_task.sse");
+    add_stream("wire_agent_reads.sse");
+    add_stream("agent_final.sse");
+    add_stream("tool_final.sse");
+    add_stream("wire_skill.sse");
+    add_stream("tool_final.sse");
+    add_stream("wire_slash.sse");
+    add_stream("tool_bg.sse");
+    add_stream("tool_final.sse");
+    cs_open(80, 24, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    /* every key used: no question the script did not expect (the reads asked nothing) */
+    CHECK_INT(cs.next, 7);
+    CHECK_INT(sb.nreq, 9);
+    if (sb.nreq < 9) {
+        repl_free(&r);
+        cs_close();
+        return;
+    }
+
+    /* the first request: Task offers the project's and the user's agents beside the
+     * built-ins; Skill lists the model's skills only; SlashCommand the command; no
+     * web_search (the deny rule) */
+    t = sb.body[0];
+    CHECK(strstr(t, "- amiga-reviewer: Reviews Amiga startup files (Tools: Read)") != 0);
+    CHECK(strstr(t, "- user-helper: The user's own helper") != 0);
+    CHECK(strstr(t, "- general-purpose: ") != 0);
+    CHECK(strstr(t, "{\"name\":\"Skill\",") != 0);
+    CHECK(strstr(t, "- startup-check: Checks a Startup-Sequence") != 0);
+    CHECK(strstr(t, "ONLY-THE-USER") == 0);
+    CHECK(strstr(t, "{\"name\":\"SlashCommand\",") != 0);
+    CHECK(strstr(t, "- /greet: Greet someone") != 0);
+    CHECK(strstr(t, "web_search") == 0);
+
+    /* the project agent ran with its prompt, its model and its one tool */
+    t = sb.body[1];
+    CHECK(strstr(t, "AMIGA-REVIEWER-PROMPT") != 0);
+    CHECK(strstr(t, "\"model\":\"claude-haiku-4-5\"") != 0);
+    CHECK(strstr(t, "{\"name\":\"Read\",") != 0);
+    CHECK(strstr(t, "{\"name\":\"Grep\",") == 0);
+    CHECK(strstr(t, "{\"name\":\"Task\",") == 0);
+    /* its calls went through the policy: the read ran, the rule denied secret.txt */
+    t = sb.body[2];
+    CHECK(strstr(t, "\"tool_use_id\":\"toolu_01WireRead\",\"content\":\"     1\\tSetPatch QUIET\\n\"") != 0);
+    CHECK(strstr(t, "Permission to use Read has been denied by the rule Read(secret.txt) (project settings).") !=
+          0);
+    CHECK(strstr(t, "SECRET-CONTENT") == 0);
+    CHECK_INT(r.n_rule_deny, 1);
+    /* ... and the screen showed the agent's Read as a Read, not as its Task */
+    CHECK(strstr(cs.sent.p, "Read\033[0m(S/Startup-Sequence)") != 0 || strstr(cs.sent.p, "Read(S/Startup-Sequence)") != 0);
+    CHECK(strstr(sb.body[3], "(Agent amiga-reviewer: 2 tool uses.)") != 0);
+
+    /* the skill: its body (no frontmatter) and the arguments came back */
+    t = sb.body[5];
+    CHECK(strstr(t, "Launching skill: startup-check") != 0);
+    CHECK(strstr(t, "SKILL-BODY-SENTINEL: read S/Startup-Sequence first.") != 0);
+    CHECK(strstr(t, "ARGUMENTS: S:") != 0);
+    CHECK(strstr(t, "description: Checks") == 0);
+
+    /* the custom command through SlashCommand, expanded */
+    t = sb.body[7];
+    CHECK(strstr(t, "Launching command /greet. Carry out these instructions:\\n\\nSay hello to Amiga.") != 0);
+    CHECK_INT(r.n_cmds_run, 1);
+    /* its allowed-tools let the Bash call in the same turn run without a question */
+    CHECK(strstr(sb.body[8], "Command running in background with ID: bash_1") != 0);
+    CHECK_INT(r.n_rule_allow, 1);
+    CHECK(r.turn_tools == 0);       /* only for that turn */
+
+    /* /tasks: the background shell in the one list */
+    CHECK(strstr(cs.sent.p, "bash_1") != 0);
+    CHECK(strstr(cs.sent.p, "Background shells") != 0);
+
+    /* the status line: the command ran on its events, its row under the box */
+    CHECK_STR(r.status_text, "WIRED-STATUS");
+    CHECK(r.n_status_runs >= 2);
+    row = cs_find("WIRED-STATUS");
+    box = cs_find("\342\225\260");
+    CHECK(row >= 0 && box >= 0 && row == box + 1);
+    CHECK(row >= 0 && strstr(cs_row(row + 1), "ctx:") != 0);
+    /* its schedule: nothing changed, no run; a mode change (Shift+Tab) runs it;
+     * an event within 300 ms waits for the next tick; refreshInterval */
+    {
+        long n0 = r.n_status_runs;
+        cs.clock += 1000;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0);
+        r.tools.perm.mode = PERM_ACCEPT;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0 + 1);
+        pol_status_event(&r);
+        CHECK_INT(r.n_status_runs, n0 + 1);
+        CHECK_INT(r.status_due, 1);
+        cs.clock += 400;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0 + 2);
+        r.cfg.status_refresh_s = 2;
+        cs.clock += 1000;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0 + 2);
+        cs.clock += 1500;
+        pol_status_tick(&r);
+        CHECK_INT(r.n_status_runs, n0 + 3);
+    }
+    repl_free(&r);
+    cs_close();
+    strcpy(p, home);
+    strcat(p, "/agents/user-helper.md");
+    remove(p);
+}
+
+/* WebFetch on the screen: under "Fetch(url)" Claude Code's line "Received
+ * N bytes (200 OK)" -- the small model's answer goes to Claude only (it
+ * used to be drawn there, cut at the window's edge: rig run 2026-10-05) */
+static void test_fetch_screen(void)
+{
+    static const char *keys[] = { "fetch the page\r", "\r", "/exit\r", 0 };
+    static cl_repl r;
+    cl_net web;
+    int row;
+    stub_reset();
+    add_stream("tool_fetch.sse");
+    add_stream("fetch_answer.sse");
+    add_stream("tool_final.sse");
+    wp2_open_n = 0;
+    cs_open(80, 24, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    web = net;
+    web.open = wp_open;
+    web.send = wp_send;
+    web.recv = wp_recv;
+    web.close = wp_close;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    r.tools.web = &web;
+    free(r.tools.json);
+    r.tools.json = 0;
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, 3);
+    CHECK_INT(sb.nreq, 3);
+    CHECK_INT(wp2_open_n, 1);
+    /* Claude got the answer; the screen got the summary */
+    CHECK(sb.nreq < 3 || strstr(sb.body[2], "The page is the UP-Term test page.") != 0);
+    row = cs_find(SB " Fetch(http://127.0.0.1:8080/page)");
+    CHECK(row >= 0);
+    CHECK_STR(row >= 0 ? cs_row(row + 1) : "", "  " SC "  Received 47 bytes (200 OK)");
+    CHECK(cs_find("The page is the UP-Term test page.") < 0);
+    repl_free(&r);
+    cs_close();
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -1936,6 +2195,8 @@ void suite_claude_repl(void)
     test_wp3();
     test_wp3_commands();
     test_wp4();
+    test_wiring();
+    test_fetch_screen();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);
