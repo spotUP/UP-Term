@@ -409,6 +409,177 @@ static void theme_menu_scrolls_a_long_list_at_the_bottom(void)
     vt_free(t);
 }
 
+/* Owner 2026-10-05: "the whole screen redraws when i navigate the theme
+ * list". Each key redrew the whole list, and /theme put each theme passed
+ * on the window -- a full repaint a key. Now a move draws the row the bar
+ * left, the row it is on and the "k of n" row (a scroll moves the rows and
+ * draws the one coming in), and the preview waits for the bar to rest. */
+static long menu_rows_drawn;
+static void count_rows(void *u, const unsigned char *b, long n)
+{
+    long i;
+    for (i = 0; i + 3 < n; i++)
+        if (b[i] == 0x1B && b[i + 1] == '[' && b[i + 2] == '2' && b[i + 3] == 'K')
+            menu_rows_drawn++; /* each row of the list starts with EL 2 */
+    vt_write((vt_term *)u, b, n);
+}
+
+static vt_term *menu_start(int cols, int rows, enum vt_personality p, const char *prompt)
+{
+    vt_term *t = h_new(cols, rows, p);
+    vt_set_onlcr(t, 1);
+    h_put(t, prompt);
+    le_free(&le);
+    le_init(&le, t, count_rows, t);
+    type("/theme");
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    menu_rows_drawn = 0;
+    return t;
+}
+
+static void menu_names(char *names, int n) /* t00 .. */
+{
+    int i, k = 0;
+    for (i = 0; i < n; i++) {
+        names[k++] = 't';
+        names[k++] = (char)('0' + i / 10);
+        names[k++] = (char)('0' + i % 10);
+        names[k++] = 0;
+    }
+}
+
+/* every cell's character and whether it is reversed */
+static void menu_snap(vt_term *t, unsigned long *s)
+{
+    int x, y, k = 0;
+    for (y = 0; y < vt_rows(t); y++)
+        for (x = 0; x < vt_cols(t); x++) {
+            const vt_cell *c = h_cell(t, x, y);
+            s[k++] = vt_cell_char(t, c) * 2UL + ((c->attr & VT_ATTR_INVERSE) != 0);
+        }
+}
+
+/* The screen as the rows left it is the screen a whole draw makes. */
+static int menu_as_drawn_whole(vt_term *t, le_menu *m)
+{
+    static unsigned long a[40 * 24], b[40 * 24];
+    long drawn = menu_rows_drawn;
+    int x0, y0, x1, y1;
+    menu_snap(t, a);
+    vt_cursor(t, &x0, &y0);
+    m->drawn_top = -1; /* the next draw is whole */
+    le_menu_draw(&le, m);
+    menu_snap(t, b);
+    vt_cursor(t, &x1, &y1);
+    menu_rows_drawn = drawn;
+    return !memcmp(a, b, sizeof(unsigned long) * vt_cols(t) * vt_rows(t)) && x0 == x1 && y0 == y1;
+}
+
+static void holding_down_in_the_theme_list_draws_rows_and_previews_once(void)
+{
+    char names[40 * 4];
+    le_menu m;
+    int i, previews = 0, keys = 30;
+    vt_term *t;
+    menu_names(names, 40);
+    t = menu_start(30, 16, VT_XTERM, "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n> ");
+    memset(&m, 0, sizeof(m));
+    le_menu_open(&le, &m, names, 40, 0, 0);
+    CHECK_INT(m.rows, 12);
+    CHECK_STR(h_row(t, 15), "1 of 40: Up/Down choose, Ente"); /* at the bottom */
+    CHECK_INT(menu_rows_drawn, 13);                               /* opened: drawn whole */
+    menu_rows_drawn = 0;
+    h_scroll_calls = 0;
+    /* Down held: a key every 30 ms on the caller's clock */
+    for (i = 0; i < keys; i++) {
+        CHECK_INT(menu_key(&m, VT_KEY_DOWN, 0, 0), LE_MENU_MOVED);
+        le_menu_draw(&le, &m);
+        previews += le_menu_rested(&m, 30000L);
+    }
+    CHECK_INT(previews, 0);                    /* none while the keys come */
+    CHECK_INT(menu_rows_drawn, 3 * keys);      /* the left row, the bar's row, "k of n": was 13 a key */
+    CHECK_INT(h_scroll_calls > 0, 1);          /* past the 12th the names moved, not drawn again */
+    for (i = 0; i < 20; i++)
+        previews += le_menu_rested(&m, 20000L); /* the keys stopped */
+    CHECK_INT(previews, 1);                    /* one preview, for where the bar rests: was one a key */
+    CHECK_INT(m.sel, 30);
+    CHECK_STR(h_row(t, 3), "  t19");
+    CHECK_STR(h_row(t, 14), "  t30");
+    CHECK(h_cell(t, 2, 14)->attr & VT_ATTR_INVERSE);
+    CHECK(!(h_cell(t, 2, 13)->attr & VT_ATTR_INVERSE));
+    CHECK_STR(h_row(t, 15), "31 of 40: Up/Down choose, Ent");
+    CHECK(menu_as_drawn_whole(t, &m));
+    /* slow keys: each rest previews */
+    previews = 0;
+    for (i = 0; i < 2; i++) {
+        menu_key(&m, VT_KEY_UP, 0, 0);
+        le_menu_draw(&le, &m);
+        previews += le_menu_rested(&m, 300000L);
+    }
+    CHECK_INT(previews, 2);
+    /* Escape or Enter with a preview still waiting: the close cancels it */
+    menu_key(&m, VT_KEY_DOWN, 0, 0);
+    le_menu_draw(&le, &m);
+    CHECK_INT(le_menu_rested(&m, 30000L), 0);
+    le_menu_close(&le, &m);
+    CHECK_INT(le_menu_rested(&m, 300000L), 0);
+    vt_free(t);
+}
+
+/* Drawn by rows -- the bar moving, the names scrolling either way by DL
+ * and IL, a wrap, a page, a letter -- the list is what a whole draw makes,
+ * in each personality; with text under the list it is drawn whole and the
+ * text stays. */
+static void the_list_drawn_by_rows_is_the_list_drawn_whole(void)
+{
+    static const long seq[] = { VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN,
+                                VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN,
+                                VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_DOWN, VT_KEY_UP, VT_KEY_UP, VT_KEY_UP, VT_KEY_UP,
+                                VT_KEY_UP, VT_KEY_UP, VT_KEY_UP, VT_KEY_UP, VT_KEY_UP, VT_KEY_UP, VT_KEY_UP,
+                                VT_KEY_UP, VT_KEY_UP, VT_KEY_UP, VT_KEY_UP, VT_KEY_UP, VT_KEY_PAGE_DOWN,
+                                VT_KEY_PAGE_DOWN, VT_KEY_PAGE_UP, VT_KEY_END, VT_KEY_HOME, 't' };
+    static const enum vt_personality pers[] = { VT_XTERM, VT_AMIGA, VT_PCANSI };
+    char names[40 * 4];
+    le_menu m;
+    int p, i, ok, below;
+    menu_names(names, 40);
+    for (p = 0; p < 3; p++)
+        for (below = 0; below < 2; below++) {
+            vt_term *t = menu_start(30, 20, pers[p], "> ");
+            memset(&m, 0, sizeof(m));
+            le_menu_open(&le, &m, names, 40, 0, -1); /* rows 1-12, "k of n" on 13 */
+            if (below)
+                h_put(t, "\0337\033[19;3Hstays\0338");
+            ok = 1;
+            h_scroll_calls = 0;
+            for (i = 0; i < (int)(sizeof(seq) / sizeof(seq[0])); i++) {
+                int r = seq[i] == 't' ? menu_key(&m, 0, 0, "t") : menu_key(&m, seq[i], 0, 0);
+                if (r != LE_MENU_MOVED)
+                    continue;
+                le_menu_draw(&le, &m);
+                if (!below && (strcmp(h_row(t, 14), "") || strcmp(h_row(t, 19), ""))) {
+                    printf("  personality %d: key %d left [%s] under the list\n", p, i, h_row(t, 14));
+                    ok = 0;
+                    break;
+                }
+                if (!menu_as_drawn_whole(t, &m)) {
+                    printf("  personality %d below %d: key %d (sel %d top %d) drawn by rows differs\n", p,
+                           below, i, m.sel, m.top);
+                    ok = 0;
+                    break;
+                }
+            }
+            CHECK(ok);
+            CHECK_INT(h_scroll_calls > 0, !below); /* blank under the list: the names moved */
+            CHECK_STR(h_row(t, 18), below ? "  stays" : "");
+            le_menu_close(&le, &m);
+            CHECK_STR(h_row(t, 0), "> /theme");
+            CHECK_STR(h_row(t, 1), "");
+            vt_free(t);
+        }
+}
+
 /* H8.1: KingCON prints its list (FNCMODE L, Ctrl+D) in 19-character
  * columns, (width + 1) / 19 a row, and cuts a name over 18 (its suffix
  * counted) to 15 + "..." -- not sized to the widest name. */
@@ -650,4 +821,6 @@ void suite_lineedit(void)
     history_and_undo_grow_and_free();
     theme_menu_chosen_with_arrows_and_return();
     theme_menu_scrolls_a_long_list_at_the_bottom();
+    holding_down_in_the_theme_list_draws_rows_and_previews_once();
+    the_list_drawn_by_rows_is_the_list_drawn_whole();
 }

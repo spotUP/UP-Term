@@ -149,12 +149,19 @@ void le_hist_add(le_line *le, const unsigned char *s, int n);
  * Escape or Ctrl-G cancels. The menu is the caller's (the line editor is
  * not in it): the caller routes keys to le_menu_key while m->open. */
 #define LE_MENU_ROWS 12
+/* How long the bar rests before le_menu_rested says so (microseconds). */
+#define LE_MENU_REST_US 250000L
 typedef struct le_menu {
     const char *names;  /* NUL-separated, n of them: the caller's, kept while open */
     int n, sel, mark;   /* mark -1: none */
     int top, rows;      /* the first name shown, the rows of names shown */
     long at;            /* the first row, absolute (grid row + vt_lines_scrolled) */
     int open;
+    int w;              /* the bar's width: the widest name, cut to the window */
+    int drawn_top, drawn_sel; /* what the screen shows; drawn_top -1: nothing (the
+                         * next le_menu_draw is whole -- set it when the screen
+                         * lost the list, a resize) */
+    long rest_us;       /* the bar moved: what it must still rest (0: nothing due) */
 } le_menu;
 enum { LE_MENU_NONE, LE_MENU_MOVED, LE_MENU_TAKE, LE_MENU_CANCEL };
 /* Open at the cursor (a row's start: the line was ended), drawn; sel the
@@ -163,9 +170,19 @@ void le_menu_open(le_line *le, le_menu *m, const char *names, int n, int sel, in
 /* One key, as le_key takes it: what it did to m (no drawing: MOVED wants
  * le_menu_draw). */
 int  le_menu_key(le_menu *m, long key, int mods, const unsigned char *b, int nb);
+/* What changed since the last draw (owner 2026-10-05: the whole list a key
+ * was slow): the row the bar left, the row it is on, and the "k of n" row.
+ * Names scrolled by less than a page move with DL / IL (a blit) and only
+ * the rows coming in are drawn -- when nothing is under the list, which
+ * those would move too; otherwise, and the first time, the whole list. */
 void le_menu_draw(le_line *le, le_menu *m);
+/* The caller's clock waited waited_us. 1 once the bar has rested
+ * LE_MENU_REST_US since it last moved, then 0 until it moves again: what
+ * is costly for the chosen name goes there, not on every key (/theme put
+ * each theme the bar passed on the window, a full repaint each). */
+int  le_menu_rested(le_menu *m, long waited_us);
 /* Off the screen, the cursor where its first row was (the reader's next
- * prompt goes there); m->open 0. */
+ * prompt goes there); m->open 0, a rest still due cancelled. */
 void le_menu_close(le_line *le, le_menu *m);
 /* name i */
 const char *le_menu_name(const le_menu *m, int i);
