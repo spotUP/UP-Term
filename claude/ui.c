@@ -57,6 +57,8 @@ void ui_puts(cl_ui *u, const char *s)
 
 void ui_line(cl_ui *u, const char *s)
 {
+    if (u->bg)
+        return;                 /* a background request says nothing (A4 gaps 3) */
     if (u->tui) {
         show_note(u->show, s);
         return;
@@ -72,6 +74,8 @@ void ui_status(cl_ui *u, const char *what)
 {
     static const char spin[] = "|/-\\";
     char line[128], sp[3];
+    if (u->bg)
+        return;
     if (u->tui) {
         tui_tick(u->tui);       /* the spinner turns; keys wait for ui_poll */
         return;
@@ -281,6 +285,8 @@ void ui_tokens(cl_ui *u, long n)
 int ui_poll(cl_ui *u)
 {
     int stop = u->io->brk(u->io->u);
+    if (u->bg)
+        return stop || (u->tui && tui_pending(u->tui));    /* a key stops it, and stays for the box */
     if (u->tui && tui_poll(u->tui))
         stop = 1;
     return stop;

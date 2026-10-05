@@ -36,6 +36,8 @@ void cfg_init(cl_settings *s)
     s->auto_memory = -1;
     s->model_src = -1;
     s->cleanup_days = -1;
+    s->prompt_suggest = -1;
+    s->away_summary = -1;
 }
 
 static void free_hook(cl_hook *k);
@@ -468,6 +470,20 @@ static void user_keys(cl_settings *s, jv o)
     }
 }
 
+/* the screen's switches (A4 gaps 3), from any file: -1 not set, 0, 1 */
+static void flag_into(jv o, const char *key, int *out)
+{
+    jv x;
+    if (json_get(o, key, &x) && (json_type(x) == J_TRUE || json_type(x) == J_FALSE))
+        *out = json_type(x) == J_TRUE;
+}
+
+static void view_keys(cl_settings *s, jv o)
+{
+    flag_into(o, "promptSuggestionEnabled", &s->prompt_suggest);
+    flag_into(o, "awaySummaryEnabled", &s->away_summary);
+}
+
 int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *name)
 {
     jv o, x, p;
@@ -488,6 +504,7 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         str_into(x, s->editor_mode, sizeof(s->editor_mode));
     if (src == CFG_USER || src == CFG_SESSION)
         user_keys(s, o);
+    view_keys(s, o);
     if (json_get(o, "theme", &x))
         str_into(x, s->theme, sizeof(s->theme));
     if (json_get(o, "fallbackModel", &x))

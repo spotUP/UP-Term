@@ -330,6 +330,11 @@ static void mk_tree(void)
     strcat(p, "/t");
     mkdir(p, 0700);
     setenv("CLAUDE_CODE_TMPDIR", p, 1);
+    /* the screen's background requests (A4 gaps 3: the prompt suggestion,
+     * the away recap) would take the scripted answers: off, but in the
+     * tests that drive them */
+    setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false", 1);
+    setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "0", 1);
     strcpy(p, dir);
     strcat(p, "/S");
     mkdir(p, 0700);
@@ -5043,8 +5048,38 @@ static void test_gaps3_afk(void)
     cs_close();
 }
 
+/* G9: after a turn with a warm cache, the box shows the next prompt Claude
+ * predicts (a background request, no spinner); Tab puts it in, Enter sends
+ * it; after a cold-cache turn none is asked for */
+static void test_gaps3_suggest(void)
+{
+    static const char *keys[] = { "hi\r", "\t", "\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "true", 1);
+    g3_screen(&r, keys, "g3suggest", root);
+    add_stream("tool_final.sse");           /* cache_read_input_tokens 1500: warm */
+    add_answer(0, 0, 0, "run the tests\n");
+    add_answer(0, 0, 0, "ok");              /* a cold one: no suggestion after it */
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false", 1);
+    g3_dump();
+    CHECK_INT(cs.next, 4);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "Predict what the user is most likely to type next") != 0);
+    CHECK(sb.nreq >= 3 && strstr(sb.body[2], "{\"type\":\"text\",\"text\":\"run the tests\"}") != 0);
+    CHECK_INT(r.n_suggested, 1);
+    CHECK(cs_find("> run the tests") >= 0);
+    CHECK(strstr(cs.sent.p, "Predict what") == 0);  /* nothing of it on the screen */
+    repl_free(&r);
+    cs_close();
+}
+
 static void test_gaps3(void)
 {
+    test_gaps3_suggest();
     test_gaps3_afk();
     test_gaps3_agent_mention();
     test_gaps3_bypass();

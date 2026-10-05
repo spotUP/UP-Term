@@ -617,6 +617,11 @@ static void box_rows(cl_tui *t, int top_row)
             r_text(&r, "  ", 2);
         }
         box_text(t, &r, a[k], z[k]);
+        if (k == 0 && !t->ed.n && t->suggest[0] && t->box == BOX_PROMPT && !t->search) {
+            r_sgr(&r, DIM);
+            r_text(&r, t->suggest, (long)strlen(t->suggest));
+            r_sgr(&r, SGR0);
+        }
         r_pad(&r, t->cols - 1);
         r_sgr(&r, frame(t));
         r_glyph(&r, G_V);
@@ -1699,6 +1704,7 @@ static void edit(cl_tui *t, cl_key *k)
     t->ed.now_ms = now(t);          /* vim's remapped sequences are timed */
     ed_key(&t->ed, k);
     if (t->ed.n != n0) {
+        t->suggest[0] = 0;          /* typing drops the suggestion */
         t->mclosed = 0;
         t->msel = 0;
         t->cclosed = 0;
@@ -1925,7 +1931,17 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         free(line);
         return H_SUBMIT;
     }
+    case K_RIGHT:
     case K_TAB:
+        if (!t->ed.n && t->suggest[0] && t->box == BOX_PROMPT) {
+            ed_set(&t->ed, t->suggest);     /* the suggestion taken: Enter sends it */
+            t->suggest[0] = 0;
+            return H_GO;
+        }
+        if (k->k == K_RIGHT) {
+            edit(t, k);
+            return H_GO;
+        }
         if (complete(t))
             ed_insert(&t->ed, " ", 1);
         else if (!comp_tab(t) && t->box == BOX_BASH && t->ed.n)
@@ -2365,4 +2381,22 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
 int tui_key(cl_tui *t, cl_key *k, long wait)
 {
     return next_key(t, k, wait);
+}
+
+int tui_pending(cl_tui *t)
+{
+    char b[256];
+    long n = t->io->read(t->io->u, b, sizeof(b), 0);
+    if (n > 0)
+        keys_feed(&t->keys, b, n);
+    if (n < 0)
+        return 1;
+    /* a focus report alone is no key */
+    while (t->keys.n >= 3 && t->keys.b[0] == 0x1b && t->keys.b[1] == '[' &&
+           (t->keys.b[2] == 'I' || t->keys.b[2] == 'O')) {
+        t->focus = t->keys.b[2] == 'I';
+        memmove(t->keys.b, t->keys.b + 3, (size_t)(t->keys.n - 3));
+        t->keys.n -= 3;
+    }
+    return t->keys.n > 0 || t->keys.paste;
 }

@@ -486,6 +486,8 @@ static int request_retry(cl_repl *r, const char *body, long bn)
         rc = post(r, body, bn, &ra);
         if (rc != R_RETRY)
             return rc;
+        if (r->ui.bg)
+            return R_FAIL;          /* a background request is not tried again */
         if (attempt >= (r->tries > 0 ? r->tries : CL_TRIES)) {
             char m[80], num[16];
             cl_copy(m, "Giving up after ", sizeof(m));
@@ -1138,6 +1140,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             break;
         }
         r->n_responses++;
+        r->last_cache_r = r->st.cache_r;   /* a cold cache: no prompt suggestion after it */
         conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok,
                    r->st.cache_w, r->st.cache_r);
         r->ctx_used = r->st.in_tok + r->st.cache_r + r->st.cache_w + r->st.out_tok;
@@ -1538,6 +1541,63 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     request_free(r);
 }
 
+static const char suggest_ask[] =
+    "Predict what the user is most likely to type next in this conversation, as they would type it: one short "
+    "prompt, no quotes, nothing else. If there is no likely next prompt, answer NONE.";
+
+int repl_suggest(cl_repl *r, jw *out)
+{
+    long k;
+    if (r->turn_rc != TURN_OK || r->conv.n < 2)
+        return -1;                  /* after an error, or too short a conversation: none */
+    if (repl_side(r, 0, r->conv.n, suggest_ask, out) || !out->n || !strncmp(out->p, "NONE", 4))
+        return -1;
+    for (k = 0; k < out->n; k++)
+        if (out->p[k] == '\n' || out->p[k] == '\r')
+            out->p[k] = ' ';
+    while (out->n && out->p[out->n - 1] == ' ')
+        out->p[--out->n] = 0;
+    return out->n ? 0 : -1;
+}
+
+/* Prompt suggestions in the box (A4 gaps 3, Claude Code's): after a turn
+ * that answered, while the box waits empty, a background request for the
+ * next prompt; a key typed meanwhile drops it. Off: promptSuggestionEnabled
+ * false, CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false (true wins over the
+ * setting); skipped in plan mode and when the turn's cache was cold. */
+static int suggest_on(cl_repl *r)
+{
+    char v[16];
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", v, sizeof(v)) > 0) {
+        if (!strcmp(v, "false") || !strcmp(v, "0"))
+            return 0;
+        if (!strcmp(v, "true") || !strcmp(v, "1"))
+            return 1;
+    }
+    return r->cfg.prompt_suggest != 0;
+}
+
+static void screen_suggest(cl_repl *r)
+{
+    jw a;
+    if (!r->tui || r->sugg_at == r->n_responses)
+        return;
+    r->sugg_at = r->n_responses;
+    r->tui->suggest[0] = 0;
+    if (!suggest_on(r) || r->tools.perm.mode == PERM_PLAN || r->last_cache_r <= 0 || r->tui->ed.n ||
+        r->tui->nq || r->await_key)
+        return;
+    jw_init(&a);
+    tui_frame(r->tui);              /* the box ready while it is asked for */
+    r->ui.bg = 1;
+    if (repl_suggest(r, &a) == 0 && !r->tui->ed.n) {
+        cl_copy(r->tui->suggest, a.p, sizeof(r->tui->suggest));
+        r->n_suggested++;
+    }
+    r->ui.bg = 0;
+    jw_free(&a);
+}
+
 int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
 {
     cl_conv c;
@@ -1574,9 +1634,11 @@ int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
     r->render.text = capture_text;
     r->render.end = capture_end;
     r->io->brk(r->io->u);
-    ui_busy(&r->ui, 1);
+    if (!r->ui.bg)
+        ui_busy(&r->ui, 1);
     rc = conv_body(&c, &o, &body) ? R_FAIL : request(r, body.p, body.n);
-    ui_busy(&r->ui, 0);
+    if (!r->ui.bg)
+        ui_busy(&r->ui, 0);
     r->render = keep;
     if (rc == R_OK)
         conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok, r->st.cache_w,
@@ -2166,8 +2228,11 @@ void repl_run(cl_repl *r)
             return;
         }
         for (;;) {
-            long n = tui_read(r->tui, line, 8192);
-            int woke = r->woke;
+            long n;
+            int woke;
+            screen_suggest(r);
+            n = tui_read(r->tui, line, 8192);
+            woke = r->woke;
             if (n < 0)
                 break;
             r->woke = 0;

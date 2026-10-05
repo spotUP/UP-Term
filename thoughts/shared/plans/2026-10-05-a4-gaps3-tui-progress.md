@@ -83,13 +83,13 @@ switch), `tui_menu` (tui.c:2155), the mode names `tui_mode_names[3]` (tui.c:30),
 - [x] G6 /add-dir and /cd: Tab suggestions of directories
 - [x] G7 @agent-name: typeahead and the mention on submit
 - [x] G8 askUserQuestionTimeout (focus reports, countdown, auto-continue)
-- [ ] G9 prompt suggestions in the box
+- [x] G9 prompt suggestions in the box
 - [ ] G10 session recap after being away
 - [ ] G11 keybindings.json + /keybindings
 - [ ] G12 N/A rows answered (/focus in na_cmds; ledger reasons)
 - [ ] G13 audit file rows updated, counts
 
-Running count: 8 of 13.
+Running count: 9 of 13.
 
 ## Log
 
@@ -100,3 +100,4 @@ Running count: 8 of 13.
 - G6: /add-dir and /cd: path_token takes the argument (spaces kept) as the token, the @ list machinery (live once a path is begun, Tab at once) with directories only (input.c comp dirs_only). Tests: test_claude_tui gaps3_dirs, test_claude_repl test_gaps3_dirs.
 - G7: @agent-NAME: the @ list offers the agents (built-ins and .claude/agents, agent_count/agent_get now public in tools.h) whose name starts with the token, as agent-NAME; on submit input.c adds Claude Code's agent_mention note (a system-reminder; wording from memory, UNVERIFIED against its source). Line mode has no mentions at all (ui_input needs the screen), as for files. Test: test_gaps3_agent_mention.
 - G8: askUserQuestionTimeout (60s/5m/10m/never; user settings and --settings only: config.c user_keys, split out of cfg_merge because vbcc refused its size), CLAUDE_AFK_TIMEOUT_MS / CLAUDE_AFK_COUNTDOWN_MS. The client asks for focus reports (?1004; keys.c K_FOCUS); tui_menu counts idle time while the window is not known to be focused, a key restarts it, the last 20 s count down in the menu; ui_choose (CH_AFK, AskUserQuestion only) returns CHOOSE_AWAY; run_ask submits what was ticked and tells Claude the user may be away (wording C:Claude's own). Not built: the /config menu row (slash.c config is the other agent's area; /config key=value writes it). Tests: test_gaps3_afk (focus pause, countdown, the result), test_claude_config test_gaps3, keys() focus decoding.
+- G9: prompt suggestions: repl_suggest (print mode's ask moved there; print.c uses it) asked by screen_suggest before the box waits, as a background request (cl_ui.bg: no lines, no spinner, no retries; ui_poll stops it at a typed key, tui_pending keeps the key). Shown dim in the empty box, Tab / Right take it, typing drops it. Skipped: plan mode, a cold cache (cache_read 0), an error, a short conversation; promptSuggestionEnabled / CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION. Not built: the example command at the session start, which Claude Code takes from the repository's history (no version control on the Amiga). The REPL suite turns suggestions and recaps off in its setup (the stub server's scripted answers); the tests that drive them turn them on. Tests: test_gaps3_suggest, test_claude_tui gaps3_suggest, test_claude_config test_gaps3.

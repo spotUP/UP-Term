@@ -361,23 +361,15 @@ static void f_hook(void *u, const char *event, const char *cmd, int done, long r
     emit(st, w);
 }
 
-static const char suggest_ask[] =
-    "Predict what the user is most likely to type next in this conversation, as they would type it: one short "
-    "prompt, no quotes, nothing else. If there is no likely next prompt, answer NONE.";
-
 /* --prompt-suggestions: a prompt_suggestion after a turn */
 static void suggestion(pst *st)
 {
     cl_repl *r = st->r;
     jw a, *w = &st->line;
-    long k;
-    if (!st->c->suggestions || st->c->out != CLI_STREAM || r->turn_rc != TURN_OK || r->conv.n < 2)
+    if (!st->c->suggestions || st->c->out != CLI_STREAM)
         return;
     jw_init(&a);
-    if (repl_side(r, 0, r->conv.n, suggest_ask, &a) == 0 && a.n && strncmp(a.p, "NONE", 4)) {
-        for (k = 0; k < a.n; k++)
-            if (a.p[k] == '\n')
-                a.p[k] = ' ';
+    if (repl_suggest(r, &a) == 0) {
         jw_reset(w);
         jw_rawz(w, "{\"type\":\"prompt_suggestion\",\"suggestion\":");
         jw_str(w, a.p, a.n);

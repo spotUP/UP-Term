@@ -1828,6 +1828,53 @@ static void gaps3_dirs(void)
     cs_close();
 }
 
+/* G9: the suggestion greyed in the empty box, the cursor before it; a
+ * typed key drops it, Right takes it; tui_pending sees a key and keeps it */
+static void gaps3_suggest(void)
+{
+    static const char *s1[] = { "", 0 };
+    static const char *s2[] = { "x", 0 };
+    static const char *s3[] = { "\033[C", 0 };
+    static const char *s4[] = { "!a", "\r", 0 };
+    char line[32];
+    int x, y;
+    screen(60, 16, s1);
+    cl_copy(tui.suggest, "run the tests", sizeof(tui.suggest));
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    dump("suggestion");
+    CHECK(cs_find(PROMPT " run the tests") >= 0);
+    y = cs_find("run the tests");
+    CHECK(y >= 0 && (h_cell(cs.vt, 4, y)->attr & VT_ATTR_FAINT));
+    vt_cursor(cs.vt, &x, &y);
+    CHECK_INT(x, 4);                        /* the cursor where typing starts */
+    unscreen();
+    cs_close();
+    screen(60, 16, s2);
+    cl_copy(tui.suggest, "run the tests", sizeof(tui.suggest));
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "x");
+    CHECK_STR(tui.suggest, "");
+    CHECK(cs_find("run the tests") < 0);
+    unscreen();
+    cs_close();
+    screen(60, 16, s3);
+    cl_copy(tui.suggest, "run the tests", sizeof(tui.suggest));
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "run the tests");
+    unscreen();
+    cs_close();
+    screen(60, 16, s4);
+    tui_start(&tui);
+    CHECK_INT(tui_pending(&tui), 1);
+    CHECK_INT((int)tui_read(&tui, line, sizeof(line)), 1);
+    CHECK_STR(line, "a");                   /* the key that stopped it is still typed */
+    unscreen();
+    cs_close();
+}
+
 void suite_claude_tui(void)
 {
     keys();
@@ -1859,5 +1906,6 @@ void suite_claude_tui(void)
     redraw_editor_todos();
     gaps3_think();
     gaps3_dirs();
+    gaps3_suggest();
     rm_tdir();
 }

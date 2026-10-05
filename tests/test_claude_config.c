@@ -899,6 +899,14 @@ static void test_gaps3(void)
     cfg_init(&s);
     cfg_load(&s, &sys, home, root);
     CHECK_INT((int)s.ask_timeout_ms, 300000);
+    CHECK_INT(s.prompt_suggest, -1);        /* not set: on */
+    CHECK_INT(s.away_summary, -1);
+    cfg_free(&s);
+    put("g3p/.claude/settings.json", "{\"promptSuggestionEnabled\":false,\"awaySummaryEnabled\":false}");
+    cfg_init(&s);
+    cfg_load(&s, &sys, home, root);
+    CHECK_INT(s.prompt_suggest, 0);         /* any file may turn them off */
+    CHECK_INT(s.away_summary, 0);
     cfg_free(&s);
     put("g3h/settings.json", "{\"askUserQuestionTimeout\":\"never\"}");
     cfg_init(&s);

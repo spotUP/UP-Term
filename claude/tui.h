@@ -163,6 +163,9 @@ typedef struct cl_tui {
     int cskip;                  /* 1: an '@' before the path (bash mode: 0) */
     int cclosed;                /* Esc closed the list until the text changes */
     int comp_dirs;              /* the token is /add-dir's or /cd's argument: directories only */
+    /* A4 gaps 3: a prompt suggestion, greyed in the empty box; Tab or Right
+     * puts it in, typing drops it ("" none) */
+    char suggest[200];
     /* the directories the list read (input.c fills them): one disk read
      * each per prompt typed; a submitted prompt (epoch) makes them old */
     tui_dir dirs[TUI_DIRS];
@@ -242,6 +245,9 @@ int tui_poll(cl_tui *t);
 void tui_tick(cl_tui *t);
 /* the next key: 1, 0 none within wait ms, -1 the end of input */
 int tui_key(cl_tui *t, cl_key *k, long wait);
+/* A4 gaps 3: has anything been typed? (read now, kept for tui_read; a
+ * focus report does not count) */
+int tui_pending(cl_tui *t);
 void tui_busy(cl_tui *t, int on);
 /* A framed menu (the permission question, a picker): the option chosen
  * (0..n-1; Esc and Ctrl+C choose esc), -1 at the end of input, TUI_AWAY
