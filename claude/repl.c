@@ -2684,7 +2684,8 @@ static void env_str(cl_repl *r, const char *name, char *out, long cap)
  * CLAUDE_CODE_DISABLE_1M_CONTEXT CLAUDE_CODE_DISABLE_THINKING
  * CLAUDE_CODE_EXTRA_BODY CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
  * CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS DISABLE_AUTO_COMPACT
- * DISABLE_COMPACT CLAUDE_AUTOCOMPACT_PCT_OVERRIDE CLAUDE_CODE_MAX_TURNS.
+ * DISABLE_COMPACT CLAUDE_AUTOCOMPACT_PCT_OVERRIDE CLAUDE_CODE_MAX_TURNS
+ * CLAUDE_AFK_TIMEOUT_MS CLAUDE_AFK_COUNTDOWN_MS.
  * Read where they are used: CLAUDE_CODE_EFFORT_LEVEL (repl_effort),
  * CLAUDE_CODE_ENABLE_TASKS / _TODO_TOOLS (repl_todo_mode),
  * CLAUDE_CODE_DISABLE_ADVISOR_TOOL, CLAUDE_CODE_STOP_HOOK_BLOCK_CAP,
@@ -2732,6 +2733,13 @@ static void repl_env(cl_repl *r)
     win_override = r->max_ctx;
     win_no1m = r->no_1m;
     r->no_thinking = env_on(r, "CLAUDE_CODE_DISABLE_THINKING");
+    /* A4 gaps 3: an unanswered AskUserQuestion goes on without the user after
+     * askUserQuestionTimeout; CLAUDE_AFK_TIMEOUT_MS wins (0: at once), the
+     * countdown shows for the last CLAUDE_AFK_COUNTDOWN_MS (20 s) of it */
+    v = env_num(r, "CLAUDE_AFK_TIMEOUT_MS", -1);
+    r->ui.afk_ms = v >= 0 ? v : r->cfg.ask_timeout_ms > 0 ? r->cfg.ask_timeout_ms : -1;
+    v = env_num(r, "CLAUDE_AFK_COUNTDOWN_MS", 20000L);
+    r->ui.afk_count_ms = r->ui.afk_ms >= 0 && v > r->ui.afk_ms ? r->ui.afk_ms : v;
     free(r->extra_body);
     r->extra_body = 0;
     {

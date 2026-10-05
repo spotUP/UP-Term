@@ -25,7 +25,8 @@ enum {
     K_CTRL,             /* ch: 'a'..'z' (Ctrl+letter, not Tab/Return/^J), '_' (Ctrl+_) */
     K_ALT,              /* ch: the character with Meta (ESC prefix) */
     K_PASTE,            /* text, n: the pasted bytes */
-    K_CPR               /* row, col: a cursor position report */
+    K_CPR,              /* row, col: a cursor position report */
+    K_FOCUS             /* row: 1 the window got the focus, 0 lost it (?1004's CSI I / CSI O) */
 };
 
 #define KM_SHIFT 1

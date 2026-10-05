@@ -84,6 +84,8 @@ static void keys(void)
     CHECK(key1("\177", &k) && k.k == K_BS);
     CHECK(key1("\033\177", &k) && k.k == K_ALT && k.ch == 0x7f);
     CHECK(key1("\033[12;40R", &k) && k.k == K_CPR && k.row == 12 && k.col == 40);
+    CHECK(key1("\033[I", &k) && k.k == K_FOCUS && k.row == 1);       /* ?1004 focus in */
+    CHECK(key1("\233O", &k) && k.k == K_FOCUS && k.row == 0);        /* ... out, 8-bit CSI */
     CHECK(key1("\033[200~one\r\ntwo\033[201~", &k) && k.k == K_PASTE && !strcmp(k.text, "one\r\ntwo"));
     /* a sequence split over two reads waits for its rest */
     keys_init(&ks);
@@ -204,7 +206,7 @@ static void idle_prompt(void)
     CHECK_INT(tui_start(&tui), 0);
     CHECK_INT(cs.raw_on, 1);
     /* the start's modes and DSR went out whole, no stray NUL after them */
-    CHECK(strstr(cs.sent.p, "\033[?2004h\033[>1u\033[>4;1m\033[6n") == cs.sent.p);
+    CHECK(strstr(cs.sent.p, "\033[?2004h\033[>1u\033[>4;1m\033[?1004h\033[6n") == cs.sent.p);
     CHECK(memchr(cs.sent.p, 0, (size_t)cs.sent.n) == 0);
     CHECK_INT(tui.tr, 2);
     CHECK_INT(tui.B, 12);

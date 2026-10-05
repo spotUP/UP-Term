@@ -152,6 +152,9 @@ int tui_init(cl_tui *t, cl_io *io)
     for (i = 0; i < TUI_DIRS; i++)
         jw_init(&t->dirs[i].names);
     t->m_btab = -1;
+    t->m_afk_ms = -1;
+    t->m_left = -1;
+    t->focus = -1;
     t->notify_after_s = 10;
     t->edit_path = "T:claude-prompt.txt";
     return t->ed.b ? 0 : -1;
@@ -706,6 +709,25 @@ static void menu_rows(cl_tui *t)
             want(t, &r);
         }
     }
+    if (t->m_left > 0) {
+        /* the auto-continue countdown (askUserQuestionTimeout) */
+        char m[96], num[16];
+        cl_copy(m, "   No answer: going on without you in ", sizeof(m));
+        cl_ltoa(t->m_left, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, "s (any key waits)", sizeof(m));
+        r_init(&r, t->cols);
+        r_sgr(&r, t->th->box);
+        r_glyph(&r, G_V);
+        r_sgr(&r, SGR0 DIM);
+        r_textz(&r, m);
+        r_sgr(&r, SGR0);
+        r_pad(&r, t->cols - 1);
+        r_sgr(&r, t->th->box);
+        r_glyph(&r, G_V);
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
     border(t, G_BL, G_BR);
 }
 
@@ -1148,8 +1170,11 @@ void tui_notify(cl_tui *t, const char *msg)
     t->n_notify++;
 }
 
-static const char modes_on[] = "\033[?2004h\033[>1u\033[>4;1m";
-static const char modes_off[] = "\033[?2004l\033[<u\033[>4;0m";
+/* bracketed paste, kitty's disambiguation, modifyOtherKeys, and (A4 gaps
+ * 3) focus reports: away from the window is when a question may go on
+ * without the user and a recap is made */
+static const char modes_on[] = "\033[?2004h\033[>1u\033[>4;1m\033[?1004h";
+static const char modes_off[] = "\033[?2004l\033[<u\033[>4;0m\033[?1004l";
 
 int tui_start(cl_tui *t)
 {
@@ -1161,7 +1186,7 @@ int tui_start(cl_tui *t)
      * as CSI u), modifyOtherKeys 1 for terminals without it; where is the
      * cursor? */
     {
-        static const char start[] = "\033[?2004h\033[>1u\033[>4;1m\033[6n";
+        static const char start[] = "\033[?2004h\033[>1u\033[>4;1m\033[?1004h\033[6n";
         t->io->write(t->io->u, start, (long)sizeof(start) - 1);
     }
     t->tr = t->rows;
@@ -1233,19 +1258,30 @@ static void cycle_mode(cl_tui *t)
         t->perm->mode = perm_next(t->perm);
 }
 
+/* a key read: a focus report is kept here, not handed on (0: no key) */
+static int got_key(cl_tui *t, cl_key *k)
+{
+    if (k->k == K_FOCUS) {
+        t->focus = k->row;
+        return 0;
+    }
+    t->key_ms = now(t);
+    return 1;
+}
+
 static int next_key(cl_tui *t, cl_key *k, long wait)
 {
     char b[256];
     long n;
     if (keys_next(&t->keys, k, 0))
-        return 1;
+        return got_key(t, k);
     n = t->io->read(t->io->u, b, sizeof(b), wait);
     if (n < 0)
         return -1;
     if (n > 0)
         keys_feed(&t->keys, b, n);
     /* a sequence's bytes come in one burst: what is there now is all */
-    return keys_next(&t->keys, k, 1);
+    return keys_next(&t->keys, k, 1) ? got_key(t, k) : 0;
 }
 
 static void tick(cl_tui *t)
@@ -2208,6 +2244,7 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
              int esc)
 {
     int busy = t->busy, choice = -1;
+    unsigned long idle0;
     t->modal = 1;
     t->m_title = title;
     t->m_q = question;
@@ -2217,17 +2254,36 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
     t->busy = 0;
     t->m_noting = -1;
     t->m_note[0] = 0;
+    t->m_left = -1;
+    idle0 = now(t);
     for (;;) {
         cl_key k;
         int r;
+        long wait = 500;
+        if (t->m_afk_ms >= 0) {
+            /* AskUserQuestion's auto-continue: idle time counts while the
+             * window is not known to have the focus; a key starts it over */
+            long left;
+            if (t->focus == 1)
+                idle0 = now(t);
+            left = t->m_afk_ms - (long)(now(t) - idle0);
+            if (left <= 0) {
+                choice = TUI_AWAY;
+                break;
+            }
+            t->m_left = left <= t->m_afk_count_ms ? (int)((left + 999) / 1000) : -1;
+            if (left < wait)
+                wait = left;
+        }
         tui_frame(t);
-        r = next_key(t, &k, 500);
+        r = next_key(t, &k, wait);
         if (r < 0)
             break;
         if (!r) {
             check_size(t);
             continue;
         }
+        idle0 = now(t);
         if (t->m_noting >= 0) {
             /* the comment field: typed text; Enter answers with it, Tab,
              * Shift+Tab or Esc close it */
@@ -2297,6 +2353,8 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
     t->busy = busy;
     t->m_btab = -1;
     t->m_comment = 0;
+    t->m_afk_ms = -1;
+    t->m_left = -1;
     if (choice < 0 || choice != t->m_noting)
         t->m_note[0] = 0;           /* a comment goes only with its own option */
     t->m_noting = -1;

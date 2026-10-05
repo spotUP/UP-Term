@@ -883,6 +883,30 @@ static void test_gaps(void)
     CHECK_INT(hooks_match("^(Read|Grep)$", "Grep"), 1);
 }
 
+/* A4 gaps 3: askUserQuestionTimeout from the user's settings; a project's
+ * is not read (Claude Code's scope: user or managed) */
+static void test_gaps3(void)
+{
+    cl_settings s;
+    char home[600], root[600];
+    at(home, "g3h");
+    at(root, "g3p");
+    mk("g3h");
+    mk("g3p");
+    mk("g3p/.claude");
+    put("g3h/settings.json", "{\"askUserQuestionTimeout\":\"5m\"}");
+    put("g3p/.claude/settings.json", "{\"askUserQuestionTimeout\":\"60s\"}");
+    cfg_init(&s);
+    cfg_load(&s, &sys, home, root);
+    CHECK_INT((int)s.ask_timeout_ms, 300000);
+    cfg_free(&s);
+    put("g3h/settings.json", "{\"askUserQuestionTimeout\":\"never\"}");
+    cfg_init(&s);
+    cfg_load(&s, &sys, home, root);
+    CHECK_INT((int)s.ask_timeout_ms, 0);
+    cfg_free(&s);
+}
+
 void suite_claude_config(void)
 {
     char cmd[600];
@@ -896,6 +920,7 @@ void suite_claude_config(void)
     test_sessions();
     test_checkpoints();
     test_gaps();
+    test_gaps3();
     strcpy(cmd, "rm -rf ");
     strcat(cmd, dir);
     if (system(cmd))

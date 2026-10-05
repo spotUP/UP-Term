@@ -123,6 +123,15 @@ typedef struct cl_tui {
     /* A4 gaps 2: while the screen waits, a turn to run now (a cron job, a
      * background task's news): malloc'ed, 0 none; iu is its argument */
     char *(*wake)(void *u);
+    /* A4 gaps 3: the window's focus as the terminal reports it (?1004):
+     * 1 in, 0 out, -1 never reported; when the last key came */
+    int focus;
+    unsigned long key_ms;
+    /* the open menu goes on without the user after m_afk_ms idle (-1
+     * never; AskUserQuestion's askUserQuestionTimeout), the countdown shown
+     * for its last m_afk_count_ms; tui_menu resets it */
+    long m_afk_ms, m_afk_count_ms;
+    int m_left;                 /* the countdown's seconds shown, -1 none */
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
     const cl_theme *th;         /* the colours (/theme) */
@@ -235,7 +244,9 @@ void tui_tick(cl_tui *t);
 int tui_key(cl_tui *t, cl_key *k, long wait);
 void tui_busy(cl_tui *t, int on);
 /* A framed menu (the permission question, a picker): the option chosen
- * (0..n-1; Esc and Ctrl+C choose esc), -1 at the end of input. */
+ * (0..n-1; Esc and Ctrl+C choose esc), -1 at the end of input, TUI_AWAY
+ * when m_afk_ms (set before the call) ran out with no key. */
+#define TUI_AWAY (-2)
 int tui_menu(cl_tui *t, const char *title, const char *question, const char *const *opt, int n, int sel,
              int esc);
 

@@ -158,6 +158,13 @@ static int csi_key(cl_key *key, const unsigned char *s, int len)
         return set(key, K_DOWN, 0, KM_SHIFT);
     case 'Z':
         return set(key, K_BTAB, 0, KM_SHIFT);
+    case 'I':
+    case 'O':
+        if (np)
+            return 0;
+        set(key, K_FOCUS, 0, 0);    /* focus reports (?1004), asked for by the client */
+        key->row = fin == 'I';
+        return 1;
     case 'R':
         if (np >= 2) {
             set(key, K_CPR, 0, 0);

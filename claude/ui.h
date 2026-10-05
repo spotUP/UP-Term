@@ -118,6 +118,10 @@ typedef struct cl_ui {
     /* the comment the user gave with the last permission answer (Tab on
      * Yes / No), "" none: ui_ask sets it */
     char ask_note[200];
+    /* A4 gaps 3: AskUserQuestion's auto-continue (askUserQuestionTimeout):
+     * idle ms before it goes on without the user, -1 never; the countdown
+     * shown for the last afk_count_ms */
+    long afk_ms, afk_count_ms;
 } cl_ui;
 
 void ui_init(cl_ui *u, cl_io *io);

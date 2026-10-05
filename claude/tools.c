@@ -1993,7 +1993,7 @@ static void run_ask(cl_tools *t, jw *out, const char *id, jv in)
     jv qs, q, opts, o, x;
     jit it, oi;
     jw ans;
-    int first = 1;
+    int first = 1, away = 0;
     json_get(in, "questions", &qs);
     if (t->show)
         t->show(t->u, defs[T_ASK_USER].name, "");
@@ -2020,7 +2020,13 @@ static void run_ask(cl_tools *t, jw *out, const char *id, jv in)
         }
         other[0] = 0;
         c = t->choose(t->u, hd ? hd : "", qt ? qt : "", (const char *const *)labels, (const char *const *)descs,
-                      n, CH_OTHER | (multi ? CH_MULTI : 0), &picked, other, sizeof(other));
+                      n, CH_OTHER | CH_AFK | (multi ? CH_MULTI : 0), &picked, other, sizeof(other));
+        if (c == CHOOSE_AWAY) {
+            /* askUserQuestionTimeout ran out: what was ticked counts, the
+             * rest goes unanswered (A4 gaps 3) */
+            away = 1;
+            c = multi && picked ? 0 : -3;
+        }
         if (c >= 0) {
             if (!first)
                 jw_rawz(&ans, ", ");
@@ -2053,6 +2059,8 @@ static void run_ask(cl_tools *t, jw *out, const char *id, jv in)
         }
         free(qt);
         free(hd);
+        if (away)
+            break;
         if (c < 0) {
             jw_free(&ans);
             tl_error(t, out, id, "The user declined to answer your questions. Ask what they would like instead, "
@@ -2060,7 +2068,17 @@ static void run_ask(cl_tools *t, jw *out, const char *id, jv in)
             return;
         }
     }
-    jw_rawz(&ans, ". You can now continue with the user's answers in mind.");
+    if (away) {
+        /* Claude Code: the dialog closes, submits what was selected and
+         * tells Claude the user may be away (wording C:Claude's own) */
+        if (first)
+            jw_reset(&ans);
+        jw_rawz(&ans, first ? "The user did not answer your questions in time" : ". The user did not answer the rest "
+                                                                               "in time");
+        jw_rawz(&ans, " and may be away from the keyboard. Proceed on your own judgement; you can ask again "
+                      "later.");
+    } else
+        jw_rawz(&ans, ". You can now continue with the user's answers in mind.");
     tl_result(t, out, id, ans.p, ans.n, 0);
     jw_free(&ans);
 }

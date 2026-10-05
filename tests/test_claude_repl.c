@@ -4993,8 +4993,59 @@ static void test_gaps3_agent_mention(void)
     cs_close();
 }
 
+/* G8: askUserQuestionTimeout's clock: each wait in the open menu passes
+ * 25 s; while the window reports the focus it does not count */
+static cl_repl *g3_r;
+static int g3_countdown, g3_modal_reads;
+static void g3_afk_clock(void)
+{
+    if (g3_r && g3_r->tui && g3_r->tui->modal) {
+        g3_modal_reads++;
+        cs.clock += 25000;
+        if (cs_find("No answer: going on without you in") >= 0)
+            g3_countdown = 1;
+    }
+}
+
+static void test_gaps3_afk(void)
+{
+    static const char *keys[] = { "which size?\r", "\033[I", "", "", "", "\033[O", "", "", "", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    setenv("CLAUDE_AFK_TIMEOUT_MS", "60000", 1);
+    g3_screen(&r, keys, "g3afk", root);
+    add_answer("toolu_G3Ask", "AskUserQuestion",
+               "{\"questions\":[{\"question\":\"Which size?\",\"header\":\"Size\",\"options\":[{\"label\":\"80x24\","
+               "\"description\":\"classic\"},{\"label\":\"132x50\",\"description\":\"big\"}],\"multiSelect\":false}]}",
+               0);
+    add_answer(0, 0, 0, "I will pick 80x24.");
+    CHECK_INT(repl_screen(&r), 0);
+    CHECK_INT(r.ui.afk_ms, 60000);
+    g3_r = &r;
+    g3_countdown = g3_modal_reads = 0;
+    cs.before_read = g3_afk_clock;
+    repl_run(&r);
+    cs.before_read = 0;
+    g3_r = 0;
+    unsetenv("CLAUDE_AFK_TIMEOUT_MS");
+    g3_dump();
+    CHECK_INT(cs.next, 10);
+    /* the menu's reads: focus in, three waits that do not count, focus out
+     * (25 s), 25 s more (the countdown), 25 s more: gone on (without the
+     * focus pause it would have gone after three) */
+    CHECK_INT(g3_modal_reads, 7);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "The user did not answer your questions in time and may be away "
+                                             "from the keyboard.") != 0);
+    CHECK_INT(g3_countdown, 1);             /* the last 20 s counted down on the screen */
+    repl_free(&r);
+    cs_close();
+}
+
 static void test_gaps3(void)
 {
+    test_gaps3_afk();
     test_gaps3_agent_mention();
     test_gaps3_bypass();
     test_gaps3_color();

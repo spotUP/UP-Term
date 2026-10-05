@@ -22,6 +22,8 @@ void ui_init(cl_ui *u, cl_io *io)
     memset(u, 0, sizeof(*u));
     u->io = io;
     u->col0 = 1;
+    u->afk_ms = -1;                 /* questions wait for an answer */
+    u->afk_count_ms = 20000L;
 }
 
 static void out(cl_ui *u, const char *s, long n)
@@ -584,9 +586,15 @@ int ui_choose(cl_ui *u, const char *header, const char *question, const char *co
             opt[k++] = "Type something else";
         if (flags & CH_MULTI)
             opt[k++] = "Done";
+        if (flags & CH_AFK) {
+            u->tui->m_afk_ms = u->afk_ms;           /* askUserQuestionTimeout (tui_menu resets it) */
+            u->tui->m_afk_count_ms = u->afk_count_ms;
+        }
         c = tui_menu(u->tui, header && *header ? header : "Question", question, opt, k, sel, -1);
         for (i = 0; i < n; i++)
             free(text[i]);
+        if (c == TUI_AWAY)
+            return CHOOSE_AWAY;     /* what was ticked so far stays in *picked */
         if (c < 0 || c >= k)
             return -1;
         if (c < n) {

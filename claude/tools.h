@@ -108,6 +108,8 @@ enum { TW_GO, TW_STOP, TW_BACKGROUND };
 /* choose() flags */
 #define CH_MULTI 1              /* several options may be picked */
 #define CH_OTHER 2              /* the user may type an answer of their own */
+#define CH_AFK 4                /* AskUserQuestion: may go on without an answer (askUserQuestionTimeout) */
+#define CHOOSE_AWAY (-2)        /* choose(): CH_AFK's time ran out (*picked: what was ticked by then) */
 
 struct cl_stream;
 struct cl_shells;
@@ -155,8 +157,9 @@ typedef struct cl_tools {
     void (*result)(void *u, int tool, const char *input, long inn, int is_error, const char *text, long n);
     /* A question with options (AskUserQuestion, the plan-mode tools):
      * the option picked, n when the user typed an answer of their own (in
-     * other), -1 declined (Esc). CH_MULTI: *picked gets a bit per option
-     * and the result is 0. Absent: the tools that need it answer is_error. */
+     * other), -1 declined (Esc), CHOOSE_AWAY (CH_AFK) nobody answered in
+     * time. CH_MULTI: *picked gets a bit per option and the result is 0.
+     * Absent: the tools that need it answer is_error. */
     int (*choose)(void *u, const char *header, const char *question, const char *const *labels,
                   const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap);
     /* optional: a plan (ExitPlanMode), Markdown, shown whole */
