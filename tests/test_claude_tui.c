@@ -1734,6 +1734,35 @@ static void redraw_editor_todos(void)
     (void)col_of;
 }
 
+/* ---- A4 gaps 3: the screen's rows (ledger 2026-10-05-a4-gaps3-tui-progress) ---- */
+
+/* G5: Alt+T on a model that always thinks changes nothing and says so; on
+ * one that may go without it flips the session's flag */
+static void gaps3_think(void)
+{
+    static const char *s1[] = { "\033t", 0 };
+    static const char *s2[] = { "\033t", "\033t", "\033t", 0 };
+    char line[32];
+    int off = 0;
+    screen(60, 16, s1);
+    tui.think_off = &off;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), -1);
+    CHECK(cs_find("Thinking can't be turned off for this model") >= 0);
+    CHECK_INT(off, 0);
+    unscreen();
+    cs_close();
+    screen(60, 16, s2);
+    tui.model = "claude-sonnet-4-6";
+    tui.think_off = &off;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), -1);
+    CHECK_INT(off, 1);                      /* three presses: off, on, off */
+    CHECK(cs_find("Thinking off") >= 0);
+    unscreen();
+    cs_close();
+}
+
 void suite_claude_tui(void)
 {
     keys();
@@ -1763,5 +1792,6 @@ void suite_claude_tui(void)
     themes();
     notifications();
     redraw_editor_todos();
+    gaps3_think();
     rm_tdir();
 }

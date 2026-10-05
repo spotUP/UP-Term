@@ -1459,7 +1459,8 @@ static void status_rest(cl_repl *r, jw *ev)
     jw_rawz(ev, ",\"effort\":{\"level\":");
     jw_strz(ev, r->effort);
     jw_rawz(ev, "},\"thinking\":{\"enabled\":");
-    jw_rawz(ev, conv_caps(r->model) & CAP_ADAPTIVE ? "true" : "false");
+    jw_rawz(ev, (conv_caps(r->model) & CAP_ADAPTIVE) &&
+                        (!r->think_off || (conv_caps(r->model) & CAP_THINK_ALWAYS)) ? "true" : "false");
     jw_raw(ev, "}", 1);
     if (r->tui && r->tui->ed.vim) {
         jw_rawz(ev, ",\"vim\":{\"mode\":");

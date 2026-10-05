@@ -36,6 +36,24 @@ const cl_theme *theme_get(const char *name)
     return &cl_themes[0];
 }
 
+const char *const theme_named_names[THEME_NAMED] = { "red", "blue", "green", "yellow", "purple", "orange", "pink",
+                                                    "cyan" };
+/* orange and pink have no ANSI colour of their own: the 256-colour cube's */
+static const char *const named_sgr[THEME_NAMED] = { "\033[31m", "\033[34m", "\033[32m", "\033[33m", "\033[35m",
+                                                   "\033[38;5;208m", "\033[38;5;205m", "\033[36m" };
+
+const char *theme_named(const char *name)
+{
+    int i, k;
+    for (i = 0; name && i < THEME_NAMED; i++) {
+        for (k = 0; name[k] && (name[k] | 0x20) == theme_named_names[i][k]; k++)
+            ;
+        if (!name[k] && !theme_named_names[i][k])
+            return named_sgr[i];
+    }
+    return 0;
+}
+
 int theme_index(const cl_theme *t)
 {
     int i;

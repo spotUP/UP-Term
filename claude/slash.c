@@ -22,6 +22,7 @@ const cl_cmd slash_builtin[] = {
     { "/btw", "A side question about this conversation, not added to it: /btw QUESTION" },
     { "/cd", "Change the start directory: /cd DIR" },
     { "/clear", "Start a new conversation (clears the screen): /clear [name for the old one]" },
+    { "/color", "The prompt bar's color for this session: /color [red|blue|green|yellow|purple|orange|pink|cyan|default]" },
     { "/commands", "The custom commands (.claude/commands)" },
     { "/compact", "Summarise the conversation and go on from it: /compact [what to keep]" },
     { "/config", "The settings: /config [key=value ...] or /config KEY VALUE [user|project|local]" },
@@ -1284,6 +1285,38 @@ static void plan(cl_repl *r, const char *arg)
         repl_turn(r, arg, (long)strlen(arg));
 }
 
+/* /color [color|default] (A4 gaps 3): the prompt bar's colour for this
+ * session; no argument, a random one of the eight */
+static void color_(cl_repl *r, const char *arg)
+{
+    const char *name = arg;
+    if (!*arg) {
+        unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+        int i = (int)(now / 7 % THEME_NAMED);
+        if (!strcmp(r->bar_color, theme_named_names[i]))
+            i = (i + 1) % THEME_NAMED;      /* a pick that changes something */
+        name = theme_named_names[i];
+    } else if (!strcmp(arg, "default")) {
+        r->bar_color[0] = 0;
+        if (r->tui)
+            r->tui->bar = 0;
+        ui_line(&r->ui, "Prompt bar color reset to the theme's.");
+        return;
+    } else if (!theme_named(arg)) {
+        ui_line(&r->ui, "Usage: /color [red|blue|green|yellow|purple|orange|pink|cyan|default]");
+        return;
+    }
+    cl_copy(r->bar_color, name, sizeof(r->bar_color));
+    {
+        long k;
+        for (k = 0; r->bar_color[k]; k++)
+            r->bar_color[k] = (char)(r->bar_color[k] | 0x20);
+    }
+    if (r->tui)
+        r->tui->bar = theme_named(r->bar_color);
+    line2(r, "Prompt bar color set to ", r->bar_color);
+}
+
 static void debug(cl_repl *r)
 {
     r->debug = 1;
@@ -1776,6 +1809,8 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
         plan(r, arg);
     else if (!strcmp(w, "/debug"))
         debug(r);
+    else if (!strcmp(w, "/color"))
+        color_(r, arg);
     else if (!strcmp(w, "/release-notes")) {
         int i;
         for (i = 0; notes[i]; i++)

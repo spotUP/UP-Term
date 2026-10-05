@@ -99,6 +99,7 @@ typedef struct cl_tui {
     const char *model, *effort, *root;
     int ctx_left;               /* percent, -1 unknown */
     struct cl_perm *perm;       /* the permission mode (tools.h PERM_*), cycled here */
+    int *think_off;             /* Alt+T: extended thinking off for the session (the REPL's), 0 none */
     /* slash commands */
     const cl_cmd *cmds;
     int ncmds;
@@ -125,6 +126,7 @@ typedef struct cl_tui {
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
     const cl_theme *th;         /* the colours (/theme) */
+    const char *bar;            /* /color: the prompt bar's colour for the session (SGR), 0 the theme's */
     /* A4: what the screen needs from the program (ui_attach sets them) */
     cl_sys *sys;
     const char *project;        /* the start directory: the history's project */

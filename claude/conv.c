@@ -119,13 +119,21 @@ void conv_rollback(cl_conv *c, cl_mark m)
     }
 }
 
+static int fam_ver(const char *id, int *ver);
+
 int conv_caps(const char *model)
 {
+    int ver, fam;
     /* Haiku 4.5 (and the 3.x models) take neither an effort nor adaptive
      * thinking (theirs is budget_tokens); every current 4.6+ / 5.x model
      * takes both (claude-api skill, model notes 2026-09-25) */
     if (!strncmp(model, "claude-haiku", 12) || !strncmp(model, "claude-3", 8))
         return 0;
+    /* Claude Code's model-config: "You can't turn thinking off on Opus 5.5,
+     * Sonnet 5.5, or the Fable models" */
+    fam = fam_ver(model, &ver);
+    if (fam == 'f' || ((fam == 'o' || fam == 's') && ver >= 55))
+        return CAP_EFFORT | CAP_ADAPTIVE | CAP_THINK_ALWAYS;
     return CAP_EFFORT | CAP_ADAPTIVE;
 }
 
@@ -214,12 +222,21 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out)
     jw_rawz(out, ",\"stream\":true");
     /* adaptive thinking with its text summarised (the thinking view shows
      * it; the 5.x models leave it empty by default) */
-    if ((conv_caps(o->model) & CAP_ADAPTIVE) && !o->no_thinking)    /* CLAUDE_CODE_DISABLE_THINKING */
-        jw_rawz(out, ",\"thinking\":{\"type\":\"adaptive\",\"display\":\"summarized\"}");
-    if (o->effort && *o->effort && (conv_caps(o->model) & CAP_EFFORT)) {
-        jw_rawz(out, ",\"output_config\":{\"effort\":");
-        jw_strz(out, o->effort);
-        jw_raw(out, "}", 1);
+    {
+        int caps = conv_caps(o->model);
+        /* Alt+T's thinking off (A4 gaps 3): disabled where the model allows
+         * it, and then an effort above high goes as high (Claude Code: some
+         * models refuse xhigh / max without thinking) */
+        int off = o->think_off && (caps & CAP_ADAPTIVE) && !(caps & CAP_THINK_ALWAYS);
+        if (off && !o->no_thinking)
+            jw_rawz(out, ",\"thinking\":{\"type\":\"disabled\"}");
+        else if ((caps & CAP_ADAPTIVE) && !o->no_thinking)  /* CLAUDE_CODE_DISABLE_THINKING */
+            jw_rawz(out, ",\"thinking\":{\"type\":\"adaptive\",\"display\":\"summarized\"}");
+        if (o->effort && *o->effort && (caps & CAP_EFFORT)) {
+            jw_rawz(out, ",\"output_config\":{\"effort\":");
+            jw_strz(out, off && (!strcmp(o->effort, "xhigh") || !strcmp(o->effort, "max")) ? "high" : o->effort);
+            jw_raw(out, "}", 1);
+        }
     }
     if (*conv_beta(o->model))
         jw_rawz(out, ",\"fallbacks\":\"default\"");

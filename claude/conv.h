@@ -53,7 +53,9 @@ typedef struct cl_opts {
     int no_tools;               /* tool_choice none: the tools stay listed (the
                                  * cached prefix stays the same), none is called */
     int no_thinking;            /* A4 gaps 2: no thinking parameter (CLAUDE_CODE_DISABLE_THINKING) */
-    const char *extra;          /* ... a JSON object merged into the body (CLAUDE_CODE_EXTRA_BODY), 0 none */
+    int think_off;              /* A4 gaps 3: thinking turned off (Alt+T): {type disabled} and an
+                                 * effort of at most high, on a model that may go without */
+    const char *extra;         /* ... a JSON object merged into the body (CLAUDE_CODE_EXTRA_BODY), 0 none */
 } cl_opts;
 
 void conv_init(cl_conv *c);
@@ -78,6 +80,7 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out);
  * model rejects is left out for it */
 #define CAP_EFFORT   1
 #define CAP_ADAPTIVE 2
+#define CAP_THINK_ALWAYS 4      /* thinking cannot be turned off: Opus 5.5, Sonnet 5.5, the Fable models */
 int conv_caps(const char *model);
 /* /advisor (A4 gaps 2): may adv advise main? 0 yes; 1 it ranks below main
  * (Claude Code does not attach it); -1 never (an unknown model, a main

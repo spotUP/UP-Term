@@ -547,20 +547,6 @@ static unsigned long tool_clock(void *u)
     return r->io->ms ? r->io->ms(r->io->u) : 0;
 }
 
-/* an agent's color (frontmatter "color") as SGR, 0 none */
-static const char *color_sgr(const char *c)
-{
-    static const char *const map[][2] = { { "red", "\033[31m" }, { "blue", "\033[34m" }, { "green", "\033[32m" },
-                                          { "yellow", "\033[33m" }, { "purple", "\033[35m" },
-                                          { "orange", "\033[38;5;208m" }, { "pink", "\033[38;5;205m" },
-                                          { "cyan", "\033[36m" }, { 0, 0 } };
-    int i;
-    for (i = 0; c && map[i][0]; i++)
-        if (cl_strieq(c, map[i][0]))
-            return map[i][1];
-    return 0;
-}
-
 static void tool_show(void *u, const char *tool, const char *what)
 {
     cl_repl *r = (cl_repl *)u;
@@ -573,7 +559,7 @@ static void tool_show(void *u, const char *tool, const char *what)
         if (json_parse(r->at->cur_in, r->at->cur_inn, &in) == 0 && json_get(in, "subagent_type", &x))
             json_str(x, type, sizeof(type));
         a = type[0] ? tools_agent(r->at, type) : 0;
-        r->ui.name_sgr = a ? color_sgr(a->color) : 0;
+        r->ui.name_sgr = a ? theme_named(a->color) : 0;
     }
     ui_tool(&r->ui, r->at->cur, tool, what, r->at->cur_in, r->at->cur_inn);
 }
@@ -1103,6 +1089,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.no_thinking = r->no_thinking;
+    o.think_off = r->think_off;
     o.extra = r->extra_body;
     jw_init(&xtools);
     jw_init(&body);
@@ -1500,6 +1487,7 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.no_thinking = r->no_thinking;
+    o.think_off = r->think_off;
     o.extra = r->extra_body;
     o.tools = tools_json(&r->tools, r->model);
     o.no_tools = 1;
@@ -1577,6 +1565,7 @@ int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.no_thinking = r->no_thinking;
+    o.think_off = r->think_off;
     o.extra = r->extra_body;
     o.tools = tools_json(&r->tools, r->model);
     o.no_tools = 1;                 /* the tools stay listed (the cache), none is called */
@@ -2234,6 +2223,7 @@ int repl_screen(cl_repl *r)
     t->effort = r->effort;
     t->root = r->tools.root;
     t->perm = &r->tools.perm;
+    t->think_off = &r->think_off;   /* Alt+T */
     t->cmds = r->menu;
     t->ncmds = r->nmenu;
     t->status = r->status_text;     /* the statusLine command's row(s) */

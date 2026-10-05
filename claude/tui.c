@@ -3,6 +3,7 @@
 #include <string.h>
 #include "tui.h"
 #include "tools.h"
+#include "conv.h"
 #include "util.h"
 #include "../view/vw_text.h"
 
@@ -262,9 +263,12 @@ static void want(cl_tui *t, row *r)
     }
 }
 
-/* the frame's colour: the box's mode's */
+/* the frame's colour: the box's mode's; a prompt's is /color's when set
+ * (not on the monochrome theme: no colour there at all) */
 static const char *frame(cl_tui *t)
 {
+    if (t->box == BOX_PROMPT && t->bar && strcmp(t->th->hl, "mono"))
+        return t->bar;
     return t->box == BOX_BASH ? t->th->bash : t->box == BOX_MEMORY ? t->th->memory : t->th->box;
 }
 
@@ -760,7 +764,8 @@ static const char *const help_items[] = {
     "shift+tab to cycle modes", "ctrl+o for the transcript", "ctrl+t to show todos",
     "ctrl+r to search history", "ctrl+g to edit in $EDITOR", "ctrl+s to stash the prompt",
     "ctrl+_ to undo",           "ctrl+y / alt+y to paste", "ctrl+b to background a command",
-    "ctrl+enter to send now",   "alt+p to switch model",   "ctrl+l to redraw"
+    "ctrl+enter to send now",   "alt+p to switch model",   "alt+t to toggle thinking",
+    "ctrl+l to redraw"
 };
 #define NHELP ((int)(sizeof(help_items) / sizeof(help_items[0])))
 
@@ -1711,6 +1716,23 @@ static void stash(cl_tui *t)
     t->stash = 0;
 }
 
+/* Alt+T: extended thinking on or off for the session (from the next turn;
+ * the models that always think say so) */
+static void think_toggle(cl_tui *t)
+{
+    int caps = conv_caps(t->model ? t->model : "");
+    if (!t->think_off)
+        return;
+    if (caps & CAP_THINK_ALWAYS)
+        cl_copy(t->hint, "Thinking can't be turned off for this model", sizeof(t->hint));
+    else if (!(caps & CAP_ADAPTIVE))
+        cl_copy(t->hint, "This model runs without extended thinking here", sizeof(t->hint));
+    else {
+        *t->think_off = !*t->think_off;
+        cl_copy(t->hint, *t->think_off ? "Thinking off" : "Thinking on", sizeof(t->hint));
+    }
+}
+
 static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
 {
     int idx[8];
@@ -2022,6 +2044,10 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
             cl_copy(buf, "/model", cap);
             t->keycmd = 1;
             return H_SUBMIT;
+        }
+        if (k->ch == 't') {
+            think_toggle(t);
+            return H_GO;
         }
         edit(t, k);
         return H_GO;

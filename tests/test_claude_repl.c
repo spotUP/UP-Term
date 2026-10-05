@@ -4880,9 +4880,72 @@ static void test_gaps3_bypass(void)
     cs_close();
 }
 
+/* the box's frame colour (its top-left corner's foreground) seen before each read */
+static int g3_fg[8];
+static void g3_look_frame(void)
+{
+    int row = cs_find("\342\225\255");
+    if (cs.next < 8)
+        g3_fg[cs.next] = row >= 0 ? h_cell(cs.vt, 0, row)->fg : -1;
+}
+
+/* G4: /color red draws the prompt bar red, default puts the theme's grey
+ * back, a name that is no colour says how */
+static void test_gaps3_color(void)
+{
+    static const char *keys[] = { "/color red\r", "/color default\r", "/color mauve\r", "/color\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_screen(&r, keys, "g3color", root);
+    CHECK_INT(repl_screen(&r), 0);
+    memset(g3_fg, 0, sizeof(g3_fg));
+    cs.before_read = g3_look_frame;
+    repl_run(&r);
+    cs.before_read = 0;
+    g3_dump();
+    CHECK_INT(cs.next, 5);
+    CHECK_INT(g3_fg[0], 8);                 /* the theme's grey */
+    CHECK_INT(g3_fg[1], 1);                 /* red */
+    CHECK_INT(g3_fg[2], 8);                 /* default */
+    CHECK(strstr(cs.sent.p, "Usage: /color [red|blue|green|yellow|purple|orange|pink|cyan|default]") != 0);
+    CHECK(r.bar_color[0] && theme_named(r.bar_color) && g3_fg[4] != 8);    /* no argument: one of the eight */
+    repl_free(&r);
+    cs_close();
+}
+
+/* G5: Alt+T turns thinking off for the next turn on a model that may go
+ * without (thinking disabled, effort xhigh sent as high) and on again */
+static void test_gaps3_think(void)
+{
+    static const char *keys[] = { "\033t", "hi\r", "\033t", "again\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_screen(&r, keys, "g3think", root);
+    cl_copy(r.model, "claude-opus-4-7", sizeof(r.model));
+    cl_copy(r.effort, "xhigh", sizeof(r.effort));
+    add_answer(0, 0, 0, "one");
+    add_answer(0, 0, 0, "two");
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    g3_dump();
+    CHECK_INT(cs.next, 5);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[0], "\"thinking\":{\"type\":\"disabled\"}") != 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[0], "\"output_config\":{\"effort\":\"high\"}") != 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"thinking\":{\"type\":\"adaptive\"") != 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"effort\":\"xhigh\"") != 0);
+    CHECK(strstr(cs.sent.p, "Thinking off") != 0 && strstr(cs.sent.p, "Thinking on") != 0);
+    repl_free(&r);
+    cs_close();
+}
+
 static void test_gaps3(void)
 {
     test_gaps3_bypass();
+    test_gaps3_color();
+    test_gaps3_think();
 }
 
 void suite_claude_repl(void)

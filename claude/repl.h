@@ -139,6 +139,7 @@ typedef struct cl_repl {
     const cl_feed *feed;
     int ask_policy;             /* ASKP_* */
     int allow_bypass;           /* A4 gaps 3: --allow-dangerously-skip-permissions (bypass in the cycle) */
+    char bar_color[16];         /* /color: the prompt bar's colour name for the session, "" the theme's */
     int no_person;              /* print mode: no one to ask (questions denied, choices declined) */
     int max_turns;              /* responses a turn may have before it stops, 0 no limit */
     unsigned long budget_micro; /* spend allowed (US dollars * 1e6), 0 no limit; ... */
@@ -223,6 +224,7 @@ typedef struct cl_repl {
     long max_ctx;               /* CLAUDE_CODE_MAX_CONTEXT_TOKENS, 0 the model's */
     int no_1m;                  /* CLAUDE_CODE_DISABLE_1M_CONTEXT */
     int no_thinking;            /* CLAUDE_CODE_DISABLE_THINKING */
+    int think_off;              /* A4 gaps 3: Alt+T turned extended thinking off (from the next turn) */
     char *extra_body;           /* CLAUDE_CODE_EXTRA_BODY: a JSON object merged into every request */
     int no_compact;             /* DISABLE_COMPACT */
     int compact_pct;            /* CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (lower only), CL_COMPACT_PCT */
