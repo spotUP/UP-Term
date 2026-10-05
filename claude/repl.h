@@ -163,6 +163,7 @@ typedef struct cl_repl {
     char *structured;           /* the StructuredOutput call's input (the structured output) */
     long compact_window;        /* --autocompact: tokens, -1 auto (the model's), 0 not given */
     int start_due;              /* SessionStart "startup" not run yet (after the flags are applied) */
+    int welcomed;               /* the start header is on the screen (drawn once, first) */
     const char *blocks;         /* the next turn's prompt as content blocks (comma-separated), 0 text */
     long blocks_n;
     char betas[256];            /* --betas, joined with commas */
@@ -193,7 +194,14 @@ typedef struct cl_repl {
     int in_turn;                /* a turn runs (the idle tick does not start one) */
     int woke;                   /* the line came from sched_wake, not the keyboard */
     long n_cron_fired;          /* the tests' sentinel: cron jobs fired */
-    int todo_optin;             /* --allowedTools / --tools named a task tool */
+    /* A4 gaps 3: /loop's self-paced mode (sched.c) */
+    int loop_tick;              /* this turn is a /loop wakeup's iteration */
+    int loop_fallback;          /* the pending wakeup is the fallback (the loop ends if it sets none) */
+    long loop_mark;             /* the screen's line count when this iteration began */
+    long fold_mark, fold_end;   /* quiet iterations in a row: where the first began, where the last ended */
+    int fold_n;                 /* how many (the screen folds them into one line) */
+    long n_loop_ticks;          /* the tests' sentinel: wakeups fired */
+    int todo_optin;            /* --allowedTools / --tools named a task tool */
     struct cl_watch *watch;     /* FileChanged's watched files (watch.c) */
     int untrusted;              /* the workspace trust question not (yet) answered yes: held back --
                                  * interactive: every settings file's hooks; both: the project's allow

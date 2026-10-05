@@ -309,7 +309,9 @@ static int post(cl_repl *r, const char *body, long bn, long *retry_s)
     sui.text = st_text;
     sui.block = st_block;
     sui.thinking = st_thinking;
-    sui.stop = st_stop;
+    /* a tool's own request (api_send) draws nothing: WebSearch's server
+     * search is shown by the tool's header and result, not a second time */
+    sui.stop = r->quiet_req ? 0 : st_stop;
     if (repl_need_key(r)) {
         /* A4 WP4: a keyless start; nothing goes out without the key */
         show_err(r, "Not logged in: no API key. Type /login, or set ENV:ANTHROPIC_API_KEY.", 0);
@@ -1299,6 +1301,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     jw_free(&content);
     jw_free(&xtools);
     request_free(r);
+    sched_loop_end(r);              /* A4 gaps 3: /loop's fallback wakeup, its end, quiet iterations folded */
     r->idle_from = r->io->ms ? r->io->ms(r->io->u) : 0;     /* Notification idle_prompt counts from here */
     r->idle_told = 0;
     if (answered && r->turn_rc == TURN_OK && r->goal[0] && !r->no_person)
@@ -1917,9 +1920,20 @@ int repl_load_json(cl_repl *r, const char *full)
     return 0;
 }
 
+/* the start header, drawn once and first: before a resumed conversation
+ * (-c / -r run before the prompt loop) as before an empty one */
+static void welcome(cl_repl *r)
+{
+    if (!r->tui || r->welcomed)
+        return;
+    r->welcomed = 1;
+    show_welcome(r->show, r->model, env_on(r, "CLAUDE_CODE_HIDE_CWD") ? "" : r->tools.root);
+}
+
 static void resumed(cl_repl *r)
 {
     char m[160], num[16];
+    welcome(r);
     repl_replay(r);
     cp_turn(&r->cp, r->conv.n);
     cl_copy(m, "Resumed a conversation of ", sizeof(m));
@@ -2318,7 +2332,7 @@ void repl_run(cl_repl *r)
     if (!line)
         return;
     if (r->tui) {
-        show_welcome(r->show, r->model, env_on(r, "CLAUDE_CODE_HIDE_CWD") ? "" : r->tools.root);
+        welcome(r);
         if (start(r)) {
             free(line);
             return;
@@ -2338,6 +2352,7 @@ void repl_run(cl_repl *r)
                 ui_user(&r->ui, line);
             if (repl_line(r, line))
                 break;
+            r->loop_tick = 0;       /* a wakeup's line that ran no turn */
         }
         free(line);
         return;
@@ -2393,6 +2408,7 @@ int repl_screen(cl_repl *r)
     t->idle = screen_idle;          /* the status line's schedule, the away recap (A4 gaps 3) */
     t->iu = r;
     t->wake = sched_tui_wake;       /* A4 gaps 2: a scheduled turn while the screen waits */
+    t->esc_idle = sched_esc_idle;   /* A4 gaps 3: Esc cancels a pending /loop wakeup */
     show_init(s, t);
     s->verbose = &r->verbose;    /* --verbose: results unfolded in place */
     if (tui_start(t)) {

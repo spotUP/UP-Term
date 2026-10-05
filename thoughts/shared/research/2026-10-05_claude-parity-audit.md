@@ -22,7 +22,8 @@ bypassPermissions rule were confirmed against the docs and the code before actin
 Status: **have**, **partial** (what is missing), **missing**, **N/A** (why not on an Amiga).
 "Before" = main e4bc55d; "After" = branch feature/a4-gaps 57613ae, and for the rows whose evidence
 starts "gaps2:" branch feature/a4-gaps2 (ledger thoughts/shared/plans/2026-10-05-a4-gaps2-progress.md), for the rows whose
-evidence starts "gaps3:" branch feature/a4-gaps3-tui (ledger
+evidence starts "gaps3:" branch feature/a4-gaps3-loop (/loop and ScheduleWakeup; ledger
+thoughts/shared/plans/2026-10-05-a4-gaps3-loop-progress.md) or branch feature/a4-gaps3-tui (ledger
 thoughts/shared/plans/2026-10-05-a4-gaps3-tui-progress.md, which also re-verified the keys rows that
 feature/a4-input-rest built: "input-rest:"). Evidence for "After" is the
 commit and the host test (tests/test_claude_*.c, all in `make test`); the progress ledger
@@ -77,7 +78,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | cmd | /install-github-app, /install-slack-app | N/A | N/A | OAuth in a browser, gh |
 | cmd | /keybindings | missing | have | gaps3: keys.c cl_keymap (Claude Code's defaults, ENVARC:Claude/keybindings.json over them, chords, null, warnings to the debug log, read again on change), tui.c dispatches on actions; /keybindings writes the defaults and opens the editor; test_claude_tui gaps3_keymap, test_gaps3_keybindings |
 | cmd | /login, /logout | have | have | slash.c (API key; OAuth N/A) |
-| cmd | /loop [interval] [prompt] | missing | missing | not built; since round 2 the timer it needs exists (tui.h wake, sched.c, the cron jobs) |
+| cmd | /loop [interval] [prompt] | missing | have | gaps3: Claude Code's bundled skill (commands.c sk_loop, alias /proactive; its cloud offer N/A); slash.c loop_ adds the default prompt (.claude/loop.md, ENVARC:Claude/loop.md, else the built-in maintenance prompt); interval: the model's CronCreate; no interval: ScheduleWakeup; print mode and CLAUDE_CODE_DISABLE_CRON refuse; test_gaps3_loop L1-L11 (ledger thoughts/shared/plans/2026-10-05-a4-gaps3-loop-progress.md) |
 | cmd | /mcp, /plugin, /reload-plugins, /plugin-authoring | N/A | N/A | MCP stdio servers and plugins are Node/Python; typed, they say so |
 | cmd | /memory | have | have | slash.c memory (+ auto on/off) |
 | cmd | /model [model] | partial | have | kept as the default, availableModels, Pre/PostModelSwitch |
@@ -204,7 +205,7 @@ tables, vim) belong to the parallel branch feature/a4-input-rest and are audited
 | tool | WebSearch: allowed / blocked domains | missing | have | gaps2: the client WebSearch tool, the server tool in a side request (webfetch.c websearch_run), the session cap; test_gaps2_tools T6 |
 | tool | EnterPlanMode, ExitPlanMode, TodoWrite, Skill | have | have | tools.c |
 | tool | TaskCreate/Get/List/Update, TaskStop, Monitor, CronCreate/Delete/List | missing | have | gaps2: tasks.c, shells.c, sched.c (TaskOutput: removed in Claude Code, Read of the output file instead); test_gaps2_tools T7-T9 |
-| tool | ScheduleWakeup (/loop's self-paced mode) | missing | missing | goes with /loop, not built; the wake hook in tui.c it needs exists now (sched.c) |
+| tool | ScheduleWakeup (/loop's self-paced mode) | missing | have | gaps3: tasks.c schedule_wakeup, the wakeup a one-shot job of the cron table (60..3600 s, no jitter, in CronList and session_crons, not resumed); fires as "Claude resuming /loop wakeup" (sched.c); stop, the 20-minute fallback, seven days, Esc / Ctrl+C on the idle box cancels; quiet (noop) iterations in a row fold into one line on the screen (tui_takeback); test_gaps3_loop, test_loop_screen |
 | tool | NotebookEdit, PowerShell, LSP, worktrees, MCP resource tools, ToolSearch, Artifact, RemoteTrigger, PushNotification, SendUserFile, SendFeedback, Workflow, ListAgents | N/A | N/A | Jupyter, pwsh, language servers, git, MCP, claude.ai |
 | rules | Bash(cmd *), Read/Edit globs, deny > ask > allow | have | have | config.c |
 | rules | Agent(x) | partial | have | config.c tool_covers |
@@ -345,6 +346,7 @@ check out, N/A). Counted from the tables' rows by a script (the After column).
 | After (feature/a4-gaps), 247 rows | 173 | 8 | 32 | 34 |
 | After round 2 (feature/a4-gaps2), 249 rows | 200 | 2 | 13 | 34 |
 | After round 3 (feature/a4-gaps3-tui), 251 rows | 211 | 1 | 2 | 37 |
+| After round 3 merged (feature/a4-gaps3-tui with feature/a4-gaps3-loop), 251 rows | 213 | 1 | 0 | 37 |
 
 Left after round 2: the 13 missing and the 2 partial rows are the input branch's (keys, vim,
 /color, /focus, /keybindings, the box's suggestions, @agent-name, /add-dir's Tab suggestions,
@@ -354,4 +356,9 @@ that stay N/A.
 
 Left after round 3: /loop and ScheduleWakeup (missing; the parallel branch's) and the bundled
 skills (partial; the others N/A, section 1).
+
+Left after round 3 merged: the bundled skills (partial; the others N/A, section 1). /loop and
+ScheduleWakeup came with feature/a4-gaps3-loop; on the merged screen Esc and Ctrl+C on the idle,
+empty box reach the pending wakeup through the keybindings table's chat:cancel and app:interrupt
+(test_claude_tui loop_cancel_keys, test_claude_repl test_loop_screen).
 

@@ -17,7 +17,8 @@
  * gives them to; TodoWrite with CLAUDE_CODE_ENABLE_TASKS=0); TaskStop
  * stops a background task; Monitor watches a command's output lines;
  * CronCreate / CronDelete / CronList schedule prompts for the session
- * (the REPL fires them, sched.c). BashOutput and KillShell, the older
+ * (the REPL fires them, sched.c); ScheduleWakeup paces a self-paced
+ * /loop (A4 gaps 3: its wakeup a job of the same table). BashOutput and KillShell, the older
  * names, still run but are no longer declared. A subagent may launch
  * subagents of its own, CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH layers deep
  * (3 by default).
@@ -49,6 +50,8 @@ enum {
      * its own), the task list, TaskStop, Monitor, the session's cron jobs */
     T_WEB_SEARCH, T_TASK_CREATE, T_TASK_GET, T_TASK_LIST, T_TASK_UPDATE, T_TASK_STOP, T_MONITOR,
     T_CRON_CREATE, T_CRON_DELETE, T_CRON_LIST,
+    /* A4 gaps 3: /loop's self-paced mode */
+    T_SCHEDULE_WAKEUP,
     T_COUNT
 };
 

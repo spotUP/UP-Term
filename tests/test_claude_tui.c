@@ -1738,6 +1738,50 @@ static void redraw_editor_todos(void)
 
 /* ---- A4 gaps 3: the screen's rows (ledger 2026-10-05-a4-gaps3-tui-progress) ---- */
 
+/* A4 gaps 3 (/loop) through the keybindings table: Esc (chat:cancel) and
+ * Ctrl+C (app:interrupt) on the idle, empty box cancel a pending /loop
+ * wakeup first; with none pending, Esc arms Esc Esc and Ctrl+C arms the
+ * exit as before */
+static int loopx_calls, loopx_pending;
+static int loopx_cb(void *u)
+{
+    (void)u;
+    loopx_calls++;
+    if (!loopx_pending)
+        return 0;
+    loopx_pending = 0;
+    return 1;
+}
+
+static void loop_cancel_keys(void)
+{
+    static const char *s1[] = { "\033", 0 };
+    static const char *s2[] = { "\003", "\003", 0 };
+    char line[32];
+    screen(60, 16, s1);
+    loopx_calls = 0;
+    loopx_pending = 1;
+    tui.esc_idle = loopx_cb;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), -1);
+    CHECK_INT(loopx_calls, 1);
+    CHECK_INT(loopx_pending, 0);             /* the wakeup cancelled */
+    CHECK_INT(tui.esc_armed, 0);            /* not taken as the first Esc of Esc Esc */
+    unscreen();
+    cs_close();
+    screen(60, 16, s2);
+    loopx_calls = 0;
+    loopx_pending = 1;
+    tui.esc_idle = loopx_cb;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), -1);
+    CHECK_INT(loopx_calls, 2);               /* the first cancelled, the second found none */
+    CHECK_INT(tui.quit_armed, 'c');         /* only the second armed the exit */
+    CHECK(cs_find("Press Ctrl+C again to exit") >= 0);
+    unscreen();
+    cs_close();
+}
+
 /* G5: Alt+T on a model that always thinks changes nothing and says so; on
  * one that may go without it flips the session's flag */
 static void gaps3_think(void)
@@ -1997,6 +2041,7 @@ void suite_claude_tui(void)
     transcript_view();
     transcript_resize();
     esc_esc();
+    loop_cancel_keys();
     thinking_shown();
     themes();
     notifications();

@@ -3,13 +3,13 @@
 services:
   claude-amiga:
     build: .
-    image: claude-amiga:latest
+    image: claude-amiga:4
     container_name: claude-amiga
     restart: unless-stopped
     network_mode: host          # uptelnetd listens on the NAS's own LAN address
     environment:
-      NAS_IP: "192.168.0.198"   # Megadrive (DS218+), static
-      ALLOW: "192.168.0.0/24"   # the home LAN only
+      NAS_IP: "192.168.0.198 127.0.0.1"   # Megadrive (DS218+) on the LAN; loopback for Tailscale
+      ALLOW: "192.168.0.0/24 127.0.0.0/8" # the home LAN; Tailscale's connections arrive from loopback
       PORT: "2323"
     volumes:
       - /volume1/docker/claude-amiga/home:/home/claude   # login, settings, password, history

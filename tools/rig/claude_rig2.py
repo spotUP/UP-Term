@@ -70,6 +70,11 @@ def amiga_text(path):
     return out.strip() if rc == 0 else None
 
 
+def trust_ram():
+    """RAM: trusted as a Yes at the trust question leaves it (claude_rig.py checks the question)"""
+    put('ENVARC:Claude/claude.json', json.dumps({"projects": {"Ram Disk:": {"hasTrustDialogAccepted": True}}}))
+
+
 def start_claude(title, extra=''):
     c.run('Run >NIL: NewShell "XCON:0/12/760/440/%s/CLOSE"' % title)
     time.sleep(5)
@@ -92,6 +97,7 @@ def main():
     time.sleep(1)
     c.run('Echo >RAM:claude-test.txt hello')
     c.run('MakeDir >NIL: RAM:.claude RAM:.claude/commands ENVARC:Claude')
+    trust_ram()
     put('RAM:CLAUDE.md', 'PROJECT-MEMORY-SENTINEL\n')
     put('ENVARC:Claude/CLAUDE.md', 'USER-MEMORY-SENTINEL\n')
     put('RAM:.claude/commands/greet.md', '---\ndescription: Greet someone\n---\nSay hello to $ARGUMENTS.\n')
@@ -139,6 +145,8 @@ def main():
         check('@ attaches the file', len(b) > n and 'claude-test.txt' in b[-1] and 'hello' in b[-1])
         # new tools, by eye and by request
         line('search the web', 12)
+        shot('websearch-ask')
+        key(RET, wait=12)  # WebSearch asks first, as Claude Code does: Yes (unanswered, the next prompt's Enter did)
         shot('websearch')
         line('fetch the page', 15)
         shot('webfetch-ask')
@@ -166,6 +174,7 @@ def main():
         check('CONTINUE carries the last session', len(b) > n and len(msgs) > 3, len(msgs))
         key(UP, wait=1)
         shot('history-up')
+        key(0x16, 0x0008)  # Ctrl+U: the recalled prompt out of the box, or /exit is sent as "hello/exit"
         line('/exit', 3)
     finally:
         fx.terminate()

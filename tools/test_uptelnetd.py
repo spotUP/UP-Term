@@ -51,6 +51,29 @@ class Bind(unittest.TestCase):
             d.check_bind("example.com")
 
 
+class Binds(unittest.TestCase):
+    """--bind repeats: the NAS listens on its LAN address and on loopback,
+    where Tailscale's userspace mode hands over the connections it accepts."""
+    def args(self, *argv):
+        return d.parse_args(list(argv) + ["--command", "true"])
+
+    def test_two_binds_each_with_its_own_default_allowlist(self):
+        binds, nets, _, _ = d.configure(self.args("--bind", "192.168.0.198", "--bind", "127.0.0.1"),
+                                        env={d.PASSWORD_ENV: "a-long-enough-one", "SHELL": "/bin/sh"})
+        self.assertEqual(binds, ["192.168.0.198", "127.0.0.1"])
+        self.assertEqual([str(n) for n in nets], ["192.168.0.0/24", "127.0.0.0/8"])
+
+    def test_every_bind_is_checked(self):
+        with self.assertRaises(d.ConfigError):
+            d.configure(self.args("--bind", "192.168.0.198", "--bind", "0.0.0.0"),
+                        env={d.PASSWORD_ENV: "a-long-enough-one", "SHELL": "/bin/sh"})
+
+    def test_a_repeated_bind_is_listened_on_once(self):
+        binds, _, _, _ = d.configure(self.args("--bind", "127.0.0.1", "--bind", "127.0.0.1"),
+                                     env={d.PASSWORD_ENV: "a-long-enough-one", "SHELL": "/bin/sh"})
+        self.assertEqual(binds, ["127.0.0.1"])
+
+
 class Allow(unittest.TestCase):
     def test_default_is_the_interfaces_subnet(self):
         nets = d.default_allow("192.168.0.58", "255.255.252.0")
