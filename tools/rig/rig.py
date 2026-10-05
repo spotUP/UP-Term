@@ -290,6 +290,8 @@ def start(retries=2):
         time.sleep(2)
         if status(quiet=True):
             print("up")
+            if M060:
+                retry_wb_reset()
             return
         text = log.read_text() if log.exists() else ""
         if i >= 60 and "go started" in text and "assigns done" not in text:
@@ -300,6 +302,24 @@ def start(retries=2):
         print("retrying the boot")
         stop()
         start(retries - 1)
+
+def retry_wb_reset():
+    """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
+    to reset the Workbench screen ... close all windows" requester (IPrefs'
+    switch to the saved RTG mode raced a window; ledger W43). Retry then
+    succeeds (the owner, 2026-10-05): click it while the screen is the PAL
+    one. The requester's Retry sits at (45,69) on the 640x256 screen."""
+    sys.path.insert(0, str(ROOT / "tools/rig"))
+    import ami
+    for _ in range(10):
+        b = ami.req(0x0A)
+        if int.from_bytes(b[2:4], "big") != 640:
+            return
+        kx, ky = ami.pointer_scale()
+        ami.script(("move", int(45 * kx), int(69 * ky)), ("wait", 2), ("button", 0, 1),
+                   ("wait", 2), ("button", 0, 0), ("wait", 5))
+        time.sleep(4)
+    print("[WARN] the Workbench stayed PAL (W43)")
 
 def stop():
     if mine() and status(quiet=True):
