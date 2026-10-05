@@ -252,50 +252,48 @@ void show_free(cl_show *s)
 
 /* ---- the program's own lines ---- */
 
+/* Claude Code's mascot, three rows of block elements nine columns wide
+ * (UP-Term draws U+2580..U+259F itself, at any font) */
+static const char *const mascot[3] = {
+    " \342\226\220\342\226\233\342\226\210\342\226\210\342\226\210\342\226\234\342\226\214 ",     /*  ▐▛███▜▌  */
+    "\342\226\235\342\226\234\342\226\210\342\226\210\342\226\210\342\226\210\342\226\210\342\226\233\342\226\230", /* ▝▜█████▛▘ */
+    "  \342\226\230\342\226\230 \342\226\235\342\226\235  "                                       /*   ▘▘ ▝▝   */
+};
+
 void show_welcome(cl_show *s, const char *model, const char *root)
 {
-    int w = s->t->cols - 1 < 58 ? s->t->cols - 1 : 58, i, k;
-    const char *rows[5];
-    char cwd[300], mod[120];
-    cl_copy(cwd, "  cwd: ", sizeof(cwd));
-    cl_cat(cwd, root && *root ? root : "(the current directory)", sizeof(cwd));
-    cl_copy(mod, "  model: ", sizeof(mod));
-    cl_cat(mod, model, sizeof(mod));
-    rows[0] = 0;
-    rows[1] = "";
-    rows[2] = "  /help for help, Shift+Tab for the permission mode";
-    rows[3] = cwd;
-    rows[4] = mod;
+    /* Claude Code's start: the mascot, and beside it the program, the
+     * model and the directory */
+    char l2[200];
+    const char *right[3];
+    int k, room = s->t->cols - 12;
+    cl_copy(l2, model, sizeof(l2));
+    cl_cat(l2, " \302\267 API Usage Billing", sizeof(l2));
+    right[0] = 0;
+    right[1] = l2;
+    right[2] = root && *root ? root : "(the current directory)";
     raw(s, SGR0);
-    raw(s, TH->accent);
-    raw(s, G_TL);
-    for (i = 2; i < w; i++)
-        raw(s, G_H);
-    raw(s, G_TR SGR0 "\n");
-    for (k = 0; k < 5; k++) {
+    for (k = 0; k < 3; k++) {
         int cw = 0;
         raw(s, TH->accent);
-        raw(s, G_V SGR0 " ");
-        if (!rows[k]) {
-            raw(s, TH->accent);
-            raw(s, G_STAR SGR0 " Welcome to " BOLD "Claude" SGR0 " on the Amiga!");
-            /* the star is one column; the words' widths counted, not guessed */
-            cw = 1 + (int)(sizeof(" Welcome to ") - 1 + sizeof("Claude") - 1 + sizeof(" on the Amiga!") - 1);
+        raw(s, mascot[k]);
+        raw(s, SGR0 "  ");
+        if (room < 1)
+            ;
+        else if (!right[k]) {
+            raw(s, BOLD "C:Claude" SGR0);
+            if (room > 9 + 13) {
+                raw(s, " ");
+                raw(s, TH->dim);
+                raw(s, "for the Amiga" SGR0);
+            }
         } else {
-            text(&s->batch, rows[k], (long)strlen(rows[k]), w - 4, &cw);
+            raw(s, k == 2 ? TH->dim : "");
+            text(&s->batch, right[k], (long)strlen(right[k]), room, &cw);
+            raw(s, SGR0);
         }
-        while (cw < w - 3) {
-            raw(s, " ");
-            cw++;
-        }
-        raw(s, TH->accent);
-        raw(s, G_V SGR0 "\n");
+        raw(s, "\n");
     }
-    raw(s, TH->accent);
-    raw(s, G_BL);
-    for (i = 2; i < w; i++)
-        raw(s, G_H);
-    raw(s, G_BR SGR0 "\n");
     out(s);
 }
 

@@ -1,8 +1,9 @@
 /* shells -- the background tasks (ledger A4 WP2, A4 gaps 2): Bash's
  * run_in_background commands, a foreground command moved there at its
- * time limit, and Monitor's watches, each a job of sys.h (bg_start); the
- * foreground Bash command itself runs as a job polled to its end, so its
- * output can be cut head and tail and it can move. TaskStop stops a task
+ * time limit or by the user's Ctrl+B, and Monitor's watches, each a job of
+ * sys.h (bg_start); the foreground Bash command (and a ! line) itself runs
+ * as a job polled to its end, so its output can be cut head and tail and
+ * it can move -- fg_wait, fg_move, one way for both triggers. TaskStop stops a task
  * (KillShell, the older name, too); Claude reads a task's output file with
  * Read (BashOutput, the older way, still answers). Ids are "bash_N" and
  * "monitor_N". What happens to the tasks while Claude is not looking --
@@ -31,7 +32,7 @@ typedef struct shell {
     long pos;                   /* output bytes BashOutput already returned */
     long mpos;                  /* a monitor's output bytes already handed over as lines */
     int ended, killed, told;    /* told: Claude was told it ended */
-    int moved;                  /* moved to the background at its time limit */
+    int moved;                  /* moved to the background (its time limit, Ctrl+B) */
     int owner;                  /* the subagent run that started it (cl_tools.run_id), 0 the conversation */
     long rc;
     unsigned long t0;           /* when it entered the background (t->clock) */
@@ -240,42 +241,128 @@ int shells_can_run(cl_tools *t)
            t->sys->bg_drop;
 }
 
+/* fg_wait's answers besides SYS_BREAK */
+enum { FG_END, FG_LIMIT, FG_MOVE };
+
+/* The foreground command waited on, a look every 100 ms: FG_END it ended,
+ * FG_LIMIT its time is up, SYS_BREAK the user stopped it, FG_MOVE the user
+ * moved it to the background (the screen's Ctrl+B / Ctrl+Enter, a slot
+ * free, background tasks on). With t->wait (the screen) the keys are read
+ * meanwhile (Esc, Ctrl+C stop it); without, sys->pause sees Ctrl+C. */
+static int fg_wait(cl_tools *t, long job, int secs, long *rc)
+{
+    unsigned long t0 = now_ms(t), limit = (unsigned long)secs * 1000UL, waited = 0;
+    int running = 1;
+    for (;;) {
+        char one[1];
+        long got;
+        if (t->sys->bg_read(t->sys->u, job, 0, one, 0, &got, &running, rc) || !running)
+            return FG_END;
+        if (t->wait) {
+            int w = t->wait(t->u, 100);
+            if (w == TW_STOP)
+                return SYS_BREAK;
+            if (w == TW_BACKGROUND && !t->no_background && slot(t))
+                return FG_MOVE;
+        } else if (t->sys->pause(t->sys->u, 100))
+            return SYS_BREAK;
+        waited += 100;
+        if (t->clock && now_ms(t) - t0 > waited)
+            waited = now_ms(t) - t0;    /* the machine's clock, when it runs ahead */
+        if (waited >= limit)
+            return FG_LIMIT;
+    }
+}
+
+/* a break, and ten seconds to end: 0 it ended (*rc its code), 1 it runs on */
+static int fg_break(cl_tools *t, long job, long *rc)
+{
+    int running = 1, k;
+    t->sys->bg_kill(t->sys->u, job);
+    for (k = 0; k < 100; k++) {
+        char one[1];
+        long got;
+        if (t->sys->bg_read(t->sys->u, job, 0, one, 0, &got, &running, rc))
+            break;
+        if (!running)
+            return 0;
+        t->sys->pause(t->sys->u, 100);
+    }
+    return 1;
+}
+
+/* the job moved to the background -- at its time limit or by the user's
+ * Ctrl+B, one way for both: a task (bash_N) Claude is told about when it
+ * ends; its id into name */
+static shell *fg_move(cl_tools *t, long job, const char *shown, const char *desc, char *name)
+{
+    shell *s = adopt(t, SH_BASH, job, shown, desc, t->bg_limit_ms, name);
+    if (s)
+        s->moved = 1;
+    return s;
+}
+
+int tools_run_fg(cl_tools *t, const char *cmd, int secs, char *out, long cap, long *outn, long *rc, char *id,
+                 long idcap)
+{
+    long job;
+    int fg, broke = 0, running = 0;
+    char name[24];
+    *outn = 0;
+    *rc = -1;
+    if (id && idcap)
+        id[0] = 0;
+    if (!t->wait || !shells_can_run(t))
+        return t->sys->run(t->sys->u, cmd, secs, out, cap, outn, rc);
+    if (t->sys->bg_start(t->sys->u, cmd, &job))
+        return -1;
+    fg = fg_wait(t, job, secs, rc);
+    if (fg == FG_MOVE && fg_move(t, job, cmd, "", name)) {
+        if (id && idcap)
+            cl_copy(id, name, idcap);
+        return SHELL_MOVED;
+    }
+    if (fg != FG_END) {
+        broke = fg == SYS_BREAK ? SYS_BREAK : SYS_TIMEOUT;
+        if (fg_break(t, job, rc)) {
+            /* it does not end after the break: kept as a task (so C:Claude's
+             * end stops it), its output so far */
+            if (adopt(t, SH_BASH, job, cmd, "", 0, name) && id && idcap)
+                cl_copy(id, name, idcap);
+            t->sys->bg_read(t->sys->u, job, 0, out, cap, outn, &running, rc);
+            return broke;
+        }
+    }
+    t->sys->bg_read(t->sys->u, job, 0, out, cap, outn, &running, rc);
+    t->sys->bg_drop(t->sys->u, job);
+    return broke;
+}
+
 int shells_run_fg(cl_tools *t, const char *cmd, const char *shown, const char *desc, int secs, jw *res,
                   long *rc_out, int *is_err)
 {
     long job, total, rc = 0, inl, fail_max;
-    unsigned long t0, limit = (unsigned long)secs * 1000UL, waited = 0;
-    int running = 1, broke = 0, r = 0;
+    int fg, broke = 0, r = 0;
     char num[16], name[24];
     *rc_out = 0;
     *is_err = 0;
     if (t->sys->bg_start(t->sys->u, cmd, &job))
         return -1;
-    t0 = now_ms(t);
-    for (;;) {
-        char one[1];
-        long got;
-        if (t->sys->bg_read(t->sys->u, job, 0, one, 0, &got, &running, &rc) || !running)
-            break;
-        if (t->sys->pause(t->sys->u, 100)) {
-            broke = SYS_BREAK;
-            break;
+    fg = fg_wait(t, job, secs, &rc);
+    if (fg == FG_MOVE || (fg == FG_LIMIT && !t->no_background && !is_sleep(shown) && slot(t))) {
+        /* Claude Code: at its time limit a command moves to the background
+         * (a pause excepted); Ctrl+B moves it before */
+        shell *s = fg_move(t, job, shown, desc, name);
+        if (fg == FG_MOVE) {
+            jw_rawz(res, "Command was manually backgrounded by user with ID: ");
+            jw_rawz(res, name);
+        } else {
+            jw_rawz(res, "Command did not complete within its ");
+            cl_ltoa(secs, num);
+            jw_rawz(res, num);
+            jw_rawz(res, "s timeout and was moved to the background with ID: ");
+            jw_rawz(res, name);
         }
-        waited += 100;
-        if (t->clock && now_ms(t) - t0 > waited)
-            waited = now_ms(t) - t0;    /* the machine's clock, when it runs ahead */
-        if (waited >= limit)
-            break;
-    }
-    if (running && !broke && !t->no_background && !is_sleep(shown) && slot(t)) {
-        /* Claude Code: at its time limit a command moves to the background */
-        shell *s = adopt(t, SH_BASH, job, shown, desc, t->bg_limit_ms, name);
-        s->moved = 1;
-        jw_rawz(res, "Command did not complete within its ");
-        cl_ltoa(secs, num);
-        jw_rawz(res, num);
-        jw_rawz(res, "s timeout and was moved to the background with ID: ");
-        jw_rawz(res, name);
         if (*file_of(t, s)) {
             jw_rawz(res, ". Output is being written to: ");
             jw_rawz(res, file_of(t, s));
@@ -287,27 +374,23 @@ int shells_run_fg(cl_tools *t, const char *cmd, const char *shown, const char *d
             jw_rawz(res, "; directory changes made by the backgrounded command do not apply to subsequent "
                          "commands.");
         }
-        return 1;
+        return SHELL_MOVED;
     }
-    if (running) {
-        /* stopped: a break, and ten seconds to end */
-        long k;
-        if (!broke)
-            broke = SYS_TIMEOUT;
-        t->sys->bg_kill(t->sys->u, job);
-        for (k = 0; k < 100 && running; k++) {
-            char one[1];
-            long got;
-            if (t->sys->bg_read(t->sys->u, job, 0, one, 0, &got, &running, &rc))
-                break;
-            if (running)
-                t->sys->pause(t->sys->u, 100);
-        }
-        if (running) {
+    if (fg != FG_END) {
+        /* stopped: by the user, or at its time limit (a pause, background
+         * tasks off, no slot) */
+        broke = fg == SYS_BREAK ? SYS_BREAK : SYS_TIMEOUT;
+        if (fg_break(t, job, &rc)) {
             /* it does not end: left running, as a task */
+            name[0] = 0;
             if (slot(t))
                 adopt(t, SH_BASH, job, shown, desc, 0, name);
-            jw_rawz(res, "The command did not end after a break; it was left running in the background.\n");
+            jw_rawz(res, "The command did not end after a break; it was left running in the background");
+            if (name[0]) {
+                jw_rawz(res, " as ");
+                jw_rawz(res, name);
+            }
+            jw_rawz(res, ".\n");
             *is_err = 1;
             return broke;
         }

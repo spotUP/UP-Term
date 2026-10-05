@@ -46,7 +46,8 @@ int shells_can_run(cl_tools *t);
 /* A foreground command run as a job: shown is the command as Claude wrote
  * it, cmd what runs (a "cd" in front); the result's text (the return code,
  * the output within Claude Code's limits, or the news that it moved to the
- * background) appended to res. 0 ended, 1 moved to the background,
+ * background) appended to res. 0 ended, SHELL_MOVED moved to the
+ * background (at its time limit, or the screen's Ctrl+B through t->wait),
  * SYS_TIMEOUT / SYS_BREAK stopped, -1 did not start. */
 int shells_run_fg(cl_tools *t, const char *cmd, const char *shown, const char *desc, int secs, jw *res, long *rc,
                   int *is_err);

@@ -308,10 +308,12 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
         if (tid >= 0 && !perm_refused(&tl->perm, tid) && !perm_must_ask(&tl->perm, tid, 0)) {
             /* it would run without a question: the rule asks */
             int ans;
+            char note[200];
             tl->cur = tid;
             tl->cur_in = raw;
             tl->cur_inn = rawn;
-            ans = repl_ask(r, tid, name, what, 0, 1);
+            note[0] = 0;
+            ans = repl_ask(r, tid, name, what, 0, 1, note, sizeof(note));
             if (ans == ASK_RERUN && r->perm_upd.n && json_parse(r->perm_upd.p, r->perm_upd.n, &in) == 0) {
                 /* a PermissionRequest hook's updatedInput: the call goes on with it,
                  * a deny rule still decides */
@@ -328,6 +330,18 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
                 }
                 ans = ASK_ONCE;
             }
+            if (ans == ASK_NO && note[0]) {
+                /* No with a comment: Claude is told why and goes on (tl_gate's way) */
+                jw t;
+                jw_init(&t);
+                jw_rawz(&t, "the user declined this tool call and said: ");
+                jw_rawz(&t, note);
+                answer(r, tl, out, id, name, raw, rawn, what, t.p ? t.p : "the user declined this tool call");
+                jw_free(&t);
+                return 1;
+            }
+            if (ans != ASK_NO && ans != ASK_STOP && ans != ASK_RERUN)
+                cl_copy(tl->note, note, sizeof(tl->note));  /* Yes with a comment: with the result */
             if (ans == ASK_NO || ans == ASK_STOP || ans == ASK_RERUN) {
                 if (ans == ASK_STOP)
                     tl->stop = 1;
@@ -1835,6 +1849,8 @@ static const char *ui_setting(void *u, const char *key)
         return r->cfg.theme[0] ? r->cfg.theme : 0;
     if (!strcmp(key, "editorMode"))
         return r->cfg.editor_mode[0] ? r->cfg.editor_mode : 0;
+    if (!strcmp(key, "vimInsertModeRemaps"))
+        return r->cfg.vim_remaps[0] ? r->cfg.vim_remaps : 0;
     return 0;
 }
 

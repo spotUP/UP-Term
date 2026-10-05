@@ -17,10 +17,13 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
    `sudo chown -R 1000:1000 /volume1/docker/claude-amiga/home`.
 3. Container Manager > Project > Create, source: the build folder; edit `NAS_IP` and
    `ALLOW` in compose.yaml; build and start.
-4. Log Claude Code in once: Container Manager > the container > Terminal (or
+4. Log Claude Code in once WITH YOUR CLAUDE SUBSCRIPTION (Pro/Max), not an API key:
+   Container Manager > the container > Terminal (or
    `sudo docker exec -it claude-amiga tmux new -A -s claude claude`), run `/login`,
-   open the printed URL in a browser, paste the code back. The login is kept on the
-   volume.
+   choose the Claude account (subscription) option, open the printed URL in a browser,
+   sign in, paste the code back. The login is kept on the volume. Never set
+   ANTHROPIC_API_KEY in the container: Claude Code would use it instead of the
+   subscription. `/status` shows which one is in use.
 5. On the Amiga: `uptelnet <NAS_IP> 2323`, the password, and you are in Claude Code.
    Ctrl+] leaves; Claude keeps running in tmux for the next connection.
 

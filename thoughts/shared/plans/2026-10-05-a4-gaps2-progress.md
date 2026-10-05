@@ -202,6 +202,22 @@ Settings, agents, skills, CLI, memory
   snapshot load, import depth 5, external import hold, advisor tool. Gate: make test (43 OK),
   make test-ref (149, 0 failed), timeout 900 make amiga rc 0.
 
+- c3 main b7ae4d0 (feature/a4-input-rest: vim visual, Ctrl+B through tool_wait, the ask note/cap,
+  Alt+P, the mascot) merged in. Conflicts: policy.c (ask rule: updatedInput rerun, then the Tab
+  comment on No / Yes), tl_gate (ASK_RERUN first, then the note), repl.c repl_run (no echo for a
+  scheduled turn nor a key's command), ui.h (name_sgr + tools + ask_note), shells.c (this branch's
+  tasks kept; main's tools_run_fg rebuilt on them). One foreground mechanism, two triggers:
+  shells.c fg_wait polls the job (t->wait on the screen: Esc / Ctrl+C stop, Ctrl+B / Ctrl+Enter
+  move; else sys->pause), fg_move adopts it as a task for both the time limit and Ctrl+B
+  ("Command was manually backgrounded by user with ID: bash_N. Output is being written to: ...
+  You are told when it ends; stop it with TaskStop."), fg_break for a stop; Bash goes through
+  shells_run_fg, a ! line through tools_run_fg; without the jobs, sys->run as before. Ctrl+B is
+  ignored with background tasks off. Fixtures: both sides added "slow" -- main's (Wait 30,
+  Ctrl+B / Esc) keeps tool_slow.sse and "slow"; this branch's (List SYS: ALL, 1 s timeout) is
+  tool_timelimit.sse, prompt "time limit" (claude_fixture.py, RULES.md). test_input_rest also
+  checks the Ctrl+B result is the shared move's. Gate: make test (all OK), make test-ref (149, 0
+  failed), timeout 900 make amiga rc 0.
+
 ## Audit counts
 
 Before (main 54c537e): have 173, partial 8, missing 32, N/A 34 (247 rows).

@@ -1146,6 +1146,10 @@ static void test_wp3_commands(void)
     repl_line(&r, "/help");
     for (i = 0; i < slash_nbuiltin; i++)
         CHECK(strstr(cn.screen.p, slash_builtin[i].name) != 0);
+    /* a name as long as the column keeps a gap before its help (the rig showed
+     * "/run-skill-generatorWrite a project skill ...") */
+    CHECK(strstr(cn.screen.p, "/run-skill-generatorWrite") == 0);
+    CHECK(strstr(cn.screen.p, "/run-skill-generator  Write") != 0);
     repl_line(&r, "/cd lib");
     CHECK(strstr(r.tools.root, "/wp3b/lib") != 0);
     CHECK(strstr(r.system, "/wp3b/lib") != 0);
@@ -1244,6 +1248,87 @@ static void test_wp1(void)
     CHECK(b && strstr(b, "{\"display\":\"also say hi\",") != 0);
     free(b);
     repl_free(&r);
+    cs_close();
+}
+
+/* ---- A4 input rest: the keys WP1 left out, through the REPL core ----
+ *
+ * The reachability test: repl_run on the screen. Claude's Bash runs in
+ * the foreground as a shells.c job the tool waits on through the screen
+ * (tools.wait -> ui_wait -> tui_wait); Ctrl+B typed while it runs leaves
+ * it running as bash_1 and Claude gets Claude Code's answer for that.
+ * A ! command goes the same way (ui.tools): bash_2. Alt+P opens the model
+ * picker without the line echoed as typed. The sentinel: the result texts
+ * in the requests, which only the moved-to-background path writes. */
+
+static cl_repl *ir_r;
+static const char **ir_keys;
+static const char ir_ctrl_b[] = "(ctrl+b once a command runs)";
+
+/* Ctrl+B "typed" only once a command waits in the foreground */
+static int ir_flips;
+static void ir_look(void)
+{
+    /* the first while Claude's Bash runs (one request out), the second
+     * while the ! command does (after the turn's second request) */
+    if (ir_keys[cs.next] == ir_ctrl_b && ir_r->tui && ir_r->tui->bgable && sb.nreq == (ir_flips ? 2 : 1)) {
+        ir_keys[cs.next] = "!\002";
+        ir_flips++;
+    }
+}
+
+static void test_input_rest(void)
+{
+    static const char *keys[] = {
+        "run the slow one\r", "1", ir_ctrl_b,   /* Bash asks, runs; Ctrl+B */
+        "!!sleep 20\r", ir_ctrl_b,              /* a ! command; Ctrl+B */
+        "\033p", "\033",                        /* Alt+P, the picker left */
+        "/exit\r", 0
+    };
+    static cl_repl r;
+    stub_reset();
+    add_stream("tool_fg.sse");
+    add_stream("tool_final.sse");
+    add_stream("text.sse");
+    cs_open(80, 24, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", dir), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    ir_r = &r;
+    ir_keys = keys;
+    ir_flips = 0;
+    cs.before_read = ir_look;
+    repl_run(&r);
+    cs.before_read = 0;
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, 8);                  /* every key used */
+    CHECK_INT(sb.nreq, 3);
+    /* Ctrl+B: the Bash call answered at once, the command left running */
+    CHECK(sb.nreq < 2 ||
+          strstr(sb.body[1], "\"tool_use_id\":\"toolu_01Foreground\",\"content\":\"Command was manually "
+                             "backgrounded by user with ID: bash_1.") != 0);
+    /* ... the same move as at the time limit (shells.c fg_move): a task Claude hears of when it ends */
+    CHECK(sb.nreq < 2 || strstr(sb.body[1], "You are told when it ends; stop it with TaskStop.") != 0);
+    /* the ! command: moved the same way, Claude told its id */
+    CHECK(sb.nreq < 3 || strstr(sb.body[2], "<bash-input>sleep 20</bash-input>\\n<bash-stdout>The command was "
+                                            "moved to the background with ID: bash_2") != 0);
+    CHECK(strstr(cs.sent.p, "Moved to the background as bash_2.") != 0);
+    /* Alt+P: the picker came, no "/model" line in the transcript */
+    CHECK(strstr(cs.sent.p, "Select a model") != 0);
+    CHECK(strstr(cs.sent.p, "/model") == 0);
+    repl_free(&r);                          /* the two shells stopped */
     cs_close();
 }
 
@@ -2818,6 +2903,55 @@ static void test_gaps_perm_menu(void)
     CHECK(cs_find("Allow: Read") >= 0 && cs_find("saved in") >= 0);
     repl_free(&r);
     cs_close();
+}
+
+/* An ask rule's question (policy.c, through repl_ask) takes Tab's comment
+ * as the tools' own question does: Yes with one -> the comment follows the
+ * call's result; No with one -> Claude is told it and the turn goes on. */
+static void rule_note_run(const char *const *keys, int nkeys, const char *want)
+{
+    static cl_repl r;
+    char root[600];
+    strcpy(root, dir);
+    strcat(root, "/rulenote");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, ".claude/settings.json", "{\"permissions\":{\"ask\":[\"Read\"]}}");
+    stub_reset();
+    add_stream("tool_use.sse");
+    add_stream("text.sse");
+    cs_open(80, 30, (const char **)keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+    CHECK_INT(cs.next, nkeys);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq < 2 || strstr(sb.body[1], want) != 0);
+    repl_free(&r);
+    cs_close();
+}
+
+static void test_rule_ask_comment(void)
+{
+    static const char *yes[] = { "show me the startup\r", "\t", "keep it short", "\r", "/exit\r", 0 };
+    static const char *no[] = { "show me the startup\r", "\033[B", "\033[B", "\t", "not that file", "\r",
+                                "/exit\r", 0 };
+    rule_note_run(yes, 5, "SetPatch QUIET\\n\\n\\nThe user allowed this call with a comment: keep it short");
+    rule_note_run(no, 7, "\"content\":\"the user declined this tool call and said: not that file\",\"is_error\":true");
 }
 
 /* Phase 3: skills, agents, styles, the status line (X1 X3 X4 X6 X8 X9) */
@@ -4681,6 +4815,7 @@ void suite_claude_repl(void)
     test_commands();
     test_screen();
     test_wp1();
+    test_input_rest();
     test_wp2();
     test_wp3();
     test_wp3_commands();
@@ -4691,6 +4826,7 @@ void suite_claude_repl(void)
     test_gaps_verbose();
     test_gaps_commands();
     test_gaps_perm_menu();
+    test_rule_ask_comment();
     test_gaps_ext();
     test_gaps_hooks();
     test_gaps_more();

@@ -6,8 +6,8 @@
  * next older line holding it (shown with the words in reverse), n / N
  * the next older / newer one; q, Esc, Ctrl+C or Ctrl+O leave. A line
  * scroll is one SU/SD and one row, a page a full draw; lines longer than
- * the window are cut (autowrap off), never wrapped. The window's size is
- * the one it had when the viewer opened.
+ * the window are cut (autowrap off), never wrapped. A window resized
+ * while it is open is followed: the same first line, its rows now.
  * Portable C89, host-tested on the engine (tests/test_claude_tui.c). */
 #include <stdlib.h>
 #include <string.h>
@@ -197,11 +197,34 @@ static void scroll(tv *v, int down)
     flush(v);
 }
 
+/* the region for the text rows, the status row below it */
+static void set_region(tv *v)
+{
+    char reg[24], n[12];
+    cl_copy(reg, "\033[1;", sizeof(reg));
+    cl_ltoa(v->h, n);
+    cl_cat(reg, n, sizeof(reg));
+    cl_cat(reg, "r", sizeof(reg));
+    put(v, reg);
+}
+
+/* the window changed size while the viewer is open: the same first line,
+ * the rows the window has now */
+static void follow_size(tv *v)
+{
+    if (!tui_resized(v->t))
+        return;
+    v->h = v->t->rows - 1;
+    clamp_top(v);
+    put(v, "\033[r\033[H\033[2J");
+    set_region(v);
+    draw(v);
+}
+
 void tui_transcript(cl_tui *t)
 {
     tv v;
     long i, k;
-    char reg[24], n[12];
     if (!t->started)
         return;
     memset(&v, 0, sizeof(v));
@@ -228,18 +251,15 @@ void tui_transcript(cl_tui *t)
     clamp_top(&v);
     t->n_views++;
     /* the alternate screen, autowrap off, the status row outside the region */
-    cl_copy(reg, "\033[1;", sizeof(reg));
-    cl_ltoa(v.h, n);
-    cl_cat(reg, n, sizeof(reg));
-    cl_cat(reg, "r", sizeof(reg));
     put(&v, "\033[?1049h\033[?25l\033[?7l");
-    put(&v, reg);
+    set_region(&v);
     draw(&v);
     for (;;) {
         cl_key k2;
         int r = tui_key(t, &k2, 500);
         if (r < 0)
             break;
+        follow_size(&v);
         if (!r)
             continue;
         if (v.typing) {

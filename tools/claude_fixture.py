@@ -20,8 +20,9 @@ stream (A2/A3, and the A4 WP2 tools):
     ticks a second apart, each an event between turns)
   - mentions "schedule"                               -> tool_cron.sse (CronCreate, once, the
     next minute: the prompt fires between turns)
-  - mentions "slow"                                   -> tool_slow.sse (Bash List SYS: ALL with a
-    1 s timeout: moved to the background, its end reported later)
+  - mentions "time limit"                             -> tool_timelimit.sse (Bash List SYS: ALL
+    with a 1 s timeout: moved to the background at its time limit, its end
+    reported later)
   - mentions "fetch"                                  -> tool_fetch.sse
     (WebFetch http://127.0.0.1:8080/page -- this server's own GET /page; on a
     real Amiga run with --bind <LAN address> and --page-host <that address>)
@@ -32,6 +33,8 @@ stream (A2/A3, and the A4 WP2 tools):
   - mentions "background"                             -> tool_bg.sse (Bash Wait 2 in
     the background, then BashOutput)
   - mentions "grep"                                   -> tool_grep.sse (Grep for the Set... commands in S)
+  - mentions "slow"                                   -> tool_slow.sse (Bash Wait 30 in the
+    foreground: Ctrl+B moves it to the background, Esc stops it)
   - mentions "edit"                                   -> tool_edit.sse
     (TodoWrite, Read and Edit claude-test.txt "hello" -> "hello from the
     Amiga": Echo hello >RAM:claude-test.txt, start Claude with ROOT=RAM:)
@@ -94,9 +97,9 @@ def pick(body, forced):
         return AFTER.get(results[-1].get("tool_use_id"), "tool_final")
     text = " ".join(b.get("text", "") for b in blocks if b.get("type") == "text").lower()
     for word, name in (("search the web", "tool_websearch"), ("monitor", "tool_monitor"), ("schedule", "tool_cron"),
-                       ("slow", "tool_slow"), ("fetch", "tool_fetch"), ("agent", "tool_task"),
+                       ("time limit", "tool_timelimit"), ("fetch", "tool_fetch"), ("agent", "tool_task"),
                        ("question", "tool_ask"), ("plan", "tool_enterplan"), ("background", "tool_bg"),
-                       ("grep", "tool_grep")):
+                       ("grep", "tool_grep"), ("slow", "tool_slow")):
         if word in text:
             return name
     if "edit" in text:
