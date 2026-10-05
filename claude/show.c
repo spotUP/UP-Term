@@ -21,11 +21,7 @@
 #define SGR0  "\033[0m"
 #define DIM   "\033[2m"
 #define BOLD  "\033[1m"
-#define RED   "\033[31m"
-#define GREEN "\033[32m"
-#define C_DEL "\033[97;41m"         /* removed lines: bright white on red */
-#define C_ADD "\033[30;42m"         /* added lines: black on green */
-#define C_ACCENT "\033[33m"
+#define TH    (s->t->th)           /* the colours (theme.h) */
 
 static const char *const names[T_COUNT] = { "Read", "List", "Search", "Write", "Update", "Run", "Update Todos" };
 
@@ -36,12 +32,30 @@ const char *show_name(int tool)
 
 /* ---- output helpers ---- */
 
+static void think_flush(cl_show *s);
+
 static void out(cl_show *s)
 {
     if (s->batch.n) {
         tui_lines(s->t, s->batch.p, s->batch.n);
         jw_reset(&s->batch);
     }
+}
+
+/* the batch to the screen only (a folded result: the viewer gets it whole) */
+static void out_screen(cl_show *s)
+{
+    s->t->nolog = 1;
+    out(s);
+    s->t->nolog = 0;
+}
+
+/* the batch to the transcript viewer only */
+static void out_log(cl_show *s)
+{
+    if (s->batch.n)
+        tui_log(s->t, s->batch.p, s->batch.n);
+    jw_reset(&s->batch);
 }
 
 static void raw(cl_show *s, const char *z)
@@ -173,6 +187,7 @@ static void md_start(cl_show *s)
     md_opts mo;
     if (s->md)
         return;
+    hl_theme_builtin(&s->th, TH->hl);
     vo_init(&s->vo, md_sink, s, VW_UTF8, 16, &s->th);
     mo.width = s->t->cols - 3;
     mo.urls = 1;
@@ -185,6 +200,7 @@ static void r_text(void *u, const char *p, long n)
 {
     cl_show *s = (cl_show *)u;
     s->n_text++;
+    think_flush(s);
     md_start(s);
     if (s->md)
         md_feed(s->md, p, n);
@@ -195,6 +211,7 @@ static void r_text(void *u, const char *p, long n)
 static void r_end(void *u)
 {
     cl_show *s = (cl_show *)u;
+    think_flush(s);
     if (!s->md)
         return;
     md_close(s->md);
@@ -220,10 +237,8 @@ void show_init(cl_show *s, cl_tui *t)
     jw_init(&s->line);
     jw_init(&s->batch);
     jw_init(&s->head);
-    jw_init(&s->fold);
+    jw_init(&s->think);
     s->tool = -1;
-    t->on_expand = show_expand;
-    t->eu = s;
 }
 
 void show_free(cl_show *s)
@@ -234,7 +249,7 @@ void show_free(cl_show *s)
     jw_free(&s->line);
     jw_free(&s->batch);
     jw_free(&s->head);
-    jw_free(&s->fold);
+    jw_free(&s->think);
 }
 
 /* ---- the program's own lines ---- */
@@ -253,15 +268,19 @@ void show_welcome(cl_show *s, const char *model, const char *root)
     rows[2] = "  /help for help, Shift+Tab for the permission mode";
     rows[3] = cwd;
     rows[4] = mod;
-    raw(s, SGR0 C_ACCENT G_TL);
+    raw(s, SGR0);
+    raw(s, TH->accent);
+    raw(s, G_TL);
     for (i = 2; i < w; i++)
         raw(s, G_H);
     raw(s, G_TR SGR0 "\n");
     for (k = 0; k < 5; k++) {
         int cw = 0;
-        raw(s, C_ACCENT G_V SGR0 " ");
+        raw(s, TH->accent);
+        raw(s, G_V SGR0 " ");
         if (!rows[k]) {
-            raw(s, C_ACCENT G_STAR SGR0 " Welcome to " BOLD "Claude" SGR0 " on the Amiga!");
+            raw(s, TH->accent);
+            raw(s, G_STAR SGR0 " Welcome to " BOLD "Claude" SGR0 " on the Amiga!");
             /* the star is one column; the words' widths counted, not guessed */
             cw = 1 + (int)(sizeof(" Welcome to ") - 1 + sizeof("Claude") - 1 + sizeof(" on the Amiga!") - 1);
         } else {
@@ -271,9 +290,11 @@ void show_welcome(cl_show *s, const char *model, const char *root)
             raw(s, " ");
             cw++;
         }
-        raw(s, C_ACCENT G_V SGR0 "\n");
+        raw(s, TH->accent);
+        raw(s, G_V SGR0 "\n");
     }
-    raw(s, C_ACCENT G_BL);
+    raw(s, TH->accent);
+    raw(s, G_BL);
     for (i = 2; i < w; i++)
         raw(s, G_H);
     raw(s, G_BR SGR0 "\n");
@@ -282,13 +303,24 @@ void show_welcome(cl_show *s, const char *model, const char *root)
 
 void show_user(cl_show *s, const char *p)
 {
+    think_flush(s);
     raw(s, "\n");
-    wrapped(s, DIM "> " SGR0, "  ", DIM, p, (long)strlen(p), s->t->cols - 3);
+    if ((p[0] == '!' || p[0] == '#') && p[1]) {
+        /* a ! command or a # memory, in its mode's colour */
+        char first[32];
+        cl_copy(first, p[0] == '!' ? TH->bash : TH->memory, sizeof(first));
+        cl_cat(first, p[0] == '!' ? "! " : "# ", sizeof(first));
+        cl_cat(first, SGR0, sizeof(first));
+        wrapped(s, first, "  ", "", p + 1, (long)strlen(p + 1), s->t->cols - 3);
+    } else {
+        wrapped(s, DIM "> " SGR0, "  ", DIM, p, (long)strlen(p), s->t->cols - 3);
+    }
     out(s);
 }
 
 void show_note(cl_show *s, const char *p)
 {
+    think_flush(s);
     wrapped(s, "  " DIM G_CORNER SGR0 "  ", "     ", "", p, (long)strlen(p), s->t->cols - 6);
     out(s);
 }
@@ -326,6 +358,7 @@ static void head_arg(jw *h, const char *in, long n, const char *key, const char 
 
 void show_tool(cl_show *s, int tool, const char *in, long inn, const char *what)
 {
+    think_flush(s);
     jw_reset(&s->head);
     s->tool = tool;
     s->head_out = 0;
@@ -423,7 +456,7 @@ static void diff_line(cl_show *s, long no, int nw, int sign, const char *p, long
     char num[16];
     int w = 0, width = s->t->cols - 5, d = digits(no);
     raw(s, "     ");
-    raw(s, sign == '-' ? C_DEL : sign == '+' ? C_ADD : DIM);
+    raw(s, sign == '-' ? TH->del : sign == '+' ? TH->add : DIM);
     while (d++ < nw) {
         raw(s, " ");
         w++;
@@ -447,8 +480,8 @@ static void diff_line(cl_show *s, long no, int nw, int sign, const char *p, long
 void show_preview(cl_show *s, int tool, const char *path, const char *before, long bn, const char *after,
                   long an)
 {
-    long nb, na, *bi, *ai, p = 0, q = 0, k, shown = 0, limit;
-    int nw;
+    long nb, na, *bi, *ai, p = 0, q = 0, k, shown, limit;
+    int nw, pass;
     (void)path;
     (void)tool;
     bi = line_index(before ? before : "", before ? bn : 0, &nb);
@@ -468,27 +501,35 @@ void show_preview(cl_show *s, int tool, const char *path, const char *before, lo
     s->adds = (int)(na - p - q);
     s->n_diffs++;
     head_out(s, "");
+    out(s);
     nw = digits(na > nb ? na : nb);
-    limit = s->t->expand ? 400 : before ? 24 : 12;
-    for (k = p - 3 < 0 ? 0 : p - 3; k < p; k++)
-        diff_line(s, k + 1, nw, ' ', before + bi[k * 2], bi[k * 2 + 1]);
-    for (k = p; k < nb - q && shown < limit; k++, shown++)
-        diff_line(s, k + 1, nw, '-', before + bi[k * 2], bi[k * 2 + 1]);
-    for (k = p; k < na - q && shown < limit; k++, shown++)
-        diff_line(s, k + 1, nw, '+', after + ai[k * 2], ai[k * 2 + 1]);
-    if (s->dels + s->adds > shown) {
-        char m[80], num[16];
-        cl_copy(m, "     " DIM "... ", sizeof(m));
-        cl_ltoa(s->dels + s->adds - shown, num);
-        cl_cat(m, num, sizeof(m));
-        cl_cat(m, " more lines" SGR0 "\n", sizeof(m));
-        raw(s, m);
+    /* folded for the screen, whole (to 400 lines) for the viewer */
+    for (pass = 0; pass < 2; pass++) {
+        limit = pass ? 400 : before ? 24 : 12;
+        shown = 0;
+        for (k = p - 3 < 0 ? 0 : p - 3; k < p; k++)
+            diff_line(s, k + 1, nw, ' ', before + bi[k * 2], bi[k * 2 + 1]);
+        for (k = p; k < nb - q && shown < limit; k++, shown++)
+            diff_line(s, k + 1, nw, '-', before + bi[k * 2], bi[k * 2 + 1]);
+        for (k = p; k < na - q && shown < limit; k++, shown++)
+            diff_line(s, k + 1, nw, '+', after + ai[k * 2], ai[k * 2 + 1]);
+        if (s->dels + s->adds > shown) {
+            char m[80], num[16];
+            cl_copy(m, "     " DIM "... ", sizeof(m));
+            cl_ltoa(s->dels + s->adds - shown, num);
+            cl_cat(m, num, sizeof(m));
+            cl_cat(m, pass ? " more lines" SGR0 "\n" : " more lines (ctrl+o to see them)" SGR0 "\n", sizeof(m));
+            raw(s, m);
+        }
+        for (k = 0; k < 3 && na - q + k < na; k++)
+            diff_line(s, na - q + k + 1, nw, ' ', after + ai[(na - q + k) * 2], ai[(na - q + k) * 2 + 1]);
+        if (pass)
+            out_log(s);
+        else
+            out_screen(s);
     }
-    for (k = 0; k < 3 && na - q + k < na; k++)
-        diff_line(s, na - q + k + 1, nw, ' ', after + ai[(na - q + k) * 2], ai[(na - q + k) * 2 + 1]);
     free(bi);
     free(ai);
-    out(s);
 }
 
 static long count_lines(const char *p, long n)
@@ -505,32 +546,38 @@ static void summary(cl_show *s, const char *style, const char *m)
     wrapped(s, "  " DIM G_CORNER SGR0 "  ", "     ", style, m, (long)strlen(m), s->t->cols - 6);
 }
 
-/* the body of a result, folded to SHOW_FOLD lines unless expanded */
+/* the body of a result: folded to SHOW_FOLD lines on the screen, whole
+ * (to 2000 lines) in the transcript viewer */
 static void body(cl_show *s, const char *p, long n, int first_corner)
 {
-    long nl = count_lines(p, n), k = 0, a = 0, limit = s->t->expand ? 400 : SHOW_FOLD;
-    jw_reset(&s->fold);
-    jw_raw(&s->fold, p, n);
-    s->folded = 0;
-    while (a < n && k < limit) {
-        long e = a;
-        int w = 0;
-        while (e < n && p[e] != '\n')
-            e++;
-        raw(s, first_corner && k == 0 ? "  " DIM G_CORNER SGR0 "  " : "     ");
-        text(&s->batch, p + a, e - a, s->t->cols - 6, &w);
-        raw(s, SGR0 "\n");
-        k++;
-        a = e + 1;
-    }
-    if (nl > k) {
-        char m[96], num[16];
-        cl_copy(m, "     " DIM "... +", sizeof(m));
-        cl_ltoa(nl - k, num);
-        cl_cat(m, num, sizeof(m));
-        cl_cat(m, " lines (ctrl+o to expand)" SGR0 "\n", sizeof(m));
-        raw(s, m);
-        s->folded = 1;
+    long nl = count_lines(p, n);
+    int pass;
+    out(s);
+    for (pass = 0; pass < 2; pass++) {
+        long k = 0, a = 0, limit = pass ? 2000 : SHOW_FOLD;
+        while (a < n && k < limit) {
+            long e = a;
+            int w = 0;
+            while (e < n && p[e] != '\n')
+                e++;
+            raw(s, first_corner && k == 0 ? "  " DIM G_CORNER SGR0 "  " : "     ");
+            text(&s->batch, p + a, e - a, pass ? -1 : s->t->cols - 6, &w);
+            raw(s, SGR0 "\n");
+            k++;
+            a = e + 1;
+        }
+        if (nl > k) {
+            char m[96], num[16];
+            cl_copy(m, "     " DIM "... +", sizeof(m));
+            cl_ltoa(nl - k, num);
+            cl_cat(m, num, sizeof(m));
+            cl_cat(m, pass ? " lines" SGR0 "\n" : " lines (ctrl+o to expand)" SGR0 "\n", sizeof(m));
+            raw(s, m);
+        }
+        if (pass)
+            out_log(s);
+        else
+            out_screen(s);
     }
 }
 
@@ -539,7 +586,10 @@ static void todos(cl_show *s, const char *in, long inn)
     jv v, arr, e, x;
     jit it;
     int k = 0;
-    raw(s, "\n" GREEN G_BULLET SGR0 " " BOLD "Update Todos" SGR0 "\n");
+    raw(s, "\n");
+    raw(s, TH->ok);
+    raw(s, G_BULLET SGR0 " " BOLD "Update Todos" SGR0 "\n");
+    tui_set_todos(s->t, in, inn);
     if (json_parse(in, inn, &v) || !json_get(v, "todos", &arr))
         return;
     json_iter(arr, &it);
@@ -549,9 +599,11 @@ static void todos(cl_show *s, const char *in, long inn)
         int w = 0;
         raw(s, k++ ? "     " : "  " DIM G_CORNER SGR0 "  ");
         if (json_get(e, "status", &x) && json_streq(x, "completed")) {
-            raw(s, GREEN G_CHECK SGR0 " " DIM);
+            raw(s, TH->ok);
+            raw(s, G_CHECK SGR0 " " DIM);
         } else if (json_get(e, "status", &x) && json_streq(x, "in_progress")) {
-            raw(s, C_ACCENT G_SQUARE SGR0 " " BOLD);
+            raw(s, TH->accent);
+            raw(s, G_SQUARE SGR0 " " BOLD);
         } else {
             raw(s, G_CIRCLE " ");
         }
@@ -570,7 +622,7 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
         out(s);
         return;
     }
-    head_out(s, is_error ? RED : GREEN);
+    head_out(s, is_error ? TH->err : TH->ok);
     if (is_error) {
         if (n >= 17 && !memcmp(p, "the user declined", 17))
             summary(s, DIM, "Declined.");
@@ -589,7 +641,7 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
             if (tool == T_RUN_COMMAND)
                 body(s, p, n, 1);
             else
-                summary(s, RED, m);
+                summary(s, TH->err, m);
         }
         s->tool = -1;
         out(s);
@@ -654,7 +706,8 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
             cl_copy(m, "Return code ", sizeof(m));
             cl_ltoa(rc, num);
             cl_cat(m, num, sizeof(m));
-            raw(s, "     " RED);
+            raw(s, "     ");
+            raw(s, TH->err);
             raw(s, m);
             raw(s, SGR0 "\n");
         }
@@ -668,25 +721,35 @@ void show_result(cl_show *s, int tool, const char *in, long inn, int is_error, c
     out(s);
 }
 
-void show_expand(void *u)
+/* ---- thinking ---- */
+
+void show_think(cl_show *s, const char *p, long n)
 {
-    cl_show *s = (cl_show *)u;
-    if (s->t->expand && s->folded && s->fold.n) {
-        long a = 0, n = s->fold.n, k = 0;
-        const char *p = s->fold.p;
-        raw(s, "  " DIM G_CORNER "  (the last result in full)" SGR0 "\n");
-        while (a < n && k < 2000) {
-            long e = a;
-            int w = 0;
-            while (e < n && p[e] != '\n')
-                e++;
-            raw(s, "     ");
-            text(&s->batch, p + a, e - a, s->t->cols - 6, &w);
-            raw(s, SGR0 "\n");
-            a = e + 1;
-            k++;
-        }
-        s->folded = 0;
-        out(s);
-    }
+    if (!s->think.n && s->t->io->ms)
+        s->think_t0 = s->t->io->ms(s->t->io->u);
+    jw_raw(&s->think, p, n);
+}
+
+/* a thinking block is over: one dim line on the screen, its text in the
+ * transcript viewer (Claude Code's "Thought for Ns (ctrl+o ...)") */
+static void think_flush(cl_show *s)
+{
+    char m[120], num[16];
+    long secs;
+    if (!s->think.n)
+        return;
+    secs = s->t->io->ms ? (long)((s->t->io->ms(s->t->io->u) - s->think_t0) / 1000) : 0;
+    cl_copy(m, "Thought for ", sizeof(m));
+    cl_ltoa(secs, num);
+    cl_cat(m, num, sizeof(m));
+    cl_cat(m, "s", sizeof(m));
+    raw(s, "\n" DIM G_STAR " ");
+    raw(s, m);
+    raw(s, " (ctrl+o to show thinking)" SGR0 "\n");
+    out_screen(s);
+    raw(s, "\n" DIM G_STAR " Thinking" SGR0 "\n");
+    wrapped(s, "  ", "  ", DIM, s->think.p, s->think.n, s->t->cols - 3);
+    out_log(s);
+    jw_reset(&s->think);
+    s->n_think++;
 }

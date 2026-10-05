@@ -3,7 +3,7 @@
  * Markdown drawn block by block while it streams (view/md.c's stream,
  * code in colour through view/hl_lex), tool calls as "<bullet> Name(args)"
  * with the result under a corner -- long results folded to a few lines
- * (Ctrl+O shows them whole), edits and writes as a numbered diff in red
+ * (Ctrl+O's transcript viewer shows them whole), edits and writes as a numbered diff in red
  * and green, the todo list as a checklist -- and the program's own notes.
  * Everything goes to the screen through tui_lines, a batch at a time.
  * Portable C89, host-tested on the engine (tests/test_claude_tui.c). */
@@ -30,11 +30,11 @@ typedef struct cl_show {
     int head_out;
     int adds, dels;             /* its preview's counts */
     char path[256];
-    /* the last folded result, whole, for Ctrl+O */
-    jw fold;
-    int folded;
+    /* the thinking block streaming in (shown when it is over) */
+    jw think;
+    unsigned long think_t0;
     /* how often each part ran (the reachability test's sentinel) */
-    long n_text, n_blocks, n_tools, n_diffs;
+    long n_text, n_blocks, n_tools, n_diffs, n_think;
 } cl_show;
 
 void show_init(cl_show *s, cl_tui *t);
@@ -51,8 +51,8 @@ void show_head(cl_show *s);
 void show_preview(cl_show *s, int tool, const char *path, const char *before, long bn, const char *after,
                   long an);
 void show_result(cl_show *s, int tool, const char *input, long inn, int is_error, const char *text, long n);
-/* Ctrl+O (tui's on_expand) */
-void show_expand(void *u);
+/* thinking text as it streams (A4 1.9) */
+void show_think(cl_show *s, const char *p, long n);
 /* the display name of a tool ("Read", "Update", ...) */
 const char *show_name(int tool);
 

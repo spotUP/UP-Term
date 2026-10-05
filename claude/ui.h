@@ -15,6 +15,9 @@
 #ifndef CL_UI_H
 #define CL_UI_H
 
+#include "sys.h"
+#include "json.h"
+
 typedef struct cl_io {
     void *u;
     /* one line of input without its newline: its length, -1 at the end */
@@ -36,7 +39,44 @@ typedef struct cl_io {
     int (*size)(void *u, int *cols, int *rows);
     /* raw mode on (1) or back as it was (0): 0, -1 refused */
     int (*raw)(void *u, int on);
+    /* A4: a file in the user's editor (Ctrl+G; raw mode is off
+     * meanwhile): 0 when the editor ran, -1 not; 0: no editor */
+    int (*edit)(void *u, const char *path);
 } cl_io;
+
+/* A4 (WP1) -- what the screen needs from the rest of the program. Each
+ * has a stub here; WP3 (config.c, memory.c, checkpoint.c) plugs in the
+ * real ones by setting the cl_ui fields before repl_screen():
+ *
+ *   settings   u->setting / u->set_setting / u->su: "theme" (theme.h
+ *              names), "editorMode" ("vim" or "normal"). Stub: none read,
+ *              /theme and /vim last for the session only.
+ *   memory     u->memory_files / u->memory_changed / u->mu: the files a
+ *              "# note" may go to, and the news that one changed (reload
+ *              the system prompt). Stub: <root>/CLAUDE.md (project) and
+ *              ENVARC:Claude/CLAUDE.md (user); no reload.
+ *   rewind     u->rw: the points Esc Esc's menu offers. Stub (input.c):
+ *              the user prompts of the conversation, conversation-only
+ *              restore (conv_rollback); checkpoint.c adds RW_CODE. */
+typedef struct cl_memfile {
+    char label[64];             /* "Project memory" */
+    char path[256];
+} cl_memfile;
+
+#define RW_CONV 1               /* the conversation can go back to that point */
+#define RW_CODE 2               /* the files can */
+
+typedef struct cl_rewind {
+    void *u;
+    /* the points, oldest first (each one is a user prompt) */
+    int (*count)(void *u);
+    /* point i's prompt text: 0, -1 */
+    int (*label)(void *u, int i, char *out, long cap);
+    /* RW_* point i can restore */
+    int (*can)(void *u, int i);
+    /* back to before point i (what: RW_CONV and/or RW_CODE): 0, -1 */
+    int (*restore)(void *u, int i, int what);
+} cl_rewind;
 
 typedef struct cl_render {
     void *u;
@@ -57,6 +97,18 @@ typedef struct cl_ui {
      * there instead of the line mode's text */
     struct cl_tui *tui;
     struct cl_show *show;
+    /* A4 (see above); ui_attach fills what is still unset */
+    char histfile[256];         /* the history file, "" none (main sets ENVARC:Claude/history) */
+    cl_sys *sys;
+    const char *root;
+    const char *(*setting)(void *u, const char *key);
+    void (*set_setting)(void *u, const char *key, const char *value);
+    void *su;
+    int (*memory_files)(void *u, cl_memfile *out, int max);
+    void (*memory_changed)(void *u, const char *path);
+    void *mu;
+    cl_rewind rw;
+    struct cl_conv *conv;       /* the rewind stub's */
 } cl_ui;
 
 void ui_init(cl_ui *u, cl_io *io);
@@ -87,5 +139,30 @@ int ui_poll(cl_ui *u);
 void ui_user(cl_ui *u, const char *line);
 /* a choice from a list (/model, /effort): its index, -1 none or no screen */
 int ui_pick(cl_ui *u, const char *title, const char *const *opt, int n, int sel);
+
+/* ---- A4 (WP1) ---- */
+/* The program's parts the screen's features use: the history loaded into
+ * the box, @-completion, the rewind menu, the theme and vim mode from the
+ * settings. repl_screen calls it once the screen started. */
+void ui_attach(cl_ui *u, cl_sys *sys, const char *root, struct cl_conv *conv);
+/* Thinking text as it streams (the transcript viewer shows it) */
+void ui_thinking(cl_ui *u, const char *s, long n);
+/* After a tool round: the plain prompts typed ahead meanwhile, joined by
+ * newlines into out and echoed; 1 when there were any (they go into the
+ * same turn, as Claude Code's queue does) */
+int ui_take_queued(cl_ui *u, jw *out);
+/* What a line typed at the prompt is (input.c): */
+enum { IN_PASS, IN_SEND, IN_DONE };
+/* IN_PASS -- not one of these, the REPL goes on with it as it is;
+ * IN_SEND -- send out as the prompt instead (! ran a command: its output
+ *            for Claude; @path mentions: the files' text attached);
+ * IN_DONE -- handled here (# memory, /theme, /vim). */
+int ui_input(cl_ui *u, const char *line, jw *out);
+/* Esc Esc on an empty box: the rewind menu */
+void ui_rewind(cl_ui *u);
+/* input.c: Tab after @ -- the paths starting with tok, from the start
+ * directory (u: the cl_ui); the rewind menu's stub source */
+int input_complete(void *u, const char *tok, char out[][128], int max);
+void input_rewind_stub(cl_ui *u);
 
 #endif
