@@ -52,7 +52,29 @@ static int bash(cl_ui *u, const char *cmd, jw *out)
     if (u->show)
         u->show->tool = -1;     /* the result goes under the "! cmd" line, no header */
     ui_status(u, "Running");
-    r = u->sys->run(u->sys->u, cmd, 120, buf, BASH_OUT, &n, &rc);
+    if (u->tools && u->tools->wait) {
+        /* as Bash runs: Esc stops it, Ctrl+B leaves it running */
+        char id[24];
+        ui_busy(u, 1);
+        r = tools_run_fg(u->tools, cmd, 120, buf, BASH_OUT, &n, &rc, id, sizeof(id));
+        ui_busy(u, 0);
+        if (r == SHELL_MOVED) {
+            char m[120];
+            free(buf);
+            cl_copy(m, "Moved to the background as ", sizeof(m));
+            cl_cat(m, id, sizeof(m));
+            cl_cat(m, ".", sizeof(m));
+            ui_line(u, m);
+            jw_rawz(out, "<bash-input>");
+            jw_rawz(out, cmd);
+            jw_rawz(out, "</bash-input>\n<bash-stdout>The command was moved to the background with ID: ");
+            jw_rawz(out, id);
+            jw_rawz(out, " (BashOutput reads its output).</bash-stdout><bash-stderr></bash-stderr>");
+            return IN_SEND;
+        }
+    } else {
+        r = u->sys->run(u->sys->u, cmd, 120, buf, BASH_OUT, &n, &rc);
+    }
     ui_status_clear(u);
     if (r == -1 || r == SYS_BREAK || r == SYS_TIMEOUT) {
         const char *why = r == SYS_BREAK ? "Stopped." : r == SYS_TIMEOUT ? "Timed out after 120 seconds." : 0;
@@ -433,6 +455,47 @@ static int comp_one(void *c, const cl_dirent *e)
     return 0;
 }
 
+/* a directory's names into the screen's cache (tui_dir) */
+static int cache_one(void *c, const cl_dirent *e)
+{
+    tui_dir *d = (tui_dir *)c;
+    if (d->n >= TUI_DIR_NAMES)
+        return 1;
+    jw_rawz(&d->names, e->name);
+    if (e->dir)
+        jw_raw(&d->names, "/", 1);
+    jw_raw(&d->names, "", 1);
+    d->n++;
+    return 0;
+}
+
+/* The list as the screen asks for it per key: the directory read once a
+ * prompt (68020 and a floppy: a listing per key would be seconds), the
+ * names filtered from the copy */
+static void cached(cl_ui *u, const char *full, comp *k)
+{
+    tui_dir *d = tui_dir_get(u->tui, full);
+    const char *p, *e;
+    if (!d) {
+        d = tui_dir_put(u->tui, full);
+        u->sys->list(u->sys->u, full, cache_one, d);
+    }
+    p = d->names.p;
+    e = p ? p + d->names.n : 0;
+    while (p && p < e && k->n < k->max) {
+        cl_dirent de;
+        long l = (long)strlen(p);
+        memset(&de, 0, sizeof(de));
+        cl_copy(de.name, p, sizeof(de.name));
+        if (l && de.name[l - 1] == '/') {
+            de.name[l - 1] = 0;
+            de.dir = 1;
+        }
+        comp_one(k, &de);
+        p += l + 1;
+    }
+}
+
 int input_complete(void *uu, const char *tok, char out[][128], int max)
 {
     cl_ui *u = (cl_ui *)uu;
@@ -455,7 +518,10 @@ int input_complete(void *uu, const char *tok, char out[][128], int max)
     k.out = out;
     k.n = 0;
     k.max = max;
-    u->sys->list(u->sys->u, full, comp_one, &k);
+    if (u->tui)
+        cached(u, full, &k);
+    else
+        u->sys->list(u->sys->u, full, comp_one, &k);
     return k.n;
 }
 

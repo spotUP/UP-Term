@@ -59,6 +59,10 @@ int perm_refused(const cl_perm *p, int tool);
 /* the user chose "always this session" */
 void perm_grant(cl_perm *p, int tool);
 
+/* wait()'s answers: go on waiting, stop the command (Esc, Ctrl+C), move
+ * it to the background (Ctrl+B, Ctrl+Enter) */
+enum { TW_GO, TW_STOP, TW_BACKGROUND };
+
 /* choose() flags */
 #define CH_MULTI 1              /* several options may be picked */
 #define CH_OTHER 2              /* the user may type an answer of their own */
@@ -113,6 +117,11 @@ typedef struct cl_tools {
                   const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap);
     /* optional: a plan (ExitPlanMode), Markdown, shown whole */
     void (*plan)(void *u, const char *text, long n);
+    /* optional (the screen): while a Bash command runs in the foreground,
+     * the user's keys for up to ms: TW_*. Set, the command runs as a
+     * background shell the tool waits on, so Ctrl+B can leave it running
+     * (Claude Code's "move to the background"); unset, sys->run. */
+    int (*wait)(void *u, long ms);
     int stop;                   /* ASK_STOP was answered this round (reset by the caller) */
     int cur;                    /* the tool being run (the result hook's) */
     const char *cur_in;
@@ -123,6 +132,16 @@ typedef struct cl_tools {
 int tools_init(cl_tools *t);
 /* background shells killed, everything freed */
 void tools_free(cl_tools *t);
+
+/* A command in the foreground (Bash, a ! line), shells.c: with t->wait it
+ * runs as a background shell the user can stop (Esc, Ctrl+C) or leave
+ * running (Ctrl+B): sys->run's results (0, -1, SYS_TIMEOUT, SYS_BREAK),
+ * or SHELL_MOVED with its id ("bash_N") in id. A command that does not
+ * end after a break is kept as a shell too: id set, SYS_*. Without
+ * t->wait: sys->run. */
+#define SHELL_MOVED 1
+int tools_run_fg(cl_tools *t, const char *cmd, int secs, char *out, long cap, long *outn, long *rc, char *id,
+                 long idcap);
 
 /* The "tools" array of a request body for that model (web_search's
  * version depends on it); built once, kept in t->json. */

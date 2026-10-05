@@ -28,9 +28,13 @@ void ed_free(cl_edit *e)
         free(e->hist[i]);
     for (i = 0; i < e->nundo; i++)
         free(e->undo[i].b);
+    for (i = 0; i < e->nring; i++)
+        free(e->ring[i]);
     free(e->b);
     free(e->draft);
     free(e->kill);
+    free(e->vrec);
+    free(e->vdot);
     memset(e, 0, sizeof(*e));
 }
 
@@ -65,9 +69,11 @@ void ed_clear(cl_edit *e)
         e->undo[e->nundo].b = 0;
     }
     e->lastk = 0;
+    e->yanked = 0;
     if (e->vim)
         e->vim = VIM_INSERT;    /* a new prompt starts in INSERT, as Claude Code's */
     e->vcount = e->vopcount = e->vop = e->vpend = 0;
+    e->vrecon = 0;
 }
 
 void ed_set(cl_edit *e, const char *s)
@@ -90,6 +96,19 @@ void ed_insert(cl_edit *e, const char *s, long n)
     e->cur += n;
 }
 
+void ed_ring_add(cl_edit *e, const char *s, long n)
+{
+    char *d = dup(s, n);
+    if (!d)
+        return;
+    if (e->nring == ED_RING) {
+        free(e->ring[0]);
+        memmove(e->ring, e->ring + 1, sizeof(e->ring[0]) * (ED_RING - 1));
+        e->nring--;
+    }
+    e->ring[e->nring++] = d;
+}
+
 void ed_cut(cl_edit *e, long a, long z, int keep)
 {
     if (z <= a)
@@ -97,6 +116,8 @@ void ed_cut(cl_edit *e, long a, long z, int keep)
     if (keep) {
         free(e->kill);
         e->kill = dup(e->b + a, z - a);
+        e->kill_lines = 0;
+        ed_ring_add(e, e->b + a, z - a);
     }
     memmove(e->b + a, e->b + z, (size_t)(e->n - z) + 1);
     e->n -= z - a;
@@ -238,6 +259,7 @@ void ed_snap(cl_edit *e)
     e->undo[e->nundo].b = d;
     e->undo[e->nundo].cur = e->cur;
     e->nundo++;
+    e->nsnap++;
 }
 
 int ed_undo(cl_edit *e)
@@ -263,7 +285,7 @@ static int changes(const cl_key *k)
     case K_DEL:
         return 1;
     case K_ALT:
-        return k->ch == 0x7f || k->ch == 'd';
+        return k->ch == 0x7f || k->ch == 'd' || k->ch == 'y';
     case K_CTRL:
         return k->ch == 'k' || k->ch == 'u' || k->ch == 'w' || k->ch == 'h' || k->ch == 'y' || k->ch == 'd';
     default:
@@ -277,17 +299,26 @@ int ed_key(cl_edit *e, const cl_key *k)
 {
     int r, snapped = 0;
     long n0 = e->n, c0 = e->cur;
-    if (e->vim == VIM_NORMAL) {
-        r = vim_normal(e, k);
-        if (r >= 0)
+    if (!(k->k == K_CTRL && k->ch == 'y') && !(k->k == K_ALT && k->ch == 'y'))
+        e->yanked = 0;
+    if (e->vim != VIM_OFF)
+        vim_record(e, k);
+    if (e->vim == VIM_NORMAL || e->vim == VIM_VISUAL || e->vim == VIM_VLINE) {
+        r = e->vim == VIM_NORMAL ? vim_normal(e, k) : vim_visual(e, k);
+        if (r >= 0) {
+            vim_after(e);
             return r;
+        }
     } else if (e->vim == VIM_INSERT && k->k == K_ESC) {
         vim_escape(e);
         return 1;
     }
     if (k->k == K_CTRL && k->ch == '_') {
         ed_undo(e);
+        if (e->vim == VIM_VISUAL || e->vim == VIM_VLINE)
+            e->vim = VIM_NORMAL;
         e->lastk = 0;
+        vim_after(e);
         return 1;
     }
     /* typed characters in a row undo as one; in vim the command that
@@ -301,9 +332,42 @@ int ed_key(cl_edit *e, const cl_key *k)
         /* nothing changed: no undo step */
         free(e->undo[--e->nundo].b);
         e->undo[e->nundo].b = 0;
+        e->nsnap--;
     }
     e->lastk = changes(k) ? k->k : 0;
+    if (e->vim != VIM_OFF)
+        vim_after(e);
     return r;
+}
+
+/* Ctrl+Y: the last kill (vim: the register); Alt+Y right after: the
+ * pasted text replaced by the next older kill, round the ring */
+static void yank(cl_edit *e)
+{
+    long a = e->cur;
+    if (!e->kill)
+        return;
+    ed_insert(e, e->kill, (long)strlen(e->kill));
+    e->ya = a;
+    e->yz = e->cur;
+    e->yidx = e->nring && !strcmp(e->ring[e->nring - 1], e->kill) ? 0 : -1;
+    e->yanked = 1;
+}
+
+static void yank_pop(cl_edit *e)
+{
+    int next;
+    const char *s;
+    if (!e->yanked || !e->nring || e->ya > e->yz || e->yz > e->n)
+        return;
+    next = e->yidx + 1 < e->nring ? e->yidx + 1 : 0;
+    s = e->ring[e->nring - 1 - next];
+    ed_cut(e, e->ya, e->yz, 0);
+    e->cur = e->ya;
+    ed_insert(e, s, (long)strlen(s));
+    e->yz = e->cur;
+    e->yidx = next;
+    e->yanked = 1;
 }
 
 static int edit_key(cl_edit *e, const cl_key *k)
@@ -387,6 +451,10 @@ static int edit_key(cl_edit *e, const cl_key *k)
             ed_cut(e, e->cur, word_fwd(e, e->cur), 1);
             return 1;
         }
+        if (k->ch == 'y') {
+            yank_pop(e);
+            return 1;
+        }
         return 0;
     case K_CTRL:
         switch (k->ch) {
@@ -425,8 +493,7 @@ static int edit_key(cl_edit *e, const cl_key *k)
             ed_cut(e, ed_prev(e, e->cur), e->cur, 0);
             return 1;
         case 'y':
-            if (e->kill)
-                ed_insert(e, e->kill, (long)strlen(e->kill));
+            yank(e);
             return 1;
         case 'p':
             ed_hist_go(e, e->hpos - 1);

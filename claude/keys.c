@@ -57,8 +57,11 @@ static int set(cl_key *key, int kind, unsigned long ch, int mods)
  * CSI 27;mods;code ~); mods as KM_* */
 static int code_key(cl_key *key, long code, int mods)
 {
-    if (code == 13 || code == 57414)        /* Return, keypad Enter */
-        return set(key, (mods & (KM_SHIFT | KM_ALT | KM_CTRL)) ? K_NEWLINE : K_ENTER, 0, mods);
+    if (code == 13 || code == 57414) {      /* Return, keypad Enter */
+        if ((mods & (KM_SHIFT | KM_ALT | KM_CTRL)) == KM_CTRL)
+            return set(key, K_ENTER, 0, mods);  /* Ctrl+Enter: send what is queued now */
+        return set(key, (mods & (KM_SHIFT | KM_ALT)) ? K_NEWLINE : K_ENTER, 0, mods);
+    }
     if (code == 27)
         return set(key, K_ESC, 0, mods);
     if (code == 9)

@@ -1305,7 +1305,7 @@ done:
 
 static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
 {
-    char what[300], num[16];
+    char what[300], num[16], shell[24];
     char *cmd = tl_prop(in, "command", 0), *buf;
     long n = 0, rc = 0, ms = tl_num(in, "timeout", 0);
     int r, secs;
@@ -1331,11 +1331,22 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "out of memory", 0);
         return;
     }
-    r = t->sys->run(t->sys->u, cmd, secs, buf, TL_OUT_MAX, &n, &rc);
+    r = tools_run_fg(t, cmd, secs, buf, TL_OUT_MAX, &n, &rc, shell, sizeof(shell));
     free(cmd);
     if (r == -1) {
         free(buf);
         tl_error(t, out, id, "the command did not start: ", t->sys->err(t->sys->u));
+        return;
+    }
+    if (r == SHELL_MOVED) {
+        /* Ctrl+B: the user moved it to the background */
+        free(buf);
+        jw_init(&res);
+        jw_rawz(&res, "Command was manually backgrounded by user with ID: ");
+        jw_rawz(&res, shell);
+        jw_rawz(&res, ". Read its output with BashOutput, stop it with KillShell.");
+        tl_result(t, out, id, res.p, res.n, 0);
+        jw_free(&res);
         return;
     }
     jw_init(&res);
@@ -1346,6 +1357,13 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         jw_rawz(&res, " s) and was sent a break (Ctrl+C).\n");
     } else if (r == SYS_BREAK)
         jw_rawz(&res, "The user stopped the command (Ctrl+C).\n");
+    if (shell[0]) {
+        jw_rawz(&res, "It did not end after the break; it runs on as the background shell ");
+        jw_rawz(&res, shell);
+        jw_rawz(&res, ".\n");
+    }
+    if (r == SYS_BREAK && t->wait)
+        t->stop = 1;                /* stopped from the screen: the user says what next */
     jw_rawz(&res, "Return code ");
     cl_ltoa(rc, num);
     jw_rawz(&res, num);

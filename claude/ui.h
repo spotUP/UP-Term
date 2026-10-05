@@ -109,6 +109,9 @@ typedef struct cl_ui {
     void *mu;
     cl_rewind rw;
     struct cl_conv *conv;       /* the rewind stub's */
+    /* the tools (a ! command runs as they run Bash: Ctrl+B moves it to
+     * the background); 0: sys->run */
+    struct cl_tools *tools;
 } cl_ui;
 
 void ui_init(cl_ui *u, cl_io *io);
@@ -169,6 +172,9 @@ enum { IN_PASS, IN_SEND, IN_DONE };
 int ui_input(cl_ui *u, const char *line, jw *out);
 /* Esc Esc on an empty box: the rewind menu */
 void ui_rewind(cl_ui *u);
+/* While a command runs in the foreground: the user's keys for up to ms
+ * (tools.h TW_GO / TW_STOP / TW_BACKGROUND); the line mode only sleeps */
+int ui_wait(cl_ui *u, long ms);
 /* input.c: Tab after @ -- the paths starting with tok, from the start
  * directory (u: the cl_ui); the rewind menu's stub source */
 int input_complete(void *u, const char *tok, char out[][128], int max);

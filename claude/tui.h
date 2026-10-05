@@ -21,7 +21,12 @@
  * @-paths, the type-ahead queue while a turn runs, Esc Esc (clear, or the
  * rewind menu), Ctrl+O's transcript viewer (tview.c), Ctrl+T's todo list,
  * Ctrl+L, Ctrl+G (the external editor), vim mode, themes (theme.h), and
- * the bell / OSC 9 / window title notifications.
+ * the bell / OSC 9 / window title notifications. And (A4 input rest):
+ * the @ list as the path is typed (directories cached per prompt; in bash
+ * mode for a token with '/', Tab on a command from earlier ! commands),
+ * Ctrl+S's stash, Ctrl+Enter / Ctrl+X Ctrl+S (send the queue now),
+ * Ctrl+B (a foreground command to the background: tui_wait), ?'s
+ * shortcuts panel, Alt+P (the model picker), vim's visual selection.
  * Portable C89 over cl_io; host-tested against the engine
  * (tests/test_claude_tui.c). */
 #ifndef CL_TUI_H
@@ -43,8 +48,20 @@
 #define TUI_LOG_MAX 196608L     /* the transcript viewer's text at most */
 #define TUI_TODOS 5             /* Ctrl+T: the todo list's rows */
 
+#define TUI_DIRS 4              /* directory listings kept for the @ list */
+#define TUI_DIR_NAMES 400       /* names kept from one directory at most */
+
 /* what the box holds: a prompt, a ! command, a # memory */
 enum { BOX_PROMPT, BOX_BASH, BOX_MEMORY };
+
+/* one directory's names for the @ list: "name\0" each ("name/\0" a
+ * directory), as listed */
+typedef struct tui_dir {
+    char path[256];             /* "" a free slot */
+    jw names;
+    int n;
+    unsigned long epoch;        /* the prompt it was read for */
+} tui_dir;
 
 typedef struct cl_cmd {
     const char *name;           /* "/help" */
@@ -114,10 +131,32 @@ typedef struct cl_tui {
     char sq[96];
     int sidx;
     char *saved;                /* the text before the search */
-    /* the @-completion list */
+    /* the @-completion list: open while the token at the cursor is an
+     * "@path" (in bash mode: a token holding '/'), narrowed per key */
     char comp[TUI_COMP][128];
     int ncomp, csel, copen;
     long ctok;                  /* the token's start in the text */
+    int cskip;                  /* 1: an '@' before the path (bash mode: 0) */
+    int cclosed;                /* Esc closed the list until the text changes */
+    /* the directories the list read (input.c fills them): one disk read
+     * each per prompt typed; a submitted prompt (epoch) makes them old */
+    tui_dir dirs[TUI_DIRS];
+    int dir_next;
+    unsigned long epoch;
+    long n_lists;               /* directory reads (tests: the cache) */
+    /* Ctrl+S: the prompt put aside */
+    char *stash;
+    long stash_cur;
+    int stash_box;
+    /* Ctrl+B / Ctrl+Enter: a command runs in the foreground that may move
+     * to the background (bgable), and the user asked for it (bg_req) */
+    int bgable, bg_req;
+    /* ?: the shortcuts panel under the box */
+    int show_help;
+    /* the line tui_read returned came from a key (Alt+P), not typed */
+    int keycmd;
+    /* a menu's option Shift+Tab chooses (-1 none); tui_menu resets it */
+    int m_btab;
     /* type-ahead */
     char *queue[TUI_QUEUE];
     int nq;
@@ -199,5 +238,17 @@ char *tui_dequeue(cl_tui *t, int plain_only);
 void tui_set_text(cl_tui *t, const char *s);
 /* the todo list for Ctrl+T, from a todo_write input */
 void tui_set_todos(cl_tui *t, const char *json, long n);
+/* While a command runs in the foreground (Bash, a ! line): keys read for
+ * up to ms (type-ahead, Esc, Ctrl+B, Ctrl+Enter), the spinner turned.
+ * TW_GO, TW_STOP (Esc, Ctrl+C, the end of input) or TW_BACKGROUND
+ * (Ctrl+B, or Ctrl+Enter with messages to send): tools.h. */
+int tui_wait(cl_tui *t, long ms);
+/* the window's size read again: 1 when it changed (the screen will be
+ * drawn whole) */
+int tui_resized(cl_tui *t);
+/* the @ list's cached listing of a directory (full: its path as read):
+ * the slot, or 0 when it must be read (tui_dir_put then) */
+tui_dir *tui_dir_get(cl_tui *t, const char *full);
+tui_dir *tui_dir_put(cl_tui *t, const char *full);
 
 #endif

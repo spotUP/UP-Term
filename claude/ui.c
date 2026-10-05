@@ -204,6 +204,8 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
         tui_title(u->tui, "Claude - needs your permission");
         tui_notify(u->tui, note);
     }
+    if (n == 3 && (tool == T_EDIT || tool == T_MULTIEDIT || tool == T_WRITE))
+        u->tui->m_btab = 1;         /* a file's: Shift+Tab allows it for the session */
     c = tui_menu(u->tui, tools_title(tool), q, opt, n, 0, n - 1);
     tui_title(u->tui, u->tui->busy ? "Claude - working" : "Claude");
     if (c < 0)
@@ -306,6 +308,15 @@ void ui_attach(cl_ui *u, cl_sys *sys, const char *root, struct cl_conv *conv)
         ed_set_vim(&t->ed, 1);
     t->full = 1;
     tui_frame(t);
+}
+
+int ui_wait(cl_ui *u, long ms)
+{
+    if (u->tui)
+        return tui_wait(u->tui, ms);
+    if (u->io->sleep && u->io->sleep(u->io->u, ms))
+        return TW_STOP;
+    return TW_GO;
 }
 
 void ui_thinking(cl_ui *u, const char *s, long n)

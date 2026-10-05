@@ -385,6 +385,11 @@ static int tool_ask(void *u, const char *tool, const char *what, int outside)
     return ui_ask(&r->ui, r->tools.cur, tool, what, outside);
 }
 
+static int tool_wait(void *u, long ms)
+{
+    return ui_wait(&((cl_repl *)u)->ui, ms);
+}
+
 static void tool_preview(void *u, int tool, const char *path, const char *before, long bn, const char *after,
                          long an)
 {
@@ -1239,8 +1244,8 @@ void repl_run(cl_repl *r)
             long n = tui_read(r->tui, line, 8192);
             if (n < 0)
                 break;
-            if (!r->await_key)
-                ui_user(&r->ui, line);
+            if (!r->await_key && !r->tui->keycmd)
+                ui_user(&r->ui, line);  /* (not a key's command: Alt+P) */
             if (repl_line(r, line))
                 break;
         }
@@ -1299,6 +1304,8 @@ int repl_screen(cl_repl *r)
     r->ui.show = s;
     show_render(s, &r->render);
     ui_attach(&r->ui, r->sys, r->tools.root, &r->conv);    /* A4: history, @, rewind, settings */
+    r->tools.wait = tool_wait;      /* Bash and ! lines: Esc, Ctrl+B while they run */
+    r->ui.tools = &r->tools;
     ctx_show(r);
     tui_frame(t);
     return 0;
