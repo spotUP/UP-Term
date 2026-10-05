@@ -7,9 +7,14 @@
                                  INPUT takes Intuition pointer units -- twice the lines of a
                                  non-interlaced screen -- while UITREE gives screen pixels;
                                  needs DCT:ptrpos)"""
-import socket, struct, sys, zlib
+import os, socket, struct, sys, zlib
 
-HOST, PORT, TOKEN = '127.0.0.1', 7846, b'rigtoken'
+# the emulator by default; a real Amiga running amiagent (the Replay, with
+# the Up Rough network kit) with AMI_HOST and AMI_TOKEN (its Install-Agent
+# token: never in this repo) set in the environment
+HOST = os.environ.get('AMI_HOST', '127.0.0.1')
+PORT = int(os.environ.get('AMI_PORT', '7846'))
+TOKEN = os.environ.get('AMI_TOKEN', 'rigtoken').encode()
 
 def req(code, payload=b'', timeout=150):
     s = socket.create_connection((HOST, PORT), timeout=timeout)
