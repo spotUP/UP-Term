@@ -80,6 +80,17 @@ const char *agent_model_id(const char *a)
     return a;
 }
 
+const cl_agent *tools_agent(const cl_tools *t, const char *name)
+{
+    int i, n = agent_count(t);
+    for (i = 0; i < n; i++) {
+        const cl_agent *x = agent_get(t, i);
+        if (x && cl_strieq(x->name, name))
+            return x;
+    }
+    return 0;
+}
+
 /* the text blocks of an answer, appended to w */
 static void answer_text(cl_stream *st, jw *w)
 {
@@ -137,8 +148,7 @@ int agent_query(cl_tools *t, const char *model, const char *system, const char *
     return 0;
 }
 
-/* the tools a definition names ("Read, Grep" or "Bash(git:*) Read"): a bit set */
-static unsigned long tool_mask(const char *list)
+unsigned long tools_mask(const char *list)
 {
     unsigned long m = 0;
     const char *p = list;
@@ -159,6 +169,8 @@ static unsigned long tool_mask(const char *list)
                 p++;
         }
         id = tools_id(name);
+        if (id < 0 && !strcmp(name, "Agent"))
+            id = T_TASK;            /* Claude Code's newer name of Task */
         if (id >= 0)
             m |= 1ul << id;
         else if (!strcmp(name, "WebSearch"))
@@ -200,13 +212,7 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
     }
     pn = (long)strlen(prompt);
     n = agent_count(t);
-    for (i = 0; i < n; i++) {
-        const cl_agent *x = agent_get(t, i);
-        if (x && cl_strieq(x->name, type)) {
-            a = x;
-            break;
-        }
-    }
+    a = tools_agent(t, type);
     if (t->show)
         t->show(t->u, "Task", desc);
     if (!a) {
@@ -233,7 +239,7 @@ void agent_task(cl_tools *t, jw *out, const char *id, jv in)
     child.depth = 1;
     child.json = 0;
     child.stop = 0;
-    mask = tool_mask(a->tools);
+    mask = tools_mask(a->tools);
     child.allowed = t->allowed & mask & ~((1ul << T_TASK) | (1ul << T_ASK_USER) | (1ul << T_EXIT_PLAN) |
                                           (1ul << T_ENTER_PLAN));
     child.web_search = t->web_search && (mask & (1ul << T_COUNT)) != 0;

@@ -179,6 +179,7 @@ int pol_pre(cl_repl *r, const char *id, const char *name, int input_ok, const ch
     if (d == RULE_DENY) {
         char m[500];
         r->n_rule_deny++;
+        repl_denied(r, name, raw, rawn);
         cl_copy(m, "Permission to use ", sizeof(m));
         cl_cat(m, cc, sizeof(m));
         cl_cat(m, " has been denied", sizeof(m));
@@ -195,18 +196,15 @@ int pol_pre(cl_repl *r, const char *id, const char *name, int input_ok, const ch
     }
     if (d == RULE_ASK) {
         int tid = tools_id(name);
-        d = RULE_NONE;              /* tools_run asks as usual */
+        /* tools_run asks as usual (RULE_ASK kept: an explicit ask rule,
+         * which bypassPermissions does not answer) */
         if (tid >= 0 && !perm_refused(&r->tools.perm, tid) && !perm_must_ask(&r->tools.perm, tid, 0)) {
             /* it would run without a question: the rule asks */
             int ans;
-            char m[200];
             r->tools.cur = tid;
             r->tools.cur_in = raw;
             r->tools.cur_inn = rawn;
-            cl_copy(m, "Claude needs your permission to use ", sizeof(m));
-            cl_cat(m, cc, sizeof(m));
-            pol_notify(r, m);
-            ans = ui_ask(&r->ui, tid, name, what, 0);
+            ans = repl_ask(r, tid, name, what, 0, 1);
             if (ans == ASK_NO || ans == ASK_STOP) {
                 if (ans == ASK_STOP)
                     r->tools.stop = 1;

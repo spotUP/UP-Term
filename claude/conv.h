@@ -20,6 +20,14 @@ typedef struct cl_msg {
     long n;
 } cl_msg;
 
+/* one model's share of the usage (print mode's modelUsage, A4 WP4) */
+#define CONV_MODELS 6
+typedef struct cl_model_use {
+    char model[48];
+    long in, out, cache_w, cache_r;
+    unsigned long cost_micro;
+} cl_model_use;
+
 typedef struct cl_conv {
     cl_msg *m;
     int n, cap;
@@ -27,6 +35,8 @@ typedef struct cl_conv {
     long in_tok, out_tok, cache_w, cache_r;
     unsigned long cost_micro;   /* US dollars * 1e6, the priced requests */
     int unpriced;               /* requests on a model without a price here */
+    cl_model_use mu[CONV_MODELS];   /* per model, in the order first used (the rest in the last) */
+    int nmu;
 } cl_conv;
 
 typedef struct cl_mark {

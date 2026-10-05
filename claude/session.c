@@ -171,6 +171,13 @@ int sess_save(cl_session *s, const cl_conv *c)
         jw_rawz(&w, "{\"type\":\"session\",\"id\":");
         jw_strz(&w, s->id);
         jw_rawz(&w, ",\"version\":1}\n");
+        if (s->title[0]) {
+            /* named before the first save (-n, an early /rename): the file
+             * keeps the name too, or a resume would lose it */
+            jw_rawz(&w, "{\"type\":\"title\",\"title\":");
+            jw_strz(&w, s->title);
+            jw_rawz(&w, "}\n");
+        }
         if (index_line(s, first)) {
             jw_free(&w);
             return -1;

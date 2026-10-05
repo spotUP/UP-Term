@@ -1,0 +1,6 @@
+Hello from the Amiga!
+
+```c
+int x = "q";
+```
+Grüße — ok 😀
