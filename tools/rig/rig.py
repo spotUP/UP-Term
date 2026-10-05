@@ -100,9 +100,14 @@ If WARN
 EndIf
 If EXISTS VTC:gg/bin/sh
   C:Assign >NIL: GG: VTC:gg
-  ; the Unix commands (ls, dircolors, ...) on the command path, as the kit
-  ; puts SYS:UP-Term/bin there: amiagent and the shells it starts inherit it
-  C:Path >NIL: VTC:gg/bin ADD
+  ; the Unix commands (ls, dircolors, ...) on every Shell's command path,
+  ; as the kit puts SYS:UP-Term/bin there. amiagent gives its commands a
+  ; bare path (Current_directory, C:), so a Path here would not reach the
+  ; windows: S:Shell-Startup runs in each new Shell. Added once.
+  C:Search >NIL: S:Shell-Startup "VTC:gg/bin" QUIET
+  If WARN
+    Echo >>S:Shell-Startup "Path >NIL: VTC:gg/bin ADD"
+  EndIf
 EndIf
 C:SetEnv TERM vtcon
 C:SetEnv TERMINFO /VTC/terminfo
@@ -155,7 +160,14 @@ def setup():
         print("copying the system disk (1.5 GB) ...")
         shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
     (RIG / "boot/s").mkdir(exist_ok=True)
-    (RIG / "boot/s/startup-sequence").write_text(STARTUP)
+    # --060: at host speed the boot shell's window is open (something prints
+    # into it) when IPrefs switches the Workbench to the saved RTG mode, and
+    # Intuition cannot reset the screen ("Please close all windows"): the
+    # Workbench stays PAL on some boots (2026-10-05, twice). The system's
+    # Startup-Sequence runs with its output to NIL: there.
+    (RIG / "boot/s/startup-sequence").write_text(
+        STARTUP.replace("C:Execute DH0:S/Startup-Sequence", "C:Execute DH0:S/Startup-Sequence >NIL:")
+        if M060 else STARTUP)
     # --stock: creep's Workbench prints topaz 8, 77 columns in a 640-wide
     # window. The rig boots from BOOTX:, which had no Devs/system-configuration,
     # so Intuition took its built-in 60-column topaz (61 columns measured,
