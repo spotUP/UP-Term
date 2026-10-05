@@ -2019,7 +2019,8 @@ static void about(con *c)
     es.es_Title = (UBYTE *)"About UP-Term";
     es.es_TextFormat = (UBYTE *)"UP-Term\n\nA terminal for AmigaOS 3: xterm, Amiga and PC-ANSI,\n"
                                 "tabs, profiles, outline fonts, slash commands.\n\nBuild %s\n"
-                                "Type /help in a window for the commands.";
+                                "Type /help in a window for the commands.\n\n"
+                                "Colour emoji: Twemoji by Twitter and contributors, CC-BY 4.0.";
     es.es_GadgetFormat = (UBYTE *)"OK";
     if (c->w.win)
         EasyRequest(c->w.win, &es, 0, (ULONG)STR(VTCON_BUILD));

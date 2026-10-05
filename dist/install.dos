@@ -1,4 +1,4 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CLAUDE/S,CPU040/S,CPU060/S,UNIFONT/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,NOSHELLICON/S,SYSICON/S,NOSYSICON/S,SERIAL/S,NOSERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CLAUDE/S,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -118,6 +118,14 @@ Copy sz rz SYS:UP-Term/bin CLONE
 If "{UNIFONT}" EQ "UNIFONT"
   MakeDir >NIL: SYS:UP-Term/unifont
   Copy unifont SYS:UP-Term/unifont ALL CLONE QUIET
+EndIf
+; [EMOJI]: Twemoji's colour emoji (CC-BY 4.0: CC-BY-4.0.txt and SOURCE.txt
+; go with them), one file per 256 characters, 0.5 MB: drawn over two cells
+; on an RTG screen of 15 bits or more with cybergraphics.library; other
+; screens keep Unifont's one-colour glyph.
+If "{EMOJI}" EQ "EMOJI"
+  MakeDir >NIL: SYS:UP-Term/emoji
+  Copy emoji SYS:UP-Term/emoji ALL CLONE QUIET
 EndIf
 Copy upgetty C:upgetty CLONE
 ; hl and mdv: a source file in colour, Markdown formatted for the window
