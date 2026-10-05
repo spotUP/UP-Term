@@ -23,7 +23,8 @@ typedef struct vo_font vo_font;
 /* The installed outline font `name` (FONTS:<name>.otag; a ".otag" or
  * ".font" suffix is taken off), its glyphs sized to cells cw x ch with the
  * bitmap font's baseline `base` rows down. 0 when there is no such font,
- * no engine for it, or no memory: the caller draws as without one. */
+ * no engine for it, or no memory: the caller draws as without one.
+ * name "" opens the worker alone, for vo_read (its glyphs all missing). */
 vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base);
 void vo_close(vo_font *f);
 
@@ -42,5 +43,13 @@ const UBYTE *vo_mark(vo_font *f, ULONG cp, int cells, WORD *bpr);
 
 /* The name it was opened with (for a profile change: same font or not). */
 const char *vo_name(const vo_font *f);
+
+/* 1 when it has a font (not opened with ""). */
+int vo_has_engine(const vo_font *f);
+
+/* The file at path (under 64 characters) read by the worker, which may make
+ * the DOS calls the caller may not (ledger U2: the Unifont pages): at most
+ * max bytes into buf. The bytes read; -1 when there is no such file. */
+LONG vo_read(vo_font *f, const char *path, UBYTE *buf, LONG max);
 
 #endif

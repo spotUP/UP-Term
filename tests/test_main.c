@@ -30,6 +30,7 @@ void suite_clip(void);
 void suite_input(void);
 void suite_protocol(void);
 void suite_sbar(void);
+void suite_unifont(void);
 void suite_telnet(void);
 void suite_complete(void);
 void suite_winmem(void);
@@ -75,6 +76,7 @@ static const h_suite suites[] = {
     { "input", suite_input },
     { "protocol", suite_protocol },
     { "sbar", suite_sbar },
+    { "unifont", suite_unifont },
     { "telnet", suite_telnet },
     { "complete", suite_complete },
     { "winmem", suite_winmem },

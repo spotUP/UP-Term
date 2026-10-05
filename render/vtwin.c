@@ -299,6 +299,70 @@ static int outline_sync(vtwin *w)
     return 1;
 }
 
+/* Unifont's page files (U2), read by a glyph worker: the outline font's
+ * when there is one, else one of its own (the handler may make no DOS
+ * call). A page is read whole and kept in a buffer of its size. */
+static long uni_load(void *u, int page, vt_u8 **buf)
+{
+    vtwin *w = (vtwin *)u;
+    char path[32];
+    UBYTE *b, *e;
+    LONG n;
+    vo_font *f = w->outline;
+    if (!f) {
+        if (!w->reader && w->font)
+            w->reader = vo_open("", w->font->tf_XSize, w->font->tf_YSize, w->font->tf_Baseline);
+        f = w->reader;
+    }
+    if (!f)
+        return -2; /* no worker now: asked again later */
+    strcpy(path, UF_DIR);
+    uf_page_name(page, path + strlen(path));
+    if (!(b = (UBYTE *)AllocVec(UF_PAGE_MAX, MEMF_ANY)))
+        return -2;
+    n = vo_read(f, path, b, UF_PAGE_MAX);
+    if (n <= 0) {
+        FreeVec(b);
+        return -1; /* not installed: the replacement glyph, and not asked again */
+    }
+    if ((e = (UBYTE *)AllocVec((ULONG)n, MEMF_ANY)) != 0) {
+        CopyMem(b, e, (ULONG)n);
+        FreeVec(b);
+        b = e;
+    }
+    *buf = b;
+    return n;
+}
+
+static void uni_release(void *u, vt_u8 *buf)
+{
+    if (u) /* always: every page came from uni_load */
+        FreeVec(buf);
+}
+
+/* The Unifont cache on the renderer: made at the first bind, its mask in
+ * chip RAM; none without it (the cells look as before U2). */
+static void uni_bind(vtwin *w)
+{
+    if (!w->uni_mask && (w->uni_mask = (UBYTE *)AllocVec(UF_MASK_MAX, MEMF_CHIP | MEMF_CLEAR)) != 0)
+        uf_init(&w->uni, uni_load, uni_release, w, w->uni_mask, UF_MASK_MAX);
+    vr_set_unifont(&w->r, w->uni_mask ? &w->uni : 0);
+}
+
+static void uni_free(vtwin *w)
+{
+    vr_set_unifont(&w->r, 0);
+    if (w->uni_mask) {
+        uf_flush(&w->uni);
+        FreeVec(w->uni_mask);
+        w->uni_mask = 0;
+    }
+    if (w->reader) {
+        vo_close(w->reader);
+        w->reader = 0;
+    }
+}
+
 void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
 {
     w->host = host;
@@ -761,6 +825,7 @@ static void bind(vtwin *w, struct Window *win)
     if (w->outline)
         vr_set_outline(&w->r, w->outline); /* a rebind keeps the open outline font */
     outline_sync(w);
+    uni_bind(w); /* a rebind keeps the pages read */
     settings(w);
     vt_set_cell_pixels(w->t, w->font->tf_XSize, w->font->tf_YSize);
     vr_layout(&w->r);
@@ -783,6 +848,7 @@ void vtwin_unbind(vtwin *w)
     vti_mouse_reset(&w->mouse);
     w->pointer_on = 0; /* the window's ReportMouse goes with it */
     vr_set_outline(&w->r, 0);
+    vr_set_unifont(&w->r, 0);
     vr_free(&w->r);
     w->win = 0;
 }
@@ -903,6 +969,7 @@ void vtwin_detach(vtwin *w)
         vo_close(w->outline);
         w->outline = 0;
     }
+    uni_free(w);
     if (w->t) {
         vr_free(&w->r);
         vt_free(w->t);

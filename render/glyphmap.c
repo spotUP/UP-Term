@@ -51,12 +51,16 @@ static vt_glyph mk(int kind, int code)
     return g;
 }
 
-/* *native: 1 when the glyph is cp itself (the font's own, or drawn), 0 for
- * a stand-in or the replacement */
+/* How well vt_map_glyph shows a code point (*native below). */
+enum { Q_NONE = 0, Q_STANDIN = 1, Q_NATIVE = 2 };
+
+/* *native: Q_NATIVE when the glyph is cp itself (the font's own, or
+ * drawn), Q_STANDIN for a stand-in that resembles it ('-' for an en dash),
+ * Q_NONE for the replacement ('?', the box) */
 static vt_glyph map(vt_u32 cp, enum vt_font_enc enc, int *native)
 {
     int a;
-    *native = 1;
+    *native = Q_NATIVE;
     if (cp < 0x80)
         return mk(VT_GLYPH_FONT, (int)cp);
     if (enc == VT_ENC_CP437) {
@@ -91,7 +95,7 @@ static vt_glyph map(vt_u32 cp, enum vt_font_enc enc, int *native)
     /* DEC graphics scan lines 1, 3, 7, 9 (5 is U+2500): thin lines at the
      * top, a quarter, three quarters and the bottom of the cell. */
     if (cp == 0x23BF) { /* Claude Code's tool-result hook: drawn as the light corner */
-        *native = 0;
+        *native = Q_STANDIN;
         return mk(VT_GLYPH_BOX, box_arms[0x2514 - 0x2500]);
     }
     if (cp >= 0x23BA && cp <= 0x23BD) {
@@ -102,11 +106,12 @@ static vt_glyph map(vt_u32 cp, enum vt_font_enc enc, int *native)
         return mk(VT_GLYPH_DIAMOND, 0);
     if (cp == 0x25A0 || cp == 0x25AE)
         return mk(VT_GLYPH_BLOCK, 0x40 | 0x0F);
-    *native = 0;
+    *native = Q_NONE;
     if (cp > 0xFFFF)
         return mk(VT_GLYPH_MISSING, 1); /* an emoji, an icon: no bitmap font has it */
     a = approx_find(cp);
     if (a >= 0) {
+        *native = Q_STANDIN;
         if (enc == VT_ENC_CP437 && a >= 0x80) {
             int n;
             return map((vt_u32)a, enc, &n); /* e.g. the middle dot */
@@ -170,7 +175,43 @@ int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc)
     if (cp < 0x80)
         return 1;
     map(cp, enc, &native);
-    return native;
+    return native == Q_NATIVE;
+}
+
+const vt_u8 *vt_fallback_glyph(const vt_fallback *f, vt_u32 cp, int cells, int *bpr)
+{
+    const vt_u8 *m;
+    int q;
+    if (!f || cp < 0x80)
+        return 0;
+    map(cp, f->enc, &q);
+    if (q == Q_NATIVE)
+        return 0;
+    if (f->outline && (m = f->outline(f->outline_src, cp, cells, bpr)) != 0)
+        return m;
+    if (q == Q_STANDIN)
+        return 0; /* the stand-in, never Unifont's glyph in its place (W33) */
+    if (f->unifont && (m = f->unifont(f->unifont_src, cp, cells, bpr)) != 0)
+        return m;
+    return 0;
+}
+
+const vt_u8 *vt_cell_glyph(const vt_fallback *f, vt_term *t, const vt_cell *c, vt_u32 *cp, int *ncp,
+                           int *bpr, vt_glyph *g)
+{
+    const vt_u8 *m;
+    int cells = c->width == 2 ? 2 : 1;
+    cp[0] = c->ch;
+    *ncp = 1;
+    if (VT_CELL_IS_CLUSTER(c)) /* beyond the BMP, or with marks */
+        *ncp = vt_compose_cell(cp, vt_cell_text(t, c, cp));
+    m = vt_fallback_glyph(f, cp[0], cells, bpr);
+    if (m)
+        return m;
+    *g = vt_map_glyph(cp[0], f ? f->enc : VT_ENC_LATIN1);
+    if (g->kind == VT_GLYPH_MISSING)
+        g->code = (vt_u8)cells;
+    return 0;
 }
 
 int vt_latin1_text(const char *utf8, char *out, int max)
