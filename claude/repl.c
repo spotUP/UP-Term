@@ -309,7 +309,9 @@ static int post(cl_repl *r, const char *body, long bn, long *retry_s)
     sui.text = st_text;
     sui.block = st_block;
     sui.thinking = st_thinking;
-    sui.stop = st_stop;
+    /* a tool's own request (api_send) draws nothing: WebSearch's server
+     * search is shown by the tool's header and result, not a second time */
+    sui.stop = r->quiet_req ? 0 : st_stop;
     if (repl_need_key(r)) {
         /* A4 WP4: a keyless start; nothing goes out without the key */
         show_err(r, "Not logged in: no API key. Type /login, or set ENV:ANTHROPIC_API_KEY.", 0);
