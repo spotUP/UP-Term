@@ -21,4 +21,10 @@ int prefs_dos_dir(int t);
 #define PREFS_DOS_NODIR (-100)
 int prefs_dos_save(const char *buf, long len, int keep, int *failed);
 
+/* prefs_theme_drawer with DOS's answer to "is it there" (a Lock): the
+ * drawer every theme requester opens and /theme looks names up in (W30).
+ * Call where a missing volume may not raise a requester (the handler's
+ * worker sets pr_WindowPtr -1) or where one is fine (UP-Term Prefs). */
+void prefs_dos_theme_drawer(const char *given, const char *home, char *out, int cap);
+
 #endif

@@ -101,7 +101,7 @@ static const slash_def table[] = {
     { "selection-fg", SL_ARG, SLASH_SEL_FG, 1, 0, "RRGGBB | none", "the selected text's colour" },
     { "size", SL_ARG, SLASH_SIZE, 1, 0, "COLSxROWS", "the window sized to the grid (80x24)" },
     { "tab", SL_CHOICE, 0, 0, v_tab, "new | next | previous | close", "tabs" },
-    { "theme", SL_ARG, SLASH_THEME, 0, 0, "[NAME]", "a colour theme (no name: the requester)" },
+    { "theme", SL_ARG, SLASH_THEME, 0, 0, "[NAME]", "a colour theme (no name: a list, Up/Down and Enter)" },
     { "wheel", SL_CHOICE, 0, 0, v_wheel, "scroll | ignore", "the mouse wheel moves the scrollback" }
 };
 

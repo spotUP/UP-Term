@@ -223,6 +223,12 @@ def setup_config_only():
 def install():
     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
+    # the themes beside the handler: the rig has no kit, so no
+    # ENVARC:up-term/themes, and the theme requesters and /theme fall back
+    # to VTC:themes (prefs_theme_drawer, W30)
+    (RIG / "vtc/themes").mkdir(exist_ok=True)
+    for f in sorted((ROOT / "themes").glob("*.conf")):
+        shutil.copyfile(f, RIG / "vtc/themes" / f.name)
 
 def screenmode(name):
     """Install a ScreenMode prefs file (saved from ours) and reboot."""

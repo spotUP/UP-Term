@@ -115,6 +115,8 @@ struct app {
     prefs_fields f;
     char status[2][STATUS_MAX]; /* GadTools keeps the pointer: alternate */
     int st;
+    char theme[300];          /* the theme file last put in the fields ("" none): the
+                               * requester opens its drawer next time */
 };
 
 static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFONT };
@@ -590,8 +592,9 @@ static struct Window *open_window(struct app *a, struct Screen *scr)
 }
 
 /* A gadget was released. 1 when the editor is done. */
-/* Theme...: a theme file from the kit's drawer, its colours into the
- * profile being edited (prefs_apply_theme); Save or Use writes them. */
+/* Theme...: a theme file from the themes drawer (prefs_dos_theme_drawer,
+ * as the window's Settings > Theme...: W30), its colours into the profile
+ * being edited (prefs_apply_theme); Save or Use writes them. */
 static void pick_theme(struct app *a)
 {
     struct FileRequester *fr;
@@ -602,9 +605,10 @@ static void pick_theme(struct app *a)
         set_status(a, "No asl.library: no theme requester.");
         return;
     }
+    prefs_dos_theme_drawer(a->theme, "PROGDIR:", path, sizeof(path));
     fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
             ASLFR_Window, (ULONG)a->win, ASLFR_TitleText, (ULONG)"Choose a theme",
-            ASLFR_InitialDrawer, (ULONG)"ENVARC:up-term/themes", ASLFR_InitialPattern, (ULONG)"#?.conf",
+            ASLFR_InitialDrawer, (ULONG)path, ASLFR_InitialPattern, (ULONG)"#?.conf",
             ASLFR_DoPatterns, TRUE, ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (!fr)
         return;
@@ -625,6 +629,7 @@ static void pick_theme(struct app *a)
     Close(f);
     a->buf[got > 0 ? got : 0] = 0;
     if (got > 0 && prefs_apply_theme(&a->f, &a->work, a->buf, got)) {
+        strcpy(a->theme, path);
         show_fields(a);
         set_status(a, "Theme in the fields: Save or Use writes it.");
     } else

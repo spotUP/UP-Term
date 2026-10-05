@@ -891,3 +891,152 @@ void le_kc_show_list(le_line *le, const char *names, int len)
     /* KingCON: 19 a column, (XMax + 1) / 19 of them, 15 + "..." past 18 */
     show_columns(le, names, len, 19, vt_cols(le->t) / 19, 18);
 }
+
+/* ---- a list to choose from (W30: /theme) -------------------------------------- */
+
+const char *le_menu_name(const le_menu *m, int i)
+{
+    const char *s = m->names;
+    for (; i > 0 && i < m->n; i--)
+        s += strlen(s) + 1;
+    return s;
+}
+
+static int menu_to(le_menu *m, int to, int wrap)
+{
+    int was = m->sel;
+    if (wrap)
+        to = (to % m->n + m->n) % m->n;
+    else if (to < 0)
+        to = 0;
+    else if (to > m->n - 1)
+        to = m->n - 1;
+    m->sel = to;
+    return to == was ? LE_MENU_NONE : LE_MENU_MOVED;
+}
+
+int le_menu_key(le_menu *m, long key, int mods, const unsigned char *b, int nb)
+{
+    int page = (mods & VT_MOD_SHIFT) != 0, i;
+    if (!m->open || m->n < 1)
+        return LE_MENU_NONE;
+    if (key == VT_KEY_RETURN || key == VT_KEY_KP_ENTER || (nb == 1 && (b[0] == '\r' || b[0] == '\n')))
+        return LE_MENU_TAKE;
+    if (key == VT_KEY_ESCAPE || (nb == 1 && (b[0] == 0x1B || b[0] == 0x07)))
+        return LE_MENU_CANCEL; /* Escape, or Ctrl-G as in the line's search */
+    switch (key) {
+    case VT_KEY_UP:        return menu_to(m, m->sel - (page ? m->rows : 1), !page);
+    case VT_KEY_DOWN:      return menu_to(m, m->sel + (page ? m->rows : 1), !page);
+    case VT_KEY_PAGE_UP:   return menu_to(m, m->sel - m->rows, 0);
+    case VT_KEY_PAGE_DOWN: return menu_to(m, m->sel + m->rows, 0);
+    case VT_KEY_HOME:      return menu_to(m, 0, 0);
+    case VT_KEY_END:       return menu_to(m, m->n - 1, 0);
+    default: break;
+    }
+    if (nb == 1 && b[0] > 0x20 && b[0] < 0x7F && !(mods & (VT_MOD_CTRL | VT_MOD_ALT))) {
+        /* a letter: the next name that starts with it, round to the top */
+        int want = b[0] >= 'A' && b[0] <= 'Z' ? b[0] - 'A' + 'a' : b[0];
+        for (i = 1; i <= m->n; i++) {
+            int k = (m->sel + i) % m->n, c = (unsigned char)le_menu_name(m, k)[0];
+            if (c >= 'A' && c <= 'Z')
+                c = c - 'A' + 'a';
+            if (c == want)
+                return menu_to(m, k, 0);
+        }
+    }
+    return LE_MENU_NONE;
+}
+
+void le_menu_draw(le_line *le, le_menu *m)
+{
+    int cols = vt_cols(le->t), i, k, l, w = 0;
+    long top = m->at - vt_lines_scrolled(le->t);
+    char help[96];
+    if (!m->open)
+        return;
+    if (m->sel < m->top)
+        m->top = m->sel;
+    if (m->sel >= m->top + m->rows)
+        m->top = m->sel - m->rows + 1;
+    for (k = 0; k < m->n; k++) {
+        l = (int)strlen(le_menu_name(m, k));
+        if (l > w)
+            w = l;
+    }
+    if (w > cols - 3)
+        w = cols - 3;
+    if (w < 0)
+        w = 0;
+    for (i = 0; i <= m->rows; i++) {
+        cup(le, top + i < 0 ? 0 : top + i, 0);
+        out(le, "\033[2K", 4);
+        k = m->top + i;
+        if (i == m->rows) {
+            /* where the list is, and the keys */
+            int n = 0;
+            const char *s = ": Up/Down choose, Enter applies, Escape cancels";
+            num(help, &n, m->sel + 1);
+            memcpy(help + n, " of ", 4);
+            n += 4;
+            num(help, &n, m->n);
+            l = (int)strlen(s);
+            memcpy(help + n, s, (size_t)l);
+            n += l;
+            out(le, "\033[2m", 4);
+            out(le, help, n < cols - 1 ? n : cols - 1);
+            out(le, "\033[22m", 5);
+        } else if (k < m->n) {
+            const char *name = le_menu_name(m, k);
+            l = (int)strlen(name);
+            if (l > w)
+                l = w;
+            if (k == m->sel)
+                out(le, "\033[7m", 4);
+            out(le, k == m->mark ? "* " : "  ", 2);
+            out(le, name, l);
+            if (k == m->sel) {
+                for (; l < w; l++)
+                    out(le, " ", 1); /* a bar as wide as the widest name */
+                out(le, " \033[27m", 6);
+            }
+        }
+    }
+    cup(le, top + (m->sel - m->top) < 0 ? 0 : top + (m->sel - m->top), 0);
+}
+
+void le_menu_open(le_line *le, le_menu *m, const char *names, int n, int sel, int mark)
+{
+    int x, y, i;
+    m->names = names;
+    m->n = n;
+    m->sel = sel >= 0 && sel < n ? sel : 0;
+    m->mark = mark;
+    m->top = 0;
+    m->rows = n < LE_MENU_ROWS ? n : LE_MENU_ROWS;
+    if (m->rows > vt_rows(le->t) - 2)
+        m->rows = vt_rows(le->t) - 2;
+    if (m->rows < 1)
+        m->rows = 1;
+    m->open = n > 0;
+    if (!m->open)
+        return;
+    /* room for the rows and the help under them: the screen scrolls up
+     * when the cursor is near the bottom */
+    out(le, "\r", 1);
+    for (i = 0; i < m->rows; i++)
+        out(le, "\r\n", 2);
+    vt_cursor(le->t, &x, &y);
+    m->at = y - m->rows + vt_lines_scrolled(le->t);
+    le_menu_draw(le, m);
+}
+
+void le_menu_close(le_line *le, le_menu *m)
+{
+    long top;
+    if (!m->open)
+        return;
+    top = m->at - vt_lines_scrolled(le->t);
+    cup(le, top < 0 ? 0 : top, 0);
+    out(le, "\033[J", 3);
+    m->open = 0;
+}
