@@ -1578,6 +1578,8 @@ static void show_help(cl_repl *r)
         for (k = (long)strlen(m); k < 18; k++)
             m[k] = ' ';
         m[k] = 0;
+        if (m[k - 1] != ' ')
+            cl_cat(m, "  ", sizeof(m)); /* a name wider than the column: still a gap */
         cl_cat(m, r->menu[i].help, sizeof(m));
         ui_line(&r->ui, m);
     }

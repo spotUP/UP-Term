@@ -1133,6 +1133,10 @@ static void test_wp3_commands(void)
     repl_line(&r, "/help");
     for (i = 0; i < slash_nbuiltin; i++)
         CHECK(strstr(cn.screen.p, slash_builtin[i].name) != 0);
+    /* a name as long as the column keeps a gap before its help (the rig showed
+     * "/run-skill-generatorWrite a project skill ...") */
+    CHECK(strstr(cn.screen.p, "/run-skill-generatorWrite") == 0);
+    CHECK(strstr(cn.screen.p, "/run-skill-generator  Write") != 0);
     repl_line(&r, "/cd lib");
     CHECK(strstr(r.tools.root, "/wp3b/lib") != 0);
     CHECK(strstr(r.system, "/wp3b/lib") != 0);
