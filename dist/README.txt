@@ -305,12 +305,16 @@ PTY: (pseudo-terminals)
   is open once per id; a program looks for a free one by trying ids.
 
 IXEMUL
-  Install puts in ixemul.library 48.2 with the UP-Term patches: termios,
-  window size and signal keys go to the terminal (XCON:, PTY:), Ctrl-Z and
-  fg/bg job control work, /dev/ptyXY are PTY: pairs. It runs the existing
-  ixemul programs (it is 48.2, built with the compiler 48.2 was). The
-  library that was there is kept as LIBS:ixemul.library.orig; to go back:
+  Install puts in ixemul.library 80.1 with the UP-Term patches, and the
+  ixnet.library of the same build (ixnet refuses an ixemul of another
+  version): termios, window size and signal keys go to the terminal
+  (XCON:, PTY:), Ctrl-Z and fg/bg job control work, /dev/ptyXY are PTY:
+  pairs, local sockets pass descriptors (tmux, screen). It runs the
+  existing ixemul programs (80.x keeps every 48.x vector where it was).
+  The libraries that were there are kept as LIBS:ixemul.library.orig and
+  LIBS:ixnet.library.orig; to go back:
     Copy LIBS:ixemul.library.orig LIBS:ixemul.library
+    Copy LIBS:ixnet.library.orig LIBS:ixnet.library
   To tell which one is in:  Search LIBS:ixemul.library UP-Term
 
 SCREEN
