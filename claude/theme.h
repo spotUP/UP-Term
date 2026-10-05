@@ -36,4 +36,11 @@ const cl_theme *theme_get(const char *name);
 /* its index in cl_themes */
 int theme_index(const cl_theme *t);
 
+/* Claude Code's named colours (an agent's "color", /color's prompt bar):
+ * red, blue, green, yellow, purple, orange, pink, cyan */
+#define THEME_NAMED 8
+extern const char *const theme_named_names[THEME_NAMED];
+/* the SGR of a named colour (any case), 0 for another name */
+const char *theme_named(const char *name);
+
 #endif

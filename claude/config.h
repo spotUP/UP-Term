@@ -86,6 +86,9 @@ typedef struct cl_settings {
      * characters each ("jjkj"); read from the user's settings and
      * --settings only (a project's cannot remap keys), as Claude Code's */
     char vim_remaps[17];
+    long ask_timeout_ms;        /* askUserQuestionTimeout (user / --settings only): 0 never (A4 gaps 3) */
+    int prompt_suggest;         /* promptSuggestionEnabled: -1 not set (on), 0, 1 */
+    int away_summary;           /* awaySummaryEnabled: -1 not set (on), 0, 1 */
     char status_cmd[256];       /* statusLine.command */
     int status_pad;             /* statusLine.padding: columns before its text */
     int status_refresh_s;       /* statusLine.refreshInterval: seconds, 0 only on events */

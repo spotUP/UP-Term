@@ -164,12 +164,9 @@ static void shown(cl_repl *r, cl_hookres *h)
 static const char *mode_name(const cl_repl *r, const cl_tools *tl)
 {
     int pol = tl && tl->ask_policy ? tl->ask_policy - 1 : r->ask_policy;
-    if (pol == ASKP_BYPASS)
-        return "bypassPermissions";
     if (pol == ASKP_DENY)
         return "dontAsk";
-    return (tl ? tl : &r->tools)->perm.mode == PERM_ACCEPT ? "acceptEdits"
-           : (tl ? tl : &r->tools)->perm.mode == PERM_PLAN ? "plan" : "default";
+    return perm_name((tl ? tl : &r->tools)->perm.mode);
 }
 
 /* a tool event's common members: the tool, its input, its id, the mode */
@@ -1462,7 +1459,8 @@ static void status_rest(cl_repl *r, jw *ev)
     jw_rawz(ev, ",\"effort\":{\"level\":");
     jw_strz(ev, r->effort);
     jw_rawz(ev, "},\"thinking\":{\"enabled\":");
-    jw_rawz(ev, conv_caps(r->model) & CAP_ADAPTIVE ? "true" : "false");
+    jw_rawz(ev, (conv_caps(r->model) & CAP_ADAPTIVE) &&
+                        (!r->think_off || (conv_caps(r->model) & CAP_THINK_ALWAYS)) ? "true" : "false");
     jw_raw(ev, "}", 1);
     if (r->tui && r->tui->ed.vim) {
         jw_rawz(ev, ",\"vim\":{\"mode\":");

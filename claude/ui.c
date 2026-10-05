@@ -22,6 +22,8 @@ void ui_init(cl_ui *u, cl_io *io)
     memset(u, 0, sizeof(*u));
     u->io = io;
     u->col0 = 1;
+    u->afk_ms = -1;                 /* questions wait for an answer */
+    u->afk_count_ms = 20000L;
 }
 
 static void out(cl_ui *u, const char *s, long n)
@@ -55,6 +57,8 @@ void ui_puts(cl_ui *u, const char *s)
 
 void ui_line(cl_ui *u, const char *s)
 {
+    if (u->bg)
+        return;                 /* a background request says nothing (A4 gaps 3) */
     if (u->tui) {
         show_note(u->show, s);
         return;
@@ -70,6 +74,8 @@ void ui_status(cl_ui *u, const char *what)
 {
     static const char spin[] = "|/-\\";
     char line[128], sp[3];
+    if (u->bg)
+        return;
     if (u->tui) {
         tui_tick(u->tui);       /* the spinner turns; keys wait for ui_poll */
         return;
@@ -221,6 +227,7 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
     if (n == 3 && (tool == T_EDIT || tool == T_MULTIEDIT || tool == T_WRITE))
         u->tui->m_btab = 1;         /* a file's: Shift+Tab allows it for the session */
     u->tui->m_comment = 1;          /* Tab on Yes / No: a comment for Claude */
+    u->tui->m_ctx = KC_CONFIRM;     /* its keys: the Confirmation bindings */
     c = tui_menu(u->tui, tools_title(tool), q, opt, n, 0, n - 1);
     tui_title(u->tui, u->tui->busy ? "Claude - working" : "Claude");
     cl_copy(u->ask_note, u->tui->m_note, sizeof(u->ask_note));
@@ -279,6 +286,8 @@ void ui_tokens(cl_ui *u, long n)
 int ui_poll(cl_ui *u)
 {
     int stop = u->io->brk(u->io->u);
+    if (u->bg)
+        return stop || (u->tui && tui_pending(u->tui));    /* a key stops it, and stays for the box */
     if (u->tui && tui_poll(u->tui))
         stop = 1;
     return stop;
@@ -391,6 +400,7 @@ void ui_rewind(cl_ui *u)
             cl_cat(lab[k], "...", sizeof(lab[k]));
         opt[k] = lab[k];
     }
+    u->tui->m_ctx = KC_MSGSEL;      /* the rewind list: MessageSelector's bindings first */
     c = tui_menu(u->tui, "Rewind", "Restore the conversation and/or the code to the point before...", opt, k,
                  k - 1, -1);
     if (c < 0)
@@ -584,9 +594,15 @@ int ui_choose(cl_ui *u, const char *header, const char *question, const char *co
             opt[k++] = "Type something else";
         if (flags & CH_MULTI)
             opt[k++] = "Done";
+        if (flags & CH_AFK) {
+            u->tui->m_afk_ms = u->afk_ms;           /* askUserQuestionTimeout (tui_menu resets it) */
+            u->tui->m_afk_count_ms = u->afk_count_ms;
+        }
         c = tui_menu(u->tui, header && *header ? header : "Question", question, opt, k, sel, -1);
         for (i = 0; i < n; i++)
             free(text[i]);
+        if (c == TUI_AWAY)
+            return CHOOSE_AWAY;     /* what was ticked so far stays in *picked */
         if (c < 0 || c >= k)
             return -1;
         if (c < n) {

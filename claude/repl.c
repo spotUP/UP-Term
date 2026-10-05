@@ -488,6 +488,8 @@ static int request_retry(cl_repl *r, const char *body, long bn)
         rc = post(r, body, bn, &ra);
         if (rc != R_RETRY)
             return rc;
+        if (r->ui.bg)
+            return R_FAIL;          /* a background request is not tried again */
         if (attempt >= (r->tries > 0 ? r->tries : CL_TRIES)) {
             char m[80], num[16];
             cl_copy(m, "Giving up after ", sizeof(m));
@@ -549,20 +551,6 @@ static unsigned long tool_clock(void *u)
     return r->io->ms ? r->io->ms(r->io->u) : 0;
 }
 
-/* an agent's color (frontmatter "color") as SGR, 0 none */
-static const char *color_sgr(const char *c)
-{
-    static const char *const map[][2] = { { "red", "\033[31m" }, { "blue", "\033[34m" }, { "green", "\033[32m" },
-                                          { "yellow", "\033[33m" }, { "purple", "\033[35m" },
-                                          { "orange", "\033[38;5;208m" }, { "pink", "\033[38;5;205m" },
-                                          { "cyan", "\033[36m" }, { 0, 0 } };
-    int i;
-    for (i = 0; c && map[i][0]; i++)
-        if (cl_strieq(c, map[i][0]))
-            return map[i][1];
-    return 0;
-}
-
 static void tool_show(void *u, const char *tool, const char *what)
 {
     cl_repl *r = (cl_repl *)u;
@@ -575,7 +563,7 @@ static void tool_show(void *u, const char *tool, const char *what)
         if (json_parse(r->at->cur_in, r->at->cur_inn, &in) == 0 && json_get(in, "subagent_type", &x))
             json_str(x, type, sizeof(type));
         a = type[0] ? tools_agent(r->at, type) : 0;
-        r->ui.name_sgr = a ? color_sgr(a->color) : 0;
+        r->ui.name_sgr = a ? theme_named(a->color) : 0;
     }
     ui_tool(&r->ui, r->at->cur, tool, what, r->at->cur_in, r->at->cur_inn);
 }
@@ -595,7 +583,7 @@ int repl_ask(cl_repl *r, int tid, const char *tool, const char *what, int outsid
     /* A4 WP4: nobody to ask (print mode, dontAsk): denied, but a read in
      * the start directory runs (Claude Code: no approval needed there);
      * bypassPermissions: yes, except to an explicit ask rule */
-    if (pol == ASKP_BYPASS && !rule)
+    if ((r->at ? r->at : &r->tools)->perm.mode == PERM_BYPASS && !rule)
         return ASK_ONCE;
     {
         /* Claude Code: PermissionRequest hooks answer before the dialog
@@ -1105,6 +1093,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.no_thinking = r->no_thinking;
+    o.think_off = r->think_off;
     o.extra = r->extra_body;
     jw_init(&xtools);
     jw_init(&body);
@@ -1153,6 +1142,7 @@ static void turn(cl_repl *r, const char *prompt, long pn)
             break;
         }
         r->n_responses++;
+        r->last_cache_r = r->st.cache_r;   /* a cold cache: no prompt suggestion after it */
         conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok,
                    r->st.cache_w, r->st.cache_r);
         r->ctx_used = r->st.in_tok + r->st.cache_r + r->st.cache_w + r->st.out_tok;
@@ -1503,6 +1493,7 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.no_thinking = r->no_thinking;
+    o.think_off = r->think_off;
     o.extra = r->extra_body;
     o.tools = tools_json(&r->tools, r->model);
     o.no_tools = 1;
@@ -1553,6 +1544,159 @@ void repl_compact(cl_repl *r, const char *focus, int automatic)
     request_free(r);
 }
 
+static const char suggest_ask[] =
+    "Predict what the user is most likely to type next in this conversation, as they would type it: one short "
+    "prompt, no quotes, nothing else. If there is no likely next prompt, answer NONE.";
+
+int repl_suggest(cl_repl *r, jw *out)
+{
+    long k;
+    if (r->turn_rc != TURN_OK || r->conv.n < 2)
+        return -1;                  /* after an error, or too short a conversation: none */
+    if (repl_side(r, 0, r->conv.n, suggest_ask, out) || !out->n || !strncmp(out->p, "NONE", 4))
+        return -1;
+    for (k = 0; k < out->n; k++)
+        if (out->p[k] == '\n' || out->p[k] == '\r')
+            out->p[k] = ' ';
+    while (out->n && out->p[out->n - 1] == ' ')
+        out->p[--out->n] = 0;
+    return out->n ? 0 : -1;
+}
+
+/* Prompt suggestions in the box (A4 gaps 3, Claude Code's): after a turn
+ * that answered, while the box waits empty, a background request for the
+ * next prompt; a key typed meanwhile drops it. Off: promptSuggestionEnabled
+ * false, CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false (true wins over the
+ * setting); skipped in plan mode and when the turn's cache was cold. */
+static int suggest_on(cl_repl *r)
+{
+    char v[16];
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", v, sizeof(v)) > 0) {
+        if (!strcmp(v, "false") || !strcmp(v, "0"))
+            return 0;
+        if (!strcmp(v, "true") || !strcmp(v, "1"))
+            return 1;
+    }
+    return r->cfg.prompt_suggest != 0;
+}
+
+static void screen_suggest(cl_repl *r)
+{
+    jw a;
+    if (!r->tui || r->sugg_at == r->n_responses)
+        return;
+    r->sugg_at = r->n_responses;
+    r->tui->suggest[0] = 0;
+    if (!suggest_on(r) || r->tools.perm.mode == PERM_PLAN || r->last_cache_r <= 0 || r->tui->ed.n ||
+        r->tui->nq || r->await_key)
+        return;
+    jw_init(&a);
+    tui_frame(r->tui);              /* the box ready while it is asked for */
+    r->ui.bg = 1;
+    if (repl_suggest(r, &a) == 0 && !r->tui->ed.n) {
+        cl_copy(r->tui->suggest, a.p, sizeof(r->tui->suggest));
+        r->n_suggested++;
+    }
+    r->ui.bg = 0;
+    jw_free(&a);
+}
+
+/* The session recap after being away (A4 gaps 3, Claude Code's): three
+ * minutes after the last answer, the terminal unfocused (or, where it never
+ * reported its focus, three minutes without a key), a session of three
+ * prompts or more, never twice without a turn between: /recap's line made
+ * in the background and shown, ready for the user's return.
+ * awaySummaryEnabled / CLAUDE_CODE_ENABLE_AWAY_SUMMARY (0 off, 1 on). */
+#define AWAY_MS 180000UL
+
+static int away_on(cl_repl *r)
+{
+    char v[16];
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CODE_ENABLE_AWAY_SUMMARY", v, sizeof(v)) > 0) {
+        if (!strcmp(v, "0") || !strcmp(v, "false"))
+            return 0;
+        if (!strcmp(v, "1") || !strcmp(v, "true"))
+            return 1;
+    }
+    return r->cfg.away_summary != 0;
+}
+
+static void away_recap(cl_repl *r)
+{
+    unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    int m[3];
+    jw a;
+    if (r->n_responses != r->away_resp) {
+        r->away_resp = r->n_responses;      /* a turn ended: the time away counts from here */
+        r->away_t0 = now;
+        return;
+    }
+    if (!r->tui || !r->n_responses || r->recap_resp == r->n_responses || now - r->away_t0 < AWAY_MS ||
+        r->tui->focus == 1 || (r->tui->focus < 0 && now - r->tui->key_ms < AWAY_MS) || !away_on(r) ||
+        repl_prompts(r, m, 3) < 3)
+        return;
+    r->recap_resp = r->n_responses;
+    jw_init(&a);
+    r->ui.bg = 1;
+    if (slash_recap(r, &a) == 0) {
+        r->ui.bg = 0;
+        repl_say(r, "Recap: ", a.p);
+        r->n_recaps++;
+    }
+    r->ui.bg = 0;
+    jw_free(&a);
+}
+
+/* keybindings.json (A4 gaps 3, Claude Code's ~/.claude/keybindings.json):
+ * <home>/keybindings.json over the defaults, read when the screen starts
+ * and again when the file changes (checked every 2 s while the screen
+ * waits); not read in safe mode. Its problems go to the debug log. */
+int repl_keys_file(const cl_repl *r, char *out, long cap)
+{
+    return path_join(r->home, "keybindings.json", out, cap);
+}
+
+void repl_keys_load(cl_repl *r)
+{
+    char f[300];
+    char *b = 0;
+    long n = 0;
+    if (!r->tui || repl_keys_file(r, f, sizeof(f)))
+        return;
+    r->keys_mtime = r->sys->mtime ? r->sys->mtime(r->sys->u, f) : 0;
+    if (r->safe || r->sys->kind(r->sys->u, f) != 1 || r->sys->read(r->sys->u, f, 256L * 1024, &b, &n)) {
+        free(b);
+        km_reset(&r->tui->km);
+        return;
+    }
+    km_load(&r->tui->km, b, n);
+    free(b);
+    if (r->tui->km.nwarn)
+        log_s(r, "", r->tui->km.warn.p, r->tui->km.warn.n);
+    r->n_keys_loads++;
+}
+
+static void keys_changed(cl_repl *r)
+{
+    char f[300];
+    unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    if (!r->sys->mtime || now - r->keys_check_ms < 2000UL || repl_keys_file(r, f, sizeof(f)))
+        return;
+    r->keys_check_ms = now;
+    if (r->sys->mtime(r->sys->u, f) != r->keys_mtime)
+        repl_keys_load(r);          /* Claude Code: changes apply without a restart */
+}
+
+/* while the screen waits for keys: the status line's schedule, the recap,
+ * the key bindings' file */
+static void screen_idle(void *u)
+{
+    cl_repl *r = (cl_repl *)u;
+    pol_status_tick(u);
+    away_recap(r);
+    keys_changed(r);
+}
+
 int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
 {
     cl_conv c;
@@ -1580,6 +1724,7 @@ int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
     o.max_tokens = r->max_tokens;
     o.system = r->system;
     o.no_thinking = r->no_thinking;
+    o.think_off = r->think_off;
     o.extra = r->extra_body;
     o.tools = tools_json(&r->tools, r->model);
     o.no_tools = 1;                 /* the tools stay listed (the cache), none is called */
@@ -1588,9 +1733,11 @@ int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
     r->render.text = capture_text;
     r->render.end = capture_end;
     r->io->brk(r->io->u);
-    ui_busy(&r->ui, 1);
+    if (!r->ui.bg)
+        ui_busy(&r->ui, 1);
     rc = conv_body(&c, &o, &body) ? R_FAIL : request(r, body.p, body.n);
-    ui_busy(&r->ui, 0);
+    if (!r->ui.bg)
+        ui_busy(&r->ui, 0);
     r->render = keep;
     if (rc == R_OK)
         conv_usage(&r->conv, r->st.model[0] ? r->st.model : r->model, r->st.in_tok, r->st.out_tok, r->st.cache_w,
@@ -2191,8 +2338,11 @@ void repl_run(cl_repl *r)
             return;
         }
         for (;;) {
-            long n = tui_read(r->tui, line, 8192);
-            int woke = r->woke;
+            long n;
+            int woke;
+            screen_suggest(r);
+            n = tui_read(r->tui, line, 8192);
+            woke = r->woke;
             if (n < 0)
                 break;
             r->woke = 0;
@@ -2248,13 +2398,14 @@ int repl_screen(cl_repl *r)
     t->model = r->model;
     t->effort = r->effort;
     t->root = r->tools.root;
-    t->mode = &r->tools.perm.mode;
+    t->perm = &r->tools.perm;
+    t->think_off = &r->think_off;   /* Alt+T */
     t->cmds = r->menu;
     t->ncmds = r->nmenu;
     t->status = r->status_text;     /* the statusLine command's row(s) */
     t->status_pad = r->cfg.status_pad;
     t->hide_vim = r->cfg.hide_vim;
-    t->idle = pol_status_tick;
+    t->idle = screen_idle;          /* the status line's schedule, the away recap (A4 gaps 3) */
     t->iu = r;
     t->wake = sched_tui_wake;       /* A4 gaps 2: a scheduled turn while the screen waits */
     t->esc_idle = sched_esc_idle;   /* A4 gaps 3: Esc cancels a pending /loop wakeup */
@@ -2275,6 +2426,7 @@ int repl_screen(cl_repl *r)
     if (env_on(r, "CLAUDE_CODE_SKIP_PROMPT_HISTORY"))
         r->ui.histfile[0] = 0;      /* Claude Code: no prompt history on disk */
     ui_attach(&r->ui, r->sys, r->tools.root, &r->conv);    /* A4: history, @, rewind, settings */
+    repl_keys_load(r);              /* A4 gaps 3: keybindings.json */
     r->tools.wait = tool_wait;      /* Bash and ! lines: Esc, Ctrl+B while they run */
     r->ui.tools = &r->tools;
     ctx_show(r);
@@ -2710,7 +2862,8 @@ static void env_str(cl_repl *r, const char *name, char *out, long cap)
  * CLAUDE_CODE_DISABLE_1M_CONTEXT CLAUDE_CODE_DISABLE_THINKING
  * CLAUDE_CODE_EXTRA_BODY CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
  * CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS DISABLE_AUTO_COMPACT
- * DISABLE_COMPACT CLAUDE_AUTOCOMPACT_PCT_OVERRIDE CLAUDE_CODE_MAX_TURNS.
+ * DISABLE_COMPACT CLAUDE_AUTOCOMPACT_PCT_OVERRIDE CLAUDE_CODE_MAX_TURNS
+ * CLAUDE_AFK_TIMEOUT_MS CLAUDE_AFK_COUNTDOWN_MS.
  * Read where they are used: CLAUDE_CODE_EFFORT_LEVEL (repl_effort),
  * CLAUDE_CODE_ENABLE_TASKS / _TODO_TOOLS (repl_todo_mode),
  * CLAUDE_CODE_DISABLE_ADVISOR_TOOL, CLAUDE_CODE_STOP_HOOK_BLOCK_CAP,
@@ -2758,6 +2911,13 @@ static void repl_env(cl_repl *r)
     win_override = r->max_ctx;
     win_no1m = r->no_1m;
     r->no_thinking = env_on(r, "CLAUDE_CODE_DISABLE_THINKING");
+    /* A4 gaps 3: an unanswered AskUserQuestion goes on without the user after
+     * askUserQuestionTimeout; CLAUDE_AFK_TIMEOUT_MS wins (0: at once), the
+     * countdown shows for the last CLAUDE_AFK_COUNTDOWN_MS (20 s) of it */
+    v = env_num(r, "CLAUDE_AFK_TIMEOUT_MS", -1);
+    r->ui.afk_ms = v >= 0 ? v : r->cfg.ask_timeout_ms > 0 ? r->cfg.ask_timeout_ms : -1;
+    v = env_num(r, "CLAUDE_AFK_COUNTDOWN_MS", 20000L);
+    r->ui.afk_count_ms = r->ui.afk_ms >= 0 && v > r->ui.afk_ms ? r->ui.afk_ms : v;
     free(r->extra_body);
     r->extra_body = 0;
     {
@@ -2830,10 +2990,14 @@ int repl_load(cl_repl *r)
         r->tools.perm.mode = PERM_PLAN;
     else if (!strcmp(r->cfg.default_mode, "default") || !strcmp(r->cfg.default_mode, "manual"))
         r->tools.perm.mode = PERM_DEFAULT;
-    else if (!strcmp(r->cfg.default_mode, "dontAsk") || !strcmp(r->cfg.default_mode, "bypassPermissions")) {
+    else if (!strcmp(r->cfg.default_mode, "dontAsk")) {
         r->tools.perm.mode = PERM_DEFAULT;
-        r->ask_policy = r->cfg.default_mode[0] == 'd' ? ASKP_DENY : ASKP_BYPASS;
-    }
+        r->ask_policy = ASKP_DENY;
+    } else if (!strcmp(r->cfg.default_mode, "bypassPermissions"))
+        r->tools.perm.mode = PERM_BYPASS;
+    /* Shift+Tab reaches bypass when the session may use it (Claude Code:
+     * --dangerously-skip-permissions or --allow-dangerously-skip-permissions) */
+    r->tools.perm.can_bypass = r->allow_bypass || r->tools.perm.mode == PERM_BYPASS;
     for (i = 0; i < r->cfg.nenv; i++)
         if (r->sys->setenv)
             r->sys->setenv(r->sys->u, r->cfg.env[i].k, r->cfg.env[i].v);

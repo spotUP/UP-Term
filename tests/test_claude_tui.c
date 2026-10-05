@@ -84,6 +84,8 @@ static void keys(void)
     CHECK(key1("\177", &k) && k.k == K_BS);
     CHECK(key1("\033\177", &k) && k.k == K_ALT && k.ch == 0x7f);
     CHECK(key1("\033[12;40R", &k) && k.k == K_CPR && k.row == 12 && k.col == 40);
+    CHECK(key1("\033[I", &k) && k.k == K_FOCUS && k.row == 1);       /* ?1004 focus in */
+    CHECK(key1("\233O", &k) && k.k == K_FOCUS && k.row == 0);        /* ... out, 8-bit CSI */
     CHECK(key1("\033[200~one\r\ntwo\033[201~", &k) && k.k == K_PASTE && !strcmp(k.text, "one\r\ntwo"));
     /* a sequence split over two reads waits for its rest */
     keys_init(&ks);
@@ -166,7 +168,7 @@ static void editor(void)
 static cl_io io;
 static cl_tui tui;
 static cl_show shw;
-static int mode;
+static cl_perm perm;
 
 static void screen(int cols, int rows, const char **script)
 {
@@ -177,8 +179,8 @@ static void screen(int cols, int rows, const char **script)
     tui.effort = "medium";
     tui.root = "Work:Project";
     tui.ctx_left = 92;
-    mode = PERM_DEFAULT;
-    tui.mode = &mode;
+    memset(&perm, 0, sizeof(perm));
+    tui.perm = &perm;
     show_init(&shw, &tui);
 }
 
@@ -204,7 +206,7 @@ static void idle_prompt(void)
     CHECK_INT(tui_start(&tui), 0);
     CHECK_INT(cs.raw_on, 1);
     /* the start's modes and DSR went out whole, no stray NUL after them */
-    CHECK(strstr(cs.sent.p, "\033[?2004h\033[>1u\033[>4;1m\033[6n") == cs.sent.p);
+    CHECK(strstr(cs.sent.p, "\033[?2004h\033[>1u\033[>4;1m\033[?1004h\033[6n") == cs.sent.p);
     CHECK(memchr(cs.sent.p, 0, (size_t)cs.sent.n) == 0);
     CHECK_INT(tui.tr, 2);
     CHECK_INT(tui.B, 12);
@@ -238,12 +240,26 @@ static void idle_prompt(void)
     /* the frame is a rounded box in grey */
     CHECK_INT(h_cell(cs.vt, 0, 12)->fg, 8);
     /* Shift+Tab: accept edits, then plan, then back */
-    mode = PERM_ACCEPT;
+    perm.mode = PERM_ACCEPT;
     tui_frame(&tui);
     CHECK(strstr(cs_row(15), "\342\217\265\342\217\265 accept edits on (shift+tab to cycle)") != 0);
-    mode = PERM_PLAN;
+    perm.mode = PERM_PLAN;
     tui_frame(&tui);
     CHECK(strstr(cs_row(15), "|| plan mode on") != 0);
+    /* gaps 3: bypassPermissions, in the error colour, when the session may use it */
+    perm.mode = PERM_BYPASS;
+    tui_frame(&tui);
+    CHECK(strstr(cs_row(15), "\342\217\265\342\217\265 bypass permissions on (shift+tab to cycle)") != 0);
+    CHECK_INT(h_cell(cs.vt, 2, 15)->fg, 1);
+    /* Shift+Tab's cycle: bypass only when it may be used */
+    perm.mode = PERM_PLAN;
+    CHECK_INT(perm_next(&perm), PERM_DEFAULT);
+    perm.can_bypass = 1;
+    CHECK_INT(perm_next(&perm), PERM_BYPASS);
+    perm.mode = PERM_BYPASS;
+    CHECK_INT(perm_next(&perm), PERM_DEFAULT);
+    perm.mode = PERM_DEFAULT;
+    perm.can_bypass = 0;
     unscreen();
     CHECK_INT(cs.raw_on, 0);
     cs_close();
@@ -895,6 +911,12 @@ static void vim_visual_dot(void)
     CHECK(vimcase("one\ntwo\nthree", "VjJ", "one two\nthree"));
     CHECK(vimcase("one two three", "vey$vbp", "one two one"));
     CHECK(vimcase("one\ntwo\nthree", "Vj>", "  one\n  two\nthree"));    /* two blanks, Claude Code's indent */
+    /* gaps 3: >> and << in NORMAL mode, with a count, and '.' after them */
+    CHECK(vimcase("one\ntwo\nthree", ">>", "  one\ntwo\nthree"));
+    CHECK(vimcase("one\ntwo\nthree", "2>>", "  one\n  two\nthree"));
+    CHECK(vimcase("    one\ntwo", "<<", "  one\ntwo"));
+    CHECK(vimcase("one\ntwo", ">>j.", "  one\n  two"));
+    CHECK(vimcase("  one\ntwo", "<<<<", "one\ntwo"));       /* nothing left to take: stays */
     /* '.' and its count */
     CHECK(vimcase("abcdef", "x.", "cdef"));
     CHECK(vimcase("abcdef", "x3.", "ef"));
@@ -1714,6 +1736,286 @@ static void redraw_editor_todos(void)
     (void)col_of;
 }
 
+/* ---- A4 gaps 3: the screen's rows (ledger 2026-10-05-a4-gaps3-tui-progress) ---- */
+
+/* A4 gaps 3 (/loop) through the keybindings table: Esc (chat:cancel) and
+ * Ctrl+C (app:interrupt) on the idle, empty box cancel a pending /loop
+ * wakeup first; with none pending, Esc arms Esc Esc and Ctrl+C arms the
+ * exit as before */
+static int loopx_calls, loopx_pending;
+static int loopx_cb(void *u)
+{
+    (void)u;
+    loopx_calls++;
+    if (!loopx_pending)
+        return 0;
+    loopx_pending = 0;
+    return 1;
+}
+
+static void loop_cancel_keys(void)
+{
+    static const char *s1[] = { "\033", 0 };
+    static const char *s2[] = { "\003", "\003", 0 };
+    char line[32];
+    screen(60, 16, s1);
+    loopx_calls = 0;
+    loopx_pending = 1;
+    tui.esc_idle = loopx_cb;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), -1);
+    CHECK_INT(loopx_calls, 1);
+    CHECK_INT(loopx_pending, 0);             /* the wakeup cancelled */
+    CHECK_INT(tui.esc_armed, 0);            /* not taken as the first Esc of Esc Esc */
+    unscreen();
+    cs_close();
+    screen(60, 16, s2);
+    loopx_calls = 0;
+    loopx_pending = 1;
+    tui.esc_idle = loopx_cb;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), -1);
+    CHECK_INT(loopx_calls, 2);               /* the first cancelled, the second found none */
+    CHECK_INT(tui.quit_armed, 'c');         /* only the second armed the exit */
+    CHECK(cs_find("Press Ctrl+C again to exit") >= 0);
+    unscreen();
+    cs_close();
+}
+
+/* G5: Alt+T on a model that always thinks changes nothing and says so; on
+ * one that may go without it flips the session's flag */
+static void gaps3_think(void)
+{
+    static const char *s1[] = { "\033t", 0 };
+    static const char *s2[] = { "\033t", "\033t", "\033t", 0 };
+    char line[32];
+    int off = 0;
+    screen(60, 16, s1);
+    tui.think_off = &off;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), -1);
+    CHECK(cs_find("Thinking can't be turned off for this model") >= 0);
+    CHECK_INT(off, 0);
+    unscreen();
+    cs_close();
+    screen(60, 16, s2);
+    tui.model = "claude-sonnet-4-6";
+    tui.think_off = &off;
+    tui_start(&tui);
+    CHECK_INT(tui_read(&tui, line, sizeof(line)), -1);
+    CHECK_INT(off, 1);                      /* three presses: off, on, off */
+    CHECK(cs_find("Thinking off") >= 0);
+    unscreen();
+    cs_close();
+}
+
+/* G6: /add-dir and /cd: the argument's directory suggestions, as typed
+ * and with Tab; files are not offered */
+static void dirs_run(const char **script, cl_ui *u, char *line)
+{
+    screen(60, 16, script);
+    tui.complete = input_complete;
+    tui.cu = u;
+    u->tui = &tui;
+    tui_start(&tui);
+    tui_read(&tui, line, 32);
+}
+
+static void gaps3_dirs(void)
+{
+    static const char *s1[] = { "/add-dir al", 0 };
+    static const char *s2[] = { "/add-dir al", "\t", 0 };
+    static const char *s3[] = { "/cd b", "\t", 0 };
+    static const char *s4[] = { "/add-dir ", 0 };
+    static const char *s5[] = { "/add-dir ", "\t", 0 };
+    static const char *s6[] = { "/add-dir al", "\r", "\r", 0 };
+    static cl_ui u;
+    char line[32], d[600];
+    tpath(d, "ad");
+    mkdir(d, 0700);
+    tfile("ad/alpha.txt", "a\n");
+    tpath(d, "ad/alpine");
+    mkdir(d, 0700);
+    tpath(d, "ad/beta");
+    mkdir(d, 0700);
+    tpath(d, "ad");
+    memset(&u, 0, sizeof(u));
+    u.sys = &tsys;
+    u.root = d;
+    dirs_run(s1, &u, line);
+    dump("add-dir list");
+    CHECK_INT(tui.copen, 1);
+    CHECK_INT(tui.ncomp, 1);                /* alpine/, not alpha.txt */
+    CHECK_STR(cs_row(15), "  alpine/");
+    unscreen();
+    cs_close();
+    dirs_run(s2, &u, line);
+    CHECK_STR(tui.ed.b, "/add-dir alpine/");
+    unscreen();
+    cs_close();
+    dirs_run(s3, &u, line);
+    CHECK_STR(tui.ed.b, "/cd beta/");
+    unscreen();
+    cs_close();
+    dirs_run(s4, &u, line);
+    CHECK_INT(tui.copen, 0);                /* nothing begun: no list */
+    unscreen();
+    cs_close();
+    dirs_run(s5, &u, line);
+    CHECK_INT(tui.copen, 1);                /* Tab: all of them */
+    CHECK_INT(tui.ncomp, 2);
+    unscreen();
+    cs_close();
+    dirs_run(s6, &u, line);
+    CHECK_STR(line, "/add-dir alpine/");    /* Enter takes the row first, then sends */
+    unscreen();
+    cs_close();
+}
+
+/* G9: the suggestion greyed in the empty box, the cursor before it; a
+ * typed key drops it, Right takes it; tui_pending sees a key and keeps it */
+static void gaps3_suggest(void)
+{
+    static const char *s1[] = { "", 0 };
+    static const char *s2[] = { "x", 0 };
+    static const char *s3[] = { "\033[C", 0 };
+    static const char *s4[] = { "!a", "\r", 0 };
+    char line[32];
+    int x, y;
+    screen(60, 16, s1);
+    cl_copy(tui.suggest, "run the tests", sizeof(tui.suggest));
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    dump("suggestion");
+    CHECK(cs_find(PROMPT " run the tests") >= 0);
+    y = cs_find("run the tests");
+    CHECK(y >= 0 && (h_cell(cs.vt, 4, y)->attr & VT_ATTR_FAINT));
+    vt_cursor(cs.vt, &x, &y);
+    CHECK_INT(x, 4);                        /* the cursor where typing starts */
+    unscreen();
+    cs_close();
+    screen(60, 16, s2);
+    cl_copy(tui.suggest, "run the tests", sizeof(tui.suggest));
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "x");
+    CHECK_STR(tui.suggest, "");
+    CHECK(cs_find("run the tests") < 0);
+    unscreen();
+    cs_close();
+    screen(60, 16, s3);
+    cl_copy(tui.suggest, "run the tests", sizeof(tui.suggest));
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "run the tests");
+    unscreen();
+    cs_close();
+    screen(60, 16, s4);
+    tui_start(&tui);
+    CHECK_INT(tui_pending(&tui), 1);
+    CHECK_INT((int)tui_read(&tui, line, sizeof(line)), 1);
+    CHECK_STR(line, "a");                   /* the key that stopped it is still typed */
+    unscreen();
+    cs_close();
+}
+
+/* G11: the key map -- Claude Code's defaults per context, chords (and their
+ * 3 s), keybindings.json over them (rebind, null, a freed chord prefix),
+ * the warnings, the defaults' file read back; one rebinding on the screen */
+static int kact(cl_keymap *m, const int *ctx, int nc, const char *bytes, unsigned long ms)
+{
+    cl_key k;
+    if (!key1(bytes, &k))
+        return -1;
+    return km_action(m, ctx, nc, &k, ms);
+}
+
+static void gaps3_keymap(void)
+{
+    static const int chat[2] = { KC_CHAT, KC_GLOBAL };
+    static const int task[3] = { KC_TASK, KC_CHAT, KC_GLOBAL };
+    static const int sel[1] = { KC_SELECT };
+    static const char user[] =
+        "{\"bindings\":[{\"context\":\"Chat\",\"bindings\":{\"ctrl+e\":\"chat:externalEditor\",\"ctrl+s\":null,"
+        "\"ctrl+k ctrl+t\":\"app:toggleTodos\",\"ctl+y\":\"chat:stash\",\"ctrl+c\":\"chat:submit\","
+        "\"x\":\"chat:fooBar\",\"shift+k\":\"chat:thinkingToggle\"}},{\"context\":\"Nope\",\"bindings\":{}},"
+        "{\"context\":\"Tabs\",\"bindings\":{\"tab\":\"tabs:next\"}}]}";
+    static const char freed[] =
+        "{\"bindings\":[{\"context\":\"Task\",\"bindings\":{\"ctrl+x ctrl+b\":null}},{\"context\":\"Chat\","
+        "\"bindings\":{\"ctrl+x ctrl+k\":null,\"ctrl+x ctrl+e\":null,\"ctrl+x enter\":null,"
+        "\"ctrl+x ctrl+s\":null,\"ctrl+x\":\"chat:newline\"}}]}";
+    static const char *s1[] = { "abc", "\005", 0 };
+    cl_keymap m;
+    jw d;
+    char line[32];
+    CHECK_INT(km_init(&m), 0);
+    /* the defaults */
+    CHECK_INT(kact(&m, chat, 2, "\r", 0), KA_SUBMIT);
+    CHECK_INT(kact(&m, chat, 2, "\033", 0), KA_CANCEL);
+    CHECK_INT(kact(&m, chat, 2, "\033[Z", 0), KA_CYCLE_MODE);
+    CHECK_INT(kact(&m, chat, 2, "\033p", 0), KA_MODEL_PICKER);
+    CHECK_INT(kact(&m, chat, 2, "\033t", 0), KA_THINKING);
+    CHECK_INT(kact(&m, chat, 2, "\033[13;5u", 0), KA_SEND_NOW);       /* Ctrl+Enter */
+    CHECK_INT(kact(&m, chat, 2, "\n", 0), KA_NEWLINE);                 /* Ctrl+J */
+    CHECK_INT(kact(&m, chat, 2, "\037", 0), KA_UNDO);
+    CHECK_INT(kact(&m, chat, 2, "\024", 0), KA_TODOS);                 /* Global's Ctrl+T */
+    CHECK_INT(kact(&m, chat, 2, "a", 0), KA_NONE);
+    CHECK_INT(kact(&m, chat, 2, "\002", 0), KA_NONE);                  /* idle Ctrl+B: the editor's */
+    CHECK_INT(kact(&m, task, 3, "\002", 0), KA_TASK_BG);
+    CHECK_INT(kact(&m, chat, 2, "\030", 100), KA_PENDING);             /* Ctrl+X ... */
+    CHECK_INT(kact(&m, chat, 2, "\005", 200), KA_EXT_EDITOR);          /* ... Ctrl+E */
+    CHECK_INT(kact(&m, task, 3, "\030", 100), KA_PENDING);
+    CHECK_INT(kact(&m, task, 3, "\002", 200), KA_TASK_BG);             /* Ctrl+X Ctrl+B */
+    CHECK_INT(kact(&m, chat, 2, "\030", 100), KA_PENDING);
+    CHECK_INT(kact(&m, chat, 2, "a", 200), KA_CHORD_MISS);
+    CHECK_INT(kact(&m, chat, 2, "\030", 100), KA_PENDING);
+    CHECK_INT(kact(&m, chat, 2, "\024", 3200), KA_TODOS);              /* too late: a key of its own */
+    CHECK_INT(m.expired, 1);
+    CHECK_INT(kact(&m, sel, 1, "j", 0), KA_SEL_NEXT);
+    CHECK_INT(kact(&m, sel, 1, "\033[5~", 0), KA_SEL_PGUP);
+    /* the file over them */
+    CHECK_INT(km_load(&m, user, (long)sizeof(user) - 1), 0);
+    CHECK_INT(m.nwarn, 4);                  /* ctl, reserved ctrl+c, chat:fooBar, context Nope */
+    CHECK(m.warn.p && strstr(m.warn.p, "unknown modifier") && strstr(m.warn.p, "reserved") &&
+          strstr(m.warn.p, "chat:fooBar") && strstr(m.warn.p, "\"Nope\""));
+    CHECK_INT(kact(&m, chat, 2, "\005", 0), KA_EXT_EDITOR);
+    CHECK_INT(kact(&m, chat, 2, "\023", 0), KA_NONE);                  /* Ctrl+S unbound */
+    CHECK_INT(kact(&m, chat, 2, "\013", 0), KA_PENDING);               /* Ctrl+K ... */
+    CHECK_INT(kact(&m, chat, 2, "\024", 10), KA_TODOS);                /* ... Ctrl+T */
+    CHECK_INT(kact(&m, chat, 2, "y", 0), KA_STASH);                    /* ctl dropped: y */
+    CHECK_INT(kact(&m, chat, 2, "\003", 0), KA_INTERRUPT);             /* reserved stays */
+    CHECK_INT(kact(&m, chat, 2, "K", 0), KA_THINKING);                 /* shift+k */
+    CHECK_INT(kact(&m, chat, 2, "k", 0), KA_NONE);
+    /* every chord on Ctrl+X unbound: the prefix is a key again */
+    CHECK_INT(km_load(&m, freed, (long)sizeof(freed) - 1), 0);
+    CHECK_INT(m.nwarn, 0);
+    CHECK_INT(kact(&m, task, 3, "\030", 0), KA_NEWLINE);
+    /* not JSON: the defaults, and a warning */
+    CHECK_INT(km_load(&m, "nope", 4), -1);
+    CHECK_INT(m.nwarn, 1);
+    CHECK_INT(kact(&m, chat, 2, "\023", 0), KA_STASH);
+    /* what /keybindings writes reads back as the same bindings, no warning */
+    jw_init(&d);
+    km_defaults_json(&d);
+    CHECK_INT(km_load(&m, d.p, d.n), 0);
+    CHECK_INT(m.nwarn, 0);
+    CHECK_INT(m.n, 2 * m.ndef - 4);         /* the reserved keys' four are the defaults already */
+    jw_free(&d);
+    km_free(&m);
+    /* on the screen: Ctrl+E rebound to chat:stash puts the draft aside */
+    screen(60, 16, s1);
+    {
+        static const char one[] = "{\"bindings\":[{\"context\":\"Chat\",\"bindings\":{\"ctrl+e\":\"chat:stash\"}}]}";
+        CHECK_INT(km_load(&tui.km, one, (long)sizeof(one) - 1), 0);
+    }
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "");
+    CHECK(tui.stash && !strcmp(tui.stash, "abc"));
+    unscreen();
+    cs_close();
+}
+
 void suite_claude_tui(void)
 {
     keys();
@@ -1739,9 +2041,14 @@ void suite_claude_tui(void)
     transcript_view();
     transcript_resize();
     esc_esc();
+    loop_cancel_keys();
     thinking_shown();
     themes();
     notifications();
     redraw_editor_todos();
+    gaps3_think();
+    gaps3_dirs();
+    gaps3_suggest();
+    gaps3_keymap();
     rm_tdir();
 }

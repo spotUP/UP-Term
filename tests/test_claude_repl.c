@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <utime.h>
+#include <time.h>
 #include "harness.h"
 #include "claude_load.h"
 #include "../claude/repl.h"
@@ -330,6 +331,11 @@ static void mk_tree(void)
     strcat(p, "/t");
     mkdir(p, 0700);
     setenv("CLAUDE_CODE_TMPDIR", p, 1);
+    /* the screen's background requests (A4 gaps 3: the prompt suggestion,
+     * the away recap) would take the scripted answers: off, but in the
+     * tests that drive them */
+    setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false", 1);
+    setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "0", 1);
     strcpy(p, dir);
     strcat(p, "/S");
     mkdir(p, 0700);
@@ -1885,13 +1891,29 @@ static void test_wp4_perms(void)
     add_stream("tool_edit.sse");
     add_stream("tool_final.sse");
     CHECK_INT(run_print(&r, "-p --output-format json --dangerously-skip-permissions please edit", 0), 0);
-    CHECK_INT(r.ask_policy, ASKP_BYPASS);
+    CHECK_INT(r.tools.perm.mode, PERM_BYPASS);
+    CHECK_INT(r.tools.perm.can_bypass, 1);
+    CHECK_STR(perm_name(r.tools.perm.mode), "bypassPermissions");
     CHECK_INT(result_of(&v), 0);
     CHECK(json_get(v, "permission_denials", &x) && json_count(x) == 0);
     CHECK(sys.read(sys.u, p, 1000, &b, &n) == 0 && b && !strcmp(b, "hello from the Amiga\n"));
     free(b);
     repl_free(&r);
     remove(p);
+
+    /* gaps 3: --allow-dangerously-skip-permissions: the session starts in
+     * default, bypass is only reachable (Shift+Tab); without the flag not */
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p --allow-dangerously-skip-permissions hello", 0), 0);
+    CHECK_INT(r.tools.perm.mode, PERM_DEFAULT);
+    CHECK_INT(r.tools.perm.can_bypass, 1);
+    repl_free(&r);
+    setup(&r, none);
+    add_stream("text.sse");
+    CHECK_INT(run_print(&r, "-p hello", 0), 0);
+    CHECK_INT(r.tools.perm.can_bypass, 0);
+    repl_free(&r);
 
     /* --tools and --disallowedTools: what the request declares */
     setup(&r, none);
@@ -5239,6 +5261,399 @@ static void test_gaps2_more(void)
     repl_free(&r);
 }
 
+/* ---- A4 gaps 3 (TUI side): the screen's rows, each driven once through
+ * the REPL core on the engine's screen (ledger
+ * thoughts/shared/plans/2026-10-05-a4-gaps3-tui-progress.md) ---- */
+
+/* a REPL with its screen in root (made), the keys typed in turn */
+static void g3_screen(cl_repl *r, const char **keys, const char *sub_dir, char *root)
+{
+    strcpy(root, dir);
+    strcat(root, "/");
+    strcat(root, sub_dir);
+    mkdir(root, 0700);
+    cs_open(80, 30, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
+}
+
+static void g3_dump(void)
+{
+    if (getenv("CL_DUMP")) {
+        int k;
+        for (k = 0; k < cs.rows; k++)
+            printf("%2d|%s\n", k, cs_row(k));
+    }
+}
+
+/* G3: --allow-dangerously-skip-permissions puts bypass in Shift+Tab's
+ * cycle; three presses reach it and Claude's Write runs unasked */
+static void test_gaps3_bypass(void)
+{
+    static const char *keys[] = { "\033[Z", "\033[Z", "\033[Z", "write it\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_screen(&r, keys, "g3bypass", root);
+    r.allow_bypass = 1;             /* what cli_apply sets for the flag */
+    repl_load(&r);
+    add_answer("toolu_G3W", "Write", "{\"file_path\":\"g3.txt\",\"content\":\"bypassed\\n\"}", 0);
+    add_answer(0, 0, 0, "Written.");
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    g3_dump();
+    CHECK_INT(cs.next, 5);                  /* no question took a key */
+    CHECK(strstr(cs.sent.p, " bypass permissions on\033[0m\033[2m (shift+tab to cycle)") != 0);
+    CHECK_INT(r.tools.perm.mode, PERM_BYPASS);
+    CHECK(has("g3bypass/g3.txt", "bypassed"));
+    repl_free(&r);
+    cs_close();
+}
+
+/* the box's frame colour (its top-left corner's foreground) seen before each read */
+static int g3_fg[8];
+static void g3_look_frame(void)
+{
+    int row = cs_find("\342\225\255");
+    if (cs.next < 8)
+        g3_fg[cs.next] = row >= 0 ? h_cell(cs.vt, 0, row)->fg : -1;
+}
+
+/* G4: /color red draws the prompt bar red, default puts the theme's grey
+ * back, a name that is no colour says how */
+static void test_gaps3_color(void)
+{
+    static const char *keys[] = { "/color red\r", "/color default\r", "/color mauve\r", "/color\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_screen(&r, keys, "g3color", root);
+    CHECK_INT(repl_screen(&r), 0);
+    memset(g3_fg, 0, sizeof(g3_fg));
+    cs.before_read = g3_look_frame;
+    repl_run(&r);
+    cs.before_read = 0;
+    g3_dump();
+    CHECK_INT(cs.next, 5);
+    CHECK_INT(g3_fg[0], 8);                 /* the theme's grey */
+    CHECK_INT(g3_fg[1], 1);                 /* red */
+    CHECK_INT(g3_fg[2], 8);                 /* default */
+    CHECK(strstr(cs.sent.p, "Usage: /color [red|blue|green|yellow|purple|orange|pink|cyan|default]") != 0);
+    CHECK(r.bar_color[0] && theme_named(r.bar_color) && g3_fg[4] != 8);    /* no argument: one of the eight */
+    repl_free(&r);
+    cs_close();
+}
+
+/* G5: Alt+T turns thinking off for the next turn on a model that may go
+ * without (thinking disabled, effort xhigh sent as high) and on again */
+static void test_gaps3_think(void)
+{
+    static const char *keys[] = { "\033t", "hi\r", "\033t", "again\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_screen(&r, keys, "g3think", root);
+    cl_copy(r.model, "claude-opus-4-7", sizeof(r.model));
+    cl_copy(r.effort, "xhigh", sizeof(r.effort));
+    add_answer(0, 0, 0, "one");
+    add_answer(0, 0, 0, "two");
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    g3_dump();
+    CHECK_INT(cs.next, 5);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[0], "\"thinking\":{\"type\":\"disabled\"}") != 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[0], "\"output_config\":{\"effort\":\"high\"}") != 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"thinking\":{\"type\":\"adaptive\"") != 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "\"effort\":\"xhigh\"") != 0);
+    CHECK(strstr(cs.sent.p, "Thinking off") != 0 && strstr(cs.sent.p, "Thinking on") != 0);
+    repl_free(&r);
+    cs_close();
+}
+
+/* G6: /add-dir's argument completed with Tab from the start directory's
+ * subdirectories, through the REPL's own completion (ui_attach) */
+static void test_gaps3_dirs(void)
+{
+    static const char *keys[] = { "/add-dir proj", "\t", "\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_screen(&r, keys, "g3dirs", root);
+    xput(root, "projects/readme.txt", "x\n");
+    xput(root, "proj.txt", "x\n");
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    g3_dump();
+    CHECK_INT(cs.next, 4);
+    CHECK(cs_find("> /add-dir projects/") >= 0);    /* Tab took the directory, not proj.txt */
+    CHECK(cs_find("Claude may now read") >= 0);
+    CHECK(r.cfg.ndirs == 1 && strstr(r.cfg.dirs[0], "g3dirs/projects") != 0);
+    repl_free(&r);
+    cs_close();
+}
+
+/* G7: @ offers the project's subagent by name; Tab writes @agent-NAME;
+ * the prompt goes with the note that has Claude invoke that agent; an
+ * @agent- of no agent is left alone */
+static void test_gaps3_agent_mention(void)
+{
+    static const char *keys[] = { "ask @code", "\t", "to look\r", "and @agent-nobody here\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    const char *once;
+    stub_reset();
+    g3_screen(&r, keys, "g3agent", root);
+    xput(root, ".claude/agents/code-reviewer.md",
+         "---\nname: code-reviewer\ndescription: Reviews code\n---\nReview it.\n");
+    repl_load(&r);
+    add_answer(0, 0, 0, "Asking it.");
+    add_answer(0, 0, 0, "No such agent.");
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    g3_dump();
+    CHECK_INT(cs.next, 5);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq >= 1 && strstr(sb.body[0], "ask @agent-code-reviewer to look") != 0);
+    CHECK(sb.nreq >= 1 && strstr(sb.body[0], "The user has expressed a desire to invoke the agent "
+                                             "\\\"code-reviewer\\\".") != 0);
+    CHECK(sb.nreq >= 2 && (once = strstr(sb.body[1], "desire to invoke")) != 0 &&
+          strstr(once + 1, "desire to invoke") == 0);     /* the first prompt's note only */
+    repl_free(&r);
+    cs_close();
+}
+
+/* G8: askUserQuestionTimeout's clock: each wait in the open menu passes
+ * 25 s; while the window reports the focus it does not count */
+static cl_repl *g3_r;
+static int g3_countdown, g3_modal_reads;
+static void g3_afk_clock(void)
+{
+    if (g3_r && g3_r->tui && g3_r->tui->modal) {
+        g3_modal_reads++;
+        cs.clock += 25000;
+        if (cs_find("No answer: going on without you in") >= 0)
+            g3_countdown = 1;
+    }
+}
+
+static void test_gaps3_afk(void)
+{
+    static const char *keys[] = { "which size?\r", "\033[I", "", "", "", "\033[O", "", "", "", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    setenv("CLAUDE_AFK_TIMEOUT_MS", "60000", 1);
+    g3_screen(&r, keys, "g3afk", root);
+    add_answer("toolu_G3Ask", "AskUserQuestion",
+               "{\"questions\":[{\"question\":\"Which size?\",\"header\":\"Size\",\"options\":[{\"label\":\"80x24\","
+               "\"description\":\"classic\"},{\"label\":\"132x50\",\"description\":\"big\"}],\"multiSelect\":false}]}",
+               0);
+    add_answer(0, 0, 0, "I will pick 80x24.");
+    CHECK_INT(repl_screen(&r), 0);
+    CHECK_INT(r.ui.afk_ms, 60000);
+    g3_r = &r;
+    g3_countdown = g3_modal_reads = 0;
+    cs.before_read = g3_afk_clock;
+    repl_run(&r);
+    cs.before_read = 0;
+    g3_r = 0;
+    unsetenv("CLAUDE_AFK_TIMEOUT_MS");
+    g3_dump();
+    CHECK_INT(cs.next, 10);
+    /* the menu's reads: focus in, three waits that do not count, focus out
+     * (25 s), 25 s more (the countdown), 25 s more: gone on (without the
+     * focus pause it would have gone after three) */
+    CHECK_INT(g3_modal_reads, 7);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "The user did not answer your questions in time and may be away "
+                                             "from the keyboard.") != 0);
+    CHECK_INT(g3_countdown, 1);             /* the last 20 s counted down on the screen */
+    repl_free(&r);
+    cs_close();
+}
+
+/* G9: after a turn with a warm cache, the box shows the next prompt Claude
+ * predicts (a background request, no spinner); Tab puts it in, Enter sends
+ * it; after a cold-cache turn none is asked for */
+static void test_gaps3_suggest(void)
+{
+    static const char *keys[] = { "hi\r", "\t", "\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "true", 1);
+    g3_screen(&r, keys, "g3suggest", root);
+    add_stream("tool_final.sse");           /* cache_read_input_tokens 1500: warm */
+    add_answer(0, 0, 0, "run the tests\n");
+    add_answer(0, 0, 0, "ok");              /* a cold one: no suggestion after it */
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    setenv("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION", "false", 1);
+    g3_dump();
+    CHECK_INT(cs.next, 4);
+    CHECK_INT(sb.nreq, 3);
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "Predict what the user is most likely to type next") != 0);
+    CHECK(sb.nreq >= 3 && strstr(sb.body[2], "{\"type\":\"text\",\"text\":\"run the tests\"}") != 0);
+    CHECK_INT(r.n_suggested, 1);
+    CHECK(cs_find("> run the tests") >= 0);
+    CHECK(strstr(cs.sent.p, "Predict what") == 0);  /* nothing of it on the screen */
+    repl_free(&r);
+    cs_close();
+}
+
+/* G10: after three prompts, three minutes with no key (the terminal never
+ * reported its focus): the recap, made in the background, once; a fourth
+ * idle minute makes no second one */
+static void g3_away_clock(void)
+{
+    if (cs.next >= 3 && cs.script[cs.next] && !cs.script[cs.next][0])
+        cs.clock += 61000;          /* each empty read: a minute and a bit */
+}
+
+static void test_gaps3_recap(void)
+{
+    static const char *keys[] = { "one\r", "two\r", "three\r", "", "", "", "", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "1", 1);
+    g3_screen(&r, keys, "g3recap", root);
+    add_answer(0, 0, 0, "1");
+    add_answer(0, 0, 0, "2");
+    add_answer(0, 0, 0, "3");
+    add_answer(0, 0, 0, "We counted to three.");
+    CHECK_INT(repl_screen(&r), 0);
+    cs.before_read = g3_away_clock;
+    repl_run(&r);
+    cs.before_read = 0;
+    setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "0", 1);
+    g3_dump();
+    CHECK_INT(cs.next, 8);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq == 4 && strstr(sb.body[3], "recap this session so far") != 0);
+    CHECK_INT((int)r.n_recaps, 1);
+    CHECK(cs_find("Recap: We counted to three.") >= 0);
+    repl_free(&r);
+    cs_close();
+    {
+        /* the window reports it has the focus: the user is there, no recap */
+        static const char *k2[] = { "one\r", "two\r", "three\r", "\033[I", "", "", "", "/exit\r", 0 };
+        stub_reset();
+        setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "1", 1);
+        g3_screen(&r, k2, "g3recap", root);
+        add_answer(0, 0, 0, "1");
+        add_answer(0, 0, 0, "2");
+        add_answer(0, 0, 0, "3");
+        CHECK_INT(repl_screen(&r), 0);
+        cs.before_read = g3_away_clock;
+        repl_run(&r);
+        cs.before_read = 0;
+        setenv("CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "0", 1);
+        CHECK_INT(cs.next, 8);
+        CHECK_INT(sb.nreq, 3);
+        CHECK_INT((int)r.n_recaps, 0);
+        repl_free(&r);
+        cs_close();
+    }
+}
+
+/* G11: /keybindings writes the defaults to <home>/keybindings.json (and
+ * opens it: EDITOR is `true` here); the file changed on disk is read again
+ * while the screen waits; its Ctrl+Y -> chat:modelPicker then opens the
+ * picker */
+static cl_repl *g3_kr;
+static char g3_kfile[600];
+static int g3_kdefaults;
+static void g3_keys_edit(void)
+{
+    if (cs.next == 1 && g3_kr && g3_kr->n_keys_loads == 1) {
+        struct utimbuf tb;
+        char *d = 0;
+        long dn = 0;
+        FILE *f;
+        /* what /keybindings wrote: the defaults, Claude Code's format */
+        g3_kdefaults = sys.read(sys.u, g3_kfile, 100000, &d, &dn) == 0 && d &&
+                       strstr(d, "\"$schema\": \"https://www.schemastore.org/claude-code-keybindings.json\"") &&
+                       strstr(d, "\"ctrl+x ctrl+e\": \"chat:externalEditor\"") &&
+                       strstr(d, "\"context\": \"Select\"");
+        free(d);
+        f = fopen(g3_kfile, "wb");
+        if (f) {
+            fputs("{\"bindings\":[{\"context\":\"Chat\",\"bindings\":{\"ctrl+y\":\"chat:modelPicker\"}}]}", f);
+            fclose(f);
+        }
+        tb.actime = tb.modtime = time(0) + 10;  /* a different mtime than the one read */
+        utime(g3_kfile, &tb);
+        cs.clock += 2500;                       /* past the 2 s between looks */
+    }
+}
+
+static void test_gaps3_keybindings(void)
+{
+    static const char *keys[] = { "/keybindings\r", "", "\031", "\033", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_kdefaults = 0;
+    setenv("EDITOR", "true", 1);
+    g3_screen(&r, keys, "g3keys", root);
+    CHECK(repl_keys_file(&r, g3_kfile, sizeof(g3_kfile)) == 0);
+    remove(g3_kfile);
+    CHECK_INT(repl_screen(&r), 0);
+    CHECK_INT((int)r.n_keys_loads, 0);      /* no file yet: the defaults */
+    g3_kr = &r;
+    cs.before_read = g3_keys_edit;
+    repl_run(&r);
+    cs.before_read = 0;
+    g3_kr = 0;
+    unsetenv("EDITOR");
+    g3_dump();
+    CHECK_INT(cs.next, 5);
+    CHECK_INT(g3_kdefaults, 1);
+    CHECK(cs_find("Created with the default bindings") >= 0);
+    CHECK_INT((int)r.n_keys_loads, 2);      /* after /keybindings, after the change */
+    CHECK(strstr(cs.sent.p, "Select a model") != 0);
+    remove(g3_kfile);
+    repl_free(&r);
+    cs_close();
+}
+
+/* G12: /focus says why it is not here */
+static void test_gaps3_na(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    stub_reset();
+    setup(&r, none);
+    repl_line(&r, "/focus");
+    CHECK(cn.screen.p && strstr(cn.screen.p, "/focus is not available on the Amiga: it is a view of Claude Code's "
+                                             "fullscreen renderer") != 0);
+    repl_free(&r);
+}
+
+static void test_gaps3(void)
+{
+    test_gaps3_na();
+    test_gaps3_keybindings();
+    test_gaps3_recap();
+    test_gaps3_suggest();
+    test_gaps3_afk();
+    test_gaps3_agent_mention();
+    test_gaps3_bypass();
+    test_gaps3_color();
+    test_gaps3_think();
+    test_gaps3_dirs();
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -5267,6 +5682,7 @@ void suite_claude_repl(void)
     test_gaps2_tools();
     test_gaps2_hooks();
     test_gaps2_more();
+    test_gaps3();
     test_gaps3_loop();
     stub_reset();
     jw_free(&cn.screen);

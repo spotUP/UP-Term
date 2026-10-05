@@ -22,6 +22,7 @@ const cl_cmd slash_builtin[] = {
     { "/btw", "A side question about this conversation, not added to it: /btw QUESTION" },
     { "/cd", "Change the start directory: /cd DIR" },
     { "/clear", "Start a new conversation (clears the screen): /clear [name for the old one]" },
+    { "/color", "The prompt bar's color for this session: /color [red|blue|green|yellow|purple|orange|pink|cyan|default]" },
     { "/commands", "The custom commands (.claude/commands)" },
     { "/compact", "Summarise the conversation and go on from it: /compact [what to keep]" },
     { "/config", "The settings: /config [key=value ...] or /config KEY VALUE [user|project|local]" },
@@ -37,6 +38,7 @@ const cl_cmd slash_builtin[] = {
     { "/goal", "Claude keeps working until a condition holds: /goal CONDITION, /goal clear" },
     { "/hooks", "The hooks of the settings" },
     { "/init", "Write AMIGA.md: notes on this directory for later sessions" },
+    { "/keybindings", "Open the keyboard shortcuts file (ENVARC:Claude/keybindings.json)" },
     { "/login", "Store an API key in ENVARC:Claude/key" },
     { "/logout", "Remove the stored API key" },
     { "/memory", "Edit a memory file (CLAUDE.md) in the editor" },
@@ -265,8 +267,7 @@ static void status(cl_repl *r)
         cl_cat(m, r->fallback, sizeof(m));
     }
     line2(r, "Model: ", m);
-    line2(r, "Permission mode: ", r->tools.perm.mode == PERM_PLAN ? "plan" : r->tools.perm.mode == PERM_ACCEPT
-                                      ? "accept edits" : "default");
+    line2(r, "Permission mode: ", tui_mode_names[r->tools.perm.mode]);
     line2(r, "Output style: ", r->style[0] ? r->style : "Default");
     cl_copy(m, r->url.host, sizeof(m));
     cl_cat(m, r->url.tls ? " (https)" : " (plain http: no key is sent)", sizeof(m));
@@ -584,13 +585,47 @@ static void config(cl_repl *r, const char *a)
 
 /* ---- /memory ---- */
 
+/* a file in the user's editor: Ctrl+G's launcher with the screen (a
+ * console editor works too), else $EDITOR (Ed) run as a command */
+static void edit_file(cl_repl *r, const char *file)
+{
+    char ed[200], line[600], *o;
+    long on = 0, rc = 0;
+    if (r->io->edit) {
+        int bad;
+        line2(r, "Editing ", file);
+        if (r->io->raw && r->tui)
+            r->io->raw(r->io->u, 0);
+        bad = r->io->edit(r->io->u, file);
+        if (r->io->raw && r->tui)
+            r->io->raw(r->io->u, 1);
+        if (r->tui)
+            tui_redraw(r->tui);
+        if (bad)
+            line2(r, "The editor did not run for ", file);
+        return;
+    }
+    if (!r->sys->getenv || r->sys->getenv(r->sys->u, "EDITOR", ed, sizeof(ed)) <= 0)
+        cl_copy(ed, "Ed", sizeof(ed));
+    cl_copy(line, ed, sizeof(line));
+    cl_cat(line, " \"", sizeof(line));
+    cl_cat(line, file, sizeof(line));
+    cl_cat(line, "\"", sizeof(line));
+    o = (char *)malloc(1024);
+    if (!o)
+        return;
+    line2(r, "Editing ", file);
+    if (r->sys->run(r->sys->u, line, 3600, o, 1023, &on, &rc) < 0 || rc >= 10)
+        line2(r, "The editor did not run: ", line);
+    free(o);
+}
+
 static void memory(cl_repl *r, const char *arg)
 {
     static const char *const opt[] = { "User memory (ENVARC:Claude/CLAUDE.md)", "Project memory (CLAUDE.md)",
                                        "Local project memory (CLAUDE.local.md, private)" };
     static const int kinds[] = { MEM_USER, MEM_PROJECT, MEM_LOCAL };
-    char file[300], ed[200], line[600], *o;
-    long on = 0, rc = 0;
+    char file[300];
     int c = !strcmp(arg, "user") ? 0 : !strcmp(arg, "project") ? 1 : !strcmp(arg, "local") ? 2 : -1;
     int i;
     if (!strcmp(arg, "auto on") || !strcmp(arg, "auto off")) {
@@ -617,38 +652,50 @@ static void memory(cl_repl *r, const char *arg)
             r->sys->mkdir(r->sys->u, r->home);
         r->sys->write(r->sys->u, file, head, (long)sizeof(head) - 1);
     }
-    if (r->io->edit) {
-        /* WP1's editor launcher (Ctrl+G's): a console editor works too */
-        int bad;
-        line2(r, "Editing ", file);
-        if (r->io->raw && r->tui)
-            r->io->raw(r->io->u, 0);
-        bad = r->io->edit(r->io->u, file);
-        if (r->io->raw && r->tui)
-            r->io->raw(r->io->u, 1);
-        if (r->tui)
-            tui_redraw(r->tui);
-        if (bad)
-            line2(r, "The editor did not run for ", file);
-        repl_load_memory(r);
-        num_line(r, "Memory read again: ", r->mem.n, r->mem.n == 1 ? " file." : " files.");
-        return;
-    }
-    if (!r->sys->getenv || r->sys->getenv(r->sys->u, "EDITOR", ed, sizeof(ed)) <= 0)
-        cl_copy(ed, "Ed", sizeof(ed));
-    cl_copy(line, ed, sizeof(line));
-    cl_cat(line, " \"", sizeof(line));
-    cl_cat(line, file, sizeof(line));
-    cl_cat(line, "\"", sizeof(line));
-    o = (char *)malloc(1024);
-    if (!o)
-        return;
-    line2(r, "Editing ", file);
-    if (r->sys->run(r->sys->u, line, 3600, o, 1023, &on, &rc) < 0 || rc >= 10)
-        line2(r, "The editor did not run: ", line);
-    free(o);
+    edit_file(r, file);
     repl_load_memory(r);
     num_line(r, "Memory read again: ", r->mem.n, r->mem.n == 1 ? " file." : " files.");
+}
+
+/* ---- /keybindings (A4 gaps 3) ---- */
+
+/* Claude Code: creates the file (with the default bindings) when there is
+ * none, opens it in the editor; the bindings apply when it is saved */
+static void keybindings(cl_repl *r)
+{
+    char file[300];
+    if (repl_keys_file(r, file, sizeof(file)))
+        return;
+    if (r->sys->kind(r->sys->u, file) == 0) {
+        jw d;
+        jw_init(&d);
+        km_defaults_json(&d);
+        if (r->sys->mkdir)
+            r->sys->mkdir(r->sys->u, r->home);
+        if (d.oom || r->sys->write(r->sys->u, file, d.p, d.n)) {
+            jw_free(&d);
+            line2(r, "Cannot write ", file);
+            return;
+        }
+        jw_free(&d);
+        line2(r, "Created with the default bindings: ", file);
+    }
+    edit_file(r, file);
+    if (!r->tui)
+        return;
+    repl_keys_load(r);
+    if (r->safe)
+        ui_line(&r->ui, "Safe mode: the bindings in the file are not used in this session.");
+    else if (r->tui->km.nwarn) {
+        char m[120], num[16];
+        cl_copy(m, "Keybindings read again, with ", sizeof(m));
+        cl_ltoa(r->tui->km.nwarn, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, r->tui->km.nwarn == 1 ? " problem (/debug for the log)." : " problems (/debug for the log).",
+               sizeof(m));
+        ui_line(&r->ui, m);
+    } else
+        ui_line(&r->ui, "Keybindings read again.");
 }
 
 /* ---- /login /logout ---- */
@@ -964,6 +1011,8 @@ static const struct na_cmd {
                        "talks to the Anthropic API (or URL= another endpoint of the same API)." },
     { "/import", "brings configuration from OpenAI Codex, Gemini CLI or Cursor, none of which runs on an Amiga." },
     { "/tui", "C:Claude has one renderer, made for UP-Term." },
+    { "/focus", "is a view of Claude Code's fullscreen renderer; C:Claude has one renderer, the classic one, "
+                "made for UP-Term (Ctrl+O shows the whole transcript)." },
     { "/scroll-speed", "the mouse wheel speed is UP-Term's (its Settings)." },
     { "/artifacts", why_artifact },
     { "/design", why_artifact },
@@ -1044,6 +1093,21 @@ static const char recap_ask[] =
     "In one line of at most twenty words, recap this session so far: what we are doing and where it stands. "
     "Answer with that line only.";
 
+int slash_recap(cl_repl *r, jw *out)
+{
+    long k;
+    if (repl_side(r, 0, r->conv.n, recap_ask, out))
+        return -1;
+    for (k = 0; k < out->n; k++)
+        if (out->p[k] == '\n')
+            out->p[k] = ' ';
+    if (out->n > 400) {
+        out->n = 400;               /* Claude Code caps a recap at 400 characters */
+        out->p[400] = 0;
+    }
+    return 0;
+}
+
 static void recap(cl_repl *r)
 {
     jw a;
@@ -1052,13 +1116,8 @@ static void recap(cl_repl *r)
         return;
     }
     jw_init(&a);
-    if (repl_side(r, 0, r->conv.n, recap_ask, &a) == 0) {
-        long k;
-        for (k = 0; k < a.n; k++)
-            if (a.p[k] == '\n')
-                a.p[k] = ' ';
+    if (slash_recap(r, &a) == 0)
         line2(r, "Recap: ", a.p);
-    }
     jw_free(&a);
 }
 
@@ -1283,6 +1342,38 @@ static void plan(cl_repl *r, const char *arg)
     pol_status_event(r);
     if (*arg && pol_prompt(r, arg, (long)strlen(arg)) == 0)
         repl_turn(r, arg, (long)strlen(arg));
+}
+
+/* /color [color|default] (A4 gaps 3): the prompt bar's colour for this
+ * session; no argument, a random one of the eight */
+static void color_(cl_repl *r, const char *arg)
+{
+    const char *name = arg;
+    if (!*arg) {
+        unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+        int i = (int)(now / 7 % THEME_NAMED);
+        if (!strcmp(r->bar_color, theme_named_names[i]))
+            i = (i + 1) % THEME_NAMED;      /* a pick that changes something */
+        name = theme_named_names[i];
+    } else if (!strcmp(arg, "default")) {
+        r->bar_color[0] = 0;
+        if (r->tui)
+            r->tui->bar = 0;
+        ui_line(&r->ui, "Prompt bar color reset to the theme's.");
+        return;
+    } else if (!theme_named(arg)) {
+        ui_line(&r->ui, "Usage: /color [red|blue|green|yellow|purple|orange|pink|cyan|default]");
+        return;
+    }
+    cl_copy(r->bar_color, name, sizeof(r->bar_color));
+    {
+        long k;
+        for (k = 0; r->bar_color[k]; k++)
+            r->bar_color[k] = (char)(r->bar_color[k] | 0x20);
+    }
+    if (r->tui)
+        r->tui->bar = theme_named(r->bar_color);
+    line2(r, "Prompt bar color set to ", r->bar_color);
 }
 
 static void debug(cl_repl *r)
@@ -1809,6 +1900,10 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
         plan(r, arg);
     else if (!strcmp(w, "/debug"))
         debug(r);
+    else if (!strcmp(w, "/color"))
+        color_(r, arg);
+    else if (!strcmp(w, "/keybindings"))
+        keybindings(r);
     else if (!strcmp(w, "/loop") || !strcmp(w, "/proactive"))
         loop_(r, arg);
     else if (!strcmp(w, "/release-notes")) {

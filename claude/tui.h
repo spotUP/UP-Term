@@ -70,7 +70,7 @@ typedef struct cl_cmd {
 } cl_cmd;
 
 /* permission modes, cycled with Shift+Tab (tools.h PERM_*) */
-extern const char *const tui_mode_names[3];
+extern const char *const tui_mode_names[4];
 
 typedef struct cl_tui {
     cl_io *io;
@@ -98,7 +98,8 @@ typedef struct cl_tui {
     /* the status line's facts (the REPL's, read each frame) */
     const char *model, *effort, *root;
     int ctx_left;               /* percent, -1 unknown */
-    int *mode;                  /* PERM_*, cycled here */
+    struct cl_perm *perm;       /* the permission mode (tools.h PERM_*), cycled here */
+    int *think_off;             /* Alt+T: extended thinking off for the session (the REPL's), 0 none */
     /* slash commands */
     const cl_cmd *cmds;
     int ncmds;
@@ -122,12 +123,24 @@ typedef struct cl_tui {
     /* A4 gaps 2: while the screen waits, a turn to run now (a cron job, a
      * background task's news): malloc'ed, 0 none; iu is its argument */
     char *(*wake)(void *u);
+    /* A4 gaps 3: the window's focus as the terminal reports it (?1004):
+     * 1 in, 0 out, -1 never reported; when the last key came */
+    int focus;
+    unsigned long key_ms;
+    /* the open menu goes on without the user after m_afk_ms idle (-1
+     * never; AskUserQuestion's askUserQuestionTimeout), the countdown shown
+     * for its last m_afk_count_ms; tui_menu resets it */
+    long m_afk_ms, m_afk_count_ms;
+    int m_left;                 /* the countdown's seconds shown, -1 none */
+    int m_ctx;                  /* the menu's binding context (keys.h KC_CONFIRM, KC_MSGSEL, KC_THEME;
+                                 * KC_SELECT the others); tui_menu resets it */
     /* A4 gaps 3: Esc or Ctrl+C on the idle, empty box: 1 when it was taken
      * (a pending /loop wakeup cancelled); iu is its argument */
     int (*esc_idle)(void *u);
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
     const cl_theme *th;         /* the colours (/theme) */
+    const char *bar;            /* /color: the prompt bar's colour for the session (SGR), 0 the theme's */
     /* A4: what the screen needs from the program (ui_attach sets them) */
     cl_sys *sys;
     const char *project;        /* the start directory: the history's project */
@@ -154,6 +167,10 @@ typedef struct cl_tui {
     long ctok;                  /* the token's start in the text */
     int cskip;                  /* 1: an '@' before the path (bash mode: 0) */
     int cclosed;                /* Esc closed the list until the text changes */
+    int comp_dirs;              /* the token is /add-dir's or /cd's argument: directories only */
+    /* A4 gaps 3: a prompt suggestion, greyed in the empty box; Tab or Right
+     * puts it in, typing drops it ("" none) */
+    char suggest[200];
     /* the directories the list read (input.c fills them): one disk read
      * each per prompt typed; a submitted prompt (epoch) makes them old */
     tui_dir dirs[TUI_DIRS];
@@ -182,9 +199,12 @@ typedef struct cl_tui {
     /* type-ahead */
     char *queue[TUI_QUEUE];
     int nq;
-    /* Esc Esc, Ctrl+X chords */
+    /* Esc Esc */
     unsigned long esc_ms;
-    int esc_armed, ctrlx;
+    int esc_armed;
+    /* A4 gaps 3: the key bindings (keys.h): Claude Code's defaults and
+     * keybindings.json's over them; the chords' state */
+    cl_keymap km;
     /* Ctrl+T: the todo list ("<status char><text>\n" per item: c done,
      * p in progress, o pending) */
     jw todos;
@@ -233,9 +253,14 @@ int tui_poll(cl_tui *t);
 void tui_tick(cl_tui *t);
 /* the next key: 1, 0 none within wait ms, -1 the end of input */
 int tui_key(cl_tui *t, cl_key *k, long wait);
+/* A4 gaps 3: has anything been typed? (read now, kept for tui_read; a
+ * focus report does not count) */
+int tui_pending(cl_tui *t);
 void tui_busy(cl_tui *t, int on);
 /* A framed menu (the permission question, a picker): the option chosen
- * (0..n-1; Esc and Ctrl+C choose esc), -1 at the end of input. */
+ * (0..n-1; Esc and Ctrl+C choose esc), -1 at the end of input, TUI_AWAY
+ * when m_afk_ms (set before the call) ran out with no key. */
+#define TUI_AWAY (-2)
 int tui_menu(cl_tui *t, const char *title, const char *question, const char *const *opt, int n, int sel,
              int esc);
 

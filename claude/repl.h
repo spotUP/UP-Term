@@ -61,8 +61,8 @@ typedef struct cl_feed {
 /* who answers a permission question (A4 WP4) */
 enum {
     ASKP_ASK,                   /* the user */
-    ASKP_DENY,                  /* nobody: denied (dontAsk; print mode); reads in the root still run */
-    ASKP_BYPASS                 /* yes to all (bypassPermissions); explicit ask rules still ask */
+    ASKP_DENY                   /* nobody: denied (dontAsk; print mode); reads in the root still run */
+    /* (bypassPermissions is a permission mode: cl_perm PERM_BYPASS) */
 };
 /* how the last turn ended */
 enum { TURN_OK, TURN_FAIL, TURN_CANCEL, TURN_MAX_TURNS, TURN_BUDGET, TURN_DEFERRED };
@@ -138,6 +138,8 @@ typedef struct cl_repl {
     /* A4 WP4: the command line (cli.c) and print mode (print.c) */
     const cl_feed *feed;
     int ask_policy;             /* ASKP_* */
+    int allow_bypass;           /* A4 gaps 3: --allow-dangerously-skip-permissions (bypass in the cycle) */
+    char bar_color[16];         /* /color: the prompt bar's colour name for the session, "" the theme's */
     int no_person;              /* print mode: no one to ask (questions denied, choices declined) */
     int max_turns;              /* responses a turn may have before it stops, 0 no limit */
     unsigned long budget_micro; /* spend allowed (US dollars * 1e6), 0 no limit; ... */
@@ -230,6 +232,16 @@ typedef struct cl_repl {
     long max_ctx;               /* CLAUDE_CODE_MAX_CONTEXT_TOKENS, 0 the model's */
     int no_1m;                  /* CLAUDE_CODE_DISABLE_1M_CONTEXT */
     int no_thinking;            /* CLAUDE_CODE_DISABLE_THINKING */
+    int think_off;              /* A4 gaps 3: Alt+T turned extended thinking off (from the next turn) */
+    long last_cache_r;          /* the last answer's cache_read_input_tokens (0: cold, no suggestion) */
+    long sugg_at;               /* n_responses when a suggestion was last asked for */
+    long n_suggested;           /* the tests' sentinel: suggestions shown */
+    long away_resp, recap_resp; /* the away recap: n_responses seen, n_responses recapped */
+    unsigned long away_t0;      /* when the last answer was seen */
+    long n_recaps;              /* the tests' sentinel: away recaps shown */
+    long keys_mtime;            /* keybindings.json as read (0 none) */
+    unsigned long keys_check_ms;    /* when it was last looked at */
+    long n_keys_loads;          /* the tests' sentinel: the file read */
     char *extra_body;           /* CLAUDE_CODE_EXTRA_BODY: a JSON object merged into every request */
     int no_compact;             /* DISABLE_COMPACT */
     int compact_pct;            /* CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (lower only), CL_COMPACT_PCT */

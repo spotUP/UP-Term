@@ -371,8 +371,8 @@ static void agent_run(cl_tools *t, jw *out, const char *id, const cl_agent *a, c
         mask &= ~tools_mask(a->deny_tools);     /* disallowedTools */
     child.allowed = t->allowed & mask & ~((1ul << T_ASK_USER) | (1ul << T_EXIT_PLAN) | (1ul << T_ENTER_PLAN));
     child.web_search = t->web_search && (mask & (1ul << T_WEB_SEARCH)) != 0;
-    /* permissionMode: the edits and plan modes are the tools' own; nobody
-     * asked / yes to all are the REPL's ask policies */
+    /* permissionMode: the modes are the tools' own (bypass too); nobody
+     * asked (dontAsk) is the REPL's ask policy */
     if (a->perm_mode) {
         if (!strcmp(a->perm_mode, "acceptEdits"))
             child.perm.mode = PERM_ACCEPT;
@@ -383,7 +383,7 @@ static void agent_run(cl_tools *t, jw *out, const char *id, const cl_agent *a, c
         else if (!strcmp(a->perm_mode, "dontAsk"))
             child.ask_policy = 2;
         else if (!strcmp(a->perm_mode, "bypassPermissions"))
-            child.ask_policy = 3;
+            child.perm.mode = PERM_BYPASS;
     }
     /* Claude Code's order: the call's model, the agent's, CLAUDE_CODE_SUBAGENT_MODEL,
      * the conversation's; CLAUDE_CODE_SUBAGENT_MODEL_FORCE puts the variable first */

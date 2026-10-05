@@ -79,13 +79,22 @@ void tools_search_tool(jw *w, const char *model, const char *allowed, const char
 /* The permission mode (Shift+Tab in the screen, ledger A3): the A2 rules;
  * accept edits -- Write, Edit and MultiEdit inside the start directory run
  * without a question; plan -- only what changes nothing runs, the others
- * are refused with a result that says so. */
-enum { PERM_DEFAULT, PERM_ACCEPT, PERM_PLAN };
+ * are refused with a result that says so; bypass (A4 gaps 3, Claude Code's
+ * bypassPermissions) -- every question answered yes, except an explicit
+ * ask rule's. */
+enum { PERM_DEFAULT, PERM_ACCEPT, PERM_PLAN, PERM_BYPASS };
 
 typedef struct cl_perm {
     unsigned long session;      /* bit per tool: allowed for the session */
     int mode;                   /* PERM_* */
+    int can_bypass;             /* bypass is in the Shift+Tab cycle (--dangerously-skip-permissions,
+                                 * --allow-dangerously-skip-permissions) */
 } cl_perm;
+
+/* the mode's name as Claude Code writes it (settings, hooks, stream-json) */
+const char *perm_name(int mode);
+/* Shift+Tab: the mode after this one (bypass only when it may be) */
+int perm_next(const cl_perm *p);
 
 int perm_read_only(int tool);
 /* must the user be asked? */
@@ -102,6 +111,8 @@ enum { TW_GO, TW_STOP, TW_BACKGROUND };
 /* choose() flags */
 #define CH_MULTI 1              /* several options may be picked */
 #define CH_OTHER 2              /* the user may type an answer of their own */
+#define CH_AFK 4                /* AskUserQuestion: may go on without an answer (askUserQuestionTimeout) */
+#define CHOOSE_AWAY (-2)        /* choose(): CH_AFK's time ran out (*picked: what was ticked by then) */
 
 struct cl_stream;
 struct cl_shells;
@@ -149,8 +160,9 @@ typedef struct cl_tools {
     void (*result)(void *u, int tool, const char *input, long inn, int is_error, const char *text, long n);
     /* A question with options (AskUserQuestion, the plan-mode tools):
      * the option picked, n when the user typed an answer of their own (in
-     * other), -1 declined (Esc). CH_MULTI: *picked gets a bit per option
-     * and the result is 0. Absent: the tools that need it answer is_error. */
+     * other), -1 declined (Esc), CHOOSE_AWAY (CH_AFK) nobody answered in
+     * time. CH_MULTI: *picked gets a bit per option and the result is 0.
+     * Absent: the tools that need it answer is_error. */
     int (*choose)(void *u, const char *header, const char *question, const char *const *labels,
                   const char *const *descs, int n, int flags, unsigned *picked, char *other, long cap);
     /* optional: a plan (ExitPlanMode), Markdown, shown whole */
@@ -283,6 +295,10 @@ unsigned long tools_mask(const char *list);
 /* An agent by name, case-insensitive: the built-in ones (general-purpose,
  * Explore, Plan) and the provider's (ext.h). 0 none. */
 const struct cl_agent *tools_agent(const cl_tools *t, const char *name);
+/* The built-in agents and the provider's, in order: the count; the i-th
+ * (subagent.c; the @ typeahead lists them too) */
+int agent_count(const cl_tools *t);
+const struct cl_agent *agent_get(const cl_tools *t, int i);
 
 /* ---- what the screen shows of a call (show.c, ui.c) ---- */
 

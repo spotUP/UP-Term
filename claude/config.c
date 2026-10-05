@@ -36,6 +36,8 @@ void cfg_init(cl_settings *s)
     s->auto_memory = -1;
     s->model_src = -1;
     s->cleanup_days = -1;
+    s->prompt_suggest = -1;
+    s->away_summary = -1;
 }
 
 static void free_hook(cl_hook *k);
@@ -431,6 +433,57 @@ static void env_of(cl_settings *s, jv env)
     }
 }
 
+/* the keys read from the user's settings and --settings only (Claude
+ * Code's scope "User or managed": a project cannot remap keys or let
+ * questions go on alone) */
+static void user_keys(cl_settings *s, jv o)
+{
+    jv x;
+    if (json_get(o, "vimInsertModeRemaps", &x) && json_type(x) == J_OBJ) {
+        /* two printable characters -> "<Esc>"; anything else is ignored */
+        jit it;
+        jv k, v;
+        long n = 0;
+        json_iter(x, &it);
+        while (json_next(&it, &k, &v) && n + 2 < (long)sizeof(s->vim_remaps)) {
+            char key[8];
+            if (json_type(k) != J_STR || json_str(k, key, sizeof(key)) != 2 || !json_streq(v, "<Esc>") ||
+                (unsigned char)key[0] < 0x21 || (unsigned char)key[0] > 0x7e ||
+                (unsigned char)key[1] < 0x21 || (unsigned char)key[1] > 0x7e)
+                continue;
+            s->vim_remaps[n++] = key[0];
+            s->vim_remaps[n++] = key[1];
+            s->vim_remaps[n] = 0;
+        }
+    }
+    if (json_get(o, "askUserQuestionTimeout", &x)) {
+        /* A4 gaps 3: "60s", "5m", "10m" or "never" (user settings and
+         * --settings only, as Claude Code's scope "User or managed") */
+        if (json_streq(x, "60s"))
+            s->ask_timeout_ms = 60000L;
+        else if (json_streq(x, "5m"))
+            s->ask_timeout_ms = 300000L;
+        else if (json_streq(x, "10m"))
+            s->ask_timeout_ms = 600000L;
+        else if (json_streq(x, "never"))
+            s->ask_timeout_ms = 0;
+    }
+}
+
+/* the screen's switches (A4 gaps 3), from any file: -1 not set, 0, 1 */
+static void flag_into(jv o, const char *key, int *out)
+{
+    jv x;
+    if (json_get(o, key, &x) && (json_type(x) == J_TRUE || json_type(x) == J_FALSE))
+        *out = json_type(x) == J_TRUE;
+}
+
+static void view_keys(cl_settings *s, jv o)
+{
+    flag_into(o, "promptSuggestionEnabled", &s->prompt_suggest);
+    flag_into(o, "awaySummaryEnabled", &s->away_summary);
+}
+
 int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *name)
 {
     jv o, x, p;
@@ -449,24 +502,9 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
         str_into(x, s->output_style, sizeof(s->output_style));
     if (json_get(o, "editorMode", &x))
         str_into(x, s->editor_mode, sizeof(s->editor_mode));
-    if ((src == CFG_USER || src == CFG_SESSION) && json_get(o, "vimInsertModeRemaps", &x) &&
-        json_type(x) == J_OBJ) {
-        /* two printable characters -> "<Esc>"; anything else is ignored */
-        jit it;
-        jv k, v;
-        long n = 0;
-        json_iter(x, &it);
-        while (json_next(&it, &k, &v) && n + 2 < (long)sizeof(s->vim_remaps)) {
-            char key[8];
-            if (json_type(k) != J_STR || json_str(k, key, sizeof(key)) != 2 || !json_streq(v, "<Esc>") ||
-                (unsigned char)key[0] < 0x21 || (unsigned char)key[0] > 0x7e ||
-                (unsigned char)key[1] < 0x21 || (unsigned char)key[1] > 0x7e)
-                continue;
-            s->vim_remaps[n++] = key[0];
-            s->vim_remaps[n++] = key[1];
-            s->vim_remaps[n] = 0;
-        }
-    }
+    if (src == CFG_USER || src == CFG_SESSION)
+        user_keys(s, o);
+    view_keys(s, o);
     if (json_get(o, "theme", &x))
         str_into(x, s->theme, sizeof(s->theme));
     if (json_get(o, "fallbackModel", &x))

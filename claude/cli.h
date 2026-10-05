@@ -58,6 +58,7 @@ typedef struct cl_cli {
     int print, ping, debug, plain, verbose, partial, version, help, ask_template;
     int cont, fork, no_persist, resume;     /* resume: -r given (resume_name "" = the picker) */
     int skip_perms;                         /* --dangerously-skip-permissions */
+    int allow_skip;                         /* --allow-dangerously-skip-permissions */
     int out, in;                            /* CLI_TEXT / CLI_JSON / CLI_STREAM */
     int max_turns;                          /* 0 none */
     int has_budget;

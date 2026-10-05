@@ -20,6 +20,14 @@ void repl_cost(cl_repl *r);
  * but none called; the answer's text into answer, nothing kept in the
  * conversation (the cost is counted). 0, -1 failed (shown), -2 stopped. */
 int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer);
+/* the next prompt the user is likely to type (a side request): 0 with it in
+ * out, -1 none (A4 gaps 3; print mode's --prompt-suggestions too) */
+int repl_suggest(cl_repl *r, jw *out);
+/* /recap's one line (slash.c), at most 400 characters: 0, -1 */
+int slash_recap(cl_repl *r, jw *out);
+/* keybindings.json: its path; read it (again) into the screen's key map */
+int repl_keys_file(const cl_repl *r, char *out, long cap);
+void repl_keys_load(cl_repl *r);
 /* /rewind's "Summarize from here" (up_to 0: the prompt at msg and all
  * after it become one summary) and "Summarize up to here" (up_to 1:
  * everything before it does): 0, -1, -2 stopped */
