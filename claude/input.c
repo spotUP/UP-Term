@@ -69,7 +69,7 @@ static int bash(cl_ui *u, const char *cmd, jw *out)
             jw_rawz(out, cmd);
             jw_rawz(out, "</bash-input>\n<bash-stdout>The command was moved to the background with ID: ");
             jw_rawz(out, id);
-            jw_rawz(out, " (BashOutput reads its output).</bash-stdout><bash-stderr></bash-stderr>");
+            jw_rawz(out, " (you are told when it ends; TaskStop stops it).</bash-stdout><bash-stderr></bash-stderr>");
             return IN_SEND;
         }
     } else {

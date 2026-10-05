@@ -16,6 +16,7 @@
 #include "claude_load.h"
 #include "../claude/repl.h"
 #include "../claude/repl_int.h"
+#include "../claude/tasks.h"
 #include "../claude/print.h"
 #include "../claude/sys_posix.h"
 #include "../claude/util.h"
@@ -313,6 +314,18 @@ static void mk_tree(void)
     strcat(p, "/home");
     mkdir(p, 0700);
     setenv("CLAUDE_CONFIG_DIR", p, 1);
+    {
+        /* the tree is a trusted workspace (A4 gaps 2): the trust question is
+         * test_gaps2_hooks's, on a tree of its own */
+        char real[600];
+        strcat(p, "/claude.json");
+        f = fopen(p, "wb");
+        if (f && realpath(dir, real)) {
+            fprintf(f, "{\"projects\":{\"%s\":{\"hasTrustDialogAccepted\":true}}}\n", real);
+        }
+        if (f)
+            fclose(f);
+    }
     strcpy(p, dir);
     strcat(p, "/t");
     mkdir(p, 0700);
@@ -430,11 +443,11 @@ static void test_reach(void)
     /* the tools by Claude Code's names: no WebFetch without its connection, no
      * SlashCommand without a command (Skill: the bundled ones are always there);
      * the web_search server tool declared */
-    CHECK(json_get(b, "tools", &x) && json_count(x) == 16);
+    CHECK(json_get(b, "tools", &x) && json_count(x) == 18);
     CHECK(strstr(sb.body[0], "- simplify: Review this session's changed code") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Read\",") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
-    CHECK(strstr(sb.body[0], "\"type\":\"web_search_20260209\",\"name\":\"web_search\"") != 0);
+    CHECK(strstr(sb.body[0], "{\"name\":\"WebSearch\",") != 0 && strstr(sb.body[0], "web_search_2026") == 0);
     CHECK(strstr(sb.body[0], "\"name\":\"WebFetch\"") == 0);
     CHECK(json_get(b, "tool_choice", &x) && json_get(x, "type", &e) && json_streq(e, "auto"));
     CHECK(json_get(b, "system", &x));
@@ -1306,6 +1319,8 @@ static void test_input_rest(void)
     CHECK(sb.nreq < 2 ||
           strstr(sb.body[1], "\"tool_use_id\":\"toolu_01Foreground\",\"content\":\"Command was manually "
                              "backgrounded by user with ID: bash_1.") != 0);
+    /* ... the same move as at the time limit (shells.c fg_move): a task Claude hears of when it ends */
+    CHECK(sb.nreq < 2 || strstr(sb.body[1], "You are told when it ends; stop it with TaskStop.") != 0);
     /* the ! command: moved the same way, Claude told its id */
     CHECK(sb.nreq < 3 || strstr(sb.body[2], "<bash-input>sleep 20</bash-input>\\n<bash-stdout>The command was "
                                             "moved to the background with ID: bash_2") != 0);
@@ -1333,6 +1348,7 @@ static const char wp2_page[] =
     "<html><body><h1>Hi</h1><p>hello</p></body></html>";
 static long wp2_pos;
 static int wp2_open_n;
+static int wp2_tls;             /* the last open's TLS flag (WebFetch's http -> https) */
 static char wp2_req[600];
 
 static int wp_open(void *u, const char *host, int port, int tls)
@@ -1340,7 +1356,7 @@ static int wp_open(void *u, const char *host, int port, int tls)
     (void)u;
     (void)host;
     (void)port;
-    (void)tls;
+    wp2_tls = tls;
     wp2_open_n++;
     wp2_pos = 0;
     return 0;
@@ -1406,7 +1422,7 @@ static void test_wp2(void)
         return;
     }
     /* the web search: declared, shown, and its blocks kept for the next request */
-    CHECK(strstr(sb.body[0], "{\"type\":\"web_search_20260209\",\"name\":\"web_search\",\"max_uses\":5}") != 0);
+    CHECK(strstr(sb.body[0], "{\"name\":\"WebSearch\",") != 0);
     CHECK(strstr(sb.body[0], "{\"name\":\"WebFetch\",") != 0);
     CHECK(strstr(cn.screen.p, "Web Search(\"Amiga 1200 accelerator cards\")") != 0);
     CHECK(strstr(cn.screen.p, "Did 1 search: 2 results") != 0);
@@ -2175,6 +2191,7 @@ static void test_wiring(void)
     add_stream("wire_slash.sse");
     add_stream("tool_bg.sse");
     add_stream("tool_final.sse");
+
     cs_open(80, 24, keys);
     cs_io(&io);
     io.log = 0;
@@ -2185,6 +2202,7 @@ static void test_wiring(void)
     net.close = s_close;
     net.err = s_err;
     sys_posix_init(&sp, &sys);
+    sp.bg_hold = 1;                 /* "Wait 2" ends in real seconds, the screen runs on a fake clock: held */
     CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, "test-key-not-real", root), 0);
     CHECK_INT(repl_screen(&r), 0);
     repl_run(&r);
@@ -2194,8 +2212,9 @@ static void test_wiring(void)
             printf("%2d|%s\n", k, cs_row(k));
     }
     /* every key used: no question the script did not expect (the reads asked nothing) */
+    sp.bg_hold = 0;
     CHECK_INT(cs.next, 7);
-    CHECK_INT(sb.nreq, 9);
+    CHECK_INT(sb.nreq, 9);          /* keys typed straight on: no background turn in between */
     if (sb.nreq < 9) {
         repl_free(&r);
         cs_close();
@@ -3029,9 +3048,9 @@ static void test_gaps_ext(void)
     repl_line(&r, "/output-style Proactive");
     CHECK(strstr(r.system, "Start on a task as soon as it is given") != 0);
     repl_line(&r, "/output-style Plain");
-    CHECK(strstr(r.system, "PLAIN-STYLE") != 0 && strstr(r.system, "todo list with TodoWrite") == 0);
+    CHECK(strstr(r.system, "PLAIN-STYLE") != 0 && strstr(r.system, "task list with the task tools") == 0);
     repl_line(&r, "/output-style Keep");
-    CHECK(strstr(r.system, "KEEP-STYLE") != 0 && strstr(r.system, "todo list with TodoWrite") != 0);
+    CHECK(strstr(r.system, "KEEP-STYLE") != 0 && strstr(r.system, "task list with the task tools") != 0);
     repl_free(&r);
     xput(root, ".claude/settings.local.json", "{\"outputStyle\":\"concise\"}");
     setup_in(&r, none, root);
@@ -3558,7 +3577,7 @@ static void test_gaps_more(void)
         add_answer(0, 0, 0, "ok");
         CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
         CHECK(!exists(old));
-        CHECK(sb.nreq >= 2 && strstr(sb.body[1], "(output cut at 100 characters)") != 0);
+        CHECK(sb.nreq >= 2 && strstr(sb.body[1], "Output too large (200 characters). Full output saved to: ") != 0);
         CHECK(sb.nreq >= 3 && strstr(sb.body[2], "has been denied by the rule Read(~/secret.txt)") != 0);
     }
     repl_free(&r);
@@ -3591,7 +3610,7 @@ static void test_gaps_more(void)
     repl_line(&r, "/skills run");
     CHECK(strstr(cn.screen.p, "  run (built-in)") != 0 && strstr(cn.screen.p, "  insights (built-in)") == 0);
     repl_line(&r, "/skill-doctor");
-    CHECK(strstr(cn.screen.p, "Listing in all: ~") != 0);
+    CHECK(strstr(cn.screen.p, "No skills of yours (the bundled ones are not counted)") != 0);
     repl_line(&r, "/context");
     CHECK(strstr(cn.screen.p, "By category (estimated):") != 0 && strstr(cn.screen.p, "  Memory files") != 0);
     /* P7 /goal: a small model judges after the turn; not met: one more turn */
@@ -3786,6 +3805,1008 @@ static void test_gaps_more(void)
 #undef HOOKS
 }
 
+/* ---- A4 gaps 2 (thoughts/shared/plans/2026-10-05-a4-gaps2-progress.md) ---- */
+
+/* WebSearch's own request answered: one search, one result, a summary */
+static void add_search_answer(void)
+{
+    static const char *const s[] = {
+        "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_srch\",\"type\":\"message\","
+        "\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,"
+        "\"usage\":{\"input_tokens\":50,\"output_tokens\":1}}}\n\n",
+        "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":"
+        "\"server_tool_use\",\"id\":\"srvtoolu_G2\",\"name\":\"web_search\",\"input\":{}}}\n\n",
+        "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":"
+        "\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"amiga\\\"}\"}}\n\n"
+        "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":"
+        "\"web_search_tool_result\",\"tool_use_id\":\"srvtoolu_G2\",\"content\":[{\"type\":\"web_search_result\","
+        "\"title\":\"Aminet\",\"url\":\"https://aminet.net/\",\"encrypted_content\":\"x\"}]}}\n\n",
+        "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n"
+        "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":"
+        "\"text\",\"text\":\"\"}}\n\n",
+        "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":"
+        "\"text_delta\",\"text\":\"Aminet is the archive.\"}}\n\n"
+        "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":2}\n\n",
+        "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\","
+        "\"stop_sequence\":null},\"usage\":{\"output_tokens\":20}}\n\n"
+        "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+        0
+    };
+    jw w;
+    int i;
+    jw_init(&w);
+    for (i = 0; s[i]; i++)
+        jw_rawz(&w, s[i]);
+    add_sse(w.p, w.n);
+    jw_free(&w);
+}
+
+static void remove_rel(const char *root, const char *rel)
+{
+    char p[800];
+    strcpy(p, root);
+    strcat(p, "/");
+    strcat(p, rel);
+    remove(p);
+}
+
+/* the whole text of a file in the tree ("" none) */
+static void slurp(const char *root, const char *rel, char *out, long cap)
+{
+    char p[800];
+    FILE *f;
+    long n = 0;
+    strcpy(p, root);
+    strcat(p, "/");
+    strcat(p, rel);
+    out[0] = 0;
+    f = fopen(p, "rb");
+    if (!f)
+        return;
+    n = (long)fread(out, 1, (size_t)cap - 1, f);
+    out[n] = 0;
+    fclose(f);
+}
+
+/* Tools: T1 nested subagents, T2 T3 Bash's background move and limits, T4
+ * Edit's relaxed check, T5 WebFetch, T6 WebSearch, T7 the task tools and
+ * TaskStop, T8 Monitor, T9 cron, T10 Edit and Read rules, H7 Stop's fields */
+static void test_gaps2_tools(void)
+{
+    static const char *none[] = { 0 };
+    static const char *planit[] = { "plan it", 0 };
+    static cl_repl r;
+    char root[600], p[900], txt[4096];
+    cl_net web;
+    strcpy(root, dir);
+    strcat(root, "/gaps2");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+
+    /* T1 nested subagents: the subagent may launch one of its own (three
+     * layers below the conversation by default) */
+    setup_in(&r, none, root);
+    add_answer("toolu_N1", "Task", "{\"description\":\"outer\",\"prompt\":\"look deeper\",\"subagent_type\":"
+                                   "\"general-purpose\"}", 0);
+    add_answer("toolu_N2", "Task", "{\"description\":\"inner\",\"prompt\":\"find it\",\"subagent_type\":\"Explore\"}", 0);
+    add_answer(0, 0, 0, "INNER-REPORT");
+    add_answer(0, 0, 0, "OUTER-REPORT");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK_INT(sb.nreq, 5);
+    CHECK(sb.nreq == 5 && strstr(sb.body[1], "{\"name\":\"Task\",") != 0);    /* layer 1 may delegate */
+    CHECK(sb.nreq == 5 && strstr(sb.body[2], "file search specialist") != 0 && strstr(sb.body[2], "find it") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[3], "INNER-REPORT") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[4], "OUTER-REPORT") != 0);
+    repl_free(&r);
+    setenv("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "1", 1);     /* nesting off */
+    setup_in(&r, none, root);
+    add_answer("toolu_N3", "Task", "{\"description\":\"outer\",\"prompt\":\"p\",\"subagent_type\":\"general-purpose\"}", 0);
+    add_answer(0, 0, 0, "R");
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[1], "{\"name\":\"Task\",") == 0 && strstr(sb.body[0], "{\"name\":\"Task\",") != 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH");
+
+    /* T2 a command still running at its time limit moves to the background
+     * (cd noted), its end is news beside a later round's results; a sleep
+     * stops instead; T3 a failure's long output: its head and its tail */
+    setenv("BASH_DEFAULT_TIMEOUT_MS", "1000", 1);
+    setup_in(&r, none, root);
+    add_answer("toolu_B1", "Bash", "{\"command\":\"cd S; echo start; sleep 2; echo late\"}", 0);
+    add_answer("toolu_B2", "Bash", "{\"command\":\"sleep 2\",\"timeout\":5000}", 0);
+    add_answer("toolu_B3", "Bash", "{\"command\":\"sleep 3\",\"timeout\":1000}", 0);
+    add_answer("toolu_B4", "Bash", "{\"command\":\"yes a | head -n 6000; echo TAILEND; exit 10\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+    CHECK_INT(sb.nreq, 5);
+    CHECK(sb.nreq == 5 && strstr(sb.body[1], "Command did not complete within its 1s timeout and was moved to the "
+                                             "background with ID: bash_1") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[1], "Session cwd remains ") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[2], "No human input has occurred") != 0 &&
+          strstr(sb.body[2], "Background command bash_1 (\\\"cd S; echo start; sleep 2; echo late\\\") completed with "
+                             "exit code 0") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[3], "\"tool_use_id\":\"toolu_B3\",\"content\":\"The command ran out of time (1 s)") != 0);
+    CHECK(sb.nreq == 5 && strstr(sb.body[4], "characters cut from the middle") != 0 &&
+          strstr(sb.body[4], "TAILEND") != 0 && strstr(sb.body[4], "Return code 10.") != 0);
+    repl_free(&r);
+    setenv("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1", 1);
+    setup_in(&r, none, root);
+    add_answer("toolu_B5", "Bash", "{\"command\":\"echo s; sleep 3\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "ran out of time (1 s)") != 0 &&
+          strstr(sb.body[0], "{\"name\":\"Monitor\",") == 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+    unsetenv("BASH_DEFAULT_TIMEOUT_MS");
+
+    /* T4 Edit: an unread file edited by a newer model; a file changed since
+     * its read edited when old_string still matches, with a note; Claude
+     * Haiku 4.5 reads first -- a cat of the file counts as the read */
+    xput(root, "un.txt", "alpha\n");
+    xput(root, "c.txt", "one\ntwo\n");
+    xput(root, "h.txt", "h\n");
+    xput(root, "h2.txt", "h2\n");
+    setup_in(&r, none, root);
+    r.tools.perm.mode = PERM_ACCEPT;
+    add_answer("toolu_E1", "Edit", "{\"file_path\":\"un.txt\",\"old_string\":\"alpha\",\"new_string\":\"beta\"}", 0);
+    add_answer("toolu_R1", "Read", "{\"file_path\":\"c.txt\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "edit it");
+    slurp(root, "un.txt", txt, sizeof(txt));
+    CHECK_STR(txt, "beta\n");
+    xput(root, "c.txt", "one\ntwo\nthree\n");
+    strcpy(p, root);
+    strcat(p, "/c.txt");
+    age_file(p, 100);
+    add_answer("toolu_E2", "Edit", "{\"file_path\":\"c.txt\",\"old_string\":\"two\",\"new_string\":\"TWO\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "edit c");
+    slurp(root, "c.txt", txt, sizeof(txt));
+    CHECK_STR(txt, "one\nTWO\nthree\n");
+    CHECK(sb.nreq == 5 && strstr(sb.body[4], "Note: the file had changed on disk since you last read it") != 0);
+    cl_copy(r.model, "claude-haiku-4-5", sizeof(r.model));
+    add_answer("toolu_E3", "Edit", "{\"file_path\":\"h.txt\",\"old_string\":\"h\",\"new_string\":\"H\"}", 0);
+    add_answer("toolu_B6", "Bash", "{\"command\":\"cat h2.txt\"}", 0);
+    add_answer("toolu_E4", "Edit", "{\"file_path\":\"h2.txt\",\"old_string\":\"h2\",\"new_string\":\"H2\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "edit h");
+    CHECK(sb.nreq == 9 && strstr(sb.body[6], "File has not been read yet") != 0);
+    slurp(root, "h2.txt", txt, sizeof(txt));
+    CHECK_STR(txt, "H2\n");
+    repl_free(&r);
+
+    /* T10 a Read deny rule blocks Write too; an Edit allow rule grants Read
+     * (a read outside the working directories, in print mode: no one asks) */
+    {
+        char outside[600], home[600];
+        const char *hv = getenv("HOME");
+        strcpy(outside, dir);
+        strcat(outside, "/outside");
+        mkdir(outside, 0700);
+        xput(dir, "outside/o.txt", "OUTSIDE-TEXT\n");
+        cl_copy(home, hv ? hv : "", sizeof(home));
+        if (!realpath(dir, p))
+            strcpy(p, dir);
+        setenv("HOME", p, 1);       /* canonical, as the start directory is */
+        xput(root, ".claude/settings.json", "{\"permissions\":{\"deny\":[\"Read(secret.txt)\"],\"allow\":"
+                                            "[\"Edit(~/outside/**)\"]}}");
+        setup_in(&r, none, root);
+        strcpy(p, "{\"file_path\":\"/outside/o.txt\"}");    /* AmigaOS: / is the parent */
+        add_answer("toolu_W1", "Write", "{\"file_path\":\"secret.txt\",\"content\":\"x\"}", 0);
+        add_answer("toolu_R2", "Read", p, 0);
+        add_answer(0, 0, 0, "done");
+        CHECK_INT(run_print(&r, "-p --allowedTools Write -- go", 0), 0);
+        CHECK(sb.nreq == 3 && strstr(sb.body[1], "has been denied by the rule Read(secret.txt)") != 0);
+        CHECK(sb.nreq == 3 && strstr(sb.body[2], "OUTSIDE-TEXT") != 0);
+        repl_free(&r);
+        if (hv)
+            setenv("HOME", home, 1);
+        else
+            unsetenv("HOME");
+        strcpy(p, root);
+        strcat(p, "/.claude/settings.json");
+        remove(p);
+    }
+
+    /* T5 WebFetch: localhost refused before any request; http upgraded to
+     * https; a preapproved documentation host fetched with no one to ask,
+     * another host denied */
+    setup_in(&r, none, root);
+    web.u = 0;
+    web.open = wp_open;
+    web.send = wp_send;
+    web.recv = wp_recv;
+    web.close = wp_close;
+    web.err = s_err;
+    r.tools.web = &web;
+    free(r.tools.json);
+    r.tools.json = 0;
+    wp2_open_n = 0;
+    wp2_tls = 0;
+    wp2_req[0] = 0;
+    add_answer("toolu_F1", "WebFetch", "{\"url\":\"http://localhost:3000/x\",\"prompt\":\"p\"}", 0);
+    add_answer("toolu_F2", "WebFetch", "{\"url\":\"http://docs.python.org/3/\",\"prompt\":\"p\"}", 0);
+    add_answer(0, 0, 0, "a python page");
+    add_answer("toolu_F3", "WebFetch", "{\"url\":\"https://example.com/\",\"prompt\":\"p\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK_INT(wp2_open_n, 1);
+    CHECK_INT(wp2_tls, 1);
+    CHECK(strstr(wp2_req, "Host: docs.python.org") != 0);
+    CHECK(sb.nreq >= 2 && strstr(sb.body[1], "WebFetch cannot fetch localhost or other hostnames without a dot") != 0);
+    CHECK(sb.nreq >= 5 && strstr(sb.body[3], "a python page") != 0);
+    CHECK(sb.nreq >= 5 && strstr(sb.body[4], "permission to use this tool was denied") != 0);
+    repl_free(&r);
+
+    /* T6 WebSearch: Claude Code's client tool, its search the server tool in
+     * a request of its own with the domains; the session's cap */
+    setenv("CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION", "1", 1);
+    setup_in(&r, none, root);
+    add_answer("toolu_S1", "WebSearch", "{\"query\":\"amiga\",\"allowed_domains\":[\"aminet.net\"]}", 0);
+    add_search_answer();
+    add_answer("toolu_S2", "WebSearch", "{\"query\":\"again\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools WebSearch -- search", 0), 0);
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq == 4 && strstr(sb.body[1], "\"allowed_domains\":[\"aminet.net\"]") != 0 &&
+          strstr(sb.body[1], "Perform a web search for the query: amiga") != 0 &&
+          strstr(sb.body[1], "\"web_search_2026") != 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[2], "Links: [{\\\"title\\\":\\\"Aminet\\\",\\\"url\\\":\\\"https://aminet.net/\\\"}]") != 0 &&
+          strstr(sb.body[2], "Aminet is the archive.") != 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[3], "The web search limit of this session is reached") != 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION");
+
+    /* T7 the task tools on a model that has them (Claude Haiku 4.5), the list
+     * the screen's task list shows; TodoWrite with CLAUDE_CODE_ENABLE_TASKS=0;
+     * none on a newer model unless asked for; TaskStop */
+    setup_in(&r, none, root);
+    cl_copy(r.model, "claude-haiku-4-5", sizeof(r.model));
+    add_answer("toolu_T1", "TaskCreate", "{\"subject\":\"Run the tests\",\"description\":\"all suites\","
+                                         "\"activeForm\":\"Running the tests\"}", 0);
+    add_answer("toolu_T2", "TaskUpdate", "{\"taskId\":\"1\",\"status\":\"in_progress\"}", 0);
+    add_answer("toolu_T3", "TaskList", "{}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "track it");
+    CHECK(sb.nreq == 4 && strstr(sb.body[0], "{\"name\":\"TaskCreate\",") != 0 &&
+          strstr(sb.body[0], "{\"name\":\"TodoWrite\",") == 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[1], "Task #1 created successfully: Run the tests") != 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[3], "#1 [in_progress] Run the tests") != 0);
+    CHECK(r.todos && strstr(r.todos, "\"status\":\"in_progress\"") != 0 && strstr(r.todos, "Running the tests") != 0);
+    repl_free(&r);
+    setenv("CLAUDE_CODE_ENABLE_TASKS", "0", 1);
+    setup_in(&r, none, root);
+    cl_copy(r.model, "claude-haiku-4-5", sizeof(r.model));
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "hi");
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"TodoWrite\",") != 0 &&
+          strstr(sb.body[0], "{\"name\":\"TaskCreate\",") == 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_ENABLE_TASKS");
+    setup_in(&r, none, root);
+    add_answer("toolu_K1", "Bash", "{\"command\":\"sleep 30\",\"run_in_background\":true}", 0);
+    add_answer("toolu_K2", "TaskStop", "{\"task_id\":\"bash_1\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash,TaskCreate -- go", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[0], "{\"name\":\"TaskCreate\",") != 0);     /* asked for on Opus */
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "Successfully stopped task: bash_1") != 0);
+    repl_free(&r);
+
+    /* T8 Monitor: each line its command prints comes to Claude as news */
+    setup_in(&r, none, root);
+    add_answer("toolu_M1", "Monitor", "{\"description\":\"watch\",\"command\":\"echo EV-ONE; echo EV-TWO\","
+                                      "\"timeout_ms\":60000}", 0);
+    add_answer("toolu_M2", "Bash", "{\"command\":\"sleep 1\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- watch", 0), 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[1], "\\\"taskId\\\":\\\"monitor_1\\\"") != 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "Monitor monitor_1 (watch): EV-ONE") != 0 &&
+          strstr(sb.body[2], "Monitor monitor_1 (watch): EV-TWO") != 0 && strstr(sb.body[2], "ended") != 0);
+    repl_free(&r);
+
+    /* T9 cron: a one-shot job fires between turns (the line mode looks before
+     * it waits for a line); a durable one is kept in the project; the
+     * session's are restored on a resume; the screen's idle tick hands a due
+     * one over; H7 Stop's background_tasks and session_crons */
+    {
+        cron_spec cs;
+        char err[100], id[40];
+        long due;
+        char *w;
+        CHECK_INT(cron_parse("7 10 * * *", &cs, err, sizeof(err)), 0);
+        due = cron_next(&cs, 1500000000L);
+        setup_in(&r, planit, root);
+        sp.fake_now = due;
+        add_answer("toolu_C1", "CronCreate", "{\"cron\":\"7 10 * * *\",\"prompt\":\"CRON-PROMPT\",\"recurring\":false}", 0);
+        add_answer("toolu_C2", "CronCreate", "{\"cron\":\"*/5 * * * *\",\"prompt\":\"KEEP-PROMPT\",\"durable\":true}", 0);
+        add_answer(0, 0, 0, "scheduled");
+        add_answer(0, 0, 0, "cron ran");
+        repl_run(&r);
+        CHECK_INT((int)r.n_cron_fired, 1);
+        CHECK(sb.nreq == 4 && strstr(sb.body[3], "CRON-PROMPT") != 0);
+        CHECK(strstr(cn.screen.p, "Scheduled task ") != 0);
+        slurp(root, ".claude/scheduled_tasks.json", txt, sizeof(txt));
+        CHECK(strstr(txt, "KEEP-PROMPT") != 0 && strstr(txt, "CRON-PROMPT") == 0);
+        CHECK_INT(tasks_cron_count(r.tools.tasks), 1);
+        cl_copy(id, r.sess.id, sizeof(id));
+        repl_free(&r);
+        remove_rel(root, ".claude/scheduled_tasks.json");
+        setup_in(&r, none, root);
+        sp.fake_now = due;
+        CHECK_INT(repl_resume_session(&r, id), 0);
+        CHECK_INT(tasks_cron_count(r.tools.tasks), 1);  /* the recurring one, back */
+        /* the screen: a due job handed over while it waits for keys */
+        CHECK_INT(tasks_cron_add(r.tools.tasks, "* * * * *", "TUI-PROMPT", 0, 0, due, 0, err, sizeof(err)), 0);
+        sp.fake_now = due + 120;
+        w = sched_tui_wake(&r);
+        CHECK(w && !strcmp(w, "TUI-PROMPT"));
+        CHECK_INT(r.woke, 1);
+        free(w);
+        r.woke = 0;
+        repl_free(&r);
+    }
+    {
+        /* H7: Stop's last_assistant_message, background_tasks, session_crons */
+        strcpy(p, "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"cat > ");
+        strcat(p, root);
+        strcat(p, "/stop.json\"}]}]}}");
+        xput(root, ".claude/settings.json", p);
+        setup_in(&r, none, root);
+        sp.fake_now = 1500000000L;
+        add_answer("toolu_H1", "Bash", "{\"command\":\"sleep 30\",\"run_in_background\":true,\"description\":\"wait\"}", 0);
+        add_answer("toolu_H2", "CronCreate", "{\"cron\":\"*/5 * * * *\",\"prompt\":\"check the build\"}", 0);
+        add_answer(0, 0, 0, "FINAL-TEXT");
+        CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+        slurp(root, "stop.json", txt, sizeof(txt));
+        CHECK(strstr(txt, "\"last_assistant_message\":\"FINAL-TEXT\"") != 0);
+        CHECK(strstr(txt, "\"background_tasks\":[{\"id\":\"bash_1\",\"type\":\"shell\",\"status\":\"running\","
+                          "\"description\":\"wait\",\"command\":\"sleep 30\"}]") != 0);
+        CHECK(strstr(txt, "\"session_crons\":[{\"id\":\"") != 0 &&
+              strstr(txt, "\"schedule\":\"*/5 * * * *\",\"recurring\":true,\"prompt\":\"check the build\"}]") != 0);
+        repl_free(&r);
+        remove_rel(root, ".claude/settings.json");
+        remove_rel(root, ".claude/scheduled_tasks.json");
+    }
+}
+
+/* ---- an http hook's server: one canned answer to each POST, the request kept ---- */
+
+static const char *hk_answer;   /* the whole HTTP response */
+static long hk_pos;
+static jw hk_req;
+static int hk_posts;
+
+static int hk_open(void *u, const char *host, int port, int tls)
+{
+    (void)u;
+    (void)host;
+    (void)port;
+    (void)tls;
+    hk_pos = 0;
+    hk_posts++;
+    return 0;
+}
+
+static long hk_send(void *u, const char *b, long n)
+{
+    (void)u;
+    jw_raw(&hk_req, b, n);
+    return n;
+}
+
+static long hk_recv(void *u, char *b, long cap, int timeout_ms)
+{
+    long n = (long)strlen(hk_answer) - hk_pos;
+    (void)u;
+    (void)timeout_ms;
+    if (n > cap)
+        n = cap;
+    memcpy(b, hk_answer + hk_pos, (size_t)n);
+    hk_pos += n;
+    return n;
+}
+
+static void hk_close(void *u)
+{
+    (void)u;
+}
+
+/* Hooks: H1 agent, H2 http, H3 async, H4 frontmatter, H5 FileChanged and
+ * watchPaths, H6 MessageDisplay, H8 defer, H9 workspace trust, H10
+ * PermissionRequest's updatedInput */
+static void test_gaps2_hooks(void)
+{
+    static const char *none[] = { 0 };
+    static const char *say_no[] = { "n", 0 };
+    static const char *say_yes[] = { "y", "/exit", 0 };
+    static cl_repl r;
+    char root[600], p[1400], txt[4096];
+    cl_net hweb;
+    strcpy(root, dir);
+    strcat(root, "/gaps2h");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+    xput(root, "mark.sh", "cat > \"$1\"\n");
+
+    /* H2 an http hook: the event POSTed (headers with the allowed variable), a
+     * JSON answer read as a command hook's -- here a deny */
+    setenv("GAPS_HOOK_TOKEN", "tok123", 1);
+    xput(root, ".claude/settings.json",
+         "{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"http\",\"url\":"
+         "\"http://hooks.example.org/pre\",\"headers\":{\"Authorization\":\"Bearer $GAPS_HOOK_TOKEN\","
+         "\"X-Other\":\"[$HOME]\"},\"allowedEnvVars\":[\"GAPS_HOOK_TOKEN\"]}]}]}}");
+    setup_in(&r, none, root);
+    jw_init(&hk_req);
+    hk_posts = 0;
+    hk_answer = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 123\r\n\r\n"
+                "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\","
+                "\"permissionDecisionReason\":\"HTTP-SAYS-NO\"}}  ";
+    hweb.u = 0;
+    hweb.open = hk_open;
+    hweb.send = hk_send;
+    hweb.recv = hk_recv;
+    hweb.close = hk_close;
+    hweb.err = s_err;
+    r.tools.web = &hweb;
+    add_answer("toolu_HH1", "Bash", "{\"command\":\"echo hi\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+    CHECK_INT(hk_posts, 1);
+    CHECK(hk_req.p && strstr(hk_req.p, "POST /pre HTTP/1.1\r\nHost: hooks.example.org") == hk_req.p);
+    CHECK(hk_req.p && strstr(hk_req.p, "Content-Type: application/json\r\n") != 0 &&
+          strstr(hk_req.p, "Authorization: Bearer tok123\r\n") != 0 && strstr(hk_req.p, "X-Other: []\r\n") != 0);
+    CHECK(hk_req.p && strstr(hk_req.p, "\"hook_event_name\":\"PreToolUse\"") != 0 &&
+          strstr(hk_req.p, "\"tool_name\":\"Bash\"") != 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "PreToolUse hook blocked this call: HTTP-SAYS-NO") != 0);
+    repl_free(&r);
+    /* a non-2xx answer: an error shown, the call goes on */
+    setup_in(&r, none, root);
+    jw_reset(&hk_req);
+    hk_answer = "HTTP/1.1 500 Oops\r\nContent-Length: 0\r\n\r\n";
+    r.tools.web = &hweb;
+    add_answer("toolu_HH2", "Bash", "{\"command\":\"echo ran-anyway\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "ran-anyway") != 0);
+    repl_free(&r);
+    jw_free(&hk_req);
+    unsetenv("GAPS_HOOK_TOKEN");
+
+    /* H1 an agent hook on Stop: a subagent with Read, Grep, Glob says not yet,
+     * Claude goes on with its reason; then yes */
+    xput(root, ".claude/settings.json",
+         "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"agent\",\"prompt\":\"Are the tests done? $ARGUMENTS\"}]}]}}");
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "first answer");
+    add_answer(0, 0, 0, "{\"ok\": false, \"reason\": \"AGENT-NOT-YET\"}");
+    add_answer(0, 0, 0, "second answer");
+    add_answer(0, 0, 0, "{\"ok\": true}");
+    repl_line(&r, "work");
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq == 4 && strstr(sb.body[1], "You verify a condition for a hook") != 0 &&
+          strstr(sb.body[1], "{\"name\":\"Grep\",") != 0 && strstr(sb.body[1], "{\"name\":\"Bash\",") == 0 &&
+          strstr(sb.body[1], "Are the tests done? {") != 0);
+    CHECK(sb.nreq == 4 && strstr(sb.body[2], "AGENT-NOT-YET") != 0);
+    repl_free(&r);
+
+    /* H3 an async hook: started in the background, its additionalContext to
+     * Claude beside a later round's results */
+    xput(root, "async.sh", "sleep 1\necho '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\","
+                           "\"additionalContext\":\"ASYNC-CONTEXT\"}}'\n");
+    strcpy(p, "{\"hooks\":{\"PostToolUse\":[{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\",\"async\":true,"
+              "\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/async.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    add_answer("toolu_HA1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer("toolu_HA2", "Bash", "{\"command\":\"sleep 2\"}", 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- go", 0), 0);
+    CHECK_INT((int)r.hooks.n_async, 1);
+    CHECK(sb.nreq == 3 && strstr(sb.body[1], "ASYNC-CONTEXT") == 0);
+    CHECK(sb.nreq == 3 && strstr(sb.body[2], "Async hook (PostToolUse)") != 0 &&
+          strstr(sb.body[2], "ASYNC-CONTEXT") != 0);
+    repl_free(&r);
+
+    /* H4 a skill's frontmatter hooks: from its first use on (once: one run);
+     * an agent's while it runs, its Stop as SubagentStop */
+    remove_rel(root, ".claude/settings.json");
+    strcpy(p, "---\nname: guarded\ndescription: guards Bash\nhooks:\n  PreToolUse:\n    - matcher: \"Bash\"\n"
+              "      hooks:\n        - type: command\n          command: \"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh ");
+    strcat(p, root);
+    strcat(p, "/skillhook.json\"\n          once: true\n---\nGuarded work.\n");
+    xput(root, ".claude/skills/guarded/SKILL.md", p);
+    strcpy(p, "---\nname: stopper\ndescription: an agent with hooks\ntools: Read\nhooks:\n  Stop:\n    - hooks:\n"
+              "        - type: command\n          command: \"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh ");
+    strcat(p, root);
+    strcat(p, "/agentstop.json\"\n---\nYou stop.\n");
+    xput(root, ".claude/agents/stopper.md", p);
+    setup_in(&r, none, root);
+    add_answer("toolu_HS1", "Bash", "{\"command\":\"echo before\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    add_answer("toolu_HS2", "Bash", "{\"command\":\"echo after\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    add_answer("toolu_HS3", "Bash", "{\"command\":\"echo again\"}", 0);
+    add_answer("toolu_HS4", "Task", "{\"description\":\"stop\",\"prompt\":\"p\",\"subagent_type\":\"stopper\"}", 0);
+    add_answer(0, 0, 0, "AGENT-DONE");
+    add_answer(0, 0, 0, "ok");
+    CHECK_INT(run_print(&r, "-p --allowedTools Bash -- one", 0), 0);
+    CHECK(!marker(root, "skillhook.json"));         /* not before the skill was used */
+    r.no_person = 0;
+    repl_line(&r, "/guarded");
+    CHECK(marker(root, "skillhook.json"));
+    remove_rel(root, "skillhook.json");
+    r.no_person = 1;
+    r.tools.perm.session |= 1ul << T_BASH;
+    repl_line(&r, "and the agent");
+    CHECK(!marker(root, "skillhook.json"));         /* once: not a second time */
+    slurp(root, "agentstop.json", txt, sizeof(txt));
+    CHECK(strstr(txt, "\"hook_event_name\":\"SubagentStop\"") != 0 && strstr(txt, "\"agent_type\":\"stopper\"") != 0 &&
+          strstr(txt, "\"last_assistant_message\":\"AGENT-DONE\"") != 0);
+    CHECK(r.hooks.extra && r.hooks.extra->nhooks == 1);    /* the agent's went with it, the skill's stays */
+    repl_free(&r);
+    remove_rel(root, ".claude/skills/guarded/SKILL.md");
+    remove_rel(root, ".claude/agents/stopper.md");
+
+    /* H5 FileChanged: a matcher's file in the start directory, and watchPaths
+     * from SessionStart; a change runs the hooks (file_path, event) */
+    xput(root, "watched.txt", "one\n");
+    xput(root, "dyn.txt", "dyn\n");
+    strcpy(p, "{\"hooks\":{\"FileChanged\":[{\"matcher\":\"watched.txt\",\"hooks\":[{\"type\":\"command\",\"command\":"
+              "\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh ");
+    strcat(p, root);
+    strcat(p, "/fc.json\"}]},{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh ");
+    strcat(p, root);
+    strcat(p, "/fc2.json\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/watch.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    strcpy(p, "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"watchPaths\":[\"");
+    {
+        char real[600];
+        if (!realpath(root, real))
+            strcpy(real, root);
+        strcat(p, real);
+    }
+    strcat(p, "/dyn.txt\"]}}'\n");
+    xput(root, "watch.sh", p);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "hi");
+    repl_line(&r, "hi");                            /* SessionStart: the watch starts */
+    xput(root, "watched.txt", "two\n");
+    strcpy(p, root);
+    strcat(p, "/watched.txt");
+    age_file(p, 50);
+    xput(root, "dyn.txt", "changed\n");
+    strcpy(p, root);
+    strcat(p, "/dyn.txt");
+    age_file(p, 50);
+    add_answer("toolu_HF1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "look");
+    CHECK((int)r.n_file_changed >= 2);
+    slurp(root, "fc.json", txt, sizeof(txt));
+    CHECK(strstr(txt, "\"hook_event_name\":\"FileChanged\"") != 0 && strstr(txt, "/watched.txt\"") != 0 &&
+          strstr(txt, "\"event\":\"change\"") != 0);
+    slurp(root, "fc2.json", txt, sizeof(txt));
+    CHECK(strstr(txt, "/dyn.txt\"") != 0 || strstr(txt, "/watched.txt\"") != 0);
+    remove_rel(root, "watched.txt");
+    CHECK_INT(pol_files_changed(&r, 0), 0);          /* within two seconds: not looked at */
+    cn.clock += 3000;
+    CHECK(pol_files_changed(&r, 0) >= 1);
+    slurp(root, "fc.json", txt, sizeof(txt));
+    CHECK(strstr(txt, "\"event\":\"unlink\"") != 0);
+    repl_free(&r);
+    remove_rel(root, ".claude/settings.json");
+
+    /* H6 MessageDisplay: the screen draws the hook's displayContent, the
+     * conversation keeps the text; print mode: once a message, all its text */
+    xput(root, "md.sh", "cat > /dev/null\nprintf '%s\\n' '{\"hookSpecificOutput\":{\"hookEventName\":\"MessageDisplay\","
+                        "\"displayContent\":\"SHOWN-X\\n\"}}'\n");
+    strcpy(p, "{\"hooks\":{\"MessageDisplay\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/md.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "line one\nline two\n");
+    add_answer(0, 0, 0, "next");
+    repl_line(&r, "say it");
+    CHECK(snt.text.p && strstr(snt.text.p, "SHOWN-X") != 0 && strstr(snt.text.p, "line one") == 0);
+    CHECK(r.n_md >= 2);
+    repl_line(&r, "again");
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "line one\\nline two\\n") != 0);  /* the original kept */
+    repl_free(&r);
+    strcpy(p, "{\"hooks\":{\"MessageDisplay\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/mark.sh ");
+    strcat(p, root);
+    strcat(p, "/md.json\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "alpha\nbeta");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    slurp(root, "md.json", txt, sizeof(txt));
+    CHECK(strstr(txt, "\"index\":0,\"final\":true,\"delta\":\"alpha\\nbeta\"") != 0 &&
+          strstr(txt, "\"turn_id\":\"") != 0 && strstr(txt, "\"message_id\":\"") != 0);
+    CHECK(strstr(outp(), "alpha\nbeta") != 0);
+    repl_free(&r);
+
+    /* H8 PreToolUse defer (print mode, one call): the run stops with
+     * tool_deferred; --resume runs the call (PreToolUse again: now allow) */
+    xput(root, "defer.sh", "cat > /dev/null\nif [ -f \"$1\" ]; then\n"
+                           "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\"}}'\n"
+                           "else\ntouch \"$1\"\n"
+                           "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"defer\"}}'\n"
+                           "fi\n");
+    strcpy(p, "{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(p, root);
+    strcat(p, "/defer.sh ");
+    strcat(p, root);
+    strcat(p, "/deferred.flag\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    {
+        char id[40];
+        setup_in(&r, none, root);
+        add_answer("toolu_HD1", "Bash", "{\"command\":\"echo DEFERRED-RAN\"}", 0);
+        CHECK_INT(run_print(&r, "-p --output-format json -- go", 0), 0);
+        CHECK(strstr(outp(), "\"stop_reason\":\"tool_deferred\",\"deferred_tool_use\":{\"id\":\"toolu_HD1\",\"name\":"
+                             "\"Bash\",\"input\":{\"command\":\"echo DEFERRED-RAN\"}}") != 0);
+        CHECK_INT(sb.nreq, 1);
+        cl_copy(id, r.sess.id, sizeof(id));
+        repl_free(&r);
+        setup_in(&r, none, root);
+        add_answer(0, 0, 0, "resumed and done");
+        strcpy(p, "-p --allowedTools Bash --resume ");
+        strcat(p, id);
+        CHECK_INT(run_print(&r, p, 0), 0);
+        CHECK(sb.nreq == 1 && strstr(sb.body[0], "DEFERRED-RAN\\n") != 0 &&
+              strstr(sb.body[0], "Continue from where you left off.") != 0);
+        CHECK(strstr(outp(), "resumed and done") != 0);
+        repl_free(&r);
+        remove_rel(root, "deferred.flag");
+    }
+
+    /* H10 PermissionRequest's updatedInput: allow with another input -- the
+     * call runs with it */
+    strcpy(p, "cat > /dev/null\necho '{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\","
+              "\"decision\":{\"behavior\":\"allow\",\"updatedInput\":{\"command\":\"touch ");
+    strcat(p, root);
+    strcat(p, "/updated.txt\"}}}}'\n");
+    xput(root, "permreq.sh", p);
+    strcpy(p, "{\"hooks\":{\"PermissionRequest\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":"
+              "\"sh ");
+    strcat(p, root);
+    strcat(p, "/permreq.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", p);
+    setup_in(&r, none, root);
+    strcpy(p, "{\"command\":\"touch ");
+    strcat(p, root);
+    strcat(p, "/original.txt\"}");
+    add_answer("toolu_HP1", "Bash", p, 0);
+    add_answer(0, 0, 0, "done");
+    CHECK_INT(run_print(&r, "-p go", 0), 0);
+    CHECK(sb.nreq == 2 && marker(root, "updated.txt") && !marker(root, "original.txt"));
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "/original.txt\"}") != 0);  /* the conversation keeps the call */
+    CHECK_INT((int)r.n_perm_rerun, 1);
+    repl_free(&r);
+    remove_rel(root, ".claude/settings.json");
+
+    /* H9 workspace trust: a folder never trusted is asked about once; no
+     * ends the program before any hook, yes is remembered and the settings
+     * count; print mode is never asked: the project's allow rules wait */
+    {
+        char troot[600], t2[600], real[600], home[600];
+        const char *base = getenv("TMPDIR");
+        strcpy(troot, base && *base ? base : "/tmp");
+        if (troot[strlen(troot) - 1] == '/')
+            troot[strlen(troot) - 1] = 0;
+        strcat(troot, "/claude_trust_XXXXXX");
+        if (mkdtemp(troot)) {
+            strcpy(p, "{\"permissions\":{\"allow\":[\"Bash(touch *)\"]},\"hooks\":{\"SessionStart\":[{\"hooks\":"
+                      "[{\"type\":\"command\",\"command\":\"sh ");
+            strcat(p, root);
+            strcat(p, "/mark.sh ");
+            strcat(p, troot);
+            strcat(p, "/started.json\"}]}]}}");
+            xput(troot, ".claude/settings.json", p);
+            setup_in(&r, say_no, troot);
+            repl_run(&r);
+            CHECK(strstr(cn.screen.p, "Do you trust the files in this folder?") != 0);
+            CHECK(strstr(cn.screen.p, "This folder's settings would add: 1 allow rule, 1 hook") != 0);
+            CHECK(!marker(troot, "started.json"));
+            CHECK_INT(sb.nreq, 0);
+            repl_free(&r);
+            setup_in(&r, say_yes, troot);
+            repl_run(&r);
+            CHECK(marker(troot, "started.json"));       /* the hooks ran once it was trusted */
+            repl_free(&r);
+            strcpy(home, dir);
+            strcat(home, "/home");
+            slurp(home, "claude.json", txt, sizeof(txt));
+            if (!realpath(troot, real))
+                strcpy(real, troot);
+            CHECK(strstr(txt, real) != 0 && strstr(txt, "\"hasTrustDialogAccepted\":true") != 0);
+            /* a folder inside the trusted one is trusted too: its allow rule used */
+            strcpy(t2, troot);
+            strcat(t2, "/sub");
+            mkdir(t2, 0700);
+            xput(t2, ".claude/settings.json", "{\"permissions\":{\"allow\":[\"Bash(touch *)\"]}}");
+            setup_in(&r, none, t2);
+            strcpy(p, "{\"command\":\"touch ");
+            strcat(p, t2);
+            strcat(p, "/made.txt\"}");
+            add_answer("toolu_HT1", "Bash", p, 0);
+            add_answer(0, 0, 0, "done");
+            CHECK_INT(run_print(&r, "-p go", 0), 0);
+            CHECK(strstr(pc.err.p ? pc.err.p : "", "not been trusted") == 0);
+            CHECK(marker(t2, "made.txt"));
+            repl_free(&r);
+            /* another folder, print mode: never asked, its allow rule not used */
+            strcpy(t2, base && *base ? base : "/tmp");
+            if (t2[strlen(t2) - 1] == '/')
+                t2[strlen(t2) - 1] = 0;
+            strcat(t2, "/claude_trust_XXXXXX");
+            if (mkdtemp(t2)) {
+                xput(t2, ".claude/settings.json", "{\"permissions\":{\"allow\":[\"Bash(touch *)\"]}}");
+                setup_in(&r, none, t2);
+                strcpy(p, "{\"command\":\"touch ");
+                strcat(p, t2);
+                strcat(p, "/made.txt\"}");
+                add_answer("toolu_HT2", "Bash", p, 0);
+                add_answer(0, 0, 0, "done");
+                CHECK_INT(run_print(&r, "-p go", 0), 0);
+                CHECK(strstr(pc.err.p ? pc.err.p : "", "Warning: this workspace has not been trusted") != 0);
+                CHECK(!marker(t2, "made.txt"));
+                repl_free(&r);
+                strcpy(p, "rm -rf ");
+                strcat(p, t2);
+                if (system(p))
+                    printf("  [ERROR] could not remove %s\n", t2);
+            }
+        }
+        strcpy(p, "rm -rf ");
+        strcat(p, troot);
+        if (system(p))
+            printf("  [ERROR] could not remove %s\n", troot);
+    }
+}
+
+/* S1 settings warnings, S2 CLAUDE_CODE_* variables, A1 an agent's memory and
+ * colour, A2 skillOverrides and disableSkillShellExecution, A3 /skill-doctor's
+ * counts and /skills NAME STATE, A4 /simplify, C1 --system-prompt-snapshot, M1
+ * memory imports, V1 /advisor */
+static void test_gaps2_more(void)
+{
+    static const char *none[] = { 0 };
+    static const char *doctor[] = { "/doctor", "/exit", 0 };
+    static const char *say_yes[] = { "y", "/exit", 0 };
+    static cl_repl r;
+    char root[600], p[1400], txt[4096], id[40];
+    strcpy(root, dir);
+    strcat(root, "/gaps2m");
+    mkdir(root, 0700);
+    xput(root, "S/Startup-Sequence", "SetPatch QUIET\n");
+
+    /* S1 a malformed entry: a warning each, the rest in effect */
+    xput(root, ".claude/settings.json",
+         "{\"permissions\":{\"allow\":[\"Bash(\",\"Read\"]},\"hooks\":{\"NoSuchEvent\":[]},"
+         "\"skillOverrides\":{\"x\":\"sometimes\"}}");
+    setup_in(&r, doctor, root);
+    repl_run(&r);
+    CHECK(strstr(cn.screen.p, "Settings Warning") != 0);
+    CHECK(strstr(cn.screen.p, "malformed permission rule in permissions.allow: \"Bash(\" skipped") != 0);
+    CHECK(strstr(cn.screen.p, "unknown hook event \"NoSuchEvent\" skipped") != 0);
+    CHECK(strstr(cn.screen.p, "skillOverrides.x is not on, name-only, user-invocable-only or off; skipped") != 0);
+    CHECK_INT(r.cfg.nwarn, 3);
+    CHECK(r.cfg.nrules == 1);                       /* Read stays */
+    {
+        const char *d1 = strstr(cn.screen.p, "Settings entries skipped: 3");
+        CHECK(d1 && strstr(d1, "NoSuchEvent") != 0);   /* /doctor lists them again */
+    }
+    repl_free(&r);
+
+    /* S2 the variables, from the settings' env block too */
+    xput(root, "CLAUDE.md", "MEMO-MARK\n");
+    xput(root, ".claude/settings.json",
+         "{\"env\":{\"CLAUDE_CODE_MAX_OUTPUT_TOKENS\":\"1234\",\"CLAUDE_CODE_EXTRA_BODY\":"
+         "\"{\\\"metadata\\\":{\\\"user_id\\\":\\\"u-extra\\\"}}\",\"CLAUDE_CODE_DISABLE_CRON\":\"1\","
+         "\"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\":\"1\",\"CLAUDE_CODE_DISABLE_CLAUDE_MDS\":\"1\"}}");
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "hi");
+    CHECK_INT(run_print(&r, "-p hi", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"max_tokens\":1234,") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"metadata\":{\"user_id\":\"u-extra\"}") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"name\":\"CronCreate\"") == 0 &&
+          strstr(sb.body[0], "{\"name\":\"Monitor\"") == 0 && strstr(sb.body[0], "{\"name\":\"TaskStop\"") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "MEMO-MARK") == 0);
+    repl_free(&r);
+    unsetenv("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+    unsetenv("CLAUDE_CODE_EXTRA_BODY");
+    unsetenv("CLAUDE_CODE_DISABLE_CRON");
+    unsetenv("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC");
+    unsetenv("CLAUDE_CODE_DISABLE_CLAUDE_MDS");
+    remove_rel(root, ".claude/settings.json");
+    remove_rel(root, "CLAUDE.md");
+
+    /* A1 an agent with memory: project (its MEMORY.md in its prompt, Write
+     * and Edit to its directory) and color: cyan (its call's header) */
+    xput(root, ".claude/agents/keeper.md",
+         "---\nname: keeper\ndescription: keeps notes\ntools: Read\nmemory: project\ncolor: cyan\n---\nYou keep.\n");
+    xput(root, ".claude/agent-memory/keeper/MEMORY.md", "KEEPER-NOTE\n");
+    setup_in(&r, none, root);
+    add_answer("toolu_GA1", "Task", "{\"description\":\"keep\",\"prompt\":\"p\",\"subagent_type\":\"keeper\"}", 0);
+    add_answer("toolu_GA2", "Write",
+               "{\"file_path\":\".claude/agent-memory/keeper/notes.md\",\"content\":\"NEW-NOTE\\n\"}", 0);
+    add_answer(0, 0, 0, "KEPT");
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "keep notes");
+    CHECK_INT(sb.nreq, 4);
+    CHECK(sb.nreq == 4 && strstr(sb.body[1], "# Your memory") != 0 && strstr(sb.body[1], "KEEPER-NOTE") != 0 &&
+          strstr(sb.body[1], "{\"name\":\"Write\",") != 0 && strstr(sb.body[1], "{\"name\":\"Edit\",") != 0);
+    slurp(root, ".claude/agent-memory/keeper/notes.md", txt, sizeof(txt));
+    CHECK_STR(txt, "NEW-NOTE\n");
+    CHECK(strstr(cn.screen.p, "\033[36mTask") != 0);
+    repl_free(&r);
+    remove_rel(root, ".claude/agents/keeper.md");
+
+    /* A2 skillOverrides: off and user-invocable-only kept from Claude,
+     * name-only without its description; disableSkillShellExecution */
+    xput(root, ".claude/skills/g2hush/SKILL.md", "---\ndescription: HUSH-DESC\n---\nHUSH-BODY\n");
+    xput(root, ".claude/skills/g2bare/SKILL.md", "---\ndescription: BARE-DESC\n---\nBARE-BODY\n");
+    xput(root, ".claude/skills/g2mine/SKILL.md", "---\ndescription: MINE-DESC\n---\nMINE-BODY !`echo SHELL-RAN`\n");
+    xput(root, ".claude/skills/g2plain/SKILL.md", "---\ndescription: PLAIN-DESC\n---\nPLAIN-BODY\n");
+    xput(root, ".claude/settings.json",
+         "{\"skillOverrides\":{\"g2hush\":\"off\",\"g2bare\":\"name-only\",\"g2mine\":\"user-invocable-only\"},"
+         "\"disableSkillShellExecution\":true}");
+    setup_in(&r, none, root);
+    add_answer("toolu_GS1", "Skill", "{\"skill\":\"g2mine\"}", 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "hi");
+    CHECK(sb.nreq == 2 && strstr(sb.body[0], "PLAIN-DESC") != 0 && strstr(sb.body[0], "g2bare") != 0 &&
+          strstr(sb.body[0], "BARE-DESC") == 0 && strstr(sb.body[0], "HUSH-DESC") == 0 &&
+          strstr(sb.body[0], "MINE-DESC") == 0);
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "Unknown skill: g2mine") != 0);  /* not listed to Claude */
+    stub_reset();
+    repl_line(&r, "/g2hush");
+    CHECK_INT(sb.nreq, 0);
+    CHECK(strstr(cn.screen.p, "This skill is turned off by skillOverrides in the settings: g2hush") != 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/g2mine");
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "MINE-BODY [shell command execution disabled by policy]") != 0 &&
+          strstr(sb.body[0], "SHELL-RAN") == 0);
+
+    /* A3 /skill-doctor: the cost and the uses (g2mine used once, the rest
+     * never; the unused flagged); /skills NAME off saves the state */
+    stub_reset();
+    repl_line(&r, "/skill-doctor");
+    CHECK(strstr(cn.screen.p, "g2mine: ~0 tokens, used 1 time") != 0);
+    CHECK(strstr(cn.screen.p, "g2plain: ~") != 0 &&
+          strstr(strstr(cn.screen.p, "g2plain: ~"), "used never  <- turn it off?") != 0);
+    CHECK(strstr(cn.screen.p, "simplify:") == 0);   /* the bundled ones are not counted */
+    repl_line(&r, "/skills g2plain off");
+    CHECK(strstr(cn.screen.p, "g2plain is now off") != 0);
+    slurp(root, ".claude/settings.local.json", txt, sizeof(txt));
+    CHECK(strstr(txt, "\"skillOverrides\"") != 0 && strstr(txt, "\"g2plain\": \"off\"") != 0);
+    CHECK_STR(cfg_skill_state(&r.cfg, "g2plain"), "off");
+    stub_reset();
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "again");
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "PLAIN-DESC") == 0);
+    repl_free(&r);
+    remove_rel(root, ".claude/settings.local.json");
+    remove_rel(root, ".claude/settings.json");
+
+    /* A4 /simplify: four reviews, one after another (no parallel agents here) */
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "/simplify");
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "Run four reviews with the Task tool (general-purpose agents), one "
+                                             "after another") != 0);
+    repl_free(&r);
+
+    /* C1 --system-prompt-snapshot: the first launch's flags' text kept by a
+     * --continue with other flags; off takes this launch's */
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "one");
+    CHECK_INT(run_print(&r, "-p --append-system-prompt APPEND-ONE -- hi", 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "APPEND-ONE") != 0);
+    cl_copy(id, r.sess.id, sizeof(id));
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "two");
+    strcpy(p, "-p --resume ");
+    strcat(p, id);
+    strcat(p, " --append-system-prompt APPEND-TWO -- again");
+    CHECK_INT(run_print(&r, p, 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "APPEND-ONE") != 0 && strstr(sb.body[0], "APPEND-TWO") == 0);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    add_answer(0, 0, 0, "three");
+    strcpy(p, "-p --system-prompt-snapshot off --resume ");
+    strcat(p, id);
+    strcat(p, " --append-system-prompt APPEND-TWO -- again");
+    CHECK_INT(run_print(&r, p, 0), 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "APPEND-ONE") == 0 && strstr(sb.body[0], "APPEND-TWO") != 0);
+    repl_free(&r);
+
+    /* M1 imports: four hops deep, an escaped space, a quoted path not
+     * imported; one outside the folder held until approved (asked once) */
+    {
+        xput(dir, "g2outside.md", "MEM-OUT\n");
+        xput(root, "CLAUDE.md", "@a.md @my\\ notes.md @\"q.md\" `@k.md` @../g2outside.md\n");
+        xput(root, "a.md", "MEM-A @b.md\n");
+        xput(root, "b.md", "MEM-B @c.md\n");
+        xput(root, "c.md", "MEM-C @d.md\n");
+        xput(root, "d.md", "MEM-D @e.md\n");
+        xput(root, "e.md", "MEM-E\n");
+        xput(root, "my notes.md", "MEM-SPACE\n");
+        xput(root, "q.md", "MEM-Q\n");
+        xput(root, "k.md", "MEM-K\n");
+        setup_in(&r, none, root);
+        add_answer(0, 0, 0, "ok");
+        CHECK_INT(run_print(&r, "-p hi", 0), 0);
+        CHECK(sb.nreq == 1 && strstr(sb.body[0], "MEM-A") && strstr(sb.body[0], "MEM-B") &&
+              strstr(sb.body[0], "MEM-C") && strstr(sb.body[0], "MEM-D") && !strstr(sb.body[0], "MEM-E"));
+        CHECK(sb.nreq == 1 && strstr(sb.body[0], "MEM-SPACE") && !strstr(sb.body[0], "MEM-Q") &&
+              !strstr(sb.body[0], "MEM-K") && !strstr(sb.body[0], "MEM-OUT"));
+        repl_free(&r);
+        setup_in(&r, say_yes, root);
+        repl_run(&r);
+        CHECK(strstr(cn.screen.p, "imports files from outside the start directory") != 0 &&
+              strstr(cn.screen.p, "g2outside.md") != 0);
+        repl_free(&r);
+        setup_in(&r, none, root);
+        add_answer(0, 0, 0, "ok");
+        CHECK_INT(run_print(&r, "-p hi", 0), 0);
+        CHECK(sb.nreq == 1 && strstr(sb.body[0], "MEM-OUT") != 0);
+        repl_free(&r);
+        setup_in(&r, none, root);
+        repl_run(&r);
+        CHECK(strstr(cn.screen.p, "imports files from outside") == 0);  /* asked once */
+        repl_free(&r);
+        remove_rel(root, "CLAUDE.md");
+        remove_rel(dir, "g2outside.md");
+    }
+
+    /* V1 /advisor: the advisor server tool and its beta in the requests;
+     * off takes it away; --advisor haiku is refused at launch */
+    setup_in(&r, none, root);
+    repl_line(&r, "/advisor fable");
+    CHECK(strstr(cn.screen.p, "Advisor set to ") != 0);
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "hi");
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "{\"type\":\"advisor_20260301\",\"name\":\"advisor\",\"model\":") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.head[0], "advisor-tool-2026-03-01") != 0);
+    repl_line(&r, "/advisor off");
+    add_answer(0, 0, 0, "ok");
+    repl_line(&r, "again");
+    CHECK(sb.nreq == 2 && strstr(sb.body[1], "advisor_20260301") == 0 && strstr(sb.head[1], "advisor-tool") == 0);
+    repl_free(&r);
+    setup_in(&r, none, root);
+    {
+        cl_cli c;
+        cli_init(&c);
+        CHECK_INT(cli_parse_line(&c, "-p --advisor haiku -- hi"), 0);
+        CHECK_INT(cli_apply(&c, &r), -1);
+        CHECK(strstr(c.err, "Error: --advisor haiku cannot advise this model") == c.err);
+        cli_free(&c);
+    }
+    repl_free(&r);
+}
+
 void suite_claude_repl(void)
 {
     mk_tree();
@@ -3809,6 +4830,9 @@ void suite_claude_repl(void)
     test_gaps_ext();
     test_gaps_hooks();
     test_gaps_more();
+    test_gaps2_tools();
+    test_gaps2_hooks();
+    test_gaps2_more();
     stub_reset();
     jw_free(&cn.screen);
     jw_free(&snt.text);

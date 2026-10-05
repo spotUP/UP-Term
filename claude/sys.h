@@ -66,6 +66,19 @@ typedef struct cl_sys {
     /* a fact about the machine for /doctor ("os", "bsdsocket", "amissl",
      * "vsh", "console"): 1 good, 0 bad, -1 unknown; out says what */
     int (*info)(void *u, const char *what, char *out, long cap);
+    /* ---- A4 gaps 2; each may be 0 (callers check) ---- */
+    /* the local time: seconds since 1978-01-01 00:00 (AmigaDOS's epoch;
+     * the cron schedules), -1 unknown */
+    long (*now)(void *u);
+    /* waits ms milliseconds: 1 when Ctrl+C was pressed meanwhile (the
+     * break is taken), else 0 -- a foreground command polled as a job */
+    int (*pause)(void *u, long ms);
+    /* a background job's output so far, in bytes: -1 no such job */
+    long (*bg_size)(void *u, long job);
+    /* the job's output file (Claude reads it with Read): its path, "" none */
+    const char *(*bg_file)(void *u, long job);
+    /* a file renamed (the same volume): 0, -1 */
+    int (*rename)(void *u, const char *from, const char *to);
 } cl_sys;
 
 #endif

@@ -74,7 +74,7 @@ static void test_perm(void)
      * read-only tools inside the working directories never (Claude Code) */
     for (i = 0; i < T_COUNT; i++) {
         int asks = i == T_WRITE || i == T_EDIT || i == T_MULTIEDIT || i == T_BASH || i == T_WEB_FETCH ||
-                   i == T_SKILL || i == T_SLASH;
+                   i == T_SKILL || i == T_SLASH || i == T_WEB_SEARCH || i == T_MONITOR;
         CHECK_INT(perm_must_ask(&p, i, 0), asks);
     }
     CHECK(!perm_must_ask(&p, T_READ, 0));
@@ -138,26 +138,57 @@ static void test_validate(void)
     int n = 0, server = 0;
     memset(&t, 0, sizeof(t));
     CHECK_INT(tools_init(&t), 0);
-    /* every tool declared: no transport here, so no Task and no WebFetch;
-     * no provider, so no Skill and no SlashCommand; the server tool */
+    /* every tool declared: no transport here, so no Task, WebFetch or
+     * WebSearch; no provider, so no Skill and no SlashCommand; no machine,
+     * so no TaskStop, Monitor, Cron; the older BashOutput and KillShell
+     * never; TodoWrite (the default task tool) */
     CHECK_INT(json_parse(tools_json(&t, "claude-opus-5-5"), (long)strlen(tools_json(&t, "claude-opus-5-5")), &v), 0);
     json_iter(v, &it);
     while (json_next(&it, 0, &e)) {
         n++;
-        if (json_get(e, "type", &x) && json_streq(x, "web_search_20260209"))
+        if (json_get(e, "type", &x))
             server++;
         else
             CHECK(json_get(e, "strict", &x) && json_type(x) == J_TRUE && json_get(e, "input_schema", &x));
     }
-    CHECK_INT(n, T_COUNT - 4 + 1);
-    CHECK_INT(server, 1);
-    /* Haiku gets the basic web_search; the switch leaves it out */
-    CHECK(strstr(tools_json(&t, "claude-haiku-4-5"), "\"web_search_20250305\"") != 0);
-    t.web_search = 0;
-    free(t.json);
-    t.json = 0;
-    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "web_search") == 0);
+    CHECK_INT(n, 11);
+    CHECK_INT(server, 0);
+    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "\"TodoWrite\"") != 0);
+    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "BashOutput") == 0);
+    /* the task tools instead of TodoWrite; none */
+    t.todo_mode = TODO_TASKS;
+    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "\"TaskCreate\"") != 0 &&
+          strstr(tools_json(&t, "claude-opus-5-5"), "\"TodoWrite\"") == 0);
+    t.todo_mode = TODO_NONE;
+    CHECK(strstr(tools_json(&t, "claude-opus-5-5"), "\"TaskCreate\"") == 0 &&
+          strstr(tools_json(&t, "claude-opus-5-5"), "\"TodoWrite\"") == 0);
+    /* Claude Code's task tool availability by model */
+    CHECK_INT(tools_todo_default("claude-opus-4-7"), TODO_TASKS);
+    CHECK_INT(tools_todo_default("claude-sonnet-4-6"), TODO_TASKS);
+    CHECK_INT(tools_todo_default("claude-haiku-4-5"), TODO_TASKS);
+    CHECK_INT(tools_todo_default("claude-opus-4-8"), TODO_NONE);
+    CHECK_INT(tools_todo_default("claude-opus-5-5"), TODO_NONE);
+    CHECK_INT(tools_todo_default("claude-fable-5-1"), TODO_NONE);
+    /* the advisor server tool when /advisor set one */
+    cl_copy(t.advisor, "claude-opus-5-5", sizeof(t.advisor));
+    CHECK(strstr(tools_json(&t, "claude-sonnet-5-5"),
+                 "{\"type\":\"advisor_20260301\",\"name\":\"advisor\",\"model\":\"claude-opus-5-5\"}") != 0);
+    t.advisor[0] = 0;
+    CHECK(strstr(tools_json(&t, "claude-sonnet-5-5"), "advisor") == 0);
     tools_free(&t);
+    {
+        /* WebSearch's request: the server tool by model, with the domain lists */
+        jw w;
+        jw_init(&w);
+        tools_search_tool(&w, "claude-haiku-4-5", "[\"aminet.net\"]", 0);
+        CHECK_STR(w.p, "{\"type\":\"web_search_20250305\",\"name\":\"web_search\",\"max_uses\":8,\"allowed_domains\":"
+                       "[\"aminet.net\"]}");
+        jw_reset(&w);
+        tools_search_tool(&w, "claude-opus-5-5", 0, "[\"x.com\"]");
+        CHECK_STR(w.p, "{\"type\":\"web_search_20260209\",\"name\":\"web_search\",\"max_uses\":8,\"blocked_domains\":"
+                       "[\"x.com\"]}");
+        jw_free(&w);
+    }
 
     CHECK_INT(bad(T_READ, "{\"file_path\":\"S:x\"}"), 0);
     CHECK_INT(bad(T_READ, "{\"file_path\":\"S:x\",\"offset\":10,\"limit\":5}"), 0);
@@ -501,7 +532,7 @@ static const char *w_err(void *u)
 }
 
 static const cl_agent my_agents[] = {
-    { "reviewer", "Reviews a change", "Read, Grep", "haiku", "You review code.", 0, 0, 0, 0, 0, 0 }
+    { "reviewer", "Reviews a change", "Read, Grep", "haiku", "You review code.", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
 static cl_skill my_skills[1];
 static const cl_command my_cmds[] = { { "hello", "Greets someone" }, { "secret", 0 } };
@@ -543,7 +574,7 @@ static int x_expand(void *u, const char *name, const char *args, jw *out, char *
 static const cl_ext my_ext = { 0, x_agents, x_skills, x_commands, x_expand, 0 };
 
 /* a project agent with a built-in's name hides the built-in */
-static const cl_agent plan_agent[] = { { "Plan", "OUR-OWN-PLANNER", "Read", 0, "Plan our way.", 0, 0, 0, 0, 0, 0 } };
+static const cl_agent plan_agent[] = { { "Plan", "OUR-OWN-PLANNER", "Read", 0, "Plan our way.", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 static int x_plan(void *u, const cl_agent **l)
 {
     (void)u;
@@ -876,7 +907,7 @@ static void test_bash(void)
     /* in the background: an id at once, the output read in pieces */
     CHECK_INT(call(&t, "Bash", "{\"command\":\"echo one; sleep 1; echo two\",\"run_in_background\":true}", text,
                    sizeof(text)), 0);
-    CHECK_STR(text, "Command running in background with ID: bash_1");
+    CHECK(strstr(text, "Command running in background with ID: bash_1. Output is being written to: ") == text);
     for (k = 0; k < 400; k++) {
         struct timespec ts;
         CHECK_INT(call(&t, "BashOutput", "{\"bash_id\":\"bash_1\"}", text, sizeof(text)), 0);
@@ -908,7 +939,7 @@ static void test_bash(void)
     CHECK_STR(seen, "<stdout>\ntwo\n</stdout>\n");
     /* KillShell: a long one stopped */
     CHECK_INT(call(&t, "Bash", "{\"command\":\"sleep 30\",\"run_in_background\":true}", text, sizeof(text)), 0);
-    CHECK_STR(text, "Command running in background with ID: bash_2");
+    CHECK(!strncmp(text, "Command running in background with ID: bash_2. Output", 53));
     CHECK_INT(call(&t, "KillShell", "{\"shell_id\":\"bash_2\"}", text, sizeof(text)), 0);
     CHECK_STR(text, "Successfully killed shell: bash_2 (sleep 30)");
     CHECK_INT(call(&t, "BashOutput", "{\"bash_id\":\"bash_2\"}", text, sizeof(text)), 0);
@@ -1078,12 +1109,18 @@ static void test_task(void)
     CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Plan\"}", text,
                    sizeof(text)), 1);
     CHECK(strstr(text, "stopped the agent") != 0);
-    /* no Task inside a subagent */
+    /* no Task at the depth limit (Claude Code: three layers; CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH) */
+    t.depth = 3;
+    CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Plan\"}", text,
+                   sizeof(text)), 1);
+    CHECK(strstr(text, "No such tool available here") != 0);
     t.depth = 1;
+    t.max_depth = 1;
     CHECK_INT(call(&t, "Task", "{\"description\":\"d\",\"prompt\":\"p\",\"subagent_type\":\"Plan\"}", text,
                    sizeof(text)), 1);
     CHECK(strstr(text, "No such tool available here") != 0);
     t.depth = 0;
+    t.max_depth = 0;
     api_reset();
     tools_free(&t);
 }

@@ -28,7 +28,7 @@ CLAUDE_INPUT := claude/vim.c claude/hist.c claude/theme.c claude/input.c claude/
 CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
                claude/path.c claude/tools.c claude/sys_posix.c claude/ui.c claude/repl.c \
                claude/regex.c claude/glob.c claude/schema.c claude/search.c claude/shells.c claude/html.c \
-               claude/webfetch.c claude/subagent.c \
+               claude/webfetch.c claude/subagent.c claude/tasks.c claude/sched.c claude/watch.c claude/trust.c \
                claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) \
                claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
                claude/policy.c claude/slash.c claude/cli.c claude/print.c
@@ -216,7 +216,7 @@ VTCON_NETINCLUDE ?= $(CURDIR)/vendor/ndk-3.2r4-netinclude
 CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
                    claude/path.c claude/tools.c claude/ui.c claude/repl.c claude/sys_amiga.c claude/main_amiga.c \
                    claude/regex.c claude/glob.c claude/schema.c claude/search.c claude/shells.c claude/html.c \
-                   claude/webfetch.c claude/subagent.c \
+                   claude/webfetch.c claude/subagent.c claude/tasks.c claude/sched.c claude/watch.c claude/trust.c \
                    claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) $(VIEW_MD) tty/ldisc.c \
                    handler/clip.c handler/clipfmt.c \
                    claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \

@@ -123,11 +123,13 @@ static const char *const s_grep[] = {
 static const char *const d_bash[] = {
     "Runs a command line in the start directory through vsh (a Unix-like shell for AmigaOS: pipes, "
     "redirection, AmigaDOS commands and programs) when C:vsh is installed, else through the "
-    "AmigaShell. Output and errors are returned, up to 30000 characters, with the return code (5 "
-    "warn, 10 error, 20 failure; 10 or more is a failure). Commands get no input. ",
-    "timeout in milliseconds (default 120000, at most 600000). run_in_background starts it and "
-    "returns at once with a shell id: read its output with BashOutput, stop it with KillShell. Use "
-    "Read, Glob and Grep rather than Type, List and Search. description: what the command does, in "
+    "AmigaShell. Output and errors are returned with the return code (5 warn, 10 error, 20 failure; 10 "
+    "or more is a failure): up to 30000 characters (a longer output is kept in a file you can Read, "
+    "with its start shown; a failure's output is cut to its head and tail). Commands get no input. ",
+    "timeout in milliseconds (default 120000, at most 600000); a command still running at its timeout "
+    "moves to the background. run_in_background starts it and returns at once with a task id and the "
+    "file its output goes to: read that file with Read; you are told when it ends; TaskStop stops it. "
+    "Use Read, Glob and Grep rather than Type, List and Search. description: what the command does, in "
     "5 to 10 words.",
     0
 };
@@ -258,6 +260,102 @@ static const char s_slash[] =
     "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"/name and "
     "its arguments\"}},\"required\":[\"command\"],\"additionalProperties\":false}";
 
+/* ---- A4 gaps 2: Claude Code's WebSearch, the task list, TaskStop, Monitor, cron ---- */
+
+static const char *const d_web_search[] = {
+    "Searches the web and returns the results' titles and URLs (it does not fetch the pages: use "
+    "WebFetch for that). Use it for anything after your knowledge cutoff or that changes. "
+    "allowed_domains: only results from these hosts; blocked_domains: never from these (not both "
+    "in one call). Cite the sources you use as Markdown links.",
+    0
+};
+static const char s_web_search[] =
+    "{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"description\":\"The search "
+    "query\"},\"allowed_domains\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":"
+    "\"Only results from these domains\"},\"blocked_domains\":{\"type\":\"array\",\"items\":{\"type\":"
+    "\"string\"},\"description\":\"Never results from these domains\"}},\"required\":[\"query\"],"
+    "\"additionalProperties\":false}";
+
+static const char *const d_task_create[] = {
+    "Creates a task in the session's task list (the user sees the list): for work of three steps or "
+    "more, or several things asked at once. subject: imperative (\"Run the tests\"); description: what "
+    "done means; activeForm: present continuous (\"Running the tests\"), shown while it is in progress. "
+    "Returns its id. Mark it in_progress with TaskUpdate when you start, completed when it is done.",
+    0
+};
+static const char s_task_create[] =
+    "{\"type\":\"object\",\"properties\":{\"subject\":{\"type\":\"string\"},\"description\":{\"type\":"
+    "\"string\"},\"activeForm\":{\"type\":\"string\"}},\"required\":"
+    "[\"subject\",\"description\"],\"additionalProperties\":false}";
+
+static const char *const d_task_get[] = { "Shows one task of the task list in full, by its id.", 0 };
+static const char s_task_get[] =
+    "{\"type\":\"object\",\"properties\":{\"taskId\":{\"type\":\"string\"}},\"required\":[\"taskId\"],"
+    "\"additionalProperties\":false}";
+
+static const char *const d_task_list[] = {
+    "Lists the task list: each task's id, status and subject, its owner and what blocks it.", 0
+};
+static const char s_task_list[] = "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}";
+
+static const char *const d_task_update[] = {
+    "Updates a task by its id: status (pending, in_progress, completed; deleted removes it), subject, "
+    "description, activeForm, owner; addBlocks / addBlockedBy link it to other tasks. Keep one "
+    "task in_progress while you work and mark each completed as soon as it is done.",
+    0
+};
+static const char s_task_update[] =
+    "{\"type\":\"object\",\"properties\":{\"taskId\":{\"type\":\"string\"},\"status\":{\"type\":\"string\","
+    "\"enum\":[\"pending\",\"in_progress\",\"completed\",\"deleted\"]},\"subject\":{\"type\":\"string\"},"
+    "\"description\":{\"type\":\"string\"},\"activeForm\":{\"type\":\"string\"},\"addBlocks\":{\"type\":"
+    "\"array\",\"items\":{\"type\":\"string\"}},\"addBlockedBy\":{\"type\":\"array\",\"items\":{\"type\":"
+    "\"string\"}},\"owner\":{\"type\":\"string\"}},\"required\":"
+    "[\"taskId\"],\"additionalProperties\":false}";
+
+static const char *const d_task_stop[] = {
+    "Stops a background task by its id: a Bash command started in (or moved to) the background, or a "
+    "Monitor watch (a break, Ctrl+C).",
+    0
+};
+static const char s_task_stop[] =
+    "{\"type\":\"object\",\"properties\":{\"task_id\":{\"type\":\"string\",\"description\":\"The task's id "
+    "(bash_1, monitor_2)\"},\"shell_id\":{\"type\":\"string\",\"description\":\"Deprecated: use task_id\"}},"
+    "\"additionalProperties\":false}";
+
+static const char *const d_monitor[] = {
+    "Runs a command in the background and hands you each line it prints as an event, between turns, "
+    "so you can react to a log, a changing file or a polled status without waiting. description: what "
+    "it watches; timeout_ms: its deadline (default 300000, at most 1800000), then it ends and you are "
+    "told. Stop it early with TaskStop. Write the command so it prints only lines worth an event.",
+    0
+};
+static const char s_monitor[] =
+    "{\"type\":\"object\",\"properties\":{\"description\":{\"type\":\"string\"},\"timeout_ms\":{\"type\":"
+    "\"integer\"},\"command\":{\"type\":\"string\"},\"ws\":{\"type\":\"object\",\"properties\":{\"url\":"
+    "{\"type\":\"string\"},\"protocols\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},"
+    "\"required\":[\"url\"],\"additionalProperties\":false}},\"required\":[\"description\"],"
+    "\"additionalProperties\":false}";
+
+static const char *const d_cron_create[] = {
+    "Schedules a prompt in this session on a 5-field cron expression (minute hour day-of-month month "
+    "day-of-week, local time; * , - and /n; day of week 0 or 7 is Sunday). recurring false: once, at "
+    "the next match. It fires between turns while the session is open and idle; recurring jobs end "
+    "after 7 days. durable: also kept in .claude/scheduled_tasks.json. Returns the job's id.",
+    0
+};
+static const char s_cron_create[] =
+    "{\"type\":\"object\",\"properties\":{\"cron\":{\"type\":\"string\"},\"prompt\":{\"type\":\"string\"},"
+    "\"recurring\":{\"type\":\"boolean\"},\"durable\":{\"type\":\"boolean\"}},\"required\":[\"cron\","
+    "\"prompt\"],\"additionalProperties\":false}";
+
+static const char *const d_cron_delete[] = { "Cancels a scheduled task by the id CronCreate returned.", 0 };
+static const char s_cron_delete[] =
+    "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"],"
+    "\"additionalProperties\":false}";
+
+static const char *const d_cron_list[] = { "Lists the scheduled tasks: id, schedule, prompt.", 0 };
+static const char s_cron_list[] = "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}";
+
 typedef struct tdef {
     const char *name;
     const char *title;          /* what the screen calls it */
@@ -284,6 +382,16 @@ static const tdef defs[T_COUNT] = {
     { "Task", "Task", d_task, s_task, 0 },
     { "Skill", "Skill", d_skill, s_skill, 0 },
     { "SlashCommand", "SlashCommand", d_slash, s_slash, 0 },
+    { "WebSearch", "Web Search", d_web_search, s_web_search, 0 },
+    { "TaskCreate", "Task Create", d_task_create, s_task_create, 0 },
+    { "TaskGet", "Task Get", d_task_get, s_task_get, 0 },
+    { "TaskList", "Task List", d_task_list, s_task_list, 0 },
+    { "TaskUpdate", "Task Update", d_task_update, s_task_update, 0 },
+    { "TaskStop", "Task Stop", d_task_stop, s_task_stop, 0 },
+    { "Monitor", "Monitor", d_monitor, s_monitor, 0 },
+    { "CronCreate", "Schedule", d_cron_create, s_cron_create, 0 },
+    { "CronDelete", "Cancel Schedule", d_cron_delete, s_cron_delete, 0 },
+    { "CronList", "Schedules", d_cron_list, s_cron_list, 0 },
 };
 
 /* the A2 names, for a model that still calls them (a resumed session) */
@@ -303,12 +411,66 @@ int tools_id(const char *name)
 
 const char *tools_name(int tool)
 {
-    return tool >= 0 && tool < T_COUNT ? defs[tool].name : tool == T_WEB_SEARCH ? "web_search" : "?";
+    return tool >= 0 && tool < T_COUNT ? defs[tool].name : "?";
 }
 
 const char *tools_title(int tool)
 {
-    return tool >= 0 && tool < T_COUNT ? defs[tool].title : tool == T_WEB_SEARCH ? "Web Search" : "Tool";
+    return tool >= 0 && tool < T_COUNT ? defs[tool].title : "Tool";
+}
+
+int tools_todo_default(const char *model)
+{
+    static const char *const old[] = { "claude-3", "claude-opus-4-", "claude-opus-4.", "claude-sonnet-4-",
+                                       "claude-sonnet-4.", "claude-haiku-4-5", "claude-haiku-4.5", 0 };
+    int i;
+    if (!model)
+        return TODO_NONE;
+    for (i = 0; old[i]; i++)
+        if (!strncmp(model, old[i], strlen(old[i]))) {
+            /* Opus 4 to 4.7, Sonnet 4 to 4.6 (Opus 4.8, Sonnet 4.7 on are newer) */
+            const char *v = model + strlen(old[i]);
+            if (!strncmp(old[i], "claude-opus-4", 13) && (*v == '8' || *v == '9'))
+                return TODO_NONE;
+            if (!strncmp(old[i], "claude-sonnet-4", 15) && *v >= '7' && *v <= '9')
+                return TODO_NONE;
+            return TODO_TASKS;
+        }
+    return TODO_NONE;
+}
+
+/* is the tool declared in this session? (the older ones only run) */
+static int declared(cl_tools *t, int i)
+{
+    if (!(t->allowed & (1ul << i)))
+        return 0;
+    switch (i) {
+    case T_BASH_OUTPUT:
+    case T_KILL_SHELL:
+        return 0;                   /* Claude Code: Read the output file, TaskStop */
+    case T_TASK:
+        return t->depth < (t->max_depth > 0 ? t->max_depth : 3) && t->api.send != 0;
+    case T_WEB_FETCH:
+        return t->web && t->api.send && !t->no_fetch;
+    case T_WEB_SEARCH:
+        return t->web_search && t->api.send;
+    case T_TODO_WRITE:
+        return t->todo_mode == TODO_WRITE;
+    case T_TASK_CREATE:
+    case T_TASK_GET:
+    case T_TASK_LIST:
+    case T_TASK_UPDATE:
+        return t->todo_mode == TODO_TASKS;
+    case T_TASK_STOP:
+        return !t->no_background && t->sys && t->sys->bg_start != 0;
+    case T_MONITOR:
+        return !t->no_background && !t->no_monitor && t->sys && t->sys->bg_start != 0;
+    case T_CRON_CREATE:
+    case T_CRON_DELETE:
+    case T_CRON_LIST:
+        return !t->no_cron && t->depth == 0 && t->sys && t->sys->now != 0;
+    }
+    return 1;
 }
 
 static void put_schema(jw *w, int tool)
@@ -390,11 +552,22 @@ static int is_haiku(const char *model)
     return model && !strncmp(model, "claude-haiku", 12);
 }
 
+/* what the declared JSON depends on besides the definitions: the model's
+ * kind, the task tools, the advisor */
+static int variant(cl_tools *t, const char *model)
+{
+    unsigned long h = (unsigned long)is_haiku(model) | ((unsigned long)t->todo_mode << 1);
+    const char *p;
+    for (p = t->advisor; *p; p++)
+        h = h * 33 + (unsigned char)*p;
+    return (int)(h & 0x7fffffffUL);
+}
+
 const char *tools_json(cl_tools *t, const char *model)
 {
     jw w, d;
     int i, first = 1;
-    if (t->json && t->json_haiku == is_haiku(model))
+    if (t->json && t->json_haiku == variant(t, model))
         return t->json;
     free(t->json);
     t->json = 0;
@@ -402,11 +575,7 @@ const char *tools_json(cl_tools *t, const char *model)
     jw_init(&d);
     jw_raw(&w, "[", 1);
     for (i = 0; i < T_COUNT; i++) {
-        if (!(t->allowed & (1ul << i)))
-            continue;
-        if (i == T_TASK && (t->depth || !t->api.send))
-            continue;               /* no Task inside a subagent, none without a transport */
-        if (i == T_WEB_FETCH && (!t->web || !t->api.send))
+        if (!declared(t, i))
             continue;
         jw_reset(&d);
         if (!describe(t, i, &d))
@@ -422,12 +591,13 @@ const char *tools_json(cl_tools *t, const char *model)
         put_schema(&w, i);
         jw_raw(&w, "}", 1);
     }
-    if (t->web_search) {
-        /* the server tool: the dynamic-filtering version where the model has it */
+    if (t->advisor[0] && !is_haiku(t->advisor)) {
+        /* /advisor: the API's advisor server tool (Haiku can call one, not be one) */
         if (!first)
             jw_raw(&w, ",", 1);
-        jw_rawz(&w, is_haiku(model) ? "{\"type\":\"web_search_20250305\",\"name\":\"web_search\",\"max_uses\":5}"
-                                    : "{\"type\":\"web_search_20260209\",\"name\":\"web_search\",\"max_uses\":5}");
+        jw_rawz(&w, "{\"type\":\"advisor_20260301\",\"name\":\"advisor\",\"model\":");
+        jw_strz(&w, t->advisor);
+        jw_raw(&w, "}", 1);
     }
     jw_raw(&w, "]", 1);
     jw_free(&d);
@@ -436,8 +606,24 @@ const char *tools_json(cl_tools *t, const char *model)
         return "[]";
     }
     t->json = w.p;
-    t->json_haiku = is_haiku(model);
+    t->json_haiku = variant(t, model);
     return t->json;
+}
+
+/* the web_search server tool for a model: the dynamic-filtering version
+ * where the model has it; the domains as WebSearch was given them */
+void tools_search_tool(jw *w, const char *model, const char *allowed, const char *blocked)
+{
+    jw_rawz(w, is_haiku(model) ? "{\"type\":\"web_search_20250305\",\"name\":\"web_search\",\"max_uses\":8"
+                               : "{\"type\":\"web_search_20260209\",\"name\":\"web_search\",\"max_uses\":8");
+    if (allowed && *allowed) {
+        jw_rawz(w, ",\"allowed_domains\":");
+        jw_rawz(w, allowed);
+    } else if (blocked && *blocked) {
+        jw_rawz(w, ",\"blocked_domains\":");
+        jw_rawz(w, blocked);
+    }
+    jw_raw(w, "}", 1);
 }
 
 int tools_validate(int tool, jv in, char *err, long cap)
@@ -491,12 +677,25 @@ int tools_validate(int tool, jv in, char *err, long cap)
         }
     }
     if ((tool == T_READ && (tl_num(in, "offset", 1) < 0 || tl_num(in, "limit", 1) < 1)) ||
-        (tool == T_BASH && (tl_num(in, "timeout", 1) < 1 || tl_num(in, "timeout", 1) > 600000L)) ||
+        (tool == T_BASH && (tl_num(in, "timeout", 1) < 1 ||
+                            tl_num(in, "timeout", 1) > (tl_bool(in, "run_in_background") ? 7200000L : 600000L))) ||
         (tool == T_GREP && (tl_num(in, "-A", 0) < 0 || tl_num(in, "-B", 0) < 0 || tl_num(in, "-C", 0) < 0 ||
                             tl_num(in, "head_limit", 0) < 0 || tl_num(in, "offset", 0) < 0))) {
         cl_copy(err, "a number is out of range (Read: offset >= 0, limit >= 1; Bash: timeout 1..600000; "
                      "Grep: no negative numbers)", cap);
         return -1;
+    }
+    if (tool == T_MONITOR && tl_num(in, "timeout_ms", 1) > 3600000L) {
+        cl_copy(err, "timeout_ms is at most 3600000", cap);
+        return -1;
+    }
+    if (tool == T_WEB_SEARCH) {
+        jv a, b;
+        if (json_get(in, "allowed_domains", &a) && json_count(a) > 0 && json_get(in, "blocked_domains", &b) &&
+            json_count(b) > 0) {
+            cl_copy(err, "allowed_domains and blocked_domains cannot be combined in one call", cap);
+            return -1;
+        }
     }
     return 0;
 }
@@ -512,7 +711,9 @@ int perm_read_only(int tool)
 static int never_asks(int tool)
 {
     return tool == T_TODO_WRITE || tool == T_BASH_OUTPUT || tool == T_KILL_SHELL || tool == T_TASK ||
-           tool == T_ASK_USER || tool == T_EXIT_PLAN || tool == T_ENTER_PLAN;
+           tool == T_ASK_USER || tool == T_EXIT_PLAN || tool == T_ENTER_PLAN || tool == T_TASK_CREATE ||
+           tool == T_TASK_GET || tool == T_TASK_LIST || tool == T_TASK_UPDATE || tool == T_TASK_STOP ||
+           tool == T_CRON_CREATE || tool == T_CRON_DELETE || tool == T_CRON_LIST;
 }
 
 static int is_edit(int tool)
@@ -530,12 +731,15 @@ int perm_must_ask(const cl_perm *p, int tool, int outside)
         return 0;                   /* Claude Code: reads inside the working directories never ask */
     if (p->mode == PERM_ACCEPT && is_edit(tool))
         return 0;
+    if (tool == T_MONITOR && (p->session & (1ul << T_BASH)))
+        return 0;                   /* Monitor runs a command: Bash's answer counts */
     return !(p->session & (1ul << tool));
 }
 
 int perm_refused(const cl_perm *p, int tool)
 {
-    return p->mode == PERM_PLAN && (is_edit(tool) || tool == T_BASH || tool == T_KILL_SHELL);
+    return p->mode == PERM_PLAN && (is_edit(tool) || tool == T_BASH || tool == T_KILL_SHELL || tool == T_TASK_STOP ||
+                                    tool == T_MONITOR);
 }
 
 void perm_grant(cl_perm *p, int tool)
@@ -611,14 +815,131 @@ static int rs_check(cl_tools *t, jw *out, const char *id, const char *p)
     return 0;
 }
 
+/* Claude Code: Claude Opus 4.6, Claude Haiku 4.5 and older models always
+ * read a file before they edit it */
+static int reads_first(const char *m)
+{
+    static const char *const old[] = { "claude-3", "claude-haiku-4-5", "claude-opus-4-0", "claude-opus-4-1",
+                                       "claude-opus-4-5", "claude-opus-4-6", "claude-opus-4-2", "claude-sonnet-4-0",
+                                       "claude-sonnet-4-5", "claude-sonnet-4-2", "claude-opus-4-2025",
+                                       "claude-sonnet-4-2025", 0 };
+    int i;
+    if (!m)
+        return 1;
+    for (i = 0; old[i]; i++)
+        if (!strncmp(m, old[i], strlen(old[i])))
+            return 1;
+    return 0;
+}
+
+/* Edit's and MultiEdit's read check (Claude Code since v2.1.208): an
+ * unread file may be edited by a newer model, and a file changed since it
+ * was read may be edited when old_string matches its text now -- both only
+ * when Read could run on it without a question. 0 go on (*stale: say in
+ * the result that the file has other changes), -1 refused (written). */
+static int rs_check_edit(cl_tools *t, jw *out, const char *id, const char *p, int outside, int *stale)
+{
+    int i, free_read;
+    *stale = 0;
+    if (!t->rs)
+        return 0;
+    free_read = !outside && (t->allowed & (1ul << T_READ)) && (!t->can_read || t->can_read(t->u, p));
+    i = rs_find(t->rs, p);
+    if (i < 0) {
+        if (free_read && !reads_first(t->model))
+            return 0;
+        tl_error(t, out, id, "File has not been read yet. Read it first before writing to it.", 0);
+        return -1;
+    }
+    if (t->sys->mtime && t->rs->mtime[i] >= 0 && t->sys->mtime(t->sys->u, p) != t->rs->mtime[i]) {
+        if (free_read) {
+            *stale = 1;
+            return 0;
+        }
+        tl_error(t, out, id,
+                 "File has been modified since read, either by the user or by another program. Read it "
+                 "again before attempting to write it.", 0);
+        return -1;
+    }
+    return 0;
+}
+
+/* Claude Code: a Bash command that shows one file whole (cat, nl, head,
+ * tail, sed -n 'X,Yp', grep, rg ...; AmigaDOS Type) counts as its read
+ * for Edit, when nothing is piped or redirected */
+static void bash_read_note(cl_tools *t, const char *cmd)
+{
+    static const char *const viewers[] = { "cat", "nl", "bat", "batcat", "head", "tail", "sed", "grep", "egrep",
+                                           "fgrep", "rg", "type", 0 };
+    char word[16], file[300], full[512];
+    const char *p = cmd, *last = 0;
+    int k = 0, i, args = 0, ok = 0;
+    long ll = 0;
+    if (strpbrk(cmd, "|<>;&`\n"))
+        return;
+    while (*p == ' ')
+        p++;
+    while (*p && *p != ' ' && k < (int)sizeof(word) - 1)
+        word[k++] = *p++;
+    word[k] = 0;
+    for (i = 0; viewers[i]; i++)
+        ok |= cl_strieq(word, viewers[i]);
+    if (!ok)
+        return;
+    if (!strcmp(word, "sed") && !strstr(cmd, " -n "))
+        return;
+    /* the arguments: the last one that is not an option is the file */
+    while (*p) {
+        const char *s;
+        long l;
+        while (*p == ' ')
+            p++;
+        if (!*p)
+            break;
+        s = p;
+        if (*p == '"' || *p == '\'') {
+            char q = *p++;
+            s = p;
+            while (*p && *p != q)
+                p++;
+            l = (long)(p - s);
+            if (*p)
+                p++;
+        } else {
+            while (*p && *p != ' ')
+                p++;
+            l = (long)(p - s);
+        }
+        if (*s != '-' && !((!strcmp(word, "head") || !strcmp(word, "tail")) && (long)strspn(s, "0123456789") == l)) {
+            args++;
+            last = s;
+            ll = l;
+        }
+    }
+    /* grep / sed take a pattern or a script first */
+    if (!last || ll >= (long)sizeof(file) ||
+        ((!strcmp(word, "grep") || !strcmp(word, "egrep") || !strcmp(word, "fgrep") || !strcmp(word, "rg") ||
+          !strcmp(word, "sed")) ? args != 2 : args != 1))
+        return;
+    memcpy(file, last, (size_t)ll);
+    file[ll] = 0;
+    if (path_join(t->cwd[0] ? t->cwd : t->root, file, full, sizeof(full)) == 0 && t->sys->kind(t->sys->u, full) == 1) {
+        char c[512];
+        rs_note(t, t->sys->canon(t->sys->u, full, c, sizeof(c)) == 0 ? c : full);
+    }
+}
+
 int tools_init(cl_tools *t)
 {
     t->rs = (cl_readset *)calloc(1, sizeof(cl_readset));
     t->sh = shells_new();
+    t->tasks = tasks_new();
+    t->searches = (long *)calloc(1, sizeof(long));
     if (!t->allowed)
         t->allowed = (1ul << T_COUNT) - 1;
     t->web_search = 1;
-    return t->rs && t->sh ? 0 : -1;
+    t->todo_mode = TODO_WRITE;      /* the REPL sets the model's (tools_todo_default) */
+    return t->rs && t->sh && t->tasks && t->searches ? 0 : -1;
 }
 
 void tools_free(cl_tools *t)
@@ -626,6 +947,10 @@ void tools_free(cl_tools *t)
     if (t->sh)
         shells_free(t->sys, t->sh);
     t->sh = 0;
+    tasks_free(t->tasks);
+    t->tasks = 0;
+    free(t->searches);
+    t->searches = 0;
     if (t->rs) {
         free(t->rs->path);
         free(t->rs->mtime);
@@ -832,6 +1157,10 @@ int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, in
         return 0;
     note[0] = 0;
     ans = t->ask ? t->ask(t->u, defs[tool].name, what, outside, note, sizeof(note)) : ASK_NO;
+    if (ans == ASK_RERUN) {
+        t->rerun = 1;               /* allowed with another input: the caller runs it again */
+        return -1;
+    }
     if (ans == ASK_NO && note[0]) {
         /* No with a comment: Claude is told why and goes on */
         tl_error(t, out, id, "the user declined this tool call and said: ", note);
@@ -981,6 +1310,8 @@ static void run_read(cl_tools *t, jw *out, const char *id, jv in)
         return;
     }
     free(arg);
+    if (outside && shells_owns(t, full))
+        outside = 0;                /* a background task's output file is the session's own */
     tl_summary(what, sizeof(what), full, 0);
     if (tl_gate(t, out, id, T_READ, what, outside, 1))
         return;
@@ -993,7 +1324,7 @@ static void run_read(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "File does not exist: ", full);
         return;
     }
-    rc = t->sys->read(t->sys->u, full, media_name(full) ? READ_MEDIA : part ? READ_PART : READ_WHOLE, &b, &n);
+    rc = t->sys->read(t->sys->u, full, media_name(full) ? READ_MEDIA : part ? READ_PART : (t->read_max > 0 ? t->read_max : READ_WHOLE), &b, &n);
     if (rc == SYS_TOO_BIG) {
         tl_error(t, out, id, part ? "the file is larger than 2 MB: Grep it, or read it with Bash (Type with a range)"
                                   : "the file is larger than 256 KB: read it in parts with offset and limit, "
@@ -1016,7 +1347,7 @@ static void run_read(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "this is a binary file, not text: ", full);
         return;
     }
-    if (n > READ_WHOLE && !part) {
+    if (n > (t->read_max > 0 ? t->read_max : READ_WHOLE) && !part) {
         /* read whole for its name (an image's), but it is text: the text cap holds */
         free(b);
         tl_error(t, out, id, "the file is larger than 256 KB: read it in parts with offset and limit, "
@@ -1282,7 +1613,7 @@ static void run_edit(cl_tools *t, jw *out, const char *id, jv in, int tool)
 {
     char full[512], what[300], num[16];
     char *arg = tl_prop(in, "file_path", 0);
-    int outside = 0, kind, k = 0;
+    int outside = 0, kind, k = 0, stale = 0;
     pedit e;
     jw err, m;
     jv edits, ed;
@@ -1327,7 +1658,7 @@ static void run_edit(cl_tools *t, jw *out, const char *id, jv in, int tool)
                 tl_error(t, out, id, "File does not exist: ", full);
                 return;
             }
-            if (rs_check(t, out, id, full) || edit_load(t, out, id, full, &e))
+            if (rs_check_edit(t, out, id, full, outside, &stale) || edit_load(t, out, id, full, &e))
                 goto done;
         }
     } else {
@@ -1335,7 +1666,7 @@ static void run_edit(cl_tools *t, jw *out, const char *id, jv in, int tool)
             tl_error(t, out, id, "File does not exist: ", full);
             return;
         }
-        if (rs_check(t, out, id, full) || edit_load(t, out, id, full, &e))
+        if (rs_check_edit(t, out, id, full, outside, &stale) || edit_load(t, out, id, full, &e))
             goto done;
     }
     if (!e.created) {
@@ -1437,6 +1768,9 @@ static void run_edit(cl_tools *t, jw *out, const char *id, jv in, int tool)
             snippet(&m, e.after, e.an, e.first);
         }
     }
+    if (stale)
+        jw_rawz(&m, "\nNote: the file had changed on disk since you last read it (other changes are in it); "
+                    "read it again before edits that depend on the text around this one.");
     tl_result(t, out, id, m.p ? m.p : "", m.n, 0);
     jw_free(&m);
 done:
@@ -1514,7 +1848,7 @@ static int cd_line(const char *cmd, char *dir, long cap)
 
 static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
 {
-    char what[300], num[16], shell[24];
+    char what[300], num[16];
     char *cmd = tl_prop(in, "command", 0), *buf;
     long n = 0, rc = 0, ms = tl_num(in, "timeout", 0), omax = t->out_max > 0 ? t->out_max : TL_OUT_MAX;
     char cddir[256];
@@ -1534,7 +1868,11 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         return;
     }
     if (tl_bool(in, "run_in_background")) {
-        shells_start(t, out, id, cmd);
+        /* an unattended run's background time limit: timeout, else 30 minutes; at most 2 hours */
+        long lim = t->bg_limit_ms ? (ms > 0 ? (ms < 7200000L ? ms : 7200000L) : t->bg_limit_ms) : 0;
+        char *desc = tl_prop(in, "description", 0);
+        shells_start(t, out, id, cmd, desc ? desc : "", lim);
+        free(desc);
         free(cmd);
         return;
     }
@@ -1556,17 +1894,44 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
             cmd = c2;
         }
     }
+    if (shells_can_run(t)) {
+        /* the command as a job: polled, cut head and tail, moved to the
+         * background at its time limit (Claude Code) */
+        char *shown = tl_prop(in, "command", 0), *desc = tl_prop(in, "description", 0);
+        int err = 0;
+        jw_init(&res);
+        r = shells_run_fg(t, cmd, shown ? shown : cmd, desc ? desc : "", secs, &res, &rc, &err);
+        if (r == 0 && rc == 0 && is_cd && !t->no_cd_keep) {
+            char full[512];
+            if (path_join(t->cwd[0] ? t->cwd : t->root, cddir, full, sizeof(full)) == 0 &&
+                t->sys->kind(t->sys->u, full) == 2 && t->sys->canon(t->sys->u, full, t->cwd, sizeof(t->cwd)))
+                cl_copy(t->cwd, full, sizeof(t->cwd));
+        }
+        if (r == 0 && shown)
+            bash_read_note(t, shown);   /* a cat of one file counts as its Read */
+        if (r == SYS_BREAK && t->wait)
+            t->stop = 1;            /* stopped from the screen: the user says what next */
+        if (r == -1)
+            tl_error(t, out, id, "the command did not start: ", t->sys->err(t->sys->u));
+        else
+            tl_result(t, out, id, res.p ? res.p : "", res.n, r == SHELL_MOVED ? 0 : err);
+        jw_free(&res);
+        free(shown);
+        free(desc);
+        free(cmd);
+        return;
+    }
     buf = (char *)malloc((size_t)omax + 1);
     if (!buf) {
         free(cmd);
         tl_error(t, out, id, "out of memory", 0);
         return;
     }
-    r = tools_run_fg(t, cmd, secs, buf, omax, &n, &rc, shell, sizeof(shell));
+    r = t->sys->run(t->sys->u, cmd, secs, buf, omax, &n, &rc);
     if (r == 0 && rc == 0) {
         /* a bare cd: the directory the next commands run in */
         char full[512];
-        if (is_cd && path_join(t->cwd[0] ? t->cwd : t->root, cddir, full, sizeof(full)) == 0 &&
+        if (is_cd && !t->no_cd_keep && path_join(t->cwd[0] ? t->cwd : t->root, cddir, full, sizeof(full)) == 0 &&
             t->sys->kind(t->sys->u, full) == 2 && t->sys->canon(t->sys->u, full, t->cwd, sizeof(t->cwd)))
             cl_copy(t->cwd, full, sizeof(t->cwd));
     }
@@ -1574,17 +1939,6 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
     if (r == -1) {
         free(buf);
         tl_error(t, out, id, "the command did not start: ", t->sys->err(t->sys->u));
-        return;
-    }
-    if (r == SHELL_MOVED) {
-        /* Ctrl+B: the user moved it to the background */
-        free(buf);
-        jw_init(&res);
-        jw_rawz(&res, "Command was manually backgrounded by user with ID: ");
-        jw_rawz(&res, shell);
-        jw_rawz(&res, ". Read its output with BashOutput, stop it with KillShell.");
-        tl_result(t, out, id, res.p, res.n, 0);
-        jw_free(&res);
         return;
     }
     jw_init(&res);
@@ -1595,13 +1949,6 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         jw_rawz(&res, " s) and was sent a break (Ctrl+C).\n");
     } else if (r == SYS_BREAK)
         jw_rawz(&res, "The user stopped the command (Ctrl+C).\n");
-    if (shell[0]) {
-        jw_rawz(&res, "It did not end after the break; it runs on as the background shell ");
-        jw_rawz(&res, shell);
-        jw_rawz(&res, ".\n");
-    }
-    if (r == SYS_BREAK && t->wait)
-        t->stop = 1;                /* stopped from the screen: the user says what next */
     jw_rawz(&res, "Return code ");
     cl_ltoa(rc, num);
     jw_rawz(&res, num);
@@ -1928,6 +2275,21 @@ static void run_slash(cl_tools *t, jw *out, const char *id, jv in)
     free(line);
 }
 
+/* Monitor: its command asked about as Bash's are (the same rules) */
+static void run_monitor(cl_tools *t, jw *out, const char *id, jv in)
+{
+    char *cmd = tl_prop(in, "command", 0), what[300];
+    if (!cmd) {
+        tl_error(t, out, id, "out of memory", 0);
+        return;
+    }
+    tl_summary(what, sizeof(what), cmd, 0);
+    free(cmd);
+    if (tl_gate(t, out, id, T_MONITOR, what, 0, 1))
+        return;
+    monitor_start(t, out, id, in);
+}
+
 /* ---- the call ---- */
 
 void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
@@ -1955,7 +2317,8 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
         tl_error(t, out, id, "No such tool available: ", name);
         return;
     }
-    if (!(t->allowed & (1ul << tool)) || (tool == T_TASK && t->depth)) {
+    if (!(t->allowed & (1ul << tool)) || (tool == T_TASK && t->depth >= (t->max_depth > 0 ? t->max_depth : 3)) ||
+        (tool == T_WEB_FETCH && t->no_fetch) || (tool == T_MONITOR && t->no_monitor)) {
         tl_error(t, out, id, "No such tool available here: ", name);
         return;
     }
@@ -2031,6 +2394,28 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
     case T_SLASH:
         run_slash(t, out, id, in);
         break;
+    case T_WEB_SEARCH:
+        websearch_run(t, out, id, in);
+        break;
+    case T_TASK_STOP:
+        shells_kill(t, out, id, in);
+        break;
+    case T_MONITOR:
+        run_monitor(t, out, id, in);
+        break;
+    case T_TASK_CREATE:
+    case T_TASK_GET:
+    case T_TASK_LIST:
+    case T_TASK_UPDATE:
+        if (t->show && tool != T_TASK_LIST && tool != T_TASK_GET)
+            t->show(t->u, defs[tool].name, "");
+        tasks_run(t, tool, out, id, in);
+        break;
+    case T_CRON_CREATE:
+    case T_CRON_DELETE:
+    case T_CRON_LIST:
+        tasks_run(t, tool, out, id, in);
+        break;
     }
 }
 
@@ -2095,6 +2480,29 @@ char *tools_args(int tool, const char *in, long inn)
             break;
         case T_SLASH:
             arg_kv(&w, v, "command", 0);
+            break;
+        case T_WEB_SEARCH:
+            arg_kv(&w, v, "query", 0);
+            break;
+        case T_TASK_STOP:
+            arg_kv(&w, v, "task_id", 0);
+            arg_kv(&w, v, "shell_id", 0);
+            break;
+        case T_MONITOR:
+            arg_kv(&w, v, "description", 0);
+            break;
+        case T_TASK_CREATE:
+            arg_kv(&w, v, "subject", 0);
+            break;
+        case T_TASK_GET:
+        case T_TASK_UPDATE:
+            arg_kv(&w, v, "taskId", 0);
+            break;
+        case T_CRON_CREATE:
+            arg_kv(&w, v, "cron", 0);
+            break;
+        case T_CRON_DELETE:
+            arg_kv(&w, v, "id", 0);
             break;
         }
     }
@@ -2174,7 +2582,15 @@ int tools_summary(int tool, const char *in, long inn, const char *p, long n, cha
         return 1;
     case T_KILL_SHELL:
     case T_SKILL:
+    case T_TASK_CREATE:
+    case T_TASK_UPDATE:
         return first_line(p, n, "", out, cap);
+    case T_TASK_STOP:
+        cl_copy(out, "Task stopped", cap);
+        return 1;
+    case T_CRON_DELETE:
+        cl_copy(out, "Cancelled", cap);
+        return 1;
     case T_EXIT_PLAN:
         cl_copy(out, "User approved Claude's plan", cap);
         return 1;
@@ -2192,6 +2608,23 @@ int tools_server_line(const char *block, long n, char *out, long cap)
     jv b, x, q;
     if (json_parse(block, n, &b) || !json_get(b, "type", &x))
         return -1;
+    if (json_streq(x, "server_tool_use") && json_get(b, "name", &q) && json_streq(q, "advisor")) {
+        cl_copy(out, "Advising", cap);     /* /advisor: the advisor model reads the conversation */
+        return 0;
+    }
+    if (json_streq(x, "advisor_tool_result")) {
+        char code[64];
+        code[0] = 0;
+        if (json_get(b, "content", &x) && json_get(x, "type", &q) && json_streq(q, "advisor_tool_result_error")) {
+            if (json_get(x, "error_code", &q))
+                json_str(q, code, sizeof(code));
+            cl_copy(out, "Advisor unavailable (", cap);
+            cl_cat(out, code[0] ? code : "unavailable", cap);
+            cl_cat(out, ")", cap);
+        } else
+            cl_copy(out, "Reviewed: the advisor has reviewed the conversation", cap);
+        return 0;
+    }
     if (json_streq(x, "server_tool_use")) {
         char query[200];
         query[0] = 0;

@@ -336,6 +336,12 @@ int main(void)
         cl_copy(root, "", sizeof(root));
     if (cli.debug_file[0])
         cl_copy(logname, cli.debug_file, sizeof(logname));
+    else {
+        /* CLAUDE_CODE_DEBUG_LOGS_DIR (Claude Code: a file's path, despite the name) */
+        char v[256];
+        if (GetVar((STRPTR)"CLAUDE_CODE_DEBUG_LOGS_DIR", (STRPTR)v, sizeof(v), 0) > 0)
+            cl_copy(logname, v, sizeof(logname));
+    }
     if (cli.print)
         open_err();
     memset(&io, 0, sizeof(io));

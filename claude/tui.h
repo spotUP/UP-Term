@@ -119,6 +119,9 @@ typedef struct cl_tui {
     /* called while the screen waits for keys (the status line's schedule) */
     void (*idle)(void *u);
     void *iu;
+    /* A4 gaps 2: while the screen waits, a turn to run now (a cron job, a
+     * background task's news): malloc'ed, 0 none; iu is its argument */
+    char *(*wake)(void *u);
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
     const cl_theme *th;         /* the colours (/theme) */

@@ -588,6 +588,74 @@ static const char *a_err(void *u)
     return ((sys_amiga *)u)->err;
 }
 
+/* ---- A4 gaps 2: the clock, a wait, a job's output size and file, rename ---- */
+
+/* DateStamp is the local time since 1978-01-01 (as the Workbench clock is set) */
+static long a_now(void *u)
+{
+    struct DateStamp d;
+    (void)u;
+    DateStamp(&d);
+    return ds_seconds(&d);
+}
+
+/* Delay in ticks (1/50 s), a Ctrl+C on this task looked at every tenth of a second */
+static int a_pause(void *u, long ms)
+{
+    long ticks = (ms + 19) / 20;
+    (void)u;
+    while (ticks > 0) {
+        long d = ticks > 5 ? 5 : ticks;
+        if (SetSignal(0, 0) & SIGBREAKF_CTRL_C) {
+            SetSignal(0, SIGBREAKF_CTRL_C);
+            return 1;
+        }
+        Delay(d);
+        ticks -= d;
+    }
+    if (SetSignal(0, 0) & SIGBREAKF_CTRL_C) {
+        SetSignal(0, SIGBREAKF_CTRL_C);
+        return 1;
+    }
+    return 0;
+}
+
+static long a_bg_size(void *u, long job)
+{
+    sys_amiga *s = (sys_amiga *)u;
+    BPTR l;
+    struct FileInfoBlock *fib;
+    long n = 0;
+    if (job < 0 || job >= SA_JOBS || !s->jobs[job].used)
+        return -1;
+    l = Lock((STRPTR)s->jobs[job].output, SHARED_LOCK);
+    if (!l)
+        return 0;
+    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (fib && Examine(l, fib))
+        n = fib->fib_Size;
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    UnLock(l);
+    return n;
+}
+
+static const char *a_bg_file(void *u, long job)
+{
+    sys_amiga *s = (sys_amiga *)u;
+    return job >= 0 && job < SA_JOBS && s->jobs[job].used ? s->jobs[job].output : "";
+}
+
+static int a_rename(void *u, const char *from, const char *to)
+{
+    sys_amiga *s = (sys_amiga *)u;
+    if (!Rename((STRPTR)from, (STRPTR)to)) {
+        set_err(s, from);
+        return -1;
+    }
+    return 0;
+}
+
 void sys_amiga_init(sys_amiga *s, cl_sys *sys)
 {
     memset(s, 0, sizeof(*s));
@@ -611,4 +679,9 @@ void sys_amiga_init(sys_amiga *s, cl_sys *sys)
     sys->setenv = a_setenv;
     sys->clip = a_clip;
     sys->info = a_info;
+    sys->now = a_now;
+    sys->pause = a_pause;
+    sys->bg_size = a_bg_size;
+    sys->bg_file = a_bg_file;
+    sys->rename = a_rename;
 }

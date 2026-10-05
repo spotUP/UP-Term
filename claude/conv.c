@@ -129,6 +129,56 @@ int conv_caps(const char *model)
     return CAP_EFFORT | CAP_ADAPTIVE;
 }
 
+/* a model id's family and version (maj*10+min): "claude-opus-4-7" ->
+ * 'o', 47; a dated id's date is not a version; 0 not a Claude id */
+static int fam_ver(const char *id, int *ver)
+{
+    static const char *const fam[] = { "haiku", "sonnet", "opus", "fable", 0 };
+    int i;
+    *ver = 0;
+    if (strncmp(id, "claude-", 7))
+        return 0;
+    for (i = 0; fam[i]; i++) {
+        long l = (long)strlen(fam[i]);
+        const char *v = id + 7 + l;
+        if (strncmp(id + 7, fam[i], (size_t)l) || v[0] != '-' || v[1] < '0' || v[1] > '9')
+            continue;
+        *ver = (v[1] - '0') * 10;
+        if (v[2] == '-' && v[3] >= '0' && v[3] <= '9' && (v[4] == 0 || v[4] == '-' || v[4] == '['))
+            *ver += v[3] - '0';
+        return fam[i][0];
+    }
+    return 0;
+}
+
+int conv_advisor_ok(const char *main, const char *adv)
+{
+    int mv, av, mf = fam_ver(main, &mv), af = fam_ver(adv, &av);
+    if (!mf || !af)
+        return -1;                  /* a model Claude Code does not know: not attached */
+    /* the main models that take an advisor: Fable, Opus 4.6+, Sonnet 4.6+, Haiku 4.5 */
+    if ((mf == 'o' && mv < 46) || (mf == 's' && mv < 46) || (mf == 'h' && mv < 45))
+        return -1;
+    if (af == 'h')
+        return -1;                  /* Haiku can call an advisor, not be one */
+    /* Claude Code's pairing table (advisor.md "Choose an advisor model") */
+    if (mf == 'f')
+        return af == 'f' && (mv >= 51 ? av >= 51 : av >= 50) ? 0 : 1;
+    if (af == 'f')
+        return 0;
+    if (mf == 'h' || (mf == 's' && mv < 50))
+        return 0;                   /* Haiku 4.5, Sonnet 4.6: any Opus or Sonnet */
+    if (mf == 'o' && mv < 47)
+        return af == 'o' || av >= 50 ? 0 : 1;                       /* Opus 4.6 */
+    if (mf == 's' && mv < 55)
+        return (af == 'o' && av >= 47) || (af == 's' && av >= 50) ? 0 : 1;    /* Sonnet 5 */
+    if (mf == 'o' && mv < 50)
+        return (af == 'o' && av >= 47) || (af == 's' && av >= 55) ? 0 : 1;    /* Opus 4.7, 4.8 */
+    if (mf == 's')
+        return (af == 'o' && av >= 50) || (af == 's' && av >= 55) ? 0 : 1;    /* Sonnet 5.5 */
+    return af == 'o' && av >= 50 ? 0 : 1;                           /* Opus 5, 5.5 */
+}
+
 const char *conv_beta(const char *model)
 {
     static const char *const fb[] = {
@@ -164,7 +214,7 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out)
     jw_rawz(out, ",\"stream\":true");
     /* adaptive thinking with its text summarised (the thinking view shows
      * it; the 5.x models leave it empty by default) */
-    if (conv_caps(o->model) & CAP_ADAPTIVE)
+    if ((conv_caps(o->model) & CAP_ADAPTIVE) && !o->no_thinking)    /* CLAUDE_CODE_DISABLE_THINKING */
         jw_rawz(out, ",\"thinking\":{\"type\":\"adaptive\",\"display\":\"summarized\"}");
     if (o->effort && *o->effort && (conv_caps(o->model) & CAP_EFFORT)) {
         jw_rawz(out, ",\"output_config\":{\"effort\":");
@@ -186,6 +236,20 @@ int conv_body(const cl_conv *c, const cl_opts *o, jw *out)
     }
     jw_rawz(out, ",\"messages\":");
     messages(c, out);
+    if (o->extra && *o->extra) {
+        /* CLAUDE_CODE_EXTRA_BODY: its members merged into the top level */
+        jv x, k, v;
+        jit it;
+        if (json_parse(o->extra, (long)strlen(o->extra), &x) == 0 && json_type(x) == J_OBJ) {
+            json_iter(x, &it);
+            while (json_next(&it, &k, &v)) {
+                jw_raw(out, ",", 1);
+                jw_raw(out, k.p, k.n);
+                jw_raw(out, ":", 1);
+                jw_raw(out, v.p, v.n);
+            }
+        }
+    }
     jw_raw(out, "}", 1);
     return out->oom ? -1 : 0;
 }

@@ -249,8 +249,27 @@ static void test_rules(void)
     CHECK(!cfg_rule_match("Edit(*.c)", "write_file", wr_h, root));
     CHECK(cfg_rule_match("Edit(Work:proj/#?.h)", "Write", wr_h, root));
     CHECK(cfg_rule_match("Edit(WORK:Proj/*.H)", "MultiEdit", wr_h, root));
-    CHECK(!cfg_rule_match("Read(*.c)", "write_file", wr_c, root));    /* Read does not cover Write */
-    CHECK(!cfg_rule_match("Edit", "read_file", rd_src, root));
+    CHECK(!cfg_rule_match("Read(*.c)", "write_file", wr_c, root));    /* a Read allow does not cover Write */
+    /* A4 gaps 2: Claude Code -- an Edit allow rule grants Read on its paths;
+     * a Read deny rule blocks Edit and Write there (cfg_decide) */
+    CHECK(cfg_rule_match("Edit", "read_file", rd_src, root));
+    CHECK(cfg_rule_match("Edit(src/**)", "Read", rd_src, root));
+    CHECK(!cfg_rule_match("Edit(src/**)", "Read", rd_doc, root));
+    CHECK(!cfg_rule_match_any("Edit", "Read", rd_src, root));     /* a hook's "if": the tool itself */
+    {
+        cl_settings ds;
+        const cl_rule *which = 0;
+        cfg_init(&ds);
+        cfg_add_rule(&ds, RULE_DENY, CFG_USER, "Read(*.c)");
+        CHECK_INT(cfg_decide(&ds, "Write", wr_c, root, &which), RULE_DENY);
+        CHECK_INT(cfg_decide(&ds, "Edit", wr_c, root, &which), RULE_DENY);
+        CHECK_INT(cfg_decide(&ds, "Write", wr_h, root, &which), RULE_NONE);
+        cfg_free(&ds);
+        cfg_init(&ds);
+        cfg_add_rule(&ds, RULE_ASK, CFG_USER, "Read(*.c)");
+        CHECK_INT(cfg_decide(&ds, "Write", wr_c, root, &which), RULE_NONE);    /* only a deny reaches over */
+        cfg_free(&ds);
+    }
     /* WebFetch domains, subdomains included */
     CHECK(cfg_rule_match("WebFetch(domain:aminet.net)", "WebFetch", url, root));
     CHECK(!cfg_rule_match("WebFetch(domain:aminet.net)", "WebFetch", url2, root));
@@ -472,6 +491,7 @@ static void test_defs(void)
                                 "A=$ARGUMENTS[1] B=$0 C=$5 D=\\$1 E=$issue F=$extra G=${CLAUDE_SKILL_DIR}/s "
                                 "H=${CLAUDE_SESSION_ID} I=${CLAUDE_EFFORT} J=${CLAUDE_PROJECT_DIR}";
         cl_cmd_vars v;
+        memset(&v, 0, sizeof(v));
         v.session_id = "abc123";
         v.effort = "high";
         v.skill_dir = "S:skills/x";

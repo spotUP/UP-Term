@@ -10,6 +10,8 @@
 #include "tools_int.h"
 #include "http.h"
 #include "html.h"
+#include "conv.h"
+#include "stream.h"
 #include "util.h"
 
 #define FETCH_MAX    (512L * 1024)   /* the raw page */
@@ -59,40 +61,69 @@ static void header(const page *p, const char *name, char *out, long cap)
     }
 }
 
-/* one GET: 0 with the page, -1 with the reason in err, -2 stopped (Ctrl+C) */
-static int get(cl_net *net, const http_url *u, page *p, char *err, long cap)
+/* One request (GET, or a POST with a body and headers of its own): 0 with
+ * the page, -1 with the reason in err, -2 stopped (Ctrl+C). idle_ms: how
+ * long without a byte before it is given up. */
+/* WebFetch's deadline (CLAUDE_CODE_WEBFETCH_DEADLINE_MS): the tools whose
+ * clock counts and the moment, 0 none */
+static const cl_tools *dl_tools;
+static unsigned long dl_end;
+
+static int request(cl_net *net, const http_url *u, const char *post, long pn, const char *headers, page *p,
+                   char *err, long cap, long idle_ms)
 {
-    char head[700], buf[2048], num[16];
-    long hn, idle = 0;
+    char buf[2048], num[16];
+    long idle = 0;
     int rc;
+    jw head;
     jw_init(&p->head);
     jw_init(&p->body);
+    jw_init(&head);
     p->head_done = 0;
     p->cut = 0;
     http_resp_init(&p->resp, on_body, p);
-    cl_copy(head, "GET ", sizeof(head));
-    cl_cat(head, u->path[0] ? u->path : "/", sizeof(head));
-    cl_cat(head, " HTTP/1.1\r\nHost: ", sizeof(head));
-    cl_cat(head, u->host, sizeof(head));
+    jw_rawz(&head, post ? "POST " : "GET ");
+    jw_rawz(&head, u->path[0] ? u->path : "/");
+    jw_rawz(&head, " HTTP/1.1\r\nHost: ");
+    jw_rawz(&head, u->host);
     if (u->port != (u->tls ? 443 : 80)) {
         cl_ltoa(u->port, num);
-        cl_cat(head, ":", sizeof(head));
-        cl_cat(head, num, sizeof(head));
+        jw_rawz(&head, ":");
+        jw_rawz(&head, num);
     }
-    cl_cat(head, "\r\nUser-Agent: C-Claude/1.0 (AmigaOS; UP-Term)\r\nAccept: text/html, text/markdown, "
-                 "text/plain, */*;q=0.8\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n",
-           sizeof(head));
-    hn = (long)strlen(head);
+    if (post) {
+        jw_rawz(&head, "\r\nUser-Agent: C-Claude/1.0 (AmigaOS; UP-Term)\r\nContent-Type: application/json\r\n"
+                       "Content-Length: ");
+        cl_ltoa(pn, num);
+        jw_rawz(&head, num);
+        jw_rawz(&head, "\r\n");
+        if (headers)
+            jw_rawz(&head, headers);
+        jw_rawz(&head, "Accept-Encoding: identity\r\nConnection: close\r\n\r\n");
+    } else
+        jw_rawz(&head, "\r\nUser-Agent: C-Claude/1.0 (AmigaOS; UP-Term)\r\nAccept: text/html, text/markdown, "
+                       "text/plain, */*;q=0.8\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n");
+    if (head.oom) {
+        jw_free(&head);
+        cl_copy(err, "out of memory", cap);
+        return -1;
+    }
     rc = net->open(net->u, u->host, u->port, u->tls);
-    if (rc == NET_BREAK)
+    if (rc == NET_BREAK) {
+        jw_free(&head);
         return -2;
+    }
     if (rc) {
+        jw_free(&head);
         cl_copy(err, "cannot connect: ", cap);
         cl_cat(err, net->err(net->u), cap);
         return -1;
     }
-    rc = (int)net->send(net->u, head, hn);
-    if (rc != hn) {
+    rc = (int)net->send(net->u, head.p, head.n);
+    if (rc == head.n && post && pn)
+        rc = (int)net->send(net->u, post, pn) == pn ? (int)head.n : -1;
+    if (rc != head.n) {
+        jw_free(&head);
         net->close(net->u);
         if (rc == NET_BREAK)
             return -2;
@@ -100,14 +131,20 @@ static int get(cl_net *net, const http_url *u, page *p, char *err, long cap)
         cl_cat(err, net->err(net->u), cap);
         return -1;
     }
+    jw_free(&head);
     for (;;) {
         long n = net->recv(net->u, buf, sizeof(buf), 250);
+        if (dl_end && dl_tools && dl_tools->clock && dl_tools->clock(dl_tools->u) > dl_end) {
+            net->close(net->u);
+            cl_copy(err, "the page did not arrive before the deadline (CLAUDE_CODE_WEBFETCH_DEADLINE_MS)", cap);
+            return -1;
+        }
         if (n == NET_TIMEOUT) {
             idle += 250;
-            if (idle < FETCH_IDLE)
+            if (idle < idle_ms)
                 continue;
             net->close(net->u);
-            cl_copy(err, "no answer for 30 seconds", cap);
+            cl_copy(err, "no answer in time", cap);
             return -1;
         }
         if (n == NET_BREAK) {
@@ -154,6 +191,34 @@ static void page_free(page *p)
 {
     jw_free(&p->head);
     jw_free(&p->body);
+}
+
+static int get(cl_net *net, const http_url *u, page *p, char *err, long cap)
+{
+    return request(net, u, 0, 0, 0, p, err, cap, FETCH_IDLE);
+}
+
+int web_post(cl_net *net, const char *url, const char *headers, const char *body, long bn, int timeout_s,
+             int *status, jw *resp, char *err, long cap)
+{
+    http_url u;
+    page p;
+    int rc;
+    char cur[600];
+    memset(&p, 0, sizeof(p));
+    cl_copy(cur, url, sizeof(cur));
+    if (http_parse_url(cur, &u)) {
+        cl_copy(err, "not a usable URL", cap);
+        return -1;
+    }
+    rc = request(net, &u, body, bn, headers, &p, err, cap, (long)(timeout_s > 0 ? timeout_s : 600) * 1000L);
+    if (rc == 0) {
+        *status = p.resp.status;
+        jw_raw(resp, p.body.p ? p.body.p : "", p.body.n);
+    } else if (rc == -2)
+        cl_copy(err, "stopped (Ctrl+C)", cap);
+    page_free(&p);
+    return rc ? -1 : 0;
 }
 
 /* Location against the URL it came from, into out */
@@ -282,7 +347,7 @@ static fentry *cache_find(cl_tools *t, const char *url)
     if (!c || !t->clock)
         return 0;
     for (i = 0; i < CACHE_N; i++)
-        if (c[i].md && !strcmp(c[i].url, url) && now - c[i].ms < CACHE_MS)
+        if (c[i].md && !strcmp(c[i].url, url) && now - c[i].ms < (t->fetch_ttl_ms > 0 ? (unsigned long)t->fetch_ttl_ms : CACHE_MS))
             return &c[i];
     return 0;
 }
@@ -316,6 +381,36 @@ static void cache_put(cl_tools *t, const char *url, const char *md, long n, long
     e->ms = t->clock(t->u);
 }
 
+/* Claude Code's preapproved documentation hosts: WebFetch reads them without
+ * a question (an explicit WebFetch(domain:...) rule still decides). The
+ * docs name the set without listing it; this is the list Claude Code ships. */
+static const char *const preapproved[] = {
+    "platform.claude.com", "code.claude.com", "docs.anthropic.com", "modelcontextprotocol.io", "agentskills.io",
+    "docs.python.org", "en.cppreference.com", "docs.oracle.com", "learn.microsoft.com", "developer.mozilla.org",
+    "go.dev", "pkg.go.dev", "www.php.net", "docs.swift.org", "kotlinlang.org", "ruby-doc.org", "doc.rust-lang.org",
+    "www.typescriptlang.org", "react.dev", "angular.io", "vuejs.org", "nextjs.org", "expressjs.com", "nodejs.org",
+    "bun.sh", "jquery.com", "getbootstrap.com", "tailwindcss.com", "d3js.org", "threejs.org", "redux.js.org",
+    "webpack.js.org", "jestjs.io", "reactrouter.com", "docs.djangoproject.com", "flask.palletsprojects.com",
+    "fastapi.tiangolo.com", "pandas.pydata.org", "numpy.org", "www.tensorflow.org", "pytorch.org",
+    "scikit-learn.org", "matplotlib.org", "requests.readthedocs.io", "jupyter.org", "laravel.com", "symfony.com",
+    "wordpress.org", "docs.spring.io", "hibernate.org", "tomcat.apache.org", "gradle.org", "maven.apache.org",
+    "asp.net", "dotnet.microsoft.com", "nuget.org", "blazor.net", "reactnative.dev", "docs.flutter.dev",
+    "developer.apple.com", "developer.android.com", "keras.io", "spark.apache.org", "huggingface.co",
+    "www.kaggle.com", "www.mongodb.com", "redis.io", "www.postgresql.org", "dev.mysql.com", "www.sqlite.org",
+    "graphql.org", "prisma.io", "docs.aws.amazon.com", "cloud.google.com", "kubernetes.io", "www.docker.com",
+    "www.terraform.io", "www.ansible.com", "docs.netlify.com", "devcenter.heroku.com", "cypress.io",
+    "selenium.dev", "docs.unity.com", "docs.unrealengine.com", "git-scm.com", "nginx.org", "httpd.apache.org", 0
+};
+
+int webfetch_preapproved(const char *host)
+{
+    int i;
+    for (i = 0; preapproved[i]; i++)
+        if (cl_strieq(host, preapproved[i]))
+            return 1;
+    return 0;
+}
+
 void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
 {
     char *url = tl_prop(in, "url", 0), *prompt = tl_prop(in, "prompt", 0);
@@ -332,16 +427,35 @@ void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
         tl_error(t, out, id, "out of memory", 0);
         goto done;
     }
-    tl_summary(what, sizeof(what), url, 0);
-    if (tl_gate(t, out, id, T_WEB_FETCH, what, 0, 1))
-        goto done;
-    if (!t->web || !t->api.send) {
-        tl_error(t, out, id, "WebFetch is not available here", 0);
-        goto done;
-    }
     cl_copy(cur, url, sizeof(cur));
     if (http_parse_url(cur, &u) || (long)strlen(url) >= (long)sizeof(u.path)) {
         tl_error(t, out, id, "Invalid URL (a full http:// or https:// URL, under 250 characters): ", url);
+        goto done;
+    }
+    if (!strchr(u.host, '.')) {
+        /* Claude Code refuses localhost and intranet names before any request */
+        tl_error(t, out, id, "WebFetch cannot fetch localhost or other hostnames without a dot. To reach a local "
+                             "server, use Bash instead (an HTTP client such as curl or wget, if one is installed).", 0);
+        goto done;
+    }
+    if (!u.tls && !(strchr(cur + 7, ':') && (!strchr(cur + 7, '/') || strchr(cur + 7, ':') < strchr(cur + 7, '/')))) {
+        /* Claude Code: http is upgraded to https (a URL with a port of its own
+         * names a plain server and stays as it is) */
+        cl_copy(next, "https://", sizeof(next));
+        cl_cat(next, cur + 7, sizeof(next));
+        if (http_parse_url(next, &nu) == 0) {
+            cl_copy(cur, next, sizeof(cur));
+            u = nu;
+        }
+    }
+    tl_summary(what, sizeof(what), cur, 0);
+    if (!t->rule_ask && webfetch_preapproved(u.host) && !perm_refused(&t->perm, T_WEB_FETCH)) {
+        if (t->show)
+            t->show(t->u, "WebFetch", what);   /* a preapproved documentation host: no question */
+    } else if (tl_gate(t, out, id, T_WEB_FETCH, what, 0, 1))
+        goto done;
+    if (!t->web || !t->api.send) {
+        tl_error(t, out, id, "WebFetch is not available here", 0);
         goto done;
     }
     {
@@ -358,7 +472,12 @@ void webfetch_run(cl_tools *t, jw *out, const char *id, jv in)
     }
     for (hop = 0;; hop++) {
         page_free(&p);
+        /* Claude Code: the page and its redirects within five minutes (CLAUDE_CODE_WEBFETCH_DEADLINE_MS) */
+        dl_tools = t;
+        if (!hop)
+            dl_end = t->clock && t->fetch_deadline_ms > 0 ? t->clock(t->u) + (unsigned long)t->fetch_deadline_ms : 0;
         rc = get(t->web, &u, &p, err, sizeof(err));
+        dl_tools = 0;
         if (rc == -2) {
             tl_error(t, out, id, "the user stopped the fetch (Ctrl+C)", 0);
             goto done;
@@ -459,4 +578,166 @@ done:
     jw_free(&ans);
     free(url);
     free(prompt);
+}
+
+/* ---- WebSearch (A4 gaps 2): Claude Code's client tool; the search is the
+ * API's web_search server tool, run in a request of its own with the
+ * domain lists, its results' titles and URLs (and the model's summary)
+ * the tool's result ---- */
+
+#define SEARCH_CAP 200
+#define SEARCH_MAX_TOKENS 8192L
+
+/* a JSON array of strings from the input, as raw JSON ("" none or empty) */
+static void domains(jv in, const char *key, jw *w)
+{
+    jv a;
+    if (json_get(in, key, &a) && json_type(a) == J_ARR && json_count(a) > 0)
+        jw_raw(w, a.p, a.n);
+}
+
+void websearch_run(cl_tools *t, jw *out, const char *id, jv in)
+{
+    char *query = tl_prop(in, "query", 0), what[300], num[16];
+    long cap = t->max_searches > 0 ? t->max_searches : SEARCH_CAP;
+    jw al, bl, tools, body, links, text;
+    cl_conv c;
+    cl_opts o;
+    cl_stream st;
+    int rc, i, searches = 0, nlinks = 0;
+    jw_init(&al);
+    jw_init(&bl);
+    jw_init(&tools);
+    jw_init(&body);
+    jw_init(&links);
+    jw_init(&text);
+    conv_init(&c);
+    memset(&st, 0, sizeof(st));
+    if (!query) {
+        tl_error(t, out, id, "out of memory", 0);
+        goto done;
+    }
+    tl_summary(what, sizeof(what), query, 0);
+    if (tl_gate(t, out, id, T_WEB_SEARCH, what, 0, 1))
+        goto done;
+    if (!t->api.send) {
+        tl_error(t, out, id, "WebSearch is not available here", 0);
+        goto done;
+    }
+    if (t->searches && *t->searches >= cap) {
+        /* Claude Code: a notice, not an error that would invite a retry */
+        static const char lim[] = "The web search limit of this session is reached: go on with the information you "
+                                  "have already gathered. If you need more searches, ask the user to raise "
+                                  "CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION.";
+        tl_result(t, out, id, lim, (long)sizeof(lim) - 1, 0);
+        goto done;
+    }
+    if (t->searches)
+        (*t->searches)++;
+    domains(in, "allowed_domains", &al);
+    domains(in, "blocked_domains", &bl);
+    jw_raw(&tools, "[", 1);
+    tools_search_tool(&tools, t->model, al.p, bl.p);
+    jw_raw(&tools, "]", 1);
+    memset(&o, 0, sizeof(o));
+    o.model = t->model ? t->model : "claude-opus-5-5";
+    o.effort = "";
+    o.max_tokens = SEARCH_MAX_TOKENS;
+    o.system = "You are an assistant for performing a web search tool use.";
+    o.tools = tools.p;
+    jw_rawz(&text, "Perform a web search for the query: ");
+    jw_rawz(&text, query);
+    if (tools.oom || text.oom || conv_add_user_text(&c, text.p, text.n) || conv_body(&c, &o, &body)) {
+        tl_error(t, out, id, "out of memory", 0);
+        goto done;
+    }
+    jw_reset(&text);
+    for (i = 0;; i++) {
+        int k;
+        rc = t->api.send(t->api.u, body.p, body.n, &st);
+        if (rc) {
+            tl_error(t, out, id, rc == -2 ? "the user stopped the search" : "the search request failed", 0);
+            goto done;
+        }
+        for (k = 0; k < st.nb; k++) {
+            sblock *b = &st.b[k];
+            jv v, x, e, y;
+            jit it;
+            if (b->type == B_SERVER)
+                searches++;
+            else if (b->type == B_TEXT && b->a.n) {
+                if (text.n)
+                    jw_rawz(&text, "\n\n");
+                jw_raw(&text, b->a.p, b->a.n);
+            } else if (b->type == B_OTHER && json_parse(b->start.p, b->start.n, &v) == 0 &&
+                       json_get(v, "type", &x) && json_streq(x, "web_search_tool_result") &&
+                       json_get(v, "content", &x) && json_type(x) == J_ARR) {
+                json_iter(x, &it);
+                while (json_next(&it, 0, &e)) {
+                    if (nlinks)
+                        jw_raw(&links, ",", 1);
+                    jw_rawz(&links, "{\"title\":");
+                    if (json_get(e, "title", &y) && json_type(y) == J_STR)
+                        jw_raw(&links, y.p, y.n);
+                    else
+                        jw_rawz(&links, "\"\"");
+                    jw_rawz(&links, ",\"url\":");
+                    if (json_get(e, "url", &y) && json_type(y) == J_STR)
+                        jw_raw(&links, y.p, y.n);
+                    else
+                        jw_rawz(&links, "\"\"");
+                    jw_raw(&links, "}", 1);
+                    nlinks++;
+                }
+            }
+        }
+        if (strcmp(st.stop_reason, "pause_turn") || i >= 4)
+            break;
+        {
+            /* the server's loop paused: the turn goes on from where it is */
+            jw content;
+            jw_init(&content);
+            if (stream_content(&st, &content) || conv_add(&c, 0, content.p, content.n)) {
+                jw_free(&content);
+                tl_error(t, out, id, "out of memory", 0);
+                goto done;
+            }
+            jw_free(&content);
+            stream_free(&st);
+            memset(&st, 0, sizeof(st));
+            jw_reset(&body);
+            if (conv_body(&c, &o, &body)) {
+                tl_error(t, out, id, "out of memory", 0);
+                goto done;
+            }
+        }
+    }
+    {
+        jw m;
+        jw_init(&m);
+        jw_rawz(&m, "Web search results for query: \"");
+        jw_rawz(&m, query);
+        jw_rawz(&m, "\"\n\nLinks: [");
+        jw_raw(&m, links.p ? links.p : "", links.n);
+        jw_rawz(&m, "]\n\n");
+        jw_raw(&m, text.p ? text.p : "", text.n);
+        jw_rawz(&m, "\n\nREMINDER: You MUST include the sources above in your response to the user using "
+                    "markdown hyperlinks.");
+        cl_copy(t->brief, "Did ", sizeof(t->brief));
+        cl_ltoa(searches ? searches : 1, num);
+        cl_cat(t->brief, num, sizeof(t->brief));
+        cl_cat(t->brief, searches > 1 ? " searches" : " search", sizeof(t->brief));
+        tl_result(t, out, id, m.p ? m.p : "", m.n, 0);
+        jw_free(&m);
+    }
+done:
+    stream_free(&st);
+    conv_free(&c);
+    jw_free(&al);
+    jw_free(&bl);
+    jw_free(&tools);
+    jw_free(&body);
+    jw_free(&links);
+    jw_free(&text);
+    free(query);
 }

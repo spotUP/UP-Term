@@ -15,6 +15,7 @@
 const cl_cmd slash_builtin[] = {
     { "/help", "Show the commands and the keys" },
     { "/add-dir", "Let Claude work in one more directory: /add-dir DIR" },
+    { "/advisor", "A stronger model Claude consults at key moments: /advisor fable|opus|sonnet|off" },
     { "/agents", "The subagents (.claude/agents)" },
     { "/autocompact", "Compact by itself: on, off, auto, or a window (500k, 1M)" },
     { "/branch", "Go on in a copy of this conversation (a new session)" },
@@ -51,7 +52,7 @@ const cl_cmd slash_builtin[] = {
     { "/rewind", "Go back to an earlier prompt: the files, the conversation, both, or a summary" },
     { "/save", "Save the conversation as JSON: /save FILE" },
     { "/skills", "The skills (.claude/skills)" },
-    { "/skill-doctor", "What each skill costs in context" },
+    { "/skill-doctor", "What each skill costs in context and how often it was used" },
     { "/stats", "Tokens, cost and time so far (as /usage)" },
     { "/status", "The model, the session, the account, the settings in use" },
     { "/statusline", "Set up the status line: /statusline WHAT YOU WANT, or clear" },
@@ -330,6 +331,14 @@ static void doctor(cl_repl *r)
         check(r, r->key && *r->key ? 1 : 0, "API key",
               r->key && *r->key ? "set" : "none: /login, ENV:ANTHROPIC_API_KEY or ENVARC:Claude/key");
     check(r, r->cfg.err[0] ? 0 : 1, "Settings", r->cfg.err[0] ? r->cfg.err : "every file read is valid JSON");
+    if (r->cfg.nwarn) {
+        /* Claude Code's doctor lists the entries the settings skipped */
+        num_line(r, "  Settings entries skipped: ", r->cfg.nwarn, "");
+        ui_line(&r->ui, r->cfg.warn);
+    }
+    if (r->untrusted)
+        check(r, 0, "Workspace trust", "this folder is not trusted: its hooks and allow rules wait (start Claude "
+                                       "here and answer the trust question)");
     check(r, r->sys->kind(r->sys->u, r->home) == 2 ? 1 : -1, "User directory",
           r->sys->kind(r->sys->u, r->home) == 2 ? r->home : "not there yet (made at the first save)");
     check(r, r->tui ? 1 : -1, "Screen", r->tui ? "UP-Term, raw mode" : "line mode (PLAIN, or a console that is not UP-Term's)");
@@ -1476,21 +1485,96 @@ static void perm_editor(cl_repl *r)
     permissions(r, line);
 }
 
+/* skillOverrides' states, as the /skills menu calls them (Claude Code's
+ * "user-only" for user-invocable-only) */
+static const char *const sk_states[] = { "on", "name-only", "user-invocable-only", "off" };
+static const char *const sk_labels[] = { "on: listed to Claude, in the / menu",
+                                         "name-only: Claude sees only its name",
+                                         "user-only: only you call it (/name)", "off: hidden everywhere" };
+
+/* a skill's visibility kept in .claude/settings.local.json's skillOverrides
+ * (Claude Code's /skills menu saves there); the settings read again */
+static void skill_state_set(cl_repl *r, const cl_def *d, const char *st)
+{
+    jw v;
+    jw_init(&v);
+    jw_strz(&v, st);
+    if (!v.oom && cfg_write_sub(r->sys, cfg_file(&r->cfg, CFG_LOCAL), "skillOverrides", d->name, v.p) == 0) {
+        char m[200];
+        cl_copy(m, d->name, sizeof(m));
+        cl_cat(m, " is now ", sizeof(m));
+        cl_cat(m, st, sizeof(m));
+        line2(r, m, " (skillOverrides in .claude/settings.local.json)");
+        repl_load(r);
+    } else
+        line2(r, "The setting could not be written: ", cfg_file(&r->cfg, CFG_LOCAL));
+    jw_free(&v);
+}
+
 /* /skills [text]: the skills (those whose name, description or source
- * has the text), each with its size in context */
+ * has the text), each with its size in context and its visibility;
+ * /skills NAME on|name-only|user-only|off sets one (skillOverrides); in
+ * the screen, /skills alone opens the menu: a skill, then its state */
 static void skills(cl_repl *r, const char *arg)
 {
     int i, k = 0;
     const cl_def *d;
+    {
+        /* NAME STATE */
+        char nm[64];
+        const char *sp = strchr(arg, ' ');
+        if (sp && (long)(sp - arg) < (long)sizeof(nm)) {
+            const char *st = sp + 1;
+            memcpy(nm, arg, (size_t)(sp - arg));
+            nm[sp - arg] = 0;
+            if (!strcmp(st, "user-only"))
+                st = "user-invocable-only";
+            d = defs_find(&r->defs, DEF_SKILL, nm);
+            for (i = 0; i < 4; i++)
+                if (d && !strcmp(st, sk_states[i])) {
+                    skill_state_set(r, d, sk_states[i]);
+                    return;
+                }
+        }
+    }
+    if (!*arg && r->tui) {
+        const char *opt[32];
+        char lab[32][120];
+        const cl_def *ds[32];
+        int n = 0, c, s;
+        for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0 && n < 32; i++) {
+            cl_copy(lab[n], d->name, sizeof(lab[0]));
+            cl_cat(lab[n], "  [", sizeof(lab[0]));
+            cl_cat(lab[n], cfg_skill_state(&r->cfg, d->name), sizeof(lab[0]));
+            cl_cat(lab[n], "]", sizeof(lab[0]));
+            opt[n] = lab[n];
+            ds[n++] = d;
+        }
+        if (n) {
+            c = ui_pick(&r->ui, "Skills: which one?", opt, n, 0);
+            if (c < 0)
+                return;
+            for (s = 0; s < 4 && strcmp(sk_states[s], cfg_skill_state(&r->cfg, ds[c]->name)); s++)
+                ;
+            s = ui_pick(&r->ui, ds[c]->name, sk_labels, 4, s < 4 ? s : 0);
+            if (s >= 0)
+                skill_state_set(r, ds[c], sk_states[s]);
+            return;
+        }
+    }
     for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++) {
         char m[500], num[16];
-        const char *src = src_word(d->src);
+        const char *src = src_word(d->src), *st = cfg_skill_state(&r->cfg, d->name);
         if (*arg && !strstr(d->name, arg) && !strstr(d->description, arg) && !strstr(src, arg))
             continue;
         cl_copy(m, "  ", sizeof(m));
         cl_cat(m, d->name, sizeof(m));
         cl_cat(m, " (", sizeof(m));
         cl_cat(m, src, sizeof(m));
+        if (strcmp(st, "on")) {
+            cl_cat(m, ", ", sizeof(m));
+            cl_cat(m, !strcmp(st, "user-invocable-only") ? "user-only" : st, sizeof(m));
+        }
         cl_cat(m, ")  ", sizeof(m));
         cl_cat(m, d->description, sizeof(m));
         cl_cat(m, "  [~", sizeof(m));
@@ -1503,32 +1587,115 @@ static void skills(cl_repl *r, const char *arg)
     if (!k)
         ui_line(&r->ui, *arg ? "No skill matches." : "No skills: put them in .claude/skills/NAME/SKILL.md (or "
                                                      "ENVARC:Claude/skills).");
+    else if (!*arg)
+        ui_line(&r->ui, "Turn one on or off: /skills NAME on|name-only|user-only|off");
 }
 
 /* /skill-doctor: what each skill costs in context (its listing, always;
  * its body, when used) */
 static void skill_doctor(cl_repl *r)
 {
-    int i;
-    long all = 0;
-    const cl_def *d;
+    int i, k, n = 0, idx[64];
+    long all = 0, cost[64];
+    const cl_def *d, *ds[64];
     char m[300], num[16];
-    ui_line(&r->ui, "Skills by what they cost in context (~tokens: listed every request / body when used):");
-    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++) {
-        long l = d->no_model ? 0 : ((long)strlen(d->name) + (long)strlen(d->description) + (long)strlen(d->when) + 7) / 4;
+    /* Claude Code's report: the skills other than the bundled ones, their
+     * listing's cost and how often each was used; the unused flagged,
+     * the costliest first */
+    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0 && n < 64; i++) {
+        const char *st = cfg_skill_state(&r->cfg, d->name);
+        long l;
+        if (d->src == DEF_BUILTIN)
+            continue;
+        l = d->no_model || !strcmp(st, "off") || !strcmp(st, "user-invocable-only") ? 0
+            : !strcmp(st, "name-only") ? ((long)strlen(d->name) + 7) / 4
+            : ((long)strlen(d->name) + (long)strlen(d->description) + (long)strlen(d->when) + 7) / 4;
+        for (k = n; k > 0 && cost[idx[k - 1]] < l; k--)
+            idx[k] = idx[k - 1];
+        ds[n] = d;
+        cost[n] = l;
+        idx[k] = n++;
         all += l;
+    }
+    if (!n) {
+        ui_line(&r->ui, "No skills of yours (the bundled ones are not counted): nothing to report.");
+        return;
+    }
+    ui_line(&r->ui, "Your skills by what they cost in context (~tokens listed every request, used how often):");
+    for (k = 0; k < n; k++) {
+        long used = pol_skill_count(r, ds[idx[k]]->name);
+        d = ds[idx[k]];
         cl_copy(m, "  ", sizeof(m));
         cl_cat(m, d->name, sizeof(m));
-        cl_cat(m, ": ", sizeof(m));
-        cl_ltoa(l, num);
+        cl_cat(m, ": ~", sizeof(m));
+        cl_ltoa(cost[idx[k]], num);
         cl_cat(m, num, sizeof(m));
-        cl_cat(m, " / ", sizeof(m));
-        cl_ltoa(((long)strlen(d->body) + 3) / 4, num);
-        cl_cat(m, num, sizeof(m));
-        cl_cat(m, d->no_model ? " (disable-model-invocation: not listed)" : "", sizeof(m));
+        cl_cat(m, " tokens, used ", sizeof(m));
+        cl_ltoa(used, num);
+        cl_cat(m, used ? num : "never", sizeof(m));
+        cl_cat(m, used == 1 ? " time" : used ? " times" : "", sizeof(m));
+        if (!used && cost[idx[k]])
+            cl_cat(m, "  <- turn it off? /skills NAME off (or disable-model-invocation: true)", sizeof(m));
         ui_line(&r->ui, m);
     }
-    num_line(r, "Listing in all: ~", all, " tokens a request. disable-model-invocation: true takes a skill out of it.");
+    num_line(r, "Listing in all: ~", all, " tokens a request.");
+}
+
+/* /advisor [model|off] (A4 gaps 2): Claude Code's advisor tool -- a
+ * stronger model Claude consults at key moments; saved as advisorModel in
+ * the user's settings */
+static void advisor(cl_repl *r, const char *arg)
+{
+    static const char *const opt[] = { "fable", "opus", "sonnet", "off" };
+    char m[200];
+    const char *a = arg;
+    int k;
+    if (r->sys->getenv) {
+        char v[8];
+        if (r->sys->getenv(r->sys->u, "CLAUDE_CODE_DISABLE_ADVISOR_TOOL", v, sizeof(v)) > 0 && strcmp(v, "0")) {
+            ui_line(&r->ui, "The advisor tool is turned off (CLAUDE_CODE_DISABLE_ADVISOR_TOOL).");
+            return;
+        }
+    }
+    if (!*a && r->tui) {
+        k = ui_pick(&r->ui, "Advisor model", opt, 4, 0);
+        if (k < 0)
+            return;
+        a = opt[k];
+    }
+    if (!*a) {
+        line2(r, "Advisor: ", r->advisor_cli[0] ? r->advisor_cli : r->cfg.advisor[0] ? r->cfg.advisor : "none");
+        ui_line(&r->ui, "Set one with /advisor fable|opus|sonnet|MODEL-ID, or /advisor off.");
+        return;
+    }
+    if (!strcmp(a, "off")) {
+        r->advisor_cli[0] = 0;
+        r->cfg.advisor[0] = 0;
+        cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "advisorModel", 0);
+        ui_line(&r->ui, "Advisor off.");
+        return;
+    }
+    if (conv_advisor_ok(r->model, cfg_model(a)) < 0 && !strncmp(cfg_model(a), "claude-haiku", 12)) {
+        ui_line(&r->ui, "Haiku can call an advisor but cannot be one: pick fable, opus or sonnet.");
+        return;
+    }
+    r->advisor_cli[0] = 0;
+    cl_copy(r->cfg.advisor, a, sizeof(r->cfg.advisor));
+    {
+        jw v;
+        jw_init(&v);
+        jw_strz(&v, a);
+        if (!v.oom)
+            cfg_write_key(r->sys, cfg_file(&r->cfg, CFG_USER), "advisorModel", v.p);
+        jw_free(&v);
+    }
+    cl_copy(m, "Advisor set to ", sizeof(m));
+    cl_cat(m, cfg_model(a), sizeof(m));
+    k = conv_advisor_ok(r->model, cfg_model(a));
+    if (k)
+        cl_cat(m, k > 0 ? " -- it cannot advise the current model (it ranks below it): it takes effect with a "
+                          "model it can advise" : " -- not attached to this model", sizeof(m));
+    ui_line(&r->ui, m);
 }
 
 /* /goal [condition|clear]: Claude keeps working until the condition is met */
@@ -1638,6 +1805,8 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
         skills(r, arg);
     else if (!strcmp(w, "/skill-doctor"))
         skill_doctor(r);
+    else if (!strcmp(w, "/advisor"))
+        advisor(r, arg);
     else if (!strcmp(w, "/goal"))
         goal(r, arg);
     else if (!strcmp(w, "/commands"))
@@ -1692,6 +1861,11 @@ int slash_custom(cl_repl *r, const char *w, const char *arg)
     }
     if (!d)
         return 0;
+    if (d->type == DEF_SKILL && !strcmp(cfg_skill_state(&r->cfg, d->name), "off")) {
+        /* Claude Code: a skill skillOverrides turns off cannot be run by its name either */
+        line2(r, "This skill is turned off by skillOverrides in the settings: ", d->name);
+        return 1;
+    }
     jw_init(&p);
     if (pol_expand(r, d, arg, &p, err, sizeof(err))) {
         line2(r, d->type == DEF_SKILL ? "The skill could not be expanded: " : "The command could not be expanded: ",
@@ -1703,9 +1877,10 @@ int slash_custom(cl_repl *r, const char *w, const char *arg)
         jw_free(&p);
         return 1;                   /* a UserPromptExpansion hook said no */
     }
-    if (d->type == DEF_SKILL)
+    if (d->type == DEF_SKILL) {
         r->n_skills_run++;
-    else
+        pol_skill_used(r, d);       /* /skill-doctor's counts; its frontmatter hooks from now on */
+    } else
         r->n_cmds_run++;
     if (pol_prompt(r, p.p ? p.p : "", p.n) == 0) {
         char keep_effort[16];

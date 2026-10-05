@@ -82,7 +82,7 @@ enum {
     O_SYSP, O_SYSPF, O_APPEND, O_APPENDF, O_SETTINGS, O_MAXTURNS, O_BUDGET, O_VERBOSE, O_AGENT, O_VERSION,
     O_HELP, O_SESSID, O_SCHEMA, O_REPLAY, O_BARE, O_SAFE, O_AGENTS, O_SUBAPP, O_SUBAPPF, O_NOSLASH, O_SOURCES,
     O_BETAS, O_AUTOCOMPACT, O_FWDSUB, O_DEBUGFILE, O_PERMPROMPTS, O_INIT, O_INITONLY, O_MAINT, O_HOOKEV,
-    O_SUGGEST, O_NODYN
+    O_SUGGEST, O_NODYN, O_ADVISOR, O_SNAPSHOT
 };
 
 /* takes: 0 a switch, 1 a value, 2 an optional value, 3 values (Claude Code's variadic flags) */
@@ -151,13 +151,16 @@ static const opt opts[] = {
     { O_MAINT, "maintenance", 0, 0, "MAINTENANCE", 0, 0 },
     { O_HOOKEV, "include-hook-events", 0, 0, "INCLUDE-HOOK-EVENTS", 0, 0 },
     { O_SUGGEST, "prompt-suggestions", 0, 0, "PROMPT-SUGGESTIONS", 0, 0 },
-    { O_NODYN, "exclude-dynamic-system-prompt-sections", 0, 0, "EXCLUDE-DYNAMIC-SYSTEM-PROMPT-SECTIONS", 0, 0 }
+    { O_NODYN, "exclude-dynamic-system-prompt-sections", 0, 0, "EXCLUDE-DYNAMIC-SYSTEM-PROMPT-SECTIONS", 0, 0 },
+    { O_ADVISOR, "advisor", 0, 0, "ADVISOR", 0, 1 },
+    { O_SNAPSHOT, "system-prompt-snapshot", 0, 0, "SYSTEM-PROMPT-SNAPSHOT", 0, 1 }
 };
 #define NOPTS ((int)(sizeof(opts) / sizeof(opts[0])))
 
 void cli_init(cl_cli *c)
 {
     memset(c, 0, sizeof(*c));
+    c->snapshot = -1;
 }
 
 static void strs_free(cl_strs *s)
@@ -551,6 +554,17 @@ static int set(cl_cli *c, const opt *o, const char *v, int amiga)
     case O_NODYN:
         c->no_dynamic = 1;
         break;
+    case O_ADVISOR:
+        cl_copy(c->advisor, v, sizeof(c->advisor));
+        break;
+    case O_SNAPSHOT:
+        if (cl_strieq(v, "on"))
+            c->snapshot = 1;
+        else if (cl_strieq(v, "off"))
+            c->snapshot = 0;
+        else
+            return bad_choice(c, o, amiga, v, "on, off");
+        break;
     case O_PERMPROMPTS:
         if (cl_strieq(v, "none"))
             c->prompts_none = 1;
@@ -928,7 +942,7 @@ static char *read_arg_file(cl_cli *c, cl_repl *r, const char *name, const char *
 /* the tools Claude is given: --tools, then --disallowedTools' bare names, then the agent's list */
 static unsigned long tool_set(const cl_cli *c, const cl_agent *a)
 {
-    unsigned long m = (1ul << (T_COUNT + 1)) - 1;
+    unsigned long m = (1ul << T_COUNT) - 1;
     int i;
     if (c->has_tools) {
         if (!c->tools[0])
@@ -974,12 +988,18 @@ int cli_apply(cl_cli *c, cl_repl *r)
             r->bare = 1;            /* Claude Code: --bare sets CLAUDE_CODE_SIMPLE */
     }
     r->safe = c->safe;
+    if (!r->safe && r->sys->getenv) {
+        char v[8];
+        if (r->sys->getenv(r->sys->u, "CLAUDE_CODE_SAFE_MODE", v, sizeof(v)) > 0 && strcmp(v, "0"))
+            r->safe = 1;            /* Claude Code: the variable is --safe-mode */
+    }
     r->no_slash = c->no_slash;
     r->sources = c->has_sources ? c->sources : 0;
     if (c->has_sources && !c->sources)
         r->sources = 8;             /* none of the three: a bit no file has */
     r->prompts_none = c->prompts_none;
     r->no_dynamic = c->no_dynamic;
+    r->snapshot = c->snapshot;          /* --system-prompt-snapshot */
     if (c->verbose)
         r->verbose = 2;
     if (c->autocompact)
@@ -1043,7 +1063,7 @@ int cli_apply(cl_cli *c, cl_repl *r)
     /* a tool set without WebSearch: also a deny rule, so every reload of
      * the settings (pol_tools) keeps the server tool off */
     m = tool_set(c, 0);
-    if (!(m & (1ul << T_COUNT)) && strs_add(&c->deny, "WebSearch", 9))
+    if (!(m & (1ul << T_WEB_SEARCH)) && strs_add(&c->deny, "WebSearch", 9))
         return fail(c, "Out of memory.", 0, 0);
     free(r->layer[1]);
     r->layer[1] = flags_json(c);
@@ -1111,19 +1131,57 @@ int cli_apply(cl_cli *c, cl_repl *r)
     m = tool_set(c, a);
     if (r->bare)
         m &= tools_mask("Bash, Read, Glob, Grep, Edit, Write, MultiEdit");    /* bash, read, edit */
-    r->tools.allowed = m & ((1ul << T_COUNT) - 1);
-    r->tools.web_search = r->tools.web_search && (m & (1ul << T_COUNT)) != 0;
+    r->tools.allowed = m;
+    r->tools.web_search = r->tools.web_search && (m & (1ul << T_WEB_SEARCH)) != 0;
     free(r->tools.json);
     r->tools.json = 0;
+    {
+        /* Claude Code: naming a task tool in --allowedTools or --tools opts the
+         * session into them on any model */
+        static const char *const tt[] = { "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TodoWrite", 0 };
+        int i, k;
+        for (k = 0; tt[k]; k++) {
+            for (i = 0; i < c->allow.n; i++)
+                if (!strncmp(c->allow.v[i], tt[k], strlen(tt[k])))
+                    r->todo_optin = 1;
+            if (c->has_tools && c->tools && strstr(c->tools, tt[k]))
+                r->todo_optin = 1;
+        }
+    }
     /* print mode */
     if (c->print) {
+        r->tools.bg_limit_ms = 30L * 60 * 1000;     /* an unattended run's background time limit */
         r->no_person = 1;
         r->tools.nobody = c->prompts_none ? 2 : 1;
         r->max_turns = c->max_turns;
+        if (!r->max_turns && r->sys->getenv) {
+            /* CLAUDE_CODE_MAX_TURNS: --max-turns when none is given */
+            char v[16];
+            if (r->sys->getenv(r->sys->u, "CLAUDE_CODE_MAX_TURNS", v, sizeof(v)) > 0) {
+                if (atoi(v) <= 0)
+                    return fail(c, "Error: CLAUDE_CODE_MAX_TURNS is not a positive whole number: ", v, 0);
+                r->max_turns = atoi(v);
+            }
+        }
         r->budget_micro = c->has_budget ? c->budget_micro : 0;
         r->budget_base = r->conv.cost_micro;
         if (c->no_persist)
             r->sess.off = 1;
+    }
+    if (c->advisor[0]) {
+        /* --advisor (Claude Code): this session's advisor; an exit at launch when
+         * it cannot be one, a warning when it ranks below the model */
+        int k = conv_advisor_ok(r->model, cfg_model(c->advisor));
+        if (k < 0)
+            return fail(c, "Error: --advisor ", c->advisor,
+                        " cannot advise this model (Haiku cannot be an advisor; the main model needs Fable, Opus "
+                        "4.6+, Sonnet 4.6+ or Haiku 4.5).");
+        if (r->cfg.avail_models[0] && !strstr(r->cfg.avail_models, c->advisor) &&
+            !strstr(r->cfg.avail_models, cfg_model(c->advisor)))
+            return fail(c, "Error: --advisor ", c->advisor, " is not in availableModels.");
+        if (k > 0)
+            repl_say(r, "The advisor cannot advise the model (it ranks below it): ", c->advisor);
+        cl_copy(r->advisor_cli, c->advisor, sizeof(r->advisor_cli));
     }
     /* --session-id: the new session's id (with -c / -r only together with --fork-session: cli_session) */
     if (c->session_id[0] && !c->cont && !c->resume) {

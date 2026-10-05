@@ -9,7 +9,7 @@ const char *const cfg_hook_events[HK_COUNT] = {
     "PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop", "SessionStart", "SessionEnd",
     "PreCompact", "Notification", "PermissionRequest", "PostToolUseFailure", "SubagentStart", "PostCompact",
     "StopFailure", "UserPromptExpansion", "CwdChanged", "DirectoryAdded", "PreModelSwitch", "PostModelSwitch",
-    "InstructionsLoaded", "PostToolBatch", "ConfigChange", "Setup"
+    "InstructionsLoaded", "PostToolBatch", "ConfigChange", "Setup", "FileChanged", "MessageDisplay"
 };
 
 static char *dupn(const char *s, long n)
@@ -38,16 +38,13 @@ void cfg_init(cl_settings *s)
     s->cleanup_days = -1;
 }
 
+static void free_hook(cl_hook *k);
+
 void cfg_drop_hooks(cl_settings *s)
 {
     int i;
-    for (i = 0; i < s->nhooks; i++) {
-        free(s->hooks[i].matcher);
-        free(s->hooks[i].cmd);
-        free(s->hooks[i].cond);
-        free(s->hooks[i].model);
-        free(s->hooks[i].status);
-    }
+    for (i = 0; i < s->nhooks; i++)
+        free_hook(&s->hooks[i]);
     s->nhooks = 0;
 }
 
@@ -89,6 +86,11 @@ void cfg_free(cl_settings *s)
     }
     for (i = 0; i < s->ndirs; i++)
         free(s->dirs[i]);
+    for (i = 0; i < s->nsko; i++) {
+        free(s->sk_over[i].k);
+        free(s->sk_over[i].v);
+    }
+    free(s->sk_over);
     free(s->rules);
     free(s->hooks);
     free(s->env);
@@ -140,89 +142,255 @@ static void str_into(jv v, char *out, long cap)
         json_str(v, out, cap);
 }
 
-static void rules_of(cl_settings *s, jv perm, const char *key, int kind, int src)
+static void rules_of(cl_settings *s, jv perm, const char *key, int kind, int src, const char *where)
 {
     jv arr, e;
     jit it;
-    if (!json_get(perm, key, &arr) || json_type(arr) != J_ARR)
+    if (!json_get(perm, key, &arr))
         return;
+    if (json_type(arr) != J_ARR) {
+        char w[120];
+        cl_copy(w, "permissions.", sizeof(w));
+        cl_cat(w, key, sizeof(w));
+        cl_cat(w, " is not an array; skipped", sizeof(w));
+        cfg_warn(s, where, w);
+        return;
+    }
     json_iter(arr, &it);
     while (json_next(&it, 0, &e)) {
-        char r[300];
-        if (json_type(e) == J_STR && json_str(e, r, sizeof(r)) > 0)
-            cfg_add_rule(s, kind, src, r);
+        char r[300], tool[64], pat[300], w[400];
+        if (json_type(e) != J_STR || json_str(e, r, sizeof(r)) < 1 ||
+            cfg_rule_parse(r, tool, sizeof(tool), pat, sizeof(pat))) {
+            /* Claude Code's Settings Warning: a malformed rule is skipped, the rest stays */
+            cl_copy(w, "malformed permission rule in permissions.", sizeof(w));
+            cl_cat(w, key, sizeof(w));
+            if (json_type(e) == J_STR) {
+                cl_cat(w, ": \"", sizeof(w));
+                cl_cat(w, r, sizeof(w));
+                cl_cat(w, "\"", sizeof(w));
+            }
+            cl_cat(w, " skipped", sizeof(w));
+            cfg_warn(s, where, w);
+            continue;
+        }
+        if (pat[0] && (!strcmp(tool, "Write") || !strcmp(tool, "MultiEdit") || !strcmp(tool, "NotebookEdit") ||
+                       !strcmp(tool, "Glob"))) {
+            /* Claude Code: path rules are Edit(...) and Read(...) only; such a rule is kept but never consulted */
+            cl_copy(w, "the rule ", sizeof(w));
+            cl_cat(w, r, sizeof(w));
+            cl_cat(w, " is not matched by file permission checks: use ", sizeof(w));
+            cl_cat(w, !strcmp(tool, "Glob") ? "Read(...)" : "Edit(...)", sizeof(w));
+            cfg_warn(s, where, w);
+        }
+        if (kind == RULE_ALLOW && src == CFG_PROJECT && s->untrusted)
+            continue;               /* Claude Code: a project's allow rules wait for workspace trust */
+        cfg_add_rule(s, kind, src, r);
     }
 }
 
-static void hooks_of(cl_settings *s, jv hooks, int src)
+void cfg_warn(cl_settings *s, const char *where, const char *what)
 {
-    int ev;
-    for (ev = 0; ev < HK_COUNT; ev++) {
-        jv arr, grp;
-        jit it;
-        if (!json_get(hooks, cfg_hook_events[ev], &arr) || json_type(arr) != J_ARR)
+    if (s->warn[0])
+        cl_cat(s->warn, "\n", sizeof(s->warn));
+    cl_cat(s->warn, where && *where ? where : "settings", sizeof(s->warn));
+    cl_cat(s->warn, ": ", sizeof(s->warn));
+    cl_cat(s->warn, what, sizeof(s->warn));
+    s->nwarn++;
+}
+
+/* the events Claude Code has that cannot happen here (no warning: the
+ * entry is valid, it only never runs) */
+static int known_elsewhere(const char *name)
+{
+    static const char *const ev[] = { "PermissionDenied", "TaskCreated", "TaskCompleted", "TeammateIdle",
+                                      "WorktreeCreate", "WorktreeRemove", "Elicitation", "ElicitationResult", 0 };
+    int i;
+    for (i = 0; ev[i]; i++)
+        if (!strcmp(name, ev[i]))
+            return 1;
+    return 0;
+}
+
+static void free_hook(cl_hook *k)
+{
+    free(k->matcher);
+    free(k->cmd);
+    free(k->cond);
+    free(k->model);
+    free(k->status);
+    free(k->headers);
+    free(k->env_ok);
+}
+
+void cfg_drop_owner(cl_settings *s, int owner)
+{
+    int i, k = 0;
+    for (i = 0; i < s->nhooks; i++) {
+        if (s->hooks[i].owner == owner) {
+            free_hook(&s->hooks[i]);
             continue;
-        json_iter(arr, &it);
-        while (json_next(&it, 0, &grp)) {
-            jv m, hs, h, x;
-            jit hi;
-            char matcher[128];
-            matcher[0] = 0;
-            if (json_get(grp, "matcher", &m))
-                str_into(m, matcher, sizeof(matcher));
-            if (!json_get(grp, "hooks", &hs) || json_type(hs) != J_ARR)
-                continue;
-            json_iter(hs, &hi);
-            while (json_next(&hi, 0, &h)) {
-                long cl;
-                char *cmd;
-                cl_hook *k;
-                int kind = HOOK_COMMAND, i;
-                if (json_get(h, "type", &x) && json_streq(x, "prompt"))
-                    kind = HOOK_PROMPT;
-                else if (json_get(h, "type", &x) && !json_streq(x, "command"))
-                    continue;           /* http, agent, mcp_tool: not here */
-                if (!json_get(h, kind == HOOK_PROMPT ? "prompt" : "command", &x) || (cmd = json_strdup(x, &cl)) == 0)
+        }
+        s->hooks[k++] = s->hooks[i];
+    }
+    s->nhooks = k;
+}
+
+int cfg_add_hooks(cl_settings *s, jv hooks, int src, int owner, const char *where)
+{
+    jit et;
+    jv key, arr;
+    int added = 0;
+    /* an event name nobody knows is a warning (Claude Code's Settings Warning) */
+    json_iter(hooks, &et);
+    while (json_next(&et, &key, &arr)) {
+        char name[64], w[160];
+        int ev;
+        json_str(key, name, sizeof(name));
+        for (ev = 0; ev < HK_COUNT && strcmp(name, cfg_hook_events[ev]); ev++)
+            ;
+        if (ev == HK_COUNT) {
+            if (!known_elsewhere(name)) {
+                cl_copy(w, "unknown hook event \"", sizeof(w));
+                cl_cat(w, name, sizeof(w));
+                cl_cat(w, "\" skipped", sizeof(w));
+                cfg_warn(s, where, w);
+            }
+            continue;
+        }
+        if (json_type(arr) != J_ARR) {
+            cl_copy(w, name, sizeof(w));
+            cl_cat(w, ": not an array of matcher groups; skipped", sizeof(w));
+            cfg_warn(s, where, w);
+            continue;
+        }
+        {
+            jv grp;
+            jit it;
+            json_iter(arr, &it);
+            while (json_next(&it, 0, &grp)) {
+                jv m, hs, h, x;
+                jit hi;
+                char matcher[128];
+                matcher[0] = 0;
+                if (json_get(grp, "matcher", &m))
+                    str_into(m, matcher, sizeof(matcher));
+                if (!json_get(grp, "hooks", &hs) || json_type(hs) != J_ARR) {
+                    cl_copy(w, name, sizeof(w));
+                    cl_cat(w, ": a matcher group without a \"hooks\" array; skipped", sizeof(w));
+                    cfg_warn(s, where, w);
                     continue;
-                for (i = 0; i < s->nhooks; i++)
-                    if (s->hooks[i].event == ev && !strcmp(s->hooks[i].cmd, cmd) &&
-                        !strcmp(s->hooks[i].matcher, matcher))
-                        break;
-                if (i < s->nhooks) {
-                    free(cmd);          /* Claude Code: the same handler from several files runs once */
-                    continue;
                 }
-                if (grow((void **)&s->hooks, s->nhooks, &s->caphooks, sizeof(cl_hook))) {
-                    free(cmd);
-                    return;
+                json_iter(hs, &hi);
+                while (json_next(&hi, 0, &h)) {
+                    long cl;
+                    char *cmd = 0, type[24];
+                    cl_hook *k;
+                    int kind, i, dflt;
+                    type[0] = 0;
+                    if (json_get(h, "type", &x))
+                        str_into(x, type, sizeof(type));
+                    kind = !strcmp(type, "prompt") ? HOOK_PROMPT : !strcmp(type, "http") ? HOOK_HTTP
+                           : !strcmp(type, "agent") ? HOOK_AGENT : !strcmp(type, "command") || !type[0] ? HOOK_COMMAND
+                           : -1;
+                    if (kind < 0 || (kind == HOOK_AGENT && ev == HK_PERMISSION_REQUEST)) {
+                        cl_copy(w, name, sizeof(w));
+                        cl_cat(w, kind < 0 ? ": hook type \"" : ": an agent hook (not on PermissionRequest), type \"",
+                               sizeof(w));
+                        cl_cat(w, type, sizeof(w));
+                        cl_cat(w, kind < 0 && !strcmp(type, "mcp_tool") ? "\" needs MCP, which is not on the Amiga; skipped"
+                                                                      : "\" skipped", sizeof(w));
+                        cfg_warn(s, where, w);
+                        continue;
+                    }
+                    if (!json_get(h, kind == HOOK_COMMAND ? "command" : kind == HOOK_HTTP ? "url" : "prompt", &x) ||
+                        json_type(x) != J_STR || (cmd = json_strdup(x, &cl)) == 0 || !cl) {
+                        free(cmd);
+                        cl_copy(w, name, sizeof(w));
+                        cl_cat(w, kind == HOOK_COMMAND ? ": a command hook without \"command\"; skipped"
+                                  : kind == HOOK_HTTP ? ": an http hook without \"url\"; skipped"
+                                                      : ": a hook without \"prompt\"; skipped", sizeof(w));
+                        cfg_warn(s, where, w);
+                        continue;
+                    }
+                    for (i = 0; i < s->nhooks; i++)
+                        if (s->hooks[i].event == ev && s->hooks[i].kind == kind && s->hooks[i].owner == owner &&
+                            !strcmp(s->hooks[i].cmd, cmd) && !strcmp(s->hooks[i].matcher, matcher))
+                            break;
+                    if (i < s->nhooks) {
+                        free(cmd);      /* Claude Code: the same handler from several files runs once */
+                        continue;
+                    }
+                    if (grow((void **)&s->hooks, s->nhooks, &s->caphooks, sizeof(cl_hook))) {
+                        free(cmd);
+                        return added;
+                    }
+                    k = &s->hooks[s->nhooks];
+                    memset(k, 0, sizeof(*k));
+                    k->event = ev;
+                    k->src = src;
+                    k->owner = owner;
+                    k->cmd = cmd;
+                    k->kind = kind;
+                    k->matcher = dupz(matcher);
+                    /* Claude Code's defaults: 600 s (30 on UserPromptSubmit and the
+                     * model switches, 10 on MessageDisplay), a prompt hook 30, an agent 60 */
+                    dflt = kind == HOOK_PROMPT ? 30 : kind == HOOK_AGENT ? 60
+                           : ev == HK_MESSAGE_DISPLAY ? 10
+                           : ev == HK_PROMPT || ev == HK_PRE_MODEL_SWITCH || ev == HK_POST_MODEL_SWITCH ? 30 : 600;
+                    k->timeout_s = json_get(h, "timeout", &x) ? (int)json_long(x, dflt) : dflt;
+                    if (k->timeout_s <= 0)
+                        k->timeout_s = dflt;
+                    if (json_get(h, "if", &x) && json_type(x) == J_STR)
+                        k->cond = json_strdup(x, &cl);
+                    k->model = json_get(h, "model", &x) && json_type(x) == J_STR ? json_strdup(x, &cl) : 0;
+                    k->status = json_get(h, "statusMessage", &x) && json_type(x) == J_STR ? json_strdup(x, &cl) : 0;
+                    k->once = json_get(h, "once", &x) && json_type(x) == J_TRUE;
+                    k->async = kind == HOOK_COMMAND && json_get(h, "async", &x) && json_type(x) == J_TRUE;
+                    k->rewake = kind == HOOK_COMMAND && json_get(h, "asyncRewake", &x) && json_type(x) == J_TRUE;
+                    if (k->rewake)
+                        k->async = 1;
+                    if (kind == HOOK_HTTP && json_get(h, "headers", &x) && json_type(x) == J_OBJ) {
+                        k->headers = (char *)malloc((size_t)x.n + 1);
+                        if (k->headers) {
+                            memcpy(k->headers, x.p, (size_t)x.n);
+                            k->headers[x.n] = 0;
+                        }
+                    }
+                    if (kind == HOOK_HTTP && json_get(h, "allowedEnvVars", &x) && json_type(x) == J_ARR) {
+                        jw l;
+                        jv e;
+                        jit ei;
+                        jw_init(&l);
+                        json_iter(x, &ei);
+                        while (json_next(&ei, 0, &e)) {
+                            char v[64];
+                            if (json_type(e) != J_STR || json_str(e, v, sizeof(v)) < 1)
+                                continue;
+                            if (l.n)
+                                jw_raw(&l, ",", 1);
+                            jw_rawz(&l, v);
+                        }
+                        if (l.n)
+                            k->env_ok = l.p;
+                        else
+                            jw_free(&l);
+                    }
+                    if (!k->matcher) {
+                        free_hook(k);
+                        return added;
+                    }
+                    s->nhooks++;
+                    added++;
                 }
-                k = &s->hooks[s->nhooks];
-                k->event = ev;
-                k->src = src;
-                k->cmd = cmd;
-                k->matcher = dupz(matcher);
-                /* Claude Code: 600 s for a command hook unless it says */
-                k->timeout_s = json_get(h, "timeout", &x) ? (int)json_long(x, 600) : 600;
-                if (k->timeout_s <= 0)
-                    k->timeout_s = 600;
-                k->cond = 0;
-                if (json_get(h, "if", &x) && json_type(x) == J_STR)
-                    k->cond = json_strdup(x, &cl);
-                k->kind = kind;
-                k->model = json_get(h, "model", &x) && json_type(x) == J_STR ? json_strdup(x, &cl) : 0;
-                k->status = json_get(h, "statusMessage", &x) && json_type(x) == J_STR ? json_strdup(x, &cl) : 0;
-                k->once = json_get(h, "once", &x) && json_type(x) == J_TRUE;
-                if (kind == HOOK_PROMPT && !json_get(h, "timeout", &x))
-                    k->timeout_s = 30;  /* Claude Code: a prompt hook's 30 s */
-                if (!k->matcher) {
-                    free(cmd);
-                    free(k->cond);
-                    return;
-                }
-                s->nhooks++;
             }
         }
     }
+    return added;
+}
+
+static void hooks_of(cl_settings *s, jv hooks, int src, const char *where)
+{
+    cfg_add_hooks(s, hooks, src, 0, where);
 }
 
 static void env_of(cl_settings *s, jv env)
@@ -383,11 +551,50 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
     if (json_get(o, "env", &x) && json_type(x) == J_OBJ)
         env_of(s, x);
     if (json_get(o, "hooks", &x) && json_type(x) == J_OBJ)
-        hooks_of(s, x, src);
+        hooks_of(s, x, src, name);
+    else if (json_get(o, "hooks", &x))
+        cfg_warn(s, name, "\"hooks\" is not an object; skipped");
+    if (json_get(o, "disableSkillShellExecution", &x) && (json_type(x) == J_TRUE || json_type(x) == J_FALSE))
+        s->no_skill_shell = json_type(x) == J_TRUE;
+    if (json_get(o, "advisorModel", &x))
+        str_into(x, s->advisor, sizeof(s->advisor));
+    if (json_get(o, "skillOverrides", &x) && json_type(x) == J_OBJ) {
+        jit it;
+        jv k, v;
+        json_iter(x, &it);
+        while (json_next(&it, &k, &v)) {
+            char key[64], val[24];
+            int i;
+            json_str(k, key, sizeof(key));
+            val[0] = 0;
+            if (json_type(v) == J_STR)
+                json_str(v, val, sizeof(val));
+            if (strcmp(val, "on") && strcmp(val, "name-only") && strcmp(val, "user-invocable-only") &&
+                strcmp(val, "off")) {
+                char w[160];
+                cl_copy(w, "skillOverrides.", sizeof(w));
+                cl_cat(w, key, sizeof(w));
+                cl_cat(w, " is not on, name-only, user-invocable-only or off; skipped", sizeof(w));
+                cfg_warn(s, name, w);
+                continue;
+            }
+            for (i = 0; i < s->nsko && strcmp(s->sk_over[i].k, key); i++)
+                ;
+            if (i == s->nsko) {
+                if (grow((void **)&s->sk_over, s->nsko, &s->capsko, sizeof(cl_kv)))
+                    break;
+                s->sk_over[i].k = dupz(key);
+                s->sk_over[i].v = 0;
+                s->nsko++;
+            }
+            free(s->sk_over[i].v);
+            s->sk_over[i].v = dupz(val);
+        }
+    }
     if (json_get(o, "permissions", &p) && json_type(p) == J_OBJ) {
-        rules_of(s, p, "allow", RULE_ALLOW, src);
-        rules_of(s, p, "ask", RULE_ASK, src);
-        rules_of(s, p, "deny", RULE_DENY, src);
+        rules_of(s, p, "allow", RULE_ALLOW, src, name);
+        rules_of(s, p, "ask", RULE_ASK, src, name);
+        rules_of(s, p, "deny", RULE_DENY, src, name);
         if (json_get(p, "defaultMode", &x)) {
             char m[24];
             m[0] = 0;
@@ -399,7 +606,7 @@ int cfg_merge(cl_settings *s, int src, const char *json, long n, const char *nam
             else if (m[0])
                 cl_copy(s->default_mode, m, sizeof(s->default_mode));
         }
-        if (json_get(p, "additionalDirectories", &x) && json_type(x) == J_ARR) {
+        if (json_get(p, "additionalDirectories", &x) && json_type(x) == J_ARR && !(src == CFG_PROJECT && s->untrusted)) {
             jit it;
             jv e;
             json_iter(x, &it);
@@ -535,6 +742,36 @@ int cfg_write_key(cl_sys *sys, const char *file, const char *key, const char *va
     make_parent(sys, file);
     rc = w.oom ? -1 : sys->write(sys->u, file, w.p, w.n);
     jw_free(&w);
+    return rc;
+}
+
+int cfg_write_sub(cl_sys *sys, const char *file, const char *obj, const char *key, const char *value)
+{
+    char *b;
+    jv o, sub;
+    jw w, s;
+    int rc;
+    if (read_obj(sys, file, &b, &o))
+        return -1;
+    if (!json_get(o, obj, &sub) || json_type(sub) != J_OBJ) {
+        sub.p = "{}";
+        sub.n = 2;
+    }
+    jw_init(&s);
+    obj_with(sub, key, value, &s, "  ");
+    jw_init(&w);
+    if (!s.oom) {
+        /* the inner object written whole as the outer key's value */
+        while (s.n && (s.p[s.n - 1] == '\n' || s.p[s.n - 1] == ' '))
+            s.p[--s.n] = 0;
+        obj_with(o, obj, s.p, &w, "");
+    }
+    jw_raw(&w, "\n", 1);
+    free(b);
+    make_parent(sys, file);
+    rc = w.oom || s.oom ? -1 : sys->write(sys->u, file, w.p, w.n);
+    jw_free(&w);
+    jw_free(&s);
     return rc;
 }
 
@@ -713,6 +950,10 @@ static int tool_covers(const char *rt, const char *ct)
         return !strcmp(ct, "Task") || !strcmp(ct, "Agent");    /* Claude Code's newer name of Task */
     if (!strcmp(rt, "Edit"))
         return !strcmp(ct, "Write") || !strcmp(ct, "MultiEdit") || !strcmp(ct, "NotebookEdit");
+    if (!strcmp(rt, "Bash"))
+        return !strcmp(ct, "Monitor");     /* Claude Code: Monitor's command goes by Bash's rules */
+    if (!strcmp(rt, "TaskStop") || !strcmp(rt, "KillShell"))
+        return !strcmp(ct, "TaskStop") || !strcmp(ct, "KillShell");
     if (!strcmp(rt, "Read"))
         return !strcmp(ct, "LS") || !strcmp(ct, "Grep") || !strcmp(ct, "Glob");
     return 0;
@@ -858,17 +1099,22 @@ static int path_match(const char *pat, const char *path, const char *root)
     return cfg_glob(pp, full, 1);
 }
 
-static int rule_match(const char *rule, const char *tool, jv in, const char *root, int all)
+static int rule_match(const char *rule, const char *tool, jv in, const char *root, int kind)
 {
     char rt[64], pat[300], v[1024];
-    const char *ct = cfg_cc_tool(tool);
+    const char *ct = cfg_cc_tool(tool), *rcc;
+    int all = kind == RULE_ALLOW;
     if (cfg_rule_parse(rule, rt, sizeof(rt), pat, sizeof(pat)))
         return 0;
-    if (!tool_covers(cfg_cc_tool(rt), ct))
+    rcc = cfg_cc_tool(rt);
+    /* Claude Code: an Edit allow rule grants Read on its paths too; a Read
+     * deny rule blocks Edit and Write there as well */
+    if (!tool_covers(rcc, ct) && !(kind == RULE_ALLOW && !strcmp(rcc, "Edit") && tool_covers("Read", ct)) &&
+        !(kind == RULE_DENY && !strcmp(rcc, "Read") && (tool_covers("Edit", ct) || !strcmp(ct, "Edit"))))
         return 0;
     if (!pat[0])
         return 1;
-    if (!strcmp(ct, "Bash"))
+    if (!strcmp(ct, "Bash") || !strcmp(ct, "Monitor"))
         return in_str(in, "command", v, sizeof(v)) && bash_match(pat, v, all);
     if (!strcmp(ct, "WebFetch")) {
         const char *h, *e;
@@ -907,7 +1153,12 @@ static int rule_match(const char *rule, const char *tool, jv in, const char *roo
 
 int cfg_rule_match(const char *rule, const char *tool, jv input, const char *root)
 {
-    return rule_match(rule, tool, input, root, 1);
+    return rule_match(rule, tool, input, root, RULE_ALLOW);
+}
+
+int cfg_rule_match_any(const char *rule, const char *tool, jv input, const char *root)
+{
+    return rule_match(rule, tool, input, root, RULE_ASK);
 }
 
 int cfg_decide(const cl_settings *s, const char *tool, jv input, const char *root, const cl_rule **which)
@@ -919,12 +1170,21 @@ int cfg_decide(const cl_settings *s, const char *tool, jv input, const char *roo
     for (k = 0; k < 3; k++)
         for (i = 0; i < s->nrules; i++)
             if (s->rules[i].kind == order[k] &&
-                rule_match(s->rules[i].text, tool, input, root, order[k] == RULE_ALLOW)) {
+                rule_match(s->rules[i].text, tool, input, root, order[k])) {
                 if (which)
                     *which = &s->rules[i];
                 return order[k];
             }
     return RULE_NONE;
+}
+
+const char *cfg_skill_state(const cl_settings *s, const char *skill)
+{
+    int i;
+    for (i = 0; i < s->nsko; i++)
+        if (!strcmp(s->sk_over[i].k, skill) && s->sk_over[i].v)
+            return s->sk_over[i].v;
+    return "on";
 }
 
 int cfg_web_search(const cl_settings *s)

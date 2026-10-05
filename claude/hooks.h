@@ -55,6 +55,22 @@ typedef struct cl_hooks {
     void (*term)(void *u, const char *seq, long n);
     unsigned long once_done[16];    /* the "once" hooks run this session (their hashes) */
     int nonce;
+    /* ---- A4 gaps 2 ---- */
+    /* hooks from a skill's or an agent's frontmatter (cl_hook.owner: a
+     * skill's tag > 0, an agent's < 0), run after the settings' (0: none) */
+    cl_settings *extra;
+    int held;                   /* the settings files' hooks held back (the workspace is not trusted) */
+    /* optional: an http hook's POST: 0 with the status and the body, -1
+     * (err says why: a connection failure, a timeout) */
+    int (*post)(void *u, const char *url, const char *headers, const char *body, long n, int timeout_s,
+                int *status, jw *resp, char *err, long cap);
+    /* optional: an agent hook -- a subagent with Read, Grep, Glob on the
+     * prompt (the event's JSON in it): 0 with its final text, -1 */
+    int (*ask_agent)(void *u, const char *model, const char *prompt, jw *answer);
+    /* async hooks in flight (hooks_async_poll collects them) */
+    struct hk_async *async;
+    int nasync;
+    long n_async;               /* the tests' sentinel: async hooks started */
 } cl_hooks;
 
 typedef struct cl_hookres {
@@ -72,6 +88,12 @@ typedef struct cl_hookres {
     char title[96];             /* SessionStart sessionTitle, "" none */
     jw first;                   /* SessionStart initialUserMessage, "" none */
     int reload;                 /* SessionStart reloadSkills */
+    /* A4 gaps 2 */
+    jw watch;                   /* watchPaths (SessionStart, CwdChanged, FileChanged): a JSON array */
+    int has_watch;
+    jw display;                 /* MessageDisplay displayContent */
+    int has_display;
+    int defer;                  /* PreToolUse permissionDecision "defer" */
 } cl_hookres;
 
 void hookres_init(cl_hookres *r);
@@ -81,9 +103,22 @@ int hooks_match(const char *matcher, const char *name);
 /* Is there a hook for this event and name at all? (no file is written
  * when there is none) */
 int hooks_any(const cl_hooks *h, int event, const char *name);
+/* ... for any name (A4 gaps 2) */
+int hooks_has(const cl_hooks *h, int event);
 /* The event's hooks run: extra is the event's own members, raw JSON
  * starting with a comma (",\"tool_name\":\"Bash\",...") or "". Returns
  * res->ran. */
 int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_hookres *res);
+
+/* A4 gaps 2: the async hooks that finished since the last look -- their
+ * additionalContext and systemMessage, for Claude, appended to w (Claude
+ * Code delivers them on the next turn; the user is not shown them). Their
+ * count. */
+int hooks_async_poll(cl_hooks *h, jw *w);
+/* the async hooks still running stopped (the end of a print-mode run) */
+void hooks_async_stop(cl_hooks *h);
+/* FileChanged's literal file names: the matchers' |-separated names, each
+ * called with its name; their count */
+int hooks_watch_names(const cl_hooks *h, void (*fn)(void *c, const char *name), void *c);
 
 #endif

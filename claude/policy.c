@@ -15,6 +15,7 @@
 #include "path.h"
 #include "schema.h"
 #include "tools_int.h"
+#include "tasks.h"
 #include "util.h"
 
 static const char *src_name(int src)
@@ -108,6 +109,24 @@ static int pol_added(void *u, const char *full)
     return 0;
 }
 
+/* cl_tools.can_read: would Read run on full without a question -- no deny or
+ * ask rule for it (Edit's relaxed check) */
+int pol_can_read(void *u, const char *full)
+{
+    cl_repl *r = (cl_repl *)u;
+    jw w;
+    jv in;
+    int d = RULE_NONE;
+    jw_init(&w);
+    jw_rawz(&w, "{\"file_path\":");
+    jw_strz(&w, full);
+    jw_raw(&w, "}", 1);
+    if (!w.oom && json_parse(w.p, w.n, &in) == 0)
+        d = cfg_decide(&r->cfg, "Read", in, r->tools.root, 0);
+    jw_free(&w);
+    return d != RULE_DENY && d != RULE_ASK;
+}
+
 /* a custom command's allowed-tools, for the turn it runs: "Bash(git:*),
  * Read" -- each item a rule */
 static int turn_allows(cl_repl *r, const char *name, jv in)
@@ -188,6 +207,13 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
             (r->sys->canon(r->sys->u, r->mem.auto_dir, ad, sizeof(ad)) == 0 && path_inside(ad, full)))
             d = RULE_ALLOW;
     }
+    if (d == RULE_NONE && tl->mem_dir[0] && (is_edit(cc) || is_read(cc)) && call_path(r, in, full, sizeof(full)) == 0) {
+        /* an agent's own memory directory (memory: in its frontmatter) */
+        char ad[300];
+        if (path_inside(tl->mem_dir, full) ||
+            (r->sys->canon(r->sys->u, tl->mem_dir, ad, sizeof(ad)) == 0 && path_inside(ad, full)))
+            d = RULE_ALLOW;
+    }
     what_of(r, cc, in, what, sizeof(what));
     if (hooks_any(&r->hooks, HK_PRE_TOOL, name)) {
         cl_hookres h;
@@ -202,6 +228,26 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
         r->hooks.tool = r->hooks.input = 0;
         jw_free(&ex);
         shown(r, &h);
+        if (h.defer && !h.blocked) {
+            /* "defer" (Claude Code): print mode, one call in the round -- the
+             * run stops here, the call kept for a --resume; elsewhere ignored */
+            if (r->no_person && tl == &r->tools && r->round_ntools == 1) {
+                cl_copy(r->defer_id, id ? id : "", sizeof(r->defer_id));
+                cl_copy(r->defer_name, cfg_cc_tool(name), sizeof(r->defer_name));
+                free(r->defer_input);
+                r->defer_input = (char *)malloc((size_t)rawn + 1);
+                if (r->defer_input) {
+                    memcpy(r->defer_input, raw, (size_t)rawn);
+                    r->defer_input[rawn] = 0;
+                }
+                hookres_free(&h);
+                return 2;
+            }
+            if (r->debug && r->io->log) {
+                static const char m[] = "PreToolUse defer ignored: only print mode with one tool call defers\n";
+                r->io->log(r->io->u, m, (long)sizeof(m) - 1);
+            }
+        }
         if (h.stop)
             tl->stop = 1;           /* "continue": false -- Claude stops after this round */
         if (h.context.n) {
@@ -268,6 +314,22 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
             tl->cur_inn = rawn;
             note[0] = 0;
             ans = repl_ask(r, tid, name, what, 0, 1, note, sizeof(note));
+            if (ans == ASK_RERUN && r->perm_upd.n && json_parse(r->perm_upd.p, r->perm_upd.n, &in) == 0) {
+                /* a PermissionRequest hook's updatedInput: the call goes on with it,
+                 * a deny rule still decides */
+                jw_reset(upd);
+                jw_raw(upd, r->perm_upd.p, r->perm_upd.n);
+                jw_reset(&r->perm_upd);
+                json_parse(upd->p, upd->n, &in);
+                raw = upd->p;
+                rawn = upd->n;
+                r->n_perm_rerun++;
+                if (cfg_decide(&r->cfg, name, in, r->tools.root, &which) == RULE_DENY) {
+                    answer(r, tl, out, id, name, raw, rawn, what, "Permission to use this tool has been denied.");
+                    return 1;
+                }
+                ans = ASK_ONCE;
+            }
             if (ans == ASK_NO && note[0]) {
                 /* No with a comment: Claude is told why and goes on (tl_gate's way) */
                 jw t;
@@ -278,9 +340,9 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
                 jw_free(&t);
                 return 1;
             }
-            if (ans != ASK_NO && ans != ASK_STOP)
+            if (ans != ASK_NO && ans != ASK_STOP && ans != ASK_RERUN)
                 cl_copy(tl->note, note, sizeof(tl->note));  /* Yes with a comment: with the result */
-            if (ans == ASK_NO || ans == ASK_STOP) {
+            if (ans == ASK_NO || ans == ASK_STOP || ans == ASK_RERUN) {
                 if (ans == ASK_STOP)
                     tl->stop = 1;
                 answer(r, tl, out, id, name, raw, rawn, what,
@@ -296,7 +358,8 @@ static int pol_pre(cl_repl *r, cl_tools *tl, const char *id, const char *name, i
     /* the file as it was, for /rewind */
     if (is_edit(cc) && !perm_refused(&tl->perm, tools_id(name) >= 0 ? tools_id(name) : T_WRITE) &&
         call_path(r, in, full, sizeof(full)) == 0)
-        cp_before_write(&r->cp, full);
+        if (!r->no_checkpoints)
+            cp_before_write(&r->cp, full);     /* CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING turns this off */
     return 0;
 }
 
@@ -506,6 +569,7 @@ void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input
     cl_tools *was = r->at;
     long at = out->n;
     jw upd;
+    int pre;
     if (r->schema && tl == &r->tools && !strcmp(name, "StructuredOutput")) {
         structured(r, id, input_ok, raw, rawn, out);
         return;
@@ -513,14 +577,50 @@ void pol_call(void *u, cl_tools *tl, const char *id, const char *name, int input
     r->at = tl;                 /* the screen's callbacks show this call's tool */
     r->cur_id = id;             /* print mode's permission_denials */
     jw_init(&upd);
-    if (!pol_pre(r, tl, id, name, input_ok, raw, rawn, out, extra, &upd)) {
+    pre = pol_pre(r, tl, id, name, input_ok, raw, rawn, out, extra, &upd);
+    if (pre == 2) {
+        /* deferred: no result; the turn stops at this call */
+        jw_free(&upd);
+        r->at = was;
+        r->rule_now = RULE_NONE;
+        return;
+    }
+    if (!pre) {
         if (upd.n) {
             raw = upd.p;        /* a PreToolUse hook's updatedInput */
             rawn = upd.n;
         }
         tl->rule_ask = r->rule_now == RULE_ASK;
+        tl->rerun = 0;
         tools_run(tl, id, name, input_ok, raw, rawn, out);
         tl->rule_ask = 0;
+        if (tl->rerun && r->perm_upd.n) {
+            /* a PermissionRequest hook allowed it with updatedInput: the call
+             * again with that input, the rules deciding anew on it (Claude Code) */
+            tl->rerun = 0;
+            out->n = at;
+            jw_reset(&upd);
+            jw_raw(&upd, r->perm_upd.p, r->perm_upd.n);
+            jw_reset(&r->perm_upd);
+            raw = upd.p;
+            rawn = upd.n;
+            r->perm_rerun = 1;
+            {
+                jw upd2;
+                jw_init(&upd2);
+                if (!pol_pre(r, tl, id, name, 1, raw, rawn, out, extra, &upd2)) {
+                    tl->rule_ask = r->rule_now == RULE_ASK;
+                    if (r->rule_now == RULE_NONE)
+                        r->rule_now = RULE_ALLOW;   /* the hook's allow stands for the new input */
+                    tools_run(tl, id, name, 1, raw, rawn, out);
+                    tl->rule_ask = 0;
+                }
+                jw_free(&upd2);
+            }
+            r->perm_rerun = 0;
+            r->n_perm_rerun++;
+        }
+        tl->rerun = 0;
     }
     r->rule_now = RULE_NONE;
     pol_post(r, tl, id, name, input_ok, raw, rawn, out, at, extra);
@@ -567,6 +667,20 @@ static void env_file(cl_repl *r, const char *f)
     free(b);
 }
 
+void pol_env_prepare(cl_repl *r)
+{
+    char envf[300];
+    if (r->sys->setenv && path_join(r->tmp, "Claude-env.sh", envf, sizeof(envf)) == 0)
+        r->sys->setenv(r->sys->u, "CLAUDE_ENV_FILE", envf);
+}
+
+void pol_env_apply(cl_repl *r)
+{
+    char envf[300];
+    if (r->sys->setenv && path_join(r->tmp, "Claude-env.sh", envf, sizeof(envf)) == 0)
+        env_file(r, envf);
+}
+
 void pol_session(cl_repl *r, int event, const char *source)
 {
     cl_hookres h;
@@ -589,6 +703,8 @@ void pol_session(cl_repl *r, int event, const char *source)
     shown(r, &h);
     if (envf[0])
         env_file(r, envf);
+    if (event == HK_SESSION_START && h.has_watch)
+        watch_set(r, h.watch.p ? h.watch.p : "[]", h.watch.n ? h.watch.n : 2);     /* watchPaths: FileChanged */
     if (event == HK_SESSION_START) {
         if (h.title[0] && strcmp(source, "clear") && strcmp(source, "compact"))
             sess_rename(&r->sess, h.title);     /* sessionTitle: as /rename */
@@ -637,15 +753,57 @@ int pol_prompt(cl_repl *r, const char *prompt, long n)
     return rc;
 }
 
+/* the text blocks of a message's content array, joined */
+static void text_of(const char *json, long n, jw *out)
+{
+    jv v, b, x;
+    jit it;
+    if (json_parse(json, n, &v) || json_type(v) != J_ARR)
+        return;
+    json_iter(v, &it);
+    while (json_next(&it, 0, &b))
+        if (json_get(b, "type", &x) && json_streq(x, "text") && json_get(b, "text", &x)) {
+            long l;
+            char *t = json_strdup(x, &l);
+            if (t) {
+                if (out->n)
+                    jw_rawz(out, "\n\n");
+                jw_raw(out, t, l);
+            }
+            free(t);
+        }
+}
+
+/* Stop's and SubagentStop's members: stop_hook_active, the agent's id and
+ * type (SubagentStop), last_assistant_message, background_tasks,
+ * session_crons (Claude Code's) */
+static void stop_members(cl_repl *r, jw *ex, int active, const char *agent, const char *id, const char *last,
+                         long ln)
+{
+    jw_rawz(ex, active ? ",\"stop_hook_active\":true" : ",\"stop_hook_active\":false");
+    if (agent) {
+        jw_rawz(ex, ",\"agent_id\":");
+        jw_strz(ex, id ? id : "");
+        jw_rawz(ex, ",\"agent_type\":");
+        jw_strz(ex, agent);
+    }
+    jw_rawz(ex, ",\"last_assistant_message\":");
+    jw_str(ex, last ? last : "", last ? ln : 0);
+    jw_rawz(ex, ",\"background_tasks\":");
+    shells_json(&r->tools, ex);
+    jw_rawz(ex, ",\"session_crons\":");
+    tasks_crons_json(r->tools.tasks, ex, 0, 1);
+}
+
 /* Stop and SubagentStop: 1 when a hook sends Claude on */
-static int stop_hook(cl_repl *r, int event, const char *name, int active, jw *reason)
+static int stop_hook(cl_repl *r, int event, const char *name, const char *ex, jw *reason)
 {
     cl_hookres h;
     int rc = 0;
     if (!hooks_any(&r->hooks, event, name))
         return 0;
     hookres_init(&h);
-    hooks_run(&r->hooks, event, name, active ? ",\"stop_hook_active\":true" : ",\"stop_hook_active\":false", &h);
+    hooks_run(&r->hooks, event, name, ex, &h);
     shown(r, &h);
     if (h.blocked && !h.stop) {
         jw_rawz(reason, event == HK_SUBAGENT_STOP ? "SubagentStop hook feedback: " : "Stop hook feedback: ");
@@ -658,7 +816,22 @@ static int stop_hook(cl_repl *r, int event, const char *name, int active, jw *re
 
 int pol_stop(cl_repl *r, int active, jw *reason)
 {
-    return stop_hook(r, HK_STOP, "", active, reason);
+    jw ex, last;
+    int i, rc;
+    if (!hooks_any(&r->hooks, HK_STOP, ""))
+        return 0;
+    jw_init(&ex);
+    jw_init(&last);
+    for (i = r->conv.n - 1; i >= 0; i--)
+        if (!r->conv.m[i].user) {
+            text_of(r->conv.m[i].json, r->conv.m[i].n, &last);
+            break;
+        }
+    stop_members(r, &ex, active, 0, 0, last.p, last.n);
+    rc = ex.oom ? 0 : stop_hook(r, HK_STOP, "", ex.p, reason);
+    jw_free(&ex);
+    jw_free(&last);
+    return rc;
 }
 
 /* cl_tools.agent_start: SubagentStart (matcher the agent type) */
@@ -684,9 +857,19 @@ static void pol_agent_start(void *u, const char *agent, const char *id, jw *cont
 }
 
 /* cl_tools.agent_stop */
-static int pol_agent_stop(void *u, const char *agent, int active, jw *reason)
+static int pol_agent_stop(void *u, const char *agent, const char *id, int active, const char *last, long ln,
+                          jw *reason)
 {
-    return stop_hook((cl_repl *)u, HK_SUBAGENT_STOP, agent, active, reason);
+    cl_repl *r = (cl_repl *)u;
+    jw ex;
+    int rc;
+    if (!hooks_any(&r->hooks, HK_SUBAGENT_STOP, agent))
+        return 0;
+    jw_init(&ex);
+    stop_members(r, &ex, active, agent, id, last, ln);
+    rc = ex.oom ? 0 : stop_hook(r, HK_SUBAGENT_STOP, agent, ex.p, reason);
+    jw_free(&ex);
+    return rc;
 }
 
 void pol_notify(cl_repl *r, const char *type, const char *message)
@@ -772,13 +955,27 @@ void pol_stop_failure(cl_repl *r, const char *error)
 void pol_cwd_changed(cl_repl *r, const char *old_cwd, const char *new_cwd)
 {
     jw ex;
+    cl_hookres h;
+    char envf[300];
+    if (!hooks_any(&r->hooks, HK_CWD_CHANGED, ""))
+        return;
     jw_init(&ex);
     jw_rawz(&ex, ",\"old_cwd\":");
     jw_strz(&ex, old_cwd);
     jw_rawz(&ex, ",\"new_cwd\":");
     jw_strz(&ex, new_cwd);
+    hookres_init(&h);
+    /* Claude Code: CwdChanged clears CLAUDE_ENV_FILE's variables, its hooks may write new ones */
+    if (r->sys->remove && path_join(r->tmp, "Claude-env.sh", envf, sizeof(envf)) == 0)
+        r->sys->remove(r->sys->u, envf);
+    pol_env_prepare(r);
     if (!ex.oom)
-        just_run(r, HK_CWD_CHANGED, "", ex.p);
+        hooks_run(&r->hooks, HK_CWD_CHANGED, "", ex.p, &h);
+    pol_env_apply(r);
+    shown(r, &h);
+    if (h.has_watch)
+        watch_set(r, h.watch.p ? h.watch.p : "[]", h.watch.n ? h.watch.n : 2);
+    hookres_free(&h);
     jw_free(&ex);
 }
 
@@ -857,6 +1054,13 @@ int pol_permission_request(cl_repl *r, const char *tool, const char *input, long
     jw_free(&ex);
     shown(r, &h);
     rc = h.behavior;
+    jw_reset(&r->perm_upd);
+    if (rc == RULE_ALLOW && h.updated.n && !r->perm_rerun) {
+        /* "allow" with updatedInput: the call runs again with it (pol_call) */
+        jv v;
+        if (json_parse(h.updated.p, h.updated.n, &v) == 0 && json_type(v) == J_OBJ)
+            jw_raw(&r->perm_upd, h.updated.p, h.updated.n);
+    }
     if (h.stop && r->at)
         r->at->stop = 1;            /* "interrupt": true */
     hookres_free(&h);
@@ -1037,6 +1241,125 @@ static int pol_ask_model(void *u, const char *model, const char *prompt, jw *ans
                : 0;
 }
 
+/* an http hook's POST: over the WebFetch connection (bsdsocket, AmiSSL) */
+static int pol_hook_post(void *u, const char *url, const char *headers, const char *body, long n, int timeout_s,
+                         int *status, jw *resp, char *err, long cap)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (!r->tools.web) {
+        cl_copy(err, "there is no network connection here", cap);
+        return -1;
+    }
+    return web_post(r->tools.web, url, headers, body, n, timeout_s, status, resp, err, cap);
+}
+
+/* an agent hook: a subagent with Read, Grep and Glob, 50 turns (Claude Code) */
+static int pol_ask_agent(void *u, const char *model, const char *prompt, jw *answer)
+{
+    cl_repl *r = (cl_repl *)u;
+    cl_agent a;
+    memset(&a, 0, sizeof(a));
+    a.name = "hook";
+    a.description = "verifies a hook's condition";
+    a.tools = "Read, Grep, Glob";
+    a.model = model && *model ? model : "haiku";
+    a.prompt = "You verify a condition for a hook of C:Claude (Claude Code on an Amiga). Look at the files you "
+               "need with Read, Grep and Glob, then answer with the JSON object asked for, nothing else.";
+    a.max_turns = 50;
+    return agent_answer(&r->tools, &a, prompt, (long)strlen(prompt), answer);
+}
+
+/* ---- hooks in a skill's or an agent's frontmatter (A4 gaps 2) ---- */
+
+static cl_settings *extra_hooks(cl_repl *r)
+{
+    if (!r->hooks.extra) {
+        r->hooks.extra = (cl_settings *)malloc(sizeof(cl_settings));
+        if (r->hooks.extra)
+            cfg_init(r->hooks.extra);
+    }
+    return r->hooks.extra;
+}
+
+void pol_hooks_free(cl_repl *r)
+{
+    if (r->hooks.extra) {
+        cfg_free(r->hooks.extra);
+        free(r->hooks.extra);
+        r->hooks.extra = 0;
+    }
+}
+
+/* a definition's frontmatter hooks added with an owner tag; Stop as
+ * SubagentStop for an agent (Claude Code) */
+static void add_front_hooks(cl_repl *r, const char *json, int owner, int agent, const char *where)
+{
+    cl_settings *x = extra_hooks(r);
+    jv o, v, k, val;
+    jit it;
+    jw j;
+    if (!x || r->bare || r->safe || r->cfg.no_hooks || json_parse(json, (long)strlen(json), &o) ||
+        json_type(o) != J_OBJ)
+        return;
+    /* "Stop" in an agent's frontmatter is its SubagentStop */
+    jw_init(&j);
+    jw_raw(&j, "{", 1);
+    json_iter(o, &it);
+    while (json_next(&it, &k, &val)) {
+        if (j.n > 1)
+            jw_raw(&j, ",", 1);
+        if (agent && json_streq(k, "Stop"))
+            jw_rawz(&j, "\"SubagentStop\"");
+        else
+            jw_raw(&j, k.p, k.n);
+        jw_raw(&j, ":", 1);
+        jw_raw(&j, val.p, val.n);
+    }
+    jw_raw(&j, "}", 1);
+    if (!j.oom && json_parse(j.p, j.n, &v) == 0)
+        cfg_add_hooks(x, v, CFG_SESSION, owner, where);
+    jw_free(&j);
+}
+
+/* a skill's hooks: from its first use on, for the rest of the session */
+void pol_skill_hooks(cl_repl *r, const cl_def *d)
+{
+    int i, owner;
+    if (!d->hooks)
+        return;
+    /* the skill's tag: its place in the definitions, + 1 */
+    for (i = 0; i < r->defs.n && &r->defs.d[i] != d; i++)
+        ;
+    owner = i + 1;
+    if (r->hooks.extra)
+        for (i = 0; i < r->hooks.extra->nhooks; i++)
+            if (r->hooks.extra->hooks[i].owner == owner)
+                return;             /* registered at an earlier use */
+    if (d->src == CFG_PROJECT && r->untrusted)
+        return;                     /* a project skill's hooks follow the settings' trust rule */
+    add_front_hooks(r, d->hooks, owner, 0, d->path);
+}
+
+/* cl_tools.agent_hooks: an agent's hooks while it runs (a project agent's
+ * only in a trusted folder: a print-mode run does not count) */
+static void pol_agent_hooks(void *u, const cl_agent *a, int run, int on)
+{
+    cl_repl *r = (cl_repl *)u;
+    if (!on) {
+        if (r->hooks.extra)
+            cfg_drop_owner(r->hooks.extra, -run);
+        return;
+    }
+    if (a->project && !r->trusted_dir) {
+        if (r->debug && r->io->log) {
+            static const char m[] = "a project agent's frontmatter hooks were skipped: trust the folder first\n";
+            r->io->log(r->io->u, m, (long)sizeof(m) - 1);
+        }
+        return;
+    }
+    add_front_hooks(r, a->hooks, -run, 1, a->name);
+}
+
 static void pol_hook_status(void *u, const char *msg)
 {
     cl_repl *r = (cl_repl *)u;
@@ -1068,6 +1391,9 @@ void pol_attach_hooks(cl_repl *r)
     r->hooks.status = pol_hook_status;
     r->hooks.seen = pol_hook_seen;
     r->hooks.term = pol_hook_term;
+    r->hooks.post = pol_hook_post;
+    r->hooks.ask_agent = pol_ask_agent;
+    r->tools.agent_hooks = pol_agent_hooks;
 }
 
 /* "claude-opus-5-5" -> "Opus 5.5" (Claude Code's display name); others as they are */
@@ -1305,6 +1631,7 @@ static void vars_of(cl_repl *r, const cl_def *d, cl_cmd_vars *v, char *dir, long
     v->effort = r->effort;
     v->skill_dir = dir;
     v->project_dir = r->tools.root;
+    v->no_shell = r->cfg.no_skill_shell;    /* disableSkillShellExecution (bundled skills are not touched) */
 }
 
 int pol_expand(cl_repl *r, const cl_def *d, const char *args, jw *out, char *err, long cap)
@@ -1359,10 +1686,18 @@ static int ext_skill(void *u, const char *name, const char *args, int activate, 
 {
     cl_repl *r = (cl_repl *)u;
     const cl_def *d = defs_find(&r->defs, DEF_SKILL, name);
+    const char *st;
     *fork = 0;
     agent[0] = 0;
     if (!d) {
         cl_copy(err, "no such skill", cap);
+        return -1;
+    }
+    st = cfg_skill_state(&r->cfg, d->name);
+    if (activate && (!strcmp(st, "off") || !strcmp(st, "user-invocable-only"))) {
+        /* Claude Code: skillOverrides keeps it from Claude */
+        cl_copy(err, "the skill is not available to Claude: skillOverrides sets it to ", cap);
+        cl_cat(err, st, cap);
         return -1;
     }
     if (pol_expand(r, d, args, out, err, cap))
@@ -1372,8 +1707,44 @@ static int ext_skill(void *u, const char *name, const char *args, int activate, 
     if (activate) {
         r->n_skills_run++;
         pol_turn_tools(r, d);
+        pol_skill_used(r, d);
     }
     return 0;
+}
+
+/* ---- /skill-doctor's use counts (A4 gaps 2): <home>/skill-usage.json,
+ * {"name": count, ...}, kept across sessions ---- */
+
+static int usage_file(cl_repl *r, char *out, long cap)
+{
+    return path_join(r->home, "skill-usage.json", out, cap);
+}
+
+long pol_skill_count(cl_repl *r, const char *name)
+{
+    char f[300];
+    char *b = 0;
+    long n = 0, c = 0;
+    jv o, x;
+    if (usage_file(r, f, sizeof(f)) || r->sys->kind(r->sys->u, f) != 1 || r->sys->read(r->sys->u, f, 64L * 1024, &b, &n))
+        return 0;
+    if (json_parse(b, n, &o) == 0 && json_get(o, name, &x))
+        c = json_long(x, 0);
+    free(b);
+    return c;
+}
+
+void pol_skill_used(cl_repl *r, const cl_def *d)
+{
+    char f[300], num[16];
+    long c = pol_skill_count(r, d->name) + 1;
+    pol_skill_hooks(r, d);          /* its frontmatter's hooks, for the rest of the session */
+    if (d->src == DEF_BUILTIN || usage_file(r, f, sizeof(f)))
+        return;                     /* Claude Code's report leaves the bundled skills out */
+    cl_ltoa(c, num);
+    if (r->sys->mkdir)
+        r->sys->mkdir(r->sys->u, r->home);
+    cfg_write_key(r->sys, f, d->name, num);
 }
 
 /* cl_tools.agent_msg: a subagent's message to print mode's stream */
@@ -1421,16 +1792,25 @@ int pol_tools(cl_repl *r)
         a->skills = d->skills && d->skills[0] ? d->skills : 0;
         a->perm_mode = d->perm_mode[0] ? d->perm_mode : 0;
         a->initial = d->initial && d->initial[0] ? d->initial : 0;
+        a->hooks = d->hooks;
+        a->memory = d->memory[0] ? d->memory : 0;
+        a->color = d->color[0] ? d->color : 0;
+        a->project = d->src == CFG_PROJECT;
     }
-    /* disable-model-invocation: only the user runs it */
-    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++)
-        if (!d->no_model && (!d->paths || !d->paths[0] || d->active)) {
+    /* disable-model-invocation: only the user runs it; skillOverrides: off and
+     * user-invocable-only are not listed to Claude, name-only without its text */
+    for (i = 0; (d = defs_nth(&r->defs, DEF_SKILL, i)) != 0; i++) {
+        const char *st = cfg_skill_state(&r->cfg, d->name);
+        if (!d->no_model && (!d->paths || !d->paths[0] || d->active) && strcmp(st, "off") &&
+            strcmp(st, "user-invocable-only")) {
             cl_skill *s = &r->x_skills[r->nx_skills++];
+            int bare = !strcmp(st, "name-only");
             s->name = d->name;
-            s->description = d->description;
+            s->description = bare ? "" : d->description;
             s->path = d->path;
-            s->when = d->when && d->when[0] ? d->when : 0;
+            s->when = !bare && d->when && d->when[0] ? d->when : 0;
         }
+    }
     for (i = 0; (d = defs_nth(&r->defs, DEF_COMMAND, i)) != 0; i++)
         if (!d->no_model) {
             cl_command *c = &r->x_cmds[r->nx_cmds++];

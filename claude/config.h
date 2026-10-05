@@ -38,7 +38,9 @@ enum {
     /* A4 gaps: Claude Code's other events that exist here */
     HK_PERMISSION_REQUEST, HK_POST_TOOL_FAILURE, HK_SUBAGENT_START, HK_POST_COMPACT, HK_STOP_FAILURE,
     HK_PROMPT_EXPANSION, HK_CWD_CHANGED, HK_DIR_ADDED, HK_PRE_MODEL_SWITCH, HK_POST_MODEL_SWITCH,
-    HK_INSTRUCTIONS_LOADED, HK_POST_TOOL_BATCH, HK_CONFIG_CHANGE, HK_SETUP, HK_COUNT
+    HK_INSTRUCTIONS_LOADED, HK_POST_TOOL_BATCH, HK_CONFIG_CHANGE, HK_SETUP,
+    /* A4 gaps 2 */
+    HK_FILE_CHANGED, HK_MESSAGE_DISPLAY, HK_COUNT
 };
 extern const char *const cfg_hook_events[HK_COUNT];
 
@@ -55,13 +57,19 @@ typedef struct cl_hook {
     char *cmd;
     int timeout_s;
     char *cond;                 /* "if": a permission rule the call must match, 0 none */
-    int kind;                   /* HOOK_COMMAND, HOOK_PROMPT (cmd holds the prompt) */
-    char *model;                /* a prompt hook's model, 0 the small one */
+    int kind;                   /* HOOK_*: cmd holds the command, the prompt (prompt, agent) or the URL (http) */
+    char *model;                /* a prompt or agent hook's model, 0 the small one */
     char *status;               /* statusMessage: shown while it runs, 0 none */
-    int once;                   /* "once": true -- runs once a session */
+    int once;                   /* "once": true -- removed after its first successful run (skill frontmatter) */
+    /* A4 gaps 2 */
+    char *headers;              /* an http hook's headers, a JSON object as written, 0 none */
+    char *env_ok;               /* its allowedEnvVars, comma-separated, 0 none */
+    int async;                  /* "async": true -- a command hook run in the background */
+    int rewake;                 /* "asyncRewake": true */
+    int owner;                  /* 0 a settings file's; a skill's or an agent's frontmatter (its tag) */
 } cl_hook;
 
-enum { HOOK_COMMAND, HOOK_PROMPT };
+enum { HOOK_COMMAND, HOOK_PROMPT, HOOK_HTTP, HOOK_AGENT };
 
 typedef struct cl_kv {
     char *k, *v;
@@ -108,6 +116,15 @@ typedef struct cl_settings {
     char avail_models[256];     /* availableModels, comma-separated ("" all) */
     long bash_max_chars;        /* bashOutputMaxChars, 0 the default */
     int cleanup_days;           /* cleanupPeriodDays, -1 not set */
+    /* A4 gaps 2 */
+    char warn[1200];            /* Claude Code's "Settings Warning": the entries skipped, a line each */
+    int nwarn;
+    int untrusted;              /* the workspace is not trusted (yet): the project's allow rules and
+                                 * additionalDirectories are not taken (cfg_merge) */
+    cl_kv *sk_over;             /* skillOverrides: skill name -> on, name-only, user-invocable-only, off */
+    int nsko, capsko;
+    int no_skill_shell;         /* disableSkillShellExecution */
+    char advisor[64];           /* advisorModel */
     char path[CFG_NSRC][300];   /* the files (user, project, local) */
     int found[CFG_NSRC];        /* read and valid */
     char err[300];              /* the last file that did not parse, and why */
@@ -129,6 +146,9 @@ const char *cfg_file(const cl_settings *s, int src);
  * valid), or removed (value 0); the file is created when missing, its
  * other keys kept as they were: 0, -1. */
 int cfg_write_key(cl_sys *sys, const char *file, const char *key, const char *value);
+/* A4 gaps 2: a member of a top-level object key set (skillOverrides.NAME),
+ * the object's other members kept: 0, -1 */
+int cfg_write_sub(cl_sys *sys, const char *file, const char *obj, const char *key, const char *value);
 /* A rule added to (add 1) or removed from (add 0) permissions.<allow|ask|
  * deny> of a settings file: 0, -1 (also -1: not there to remove). */
 int cfg_write_rule(cl_sys *sys, const char *file, int kind, const char *rule, int add);
@@ -142,6 +162,8 @@ int cfg_rule_parse(const char *rule, char *tool, long tcap, char *pat, long pcap
 const char *cfg_cc_tool(const char *name);
 /* Does the rule cover this call? root resolves relative paths. */
 int cfg_rule_match(const char *rule, const char *tool, jv input, const char *root);
+/* ... a compound Bash line when any part matches (a hook's "if", as hooks.md's table) */
+int cfg_rule_match_any(const char *rule, const char *tool, jv input, const char *root);
 /* The rules' answer for a call: RULE_NONE (ask as usual), ALLOW, ASK,
  * DENY; *which the deciding rule (or 0). */
 int cfg_decide(const cl_settings *s, const char *tool, jv input, const char *root, const cl_rule **which);
@@ -162,6 +184,17 @@ void cfg_set_home(const char *dir);
 
 /* the hooks dropped (disableAllHooks, --bare, --safe-mode) */
 void cfg_drop_hooks(cl_settings *s);
+/* A4 gaps 2: hooks from a "hooks" object (a settings file's, a skill's or
+ * an agent's frontmatter) added with an owner tag (0 the settings); a
+ * malformed entry is skipped with a warning naming where. Their count. */
+int cfg_add_hooks(cl_settings *s, jv hooks, int src, int owner, const char *where);
+/* the hooks of an owner dropped (an agent's, when it finishes) */
+void cfg_drop_owner(cl_settings *s, int owner);
+/* a warning line kept (the screen shows them at the start, Claude doctor too) */
+void cfg_warn(cl_settings *s, const char *where, const char *what);
+/* a skill's skillOverrides state: "on" (also when absent), "name-only",
+ * "user-invocable-only", "off" */
+const char *cfg_skill_state(const cl_settings *s, const char *skill);
 
 /* opus / sonnet / haiku / fable (also opusplan's model, default) -> the
  * current id; anything else as it is */

@@ -65,7 +65,7 @@ enum {
     ASKP_BYPASS                 /* yes to all (bypassPermissions); explicit ask rules still ask */
 };
 /* how the last turn ended */
-enum { TURN_OK, TURN_FAIL, TURN_CANCEL, TURN_MAX_TURNS, TURN_BUDGET };
+enum { TURN_OK, TURN_FAIL, TURN_CANCEL, TURN_MAX_TURNS, TURN_BUDGET, TURN_DEFERRED };
 
 typedef struct cl_repl {
     cl_io *io;
@@ -187,6 +187,45 @@ typedef struct cl_repl {
     int no_dynamic;             /* --exclude-dynamic-system-prompt-sections: auto memory's place in the
                                  * first prompt, not the system prompt */
     long n_copies;              /* the tests' sentinel: /copy runs that reached the clipboard */
+    /* A4 gaps 2 (thoughts/shared/plans/2026-10-05-a4-gaps2-progress.md) */
+    int in_turn;                /* a turn runs (the idle tick does not start one) */
+    int woke;                   /* the line came from sched_wake, not the keyboard */
+    long n_cron_fired;          /* the tests' sentinel: cron jobs fired */
+    int todo_optin;             /* --allowedTools / --tools named a task tool */
+    struct cl_watch *watch;     /* FileChanged's watched files (watch.c) */
+    int untrusted;              /* the workspace trust question not (yet) answered yes: held back --
+                                 * interactive: every settings file's hooks; both: the project's allow
+                                 * rules and additionalDirectories */
+    int trusted_dir;            /* the start directory is trusted (remembered, or answered now) */
+    int trust_warn;             /* print mode: the project's allow rules or directories were held back */
+    jw md;                      /* MessageDisplay: the answer's text not drawn yet */
+    int md_on;                  /* ... the hook runs for this answer */
+    long md_index;              /* its next batch's index */
+    char turn_id[40], msg_id[40];
+    unsigned long id_seed;
+    long n_md;                  /* the tests' sentinel: MessageDisplay batches */
+    jw perm_upd;                /* a PermissionRequest hook's updatedInput for the call being asked about */
+    int perm_rerun;             /* the call runs again with it (once) */
+    long n_perm_rerun;          /* the tests' sentinel: calls run again with updatedInput */
+    /* PreToolUse "defer" (print mode): the call that stopped the run */
+    char defer_id[96], defer_name[64];
+    char *defer_input;
+    int round_ntools;           /* tool calls in the round being run (defer needs exactly one) */
+    char advisor_cli[64];       /* --advisor: this session's advisor (over advisorModel), "" none */
+    int snapshot;               /* --system-prompt-snapshot: 1 on, 0 off; -1 the default (on, off for --bare) */
+    char *sys_snap;             /* the system prompt flags' text recorded on the conversation's first
+                                 * request ({"replace", "append"}), 0 none */
+    char *snap_rep, *snap_app;  /* ... decoded (owned) */
+    /* the environment variables (repl_env) */
+    int tries;                  /* attempts a request gets (CLAUDE_CODE_MAX_RETRIES + 1) */
+    int no_checkpoints;         /* CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING */
+    long max_ctx;               /* CLAUDE_CODE_MAX_CONTEXT_TOKENS, 0 the model's */
+    int no_1m;                  /* CLAUDE_CODE_DISABLE_1M_CONTEXT */
+    int no_thinking;            /* CLAUDE_CODE_DISABLE_THINKING */
+    char *extra_body;           /* CLAUDE_CODE_EXTRA_BODY: a JSON object merged into every request */
+    int no_compact;             /* DISABLE_COMPACT */
+    int compact_pct;            /* CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (lower only), CL_COMPACT_PCT */
+    long n_file_changed;        /* the tests' sentinel: FileChanged events */
     unsigned long t_open, t_first;  /* ping: connect and first-byte times */
     char head[1024];
     char buf[4096];
@@ -230,6 +269,21 @@ int repl_prompts(const cl_repl *r, int *msg, int max);
  * image or a document: the blocks go to the API as sent, base64 and all);
  * text is its text part, for the UserPromptSubmit hook. 0. */
 int repl_blocks(cl_repl *r, const char *text, long tn, const char *blocks, long bn);
+
+/* A4 gaps 2: workspace trust. The start directory trusted (remembered in
+ * <home>/claude.json, or a directory above it): 0. Not: the project's
+ * allow rules and additionalDirectories are held back; interactive, every
+ * settings file's hooks too, and the user is asked once -- yes keeps the
+ * answer (not for the home directory: this session only) and loads the
+ * settings in full; no returns -1 (the program ends). Print mode is never
+ * asked: 0 with r->untrusted set (print.c warns). */
+int repl_trust(cl_repl *r);
+
+/* A4 gaps 2: a resumed conversation that ends with tool calls without
+ * results (a PreToolUse defer stopped the run there) -- they run now and
+ * the turn goes on (Claude Code's -p --resume of a deferred call) */
+int repl_has_pending(const cl_repl *r);
+void repl_pending(cl_repl *r);
 
 /* Setup hooks of a trigger ("init", "maintenance"; 0 none), and with start
  * SessionStart as at the first line (--init-only) */

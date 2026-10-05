@@ -111,6 +111,7 @@ typedef struct cl_ui {
     void *mu;
     cl_rewind rw;
     struct cl_conv *conv;       /* the rewind stub's */
+    const char *name_sgr;       /* A4 gaps 2: the next tool call's name in this colour (a subagent's), 0 none */
     /* the tools (a ! command runs as they run Bash: Ctrl+B moves it to
      * the background); 0: sys->run */
     struct cl_tools *tools;
