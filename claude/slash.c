@@ -1011,6 +1011,8 @@ static const struct na_cmd {
                        "talks to the Anthropic API (or URL= another endpoint of the same API)." },
     { "/import", "brings configuration from OpenAI Codex, Gemini CLI or Cursor, none of which runs on an Amiga." },
     { "/tui", "C:Claude has one renderer, made for UP-Term." },
+    { "/focus", "is a view of Claude Code's fullscreen renderer; C:Claude has one renderer, the classic one, "
+                "made for UP-Term (Ctrl+O shows the whole transcript)." },
     { "/scroll-speed", "the mouse wheel speed is UP-Term's (its Settings)." },
     { "/artifacts", why_artifact },
     { "/design", why_artifact },

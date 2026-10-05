@@ -5195,8 +5195,22 @@ static void test_gaps3_keybindings(void)
     cs_close();
 }
 
+/* G12: /focus says why it is not here */
+static void test_gaps3_na(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    stub_reset();
+    setup(&r, none);
+    repl_line(&r, "/focus");
+    CHECK(cn.screen.p && strstr(cn.screen.p, "/focus is not available on the Amiga: it is a view of Claude Code's "
+                                             "fullscreen renderer") != 0);
+    repl_free(&r);
+}
+
 static void test_gaps3(void)
 {
+    test_gaps3_na();
     test_gaps3_keybindings();
     test_gaps3_recap();
     test_gaps3_suggest();
