@@ -6060,6 +6060,12 @@ static LONG handler_main(void)
     complete_warm_forget(FindTask(0)); /* its signal is the port's */
     if (c->comp_port)
         DeleteMsgPort(c->comp_port);
+    /* a WAIT_CHAR still held is answered, and its timer stopped, before
+     * the timer goes: a request left on the closed device was written to
+     * freed memory when it came due (rig: tmux, then screen, trashed the
+     * Workbench), and its process waited for the answer for ever */
+    finish_waitchar(c, DOSFALSE);
+    stop_timer(c);
     rtimer_stop(c);
     if (c->rtimer)
         DeleteIORequest((struct IORequest *)c->rtimer);
