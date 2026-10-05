@@ -19,6 +19,7 @@
 #include "tui.h"
 #include "show.h"
 #include "tools.h"
+#include "ext.h"
 #include "path.h"
 #include "conv.h"
 #include "util.h"
@@ -381,6 +382,37 @@ static int mention(cl_ui *u, const char *p, long pn, jw *att, long *total)
     return 0;
 }
 
+/* "@agent-NAME" (A4 gaps 3): a subagent the user wants run for this
+ * prompt. Claude Code adds a note that makes Claude invoke that agent; the
+ * prompt itself is unchanged. 1 when NAME is an agent. */
+static int agent_mention(cl_ui *u, const char *p, long pn, jw *att)
+{
+    char name[96];
+    const cl_agent *a;
+    if (!u->tools || pn <= 6 || strncmp(p, "agent-", 6))
+        return 0;
+    p += 6;
+    pn -= 6;
+    if (pn >= (long)sizeof(name))
+        return 0;
+    memcpy(name, p, (size_t)pn);
+    name[pn] = 0;
+    a = tools_agent(u->tools, name);
+    if (!a && pn > 1 && strchr(",.;:)!?", name[pn - 1])) {
+        name[pn - 1] = 0;           /* "ask @agent-x." : the full stop is not the name's */
+        a = tools_agent(u->tools, name);
+    }
+    if (!a)
+        return 0;
+    /* Claude Code's agent_mention attachment (wording from memory of its
+     * source, not checked against it) */
+    jw_rawz(att, "\n\n<system-reminder>\nThe user has expressed a desire to invoke the agent \"");
+    jw_rawz(att, a->name);
+    jw_rawz(att, "\". Please invoke the agent appropriately, passing in the required context to it.\n"
+                 "</system-reminder>");
+    return 1;
+}
+
 static int mentions(cl_ui *u, const char *line, jw *out)
 {
     const char *p = line;
@@ -393,6 +425,11 @@ static int mentions(cl_ui *u, const char *line, jw *out)
             const char *e = p + 1;
             while (*e && *e != ' ' && *e != '\t' && *e != '\n')
                 e++;
+            if (agent_mention(u, p + 1, (long)(e - p - 1), &att)) {
+                any = 1;
+                p = e;
+                continue;
+            }
             any |= mention(u, p + 1, (long)(e - p - 1), &att, &total);
             p = e;
             continue;
@@ -499,6 +536,23 @@ static void cached(cl_ui *u, const char *full, comp *k)
     }
 }
 
+/* the subagents whose name starts with tok, as "agent-NAME" (Claude Code's
+ * typeahead offers them for an @ prompt token; while "@agent-" is typed it
+ * shows files, the mention still resolves on submit) */
+static void agents_matching(cl_ui *u, const char *tok, comp *k)
+{
+    int i, n = agent_count(u->tools);
+    long tl = (long)strlen(tok);
+    for (i = 0; i < n && k->n < k->max; i++) {
+        const cl_agent *a = agent_get(u->tools, i);
+        if (!a || !cl_strnieq(a->name, tok, tl))
+            continue;
+        cl_copy(k->out[k->n], "agent-", 128);
+        cl_cat(k->out[k->n], a->name, 128);
+        k->n++;
+    }
+}
+
 int input_complete(void *uu, const char *tok, char out[][128], int max)
 {
     cl_ui *u = (cl_ui *)uu;
@@ -522,6 +576,8 @@ int input_complete(void *uu, const char *tok, char out[][128], int max)
     k.n = 0;
     k.max = max;
     k.dirs_only = u->tui && u->tui->comp_dirs;
+    if (u->tui && u->tui->cskip && !cut && u->tools && cl_strnieq(tok, "agent-", 6) == 0)
+        agents_matching(u, tok, &k);    /* @-mentionable subagents first (A4 gaps 3) */
     if (u->tui)
         cached(u, full, &k);
     else

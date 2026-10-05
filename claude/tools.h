@@ -289,6 +289,10 @@ unsigned long tools_mask(const char *list);
 /* An agent by name, case-insensitive: the built-in ones (general-purpose,
  * Explore, Plan) and the provider's (ext.h). 0 none. */
 const struct cl_agent *tools_agent(const cl_tools *t, const char *name);
+/* The built-in agents and the provider's, in order: the count; the i-th
+ * (subagent.c; the @ typeahead lists them too) */
+int agent_count(const cl_tools *t);
+const struct cl_agent *agent_get(const cl_tools *t, int i);
 
 /* ---- what the screen shows of a call (show.c, ui.c) ---- */
 

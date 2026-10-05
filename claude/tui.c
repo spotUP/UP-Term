@@ -1414,9 +1414,9 @@ static int comp_query(cl_tui *t, long *plen)
         return -1;
     memcpy(tok, t->ed.b + s + skip, (size_t)pl);
     tok[pl] = 0;
-    n = t->complete(t->cu, tok, t->comp, TUI_COMP);
     t->ctok = s;
-    t->cskip = skip;
+    t->cskip = skip;                /* (the completion looks: an @ token offers agents too) */
+    n = t->complete(t->cu, tok, t->comp, TUI_COMP);
     t->ncomp = n > 0 ? n : 0;
     if (t->csel >= t->ncomp)
         t->csel = 0;

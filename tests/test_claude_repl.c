@@ -4963,8 +4963,39 @@ static void test_gaps3_dirs(void)
     cs_close();
 }
 
+/* G7: @ offers the project's subagent by name; Tab writes @agent-NAME;
+ * the prompt goes with the note that has Claude invoke that agent; an
+ * @agent- of no agent is left alone */
+static void test_gaps3_agent_mention(void)
+{
+    static const char *keys[] = { "ask @code", "\t", "to look\r", "and @agent-nobody here\r", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    const char *once;
+    stub_reset();
+    g3_screen(&r, keys, "g3agent", root);
+    xput(root, ".claude/agents/code-reviewer.md",
+         "---\nname: code-reviewer\ndescription: Reviews code\n---\nReview it.\n");
+    repl_load(&r);
+    add_answer(0, 0, 0, "Asking it.");
+    add_answer(0, 0, 0, "No such agent.");
+    CHECK_INT(repl_screen(&r), 0);
+    repl_run(&r);
+    g3_dump();
+    CHECK_INT(cs.next, 5);
+    CHECK_INT(sb.nreq, 2);
+    CHECK(sb.nreq >= 1 && strstr(sb.body[0], "ask @agent-code-reviewer to look") != 0);
+    CHECK(sb.nreq >= 1 && strstr(sb.body[0], "The user has expressed a desire to invoke the agent "
+                                             "\\\"code-reviewer\\\".") != 0);
+    CHECK(sb.nreq >= 2 && (once = strstr(sb.body[1], "desire to invoke")) != 0 &&
+          strstr(once + 1, "desire to invoke") == 0);     /* the first prompt's note only */
+    repl_free(&r);
+    cs_close();
+}
+
 static void test_gaps3(void)
 {
+    test_gaps3_agent_mention();
     test_gaps3_bypass();
     test_gaps3_color();
     test_gaps3_think();
