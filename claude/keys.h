@@ -59,4 +59,81 @@ void keys_feed(cl_keys *k, const char *s, long n);
  * a cut sequence is dropped. */
 int keys_next(cl_keys *k, cl_key *key, int idle);
 
+/* ---- keybindings (A4 gaps 3) ----
+ * Claude Code's keybindings.json (ENVARC:Claude/keybindings.json here): an
+ * object whose "bindings" array holds blocks {"context": "Chat",
+ * "bindings": {"ctrl+e": "chat:externalEditor", "ctrl+s": null}}. A
+ * keystroke is modifiers and a key joined by '+' (ctrl/control, shift,
+ * alt/opt/option/meta, cmd/command/super/win), a chord two keystrokes
+ * separated by a space (each within 3 s of the one before). null unbinds.
+ * The defaults are Claude Code's own (km_init); the file's bindings go over
+ * them; problems (bad JSON, an unknown context or action, a reserved key,
+ * a misspelled modifier, a duplicate) are collected as warnings and the
+ * rest still applies. The screen asks km_action for a key in the contexts
+ * active at the moment and does what the action says. */
+enum {
+    KC_GLOBAL, KC_CHAT, KC_AUTOCOMPLETE, KC_CONFIRM, KC_TRANSCRIPT, KC_HSEARCH, KC_TASK, KC_HELP,
+    KC_SELECT, KC_THEME, KC_MSGSEL, KC_COUNT
+};
+
+enum {
+    KA_NONE,                    /* no binding: the key is the editor's */
+    KA_INTERRUPT, KA_EXIT, KA_REDRAW, KA_TODOS, KA_TRANSCRIPT,
+    KA_HIST_SEARCH, KA_HIST_PREV, KA_HIST_NEXT,
+    KA_CANCEL, KA_CLEAR_INPUT, KA_CLEAR_SCREEN, KA_KILL_AGENTS, KA_CYCLE_MODE, KA_MODEL_PICKER, KA_FAST_MODE,
+    KA_THINKING, KA_SUBMIT, KA_QUEUE_SUBMIT, KA_SEND_NOW, KA_NEWLINE, KA_UNDO, KA_EXT_EDITOR, KA_STASH,
+    KA_IMAGE_PASTE,
+    KA_AC_ACCEPT, KA_AC_DISMISS, KA_AC_PREV, KA_AC_NEXT,
+    KA_YES, KA_NO, KA_PREV, KA_NEXT, KA_NEXT_FIELD, KA_PREV_FIELD, KA_TOGGLE, KA_CONFIRM_CYCLE, KA_PERM_DEBUG,
+    KA_TR_SHOW_ALL, KA_TR_EXIT,
+    KA_HS_NEXT, KA_HS_ACCEPT, KA_HS_CANCEL, KA_HS_EXECUTE, KA_HS_SCOPE,
+    KA_TASK_BG, KA_HELP_DISMISS,
+    KA_SEL_NEXT, KA_SEL_PREV, KA_SEL_PGUP, KA_SEL_PGDN, KA_SEL_FIRST, KA_SEL_LAST, KA_SEL_ACCEPT, KA_SEL_CANCEL,
+    KA_THEME_SYNTAX,
+    KA_INERT,                   /* one of Claude Code's actions with nothing to do here (tabs, diff, ...) */
+    KA_COUNT,
+    KA_PENDING = 100,           /* the first keystroke of a chord: wait for the next */
+    KA_CHORD_MISS               /* a chord's second keystroke bound to nothing: both dropped */
+};
+
+typedef struct kb_stroke {
+    int k;                      /* K_CHAR (ch: a lower-case letter or another character), K_ENTER, K_TAB,
+                                 * K_ESC, K_UP ... K_PGDN, K_BS, K_DEL; -1 never matches (cmd+, wheel) */
+    unsigned long ch;
+    int mods;                   /* KM_* */
+} kb_stroke;
+
+typedef struct kb_bind {
+    int ctx;                    /* KC_* */
+    int act;                    /* KA_*, -1 unbound (null) */
+    int n;                      /* keystrokes: 1 or 2 */
+    kb_stroke s[2];
+} kb_bind;
+
+typedef struct cl_keymap {
+    kb_bind *b;                 /* the defaults, then the file's (a later one wins) */
+    int n, cap, ndef;
+    jw warn;                    /* the file's problems, a line each */
+    int nwarn;
+    /* a chord begun: its first keystroke, when */
+    int pending;
+    kb_stroke first;
+    unsigned long first_ms;
+    int expired;                /* the last chord ran out of time (the screen says so once) */
+} cl_keymap;
+
+/* the defaults: 0, -1 out of memory */
+int km_init(cl_keymap *m);
+/* back to the defaults alone (no file, or --safe-mode) */
+void km_reset(cl_keymap *m);
+void km_free(cl_keymap *m);
+/* back to the defaults, then a keybindings.json's text over them: 0, -1
+ * when it is no JSON object (the defaults stay; a warning says why) */
+int km_load(cl_keymap *m, const char *json, long n);
+/* the action for a key in the active contexts (most specific first):
+ * KA_*, KA_NONE, KA_PENDING, KA_CHORD_MISS; now_ms times a chord */
+int km_action(cl_keymap *m, const int *ctx, int nctx, const cl_key *k, unsigned long now_ms);
+/* the defaults as a keybindings.json (what /keybindings writes) */
+void km_defaults_json(jw *out);
+
 #endif

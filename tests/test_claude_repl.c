@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <utime.h>
+#include <time.h>
 #include "harness.h"
 #include "claude_load.h"
 #include "../claude/repl.h"
@@ -5133,8 +5134,70 @@ static void test_gaps3_recap(void)
     }
 }
 
+/* G11: /keybindings writes the defaults to <home>/keybindings.json (and
+ * opens it: EDITOR is `true` here); the file changed on disk is read again
+ * while the screen waits; its Ctrl+Y -> chat:modelPicker then opens the
+ * picker */
+static cl_repl *g3_kr;
+static char g3_kfile[600];
+static int g3_kdefaults;
+static void g3_keys_edit(void)
+{
+    if (cs.next == 1 && g3_kr && g3_kr->n_keys_loads == 1) {
+        struct utimbuf tb;
+        char *d = 0;
+        long dn = 0;
+        FILE *f;
+        /* what /keybindings wrote: the defaults, Claude Code's format */
+        g3_kdefaults = sys.read(sys.u, g3_kfile, 100000, &d, &dn) == 0 && d &&
+                       strstr(d, "\"$schema\": \"https://www.schemastore.org/claude-code-keybindings.json\"") &&
+                       strstr(d, "\"ctrl+x ctrl+e\": \"chat:externalEditor\"") &&
+                       strstr(d, "\"context\": \"Select\"");
+        free(d);
+        f = fopen(g3_kfile, "wb");
+        if (f) {
+            fputs("{\"bindings\":[{\"context\":\"Chat\",\"bindings\":{\"ctrl+y\":\"chat:modelPicker\"}}]}", f);
+            fclose(f);
+        }
+        tb.actime = tb.modtime = time(0) + 10;  /* a different mtime than the one read */
+        utime(g3_kfile, &tb);
+        cs.clock += 2500;                       /* past the 2 s between looks */
+    }
+}
+
+static void test_gaps3_keybindings(void)
+{
+    static const char *keys[] = { "/keybindings\r", "", "\031", "\033", "/exit\r", 0 };
+    static cl_repl r;
+    char root[600];
+    stub_reset();
+    g3_kdefaults = 0;
+    setenv("EDITOR", "true", 1);
+    g3_screen(&r, keys, "g3keys", root);
+    CHECK(repl_keys_file(&r, g3_kfile, sizeof(g3_kfile)) == 0);
+    remove(g3_kfile);
+    CHECK_INT(repl_screen(&r), 0);
+    CHECK_INT((int)r.n_keys_loads, 0);      /* no file yet: the defaults */
+    g3_kr = &r;
+    cs.before_read = g3_keys_edit;
+    repl_run(&r);
+    cs.before_read = 0;
+    g3_kr = 0;
+    unsetenv("EDITOR");
+    g3_dump();
+    CHECK_INT(cs.next, 5);
+    CHECK_INT(g3_kdefaults, 1);
+    CHECK(cs_find("Created with the default bindings") >= 0);
+    CHECK_INT((int)r.n_keys_loads, 2);      /* after /keybindings, after the change */
+    CHECK(strstr(cs.sent.p, "Select a model") != 0);
+    remove(g3_kfile);
+    repl_free(&r);
+    cs_close();
+}
+
 static void test_gaps3(void)
 {
+    test_gaps3_keybindings();
     test_gaps3_recap();
     test_gaps3_suggest();
     test_gaps3_afk();

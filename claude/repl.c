@@ -1644,12 +1644,54 @@ static void away_recap(cl_repl *r)
     jw_free(&a);
 }
 
-/* while the screen waits for keys: the status line's schedule, the recap */
+/* keybindings.json (A4 gaps 3, Claude Code's ~/.claude/keybindings.json):
+ * <home>/keybindings.json over the defaults, read when the screen starts
+ * and again when the file changes (checked every 2 s while the screen
+ * waits); not read in safe mode. Its problems go to the debug log. */
+int repl_keys_file(const cl_repl *r, char *out, long cap)
+{
+    return path_join(r->home, "keybindings.json", out, cap);
+}
+
+void repl_keys_load(cl_repl *r)
+{
+    char f[300];
+    char *b = 0;
+    long n = 0;
+    if (!r->tui || repl_keys_file(r, f, sizeof(f)))
+        return;
+    r->keys_mtime = r->sys->mtime ? r->sys->mtime(r->sys->u, f) : 0;
+    if (r->safe || r->sys->kind(r->sys->u, f) != 1 || r->sys->read(r->sys->u, f, 256L * 1024, &b, &n)) {
+        free(b);
+        km_reset(&r->tui->km);
+        return;
+    }
+    km_load(&r->tui->km, b, n);
+    free(b);
+    if (r->tui->km.nwarn)
+        log_s(r, "", r->tui->km.warn.p, r->tui->km.warn.n);
+    r->n_keys_loads++;
+}
+
+static void keys_changed(cl_repl *r)
+{
+    char f[300];
+    unsigned long now = r->io->ms ? r->io->ms(r->io->u) : 0;
+    if (!r->sys->mtime || now - r->keys_check_ms < 2000UL || repl_keys_file(r, f, sizeof(f)))
+        return;
+    r->keys_check_ms = now;
+    if (r->sys->mtime(r->sys->u, f) != r->keys_mtime)
+        repl_keys_load(r);          /* Claude Code: changes apply without a restart */
+}
+
+/* while the screen waits for keys: the status line's schedule, the recap,
+ * the key bindings' file */
 static void screen_idle(void *u)
 {
     cl_repl *r = (cl_repl *)u;
     pol_status_tick(u);
     away_recap(r);
+    keys_changed(r);
 }
 
 int repl_side(cl_repl *r, int from, int to, const char *ask, jw *answer)
@@ -2368,6 +2410,7 @@ int repl_screen(cl_repl *r)
     if (env_on(r, "CLAUDE_CODE_SKIP_PROMPT_HISTORY"))
         r->ui.histfile[0] = 0;      /* Claude Code: no prompt history on disk */
     ui_attach(&r->ui, r->sys, r->tools.root, &r->conv);    /* A4: history, @, rewind, settings */
+    repl_keys_load(r);              /* A4 gaps 3: keybindings.json */
     r->tools.wait = tool_wait;      /* Bash and ! lines: Esc, Ctrl+B while they run */
     r->ui.tools = &r->tools;
     ctx_show(r);

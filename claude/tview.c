@@ -288,9 +288,18 @@ void tui_transcript(cl_tui *t)
             flush(&v);
             continue;
         }
-        if (k2.k == K_ESC || (k2.k == K_CTRL && (k2.ch == 'c' || k2.ch == 'o')) ||
-            (k2.k == K_CHAR && k2.ch == 'q'))
-            break;
+        {
+            /* the Transcript context's bindings (A4 gaps 3): transcript:exit
+             * (q, Ctrl+C, Esc) and app:toggleTranscript (Ctrl+O) leave;
+             * toggleShowAll has nothing to do, everything is shown */
+            static const int vctx[2] = { KC_TRANSCRIPT, KC_GLOBAL };
+            unsigned long now = t->io->ms ? t->io->ms(t->io->u) : 0;
+            int a = km_action(&t->km, vctx, 2, &k2, now);
+            if (a == KA_TR_EXIT || a == KA_TRANSCRIPT)
+                break;
+            if (a != KA_NONE)
+                continue;
+        }
         if (k2.k == K_UP || (k2.k == K_CHAR && k2.ch == 'k'))
             scroll(&v, 0);
         else if (k2.k == K_DOWN || k2.k == K_ENTER || (k2.k == K_CHAR && k2.ch == 'j'))

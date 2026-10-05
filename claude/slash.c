@@ -38,6 +38,7 @@ const cl_cmd slash_builtin[] = {
     { "/goal", "Claude keeps working until a condition holds: /goal CONDITION, /goal clear" },
     { "/hooks", "The hooks of the settings" },
     { "/init", "Write AMIGA.md: notes on this directory for later sessions" },
+    { "/keybindings", "Open the keyboard shortcuts file (ENVARC:Claude/keybindings.json)" },
     { "/login", "Store an API key in ENVARC:Claude/key" },
     { "/logout", "Remove the stored API key" },
     { "/memory", "Edit a memory file (CLAUDE.md) in the editor" },
@@ -584,13 +585,47 @@ static void config(cl_repl *r, const char *a)
 
 /* ---- /memory ---- */
 
+/* a file in the user's editor: Ctrl+G's launcher with the screen (a
+ * console editor works too), else $EDITOR (Ed) run as a command */
+static void edit_file(cl_repl *r, const char *file)
+{
+    char ed[200], line[600], *o;
+    long on = 0, rc = 0;
+    if (r->io->edit) {
+        int bad;
+        line2(r, "Editing ", file);
+        if (r->io->raw && r->tui)
+            r->io->raw(r->io->u, 0);
+        bad = r->io->edit(r->io->u, file);
+        if (r->io->raw && r->tui)
+            r->io->raw(r->io->u, 1);
+        if (r->tui)
+            tui_redraw(r->tui);
+        if (bad)
+            line2(r, "The editor did not run for ", file);
+        return;
+    }
+    if (!r->sys->getenv || r->sys->getenv(r->sys->u, "EDITOR", ed, sizeof(ed)) <= 0)
+        cl_copy(ed, "Ed", sizeof(ed));
+    cl_copy(line, ed, sizeof(line));
+    cl_cat(line, " \"", sizeof(line));
+    cl_cat(line, file, sizeof(line));
+    cl_cat(line, "\"", sizeof(line));
+    o = (char *)malloc(1024);
+    if (!o)
+        return;
+    line2(r, "Editing ", file);
+    if (r->sys->run(r->sys->u, line, 3600, o, 1023, &on, &rc) < 0 || rc >= 10)
+        line2(r, "The editor did not run: ", line);
+    free(o);
+}
+
 static void memory(cl_repl *r, const char *arg)
 {
     static const char *const opt[] = { "User memory (ENVARC:Claude/CLAUDE.md)", "Project memory (CLAUDE.md)",
                                        "Local project memory (CLAUDE.local.md, private)" };
     static const int kinds[] = { MEM_USER, MEM_PROJECT, MEM_LOCAL };
-    char file[300], ed[200], line[600], *o;
-    long on = 0, rc = 0;
+    char file[300];
     int c = !strcmp(arg, "user") ? 0 : !strcmp(arg, "project") ? 1 : !strcmp(arg, "local") ? 2 : -1;
     int i;
     if (!strcmp(arg, "auto on") || !strcmp(arg, "auto off")) {
@@ -617,38 +652,50 @@ static void memory(cl_repl *r, const char *arg)
             r->sys->mkdir(r->sys->u, r->home);
         r->sys->write(r->sys->u, file, head, (long)sizeof(head) - 1);
     }
-    if (r->io->edit) {
-        /* WP1's editor launcher (Ctrl+G's): a console editor works too */
-        int bad;
-        line2(r, "Editing ", file);
-        if (r->io->raw && r->tui)
-            r->io->raw(r->io->u, 0);
-        bad = r->io->edit(r->io->u, file);
-        if (r->io->raw && r->tui)
-            r->io->raw(r->io->u, 1);
-        if (r->tui)
-            tui_redraw(r->tui);
-        if (bad)
-            line2(r, "The editor did not run for ", file);
-        repl_load_memory(r);
-        num_line(r, "Memory read again: ", r->mem.n, r->mem.n == 1 ? " file." : " files.");
-        return;
-    }
-    if (!r->sys->getenv || r->sys->getenv(r->sys->u, "EDITOR", ed, sizeof(ed)) <= 0)
-        cl_copy(ed, "Ed", sizeof(ed));
-    cl_copy(line, ed, sizeof(line));
-    cl_cat(line, " \"", sizeof(line));
-    cl_cat(line, file, sizeof(line));
-    cl_cat(line, "\"", sizeof(line));
-    o = (char *)malloc(1024);
-    if (!o)
-        return;
-    line2(r, "Editing ", file);
-    if (r->sys->run(r->sys->u, line, 3600, o, 1023, &on, &rc) < 0 || rc >= 10)
-        line2(r, "The editor did not run: ", line);
-    free(o);
+    edit_file(r, file);
     repl_load_memory(r);
     num_line(r, "Memory read again: ", r->mem.n, r->mem.n == 1 ? " file." : " files.");
+}
+
+/* ---- /keybindings (A4 gaps 3) ---- */
+
+/* Claude Code: creates the file (with the default bindings) when there is
+ * none, opens it in the editor; the bindings apply when it is saved */
+static void keybindings(cl_repl *r)
+{
+    char file[300];
+    if (repl_keys_file(r, file, sizeof(file)))
+        return;
+    if (r->sys->kind(r->sys->u, file) == 0) {
+        jw d;
+        jw_init(&d);
+        km_defaults_json(&d);
+        if (r->sys->mkdir)
+            r->sys->mkdir(r->sys->u, r->home);
+        if (d.oom || r->sys->write(r->sys->u, file, d.p, d.n)) {
+            jw_free(&d);
+            line2(r, "Cannot write ", file);
+            return;
+        }
+        jw_free(&d);
+        line2(r, "Created with the default bindings: ", file);
+    }
+    edit_file(r, file);
+    if (!r->tui)
+        return;
+    repl_keys_load(r);
+    if (r->safe)
+        ui_line(&r->ui, "Safe mode: the bindings in the file are not used in this session.");
+    else if (r->tui->km.nwarn) {
+        char m[120], num[16];
+        cl_copy(m, "Keybindings read again, with ", sizeof(m));
+        cl_ltoa(r->tui->km.nwarn, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, r->tui->km.nwarn == 1 ? " problem (/debug for the log)." : " problems (/debug for the log).",
+               sizeof(m));
+        ui_line(&r->ui, m);
+    } else
+        ui_line(&r->ui, "Keybindings read again.");
 }
 
 /* ---- /login /logout ---- */
@@ -1821,6 +1868,8 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
         debug(r);
     else if (!strcmp(w, "/color"))
         color_(r, arg);
+    else if (!strcmp(w, "/keybindings"))
+        keybindings(r);
     else if (!strcmp(w, "/release-notes")) {
         int i;
         for (i = 0; notes[i]; i++)

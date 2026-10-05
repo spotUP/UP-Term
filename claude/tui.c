@@ -154,9 +154,12 @@ int tui_init(cl_tui *t, cl_io *io)
     t->m_btab = -1;
     t->m_afk_ms = -1;
     t->m_left = -1;
+    t->m_ctx = KC_SELECT;
     t->focus = -1;
     t->notify_after_s = 10;
     t->edit_path = "T:claude-prompt.txt";
+    if (km_init(&t->km))
+        return -1;
     return t->ed.b ? 0 : -1;
 }
 
@@ -182,6 +185,7 @@ void tui_free(cl_tui *t)
     for (i = 0; i < TUI_DIRS; i++)
         jw_free(&t->dirs[i].names);
     hist_free(&t->hist);
+    km_free(&t->km);
     jw_free(&t->todos);
     jw_free(&t->log);
     jw_free(&t->o);
@@ -1794,9 +1798,277 @@ static void think_toggle(cl_tui *t)
     }
 }
 
-static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
+/* a key made up for the editor (an action's own key may be another) */
+static void edit_as(cl_tui *t, int kind, unsigned long ch, int mods)
+{
+    cl_key s;
+    memset(&s, 0, sizeof(s));
+    s.k = kind;
+    s.ch = ch;
+    s.mods = mods;
+    edit(t, &s);
+}
+
+/* the box's text submitted (Enter's chat:submit; queue: chat:queueSubmit,
+ * which never takes the \ + Enter newline) */
+static int submit(cl_tui *t, int busy, char *buf, long cap, int queue)
+{
+    char *line;
+    if (!queue && (t->ed.vim == VIM_OFF || t->ed.vim == VIM_INSERT) && t->ed.cur > 0 &&
+        t->ed.b[t->ed.cur - 1] == '\\') {
+        edit_as(t, K_BS, 0, 0);
+        ed_insert(&t->ed, "\n", 1);
+        return H_GO;
+    }
+    line = take_box(t);
+    if (!line)
+        return H_GO;
+    if (busy || !buf) {
+        enqueue(t, line);
+        return H_GO;
+    }
+    cl_copy(buf, line, cap);
+    free(line);
+    return H_SUBMIT;
+}
+
+/* chat:cancel (Esc): vim's own first, then the slash menu, the box's
+ * mode, a turn, and Esc Esc (clear the draft, or the rewind menu) */
+static int cancel(cl_tui *t, int busy)
 {
     int idx[8];
+    if (t->ed.vim == VIM_INSERT || t->ed.vim == VIM_VISUAL || t->ed.vim == VIM_VLINE ||
+        (t->ed.vim == VIM_NORMAL && !vim_idle(&t->ed))) {
+        edit_as(t, K_ESC, 0, 0);
+        return H_GO;
+    }
+    if (slash_matches(t, idx, 8)) {
+        t->mclosed = 1;
+        return H_GO;
+    }
+    if (t->box != BOX_PROMPT && !t->ed.n) {
+        t->box = BOX_PROMPT;
+        return H_GO;
+    }
+    if (busy)
+        return H_STOP;
+    if (t->esc_armed && now(t) - t->esc_ms <= 1000) {
+        t->esc_armed = 0;
+        t->hint[0] = 0;
+        if (t->ed.n) {
+            /* the draft goes, into the history: Up brings it back */
+            char *line = box_line(t);
+            if (line)
+                ed_remember(&t->ed, line);
+            free(line);
+            box_reset(t);
+        } else if (t->on_rewind) {
+            t->on_rewind(t->ru);
+        }
+        return H_GO;
+    }
+    t->esc_armed = 1;
+    t->esc_ms = now(t);
+    if (t->ed.n)
+        cl_copy(t->hint, "Esc again to clear", sizeof(t->hint));
+    return H_GO;
+}
+
+/* history:previous / history:next (Up, Down): the slash menu's selection,
+ * the queue taken back, else the editor (a row up, then the history) */
+static int history_step(cl_tui *t, int up)
+{
+    int idx[8], n = slash_matches(t, idx, 8);
+    if (n) {
+        t->msel = (t->msel + (up ? n - 1 : 1)) % n;
+        return H_GO;
+    }
+    if (up && t->nq && ed_lstart(&t->ed, t->ed.cur) == 0) {
+        take_back(t);
+        return H_GO;
+    }
+    edit_as(t, up ? K_UP : K_DOWN, 0, 0);
+    return H_GO;
+}
+
+/* an action of the Chat, Task, Help or Global context */
+static int act_chat(cl_tui *t, int act, cl_key *k, int busy, char *buf, long cap)
+{
+    switch (act) {
+    case KA_INTERRUPT:
+        if (busy)
+            return H_STOP;
+        if (t->ed.n || t->box != BOX_PROMPT) {
+            box_reset(t);
+            return H_GO;
+        }
+        if (t->quit_armed == 'c')
+            return H_QUIT;
+        t->quit_armed = 'c';
+        cl_copy(t->hint, "Press Ctrl+C again to exit", sizeof(t->hint));
+        return H_GO;
+    case KA_EXIT:
+        if (t->ed.n) {
+            edit(t, k);             /* text in the box: the character after the cursor goes */
+            return H_GO;
+        }
+        if (busy)
+            return H_GO;
+        if (t->quit_armed == 'd' && now(t) - t->quit_ms <= 800)
+            return H_QUIT;
+        t->quit_armed = 'd';
+        t->quit_ms = now(t);
+        cl_copy(t->hint, "Press Ctrl+D again to exit", sizeof(t->hint));
+        return H_GO;
+    case KA_REDRAW:
+    case KA_CLEAR_INPUT:
+    case KA_CLEAR_SCREEN:
+        tui_redraw(t);
+        return H_GO;
+    case KA_TODOS:
+        t->show_todos = !t->show_todos;
+        return H_GO;
+    case KA_TRANSCRIPT:
+        tui_transcript(t);
+        return H_GO;
+    case KA_HIST_SEARCH:
+        search_start(t);
+        return H_GO;
+    case KA_HIST_PREV:
+    case KA_HIST_NEXT:
+        return history_step(t, act == KA_HIST_PREV);
+    case KA_CANCEL:
+        return cancel(t, busy);
+    case KA_KILL_AGENTS:
+        cl_copy(t->hint, "No background agents run here: subagents run in the foreground", sizeof(t->hint));
+        return H_GO;
+    case KA_CYCLE_MODE:
+        cycle_mode(t);
+        return H_GO;
+    case KA_MODEL_PICKER:
+        /* the model picker, the draft left in the box */
+        if (busy || !buf) {
+            char *m = dupn("/model", 6);
+            if (m)
+                enqueue(t, m);
+            return H_GO;
+        }
+        cl_copy(buf, "/model", cap);
+        t->keycmd = 1;
+        return H_SUBMIT;
+    case KA_FAST_MODE:
+        cl_copy(t->hint, "Fast mode is a claude.ai plan feature: not here", sizeof(t->hint));
+        return H_GO;
+    case KA_THINKING:
+        think_toggle(t);
+        return H_GO;
+    case KA_SUBMIT:
+    case KA_QUEUE_SUBMIT:
+        return submit(t, busy, buf, cap, act == KA_QUEUE_SUBMIT);
+    case KA_SEND_NOW:
+        return busy ? send_now(t) : submit(t, busy, buf, cap, 1);
+    case KA_NEWLINE:
+        edit_as(t, K_NEWLINE, 0, 0);
+        return H_GO;
+    case KA_UNDO:
+        edit_as(t, K_CTRL, '_', KM_CTRL);
+        return H_GO;
+    case KA_EXT_EDITOR:
+        external_edit(t);
+        return H_GO;
+    case KA_STASH:
+        stash(t);
+        return H_GO;
+    case KA_IMAGE_PASTE:
+        cl_copy(t->hint, "No image paste on the Amiga: mention the file with @ instead", sizeof(t->hint));
+        return H_GO;
+    case KA_TASK_BG:
+        if (t->bgable)
+            t->bg_req = 1;
+        else
+            cl_copy(t->hint, "Nothing to move to the background now", sizeof(t->hint));
+        return H_GO;
+    default:
+        return H_GO;                /* help:dismiss (the panel is gone), the inert ones */
+    }
+}
+
+/* Ctrl+R's search: its actions, and typing the query */
+static int search_key(cl_tui *t, int act, cl_key *k)
+{
+    switch (act) {
+    case KA_HS_NEXT:
+        search_find(t, 1);
+        return 1;
+    case KA_HS_CANCEL:
+        search_end(t, 0);
+        return 1;
+    case KA_HS_ACCEPT:
+        search_end(t, 1);
+        return 1;
+    case KA_HS_SCOPE:
+        return 1;                   /* fullscreen rendering's scopes: one history here */
+    default:
+        break;
+    }
+    if (k->k == K_CHAR && !act) {
+        char u[8];
+        long l = (long)strlen(t->sq);
+        int ul = vw_put_utf8(u, k->ch);
+        if (l + ul < (long)sizeof(t->sq)) {
+            memcpy(t->sq + l, u, (size_t)ul);
+            t->sq[l + ul] = 0;
+            search_find(t, 0);
+        }
+        return 1;
+    }
+    if (k->k == K_BS && !act) {
+        long l = (long)strlen(t->sq);
+        if (!l) {
+            search_end(t, 0);
+            return 1;
+        }
+        do
+            l--;
+        while (l > 0 && ((unsigned char)t->sq[l] & 0xc0) == 0x80);
+        t->sq[l] = 0;
+        search_find(t, 0);
+        return 1;
+    }
+    search_end(t, 1);               /* Enter sends the match; other keys edit it */
+    return 0;
+}
+
+/* the contexts active in the box now, the most specific first */
+static int box_contexts(cl_tui *t, int *ctx, int help, int busy)
+{
+    int n = 0;
+    if (t->search) {
+        ctx[n++] = KC_HSEARCH;
+        ctx[n++] = KC_GLOBAL;
+        return n;
+    }
+    if (t->copen)
+        ctx[n++] = KC_AUTOCOMPLETE;
+    if (help)
+        ctx[n++] = KC_HELP;
+    if (busy)
+        ctx[n++] = KC_TASK;
+    ctx[n++] = KC_CHAT;
+    ctx[n++] = KC_GLOBAL;
+    return n;
+}
+
+/* vim's NORMAL and VISUAL modes take the plain characters themselves
+ * (Claude Code: vim keys are not remappable) */
+static int vim_owns(cl_tui *t, cl_key *k)
+{
+    return (t->ed.vim == VIM_NORMAL || t->ed.vim == VIM_VISUAL || t->ed.vim == VIM_VLINE) && k->k == K_CHAR;
+}
+
+static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
+{
+    int ctx[6], nc, act, help = t->show_help;
     if (k->k == K_CPR)
         return H_GO;
     if (k->k != K_ESC)
@@ -1811,126 +2083,67 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         if (k->k == K_CHAR && k->ch == '?')
             return H_GO;
     }
-    if (t->ctrlx) {
-        t->ctrlx = 0;
-        if (k->k == K_CTRL && k->ch == 'e') {
-            external_edit(t);
-            return H_GO;
-        }
-        if (k->k == K_CTRL && k->ch == 's') {
-            cl_key enter;
-            if (busy)
-                return send_now(t);
-            memset(&enter, 0, sizeof(enter));
-            enter.k = K_ENTER;
-            k = &enter;
-            return handle(t, k, busy, buf, cap);
-        }
-        if (k->k == K_CTRL)
-            return H_GO;            /* Ctrl+X Ctrl+K: no background subagents here */
+    nc = box_contexts(t, ctx, help, busy);
+    act = vim_owns(t, k) && !t->search ? KA_NONE : km_action(&t->km, ctx, nc, k, now(t));
+    if (t->km.expired) {
+        t->km.expired = 0;
+        cl_copy(t->hint, "Chord cancelled: the second key came after 3 seconds", sizeof(t->hint));
+    }
+    if (act == KA_PENDING)
+        return H_GO;
+    if (act == KA_CHORD_MISS) {
+        cl_copy(t->hint, "No shortcut for that key sequence", sizeof(t->hint));
+        return H_GO;
     }
     if (t->search) {
-        switch (k->k) {
-        case K_CHAR: {
-            char u[8];
-            long l = (long)strlen(t->sq);
-            int ul = vw_put_utf8(u, k->ch);
-            if (l + ul < (long)sizeof(t->sq)) {
-                memcpy(t->sq + l, u, (size_t)ul);
-                t->sq[l + ul] = 0;
-                search_find(t, 0);
-            }
+        if (search_key(t, act, k))
             return H_GO;
-        }
-        case K_CTRL:
-            if (k->ch == 'r') {
-                search_find(t, 1);
+        if (act == KA_HS_EXECUTE)
+            act = KA_SUBMIT;        /* the match sent */
+        else {
+            /* the search ended with the match in the box: the key goes on there */
+            nc = box_contexts(t, ctx, 0, busy);
+            act = km_action(&t->km, ctx, nc, k, now(t));
+            if (act == KA_PENDING || act == KA_CHORD_MISS)
                 return H_GO;
-            }
-            if (k->ch == 'c') {
-                search_end(t, 0);
-                return H_GO;
-            }
-            search_end(t, 1);
-            break;
-        case K_BS: {
-            long l = (long)strlen(t->sq);
-            if (!l) {
-                search_end(t, 0);
-                return H_GO;
-            }
-            do
-                l--;
-            while (l > 0 && ((unsigned char)t->sq[l] & 0xc0) == 0x80);
-            t->sq[l] = 0;
-            search_find(t, 0);
-            return H_GO;
-        }
-        case K_TAB:
-        case K_ESC:
-            search_end(t, 1);
-            return H_GO;
-        default:
-            search_end(t, 1);       /* Enter sends the match; other keys edit it */
-            break;
         }
     }
     if (t->copen) {
-        switch (k->k) {
-        case K_UP:
+        switch (act) {
+        case KA_AC_PREV:
             t->csel = (t->csel + t->ncomp - 1) % t->ncomp;
             return H_GO;
-        case K_DOWN:
+        case KA_AC_NEXT:
             t->csel = (t->csel + 1) % t->ncomp;
             return H_GO;
-        case K_TAB:
+        case KA_AC_ACCEPT:
             comp_apply(t, t->comp[t->csel], 1);
             t->copen = 0;
             return H_GO;
-        case K_ENTER: {
-            /* the row taken, unless it is what is typed: then Enter sends */
-            long have = t->ed.cur - t->ctok - t->cskip;
-            if (k->mods & KM_CTRL || ((long)strlen(t->comp[t->csel]) == have &&
-                                      !strncmp(t->comp[t->csel], t->ed.b + t->ctok + t->cskip, (size_t)have))) {
-                t->copen = 0;
-                break;
-            }
-            comp_apply(t, t->comp[t->csel], 1);
-            t->copen = 0;
-            return H_GO;
-        }
-        case K_ESC:
+        case KA_AC_DISMISS:
             t->copen = 0;
             t->cclosed = 1;
             return H_GO;
         default:
-            break;                  /* typing narrows it (edit -> comp_live) */
+            break;
         }
+        if (act == KA_SUBMIT) {
+            /* Enter: the row taken, unless it is what is typed: then it sends */
+            long have = t->ed.cur - t->ctok - t->cskip;
+            if ((long)strlen(t->comp[t->csel]) != have ||
+                strncmp(t->comp[t->csel], t->ed.b + t->ctok + t->cskip, (size_t)have)) {
+                comp_apply(t, t->comp[t->csel], 1);
+                t->copen = 0;
+                return H_GO;
+            }
+            t->copen = 0;
+        }
+        /* typing narrows it (edit -> comp_live) */
     }
+    if (act > KA_NONE && act < KA_COUNT)
+        return act_chat(t, act, k, busy, buf, cap);
+    /* no binding: the box's own keys, then the editor's */
     switch (k->k) {
-    case K_ENTER: {
-        char *line;
-        if ((k->mods & KM_CTRL) && busy)
-            return send_now(t);     /* Ctrl+Enter */
-        if ((t->ed.vim == VIM_OFF || t->ed.vim == VIM_INSERT) && t->ed.cur > 0 && t->ed.b[t->ed.cur - 1] == '\\') {
-            cl_key bs;
-            memset(&bs, 0, sizeof(bs));
-            bs.k = K_BS;
-            ed_key(&t->ed, &bs);
-            ed_insert(&t->ed, "\n", 1);
-            return H_GO;
-        }
-        line = take_box(t);
-        if (!line)
-            return H_GO;
-        if (busy || !buf) {
-            enqueue(t, line);
-            return H_GO;
-        }
-        cl_copy(buf, line, cap);
-        free(line);
-        return H_SUBMIT;
-    }
     case K_RIGHT:
     case K_TAB:
         if (!t->ed.n && t->suggest[0] && t->box == BOX_PROMPT) {
@@ -1946,59 +2159,6 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
             ed_insert(&t->ed, " ", 1);
         else if (!comp_tab(t) && t->box == BOX_BASH && t->ed.n)
             bash_hist_tab(t);
-        return H_GO;
-    case K_BTAB:
-        cycle_mode(t);
-        return H_GO;
-    case K_UP:
-    case K_DOWN: {
-        int n = slash_matches(t, idx, 8);
-        if (n) {
-            t->msel = (t->msel + (k->k == K_UP ? n - 1 : 1)) % n;
-            return H_GO;
-        }
-        if (k->k == K_UP && t->nq && ed_lstart(&t->ed, t->ed.cur) == 0) {
-            take_back(t);
-            return H_GO;
-        }
-        edit(t, k);
-        return H_GO;
-    }
-    case K_ESC:
-        if (t->ed.vim == VIM_INSERT || t->ed.vim == VIM_VISUAL || t->ed.vim == VIM_VLINE ||
-            (t->ed.vim == VIM_NORMAL && !vim_idle(&t->ed))) {
-            edit(t, k);
-            return H_GO;
-        }
-        if (slash_matches(t, idx, 8)) {
-            t->mclosed = 1;
-            return H_GO;
-        }
-        if (t->box != BOX_PROMPT && !t->ed.n) {
-            t->box = BOX_PROMPT;
-            return H_GO;
-        }
-        if (busy)
-            return H_STOP;
-        if (t->esc_armed && now(t) - t->esc_ms <= 1000) {
-            t->esc_armed = 0;
-            t->hint[0] = 0;
-            if (t->ed.n) {
-                /* the draft goes, into the history: Up brings it back */
-                char *line = box_line(t);
-                if (line)
-                    ed_remember(&t->ed, line);
-                free(line);
-                box_reset(t);
-            } else if (t->on_rewind) {
-                t->on_rewind(t->ru);
-            }
-            return H_GO;
-        }
-        t->esc_armed = 1;
-        t->esc_ms = now(t);
-        if (t->ed.n)
-            cl_copy(t->hint, "Esc again to clear", sizeof(t->hint));
         return H_GO;
     case K_BS:
         if (!t->ed.n && t->box != BOX_PROMPT) {
@@ -2035,89 +2195,8 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         edit(t, k);
         return H_GO;
     case K_CTRL:
-        switch (k->ch) {
-        case 'c':
-            if (busy)
-                return H_STOP;
-            if (t->ed.n || t->box != BOX_PROMPT) {
-                box_reset(t);
-                return H_GO;
-            }
-            if (t->quit_armed == 'c')
-                return H_QUIT;
-            t->quit_armed = 'c';
-            cl_copy(t->hint, "Press Ctrl+C again to exit", sizeof(t->hint));
-            return H_GO;
-        case 'd':
-            if (t->ed.n) {
-                edit(t, k);
-                return H_GO;
-            }
-            if (busy)
-                return H_GO;
-            if (t->quit_armed == 'd' && now(t) - t->quit_ms <= 800)
-                return H_QUIT;
-            t->quit_armed = 'd';
-            t->quit_ms = now(t);
-            cl_copy(t->hint, "Press Ctrl+D again to exit", sizeof(t->hint));
-            return H_GO;
-        case 'o':
-            tui_transcript(t);
-            return H_GO;
-        case 't':
-            t->show_todos = !t->show_todos;
-            return H_GO;
-        case 'l':
-            tui_redraw(t);
-            return H_GO;
-        case 'g':
-            external_edit(t);
-            return H_GO;
-        case 'x':
-            t->ctrlx = 1;
-            return H_GO;
-        case 'r':
-            search_start(t);
-            return H_GO;
-        case 's':
-            stash(t);
-            return H_GO;
-        case 'b':
-            if (!busy) {
-                edit(t, k);         /* nothing runs: back one character */
-                return H_GO;
-            }
-            if (t->bgable)
-                t->bg_req = 1;
-            else
-                cl_copy(t->hint, "Nothing to move to the background now", sizeof(t->hint));
-            return H_GO;
-        case 'u':
-            if (!t->ed.n && t->box != BOX_PROMPT) {
-                t->box = BOX_PROMPT;
-                return H_GO;
-            }
-            edit(t, k);
-            return H_GO;
-        default:
-            edit(t, k);
-            return H_GO;
-        }
-    case K_ALT:
-        if (k->ch == 'p') {
-            /* Alt+P: the model picker, the draft left in the box */
-            if (busy || !buf) {
-                char *m = dupn("/model", 6);
-                if (m)
-                    enqueue(t, m);
-                return H_GO;
-            }
-            cl_copy(buf, "/model", cap);
-            t->keycmd = 1;
-            return H_SUBMIT;
-        }
-        if (k->ch == 't') {
-            think_toggle(t);
+        if (k->ch == 'u' && !t->ed.n && t->box != BOX_PROMPT) {
+            t->box = BOX_PROMPT;
             return H_GO;
         }
         edit(t, k);
@@ -2342,33 +2421,92 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
                 continue;
             }
         }
-        if (k.k == K_TAB && t->m_comment && (t->m_sel == 0 || t->m_sel == n - 1)) {
-            t->m_noting = t->m_sel;     /* a comment on Yes or No */
-            continue;
-        }
-        if (k.k == K_BTAB && t->m_btab >= 0 && t->m_btab < n) {
-            choice = t->m_btab;     /* a file permission: allowed for the session */
-            break;
-        }
-        if (k.k == K_UP)
-            t->m_sel = (t->m_sel + n - 1) % n;
-        else if (k.k == K_DOWN || k.k == K_TAB)
-            t->m_sel = (t->m_sel + 1) % n;
-        else if (k.k == K_ENTER) {
-            choice = t->m_sel;
-            break;
-        } else if (k.k == K_ESC || (k.k == K_CTRL && k.ch == 'c')) {
-            choice = esc;
-            break;
-        } else if (k.k == K_CHAR && k.ch >= '1' && k.ch < (unsigned long)('1' + n) && k.ch <= '9') {
-            choice = (int)(k.ch - '1');
-            break;
+        {
+            /* the dialog's bindings (A4 gaps 3): Confirmation for a
+             * permission question, Select (with the rewind list's or the
+             * theme picker's own context first) for the others */
+            int mctx[2], mc = 0, a, done = 0;
+            if (t->m_ctx == KC_CONFIRM || t->m_comment)     /* a permission question */
+                mctx[mc++] = KC_CONFIRM;
+            else {
+                if (t->m_ctx == KC_MSGSEL || t->m_ctx == KC_THEME)
+                    mctx[mc++] = t->m_ctx;
+                mctx[mc++] = KC_SELECT;
+            }
+            a = km_action(&t->km, mctx, mc, &k, now(t));
+            switch (a) {
+            case KA_PENDING:
+            case KA_CHORD_MISS:
+            case KA_TOGGLE:         /* the options here are ticked with Enter */
+            case KA_PERM_DEBUG:
+            case KA_THEME_SYNTAX:   /* no syntax highlighting to toggle */
+            case KA_INERT:
+                continue;
+            case KA_NEXT_FIELD:
+                if (t->m_comment && (t->m_sel == 0 || t->m_sel == n - 1)) {
+                    t->m_noting = t->m_sel;     /* a comment on Yes or No */
+                    continue;
+                }
+                t->m_sel = (t->m_sel + 1) % n;
+                continue;
+            case KA_CONFIRM_CYCLE:
+                if (t->m_btab >= 0 && t->m_btab < n) {
+                    choice = t->m_btab;     /* a file permission: allowed for the session */
+                    done = 1;
+                }
+                break;
+            case KA_PREV:
+            case KA_PREV_FIELD:
+            case KA_SEL_PREV:
+                t->m_sel = (t->m_sel + n - 1) % n;
+                continue;
+            case KA_NEXT:
+            case KA_SEL_NEXT:
+                t->m_sel = (t->m_sel + 1) % n;
+                continue;
+            case KA_SEL_FIRST:
+            case KA_SEL_PGUP:
+                t->m_sel = a == KA_SEL_FIRST || t->m_sel < 5 ? 0 : t->m_sel - 5;
+                continue;
+            case KA_SEL_LAST:
+            case KA_SEL_PGDN:
+                t->m_sel = a == KA_SEL_LAST || t->m_sel + 5 >= n ? n - 1 : t->m_sel + 5;
+                continue;
+            case KA_YES:
+            case KA_SEL_ACCEPT:
+                choice = t->m_sel;
+                done = 1;
+                break;
+            case KA_NO:
+            case KA_SEL_CANCEL:
+                choice = esc;
+                done = 1;
+                break;
+            default:
+                /* no binding: Ctrl+C (reserved) declines, a digit picks,
+                 * Tab and Shift+Tab move and allow as before */
+                if (k.k == K_CTRL && k.ch == 'c') {
+                    choice = esc;
+                    done = 1;
+                } else if (k.k == K_CHAR && k.ch >= '1' && k.ch < (unsigned long)('1' + n) && k.ch <= '9') {
+                    choice = (int)(k.ch - '1');
+                    done = 1;
+                } else if (k.k == K_BTAB && t->m_btab >= 0 && t->m_btab < n) {
+                    choice = t->m_btab;
+                    done = 1;
+                } else if (k.k == K_TAB)
+                    t->m_sel = (t->m_sel + 1) % n;
+                break;
+            }
+            if (done)
+                break;
         }
     }
     t->modal = 0;
     t->busy = busy;
     t->m_btab = -1;
     t->m_comment = 0;
+    t->m_ctx = KC_SELECT;
     t->m_afk_ms = -1;
     t->m_left = -1;
     if (choice < 0 || choice != t->m_noting)

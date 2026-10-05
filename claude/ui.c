@@ -227,6 +227,7 @@ static int tui_ask(cl_ui *u, int tool, const char *what, int outside)
     if (n == 3 && (tool == T_EDIT || tool == T_MULTIEDIT || tool == T_WRITE))
         u->tui->m_btab = 1;         /* a file's: Shift+Tab allows it for the session */
     u->tui->m_comment = 1;          /* Tab on Yes / No: a comment for Claude */
+    u->tui->m_ctx = KC_CONFIRM;     /* its keys: the Confirmation bindings */
     c = tui_menu(u->tui, tools_title(tool), q, opt, n, 0, n - 1);
     tui_title(u->tui, u->tui->busy ? "Claude - working" : "Claude");
     cl_copy(u->ask_note, u->tui->m_note, sizeof(u->ask_note));
@@ -399,6 +400,7 @@ void ui_rewind(cl_ui *u)
             cl_cat(lab[k], "...", sizeof(lab[k]));
         opt[k] = lab[k];
     }
+    u->tui->m_ctx = KC_MSGSEL;      /* the rewind list: MessageSelector's bindings first */
     c = tui_menu(u->tui, "Rewind", "Restore the conversation and/or the code to the point before...", opt, k,
                  k - 1, -1);
     if (c < 0)

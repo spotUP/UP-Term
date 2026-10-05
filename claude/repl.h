@@ -231,6 +231,9 @@ typedef struct cl_repl {
     long away_resp, recap_resp; /* the away recap: n_responses seen, n_responses recapped */
     unsigned long away_t0;      /* when the last answer was seen */
     long n_recaps;              /* the tests' sentinel: away recaps shown */
+    long keys_mtime;            /* keybindings.json as read (0 none) */
+    unsigned long keys_check_ms;    /* when it was last looked at */
+    long n_keys_loads;          /* the tests' sentinel: the file read */
     char *extra_body;           /* CLAUDE_CODE_EXTRA_BODY: a JSON object merged into every request */
     int no_compact;             /* DISABLE_COMPACT */
     int compact_pct;            /* CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (lower only), CL_COMPACT_PCT */

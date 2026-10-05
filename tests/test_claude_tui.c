@@ -1875,6 +1875,103 @@ static void gaps3_suggest(void)
     cs_close();
 }
 
+/* G11: the key map -- Claude Code's defaults per context, chords (and their
+ * 3 s), keybindings.json over them (rebind, null, a freed chord prefix),
+ * the warnings, the defaults' file read back; one rebinding on the screen */
+static int kact(cl_keymap *m, const int *ctx, int nc, const char *bytes, unsigned long ms)
+{
+    cl_key k;
+    if (!key1(bytes, &k))
+        return -1;
+    return km_action(m, ctx, nc, &k, ms);
+}
+
+static void gaps3_keymap(void)
+{
+    static const int chat[2] = { KC_CHAT, KC_GLOBAL };
+    static const int task[3] = { KC_TASK, KC_CHAT, KC_GLOBAL };
+    static const int sel[1] = { KC_SELECT };
+    static const char user[] =
+        "{\"bindings\":[{\"context\":\"Chat\",\"bindings\":{\"ctrl+e\":\"chat:externalEditor\",\"ctrl+s\":null,"
+        "\"ctrl+k ctrl+t\":\"app:toggleTodos\",\"ctl+y\":\"chat:stash\",\"ctrl+c\":\"chat:submit\","
+        "\"x\":\"chat:fooBar\",\"shift+k\":\"chat:thinkingToggle\"}},{\"context\":\"Nope\",\"bindings\":{}},"
+        "{\"context\":\"Tabs\",\"bindings\":{\"tab\":\"tabs:next\"}}]}";
+    static const char freed[] =
+        "{\"bindings\":[{\"context\":\"Task\",\"bindings\":{\"ctrl+x ctrl+b\":null}},{\"context\":\"Chat\","
+        "\"bindings\":{\"ctrl+x ctrl+k\":null,\"ctrl+x ctrl+e\":null,\"ctrl+x enter\":null,"
+        "\"ctrl+x ctrl+s\":null,\"ctrl+x\":\"chat:newline\"}}]}";
+    static const char *s1[] = { "abc", "\005", 0 };
+    cl_keymap m;
+    jw d;
+    char line[32];
+    CHECK_INT(km_init(&m), 0);
+    /* the defaults */
+    CHECK_INT(kact(&m, chat, 2, "\r", 0), KA_SUBMIT);
+    CHECK_INT(kact(&m, chat, 2, "\033", 0), KA_CANCEL);
+    CHECK_INT(kact(&m, chat, 2, "\033[Z", 0), KA_CYCLE_MODE);
+    CHECK_INT(kact(&m, chat, 2, "\033p", 0), KA_MODEL_PICKER);
+    CHECK_INT(kact(&m, chat, 2, "\033t", 0), KA_THINKING);
+    CHECK_INT(kact(&m, chat, 2, "\033[13;5u", 0), KA_SEND_NOW);       /* Ctrl+Enter */
+    CHECK_INT(kact(&m, chat, 2, "\n", 0), KA_NEWLINE);                 /* Ctrl+J */
+    CHECK_INT(kact(&m, chat, 2, "\037", 0), KA_UNDO);
+    CHECK_INT(kact(&m, chat, 2, "\024", 0), KA_TODOS);                 /* Global's Ctrl+T */
+    CHECK_INT(kact(&m, chat, 2, "a", 0), KA_NONE);
+    CHECK_INT(kact(&m, chat, 2, "\002", 0), KA_NONE);                  /* idle Ctrl+B: the editor's */
+    CHECK_INT(kact(&m, task, 3, "\002", 0), KA_TASK_BG);
+    CHECK_INT(kact(&m, chat, 2, "\030", 100), KA_PENDING);             /* Ctrl+X ... */
+    CHECK_INT(kact(&m, chat, 2, "\005", 200), KA_EXT_EDITOR);          /* ... Ctrl+E */
+    CHECK_INT(kact(&m, task, 3, "\030", 100), KA_PENDING);
+    CHECK_INT(kact(&m, task, 3, "\002", 200), KA_TASK_BG);             /* Ctrl+X Ctrl+B */
+    CHECK_INT(kact(&m, chat, 2, "\030", 100), KA_PENDING);
+    CHECK_INT(kact(&m, chat, 2, "a", 200), KA_CHORD_MISS);
+    CHECK_INT(kact(&m, chat, 2, "\030", 100), KA_PENDING);
+    CHECK_INT(kact(&m, chat, 2, "\024", 3200), KA_TODOS);              /* too late: a key of its own */
+    CHECK_INT(m.expired, 1);
+    CHECK_INT(kact(&m, sel, 1, "j", 0), KA_SEL_NEXT);
+    CHECK_INT(kact(&m, sel, 1, "\033[5~", 0), KA_SEL_PGUP);
+    /* the file over them */
+    CHECK_INT(km_load(&m, user, (long)sizeof(user) - 1), 0);
+    CHECK_INT(m.nwarn, 4);                  /* ctl, reserved ctrl+c, chat:fooBar, context Nope */
+    CHECK(m.warn.p && strstr(m.warn.p, "unknown modifier") && strstr(m.warn.p, "reserved") &&
+          strstr(m.warn.p, "chat:fooBar") && strstr(m.warn.p, "\"Nope\""));
+    CHECK_INT(kact(&m, chat, 2, "\005", 0), KA_EXT_EDITOR);
+    CHECK_INT(kact(&m, chat, 2, "\023", 0), KA_NONE);                  /* Ctrl+S unbound */
+    CHECK_INT(kact(&m, chat, 2, "\013", 0), KA_PENDING);               /* Ctrl+K ... */
+    CHECK_INT(kact(&m, chat, 2, "\024", 10), KA_TODOS);                /* ... Ctrl+T */
+    CHECK_INT(kact(&m, chat, 2, "y", 0), KA_STASH);                    /* ctl dropped: y */
+    CHECK_INT(kact(&m, chat, 2, "\003", 0), KA_INTERRUPT);             /* reserved stays */
+    CHECK_INT(kact(&m, chat, 2, "K", 0), KA_THINKING);                 /* shift+k */
+    CHECK_INT(kact(&m, chat, 2, "k", 0), KA_NONE);
+    /* every chord on Ctrl+X unbound: the prefix is a key again */
+    CHECK_INT(km_load(&m, freed, (long)sizeof(freed) - 1), 0);
+    CHECK_INT(m.nwarn, 0);
+    CHECK_INT(kact(&m, task, 3, "\030", 0), KA_NEWLINE);
+    /* not JSON: the defaults, and a warning */
+    CHECK_INT(km_load(&m, "nope", 4), -1);
+    CHECK_INT(m.nwarn, 1);
+    CHECK_INT(kact(&m, chat, 2, "\023", 0), KA_STASH);
+    /* what /keybindings writes reads back as the same bindings, no warning */
+    jw_init(&d);
+    km_defaults_json(&d);
+    CHECK_INT(km_load(&m, d.p, d.n), 0);
+    CHECK_INT(m.nwarn, 0);
+    CHECK_INT(m.n, 2 * m.ndef - 4);         /* the reserved keys' four are the defaults already */
+    jw_free(&d);
+    km_free(&m);
+    /* on the screen: Ctrl+E rebound to chat:stash puts the draft aside */
+    screen(60, 16, s1);
+    {
+        static const char one[] = "{\"bindings\":[{\"context\":\"Chat\",\"bindings\":{\"ctrl+e\":\"chat:stash\"}}]}";
+        CHECK_INT(km_load(&tui.km, one, (long)sizeof(one) - 1), 0);
+    }
+    tui_start(&tui);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "");
+    CHECK(tui.stash && !strcmp(tui.stash, "abc"));
+    unscreen();
+    cs_close();
+}
+
 void suite_claude_tui(void)
 {
     keys();
@@ -1907,5 +2004,6 @@ void suite_claude_tui(void)
     gaps3_think();
     gaps3_dirs();
     gaps3_suggest();
+    gaps3_keymap();
     rm_tdir();
 }

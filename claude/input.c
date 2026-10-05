@@ -235,6 +235,7 @@ static int theme_cmd(cl_ui *u, const char *arg)
         int c;
         for (i = 0; i < THEME_COUNT; i++)
             op[i] = cl_themes[i].label;
+        u->tui->m_ctx = KC_THEME;   /* ThemePicker's bindings first */
         c = tui_menu(u->tui, "Theme", "Choose the text style that looks best with your terminal", op, THEME_COUNT,
                      theme_index(u->tui->th), -1);
         if (c < 0)

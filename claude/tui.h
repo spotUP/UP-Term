@@ -132,6 +132,8 @@ typedef struct cl_tui {
      * for its last m_afk_count_ms; tui_menu resets it */
     long m_afk_ms, m_afk_count_ms;
     int m_left;                 /* the countdown's seconds shown, -1 none */
+    int m_ctx;                  /* the menu's binding context (keys.h KC_CONFIRM, KC_MSGSEL, KC_THEME;
+                                 * KC_SELECT the others); tui_menu resets it */
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
     const cl_theme *th;         /* the colours (/theme) */
@@ -194,9 +196,12 @@ typedef struct cl_tui {
     /* type-ahead */
     char *queue[TUI_QUEUE];
     int nq;
-    /* Esc Esc, Ctrl+X chords */
+    /* Esc Esc */
     unsigned long esc_ms;
-    int esc_armed, ctrlx;
+    int esc_armed;
+    /* A4 gaps 3: the key bindings (keys.h): Claude Code's defaults and
+     * keybindings.json's over them; the chords' state */
+    cl_keymap km;
     /* Ctrl+T: the todo list ("<status char><text>\n" per item: c done,
      * p in progress, o pending) */
     jw todos;
