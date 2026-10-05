@@ -174,6 +174,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
 }
 
 static void extract_glyphs(vr_render *r);
+static void fb_sync(vr_render *r);
 
 /* ---- setup ---------------------------------------------------------------- */
 
@@ -187,6 +188,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->font = font;
     r->t = t;
     r->enc = enc;
+    fb_sync(r);
     r->cm = win->WScreen ? win->WScreen->ViewPort.ColorMap : 0;
     r->cw = font->tf_XSize;
     r->ch = font->tf_YSize;
@@ -435,6 +437,8 @@ void vr_set_font(vr_render *r, struct TextFont *font)
     SetFont(r->rp, font);
     if (r->outline)
         vo_set_cell(r->outline, r->cw, r->ch, r->base); /* its glyphs at the new cell */
+    if (r->unifont)
+        uf_set_cell(r->unifont, r->cw, r->ch);
     if (r->glyphs)
         FreeVec(r->glyphs);
     r->glyphs = 0;
@@ -447,6 +451,15 @@ void vr_set_outline(vr_render *r, struct vo_font *f)
     r->outline = f;
     if (f)
         vo_set_cell(f, r->cw, r->ch, r->base);
+    fb_sync(r);
+}
+
+void vr_set_unifont(vr_render *r, struct uf_cache *c)
+{
+    r->unifont = c;
+    if (c)
+        uf_set_cell(c, r->cw, r->ch);
+    fb_sync(r);
 }
 
 void vr_set_off(vr_render *r, int off)
@@ -1374,13 +1387,30 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
         r->cursor_drawn = 0; /* the cursor cell was just painted over */
 }
 
-/* The outline font's glyph for a cell the bitmap font cannot show itself
- * (render/outline; 0: draw as without one). */
-static const UBYTE *outline_glyph(vr_render *r, vt_u32 cp, int cells, WORD *bpr)
+/* The glyph sources for what the bitmap font cannot show itself, as
+ * vt_fallback_glyph asks them: the outline font (render/outline), then --
+ * for a character with no stand-in -- Unifont's pages (render/unifont). */
+static const vt_u8 *outline_src(void *f, vt_u32 cp, int cells, int *bpr)
 {
-    if (r->outline && cp >= 0x80 && !vt_glyph_native(cp, r->enc))
-        return vo_glyph(r->outline, cp, cells, bpr);
-    return 0;
+    WORD b = 0;
+    const UBYTE *m = vo_glyph((vo_font *)f, cp, cells, &b);
+    *bpr = b;
+    return m;
+}
+
+static const vt_u8 *unifont_src(void *c, vt_u32 cp, int cells, int *bpr)
+{
+    WaitBlit(); /* its one mask buffer may still be the last glyph's blit source */
+    return uf_glyph(c, cp, cells, bpr);
+}
+
+static void fb_sync(vr_render *r)
+{
+    r->fb.enc = r->enc;
+    r->fb.outline = r->outline ? outline_src : 0;
+    r->fb.outline_src = r->outline;
+    r->fb.unifont = r->unifont ? unifont_src : 0;
+    r->fb.unifont_src = r->unifont;
 }
 
 /* The marks left over a drawn cell (vt_compose_cell could not fold them
@@ -1654,8 +1684,8 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         n = 0;
         nd = 0;
         x = x0;
-        if (x > 0 && x < ncells && c[x].width == 0 && r->outline)
-            x--; /* the right half of a wide glyph: the outline glyph spans both, draw it whole */
+        if (x > 0 && x < ncells && c[x].width == 0 && (r->outline || r->unifont))
+            x--; /* the right half of a wide glyph: a mask glyph spans both, draw it whole */
         xe = x1 < ncells ? x1 : ncells;
         if (tail_ok) {
             /* the row's tail of default blanks: one fill, or nothing on a
@@ -1717,27 +1747,24 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 g.kind = VT_GLYPH_FONT; /* ASCII: the font's own character */
                 g.code = (vt_u8)c[x].ch;
             } else {
-                WORD obpr;
+                int obpr = 0;
                 const UBYTE *om;
                 vt_u32 cp[VT_CLUSTER_CPS];
                 int ncp = 1, cells = c[x].width == 2 ? 2 : 1;
-                cp[0] = c[x].ch;
-                if (VT_CELL_IS_CLUSTER(&c[x])) /* beyond the BMP, or with marks */
-                    ncp = vt_compose_cell(cp, vt_cell_text(r->t, &c[x], cp));
-                om = outline_glyph(r, cp[0], cells, &obpr);
+                /* composed, then the font's own, the outline font,
+                 * vt_map_glyph's stand-in, Unifont (an emoji over its two
+                 * cells), or the replacement (glyphmap.h) */
+                om = vt_cell_glyph(&r->fb, r->t, &c[x], cp, &ncp, &obpr, &g);
                 if (om) {
                     WORD px = (WORD)(r->ox + x * r->cw);
                     flush_run(r, run, n, run_x, py, &run_st);
                     n = 0;
-                    draw_outline(r, px, py, om, obpr, cells, &st);
+                    draw_outline(r, px, py, om, (WORD)obpr, cells, &st);
                     draw_marks(r, px, py, cp + 1, ncp - 1, cells, &st);
                     if (cells == 2 && x + 1 < ncells && c[x + 1].width == 0)
                         x++; /* its right half is drawn */
                     continue;
                 }
-                g = vt_map_glyph(cp[0], r->enc);
-                if (g.kind == VT_GLYPH_MISSING)
-                    g.code = (vt_u8)cells;
                 if (ncp > 1 && r->outline) {
                     /* marks to draw over it: the cell now, alone */
                     WORD px = (WORD)(r->ox + x * r->cw);
@@ -2230,13 +2257,13 @@ static void cursor_draw(vr_render *r, int on)
         ink_ab(r, r->pen_default_bg, ink);
         RectFill(r->rp, px, py, x1, y1);
         if (have && c[r->cursor_x].width == 1) {
-            WORD obpr;
-            const UBYTE *om = outline_glyph(r, cell_char(r, &c[r->cursor_x]), 1, &obpr);
+            int obpr = 0;
+            const UBYTE *om = vt_fallback_glyph(&r->fb, cell_char(r, &c[r->cursor_x]), 1, &obpr);
             if (om) {
-                /* an outline glyph under the cursor, in the background colour */
+                /* an outline or Unifont glyph under the cursor, in the background colour */
                 ink_a(r, r->pen_default_bg);
                 SetDrMd(r->rp, JAM1);
-                BltTemplate((PLANEPTR)om, 0, obpr, r->rp, px, py, r->cw, r->ch);
+                BltTemplate((PLANEPTR)om, 0, (WORD)obpr, r->rp, px, py, r->cw, r->ch);
                 SetDrMd(r->rp, JAM2);
                 r->cursor_colorful = 1;
                 return;

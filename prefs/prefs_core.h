@@ -145,4 +145,42 @@ enum {
 int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
                   const char *orig, const char *buf, long len);
 
+/* ---- W30: the themes drawer ------------------------------------------------
+ *
+ * The kit installs the themes in PREFS_THEMES_DIR (dist/install.dos) and
+ * copies it to PREFS_THEMES_ENV for the boot. Every theme requester (UP-Term
+ * Prefs' Theme..., the window's Settings > Theme...) and every theme looked
+ * up by name (/theme NAME, /theme's list) asks prefs_theme_drawer where to
+ * look, so none of them names the drawer itself. */
+#define PREFS_THEMES_DIR "ENVARC:up-term/themes"
+#define PREFS_THEMES_ENV "ENV:up-term/themes"
+
+/* The drawer to open: the first that fs->exists finds of
+ *   1. the drawer of `given` -- the theme file the window or the editor has
+ *      now (0 or "": none; a bare name has no drawer and is skipped),
+ *   2. PREFS_THEMES_DIR, 3. PREFS_THEMES_ENV,
+ *   4. `home`'s "themes" -- the program's own drawer (0 or "": none): the
+ *      unpacked kit's Files/themes, the rig's VTC:themes,
+ *   5. `home` itself;
+ * "" when none is there (a requester then opens where it likes: the
+ * symptom of W30, a missing kit drawer). out: cap bytes. */
+void prefs_theme_drawer(const prefs_fs *fs, const char *given, const char *home, char *out, int cap);
+
+/* The theme file /theme NAME means: name itself when it is a path (holds a
+ * ':' or a '/'), else name in drawer; ".conf" added when it does not end
+ * so (any case). out: cap bytes, cut to fit. */
+void prefs_theme_file(const char *drawer, const char *name, char *out, int cap);
+
+/* A drawer's listing to theme names: file (a name from the listing) goes
+ * into names (*len bytes used of cap, NUL after each name) when it ends in
+ * ".conf" (any case), without it, in order ignoring case; a name already
+ * there (ignoring case) is not added again. 1 added, 0 not a theme or a
+ * repeat, -1 no room (names unchanged). */
+int prefs_theme_add(char *names, int *len, int cap, const char *file);
+
+/* Which of names (n theme names, NUL-separated, as prefs_theme_add makes
+ * them) file is -- a path or a name, with ".conf" or without, any case:
+ * its index, or -1 (0 or "": -1). /theme's list marks the window's theme. */
+int prefs_theme_index(const char *names, int n, const char *file);
+
 #endif

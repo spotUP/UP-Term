@@ -984,6 +984,8 @@ static void sc_unicode(long t, int first)
         { "Full width", "\357\274\265\357\274\260\357\274\215\357\274\264\357\275\205\357\275\222\357\275\215" },
         { "Combining marks", "e\314\201 a\314\210 n\314\203 o\314\202 c\314\247 u\314\212   "
                              "Z\314\266a\314\266l\314\266g\314\266o\314\266" },
+        { "Emoji, two cells", "\360\237\230\200 \360\237\230\216 \360\237\232\200 \360\237\221\215 "
+                              "\360\237\216\211 \360\237\220\215 \360\237\215\225" },
         { "Past U+FFFF", "\360\235\220\224\360\235\220\217-\360\235\220\223\360\235\220\236\360\235\220\253"
                          "\360\235\220\246  \360\235\225\254\360\235\226\222\360\235\226\216\360\235\226\214"
                          "\360\235\226\206" }
@@ -1002,7 +1004,8 @@ static void sc_unicode(long t, int first)
         ps(rows[shown][1]);
         shown++;
         if (shown == n)
-            grey_line(4 + gap * n, "What your font lacks comes from an outline font: /font-fallback NAME");
+            grey_line(4 + gap * n, "What your font lacks comes from an outline font (/font-fallback NAME) "
+                                   "or the Unifont pages");
     }
 }
 

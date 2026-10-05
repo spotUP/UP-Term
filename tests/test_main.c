@@ -30,12 +30,22 @@ void suite_clip(void);
 void suite_input(void);
 void suite_protocol(void);
 void suite_sbar(void);
+void suite_unifont(void);
 void suite_telnet(void);
 void suite_complete(void);
 void suite_winmem(void);
 void suite_sbpack(void);
 void suite_hl(void);
 void suite_md(void);
+void suite_claude_http(void);
+void suite_claude_json(void);
+void suite_claude_stream(void);
+void suite_claude_tools(void);
+void suite_claude_match(void);
+void suite_claude_repl(void);
+void suite_claude_cli(void);
+void suite_claude_tui(void);
+void suite_claude_config(void);
 
 static const h_suite suites[] = {
     { "xterm", suite_xterm },
@@ -67,12 +77,22 @@ static const h_suite suites[] = {
     { "input", suite_input },
     { "protocol", suite_protocol },
     { "sbar", suite_sbar },
+    { "unifont", suite_unifont },
     { "telnet", suite_telnet },
     { "complete", suite_complete },
     { "winmem", suite_winmem },
     { "sbpack", suite_sbpack },
     { "hl", suite_hl },
     { "md", suite_md },
+    { "claude_http", suite_claude_http },
+    { "claude_json", suite_claude_json },
+    { "claude_stream", suite_claude_stream },
+    { "claude_tools", suite_claude_tools },
+    { "claude_match", suite_claude_match },
+    { "claude_repl", suite_claude_repl },
+    { "claude_cli", suite_claude_cli },
+    { "claude_tui", suite_claude_tui },
+    { "claude_config", suite_claude_config },
     { 0, 0 }
 };
 

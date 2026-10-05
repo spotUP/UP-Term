@@ -233,6 +233,19 @@ static void the_tour_plays_every_scene_and_puts_the_terminal_back(void)
     vt_free(t);
 }
 
+/* W24 (the owner: the emoji rule does not apply to the demo): the Unicode
+ * scene shows emoji, two cells wide */
+static void the_unicode_scene_shows_emoji(void)
+{
+    start(80, 24);
+    needle = "\360\237\230\200";   /* U+1F600 */
+    saw_text = 0;
+    CHECK_INT(updemo_tour(&io, 80, 24, 0, 90), 0);
+    CHECK(saw_text);
+    needle = 0;
+    vt_free(t);
+}
+
 static void any_key_ends_the_tour(void)
 {
     long all;
@@ -314,6 +327,7 @@ void suite_updemo(void)
     a_small_window_is_refused_untouched();
     q_quits_and_the_palette_is_the_terminals_again();
     the_tour_plays_every_scene_and_puts_the_terminal_back();
+    the_unicode_scene_shows_emoji();
     any_key_ends_the_tour();
     the_mouse_scene_shows_a_click();
     the_resize_scene_leaves_the_width_as_it_was();

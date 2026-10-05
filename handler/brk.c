@@ -4,13 +4,19 @@
 #include <proto/exec.h>
 #include "brk.h"
 
+/* Disable(), not Forbid(): an interrupt's Signal() moves a waiting task to
+ * TaskReady while the lists are walked, and under Forbid() a task moved from
+ * Wait to Ready after the Ready walk is in neither -- the console then took
+ * a live termios program for dead and left raw mode (C:Claude's Return made
+ * a new line, a '/' was lost; most often during network traffic). Exec's
+ * own FindTask walks these lists with interrupts off. */
 int task_alive(struct Task *t)
 {
     struct Node *n;
     int found = 0;
     if (!t)
         return 0;
-    Forbid();
+    Disable();
     if (t == SysBase->ThisTask)
         found = 1;
     for (n = SysBase->TaskReady.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
@@ -19,7 +25,7 @@ int task_alive(struct Task *t)
     for (n = SysBase->TaskWait.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
         if (n == &t->tc_Node)
             found = 1;
-    Permit();
+    Enable();
     return found;
 }
 

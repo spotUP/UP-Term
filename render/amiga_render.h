@@ -16,6 +16,7 @@
 #include "../engine/vtengine.h"
 #include "glyphmap.h"
 #include "outline.h"
+#include "unifont.h"
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
@@ -106,7 +107,11 @@ typedef struct vr_render {
     /* the outline font for the cells the bitmap font cannot show (F1),
      * 0 for none; the owner opens and closes it (vr_set_outline) */
     struct vo_font *outline;
-    ULONG n_outline;      /* cells drawn from it */
+    ULONG n_outline;      /* cells drawn from it or from unifont */
+    /* GNU Unifont's pages for the BMP the font and the outline font lack
+     * (U2), 0 for none; the owner keeps it (vr_set_unifont) */
+    struct uf_cache *unifont;
+    vt_fallback fb;       /* the sources in their order (glyphmap.h), from the two above */
     /* selection, inclusive, rows as grid row + vt_lines_scrolled() at the
      * time (so it stays on its text while output scrolls) */
     BYTE sel;
@@ -163,6 +168,9 @@ void vr_set_font(vr_render *r, struct TextFont *font);
 /* The outline font for glyphs the bitmap font lacks (0: none); the caller
  * keeps it open and redraws. Its cell follows vr_set_font. */
 void vr_set_outline(vr_render *r, struct vo_font *f);
+/* The Unifont page cache for glyphs neither font has (0: none); the caller
+ * keeps it and redraws. Its cell follows vr_set_font. */
+void vr_set_unifont(vr_render *r, struct uf_cache *c);
 /* A tab's renderer: off (another tab is shown) draws nothing at all; the
  * caller redraws when it is on again. */
 void vr_set_off(vr_render *r, int off);

@@ -15,6 +15,7 @@
 #include <exec/memory.h>
 #include <exec/execbase.h>
 #include <exec/semaphores.h>
+#include <exec/interrupts.h>
 #include <dos/dos.h>
 #include <dos/dostags.h>
 #include <dos/dosextens.h>
@@ -221,131 +222,6 @@ static void scan_dir(struct complete_req *q, BPTR lock, const char *prefix, int 
     FreeDosObject(DOS_FIB, fib);
 }
 
-/* The command names of each directory on the command path, kept for
- * every window (the handler's code is shared, so is this): a Tab used to
- * scan C: file by file, ~3 s on the rig. A directory is scanned again
- * only when its date changes (FFS dates a directory when something in it
- * is made, deleted or renamed); a Tab costs one Examine per directory. */
-typedef struct dir_cache {
-    char name[256];               /* NameFromLock of the directory */
-    struct DateStamp date;
-    char *names;                  /* NUL-separated, AllocVec'd */
-    long len;
-    struct dir_cache *next;
-} dir_cache;
-
-static struct SignalSemaphore cache_sem;
-static int cache_ready;
-static dir_cache *caches;
-
-static void cache_lock(void); /* the cache's semaphore, made at first use */
-
-static void cache_names(dir_cache *d, BPTR lock, struct FileInfoBlock *fib)
-{
-    long cap = 1024, len = 0;
-    char *names = (char *)AllocVec(cap, MEMF_ANY);
-    if (names && Examine(lock, fib)) {
-        while (ExNext(lock, fib)) {
-            const char *name = (const char *)fib->fib_FileName;
-            long n = (long)strlen(name);
-            if ((n > 5 && same_name(name + n - 5, ".info")) ||
-                !cc_is_command(fib->fib_DirEntryType, fib->fib_Protection))
-                continue;
-            if (len + n + 1 > cap) {
-                char *more = (char *)AllocVec(cap * 2, MEMF_ANY);
-                if (!more)
-                    break;
-                CopyMem(names, more, len);
-                FreeVec(names);
-                names = more;
-                cap *= 2;
-            }
-            CopyMem((APTR)name, names + len, n + 1);
-            len += n + 1;
-        }
-    }
-    if (d->names)
-        FreeVec(d->names);
-    d->names = names;
-    d->len = names ? len : 0;
-}
-
-/* The commands in directory `lock` starting with prefix, from the cache. */
-static void scan_commands(struct complete_req *q, BPTR lock, const char *prefix)
-{
-    struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
-    char name[256];
-    dir_cache *d;
-    long k;
-    if (!fib)
-        return;
-    if (q->no_cache) {
-        FreeDosObject(DOS_FIB, fib);
-        scan_dir(q, lock, prefix, 1);
-        return;
-    }
-    if (!NameFromLock(lock, (STRPTR)name, sizeof(name)) || !Examine(lock, fib)) {
-        FreeDosObject(DOS_FIB, fib);
-        scan_dir(q, lock, prefix, 1);
-        return;
-    }
-    cache_lock();
-    for (d = caches; d && !same_name(d->name, name); d = d->next)
-        ;
-    if (!d && (d = (dir_cache *)AllocVec(sizeof(dir_cache), MEMF_CLEAR)) != 0) {
-        strcpy(d->name, name);
-        d->next = caches;
-        caches = d;
-        d->date.ds_Days = -1; /* never scanned */
-    }
-    if (d) {
-        if (CompareDates(&d->date, &fib->fib_Date) != 0 || !d->names) {
-            d->date = fib->fib_Date;
-            cache_names(d, lock, fib);
-        }
-        for (k = 0; k < d->len; k += (long)strlen(d->names + k) + 1)
-            if (has_prefix(d->names + k, prefix))
-                add_name(q, d->names + k, 0);
-    }
-    ReleaseSemaphore(&cache_sem);
-    FreeDosObject(DOS_FIB, fib);
-    if (!d)
-        scan_dir(q, lock, prefix, 1);
-}
-
-static void cache_lock(void)
-{
-    Forbid();
-    if (!cache_ready) {
-        InitSemaphore(&cache_sem);
-        cache_ready = 1;
-    }
-    Permit();
-    ObtainSemaphore(&cache_sem);
-}
-
-void complete_cache_reset(void)
-{
-    dir_cache *d;
-    cache_lock();
-    for (d = caches; d; d = d->next)
-        d->date.ds_Days = -1; /* no directory has that date: read again */
-    ReleaseSemaphore(&cache_sem);
-}
-
-void complete_cache_purge(void)
-{
-    dir_cache *d;
-    cache_lock();
-    while ((d = caches) != 0) {
-        caches = d->next;
-        if (d->names)
-            FreeVec(d->names);
-        FreeVec(d);
-    }
-    ReleaseSemaphore(&cache_sem);
-}
-
 /* The resident list (the Shell's internal commands live there too): a
  * private DOS list, walked read-only under Forbid as Resident does. */
 static void scan_residents(struct complete_req *q, const char *prefix)
@@ -388,6 +264,7 @@ typedef struct cmd_walk {
     struct DevProc *dp;          /* where the C: walk stands */
     int c_done;
     BPTR *path;                  /* the path's next node */
+    struct FileInfoBlock *fib;   /* the command cache's Examines (W22), 0: none */
 } cmd_walk;
 
 static long cw_c_next(void *u)
@@ -439,12 +316,14 @@ static void cw_drop(long lock)
     UnLock((BPTR)lock);
 }
 
+/* the walk's own visit: KingCON's cache off (scan each directory), or
+ * CHECK_COMMAND's find (the cached walk visits through complete_core) */
 static int cw_visit(void *u, long lock)
 {
     cmd_walk *w = (cmd_walk *)u;
     BPTR old, l;
     if (!w->find) {
-        scan_commands(w->q, (BPTR)lock, w->prefix);
+        scan_dir(w->q, (BPTR)lock, w->prefix, 1);
         return 0;
     }
     old = CurrentDir((BPTR)lock);
@@ -457,18 +336,349 @@ static int cw_visit(void *u, long lock)
 
 static const cc_dirs_os cmd_dirs_os = { cw_c_next, cw_c_end, cw_p_next, cw_same, cw_drop, cw_visit };
 
+/* C: and opener's path (0: C: alone). Under Forbid when opener may end. */
+static void walk_init(cmd_walk *w, struct complete_req *q, struct Process *opener,
+                      const char *prefix, int find)
+{
+    w->q = q;
+    w->prefix = prefix;
+    w->find = find;
+    w->dp = 0;
+    w->c_done = 0;
+    w->path = 0;
+    w->fib = 0;
+    if (opener && opener->pr_CLI)
+        w->path = (BPTR *)BADDR(((struct CommandLineInterface *)BADDR(opener->pr_CLI))->cli_CommandDir);
+}
+
 static int walk_command_dirs(struct complete_req *q, const char *prefix, int find)
 {
     cmd_walk w;
-    w.q = q;
-    w.prefix = prefix;
-    w.find = find;
-    w.dp = 0;
-    w.c_done = 0;
-    w.path = 0;
-    if (q->opener && q->opener->pr_CLI)
-        w.path = (BPTR *)BADDR(((struct CommandLineInterface *)BADDR(q->opener->pr_CLI))->cli_CommandDir);
+    walk_init(&w, q, q->opener, prefix, find);
     return cc_walk_command_dirs(&cmd_dirs_os, &w);
+}
+
+/* ---- W22: the command-name cache (complete_core.h), its AmigaDOS side ----
+ *
+ * One cache for every window (the handler's code and data are shared): the
+ * Tab's worker reads it (never a directory, cold 0), the warm-up process
+ * fills it at low priority, when a window opens and when a Tab found a
+ * directory changed or not cached.
+ *
+ * The file is ENVARC:up-term/commands.cache: it has to outlive a reboot,
+ * and ENV: is RAM: on 3.1 and 3.2 alike. On 3.2 RAM:ENV is a link to
+ * ENVARC: (MakeLink in its Startup-sequence) that costs no RAM; 3.1's
+ * Startup-sequence copies ENVARC: into RAM:ENV at boot, so there the file
+ * costs its size in RAM once (about 3 KB for the owner's 3.1 disk's C: and
+ * path, CC_CACHE_FILE_MAX at most), as the history file next to it does.
+ *
+ * RAM: buffers come from fast RAM when the machine has any (a MemHeader
+ * with MEMF_FAST in exec's list: MEMF_FAST, never chip -- without fast RAM
+ * to spare nothing is cached rather than chip taken); a machine without
+ * fast RAM uses MEMF_ANY (chip) during a request only, keep 0, and reads
+ * the file at the next one (the owner, 2026-10-04: the on-disk copy is
+ * preferred on chip-only machines). No allocation leaves less than
+ * CACHE_FLOOR free, and exec's low-memory handler (V39+) frees every
+ * cached name when an allocation anywhere fails. */
+
+#define CACHE_DIR   "ENVARC:up-term"
+#define CACHE_FILE  "ENVARC:up-term/commands.cache"
+#define CACHE_FLOOR 131072L       /* free RAM the cache never takes: a window,
+                                   * its font and a Shell need about that */
+
+static struct SignalSemaphore cache_sem;
+static int cache_ready, cache_lowmem_added;
+static cc_cache cache;
+static ULONG cache_memf;          /* MEMF_FAST, or MEMF_ANY on a chip-only machine */
+static struct Interrupt cache_lowmem_irq;
+
+static void co_lock(void)
+{
+    ObtainSemaphore(&cache_sem);
+}
+
+static void co_unlock(void)
+{
+    ReleaseSemaphore(&cache_sem);
+}
+
+static void *co_alloc(long size)
+{
+    if ((long)AvailMem(cache_memf) < CACHE_FLOOR + size)
+        return 0;
+    return AllocMem(size, cache_memf);
+}
+
+static void co_free(void *p, long size)
+{
+    FreeMem(p, size);
+}
+
+static int co_stat(void *u, long lock, char *name, int max, cc_date *d)
+{
+    struct FileInfoBlock *fib = ((cmd_walk *)u)->fib;
+    if (!fib || !NameFromLock((BPTR)lock, (STRPTR)name, max) || !Examine((BPTR)lock, fib))
+        return 0;
+    d->days = fib->fib_Date.ds_Days;
+    d->minute = fib->fib_Date.ds_Minute;
+    d->tick = fib->fib_Date.ds_Tick;
+    return 1;
+}
+
+/* a directory's commands: files with e or s (cc_is_command), no .info */
+static int co_scan(void *u, long lock, cc_name_fn add, void *x)
+{
+    struct FileInfoBlock *fib = ((cmd_walk *)u)->fib;
+    if (!fib || !Examine((BPTR)lock, fib))
+        return 0;
+    while (ExNext((BPTR)lock, fib)) {
+        const char *name = (const char *)fib->fib_FileName;
+        int n = (int)strlen(name);
+        if ((n > 5 && same_name(name + n - 5, ".info")) ||
+            !cc_is_command(fib->fib_DirEntryType, fib->fib_Protection))
+            continue;
+        if (!add(x, name))
+            return 0;
+    }
+    return IoErr() == ERROR_NO_MORE_ENTRIES; /* else cut short: not the directory's list */
+}
+
+static long co_load(char *buf, long max)
+{
+    BPTR f = Open((STRPTR)CACHE_FILE, MODE_OLDFILE);
+    long n;
+    if (!f)
+        return -1;
+    n = Read(f, buf, max);
+    Close(f);
+    return n;
+}
+
+static int co_save(const char *buf, long len)
+{
+    BPTR f, l = Lock((STRPTR)CACHE_DIR, ACCESS_READ);
+    long n;
+    if (!l)
+        l = CreateDir((STRPTR)CACHE_DIR);
+    if (!l)
+        return 0;
+    UnLock(l);
+    f = Open((STRPTR)CACHE_FILE, MODE_NEWFILE);
+    if (!f)
+        return 0;
+    n = Write(f, (APTR)buf, len);
+    Close(f);
+    if (n != len) {
+        DeleteFile((STRPTR)CACHE_FILE); /* cut short: gone rather than half */
+        return 0;
+    }
+    return 1;
+}
+
+static const cc_cache_os cache_os = { co_lock, co_unlock, co_alloc, co_free, co_stat, co_scan, co_load, co_save };
+
+/* exec's low-memory handler (is_Data the cache): runs in the allocating
+ * task under Forbid, so it only tries the lock; a lookup holding it keeps
+ * the names (in_use) */
+static ULONG cache_lowmem(__reg("a1") APTR data)
+{
+    long freed;
+    if (!AttemptSemaphore(&cache_sem))
+        return MEM_DID_NOTHING;
+    freed = cc_cache_release((cc_cache *)data, &cache_os);
+    ReleaseSemaphore(&cache_sem);
+    return freed ? MEM_TRY_AGAIN : MEM_DID_NOTHING;
+}
+
+/* the semaphore, the RAM type and the low-memory handler, at first use */
+static void cache_init(void)
+{
+    int add = 0;
+    Forbid();
+    if (!cache_ready) {
+        struct MemHeader *mh;
+        InitSemaphore(&cache_sem);
+        cache_memf = MEMF_ANY;
+        for (mh = (struct MemHeader *)SysBase->MemList.lh_Head; mh->mh_Node.ln_Succ;
+             mh = (struct MemHeader *)mh->mh_Node.ln_Succ)
+            if (mh->mh_Attributes & MEMF_FAST)
+                cache_memf = MEMF_FAST;
+        cc_cache_init(&cache, CC_CACHE_CAP, cache_memf == MEMF_FAST ? CC_CACHE_CAP : 0);
+        cache_ready = 1;
+        if (SysBase->LibNode.lib_Version >= 39 && !cache_lowmem_added) {
+            cache_lowmem_irq.is_Node.ln_Type = NT_INTERRUPT;
+            cache_lowmem_irq.is_Node.ln_Pri = -10; /* after the system's own */
+            cache_lowmem_irq.is_Node.ln_Name = (char *)"UP-Term command cache";
+            cache_lowmem_irq.is_Data = (APTR)&cache;
+            cache_lowmem_irq.is_Code = (void (*)())cache_lowmem;
+            cache_lowmem_added = add = 1;
+        }
+    }
+    Permit();
+    /* never removed: the handler's code stays loaded (dn_SegList) for the
+     * boot, as the cache does */
+    if (add)
+        AddMemHandler(&cache_lowmem_irq);
+}
+
+void complete_cache_reset(void)
+{
+    cache_init();
+    cc_cache_reset(&cache, &cache_os);
+}
+
+void complete_cache_purge(void)
+{
+    cache_init();
+    ObtainSemaphore(&cache_sem);
+    cc_cache_release(&cache, &cache_os);
+    ReleaseSemaphore(&cache_sem);
+}
+
+/* warm-ups that finished, and who waits for the next one */
+static unsigned long warm_gen;
+static int warm_running;
+#define WARM_WAITERS 16
+static struct {
+    struct Task *task;
+    ULONG sig;
+} warm_waiters[WARM_WAITERS];
+
+struct warm_msg {
+    struct Message msg;
+    struct Process *opener;
+};
+
+/* a Tab's names that start with the word (the cached walk's emit) */
+static int cw_emit(void *x, const char *name)
+{
+    cmd_walk *w = (cmd_walk *)x;
+    if (has_prefix(name, w->prefix))
+        add_name(w->q, name, 0);
+    return 1;
+}
+
+/* COMPLETE_COMMANDS' directories: from the cache (q->partial when one was
+ * not current), or each read afresh (KingCON's cache off) */
+static void command_names(struct complete_req *q, const char *prefix)
+{
+    cmd_walk w;
+    if (q->no_cache) {
+        walk_command_dirs(q, prefix, 0);
+        return;
+    }
+    cache_init();
+    Forbid();
+    q->warm_gen = warm_gen; /* a warm-up ending after this refines the answer */
+    Permit();
+    walk_init(&w, q, q->opener, prefix, 0);
+    w.fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    q->partial = cc_command_names(&cache, &cache_os, &cmd_dirs_os, &w, q->cold, cw_emit, &w);
+    cc_cache_end(&cache, &cache_os);
+    if (w.fib)
+        FreeDosObject(DOS_FIB, w.fib);
+}
+
+/* The warm-up's body: its own process, at low priority. */
+static void warm_worker(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    struct warm_msg *m;
+    struct Process *opener;
+    cmd_walk w;
+    int i;
+    WaitPort(&me->pr_MsgPort);
+    m = (struct warm_msg *)GetMsg(&me->pr_MsgPort);
+    opener = m->opener;
+    FreeVec(m);
+    me->pr_WindowPtr = (APTR)-1; /* no requesters (a path naming a volume not in a drive) */
+    Forbid();
+    if (!opener || !task_alive(&opener->pr_Task) || opener->pr_Task.tc_Node.ln_Type != NT_PROCESS)
+        opener = 0; /* gone: C: alone */
+    walk_init(&w, 0, opener, 0, 0);
+    Permit();
+    w.fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (w.fib) {
+        cc_cache_warm(&cache, &cache_os, &cmd_dirs_os, &w);
+        FreeDosObject(DOS_FIB, w.fib);
+    }
+    Forbid(); /* the waiters woken and our end, before anything can go */
+    warm_running = 0;
+    warm_gen++;
+    for (i = 0; i < WARM_WAITERS; i++)
+        if (warm_waiters[i].task) {
+            Signal(warm_waiters[i].task, warm_waiters[i].sig);
+            warm_waiters[i].task = 0;
+        }
+}
+
+int complete_warm(struct Process *opener)
+{
+    struct warm_msg *m;
+    struct Process *p;
+    cache_init();
+    Forbid();
+    if (warm_running) {
+        Permit();
+        return 1; /* one at a time: it wakes every waiter */
+    }
+    warm_running = 1;
+    Permit();
+    m = (struct warm_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
+    if (m) {
+        m->msg.mn_Length = sizeof(*m);
+        m->opener = opener;
+        p = CreateNewProcTags(NP_Entry, (ULONG)warm_worker, NP_Name, (ULONG)"UP-Term command cache",
+                              NP_Priority, -1, NP_StackSize, 12000, NP_Input, 0, NP_Output, 0,
+                              NP_CloseInput, FALSE, NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
+        if (p) {
+            PutMsg(&p->pr_MsgPort, &m->msg);
+            return 1;
+        }
+        FreeVec(m);
+    }
+    Forbid();
+    warm_running = 0;
+    Permit();
+    return 0;
+}
+
+unsigned long complete_warm_gen(void)
+{
+    return warm_gen;
+}
+
+int complete_warm_wait(struct Task *t, ULONG sig, unsigned long gen, struct Process *opener)
+{
+    int i, done;
+    Forbid();
+    done = warm_gen != gen;
+    if (!done) {
+        for (i = 0; i < WARM_WAITERS && warm_waiters[i].task && warm_waiters[i].task != t; i++)
+            ;
+        if (i < WARM_WAITERS) {
+            warm_waiters[i].task = t;
+            warm_waiters[i].sig = sig;
+        } else {
+            done = 1; /* no room to wait: ask again now */
+        }
+    }
+    Permit();
+    if (!done && !complete_warm(opener)) {
+        complete_warm_forget(t); /* no warm-up to wait for: ask again now */
+        done = 1;
+    }
+    return done;
+}
+
+void complete_warm_forget(struct Task *t)
+{
+    int i;
+    Forbid();
+    for (i = 0; i < WARM_WAITERS; i++)
+        if (warm_waiters[i].task == t)
+            warm_waiters[i].task = 0;
+    Permit();
 }
 
 /* CHECK_COMMAND: resident, a path to a file, or a file in the current
@@ -625,8 +835,8 @@ static void font_pick(struct complete_req *q)
     CloseLibrary(AslBase);
 }
 
-/* theme file -> q->data, its name in q->add; 0 when it cannot be read */
-static int theme_read(struct complete_req *q, const char *path, const char *name)
+/* theme file -> q->data, its path in q->add; 0 when it cannot be read */
+static int theme_read(struct complete_req *q, const char *path)
 {
     BPTR f = Open((STRPTR)path, MODE_OLDFILE);
     long n;
@@ -639,28 +849,42 @@ static int theme_read(struct complete_req *q, const char *path, const char *name
     q->data_len = n;
     q->data[n] = 0;
     q->matches = 1;
-    strncpy(q->add, name, COMPLETE_MAX - 1);
+    strncpy(q->add, path, COMPLETE_MAX - 1);
     q->add[COMPLETE_MAX - 1] = 0;
     return 1;
 }
 
-/* COMPLETE_THEME: Settings > Theme... -- a theme file from the kit's themes
- * drawer, read into q->data (q->data_max bytes at most). With q->word set
- * (a typed "/theme NAME") that theme, no requester. */
+/* The themes drawer for q (prefs_dos_theme_drawer): the window's theme's
+ * drawer, the kit's, its ENV: copy, or beside the handler's own file. */
+static void theme_dir(struct complete_req *q, char *dir, int cap)
+{
+    char home[COMPLETE_MAX];
+    const char *theme = "";
+    home[0] = 0;
+    if (q->extra && q->extra_len > 0) {
+        theme = q->extra;
+        strncpy(home, theme + strlen(theme) + 1, sizeof(home) - 1);
+        home[sizeof(home) - 1] = 0;
+        *PathPart((STRPTR)home) = 0;
+    }
+    prefs_dos_theme_drawer(theme, home, dir, cap);
+}
+
+/* COMPLETE_THEME: Settings > Theme... -- a theme file from the themes
+ * drawer (prefs_dos_theme_drawer: W30, the requester opened wherever ASL
+ * liked when the kit's drawer was missing), read into q->data
+ * (q->data_max bytes at most). With q->word set (a typed "/theme NAME",
+ * or an entry of /theme's list) that theme, no requester. */
 static void theme_pick(struct complete_req *q)
 {
     struct Library *AslBase;
     struct FileRequester *fr;
-    char path[COMPLETE_MAX];
+    char dir[COMPLETE_MAX], path[COMPLETE_MAX];
     q->data_len = 0;
+    theme_dir(q, dir, sizeof(dir));
     if (q->word[0]) {
-        int l;
-        strcpy(path, "ENVARC:up-term/themes");
-        AddPart((STRPTR)path, (STRPTR)q->word, sizeof(path) - 6);
-        l = (int)strlen(path);
-        if (l < 5 || strcmp(path + l - 5, ".conf"))
-            strcat(path, ".conf");
-        theme_read(q, path, q->word);
+        prefs_theme_file(dir, q->word, path, sizeof(path));
+        theme_read(q, path);
         return;
     }
     AslBase = OpenLibrary((STRPTR)"asl.library", 37);
@@ -668,17 +892,40 @@ static void theme_pick(struct complete_req *q)
         return;
     fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
             ASLFR_Screen, (ULONG)q->screen, ASLFR_TitleText, (ULONG)"UP-Term theme",
-            ASLFR_InitialDrawer, (ULONG)"ENVARC:up-term/themes", ASLFR_InitialPattern,
+            ASLFR_InitialDrawer, (ULONG)dir, ASLFR_InitialPattern,
             (ULONG)"#?.conf", ASLFR_DoPatterns, TRUE, ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (fr && AslRequest(fr, 0) && fr->fr_File[0]) {
         strncpy(path, (const char *)fr->fr_Drawer, sizeof(path) - 2);
         path[sizeof(path) - 2] = 0;
         AddPart((STRPTR)path, fr->fr_File, sizeof(path) - 2);
-        theme_read(q, path, (const char *)fr->fr_File);
+        theme_read(q, path);
     }
     if (fr)
         FreeAslRequest(fr);
     CloseLibrary(AslBase);
+}
+
+/* COMPLETE_THEMES: /theme's list -- the theme names in the themes drawer
+ * (the requester's), sorted (prefs_theme_add), into q->names. */
+static void theme_list(struct complete_req *q)
+{
+    struct FileInfoBlock *fib;
+    BPTR lock;
+    int len = 0;
+    q->names_len = 0;
+    theme_dir(q, q->add, COMPLETE_MAX);
+    if (!q->add[0] || !q->names || !(lock = Lock((STRPTR)q->add, SHARED_LOCK)))
+        return;
+    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (fib && Examine(lock, fib) && fib->fib_DirEntryType > 0)
+        while (ExNext(lock, fib))
+            if (fib->fib_DirEntryType < 0 &&
+                prefs_theme_add(q->names, &len, COMPLETE_NAMES, (const char *)fib->fib_FileName) > 0)
+                q->matches++;
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    UnLock(lock);
+    q->names_len = len;
 }
 
 /* The worker's body: runs as its own process. */
@@ -700,6 +947,7 @@ static void worker(void)
     q->common[0] = 0;
     q->is_dir = 0;
     q->names_len = 0;
+    q->partial = 0;
 
     /* the opener's current directory (read without its cooperation, as
      * console-side completion must; it is the Shell's, still alive) */
@@ -721,6 +969,8 @@ static void worker(void)
         font_pick(q);
     } else if (q->mode == COMPLETE_THEME) {
         theme_pick(q);
+    } else if (q->mode == COMPLETE_THEMES) {
+        theme_list(q);
     } else if (q->mode == CONFIG_SAVE) {
         int failed;
         q->font_size = prefs_dos_save(q->data, q->data_len, 1, &failed);
@@ -756,7 +1006,7 @@ static void worker(void)
             UnLock(lock);
         }
         if (q->mode == COMPLETE_COMMANDS && split < 0) {
-            walk_command_dirs(q, prefix, 0);
+            command_names(q, prefix);
             scan_residents(q, prefix);
             scan_extra(q, prefix);
         }
@@ -772,8 +1022,8 @@ static void worker(void)
         finish_names(q);
         if (q->matches) {
             strcpy(q->add, q->common + strlen(prefix));
-            if (q->matches == 1)
-                strcat(q->add, q->is_dir ? "/" : " ");
+            if (q->matches == 1 && !q->partial)
+                strcat(q->add, q->is_dir ? "/" : " "); /* partial: the word may go on */
         }
     }
     if (dir) {

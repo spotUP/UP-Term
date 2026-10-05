@@ -45,6 +45,40 @@ int vt_glyph_native(vt_u32 cp, enum vt_font_enc enc);
  * cp[0] the character to draw. */
 int vt_compose_cell(vt_u32 *cp, int n);
 
+/* A glyph source that answers with a mask: cp over `cells` cells (1 or 2)
+ * as the cell's height of rows, *bpr bytes each, set bits the ink; 0 when
+ * it has no glyph for cp. */
+typedef const vt_u8 *(*vt_mask_source)(void *src, vt_u32 cp, int cells, int *bpr);
+
+/* The sources asked for what the font cannot show itself, in this order:
+ * the outline font the profile names (font-fallback, F1: the user's
+ * choice, Nerd Font icons); then, for a code point vt_map_glyph has no
+ * stand-in for ('-' for an en dash, '>' for U+276F), GNU Unifont
+ * (render/unifont, U2: the BMP and plane 1's emoji). A stand-in is never
+ * replaced by Unifont's glyph (ledger W33). A source left 0 is skipped. */
+typedef struct vt_fallback {
+    enum vt_font_enc enc;
+    vt_mask_source outline;
+    void *outline_src;
+    vt_mask_source unifont;
+    void *unifont_src;
+} vt_fallback;
+
+/* The mask cp draws from over `cells` cells: 0 when the font shows cp
+ * itself (vt_glyph_native), when it has a stand-in and no outline font
+ * draws it, or when no source has it -- then vt_map_glyph's stand-in or
+ * replacement. */
+const vt_u8 *vt_fallback_glyph(const vt_fallback *f, vt_u32 cp, int cells, int *bpr);
+
+/* What a cell with a character past ASCII draws (the renderer's rows and
+ * cursor): cp[VT_CLUSTER_CPS] gets its code points composed
+ * (vt_compose_cell: cp[0] the character, then the marks to draw over it),
+ * *ncp how many; the mask from vt_fallback_glyph over the cell's width
+ * (the engine's width table: 2 for a wide character), or 0 and *g what
+ * vt_map_glyph gives. */
+const vt_u8 *vt_cell_glyph(const vt_fallback *f, vt_term *t, const vt_cell *c, vt_u32 *cp, int *ncp,
+                           int *bpr, vt_glyph *g);
+
 /* UTF-8 text as a Latin-1 string an Intuition title can show: each code
  * point as vt_map_glyph gives it for a Latin-1 font (so a stand-in, never a
  * byte of the sequence), '?' for one drawn as lines or blocks or not

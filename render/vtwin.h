@@ -106,6 +106,10 @@ typedef struct vtwin {
     int font_opened;
     struct TextFont *alt[11];
     struct vo_font *outline;     /* fallback, open while attached (0: none or not found) */
+    struct vo_font *reader;      /* the glyph worker alone, for Unifont's pages when there
+                                  * is no outline font (U2; opened at the first page read) */
+    uf_cache uni;                /* Unifont's pages (U2), while attached */
+    UBYTE *uni_mask;             /* their glyphs' mask, chip RAM for BltTemplate */
     vt_term *t;
     vr_render r;
     WORD want_cols;              /* DECCOLM asked for this width (0: none) */

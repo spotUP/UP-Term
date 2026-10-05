@@ -107,6 +107,20 @@ static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.26) " STR(VTCON_BUILD)
 
 #define TAB_MAX 9 /* tabs in one window */
 
+/* /theme with no name (W30): the themes drawer's list under the line
+ * (lineedit's le_menu), each entry's colours on the window as it is
+ * chosen, Escape putting the window's own back. Allocated with the names
+ * after it while the list is up and until the last theme read is in. */
+struct theme_menu {
+    le_menu m;
+    ULONG fg, bg, cur, sfg, sbg, pal[16]; /* the window's colours when it opened */
+    int asked;                   /* the entry a read is out for (-1 none) */
+    int last;                    /* the entry read last, found or not (-1 none) */
+    int shown;                   /* the entry whose colours the window has (-1: its own) */
+    int end;                     /* LE_MENU_TAKE / _CANCEL once the list is closed */
+    char shown_path[COMPLETE_MAX]; /* the file `shown` was read from */
+};
+
 typedef struct con {
     struct MsgPort *port;
     vtwin w;                     /* the window: engine, renderer, fonts, frame clock (render/vtwin.h) */
@@ -204,12 +218,19 @@ typedef struct con {
     char *words[3];              /* ACTION_VTCON_WORDS lists by kind (1, 2), AllocVec'd */
     long words_len[3];
     struct Task *words_owner;    /* the shell that sent them: valid while it lives */
+    int reader_shell;            /* the last ACTION_READ came from a shell (W31: colour its first word) */
     int tabs;                    /* Tabs in a row */
     int kingcon;                 /* profile completion = kingcon: KingCON's keys and
                                   * selection window (research/2026-10-02_kingcon-completion.md) */
     unsigned long edits;         /* keys that changed the line so far */
     unsigned long comp_edits;    /* edits when the running completion started */
-    struct Menu *menustrip;      /* the window's menu (GadTools), 0 without one */
+    int comp_partial;            /* W22: the last command completion was partial (1 unix,
+                                  * 2 kingcon): asked again when the warm-up ends */
+    unsigned long partial_edits; /* edits after its answer: a key since drops the refine */
+    unsigned long partial_gen;   /* complete_warm_gen() its lookup saw */
+    int next_cold;               /* the next completion may read a directory (the refine) */
+    int partial_now;             /* no warm-up to wait for: refine at once */
+    struct Menu *menustrip;     /* the window's menu (GadTools), 0 without one */
     /* the scroll bar (SB1): the window owner's gadget in its right border,
      * showing the active terminal's knob (a tab's arrives by TM_KNOB) */
     int sbar_on;                 /* the setting: profile scrollbar = show | hide, the menu */
@@ -218,6 +239,10 @@ typedef struct con {
     int knob_last_valid;
     char *menu;                  /* the last completion's names (COMPLETE_NAMES, made at the first menu) */
     int menu_len, menu_n, menu_i, menu_start;
+    struct theme_menu *tm;       /* /theme's list (W30), 0 when none */
+    int line_held;               /* a typed /theme's empty line waits for its list to close */
+    char *theme_file;            /* the theme file the window has (COMPLETE_MAX; 0: none yet):
+                                  * the next theme requester and list start in its drawer */
     /* the find prompt (Right Amiga F): its own small window, open while the
      * console keeps running -- the program's output must not stop while a
      * query is typed */
@@ -1634,29 +1659,65 @@ static void save_ask(con *c)
         comp_data_done(c);
 }
 
-/* Settings > Theme...: a theme file picked and read by the worker (DOS),
- * its colours put on the window in finish_completion. */
+/* A theme request for the worker (DOS): COMPLETE_THEME -- name a theme's
+ * name or path, "" the requester; the file read, its colours put on the
+ * window in finish_completion -- or COMPLETE_THEMES, /theme's list. Both
+ * look in the drawer prefs_dos_theme_drawer picks from the window's theme
+ * and the handler's own file (W30). 1 when it went out. */
+static int theme_req(con *c, int mode, const char *name)
+{
+    struct complete_req *q;
+    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->w.win)
+        return 0;
+    q = c->comp;
+    if (mode == COMPLETE_THEME && !q->data && !(q->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
+        return 0;
+    copy_str(q->word, name, COMPLETE_MAX); /* a name: that theme, no requester */
+    /* extra: the window's theme file, then the file DOS loaded us from
+     * (L:vtcon-handler, the rig's VTC:vtcon-handler): the worker takes
+     * its drawer (complete.h) */
+    copy_str(q->extra, c->theme_file ? c->theme_file : "", COMPLETE_MAX);
+    q->extra_len = (long)strlen(q->extra) + 1;
+    q->extra[q->extra_len] = 0;
+    if (c->node && c->node->dn_Handler) {
+        const UBYTE *b = (const UBYTE *)BADDR(c->node->dn_Handler);
+        if (b[0] < COMPLETE_MAX) {
+            CopyMem((APTR)(b + 1), q->extra + q->extra_len, b[0]);
+            q->extra[q->extra_len + b[0]] = 0;
+        }
+    }
+    q->extra_len += (long)strlen(q->extra + q->extra_len) + 1;
+    q->data_max = UC_MAX_FILE + 1;
+    q->mode = mode;
+    q->kingcon = 0;
+    q->screen = c->w.win->WScreen;
+    if (complete_start(q, c->comp_port, opener(c))) {
+        c->comp_busy = 1;
+        return 1;
+    }
+    comp_data_done(c);
+    return 0;
+}
+
+/* Settings > Theme..., /theme NAME */
 static void theme_ask(con *c, const char *name)
 {
-    if (c->comp_busy || !ensure_worker(c, WORK_COMP) || !c->w.win)
+    theme_req(c, COMPLETE_THEME, name);
+}
+
+/* The window has the theme read from path: the next requester and list
+ * start in its drawer, the list marks it. */
+static void theme_keep(con *c, const char *path)
+{
+    if (!c->theme_file && !(c->theme_file = (char *)AllocVec(COMPLETE_MAX, MEMF_ANY)))
         return;
-    copy_str(c->comp->word, name, COMPLETE_MAX); /* a name: that theme, no requester */
-    if (!c->comp->data && !(c->comp->data = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY)))
-        return;
-    c->comp->data_max = UC_MAX_FILE + 1;
-    c->comp->mode = COMPLETE_THEME;
-    c->comp->kingcon = 0;
-    c->comp->screen = c->w.win->WScreen;
-    if (complete_start(c->comp, c->comp_port, opener(c)))
-        c->comp_busy = 1;
-    else
-        comp_data_done(c);
+    copy_str(c->theme_file, path, COMPLETE_MAX);
 }
 
 /* The theme's colours on the window, live: one profile section, read as
  * a profile's are (apply_colours); what it does not set goes back to the
- * built-in look. */
-static void theme_apply(con *c, const char *text, long len)
+ * built-in look. 1 when the text was a theme. */
+static int theme_apply(con *c, const char *text, long len)
 {
     upconf *t = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
     const char *names[UC_MAX_PROFILES + 1];
@@ -1672,6 +1733,124 @@ static void theme_apply(con *c, const char *text, long len)
     }
     if (!ok)
         DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not a theme file */
+    return ok;
+}
+
+/* ---- /theme's list (W30) ------------------------------------------------------ */
+
+static void output(con *c, const vt_u8 *b, long n);
+
+/* The reader's empty line, held while the list was up: a shell shows its
+ * prompt where the list was. */
+static void theme_line_release(con *c)
+{
+    if (c->line_held) {
+        c->line_held = 0;
+        in_append(c, (const vt_u8 *)"\n", 1);
+    }
+}
+
+/* Entry i's file read for its colours -- unless a read is out (the answer
+ * asks again for the entry chosen by then), or i was the last read. */
+static void theme_menu_read(con *c, int i)
+{
+    struct theme_menu *tm = c->tm;
+    if (tm->asked >= 0 || i == tm->last || i == tm->shown)
+        return;
+    if (theme_req(c, COMPLETE_THEME, le_menu_name(&tm->m, i)))
+        tm->asked = i;
+}
+
+/* The list is closed: once no read is out, the chosen theme stays (and is
+ * the window's theme from now on) or, cancelled or not readable, the
+ * window's own colours come back. */
+static void theme_menu_settle(con *c)
+{
+    struct theme_menu *tm = c->tm;
+    int sel = tm->m.sel, i;
+    if (tm->end == LE_MENU_TAKE)
+        theme_menu_read(c, sel); /* not on the window yet */
+    if (tm->asked >= 0)
+        return; /* finish_completion comes back here */
+    if (tm->end == LE_MENU_TAKE && tm->shown == sel) {
+        theme_keep(c, tm->shown_path);
+    } else {
+        if (tm->end == LE_MENU_TAKE)
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* that file is no theme */
+        if (tm->shown >= 0 && c->w.t) {
+            c->w.fg_rgb = tm->fg;
+            c->w.bg_rgb = tm->bg;
+            c->w.cursor_rgb = tm->cur;
+            c->w.sel_fg_rgb = tm->sfg;
+            c->w.sel_bg_rgb = tm->sbg;
+            for (i = 0; i < 16; i++)
+                c->w.pal16[i] = tm->pal[i];
+            vtwin_apply_settings(&c->w);
+        }
+    }
+    FreeVec(tm);
+    c->tm = 0;
+}
+
+/* The worker's listing of the themes drawer: the list under the line, on
+ * the window's theme (marked) or the first. */
+static void theme_menu_open(con *c, struct complete_req *q)
+{
+    struct theme_menu *tm;
+    char *names;
+    int i;
+    if (!c->w.t || c->raw || c->edits != c->comp_edits) {
+        theme_line_release(c); /* gone, or typed on meanwhile: no list */
+        return;
+    }
+    if (!q->matches) {
+        static const char none[] = "theme: no themes in ", nodir[] =
+            "theme: no themes drawer (the kit installs them in " PREFS_THEMES_DIR ")";
+        if (q->add[0]) {
+            output(c, (const vt_u8 *)none, (long)sizeof(none) - 1);
+            output(c, (const vt_u8 *)q->add, (long)strlen(q->add));
+        } else
+            output(c, (const vt_u8 *)nodir, (long)sizeof(nodir) - 1);
+        output(c, (const vt_u8 *)"\r\n", 2);
+        theme_line_release(c);
+        return;
+    }
+    tm = (struct theme_menu *)AllocVec(sizeof(*tm) + q->names_len + 1, MEMF_ANY | MEMF_CLEAR);
+    if (!tm) {
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+        theme_line_release(c);
+        return;
+    }
+    names = (char *)(tm + 1);
+    CopyMem(q->names, names, q->names_len);
+    tm->fg = c->w.fg_rgb;
+    tm->bg = c->w.bg_rgb;
+    tm->cur = c->w.cursor_rgb;
+    tm->sfg = c->w.sel_fg_rgb;
+    tm->sbg = c->w.sel_bg_rgb;
+    for (i = 0; i < 16; i++)
+        tm->pal[i] = c->w.pal16[i];
+    tm->asked = tm->last = tm->shown = -1;
+    c->tm = tm;
+    i = prefs_theme_index(names, q->matches, c->theme_file);
+    le_menu_open(&c->le, &tm->m, names, q->matches, i, i);
+}
+
+/* A key while the list is up: move (the entry's colours on the window as
+ * it goes), take, or cancel. */
+static void theme_menu_key(con *c, const vt_u8 *b, int n, long key, int mods)
+{
+    struct theme_menu *tm = c->tm;
+    int r = le_menu_key(&tm->m, key ? key : (n ? (long)b[0] : 0), mods, b, n);
+    if (r == LE_MENU_MOVED) {
+        le_menu_draw(&c->le, &tm->m);
+        theme_menu_read(c, tm->m.sel);
+    } else if (r == LE_MENU_TAKE || r == LE_MENU_CANCEL) {
+        tm->end = r;
+        le_menu_close(&c->le, &tm->m);
+        theme_line_release(c);
+        theme_menu_settle(c);
+    }
 }
 
 /* Settings > Profile: the window takes the file's k-th profile, live --
@@ -2239,6 +2418,13 @@ static void window_parts_close(con *c)
 {
     find_close(c); /* the prompt belongs to the window */
     sel_close(c);  /* so does the selection window */
+    if (c->tm && c->tm->m.open) {
+        /* and /theme's list: cancelled, the reader gets its line */
+        c->tm->m.open = 0;
+        c->tm->end = LE_MENU_CANCEL;
+        theme_line_release(c);
+        theme_menu_settle(c);
+    }
     sbar_gad_close(&c->sbar); /* and the scroll bar in its border */
     kc_cyc_end(c);
     menu_remove(c, c->w.win);
@@ -2500,6 +2686,7 @@ static void tty_leave(con *c)
     int eof;
     if (!c->tty)
         return;
+    DBG("tty leave owner/alive", (long)c->tty_owner, task_alive(c->tty_owner));
     c->ld.t.c_lflag &= ~(ld_flag)LD_ICANON; /* whole lines and a partial one, as bytes */
     ld_set(&c->ld, &c->ld.t, LD_TCSANOW);
     while ((n = ld_read(&c->ld, b, sizeof(b), &eof)) > 0)
@@ -2527,6 +2714,7 @@ static int tty_active(con *c)
 
 static void tty_enter(con *c, struct Task *owner)
 {
+    DBG("tty enter owner/was", (long)owner, c->tty);
     if (!c->tty) {
         /* typed ahead: input as it stands, not echoed again */
         void (*e)(void *, const unsigned char *, int) = c->ld.echo;
@@ -2795,6 +2983,8 @@ static void start_completion(con *c)
     }
     c->comp->kingcon = 0;
     c->comp->no_cache = 0;
+    c->comp->cold = c->next_cold;
+    c->next_cold = 0;
     c->comp->extra_len = 0;
     if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
@@ -2806,11 +2996,32 @@ static void start_completion(con *c)
         c->comp_busy = 1;
 }
 
+/* A shell is reading: an AmigaShell between commands (its CLI has no
+ * command loaded), or the shell that told us its words (vsh, which runs as
+ * a command). Any other program reading a line (Ask, C:Claude PLAIN, an
+ * installer) gets its line without command colours (W31). */
+static int task_is_shell(con *c, struct Task *t)
+{
+    struct CommandLineInterface *cli;
+    if (!t)
+        return 1; /* unknown: keep the old behaviour */
+    if (t == c->words_owner)
+        return 1;
+    if (t->tc_Node.ln_Type != NT_PROCESS || !((struct Process *)t)->pr_CLI)
+        return 0;
+    cli = (struct CommandLineInterface *)BADDR(((struct Process *)t)->pr_CLI);
+    return cli->cli_Module == 0;
+}
+
 /* Is the first word a command? Asked whenever it changes (the answer
  * colours it green or red, see le_set_command). */
 static void check_command(con *c)
 {
     unsigned char w[64];
+    if (!c->reader_shell) {
+        le_no_command(&c->le);
+        return;
+    }
     le_first_word(&c->le, w, sizeof(w));
     if (!w[0] || c->check_busy || !strcmp((const char *)w, c->checked))
         return;
@@ -2910,6 +3121,55 @@ static void type_text(con *c, const char *s)
     }
 }
 
+static void kc_put(con *c, const char *name);
+static void kc_tab(con *c, int mode);
+
+/* W22: a command completion answered before every command directory was
+ * cached (complete.c never makes a Tab wait for a directory to be read).
+ * What the cached names share goes in, never the space or "/" that would
+ * end the word, with no beep and no menu (they would judge from half a
+ * list); when the warm-up has read the rest, the Tab is asked again --
+ * unless a key came meanwhile. KingCON's window, list and cycle (several
+ * names) work on what is cached, as they always did on KingCON's cache. */
+static void partial_answer(con *c, struct complete_req *q)
+{
+    if (q->kingcon) {
+        if (q->matches > 1) {
+            kc_finish(c, q);
+            return;
+        }
+        if (q->matches == 1)
+            kc_put(c, q->common);
+    } else if (q->add[0]) {
+        type_text(c, q->add);
+        check_command(c);
+    }
+    c->comp_partial = q->kingcon ? 2 : 1;
+    c->partial_edits = c->edits;
+    c->partial_gen = q->warm_gen;
+    c->partial_now = complete_warm_wait(FindTask(0), 1UL << c->comp_port->mp_SigBit, q->warm_gen,
+                                        opener(c));
+}
+
+/* the warm-up ended (its signal is the completion port's): the Tab again,
+ * now allowed to read a directory still missing (it ends there) */
+static void partial_refine(con *c)
+{
+    int kind = c->comp_partial;
+    if (!kind || (!c->partial_now && complete_warm_gen() == c->partial_gen))
+        return;
+    c->comp_partial = 0;
+    c->partial_now = 0;
+    complete_warm_forget(FindTask(0));
+    if (c->edits != c->partial_edits || c->comp_busy || !c->w.t || c->raw)
+        return; /* the line moved on */
+    c->next_cold = 1;
+    if (kind == 2)
+        kc_tab(c, COMPLETE_COMMANDS);
+    else
+        start_completion(c);
+}
+
 static void finish_completion(con *c)
 {
     struct complete_req *q;
@@ -2958,12 +3218,34 @@ static void finish_completion(con *c)
             comp_data_done(c);
             continue;
         }
+        if (q->mode == COMPLETE_THEME && c->tm && c->tm->asked >= 0) {
+            /* an entry of /theme's list: its colours on the window */
+            struct theme_menu *tm = c->tm;
+            int got = tm->asked;
+            tm->asked = -1;
+            tm->last = got;
+            if (q->matches && c->w.t && theme_apply(c, q->data, q->data_len)) {
+                tm->shown = got;
+                copy_str(tm->shown_path, q->add, COMPLETE_MAX);
+            }
+            comp_data_done(c);
+            if (tm->end)
+                theme_menu_settle(c);
+            else
+                theme_menu_read(c, tm->m.sel); /* moved on meanwhile */
+            continue;
+        }
         if (q->mode == COMPLETE_THEME) {
-            if (q->matches && c->w.t)
-                theme_apply(c, q->data, q->data_len);
-            else if (q->word[0])
+            if (q->matches && c->w.t) {
+                if (theme_apply(c, q->data, q->data_len))
+                    theme_keep(c, q->add);
+            } else if (q->word[0])
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* "/theme NAME": no such theme */
             comp_data_done(c);
+            continue;
+        }
+        if (q->mode == COMPLETE_THEMES) {
+            theme_menu_open(c, q);
             continue;
         }
         if (q->mode == COMPLETE_FONT) {
@@ -2978,6 +3260,10 @@ static void finish_completion(con *c)
         if (c->edits != c->comp_edits)
             continue; /* the line changed while it ran (rig: typed text got the
                        * answer for an older word): the answer is for no word now */
+        if (q->partial && !q->cold && q->mode == COMPLETE_COMMANDS) { /* a refine is final */
+            partial_answer(c, q);
+            continue;
+        }
         if (q->kingcon) {
             kc_finish(c, q);
             continue;
@@ -2997,6 +3283,7 @@ static void finish_completion(con *c)
         if (q->matches > 1)
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* completed as far as they agree */
     }
+    partial_refine(c); /* a warm-up we waited for has ended */
 }
 
 /* The next Tab after a completion: show the menu, then cycle through it. */
@@ -3053,9 +3340,10 @@ static int slash_colour(const char *arg, ULONG *rgb)
 }
 
 /* A /command line: run it, and its answer into ans (one or more lines,
- * each ending "\n"). 0 when the line is not one (the program's), 1 done,
- * 2 refused (ans says why). */
-static int slash_run(con *c, const char *line, int len, char *ans, int cap)
+ * each ending "\n"). typed: from the line editor (the reader waits for the
+ * line), not C:UPTerm's packet. 0 when the line is not one (the
+ * program's), 1 done, 2 refused (ans says why). */
+static int slash_run(con *c, const char *line, int len, char *ans, int cap, int typed)
 {
     slash_cmd cmd;
     char err[160];
@@ -3146,9 +3434,21 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap)
         copy_str(c->link_open, str_ieq(cmd.arg, "none") ? "" : cmd.arg, sizeof(c->link_open));
         return 1;
     case SLASH_THEME:
+        if (!cmd.arg[0] && typed) {
+            /* the themes under the line, chosen with the keys (W30); the
+             * reader's empty line waits until the list closes */
+            c->comp_edits = c->edits;
+            if (!theme_req(c, COMPLETE_THEMES, "")) {
+                cat3(ans, cap, name, ": busy, try again", "\n");
+                return 2;
+            }
+            c->line_held = 1;
+            ans[0] = 0;
+            return 1;
+        }
         theme_ask(c, cmd.arg);
         if (!cmd.arg[0])
-            ans[0] = 0; /* the requester answers */
+            ans[0] = 0; /* the requester answers (C:UPTerm /theme) */
         return 1;
     case SLASH_PROFILE: {
         const char *names[UC_MAX_PROFILES + 1];
@@ -3262,6 +3562,10 @@ static int slash_tab(con *c)
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
+    if (c->tm && c->tm->m.open) {
+        theme_menu_key(c, b, n, key, mods); /* /theme's list has the keys */
+        return;
+    }
     sel_close(c); /* typing in the console ends a selection, as any key ends KingCON's */
     if (c->kc_cyc && kc_cyc_key(c, b, n, key, mods))
         return;   /* Tab, Shift+Tab, Alt+Tab or Ctrl+S inside a cycle */
@@ -3334,7 +3638,7 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
         /* the answer (the help is long) on the heap: the stack is small, and
          * a static would be every window's (one code, many processes) */
         if (l > 1 && line[0] == '/' && line[1] >= 'a' && line[1] <= 'z' &&
-            (ans = (char *)AllocVec(4096, MEMF_ANY)) != 0 && slash_run(c, line, l, ans, 4096)) {
+            (ans = (char *)AllocVec(4096, MEMF_ANY)) != 0 && slash_run(c, line, l, ans, 4096, 1)) {
             /* UP-Term's: its answer on screen, and an empty line for the
              * reader -- a shell shows a fresh prompt */
             le_reset(&c->le);
@@ -3351,7 +3655,8 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
                     }
             }
             FreeVec(ans);
-            in_append(c, (const vt_u8 *)"\n", 1);
+            if (!c->line_held)
+                in_append(c, (const vt_u8 *)"\n", 1); /* else when /theme's list closes */
             c->checked[0] = 0;
             return;
         }
@@ -3469,6 +3774,8 @@ static void kc_tab(con *c, int mode)
     c->comp->kingcon = 1;
     c->comp->show_info = c->kc_info;
     c->comp->no_cache = !c->kc_cache;
+    c->comp->cold = c->next_cold;
+    c->next_cold = 0;
     c->comp->extra_len = 0;
     if (extra && n > 0 && n <= COMPLETE_EXTRA) {
         CopyMem((APTR)extra, c->comp->extra, n);
@@ -5078,6 +5385,8 @@ static void packet(con *c, struct DosPacket *p)
         fh->fh_Port = (struct MsgPort *)DOSTRUE; /* interactive */
         fh->fh_Arg1 = (LONG)c;
         c->opens++;
+        if (!c->ever_opened)
+            complete_warm(opener(c)); /* W22: the command cache read before the first Tab */
         c->ever_opened = 1;
         reply(p, DOSTRUE, 0);
         return;
@@ -5133,6 +5442,7 @@ static void packet(con *c, struct DosPacket *p)
         }
         vtwin_render(&c->w); /* what was written is on screen before the read waits */
         if (c->nreads < READ_Q) {
+            c->reader_shell = task_is_shell(c, p->dp_Port ? (struct Task *)p->dp_Port->mp_SigTask : 0);
             c->reads[c->nreads++] = p;
 #ifdef VTCON_DEBUG
             dbg("READ task/nreads", (LONG)p->dp_Port->mp_SigTask, c->nreads);
@@ -5319,7 +5629,7 @@ static void packet(con *c, struct DosPacket *p)
             const char *line = (const char *)p->dp_Arg2;
             char *ans = (char *)p->dp_Arg3;
             ans[0] = 0;
-            reply(p, slash_run(c, line, (int)strlen(line), ans, (int)p->dp_Arg4), 0);
+            reply(p, slash_run(c, line, (int)strlen(line), ans, (int)p->dp_Arg4, 0), 0);
         }
         return;
     case ACTION_VTCON_NREAD:
@@ -5423,6 +5733,7 @@ static LONG handler_main(void)
     if (!c)
         return 0; /* cannot even reply: DOS will see the process end */
     c->port = &me->pr_MsgPort;
+    c->reader_shell = 1; /* until the first read says who reads */
 
     DOSBase = (struct DosLibrary *)OpenLibrary((STRPTR)"dos.library", 39);
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
@@ -5629,11 +5940,16 @@ static LONG handler_main(void)
         FreeVec(c->check);
     if (c->menu)
         FreeVec(c->menu);
+    if (c->tm)
+        FreeVec(c->tm);
+    if (c->theme_file)
+        FreeVec(c->theme_file);
     if (c->hist) {
         if (c->hist->data)
             FreeVec(c->hist->data);
         FreeVec(c->hist);
     }
+    complete_warm_forget(FindTask(0)); /* its signal is the port's */
     if (c->comp_port)
         DeleteMsgPort(c->comp_port);
     rtimer_stop(c);

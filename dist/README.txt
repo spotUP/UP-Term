@@ -112,7 +112,12 @@ CONFIGURATION (profiles)
    Themes: the kit installs 112 colour themes in ENVARC:up-term/themes.
    In UP-Term Prefs, Colors page, press Theme... and pick one: its colours
    go into the profile you are editing; Save (or Use) applies them to the
-   windows opened after.
+   windows opened after. In a window, Settings > Theme... puts one on
+   that window; /theme with no name lists them under the line: Up and
+   Down show each on the window, Enter keeps it, Escape puts the window's
+   own colours back. Every theme requester opens in the drawer of the
+   theme you chose last, else ENVARC:up-term/themes, else its copy in
+   ENV:, else a themes drawer beside the program.
 
    Themes from another terminal convert to a profile section with
    tools/theme_import.py in the source tree; it reads the Terminal.app,
@@ -136,6 +141,16 @@ OUTLINE FONTS (icons, other scripts)
    and put  font-fallback = SymbolsNerdFontMono  (the .otag's name) in a
    profile, or type it in UP-Term Prefs, General page, Fallback font.
    Open windows take it at once.
+   What neither font has comes from GNU Unifont, when Install put it in
+   (the "Unifont" part: SYS:UP-Term/unifont, 1.8 MB, SIL Open Font License
+   1.1, see OFL-1.1.txt and SOURCE.txt there): every character up to
+   U+FFFF and the emoji (U+1F000-U+1FAFF, in one colour, two cells wide as
+   in any terminal), drawn 1:1 with a 16-pixel font (TopazPro 16, IBM 16)
+   and at half height, each pair of rows merged, with an 8-pixel one
+   (topaz 8). A character with a Latin-1 stand-in keeps it ('>' for the
+   prompt arrow U+276F, '-' for a dash). Other font sizes keep the '?' (a
+   box for an emoji). A window reads a page of 256 characters the first
+   time it needs one and keeps the last 8 (at most 66 KB).
 
 COMMANDS (/cursor bar)
    Every setting of the menus and of Prefs is also a command you type at
@@ -501,6 +516,72 @@ CONSOLE.DEVICE
   patched by another program (SetFunction). Fields of struct ConUnit that
   programs write are overwritten at the next output, except the keymap
   (CD_SETKEYMAP). Not offered on AmigaOS 3.2 yet.
+
+CLAUDE
+  C:Claude talks to Claude, Anthropic's AI model, from an UP-Term window,
+  and can read, search and edit files and run commands for you. It needs
+  a TCP/IP stack (Roadshow, Miami, AmiTCP), AmiSSL 5 (Aminet
+  util/libs/AmiSSL-v5-OS3.lha), a 68020 or better, and an API key of your
+  own from console.anthropic.com. What it uses is billed to that key:
+  /cost shows the tokens and the price so far.
+    Claude                    a conversation (/help lists the commands)
+    Claude list the files in S:   one request, then back to the Shell
+    Claude PING               checks the connection: HTTP status, times
+    Claude MODEL=name EFFORT=low|medium|high|xhigh|max ROOT=dir DEBUG
+    Claude PLAIN              the line mode at the window's own prompt
+  The key: SetEnv SAVE ANTHROPIC_API_KEY yourkey, or put it alone in the
+  file ENVARC:Claude/key (Install makes the drawer, never a key; Uninstall
+  leaves the drawer and your key). Claude never shows the key and never
+  writes it to a log; DEBUG logs to T:Claude.log with the key blanked. The
+  key only goes over https.
+  The screen is Claude Code's: what was said scrolls above, an input box
+  and a status line stay at the bottom (model, effort, the start
+  directory, how much of the context is left, the permission mode).
+    Enter               sends; a new line: Shift+Enter, \ Enter, or Ctrl+J
+    Up / Down           earlier prompts, kept across sessions per start
+                        directory (ENVARC:Claude/history); Ctrl+R searches
+                        them all (again: older; Tab edits, Enter sends)
+    Ctrl+A/E/K/U/W/Y    start, end, cut to the end / start / white space,
+                        put back; Ctrl+_ undoes; a paste stays one block
+    /                   the commands, as a menu: Up/Down, Tab completes
+    Shift+Tab           the permission mode: default, accept edits (writes
+                        and edits in the start directory run unasked), plan
+                        (only reading tools run; Claude presents a plan)
+    Esc                 stops Claude (the unfinished answer is not kept)
+    Esc Esc             clears the box (Up brings it back); on an empty box
+                        the rewind menu: back to before an earlier prompt
+    Enter while Claude works   queues the prompt; it goes in after the tool
+                        calls, or when Claude is done; Up takes it back
+    ! command           runs it in the shell; Claude sees the output
+    # note              saves the note to a memory file (CLAUDE.md, yours
+                        or the project's: a menu asks which)
+    @path               attaches the file (Tab completes the path)
+    Ctrl+O              the whole transcript: results in full, thinking;
+                        Up/Down/PgUp/PgDn, / or Ctrl+R searches, q leaves
+    Ctrl+T              Claude's todo list under the box, on or off
+    Ctrl+G              the prompt in your editor (ENV:EDITOR, else Ed)
+    Ctrl+L              draws the screen again
+    Ctrl+C              clears the line; twice on an empty line: leave
+                        (Ctrl+D twice too)
+  /theme picks the colours (dark, light, colour-blind friendly, monochrome
+  for 2- and 4-colour screens); /vim turns on vim keys in the box. When a
+  long answer ends or Claude asks for permission, the window rings and its
+  title says so.
+  /compact summarises the conversation and goes on from the summary;
+  /context shows how full the context is; /init writes AMIGA.md, notes on
+  the start directory that every later session reads; /resume loads the
+  conversation saved after each answer (ENVARC:Claude/session.json).
+  Tools: every call is shown. Reading, listing and searching ask once
+  (answer 2 allows all three for the session); writing, editing and
+  running a command ask every time unless you answer 2 for that tool; an
+  edit shows its change in red and green before you answer. 3 (or Esc)
+  says no and lets you tell Claude what to do instead. Anything outside
+  the start directory (the current one, or ROOT=) asks every time.
+  Commands run through vsh with no input, up to 60 seconds. The text is
+  UTF-8: the screen needs an UP-Term window in the xterm dialect (the
+  default); elsewhere Claude falls back to the line mode, where Ctrl+C
+  stops an answer and the questions are answered y, a or n.
+  Model claude-opus-5-5 and effort medium unless you choose others.
 
 STATUS
   Test build. CON:/RAW: and console.device stay the system's unless you
