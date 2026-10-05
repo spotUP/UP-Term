@@ -1,5 +1,5 @@
-# Synology Container Manager > Project > Create: paste this, set the two
-# addresses, keep the volume paths (create /volume1/docker/claude-amiga first).
+# Synology Container Manager > Project > Create, source: this folder with
+# uptelnetd.py beside it (create /volume1/docker/claude-amiga/home first).
 services:
   claude-amiga:
     build: .
@@ -8,8 +8,8 @@ services:
     restart: unless-stopped
     network_mode: host          # uptelnetd listens on the NAS's own LAN address
     environment:
-      NAS_IP: "192.168.0.10"    # CHANGE: the NAS's LAN address
-      ALLOW: "192.168.0.0/24"   # CHANGE: your LAN (only these may connect)
+      NAS_IP: "192.168.0.198"   # Megadrive (DS218+), static
+      ALLOW: "192.168.0.0/24"   # the home LAN only
       PORT: "2323"
     volumes:
       - /volume1/docker/claude-amiga/home:/home/claude   # login, settings, password, history

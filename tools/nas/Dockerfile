@@ -10,12 +10,15 @@ RUN apt-get update \
  && useradd -m -s /bin/bash claude
 
 COPY uptelnetd.py /usr/local/bin/uptelnetd.py
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY setpw /usr/local/bin/setpw
+RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/setpw
 
-USER claude
 WORKDIR /home/claude/work
 ENV LANG=C.UTF-8 SHELL=/bin/bash
 
 # NAS_IP: the NAS's LAN address (host networking: the container listens on it).
-# ALLOW: the LAN that may connect, e.g. 192.168.0.0/22.
-# The password: /home/claude/.config/uptelnetd/password (0600), on the volume.
-CMD ["sh", "-c", "exec python3 /usr/local/bin/uptelnetd.py --bind \"$NAS_IP\" --allow \"$ALLOW\" --port \"${PORT:-2323}\" --command 'tmux new -A -s claude claude'"]
+# ALLOW: the LAN that may connect. The password: `setpw` in the container's
+# terminal (kept 0600 on the volume). Claude Code logs in with /login (the
+# Claude subscription); no API key anywhere.
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
