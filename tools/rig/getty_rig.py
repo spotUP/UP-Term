@@ -86,7 +86,10 @@ def main():
     if run('Assign >NIL: PTY: EXISTS DEVICES')[0] != 0:
         run('Mount PTY: FROM VTC:ptymount')
     run('Run >NIL: VTC:upgetty SHELL VTC:vsh')
-    prompt = rb'[%#$>] $'
+    # vsh on a vtcon console ends every prompt with the OSC 133 B marker
+    # (shell/vsh.c prompt(), 6318b95), so the prompt's last visible character
+    # is no longer the '%'. B is emitted only after a prompt, never for output.
+    prompt = rb'\x1b\]133;B\x07'
     check(wire.wait_for(prompt, 30), 'vsh\'s prompt arrives over serial', wire.text())
     wire.seen = b''
     wire.send('echo getty-$((6*7))\r')
