@@ -357,4 +357,4 @@ Phase 5:
 
 Total: 53 items (8 + 10 + 5 + 9 + 11 + 10), 10 done, 43 open (counted 2026-10-06 from the checklist rows: 10 [x] + 43 [ ] = 53).
 
-Status note 2026-10-06: ticked the rows with evidence (0.1-0.4, 0.7, 0.8, 1.1, 3.8, 4.3, 5.10). Still open and verified: 0.5 userland_rig.py (no file), 0.6 vsh builtins (no eval, exec, trap, local, getopts, umask), 3.7 (coreutils 5.2.1 shipped, not 9). 4.4 Lua unconfirmed; the rest not checked.
+Status note 2026-10-06: ticked the rows with evidence (0.1-0.4, 0.7, 0.8, 1.1, 3.8, 4.3, 5.10). Still open and verified: 0.6 vsh builtins (no eval, exec, trap, local, getopts, umask), 3.7 (coreutils 5.2.1 shipped, not 9). 4.4 Lua unconfirmed; the rest not checked.
