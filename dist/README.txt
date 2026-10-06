@@ -371,8 +371,10 @@ SERIAL LOGIN
   USB serial adapter) to another computer, open a terminal program there
   (screen /dev/ttyUSB0 19200, minicom, PuTTY), and on the Amiga run
     upgetty LOOP
-  The far end then has vsh with a real tty: line editing, Ctrl-C/Z as
-  signals, the window size (stty rows/cols), vim, less, tmux.
+  The far end then has vsh with a real tty: line editing, the window size
+  (stty rows/cols), vim, less, tmux. Ctrl-C, Ctrl-Z and Ctrl-\ work as on a
+  Unix tty: no signal crosses the cable, only the bytes 0x03, 0x1A and 0x1C;
+  the Amiga end turns them into signals for the running program.
   Options: BAUD n (default 19200), RTSCTS (hardware flow control; needed
   for 115200 and a cable that carries RTS/CTS), UNIT n, DEVICE name,
   ROWS n COLS n, TERM name, SHELL command, LOOP (a new shell when one ends).

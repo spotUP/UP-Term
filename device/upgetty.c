@@ -1,8 +1,10 @@
 /* upgetty -- a Unix shell over the serial port (ledger T4): serial.device on
  * one side, a PTY: pair in the middle, vsh on the slave. Whatever terminal
  * is on the other end of the cable (an xterm running `screen /dev/ttyUSB0`,
- * PuTTY, a second Amiga) then talks to a real tty: termios, Ctrl-C/Z/\ as
- * signals, the window size, so screen, tmux and vim work over the wire.
+ * PuTTY, a second Amiga) then talks to a real tty: termios, the window size,
+ * and Ctrl-C/Z/\ as on a Unix tty (only the bytes cross the cable; the PTY's
+ * line discipline turns them into signals), so screen, tmux and vim work
+ * over the wire.
  *
  *   upgetty [UNIT n] [BAUD n] [ROWS n] [COLS n] [TERM name] [SHELL cmd] [DEVICE name] [LOOP]
  *           [RTSCTS]
