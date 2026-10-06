@@ -5733,6 +5733,24 @@ static void packet(con *c, struct DosPacket *p)
             reply(p, slash_run(c, line, (int)strlen(line), ans, (int)p->dp_Arg4, 0), 0);
         }
         return;
+    case ACTION_VTCON_INTR: {
+        /* ixemul's reader caught a signal: give its waiting read back */
+        struct DosPacket *rp = (struct DosPacket *)p->dp_Arg2;
+        int i;
+        for (i = 0; i < c->nreads && c->reads[i] != rp; i++)
+            ;
+        if (i == c->nreads) {
+            reply(p, DOSFALSE, 0);
+            return;
+        }
+        if (i == next_read(c))
+            rtimer_stop(c); /* VTIME's timer was this read's */
+        drop_read(c, i);
+        reply(rp, -1, ERROR_BREAK);
+        reply(p, DOSTRUE, 0);
+        service_reads(c); /* the next read, if any, may wait on VTIME now */
+        return;
+    }
     case ACTION_VTCON_NREAD:
         if (tty_active(c))
             reply(p, ld_nread(&c->ld), 0);

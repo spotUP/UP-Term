@@ -5,7 +5,12 @@
  * keeps VTC:winch.out current with: the size TIOCGWINSZ gave at the start,
  * the number of SIGWINCHs caught, and the size TIOCGWINSZ gives now. The
  * rig drags the window's size gadget and reads the file: the two halves
- * of the chain (signal delivered / size reported) are told apart. */
+ * of the chain (signal delivered / size reported) are told apart.
+ * With "read" as the second argument it waits in read(0) instead of
+ * sleep(): a caught SIGWINCH must end that read with EINTR, as on Unix
+ * (less 321 redraws only then). */
+#include <errno.h>
+#include <string.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,13 +26,15 @@ static void on_winch(int sig)
     winches++;
 }
 
+static int rd = 1, rderr; /* the last read's result and errno (read mode) */
+
 static void report(const struct winsize *a, const struct winsize *b, int n, int done)
 {
     FILE *f = fopen("VTC:winch.out", "w");
     if (!f)
         return;
-    fprintf(f, "start %dx%d winch %d now %dx%d%s\n", a->ws_col, a->ws_row, n, b->ws_col, b->ws_row,
-            done ? " done" : "");
+    fprintf(f, "start %dx%d winch %d now %dx%d read %d %d%s\n", a->ws_col, a->ws_row, n, b->ws_col,
+            b->ws_row, rd, rderr, done ? " done" : "");
     fclose(f);
 }
 
@@ -35,9 +42,12 @@ int main(int argc, char **argv)
 {
     struct winsize a, b;
     int secs = argc > 1 ? atoi(argv[1]) : 40;
-    int i, seen = -1;
+    int i, seen = -1, rmode = argc > 2 && !strcmp(argv[2], "read");
+    struct sigaction sa;
 
-    signal(SIGWINCH, on_winch);
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = on_winch; /* no SA_RESTART: the read must end */
+    sigaction(SIGWINCH, &sa, 0);
     if (ioctl(0, TIOCGWINSZ, &a) < 0)
         a.ws_col = a.ws_row = 0;
     b = a;
@@ -46,10 +56,15 @@ int main(int argc, char **argv)
     fflush(stdout);
     for (i = 0; i < secs; i++) {
         struct winsize c;
-        sleep(1);
+        if (rmode) {
+            char ch;
+            rd = (int)read(0, &ch, 1);
+            rderr = rd < 0 ? errno : 0;
+        } else
+            sleep(1);
         if (ioctl(0, TIOCGWINSZ, &c) < 0)
             c.ws_col = c.ws_row = 0;
-        if (winches != seen || c.ws_col != b.ws_col || c.ws_row != b.ws_row) {
+        if (rmode || winches != seen || c.ws_col != b.ws_col || c.ws_row != b.ws_row) {
             seen = winches;
             b = c;
             report(&a, &b, seen, 0);

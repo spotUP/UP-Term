@@ -59,6 +59,16 @@
  *   dp_Res1  0 not a command, 1 done, 2 refused (the answer says why) */
 #define ACTION_VTCON_COMMAND 0x765B
 
+/* A caught signal interrupts a read (Unix: the read returns EINTR and the
+ * handler runs; less 321's SIGWINCH handler longjmps out of its read, W47).
+ * ixemul sends this while its ACTION_READ waits here: the read, if still
+ * queued, is answered now with dp_Res1 -1, dp_Res2 ERROR_BREAK and no
+ * bytes taken.
+ *   dp_Arg1  fh_Arg1, dp_Arg2 the waiting read (struct DosPacket *)
+ *   dp_Res1  DOSTRUE the read was given back, DOSFALSE it was not queued
+ *            (already answered: its reply carries the bytes) */
+#define ACTION_VTCON_INTR 0x765C
+
 /* ACTION_VTCON_TCGETA answers dp_Res2 1 when the console is in termios
  * mode (a program set it), 0 when it describes the Amiga mode in termios
  * terms: a shell that suspends a job keeps the job's settings only then
