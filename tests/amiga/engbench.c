@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dos/dos.h>
+#include <exec/memory.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "../../engine/vtengine.h"
@@ -51,6 +52,66 @@ static void build(int w)
         for (i = 0; i < 300; i++) s("\033[5;1H\033[L\033[M");
         break;
     }
+}
+
+/* The painter's shapes (ledger 2026-10-04-race-r5-r12): what conbench's
+ * rows hand render/painter on the stock rig's 77 x 20 window -- text at
+ * bit phase 4 (the window's left border), topaz 8, 4 planes of 80 bytes.
+ *   6 plain lines: 816 runs of 77 cells, pen 1 on 0
+ *   7 colour runs (sgr-colour): 300 lines of 8 runs of 8 cells, pens 0-7
+ *   8 a colour a cell (sgr-perchar): 60 lines of 40 one-cell runs
+ * Each new line comes into a row cleared in pen 0 (a scroll); the planes
+ * each run writes are the renderer's rule, paint_mask(). */
+static int paint_mask(int fg, int bg, int window_mask)
+{
+    (void)fg;
+    (void)bg;
+    return window_mask; /* every plane in use */
+}
+
+static long paint(int w)
+{
+    static vp_u8 glyphs[256 * 8], chars[80];
+    static vp_u8 *planes[4];
+    long cells = 0;
+    int i, k, p;
+    if (!planes[0]) {
+        for (p = 0; p < 4; p++)
+            if (!(planes[p] = (vp_u8 *)AllocMem(80 * 160, MEMF_CHIP | MEMF_CLEAR)))
+                return 0;
+        for (k = 0; k < 256 * 8; k++)
+            glyphs[k] = (vp_u8)(k * 37);
+    }
+    switch (w) {
+    case 6:
+        for (i = 0; i < 816; i++) {
+            for (k = 0; k < 77; k++)
+                chars[k] = (vp_u8)('a' + (i + k) % 26);
+            vp_span_fast(planes, 4, 80, 4, (i % 20) * 8, glyphs, 8, chars, 77, 1, 0, paint_mask(1, 0, 0x01));
+            cells += 77;
+        }
+        break;
+    case 7:
+        for (i = 0; i < 300; i++)
+            for (k = 0; k < 8; k++) {
+                for (p = 0; p < 8; p++)
+                    chars[p] = (vp_u8)('1' + p);
+                vp_span_fast(planes, 4, 80, 4 + k * 64, (i % 20) * 8, glyphs, 8, chars, 8, k, 0,
+                             paint_mask(k, 0, 0x07));
+                cells += 8;
+            }
+        break;
+    default:
+        for (i = 0; i < 60; i++)
+            for (k = 0; k < 40; k++) {
+                chars[0] = (vp_u8)('A' + (k + i) % 26);
+                vp_span_fast(planes, 4, 80, 4 + k * 8, (i % 20) * 8, glyphs, 8, chars, 1, k % 8, 0,
+                             paint_mask(k % 8, 0, 0x07));
+                cells++;
+            }
+        break;
+    }
+    return cells;
 }
 
 /* vtengine_68k.s against what its C says: the cells written, where it
@@ -313,9 +374,10 @@ static int render_check(void)
 
 int main(int argc, char **argv)
 {
-    static const char *const name[] = { "plain lines", "newlines", "colour a char", "256 pair a cell", "frame repaint", "ins/del line" };
+    static const char *const name[] = { "plain lines", "newlines", "colour a char", "256 pair a cell", "frame repaint", "ins/del line",
+                                        "paint plain", "paint runs", "paint a cell" };
     static vt_callbacks cb;
-    /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-5) and
+    /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-8) and
      * PERS one dialect (0 xterm, 1 amiga) -- for tools/prof68k.py, which
      * counts the instructions of one workload under vamos */
     int reps = 3, only = -1, onlypers = -1, w, r, pers, a;
@@ -328,11 +390,11 @@ int main(int argc, char **argv)
     }
     cb.damage = damage;
     cb.scroll = scroll;
-    /* the checks run unless one workload is asked for (ONLY 0-5: a profile
+    /* the checks run unless one workload is asked for (ONLY 0-8: a profile
      * counts the workload, not the checks; ONLY 9 runs the checks alone).
      * The engine's assembler must be right or nothing is timed; the
      * renderer's is reported apart (its own work, its own fault). */
-    if (only < 0 || only > 5) {
+    if (only < 0 || only > 8) {
         w = asm_check();
         Printf((STRPTR)"asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
         if (w)
@@ -340,7 +402,24 @@ int main(int argc, char **argv)
         w = render_check();
         Printf((STRPTR)"render asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
     }
+    for (w = 6; w < 9; w++) {
+        /* the painter's shapes: cells a second */
+        long best = 0x7FFFFFFF, cells = 0, t0;
+        if (only >= 0 && w != only)
+            continue;
+        for (r = 0; r < reps; r++) {
+            t0 = now();
+            cells = paint(w);
+            t0 = now() - t0;
+            if (t0 < best)
+                best = t0;
+        }
+        Printf((STRPTR)"  %-16s %6ld cells %4ld ticks %7ld cells/s\n", (LONG)name[w], cells, best,
+               best ? cells * 50 / best : 0L);
+    }
     for (pers = 0; pers < 2; pers++) {
+        if (only >= 6 && only <= 8)
+            break;
         if (onlypers >= 0 && pers != onlypers)
             continue;
         Printf((STRPTR)"%s\n", (LONG)(pers ? "amiga dialect" : "xterm dialect"));

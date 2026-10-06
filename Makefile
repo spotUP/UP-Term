@@ -5,7 +5,7 @@ HOSTCFLAGS := -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -fsanitize=address
 BUILD   := build
 
 ENGINE  := engine/vtengine.c
-RENDER  := render/glyphmap.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c
+RENDER  := render/glyphmap.c render/fontpair.c render/sbar.c render/otag.c render/painter.c render/rowpen.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c
 SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c
 TTY     := tty/ldisc.c
 DEVICE_CORE := device/upc_core.c
@@ -25,7 +25,7 @@ VIEW_CLI  := view/vw_cli.c
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
-           tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
+           tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_rowpen.c tests/test_text.c tests/test_clip.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_hl.c tests/test_md.c
 
 .PHONY: widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
@@ -35,7 +35,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host
 	@if [ "$(ONLY)" != uptelnetd ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 
-$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
+$(BUILD)/vttest_host: $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/fontpair.h render/sbar.h render/pace.h render/otag.h render/rowpen.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h handler/clipfmt.h render/vtinput.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -o $@ $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(TESTS)
 
@@ -171,7 +171,7 @@ VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=16
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
-HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/complete_core.c handler/brk.c handler/slash.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c
+HANDLER_SRC := $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h render/rowpen.c render/rowpen.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/complete_core.c handler/brk.c handler/slash.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c
 HANDLER_HDR := engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/complete.h handler/complete_core.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h
 
@@ -343,9 +343,9 @@ $(BUILD)/amiga/wasabikey: install/wasabikey.c
 	$(VC) -o $@ install/wasabikey.c
 
 # The engine alone on the 68k: bytes a second per workload (S1)
-$(BUILD)/amiga/engbench: tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h engine/vtengine.h
+$(BUILD)/amiga/engbench: tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h render/rowpen.c render/rowpen.h engine/vtengine.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -DVT_ASM -DVP_ASM -o $@ tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s
+	$(VC) -dontwarn=153,65 -DVT_ASM -DVP_ASM -o $@ tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/rowpen.c
 
 # Where a write's time goes: conbench's per-write shapes, apart (S1)
 $(BUILD)/amiga/wprobe: tests/amiga/wprobe.c
@@ -373,8 +373,8 @@ $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldis
 # UP-Term's console.device (console plan D1.6): upcon_rom.o first (the
 # RomTag and the ROM forwards), no C startup, as the handler.
 DEVICE_SRC := device/upcon_device.c device/upcon_unit.c device/upcon_input.c device/upc_core.c \
-              render/vtwin.c render/vtinput.c render/sbar.c render/amiga_render.c render/painter.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c handler/clip.c handler/clipfmt.c $(ENGINE)
-DEVICE_HDR := device/upcon.h device/upc_public.h device/upc_core.h render/vtwin.h render/vtinput.h render/sbar.h render/amiga_render.h render/painter.h render/glyphmap.h \
+              render/vtwin.c render/vtinput.c render/sbar.c render/amiga_render.c render/painter.c render/rowpen.c render/glyphmap.c render/fontpair.c render/outline.c render/otag.c handler/clip.c handler/clipfmt.c $(ENGINE)
+DEVICE_HDR := device/upcon.h device/upc_public.h device/upc_core.h render/vtwin.h render/vtinput.h render/sbar.h render/amiga_render.h render/painter.h render/rowpen.h render/glyphmap.h \
               render/glyph_tables.inc handler/clip.h handler/clipfmt.h engine/vtengine.h engine/vtwidth.h
 DEVICE_FLAGS := DEBUG=$(DEBUG)
 DEVICE_FLAGS_OLD := $(shell cat $(BUILD)/amiga/device.flags 2>/dev/null)
@@ -394,6 +394,7 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	$(VC) -c -o $(BUILD)/amiga/devobj/sbar.o render/sbar.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/amiga_render.o render/amiga_render.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/painter.o render/painter.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/rowpen.o render/rowpen.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/glyphmap.o render/glyphmap.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/fontpair.o render/fontpair.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/outline.o render/outline.c
@@ -405,7 +406,7 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	  $(BUILD)/amiga/devobj/upcon_device.o $(BUILD)/amiga/devobj/upcon_unit.o $(BUILD)/amiga/devobj/upcon_input.o \
 	  $(BUILD)/amiga/devobj/upc_core.o $(BUILD)/amiga/devobj/vtwin.o $(BUILD)/amiga/devobj/vtinput.o $(BUILD)/amiga/devobj/sbar.o $(BUILD)/amiga/devobj/amiga_render.o \
 	  $(BUILD)/amiga/devobj/glyphmap.o $(BUILD)/amiga/devobj/outline.o $(BUILD)/amiga/devobj/otag.o \
-	  $(BUILD)/amiga/devobj/fontpair.o $(BUILD)/amiga/devobj/painter.o \
+	  $(BUILD)/amiga/devobj/fontpair.o $(BUILD)/amiga/devobj/painter.o $(BUILD)/amiga/devobj/rowpen.o \
 	  $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/clipfmt.o $(BUILD)/amiga/devobj/vtengine.o \
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
@@ -517,6 +518,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) $(if $(PROF),-DVTCON_PROF) -DVR_ASM -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/amiga_render_68k.o render/amiga_render_68k.s
 	$(VC) -DVP_ASM -c -o $(BUILD)/amiga/obj/painter.o render/painter.c
+	$(VC) -c -o $(BUILD)/amiga/obj/rowpen.o render/rowpen.c
 	vasmm68k_mot -quiet -Fhunk -m68020 -o $(BUILD)/amiga/obj/painter_68k.o render/painter_68k.s
 	$(VC) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtwin.o render/vtwin.c
 	$(VC) -c -o $(BUILD)/amiga/obj/vtinput.o render/vtinput.c
@@ -539,7 +541,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_core.o prefs/prefs_core.c
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_dos.o prefs/prefs_dos.c
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler.o \
-	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/painter.o $(BUILD)/amiga/obj/painter_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/vtinput.o $(BUILD)/amiga/obj/sbar.o $(BUILD)/amiga/obj/sbar_gad.o $(BUILD)/amiga/obj/glyphmap.o \
+	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/painter.o $(BUILD)/amiga/obj/painter_68k.o $(BUILD)/amiga/obj/rowpen.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/vtinput.o $(BUILD)/amiga/obj/sbar.o $(BUILD)/amiga/obj/sbar_gad.o $(BUILD)/amiga/obj/glyphmap.o \
 	  $(BUILD)/amiga/obj/outline.o $(BUILD)/amiga/obj/otag.o $(BUILD)/amiga/obj/fontpair.o \
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o $(BUILD)/amiga/obj/complete_core.o \
 	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/termurl.o \

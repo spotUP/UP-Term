@@ -16,6 +16,9 @@
 #include "../engine/vtengine.h"
 #include "glyphmap.h"
 #include "outline.h"
+#include "rowpen.h"
+
+#define VR_ROWPEN_MAX 256   /* screen rows with a record; rows below are never known */
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
@@ -69,6 +72,16 @@ typedef struct vr_render {
     ULONG bg_ink;         /* the ink of a default blank cell: what `blank` and the skipped fills mean */
     ULONG pad_ink;        /* what the strips of the text area beside the grid hold */
     UBYTE was_blank;      /* inside draw_rows: blank when it began (its blank runs need no fill) */
+    /* The exact plane mask (race R5, rowpen.h): per screen row, the cells
+     * known to hold one pen; a run there writes only the planes its pens
+     * change, a fill of that pen is skipped. trk_row: the screen row
+     * draw_rows is on (-1 none): a drawing through a pen there forgets
+     * the row (ink_pen), anywhere else every row; trk_quiet: a drawing
+     * that keeps the records itself. */
+    vrp_row rowpen[VR_ROWPEN_MAX];
+    WORD trk_row;
+    UBYTE trk_quiet;
+    UBYTE trk_known;      /* some record knows something (forgetting all is a loop) */
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
     BYTE cursor_colorful;  /* the cursor cell was filled with the profile colour */

@@ -36,6 +36,52 @@ LONG vr_cgx_write_lut(__reg("a6") struct Library *, __reg("a0") APTR src, __reg(
 
 #define RUN_MAX 256
 
+/* ---- what the rows hold (race R5, rowpen.h) ------------------------------ */
+
+/* Screen row y's record, or 0 where none is kept (not a planar screen,
+ * below the rows that have one). */
+static vrp_row *row_rec(vr_render *r, int y)
+{
+    return r->planar && y >= 0 && y < VR_ROWPEN_MAX ? &r->rowpen[y] : 0;
+}
+
+/* Something drew where the records do not follow: nothing is known. */
+static void rows_forget(vr_render *r)
+{
+    if (r->trk_known) {
+        vrp_forget(r->rowpen, VR_ROWPEN_MAX);
+        r->trk_known = 0;
+    }
+}
+
+/* A drawing through a pen (Text, RectFill, a template, a line) is about
+ * to change pixels: on the row draw_rows is on, that row is no longer
+ * known; anywhere else, no row is. */
+static void rows_touched(vr_render *r)
+{
+    if (r->trk_quiet)
+        return;
+    if (r->trk_row < 0)
+        rows_forget(r);
+    else if (r->trk_row < VR_ROWPEN_MAX)
+        r->rowpen[r->trk_row].from = VRP_NONE;
+}
+
+/* Rows [top, bottom) scrolled by n, the vacated ones filled in pen p in
+ * every plane (ScrollRaster's BPen; the planes outside the mask hold
+ * zeros): their records move with them, the new rows hold p. */
+static void rows_scrolled(vr_render *r, int top, int bottom, int n, UBYTE p)
+{
+    if (!r->planar)
+        return;
+    if (bottom > VR_ROWPEN_MAX) {
+        rows_forget(r); /* rows without a record would move into ones with */
+        return;
+    }
+    vrp_scroll(r->rowpen, top, bottom, n, p);
+    r->trk_known = 1;
+}
+
 /* ---- palette ------------------------------------------------------------ */
 
 
@@ -65,6 +111,7 @@ static LONG obtain(vr_render *r, ULONG rgb)
 static UBYTE ink_pen(vr_render *r, ULONG ink, int slot)
 {
     ULONG rgb;
+    rows_touched(r); /* every drawing through the RastPort takes its pens here */
     if (!(ink & VR_INK_RGB)) {
         if ((UBYTE)ink & ~r->mask) {
             /* a pen with a plane not in use yet: those planes hold zeros
@@ -197,6 +244,10 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
      * otherwise every plane counts as used */
     r->mask = 0xFF;
     r->mask_on = 0;
+    r->trk_row = -1;
+    r->trk_quiet = 0;
+    r->trk_known = 1;
+    rows_forget(r);
     r->blank = r->was_blank = 0;
     r->cursor_flip = 0;
     r->full_pass = 0;
@@ -456,6 +507,7 @@ void vr_set_off(vr_render *r, int off)
     r->off = (BYTE)(off != 0);
     /* another tab drew these pixels meanwhile: nothing is known about them */
     r->mask = 0xFF;
+    rows_forget(r);
     r->blank = 0;
     if (off)
         r->cursor_drawn = 0;
@@ -505,6 +557,7 @@ int vr_layout(vr_render *r)
         rows = r->lay_rows;
     r->ox = w->BorderLeft + lx;
     r->oy = w->BorderTop + ly;
+    rows_forget(r); /* the cells may sit elsewhere now */
 #ifdef VTCON_DIRECT
     if (r->glyphs) {
         /* the planar path needs cells on a byte boundary of the screen:
@@ -542,11 +595,34 @@ static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
     RectFill(r->rp, x0, y0, x1, y1);
 }
 
+/* Cells [x0, x1) of screen row y filled in pen `pen` (a blank run, a
+ * row's tail) -- not at all where the row is known to hold that pen
+ * there already (a line a scroll has just cleared; R5). */
+static void fill_cells(vr_render *r, int y, int x0, int x1, ULONG pen)
+{
+    vrp_row *row = (pen & VR_INK_RGB) ? 0 : row_rec(r, y);
+    WORD py = (WORD)(r->oy + y * r->ch);
+    if (x1 <= x0)
+        return;
+    if (row && !VRP_FILL_NEEDED(row, x0, (int)pen))
+        return;
+    r->trk_quiet = 1;
+    fill(r, (WORD)(r->ox + x0 * r->cw), py, (WORD)(r->ox + x1 * r->cw - 1), (WORD)(py + r->ch - 1), pen);
+    r->trk_quiet = 0;
+    if (row) {
+        vrp_filled(row, x0, x1, vis_cols(r), (int)pen);
+        r->trk_known = 1;
+    } else {
+        rows_touched(r);
+    }
+}
+
 /* COMPLEMENT flips every plane: all of them are in use from here on */
 static void all_planes(vr_render *r)
 {
     r->mask = 0xFF;
     r->blank = 0;
+    rows_forget(r);
     SetWriteMask(r->rp, 0xFF);
 }
 
@@ -716,7 +792,7 @@ typedef struct vr_style {
     vt_attr attr;       /* the attributes that change the drawing */
     vt_u8 deco, font;
 } vr_style;
-static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, const vr_style *st);
+static int painter_run(vr_render *r, const UBYTE *run, int n, int cx, WORD px, WORD py, const vr_style *st);
 #ifdef VR_ASM
 long vr_asm_row_scan(const vt_cell *c, long n, UBYTE *out);
 #endif
@@ -916,12 +992,18 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
         if (i == n) {
             /* a blank screen's blank cells are there already (a flood of
              * newlines redrew 32 empty rows a frame) */
-            if (!(r->was_blank && st->bg == r->bg_ink))
+            if (r->was_blank && st->bg == r->bg_ink) {
+                /* there already */
+            } else if (r->trk_row >= 0) {
+                int cx = (px - r->ox) / r->cw;
+                fill_cells(r, r->trk_row, cx, cx + n, st->bg);
+            } else {
                 fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, st->bg);
+            }
             return;
         }
     }
-    if (painter_run(r, run, n, px, py, st))
+    if (painter_run(r, run, n, (px - r->ox) / r->cw, px, py, st))
         return;
     r->n_text++;
     r->blank = 0;
@@ -1039,11 +1121,12 @@ static int direct_ok(vr_render *r)
  * and the layer; on a stock A1200 a screenful of text took 130-260 ms
  * that way (S1 phase profile). 0 when the window is covered, the screen
  * is not planar or the font not 8 pixels wide: the caller uses Text(). */
-static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
+static int painter_run(vr_render *r, const UBYTE *run, int n, int cx, WORD px, WORD py, const vr_style *st)
 {
     struct Layer *layer = r->win->WLayer;
     struct BitMap *bm;
-    UBYTE pens;
+    vrp_row *row;
+    UBYTE pens, m;
     int ok;
     if (!r->planar || !r->glyphs || st->attr || st->deco || st->font || ((st->fg | st->bg) & VR_INK_RGB) ||
         st->fg > 255 || st->bg > 255)
@@ -1066,8 +1149,12 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
         }
         r->seen |= pens;
         bm = r->rp->BitMap;
+        /* the planes this run changes: on cells a scroll or a fill left in
+         * one pen, those where the run's pens differ from it (R5) */
+        row = row_rec(r, r->trk_row);
+        m = row ? (UBYTE)VRP_MASK(row, cx, (int)st->fg, (int)st->bg, r->mask) : r->mask;
+        if (m) {
 #ifdef VTCON_PROF
-        {
             struct EClockVal w0, w1;
             if (vtwin_timer)
                 ReadEClock(&w0);
@@ -1076,13 +1163,17 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
                 ReadEClock(&w1);
                 vr_prof[1] += w1.ev_lo - w0.ev_lo;
             }
-        }
 #else
-        WaitBlit(); /* the scroll and fills before it are in the planes first */
+            WaitBlit(); /* the scroll and fills before it are in the planes first */
 #endif
-        vp_span_fast((vp_u8 **)bm->Planes, bm->Depth, bm->BytesPerRow, (long)(r->win->LeftEdge + px),
-                     (long)(r->win->TopEdge + py), r->glyphs, r->font->tf_YSize, run, n, (int)st->fg,
-                     (int)st->bg, r->mask);
+            vp_span_fast((vp_u8 **)bm->Planes, bm->Depth, bm->BytesPerRow, (long)(r->win->LeftEdge + px),
+                         (long)(r->win->TopEdge + py), r->glyphs, r->font->tf_YSize, run, n, (int)st->fg,
+                         (int)st->bg, m);
+        }
+        if (row)
+            VRP_DRAWN(row, cx + n);
+        else
+            rows_touched(r);
     }
     UnlockLayer(layer);
 #ifdef VTCON_PROF
@@ -1106,7 +1197,7 @@ void vr_asm_cell(UBYTE **planes, long depth, long off, long bpr, const UBYTE *ro
                  long mask);
 #endif
 
-static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg, vt_u8 attr)
+static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg, vt_u8 attr, UBYTE mask)
 {
     struct BitMap *bm = r->rp->BitMap;
     WORD bpr = bm->BytesPerRow;
@@ -1129,13 +1220,13 @@ static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg
         rows[h / 2] = 0xFF;
 #ifdef VR_ASM
     /* the loop below in assembler (amiga_render_68k.s) */
-    vr_asm_cell((UBYTE **)bm->Planes, bm->Depth, off, bpr, rows, h, fg, bg, r->mask);
+    vr_asm_cell((UBYTE **)bm->Planes, bm->Depth, off, bpr, rows, h, fg, bg, mask);
 #else
     for (p = 0; p < bm->Depth; p++) {
         UBYTE *d = (UBYTE *)bm->Planes[p] + off;
         int f = (fg >> p) & 1, b = (bg >> p) & 1;
-        if (!((r->mask >> p) & 1))
-            continue; /* a plane not in use: it holds zeros, and both pens' bits are 0 */
+        if (!((mask >> p) & 1))
+            continue; /* a plane the cell does not change (R5) */
         if (f == b) {
             UBYTE v = f ? 0xFF : 0x00;
             for (k = 0; k < h; k++, d += bpr)
@@ -1209,6 +1300,7 @@ static int direct_wins(const dcell *d, int n)
 static int direct_row(vr_render *r, int y, const dcell *d, int n)
 {
     struct Layer *layer = r->win->WLayer;
+    vrp_row *row = row_rec(r, y);
     int i, ok;
     UBYTE pens = 0;
     for (i = 0; i < n; i++)
@@ -1226,7 +1318,12 @@ static int direct_row(vr_render *r, int y, const dcell *d, int n)
         r->seen |= pens;
         WaitBlit(); /* earlier blits (scroll, fills, Text, the cursor) finish first */
         for (i = 0; i < n; i++)
-            direct_cell(r, d[i].x, y, d[i].ch, d[i].fg, d[i].bg, d[i].attr);
+            direct_cell(r, d[i].x, y, d[i].ch, d[i].fg, d[i].bg, d[i].attr,
+                        row ? (UBYTE)VRP_MASK(row, d[i].x, d[i].fg, d[i].bg, r->mask) : r->mask);
+        if (row)
+            VRP_DRAWN(row, d[n - 1].x + 1); /* the cells come left to right */
+        else
+            rows_touched(r);
     }
     UnlockLayer(layer);
     r->n_direct += ok ? n : 0;
@@ -1491,6 +1588,8 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
     img_colours(r, v);
     r->blank = 0;
     r->n_img_runs++;
+    if (row_rec(r, y))
+        row_rec(r, y)->from = VRP_NONE; /* pixels of any pen */
     if (r->cgx) {
         vr_cgx_write_lut(r->cgx, (APTR)v->pix, (UWORD)sx, (UWORD)sy, (UWORD)v->w, r->rp, r->img_ctab, (UWORD)dx,
                          (UWORD)dy, (UWORD)w, (UWORD)h, VR_CTABFMT_XRGB8);
@@ -1627,10 +1726,12 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 WORD gx1 = (WORD)(r->ox + vis_cols(r) * r->cw), gy1 = (WORD)(r->oy + vis_rows(r) * r->ch);
                 WORD ax1 = (WORD)(w->Width - w->BorderRight - 1), ay1 = (WORD)(w->Height - w->BorderBottom - 1);
                 UBYTE keep = r->was_blank;
+                r->trk_quiet = 1; /* beside the grid: no row's cells */
                 fill(r, gx1, r->oy, ax1, ay1, tail_bg);
                 fill(r, r->ox, gy1, (WORD)(gx1 - 1), ay1, tail_bg);
                 if (w->BorderLeft < r->ox)
                     fill(r, w->BorderLeft, r->oy, (WORD)(r->ox - 1), ay1, tail_bg);
+                r->trk_quiet = 0;
                 r->pad_ink = tail_bg;
                 r->was_blank = keep;
                 r->blank = 1;
@@ -1645,6 +1746,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         vr_style st, run_st;
         /* the last cell's look: runs of equal cells skip the lookups */
         const vt_cell *last = 0;
+        r->trk_row = (WORD)y; /* what draws now draws on this row (R5) */
         if (!c)
             continue;
         if (!r->view && vt_row_size(r->t, gy)) {
@@ -1665,7 +1767,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             int used = vt_row_used(r->t, gy), tx = used > x0 ? used : x0;
             if (tx < xe) {
                 if (!r->was_blank)
-                    fill(r, r->ox + tx * r->cw, py, r->ox + xe * r->cw - 1, py + r->ch - 1, tail_bg);
+                    fill_cells(r, y, tx, xe, tail_bg); /* nothing where a scroll left it so */
                 xe = tx;
             }
         }
@@ -1685,7 +1787,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                     break;
                 cell_style(r, &c[x], 0, &fs);
                 if (fs.attr || fs.deco || fs.font || fs.ul != fs.fg ||
-                    !painter_run(r, run, (int)k, r->ox + x * r->cw, py, &fs))
+                    !painter_run(r, run, (int)k, x, r->ox + x * r->cw, py, &fs))
                     break;
                 x += (int)k;
             }
@@ -1808,6 +1910,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
             r->cursor_drawn = 0; /* the cursor cell was just painted over */
     }
+    r->trk_row = -1;
     if (vt_images(r->t))
         draw_images(r, x0, y0, x1, y1); /* the one test a frame pays when there are none */
     r->was_blank = 0;
@@ -2012,6 +2115,10 @@ void vr_redraw(vr_render *r)
              w->Height - w->BorderBottom - 1, r->pen_default_bg);
         r->mask = r->pen_default_bg;
         r->pad_ink = r->pen_default_bg;
+        if (r->planar) {
+            vrp_clear(r->rowpen, VR_ROWPEN_MAX, r->pen_default_bg); /* every cell that pen now */
+            r->trk_known = 1;
+        }
         /* blank until the rows below draw something -- when this is the
          * blank cells' own background (an Amiga-dialect window's is the
          * program's pen, not the screen's) */
@@ -2128,15 +2235,23 @@ static void raw_scroll(vr_render *r, int top, int bottom, int n)
                     BltBitMap(bm, sx, fy, bm, sx, fy, w, fh, 0xFF, pen, 0);
             }
             done = 1;
+            rows_scrolled(r, top, bottom, n, pen);
         }
         UnlockLayer(layer);
         if (done)
             return;
     }
 #endif
-    SetBPen(r->rp, ink_pen(r, pen_for(r, b, 1), 1));
-    ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + vis_cols(r) * r->cw - 1,
-                 r->oy + bottom * r->ch - 1);
+    {
+        UBYTE pen;
+        r->trk_quiet = 1; /* the rows' records move below */
+        pen = ink_pen(r, pen_for(r, b, 1), 1);
+        r->trk_quiet = 0;
+        SetBPen(r->rp, pen);
+        ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + vis_cols(r) * r->cw - 1,
+                     r->oy + bottom * r->ch - 1);
+        rows_scrolled(r, top, bottom, n, pen);
+    }
 }
 
 /* Draw (on) or erase (off) the cursor: the cell (a block), or its two
@@ -2150,7 +2265,14 @@ static void raw_scroll(vr_render *r, int top, int bottom, int n)
 /* The rectangle inverted in the planes of m (COMPLEMENT under a write mask). */
 static void cursor_flip(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE m)
 {
+    vrp_row *row = row_rec(r, r->cursor_y);
     r->mask |= m; /* planes not in use held zeros; they do no longer */
+    if (row) {
+        /* the cell is not its pen while the cursor is on it (a double-size
+         * row's cursor spans two) */
+        int wide = !r->view && vt_row_size(r->t, r->cursor_y) ? 2 : 1;
+        VRP_DRAWN(row, (r->cursor_x + 1) * wide);
+    }
     SetDrMd(r->rp, COMPLEMENT);
     SetWriteMask(r->rp, m);
     RectFill(r->rp, x0, y0, x1, y1);
@@ -2158,7 +2280,7 @@ static void cursor_flip(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE 
     SetWriteMask(r->rp, r->mask_on ? r->mask : 0xFF);
 }
 
-static void cursor_draw(vr_render *r, int on)
+static void cursor_paint(vr_render *r, int on)
 {
     ULONG ink = r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg;
     int wide = !r->view && vt_row_size(r->t, r->cursor_y) ? 2 : 1; /* a double-size row */
@@ -2260,6 +2382,15 @@ static void cursor_draw(vr_render *r, int on)
     all_planes(r);
     RectFill(r->rp, px, py, x1, y1);
     SetDrMd(r->rp, JAM2);
+}
+
+/* cursor_paint on the cursor's row: a cursor drawn through a pen forgets
+ * that row only (R5), not every row */
+static void cursor_draw(vr_render *r, int on)
+{
+    r->trk_row = r->cursor_y;
+    cursor_paint(r, on);
+    r->trk_row = -1;
 }
 
 void vr_cursor_off(vr_render *r)
