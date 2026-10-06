@@ -330,6 +330,15 @@ $(BUILD)/amiga/ixpty: tests/amiga/ixpty.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixpty.c
 
+# The signal mask across ixemul's stack extension (tools/rig/stackext_rig.py).
+# -mstackextend exists only in ixemul's gcc 2.95.3 (ixemul-vtcon docker/build.sh
+# builds the image): compile there, link with the usual cross gcc.
+IXGCC295 ?= docker run --rm --platform linux/amd64 -v "$(CURDIR)":/w -v "$(HOME)/opt/amiga/m68k-amigaos/ndk-include":/ndk:ro ixemul-gcc295
+$(BUILD)/amiga/ixstackext: tests/amiga/ixstackext.c
+	@mkdir -p $(BUILD)/amiga
+	PATH=/Applications/Docker.app/Contents/Resources/bin:$$PATH $(IXGCC295) sh -c 'cd /w && m68k-amigaos-gcc -idirafter /ndk -m68020 -O2 -Wall -mstackextend -c -o $(BUILD)/amiga/ixstackext.o tests/amiga/ixstackext.c'
+	$(AGCC) -mcrt=ixemul -o $@ $(BUILD)/amiga/ixstackext.o
+
 $(BUILD)/amiga/ixwait: tests/amiga/ixwait.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwait.c
