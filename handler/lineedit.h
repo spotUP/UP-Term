@@ -128,6 +128,15 @@ void le_kc_show_list(le_line *le, const char *names, int len);
 /* Replace the word ending at the cursor (from `from`) with `s`. */
 void le_replace_word(le_line *le, int from, const unsigned char *s, int n);
 
+/* V47 medium mode (SetMode 2): the report a key makes for the Shell, or 0
+ * when the key is an editing key. TAB, Shift+TAB, Up and Down (no other
+ * modifier on Up and Down) give CSI(0x9b) code;length;cursor+1 U -- codes
+ * 12, 13, 2, 3 -- into out (LE_MEDIUM_MAX bytes; the result is the byte
+ * count) and the caller sends the line (le->buf, le->len) after it. The
+ * Shell answers with ACTION_FORCE. */
+#define LE_MEDIUM_MAX 24
+int le_medium_report(const le_line *le, long key, int mods, unsigned char *out);
+
 /* History from outside (a saved history file): one line per call, oldest
  * first; empty lines and repeats of the last entry are skipped. */
 /* KingCON's completion word (research/2026-10-02_kingcon-completion.md):

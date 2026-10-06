@@ -909,8 +909,53 @@ static void history_and_undo_grow_and_free(void)
     vt_free(t);
 }
 
+static char medium_buf[LE_MEDIUM_MAX];
+
+/* V47 medium mode (SetMode 2): TAB, Shift+TAB, Up and Down are reported at
+ * once as CSI code;length;cursor+1 U (codes 12, 13, 2, 3; measured on the
+ * 3.2.3 ROM: "abcd" with the cursor two left gives 12;4;3U), every other key
+ * edits the line. */
+static const char *medium(long k, int mods)
+{
+    static char b[LE_MEDIUM_MAX + 1];
+    int n = le_medium_report(&le, k, mods, (unsigned char *)b);
+    b[n] = 0;
+    return b;
+}
+
+static void medium_mode_reports_tab_shift_tab_up_and_down_at_once(void)
+{
+    vt_term *t = start(40, 3, "> ");
+    type("abcd");
+    key(VT_KEY_LEFT, 0);
+    key(VT_KEY_LEFT, 0);
+    CHECK_STR(medium(VT_KEY_TAB, 0), "\x9b" "12;4;3U");
+    CHECK_STR(medium(VT_KEY_TAB, VT_MOD_SHIFT), "\x9b" "13;4;3U");
+    CHECK_STR(medium(VT_KEY_UP, 0), "\x9b" "2;4;3U");
+    CHECK_STR(medium(VT_KEY_DOWN, 0), "\x9b" "3;4;3U");
+    CHECK_STR(line(), "abcd"); /* reporting does not touch the line */
+    vt_free(t);
+}
+
+static void medium_mode_leaves_the_editing_keys_to_the_editor(void)
+{
+    vt_term *t = start(40, 3, "> ");
+    type("abcd");
+    CHECK_INT(le_medium_report(&le, VT_KEY_LEFT, 0, (unsigned char *)medium_buf), 0);
+    CHECK_INT(le_medium_report(&le, VT_KEY_BACKSPACE, 0, (unsigned char *)medium_buf), 0);
+    CHECK_INT(le_medium_report(&le, 'x', 0, (unsigned char *)medium_buf), 0);
+    CHECK_INT(le_medium_report(&le, VT_KEY_UP, VT_MOD_SHIFT, (unsigned char *)medium_buf), 0);
+    key(VT_KEY_BACKSPACE, 0);
+    CHECK_STR(line(), "abc");
+    type("e");
+    CHECK_STR(line(), "abce");
+    vt_free(t);
+}
+
 void suite_lineedit(void)
 {
+    medium_mode_reports_tab_shift_tab_up_and_down_at_once();
+    medium_mode_leaves_the_editing_keys_to_the_editor();
     reflow_moves_the_line_and_editing_follows();
     a_replaced_line_on_a_fresh_prompt_draws_after_it();
     kingcon_word_and_quoting();

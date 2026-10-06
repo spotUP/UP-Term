@@ -3649,26 +3649,10 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
          * con-handler: "abcd" with the cursor two left gives 12;4;3U abcd).
          * The Shell answers with ACTION_FORCE (the line it made); it keeps
          * the history, so Up and Down are its. */
-        int code = key == VT_KEY_TAB ? ((mods & VT_MOD_SHIFT) ? 13 : 12)
-                 : key == VT_KEY_UP && !mods ? 2 : key == VT_KEY_DOWN && !mods ? 3 : 0;
-        if (code) {
-            char rep[24];
-            int n = 0, v[3], i;
-            v[0] = code;
-            v[1] = c->le.len;
-            v[2] = c->le.pos + 1;
-            rep[n++] = (char)0x9b;
-            for (i = 0; i < 3; i++) {
-                char d[8];
-                int m = 0, x = v[i];
-                do
-                    d[m++] = (char)('0' + x % 10);
-                while ((x /= 10) != 0);
-                while (m)
-                    rep[n++] = d[--m];
-                rep[n++] = i < 2 ? ';' : 'U';
-            }
-            in_append(c, (const vt_u8 *)rep, n);
+        vt_u8 rep[LE_MEDIUM_MAX];
+        int rn = le_medium_report(&c->le, key, mods, rep);
+        if (rn) {
+            in_append(c, rep, rn);
             in_append(c, c->le.buf, c->le.len);
             return;
         }

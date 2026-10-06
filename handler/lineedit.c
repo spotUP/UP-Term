@@ -616,6 +616,33 @@ static void clear_screen(le_line *le)
     redraw_from(le, 0);
 }
 
+/* ---- medium mode ------------------------------------------------------------ */
+
+int le_medium_report(const le_line *le, long key, int mods, unsigned char *out)
+{
+    int code = key == VT_KEY_TAB ? ((mods & VT_MOD_SHIFT) ? 13 : 12)
+             : key == VT_KEY_UP && !mods ? 2 : key == VT_KEY_DOWN && !mods ? 3 : 0;
+    int n = 0, v[3], i;
+
+    if (!code)
+        return 0;
+    v[0] = code;
+    v[1] = le->len;
+    v[2] = le->pos + 1;
+    out[n++] = 0x9b;
+    for (i = 0; i < 3; i++) {
+        unsigned char d[8];
+        int m = 0, x = v[i];
+        do
+            d[m++] = (unsigned char)('0' + x % 10);
+        while ((x /= 10) != 0);
+        while (m)
+            out[n++] = d[--m];
+        out[n++] = i < 2 ? ';' : 'U';
+    }
+    return n;
+}
+
 /* ---- keys ------------------------------------------------------------------ */
 
 void le_init(le_line *le, vt_term *t, void (*o)(void *, const unsigned char *, long), void *user)
