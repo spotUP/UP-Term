@@ -1,7 +1,5 @@
 # vtcon
 
-Licence: all rights reserved for the own code, no licence chosen yet; see LICENSE.
-
 A modern console for AmigaOS 3.x (68020+): one terminal engine with three
 personalities, so that Amiga programs and Unix ports both render right.
 

@@ -8,8 +8,8 @@ is named.
 
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
-UP-Term own programs and      All rights reserved; the owner   vtcon repo (LICENSE). Programs: vtcon-handler,
-scripts                       has chosen no licence yet        up-console.device, UPConsole, UPTerm, UPDemo,
+UP-Term own programs and      No licence file (own code)       vtcon repo. Programs: vtcon-handler,
+scripts                                                        up-console.device, UPConsole, UPTerm, UPDemo,
                                                                UP-Term Prefs, vsh, uptelnet, hl, mdv, sz, rz,
                                                                upgetty, upicon, ixkill, pty-handler,
                                                                ixpipe-handler, Claude, wasabikey, Install,
