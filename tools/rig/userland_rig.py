@@ -15,8 +15,8 @@ For each package this script
   2. writes one vsh script per case (VTC:userland/<pkg>/<name>.sh: cd to the
      data, PATH with the binaries first, LANG=C, the case's command, then
      "[exit $?]") and runs it as `VTC:vsh <script>` with stdout to
-     VTC:out/<pkg>/<name>.txt and stdin from an XCON: window, so a program that
-     asks its terminal gets UP-Term's (--no-window: no window);
+     VTC:out/<pkg>/<name>.txt. There is no terminal window: the agent's EXEC
+     does not take a `<` redirect, so a case that needs a tty is not covered;
   3. diffs each output against the expected one.
 
   python3 tools/rig/userland_rig.py                 every package with check cases
@@ -40,7 +40,6 @@ VTC = ROOT / "build/rig/vtc"
 VERDICTS = ROOT / "build/rig/userland"
 PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", pathlib.Path.home() / "Code/upterm-ports"))
 SYSBIN = PORTS / "build/sysroot/SYS/UP-Term"
-WINDOW = "XCON:0/0/640/200/userland/AUTO/CLOSE"
 
 
 def run(cmd, timeout=60):
@@ -101,7 +100,7 @@ def write_verdict(pkg, fp, results):
 def script_text(pkg, name, cmd):
     """The vsh script of one case: the same environment tools/run-cases.sh gives sh."""
     return ("cd VTC:userland/work/" + pkg + "\n"
-            "export PATH=VTC:userland/bin:$PATH\n"
+            "export PATH=/VTC/userland/bin:$PATH\n"
             "unset LC_ALL LC_CTYPE\n"
             "export LANG=C\n"
             "{ " + cmd + "\n} 2>VTC:out/" + pkg + "/" + name + ".err\n"
@@ -130,9 +129,8 @@ def stage(pkg, bins, wanted):
         (scripts / (name + ".sh")).write_text(script_text(pkg, name, cmd), encoding="latin-1")
 
 
-def run_case(pkg, name, window):
-    stdin = "<%s " % WINDOW if window else ""
-    rc, out = run("%sVTC:vsh VTC:userland/%s/%s.sh >VTC:out/%s/%s.txt" % (stdin, pkg, name, pkg, name), 90)
+def run_case(pkg, name):
+    rc, out = run("VTC:vsh VTC:userland/%s/%s.sh >VTC:out/%s/%s.txt" % (pkg, name, pkg, name), 90)
     return rc, out
 
 
@@ -151,7 +149,7 @@ def compare(pkg, name):
     return False, "\n".join(list(difflib.unified_diff(a, b, "expected", "rig", lineterm=""))[:20])
 
 
-def check_package(pkg, only_case, window):
+def check_package(pkg, only_case):
     bins = binaries(pkg)
     missing = [b.name for b in bins if not b.exists()]
     if not bins or missing:
@@ -169,7 +167,7 @@ def check_package(pkg, only_case, window):
     results = dict(prior)
     stage(pkg, bins, todo)
     for name, _cmd in todo:
-        rc, out = run_case(pkg, name, window)
+        rc, out = run_case(pkg, name)
         ok, diff = compare(pkg, name)
         results[name] = "PASS" if ok else "FAIL"
         print("%s %s/%s%s" % ("[OK]" if ok else "[FAIL]", pkg, name, "" if ok else " (agent rc %s %s)\n%s" % (rc, out.strip()[:200], diff)),
@@ -187,7 +185,6 @@ def main():
     ap.add_argument("--case", help="one case (with one --only package)")
     ap.add_argument("--failed", action="store_true", help="the packages whose verdict is FAIL")
     ap.add_argument("--force", action="store_true", help="rerun passed packages too")
-    ap.add_argument("--no-window", action="store_true", help="no XCON: window for the cases' stdin")
     a = ap.parse_args()
     if a.case and not (a.only and len(a.only) == 1):
         ap.error("--case needs exactly one --only package")
@@ -208,7 +205,7 @@ def main():
             VERDICTS.mkdir(parents=True, exist_ok=True)
             if not a.case and v:
                 (VERDICTS / (pkg + ".verdict")).unlink()   # explicit: every case again
-        ok &= check_package(pkg, a.case, not a.no_window)
+        ok &= check_package(pkg, a.case)
     return 0 if ok else 1
 
 

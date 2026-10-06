@@ -295,7 +295,7 @@ Phase 0:
 - [x] 0.2 posix_spawn
 - [x] 0.3 wchar + POSIX compat
 - [x] 0.4 check_bin
-- [ ] 0.5 userland_rig
+- [x] 0.5 userland_rig (done 2026-10-06: tools/rig/userland_rig.py, grep 17 of 17 and ncurses 5 of 5 on the rig; no tty window, a case that needs a tty is not covered)
 - [ ] 0.6 vsh builtins
 - [x] 0.7 ixnet in the kit
 - [x] 0.8 ncurses 6

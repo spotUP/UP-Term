@@ -159,3 +159,4 @@ Round 2: WP4 CLI/print mode + 4.6; then whatever rows are left. Main session: me
   before it: the race is timing-bound, more frequent with network traffic).
 
 Status note 2026-10-06: all 43 rows ticked from the wp1-wp4 progress ledgers. The intermittent lost "/" and Return inserting a newline (2 of about 12 rig runs) was a console handler race, fixed in b7f3298 (task_alive walks Exec's lists with interrupts off); regression test tests/test_brk.c, suite brk. Rig-open: no run covers every model alias.
+Rig re-check 2026-10-06: claude_rig2 10/10 passed, 0 failed (handler built from 72bf0d0, one run).
