@@ -1,7 +1,7 @@
 UP-Term kit: parts, licences and where the source is
 
 Every part the kit (UP-Term.lha) ships is listed once. The source column
-names the repository (all under ~/Code, pinned together by the upterm
+names the repository (all side by side in one workspace directory, pinned together by the upterm
 meta-repo, repos.lock) or the archive the source is in. "unconfirmed" means
 no licence file or statement for it was found in the tree; the place looked
 is named.

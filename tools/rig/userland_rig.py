@@ -3,7 +3,7 @@
 0.5): each package's check cases run through vsh and are compared with the
 outputs the same upstream version gives on the Mac.
 
-The ports repo (UPTERM_PORTS, default ~/Code/upterm-ports) holds, per package,
+The ports repo (UPTERM_PORTS, default $UPTERM_ROOT/upterm-ports) holds, per package,
 pkgs/<pkg>/check/cases ("name<TAB>command" lines) and check/data (the files the
 cases read); `make host-<pkg>` there writes build/expected/<pkg>/<name>.txt
 (stdout and a last line "[exit N]"; stderr is not compared). `make <pkg>`

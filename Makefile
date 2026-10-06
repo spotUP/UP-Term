@@ -236,7 +236,7 @@ $(BUILD)/vbcc-aos68k.cfg: ;
 CPU      ?= 68020
 # The AmigaOS 3.2 SDK headers. vendor/ is gitignored (4.1 MB of third-party
 # headers), so unpack NDK3.2R4 there once, or point this at your own copy:
-#   make amiga VTCON_NDK=~/Code/dctelnet-petscii-recovered/.ndk/Include_H
+#   make amiga VTCON_NDK=<path>/Include_H
 VTCON_NDK ?= $(CURDIR)/vendor/ndk-3.2r4-Include_H
 VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
 

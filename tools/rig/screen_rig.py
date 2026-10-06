@@ -13,7 +13,7 @@ lock (Ctrl-A x with LOCKPRG) and printcmd (through vsh -c; ESC [5i
 RAM:forkprobe.log.
 
 Needs the rig up with the patched ixemul (ixpty_rig.use_ixemul), PTY:
-mounted, VTC:screen built from ~/Code/screen-amiga/src (Makefile.amiga)
+mounted, VTC:screen built from screen-amiga/src in the workspace (Makefile.amiga)
 and the kit NOT installed (its DOSDrivers XCON mounts L:vtcon-handler).
 
   screen_rig.py            run it
