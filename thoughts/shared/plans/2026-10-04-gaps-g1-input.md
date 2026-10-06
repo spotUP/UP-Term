@@ -90,3 +90,5 @@ manual checks (the rig is busy with the speed campaign: not used here).
    line: the whole line.
 10. With bracketed paste on (bash 5.1+ default), paste text containing an ESC byte: it
     arrives without the ESC.
+
+Status note 2026-10-06: S3 (rectangular selection) is blocked (hot path) and not built; every other item is done. Manual checks 1-10 are owner-open.

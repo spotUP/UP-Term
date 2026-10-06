@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 input rest -- what WP1 left out of C:Claude's keys, progress ledger
 tags: [claude, a4, wp1, tui, vim, keys]
-status: draft
+status: implemented
 ---
 
 # A4 input rest (branch feature/a4-input-rest off main d3683b4)

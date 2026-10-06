@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 WP2 -- C:Claude's tools at Claude Code parity (progress ledger)
 tags: [claude, a4, wp2, tools, progress]
-status: draft
+status: implemented
 ---
 
 # A4 WP2 progress ledger

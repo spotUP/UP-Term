@@ -2,7 +2,7 @@
 date: 2026-10-01
 topic: UP-Term terminal window preferences (iTerm2-style profiles)
 tags: [vtcon, terminal, prefs, configuration, profiles]
-status: draft
+status: implemented
 ---
 
 # Plan: User-configurable UP-Term windows (profiles, colours, font, cursor, bell, behaviour)
@@ -117,3 +117,5 @@ New: `config/upconf.c`, `config/upconf.h`, `tests/test_upconf.c`, `prefs/upprefs
 - Host: new `config` suite in `vttest_host` — parse/merge/precedence/defaults/save-roundtrip; engine tests for bold-bright, palette setter, cursor defaults.
 - Matrix: update BEL row (now: none|beep|visual, per profile), note DECSCUSR default and SGR 1 bold-bright — matrix + tests in same commit.
 - Rig: `tools/rig/prefs_rig.py` — write profile, open XCON:, check colours cell-exact, grid aspect after font change, scrollback, wheel, Prefs save → new window matches. install_rig.py and vttest_rig.py stay green.
+
+Status note 2026-10-06: P3.3 Cmd-F find window half is compiled, not run on the rig; P1.8 and P2 rig-run lines are stale (d408109, aa44aee say they ran).

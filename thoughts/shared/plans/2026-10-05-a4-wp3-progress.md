@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 WP3 -- memory, settings, permissions, commands, hooks, sessions, checkpoints -- progress ledger
 tags: [claude, a4, wp3, progress]
-status: draft
+status: implemented
 ---
 
 # A4 WP3 progress ledger

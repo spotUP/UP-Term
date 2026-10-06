@@ -213,7 +213,7 @@ the project (ledger T3). The rest does not wait for it.**
       re-wraps** (45 -> 90 columns: cursor 3;11 -> 2;11) so D1.8 builds reflow. Decided for
       D1: our device answers CMD_RESET (terminal reset, reply 0) instead of copying the hang;
       every other code copies the ROM. Same on 39.106, 40.71, 47.115 (DP6).
-- [ ] DP5 Medium-mode bytes (3.2 only). `tests/amiga/mediumprobe.c`: SetMode(Output(),2),
+- [x] DP5 Medium-mode bytes (3.2 only). `tests/amiga/mediumprobe.c`: SetMode(Output(),2),
       hex-dump reads while the script types TAB, Shift+TAB, Up, Down, a line. Closes
       matrix Q9. Skipped with a written reason when no 3.2 row boots (DD22).
       **PARTLY MEASURED (2026-09-30, KS 47.115 ROM on the rig's 3.1 system disk -- a hybrid, not a

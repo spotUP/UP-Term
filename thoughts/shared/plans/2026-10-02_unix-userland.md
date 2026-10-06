@@ -2,7 +2,7 @@
 date: 2026-10-02
 topic: the Unix userland in an UP-Term window: real ls, and retiring the vshrc shims
 tags: [vsh, vshrc, ixemul, geek-gadgets, coreutils, fileutils, dircolors, ls, styling]
-status: draft
+status: implemented
 ---
 
 # The Unix userland in an UP-Term window

@@ -2,7 +2,7 @@
 date: 2026-10-04
 topic: ASM1 engine -- the engine's hot C paths cut down or moved to 68k asm, by vamos instruction counts
 tags: [s1, asm1, speed, engine, 68k, stock-a1200]
-status: draft
+status: implemented
 ---
 
 # ASM1 (engine part): find the slow C, make it fast
@@ -84,4 +84,4 @@ Workloads: 0 plain lines 65280 B (816 lines of 78 + CRLF), 1 newlines 12000, 2 c
 - [x] E5 vt_asm_csi v2: a2/a3 point at the parameter being read (separator ~20, digit 10)
       -- 8cf7347
 - [x] W2 put_ascii_run runs on across CR / LF (newlines() shared with vt_feed) -- 281fbcd
-- [ ] measure s5 (281fbcd) on all workloads; next targets from its profiles
+- [x] measure s5 (281fbcd) on all workloads; next targets from its profiles

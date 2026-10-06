@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 WP4 -- C:Claude's command line and print mode (rows 4.1-4.5 + keyless start), progress ledger
 tags: [claude, a4, wp4, cli, progress]
-status: draft
+status: implemented
 ---
 
 # A4 WP4 progress ledger

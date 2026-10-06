@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 wiring -- WP1/WP2/WP3 seams joined (ext provider, WebSearch setting, status line row, /tasks, read default)
 tags: [claude, a4, wiring, progress]
-status: draft
+status: implemented
 ---
 
 # A4 wiring progress ledger

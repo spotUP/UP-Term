@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 WP1 -- C:Claude input and screen (rows 1.1-1.12 of plans/2026-10-05-a4-claude-parity.md), progress ledger
 tags: [claude, a4, wp1, tui]
-status: draft
+status: implemented
 ---
 
 # A4 WP1 progress (branch feature/a4-wp1-input off main a95ec55)

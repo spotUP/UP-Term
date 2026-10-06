@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 gaps -- the parity audit's missing and partial rows built (C:Claude vs Claude Code docs)
 tags: [claude, a4, parity, audit, progress]
-status: final
+status: implemented
 ---
 
 # A4 gaps progress ledger

@@ -2,7 +2,7 @@
 date: 2026-10-04
 topic: A3 -- C:Claude looks and behaves like Claude Code's terminal UI (plan and progress ledger)
 tags: [claude, a3, tui, md, upterm]
-status: draft
+status: final
 ---
 
 # A3: Claude Code's terminal UI for C:Claude

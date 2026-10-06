@@ -2,7 +2,7 @@
 date: 2026-10-04
 topic: G3 -- protocol, OSC and terminfo gaps of the xterm personality
 tags: [plan, ledger, xterm, osc, terminfo, kitty-keyboard, gaps]
-status: draft
+status: implemented
 ---
 
 # G3: protocol, OSC, terminfo -- progress ledger

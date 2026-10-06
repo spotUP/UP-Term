@@ -2,7 +2,7 @@
 date: 2026-10-04
 topic: A2 -- a native Claude client for AmigaOS 3.x (68020+), chat and Claude Code-style tools, in C
 tags: [claude, a2, amissl, bsdsocket, sse, json, tool-use, upterm]
-status: draft
+status: final
 ---
 
 # A2: a native Claude client for the Amiga

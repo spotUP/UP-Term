@@ -2,7 +2,7 @@
 date: 2026-10-06
 topic: TTY:, a serial line as a real tty DOS device (W52), and vsh <stream> (W53a)
 tags: [serial, pty-handler, ldisc, vsh, aux]
-status: draft (dropped 2026-10-06: auxcon-handler covers it; see ledger W52)
+status: final (dropped 2026-10-06: auxcon-handler covers it; see ledger W52)
 ---
 
 # TTY: -- a serial line with a real tty (W52) and `vsh <stream>` (W53a)

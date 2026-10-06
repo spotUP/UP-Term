@@ -2,7 +2,7 @@
 date: 2026-10-05
 topic: A4 gaps 3 (TUI side) -- the audit's remaining screen rows, progress ledger
 tags: [claude, a4, parity, tui, keys]
-status: final
+status: implemented
 ---
 
 # A4 gaps 3, TUI side (branch feature/a4-gaps3-tui off main bd75f8d)
