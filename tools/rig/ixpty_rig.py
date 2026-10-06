@@ -10,12 +10,13 @@ it on the original library instead (the A/B). The rig must be up;
 import os, pathlib, shutil, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
+import paths
 import ptytest_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = ROOT / "build/rig/vtc"
-IXEMUL = pathlib.Path(os.environ.get("IXEMUL", pathlib.Path.home() /
-    "Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library"))
+IXEMUL = pathlib.Path(os.environ.get("IXEMUL", paths.repo("ixemul-vtcon") /
+    "build295/library/68020/68881/amigaos/ixemul.library"))
 # ixnet.library from the same build: ixnet_open refuses (ix_panic) an ixemul
 # of another version or revision, so the two always travel together.
 IXNET = pathlib.Path(os.environ.get("IXNET", IXEMUL.parents[4] /

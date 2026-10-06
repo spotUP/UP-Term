@@ -22,6 +22,8 @@ first: assigns, mounts XCON:, starts amiagent), vtc/ (VTC:, the binaries
 under test), shots/.
 """
 import os, pathlib, shutil, subprocess, sys, time
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = ROOT / "build/rig"
@@ -36,7 +38,7 @@ SRC_HDF = pathlib.Path.home() / "Downloads/nyhd2.hdf"
 # its file name says (measured 2026-09-30). --kick <file> boots another ROM
 # (DP6 of the console.device plan); the config is rewritten on every start,
 # so the next start without --kick is back on this one.
-KICK = pathlib.Path("/Users/spot/Code/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
+KICK = paths.KICKSTART
 # the serial port: a file for traces (default), or --serial <path> (a host
 # pty a test drives: tools/rig/getty_rig.py)
 SERIAL = RIG / "serial.log"
@@ -222,6 +224,7 @@ def setup():
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
     ] + (["uae_cpu_no_unimplemented = false", "uae_fpu_no_unimplemented = false"] if M060 else [])
+    paths.require_rom(KICK)
     CFG.write_text("\n".join(machine + [
         "hard_drive_0 = %s" % (RIG / ("os32" if OS32 else "sys.hdf")),
         # Writable: read-only (--ro) put up "Volume System is write

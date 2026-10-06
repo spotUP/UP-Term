@@ -25,7 +25,9 @@ BIN = OUT / 'engbench'
 
 def build():
     OUT.mkdir(parents=True, exist_ok=True)
-    cfg = (ROOT / 'tools/vbcc-aos68k.cfg').read_text()
+    # build/vbcc-aos68k.cfg is generated from tools/vbcc-aos68k.cfg.in by make
+    subprocess.run(['make', '-s', 'build/vbcc-aos68k.cfg'], cwd=ROOT, check=True)
+    cfg = (ROOT / 'build/vbcc-aos68k.cfg').read_text()
     cfg = cfg.replace(' -x ', ' ')  # keep the symbols
     cfg = cfg.replace('-ld=vlink ', '-ld=vlink -M%s ' % (OUT / 'link.map'), 1)
     (OUT / 'vbcc-prof.cfg').write_text(cfg)

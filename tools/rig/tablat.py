@@ -1,6 +1,6 @@
 """Tab latency: type a word, press Tab, poll the input line until it changes."""
-import sys, time, struct
-sys.path.insert(0, "/Users/spot/Code/vtcon/tools/rig")
+import os, sys, time, struct
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
 def t(s): ami.req(0x08, bytes([4]) + s.encode('latin-1')); time.sleep(0.4)
 def region():

@@ -9,13 +9,13 @@ a #() status job). Checks:
   - the #() status job ran (forkprobe logs its start)
   - detach (Ctrl-B d) leaves the session, `tmux attach` brings it back
 Needs the rig up with the patched ixemul, PTY: and the kit NOT installed;
-VTC:tmux from ~/Code/tmux-amiga (make -f Makefile.amiga).
+VTC:tmux from tmux-amiga in the workspace (make -f Makefile.amiga).
 
   tmux_rig.py            run it
   tmux_rig.py --keep     leave tmux running"""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ami, cube_rig, ixpty_rig, ptytest_rig, screen_rig
+import ami, cube_rig, ixpty_rig, paths, ptytest_rig, screen_rig
 from PIL import Image
 from install_rig import run, check
 import install_rig
@@ -23,7 +23,7 @@ import install_rig
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = ROOT / "build/rig/vtc"
 SHOT = ROOT / "build/rig/shots/tmux_colors.png"
-TMUX = pathlib.Path.home() / "Code/tmux-amiga/build/tmux-bin"
+TMUX = paths.repo("tmux-amiga") / "build/tmux-bin"
 CONF = """set -g default-shell /VTC/vsh
 set -g default-terminal screen-256color
 set -g status-right "#(VTC:forkprobe status)"

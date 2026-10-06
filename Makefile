@@ -4,6 +4,11 @@ HOSTCC  ?= cc
 HOSTCFLAGS := -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
 BUILD   := build
 
+# The workspace directory that holds vtcon and the other UP-Term repos side by
+# side (see the upterm meta-repo); every sibling default below hangs off it.
+# tools/rig/paths.py reads the same variable, with the same default.
+UPTERM_ROOT ?= $(abspath ..)
+
 ENGINE  := engine/vtengine.c
 RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c
 SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c
@@ -151,8 +156,8 @@ $(BUILD)/vterm_dump: tools/vterm_dump.c $(LIBVTERM)/src/vterm.c
 # The xterm personality against libvterm and pyte on tests/streams (ONLY= a name part).
 # pcansi against DCTelnet's term-engine.c on BBS art, pixel for pixel
 # (tools/te_diff). Needs a DCTelnet checkout and an art directory.
-DCTELNET ?= $(HOME)/Code/dctelnet-v2
-ART ?= $(HOME)/Code/amiexpress-doorserver/bbs_ads
+DCTELNET ?= $(UPTERM_ROOT)/dctelnet-v2
+ART ?= $(UPTERM_ROOT)/amiexpress-doorserver/bbs_ads
 $(BUILD)/te_diff: tools/te_diff/te_diff.c tools/te_diff/te_shim.h engine/vtengine.c engine/vtengine.h engine/vtwidth.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=gnu99 -O1 -g -w -Itools/te_diff -I$(DCTELNET)/src/third_party/retro32-term \
@@ -203,10 +208,10 @@ $(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
 	rm -rf $(BUILD)/kit-terminfo.tmp
 	touch $@
 
-# GNU screen for the kit (P7.1): built in ~/Code/screen-amiga/src (make -f Makefile.amiga)
-SCREEN_BIN ?= $(HOME)/Code/screen-amiga/src/screen
-# tmux for the kit (P7.2): built in ~/Code/tmux-amiga (make -f Makefile.amiga)
-TMUX_BIN ?= $(HOME)/Code/tmux-amiga/build/tmux-bin
+# GNU screen for the kit (P7.1): built in screen-amiga/src (make -f Makefile.amiga)
+SCREEN_BIN ?= $(UPTERM_ROOT)/screen-amiga/src/screen
+# tmux for the kit (P7.2): built in tmux-amiga (make -f Makefile.amiga)
+TMUX_BIN ?= $(UPTERM_ROOT)/tmux-amiga/build/tmux-bin
 
 # Recapture the programs with TERM=vtcon (tests/streams/ti-*), then check
 # them: libvterm cell for cell and no sequence the engine ignored.
@@ -219,7 +224,15 @@ capture:
 	.venv/bin/python tools/capture.py
 
 # --- Amiga (vbcc, NDK 3.2; the same setup as DCTelnet) -----------------------
-VBCC_CFG ?= $(CURDIR)/tools/vbcc-aos68k.cfg
+# vbcc's install prefix: tools/vbcc-aos68k.cfg.in names it, so the cfg vc reads
+# is generated into build/ (rewritten only when its content changes).
+ifndef VBCC_PREFIX
+VBCC_PREFIX := $(shell brew --prefix vbcc 2>/dev/null || echo /opt/homebrew/opt/vbcc)
+endif
+VBCC_CFG ?= $(CURDIR)/$(BUILD)/vbcc-aos68k.cfg
+VBCC_CFG_GEN := $(shell mkdir -p $(BUILD) && sed 's|@VBCC_PREFIX@|$(VBCC_PREFIX)|g' tools/vbcc-aos68k.cfg.in > $(BUILD)/vbcc-aos68k.cfg.tmp && { cmp -s $(BUILD)/vbcc-aos68k.cfg.tmp $(BUILD)/vbcc-aos68k.cfg && rm $(BUILD)/vbcc-aos68k.cfg.tmp || mv $(BUILD)/vbcc-aos68k.cfg.tmp $(BUILD)/vbcc-aos68k.cfg; })
+# written by the line above; the empty rule lets `make build/vbcc-aos68k.cfg` ask for it
+$(BUILD)/vbcc-aos68k.cfg: ;
 CPU      ?= 68020
 # The AmigaOS 3.2 SDK headers. vendor/ is gitignored (4.1 MB of third-party
 # headers), so unpack NDK3.2R4 there once, or point this at your own copy:
@@ -379,7 +392,7 @@ $(BUILD)/amiga/ixbg: tests/amiga/ixbg.c
 
 # ixemul's IXPIPE: handler (its utils/ixpipe-handler.c): execve hands a
 # pipe or socket to a native program through it (screen's printcmd to vsh)
-IXEMUL_SRC ?= $(HOME)/Code/ixemul-vtcon
+IXEMUL_SRC ?= $(UPTERM_ROOT)/ixemul-vtcon
 $(BUILD)/amiga/ixpipe-handler: $(IXEMUL_SRC)/utils/ixpipe-handler.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -I$(IXEMUL_SRC)/include -nostdlib -o $@ $< -lc
@@ -517,7 +530,7 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	  $(BUILD)/amiga/devobj/glyphmap.o $(BUILD)/amiga/devobj/unifont.o $(BUILD)/amiga/devobj/emoji.o $(BUILD)/amiga/devobj/outline.o $(BUILD)/amiga/devobj/otag.o \
 	  $(BUILD)/amiga/devobj/fontpair.o $(BUILD)/amiga/devobj/painter.o \
 	  $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/clipfmt.o $(BUILD)/amiga/devobj/vtengine.o \
-	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
+	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
 # C:UPTerm: the slash commands from scripts (ledger C1)
 $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h
@@ -527,7 +540,7 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h
 # C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
 # Roadshow SDK's network headers ("Freely Distributable"): vendor/ (gitignored)
 # when unpacked there, else DCTelnet's copy, or VTCON_NETINC=<netinclude>.
-VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(HOME)/Code/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
+VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(UPTERM_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
 $(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c
@@ -657,7 +670,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o $(BUILD)/amiga/obj/complete_core.o \
 	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/waitset.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/termurl.o \
 	  $(BUILD)/amiga/obj/prefs_core.o $(BUILD)/amiga/obj/prefs_dos.o \
-	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
+	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
 # PTY: (P5): pseudo-terminals on the same line discipline. No C startup.
 PTY_FLAGS := DEBUG=$(DEBUG)
@@ -673,16 +686,16 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c han
 	$(VC) -c -o $(BUILD)/amiga/obj/pty/ldisc.o tty/ldisc.c
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/pty/pty_handler.o \
 	  $(BUILD)/amiga/obj/pty/brk.o $(BUILD)/amiga/obj/pty/waitset.o $(BUILD)/amiga/obj/pty/ldisc.o \
-	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
+	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
 # The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
 # Installer script and its icon), Uninstall, README.txt, LICENSES.txt and Files/ (the rest).
 KIT := $(BUILD)/dist/UP-Term
-# the patched ixemul (P6): built in ~/Code/ixemul-vtcon with sh docker/build.sh
-IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
+# the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
+IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
-PYTHON_DIST ?= $(HOME)/Code/cpython-amiga/build/m68k/dist/Python3
-NVIM_DIST ?= $(HOME)/Code/neovim-amiga/build/v012/dist/nvim
+PYTHON_DIST ?= $(UPTERM_ROOT)/cpython-amiga/build/m68k/dist/Python3
+NVIM_DIST ?= $(UPTERM_ROOT)/neovim-amiga/build/v012/dist/nvim
 # ixnet.library from the same build (ixnet refuses an ixemul of another revision)
 IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp

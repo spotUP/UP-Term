@@ -34,11 +34,12 @@ build/rig/vtc); `make build/amiga/vsh` first."""
 import argparse, difflib, hashlib, os, pathlib, re, shutil, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
+import paths
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = ROOT / "build/rig/vtc"
 VERDICTS = ROOT / "build/rig/userland"
-PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", pathlib.Path.home() / "Code/upterm-ports"))
+PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", paths.repo("upterm-ports")))
 SYSBIN = PORTS / "build/sysroot/SYS/UP-Term"
 
 
