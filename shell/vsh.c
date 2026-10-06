@@ -1389,6 +1389,7 @@ static int vsh_main(int argc, char **argv)
         len = 0;
     }
     free(text);
+    sh_exit_trap(&sh); /* trap ... EXIT: end of input, exit, a script's end */
     {
         long st = sh.exiting ? sh.exit_status : sh.ctx.status;
         TR("exit free", st, 0);

@@ -74,6 +74,9 @@ typedef struct sh_os {
     int   (*cont)(void *os, long job);
     int   suspendable;
     long  stopped;
+    /* The umask builtin's mask, passed to the OS layer so commands it starts
+     * inherit it (0 = none: the mask is kept by the shell only). */
+    void  (*umask)(void *os, int mask);
     void *data;
 } sh_os;
 
@@ -112,6 +115,14 @@ typedef struct sh_shell {
     int subst_ran;         /* a $( ) ran in the current command ... */
     long subst_status;     /* ... with this status (assignments only: the command's $?) */
     int heredocs;          /* numbering for here-document temp files */
+    char *traps[3];        /* trap actions: EXIT, INT, TERM (0: none, "": ignored) */
+    int in_trap;           /* a trap action is running */
+    int exit_trap_ran;     /* the EXIT trap has run (once per shell) */
+    void *locals;          /* local's saved variables, a stack (sh_exec.c: saved_var) */
+    int n_locals, cap_locals;
+    int umask;             /* the umask builtin's mask (default 022) */
+    int optpos;            /* getopts: the next character inside a cluster (-abc), 0 = at an argument */
+    long optind_seen;      /* the OPTIND getopts left, to notice a script resetting it */
 } sh_shell;
 
 void sh_shell_init(sh_shell *sh);
@@ -148,6 +159,16 @@ int sh_path_next(const char **p, char *dir, long max);
  * parent directory, so vsh tries a name that way first and this one only
  * when there is nothing by the Amiga meaning (vsh.c lock_name). */
 int sh_unix_root(const char *in, char *out, long max);
+
+/* A signal reached the shell (2 = INT, 15 = TERM): run its trap action. 1 =
+ * a trap took it (the action ran, or the signal is ignored with trap '' SIG),
+ * 0 = no trap: the caller's own handling follows. INT is polled by the core
+ * itself (sh_os.interrupted); the OS layer calls this for TERM. */
+int sh_trap_signal(sh_shell *sh, int sig);
+
+/* Run the EXIT trap, once. The caller runs it where the shell ends (end of
+ * input, after exit, a subshell's end -- sh_run_child does it for those). */
+void sh_exit_trap(sh_shell *sh);
 
 /* Run one input text (a line, or a script). Returns the exit status of
  * its last command; *incomplete is set when the text needs more lines. */

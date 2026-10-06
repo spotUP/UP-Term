@@ -121,7 +121,22 @@ void sh_shell_init(sh_shell *sh)
     sh->ctx.subst = core_subst;
     sh->ctx.user = sh;
     sh->heredocs = 0;
+    memset(sh->traps, 0, sizeof(sh->traps));
+    sh->in_trap = 0;
+    sh->exit_trap_ran = 0;
+    sh->locals = 0;
+    sh->n_locals = sh->cap_locals = 0;
+    sh->umask = 022;
+    sh->optpos = 0;
+    sh->optind_seen = 0;
 }
+
+/* A variable as it was before NAME=value cmd or local NAME, to put back after. */
+typedef struct saved_var {
+    char *name, *value;     /* value 0: it was not set */
+    int exported;
+} saved_var;
+static void restore_var(sh_shell *sh, saved_var *s);
 
 void sh_shell_free(sh_shell *sh)
 {
@@ -141,6 +156,11 @@ void sh_shell_free(sh_shell *sh)
     }
     for (i = 0; i < 32; i++)
         free(sh->job_text[i]);
+    for (i = 0; i < 3; i++)
+        free(sh->traps[i]);
+    while (sh->n_locals > 0) /* a shell ended inside a function: the values go with it */
+        restore_var(sh, (saved_var *)sh->locals + --sh->n_locals);
+    free(sh->locals);
     sh_list_free(&sh->aliases);
     sh_ctx_free(&sh->ctx);
 }
@@ -169,6 +189,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.status = sh->ctx.status;
     c->ctx.pid = sh->ctx.pid;
     c->ctx.last_bg = sh->ctx.last_bg;
+    c->umask = sh->umask;  /* traps are not inherited (POSIX) */
     c->ctx.nocase = sh->ctx.nocase;
     c->ctx.listdir = sh->ctx.listdir;
     c->ctx.subst = sh->ctx.subst;
@@ -201,6 +222,10 @@ long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io)
         st = child->exit_status;
     else if (child->intr)
         st = intr_status(child);
+    child->ctx.status = st;
+    sh_exit_trap(child);
+    if (child->exiting)
+        st = child->exit_status;
     close_owned(child, io);
     /* its own background jobs report to it: it waits for them */
     for (i = 0; i < 32; i++)
@@ -1209,6 +1234,12 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_type(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_trap(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_local(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_getopts(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_umask(sh_shell *sh, int argc, char **argv, const sh_io *io);
 
 static const struct {
     const char *name;
@@ -1221,6 +1252,8 @@ static const struct {
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
     { "wait", b_wait }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
+    { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "local", b_local },
+    { "getopts", b_getopts }, { "umask", b_umask },
     { "which", b_type }, { 0, 0 } /* no "type": AmigaDOS Type prints files */
 };
 
@@ -1362,7 +1395,7 @@ static void apply_alias(sh_shell *sh, sh_list *argv)
 static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *io)
 {
     sh_list saved = sh->ctx.args;
-    int i;
+    int i, mark = sh->n_locals;
     long st;
     memset(&sh->ctx.args, 0, sizeof(sh->ctx.args));
     for (i = 1; i < argv->n; i++)
@@ -1375,6 +1408,8 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
         st = sh->ctx.status;
     sh->returning = 0;
     sh->func_depth--;
+    while (sh->n_locals > mark) /* its locals end with it */
+        restore_var(sh, (saved_var *)sh->locals + --sh->n_locals);
     sh_list_free(&sh->ctx.args);
     sh->ctx.args = saved;
     return st;
@@ -1394,12 +1429,6 @@ static char *assign_name(const char *word)
     }
     return name;
 }
-
-/* A variable as it was before NAME=value cmd, to put back after cmd. */
-typedef struct saved_var {
-    char *name, *value;     /* value 0: it was not set */
-    int exported;
-} saved_var;
 
 static void save_var(sh_shell *sh, const char *name, saved_var *s)
 {
@@ -1426,6 +1455,365 @@ static void restore_var(sh_shell *sh, saved_var *s)
     }
     free(s->name);
     free(s->value);
+}
+
+/* ---- eval, exec, trap, local, getopts, umask ------------------------------------- */
+
+/* eval [arg ...]: the arguments joined by spaces, parsed and run in this shell. */
+static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    pbuf t = { 0, 0, 0 };
+    sh_parse p;
+    long st = 0;
+    int i;
+    for (i = 1; i < argc; i++) {
+        if (i > 1)
+            pb_add(&t, " ", 1);
+        pb_str(&t, argv[i]);
+    }
+    if (!t.s)
+        return 0;
+    sh_parse_text(&p, t.s);
+    free(t.s);
+    if (p.error) {
+        err2(sh, io, "eval", p.incomplete ? "unexpected end of input" : p.error);
+        sh_parse_free(&p);
+        return 2;
+    }
+    st = exec_node(sh, p.tree, io);
+    sh_parse_free(&p);
+    return st;
+}
+
+/* exec command [arg ...]: AmigaDOS cannot replace a process, so the command
+ * runs (a builtin, or a program) and the shell ends with its status; a
+ * command that is not found leaves the shell running (status 127). Without
+ * a command, exec would make its redirections permanent: the core closes a
+ * command's redirections when it ends, so that form does nothing. */
+static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    builtin_fn b;
+    long st;
+    if (argc < 2)
+        return 0;
+    if ((b = find_builtin(argv[1])) != 0)
+        st = b(sh, argc - 1, argv + 1, io);
+    else {
+        st = sh->os.run(sh->os.data, argv + 1, io, 1);
+        if (st < 0) {
+            err2(sh, io, argv[1], "not found");
+            return 127;
+        }
+    }
+    if (!sh->exiting) {
+        sh->exiting = 1;
+        sh->exit_status = st;
+    }
+    return st;
+}
+
+/* The signals trap knows: EXIT, INT, TERM (ixemul's numbers, as scripts type them). */
+static int trap_index(const char *name)
+{
+    if (!strncmp(name, "SIG", 3))
+        name += 3;
+    if (!strcmp(name, "EXIT") || !strcmp(name, "0"))
+        return 0;
+    if (!strcmp(name, "INT") || !strcmp(name, "2"))
+        return 1;
+    if (!strcmp(name, "TERM") || !strcmp(name, "15"))
+        return 2;
+    return -1;
+}
+
+static const char *const trap_names[3] = { "EXIT", "INT", "TERM" };
+
+/* trap, trap action sig ..., trap - sig ..., trap '' sig ...: no arguments
+ * lists the traps; "-" (or a first operand that is a number) resets, an
+ * empty action ignores the signal. */
+static long b_trap(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    const char *action;
+    long st = 0;
+    int i, first = 2;
+    if (argc < 2) {
+        for (i = 0; i < 3; i++)
+            if (sh->traps[i]) {
+                say(sh, io->out, "trap -- '");
+                say(sh, io->out, sh->traps[i]);
+                say(sh, io->out, "' ");
+                say(sh, io->out, trap_names[i]);
+                say(sh, io->out, "\n");
+            }
+        return 0;
+    }
+    action = argv[1];
+    if (argv[1][0] >= '0' && argv[1][0] <= '9' && !argv[1][strspn(argv[1], "0123456789")]) {
+        action = "-";    /* trap 2: reset INT */
+        first = 1;
+    }
+    if (first >= argc) {
+        err2(sh, io, "trap", "usage: trap [action] signal ...");
+        return 2;
+    }
+    for (i = first; i < argc; i++) {
+        int k = trap_index(argv[i]);
+        if (k < 0) {
+            err2(sh, io, "trap", "bad signal (EXIT, INT and TERM are known)");
+            st = 1;
+            continue;
+        }
+        free(sh->traps[k]);
+        sh->traps[k] = strcmp(action, "-") ? sdup(action) : 0;
+    }
+    return st;
+}
+
+static void run_trap_text(sh_shell *sh, const char *text)
+{
+    sh_parse p;
+    long st = sh->ctx.status;
+    sh->in_trap = 1;
+    sh_parse_text(&p, text);
+    if (p.error)
+        err2(sh, &sh->io, "trap", p.incomplete ? "unexpected end of input" : p.error);
+    else
+        exec_node(sh, p.tree, &sh->io);
+    sh_parse_free(&p);
+    sh->in_trap = 0;
+    sh->ctx.status = st;   /* the trap does not change $? */
+}
+
+int sh_trap_signal(sh_shell *sh, int sig)
+{
+    int k = sig == 2 ? 1 : sig == 15 ? 2 : -1;
+    if (k < 0 || !sh->traps[k] || sh->in_trap)
+        return 0;   /* a trap that is running is broken like any command */
+    if (sh->traps[k][0])
+        run_trap_text(sh, sh->traps[k]);
+    return 1;
+}
+
+void sh_exit_trap(sh_shell *sh)
+{
+    int exiting = sh->exiting;
+    long status = sh->exit_status;
+    if (sh->exit_trap_ran || !sh->traps[0])
+        return;
+    sh->exit_trap_ran = 1;
+    sh->exiting = 0;       /* exec_node does nothing in a shell that is exiting */
+    if (sh->traps[0][0])
+        run_trap_text(sh, sh->traps[0]);
+    if (!sh->exiting) {    /* the action did not call exit: the shell's own status stands */
+        sh->exiting = exiting;
+        sh->exit_status = status;
+    }
+}
+
+/* local name[=value] ...: variables of the running function, put back (or
+ * unset again) when it returns. */
+static long b_local(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int i;
+    if (!sh->func_depth) {
+        err2(sh, io, "local", "can only be used in a function");
+        return 1;
+    }
+    for (i = 1; i < argc; i++) {
+        const char *eq = strchr(argv[i], '=');
+        size_t n = eq ? (size_t)(eq - argv[i]) : strlen(argv[i]);
+        char name[128];
+        if (!n || n >= sizeof(name)) {
+            err2(sh, io, "local", "not a valid name");
+            return 1;
+        }
+        memcpy(name, argv[i], n);
+        name[n] = 0;
+        if (sh->n_locals == sh->cap_locals) {
+            int cap = sh->cap_locals ? sh->cap_locals * 2 : 8;
+            void *t = realloc(sh->locals, cap * sizeof(saved_var));
+            if (!t) {
+                err2(sh, io, "local", "out of memory");
+                return 1;
+            }
+            sh->locals = t;
+            sh->cap_locals = cap;
+        }
+        save_var(sh, name, (saved_var *)sh->locals + sh->n_locals++);
+        if (eq)
+            sh_set(&sh->ctx, name, eq + 1);
+        else
+            sh_unset(&sh->ctx, name);
+    }
+    return 0;
+}
+
+/* getopts optstring name [arg ...]: the next option of the arguments (the
+ * positional ones when none are given) into name, its argument into OPTARG,
+ * the index of the next argument to look at in OPTIND. 0 while there is an
+ * option, 1 at the end. A leading ':' in optstring keeps getopts silent:
+ * a bad option comes as name ? with OPTARG the letter, a missing argument
+ * as name : likewise. */
+static long b_getopts(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    const char *opts, *oi = sh_get(&sh->ctx, "OPTIND");
+    char **args;
+    const char *arg, *p;
+    char c, val[2], nb[24], msg[40];
+    long optind = oi ? atol(oi) : 1;
+    int n, silent, end = 0, bad = 0;
+    if (argc < 3) {
+        err2(sh, io, "getopts", "usage: getopts optstring name [arg ...]");
+        return 2;
+    }
+    if (optind < 1)
+        optind = 1;
+    if (optind != sh->optind_seen)
+        sh->optpos = 0;     /* the script set OPTIND: start over there */
+    opts = argv[1];
+    silent = opts[0] == ':';
+    if (silent)
+        opts++;
+    args = argc > 3 ? argv + 3 : sh->ctx.args.v;
+    n = argc > 3 ? argc - 3 : sh->ctx.args.n;
+    val[1] = 0;
+    sh_unset(&sh->ctx, "OPTARG");
+    if (optind > n)
+        end = 1;
+    else {
+        arg = args[optind - 1];
+        if (!sh->optpos) {
+            if (arg[0] != '-' || !arg[1])
+                end = 1;
+            else if (!strcmp(arg, "--")) {
+                optind++;
+                end = 1;
+            } else
+                sh->optpos = 1;
+        }
+    }
+    if (end) {
+        sh->optpos = 0;
+        sh_set(&sh->ctx, argv[2], "?");
+        num(nb, optind);
+        sh_set(&sh->ctx, "OPTIND", nb);
+        sh->optind_seen = optind;
+        return 1;
+    }
+    arg = args[optind - 1];
+    c = arg[sh->optpos++];
+    p = c == ':' ? 0 : strchr(opts, c);
+    val[0] = c;
+    if (!p) {
+        bad = 1;
+        if (silent)
+            sh_set(&sh->ctx, "OPTARG", val);
+        else {
+            strcpy(msg, "illegal option -- ");
+            msg[strlen(msg) + 1] = 0;
+            msg[strlen(msg)] = c;
+            err2(sh, io, "getopts", msg);
+        }
+    } else if (p[1] == ':') {
+        if (arg[sh->optpos]) {            /* -ofile */
+            sh_set(&sh->ctx, "OPTARG", arg + sh->optpos);
+            sh->optpos = 0;
+            optind++;
+        } else if (optind < n) {          /* -o file */
+            sh_set(&sh->ctx, "OPTARG", args[optind]);
+            sh->optpos = 0;
+            optind += 2;
+        } else {
+            sh->optpos = 0;
+            optind++;
+            bad = 2;
+            if (silent)
+                sh_set(&sh->ctx, "OPTARG", val);
+            else {
+                strcpy(msg, "option requires an argument -- ");
+                msg[strlen(msg) + 1] = 0;
+                msg[strlen(msg)] = c;
+                err2(sh, io, "getopts", msg);
+            }
+        }
+    }
+    if (sh->optpos && !arg[sh->optpos]) {  /* the cluster is used up */
+        sh->optpos = 0;
+        optind++;
+    }
+    num(nb, optind);
+    sh_set(&sh->ctx, "OPTIND", nb);
+    sh->optind_seen = optind;
+    val[0] = bad == 2 && silent ? ':' : bad ? '?' : c;
+    sh_set(&sh->ctx, argv[2], val);
+    return 0;
+}
+
+/* umask [-S] [mask]: print or set the file creation mask (octal; -S prints
+ * it as the permissions that stay). The shell keeps it and hands it to the
+ * OS layer (sh_os.umask) for the commands it starts. */
+static long b_umask(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int symbolic = argc > 1 && !strcmp(argv[1], "-S");
+    const char *a = argc > 1 + symbolic ? argv[1 + symbolic] : 0;
+    if (argc > 2 + symbolic) {
+        err2(sh, io, "umask", "too many arguments");
+        return 1;
+    }
+    if (a) {
+        long m = 0;
+        const char *q;
+        if (!*a || strlen(a) > 4 || symbolic) {
+            err2(sh, io, "umask", symbolic ? "-S only prints the mask" : "not an octal mask");
+            return 1;
+        }
+        for (q = a; *q; q++) {
+            if (*q < '0' || *q > '7') {
+                err2(sh, io, "umask", "not an octal mask");
+                return 1;
+            }
+            m = m * 8 + (*q - '0');
+        }
+        if (m > 0777) {
+            err2(sh, io, "umask", "mask out of range (000 to 777)");
+            return 1;
+        }
+        sh->umask = (int)m;
+        if (sh->os.umask)
+            sh->os.umask(sh->os.data, sh->umask);
+        return 0;
+    }
+    {
+        char out[32];
+        int m = sh->umask, k;
+        if (symbolic) {
+            static const char who[3] = { 'u', 'g', 'o' };
+            int o = 0;
+            for (k = 0; k < 3; k++) {
+                int keep = ~(m >> (6 - 3 * k)) & 7;
+                out[o++] = who[k];
+                out[o++] = '=';
+                if (keep & 4)
+                    out[o++] = 'r';
+                if (keep & 2)
+                    out[o++] = 'w';
+                if (keep & 1)
+                    out[o++] = 'x';
+                if (k < 2)
+                    out[o++] = ',';
+            }
+            out[o] = 0;
+        } else {
+            out[0] = '0';
+            out[1] = (char)('0' + ((m >> 6) & 7));
+            out[2] = (char)('0' + ((m >> 3) & 7));
+            out[3] = (char)('0' + (m & 7));
+            out[4] = 0;
+        }
+        say(sh, io->out, out);
+        say(sh, io->out, "\n");
+    }
+    return 0;
 }
 
 static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job)
@@ -1812,7 +2200,7 @@ static long intr_status(const sh_shell *sh)
 /* Ctrl-C: once it arrives, everything unwinds to the prompt (status 130). */
 static int poll_break(sh_shell *sh)
 {
-    if (!sh->intr && sh->os.interrupted && sh->os.interrupted(sh->os.data))
+    if (!sh->intr && sh->os.interrupted && sh->os.interrupted(sh->os.data) && !sh_trap_signal(sh, 2))
         sh->intr = 1;
     return sh->intr;
 }

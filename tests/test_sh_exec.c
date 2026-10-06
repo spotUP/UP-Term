@@ -625,6 +625,14 @@ static void functions_outlive_their_lines(void)
     CHECK_STR(slot(OUT)->data, "body\nbody\nold\nnew\n");
 }
 
+static int last_umask;
+
+static void f_umask(void *os, int mask)
+{
+    (void)os;
+    last_umask = mask;
+}
+
 static int intr_after;  /* the fake's Ctrl-C arrives after this many polls (0: never) */
 
 static int f_interrupted(void *os)
@@ -951,8 +959,183 @@ static void uninstall_removes_every_up_term_block(void)
     CHECK_STR(run(text), "Run >NIL: amiagent TOKEN=x\n;BEGIN UP-Terminal\n  spaced \\\\ line  \n");
 }
 
+/* eval, exec, trap, local, getopts, umask (plan unix-tool-ports row 0.6) */
+static const char *errs(void)
+{
+    return slot(ERR)->data;
+}
+
+static void eval_builtin(void)
+{
+    CHECK_STR(run("eval echo hi there"), "hi there\n");
+    CHECK_STR(run("v=A; n=v; eval \"echo \\$$n\""), "A\n");
+    CHECK_STR(run("eval 'x=5; echo $x'; echo $x"), "5\n5\n");
+    CHECK_STR(run("eval; echo $?"), "0\n");
+    CHECK_STR(run("eval fail 4; echo $?"), "4\n");
+    CHECK_STR(run("eval 'if true; then' ; echo $?"), "2\n");
+    CHECK_STR(errs(), "vsh: eval: unexpected end of input\n");
+    CHECK_STR(run("eval 'echo ('; echo $?"), "2\n");
+    CHECK_INT(strncmp(errs(), "vsh: eval: ", 11), 0);
+    CHECK_STR(run("f() { eval 'return 3'; echo not; }; f; echo $?"), "3\n");
+}
+
+static void exec_builtin(void)
+{
+    CHECK_STR(run("exec echo bye; echo never"), "bye\n");
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT(sh.exit_status, 0);
+    run("exec fail 6; echo never");
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT(sh.exit_status, 6);
+    CHECK_STR(run("exec cat <<x\nfrom exec\nx\necho never"), "from exec\n");
+    CHECK_STR(run("exec nosuchcmd; echo still $?"), "still 127\n");
+    CHECK_STR(errs(), "vsh: nosuchcmd: not found\n");
+    CHECK_INT(sh.exiting, 0);
+    CHECK_STR(run("exec; echo plain $?"), "plain 0\n");
+    CHECK_STR(run("(exec echo sub); echo after"), "sub\nafter\n");
+}
+
+static void trap_builtin(void)
+{
+    int inc = 0;
+    CHECK_STR(run("trap 'echo bye' EXIT; echo body"), "body\n"); /* the shell runs it where it ends */
+    fresh();
+    sh_run_text(&sh, "trap 'echo bye' EXIT; echo body", &inc);
+    sh_exit_trap(&sh);
+    CHECK_STR(slot(OUT)->data, "body\nbye\n");
+    sh_exit_trap(&sh);       /* once */
+    CHECK_STR(slot(OUT)->data, "body\nbye\n");
+    /* after exit the status is the exit's, the trap does not change it */
+    fresh();
+    sh_run_text(&sh, "trap 'echo t; fail 9' EXIT; exit 3", &inc);
+    sh_exit_trap(&sh);
+    CHECK_STR(slot(OUT)->data, "t\n");
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT(sh.exit_status, 3);
+    /* ... unless the trap calls exit itself */
+    fresh();
+    sh_run_text(&sh, "trap 'exit 7' 0; exit 3", &inc);
+    sh_exit_trap(&sh);
+    CHECK_INT(sh.exit_status, 7);
+    /* a subshell runs its own EXIT trap and does not inherit the parent's */
+    CHECK_STR(run("trap 'echo parent' EXIT; (echo in); (trap 'echo child' EXIT; echo c)"), "in\nc\nchild\n");
+    /* listing, resetting, ignoring */
+    CHECK_STR(run("trap 'echo a b' INT; trap '' TERM; trap"), "trap -- 'echo a b' INT\ntrap -- '' TERM\n");
+    CHECK_STR(run("trap 'echo x' INT; trap - INT; trap"), "");
+    CHECK_STR(run("trap 'echo x' SIGINT 2; trap 2; trap"), "");
+    /* Ctrl-C runs the INT trap and the script goes on; without a trap it unwinds */
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_after = 20;
+    sh_run_text(&sh, "trap 'echo caught' INT; i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "caught\ndone 40\n");
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_after = 20;
+    sh_run_text(&sh, "trap '' INT; i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "done 40\n");
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_after = 20;
+    sh_run_text(&sh, "trap - INT; i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "");
+    CHECK_INT(sh.ctx.status, 130);
+    intr_after = 0;
+    /* TERM arrives from the OS layer */
+    fresh();
+    CHECK_INT(sh_trap_signal(&sh, 15), 0);
+    sh_run_text(&sh, "trap 'echo term' TERM", &inc);
+    CHECK_INT(sh_trap_signal(&sh, 15), 1);
+    CHECK_STR(slot(OUT)->data, "term\n");
+    CHECK_INT(sh_trap_signal(&sh, 2), 0);
+    /* errors */
+    run("trap 'echo x' HUP; echo $?");
+    CHECK_STR(slot(OUT)->data, "1\n");
+    CHECK_STR(errs(), "vsh: trap: bad signal (EXIT, INT and TERM are known)\n");
+    run("trap 'echo x'; echo $?");
+    CHECK_STR(slot(OUT)->data, "2\n");
+    CHECK_STR(errs(), "vsh: trap: usage: trap [action] signal ...\n");
+}
+
+static void local_builtin(void)
+{
+    CHECK_STR(run("x=out; f() { local x=in; echo $x; }; f; echo $x"), "in\nout\n");
+    CHECK_STR(run("f() { local x; echo [$x]; x=set; }; x=out; f; echo $x"), "[]\nout\n");
+    CHECK_STR(run("f() { local y=1; }; f; echo [$y]"), "[]\n");
+    CHECK_STR(run("f() { local x=f; g; echo $x; }; g() { local x=g; echo $x; }; x=top; f; echo $x"), "g\nf\ntop\n");
+    CHECK_STR(run("f() { local a=1 b=2; echo $a$b; }; f"), "12\n");
+    CHECK_STR(run("f() { local x=1; return 4; }; x=o; f; echo $? $x"), "4 o\n");
+    CHECK_STR(run("f() { local x=1; x=2; }; x=o; f; f; echo $x"), "o\n");
+    CHECK_STR(run("f() { local x=1; (echo $x); }; f"), "1\n");
+    run("local x=1; echo $?");
+    CHECK_STR(slot(OUT)->data, "1\n");
+    CHECK_STR(errs(), "vsh: local: can only be used in a function\n");
+    run("f() { local =1; echo $?; }; f");
+    CHECK_STR(errs(), "vsh: local: not a valid name\n");
+}
+
+static void getopts_builtin(void)
+{
+    const char *loop = "while getopts ab:c o; do echo \"o=$o arg=$OPTARG ind=$OPTIND\"; done; shift $((OPTIND-1)); echo \"rest=$*\"";
+    char text[512];
+    snprintf(text, sizeof(text), "set -- -a -b val file; %s", loop);
+    CHECK_STR(run(text), "o=a arg= ind=2\no=b arg=val ind=4\nrest=file\n");
+    snprintf(text, sizeof(text), "set -- -abval -c x y; %s", loop);
+    CHECK_STR(run(text), "o=a arg= ind=1\no=b arg=val ind=2\no=c arg= ind=3\nrest=x y\n");
+    snprintf(text, sizeof(text), "set -- -ac -- -a; %s", loop);
+    CHECK_STR(run(text), "o=a arg= ind=1\no=c arg= ind=2\nrest=-a\n");
+    CHECK_STR(run("getopts a o -a x; echo $o $OPTIND $?; getopts a o -a x; echo $o $OPTIND $?"), "a 2 0\n? 2 1\n");
+    /* explicit arguments, the positional ones left alone */
+    CHECK_STR(run("set -- keep; getopts a o -a; echo $o $1"), "a keep\n");
+    /* a script resets OPTIND to scan again */
+    CHECK_STR(run("getopts a o -a; getopts a o -a; OPTIND=1; getopts a o -a; echo $o $OPTIND"), "a 2\n");
+    /* errors: illegal option, missing argument -- loud and silent */
+    CHECK_STR(run("getopts a o -z; echo $o [$OPTARG] $?"), "? [] 0\n");
+    CHECK_STR(errs(), "vsh: getopts: illegal option -- z\n");
+    CHECK_STR(run("getopts :a o -z; echo $o [$OPTARG]"), "? [z]\n");
+    CHECK_STR(errs(), "");
+    CHECK_STR(run("getopts b: o -b; echo $o [$OPTARG] $OPTIND"), "? [] 2\n");
+    CHECK_STR(errs(), "vsh: getopts: option requires an argument -- b\n");
+    CHECK_STR(run("getopts :b: o -b; echo $o [$OPTARG] $OPTIND"), ": [b] 2\n");
+    CHECK_STR(run("getopts a; echo $?"), "2\n");
+    CHECK_STR(errs(), "vsh: getopts: usage: getopts optstring name [arg ...]\n");
+    CHECK_STR(run("getopts a o plain; echo $o $OPTIND $?"), "? 1 1\n");
+}
+
+static void umask_builtin(void)
+{
+    CHECK_STR(run("umask"), "0022\n");
+    CHECK_STR(run("umask 077; umask; umask -S"), "0077\nu=rwx,g=,o=\n");
+    CHECK_STR(run("umask 7; umask"), "0007\n");
+    CHECK_STR(run("umask -S"), "u=rwx,g=rx,o=rx\n");
+    CHECK_STR(run("umask 077; (umask 0; umask); umask"), "0000\n0077\n");
+    CHECK_STR(run("umask 077; (umask)"), "0077\n");   /* a subshell starts with the shell's mask */
+    run("umask 089; echo $?");
+    CHECK_STR(slot(OUT)->data, "1\n");
+    CHECK_STR(errs(), "vsh: umask: not an octal mask\n");
+    run("umask 1000; echo $?");
+    CHECK_STR(errs(), "vsh: umask: mask out of range (000 to 777)\n");
+    run("umask 0777; umask 1 2");
+    CHECK_STR(errs(), "vsh: umask: too many arguments\n");
+    run("umask -S 022");
+    CHECK_STR(errs(), "vsh: umask: -S only prints the mask\n");
+    /* the OS layer is told, so the commands it starts get the mask */
+    fresh();
+    sh.os.umask = f_umask;
+    last_umask = -1;
+    sh_run_text(&sh, "umask 027", 0);
+    CHECK_INT(last_umask, 027);
+    sh.os.umask = 0;
+}
+
 void suite_sh_exec(void)
 {
+    eval_builtin();
+    exec_builtin();
+    trap_builtin();
+    local_builtin();
+    getopts_builtin();
+    umask_builtin();
     a_unix_absolute_name_maps_to_its_volume();
     printf_builtin();
     prompts();
