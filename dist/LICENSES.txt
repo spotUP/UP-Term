@@ -1,0 +1,74 @@
+UP-Term kit: parts, licences and where the source is
+
+Every part the kit (UP-Term.lha) ships is listed once. The source column
+names the repository (all under ~/Code, pinned together by the upterm
+meta-repo, repos.lock) or the archive the source is in. "unconfirmed" means
+no licence file or statement for it was found in the tree; the place looked
+is named.
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+UP-Term own programs and      All rights reserved; the owner   vtcon repo (LICENSE). Programs: vtcon-handler,
+scripts                       has chosen no licence yet        up-console.device, UPConsole, UPTerm, UPDemo,
+                                                               UP-Term Prefs, vsh, uptelnet, hl, mdv, sz, rz,
+                                                               upgetty, upicon, ixkill, pty-handler,
+                                                               ixpipe-handler, Claude, wasabikey, Install,
+                                                               Uninstall, install.dos, config files
+ixemul.library, ixnet.library GNU LGPL v2 or later (parts from ixemul-vtcon repo (COPYING.LIB,
+and libixcompat (linked into  BSD and other authors keep       LICENSES.README), a fork of ixemul 48.2
+every Amiga program)          their notices in their files)
+GNU coreutils 5.2.1 (Files/   GPL v2 (Files/coreutils/COPYING) Files/coreutils/coreutils-5.2.1-src.tar.bz2;
+coreutils)                                                     vtcon dist/gg/coreutils-5.2.1/SOURCE.txt
+bebboget 1.11                 GPL v3 or later (COPYING,        Files/net/bebboget-1.11/bebboget-1.11-src.tar.bz2
+                              LICENSE)
+BebboSSH 1.45 (bebbossh,      GPL v3 or later (COPYING); some  Files/net/bebbossh-1.45/bebbossh-1.45-src.tar.bz2
+bebbosshd, bebboscp, ...)     files public domain per header
+curl 8.22.0 (AmigaOS port)    curl licence (COPYING)           https://github.com/boingball/curl branch
+                                                               amigaos, commit 8347cfe (BUILD-INFO.txt)
+wasabi / wasabid              MIT (Files/wasabi/LICENSE)       https://github.com/creep-ltx/wasabi; see
+                                                               Files/wasabi/SOURCE.txt
+GNU Unifont 17.0.05 pages     SIL OFL 1.1 (Files/unifont/      https://unifoundry.com; Files/unifont/SOURCE.txt
+                              OFL-1.1.txt)
+Twemoji 17.0.3 emoji pages    CC-BY 4.0 (Files/emoji/          https://github.com/jdecked/twemoji;
+                              CC-BY-4.0.txt)                   Files/emoji/SOURCE.txt
+TopazPro font                 unconfirmed: no licence in       Files/fonts/SOURCE.txt, TopazPro.diz (by spot /
+                              dist/fonts (SOURCE.txt,          Divine Stylers, 2022)
+                              TopazPro.diz)
+IBM font 8 and 11             "freely distributable" per       Fred Fish disk 993 (aminet misc/fish/fish-0993);
+                              dist/fonts/SOURCE.txt; no        unconfirmed beyond that statement
+                              licence text found
+IBM font 16                   Apache License 2.0 per           https://github.com/blocktronics/moebius;
+                              dist/fonts/SOURCE.txt and        the Apache text is not in the kit (unconfirmed:
+                              IBM.readme                       looked in dist/fonts)
+112 colour themes             unconfirmed per scheme: each     themes/ATTRIBUTION.md in vtcon (shipped as
+(Files/themes)                scheme keeps its upstream        Files/themes/ATTRIBUTION.md)
+                              licence; terminalcolors.com
+                              publishes none
+GNU screen 4.9.1              GPL v3 or later (screen-amiga/   screen-amiga repo (src/); upstream
+                              src/COPYING)                     https://ftp.gnu.org/gnu/screen/
+terminfo entries "screen",    unconfirmed: exported from the   vtcon terminfo/screen.terminfo (header
+"screen-256color"             macOS ncurses database; ncurses  comment); ncurses is MIT (X11) per
+                              is MIT (X11) per upterm-ports    upterm-ports build/kit/userland/SOURCES.txt
+                              SOURCES.txt
+tmux 3.6a                     ISC (tmux-amiga/tmux/COPYING;    tmux-amiga repo
+                              the code's licence is at the
+                              top of each file)
+libevent 2.1.12 (in tmux)     3-clause BSD                     tmux-amiga/libevent/LICENSE
+ncurses 5.5 (GG build, linked unconfirmed: no licence file    screen-amiga/src/Makefile.amiga (NCURSES path);
+into screen and tmux)         looked at; ncurses is MIT (X11)  looked in screen-amiga, tmux-amiga
+                              per upterm-ports SOURCES.txt
+Python 3.14 (Files/python3)   Python Software Foundation       cpython-amiga repo (vendor/cpython/LICENSE)
+                              licence (vendor/cpython/LICENSE)
+Neovim 0.12 and runtime       Apache 2.0, with Vim-licensed    neovim-amiga repo (vendor012/neovim/
+(Files/nvim)                  parts (LICENSE.txt)              LICENSE.txt)
+Neovim bundled libraries      unconfirmed per library: each    neovim-amiga vendor012/ and vendor/ (luv:
+(libuv, luv, lpeg,            tree carries its own LICENSE     Apache 2.0; tree-sitter, unibilium: LICENSE
+tree-sitter, unibilium, ...)  file where one exists            files present)
+
+Notes
+- GNU Unifont is also offered under GPL v2 or later; the kit uses the OFL.
+- The Claude and ClaudeCode programs talk to Anthropic's API; AmiSSL 5 (used
+  at run time) is not part of the kit.
+- Source for the GPL parts is in the kit as source archives where the table
+  says so; for GNU screen, tmux, Python and Neovim it is in the repositories
+  named, which the upterm meta-repo pins to the commits the kit was built from.

@@ -676,7 +676,7 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c $(PTY_FORCE) handler/brk.c han
 	  -L/opt/homebrew/opt/vbcc/targets/m68k-amigaos/lib -lvc -lamiga
 
 # The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
-# Installer script and its icon), Uninstall, README.txt and Files/ (the rest).
+# Installer script and its icon), Uninstall, README.txt, LICENSES.txt and Files/ (the rest).
 KIT := $(BUILD)/dist/UP-Term
 # the patched ixemul (P6): built in ~/Code/ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(HOME)/Code/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
@@ -718,7 +718,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp dist/Install.installer $(KIT)/Install
 	python3 tools/mkicon.py $(KIT)/Install.info --tool Installer --plain \
 	  --tooltype APPNAME=UP-Term --tooltype MINUSER=AVERAGE --tooltype DEFUSER=AVERAGE
-	cp dist/Uninstall dist/README.txt $(KIT)/
+	cp dist/Uninstall dist/README.txt dist/LICENSES.txt $(KIT)/
 	rm -rf $(KIT)/Files/python3 $(KIT)/Files/nvim
 	cp -R $(PYTHON_DIST) $(KIT)/Files/python3
 	cp -R $(NVIM_DIST) $(KIT)/Files/nvim
