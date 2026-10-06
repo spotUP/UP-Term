@@ -296,7 +296,7 @@ Phase 0:
 - [x] 0.3 wchar + POSIX compat
 - [x] 0.4 check_bin
 - [x] 0.5 userland_rig (done 2026-10-06: tools/rig/userland_rig.py, grep 17 of 17 and ncurses 5 of 5 on the rig; no tty window, a case that needs a tty is not covered)
-- [ ] 0.6 vsh builtins
+- [x] 0.6 vsh builtins (done 2026-10-06, host-tested only: b9242b9 eval exec trap local getopts umask; type and which in this commit. Limits: no sender of TERM reaches a native vsh (ixemul kill() finds only ixemul pids), ixemul gives every child umask 022 so vsh umask does not reach children, type shadows C:Type inside vsh)
 - [x] 0.7 ixnet in the kit
 - [x] 0.8 ncurses 6
 
@@ -357,4 +357,4 @@ Phase 5:
 
 Total: 53 items (8 + 10 + 5 + 9 + 11 + 10), 10 done, 43 open (counted 2026-10-06 from the checklist rows: 10 [x] + 43 [ ] = 53).
 
-Status note 2026-10-06: ticked the rows with evidence (0.1-0.4, 0.7, 0.8, 1.1, 3.8, 4.3, 5.10). Still open and verified: 0.6 vsh builtins (no eval, exec, trap, local, getopts, umask), 3.7 (coreutils 5.2.1 shipped, not 9). 4.4 Lua unconfirmed; the rest not checked.
+Status note 2026-10-06: ticked the rows with evidence (0.1-0.4, 0.7, 0.8, 1.1, 3.8, 4.3, 5.10). Still open and verified: 3.7 (coreutils 5.2.1 shipped, not 9). 4.4 Lua unconfirmed; the rest not checked.

@@ -548,7 +548,7 @@ static void jobs_aliases_and_dirs(void)
               "stack 4096\nstack 100000\nrefused\n");
     CHECK_STR(run("[ -t 1 ] && echo tty; [ -t 1 ] >f || echo redirected; [ -t 7 ] || echo no"),
               "tty\nredirected\nno\n");
-    CHECK_STR(run("which echo f; f() { :; }; which f"), "echo is a shell builtin\nf is a command\nf is a function\n");
+    CHECK_STR(run("which echo f; f() { :; }; which f"), "echo is a shell builtin\nf is a function\n");
     /* A background stage gets its pipe ends to keep (rig: list's output
      * went to the console, the runner had been given no pipe) */
     run("ls | nosuch | cat");  /* a stage that cannot start says so */
@@ -650,7 +650,7 @@ static void subshells(void)
     CHECK_STR(run("A=1; (A=2; cd Work:); echo $A; pwd"), "1\nRAM:\n");
     CHECK_STR(run("(exit 3); echo $? after"), "3 after\n");
     CHECK_STR(run("A=x; f() { echo f$1; }; (echo $A; f 1)"), "x\nf1\n");
-    CHECK_STR(run("(g() { :; }); which g"), "g is a command\n");
+    CHECK_STR(run("(g() { :; }); which g; echo $?"), "1\n");
     CHECK_STR(run("echo $(cd Work:; echo hi); pwd"), "hi\nRAM:\n");
     CHECK_STR(run("x=$(exit 3); echo after"), "after\n");
     CHECK_STR(run("echo [$(echo a; echo b)]"), "[a b]\n");
@@ -1102,6 +1102,25 @@ static void getopts_builtin(void)
     CHECK_STR(run("getopts a o plain; echo $o $OPTIND $?"), "? 1 1\n");
 }
 
+/* type is an alias of which; a command prints the file $PATH resolves it to */
+static void which_type(void)
+{
+    /* every run() starts a fresh shell and file system: the files and $PATH come first */
+#define WT "echo x > gg:bin/tool; echo x > c:other; PATH=/c:/gg/bin:/nowhere; "
+    CHECK_STR(run("type echo; type nosuch; echo $?"), "echo is a shell builtin\n1\n");
+    CHECK_STR(errs(), "vsh: nosuch: not found\n");
+    CHECK_STR(run("f() { :; }; type f"), "f is a function\n");
+    CHECK_STR(run(WT "which tool; type tool; echo $?"), "gg:bin/tool\ntool is gg:bin/tool\n0\n");
+    CHECK_STR(run(WT "which nosuch tool; echo $?"), "gg:bin/tool\n1\n");   /* quiet, status 1 */
+    CHECK_STR(errs(), "");
+    CHECK_STR(run(WT "which other"), "c:other\n");      /* /c in $PATH */
+    CHECK_STR(run(WT "echo x > C:more; PATH=/gg/bin; which more"), "C:more\n");   /* C: when $PATH has none */
+    CHECK_STR(run(WT "which gg:bin/tool"), "gg:bin/tool\n");   /* a path as given */
+    CHECK_STR(run(WT "which gg:bin/nosuch; echo $?"), "1\n");
+    CHECK_STR(run(WT "echo x > tool; which tool"), "tool\n");  /* the current directory comes first */
+#undef WT
+}
+
 static void umask_builtin(void)
 {
     CHECK_STR(run("umask"), "0022\n");
@@ -1135,6 +1154,7 @@ void suite_sh_exec(void)
     trap_builtin();
     local_builtin();
     getopts_builtin();
+    which_type();
     umask_builtin();
     a_unix_absolute_name_maps_to_its_volume();
     printf_builtin();

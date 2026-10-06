@@ -1254,7 +1254,7 @@ static const struct {
     { "wait", b_wait }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
     { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "local", b_local },
     { "getopts", b_getopts }, { "umask", b_umask },
-    { "which", b_type }, { 0, 0 } /* no "type": AmigaDOS Type prints files */
+    { "which", b_type }, { "type", b_type }, { 0, 0 }
 };
 
 static long add_word(char *out, long n, long max, const char *w)
@@ -1317,15 +1317,66 @@ static sh_func *find_func(sh_shell *sh, const char *name)
     return 0;
 }
 
+/* The file a command name stands for, the way vsh's resolve() looks: a name
+ * with a path as given, else the current directory, then the directories of
+ * $PATH, then C:. 1 and the name in out, 0 when no such file. */
+static int find_command_file(sh_shell *sh, const char *name, char *out, long max)
+{
+    const char *p;
+    char dir[256];
+    if (!sh->os.exists || (long)strlen(name) + 3 > max)
+        return 0;
+    if (strchr(name, ':') || strchr(name, '/') || sh->os.exists(sh->os.data, name, 0)) {
+        if (!sh->os.exists(sh->os.data, name, 0))
+            return 0;
+        strcpy(out, name);
+        return 1;
+    }
+    p = sh_get(&sh->ctx, "PATH");
+    while (p && sh_path_next(&p, dir, sizeof(dir))) {
+        long n = (long)strlen(dir);
+        if (!n)
+            continue;   /* the current directory: looked at above */
+        if (n + (long)strlen(name) + 2 > max)
+            continue;
+        strcpy(out, dir);
+        if (dir[n - 1] != ':' && dir[n - 1] != '/')
+            strcat(out, "/");
+        strcat(out, name);
+        if (sh->os.exists(sh->os.data, out, 0))
+            return 1;
+    }
+    strcpy(out, "C:");
+    strcat(out, name);
+    return sh->os.exists(sh->os.data, out, 0);
+}
+
+/* type NAME ... ("NAME is a function", "is a shell builtin", "is /path"),
+ * and which: the same, but a command prints just its path. Status 1 when
+ * a name is none of them (type says so on stderr, which stays quiet). */
 static long b_type(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    int i;
+    int i, bare = !strcmp(argv[0], "which");
+    long st = 0;
     for (i = 1; i < argc; i++) {
-        say(sh, io->out, argv[i]);
-        say(sh, io->out, find_func(sh, argv[i]) ? " is a function\n"
-                          : find_builtin(argv[i]) ? " is a shell builtin\n" : " is a command\n");
+        char path[512];
+        if (find_func(sh, argv[i]) || find_builtin(argv[i])) {
+            say(sh, io->out, argv[i]);
+            say(sh, io->out, find_func(sh, argv[i]) ? " is a function\n" : " is a shell builtin\n");
+        } else if (find_command_file(sh, argv[i], path, sizeof(path))) {
+            if (!bare) {
+                say(sh, io->out, argv[i]);
+                say(sh, io->out, " is ");
+            }
+            say(sh, io->out, path);
+            say(sh, io->out, "\n");
+        } else {
+            if (!bare)
+                err2(sh, io, argv[i], "not found");
+            st = 1;
+        }
     }
-    return 0;
+    return st;
 }
 
 static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
