@@ -5289,12 +5289,18 @@ static void sync_size(con *c)
  * for one written with IND_WRITEEVENT, which enters above Intuition and
  * does not come out of it (rig, 2026-09-29). So this handler, at 20,
  * between Intuition (50) and ixemul, adds that event to the chain after
- * a resize; input.device's 10 Hz timer events run it soon after. */
+ * a resize. It runs only when some event comes out of Intuition, and for
+ * an XCON: window none does: Intuition takes timer, mouse and the RAWKEY
+ * the window reads by IDCMP (the probe saw 0 events in 8 s with a click
+ * and a key, rig 2026-10-06), so the event waited forever (W47). An
+ * IECLASS_NULL written with IND_WRITEEVENT does come out of Intuition:
+ * post_sizewindow sends one as the carrier, so the event goes now. */
 static struct InputEvent *winch_handler(__reg("a0") struct InputEvent *chain, __reg("a1") APTR data)
 {
     con *c = (con *)data;
-    /* Runs off input.device's 10 Hz timer, so it can fire while close_window
-     * is dismantling the window it would name. An injected IECLASS_SIZEWINDOW
+    /* Runs on input.device's task for any event that comes out of
+     * Intuition, so it can fire while close_window is dismantling the
+     * window it would name. An injected IECLASS_SIZEWINDOW
      * that reaches Intuition after the window is gone is a stale pointer. */
     if (c->winch_closing)
         return chain;
@@ -5336,6 +5342,17 @@ static void post_sizewindow(con *c)
     }
     c->winch_ev.ie_EventAddress = (APTR)c->w.win;
     c->winch_pending = 1;
+    {
+        /* the carrier that runs winch_handler now (see above) */
+        struct InputEvent carrier;
+        memset(&carrier, 0, sizeof(carrier));
+        carrier.ie_Class = IECLASS_NULL;
+        c->input_io->io_Command = IND_WRITEEVENT;
+        c->input_io->io_Data = &carrier;
+        c->input_io->io_Length = sizeof(carrier);
+        c->input_io->io_Flags = 0;
+        DoIO((struct IORequest *)c->input_io);
+    }
     DBG("sigwinch", c->winch_added, 0);
 }
 

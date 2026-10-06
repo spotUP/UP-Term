@@ -339,6 +339,11 @@ $(BUILD)/amiga/ixstackext: tests/amiga/ixstackext.c
 	PATH=/Applications/Docker.app/Contents/Resources/bin:$$PATH $(IXGCC295) sh -c 'cd /w && m68k-amigaos-gcc -idirafter /ndk -m68020 -O2 -Wall -mstackextend -c -o $(BUILD)/amiga/ixstackext.o tests/amiga/ixstackext.c'
 	$(AGCC) -mcrt=ixemul -o $@ $(BUILD)/amiga/ixstackext.o
 
+# A resized XCON: window reaching an ixemul program (tools/rig/winch_rig.py).
+$(BUILD)/amiga/ixwinch: tests/amiga/ixwinch.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwinch.c
+
 $(BUILD)/amiga/ixwait: tests/amiga/ixwait.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwait.c

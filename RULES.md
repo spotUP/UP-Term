@@ -36,6 +36,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | PTY: on the rig (P5, self-checking) | `python3 tools/rig/ptytest_rig.py` (rig up; `make amiga` first) |
 | BSD ptys via patched ixemul (P6.4, self-checking) | `python3 tools/rig/ixpty_rig.py [--orig]` (rig up; `make amiga build/amiga/ixpty`; ixemul from ~/Code/ixemul-vtcon `sh docker/build.sh`) |
 | Signal mask across ixemul's startup stack extension (self-checking; A/B on gcc 16 libraries) | `[IXEMUL=<ixemul.library> IXNET=<ixnet.library>] python3 tools/rig/stackext_rig.py` (rig up; `make build/amiga/ixstackext`) |
+| SIGWINCH and TIOCGWINSZ after an XCON: resize (W47, self-checking) | `[IXEMUL=<ixemul.library>] python3 tools/rig/winch_rig.py` (rig up, handler installed; `make amiga build/amiga/ixwinch`) |
 | pty-handler with a serial trace (build/rig/serial.log) | `make build/amiga/pty-handler DEBUG=1` |
 | Rig (FS-UAE A1200, amiagent) | `python3 tools/rig/rig.py setup|start|install|stop|status`; drive with `tools/rig/ami.py` |
 | Cross build (vbcc, 68020) | `make amiga`. Needs the AmigaOS 3.2 SDK headers once: unpack `NDK3.2R4` to `vendor/ndk-3.2r4-Include_H` (gitignored), or pass `make amiga VTCON_NDK=<path-to-Include_H>` |
