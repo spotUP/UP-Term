@@ -18,12 +18,16 @@ Owner-only checks (eyes, hands) are marked OWNER.
       L255 FixFonts, but FixFonts alone does not freeze -- on-disk log lags).
       Next: Install with each step echoed to RAM:inst.log, polled every 2 s
       from the Mac, so the last step before a freeze is known.
+      Run 5 (OWNER, Shell with echo, ~12:50): PASSED L393 (ixemul/ixnet copied, Avail FLUSH),
+      stalled at L407-408 `Assign XCON: EXISTS DEVICES` / `If WARN`; network (agent, Synergy) gone
+      first; SnoopDOS showed only ChangeDir; then the whole machine froze. Freeze point MOVES
+      (L220, L393, L408): not one command -- look at load/handler/network, not a line.
 - [ ] H3 ixemul 80.1 and ixnet 80.1 installed (`Version LIBS:ixemul.library`),
       after H2 (today 48.2).
 - [ ] H4 `python3 -c "print('hello', 1+1)"` prints `hello 2` (after H2).
 - [ ] H5 `nvim --version`, and nvim opens and quits (OWNER for the screen).
 - [ ] H6 `ls -l` (coreutils) lists.
-- [ ] H7 UP-Term icon in SYS:Utilities opens a window (after H2).
+- [ ] H7 UP-Term icon in SYS:System opens a window (after H2).
 - [ ] H8 UPDemo: euro sign and emoji (OWNER).
 - [ ] H9 command colouring, white while typing then green (OWNER).
 - [ ] H10 tmux and screen start and detach/attach.
