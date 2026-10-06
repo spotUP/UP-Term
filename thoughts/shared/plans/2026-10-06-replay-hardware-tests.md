@@ -29,6 +29,9 @@ Owner-only checks (eyes, hands) are marked OWNER.
 - [ ] H10 tmux and screen start and detach/attach.
 - [ ] H11 Serial: a line sent from the Amiga (`Echo >SER:`) reaches the Pi.
       2026-10-06: 0 bytes arrived -- which port is the cable on? (OWNER)
+      12:39: Pi bridge (FT232, 115200 8N1) has logged 0 bytes since 11:35, across the Replay's
+      reboot after the L393 freeze; Enter and ? got no reply. Neither the ARM console nor the
+      Amiga core reaches the cable: check which header it is on and TX/RX (OWNER).
 - [ ] H12 Serial login: `upgetty LOOP` on the Amiga, a terminal on the Pi gets
       vsh; `sz` a file to the Pi's `rz` byte for byte (needs lrzsz on the Pi:
       sudo, OWNER). After H11.
