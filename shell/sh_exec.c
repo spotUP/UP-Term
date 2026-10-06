@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sh_exec.h"
+#include "../tty/bmsg.h"
 
 
 /* The Unix device names scripts use, as AmigaDOS has them: /dev/null is
@@ -254,6 +255,22 @@ static void err2(sh_shell *sh, const sh_io *io, const char *a, const char *b)
     if (b) {
         say(sh, io->err, ": ");
         say(sh, io->err, b);
+    }
+    say(sh, io->err, "\n");
+}
+
+/* A command that did not start. One of the kit's own (ssh, sort, sz, ...)
+ * says which drawer it lives in, so the fix is in the message. */
+static void err_not_found(sh_shell *sh, const sh_io *io, const char *name)
+{
+    const char *drawer = bmsg_kit_drawer(name);
+    say(sh, io->err, "vsh: ");
+    say(sh, io->err, name);
+    say(sh, io->err, ": not found");
+    if (drawer) {
+        say(sh, io->err, " (it lives in ");
+        say(sh, io->err, drawer);
+        say(sh, io->err, ": put that drawer on PATH, or run the UP-Term Install)");
     }
     say(sh, io->err, "\n");
 }
@@ -1552,7 +1569,7 @@ static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
     else {
         st = sh->os.run(sh->os.data, argv + 1, io, 1);
         if (st < 0) {
-            err2(sh, io, argv[1], "not found");
+            err_not_found(sh, io, argv[1]);
             return 127;
         }
     }
@@ -1962,7 +1979,7 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
                 *job = st > 0 ? st : 0;
             st = st > 0 ? 0 : 1;
         } else if (st < 0) {
-            err2(sh, &io, argv.v[0], "not found");
+            err_not_found(sh, &io, argv.v[0]);
             st = 127;
         }
     }
@@ -2145,7 +2162,7 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
         if (is_external(sh, st[i])) {
             /* it did not start; the OS layer took its streams all the same */
             char *name = expand_one(sh, st[i]->words->text, io);
-            err2(sh, io, name ? name : "?", "not found");
+            err_not_found(sh, io, name ? name : "?");
             free(name);
             status = 127;
             continue;

@@ -41,6 +41,7 @@
 #include <proto/dos.h>
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../tty/bmsg.h"
 #include "repl.h"
 #include "cli.h"
 #include "print.h"
@@ -244,6 +245,17 @@ static int remote(void)
     text[n > 0 ? n : 0] = 0;
     if (!cli_remote_parse(text, host, sizeof(host), &port))
         return -1;
+    /* the file names a computer: its uptelnet has to be in C: */
+    {
+        BPTR l = Lock((STRPTR)"C:uptelnet", SHARED_LOCK);
+        if (!l) {
+            say("Claude: ");
+            say(bmsg_uptelnet_missing());
+            say("\n");
+            return 20;
+        }
+        UnLock(l);
+    }
     i = sizeof(num) - 1;
     num[i] = 0;
     do

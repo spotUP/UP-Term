@@ -484,6 +484,12 @@ static void basics(void)
     run("nosuch arg");
     CHECK_STR(slot(ERR)->data, "vsh: nosuch: not found\n");
     CHECK_INT(sh.ctx.status, 127);
+    /* a kit command that is not on PATH says which drawer it lives in */
+    run("ssh host");
+    CHECK_STR(slot(ERR)->data, "vsh: ssh: not found (it lives in SYS:UP-Term/bin: put that drawer on PATH, or run the UP-Term Install)\n");
+    CHECK_INT(sh.ctx.status, 127);
+    run("nosuch arg");
+    CHECK_STR(slot(ERR)->data, "vsh: nosuch: not found\n");
     CHECK_STR(run("args \"a b\" c* 'd e'"), "<a b><c*><d e>\n");
 }
 

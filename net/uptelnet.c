@@ -38,6 +38,7 @@
 #include "tn.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../tty/bmsg.h"
 
 static const char vers[] = "$VER: uptelnet 1.0 (4.10.2026) UP-Term";
 
@@ -121,6 +122,16 @@ static void con_raw(sess *s)
     s->termios = DoPkt(fh->fh_Type, ACTION_VTCON_TCSETA, fh->fh_Arg1, (LONG)&t, LD_TCSANOW, 0, 0) != 0;
 }
 
+/* "what failed: the meaning" for the errors bmsg knows, "what failed (error N)" otherwise */
+static void report(const char *what, LONG err)
+{
+    const char *why = bmsg_net_errno(err);
+    if (why)
+        Printf("%s: %s\n", (LONG)what, (LONG)why);
+    else
+        Printf("%s (error %ld)\n", (LONG)what, err);
+}
+
 static LONG connect_to(const char *host, LONG port)
 {
     struct sockaddr_in a;
@@ -141,11 +152,12 @@ static LONG connect_to(const char *host, LONG port)
     }
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
-        Printf("uptelnet: no socket (error %ld)\n", Errno());
+        report("no socket", Errno());
         return -1;
     }
     if (connect(sock, (struct sockaddr *)&a, sizeof(a)) < 0) {
-        Printf("uptelnet: %s port %ld: connection failed (error %ld)\n", (LONG)host, port, Errno());
+        Printf("uptelnet: %s port %ld: ", (LONG)host, port);
+        report("connection failed", Errno());
         CloseSocket(sock);
         return -1;
     }
@@ -214,7 +226,7 @@ int main(void)
     port = args[1] ? *(LONG *)args[1] : 23;
     SocketBase = OpenLibrary((STRPTR)"bsdsocket.library", 4);
     if (!SocketBase) {
-        PutStr((STRPTR)"uptelnet: no bsdsocket.library -- start the TCP/IP stack (Roadshow) first\n");
+        Printf("uptelnet: %s\n", (LONG)bmsg_no_stack());
         FreeArgs(rd);
         return RETURN_FAIL;
     }

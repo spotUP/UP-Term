@@ -31,6 +31,7 @@
 #include <openssl/x509v3.h>
 #include "tls.h"
 #include "util.h"
+#include "../tty/bmsg.h"
 
 struct cl_tls {
     SSL *ssl;
@@ -61,7 +62,7 @@ int tls_init(void *socketbase, char *err, int cap)
 #ifndef CL_TLS_HOSTCHECK
     AmiSSLMasterBase = OpenLibrary((STRPTR)"amisslmaster.library", AMISSLMASTER_MIN_VERSION);
     if (!AmiSSLMasterBase) {
-        cl_copy(err, "AmiSSL is not installed (amisslmaster.library)", cap);
+        cl_copy(err, bmsg_amissl_missing(), cap);
         return TLS_ERROR;
     }
     if (OpenAmiSSLTags(AMISSL_CURRENT_VERSION,

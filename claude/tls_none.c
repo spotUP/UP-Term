@@ -2,8 +2,11 @@
  * connection is refused with a message that says so. */
 #include "tls.h"
 #include "util.h"
+#include "../tty/bmsg.h"
 
-static const char why[] = "this Claude was built without AmiSSL (make amiga AMISSL_SDK=<dir>)";
+/* the same message as a missing library: from the user's side it is the same
+ * fix (the kit's Claude is built with AmiSSL; make amiga AMISSL_SDK=<dir>) */
+#define why bmsg_amissl_missing()
 
 int tls_init(void *socketbase, char *err, int cap)
 {

@@ -18,6 +18,8 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/icon.h>
+#include <proto/intuition.h>
+#include <intuition/intuition.h>
 #include <workbench/startup.h>
 #include <workbench/workbench.h>
 #include <stdlib.h>
@@ -25,6 +27,7 @@
 #include "sh_exec.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../tty/bmsg.h"
 #include "../config/termurl.h"
 
 #ifdef VSH_DEBUG
@@ -1451,6 +1454,27 @@ static BPTR wb_path(void)
     return head;
 }
 
+/* No console to print to (Workbench): the XCON: window did not open because
+ * the handler is not mounted. Say so in a requester. Only that failure: any
+ * other one (no memory, ...) keeps the plain return code. */
+struct IntuitionBase *IntuitionBase;
+
+static void wb_no_xcon(LONG err)
+{
+    if (err != ERROR_DEVICE_NOT_MOUNTED && err != ERROR_OBJECT_NOT_FOUND)
+        return;
+    if ((IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36)) != 0) {
+        struct EasyStruct es;
+        es.es_StructSize = sizeof(es);
+        es.es_Flags = 0;
+        es.es_Title = (UBYTE *)"UP-Term";
+        es.es_TextFormat = (UBYTE *)"%s";
+        es.es_GadgetFormat = (UBYTE *)"Cancel";
+        EasyRequest(0, &es, 0, (LONG)bmsg_xcon_missing());
+        CloseLibrary((struct Library *)IntuitionBase);
+    }
+}
+
 /* Started from Workbench (the UP-Term icon; P8): no console and no CLI.
  * Open the window the icon names (tooltype WINDOW=, from the project icon
  * when there is one) and run vsh in it as a Shell process of its own --
@@ -1482,8 +1506,10 @@ static int wb_start(struct WBStartup *wb)
         !AddPart((STRPTR)self, (STRPTR)wb->sm_ArgList[0].wa_Name, sizeof(self)))
         strcpy(self, "C:vsh");
     win = Open((STRPTR)spec, MODE_NEWFILE);
-    if (!win)
+    if (!win) {
+        wb_no_xcon(IoErr());
         return 20;
+    }
     /* a second handle on the same window (another Open of XCON: would be
      * another window): "*" with the window as our console */
     me->pr_ConsoleTask = ((struct FileHandle *)BADDR(win))->fh_Type;
