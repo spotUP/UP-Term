@@ -57,3 +57,10 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | AmiSSL layer, OpenSSL half, on the host | `make claude-tls-check` (Homebrew OpenSSL 3; `OPENSSL_INC=`) |
 | Recorded Claude answers for the rig (no key, no Anthropic) | `python3 tools/claude_fixture.py`, then on the Amiga `Claude URL=http://<this Mac>:8080/v1/messages ROOT=SYS:` (prompts with "startup": Read + Glob; "edit": TodoWrite, Read, Edit of RAM:claude-test.txt, start with `ROOT=RAM:`; "grep", "search the web", "fetch", "agent", "question", "plan", "background", "monitor", "schedule", "time limit" (Bash moved to the background at its time limit), "slow" (Bash Wait 30: Ctrl+B, Esc), "loop test" (type `/loop loop test`: ScheduleWakeup every minute, wakeups shown as "Claude resuming /loop wakeup", quiet ones in a row folded into one line, Esc cancels the next): one A4 tool each -- the script's docstring lists them) |
 | Clean | `make clean` |
+
+## Cross-repo changes
+
+A change that crosses two or more UP-Term repos is one commit per repo, all with the
+same subject line, plus one `repos.lock` update in the `upterm` meta-repo (re-pin with
+`bin/upterm-bootstrap --update`) carrying that subject line too. Release step:
+`upterm-bootstrap --update`, then `make dist` in vtcon; run `bin/upterm-doctor` first.
