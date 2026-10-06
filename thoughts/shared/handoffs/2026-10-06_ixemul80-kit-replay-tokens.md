@@ -102,3 +102,22 @@ neovim-amiga be3c4e5: compat netdb.h defers to 80.x's.
 - Never enter passwords; the owner types them. No API key in the NAS
   container; the A1 endpoint stays LAN-only.
 - Keep 48.2 as backup if 80.x fails.
+
+## Update 2026-10-06 (later the same day)
+
+- Replay = FPGA Arcade Replay board (Amiga core amiga_db060), now at 192.168.0.57 (DHCP moved it;
+  reserve MAC 54:10:ec:cd:e3:60 in the Deco app). Access details: memory note replay-and-pi-lab.
+- Checklist: thoughts/shared/plans/2026-10-06-replay-hardware-tests.md -- 2 of 14 pass (H1 Claude from
+  the Amiga to the NAS; H13 Synergy). H2 Install freeze PINNED to install.dos line 393 (Copy
+  LIBS:ixemul.library to .orig); next step is the owner running that Copy by hand, then to RAM:.
+- Done today: W51 Uninstall fix (518e65b), chunked ami.py put (b9110b9), W52/W53 dropped (eriQue's
+  auxcon), W54 tmux over auxcon, W55 native multiplexer idea, W56 browser thin client (all ledger).
+- asynergyc on the Replay (SYS:UP-Term/asynergyc, ;BEGIN asynergyc in S:User-Startup) -> Deskflow on the
+  Mac (192.168.0.70; the Mac uses a randomized Wi-Fi MAC, so its IP can move).
+- Pi 4 "amigrabber" (ssh amigrabber, key ~/.ssh/amigrabber_ed25519): serial bridge running, camera
+  service from Up_Rough_Demo_System. The grabber/stream belongs to the up-rough-demo-system session;
+  don't touch the Pi's camera service or the Replay SD card from here.
+- Open: which port the serial cable is on (watch ~/amiga/serial.log on the Pi during a Replay reboot);
+  kit rebuild with the W51 fix before H14.
+- Everything committed and pushed: vtcon, ixemul-vtcon (all branches), cpython-amiga, neovim-amiga,
+  upterm-ports, tmux-amiga, screen-amiga, amiga-gcc16 (patch repo).
