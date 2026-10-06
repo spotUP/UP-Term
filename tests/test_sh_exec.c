@@ -486,7 +486,7 @@ static void basics(void)
     CHECK_INT(sh.ctx.status, 127);
     /* a kit command that is not on PATH says which drawer it lives in */
     run("ssh host");
-    CHECK_STR(slot(ERR)->data, "vsh: ssh: not found (it lives in SYS:UP-Term/bin: put that drawer on PATH, or run the UP-Term Install)\n");
+    CHECK_STR(slot(ERR)->data, "vsh: ssh: not found (it lives in UP-Term:bin: put that drawer on PATH, or run the UP-Term Install)\n");
     CHECK_INT(sh.ctx.status, 127);
     run("nosuch arg");
     CHECK_STR(slot(ERR)->data, "vsh: nosuch: not found\n");
@@ -745,7 +745,7 @@ static const char *path_dirs(const char *path)
 
 static void path_entries_are_amigados_dirs(void)
 {
-    CHECK_STR(path_dirs("/SYS/UP-Term/bin:/gg/bin:/c"), "<SYS:UP-Term/bin><gg:bin><c:>");
+    CHECK_STR(path_dirs("/UP-Term/bin:/gg/bin:/c"), "<UP-Term:bin><gg:bin><c:>");
     CHECK_STR(path_dirs("bin::.:/"), "<bin><><>");      /* relative, current twice, no volume list */
     CHECK_STR(path_dirs("/c:"), "<c:><>");              /* a trailing : is the current directory */
     CHECK_STR(path_dirs(""), "<>");
@@ -772,7 +772,7 @@ static void vshrc_unix_names(void)
     CHECK_STR(with_vshrc("touch new"), "<touch><new>\n");
     CHECK_STR(with_vshrc("echo '  x y' | cat"), "  x y\n");  /* the command, not a function over Type */
     /* the Unix $PATH: UP-Term's bin first, kept when the user set one */
-    CHECK_STR(with_vshrc("echo $PATH"), "/SYS/UP-Term/bin:/SYS/UP-Term/Python3/bin:/SYS/UP-Term/nvim/bin:/gg/bin:/c\n");
+    CHECK_STR(with_vshrc("echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c\n");
     vshrc_pre = "PATH=/mine";
     CHECK_STR(with_vshrc("echo $PATH"), "/mine\n");
     vshrc_pre = 0;
@@ -957,8 +957,8 @@ static void uninstall_removes_every_up_term_block(void)
     fclose(f);
     script[n] = 0;
     snprintf(text, sizeof(text),
-             "printf '%%s\\n' 'Run >NIL: amiagent TOKEN=x' ';BEGIN UP-Term' 'Assign GG: SYS:UP-Term' ';END UP-Term'"
-             " ';BEGIN UP-Term python' 'Assign Python3: SYS:UP-Term/Python3' ';END UP-Term python'"
+             "printf '%%s\\n' 'Run >NIL: amiagent TOKEN=x' ';BEGIN UP-Term' 'Assign GG: UP-Term:' ';END UP-Term'"
+             " ';BEGIN UP-Term python' 'Assign Python3: UP-Term:Python3' ';END UP-Term python'"
              " ';BEGIN UP-Term future' 'C:Future' ';END UP-Term future'"
              " ';BEGIN UP-Terminal' '  spaced \\\\ line  ' >S:User-Startup\n"
              "%s\ncat <T:User-Startup.up-term\n", script);

@@ -94,7 +94,7 @@ widths:
 # GNU Unifont (ledger U2): the .hex fetched once into build/unifont/ and
 # checked against its pinned sha256, then one page file per 256 code points
 # of the BMP ("4E") and of plane 1's emoji blocks U+1F000-1FAFF ("1F6") into
-# build/unifont/pages/ (tools/gen_unifont.py; the kit's SYS:UP-Term/unifont/).
+# build/unifont/pages/ (tools/gen_unifont.py; the kit's UP-Term:unifont/).
 # UNIFONT_VER= another release (and UNIFONT_SHA256=).
 UNIFONT_VER ?= 17.0.05
 UNIFONT_SHA256 ?= 7b182454966046d35482469b979edce7d262fab5c53c2180e9b1fbb5d0b5e574
@@ -113,7 +113,7 @@ unifont: $(UNIFONT_PAGES)/stamp
 # Twemoji (ledger U4): the release archive fetched once into build/twemoji/
 # and checked against its pinned sha256, then the colour pages of the
 # two-cell emoji into build/emoji/pages/ (tools/gen_emoji.py, ~35 s; the
-# kit's SYS:UP-Term/emoji/). TWEMOJI_VER= another release (and TWEMOJI_SHA256=).
+# kit's UP-Term:emoji/). TWEMOJI_VER= another release (and TWEMOJI_SHA256=).
 TWEMOJI_VER ?= 17.0.3
 TWEMOJI_SHA256 ?= a0855654b633045ae2337537e77f1bb4361162f7fcd910e613eaab1d6d9c5fca
 TWEMOJI_TGZ := $(BUILD)/twemoji/twemoji-$(TWEMOJI_VER).tar.gz

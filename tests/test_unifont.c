@@ -16,7 +16,7 @@ typedef struct fileload {
     int calls[UF_PAGES]; /* per page */
 } fileload;
 
-/* The golden pages, the way the Amiga reads SYS:UP-Term/unifont/XX (or 1XX). */
+/* The golden pages, the way the Amiga reads UP-Term:unifont/XX (or 1XX). */
 static long golden_load(void *u, int page, vt_u8 **buf)
 {
     fileload *l = (fileload *)u;

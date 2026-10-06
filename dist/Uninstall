@@ -10,22 +10,36 @@ If EXISTS C:UPConsole
 EndIf
 Delete >NIL: DEVS:DOSDrivers/XCON DEVS:DOSDrivers/XCON.info QUIET
 Delete >NIL: DEVS:DOSDrivers/PTY DEVS:DOSDrivers/PTY.info QUIET
-; GG: and the block in S:User-Startup, if Install made them (SYS:UP-Term
+; GG: and the block in S:User-Startup, if Install made them (UP-Term:
 ; is ours only then): vsh takes the block out, before vsh itself goes
 ; The blocks Install wrote into S:User-Startup (GG:, the CON: and device
 ; switches) go;
 ; vsh does it, before vsh itself goes. The script is in ENVARC:up-term
-; (older kits kept it in SYS:UP-Term only).
+; (older kits kept it in UP-Term: only).
+; UP-Term's own drawer: found through the assign UP-Term: (CD prints where
+; it points; the Shell stands there for a moment and goes back). Without the
+; assign (an older kit, or one a reboot lost) it is SYS:UP-Term.
+Set updest SYS:UP-Term
+CD >ENV:upcd
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  CD UP-Term:
+  CD >ENV:updir
+  CD "$upcd"
+  Set updest "$updir"
+  Delete >NIL: ENV:updir QUIET
+EndIf
+Delete >NIL: ENV:upcd QUIET
 Set unst ""
-If EXISTS SYS:UP-Term/unstartup.sh
-  Set unst SYS:UP-Term/unstartup.sh
+If EXISTS "$updest/unstartup.sh"
+  Set unst "$updest/unstartup.sh"
 EndIf
 If EXISTS ENVARC:up-term/unstartup.sh
   Set unst ENVARC:up-term/unstartup.sh
 EndIf
 If NOT "$unst" EQ ""
   If EXISTS S:User-Startup
-    C:vsh $unst
+    C:vsh "$unst"
     If EXISTS T:User-Startup.up-term
       Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
       Delete >NIL: T:User-Startup.up-term QUIET
@@ -38,20 +52,25 @@ If EXISTS ENVARC:up-term/tmp
   Assign >NIL: TMP: T: REMOVE
 EndIf
 ; GG: only when Install assigned it (its marker; older kits kept
-; unstartup.sh in SYS:UP-Term then). SYS:UP-Term is UP-Term's own drawer
+; unstartup.sh in UP-Term: then). UP-Term: is UP-Term's own drawer
 ; (bin: coreutils and sh)
 If EXISTS ENVARC:up-term/gg
-  Assign >NIL: GG: SYS:UP-Term REMOVE
+  Assign >NIL: GG: "$updest" REMOVE
 EndIf
-If EXISTS SYS:UP-Term/unstartup.sh
-  Assign >NIL: GG: SYS:UP-Term REMOVE
+If EXISTS "$updest/unstartup.sh"
+  Assign >NIL: GG: "$updest" REMOVE
 EndIf
 Assign >NIL: Python3: EXISTS
 If NOT WARN
   Assign Python3:
 EndIf
-; (SYS:UP-Term/VERSIONS goes with the drawer)
-Delete >NIL: SYS:UP-Term ALL QUIET
+; (UP-Term:VERSIONS goes with the drawer), then the assign itself
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  Assign UP-Term:
+EndIf
+Delete >NIL: "$updest" ALL QUIET
+UnSet updest
 ; BebboSSH's library, only when Install put it there (its marker)
 If EXISTS ENVARC:up-term/cryptossh
   Delete >NIL: LIBS:libcryptossh.library QUIET

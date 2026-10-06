@@ -47,7 +47,7 @@ int bmsg_cpu_ok(unsigned attn)
     return (attn & 2u) != 0;
 }
 
-/* the commands of SYS:UP-Term/bin: GNU coreutils 5.2.1, sz, rz, hl, mdv and
+/* the commands of UP-Term:bin: GNU coreutils 5.2.1, sz, rz, hl, mdv and
  * the BebboSSH tools (ssh and scp are vsh functions that run them) */
 static const char *const kit_bin[] = {
     "[", "basename", "cat", "chgrp", "chmod", "chown", "chroot", "cksum", "comm", "cp",

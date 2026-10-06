@@ -560,7 +560,14 @@ static void status(void)
     /* the kit's VERSIONS file (the Install copies it): its first line says
      * which kit and which commit this is */
     {
-        BPTR fh = Open((STRPTR)"SYS:UP-Term/VERSIONS", MODE_OLDFILE);
+        /* UP-Term: is an assign: with none (not installed, or removed) the Open
+         * must answer, not ask for a volume in a requester */
+        struct Process *me = (struct Process *)FindTask(0);
+        APTR oldwin = me->pr_WindowPtr;
+        BPTR fh;
+        me->pr_WindowPtr = (APTR)-1;
+        fh = Open((STRPTR)"UP-Term:VERSIONS", MODE_OLDFILE);
+        me->pr_WindowPtr = oldwin;
         if (fh) {
             char line[120];
             if (FGets(fh, (STRPTR)line, sizeof(line)) && line[0]) {

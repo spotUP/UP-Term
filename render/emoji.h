@@ -26,7 +26,7 @@
 #define CE_W 16                      /* the images' width, both sizes */
 #define CE_BOX_MAX 2048              /* the box of two cells, in pixels (32 x 32 cells) */
 #define CE_BG 255                    /* the index of the background in a box */
-#define CE_DIR "SYS:UP-Term/emoji/"  /* where the kit installs the pages */
+#define CE_DIR "UP-Term:emoji/"  /* where the kit installs the pages */
 
 /* The length the header of a page file names (its first n bytes, at least
  * CE_HEADER), for a loader that reads the header first; -1 when it is no

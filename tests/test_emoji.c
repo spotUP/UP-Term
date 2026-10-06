@@ -31,7 +31,7 @@ static long golden_size(const char *name, vt_u8 *buf, long max)
     return n;
 }
 
-/* The way the Amiga reads SYS:UP-Term/emoji/1F6: the header for the
+/* The way the Amiga reads UP-Term:emoji/1F6: the header for the
  * length, then the page into a buffer of that size. */
 static long golden_load(void *u, int page, vt_u8 **buf)
 {

@@ -41,12 +41,12 @@ void suite_bmsg(void)
     CHECK(has(bmsg_need_68020(), "68020"));
 
     /* vsh: a kit command names its drawer; anything else stays "not found" */
-    CHECK_STR(bmsg_kit_drawer("ssh"), "SYS:UP-Term/bin");
-    CHECK_STR(bmsg_kit_drawer("scp"), "SYS:UP-Term/bin");
-    CHECK_STR(bmsg_kit_drawer("sort"), "SYS:UP-Term/bin");
-    CHECK_STR(bmsg_kit_drawer("["), "SYS:UP-Term/bin");
-    CHECK_STR(bmsg_kit_drawer("yes"), "SYS:UP-Term/bin");  /* the last coreutils name */
-    CHECK_STR(bmsg_kit_drawer("bebbosshd"), "SYS:UP-Term/bin"); /* the last entry */
+    CHECK_STR(bmsg_kit_drawer("ssh"), "UP-Term:bin");
+    CHECK_STR(bmsg_kit_drawer("scp"), "UP-Term:bin");
+    CHECK_STR(bmsg_kit_drawer("sort"), "UP-Term:bin");
+    CHECK_STR(bmsg_kit_drawer("["), "UP-Term:bin");
+    CHECK_STR(bmsg_kit_drawer("yes"), "UP-Term:bin");  /* the last coreutils name */
+    CHECK_STR(bmsg_kit_drawer("bebbosshd"), "UP-Term:bin"); /* the last entry */
     CHECK(bmsg_kit_drawer("so") == 0);      /* a prefix is not a name */
     CHECK(bmsg_kit_drawer("sorts") == 0);
     CHECK(bmsg_kit_drawer("nosuch") == 0);

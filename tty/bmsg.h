@@ -7,7 +7,7 @@
 #define BMSG_H
 
 /* the kit's drawer of commands (coreutils, ssh, sz, rz, hl, mdv) */
-#define BMSG_KIT_BIN "SYS:UP-Term/bin"
+#define BMSG_KIT_BIN "UP-Term:bin"
 
 /* uptelnet without bsdsocket.library */
 const char *bmsg_no_stack(void);

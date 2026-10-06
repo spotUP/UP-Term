@@ -14,6 +14,6 @@ generator for the Amiga (68000 and up), as published on Aminet:
 
 Licence: GNU General Public License version 3 or later (COPYING, beside
 this file); some files are public domain, as their headers say.
-UP-Term installs the client tools in SYS:UP-Term/bin and the library in
+UP-Term installs the client tools in UP-Term:bin and the library in
 LIBS: (README, NETWORK); thoughts/shared/research/2026-10-03_ssh-for-up-term.md
 in UP-Term's source has what was measured.

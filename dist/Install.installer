@@ -28,7 +28,28 @@
     "- UP-Term Prefs, with 112 colour themes\n"
     "- a patched ixemul.library and its ixnet.library (the ones\n"
     "  there are kept as LIBS:<name>.orig; Uninstall puts them back)\n\n"
-    "Files go to C:, L:, LIBS:, DEVS:, ENVARC:, SYS:System and SYS:Prefs.")
+    "Files go to C:, L:, LIBS:, DEVS:, ENVARC:, SYS:System and SYS:Prefs,\n"
+    "and to a drawer of its own, assigned as UP-Term:, that you choose next.")
+
+; ---- where UP-Term's own drawer goes ---------------------------------------
+; Its commands, Unifont, emoji, Python and Neovim live in one drawer that is
+; assigned as UP-Term: now and at every boot; every program reaches the files
+; through that name. An earlier install's drawer is the default.
+
+(set #old (getassign "UP-Term" "a"))
+(set #dest
+    (askdir
+        (prompt "Where should UP-Term's own drawer go? It is assigned as "
+                "UP-Term: and holds the Unix commands, Unifont, emoji, "
+                "Python and Neovim.")
+        (help "The drawer is made if it is not there (its parent must "
+              "exist). Programs find it through the assign UP-Term:, which "
+              "Install makes now and at every boot (a block in "
+              "S:User-Startup that Uninstall takes out again).")
+        (default (if #old #old "SYS:UP-Term"))
+        (newpath)))
+(if (= (substr #dest (- (strlen #dest) 1) 1) ":")
+    (set #dest (tackon #dest "UP-Term")))
 
 ; ---- what to install: one page of choices --------------------------------
 
@@ -60,7 +81,7 @@
               "curl 8.22.0: downloads and transfers (the curl licence); needs "
               "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha).\n\n"
               "The network tools need a TCP/IP stack (Roadshow, AmiTCP) and go to "
-              "SYS:UP-Term/bin; their licences and sources are in the kit's "
+              "UP-Term:bin; their licences and sources are in the kit's "
               "Files/net drawer.\n\n"
               "Serial login: C:upgetty LOOP runs at every boot from a block in "
               "S:User-Startup, and a terminal program on a null-modem cable at 19200 "
@@ -73,12 +94,12 @@
               "the end. Leave it off unless you develop on this Amiga from another "
               "machine. The client for the other machine is in the kit's Files/wasabi.\n\n"
               "Unifont: GNU Unifont's glyphs (SIL Open Font License 1.1), 1.8 MB in "
-              "SYS:UP-Term/unifont. UP-Term draws every character up to U+FFFF your "
+              "UP-Term:unifont. UP-Term draws every character up to U+FFFF your "
               "font lacks from them (Cyrillic, Greek, CJK, symbols), and the emoji, "
               "two cells wide, when the font is 8 or 16 pixels high; without them "
               "such characters show as '?' and emoji as a box.\n\n"
               "Colour emoji: Twemoji (CC-BY 4.0, Twitter and contributors), 0.5 MB in "
-              "SYS:UP-Term/emoji. On an RTG screen of 15 bits or more with "
+              "UP-Term:emoji. On an RTG screen of 15 bits or more with "
               "Picasso96 or CyberGraphX, emoji are drawn in colour over their two "
               "cells; on other screens Unifont's one-colour glyph is drawn.\n\n"
               "The UP-Term icon is in SYS:System, beside Shell, and UP-Term Prefs in "
@@ -86,7 +107,7 @@
               "The Shell icon: its WINDOW tooltype is changed to XCON:, so SYS:System/Shell "
               "opens an UP-Term window; a copy of the icon is kept in "
               "ENVARC:up-term-orig.\n\n"
-              "Python 3.14 (15 MB) and Neovim 0.12 (32 MB) go to SYS:UP-Term; "
+              "Python 3.14 (15 MB) and Neovim 0.12 (32 MB) go to UP-Term:; "
               "python3 and nvim then run from an UP-Term window.\n\n"
               "Always installed: C:Claude and C:ClaudeCode (Claude Code on your "
               "server, see README.txt, CLAUDE FROM THE AMIGA).\n\n"
@@ -156,7 +177,7 @@
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #serial #ssh #bget #curl #wasabi #python #nvim #remote #cpu040 #cpu060 #unifont #emoji)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") (cat "DEST=\"" #dest "\"") #con #dev #shellicon #serial #ssh #bget #curl #wasabi #python #nvim #remote #cpu040 #cpu060 #unifont #emoji)
 
 (set #done
     (cat "UP-Term is installed.\n\n"

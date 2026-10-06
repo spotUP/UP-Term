@@ -23,12 +23,24 @@ INSTALL
   serial login (SERIAL LOGIN), the UP-Term icon in SYS:System and the
   Shell icon. On 3.0/3.1 a second page asks whether UP-Term should also
   serve CON: and RAW: (see CON: AND RAW: below) and console.device (see
-  CONSOLE.DEVICE below).
+  CONSOLE.DEVICE below). Install first asks where UP-Term's own drawer
+  goes (see WHERE IT IS INSTALLED).
   From a Shell, without Installer, cd into the drawer, then:
-    Execute Files/install.dos Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
+    Execute Files/install.dos Files [DEST <drawer>] [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
       [SERIAL] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [CPU040|CPU060]
   (each optional part only when named).
   Remove everything again: double-click Uninstall (or Execute Uninstall).
+
+WHERE IT IS INSTALLED
+  UP-Term's own files (bin with the Unix commands and sh, unifont, emoji,
+  Python3, nvim, VERSIONS) live in one drawer: SYS:UP-Term unless you
+  pick another in the first question of Install (DEST <drawer> from a
+  Shell; the drawer's parent must exist). Everything finds it through the
+  assign UP-Term:, which Install makes at once and at every boot (a block
+  in S:User-Startup between ;BEGIN UP-Term assign and ;END UP-Term assign).
+  To move the drawer later, copy it and change that one line. Uninstall
+  looks the drawer up through UP-Term: and removes the drawer, the block
+  and the assign.
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
@@ -143,7 +155,7 @@ OUTLINE FONTS (icons, other scripts)
    profile, or type it in UP-Term Prefs, General page, Fallback font.
    Open windows take it at once.
    What neither font has comes from GNU Unifont, when Install put it in
-   (the "Unifont" part: SYS:UP-Term/unifont, 1.8 MB, SIL Open Font License
+   (the "Unifont" part: UP-Term:unifont, 1.8 MB, SIL Open Font License
    1.1, see OFL-1.1.txt and SOURCE.txt there): every character up to
    U+FFFF and the emoji (U+1F000-U+1FAFF, in one colour, two cells wide as
    in any terminal), drawn 1:1 with a 16-pixel font (TopazPro 16, IBM 16)
@@ -155,7 +167,7 @@ OUTLINE FONTS (icons, other scripts)
    Colour emoji: on an RTG screen of 15 bits or more (16, 24 or 32 bit
    modes of Picasso96 or CyberGraphX, which offer cybergraphics.library)
    the emoji are drawn in colour over their two cells, from Twemoji, when
-   Install put them in (the "Colour emoji" part: SYS:UP-Term/emoji, 0.5 MB,
+   Install put them in (the "Colour emoji" part: UP-Term:emoji, 0.5 MB,
    CC-BY 4.0 by Twitter and contributors, see CC-BY-4.0.txt and SOURCE.txt
    there). 16x16 pixels with a 16-pixel font, 16x8 with an 8-pixel one,
    centred in the two cells for other sizes, over the cell's background
@@ -282,7 +294,7 @@ VSH (the shell)
   ixemul programs:  ixkill -TERM 0x<process> Subshells, $( ) and all but the last stage of a
   pipeline run as processes of their own (there is no fork on the Amiga).
   Commands are looked for in $PATH (Unix form, as ixemul programs read it:
-  /SYS/UP-Term/bin:/gg/bin:/c by default), then the Shell's path (Path).
+  /UP-Term/bin:/gg/bin:/c by default), then the Shell's path (Path).
   Startup: ENVARC:vsh/vshrc, then $HOME/.vshrc (HOME defaults to SYS:).
   Stack: vsh needs none set (it takes 64 KB itself). The commands it runs
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
@@ -291,7 +303,7 @@ VSH (the shell)
   escapes; default %F{cyan}%~%f %#.
   Unix commands: GNU coreutils 5.2.1 (ls cp mv rm mkdir cat sort head tail
   wc tr cut uniq seq du stat dd tee date and the rest, 86 in all) in
-  SYS:UP-Term/bin, first in vsh's $PATH. They are not in C: (AmigaDOS
+  UP-Term:bin, first in vsh's $PATH. They are not in C: (AmigaDOS
   names ignore case: GNU sort would be C:Sort), so the AmigaDOS Shell keeps
   its own commands. .. is the parent directory, / the list of volumes.
   /tmp is TMP:; without one Install assigns it to T: at every boot.
@@ -387,7 +399,7 @@ THE SHELL FOR UNIX PROGRAMS
   ixemul programs run their shell commands (system(), popen(), tmux's
   run-shell and #() status jobs) with /gg/bin/sh, which is GG:bin/sh, where
   Geek Gadgets keeps its sh. Without a GG: Install puts vsh there: the
-  drawer SYS:UP-Term, assigned as GG: by a block in S:User-Startup between
+  drawer UP-Term: (see WHERE IT IS INSTALLED), assigned as GG: by a block in S:User-Startup between
   ;BEGIN UP-Term and ;END UP-Term (the file as it was is kept as
   S:User-Startup.before-UP-Term). Uninstall takes the block out again. An
   existing GG: (an ADE or Geek Gadgets install) is left alone.
@@ -425,7 +437,7 @@ FONTS BY PIXEL SHAPE
   as asked everywhere: font-aspect = off in the profile.
 
 NETWORK
-  Install puts network tools in SYS:UP-Term/bin when you say yes (the
+  Install puts network tools in UP-Term:bin when you say yes (the
   Installer asks); they need a TCP/IP stack (Roadshow, AmiTCP):
     ssh, scp        BebboSSH 1.45 (bebbossh, bebboscp), with bebbosshkeygen
                     and the server bebbosshd; libcryptossh.library in LIBS:

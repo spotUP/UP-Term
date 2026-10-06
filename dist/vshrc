@@ -44,7 +44,7 @@ telnet() {
     uptelnet "$@" TERM "$(remote_term)"
 }
 
-# The Unix commands are GNU coreutils 5.2.1 in SYS:UP-Term/bin (see
+# The Unix commands are GNU coreutils 5.2.1 in UP-Term:bin (see
 # Install): ls, cp, mv, rm, mkdir, cat, sort, head, tail, wc and the rest,
 # with their Unix flags and paths (.. is the parent, / the volume list).
 # $PATH is in Unix form, the way ixemul programs read it too, and comes
@@ -52,7 +52,7 @@ telnet() {
 # AmigaDOS Shell keeps C:Sort. Dir, List, Copy, Delete, Type and the other
 # AmigaDOS commands keep their names. A PATH you set is left alone.
 if [ -z "$PATH" ]; then
-    PATH=/SYS/UP-Term/bin:/SYS/UP-Term/Python3/bin:/SYS/UP-Term/nvim/bin:/gg/bin:/c
+    PATH=/UP-Term/bin:/UP-Term/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c
 fi
 export PATH
 
@@ -62,7 +62,7 @@ export PATH
 alias ls='ls --color=auto'
 alias ll='ls -l'
 
-# hl and mdv (SYS:UP-Term/bin, see the README): a source in colour with
+# hl and mdv (UP-Term:bin, see the README): a source in colour with
 # line numbers (hl file.c; to a pipe or a file it is plain cat), Markdown
 # formatted for the window (mdv README.md). hlp and mdp page them: less -R
 # keeps the colours (less from Geek Gadgets or Aminet; $PAGER names

@@ -4,7 +4,13 @@ build/dist/UP-Term into VTC:distkit, run its Files/install.dos (what the kit's I
 it did (PTY: mounted and working, the patched ixemul in LIBS: with the
 original kept), then Uninstall and check the rig is as before. The rig's
 own image is left with its original ixemul. The rig must be up; `make
-dist` first."""
+dist` first.
+
+Two passes: the default drawer (SYS:UP-Term) and a non-default one
+(DEST=VTC:Apps/UP-Term); both reach the files through the assign UP-Term:.
+  install_rig.py              both passes
+  install_rig.py --default    the default drawer only
+  install_rig.py --dest       the non-default drawer only"""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
@@ -28,13 +34,20 @@ def lib_state():
     rc, out = run('List LIBS:(ixemul|ixnet).library#? LFORMAT "%N %L"')
     return dict(l.split() for l in out.splitlines() if l.strip())
 
-def main():
+def main(dest=None):
+    """One pass: dest None = the default drawer, else Install is given DEST=<dest>."""
+    global passed, total
+    passed = total = 0
+    drawer = dest or "SYS:UP-Term"   # where the files must land
+    destarg = (" DEST=%s" % dest) if dest else ""
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
     shutil.copytree(ROOT / "build/dist/UP-Term", VTC / "distkit")
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
-    (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE\n")
-    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE SHELLICON PYTHON NVIM REMOTE=\"127.0.0.1 2399\"\n")
+    if dest:
+        (VTC / "Apps").mkdir(exist_ok=True)   # the drawer's parent must exist
+    (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s NOCONSOLE NODEVICE\n" % destarg)
+    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s CONSOLE DEVICE SHELLICON PYTHON NVIM REMOTE=\"127.0.0.1 2399\"\n" % destarg)
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
@@ -42,7 +55,7 @@ def main():
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
     rc, terminfo_before = run('GetEnv TERMINFO')  # the rig's boot sets /VTC/terminfo
     terminfo_before = terminfo_before.strip()
-    run('Execute VTC:rununinstall', 300)  # a run that stopped half-way left things behind
+    run('Execute VTC:rununinstall', 900)  # a run that stopped half-way left things behind
     startup_before = run('Type S:User-Startup')[1]
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
     run('Delete >NIL: ENVARC:Claude/remote QUIET')  # an earlier run's remote (Install keeps one)
@@ -63,8 +76,28 @@ def main():
           'before: the original ixemul, no .orig', str(before))
     ixnet_before = before.get('ixnet.library')  # the rig's own (Install keeps it as .orig)
     check(ixnet_before and 'ixnet.library.orig' not in before, 'before: an ixnet, no .orig', str(before))
-    rc, out = run('Execute VTC:runinstall', 120)
+    rc, out = run('Execute VTC:runinstall', 900)
     check(rc == 0 and 'Unknown command' not in out, 'Install runs (no line taken for a command)', out)
+    # UP-Term: (UPTERM-ASSIGN): the drawer is where Install was told, reached
+    # through the assign, and at every boot (a block before the others)
+    rc, out = run('Assign LIST')
+    al = [l for l in out.splitlines() if l.lower().startswith('up-term')]
+    want_tail = drawer.split(':', 1)[1].lower()
+    check(al and al[0].split(None, 1)[-1].strip().lower().endswith(want_tail),
+          'UP-Term: is assigned to %s' % drawer, out)
+    check(run('List >NIL: "%s/VERSIONS"' % drawer)[0] == 0 and run('List >NIL: UP-Term:VERSIONS')[0] == 0 and
+          run('List >NIL: UP-Term:bin/sh')[0] == 0,
+          'the files are in %s and UP-Term: reaches them' % drawer, '')
+    if dest:
+        check(run('List >NIL: SYS:UP-Term')[0] != 0, 'a non-default DEST leaves SYS:UP-Term unmade', '')
+    check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term assign"')[0] == 0 and
+          run('Search >NIL: S:User-Startup ";END UP-Term assign"')[0] == 0, 'the UP-Term: block is marked', '')
+    rc, out = run('Search S:User-Startup "Assign UP-Term:"')
+    check('Assign UP-Term:' in out and drawer.split(':', 1)[1] in out.replace('"', ''),
+          'S:User-Startup assigns UP-Term: to %s at boot (marked block)' % drawer, out)
+    rc, out = run('Type S:User-Startup')
+    check(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
+          'the UP-Term: block comes before the blocks that use it', out[-300:])
     rc, out = run('Assign PTY: EXISTS DEVICES')
     check(rc == 0, 'Install mounted PTY:', out)
     rc, out = run('Assign IXPIPE: EXISTS DEVICES')
@@ -89,17 +122,17 @@ def main():
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term device"')[0] != 0,
           'Install NODEVICE writes no device block', '')
     # a second Install must not take ours for theirs; this one says yes to CON:
-    rc, out = run('Execute VTC:runinstallcon', 600)
+    rc, out = run('Execute VTC:runinstallcon', 1500)
     check(rc == 0 and 'Unknown command' not in out, 'Install CONSOLE again over it runs', out)
     # PYTHON, NVIM: both run from where Install put them; Python3: is assigned
     # now and at boot (W49)
-    rc, out = run('Stack 1000000\nSYS:UP-Term/Python3/bin/python3 -c "print(6*7)"', 120)
-    check(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'PYTHON: python3 runs from SYS:UP-Term/Python3', out[-300:])
+    rc, out = run('Stack 1000000\nUP-Term:Python3/bin/python3 -c "print(6*7)"', 120)
+    check(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'PYTHON: python3 runs from UP-Term:Python3', out[-300:])
     check(run('Assign >NIL: Python3: EXISTS')[0] == 0 and
-          run('Search >NIL: S:User-Startup "Assign Python3: SYS:UP-Term/Python3"')[0] == 0,
+          run('Search >NIL: S:User-Startup "Assign Python3: UP-Term:Python3"')[0] == 0,
           'PYTHON: Python3: assigned, and at every boot', '')
-    rc, out = run('SYS:UP-Term/nvim/bin/nvim --version', 120)
-    check(rc == 0 and 'NVIM v0.12' in out, 'NVIM: nvim runs from SYS:UP-Term/nvim', out[-300:])
+    rc, out = run('UP-Term:nvim/bin/nvim --version', 120)
+    check(rc == 0 and 'NVIM v0.12' in out, 'NVIM: nvim runs from UP-Term:nvim', out[-300:])
     # REMOTE: plain Claude, no API key, goes to Claude Code where
     # ENVARC:Claude/remote points (W49) -- here a banner on this Mac
     rc, out = run('Type ENVARC:Claude/remote')
@@ -133,10 +166,10 @@ def main():
     check(run('List >NIL: SYS:System/UP-Term.info')[0] == 0, 'the UP-Term icon is in SYS:System, beside Shell', '')
     rc, out = run('C:UPConsole STATUS')
     check('CON: UP-Term' in out and 'RAW: UP-Term' in out, 'Install CONSOLE: CON: and RAW: are UP-Term now', out)
-    rc, vout = run('Type SYS:UP-Term/VERSIONS')
+    rc, vout = run('Type UP-Term:VERSIONS')
     vl = vout.strip().splitlines()
     check(rc == 0 and vl and vl[0].startswith('UP-Term ') and len(vl) > 1,
-          'Install copies the kit\'s VERSIONS to SYS:UP-Term/VERSIONS', vout[:200])
+          'Install copies the kit\'s VERSIONS to UP-Term:VERSIONS', vout[:200])
     check(vl and ('kit: ' + vl[0]) in out, 'C:UPConsole STATUS prints the first line of VERSIONS', out)
     check('console.device: UP-Term' in out, 'Install DEVICE: console.device is UP-Term\'s now', out)
     rc, out = run('Search S:User-Startup "C:UPConsole >NIL: DEVICE ON"')
@@ -168,8 +201,10 @@ def main():
     check(rc == 0, 'the vtcon entry is where TERMINFO points', out)
     rc, out = run('Type ENVARC:TERMINFO')  # a file now: the old ENVARC:terminfo drawer was the same name
     check(rc == 0 and out.strip() == '/ENV/up-term/terminfo', 'TERMINFO is kept in ENVARC: (no drawer by that name)', out)
-    # the Unix userland: coreutils in SYS:UP-Term/bin, reached through
+    # the Unix userland: coreutils in UP-Term:bin, reached through
     # vshrc's $PATH, nothing in C:
+    rc, out = run('C:vsh -c "echo $PATH"')
+    check(rc == 0 and out.strip().startswith('/UP-Term/bin:'), 'vsh\'s default $PATH names the assign (/UP-Term/bin)', out)
     rc, out = run('C:vsh -c "ls --version"')
     check(rc == 0 and 'coreutils' in out and '5.2.1' in out, 'vsh\'s ls is GNU coreutils 5.2.1 (through $PATH)', out)
     check((run('List >NIL: C:ls')[0] == 0) == ls_before, 'Install put no ls in C:', '')
@@ -215,12 +250,13 @@ def main():
     tree = ami.req(0x0D).decode('latin-1')
     check(not any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
           'exit in it closes the window')
-    rc, out = run('Execute VTC:rununinstall', 300)
+    rc, out = run('Execute VTC:rununinstall', 900)
     check(rc == 0, 'Uninstall runs', out)
     rc, out = run('VTC:iconprobe SYS:System/Shell')
     check(out == shell_before, 'after Uninstall: the Shell icon as it was', '%r vs %r' % (out, shell_before))
     check(run('List >NIL: SYS:System/UP-Term.info')[0] != 0, 'after Uninstall: no UP-Term icon in SYS:System', '')
-    check(run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0, 'after Uninstall: SYS:UP-Term/VERSIONS is gone', '')
+    check(run('List >NIL: "%s/VERSIONS"' % drawer)[0] != 0, 'after Uninstall: %s/VERSIONS is gone' % drawer, '')
+    check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after Uninstall: no UP-Term: assign', '')
     rc, out = run('VTC:UPConsole STATUS')
     check('CON: ROM' in out and 'RAW: ROM' in out, 'after Uninstall: CON: and RAW: are the ROM\'s', out)
     check('console.device: ROM' in out, 'after Uninstall: console.device is the ROM\'s', out)
@@ -237,7 +273,7 @@ def main():
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
     left = [f for f in ('C:ClaudeCode', 'DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
+                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
                         'SYS:System/UP-Term', 'SYS:System/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
                         '"C:UP-Term Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
             if run('List >NIL: %s' % f)[0] == 0]
@@ -258,4 +294,12 @@ def main():
     return 0 if passed == total else 1
 
 if __name__ == '__main__':
-    sys.exit(main())
+    args = sys.argv[1:]
+    rc = 0
+    if not args or '--default' in args:
+        print('install_rig: pass 1, the default drawer (SYS:UP-Term)')
+        rc |= main()
+    if not args or '--dest' in args:
+        print('install_rig: pass 2, a non-default drawer (VTC:Apps/UP-Term)')
+        rc |= main('VTC:Apps/UP-Term')
+    sys.exit(rc)

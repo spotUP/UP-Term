@@ -103,7 +103,7 @@ EndIf
 If EXISTS VTC:gg/bin/sh
   C:Assign >NIL: GG: VTC:gg
   ; the Unix commands (ls, dircolors, ...) on every Shell's command path,
-  ; as the kit puts SYS:UP-Term/bin there. amiagent gives its commands a
+  ; as the kit puts UP-Term:bin there. amiagent gives its commands a
   ; bare path (Current_directory, C:), so a Path here would not reach the
   ; windows: S:Shell-Startup runs in each new Shell. Added once.
   C:Search >NIL: S:Shell-Startup "VTC:gg/bin" QUIET

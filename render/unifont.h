@@ -20,7 +20,7 @@
 #define UF_PAGE_MAX (UF_HEADER + 256 * 32) /* a page of wide glyphs: 8280 bytes */
 #define UF_SLOTS 8             /* pages a cache holds: at most 8 x 8280 bytes */
 #define UF_MASK_MAX 128        /* the mask buffer: two cells of 32 pixels, 16 rows */
-#define UF_DIR "SYS:UP-Term/unifont/" /* where the kit installs the pages */
+#define UF_DIR "UP-Term:unifont/" /* where the kit installs the pages */
 
 /* The loader: page `page`'s file into a buffer it allocates (*buf), its
  * length; -1 when there is no such file (remembered: not asked again),

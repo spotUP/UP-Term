@@ -1,18 +1,21 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
 ; the patched ixemul.library, the fonts by pixel shape.
 ; Run by the kit's Install (an Installer script), which asks the questions:
-;   Execute <kit>/Files/install.dos <kit>/Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
+;   Execute <kit>/Files/install.dos <kit>/Files [DEST <drawer>] [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
+;     [DEST <drawer>]   (UP-Term's own drawer, SYS:UP-Term unless named; its
+;               parent must exist. Assigned as UP-Term: now and at every boot,
+;               and every program finds the files through UP-Term:)
 ;     [SHELLICON]   (the Shell icon opens an UP-Term window: no unless asked)
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
 ;     [REMOTE "host port"]  (ENVARC:Claude/remote: plain Claude, with no API
 ;               key, connects to Claude Code there -- the NAS; kept if it exists)
-;     [PYTHON]  (Python 3.14 in SYS:UP-Term/Python3, 15 MB; Python3: assigned at boot)
-;     [NVIM]    (Neovim 0.12 in SYS:UP-Term/nvim, 32 MB; nvim on vsh's path)
+;     [PYTHON]  (Python 3.14 in UP-Term:Python3, 15 MB; Python3: assigned at boot)
+;     [NVIM]    (Neovim 0.12 in UP-Term:nvim, 32 MB; nvim on vsh's path)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
@@ -23,6 +26,40 @@
 FailAt 21
 ; the kit's Files drawer: every name below is relative to it
 CD "{DIR}"
+; UP-Term's own drawer, wherever the owner put it: DEST, else SYS:UP-Term.
+; Every later line and every program reaches it as UP-Term: (assigned now,
+; and at every boot by a marked block in S:User-Startup, written before the
+; blocks that use it; Uninstall finds the drawer through the assign).
+Set updest "{DEST}"
+If "$updest" EQ ""
+  Set updest SYS:UP-Term
+EndIf
+MakeDir >NIL: "$updest"
+If NOT EXISTS "$updest"
+  Echo "UP-Term: cannot make the drawer $updest (its parent must exist)"
+  UnSet updest
+  Quit 20
+EndIf
+Assign UP-Term: "$updest"
+If NOT EXISTS S:User-Startup
+  Echo >S:User-Startup ""
+EndIf
+; an exact line: a block that names another drawer (an Install over an
+; Install with a different DEST) is not ours to rewrite here
+Search >NIL: S:User-Startup "Assign UP-Term: *"$updest*""
+If WARN
+  Search >NIL: S:User-Startup ";BEGIN UP-Term assign"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term assign"
+    Echo >>S:User-Startup "Assign UP-Term: *"$updest*""
+    Echo >>S:User-Startup ";END UP-Term assign"
+  Else
+    Echo "UP-Term: S:User-Startup assigns UP-Term: to another drawer: run Uninstall first, or edit that line."
+  EndIf
+EndIf
 Copy vtcon-handler L: CLONE
 Copy XCON DEVS:DOSDrivers/XCON CLONE
 Copy pty-handler L: CLONE
@@ -106,40 +143,40 @@ Copy tmux.conf ENVARC:tmux.conf CLONE
 Copy tmux.conf ENV:tmux.conf CLONE
 ; The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
 ; wc... GPL v2: COPYING and the complete source are in the kit's
-; coreutils-5.2.1 drawer) in UP-Term's own drawer SYS:UP-Term/bin, not C::
+; coreutils-5.2.1 drawer) in UP-Term's own drawer UP-Term:bin, not C::
 ; AmigaDOS names ignore case, so GNU sort, date, join and install would be
 ; C:Sort, C:Date, C:Join and C:Install, which the system's scripts need.
-; vsh finds them through $PATH (vshrc puts /SYS/UP-Term/bin first), and so
+; vsh finds them through $PATH (vshrc puts /UP-Term/bin first), and so
 ; do ixemul programs (execvp reads the same $PATH); the AmigaDOS Shell
 ; keeps its own commands.
-MakeDir >NIL: SYS:UP-Term SYS:UP-Term/bin
-Copy coreutils/bin SYS:UP-Term/bin ALL CLONE QUIET
+MakeDir >NIL: UP-Term:bin
+Copy coreutils/bin UP-Term:bin ALL CLONE QUIET
 ; VERSIONS: what this kit was built from (C:UPConsole STATUS prints its first line)
-Copy VERSIONS SYS:UP-Term/VERSIONS CLONE
+Copy VERSIONS UP-Term:VERSIONS CLONE
 ; sz / rz: ZMODEM over the shell's own line (UP-Term's, no ixemul), beside
 ; coreutils; C:upgetty: a shell on the serial port (see the README)
-Copy sz rz SYS:UP-Term/bin CLONE
+Copy sz rz UP-Term:bin CLONE
 ; [UNIFONT]: GNU Unifont's glyphs (SIL Open Font License 1.1: OFL-1.1.txt
 ; and SOURCE.txt go with them), one file per 256 characters, 1.8 MB: drawn
 ; for every character up to U+FFFF and every emoji (U+1F000-1FAFF) the
 ; window's font lacks, at 8 and 16 pixels high. Not in FONTS: (FixFonts below scans it). Uninstall takes the
-; whole of SYS:UP-Term.
+; whole of UP-Term:.
 If "{UNIFONT}" EQ "UNIFONT"
-  MakeDir >NIL: SYS:UP-Term/unifont
-  Copy unifont SYS:UP-Term/unifont ALL CLONE QUIET
+  MakeDir >NIL: UP-Term:unifont
+  Copy unifont UP-Term:unifont ALL CLONE QUIET
 EndIf
 ; [EMOJI]: Twemoji's colour emoji (CC-BY 4.0: CC-BY-4.0.txt and SOURCE.txt
 ; go with them), one file per 256 characters, 0.5 MB: drawn over two cells
 ; on an RTG screen of 15 bits or more with cybergraphics.library; other
 ; screens keep Unifont's one-colour glyph.
 If "{EMOJI}" EQ "EMOJI"
-  MakeDir >NIL: SYS:UP-Term/emoji
-  Copy emoji SYS:UP-Term/emoji ALL CLONE QUIET
+  MakeDir >NIL: UP-Term:emoji
+  Copy emoji UP-Term:emoji ALL CLONE QUIET
 EndIf
 Copy upgetty C:upgetty CLONE
 ; hl and mdv: a source file in colour, Markdown formatted for the window
 ; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
-Copy hl mdv SYS:UP-Term/bin CLONE
+Copy hl mdv UP-Term:bin CLONE
 ; UPDemo: the terminal's show-off and benchmark (README, DEMO)
 Copy UPDemo C:UPDemo CLONE
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
@@ -158,7 +195,7 @@ Copy uptelnet C:uptelnet CLONE
 ; ssh and scp of them. Their library goes to LIBS: unless one is there (a
 ; user's own BebboSSH keeps its library; Uninstall removes only ours).
 If "{SSH}" EQ "SSH"
-  Copy net/bebbossh-1.45/bebbossh net/bebbossh-1.45/bebboscp net/bebbossh-1.45/bebbosshkeygen net/bebbossh-1.45/bebbosshd SYS:UP-Term/bin CLONE QUIET
+  Copy net/bebbossh-1.45/bebbossh net/bebbossh-1.45/bebboscp net/bebbossh-1.45/bebbosshkeygen net/bebbossh-1.45/bebbosshd UP-Term:bin CLONE QUIET
   If NOT EXISTS LIBS:libcryptossh.library
     If "{CPU060}" EQ "CPU060"
       Copy net/bebbossh-1.45/libcryptossh.library060 LIBS:libcryptossh.library CLONE
@@ -169,17 +206,17 @@ If "{SSH}" EQ "SSH"
   EndIf
 EndIf
 If "{BEBBOGET}" EQ "BEBBOGET"
-  Copy net/bebboget-1.11/bebboget net/bebboget-1.11/installcerts SYS:UP-Term/bin CLONE QUIET
+  Copy net/bebboget-1.11/bebboget net/bebboget-1.11/installcerts UP-Term:bin CLONE QUIET
 EndIf
 ; curl 8.22.0 (the curl licence, net/curl-8.22.0); it needs AmiSSL 5
 If "{CURL}" EQ "CURL"
   If "{CPU060}" EQ "CPU060"
-    Copy net/curl-8.22.0/curl.060 SYS:UP-Term/bin/curl CLONE QUIET
+    Copy net/curl-8.22.0/curl.060 UP-Term:bin/curl CLONE QUIET
   Else
     If "{CPU040}" EQ "CPU040"
-      Copy net/curl-8.22.0/curl.040 SYS:UP-Term/bin/curl CLONE QUIET
+      Copy net/curl-8.22.0/curl.040 UP-Term:bin/curl CLONE QUIET
     Else
-      Copy net/curl-8.22.0/curl.020 SYS:UP-Term/bin/curl CLONE QUIET
+      Copy net/curl-8.22.0/curl.020 UP-Term:bin/curl CLONE QUIET
     EndIf
   EndIf
 EndIf
@@ -198,28 +235,28 @@ If NOT "{REMOTE}" EQ ""
     Echo >>ENVARC:Claude/remote "{REMOTE}"
   EndIf
 EndIf
-; Python 3.14 (README, PYTHON): SYS:UP-Term/Python3, its programs run as
+; Python 3.14 (README, PYTHON): UP-Term:Python3, its programs run as
 ; Python3:bin/python3 or python3 from vsh (vshrc's path); Python3: is
 ; assigned at every boot (a marked block in S:User-Startup).
 If "{PYTHON}" EQ "PYTHON"
-  MakeDir >NIL: SYS:UP-Term/Python3
-  Copy python3 SYS:UP-Term/Python3 ALL CLONE QUIET
-  Assign Python3: SYS:UP-Term/Python3
+  MakeDir >NIL: UP-Term:Python3
+  Copy python3 UP-Term:Python3 ALL CLONE QUIET
+  Assign Python3: UP-Term:Python3
   Search >NIL: S:User-Startup ";BEGIN UP-Term python"
   If WARN
     If NOT EXISTS S:User-Startup.before-UP-Term
       Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
     EndIf
     Echo >>S:User-Startup ";BEGIN UP-Term python"
-    Echo >>S:User-Startup "Assign Python3: SYS:UP-Term/Python3"
+    Echo >>S:User-Startup "Assign Python3: UP-Term:Python3"
     Echo >>S:User-Startup ";END UP-Term python"
   EndIf
 EndIf
-; Neovim 0.12 (README, NEOVIM): SYS:UP-Term/nvim (its runtime beside the
+; Neovim 0.12 (README, NEOVIM): UP-Term:nvim (its runtime beside the
 ; binary); nvim from vsh (vshrc's path).
 If "{NVIM}" EQ "NVIM"
-  MakeDir >NIL: SYS:UP-Term/nvim
-  Copy nvim SYS:UP-Term/nvim ALL CLONE QUIET
+  MakeDir >NIL: UP-Term:nvim
+  Copy nvim UP-Term:nvim ALL CLONE QUIET
 EndIf
 ; The fonts by pixel shape (fonts/SOURCE.txt): TopazPro 16, IBM 8 / 11 /
 ; 16 into FONTS:, only the sizes not there yet -- a user's own IBM.font
@@ -258,19 +295,19 @@ If EXISTS SYS:System/FixFonts
 EndIf
 ; The shell ixemul programs run (system(), popen(), tmux's jobs) is
 ; /gg/bin/sh -- GG:bin/sh, where Geek Gadgets keeps its sh: vsh, as
-; SYS:UP-Term/bin/sh. Without a GG: SYS:UP-Term is GG:, assigned at every
+; UP-Term:bin/sh. Without a GG: UP-Term: is GG:, assigned at every
 ; boot by a marked block in S:User-Startup (Uninstall takes it out, its
 ; marker says Install made it). An existing GG: is left as it is.
-Copy vsh SYS:UP-Term/bin/sh CLONE
+Copy vsh UP-Term:bin/sh CLONE
 Assign >NIL: GG: EXISTS
 If WARN
-  Assign GG: SYS:UP-Term
+  Assign GG: UP-Term:
   Echo >ENVARC:up-term/gg "installed by UP-Term"
   If NOT EXISTS S:User-Startup
     Echo >S:User-Startup ""
   EndIf
   ; its own line, not ";BEGIN UP-Term": that also starts the other blocks
-  Search >NIL: S:User-Startup "Assign GG: SYS:UP-Term"
+  Search >NIL: S:User-Startup "Assign GG: UP-Term:"
   If WARN
     If NOT EXISTS S:User-Startup.before-UP-Term
       Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
@@ -278,7 +315,7 @@ If WARN
     Echo >>S:User-Startup ";BEGIN UP-Term"
     Echo >>S:User-Startup "Assign >NIL: GG: EXISTS"
     Echo >>S:User-Startup "If WARN"
-    Echo >>S:User-Startup "  Assign GG: SYS:UP-Term"
+    Echo >>S:User-Startup "  Assign GG: UP-Term:"
     Echo >>S:User-Startup "EndIf"
     Echo >>S:User-Startup ";END UP-Term"
   EndIf
@@ -492,5 +529,6 @@ If WARN
 Else
   Echo "CON: and console.device stay the system's: UP-Term cannot serve them on AmigaOS 3.2 yet."
 EndIf
+UnSet updest
 Echo "UP-Term installed. Try:  NewShell XCON:0/20/640/300/UP-Term/CLOSE"
 Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"
