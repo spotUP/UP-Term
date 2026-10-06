@@ -1,11 +1,11 @@
-.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SYSICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
 ; the patched ixemul.library, the fonts by pixel shape.
 ; Run by the kit's Install (an Installer script), which asks the questions:
 ;   Execute <kit>/Files/install.dos <kit>/Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
-;     [SHELLICON] [SYSICON]   (the icons: no unless asked)
+;     [SHELLICON]   (the Shell icon opens an UP-Term window: no unless asked)
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
@@ -94,7 +94,7 @@ Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
 ; the preferences editor: C:UP-Term Prefs (its file keeps the space) and a
-; plain program icon in Utilities, beside UP-Term
+; plain program icon in SYS:Prefs
 Copy "UP-Term Prefs" "C:UP-Term Prefs" CLONE
 ; GNU screen, and its system screenrc (the port reads /ENV/screenrc)
 Copy screen C:screen CLONE
@@ -308,8 +308,15 @@ If WARN
 EndIf
 ; the Workbench way in: double-click UP-Term (its tool is C:vsh; the
 ; window is its WINDOW tooltype)
-Copy UP-Term UP-Term.info SYS:Utilities CLONE
-Copy UP-Term-Prefs UP-Term-Prefs.info SYS:Utilities CLONE
+; the UP-Term icon goes beside Shell in SYS:System, the preferences editor
+; into SYS:Prefs. A kit older than this one put both in SYS:Utilities: those
+; copies are removed.
+Copy UP-Term UP-Term.info SYS:System CLONE
+If NOT EXISTS SYS:Prefs
+  MakeDir SYS:Prefs
+EndIf
+Copy UP-Term-Prefs UP-Term-Prefs.info SYS:Prefs CLONE
+Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-Term-Prefs SYS:Utilities/UP-Term-Prefs.info QUIET
 ; SHELLICON: the Shell icon (SYS:System/Shell) opens its window on XCON:,
 ; its place, size, title and options as they were (upicon swaps only the
 ; WINDOW tooltype's device). The icon as it was is kept in
@@ -371,12 +378,6 @@ If "{WASABI}" EQ "WASABI"
   If WARN
     Run >NIL: C:wasabid
   EndIf
-EndIf
-; SYSICON: the UP-Term icon in SYS:System too, beside Shell (a marker says
-; it is ours, for Uninstall)
-If "{SYSICON}" EQ "SYSICON"
-  Copy UP-Term UP-Term.info SYS:System CLONE
-  Echo >ENVARC:up-term/sysicon "installed by UP-Term"
 EndIf
 MakeDir >NIL: ENVARC:vsh
 Copy vshrc ENVARC:vsh/vshrc CLONE

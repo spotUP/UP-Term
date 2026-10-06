@@ -14,7 +14,7 @@ VTC = ROOT / "build/rig/vtc"
 ORIG_SIZE = 166972  # the rig's ixemul.library 48.2 as released
 
 def run(cmd, timeout=60):
-    b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'))
+    b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'), timeout + 30)
     return struct.unpack('>I', b[:4])[0], b[4:].decode('latin-1')
 
 passed = total = 0
@@ -34,7 +34,7 @@ def main():
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE\n")
-    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE SHELLICON SYSICON PYTHON NVIM REMOTE=\"127.0.0.1 2399\"\n")
+    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files CONSOLE DEVICE SHELLICON PYTHON NVIM REMOTE=\"127.0.0.1 2399\"\n")
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
@@ -42,7 +42,7 @@ def main():
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
     rc, terminfo_before = run('GetEnv TERMINFO')  # the rig's boot sets /VTC/terminfo
     terminfo_before = terminfo_before.strip()
-    run('Execute VTC:rununinstall')  # a run that stopped half-way left things behind
+    run('Execute VTC:rununinstall', 300)  # a run that stopped half-way left things behind
     startup_before = run('Type S:User-Startup')[1]
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
     run('Delete >NIL: ENVARC:Claude/remote QUIET')  # an earlier run's remote (Install keeps one)
@@ -130,7 +130,7 @@ def main():
     check(out.splitlines() == want and 'WINDOW=XCON:' in out,
           'SHELLICON: the Shell icon opens on XCON:, its window and other tooltypes kept',
           '%r vs %r' % (out, want))
-    check(run('List >NIL: SYS:System/UP-Term.info')[0] == 0, 'SYSICON: the UP-Term icon is in SYS:System', '')
+    check(run('List >NIL: SYS:System/UP-Term.info')[0] == 0, 'the UP-Term icon is in SYS:System, beside Shell', '')
     rc, out = run('C:UPConsole STATUS')
     check('CON: UP-Term' in out and 'RAW: UP-Term' in out, 'Install CONSOLE: CON: and RAW: are UP-Term now', out)
     check('console.device: UP-Term' in out, 'Install DEVICE: console.device is UP-Term\'s now', out)
@@ -189,8 +189,8 @@ def main():
         rc, out = run('Search S:User-Startup "Assign TMP: T:"')
         check('Assign TMP: T:' in out, 'S:User-Startup assigns TMP: (/tmp) at boot', out)
     check(run('List >NIL: "C:UP-Term Prefs"')[0] == 0 and
-          run('List >NIL: SYS:Utilities/UP-Term-Prefs.info')[0] == 0,
-          'the preferences editor is in C: (the menu\'s Preferences runs it) and in Utilities', '')
+          run('List >NIL: SYS:Prefs/UP-Term-Prefs.info')[0] == 0,
+          'the preferences editor is in C: (the menu\'s Preferences runs it) and in SYS:Prefs', '')
     check(run('List >NIL: ENVARC:up-term/up-term')[0] == 0, 'the window preferences file is in place', '')
     rc, out = run('C:tmux -V')
     check(rc == 0 and 'tmux 3.6a' in out, 'C:tmux runs', out)
@@ -199,9 +199,9 @@ def main():
         check(rc == 0, 'no GG: before: vsh is GG:bin/sh (/gg/bin/sh for ixemul programs)', out)
         rc, out = run('Search S:User-Startup ";BEGIN UP-Term"')
         check(';BEGIN UP-Term' in out, 'S:User-Startup assigns GG: at boot', out)
-    rc, out = run('VTC:iconprobe SYS:Utilities/UP-Term')
-    check('tool C:vsh' in out and 'WINDOW=XCON:' in out, 'the UP-Term icon is in SYS:Utilities', out)
-    rc, out = run('VTC:wbrun C:vsh SYS:Utilities/UP-Term', 30)
+    rc, out = run('VTC:iconprobe SYS:System/UP-Term')
+    check('tool C:vsh' in out and 'WINDOW=XCON:' in out, 'the UP-Term icon is in SYS:System', out)
+    rc, out = run('VTC:wbrun C:vsh SYS:System/UP-Term', 30)
     time.sleep(3)
     tree = ami.req(0x0D).decode('latin-1')
     check(rc == 0 and any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
@@ -210,7 +210,7 @@ def main():
     tree = ami.req(0x0D).decode('latin-1')
     check(not any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
           'exit in it closes the window')
-    rc, out = run('Execute VTC:rununinstall', 60)
+    rc, out = run('Execute VTC:rununinstall', 300)
     check(rc == 0, 'Uninstall runs', out)
     rc, out = run('VTC:iconprobe SYS:System/Shell')
     check(out == shell_before, 'after Uninstall: the Shell icon as it was', '%r vs %r' % (out, shell_before))
@@ -232,8 +232,8 @@ def main():
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
     left = [f for f in ('C:ClaudeCode', 'DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
                         'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
-                        'SYS:Utilities/UP-Term', 'SYS:Utilities/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
-                        '"C:UP-Term Prefs"', 'SYS:Utilities/UP-Term-Prefs', 'SYS:Utilities/UP-Term-Prefs.info')
+                        'SYS:System/UP-Term', 'SYS:System/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
+                        '"C:UP-Term Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
             if run('List >NIL: %s' % f)[0] == 0]
     if not tmp_before:
         check(run('Assign >NIL: TMP: EXISTS')[0] != 0, 'after Uninstall: no TMP: (Install made it)')

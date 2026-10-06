@@ -28,14 +28,13 @@
     "- UP-Term Prefs, with 112 colour themes\n"
     "- a patched ixemul.library and its ixnet.library (the ones\n"
     "  there are kept as LIBS:<name>.orig; Uninstall puts them back)\n\n"
-    "Files go to C:, L:, LIBS:, DEVS:, ENVARC: and SYS:Utilities.")
+    "Files go to C:, L:, LIBS:, DEVS:, ENVARC:, SYS:System and SYS:Prefs.")
 
 ; ---- what to install: one page of choices --------------------------------
 
 (set #con "NOCONSOLE")
 (set #dev "NODEVICE")
 (set #shellicon "")
-(set #sysicon "")
 (set #serial "")
 (set #ssh "")
 (set #bget "")
@@ -82,8 +81,8 @@
               "SYS:UP-Term/emoji. On an RTG screen of 15 bits or more with "
               "Picasso96 or CyberGraphX, emoji are drawn in colour over their two "
               "cells; on other screens Unifont's one-colour glyph is drawn.\n\n"
-              "The UP-Term icon is in SYS:Utilities either way; a second copy can go "
-              "beside Shell in SYS:System.\n\n"
+              "The UP-Term icon is in SYS:System, beside Shell, and UP-Term Prefs in "
+              "SYS:Prefs.\n\n"
               "The Shell icon: its WINDOW tooltype is changed to XCON:, so SYS:System/Shell "
               "opens an UP-Term window; a copy of the icon is kept in "
               "ENVARC:up-term-orig.\n\n"
@@ -97,20 +96,18 @@
                  (if #amissl "curl (AmiSSL 5 found)" "curl (needs AmiSSL 5, not found)")
                  "Serial login at every boot"
                  "wasabi: remote development from another computer"
-                 "UP-Term icon also in SYS:System"
                  "Shell icon opens an UP-Term window"
                  "Python 3.14 (15 MB)"
                  "Unifont: glyphs for every character and emoji (1.8 MB)"
                  "Colour emoji for RTG screens (Twemoji, 0.5 MB)"
                  "Neovim 0.12 (32 MB)")
-        (default (+ 1 2 (if #amissl 4 0) 128 256 512 1024))))
+        (default (+ 1 2 (if #amissl 4 0) 64 128 256 512))))
 (if (in #opts 0) (set #ssh "SSH"))
 (if (in #opts 1) (set #bget "BEBBOGET"))
 (if (in #opts 2) (set #curl "CURL"))
 (if (in #opts 3) (set #serial "SERIAL"))
 (if (in #opts 4) (set #wasabi "WASABI"))
-(if (in #opts 5) (set #sysicon "SYSICON"))
-(if (and (in #opts 6) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+(if (and (in #opts 5) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
 (set #remote
     (askstring
         (prompt "Claude Code on your server (the NAS): its address and port.\n"
@@ -120,10 +117,10 @@
               "server). Kept in ENVARC:Claude/remote; edit or delete it later.")
         (default "192.168.0.198 2323")))
 (if (<> #remote "") (set #remote (cat "REMOTE=\"" #remote "\"")))
-(if (in #opts 7) (set #python "PYTHON"))
-(if (in #opts 10) (set #nvim "NVIM"))
-(if (in #opts 8) (set #unifont "UNIFONT"))
-(if (in #opts 9) (set #emoji "EMOJI"))
+(if (in #opts 6) (set #python "PYTHON"))
+(if (in #opts 9) (set #nvim "NVIM"))
+(if (in #opts 7) (set #unifont "UNIFONT"))
+(if (in #opts 8) (set #emoji "EMOJI"))
 
 ; ---- taking over the system's console: a page of its own -----------------
 
@@ -159,13 +156,13 @@
 ; ---- install --------------------------------------------------------------
 
 (working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #sysicon #serial #ssh #bget #curl #wasabi #python #nvim #remote #cpu040 #cpu060 #unifont #emoji)
+(execute (tackon #files "install.dos") (cat "\"" #files "\"") #con #dev #shellicon #serial #ssh #bget #curl #wasabi #python #nvim #remote #cpu040 #cpu060 #unifont #emoji)
 
 (set #done
     (cat "UP-Term is installed.\n\n"
-         "Open it: double-click SYS:Utilities/UP-Term, or type\n"
+         "Open it: double-click SYS:System/UP-Term, or type\n"
          "  NewShell XCON:0/20/640/300/UP-Term/CLOSE\n\n"
-         "Preferences and themes: SYS:Utilities/UP-Term-Prefs, or the\n"
+         "Preferences and themes: SYS:Prefs/UP-Term-Prefs, or the\n"
          "UP-Term menu of any UP-Term window.\n\n"
          "A reboot mounts XCON:, PTY: and IXPIPE: at every start."))
 (if (= #wasabi "WASABI")

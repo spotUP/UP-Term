@@ -26,7 +26,7 @@ INSTALL
   CONSOLE.DEVICE below).
   From a Shell, without Installer, cd into the drawer, then:
     Execute Files/install.dos Files [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
-      [SERIAL] [SYSICON] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [CPU040|CPU060]
+      [SERIAL] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [CPU040|CPU060]
   (each optional part only when named).
   Remove everything again: double-click Uninstall (or Execute Uninstall).
 
@@ -50,7 +50,7 @@ USE
 
 CONFIGURATION (profiles)
    XCON: windows are user-configurable like iTerm2's: /ENV/up-term/up-term
-   holds named profiles; the Prefs app (SYS:Utilities/UP-Term-Prefs, its
+   holds named profiles; the Prefs app (SYS:Prefs/UP-Term-Prefs, its
    tool is "C:UP-Term Prefs") writes it. Install lays down a fully
    commented sample; without the file every window behaves as before.
 
@@ -264,7 +264,7 @@ KEYS
     that window; Prefs sets the profile.
 
 STARTING IT
-  Workbench: double-click SYS:Utilities/UP-Term. It opens an XCON: window
+  Workbench: double-click SYS:System/UP-Term. It opens an XCON: window
   with vsh, starting in $HOME (SYS:) with your Workbench path. Change the
   window in the icon's WINDOW tooltype (any XCON: spec).
   (Directory Opus: Shift + double-click runs a project through its icon;
