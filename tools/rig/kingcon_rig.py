@@ -53,19 +53,47 @@ def k(code, q=0):
     time.sleep(0.7)
 
 
-# The Complete menu, on the Workbench screen's bar (topaz 8): its title and
-# each item's row, in screen pixels (rig screenshot 2026-10-02). Since the
-# Settings menu came in front of it the title is further right: x estimated
-# from the Settings screenshot, not yet run.
-MENU_X = 140
-ITEM_Y = {'Filename': 20, 'Command': 32, 'Device': 44, 'Enable cache': 62,
-          'Reset cache': 74, 'Purge cache': 86, 'Show .info': 104}
+# The Complete menu, on the Workbench screen's bar (topaz 8). amiagent's MENUS
+# lists the strip (titles and items in order, separators as empty disabled
+# rows) but no boxes, so the places are derived from that live listing, never
+# hardcoded: titles sit side by side, 8 px per character, so the pointer x is
+# the characters of the titles before Complete plus TITLE_INSET into the title
+# (the sweep 2026-10-06 hit from x=192 to 234 for a start of 184: 29 is the
+# middle of the span); items are ITEM_PITCH rows below the first row centre,
+# a separator ITEM_SEP.
+CHAR_W, TITLE_INSET = 8, 29
+FIRST_ITEM_Y, ITEM_PITCH, ITEM_SEP, BAR_Y = 20, 12, 6, 5
+MENU_TITLE = 'Complete'
+
+
+def menu_place(item):
+    """(x, y) in screen pixels of `item` in the MENU_TITLE menu, from MENUS."""
+    x = None
+    titles, rows = 0, []
+    cur = None
+    for l in ami.req(0x0F).decode('latin-1').splitlines():
+        f = l.split('"')
+        if l.startswith('M '):
+            cur = f[1]
+            if cur == MENU_TITLE:
+                x = titles + TITLE_INSET
+            elif x is None:
+                titles += len(cur) * CHAR_W
+        elif l.startswith('I ') and cur == MENU_TITLE:
+            rows.append(f[-2])
+    if x is None or item not in rows:
+        raise SystemExit('menu %s > %s not in the strip' % (MENU_TITLE, item))
+    y = FIRST_ITEM_Y
+    for name in rows[:rows.index(item)]:
+        y += ITEM_SEP if name == '' else ITEM_PITCH
+    return x, y
 
 
 def menu(item):
     kx, ky = ami.pointer_scale()
-    ami.script(('move', int(MENU_X * kx), int(5 * ky)), ('wait', 2), ('button', 1, 1), ('wait', 8),
-               ('move', int(MENU_X * kx), int(ITEM_Y[item] * ky)), ('wait', 5), ('button', 1, 0),
+    x, y = menu_place(item)
+    ami.script(('move', int(x * kx), int(BAR_Y * ky)), ('wait', 2), ('button', 1, 1), ('wait', 8),
+               ('move', int(x * kx), int(y * ky)), ('wait', 5), ('button', 1, 0),
                ('wait', 5))
     time.sleep(1)
 
