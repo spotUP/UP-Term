@@ -60,7 +60,7 @@ else should be ported over from DC Telnet?"
       the nearest ANSI pen). The cursor is drawn in colours, not COMPLEMENT (pen numbers past
       16 inverted to anything: a cyan cursor in a visitor window). ownscreen_rig 13/13, the
       cursor check failing on the old code.
-- [ ] P3 the DIRECT path on the own native screen: lazy WaitBlit, stride, measured cycle-exact
+- [ ] P3 (OPEN 2026-10-06: the planar fast path exists, 7ecdb88, and RT1/CC1 hardware proofs, but no cycle-exact comparison against Text() and no lazy-WaitBlit/stride record found) the DIRECT path on the own native screen: lazy WaitBlit, stride, measured cycle-exact
       against Text() (68020; a 68000 row when there is an A500 rig); on by default where it wins.
 - [ ] P4 PETSCII personality: dispatch, screencodes, C64 colours, reverse, keys, 40 columns
       (16x8 cells), the Petscii fonts; host tests from DCTelnet's.
@@ -69,4 +69,4 @@ else should be ported over from DC Telnet?"
 - [ ] P7 ARexx command port (SEND, WAITFOR, CAPTURE, GETSTATUS).
 - [ ] P8 ANSI music and an audio.device bell (PC-ANSI personality).
 - [ ] P9 function-key macros per profile; a SyncTERM key set; BS/DEL swap.
-- [ ] P10 a telnet / rlogin command over PTY: (DCTelnet's IAC / NAWS / TTYPE code).
+- [ ] P10 (HALF DONE: telnet = net/tn.c, net/uptelnet.c, tests/test_telnet.c 28 checks, ffa32a4, not over PTY: but on bsdsocket; rlogin: no code in net/, OPEN; rig run of uptelnet is OWNER step A1.4) a telnet / rlogin command over PTY: (DCTelnet's IAC / NAWS / TTYPE code).

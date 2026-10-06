@@ -33,7 +33,7 @@ has exact rig and A1200 steps (A1.4 is the owner's).
 - [x] README section CLAUDE FROM THE AMIGA, RULES.md commands
 - [x] make test green; make amiga clean (warnings are errors)
 - [x] commits atomic, ending with the co-author line
-- [ ] A1.4 rig + A1200 run (OWNER: steps below; this session must not start FS-UAE)
+- [ ] A1.4 rig + A1200 run (OWNER: steps below; this session must not start FS-UAE) (2026-10-06 NOT the same as replay-hardware-tests H1: H1 ran `Claude` to the NAS on the Replay and passed, but A1.4 steps 4-7 (uptelnet to the Mac end, `stty size` and resize follow, paste block, focus reports, Ctrl-], 3 wrong passwords) and the 020 spinner timing are not covered by it)
 
 ## Decisions
 
