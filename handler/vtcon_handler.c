@@ -400,6 +400,25 @@ static void ser_dbg(const char *what, LONG a, LONG b)
 #define DBG_FLUSH()
 #endif
 
+#if defined(VTCON_DEBUG) || defined(VTCON_SERIAL)
+/* Which ixemul.library is loaded (the one that talks vtcon's packets to
+ * this window): its version, or its revision when version is 0; -1 when
+ * none is. Only the library list is read, nothing is opened (an OpenLibrary
+ * would load from disk inside a packet). Logged once per window at its
+ * first open, to the debug log, never to the window. */
+static LONG ixemul_version(int version)
+{
+    struct Library *l;
+    LONG v = -1;
+    Forbid();
+    l = (struct Library *)FindName(&SysBase->LibList, (STRPTR)"ixemul.library");
+    if (l)
+        v = version ? l->lib_Version : l->lib_Revision;
+    Permit();
+    return v;
+}
+#endif
+
 static void reply(struct DosPacket *p, LONG r1, LONG r2)
 {
     if (p->dp_Type != ACTION_WRITE && p->dp_Type != ACTION_READ)
@@ -5462,6 +5481,7 @@ static void packet(con *c, struct DosPacket *p)
             c->spec_parsed = 1;
             brk_open(&c->brk, p->dp_Port);
             DBG("open window", c->ww, c->wh);
+            DBG("ixemul.library version/revision", ixemul_version(1), ixemul_version(0));
             if (!c->auto_open && !open_window(c)) {
                 DBG("open failed", c->w.win, c->w.t);
                 close_window(c);
