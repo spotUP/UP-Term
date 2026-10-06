@@ -45,7 +45,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_screen.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c
 
-.PHONY: unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist golden vttest venv capture quirks amiga clean
+.PHONY: unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py)
 test: $(BUILD)/vttest_host $(BUILD)/tn_host
@@ -732,6 +732,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	python3 tools/mkicon.py $(KIT)/Install.info --tool Installer --plain \
 	  --tooltype APPNAME=UP-Term --tooltype MINUSER=AVERAGE --tooltype DEFUSER=AVERAGE
 	cp dist/Uninstall dist/README.txt dist/LICENSES.txt $(KIT)/
+	sh tools/mkversions.sh $(UPTERM_ROOT) > $(KIT)/Files/VERSIONS
 	rm -rf $(KIT)/Files/python3 $(KIT)/Files/nvim
 	cp -R $(PYTHON_DIST) $(KIT)/Files/python3
 	cp -R $(NVIM_DIST) $(KIT)/Files/nvim
@@ -742,6 +743,11 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	python3 tools/mkicon.py $(KIT)/Uninstall.info --tool C:IconX --plain
 	cd $(BUILD)/dist && rm -f ../UP-Term.lha && lha -aq ../UP-Term.lha UP-Term
 	@ls -la $(BUILD)/UP-Term.lha
+
+# The kit says what it was built from: Files/VERSIONS has a line per part, and
+# it is in the lha archive.
+dist-check:
+	python3 tests/test_dist_versions.py
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga

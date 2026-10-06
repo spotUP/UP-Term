@@ -557,6 +557,21 @@ static void status(void)
             printf("excluded (the ROM's units): %s\n", names);
         }
     }
+    /* the kit's VERSIONS file (the Install copies it): its first line says
+     * which kit and which commit this is */
+    {
+        BPTR fh = Open((STRPTR)"SYS:UP-Term/VERSIONS", MODE_OLDFILE);
+        if (fh) {
+            char line[120];
+            if (FGets(fh, (STRPTR)line, sizeof(line)) && line[0]) {
+                int n = (int)strlen(line);
+                while (n && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+                    line[--n] = 0;
+                printf("kit: %s\n", line);
+            }
+            Close(fh);
+        }
+    }
 }
 
 int main(void)

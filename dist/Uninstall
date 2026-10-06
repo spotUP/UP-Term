@@ -50,6 +50,7 @@ Assign >NIL: Python3: EXISTS
 If NOT WARN
   Assign Python3:
 EndIf
+; (SYS:UP-Term/VERSIONS goes with the drawer)
 Delete >NIL: SYS:UP-Term ALL QUIET
 ; BebboSSH's library, only when Install put it there (its marker)
 If EXISTS ENVARC:up-term/cryptossh

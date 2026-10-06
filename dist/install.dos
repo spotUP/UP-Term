@@ -114,6 +114,8 @@ Copy tmux.conf ENV:tmux.conf CLONE
 ; keeps its own commands.
 MakeDir >NIL: SYS:UP-Term SYS:UP-Term/bin
 Copy coreutils/bin SYS:UP-Term/bin ALL CLONE QUIET
+; VERSIONS: what this kit was built from (C:UPConsole STATUS prints its first line)
+Copy VERSIONS SYS:UP-Term/VERSIONS CLONE
 ; sz / rz: ZMODEM over the shell's own line (UP-Term's, no ixemul), beside
 ; coreutils; C:upgetty: a shell on the serial port (see the README)
 Copy sz rz SYS:UP-Term/bin CLONE
