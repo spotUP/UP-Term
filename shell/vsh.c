@@ -956,6 +956,16 @@ static int os_isatty(void *os, sh_fh fh)
 
 /* read -t: an interactive handle is asked with WaitForChar (microseconds); a file or pipe is
  * ready at once (unconfirmed for pipes: the rig decides) */
+/* time of day from the DOS clock (local time, 50 ticks a second), seconds since 1970 */
+static long os_now(void *os, long *usec)
+{
+    struct DateStamp ds;
+    (void)os;
+    DateStamp(&ds);
+    *usec = (ds.ds_Tick % 50) * 20000L;
+    return (ds.ds_Days + 2922L) * 86400L + ds.ds_Minute * 60L + ds.ds_Tick / 50L;
+}
+
 static int os_ready(void *os, sh_fh fh, long ms)
 {
     (void)os;
@@ -1414,6 +1424,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.spawn = os_spawn;
     sh.os.read = os_read;
     sh.os.ready = os_ready;
+    sh.os.now = os_now;
     sh.os.echo = os_echo;
     sh.os.interrupted = os_interrupted;
     sh.os.signal = os_signal;

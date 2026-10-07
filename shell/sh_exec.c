@@ -203,6 +203,10 @@ static int opt_on(const sh_shell *sh, int i)
     return sh_optab[i].bit == SO_INERT ? (inert_state >> i) & 1 : (sh->opts & sh_optab[i].bit) != 0;
 }
 
+static void core_warn(sh_ctx *c, const char *name, const char *msg);
+static void core_refresh(sh_ctx *c, const char *name);
+static void core_on_assign(sh_ctx *c, const char *name, const char *value);
+
 void sh_shell_init(sh_shell *sh)
 {
     memset(&sh->ctx, 0, sizeof(sh->ctx));
@@ -223,6 +227,19 @@ void sh_shell_init(sh_shell *sh)
     sh->subst_status = 0;
     sh->ctx.subst = core_subst;
     sh->ctx.user = sh;
+    sh->ctx.warn = core_warn;
+    sh->ctx.refresh = core_refresh;
+    sh->ctx.on_assign = core_on_assign;
+    sh->lineno = 0;
+    sh->frames = 0;
+    sh->nframes = sh->capframes = 0;
+    sh->main_src = sh->cur_src = 0;
+    sh->main_run = 0;
+    sh->rseed = sh->srnd = 0;
+    sh->last_rand = 0;
+    sh->seeded = 0;
+    sh->secs0 = 0;
+    sh->special_busy = 0;
     sh->heredocs = 0;
     memset(sh->traps, 0, sizeof(sh->traps));
     sh->in_trap = 0;
@@ -245,6 +262,8 @@ typedef struct saved_var {
 } saved_var;
 static void restore_var(sh_shell *sh, saved_var *s);
 
+static void frame_pop(sh_shell *sh);
+
 void sh_shell_free(sh_shell *sh)
 {
     int i;
@@ -252,9 +271,13 @@ void sh_shell_free(sh_shell *sh)
         sh_func *f = sh->funcs;
         sh->funcs = f->next;
         free(f->name);
+        free(f->src);
         sh_parse_free(&f->body);
         free(f);
     }
+    while (sh->nframes > 0)
+        frame_pop(sh);
+    free(sh->frames);
     while (sh->retired) {
         sh_retired *r = sh->retired;
         sh->retired = r->next;
@@ -271,6 +294,8 @@ void sh_shell_free(sh_shell *sh)
     sh_list_free(&sh->aliases);
     sh_ctx_free(&sh->ctx);
 }
+
+static int frame_push(sh_shell *sh, const char *name, const char *src);
 
 sh_shell *sh_shell_clone(const sh_shell *sh)
 {
@@ -306,6 +331,25 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.nocase = sh->ctx.nocase;
     c->ctx.listdir = sh->ctx.listdir;
     c->ctx.subst = sh->ctx.subst;
+    c->ctx.warn = sh->ctx.warn;
+    c->ctx.refresh = sh->ctx.refresh;
+    c->ctx.on_assign = sh->ctx.on_assign;
+    c->lineno = sh->lineno;
+    c->main_src = sh->main_src;
+    c->main_run = sh->main_run;
+    c->func_depth = sh->func_depth;
+    c->cur_src = sh->cur_src;
+    c->rseed = sh->rseed;
+    c->srnd = sh->srnd;
+    c->last_rand = sh->last_rand;
+    c->seeded = sh->seeded;
+    c->secs0 = sh->secs0;
+    for (i = 0; i < sh->nframes; i++) {
+        const sh_frame *fr = sh->frames + i;
+        if (frame_push(c, fr->name, fr->src))
+            break;
+        c->frames[c->nframes - 1].line = fr->line;
+    }
     c->ctx.user = sh->ctx.user == (const void *)sh ? (void *)c : sh->ctx.user;
     tail = &c->funcs;
     for (f = sh->funcs; f; f = f->next) {
@@ -313,6 +357,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
         if (!nf)
             break;
         nf->name = sdup(f->name);
+        nf->src = sdup(f->src ? f->src : "");
         sh_parse_copy(f->body.tree, &nf->body);
         *tail = nf;
         tail = &nf->next;
@@ -369,6 +414,188 @@ static void sayl(sh_shell *sh, sh_fh fh, ...)
     while ((s = va_arg(ap, const char *)) != NULL)
         say(sh, fh, s);
     va_end(ap);
+}
+
+/* the store's warnings go to the shell's own error stream, as "vsh: warning: NAME: text" */
+static void core_warn(sh_ctx *c, const char *name, const char *msg)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    sayl(sh, sh->io.err, "vsh: warning: ", name, ": ", msg, "\n", NULL);
+}
+
+/* ---- special variables and the call stack ---------------------------------------- */
+
+static long sh_now(sh_shell *sh, long *usec)
+{
+    long us = 0, t = sh->os.now ? sh->os.now(sh->os.data, &us) : 0;
+    *usec = us;
+    return t;
+}
+
+static int frame_push(sh_shell *sh, const char *name, const char *src)
+{
+    sh_frame *fr;
+    if (sh->nframes == sh->capframes) {
+        int cap = sh->capframes ? sh->capframes * 2 : 16;
+        sh_frame *t = (sh_frame *)realloc(sh->frames, (size_t)cap * sizeof(sh_frame));
+        if (!t)
+            return 1;
+        sh->frames = t;
+        sh->capframes = cap;
+    }
+    fr = sh->frames + sh->nframes++;
+    fr->name = sdup(name);
+    fr->src = sdup(src ? src : "");
+    fr->line = sh->lineno;
+    return 0;
+}
+
+static void frame_pop(sh_shell *sh)
+{
+    sh_frame *fr = sh->frames + --sh->nframes;
+    free(fr->name);
+    free(fr->src);
+}
+
+/* FUNCNAME (which 0), BASH_SOURCE (1), BASH_LINENO (2): the frames innermost first, then the
+ * script's own bottom frame ("main", the file, line 0). FUNCNAME exists only inside a function. */
+static void frame_array(sh_shell *sh, const char *name, int which)
+{
+    int i, k = 0, total = sh->nframes + (sh->main_src != 0);
+    char d[24], ix[24];
+    if (!total || (which == 0 && !sh->func_depth)) {
+        sh_unset(&sh->ctx, name);
+        return;
+    }
+    sh_array_reset(&sh->ctx, name, 0);
+    for (i = 0; i < total; i++) {
+        const char *v;
+        if (i == sh->nframes)
+            v = which == 0 ? "main" : which == 1 ? sh->main_src : "0";
+        else {
+            const sh_frame *fr = sh->frames + (sh->nframes - 1 - i);
+            if (which == 2)
+                sh_ltoa(fr->line, d);
+            v = which == 0 ? fr->name : which == 1 ? fr->src : d;
+        }
+        sh_ltoa(k++, ix);
+        sh_assign(&sh->ctx, name, ix, v, 0);
+    }
+}
+
+/* bash 5's RANDOM: the Park-Miller minimal standard generator (16807 mod 2^31-1, in 32 bits as bash
+ * computes it), its two 16-bit halves folded, 15 bits kept, never the same value twice running */
+static int next_random(sh_shell *sh)
+{
+    int rv;
+    if (!sh->seeded) {
+        long us, t = sh_now(sh, &us);
+        sh->rseed = (unsigned long)(t ^ us ^ sh->ctx.pid);
+        sh->seeded = 1;
+    }
+    do {
+        unsigned long x = sh->rseed & 0xffffffffUL;
+        long t;
+        if (!x)
+            x = 123459876UL;
+        t = (long)(16807UL * (x % 127773UL)) - (long)(2836UL * (x / 127773UL));
+        if (t < 0)
+            t += 2147483647L;
+        sh->rseed = (unsigned long)t;
+        rv = (int)(((t >> 16) ^ (t & 65535L)) & 32767L);
+    } while (rv == sh->last_rand);
+    sh->last_rand = rv;
+    return rv;
+}
+
+enum { SP_RANDOM, SP_SRANDOM, SP_SECONDS, SP_EPOCHSECONDS, SP_EPOCHREALTIME, SP_LINENO, SP_BASHPID,
+       SP_FUNCNAME, SP_BASH_SOURCE, SP_BASH_LINENO, SP_N };
+static const char *const special_names[SP_N] = {
+    "RANDOM", "SRANDOM", "SECONDS", "EPOCHSECONDS", "EPOCHREALTIME", "LINENO", "BASHPID",
+    "FUNCNAME", "BASH_SOURCE", "BASH_LINENO"
+};
+
+static int special_id(const char *name)
+{
+    int k;
+    if (name[0] < 'B' || name[0] > 'S')
+        return -1;
+    for (k = 0; k < SP_N; k++)
+        if (!strcmp(name, special_names[k]))
+            return k;
+    return -1;
+}
+
+/* the store's copy of a special variable is brought up to date just before it is read */
+static void core_refresh(sh_ctx *c, const char *name)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    long us = 0, t = 0;
+    int k = special_id(name);
+    char d[40];
+    if (k < 0 || sh->special_busy)
+        return;
+    sh->special_busy = 1;
+    switch (k) {
+    case SP_RANDOM:
+        sh_ltoa(next_random(sh), d);
+        break;
+    case SP_SRANDOM:
+        if (!sh->srnd)
+            sh->srnd = (unsigned long)(sh_now(sh, &us) ^ us ^ sh->ctx.pid) | 1UL;
+        sh->srnd ^= sh->srnd << 13;
+        sh->srnd ^= sh->srnd >> 17;
+        sh->srnd ^= sh->srnd << 5;
+        sh_ltoa((long)(sh->srnd & 0x7fffffffUL), d);
+        break;
+    case SP_SECONDS:
+        sh_ltoa(sh_now(sh, &us) - sh->secs0, d);
+        break;
+    case SP_EPOCHSECONDS:
+        sh_ltoa(sh_now(sh, &us), d);
+        break;
+    case SP_EPOCHREALTIME: {
+        char u[24];
+        int pad;
+        t = sh_now(sh, &us);
+        sh_ltoa(t, d);
+        sh_ltoa(us, u);
+        pad = 6 - (int)strlen(u);
+        strcat(d, ".");
+        while (pad-- > 0)
+            strcat(d, "0");
+        strcat(d, u);
+        break;
+    }
+    case SP_LINENO:
+        sh_ltoa(sh->lineno, d);
+        break;
+    case SP_BASHPID:
+        sh_ltoa(sh->ctx.pid, d); /* a subshell's $$ is its own pid here, so BASHPID equals it */
+        break;
+    default:
+        frame_array(sh, name, k - SP_FUNCNAME);
+        sh->special_busy = 0;
+        return;
+    }
+    sh_set(c, name, d);
+    sh->special_busy = 0;
+}
+
+/* RANDOM=n seeds the generator, SECONDS=n restarts the count at n */
+static void core_on_assign(sh_ctx *c, const char *name, const char *value)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    int k = special_id(name);
+    long us;
+    if (sh->special_busy || (k != SP_RANDOM && k != SP_SECONDS))
+        return;
+    if (k == SP_RANDOM) {
+        sh->rseed = (unsigned long)atol(value);
+        sh->last_rand = 0;
+        sh->seeded = 1;
+    } else
+        sh->secs0 = sh_now(sh, &us) - atol(value);
 }
 
 /* a name exists (want_dir -1), is a directory (1) or not (0) */
@@ -2352,6 +2579,7 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
                     sh_func *f = *p;
                     *p = f->next;
                     free(f->name);
+                    free(f->src);
                     sh_parse_free(&f->body);
                     free(f);
                     break;
@@ -2782,8 +3010,17 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
         for (k = 2; k < argc; k++)
             sh_list_add(&sh->ctx.args, argv[k]);
     }
-    if (text)
+    if (text) {
+        const char *outer_src = sh->cur_src;
+        int is_main = sh->main_src && !sh->main_run && !strcmp(argv[1], sh->main_src);
+        int pushed = !is_main && frame_push(sh, "source", file) == 0;
+        sh->main_run = 1;
+        sh->cur_src = file;
         st = sh_run_text(sh, text, &incomplete);
+        sh->cur_src = outer_src;
+        if (pushed)
+            frame_pop(sh);
+    }
     free(text);
     if (swap) {
         sh_list_free(&sh->ctx.args);
@@ -2833,17 +3070,20 @@ static void apply_alias(sh_shell *sh, sh_list *argv)
 static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *io)
 {
     sh_list saved = sh->ctx.args;
-    int i, mark = sh->n_locals, outer = sh->local_mark;
+    int i, mark = sh->n_locals, outer = sh->local_mark, pushed;
     long st;
     sh->local_mark = mark;
     memset(&sh->ctx.args, 0, sizeof(sh->ctx.args));
     for (i = 1; i < argv->n; i++)
         sh_list_add(&sh->ctx.args, argv->v[i]);
     SH_HIT(FUNC_CALL);
+    pushed = frame_push(sh, f->name, f->src) == 0;
     sh->func_depth++;
     f->busy++;
     st = exec_node(sh, f->body.tree, io);
     f->busy--;
+    if (pushed)
+        frame_pop(sh);
     if (sh->returning)
         st = sh->ctx.status;
     sh->returning = 0;
@@ -3079,7 +3319,7 @@ static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io)
     }
     if (!t.s)
         return 0;
-    sh_parse_text(&p, t.s);
+    sh_parse_text_at(&p, t.s, (int)sh->lineno); /* its lines count from the line of the eval */
     free(t.s);
     if (p.error) {
         err2(sh, io, "eval", p.incomplete ? "unexpected end of input" : p.error);
@@ -3454,7 +3694,9 @@ static void xt_cmd(sh_shell *sh, const sh_io *io, const sh_list *argv)
     xt_end(sh, io, &b);
 }
 
-static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job)
+/* The simple command. *last gets the last word of the command as expanded (malloc'ed; 0 when the
+ * expansion failed): the shell's $_ once the command has run. */
+static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job, char **last)
 {
     sh_list argv;
     sh_io io;
@@ -3472,6 +3714,7 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         sh_list_free(&argv);
         return 1;
     }
+    *last = sdup(argv.n ? argv.v[argv.n - 1] : "");
     if (!argv.n) {
         /* only assignments (and redirections): they set shell variables */
         for (a = n->assigns; a; a = a->next) {
@@ -3716,6 +3959,17 @@ static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
     sayl(sh, io->err, nb, "\n", NULL);
 }
 
+static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job)
+{
+    char *last = 0;
+    long st = exec_cmd1(sh, n, parent, wait, job, &last);
+    if (last) {
+        sh_set(&sh->ctx, "_", last);
+        free(last);
+    }
+    return st;
+}
+
 static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     const sh_node *st[16];
@@ -3916,6 +4170,8 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
         return sh->ctx.status;
     if ((sh->opts & SO_NOEXEC) && !(sh->opts & SO_INTERACTIVE))
         return 0;
+    if (n->line)
+        sh->lineno = n->line;
     if (poll_break(sh))
         return 130;
     if (sh->stack_limit && (unsigned long)&rio < sh->stack_limit) {
@@ -4036,6 +4292,8 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
         }
         /* its own copy: the line that defined it is freed after it runs */
         sh_parse_copy(n->a, &f->body);
+        free(f->src);
+        f->src = sdup(sh->cur_src ? sh->cur_src : "");
         st = f->body.tree || !n->a ? 0 : 1;
         break;
     }
@@ -4062,7 +4320,7 @@ long sh_exec(sh_shell *sh, const sh_node *n, const sh_io *io)
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
 {
     const char *s = text;
-    long st = sh->ctx.status;
+    long st = sh->ctx.status, line = 1;
     if (incomplete)
         *incomplete = 0;
     while (*s) {
@@ -4079,7 +4337,7 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
                 return st;
             memcpy(chunk, s, (size_t)(e - s));
             chunk[e - s] = 0;
-            sh_parse_text(&p, chunk);
+            sh_parse_text_at(&p, chunk, (int)line);
             if (p.incomplete && *e) {
                 sh_parse_free(&p);
                 free(chunk);
@@ -4088,6 +4346,12 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
             break;
         }
         s = e;
+        {
+            const char *q;
+            for (q = chunk; *q; q++)
+                if (*q == '\n')
+                    line++;
+        }
         if ((sh->opts & SO_VERBOSE) && sh->io.err) {
             say(sh, sh->io.err, chunk);
             if (e[-1] != '\n')
@@ -4203,6 +4467,36 @@ static void inv_msg(sh_shell *sh, const char *a, const char *b)
     sayl(sh, sh->io.err, "vsh: ", a, b, "\n", NULL);
 }
 
+/* the variables bash has when it starts: its version (5.2: the owner's decision), the system, the
+ * shell's nesting depth, and the ids; the last few read-only */
+static void start_vars(sh_shell *sh)
+{
+    static const char *const fixed[][2] = {
+        { "BASH_VERSION", "5.2.0(1)-release" }, { "BASH", "bash" }, { "OSTYPE", "amigaos" },
+        { "MACHTYPE", "m68k-commodore-amigaos" }, { "HOSTTYPE", "m68k" }
+    };
+    static const char *const info[] = { "5", "2", "0", "1", "release", "m68k-commodore-amigaos" };
+    static const char *const ids[] = { "PPID", "UID", "EUID" };
+    const char *old = sh_get(&sh->ctx, "SHLVL");
+    char d[24];
+    int i;
+    for (i = 0; i < 5; i++)
+        sh_set(&sh->ctx, fixed[i][0], fixed[i][1]);
+    sh_ltoa((old ? atol(old) : 0) + 1, d);
+    sh_set(&sh->ctx, "SHLVL", d);
+    sh_attr_change(&sh->ctx, "SHLVL", SH_ATTR_EXPORT, 0);
+    for (i = 0; i < 6; i++) {
+        sh_ltoa(i, d);
+        sh_assign(&sh->ctx, "BASH_VERSINFO", d, info[i], 0);
+    }
+    sh_attr_change(&sh->ctx, "BASH_VERSINFO", SH_ATTR_READONLY, 0);
+    for (i = 0; i < 3; i++) {
+        sh_ltoa(sh->os.sysid ? sh->os.sysid(sh->os.data, i) : 0, d);
+        sh_set(&sh->ctx, ids[i], d);
+        sh_attr_change(&sh->ctx, ids[i], SH_ATTR_READONLY, 0);
+    }
+}
+
 void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *info)
 {
     int i = 1, want_stdin = 0, interactive = 0, have_c = 0;
@@ -4310,6 +4604,14 @@ void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *inf
     opts_apply(sh);
     for (; i < argc; i++)
         sh_list_add(&sh->ctx.args, argv[i]);
+    if (info->script)
+        sh->main_src = info->script;
+    sh->cur_src = sh->ctx.arg0;
+    {
+        long us;
+        sh->secs0 = sh_now(sh, &us);
+    }
+    start_vars(sh);
     if (sh->os.cwd && !sh_get(&sh->ctx, "PWD")) {
         char *d = sh->os.cwd(sh->os.data);
         if (d && *d) {

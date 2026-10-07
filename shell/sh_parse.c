@@ -78,6 +78,9 @@ typedef struct lexer {
     int io_number;          /* -1, or the fd digits before a redirection operator */
     heredoc *pending;       /* << documents to read at the next newline */
     int had_error;
+    long tokpos;            /* where the current token starts */
+    long lpos;              /* line counting: the text before lpos has lline-line0 newlines */
+    int lline;
 } lexer;
 
 static int is_meta(char c)
@@ -300,7 +303,7 @@ static void next(lexer *L)
         }
         break;
     }
-    i = L->pos;
+    i = L->tokpos = L->pos;
     switch (s[i]) {
     case 0:
         L->tok = T_EOF;
@@ -399,6 +402,15 @@ static void next(lexer *L)
 
 static sh_node *parse_list(lexer *L, int top);
 static sh_node *parse_command(lexer *L);
+
+/* the line the current token is on */
+static int tok_line(lexer *L)
+{
+    for (; L->lpos < L->tokpos; L->lpos++)
+        if (L->s[L->lpos] == '\n')
+            L->lline++;
+    return L->lline;
+}
 
 static sh_node *node(lexer *L, enum sh_kind k)
 {
@@ -683,7 +695,18 @@ static sh_node *parse_case(lexer *L)
     return n;
 }
 
+static sh_node *parse_command1(lexer *L);
+
 static sh_node *parse_command(lexer *L)
+{
+    int line = tok_line(L);
+    sh_node *n = parse_command1(L);
+    if (n && !n->line)
+        n->line = line;
+    return n;
+}
+
+static sh_node *parse_command1(lexer *L)
 {
     sh_node *n;
     if (L->had_error)
@@ -815,11 +838,17 @@ static sh_node *parse_list(lexer *L, int top)
 
 void sh_parse_text(sh_parse *p, const char *text)
 {
+    sh_parse_text_at(p, text, 1);
+}
+
+void sh_parse_text_at(sh_parse *p, const char *text, int line0)
+{
     lexer L;
     memset(p, 0, sizeof(*p));
     memset(&L, 0, sizeof(L));
     L.p = p;
     L.s = text;
+    L.lline = line0;
     next(&L);
     p->tree = parse_list(&L, 1);
     if (!L.had_error && L.pending)

@@ -19,12 +19,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <dirent.h>
 #include <poll.h>
 #include <termios.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+#endif
 #include "../shell/sh_exec.h"
 #include "../shell/sh_hits.h"
 
@@ -283,6 +287,11 @@ static long h_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, 
         _exit((int)(st & 255));
     }
     close_owned(io);
+    /* the child process owns the clone and the tree; this process's copies end here */
+    sh_parse_free(tree);
+    free(tree);
+    sh_shell_free(child);
+    free(child);
     if (wait)
         return reap(pid, 1);
     for (i = 0; i < MAXJOB; i++)
@@ -302,6 +311,21 @@ static long h_read(void *os, sh_fh fh, char *buf, long max)
         n = read(FD(fh), buf, (size_t)max);
     while (n < 0 && errno == EINTR);
     return n > 0 ? (long)n : 0;
+}
+
+static long h_now(void *os, long *usec)
+{
+    struct timeval tv;
+    (void)os;
+    gettimeofday(&tv, 0);
+    *usec = (long)tv.tv_usec;
+    return (long)tv.tv_sec;
+}
+
+static long h_sysid(void *os, int what)
+{
+    (void)os;
+    return what == SH_ID_PPID ? (long)getppid() : what == SH_ID_UID ? (long)getuid() : (long)geteuid();
 }
 
 static int h_ready(void *os, sh_fh fh, long ms)
@@ -448,6 +472,32 @@ static int h_listdir(sh_ctx *c, const char *dir, sh_list *out)
     return 0;
 }
 
+/* Leak check without LeakSanitizer (unsupported on macOS): with VSH_LEAKCHECK set, the heap's live
+ * blocks are counted before the shell starts and after sh_shell_free; a difference is printed to
+ * stderr as "leak blocks=N bytes=M" (stdio's own buffers account for a small constant). */
+#ifdef __APPLE__
+static size_t leak_blocks0, leak_bytes0;
+static void leak_count(size_t *b, size_t *by)
+{
+    malloc_statistics_t st;
+    malloc_zone_statistics(0, &st);
+    *b = st.blocks_in_use;
+    *by = st.size_in_use;
+}
+static void leak_mark(void) { leak_count(&leak_blocks0, &leak_bytes0); }
+static void leak_report(void)
+{
+    size_t b, by;
+    if (!getenv("VSH_LEAKCHECK"))
+        return;
+    leak_count(&b, &by);
+    fprintf(stderr, "leak blocks=%ld bytes=%ld\n", (long)b - (long)leak_blocks0, (long)by - (long)leak_bytes0);
+}
+#else
+static void leak_mark(void) {}
+static void leak_report(void) {}
+#endif
+
 static int run_main(int argc, char **argv)
 {
     static sh_shell sh;
@@ -461,6 +511,7 @@ static int run_main(int argc, char **argv)
         hits = 1;
         a = 2;
     }
+    leak_mark();
     sh_shell_init(&sh);
     hp.sh = &sh;
     sh.os.open = h_open;
@@ -476,6 +527,8 @@ static int run_main(int argc, char **argv)
     sh.os.spawn = h_spawn;
     sh.os.read = h_read;
     sh.os.ready = h_ready;
+    sh.os.now = h_now;
+    sh.os.sysid = h_sysid;
     sh.os.echo = h_echo;
     sh.os.interrupted = h_interrupted;
     sh.os.write = h_write;
@@ -537,6 +590,8 @@ static int run_main(int argc, char **argv)
     (void)i;
     sh_exit_trap(&sh); /* end of input, exit, a script's end */
     st = sh.exiting ? sh.exit_status : sh.ctx.status;
+    sh_shell_free(&sh);
+    leak_report();
 #ifdef SH_HITS
     if (hits) {
 #define SH_HIT_NAME(n) #n,

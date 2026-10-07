@@ -62,6 +62,7 @@ typedef struct sh_node {
     char *name;             /* SH_FOR variable, SH_FUNC name */
     int has_in;             /* SH_FOR: an "in" list was given */
     sh_case *cases;
+    int line;               /* the line the command starts on (the text's first line is line0) */
 } sh_node;
 
 /* A parse: the tree and everything it points to live in one arena. */
@@ -74,6 +75,8 @@ typedef struct sh_parse {
 
 /* Parse a whole input (one or more lines). */
 void sh_parse_text(sh_parse *p, const char *text);
+/* the same with the text's first line numbered line0 (LINENO): a script read command by command */
+void sh_parse_text_at(sh_parse *p, const char *text, int line0);
 void sh_parse_free(sh_parse *p);
 
 /* The tree as an S-expression, for tests and `set -x`-style tracing:

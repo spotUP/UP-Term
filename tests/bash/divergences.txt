@@ -98,9 +98,4 @@ traps/traperr	later:V76	trap ERR
 traps/trapl	later:V78	trap -l
 traps/trapret	later:V77	trap RETURN
 traps/trapusr	later:V28,V78	trap USR1
-vars/bashv	later:V42	BASH_VERSION
-vars/funcname	later:V43	FUNCNAME
-vars/lastarg	later:V42	$_
-vars/lineno	later:V42	LINENO
-vars/random	later:V42	RANDOM
 builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings)

@@ -62,6 +62,12 @@ typedef struct sh_ctx {
     int allexport;          /* set -a: an assigned variable is exported */
     long *pstat;            /* PIPESTATUS: the last pipeline's stage statuses (owned) */
     int npstat;
+    /* a warning the store raises (a circular or too deep name reference); NULL: silent */
+    void (*warn)(struct sh_ctx *c, const char *name, const char *msg);
+    /* special variables (RANDOM, LINENO, FUNCNAME ...): refresh is called before a name is looked up,
+     * to bring the store's copy up to date; on_assign after a scalar assignment succeeded. NULL: none */
+    void (*refresh)(struct sh_ctx *c, const char *name);
+    void (*on_assign)(struct sh_ctx *c, const char *name, const char *value);
     void *user;
 } sh_ctx;
 

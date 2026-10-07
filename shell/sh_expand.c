@@ -49,14 +49,22 @@ static sh_var *find(const sh_ctx *c, const char *name)
     return 0;
 }
 
-/* The name a reference leads to (declare -n): at most 8 links. */
+/* The name a reference leads to (declare -n): at most 8 links. A chain that comes back to a name
+ * it has passed, or is longer than 8, gives "" (nothing: reads are empty, writes refused) and
+ * raises bash's warning. */
 static const char *resolve(const sh_ctx *c, const char *name)
 {
+    const char *start = name;
     int hop;
-    for (hop = 0; hop < 8; hop++) {
+    for (hop = 0; hop <= 8; hop++) {
         sh_var *v = find(c, name);
         if (!v || !(v->attr & SH_ATTR_NAMEREF) || !v->sv || !*v->sv)
-            break;
+            return name;
+        if (hop == 8 || !strcmp(v->sv, start) || !strcmp(v->sv, name)) {
+            if (c->warn)
+                ((sh_ctx *)c)->warn((sh_ctx *)c, start, hop == 8 ? "maximum nameref depth (8) exceeded" : "circular name reference");
+            return "";
+        }
         name = v->sv;
     }
     return name;
@@ -74,6 +82,8 @@ const char *sh_resolve(const sh_ctx *c, const char *name)
 
 sh_var *sh_lookup(const sh_ctx *c, const char *name)
 {
+    if (c->refresh)
+        c->refresh((sh_ctx *)c, name);
     return find(c, resolve(c, name));
 }
 
@@ -305,6 +315,8 @@ int sh_assign(sh_ctx *c, const char *name, const char *sub, const char *value, i
     sh_var *v;
     char **slot, *nv;
     name = resolve(c, name);
+    if (!*name)
+        return 1;
     v = find(c, name);
     if (v && (v->attr & SH_ATTR_READONLY))
         return 1;
@@ -351,6 +363,8 @@ int sh_assign(sh_ctx *c, const char *name, const char *sub, const char *value, i
     *slot = nv;
     if (c->allexport)
         v->attr |= SH_ATTR_EXPORT;
+    if (c->on_assign && !sub)
+        c->on_assign(c, name, value);
     return 0;
 }
 
@@ -399,6 +413,8 @@ int sh_array_reset(sh_ctx *c, const char *name, int assoc)
 {
     sh_var *v;
     name = resolve(c, name);
+    if (!*name)
+        return 1;
     v = find(c, name);
     if (v && (v->attr & SH_ATTR_READONLY))
         return 1;

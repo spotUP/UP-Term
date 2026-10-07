@@ -55,6 +55,10 @@ typedef struct sh_stat {
 /* signals 1..31 as ixemul (BSD) numbers them; index 0 of the trap table is EXIT */
 #define SH_NSIG 32
 
+#define SH_ID_PPID 0
+#define SH_ID_UID  1
+#define SH_ID_EUID 2
+
 typedef struct sh_os {
     sh_fh (*open)(void *os, const char *path, int mode);
     void  (*close)(void *os, sh_fh fh);
@@ -108,15 +112,27 @@ typedef struct sh_os {
     int   (*ready)(void *os, sh_fh fh, long ms);
     /* read -s: terminal echo off (0) or on (1) for fh; 0 in the table: no effect */
     void  (*echo)(void *os, sh_fh fh, int on);
+    /* the time of day: seconds since 1970 and, in *usec, the microseconds (SECONDS, EPOCHSECONDS,
+     * EPOCHREALTIME, the RANDOM seed); 0 in the table: always 0 */
+    long  (*now)(void *os, long *usec);
+    /* PPID, UID, EUID: what is SH_ID_*; 0 in the table: 0 */
+    long  (*sysid)(void *os, int what);
     void *data;
 } sh_os;
 
 typedef struct sh_func {
     char *name;
+    char *src;             /* the file it was defined in (BASH_SOURCE) */
     sh_parse body;         /* its own copy of the body (body.tree) */
     int busy;              /* running: a redefinition retires the old body */
     struct sh_func *next;
 } sh_func;
+
+/* One level of the call stack: a function call or a sourced file (FUNCNAME, BASH_SOURCE, BASH_LINENO) */
+typedef struct sh_frame {
+    char *name, *src;      /* the function (or "source") and the file its code is in */
+    long line;             /* the line it was called from */
+} sh_frame;
 
 typedef struct sh_retired {
     sh_parse p;            /* a function body replaced while it ran */
@@ -181,6 +197,17 @@ typedef struct sh_shell {
     int umask;             /* the umask builtin's mask (default 022) */
     int optpos;            /* getopts: the next character inside a cluster (-abc), 0 = at an argument */
     long optind_seen;      /* the OPTIND getopts left, to notice a script resetting it */
+    long lineno;           /* LINENO: the line of the command running */
+    sh_frame *frames;      /* the call stack, innermost last */
+    int nframes, capframes;
+    const char *main_src;  /* the script file (BASH_SOURCE of the bottom frame); 0: -c, stdin, interactive */
+    int main_run;          /* the script file has been started (the driver runs it as `source "$0"`) */
+    const char *cur_src;   /* the file whose commands run now: new functions record it */
+    unsigned long rseed, srnd; /* RANDOM and SRANDOM generators */
+    long last_rand;
+    int seeded;
+    long secs0;            /* the time SECONDS counts from */
+    int special_busy;      /* the store is being brought up to date (no recursion) */
 } sh_shell;
 
 /* What the command line asked for (sh_invoke). */
