@@ -232,6 +232,12 @@ void sh_shell_init(sh_shell *sh)
     memset(sh->jobs, 0, sizeof(sh->jobs));
     memset(sh->job_text, 0, sizeof(sh->job_text));
     memset(sh->job_stopped, 0, sizeof(sh->job_stopped));
+    memset(sh->job_seq, 0, sizeof(sh->job_seq));
+    memset(sh->job_foreign, 0, sizeof(sh->job_foreign));
+    memset(sh->job_nohup, 0, sizeof(sh->job_nohup));
+    sh->job_seqno = 0;
+    sh->dirstk = 0;
+    sh->ndirstk = 0;
     sh->warned_stopped = 0;
     sh->retired = 0;
     sh->intr = 0;
@@ -329,6 +335,9 @@ void sh_shell_free(sh_shell *sh)
     }
     for (i = 0; i < 32; i++)
         free(sh->job_text[i]);
+    for (i = 0; i < sh->ndirstk; i++)
+        free(sh->dirstk[i]);
+    free(sh->dirstk);
     for (i = 0; i < SH_NTRAP; i++)
         free(sh->traps[i]);
     while (sh->n_locals > 0) /* a shell ended inside a function: the values go with it */
@@ -377,6 +386,11 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
             c->job_foreign[i] = 1;
         }
     c->job_seqno = sh->job_seqno;
+    if (sh->ndirstk && (c->dirstk = (char **)malloc((size_t)sh->ndirstk * sizeof(char *)))) { /* the directory stack is inherited */
+        for (i = 0; i < sh->ndirstk; i++)
+            c->dirstk[i] = sdup(sh->dirstk[i]);
+        c->ndirstk = sh->ndirstk;
+    }
     c->umask = sh->umask;  /* traps are not inherited (POSIX); set -E and -T hand the ERR, DEBUG and RETURN ones on */
     c->opts |= sh->opts & (SO_ERRTRACE | SO_FUNCTRACE);
     if ((sh->opts & SO_ERRTRACE) && sh->traps[TRAP_ERR])
@@ -4084,6 +4098,204 @@ static long b_getopts(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_umask(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_let(sh_shell *sh, int argc, char **argv, const sh_io *io);
 
+/* ---- pushd, popd, dirs ----------------------------------------------------------- */
+
+/* the directory list as dirs prints it: [0] is the current directory, then the stack, top first */
+static void dirs_print(sh_shell *sh, const sh_io *io, int full, int perline, int verbose)
+{
+    char *cwd = sh->os.cwd(sh->os.data);
+    const char *home = sh_get(&sh->ctx, "HOME");
+    int i;
+    for (i = 0; i <= sh->ndirstk; i++) {
+        const char *d = i ? sh->dirstk[i - 1] : cwd;
+        pbuf b = { 0, 0, 0 };
+        char nb[16];
+        if (!full && home && *home && !strncmp(d, home, strlen(home)) && (!d[strlen(home)] || d[strlen(home)] == '/')) {
+            pb_str(&b, "~");
+            pb_str(&b, d + strlen(home));
+        } else
+            pb_str(&b, d);
+        if (verbose) {
+            num(nb, i);
+            sayl(sh, io->out, i < 10 ? " " : "", nb, "  ", b.s ? b.s : "", "\n", NULL);
+        } else
+            sayl(sh, io->out, i && !perline ? " " : "", b.s ? b.s : "", perline ? "\n" : (i == sh->ndirstk ? "\n" : ""), NULL);
+        free(b.s);
+    }
+    free(cwd);
+}
+
+static int dirs_arg(sh_shell *sh, const sh_io *io, const char *cmd, const char *a, int *n)
+{
+    int k = atoi(a + 1);
+    if ((a[0] != '+' && a[0] != '-') || a[1] < '0' || a[1] > '9') {
+        err2(sh, io, cmd, "invalid argument");
+        return 1;
+    }
+    if (a[0] == '-')
+        k = sh->ndirstk - k;
+    if (k < 0 || k > sh->ndirstk) {
+        sayl(sh, io->err, "vsh: ", cmd, ": ", a, ": directory stack index out of range\n", NULL);
+        return 1;
+    }
+    *n = k;
+    return 0;
+}
+
+static long b_dirs(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int i, full = 0, perline = 0, verbose = 0;
+    for (i = 1; i < argc && argv[i][0] == '-' && argv[i][1]; i++) {
+        const char *p;
+        for (p = argv[i] + 1; *p; p++) {
+            if (*p == 'c') {
+                for (; sh->ndirstk > 0; sh->ndirstk--)
+                    free(sh->dirstk[sh->ndirstk - 1]);
+                return 0;
+            } else if (*p == 'l') full = 1;
+            else if (*p == 'p') perline = 1;
+            else if (*p == 'v') verbose = 1;
+            else {
+                err2(sh, io, "dirs", "invalid option");
+                return 2;
+            }
+        }
+    }
+    dirs_print(sh, io, full, perline, verbose);
+    return 0;
+}
+
+static long b_pushd(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int i, nocd = 0, n;
+    const char *arg = 0;
+    char *cwd;
+    char *cdargv[3];
+    for (i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-n")) nocd = 1;
+        else arg = argv[i];
+    }
+    cwd = sh->os.cwd(sh->os.data);
+    if (arg && (arg[0] == '+' || arg[0] == '-') && arg[1] >= '0' && arg[1] <= '9') {
+        /* rotate: element n becomes the current directory */
+        char **all;
+        int tot = sh->ndirstk + 1, k;
+        if (dirs_arg(sh, io, "pushd", arg, &n)) {
+            free(cwd);
+            return 1;
+        }
+        all = (char **)malloc((size_t)tot * sizeof(char *));
+        if (!all) {
+            free(cwd);
+            return 1;
+        }
+        all[0] = cwd;
+        for (k = 1; k < tot; k++)
+            all[k] = sh->dirstk[k - 1];
+        cdargv[0] = (char *)"cd";
+        cdargv[1] = all[n];
+        cdargv[2] = 0;
+        if (n && !nocd && b_cd(sh, 2, cdargv, io)) {
+            free(all);
+            free(cwd);
+            return 1;
+        }
+        {
+            char **rot = (char **)malloc((size_t)tot * sizeof(char *));
+            if (!rot) {
+                free(all);
+                free(cwd);
+                return 1;
+            }
+            for (k = 0; k < tot; k++)
+                rot[k] = all[(k + n) % tot];
+            /* rot[0] is the new current directory: its text goes, the others become the stack */
+            free(rot[0]);
+            for (k = 1; k < tot; k++)
+                sh->dirstk[k - 1] = rot[k];
+            free(rot);
+        }
+        free(all);
+        dirs_print(sh, io, 0, 0, 0);
+        return 0;
+    }
+    if (!arg) {
+        if (!sh->ndirstk) {
+            err2(sh, io, "pushd", "no other directory");
+            free(cwd);
+            return 1;
+        }
+        cdargv[0] = (char *)"cd";
+        cdargv[1] = sh->dirstk[0];
+        cdargv[2] = 0;
+        if (!nocd && b_cd(sh, 2, cdargv, io)) {
+            free(cwd);
+            return 1;
+        }
+        free(sh->dirstk[0]);
+        sh->dirstk[0] = cwd;
+        dirs_print(sh, io, 0, 0, 0);
+        return 0;
+    }
+    cdargv[0] = (char *)"cd";
+    cdargv[1] = (char *)arg;
+    cdargv[2] = 0;
+    if (!nocd && b_cd(sh, 2, cdargv, io)) {
+        free(cwd);
+        return 1;
+    }
+    {
+        char **ns = (char **)realloc(sh->dirstk, (size_t)(sh->ndirstk + 1) * sizeof(char *));
+        if (!ns) {
+            free(cwd);
+            return 1;
+        }
+        sh->dirstk = ns;
+        memmove(ns + 1, ns, (size_t)sh->ndirstk * sizeof(char *));
+        if (nocd) { /* pushd -n: the directory joins the stack, the current one stays */
+            ns[0] = sdup(arg);
+            free(cwd);
+        } else
+            ns[0] = cwd;
+        sh->ndirstk++;
+    }
+    dirs_print(sh, io, 0, 0, 0);
+    return 0;
+}
+
+static long b_popd(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int i, nocd = 0, n = 0, have = 0;
+    for (i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-n")) nocd = 1;
+        else {
+            if (dirs_arg(sh, io, "popd", argv[i], &n))
+                return 1;
+            have = 1;
+        }
+    }
+    if (!sh->ndirstk) {
+        err2(sh, io, "popd", "directory stack empty");
+        return 1;
+    }
+    if (n == 0 && !nocd) {
+        char *cdargv[3];
+        cdargv[0] = (char *)"cd";
+        cdargv[1] = sh->dirstk[0];
+        cdargv[2] = 0;
+        if (b_cd(sh, 2, cdargv, io))
+            return 1;
+        n = 1;
+    } else if (n == 0)
+        n = 1;
+    (void)have;
+    free(sh->dirstk[n - 1]);
+    memmove(sh->dirstk + n - 1, sh->dirstk + n, (size_t)(sh->ndirstk - n) * sizeof(char *));
+    sh->ndirstk--;
+    dirs_print(sh, io, 0, 0, 0);
+    return 0;
+}
+
 static const struct {
     const char *name;
     builtin_fn fn;
@@ -4094,7 +4306,7 @@ static const struct {
     { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "return", b_return },
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
-    { "wait", b_wait }, { "disown", b_disown }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
+    { "wait", b_wait }, { "disown", b_disown }, { "pushd", b_pushd }, { "popd", b_popd }, { "dirs", b_dirs }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
     { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "shopt", b_shopt }, { "local", b_local },
     { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },

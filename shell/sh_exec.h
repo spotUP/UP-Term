@@ -204,6 +204,8 @@ typedef struct sh_shell {
     long job_seq[32];      /* when the job was added or last stopped: the newest is the current job (%+) */
     long job_seqno;
     char job_foreign[32];  /* a clone's copy of its parent's job: listed by jobs, never waited for */
+    char **dirstk;         /* pushd/popd: the directories under the current one, top first */
+    int ndirstk;
     char job_nohup[32];    /* disown -h: kept in the table */
     int warned_stopped;    /* exit said once that jobs are stopped */
     sh_retired *retired;   /* freed with the shell */

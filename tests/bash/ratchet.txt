@@ -333,6 +333,7 @@ builtins/printf_q
 builtins/printf_star
 builtins/printf_v
 builtins/printf_vq
+builtins/pushd_popd_dirs
 builtins/pwdP
 builtins/read_N
 builtins/read_badopt
