@@ -2580,6 +2580,8 @@ static void job_line_l(sh_shell *sh, sh_fh fh, int i, const char *state, long st
     sayl(sh, fh, "[", n, "]", i == cur ? "+" : i == prev ? "-" : " ", " ", NULL);
     if (longfmt) {
         num(n, sh->jobs[i]);
+        for (k = (int)strlen(n); k < 5; k++) /* bash prints the pid as %5ld */
+            say(sh, fh, " ");
         sayl(sh, fh, n, " ", NULL);
     } else
         say(sh, fh, " ");
