@@ -5108,6 +5108,14 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io);
 
+/* bash expands an alias only for a command word written literally and unquoted: a word that comes out of
+ * a quote, a backslash, $ or a back quote is never one. The parser keeps the word as written, so the
+ * test is on its text. */
+static int alias_word_literal(const char *w)
+{
+    return w && *w && !strpbrk(w, "'\"\\$`");
+}
+
 /* Alias expansion of the first word: its value's words go in front. */
 static void apply_alias(sh_shell *sh, sh_list *argv)
 {
@@ -5949,7 +5957,8 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         sh_list_free(&argv);
         return sh->subst_ran ? sh->subst_status : 0;
     }
-    apply_alias(sh, &argv);
+    if (alias_word_literal(n->words->text))
+        apply_alias(sh, &argv);
     if (sh->opts & SO_XTRACE) {
         const sh_word *xa;
         for (xa = n->assigns; xa; xa = xa->next)
