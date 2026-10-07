@@ -14,7 +14,8 @@
  * take Latin-1 bytes (ixemul programs) or CP437 (programs drawing for an
  * IBM font, like BitchX) instead of UTF-8, FONT name/size.
  *
- * Built without a C startup: `handler_entry` must stay the first function.
+ * Built without a C startup: handler/handler_start.s, linked first, jumps
+ * to `handler_entry`, so the order of functions here does not matter.
  */
 #include <exec/types.h>
 #include <exec/memory.h>
@@ -86,7 +87,7 @@ struct Device *TimerBase; /* for ReadEClock in the debug profile */
 
 static LONG handler_main(void);
 
-/* The entry point: first code in the hunk. */
+/* The entry point (handler_start.s jumps here). */
 LONG handler_entry(void)
 {
     SysBase = *(struct ExecBase **)4L;
