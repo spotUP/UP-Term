@@ -44,8 +44,14 @@ Assign UP-Term: "$updest"
 If NOT EXISTS S:User-Startup
   Echo >S:User-Startup ""
 EndIf
-; an exact line: a block that names another drawer (an Install over an
-; Install with a different DEST) is not ours to rewrite here
+; An exact line first: the same drawer again (an Install over an Install)
+; changes nothing. A marked block that names another drawer (an Install over
+; an Install with a different DEST) is rewritten to this one by reassign.sh
+; (vsh, from the earlier Install: the block keeps its place before the blocks
+; that use it, every other line stays byte for byte); the assign moved
+; already, above. S:User-Startup.before-UP-Term is the file as it was before
+; any UP-Term block, made once: it is never made from a file that holds our
+; block (here: only when no block is in it yet).
 Search >NIL: S:User-Startup "Assign UP-Term: *"$updest*""
 If WARN
   Search >NIL: S:User-Startup ";BEGIN UP-Term assign"
@@ -57,7 +63,21 @@ If WARN
     Echo >>S:User-Startup "Assign UP-Term: *"$updest*""
     Echo >>S:User-Startup ";END UP-Term assign"
   Else
-    Echo "UP-Term: S:User-Startup assigns UP-Term: to another drawer: run Uninstall first, or edit that line."
+    Delete >NIL: ENV:upold T:User-Startup.up-term QUIET
+    C:vsh reassign.sh "$updest"
+    If EXISTS T:User-Startup.up-term
+      Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+      Delete >NIL: T:User-Startup.up-term QUIET
+      Echo "UP-Term: S:User-Startup now assigns UP-Term: to $updest (it named another drawer)."
+      If EXISTS ENV:upold
+        If EXISTS "$upold"
+          Echo "UP-Term: old drawer $upold is left in place: delete it or run Uninstall of that kit first."
+        EndIf
+        Delete >NIL: ENV:upold QUIET
+      EndIf
+    Else
+      Echo "UP-Term: cannot rewrite the UP-Term: block in S:User-Startup (C:vsh is missing): edit its Assign line to $updest."
+    EndIf
   EndIf
 EndIf
 Copy vtcon-handler L: CLONE
@@ -299,6 +319,14 @@ EndIf
 ; boot by a marked block in S:User-Startup (Uninstall takes it out, its
 ; marker says Install made it). An existing GG: is left as it is.
 Copy vsh UP-Term:bin/sh CLONE
+Assign >NIL: GG: EXISTS
+If NOT WARN
+  ; an Install over an Install with another DEST: a GG: that is ours (its
+  ; marker) was assigned to the old drawer, and follows UP-Term: now
+  If EXISTS ENVARC:up-term/gg
+    Assign GG: UP-Term:
+  EndIf
+EndIf
 Assign >NIL: GG: EXISTS
 If WARN
   Assign GG: UP-Term:

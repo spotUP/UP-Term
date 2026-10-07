@@ -8,9 +8,11 @@ dist` first.
 
 Two passes: the default drawer (SYS:UP-Term) and a non-default one
 (DEST=VTC:Apps/UP-Term); both reach the files through the assign UP-Term:.
-  install_rig.py              both passes
+  install_rig.py              all three passes
   install_rig.py --default    the default drawer only
-  install_rig.py --dest       the non-default drawer only"""
+  install_rig.py --dest       the non-default drawer only
+  install_rig.py --move       a third pass: Install into the default drawer, then
+                              again with DEST=VTC:Apps/UP-Term (the assign moves)"""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
@@ -23,6 +25,30 @@ def run(cmd, timeout=60):
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'), timeout + 30)
     return struct.unpack('>I', b[:4])[0], b[4:].decode('latin-1')
 
+def run_long(script, timeout=1500):
+    """Execute VTC:<script>, however long it takes, as run() returns it. The
+    agent gives a command 120 s and then answers ERR "still running", leaving it
+    running (its output is lost then: a script that finishes inside the 120 s
+    returns its output, one that does not returns '' and its return code).
+    The script runs inside a wrapper that writes its return code to
+    VTC:longdone, and this waits for that file."""
+    (VTC / "longdone").unlink(missing_ok=True)
+    (VTC / "longwrap").write_text("Execute VTC:%s\nEcho >VTC:longdone \"$RC\"\n" % script)
+    out = ''
+    try:
+        out = ami.req(0x02, struct.pack('>H', 120) + b'Execute VTC:longwrap', 150)[4:].decode('latin-1')
+    except SystemExit as e:
+        if 'still running' not in str(e):
+            raise
+    end = time.time() + timeout
+    while not (VTC / "longdone").exists():
+        if time.time() > end:
+            return 1, 'run_long: %s did not finish in %d s' % (script, timeout)
+        time.sleep(3)
+    time.sleep(1)
+    rc = (VTC / "longdone").read_text(errors='replace').strip()
+    return (int(rc) if rc.isdigit() else 0), out
+
 passed = total = 0
 def check(ok, what, seen=''):
     global passed, total
@@ -34,11 +60,8 @@ def lib_state():
     rc, out = run('List LIBS:(ixemul|ixnet).library#? LFORMAT "%N %L"')
     return dict(l.split() for l in out.splitlines() if l.strip())
 
-def main(dest=None):
-    """One pass: dest None = the default drawer, else Install is given DEST=<dest>."""
-    global passed, total
-    passed = total = 0
-    drawer = dest or "SYS:UP-Term"   # where the files must land
+def prepare(dest):
+    """The kit unpacked into VTC:distkit, the helper programs and the run scripts beside it, LIBS: as the rig boots it."""
     destarg = (" DEST=%s" % dest) if dest else ""
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
     shutil.copytree(ROOT / "build/dist/UP-Term", VTC / "distkit")
@@ -53,9 +76,16 @@ def main(dest=None):
     # and Install would then replace and keep the copy there)
     run('Assign LIBS: DH0:Libs')
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
+
+def main(dest=None):
+    """One pass: dest None = the default drawer, else Install is given DEST=<dest>."""
+    global passed, total
+    passed = total = 0
+    drawer = dest or "SYS:UP-Term"   # where the files must land
+    prepare(dest)
     rc, terminfo_before = run('GetEnv TERMINFO')  # the rig's boot sets /VTC/terminfo
     terminfo_before = terminfo_before.strip()
-    run('Execute VTC:rununinstall', 900)  # a run that stopped half-way left things behind
+    run_long('rununinstall')  # a run that stopped half-way left things behind
     startup_before = run('Type S:User-Startup')[1]
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
     run('Delete >NIL: ENVARC:Claude/remote QUIET')  # an earlier run's remote (Install keeps one)
@@ -76,7 +106,7 @@ def main(dest=None):
           'before: the original ixemul, no .orig', str(before))
     ixnet_before = before.get('ixnet.library')  # the rig's own (Install keeps it as .orig)
     check(ixnet_before and 'ixnet.library.orig' not in before, 'before: an ixnet, no .orig', str(before))
-    rc, out = run('Execute VTC:runinstall', 900)
+    rc, out = run_long('runinstall')
     check(rc == 0 and 'Unknown command' not in out, 'Install runs (no line taken for a command)', out)
     # UP-Term: (UPTERM-ASSIGN): the drawer is where Install was told, reached
     # through the assign, and at every boot (a block before the others)
@@ -122,7 +152,7 @@ def main(dest=None):
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term device"')[0] != 0,
           'Install NODEVICE writes no device block', '')
     # a second Install must not take ours for theirs; this one says yes to CON:
-    rc, out = run('Execute VTC:runinstallcon', 1500)
+    rc, out = run_long('runinstallcon')
     check(rc == 0 and 'Unknown command' not in out, 'Install CONSOLE again over it runs', out)
     # PYTHON, NVIM: both run from where Install put them; Python3: is assigned
     # now and at boot (W49)
@@ -250,7 +280,7 @@ def main(dest=None):
     tree = ami.req(0x0D).decode('latin-1')
     check(not any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
           'exit in it closes the window')
-    rc, out = run('Execute VTC:rununinstall', 900)
+    rc, out = run_long('rununinstall')
     check(rc == 0, 'Uninstall runs', out)
     rc, out = run('VTC:iconprobe SYS:System/Shell')
     check(out == shell_before, 'after Uninstall: the Shell icon as it was', '%r vs %r' % (out, shell_before))
@@ -293,6 +323,104 @@ def main(dest=None):
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 
+OLD = "SYS:UP-Term"
+NEW = "VTC:Apps/UP-Term"
+
+def move():
+    """Install into the default drawer, Install again with DEST=NEW. Checked:
+    the assign now and the one Assign line in S:User-Startup name NEW; exactly
+    one marked UP-Term: block, still before the GG: block; a user's own line
+    kept; the message names the old drawer, which stays; the same DEST again
+    changes nothing and says nothing; Uninstall gives S:User-Startup back
+    byte for byte (and the backup .before-UP-Term is that same file, never made
+    from a file that held our block). Not verified: reboot (the assign is
+    checked as the block's line would run it, not by booting)."""
+    global passed, total
+    passed = total = 0
+    prepare(None)
+    (VTC / "Apps").mkdir(exist_ok=True)
+    (VTC / "runinstall_old").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE\n")
+    (VTC / "runinstall_new").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files DEST=%s NOCONSOLE NODEVICE\n" % NEW)
+    run_long('rununinstall')
+    run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote S:User-Startup.before-UP-Term QUIET')
+    run('Delete >NIL: "%s" ALL QUIET' % OLD)
+    rig_gg = run('Assign >NIL: GG: EXISTS')[0] == 0
+    if rig_gg:
+        run('Assign GG:')
+    # the user's own lines, one before and one after where our blocks go
+    run('Echo >>S:User-Startup "; user line, kept"')
+    startup_before = run('Type S:User-Startup')[1]
+    rc, out = run_long('runinstall_old')
+    check(rc == 0 and 'Unknown command' not in out, 'move: Install into %s runs' % OLD, out)
+    rc, aout = run('Assign LIST')
+    al = [l for l in aout.splitlines() if l.lower().startswith('up-term')]
+    check(al and al[0].split(None, 1)[-1].strip().lower().endswith('up-term') and 'apps' not in al[0].lower(),
+          'move: UP-Term: is assigned to %s first' % OLD, aout)
+    backup = run('Type S:User-Startup.before-UP-Term')[1]
+    check(backup == startup_before, 'move: S:User-Startup.before-UP-Term is the file as it was', backup[-100:])
+    rc, out = run_long('runinstall_new')
+    check(rc == 0 and 'Unknown command' not in out, 'move: Install again with DEST=%s runs' % NEW, out)
+    check('S:User-Startup now assigns UP-Term: to %s' % NEW in out, 'move: Install says the block moved', out)
+    check(('old drawer %s is left in place: delete it or run Uninstall of that kit first' % OLD) in out,
+          'move: the message names the old drawer and what to do', out)
+    rc, aout = run('Assign LIST')
+    al = [l for l in aout.splitlines() if l.lower().startswith('up-term')]
+    check(len(al) == 1 and al[0].split(None, 1)[-1].strip().lower().endswith('apps/up-term'),
+          'move: UP-Term: points to %s now' % NEW, aout)
+    check(run('List >NIL: UP-Term:VERSIONS')[0] == 0 and run('List >NIL: "%s/VERSIONS"' % NEW)[0] == 0 and
+          run('List >NIL: UP-Term:bin/sh')[0] == 0, 'move: the files are in %s, reached as UP-Term:' % NEW, '')
+    check(run('List >NIL: "%s/VERSIONS"' % OLD)[0] == 0, 'move: the old drawer %s is left in place' % OLD, '')
+    rc, out = run('Search S:User-Startup ";BEGIN UP-Term assign"')
+    n_begin = len([l for l in out.splitlines() if ';BEGIN UP-Term assign' in l])
+    rc, out2 = run('Search S:User-Startup "Assign UP-Term:"')
+    lines = [l for l in out2.splitlines() if 'Assign UP-Term:' in l]
+    check(n_begin == 1 and len(lines) == 1, 'move: exactly one UP-Term: block and one Assign UP-Term: line', out + out2)
+    check(len(lines) == 1 and 'Apps/UP-Term' in lines[0].replace('apps/up-term', 'Apps/UP-Term') and OLD not in lines[0].upper().replace('UP-TERM', 'UP-Term'),
+          'move: that line names %s, not %s' % (NEW, OLD), out2)
+    rc, startup_moved = run('Type S:User-Startup')
+    i_as, i_gg = startup_moved.find('Assign UP-Term:'), startup_moved.find('Assign GG:')
+    check(i_as >= 0 and i_gg > i_as and '; user line, kept' in startup_moved,
+          'move: the block kept its place before the GG: block, the user line is still there', startup_moved[-300:])
+    check(run('Type S:User-Startup.before-UP-Term')[1] == startup_before,
+          'move: the backup .before-UP-Term is still the file as it was (not made from our block)', '')
+    rc, aout = run('Assign LIST')
+    gg = [l for l in aout.splitlines() if l.lower().startswith('gg ')]
+    check(gg and gg[0].lower().rstrip().endswith('apps/up-term'),
+          'move: GG: (ours) follows UP-Term: to %s' % NEW, aout)
+    # the block's own line, as a boot runs it
+    run('Assign UP-Term:')
+    line = [l for l in startup_moved.splitlines() if l.startswith('Assign UP-Term:')][0]
+    (VTC / "upline").write_text(line + "\n")   # the block's own line ...
+    run('Execute VTC:upline', 30)   # ... run as a boot runs it
+    rc, aout = run('Assign LIST')
+    al = [l for l in aout.splitlines() if l.lower().startswith('up-term')]
+    check(al and al[0].lower().rstrip().endswith('apps/up-term') and run('List >NIL: UP-Term:bin/sh')[0] == 0,
+          'move: the Assign line of the block, run as a boot runs it, assigns UP-Term: to %s' % NEW, aout)
+    # the same DEST again: nothing changes, nothing is said
+    rc, out = run_long('runinstall_new')
+    check(rc == 0 and 'left in place' not in out and 'now assigns' not in out,
+          'move: the same DEST again says nothing about the block', out)
+    check(run('Type S:User-Startup')[1] == startup_moved, 'move: the same DEST again leaves S:User-Startup byte for byte', '')
+    rc, out = run_long('rununinstall')
+    check(rc == 0, 'move: Uninstall runs', out)
+    check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'move: after Uninstall no UP-Term: assign', '')
+    check(run('List >NIL: "%s"' % NEW)[0] != 0, 'move: after Uninstall %s is gone' % NEW, '')
+    rc, out = run('Type S:User-Startup')
+    check(out == startup_before, 'move: after Uninstall S:User-Startup as it was, byte for byte (user line kept)',
+          'differs: %r vs %r' % (out[-100:], startup_before[-100:]))
+    check(run('List >NIL: "%s/VERSIONS"' % OLD)[0] == 0,
+          'move: Uninstall of the new kit leaves the old drawer %s (the message said so)' % OLD, '')
+    run('Delete >NIL: "%s" ALL QUIET' % OLD)   # the test's own clean-up of the left drawer
+    run('Delete >NIL: ENVARC:UP-Term.prefs S:User-Startup.before-UP-Term QUIET')
+    if rig_gg:
+        run('Assign GG: VTC:gg')
+    import rig
+    run('Avail >NIL: FLUSH')
+    for line in rig.RIG_LIBS:
+        run(line)
+    print('install_rig: passed %d of %d' % (passed, total))
+    return 0 if passed == total else 1
+
 if __name__ == '__main__':
     args = sys.argv[1:]
     rc = 0
@@ -302,4 +430,7 @@ if __name__ == '__main__':
     if not args or '--dest' in args:
         print('install_rig: pass 2, a non-default drawer (VTC:Apps/UP-Term)')
         rc |= main('VTC:Apps/UP-Term')
+    if not args or '--move' in args:
+        print('install_rig: pass 3, Install over an Install with another DEST (%s then %s)' % (OLD, NEW))
+        rc |= move()
     sys.exit(rc)
