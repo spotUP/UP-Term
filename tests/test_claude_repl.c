@@ -15,6 +15,8 @@
 #include <time.h>
 #include "harness.h"
 #include "claude_load.h"
+#include "../claude/setup.h"
+#include "../claude/cli.h"
 #include "../claude/repl.h"
 #include "../claude/repl_int.h"
 #include "../claude/tasks.h"
@@ -45,14 +47,18 @@ typedef struct stub {
 
 static stub sb;
 
+static int open_fail;                   /* the setup wizard's connect test fails */
+static const char *open_host;
+static int open_port;
+
 static int s_open(void *u, const char *host, int port, int tls)
 {
     (void)u;
-    (void)host;
-    (void)port;
     (void)tls;
     sb.opens++;
-    return 0;
+    open_host = host;
+    open_port = port;
+    return open_fail ? NET_ERROR : 0;
 }
 
 static long s_send(void *u, const char *b, long n)
@@ -115,7 +121,7 @@ static void s_close(void *u)
 static const char *s_err(void *u)
 {
     (void)u;
-    return "stub";
+    return open_fail ? "cannot connect to host: connection refused (ECONNREFUSED): nothing listens on that port" : "stub";
 }
 
 static void add_sse(const char *sse, long n);
@@ -2078,6 +2084,205 @@ static void test_wp4_apply(void)
     repl_free(&r);
 }
 
+
+/* ---- the setup wizard (CLAUDE-SETUP-WIZARD) ---- */
+
+static void setup_done_mark(int on)
+{
+    char p[700];
+    strcpy(p, dir);
+    strcat(p, "/home/setup-done");
+    if (on) {
+        FILE *f = fopen(p, "wb");
+        if (f) {
+            fputs("x\n", f);
+            fclose(f);
+        }
+    } else
+        remove(p);
+}
+
+static void unlink_home(const char *name)
+{
+    char p[700];
+    strcpy(p, dir);
+    strcat(p, "/home/");
+    strcat(p, name);
+    remove(p);
+}
+
+static int home_has(const char *name)
+{
+    char p[700];
+    strcpy(p, dir);
+    strcat(p, "/home/");
+    strcat(p, name);
+    return sys.kind(sys.u, p) == 1;
+}
+
+/* the whole wizard through the REPL's own start (repl_run): the entry point */
+static void test_setup_reach(void)
+{
+    static const char *remote_script[] = { "1", "192.168.0.198 2323", "n", "/exit", 0 };
+    static cl_repl r;
+    char *t = 0;
+    long n = 0, port = 0;
+    char host[100];
+    char p[700];
+
+    /* first start: no key, no remote, no marker: the wizard comes up in place of /login */
+    setup_done_mark(0);
+    unlink_home("remote");
+    setup_key = "";
+    setup(&r, remote_script);
+    setup_key = "test-key-not-real";
+    CHECK_INT(setup_due(&r), 1);
+    repl_run(&r);
+    CHECK(strstr(cn.screen.p, "Setup, step 1 of 4") != 0);
+    CHECK(strstr(cn.screen.p, "uptelnetd") != 0);                   /* explained */
+    CHECK(strstr(cn.screen.p, "[OK] Connect to the computer: 192.168.0.198 port 2323") != 0);
+    CHECK(strstr(cn.screen.p, "Paste the API key") == 0);           /* not /login's page */
+    CHECK_INT(sb.opens, 1);                                         /* the sentinel: the connect test ran */
+    CHECK_STR(open_host, "192.168.0.198");
+    CHECK_INT(open_port, 2323);
+    CHECK(strstr(cn.screen.p, "github.com/thomas-luebker") == 0);     /* n: the optional page skipped */
+    CHECK(strstr(cn.screen.p, "Setup, step 4 of 4: done.") != 0);
+    CHECK(home_has("remote") && home_has("setup-done"));
+    strcpy(p, dir);
+    strcat(p, "/home/remote");
+    CHECK_INT(sys.read(sys.u, p, 511, &t, &n), 0);
+    CHECK_INT(cli_remote_parse(t, host, sizeof(host), &port), 1);   /* the format main_amiga.c reads */
+    CHECK_STR(host, "192.168.0.198");
+    CHECK_INT(port, 2323);
+    CHECK(strncmp(t, "; Claude Code on another computer", 33) == 0);
+    free(t);
+    CHECK_INT(setup_due(&r), 0);                                    /* the marker and the file are there */
+    repl_free(&r);
+}
+
+static void test_setup_steps(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char text[512];
+
+    /* the writer: two comment lines, then host port; refuses what the reader would */
+    CHECK_INT(setup_remote_text("nas", 2399, text, sizeof(text)), 0);
+    CHECK_STR(text, "; Claude Code on another computer: host and port. With no API key,\n"
+                    "; plain Claude connects there (uptelnet). Delete this file to stop.\nnas 2399\n");
+    CHECK_INT(setup_remote_text("nas", 2399, text, 20), -1);
+
+    /* remote, the computer does not answer: named error, and the file waits for the answer */
+    setup_done_mark(0);
+    unlink_home("remote");
+    setup(&r, none);
+    open_fail = 1;
+    setup_begin(&r);
+    CHECK_INT(r.wiz.step, SETUP_MODE);
+    repl_line(&r, "4");
+    CHECK_INT(r.wiz.step, SETUP_MODE);                              /* not a choice */
+    repl_line(&r, "1");
+    CHECK_INT(r.wiz.step, SETUP_HOST);
+    repl_line(&r, "nas.local 70000");
+    CHECK_INT(r.wiz.step, SETUP_HOST);
+    repl_line(&r, "nas.local 2399");
+    CHECK_INT(r.wiz.step, SETUP_KEEP);
+    CHECK(strstr(cn.screen.p, "[FAIL] Connect to the computer: cannot connect to host: connection refused (ECONNREFUSED)") != 0);
+    CHECK_INT(home_has("remote"), 0);
+    repl_line(&r, "n");                                             /* asked for the address again */
+    CHECK_INT(r.wiz.step, SETUP_HOST);
+    repl_line(&r, "nas.local 2399");
+    repl_line(&r, "y");                                             /* kept anyway */
+    CHECK_INT(r.wiz.step, SETUP_INFO);
+    CHECK_INT(home_has("remote"), 1);
+    CHECK_INT(home_has("setup-done"), 0);
+    repl_line(&r, "y");
+    CHECK(strstr(cn.screen.p, "github.com/thomas-luebker/amimcp") != 0);
+    CHECK(strstr(cn.screen.p, "never") != 0 && strstr(cn.screen.p, "forward the port") != 0);
+    CHECK_INT(r.wiz.step, SETUP_OFF);
+    CHECK_INT(home_has("setup-done"), 1);
+
+    /* the existing file is the default: an empty line keeps it (CLAUDE-REMOTE-KEPT) */
+    open_fail = 0;
+    sb.opens = 0;
+    repl_line(&r, "/setup");
+    repl_line(&r, "1");
+    CHECK(strstr(cn.screen.p, "Now: nas.local 2399 (an empty line keeps it)") != 0);
+    repl_line(&r, "");
+    CHECK_INT(sb.opens, 1);
+    CHECK_STR(open_host, "nas.local");
+    repl_line(&r, "n");
+    CHECK_INT(r.wiz.step, SETUP_OFF);
+    CHECK_INT(setup_write_remote(&sys, r.home, "10.0.0.2", 2323), 0);   /* the one writer replaces the line */
+    {
+        char *t = 0, host[64];
+        long n = 0, port = 0;
+        char p[700];
+        strcpy(p, dir);
+        strcat(p, "/home/remote");
+        CHECK_INT(sys.read(sys.u, p, 511, &t, &n), 0);
+        CHECK_INT(cli_remote_parse(t, host, sizeof(host), &port), 1);
+        CHECK_STR(host, "10.0.0.2");
+        free(t);
+    }
+    CHECK_INT(setup_write_remote(&sys, r.home, "", 2323), -1);
+    CHECK_INT(setup_write_remote(&sys, r.home, "nas", 0), -1);
+    repl_free(&r);
+    unlink_home("remote");
+
+    /* a slash command leaves the wizard and runs as usual; later stores nothing */
+    setup_done_mark(0);
+    setup(&r, none);
+    setup_begin(&r);
+    repl_line(&r, "/cost");
+    CHECK_INT(r.wiz.step, SETUP_OFF);
+    CHECK_INT(home_has("setup-done"), 0);
+    repl_line(&r, "/setup");
+    repl_line(&r, "3");
+    CHECK(strstr(cn.screen.p, "Nothing was stored") != 0);
+    CHECK_INT(home_has("setup-done"), 1);
+    CHECK_INT(home_has("remote"), 0);
+    repl_free(&r);
+    setup_done_mark(0);
+}
+
+/* the key: through /login's path, masked, tested with one request, never in the screen or the log */
+static void test_setup_key(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    setup_done_mark(0);
+    unlink_home("key");
+    setup_key = "";
+    setup(&r, none);
+    setup_key = "test-key-not-real";
+    setup_begin(&r);
+    repl_line(&r, "2");
+    CHECK_INT(r.wiz.step, SETUP_KEY);
+    CHECK_INT(r.await_key, 1);                                      /* the line is read as a key: not echoed */
+    repl_line(&r, "short");
+    CHECK_INT(r.wiz.step, SETUP_KEY);                               /* refused, asked again */
+    CHECK_INT(home_has("key"), 0);
+    add_stream("text.sse");
+    repl_line(&r, "sk-ant-wizard-0123456789");
+    CHECK(has("home/key", "sk-ant-wizard-0123456789"));             /* /login's file */
+    CHECK(r.key && !strcmp(r.key, "sk-ant-wizard-0123456789"));
+    CHECK_INT(sb.nreq, 1);                                          /* the test request ran */
+    CHECK(sb.nreq == 1 && strstr(sb.head[0], "x-api-key: sk-ant-wizard-0123456789\r\n") != 0);
+    CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"max_tokens\":1") != 0);
+    CHECK(strstr(cn.screen.p, "sk-ant-wizard") == 0);               /* never shown */
+    CHECK_INT(r.wiz.step, SETUP_INFO);
+    repl_line(&r, "n");
+    CHECK(strstr(cn.screen.p, "Setup, step 4 of 4: done.") != 0);
+    CHECK_INT(home_has("setup-done"), 1);
+    CHECK(strstr(cn.screen.p, "sk-ant-wizard") == 0);
+    /* with a key the wizard is not due; Claude SETUP asks for it anyway */
+    CHECK_INT(setup_due(&r), 0);
+    repl_free(&r);
+    unlink_home("key");
+    setup_done_mark(0);
+}
+
 /* `Claude "prompt"` starts the session with it; without a key, /login comes first */
 static void test_wp4_start(void)
 {
@@ -2102,6 +2307,7 @@ static void test_wp4_start(void)
     setup(&r, login);
     setup_key = "test-key-not-real";
     add_stream("text.sse");
+    setup_done_mark(1);                     /* the wizard has run: /login comes first */
     CHECK_INT(repl_need_key(&r), 1);
     r.first = "hello";
     repl_run(&r);
@@ -2111,6 +2317,8 @@ static void test_wp4_start(void)
     CHECK(sb.nreq == 1 && strstr(sb.head[0], "x-api-key: sk-ant-api-test-0123456789\r\n") != 0);
     CHECK(sb.nreq == 1 && strstr(sb.body[0], "\"text\":\"hello\"") != 0);
     repl_free(&r);
+    setup_done_mark(0);
+    unlink_home("key");
 
     /* print mode without a key: the error as the result, nothing sent */
     setup_key = "";
@@ -2135,6 +2343,9 @@ static void test_wp4(void)
     test_wp4_perms();
     test_wp4_session();
     test_wp4_apply();
+    test_setup_reach();
+    test_setup_steps();
+    test_setup_key();
     test_wp4_start();
     jw_free(&pc.out);
     jw_free(&pc.err);

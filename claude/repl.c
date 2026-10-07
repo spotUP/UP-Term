@@ -7,6 +7,7 @@
 #include "show.h"
 #include "tools_int.h"
 #include "trust.h"
+#include "setup.h"
 #include "util.h"
 
 enum { R_OK, R_RETRY, R_FAIL, R_CANCEL };
@@ -2190,6 +2191,8 @@ int repl_line(cl_repl *r, const char *line)
     const char *arg;
     char word[64];
     long n = (long)strlen(line), wl;
+    if (r->wiz.step && setup_line(r, line))
+        return 0;                       /* the setup wizard's step took the line (an empty one too) */
     while (n && (line[n - 1] == ' ' || line[n - 1] == '\t'))
         n--;
     if (!n)
@@ -3397,7 +3400,14 @@ static int start(cl_repl *r)
     if (r->mem.next && r->mem.ext_ok == 0)
         repl_ext_imports(r);
     started(r);
-    if (repl_need_key(r))
+    if (setup_due(r)) {
+        setup_begin(r);             /* the first run: the wizard (CLAUDE-SETUP-WIZARD) */
+        if (r->first && !strcmp(r->first, "/setup"))
+            r->first = 0;
+    } else if (r->first && !strcmp(r->first, "/setup")) {
+        r->first = 0;
+        repl_line(r, "/setup");     /* Claude SETUP */
+    } else if (repl_need_key(r))
         repl_line(r, "/login");
     else if (r->first) {
         const char *f = r->first;

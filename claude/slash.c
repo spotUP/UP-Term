@@ -11,6 +11,7 @@
 #include "tui.h"
 #include "path.h"
 #include "util.h"
+#include "setup.h"
 
 const cl_cmd slash_builtin[] = {
     { "/help", "Show the commands and the keys" },
@@ -52,6 +53,7 @@ const cl_cmd slash_builtin[] = {
     { "/rename", "Name this conversation: /rename [NAME] (none: Claude names it)" },
     { "/resume", "Go on with an earlier conversation of this directory" },
     { "/rewind", "Go back to an earlier prompt: the files, the conversation, both, or a summary" },
+    { "/setup", "The setup wizard: Claude Code on another computer, or an API key here" },
     { "/save", "Save the conversation as JSON: /save FILE" },
     { "/skills", "The skills (.claude/skills)" },
     { "/skill-doctor", "What each skill costs in context and how often it was used" },
@@ -1926,6 +1928,8 @@ int slash_run(cl_repl *r, const char *w, const char *arg)
         memory(r, arg);
     else if (!strcmp(w, "/login"))
         login(r, arg);
+    else if (!strcmp(w, "/setup"))
+        setup_begin(r);
     else if (!strcmp(w, "/logout"))
         logout(r);
     else if (!strcmp(w, "/agents"))

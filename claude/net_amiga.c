@@ -19,6 +19,7 @@
 #include "net_amiga.h"
 #include "tls.h"
 #include "util.h"
+#include "../tty/bmsg.h"
 
 struct Library *SocketBase;
 
@@ -78,7 +79,7 @@ static int a_open(void *u, const char *host, int port, int tls)
     net_amiga *n = (net_amiga *)u;
     struct sockaddr_in sa;
     struct hostent *he;
-    LONG one = 1, rc;
+    LONG one = 1, rc, ce;
     n->err[0] = 0;
     drop(n);
     if (!SocketBase)
@@ -107,6 +108,7 @@ static int a_open(void *u, const char *host, int port, int tls)
     }
     IoctlSocket(n->sock, FIONBIO, (APTR)&one);
     rc = connect(n->sock, (struct sockaddr *)&sa, sizeof(sa));
+    ce = rc < 0 ? (LONG)Errno() : 0;
     if (rc < 0 && Errno() == EINPROGRESS) {
         LONG e = 0;
         socklen_t el = sizeof(e);
@@ -119,9 +121,21 @@ static int a_open(void *u, const char *host, int port, int tls)
         }
         getsockopt(n->sock, SOL_SOCKET, SO_ERROR, (APTR)&e, &el);
         rc = e ? -1 : 0;
+        ce = e;
     }
     if (rc < 0) {
+        /* the named error (tty/bmsg.c): refused, timed out, no route; else its number */
+        const char *why = bmsg_net_errno((long)ce);
+        char num[16];
         set_err(n, "cannot connect to ", host);
+        cl_cat(n->err, ": ", sizeof(n->err));
+        if (why)
+            cl_cat(n->err, why, sizeof(n->err));
+        else {
+            cl_ltoa((long)ce, num);
+            cl_cat(n->err, "error ", sizeof(n->err));
+            cl_cat(n->err, num, sizeof(n->err));
+        }
         drop(n);
         return NET_ERROR;
     }

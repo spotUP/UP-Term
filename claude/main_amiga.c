@@ -369,7 +369,7 @@ int main(void)
     have_key = load_key(cli.key_source, sizeof(cli.key_source));
     /* no key and nothing asked of the API itself: Claude Code on the
      * computer ENVARC:Claude/remote names, if it names one (W49) */
-    if (!have_key && !cli.print && !cli.ping && !cli.url[0] && !cli.prompt) {
+    if (!have_key && !cli.print && !cli.ping && !cli.setup && !cli.url[0] && !cli.prompt) {
         int rr = remote();
         if (rr >= 0) {
             cli_free(&cli);
@@ -452,7 +452,7 @@ int main(void)
             repl_screen(r);         /* the line mode stays when the console says no */
             if (cli_session(&cli, r))
                 ui_line(&r->ui, cli.err);
-            r->first = cli.prompt;  /* sent once the session is up (after /login without a key) */
+            r->first = cli.setup ? "/setup" : cli.prompt;   /* Claude SETUP: the wizard; else sent once the session is up (after /login without a key) */
             repl_run(r);
         }
     }

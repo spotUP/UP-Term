@@ -77,7 +77,7 @@ void cli_args_free(cl_args *a)
 /* ---- the options ---- */
 
 enum {
-    O_PRINT, O_MODEL, O_EFFORT, O_URL, O_ROOT, O_PING, O_DEBUG, O_PLAIN, O_CONTINUE, O_RESUME, O_NAME, O_FORK,
+    O_PRINT, O_MODEL, O_EFFORT, O_URL, O_ROOT, O_PING, O_SETUP, O_DEBUG, O_PLAIN, O_CONTINUE, O_RESUME, O_NAME, O_FORK,
     O_NOPERSIST, O_FALLBACK, O_OUTFMT, O_INFMT, O_PARTIAL, O_PERM, O_SKIP, O_ALLOW, O_DENY, O_TOOLS, O_ADDDIR,
     O_SYSP, O_SYSPF, O_APPEND, O_APPENDF, O_SETTINGS, O_MAXTURNS, O_BUDGET, O_VERBOSE, O_AGENT, O_VERSION,
     O_HELP, O_SESSID, O_SCHEMA, O_REPLAY, O_BARE, O_SAFE, O_AGENTS, O_SUBAPP, O_SUBAPPF, O_NOSLASH, O_SOURCES,
@@ -103,6 +103,7 @@ static const opt opts[] = {
     { O_URL, "url", 0, 0, "URL", 0, 1 },
     { O_ROOT, "root", 0, 0, "ROOT", 0, 1 },
     { O_PING, "ping", 0, 0, "PING", 0, 0 },
+    { O_SETUP, "setup", 0, 0, "SETUP", 0, 0 },
     { O_DEBUG, "debug", 0, 0, "DEBUG", 0, 0 },
     { O_PLAIN, "plain", 0, 0, "PLAIN", 0, 0 },
     { O_CONTINUE, "continue", 'c', 0, "CONTINUE", "C", 0 },
@@ -354,6 +355,9 @@ static int set(cl_cli *c, const opt *o, const char *v, int amiga)
         break;
     case O_PING:
         c->ping = 1;
+        break;
+    case O_SETUP:
+        c->setup = 1;
         break;
     case O_DEBUG:
         c->debug = 1;
@@ -891,7 +895,9 @@ static const char *const usage[] = {
     "  -v, --version    -h, --help\n",
     "\n",
     "Every flag is also a keyword: MODEL=haiku, OUTPUT-FORMAT=json, PRINT, CONTINUE ...\n",
-    "C:Claude's own: URL=url (another endpoint), ROOT=dir (the start directory), PING (the\n",
+    "C:Claude's own: URL=url (another endpoint), ROOT=dir (the start directory), PING (one\n",
+    "request of one token, timed), SETUP (the setup wizard: Claude Code on another computer,\n",
+    "or an API key here; also /setup).\n",
     0
 };
 

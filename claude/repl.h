@@ -118,6 +118,11 @@ typedef struct cl_repl {
     char *todos;                /* the last todo_write input (/todos) */
     char keybuf[512];           /* a key from /login */
     int await_key;              /* the next line typed is the key (/login) */
+    struct {                    /* the setup wizard (setup.c): step SETUP_*, the mode chosen (1 remote, 2 key, 3 later) */
+        int step, mode;
+        char host[200];
+        long port;
+    } wiz;
     char status_text[512];      /* the statusLine command's last output (its lines, SGR kept):
                                  * the footer's own row(s) above the status line */
     unsigned long status_ms;    /* when it last ran (io->ms), 0 never */

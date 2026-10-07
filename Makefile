@@ -36,7 +36,7 @@ CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c clau
                claude/webfetch.c claude/subagent.c claude/tasks.c claude/sched.c claude/watch.c claude/trust.c \
                claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) \
                claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
-               claude/policy.c claude/slash.c claude/cli.c claude/print.c
+               claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c
 CLAUDE_HDR := $(wildcard claude/*.h)
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
@@ -304,7 +304,7 @@ CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude
                    claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) $(VIEW_MD) tty/ldisc.c tty/bmsg.c \
                    handler/clip.c handler/clipfmt.c \
                    claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
-                   claude/policy.c claude/slash.c claude/cli.c claude/print.c
+                   claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
 AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK
