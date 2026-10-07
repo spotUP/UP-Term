@@ -174,9 +174,55 @@ static void test_html(void)
     md("");
 }
 
+/* the groups of a search: "s0-e0 s1-e1 ...", "none" when there is no match */
+static const char *gm(const char *pat, int flags, const char *text, int ncap)
+{
+    static char out[200];
+    char err[80];
+    long caps[20];
+    int i, r;
+    cl_re *re = re_compile(pat, flags, err, sizeof(err));
+    out[0] = 0;
+    if (!re)
+        return "error";
+    r = re_search_groups(re, text, (long)strlen(text), 0, caps, ncap);
+    if (r != 1)
+        strcpy(out, "none");
+    for (i = 0; r == 1 && i < ncap; i++) {
+        char b[32];
+        snprintf(b, sizeof(b), "%s%ld-%ld", i ? " " : "", caps[2 * i], caps[2 * i + 1]);
+        strcat(out, b);
+    }
+    re_free(re);
+    return out;
+}
+
+static void test_regex_posix_groups(void)
+{
+    /* captures (the Perl mode keeps its leftmost-first choice) */
+    CHECK_STR(gm("(a+)(b+)", 0, "xaabbb", 3), "1-6 1-3 3-6");
+    CHECK_STR(gm("(a)|(b)", 0, "b", 3), "0-1 -1--1 0-1");
+    CHECK_STR(gm("(?:a)(b)", 0, "ab", 2), "0-2 1-2");
+    CHECK_STR(gm("x", 0, "ax", 3), "1-2 -1--1 -1--1");
+    CHECK_STR(gm("(a*)*b", 0, "aab", 2), "0-3 0-2");
+    /* POSIX: leftmost-longest, a backslash is the next character, anchors only at the ends */
+    CHECK_STR(gm("a|ab", RE_POSIX, "ab", 1), "0-2");
+    CHECK_STR(gm("a|ab", 0, "ab", 1), "0-1");
+    CHECK_STR(gm("\\d", RE_POSIX, "5d", 1), "1-2");
+    CHECK_STR(gm("\\d", 0, "5d", 1), "0-1");
+    CHECK_STR(gm("\\.", RE_POSIX, "a.b", 1), "1-2");
+    CHECK_STR(gm("^b", RE_POSIX, "a\nb", 1), "none");
+    CHECK_STR(gm("a$", RE_POSIX, "a\nb", 1), "none");
+    CHECK_STR(gm("a.b", RE_POSIX, "a\nb", 1), "0-3");
+    CHECK_STR(gm("([[:digit:]]+)-([[:digit:]]+)", RE_POSIX, "tel 12-345 x", 3), "4-10 4-6 7-10");
+    CHECK_STR(gm("[\\]x", RE_POSIX, "\\x", 1), "0-2");
+    CHECK_STR(gm("(x*)(y*)", RE_POSIX, "xxyy", 3), "0-4 0-2 2-4");
+}
+
 void suite_claude_match(void)
 {
     test_regex();
+    test_regex_posix_groups();
     test_glob();
     test_html();
 }

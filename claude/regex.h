@@ -19,6 +19,9 @@
 
 #define RE_ICASE  1             /* case-insensitive (ASCII and Latin-1 letters) */
 #define RE_DOTALL 2             /* '.' also matches a newline (Grep's multiline) */
+#define RE_POSIX  4             /* POSIX ERE as bash's [[ =~ ]] reads it: a backslash makes the next character
+                                 * itself (no \d \w \s \b), ^ and $ only at the ends of the text, '.' matches
+                                 * a newline, no (?: ) and no lazy forms; the match is leftmost-longest */
 
 typedef struct cl_re cl_re;
 
@@ -28,5 +31,11 @@ void re_free(cl_re *re);
 /* The first match in s[0..n) at or after from: 1 with [*ms, *me), 0 none,
  * -1 out of memory. Anchors see the whole of s (^ after any '\n'). */
 int re_search(const cl_re *re, const char *s, long n, long from, long *ms, long *me);
+
+/* The same search with capture groups: caps gets ncap pairs (start, end) of byte offsets, pair 0 the whole
+ * match, -1 for a group that did not take part. Returns 1, 0 or -1 (out of memory). */
+int re_search_groups(const cl_re *re, const char *s, long n, long from, long *caps, int ncap);
+/* the number of ( ) groups of the pattern, the whole match not counted */
+int re_ngroups(const cl_re *re);
 
 #endif
