@@ -6,8 +6,6 @@
 #   P:forlines  the audit's own malformed probe, not a vsh behaviour (audit table, "for" row)
 #   P:shebang   it tested the host kernel's #! handling through the driver, not vsh
 # The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
-agent/a008_regex_match	later:V66	[[ =~ ]] and BASH_REMATCH
-agent/a101_regex_class	later:V66	[[:digit:]] in [[ =~ ]]
 builtins/declare_f	later:V82	declare -f prints a function
 fd/fd4	later:V71	redirection of fd 4
 fd/fdopen	later:V71	exec 3>file

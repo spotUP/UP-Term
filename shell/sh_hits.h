@@ -29,6 +29,7 @@
     X(LOCAL_RESTORE_ARRAY) /* a local array was put back as it was */ \
     X(ARITHCMD) /* a (( )) command ran */ \
     X(FORARITH) /* a for (( ; ; )) loop ran */ \
+    X(REGEX_CAPTURE) /* a [[ =~ ]] matched and set BASH_REMATCH */ \
     X(DBRACK) /* a [[ ]] ran */ \
     X(ARITH_ASSIGN) /* an arithmetic assignment, ++ or -- stored a value */
 

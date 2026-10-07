@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sh_exec.h"
+#include "../claude/regex.h"
 #include "sh_hits.h"
 #include "sh_float.h"
 #include "../tty/bmsg.h"
@@ -1129,6 +1130,110 @@ static void pf_field(pbuf *b, const char *body, int pl, long width, int left, in
     pb_str(b, body);
 }
 
+/* strftime for printf '%(fmt)T', the C locale, UTC (the Amiga has no zone here): out has max bytes */
+static int tf_leap(long y)
+{
+    return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+}
+
+static int tf_weeks(long y)
+{
+    long a = (y + y / 4 - y / 100 + y / 400) % 7, b = (y - 1 + (y - 1) / 4 - (y - 1) / 100 + (y - 1) / 400) % 7;
+    return a == 4 || b == 3 ? 53 : 52;
+}
+
+static void sh_strftime(pbuf *o, const char *fmt, long t)
+{
+    static const char *const wd[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    static const char *const mn[] = {"January", "February", "March", "April", "May", "June", "July", "August",
+                                     "September", "October", "November", "December"};
+    static const int cum[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    long days = t >= 0 ? t / 86400 : -((-t + 86399) / 86400), sec = t - days * 86400;
+    long z = days + 719468, era = (z >= 0 ? z : z - 146096) / 146097, doe = z - era * 146097;
+    long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365, y = yoe + era * 400;
+    long doy = doe - (365 * yoe + yoe / 4 - yoe / 100), mp = (5 * doy + 2) / 153, d = doy - (153 * mp + 2) / 5 + 1;
+    long mo = mp < 10 ? mp + 3 : mp - 9, H = sec / 3600, M = sec / 60 % 60, S = sec % 60;
+    int w = (int)(((days + 4) % 7 + 7) % 7), yd, iw, k;
+    long iy = y;
+    char n[24];
+    if (mo <= 2)
+        y++;
+    iy = y;
+    yd = cum[mo - 1] + (int)d - 1 + (mo > 2 && tf_leap(y));
+    iw = (yd - (w + 6) % 7 + 10) / 7;
+    if (iw < 1) {
+        iy--;
+        iw = tf_weeks(iy);
+    } else if (iw > tf_weeks(y)) {
+        iw = 1;
+        iy++;
+    }
+    for (; *fmt; fmt++) {
+        long v = -1;
+        int pad = 2;
+        char c, padc = '0';
+        const char *str = 0;
+        if (*fmt != '%' || !fmt[1]) {
+            pb_add(o, fmt, 1);
+            continue;
+        }
+        c = *++fmt;
+        while ((c == '-' || c == '_' || c == '^' || c == '#' || c == '0') && fmt[1])
+            c = *++fmt;
+        switch (c) {
+        case 'a': str = wd[w]; pad = -3; break;
+        case 'A': str = wd[w]; break;
+        case 'b': case 'h': str = mn[mo - 1]; pad = -3; break;
+        case 'B': str = mn[mo - 1]; break;
+        case 'p': str = H < 12 ? "AM" : "PM"; break;
+        case 'P': str = H < 12 ? "am" : "pm"; break;
+        case 'Z': str = "UTC"; break;
+        case 'z': str = "+0000"; break;
+        case 'n': str = "\n"; break;
+        case 't': str = "\t"; break;
+        case '%': str = "%"; break;
+        case 'C': v = y / 100; break;
+        case 'd': v = d; break;
+        case 'e': v = d; padc = ' '; break;
+        case 'H': v = H; break;
+        case 'k': v = H; padc = ' '; break;
+        case 'I': v = H % 12 ? H % 12 : 12; break;
+        case 'l': v = H % 12 ? H % 12 : 12; padc = ' '; break;
+        case 'j': v = yd + 1; pad = 3; break;
+        case 'm': v = mo; break;
+        case 'M': v = M; break;
+        case 'S': v = S; break;
+        case 's': v = t; pad = 1; break;
+        case 'u': v = w ? w : 7; pad = 1; break;
+        case 'w': v = w; pad = 1; break;
+        case 'U': v = (yd + 7 - w) / 7; break;
+        case 'W': v = (yd + 7 - (w + 6) % 7) / 7; break;
+        case 'V': v = iw; break;
+        case 'G': v = iy; pad = 1; break;
+        case 'g': v = iy % 100; break;
+        case 'y': v = y % 100; break;
+        case 'Y': v = y; pad = 1; break;
+        case 'c': sh_strftime(o, "%a %b %e %H:%M:%S %Y", t); continue;
+        case 'D': case 'x': sh_strftime(o, "%m/%d/%y", t); continue;
+        case 'F': sh_strftime(o, "%Y-%m-%d", t); continue;
+        case 'T': case 'X': sh_strftime(o, "%H:%M:%S", t); continue;
+        case 'R': sh_strftime(o, "%H:%M", t); continue;
+        case 'r': sh_strftime(o, "%I:%M:%S %p", t); continue;
+        default:
+            pb_add(o, fmt - 1, 2);
+            continue;
+        }
+        if (str) {
+            pb_add(o, str, pad < 0 ? -pad : (long)strlen(str));
+            continue;
+        }
+        sh_ltoa(v, n);
+        for (k = (int)strlen(n); k < pad; k++)
+            pb_add(o, &padc, 1);
+        pb_add(o, n, (long)strlen(n));
+    }
+}
+
 static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     pbuf b = { 0, 0, 0 };
@@ -1200,6 +1305,34 @@ static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
             }
             if (width > 4096)
                 width = 4096;
+            if (*p == '(' && strchr(p, ')') && strchr(p, ')')[1] == 'T') {
+                /* %(fmt)T: the seconds since the epoch of the argument (-1 or none: now, -2: the shell's start) */
+                const char *e = strchr(p, ')');
+                char *fmt = (char *)malloc((size_t)(e - p));
+                pbuf t = { 0, 0, 0 };
+                long us, secs;
+                if (fmt) {
+                    memcpy(fmt, p + 1, (size_t)(e - p - 1));
+                    fmt[e - p - 1] = 0;
+                    secs = ai < argc && argv[ai][0] ? pf_number(sh, io, argv[ai], &bad) : -1;
+                    ai++;
+                    if (secs == -1)
+                        secs = sh_now(sh, &us);
+                    else if (secs == -2)
+                        secs = sh->secs0;
+                    sh_strftime(&t, fmt, secs);
+                    if (!t.s)
+                        pb_add(&t, "", 0);
+                    if (t.s && prec >= 0 && prec < t.n)
+                        t.s[prec] = 0;
+                    if (t.s)
+                        pf_field(&b, t.s, 0, width, left, 0);
+                    free(t.s);
+                    free(fmt);
+                }
+                p = e + 1;
+                continue;
+            }
             while (*p == 'l' || *p == 'L' || *p == 'h')
                 p++;
             spec = *p;
@@ -4309,6 +4442,46 @@ static char *db_word(sh_shell *sh, const char *text, const sh_io *io, int flags)
     return expand_val(sh, text, io, flags);
 }
 
+/* [[ a =~ re ]]: POSIX ERE through claude/regex.c; BASH_REMATCH is the whole match and the groups
+ * (an empty array when there is no match). 1 match, 0 none; an invalid expression is status 2. */
+static int db_regex(sh_shell *sh, const char *text, const char *pat, const sh_io *io, int *bad)
+{
+    char err[80];
+    long *caps;
+    int ng, i, r;
+    cl_re *re = re_compile(pat, RE_POSIX, err, sizeof(err));
+    if (!re) {
+        err2(sh, io, "[[", err[0] ? err : "invalid regular expression");
+        *bad = 2;
+        return 0;
+    }
+    ng = re_ngroups(re);
+    caps = (long *)malloc(sizeof(long) * 2 * (size_t)(ng + 1));
+    r = caps ? re_search_groups(re, text, (long)strlen(text), 0, caps, ng + 1) : -1;
+    re_free(re);
+    sh_array_reset(&sh->ctx, "BASH_REMATCH", 0);
+    if (r == 1) {
+        SH_HIT(REGEX_CAPTURE);
+        for (i = 0; i <= ng; i++) {
+            char sub[24], *v;
+            long a = caps[2 * i], e = caps[2 * i + 1];
+            sh_ltoa(i, sub);
+            v = (char *)malloc(a >= 0 ? (size_t)(e - a) + 1 : 1);
+            if (!v)
+                break;
+            if (a >= 0)
+                memcpy(v, text + a, (size_t)(e - a));
+            v[a >= 0 ? e - a : 0] = 0;
+            sh_assign(&sh->ctx, "BASH_REMATCH", sub, v, 0);
+            free(v);
+        }
+    }
+    free(caps);
+    if (r < 0)
+        *bad = 1;
+    return r == 1;
+}
+
 /* 1 true, 0 false; *bad set when an error was reported (status 1 then, 2 for a syntax error) */
 static int db_eval(sh_shell *sh, const sh_node *n, const sh_io *io, int *bad)
 {
@@ -4328,12 +4501,13 @@ static int db_eval(sh_shell *sh, const sh_node *n, const sh_io *io, int *bad)
         r = db_eval(sh, n->a, io, bad);
     else {
         int pat = !strcmp(op, "==") || !strcmp(op, "=") || !strcmp(op, "!=");
+        int rx = !strcmp(op, "=~");
         t.sh = sh;
         t.io = io;
         t.err = 0;
         a = db_word(sh, n->words->text, io, 0);
         if (n->words->next)
-            b = db_word(sh, n->words->next->text, io, pat ? SH_PATTERN : 0);
+            b = db_word(sh, n->words->next->text, io, pat ? SH_PATTERN : rx ? SH_REGEX : 0);
         if (!a || (n->words->next && !b)) {
             *bad = 1;
             free(a);
@@ -4346,10 +4520,9 @@ static int db_eval(sh_shell *sh, const sh_node *n, const sh_io *io, int *bad)
             r = sh_test_unary(&t, op[1], a);
         else if (pat)
             r = sh_match(b, a, 0) == (op[0] != '!');
-        else if (!strcmp(op, "=~")) {
-            err2(sh, io, "[[", "=~ is not available yet");
-            *bad = 2;
-        } else if (op[0] == '<' || op[0] == '>')
+        else if (rx)
+            r = db_regex(sh, a, b, io, bad);
+        else if (op[0] == '<' || op[0] == '>')
             r = op[0] == '<' ? strcmp(a, b) < 0 : strcmp(a, b) > 0;
         else if (!strcmp(op, "-nt") || !strcmp(op, "-ot") || !strcmp(op, "-ef"))
             r = sh_test_binary(&t, a, op, b);
