@@ -311,6 +311,12 @@ def run_case(case):
     ck(rc == 0 and out.strip().lower() == drawer.lower(), 'ENVARC:up-term/Dir names %s' % drawer, out)
     rc, out = ir.run('Type S:User-Startup')
     ck(';BEGIN UP-Term assign' in out and ';END UP-Term assign' in out, 'the UP-Term: block is marked', out[-300:])
+    # an AmigaDOS $name ends at the first non-alphanumeric: $o_dest went in
+    # literally and a Replay's boot failed on it (2026-10-07)
+    added = [l for l in out.splitlines() if l not in startup_before.splitlines()]
+    ck(not any(re.search(r'\$[A-Za-z0-9_]', l) for l in added),
+       'S:User-Startup gets no unexpanded $variable', '\n'.join(l for l in added if '$' in l))
+    ck(('Assign UP-Term: "%s"' % drawer).lower() in out.lower(), 'S:User-Startup assigns UP-Term: to %s' % drawer, out[-300:])
     ck(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
        'the UP-Term: block comes before the blocks that use it', out[-300:])
     if dest:

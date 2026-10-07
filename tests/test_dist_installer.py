@@ -127,21 +127,21 @@ class OneListOfParts(unittest.TestCase):
     def test_installer_passes_every_keyword(self):
         keys = re.match(r'\.KEY (\S+)', DOS).group(1).split(',')
         names = [k.split('/')[0] for k in keys if k.split('/')[0] not in ('DIR', 'STEP')]
-        missing = [n for n in names if not re.search(r'"(UPT_)?%s[="\s]' % n, INSTALLER)]
+        missing = [n for n in names if not re.search(r'"(UPTOPT)?%s[="\s]' % n, INSTALLER)]
         self.assertEqual(missing, [], 'install.dos keywords the Installer never passes')
 
     def test_options_travel_in_env_files_and_every_keyword_is_read_from_them(self):
         keys = re.match(r'\.KEY (\S+)', DOS).group(1).split(',')
         names = [k.split('/')[0] for k in keys if k.split('/')[0] not in ('DIR', 'STEP')]
-        body = DOS[DOS.index('If NOT "{STEP}" EQ ""\n  If EXISTS ENV:UPT_'):DOS.index('; The parts, each')]
+        body = DOS[DOS.index('If NOT "{STEP}" EQ ""\n  If EXISTS ENV:UPTOPT'):DOS.index('; The parts, each')]
         for n in names:
-            self.assertIn('  If EXISTS ENV:UPT_%s\n' % n, body, 'install.dos never reads UPT_%s' % n)
+            self.assertIn('  If EXISTS ENV:UPTOPT%s\n' % n, body, 'install.dos never reads UPTOPT%s' % n)
             self.assertEqual(DOS.count('{%s}' % n), 1, '{%s} is read once, into $o_%s' % (n, n.lower()))
         self.assertEqual(sorted(re.findall(r'\{(\w+)\}', DOS.replace('{STEP}', '').replace('{DIR}', ''))),
                          sorted(names), 'a {KEYWORD} used outside the prelude')
         opts = INSTALLER[INSTALLER.index('(procedure P_OPTIONS'):INSTALLER.index('(procedure P_OPTIONS_END')]
         for n in set(names) - {'CONSOLE', 'NOCONSOLE', 'DEVICE', 'NODEVICE'}:
-            self.assertIn('"%s"' % n, opts, 'the Installer never writes UPT_%s' % n)
+            self.assertIn('"%s"' % n, opts, 'the Installer never writes UPTOPT%s' % n)
         self.assertIn('(set #name #con #val #con)', opts)
         self.assertIn('(set #name #dev #val #dev)', opts)
         self.assertLess(INSTALLER.index('\n(P_OPTIONS)\n'), INSTALLER.index('(set #step "drawer"'))
@@ -172,17 +172,41 @@ class ClaudeRemoteFile(unittest.TestCase):
         self.assertLess(INSTALLER.index('(exists "ENVARC:Claude/remote")'), INSTALLER.index('(set #remote\n'))
 
     def test_install_writes_the_chosen_remote_even_when_the_file_exists(self):
-        a = DOS.index('If NOT "$o_remote" EQ ""')
+        a = DOS.index('If NOT "$optremote" EQ ""')
         blk = DOS[a:DOS.index('If NOT "{STEP}" EQ ""', a)]
         self.assertNotIn('If NOT EXISTS ENVARC:Claude/remote', blk, 'an existing file must not block the write')
         want = ['Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"',
                 'Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."',
-                'Echo >>ENVARC:Claude/remote "$o_remote"']
+                'Echo >>ENVARC:Claude/remote "$optremote"']
         lines = [l.strip() for l in blk.splitlines()]
         for w in want:
             self.assertIn(w, lines)
         self.assertEqual([lines.index(w) for w in want], sorted(lines.index(w) for w in want))
         self.assertIn('Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET', lines)
+
+
+class AmigaDosVariableNames(unittest.TestCase):
+    """AmigaDOS ends a $name at the first character that is not a letter or a
+    digit: $o_dest was the variable "o" (none), and the literal "$o_dest" went
+    into a Replay's S:User-Startup, whose boot then failed (2026-10-07)."""
+    SCRIPTS = ("install.dos", "Uninstall", "ClaudeCode")
+
+    def test_no_variable_name_in_the_kits_amigados_scripts_has_other_characters(self):
+        for name in self.SCRIPTS:
+            text = (ROOT / "dist" / name).read_text(encoding="latin-1")
+            body = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith(";"))
+            self.assertEqual(re.findall(r'\$[A-Za-z0-9]+[^A-Za-z0-9\s"*/:;.,()<>{}\[\]=-]', body), [], name)
+            self.assertEqual(re.findall(r'(?im)^\s*(?:Set|UnSet)(?:\s+[<>]\S*)*\s+(?![<>])([A-Za-z0-9]*[^A-Za-z0-9\s][^\s]*)', body),
+                             [], name)
+
+    def test_the_installer_writes_the_option_files_install_dos_reads(self):
+        self.assertIn('(cat "ENV:UPTOPT" #name)', INSTALLER)
+        for kw in ("DEST", "REMOTE"):
+            self.assertIn('Set opt%s "$UPTOPT%s"' % (kw.lower(), kw), DOS)
+
+    def test_the_remote_default_loses_claudes_newline(self):
+        a = INSTALLER.index('(set #oldremote (getenv "UPTermRemote"))')
+        self.assertIn('(= (substr #oldremote (- (strlen #oldremote) 1) 1) "\\n")', INSTALLER[a:a + 400])
 
 
 class ClaudeCodeScript(unittest.TestCase):
