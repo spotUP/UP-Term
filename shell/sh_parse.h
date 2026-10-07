@@ -50,7 +50,9 @@ enum sh_kind {
     SH_UNTIL,     /* until a do b */
     SH_FOR,       /* for name in words do a (words 0 with no "in": "$@") */
     SH_CASE,      /* case words(the subject) in cases */
-    SH_FUNC       /* name() a */
+    SH_FUNC,      /* name() a */
+    SH_ARITHCMD,  /* (( expr )): words is the one expression text */
+    SH_FORARITH   /* for (( init; cond; step )) a: words are the three texts (empty when left out) */
 };
 
 typedef struct sh_case {

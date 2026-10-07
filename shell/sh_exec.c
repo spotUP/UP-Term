@@ -3007,6 +3007,7 @@ static long b_trap(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_local(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_getopts(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_umask(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_let(sh_shell *sh, int argc, char **argv, const sh_io *io);
 
 static const struct {
     const char *name;
@@ -3020,7 +3021,7 @@ static const struct {
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
     { "wait", b_wait }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
     { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "local", b_local },
-    { "getopts", b_getopts }, { "umask", b_umask },
+    { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill }, { 0, 0 }
 };
@@ -4218,6 +4219,89 @@ static long exec_list_loop(sh_shell *sh, const sh_node *n, const sh_io *io)
     return sh->intr ? intr_status(sh) : st;
 }
 
+/* The value of arithmetic text: its $ expansions first, then sh_arith. 1: an error was reported. */
+static int arith_text(sh_shell *sh, const char *text, const sh_io *io, sh_int *val)
+{
+    const char *err = 0;
+    char *x = expand_val(sh, text, io, 0);
+    if (!x)
+        return 1;
+    *val = sh_arith(&sh->ctx, x, &err);
+    free(x);
+    if (err) {
+        err2(sh, io, "((", err);
+        return 1;
+    }
+    return 0;
+}
+
+static long b_let(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    sh_int v = 0;
+    int i;
+    if (argc < 2) {
+        err2(sh, io, "let", "expression expected");
+        return 1;
+    }
+    for (i = 1; i < argc; i++)
+        if (arith_text(sh, argv[i], io, &v))
+            return 1;
+    return v == 0;
+}
+
+/* (( expr )): status 0 when the value is not 0, 1 when it is, 1 on an error */
+static long exec_arithcmd(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    sh_int v = 0;
+    SH_HIT(ARITHCMD);
+    if (arith_text(sh, n->words->text, io, &v))
+        return 1;
+    return v == 0;
+}
+
+static int blank_text(const char *t)
+{
+    while (*t == ' ' || *t == '\t' || *t == '\n')
+        t++;
+    return !*t;
+}
+
+/* for (( init; cond; step )): an empty cond is true; an error in a part ends the loop with status 1 */
+static long exec_forarith(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    const sh_word *init = n->words, *cond = init->next, *step = cond->next;
+    sh_int v = 0;
+    long st = 0;
+    SH_HIT(FORARITH);
+    if (!blank_text(init->text) && arith_text(sh, init->text, io, &v))
+        return 1;
+    sh->loop_depth++;
+    for (;;) {
+        if (!blank_text(cond->text)) {
+            if (arith_text(sh, cond->text, io, &v)) {
+                st = 1;
+                break;
+            }
+            if (v == 0)
+                break;
+        }
+        st = exec_node(sh, n->a, io);
+        if (sh->breaking) {
+            sh->breaking--;
+            break;
+        }
+        sh->continuing = 0;
+        if (sh->exiting || sh->returning || sh->intr)
+            break;
+        if (!blank_text(step->text) && arith_text(sh, step->text, io, &v)) {
+            st = 1;
+            break;
+        }
+    }
+    sh->loop_depth--;
+    return sh->intr ? intr_status(sh) : st;
+}
+
 static long exec_for(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     sh_list items;
@@ -4311,6 +4395,10 @@ static long exec_compound(sh_shell *sh, const sh_node *n, const sh_io *io)
         return exec_list_loop(sh, n, io);
     case SH_FOR:
         return exec_for(sh, n, io);
+    case SH_FORARITH:
+        return exec_forarith(sh, n, io);
+    case SH_ARITHCMD:
+        return exec_arithcmd(sh, n, io);
     case SH_CASE:
         return exec_case(sh, n, io);
     default:
@@ -4411,6 +4499,8 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_WHILE:
     case SH_UNTIL:
     case SH_FOR:
+    case SH_FORARITH:
+    case SH_ARITHCMD:
     case SH_CASE:
         /* a compound command's redirections are for all of it (POSIX
          * 2.9.4), as a group's: "while read l; ...; done <in >out" */

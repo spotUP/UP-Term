@@ -8,26 +8,18 @@
 # The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
 agent/a001_pipefail_loop	later:V14,V65	set -euo pipefail and [[ ]]
 agent/a008_regex_match	later:V65,V66	[[ =~ ]] and BASH_REMATCH
-agent/a018_arith_command	later:V63	(( ))
-agent/a019_cstyle_for	later:V64	for (( ))
 agent/a032_dbrack_files	later:V65	[[ ]]
 agent/a033_dbrack_strings	later:V65	[[ ]]
 agent/a034_dbrack_lt	later:V65	[[ < ]]
 agent/a035_dbrack_or	later:V65	[[ || ]]
-agent/a044_arith_cmd_cond	later:V63	(( ))
-agent/a047_let	later:V63	let
-agent/a048_arith_assign	later:V62,V63	(( += )) and $((n--))
 agent/a101_regex_class	later:V56,V65,V66	[[:digit:]] in [[ =~ ]]
 agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
-arith/dparen1	later:V63	(( )) arithmetic command parsed as two subshells
-arith/dparen2	later:V63	(( x = 5 )) is not an arithmetic command
 builtins/declare_f	later:V82	declare -f prints a function
 dbrack/dbrack	later:V65	[[ ]]
 dbrack/dbrack2	later:V65	[[ ]] with && and ( )
 fd/fd4	later:V71	redirection of fd 4
 fd/fdopen	later:V71	exec 3>file
 fd/fdvar	later:V72	{var} descriptors
-grammar/forarith	later:V64	for (( ; ; ))
 jobs/bgwait	later:V83	wait $! returns the status of a background subshell (no item names it: nearest V83)
 shopt/extglob	later:V79	shopt -s extglob
 shopt/globstar	later:V79	shopt -s globstar

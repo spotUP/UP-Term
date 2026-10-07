@@ -674,10 +674,35 @@ static sh_node *parse_loop(lexer *L, enum sh_kind k)
     return n;
 }
 
+static long dparen_end(lexer *L, long from, long *semi, int *ns);
+static char *arena_text(lexer *L, long from, long to);
+
 static sh_node *parse_for(lexer *L)
 {
     sh_node *n = node(L, SH_FOR);
     next(L);
+    if (L->tok == T_LPAREN && L->s[L->pos] == '(') {
+        long semi[2], e, b = L->pos + 1;
+        int ns;
+        e = dparen_end(L, b, semi, &ns);
+        if (e < 0 || ns != 2) {
+            fail(L, "for: (( init; cond; step )) is malformed", e == -2);
+            return n;
+        }
+        n->kind = SH_FORARITH;
+        append_word(&n->words, new_word(L, arena_text(L, b, semi[0])));
+        append_word(&n->words, new_word(L, arena_text(L, semi[0] + 1, semi[1])));
+        append_word(&n->words, new_word(L, arena_text(L, semi[1] + 1, e)));
+        L->pos = e + 2;
+        next(L);
+        if (L->tok == T_SEMI)
+            next(L);
+        skip_newlines(L);
+        expect_word(L, "do");
+        n->a = parse_list(L, 0);
+        expect_word(L, "done");
+        return n;
+    }
     if (L->tok != T_WORD) {
         fail(L, "for: a name is missing", L->tok == T_EOF);
         return n;
@@ -774,6 +799,51 @@ static long parens_after(lexer *L)
     return L->s[k] == ')' ? k + 1 : 0;
 }
 
+/* ((: s[from..) follows the two opening parentheses. The index of the first ) of the closing )) when the
+ * text up to it is balanced (so it is an arithmetic command and not two subshells), -1 when it is not,
+ * -2 at the end of the text. semi[0..1] (when given) get the ; at depth 0, *ns how many there are. */
+static long dparen_end(lexer *L, long from, long *semi, int *ns)
+{
+    const char *s = L->s;
+    long i;
+    int depth = 0;
+    if (ns)
+        *ns = 0;
+    for (i = from; s[i]; i++) {
+        char ch = s[i];
+        if (ch == '\\' && s[i + 1])
+            i++;
+        else if (ch == '\'' || ch == '"') {
+            for (i++; s[i] && s[i] != ch; i++)
+                if (ch == '"' && s[i] == '\\' && s[i + 1])
+                    i++;
+            if (!s[i])
+                return -2;
+        } else if (ch == '(')
+            depth++;
+        else if (ch == ')') {
+            if (depth)
+                depth--;
+            else
+                return s[i + 1] == ')' ? i : -1;
+        } else if (ch == ';' && !depth && semi && ns && *ns < 2)
+            semi[(*ns)++] = i;
+        else if (ch == ';' && !depth && ns)
+            (*ns)++;
+    }
+    return -2;
+}
+
+static char *arena_text(lexer *L, long from, long to)
+{
+    char *t = (char *)alloc(L->p, to - from + 1);
+    if (t) {
+        memcpy(t, L->s + from, (size_t)(to - from));
+        t[to - from] = 0;
+    }
+    return t;
+}
+
 static sh_node *parse_command1(lexer *L);
 
 static sh_node *parse_command(lexer *L)
@@ -790,6 +860,17 @@ static sh_node *parse_command1(lexer *L)
     sh_node *n;
     if (L->had_error)
         return 0;
+    if (L->tok == T_LPAREN && L->s[L->pos] == '(') {
+        long e = dparen_end(L, L->pos + 1, 0, 0);
+        if (e >= 0) {
+            n = node(L, SH_ARITHCMD);
+            n->words = new_word(L, arena_text(L, L->pos + 1, e));
+            L->pos = e + 2;
+            next(L);
+            parse_trailing_redirs(L, n);
+            return n;
+        }
+    }
     if (L->tok == T_LPAREN) {
         n = node(L, SH_SUBSHELL);
         next(L);
@@ -1020,7 +1101,7 @@ static void dump(out *o, const sh_node *n)
 {
     static const char *const names[] = {
         "cmd", "pipe", "and", "or", "seq", "bg", "not", "sub", "group", "if", "while", "until",
-        "for", "case", "func"
+        "for", "case", "func", "arith", "forarith"
     };
     const sh_case *c;
     if (!n) {
@@ -1037,6 +1118,14 @@ static void dump(out *o, const sh_node *n)
             put(o, " }");
         }
         dump_words(o, n->words);
+        break;
+    case SH_ARITHCMD:
+        dump_words(o, n->words);
+        break;
+    case SH_FORARITH:
+        dump_words(o, n->words);
+        put(o, " ");
+        dump(o, n->a);
         break;
     case SH_FOR:
         put(o, " ");
