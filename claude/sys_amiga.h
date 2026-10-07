@@ -16,7 +16,8 @@ typedef struct sa_job {
 
 typedef struct sys_amiga {
     char err[200];
-    int vsh, vsh_known;         /* C:vsh is there */
+    const char *vsh;            /* the vsh to run (UP-Term:bin/vsh or C:vsh), 0 without */
+    int vsh_known;
     sa_job jobs[SA_JOBS];
 } sys_amiga;
 

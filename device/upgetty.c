@@ -14,7 +14,7 @@
  * on nothing would leave the port). Faster needs the far end held back:
  * RTSCTS with a full cable, then BAUD 115200 (measured on the rig: 115200
  * without it overran, zmodem stalled both ways). 24 x 80, TERM
- * xterm-256color, SHELL C:vsh. LOOP starts a new shell when one ends (as a
+ * xterm-256color, SHELL UP-Term:bin/vsh (C:vsh of an older install). LOOP starts a new shell when one ends (as a
  * getty); without it upgetty ends with its shell. Ctrl-C to upgetty itself
  * (Break) ends it; the terminal's Ctrl-C goes to the shell, never to us.
  *
@@ -36,6 +36,9 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "../handler/vtcon_packets.h"
+extern struct DosLibrary *DOSBase;
+#define UPASSIGN_DOS
+#include "../config/upassign.h"
 
 static const char vers[] = "$VER: upgetty 0.1 (30.9.2026)";
 
@@ -205,7 +208,9 @@ int main(void)
     rows = args[2] ? *(LONG *)args[2] : 24;
     cols = args[3] ? *(LONG *)args[3] : 80;
     term = args[4] ? (const char *)args[4] : "xterm-256color";
-    shell = args[5] ? (const char *)args[5] : "C:vsh";
+    shell = args[5] ? (const char *)args[5] : upassign_vsh();
+    if (!shell)
+        shell = UPASSIGN_VSH_FALLBACK; /* start_shell reports the LoadSeg failure */
     dev = args[6] ? (const char *)args[6] : "serial.device";
     loop = args[7] != 0;
     memset(&g, 0, sizeof(g));

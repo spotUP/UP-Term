@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """mkicon.py OUT.info [--x X --y Y] [--tool NAME] [--plain] [--tooltype T ...] -- the UP-Term
-Workbench project icon (P8): default tool C:vsh, tooltype WINDOW= the XCON
+Workbench project icon (P8): default tool UP-Term:bin/vsh, tooltype WINDOW= the XCON
 window vsh opens, a 64 KB stack. Written in the Workbench DiskObject format
 (workbench/workbench.h, intuition/intuition.h): DiskObject, the Image and
 its planar data, then the default tool and the tooltypes as length-prefixed
@@ -93,7 +93,7 @@ def main():
     ap.add_argument('out')
     ap.add_argument('--x', type=int)
     ap.add_argument('--y', type=int)
-    ap.add_argument('--tool', default='C:vsh')
+    ap.add_argument('--tool', default='UP-Term:bin/vsh')
     ap.add_argument('--plain', action='store_true')
     ap.add_argument('--tooltype', action='append', default=[])
     a = ap.parse_args()

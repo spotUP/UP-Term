@@ -34,4 +34,9 @@ void suite_upassign(void)
     CHECK(upassign_parse(0, 3, out, sizeof(out)) == 0);
     /* a file that holds binary garbage with a NUL stops there */
     CHECK(upassign_parse("SYS:X\0junk", 10, out, sizeof(out)) == 5);
+    /* vsh: UP-Term:bin/vsh first, C:vsh for an older install, none at all */
+    CHECK(!strcmp(upassign_vsh_pick(1, 1), "UP-Term:bin/vsh"));
+    CHECK(!strcmp(upassign_vsh_pick(1, 0), "UP-Term:bin/vsh"));
+    CHECK(!strcmp(upassign_vsh_pick(0, 1), "C:vsh"));
+    CHECK(upassign_vsh_pick(0, 0) == 0);
 }

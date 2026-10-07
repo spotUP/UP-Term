@@ -65,6 +65,20 @@ UPASSIGN_FN int upassign_parse(const char *buf, long len, char *out, int cap)
     return n;
 }
 
+/* Where vsh is. Install puts it in UP-Term:bin/vsh (the UP-Term icon's tool,
+ * so a chosen drawer needs nothing in C:) and still in C:vsh, which an older
+ * Install made and scripts name. UP-Term:bin/vsh first, C:vsh second.
+ * Pure: has_primary / has_fallback say which of the two exist. Returns the
+ * name to use, 0 when neither (no vsh: callers fall back to the AmigaShell). */
+#define UPASSIGN_VSH_PRIMARY "UP-Term:bin/vsh"
+#define UPASSIGN_VSH_FALLBACK "C:vsh"
+UPASSIGN_FN const char *upassign_vsh_pick(int has_primary, int has_fallback)
+{
+    if (has_primary)
+        return UPASSIGN_VSH_PRIMARY;
+    return has_fallback ? UPASSIGN_VSH_FALLBACK : 0;
+}
+
 #ifdef UPASSIGN_DOS
 /* 1 when UP-Term: is an assign (or a volume, or a device) afterwards, 0
  * when it is not and cannot be made: no Dir file (not installed, or removed
@@ -100,6 +114,27 @@ UPASSIGN_FN int upassign_ensure(void)
     }
     me->pr_WindowPtr = oldwin;
     return have;
+}
+/* The vsh to run: makes the assign first (upassign_ensure), then looks for
+ * UP-Term:bin/vsh and C:vsh. 0 when there is no vsh. Never a requester. */
+UPASSIGN_FN const char *upassign_vsh(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
+    BPTR l;
+    int a = 0, b = 0;
+    upassign_ensure();
+    me->pr_WindowPtr = (APTR)-1;
+    if ((l = Lock((STRPTR)UPASSIGN_VSH_PRIMARY, SHARED_LOCK)) != 0) {
+        a = 1;
+        UnLock(l);
+    }
+    if (!a && (l = Lock((STRPTR)UPASSIGN_VSH_FALLBACK, SHARED_LOCK)) != 0) {
+        b = 1;
+        UnLock(l);
+    }
+    me->pr_WindowPtr = oldwin;
+    return upassign_vsh_pick(a, b);
 }
 #endif /* UPASSIGN_DOS */
 

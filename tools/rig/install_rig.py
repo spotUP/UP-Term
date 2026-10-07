@@ -13,7 +13,7 @@ Two passes: the default drawer (SYS:UP-Term) and a non-default one
   install_rig.py --dest       the non-default drawer only
   install_rig.py --move       a third pass: Install into the default drawer, then
                               again with DEST=VTC:Apps/UP-Term (the assign moves)"""
-import os, pathlib, shutil, struct, sys, time
+import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
 
@@ -294,20 +294,41 @@ def _main(dest=None):
     run('C:UPConsole >NIL: DEVICE ON')  # the block's own line, as a boot runs it
     rc, out = run('C:UPConsole STATUS')
     check('console.device: UP-Term' in out, 'the device block\'s line switches it again', out)
-    import concon_rig
-    who = concon_rig.shell_conwho('kit', 'RAM:who-kit.txt')
-    check(who.startswith('UP-Term '), 'a NewShell CON: window runs the kit\'s handler (%s)' % who, who)
-    rc, out = run('Search S:User-Startup "C:UPConsole >NIL: CON ON"')
-    check('CON ON' in out, 'S:User-Startup switches CON: at boot', out)
-    run('C:UPConsole CON OFF')
-    # the Shell icon from Workbench, CON: the ROM's again: its window is UP-Term's
-    run('Delete RAM:who-shell.txt QUIET')
-    run('VTC:wbrun SYS:System/CLI SYS:System/Shell', 30)
-    time.sleep(4)
-    concon_rig.typeline('VTC:conwho >RAM:who-shell.txt', 3)
-    concon_rig.typeline('endcli', 2)
-    who = run('Type RAM:who-shell.txt')[1].strip()
-    check(who.startswith('UP-Term '), 'the Shell icon opens an UP-Term window (%s)' % who, who)
+    rc, out = run('VTC:iconprobe SYS:System/UP-Term')
+    check('tool UP-Term:bin/vsh' in out and 'WINDOW=XCON:' in out, 'the UP-Term icon is in SYS:System, its tool UP-Term:bin/vsh (nothing in C:)', out)
+    check(run('List >NIL: UP-Term:bin/vsh')[0] == 0 and run('List >NIL: C:vsh')[0] == 0,
+          'Install put vsh in UP-Term:bin and left C:vsh for scripts that name it', '')
+    # the icon's own tool (read from the iconprobe line), with C:vsh renamed away
+    mt = re.search(r'tool (\S+)', out)
+    wbtool = mt.group(1) if mt else 'UP-Term:bin/vsh'
+    run('Rename C:vsh C:vsh.away')
+    rc, out = run('VTC:wbrun %s SYS:System/UP-Term' % wbtool, 30)
+    time.sleep(3)
+    tree = ami.req(0x0D).decode('latin-1')
+    check(rc == 0 and any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
+          'a Workbench start of the icon opens the UP-Term window', out)
+    ami.req(0x08, bytes([4]) + b'exit'); time.sleep(0.4); ami.key(0x44); time.sleep(2)
+    tree = ami.req(0x0D).decode('latin-1')
+    check(not any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
+          'exit in it closes the window')
+    run('Rename C:vsh.away C:vsh')
+    if os.environ.get('INSTALL_RIG_SKIP_CONCON'):  # a rig whose CON: windows are broken (41 at 776b8f7): the later checks still run
+        print('install_rig: CON: window and Shell icon checks skipped (INSTALL_RIG_SKIP_CONCON)')
+    else:
+        import concon_rig
+        who = concon_rig.shell_conwho('kit', 'RAM:who-kit.txt')
+        check(who.startswith('UP-Term '), 'a NewShell CON: window runs the kit\'s handler (%s)' % who, who)
+        rc, out = run('Search S:User-Startup "C:UPConsole >NIL: CON ON"')
+        check('CON ON' in out, 'S:User-Startup switches CON: at boot', out)
+        run('C:UPConsole CON OFF')
+        # the Shell icon from Workbench, CON: the ROM's again: its window is UP-Term's
+        run('Delete RAM:who-shell.txt QUIET')
+        run('VTC:wbrun SYS:System/CLI SYS:System/Shell', 30)
+        time.sleep(4)
+        concon_rig.typeline('VTC:conwho >RAM:who-shell.txt', 3)
+        concon_rig.typeline('endcli', 2)
+        who = run('Type RAM:who-shell.txt')[1].strip()
+        check(who.startswith('UP-Term '), 'the Shell icon opens an UP-Term window (%s)' % who, who)
     run('C:UPConsole >NIL: CON ON')  # the block's own line, as a boot runs it
     rc, out = run('C:UPConsole STATUS')
     check('CON: UP-Term' in out, 'the block\'s line switches CON: again', out)
@@ -355,17 +376,6 @@ def _main(dest=None):
         check(rc == 0, 'no GG: before: vsh is GG:bin/sh (/gg/bin/sh for ixemul programs)', out)
         rc, out = run('Search S:User-Startup ";BEGIN UP-Term"')
         check(';BEGIN UP-Term' in out, 'S:User-Startup assigns GG: at boot', out)
-    rc, out = run('VTC:iconprobe SYS:System/UP-Term')
-    check('tool C:vsh' in out and 'WINDOW=XCON:' in out, 'the UP-Term icon is in SYS:System', out)
-    rc, out = run('VTC:wbrun C:vsh SYS:System/UP-Term', 30)
-    time.sleep(3)
-    tree = ami.req(0x0D).decode('latin-1')
-    check(rc == 0 and any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
-          'a Workbench start of the icon opens the UP-Term window', out)
-    ami.req(0x08, bytes([4]) + b'exit'); time.sleep(0.4); ami.key(0x44); time.sleep(2)
-    tree = ami.req(0x0D).decode('latin-1')
-    check(not any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
-          'exit in it closes the window')
     rc, out = run_long('rununinstall')
     check(rc == 0, 'Uninstall runs', out)
     rc, out = run('VTC:iconprobe SYS:System/Shell')

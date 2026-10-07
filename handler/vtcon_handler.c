@@ -49,6 +49,8 @@
 #include "../render/amiga_render.h"
 #include "../render/vtwin.h"
 #include "../device/upc_public.h"
+#define UPASSIGN_DOS
+#include "../config/upassign.h"
 #include "sbar_gad.h"
 #include "clip.h"
 #include "lineedit.h"
@@ -4927,9 +4929,10 @@ static int tab_demo_script(struct tab_spawn_msg *m)
 static void tab_spawner(void)
 {
     struct tab_spawn_msg *m = (struct tab_spawn_msg *)worker_msg();
-    BPTR f, lock;
+    BPTR f;
     char host[64], dir[256];
-    int vsh, cd;
+    const char *vsh;
+    int cd;
     if (m->demo) {
         if (tab_demo_script(m))
             run_async(m->cmd);
@@ -4941,8 +4944,7 @@ static void tab_spawner(void)
      * AmigaDOS Shell; the FROM script ends the shell with it -- whatever vsh
      * returns: its last command's status (127 for a name not found) failed
      * the script at FailAt 10, and the tab stayed open on the Shell's prompt */
-    if ((vsh = (lock = Lock((STRPTR)"C:vsh", SHARED_LOCK)) != 0) != 0)
-        UnLock(lock);
+    vsh = upassign_vsh(); /* UP-Term:bin/vsh, else C:vsh of an older install */
     if (GetVar((STRPTR)"HOSTNAME", (STRPTR)host, sizeof(host), 0) <= 0)
         host[0] = 0;
     cd = m->cwd[0] && termurl_cwd_dir(m->cwd, host, dir, sizeof(dir));
@@ -4954,7 +4956,10 @@ static void tab_spawner(void)
             FPuts(f, (STRPTR)"\"\n");
         }
         if (vsh)
-            FPuts(f, (STRPTR)"C:vsh\nEndCLI >NIL:\n");
+        {
+            FPuts(f, (STRPTR)vsh);
+            FPuts(f, (STRPTR)"\nEndCLI >NIL:\n");
+        }
         Close(f);
         strcat(m->cmd, " FROM T:UP-Term-tab");
     }

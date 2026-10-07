@@ -122,7 +122,7 @@ static const char *const s_grep[] = {
 
 static const char *const d_bash[] = {
     "Runs a command line in the start directory through vsh (a Unix-like shell for AmigaOS: pipes, "
-    "redirection, AmigaDOS commands and programs) when C:vsh is installed, else through the "
+    "redirection, AmigaDOS commands and programs) when vsh is installed (UP-Term:bin/vsh or C:vsh), else through the "
     "AmigaShell. Output and errors are returned with the return code (5 warn, 10 error, 20 failure; 10 "
     "or more is a failure): up to 30000 characters (a longer output is kept in a file you can Read, "
     "with its start shown; a failure's output is cut to its head and tail). Commands get no input. ",

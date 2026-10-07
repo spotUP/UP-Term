@@ -1,7 +1,7 @@
 /* sys_amiga -- sys.h on AmigaDOS for C:Claude.
  *
  * Bash: the command line goes into a script file in T: and runs as
- * "vsh <script>" (or "Execute <script>" without C:vsh) with no input (NIL:)
+ * "vsh <script>" (or "Execute <script>" without vsh) with no input (NIL:)
  * and its output to a second T: file,
  * from a runner process the way vsh runs its own jobs (a synchronous
  * SystemTags with the Shell process named; the runner replies with the
@@ -24,6 +24,9 @@
 #include "sys_amiga.h"
 #include "util.h"
 #include "../handler/clip.h"
+extern struct DosLibrary *DOSBase;
+#define UPASSIGN_DOS
+#include "../config/upassign.h"
 
 static void set_err(sys_amiga *s, const char *what)
 {
@@ -192,14 +195,11 @@ static void send_break(runjob *j)
     Permit();
 }
 
-/* vsh when it is installed (C:vsh, where the kit puts it), else the AmigaShell */
-static int have_vsh(sys_amiga *s)
+/* vsh when it is installed (UP-Term:bin/vsh, else C:vsh of an older install), else the AmigaShell */
+static const char *have_vsh(sys_amiga *s)
 {
     if (!s->vsh_known) {
-        BPTR l = Lock((STRPTR)"C:vsh", SHARED_LOCK);
-        s->vsh = l != 0;
-        if (l)
-            UnLock(l);
+        s->vsh = upassign_vsh();
         s->vsh_known = 1;
     }
     return s->vsh;
@@ -248,7 +248,12 @@ static int start(sys_amiga *s, const char *cmd, long tag, char *script, char *ou
         cl_copy(s->err, "out of memory", sizeof(s->err));
         goto fail;
     }
-    cl_copy(j->line, have_vsh(s) ? "vsh " : "Execute ", sizeof(j->line));
+    /* the full name: the line is run with no assumption about C: or the path */
+    if (have_vsh(s)) {
+        cl_copy(j->line, s->vsh, sizeof(j->line));
+        cl_cat(j->line, " ", sizeof(j->line));
+    } else
+        cl_copy(j->line, "Execute ", sizeof(j->line));
     cl_cat(j->line, script, sizeof(j->line));
     cl_copy(j->child, "Claude command ", sizeof(j->child));
     cl_cat(j->child, num, sizeof(j->child));
@@ -572,10 +577,12 @@ static int a_info(void *u, const char *what, char *out, long cap)
     if (!strcmp(what, "amissl"))
         return lib_check("amisslmaster.library", 5, out, cap);
     if (!strcmp(what, "vsh")) {
-        int k = a_kind(u, "C:vsh");
+        const char *vp = upassign_vsh();
+        int k = vp ? 1 : 0;
         /* without vsh the Bash tool runs commands in the AmigaShell (run_cmd's
          * fallback): a note, not an error */
-        cl_copy(out, k == 1 ? "C:vsh is there" : "C:vsh is not there: commands run in the AmigaShell "
+        cl_copy(out, k == 1 ? (!strcmp(vp, UPASSIGN_VSH_PRIMARY) ? "UP-Term:bin/vsh is there" : "C:vsh is there")
+                         : "UP-Term:bin/vsh and C:vsh are not there: commands run in the AmigaShell "
                                                  "(install the UP-Term kit for Unix-style commands)", cap);
         return k == 1 ? 1 : -1;
     }
