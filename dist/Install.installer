@@ -183,6 +183,11 @@
         (run "Execute T:UPTermRemote.sh" (safe))
         (run "Delete >NIL: T:UPTermRemote.sh QUIET" (safe))
         (set #oldremote (getenv "UPTermRemote"))
+        ; getenv gives the file whole: the line Claude printed ends in a
+        ; newline, which the string gadget shows as a square after the port
+        (while (and (> (strlen #oldremote) 0)
+                    (= (substr #oldremote (- (strlen #oldremote) 1) 1) "\n"))
+            (set #oldremote (substr #oldremote 0 (- (strlen #oldremote) 1))))
         (run "Delete >NIL: ENV:UPTermRemote QUIET" (safe))
     ))
 
@@ -281,7 +286,7 @@
 ; and moves the bar by its size (#kb). Its command line is short whatever the
 ; kit's path and the answers are (AmigaDOS takes about 255 characters): the
 ; kit's Files drawer is the assign UPTKIT:, and the options are not on the
-; line at all but in the files ENV:UPT_<keyword> that P_OPTIONS writes once
+; line at all but in the files ENV:UPTOPT<keyword> that P_OPTIONS writes once
 ; before the first part (install.dos reads them) and P_OPTIONS_END removes. P_COPY copies one drawer of the kit
 ; (#from) into UP-Term's drawer (#to) the same way: copyfiles makes #to,
 ; takes the subdrawers along, and shows each file as it copies it.
@@ -290,15 +295,15 @@
 (procedure P_LEAD
     (set #lead (substr "\n\n\n\n\n\n\n" 0 (/ (- 15 #n) 2))))
 
-; P_OPT writes one option: the file ENV:UPT_<name> holding #val (nothing when
+; P_OPT writes one option: the file ENV:UPTOPT<name> holding #val (nothing when
 ; the option is off). textfile, not a SetEnv line: no quoting of a path with
 ; spaces, and no command line to outgrow.
 (procedure P_OPT
     (if (<> #val "")
-        (textfile (dest (cat "ENV:UPT_" #name)) (append #val))))
+        (textfile (dest (cat "ENV:UPTOPT" #name)) (append #val))))
 
 (procedure P_OPTIONS
-    (run "Delete >NIL: ENV:UPT_#? QUIET")
+    (run "Delete >NIL: ENV:UPTOPT#? QUIET")
     (makeassign "UPTKIT" #files)
     (set #name "DEST" #val #dest) (P_OPT)
     (set #name "REMOTE" #val #remote) (P_OPT)
@@ -318,7 +323,7 @@
     (set #name "EMOJI" #val #emoji) (P_OPT))
 
 (procedure P_OPTIONS_END
-    (run "Delete >NIL: ENV:UPT_#? QUIET")
+    (run "Delete >NIL: ENV:UPTOPT#? QUIET")
     (makeassign "UPTKIT"))
 
 (procedure P_BAR
