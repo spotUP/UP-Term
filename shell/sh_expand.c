@@ -556,7 +556,7 @@ char *sh_quote(const char *s, int style)
         strcpy(o, "''");
         return o;
     }
-    if (!ctl && plain)
+    if (!ctl && plain && style != SH_Q_ALWAYS)
         return strcpy(o, s);
     if (ctl) {
         o[k++] = '$';
@@ -587,6 +587,28 @@ char *sh_quote(const char *s, int style)
         }
         o[k++] = '\'';
     }
+    o[k] = 0;
+    return o;
+}
+
+/* "text" with \ " $ ` escaped, as declare -p prints a value ($'..' when it holds a control character) */
+char *sh_dquote(const char *t)
+{
+    size_t n = strlen(t), k = 0, i;
+    char *o;
+    for (i = 0; i < n; i++)
+        if ((unsigned char)t[i] < 32 || t[i] == 127)
+            return sh_quote(t, SH_Q_SINGLE);
+    o = (char *)malloc(n * 2 + 3);
+    if (!o)
+        return 0;
+    o[k++] = '"';
+    for (i = 0; i < n; i++) {
+        if (strchr("\"\\$`", t[i]))
+            o[k++] = '\\';
+        o[k++] = t[i];
+    }
+    o[k++] = '"';
     o[k] = 0;
     return o;
 }
@@ -1199,6 +1221,246 @@ static const char *pval(ex *e, const char *name, int hassub, const char *sub)
     return r;
 }
 
+/* ${X:o:l}, ${@:o:l}, ${A[@]:o:l}: offset and length are arithmetic; a negative offset counts from the
+ * end, a negative length is an end position. Returns 0, or -1 with e->err set. */
+static int slice_range(ex *e, const char *w, long a, long end, long *off, long *len, int *haslen)
+{
+    long j = a, depth = 0, cut = -1;
+    const char *err = 0;
+    char *t;
+    while (j < end) {
+        if (w[j] == '(')
+            depth++;
+        else if (w[j] == ')')
+            depth--;
+        else if (w[j] == ':' && !depth) {
+            cut = j;
+            break;
+        }
+        j++;
+    }
+    t = expand_string(e, w + a, (cut < 0 ? end : cut) - a, 0);
+    *off = t ? sh_arith(e->c, t, &err) : 0;
+    free(t);
+    *haslen = cut >= 0;
+    *len = 0;
+    if (!err && cut >= 0) {
+        t = expand_string(e, w + cut + 1, end - cut - 1, 0);
+        *len = t ? sh_arith(e->c, t, &err) : 0;
+        free(t);
+    }
+    if (err) {
+        e->err = err;
+        return -1;
+    }
+    return 0;
+}
+
+static void slice_scalar(ex *e, cbuf *b, const char *v, long off, long len, int haslen, int dquote)
+{
+    long l = (long)strlen(v), n;
+    char *t;
+    if (off < 0)
+        off += l;
+    if (off < 0 || off > l)
+        return;
+    if (haslen && len < 0) {
+        if (l + len < off) {
+            e->err = "substring expression < 0";
+            return;
+        }
+        n = l + len - off;
+    } else
+        n = haslen && len < l - off ? len : l - off;
+    t = (char *)malloc((size_t)n + 1);
+    if (t) {
+        memcpy(t, v + off, (size_t)n);
+        t[n] = 0;
+        cputs(b, t, dquote ? F_QUOTED : F_SPLIT);
+        free(t);
+    }
+}
+
+/* The elements of a list slice: positional parameters count from 1 (0 is $0), an indexed array by
+ * subscript, an associative one by position. */
+static void slice_list(ex *e, cbuf *b, const char *name, int hassub, int all, const char *sub,
+                       long off, long len, int haslen, int dquote)
+{
+    pv src, res;
+    sh_list ks;
+    long i, last = 0, s;
+    int indexed = 0, at;
+    const sh_var *v = find(e->c, name);
+    memset(&ks, 0, sizeof(ks));
+    memset(&res, 0, sizeof(res));
+    pv_get(e, name, &src);
+    if (haslen && len < 0) {
+        e->err = "substring expression < 0";
+        goto done;
+    }
+    if (hassub && v && !(v->attr & SH_ATTR_ASSOC)) {
+        sh_keys(e->c, name, &ks);
+        indexed = ks.n == src.n;
+        if (indexed && ks.n)
+            last = atol(ks.v[ks.n - 1]);
+    }
+    res.v = (char **)calloc((size_t)src.n + 2, sizeof(char *));
+    res.own = 1;
+    if (!res.v)
+        goto done;
+    if (!hassub) {
+        /* position p = 1..n is $p; offset 0 puts $0 in front */
+        s = off < 0 ? src.n + 1 + off : off;
+        if (s < 0 || (off < 0 && s < 1))
+            goto done;
+        if (s == 0)
+            res.v[res.n++] = e->c->arg0 ? e->c->arg0 : (char *)"";
+        for (i = s < 1 ? 0 : s - 1; i < src.n && (!haslen || res.n < len); i++)
+            res.v[res.n++] = src.v[i];
+    } else if (indexed) {
+        s = off < 0 ? last + 1 + off : off;
+        if (s < 0)
+            goto done;
+        for (i = 0; i < src.n && (!haslen || res.n < len); i++)
+            if (atol(ks.v[i]) >= s)
+                res.v[res.n++] = src.v[i];
+    } else {
+        s = off < 0 ? src.n + off : off;
+        if (s < 0)
+            goto done;
+        for (i = s; i < src.n && (!haslen || res.n < len); i++)
+            res.v[res.n++] = src.v[i];
+    }
+    at = all ? sub[0] == '@' : name[0] == '@';
+    put_pv(e, b, &res, at, dquote);
+done:
+    free(res.v);
+    sh_list_free(&ks);
+    pv_free(&src);
+}
+
+/* ${X@op}: Q quote, E escapes, P prompt, A declare text, a attributes, U u L case, K k key/value pairs;
+ * one value, or every element of $@ and NAME[@]. Returns 0 when the operator letter is not known. */
+static void transform(ex *e, cbuf *b, const char *name, int hassub, int all, const char *sub, char op,
+                      int dquote)
+{
+    int list = all || (!hassub && (!strcmp(name, "@") || !strcmp(name, "*")));
+    int at = list && (all ? sub[0] == '@' : name[0] == '@');
+    const sh_var *v = hassub ? find(e->c, name) : 0;
+    pv src, res;
+    long q, n = 1;
+    const char *one[1];
+    memset(&res, 0, sizeof(res));
+    memset(&src, 0, sizeof(src));
+    if (list) {
+        pv_get(e, name, &src);
+        n = src.n;
+    } else {
+        const char *val = pval(e, name, hassub, sub);
+        if (unbound(e, name, val))
+            return;
+        if (!val && op != 'A' && op != 'a')
+            return;
+        one[0] = val ? val : "";
+    }
+    SH_HIT(PARAM_TRANSFORM);
+    res.v = (char **)calloc((size_t)(2 * n + 2), sizeof(char *));
+    res.own = res.deep = 1;
+    if (!res.v)
+        goto done;
+    if (op == 'A' || op == 'a') {
+        /* A: the declare text, whole for NAME[@]; a: the letters, once per element of NAME[@] */
+        if (e->c->declared && !(list && !all)) {
+            if (op == 'A' || !list)
+                res.v[res.n++] = e->c->declared(e->c, name, op == 'a', all);
+            else
+                for (q = 0; q < n; q++)
+                    res.v[res.n++] = e->c->declared(e->c, name, 1, 0);
+        }
+    } else if ((op == 'K' || op == 'k') && all && v && (v->attr & (SH_ATTR_ARRAY | SH_ATTR_ASSOC))) {
+        sh_list ks;
+        memset(&ks, 0, sizeof(ks));
+        sh_keys(e->c, name, &ks);
+        for (q = 0; q < n && q < ks.n; q++) {
+            char *k = sdup(ks.v[q]), *val = op == 'K' ? sh_dquote(src.v[q]) : sdup(src.v[q]);
+            if (op == 'K' && (v->attr & SH_ATTR_ASSOC)) {
+                const char *z;
+                for (z = ks.v[q]; *z; z++)
+                    if (!((*z >= 'a' && *z <= 'z') || (*z >= 'A' && *z <= 'Z') || (*z >= '0' && *z <= '9') || *z == '_'))
+                        break;
+                if (*z || !*ks.v[q]) {
+                    free(k);
+                    k = sh_dquote(ks.v[q]);
+                }
+            }
+            if (op == 'K') {
+                /* one word per pair: key value */
+                char *j = (char *)malloc(strlen(k ? k : "") + strlen(val ? val : "") + 3);
+                if (j) {
+                    strcpy(j, k ? k : "");
+                    strcat(j, " ");
+                    strcat(j, val ? val : "");
+                    if (v->attr & SH_ATTR_ASSOC)
+                        strcat(j, " "); /* bash: a trailing space after every pair of an associative array */
+                    res.v[res.n++] = j;
+                }
+                free(k);
+                free(val);
+            } else {
+                res.v[res.n++] = k;
+                res.v[res.n++] = val;
+            }
+        }
+        sh_list_free(&ks);
+    } else {
+        char *pat = sdup("");
+        for (q = 0; q < n; q++) {
+            const char *x = list ? src.v[q] : one[0];
+            char *t = 0;
+            switch (op) {
+            case 'Q': case 'K': case 'k': t = sh_quote(x, SH_Q_ALWAYS); break;
+            case 'E': t = e->c->unescape ? e->c->unescape(e->c, x) : sdup(x); break;
+            case 'P': t = e->c->prompt ? e->c->prompt(e->c, x) : sdup(x); break;
+            case 'U': t = case_one(pat, x, '^', 1); break;
+            case 'u': t = case_one(pat, x, '^', 0); break;
+            case 'L': t = case_one(pat, x, ',', 1); break;
+            default: break;
+            }
+            res.v[res.n++] = t ? t : sdup("");
+        }
+        free(pat);
+    }
+    if (list && (op == 'K' || op == 'k') && all && v && (v->attr & (SH_ATTR_ARRAY | SH_ATTR_ASSOC))) {
+        if (op == 'K' && dquote) {
+            /* "${a[@]@K}": one word of all the pairs (bash) */
+            at = 0;
+            {
+                long z, tot = 1;
+                char *j;
+                for (z = 0; z < res.n; z++)
+                    tot += (long)strlen(res.v[z]) + 1;
+                j = (char *)malloc((size_t)tot);
+                if (j) {
+                    j[0] = 0;
+                    for (z = 0; z < res.n; z++) {
+                        if (z && !(v->attr & SH_ATTR_ASSOC))
+                            strcat(j, " ");
+                        strcat(j, res.v[z]);
+                        free(res.v[z]);
+                    }
+                    res.v[0] = j;
+                    res.n = 1;
+                }
+            }
+        }
+    }
+    put_pv(e, b, &res, at, dquote);
+done:
+    pv_free(&res);
+    if (list)
+        pv_free(&src);
+}
+
 /* ${...}: name, and an operator :- := :+ :? (or - = + ?) with its word. */
 static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
 {
@@ -1254,6 +1516,30 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         i = j;
         all = !strcmp(sub, "@") || !strcmp(sub, "*");
     }
+    if (indirect && i + 1 == end && (w[i] == '*' || w[i] == '@')) {
+        /* ${!prefix*} ${!prefix@}: the names of the variables that start with prefix, sorted */
+        pv ns;
+        const sh_var *vp;
+        long q, r, pl = (long)strlen(name);
+        memset(&ns, 0, sizeof(ns));
+        for (vp = e->c->vars; vp; vp = vp->next)
+            ns.n++;
+        ns.v = (char **)calloc((size_t)ns.n + 1, sizeof(char *));
+        ns.own = 1;
+        ns.n = 0;
+        for (vp = e->c->vars; ns.v && vp; vp = vp->next)
+            if (!strncmp(vp->name, name, (size_t)pl))
+                ns.v[ns.n++] = vp->name;
+        for (q = 1; q < ns.n; q++) {
+            char *t = ns.v[q];
+            for (r = q; r > 0 && strcmp(ns.v[r - 1], t) > 0; r--)
+                ns.v[r] = ns.v[r - 1];
+            ns.v[r] = t;
+        }
+        put_pv(e, b, &ns, w[i] == '@', dquote);
+        pv_free(&ns);
+        return end + 1;
+    }
     if (indirect) {
         const sh_var *rv = find(e->c, name);
         if (all) {
@@ -1299,6 +1585,10 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
                 all = !strcmp(sub, "@") || !strcmp(sub, "*");
             }
         }
+    }
+    if (i + 2 == end && w[i] == '@' && !len_op && strchr("QEPAaUuLKk", w[i + 1])) {
+        transform(e, b, name, hassub, all, sub, w[i + 1], dquote);
+        return end + 1;
     }
     if (i < end && strchr("#%/^,~", w[i]) && !len_op) {
         /* ${X#p} ${X%p} (## %% longest), ${X/p/r} ${X//p/r} ${X/#p/r} ${X/%p/r}, ${X^p} ${X^^p} ${X,p}
@@ -1383,6 +1673,25 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         free(rep);
         return end + 1;
     }
+    if (i < end && w[i] == ':' && !len_op && (i + 1 >= end || !strchr("-=+?", w[i + 1]))) {
+        long off, len;
+        int haslen;
+        const sh_var *sv;
+        if (slice_range(e, w, i + 1, end, &off, &len, &haslen) < 0)
+            return end + 1;
+        SH_HIT(PARAM_SLICE);
+        sv = hassub ? find(e->c, name) : 0;
+        if (all && sv && !(sv->attr & (SH_ATTR_ARRAY | SH_ATTR_ASSOC)))
+            all = 0; /* ${x[@]:1:2} of a plain scalar is the substring */
+        if (all || (!hassub && (!strcmp(name, "@") || !strcmp(name, "*")))) {
+            slice_list(e, b, name, hassub, all, sub, off, len, haslen, dquote);
+        } else {
+            val = pval(e, name, hassub, sub);
+            if (!unbound(e, name, val))
+                slice_scalar(e, b, val ? val : "", off, len, haslen, dquote);
+        }
+        return end + 1;
+    }
     if (i < end && w[i] == ':') {
         colon = 1;
         i++;
@@ -1409,7 +1718,7 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         long l = val ? (long)strlen(val) : 0;
         int d = 0;
         char t[16];
-        if (all) {
+        if (all || (!hassub && (name[0] == '@' || name[0] == '*') && !name[1])) {
             pv p;
             pv_get(e, name, &p);
             l = p.n;

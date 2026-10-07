@@ -205,6 +205,9 @@ static int opt_on(const sh_shell *sh, int i)
 
 static void core_warn(sh_ctx *c, const char *name, const char *msg);
 static void core_refresh(sh_ctx *c, const char *name);
+static char *core_unescape(sh_ctx *c, const char *s);
+static char *core_prompt(sh_ctx *c, const char *ps);
+static char *core_declared(sh_ctx *c, const char *name, int flags_only, int whole);
 static void core_on_assign(sh_ctx *c, const char *name, const char *value);
 
 void sh_shell_init(sh_shell *sh)
@@ -230,6 +233,9 @@ void sh_shell_init(sh_shell *sh)
     sh->ctx.warn = core_warn;
     sh->ctx.refresh = core_refresh;
     sh->ctx.on_assign = core_on_assign;
+    sh->ctx.unescape = core_unescape;
+    sh->ctx.prompt = core_prompt;
+    sh->ctx.declared = core_declared;
     sh->lineno = 0;
     sh->frames = 0;
     sh->nframes = sh->capframes = 0;
@@ -334,6 +340,9 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.warn = sh->ctx.warn;
     c->ctx.refresh = sh->ctx.refresh;
     c->ctx.on_assign = sh->ctx.on_assign;
+    c->ctx.unescape = sh->ctx.unescape;
+    c->ctx.prompt = sh->ctx.prompt;
+    c->ctx.declared = sh->ctx.declared;
     c->lineno = sh->lineno;
     c->main_src = sh->main_src;
     c->main_run = sh->main_run;
@@ -675,6 +684,12 @@ static void close_owned(sh_shell *sh, const sh_io *io)
  * shell that is not interactive, with status 1, as bash does */
 static void expand_fatal(sh_shell *sh, const char *err)
 {
+    if (err && strstr(err, "substring expression")) {
+        /* bash does not exit: it drops the rest of the command line (status 1) */
+        if (!sh->intr)
+            sh->intr = 3;
+        return;
+    }
     if (!(sh->opts & SO_INTERACTIVE)) {
         sh->exiting = 1;
         /* bash: an unbound variable in a -c string ends with 127, anywhere else 1 */
@@ -885,7 +900,8 @@ static long b_echo(sh_shell *sh, int argc, char **argv, const sh_io *io)
 }
 
 /* printf: one backslash escape at *pp (on the backslash); %b's octal
- * form is \0nnn. Returns 1 at \c (stop all output). */
+ * form is \0nnn. Returns 1 at \c (stop all output). is_b: 0 printf format, 1 %b, 2 $'...' and
+ * ${x@E} (\E, \cX, \? as bash reads them). */
 static int pf_escape(pbuf *b, const char **pp, int is_b)
 {
     const char *p = *pp + 1;
@@ -900,10 +916,27 @@ static int pf_escape(pbuf *b, const char **pp, int is_b)
     case 'r': out = 13; break;
     case 't': out = 9; break;
     case 'v': out = 11; break;
+    case 'E':
+        if (is_b != 2) {
+            pb_add(b, "\\", 1);
+            out = c;
+        } else
+            out = 27;
+        break;
+    case '?':
+        if (is_b != 2)
+            pb_add(b, "\\", 1);
+        out = c;
+        break;
     case 'c':
-        if (is_b) {
+        if (is_b == 1) {
             *pp = p;
             return 1;
+        }
+        if (is_b == 2 && p[1]) {
+            p++;
+            out = *p == '?' ? 127 : (char)(*p & 31);
+            break;
         }
         out = c;
         break;
@@ -954,7 +987,7 @@ static int pf_escape(pbuf *b, const char **pp, int is_b)
         return 0;
     default:
         if (c >= '0' && c <= '7') {
-            if (!(is_b && c == '0'))
+            if (is_b != 1 || c != '0')
                 p--;
             while (n < 3 && p[1] >= '0' && p[1] <= '7') {
                 p++;
@@ -1221,36 +1254,24 @@ static long b_pwd(sh_shell *sh, int argc, char **argv, const sh_io *io)
 }
 
 /* "text" with \ " $ ` escaped, as declare -p prints a value */
-static void say_dq(sh_shell *sh, const sh_io *io, const char *t)
+static void pb_dq(pbuf *o, const char *t)
 {
-    const char *p;
-    for (p = t; *p; p++)
-        if ((unsigned char)*p < 32 || *p == 127) { /* bash: $'a\nb' */
-            char *q = sh_quote(t, SH_Q_SINGLE);
-            say(sh, io->out, q ? q : "");
-            free(q);
-            return;
-        }
-    say(sh, io->out, "\"");
-    for (p = t; *p; p++) {
-        if (strchr("\"\\$`", *p))
-            say(sh, io->out, "\\");
-        sh->os.write(sh->os.data, io->out, p, 1);
-    }
-    say(sh, io->out, "\"");
+    char *q = sh_dquote(t);
+    pb_str(o, q ? q : "");
+    free(q);
 }
 
 /* ([0]="x" [1]="y"): an associative array has a space before the closing paren (bash) */
-static void say_array(sh_shell *sh, const sh_io *io, const sh_var *v)
+static void pb_array(pbuf *o, const sh_var *v)
 {
     long i;
     char d[24];
-    say(sh, io->out, "(");
+    pb_add(o, "(", 1);
     for (i = 0; i < v->arr->n; i++) {
         const sh_elem *el = v->arr->e + i;
         if (i)
-            say(sh, io->out, " ");
-        say(sh, io->out, "[");
+            pb_add(o, " ", 1);
+        pb_add(o, "[", 1);
         if (v->attr & SH_ATTR_ASSOC) {
             const char *k;
             int plain = 1;
@@ -1258,17 +1279,35 @@ static void say_array(sh_shell *sh, const sh_io *io, const sh_var *v)
                 if (!((*k >= 'a' && *k <= 'z') || (*k >= 'A' && *k <= 'Z') || (*k >= '0' && *k <= '9') || *k == '_'))
                     plain = 0;
             if (plain && *el->key)
-                say(sh, io->out, el->key);
+                pb_str(o, el->key);
             else
-                say_dq(sh, io, el->key);
+                pb_dq(o, el->key);
         } else {
             sh_ltoa(el->idx, d);
-            say(sh, io->out, d);
+            pb_str(o, d);
         }
-        say(sh, io->out, "]=");
-        say_dq(sh, io, el->val ? el->val : "");
+        pb_add(o, "]=", 2);
+        pb_dq(o, el->val ? el->val : "");
     }
-    say(sh, io->out, (v->attr & SH_ATTR_ASSOC) && v->arr->n ? " )" : ")");
+    pb_str(o, (v->attr & SH_ATTR_ASSOC) && v->arr->n ? " )" : ")");
+}
+
+static void say_dq(sh_shell *sh, const sh_io *io, const char *t)
+{
+    pbuf o = { 0, 0, 0 };
+    pb_dq(&o, t);
+    if (o.s)
+        say(sh, io->out, o.s);
+    free(o.s);
+}
+
+static void say_array(sh_shell *sh, const sh_io *io, const sh_var *v)
+{
+    pbuf o = { 0, 0, 0 };
+    pb_array(&o, v);
+    if (o.s)
+        say(sh, io->out, o.s);
+    free(o.s);
 }
 
 static int cmp_str(const void *a, const void *b)
@@ -2229,6 +2268,43 @@ static void decl_print(sh_shell *sh, const sh_io *io, const sh_var *v)
     else
         say_dq(sh, io, sv ? sv : "");
     say(sh, io->out, "\n");
+}
+
+/* ${x@A} and ${x@a}, see sh_ctx.declared */
+static char *core_declared(sh_ctx *c, const char *name, int flags_only, int whole)
+{
+    const sh_var *v = sh_lookup(c, name);
+    pbuf o = { 0, 0, 0 };
+    char at[12];
+    int k = 0, j;
+    const char *sv;
+    if (!v)
+        return sdup("");
+    sv = sh_var_str(v);
+    for (j = 0; j < (int)(sizeof decl_attrs / sizeof decl_attrs[0]); j++)
+        if ((v->attr & decl_attrs[j].bit) && (flags_only || decl_attrs[j].c != 'n'))
+            at[k++] = decl_attrs[j].c;
+    at[k] = 0;
+    if (flags_only)
+        return sdup(at);
+    if (!k && !v->arr) {
+        pb_str(&o, v->name);
+        pb_str(&o, "=");
+    } else {
+        pb_str(&o, "declare -");
+        pb_str(&o, k ? at : "-");
+        pb_str(&o, " ");
+        pb_str(&o, v->name);
+        pb_str(&o, "=");
+    }
+    if (v->arr && whole)
+        pb_array(&o, v);
+    else {
+        char *q = sh_quote(sv ? sv : "", SH_Q_ALWAYS);
+        pb_str(&o, q ? q : "''");
+        free(q);
+    }
+    return o.s ? o.s : sdup("");
 }
 
 /* declare, typeset, local, readonly, export: mode 0, 0, 1, 2, 3 */
@@ -4122,10 +4198,10 @@ static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
 }
 
 /* The status an unwinding line ends with: 130 after Ctrl-C, 2 after
- * "nested too deeply". */
+ * "nested too deeply", 1 after an expansion error that bash does not exit on. */
 static long intr_status(const sh_shell *sh)
 {
-    return sh->intr == 2 ? 2 : 130;
+    return sh->intr == 2 ? 2 : sh->intr == 3 ? 1 : 130;
 }
 
 /* Ctrl-C: once it arrives, everything unwinds to the prompt (status 130). */
@@ -4803,7 +4879,22 @@ static const char *pb_zsh(sh_shell *sh, pbuf *b, const char *p)
     return p;
 }
 
-char *sh_prompt(sh_shell *sh, const char *ps)
+static char *core_unescape(sh_ctx *c, const char *s)
+{
+    pbuf o = { 0, 0, 0 };
+    const char *p;
+    (void)c;
+    for (p = s; *p; p++) {
+        if (*p == '\\')
+            pf_escape(&o, &p, 2);
+        else
+            pb_add(&o, p, 1);
+    }
+    return o.s ? o.s : sdup("");
+}
+
+/* zsh: also zsh's %-escapes (vsh's own prompts); ${x@P} is bash's: backslash escapes only */
+static char *prompt_text(sh_shell *sh, const char *ps, int zsh)
 {
     pbuf b = { 0, 0, 0 };
     sh_list out;
@@ -4816,7 +4907,7 @@ char *sh_prompt(sh_shell *sh, const char *ps)
             pb_add(&b, ps, 1);
         } else if (*ps == '\\')
             pb_bash(sh, &b, *++ps);
-        else if (*ps == '%' && ps[1])
+        else if (zsh && *ps == '%' && ps[1])
             ps = pb_zsh(sh, &b, ps + 1);
         else
             pb_add(&b, ps, 1);
@@ -4835,4 +4926,14 @@ char *sh_prompt(sh_shell *sh, const char *ps)
     sh_list_free(&out);
     free(b.s);
     return r;
+}
+
+char *sh_prompt(sh_shell *sh, const char *ps)
+{
+    return prompt_text(sh, ps, 1);
+}
+
+static char *core_prompt(sh_ctx *c, const char *ps)
+{
+    return prompt_text((sh_shell *)c->user, ps, 0);
 }

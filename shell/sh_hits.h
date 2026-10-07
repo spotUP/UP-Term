@@ -19,6 +19,8 @@
     X(TEST_BINARY) /* test evaluated a binary operator */ \
     X(INVOKE_CLUSTER) /* the command line had a cluster of option letters */ \
     X(PARAM_OP)   /* a value-rewriting parameter operator ran: # % / ^ , ~ */ \
+    X(PARAM_SLICE) /* a substring ${x:o:l}, ${@:o:l} or ${a[@]:o:l} ran */ \
+    X(PARAM_TRANSFORM) /* a ${x@Q} style transform ran */ \
     X(ARRAY_ELEM_SET) /* an array element was assigned */ \
     X(PARAM_VALUES_ARRAY) /* the expander took the values of an array through the shared seam */ \
     X(LOCAL_RESTORE_ARRAY) /* a local array was put back as it was */

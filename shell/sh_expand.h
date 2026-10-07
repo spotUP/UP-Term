@@ -68,6 +68,12 @@ typedef struct sh_ctx {
      * to bring the store's copy up to date; on_assign after a scalar assignment succeeded. NULL: none */
     void (*refresh)(struct sh_ctx *c, const char *name);
     void (*on_assign)(struct sh_ctx *c, const char *name, const char *value);
+    /* ${x@E}: the text with backslash escapes read as $'...' reads them; ${x@P}: as a prompt string
+     * (bash's backslash escapes, then expansion); ${x@A} (flags_only 0) and ${x@a} (1): the declare
+     * text or the attribute letters of a variable, whole = every element. malloc'ed; NULL: no hook */
+    char *(*unescape)(struct sh_ctx *c, const char *s);
+    char *(*prompt)(struct sh_ctx *c, const char *ps);
+    char *(*declared)(struct sh_ctx *c, const char *name, int flags_only, int whole);
     void *user;
 } sh_ctx;
 
@@ -103,7 +109,9 @@ void sh_pstat(sh_ctx *c, const long *st, int n);               /* record PIPESTA
  * (printf %q); empty is '', control characters make $'..'. malloc'ed. */
 #define SH_Q_SINGLE 0
 #define SH_Q_BACKSLASH 1
+#define SH_Q_ALWAYS 2   /* 'x' even when x needs no quoting (${x@Q}, ${x@A}) */
 char *sh_quote(const char *s, int style);
+char *sh_dquote(const char *t);   /* "t" for declare -p: \ " $ ` escaped; $'..' with control characters */
 void sh_export(sh_ctx *c, const char *name);
 void sh_ctx_free(sh_ctx *c);
 

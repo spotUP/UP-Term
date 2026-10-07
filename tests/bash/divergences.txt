@@ -12,7 +12,6 @@ agent/a008_regex_match	later:V65,V66	[[ =~ ]] and BASH_REMATCH
 agent/a016_read_procsub	later:V59	< <( )
 agent/a018_arith_command	later:V63	(( ))
 agent/a019_cstyle_for	later:V64	for (( ))
-agent/a022_substring	later:V47	${x:o:l}
 agent/a028_ansi_c_quote	later:V52	$'...'
 agent/a032_dbrack_files	later:V65	[[ ]]
 agent/a033_dbrack_strings	later:V65	[[ ]]
@@ -29,9 +28,7 @@ agent/a051_cmdsub_file	later:V55	$(< file)
 agent/a065_clobber_override	later:V58	>|
 agent/a066_here_string	later:V58	<<<
 agent/a067_heredoc_dash	later:V58	<<-
-agent/a079_shift_positional	later:V47	${@:2}
 agent/a085_date_arith	later:V62	$(( > ))
-agent/a100_count_params	later:V49	${#@}
 agent/a101_regex_class	later:V56,V65,V66	[[:digit:]] in [[ =~ ]]
 agent/a102_glob_class	later:V56	[[:upper:]] in globs
 agent/a103_case_class	later:V56	[[:digit:]] in case
@@ -43,26 +40,20 @@ agent/a108_ansi_c_len	later:V52	$'...'
 agent/a109_nested_quote_default	later:V51	"${a:-"x y"}"
 agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
 agent/a117_arith_ternary_var	later:V62	?: in $(( ))
-agent/a120_array_len_index	later:V34,V35,V36,V47	arrays and slices
 arith/arith	later:V62	operators beyond + - * / % ( ) and assignment forms
 arith/dparen1	later:V63	(( )) arithmetic command parsed as two subshells
 arith/dparen2	later:V63	(( x = 5 )) is not an arithmetic command
-arrays/assignarr	later:V47	a[i]=v, ${!a[@]}, ${a[@]:o:l}
 builtins/declare_f	later:V82	declare -f prints a function
 dbrack/dbrack	later:V65	[[ ]]
 dbrack/dbrack2	later:V65	[[ ]] with && and ( )
-expand/at_slice	later:V47,V49	${@:o} and ${@#p}
 expand/brace	later:V53	brace expansion
 expand/brace2	later:V53	brace expansion ranges
 expand/brace3	later:V53	brace expansion letters and prefixes
 expand/bt	later:V55	nested escaped backticks
 expand/cmdsub_quote	later:V55	quotes inside $( ) inside double quotes
 expand/cmdsubfile	later:V55	$(< file)
-expand/dollarhash	later:V49	${#@} ${#*}
 expand/globclass	later:V56	[[:lower:]] in globs
-expand/indirect	later:V49	${!x} ${!prefix*}
 expand/nestedquote	later:V51	"${a:-"x y"}"
-expand/substr	later:V47	${x:o:l}
 expand/tilde2	later:V54	~+ and ~-
 expand/tildeassign	later:V54	tilde after a colon in an assignment (no item names it: nearest V54)
 fd/fd4	later:V71	redirection of fd 4
@@ -89,7 +80,5 @@ shopt/extglob	later:V79	shopt -s extglob
 shopt/globstar	later:V79	shopt -s globstar
 traps/trapdebug	later:V77	trap DEBUG
 traps/traperr	later:V76	trap ERR
-traps/trapl	later:V78	trap -l
 traps/trapret	later:V77	trap RETURN
-traps/trapusr	later:V28,V78	trap USR1
 builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings)
