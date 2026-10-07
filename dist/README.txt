@@ -368,15 +368,39 @@ VSH (the shell)
     lists directories with a slash. nocaseglob is on at the Amiga prompt and
     off elsewhere.
     time prints the real time as bash does; the user and system times are 0
-    on the Amiga (it keeps no per-process times), as are those of  times.
+    on the Amiga, as are those of  times (see below).
     ulimit prints "unlimited" for every limit and refuses to set one. help
     lists the builtin names only; enable -a lists vsh's builtins, not bash's.
-    The hash table is filled by the commands run; a command in the last
-    stage of a pipeline is entered in the shell's own table. cd -L and -P
-    and pwd -L and -P are accepted and change nothing: there is no symbolic
-    link resolution. DIRSTACK shows the directory stack but assigning to it
-    has no effect. coproc, ENV under --posix and the login profile files are
-    not done yet.
+    The hash table is filled by the commands run in the shell itself; the
+    commands of a pipeline are hashed in their own subshells, so the table
+    does not change (probe builtins/hash_pipeline). cd -P and pwd -P print
+    the path AmigaDOS resolves (a Lock on it and NameFromLock: soft links
+    followed, an assign turned into its volume); cd -L, the default, keeps the
+    name the shell has (probe builtins/cd_physical). DIRSTACK[n]=dir sets the
+    n-th directory of the stack as in bash; element 0 and indexes past the
+    stack are dropped, and after unset DIRSTACK it is an ordinary array
+    (probe builtins/dirstack_write). coproc [NAME] command works with two
+    pipes (NAME[0] reads, NAME[1] writes, NAME_PID; probe builtins/coproc);
+    the Amiga half runs on the rig only. The user and system times of time
+    and times stay 0: AmigaOS keeps no CPU time per task (reading it would
+    need a task-switch hook for every task), so only the real time is shown.
+    Posix mode (set -o posix, --posix, POSIXLY_CORRECT assigned or in the
+    environment; leaving it by set +o posix or unset POSIXLY_CORRECT) does
+    these, each with a probe in tests/bash/probes/posix: the assignments
+    before a special builtin stay (special_prefix); a shell that is not
+    interactive ends on the error of a special builtin or of an assignment,
+    on a redirection error of a special builtin, on exec that cannot start,
+    on  .  of a missing file, on eval of a syntax error, and on  return
+    outside a function (special_errors); a function cannot take the name of
+    a special builtin (function_name); export -p and readonly -p print
+    "export NAME=..." and "readonly NAME=..." (export_readonly_p); type and
+    command -V say "special shell builtin" (type_special); a command
+    substitution inherits set -e (subst_errexit); POSIXLY_CORRECT follows the
+    mode (posixly_correct); an interactive posix shell reads $ENV and no
+    posix shell reads BASH_ENV (env_login). Nothing else of posix mode is
+    done. A login shell (--login, -l) reads ENV:vsh/profile, then
+    $HOME/.vsh_profile, before ENV:vsh/vshrc; logout leaves it. ~/.bashrc and
+    ~/.bash_profile are not read.
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

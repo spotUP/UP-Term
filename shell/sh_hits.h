@@ -11,6 +11,16 @@
     X(FUNC_CALL)  /* a function body ran */ \
     X(SUBST)      /* a $( ) ran */ \
     X(HASH_RUN)   /* a command run found its entry in the hash table */ \
+    X(POSIX_FATAL) /* posix mode ended a shell on the error of a special builtin or an assignment */ \
+    X(POSIX_FORMAT) /* posix mode printed export -p, readonly -p or type in its own words */ \
+    X(POSIX_SUBST) /* a command substitution inherited set -e in posix mode */ \
+    X(POSIX_VAR)  /* POSIXLY_CORRECT turned posix mode on or off */ \
+    X(POSIX_ENV)  /* an interactive posix shell sourced $ENV */ \
+    X(LOGIN_PROFILE) /* a login shell read its profile files */ \
+    X(DIRSTACK_WRITE) /* DIRSTACK[n]=dir set a directory of the stack */ \
+    X(REALPATH)   /* cd -P or pwd -P resolved a path through the OS layer */ \
+    X(COPROC)     /* coproc started a command with its two pipes */ \
+    X(POSIX_PERSIST) /* a special builtin kept its prefix assignments (posix mode) */ \
     X(SELECT_PASS) /* select ran its body for a menu choice */ \
     X(CDPATH_USED) /* cd found its directory through CDPATH */ \
     X(BASH_ENV_RUN) /* BASH_ENV was sourced at startup */ \

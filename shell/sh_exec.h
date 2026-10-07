@@ -141,6 +141,9 @@ typedef struct sh_os {
     /* the processor time this shell and its children have used, in microseconds (times, time): own user,
      * own system, children user, children system; 0 in the table: all 0 (the Amiga keeps no per-process times) */
     void  (*cpu)(void *os, long *t4);
+    /* the physical form of a path: symbolic links and soft assigns resolved (cd -P, pwd -P); malloc'ed, 0 when it
+     * cannot be resolved; 0 in the table: the paths the shell has are taken as physical */
+    char *(*realpath)(void *os, const char *path);
     void *data;
 } sh_os;
 
@@ -196,6 +199,10 @@ typedef struct sh_tmp {
 typedef struct sh_shell {
     sh_ctx ctx;
     unsigned long opts;    /* SO_* */
+    sh_fh cp_close[2];     /* coproc: the shell's ends of its pipes; an OS layer whose subshell process has copies of
+                            * the handles (a fork) closes them there, or the command never sees the end of its input */
+    int dirstack_gone;     /* unset DIRSTACK: it stops mirroring the directory stack */
+    unsigned long bi_errs; /* builtin error messages so far (err2): posix mode tells a failed special builtin by it */
     int cond_depth;        /* errexit is ignored while > 0: if/while conditions, !, && || lists */
     int xlevel;            /* xtrace nesting: $( ) adds a PS4 character */
     char flagbuf[40];      /* $- */
@@ -328,6 +335,8 @@ void sh_exit_trap(sh_shell *sh);
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);
 /* BASH_ENV: a non-interactive shell sources it before its command or script */
 void sh_startup_env(sh_shell *sh);
+long sh_run_script(sh_shell *sh);      /* the script named on the command line: 127 when it is not there */
+void sh_startup_login(sh_shell *sh);   /* a login shell: login_shell on, then ENV:vsh/profile and $HOME/.vsh_profile */
 
 /* The prompt text for PS1/PS2 value ps: bash escapes (\w \W \u \h \$ \e \n,
  * \[ \] ignored) and zsh escapes (%~ %/ %c %n %m %# %? %F{c} %f %K{c} %k

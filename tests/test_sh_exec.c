@@ -508,6 +508,28 @@ static void basics(void)
 /* A subshell's shell is malloc memory (sh_shell_clone): sh_shell_init leaves no field as it
  * found it. nclosed and wfail were left, and on the rig `echo hello | wc -c` hung in the
  * subshell's echo (put walked a garbage count of closed streams). */
+/* V86: a login shell reads ENV:vsh/profile then $HOME/.vsh_profile and logout leaves it; a posix shell
+ * reads $ENV when it is interactive and BASH_ENV never */
+static void a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV(void)
+{
+    run("echo 'echo sys' > ENV:vsh/profile; echo 'echo user' > RAM:h/.vsh_profile; HOME=RAM:h");
+    sh_startup_login(&sh);
+    CHECK_STR(slot(OUT)->data, "sys\nuser\n");
+    run("logout; echo not_reached");
+    CHECK_STR(slot(OUT)->data, "not_reached\n");
+    run("echo 'echo sys' > ENV:vsh/profile; HOME=RAM:h");
+    sh_startup_login(&sh);
+    sh_run_text(&sh, "logout; echo not_reached", 0);
+    CHECK_STR(slot(OUT)->data, "sys\n");
+    run("echo 'echo envfile' > RAM:envf; echo 'echo benv' > RAM:benv; ENV=RAM:envf; BASH_ENV=RAM:benv");
+    sh.opts |= SO_POSIX;
+    sh_startup_env(&sh);
+    CHECK_STR(slot(OUT)->data, "");
+    sh.opts |= SO_INTERACTIVE;
+    sh_startup_env(&sh);
+    CHECK_STR(slot(OUT)->data, "envfile\n");
+}
+
 static void a_shell_made_on_dirty_memory_is_a_fresh_shell(void)
 {
     /* one place for both, so the fields pointing into the shell itself agree */
@@ -1275,6 +1297,7 @@ void suite_sh_exec(void)
     prompts();
     basics();
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
+    a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
     control_flow();
     pipes_and_redirection();
     jobs_aliases_and_dirs();

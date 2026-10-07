@@ -108,6 +108,7 @@ int sh_array_reset(sh_ctx *c, const char *name, int assoc);  /* NAME=(...) start
 sh_var *sh_var_copy(const sh_var *v);                         /* deep copy, not linked */
 sh_var *sh_var_save(const sh_ctx *c, const char *name);       /* copy of the raw variable; 0: unset */
 void sh_var_restore(sh_ctx *c, const char *name, sh_var *saved); /* put back (0: unset), takes saved */
+void sh_var_discard(sh_var *saved);                         /* free a saved copy that is not put back */
 void sh_var_link(sh_ctx *c, sh_var *v);                       /* v replaces any variable of its name */
 void sh_ltoa(sh_int v, char *out);   /* decimal, no printf: out has 24 bytes */
 int sh_set(sh_ctx *c, const char *name, const char *value);   /* 1: refused (readonly) */

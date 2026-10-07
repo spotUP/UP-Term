@@ -171,10 +171,20 @@ static char **build_envp(const sh_shell *sh)
     return envp;
 }
 
+/* this program's own path (realpath of argv[0]): $BASH ("bash") names the shell itself, as the vshrc
+ * alias does on the Amiga, so a probe that starts "$BASH -c ..." runs vsh and not the host's bash */
+static char self_exe[1024];
+
 /* argv[0] by vsh's $PATH (a name with a slash is taken as it is) */
 static int resolve(const sh_shell *sh, const char *name, char *out, size_t max)
 {
     const char *path = sh_get(&sh->ctx, "PATH");
+    if (self_exe[0] && (!strcmp(name, "bash") || (strlen(name) > 5 && !strcmp(name + strlen(name) - 5, "/bash")) ||
+                         (strlen(name) > 5 && !strcmp(name + strlen(name) - 5, ":bash")))) {
+        /* also what the path hash gives for it: bin:bash */
+        snprintf(out, max, "%s", self_exe);
+        return 0;
+    }
     if (strchr(name, ':') && strchr(name, ':') != name) {
         /* a hashed command: the shell's vol:rest form of an absolute path */
         host_path(name, out, max);
@@ -305,6 +315,12 @@ static long h_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, 
         child->ctx.pid = (long)getpid();
         for (i = 0; i < MAXJOB; i++)
             jobs[i].pid = 0;
+        {
+            int k;
+            for (k = 0; k < 2; k++)
+                if (child->cp_close[k])
+                    close(FD(child->cp_close[k])); /* a coproc's process does not hold the shell's pipe ends */
+        }
         st = sh_run_child(child, tree, io);
         _exit((int)(st & 255));
     }
@@ -443,6 +459,17 @@ static char *h_cwd(void *os)
     return p;
 }
 
+static char *h_realpath(void *os, const char *path)
+{
+    char *p = (char *)malloc(1024);
+    (void)os;
+    if (p && !realpath(path, p)) {
+        free(p);
+        return 0;
+    }
+    return p;
+}
+
 static int h_stat(void *os, const char *path, sh_stat *o, int nofollow)
 {
     struct stat st;
@@ -537,6 +564,8 @@ static int run_main(int argc, char **argv)
         a = 2;
     }
     leak_mark();
+    if (!realpath(argv[0], self_exe))
+        self_exe[0] = 0;
     sh_shell_init(&sh);
     hp.sh = &sh;
     sh.os.open = h_open;
@@ -563,6 +592,7 @@ static int run_main(int argc, char **argv)
     sh.os.read_line = h_read_line;
     sh.os.chdir = h_chdir;
     sh.os.cwd = h_cwd;
+    sh.os.realpath = h_realpath;
     sh.os.stat = h_stat;
     sh.os.signal = h_signal;
     sh.os.data = &hp;
@@ -595,12 +625,14 @@ static int run_main(int argc, char **argv)
         if (inf.exit_now)
             return inf.status;
         command = inf.command;
+        if (inf.login)
+            sh_startup_login(&sh);
         if (command || inf.script)
             sh_startup_env(&sh);
         if (command)
             sh_run_text(&sh, command, 0);
         else if (inf.script)
-            sh_run_text(&sh, "source \"$0\"", 0); /* the arguments stay $1 ... */
+            sh_run_script(&sh); /* the arguments stay $1 ... */
         else {
             /* a script on standard input */
             char *text = 0, buf[4096];

@@ -1088,6 +1088,29 @@ static char *os_cwd(void *os)
     return name;
 }
 
+/* cd -P, pwd -P: a Lock on the path and NameFromLock give the name AmigaDOS itself resolves it to (a
+ * soft link followed, an assign turned into its volume and directory). Unconfirmed until the rig: that
+ * a soft link in the middle of a path is followed by Lock() on every handler. */
+static char *os_realpath(void *os, const char *path)
+{
+    char p[256], *name = (char *)malloc(256);
+    BPTR lock;
+    (void)os;
+    if (!name)
+        return 0;
+    lock = lock_name(path, p, sizeof(p));
+    if (!lock) {
+        free(name);
+        return 0;
+    }
+    if (!NameFromLock(lock, (STRPTR)name, 256)) {
+        free(name);
+        name = 0;
+    }
+    UnLock(lock);
+    return name;
+}
+
 /* test -e -f -d -s -r -w -x ... : a FileInfoBlock. The owner's RWED bits are active-low;
  * the script bit also makes a file executable. Unconfirmed until the rig: how a soft
  * link is detected without following it (nofollow is ignored: -L is never true), and
@@ -1417,7 +1440,7 @@ static int vsh_main(int argc, char **argv)
     char *text = 0;
     long len = 0;
     const char *command = 0, *script = 0;
-    int norc = 0;
+    int norc = 0, login = 0;
     static vproc vp;
     (void)version;
     (void)stack_cookie;
@@ -1450,6 +1473,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.read_line = os_read_line;
     sh.os.chdir = os_chdir;
     sh.os.cwd = os_cwd;
+    sh.os.realpath = os_realpath;
     sh.os.stat = os_stat;
     sh.os.data = &vp;
     sh.stack_limit = stack_limit_here();
@@ -1518,6 +1542,7 @@ static int vsh_main(int argc, char **argv)
         command = inf.command;
         script = inf.script;
         norc = inf.norc;
+        login = inf.login;
         if (inf.exit_now) {
             command = "true";
             sh.exiting = 1;
@@ -1530,6 +1555,8 @@ static int vsh_main(int argc, char **argv)
     Flush(Input());
     /* the system's startup file (ENVARC:vsh/vshrc, copied to ENV: at boot),
      * then the user's */
+    if (login && !norc)
+        sh_startup_login(&sh);
     if (!norc)
         source_if(&sh, "ENV:vsh/vshrc");
     canonical_home(&sh);
@@ -1547,12 +1574,11 @@ static int vsh_main(int argc, char **argv)
         }
         canonical_home(&sh);
     }
-    if (command || script)
-        sh_startup_env(&sh);
+    sh_startup_env(&sh);
     if (command)
         sh_run_text(&sh, command, 0);
     else if (script)
-        sh_run_text(&sh, "source \"$0\"", 0); /* the arguments stay $1 ... */
+        sh_run_script(&sh); /* the arguments stay $1 ... */
     for (;;) {
         long n;
         int incomplete = 0;

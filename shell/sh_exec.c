@@ -197,6 +197,13 @@ static int opt_name(sh_shell *sh, const char *name, int on)
                     inert_state &= ~(1UL << i);
             }
             opts_apply(sh);
+            if (sh_optab[i].bit == SO_POSIX) {
+                /* bash keeps POSIXLY_CORRECT in step with the mode: set to y on entering, unset on leaving */
+                if (!on)
+                    sh_unset(&sh->ctx, "POSIXLY_CORRECT");
+                else if (!sh_get(&sh->ctx, "POSIXLY_CORRECT"))
+                    sh_set(&sh->ctx, "POSIXLY_CORRECT", "y");
+            }
             return 1;
         }
     return 0;
@@ -349,6 +356,9 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
             c->dirstk[i] = sdup(sh->dirstk[i]);
         c->ndirstk = sh->ndirstk;
     }
+    c->dirstack_gone = sh->dirstack_gone;
+    c->cp_close[0] = sh->cp_close[0];
+    c->cp_close[1] = sh->cp_close[1];
     c->umask = sh->umask;  /* traps are not inherited (POSIX); set -E and -T hand the ERR, DEBUG and RETURN ones on */
     c->opts |= sh->opts & (SO_ERRTRACE | SO_FUNCTRACE);
     if ((sh->opts & SO_ERRTRACE) && sh->traps[TRAP_ERR])
@@ -648,9 +658,15 @@ static void core_refresh(sh_ctx *c, const char *name)
         sh_ltoa(sh->ctx.pid, d); /* a subshell's $$ is its own pid here, so BASHPID equals it */
         break;
     case SP_DIRSTACK: {
-        /* DIRSTACK[0] is the current directory, then the stack pushd and popd keep; read-only here */
-        char *cwd = sh->os.cwd(sh->os.data), ix[24];
+        /* DIRSTACK[0] is the current directory, then the stack pushd and popd keep; writes to the elements
+         * 1 and up reach the stack (dirstack_write) */
+        char *cwd, ix[24];
         int i;
+        if (sh->dirstack_gone) { /* unset DIRSTACK: an ordinary array from then on */
+            sh->special_busy = 0;
+            return;
+        }
+        cwd = sh->os.cwd(sh->os.data);
         sh_array_reset(&sh->ctx, name, 0);
         sh_assign(&sh->ctx, name, "0", cwd ? cwd : "", 0);
         for (i = 0; i < sh->ndirstk; i++) {
@@ -676,6 +692,11 @@ static void core_on_assign(sh_ctx *c, const char *name, const char *value)
     sh_shell *sh = (sh_shell *)c->user;
     int k = special_id(name);
     long us;
+    if (!strcmp(name, "POSIXLY_CORRECT")) {
+        sh->opts |= SO_POSIX;  /* assigning it, to anything, turns posix mode on */
+        SH_HIT(POSIX_VAR);
+        return;
+    }
     if (sh->special_busy || (k != SP_RANDOM && k != SP_SECONDS))
         return;
     if (k == SP_RANDOM) {
@@ -699,11 +720,38 @@ static int sh_exists(sh_shell *sh, const char *path, int want_dir)
 
 static void err2(sh_shell *sh, const sh_io *io, const char *a, const char *b)
 {
+    sh->bi_errs++;
     sayl(sh, io->err, "vsh: ", a, NULL);
     if (b) {
         sayl(sh, io->err, ": ", b, NULL);
     }
     say(sh, io->err, "\n");
+}
+
+/* the special builtins of POSIX (and bash's source) */
+static int special_bi(const char *name)
+{
+    static const char *const sp[] = { ".", ":", "break", "continue", "eval", "exec", "exit", "export", "readonly",
+                                      "return", "set", "shift", "source", "times", "trap", "unset", 0 };
+    int k;
+    for (k = 0; sp[k]; k++)
+        if (!strcmp(name, sp[k]))
+            return 1;
+    return 0;
+}
+
+/* posix mode ends a shell that is not interactive on the error of a special builtin or of an
+ * assignment: status st */
+static int posix_fatal(sh_shell *sh, long st)
+{
+    if ((sh->opts & (SO_POSIX | SO_INTERACTIVE)) != SO_POSIX)
+        return 0;
+    SH_HIT(POSIX_FATAL);
+    if (!sh->exiting) {
+        sh->exiting = 1;
+        sh->exit_status = st & 255;
+    }
+    return 1;
 }
 
 /* A command that did not start. One of the kit's own (ssh, sort, sz, ...)
@@ -782,6 +830,23 @@ static void expand_fatal(sh_shell *sh, const char *err)
         /* bash: an unbound variable in a -c string ends with 127, anywhere else 1 */
         sh->exit_status = (sh->opts & SO_COMMAND) && err && strstr(err, "unbound") ? 127 : 1;
     }
+}
+
+/* DIRSTACK[n]=dir (and the elements of DIRSTACK=(...)): bash sets the n-th directory of the stack; element 0
+ * is the current directory and an index beyond the stack is dropped */
+static void dirstack_write(sh_shell *sh, const char *name, const char *idx, const char *value)
+{
+    long i;
+    const char *e = 0;
+    char *nv;
+    if (strcmp(name, "DIRSTACK") || sh->dirstack_gone || !idx)
+        return;
+    i = sh_arith(&sh->ctx, idx, &e);
+    if (e || i < 1 || i > sh->ndirstk || !(nv = sdup(value)))
+        return;
+    SH_HIT(DIRSTACK_WRITE);
+    free(sh->dirstk[i - 1]);
+    sh->dirstk[i - 1] = nv;
 }
 
 /* NAME=... or NAME+=... (the argument of declare and the like) */
@@ -1757,11 +1822,15 @@ static long b_cd(sh_shell *sh, int argc, char **argv, const sh_io *io)
     int a = 1;
     const char *dir;
     char *old, cp[512];
-    int printit = 0;
-    /* -L and -P: there are no symbolic links to follow or to resolve here, both are accepted */
+    int printit = 0, physical = 0;
+    /* -P: PWD is the physical path (the OS layer's realpath); -L, the default, keeps what the OS layer's cwd says */
     for (; a < argc && argv[a][0] == '-' && argv[a][1] && strcmp(argv[a], "--"); a++) {
         const char *o = argv[a] + 1;
-        for (; *o; o++)
+        for (; *o; o++) {
+            if (*o == 'P')
+                physical = 1;
+            else if (*o == 'L')
+                physical = 0;
             if (*o != 'L' && *o != 'P' && *o != 'e' && *o != '@') {
                 char opt[3];
                 opt[0] = '-';
@@ -1771,6 +1840,7 @@ static long b_cd(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 say(sh, io->err, "cd: usage: cd [-L|[-P [-e]] [-@]] [dir]\n");
                 return 2;
             }
+        }
     }
     if (a < argc && !strcmp(argv[a], "--"))
         a++;
@@ -1817,6 +1887,14 @@ static long b_cd(sh_shell *sh, int argc, char **argv, const sh_io *io)
         sh_set(&sh->ctx, "OLDPWD", old);
     free(old);
     old = sh->os.cwd(sh->os.data);
+    if (old && physical && sh->os.realpath) {
+        char *rp = sh->os.realpath(sh->os.data, old);
+        if (rp) {
+            SH_HIT(REALPATH);
+            free(old);
+            old = rp;
+        }
+    }
     if (old) {
         sh_set(&sh->ctx, "PWD", old);
         if (printit)
@@ -1842,6 +1920,24 @@ static long b_pwd(sh_shell *sh, int argc, char **argv, const sh_io *io)
         }
     }
     d = sh->os.cwd(sh->os.data);
+    /* pwd -P (the last of -L -P wins): the physical path */
+    if (d && sh->os.realpath) {
+        int phys = 0, b;
+        for (b = 1; b < a; b++) {
+            const char *o = argv[b] + 1;
+            for (; argv[b][0] == '-' && *o; o++)
+                if (*o == 'P' || *o == 'L')
+                    phys = *o == 'P';
+        }
+        if (phys) {
+            char *rp = sh->os.realpath(sh->os.data, d);
+            if (rp) {
+                SH_HIT(REALPATH);
+                free(d);
+                d = rp;
+            }
+        }
+    }
     sayl(sh, io->out, d ? d : "", "\n", NULL);
     free(d);
     return 0;
@@ -2042,6 +2138,15 @@ static long b_exit(sh_shell *sh, int argc, char **argv, const sh_io *io)
             err2(sh, io, "exit", "there are stopped jobs (fg or bg them; exit again to leave them)");
             return 1;
         }
+    if (argc > 1) {
+        const char *q = argv[1] + (argv[1][0] == '-' || argv[1][0] == '+');
+        if (!*q || strspn(q, "0123456789") != strlen(q)) {
+            /* bash: not a number: the message and status 2; only posix mode also ends the shell */
+            err2(sh, io, "exit", "numeric argument required");
+            posix_fatal(sh, 2);
+            return 2;
+        }
+    }
     sh->exiting = 1;
     sh->exit_status = (argc > 1 ? atol(argv[1]) : sh->ctx.status) & 255;
     return sh->exit_status;
@@ -2049,7 +2154,12 @@ static long b_exit(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static long b_return(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    (void)io;
+    if (!sh->nframes && !sh->func_depth && (sh->opts & SO_POSIX)) {
+        /* bash --posix: return outside a function or a sourced file is an error */
+        err2(sh, io, "return", "can only `return' from a function or sourced script");
+        posix_fatal(sh, 2);
+        return 2;
+    }
     sh->returning = 1;
     return (argc > 1 ? atol(argv[1]) : sh->ctx.status) & 255;
 }
@@ -3173,11 +3283,22 @@ static const struct { char c; unsigned bit; } decl_attrs[] = {
     { 'u', SH_ATTR_UPPER }, { 'x', SH_ATTR_EXPORT }
 };
 
-static void decl_print(sh_shell *sh, const sh_io *io, const sh_var *v)
+static void decl_print(sh_shell *sh, const sh_io *io, const sh_var *v, int mode)
 {
     char at[12];
     int k = 0, j;
     const char *sv = sh_var_str(v);
+    if ((sh->opts & SO_POSIX) && (mode == 2 || mode == 3) && !v->arr) {
+        /* posix mode: export -p and readonly -p print the command that recreates them */
+        SH_HIT(POSIX_FORMAT);
+        sayl(sh, io->out, mode == 2 ? "readonly " : "export ", v->name, NULL);
+        if (!(v->attr & SH_ATTR_NOVALUE) && sv) {
+            say(sh, io->out, "=");
+            say_dq(sh, io, sv);
+        }
+        say(sh, io->out, "\n");
+        return;
+    }
     for (j = 0; j < (int)(sizeof decl_attrs / sizeof decl_attrs[0]); j++)
         if (v->attr & decl_attrs[j].bit)
             at[k++] = decl_attrs[j].c;
@@ -3367,7 +3488,7 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
                 for (lv = sh->ctx.vars; lv && strcmp(lv->name, nm[j]); lv = lv->next)
                     ;
                 if (lv)
-                    decl_print(sh, io, lv);
+                    decl_print(sh, io, lv, mode);
                 else {
                     sayl(sh, io->out, "declare -- ", nm[j], "\n", NULL);
                 }
@@ -3388,7 +3509,7 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
             return 1;
         for (k = 0; k < n; k++)
             if (!want || (all[k]->attr & want) == want)
-                decl_print(sh, io, all[k]);
+                decl_print(sh, io, all[k], mode);
         free(all);
         return 0;
     }
@@ -3411,7 +3532,7 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
         if (print && mode == 0) {
             const sh_var *v = sh_lookup_raw(&sh->ctx, name);
             if (v)
-                decl_print(sh, io, v);
+                decl_print(sh, io, v, mode);
             else {
                 err2(sh, io, name, "not found");
                 st = 1;
@@ -3615,8 +3736,10 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
             fn = 1;
         else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "-n"))
             fn = 0, nameref = argv[i][1] == 'n';
-        else
-            break;
+        else {
+            err2(sh, io, argv[i], "invalid option");
+            return 2;
+        }
     }
     for (; i < argc; i++) {
         if (fn) {
@@ -3650,8 +3773,16 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
                     free(k);
                 }
                 free(nm);
-            } else
+            } else {
                 bad = sh_unset(&sh->ctx, argv[i]);
+                if (!bad && !strcmp(argv[i], "DIRSTACK"))
+                    sh->dirstack_gone = 1;
+                if (!bad && !strcmp(argv[i], "POSIXLY_CORRECT")) {
+                    sh->opts &= ~SO_POSIX;  /* unsetting it leaves posix mode */
+                    SH_HIT(POSIX_VAR);
+                    opts_apply(sh);
+                }
+            }
             if (bad) {
                 err2(sh, io, argv[i], "cannot unset: readonly variable");
                 st = 1;
@@ -3731,7 +3862,9 @@ static int type_one(sh_shell *sh, const sh_io *io, const char *name, int mode, i
                 return 0;
         }
         if (find_bi(sh, name)) {
-            SAY_KIND("builtin", " is a shell builtin", name);
+            if ((sh->opts & SO_POSIX) && special_bi(name))
+                SH_HIT(POSIX_FORMAT);
+            SAY_KIND("builtin", (sh->opts & SO_POSIX) && special_bi(name) ? " is a special shell builtin" : " is a shell builtin", name);
             if (!all)
                 return 0;
         }
@@ -4921,6 +5054,7 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
     fh = borrowed ? fd_get(sh, io, dev_fd(file)) : sh->os.open(sh->os.data, file, SH_OPEN_READ);
     if (!fh) {
         err2(sh, io, argv[1], "cannot open");
+        posix_fatal(sh, 1);
         return 1;
     }
     while ((n = sh->os.read_line(sh->os.data, fh, line, sizeof(line))) >= 0) {
@@ -5152,6 +5286,8 @@ static int do_assign(sh_shell *sh, const char *text, const sh_io *io, int flag)
         } else if (sh_assign(&sh->ctx, name, sub, v, app)) {
             err2(sh, io, name, "readonly variable");
             r = 1;
+        } else if (sub && !app && flag != 1 && !strcmp(name, "DIRSTACK")) {
+            dirstack_write(sh, name, sub, v);
         } else if (flag == 1)
             sh_export(&sh->ctx, name);
         free(v);
@@ -5256,6 +5392,8 @@ static int compound_assign(sh_shell *sh, const char *name, int append, const cha
             k = d;
         }
         r = sh_assign(&sh->ctx, name, k, vals.v[i], 0);
+        if (!r && !assoc)
+            dirstack_write(sh, name, k, vals.v[i]);
         if (!assoc) {
             const char *e = 0;
             next = sh_arith(&sh->ctx, k, &e) + 1;
@@ -5300,6 +5438,7 @@ static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io)
     if (p.error) {
         err2(sh, io, "eval", p.incomplete ? "unexpected end of input" : p.error);
         sh_parse_free(&p);
+        posix_fatal(sh, 2);
         return 2;
     }
     st = exec_node(sh, p.tree, io);
@@ -5324,6 +5463,10 @@ static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
         st = sh->os.run(sh->os.data, argv + 1, io, 1);
         if (st < 0) {
             err_not_found(sh, io, argv[1]);
+            /* posix mode ends a shell that is not interactive here (bash does so outside posix mode too;
+             * vsh leaves the shell running, by design) */
+            if (!shopt_get(sh, "execfail"))
+                posix_fatal(sh, 127);
             return 127;
         }
     }
@@ -5792,6 +5935,8 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
                 do_assign(sh, a->text, parent, 2);
             if (do_assign(sh, a->text, parent, 0)) {
                 expand_fatal(sh, 0);
+                if (posix_fatal(sh, 127))
+                    sh->exit_status = 127;
                 sh_list_free(&argv);
                 return 1;
             }
@@ -5833,6 +5978,8 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         nofunc = 1;
     }
     if (redirect(sh, n->redirs, parent, &io)) {
+        if (!nofunc && special_bi(argv.v[0]))
+            posix_fatal(sh, 1);
         sh_list_free(&argv);
         return 1;
     }
@@ -5847,7 +5994,14 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         if (name && saved)
             save_var(sh, name, &saved[n_saved++]);
         free(name);
-        do_assign(sh, a->text, parent, 1);
+        if (do_assign(sh, a->text, parent, 1) && posix_fatal(sh, !nofunc && special_bi(argv.v[0]) ? 127 : 1)) {
+            close_owned(sh, &io);
+            while (n_saved > 0)
+                restore_var(sh, &saved[--n_saved]);
+            free(saved);
+            sh_list_free(&argv);
+            return 1;
+        }
     }
     if (cmd_mode) {
         int q;
@@ -5860,7 +6014,8 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         st = run_function(sh, f, &argv, &io);
         close_owned(sh, &io);
     } else if ((b = find_bi(sh, argv.v[0])) != 0) {
-        if (b == b_exec && argv.n == 1 && n->redirs && parent == &sh->io) {
+        if (b == b_exec && argv.n == 1 && n->redirs &&
+            (parent == &sh->io || (parent->in == sh->io.in && parent->out == sh->io.out && parent->err == sh->io.err))) {
             /* exec with redirections only: they stay for the shell itself */
             sh->io = io;
             sh->io.owned = 0;
@@ -5868,12 +6023,19 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
                 fd_commit(sh, io.fdmark);
             st = 0;
         } else {
+            unsigned long errs0 = sh->bi_errs;
             sh->wfail = 0;
             st = b(sh, argv.n, argv.v, &io);
             if (sh->wfail && !st)
                 st = 1; /* it wrote to a closed stream */
             sh->wfail = 0;
             close_owned(sh, &io);
+            /* posix mode: a special builtin that reported an error ends a shell that is not interactive
+             * (shift, break, continue only fail; eval, . and exec end it themselves, or run commands
+             * whose own errors have been judged) */
+            if (sh->bi_errs != errs0 && !nofunc && special_bi(argv.v[0]) && b != b_eval && b != b_source &&
+                b != b_exec && b != b_shift && b != b_break && b != b_continue)
+                posix_fatal(sh, st);
         }
     } else {
         if (!wait) {
@@ -5920,6 +6082,14 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         } else if (st < 0) {
             err_not_found(sh, &io, argv.v[0]);
             st = 127;
+        }
+    }
+    if ((sh->opts & SO_POSIX) && n_saved > 0 && !nofunc && special_bi(argv.v[0]) && !cmd_mode) {
+        /* posix mode: the assignments before a special builtin outlast it */
+        SH_HIT(POSIX_PERSIST);
+        while (n_saved > 0) {
+            sh_var_discard(saved[--n_saved].var);
+            free(saved[n_saved].name);
         }
     }
     while (n_saved > 0)
@@ -6074,6 +6244,13 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
     int started[16];
     int k = stages(n, st, 16), i;
     long status = 0, ps[16];
+    sh_list hsnap;
+    /* bash runs every stage in a subshell, so a command a stage finds on PATH is hashed there and not in
+     * this shell; vsh runs external stages (and the last stage) here, so the table is put back after */
+    memset(&hsnap, 0, sizeof(hsnap));
+    if (!(sh->opts & SO_LASTPIPE))
+        for (i = 0; i < sh->hashtab.n; i++)
+            sh_list_add(&hsnap, sh->hashtab.v[i]);
     for (i = 0; i < k; i++) {
         sio[i] = *io;
         sio[i].owned = 0;
@@ -6082,6 +6259,7 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
         sh_fh rd, wr;
         if (sh->os.pipe(sh->os.data, &rd, &wr)) {
             err2(sh, io, "pipe", "cannot create");
+            sh_list_free(&hsnap);
             return 1;
         }
         sio[i].out = wr;
@@ -6136,7 +6314,73 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
             }
     }
     sh_pstat(&sh->ctx, ps, k);
+    if (!(sh->opts & SO_LASTPIPE)) {
+        sh_list_free(&sh->hashtab);
+        sh->hashtab = hsnap;
+    }
     return status;
+}
+
+/* coproc [NAME] command: the command runs in the background with two pipes; NAME[0] is the descriptor the
+ * shell reads its output from, NAME[1] the one it writes its input to, NAME_PID the job. */
+static long exec_coproc(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    const char *name = n->name ? n->name : "COPROC";
+    char vn[160], d[24];
+    sh_fh r1, w1, r2, w2;
+    sh_io cio;
+    long job = 0;
+    int s0, s1;
+    if (!sh->os.spawn || strlen(name) > 140) {
+        err2(sh, io, "coproc", "not supported here");
+        return 1;
+    }
+    s0 = fd_alloc(sh);
+    if (s0 >= 0) {
+        sh->fdt[s0].fh = (sh_fh)-1; /* taken for the second search */
+        s1 = fd_alloc(sh);
+        sh->fdt[s0].fh = 0;
+    } else
+        s1 = -1;
+    if (s0 < 0 || s1 < 0) {
+        err2(sh, io, "coproc", "too many open files");
+        return 1;
+    }
+    if (sh->os.pipe(sh->os.data, &r1, &w1) || sh->os.pipe(sh->os.data, &r2, &w2)) {
+        err2(sh, io, "coproc", "cannot create a pipe");
+        return 1;
+    }
+    SH_HIT(COPROC);
+    cio = *io;
+    cio.in = r1;
+    cio.out = w2;
+    cio.owned = SH_OWN_IN | SH_OWN_OUT;
+    if (is_external(sh, n->a))
+        exec_cmd(sh, n->a, &cio, 0, &job);
+    else {
+        sh->cp_close[0] = r2;
+        sh->cp_close[1] = w1;
+        subshell(sh, n->a, &cio, 0, &job);
+        sh->cp_close[0] = sh->cp_close[1] = 0;
+    }
+    sh->fdt[s0].fh = r2;
+    sh->fdt[s0].own = 1;
+    sh->fdt[s1].fh = w1;
+    sh->fdt[s1].own = 1;
+    sh_array_reset(&sh->ctx, name, 0);
+    sh_ltoa(3 + s0, d);
+    sh_assign(&sh->ctx, name, "0", d, 0);
+    sh_ltoa(3 + s1, d);
+    sh_assign(&sh->ctx, name, "1", d, 0);
+    strcpy(vn, name);
+    strcat(vn, "_PID");
+    sh_ltoa(job, d);
+    sh_set(&sh->ctx, vn, d);
+    if (job) {
+        add_job(sh, job, node_text(n->a), io);
+        sh->ctx.last_bg = job;
+    }
+    return 0;
 }
 
 static long exec_list_loop(sh_shell *sh, const sh_node *n, const sh_io *io)
@@ -6795,6 +7039,9 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_TIME:
         st = exec_time(sh, n, io);
         break;
+    case SH_COPROC:
+        st = exec_coproc(sh, n, io);
+        break;
     case SH_NOT:
         sh->cond_depth++;
         st = !exec_node(sh, n->a, io);
@@ -6840,7 +7087,15 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
         }
         break;
     case SH_FUNC: {
-        sh_func *f = find_func(sh, n->name);
+        sh_func *f;
+        if ((sh->opts & SO_POSIX) && special_bi(n->name)) {
+            /* posix mode: a function cannot take the name of a special builtin */
+            sayl(sh, io->err, "vsh: `", n->name, "': is a special builtin\n", NULL);
+            posix_fatal(sh, 2);
+            st = 2;
+            break;
+        }
+        f = find_func(sh, n->name);
         if (!f) {
             f = (sh_func *)calloc(1, sizeof(sh_func));
             if (!f)
@@ -6907,11 +7162,64 @@ long sh_exec(sh_shell *sh, const sh_node *n, const sh_io *io)
  * stands, not expanded a second time); a missing file is no error */
 void sh_startup_env(sh_shell *sh)
 {
-    const char *f = sh_get(&sh->ctx, "BASH_ENV");
-    if ((sh->opts & SO_INTERACTIVE) || !f || !*f)
+    if (sh->opts & SO_POSIX) {
+        /* posix mode: an interactive shell reads $ENV (expanded as a word), none reads BASH_ENV */
+        const char *f = sh_get(&sh->ctx, "ENV");
+        char *x, *q, *cmd;
+        if (!(sh->opts & SO_INTERACTIVE) || !f || !*f)
+            return;
+        x = expand_one(sh, f, &sh->io);
+        q = x ? sh_quote(x, SH_Q_SINGLE) : 0;
+        cmd = q ? (char *)malloc(2 * strlen(q) + 40) : 0;
+        if (cmd) {
+            SH_HIT(POSIX_ENV);
+            strcpy(cmd, "if [ -r ");
+            strcat(cmd, q);
+            strcat(cmd, " ]; then . ");
+            strcat(cmd, q);
+            strcat(cmd, "; fi");
+            sh_run_text(sh, cmd, 0);
+        }
+        free(cmd);
+        free(q);
+        free(x);
         return;
-    SH_HIT(BASH_ENV_RUN);
-    sh_run_text(sh, "if [ -r \"$BASH_ENV\" ]; then . \"$BASH_ENV\"; fi", 0);
+    }
+    {
+        const char *f = sh_get(&sh->ctx, "BASH_ENV");
+        if ((sh->opts & SO_INTERACTIVE) || !f || !*f)
+            return;
+        SH_HIT(BASH_ENV_RUN);
+        sh_run_text(sh, "if [ -r \"$BASH_ENV\" ]; then . \"$BASH_ENV\"; fi", 0);
+    }
+}
+
+/* A login shell (--login, -l): shopt login_shell is on, and it reads the system's profile, then the
+ * user's (names after ENV:vsh/vshrc and $HOME/.vshrc). Not ~/.bash_profile: bash's files on an Amiga
+ * would be someone else's. */
+/* The script named on the command line ($0): run as the shell's own text. A name that is not there ends
+ * the shell with status 127, as bash does (the file read by source would give 1). */
+long sh_run_script(sh_shell *sh)
+{
+    const char *f = sh->ctx.arg0;
+    sh_stat st;
+    if (f && (!sh->os.stat || sh->os.stat(sh->os.data, f, &st, 0))) {
+        sayl(sh, sh->io.err, "vsh: ", f, ": No such file or directory\n", NULL);
+        sh->exiting = 1;
+        sh->exit_status = 127;
+        sh->ctx.status = 127;
+        return 127;
+    }
+    return sh_run_text(sh, "source \"$0\"", 0);
+}
+
+void sh_startup_login(sh_shell *sh)
+{
+    int k = shopt_index("login_shell");
+    if (k >= 0)
+        sh->shopt_v[k] = 1;
+    SH_HIT(LOGIN_PROFILE);
+    sh_run_text(sh, "for f in ENV:vsh/profile \"$HOME/.vsh_profile\"; do if [ -r \"$f\" ]; then . \"$f\"; fi; done", 0);
 }
 
 static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io)
@@ -7195,7 +7503,9 @@ static char *core_subst(sh_ctx *c, const char *cmd)
     sh_shell *sh = (sh_shell *)c->user;
     unsigned long saved = sh->opts;
     char *r;
-    if (!shopt_get(sh, "inherit_errexit"))
+    if (sh->opts & SO_POSIX)
+        SH_HIT(POSIX_SUBST);
+    if (!shopt_get(sh, "inherit_errexit") && !(sh->opts & SO_POSIX)) /* posix mode: the substitution inherits set -e */
         sh->opts &= ~SO_ERREXIT;
     sh->xlevel++;
     r = core_subst1(c, cmd);
@@ -7246,6 +7556,10 @@ void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *inf
     int i = 1, want_stdin = 0, interactive = 0, have_c = 0;
     unsigned long inv = 0;
     info->command = info->script = 0;
+    if (sh_get(&sh->ctx, "POSIXLY_CORRECT")) {
+        sh->opts |= SO_POSIX;  /* in the environment: posix mode from the start, the variable as it came */
+        opts_apply(sh);
+    }
     info->norc = info->login = info->exit_now = 0;
     info->status = 0;
     for (; i < argc; i++) {
@@ -7263,7 +7577,7 @@ void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *inf
         if (a[0] == '-' && a[1] == '-') {
             if (!strcmp(a, "--login")) info->login = 1;
             else if (!strcmp(a, "--norc") || !strcmp(a, "--noprofile")) info->norc = 1;
-            else if (!strcmp(a, "--posix")) sh->opts |= SO_POSIX;
+            else if (!strcmp(a, "--posix")) opt_name(sh, "posix", 1);
             else if (!strcmp(a, "--noediting") || !strcmp(a, "--restricted")) ;
             else if (!strcmp(a, "--version")) {
                 say(sh, sh->io.out, "vsh, a bash-compatible shell for AmigaDOS\n");

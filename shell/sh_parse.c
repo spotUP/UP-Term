@@ -1122,6 +1122,28 @@ static sh_node *parse_command1(lexer *L)
         n = parse_dbrack(L);
         return n;
     }
+    if (is_word(L, "coproc")) {
+        /* coproc [NAME] compound-command, or coproc simple-command (NAME is COPROC) */
+        n = node(L, SH_COPROC);
+        next(L);
+        if (L->tok == T_WORD && !L->quoted && L->word[0] && (L->word[0] < '0' || L->word[0] > '9') &&
+            strspn(L->word, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") == strlen(L->word)) {
+            /* a name only when a compound command follows it; else the word starts the simple command */
+            long keep = L->tokpos;
+            char *nm = L->word;
+            next(L);
+            if (L->tok == T_LPAREN || is_word(L, "{") || is_word(L, "if") || is_word(L, "while") ||
+                is_word(L, "until") || is_word(L, "for") || is_word(L, "select") || is_word(L, "case") ||
+                is_word(L, "[[")) {
+                n->name = nm;
+            } else {
+                L->pos = keep;
+                next(L);
+            }
+        }
+        n->a = parse_command(L);
+        return n;
+    }
     if (is_word(L, "for") || is_word(L, "select")) {
         int sel = is_word(L, "select");
         n = parse_for(L);
@@ -1355,7 +1377,7 @@ static void dump(out *o, const sh_node *n)
 {
     static const char *const names[] = {
         "cmd", "pipe", "and", "or", "seq", "bg", "not", "sub", "group", "if", "while", "until",
-        "for", "case", "func", "arith", "forarith", "dbrack", "select", "time"
+        "for", "case", "func", "arith", "forarith", "dbrack", "select", "time", "coproc"
     };
     const sh_case *c;
     if (!n) {
@@ -1396,6 +1418,12 @@ static void dump(out *o, const sh_node *n)
         break;
     case SH_TIME:
         put(o, n->has_in ? " -p " : " ");
+        dump(o, n->a);
+        break;
+    case SH_COPROC:
+        put(o, " ");
+        put(o, n->name ? n->name : "COPROC");
+        put(o, " ");
         dump(o, n->a);
         break;
     case SH_SELECT:
@@ -1935,6 +1963,15 @@ static void up_cmd(unp *u, const sh_node *n)
             u->skip++;
             up_cmd(u, n->a);
         }
+        break;
+    case SH_COPROC:
+        up_s(u, "coproc ");
+        if (n->name) {
+            up_s(u, n->name);
+            up_s(u, " ");
+        }
+        u->skip++;
+        up_cmd(u, n->a);
         break;
     case SH_SELECT:
     case SH_FOR:

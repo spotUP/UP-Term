@@ -505,6 +505,12 @@ void sh_var_link(sh_ctx *c, sh_var *v)
     c->vars = v;
 }
 
+void sh_var_discard(sh_var *saved)
+{
+    if (saved)
+        var_free(saved);
+}
+
 void sh_var_restore(sh_ctx *c, const char *name, sh_var *saved)
 {
     if (saved) {

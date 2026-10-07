@@ -58,7 +58,8 @@ enum sh_kind {
     SH_DBRACK     /* [[ ]]: name is && || ! ( with the operands in a and b, or the test operator ("" for a bare
                    * string, "-f", "==", "=~", "<" ...) with its one or two operand words in words */,
     SH_SELECT,    /* select name in words do a (as SH_FOR) */
-    SH_TIME       /* time [-p] a: a is the pipeline (0: none), has_in is -p */
+    SH_TIME,      /* time [-p] a: a is the pipeline (0: none), has_in is -p */
+    SH_COPROC     /* coproc [name] a: name is 0 for COPROC; a is the command */
 };
 
 typedef struct sh_case {
