@@ -632,15 +632,15 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         long need = 1;
         char *e;
         for (v = sh->ctx.vars; v; v = v->next)
-            if (v->attr & SH_ATTR_EXPORT)
-                need += (long)strlen(v->name) + (long)strlen(v->value) + 2;
+            if ((v->attr & SH_ATTR_EXPORT) && !v->arr)
+                need += (long)strlen(v->name) + (long)strlen(sh_var_str(v) ? sh_var_str(v) : "") + 2;
         j->env = e = (char *)malloc(need);
         if (e) {
             for (v = sh->ctx.vars; v; v = v->next)
-                if (v->attr & SH_ATTR_EXPORT) {
+                if ((v->attr & SH_ATTR_EXPORT) && !v->arr) {
                     strcpy(e, v->name);
                     e += strlen(e) + 1;
-                    strcpy(e, v->value);
+                    strcpy(e, sh_var_str(v) ? sh_var_str(v) : "");
                     e += strlen(e) + 1;
                 }
             *e = 0;

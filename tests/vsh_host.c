@@ -132,17 +132,17 @@ static char **build_envp(const sh_shell *sh)
     char **envp;
     int n = 0, i = 0;
     for (v = sh->ctx.vars; v; v = v->next)
-        if ((v->attr & SH_ATTR_EXPORT) && v->value)
+        if ((v->attr & SH_ATTR_EXPORT) && !v->arr && sh_var_str(v))
             n++;
     envp = (char **)calloc((size_t)n + 1, sizeof(char *));
     if (!envp)
         return 0;
     for (v = sh->ctx.vars; v; v = v->next)
-        if ((v->attr & SH_ATTR_EXPORT) && v->value) {
-            size_t len = strlen(v->name) + strlen(v->value) + 2;
+        if ((v->attr & SH_ATTR_EXPORT) && !v->arr && sh_var_str(v)) {
+            size_t len = strlen(v->name) + strlen(sh_var_str(v)) + 2;
             envp[i] = (char *)malloc(len);
             if (envp[i]) {
-                snprintf(envp[i], len, "%s=%s", v->name, v->value);
+                snprintf(envp[i], len, "%s=%s", v->name, sh_var_str(v));
                 i++;
             }
         }

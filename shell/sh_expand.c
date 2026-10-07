@@ -1,4 +1,5 @@
 /* vsh's word expansion (see sh_expand.h). */
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include "sh_expand.h"
@@ -48,10 +49,220 @@ static sh_var *find(const sh_ctx *c, const char *name)
     return 0;
 }
 
+/* The name a reference leads to (declare -n): at most 8 links. */
+static const char *resolve(const sh_ctx *c, const char *name)
+{
+    int hop;
+    for (hop = 0; hop < 8; hop++) {
+        sh_var *v = find(c, name);
+        if (!v || !(v->attr & SH_ATTR_NAMEREF) || !v->sv || !*v->sv)
+            break;
+        name = v->sv;
+    }
+    return name;
+}
+
+sh_var *sh_lookup_raw(const sh_ctx *c, const char *name)
+{
+    return find(c, name);
+}
+
+const char *sh_resolve(const sh_ctx *c, const char *name)
+{
+    return resolve(c, name);
+}
+
+sh_var *sh_lookup(const sh_ctx *c, const char *name)
+{
+    return find(c, resolve(c, name));
+}
+
+/* ---- arrays --------------------------------------------------------------------- */
+
+static int is_assoc(const sh_var *v)
+{
+    return (v->attr & SH_ATTR_ASSOC) != 0;
+}
+
+/* where the element idx / key is, or would go */
+static long arr_pos(const sh_var *v, long idx, const char *key, int *found)
+{
+    const sh_arr *a = v->arr;
+    long lo = 0, hi = a->n;
+    while (lo < hi) {
+        long m = (lo + hi) / 2, d;
+        if (is_assoc(v))
+            d = strcmp(a->e[m].key, key);
+        else
+            d = a->e[m].idx < idx ? -1 : a->e[m].idx > idx;
+        if (!d) {
+            *found = 1;
+            return m;
+        }
+        if (d < 0)
+            lo = m + 1;
+        else
+            hi = m;
+    }
+    *found = 0;
+    return lo;
+}
+
+static void elem_free(sh_elem *e)
+{
+    free(e->key);
+    free(e->val);
+}
+
+static void var_free(sh_var *v)
+{
+    free(v->name);
+    free(v->sv);
+    if (v->arr) {
+        long i;
+        for (i = 0; i < v->arr->n; i++)
+            elem_free(v->arr->e + i);
+        free(v->arr->e);
+        free(v->arr);
+    }
+    free(v);
+}
+
+/* the scalar becomes element 0 of a new array */
+static int make_array(sh_var *v, int assoc)
+{
+    v->arr = (sh_arr *)calloc(1, sizeof(sh_arr));
+    if (!v->arr)
+        return 1;
+    v->attr = (unsigned short)((v->attr & ~(SH_ATTR_ARRAY | SH_ATTR_ASSOC)) | (assoc ? SH_ATTR_ASSOC : SH_ATTR_ARRAY));
+    if (v->sv) {
+        v->arr->e = (sh_elem *)calloc(1, sizeof(sh_elem));
+        if (!v->arr->e)
+            return 1;
+        v->arr->n = v->arr->cap = 1;
+        v->arr->e[0].val = v->sv;
+        if (assoc)
+            v->arr->e[0].key = sdup("0");
+        v->sv = 0;
+    }
+    return 0;
+}
+
+/* The slot of the element at sub, created when make; 0: a bad subscript or no memory.
+ * Negative indexes count from the end (the last index + 1). */
+static char **elem_slot(sh_ctx *c, sh_var *v, const char *sub, int make)
+{
+    long idx = 0, pos;
+    int found;
+    sh_arr *a;
+    if (is_assoc(v)) {
+        if (!sub)
+            sub = "0";
+    } else if (sub) {
+        const char *err = 0;
+        idx = sh_arith(c, sub, &err);
+        if (err)
+            return 0;
+        if (idx < 0 && v->arr && v->arr->n)
+            idx += v->arr->e[v->arr->n - 1].idx + 1;
+        if (idx < 0)
+            return 0;
+    }
+    if (!v->arr && make && make_array(v, 0))
+        return 0;
+    if (!v->arr)
+        return 0;
+    a = v->arr;
+    pos = arr_pos(v, idx, sub, &found);
+    if (found)
+        return &a->e[pos].val;
+    if (!make)
+        return 0;
+    if (a->n == a->cap) {
+        long cap = a->cap ? a->cap * 2 : 4;
+        sh_elem *t = (sh_elem *)realloc(a->e, (size_t)cap * sizeof(sh_elem));
+        if (!t)
+            return 0;
+        a->e = t;
+        a->cap = cap;
+    }
+    memmove(a->e + pos + 1, a->e + pos, (size_t)(a->n - pos) * sizeof(sh_elem));
+    a->e[pos].idx = idx;
+    a->e[pos].key = is_assoc(v) ? sdup(sub) : 0;
+    a->e[pos].val = 0;
+    a->n++;
+    return &a->e[pos].val;
+}
+
+const char *sh_var_str(const sh_var *v)
+{
+    int f;
+    long p;
+    if (!v)
+        return 0;
+    if (!v->arr)
+        return v->sv;
+    p = arr_pos(v, 0, "0", &f);
+    return f ? v->arr->e[p].val : 0;
+}
+
 const char *sh_get(const sh_ctx *c, const char *name)
 {
-    sh_var *v = find(c, name);
-    return v ? v->value : 0;
+    return sh_var_str(sh_lookup(c, name));
+}
+
+const char *sh_get_elem(sh_ctx *c, const char *name, const char *sub)
+{
+    sh_var *v = sh_lookup(c, name);
+    char **s;
+    if (!v)
+        return 0;
+    if (!v->arr) {
+        const char *err = 0;
+        return sh_arith(c, sub, &err) == 0 && !err ? v->sv : 0;
+    }
+    s = elem_slot(c, v, sub, 0);
+    return s ? *s : 0;
+}
+
+char **sh_values(const sh_ctx *c, const char *name, long *n)
+{
+    sh_var *v = sh_lookup(c, name);
+    long i, k = 0, cnt = v ? (v->arr ? v->arr->n : 1) : 0;
+    char **r = (char **)malloc((size_t)(cnt + 1) * sizeof(char *));
+    if (!r) {
+        *n = 0;
+        return 0;
+    }
+    if (v && !v->arr && v->sv)
+        r[k++] = v->sv;
+    else if (v && v->arr)
+        for (i = 0; i < v->arr->n; i++)
+            if (v->arr->e[i].val)
+                r[k++] = v->arr->e[i].val;
+    *n = k;
+    return r;
+}
+
+void sh_keys(const sh_ctx *c, const char *name, sh_list *out)
+{
+    sh_var *v = sh_lookup(c, name);
+    long i;
+    char d[24];
+    if (!v || (!v->arr && !v->sv))
+        return;
+    if (!v->arr) {
+        sh_list_add(out, "0");
+        return;
+    }
+    for (i = 0; i < v->arr->n; i++) {
+        if (is_assoc(v))
+            sh_list_add(out, v->arr->e[i].key);
+        else {
+            sh_ltoa(v->arr->e[i].idx, d);
+            sh_list_add(out, d);
+        }
+    }
 }
 
 void sh_ltoa(long v, char *out)
@@ -69,32 +280,36 @@ void sh_ltoa(long v, char *out)
     out[k] = 0;
 }
 
-int sh_set(sh_ctx *c, const char *name, const char *value)
+/* value as the attributes of v make it: integer (evaluated), upper, lower; malloc'ed */
+static char *conv(sh_ctx *c, const sh_var *v, const char *value)
 {
-    sh_var *v = find(c, name);
-    char *nv;
+    char *t = sdup(value), *q;
+    if (t && (v->attr & SH_ATTR_INTEGER)) {
+        const char *err = 0;
+        long n = sh_arith(c, value, &err);
+        char d[24];
+        sh_ltoa(err ? 0L : n, d);
+        free(t);
+        t = sdup(d);
+    }
+    for (q = t; q && *q; q++)
+        if ((v->attr & SH_ATTR_UPPER) && *q >= 'a' && *q <= 'z')
+            *q -= 32;
+        else if ((v->attr & SH_ATTR_LOWER) && *q >= 'A' && *q <= 'Z')
+            *q += 32;
+    return t;
+}
+
+int sh_assign(sh_ctx *c, const char *name, const char *sub, const char *value, int append)
+{
+    sh_var *v;
+    char **slot, *nv;
+    name = resolve(c, name);
+    v = find(c, name);
     if (v && (v->attr & SH_ATTR_READONLY))
         return 1;
-    if (v && (v->attr & (SH_ATTR_INTEGER | SH_ATTR_UPPER | SH_ATTR_LOWER))) {
-        char *t = sdup(value), *q;
-        if (v->attr & SH_ATTR_INTEGER) {
-            const char *err = 0;
-            long n = sh_arith(c, value, &err);
-            char d[24];
-            sh_ltoa(err ? 0L : n, d);
-            free(t);
-            t = sdup(d);
-        }
-        for (q = t; q && *q; q++)
-            if ((v->attr & SH_ATTR_UPPER) && *q >= 'a' && *q <= 'z')
-                *q -= 32;
-            else if ((v->attr & SH_ATTR_LOWER) && *q >= 'A' && *q <= 'Z')
-                *q += 32;
-        nv = t;
-        value = nv;
-    } else {
-        nv = 0;
-    }
+    if (v)
+        v->attr &= (unsigned short)~SH_ATTR_NOVALUE;
     if (!v) {
         v = (sh_var *)calloc(1, sizeof(sh_var));
         if (!v)
@@ -103,15 +318,45 @@ int sh_set(sh_ctx *c, const char *name, const char *value)
         v->next = c->vars;
         c->vars = v;
     }
-    {
-        char *copy = sdup(value);
-        free(v->value);
-        v->value = copy;
-    }
-    free(nv);
+    if (sub || v->arr) {
+        slot = elem_slot(c, v, sub, 1);
+        if (!slot)
+            return 1;
+        SH_HIT(ARRAY_ELEM_SET);
+    } else
+        slot = &v->sv;
+    if (append && *slot) {
+        if (v->attr & SH_ATTR_INTEGER) {
+            const char *e = 0;
+            char d[24];
+            sh_ltoa(sh_arith(c, *slot, &e) + sh_arith(c, value, &e), d);
+            nv = sdup(d);
+        } else {
+            nv = (char *)malloc(strlen(*slot) + strlen(value) + 1);
+            if (nv) {
+                strcpy(nv, *slot);
+                strcat(nv, value);
+            }
+            if (nv) {
+                char *t = conv(c, v, nv);
+                free(nv);
+                nv = t;
+            }
+        }
+    } else
+        nv = conv(c, v, value);
+    if (!nv)
+        return 1;
+    free(*slot);
+    *slot = nv;
     if (c->allexport)
         v->attr |= SH_ATTR_EXPORT;
     return 0;
+}
+
+int sh_set(sh_ctx *c, const char *name, const char *value)
+{
+    return sh_assign(c, name, 0, value, 0);
 }
 
 unsigned sh_attr(const sh_ctx *c, const char *name)
@@ -126,9 +371,132 @@ void sh_attr_change(sh_ctx *c, const char *name, unsigned set, unsigned clear)
     if (!v) {
         sh_set(c, name, "");
         v = find(c, name);
+        if (v && (set & (SH_ATTR_ARRAY | SH_ATTR_ASSOC))) {
+            free(v->sv);
+            v->sv = 0;
+            v->attr |= SH_ATTR_NOVALUE;
+        }
     }
+    if (!v)
+        return;
+    if ((set & (SH_ATTR_ARRAY | SH_ATTR_ASSOC)) && !v->arr)
+        make_array(v, (set & SH_ATTR_ASSOC) != 0);
+    set &= ~(unsigned)(v->arr ? SH_ATTR_ARRAY | SH_ATTR_ASSOC : 0);
+    v->attr = (unsigned short)((v->attr & ~clear) | set);
+}
+
+long sh_next_index(const sh_ctx *c, const char *name)
+{
+    const sh_var *v = sh_lookup(c, name);
+    if (!v)
+        return 0;
+    if (!v->arr)
+        return v->sv ? 1 : 0;
+    return v->arr->n ? v->arr->e[v->arr->n - 1].idx + 1 : 0;
+}
+
+int sh_array_reset(sh_ctx *c, const char *name, int assoc)
+{
+    sh_var *v;
+    name = resolve(c, name);
+    v = find(c, name);
+    if (v && (v->attr & SH_ATTR_READONLY))
+        return 1;
     if (v)
-        v->attr = (unsigned short)((v->attr & ~clear) | set);
+        v->attr &= (unsigned short)~SH_ATTR_NOVALUE;
+    if (v && v->arr && is_assoc(v) == assoc) {
+        long i;
+        for (i = 0; i < v->arr->n; i++)
+            elem_free(v->arr->e + i);
+        v->arr->n = 0;
+        return 0;
+    }
+    if (v) {
+        unsigned short keep = (unsigned short)(v->attr & ~(SH_ATTR_ARRAY | SH_ATTR_ASSOC));
+        free(v->sv);
+        v->sv = 0;
+        if (v->arr) {
+            long i;
+            for (i = 0; i < v->arr->n; i++)
+                elem_free(v->arr->e + i);
+            free(v->arr->e);
+            free(v->arr);
+            v->arr = 0;
+        }
+        v->attr = keep;
+    } else {
+        sh_attr_change(c, name, assoc ? SH_ATTR_ASSOC : SH_ATTR_ARRAY, 0);
+        v = find(c, name);
+        if (v)
+            v->attr &= (unsigned short)~SH_ATTR_NOVALUE;
+        return 0;
+    }
+    return make_array(v, assoc);
+}
+
+sh_var *sh_var_copy(const sh_var *v)
+{
+    sh_var *r = (sh_var *)calloc(1, sizeof(sh_var));
+    if (!r)
+        return 0;
+    r->name = sdup(v->name);
+    r->attr = v->attr;
+    if (v->sv)
+        r->sv = sdup(v->sv);
+    if (v->arr) {
+        long i;
+        r->arr = (sh_arr *)calloc(1, sizeof(sh_arr));
+        if (!r->arr)
+            return r;
+        r->arr->e = (sh_elem *)calloc((size_t)(v->arr->n ? v->arr->n : 1), sizeof(sh_elem));
+        if (!r->arr->e)
+            return r;
+        r->arr->n = r->arr->cap = v->arr->n;
+        for (i = 0; i < v->arr->n; i++) {
+            r->arr->e[i].idx = v->arr->e[i].idx;
+            if (v->arr->e[i].key)
+                r->arr->e[i].key = sdup(v->arr->e[i].key);
+            if (v->arr->e[i].val)
+                r->arr->e[i].val = sdup(v->arr->e[i].val);
+        }
+    }
+    return r;
+}
+
+/* remove the variable NAME whatever its attributes */
+static void drop(sh_ctx *c, const char *name)
+{
+    sh_var **p;
+    for (p = &c->vars; *p; p = &(*p)->next)
+        if (!strcmp((*p)->name, name)) {
+            sh_var *v = *p;
+            *p = v->next;
+            var_free(v);
+            return;
+        }
+}
+
+sh_var *sh_var_save(const sh_ctx *c, const char *name)
+{
+    const sh_var *v = find(c, name);
+    return v ? sh_var_copy(v) : 0;
+}
+
+void sh_var_link(sh_ctx *c, sh_var *v)
+{
+    drop(c, v->name);
+    v->next = c->vars;
+    c->vars = v;
+}
+
+void sh_var_restore(sh_ctx *c, const char *name, sh_var *saved)
+{
+    if (saved) {
+        if (saved->arr)
+            SH_HIT(LOCAL_RESTORE_ARRAY);
+        sh_var_link(c, saved);
+    } else
+        drop(c, name);
 }
 
 void sh_pstat(sh_ctx *c, const long *st, int n)
@@ -209,18 +577,37 @@ char *sh_quote(const char *s, int style)
 
 int sh_unset(sh_ctx *c, const char *name)
 {
-    sh_var **p;
-    for (p = &c->vars; *p; p = &(*p)->next)
-        if (!strcmp((*p)->name, name)) {
-            sh_var *v = *p;
-            if (v->attr & SH_ATTR_READONLY)
-                return 1;
-            *p = v->next;
-            free(v->name);
-            free(v->value);
-            free(v);
-            return 0;
-        }
+    sh_var *v = sh_lookup(c, name);
+    if (!v)
+        return 0;
+    if (v->attr & SH_ATTR_READONLY)
+        return 1;
+    drop(c, v->name);
+    return 0;
+}
+
+int sh_unset_elem(sh_ctx *c, const char *name, const char *sub)
+{
+    sh_var *v = sh_lookup(c, name);
+    char **slot;
+    long pos;
+    if (!v)
+        return 0;
+    if (v->attr & SH_ATTR_READONLY)
+        return 1;
+    if (!v->arr) {
+        const char *err = 0;
+        if (sh_arith(c, sub, &err) == 0 && !err)
+            drop(c, v->name);
+        return 0;
+    }
+    slot = elem_slot(c, v, sub, 0);
+    if (!slot)
+        return 0;
+    pos = (sh_elem *)((char *)slot - offsetof(sh_elem, val)) - v->arr->e;
+    elem_free(v->arr->e + pos);
+    memmove(v->arr->e + pos, v->arr->e + pos + 1, (size_t)(v->arr->n - pos - 1) * sizeof(sh_elem));
+    v->arr->n--;
     return 0;
 }
 
@@ -238,8 +625,7 @@ void sh_export(sh_ctx *c, const char *name)
 void sh_ctx_free(sh_ctx *c)
 {
     while (c->vars) {
-        c->vars->attr &= (unsigned short)~SH_ATTR_READONLY;
-        sh_unset(c, c->vars->name);
+        drop(c, c->vars->name);
     }
     free(c->pstat);
     c->pstat = 0;
@@ -356,7 +742,20 @@ static long a_atom(arith *a)
                 (*a->s >= '0' && *a->s <= '9')) && k < 63)
             name[k++] = *a->s++;
         name[k] = 0;
-        val = sh_get(a->c, name);
+        if (*a->s == '[') {
+            char sb[64];
+            int m = 0, d = 0;
+            a->s++;
+            while (*a->s && (*a->s != ']' || d) && m < 63) {
+                d += *a->s == '[' ? 1 : *a->s == ']' ? -1 : 0;
+                sb[m++] = *a->s++;
+            }
+            sb[m] = 0;
+            if (*a->s == ']')
+                a->s++;
+            val = sh_get_elem(a->c, name, sb);
+        } else
+            val = sh_get(a->c, name);
         return val ? atol(val) : 0;
     }
     a->err = "arithmetic: a number is missing";
@@ -420,6 +819,7 @@ long sh_arith(sh_ctx *c, const char *expr, const char **err)
 #define F_QUOTED 1   /* inside quotes, or escaped: never split, never a glob character */
 #define F_SPLIT  2   /* the result of an unquoted expansion: split on IFS */
 #define F_BREAK  4   /* "$@": a field ends after this character */
+#define F_EMPTY  8   /* placeholder: an empty field of "$@" or "${a[@]}"; it adds no text */
 
 typedef struct cbuf {
     char *s;
@@ -514,7 +914,7 @@ static const char *param(ex *e, const char *name)
     }
     if (!name[1] && name[0] == '-')
         return c->flags ? c->flags : "";
-    if (!strcmp(name, "PIPESTATUS") && c->npstat) {
+    if (c->npstat && !strcmp(name, "PIPESTATUS")) {
         sh_ltoa(c->pstat[0], num);
         return num;
     }
@@ -540,29 +940,99 @@ static int unbound(ex *e, const char *name, const char *val)
     return 1;
 }
 
-/* $@ and $*: the positional parameters, fields apart ("$@") or joined. */
-static void put_args(ex *e, cbuf *b, int at, int dquote)
+/* One seam for the value list of $@ / $* and of an array NAME[@] (PIPESTATUS included), so the
+ * operators that work on lists are written once. */
+typedef struct pv {
+    char **v;
+    long n;
+    int own, deep;      /* v is malloc'ed; the strings are too */
+} pv;
+
+static void pv_get(ex *e, const char *name, pv *p)
 {
-    int i;
-    for (i = 0; i < e->c->args.n; i++) {
+    memset(p, 0, sizeof(*p));
+    if (name[0] == '@' || name[0] == '*') {
+        p->v = e->c->args.v;
+        p->n = e->c->args.n;
+    } else if (!strcmp(name, "PIPESTATUS") && e->c->npstat) {
+        int i;
+        char t[24];
+        p->v = (char **)calloc((size_t)e->c->npstat, sizeof(char *));
+        p->own = p->deep = 1;
+        for (i = 0; p->v && i < e->c->npstat; i++) {
+            sh_ltoa(e->c->pstat[i], t);
+            p->v[p->n++] = sdup(t);
+        }
+    } else {
+        p->v = sh_values(e->c, name, &p->n);
+        p->own = 1;
+        SH_HIT(PARAM_VALUES_ARRAY);
+    }
+}
+
+static void pv_free(pv *p)
+{
+    long i;
+    for (i = 0; p->deep && i < p->n; i++)
+        free(p->v[i]);
+    if (p->own)
+        free(p->v);
+}
+
+/* $@ and $*, ${a[@]} and ${a[*]}: the values, fields apart ("$@") or joined. */
+static void put_values(ex *e, cbuf *b, const char *name, int at, int dquote)
+{
+    pv p;
+    long i;
+    const char *ifs = sh_get(e->c, "IFS");
+    pv_get(e, name, &p);
+    for (i = 0; i < p.n; i++) {
         if (i) {
             if (at && dquote)
                 b->f[b->n - 1] |= F_BREAK;
-            else
-                cput(b, ' ', dquote ? F_QUOTED : F_SPLIT);
+            else if (!dquote)
+                cput(b, ' ', F_SPLIT);
+            else if (!ifs || *ifs)
+                cput(b, ifs ? *ifs : ' ', F_QUOTED);
         }
-        cputs(b, e->c->args.v[i], dquote ? F_QUOTED : F_SPLIT);
+        if (at && dquote && !p.v[i][0])
+            cput(b, ' ', F_QUOTED | F_EMPTY);
+        else
+            cputs(b, p.v[i], dquote ? F_QUOTED : F_SPLIT);
     }
-    if (at && dquote && !e->c->args.n)
+    if (at && dquote && !p.n)
         b->force_field = -1; /* "$@" of nothing: no field at all */
+    pv_free(&p);
+}
+
+/* the value of NAME[sub] (sub raw text, expanded here); 0 when unset. @ and * give element 0. */
+static const char *pval(ex *e, const char *name, int hassub, const char *sub)
+{
+    static char num[24];
+    char *k;
+    const char *r;
+    if (!hassub)
+        return param(e, name);
+    if (sub[0] == '@' || sub[0] == '*')
+        sub = "0";
+    k = expand_string(e, sub, (long)strlen(sub), 0);
+    if (!k)
+        return 0;
+    if (!strcmp(name, "PIPESTATUS") && e->c->npstat) {
+        long i = atol(k);
+        r = i >= 0 && i < e->c->npstat ? (sh_ltoa(e->c->pstat[i], num), num) : 0;
+    } else
+        r = sh_get_elem(e->c, name, k);
+    free(k);
+    return r;
 }
 
 /* ${...}: name, and an operator :- := :+ :? (or - = + ?) with its word. */
 static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
 {
     long i = 2, depth = 1, end;
-    char name[64];
-    int k = 0, len_op = 0, colon = 0;
+    char name[64], sub[96];
+    int k = 0, len_op = 0, colon = 0, hassub = 0, indirect = 0, all = 0;
     char op = 0;
     const char *val;
     while (i < len && depth) {
@@ -583,6 +1053,10 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         len_op = 1;
         i++;
     }
+    if (w[i] == '!' && i + 1 < end && (is_name_char(w[i + 1], 1))) {
+        indirect = 1;
+        i++;
+    }
     if (strchr("?$!#@*-", w[i]) && k == 0) {
         name[k++] = w[i++];
     } else {
@@ -594,29 +1068,65 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         e->err = "bad substitution";
         return end + 1;
     }
-    if (!strcmp(name, "PIPESTATUS") && i < end && w[i] == '[') {
-        /* PIPESTATUS[n] [@] [*]: until arrays exist (phase 2) it is a special case */
+    if (i < end && w[i] == '[') {
         long j = i + 1;
-        char idx[16], t[24];
-        int m = 0, q;
-        while (j < end && w[j] != ']' && m < 15)
-            idx[m++] = w[j++];
-        idx[m] = 0;
-        if (!strcmp(idx, "@") || !strcmp(idx, "*")) {
-            for (q = 0; q < e->c->npstat; q++) {
-                if (q)
-                    cput(b, ' ', dquote ? F_QUOTED : F_SPLIT);
-                sh_ltoa(e->c->pstat[q], t);
-                cputs(b, t, dquote ? F_QUOTED : F_SPLIT);
+        int d = 1, m = 0;
+        while (j < end && d) {
+            d += w[j] == '[' ? 1 : w[j] == ']' ? -1 : 0;
+            if (d && m < 95)
+                sub[m++] = w[j];
+            j++;
+        }
+        sub[m] = 0;
+        hassub = 1;
+        i = j;
+        all = !strcmp(sub, "@") || !strcmp(sub, "*");
+    }
+    if (indirect) {
+        const sh_var *rv = find(e->c, name);
+        if (all) {
+            /* ${!a[@]}: the keys, as a list */
+            sh_list ks;
+            int q;
+            memset(&ks, 0, sizeof(ks));
+            sh_keys(e->c, name, &ks);
+            for (q = 0; q < ks.n; q++) {
+                if (q) {
+                    if (sub[0] == '@' && dquote)
+                        b->f[b->n - 1] |= F_BREAK;
+                    else
+                        cput(b, ' ', dquote ? F_QUOTED : F_SPLIT);
+                }
+                cputs(b, ks.v[q], dquote ? F_QUOTED : F_SPLIT);
             }
-        } else {
-            q = atoi(idx);
-            if (q >= 0 && q < e->c->npstat) {
-                sh_ltoa(e->c->pstat[q], t);
-                cputs(b, t, dquote ? F_QUOTED : F_SPLIT);
+            if (sub[0] == '@' && dquote && !ks.n)
+                b->force_field = -1;
+            sh_list_free(&ks);
+            return end + 1;
+        }
+        if (rv && (rv->attr & SH_ATTR_NAMEREF)) {
+            if (rv->sv)
+                cputs(b, rv->sv, dquote ? F_QUOTED : F_SPLIT);
+            return end + 1;
+        }
+        val = pval(e, name, hassub, sub);
+        if (!val || !*val)
+            return end + 1;
+        strncpy(name, val, 63);
+        name[63] = 0;
+        hassub = all = 0;
+        {
+            char *br = strchr(name, '[');
+            size_t nl = strlen(name);
+            if (br && name[nl - 1] == ']') {
+                *br = 0;
+                name[nl - 1] = 0;
+                strncpy(sub, br + 1, 95);
+                sub[95] = 0;
+                hassub = 1;
+                all = !strcmp(sub, "@") || !strcmp(sub, "*");
             }
         }
-        return end + 1;
     }
     if (i < end && (w[i] == '#' || w[i] == '%') && !len_op) {
         /* ${X#p} ${X##p}: without the shortest / longest prefix matching p;
@@ -628,7 +1138,7 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
             longest = 1;
             i++;
         }
-        val = param(e, name);
+        val = pval(e, name, hassub, sub);
         if (unbound(e, name, val))
             return end + 1;
         if (!val)
@@ -672,16 +1182,28 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         e->err = "bad substitution";
         return end + 1;
     }
-    val = param(e, name);
+    val = pval(e, name, hassub, sub);
+    if (all) {
+        pv p;
+        pv_get(e, name, &p);
+        val = p.n ? "x" : 0;
+        pv_free(&p);
+    }
     if (!op && !len_op && unbound(e, name, val))
         return end + 1;
-    if (len_op && unbound(e, name, val))
+    if (len_op && !all && unbound(e, name, val))
         return end + 1;
     if (len_op) {
         char n[16];
         long l = val ? (long)strlen(val) : 0;
         int d = 0;
         char t[16];
+        if (all) {
+            pv p;
+            pv_get(e, name, &p);
+            l = p.n;
+            pv_free(&p);
+        }
         do
             t[d++] = (char)('0' + l % 10);
         while ((l /= 10) > 0);
@@ -721,7 +1243,9 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         }
     }
     if (!strcmp(name, "@") || !strcmp(name, "*"))
-        put_args(e, b, name[0] == '@', dquote);
+        put_values(e, b, name, name[0] == '@', dquote);
+    else if (all)
+        put_values(e, b, name, sub[0] == '@', dquote);
     else if (val)
         cputs(b, val, dquote ? F_QUOTED : F_SPLIT);
     return end + 1;
@@ -804,7 +1328,7 @@ static long dollar(ex *e, const char *w, long len, cbuf *b, int dquote)
         name[0] = w[1];
         name[1] = 0;
         if (w[1] == '@' || w[1] == '*')
-            put_args(e, b, w[1] == '@', dquote);
+            put_values(e, b, name, w[1] == '@', dquote);
         else {
             const char *v = param(e, name);
             if (unbound(e, name, v))
@@ -993,12 +1517,13 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
 static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *out)
 {
     char *plain = (char *)malloc(to - from + 1);
-    int i;
+    int i, m = 0;
     if (!plain)
         return;
-    if (to > from)
-        memcpy(plain, b->s + from, to - from); /* an empty field may have no buffer */
-    plain[to - from] = 0;
+    for (i = from; i < to; i++)
+        if (!(b->f[i] & F_EMPTY))
+            plain[m++] = b->s[i];
+    plain[m] = 0;
     if (!(flags & SH_NO_GLOB) && has_glob(b, from, to)) {
         /* the pattern: quoted characters escaped, so they match themselves */
         char *pat = (char *)malloc(2 * (to - from) + 1), *start;
@@ -1007,6 +1532,8 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
         const char *colon;
         char root[256];
         for (i = from; i < to; i++) {
+            if (b->f[i] & F_EMPTY)
+                continue;
             if ((b->f[i] & F_QUOTED) && strchr("*?[]\\", b->s[i]))
                 pat[k++] = '\\';
             pat[k++] = b->s[i];

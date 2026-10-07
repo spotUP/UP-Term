@@ -97,12 +97,77 @@ static void fail(lexer *L, const char *msg, int incomplete)
 
 /* The end of a word starting at i (quotes, escapes, $( ), ${ }, ` ` kept);
  * -1 when the input ends inside a quote. */
+static int assign_head(const char *w);
+
+/* the first n bytes of w are a plain NAME */
+static int assign_head_name(const char *w, long n)
+{
+    long k;
+    for (k = 0; k < n; k++)
+        if (!((w[k] >= 'A' && w[k] <= 'Z') || (w[k] >= 'a' && w[k] <= 'z') || w[k] == '_' ||
+              (k && w[k] >= '0' && w[k] <= '9')))
+            return 0;
+    return 1;
+}
+
 static long word_end(lexer *L, long i, int *quoted)
 {
     const char *s = L->s;
     int depth;
-    while (!is_meta(s[i])) {
+    long start = i;
+    for (;;) {
         char c = s[i];
+        if (c == '[' && (i == start || assign_head_name(s + start, i - start))) {
+            /* NAME[sub]= and, in an array list, [sub]=: the subscript may hold spaces */
+            long j = i + 1;
+            int d2 = 1;
+            while (s[j] && d2) {
+                if (s[j] == '"' || s[j] == '\'') {
+                    char qc = s[j++];
+                    while (s[j] && s[j] != qc)
+                        j++;
+                } else
+                    d2 += s[j] == '[' ? 1 : s[j] == ']' ? -1 : 0;
+                if (s[j])
+                    j++;
+            }
+            if (!d2 && (s[j] == '=' || (s[j] == '+' && s[j + 1] == '='))) {
+                i = j;
+                *quoted = 1;
+                continue;
+            }
+        }
+        if (c == '(' && i > start && (s[i - 1] == '=') && assign_head(s + start) >= 0) {
+            /* NAME=( ... ) and NAME+=( ... ): the list is part of the word */
+            int h = assign_head(s + start);
+            if (start + h + 1 == i || (s[start + h] == '+' && start + h + 2 == i)) {
+                depth = 1;
+                i++;
+                while (s[i] && depth) {
+                    if (s[i] == '\\' && s[i + 1])
+                        i++;
+                    else if (s[i] == '\'') {
+                        for (i++; s[i] && s[i] != '\''; i++)
+                            ;
+                    } else if (s[i] == '"') {
+                        for (i++; s[i] && s[i] != '"'; i++)
+                            if (s[i] == '\\' && s[i + 1])
+                                i++;
+                    } else if (s[i] == '(')
+                        depth++;
+                    else if (s[i] == ')')
+                        depth--;
+                    if (s[i])
+                        i++;
+                }
+                if (depth)
+                    return -1;
+                *quoted = 1;
+                continue;
+            }
+        }
+        if (is_meta(c))
+            break;
         if (c == '\\') {
             *quoted = 1;
             if (!s[i + 1])
@@ -446,15 +511,28 @@ static int parse_redir(lexer *L, sh_redir **list)
     return 1;
 }
 
-static int is_assignment(const char *w)
+/* the end of the NAME or NAME[sub] that starts an assignment word, or -1 */
+static int assign_head(const char *w)
 {
-    int i = 0;
+    int i = 0, d;
     if (!((w[0] >= 'A' && w[0] <= 'Z') || (w[0] >= 'a' && w[0] <= 'z') || w[0] == '_'))
-        return 0;
+        return -1;
     while ((w[i] >= 'A' && w[i] <= 'Z') || (w[i] >= 'a' && w[i] <= 'z') || w[i] == '_' ||
            (w[i] >= '0' && w[i] <= '9'))
         i++;
-    return w[i] == '=' || (w[i] == '+' && w[i + 1] == '=');
+    if (w[i] == '[') {
+        for (d = 1, i++; w[i] && d; i++)
+            d += w[i] == '[' ? 1 : w[i] == ']' ? -1 : 0;
+        if (d)
+            return -1;
+    }
+    return i;
+}
+
+static int is_assignment(const char *w)
+{
+    int i = assign_head(w);
+    return i >= 0 && (w[i] == '=' || (w[i] == '+' && w[i + 1] == '='));
 }
 
 static sh_node *parse_simple(lexer *L)

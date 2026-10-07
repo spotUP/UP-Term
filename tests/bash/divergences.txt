@@ -8,14 +8,11 @@
 # The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
 agent/a001_pipefail_loop	later:V14,V65	set -euo pipefail and [[ ]]
 agent/a004_diff_procsub	later:V59	<( )
-agent/a006_array_glob	later:V34,V35,V36	arrays
 agent/a007_subst_upper	later:V46,V48	${x//p/r} ${x^^}
 agent/a008_regex_match	later:V65,V66	[[ =~ ]] and BASH_REMATCH
 agent/a016_read_procsub	later:V59	< <( )
 agent/a018_arith_command	later:V63	(( ))
 agent/a019_cstyle_for	later:V64	for (( ))
-agent/a020_array_iterate	later:V34,V35,V36	arrays
-agent/a021_array_append	later:V34,V35,V36	a+=( )
 agent/a022_substring	later:V47	${x:o:l}
 agent/a028_ansi_c_quote	later:V52	$'...'
 agent/a032_dbrack_files	later:V65	[[ ]]
@@ -35,9 +32,6 @@ agent/a066_here_string	later:V58	<<<
 agent/a067_heredoc_dash	later:V58	<<-
 agent/a079_shift_positional	later:V47	${@:2}
 agent/a085_date_arith	later:V62	$(( > ))
-agent/a097_local_array	later:V37,V40	local -a
-agent/a098_unset_element	later:V34,V37	unset arr[i]
-agent/a099_indirect_ref	later:V49	${!ref}
 agent/a100_count_params	later:V49	${#@}
 agent/a101_regex_class	later:V56,V65,V66	[[:digit:]] in [[ =~ ]]
 agent/a102_glob_class	later:V56	[[:upper:]] in globs
@@ -56,13 +50,8 @@ agent/a120_array_len_index	later:V34,V35,V36,V47	arrays and slices
 arith/arith	later:V62	operators beyond + - * / % ( ) and assignment forms
 arith/dparen1	later:V63	(( )) arithmetic command parsed as two subshells
 arith/dparen2	later:V63	(( x = 5 )) is not an arithmetic command
-arrays/arr	later:V34,V35,V36,V37	indexed arrays
-arrays/assignarr	later:V35,V36	a[i]=v, ${!a[@]}, ${a[@]:o:l}
-arrays/assoc	later:V38	declare -A
-arrays/mapfile	later:V41	mapfile
-arrays/readarr	later:V41	read -a
+arrays/assignarr	later:V47	a[i]=v, ${!a[@]}, ${a[@]:o:l}
 builtins/declare_f	later:V82	declare -f prints a function
-builtins/nameref	later:V39	declare -n
 dbrack/dbrack	later:V65	[[ ]]
 dbrack/dbrack2	later:V65	[[ ]] with && and ( )
 expand/at_slice	later:V47,V49	${@:o} and ${@#p}

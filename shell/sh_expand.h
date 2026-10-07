@@ -21,11 +21,25 @@ void sh_list_free(sh_list *l);
 #define SH_ATTR_INTEGER  4   /* every assignment is evaluated with sh_arith */
 #define SH_ATTR_UPPER    8
 #define SH_ATTR_LOWER    16
-#define SH_ATTR_ARRAY    32  /* reserved for phase 2 */
+#define SH_ATTR_ARRAY    32  /* indexed array: the elements are in arr */
 #define SH_ATTR_ASSOC    64
 #define SH_ATTR_NAMEREF  128
+#define SH_ATTR_NOVALUE  256 /* declared (declare -a x) and never assigned: declare -p prints no value */
+/* An array is a sparse vector sorted by index (indexed) or by key (associative):
+ * append is O(1), lookup a binary search. */
+typedef struct sh_elem {
+    long idx;               /* indexed arrays */
+    char *key;              /* associative arrays */
+    char *val;
+} sh_elem;
+typedef struct sh_arr {
+    long n, cap;
+    sh_elem *e;
+} sh_arr;
+/* sv is the scalar value (0 for an array: read it through sh_var_str, never directly) */
 typedef struct sh_var {
-    char *name, *value;
+    char *name, *sv;
+    struct sh_arr *arr;
     unsigned short attr;    /* SH_ATTR_* */
     struct sh_var *next;
 } sh_var;
@@ -51,7 +65,25 @@ typedef struct sh_ctx {
     void *user;
 } sh_ctx;
 
-const char *sh_get(const sh_ctx *c, const char *name);
+const char *sh_get(const sh_ctx *c, const char *name);       /* an array: element 0 */
+const char *sh_var_str(const sh_var *v);                     /* scalar value, or element 0; 0 when none */
+sh_var *sh_lookup(const sh_ctx *c, const char *name);        /* namerefs followed (at most 8) */
+sh_var *sh_lookup_raw(const sh_ctx *c, const char *name);    /* the variable itself, a reference too */
+const char *sh_resolve(const sh_ctx *c, const char *name);   /* the name a reference leads to */
+const char *sh_get_elem(sh_ctx *c, const char *name, const char *sub);
+/* NAME=value, NAME[sub]=value (sub already expanded: arithmetic for an indexed array, the key for an
+ * associative one), += with append; 1: refused (readonly, bad subscript) */
+int sh_assign(sh_ctx *c, const char *name, const char *sub, const char *value, int append);
+int sh_unset_elem(sh_ctx *c, const char *name, const char *sub);
+/* the [@] values: a malloc'ed vector of pointers into the store (the caller frees the vector only) */
+char **sh_values(const sh_ctx *c, const char *name, long *n);
+void sh_keys(const sh_ctx *c, const char *name, sh_list *out);
+long sh_next_index(const sh_ctx *c, const char *name);       /* last index + 1 (0: none) */
+int sh_array_reset(sh_ctx *c, const char *name, int assoc);  /* NAME=(...) starts empty; 1: refused */
+sh_var *sh_var_copy(const sh_var *v);                         /* deep copy, not linked */
+sh_var *sh_var_save(const sh_ctx *c, const char *name);       /* copy of the raw variable; 0: unset */
+void sh_var_restore(sh_ctx *c, const char *name, sh_var *saved); /* put back (0: unset), takes saved */
+void sh_var_link(sh_ctx *c, sh_var *v);                       /* v replaces any variable of its name */
 void sh_ltoa(long v, char *out);   /* decimal, no printf: out has 24 bytes */
 int sh_set(sh_ctx *c, const char *name, const char *value);   /* 1: refused (readonly) */
 int sh_unset(sh_ctx *c, const char *name);                    /* 1: refused (readonly) */

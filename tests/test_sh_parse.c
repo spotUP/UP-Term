@@ -47,6 +47,18 @@ static void simple_commands_and_quoting(void)
     parses("echo \"it's a\\\nb\"", "(seq (cmd echo \"it's ab\"))"); /* ' inside \"...\" */
 }
 
+static void array_assignment_words(void)
+{
+    parses("a=(x y z)", "(seq (cmd { a=(x y z) }))");
+    parses("a+=(1 \"2 3\")", "(seq (cmd { a+=(1 \"2 3\") }))");
+    parses("a[1]=v", "(seq (cmd { a[1]=v }))");
+    parses("m[a b]=v", "(seq (cmd { m[a b]=v }))");
+    parses("a[2]+=v cmd", "(seq (cmd { a[2]+=v } cmd))");
+    parses("declare -A m=([k]=1 [j k]=2)", "(seq (cmd declare -A m=([k]=1 [j k]=2)))");
+    parses("a=(\n x\n y\n)", "(seq (cmd { a=(\n x\n y\n) }))");
+    fails("a=(x y", 1);
+}
+
 static void lists_pipes_and_logic(void)
 {
     parses("a | b | c", "(seq (pipe (pipe (cmd a) (cmd b)) (cmd c)))");
@@ -94,6 +106,7 @@ static void errors_and_continuation(void)
 void suite_sh_parse(void)
 {
     simple_commands_and_quoting();
+    array_assignment_words();
     lists_pipes_and_logic();
     redirections();
     compound_commands();

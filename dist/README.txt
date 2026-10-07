@@ -307,6 +307,8 @@ VSH (the shell)
   Differences from bash
   printf %b and echo -e drop a NUL byte (\0, \x00): strings are C strings
   (probe builtins/printf_bnul).
+  Associative arrays list their keys sorted, bash in hash order: scripts must
+  not depend on the order (probes sort).
   Stack: vsh needs none set (it takes 64 KB itself). The commands it runs
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
   when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).

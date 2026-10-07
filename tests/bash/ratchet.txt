@@ -2,6 +2,7 @@
 agent/a002_command_v
 agent/a003_heredoc_file
 agent/a005_arith_wc
+agent/a006_array_glob
 agent/a009_errexit_cd
 agent/a010_nounset_default
 agent/a011_xtrace
@@ -10,6 +11,8 @@ agent/a013_grep_status
 agent/a014_seq_loop
 agent/a015_read_loop
 agent/a017_count_files
+agent/a020_array_iterate
+agent/a021_array_append
 agent/a023_path_trims
 agent/a024_printf_formats
 agent/a025_printf_v
@@ -66,6 +69,9 @@ agent/a093_kill_zero
 agent/a094_kill_list
 agent/a095_trap_term
 agent/a096_declare_p
+agent/a097_local_array
+agent/a098_unset_element
+agent/a099_indirect_ref
 agent/a110_return_mod
 agent/a111_xtrace_ps4
 agent/a112_append_string
@@ -76,6 +82,21 @@ agent/a121_dollar_dash
 arith/arithdiv0
 arith/arithvar
 arrays/PIPESTATUS
+arrays/arr
+arrays/assoc
+arrays/assoc2
+arrays/compound
+arrays/declare_p
+arrays/indirect
+arrays/local_typed
+arrays/mapfile
+arrays/mapfile2
+arrays/nameref
+arrays/p2_reach
+arrays/readarr
+arrays/readarr2
+arrays/subscripts
+arrays/unset_elem
 builtins/alias1
 builtins/appendeq
 builtins/builtin
@@ -109,6 +130,7 @@ builtins/kill_signal
 builtins/kill_trap_self
 builtins/local_flags
 builtins/local_list
+builtins/nameref
 builtins/printf_float_eg
 builtins/printf_float_f
 builtins/printf_float_special

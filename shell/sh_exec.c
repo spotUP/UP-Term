@@ -239,8 +239,8 @@ void sh_shell_init(sh_shell *sh)
 
 /* A variable as it was before NAME=value cmd or local NAME, to put back after. */
 typedef struct saved_var {
-    char *name, *value;     /* value 0: it was not set */
-    unsigned attr;
+    char *name;
+    sh_var *var;            /* the whole variable as it was (attributes, value or array); 0: it was not set */
 } saved_var;
 static void restore_var(sh_shell *sh, saved_var *s);
 
@@ -285,8 +285,9 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->io = sh->io;
     c->io.owned = 0;
     for (v = sh->ctx.vars; v; v = v->next) {
-        sh_set(&c->ctx, v->name, v->value);
-        sh_attr_change(&c->ctx, v->name, v->attr, 0);
+        sh_var *cp = sh_var_copy(v);
+        if (cp)
+            sh_var_link(&c->ctx, cp);
     }
     for (i = 0; i < sh->ctx.args.n; i++)
         sh_list_add(&c->ctx.args, sh->ctx.args.v[i]);
@@ -450,8 +451,25 @@ static void expand_fatal(sh_shell *sh, const char *err)
 
 static int expand_words(sh_shell *sh, const sh_word *w, sh_list *out, const sh_io *io)
 {
+    static const char *const decl[] = { "declare", "typeset", "local", "readonly", "export", 0 };
+    int isdecl = 0, k;
+    for (k = 0; w && decl[k]; k++)
+        if (!strcmp(w->text, decl[k]))
+            isdecl = 1;
     for (; w; w = w->next) {
         const char *err = 0;
+        if (isdecl && w->text[strcspn(w->text, "=([ ")] == '=' && w->text[strcspn(w->text, "=([ ") + 1] == '(' &&
+            w->text[0] != '-') {
+            /* declare -a a=(x "y z"): the list is expanded by the assignment, word by word */
+            char *raw = (char *)malloc(strlen(w->text) + 2);
+            if (raw) {
+                raw[0] = '\1';
+                strcpy(raw + 1, w->text);
+                sh_list_add(out, raw);
+                free(raw);
+            }
+            continue;
+        }
         if (sh_expand(&sh->ctx, w->text, 0, out, &err)) {
             err2(sh, io, w->text, err);
             expand_fatal(sh, err);
@@ -970,6 +988,57 @@ static long b_pwd(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+/* "text" with \ " $ ` escaped, as declare -p prints a value */
+static void say_dq(sh_shell *sh, const sh_io *io, const char *t)
+{
+    const char *p;
+    for (p = t; *p; p++)
+        if ((unsigned char)*p < 32 || *p == 127) { /* bash: $'a\nb' */
+            char *q = sh_quote(t, SH_Q_SINGLE);
+            say(sh, io->out, q ? q : "");
+            free(q);
+            return;
+        }
+    say(sh, io->out, "\"");
+    for (p = t; *p; p++) {
+        if (strchr("\"\\$`", *p))
+            say(sh, io->out, "\\");
+        sh->os.write(sh->os.data, io->out, p, 1);
+    }
+    say(sh, io->out, "\"");
+}
+
+/* ([0]="x" [1]="y"): an associative array has a space before the closing paren (bash) */
+static void say_array(sh_shell *sh, const sh_io *io, const sh_var *v)
+{
+    long i;
+    char d[24];
+    say(sh, io->out, "(");
+    for (i = 0; i < v->arr->n; i++) {
+        const sh_elem *el = v->arr->e + i;
+        if (i)
+            say(sh, io->out, " ");
+        say(sh, io->out, "[");
+        if (v->attr & SH_ATTR_ASSOC) {
+            const char *k;
+            int plain = 1;
+            for (k = el->key; *k; k++)
+                if (!((*k >= 'a' && *k <= 'z') || (*k >= 'A' && *k <= 'Z') || (*k >= '0' && *k <= '9') || *k == '_'))
+                    plain = 0;
+            if (plain && *el->key)
+                say(sh, io->out, el->key);
+            else
+                say_dq(sh, io, el->key);
+        } else {
+            sh_ltoa(el->idx, d);
+            say(sh, io->out, d);
+        }
+        say(sh, io->out, "]=");
+        say_dq(sh, io, el->val ? el->val : "");
+    }
+    say(sh, io->out, (v->attr & SH_ATTR_ASSOC) && v->arr->n ? " )" : ")");
+}
+
 static int cmp_str(const void *a, const void *b)
 {
     return strcmp(*(const char *const *)a, *(const char *const *)b);
@@ -1014,10 +1083,14 @@ static long b_set(sh_shell *sh, int argc, char **argv, const sh_io *io)
             all[k++] = v;
         qsort(all, (size_t)n, sizeof(sh_var *), cmp_var);
         for (k = 0; k < n; k++) {
-            char *q = all[k]->value[0] ? sh_quote(all[k]->value, SH_Q_SINGLE) : sdup("");
+            const char *sv = sh_var_str(all[k]);
+            char *q = sv && sv[0] ? sh_quote(sv, SH_Q_SINGLE) : sdup("");
             say(sh, io->out, all[k]->name);
             say(sh, io->out, "=");
-            say(sh, io->out, q ? q : "");
+            if (all[k]->arr)
+                say_array(sh, io, all[k]);
+            else
+                say(sh, io->out, q ? q : "");
             say(sh, io->out, "\n");
             free(q);
         }
@@ -1157,7 +1230,7 @@ static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     char line[RD_MAX], quoted[RD_MAX], buf[RD_MAX];
     const char *ifs = sh_get(&sh->ctx, "IFS");
-    const char *reply[1], *prompt = 0;
+    const char *reply[1], *prompt = 0, *aname = 0;
     char **names = argv;
     sh_fh in = io->in;
     long n = 0, m, k, p = 0, nch = -1, tmo = -1;
@@ -1172,7 +1245,7 @@ static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
         }
         for (; *o; o++) {
             const char *arg = 0;
-            if (strchr("dnNptu", *o)) {
+            if (strchr("adnNptu", *o)) {
                 if (o[1])
                     arg = o + 1;
                 else if (a + 1 < argc)
@@ -1188,6 +1261,7 @@ static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
             }
             switch (*o) {
             case 'r': raw = 1; break;
+            case 'a': aname = arg; break;
             case 's': silent = chars = 1; break;
             case 'e': break;
             case 'd': delim = arg[0] ? (unsigned char)arg[0] : -1; chars = 1; break;
@@ -1306,6 +1380,35 @@ static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 break;
         }
     line[n] = 0;
+    if (aname) { /* read -a: every field is an element of the array */
+        long idx = 0;
+        char d[24];
+        if (sh_array_reset(&sh->ctx, aname, 0)) {
+            err2(sh, io, aname, "readonly variable");
+            return 1;
+        }
+        for (;;) {
+            long st0;
+            char sv;
+            while (p < n && !quoted[p] && ifs_space(ifs, line[p]))
+                p++;
+            if (p >= n)
+                break;
+            st0 = p;
+            while (p < n && (quoted[p] || !in_ifs(ifs, line[p])))
+                p++;
+            sv = line[p];
+            line[p] = 0;
+            sh_ltoa(idx++, d);
+            sh_assign(&sh->ctx, aname, d, line + st0, 0);
+            line[p] = sv;
+            while (p < n && !quoted[p] && ifs_space(ifs, line[p]))
+                p++;
+            if (p < n && !quoted[p] && in_ifs(ifs, line[p]))
+                p++;
+        }
+        return tout ? 142 : got == 1 ? 0 : 1;
+    }
     for (i = a; i < argc; i++) {
         long start;
         if (exact && nch > 0) { /* -N: the characters as they are, no splitting */
@@ -1868,39 +1971,19 @@ static int valid_name(const char *s, size_t n)
     return 1;
 }
 
-/* x=v or x+=v (append; with the integer attribute: add) */
-static int assign_value(sh_shell *sh, char *name, const char *v)
-{
-    size_t l = strlen(name);
-    pbuf b = { 0, 0, 0 };
-    int r;
-    if (l && name[l - 1] == '+') {
-        const char *cur = sh_get(&sh->ctx, name);
-        name[l - 1] = 0;
-        cur = sh_get(&sh->ctx, name);
-        if (sh_attr(&sh->ctx, name) & SH_ATTR_INTEGER) {
-            const char *e = 0;
-            char d[24];
-            sh_ltoa(sh_arith(&sh->ctx, cur ? cur : "0", &e) + sh_arith(&sh->ctx, v, &e), d);
-            r = sh_set(&sh->ctx, name, d);
-            return r;
-        }
-        pb_str(&b, cur ? cur : "");
-        pb_str(&b, v);
-        r = sh_set(&sh->ctx, name, b.s ? b.s : "");
-        free(b.s);
-        return r;
-    }
-    return sh_set(&sh->ctx, name, v);
-}
+/* NAME=(...) or NAME+=(...): body is the text between the parentheses */
+static int compound_assign(sh_shell *sh, const char *name, int append, const char *body, const sh_io *io);
 
 static void decl_print(sh_shell *sh, const sh_io *io, const sh_var *v)
 {
-    char at[8];
+    char at[12];
     int k = 0;
-    const char *p;
+    const char *sv = sh_var_str(v);
+    if (v->attr & SH_ATTR_ARRAY) at[k++] = 'a';
+    if (v->attr & SH_ATTR_ASSOC) at[k++] = 'A';
     if (v->attr & SH_ATTR_INTEGER) at[k++] = 'i';
     if (v->attr & SH_ATTR_LOWER) at[k++] = 'l';
+    if (v->attr & SH_ATTR_NAMEREF) at[k++] = 'n';
     if (v->attr & SH_ATTR_READONLY) at[k++] = 'r';
     if (v->attr & SH_ATTR_UPPER) at[k++] = 'u';
     if (v->attr & SH_ATTR_EXPORT) at[k++] = 'x';
@@ -1911,13 +1994,16 @@ static void decl_print(sh_shell *sh, const sh_io *io, const sh_var *v)
     say(sh, io->out, at);
     say(sh, io->out, " ");
     say(sh, io->out, v->name);
-    say(sh, io->out, "=\"");
-    for (p = v->value; *p; p++) {
-        if (strchr("\"\\$`", *p))
-            say(sh, io->out, "\\");
-        sh->os.write(sh->os.data, io->out, p, 1);
+    if (v->arr && !v->arr->n && (v->attr & SH_ATTR_NOVALUE)) {
+        say(sh, io->out, "\n");
+        return;
     }
-    say(sh, io->out, "\"\n");
+    say(sh, io->out, "=");
+    if (v->arr)
+        say_array(sh, io, v);
+    else
+        say_dq(sh, io, sv ? sv : "");
+    say(sh, io->out, "\n");
 }
 
 /* declare, typeset, local, readonly, export: mode 0, 0, 1, 2, 3 */
@@ -1953,8 +2039,16 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
             case 'g': global = 1; break;
             case 'F': fnames = 1; fn = 1; break;
             case 'f': fn = 1; break;
-            case 'n': if (mode == 3) { clear |= SH_ATTR_EXPORT; set &= ~SH_ATTR_EXPORT; } break;
-            case 'a': case 'A': case 't': break;
+            case 'n':
+                if (mode == 3) {
+                    clear |= SH_ATTR_EXPORT;
+                    set &= ~SH_ATTR_EXPORT;
+                } else
+                    bit = SH_ATTR_NAMEREF;
+                break;
+            case 'a': bit = SH_ATTR_ARRAY; break;
+            case 'A': bit = SH_ATTR_ASSOC; break;
+            case 't': break;
             default: {
                 char o[3];
                 o[0] = argv[i][0];
@@ -2049,21 +2143,23 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
         return 0;
     }
     for (; i < argc; i++) {
-        const char *eq = strchr(argv[i], '=');
-        size_t n = eq ? (size_t)(eq - argv[i]) : strlen(argv[i]);
+        int comp = argv[i][0] == '\1';
+        const char *arg = argv[i] + comp, *eq = strchr(arg, '=');
+        size_t n = eq ? (size_t)(eq - arg) : strlen(arg);
+        int app = n && arg[n - 1] == '+';
         char name[128];
         int local = mode == 1 || (mode == 0 && sh->func_depth && !global);
-        if (!valid_name(argv[i], n) || n >= sizeof(name)) {
-            err2(sh, io, argv[i], "not a valid identifier");
+        if (app)
+            n--;
+        if (!valid_name(arg, n) || n >= sizeof(name)) {
+            err2(sh, io, arg, "not a valid identifier");
             st = 1;
             continue;
         }
-        memcpy(name, argv[i], n);
+        memcpy(name, arg, n);
         name[n] = 0;
         if (print && mode == 0) {
-            const sh_var *v;
-            for (v = sh->ctx.vars; v && strcmp(v->name, name); v = v->next)
-                ;
+            const sh_var *v = sh_lookup_raw(&sh->ctx, name);
             if (v)
                 decl_print(sh, io, v);
             else {
@@ -2092,17 +2188,30 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
             st = 1;
             continue;
         }
+        if ((set & SH_ATTR_ASSOC) && (sh_attr(&sh->ctx, name) & SH_ATTR_ARRAY)) {
+            err2(sh, io, name, "cannot convert indexed to associative array");
+            st = 1;
+            continue;
+        }
         if (set || clear || (!eq && mode != 1))
             sh_attr_change(&sh->ctx, name, set & ~SH_ATTR_READONLY, clear);
-        if (eq) {
-            char nm[130];
-            strcpy(nm, name);
-            if (n && argv[i][n - 1] == '+')
-                ;
-            if (assign_value(sh, nm, eq + 1)) {
-                err2(sh, io, name, "readonly variable");
-                st = 1;
+        if (eq && (set & SH_ATTR_NAMEREF)) {
+            sh_attr_change(&sh->ctx, name, 0, SH_ATTR_NAMEREF);
+            sh_set(&sh->ctx, name, eq + 1);
+            sh_attr_change(&sh->ctx, name, SH_ATTR_NAMEREF, 0);
+        } else if (eq && (comp || ((set & (SH_ATTR_ARRAY | SH_ATTR_ASSOC)) && eq[1] == '(' && arg[strlen(arg) - 1] == ')'))) {
+            char *body = sdup(eq + 2);
+            if (body) {
+                body[strlen(body) - 1] = 0;
+                if (compound_assign(sh, name, app, body, io)) {
+                    err2(sh, io, name, "readonly variable");
+                    st = 1;
+                }
+                free(body);
             }
+        } else if (eq && sh_assign(&sh->ctx, name, 0, eq + 1, app)) {
+            err2(sh, io, name, "readonly variable");
+            st = 1;
         }
         if (set & SH_ATTR_READONLY)
             sh_attr_change(&sh->ctx, name, SH_ATTR_READONLY, 0);
@@ -2120,6 +2229,111 @@ static long b_local(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return declare_main(sh, 1, argc, argv, io);
 }
 
+/* mapfile / readarray [-t] [-n count] [-s skip] [-O origin] [-d delim] [-u fd] [array] */
+static long b_mapfile(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int trim = 0, delim = '\n', a = 1, have_o = 0;
+    long maxn = 0, skip = 0, org = 0, count = 0, put = 0;
+    sh_fh in = io->in;
+    const char *name = "MAPFILE";
+    char buf[RD_MAX];
+    for (; a < argc && argv[a][0] == '-' && argv[a][1]; a++) {
+        const char *o = argv[a] + 1, *arg;
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        for (; *o; o++) {
+            arg = 0;
+            if (strchr("dnsOu", *o)) {
+                if (o[1])
+                    arg = o + 1;
+                else if (a + 1 < argc)
+                    arg = argv[++a];
+                else {
+                    err2(sh, io, argv[a], "option requires an argument");
+                    return 2;
+                }
+            }
+            switch (*o) {
+            case 't': trim = 1; break;
+            case 'd': delim = arg[0] ? (unsigned char)arg[0] : 0; break;
+            case 'n': maxn = atol(arg); break;
+            case 's': skip = atol(arg); break;
+            case 'O': org = atol(arg); have_o = 1; break;
+            case 'u': in = atol(arg) == 1 ? io->out : atol(arg) == 2 ? io->err : io->in; break;
+            default:
+                err2(sh, io, argv[a], "invalid option");
+                return 2;
+            }
+            if (arg)
+                break;
+        }
+    }
+    if (a < argc)
+        name = argv[a];
+    if (!valid_name(name, strlen(name))) {
+        err2(sh, io, name, "not a valid identifier");
+        return 1;
+    }
+    if (!have_o && sh_array_reset(&sh->ctx, name, 0)) {
+        err2(sh, io, name, "readonly variable");
+        return 1;
+    }
+    put = org;
+    for (;;) {
+        pbuf rec = { 0, 0, 0 };
+        int end = 0, any = 0;
+        char d[24];
+        for (;;) {
+            long m;
+            if (delim == '\n') {
+                m = sh->os.read_line(sh->os.data, in, buf, sizeof(buf));
+                if (m < 0) {
+                    end = 1;
+                    break;
+                }
+                any = 1;
+                pb_add(&rec, buf, m);
+                if (m > 0 && buf[m - 1] == '\n')
+                    break;
+                if (m < (long)sizeof(buf) - 1) {
+                    end = 1;
+                    break;
+                }
+            } else {
+                char c;
+                if (sh->os.read(sh->os.data, in, &c, 1) <= 0) {
+                    end = 1;
+                    break;
+                }
+                any = 1;
+                pb_add(&rec, &c, 1);
+                if ((unsigned char)c == (unsigned char)delim)
+                    break;
+            }
+        }
+        if (!any || (end && (!rec.s || !rec.n))) {
+            free(rec.s);
+            break;
+        }
+        count++;
+        if (count > skip) {
+            if (trim && rec.n && (unsigned char)rec.s[rec.n - 1] == (unsigned char)delim)
+                rec.n--;
+            pb_add(&rec, "", 1); /* the NUL */
+            sh_ltoa(put++, d);
+            sh_assign(&sh->ctx, name, d, rec.s, 0);
+            if (maxn && put - org >= maxn)
+                end = 1;
+        }
+        free(rec.s);
+        if (end)
+            break;
+    }
+    return 0;
+}
+
 static long b_readonly(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     return declare_main(sh, 2, argc, argv, io);
@@ -2132,7 +2346,7 @@ static long b_export(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    int i = 1, fn = 0;
+    int i = 1, fn = 0, nameref = 0;
     long st = 0;
     for (; i < argc && argv[i][0] == '-' && argv[i][1]; i++) {
         if (!strcmp(argv[i], "--")) {
@@ -2142,7 +2356,7 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
         if (!strcmp(argv[i], "-f"))
             fn = 1;
         else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "-n"))
-            fn = 0;
+            fn = 0, nameref = argv[i][1] == 'n';
         else
             break;
     }
@@ -2158,9 +2372,31 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
                     free(f);
                     break;
                 }
-        } else if (sh_unset(&sh->ctx, argv[i])) {
-            err2(sh, io, argv[i], "cannot unset: readonly variable");
-            st = 1;
+        } else if (nameref) {
+            sh_var_restore(&sh->ctx, argv[i], 0);
+        } else {
+            char *br = strchr(argv[i], '['), *nm = 0, *sub;
+            int bad;
+            if (br && argv[i][strlen(argv[i]) - 1] == ']' && valid_name(argv[i], (size_t)(br - argv[i])))
+                nm = sdup(argv[i]);
+            if (nm) {
+                nm[br - argv[i]] = 0;
+                nm[strlen(argv[i]) - 1] = 0;
+                sub = nm + (br - argv[i]) + 1;
+                if (!strcmp(sub, "@") || !strcmp(sub, "*"))
+                    bad = sh_unset(&sh->ctx, nm);
+                else {
+                    char *k = expand_one(sh, sub, io);
+                    bad = k ? sh_unset_elem(&sh->ctx, nm, k) : 0;
+                    free(k);
+                }
+                free(nm);
+            } else
+                bad = sh_unset(&sh->ctx, argv[i]);
+            if (bad) {
+                err2(sh, io, argv[i], "cannot unset: readonly variable");
+                st = 1;
+            }
         }
     }
     return st;
@@ -2434,7 +2670,7 @@ static const struct {
     { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "local", b_local },
     { "getopts", b_getopts }, { "umask", b_umask },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
-    { "typeset", b_declare }, { "builtin", b_builtin }, { "kill", b_kill }, { 0, 0 }
+    { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill }, { 0, 0 }
 };
 
 static long add_word(char *out, long n, long max, const char *w)
@@ -2650,7 +2886,7 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
  * exec_cmd's frame: that frame is on every level of a recursion). */
 static char *assign_name(const char *word)
 {
-    size_t len = (size_t)(strchr(word, '=') - word);
+    size_t len = strcspn(word, "[+=");
     char *name = (char *)malloc(len + 1);
     if (name) {
         memcpy(name, word, len);
@@ -2659,31 +2895,196 @@ static char *assign_name(const char *word)
     return name;
 }
 
+static void xt_assign(sh_shell *sh, const sh_io *io, const char *name, const char *value);
+
+/* the subscript of an assignment word NAME[sub]..., or 0; *len is its length */
+static const char *assign_sub(const char *w, size_t *len)
+{
+    const char *p = w + strcspn(w, "[+=");
+    int d = 1;
+    size_t k = 1;
+    if (*p != '[')
+        return 0;
+    while (p[k] && d) {
+        d += p[k] == '[' ? 1 : p[k] == ']' ? -1 : 0;
+        k++;
+    }
+    *len = k - 2;
+    return p + 1;
+}
+
+/* One assignment word as the statement NAME=value runs it (flag 0), as a prefix of a command
+ * (1: also exported), or only for the trace of -x (2). The compound NAME=(...) and the
+ * subscripted NAME[sub]=value go through the typed store. 0: ok. */
+static int do_assign(sh_shell *sh, const char *text, const sh_io *io, int flag)
+{
+    char *name = assign_name(text), *sub = 0, *v;
+    size_t sl = 0;
+    const char *sp = assign_sub(text, &sl), *eq = strchr(sp ? sp + sl + 1 : text, '=');
+    int app = eq > text && eq[-1] == '+', r = 0;
+    if (!name || !eq) {
+        free(name);
+        return 0;
+    }
+    if (sp) {
+        char *raw = (char *)malloc(sl + 1);
+        if (raw) {
+            memcpy(raw, sp, sl);
+            raw[sl] = 0;
+            sub = flag == 2 ? raw : expand_one(sh, raw, io);
+            if (flag != 2)
+                free(raw);
+        }
+    }
+    if (eq[1] == '(' && eq[strlen(eq) - 1] == ')' && flag != 2) {
+        char *body = sdup(eq + 2);
+        if (body) {
+            body[strlen(body) - 1] = 0;
+            r = compound_assign(sh, name, app, body, io);
+            free(body);
+        }
+        if (r)
+            err2(sh, io, name, "readonly variable");
+        r = r != 0;
+    } else if ((v = expand_one(sh, eq + 1, io)) != 0) {
+        if (flag == 2) {
+            pbuf nb = { 0, 0, 0 };
+            pb_str(&nb, name);
+            if (sub) {
+                pb_str(&nb, "[");
+                pb_str(&nb, sub);
+                pb_str(&nb, "]");
+            }
+            xt_assign(sh, io, nb.s ? nb.s : name, v);
+            free(nb.s);
+        } else if (sh_assign(&sh->ctx, name, sub, v, app)) {
+            err2(sh, io, name, "readonly variable");
+            r = 1;
+        } else if (flag == 1)
+            sh_export(&sh->ctx, name);
+        free(v);
+    }
+    free(sub);
+    free(name);
+    return r;
+}
+
+static int compound_assign(sh_shell *sh, const char *name, int append, const char *body, const sh_io *io)
+{
+    sh_parse p;
+    const sh_word *w;
+    const sh_node *t0;
+    sh_list keys, vals;
+    char *text = (char *)malloc(strlen(body) + 3);
+    int assoc, r = 0, i, odd = 0;
+    long next;
+    name = sh_resolve(&sh->ctx, name);
+    assoc = (sh_attr(&sh->ctx, name) & SH_ATTR_ASSOC) != 0;
+    memset(&keys, 0, sizeof(keys));
+    memset(&vals, 0, sizeof(vals));
+    if (!text)
+        return 1;
+    /* the words of the list are the words of a command: parse "x <list>" and skip the x */
+    strcpy(text, "x ");
+    strcat(text, body);
+    for (i = 0, odd = 0; text[i]; i++) {
+        /* newlines separate elements; a comment runs to the end of its line; quotes hide both */
+        if (text[i] == '\\' && text[i + 1])
+            i++;
+        else if (text[i] == '\'' || text[i] == '"') {
+            char qc = text[i++];
+            while (text[i] && text[i] != qc)
+                i += text[i] == '\\' && qc == '"' && text[i + 1] ? 2 : 1;
+            if (!text[i])
+                break;
+        } else if (text[i] == '#' && (i < 3 || text[i - 1] == ' ' || text[i - 1] == '\n' || text[i - 1] == '\t')) {
+            while (text[i] && text[i] != '\n')
+                text[i++] = ' ';
+            if (text[i])
+                text[i] = ' ';
+        } else if (text[i] == '\n')
+            text[i] = ' ';
+    }
+    sh_parse_text(&p, text);
+    free(text);
+    t0 = p.tree;
+    while (t0 && t0->kind == SH_SEQ && !t0->b)
+        t0 = t0->a;
+    if (t0 && t0->kind == SH_CMD && t0->words && !p.error) {
+        for (w = t0->words->next; w; w = w->next) {
+            const char *t = w->text, *rb;
+            if (t[0] == '[' && (rb = strstr(t, "]=")) != 0) {
+                char *k = (char *)malloc((size_t)(rb - t));
+                if (k) {
+                    char *kx, *vx;
+                    memcpy(k, t + 1, (size_t)(rb - t - 1));
+                    k[rb - t - 1] = 0;
+                    kx = expand_one(sh, k, io);
+                    vx = expand_one(sh, rb + 2, io);
+                    sh_list_add(&keys, kx ? kx : "0");
+                    sh_list_add(&vals, vx ? vx : "");
+                    free(kx);
+                    free(vx);
+                    free(k);
+                }
+            } else {
+                sh_list f;
+                int q;
+                const char *er = 0;
+                memset(&f, 0, sizeof(f));
+                if (!sh_expand(&sh->ctx, t, 0, &f, &er))
+                    for (q = 0; q < f.n; q++) {
+                        if (assoc && !odd)
+                            sh_list_add(&keys, f.v[q]);
+                        else {
+                            if (!assoc)
+                                sh_list_add(&keys, "");
+                            sh_list_add(&vals, f.v[q]);
+                        }
+                        if (assoc)
+                            odd = !odd;
+                    }
+                sh_list_free(&f);
+            }
+        }
+    }
+    if (assoc && odd)
+        sh_list_add(&vals, "");
+    sh_parse_free(&p);
+    if (append && !(sh_attr(&sh->ctx, name) & (SH_ATTR_ARRAY | SH_ATTR_ASSOC)))
+        sh_attr_change(&sh->ctx, name, assoc ? SH_ATTR_ASSOC : SH_ATTR_ARRAY, 0);
+    if (!append && sh_array_reset(&sh->ctx, name, assoc))
+        r = 1;
+    next = append ? sh_next_index(&sh->ctx, name) : 0;
+    for (i = 0; !r && i < vals.n && i < keys.n; i++) {
+        char d[24];
+        const char *k = keys.v[i];
+        if (!k[0]) {
+            sh_ltoa(next, d);
+            k = d;
+        }
+        r = sh_assign(&sh->ctx, name, k, vals.v[i], 0);
+        if (!assoc) {
+            const char *e = 0;
+            next = sh_arith(&sh->ctx, k, &e) + 1;
+        }
+    }
+    sh_list_free(&keys);
+    sh_list_free(&vals);
+    return r;
+}
+
 static void save_var(sh_shell *sh, const char *name, saved_var *s)
 {
-    const sh_var *v;
     s->name = sdup(name);
-    s->value = 0;
-    s->attr = 0;
-    for (v = sh->ctx.vars; v; v = v->next)
-        if (!strcmp(v->name, name)) {
-            s->value = sdup(v->value);
-            s->attr = v->attr;
-        }
+    s->var = sh_var_save(&sh->ctx, name);
 }
 
 static void restore_var(sh_shell *sh, saved_var *s)
 {
-    if (s->name) {
-        sh_attr_change(&sh->ctx, s->name, 0, SH_ATTR_READONLY);
-        sh_unset(&sh->ctx, s->name);
-        if (s->value) {
-            sh_set(&sh->ctx, s->name, s->value);
-            sh_attr_change(&sh->ctx, s->name, s->attr, 0);
-        }
-    }
+    if (s->name)
+        sh_var_restore(&sh->ctx, s->name, s->var);
     free(s->name);
-    free(s->value);
 }
 
 /* ---- eval, exec, trap, local, getopts, umask ------------------------------------- */
@@ -3103,22 +3504,13 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
     if (!argv.n) {
         /* only assignments (and redirections): they set shell variables */
         for (a = n->assigns; a; a = a->next) {
-            char *v = expand_one(sh, strchr(a->text, '=') + 1, parent);
-            char *name = assign_name(a->text);
-            if (v && name) {
-                if (sh->opts & SO_XTRACE)
-                    xt_assign(sh, parent, name, v);
-                if (assign_value(sh, name, v)) {
-                    err2(sh, parent, name, "readonly variable");
-                    expand_fatal(sh, 0);
-                    free(name);
-                    free(v);
-                    sh_list_free(&argv);
-                    return 1;
-                }
+            if (sh->opts & SO_XTRACE)
+                do_assign(sh, a->text, parent, 2);
+            if (do_assign(sh, a->text, parent, 0)) {
+                expand_fatal(sh, 0);
+                sh_list_free(&argv);
+                return 1;
             }
-            free(name);
-            free(v);
         }
         if (n->redirs && !redirect(sh, n->redirs, parent, &io))
             close_owned(sh, &io);
@@ -3128,14 +3520,8 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
     apply_alias(sh, &argv);
     if (sh->opts & SO_XTRACE) {
         const sh_word *xa;
-        for (xa = n->assigns; xa; xa = xa->next) {
-            char *xv = expand_one(sh, strchr(xa->text, '=') + 1, parent);
-            char *xn = assign_name(xa->text);
-            if (xv && xn)
-                xt_assign(sh, parent, xn, xv);
-            free(xn);
-            free(xv);
-        }
+        for (xa = n->assigns; xa; xa = xa->next)
+            do_assign(sh, xa->text, parent, 2);
         xt_cmd(sh, parent, &argv);
     }
     if (!strcmp(argv.v[0], "command")) {
@@ -3173,16 +3559,11 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
     if (n_assigns)
         saved = (saved_var *)malloc(n_assigns * sizeof(saved_var));
     for (a = n->assigns; a; a = a->next) {
-        char *v = expand_one(sh, strchr(a->text, '=') + 1, parent);
         char *name = assign_name(a->text);
-        if (v && name) {
-            if (saved)
-                save_var(sh, name, &saved[n_saved++]);
-            sh_set(&sh->ctx, name, v);
-            sh_export(&sh->ctx, name);
-        }
+        if (name && saved)
+            save_var(sh, name, &saved[n_saved++]);
         free(name);
-        free(v);
+        do_assign(sh, a->text, parent, 1);
     }
     if (cmd_mode) {
         int q;

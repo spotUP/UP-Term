@@ -190,8 +190,34 @@ static void unclosed_bracket_is_literal(void)
     CHECK_INT(n_lists, 1);
 }
 
+static void typed_arrays(void)
+{
+    sh_ctx *c = ctx();
+    CHECK_INT(sh_assign(c, "ta", "0", "x", 0), 0);
+    CHECK_INT(sh_assign(c, "ta", "3", "y", 0), 0);
+    CHECK_INT(sh_assign(c, "ta", "-1", "z", 0), 0);      /* the last element */
+    CHECK_STR(ex(c, "${ta[0]}${ta[3]}", 0), "xz");
+    CHECK_STR(ex(c, "${#ta[@]}", 0), "2");
+    CHECK_STR(ex(c, "${!ta[@]}", 0), "0|3");
+    CHECK_STR(ex(c, "$ta", 0), "x");                      /* $a is ${a[0]} */
+    CHECK_INT(sh_unset_elem(c, "ta", "0"), 0);
+    CHECK_STR(ex(c, "${ta[@]}", 0), "z");
+    sh_set(c, "tn", "5");
+    sh_attr_change(c, "tn", SH_ATTR_ARRAY, 0);            /* the scalar becomes element 0 */
+    CHECK_STR(ex(c, "${tn[0]}", 0), "5");
+    sh_attr_change(c, "tm", SH_ATTR_ASSOC, 0);
+    CHECK_INT(sh_assign(c, "tm", "k k", "v", 0), 0);
+    CHECK_STR(ex(c, "${tm[k k]}", 0), "v");
+    sh_set(c, "tr", "ta");
+    sh_attr_change(c, "tr", SH_ATTR_NAMEREF, 0);
+    CHECK_STR(ex(c, "${tr[3]}", 0), "z");                 /* the reference leads to ta */
+    CHECK_INT(sh_assign(c, "tr", "5", "w", 0), 0);
+    CHECK_STR(ex(c, "${ta[5]}", 0), "w");
+}
+
 void suite_sh_expand(void)
 {
+    typed_arrays();
     unclosed_bracket_is_literal();
     variables_and_quotes();
     substitution_and_arithmetic();
