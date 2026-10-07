@@ -32,7 +32,7 @@ CFG = RIG / "vtcon-rig.fs-uae"
 # the owner's system disk (2026-10-03: the rig's copy was taken from it;
 # the old source sat in a session scratchpad that is gone). Only read: the
 # rig works on its own copy, build/rig/sys.hdf.
-SRC_HDF = pathlib.Path.home() / "Downloads/nyhd2.hdf"
+SRC_HDF = paths.SYSTEM_HDF        # UPTERM_SYSTEM_HDF
 # amiagent itself lives in build/rig/boot (the Up Rough demo system's agent,
 # copied there once); the rig refuses to start without it
 # The default ROM's header says 40.63 (the A500/A600/A2000 3.1), whatever
@@ -50,8 +50,8 @@ if "--serial" in sys.argv:
 # files carry the protection bits), copied once to build/rig/os32 -- the
 # owner's tree is only read. Same boot drawer, VTC: and amiagent.
 OS32 = "--os32" in sys.argv
-OS32_SRC = pathlib.Path.home() / "Downloads/AmigaOS-3.2-full (1)"
-OS32_KICK = pathlib.Path.home() / "Desktop/KICK_323.rom"
+OS32_SRC = paths.OS32_TREE        # UPTERM_OS32_TREE
+OS32_KICK = paths.OS32_ROM        # UPTERM_OS32_ROM
 if OS32:
     KICK = OS32_KICK
 if "--kick" in sys.argv:
@@ -200,11 +200,13 @@ def setup():
     (RIG / "shots").mkdir(exist_ok=True)
     if OS32 and not (RIG / "os32").exists():
         print("copying the 3.2 system (168 MB) ...")
+        paths.require_input(OS32_SRC, "UPTERM_OS32_TREE", "the AmigaOS 3.2 tree")
         shutil.copytree(OS32_SRC, RIG / "os32", symlinks=True)
     if OS32:
         os32_hd_layout()
     if not OS32 and not (RIG / "sys.hdf").exists():
         print("copying the system disk (1.5 GB) ...")
+        paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image")
         shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
     (RIG / "boot/s").mkdir(exist_ok=True)
     # --060: at host speed the boot shell's window is open (something prints
