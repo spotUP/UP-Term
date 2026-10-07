@@ -114,7 +114,7 @@ static const struct sh_opt {
     unsigned long bit;
 } sh_optab[] = {
     { "allexport", 'a', SO_ALLEXPORT }, { "braceexpand", 'B', SO_BRACEEXPAND }, { "emacs", 0, SO_INERT },
-    { "errexit", 'e', SO_ERREXIT }, { "errtrace", 'E', SO_INERT }, { "functrace", 'T', SO_INERT },
+    { "errexit", 'e', SO_ERREXIT }, { "errtrace", 'E', SO_ERRTRACE }, { "functrace", 'T', SO_FUNCTRACE },
     { "hashall", 'h', SO_HASHALL }, { "histexpand", 'H', SO_INERT }, { "history", 0, SO_INERT },
     { "ignoreeof", 0, SO_INERT }, { "interactive-comments", 0, SO_ICOMMENTS }, { "keyword", 'k', SO_INERT },
     { "monitor", 'm', SO_INERT }, { "noclobber", 'C', SO_NOCLOBBER }, { "noexec", 'n', SO_NOEXEC },
@@ -256,6 +256,7 @@ void sh_shell_init(sh_shell *sh)
     sh->tmps = 0;
     sh->ntmp = sh->captmp = 0;
     memset(sh->traps, 0, sizeof(sh->traps));
+    sh->trap_busy = 0;
     sh->in_trap = 0;
     sh->exit_trap_ran = 0;
     sh->locals = 0;
@@ -282,6 +283,8 @@ static void tmp_sweep(sh_shell *sh, int mark);
 
 static void fd_defer_release(sh_shell *sh, long job);
 static long job_wait(sh_shell *sh, long job);
+static void pseudo_trap(sh_shell *sh, int k, const sh_io *io);
+static void debug_trap(sh_shell *sh, const sh_node *n, const sh_io *io);
 
 void sh_shell_free(sh_shell *sh)
 {
@@ -317,7 +320,7 @@ void sh_shell_free(sh_shell *sh)
     }
     for (i = 0; i < 32; i++)
         free(sh->job_text[i]);
-    for (i = 0; i < SH_NSIG; i++)
+    for (i = 0; i < SH_NTRAP; i++)
         free(sh->traps[i]);
     while (sh->n_locals > 0) /* a shell ended inside a function: the values go with it */
         restore_var(sh, (saved_var *)sh->locals + --sh->n_locals);
@@ -356,7 +359,16 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.status = sh->ctx.status;
     c->ctx.pid = sh->ctx.pid;
     c->ctx.last_bg = sh->ctx.last_bg;
-    c->umask = sh->umask;  /* traps are not inherited (POSIX) */
+    c->umask = sh->umask;  /* traps are not inherited (POSIX); set -E and -T hand the ERR, DEBUG and RETURN ones on */
+    c->opts |= sh->opts & (SO_ERRTRACE | SO_FUNCTRACE);
+    if ((sh->opts & SO_ERRTRACE) && sh->traps[TRAP_ERR])
+        c->traps[TRAP_ERR] = sdup(sh->traps[TRAP_ERR]);
+    if (sh->opts & SO_FUNCTRACE) {
+        if (sh->traps[TRAP_DEBUG])
+            c->traps[TRAP_DEBUG] = sdup(sh->traps[TRAP_DEBUG]);
+        if (sh->traps[TRAP_RETURN])
+            c->traps[TRAP_RETURN] = sdup(sh->traps[TRAP_RETURN]);
+    }
     c->opts = sh->opts;
     c->cond_depth = sh->cond_depth;
     c->xlevel = sh->xlevel;
@@ -3336,15 +3348,24 @@ static const char *const sh_signames[] = { 0, "HUP", "INT", "QUIT", "ILL", "TRAP
     "VTALRM", "PROF", "WINCH", "INFO", "USR1", "USR2" };
 #define N_SIG SH_NSIG
 
+/* names compare without regard to case, as bash's decode_signal: 0 when the first n characters match */
+static int sig_ieq(const char *s, const char *name, size_t n)
+{
+    for (; n && *name; n--, s++, name++)
+        if ((*s | 0x20) != (*name | 0x20))
+            return 1;
+    return n && *s != *name ? 1 : 0;
+}
+
 static int sig_number(const char *s)
 {
     int i;
     if (s[0] >= '0' && s[0] <= '9')
         return atoi(s);
-    if (!strncmp(s, "SIG", 3))
+    if (!sig_ieq(s, "SIG", 3))
         s += 3;
     for (i = 1; i < N_SIG; i++)
-        if (!strcmp(sh_signames[i], s))
+        if (!sig_ieq(s, sh_signames[i], (size_t)-1) && !s[strlen(sh_signames[i])])
             return i;
     return -1;
 }
@@ -3555,6 +3576,7 @@ static int find_command_file(sh_shell *sh, const char *name, char *out, long max
 
 static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
+    int ran_main = 0;
     sh_fh fh;
     int borrowed;
     char line[1024];
@@ -3602,6 +3624,7 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
         sh->main_run = 1;
         sh->cur_src = file;
         st = sh_run_text(sh, text, &incomplete);
+        ran_main = is_main;
         sh->cur_src = outer_src;
         if (pushed)
             frame_pop(sh);
@@ -3610,6 +3633,11 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
     if (swap) {
         sh_list_free(&sh->ctx.args);
         sh->ctx.args = saved_args;
+    }
+    if (!ran_main && sh->traps[TRAP_RETURN] && !sh->exiting && !sh->returning) {
+        sh->ctx.status = st;
+        SH_HIT(TRAP_RETURN);
+        pseudo_trap(sh, TRAP_RETURN, io);
     }
     if (sh->returning) {   /* return in a sourced file ends the file */
         sh->returning = 0;
@@ -3656,6 +3684,7 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
 {
     sh_list saved = sh->ctx.args;
     int i, mark = sh->n_locals, outer = sh->local_mark, pushed;
+    char *sv_ret = 0, *sv_dbg = 0, *sv_err = 0;
     long st;
     sh->local_mark = mark;
     memset(&sh->ctx.args, 0, sizeof(sh->ctx.args));
@@ -3665,13 +3694,49 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
     pushed = frame_push(sh, f->name, f->src) == 0;
     sh->func_depth++;
     f->busy++;
+    /* without set -T / -E the function does not see the DEBUG, RETURN and ERR traps; what it sets
+     * itself stays after it, else the outer ones come back */
+    if (!(sh->opts & SO_FUNCTRACE)) {
+        sv_ret = sh->traps[TRAP_RETURN];
+        sv_dbg = sh->traps[TRAP_DEBUG];
+        sh->traps[TRAP_RETURN] = sh->traps[TRAP_DEBUG] = 0;
+    }
+    if (!(sh->opts & SO_ERRTRACE)) {
+        sv_err = sh->traps[TRAP_ERR];
+        sh->traps[TRAP_ERR] = 0;
+    }
+    if ((sh->opts & SO_FUNCTRACE) && sh->traps[TRAP_DEBUG] && !sh->trap_busy) {
+        SH_HIT(TRAP_DEBUG);
+        pseudo_trap(sh, TRAP_DEBUG, io);  /* bash traces the entry too, with the call's BASH_COMMAND */
+    }
     st = exec_node(sh, f->body.tree, io);
     f->busy--;
-    if (pushed)
-        frame_pop(sh);
     if (sh->returning)
         st = sh->ctx.status;
     sh->returning = 0;
+    if (sh->traps[TRAP_RETURN] && !sh->exiting) {
+        sh->ctx.status = st;
+        SH_HIT(TRAP_RETURN);
+        pseudo_trap(sh, TRAP_RETURN, io);
+    }
+    if (!(sh->opts & SO_FUNCTRACE)) {
+        if (sh->traps[TRAP_RETURN])
+            free(sv_ret);
+        else
+            sh->traps[TRAP_RETURN] = sv_ret;
+        if (sh->traps[TRAP_DEBUG])
+            free(sv_dbg);
+        else
+            sh->traps[TRAP_DEBUG] = sv_dbg;
+    }
+    if (!(sh->opts & SO_ERRTRACE)) {
+        if (sh->traps[TRAP_ERR])
+            free(sv_err);
+        else
+            sh->traps[TRAP_ERR] = sv_err;
+    }
+    if (pushed)
+        frame_pop(sh);
     sh->func_depth--;
     sh->local_mark = outer;
     while (sh->n_locals > mark) /* its locals end with it */
@@ -3949,13 +4014,22 @@ static int trap_index(const char *name)
     int n;
     if (!strcmp(name, "EXIT") || !strcmp(name, "SIGEXIT"))
         return 0;
+    if (!strcmp(name, "ERR"))
+        return TRAP_ERR;
+    if (!strcmp(name, "DEBUG"))
+        return TRAP_DEBUG;
+    if (!strcmp(name, "RETURN"))
+        return TRAP_RETURN;
     n = sig_number(name);
     return n >= 0 && n < N_SIG ? n : -1;
 }
 
 static void trap_print(sh_shell *sh, const sh_io *io, int i)
 {
-    sayl(sh, io->out, "trap -- '", sh->traps[i], i ? "' SIG" : "' ", i ? sh_signames[i] : "EXIT", "\n", NULL);
+    if (i >= SH_NSIG)
+        sayl(sh, io->out, "trap -- '", sh->traps[i], "' ", i == TRAP_ERR ? "ERR" : i == TRAP_DEBUG ? "DEBUG" : "RETURN", "\n", NULL);
+    else
+        sayl(sh, io->out, "trap -- '", sh->traps[i], i ? "' SIG" : "' ", i ? sh_signames[i] : "EXIT", "\n", NULL);
 }
 
 /* trap, trap -p [sig ...], trap -l, trap action sig ..., trap - sig ..., trap '' sig ...:
@@ -3980,7 +4054,7 @@ static long b_trap(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 trap_print(sh, io, k);
         }
         if (argc <= 2)
-            for (i = 0; i < SH_NSIG; i++)
+            for (i = 0; i < SH_NTRAP; i++)
                 if (sh->traps[i])
                     trap_print(sh, io, i);
         return st;
@@ -4037,6 +4111,101 @@ int sh_trap_signal(sh_shell *sh, int sig)
     if (sh->traps[k][0])
         run_trap_text(sh, sh->traps[k]);
     return 1;
+}
+
+/* ERR, DEBUG and RETURN: the action runs with $? as it was; none of the three fires inside a trap */
+static void pseudo_trap(sh_shell *sh, int k, const sh_io *io)
+{
+    sh_parse p;
+    long st = sh->ctx.status;
+    char *text;
+    if (!sh->traps[k] || !sh->traps[k][0] || sh->trap_busy)
+        return;
+    text = sdup(sh->traps[k]); /* the action may reset its own trap */
+    sh->trap_busy = 1;
+    sh_parse_text(&p, text);
+    if (p.error)
+        err2(sh, io, "trap", p.incomplete ? "unexpected end of input" : p.error);
+    else
+        exec_node(sh, p.tree, io);
+    sh_parse_free(&p);
+    free(text);
+    sh->trap_busy = 0;
+    sh->ctx.status = st;
+}
+
+/* the text DEBUG shows in BASH_COMMAND for a node (0: none) */
+static char *debug_text(const sh_node *n)
+{
+    pbuf b = { 0, 0, 0 };
+    const sh_word *w;
+    if (n->kind == SH_CMD) {
+        for (w = n->assigns; w; w = w->next) {
+            if (b.n)
+                pb_add(&b, " ", 1);
+            pb_str(&b, w->text);
+        }
+        for (w = n->words; w; w = w->next) {
+            if (b.n)
+                pb_add(&b, " ", 1);
+            pb_str(&b, w->text);
+        }
+    } else if (n->kind == SH_FOR) {
+        pb_str(&b, "for ");
+        pb_str(&b, n->name);
+        if (n->has_in)
+            pb_str(&b, " in");
+        for (w = n->words; w; w = w->next) {
+            pb_add(&b, " ", 1);
+            pb_str(&b, w->text);
+        }
+    } else if (n->kind == SH_CASE) {
+        pb_str(&b, "case ");
+        pb_str(&b, n->words->text);
+        pb_str(&b, " in ");
+    } else if (n->kind == SH_ARITHCMD) {
+        const char *t = n->words->text;
+        size_t len = strlen(t);
+        while (*t == ' ' || *t == '\t' || *t == '\n')
+            t++, len--;
+        while (len && (t[len - 1] == ' ' || t[len - 1] == '\t' || t[len - 1] == '\n'))
+            len--;
+        pb_str(&b, "(( ");
+        pb_add(&b, t, (long)len);
+        pb_str(&b, " ))");
+    } else if (n->kind == SH_DBRACK && !n->a && n->words) {
+        pb_str(&b, "[[ ");
+        if (n->words->next) {
+            pb_str(&b, n->words->text);
+            pb_str(&b, " ");
+            pb_str(&b, n->name);
+            pb_str(&b, " ");
+            pb_str(&b, n->words->next->text);
+        } else {
+            if (n->name && n->name[0] && strcmp(n->name, "str")) {
+                pb_str(&b, n->name);
+                pb_str(&b, " ");
+            }
+            pb_str(&b, n->words->text);
+        }
+        pb_str(&b, " ]]");
+    } else {
+        pb_str(&b, "[[ ... ]]");
+    }
+    return b.s ? b.s : sdup("");
+}
+
+/* before a simple command, [[, ((, case, and each pass of a for: the DEBUG trap */
+static void debug_trap(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    char *t;
+    if (!sh->traps[TRAP_DEBUG] || sh->trap_busy)
+        return;
+    t = debug_text(n);
+    sh_set(&sh->ctx, "BASH_COMMAND", t);
+    free(t);
+    SH_HIT(TRAP_DEBUG);
+    pseudo_trap(sh, TRAP_DEBUG, io);
 }
 
 void sh_exit_trap(sh_shell *sh)
@@ -4883,6 +5052,7 @@ static long exec_for(sh_shell *sh, const sh_node *n, const sh_io *io)
     }
     sh->loop_depth++;
     for (i = 0; i < items.n; i++) {
+        debug_trap(sh, n, io);
         sh_set(&sh->ctx, n->name, items.v[i]);
         st = exec_node(sh, n->a, io);
         if (sh->breaking) {
@@ -4993,6 +5163,8 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
         sh->intr = 2; /* unwind like Ctrl-C, but as an error: status 2 */
         return 2;
     }
+    if (sh->traps[TRAP_DEBUG] && (n->kind == SH_CMD || n->kind == SH_ARITHCMD || n->kind == SH_DBRACK || n->kind == SH_CASE))
+        debug_trap(sh, n, io);
     switch (n->kind) {
     case SH_CMD:
         st = exec_cmd(sh, n, io, 1, 0);
@@ -5110,6 +5282,12 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
         st = f->body.tree || !n->a ? 0 : 1;
         break;
     }
+    }
+    if (st && sh->traps[TRAP_ERR] && !sh->cond_depth && !sh->exiting && !sh->returning && !sh->intr &&
+        (n->kind == SH_CMD || n->kind == SH_PIPE || n->kind == SH_SUBSHELL)) {
+        SH_HIT(TRAP_ERR);
+        sh->ctx.status = st;
+        pseudo_trap(sh, TRAP_ERR, io);
     }
     if (st && (sh->opts & SO_ERREXIT) && !sh->cond_depth && !sh->exiting && !sh->returning && !sh->intr &&
         (n->kind == SH_CMD || n->kind == SH_PIPE || n->kind == SH_SUBSHELL)) {

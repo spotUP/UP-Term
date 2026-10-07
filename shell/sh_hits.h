@@ -15,6 +15,9 @@
     X(FDVAR_ALLOC) /* {var}> allocated a descriptor */ \
     X(HEREDOC)    /* a here-document temp file was made */ \
     X(EXIT_TRAP)  /* the EXIT trap ran */ \
+    X(TRAP_ERR)   /* an ERR trap fired */ \
+    X(TRAP_DEBUG) /* a DEBUG trap fired */ \
+    X(TRAP_RETURN) /* a RETURN trap fired */ \
     X(GLOB)       /* a glob pattern was matched against a directory */ \
     X(ERREXIT)    /* set -e ended the shell */ \
     X(PIPEFAIL)   /* a pipeline's status came from pipefail */ \

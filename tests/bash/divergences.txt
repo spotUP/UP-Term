@@ -10,9 +10,6 @@ builtins/declare_f	later:V82	declare -f prints a function
 jobs/bgwait	later:V83	wait $! returns the status of a background subshell (no item names it: nearest V83)
 shopt/extglob	later:V79	shopt -s extglob
 shopt/globstar	later:V79	shopt -s globstar
-traps/trapdebug	later:V77	trap DEBUG
-traps/traperr	later:V76	trap ERR
-traps/trapret	later:V77	trap RETURN
 builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings)
 expand/brace_oom	documented	brace expansion stops at 1,000,000 words with "brace expansion: out of memory" (status 1); bash goes on until memory ends
 expand/tilde_user	n/a-amiga	~user needs a user database; vsh leaves ~user as typed (bash expands it for a real user)

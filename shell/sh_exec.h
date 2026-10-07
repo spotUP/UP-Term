@@ -59,6 +59,10 @@ typedef struct sh_stat {
 
 /* signals 1..31 as ixemul (BSD) numbers them; index 0 of the trap table is EXIT */
 #define SH_NSIG 32
+#define TRAP_ERR   SH_NSIG
+#define TRAP_DEBUG (SH_NSIG + 1)
+#define TRAP_RETURN (SH_NSIG + 2)
+#define SH_NTRAP   (SH_NSIG + 3)
 
 #define SH_ID_PPID 0
 #define SH_ID_UID  1
@@ -168,6 +172,8 @@ typedef struct sh_retired {
 #define SO_POSIX       0x4000UL
 #define SO_LASTPIPE    0x8000UL   /* shopt lastpipe: the last stage of a pipeline runs in the shell */
 #define SO_ICOMMENTS   0x10000UL
+#define SO_ERRTRACE    0x40000UL  /* set -E: functions and subshells inherit the ERR trap */
+#define SO_FUNCTRACE   0x80000UL  /* set -T: functions and subshells inherit DEBUG and RETURN */
 #define SO_INERT       0x20000UL  /* the accepted names with no effect (emacs vi history ...): first of many */
 
 /* a temp file of a here-document or process substitution: removed when the command using it ends;
@@ -212,7 +218,8 @@ typedef struct sh_shell {
     sh_fh closed[8];       /* null-device streams standing for a stream closed with n>&- (see put) */
     int nclosed;
     int wfail;             /* a builtin wrote to one of them: its status becomes 1 */
-    char *traps[SH_NSIG];  /* trap actions: [0] EXIT, [n] signal n (0: none, "": ignored) */
+    char *traps[SH_NTRAP]; /* trap actions: [0] EXIT, [n] signal n, then ERR DEBUG RETURN (0: none, "": ignored) */
+    int trap_busy;         /* bit per ERR DEBUG RETURN trap that is running (a trap does not fire inside itself) */
     int in_trap;           /* a trap action is running */
     int exit_trap_ran;     /* the EXIT trap has run (once per shell) */
     void *locals;          /* local's saved variables, a stack (sh_exec.c: saved_var) */
