@@ -1,4 +1,5 @@
 /* vsh's executor (see sh_exec.h). */
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include "sh_exec.h"
@@ -359,6 +360,17 @@ static void say(sh_shell *sh, sh_fh fh, const char *s)
     sh->os.write(sh->os.data, fh, s, (long)strlen(s));
 }
 
+/* say() of every string up to the NULL: one call where a message needs several */
+static void sayl(sh_shell *sh, sh_fh fh, ...)
+{
+    va_list ap;
+    const char *s;
+    va_start(ap, fh);
+    while ((s = va_arg(ap, const char *)) != NULL)
+        say(sh, fh, s);
+    va_end(ap);
+}
+
 /* a name exists (want_dir -1), is a directory (1) or not (0) */
 static int sh_exists(sh_shell *sh, const char *path, int want_dir)
 {
@@ -372,11 +384,9 @@ static int sh_exists(sh_shell *sh, const char *path, int want_dir)
 
 static void err2(sh_shell *sh, const sh_io *io, const char *a, const char *b)
 {
-    say(sh, io->err, "vsh: ");
-    say(sh, io->err, a);
+    sayl(sh, io->err, "vsh: ", a, NULL);
     if (b) {
-        say(sh, io->err, ": ");
-        say(sh, io->err, b);
+        sayl(sh, io->err, ": ", b, NULL);
     }
     say(sh, io->err, "\n");
 }
@@ -386,13 +396,9 @@ static void err2(sh_shell *sh, const sh_io *io, const char *a, const char *b)
 static void err_not_found(sh_shell *sh, const sh_io *io, const char *name)
 {
     const char *drawer = bmsg_kit_drawer(name);
-    say(sh, io->err, "vsh: ");
-    say(sh, io->err, name);
-    say(sh, io->err, ": not found");
+    sayl(sh, io->err, "vsh: ", name, ": not found", NULL);
     if (drawer) {
-        say(sh, io->err, " (it lives in ");
-        say(sh, io->err, drawer);
-        say(sh, io->err, ": put that drawer on PATH, or run the UP-Term Install)");
+        sayl(sh, io->err, " (it lives in ", drawer, ": put that drawer on PATH, or run the UP-Term Install)", NULL);
     }
     say(sh, io->err, "\n");
 }
@@ -982,8 +988,7 @@ static long b_pwd(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     char *d = sh->os.cwd(sh->os.data);
     (void)argc; (void)argv;
-    say(sh, io->out, d ? d : "");
-    say(sh, io->out, "\n");
+    sayl(sh, io->out, d ? d : "", "\n", NULL);
     free(d);
     return 0;
 }
@@ -1049,6 +1054,23 @@ static int cmp_var(const void *a, const void *b)
     return strcmp((*(const sh_var *const *)a)->name, (*(const sh_var *const *)b)->name);
 }
 
+/* every variable, by name, in a malloc'd vector (NULL when out of memory); *n is its length */
+static sh_var **sorted_vars(sh_shell *sh, int *n)
+{
+    sh_var *v, **all;
+    int k = 0;
+    for (v = sh->ctx.vars; v; v = v->next)
+        k++;
+    all = (sh_var **)malloc((size_t)(k ? k : 1) * sizeof(sh_var *));
+    if (!all)
+        return NULL;
+    for (v = sh->ctx.vars, k = 0; v; v = v->next)
+        all[k++] = v;
+    qsort(all, (size_t)k, sizeof(sh_var *), cmp_var);
+    *n = k;
+    return all;
+}
+
 /* set -o (or +o) with no name: the option list, as bash prints it */
 static void list_opts(sh_shell *sh, const sh_io *io, int as_commands)
 {
@@ -1056,8 +1078,7 @@ static void list_opts(sh_shell *sh, const sh_io *io, int as_commands)
     for (i = 0; i < N_SHOPT; i++) {
         const char *nm = sh_optab[i].name;
         if (as_commands) {
-            say(sh, io->out, opt_on(sh, i) ? "set -o " : "set +o ");
-            say(sh, io->out, nm);
+            sayl(sh, io->out, opt_on(sh, i) ? "set -o " : "set +o ", nm, NULL);
         } else {
             say(sh, io->out, nm);
             for (k = (int)strlen(nm); k < 15; k++)
@@ -1072,21 +1093,15 @@ static long b_set(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int i = 1, positional = 0;
     if (argc == 1) {
-        sh_var *v, **all;
-        int n = 0, k;
-        for (v = sh->ctx.vars; v; v = v->next)
-            n++;
-        all = (sh_var **)malloc((size_t)(n ? n : 1) * sizeof(sh_var *));
+        sh_var **all;
+        int n, k;
+        all = sorted_vars(sh, &n);
         if (!all)
             return 1;
-        for (v = sh->ctx.vars, k = 0; v; v = v->next)
-            all[k++] = v;
-        qsort(all, (size_t)n, sizeof(sh_var *), cmp_var);
         for (k = 0; k < n; k++) {
             const char *sv = sh_var_str(all[k]);
             char *q = sv && sv[0] ? sh_quote(sv, SH_Q_SINGLE) : sdup("");
-            say(sh, io->out, all[k]->name);
-            say(sh, io->out, "=");
+            sayl(sh, io->out, all[k]->name, "=", NULL);
             if (all[k]->arr)
                 say_array(sh, io, all[k]);
             else
@@ -1445,9 +1460,7 @@ static long b_alias(sh_shell *sh, int argc, char **argv, const sh_io *io)
     int i, k;
     if (argc == 1) {
         for (k = 0; k < sh->aliases.n; k++) {
-            say(sh, io->out, "alias ");
-            say(sh, io->out, sh->aliases.v[k]);
-            say(sh, io->out, "\n");
+            sayl(sh, io->out, "alias ", sh->aliases.v[k], "\n", NULL);
         }
         return 0;
     }
@@ -1459,8 +1472,7 @@ static long b_alias(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 break;
         if (!eq) {
             if (k < sh->aliases.n) {
-                say(sh, io->out, sh->aliases.v[k]);
-                say(sh, io->out, "\n");
+                sayl(sh, io->out, sh->aliases.v[k], "\n", NULL);
             }
             continue;
         }
@@ -1764,18 +1776,12 @@ static void job_line(sh_shell *sh, sh_fh fh, int i, const char *state, long st)
 {
     char n[16];
     num(n, i + 1);
-    say(sh, fh, "[");
-    say(sh, fh, n);
-    say(sh, fh, "] ");
-    say(sh, fh, state);
+    sayl(sh, fh, "[", n, "] ", state, NULL);
     if (st > 0) {
         num(n, st);
-        say(sh, fh, " ");
-        say(sh, fh, n);
+        sayl(sh, fh, " ", n, NULL);
     }
-    say(sh, fh, "  ");
-    say(sh, fh, sh->job_text[i] ? sh->job_text[i] : "");
-    say(sh, fh, "\n");
+    sayl(sh, fh, "  ", sh->job_text[i] ? sh->job_text[i] : "", "\n", NULL);
 }
 
 static void job_forget(sh_shell *sh, int i)
@@ -1881,9 +1887,7 @@ static long b_stack(sh_shell *sh, int argc, char **argv, const sh_io *io)
         return 0;
     }
     num(nb, sh->os.stack(sh->os.data, 0));
-    say(sh, io->out, "stack ");
-    say(sh, io->out, nb);
-    say(sh, io->out, "\n");
+    sayl(sh, io->out, "stack ", nb, "\n", NULL);
     return 0;
 }
 
@@ -1902,11 +1906,7 @@ static long b_bg(sh_shell *sh, int argc, char **argv, const sh_io *io)
     }
     sh->job_stopped[i] = 0;
     num(nb, i + 1);
-    say(sh, io->out, "[");
-    say(sh, io->out, nb);
-    say(sh, io->out, "] ");
-    say(sh, io->out, sh->job_text[i] ? sh->job_text[i] : "");
-    say(sh, io->out, " &\n");
+    sayl(sh, io->out, "[", nb, "] ", sh->job_text[i] ? sh->job_text[i] : "", " &\n", NULL);
     return 0;
 }
 
@@ -1924,8 +1924,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
             err2(sh, io, "fg", "no such job");
             return 1;
         }
-        say(sh, io->out, sh->job_text[i] ? sh->job_text[i] : "");
-        say(sh, io->out, "\n");
+        sayl(sh, io->out, sh->job_text[i] ? sh->job_text[i] : "", "\n", NULL);
         if (sh->job_stopped[i]) {
             if (!sh->os.cont || sh->os.cont(sh->os.data, sh->jobs[i])) {
                 err2(sh, io, "fg", "cannot continue it");
@@ -1974,26 +1973,25 @@ static int valid_name(const char *s, size_t n)
 /* NAME=(...) or NAME+=(...): body is the text between the parentheses */
 static int compound_assign(sh_shell *sh, const char *name, int append, const char *body, const sh_io *io);
 
+/* the attribute letters of declare, in the order declare -p prints them */
+static const struct { char c; unsigned bit; } decl_attrs[] = {
+    { 'a', SH_ATTR_ARRAY }, { 'A', SH_ATTR_ASSOC }, { 'i', SH_ATTR_INTEGER },
+    { 'l', SH_ATTR_LOWER }, { 'n', SH_ATTR_NAMEREF }, { 'r', SH_ATTR_READONLY },
+    { 'u', SH_ATTR_UPPER }, { 'x', SH_ATTR_EXPORT }
+};
+
 static void decl_print(sh_shell *sh, const sh_io *io, const sh_var *v)
 {
     char at[12];
-    int k = 0;
+    int k = 0, j;
     const char *sv = sh_var_str(v);
-    if (v->attr & SH_ATTR_ARRAY) at[k++] = 'a';
-    if (v->attr & SH_ATTR_ASSOC) at[k++] = 'A';
-    if (v->attr & SH_ATTR_INTEGER) at[k++] = 'i';
-    if (v->attr & SH_ATTR_LOWER) at[k++] = 'l';
-    if (v->attr & SH_ATTR_NAMEREF) at[k++] = 'n';
-    if (v->attr & SH_ATTR_READONLY) at[k++] = 'r';
-    if (v->attr & SH_ATTR_UPPER) at[k++] = 'u';
-    if (v->attr & SH_ATTR_EXPORT) at[k++] = 'x';
+    for (j = 0; j < (int)(sizeof decl_attrs / sizeof decl_attrs[0]); j++)
+        if (v->attr & decl_attrs[j].bit)
+            at[k++] = decl_attrs[j].c;
     if (!k)
         at[k++] = '-';
     at[k] = 0;
-    say(sh, io->out, "declare -");
-    say(sh, io->out, at);
-    say(sh, io->out, " ");
-    say(sh, io->out, v->name);
+    sayl(sh, io->out, "declare -", at, " ", v->name, NULL);
     if (v->arr && !v->arr->n && (v->attr & SH_ATTR_NOVALUE)) {
         say(sh, io->out, "\n");
         return;
@@ -2029,34 +2027,30 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
         }
         for (p = argv[i] + 1; *p; p++) {
             unsigned bit = 0;
-            switch (*p) {
-            case 'r': bit = SH_ATTR_READONLY; break;
-            case 'x': bit = SH_ATTR_EXPORT; break;
-            case 'i': bit = SH_ATTR_INTEGER; break;
-            case 'u': bit = SH_ATTR_UPPER; break;
-            case 'l': bit = SH_ATTR_LOWER; break;
-            case 'p': print = 1; break;
-            case 'g': global = 1; break;
-            case 'F': fnames = 1; fn = 1; break;
-            case 'f': fn = 1; break;
-            case 'n':
-                if (mode == 3) {
-                    clear |= SH_ATTR_EXPORT;
-                    set &= ~SH_ATTR_EXPORT;
-                } else
-                    bit = SH_ATTR_NAMEREF;
-                break;
-            case 'a': bit = SH_ATTR_ARRAY; break;
-            case 'A': bit = SH_ATTR_ASSOC; break;
-            case 't': break;
-            default: {
-                char o[3];
-                o[0] = argv[i][0];
-                o[1] = *p;
-                o[2] = 0;
-                err2(sh, io, o, "invalid option");
-                return 2;
-            }
+            int j;
+            for (j = 0; j < (int)(sizeof decl_attrs / sizeof decl_attrs[0]); j++)
+                if (decl_attrs[j].c == *p)
+                    bit = decl_attrs[j].bit;
+            if (bit == SH_ATTR_NAMEREF && mode == 3) { /* export -n */
+                clear |= SH_ATTR_EXPORT;
+                set &= ~SH_ATTR_EXPORT;
+                bit = 0;
+            } else if (!bit) {
+                switch (*p) {
+                case 'p': print = 1; break;
+                case 'g': global = 1; break;
+                case 'F': fnames = 1; fn = 1; break;
+                case 'f': fn = 1; break;
+                case 't': break;
+                default: {
+                    char o[3];
+                    o[0] = argv[i][0];
+                    o[1] = *p;
+                    o[2] = 0;
+                    err2(sh, io, o, "invalid option");
+                    return 2;
+                }
+                }
             }
             if (bit) {
                 if (on) { set |= bit; clear &= ~bit; }
@@ -2068,9 +2062,7 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
         sh_func *f;
         if (i >= argc) {
             for (f = sh->funcs; f; f = f->next) {
-                say(sh, io->out, "declare -f ");
-                say(sh, io->out, f->name);
-                say(sh, io->out, "\n");
+                sayl(sh, io->out, "declare -f ", f->name, "\n", NULL);
             }
             return 0;
         }
@@ -2079,15 +2071,14 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
             if (!f)
                 st = 1;
             else if (fnames) {
-                say(sh, io->out, argv[i]);
-                say(sh, io->out, "\n");
+                sayl(sh, io->out, argv[i], "\n", NULL);
             }
         }
         return st;
     }
     if (i >= argc) {
-        sh_var *v, **all;
-        int n = 0, k;
+        sh_var **all;
+        int n, k;
         unsigned want = set & ~SH_ATTR_READONLY;
         if (mode == 1) { /* local alone: the running function's locals, by name */
             const saved_var *sv = (const saved_var *)sh->locals;
@@ -2112,9 +2103,7 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
                 if (lv)
                     decl_print(sh, io, lv);
                 else {
-                    say(sh, io->out, "declare -- ");
-                    say(sh, io->out, nm[j]);
-                    say(sh, io->out, "\n");
+                    sayl(sh, io->out, "declare -- ", nm[j], "\n", NULL);
                 }
             }
             free(nm);
@@ -2128,14 +2117,9 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
             want = SH_ATTR_EXPORT;
         else
             want = set;
-        for (v = sh->ctx.vars; v; v = v->next)
-            n++;
-        all = (sh_var **)malloc((size_t)(n ? n : 1) * sizeof(sh_var *));
+        all = sorted_vars(sh, &n);
         if (!all)
             return 1;
-        for (v = sh->ctx.vars, k = 0; v; v = v->next)
-            all[k++] = v;
-        qsort(all, (size_t)n, sizeof(sh_var *), cmp_var);
         for (k = 0; k < n; k++)
             if (!want || (all[k]->attr & want) == want)
                 decl_print(sh, io, all[k]);
@@ -2475,8 +2459,7 @@ static int type_one(sh_shell *sh, const sh_io *io, const char *name, int mode, i
         pb_str(&b, " is ");
         pb_str(&b, path);
         if (mode == 0 && pathonly) {
-            say(sh, io->out, path);
-            say(sh, io->out, "\n");
+            sayl(sh, io->out, path, "\n", NULL);
         } else {
             SAY_KIND("file", b.s, path);
         }
@@ -2496,11 +2479,9 @@ static long b_type(sh_shell *sh, int argc, char **argv, const sh_io *io)
         for (; i < argc; i++) {
             char path[512];
             if (find_func(sh, argv[i]) || find_builtin(argv[i])) {
-                say(sh, io->out, argv[i]);
-                say(sh, io->out, find_func(sh, argv[i]) ? " is a function\n" : " is a shell builtin\n");
+                sayl(sh, io->out, argv[i], find_func(sh, argv[i]) ? " is a function\n" : " is a shell builtin\n", NULL);
             } else if (find_command_file(sh, argv[i], path, sizeof(path))) {
-                say(sh, io->out, path);
-                say(sh, io->out, "\n");
+                sayl(sh, io->out, path, "\n", NULL);
             } else {
                 st = 1;
             }
@@ -2568,10 +2549,7 @@ static void print_siglist(sh_shell *sh, const sh_io *io)
         sh_ltoa(i, d);
         if (i < 10)
             say(sh, io->out, " ");
-        say(sh, io->out, d);
-        say(sh, io->out, ") SIG");
-        say(sh, io->out, sh_signames[i]);
-        say(sh, io->out, i % 5 == 0 || i == N_SIG - 1 ? "\n" : "\t");
+        sayl(sh, io->out, d, ") SIG", sh_signames[i], i % 5 == 0 || i == N_SIG - 1 ? "\n" : "\t", NULL);
     }
 }
 
@@ -2592,13 +2570,11 @@ static long b_kill(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 err2(sh, io, argv[i], "invalid signal specification");
                 st = 1;
             } else if (argv[i][0] >= '0' && argv[i][0] <= '9') {
-                say(sh, io->out, sh_signames[n]);
-                say(sh, io->out, "\n");
+                sayl(sh, io->out, sh_signames[n], "\n", NULL);
             } else {
                 char d[24];
                 sh_ltoa(n, d);
-                say(sh, io->out, d);
-                say(sh, io->out, "\n");
+                sayl(sh, io->out, d, "\n", NULL);
             }
         }
         return st;
@@ -3154,11 +3130,7 @@ static int trap_index(const char *name)
 
 static void trap_print(sh_shell *sh, const sh_io *io, int i)
 {
-    say(sh, io->out, "trap -- '");
-    say(sh, io->out, sh->traps[i]);
-    say(sh, io->out, i ? "' SIG" : "' ");
-    say(sh, io->out, i ? sh_signames[i] : "EXIT");
-    say(sh, io->out, "\n");
+    sayl(sh, io->out, "trap -- '", sh->traps[i], i ? "' SIG" : "' ", i ? sh_signames[i] : "EXIT", "\n", NULL);
 }
 
 /* trap, trap -p [sig ...], trap -l, trap action sig ..., trap - sig ..., trap '' sig ...:
@@ -3423,8 +3395,7 @@ static long b_umask(sh_shell *sh, int argc, char **argv, const sh_io *io)
             out[3] = (char)('0' + (m & 7));
             out[4] = 0;
         }
-        say(sh, io->out, out);
-        say(sh, io->out, "\n");
+        sayl(sh, io->out, out, "\n", NULL);
     }
     return 0;
 }
@@ -3740,12 +3711,9 @@ static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
     free(sh->job_text[i]);
     sh->job_text[i] = text;
     num(nb, i + 1);
-    say(sh, io->err, "[");
-    say(sh, io->err, nb);
-    say(sh, io->err, "] ");
+    sayl(sh, io->err, "[", nb, "] ", NULL);
     num(nb, job);
-    say(sh, io->err, nb);
-    say(sh, io->err, "\n");
+    sayl(sh, io->err, nb, "\n", NULL);
 }
 
 static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
@@ -3955,9 +3923,7 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
          * rather than run past it (on the Amiga that corrupts memory) */
         char d[16];
         num(d, sh->func_depth);
-        say(sh, io->err, "vsh: nested too deeply (");
-        say(sh, io->err, d);
-        say(sh, io->err, " function levels)\n");
+        sayl(sh, io->err, "vsh: nested too deeply (", d, " function levels)\n", NULL);
         sh->intr = 2; /* unwind like Ctrl-C, but as an error: status 2 */
         return 2;
     }
@@ -4234,10 +4200,7 @@ static char *core_subst(sh_ctx *c, const char *cmd)
 
 static void inv_msg(sh_shell *sh, const char *a, const char *b)
 {
-    say(sh, sh->io.err, "vsh: ");
-    say(sh, sh->io.err, a);
-    say(sh, sh->io.err, b);
-    say(sh, sh->io.err, "\n");
+    sayl(sh, sh->io.err, "vsh: ", a, b, "\n", NULL);
 }
 
 void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *info)
