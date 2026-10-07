@@ -13,6 +13,21 @@ XCON: is a console window like CON:, with a modern terminal inside:
     they send keeps its Amiga meaning there.
   - PC-ANSI dialect (option PCANSI): ANSI.SYS / BBS art, CP437.
 
+WHAT YOU NEED
+  An Amiga (or FPGA/emulated Amiga) with a 68020 or better and AmigaOS 3.0
+  or newer; Install refuses a 68000. 3.2 is what it is tested on most.
+  Installer (C:Installer or SYS:Utilities/Installer; AmigaOS 3.2 has it) to
+  use the Install icon; without it, the Shell route below works.
+  Only for the network parts, all optional:
+    a TCP/IP stack running: Roadshow (part of AmigaOS 3.2), Miami or AmiTCP
+    AmiSSL 5: Aminet util/libs/AmiSSL-v5-OS3.lha; run its own installer
+      (Install ticks curl only when LIBS:amisslmaster.library is found, and
+      Claude with an API key needs it)
+    a computer for Claude Code (see CLAUDE FROM THE AMIGA), or an API key
+  Get UP-Term.lha onto the Amiga any way you like (a memory card, a shared
+  drive, ftp over the stack) and unpack it with lha. Reboot after Install:
+  XCON: and PTY: are mounted from then on.
+
 INSTALL
   Unpack the archive and double-click Install in the UP-Term drawer
   (needs C:Installer or SYS:Utilities/Installer, AmigaOS 3.0 and up).
@@ -504,17 +519,21 @@ CLAUDE FROM THE AMIGA
   wrote it to ENVARC:Claude/remote ("host port"; edit or delete it): with
   no API key set, Claude connects there in the window. Or ClaudeCode
   (or double-click ClaudeCode in the UP-Term drawer)
-  connects to the NAS at 192.168.0.198 port 2323 -- ClaudeCode HOST PORT
-  for another -- asks its password and starts Claude Code in tmux.
+  connects to the host and port in its own first lines (edit them) --
+  ClaudeCode HOST PORT names another -- asks its password and starts Claude Code in tmux.
   Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
+  To set up the NAS end (a Synology container that keeps Claude Code in
+  tmux), see tools/nas/README.md in the vtcon source tree; to let Claude
+  there run commands on this Amiga, amimcp and amiagent are described in
+  the same file (never run amiagent without a TOKEN).
   On the Mac, from an UP-Term source checkout (nothing is installed; it
   runs until Ctrl-C):
     (umask 077; mkdir -p ~/.config/uptelnetd; read -rs p; printf '%s\n' "$p" > ~/.config/uptelnetd/password)
     python3 tools/uptelnetd.py
-  It prints the address it listens on, e.g. 192.168.0.58 port 2323. On the
+  It prints the address it listens on, e.g. <Mac address> port 2323. On the
   Amiga (TCP/IP stack running), in an UP-Term window:
-    uptelnet 192.168.0.58 2323
-  (vsh: telnet 192.168.0.58 2323). Type the password; you get your Mac
+    uptelnet <Mac address> 2323
+  (vsh: telnet <Mac address> 2323). Type the password; you get your Mac
   shell, where claude runs. uptelnetd --command 'tmux new -A -s claude
   claude' goes straight into Claude Code in a tmux session that survives a
   dropped line. uptelnet tells the Mac TERM=xterm-256color and the window's
@@ -608,6 +627,12 @@ CLAUDE
     Claude PING               checks the connection: HTTP status, times
     Claude MODEL=name EFFORT=low|medium|high|xhigh|max ROOT=dir DEBUG
     Claude PLAIN              the line mode at the window's own prompt
+  First run: with no key, no ENVARC:Claude/remote and no
+  ENVARC:Claude/setup-done, Claude starts a short setup: it asks whether
+  Claude Code runs on another computer, whether you use an API key here,
+  or later; checks the TCP/IP stack, AmiSSL 5 (key) or C:uptelnet (other
+  computer) and that the computer answers; offers amimcp/amiagent; writes
+  the settings. `Claude SETUP` (or /setup) runs it again.
   The key: SetEnv SAVE ANTHROPIC_API_KEY yourkey, or put it alone in the
   file ENVARC:Claude/key (Install makes the drawer, never a key; Uninstall
   leaves the drawer and your key). Claude never shows the key and never

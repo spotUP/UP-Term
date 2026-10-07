@@ -44,7 +44,8 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | tmux and Neovim follow a resized XCON: window (self-checking) | `python3 tools/rig/resize_rig.py [tmux] [nvim]` (rig up, fresh boot, handler installed; `make amiga build/amiga/ixwinch`; tmux-amiga and `make dist` in neovim-amiga) |
 | Fullscreen size change keeps the window the whole screen (FULLSCREEN-MENU; verdicts in build/rig/fullscreen/, passed ones skipped) | `python3 tools/rig/fullscreen_rig.py [--rerun <case>|all]` (rig up, handler installed; `make amiga`) |
 | pty-handler with a serial trace (build/rig/serial.log) | `make build/amiga/pty-handler DEBUG=1` |
-| Rig (FS-UAE A1200, amiagent) | `python3 tools/rig/rig.py setup|start|install|stop|status`; drive with `tools/rig/ami.py` |
+| Rig (FS-UAE A1200, amiagent; what it needs, flags, what each script proves: `tools/rig/README.md`) | `python3 tools/rig/rig.py setup|start [--max]|install|stop|status`; drive with `tools/rig/ami.py` |
+| Set up the whole workspace from zero (host tools, toolchains, repos, kit, rig, real Amiga, NAS) | `~/Code/upterm/README.md`, section "Set up the whole thing" |
 | Cross build (vbcc, 68020) | `make amiga`. Needs the AmigaOS 3.2 SDK headers once: unpack `NDK3.2R4` to `vendor/ndk-3.2r4-Include_H` (gitignored), or pass `make amiga VTCON_NDK=<path-to-Include_H>` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | hl and mdv for the host terminal (build/hl, build/mdv; suites `ONLY=hl`, `ONLY=md`) | `make view-host` |

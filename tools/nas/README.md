@@ -7,6 +7,19 @@ Amiga disconnecting. The Amiga reaches it with UP-Term's `uptelnet`:
 
 UNENCRYPTED telnet: LAN only, never forward the port on the router.
 
+## What you need
+
+- A NAS (Synology DSM 7 with Container Manager, x86-64 or ARM64) or any Linux
+  machine with Docker, on the same LAN as the Amiga, with internet access: the
+  first start installs Claude Code from npm into the volume.
+- A Claude subscription (Pro or Max) to log in with (step 4).
+- On the Amiga: UP-Term installed (its `uptelnet` does the connecting), a
+  TCP/IP stack running (Roadshow, Miami or AmiTCP). The Amiga's side is in
+  dist/README.txt, section CLAUDE FROM THE AMIGA: the Installer asks where
+  Claude Code runs and writes `ENVARC:Claude/remote` ("host port"); the first
+  run of `C:Claude` asks the same (`Claude SETUP` asks again), and the
+  `ClaudeCode` icon takes a host and port as arguments.
+
 ## Set up (Synology DSM 7, Container Manager)
 
 1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, setpw, README.md) and
@@ -28,6 +41,13 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
    instead of the subscription. `/status` shows which one is in use.
 5. On the Amiga: `uptelnet <NAS_IP> 2323`, the password, and you are in Claude Code.
    Ctrl+] leaves; Claude keeps running in tmux for the next connection.
+
+Without Synology: put the same files in one folder, set `NAS_IP` (the address the
+Amiga reaches, space-separated with any others to listen on) and `ALLOW` (the
+LAN's CIDR) in `compose.yaml`, create `home/`, run `docker compose up -d`, then
+`docker exec -it claude-amiga setpw` for step 3 and
+`docker exec -it -u claude claude-amiga sh -c 'cd ~/work && tmux new -A -s claude claude'`
+for step 4. (Not tried on a machine other than the owner's Synology.)
 
 Claude Code itself is installed on the volume (`home/.npm-global`, owned by the
 `claude` user) on the first start, so its auto-updater can write there and updates
@@ -100,6 +120,12 @@ always set a TOKEN, keep it on a LAN you trust, never forward the port (7846).
 4. Start `claude` from UP-Term (C:Claude or ClaudeCode). Claude asks once to
    approve the project's `amiga` MCP server: approve it. Check: ask "what
    volumes does my Amiga have?" -- it runs a command on the Amiga and answers.
+
+Not covered here: amiagent on the Amiga is the only thing that makes the link
+that Claude controls the machine; without step 1 above the container's Claude
+Code is just a terminal session. The rig (tools/rig/README.md) uses the same
+amiagent, with token `rigtoken`, on an emulated Amiga: never reuse that token
+on a real one.
 
 ## ssh to the NAS (for setting this up from another computer)
 
