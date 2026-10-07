@@ -280,6 +280,13 @@ static void tmp_sweep(sh_shell *sh, int mark);
 void sh_shell_free(sh_shell *sh)
 {
     int i;
+    for (i = 0; i < SH_FDMAX; i++) {
+        int k;
+        for (k = 0; k < i && sh->fdt[k].fh != sh->fdt[i].fh; k++)
+            ;
+        if (sh->fdt[i].fh && sh->fdt[i].own && k == i)
+            sh->os.close(sh->os.data, sh->fdt[i].fh);
+    }
     sh->intr = 1; /* the files go, a >( ) command does not run */
     tmp_sweep(sh, 0);
     free(sh->tmps);
@@ -327,6 +334,10 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->os = sh->os;
     c->io = sh->io;
     c->io.owned = 0;
+    for (i = 0; i < SH_FDMAX; i++) {
+        c->fdt[i].fh = sh->fdt[i].fh; /* shared with the parent, which closes it */
+        c->fdt[i].own = 0;
+    }
     for (v = sh->ctx.vars; v; v = v->next) {
         sh_var *cp = sh_var_copy(v);
         if (cp)
@@ -390,6 +401,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
 
 static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io);
 static void close_owned(sh_shell *sh, const sh_io *io);
+static void fd_unwind(sh_shell *sh, int mark, const sh_io *io);
 
 static long intr_status(const sh_shell *sh);
 
@@ -703,6 +715,8 @@ static char *words_text(const sh_node *c)
 
 static void close_owned(sh_shell *sh, const sh_io *io)
 {
+    if (io->owned & SH_OWN_FDS)
+        fd_unwind(sh, io->fdmark, io);
     if ((io->owned & SH_OWN_IN) && io->in) {
         closed_del(sh, io->in);
         sh->os.close(sh->os.data, io->in);
@@ -800,21 +814,180 @@ static char *expand_one(sh_shell *sh, const char *text, const sh_io *io)
 
 static void tmp_add(sh_shell *sh, const char *path, const char *cmd);
 
+/* ---- the shell's fd table (fds 3 and up) ---------------------------------------- */
+
+/* Descriptors above 2 live in sh->fdt, a table of the shell itself: native commands still get
+ * 0-2 only. AmigaDOS has no dup, so slots share handles and a handle is closed when the last
+ * user is gone (`own` slots only; a handle that stands for fd 0-2 is never closed here).
+ * A command's redirections write to the table and push what they replace on sh->fdundo;
+ * close_owned() puts it back when the command ends, `exec` keeps the changes (fd_commit). */
+
+static int fd_used(const sh_shell *sh, sh_fh fh, const sh_io *io)
+{
+    int i;
+    if (!fh)
+        return 0;
+    for (i = 0; i < SH_FDMAX; i++)
+        if (sh->fdt[i].fh == fh)
+            return 1;
+    if (sh->io.in == fh || sh->io.out == fh || sh->io.err == fh)
+        return 1;
+    return io && (io->in == fh || io->out == fh || io->err == fh);
+}
+
+static int fd_set(sh_shell *sh, int slot, sh_fh fh, int own)
+{
+    if (sh->nundo >= SH_FDUNDO)
+        return -1;
+    sh->fdundo[sh->nundo].slot = slot;
+    sh->fdundo[sh->nundo].fh = sh->fdt[slot].fh;
+    sh->fdundo[sh->nundo].own = sh->fdt[slot].own;
+    sh->nundo++;
+    sh->fdt[slot].fh = fh;
+    sh->fdt[slot].own = own;
+    return 0;
+}
+
+/* the command ended: its table changes are undone, what only it used is closed */
+static void fd_unwind(sh_shell *sh, int mark, const sh_io *io)
+{
+    while (sh->nundo > mark) {
+        int i = --sh->nundo;
+        int slot = sh->fdundo[i].slot;
+        sh_fh cur = sh->fdt[slot].fh;
+        int cown = sh->fdt[slot].own;
+        sh->fdt[slot].fh = sh->fdundo[i].fh;
+        sh->fdt[slot].own = sh->fdundo[i].own;
+        if (cur && cown && cur != sh->fdundo[i].fh && !fd_used(sh, cur, io))
+            sh->os.close(sh->os.data, cur);
+    }
+}
+
+/* exec kept the changes: the handles they replaced or closed go now */
+static void fd_commit(sh_shell *sh, int mark)
+{
+    int i;
+    for (i = mark; i < sh->nundo; i++)
+        if (sh->fdundo[i].fh && sh->fdundo[i].own && !fd_used(sh, sh->fdundo[i].fh, 0))
+            sh->os.close(sh->os.data, sh->fdundo[i].fh);
+    sh->nundo = mark;
+}
+
+/* the handle behind descriptor n (0 when it is not open) */
+static sh_fh fd_get(const sh_shell *sh, const sh_io *io, long n)
+{
+    if (n == 0)
+        return io->in;
+    if (n == 1)
+        return io->out;
+    if (n == 2)
+        return io->err;
+    if (n >= 3 && n < 3 + SH_FDMAX)
+        return sh->fdt[n - 3].fh;
+    return SH_NOFH;
+}
+
+/* the whole text is a descriptor number: its value, else -1 */
+static long fd_number(const char *t)
+{
+    long v = 0;
+    if (!t || !*t)
+        return -1;
+    for (; *t; t++) {
+        if (*t < '0' || *t > '9' || v > 100000)
+            return -1;
+        v = v * 10 + (*t - '0');
+    }
+    return v;
+}
+
+/* a free slot for {var}> (from fd 10, as bash), or -1 */
+static int fd_alloc(const sh_shell *sh)
+{
+    int i;
+    for (i = 7; i < SH_FDMAX; i++)
+        if (!sh->fdt[i].fh)
+            return i;
+    return -1;
+}
+
 /* The streams a command runs with: the parent's, with the redirections
  * applied. Streams opened here are marked owned. 0 = ok. */
+static int redirect_one(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io *io);
+
 static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io *io)
 {
+    int mark = sh->nundo;
     *io = *parent;
     io->owned = 0;
-    for (; r; r = r->next) {
+    io->fdmark = mark;
+    for (; r; r = r->next)
+        if (redirect_one(sh, r, parent, io)) {
+            if (sh->nundo > mark)
+                fd_unwind(sh, mark, io);
+            return -1;
+        }
+    if (sh->nundo > mark)
+        io->owned |= SH_OWN_FDS;
+    return 0;
+}
+
+static int redirect_one(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io *io)
+{
+    {
         sh_fh fh = SH_NOFH;
-        if (r->kind == SH_R_DUPOUT || r->kind == SH_R_DUPIN) {
-            /* 2>&1, 1>&2 */
-            sh_fh src = !strcmp(r->target, "1") ? io->out : !strcmp(r->target, "2") ? io->err
-                      : !strcmp(r->target, "0") ? io->in : SH_NOFH;
-            if (!src) {
-                err2(sh, parent, r->target, "bad file descriptor");
+        long dest = r->fd;
+        int slot = -1;
+        if (r->var && r->kind == SH_R_CLOSE) {
+            /* {var}>&-: the descriptor the variable holds */
+            const char *v = sh_get(&sh->ctx, r->var);
+            long n = fd_number(v);
+            if (n < 3 || n >= 3 + SH_FDMAX) {
+                err2(sh, parent, r->var, "bad file descriptor");
                 return -1;
+            }
+            dest = n;
+        }
+        if (r->var && r->kind != SH_R_CLOSE) {
+            slot = fd_alloc(sh);
+            if (slot < 0) {
+                err2(sh, parent, r->var, "too many open files");
+                return -1;
+            }
+            dest = 3 + slot;
+        } else if (dest >= 3) {
+            if (dest >= 3 + SH_FDMAX) {
+                char nb[16];
+                num(nb, dest);
+                err2(sh, parent, nb, "bad file descriptor");
+                return -1;
+            }
+            slot = (int)(dest - 3);
+        }
+        if (r->kind == SH_R_DUPOUT || r->kind == SH_R_DUPIN) {
+            /* 2>&1, 1>&2, 3>&1, 1>&3: the word is expanded, a descriptor number */
+            char *tw = expand_one(sh, r->target, parent);
+            long sn = fd_number(tw);
+            sh_fh src = sn >= 0 ? fd_get(sh, io, sn) : SH_NOFH;
+            if (!src) {
+                err2(sh, parent, tw ? tw : r->target, "bad file descriptor");
+                free(tw);
+                return -1;
+            }
+            free(tw);
+            if (sn >= 3)
+                SH_HIT(FD_HIGH);
+            if (slot >= 0) {
+                if (r->var)
+                    SH_HIT(FDVAR_ALLOC);
+                if (fd_set(sh, slot, src, sn >= 3) < 0)
+                    return -1;
+                if (r->var) {
+                    char nb[16];
+                    num(nb, dest);
+                    sh_set(&sh->ctx, r->var, nb);
+                }
+                return 0;
             }
             if (r->fd == 2)
                 io->err = src, io->owned &= ~SH_OWN_ERR;
@@ -822,8 +995,10 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
                 io->out = src, io->owned &= ~SH_OWN_OUT;
             else if (r->fd == 0)
                 io->in = src, io->owned &= ~SH_OWN_IN;
-            continue;
+            return 0;
         }
+        if (r->kind == SH_R_CLOSE && slot >= 0)
+            return sh->fdt[slot].fh ? fd_set(sh, slot, SH_NOFH, 0) : 0;
         if (r->kind == SH_R_CLOSE) {
             /* n>&- n<&-: the stream is closed; here it is the null device (a documented difference) */
             fh = sh->os.open(sh->os.data, dev_name("/dev/null"), r->fd == 0 ? SH_OPEN_READ : SH_OPEN_WRITE);
@@ -881,6 +1056,20 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
         }
         if (!fh)
             return -1;
+        if (slot >= 0) {
+            /* a new handle for descriptor 3 and up, closed when its last slot is */
+            if (fd_set(sh, slot, fh, 1) < 0) {
+                sh->os.close(sh->os.data, fh);
+                return -1;
+            }
+            if (r->var) {
+                char nb[16];
+                SH_HIT(FDVAR_ALLOC);
+                num(nb, dest);
+                sh_set(&sh->ctx, r->var, nb);
+            }
+            return 0;
+        }
         if (r->kind == SH_R_BOTH || r->kind == SH_R_BOTHAPP) {
             if (io->owned & SH_OWN_OUT)
                 closed_del(sh, io->out), sh->os.close(sh->os.data, io->out);
@@ -1759,17 +1948,14 @@ static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
             case 'p': prompt = arg; break;
             case 't': tmo = atol(arg) * 1000; break;
             case 'u': {
-                long fd = atol(arg);
-                if (fd == 0)
-                    in = io->in;
-                else if (fd == 1)
-                    in = io->out;
-                else if (fd == 2)
-                    in = io->err;
-                else {
-                    err2(sh, io, arg, "invalid file descriptor");
+                long fd = fd_number(arg);
+                in = fd >= 0 ? fd_get(sh, io, fd) : SH_NOFH;
+                if (!in) {
+                    err2(sh, io, arg, fd >= 0 ? "invalid file descriptor: bad file descriptor" : "invalid file descriptor");
                     return 1;
                 }
+                if (fd >= 3)
+                    SH_HIT(FD_HIGH);
                 break;
             }
             default: {
@@ -2753,7 +2939,15 @@ static long b_mapfile(sh_shell *sh, int argc, char **argv, const sh_io *io)
             case 'n': maxn = atol(arg); break;
             case 's': skip = atol(arg); break;
             case 'O': org = atol(arg); have_o = 1; break;
-            case 'u': in = atol(arg) == 1 ? io->out : atol(arg) == 2 ? io->err : io->in; break;
+            case 'u': {
+                long fd = fd_number(arg);
+                in = fd >= 0 ? fd_get(sh, io, fd) : SH_NOFH;
+                if (!in) {
+                    err2(sh, io, arg, "invalid file descriptor");
+                    return 1;
+                }
+                break;
+            }
             default:
                 err2(sh, io, argv[a], "invalid option");
                 return 2;
@@ -4076,6 +4270,8 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
             /* exec with redirections only: they stay for the shell itself */
             sh->io = io;
             sh->io.owned = 0;
+            if (io.owned & SH_OWN_FDS)
+                fd_commit(sh, io.fdmark);
             st = 0;
         } else {
             sh->wfail = 0;

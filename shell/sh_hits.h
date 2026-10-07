@@ -11,6 +11,8 @@
     X(FUNC_CALL)  /* a function body ran */ \
     X(SUBST)      /* a $( ) ran */ \
     X(SPAWN)      /* a subshell or non-final pipeline stage was spawned */ \
+    X(FD_HIGH)    /* a descriptor above 2 was resolved through the shell's fd table */ \
+    X(FDVAR_ALLOC) /* {var}> allocated a descriptor */ \
     X(HEREDOC)    /* a here-document temp file was made */ \
     X(EXIT_TRAP)  /* the EXIT trap ran */ \
     X(GLOB)       /* a glob pattern was matched against a directory */ \

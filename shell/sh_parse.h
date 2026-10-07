@@ -28,6 +28,7 @@ enum sh_redir_kind {
 
 typedef struct sh_redir {
     int fd;                 /* 0 in, 1 out, 2 err, ... */
+    char *var;              /* {var}> and {var}<: the variable that gets the descriptor (fd is unused), else 0 */
     enum sh_redir_kind kind;
     char *target;           /* a word, or for << the document */
     int quoted;             /* << with a quoted delimiter: the document is literal */

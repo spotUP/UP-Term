@@ -7,9 +7,6 @@
 #   P:shebang   it tested the host kernel's #! handling through the driver, not vsh
 # The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
 builtins/declare_f	later:V82	declare -f prints a function
-fd/fd4	later:V71	redirection of fd 4
-fd/fdopen	later:V71	exec 3>file
-fd/fdvar	later:V72	{var} descriptors
 jobs/bgwait	later:V83	wait $! returns the status of a background subshell (no item names it: nearest V83)
 shopt/extglob	later:V79	shopt -s extglob
 shopt/globstar	later:V79	shopt -s globstar

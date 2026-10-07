@@ -79,6 +79,7 @@ typedef struct lexer {
     char *word;             /* its text, for T_WORD */
     int quoted;             /* the word had quoting in it */
     int io_number;          /* -1, or the fd digits before a redirection operator */
+    char io_var[64];        /* {name} right before a redirection operator, else empty */
     heredoc *pending;       /* << documents to read at the next newline */
     int had_error;
     long tokpos;            /* where the current token starts */
@@ -314,6 +315,7 @@ static void next(lexer *L)
     L->word = 0;
     L->quoted = 0;
     L->io_number = -1;
+    L->io_var[0] = 0;
     for (;;) {
         while (s[L->pos] == ' ' || s[L->pos] == '\t')
             L->pos++;
@@ -422,6 +424,23 @@ static void next(lexer *L)
         return;
     default:
         break;
+    }
+    /* {name} right before < or >: the descriptor goes to the variable */
+    if (s[i] == '{') {
+        long k = i + 1;
+        if ((s[k] >= 'a' && s[k] <= 'z') || (s[k] >= 'A' && s[k] <= 'Z') || s[k] == '_') {
+            while ((s[k] >= 'a' && s[k] <= 'z') || (s[k] >= 'A' && s[k] <= 'Z') || s[k] == '_' || (s[k] >= '0' && s[k] <= '9'))
+                k++;
+            if (s[k] == '}' && (s[k + 1] == '<' || s[k + 1] == '>') && s[k + 2] != '(' && k - i - 1 < (long)sizeof(L->io_var)) {
+                char name[64];
+                memcpy(name, s + i + 1, (size_t)(k - i - 1));
+                name[k - i - 1] = 0;
+                L->pos = k + 1;
+                next(L);
+                strcpy(L->io_var, name);
+                return;
+            }
+        }
     }
     /* digits right before < or >: an IO number */
     {
@@ -551,6 +570,11 @@ static int parse_redir(lexer *L, sh_redir **list)
     default: r->kind = SH_R_HEREDOC; break;
     }
     r->strip = t == T_DLTDASH;
+    if (L->io_var[0]) {
+        r->var = (char *)alloc(L->p, (long)strlen(L->io_var) + 1);
+        if (r->var)
+            strcpy(r->var, L->io_var);
+    }
     r->fd = fd >= 0 ? fd : (r->kind == SH_R_IN || r->kind == SH_R_DUPIN || r->kind == SH_R_HEREDOC ||
                             r->kind == SH_R_HERESTR || r->kind == SH_R_RDWR) ? 0 : 1;
     next(L);
@@ -1443,6 +1467,7 @@ static sh_node *copy_node(sh_parse *p, const sh_node *n, int *bad)
         }
         *d = *r;
         d->target = copy_str(p, r->target, bad);
+        d->var = copy_str(p, r->var, bad);
         d->next = 0;
         *rt = d;
         rt = &d->next;

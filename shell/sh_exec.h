@@ -15,11 +15,15 @@ typedef long sh_fh;
 typedef struct sh_io {
     sh_fh in, out, err;
     int owned;             /* SH_OWN_*: streams opened for this command, closed when it ends */
+    int fdmark;            /* with SH_OWN_FDS: the shell's fd table undo height before this command's redirections */
 } sh_io;
 
 #define SH_OWN_IN  1
 #define SH_OWN_OUT 2
 #define SH_OWN_ERR 4
+#define SH_OWN_FDS 8   /* the command changed the shell's fd table (fds 3 and up): undone when it ends */
+#define SH_FDMAX   61  /* the table holds fds 3 .. 63 */
+#define SH_FDUNDO  64
 
 #define SH_OPEN_READ   0
 #define SH_OPEN_WRITE  1   /* create / truncate */
@@ -201,6 +205,9 @@ typedef struct sh_shell {
     int heredocs;          /* numbering for here-document temp files */
     struct sh_tmp *tmps;   /* temp files to remove when the command that uses them ends (and >( ) bodies to run first) */
     int ntmp, captmp;
+    struct { sh_fh fh; int own; } fdt[SH_FDMAX]; /* the shell's fds 3 and up (index = fd - 3); own: closed when no slot or stream uses it */
+    struct { int slot; sh_fh fh; int own; } fdundo[SH_FDUNDO]; /* values the current commands' redirections replaced */
+    int nundo;
     sh_fh closed[8];       /* null-device streams standing for a stream closed with n>&- (see put) */
     int nclosed;
     int wfail;             /* a builtin wrote to one of them: its status becomes 1 */
