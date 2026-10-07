@@ -557,8 +557,8 @@ static void pipes_and_redirection(void)
 static void jobs_aliases_and_dirs(void)
 {
     run("fail 3 & wait; echo $?");
-    CHECK_STR(slot(OUT)->data, "3\n");
-    CHECK_STR(slot(ERR)->data, "[1] 1\n");
+    CHECK_STR(slot(OUT)->data, "0\n"); /* bash: wait with no argument is 0 */
+    CHECK_STR(slot(ERR)->data, ""); /* only an interactive shell announces a job */
     CHECK_STR(run("shopt -s expand_aliases; alias ll='args -l'; ll x"), "<-l><x>\n");
     CHECK_STR(run("cd Work:; pwd; (cd SYS:; pwd); pwd"), "Work:\nSYS:\nWork:\n");
     CHECK_STR(run("cd nowhere; echo $?"), "1\n");
@@ -581,13 +581,13 @@ static void job_notices(void)
 {
     run("fail 3 &");
     sh_notify(&sh);
-    CHECK_STR(slot(ERR)->data, "[1] 1\n[1] Exit 3  fail 3\n");
+    CHECK_STR(slot(ERR)->data, "[1]+  Exit 3                     fail 3\n");
     run("args a b &");
     sh_notify(&sh);
-    CHECK_STR(slot(ERR)->data, "[1] 1\n[1] Done  args a b\n");
+    CHECK_STR(slot(ERR)->data, "[1]+  Done                       args a b\n");
     sh_notify(&sh);  /* reported once */
-    CHECK_STR(slot(ERR)->data, "[1] 1\n[1] Done  args a b\n");
-    CHECK_STR(run("fail 2 & jobs"), "[1] Exit 2  fail 2\n");
+    CHECK_STR(slot(ERR)->data, "[1]+  Done                       args a b\n");
+    CHECK_STR(run("fail 2 & jobs"), "[1]+  Exit 2                     fail 2\n");
     CHECK_STR(run("fail 4 & fg; echo $?"), "fail 4\n4\n");
     run("fg");
     CHECK_STR(slot(ERR)->data, "vsh: fg: no such job\n");
@@ -601,18 +601,18 @@ static void suspend(void)
     int inc = 0;
     run("stopper; echo $?");
     CHECK_STR(slot(OUT)->data, "146\n");
-    CHECK_STR(slot(ERR)->data, "\n[1] Stopped  stopper\n");
-    CHECK_STR(run("stopper; jobs"), "[1] Stopped  stopper\n");
+    CHECK_STR(slot(ERR)->data, "\n[1]+  Stopped                    stopper\n");
+    CHECK_STR(run("stopper; jobs"), "[1]+  Stopped                    stopper\n");
     /* (the fake runs a job when it is reaped: bg's job is done at once) */
-    CHECK_STR(run("stopper; bg; jobs"), "[1] stopper &\nresumed\n[1] Done  stopper\n");
+    CHECK_STR(run("stopper; bg; jobs"), "[1] stopper &\nresumed\n[1]+  Done                       stopper\n");
     CHECK_STR(run("stopper; fg; echo $?; jobs"), "stopper\nresumed\n0\n");
     CHECK_STR(run("stopper; bg; wait; jobs"), "[1] stopper &\nresumed\n");
-    CHECK_STR(run("stopper x; stopper y; fg %1; jobs"), "stopper x\nresumed\n[2] Stopped  stopper y\n");
+    CHECK_STR(run("stopper x; stopper y; fg %1; jobs"), "stopper x\nresumed\n[2]+  Stopped                    stopper y\n");
     run("bg");
     CHECK_STR(slot(ERR)->data, "vsh: bg: no stopped job\n");
     run("stopper; exit");
     CHECK_INT(sh.exiting, 0);
-    CHECK_STR(slot(ERR)->data, "\n[1] Stopped  stopper\nvsh: exit: there are stopped jobs (fg or bg them; exit again to leave them)\n");
+    CHECK_STR(slot(ERR)->data, "\n[1]+  Stopped                    stopper\nvsh: exit: there are stopped jobs (fg or bg them; exit again to leave them)\n");
     sh_run_text(&sh, "exit", &inc);
     CHECK_INT(sh.exiting, 1);
     /* only a simple command in the foreground stops: a pipeline stage and
@@ -719,7 +719,7 @@ static void fd_handles_are_counted(void)
     /* background and pipeline subshells: the parent's table is as it was at once, the handle the
      * child uses is closed once, when the job is waited for */
     run("( echo a >&3 ) 3>f & wait; echo x >&3");
-    CHECK_STR(slot(ERR)->data, "[1] 1\nvsh: 3: bad file descriptor\n");
+    CHECK_STR(slot(ERR)->data, "vsh: 3: bad file descriptor\n");
     CHECK_INT(closes_of("f"), 1);
     CHECK_STR(data_of("f"), "a\n");
     /* an external command: it gets 0-2 only, its table changes are undone when it ends; a handle
@@ -754,10 +754,10 @@ static void subshells(void)
     CHECK_INT(n_spawned, 2);   /* both stages (lastpipe is off, as in bash) */
     CHECK_STR(run("echo a b | read x y; echo $y$x"), "\n");
     run("{ echo bg; fail 2; } & wait; echo $?");
-    CHECK_STR(slot(OUT)->data, "bg\n2\n");
-    CHECK_STR(slot(ERR)->data, "[1] 1\n");
+    CHECK_STR(slot(OUT)->data, "bg\n0\n");
+    CHECK_STR(slot(ERR)->data, "");
     CHECK_STR(run("echo x | upper & wait"), "X\n");
-    CHECK_STR(run("{ echo a; } & jobs"), "a\n[1] Done  { ... }\n");
+    CHECK_STR(run("{ echo a; } & jobs"), "a\n[1]+  Done                       { echo a; }\n");
     /* Ctrl-C ends a loop that only runs builtins, and what follows it */
     fresh();
     sh.os.interrupted = f_interrupted;
@@ -1206,7 +1206,7 @@ static void which_type(void)
 #define WT "echo x > gg:bin/tool; echo x > c:other; PATH=/c:/gg/bin:/nowhere; "
     CHECK_STR(run("type echo; type nosuch; echo $?"), "echo is a shell builtin\n1\n");
     CHECK_STR(errs(), "vsh: nosuch: not found\n");
-    CHECK_STR(run("f() { :; }; type f"), "f is a function\n");
+    CHECK_STR(run("f() { :; }; type f"), "f is a function\nf () \n{ \n    :\n}\n");
     CHECK_STR(run(WT "which tool; type tool; echo $?"), "gg:bin/tool\ntool is gg:bin/tool\n0\n");
     CHECK_STR(run(WT "which nosuch tool; echo $?"), "gg:bin/tool\n1\n");   /* quiet, status 1 */
     CHECK_STR(errs(), "");

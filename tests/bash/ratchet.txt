@@ -289,6 +289,7 @@ builtins/decl_list_x
 builtins/decl_p
 builtins/decl_x
 builtins/declare
+builtins/declare_f
 builtins/declarep
 builtins/echo_c_stop
 builtins/echo_e
@@ -355,6 +356,8 @@ builtins/ro_unset
 builtins/type_
 builtins/type_flags
 builtins/type_text
+builtins/unparse_layout
+builtins/unparse_misc
 builtins/unset_flags
 builtins/unsetf
 builtins/unsetmulti
@@ -669,7 +672,11 @@ invocation/stdin_noarg
 invocation/type_missing_volume
 invocation/u_script
 invocation/x_script
+jobs/bg_quiet
+jobs/bgwait
+jobs/done_state
 jobs/pipe_status_early_reader
+jobs/spec_list
 options/dash_flags
 options/dollarmin
 options/ee_andor
@@ -878,7 +885,3 @@ vars/shlvl
 vars/srandom
 vars/underscore
 vars/versinfo
-jobs/bg_quiet
-builtins/declare_f
-builtins/unparse_layout
-builtins/unparse_misc

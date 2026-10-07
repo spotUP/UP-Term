@@ -201,6 +201,10 @@ typedef struct sh_shell {
     long jobs[32];         /* background job ids, 0 = free */
     char *job_text[32];
     char job_stopped[32];  /* suspended (^Z), until fg or bg */
+    long job_seq[32];      /* when the job was added or last stopped: the newest is the current job (%+) */
+    long job_seqno;
+    char job_foreign[32];  /* a clone's copy of its parent's job: listed by jobs, never waited for */
+    char job_nohup[32];    /* disown -h: kept in the table */
     int warned_stopped;    /* exit said once that jobs are stopped */
     sh_retired *retired;   /* freed with the shell */
     int intr;              /* Ctrl-C: unwinding to the prompt */

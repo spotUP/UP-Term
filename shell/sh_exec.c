@@ -288,6 +288,8 @@ static void tmp_sweep(sh_shell *sh, int mark);
 
 static void fd_defer_release(sh_shell *sh, long job);
 static long job_wait(sh_shell *sh, long job);
+static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_disown(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static void pseudo_trap(sh_shell *sh, int k, const sh_io *io);
 static void debug_trap(sh_shell *sh, const sh_node *n, const sh_io *io);
 static void debug_forarith(sh_shell *sh, const char *text, const sh_io *io);
@@ -366,6 +368,15 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.status = sh->ctx.status;
     c->ctx.pid = sh->ctx.pid;
     c->ctx.last_bg = sh->ctx.last_bg;
+    for (i = 0; i < 32; i++)
+        if (sh->jobs[i]) { /* the subshell lists its parent's jobs (jobs | cat, $(jobs)) but is not their parent */
+            c->jobs[i] = sh->jobs[i];
+            c->job_text[i] = sh->job_text[i] ? sdup(sh->job_text[i]) : 0;
+            c->job_seq[i] = sh->job_seq[i];
+            c->job_stopped[i] = sh->job_stopped[i];
+            c->job_foreign[i] = 1;
+        }
+    c->job_seqno = sh->job_seqno;
     c->umask = sh->umask;  /* traps are not inherited (POSIX); set -E and -T hand the ERR, DEBUG and RETURN ones on */
     c->opts |= sh->opts & (SO_ERRTRACE | SO_FUNCTRACE);
     if ((sh->opts & SO_ERRTRACE) && sh->traps[TRAP_ERR])
@@ -452,7 +463,7 @@ long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io)
     close_owned(child, io);
     /* its own background jobs report to it: it waits for them */
     for (i = 0; i < 32; i++)
-        if (child->jobs[i])
+        if (child->jobs[i] && !child->job_foreign[i])
             job_wait(child, child->jobs[i]);
     if (tree) {
         sh_parse_free(tree);
@@ -2565,23 +2576,81 @@ static long b_test(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return r ? 0 : 1;
 }
 
-/* A job's line in jobs and notices: "[n] <state>  <command>". */
-static void job_line(sh_shell *sh, sh_fh fh, int i, const char *state, long st)
+/* the current (%+) and previous (%-) job: stopped jobs first, newest first (bash's rule) */
+static void job_cur_prev(const sh_shell *sh, int *cur, int *prev)
 {
-    char n[16];
+    int i, pass;
+    *cur = *prev = -1;
+    for (pass = 1; pass >= 0; pass--) {
+        for (;;) {
+            int best = -1;
+            for (i = 0; i < 32; i++)
+                if (sh->jobs[i] && sh->job_stopped[i] == pass && i != *cur && i != *prev &&
+                    (best < 0 || sh->job_seq[i] > sh->job_seq[best]))
+                    best = i;
+            if (best < 0)
+                break;
+            if (*cur < 0)
+                *cur = best;
+            else if (*prev < 0)
+                *prev = best;
+            else
+                return;
+        }
+    }
+}
+
+/* A job's line in jobs and notices: "[n]+  <state>  <command>"; bash pads the state to 27 columns,
+ * -l puts the process id after the marker, an ended job's state is "Done" or "Exit n" */
+static void job_line_l(sh_shell *sh, sh_fh fh, int i, const char *state, long st, int longfmt)
+{
+    char n[16], pad[32];
+    int cur, prev, l, k;
+    job_cur_prev(sh, &cur, &prev);
     num(n, i + 1);
-    sayl(sh, fh, "[", n, "] ", state, NULL);
+    sayl(sh, fh, "[", n, "]", i == cur ? "+" : i == prev ? "-" : " ", " ", NULL);
+    if (longfmt) {
+        num(n, sh->jobs[i]);
+        sayl(sh, fh, n, " ", NULL);
+    } else
+        say(sh, fh, " ");
+    sayl(sh, fh, state, NULL);
+    l = (int)strlen(state);
     if (st > 0) {
         num(n, st);
         sayl(sh, fh, " ", n, NULL);
+        l += 1 + (int)strlen(n);
     }
-    sayl(sh, fh, "  ", sh->job_text[i] ? sh->job_text[i] : "", "\n", NULL);
+    for (k = 0; l + k < 26 && k < 30; k++)
+        pad[k] = ' ';
+    pad[k] = 0;
+    sayl(sh, fh, pad, " ", sh->job_text[i] ? sh->job_text[i] : "", !strcmp(state, "Running") ? " &" : "", "\n", NULL);
+}
+
+static void job_line(sh_shell *sh, sh_fh fh, int i, const char *state, long st)
+{
+    job_line_l(sh, fh, i, state, st, 0);
+}
+
+static void job_forget(sh_shell *sh, int i);
+
+/* wait collects every job that has ended too: a non-interactive bash drops them from the table silently */
+static void job_sweep(sh_shell *sh)
+{
+    int i;
+    for (i = 0; i < 32; i++)
+        if (sh->jobs[i] && !sh->job_foreign[i] && sh->os.done && sh->os.done(sh->os.data, sh->jobs[i])) {
+            job_wait(sh, sh->jobs[i]);
+            job_forget(sh, i);
+        }
 }
 
 static void job_forget(sh_shell *sh, int i)
 {
     sh->jobs[i] = 0;
     sh->job_stopped[i] = 0;
+    sh->job_nohup[i] = 0;
+    sh->job_foreign[i] = 0;
     free(sh->job_text[i]);
     sh->job_text[i] = 0;
 }
@@ -2590,7 +2659,7 @@ static void job_forget(sh_shell *sh, int i)
 static int job_reap(sh_shell *sh, int i, sh_fh fh)
 {
     long st;
-    if (!sh->jobs[i] || !sh->os.done || !sh->os.done(sh->os.data, sh->jobs[i]))
+    if (!sh->jobs[i] || sh->job_foreign[i] || !sh->os.done || !sh->os.done(sh->os.data, sh->jobs[i]))
         return 0;
     st = job_wait(sh, sh->jobs[i]);
     job_line(sh, fh, i, st ? "Exit" : "Done", st);
@@ -2605,14 +2674,132 @@ void sh_notify(sh_shell *sh)
         job_reap(sh, i, sh->io.err);
 }
 
+/* A job argument: %% %+ (current) %- (previous) %n %string (command starts with it) %?string (contains it).
+ * bare: a number is also a job number (jobs, fg, bg, disown) when nopid. -1: none, -2: ambiguous */
+static int job_spec(sh_shell *sh, const char *a)
+{
+    int i, cur, prev, hit = -1;
+    const char *t = a[0] == '%' ? a + 1 : a;
+    job_cur_prev(sh, &cur, &prev);
+    if (a[0] == '%' && (!*t || !strcmp(t, "%") || !strcmp(t, "+")))
+        return cur;
+    if (a[0] == '%' && !strcmp(t, "-"))
+        return prev;
+    if (*t >= '0' && *t <= '9') {
+        i = atoi(t) - 1;
+        return i >= 0 && i < 32 && sh->jobs[i] ? i : -1;
+    }
+    if (a[0] != '%')
+        return -1;
+    for (i = 0; i < 32; i++) {
+        const char *x = sh->job_text[i];
+        int ok;
+        if (!sh->jobs[i] || !x)
+            continue;
+        ok = *t == '?' ? strstr(x, t + 1) != 0 : !strncmp(x, t, strlen(t));
+        if (ok) {
+            if (hit >= 0)
+                return -2;
+            hit = i;
+        }
+    }
+    return hit;
+}
+
+/* the job a jobs/fg/bg/disown argument names, with bash's complaint; -1 when there is none */
+static int job_spec_err(sh_shell *sh, const char *cmd, const char *a, const sh_io *io)
+{
+    int i = job_spec(sh, a[0] == '%' || (a[0] >= '0' && a[0] <= '9') ? a : "%?\001");
+    if (i == -2)
+        sayl(sh, io->err, "vsh: ", cmd, ": ", a[0] == '%' ? a + 1 : a, ": ambiguous job spec\n", NULL);
+    if (i < 0)
+        sayl(sh, io->err, "vsh: ", cmd, ": ", a, ": no such job\n", NULL);
+    return i;
+}
+
 static long b_jobs(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    int i;
-    (void)argc; (void)argv;
-    for (i = 0; i < 32; i++)
-        if (sh->jobs[i] && !job_reap(sh, i, io->out))
-            job_line(sh, io->out, i, sh->job_stopped[i] ? "Stopped" : "Running", 0);
-    return 0;
+    int i, a = 1, longfmt = 0, pids = 0, running = 0, stopped = 0, xmode = 0, status = 0;
+    for (; a < argc && argv[a][0] == '-' && argv[a][1]; a++) {
+        const char *p;
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        for (p = argv[a] + 1; *p; p++) {
+            switch (*p) {
+            case 'l': longfmt = 1; break;
+            case 'p': pids = 1; break;
+            case 'r': running = 1; break;
+            case 's': stopped = 1; break;
+            case 'n': break;
+            case 'x': xmode = 1; break;
+            default: {
+                char o[3];
+                o[0] = '-';
+                o[1] = *p;
+                o[2] = 0;
+                err2(sh, io, "jobs", o);
+                sayl(sh, io->err, "jobs: usage: jobs [-lnprs] [jobspec ...] or jobs -x command [args]\n", NULL);
+                return 2;
+            }
+            }
+        }
+        if (xmode) {
+            a++;
+            break;
+        }
+    }
+    if (xmode) {
+        /* jobs -x command args: each job argument becomes its process id */
+        char **nv = (char **)calloc((size_t)(argc - a + 3), sizeof(char *));
+        char nb[16];
+        int k, n = 0;
+        long st;
+        if (!nv)
+            return 1;
+        nv[n++] = (char *)"eval";
+        for (k = a; k < argc; k++) {
+            int j = argv[k][0] == '%' && k > a ? job_spec(sh, argv[k]) : -1;
+            if (j >= 0) {
+                num(nb, sh->jobs[j]);
+                nv[n++] = sdup(nb);
+            } else
+                nv[n++] = argv[k];
+        }
+        st = n > 1 ? b_eval(sh, n, nv, io) : 0;
+        for (k = a; k < argc; k++)
+            if (nv[k - a + 1] != argv[k])
+                free(nv[k - a + 1]);
+        free(nv);
+        return st;
+    }
+    for (i = 0; i < 32; i++) {
+        int want = a >= argc, k;
+        if (!sh->jobs[i])
+            continue;
+        for (k = a; k < argc; k++)
+            if (job_spec(sh, argv[k]) == i)
+                want = 1;
+        if (!want)
+            continue;
+        if ((running && sh->job_stopped[i]) || (stopped && !sh->job_stopped[i]))
+            continue;
+        if (job_reap(sh, i, io->out) && !pids)
+            continue;
+        if (!sh->jobs[i])
+            continue;
+        if (pids) {
+            char nb[16];
+            num(nb, sh->jobs[i]);
+            sayl(sh, io->out, nb, "\n", NULL);
+        } else
+            job_line_l(sh, io->out, i, sh->job_stopped[i] ? "Stopped" : "Running", 0, longfmt);
+    }
+    for (i = a; i < argc; i++)
+        if (job_spec(sh, argv[i]) < 0 && (job_spec_err(sh, "jobs", argv[i], io) < 0))
+            status = 1;
+    return status;
 }
 
 /* A command in the foreground: its status, or, when it was suspended,
@@ -2638,6 +2825,7 @@ static long fg_status(sh_shell *sh, long st, int slot, char *text, const sh_io *
     }
     sh->jobs[i] = sh->os.stopped;
     sh->job_stopped[i] = 1;
+    sh->job_seq[i] = ++sh->job_seqno;
     sh->warned_stopped = 0;
     say(sh, io->err, "\n");
     job_line(sh, io->err, i, "Stopped", 0);
@@ -2648,15 +2836,21 @@ static long fg_status(sh_shell *sh, long st, int slot, char *text, const sh_io *
  * want(sh, i) holds; -1: none. */
 static int job_arg(sh_shell *sh, int argc, char **argv, int stopped_only)
 {
-    int i;
+    int i, cur, prev;
     if (argc > 1) {
-        i = atoi(argv[1][0] == '%' ? argv[1] + 1 : argv[1]) - 1;
-        return i >= 0 && i < 32 && sh->jobs[i] && (!stopped_only || sh->job_stopped[i]) ? i : -1;
+        i = job_spec(sh, argv[1][0] == '%' ? argv[1] : "%?");
+        if (argv[1][0] != '%' && argv[1][0] >= '0' && argv[1][0] <= '9')
+            i = atoi(argv[1]) - 1 >= 0 && atoi(argv[1]) - 1 < 32 && sh->jobs[atoi(argv[1]) - 1] ? atoi(argv[1]) - 1 : -1;
+        return i >= 0 && (!stopped_only || sh->job_stopped[i]) ? i : -1;
     }
-    for (i = 31; i >= 0; i--)
-        if (sh->jobs[i] && (!stopped_only || sh->job_stopped[i]))
-            return i;
-    return -1;
+    job_cur_prev(sh, &cur, &prev);
+    if (stopped_only) {
+        for (i = 31; i >= 0; i--)
+            if (sh->jobs[i] && sh->job_stopped[i])
+                return i;
+        return -1;
+    }
+    return cur;
 }
 
 /* stack [bytes]: the stack the commands vsh starts get, as the AmigaDOS
@@ -2709,7 +2903,7 @@ static long b_bg(sh_shell *sh, int argc, char **argv, const sh_io *io)
 static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     long st = 0;
-    int i, which = -1, fg = !strcmp(argv[0], "fg");
+    int i, fg = !strcmp(argv[0], "fg");
     if (fg) {
         /* the named job, or the newest; a stopped one is continued first,
          * and may be suspended again */
@@ -2734,14 +2928,162 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
         job_forget(sh, i);
         return st;
     }
-    if (argc > 1)
-        which = atoi(argv[1][0] == '%' ? argv[1] + 1 : argv[1]) - 1;
-    for (i = 31; i >= 0; i--) {
-        /* a stopped job is not waited for: it would never end */
-        if (!sh->jobs[i] || sh->job_stopped[i] || (which >= 0 && i != which))
+    {
+        /* wait [-n] [-p var] [id ...]: an id is a process id (a number) or a job spec */
+        int k = 1, any_n = 0, gone;
+        const char *pvar = 0;
+        for (; k < argc && argv[k][0] == '-' && argv[k][1]; k++) {
+            if (!strcmp(argv[k], "--")) {
+                k++;
+                break;
+            }
+            if (!strcmp(argv[k], "-n"))
+                any_n = 1;
+            else if (!strcmp(argv[k], "-p") && k + 1 < argc)
+                pvar = argv[++k];
+            else if (!strcmp(argv[k], "-f"))
+                ;
+            else {
+                err2(sh, io, "wait", "invalid option");
+                return 2;
+            }
+        }
+        if (any_n) {
+            /* the first job (of the ids, or any) that has ended */
+            for (;;) {
+                int found = -1, live = 0;
+                for (i = 0; i < 32 && found < 0; i++) {
+                    int want = k >= argc, j;
+                    if (!sh->jobs[i] || sh->job_stopped[i] || sh->job_foreign[i])
+                        continue;
+                    for (j = k; j < argc; j++)
+                        if (argv[j][0] == '%' ? job_spec(sh, argv[j]) == i : atol(argv[j]) == sh->jobs[i])
+                            want = 1;
+                    if (!want)
+                        continue;
+                    live++;
+                    if (sh->os.done && sh->os.done(sh->os.data, sh->jobs[i]))
+                        found = i;
+                }
+                if (!live)
+                    return 127;
+                if (found < 0) /* none ended yet: wait for the oldest of them */
+                    for (i = 0; i < 32 && found < 0; i++)
+                        if (sh->jobs[i] && !sh->job_stopped[i])
+                            found = i;
+                if (pvar) {
+                    char nb[16];
+                    num(nb, sh->jobs[found]);
+                    sh_set(&sh->ctx, pvar, nb);
+                }
+                st = job_wait(sh, sh->jobs[found]);
+                job_forget(sh, found);
+                return st;
+            }
+        }
+        if (k < argc) {
+            long last = 0;
+            for (; k < argc; k++) {
+                if (argv[k][0] == '%') {
+                    i = job_spec(sh, argv[k]);
+                    if (i < 0) {
+                        sayl(sh, io->err, "vsh: wait: ", argv[k], i == -2 ? ": ambiguous job spec\n" : ": no such job\n", NULL);
+                        last = 127;
+                        continue;
+                    }
+                } else {
+                    long pid = atol(argv[k]);
+                    for (i = 0; i < 32 && !(sh->jobs[i] && sh->jobs[i] == pid); i++)
+                        ;
+                    if (i == 32) {
+                        sayl(sh, io->err, "vsh: wait: pid ", argv[k], " is not a child of this shell\n", NULL);
+                        last = 127;
+                        continue;
+                    }
+                }
+                if (pvar) {
+                    char nb[16];
+                    num(nb, sh->jobs[i]);
+                    sh_set(&sh->ctx, pvar, nb);
+                }
+                last = job_wait(sh, sh->jobs[i]);
+                job_forget(sh, i);
+            }
+            if (!(sh->opts & SO_INTERACTIVE))
+                job_sweep(sh);
+            return last;
+        }
+        gone = 0;
+        for (i = 31; i >= 0; i--) {
+            /* a stopped job is not waited for: it would never end */
+            if (!sh->jobs[i] || sh->job_stopped[i] || sh->job_foreign[i])
+                continue;
+            job_wait(sh, sh->jobs[i]);
+            job_forget(sh, i);
+            gone++;
+        }
+        (void)gone;
+        return 0;
+    }
+}
+
+/* disown [-h] [-ar] [job ...]: forget jobs (-h: keep them, marked not to get SIGHUP) */
+static long b_disown(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int k = 1, hflag = 0, all = 0, run = 0, i, st = 0;
+    for (; k < argc && argv[k][0] == '-' && argv[k][1]; k++) {
+        const char *p;
+        if (!strcmp(argv[k], "--")) {
+            k++;
+            break;
+        }
+        for (p = argv[k] + 1; *p; p++) {
+            if (*p == 'h') hflag = 1;
+            else if (*p == 'a') all = 1;
+            else if (*p == 'r') run = 1;
+            else {
+                err2(sh, io, "disown", "invalid option");
+                return 2;
+            }
+        }
+    }
+    if (k >= argc) {
+        int cur, prev;
+        if (all || run) {
+            for (i = 0; i < 32; i++)
+                if (sh->jobs[i] && (all || !sh->job_stopped[i])) {
+                    if (hflag)
+                        sh->job_nohup[i] = 1;
+                    else
+                        job_forget(sh, i);
+                }
+            return 0;
+        }
+        job_cur_prev(sh, &cur, &prev);
+        if (cur < 0) {
+            err2(sh, io, "disown", "current: no such job");
+            return 1;
+        }
+        if (hflag)
+            sh->job_nohup[cur] = 1;
+        else
+            job_forget(sh, cur);
+        return 0;
+    }
+    for (; k < argc; k++) {
+        i = job_spec(sh, argv[k][0] == '%' ? argv[k] : "%?");
+        if (argv[k][0] != '%' && argv[k][0] >= '0' && argv[k][0] <= '9')
+            for (i = 0; i < 32 && !(sh->jobs[i] && sh->jobs[i] == atol(argv[k])); i++)
+                ;
+        if (i < 0 || i >= 32) {
+            sayl(sh, io->err, "vsh: disown: ", argv[k], ": no such job\n", NULL);
+            st = 1;
             continue;
-        st = job_wait(sh, sh->jobs[i]);
-        job_forget(sh, i);
+        }
+        if (hflag)
+            sh->job_nohup[i] = 1;
+        else
+            job_forget(sh, i);
     }
     return st;
 }
@@ -3752,7 +4094,7 @@ static const struct {
     { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "return", b_return },
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
-    { "wait", b_wait }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
+    { "wait", b_wait }, { "disown", b_disown }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
     { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "shopt", b_shopt }, { "local", b_local },
     { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
@@ -4986,6 +5328,8 @@ static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
         return;
     }
     sh->jobs[i] = job;
+    sh->job_foreign[i] = 0;
+    sh->job_seq[i] = ++sh->job_seqno;
     free(sh->job_text[i]);
     sh->job_text[i] = text;
     if (!(sh->opts & SO_INTERACTIVE)) /* bash: only an interactive shell announces a job */

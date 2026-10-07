@@ -6,7 +6,6 @@
 #   P:forlines  the audit's own malformed probe, not a vsh behaviour (audit table, "for" row)
 #   P:shebang   it tested the host kernel's #! handling through the driver, not vsh
 # The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
-jobs/bgwait	later:V83	wait $! returns the status of a background subshell (no item names it: nearest V83)
 builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings)
 expand/brace_oom	documented	brace expansion stops at 1,000,000 words with "brace expansion: out of memory" (status 1); bash goes on until memory ends
 expand/tilde_user	n/a-amiga	~user needs a user database; vsh leaves ~user as typed (bash expands it for a real user)
