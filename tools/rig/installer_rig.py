@@ -34,10 +34,10 @@ Needs `make dist` and the default rig (tools/rig/rig.py, the 3.1 machine
 install_rig.py is written for; it is started fresh here). Not run by `make
 test`: it needs the emulator.
 
-Not confirmed on the rig yet (written 2026-10-07, not run): the window title
-and gadget labels UITREE gives for the Installer's pages (matched loosely
-below: "Proceed", "Install for Real"), and the string gadget of the askdir
-page taking RAmiga-X (clear) and typed text."""
+Confirmed on the rig (2026-10-07, Installer 47.19): the Installer's custom gadgets have no labels, so pages
+are driven by gadget id (90 Proceed, 91 Abort, 89 Make New Drawer, 92 the askdir string); the string gadget keeps
+only a path that exists, so the dest drawer is made through Make New Drawer (dialog: string 1, OK 90, Cancel 91).
+A page unchanged 60 s after a click is a FAIL (never a hang)."""
 import hashlib, json, os, pathlib, re, shlex, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
