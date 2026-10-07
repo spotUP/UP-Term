@@ -3,7 +3,8 @@
 through amiagent (TCP 7846, tools/rig/ami.py).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (--060: a 68060 + FPU at the host's speed, 256 MB Z3 (W41);
+  rig.py start    boot it in the background (--060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
+                  --max: the --060 machine with 1 GB Zorro III RAM;
                   --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
@@ -65,6 +66,7 @@ EndIf
 DH0:C/Assign >NIL: LIBS: DH0:Libs
 DH0:C/Assign >NIL: DEVS: DH0:Devs
 DH0:C/Assign >NIL: FONTS: DH0:Fonts
+DH0:C/Assign >NIL: VTC: VTCX:
 C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
@@ -77,18 +79,29 @@ RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
             "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD"]
 
+# The rig's lines in the system disk's S:Shell-Startup (go adds them once).
+# The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
+# insert volume VTC" in every Shell that started before VTC: was assigned
+# (go assigned it after its Wait 15), or on a boot without the rig; that
+# requester kept Intuition from resetting the Workbench screen ("attempting
+# to reset the Workbench screen") when Install CONSOLE DEVICE ran, and
+# amiagent stopped answering until both were closed (2026-10-07).
+# Assign EXISTS never asks for a volume.
+SHELL_STARTUP_PATH = ["Assign >NIL: VTC: EXISTS", "If NOT WARN",
+                      "  Path >NIL: VTC:gg/bin ADD", "EndIf"]
+BARE_SHELL_PATH = "Path >NIL: VTC:gg/bin ADD"
+
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
 C:Wait 15
-C:Assign >NIL: VTC: VTCX:
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
 C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
 ; UP-Term as the owner uses it on the rig: the patched ixemul first in
 ; LIBS: (Classes and MUI stay), PTY: and IXPIPE:, and GG: for /gg/bin/sh
-; (vsh), as the kit sets it up. VTC: exists only from here on: a
-; User-Startup line cannot do this (it runs before this script's Wait).
+; (vsh), as the kit sets it up. VTC: is assigned in BOOTX:s/startup-sequence,
+; before the system's Startup-Sequence runs anything.
 If EXISTS VTC:ixp6/ixemul.library
 %(libs)s
 EndIf
@@ -105,10 +118,11 @@ If EXISTS VTC:gg/bin/sh
   ; the Unix commands (ls, dircolors, ...) on every Shell's command path,
   ; as the kit puts UP-Term:bin there. amiagent gives its commands a
   ; bare path (Current_directory, C:), so a Path here would not reach the
-  ; windows: S:Shell-Startup runs in each new Shell. Added once.
+  ; windows: S:Shell-Startup runs in each new Shell. Added once, guarded
+  ; (SHELL_STARTUP_PATH): the disk boots without the rig too.
   C:Search >NIL: S:Shell-Startup "VTC:gg/bin" QUIET
   If WARN
-    Echo >>S:Shell-Startup "Path >NIL: VTC:gg/bin ADD"
+%(shellpath)s
   EndIf
 EndIf
 C:SetEnv TERM vtcon
@@ -118,7 +132,8 @@ Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent TOKEN=rigtoken
 Echo >>BOOTX:boot.log "amiagent started"
-""" % {"libs": "\n".join("  C:" + l for l in RIG_LIBS)}
+""" % {"libs": "\n".join("  C:" + l for l in RIG_LIBS),
+       "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
 MOUNTLIST = """XCON:
@@ -147,9 +162,37 @@ STOCK = "--stock" in sys.argv
 # out the JIT (owner 2026-10-05). FS-UAE executes the 060's unimplemented
 # integer/FPU instructions itself
 # (uae_cpu/fpu_no_unimplemented false), so no 68060.library is needed.
-M060 = "--060" in sys.argv
+# --max: the --060 machine with as much Zorro III RAM as FS-UAE gives
+# (owner 2026-10-07: "max it for the next run").
+MAX = "--max" in sys.argv
+M060 = "--060" in sys.argv or MAX
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
+
+def os32_hd_layout():
+    """SYS:L as an installed 3.2 has it. The owner's tree has the Workbench3.2
+    floppy's layout (S:Startup-Sequence is Startup-Sequence_LD 47.4): no
+    SYS:L, so its "IF NOT EXISTS SYS:L / Assign L: Extras3.2:L DEFER" made
+    L: a deferred assign to a disk that is never in a drive, and anything
+    that touched L: (Install's Copy to L:, Uninstall's Delete of
+    L:vtcon-handler, a DOSDriver's Handler = L:...) put up "insert volume
+    Extras3.2" and stalled the rig (2026-10-07). A hard-disk install has
+    SYS:L: Install3.2's Install script assigns L: to <target>/L and copies
+    the Extras3.2 disk's L drawer there. This does the same, once, from the
+    3.2 CD's Extras3.2.adf (amitools' xdftool)."""
+    sysl = RIG / "os32/L"
+    if sysl.exists():
+        return
+    adf = RIG / "os32/media/AmigaOS3.2CD/ADF/Extras3.2.adf"
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    if not adf.exists() or not os.path.exists(xdf):
+        sys.exit("rig: SYS:L is missing and cannot be made (needs %s and xdftool: pip install amitools)" % adf)
+    tmp = RIG / "os32-extras.tmp"
+    shutil.rmtree(tmp, ignore_errors=True)
+    subprocess.run([xdf, str(adf), "unpack", str(tmp)], check=True, capture_output=True)
+    shutil.copytree(tmp / "L", sysl)
+    shutil.rmtree(tmp)
+    print("made SYS:L from Extras3.2.adf:", ", ".join(sorted(p.name for p in sysl.iterdir())))
 
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
@@ -158,6 +201,8 @@ def setup():
     if OS32 and not (RIG / "os32").exists():
         print("copying the 3.2 system (168 MB) ...")
         shutil.copytree(OS32_SRC, RIG / "os32", symlinks=True)
+    if OS32:
+        os32_hd_layout()
     if not OS32 and not (RIG / "sys.hdf").exists():
         print("copying the system disk (1.5 GB) ...")
         shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
@@ -210,7 +255,7 @@ def setup():
         "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
-        "zorro_iii_memory = %d" % (131072 if M060 else 65536),
+        "zorro_iii_memory = %d" % (1048576 if MAX else 131072 if M060 else 65536),
         "bsdsocket_library = 1", "graphics_card = uaegfx",
         # the RTG card's pointer as a sprite: Picasso96's software pointer is
         # hidden and drawn again around every blit, so it flickered with the
@@ -281,18 +326,22 @@ def start(retries=2):
     """Boot; a boot that stops right after "go started" (the emulator froze
     before anything under test loaded: seen 3 times on 2026-09-29, cause not
     found) is killed and retried."""
+    # before anything is written: a start while the rig runs (or boots, when
+    # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
+    # and BOOTX:Mountlist, or delete BOOTX:boot.log, under the running system
+    if mine():
+        print("already running")
+        return
     setup_config_only()
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()
-    if mine():
-        print("already running")
-        return
     subprocess.run(["open", "-g", "-n", "-a", "/Applications/FS-UAE.app", "--args", str(CFG)], check=True)
     for i in range(90):
         time.sleep(2)
         if status(quiet=True):
             print("up")
+            guard_shell_startup()
             if M060:
                 retry_wb_reset()
             return
@@ -305,6 +354,28 @@ def start(retries=2):
         print("retrying the boot")
         stop()
         start(retries - 1)
+
+def guard_shell_startup():
+    """An earlier go's bare BARE_SHELL_PATH line in S:Shell-Startup becomes
+    the guarded SHELL_STARTUP_PATH block (the system disk keeps it across
+    setups, so go's own "added once" never rewrites it)."""
+    import ami
+    tmp = RIG / "shell-startup.tmp"
+    try:
+        tmp.write_bytes(ami.req(0x03, b"S:Shell-Startup"))
+    except BaseException as e:
+        print("[WARN] S:Shell-Startup not read:", e)
+        return
+    lines = tmp.read_text(encoding="latin-1").split("\n")
+    if BARE_SHELL_PATH not in lines:
+        tmp.unlink()
+        return
+    i = lines.index(BARE_SHELL_PATH)
+    lines[i:i + 1] = SHELL_STARTUP_PATH
+    tmp.write_text("\n".join(lines), encoding="latin-1")
+    ami.put(str(tmp), "S:Shell-Startup")
+    tmp.unlink()
+    print("S:Shell-Startup: the VTC:gg/bin path line is guarded now")
 
 def retry_wb_reset():
     """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
