@@ -183,6 +183,7 @@ $(BUILD)/te_diff: tools/te_diff/te_diff.c tools/te_diff/te_shim.h engine/vtengin
 	$(HOSTCC) -std=gnu99 -O1 -g -w -Itools/te_diff -I$(DCTELNET)/src/third_party/retro32-term \
 		tools/te_diff/te_diff.c engine/vtengine.c -o $@
 te-diff: $(BUILD)/te_diff
+	@test -d $(ART) || { echo "[ERROR] te-diff needs BBS art in ART=$(ART) (amiexpress-doorserver, optional in upterm's repos.lock; private repo): set ART=<dir of .ans files>"; exit 1; }
 	find $(ART) -type f -iname '*.ans' -print0 | xargs -0 $(BUILD)/te_diff | grep -v ' 0 cells differ'
 
 test-ref: $(BUILD)/vtdump $(BUILD)/vterm_dump
