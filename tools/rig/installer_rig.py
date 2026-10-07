@@ -107,7 +107,12 @@ def click(box):
 
 def installer_running(inst):
     # Status COM matches the command as it was started (the full path when one was given)
-    return ir.run('Status >NIL: COM "%s"' % inst)[0] == 0
+    try:
+        return ir.run('Status >NIL: COM "%s"' % inst)[0] == 0
+    except SystemExit as e:
+        if 'still running' in str(e):   # the agent is busy with an earlier command: the Installer is not gone
+            return True
+        raise
 
 
 def find_installer():
@@ -117,16 +122,37 @@ def find_installer():
     return None
 
 
-def type_into(box, text):
-    """Click a string gadget, clear it (RAmiga-X), type text, Return."""
-    click(box)
-    time.sleep(0.5)
-    ami.key(KEY_X, RAMIGA)
-    time.sleep(0.3)
-    ami.req(0x08, bytes([4]) + text.encode('latin-1'))
-    time.sleep(0.3)
-    ami.key(KEY_RETURN)
-    time.sleep(1)
+def gadget_text(gid):
+    """The string gadget `gid`'s text in the Installer's window, from UITREE (G id x y WxH string state "" "text")."""
+    for line in ami.req(0x0D).decode('latin-1').splitlines():
+        f = line.split(None, 2)
+        if line.startswith('G ') and f[1] == str(gid):
+            return line.rsplit('"', 2)[-2] if line.count('"') >= 4 else ''
+    return None
+
+
+def type_into(box, gid, text, tries=6):
+    """Click string gadget `gid`, clear it (RAmiga-X, retried: the qualified key is sometimes lost under load and
+    then types an X), type text, Return. True when UITREE shows the text typed, before Return."""
+    for _ in range(tries):
+        click(box)
+        time.sleep(1)
+        for _ in range(tries):
+            ami.key(KEY_X, RAMIGA)
+            time.sleep(0.5)
+            if gadget_text(gid) == '':
+                break
+            if 'X' in (gadget_text(gid) or ''):
+                pass
+        if gadget_text(gid) != '':
+            continue
+        ami.req(0x08, bytes([4]) + text.encode('latin-1'))
+        time.sleep(0.5)
+        if gadget_text(gid) == text:
+            ami.key(KEY_RETURN)
+            time.sleep(1.5)
+            return True
+    return False
 
 
 def gadgets(tree):
@@ -205,14 +231,34 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             time.sleep(3)
             continue
         if dest and not typed and 89 in gads and 92 in gads:   # askdir page
-            type_into(gads[92][0], dest)
+            # The string gadget only keeps a path that exists; a new drawer is made through Make New Drawer
+            # (89), whose dialog takes the whole path in its string gadget 1 (OK 90, Cancel 91).
             typed = True
-            t2 = ami.req(0x0D).decode('latin-1')
-            got = installer_page(t2)[1].get(92, (None, ''))[1]
-            log.append('typed %s into gadget 92, UITREE shows [%s]' % (dest, got))
-            dump(t2, 'after typing')
-            if dest.lower() not in got.lower():
+            click(gads[89][0])
+            dlg = None
+            for _ in range(10):
+                time.sleep(1)
+                t2 = ami.req(0x0D).decode('latin-1')
+                dlg = installer_page(t2)[1]
+                if 1 in dlg and 89 not in dlg:
+                    break
+            else:
+                log.append('Make New Drawer dialog did not come up')
+                dump(t2, 'no dialog')
                 return False, log
+            dump(t2, 'dialog')
+            if not type_into(dlg[1][0], 1, dest):
+                log.append('could not type %s into the Make New Drawer dialog' % dest)
+                return False, log
+            click(dlg[90][0])
+            time.sleep(3)
+            t2 = ami.req(0x0D).decode('latin-1')
+            got = gadget_text(92)
+            log.append('made %s through Make New Drawer, askdir string shows [%s]' % (dest, got))
+            dump(t2, 'after Make New Drawer')
+            if got != dest:
+                return False, log
+            last_sig = None   # the page is redrawn: log it and go on to Proceed
             continue
         if 1 in gads and 5 in gads and title not in chose:   # install-mode page: Install for Real
             click(gads[1][0])
@@ -235,6 +281,7 @@ def run_case(case):
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     if dest:
+        ir.run('MakeDir >NIL: %s' % dest.rsplit('/', 1)[0])   # the new drawer's parent must exist
         ir.run_slow('deletedest', 'Delete "%s" ALL QUIET' % dest)
     startup_before = ir.run('Type S:User-Startup')[1]
     before = ir.lib_state()
