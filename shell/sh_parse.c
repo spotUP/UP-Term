@@ -746,6 +746,13 @@ void sh_parse_text(sh_parse *p, const char *text)
     p->tree = parse_list(&L, 1);
     if (!L.had_error && L.pending)
         fail(&L, "here-document not ended", 1);
+    if (!L.had_error) { /* the text ends in a backslash-newline: the command goes on in the next line */
+        size_t n = strlen(text), k = 0;
+        while (n > k + 1 && text[n - 2 - k] == '\\')
+            k++;
+        if (n >= 2 && text[n - 1] == '\n' && (k & 1))
+            fail(&L, "unexpected end of file", 1);
+    }
 }
 
 /* ---- dump ------------------------------------------------------------------ */

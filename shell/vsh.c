@@ -874,6 +874,23 @@ static int os_isatty(void *os, sh_fh fh)
     return fh && IsInteractive((BPTR)fh);
 }
 
+/* read -t: an interactive handle is asked with WaitForChar (microseconds); a file or pipe is
+ * ready at once (unconfirmed for pipes: the rig decides) */
+static int os_ready(void *os, sh_fh fh, long ms)
+{
+    (void)os;
+    if (!IsInteractive((BPTR)fh))
+        return 1;
+    return WaitForChar((BPTR)fh, ms > 2000000 ? 2000000000L : ms * 1000L) != 0;
+}
+
+/* read -s: raw mode has no echo (and no line editing; read -s ends a line at CR) */
+static void os_echo(void *os, sh_fh fh, int on)
+{
+    (void)os;
+    SetMode((BPTR)fh, on ? 0 : 1);
+}
+
 static long os_write(void *os, sh_fh fh, const char *b, long n)
 {
     (void)os;
@@ -1298,6 +1315,8 @@ static int vsh_main(int argc, char **argv)
     sh.os.umask = os_umask;
     sh.os.spawn = os_spawn;
     sh.os.read = os_read;
+    sh.os.ready = os_ready;
+    sh.os.echo = os_echo;
     sh.os.interrupted = os_interrupted;
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;

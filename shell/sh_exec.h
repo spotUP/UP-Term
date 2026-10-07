@@ -100,6 +100,11 @@ typedef struct sh_os {
     /* kill: send sig (0: only test it exists) to a process, or a job id (is_job) of this shell; 0 = ok;
      * 0 in the table: kill reports it cannot */
     int   (*signal)(void *os, long target, int sig, int is_job);
+    /* read -t: 1 when input is waiting (or at its end) within ms milliseconds, 0 on timeout;
+     * 0 in the table: always ready */
+    int   (*ready)(void *os, sh_fh fh, long ms);
+    /* read -s: terminal echo off (0) or on (1) for fh; 0 in the table: no effect */
+    void  (*echo)(void *os, sh_fh fh, int on);
     void *data;
 } sh_os;
 
@@ -169,6 +174,7 @@ typedef struct sh_shell {
     int exit_trap_ran;     /* the EXIT trap has run (once per shell) */
     void *locals;          /* local's saved variables, a stack (sh_exec.c: saved_var) */
     int n_locals, cap_locals;
+    int local_mark;        /* the running function's locals are locals[local_mark..n_locals) */
     int umask;             /* the umask builtin's mask (default 022) */
     int optpos;            /* getopts: the next character inside a cluster (-abc), 0 = at an argument */
     long optind_seen;      /* the OPTIND getopts left, to notice a script resetting it */

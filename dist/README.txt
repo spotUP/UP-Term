@@ -299,6 +299,9 @@ VSH (the shell)
   bash); C:Type stays reachable as  C:Type  or by its full path. The  umask
   builtin sets the local variable UMASK, which started programs inherit.
   Startup: ENVARC:vsh/vshrc, then $HOME/.vshrc (HOME defaults to SYS:).
+  Differences from bash
+  printf %b and echo -e drop a NUL byte (\0, \x00): strings are C strings
+  (probe builtins/printf_bnul).
   Stack: vsh needs none set (it takes 64 KB itself). The commands it runs
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
   when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).

@@ -226,7 +226,7 @@ void sh_shell_init(sh_shell *sh)
     sh->in_trap = 0;
     sh->exit_trap_ran = 0;
     sh->locals = 0;
-    sh->n_locals = sh->cap_locals = 0;
+    sh->n_locals = sh->cap_locals = sh->local_mark = 0;
     sh->umask = 022;
     sh->optpos = 0;
     sh->optind_seen = 0;
@@ -770,12 +770,23 @@ static void pf_field(pbuf *b, const char *body, int pl, long width, int left, in
 static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     pbuf b = { 0, 0, 0 };
-    int ai = 2, bad = 0, stop = 0;
-    const char *p;
+    int bad = 0, stop = 0;
+    const char *p, *vname = 0;
+    if (argc > 2 && !strcmp(argv[1], "-v")) {
+        vname = argv[2];
+        argc -= 2;
+        argv += 2;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--")) {
+        argc--;
+        argv++;
+    }
     if (argc < 2) {
-        err2(sh, io, "printf", "usage: printf format [arguments]");
+        err2(sh, io, "printf", "usage: printf [-v var] format [arguments]");
         return 2;
     }
+    {
+    int ai = 2;
     do {
         int used = ai;
         for (p = argv[1]; *p && !stop; p++) {
@@ -832,10 +843,15 @@ static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 break;
             arg = ai < argc ? argv[ai] : 0;
             ai++;
-            if (spec == 's' || spec == 'b' || spec == 'c') {
+            if (spec == 's' || spec == 'b' || spec == 'c' || spec == 'q') {
                 pbuf t = { 0, 0, 0 };
                 const char *a = arg ? arg : "";
-                if (spec == 'b') {
+                if (spec == 'q') {
+                    char *q = sh_quote(a, SH_Q_BACKSLASH);
+                    if (q)
+                        pb_str(&t, q);
+                    free(q);
+                } else if (spec == 'b') {
                     for (; *a && !stop; a++)
                         if (*a == '\\')
                             stop = pf_escape(&t, &a, 1);
@@ -891,7 +907,11 @@ static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
         if (ai == used)
             break;  /* the format takes no arguments: once */
     } while (ai < argc && !stop);
-    if (b.s)
+    }
+    if (vname) {
+        if (sh_set(&sh->ctx, vname, b.s ? b.s : ""))
+            bad = 1;
+    } else if (b.s)
         sh->os.write(sh->os.data, io->out, b.s, b.n);
     free(b.s);
     return bad;
@@ -928,6 +948,11 @@ static long b_pwd(sh_shell *sh, int argc, char **argv, const sh_io *io)
     say(sh, io->out, "\n");
     free(d);
     return 0;
+}
+
+static int cmp_str(const void *a, const void *b)
+{
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
 }
 
 static int cmp_var(const void *a, const void *b)
@@ -1100,23 +1125,85 @@ static void set_part(sh_shell *sh, const char *name, const char *s, long n)
     free(v);
 }
 
-/* read [-r] [name ...]: one line, split by $IFS (IFS whitespace trimmed
- * and collapsed; other IFS characters end one field each), the last name
- * takes the rest. Without -r a backslash quotes the next character (and
- * joins the next line at the end). No names: REPLY. */
+/* read [-rs] [-d delim] [-n count] [-N count] [-p prompt] [-t seconds] [-u fd] [-e] [name ...]: one
+ * line (or up to delim, or count characters), split by $IFS (IFS whitespace trimmed and collapsed;
+ * other IFS characters end one field each), the last name takes the rest. Without -r a backslash
+ * quotes the next character (and joins the next line at the end). No names: REPLY. -d, -n, -N and -s
+ * read byte by byte; -t waits per byte (sh_os.ready); -e is accepted and ignored (the console edits).
+ * Status: 1 at the end of input, 142 on a timeout, 2 for a bad option. */
+#define RD_MAX 1024
+
 static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    char line[1024], quoted[1024], buf[1024];
+    char line[RD_MAX], quoted[RD_MAX], buf[RD_MAX];
     const char *ifs = sh_get(&sh->ctx, "IFS");
-    const char *reply[1];
+    const char *reply[1], *prompt = 0;
     char **names = argv;
-    long n = 0, m, k, p = 0;
-    int raw = 0, a = 1, i, got = 0;
+    sh_fh in = io->in;
+    long n = 0, m, k, p = 0, nch = -1, tmo = -1;
+    int raw = 0, a = 1, i, got = 0, delim = '\n', exact = 0, silent = 0, chars = 0, tout = 0;
     if (!ifs)
         ifs = " \t\n";
-    while (a < argc && !strcmp(argv[a], "-r")) {
-        raw = 1;
-        a++;
+    for (; a < argc && argv[a][0] == '-' && argv[a][1]; a++) {
+        const char *o = argv[a] + 1;
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        for (; *o; o++) {
+            const char *arg = 0;
+            if (strchr("dnNptu", *o)) {
+                if (o[1])
+                    arg = o + 1;
+                else if (a + 1 < argc)
+                    arg = argv[++a];
+                else {
+                    char opt[3];
+                    opt[0] = '-';
+                    opt[1] = *o;
+                    opt[2] = 0;
+                    err2(sh, io, opt, "option requires an argument");
+                    return 2;
+                }
+            }
+            switch (*o) {
+            case 'r': raw = 1; break;
+            case 's': silent = chars = 1; break;
+            case 'e': break;
+            case 'd': delim = arg[0] ? (unsigned char)arg[0] : -1; chars = 1; break;
+            case 'n': case 'N':
+                nch = atol(arg);
+                exact = *o == 'N';
+                chars = 1;
+                break;
+            case 'p': prompt = arg; break;
+            case 't': tmo = atol(arg) * 1000; break;
+            case 'u': {
+                long fd = atol(arg);
+                if (fd == 0)
+                    in = io->in;
+                else if (fd == 1)
+                    in = io->out;
+                else if (fd == 2)
+                    in = io->err;
+                else {
+                    err2(sh, io, arg, "invalid file descriptor");
+                    return 1;
+                }
+                break;
+            }
+            default: {
+                char opt[3];
+                opt[0] = '-';
+                opt[1] = *o;
+                opt[2] = 0;
+                err2(sh, io, opt, "invalid option");
+                return 2;
+            }
+            }
+            if (arg)
+                break;
+        }
     }
     if (a == argc) {
         reply[0] = "REPLY";
@@ -1124,33 +1211,89 @@ static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
         a = 0;
         argc = 1;
     }
-    for (;;) {
-        int more = 0;
-        m = sh->os.read_line(sh->os.data, io->in, buf, sizeof(buf));
-        if (m < 0)
-            break;
+    if (prompt && sh->os.isatty && sh->os.isatty(sh->os.data, in))
+        sh->os.write(sh->os.data, io->err, prompt, (long)strlen(prompt));
+    if (nch == 0) {
         got = 1;
-        while (m > 0 && (buf[m - 1] == '\n' || buf[m - 1] == '\r'))
-            m--;
-        for (k = 0; k < m && n < (long)sizeof(line) - 1; k++) {
-            if (!raw && buf[k] == '\\') {
-                if (k + 1 == m) {
-                    more = 1; /* backslash-newline: the line goes on */
-                    break;
+    } else if (chars) {
+        int esc = 0;
+        if (silent && sh->os.echo && sh->os.isatty(sh->os.data, in))
+            sh->os.echo(sh->os.data, in, 0);
+        else
+            silent = 0;
+        for (;;) {
+            char c;
+            if (tmo >= 0 && sh->os.ready && !sh->os.ready(sh->os.data, in, tmo)) {
+                tout = 1;
+                break;
+            }
+            if (sh->os.read(sh->os.data, in, &c, 1) <= 0) {
+                got = got ? 2 : 0;
+                break;
+            }
+            got = 1;
+            if (silent && c == '\r')
+                c = '\n';
+            if (esc) {
+                esc = 0;
+                if (c != '\n' && n < RD_MAX - 1) {
+                    line[n] = c;
+                    quoted[n++] = 1;
                 }
-                line[n] = buf[++k];
-                quoted[n++] = 1;
-            } else {
-                line[n] = buf[k];
+            } else if (!exact && (delim < 0 ? c == 0 : (unsigned char)c == (unsigned char)delim)) {
+                break;
+            } else if (!raw && !exact && c == '\\') {
+                esc = 1;
+                continue;
+            } else if (n < RD_MAX - 1) {
+                line[n] = c;
                 quoted[n++] = 0;
             }
+            if (nch > 0 && n >= nch)
+                break;
         }
-        if (!more)
-            break;
-    }
+        if (silent) {
+            sh->os.echo(sh->os.data, in, 1);
+            sh->os.write(sh->os.data, io->err, "\n", 1);
+        }
+    } else
+        for (;;) {
+            int more = 0;
+            if (tmo >= 0 && sh->os.ready && !sh->os.ready(sh->os.data, in, tmo)) {
+                tout = 1;
+                break;
+            }
+            m = sh->os.read_line(sh->os.data, in, buf, sizeof(buf));
+            if (m < 0)
+                break;
+            got = buf[m - 1] == '\n' || m >= (long)sizeof(buf) - 1 ? 1 : 2; /* no newline: the input ended in the line */
+            while (m > 0 && (buf[m - 1] == '\n' || buf[m - 1] == '\r'))
+                m--;
+            for (k = 0; k < m && n < (long)sizeof(line) - 1; k++) {
+                if (!raw && buf[k] == '\\') {
+                    if (k + 1 == m) {
+                        more = 1; /* backslash-newline: the line goes on */
+                        break;
+                    }
+                    line[n] = buf[++k];
+                    quoted[n++] = 1;
+                } else {
+                    line[n] = buf[k];
+                    quoted[n++] = 0;
+                }
+            }
+            if (!more)
+                break;
+        }
     line[n] = 0;
     for (i = a; i < argc; i++) {
         long start;
+        if (exact && nch > 0) { /* -N: the characters as they are, no splitting */
+            set_part(sh, names[i], line, n);
+            for (i++; i < argc; i++)
+                set_part(sh, names[i], "", 0);
+            break;
+        }
         while (p < n && !quoted[p] && ifs_space(ifs, line[p]))
             p++;
         start = p;
@@ -1169,7 +1312,9 @@ static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
         if (p < n && !quoted[p] && in_ifs(ifs, line[p]))
             p++; /* one non-space IFS character ends the field */
     }
-    return got ? 0 : 1;
+    if (tout)
+        return 142;
+    return got == 1 ? 0 : 1;
 }
 
 static long b_alias(sh_shell *sh, int argc, char **argv, const sh_io *io)
@@ -1830,6 +1975,37 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
         sh_var *v, **all;
         int n = 0, k;
         unsigned want = set & ~SH_ATTR_READONLY;
+        if (mode == 1) { /* local alone: the running function's locals, by name */
+            const saved_var *sv = (const saved_var *)sh->locals;
+            const char **nm;
+            int j, cnt = sh->n_locals - sh->local_mark;
+            if (!sh->func_depth) {
+                err2(sh, io, "local", "can only be used in a function");
+                return 1;
+            }
+            nm = (const char **)malloc((size_t)(cnt ? cnt : 1) * sizeof(char *));
+            if (!nm)
+                return 1;
+            for (j = 0; j < cnt; j++)
+                nm[j] = sv[sh->local_mark + j].name;
+            qsort(nm, (size_t)cnt, sizeof(char *), cmp_str);
+            for (j = 0; j < cnt; j++) {
+                const sh_var *lv;
+                if (j && !strcmp(nm[j], nm[j - 1]))
+                    continue;
+                for (lv = sh->ctx.vars; lv && strcmp(lv->name, nm[j]); lv = lv->next)
+                    ;
+                if (lv)
+                    decl_print(sh, io, lv);
+                else {
+                    say(sh, io->out, "declare -- ");
+                    say(sh, io->out, nm[j]);
+                    say(sh, io->out, "\n");
+                }
+            }
+            free(nm);
+            return 0;
+        }
         if (mode == 0 && !print && !set && !clear)
             return b_set(sh, 1, argv, io);
         if (mode == 2)
@@ -2418,8 +2594,9 @@ static void apply_alias(sh_shell *sh, sh_list *argv)
 static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *io)
 {
     sh_list saved = sh->ctx.args;
-    int i, mark = sh->n_locals;
+    int i, mark = sh->n_locals, outer = sh->local_mark;
     long st;
+    sh->local_mark = mark;
     memset(&sh->ctx.args, 0, sizeof(sh->ctx.args));
     for (i = 1; i < argv->n; i++)
         sh_list_add(&sh->ctx.args, argv->v[i]);
@@ -2432,6 +2609,7 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
         st = sh->ctx.status;
     sh->returning = 0;
     sh->func_depth--;
+    sh->local_mark = outer;
     while (sh->n_locals > mark) /* its locals end with it */
         restore_var(sh, (saved_var *)sh->locals + --sh->n_locals);
     sh_list_free(&sh->ctx.args);
@@ -3485,25 +3663,63 @@ long sh_exec(sh_shell *sh, const sh_node *n, const sh_io *io)
     return exec_node(sh, n, io);
 }
 
+/* The input is read the way bash reads it: one command at a time, as many lines as the command
+ * needs, each run before the next is parsed (so set -v echoes exactly the lines read after it was
+ * set, an alias made on one line works on the next, and a syntax error stops the script after the
+ * commands before it). */
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
 {
-    sh_parse p;
-    long st;
-    sh_parse_text(&p, text);
+    const char *s = text;
+    long st = sh->ctx.status;
     if (incomplete)
-        *incomplete = p.incomplete;
-    if (p.error) {
-        if (!p.incomplete)
-            err2(sh, &sh->io, p.error, 0);
+        *incomplete = 0;
+    while (*s) {
+        const char *e = s;
+        char *chunk;
+        sh_parse p;
+        for (;;) {
+            while (*e && *e != '\n')
+                e++;
+            if (*e)
+                e++;
+            chunk = (char *)malloc((size_t)(e - s) + 1);
+            if (!chunk)
+                return st;
+            memcpy(chunk, s, (size_t)(e - s));
+            chunk[e - s] = 0;
+            sh_parse_text(&p, chunk);
+            if (p.incomplete && *e) {
+                sh_parse_free(&p);
+                free(chunk);
+                continue;
+            }
+            break;
+        }
+        s = e;
+        if ((sh->opts & SO_VERBOSE) && sh->io.err) {
+            say(sh, sh->io.err, chunk);
+            if (e[-1] != '\n')
+                say(sh, sh->io.err, "\n");
+        }
+        free(chunk);
+        if (incomplete)
+            *incomplete = p.incomplete;
+        if (p.error) {
+            if (!p.incomplete)
+                err2(sh, &sh->io, p.error, 0);
+            sh_parse_free(&p);
+            sh->ctx.status = p.incomplete ? sh->ctx.status : 2;
+            return sh->ctx.status;
+        }
+        if (p.tree)
+            st = exec_node(sh, p.tree, &sh->io);
         sh_parse_free(&p);
-        sh->ctx.status = p.incomplete ? sh->ctx.status : 2;
-        return sh->ctx.status;
-    }
-    st = exec_node(sh, p.tree, &sh->io);
-    sh_parse_free(&p);
-    if (sh->intr) {
-        st = sh->ctx.status = intr_status(sh);
-        sh->intr = 0;
+        if (sh->intr) {
+            st = sh->ctx.status = intr_status(sh);
+            sh->intr = 0;
+        }
+        if (sh->exiting || sh->returning || sh->breaking || sh->continuing)
+            break;
     }
     return st;
 }

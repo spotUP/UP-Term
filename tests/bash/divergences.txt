@@ -17,8 +17,6 @@ agent/a019_cstyle_for	later:V64	for (( ))
 agent/a020_array_iterate	later:V34,V35,V36	arrays
 agent/a021_array_append	later:V34,V35,V36	a+=( )
 agent/a022_substring	later:V47	${x:o:l}
-agent/a025_printf_v	later:V31	printf -v
-agent/a026_printf_q	later:V31	printf %q
 agent/a028_ansi_c_quote	later:V52	$'...'
 agent/a032_dbrack_files	later:V65	[[ ]]
 agent/a033_dbrack_strings	later:V65	[[ ]]
@@ -66,10 +64,6 @@ arrays/readarr	later:V41	read -a
 builtins/declare_f	later:V82	declare -f prints a function
 builtins/nameref	later:V39	declare -n
 builtins/printf_fmt	later:V31,V67	printf %e %g %*d and float widths
-builtins/printf_q	later:V31	printf %q
-builtins/printf_v	later:V31	printf -v
-builtins/readdelim	later:V30	read -d
-builtins/readn	later:V30	read -n
 dbrack/dbrack	later:V65	[[ ]]
 dbrack/dbrack2	later:V65	[[ ]] with && and ( )
 expand/at_slice	later:V47,V49	${@:o} and ${@#p}
@@ -122,3 +116,4 @@ vars/lastarg	later:V42	$_
 vars/lineno	later:V42	LINENO
 vars/random	later:V42	RANDOM
 builtins/kill_trap_self	later:V78	trap USR1 delivery to a kill of the shell itself
+builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings)

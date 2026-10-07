@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <dirent.h>
+#include <poll.h>
+#include <termios.h>
 #include <unistd.h>
 #include "../shell/sh_exec.h"
 #include "../shell/sh_hits.h"
@@ -302,6 +304,29 @@ static long h_read(void *os, sh_fh fh, char *buf, long max)
     return n > 0 ? (long)n : 0;
 }
 
+static int h_ready(void *os, sh_fh fh, long ms)
+{
+    struct pollfd pf;
+    (void)os;
+    pf.fd = FD(fh);
+    pf.events = POLLIN;
+    pf.revents = 0;
+    return poll(&pf, 1, (int)ms) != 0;
+}
+
+static void h_echo(void *os, sh_fh fh, int on)
+{
+    struct termios t;
+    (void)os;
+    if (tcgetattr(FD(fh), &t))
+        return;
+    if (on)
+        t.c_lflag |= ECHO;
+    else
+        t.c_lflag &= ~(tcflag_t)ECHO;
+    tcsetattr(FD(fh), TCSANOW, &t);
+}
+
 static int h_interrupted(void *os)
 {
     (void)os;
@@ -450,6 +475,8 @@ static int run_main(int argc, char **argv)
     sh.os.umask = h_umask;
     sh.os.spawn = h_spawn;
     sh.os.read = h_read;
+    sh.os.ready = h_ready;
+    sh.os.echo = h_echo;
     sh.os.interrupted = h_interrupted;
     sh.os.write = h_write;
     sh.os.read_line = h_read_line;
