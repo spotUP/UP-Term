@@ -44,7 +44,7 @@ A package that passed with an unchanged fingerprint is skipped on the next run;
 a case that passed is skipped when only some cases are rerun. Exit 0 when every
 package that ran passed. The rig must be up (`rig.py start`, VTC: is
 build/rig/vtc); `make build/amiga/vsh` first."""
-import argparse, difflib, hashlib, os, pathlib, re, shutil, struct, sys
+import argparse, difflib, hashlib, os, pathlib, re, shlex, shutil, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
 import paths
@@ -210,13 +210,24 @@ def bash_wrapper(area, name):
     pdir = BASH_PROBES / area
     args = (pdir / (name + ".args")).read_text().strip() if (pdir / (name + ".args")).exists() else ""
     work = "VTC:userland/bashwork/%s_%s" % (area, name)
-    cmd = "VTC:vsh VTC:userland/bash/%s/%s.sh %s" % (area, name, args)
+    fl = pdir / (name + ".flags")
+    flags = shlex.split(fl.read_text()) if fl.exists() else []
+    target, stdin_text = "VTC:userland/bash/%s/%s.sh" % (area, name), None
+    # <name>.flags as tools/bashdiff.py reads them: options before the probe; last flag -c / -ec: the
+    # probe's text is the command string; last flag -s: the text is the shell's input
+    if flags and re.match(r"^-[a-zA-Z]*c$", flags[-1]):
+        target = shlex.quote((pdir / (name + ".sh")).read_text(encoding="latin-1"))
+    elif flags and flags[-1] == "-s":
+        target, stdin_text = "", (pdir / (name + ".sh")).read_text(encoding="latin-1")
+    cmd = "VTC:vsh %s %s %s" % (" ".join(flags), target, args)
     text = ("cd " + work + "\n"
-            "export PATH=/UP-Term/bin:$PATH\n"
+            "export PATH=/VTC/userland/bin:$PATH\n"
             "unset LC_ALL LC_CTYPE\n"
             "export LANG=C TZ=UTC\n")
     inp = pdir / (name + ".in")
-    if inp.exists():
+    if stdin_text is not None:
+        text += "{ " + cmd + " <<'BASHDIFF_IN'\n" + stdin_text + ("" if stdin_text.endswith("\n") else "\n") + "BASHDIFF_IN\n} 2>VTC:out/bash-%s/%s.err\n" % (area, name)
+    elif inp.exists():
         text += "{ " + cmd + " <<'BASHDIFF_IN'\n" + inp.read_text(encoding="latin-1") + "BASHDIFF_IN\n} 2>VTC:out/bash-%s/%s.err\n" % (area, name)
     else:
         text += "{ " + cmd + "\n} 2>VTC:out/bash-%s/%s.err\n" % (area, name)
@@ -228,6 +239,12 @@ def stage_bash(area, wanted):
     pkg = "bash-" + area
     (VTC / "userland").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "build/amiga/vsh", VTC / "vsh")
+    # the ports built so far (grep; there are no coreutils for the rig: probes that need cat, tr, env,
+    # mkdir ... are in rig-skip.txt)
+    (VTC / "userland/bin").mkdir(parents=True, exist_ok=True)
+    for tool in ("grep", "egrep", "fgrep"):
+        if (SYSBIN / "bin" / tool).exists():
+            shutil.copyfile(SYSBIN / "bin" / tool, VTC / "userland/bin" / tool)
     pdest = VTC / "userland/bash" / area
     shutil.rmtree(pdest, ignore_errors=True)
     pdest.mkdir(parents=True)

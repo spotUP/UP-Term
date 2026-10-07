@@ -990,11 +990,18 @@ static char *os_cwd(void *os)
  * which bits ixemul-built binaries carry. */
 static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
 {
-    BPTR lock = Lock((STRPTR)path, SHARED_LOCK);
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR win = me->pr_WindowPtr;
+    BPTR lock;
     struct FileInfoBlock *fib;
     int r = -1;
     (void)os;
     (void)nofollow;
+    /* a question ("is there a file?"), never an "insert volume" requester: a $PATH entry on a
+     * volume this machine does not have made `type x` wait for a click nobody gives */
+    me->pr_WindowPtr = (APTR)-1;
+    lock = Lock((STRPTR)path, SHARED_LOCK);
+    me->pr_WindowPtr = win;
     if (!lock)
         return -1;
     fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
@@ -1343,7 +1350,10 @@ static int vsh_main(int argc, char **argv)
     sh.ctx.pid = (long)FindTask(0);
     sh.io.in = (sh_fh)Input();
     sh.io.out = (sh_fh)Output();
-    sh.io.err = (sh_fh)Output();
+    /* standard error is the process's error stream (RunCommand/SystemTags set it with SYS_Error),
+     * Output() only when there is none: `vsh x 2>f` and a 2>f on a group around vsh must not
+     * find the shell's own messages in stdout */
+    sh.io.err = (sh_fh)(((struct Process *)FindTask(0))->pr_CES ? ((struct Process *)FindTask(0))->pr_CES : Output());
     sh.io.owned = 0;
     sh_set(&sh.ctx, "HOME", "SYS:");
     import_var(&sh, "HOME");
