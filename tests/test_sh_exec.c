@@ -505,6 +505,23 @@ static void basics(void)
     CHECK_STR(run("args \"a b\" c* 'd e'"), "<a b><c*><d e>\n");
 }
 
+/* A subshell's shell is malloc memory (sh_shell_clone): sh_shell_init leaves no field as it
+ * found it. nclosed and wfail were left, and on the rig `echo hello | wc -c` hung in the
+ * subshell's echo (put walked a garbage count of closed streams). */
+static void a_shell_made_on_dirty_memory_is_a_fresh_shell(void)
+{
+    /* one place for both, so the fields pointing into the shell itself agree */
+    static sh_shell place, clean;
+    memset(&place, 0, sizeof(place));
+    sh_shell_init(&place);
+    clean = place;
+    sh_shell_free(&place);
+    memset(&place, 0xA5, sizeof(place));
+    sh_shell_init(&place);
+    CHECK_INT(memcmp(&clean, &place, sizeof(clean)) == 0, 1);
+    sh_shell_free(&place);
+}
+
 static void control_flow(void)
 {
     CHECK_STR(run("if fail; then echo t; elif true; then echo e; else echo f; fi"), "e\n");
@@ -1257,6 +1274,7 @@ void suite_sh_exec(void)
     printf_builtin();
     prompts();
     basics();
+    a_shell_made_on_dirty_memory_is_a_fresh_shell();
     control_flow();
     pipes_and_redirection();
     jobs_aliases_and_dirs();

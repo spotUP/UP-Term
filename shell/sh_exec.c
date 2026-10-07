@@ -216,34 +216,12 @@ static void core_on_assign(sh_ctx *c, const char *name, const char *value);
 
 void sh_shell_init(sh_shell *sh)
 {
-    memset(&sh->ctx, 0, sizeof(sh->ctx));
-    sh->funcs = 0;
-    memset(&sh->aliases, 0, sizeof(sh->aliases));
+    /* every field starts zero: a clone is malloc memory, and a field added later must not
+     * start as garbage there (nclosed and wfail did: a subshell's echo spun or failed) */
+    memset(sh, 0, sizeof(*sh));
     memset(sh->shopt_v, -1, sizeof(sh->shopt_v));
     sh->ctx.pathkind = core_pathkind;
     sh_set_extglob(0);
-    sh->exiting = 0;
-    sh->exit_status = 0;
-    sh->breaking = sh->continuing = sh->returning = 0;
-    sh->loop_depth = sh->func_depth = 0;
-    memset(sh->fdt, 0, sizeof(sh->fdt)); /* a clone is malloc memory: the fd table and its undo stack start empty */
-    sh->nundo = 0;
-    sh->fddefer = 0;
-    memset(sh->jobs, 0, sizeof(sh->jobs));
-    memset(sh->job_text, 0, sizeof(sh->job_text));
-    memset(sh->job_stopped, 0, sizeof(sh->job_stopped));
-    memset(sh->job_seq, 0, sizeof(sh->job_seq));
-    memset(sh->job_foreign, 0, sizeof(sh->job_foreign));
-    memset(sh->job_nohup, 0, sizeof(sh->job_nohup));
-    sh->job_seqno = 0;
-    sh->dirstk = 0;
-    sh->ndirstk = 0;
-    sh->warned_stopped = 0;
-    sh->retired = 0;
-    sh->intr = 0;
-    sh->stack_limit = 0; /* the OS layer sets it for each process */
-    sh->subst_ran = 0;
-    sh->subst_status = 0;
     sh->ctx.subst = core_subst;
     sh->ctx.procsub = core_procsub;
     sh->ctx.user = sh;
@@ -253,31 +231,8 @@ void sh_shell_init(sh_shell *sh)
     sh->ctx.unescape = core_unescape;
     sh->ctx.prompt = core_prompt;
     sh->ctx.declared = core_declared;
-    sh->lineno = 0;
-    sh->frames = 0;
-    sh->nframes = sh->capframes = 0;
-    sh->main_src = sh->cur_src = 0;
-    sh->main_run = 0;
-    sh->rseed = sh->srnd = 0;
-    sh->last_rand = 0;
-    sh->seeded = 0;
-    sh->secs0 = 0;
-    sh->special_busy = 0;
-    sh->heredocs = 0;
-    sh->tmps = 0;
-    sh->ntmp = sh->captmp = 0;
-    memset(sh->traps, 0, sizeof(sh->traps));
-    sh->trap_busy = 0;
-    sh->in_trap = 0;
-    sh->exit_trap_ran = 0;
-    sh->locals = 0;
-    sh->n_locals = sh->cap_locals = sh->local_mark = 0;
     sh->umask = 022;
-    sh->optpos = 0;
-    sh->optind_seen = 0;
     sh->opts = SO_BRACEEXPAND | SO_HASHALL | SO_ICOMMENTS;
-    sh->cond_depth = 0;
-    sh->xlevel = 0;
     opts_apply(sh);
 }
 
