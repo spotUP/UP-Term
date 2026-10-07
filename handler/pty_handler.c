@@ -745,6 +745,30 @@ static void packet(struct DosPacket *d, pair *via, int side)
         reply(d, DOSTRUE, (LONG)t);
         return;
     }
+    case ACTION_VTCON_INTR: {
+        /* ixemul's reader caught a signal: give its waiting read back */
+        struct DosPacket **q = master ? p->mreads : p->sreads;
+        int *n = master ? &p->nmr : &p->nsr;
+        struct DosPacket *rp = (struct DosPacket *)d->dp_Arg2;
+        int i;
+        for (i = 0; i < *n && q[i] != rp; i++)
+            ;
+        if (i == *n) {
+            reply(d, DOSFALSE, 0);
+            return;
+        }
+        if (!master && i == 0) {
+            timer_stop(p->vtimer, &p->vtimer_busy); /* VTIME's timer was this read's */
+            p->vtimer_fired = 0;
+        }
+        for (i++; i < *n; i++)
+            q[i - 1] = q[i];
+        (*n)--;
+        reply(rp, -1, ERROR_BREAK);
+        reply(d, DOSTRUE, 0);
+        service(p); /* the next read, if any, may wait on VTIME now */
+        return;
+    }
     case ACTION_FLUSH:
         reply(d, DOSTRUE, 0);
         return;

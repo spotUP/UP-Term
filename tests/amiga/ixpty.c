@@ -86,6 +86,14 @@ static void on_winch(int sig)
     winch++;
 }
 
+static volatile int alrm;
+
+static void on_alrm(int sig)
+{
+    (void)sig;
+    alrm++;
+}
+
 static void on_int(int sig)
 {
     (void)sig;
@@ -119,6 +127,12 @@ int main(int argc, char **argv)
     /* a child of the two-select check: select the slave it inherited */
     if (argc > 2 && !strcmp(argv[1], "selwait"))
         return readable(atoi(argv[2]), 4000000) ? 0 : 1;
+    /* a child of the interrupted-read check: ^C typed on the master */
+    if (argc > 2 && !strcmp(argv[1], "ctrlc")) {
+        usleep(1000000);
+        write(atoi(argv[2]), argc > 3 ? (char[]){(char)atoi(argv[3])} : "\003", 1);
+        return 0;
+    }
     unlink("/RAM/ixpty.log");
     /* the BSD way: the first master that opens is free */
     for (i = 0; c1[i] && m < 0; i++)
@@ -211,6 +225,42 @@ int main(int argc, char **argv)
     usleep(100000);
     check(intr == 1, "^C on the master is SIGINT on the slave side", 0);
     drain(m);
+
+    /* a read waiting on the slave ends with EINTR when a signal is caught
+     * (a tmux pane: ^C, SIGWINCH), and the line it was waiting for is not
+     * taken by the interrupted read */
+    signal(SIGALRM, on_alrm);
+    alrm = 0;
+    alarm(1);
+    n = read(s, seen, sizeof(seen));
+    check(n == -1 && errno == EINTR && alrm == 1, "SIGALRM ends a slave read with EINTR", 0);
+    {
+        static const struct { int sig, key; const char *what; } keys[] = {
+            {SIGINT, 3, "^C"}, {SIGQUIT, 28, "^\\"}, {SIGTSTP, 26, "^Z"},
+        };
+        int k;
+        for (k = 0; k < 3; k++) {
+            char fdarg[8], keyarg[8], what[60];
+            int pid, st;
+            intr = 0;
+            signal(keys[k].sig, on_int);
+            sprintf(fdarg, "%d", m);
+            sprintf(keyarg, "%d", keys[k].key);
+            if ((pid = vfork()) == 0) {
+                execl(argv[0], argv[0], "ctrlc", fdarg, keyarg, (char *)0);
+                _exit(2);
+            }
+            n = read(s, seen, sizeof(seen));
+            sprintf(seen, "read %d, %d signals", n, intr);
+            sprintf(what, "%s ends a slave read with EINTR at once", keys[k].what);
+            check(n == -1 && errno == EINTR && intr == 1, what, seen);
+            if (pid > 0)
+                waitpid(pid, &st, 0);
+            drain(m);
+        }
+    }
+    write(m, "kept\r", 5);
+    expect(s, "kept\n", "the line typed after the interrupted reads arrives whole");
 
     /* a select still out must not hold a close for its 10 s */
     {
