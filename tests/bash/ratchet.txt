@@ -253,6 +253,7 @@ arith/p4c_sub1
 arith/p4c_sub2
 arith/p4c_sub3
 arith/p4c_sub4
+arith/subscript_once
 arrays/PIPESTATUS
 arrays/arr
 arrays/assignarr

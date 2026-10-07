@@ -951,6 +951,8 @@ static void a_load(arith *a, aval *x)
 {
     const char *val;
     x->v = 0;
+    if (a->skip)
+        return; /* not evaluated (the right side of a short circuit): no side effects */
     val = x->sub[0] ? sh_get_elem(a->c, x->name, x->sub) : sh_get(a->c, x->name);
     if (val && *val)
         x->v = a_value(a, val);
@@ -1034,6 +1036,19 @@ static void a_primary(arith *a, aval *x)
                 a->s++;
             else
                 a->err = "arithmetic: ] is missing";
+            /* an indexed array's subscript is evaluated once, here (a[i++] += 1 steps i once):
+             * the lvalue then carries the number */
+            if (!a->err && !a->skip) {
+                sh_var *v = sh_lookup(a->c, x->name);
+                if (!v || !is_assoc(v)) {
+                    const char *serr = 0;
+                    sh_int idx = sh_arith(a->c, x->sub, &serr);
+                    if (serr)
+                        a->err = serr;
+                    else
+                        sh_ltoa(idx, x->sub);
+                }
+            }
         }
         x->lv = 1;
         a_load(a, x);
