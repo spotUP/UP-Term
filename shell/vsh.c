@@ -138,16 +138,14 @@ static struct Task *job_process(job *j)
     return t;
 }
 
-static int job_unix_signal(job *j, const char *sig)
+static int task_unix_signal(struct Task *t, const char *sig)
 {
-    struct Task *t;
     char cmd[64];
     static const char hex[] = "0123456789abcdef";
     unsigned long a;
     int i, k;
     BPTR nil_in, nil_out;
     LONG rc;
-    t = job_process(j);
     if (!t)
         return -1;
     a = (unsigned long)t;
@@ -166,6 +164,11 @@ static int job_unix_signal(job *j, const char *sig)
         Close(nil_out);
     }
     return rc == 0 ? 0 : -1;
+}
+
+static int job_unix_signal(job *j, const char *sig)
+{
+    return task_unix_signal(job_process(j), sig);
 }
 
 /* The console's termios, if a program set one (TCGETA's Res2, see
@@ -870,6 +873,81 @@ static int os_done(void *os, long id)
     return r;
 }
 
+/* Is t a task that exists now? (a pid kill is given is a task's address, as ixemul numbers it) */
+static int task_alive(struct Task *t)
+{
+    struct Node *n;
+    int found = t == FindTask(0);
+    Forbid();
+    for (n = SysBase->TaskReady.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
+        found = n == (struct Node *)t;
+    for (n = SysBase->TaskWait.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
+        found = n == (struct Node *)t;
+    Permit();
+    return found;
+}
+
+/* kill: sig (0: only test) to a job of this shell, a pid, or the shell. Ctrl-C and ^\ go
+ * the way the console's go: the break bits, which a native command honours too. Any other
+ * signal goes through ixkill, so only an ixemul process gets it; HUP and TERM fall back to
+ * the break to a command that is no ixemul process. The shell itself: INT is a Ctrl-C to
+ * it, TERM HUP QUIT and KILL end it, the rest are ignored. 0 = sent. */
+static int os_signal(void *os, long target, int sig, int is_job)
+{
+    sh_shell *sh = ((vproc *)os)->sh;
+    struct Task *self = FindTask(0), *t = 0;
+    job *j = 0;
+    char num[8];
+    int i, ok;
+    if (!target)
+        return -1;
+    if (is_job)
+        j = (job *)target;
+    else
+        for (i = 0; i < 32; i++)
+            if (sh->jobs[i] == target)
+                j = (job *)target;
+    if (!j) {
+        t = (struct Task *)target;
+        if (!task_alive(t))
+            return -1;
+    } else if (j->done)
+        return -1;
+    if (sig == 0)
+        return 0;
+    if (t == self) {
+        if (sig == 2)
+            Signal(self, SIGBREAKF_CTRL_C);
+        else if (sig == 1 || sig == 3 || sig == 9 || sig == 15) {
+            sh->exiting = 1;
+            sh->exit_status = 128 + sig;
+        }
+        return 0;
+    }
+    if (sig == 2 || sig == 3) {
+        ULONG bit = sig == 2 ? SIGBREAKF_CTRL_C : SIGBREAKF_CTRL_E;
+        Forbid();
+        if (j)
+            job_signal(j, bit);
+        else
+            Signal(t, bit);
+        Permit();
+        return 0;
+    }
+    sh_ltoa(sig, num);
+    ok = (j ? job_unix_signal(j, num) : task_unix_signal(t, num)) == 0;
+    if (!ok && (sig == 1 || sig == 15)) {
+        Forbid();
+        if (j)
+            job_signal(j, SIGBREAKF_CTRL_C);
+        else
+            Signal(t, SIGBREAKF_CTRL_C);
+        Permit();
+        ok = 1;
+    }
+    return ok ? 0 : -1;
+}
+
 static int os_isatty(void *os, sh_fh fh)
 {
     (void)os;
@@ -1338,6 +1416,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.ready = os_ready;
     sh.os.echo = os_echo;
     sh.os.interrupted = os_interrupted;
+    sh.os.signal = os_signal;
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;
     sh.os.chdir = os_chdir;

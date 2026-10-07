@@ -3,6 +3,7 @@
 #include <string.h>
 #include "sh_exec.h"
 #include "sh_hits.h"
+#include "sh_float.h"
 #include "../tty/bmsg.h"
 
 
@@ -261,7 +262,7 @@ void sh_shell_free(sh_shell *sh)
     }
     for (i = 0; i < 32; i++)
         free(sh->job_text[i]);
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < SH_NSIG; i++)
         free(sh->traps[i]);
     while (sh->n_locals > 0) /* a shell ended inside a function: the values go with it */
         restore_var(sh, (saved_var *)sh->locals + --sh->n_locals);
@@ -722,24 +723,29 @@ static int pf_escape(pbuf *b, const char **pp, int is_b)
     return 0;
 }
 
+static void pf_badnum(sh_shell *sh, const sh_io *io, const char *a, const char *why)
+{
+    char *m = (char *)malloc(strlen(a) + 10);
+    if (m) {
+        strcpy(m, "printf: ");
+        strcat(m, a);
+        err2(sh, io, m, why);
+        free(m);
+    }
+}
+
 /* printf: a numeric argument ('c gives the character's value) */
 static long pf_number(sh_shell *sh, const sh_io *io, const char *a, int *bad)
 {
     char *end;
     long v;
-    if (!a || !*a)
+    if (!a)
         return 0;
     if (*a == '\'' || *a == '"')
         return (unsigned char)a[1];
     v = strtol(a, &end, 0);
     if (*end || end == a) {
-        char *m = (char *)malloc(strlen(a) + 10);
-        if (m) {
-            strcpy(m, "printf: ");
-            strcat(m, a);
-            err2(sh, io, m, "invalid number");
-            free(m);
-        }
+        pf_badnum(sh, io, a, "invalid number");
         *bad = 1;
     }
     return v;
@@ -838,6 +844,8 @@ static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
             }
             if (width > 4096)
                 width = 4096;
+            while (*p == 'l' || *p == 'L' || *p == 'h')
+                p++;
             spec = *p;
             if (!spec)
                 break;
@@ -866,6 +874,18 @@ static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 if (t.s)
                     pf_field(&b, t.s, 0, width, left, 0);
                 free(t.s);
+            } else if (spec && strchr("fFeEgG", spec)) {
+                char *fb = (char *)malloc(SH_FLOAT_BODY);
+                int fpl = 0, fz = 0;
+                if (fb) {
+                    int fe = sh_float_format(arg, spec, plus, space, alt, prec, fb, &fpl, &fz);
+                    if (fe) {
+                        pf_badnum(sh, io, arg, fe == 2 ? "Result too large" : "invalid number");
+                        bad = 1;
+                    }
+                    pf_field(&b, fb, fpl, width, left, zero && fz);
+                    free(fb);
+                }
             } else if (strchr("diouxX", spec)) {
                 long v = pf_number(sh, io, arg, &bad);
                 unsigned long u = (unsigned long)v;
@@ -2288,7 +2308,7 @@ static long b_builtin(sh_shell *sh, int argc, char **argv, const sh_io *io)
 static const char *const sh_signames[] = { 0, "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "EMT", "FPE", "KILL", "BUS",
     "SEGV", "SYS", "PIPE", "ALRM", "TERM", "URG", "STOP", "TSTP", "CONT", "CHLD", "TTIN", "TTOU", "IO", "XCPU", "XFSZ",
     "VTALRM", "PROF", "WINCH", "INFO", "USR1", "USR2" };
-#define N_SIG 32
+#define N_SIG SH_NSIG
 
 static int sig_number(const char *s)
 {
@@ -2303,22 +2323,29 @@ static int sig_number(const char *s)
     return -1;
 }
 
+/* kill -l and trap -l: the numbered list, five to a line */
+static void print_siglist(sh_shell *sh, const sh_io *io)
+{
+    int i;
+    for (i = 1; i < N_SIG; i++) {
+        char d[24];
+        sh_ltoa(i, d);
+        if (i < 10)
+            say(sh, io->out, " ");
+        say(sh, io->out, d);
+        say(sh, io->out, ") SIG");
+        say(sh, io->out, sh_signames[i]);
+        say(sh, io->out, i % 5 == 0 || i == N_SIG - 1 ? "\n" : "\t");
+    }
+}
+
 static long b_kill(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int i = 1, sig = 15;
     long st = 0;
     if (argc > 1 && (!strcmp(argv[1], "-l") || !strcmp(argv[1], "-L"))) {
         if (argc == 2) {
-            for (i = 1; i < N_SIG; i++) {
-                char d[24];
-                sh_ltoa(i, d);
-                if (i < 10)
-                    say(sh, io->out, " ");
-                say(sh, io->out, d);
-                say(sh, io->out, ") SIG");
-                say(sh, io->out, sh_signames[i]);
-                say(sh, io->out, i % 5 == 0 || i == N_SIG - 1 ? "\n" : "\t");
-            }
+            print_siglist(sh, io);
             return 0;
         }
         for (i = 2; i < argc; i++) {
@@ -2714,43 +2741,61 @@ static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return st;
 }
 
-/* The signals trap knows: EXIT, INT, TERM (ixemul's numbers, as scripts type them). */
+/* The index of a trap's signal: 0 for EXIT, else its number (name with or without SIG, or a number); -1 if none */
 static int trap_index(const char *name)
 {
-    if (!strncmp(name, "SIG", 3))
-        name += 3;
-    if (!strcmp(name, "EXIT") || !strcmp(name, "0"))
+    int n;
+    if (!strcmp(name, "EXIT") || !strcmp(name, "SIGEXIT"))
         return 0;
-    if (!strcmp(name, "INT") || !strcmp(name, "2"))
-        return 1;
-    if (!strcmp(name, "TERM") || !strcmp(name, "15"))
-        return 2;
-    return -1;
+    n = sig_number(name);
+    return n >= 0 && n < N_SIG ? n : -1;
 }
 
-static const char *const trap_names[3] = { "EXIT", "INT", "TERM" };
+static void trap_print(sh_shell *sh, const sh_io *io, int i)
+{
+    say(sh, io->out, "trap -- '");
+    say(sh, io->out, sh->traps[i]);
+    say(sh, io->out, i ? "' SIG" : "' ");
+    say(sh, io->out, i ? sh_signames[i] : "EXIT");
+    say(sh, io->out, "\n");
+}
 
-/* trap, trap action sig ..., trap - sig ..., trap '' sig ...: no arguments
- * lists the traps; "-" (or a first operand that is a number) resets, an
+/* trap, trap -p [sig ...], trap -l, trap action sig ..., trap - sig ..., trap '' sig ...:
+ * no arguments lists the traps; "-" (or a first operand that is a number) resets, an
  * empty action ignores the signal. */
 static long b_trap(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     const char *action;
     long st = 0;
     int i, first = 2;
-    if (argc < 2) {
-        for (i = 0; i < 3; i++)
-            if (sh->traps[i]) {
-                say(sh, io->out, "trap -- '");
-                say(sh, io->out, sh->traps[i]);
-                say(sh, io->out, "' ");
-                say(sh, io->out, trap_names[i]);
-                say(sh, io->out, "\n");
-            }
+    if (argc > 1 && !strcmp(argv[1], "-l")) {
+        print_siglist(sh, io);
         return 0;
     }
+    if (argc < 2 || !strcmp(argv[1], "-p")) {
+        for (i = 2; i < argc; i++) {
+            int k = trap_index(argv[i]);
+            if (k < 0) {
+                err2(sh, io, argv[i], "invalid signal specification");
+                st = 1;
+            } else if (sh->traps[k])
+                trap_print(sh, io, k);
+        }
+        if (argc <= 2)
+            for (i = 0; i < SH_NSIG; i++)
+                if (sh->traps[i])
+                    trap_print(sh, io, i);
+        return st;
+    }
     action = argv[1];
-    if (argv[1][0] >= '0' && argv[1][0] <= '9' && !argv[1][strspn(argv[1], "0123456789")]) {
+    if (!strcmp(action, "--") && argc > 2) {
+        action = argv[2];
+        first = 3;
+    }
+    if (first == argc && trap_index(action) >= 0) {
+        action = "-";    /* trap USR1: reset it */
+        first--;
+    } else if (first == 2 && argv[1][0] >= '0' && argv[1][0] <= '9' && !argv[1][strspn(argv[1], "0123456789")]) {
         action = "-";    /* trap 2: reset INT */
         first = 1;
     }
@@ -2761,7 +2806,7 @@ static long b_trap(sh_shell *sh, int argc, char **argv, const sh_io *io)
     for (i = first; i < argc; i++) {
         int k = trap_index(argv[i]);
         if (k < 0) {
-            err2(sh, io, "trap", "bad signal (EXIT, INT and TERM are known)");
+            err2(sh, io, argv[i], "invalid signal specification");
             st = 1;
             continue;
         }
@@ -2788,7 +2833,7 @@ static void run_trap_text(sh_shell *sh, const char *text)
 
 int sh_trap_signal(sh_shell *sh, int sig)
 {
-    int k = sig == 2 ? 1 : sig == 15 ? 2 : -1;
+    int k = sig > 0 && sig < SH_NSIG ? sig : -1;
     if (k < 0 || !sh->traps[k] || sh->in_trap)
         return 0;   /* a trap that is running is broken like any command */
     if (sh->traps[k][0])

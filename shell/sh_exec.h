@@ -52,6 +52,9 @@ typedef struct sh_stat {
 /* $? of a suspended command: 128 + SIGTSTP (18, as ixemul numbers it) */
 #define SH_STATUS_STOPPED 146
 
+/* signals 1..31 as ixemul (BSD) numbers them; index 0 of the trap table is EXIT */
+#define SH_NSIG 32
+
 typedef struct sh_os {
     sh_fh (*open)(void *os, const char *path, int mode);
     void  (*close)(void *os, sh_fh fh);
@@ -169,7 +172,7 @@ typedef struct sh_shell {
     int subst_ran;         /* a $( ) ran in the current command ... */
     long subst_status;     /* ... with this status (assignments only: the command's $?) */
     int heredocs;          /* numbering for here-document temp files */
-    char *traps[3];        /* trap actions: EXIT, INT, TERM (0: none, "": ignored) */
+    char *traps[SH_NSIG];  /* trap actions: [0] EXIT, [n] signal n (0: none, "": ignored) */
     int in_trap;           /* a trap action is running */
     int exit_trap_ran;     /* the EXIT trap has run (once per shell) */
     void *locals;          /* local's saved variables, a stack (sh_exec.c: saved_var) */

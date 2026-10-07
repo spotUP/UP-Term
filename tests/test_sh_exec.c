@@ -1037,7 +1037,7 @@ static void trap_builtin(void)
     /* a subshell runs its own EXIT trap and does not inherit the parent's */
     CHECK_STR(run("trap 'echo parent' EXIT; (echo in); (trap 'echo child' EXIT; echo c)"), "in\nc\nchild\n");
     /* listing, resetting, ignoring */
-    CHECK_STR(run("trap 'echo a b' INT; trap '' TERM; trap"), "trap -- 'echo a b' INT\ntrap -- '' TERM\n");
+    CHECK_STR(run("trap 'echo a b' INT; trap '' TERM; trap"), "trap -- 'echo a b' SIGINT\ntrap -- '' SIGTERM\n");
     CHECK_STR(run("trap 'echo x' INT; trap - INT; trap"), "");
     CHECK_STR(run("trap 'echo x' SIGINT 2; trap 2; trap"), "");
     /* Ctrl-C runs the INT trap and the script goes on; without a trap it unwinds */
@@ -1066,9 +1066,9 @@ static void trap_builtin(void)
     CHECK_STR(slot(OUT)->data, "term\n");
     CHECK_INT(sh_trap_signal(&sh, 2), 0);
     /* errors */
-    run("trap 'echo x' HUP; echo $?");
+    run("trap 'echo x' NOSUCH; echo $?");
     CHECK_STR(slot(OUT)->data, "1\n");
-    CHECK_STR(errs(), "vsh: trap: bad signal (EXIT, INT and TERM are known)\n");
+    CHECK_STR(errs(), "vsh: NOSUCH: invalid signal specification\n");
     run("trap 'echo x'; echo $?");
     CHECK_STR(slot(OUT)->data, "2\n");
     CHECK_STR(errs(), "vsh: trap: usage: trap [action] signal ...\n");

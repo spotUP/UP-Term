@@ -106,8 +106,13 @@ builtins/exportf
 builtins/kill_errors
 builtins/kill_l
 builtins/kill_signal
+builtins/kill_trap_self
 builtins/local_flags
 builtins/local_list
+builtins/printf_float_eg
+builtins/printf_float_f
+builtins/printf_float_special
+builtins/printf_fmt
 builtins/printf_q
 builtins/printf_star
 builtins/printf_v
@@ -235,6 +240,7 @@ invocation/source_restore
 invocation/source_return
 invocation/sourceargs
 invocation/stdin_noarg
+invocation/type_missing_volume
 invocation/u_script
 invocation/x_script
 options/dash_flags
@@ -359,7 +365,7 @@ test/testnt
 test/testo
 test/tests
 test/testx
+traps/trap_signames
 traps/trapexit
 traps/trapint
 traps/trapsubshell
-invocation/type_missing_volume

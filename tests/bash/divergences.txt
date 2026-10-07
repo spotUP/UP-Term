@@ -63,7 +63,6 @@ arrays/mapfile	later:V41	mapfile
 arrays/readarr	later:V41	read -a
 builtins/declare_f	later:V82	declare -f prints a function
 builtins/nameref	later:V39	declare -n
-builtins/printf_fmt	later:V31,V67	printf %e %g %*d and float widths
 dbrack/dbrack	later:V65	[[ ]]
 dbrack/dbrack2	later:V65	[[ ]] with && and ( )
 expand/at_slice	later:V47,V49	${@:o} and ${@#p}
@@ -115,5 +114,4 @@ vars/funcname	later:V43	FUNCNAME
 vars/lastarg	later:V42	$_
 vars/lineno	later:V42	LINENO
 vars/random	later:V42	RANDOM
-builtins/kill_trap_self	later:V78	trap USR1 delivery to a kill of the shell itself
 builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings)
