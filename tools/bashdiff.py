@@ -11,6 +11,9 @@ probe that needs it writes 2>&1). "Identical" is a pass.
 The oracle is $BASH_ORACLE (default /opt/homebrew/bin/bash). /bin/bash on macOS
 is 3.2: the runner refuses any oracle whose BASH_VERSINFO[0] is below 5.
 
+A probe with <name>.hits also runs under `vsh_host --hits`; the file lists counters of shell/sh_hits.h
+(NAME>=N or NAME=N) that must hold: identical output that never ran the feature proves nothing.
+
 Files (tests/bash/):
   divergences.txt   probe-id TAB class TAB reason; class n/a-amiga | documented | later:Vnn
   ratchet.txt       probe ids that must stay identical
@@ -142,7 +145,7 @@ def lists(allp):
 
 def probe_hash(p):
     h = hashlib.sha256()
-    for ext in (".sh", ".in", ".args", ".flags"):
+    for ext in (".sh", ".in", ".args", ".flags", ".hits"):
         f = p.with_suffix(ext)
         h.update(ext.encode() + (f.read_bytes() if f.exists() else b"-"))
     for f in sorted(DATA.rglob("*")):
@@ -151,8 +154,9 @@ def probe_hash(p):
     return h.hexdigest()[:12]
 
 
-def run_one(shell_cmd, p, base):
-    """(stdout bytes, status) of one shell on probe p, in a fresh work dir under base."""
+def run_one(shell_cmd, p, base, hits=False):
+    """(stdout bytes, status, stderr bytes) of one shell on probe p, in a fresh work dir under base.
+    hits: vsh_host runs with --hits and its stderr (the counters) is returned; else stderr is dropped."""
     work, tmp = base / "work", base / "tmp"
     for d in (work, tmp, base / "home"):
         shutil.rmtree(d, ignore_errors=True)
@@ -173,15 +177,42 @@ def run_one(shell_cmd, p, base):
         target = []
         stdin = p.read_bytes()
     try:
-        r = subprocess.run(shell_cmd + flags + target + args, stdin=None if isinstance(stdin, bytes) else stdin,
-                           input=stdin if isinstance(stdin, bytes) else None, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        r = subprocess.run(shell_cmd + (["--hits"] if hits else []) + flags + target + args,
+                           stdin=None if isinstance(stdin, bytes) else stdin,
+                           input=stdin if isinstance(stdin, bytes) else None, stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE if hits else subprocess.DEVNULL,
                            cwd=work, env=env, timeout=TIMEOUT, start_new_session=True)
-        return r.stdout, r.returncode if r.returncode >= 0 else 128 - r.returncode
+        return r.stdout, r.returncode if r.returncode >= 0 else 128 - r.returncode, r.stderr or b""
     except subprocess.TimeoutExpired as e:
-        return (e.stdout or b""), "timeout"
+        return (e.stdout or b""), "timeout", b""
     finally:
         if not isinstance(stdin, bytes) and hasattr(stdin, "close"):
             stdin.close()
+
+
+def hits_check(hf, err):
+    """<name>.hits: lines NAME>=N or NAME=N (a reachability counter of sh_hits.h, upper case; # comments).
+    Returns "" when vsh_host --hits printed every counter as asserted, else what is wrong: a probe that
+    is identical to bash but never ran the feature it names proves nothing."""
+    seen = {}
+    for l in err.decode("latin-1").splitlines():
+        m = re.match(r"^hits (\w+) (\d+)$", l)
+        if m:
+            seen[m.group(1)] = int(m.group(2))
+    bad = []
+    for l in hf.read_text().splitlines():
+        l = l.split("#")[0].strip()
+        if not l:
+            continue
+        m = re.match(r"^(\w+)(>=|=)(\d+)$", l)
+        if not m:
+            bad.append("bad hits line: " + l)
+            continue
+        name, op, n = m.group(1), m.group(2), int(m.group(3))
+        v = seen.get(name)
+        if v is None or (v < n if op == ">=" else v != n):
+            bad.append("hits %s: want %s%d, got %s" % (name, op, n, v))
+    return "\n".join(bad) + "\n" if bad else ""
 
 
 def expected_text(out, st):
@@ -193,17 +224,22 @@ def check_probe(pid, p):
     # the real path: bash keeps $PWD as typed, vsh asks the OS; a symlinked /var would differ
     base = pathlib.Path(tempfile.mkdtemp(prefix="bashdiff.")).resolve()
     try:
-        eo, es = run_one([ORACLE], p, base)
+        eo, es, _ = run_one([ORACLE], p, base)
         want = expected_text(eo, es)
         exp = OUT / "expected" / (pid + ".txt")
         exp.parent.mkdir(parents=True, exist_ok=True)
         exp.write_bytes(want)
-        go, gs = run_one([str(VSH)], p, base)
+        hf = p.with_suffix(".hits")
+        go, gs, gerr = run_one([str(VSH)], p, base, hits=hf.exists())
         got = expected_text(go, gs)
+        bad = hits_check(hf, gerr) if hf.exists() else ""
     finally:
         shutil.rmtree(base, ignore_errors=True)
     dif = OUT / "diff" / (pid + ".diff")
     dif.parent.mkdir(parents=True, exist_ok=True)
+    if want == got and bad:
+        dif.write_text(bad)
+        return False, bad
     if want == got:
         dif.unlink(missing_ok=True)
         return True, ""

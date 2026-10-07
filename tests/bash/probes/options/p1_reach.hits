@@ -1,0 +1,5 @@
+# reachability of P1 (V32): the probe is identical to bash AND these counters moved
+ERREXIT=1
+PIPEFAIL>=1
+TEST_BINARY>=1
+INVOKE_CLUSTER=1
