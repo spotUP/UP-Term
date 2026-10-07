@@ -1,10 +1,39 @@
-.KEY HOST/A,PORT/N
+.KEY HOST,PORT/N
 .BRA {
 .KET }
 ; ClaudeCode: Claude Code on the NAS (your Claude subscription), in this
 ; window. The NAS asks for the uptelnet password (set on the NAS with
 ; setpw; it is never stored here), then Claude Code starts in tmux --
 ; quit it or lose the line and the session is still there next time.
-;   ClaudeCode HOST [PORT]          the NAS address; the port is 2323 when left out
+;   ClaudeCode                      the host and port in ENVARC:Claude/remote
+;                                   (the file `Claude SETUP` writes; the port is
+;                                   2323 when the line has none)
+;   ClaudeCode HOST [PORT]          that NAS address; the port is 2323 when left out
 ; From Workbench: double-click its icon (IconX opens an UP-Term window).
+If "{HOST}" EQ ""
+  If NOT EXISTS ENVARC:Claude/remote
+    Echo "ClaudeCode: no address given and ENVARC:Claude/remote does not exist."
+    Echo "Run `Claude SETUP` once to store the address, or start with: ClaudeCode HOST [PORT]"
+    Quit 10
+  EndIf
+  ; the first line that is not a ';' comment and has a port (Search prints it
+  ; into ENV:ClaudeCodeRemote, which $ClaudeCodeRemote expands to), else the
+  ; first one with only a host
+  Search >ENV:ClaudeCodeRemote ENVARC:Claude/remote "[~;]#? #[0-9]#?" PATTERN NONUM
+  If NOT WARN
+    uptelnet $ClaudeCodeRemote
+    Delete >NIL: ENV:ClaudeCodeRemote QUIET
+    Quit 0
+  EndIf
+  Search >ENV:ClaudeCodeRemote ENVARC:Claude/remote "[~; ]#?" PATTERN NONUM
+  If NOT WARN
+    uptelnet $ClaudeCodeRemote 2323
+    Delete >NIL: ENV:ClaudeCodeRemote QUIET
+    Quit 0
+  EndIf
+  Delete >NIL: ENV:ClaudeCodeRemote QUIET
+  Echo "ClaudeCode: ENVARC:Claude/remote names no host. Run `Claude SETUP`,"
+  Echo "or start with: ClaudeCode HOST [PORT]"
+  Quit 10
+EndIf
 uptelnet {HOST} {PORT$2323}

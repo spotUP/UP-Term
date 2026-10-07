@@ -168,5 +168,34 @@ class ClaudeRemoteFile(unittest.TestCase):
         self.assertIn('Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET', lines)
 
 
+class ClaudeCodeScript(unittest.TestCase):
+    """C:ClaudeCode (dist/ClaudeCode, an AmigaDOS script, so only its text is checked here): with
+    no HOST it reads ENVARC:Claude/remote, the file the setup wizard writes, so the double-click
+    icon works; HOST [PORT] still win; with neither it points to `Claude SETUP`."""
+    SCRIPT = (ROOT / "dist/ClaudeCode").read_text(encoding="latin-1")
+    WIZARD = ("; Claude Code on another computer: host and port. With no API key,\n"
+              "; plain Claude connects there (uptelnet). Delete this file to stop.\n"
+              "192.0.2.10 2323\n")
+
+    def test_no_host_argument_is_optional(self):
+        self.assertTrue(self.SCRIPT.startswith('.KEY HOST,PORT/N\n'), 'HOST is no longer required (/A)')
+
+    def test_reads_the_wizards_file_skipping_comment_lines(self):
+        pats = re.findall(r'Search >ENV:ClaudeCodeRemote ENVARC:Claude/remote "([^"]*)" PATTERN NONUM', self.SCRIPT)
+        self.assertEqual(pats, ['[~;]#? #[0-9]#?', '[~; ]#?'])
+        # the first pattern in Python terms: not a ';' line, a space, a port
+        host = [l for l in self.WIZARD.splitlines() if re.match(r'[^;].* [0-9]', l)]
+        self.assertEqual(host, ['192.0.2.10 2323'])
+        self.assertIn('uptelnet $ClaudeCodeRemote\n', self.SCRIPT)
+        self.assertIn('uptelnet $ClaudeCodeRemote 2323\n', self.SCRIPT, 'a host-only line gets port 2323')
+
+    def test_arguments_still_win_and_missing_setup_is_explained(self):
+        self.assertTrue(self.SCRIPT.rstrip().endswith('uptelnet {HOST} {PORT$2323}'))
+        self.assertLess(self.SCRIPT.index('If "{HOST}" EQ ""'), self.SCRIPT.index('Search >ENV'))
+        self.assertGreaterEqual(self.SCRIPT.count('`Claude SETUP`'), 2)
+        self.assertGreaterEqual(self.SCRIPT.count('Quit 10'), 2)
+        self.assertEqual(self.SCRIPT.count('If '), self.SCRIPT.count('EndIf'))
+
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

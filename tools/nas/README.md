@@ -18,7 +18,7 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
   dist/README.txt, section CLAUDE FROM THE AMIGA: the Installer asks where
   Claude Code runs and writes `ENVARC:Claude/remote` ("host port"); the first
   run of `C:Claude` asks the same (`Claude SETUP` asks again), and the
-  `ClaudeCode` icon takes a host and port as arguments.
+  `ClaudeCode` icon reads that file (or takes a host and port as arguments).
 
 ## Set up (Synology DSM 7, Container Manager)
 

@@ -519,8 +519,9 @@ CLAUDE FROM THE AMIGA
   wrote it to ENVARC:Claude/remote ("host port"; edit or delete it): with
   no API key set, Claude connects there in the window. Or ClaudeCode
   (or double-click ClaudeCode in the UP-Term drawer)
-  connects to the host and port in its own first lines (edit them) --
-  ClaudeCode HOST PORT names another -- asks its password and starts Claude Code in tmux.
+  connects to the host and port in ENVARC:Claude/remote (Claude SETUP
+  writes it) -- ClaudeCode HOST PORT names another -- asks its password
+  and starts Claude Code in tmux.
   Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
   To set up the NAS end (a Synology container that keeps Claude Code in
   tmux), see tools/nas/README.md in the vtcon source tree; to let Claude
