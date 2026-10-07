@@ -685,6 +685,7 @@ static int posix_class(const char *name, int ch, int nocase)
                                          "print", "graph", "cntrl", "xdigit" };
     int k, n = 0, up = ch >= 'A' && ch <= 'Z', lo = ch >= 'a' && ch <= 'z', dg = ch >= '0' && ch <= '9';
     const char *e = strstr(name, ":]");
+    (void)nocase;
     if (!e)
         return -1;
     n = (int)(e - name);
@@ -695,8 +696,8 @@ static int posix_class(const char *name, int ch, int nocase)
     case 0: return up || lo;
     case 1: return dg;
     case 2: return up || lo || dg;
-    case 3: return nocase ? up || lo : up;
-    case 4: return nocase ? up || lo : lo;
+    case 3: return up;   /* bash: nocaseglob and nocasematch do not fold the classes */
+    case 4: return lo;
     case 5: return ch == ' ' || (ch >= 9 && ch <= 13);
     case 6: return ch == ' ' || ch == '\t';
     case 7: return ch > 32 && ch < 127 && !(up || lo || dg);
@@ -2555,8 +2556,8 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
         return;
     for (i = 0; i < names.n; i++) {
         char path[512];
-        if (names.v[i][0] == '.' && comp[0] != '.')
-            continue; /* dot files only when asked for */
+        if (names.v[i][0] == '.' && comp[0] != '.' && !c->dotglob)
+            continue; /* dot files only when asked for (shopt dotglob) */
         if (!sh_match(comp, names.v[i], c->nocase))
             continue;
         strcpy(path, dir);
@@ -2627,7 +2628,18 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
             free(plain);
             return;
         }
-        /* no match: the word stays as it was (POSIX) */
+        /* no match: the word stays as it was (POSIX); nullglob drops it, failglob is an error */
+        if (c->nullglob) {
+            free(plain);
+            return;
+        }
+        if (c->failglob) {
+            strncpy(c->glob_pat, plain, sizeof(c->glob_pat) - 1);
+            c->glob_pat[sizeof(c->glob_pat) - 1] = 0;
+            c->glob_fail = 1;
+            free(plain);
+            return;
+        }
     }
     sh_list_add(out, plain);
     free(plain);
@@ -2896,6 +2908,15 @@ static int expand_word(sh_ctx *c, const char *word, int flags, sh_list *out, con
     if (!fields && b.had_quotes && b.force_field >= 0)
         sh_list_add(out, ""); /* "" and "$empty" are one empty field */
     cfree(&b);
+    if (c->glob_fail) {
+        static char msg[200];
+        c->glob_fail = 0;
+        strcpy(msg, "no match: ");
+        strncat(msg, c->glob_pat, 150);
+        if (err)
+            *err = msg;
+        return -1;
+    }
     return 0;
 }
 

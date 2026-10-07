@@ -787,6 +787,13 @@ redir/redirexec
 redir/redirif
 redir/redirloop
 redir/rwredir
+shopt/dotglob
+shopt/failglob
+shopt/nocaseglob
+shopt/nocasematch
+shopt/nullglob
+shopt/p6_shopt_reach
+shopt/query
 test/t_N
 test/t_andor
 test/t_bracket_close

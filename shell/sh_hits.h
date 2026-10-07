@@ -15,6 +15,7 @@
     X(FDVAR_ALLOC) /* {var}> allocated a descriptor */ \
     X(HEREDOC)    /* a here-document temp file was made */ \
     X(EXIT_TRAP)  /* the EXIT trap ran */ \
+    X(SHOPT_SET)  /* shopt -s or -u changed an option */ \
     X(TRAP_ERR)   /* an ERR trap fired */ \
     X(TRAP_DEBUG) /* a DEBUG trap fired */ \
     X(TRAP_RETURN) /* a RETURN trap fired */ \

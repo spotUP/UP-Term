@@ -339,6 +339,11 @@ VSH (the shell)
     /dev/stdout and /dev/stderr are redirection targets, source files and
     test -e/-a/-r/-w operands; a native command that is given such a name as
     an argument cannot open it (probe fd/ext_devfd).
+    Traps: ERR (set -E), DEBUG (set -T) and RETURN work as in bash; the DEBUG
+    text of a  [[ ]]  with && || or !  is "[[ ... ]]", and  for (( ))  is not
+    traced. shopt knows dotglob failglob lastpipe nocaseglob nocasematch and
+    nullglob (extglob and globstar are not there yet); bare  shopt  lists
+    only those. nocaseglob is on at the Amiga prompt and off elsewhere.
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

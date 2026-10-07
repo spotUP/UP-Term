@@ -65,6 +65,9 @@ typedef struct sh_ctx {
     int (*listdir)(struct sh_ctx *c, const char *dir, sh_list *out);
     int nounset;            /* set -u: an unset parameter is an error */
     int noglob;             /* set -f */
+    int nullglob, failglob, dotglob, nocasematch; /* shopt */
+    int glob_fail;          /* failglob: a word matched nothing (the pattern is in glob_pat) */
+    char glob_pat[160];
     int allexport;          /* set -a: an assigned variable is exported */
     long *pstat;            /* PIPESTATUS: the last pipeline's stage statuses (owned) */
     int npstat;

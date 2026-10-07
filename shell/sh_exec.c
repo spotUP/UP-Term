@@ -376,6 +376,10 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     if (sh->ctx.npstat)
         sh_pstat(&c->ctx, sh->ctx.pstat, sh->ctx.npstat);
     c->ctx.nocase = sh->ctx.nocase;
+    c->ctx.nullglob = sh->ctx.nullglob;
+    c->ctx.failglob = sh->ctx.failglob;
+    c->ctx.dotglob = sh->ctx.dotglob;
+    c->ctx.nocasematch = sh->ctx.nocasematch;
     c->ctx.listdir = sh->ctx.listdir;
     c->ctx.subst = sh->ctx.subst;
     c->ctx.procsub = sh->ctx.procsub;
@@ -799,6 +803,12 @@ static int expand_words(sh_shell *sh, const sh_word *w, sh_list *out, const sh_i
             continue;
         }
         if (sh_expand(&sh->ctx, w->text, isdecl && decl_assign(w->text) ? SH_ASSIGN : 0, out, &err)) {
+            if (!strncmp(err, "no match: ", 10)) {
+                sayl(sh, io->err, "vsh: ", err, "\n", NULL); /* failglob: the rest of the line is dropped, status 1 */
+                if (!sh->intr)
+                    sh->intr = 3;
+                return -1;
+            }
             err2(sh, io, w->text, err);
             expand_fatal(sh, err);
             return -1;
@@ -3340,6 +3350,148 @@ static long b_builtin(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return b(sh, argc - 1, argv + 1, io);
 }
 
+/* ---- shopt ---------------------------------------------------------------------- */
+
+/* the options that change what vsh does; the pointer is the flag the code reads */
+static int *shopt_flag(sh_shell *sh, const char *name, unsigned long *bit)
+{
+    *bit = 0;
+    if (!strcmp(name, "nullglob")) return &sh->ctx.nullglob;
+    if (!strcmp(name, "failglob")) return &sh->ctx.failglob;
+    if (!strcmp(name, "dotglob")) return &sh->ctx.dotglob;
+    if (!strcmp(name, "nocaseglob")) return &sh->ctx.nocase;
+    if (!strcmp(name, "nocasematch")) return &sh->ctx.nocasematch;
+    if (!strcmp(name, "lastpipe")) { *bit = SO_LASTPIPE; return 0; }
+    return 0;
+}
+
+static const char *const shopt_names[] = { "dotglob", "failglob", "lastpipe", "nocaseglob", "nocasematch", "nullglob", 0 };
+
+static int shopt_get(sh_shell *sh, const char *name)
+{
+    unsigned long bit;
+    int *f = shopt_flag(sh, name, &bit);
+    return f ? *f != 0 : (sh->opts & bit) != 0;
+}
+
+static void shopt_put(sh_shell *sh, const char *name, int on)
+{
+    unsigned long bit;
+    int *f = shopt_flag(sh, name, &bit);
+    SH_HIT(SHOPT_SET);
+    if (f)
+        *f = on;
+    else if (on)
+        sh->opts |= bit;
+    else
+        sh->opts &= ~bit;
+}
+
+/* shopt [-pqsuo] [name ...]: -s sets, -u unsets, -p prints as commands, -q is silent (status only),
+ * -o works on the set -o options */
+static long b_shopt(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int i = 1, set = 0, unset = 0, print = 0, quiet = 0, oopt = 0, k;
+    long st = 0;
+    for (; i < argc && argv[i][0] == '-' && argv[i][1]; i++) {
+        const char *f;
+        if (!strcmp(argv[i], "--")) {
+            i++;
+            break;
+        }
+        for (f = argv[i] + 1; *f; f++) {
+            if (*f == 's') set = 1;
+            else if (*f == 'u') unset = 1;
+            else if (*f == 'p') print = 1;
+            else if (*f == 'q') quiet = 1;
+            else if (*f == 'o') oopt = 1;
+            else {
+                char o[3];
+                o[0] = '-'; o[1] = *f; o[2] = 0;
+                err2(sh, io, o, "invalid option");
+                return 2;
+            }
+        }
+    }
+    if (set && unset) {
+        err2(sh, io, "shopt", "cannot set and unset shell options simultaneously");
+        return 1;
+    }
+    if (oopt) {
+        /* the set -o options: -s and -u go through set itself, no names lists them all */
+        char *a[3];
+        a[0] = (char *)"set";
+        a[2] = 0;
+        if (i == argc) {
+            a[1] = (char *)(print ? "+o" : "-o");
+            return b_set(sh, 2, a, io);
+        }
+        for (k = i; k < argc; k++) {
+            a[1] = (char *)(set ? "-o" : "+o");
+            a[2] = argv[k];
+            if (!set && !unset) {
+                err2(sh, io, "shopt", "-o: a name needs -s or -u");
+                return 2;
+            }
+            if (b_set(sh, 3, a, io))
+                st = 1;
+        }
+        return st;
+    }
+    if (i == argc && (set || unset)) {
+        for (k = 0; shopt_names[k]; k++)
+            if (shopt_get(sh, shopt_names[k]) == (set != 0) && !quiet)
+                sayl(sh, io->out, shopt_names[k], "\t", set ? "on" : "off", "\n", NULL);
+        return 0;
+    }
+    if (i == argc) {
+        for (k = 0; shopt_names[k]; k++)
+            if (!quiet) {
+                int on = shopt_get(sh, shopt_names[k]);
+                if (print)
+                    sayl(sh, io->out, "shopt -", on ? "s " : "u ", shopt_names[k], "\n", NULL);
+                else {
+                    char pad[24];
+                    size_t l = strlen(shopt_names[k]);
+                    memset(pad, ' ', sizeof(pad));
+                    pad[l < 20 ? 20 - l : 0] = 0;
+                    sayl(sh, io->out, shopt_names[k], pad, "\t", on ? "on" : "off", "\n", NULL);
+                }
+            }
+        return 0;
+    }
+    for (k = i; k < argc; k++) {
+        int j, known = 0;
+        for (j = 0; shopt_names[j]; j++)
+            if (!strcmp(shopt_names[j], argv[k]))
+                known = 1;
+        if (!known) {
+            err2(sh, io, argv[k], "invalid shell option name");
+            st = 1;
+            continue;
+        }
+        if (set || unset) {
+            shopt_put(sh, argv[k], set);
+        } else {
+            int on = shopt_get(sh, argv[k]);
+            if (!on)
+                st = 1;
+            if (!quiet) {
+                if (print)
+                    sayl(sh, io->out, "shopt -", on ? "s " : "u ", argv[k], "\n", NULL);
+                else {
+                    char pad[24];
+                    size_t l = strlen(argv[k]);
+                    memset(pad, ' ', sizeof(pad));
+                    pad[l < 20 ? 20 - l : 0] = 0;
+                    sayl(sh, io->out, argv[k], pad, "\t", on ? "on" : "off", "\n", NULL);
+                }
+            }
+        }
+    }
+    return st;
+}
+
 /* ---- kill and the signal table ------------------------------------------------ */
 
 /* ixemul's numbering, which is BSD's */
@@ -3458,6 +3610,7 @@ static long b_kill(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_trap(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_shopt(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_local(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_getopts(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_umask(sh_shell *sh, int argc, char **argv, const sh_io *io);
@@ -3474,7 +3627,7 @@ static const struct {
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
     { "wait", b_wait }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
-    { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "local", b_local },
+    { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "shopt", b_shopt }, { "local", b_local },
     { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill }, { 0, 0 }
@@ -5002,7 +5155,7 @@ static int db_eval(sh_shell *sh, const sh_node *n, const sh_io *io, int *bad)
         else if (!b)
             r = sh_test_unary(&t, op[1], a);
         else if (pat)
-            r = sh_match(b, a, 0) == (op[0] != '!');
+            r = sh_match(b, a, sh->ctx.nocasematch) == (op[0] != '!');
         else if (rx)
             r = db_regex(sh, a, b, io, bad);
         else if (op[0] == '<' || op[0] == '>')
@@ -5081,7 +5234,7 @@ static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
         int hit = fall;
         for (p = c->patterns; !hit && p; p = p->next) {
             char *pat = expand_one(sh, p->text, io);
-            hit = pat && sh_match(pat, subject, 0);
+            hit = pat && sh_match(pat, subject, sh->ctx.nocasematch);
             free(pat);
         }
         if (hit) {
