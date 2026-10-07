@@ -878,3 +878,7 @@ vars/shlvl
 vars/srandom
 vars/underscore
 vars/versinfo
+jobs/bg_quiet
+builtins/declare_f
+builtins/unparse_layout
+builtins/unparse_misc

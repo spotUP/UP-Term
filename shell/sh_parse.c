@@ -597,6 +597,7 @@ static int parse_redir(lexer *L, sh_redir **list)
         char *d = L->word, *o;
         int k;
         r->quoted = L->quoted;
+        r->delim = dup_n(L->p, d, (long)strlen(d));
         o = d;
         for (k = 0; d[k]; k++)
             if (d[k] != '\'' && d[k] != '"' && d[k] != '\\')
@@ -1491,6 +1492,7 @@ static sh_node *copy_node(sh_parse *p, const sh_node *n, int *bad)
         }
         *d = *r;
         d->target = copy_str(p, r->target, bad);
+        d->delim = copy_str(p, r->delim, bad);
         d->var = copy_str(p, r->var, bad);
         d->next = 0;
         *rt = d;
@@ -1505,6 +1507,7 @@ static sh_node *copy_node(sh_parse *p, const sh_node *n, int *bad)
         }
         d->patterns = copy_words(p, k->patterns, bad);
         d->body = copy_node(p, k->body, bad);
+        d->term = k->term;
         d->next = 0;
         *kt = d;
         kt = &d->next;
@@ -1521,4 +1524,497 @@ void sh_parse_copy(const sh_node *n, sh_parse *out)
         sh_parse_free(out);
         out->tree = 0;
     }
+}
+
+/* ---- unparse: a command as bash prints it (print_cmd.c) ------------------------ */
+
+typedef struct unp {
+    char *b;
+    long n, cap;
+    int bad;
+    int indent, infn, skip;
+    const sh_redir *hd[32];
+    int nhd;
+} unp;
+
+static void up_add(unp *u, const char *s, long len)
+{
+    if (u->bad)
+        return;
+    if (u->n + len + 1 > u->cap) {
+        long nc = u->cap ? u->cap * 2 : 256;
+        char *nb;
+        while (nc < u->n + len + 1)
+            nc *= 2;
+        nb = (char *)realloc(u->b, (size_t)nc);
+        if (!nb) {
+            u->bad = 1;
+            return;
+        }
+        u->b = nb;
+        u->cap = nc;
+    }
+    memcpy(u->b + u->n, s, (size_t)len);
+    u->n += len;
+    u->b[u->n] = 0;
+}
+
+static void up_s(unp *u, const char *s)
+{
+    up_add(u, s, (long)strlen(s));
+}
+
+static void up_indent(unp *u)
+{
+    int i;
+    for (i = 0; i < u->indent; i++)
+        up_add(u, " ", 1);
+}
+
+static void up_newline(unp *u, const char *s)
+{
+    up_add(u, "\n", 1);
+    up_indent(u);
+    up_s(u, s);
+}
+
+/* ; unless the text already ends in & or a newline */
+static void up_semicolon(unp *u)
+{
+    if (u->n > 0 && (u->b[u->n - 1] == '&' || u->b[u->n - 1] == '\n'))
+        return;
+    up_add(u, ";", 1);
+}
+
+static void up_cmd(unp *u, const sh_node *n);
+
+/* a here-document's delimiter without its quotes */
+static void up_delim_plain(unp *u, const char *d)
+{
+    for (; *d; d++)
+        if (*d != '\'' && *d != '"' && *d != '\\')
+            up_add(u, d, 1);
+}
+
+/* the documents waiting for the end of the line, then cstring (a lone ; is not printed) */
+static void up_flush(unp *u, const char *cstring)
+{
+    int i;
+    for (i = 0; i < u->nhd; i++) {
+        const sh_redir *r = u->hd[i];
+        up_add(u, "\n", 1);
+        up_s(u, r->target ? r->target : "");
+        up_delim_plain(u, r->delim ? r->delim : "");
+        up_add(u, "\n", 1);
+    }
+    u->nhd = 0;
+    if (cstring && cstring[0] && (cstring[0] != ';' || cstring[1]))
+        up_s(u, cstring);
+}
+
+static void up_word(unp *u, const char *w)
+{
+    /* $'text' with no escape inside prints as 'text' (bash expands it while parsing) */
+    if (w[0] == '$' && w[1] == '\'') {
+        const char *e = strchr(w + 2, '\'');
+        if (e && !e[1] && !memchr(w + 2, '\\', (size_t)(e - w - 2))) {
+            up_s(u, w + 1);
+            return;
+        }
+    }
+    up_s(u, w);
+}
+
+static void up_words(unp *u, const sh_word *w, const char *sep)
+{
+    for (; w; w = w->next) {
+        up_word(u, w->text);
+        if (w->next)
+            up_s(u, sep);
+    }
+}
+
+static void up_redirs(unp *u, const sh_redir *r)
+{
+    char d[16];
+    int first = 1;
+    for (; r; r = r->next) {
+        const char *op = ">";
+        int dflt = r->fd == 1, dup = 0, file = 1;
+        switch (r->kind) {
+        case SH_R_IN: op = "<"; dflt = r->fd == 0; break;
+        case SH_R_OUT: break;
+        case SH_R_APPEND: op = ">>"; break;
+        case SH_R_DUPIN: op = "<&"; dup = 1; break;
+        case SH_R_DUPOUT: op = ">&"; dup = 1; break;
+        case SH_R_BOTH: op = "&>"; dflt = 1; break;
+        case SH_R_BOTHAPP: op = "&>>"; dflt = 1; break;
+        case SH_R_HERESTR: op = "<<<"; dflt = r->fd == 0; break;
+        case SH_R_RDWR: op = "<>"; dflt = r->fd == 0; break;
+        case SH_R_CLOBBER: op = ">|"; break;
+        case SH_R_CLOSE: op = ">&-"; dup = 1; file = 0; break;
+        case SH_R_HEREDOC: op = r->strip ? "<<-" : "<<"; dflt = r->fd == 0; break;
+        }
+        if (!first)
+            up_add(u, " ", 1);
+        first = 0;
+        if (r->var) {
+            up_s(u, "{");
+            up_s(u, r->var);
+            up_s(u, "}");
+        } else if (!dflt || dup) {
+            {
+                int v = r->fd, k = 0, j;
+                char t[16];
+                do {
+                    t[k++] = (char)('0' + v % 10);
+                    v /= 10;
+                } while (v && k < 15);
+                for (j = 0; j < k; j++)
+                    d[j] = t[k - 1 - j];
+                d[k] = 0;
+            }
+            up_s(u, d);
+        }
+        up_s(u, op);
+        if (r->kind == SH_R_HEREDOC) {
+            up_s(u, r->delim ? r->delim : "");
+            if (u->nhd < 32)
+                u->hd[u->nhd++] = r;
+        } else if (file) {
+            if (!dup)
+                up_add(u, " ", 1);
+            up_s(u, r->target);
+        }
+    }
+}
+
+static void up_dbrack(unp *u, const sh_node *n)
+{
+    const char *op = n->name ? n->name : "";
+    if (!strcmp(op, "(")) {
+        up_s(u, "( ");
+        up_dbrack(u, n->a);
+        up_s(u, " )");
+    } else if (!strcmp(op, "!")) {
+        up_s(u, "! ");
+        up_dbrack(u, n->a);
+    } else if (!strcmp(op, "&&") || !strcmp(op, "||")) {
+        up_dbrack(u, n->a);
+        up_add(u, " ", 1);
+        up_s(u, op);
+        up_add(u, " ", 1);
+        up_dbrack(u, n->b);
+    } else if (n->words->next) {
+        up_s(u, n->words->text);
+        up_add(u, " ", 1);
+        up_s(u, op);
+        up_add(u, " ", 1);
+        up_s(u, n->words->next->text);
+    } else {
+        if (op[0]) {
+            up_s(u, op);
+            up_add(u, " ", 1);
+        }
+        up_s(u, n->words->text);
+    }
+}
+
+/* the part of an arithmetic text from its first non-blank */
+static const char *up_trim(const char *t)
+{
+    while (*t == ' ' || *t == '\t' || *t == '\n')
+        t++;
+    return t;
+}
+
+static void up_redirs_after(unp *u, const sh_node *n)
+{
+    if (n->redirs) {
+        up_add(u, " ", 1);
+        up_redirs(u, n->redirs);
+    }
+}
+
+static void up_func(unp *u, const sh_node *n, int top)
+{
+    if (!top) {
+        up_s(u, "function ");
+    }
+    up_s(u, n->name);
+    up_s(u, " () \n");
+    up_indent(u);
+    up_s(u, "{ \n");
+    u->infn++;
+    u->indent += 4;
+    u->skip = 0;
+    up_cmd(u, n->a && n->a->kind == SH_GROUP && !n->a->redirs ? n->a->a : n->a);
+    up_flush(u, "");
+    u->indent -= 4;
+    u->infn--;
+    up_newline(u, "}");
+}
+
+static void up_cmd(unp *u, const sh_node *n)
+{
+    const sh_word *w;
+    const sh_case *k;
+    if (!n)
+        return;
+    if (u->skip)
+        u->skip--;
+    else
+        up_indent(u);
+    switch (n->kind) {
+    case SH_CMD: {
+        int any = 0;
+        for (w = n->assigns; w; w = w->next) {
+            if (any)
+                up_add(u, " ", 1);
+            up_word(u, w->text);
+            any = 1;
+        }
+        for (w = n->words; w; w = w->next) {
+            if (any)
+                up_add(u, " ", 1);
+            up_word(u, w->text);
+            any = 1;
+        }
+        if (n->redirs) {
+            if (any)
+                up_add(u, " ", 1);
+            up_redirs(u, n->redirs);
+        }
+        break;
+    }
+    case SH_PIPE:
+        u->skip++;
+        up_cmd(u, n->a);
+        up_flush(u, " |");
+        up_add(u, " ", 1);
+        u->skip++;
+        up_cmd(u, n->b);
+        break;
+    case SH_AND:
+    case SH_OR:
+        u->skip++;
+        up_cmd(u, n->a);
+        up_flush(u, n->kind == SH_AND ? " &&" : " ||");
+        up_add(u, " ", 1);
+        u->skip++;
+        up_cmd(u, n->b);
+        break;
+    case SH_SEQ:
+        if (!n->b) {
+            u->skip++;
+            up_cmd(u, n->a);
+            break;
+        }
+        u->skip++;
+        up_cmd(u, n->a);
+        if (u->nhd)
+            up_flush(u, ";");
+        else
+            up_semicolon(u);
+        if (u->infn)
+            up_add(u, "\n", 1);
+        else {
+            up_add(u, " ", 1);
+            u->skip++;
+        }
+        up_cmd(u, n->b);
+        break;
+    case SH_BG:
+        u->skip++;
+        up_cmd(u, n->a);
+        if (u->nhd)
+            up_flush(u, " &");
+        else
+            up_s(u, " &");
+        if (n->b) {
+            up_add(u, " ", 1);
+            u->skip++;
+            up_cmd(u, n->b);
+        }
+        break;
+    case SH_NOT:
+        up_s(u, "! ");
+        u->skip++;
+        up_cmd(u, n->a);
+        break;
+    case SH_SUBSHELL:
+        up_s(u, "( ");
+        u->skip++;
+        up_cmd(u, n->a);
+        up_s(u, " )");
+        up_redirs_after(u, n);
+        break;
+    case SH_GROUP:
+        up_s(u, "{ ");
+        if (!u->infn)
+            u->skip++;
+        else {
+            up_add(u, "\n", 1);
+            u->indent += 4;
+        }
+        up_cmd(u, n->a);
+        up_flush(u, "");
+        if (u->infn) {
+            up_add(u, "\n", 1);
+            u->indent -= 4;
+            up_indent(u);
+        } else {
+            up_semicolon(u);
+            up_add(u, " ", 1);
+        }
+        up_s(u, "}");
+        up_redirs_after(u, n);
+        break;
+    case SH_IF:
+        up_s(u, "if ");
+        u->skip++;
+        up_cmd(u, n->a);
+        up_semicolon(u);
+        up_s(u, " then\n");
+        u->indent += 4;
+        up_cmd(u, n->b);
+        u->indent -= 4;
+        if (n->c) {
+            up_semicolon(u);
+            up_newline(u, "else\n");
+            u->indent += 4;
+            up_cmd(u, n->c);
+            u->indent -= 4;
+        }
+        up_semicolon(u);
+        up_newline(u, "fi");
+        up_redirs_after(u, n);
+        break;
+    case SH_WHILE:
+    case SH_UNTIL:
+        up_s(u, n->kind == SH_WHILE ? "while " : "until ");
+        u->skip++;
+        up_cmd(u, n->a);
+        up_semicolon(u);
+        up_s(u, " do\n");
+        u->indent += 4;
+        up_cmd(u, n->b);
+        up_flush(u, "");
+        u->indent -= 4;
+        up_semicolon(u);
+        up_newline(u, "done");
+        up_redirs_after(u, n);
+        break;
+    case SH_FOR:
+        up_s(u, "for ");
+        up_s(u, n->name);
+        up_s(u, " in ");
+        if (n->has_in)
+            up_words(u, n->words, " ");
+        else
+            up_s(u, "\"$@\"");
+        up_add(u, ";", 1);
+        up_newline(u, "do\n");
+        u->indent += 4;
+        up_cmd(u, n->a);
+        up_flush(u, "");
+        u->indent -= 4;
+        up_semicolon(u);
+        up_newline(u, "done");
+        up_redirs_after(u, n);
+        break;
+    case SH_FORARITH:
+        up_s(u, "for ((");
+        up_s(u, up_trim(n->words->text));
+        up_s(u, "; ");
+        up_s(u, up_trim(n->words->next->text));
+        up_s(u, "; ");
+        up_s(u, up_trim(n->words->next->next->text));
+        up_s(u, "))");
+        up_newline(u, "do\n");
+        u->indent += 4;
+        up_cmd(u, n->a);
+        up_flush(u, "");
+        u->indent -= 4;
+        up_semicolon(u);
+        up_newline(u, "done");
+        up_redirs_after(u, n);
+        break;
+    case SH_CASE:
+        up_s(u, "case ");
+        up_word(u, n->words->text);
+        up_s(u, " in ");
+        u->indent += 4;
+        for (k = n->cases; k; k = k->next) {
+            up_newline(u, "");
+            up_words(u, k->patterns, " | ");
+            up_s(u, ")\n");
+            u->indent += 4;
+            up_cmd(u, k->body);
+            u->indent -= 4;
+            up_flush(u, "");
+            up_newline(u, k->term == 1 ? ";&" : k->term == 2 ? ";;&" : ";;");
+        }
+        u->indent -= 4;
+        up_newline(u, "esac");
+        up_redirs_after(u, n);
+        break;
+    case SH_FUNC:
+        up_func(u, n, 0);
+        break;
+    case SH_ARITHCMD:
+        up_s(u, "(( ");
+        {
+            const char *t = up_trim(n->words->text);
+            long len = (long)strlen(t);
+            while (len && (t[len - 1] == ' ' || t[len - 1] == '\t' || t[len - 1] == '\n'))
+                len--;
+            up_add(u, t, len);
+        }
+        up_s(u, " ))");
+        up_redirs_after(u, n);
+        break;
+    case SH_DBRACK:
+        up_s(u, "[[ ");
+        up_dbrack(u, n);
+        up_s(u, " ]]");
+        up_redirs_after(u, n);
+        break;
+    }
+}
+
+char *sh_unparse(const sh_node *n, int fn)
+{
+    unp u;
+    memset(&u, 0, sizeof u);
+    u.infn = fn;
+    up_cmd(&u, n);
+    up_flush(&u, "");
+    if (u.bad) {
+        free(u.b);
+        return 0;
+    }
+    if (!u.b) {
+        u.b = (char *)malloc(1);
+        if (u.b)
+            u.b[0] = 0;
+    }
+    return u.b;
+}
+
+char *sh_unparse_func(const char *name, const sh_node *body)
+{
+    unp u;
+    sh_node f;
+    memset(&u, 0, sizeof u);
+    memset(&f, 0, sizeof f);
+    f.kind = SH_FUNC;
+    f.name = (char *)name;
+    f.a = (sh_node *)body;
+    up_func(&u, &f, 1);
+    if (u.bad) {
+        free(u.b);
+        return 0;
+    }
+    return u.b;
 }

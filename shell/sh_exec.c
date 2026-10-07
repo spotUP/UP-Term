@@ -2836,6 +2836,26 @@ static char *core_declared(sh_ctx *c, const char *name, int flags_only, int whol
 }
 
 /* declare, typeset, local, readonly, export: mode 0, 0, 1, 2, 3 */
+static int cmp_func(const void *a, const void *b)
+{
+    return strcmp((*(sh_func *const *)a)->name, (*(sh_func *const *)b)->name);
+}
+
+/* declare -f NAME: the function as bash prints it; -F: "declare -f NAME" */
+static void func_print(sh_shell *sh, const sh_io *io, const sh_func *f, int names_only)
+{
+    char *t;
+    if (names_only) {
+        sayl(sh, io->out, "declare -f ", f->name, "\n", NULL);
+        return;
+    }
+    t = sh_unparse_func(f->name, f->body.tree);
+    if (t) {
+        sayl(sh, io->out, t, "\n", NULL);
+        free(t);
+    }
+}
+
 static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh_io *io)
 {
     unsigned set = 0, clear = 0;
@@ -2890,20 +2910,36 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
         }
     }
     if (fn) {
-        sh_func *f;
+        sh_func *f, **fl;
+        int nf = 0, k;
+        if (mode != 0) { /* export -f, readonly -f: found or not, nothing printed */
+            for (; i < argc; i++)
+                if (!find_func(sh, argv[i]))
+                    st = 1;
+            return st;
+        }
         if (i >= argc) {
-            for (f = sh->funcs; f; f = f->next) {
-                sayl(sh, io->out, "declare -f ", f->name, "\n", NULL);
-            }
+            for (f = sh->funcs; f; f = f->next)
+                nf++;
+            fl = (sh_func **)malloc((size_t)(nf ? nf : 1) * sizeof(sh_func *));
+            if (!fl)
+                return 1;
+            for (k = 0, f = sh->funcs; f; f = f->next)
+                fl[k++] = f;
+            qsort(fl, (size_t)nf, sizeof(sh_func *), cmp_func);
+            for (k = 0; k < nf; k++)
+                func_print(sh, io, fl[k], fnames);
+            free(fl);
             return 0;
         }
         for (; i < argc; i++) {
             f = find_func(sh, argv[i]);
             if (!f)
                 st = 1;
-            else if (fnames) {
-                sayl(sh, io->out, argv[i], "\n", NULL);
-            }
+            else if (fnames)
+                sayl(sh, io->out, f->name, "\n", NULL);
+            else
+                func_print(sh, io, f, 0);
         }
         return st;
     }
@@ -3285,6 +3321,13 @@ static int type_one(sh_shell *sh, const sh_io *io, const char *name, int mode, i
         }
         if (find_func(sh, name)) {
             SAY_KIND("function", " is a function", name);
+            if (mode == 0) {
+                char *ft = sh_unparse_func(name, find_func(sh, name)->body.tree);
+                if (ft) {
+                    sayl(sh, io->out, ft, "\n", NULL);
+                    free(ft);
+                }
+            }
             if (!all)
                 return 0;
         }
@@ -4372,98 +4415,17 @@ static void pseudo_trap(sh_shell *sh, int k, const sh_io *io)
     sh->ctx.status = st;
 }
 
-/* a [[ ]] expression as bash prints it in BASH_COMMAND: words as written, one blank between parts */
-static void db_unparse(pbuf *b, const sh_node *n)
-{
-    const char *op = n->name ? n->name : "";
-    if (n->name && !strcmp(op, "(")) {
-        pb_str(b, "( ");
-        db_unparse(b, n->a);
-        pb_str(b, " )");
-    } else if (!strcmp(op, "!")) {
-        pb_str(b, "! ");
-        db_unparse(b, n->a);
-    } else if (!strcmp(op, "&&") || !strcmp(op, "||")) {
-        db_unparse(b, n->a);
-        pb_str(b, " ");
-        pb_str(b, op);
-        pb_str(b, " ");
-        db_unparse(b, n->b);
-    } else {
-        if (n->words->next) {
-            pb_str(b, n->words->text);
-            pb_str(b, " ");
-            pb_str(b, op);
-            pb_str(b, " ");
-            pb_str(b, n->words->next->text);
-        } else {
-            if (op[0]) {
-                pb_str(b, op);
-                pb_str(b, " ");
-            }
-            pb_str(b, n->words->text);
-        }
-    }
-}
-
-/* the redirections of a simple command as bash prints them in BASH_COMMAND (here documents are
- * not unparsed: the parse does not keep the delimiter word) */
-static void redirs_unparse(pbuf *b, const sh_redir *r)
-{
-    char d[16];
-    for (; r; r = r->next) {
-        const char *op = ">";
-        int dflt = r->fd == 1, dup = 0, file = 1;
-        switch (r->kind) {
-        case SH_R_IN: op = "<"; dflt = r->fd == 0; break;
-        case SH_R_OUT: break;
-        case SH_R_APPEND: op = ">>"; break;
-        case SH_R_DUPIN: op = "<&"; dup = 1; break;
-        case SH_R_DUPOUT: op = ">&"; dup = 1; break;
-        case SH_R_BOTH: op = "&>"; dflt = 1; break;
-        case SH_R_BOTHAPP: op = "&>>"; dflt = 1; break;
-        case SH_R_HERESTR: op = "<<<"; dflt = r->fd == 0; break;
-        case SH_R_RDWR: op = "<>"; dflt = r->fd == 0; break;
-        case SH_R_CLOBBER: op = ">|"; break;
-        case SH_R_CLOSE: op = ">&-"; dup = 1; file = 0; break;
-        default: continue;
-        }
-        if (b->n)
-            pb_str(b, " ");
-        if (r->var) {
-            pb_str(b, "{");
-            pb_str(b, r->var);
-            pb_str(b, "}");
-        } else if (!dflt || dup) {
-            num(d, r->fd);
-            pb_str(b, d);
-        }
-        pb_str(b, op);
-        if (file) {
-            if (!dup)
-                pb_str(b, " ");
-            pb_str(b, r->target);
-        }
-    }
-}
-
 /* the text DEBUG shows in BASH_COMMAND for a node (0: none) */
 static char *debug_text(const sh_node *n)
 {
     pbuf b = { 0, 0, 0 };
     const sh_word *w;
-    if (n->kind == SH_CMD) {
-        for (w = n->assigns; w; w = w->next) {
-            if (b.n)
-                pb_add(&b, " ", 1);
-            pb_str(&b, w->text);
-        }
-        for (w = n->words; w; w = w->next) {
-            if (b.n)
-                pb_add(&b, " ", 1);
-            pb_str(&b, w->text);
-        }
-        redirs_unparse(&b, n->redirs);
+    if (n->kind == SH_CMD || n->kind == SH_ARITHCMD || n->kind == SH_DBRACK) {
+        sh_node one = *n;
+        char *t;
+        one.redirs = n->kind == SH_CMD ? n->redirs : 0;
+        t = sh_unparse(&one, 0);
+        return t ? t : sdup("");
     } else if (n->kind == SH_FOR) {
         pb_str(&b, "for ");
         pb_str(&b, n->name);
@@ -4477,20 +4439,6 @@ static char *debug_text(const sh_node *n)
         pb_str(&b, "case ");
         pb_str(&b, n->words->text);
         pb_str(&b, " in ");
-    } else if (n->kind == SH_ARITHCMD) {
-        const char *t = n->words->text;
-        size_t len = strlen(t);
-        while (*t == ' ' || *t == '\t' || *t == '\n')
-            t++, len--;
-        while (len && (t[len - 1] == ' ' || t[len - 1] == '\t' || t[len - 1] == '\n'))
-            len--;
-        pb_str(&b, "(( ");
-        pb_add(&b, t, (long)len);
-        pb_str(&b, " ))");
-    } else if (n->kind == SH_DBRACK) {
-        pb_str(&b, "[[ ");
-        db_unparse(&b, n);
-        pb_str(&b, " ]]");
     }
     return b.s ? b.s : sdup("");
 }
@@ -5019,26 +4967,11 @@ static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, 
     return 0;
 }
 
-/* A command's text for jobs: its words; a pipeline's stages joined by |. */
+/* A command's text for jobs, as bash prints it (the command, then " &" is added by the listing) */
 static char *node_text(const sh_node *n)
 {
-    pbuf b = { 0, 0, 0 };
-    char *t;
-    if (n && n->kind == SH_CMD)
-        return words_text(n);
-    if (n && n->kind == SH_PIPE) {
-        t = node_text(n->a);
-        if (t)
-            pb_str(&b, t);
-        free(t);
-        pb_str(&b, " | ");
-        t = node_text(n->b);
-        if (t)
-            pb_str(&b, t);
-        free(t);
-        return b.s ? b.s : sdup("");
-    }
-    return sdup(n && n->kind == SH_SUBSHELL ? "( ... )" : "{ ... }");
+    char *t = sh_unparse(n, 0);
+    return t ? t : sdup("");
 }
 
 /* A background job into the table, announced as "[n] id". */
@@ -5055,6 +4988,8 @@ static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
     sh->jobs[i] = job;
     free(sh->job_text[i]);
     sh->job_text[i] = text;
+    if (!(sh->opts & SO_INTERACTIVE)) /* bash: only an interactive shell announces a job */
+        return;
     num(nb, i + 1);
     sayl(sh, io->err, "[", nb, "] ", NULL);
     num(nb, job);

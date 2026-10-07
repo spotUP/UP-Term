@@ -31,6 +31,7 @@ typedef struct sh_redir {
     char *var;              /* {var}> and {var}<: the variable that gets the descriptor (fd is unused), else 0 */
     enum sh_redir_kind kind;
     char *target;           /* a word, or for << the document */
+    char *delim;            /* << : the delimiter word as written (quotes kept), for sh_unparse */
     int quoted;             /* << with a quoted delimiter: the document is literal */
     int strip;              /* <<- : the leading tabs of the document's lines are removed */
     struct sh_redir *next;
@@ -95,6 +96,12 @@ void sh_parse_free(sh_parse *p);
  * (cmd a b), (pipe X Y), (and X Y), (if C T E) ... Written into out
  * (max bytes); returns the length. */
 int  sh_dump(const sh_node *n, char *out, int max);
+
+/* The text of a command as bash prints it (jobs, DEBUG's BASH_COMMAND, declare -f, type): malloc'd, the
+ * caller frees it; 0 when memory runs out. fn: bash's function layout (a ; ends the line, a group is
+ * multi-line); sh_unparse_func prints `name () ` and the body, as declare -f does (no final newline). */
+char *sh_unparse(const sh_node *n, int fn);
+char *sh_unparse_func(const char *name, const sh_node *body);
 
 /* A copy of the tree n (and everything it points to) in out's own arena,
  * independent of n's parse: a subshell process runs it after the parse
