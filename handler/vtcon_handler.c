@@ -2124,7 +2124,7 @@ static int menu_run(con *c, LONG id, int on)
         return 1;
     case MENU_SIZE_80X24: case MENU_SIZE_132X43:
         if (vtwin_set_size(&c->w, id == MENU_SIZE_80X24 ? 80 : 132, id == MENU_SIZE_80X24 ? 24 : 43) <= 0)
-            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the screen is too small, or fullscreen */
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the screen is too small (or no font size gives it) */
         return 1;
     default:
         break;
@@ -3570,12 +3570,8 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
             return 2;
         }
         ok = vtwin_set_size(&c->w, (int)cols, (int)rows);
-        if (ok < 0) {
-            cat3(ans, cap, name, ": fullscreen, the window is the whole screen (use /font-size)", "\n");
-            return 2;
-        }
         if (!ok) {
-            cat3(ans, cap, name, ": the screen is too small for it", "\n");
+            cat3(ans, cap, name, ": the screen is too small for it (no font size gives that grid)", "\n");
             return 2;
         }
         return 1;

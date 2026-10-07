@@ -9,6 +9,11 @@ Invariant: a FULLSCREEN window is the whole screen, whatever is asked.
      the handler answers (the slash command's reply names the reason).
   2. /size 40x12 likewise (a size that fits is the case that shrank it).
   3. A plain window's /size 80x24 still resizes it (not refused).
+  4. FULLSCREEN-SIZE-FONT: /size COLSxROWS in fullscreen picks a font size
+     whose grid is the request or the nearest one above it (never smaller),
+     the window staying the screen: TIOCGWINSZ (ixwinch) in the window gives
+     cols >= COLS and rows >= ROWS, and a grid that fits no font size (400x200)
+     is refused with the grid unchanged.
 
 Resumable: each case's verdict is written to build/rig/fullscreen/<case>.txt
 and a case already recorded "ok" is skipped; --rerun CASE re-runs one,
@@ -16,9 +21,9 @@ and a case already recorded "ok" is skipped; --rerun CASE re-runs one,
 Run with the rig up and the handler installed (rig.py install + a reboot):
   python3 tools/rig/fullscreen_rig.py [--rerun CASE|all]
 """
-import pathlib, sys, time
+import pathlib, re, shutil, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
-import ami, condev_rig as c
+import ami, condev_rig as c, ixpty_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'build/rig/fullscreen'
@@ -42,6 +47,41 @@ def t(s, wait=3):
     time.sleep(0.5)
     ami.key(RET)
     time.sleep(wait)
+
+
+def truth():
+    """TIOCGWINSZ of the shell's window now (ixwinch, an ixemul program), (cols, rows)"""
+    c.run('Delete RAM:fs-truth QUIET')
+    t('VTC:ixwinch 1 >RAM:fs-truth', 4)
+    m = re.search(r'now (\d+)x(\d+)', c.run('Type RAM:fs-truth')[1])
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def font_case():
+    """requests that fit: cols/rows reported >= requested and the window is the screen;
+    one that cannot fit: refused, the grid as it was"""
+    shutil.copyfile(ROOT / 'build/amiga/ixwinch', c.VTC / 'ixwinch')
+    ixpty_rig.use_ixemul()
+    c.run('Run >NIL: NewShell "XCON:0/20/640/300/fullfont/FULLSCREEN"')
+    time.sleep(6)
+    ok, seen = True, []
+    for cols, rows in ((80, 24), (100, 30), (132, 43), (40, 12)):
+        t('/size %dx%d' % (cols, rows))
+        name, scr, wins = front()
+        got = truth()
+        good = (len(wins) == 1 and wins[0][1:] == scr and got is not None
+                and got[0] >= cols and got[1] >= rows and got[0] < 2 * cols + 1 and got[1] < 2 * rows + 1)
+        seen.append(((cols, rows), scr, got, good))
+        ok = ok and good
+    before = truth()
+    t('/size 400x200')
+    name, scr, wins = front()
+    after = truth()
+    good = len(wins) == 1 and wins[0][1:] == scr and before == after
+    seen.append(('400x200 refused', before, after, good))
+    ok = ok and good
+    t('EndCLI', 4)
+    return ok, seen
 
 
 def fs_case(cs):
@@ -74,6 +114,7 @@ CASES = {
     'size80x24': lambda: fs_case(['80x24']),
     'size40x12': lambda: fs_case(['40x12']),
     'plain_size': win_case,
+    'font_size': font_case,
 }
 
 

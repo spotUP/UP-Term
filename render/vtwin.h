@@ -233,7 +233,9 @@ void vtwin_reset(vtwin *w);
  * -1); 0 when there is none (nothing changes). */
 int vtwin_font_step(vtwin *w, int dir);
 /* View > 80 x 24 ...: the window sized to cols x rows cells (the grid
- * follows on the resize); 0 when the screen is too small. */
+ * follows on the resize); 0 when the screen is too small. In FULLSCREEN the
+ * window stays the whole screen and the font changes instead: the largest
+ * designed size of its face giving at least cols x rows; 0 when none does. */
 int vtwin_set_size(vtwin *w, int cols, int rows);
 /* The scroll bar (SB1). The knob as it should look now goes to host->knob
  * when it changed: vtwin calls this itself after a render pass and every

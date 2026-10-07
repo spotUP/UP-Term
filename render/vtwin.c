@@ -1729,6 +1729,46 @@ int vtwin_font_step(vtwin *w, int dir)
     return vtwin_set_font(w, best, best_size);
 }
 
+/* FULLSCREEN: the window is the screen and stays so (shrinking it left a bare
+ * screen around it, the menu-outside-the-window bug, 69b112f), so a size is
+ * reached through the font: the largest designed size of the font's face
+ * whose grid is at least cols x rows (the closest grid that is not smaller),
+ * set through vtwin_set_font, the /font-size path. The estimate from the
+ * window's inner area is checked against the grid the renderer made; a size
+ * that comes out short is stepped down from. 0 when no size fits (the font
+ * stays). */
+static int fullscreen_size(vtwin *w, int cols, int rows)
+{
+    struct Window *win = w->win;
+    fontpair_choice tall;
+    char family[40];
+    WORD s, cur;
+    long aw, ah;
+    if (!w->font || w->given_font)
+        return 0;
+    cur = w->font->tf_YSize;
+    fontpair_choose((const char *)w->font->tf_Message.mn_Node.ln_Name, cur, 0, 1, &tall);
+    strncpy(family, tall.name, sizeof(family) - 1);
+    family[sizeof(family) - 1] = 0;
+    aw = win->Width - win->BorderLeft - win->BorderRight;
+    ah = win->Height - win->BorderTop - win->BorderBottom - w->inset_top;
+    for (s = 64; s >= 6; s--) {
+        struct TextFont *f = open_font(family, s, 1);
+        int fits;
+        if (!f)
+            continue;
+        fits = f->tf_XSize > 0 && f->tf_YSize > 0 && aw / f->tf_XSize >= cols && ah / f->tf_YSize >= rows;
+        CloseFont(f);
+        if (!fits)
+            continue;
+        if (s == cur && w->r.cols >= cols && w->r.rows >= rows)
+            return 1; /* the font already in use is the closest */
+        if (vtwin_set_font(w, family, s) && w->r.cols >= cols && w->r.rows >= rows)
+            return 1;
+    }
+    return 0;
+}
+
 int vtwin_set_size(vtwin *w, int cols, int rows)
 {
     struct Window *win = w->win;
@@ -1737,7 +1777,7 @@ int vtwin_set_size(vtwin *w, int cols, int rows)
         return 0;
     if ((win->Flags & WFLG_BACKDROP) && (win->Flags & WFLG_BORDERLESS) && win->LeftEdge == 0 && win->TopEdge == 0 &&
         win->Width == win->WScreen->Width && win->Height == win->WScreen->Height)
-        return -1; /* FULLSCREEN: the window is the screen; shrinking it leaves a bare screen around it */
+        return fullscreen_size(w, cols, rows);
     ww = (WORD)(win->BorderLeft + win->BorderRight + cols * w->r.cw);
     wh = (WORD)(win->BorderTop + win->BorderBottom + w->inset_top + rows * w->r.ch);
     if (ww > win->WScreen->Width || wh > win->WScreen->Height)
