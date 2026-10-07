@@ -195,3 +195,52 @@ int vw_cli_start(vw_cli *c, int tty, vw_out *o)
             color ? depth : 0, &c->th);
     return 0;
 }
+
+int vw_wrap_width(long width)
+{
+    char v[16];
+    if (width >= 10)
+        return (int)width;
+    width = vw_columns();
+    if (width >= 10)
+        return (int)width - 1;
+    width = vw_env("COLUMNS", v, sizeof(v)) ? vw_number(v) : 0;
+    return width >= 10 ? (int)width : 80;
+}
+
+int vw_osc8_ok(const vw_out *o)
+{
+    return o->depth > 0 && o->cs == VW_UTF8;
+}
+
+/* the whole stream in memory: 0 when it could not be read */
+char *vw_slurp(vw_file *f, long *len)
+{
+    char *buf = 0;
+    long n = 0, cap = 0, k;
+    for (;;) {
+        if (n + 4096 > cap) {
+            char *nb = (char *)realloc(buf, cap + 16384);
+            if (!nb) {
+                free(buf);
+                return 0;
+            }
+            buf = nb;
+            cap += 16384;
+        }
+        k = vw_read(f, buf + n, 4096);
+        if (k < 0) {
+            free(buf);
+            return 0;
+        }
+        if (k == 0)
+            break;
+        n += k;
+        if (vw_break()) {
+            free(buf);
+            return 0;
+        }
+    }
+    *len = n;
+    return buf;
+}

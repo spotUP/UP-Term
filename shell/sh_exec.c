@@ -5463,10 +5463,13 @@ static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
         st = sh->os.run(sh->os.data, argv + 1, io, 1);
         if (st < 0) {
             err_not_found(sh, io, argv[1]);
-            /* posix mode ends a shell that is not interactive here (bash does so outside posix mode too;
-             * vsh leaves the shell running, by design) */
-            if (!shopt_get(sh, "execfail"))
-                posix_fatal(sh, 127);
+            /* bash: a shell that is not interactive ends here with 127, posix mode or not
+             * (shopt execfail keeps it running; so does an interactive shell) */
+            if (!shopt_get(sh, "execfail") && !(sh->opts & SO_INTERACTIVE) && !sh->exiting) {
+                SH_HIT(EXEC_MISSING_EXIT);
+                sh->exiting = 1;
+                sh->exit_status = 127;
+            }
             return 127;
         }
     }

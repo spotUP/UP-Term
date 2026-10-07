@@ -26,38 +26,6 @@ static void usage(void)
     vw_say(vw_cli_help);
 }
 
-/* the whole stream in memory: 0 when it could not be read */
-static char *slurp(vw_file *f, long *len)
-{
-    char *buf = 0;
-    long n = 0, cap = 0, k;
-    for (;;) {
-        if (n + 4096 > cap) {
-            char *nb = (char *)realloc(buf, cap + 16384);
-            if (!nb) {
-                free(buf);
-                return 0;
-            }
-            buf = nb;
-            cap += 16384;
-        }
-        k = vw_read(f, buf + n, 4096);
-        if (k < 0) {
-            free(buf);
-            return 0;
-        }
-        if (k == 0)
-            break;
-        n += k;
-        if (vw_break()) {
-            free(buf);
-            return 0;
-        }
-    }
-    *len = n;
-    return buf;
-}
-
 int main(int argc, char **argv)
 {
     vw_cli cli;
@@ -65,7 +33,7 @@ int main(int argc, char **argv)
     md_opts mo;
     int i = 1, nfiles = 0, tty, rc = 0, r, osc8 = 1;
     long width = 0;
-    char **files, v[16];
+    char **files;
     (void)vers;
     mo.urls = 1;
     vw_cli_init(&cli);
@@ -104,19 +72,10 @@ int main(int argc, char **argv)
         i++;
     }
     tty = vw_out_is_tty();
-    mo.width = (int)width;
-    if (!width && (width = vw_columns()) >= 10) {
-        /* the window's: its last column stays free, a full line would
-         * wrap twice on some consoles */
-        mo.width = (int)width - 1;
-    } else if (!mo.width) {
-        if (vw_env("COLUMNS", v, sizeof(v)))
-            width = vw_number(v);
-        mo.width = width >= 10 ? (int)width : 80;
-    }
+    mo.width = vw_wrap_width(width);
     if (vw_cli_start(&cli, tty, &out) < 0)
         return vw_fail_code;
-    out.osc8 = osc8 && out.depth > 0 && out.cs == VW_UTF8;
+    out.osc8 = osc8 && vw_osc8_ok(&out);
     if (nfiles == 0)
         files[nfiles++] = (char *)"-";
     for (i = 0; i < nfiles; i++) {
@@ -130,7 +89,7 @@ int main(int argc, char **argv)
             rc = vw_fail_code;
             continue;
         }
-        doc = slurp(f, &len);
+        doc = vw_slurp(f, &len);
         vw_close(f);
         if (!doc) {
             vw_say("mdv: cannot read ");

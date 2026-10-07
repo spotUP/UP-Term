@@ -973,7 +973,7 @@ static void worker(void)
         theme_list(q);
     } else if (q->mode == CONFIG_SAVE) {
         int failed;
-        q->font_size = prefs_dos_save(q->data, q->data_len, 1, &failed);
+        q->font_size = prefs_dos_save(q->data, q->data_len, 1, &failed, q->hlcat);
         q->matches = q->font_size == PREFS_INSTALL_OK;
     } else if (q->mode == CHECK_COMMAND) {
         q->matches = command_exists(q);

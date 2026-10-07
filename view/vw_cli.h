@@ -5,6 +5,7 @@
 
 #include "hl_style.h"
 #include "vw_text.h"
+#include "vw_plat.h"
 
 typedef struct vw_cli {
     int color;              /* -1 auto (a console), 0 never, 1 always */
@@ -24,6 +25,15 @@ extern const char vw_cli_help[];
  * (tty) or is not a console, and starts o on standard output. 0, or -1
  * when the theme could not be read (said why). */
 int vw_cli_start(vw_cli *c, int tty, vw_out *o);
+/* The columns Markdown is wrapped to when --width gave width (0: none): the
+ * window's width less its last column (a full line would wrap twice on some
+ * consoles), else COLUMNS, else 80. Shared by mdv and hl -p. */
+int vw_wrap_width(long width);
+/* The whole stream in memory (malloc'd), its length in *len; 0 when it could
+ * not be read or Ctrl-C was pressed. */
+char *vw_slurp(vw_file *f, long *len);
+/* OSC 8 hyperlinks may be written to o (a coloured UTF-8 output). */
+int vw_osc8_ok(const vw_out *o);
 /* the terminal reads UTF-8 (TERM, LC_ALL / LC_CTYPE / LANG) */
 int vw_term_utf8(void);
 /* a number option's value: -1 when it is not one */

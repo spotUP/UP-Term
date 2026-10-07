@@ -839,6 +839,20 @@ static void read_builtin(void)
 
 static const char *vshrc_pre; /* run before the vshrc (a user's setting) */
 
+/* the switch file UP-Term Prefs writes (UP_HLCAT_FILE points the vshrc at
+ * one in the fake file system): "on" or "off" in it, or 0: none saved */
+static void hlcat_file(const char *text)
+{
+    static char pre[96];
+    strcpy(pre, "UP_HLCAT_FILE=hlcat_sw\n");
+    if (text) {
+        strcat(pre, "echo ");
+        strcat(pre, text);
+        strcat(pre, " > hlcat_sw\n");
+    }
+    vshrc_pre = pre;
+}
+
 static const char *with_vshrc(const char *text)
 {
     static char rc[8192];
@@ -900,7 +914,17 @@ static void vshrc_unix_names(void)
     CHECK_STR(with_vshrc("cp -R a ../b"), "<cp><-R><a><../b>\n");
     CHECK_STR(with_vshrc("mv a 'two words'"), "<mv><a><two words>\n");
     CHECK_STR(with_vshrc("touch new"), "<touch><new>\n");
-    CHECK_STR(with_vshrc("echo '  x y' | cat"), "  x y\n");  /* the command, not a function over Type */
+    hlcat_file(0);
+    /* no switch file saved: on, cat is hl -p; the AmigaDOS Type is not aliased */
+    CHECK_STR(with_vshrc("cat a.md"), "<hl><-p><a.md>\n");
+    CHECK_STR(with_vshrc("Type a.md"), "<Type><a.md>\n");
+    vshrc_pre = 0;
+    hlcat_file("off");               /* Prefs saved the switch off: the plain command */
+    CHECK_STR(with_vshrc("echo '  x y' | cat"), "  x y\n");  /* the command, not hl -p */
+    hlcat_file("on");
+    CHECK_STR(with_vshrc("cat a.md"), "<hl><-p><a.md>\n");
+    CHECK_STR(with_vshrc("echo $hlcat"), "\n");   /* nothing left behind */
+    vshrc_pre = 0;
     /* the Unix $PATH: UP-Term's bin first, kept when the user set one */
     CHECK_STR(with_vshrc("echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c\n");
     vshrc_pre = "PATH=/mine";
@@ -908,8 +932,8 @@ static void vshrc_unix_names(void)
     vshrc_pre = 0;
     /* hlp and mdp: hl / mdv in colour into less -R, or into $PAGER */
     CHECK_STR(with_vshrc("hlp x.c"), "<less><-R>\n");
-    CHECK_STR(with_vshrc("PAGER=cat; hlp 'a b.c' y.s"), "<hl><--color=always><-n><a b.c><y.s>\n");
-    CHECK_STR(with_vshrc("PAGER=cat; mdp README.md"), "<mdv><--color=always><README.md>\n");
+    CHECK_STR(with_vshrc("PAGER='command cat'; hlp 'a b.c' y.s"), "<hl><--color=always><-n><a b.c><y.s>\n");
+    CHECK_STR(with_vshrc("PAGER='command cat'; mdp README.md"), "<mdv><--color=always><README.md>\n");
 }
 
 /* G3-04: a remote host has no vtcon entry, so ssh, telnet and rlogin give
@@ -1117,6 +1141,7 @@ static void eval_builtin(void)
 
 static void exec_builtin(void)
 {
+    int inc_unused = 0;
     CHECK_STR(run("exec echo bye; echo never"), "bye\n");
     CHECK_INT(sh.exiting, 1);
     CHECK_INT(sh.exit_status, 0);
@@ -1124,8 +1149,20 @@ static void exec_builtin(void)
     CHECK_INT(sh.exiting, 1);
     CHECK_INT(sh.exit_status, 6);
     CHECK_STR(run("exec cat <<x\nfrom exec\nx\necho never"), "from exec\n");
-    CHECK_STR(run("exec nosuchcmd; echo still $?"), "still 127\n");
+    /* bash: exec of a missing command ends a shell that is not interactive with 127 (posix mode or not) */
+    CHECK_STR(run("exec nosuchcmd; echo never"), "");
     CHECK_STR(errs(), "vsh: nosuchcmd: not found\n");
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT(sh.exit_status, 127);
+    /* shopt execfail, an interactive shell and a subshell go on */
+    CHECK_STR(run("shopt -s execfail; exec nosuchcmd; echo still $?"), "still 127\n");
+    CHECK_INT(sh.exiting, 0);
+    CHECK_STR(run("(exec nosuchcmd); echo sub $?"), "sub 127\n");
+    CHECK_INT(sh.exiting, 0);
+    run("");
+    sh.opts |= SO_INTERACTIVE;
+    sh_run_text(&sh, "exec nosuchcmd; echo still $?", &inc_unused);
+    CHECK_STR(slot(OUT)->data, "still 127\n");
     CHECK_INT(sh.exiting, 0);
     CHECK_STR(run("exec; echo plain $?"), "plain 0\n");
     CHECK_STR(run("(exec echo sub); echo after"), "sub\nafter\n");

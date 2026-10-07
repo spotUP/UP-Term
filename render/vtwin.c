@@ -273,6 +273,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->cursor_blink = 0;
     w->meta_alt = 0;
     w->copy_on_select = 0;
+    w->amiga_keys = 1;   /* on by default */
     w->backspace_bs = 0; /* DEL, ^?: a profile without the key must not keep the last one's bs */
     w->clip_access = VT_CLIP_WRITE; /* OSC 52 sets the clipboard, never reads it */
     for (i = 0; i < 16; i++)
@@ -801,6 +802,7 @@ static void settings(vtwin *w)
     vt_set_bold_bright(w->t, w->bold_bright);
     vt_set_reflow(w->t, w->reflow);
     vt_set_backspace_bs(w->t, w->backspace_bs);
+    vt_set_amiga_keys(w->t, w->amiga_keys);
     vt_set_cursor_style(w->t, w->cursor_style);
     vt_set_cursor_blink(w->t, w->cursor_blink);
     vt_set_clipboard_access(w->t, w->no_clipboard ? 0 : w->clip_access);

@@ -73,9 +73,22 @@ hlp() {
 mdp() {
     mdv --color=always "$@" | ${PAGER:-less -R}
 }
-# hl as cat on the console (colours, no numbers; a pipe or a file still
-# gets the bytes as they are), for whoever wants it:
-# alias cat='hl -p'
+# cat shows files through hl -p: colours on the console, a .md or .markdown
+# file formatted as mdv does, and the bytes as they are to a pipe or a file.
+# UP-Term Prefs' "Highlight files shown with cat" (on unless saved off)
+# writes the switch beside the profile file: ENV:up-term/highlight-cat,
+# ENVARC:'s copy until the boot has made ENV:'s. $UP_HLCAT_FILE names
+# another file. AmigaDOS Type is never aliased. hl does not know cat's
+# options: for cat -n type "command cat -n", or turn the switch off.
+UP_HLCAT_FILE=${UP_HLCAT_FILE:-ENV:up-term/highlight-cat}
+[ -f "$UP_HLCAT_FILE" ] || UP_HLCAT_FILE=ENVARC:up-term/highlight-cat
+hlcat=on
+[ -f "$UP_HLCAT_FILE" ] && read -r hlcat < "$UP_HLCAT_FILE"
+case $hlcat in
+off) ;;
+*) alias cat='hl -p' ;;
+esac
+unset hlcat
 
 # The Up Rough banner when an interactive vsh starts on a terminal (not
 # for vsh -c or a script, and not when its output goes elsewhere). Remove

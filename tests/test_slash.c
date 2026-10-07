@@ -73,6 +73,11 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.id, MENU_SET_BS_BS);
     CHECK_INT(parse("/backspace del"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_BS_DEL);
+    CHECK_INT(parse("/amiga-keys off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_AMIGA_KEYS);
+    CHECK_INT(cmd.on, 0);
+    CHECK_INT(parse("/amiga-keys on"), SLASH_OK);
+    CHECK_INT(cmd.on, 1);
     CHECK_INT(parse("/program-clipboard read-write"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_CLIP_READ_WRITE);
     CHECK_INT(parse("/program-clipboard off"), SLASH_OK);

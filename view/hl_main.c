@@ -10,6 +10,7 @@
 #include <string.h>
 #include "hl_lex.h"
 #include "hl_view.h"
+#include "md.h"
 #include "vw_cli.h"
 #include "vw_plat.h"
 
@@ -21,8 +22,9 @@ static void usage(void)
            "usage: hl [options] [FILE...]   (no FILE, or -: standard input)\n"
            "  -n, --number      line numbers (default on a console)\n"
            "  -N, --no-number   no line numbers\n"
-           "  -p, --plain       colours only: no numbers, no file headers\n"
-           "  -l, --lang LANG   the language (else from the name or the #! line)\n"
+           "  -p, --plain       colours only: no numbers, no file headers; a .md or .markdown\n"
+           "                    file on a console is shown formatted, as mdv does\n");
+    vw_say("  -l, --lang LANG   the language (else from the name or the #! line)\n"
            "  -T, --tabs N      tab width when numbering (default 8, 0 keeps tabs)\n"
            "  --list            the languages and their names\n");
     vw_say(vw_cli_help);
@@ -49,6 +51,48 @@ typedef struct opts {
     int tabs;
     const hl_lang *lang;
 } opts;
+
+/* hl -p is cat with colours: a Markdown file is shown formatted, as mdv
+ * shows it, on a console only (a pipe or a file gets the bytes) */
+static int is_markdown(const char *name)
+{
+    size_t n = strlen(name), e;
+    static const char *const ext[2] = { ".md", ".markdown" };
+    int i;
+    for (i = 0; i < 2; i++) {
+        e = strlen(ext[i]);
+        if (n > e) {
+            size_t k;
+            for (k = 0; k < e; k++) {
+                char ch = name[n - e + k];
+                if (ch >= 'A' && ch <= 'Z')
+                    ch = (char)(ch + 32);
+                if (ch != ext[i][k])
+                    break;
+            }
+            if (k == e)
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/* the document read whole and drawn by md_render: 0, or -1 (read or memory) */
+static int show_markdown(vw_file *f, vw_out *out)
+{
+    long n = 0;
+    char *doc = vw_slurp(f, &n);
+    md_opts mo;
+    int r;
+    if (!doc)
+        return -1;
+    mo.width = vw_wrap_width(0);
+    mo.urls = 1;
+    out->osc8 = vw_osc8_ok(out);
+    r = md_render(doc, n, &mo, out);
+    free(doc);
+    return r;
+}
 
 /* the whole stream as it is: hl as cat */
 static int copy(vw_file *f)
@@ -254,7 +298,9 @@ int main(int argc, char **argv)
             rc = vw_fail_code;
             continue;
         }
-        if (!out.depth && !numbers) {
+        if (op.plain && out.depth && is_markdown(files[i])) {
+            r = show_markdown(f, &out);
+        } else if (!out.depth && !numbers) {
             r = copy(f);
         } else {
             if (nfiles > 1 && numbers)

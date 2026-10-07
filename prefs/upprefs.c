@@ -76,7 +76,7 @@ enum {
     ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_REFLOW, ID_SCROLLBAR, ID_COMPLETE, ID_KCMODE, ID_KCINFO, ID_KCCACHE,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
     ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME,
-    ID_SCREEN, ID_SMODE, ID_SDEPTH, ID_ASPECT, ID_BACKSPACE, ID_CLIP, ID_LINK, ID_ADVTEXT
+    ID_SCREEN, ID_SMODE, ID_SDEPTH, ID_ASPECT, ID_BACKSPACE, ID_CLIP, ID_LINK, ID_ADVTEXT, ID_AMIGAKEYS, ID_HLCAT
 };
 
 #define N_PAGES 3
@@ -104,7 +104,7 @@ struct app {
     struct Gadget *glist[N_PAGES]; /* the General, Colors and Advanced pages */
     int page;                 /* the page in the window, -1 none yet */
     struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *greflow, *gscrollbar, *gcomplete, *gkcinfo, *gkccache;
-    struct Gadget *gscreen, *gaspect, *gbackspace, *gclip;
+    struct Gadget *gscreen, *gaspect, *gbackspace, *gclip, *gamigakeys, *ghlcat;
     struct strfield str[N_STR];
     int nstr;
     upconf conf;              /* the file's table, as loaded and as last written */
@@ -214,6 +214,8 @@ static void show_fields(struct app *a)
     set_attr(a, a->gaspect, 2, GTCB_Checked, (ULONG)a->f.aspect);
     set_attr(a, a->gbackspace, 2, GTCY_Active, (ULONG)a->f.backspace_bs);
     set_attr(a, a->gclip, 2, GTCY_Active, (ULONG)a->f.clipboard);
+    set_attr(a, a->gamigakeys, 2, GTCB_Checked, (ULONG)a->f.amiga_keys);
+    set_attr(a, a->ghlcat, 2, GTCB_Checked, (ULONG)a->f.hlcat);
 }
 
 /* Take the text of every string field: a string gadget reports only Return
@@ -370,7 +372,7 @@ static void commit(struct app *a, int keep)
         set_status(a, msg);
         return;
     }
-    r = prefs_dos_save(a->buf, len, keep, &t);
+    r = prefs_dos_save(a->buf, len, keep, &t, a->f.hlcat);
     if (r == PREFS_DOS_NODIR) {
         puts_(msg, puts_(msg, 0, "Cannot create ", -1), conf_dir[t], -1);
         set_status(a, msg);
@@ -555,6 +557,14 @@ static int build_gadgets(struct app *a)
     /* OSC 52 (program-clipboard) */
     g = a->gclip = gad(a, g, CYCLE_KIND, ADV_X, ROW(6), 260, 14, "Programs may",
                        ID_CLIP, PLACETEXT_LEFT, t);
+    /* Shift+Left / Right as Home / End (amiga-keys), for a shell on this or
+     * another machine; off for nvim and tmux users who bind the xterm codes */
+    g = a->gamigakeys = gad(a, g, CHECKBOX_KIND, 256, ROW(4) + 1, 26, 11, "AmigaShell keys",
+                            ID_AMIGAKEYS, PLACETEXT_LEFT, 0);
+    /* vsh's cat shows files through hl -p (highlight-cat; dist/vshrc reads
+     * the ENV: variable the save writes) */
+    g = a->ghlcat = gad(a, g, CHECKBOX_KIND, 256, ROW(7) + 1, 26, 11, "Highlight files shown with cat",
+                        ID_HLCAT, PLACETEXT_LEFT, 0);
     /* a Ctrl + clicked hyperlink (OSC 8): the command run, %s the address */
     g = str_gad(a, g, 2, ADV_X, ROW(8), AREA_W - ADV_X, "Link command", ID_LINK, a->f.linkopen,
                 UC_MAX_VALUE);
@@ -723,6 +733,12 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
         break;
     case ID_CLIP:
         a->f.clipboard = code;
+        break;
+    case ID_AMIGAKEYS:
+        a->f.amiga_keys = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_HLCAT:
+        a->f.hlcat = (g->Flags & GFLG_SELECTED) ? 1 : 0;
         break;
     case ID_SAVE:
         commit(a, 1);

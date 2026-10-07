@@ -126,6 +126,7 @@ typedef struct vtwin {
     ULONG prof_part[4];
     int wrote;                   /* vtwin_write since the last frame tick */
     ULONG quiet_us;              /* frame time with no output since the last write (jump scroll settles) */
+    int amiga_keys;              /* profile amiga-keys: Shift+Left / Right send Home / End (vt_set_amiga_keys) */
     int backspace_bs;            /* profile backspace = bs: Backspace sends ^H (vt_set_backspace_bs) */          /* PROF=1: of the drawing, damaged rows / scrolls / cursor and mask */
     long sync_held;              /* microseconds a ?2026 update has been held back */
     long note_us;                /* OSC 9 / 777: microseconds the notice stays in the title */

@@ -22,7 +22,7 @@ ZMODEM  := zm/zmodem.c
 TELNET  := net/tn.c
 # hl and mdv (view/): the lexer, themes, the Markdown renderer
 VIEW_LEX  := view/hl_lex.c view/hl_langs.c view/hl_style.c view/vw_text.c
-VIEW_HL   := $(VIEW_LEX) view/hl_view.c
+VIEW_HL   := $(VIEW_LEX) view/hl_view.c view/md.c # md.c: hl -p shows Markdown as mdv does
 VIEW_MD   := $(VIEW_LEX) view/md.c
 VIEW_CORE := $(VIEW_LEX) view/hl_view.c view/md.c
 VIEW_HDR  := view/hl_lex.h view/hl_style.h view/hl_view.h view/vw_text.h view/md.h
@@ -48,14 +48,15 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 .PHONY: bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py)
-test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
 $(BUILD)/vttest_host: $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h

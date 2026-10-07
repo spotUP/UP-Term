@@ -11,6 +11,7 @@
     X(FUNC_CALL)  /* a function body ran */ \
     X(SUBST)      /* a $( ) ran */ \
     X(HASH_RUN)   /* a command run found its entry in the hash table */ \
+    X(EXEC_MISSING_EXIT) /* exec of a command that is not found ended a shell that is not interactive (127) */ \
     X(POSIX_FATAL) /* posix mode ended a shell on the error of a special builtin or an assignment */ \
     X(POSIX_FORMAT) /* posix mode printed export -p, readonly -p or type in its own words */ \
     X(POSIX_SUBST) /* a command substitution inherited set -e in posix mode */ \

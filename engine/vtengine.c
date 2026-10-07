@@ -129,6 +129,7 @@ struct vt_term {
     vt_line **pri_mem;
     int pri_spare;
     vt_u8 bs_default;      /* vt_set_backspace_bs: what RIS gives ?67 back */
+    vt_u8 amiga_keys;      /* vt_set_amiga_keys: Shift+Left / Right send Home / End (host setting) */
     struct vt_sbl **sb;    /* scrollback ring: lines packed (sb_store) */
     long scrolled;         /* lines scrolled off the primary screen's top */
     int sb_cap, sb_len, sb_head; /* head: next slot to write */
@@ -5698,6 +5699,7 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     t->tabs_cap = cols;
     t->tabs = (vt_u8 *)VT_MALLOC(cols);
     t->utf8 = 1;
+    t->amiga_keys = 1; /* AmigaShell's Shift+Left / Right are on by default */
     t->bold_bright = 1;
     /* until the host reports what it draws with (vt_set_default_colors):
      * xterm's colour 7 on black, so a faint default is grey, not black */
@@ -6003,6 +6005,11 @@ void vt_set_backspace_bs(vt_term *t, int bs)
         t->modes |= VT_MODE_BACKSPACE_BS;
     else
         t->modes &= ~(vt_u32)VT_MODE_BACKSPACE_BS;
+}
+
+void vt_set_amiga_keys(vt_term *t, int on)
+{
+    t->amiga_keys = on != 0;
 }
 
 void vt_set_reflow(vt_term *t, int on)
@@ -7721,6 +7728,13 @@ static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out)
 
     if (t->pers == VT_PCANSI)
         mods = 0, app = 0; /* BBS software knows the plain forms only */
+
+    /* AmigaShell's habit: Shift+Left / Right are the line's start / end, sent
+     * as Home / End (CSI H / F, SS3 H / F under DECCKM) -- xterm's
+     * CSI 1;2D / 1;2C would reach a program that cannot use them */
+    if (t->amiga_keys && t->pers == VT_XTERM && mods == VT_MOD_SHIFT &&
+        (key == VT_KEY_LEFT || key == VT_KEY_RIGHT))
+        return xterm_cursor(out, key == VT_KEY_LEFT ? 'H' : 'F', 0, app);
 
     switch (key) {
     case VT_KEY_UP:

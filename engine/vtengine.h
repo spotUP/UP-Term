@@ -220,6 +220,12 @@ void     vt_set_reflow(vt_term *t, int on);
  * default). The ?67 (DECBKM) a program sets changes it until RIS, which
  * returns to this. A remote host whose terminfo says kbs=^H wants 1. */
 void     vt_set_backspace_bs(vt_term *t, int bs);
+/* AmigaShell keys (on by default): Shift+Left / Right send Home / End (CSI H /
+ * F, or SS3 H / F under DECCKM) instead of xterm's CSI 1;2D / 1;2C, so a
+ * shell or editor that knows Home / End gets the line's start / end. Off
+ * for programs that use the xterm forms (nvim, tmux). A setting of the host,
+ * so vt_reset leaves it. */
+void     vt_set_amiga_keys(vt_term *t, int on);
 void     vt_reset(vt_term *t);  /* RIS */
 void     vt_write(vt_term *t, const vt_u8 *buf, long len);
 /* Frame-paced output: vt_feed changes the grid without telling the

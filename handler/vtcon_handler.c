@@ -1044,6 +1044,9 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "backspace", 0);
     if (v)
         c->w.backspace_bs = str_ieq(v, "bs"); /* del (^?, the default) or bs (^H) */
+    v = upconf_str(c->conf, p, "amiga-keys", 0);
+    if (v)
+        c->w.amiga_keys = !str_ieq(v, "off"); /* Shift+Left / Right as Home / End (on by default) */
     v = upconf_str(c->conf, p, "scrollbar", 0);
     if (v)
         c->sbar_on = !str_ieq(v, "hide");
@@ -1314,7 +1317,7 @@ static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 49
+#define MENU_SET_ITEMS 50
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1351,6 +1354,7 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_ITEM, (STRPTR)"Backspace key sends", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Delete", 0, CHECKIT, 2, (APTR)MENU_SET_BS_DEL },
     { NM_SUB, (STRPTR)"Backspace", 0, CHECKIT, 1, (APTR)MENU_SET_BS_BS },
+    { NM_ITEM, (STRPTR)"AmigaShell keys", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_AMIGA_KEYS },
     { NM_ITEM, (STRPTR)"Programs may", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Set the clipboard", 0, CHECKIT, 6, (APTR)MENU_SET_CLIP_WRITE },
     { NM_SUB, (STRPTR)"Set and read the clipboard", 0, CHECKIT, 5, (APTR)MENU_SET_CLIP_READ_WRITE },
@@ -1397,6 +1401,7 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_SCROLLBAR: return c->sbar_on;
     case MENU_SET_BS_DEL: return !c->w.backspace_bs;
     case MENU_SET_BS_BS: return c->w.backspace_bs;
+    case MENU_SET_AMIGA_KEYS: return c->w.amiga_keys;
     case MENU_SET_CLIP_WRITE: return c->w.clip_access == VT_CLIP_WRITE;
     case MENU_SET_CLIP_READ_WRITE: return c->w.clip_access == (VT_CLIP_WRITE | VT_CLIP_READ);
     case MENU_SET_CLIP_OFF: return c->w.clip_access == 0;
@@ -1592,6 +1597,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->scrollbar = c->sbar_on != 0;
     f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     f->backspace_bs = c->w.backspace_bs != 0;
+    f->amiga_keys = c->w.amiga_keys != 0;
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
                  : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
     copy_str(f->linkopen, c->link_open, sizeof(f->linkopen));
@@ -1679,6 +1685,7 @@ static void save_ask(con *c)
     }
     c->comp->data_len = len;
     c->comp->mode = CONFIG_SAVE;
+    c->comp->hlcat = f.hlcat;
     c->comp->kingcon = 0;
     if (complete_start(c->comp, c->comp_port, opener(c)))
         c->comp_busy = 1;
@@ -2004,6 +2011,7 @@ static int menu_setting(con *c, LONG id, int on)
         break;
     case MENU_SET_BS_DEL: c->w.backspace_bs = 0; restyle = 1; break;
     case MENU_SET_BS_BS: c->w.backspace_bs = 1; restyle = 1; break;
+    case MENU_SET_AMIGA_KEYS: c->w.amiga_keys = on; restyle = 1; break;
     case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
     case MENU_SET_CLIP_READ_WRITE: c->w.clip_access = VT_CLIP_WRITE | VT_CLIP_READ; restyle = 1; break;
     case MENU_SET_CLIP_OFF: c->w.clip_access = 0; restyle = 1; break;

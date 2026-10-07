@@ -78,6 +78,7 @@ struct complete_req {
                                    * at its size (data_max at most), the caller FreeVecs it.
                                    * COMPLETE_THEME, CONFIG_SAVE: the caller's, data_max bytes */
     long data_max, data_len;
+    int hlcat;                /* CONFIG_SAVE: the highlight-cat switch prefs_dos_save writes beside the file */
 };
 
 /* A request, cleared. lists: with room for the names and the shell's

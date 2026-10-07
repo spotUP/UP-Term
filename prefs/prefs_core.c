@@ -53,6 +53,8 @@ void prefs_defaults(prefs_fields *f)
     f->scrollbar = 1;
     f->kccache = 1;
     f->aspect = 1;
+    f->amiga_keys = 1;
+    f->hlcat = 1;
 }
 
 void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
@@ -91,6 +93,8 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
               : pc_ieq(v, "fullscreen") ? PREFS_SCREEN_FULL : PREFS_SCREEN_WORKBENCH;
     f->aspect = !pc_ieq(upconf_str(c, p, "font-aspect", "on"), "off");
     f->backspace_bs = pc_ieq(upconf_str(c, p, "backspace", "del"), "bs");
+    f->amiga_keys = !pc_ieq(upconf_str(c, p, "amiga-keys", "on"), "off");
+    f->hlcat = !pc_ieq(upconf_str(c, p, "highlight-cat", "on"), "off");
     v = upconf_str(c, p, "program-clipboard", "write");
     f->clipboard = pc_ieq(v, "off") ? PREFS_CLIP_OFF
                  : pc_ieq(v, "read-write") ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
@@ -241,6 +245,8 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     pc_put(w, p, "selection-bg", f->selbg);
     upconf_set(w, p, "font-aspect", f->aspect ? "on" : "off");
     upconf_set(w, p, "backspace", f->backspace_bs ? "bs" : "del");
+    upconf_set(w, p, "amiga-keys", f->amiga_keys ? "on" : "off");
+    upconf_set(w, p, "highlight-cat", f->hlcat ? "on" : "off");
     upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"
                                           : f->clipboard == PREFS_CLIP_READ_WRITE ? "read-write"
                                           : "write");
@@ -279,6 +285,11 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
         return PREFS_STAGE_SIZE;
     buf[len] = 0;
     return len;
+}
+
+const char *prefs_hlcat_text(int on)
+{
+    return on ? "on\n" : "off\n";
 }
 
 int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,

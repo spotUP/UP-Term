@@ -87,7 +87,8 @@ CONFIGURATION (profiles)
    commented sample; without the file every window behaves as before.
 
    Prefs: three pages, General, Colors and Advanced (the screen, the
-   Backspace key, what programs may do). Type the profile name in the
+   Backspace key, AmigaShell keys, Highlight files shown with cat, what
+   programs may do). Type the profile name in the
    Profile field, press Load to edit an existing profile or New to start
    one, change the values, press Save. Save writes ENVARC:up-term/up-term
    and keeps the file that was there as up-term.orig; Cancel closes without
@@ -127,6 +128,18 @@ CONFIGURATION (profiles)
      link-open = OpenURL %s    the command a Ctrl + click on a link runs
                                (%s the URL, quoted)
      backspace = del           del | bs: the Backspace key sends ^? or ^H
+     amiga-keys = on           on | off: Shift+Left and Shift+Right send Home and
+                               End (the line's start and end, as in the
+                               AmigaShell; CSI H / F, SS3 H / F in a program's
+                               application cursor mode) instead of xterm's
+                               CSI 1;2D / 1;2C. Off for nvim or tmux bindings
+                               that use the xterm codes. The console line
+                               editor and C:Claude take both either way.
+     highlight-cat = on        on | off: vsh's cat shows files through hl -p
+                               (see VIEWING FILES). The save also writes it
+                               to ENV:up-term/highlight-cat (and ENVARC:'s),
+                               which the vshrc reads; it holds for every
+                               profile.
   A program's notification (OSC 9, OSC 777: a build finished...)
   shows in the title bar for 5 seconds.
      scrollbar = show          show | hide (the scroll bar in a sizable window's border)
@@ -205,6 +218,7 @@ COMMANDS (/cursor bar)
      /fg C0C0C0         /theme dracula-default /profile vim       /tab new
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
      /backspace bs      /program-clipboard read-write
+     /amiga-keys off
      /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.
    "/" alone, "//", "/Work" and every other path are the shell's as
@@ -224,7 +238,7 @@ MENU
               80 x 24, 132 x 43 (the window sized to that grid)
     Settings  Font..., Theme..., Cursor, Bell, Scrollback, Bold is
               bright, Meta key, Copy on select, Wheel scrolls, Reflow on
-              resize, Scroll bar, Backspace key sends, Programs may (the
+              resize, Scroll bar, Backspace key sends, AmigaShell keys, Programs may (the
               clipboard), Tab completion, KingCON style, Profile, Save
               settings to profile
     Help      Demo tour (a tour of what the terminal does, in a new tab:
@@ -384,12 +398,15 @@ VSH (the shell)
     the Amiga half runs on the rig only. The user and system times of time
     and times stay 0: AmigaOS keeps no CPU time per task (reading it would
     need a task-switch hook for every task), so only the real time is shown.
+    exec of a command that is not found ends a shell that is not interactive
+    with status 127, as in bash (shopt -s execfail and an interactive shell
+    keep running; exec_missing).
     Posix mode (set -o posix, --posix, POSIXLY_CORRECT assigned or in the
     environment; leaving it by set +o posix or unset POSIXLY_CORRECT) does
     these, each with a probe in tests/bash/probes/posix: the assignments
     before a special builtin stay (special_prefix); a shell that is not
     interactive ends on the error of a special builtin or of an assignment,
-    on a redirection error of a special builtin, on exec that cannot start,
+    on a redirection error of a special builtin,
     on  .  of a missing file, on eval of a syntax error, and on  return
     outside a function (special_errors); a function cannot take the name of
     a special builtin (function_name); export -p and readonly -p print
@@ -448,6 +465,13 @@ VIEWING FILES (hl, mdv)
   blocks in colour, links with their address after them (and as OSC 8
   hyperlinks for terminals that follow them), images as their text:
     mdv README.md          mdv -w 60 notes.md     mdv -U (no addresses)
+  In vsh, cat is  hl -p  (the vshrc's alias): a file on the console comes
+  in colour, a .md or .markdown file formatted as mdv shows it, and into a
+  pipe or a file cat is still the bytes. UP-Term Prefs, Advanced page:
+  "Highlight files shown with cat" (on by default; highlight-cat in the
+  profile) switches it off for the next vsh. AmigaDOS Type is never
+  aliased. hl does not take cat's options: for cat -n type
+  command cat -n, or switch it off.
   Through a pager (vshrc): hlp file, mdp README.md -- less -R, or the
   pager $PAGER names; less is not part of UP-Term (Geek Gadgets, Aminet).
   Colours: the 16 of the window's profile (theme ansi), so a profile

@@ -295,6 +295,42 @@ static void keypad_follows_deckpam(void)
     vt_free(t);
 }
 
+/* AmigaShell keys: Shift+Left / Right are the line's start / end, as Home /
+ * End -- CSI H / F, SS3 H / F under DECCKM; the option off gives xterm's
+ * CSI 1;2D / 1;2C back; other modifiers and kitty keep their forms. */
+static void shift_left_right_send_home_end_unless_the_option_is_off(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vt_u8 out[16];
+    int n;
+    n = vt_encode_key(t, VT_KEY_LEFT, VT_MOD_SHIFT, out);
+    CHECK(n == 3 && memcmp(out, "\033[H", 3) == 0);
+    n = vt_encode_key(t, VT_KEY_RIGHT, VT_MOD_SHIFT, out);
+    CHECK(n == 3 && memcmp(out, "\033[F", 3) == 0);
+    h_put(t, "\033[?1h");                      /* DECCKM */
+    n = vt_encode_key(t, VT_KEY_LEFT, VT_MOD_SHIFT, out);
+    CHECK(n == 3 && memcmp(out, "\033OH", 3) == 0);
+    n = vt_encode_key(t, VT_KEY_RIGHT, VT_MOD_SHIFT, out);
+    CHECK(n == 3 && memcmp(out, "\033OF", 3) == 0);
+    n = vt_encode_key(t, VT_KEY_LEFT, VT_MOD_CTRL, out);   /* Ctrl+Left: word, unchanged */
+    CHECK(n == 6 && memcmp(out, "\033[1;5D", 6) == 0);
+    n = vt_encode_key(t, VT_KEY_LEFT, 0, out);              /* plain Left: unchanged */
+    CHECK(n == 3 && memcmp(out, "\033OD", 3) == 0);
+    vt_set_amiga_keys(t, 0);
+    n = vt_encode_key(t, VT_KEY_LEFT, VT_MOD_SHIFT, out);
+    CHECK(n == 6 && memcmp(out, "\033[1;2D", 6) == 0);
+    h_put(t, "\033[?1l");
+    n = vt_encode_key(t, VT_KEY_RIGHT, VT_MOD_SHIFT, out);
+    CHECK(n == 6 && memcmp(out, "\033[1;2C", 6) == 0);
+    h_put(t, "\033c");                              /* RIS keeps the host's choice */
+    n = vt_encode_key(t, VT_KEY_RIGHT, VT_MOD_SHIFT, out);
+    CHECK(n == 6 && memcmp(out, "\033[1;2C", 6) == 0);
+    vt_set_amiga_keys(t, 1);
+    n = vt_encode_key(t, VT_KEY_RIGHT, VT_MOD_SHIFT, out);
+    CHECK(n == 3 && memcmp(out, "\033[F", 3) == 0);
+    vt_free(t);
+}
+
 /* Backspace over ssh: xterm-256color's kbs is ^H upstream and ^? on Debian.
  * DEL by default; DECBKM (?67) and the profile's backspace = bs make it BS,
  * Ctrl+Backspace the other one; RIS returns to the profile's choice. */
@@ -328,6 +364,7 @@ static void backspace_follows_decbkm_and_the_profile(void)
 void suite_keys(void)
 {
     backspace_follows_decbkm_and_the_profile();
+    shift_left_right_send_home_end_unless_the_option_is_off();
     keypad_follows_deckpam();
     mouse_reports_follow_the_modes();
     xterm_cursor_keys_follow_decckm();

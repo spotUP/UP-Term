@@ -303,6 +303,8 @@ builtins/echo_flags
 builtins/echo_noescape_default
 builtins/enable_caller_times
 builtins/envprefix
+builtins/exec_missing
+builtins/exec_missing_reach
 builtins/execr
 builtins/exportassign
 builtins/exportf

@@ -274,6 +274,10 @@ static void stage_cases(void)
     f.aspect = 0;
     CHECK_INT(f.backspace_bs, 0);   /* no key: DEL */
     f.backspace_bs = 1;
+    CHECK_INT(f.amiga_keys, 1);     /* no key: AmigaShell keys on */
+    CHECK_INT(f.hlcat, 1);          /* no key: cat highlights */
+    f.amiga_keys = 0;
+    f.hlcat = 0;
     strcpy(f.pal[3], "#FFAA00");
     strcpy(f.selbg, "203040");
     CHECK_INT(prefs_validate(&f), 0);
@@ -306,6 +310,10 @@ static void stage_cases(void)
     CHECK_STR(upconf_str(&conf, "default", "program-clipboard", "?"), "read-write");
     CHECK_INT(g.aspect, 0);
     CHECK_INT(g.backspace_bs, 1);
+    CHECK_INT(g.amiga_keys, 0);     /* both options survive a save, off ... */
+    CHECK_INT(g.hlcat, 0);
+    CHECK_STR(upconf_str(&conf, "default", "amiga-keys", "?"), "off");
+    CHECK_STR(upconf_str(&conf, "default", "highlight-cat", "?"), "off");
     CHECK_STR(upconf_str(&conf, "default", "reflow", "?"), "off");
     CHECK_INT(g.scrollbar, 0);
     CHECK_STR(upconf_str(&conf, "default", "scrollbar", "?"), "hide");
@@ -360,6 +368,33 @@ static void stage_cases(void)
  * font-aspect, any hand-typed key and every comment went on each Save,
  * Use and the window's Save settings to profile (which stages the same
  * way: prefs_from_conf, the window's values over it, prefs_stage). */
+/* the two options default on, are written as on / off, and come back on */
+static void amiga_keys_and_highlight_cat_round_trip(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    prefs_fields f, g;
+    long len;
+    CHECK_INT(prefs_load(&conf, "[default]\nfont = x\n", 20, UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.amiga_keys, 1);
+    CHECK_INT(f.hlcat, 1);
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "amiga-keys", "?"), "on");
+    CHECK_STR(upconf_str(&conf, "default", "highlight-cat", "?"), "on");
+    f.amiga_keys = 0;
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&g, &conf, "default");
+    CHECK_INT(g.amiga_keys, 0);
+    CHECK_INT(g.hlcat, 1);          /* the other is untouched */
+    /* the switch the vshrc reads */
+    CHECK_STR(prefs_hlcat_text(1), "on\n");
+    CHECK_STR(prefs_hlcat_text(0), "off\n");
+}
+
 static void keep_cases(void)
 {
     static char buf[UC_MAX_FILE + 1];
@@ -586,4 +621,5 @@ void suite_prefs(void)
     load_cases();
     stage_cases();
     keep_cases();
+    amiga_keys_and_highlight_cat_round_trip();
 }

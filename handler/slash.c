@@ -17,6 +17,7 @@ static const slash_value v_meta[] = {
     { "amiga", MENU_SET_META_AMIGA, 1 }, { "alt", MENU_SET_META_ALT, 1 }, { 0, 0, 0 }
 };
 static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
+static const slash_value v_amigakeys[] = ONOFF(MENU_SET_AMIGA_KEYS);
 static const slash_value v_reflow[] = ONOFF(MENU_SET_REFLOW);
 static const slash_value v_backspace[] = {
     { "del", MENU_SET_BS_DEL, 1 }, { "bs", MENU_SET_BS_BS, 1 }, { 0, 0, 0 }
@@ -59,6 +60,8 @@ static const slash_value v_tab[] = {
 /* Alphabetical: the help lists it in this order, completion offers it so. */
 static const slash_def table[] = {
     { "about", SL_ACTION, MENU_ABOUT, 0, 0, "", "the build" },
+    { "amiga-keys", SL_CHOICE, 0, 0, v_amigakeys, "on | off",
+      "Shift+Left / Right send Home / End, as in the AmigaShell (off: xterm's codes)" },
     { "backspace", SL_CHOICE, 0, 0, v_backspace, "del | bs", "what the Backspace key sends (^? or ^H)" },
     { "bell", SL_CHOICE, 0, 0, v_bell, "none | beep | visual", "the bell" },
     { "bg", SL_ARG, SLASH_BG, 1, 0, "RRGGBB | none", "the background colour" },

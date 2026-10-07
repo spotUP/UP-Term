@@ -19,7 +19,9 @@ int prefs_dos_dir(int t);
  * PREFS_INSTALL_OK, PREFS_DOS_NODIR (a drawer could not be made) or
  * another prefs_install result; *failed is the target that failed. */
 #define PREFS_DOS_NODIR (-100)
-int prefs_dos_save(const char *buf, long len, int keep, int *failed);
+int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat);
+/* The variable dist/vshrc reads: PREFS_HLCAT_VAR in the same drawers, the
+ * text prefs_hlcat_text gives (on / off). */
 
 /* prefs_theme_drawer with DOS's answer to "is it there" (a Lock): the
  * drawer every theme requester opens and /theme looks names up in (W30).

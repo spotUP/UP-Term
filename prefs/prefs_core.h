@@ -47,6 +47,8 @@ typedef struct prefs_fields {
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
     int kcinfo;     /* KingCON completion lists .info files too */
     int kccache;    /* KingCON's directory cache (DIRCACHE; on by default) */
+    int amiga_keys; /* amiga-keys: Shift+Left / Right send Home / End (on by default) */
+    int hlcat;      /* highlight-cat: vsh's cat is hl -p (on by default; see prefs_hlcat_text) */
 } prefs_fields;
 
 /* the choices, in the order the window's cycle gadgets list them */
@@ -117,6 +119,13 @@ int prefs_load_writable(int load_result);
 #define PREFS_STAGE_LOSSY (-3L)
 long prefs_stage(upconf *work, const upconf *cur, const char *profile,
                  const prefs_fields *f, char *buf, long cap);
+
+/* The switch vsh's startup file reads (dist/vshrc): a variable of the
+ * profile drawers (ENV:up-term/highlight-cat, and ENVARC:'s copy) holding
+ * "on" or "off", written beside the profile file by every save; absent
+ * means on. */
+#define PREFS_HLCAT_VAR "highlight-cat"
+const char *prefs_hlcat_text(int on);
 
 /* The file operations the install needs; the Amiga's are DOS calls, the
  * tests' a table in memory. Each answers 1 on success. */
