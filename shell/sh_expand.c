@@ -996,12 +996,11 @@ static void pv_free(pv *p)
 }
 
 /* $@ and $*, ${a[@]} and ${a[*]}: the values, fields apart ("$@") or joined. */
-static void put_values(ex *e, cbuf *b, const char *name, int at, int dquote)
+static void put_pv(ex *e, cbuf *b, const pv *pp, int at, int dquote)
 {
-    pv p;
+    const pv p = *pp;
     long i;
     const char *ifs = sh_get(e->c, "IFS");
-    pv_get(e, name, &p);
     for (i = 0; i < p.n; i++) {
         if (i) {
             if (at && dquote)
@@ -1018,7 +1017,164 @@ static void put_values(ex *e, cbuf *b, const char *name, int at, int dquote)
     }
     if (at && dquote && !p.n)
         b->force_field = -1; /* "$@" of nothing: no field at all */
+}
+
+static void put_values(ex *e, cbuf *b, const char *name, int at, int dquote)
+{
+    pv p;
+    pv_get(e, name, &p);
+    put_pv(e, b, &p, at, dquote);
     pv_free(&p);
+}
+
+/* ---- the parameter operators that rewrite a value: # ## % %% / ^ , ~ ------------------ */
+
+typedef struct sbuf {
+    char *s;
+    long n, cap;
+} sbuf;
+
+static void sb_add(sbuf *b, const char *s, long n)
+{
+    if (b->n + n + 1 > b->cap) {
+        long c = b->cap ? b->cap : 64;
+        char *t;
+        while (c < b->n + n + 1)
+            c *= 2;
+        t = (char *)realloc(b->s, (size_t)c);
+        if (!t)
+            return;
+        b->s = t;
+        b->cap = c;
+    }
+    memcpy(b->s + b->n, s, (size_t)n);
+    b->n += n;
+    b->s[b->n] = 0;
+}
+
+/* the length of the longest match of pat at s[from..], or -1; the whole of s[from..to] must match */
+static long longest_at(const char *pat, const char *s, long from, long l, char *tmp)
+{
+    long j;
+    for (j = l; j >= from; j--) {
+        memcpy(tmp, s + from, (size_t)(j - from));
+        tmp[j - from] = 0;
+        if (sh_match(pat, tmp, 0))
+            return j - from;
+    }
+    return -1;
+}
+
+/* ${v/pat/rep} ${v//pat/rep} ${v/#pat/rep} ${v/%pat/rep}; an unquoted & in rep (marked \001 by the
+ * caller) is the matched text. Zero-length matches are not replaced (as bash). */
+static char *subst_one(const char *pat, const char *rep, const char *v, int all, char anchor)
+{
+    long l = (long)strlen(v), i = 0;
+    sbuf o;
+    char *tmp = (char *)malloc((size_t)l + 1), *r;
+    memset(&o, 0, sizeof(o));
+    if (!tmp)
+        return sdup(v);
+    sb_add(&o, "", 0);
+    if (*pat) {
+        while (i <= l) {
+            long m = -1, k;
+            if (anchor == '%') {
+                for (k = 0; k <= l && m < 0; k++)
+                    if (sh_match(pat, v + k, 0)) {
+                        i = k;
+                        m = l - k;
+                    }
+                if (m < 0)
+                    break;
+                sb_add(&o, v, i);
+            } else
+                m = longest_at(pat, v, i, l, tmp);
+            if (m > 0 && (anchor != '#' || i == 0)) {
+                const char *q;
+                for (q = rep; *q; q++) {
+                    if (*q == 1)
+                        sb_add(&o, v + i, m);
+                    else
+                        sb_add(&o, q, 1);
+                }
+                i += m;
+                if (anchor || !all)
+                    break;
+                continue;
+            }
+            if (anchor == '#' || anchor == '%')
+                break;
+            if (i < l)
+                sb_add(&o, v + i, 1);
+            i++;
+        }
+    }
+    if (!o.s || !*pat) {
+        free(o.s);
+        free(tmp);
+        return sdup(v);
+    }
+    if (i < l)
+        sb_add(&o, v + i, l - i);
+    free(tmp);
+    r = o.s;
+    return r;
+}
+
+/* ${v^pat} ${v^^pat} ${v,pat} ${v,,pat} ${v~pat} ${v~~pat}: the characters pat matches change case */
+static char *case_one(const char *pat, const char *v, char kind, int all)
+{
+    long l = (long)strlen(v), i;
+    char *r = (char *)malloc((size_t)l + 1);
+    if (!r)
+        return 0;
+    for (i = 0; i < l; i++) {
+        char c = v[i], one[2];
+        one[0] = c;
+        one[1] = 0;
+        r[i] = c;
+        if (i && !all)
+            continue;
+        if (*pat && !sh_match(pat, one, 0))
+            continue;
+        if ((kind == '^' || kind == '~') && c >= 'a' && c <= 'z')
+            r[i] = (char)(c - 32);
+        else if ((kind == ',' || kind == '~') && c >= 'A' && c <= 'Z')
+            r[i] = (char)(c + 32);
+    }
+    r[l] = 0;
+    return r;
+}
+
+/* ${v#p} ${v##p} ${v%p} ${v%%p} of one value */
+static char *trim_one(const char *pat, const char *val, char kind, int longest)
+{
+    long l = (long)strlen(val), k, from = 0, to = l;
+    char *tmp = (char *)malloc((size_t)l + 1), *r;
+    if (!tmp)
+        return 0;
+    if (kind == '#') {
+        for (k = longest ? l : 0; longest ? k >= 0 : k <= l; k += longest ? -1 : 1) {
+            memcpy(tmp, val, (size_t)k);
+            tmp[k] = 0;
+            if (sh_match(pat, tmp, 0)) {
+                from = k;
+                break;
+            }
+        }
+    } else {
+        for (k = longest ? 0 : l; longest ? k <= l : k >= 0; k += longest ? 1 : -1)
+            if (sh_match(pat, val + k, 0)) {
+                to = k;
+                break;
+            }
+    }
+    memcpy(tmp, val + from, (size_t)(to - from));
+    tmp[to - from] = 0;
+    r = sdup(tmp);
+    free(tmp);
+    return r;
 }
 
 /* the value of NAME[sub] (sub raw text, expanded here); 0 when unset. @ and * give element 0. */
@@ -1144,48 +1300,87 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
             }
         }
     }
-    if (i < end && (w[i] == '#' || w[i] == '%') && !len_op) {
-        /* ${X#p} ${X##p}: without the shortest / longest prefix matching p;
-         * ${X%p} ${X%%p}: the same for a suffix */
-        char kind = w[i++], *pat, *tmp;
-        int longest = 0;
-        long l, k, from = 0, to;
-        if (i < end && w[i] == kind) {
-            longest = 1;
+    if (i < end && strchr("#%/^,~", w[i]) && !len_op) {
+        /* ${X#p} ${X%p} (## %% longest), ${X/p/r} ${X//p/r} ${X/#p/r} ${X/%p/r}, ${X^p} ${X^^p} ${X,p}
+         * ${X,,p} ${X~p} ${X~~p}: one value, or every element of $@ and NAME[@], rewritten */
+        char kind = w[i++], anchor = 0, *pat, *rep = 0, *tmp;
+        int twice = 0, list = all || (!hassub && (!strcmp(name, "@") || !strcmp(name, "*"))), at;
+        long q, n = 1;
+        pv src, res;
+        const char *one[1];
+        if (i < end && w[i] == kind && kind != '/') {
+            twice = 1;
             i++;
         }
-        val = pval(e, name, hassub, sub);
-        if (unbound(e, name, val))
-            return end + 1;
-        if (!val)
-            val = "";
-        l = (long)strlen(val);
-        to = l;
-        pat = expand_string(e, w + i, end - i, dquote);
-        tmp = (char *)malloc(l + 1);
-        if (pat && tmp) {
-            if (kind == '#') {
-                for (k = longest ? l : 0; longest ? k >= 0 : k <= l; k += longest ? -1 : 1) {
-                    memcpy(tmp, val, k);
-                    tmp[k] = 0;
-                    if (sh_match(pat, tmp, 0)) {
-                        from = k;
-                        break;
-                    }
-                }
-            } else {
-                for (k = longest ? 0 : l; longest ? k <= l : k >= 0; k += longest ? 1 : -1)
-                    if (sh_match(pat, val + k, 0)) {
-                        to = k;
-                        break;
-                    }
-            }
-            memcpy(tmp, val + from, to - from);
-            tmp[to - from] = 0;
-            cputs(b, tmp, dquote ? F_QUOTED : F_SPLIT);
+        if (kind == '/') {
+            if (i < end && w[i] == '/') {
+                twice = 1;
+                i++;
+            } else if (i < end && (w[i] == '#' || w[i] == '%'))
+                anchor = w[i++];
         }
+        {
+            long pend = end;
+            if (kind == '/') {
+                long j = i;
+                while (j < end && w[j] != '/')
+                    j += w[j] == '\\' && j + 1 < end ? 2 : 1;
+                pend = j;
+            }
+            pat = expand_string(e, w + i, pend - i, dquote);
+            if (kind == '/') {
+                if (pend < end) {
+                    long rl = end - pend - 1, z;
+                    char *raw = (char *)malloc((size_t)rl + 1);
+                    if (raw) {
+                        memcpy(raw, w + pend + 1, (size_t)rl);
+                        raw[rl] = 0;
+                        for (z = 0; z < rl; z++) {
+                            if (raw[z] == '\\' && z + 1 < rl)
+                                z++;
+                            else if (raw[z] == '&')
+                                raw[z] = 1;
+                        }
+                        rep = expand_string(e, raw, rl, dquote);
+                        free(raw);
+                    }
+                } else
+                    rep = sdup("");
+            }
+        }
+        if (list) {
+            pv_get(e, name, &src);
+            n = src.n;
+        } else {
+            val = pval(e, name, hassub, sub);
+            if (unbound(e, name, val)) {
+                free(pat);
+                free(rep);
+                return end + 1;
+            }
+            one[0] = val ? val : "";
+            memset(&src, 0, sizeof(src));
+        }
+        memset(&res, 0, sizeof(res));
+        res.v = (char **)calloc((size_t)(n ? n : 1), sizeof(char *));
+        res.own = res.deep = 1;
+        if (pat && res.v && (kind != '/' || rep)) {
+            SH_HIT(PARAM_OP);
+            for (q = 0; q < n; q++) {
+                const char *v = list ? src.v[q] : one[0];
+                tmp = kind == '/' ? subst_one(pat, rep, v, twice, anchor)
+                    : (kind == '#' || kind == '%') ? trim_one(pat, v, kind, twice)
+                    : case_one(pat, v, kind, twice);
+                res.v[res.n++] = tmp ? tmp : sdup("");
+            }
+        }
+        at = list && (all ? sub[0] == '@' : name[0] == '@');
+        put_pv(e, b, &res, at, dquote);
+        pv_free(&res);
+        if (list)
+            pv_free(&src);
         free(pat);
-        free(tmp);
+        free(rep);
         return end + 1;
     }
     if (i < end && w[i] == ':') {

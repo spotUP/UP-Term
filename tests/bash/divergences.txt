@@ -8,7 +8,6 @@
 # The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
 agent/a001_pipefail_loop	later:V14,V65	set -euo pipefail and [[ ]]
 agent/a004_diff_procsub	later:V59	<( )
-agent/a007_subst_upper	later:V46,V48	${x//p/r} ${x^^}
 agent/a008_regex_match	later:V65,V66	[[ =~ ]] and BASH_REMATCH
 agent/a016_read_procsub	later:V59	< <( )
 agent/a018_arith_command	later:V63	(( ))
@@ -44,8 +43,6 @@ agent/a108_ansi_c_len	later:V52	$'...'
 agent/a109_nested_quote_default	later:V51	"${a:-"x y"}"
 agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
 agent/a117_arith_ternary_var	later:V62	?: in $(( ))
-agent/a118_replace_first	later:V46	${x/p/r}
-agent/a119_lower_first	later:V48	${x,,} ${x^}
 agent/a120_array_len_index	later:V34,V35,V36,V47	arrays and slices
 arith/arith	later:V62	operators beyond + - * / % ( ) and assignment forms
 arith/dparen1	later:V63	(( )) arithmetic command parsed as two subshells
@@ -59,15 +56,12 @@ expand/brace	later:V53	brace expansion
 expand/brace2	later:V53	brace expansion ranges
 expand/brace3	later:V53	brace expansion letters and prefixes
 expand/bt	later:V55	nested escaped backticks
-expand/case	later:V48	${x^^} ${x,,}
 expand/cmdsub_quote	later:V55	quotes inside $( ) inside double quotes
 expand/cmdsubfile	later:V55	$(< file)
 expand/dollarhash	later:V49	${#@} ${#*}
 expand/globclass	later:V56	[[:lower:]] in globs
 expand/indirect	later:V49	${!x} ${!prefix*}
 expand/nestedquote	later:V51	"${a:-"x y"}"
-expand/subst	later:V46	${x/p/r}
-expand/substanch	later:V46	${x/#p/r} ${x/%p/r}
 expand/substr	later:V47	${x:o:l}
 expand/tilde2	later:V54	~+ and ~-
 expand/tildeassign	later:V54	tilde after a colon in an assignment (no item names it: nearest V54)

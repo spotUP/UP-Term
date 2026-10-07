@@ -3,6 +3,7 @@ agent/a002_command_v
 agent/a003_heredoc_file
 agent/a005_arith_wc
 agent/a006_array_glob
+agent/a007_subst_upper
 agent/a009_errexit_cd
 agent/a010_nounset_default
 agent/a011_xtrace
@@ -78,6 +79,8 @@ agent/a112_append_string
 agent/a113_unset_set_u
 agent/a114_errexit_subshell
 agent/a115_test_bang_paren
+agent/a118_replace_first
+agent/a119_lower_first
 agent/a121_dollar_dash
 arith/arithdiv0
 arith/arithvar
@@ -167,6 +170,7 @@ builtins/unsetf
 builtins/unsetmulti
 expand/alt
 expand/assignplus
+expand/case
 expand/cmdsub
 expand/cmdsub_nest
 expand/cmdsub_status
@@ -184,10 +188,13 @@ expand/ifsread
 expand/ifsws
 expand/len
 expand/negglob
+expand/patsub_ops
 expand/pfx
 expand/posparam10
 expand/quotedat
 expand/readopts
+expand/subst
+expand/substanch
 expand/suffix
 expand/suffixglob
 expand/tilde
