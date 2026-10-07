@@ -1,0 +1,1 @@
+echo [[:upper:]]*; echo *.[[:alpha:]]*

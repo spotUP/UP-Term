@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sh_exec.h"
+#include "sh_hits.h"
 #include "../tty/bmsg.h"
 
 
@@ -375,6 +376,7 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
             char path[40], n[16];
             char *text = r->quoted ? sdup(r->target) : expand_one(sh, r->target, parent);
             sh_fh w;
+            SH_HIT(HEREDOC);
             num(n, ++sh->heredocs);
             strcpy(path, "T:vsh-here.");
             strcat(path, n);
@@ -1468,6 +1470,7 @@ static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *i
     memset(&sh->ctx.args, 0, sizeof(sh->ctx.args));
     for (i = 1; i < argv->n; i++)
         sh_list_add(&sh->ctx.args, argv->v[i]);
+    SH_HIT(FUNC_CALL);
     sh->func_depth++;
     f->busy++;
     st = exec_node(sh, f->body.tree, io);
@@ -1669,6 +1672,7 @@ void sh_exit_trap(sh_shell *sh)
     if (sh->exit_trap_ran || !sh->traps[0])
         return;
     sh->exit_trap_ran = 1;
+    SH_HIT(EXIT_TRAP);
     sh->exiting = 0;       /* exec_node does nothing in a shell that is exiting */
     if (sh->traps[0][0])
         run_trap_text(sh, sh->traps[0]);
@@ -2058,6 +2062,7 @@ static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, 
         err2(sh, io, "subshell", "out of memory");
         return 1;
     }
+    SH_HIT(SPAWN);
     r = sh->os.spawn(sh->os.data, c, t, io, wait);
     if (r < 0 && (!wait || r == -1)) {
         /* it did not start: child and tree are still ours (the streams are not) */
@@ -2460,6 +2465,7 @@ static char *core_subst(sh_ctx *c, const char *cmd)
     sh_parse p;
     char buf[512];
     long n;
+    SH_HIT(SUBST);
     sh_parse_text(&p, cmd);
     if (p.error) {
         err2(sh, &sh->io, p.error, 0);

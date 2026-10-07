@@ -1,0 +1,1 @@
+s=a; s+=b; s+=c; echo "$s"

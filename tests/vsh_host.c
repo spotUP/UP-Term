@@ -1,0 +1,497 @@
+/* vsh on the host: the real shell core (sh_parse, sh_expand, sh_exec) behind
+ * a POSIX sh_os, so tools/bashdiff.py can run a probe under bash and under vsh
+ * and compare. The Amiga's OS layer is shell/vsh.c; this one mirrors every
+ * callback it sets (vsh.c vsh_main) with fork/exec/pipe/stat/readdir.
+ *
+ *   vsh_host [--hits] -c COMMAND [NAME [ARG ...]]
+ *   vsh_host [--hits] FILE [ARG ...]
+ *
+ * (what vsh.c accepts today; plan V2.) External commands get an environment
+ * built from vsh's exported variables, never the host's. --hits prints the
+ * SH_HITS reachability counters to stderr at the end. Streams: an sh_fh is
+ * the file descriptor plus one (SH_NOFH is 0).
+ * "T:" names (here-document and substitution temp files) map to $TMPDIR. */
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <dirent.h>
+#include <unistd.h>
+#include "../shell/sh_exec.h"
+#include "../shell/sh_hits.h"
+
+#ifdef SH_HITS
+unsigned long sh_hits[SH_HIT_COUNT];
+#endif
+
+typedef struct hproc {
+    sh_shell *sh;
+} hproc;
+
+#define FD(fh) ((int)((fh)-1))
+#define FH(fd) ((sh_fh)((fd) + 1))
+
+/* background jobs: a job id is the pid; the status is kept once reaped */
+#define MAXJOB 256
+static struct {
+    pid_t pid;
+    int reaped;
+    long status;
+} jobs[MAXJOB];
+
+static long decode(int st)
+{
+    if (WIFEXITED(st))
+        return WEXITSTATUS(st);
+    if (WIFSIGNALED(st))
+        return 128 + WTERMSIG(st);
+    return 1;
+}
+
+static void cloexec(int fd)
+{
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
+}
+
+static void host_path(const char *path, char *out, size_t max)
+{
+    if (path[0] == 'T' && path[1] == ':') {
+        const char *t = getenv("TMPDIR");
+        snprintf(out, max, "%s/%s", t && *t ? t : "/tmp", path + 2);
+    } else if (!strcmp(path, "NIL:"))
+        snprintf(out, max, "/dev/null");
+    else
+        snprintf(out, max, "%s", path);
+}
+
+static sh_fh h_open(void *os, const char *path, int mode)
+{
+    char p[1024];
+    int fd, flags;
+    (void)os;
+    host_path(path, p, sizeof(p));
+    if (mode == SH_OPEN_READ)
+        flags = O_RDONLY;
+    else if (mode == SH_OPEN_APPEND)
+        flags = O_WRONLY | O_CREAT | O_APPEND;
+    else
+        flags = O_WRONLY | O_CREAT | O_TRUNC;
+    fd = open(p, flags, 0666);
+    if (fd < 0)
+        return SH_NOFH;
+    cloexec(fd);
+    return FH(fd);
+}
+
+static void h_close(void *os, sh_fh fh)
+{
+    (void)os;
+    if (fh)
+        close(FD(fh));
+}
+
+static int h_pipe(void *os, sh_fh *rd, sh_fh *wr)
+{
+    int fds[2];
+    (void)os;
+    if (pipe(fds))
+        return -1;
+    cloexec(fds[0]);
+    cloexec(fds[1]);
+    *rd = FH(fds[0]);
+    *wr = FH(fds[1]);
+    return 0;
+}
+
+static void close_owned(const sh_io *io)
+{
+    if ((io->owned & SH_OWN_IN) && io->in)
+        close(FD(io->in));
+    if ((io->owned & SH_OWN_OUT) && io->out)
+        close(FD(io->out));
+    if ((io->owned & SH_OWN_ERR) && io->err && io->err != io->out)
+        close(FD(io->err));
+}
+
+/* the environment of vsh's exported variables */
+static char **build_envp(const sh_shell *sh)
+{
+    const sh_var *v;
+    char **envp;
+    int n = 0, i = 0;
+    for (v = sh->ctx.vars; v; v = v->next)
+        if (v->exported && v->value)
+            n++;
+    envp = (char **)calloc((size_t)n + 1, sizeof(char *));
+    if (!envp)
+        return 0;
+    for (v = sh->ctx.vars; v; v = v->next)
+        if (v->exported && v->value) {
+            size_t len = strlen(v->name) + strlen(v->value) + 2;
+            envp[i] = (char *)malloc(len);
+            if (envp[i]) {
+                snprintf(envp[i], len, "%s=%s", v->name, v->value);
+                i++;
+            }
+        }
+    envp[i] = 0;
+    return envp;
+}
+
+/* argv[0] by vsh's $PATH (a name with a slash is taken as it is) */
+static int resolve(const sh_shell *sh, const char *name, char *out, size_t max)
+{
+    const char *path = sh_get(&sh->ctx, "PATH");
+    if (strchr(name, '/')) {
+        snprintf(out, max, "%s", name);
+        return access(out, X_OK) == 0 ? 0 : -1;
+    }
+    while (path && *path) {
+        size_t n = strcspn(path, ":");
+        char dir[512];
+        struct stat st;
+        snprintf(dir, sizeof(dir), "%.*s", (int)n, path);
+        snprintf(out, max, "%s/%s", n ? dir : ".", name);
+        if (access(out, X_OK) == 0 && stat(out, &st) == 0 && S_ISREG(st.st_mode))
+            return 0;
+        path += n;
+        if (*path == ':')
+            path++;
+    }
+    return -1;
+}
+
+static long reap(pid_t pid, int wait)
+{
+    int st = 0;
+    pid_t r;
+    do
+        r = waitpid(pid, &st, wait ? 0 : WNOHANG);
+    while (r < 0 && errno == EINTR);
+    return r == pid ? decode(st) : -2;
+}
+
+static long h_run(void *os, char **argv, const sh_io *io, int wait)
+{
+    sh_shell *sh = ((hproc *)os)->sh;
+    char exe[1024];
+    char **envp;
+    pid_t pid;
+    int i;
+    if (resolve(sh, argv[0], exe, sizeof(exe)) < 0) {
+        close_owned(io);
+        return -1;
+    }
+    envp = build_envp(sh);
+    pid = fork();
+    if (pid < 0) {
+        close_owned(io);
+        return -1;
+    }
+    if (pid == 0) {
+        if (io->in)
+            dup2(FD(io->in), 0);
+        if (io->out)
+            dup2(FD(io->out), 1);
+        if (io->err)
+            dup2(FD(io->err), 2);
+        execve(exe, argv, envp ? envp : (char **)0);
+        _exit(127);
+    }
+    if (envp) {
+        for (i = 0; envp[i]; i++)
+            free(envp[i]);
+        free(envp);
+    }
+    close_owned(io);
+    if (wait)
+        return reap(pid, 1);
+    for (i = 0; i < MAXJOB; i++)
+        if (!jobs[i].pid) {
+            jobs[i].pid = pid;
+            jobs[i].reaped = 0;
+            return (long)pid;
+        }
+    return reap(pid, 1) >= 0 ? -1 : -1;
+}
+
+static long h_wait(void *os, long job)
+{
+    int i;
+    (void)os;
+    for (i = 0; i < MAXJOB; i++)
+        if (jobs[i].pid == (pid_t)job) {
+            long st;
+            if (!jobs[i].reaped) {
+                jobs[i].status = reap((pid_t)job, 1);
+                jobs[i].reaped = 1;
+            }
+            st = jobs[i].status;
+            jobs[i].pid = 0;
+            return st < 0 ? 1 : st;
+        }
+    return 1;
+}
+
+static int h_done(void *os, long job)
+{
+    int i;
+    (void)os;
+    for (i = 0; i < MAXJOB; i++)
+        if (jobs[i].pid == (pid_t)job) {
+            if (!jobs[i].reaped) {
+                long st = reap((pid_t)job, 0);
+                if (st == -2)
+                    return 0;
+                jobs[i].status = st;
+                jobs[i].reaped = 1;
+            }
+            return 1;
+        }
+    return 1;
+}
+
+static long h_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, int wait)
+{
+    pid_t pid;
+    int i;
+    (void)os;
+    pid = fork();
+    if (pid < 0)
+        return -1;
+    if (pid == 0) {
+        hproc *hp = (hproc *)calloc(1, sizeof(*hp));
+        long st;
+        hp->sh = child;
+        child->os.data = hp;
+        child->ctx.pid = (long)getpid();
+        for (i = 0; i < MAXJOB; i++)
+            jobs[i].pid = 0;
+        st = sh_run_child(child, tree, io);
+        _exit((int)(st & 255));
+    }
+    close_owned(io);
+    if (wait)
+        return reap(pid, 1);
+    for (i = 0; i < MAXJOB; i++)
+        if (!jobs[i].pid) {
+            jobs[i].pid = pid;
+            jobs[i].reaped = 0;
+            return (long)pid;
+        }
+    return -1;
+}
+
+static long h_read(void *os, sh_fh fh, char *buf, long max)
+{
+    ssize_t n;
+    (void)os;
+    do
+        n = read(FD(fh), buf, (size_t)max);
+    while (n < 0 && errno == EINTR);
+    return n > 0 ? (long)n : 0;
+}
+
+static int h_interrupted(void *os)
+{
+    (void)os;
+    return 0;
+}
+
+static long h_write(void *os, sh_fh fh, const char *buf, long n)
+{
+    long done = 0;
+    (void)os;
+    while (done < n) {
+        ssize_t w = write(FD(fh), buf + done, (size_t)(n - done));
+        if (w < 0) {
+            if (errno == EINTR)
+                continue;
+            return done ? done : -1;
+        }
+        done += (long)w;
+    }
+    return done;
+}
+
+/* a line with its newline, byte by byte so a following reader on the same
+ * descriptor loses nothing (the shell reads scripts and `read` this way) */
+static long h_read_line(void *os, sh_fh fh, char *buf, long max)
+{
+    long n = 0;
+    (void)os;
+    while (n < max - 1) {
+        char c;
+        ssize_t r = read(FD(fh), &c, 1);
+        if (r < 0 && errno == EINTR)
+            continue;
+        if (r <= 0)
+            break;
+        buf[n++] = c;
+        if (c == '\n')
+            break;
+    }
+    buf[n] = 0;
+    return n ? n : -1;
+}
+
+static int h_chdir(void *os, const char *path)
+{
+    (void)os;
+    return chdir(path);
+}
+
+static char *h_cwd(void *os)
+{
+    char *p = (char *)malloc(1024);
+    (void)os;
+    if (p && !getcwd(p, 1024))
+        p[0] = 0;
+    return p;
+}
+
+static int h_exists(void *os, const char *path, int want_dir)
+{
+    struct stat st;
+    char p[1024];
+    (void)os;
+    host_path(path, p, sizeof(p));
+    if (stat(p, &st))
+        return 0;
+    if (want_dir < 0)
+        return 1;
+    return want_dir ? S_ISDIR(st.st_mode) != 0 : !S_ISDIR(st.st_mode);
+}
+
+static int h_isatty(void *os, sh_fh fh)
+{
+    (void)os;
+    return fh && isatty(FD(fh));
+}
+
+static long h_stack(void *os, long bytes)
+{
+    (void)os;
+    (void)bytes;
+    return 0;
+}
+
+static void h_umask(void *os, int mask)
+{
+    (void)os;
+    umask((mode_t)mask);
+}
+
+static int h_listdir(sh_ctx *c, const char *dir, sh_list *out)
+{
+    DIR *d = opendir(*dir ? dir : ".");
+    struct dirent *e;
+    (void)c;
+    if (!d)
+        return -1;
+    while ((e = readdir(d)) != 0)
+        if (strcmp(e->d_name, ".") && strcmp(e->d_name, ".."))
+            sh_list_add(out, e->d_name);
+    closedir(d);
+    return 0;
+}
+
+static int run_main(int argc, char **argv)
+{
+    static sh_shell sh;
+    static hproc hp;
+    const char *command = 0;
+    int first = 1, i, hits = 0, a = 1;
+    long st = 0;
+    extern char **environ;
+    char **e;
+    if (argc > 1 && !strcmp(argv[1], "--hits")) {
+        hits = 1;
+        a = 2;
+    }
+    sh_shell_init(&sh);
+    hp.sh = &sh;
+    sh.os.open = h_open;
+    sh.os.close = h_close;
+    sh.os.pipe = h_pipe;
+    sh.os.run = h_run;
+    sh.os.wait = h_wait;
+    sh.os.done = h_done;
+    sh.os.cont = 0;
+    sh.os.isatty = h_isatty;
+    sh.os.stack = h_stack;
+    sh.os.umask = h_umask;
+    sh.os.spawn = h_spawn;
+    sh.os.read = h_read;
+    sh.os.interrupted = h_interrupted;
+    sh.os.write = h_write;
+    sh.os.read_line = h_read_line;
+    sh.os.chdir = h_chdir;
+    sh.os.cwd = h_cwd;
+    sh.os.exists = h_exists;
+    sh.os.data = &hp;
+    sh.ctx.listdir = h_listdir;
+    sh.ctx.nocase = 0;
+    sh.ctx.pid = (long)getpid();
+    sh.io.in = FH(0);
+    sh.io.out = FH(1);
+    sh.io.err = FH(2);
+    sh.io.owned = 0;
+    /* the shell starts with the host's variables (as vsh imports its
+     * environment); bashdiff.py gives both shells the same clean one */
+    for (e = environ; *e; e++) {
+        const char *eq = strchr(*e, '=');
+        if (eq && eq != *e) {
+            char name[256];
+            size_t n = (size_t)(eq - *e);
+            if (n < sizeof(name)) {
+                memcpy(name, *e, n);
+                name[n] = 0;
+                sh_set(&sh.ctx, name, eq + 1);
+                sh_export(&sh.ctx, name);
+            }
+        }
+    }
+    if (argc > a + 1 && !strcmp(argv[a], "-c")) {
+        command = argv[a + 1];
+        if (argc > a + 2)
+            sh.ctx.arg0 = argv[a + 2];
+        first = a + 3;
+    } else if (argc > a && argv[a][0] != '-') {
+        sh.ctx.arg0 = argv[a];
+        first = a + 1;
+    } else {
+        fprintf(stderr, "usage: vsh_host [--hits] -c COMMAND [NAME [ARG ...]] | FILE [ARG ...]\n");
+        return 2;
+    }
+    for (i = first; i < argc; i++)
+        sh_list_add(&sh.ctx.args, argv[i]);
+    sh.ctx.flags = "";
+    if (command)
+        sh_run_text(&sh, command, 0);
+    else
+        sh_run_text(&sh, "source \"$0\"", 0); /* the arguments stay $1 ... */
+    sh_exit_trap(&sh); /* end of input, exit, a script's end */
+    st = sh.exiting ? sh.exit_status : sh.ctx.status;
+#ifdef SH_HITS
+    if (hits) {
+#define SH_HIT_NAME(n) #n,
+        static const char *const names[] = { SH_HIT_LIST(SH_HIT_NAME) 0 };
+        int k;
+        for (k = 0; k < SH_HIT_COUNT; k++)
+            fprintf(stderr, "hits %s %lu\n", names[k], sh_hits[k]);
+    }
+#else
+    (void)hits;
+#endif
+    return (int)(st & 255);
+}
+
+int main(int argc, char **argv)
+{
+    return run_main(argc, argv);
+}

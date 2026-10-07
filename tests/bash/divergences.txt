@@ -1,0 +1,181 @@
+# probe-id <TAB> class <TAB> reason. Class: n/a-amiga (impossible on AmigaOS), documented (an owner decision,
+# also a line in dist/README.txt "Differences from bash"), later:Vnn[,Vmm] (removed by that item of
+# thoughts/shared/plans/2026-10-07-vsh-bash.md). A probe is here or in ratchet.txt, never both.
+#
+# Audit probe ids (research/2026-10-07_vsh-bash-gap.md, 190 distinct) not turned into files:
+#   P:forlines  the audit's own malformed probe, not a vsh behaviour (audit table, "for" row)
+#   P:shebang   it tested the host kernel's #! handling through the driver, not vsh
+# The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
+agent/a001_pipefail_loop	later:V14,V65	set -euo pipefail and [[ ]]
+agent/a002_command_v	later:V27	command -v
+agent/a004_diff_procsub	later:V59	<( )
+agent/a006_array_glob	later:V34,V35,V36	arrays
+agent/a007_subst_upper	later:V46,V48	${x//p/r} ${x^^}
+agent/a008_regex_match	later:V65,V66	[[ =~ ]] and BASH_REMATCH
+agent/a010_nounset_default	later:V14,V16	set -u
+agent/a011_xtrace	later:V14,V17	set -x
+agent/a016_read_procsub	later:V59	< <( )
+agent/a018_arith_command	later:V63	(( ))
+agent/a019_cstyle_for	later:V64	for (( ))
+agent/a020_array_iterate	later:V34,V35,V36	arrays
+agent/a021_array_append	later:V34,V35,V36	a+=( )
+agent/a022_substring	later:V47	${x:o:l}
+agent/a025_printf_v	later:V31	printf -v
+agent/a026_printf_q	later:V31	printf %q
+agent/a027_echo_e	later:V23	echo -e
+agent/a028_ansi_c_quote	later:V52	$'...'
+agent/a029_test_file_flags	later:V21,V22	test -r -s -x
+agent/a030_test_and_not	later:V22	test -a
+agent/a032_dbrack_files	later:V65	[[ ]]
+agent/a033_dbrack_strings	later:V65	[[ ]]
+agent/a034_dbrack_lt	later:V65	[[ < ]]
+agent/a035_dbrack_or	later:V65	[[ || ]]
+agent/a036_readonly	later:V24	readonly
+agent/a037_declare_flags	later:V25	declare -i -r
+agent/a041_type_t	later:V27	type -t
+agent/a042_command_V	later:V27	command -V
+agent/a043_builtin	later:V27	builtin
+agent/a044_arith_cmd_cond	later:V63	(( ))
+agent/a045_arith_ops	later:V62	arithmetic operators
+agent/a046_arith_64bit	later:V61,V62	64-bit arithmetic
+agent/a047_let	later:V63	let
+agent/a048_arith_assign	later:V62,V63	(( += )) and $((n--))
+agent/a049_brace_list	later:V53	brace expansion
+agent/a050_brace_mkdir	later:V53	brace expansion
+agent/a051_cmdsub_file	later:V55	$(< file)
+agent/a056_pipefail_status	later:V14,V18	set -o pipefail
+agent/a057_pipestatus	later:V43	PIPESTATUS (not in the [pi] subset)
+agent/a059_errexit_stop	later:V14,V15	set -e
+agent/a062_exec_redirect_err	later:V71	exec 2>&1 (not in the [pi] subset)
+agent/a065_clobber_override	later:V58	>|
+agent/a066_here_string	later:V58	<<<
+agent/a067_heredoc_dash	later:V58	<<-
+agent/a078_pipe_read_subshell	later:V79	lastpipe off: the last stage of a pipeline runs in a clone (not in the [pi] subset)
+agent/a079_shift_positional	later:V47	${@:2}
+agent/a084_source_args	later:V29	. file args
+agent/a085_date_arith	later:V62	$(( > ))
+agent/a087_basename_pwd	later:V42	PWD is not set at startup (not in the [pi] subset)
+agent/a092_newer_than	later:V22	test -nt
+agent/a095_trap_term	later:V28,V78	kill -TERM $$ reaching a trap
+agent/a096_declare_p	later:V25,V37	declare -p
+agent/a097_local_array	later:V37,V40	local -a
+agent/a098_unset_element	later:V34,V37	unset arr[i]
+agent/a099_indirect_ref	later:V49	${!ref}
+agent/a100_count_params	later:V49	${#@}
+agent/a101_regex_class	later:V56,V65,V66	[[:digit:]] in [[ =~ ]]
+agent/a102_glob_class	later:V56	[[:upper:]] in globs
+agent/a103_case_class	later:V56	[[:digit:]] in case
+agent/a104_function_keyword	later:V57	function name { }
+agent/a105_case_fallthrough	later:V57	;;&
+agent/a106_pipe_stderr	later:V57	|&
+agent/a107_procsub_same	later:V59	<( )
+agent/a108_ansi_c_len	later:V52	$'...'
+agent/a109_nested_quote_default	later:V51	"${a:-"x y"}"
+agent/a110_return_mod	later:V29	return N modulo 256
+agent/a111_xtrace_ps4	later:V14,V17	set -x with PS4
+agent/a112_append_string	later:V29	x+=
+agent/a113_unset_set_u	later:V14,V16	set -u
+agent/a114_errexit_subshell	later:V14,V15	set -e in a subshell
+agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
+agent/a117_arith_ternary_var	later:V62	?: in $(( ))
+agent/a118_replace_first	later:V46	${x/p/r}
+agent/a119_lower_first	later:V48	${x,,} ${x^}
+agent/a120_array_len_index	later:V34,V35,V36,V47	arrays and slices
+agent/a121_dollar_dash	later:V13,V14	$- and set -e
+arith/arith	later:V62	operators beyond + - * / % ( ) and assignment forms
+arith/dparen1	later:V63	(( )) arithmetic command parsed as two subshells
+arith/dparen2	later:V63	(( x = 5 )) is not an arithmetic command
+arrays/PIPESTATUS	later:V43	PIPESTATUS
+arrays/arr	later:V34,V35,V36,V37	indexed arrays
+arrays/assignarr	later:V35,V36	a[i]=v, ${!a[@]}, ${a[@]:o:l}
+arrays/assoc	later:V38	declare -A
+arrays/mapfile	later:V41	mapfile
+arrays/readarr	later:V41	read -a
+builtins/builtin	later:V27	builtin NAME
+builtins/command_v	later:V27	command -v
+builtins/declare	later:V24,V25	declare -i -r -x
+builtins/declare_f	later:V82	declare -f prints a function
+builtins/declarep	later:V25	declare -p
+builtins/echo_e	later:V23	echo -e -E
+builtins/nameref	later:V39	declare -n
+builtins/printf_fmt	later:V31,V67	printf %e %g %*d and float widths
+builtins/printf_q	later:V31	printf %q
+builtins/printf_v	later:V31	printf -v
+builtins/readdelim	later:V30	read -d
+builtins/readn	later:V30	read -n
+builtins/readonlyb	later:V24	readonly
+builtins/type_	later:V27	type -t
+builtins/unsetf	later:V26	unset -f
+dbrack/dbrack	later:V65	[[ ]]
+dbrack/dbrack2	later:V65	[[ ]] with && and ( )
+expand/assignplus	later:V29	x+= appends
+expand/at_slice	later:V47,V49	${@:o} and ${@#p}
+expand/brace	later:V53	brace expansion
+expand/brace2	later:V53	brace expansion ranges
+expand/brace3	later:V53	brace expansion letters and prefixes
+expand/bt	later:V55	nested escaped backticks
+expand/case	later:V48	${x^^} ${x,,}
+expand/cmdsub_quote	later:V55	quotes inside $( ) inside double quotes
+expand/cmdsubfile	later:V55	$(< file)
+expand/dollarhash	later:V49	${#@} ${#*}
+expand/exitq	later:V29	${x:?} aborts a non-interactive shell
+expand/globclass	later:V56	[[:lower:]] in globs
+expand/indirect	later:V49	${!x} ${!prefix*}
+expand/nestedquote	later:V51	"${a:-"x y"}"
+expand/subst	later:V46	${x/p/r}
+expand/substanch	later:V46	${x/#p/r} ${x/%p/r}
+expand/substr	later:V47	${x:o:l}
+expand/tilde2	later:V54	~+ and ~-
+expand/tildeassign	later:V54	tilde after a colon in an assignment (no item names it: nearest V54)
+fd/fd4	later:V71	redirection of fd 4
+fd/fdopen	later:V71	exec 3>file
+fd/fdvar	later:V72	{var} descriptors
+grammar/case2	later:V57	;;& terminator
+grammar/case3	later:V57	;& terminator
+grammar/cmdsubcase2	later:V55	case pattern a) inside $( )
+grammar/dollarq	later:V52	$'...' quoting
+grammar/dollarq2	later:V52	$"..." quoting
+grammar/fnkw	later:V57	function name { }
+grammar/fnkw2	later:V57	function name() { }
+grammar/forarith	later:V64	for (( ; ; ))
+grammar/funcparen	later:V57	name () { } with a space (no item names it: nearest V57)
+grammar/pipeamp	later:V57	|& pipeline
+grammar/retval	later:V29	return N modulo 256
+invocation/returnsrc	later:V29	return in a sourced file
+invocation/sourceargs	later:V29	. file args sets $1..
+jobs/bgwait	later:V83	wait $! returns the status of a background subshell (no item names it: nearest V83)
+options/dollarmin	later:V13	$- lists the options
+options/set_e	later:V15	set -e
+options/set_o	later:V14	set -o NAME
+options/set_pf	later:V18	set -o pipefail
+options/set_u	later:V16	set -u
+options/set_x	later:V17	set -x
+options/setdash	later:V14	set -e keeps the positional parameters
+options/seto2	later:V14	set -o with an unknown name fails
+procsub/procsub	later:V59	<( )
+redir/ampappend	later:V58	&>>
+redir/clobber	later:V58	>| and set -C
+redir/heredocdash	later:V58	<<-
+redir/herestr	later:V58	<<<
+redir/noclobber	later:V19	set -o noclobber
+redir/rwredir	later:V58	<>
+shopt/extglob	later:V79	shopt -s extglob
+shopt/globstar	later:V79	shopt -s globstar
+test/testL	later:V21,V22	test -L -h
+test/test_a	later:V22	test -a -o
+test/test_paren	later:V22	test ( )
+test/testnt	later:V22	test -nt -ot -ef
+test/testo	later:V22	test -o option
+test/tests	later:V21,V22	test -s
+test/testx	later:V21,V22	test -x
+traps/trapdebug	later:V77	trap DEBUG
+traps/traperr	later:V76	trap ERR
+traps/trapint	later:V28,V78	kill -INT $$ reaching a trap
+traps/trapl	later:V78	trap -l
+traps/trapret	later:V77	trap RETURN
+traps/trapusr	later:V28,V78	trap USR1
+vars/bashv	later:V42	BASH_VERSION
+vars/funcname	later:V43	FUNCNAME
+vars/lastarg	later:V42	$_
+vars/lineno	later:V42	LINENO
+vars/random	later:V42	RANDOM

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sh_expand.h"
+#include "sh_hits.h"
 
 /* ---- lists and variables ------------------------------------------------------ */
 
@@ -770,6 +771,7 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
         return;
     }
     memset(&names, 0, sizeof(names));
+    SH_HIT(GLOB);
     if (!c->listdir || c->listdir(c, dir, &names))
         return;
     for (i = 0; i < names.n; i++) {

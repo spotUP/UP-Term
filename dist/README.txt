@@ -312,6 +312,10 @@ VSH (the shell)
   /tmp is TMP:; without one Install assigns it to T: at every boot.
   coreutils is GPL v2: COPYING and the complete source are in the kit's
   Files/coreutils drawer.
+  Differences from bash
+    vsh is being brought to bash 5 behaviour. A difference that stays on
+    purpose (AmigaOS cannot do it, or it was decided) gets one line here,
+    named by its test probe id (tests/bash/divergences.txt). None yet.
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

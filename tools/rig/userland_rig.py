@@ -24,6 +24,19 @@ For each package this script
   python3 tools/rig/userland_rig.py --only grep --case recursive   one case
   python3 tools/rig/userland_rig.py --failed        the packages whose verdict is a failure
   python3 tools/rig/userland_rig.py --force         rerun the passed ones too
+  python3 tools/rig/userland_rig.py --bash agent    the bash probes of tests/bash/probes/agent (below)
+  python3 tools/rig/userland_rig.py --bash agent --case a001_pipefail_loop   one probe
+
+--bash AREA is a second case source (plan 2026-10-07-vsh-bash, V9): the probes
+of tests/bash/probes/AREA run as `VTC:vsh <probe> [args]` in a fresh copy of
+tests/bash/data (the same staging, run, verdict and fingerprint code), and
+their output is compared with the one bash 5 gave on the Mac, written by
+tools/bashdiff.py to build/bashdiff/expected/AREA/<name>.txt (stdout and a
+last line "[exit N]"; run `make bashdiff` first). A probe with a .in file
+gets its stdin as a here-document (EXEC takes no `<`). tests/bash/rig-skip.txt
+("area/name<TAB>reason") lists the probes the rig does not run. Verdicts:
+build/rig/userland/bash-AREA.verdict. Probes only the host can run (no vsh
+binary change reaches them) belong in rig-skip.txt with the reason.
 
 Verdicts: build/rig/userland/<pkg>.verdict (first line PASS or FAIL and a
 fingerprint of the binaries, cases and expected files; then one line per case).
@@ -37,6 +50,10 @@ import ami
 import paths
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+BASH_PROBES = ROOT / "tests/bash/probes"
+BASH_DATA = ROOT / "tests/bash/data"
+BASH_EXPECTED = ROOT / "build/bashdiff/expected"
+BASH_SKIP = ROOT / "tests/bash/rig-skip.txt"
 VTC = ROOT / "build/rig/vtc"
 VERDICTS = ROOT / "build/rig/userland"
 PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", paths.repo("upterm-ports")))
@@ -135,12 +152,12 @@ def run_case(pkg, name):
     return rc, out
 
 
-def compare(pkg, name):
+def compare(pkg, name, exp=None, hint=None):
     """(ok, diff text) of the case's output against the expected one."""
-    exp = PORTS / "build/expected" / pkg / (name + ".txt")
+    exp = exp or PORTS / "build/expected" / pkg / (name + ".txt")
     got = VTC / "out" / pkg / (name + ".txt")
     if not exp.exists():
-        return False, "no expected output (make host-%s in the ports repo)" % pkg
+        return False, "no expected output (%s)" % (hint or "make host-%s in the ports repo" % pkg)
     if not got.exists():
         return False, "no output captured"
     a = exp.read_text(encoding="latin-1").splitlines()
@@ -180,13 +197,113 @@ def check_package(pkg, only_case):
     return status == "PASS"
 
 
+def bash_cases(area):
+    """Probe names of tests/bash/probes/AREA the rig runs (rig-skip.txt names the others)."""
+    skip = set()
+    if BASH_SKIP.exists():
+        skip = {l.split("\t")[0] for l in BASH_SKIP.read_text().splitlines() if l.strip() and not l.startswith("#")}
+    return [p.stem for p in sorted((BASH_PROBES / area).glob("*.sh")) if "%s/%s" % (area, p.stem) not in skip]
+
+
+def bash_wrapper(area, name):
+    """The script the rig runs for one probe: vsh on the probe in a fresh data copy, then "[exit N]"."""
+    pdir = BASH_PROBES / area
+    args = (pdir / (name + ".args")).read_text().strip() if (pdir / (name + ".args")).exists() else ""
+    work = "VTC:userland/bashwork/%s_%s" % (area, name)
+    cmd = "VTC:vsh VTC:userland/bash/%s/%s.sh %s" % (area, name, args)
+    text = ("cd " + work + "\n"
+            "export PATH=/UP-Term/bin:$PATH\n"
+            "unset LC_ALL LC_CTYPE\n"
+            "export LANG=C TZ=UTC\n")
+    inp = pdir / (name + ".in")
+    if inp.exists():
+        text += "{ " + cmd + " <<'BASHDIFF_IN'\n" + inp.read_text(encoding="latin-1") + "BASHDIFF_IN\n} 2>VTC:out/bash-%s/%s.err\n" % (area, name)
+    else:
+        text += "{ " + cmd + "\n} 2>VTC:out/bash-%s/%s.err\n" % (area, name)
+    return text + "echo \"[exit $?]\"\n"
+
+
+def stage_bash(area, wanted):
+    """The vsh binary, the probes (as they are), a wrapper and a fresh data copy per wanted probe into VTC:."""
+    pkg = "bash-" + area
+    (VTC / "userland").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "build/amiga/vsh", VTC / "vsh")
+    pdest = VTC / "userland/bash" / area
+    shutil.rmtree(pdest, ignore_errors=True)
+    pdest.mkdir(parents=True)
+    scripts = VTC / "userland" / pkg
+    shutil.rmtree(scripts, ignore_errors=True)
+    scripts.mkdir(parents=True)
+    out = VTC / "out" / pkg
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True)
+    for name in wanted:
+        shutil.copyfile(BASH_PROBES / area / (name + ".sh"), pdest / (name + ".sh"))
+        work = VTC / "userland/bashwork" / ("%s_%s" % (area, name))
+        shutil.rmtree(work, ignore_errors=True)
+        shutil.copytree(BASH_DATA, work)
+        (scripts / (name + ".sh")).write_text(bash_wrapper(area, name), encoding="latin-1")
+
+
+def bash_fingerprint(area):
+    h = hashlib.sha256()
+    vsh = ROOT / "build/amiga/vsh"
+    h.update(vsh.read_bytes() if vsh.exists() else b"<missing>")
+    for p in sorted((BASH_PROBES / area).glob("*")):
+        h.update(p.name.encode() + p.read_bytes())
+    for f in sorted(BASH_DATA.rglob("*")):
+        if f.is_file():
+            h.update(str(f.relative_to(BASH_DATA)).encode() + f.read_bytes())
+    for f in sorted((BASH_EXPECTED / area).glob("*.txt")):
+        h.update(f.name.encode() + f.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def check_bash(area, only_case):
+    pkg = "bash-" + area
+    if not (BASH_PROBES / area).is_dir():
+        print("[ERROR] no area %s in %s" % (area, BASH_PROBES))
+        return False
+    if not (ROOT / "build/amiga/vsh").exists():
+        print("[ERROR] build/amiga/vsh missing: make build/amiga/vsh")
+        return False
+    names = bash_cases(area)
+    if only_case and only_case not in names:
+        print("[ERROR] %s: no case %s (or it is in rig-skip.txt)" % (pkg, only_case))
+        return False
+    fp = bash_fingerprint(area)
+    old = read_verdict(pkg)
+    prior = old[2] if old and old[1] == fp else {}
+    wanted = [n for n in names if (not only_case or n == only_case)]
+    todo = [n for n in wanted if only_case or prior.get(n) != "PASS"]
+    results = dict(prior)
+    stage_bash(area, todo)
+    for name in todo:
+        rc, out = run("VTC:vsh VTC:userland/%s/%s.sh >VTC:out/%s/%s.txt" % (pkg, name, pkg, name), 90)
+        ok, diff = compare(pkg, name, BASH_EXPECTED / area / (name + ".txt"), "make bashdiff ONLY=%s" % area)
+        results[name] = "PASS" if ok else "FAIL"
+        print("%s %s/%s%s" % ("[OK]" if ok else "[FAIL]", pkg, name, "" if ok else " (agent rc %s %s)\n%s" % (rc, out.strip()[:200], diff)),
+              flush=True)
+    for name in [n for n in results if n not in names]:
+        del results[name]
+    status = write_verdict(pkg, fp, results)
+    print("%s: %s, %d of %d probes identical to bash" % (pkg, status, sum(v == "PASS" for v in results.values()), len(results)))
+    return status == "PASS"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--bash", metavar="AREA", help="the bash probes of tests/bash/probes/AREA instead of the ports' cases")
     ap.add_argument("--only", nargs="+", metavar="PKG", help="these packages, even if they passed")
     ap.add_argument("--case", help="one case (with one --only package)")
     ap.add_argument("--failed", action="store_true", help="the packages whose verdict is FAIL")
     ap.add_argument("--force", action="store_true", help="rerun passed packages too")
     a = ap.parse_args()
+    if a.bash:
+        VERDICTS.mkdir(parents=True, exist_ok=True)
+        if a.force:
+            (VERDICTS / ("bash-" + a.bash + ".verdict")).unlink(missing_ok=True)
+        return 0 if check_bash(a.bash, a.case) else 1
     if a.case and not (a.only and len(a.only) == 1):
         ap.error("--case needs exactly one --only package")
     names = a.only or packages()

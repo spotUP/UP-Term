@@ -1,0 +1,1 @@
+echo "*.txt" '*.txt' \*.txt

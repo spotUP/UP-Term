@@ -1,0 +1,1 @@
+f () { echo spaced; }; f

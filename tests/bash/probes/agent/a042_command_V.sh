@@ -1,0 +1,1 @@
+command -V cd

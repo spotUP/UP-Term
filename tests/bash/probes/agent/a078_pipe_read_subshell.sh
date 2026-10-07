@@ -1,0 +1,1 @@
+echo "a b" | read x y; echo "[$x]"

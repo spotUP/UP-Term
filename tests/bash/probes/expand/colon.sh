@@ -1,0 +1,1 @@
+: ${q:=default}; echo $q

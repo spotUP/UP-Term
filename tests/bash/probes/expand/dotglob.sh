@@ -1,0 +1,1 @@
+echo dir/*; echo dir/.*
