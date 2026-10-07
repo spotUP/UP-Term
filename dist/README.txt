@@ -295,6 +295,9 @@ VSH (the shell)
   pipeline run as processes of their own (there is no fork on the Amiga).
   Commands are looked for in $PATH (Unix form, as ixemul programs read it:
   /UP-Term/bin:/gg/bin:/c by default), then the Shell's path (Path).
+  vsh's  type  and  which  builtins shadow the AmigaDOS C:Type command (as in
+  bash); C:Type stays reachable as  C:Type  or by its full path. The  umask
+  builtin sets the local variable UMASK, which started programs inherit.
   Startup: ENVARC:vsh/vshrc, then $HOME/.vshrc (HOME defaults to SYS:).
   Stack: vsh needs none set (it takes 64 KB itself). The commands it runs
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
