@@ -1,7 +1,7 @@
 # vtcon -- host tests and the Amiga cross build. See RULES.md ## Commands.
 
 HOSTCC  ?= cc
-HOSTCFLAGS := -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
+HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
 BUILD   := build
 
 # The workspace directory that holds vtcon and the other UP-Term repos side by
@@ -73,7 +73,7 @@ $(BUILD)/vsh_host: tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh
 $(BUILD)/vsh_host_leak: tests/vsh_host.c tests/vh_alloc.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_hits.h shell/sh_float.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -c -o $(BUILD)/vh_alloc.o tests/vh_alloc.c
-	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -DSH_HITS -DVH_COUNT -Dmalloc=vh_malloc -Dcalloc=vh_calloc -Drealloc=vh_realloc -Dfree=vh_free -o $@ tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c $(BUILD)/vh_alloc.o
+	$(HOSTCC) -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -DSH_HITS -DVH_COUNT -Dmalloc=vh_malloc -Dcalloc=vh_calloc -Drealloc=vh_realloc -Dfree=vh_free -o $@ tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c $(BUILD)/vh_alloc.o
 # the ratchet list in byte order (content unchanged: sort -o keeps every line)
 ratchet-sort:
 	LC_ALL=C sort -o tests/bash/ratchet.txt tests/bash/ratchet.txt

@@ -275,11 +275,11 @@ void sh_keys(const sh_ctx *c, const char *name, sh_list *out)
     }
 }
 
-void sh_ltoa(long v, char *out)
+void sh_ltoa(sh_int v, char *out)
 {
     char d[24];
     int n = 0, k = 0;
-    unsigned long u = v < 0 ? 0UL - (unsigned long)v : (unsigned long)v;
+    sh_uint u = v < 0 ? (sh_uint)0 - (sh_uint)v : (sh_uint)v;
     if (v < 0)
         out[k++] = '-';
     do
@@ -296,9 +296,9 @@ static char *conv(sh_ctx *c, const sh_var *v, const char *value)
     char *t = sdup(value), *q;
     if (t && (v->attr & SH_ATTR_INTEGER)) {
         const char *err = 0;
-        long n = sh_arith(c, value, &err);
+        sh_int n = sh_arith(c, value, &err);
         char d[24];
-        sh_ltoa(err ? 0L : n, d);
+        sh_ltoa(err ? 0 : n, d);
         free(t);
         t = sdup(d);
     }
@@ -843,13 +843,31 @@ long sh_skip_sub(const char *s, long i, long len, int dq)
 }
 #undef SK
 
+/* Arithmetic: 64-bit (sh_int), bash's operator set by precedence climbing. One aval is the value of an
+ * operand and, while it is a bare variable or element, its name for the assignment operators. */
+typedef struct aval {
+    sh_int v;
+    int lv;
+    char name[64];
+    char sub[96];
+} aval;
+
 typedef struct arith {
     sh_ctx *c;
     const char *s;
     const char *err;
+    int skip;    /* in the branch a short circuit or ?: does not take: no store, no division error */
+    int depth;
 } arith;
 
-static long a_expr(arith *a);
+static const char *const a_lvl[] = {"||", "&&", "|", "^", "&", "== !=", "< <= > >=", "<< >>", "+ -", "* / %"};
+static const char *const a_ops[] = {"<<=", ">>=", "&&", "||", "**", "<=", ">=", "==", "!=", "<<", ">>", "+=", "-=",
+                                    "*=", "/=", "%=", "&=", "^=", "|=", "++", "--", "?", ":", ",", "=", "<", ">",
+                                    "+", "-", "*", "/", "%", "&", "^", "|", "!", "~", 0};
+
+static void a_assign(arith *a, aval *x);
+static void a_cond(arith *a, aval *x);
+static void a_comma(arith *a, aval *x);
 
 static void a_space(arith *a)
 {
@@ -857,112 +875,386 @@ static void a_space(arith *a)
         a->s++;
 }
 
-static long a_atom(arith *a)
+static int a_isname(char ch)
 {
-    long v = 0;
+    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_';
+}
+
+/* the operator at the cursor (longest match), 0 when there is none */
+static const char *a_tok(arith *a)
+{
+    int i;
+    a_space(a);
+    for (i = 0; a_ops[i]; i++)
+        if (!strncmp(a->s, a_ops[i], strlen(a_ops[i])))
+            return a_ops[i];
+    return 0;
+}
+
+static int a_in(const char *t, const char *list)
+{
+    size_t n = strlen(t);
+    while (*list) {
+        if (!strncmp(list, t, n) && (list[n] == ' ' || !list[n]))
+            return 1;
+        while (*list && *list != ' ')
+            list++;
+        while (*list == ' ')
+            list++;
+    }
+    return 0;
+}
+
+static int a_digit(char ch, int base)
+{
+    int d = ch >= '0' && ch <= '9' ? ch - '0' : ch >= 'a' && ch <= 'z' ? ch - 'a' + 10
+          : ch >= 'A' && ch <= 'Z' ? (base > 36 ? ch - 'A' + 36 : ch - 'A' + 10)
+          : ch == '@' ? 62 : ch == '_' ? 63 : 99;
+    return d < base ? d : -1;
+}
+
+static sh_int a_num(arith *a)
+{
+    sh_uint v = 0;
+    int base = 10, d;
+    const char *s = a->s;
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        base = 16;
+        s += 2;
+    } else if (s[0] == '0' && s[1])
+        base = 8;
+    for (;; s++) {
+        if (base == 10 && *s == '#' && v >= 2 && v <= 64 && s != a->s) {
+            base = (int)v;
+            v = 0;
+            s++;
+            if (a_digit(*s, base) < 0)
+                a->err = "arithmetic: invalid number";
+            for (; (d = a_digit(*s, base)) >= 0; s++)
+                v = v * (sh_uint)base + (sh_uint)d;
+            break;
+        }
+        d = a_digit(*s, base);
+        if (d < 0)
+            break;
+        v = v * (sh_uint)base + (sh_uint)d;
+    }
+    if (!a->err && (a_isname(*s) || (*s >= '0' && *s <= '9') || *s == '@'))
+        a->err = "arithmetic: value too great for base";
+    a->s = s;
+    return (sh_int)v;
+}
+
+static sh_int a_value(arith *a, const char *val);
+
+static void a_load(arith *a, aval *x)
+{
+    const char *val;
+    x->v = 0;
+    val = x->sub[0] ? sh_get_elem(a->c, x->name, x->sub) : sh_get(a->c, x->name);
+    if (val && *val)
+        x->v = a_value(a, val);
+}
+
+static sh_int a_value(arith *a, const char *val)
+{
+    arith b;
+    sh_int v;
+    if (a->depth >= 20) {
+        a->err = "arithmetic: expression recursion level exceeded";
+        return 0;
+    }
+    b.c = a->c;
+    b.s = val;
+    b.err = 0;
+    b.skip = a->skip;
+    b.depth = a->depth + 1;
+    {
+        aval x;
+        a_comma(&b, &x);
+        v = x.v;
+    }
+    a_space(&b);
+    if (!b.err && *b.s)
+        b.err = "arithmetic: syntax error: invalid arithmetic operator";
+    if (b.err)
+        a->err = b.err;
+    return v;
+}
+
+static void a_store(arith *a, aval *x, sh_int v)
+{
+    char d[24];
+    x->v = v;
+    if (a->skip || a->err)
+        return;
+    sh_ltoa(v, d);
+    SH_HIT(ARITH_ASSIGN);
+    if (sh_assign(a->c, x->name, x->sub[0] ? x->sub : 0, d, 0))
+        a->err = "arithmetic: cannot assign to the variable";
+}
+
+static void a_primary(arith *a, aval *x)
+{
+    x->lv = 0;
+    x->v = 0;
     a_space(a);
     if (*a->s == '(') {
         a->s++;
-        v = a_expr(a);
+        a_comma(a, x);
         a_space(a);
         if (*a->s == ')')
             a->s++;
-        else
+        else if (!a->err)
             a->err = "arithmetic: ) is missing";
-        return v;
-    }
-    if (*a->s == '-') {
-        a->s++;
-        return -a_atom(a);
-    }
-    if (*a->s == '+') {
-        a->s++;
-        return a_atom(a);
+        x->lv = 0;
+        return;
     }
     if (*a->s == '$')
         a->s++;
     if (*a->s >= '0' && *a->s <= '9') {
-        while (*a->s >= '0' && *a->s <= '9')
-            v = v * 10 + (*a->s++ - '0');
-        return v;
+        x->v = a_num(a);
+        return;
     }
-    if ((*a->s >= 'A' && *a->s <= 'Z') || (*a->s >= 'a' && *a->s <= 'z') || *a->s == '_') {
-        char name[64];
+    if (a_isname(*a->s)) {
         int k = 0;
-        const char *val;
-        while (((*a->s >= 'A' && *a->s <= 'Z') || (*a->s >= 'a' && *a->s <= 'z') || *a->s == '_' ||
-                (*a->s >= '0' && *a->s <= '9')) && k < 63)
-            name[k++] = *a->s++;
-        name[k] = 0;
+        while ((a_isname(*a->s) || (*a->s >= '0' && *a->s <= '9')) && k < 63)
+            x->name[k++] = *a->s++;
+        x->name[k] = 0;
+        x->sub[0] = 0;
         if (*a->s == '[') {
-            char sb[64];
             int m = 0, d = 0;
             a->s++;
-            while (*a->s && (*a->s != ']' || d) && m < 63) {
+            while (*a->s && (*a->s != ']' || d) && m < 95) {
                 d += *a->s == '[' ? 1 : *a->s == ']' ? -1 : 0;
-                sb[m++] = *a->s++;
+                x->sub[m++] = *a->s++;
             }
-            sb[m] = 0;
+            x->sub[m] = 0;
             if (*a->s == ']')
                 a->s++;
-            val = sh_get_elem(a->c, name, sb);
-        } else
-            val = sh_get(a->c, name);
-        return val ? atol(val) : 0;
+            else
+                a->err = "arithmetic: ] is missing";
+        }
+        x->lv = 1;
+        a_load(a, x);
+        return;
     }
-    a->err = "arithmetic: a number is missing";
+    if (!a->err)
+        a->err = *a->s ? "arithmetic: syntax error: operand expected" : "arithmetic: a number is missing";
+}
+
+static void a_unary(arith *a, aval *x)
+{
+    const char *t = a_tok(a);
+    if (t && (!strcmp(t, "++") || !strcmp(t, "--"))) {
+        a->s += 2;
+        a_unary(a, x);
+        if (!x->lv) {   /* ++3 is +(+3), --3 is -(-3) */
+            if (t[0] == '-')
+                x->v = (sh_int)(0 - (sh_uint)x->v);
+            return;
+        }
+        a_store(a, x, (sh_int)((sh_uint)x->v + (sh_uint)(t[0] == '+' ? 1 : -1)));
+        return;
+    }
+    if (t && (!strcmp(t, "+") || !strcmp(t, "-") || !strcmp(t, "!") || !strcmp(t, "~"))) {
+        a->s++;
+        a_unary(a, x);
+        x->lv = 0;
+        x->v = t[0] == '-' ? (sh_int)(0 - (sh_uint)x->v) : t[0] == '!' ? x->v == 0 : t[0] == '~' ? ~x->v : x->v;
+        return;
+    }
+    a_primary(a, x);
+    t = a_tok(a);
+    if (x->lv && t && (!strcmp(t, "++") || !strcmp(t, "--"))) {
+        sh_int old = x->v;
+        a->s += 2;
+        a_store(a, x, (sh_int)((sh_uint)old + (sh_uint)(t[0] == '+' ? 1 : -1)));
+        x->v = old;
+        x->lv = 0;
+    }
+}
+
+static sh_int a_pow(arith *a, sh_int b, sh_int e)
+{
+    sh_uint r = 1, p = (sh_uint)b;
+    if (e < 0) {
+        if (!a->err)
+            a->err = "arithmetic: exponent less than 0";
+        return 0;
+    }
+    for (; e; e >>= 1, p *= p)
+        if (e & 1)
+            r *= p;
+    return (sh_int)r;
+}
+
+static void a_exp(arith *a, aval *x)
+{
+    const char *t;
+    a_unary(a, x);
+    t = a_tok(a);
+    if (t && !strcmp(t, "**")) {
+        aval y;
+        a->s += 2;
+        x->lv = 0;
+        a_exp(a, &y);
+        x->v = a_pow(a, x->v, y.v);
+    }
+}
+
+static sh_int a_op2(arith *a, const char *t, sh_int l, sh_int r)
+{
+    sh_uint ul = (sh_uint)l, ur = (sh_uint)r;
+    sh_int min = (sh_int)((sh_uint)1 << 63);
+    switch (t[0]) {
+    case '+': return (sh_int)(ul + ur);
+    case '-': return (sh_int)(ul - ur);
+    case '*': return (sh_int)(ul * ur);
+    case '/':
+    case '%':
+        if (!r) {
+            if (!a->skip && !a->err)
+                a->err = "arithmetic: division by zero";
+            return 0;
+        }
+        if (l == min && r == -1)
+            return t[0] == '/' ? min : 0;
+        return t[0] == '/' ? l / r : l % r;
+    case '&': return l & r;
+    case '|': return l | r;
+    case '^': return l ^ r;
+    case '<':
+        if (t[1] == '<')
+            return (sh_int)(ul << (ur & 63));
+        return t[1] == '=' ? l <= r : l < r;
+    case '>':
+        if (t[1] == '>')
+            return l >> (ur & 63);
+        return t[1] == '=' ? l >= r : l > r;
+    case '=': return l == r;
+    case '!': return l != r;
+    }
     return 0;
 }
 
-static long a_term(arith *a)
+static void a_bin(arith *a, int l, aval *x)
 {
-    long v = a_atom(a);
+    if (l == 10) {
+        a_exp(a, x);
+        return;
+    }
+    a_bin(a, l + 1, x);
     for (;;) {
-        char op;
-        long r;
-        a_space(a);
-        op = *a->s;
-        if (op != '*' && op != '/' && op != '%')
-            return v;
-        a->s++;
-        r = a_atom(a);
-        if (op == '*')
-            v *= r;
-        else if (!r)
-            a->err = "arithmetic: division by zero";
-        else
-            v = op == '/' ? v / r : v % r;
+        const char *t = a_tok(a);
+        aval y;
+        int sk = 0;
+        if (l == 8 && t && (!strcmp(t, "++") || !strcmp(t, "--")))
+            t = t[0] == '+' ? "+" : "-";   /* 5--3 is 5 - -3 */
+        if (a->err || !t || !a_in(t, a_lvl[l]))
+            return;
+        a->s += strlen(t);
+        x->lv = 0;
+        if (l < 2) {
+            sk = l == 0 ? x->v != 0 : x->v == 0;
+            if (sk)
+                a->skip++;
+            a_bin(a, l + 1, &y);
+            if (sk)
+                a->skip--;
+            x->v = l == 0 ? (x->v != 0 || y.v != 0) : (x->v != 0 && y.v != 0);
+        } else {
+            a_bin(a, l + 1, &y);
+            x->v = a_op2(a, t, x->v, y.v);
+        }
     }
 }
 
-static long a_expr(arith *a)
+static void a_cond(arith *a, aval *x)
 {
-    long v = a_term(a);
-    for (;;) {
-        char op;
-        a_space(a);
-        op = *a->s;
-        if (op != '+' && op != '-')
-            return v;
+    const char *t;
+    a_bin(a, 0, x);
+    t = a_tok(a);
+    if (!a->err && t && !strcmp(t, "?")) {
+        int c = x->v != 0;
+        aval y, z;
         a->s++;
-        v = op == '+' ? v + a_term(a) : v - a_term(a);
+        if (!c)
+            a->skip++;
+        a_assign(a, &y);
+        if (!c)
+            a->skip--;
+        t = a_tok(a);
+        if (!a->err && !(t && !strcmp(t, ":"))) {
+            a->err = "arithmetic: ':' expected for conditional expression";
+            return;
+        }
+        a->s++;
+        if (c)
+            a->skip++;
+        a_cond(a, &z);
+        if (c)
+            a->skip--;
+        x->v = c ? y.v : z.v;
+        x->lv = 0;
     }
 }
 
-long sh_arith(sh_ctx *c, const char *expr, const char **err)
+static void a_assign(arith *a, aval *x)
+{
+    const char *t;
+    a_cond(a, x);
+    t = a_tok(a);
+    if (!a->err && t && t[strlen(t) - 1] == '=' && strcmp(t, "==") && strcmp(t, "!=") && strcmp(t, "<=") &&
+        strcmp(t, ">=")) {
+        aval y;
+        char op[4];
+        sh_int r;
+        if (!x->lv) {
+            a->err = "arithmetic: attempted assignment to non-variable";
+            return;
+        }
+        a->s += strlen(t);
+        strcpy(op, t);
+        a_assign(a, &y);
+        op[strlen(op) - 1] = 0;
+        r = !op[0] ? y.v : a_op2(a, op, x->v, y.v);
+        a_store(a, x, r);
+    }
+}
+
+static void a_comma(arith *a, aval *x)
+{
+    const char *t;
+    a_assign(a, x);
+    while (!a->err && (t = a_tok(a)) != 0 && !strcmp(t, ",")) {
+        a->s++;
+        a_assign(a, x);
+    }
+}
+
+sh_int sh_arith(sh_ctx *c, const char *expr, const char **err)
 {
     arith a;
-    long v;
+    aval x;
     a.c = c;
     a.s = expr;
     a.err = 0;
-    v = a_expr(&a);
+    a.skip = 0;
+    a.depth = 0;
+    a_space(&a);
+    if (!*a.s) {
+        if (err)
+            *err = 0;
+        return 0;
+    }
+    a_comma(&a, &x);
     a_space(&a);
     if (!a.err && *a.s)
-        a.err = "arithmetic: unexpected text";
+        a.err = "arithmetic: syntax error: invalid arithmetic operator";
     if (err)
         *err = a.err;
-    return a.err ? 0 : v;
+    return a.err ? 0 : x.v;
 }
 
 /* ---- the expansion buffer --------------------------------------------------- */
@@ -1946,24 +2238,14 @@ static long dollar(ex *e, const char *w, long len, cbuf *b, int dquote)
         {
             char *expr = expand_string(e, w + 3, i - 5 > 0 ? i - 5 : 0, 1);
             const char *err = 0;
-            long v = sh_arith(e->c, expr, &err);
-            char n[24], t[24];
-            int k = 0, d = 0, neg = v < 0;
+            sh_int v = sh_arith(e->c, expr, &err);
+            char n[24];
             free(expr);
             if (err) {
                 e->err = err;
                 return i;
             }
-            if (neg)
-                v = -v;
-            do
-                t[d++] = (char)('0' + v % 10);
-            while ((v /= 10) > 0);
-            if (neg)
-                n[k++] = '-';
-            while (d)
-                n[k++] = t[--d];
-            n[k] = 0;
+            sh_ltoa(v, n);
             cputs(b, n, dquote ? F_QUOTED : F_SPLIT);
         }
         return i;

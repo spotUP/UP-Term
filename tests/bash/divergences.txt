@@ -15,15 +15,10 @@ agent/a033_dbrack_strings	later:V65	[[ ]]
 agent/a034_dbrack_lt	later:V65	[[ < ]]
 agent/a035_dbrack_or	later:V65	[[ || ]]
 agent/a044_arith_cmd_cond	later:V63	(( ))
-agent/a045_arith_ops	later:V62	arithmetic operators
-agent/a046_arith_64bit	later:V61,V62	64-bit arithmetic
 agent/a047_let	later:V63	let
 agent/a048_arith_assign	later:V62,V63	(( += )) and $((n--))
-agent/a085_date_arith	later:V62	$(( > ))
 agent/a101_regex_class	later:V56,V65,V66	[[:digit:]] in [[ =~ ]]
 agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
-agent/a117_arith_ternary_var	later:V62	?: in $(( ))
-arith/arith	later:V62	operators beyond + - * / % ( ) and assignment forms
 arith/dparen1	later:V63	(( )) arithmetic command parsed as two subshells
 arith/dparen2	later:V63	(( x = 5 )) is not an arithmetic command
 builtins/declare_f	later:V82	declare -f prints a function

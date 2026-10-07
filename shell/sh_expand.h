@@ -15,6 +15,10 @@ typedef struct sh_list {
 void sh_list_add(sh_list *l, const char *s);
 void sh_list_free(sh_list *l);
 
+/* 64-bit integers (V61: vbcc takes long long under the vsh flags) */
+typedef long long sh_int;
+typedef unsigned long long sh_uint;
+
 /* Shell variables: name=value with attributes. */
 #define SH_ATTR_EXPORT   1
 #define SH_ATTR_READONLY 2
@@ -98,7 +102,7 @@ sh_var *sh_var_copy(const sh_var *v);                         /* deep copy, not 
 sh_var *sh_var_save(const sh_ctx *c, const char *name);       /* copy of the raw variable; 0: unset */
 void sh_var_restore(sh_ctx *c, const char *name, sh_var *saved); /* put back (0: unset), takes saved */
 void sh_var_link(sh_ctx *c, sh_var *v);                       /* v replaces any variable of its name */
-void sh_ltoa(long v, char *out);   /* decimal, no printf: out has 24 bytes */
+void sh_ltoa(sh_int v, char *out);   /* decimal, no printf: out has 24 bytes */
 int sh_set(sh_ctx *c, const char *name, const char *value);   /* 1: refused (readonly) */
 int sh_unset(sh_ctx *c, const char *name);                    /* 1: refused (readonly) */
 unsigned sh_attr(const sh_ctx *c, const char *name);          /* 0 when unset */
@@ -135,7 +139,7 @@ char *sh_unquote(const char *word);
 /* Glob pattern match (* ? [a-z] [!x], backslash escapes). */
 int sh_match(const char *pattern, const char *name, int nocase);
 
-/* $((expr)): integer arithmetic with + - * / % ( ) unary - and variables. */
-long sh_arith(sh_ctx *c, const char *expr, const char **err);
+/* $((expr)): 64-bit integer arithmetic, bash's operator set, variables and array elements as lvalues. */
+sh_int sh_arith(sh_ctx *c, const char *expr, const char **err);
 
 #endif

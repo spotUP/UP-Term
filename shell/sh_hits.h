@@ -26,7 +26,8 @@
     X(PARAM_TRANSFORM) /* a ${x@Q} style transform ran */ \
     X(ARRAY_ELEM_SET) /* an array element was assigned */ \
     X(PARAM_VALUES_ARRAY) /* the expander took the values of an array through the shared seam */ \
-    X(LOCAL_RESTORE_ARRAY) /* a local array was put back as it was */
+    X(LOCAL_RESTORE_ARRAY) /* a local array was put back as it was */ \
+    X(ARITH_ASSIGN) /* an arithmetic assignment, ++ or -- stored a value */
 
 #ifdef SH_HITS
 #define SH_HIT_ENUM(n) SH_HIT_##n,
