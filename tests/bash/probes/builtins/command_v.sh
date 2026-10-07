@@ -1,1 +1,1 @@
-command -v echo; command -v nosuch; echo rc=$?; command -v ls | grep -c /
+command -v echo; command -v nosuch; echo rc=$?; command -v ls | sed "s|.*[/:]||"

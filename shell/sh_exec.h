@@ -27,6 +27,25 @@ typedef struct sh_io {
 
 struct sh_shell;
 
+/* What stat says about a name (test -e -f -d -s -r -w -x -L -nt -ef ...). */
+#define SH_ST_FILE  1
+#define SH_ST_DIR   2
+#define SH_ST_CHAR  3
+#define SH_ST_BLOCK 4
+#define SH_ST_FIFO  5
+#define SH_ST_SOCK  6
+#define SH_ST_OTHER 7
+typedef struct sh_stat {
+    int type;              /* SH_ST_* */
+    int link;              /* a symbolic link (nofollow lookup only) */
+    long size;
+    long mtime, atime;     /* seconds */
+    unsigned mode;         /* rwxrwxrwx plus 04000 set-uid, 02000 set-gid, 01000 sticky */
+    unsigned access;       /* what this user may do: 4 read, 2 write, 1 execute */
+    int owned, group;      /* owned by the effective user / group */
+    long dev, ino;         /* identity, for -ef */
+} sh_stat;
+
 /* run(wait) and wait: the command was suspended (^Z) and still exists;
  * sh_os.stopped holds its job id (see sh_os.cont). */
 #define SH_STOPPED (-1000L)
@@ -60,7 +79,8 @@ typedef struct sh_os {
     long  (*write)(void *os, sh_fh fh, const char *buf, long n);
     long  (*read_line)(void *os, sh_fh fh, char *buf, long max); /* -1 at the end */
     int   (*chdir)(void *os, const char *path);    /* 0 = ok */
-    int   (*exists)(void *os, const char *path, int want_dir); /* test -e / -f / -d */
+    /* 0 = ok; nofollow: do not follow a symbolic link (test -L) */
+    int   (*stat)(void *os, const char *path, sh_stat *st, int nofollow);
     char *(*cwd)(void *os);                        /* malloc'ed */
     int   (*isatty)(void *os, sh_fh fh);           /* test -t (0 = none: never) */
     /* the stack commands get, in bytes: set it (bytes > 0), and return it
@@ -77,6 +97,9 @@ typedef struct sh_os {
     /* The umask builtin's mask, passed to the OS layer so commands it starts
      * inherit it (0 = none: the mask is kept by the shell only). */
     void  (*umask)(void *os, int mask);
+    /* kill: send sig (0: only test it exists) to a process, or a job id (is_job) of this shell; 0 = ok;
+     * 0 in the table: kill reports it cannot */
+    int   (*signal)(void *os, long target, int sig, int is_job);
     void *data;
 } sh_os;
 

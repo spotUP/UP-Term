@@ -955,21 +955,36 @@ static char *os_cwd(void *os)
     return name;
 }
 
-static int os_exists(void *os, const char *path, int want_dir)
+/* test -e -f -d -s -r -w -x ... : a FileInfoBlock. The owner's RWED bits are active-low;
+ * the script bit also makes a file executable. Unconfirmed until the rig: how a soft
+ * link is detected without following it (nofollow is ignored: -L is never true), and
+ * which bits ixemul-built binaries carry. */
+static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
 {
     BPTR lock = Lock((STRPTR)path, SHARED_LOCK);
     struct FileInfoBlock *fib;
-    int r = 0;
+    int r = -1;
     (void)os;
+    (void)nofollow;
     if (!lock)
-        return 0;
-    if (want_dir < 0) {
-        UnLock(lock);
-        return 1;
-    }
+        return -1;
     fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
-    if (fib && Examine(lock, fib))
-        r = want_dir ? fib->fib_DirEntryType > 0 : fib->fib_DirEntryType < 0;
+    if (fib && Examine(lock, fib)) {
+        long secs = (long)fib->fib_Date.ds_Days * 86400L + (long)fib->fib_Date.ds_Minute * 60L +
+                    (long)fib->fib_Date.ds_Tick / 50L;
+        unsigned long p = (unsigned long)fib->fib_Protection;
+        memset(st, 0, sizeof(*st));
+        st->type = fib->fib_DirEntryType > 0 ? SH_ST_DIR : SH_ST_FILE;
+        st->size = fib->fib_Size;
+        st->mtime = st->atime = secs;
+        st->access = ((p & (1UL << 3)) ? 0u : 4u) | ((p & (1UL << 2)) ? 0u : 2u) |
+                     ((!(p & (1UL << 1)) || (p & (1UL << 6))) ? 1u : 0u);
+        st->mode = ((st->access & 4) ? 0444u : 0u) | ((st->access & 2) ? 0200u : 0u) | ((st->access & 1) ? 0111u : 0u);
+        st->owned = st->group = 1;
+        st->dev = (long)((struct FileLock *)BADDR(lock))->fl_Volume;
+        st->ino = fib->fib_DiskKey;
+        r = 0;
+    }
     if (fib)
         FreeDosObject(DOS_FIB, fib);
     UnLock(lock);
@@ -1288,7 +1303,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.read_line = os_read_line;
     sh.os.chdir = os_chdir;
     sh.os.cwd = os_cwd;
-    sh.os.exists = os_exists;
+    sh.os.stat = os_stat;
     sh.os.data = &vp;
     sh.stack_limit = stack_limit_here();
     sh.ctx.listdir = list_dir;

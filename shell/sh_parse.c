@@ -454,7 +454,7 @@ static int is_assignment(const char *w)
     while ((w[i] >= 'A' && w[i] <= 'Z') || (w[i] >= 'a' && w[i] <= 'z') || w[i] == '_' ||
            (w[i] >= '0' && w[i] <= '9'))
         i++;
-    return w[i] == '=';
+    return w[i] == '=' || (w[i] == '+' && w[i + 1] == '=');
 }
 
 static sh_node *parse_simple(lexer *L)

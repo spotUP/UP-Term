@@ -1,0 +1,1 @@
+sleep 5 & p=$!; kill -0 $p; echo $?; kill -TERM $p; echo $?; sleep 5 & q=$!; kill -s KILL $q; echo $?; sleep 5 & r=$!; kill -9 $r; echo $?; sleep 5 & u=$!; kill -n 15 $u; echo $?; kill %nonesuch 2>/dev/null; echo $?

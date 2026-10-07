@@ -1,0 +1,1 @@
+echo -e "\a\b" | od -An -tx1; echo -e "a\\\\b"; echo -e "\x41\x4a"; echo -e "\0101"; echo -e "\101|"; echo -e "a\cb"; echo done; echo -e "\e[1m" | od -An -tx1; echo -e "é" | od -An -tx1; echo -e "\q \" \'"; printf "%b|\n" "\0101"

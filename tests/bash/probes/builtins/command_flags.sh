@@ -1,0 +1,1 @@
+command -v echo; command -v if; command -v nonexist; echo rc=$?; command -v ls | sed "s|.*[/:]||"; command -V echo; command -V nonexist 2>/dev/null; echo rc=$?; f() { echo fn; }; command -v f; command f 2>/dev/null; echo rc=$?

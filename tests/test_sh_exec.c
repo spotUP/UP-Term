@@ -400,16 +400,26 @@ static char *f_cwd(void *os)
     return r;
 }
 
-static int f_exists(void *os, const char *path, int want_dir)
+static int f_stat(void *os, const char *path, sh_stat *st, int nofollow)
 {
     int i;
     (void)os;
-    if (want_dir == 1)
-        return !strcmp(path, "SYS:");
+    (void)nofollow;
+    memset(st, 0, sizeof(*st));
+    st->mode = 0644;
+    st->access = 6;
+    if (!strcmp(path, "SYS:")) {
+        st->type = SH_ST_DIR;
+        return 0;
+    }
     for (i = 0; i < NF; i++)
-        if (fs[i].used && !fs[i].is_pipe && !strcmp(fs[i].name, path))
-            return 1;
-    return 0;
+        if (fs[i].used && !fs[i].is_pipe && !strcmp(fs[i].name, path)) {
+            st->type = SH_ST_FILE;
+            st->size = 1;
+            st->ino = i + 1;
+            return 0;
+        }
+    return -1;
 }
 
 static void sprintf_num(char *out, int v)
@@ -453,7 +463,7 @@ static void fresh(void)
     sh.os.read_line = f_read_line;
     sh.os.chdir = f_chdir;
     sh.os.cwd = f_cwd;
-    sh.os.exists = f_exists;
+    sh.os.stat = f_stat;
     OUT = f_open(0, "<out>", SH_OPEN_WRITE);
     ERR = f_open(0, "<err>", SH_OPEN_WRITE);
     IN = f_open(0, "<in>", SH_OPEN_WRITE);
@@ -1078,7 +1088,7 @@ static void local_builtin(void)
     CHECK_STR(slot(OUT)->data, "1\n");
     CHECK_STR(errs(), "vsh: local: can only be used in a function\n");
     run("f() { local =1; echo $?; }; f");
-    CHECK_STR(errs(), "vsh: local: not a valid name\n");
+    CHECK_STR(errs(), "vsh: =1: not a valid identifier\n");
 }
 
 static void getopts_builtin(void)

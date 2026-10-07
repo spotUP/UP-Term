@@ -14,6 +14,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <signal.h>
+#include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -64,7 +66,11 @@ static void host_path(const char *path, char *out, size_t max)
         snprintf(out, max, "%s/%s", t && *t ? t : "/tmp", path + 2);
     } else if (!strcmp(path, "NIL:"))
         snprintf(out, max, "/dev/null");
-    else
+    else if (path[0] != '/' && strchr(path, ':') && strchr(path, ':') != path) {
+        /* sh_path_next turns a Unix absolute $PATH entry /vol/rest into vol:rest */
+        const char *c = strchr(path, ':');
+        snprintf(out, max, "/%.*s/%s", (int)(c - path), path, c + 1);
+    } else
         snprintf(out, max, "%s", path);
 }
 
@@ -354,17 +360,34 @@ static char *h_cwd(void *os)
     return p;
 }
 
-static int h_exists(void *os, const char *path, int want_dir)
+static int h_stat(void *os, const char *path, sh_stat *o, int nofollow)
 {
     struct stat st;
     char p[1024];
     (void)os;
     host_path(path, p, sizeof(p));
-    if (stat(p, &st))
-        return 0;
-    if (want_dir < 0)
-        return 1;
-    return want_dir ? S_ISDIR(st.st_mode) != 0 : !S_ISDIR(st.st_mode);
+    if (nofollow ? lstat(p, &st) : stat(p, &st))
+        return -1;
+    o->link = S_ISLNK(st.st_mode) != 0;
+    o->type = S_ISDIR(st.st_mode) ? SH_ST_DIR : S_ISREG(st.st_mode) ? SH_ST_FILE : S_ISCHR(st.st_mode) ? SH_ST_CHAR
+            : S_ISBLK(st.st_mode) ? SH_ST_BLOCK : S_ISFIFO(st.st_mode) ? SH_ST_FIFO : S_ISSOCK(st.st_mode) ? SH_ST_SOCK
+            : SH_ST_OTHER;
+    o->size = (long)st.st_size;
+    o->mtime = (long)st.st_mtime;
+    o->atime = (long)st.st_atime;
+    o->mode = (unsigned)(st.st_mode & 07777);
+    o->access = (access(p, R_OK) == 0 ? 4u : 0u) | (access(p, W_OK) == 0 ? 2u : 0u) | (access(p, X_OK) == 0 ? 1u : 0u);
+    o->owned = st.st_uid == geteuid();
+    o->group = st.st_gid == getegid();
+    o->dev = (long)st.st_dev;
+    o->ino = (long)st.st_ino;
+    return 0;
+}
+
+static int h_signal(void *os, long target, int sig, int is_job)
+{
+    (void)os;
+    return is_job ? -1 : kill((pid_t)target, sig);
 }
 
 static int h_isatty(void *os, sh_fh fh)
@@ -432,7 +455,8 @@ static int run_main(int argc, char **argv)
     sh.os.read_line = h_read_line;
     sh.os.chdir = h_chdir;
     sh.os.cwd = h_cwd;
-    sh.os.exists = h_exists;
+    sh.os.stat = h_stat;
+    sh.os.signal = h_signal;
     sh.os.data = &hp;
     sh.ctx.listdir = h_listdir;
     sh.ctx.nocase = 0;

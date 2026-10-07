@@ -1,0 +1,1 @@
+echo x > tl; ln -s tl tlink; test -L tlink; echo $?; test -h tlink; echo $?; test -f tlink; echo $?; test -L tl; echo $?; test -e tlink; echo $?; ln -s nowhere dangling; test -L dangling; echo $?; test -e dangling; echo $?

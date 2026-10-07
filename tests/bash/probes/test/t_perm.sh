@@ -1,0 +1,1 @@
+echo x > pf; chmod 644 pf; test -r pf; echo $?; test -w pf; echo $?; test -x pf; echo $?; chmod 755 pf; test -x pf; echo $?; chmod 4755 pf; test -u pf; echo $?; test -g pf; echo $?; chmod 1755 pf; test -k pf; echo $?

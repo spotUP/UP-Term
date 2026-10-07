@@ -1,0 +1,1 @@
+echo a > old; touch -t 200001010000 old; echo b > new; [ new -nt old ]; echo $?; [ old -ot new ]; echo $?; [ old -nt new ]; echo $?; [ new -nt nonexist ]; echo $?; [ nonexist -ot new ]; echo $?; [ nonexist -nt nonexist2 ]; echo $?
