@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <sys/resource.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <stdlib.h>
@@ -174,6 +175,11 @@ static char **build_envp(const sh_shell *sh)
 static int resolve(const sh_shell *sh, const char *name, char *out, size_t max)
 {
     const char *path = sh_get(&sh->ctx, "PATH");
+    if (strchr(name, ':') && strchr(name, ':') != name) {
+        /* a hashed command: the shell's vol:rest form of an absolute path */
+        host_path(name, out, max);
+        return access(out, X_OK) == 0 ? 0 : -1;
+    }
     if (strchr(name, '/')) {
         snprintf(out, max, "%s", name);
         return access(out, X_OK) == 0 ? 0 : -1;
@@ -327,6 +333,18 @@ static long h_read(void *os, sh_fh fh, char *buf, long max)
         n = read(FD(fh), buf, (size_t)max);
     while (n < 0 && errno == EINTR);
     return n > 0 ? (long)n : 0;
+}
+
+static void h_cpu(void *os, long *t)
+{
+    struct rusage a, b;
+    (void)os;
+    getrusage(RUSAGE_SELF, &a);
+    getrusage(RUSAGE_CHILDREN, &b);
+    t[0] = a.ru_utime.tv_sec * 1000000L + a.ru_utime.tv_usec;
+    t[1] = a.ru_stime.tv_sec * 1000000L + a.ru_stime.tv_usec;
+    t[2] = b.ru_utime.tv_sec * 1000000L + b.ru_utime.tv_usec;
+    t[3] = b.ru_stime.tv_sec * 1000000L + b.ru_stime.tv_usec;
 }
 
 static long h_now(void *os, long *usec)
@@ -535,6 +553,7 @@ static int run_main(int argc, char **argv)
     sh.os.read = h_read;
     sh.os.ready = h_ready;
     sh.os.now = h_now;
+    sh.os.cpu = h_cpu;
     sh.os.remove = h_remove;
     sh.os.tmpdir = h_tmpdir;
     sh.os.sysid = h_sysid;
@@ -576,6 +595,8 @@ static int run_main(int argc, char **argv)
         if (inf.exit_now)
             return inf.status;
         command = inf.command;
+        if (command || inf.script)
+            sh_startup_env(&sh);
         if (command)
             sh_run_text(&sh, command, 0);
         else if (inf.script)

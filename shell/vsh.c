@@ -1547,6 +1547,8 @@ static int vsh_main(int argc, char **argv)
         }
         canonical_home(&sh);
     }
+    if (command || script)
+        sh_startup_env(&sh);
     if (command)
         sh_run_text(&sh, command, 0);
     else if (script)

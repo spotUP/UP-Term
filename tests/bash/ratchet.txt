@@ -275,7 +275,9 @@ arrays/unset_elem
 builtins/alias1
 builtins/appendeq
 builtins/builtin
+builtins/caller_top
 builtins/cd1
+builtins/cd_cdpath_dirstack
 builtins/cdhome
 builtins/command_flags
 builtins/command_run
@@ -296,10 +298,13 @@ builtins/echo_e
 builtins/echo_escapes
 builtins/echo_flags
 builtins/echo_noescape_default
+builtins/enable_caller_times
 builtins/envprefix
 builtins/execr
 builtins/exportassign
 builtins/exportf
+builtins/hash_run
+builtins/hash_table
 builtins/kill_errors
 builtins/kill_l
 builtins/kill_signal
@@ -354,6 +359,8 @@ builtins/retval_mod
 builtins/ro_basic
 builtins/ro_local
 builtins/ro_unset
+builtins/select_menu
+builtins/time_keyword
 builtins/type_
 builtins/type_flags
 builtins/type_text
@@ -636,6 +643,7 @@ grammar/subsh
 grammar/time_
 grammar/until1
 grammar/while1
+invocation/bash_env_logout
 invocation/c_C
 invocation/c_a_export
 invocation/c_dashdash

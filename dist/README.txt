@@ -367,6 +367,16 @@ VSH (the shell)
     soft links are not told apart, so ** may enter them); the pattern  */**
     lists directories with a slash. nocaseglob is on at the Amiga prompt and
     off elsewhere.
+    time prints the real time as bash does; the user and system times are 0
+    on the Amiga (it keeps no per-process times), as are those of  times.
+    ulimit prints "unlimited" for every limit and refuses to set one. help
+    lists the builtin names only; enable -a lists vsh's builtins, not bash's.
+    The hash table is filled by the commands run; a command in the last
+    stage of a pipeline is entered in the shell's own table. cd -L and -P
+    and pwd -L and -P are accepted and change nothing: there is no symbolic
+    link resolution. DIRSTACK shows the directory stack but assigning to it
+    has no effect. coproc, ENV under --posix and the login profile files are
+    not done yet.
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

@@ -299,6 +299,9 @@ void sh_shell_free(sh_shell *sh)
         restore_var(sh, (saved_var *)sh->locals + --sh->n_locals);
     free(sh->locals);
     sh_list_free(&sh->aliases);
+    sh_list_free(&sh->hashtab);
+    free(sh->hashpath);
+    sh_list_free(&sh->disabled);
     sh_ctx_free(&sh->ctx);
 }
 
@@ -408,6 +411,11 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     }
     for (i = 0; i < sh->aliases.n; i++)
         sh_list_add(&c->aliases, sh->aliases.v[i]);
+    for (i = 0; i < sh->hashtab.n; i++)
+        sh_list_add(&c->hashtab, sh->hashtab.v[i]);
+    c->hashpath = sh->hashpath ? sdup(sh->hashpath) : 0;
+    for (i = 0; i < sh->disabled.n; i++)
+        sh_list_add(&c->disabled, sh->disabled.v[i]);
     return c;
 }
 
@@ -575,10 +583,10 @@ static int next_random(sh_shell *sh)
 }
 
 enum { SP_RANDOM, SP_SRANDOM, SP_SECONDS, SP_EPOCHSECONDS, SP_EPOCHREALTIME, SP_LINENO, SP_BASHPID,
-       SP_FUNCNAME, SP_BASH_SOURCE, SP_BASH_LINENO, SP_N };
+       SP_FUNCNAME, SP_BASH_SOURCE, SP_BASH_LINENO, SP_DIRSTACK, SP_N };
 static const char *const special_names[SP_N] = {
     "RANDOM", "SRANDOM", "SECONDS", "EPOCHSECONDS", "EPOCHREALTIME", "LINENO", "BASHPID",
-    "FUNCNAME", "BASH_SOURCE", "BASH_LINENO"
+    "FUNCNAME", "BASH_SOURCE", "BASH_LINENO", "DIRSTACK"
 };
 
 static int special_id(const char *name)
@@ -639,6 +647,20 @@ static void core_refresh(sh_ctx *c, const char *name)
     case SP_BASHPID:
         sh_ltoa(sh->ctx.pid, d); /* a subshell's $$ is its own pid here, so BASHPID equals it */
         break;
+    case SP_DIRSTACK: {
+        /* DIRSTACK[0] is the current directory, then the stack pushd and popd keep; read-only here */
+        char *cwd = sh->os.cwd(sh->os.data), ix[24];
+        int i;
+        sh_array_reset(&sh->ctx, name, 0);
+        sh_assign(&sh->ctx, name, "0", cwd ? cwd : "", 0);
+        for (i = 0; i < sh->ndirstk; i++) {
+            sh_ltoa(i + 1, ix);
+            sh_assign(&sh->ctx, name, ix, sh->dirstk[i], 0);
+        }
+        free(cwd);
+        sh->special_busy = 0;
+        return;
+    }
     default:
         frame_array(sh, name, k - SP_FUNCNAME);
         sh->special_busy = 0;
@@ -1732,13 +1754,61 @@ static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static long b_cd(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    const char *dir = argc > 1 ? argv[1] : sh_get(&sh->ctx, "HOME");
-    char *old = sh->os.cwd(sh->os.data);
+    int a = 1;
+    const char *dir;
+    char *old, cp[512];
+    int printit = 0;
+    /* -L and -P: there are no symbolic links to follow or to resolve here, both are accepted */
+    for (; a < argc && argv[a][0] == '-' && argv[a][1] && strcmp(argv[a], "--"); a++) {
+        const char *o = argv[a] + 1;
+        for (; *o; o++)
+            if (*o != 'L' && *o != 'P' && *o != 'e' && *o != '@') {
+                char opt[3];
+                opt[0] = '-';
+                opt[1] = *o;
+                opt[2] = 0;
+                sayl(sh, io->err, "vsh: cd: ", opt, ": invalid option\n", NULL);
+                say(sh, io->err, "cd: usage: cd [-L|[-P [-e]] [-@]] [dir]\n");
+                return 2;
+            }
+    }
+    if (a < argc && !strcmp(argv[a], "--"))
+        a++;
+    if (argc - a > 1) {
+        err2(sh, io, "cd", "too many arguments");
+        return 2;
+    }
+    dir = a < argc ? argv[a] : sh_get(&sh->ctx, "HOME");
+    old = sh->os.cwd(sh->os.data);
     if (!dir)
         dir = "SYS:";
-    if (!strcmp(dir, "-"))
+    if (!strcmp(dir, "-")) {
         dir = sh_get(&sh->ctx, "OLDPWD") ? sh_get(&sh->ctx, "OLDPWD") : "";
-    if (sh->os.chdir(sh->os.data, dir)) {
+        printit = 1;
+    } else if (dir[0] && dir[0] != '/' && !strchr(dir, ':') && strncmp(dir, "./", 2) && strncmp(dir, "../", 3)
+               && strcmp(dir, ".") && strcmp(dir, "..")) {
+        /* CDPATH: each directory of it is tried before the current one (an empty entry is the current one) */
+        const char *p = sh_get(&sh->ctx, "CDPATH");
+        while (p) {
+            const char *e = strchr(p, ':');
+            long n = e ? (long)(e - p) : (long)strlen(p);
+            if (n && n + (long)strlen(dir) + 2 < (long)sizeof(cp)) {
+                memcpy(cp, p, (size_t)n);
+                cp[n] = 0;
+                if (cp[n - 1] != '/' && cp[n - 1] != ':')
+                    strcat(cp, "/");
+                strcat(cp, dir);
+                if (sh_exists(sh, cp, 1) && !sh->os.chdir(sh->os.data, cp)) {
+                    SH_HIT(CDPATH_USED);
+                    printit = 1;
+                    dir = 0;
+                    break;
+                }
+            }
+            p = e ? e + 1 : 0;
+        }
+    }
+    if (dir && sh->os.chdir(sh->os.data, dir)) {
         err2(sh, io, "cd", dir);
         free(old);
         return 1;
@@ -1747,16 +1817,31 @@ static long b_cd(sh_shell *sh, int argc, char **argv, const sh_io *io)
         sh_set(&sh->ctx, "OLDPWD", old);
     free(old);
     old = sh->os.cwd(sh->os.data);
-    if (old)
+    if (old) {
         sh_set(&sh->ctx, "PWD", old);
+        if (printit)
+            sayl(sh, io->out, old, "\n", NULL);
+    }
     free(old);
     return 0;
 }
 
 static long b_pwd(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    char *d = sh->os.cwd(sh->os.data);
-    (void)argc; (void)argv;
+    char *d;
+    int a;
+    for (a = 1; a < argc && argv[a][0] == '-' && argv[a][1]; a++) {
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        if (strcmp(argv[a], "-L") && strcmp(argv[a], "-P") && strcmp(argv[a], "-LP") && strcmp(argv[a], "-PL")) {
+            sayl(sh, io->err, "vsh: pwd: ", argv[a], ": invalid option\n", NULL);
+            say(sh, io->err, "pwd: usage: pwd [-LP]\n");
+            return 2;
+        }
+    }
+    d = sh->os.cwd(sh->os.data);
     sayl(sh, io->out, d ? d : "", "\n", NULL);
     free(d);
     return 0;
@@ -3061,6 +3146,7 @@ static long b_disown(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static sh_func *find_func(sh_shell *sh, const char *name);
 static builtin_fn find_builtin(const char *name);
+static builtin_fn find_bi(const sh_shell *sh, const char *name);
 static int find_command_file(sh_shell *sh, const char *name, char *out, long max);
 static void save_var(sh_shell *sh, const char *name, saved_var *s);
 
@@ -3644,7 +3730,7 @@ static int type_one(sh_shell *sh, const sh_io *io, const char *name, int mode, i
             if (!all)
                 return 0;
         }
-        if (find_builtin(name)) {
+        if (find_bi(sh, name)) {
             SAY_KIND("builtin", " is a shell builtin", name);
             if (!all)
                 return 0;
@@ -3674,7 +3760,7 @@ static long b_type(sh_shell *sh, int argc, char **argv, const sh_io *io)
     if (!strcmp(argv[0], "which")) {
         for (; i < argc; i++) {
             char path[512];
-            if (find_func(sh, argv[i]) || find_builtin(argv[i])) {
+            if (find_func(sh, argv[i]) || find_bi(sh, argv[i])) {
                 sayl(sh, io->out, argv[i], find_func(sh, argv[i]) ? " is a function\n" : " is a shell builtin\n", NULL);
             } else if (find_command_file(sh, argv[i], path, sizeof(path))) {
                 sayl(sh, io->out, path, "\n", NULL);
@@ -3707,7 +3793,7 @@ static long b_builtin(sh_shell *sh, int argc, char **argv, const sh_io *io)
     builtin_fn b;
     if (argc < 2)
         return 0;
-    b = find_builtin(argv[1]);
+    b = find_bi(sh, argv[1]);
     if (!b) {
         err2(sh, io, argv[1], "not a shell builtin");
         return 1;
@@ -4253,6 +4339,19 @@ static long b_popd(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+static long b_hash(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_enable(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_times(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_caller(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static builtin_fn find_bi(const sh_shell *sh, const char *name);
+static void time_part(pbuf *o, long us, int prec, int lng);
+static int hash_note_run(sh_shell *sh, const char *name, char *path, long max);
+static int hash_find(const sh_shell *sh, const char *name);
+static void hash_sync(sh_shell *sh);
+
 static const struct {
     const char *name;
     builtin_fn fn;
@@ -4267,8 +4366,443 @@ static const struct {
     { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "shopt", b_shopt }, { "local", b_local },
     { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
-    { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill }, { 0, 0 }
+    { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
+    { "hash", b_hash }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout }, { 0, 0 }
 };
+
+/* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
+
+/* The hash table of commands found on PATH: sh->hashtab holds "name\tpath\thits" in insertion order. bash lists
+ * it by bucket of a 256-bucket FNV-1 table, newest first within a bucket: hash_bucket gives the same order. */
+static unsigned hash_bucket(const char *s)
+{
+    unsigned long v = 2166136261UL;
+    for (; *s; s++) {
+        v = (v + (v << 1) + (v << 4) + (v << 7) + (v << 8) + (v << 24)) & 0xffffffffUL;
+        v ^= (unsigned char)*s;
+    }
+    return (unsigned)(v & 255);
+}
+
+static int hash_find(const sh_shell *sh, const char *name)
+{
+    int i;
+    size_t n = strlen(name);
+    for (i = 0; i < sh->hashtab.n; i++)
+        if (!strncmp(sh->hashtab.v[i], name, n) && sh->hashtab.v[i][n] == '\t')
+            return i;
+    return -1;
+}
+
+static const char *hash_path(const sh_shell *sh, int i, char *buf, long max)
+{
+    const char *p = strchr(sh->hashtab.v[i], '\t') + 1;
+    const char *e = strchr(p, '\t');
+    long n = (long)(e - p);
+    if (n >= max)
+        n = max - 1;
+    memcpy(buf, p, (size_t)n);
+    buf[n] = 0;
+    return buf;
+}
+
+static long hash_hits(const sh_shell *sh, int i)
+{
+    return atol(strrchr(sh->hashtab.v[i], '\t') + 1);
+}
+
+static void hash_put(sh_shell *sh, const char *name, const char *path, long hits)
+{
+    pbuf b = { 0, 0, 0 };
+    char d[24];
+    int i = hash_find(sh, name);
+    pb_str(&b, name);
+    pb_add(&b, "\t", 1);
+    pb_str(&b, path);
+    pb_add(&b, "\t", 1);
+    num(d, hits);
+    pb_str(&b, d);
+    if (!b.s)
+        return;
+    if (i >= 0) {
+        free(sh->hashtab.v[i]);
+        sh->hashtab.v[i] = b.s;
+    } else {
+        sh_list_add(&sh->hashtab, b.s);
+        free(b.s);
+    }
+}
+
+static void hash_del(sh_shell *sh, int i)
+{
+    free(sh->hashtab.v[i]);
+    memmove(sh->hashtab.v + i, sh->hashtab.v + i + 1, (size_t)(sh->hashtab.n - i - 1) * sizeof(char *));
+    sh->hashtab.n--;
+}
+
+/* the PATH directories only (bash does not look in the current directory for a command name) */
+static int hash_search(sh_shell *sh, const char *name, char *out, long max)
+{
+    const char *p = sh_get(&sh->ctx, "PATH");
+    char dir[256];
+    if (!sh->os.stat || strchr(name, '/') || strchr(name, ':'))
+        return 0;
+    while (p && sh_path_next(&p, dir, sizeof(dir))) {
+        long n = (long)strlen(dir);
+        if (!n || n + (long)strlen(name) + 2 > max)
+            continue;
+        strcpy(out, dir);
+        if (dir[n - 1] != ':' && dir[n - 1] != '/')
+            strcat(out, "/");
+        strcat(out, name);
+        if (sh_exists(sh, out, 0))
+            return 1;
+    }
+    return 0;
+}
+
+/* assigning PATH empties the table: the value it was built for is kept, a different one flushes it */
+static void hash_sync(sh_shell *sh)
+{
+    const char *cur = sh_get(&sh->ctx, "PATH");
+    if (!cur)
+        cur = "";
+    if (!sh->hashpath || strcmp(sh->hashpath, cur)) {
+        sh_list_free(&sh->hashtab);
+        free(sh->hashpath);
+        sh->hashpath = sdup(cur);
+    }
+}
+
+/* an external command is about to run: bash remembers where it found it and counts the runs */
+static int hash_note_run(sh_shell *sh, const char *name, char *path, long max)
+{
+    int i;
+    hash_sync(sh);
+    if (!(sh->opts & SO_HASHALL) || strchr(name, '/') || strchr(name, ':'))
+        return 0;
+    i = hash_find(sh, name);
+    if (i >= 0) {
+        SH_HIT(HASH_RUN);
+        hash_path(sh, i, path, max);
+        hash_put(sh, name, path, hash_hits(sh, i) + 1);
+        return 1;
+    } else if (hash_search(sh, name, path, max))
+        hash_put(sh, name, path, 1);
+    return 0;
+}
+
+static void hash_usage(sh_shell *sh, const sh_io *io)
+{
+    say(sh, io->err, "hash: usage: hash [-lr] [-p pathname] [-dt] [name ...]\n");
+}
+
+static long b_hash(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int a = 1, l = 0, d = 0, t = 0, r = 0, i, o;
+    const char *pathname = 0;
+    long st = 0, nnames;
+    hash_sync(sh);
+    if (!(sh->opts & SO_HASHALL)) {
+        err2(sh, io, "hash", "hashing disabled");
+        return 1;
+    }
+    for (; a < argc && argv[a][0] == '-' && argv[a][1]; a++) {
+        const char *p = argv[a] + 1;
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        for (; *p; p++) {
+            if (*p == 'l') l = 1;
+            else if (*p == 'd') d = 1;
+            else if (*p == 't') t = 1;
+            else if (*p == 'r') r = 1;
+            else if (*p == 'p') {
+                if (p[1])
+                    pathname = p + 1;
+                else if (a + 1 < argc)
+                    pathname = argv[++a];
+                else {
+                    err2(sh, io, "hash", "-p: option requires an argument");
+                    hash_usage(sh, io);
+                    return 2;
+                }
+                break;
+            } else {
+                char opt[3];
+                opt[0] = '-';
+                opt[1] = *p;
+                opt[2] = 0;
+                sayl(sh, io->err, "vsh: hash: ", opt, ": invalid option\n", NULL);
+                hash_usage(sh, io);
+                return 2;
+            }
+        }
+    }
+    nnames = argc - a;
+    if (r) {
+        sh_list_free(&sh->hashtab);
+        if (a == argc && !pathname)
+            return 0;
+    }
+    if (pathname && a < argc) {
+        hash_put(sh, argv[a], pathname, 0);
+        return 0;
+    }
+    if (a == argc) {
+        if (!sh->hashtab.n) {
+            if (!l)
+                say(sh, io->out, "hash: hash table empty\n");
+            return 0;
+        }
+        if (!l)
+            say(sh, io->out, "hits\tcommand\n");
+        for (o = 0; o < 256; o++) {
+            for (i = sh->hashtab.n - 1; i >= 0; i--) {
+                char nm[256], path[512], hits[24];
+                const char *e = strchr(sh->hashtab.v[i], '\t');
+                long n = (long)(e - sh->hashtab.v[i]);
+                if (n > 255)
+                    n = 255;
+                memcpy(nm, sh->hashtab.v[i], (size_t)n);
+                nm[n] = 0;
+                if ((int)hash_bucket(nm) != o)
+                    continue;
+                hash_path(sh, i, path, sizeof(path));
+                if (l) {
+                    sayl(sh, io->out, "builtin hash -p ", path, " ", nm, "\n", NULL);
+                } else {
+                    long h = hash_hits(sh, i);
+                    int k;
+                    num(hits, h);
+                    for (k = (int)strlen(hits); k < 4; k++)
+                        say(sh, io->out, " ");
+                    sayl(sh, io->out, hits, "\t", path, "\n", NULL);
+                }
+            }
+        }
+        return 0;
+    }
+    for (; a < argc; a++) {
+        char path[512];
+        i = hash_find(sh, argv[a]);
+        if (d) {
+            if (i < 0) {
+                sayl(sh, io->err, "vsh: hash: ", argv[a], ": not found\n", NULL);
+                st = 1;
+            } else
+                hash_del(sh, i);
+        } else if (t) {
+            if (i < 0) {
+                sayl(sh, io->err, "vsh: hash: ", argv[a], ": not found\n", NULL);
+                st = 1;
+            } else {
+                hash_path(sh, i, path, sizeof(path));
+                hash_put(sh, argv[a], path, hash_hits(sh, i) + 1);
+                if (l)
+                    sayl(sh, io->out, "builtin hash -p ", path, " ", argv[a], "\n", NULL);
+                else if (nnames > 1)
+                    sayl(sh, io->out, argv[a], "\t", path, "\n", NULL);
+                else
+                    sayl(sh, io->out, path, "\n", NULL);
+            }
+        } else if (strchr(argv[a], '/')) {
+            continue;
+        } else if (hash_search(sh, argv[a], path, sizeof(path))) {
+            hash_put(sh, argv[a], path, 0);
+        } else {
+            sayl(sh, io->err, "vsh: hash: ", argv[a], ": not found\n", NULL);
+            st = 1;
+        }
+    }
+    return st;
+}
+
+/* enable: builtins switched off by name (sh->disabled); the listing is of the builtins vsh has */
+static builtin_fn find_bi(const sh_shell *sh, const char *name)
+{
+    int i;
+    for (i = 0; i < sh->disabled.n; i++)
+        if (!strcmp(sh->disabled.v[i], name))
+            return 0;
+    return find_builtin(name);
+}
+
+static long b_enable(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int a = 1, n = 0, all = 0, k, i;
+    long st = 0;
+    for (; a < argc && argv[a][0] == '-' && argv[a][1]; a++) {
+        const char *p = argv[a] + 1;
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        for (; *p; p++) {
+            if (*p == 'n') n = 1;
+            else if (*p == 'a') all = 1;
+            else if (*p == 'p' || *p == 's') ;
+            else {
+                char opt[3];
+                opt[0] = '-';
+                opt[1] = *p;
+                opt[2] = 0;
+                sayl(sh, io->err, "vsh: enable: ", opt, ": invalid option\n", NULL);
+                say(sh, io->err, "enable: usage: enable [-a] [-dnps] [-f filename] [name ...]\n");
+                return 2;
+            }
+        }
+    }
+    if (a == argc) {
+        for (k = 0; builtins[k].name; k++) {
+            int off = 0;
+            for (i = 0; i < sh->disabled.n; i++)
+                if (!strcmp(sh->disabled.v[i], builtins[k].name))
+                    off = 1;
+            if ((n && !off) || (!n && !all && off))
+                continue;
+                        sayl(sh, io->out, off ? "enable -n " : "enable ", builtins[k].name, "\n", NULL);
+        }
+        return 0;
+    }
+    for (; a < argc; a++) {
+        if (!find_builtin(argv[a])) {
+            sayl(sh, io->err, "vsh: enable: ", argv[a], ": not a shell builtin\n", NULL);
+            st = 1;
+            continue;
+        }
+        for (i = 0; i < sh->disabled.n; i++)
+            if (!strcmp(sh->disabled.v[i], argv[a]))
+                break;
+        if (n && i == sh->disabled.n)
+            sh_list_add(&sh->disabled, argv[a]);
+        else if (!n && i < sh->disabled.n) {
+            free(sh->disabled.v[i]);
+            memmove(sh->disabled.v + i, sh->disabled.v + i + 1, (size_t)(sh->disabled.n - i - 1) * sizeof(char *));
+            sh->disabled.n--;
+        }
+    }
+    return st;
+}
+
+static void time_us(pbuf *o, long us)
+{
+    time_part(o, us, 3, 1);
+}
+
+static long b_times(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    long t[4];
+    pbuf o = { 0, 0, 0 };
+    (void)argc; (void)argv;
+    memset(t, 0, sizeof(t));
+    if (sh->os.cpu)
+        sh->os.cpu(sh->os.data, t);
+    time_us(&o, t[0]);
+    pb_add(&o, " ", 1);
+    time_us(&o, t[1]);
+    pb_add(&o, "\n", 1);
+    time_us(&o, t[2]);
+    pb_add(&o, " ", 1);
+    time_us(&o, t[3]);
+    pb_add(&o, "\n", 1);
+    if (o.s)
+        put(sh, io->out, o.s, o.n);
+    free(o.s);
+    return 0;
+}
+
+/* caller [n]: the line, function and file of the call n levels up (BASH_LINENO[n], FUNCNAME[n+1], BASH_SOURCE[n+1]) */
+static long b_caller(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    long k = argc > 1 ? atol(argv[1]) : 0, total = sh->nframes + (sh->main_src != 0);
+    char d[24];
+    const char *fn, *src;
+    if (argc > 1 && (!argv[1][0] || strspn(argv[1], "0123456789") != strlen(argv[1]))) {
+        sayl(sh, io->err, "vsh: caller: ", argv[1], ": invalid number\n", NULL);
+        say(sh, io->err, "caller: usage: caller [expr]\n");
+        return 2;
+    }
+    if (!sh->nframes && argc < 2) {
+        say(sh, io->out, "0 NULL\n");  /* bash: the top level of a script has no caller to name */
+        return 0;
+    }
+    if (!sh->nframes || k + 1 >= total)
+        return 1;
+    sh_ltoa(sh->frames[sh->nframes - 1 - k].line, d);
+    if (k + 1 == sh->nframes) {
+        fn = "main";
+        src = sh->main_src;
+    } else {
+        fn = sh->frames[sh->nframes - 2 - k].name;
+        src = sh->frames[sh->nframes - 2 - k].src;
+    }
+    if (argc > 1)
+        sayl(sh, io->out, d, " ", fn, " ", src, "\n", NULL);
+    else
+        sayl(sh, io->out, d, " ", src, "\n", NULL);
+    return 0;
+}
+
+/* ulimit: AmigaDOS has no resource limits; a limit asked for is "unlimited" (-s: the stack builtin's
+ * business), one set is refused */
+static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int a = 1, flag = 'f';
+    for (; a < argc && argv[a][0] == '-' && argv[a][1]; a++) {
+        const char *p = argv[a] + 1;
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        for (; *p; p++) {
+            if (strchr("SHaPbcdefiklmnpqrstuvxRT", *p)) {
+                if (*p != 'S' && *p != 'H')
+                    flag = *p;
+            } else {
+                char opt[3];
+                opt[0] = '-';
+                opt[1] = *p;
+                opt[2] = 0;
+                sayl(sh, io->err, "vsh: ulimit: ", opt, ": invalid option\n", NULL);
+                say(sh, io->err, "ulimit: usage: ulimit [-SHabcdefiklmnpqrstuvxPRT] [limit]\n");
+                return 2;
+            }
+        }
+    }
+    if (a < argc) {
+        sayl(sh, io->err, "vsh: ulimit: ", argv[a], ": cannot modify limit: not supported on this system\n", NULL);
+        return 1;
+    }
+    (void)flag;
+    say(sh, io->out, "unlimited\n");
+    return 0;
+}
+
+static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int k, a, found = 0;
+    long st = 0;
+    if (argc < 2) {
+        for (k = 0; builtins[k].name; k++)
+            sayl(sh, io->out, builtins[k].name, "\n", NULL);
+        return 0;
+    }
+    for (a = 1; a < argc; a++) {
+        if (argv[a][0] == '-' && argv[a][1])
+            continue;
+        if (find_builtin(argv[a])) {
+            sayl(sh, io->out, argv[a], ": ", argv[a], " [arguments]\n", NULL);
+            found = 1;
+        } else {
+            sayl(sh, io->err, "vsh: help: no help topics match `", argv[a], "'.\n", NULL);
+            st = 1;
+        }
+    }
+    (void)found;
+    return st;
+}
 
 static long add_word(char *out, long n, long max, const char *w)
 {
@@ -4784,7 +5318,7 @@ static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
     long st;
     if (argc < 2)
         return 0;
-    if ((b = find_builtin(argv[1])) != 0)
+    if ((b = find_bi(sh, argv[1])) != 0)
         st = b(sh, argc - 1, argv + 1, io);
     else {
         st = sh->os.run(sh->os.data, argv + 1, io, 1);
@@ -4937,8 +5471,8 @@ static char *debug_text(const sh_node *n)
         one.redirs = n->kind == SH_CMD ? n->redirs : 0;
         t = sh_unparse(&one, 0);
         return t ? t : sdup("");
-    } else if (n->kind == SH_FOR) {
-        pb_str(&b, "for ");
+    } else if (n->kind == SH_FOR || n->kind == SH_SELECT) {
+        pb_str(&b, n->kind == SH_SELECT ? "select " : "for ");
         pb_str(&b, n->name);
         if (n->has_in)
             pb_str(&b, " in");
@@ -5325,7 +5859,7 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
     } else if (!nofunc && (f = find_func(sh, argv.v[0])) != 0) {
         st = run_function(sh, f, &argv, &io);
         close_owned(sh, &io);
-    } else if ((b = find_builtin(argv.v[0])) != 0) {
+    } else if ((b = find_bi(sh, argv.v[0])) != 0) {
         if (b == b_exec && argv.n == 1 && n->redirs && parent == &sh->io) {
             /* exec with redirections only: they stay for the shell itself */
             sh->io = io;
@@ -5354,7 +5888,13 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
                 io.owned |= SH_OWN_ERR;
         }
         sh->os.suspendable = wait && sh->os.cont;
-        st = sh->os.run(sh->os.data, argv.v, &io, wait);
+        {
+            char hp[512], *name0 = argv.v[0];
+            if (hash_note_run(sh, name0, hp, sizeof(hp)))
+                argv.v[0] = hp;
+            st = sh->os.run(sh->os.data, argv.v, &io, wait);
+            argv.v[0] = name0;
+        }
         sh->os.suspendable = 0;
         if (!wait) {
             /* a redirection took the place of a pipe end the pipeline opened for this command: that
@@ -5415,7 +5955,7 @@ static int is_external(sh_shell *sh, const sh_node *n)
         sh_list_free(&argv);
         return 0;
     }
-    ext = !find_builtin(argv.v[0]) && !find_func(sh, argv.v[0]) && strcmp(argv.v[0], "command");
+    ext = !find_bi(sh, argv.v[0]) && !find_func(sh, argv.v[0]) && strcmp(argv.v[0], "command");
     sh_list_free(&argv);
     return ext;
 }
@@ -5862,6 +6402,247 @@ static long exec_for(sh_shell *sh, const sh_node *n, const sh_io *io)
     return sh->intr ? intr_status(sh) : st;
 }
 
+/* bash's select: the numbered menu on stderr, PS3, a reply read into REPLY; an empty reply shows the menu again,
+ * anything that is not a number in range sets the variable empty; the end of input ends the loop (status 1) */
+static int digits_of(long v)
+{
+    char d[24];
+    num(d, v);
+    return (int)strlen(d);
+}
+
+static void select_menu(sh_shell *sh, const sh_io *io, const sh_list *items)
+{
+    const char *cv = sh_get(&sh->ctx, "COLUMNS");
+    long cols = cv ? atol(cv) : 80, maxlen = 0, wide, ncols, nrows, row, i, n = items->n, idx, pos;
+    char d[24];
+    int ind = digits_of(n), firstw;
+    if (cols <= 0)
+        cols = 80;
+    for (i = 0; i < n; i++)
+        if ((long)strlen(items->v[i]) > maxlen)
+            maxlen = (long)strlen(items->v[i]);
+    wide = maxlen + ind + 4;
+    ncols = cols / wide;
+    if (ncols < 1)
+        ncols = 1;
+    nrows = n / ncols + (n % ncols ? 1 : 0);
+    ncols = n / nrows + (n % nrows ? 1 : 0);
+    if (nrows == 1) {
+        nrows = ncols;
+        ncols = 1;
+    }
+    firstw = digits_of(nrows);
+    for (row = 0; row < nrows; row++) {
+        pos = 0;
+        for (idx = row;;) {
+            int w = pos == 0 ? firstw : ind, k;
+            long from;
+            num(d, idx + 1);
+            for (k = (int)strlen(d); k < w; k++)
+                say(sh, io->err, " ");
+            sayl(sh, io->err, d, ") ", items->v[idx], NULL);
+            from = pos + (long)strlen(items->v[idx]) + w + 2;
+            idx += nrows;
+            if (idx >= n)
+                break;
+            pos += wide;
+            while (from < pos) {
+                if (pos / 8 > from / 8) {
+                    say(sh, io->err, "\t");
+                    from += 8 - from % 8;
+                } else {
+                    say(sh, io->err, " ");
+                    from++;
+                }
+            }
+        }
+        say(sh, io->err, "\n");
+    }
+}
+
+static long exec_select(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    sh_list items;
+    long st = 0;
+    int i, show = 1;
+    memset(&items, 0, sizeof(items));
+    if (n->has_in) {
+        if (expand_words(sh, n->words, &items, io)) {
+            sh_list_free(&items);
+            return 1;
+        }
+    } else {
+        for (i = 0; i < sh->ctx.args.n; i++)
+            sh_list_add(&items, sh->ctx.args.v[i]);
+    }
+    if (!items.n) {
+        sh_list_free(&items);
+        return 0;
+    }
+    sh->loop_depth++;
+    for (;;) {
+        const char *ps3, *rep;
+        char *rd[2];
+        long r;
+        char *end;
+        if (show)
+            select_menu(sh, io, &items);
+        ps3 = sh_get(&sh->ctx, "PS3");
+        say(sh, io->err, ps3 ? ps3 : "#? ");
+        rd[0] = (char *)"read";
+        rd[1] = (char *)"REPLY";
+        if (b_read(sh, 2, rd, io) || sh->intr) {
+            say(sh, io->out, "\n");
+            st = 1;
+            break;
+        }
+        rep = sh_get(&sh->ctx, "REPLY");
+        if (!rep || !*rep) {
+            show = 1;
+            continue;
+        }
+        show = 0;
+        r = strtol(rep, &end, 10);
+        if (end == rep || *end || r < 1 || r > items.n)
+            sh_set(&sh->ctx, n->name, "");
+        else
+            sh_set(&sh->ctx, n->name, items.v[r - 1]);
+        debug_trap(sh, n, io);
+        SH_HIT(SELECT_PASS);
+        st = exec_node(sh, n->a, io);
+        if (sh->breaking) {
+            sh->breaking--;
+            break;
+        }
+        sh->continuing = 0;
+        if (sh->exiting || sh->returning || sh->intr)
+            break;
+    }
+    sh->loop_depth--;
+    sh_list_free(&items);
+    return sh->intr ? intr_status(sh) : st;
+}
+
+/* ---- time: TIMEFORMAT's %R %U %S %P, a precision digit and l (minutes), through os.now and os.cpu ---- */
+
+static void time_part(pbuf *o, long us, int prec, int lng)
+{
+    long sec = us / 1000000, frac = us % 1000000, div = 1000000;
+    char d[24];
+    int k;
+    if (lng) {
+        num(d, sec / 60);
+        pb_str(o, d);
+        pb_add(o, "m", 1);
+        sec %= 60;
+    }
+    num(d, sec);
+    pb_str(o, d);
+    if (prec > 6)
+        prec = 6;
+    if (prec > 0) {
+        pb_add(o, ".", 1);
+        for (k = 0; k < prec; k++)
+            div /= 10;
+        num(d, frac / div);
+        for (k = (int)strlen(d); k < prec; k++)
+            pb_add(o, "0", 1);
+        pb_str(o, d);
+    }
+    if (lng)
+        pb_add(o, "s", 1);
+}
+
+static void time_report(sh_shell *sh, const sh_io *io, const char *fmt, long real, long user, long sys)
+{
+    pbuf o = { 0, 0, 0 };
+    const char *f;
+    for (f = fmt; *f; f++) {
+        int prec = 3, lng = 0;
+        const char *s = f + 1;
+        if (*f != '%' || !*s) {
+            pb_add(&o, f, 1);
+            continue;
+        }
+        if (*s == '%') {
+            pb_add(&o, "%", 1);
+            f++;
+            continue;
+        }
+        if (*s == 'P') {
+            long p100 = real > 0 ? (user + sys) * 10000 / real : 0;
+            char d[24];
+            num(d, p100 / 100);
+            pb_str(&o, d);
+            pb_add(&o, ".", 1);
+            num(d, p100 % 100);
+            if (p100 % 100 < 10)
+                pb_add(&o, "0", 1);
+            pb_str(&o, d);
+            f = s;
+            continue;
+        }
+        if (*s >= '0' && *s <= '9') {
+            prec = *s - '0';
+            s++;
+        }
+        if (*s == 'l') {
+            lng = 1;
+            s++;
+        }
+        if (*s == 'R')
+            time_part(&o, real, prec, lng);
+        else if (*s == 'U')
+            time_part(&o, user, prec, lng);
+        else if (*s == 'S')
+            time_part(&o, sys, prec, lng);
+        else {
+            char bad[2];
+            bad[0] = *s;
+            bad[1] = 0;
+            sayl(sh, io->err, "vsh: TIMEFORMAT: `", bad, "': invalid format character\n", NULL);
+            free(o.s);
+            return;
+        }
+        f = s;
+    }
+    pb_add(&o, "\n", 1);
+    if (o.s)
+        put(sh, io->err, o.s, o.n);
+    free(o.s);
+}
+
+static void time_now(sh_shell *sh, long *real, long *user, long *sys)
+{
+    long sec = 0, us = 0, t[4];
+    memset(t, 0, sizeof(t));
+    if (sh->os.now)
+        sec = sh->os.now(sh->os.data, &us);
+    *real = sec * 1000000 + us;
+    if (sh->os.cpu)
+        sh->os.cpu(sh->os.data, t);
+    *user = t[0] + t[2];
+    *sys = t[1] + t[3];
+}
+
+static long exec_time(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    long r0, u0, s0, r1, u1, s1, st = 0;
+    const char *fmt;
+    SH_HIT(TIME_RUN);
+    time_now(sh, &r0, &u0, &s0);
+    if (n->a)
+        st = exec_node(sh, n->a, io);
+    time_now(sh, &r1, &u1, &s1);
+    fmt = sh_get(&sh->ctx, "TIMEFORMAT");
+    if (!fmt)
+        fmt = n->has_in ? "real %2R\nuser %2U\nsys %2S" : "\nreal\t%3lR\nuser\t%3lU\nsys\t%3lS";
+    if (*fmt)
+        time_report(sh, io, fmt, r1 - r0, u1 - u0, s1 - s0);
+    return st;
+}
+
 static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     char *subject = expand_one(sh, n->words->text, io);
@@ -5923,6 +6704,8 @@ static long exec_compound(sh_shell *sh, const sh_node *n, const sh_io *io)
         return exec_list_loop(sh, n, io);
     case SH_FOR:
         return exec_for(sh, n, io);
+    case SH_SELECT:
+        return exec_select(sh, n, io);
     case SH_FORARITH:
         return exec_forarith(sh, n, io);
     case SH_ARITHCMD:
@@ -6009,6 +6792,9 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
         if (st && !sh->exiting)
             st = exec_node(sh, n->b, io);
         break;
+    case SH_TIME:
+        st = exec_time(sh, n, io);
+        break;
     case SH_NOT:
         sh->cond_depth++;
         st = !exec_node(sh, n->a, io);
@@ -6035,6 +6821,7 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_WHILE:
     case SH_UNTIL:
     case SH_FOR:
+    case SH_SELECT:
     case SH_FORARITH:
     case SH_ARITHCMD:
     case SH_DBRACK:
@@ -6116,6 +6903,26 @@ long sh_exec(sh_shell *sh, const sh_node *n, const sh_io *io)
  * needs, each run before the next is parsed (so set -v echoes exactly the lines read after it was
  * set, an alias made on one line works on the next, and a syntax error stops the script after the
  * commands before it). */
+/* a non-interactive shell reads the file BASH_ENV names before its command (bash; the name is used as it
+ * stands, not expanded a second time); a missing file is no error */
+void sh_startup_env(sh_shell *sh)
+{
+    const char *f = sh_get(&sh->ctx, "BASH_ENV");
+    if ((sh->opts & SO_INTERACTIVE) || !f || !*f)
+        return;
+    SH_HIT(BASH_ENV_RUN);
+    sh_run_text(sh, "if [ -r \"$BASH_ENV\" ]; then . \"$BASH_ENV\"; fi", 0);
+}
+
+static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    if (!shopt_get(sh, "login_shell")) {
+        err2(sh, io, "logout", "not login shell: use `exit'");
+        return 1;
+    }
+    return b_exit(sh, argc, argv, io);
+}
+
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
 {
     const char *s = text;

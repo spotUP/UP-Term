@@ -1122,8 +1122,11 @@ static sh_node *parse_command1(lexer *L)
         n = parse_dbrack(L);
         return n;
     }
-    if (is_word(L, "for")) {
+    if (is_word(L, "for") || is_word(L, "select")) {
+        int sel = is_word(L, "select");
         n = parse_for(L);
+        if (sel && n->kind == SH_FOR)
+            n->kind = SH_SELECT;
         parse_trailing_redirs(L, n);
         return n;
     }
@@ -1169,6 +1172,22 @@ static sh_node *parse_pipeline(lexer *L)
 {
     int not = 0;
     sh_node *n, *last;
+    if (is_word(L, "time")) {
+        /* time [-p] [--] pipeline: the pipeline (0: none) in a, -p in has_in */
+        sh_node *t = node(L, SH_TIME);
+        next(L);
+        while (L->tok == T_WORD && !L->quoted && (!strcmp(L->word, "-p") || !strcmp(L->word, "--"))) {
+            int dd = L->word[1] == '-';
+            if (!dd)
+                t->has_in = 1;
+            next(L);
+            if (dd)
+                break;
+        }
+        if (L->tok == T_WORD || L->tok == T_LPAREN || is_word(L, "!"))
+            t->a = parse_pipeline(L);
+        return t;
+    }
     if (is_word(L, "!")) {
         not = 1;
         next(L);
@@ -1336,7 +1355,7 @@ static void dump(out *o, const sh_node *n)
 {
     static const char *const names[] = {
         "cmd", "pipe", "and", "or", "seq", "bg", "not", "sub", "group", "if", "while", "until",
-        "for", "case", "func", "arith", "forarith", "dbrack"
+        "for", "case", "func", "arith", "forarith", "dbrack", "select", "time"
     };
     const sh_case *c;
     if (!n) {
@@ -1375,6 +1394,11 @@ static void dump(out *o, const sh_node *n)
         put(o, " ");
         dump(o, n->a);
         break;
+    case SH_TIME:
+        put(o, n->has_in ? " -p " : " ");
+        dump(o, n->a);
+        break;
+    case SH_SELECT:
     case SH_FOR:
         put(o, " ");
         put(o, n->name ? n->name : "?");
@@ -1905,8 +1929,16 @@ static void up_cmd(unp *u, const sh_node *n)
         up_newline(u, "done");
         up_redirs_after(u, n);
         break;
+    case SH_TIME:
+        up_s(u, n->has_in ? "time -p " : "time ");
+        if (n->a) {
+            u->skip++;
+            up_cmd(u, n->a);
+        }
+        break;
+    case SH_SELECT:
     case SH_FOR:
-        up_s(u, "for ");
+        up_s(u, n->kind == SH_SELECT ? "select " : "for ");
         up_s(u, n->name);
         up_s(u, " in ");
         if (n->has_in)

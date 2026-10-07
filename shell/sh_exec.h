@@ -138,6 +138,9 @@ typedef struct sh_os {
     int   (*remove)(void *os, const char *path);
     /* the directory prefix of process substitution temp files, ending in : or / ("T:", "RAM:", "/tmp/"); 0 in the table: "T:" */
     const char *(*tmpdir)(void *os);
+    /* the processor time this shell and its children have used, in microseconds (times, time): own user,
+     * own system, children user, children system; 0 in the table: all 0 (the Amiga keeps no per-process times) */
+    void  (*cpu)(void *os, long *t4);
     void *data;
 } sh_os;
 
@@ -200,6 +203,9 @@ typedef struct sh_shell {
     sh_io io;              /* the shell's own streams */
     sh_func *funcs;
     sh_list aliases;       /* "name=value" */
+    sh_list hashtab;       /* hash: "name\tpath\thits" in the order they were added */
+    char *hashpath;        /* the PATH the hash table was built for */
+    sh_list disabled;      /* enable -n: the builtins switched off */
     int exiting;           /* exit ran: stop */
     long exit_status;
     int breaking;          /* break / continue levels pending */
@@ -320,6 +326,8 @@ void sh_exit_trap(sh_shell *sh);
 /* Run one input text (a line, or a script). Returns the exit status of
  * its last command; *incomplete is set when the text needs more lines. */
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);
+/* BASH_ENV: a non-interactive shell sources it before its command or script */
+void sh_startup_env(sh_shell *sh);
 
 /* The prompt text for PS1/PS2 value ps: bash escapes (\w \W \u \h \$ \e \n,
  * \[ \] ignored) and zsh escapes (%~ %/ %c %n %m %# %? %F{c} %f %K{c} %k

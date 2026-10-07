@@ -10,6 +10,11 @@
 #define SH_HIT_LIST(X) \
     X(FUNC_CALL)  /* a function body ran */ \
     X(SUBST)      /* a $( ) ran */ \
+    X(HASH_RUN)   /* a command run found its entry in the hash table */ \
+    X(SELECT_PASS) /* select ran its body for a menu choice */ \
+    X(CDPATH_USED) /* cd found its directory through CDPATH */ \
+    X(BASH_ENV_RUN) /* BASH_ENV was sourced at startup */ \
+    X(TIME_RUN)   /* the time keyword timed a pipeline */ \
     X(SPAWN)      /* a subshell or non-final pipeline stage was spawned */ \
     X(FD_HIGH)    /* a descriptor above 2 was resolved through the shell's fd table */ \
     X(FDVAR_ALLOC) /* {var}> allocated a descriptor */ \

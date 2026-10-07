@@ -56,7 +56,9 @@ enum sh_kind {
     SH_ARITHCMD,  /* (( expr )): words is the one expression text */
     SH_FORARITH,  /* for (( init; cond; step )) a: words are the three texts (empty when left out) */
     SH_DBRACK     /* [[ ]]: name is && || ! ( with the operands in a and b, or the test operator ("" for a bare
-                   * string, "-f", "==", "=~", "<" ...) with its one or two operand words in words */
+                   * string, "-f", "==", "=~", "<" ...) with its one or two operand words in words */,
+    SH_SELECT,    /* select name in words do a (as SH_FOR) */
+    SH_TIME       /* time [-p] a: a is the pipeline (0: none), has_in is -p */
 };
 
 typedef struct sh_case {
