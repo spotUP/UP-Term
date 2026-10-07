@@ -10,10 +10,17 @@ import ami, install_rig as ir
 TREE = b"W 1 \"Install\" 0 0 400 300\nG 290 10 10 20x10 radio\nG 90 100 100 40x20 button\n"
 
 class FakeAmiga:
-    def __init__(self, files): self.files, self.clicks, self.cmds = dict(files), [], []
+    def __init__(self, files, yunits=1):
+        # yunits: pointer units per screen pixel vertically (2 on a native
+        # non-interlaced screen such as the Replay's PAL Hires, 1 on RTG)
+        self.files, self.clicks, self.cmds, self.yunits, self.ptr = dict(files), [], [], yunits, (0, 0)
     def req(self, code, payload=b'', timeout=150):
         if code == 0x0D: return TREE
-        if code == 0x08: self.clicks.append(payload); return b''
+        if code == 0x08:
+            if payload[:1] == b'\x01': self.ptr = struct.unpack('>HH', payload[1:5])   # MOVE
+            else: self.clicks.append(payload)
+            return b''
+        if code == 0x0B: return struct.pack('>HH', self.ptr[0], self.ptr[1] // self.yunits)
         if code == 0x03:
             p = payload.decode('latin-1')
             if p not in self.files: raise SystemExit('ERR: not found')
@@ -38,6 +45,14 @@ class Rig(unittest.TestCase):
         ami.main(['gclick', 'Install', '90'])
         x, y = struct.unpack('>HH', self.fake.clicks[0][1:5])
         self.assertEqual((x, y), (120, 110), 'clicked the radio button 290, not the gadget 90')
+
+    def test_gclick_on_a_non_interlaced_screen_doubles_y(self):
+        # The Replay's PAL Hires screen: a click at UITREE's pixel y landed at
+        # half the height until click_px scaled it (2026-10-07)
+        self.fake.yunits = 2
+        ami.main(['gclick', 'Install', '90'])
+        x, y = struct.unpack('>HH', self.fake.clicks[0][1:5])
+        self.assertEqual((x, y), (120, 220))
 
     def test_a_failing_run_puts_back_the_users_remote_file(self):
         fx = ir.Fixtures(); fx.take()

@@ -85,6 +85,12 @@ def pointer_scale():
     x, y = struct.unpack('>HH', req(0x0B)[:4])
     return 200.0 / max(x, 1), 200.0 / max(y, 1)
 
+def click_px(x, y):
+    # A left click at screen pixel (x, y) of the front screen (UITREE's
+    # coordinates), scaled to the pointer units CLICK takes.
+    sx, sy = pointer_scale()
+    req(0x08, bytes([5]) + struct.pack('>HH', int(round(x * sx)), int(round(y * sy))) + bytes([0, 1]))
+
 def window(title):
     # The front screen's window titled exactly `title`, from UITREE:
     # {'box': (x, y, w, h), 'active': bool, 'sys:size': (x, y, w, h), ...}
@@ -162,9 +168,11 @@ def main(a):
         key(code, qual)
     elif cmd == 'type': req(0x08, bytes([4]) + a[1].encode('latin-1'))
     elif cmd == 'gclick':
-        # CLICK's x/y are absolute screen coordinates (PROTOCOL.md: the move
-        # uses IECLASS_POINTERPOS), so UITREE's screen pixels are used as they
-        # are -- no scaling against ptrpos.
+        # CLICK's x/y are Intuition pointer units like MOVE's, not screen
+        # pixels: on an RTG screen they are the same, on a native
+        # non-interlaced one y is doubled (a click at UITREE's y on the
+        # Replay's PAL Hires screen landed at half the height, 2026-10-07),
+        # so click_px scales UITREE's pixels with pointer_scale().
         tree = req(0x0D).decode('latin-1').splitlines()
         win = None
         for line in tree:
@@ -176,7 +184,7 @@ def main(a):
             elif win is not None and line.startswith('G ') and f[1].lower() == a[2].lower():
                 x, y = int(f[2]), int(f[3]); w, h = map(int, f[4].split('x'))
                 cx, cy = x + w // 2, y + h // 2
-                req(0x08, bytes([5]) + struct.pack('>HH', cx, cy) + bytes([0, 1]))
+                click_px(cx, cy)
                 print('click at %d,%d' % (cx, cy)); return
         raise SystemExit('no matching gadget')
     else: raise SystemExit(__doc__)
