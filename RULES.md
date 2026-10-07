@@ -39,6 +39,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | BSD ptys via patched ixemul (P6.4, self-checking) | `python3 tools/rig/ixpty_rig.py [--orig]` (rig up; `make amiga build/amiga/ixpty`; ixemul from ~/Code/ixemul-vtcon `sh docker/build.sh`) |
 | Signal mask across ixemul's startup stack extension (self-checking; A/B on gcc 16 libraries) | `[IXEMUL=<ixemul.library> IXNET=<ixnet.library>] python3 tools/rig/stackext_rig.py` (rig up; `make build/amiga/ixstackext`) |
 | SIGWINCH and TIOCGWINSZ after an XCON: resize (W47, self-checking) | `[IXEMUL=<ixemul.library>] python3 tools/rig/winch_rig.py` (rig up, handler installed; `make amiga build/amiga/ixwinch`) |
+| Characters typed after a Ctrl-C that ended a read (a child killed by ^C must not eat the next line; self-checking) | `[IXEMUL=<ixemul.library>] python3 tools/rig/intr_rig.py [line|raw|vsh]` (rig up, handler installed; `make amiga build/amiga/ixintr`) |
 | Fullscreen size change keeps the window the whole screen (FULLSCREEN-MENU; verdicts in build/rig/fullscreen/, passed ones skipped) | `python3 tools/rig/fullscreen_rig.py [--rerun <case>|all]` (rig up, handler installed; `make amiga`) |
 | pty-handler with a serial trace (build/rig/serial.log) | `make build/amiga/pty-handler DEBUG=1` |
 | Rig (FS-UAE A1200, amiagent) | `python3 tools/rig/rig.py setup|start|install|stop|status`; drive with `tools/rig/ami.py` |
