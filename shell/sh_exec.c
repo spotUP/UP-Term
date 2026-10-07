@@ -306,6 +306,7 @@ void sh_shell_free(sh_shell *sh)
         restore_var(sh, (saved_var *)sh->locals + --sh->n_locals);
     free(sh->locals);
     sh_list_free(&sh->aliases);
+    sh_list_free(&sh->hist);
     sh_list_free(&sh->hashtab);
     free(sh->hashpath);
     sh_list_free(&sh->disabled);
@@ -423,6 +424,11 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
         sh_list_add(&c->aliases, sh->aliases.v[i]);
     for (i = 0; i < sh->hashtab.n; i++)
         sh_list_add(&c->hashtab, sh->hashtab.v[i]);
+    for (i = 0; i < sh->hist.n; i++)
+        sh_list_add(&c->hist, sh->hist.v[i]);
+    c->hist_native = sh->hist_native;
+    c->hist_saved = sh->hist_saved;
+    c->hist_base = sh->hist_base;
     c->hashpath = sh->hashpath ? sdup(sh->hashpath) : 0;
     for (i = 0; i < sh->disabled.n; i++)
         sh_list_add(&c->disabled, sh->disabled.v[i]);
@@ -4473,6 +4479,7 @@ static long b_popd(sh_shell *sh, int argc, char **argv, const sh_io *io)
 }
 
 static long b_hash(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_history(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_enable(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_times(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_caller(sh_shell *sh, int argc, char **argv, const sh_io *io);
@@ -4500,7 +4507,7 @@ static const struct {
     { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
-    { "hash", b_hash }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout }, { 0, 0 }
+    { "hash", b_hash }, { "history", b_history }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout }, { 0, 0 }
 };
 
 /* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
@@ -4628,6 +4635,376 @@ static int hash_note_run(sh_shell *sh, const char *name, char *path, long max)
 static void hash_usage(sh_shell *sh, const sh_io *io)
 {
     say(sh, io->err, "hash: usage: hash [-lr] [-p pathname] [-dt] [name ...]\n");
+}
+
+/* ---- history ----------------------------------------------------------------------
+ * The list has one owner. On a console that keeps it (vtcon: the line editor's list, loaded from and appended
+ * to ENVARC:vtcon.history) the shell asks through os.hist and holds nothing; on any other console (a ROM CON:
+ * window, a script, the host) it keeps sh->hist itself, and asks the console only the once. */
+
+static int hist_own(sh_shell *sh)
+{
+    if (sh->hist_native == 0) {
+        long n = sh->os.hist ? sh->os.hist(sh->os.data, SH_HIST_COUNT, 0, 0, 0) : -1;
+        sh->hist_native = n >= 0 ? 1 : -1;
+    }
+    return sh->hist_native < 0;
+}
+
+static long hist_count(sh_shell *sh)
+{
+    return hist_own(sh) ? sh->hist.n : sh->os.hist(sh->os.data, SH_HIST_COUNT, 0, 0, 0);
+}
+
+/* line i (0 = oldest), malloc'ed; 0 when there is none */
+static char *hist_get(sh_shell *sh, long i)
+{
+    char buf[1024];
+    if (i < 0 || i >= hist_count(sh))
+        return 0;
+    if (hist_own(sh))
+        return sdup(sh->hist.v[i]);
+    if (sh->os.hist(sh->os.data, SH_HIST_GET, i, buf, sizeof(buf)) < 0)
+        return 0;
+    return sdup(buf);
+}
+
+static long hist_size_limit(sh_shell *sh, const char *name, long dflt)
+{
+    const char *v = sh_get(&sh->ctx, name);
+    char *e;
+    long n;
+    if (!v || !*v)
+        return dflt;
+    n = strtol(v, &e, 10);
+    return *e ? dflt : n;   /* bash: not a number means no limit; negative means unlimited too */
+}
+
+static void hist_add(sh_shell *sh, const char *line)
+{
+    long max;
+    if (!hist_own(sh)) {
+        sh->os.hist(sh->os.data, SH_HIST_ADD, 0, (char *)line, 0);
+        return;
+    }
+    sh_list_add(&sh->hist, line);
+    max = hist_size_limit(sh, "HISTSIZE", 500);
+    while (max >= 0 && sh->hist.n > max && sh->hist.n) {
+        free(sh->hist.v[0]);
+        memmove(sh->hist.v, sh->hist.v + 1, (sh->hist.n - 1) * sizeof(char *));
+        sh->hist.n--;
+        sh->hist_base++;
+        if (sh->hist_saved > 0)
+            sh->hist_saved--;
+    }
+}
+
+static int hist_del(sh_shell *sh, long i)
+{
+    if (i < 0 || i >= hist_count(sh))
+        return -1;
+    if (!hist_own(sh))
+        return sh->os.hist(sh->os.data, SH_HIST_DEL, i, 0, 0) ? 0 : -1;
+    free(sh->hist.v[i]);
+    memmove(sh->hist.v + i, sh->hist.v + i + 1, (sh->hist.n - i - 1) * sizeof(char *));
+    sh->hist.n--;
+    if (sh->hist_saved > i)
+        sh->hist_saved--;
+    return 0;
+}
+
+static void hist_clear(sh_shell *sh)
+{
+    if (!hist_own(sh)) {
+        sh->os.hist(sh->os.data, SH_HIST_CLEAR, 0, 0, 0);
+        return;
+    }
+    sh->hist_base = 0;
+    sh_list_free(&sh->hist);
+    sh->hist_saved = 0;
+}
+
+void sh_hist_note(sh_shell *sh, const char *text)
+{
+    char *t;
+    size_t n;
+    const char *ctl;
+    long last;
+    if (!(sh->opts & SO_INTERACTIVE) || !hist_own(sh))
+        return;   /* a console with a list has the line already */
+    while (*text == '\n')
+        text++;
+    n = strlen(text);
+    while (n && (text[n - 1] == '\n' || text[n - 1] == '\r'))
+        n--;
+    if (!n)
+        return;
+    t = (char *)malloc(n + 1);
+    if (!t)
+        return;
+    memcpy(t, text, n);
+    t[n] = 0;
+    ctl = sh_get(&sh->ctx, "HISTCONTROL");
+    last = sh->hist.n;
+    if (ctl && (strstr(ctl, "ignorespace") || strstr(ctl, "ignoreboth")) && t[0] == ' ') {
+        free(t);
+        return;
+    }
+    if (ctl && (strstr(ctl, "ignoredups") || strstr(ctl, "ignoreboth")) && last && !strcmp(sh->hist.v[last - 1], t)) {
+        free(t);
+        return;
+    }
+    if (ctl && strstr(ctl, "erasedups")) {
+        long k;
+        for (k = sh->hist.n - 1; k >= 0; k--)
+            if (!strcmp(sh->hist.v[k], t))
+                hist_del(sh, k);
+    }
+    hist_add(sh, t);
+    free(t);
+}
+
+static const char *hist_file(sh_shell *sh, int argc, char **argv, int a)
+{
+    const char *f = a < argc ? argv[a] : sh_get(&sh->ctx, "HISTFILE");
+    return f && *f ? f : 0;
+}
+
+/* history -r: the file's lines appended to the list; from: skip the first lines (history -n) */
+static int hist_read_file(sh_shell *sh, const char *file, long from, long *nread)
+{
+    sh_fh fh = sh->os.open(sh->os.data, file, SH_OPEN_READ);
+    char line[1024];
+    long n, k = 0;
+    if (!fh)
+        return -1;
+    while ((n = sh->os.read_line(sh->os.data, fh, line, sizeof(line) - 1)) >= 0) {
+        while (n && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+            n--;
+        line[n] = 0;
+        if (k++ < from || !n)
+            continue;
+        hist_add(sh, line);
+    }
+    sh->os.close(sh->os.data, fh);
+    if (nread)
+        *nread = k;
+    return 0;
+}
+
+static long b_history(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int a = 1, c = 0, d = 0, w = 0, r = 0, ap = 0, nn = 0, p = 0, s = 0, i;
+    const char *dval = 0;
+    long total, st = 0;
+    for (; a < argc && argv[a][0] == '-' && argv[a][1]; a++) {
+        const char *q = argv[a] + 1;
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        for (; *q; q++) {
+            if (*q == 'c') c = 1;
+            else if (*q == 'w') w = 1;
+            else if (*q == 'r') r = 1;
+            else if (*q == 'a') ap = 1;
+            else if (*q == 'n') nn = 1;
+            else if (*q == 'p') p = 1;
+            else if (*q == 's') s = 1;
+            else if (*q == 'd') {
+                d = 1;
+                if (q[1]) {
+                    dval = q + 1;
+                    q += strlen(q) - 1;
+                } else if (a + 1 < argc) {
+                    dval = argv[++a];
+                } else {
+                    err2(sh, io, "-d", "option requires an argument");
+                    return 2;
+                }
+            } else {
+                char opt[3];
+                opt[0] = '-';
+                opt[1] = *q;
+                opt[2] = 0;
+                err2(sh, io, opt, "invalid option");
+                say(sh, io->err, "history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]\n");
+                return 2;
+            }
+        }
+    }
+    if ((w + r + ap + nn) > 1 || ((w || r || ap || nn) && (p || s)) || (p && s)) {
+        err2(sh, io, "history", "cannot use more than one of -anrw");
+        return 1;
+    }
+    if (c)
+        hist_clear(sh);
+    if (d) {
+        char *e;
+        long off = strtol(dval, &e, 10), cnt = hist_count(sh), idx;
+        if (*e || !*dval) {
+            err2(sh, io, dval, "history position out of range");
+            return 1;
+        }
+        idx = off < 0 ? cnt + off : off - 1 - (hist_own(sh) ? sh->hist_base : 0);
+        if (off == 0 || hist_del(sh, idx) < 0) {
+            err2(sh, io, dval, "history position out of range");
+            return 1;
+        }
+        return 0;
+    }
+    if (c && a >= argc)
+        return 0;
+    if (p) {
+        for (i = a; i < argc; i++)
+            sayl(sh, io->out, argv[i], "\n", NULL);
+        return 0;
+    }
+    if (s) {
+        size_t len = 0;
+        char *joined;
+        for (i = a; i < argc; i++)
+            len += strlen(argv[i]) + 1;
+        if (!a || a >= argc)
+            return 0;
+        joined = (char *)malloc(len + 1);
+        if (!joined)
+            return 1;
+        joined[0] = 0;
+        for (i = a; i < argc; i++) {
+            if (i > a)
+                strcat(joined, " ");
+            strcat(joined, argv[i]);
+        }
+        hist_add(sh, joined);
+        free(joined);
+        return 0;
+    }
+    if (r || nn) {
+        const char *f = hist_file(sh, argc, argv, a);
+        long nread = 0;
+        if (!f || hist_read_file(sh, f, nn ? sh->hist_saved : 0, &nread) < 0) {
+            err2(sh, io, f ? f : "history", f ? "cannot open" : "no history file");
+            return 1;
+        }
+        sh->hist_saved = hist_count(sh);
+        return 0;
+    }
+    if (w || ap) {
+        const char *f = hist_file(sh, argc, argv, a);
+        long cnt = hist_count(sh), from = 0;
+        sh_fh fh;
+        if (!f) {
+            err2(sh, io, "history", "no history file");
+            return 1;
+        }
+        if (ap && !hist_own(sh))
+            return 0;   /* the console appended each line as it was entered */
+        if (ap)
+            from = sh->hist_saved;
+        fh = sh->os.open(sh->os.data, f, ap ? SH_OPEN_APPEND : SH_OPEN_WRITE);
+        if (!fh) {
+            err2(sh, io, f, "cannot open");
+            return 1;
+        }
+        for (i = (int)from; i < cnt; i++) {
+            char *l = hist_get(sh, i);
+            if (l) {
+                put(sh, fh, l, (long)strlen(l));
+                put(sh, fh, "\n", 1);
+                free(l);
+            }
+        }
+        sh->os.close(sh->os.data, fh);
+        sh->hist_saved = cnt;
+        return 0;
+    }
+    total = hist_count(sh);
+    if (a < argc) {
+        char *e;
+        long n = strtol(argv[a], &e, 10);
+        if (*e || !*argv[a]) {
+            err2(sh, io, argv[a], "numeric argument required");
+            return 2;
+        }
+        if (a + 1 < argc) {
+            err2(sh, io, "history", "too many arguments");
+            return 1;
+        }
+        if (n < 0) {
+            err2(sh, io, argv[a], "history position out of range");
+            return 1;
+        }
+        st = total - n;
+        if (st < 0)
+            st = 0;
+        if (n == 0)
+            st = total;
+    }
+    for (i = (int)st; i < total; i++) {
+        char *l = hist_get(sh, i), num[24];
+        if (!l)
+            continue;
+        {   /* the number right-aligned in 5 columns, then two spaces */
+            long v = i + 1 + (hist_own(sh) ? sh->hist_base : 0);
+            int k = 4;
+            memset(num, ' ', 7);
+            num[7] = 0;
+            do {
+                num[k--] = (char)('0' + v % 10);
+                v /= 10;
+            } while (v && k >= 0);
+        }
+        sayl(sh, io->out, num, l, "\n", NULL);
+        free(l);
+    }
+    return 0;
+}
+
+void sh_hist_load(sh_shell *sh)
+{
+    const char *f = sh_get(&sh->ctx, "HISTFILE");
+    if (!(sh->opts & SO_INTERACTIVE) || !f || !*f || !hist_own(sh))
+        return;
+    hist_read_file(sh, f, 0, 0);
+    sh->hist_saved = sh->hist.n;
+}
+
+void sh_hist_save(sh_shell *sh)
+{
+    const char *f = sh_get(&sh->ctx, "HISTFILE");
+    long keep = hist_size_limit(sh, "HISTFILESIZE", 500), i, first;
+    sh_list all;
+    sh_fh fh;
+    if (!(sh->opts & SO_INTERACTIVE) || !f || !*f || !hist_own(sh) || sh->hist_saved >= sh->hist.n)
+        return;
+    memset(&all, 0, sizeof(all));
+    fh = sh->os.open(sh->os.data, f, SH_OPEN_READ);   /* what other windows added meanwhile stays */
+    if (fh) {
+        char line[1024];
+        long n;
+        while ((n = sh->os.read_line(sh->os.data, fh, line, sizeof(line) - 1)) >= 0) {
+            while (n && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+                n--;
+            line[n] = 0;
+            if (n)
+                sh_list_add(&all, line);
+        }
+        sh->os.close(sh->os.data, fh);
+    }
+    for (i = sh->hist_saved; i < sh->hist.n; i++)
+        sh_list_add(&all, sh->hist.v[i]);
+    first = keep >= 0 && all.n > keep ? all.n - keep : 0;
+    fh = sh->os.open(sh->os.data, f, SH_OPEN_WRITE);
+    if (fh) {
+        for (i = first; i < all.n; i++) {
+            put(sh, fh, all.v[i], (long)strlen(all.v[i]));
+            put(sh, fh, "\n", 1);
+        }
+        sh->os.close(sh->os.data, fh);
+        sh->hist_saved = sh->hist.n;
+    }
+    sh_list_free(&all);
 }
 
 static long b_hash(sh_shell *sh, int argc, char **argv, const sh_io *io)

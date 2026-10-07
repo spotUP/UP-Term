@@ -530,6 +530,100 @@ static void a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV(void)
     CHECK_STR(slot(OUT)->data, "envfile\n");
 }
 
+/* V88: a console that keeps the line list (vtcon) is asked through os.hist and the shell holds nothing;
+ * this one is a plain array standing in for the handler's */
+static char native_list[8][40];
+static int native_n, native_asked;
+
+static long f_hist(void *os, int op, long arg, char *buf, long max)
+{
+    (void)os;
+    native_asked++;
+    switch (op) {
+    case SH_HIST_COUNT:
+        return native_n;
+    case SH_HIST_GET:
+        if (arg < 0 || arg >= native_n || strlen(native_list[arg]) >= (size_t)max)
+            return -1;
+        strcpy(buf, native_list[arg]);
+        return (long)strlen(buf);
+    case SH_HIST_ADD:
+        strcpy(native_list[native_n++], buf);
+        return 1;
+    case SH_HIST_DEL:
+        if (arg < 0 || arg >= native_n)
+            return 0;
+        memmove(native_list[arg], native_list[arg + 1], (size_t)(native_n - arg - 1) * 40);
+        native_n--;
+        return 1;
+    case SH_HIST_CLEAR:
+        native_n = 0;
+        return 1;
+    }
+    return -1;
+}
+
+static const char *file_data(const char *name)
+{
+    int i;
+    for (i = 0; i < NF; i++)
+        if (fs[i].used && !fs[i].is_pipe && !strcmp(fs[i].name, name))
+            return fs[i].data;
+    return "(no file)";
+}
+
+static void history_has_one_owner_the_console_list_or_the_shell(void)
+{
+    /* the shell's own list: interactive notes, HISTCONTROL, HISTFILE loaded at start and kept at the end */
+    run("echo old1 > RAM:hf; echo old2 >> RAM:hf; HISTFILE=RAM:hf; HISTCONTROL=ignoreboth");
+    sh.opts |= SO_INTERACTIVE;
+    sh_hist_load(&sh);
+    sh_hist_note(&sh, "ls\n");
+    sh_hist_note(&sh, "ls\n");        /* ignoredups */
+    sh_hist_note(&sh, " secret\n");   /* ignorespace */
+    sh_hist_note(&sh, "pwd");
+    sh_run_text(&sh, "history", 0);
+    CHECK_STR(slot(OUT)->data, "    1  old1\n    2  old2\n    3  ls\n    4  pwd\n");
+    sh_hist_save(&sh);
+    CHECK_STR(file_data("RAM:hf"), "old1\nold2\nls\npwd\n");
+    sh_run_text(&sh, "history -d 2; history 2", 0);
+    CHECK_STR(slot(OUT)->data, "    1  old1\n    2  old2\n    3  ls\n    4  pwd\n    2  ls\n    3  pwd\n");
+    /* not interactive: a script's lines are not history */
+    fresh();
+    sh_hist_note(&sh, "x");
+    sh_run_text(&sh, "history", 0);
+    CHECK_STR(slot(OUT)->data, "");
+
+    /* the console's list: the shell asks, adds nothing of its own, writes no file at the end */
+    fresh();
+    sh.os.hist = f_hist;
+    native_n = 0;
+    strcpy(native_list[native_n++], "from console 1");
+    strcpy(native_list[native_n++], "from console 2");
+    sh.opts |= SO_INTERACTIVE;
+    sh_run_text(&sh, "HISTFILE=RAM:nf; history", 0);
+    CHECK_STR(slot(OUT)->data, "    1  from console 1\n    2  from console 2\n");
+    sh_hist_note(&sh, "typed");        /* the console took the line already */
+    CHECK_INT(native_n, 2);
+    CHECK_INT(sh.hist.n, 0);
+    sh_run_text(&sh, "history -s added; history -d 1; history -w", 0);
+    CHECK_INT(native_n, 2);
+    CHECK_STR(native_list[0], "from console 2");
+    CHECK_STR(native_list[1], "added");
+    CHECK_STR(file_data("RAM:nf"), "from console 2\nadded\n");
+    sh_hist_save(&sh);
+    CHECK_INT(sh.hist.n, 0);
+    sh_run_text(&sh, "history -c; history", 0);
+    CHECK_INT(native_n, 0);
+    /* a console that does not know the packet (COUNT below 0): the shell's own list, asked once */
+    fresh();
+    sh.os.hist = 0;
+    sh.opts |= SO_INTERACTIVE;
+    sh_hist_note(&sh, "mine");
+    sh_run_text(&sh, "history", 0);
+    CHECK_STR(slot(OUT)->data, "    1  mine\n");
+}
+
 static void a_shell_made_on_dirty_memory_is_a_fresh_shell(void)
 {
     /* one place for both, so the fields pointing into the shell itself agree */
@@ -1335,6 +1429,7 @@ void suite_sh_exec(void)
     basics();
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
+    history_has_one_owner_the_console_list_or_the_shell();
     control_flow();
     pipes_and_redirection();
     jobs_aliases_and_dirs();

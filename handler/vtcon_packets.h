@@ -69,6 +69,25 @@
  *            (already answered: its reply carries the bytes) */
 #define ACTION_VTCON_INTR 0x765C
 
+/* The window's line history, for the shell's `history` builtin (V88). The console owns the list (the line
+ * editor's, loaded from ENVARC:vtcon.history when the window opens, each entered line appended to that file);
+ * the shell holds no copy. These operations change the list in memory only, never the file. A console that
+ * does not know the packet answers dp_Res1 DOSFALSE, dp_Res2 ERROR_ACTION_NOT_KNOWN and the shell keeps a list
+ * of its own from then on.
+ *   dp_Arg1  fh_Arg1
+ *   dp_Arg2  VTCON_HIST_COUNT   dp_Res1 the number of lines
+ *            VTCON_HIST_GET     dp_Arg3 index (0 = oldest), dp_Arg4 buffer, dp_Arg5 its size: dp_Res1 the
+ *                               line's length (it is NUL-terminated), -1 when there is no such line
+ *            VTCON_HIST_ADD     dp_Arg4 the NUL-terminated line: dp_Res1 DOSTRUE
+ *            VTCON_HIST_DEL     dp_Arg3 index: dp_Res1 DOSTRUE, DOSFALSE when there is none
+ *            VTCON_HIST_CLEAR   dp_Res1 DOSTRUE */
+#define ACTION_VTCON_HISTORY 0x765D
+#define VTCON_HIST_COUNT 0
+#define VTCON_HIST_GET   1
+#define VTCON_HIST_ADD   2
+#define VTCON_HIST_DEL   3
+#define VTCON_HIST_CLEAR 4
+
 /* ACTION_VTCON_TCGETA answers dp_Res2 1 when the console is in termios
  * mode (a program set it), 0 when it describes the Amiga mode in termios
  * terms: a shell that suspends a job keeps the job's settings only then

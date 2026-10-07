@@ -168,6 +168,14 @@ void le_kc_redo(le_line *le, const unsigned char *snap, int snap_pos, int start,
 #define LE_KC_SILENT 16
 int  le_kc_fncmode(const char *letters);
 void le_hist_add(le_line *le, const unsigned char *s, int n);
+/* The list for a shell's `history` builtin (ACTION_VTCON_HISTORY): the lines are numbered from 0, oldest first.
+ * le_hist_get copies line i (NUL-terminated, cut to max-1) into buf and returns its length, -1 if there is none;
+ * le_hist_del removes line i (0 ok, -1 none); le_hist_clear empties the list. The saved history file is not
+ * touched by any of them. */
+int  le_hist_count(const le_line *le);
+int  le_hist_get(const le_line *le, int i, unsigned char *buf, int max);
+int  le_hist_del(le_line *le, int i);
+void le_hist_clear(le_line *le);
 
 /* A list to choose from with the keys, drawn under a finished line (W30:
  * /theme with no name): one name a row, the chosen one as a reverse bar,

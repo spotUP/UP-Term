@@ -830,6 +830,42 @@ static void reflow_moves_the_line_and_editing_follows(void)
  * line editor starts, a full history still keeps 100 lines of 255 bytes
  * and drops the oldest, undo still goes 8 steps back on a long line, and
  * le_free gives every byte back. */
+/* V88: the shell's `history` builtin reads and edits the window's list through these (and the packet) */
+static void history_list_is_readable_and_editable(void)
+{
+    unsigned char b[16];
+    vt_term *t;
+    le_free(&le);
+    t = h_new(80, 24, VT_XTERM);
+    le_init(&le, t, to_term, t);
+    CHECK_INT(le_hist_count(&le), 0);
+    CHECK_INT(le_hist_get(&le, 0, b, sizeof(b)), -1);
+    le_hist_add(&le, (const unsigned char *)"one\n", 4);
+    le_hist_add(&le, (const unsigned char *)"two words", 9);
+    le_hist_add(&le, (const unsigned char *)"three", 5);
+    CHECK_INT(le_hist_count(&le), 3);
+    CHECK_INT(le_hist_get(&le, 1, b, sizeof(b)), 9);
+    CHECK(!strcmp((const char *)b, "two words"));
+    CHECK_INT(le_hist_get(&le, 1, b, 4), 3); /* cut to the buffer */
+    CHECK(!strcmp((const char *)b, "two"));
+    CHECK_INT(le_hist_get(&le, 3, b, sizeof(b)), -1);
+    CHECK_INT(le_hist_get(&le, -1, b, sizeof(b)), -1);
+    CHECK_INT(le_hist_del(&le, 1), 0);
+    CHECK_INT(le_hist_count(&le), 2);
+    CHECK(le_hist_get(&le, 1, b, sizeof(b)) == 5 && !strcmp((const char *)b, "three"));
+    CHECK_INT(le_hist_del(&le, 2), -1);
+    CHECK_INT(le_hist_del(&le, 0), 0);
+    CHECK(le_hist_get(&le, 0, b, sizeof(b)) == 5 && !strcmp((const char *)b, "three"));
+    /* the arrow keys see the edited list */
+    key(VT_KEY_UP, 0);
+    CHECK(!strcmp(line(), "three"));
+    le_hist_clear(&le);
+    CHECK_INT(le_hist_count(&le), 0);
+    le_hist_add(&le, (const unsigned char *)"after", 5); /* usable after a clear */
+    CHECK_INT(le_hist_count(&le), 1);
+    le_free(&le);
+}
+
 static void history_and_undo_grow_and_free(void)
 {
     vt_term *t;
@@ -981,6 +1017,7 @@ void suite_lineedit(void)
     a_line_that_fills_the_bottom_row_exactly();
     history_and_prefix_search();
     utf8_characters_move_as_one();
+    history_list_is_readable_and_editable();
     history_and_undo_grow_and_free();
     theme_menu_chosen_with_arrows_and_return();
     theme_menu_scrolls_a_long_list_at_the_bottom();

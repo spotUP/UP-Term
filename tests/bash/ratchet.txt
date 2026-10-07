@@ -910,3 +910,8 @@ vars/shlvl
 vars/srandom
 vars/underscore
 vars/versinfo
+builtins/alias_literal_word
+history/delete
+history/errors
+history/histsize
+history/list_read_write

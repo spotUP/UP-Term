@@ -144,8 +144,16 @@ typedef struct sh_os {
     /* the physical form of a path: symbolic links and soft assigns resolved (cd -P, pwd -P); malloc'ed, 0 when it
      * cannot be resolved; 0 in the table: the paths the shell has are taken as physical */
     char *(*realpath)(void *os, const char *path);
+    /* the console's line history (history): op is SH_HIST_*; a result below 0 for COUNT means the console does not
+     * have one, and the shell keeps a list of its own from then on; 0 in the table: the shell's own list */
+    long  (*hist)(void *os, int op, long arg, char *buf, long max);
     void *data;
 } sh_os;
+#define SH_HIST_COUNT 0   /* the number of lines */
+#define SH_HIST_GET   1   /* line arg (0 = oldest) into buf (max bytes): its length, -1 none */
+#define SH_HIST_ADD   2   /* buf: one more line, in memory only */
+#define SH_HIST_DEL   3   /* delete line arg: 0 ok, -1 none */
+#define SH_HIST_CLEAR 4   /* empty the list, in memory only */
 
 typedef struct sh_func {
     char *name;
@@ -210,6 +218,10 @@ typedef struct sh_shell {
     sh_io io;              /* the shell's own streams */
     sh_func *funcs;
     sh_list aliases;       /* "name=value" */
+    sh_list hist;          /* history: the shell's own list, used only when the console has none (os.hist) */
+    int hist_native;       /* 0 not asked yet, 1 the console keeps the list, -1 the shell does */
+    long hist_base;        /* history numbers start after this many lines that HISTSIZE dropped */
+    long hist_saved;       /* history -a: the lines before this index are in the file already */
     sh_list hashtab;       /* hash: "name\tpath\thits" in the order they were added */
     char *hashpath;        /* the PATH the hash table was built for */
     sh_list disabled;      /* enable -n: the builtins switched off */
@@ -332,6 +344,14 @@ void sh_exit_trap(sh_shell *sh);
 
 /* Run one input text (a line, or a script). Returns the exit status of
  * its last command; *incomplete is set when the text needs more lines. */
+/* An interactive shell entered this command: it joins the history when the shell keeps the list itself (a console
+ * that has one, vtcon, has taken the line already) */
+void sh_hist_note(sh_shell *sh, const char *text);
+/* An interactive shell with a list of its own (no console list) reads HISTFILE at its start and, at its end,
+ * adds the lines of this session to it, keeping the last HISTFILESIZE (default 500) lines; with a console
+ * list (vtcon) both do nothing, the console loads and appends the file itself. */
+void sh_hist_load(sh_shell *sh);
+void sh_hist_save(sh_shell *sh);
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);
 /* BASH_ENV: a non-interactive shell sources it before its command or script */
 void sh_startup_env(sh_shell *sh);

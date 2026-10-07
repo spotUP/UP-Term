@@ -5786,6 +5786,34 @@ static void packet(con *c, struct DosPacket *p)
         service_reads(c); /* the next read, if any, may wait on VTIME now */
         return;
     }
+    case ACTION_VTCON_HISTORY:
+        switch (p->dp_Arg2) {
+        case VTCON_HIST_COUNT:
+            reply(p, le_hist_count(&c->le), 0);
+            return;
+        case VTCON_HIST_GET:
+            if (!p->dp_Arg4 || p->dp_Arg5 < 1) {
+                reply(p, -1, ERROR_REQUIRED_ARG_MISSING);
+                return;
+            }
+            reply(p, le_hist_get(&c->le, (int)p->dp_Arg3, (unsigned char *)p->dp_Arg4, (int)p->dp_Arg5), 0);
+            return;
+        case VTCON_HIST_ADD:
+            if (p->dp_Arg4)
+                le_hist_add(&c->le, (const unsigned char *)p->dp_Arg4,
+                            (int)strlen((const char *)p->dp_Arg4));
+            reply(p, DOSTRUE, 0);
+            return;
+        case VTCON_HIST_DEL:
+            reply(p, le_hist_del(&c->le, (int)p->dp_Arg3) == 0 ? DOSTRUE : DOSFALSE, 0);
+            return;
+        case VTCON_HIST_CLEAR:
+            le_hist_clear(&c->le);
+            reply(p, DOSTRUE, 0);
+            return;
+        }
+        reply(p, DOSFALSE, ERROR_ACTION_NOT_KNOWN);
+        return;
     case ACTION_VTCON_NREAD:
         if (tty_active(c))
             reply(p, ld_nread(&c->ld), 0);

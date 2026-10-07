@@ -1319,6 +1319,24 @@ static void send_words(sh_shell *sh)
     }
 }
 
+/* The console's line history (history, V88): the vtcon handler owns the list (ACTION_VTCON_HISTORY in
+ * vtcon_packets.h). A console that does not know the packet answers ERROR_ACTION_NOT_KNOWN to the first
+ * COUNT, and the shell keeps its own list (sh_exec.c) and never asks again. */
+static long os_hist(void *os, int op, long arg, char *buf, long max)
+{
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    LONG r;
+    (void)os;
+    if (!fh || !fh->fh_Type)
+        return -1;
+    r = DoPkt(fh->fh_Type, ACTION_VTCON_HISTORY, fh->fh_Arg1, op, arg, (LONG)buf, max);
+    if (op == SH_HIST_COUNT && r == DOSFALSE && IoErr() == ERROR_ACTION_NOT_KNOWN)
+        return -1;
+    if (op == SH_HIST_DEL || op == SH_HIST_ADD || op == SH_HIST_CLEAR)
+        return r ? 1 : 0;
+    return r;
+}
+
 /* ---- the prompt and the main loop ----------------------------------------------- */
 
 /* On a vtcon console (term_marks) vsh tells the terminal where it is and
@@ -1471,6 +1489,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.signal = os_signal;
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;
+    sh.os.hist = os_hist;
     sh.os.chdir = os_chdir;
     sh.os.cwd = os_cwd;
     sh.os.realpath = os_realpath;
@@ -1575,6 +1594,12 @@ static int vsh_main(int argc, char **argv)
         canonical_home(&sh);
     }
     sh_startup_env(&sh);
+    if (!command && !script && IsInteractive(Input())) {
+        /* bash's HISTFILE; the vtcon console loads and appends this very file itself */
+        if (!sh_get(&sh.ctx, "HISTFILE"))
+            sh_set(&sh.ctx, "HISTFILE", "ENVARC:vtcon.history");
+        sh_hist_load(&sh);
+    }
     if (command)
         sh_run_text(&sh, command, 0);
     else if (script)
@@ -1609,12 +1634,14 @@ static int vsh_main(int argc, char **argv)
         sh_run_text(&sh, text, &incomplete);
         if (incomplete)
             continue;
+        sh_hist_note(&sh, text);
         free(text);
         text = 0;
         len = 0;
     }
     free(text);
     sh_exit_trap(&sh); /* trap ... EXIT: end of input, exit, a script's end */
+    sh_hist_save(&sh);
     {
         long st = sh.exiting ? sh.exit_status : sh.ctx.status;
         TR("exit free", st, 0);

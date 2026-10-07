@@ -222,6 +222,47 @@ void le_hist_add(le_line *le, const unsigned char *s, int n)
     le->hist_pos = le->hist_n;
 }
 
+int le_hist_count(const le_line *le)
+{
+    return le->hist_n;
+}
+
+int le_hist_get(const le_line *le, int i, unsigned char *buf, int max)
+{
+    int n;
+    if (i < 0 || i >= le->hist_n || max < 1)
+        return -1;
+    n = (int)strlen((const char *)HIST(le, i));
+    if (n > max - 1)
+        n = max - 1;
+    memcpy(buf, HIST(le, i), (size_t)n);
+    buf[n] = 0;
+    return n;
+}
+
+int le_hist_del(le_line *le, int i)
+{
+    long n, k;
+    if (i < 0 || i >= le->hist_n)
+        return -1;
+    n = (long)strlen((const char *)HIST(le, i)) + 1;
+    memmove(le->hist + le->hist_at[i], le->hist + le->hist_at[i] + n,
+            (size_t)(le->hist_used - le->hist_at[i] - n));
+    le->hist_used -= n;
+    for (k = i + 1; k < le->hist_n; k++)
+        le->hist_at[k - 1] = (unsigned short)(le->hist_at[k] - n);
+    le->hist_n--;
+    le->hist_pos = le->hist_n;
+    return 0;
+}
+
+void le_hist_clear(le_line *le)
+{
+    le->hist_used = 0;
+    le->hist_n = 0;
+    le->hist_pos = 0;
+}
+
 /* The newest history line that starts with the whole line and is longer:
  * its tail is the grey suggestion. */
 static const unsigned char *suggestion(const le_line *le)
