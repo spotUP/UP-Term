@@ -32,6 +32,11 @@ typedef struct sh_io {
 
 struct sh_shell;
 
+/* os.spawn's wait argument */
+#define SH_SPAWN_BG    0
+#define SH_SPAWN_FG    1
+#define SH_SPAWN_STAGE 2
+
 /* What stat says about a name (test -e -f -d -s -r -w -x -L -nt -ef ...). */
 #define SH_ST_FILE  1
 #define SH_ST_DIR   2
@@ -86,7 +91,10 @@ typedef struct sh_os {
      * ctx.pid) for that process and calls sh_run_child there, which runs
      * the tree, closes io's owned streams and frees child and tree. The
      * streams io->owned marks are the OS layer's from here, as with run.
-     * wait: the exit status; !wait: a job id for wait/done. -1: it could
+     * wait SH_SPAWN_FG: the exit status; SH_SPAWN_BG (a `&` job) and
+     * SH_SPAWN_STAGE (a pipeline stage the caller waits for): a job id for
+     * wait/done. A BG job gets handles of its own for the streams it does
+     * not own; a STAGE keeps exactly the streams it is given. -1: it could
      * not start -- child and tree stay the caller's (the streams do not).
      * 0 (no spawn): subshells run in the shell's own process. */
     long  (*spawn)(void *os, struct sh_shell *child, sh_parse *tree, const sh_io *io, int wait);

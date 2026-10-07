@@ -5420,11 +5420,12 @@ static int is_external(sh_shell *sh, const sh_node *n)
     return ext;
 }
 
-/* Run n as a subshell: a process of its own when the OS layer can make
+/* Run n as a subshell (stage: a pipeline stage, which the caller waits for, keeps the streams it is
+ * given; without wait and stage it is a background job): a process of its own when the OS layer can make
  * one (then the shell's variables, directory and functions are safe from
  * it), else here with the directory restored. io's owned streams go with
  * it. wait: its status; else *job (0: it ran here, or did not start). */
-static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, long *job)
+static long subshell_mode(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, int stage, long *job)
 {
     sh_shell *c;
     sh_parse *t;
@@ -5458,7 +5459,7 @@ static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, 
         return 1;
     }
     SH_HIT(SPAWN);
-    r = sh->os.spawn(sh->os.data, c, t, io, wait);
+    r = sh->os.spawn(sh->os.data, c, t, io, stage ? SH_SPAWN_STAGE : wait);
     /* the child worked on a copy of the fd table: the redirections of this command are undone
      * here, in the table they were made in (a background child may still use their handles) */
     if (wait && (io->owned & SH_OWN_FDS))
@@ -5509,6 +5510,11 @@ static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
     sayl(sh, io->err, nb, "\n", NULL);
 }
 
+static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, long *job)
+{
+    return subshell_mode(sh, n, io, wait, 0, job);
+}
+
 static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job)
 {
     char *last = 0;
@@ -5555,7 +5561,7 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
         if (is_external(sh, st[i])) {
             exec_cmd(sh, st[i], &sio[i], 0, &job[i]);
         } else if (sh->os.spawn && (i + 1 < k || !(sh->opts & SO_LASTPIPE))) {
-            subshell(sh, st[i], &sio[i], 0, &job[i]);
+            subshell_mode(sh, st[i], &sio[i], 0, 1, &job[i]);
             started[i] = 1; /* or failed: its streams are gone either way */
         }
     }

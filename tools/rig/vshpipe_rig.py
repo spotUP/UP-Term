@@ -19,13 +19,19 @@ import ami
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DIR = "RAM:vshpipe"
 
-# (name, vsh script, the output it must give). The last stage is external in each: a
-# builtin last stage writes to the console ("*"), not to a redirected stdout (os_spawn).
+# (name, vsh script, the output it must give). The redirect_* cases are a builtin or compound
+# LAST stage: it keeps its own stdout redirect and the pipeline's stdout (os_spawn once opened
+# the console "*" for it, as for a background job).
 CASES = (
     ("echo_wc", "echo hello | wc -c\n", "6\n"),
     ("printf_wc", "printf 'a\\nb\\n' | wc -l\n", "2\n"),
     ("func_stage", "f() { echo one; echo two; }\nf | wc -l\n", "2\n"),
     ("three_stages", "echo abc | cat | wc -c\n", "4\n"),
+    ("redirect_last_group", "echo a | { read x; echo got $x; } >RAM:vshpipe/rl.txt\ncat RAM:vshpipe/rl.txt\n",
+     "gota\n"),
+    ("last_group_plain", "echo a | { read x; echo got $x; }\n", "gota\n"),
+    ("redirect_last_inner", "{ echo c | { read x; echo got $x; }; } >RAM:vshpipe/rl2.txt\ncat RAM:vshpipe/rl2.txt\n",
+     "gotc\n"),
 )
 
 

@@ -308,7 +308,7 @@ static long h_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, 
     free(tree);
     sh_shell_free(child);
     free(child);
-    if (wait)
+    if (wait == SH_SPAWN_FG)
         return reap(pid, 1);
     for (i = 0; i < MAXJOB; i++)
         if (!jobs[i].pid) {

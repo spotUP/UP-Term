@@ -790,6 +790,7 @@ redir/herestr
 redir/herestr2
 redir/inredir
 redir/noclobber
+redir/pipe_last_stage_redirect
 redir/pipe_redirect_eof
 redir/rdwr2
 redir/redirexec

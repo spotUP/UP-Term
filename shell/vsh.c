@@ -1222,7 +1222,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
         j->sub = child;
         j->tree = tree;
         j->io = *io;
-        if (!wait) {
+        if (wait == SH_SPAWN_BG) {
             /* in the background: streams it does not own are the shell's;
              * it gets its own handles on the same console (NIL: for input) */
             if (!(io->owned & SH_OWN_IN)) {
@@ -1262,7 +1262,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
         Permit();
     }
     PutMsg(&p->pr_MsgPort, &j->msg);
-    if (wait)
+    if (wait == SH_SPAWN_FG)
         return os_wait(os, (long)j);
     return (long)j;
 }
