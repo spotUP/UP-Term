@@ -146,6 +146,13 @@ void sh_pstat(sh_ctx *c, const long *st, int n)
     c->npstat = n;
 }
 
+/* a byte bash leaves unquoted */
+static int q_safe(unsigned char ch)
+{
+    return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch >= 128 ||
+           (ch && strchr("_-./:,@%+=", ch));
+}
+
 /* bash's quoting: see sh_expand.h */
 char *sh_quote(const char *s, int style)
 {
@@ -158,8 +165,7 @@ char *sh_quote(const char *s, int style)
         unsigned char ch = (unsigned char)s[i];
         if (ch < 32 || ch == 127)
             ctl = 1;
-        if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-              ch >= 128 || strchr("_-./:,@%+=", ch)))
+        if (!q_safe(ch))
             plain = 0;
     }
     if (!n) {
@@ -185,10 +191,7 @@ char *sh_quote(const char *s, int style)
     } else if (style == SH_Q_BACKSLASH) {
         for (i = 0; i < n; i++) {
             unsigned char ch = (unsigned char)s[i];
-            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-                  ch >= 128 || strchr("_-./:,@%+=", ch) || ch == '\''))
-                o[k++] = '\\';
-            else if (ch == '\'')
+            if (!q_safe(ch) || ch == '\'')
                 o[k++] = '\\';
             o[k++] = (char)ch;
         }
