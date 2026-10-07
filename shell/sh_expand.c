@@ -709,18 +709,129 @@ static int posix_class(const char *name, int ch, int nocase)
     }
 }
 
+static int g_extglob;   /* shopt extglob: one switch for the parser, the matcher and the glob (bash's is global too) */
+
+void sh_set_extglob(int on)
+{
+    g_extglob = on != 0;
+}
+
+int sh_get_extglob(void)
+{
+    return g_extglob;
+}
+
+/* p[0] is the "(" of an extended pattern: the index of its matching ")" (nested ( ), [ ], \ skipped), or -1 */
+static long ext_close(const char *p)
+{
+    long i;
+    int depth = 0;
+    for (i = 0; p[i]; i++) {
+        if (p[i] == '\\' && p[i + 1])
+            i++;
+        else if (p[i] == '[') {
+            long j = i + 1;
+            if (p[j] == '!' || p[j] == '^')
+                j++;
+            if (p[j] == ']')
+                j++;
+            while (p[j] && p[j] != ']')
+                j++;
+            if (p[j])
+                i = j;
+        } else if (p[i] == '(')
+            depth++;
+        else if (p[i] == ')' && --depth == 0)
+            return i;
+    }
+    return -1;
+}
+
+static int match_flags(const char *p, const char *s, int nocase);
+
+/* kind ( alt | alt ) rest against s: kind is one of @ ? * + ! (p points after the "(", len = its text up to ")") */
+static int ext_match(char kind, const char *alts, long len, const char *rest, const char *s, int nocase)
+{
+    char *a = (char *)malloc((size_t)len + 1), *buf;
+    long n = (long)strlen(s), k;
+    int res = 0, na = 0, i;
+    char *alt[64];
+    int depth = 0;
+    long j, from = 0;
+    if (!a)
+        return 0;
+    SH_HIT(EXTGLOB);
+    memcpy(a, alts, (size_t)len);
+    a[len] = 0;
+    alt[na++] = a;
+    for (j = 0; j < len && na < 64; j++) {
+        if (a[j] == '\\' && a[j + 1])
+            j++;
+        else if (a[j] == '(')
+            depth++;
+        else if (a[j] == ')')
+            depth--;
+        else if (a[j] == '|' && !depth) {
+            a[j] = 0;
+            alt[na++] = a + j + 1;
+        }
+    }
+    (void)from;
+    buf = (char *)malloc((size_t)n + 1);
+    if (!buf) {
+        free(a);
+        return 0;
+    }
+    memcpy(buf, s, (size_t)n + 1);
+    if ((kind == '?' || kind == '*') && match_flags(rest, s, nocase)) {
+        res = 1;
+        goto done;
+    }
+    for (k = 0; k <= n && !res; k++) {
+        char save = buf[k];
+        int any = 0;
+        buf[k] = 0;
+        for (i = 0; i < na && !any; i++)
+            any = match_flags(alt[i], buf, nocase);
+        buf[k] = save;
+        if (kind == '!') {
+            if (!any && match_flags(rest, s + k, nocase))
+                res = 1;
+        } else if (any) {
+            if (match_flags(rest, s + k, nocase))
+                res = 1;
+            else if ((kind == '*' || kind == '+') && k > 0 && ext_match('*', alts, len, rest, s + k, nocase))
+                res = 1;
+        }
+    }
+done:
+    free(buf);
+    free(a);
+    return res;
+}
+
 int sh_match(const char *p, const char *s, int nocase)
 {
+    return match_flags(p, s, nocase);
+}
+
+static int match_flags(const char *p, const char *s, int nocase)
+{
     for (; *p; p++, s++) {
+        if (g_extglob && strchr("@?*+!", *p) && p[1] == '(') {
+            long e = ext_close(p + 1);
+            if (e >= 0)
+                return ext_match(*p, p + 2, e - 1, p + 1 + e + 1, s, nocase);
+        }
         if (*p == '*') {
             while (p[1] == '*')
                 p++;
             if (!p[1])
                 return 1;
             for (; *s; s++)
-                if (sh_match(p + 1, s, nocase))
+                if (match_flags(p + 1, s, nocase))
                     return 1;
-            return sh_match(p + 1, s, nocase);
+            return match_flags(p + 1, s, nocase);
         }
         if (!*s)
             return 0;
@@ -2503,7 +2614,8 @@ static int has_glob(const cbuf *b, int from, int to)
     for (i = from; i < to; i++)
         if (!(b->f[i] & F_QUOTED) &&
             (b->s[i] == '*' || b->s[i] == '?' ||
-             (b->s[i] == '[' && bracket_closes(b->s, b->f, i, to))))
+             (b->s[i] == '[' && bracket_closes(b->s, b->f, i, to)) ||
+             (g_extglob && i + 1 < to && strchr("@+!", b->s[i]) && b->s[i + 1] == '(' && !(b->f[i + 1] & F_QUOTED))))
             return 1;
     return 0;
 }
@@ -2513,11 +2625,104 @@ static int cmp_str(const void *a, const void *b)
     return strcmp(*(char *const *)a, *(char *const *)b);
 }
 
+/* extglob: a component that starts with a group one of whose alternatives starts with a literal dot
+ * (@(.a|b)) may match a name that starts with a dot */
+static int ext_dot(const char *comp)
+{
+    long e;
+    const char *q;
+    if (!g_extglob || !strchr("@?*+!", comp[0]) || comp[1] != '(' || comp[0] == '!')
+        return 0;
+    e = ext_close(comp + 1);
+    if (e < 0)
+        return 0;
+    for (q = comp + 2; q < comp + 1 + e; q++) {
+        if (*q == '.')
+            return 1;
+        while (q < comp + 1 + e && *q != '|')
+            q++;
+    }
+    return 0;
+}
+
 /* Expand pattern (glob characters active, \ escapes the rest) below dir,
  * component by component. The separator is '/', a leading "vol:" is kept. */
-static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
+static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out);
+
+static int path_is_dir(sh_ctx *c, const char *path)
+{
+    sh_list t;
+    int r;
+    if (c->pathkind)
+        return c->pathkind(c, path) & 1;
+    memset(&t, 0, sizeof(t));
+    r = c->listdir && !c->listdir(c, path, &t);
+    sh_list_free(&t);
+    return r;
+}
+
+static void glob_join(const char *dir, const char *name, char *path, size_t cap)
+{
+    path[0] = 0;
+    if (strlen(dir) + strlen(name) + 2 > cap)
+        return;
+    strcpy(path, dir);
+    if (*dir && dir[strlen(dir) - 1] != ':' && dir[strlen(dir) - 1] != '/')
+        strcat(path, "/");
+    strcat(path, name);
+}
+
+/* shopt globstar: a "**" component. linkstop: bash applies the rest in a link to a directory only when the
+ * pattern names a directory before the "**" (a leading "**" does not enter links, "a" before it does, one level). rest: what follows its slash (0: "**" ends the pattern, "": the
+ * pattern ends in "**" and a slash). The directories below dir are walked without going through a
+ * symbolic link (a link to a directory is itself one stop: the rest is matched in it, no deeper). */
+static void glob_star(sh_ctx *c, const char *dir, const char *rest, int top, int islink, int linkstop, sh_list *out)
+{
+    sh_list names;
+    int i;
+    char path[512];
+    if (!rest) {
+        if (*dir && top) {
+            glob_join(dir, "", path, sizeof(path));
+            sh_list_add(out, path);
+        }
+    } else if (!*rest) {
+        if (*dir) {
+            glob_join(dir, "", path, sizeof(path));
+            sh_list_add(out, path);
+        }
+    } else
+        glob_rec(c, dir, rest, out);
+    if (islink)
+        return;
+    memset(&names, 0, sizeof(names));
+    if (!c->listdir || c->listdir(c, dir, &names))
+        return;
+    for (i = 0; i < names.n; i++) {
+        int kind;
+        if (names.v[i][0] == '.' && !c->dotglob)
+            continue;
+        glob_join(dir, names.v[i], path, sizeof(path));
+        if (!path[0])
+            continue;
+        if (!rest)
+            sh_list_add(out, path);
+        kind = c->pathkind ? c->pathkind(c, path) : (path_is_dir(c, path) ? 1 : 0);
+        if (kind & 1) {
+            if (kind & 2) {
+                if (rest && (linkstop || !*rest))
+                    glob_star(c, path, rest, 0, 1, linkstop, out);
+            } else
+                glob_star(c, path, rest, 0, 0, linkstop, out);
+        }
+    }
+    sh_list_free(&names);
+}
+
+static void glob_rec_comp(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
 {
     const char *slash = strchr(pat, '/');
+
     size_t clen = slash ? (size_t)(slash - pat) : strlen(pat);
     char comp[256];
     int i, magic = 0;
@@ -2528,6 +2733,7 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
     comp[clen] = 0;
     for (i = 0; comp[i]; i++)
         if (comp[i] == '*' || comp[i] == '?' ||
+            (g_extglob && strchr("@+!", comp[i]) && comp[i + 1] == '(') ||
             (comp[i] == '[' && bracket_closes(comp, 0, i, (int)clen)))
             magic = 1;
     if (!magic) {
@@ -2546,7 +2752,7 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
         strcat(path, lit);
         if (slash)
             glob_rec(c, path, slash + 1, out);
-        else
+        else if (!c->pathkind || (c->pathkind(c, path) & 4))
             sh_list_add(out, path);
         return;
     }
@@ -2556,7 +2762,7 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
         return;
     for (i = 0; i < names.n; i++) {
         char path[512];
-        if (names.v[i][0] == '.' && comp[0] != '.' && !c->dotglob)
+        if (names.v[i][0] == '.' && comp[0] != '.' && !c->dotglob && !ext_dot(comp))
             continue; /* dot files only when asked for (shopt dotglob) */
         if (!sh_match(comp, names.v[i], c->nocase))
             continue;
@@ -2570,6 +2776,25 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
             sh_list_add(out, path);
     }
     sh_list_free(&names);
+}
+
+static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
+{
+    if (c->globstar && !strncmp(pat, "**", 2) && (pat[2] == '/' || !pat[2])) {
+        SH_HIT(GLOBSTAR);
+        glob_star(c, dir, pat[2] ? pat + 3 : 0, 1, 0, *dir != 0, out);
+        return;
+    }
+    if (!*pat) {
+        /* the pattern ended in a slash: only a directory matches */
+        char path[512];
+        if (path_is_dir(c, dir)) {
+            glob_join(dir, "", path, sizeof(path));
+            sh_list_add(out, path);
+        }
+        return;
+    }
+    glob_rec_comp(c, dir, pat, out);
 }
 
 /* One field b[from..to): globbed if it has unquoted glob characters,
@@ -2598,7 +2823,7 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
         for (i = from; i < to; i++) {
             if (b->f[i] & F_EMPTY)
                 continue;
-            if ((b->f[i] & F_QUOTED) && strchr("*?[]\\", b->s[i]))
+            if ((b->f[i] & F_QUOTED) && strchr(g_extglob ? "*?[]\\()|@+!" : "*?[]\\", b->s[i]))
                 pat[k++] = '\\';
             pat[k++] = b->s[i];
         }

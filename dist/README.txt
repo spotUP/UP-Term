@@ -339,11 +339,19 @@ VSH (the shell)
     /dev/stdout and /dev/stderr are redirection targets, source files and
     test -e/-a/-r/-w operands; a native command that is given such a name as
     an argument cannot open it (probe fd/ext_devfd).
-    Traps: ERR (set -E), DEBUG (set -T) and RETURN work as in bash; the DEBUG
-    text of a  [[ ]]  with && || or !  is "[[ ... ]]", and  for (( ))  is not
-    traced. shopt knows dotglob failglob lastpipe nocaseglob nocasematch and
-    nullglob (extglob and globstar are not there yet); bare  shopt  lists
-    only those. nocaseglob is on at the Amiga prompt and off elsewhere.
+    Traps: ERR (set -E), DEBUG (set -T) and RETURN work as in bash; the
+    DEBUG text of a command with a here-document leaves the document out.
+    shopt knows all of bash 5.3's names. extglob, globstar, nullglob,
+    failglob, dotglob, nocaseglob, nocasematch, lastpipe, expand_aliases,
+    inherit_errexit, xpg_echo and sourcepath act; the others are remembered
+    and listed but change nothing here (globasciiranges and checkwinsize
+    included). Aliases expand in an interactive shell, in a script only after
+    shopt -s expand_aliases, as in bash. extglob is one switch for the whole
+    shell, as in bash: a line after shopt -s extglob may use @( ) ?( ) *( )
+    +( ) !( ). globstar does not follow links to directories (on the Amiga
+    soft links are not told apart, so ** may enter them); the pattern  */**
+    lists directories with a slash. nocaseglob is on at the Amiga prompt and
+    off elsewhere.
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

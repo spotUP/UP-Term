@@ -63,9 +63,13 @@ typedef struct sh_ctx {
     char *(*procsub)(struct sh_ctx *c, const char *cmd, int out);
     /* list the names in directory dir ("" = current) into out; 0 = ok */
     int (*listdir)(struct sh_ctx *c, const char *dir, sh_list *out);
+    /* what path is, for globstar and a pattern that ends in a slash: bit 0 a directory (links followed),
+     * bit 1 a symbolic link, bit 2 it exists; 0: neither or unknown. NULL: not known (every name is tried with listdir) */
+    int (*pathkind)(struct sh_ctx *c, const char *path);
     int nounset;            /* set -u: an unset parameter is an error */
     int noglob;             /* set -f */
     int nullglob, failglob, dotglob, nocasematch; /* shopt */
+    int globstar;           /* shopt globstar: a ** component matches the directories below */
     int glob_fail;          /* failglob: a word matched nothing (the pattern is in glob_pat) */
     char glob_pat[160];
     int allexport;          /* set -a: an assigned variable is exported */
@@ -143,6 +147,9 @@ char *sh_unquote(const char *word);
 
 /* Glob pattern match (* ? [a-z] [!x], backslash escapes). */
 int sh_match(const char *pattern, const char *name, int nocase);
+/* shopt extglob: @( ) ?( ) *( ) +( ) !( ) in patterns and in the parser's words */
+void sh_set_extglob(int on);
+int sh_get_extglob(void);
 
 /* $((expr)): 64-bit integer arithmetic, bash's operator set, variables and array elements as lvalues. */
 sh_int sh_arith(sh_ctx *c, const char *expr, const char **err);

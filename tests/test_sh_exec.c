@@ -559,7 +559,7 @@ static void jobs_aliases_and_dirs(void)
     run("fail 3 & wait; echo $?");
     CHECK_STR(slot(OUT)->data, "3\n");
     CHECK_STR(slot(ERR)->data, "[1] 1\n");
-    CHECK_STR(run("alias ll='args -l'; ll x"), "<-l><x>\n");
+    CHECK_STR(run("shopt -s expand_aliases; alias ll='args -l'; ll x"), "<-l><x>\n");
     CHECK_STR(run("cd Work:; pwd; (cd SYS:; pwd); pwd"), "Work:\nSYS:\nWork:\n");
     CHECK_STR(run("cd nowhere; echo $?"), "1\n");
     CHECK_STR(run("[ -d SYS: ] && echo dir"), "dir\n");
@@ -810,6 +810,7 @@ static const char *with_vshrc(const char *text)
         fclose(f);
     rc[n] = 0;
     fresh();
+    sh_run_text(&sh, "shopt -s expand_aliases\n", &inc);   /* the interactive shell has aliases on */
     if (vshrc_pre)
         sh_run_text(&sh, vshrc_pre, &inc);
     sh_run_text(&sh, rc, &inc);

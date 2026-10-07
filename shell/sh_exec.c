@@ -129,6 +129,8 @@ static const char sh_flag_order[] = "abefhikmnptuvxBCEHPT";
 
 /* an option with no effect keeps its own state (set -o vi; set -o: vi on) */
 static unsigned long inert_state;
+static int shopt_get(sh_shell *sh, const char *name);
+static int core_pathkind(sh_ctx *c, const char *path);
 
 /* $- and the context's copies of the flags the expander looks at */
 static void opts_apply(sh_shell *sh)
@@ -217,6 +219,9 @@ void sh_shell_init(sh_shell *sh)
     memset(&sh->ctx, 0, sizeof(sh->ctx));
     sh->funcs = 0;
     memset(&sh->aliases, 0, sizeof(sh->aliases));
+    memset(sh->shopt_v, -1, sizeof(sh->shopt_v));
+    sh->ctx.pathkind = core_pathkind;
+    sh_set_extglob(0);
     sh->exiting = 0;
     sh->exit_status = 0;
     sh->breaking = sh->continuing = sh->returning = 0;
@@ -285,6 +290,8 @@ static void fd_defer_release(sh_shell *sh, long job);
 static long job_wait(sh_shell *sh, long job);
 static void pseudo_trap(sh_shell *sh, int k, const sh_io *io);
 static void debug_trap(sh_shell *sh, const sh_node *n, const sh_io *io);
+static void debug_forarith(sh_shell *sh, const char *text, const sh_io *io);
+static void debug_trap_set(sh_shell *sh, char *t, const sh_io *io);
 
 void sh_shell_free(sh_shell *sh)
 {
@@ -380,6 +387,8 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.failglob = sh->ctx.failglob;
     c->ctx.dotglob = sh->ctx.dotglob;
     c->ctx.nocasematch = sh->ctx.nocasematch;
+    c->ctx.globstar = sh->ctx.globstar;
+    memcpy(c->shopt_v, sh->shopt_v, sizeof(c->shopt_v));
     c->ctx.listdir = sh->ctx.listdir;
     c->ctx.subst = sh->ctx.subst;
     c->ctx.procsub = sh->ctx.procsub;
@@ -1242,7 +1251,7 @@ static int pf_escape(pbuf *b, const char **pp, int is_b);
 
 static long b_echo(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    int i = 1, nl = 1, esc = 0, stop = 0;
+    int i = 1, nl = 1, esc = shopt_get(sh, "xpg_echo"), stop = 0;
     for (; i < argc; i++) {
         const char *a = argv[i];
         int k;
@@ -3238,7 +3247,7 @@ static int type_one(sh_shell *sh, const sh_io *io, const char *name, int mode, i
 {
     int found = 0, k;
     char path[512];
-    const char *av = (sh->opts & SO_INTERACTIVE) ? alias_value(sh, name) : 0;  /* bash: aliases are off in a script */
+    const char *av = shopt_get(sh, "expand_aliases") ? alias_value(sh, name) : 0;  /* bash: off in a script */
     int kw = 0;
     for (k = 0; sh_keywords[k]; k++)
         if (!strcmp(sh_keywords[k], name))
@@ -3352,39 +3361,84 @@ static long b_builtin(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 /* ---- shopt ---------------------------------------------------------------------- */
 
-/* the options that change what vsh does; the pointer is the flag the code reads */
+/* bash 5.3's shopt names, in its order; def is the value a shell starts with (expand_aliases: on only in an
+ * interactive shell). Those with a flag of their own are found in shopt_flag; the rest only hold their value
+ * (shopt_v) so that a script that sets them runs: they change nothing here, README lists them. */
+static const struct { const char *name; int def; } shopt_tab[] = {
+    { "array_expand_once", 0 }, { "assoc_expand_once", 0 }, { "autocd", 0 }, { "bash_source_fullpath", 0 },
+    { "cdable_vars", 0 }, { "cdspell", 0 }, { "checkhash", 0 }, { "checkjobs", 0 }, { "checkwinsize", 1 },
+    { "cmdhist", 1 }, { "compat31", 0 }, { "compat32", 0 }, { "compat40", 0 }, { "compat41", 0 },
+    { "compat42", 0 }, { "compat43", 0 }, { "compat44", 0 }, { "complete_fullquote", 1 }, { "direxpand", 0 },
+    { "dirspell", 0 }, { "dotglob", 0 }, { "execfail", 0 }, { "expand_aliases", 0 }, { "extdebug", 0 },
+    { "extglob", 0 }, { "extquote", 1 }, { "failglob", 0 }, { "force_fignore", 1 }, { "globasciiranges", 1 },
+    { "globskipdots", 1 }, { "globstar", 0 }, { "gnu_errfmt", 0 }, { "histappend", 0 }, { "histreedit", 0 },
+    { "histverify", 0 }, { "hostcomplete", 1 }, { "huponexit", 0 }, { "inherit_errexit", 0 },
+    { "interactive_comments", 1 }, { "lastpipe", 0 }, { "lithist", 0 }, { "localvar_inherit", 0 },
+    { "localvar_unset", 0 }, { "login_shell", 0 }, { "mailwarn", 0 }, { "no_empty_cmd_completion", 0 },
+    { "nocaseglob", 0 }, { "nocasematch", 0 }, { "noexpand_translation", 0 }, { "nullglob", 0 },
+    { "patsub_replacement", 1 }, { "progcomp", 1 }, { "progcomp_alias", 0 }, { "promptvars", 1 },
+    { "restricted_shell", 0 }, { "shift_verbose", 0 }, { "sourcepath", 1 }, { "varredir_close", 0 },
+    { "xpg_echo", 0 }, { 0, 0 }
+};
+
+static int shopt_index(const char *name)
+{
+    int k;
+    for (k = 0; shopt_tab[k].name; k++)
+        if (!strcmp(shopt_tab[k].name, name))
+            return k;
+    return -1;
+}
+
+/* the options with a flag of their own; the pointer is the flag the code reads */
 static int *shopt_flag(sh_shell *sh, const char *name, unsigned long *bit)
 {
     *bit = 0;
     if (!strcmp(name, "nullglob")) return &sh->ctx.nullglob;
     if (!strcmp(name, "failglob")) return &sh->ctx.failglob;
     if (!strcmp(name, "dotglob")) return &sh->ctx.dotglob;
+    if (!strcmp(name, "globstar")) return &sh->ctx.globstar;
     if (!strcmp(name, "nocaseglob")) return &sh->ctx.nocase;
     if (!strcmp(name, "nocasematch")) return &sh->ctx.nocasematch;
     if (!strcmp(name, "lastpipe")) { *bit = SO_LASTPIPE; return 0; }
     return 0;
 }
 
-static const char *const shopt_names[] = { "dotglob", "failglob", "lastpipe", "nocaseglob", "nocasematch", "nullglob", 0 };
-
+/* an option's value; the generic ones fall back to their default (aliases: the shell is interactive) */
 static int shopt_get(sh_shell *sh, const char *name)
 {
     unsigned long bit;
-    int *f = shopt_flag(sh, name, &bit);
-    return f ? *f != 0 : (sh->opts & bit) != 0;
+    int *f = shopt_flag(sh, name, &bit), k;
+    if (f)
+        return *f != 0;
+    if (bit)
+        return (sh->opts & bit) != 0;
+    if (!strcmp(name, "extglob"))
+        return sh_get_extglob();
+    k = shopt_index(name);
+    if (k < 0)
+        return 0;
+    if (sh->shopt_v[k] >= 0)
+        return sh->shopt_v[k];
+    return !strcmp(name, "expand_aliases") ? (sh->opts & SO_INTERACTIVE) != 0 : shopt_tab[k].def;
 }
 
 static void shopt_put(sh_shell *sh, const char *name, int on)
 {
     unsigned long bit;
-    int *f = shopt_flag(sh, name, &bit);
+    int *f = shopt_flag(sh, name, &bit), k;
     SH_HIT(SHOPT_SET);
     if (f)
         *f = on;
-    else if (on)
-        sh->opts |= bit;
-    else
-        sh->opts &= ~bit;
+    else if (bit) {
+        if (on)
+            sh->opts |= bit;
+        else
+            sh->opts &= ~bit;
+    } else if (!strcmp(name, "extglob")) {
+        sh_set_extglob(on);
+    } else if ((k = shopt_index(name)) >= 0)
+        sh->shopt_v[k] = (signed char)on;
 }
 
 /* shopt [-pqsuo] [name ...]: -s sets, -u unsets, -p prints as commands, -q is silent (status only),
@@ -3426,6 +3480,35 @@ static long b_shopt(sh_shell *sh, int argc, char **argv, const sh_io *io)
             a[1] = (char *)(print ? "+o" : "-o");
             return b_set(sh, 2, a, io);
         }
+        if (!set && !unset) {
+            /* shopt -o [-pq] NAME: the state of a set -o option, as shopt prints it */
+            for (k = i; k < argc; k++) {
+                int j, on;
+                for (j = 0; j < N_SHOPT; j++)
+                    if (!strcmp(sh_optab[j].name, argv[k]))
+                        break;
+                if (j == N_SHOPT) {
+                    err2(sh, io, argv[k], "invalid option name");
+                    st = 1;
+                    continue;
+                }
+                on = opt_on(sh, j) != 0;
+                if (!on)
+                    st = 1;
+                if (!quiet) {
+                    if (print)
+                        sayl(sh, io->out, "set ", on ? "-o " : "+o ", argv[k], "\n", NULL);
+                    else {
+                        char pad[24];
+                        size_t l = strlen(argv[k]);
+                        memset(pad, ' ', sizeof(pad));
+                        pad[l < 20 ? 20 - l : 0] = 0;
+                        sayl(sh, io->out, argv[k], pad, "\t", on ? "on" : "off", "\n", NULL);
+                    }
+                }
+            }
+            return st;
+        }
         for (k = i; k < argc; k++) {
             a[1] = (char *)(set ? "-o" : "+o");
             a[2] = argv[k];
@@ -3439,31 +3522,31 @@ static long b_shopt(sh_shell *sh, int argc, char **argv, const sh_io *io)
         return st;
     }
     if (i == argc && (set || unset)) {
-        for (k = 0; shopt_names[k]; k++)
-            if (shopt_get(sh, shopt_names[k]) == (set != 0) && !quiet)
-                sayl(sh, io->out, shopt_names[k], "\t", set ? "on" : "off", "\n", NULL);
+        for (k = 0; shopt_tab[k].name; k++)
+            if (shopt_get(sh, shopt_tab[k].name) == (set != 0) && !quiet)
+                sayl(sh, io->out, shopt_tab[k].name, "\t", set ? "on" : "off", "\n", NULL);
         return 0;
     }
     if (i == argc) {
-        for (k = 0; shopt_names[k]; k++)
+        for (k = 0; shopt_tab[k].name; k++)
             if (!quiet) {
-                int on = shopt_get(sh, shopt_names[k]);
+                int on = shopt_get(sh, shopt_tab[k].name);
                 if (print)
-                    sayl(sh, io->out, "shopt -", on ? "s " : "u ", shopt_names[k], "\n", NULL);
+                    sayl(sh, io->out, "shopt -", on ? "s " : "u ", shopt_tab[k].name, "\n", NULL);
                 else {
                     char pad[24];
-                    size_t l = strlen(shopt_names[k]);
+                    size_t l = strlen(shopt_tab[k].name);
                     memset(pad, ' ', sizeof(pad));
                     pad[l < 20 ? 20 - l : 0] = 0;
-                    sayl(sh, io->out, shopt_names[k], pad, "\t", on ? "on" : "off", "\n", NULL);
+                    sayl(sh, io->out, shopt_tab[k].name, pad, "\t", on ? "on" : "off", "\n", NULL);
                 }
             }
         return 0;
     }
     for (k = i; k < argc; k++) {
         int j, known = 0;
-        for (j = 0; shopt_names[j]; j++)
-            if (!strcmp(shopt_names[j], argv[k]))
+        for (j = 0; shopt_tab[j].name; j++)
+            if (!strcmp(shopt_tab[j].name, argv[k]))
                 known = 1;
         if (!known) {
             err2(sh, io, argv[k], "invalid shell option name");
@@ -3744,7 +3827,7 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
         return 2;
     file = argv[1];
     /* a name without a slash is looked for in $PATH first (bash: sourcepath), then here */
-    if (!strchr(file, '/') && !strchr(file, ':') && find_command_file(sh, file, found, sizeof(found)))
+    if (shopt_get(sh, "sourcepath") && !strchr(file, '/') && !strchr(file, ':') && find_command_file(sh, file, found, sizeof(found)))
         file = found;
     borrowed = dev_fd(file) >= 0;
     fh = borrowed ? fd_get(sh, io, dev_fd(file)) : sh->os.open(sh->os.data, file, SH_OPEN_READ);
@@ -3807,6 +3890,8 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io);
 static void apply_alias(sh_shell *sh, sh_list *argv)
 {
     int k, depth;
+    if (!shopt_get(sh, "expand_aliases"))
+        return;
     for (depth = 0; depth < 8 && argv->n; depth++) {
         size_t n = strlen(argv->v[0]);
         sh_list nw;
@@ -4287,6 +4372,81 @@ static void pseudo_trap(sh_shell *sh, int k, const sh_io *io)
     sh->ctx.status = st;
 }
 
+/* a [[ ]] expression as bash prints it in BASH_COMMAND: words as written, one blank between parts */
+static void db_unparse(pbuf *b, const sh_node *n)
+{
+    const char *op = n->name ? n->name : "";
+    if (n->name && !strcmp(op, "(")) {
+        pb_str(b, "( ");
+        db_unparse(b, n->a);
+        pb_str(b, " )");
+    } else if (!strcmp(op, "!")) {
+        pb_str(b, "! ");
+        db_unparse(b, n->a);
+    } else if (!strcmp(op, "&&") || !strcmp(op, "||")) {
+        db_unparse(b, n->a);
+        pb_str(b, " ");
+        pb_str(b, op);
+        pb_str(b, " ");
+        db_unparse(b, n->b);
+    } else {
+        if (n->words->next) {
+            pb_str(b, n->words->text);
+            pb_str(b, " ");
+            pb_str(b, op);
+            pb_str(b, " ");
+            pb_str(b, n->words->next->text);
+        } else {
+            if (op[0]) {
+                pb_str(b, op);
+                pb_str(b, " ");
+            }
+            pb_str(b, n->words->text);
+        }
+    }
+}
+
+/* the redirections of a simple command as bash prints them in BASH_COMMAND (here documents are
+ * not unparsed: the parse does not keep the delimiter word) */
+static void redirs_unparse(pbuf *b, const sh_redir *r)
+{
+    char d[16];
+    for (; r; r = r->next) {
+        const char *op = ">";
+        int dflt = r->fd == 1, dup = 0, file = 1;
+        switch (r->kind) {
+        case SH_R_IN: op = "<"; dflt = r->fd == 0; break;
+        case SH_R_OUT: break;
+        case SH_R_APPEND: op = ">>"; break;
+        case SH_R_DUPIN: op = "<&"; dup = 1; break;
+        case SH_R_DUPOUT: op = ">&"; dup = 1; break;
+        case SH_R_BOTH: op = "&>"; dflt = 1; break;
+        case SH_R_BOTHAPP: op = "&>>"; dflt = 1; break;
+        case SH_R_HERESTR: op = "<<<"; dflt = r->fd == 0; break;
+        case SH_R_RDWR: op = "<>"; dflt = r->fd == 0; break;
+        case SH_R_CLOBBER: op = ">|"; break;
+        case SH_R_CLOSE: op = ">&-"; dup = 1; file = 0; break;
+        default: continue;
+        }
+        if (b->n)
+            pb_str(b, " ");
+        if (r->var) {
+            pb_str(b, "{");
+            pb_str(b, r->var);
+            pb_str(b, "}");
+        } else if (!dflt || dup) {
+            num(d, r->fd);
+            pb_str(b, d);
+        }
+        pb_str(b, op);
+        if (file) {
+            if (!dup)
+                pb_str(b, " ");
+            pb_str(b, r->target);
+        }
+    }
+}
+
 /* the text DEBUG shows in BASH_COMMAND for a node (0: none) */
 static char *debug_text(const sh_node *n)
 {
@@ -4303,6 +4463,7 @@ static char *debug_text(const sh_node *n)
                 pb_add(&b, " ", 1);
             pb_str(&b, w->text);
         }
+        redirs_unparse(&b, n->redirs);
     } else if (n->kind == SH_FOR) {
         pb_str(&b, "for ");
         pb_str(&b, n->name);
@@ -4326,24 +4487,10 @@ static char *debug_text(const sh_node *n)
         pb_str(&b, "(( ");
         pb_add(&b, t, (long)len);
         pb_str(&b, " ))");
-    } else if (n->kind == SH_DBRACK && !n->a && n->words) {
+    } else if (n->kind == SH_DBRACK) {
         pb_str(&b, "[[ ");
-        if (n->words->next) {
-            pb_str(&b, n->words->text);
-            pb_str(&b, " ");
-            pb_str(&b, n->name);
-            pb_str(&b, " ");
-            pb_str(&b, n->words->next->text);
-        } else {
-            if (n->name && n->name[0] && strcmp(n->name, "str")) {
-                pb_str(&b, n->name);
-                pb_str(&b, " ");
-            }
-            pb_str(&b, n->words->text);
-        }
+        db_unparse(&b, n);
         pb_str(&b, " ]]");
-    } else {
-        pb_str(&b, "[[ ... ]]");
     }
     return b.s ? b.s : sdup("");
 }
@@ -4354,7 +4501,30 @@ static void debug_trap(sh_shell *sh, const sh_node *n, const sh_io *io)
     char *t;
     if (!sh->traps[TRAP_DEBUG] || sh->trap_busy)
         return;
+    if (sh->debug_done) {
+        sh->debug_done = 0;
+        return;
+    }
     t = debug_text(n);
+    debug_trap_set(sh, t, io);
+}
+
+/* one part of for (( )): bash shows it as ((text)), leading blanks dropped, a blank expression as 1 */
+static void debug_forarith(sh_shell *sh, const char *text, const sh_io *io)
+{
+    pbuf b = { 0, 0, 0 };
+    if (!sh->traps[TRAP_DEBUG] || sh->trap_busy)
+        return;
+    while (*text == ' ' || *text == '\t' || *text == '\n')
+        text++;
+    pb_str(&b, "((");
+    pb_str(&b, *text ? text : "1");
+    pb_str(&b, "))");
+    debug_trap_set(sh, b.s ? b.s : sdup(""), io);
+}
+
+static void debug_trap_set(sh_shell *sh, char *t, const sh_io *io)
+{
     sh_set(&sh->ctx, "BASH_COMMAND", t);
     free(t);
     SH_HIT(TRAP_DEBUG);
@@ -4727,6 +4897,16 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         sh->os.suspendable = wait && sh->os.cont;
         st = sh->os.run(sh->os.data, argv.v, &io, wait);
         sh->os.suspendable = 0;
+        if (!wait) {
+            /* a redirection took the place of a pipe end the pipeline opened for this command: that
+             * end is of no use to it and must not stay open here, or the next stage never sees EOF */
+            if (io.in != parent->in && (parent->owned & SH_OWN_IN))
+                sh->os.close(sh->os.data, parent->in);
+            if (io.out != parent->out && (parent->owned & SH_OWN_OUT))
+                sh->os.close(sh->os.data, parent->out);
+            if (io.err != parent->err && (parent->owned & SH_OWN_ERR))
+                sh->os.close(sh->os.data, parent->err);
+        }
         /* the program only ever gets 0-2: the redirections of this command are undone in the
          * table they were made in; a handle the running background program still uses is
          * closed when its job is waited for */
@@ -4919,9 +5099,11 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
      * others (builtins, functions, compound commands) as subshells -- all
      * but the last, which runs in the shell itself (zsh: `echo a | read x`
      * sets x) */
-    for (i = 0; i < k; i++) {
+    for (i = 0; i < k; i++) {   /* bash runs DEBUG in the shell, for each stage's simple command, before the stage starts */
         job[i] = 0;
         started[i] = 0;
+        if (st[i]->kind == SH_CMD)
+            debug_trap(sh, st[i], io);
         if (is_external(sh, st[i])) {
             exec_cmd(sh, st[i], &sio[i], 0, &job[i]);
         } else if (sh->os.spawn && (i + 1 < k || !(sh->opts & SO_LASTPIPE))) {
@@ -4941,7 +5123,9 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
             ps[i] = 127;
             continue;
         }
+        sh->debug_done = st[i]->kind == SH_CMD && sh->traps[TRAP_DEBUG] && !sh->trap_busy;
         ps[i] = exec_node(sh, st[i], &sio[i]);
+        sh->debug_done = 0;
         close_owned(sh, &sio[i]);
     }
     for (i = 0; i < k; i++)
@@ -5042,10 +5226,12 @@ static long exec_forarith(sh_shell *sh, const sh_node *n, const sh_io *io)
     sh_int v = 0;
     long st = 0;
     SH_HIT(FORARITH);
+    debug_forarith(sh, init->text, io);
     if (!blank_text(init->text) && arith_text(sh, init->text, io, &v))
         return 1;
     sh->loop_depth++;
     for (;;) {
+        debug_forarith(sh, cond->text, io);
         if (!blank_text(cond->text)) {
             if (arith_text(sh, cond->text, io, &v)) {
                 st = 1;
@@ -5062,6 +5248,7 @@ static long exec_forarith(sh_shell *sh, const sh_node *n, const sh_io *io)
         sh->continuing = 0;
         if (sh->exiting || sh->returning || sh->intr)
             break;
+        debug_forarith(sh, step->text, io);
         if (!blank_text(step->text) && arith_text(sh, step->text, io, &v)) {
             st = 1;
             break;
@@ -5331,6 +5518,8 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
         break;
     case SH_BG: {
         long job = 0;
+        if (n->a && n->a->kind == SH_CMD)
+            debug_trap(sh, n->a, io); /* bash runs DEBUG in the shell, before the fork */
         if (n->a && is_external(sh, n->a))
             exec_cmd(sh, n->a, io, 0, &job);
         else if (n->a && sh->os.spawn) {
@@ -5338,7 +5527,9 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
             bio.owned = 0;
             subshell(sh, n->a, &bio, 0, &job);
         } else {
+            sh->debug_done = n->a && n->a->kind == SH_CMD && sh->traps[TRAP_DEBUG] && !sh->trap_busy;
             exec_node(sh, n->a, io); /* no subshell processes: it runs now */
+            sh->debug_done = 0;
         }
         if (job) {
             add_job(sh, job, node_text(n->a), io);
@@ -5719,13 +5910,32 @@ static char *core_procsub(sh_ctx *c, const char *cmd, int out)
     return sdup(path);
 }
 
+/* the glob's question about a path (sh_ctx.pathkind): a directory? a symbolic link? */
+static int core_pathkind(sh_ctx *c, const char *path)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    sh_stat st;
+    int k = 0;
+    if (!sh->os.stat)
+        return 0;
+    if (!sh->os.stat(sh->os.data, path, &st, 0) && st.type == SH_ST_DIR)
+        k |= 1;
+    if (!sh->os.stat(sh->os.data, path, &st, 1)) {
+        k |= 4;
+        if (st.link)
+            k |= 2;
+    }
+    return k;
+}
+
 /* $( ) does not inherit set -e (bash), and its trace lines gain a PS4 character */
 static char *core_subst(sh_ctx *c, const char *cmd)
 {
     sh_shell *sh = (sh_shell *)c->user;
     unsigned long saved = sh->opts;
     char *r;
-    sh->opts &= ~SO_ERREXIT;
+    if (!shopt_get(sh, "inherit_errexit"))
+        sh->opts &= ~SO_ERREXIT;
     sh->xlevel++;
     r = core_subst1(c, cmd);
     sh->xlevel--;

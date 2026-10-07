@@ -180,6 +180,15 @@ static long word_end(lexer *L, long i, int *quoted)
                 return -1;
             continue;
         }
+        if (c == '(' && i > start && sh_get_extglob() && strchr("@?*+!", s[i - 1])) {
+            /* extglob: @( ) ?( ) *( ) +( ) !( ) belongs to the word */
+            long e = sh_skip_sub(s, i - 1, 0x7fffffffL, 0);
+            if (e < 0)
+                return -1;
+            i = e;
+            *quoted = 1;
+            continue;
+        }
         if (is_meta(c))
             break;
         if (c == '\\') {

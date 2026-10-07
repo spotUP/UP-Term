@@ -219,6 +219,8 @@ typedef struct sh_shell {
     int nclosed;
     int wfail;             /* a builtin wrote to one of them: its status becomes 1 */
     char *traps[SH_NTRAP]; /* trap actions: [0] EXIT, [n] signal n, then ERR DEBUG RETURN (0: none, "": ignored) */
+    int debug_done;        /* the DEBUG trap already ran for the simple command about to run (a pipeline stage) */
+    signed char shopt_v[64]; /* shopt options that have no flag of their own: -1 the default, 0 off, 1 on */
     int trap_busy;         /* bit per ERR DEBUG RETURN trap that is running (a trap does not fire inside itself) */
     int in_trap;           /* a trap action is running */
     int exit_trap_ran;     /* the EXIT trap has run (once per shell) */
