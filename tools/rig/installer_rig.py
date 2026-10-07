@@ -38,7 +38,7 @@ Not confirmed on the rig yet (written 2026-10-07, not run): the window title
 and gadget labels UITREE gives for the Installer's pages (matched loosely
 below: "Proceed", "Install for Real"), and the string gadget of the askdir
 page taking RAmiga-X (clear) and typed text."""
-import hashlib, json, os, pathlib, shlex, struct, sys, time
+import hashlib, json, os, pathlib, re, shlex, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
 import install_rig as ir
@@ -47,11 +47,9 @@ from assign_rig import rig
 ROOT = ir.ROOT
 VTC = ir.VTC
 OUT = ROOT / "build/rig/installer"
+OUT.mkdir(parents=True, exist_ok=True)  # pages are logged before the first verdict is written
 KIT = ROOT / "build/dist/UP-Term"
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", "VTC:Apps/UP-Term"), "novice": ("NOVICE", None)}
-# the buttons that move an Installer page on, in the order they are tried;
-# never Abort, never "Skip This Part"
-FORWARD = ("Install for Real", "Proceed with Install", "Proceed With Install", "Proceed with Copy", "Proceed", "OK")
 RAMIGA = 0x0080
 KEY_X, KEY_RETURN = 0x32, 0x44
 
@@ -131,58 +129,100 @@ def type_into(box, text):
     time.sleep(1)
 
 
-def drive(case, inst, dest, baseline_titles, timeout=5400):
-    """Answer the Installer's pages until it ends. Returns (finished, log)."""
+def gadgets(tree):
+    """UITREE as {window title: {gadget id: ((x, y, w, h), label)}}."""
+    out, cur = {}, None
+    for line in tree.splitlines():
+        if line.startswith('W '):
+            cur = out.setdefault(shlex.split(line)[-1], {})
+        elif line.startswith('G ') and cur is not None:
+            f = line.split(None, 5)
+            w, h = map(int, f[4].split('x'))
+            cur[int(f[1])] = ((int(f[2]), int(f[3]), w, h), (f[5] if len(f) > 5 else '').strip().strip('"'))
+    return out
+
+
+def installer_page(tree):
+    """(title, {id: (box, label)}) of the Installer's window: the one with Proceed (90) or Abort Install (91)."""
+    for title, gads in gadgets(tree).items():
+        if 90 in gads or 91 in gads:
+            return title, gads
+    return None, {}
+
+
+def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20):
+    """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
+    (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
+    A page unchanged `stall` s after a click is a FAIL; a page without Proceed is the copy: waited out
+    (percent logged) up to work_limit s. Returns (finished, log)."""
     log = []
     pages = OUT / (case + ".pages.txt")
     pages.write_text('')
-    end = time.time() + timeout
-    last, typed, idle = None, False, 0
-    while time.time() < end:
+    t0 = time.time()
+    last_sig, clicked_at, retried, typed, chose = None, None, None, False, set()
+    work_since, last_pct = None, None
+
+    def dump(tree, why):
+        with pages.open('a') as f:
+            f.write('---- %.0f s %s\n%s\n' % (time.time() - t0, why, tree))
+
+    while time.time() - t0 < timeout:
         if not installer_running(inst):
             return True, log
         tree = ami.req(0x0D).decode('latin-1')
-        wins = [w for w in windows(tree) if w[0] not in baseline_titles]
         if any(t in ('System Request', 'Volume Request') for t, _ in windows(tree)):
             log.append('a system requester came up')
-            with pages.open('a') as f:
-                f.write('---- requester\n' + tree + '\n')
+            dump(tree, 'requester')
             return False, log
-        labels = [(lab, box) for _, gads in wins for lab, box in gads]
-        if tree != last:
-            with pages.open('a') as f:
-                f.write('---- %.0f s\n%s\n' % (timeout - (end - time.time()), tree))
-            last = tree
-        names = ' | '.join(lab for lab, _ in labels)
-        # the askdir page (Show Drives / Parent Drawer): the chosen drawer
-        if dest and not typed and any('Show Drives' in lab for lab, _ in labels):
-            strings = [box for lab, box in labels if lab.strip() in ('', 'string', 'STRING')]
-            if not strings:
-                log.append('askdir page without a string gadget: ' + names)
+        title, gads = installer_page(tree)
+        sig = (title, tuple(sorted(gads)), tuple(l for _, l in gads.values()))
+        if sig != last_sig:
+            dump(tree, 'page')
+            log.append('page [%s] ids %s' % (title, ' '.join(map(str, sorted(gads)))))
+            last_sig, clicked_at, retried = sig, None, None
+        m = re.findall(r'(\d+)% done', tree)
+        if m and m[-1] != last_pct:
+            last_pct = m[-1]
+            log.append('%s%% done at %.0f s' % (last_pct, time.time() - t0))
+        if 90 not in gads:
+            # copying or waiting for the next page: only Abort (or nothing) on it
+            work_since = work_since or time.time()
+            if time.time() - work_since > work_limit:
+                log.append('no Proceed page for %d s: %s' % (work_limit, last_sig))
                 return False, log
-            type_into(strings[-1], dest)
-            typed = True
-            log.append('typed %s into the drawer page' % dest)
+            time.sleep(poll)
             continue
-        hit = None
-        for want in FORWARD:
-            hit = next(((lab, box) for lab, box in labels if want.lower() in lab.lower()), None)
-            if hit:
-                break
-        if hit:
-            log.append('page [%s]: %s' % (names[:160], hit[0]))
-            click(hit[1])
-            if 'Install for Real' in hit[0]:
-                # a choice, not a page turn: Proceed on the same page next
-                time.sleep(1)
-                p = next(((lab, box) for lab, box in labels if lab.strip().lower().startswith('proceed')), None)
-                if p:
-                    click(p[1])
+        work_since = None
+        if clicked_at and time.time() - clicked_at > stall:
+            log.append('STALL: page unchanged %d s after a click, ids %s' % (stall, sorted(gads)))
+            dump(tree, 'stall')
+            return False, log
+        if clicked_at:
+            if time.time() - (retried or clicked_at) > 15:   # a click made while the page still redraws is lost
+                click(gads[90][0])
+                retried = time.time()
+                log.append('Proceed (id 90) again: page unchanged 15 s')
             time.sleep(3)
-            idle = 0
-        else:
-            idle += 1   # copying / working: only Abort on the page
-            time.sleep(5)
+            continue
+        if dest and not typed and 89 in gads and 92 in gads:   # askdir page
+            type_into(gads[92][0], dest)
+            typed = True
+            t2 = ami.req(0x0D).decode('latin-1')
+            got = installer_page(t2)[1].get(92, (None, ''))[1]
+            log.append('typed %s into gadget 92, UITREE shows [%s]' % (dest, got))
+            dump(t2, 'after typing')
+            if dest.lower() not in got.lower():
+                return False, log
+            continue
+        if 1 in gads and 5 in gads and title not in chose:   # install-mode page: Install for Real
+            click(gads[1][0])
+            chose.add(title)
+            log.append('chose Install for Real (id 1)')
+            time.sleep(1)
+        click(gads[90][0])
+        clicked_at = time.time()
+        log.append('Proceed (id 90)')
+        time.sleep(3)
     log.append('the Installer did not finish in %d s' % timeout)
     return False, log
 
