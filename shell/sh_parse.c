@@ -172,6 +172,13 @@ static long word_end(lexer *L, long i, int *quoted)
                 continue;
             }
         }
+        if ((c == '<' || c == '>') && s[i + 1] == '(') {
+            /* <( ) and >( ): process substitution, part of the word */
+            i = sh_skip_sub(s, i, 0x7fffffffL, 0);
+            if (i < 0)
+                return -1;
+            continue;
+        }
         if (is_meta(c))
             break;
         if (c == '\\') {
@@ -374,6 +381,8 @@ static void next(lexer *L)
         L->pos++;
         return;
     case '<':
+        if (s[i + 1] == '(')
+            break; /* <( ): a word */
         if (s[i + 1] == '<' && s[i + 2] == '<') {
             L->tok = T_TLT;
             L->pos += 3;
@@ -395,6 +404,8 @@ static void next(lexer *L)
         }
         return;
     case '>':
+        if (s[i + 1] == '(')
+            break; /* >( ): a word */
         if (s[i + 1] == '>') {
             L->tok = T_DGT;
             L->pos += 2;

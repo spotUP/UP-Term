@@ -106,6 +106,15 @@ static int h_remove(void *os, const char *path)
     return unlink(p);
 }
 
+static const char *h_tmpdir(void *os)
+{
+    static char d[600];
+    const char *t = getenv("TMPDIR");
+    (void)os;
+    snprintf(d, sizeof(d), "%s/", t && *t ? t : "/tmp");
+    return d;
+}
+
 static void h_close(void *os, sh_fh fh)
 {
     (void)os;
@@ -527,6 +536,7 @@ static int run_main(int argc, char **argv)
     sh.os.ready = h_ready;
     sh.os.now = h_now;
     sh.os.remove = h_remove;
+    sh.os.tmpdir = h_tmpdir;
     sh.os.sysid = h_sysid;
     sh.os.echo = h_echo;
     sh.os.interrupted = h_interrupted;

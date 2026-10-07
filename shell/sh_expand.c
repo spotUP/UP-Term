@@ -2109,6 +2109,24 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
             i++; /* $"...": no message catalogue, plain double quotes */
         } else if (ch == '$') {
             i += dollar(e, w + i, len - i, b, dquote);
+        } else if (!dquote && (ch == '<' || ch == '>') && i + 1 < len && w[i + 1] == '(') {
+            long k = sh_skip_sub(w + i, 0, len - i, 0);
+            char *cmd, *path;
+            if (k < 0)
+                k = len - i;
+            cmd = (char *)malloc((size_t)k);
+            if (cmd) {
+                memcpy(cmd, w + i + 2, (size_t)(k - 3 < 0 ? 0 : k - 3));
+                cmd[k - 3 < 0 ? 0 : k - 3] = 0;
+                path = e->c->procsub ? e->c->procsub(e->c, cmd, ch == '>') : 0;
+                free(cmd);
+                if (path) {
+                    cputs(b, path, F_QUOTED);
+                    b->had_quotes = 1;
+                    free(path);
+                }
+            }
+            i += k;
         } else if (ch == '`') {
             long j = i + 1;
             while (j < len && w[j] != '`') {
@@ -2336,7 +2354,8 @@ static long bx_skip(const char *w, long i, long len)
                 i++;
         return i < len ? i + 1 : len;
     }
-    if (c == '$' && i + 1 < len && (w[i + 1] == '(' || w[i + 1] == '{')) {
+    if ((c == '$' && i + 1 < len && (w[i + 1] == '(' || w[i + 1] == '{')) ||
+        ((c == '<' || c == '>') && i + 1 < len && w[i + 1] == '(')) {
         long k = sh_skip_sub(w + i, 0, len - i, 0);
         return k < 0 ? len : i + k;
     }
@@ -2350,7 +2369,7 @@ static long bx_close(const char *w, long i, long len, long *comma)
     *comma = -1;
     while (j < len) {
         char c = w[j];
-        if (c == '\\' || c == '\'' || c == '"' || c == '`' || c == '$') {
+        if (c == '\\' || c == '\'' || c == '"' || c == '`' || c == '$' || ((c == '<' || c == '>') && j + 1 < len && w[j + 1] == '(')) {
             j = bx_skip(w, j, len);
             continue;
         }
@@ -2443,7 +2462,7 @@ static int bx_expand(const char *w, long len, sh_list *out)
     long i = 0;
     while (i < len) {
         char c = w[i];
-        if (c == '\\' || c == '\'' || c == '"' || c == '`' || c == '$') {
+        if (c == '\\' || c == '\'' || c == '"' || c == '`' || c == '$' || ((c == '<' || c == '>') && i + 1 < len && w[i + 1] == '(')) {
             i = bx_skip(w, i, len);
             continue;
         }

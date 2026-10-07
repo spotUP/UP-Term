@@ -1,6 +1,7 @@
 # probes that must stay identical to bash 5 (bashdiff.py --gate; plan V6). Each phase adds its own.
 agent/a002_command_v
 agent/a003_heredoc_file
+agent/a004_diff_procsub
 agent/a005_arith_wc
 agent/a006_array_glob
 agent/a007_subst_upper
@@ -11,6 +12,7 @@ agent/a012_cd_back
 agent/a013_grep_status
 agent/a014_seq_loop
 agent/a015_read_loop
+agent/a016_read_procsub
 agent/a017_count_files
 agent/a020_array_iterate
 agent/a021_array_append
@@ -88,6 +90,7 @@ agent/a103_case_class
 agent/a104_function_keyword
 agent/a105_case_fallthrough
 agent/a106_pipe_stderr
+agent/a107_procsub_same
 agent/a108_ansi_c_len
 agent/a109_nested_quote_default
 agent/a110_return_mod
@@ -192,6 +195,8 @@ expand/alt
 expand/ansic
 expand/assignplus
 expand/at_slice
+expand/badsubst1
+expand/badsubst2
 expand/brace
 expand/brace2
 expand/brace3
@@ -246,6 +251,7 @@ expand/len
 expand/negglob
 expand/nested2
 expand/nestedquote
+expand/p3_reach
 expand/patsub_ops
 expand/pfx
 expand/posparam10
@@ -418,6 +424,25 @@ options/xt_nest
 options/xt_off
 options/xt_ps4
 options/xt_quote
+procsub/procsub
+procsub/ps01
+procsub/ps02
+procsub/ps03
+procsub/ps04
+procsub/ps05
+procsub/ps06
+procsub/ps07
+procsub/ps08
+procsub/ps09
+procsub/ps10
+procsub/ps11
+procsub/ps12
+procsub/ps13
+procsub/ps14
+procsub/ps15
+procsub/ps16
+procsub/ps17
+procsub/ps18
 redir/ampappend
 redir/ampout
 redir/append

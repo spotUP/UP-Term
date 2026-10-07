@@ -272,6 +272,17 @@ static int os_remove(void *os, const char *path)
     return DeleteFile((STRPTR)path) ? 0 : -1;
 }
 
+/* where process substitution puts its files: T: (RAM: when no T: is assigned) */
+static const char *os_tmpdir(void *os)
+{
+    BPTR l = Lock((STRPTR)"T:", ACCESS_READ);
+    (void)os;
+    if (!l)
+        return "RAM:";
+    UnLock(l);
+    return "T:";
+}
+
 static void os_close(void *os, sh_fh fh)
 {
     (void)os;
@@ -1432,6 +1443,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.ready = os_ready;
     sh.os.now = os_now;
     sh.os.remove = os_remove;
+    sh.os.tmpdir = os_tmpdir;
     sh.os.echo = os_echo;
     sh.os.interrupted = os_interrupted;
     sh.os.signal = os_signal;

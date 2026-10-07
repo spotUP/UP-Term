@@ -7,9 +7,7 @@
 #   P:shebang   it tested the host kernel's #! handling through the driver, not vsh
 # The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
 agent/a001_pipefail_loop	later:V14,V65	set -euo pipefail and [[ ]]
-agent/a004_diff_procsub	later:V59	<( )
 agent/a008_regex_match	later:V65,V66	[[ =~ ]] and BASH_REMATCH
-agent/a016_read_procsub	later:V59	< <( )
 agent/a018_arith_command	later:V63	(( ))
 agent/a019_cstyle_for	later:V64	for (( ))
 agent/a032_dbrack_files	later:V65	[[ ]]
@@ -23,7 +21,6 @@ agent/a047_let	later:V63	let
 agent/a048_arith_assign	later:V62,V63	(( += )) and $((n--))
 agent/a085_date_arith	later:V62	$(( > ))
 agent/a101_regex_class	later:V56,V65,V66	[[:digit:]] in [[ =~ ]]
-agent/a107_procsub_same	later:V59	<( )
 agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
 agent/a117_arith_ternary_var	later:V62	?: in $(( ))
 arith/arith	later:V62	operators beyond + - * / % ( ) and assignment forms
@@ -37,7 +34,6 @@ fd/fdopen	later:V71	exec 3>file
 fd/fdvar	later:V72	{var} descriptors
 grammar/forarith	later:V64	for (( ; ; ))
 jobs/bgwait	later:V83	wait $! returns the status of a background subshell (no item names it: nearest V83)
-procsub/procsub	later:V59	<( )
 shopt/extglob	later:V79	shopt -s extglob
 shopt/globstar	later:V79	shopt -s globstar
 traps/trapdebug	later:V77	trap DEBUG

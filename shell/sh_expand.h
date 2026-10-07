@@ -55,6 +55,8 @@ typedef struct sh_ctx {
     int nocase;             /* globs match names without regard to case (Amiga filesystems) */
     /* $(cmd): run cmd, return its output (malloc'ed, the caller frees) */
     char *(*subst)(struct sh_ctx *c, const char *cmd);
+    /* <(cmd) (out 0) and >(cmd) (out 1): the name of the temp file standing for it (malloc'ed); NULL: none */
+    char *(*procsub)(struct sh_ctx *c, const char *cmd, int out);
     /* list the names in directory dir ("" = current) into out; 0 = ok */
     int (*listdir)(struct sh_ctx *c, const char *dir, sh_list *out);
     int nounset;            /* set -u: an unset parameter is an error */

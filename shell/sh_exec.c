@@ -103,6 +103,7 @@ static void pb_str(pbuf *b, const char *s)
 }
 
 static char *core_subst(sh_ctx *c, const char *cmd);
+static char *core_procsub(sh_ctx *c, const char *cmd, int out);
 
 /* ---- options: the one table ------------------------------------------------- */
 
@@ -229,6 +230,7 @@ void sh_shell_init(sh_shell *sh)
     sh->subst_ran = 0;
     sh->subst_status = 0;
     sh->ctx.subst = core_subst;
+    sh->ctx.procsub = core_procsub;
     sh->ctx.user = sh;
     sh->ctx.warn = core_warn;
     sh->ctx.refresh = core_refresh;
@@ -247,6 +249,8 @@ void sh_shell_init(sh_shell *sh)
     sh->secs0 = 0;
     sh->special_busy = 0;
     sh->heredocs = 0;
+    sh->tmps = 0;
+    sh->ntmp = sh->captmp = 0;
     memset(sh->traps, 0, sizeof(sh->traps));
     sh->in_trap = 0;
     sh->exit_trap_ran = 0;
@@ -270,9 +274,15 @@ static void restore_var(sh_shell *sh, saved_var *s);
 
 static void frame_pop(sh_shell *sh);
 
+static void tmp_sweep(sh_shell *sh, int mark);
+
 void sh_shell_free(sh_shell *sh)
 {
     int i;
+    sh->intr = 1; /* the files go, a >( ) command does not run */
+    tmp_sweep(sh, 0);
+    free(sh->tmps);
+    sh->tmps = 0;
     while (sh->funcs) {
         sh_func *f = sh->funcs;
         sh->funcs = f->next;
@@ -337,6 +347,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.nocase = sh->ctx.nocase;
     c->ctx.listdir = sh->ctx.listdir;
     c->ctx.subst = sh->ctx.subst;
+    c->ctx.procsub = sh->ctx.procsub;
     c->ctx.warn = sh->ctx.warn;
     c->ctx.refresh = sh->ctx.refresh;
     c->ctx.on_assign = sh->ctx.on_assign;
@@ -707,11 +718,11 @@ static void close_owned(sh_shell *sh, const sh_io *io)
 
 /* ---- expansion of a command's words --------------------------------------------- */
 
-/* an expansion error (unbound variable, ${x:?}, bad substitution) ends a
- * shell that is not interactive, with status 1, as bash does */
+/* an expansion error (unbound variable, ${x:?}) ends a shell that is not interactive, with status 1,
+ * as bash does; a bad substitution or a negative substring length only drops the rest of the line */
 static void expand_fatal(sh_shell *sh, const char *err)
 {
-    if (err && strstr(err, "substring expression")) {
+    if (err && (strstr(err, "substring expression") || strstr(err, "bad substitution"))) {
         /* bash does not exit: it drops the rest of the command line (status 1) */
         if (!sh->intr)
             sh->intr = 3;
@@ -786,6 +797,8 @@ static char *expand_one(sh_shell *sh, const char *text, const sh_io *io)
 
 /* ---- redirections ------------------------------------------------------------- */
 
+static void tmp_add(sh_shell *sh, const char *path, const char *cmd);
+
 /* The streams a command runs with: the parent's, with the redirections
  * applied. Streams opened here are marked owned. 0 = ok. */
 static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io *io)
@@ -845,6 +858,7 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
             sh->os.write(sh->os.data, w, text, (long)strlen(text));
             sh->os.close(sh->os.data, w);
             free(text);
+            tmp_add(sh, path, 0);
             fh = sh->os.open(sh->os.data, path, SH_OPEN_READ);
         } else {
             char *path = expand_one(sh, r->target, parent);
@@ -4304,7 +4318,7 @@ static long exec_compound(sh_shell *sh, const sh_node *n, const sh_io *io)
     }
 }
 
-static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
+static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     long st = 0;
     sh_io rio;
@@ -4447,6 +4461,16 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
         sh->exit_status = st;
     }
     sh->ctx.status = st;
+    return st;
+}
+
+/* a node ran: the temp files its expansions and redirections made are done with */
+static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    int mark = sh->ntmp;
+    long st = exec_node1(sh, n, io);
+    if (sh->ntmp > mark)
+        tmp_sweep(sh, mark);
     return st;
 }
 
@@ -4611,8 +4635,100 @@ static char *core_subst1(sh_ctx *c, const char *cmd)
                 pb_add(&out, line, n);
             sh->os.close(sh->os.data, fh);
         }
+        if (sh->os.remove)
+            sh->os.remove(sh->os.data, path);
     }
     return out.s ? out.s : sdup("");
+}
+
+/* ---- temp files of here-documents and process substitution ------------------------ */
+
+static void tmp_add(sh_shell *sh, const char *path, const char *cmd)
+{
+    if (sh->ntmp == sh->captmp) {
+        int nc = sh->captmp ? sh->captmp * 2 : 8;
+        sh_tmp *t = (sh_tmp *)realloc(sh->tmps, (size_t)nc * sizeof(sh_tmp));
+        if (!t)
+            return; /* the file stays: no memory to record it */
+        sh->tmps = t;
+        sh->captmp = nc;
+    }
+    sh->tmps[sh->ntmp].path = sdup(path);
+    sh->tmps[sh->ntmp].cmd = cmd ? sdup(cmd) : 0;
+    sh->ntmp++;
+}
+
+/* The command that used the temp files above entry mark has ended: each >( ) command runs on its file
+ * (unless the shell is leaving), then the file is removed. $? is not changed. */
+static void tmp_sweep(sh_shell *sh, int mark)
+{
+    long status = sh->ctx.status;
+    while (sh->ntmp > mark) {
+        sh_tmp t = sh->tmps[mark];
+        memmove(sh->tmps + mark, sh->tmps + mark + 1, (size_t)(sh->ntmp - mark - 1) * sizeof(sh_tmp));
+        sh->ntmp--;
+        if (t.cmd && !sh->intr && !sh->exiting) {
+            sh_parse p;
+            sh_parse_text(&p, t.cmd);
+            if (!p.error) {
+                sh_io io = sh->io;
+                sh_fh fh = sh->os.open(sh->os.data, t.path, SH_OPEN_READ);
+                if (fh) {
+                    io.in = fh;
+                    io.owned = SH_OWN_IN;
+                    subshell(sh, p.tree, &io, 1, 0);
+                }
+            }
+            sh_parse_free(&p);
+        }
+        if (sh->os.remove && t.path)
+            sh->os.remove(sh->os.data, t.path);
+        free(t.path);
+        free(t.cmd);
+    }
+    sh->ctx.status = status;
+}
+
+/* <(cmd): cmd runs to completion now with its output in a temp file, whose name is the word;
+ * >(cmd): the word names an empty temp file, cmd runs on it when the command using the word ends. */
+static char *core_procsub(sh_ctx *c, const char *cmd, int out)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    char path[200], nb[24];
+    sh_fh fh;
+    SH_HIT(PROCSUB);
+    strcpy(path, sh->os.tmpdir ? sh->os.tmpdir(sh->os.data) : "T:");
+    strcat(path, "vsh-ps-");
+    num(nb, sh->ctx.pid);
+    strcat(path, nb);
+    strcat(path, "-");
+    num(nb, ++sh->heredocs);
+    strcat(path, nb);
+    fh = sh->os.open(sh->os.data, path, SH_OPEN_WRITE);
+    if (!fh) {
+        err2(sh, &sh->io, path, "cannot create");
+        return 0;
+    }
+    tmp_add(sh, path, out ? cmd : 0);
+    if (out) {
+        sh->os.close(sh->os.data, fh);
+    } else {
+        sh_parse p;
+        long status = sh->ctx.status;
+        sh_io io = sh->io;
+        sh_parse_text(&p, cmd);
+        if (p.error) {
+            err2(sh, &sh->io, p.error, 0);
+            sh->os.close(sh->os.data, fh);
+        } else {
+            io.out = fh;
+            io.owned = SH_OWN_OUT;
+            subshell(sh, p.tree, &io, 1, 0);
+        }
+        sh_parse_free(&p);
+        sh->ctx.status = status;
+    }
+    return sdup(path);
 }
 
 /* $( ) does not inherit set -e (bash), and its trace lines gain a PS4 character */

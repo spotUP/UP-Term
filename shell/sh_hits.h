@@ -21,6 +21,7 @@
     X(PARAM_OP)   /* a value-rewriting parameter operator ran: # % / ^ , ~ */ \
     X(PARAM_SLICE) /* a substring ${x:o:l}, ${@:o:l} or ${a[@]:o:l} ran */ \
     X(BRACE) /* a brace expansion produced words */ \
+    X(PROCSUB)    /* a <( ) or >( ) made its temp file */ \
     X(HERESTRING) /* a <<< here-string was set up */ \
     X(PARAM_TRANSFORM) /* a ${x@Q} style transform ran */ \
     X(ARRAY_ELEM_SET) /* an array element was assigned */ \

@@ -120,6 +120,8 @@ typedef struct sh_os {
     long  (*sysid)(void *os, int what);
     /* delete a file (process substitution and here-document temp files); 0 = ok; 0 in the table: files stay */
     int   (*remove)(void *os, const char *path);
+    /* the directory prefix of process substitution temp files, ending in : or / ("T:", "RAM:", "/tmp/"); 0 in the table: "T:" */
+    const char *(*tmpdir)(void *os);
     void *data;
 } sh_os;
 
@@ -164,6 +166,12 @@ typedef struct sh_retired {
 #define SO_ICOMMENTS   0x10000UL
 #define SO_INERT       0x20000UL  /* the accepted names with no effect (emacs vi history ...): first of many */
 
+/* a temp file of a here-document or process substitution: removed when the command using it ends;
+ * cmd (>( ) only) runs first, reading the file */
+typedef struct sh_tmp {
+    char *path, *cmd;
+} sh_tmp;
+
 typedef struct sh_shell {
     sh_ctx ctx;
     unsigned long opts;    /* SO_* */
@@ -191,6 +199,8 @@ typedef struct sh_shell {
     int subst_ran;         /* a $( ) ran in the current command ... */
     long subst_status;     /* ... with this status (assignments only: the command's $?) */
     int heredocs;          /* numbering for here-document temp files */
+    struct sh_tmp *tmps;   /* temp files to remove when the command that uses them ends (and >( ) bodies to run first) */
+    int ntmp, captmp;
     sh_fh closed[8];       /* null-device streams standing for a stream closed with n>&- (see put) */
     int nclosed;
     int wfail;             /* a builtin wrote to one of them: its status becomes 1 */

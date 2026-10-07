@@ -279,7 +279,7 @@ def write_verdict(area, fp, res):
 
 
 def leak_gate(only):
-    """V44: no ratchet probe leaves heap blocks behind. Returns the exit status."""
+    """V44: no ratchet probe leaves heap blocks behind; V59: nor temp files in T:. Returns the exit status."""
     if not VSH_LEAK.exists():
         print("[ERROR] %s missing: make build/vsh_host_leak" % VSH_LEAK)
         return 2
@@ -294,19 +294,23 @@ def leak_gate(only):
             base.mkdir()
             out, st, err = run_one([str(VSH_LEAK)], allp[pid], base, leak=True)
             m = re.findall(rb"leak blocks=(-?\d+)", err)
+            # V59: here-document, $( ) and process substitution temp files (T: is $TMPDIR here) are removed
+            left = sorted(x for x in os.listdir(base / "tmp") if x.startswith("vsh-"))
             shutil.rmtree(base, ignore_errors=True)
-            return pid, (int(m[-1]) if m else None), st
+            return pid, (int(m[-1]) if m else None), st, left
         with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as ex:
-            for pid, n, st in ex.map(one, enumerate(ids)):
+            for pid, n, st, left in ex.map(one, enumerate(ids)):
                 if st == "timeout":
                     continue
+                if left:
+                    bad.append("%s leaves temp files: %s" % (pid, " ".join(left)))
                 if n is None:
                     bad.append("%s printed no leak tally" % pid)
                 elif n > LEAK_BASE:
                     bad.append("%s leaks %d heap blocks (baseline %d)" % (pid, n - LEAK_BASE, LEAK_BASE))
     for b in bad:
         print("[FAIL] leak: " + b)
-    print("[INFO] leak gate: %d ratchet probes, %d leaking" % (len(ids), len(bad)))
+    print("[INFO] leak gate: %d ratchet probes, %d leaking or leaving temp files" % (len(ids), len(bad)))
     return 1 if bad else 0
 
 
