@@ -409,9 +409,30 @@ long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io)
 
 /* ---- output helpers ------------------------------------------------------------- */
 
+/* Output to fh. A stream closed with n>&- is a null device handle in sh->closed: bash's write
+ * fails there (status 1 for a builtin), so the write is noted. */
+static void put(sh_shell *sh, sh_fh fh, const char *s, long n)
+{
+    int i;
+    for (i = 0; i < sh->nclosed; i++)
+        if (sh->closed[i] == fh)
+            sh->wfail = 1;
+    sh->os.write(sh->os.data, fh, s, n);
+}
+
 static void say(sh_shell *sh, sh_fh fh, const char *s)
 {
-    sh->os.write(sh->os.data, fh, s, (long)strlen(s));
+    put(sh, fh, s, (long)strlen(s));
+}
+
+static void closed_del(sh_shell *sh, sh_fh fh)
+{
+    int i;
+    for (i = 0; i < sh->nclosed; i++)
+        if (sh->closed[i] == fh) {
+            sh->closed[i] = sh->closed[--sh->nclosed];
+            return;
+        }
 }
 
 /* say() of every string up to the NULL: one call where a message needs several */
@@ -670,12 +691,18 @@ static char *words_text(const sh_node *c)
 
 static void close_owned(sh_shell *sh, const sh_io *io)
 {
-    if ((io->owned & SH_OWN_IN) && io->in)
+    if ((io->owned & SH_OWN_IN) && io->in) {
+        closed_del(sh, io->in);
         sh->os.close(sh->os.data, io->in);
-    if ((io->owned & SH_OWN_OUT) && io->out)
+    }
+    if ((io->owned & SH_OWN_OUT) && io->out) {
+        closed_del(sh, io->out);
         sh->os.close(sh->os.data, io->out);
-    if ((io->owned & SH_OWN_ERR) && io->err && io->err != io->out)
+    }
+    if ((io->owned & SH_OWN_ERR) && io->err && io->err != io->out) {
+        closed_del(sh, io->err);
         sh->os.close(sh->os.data, io->err);
+    }
 }
 
 /* ---- expansion of a command's words --------------------------------------------- */
@@ -695,6 +722,14 @@ static void expand_fatal(sh_shell *sh, const char *err)
         /* bash: an unbound variable in a -c string ends with 127, anywhere else 1 */
         sh->exit_status = (sh->opts & SO_COMMAND) && err && strstr(err, "unbound") ? 127 : 1;
     }
+}
+
+/* NAME=... or NAME+=... (the argument of declare and the like) */
+static int valid_name(const char *s, size_t n);
+static int decl_assign(const char *t)
+{
+    const char *eq = strchr(t, '=');
+    return eq && valid_name(t, (size_t)(eq - t) - (eq > t && eq[-1] == '+'));
 }
 
 static int expand_words(sh_shell *sh, const sh_word *w, sh_list *out, const sh_io *io)
@@ -718,7 +753,7 @@ static int expand_words(sh_shell *sh, const sh_word *w, sh_list *out, const sh_i
             }
             continue;
         }
-        if (sh_expand(&sh->ctx, w->text, 0, out, &err)) {
+        if (sh_expand(&sh->ctx, w->text, isdecl && decl_assign(w->text) ? SH_ASSIGN : 0, out, &err)) {
             err2(sh, io, w->text, err);
             expand_fatal(sh, err);
             return -1;
@@ -727,13 +762,13 @@ static int expand_words(sh_shell *sh, const sh_word *w, sh_list *out, const sh_i
     return 0;
 }
 
-static char *expand_one(sh_shell *sh, const char *text, const sh_io *io)
+static char *expand_val(sh_shell *sh, const char *text, const sh_io *io, int flags)
 {
     sh_list l;
     const char *err = 0;
     char *r;
     memset(&l, 0, sizeof(l));
-    if (sh_expand(&sh->ctx, text, SH_NO_SPLIT | SH_NO_GLOB, &l, &err)) {
+    if (sh_expand(&sh->ctx, text, SH_NO_SPLIT | SH_NO_GLOB | flags, &l, &err)) {
         err2(sh, io, text, err);
         expand_fatal(sh, err);
         sh_list_free(&l);
@@ -742,6 +777,11 @@ static char *expand_one(sh_shell *sh, const char *text, const sh_io *io)
     r = sdup(l.n ? l.v[0] : "");
     sh_list_free(&l);
     return r;
+}
+
+static char *expand_one(sh_shell *sh, const char *text, const sh_io *io)
+{
+    return expand_val(sh, text, io, 0);
 }
 
 /* ---- redirections ------------------------------------------------------------- */
@@ -770,11 +810,28 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
                 io->in = src, io->owned &= ~SH_OWN_IN;
             continue;
         }
-        if (r->kind == SH_R_HEREDOC) {
-            /* the document into a temp file, then read from it */
+        if (r->kind == SH_R_CLOSE) {
+            /* n>&- n<&-: the stream is closed; here it is the null device (a documented difference) */
+            fh = sh->os.open(sh->os.data, dev_name("/dev/null"), r->fd == 0 ? SH_OPEN_READ : SH_OPEN_WRITE);
+            if (!fh)
+                return -1;
+            if (r->fd != 0 && sh->nclosed < 8)
+                sh->closed[sh->nclosed++] = fh;
+        } else if (r->kind == SH_R_HEREDOC || r->kind == SH_R_HERESTR) {
+            /* the document (here-string: the word and a newline) into a temp file, then read from it */
             char path[40], n[16];
             char *text = r->quoted ? sdup(r->target) : expand_one(sh, r->target, parent);
             sh_fh w;
+            if (text && r->kind == SH_R_HERESTR) {
+                char *t = (char *)malloc(strlen(text) + 2);
+                if (t) {
+                    strcpy(t, text);
+                    strcat(t, "\n");
+                }
+                free(text);
+                text = t;
+                SH_HIT(HERESTRING);
+            }
             SH_HIT(HEREDOC);
             num(n, ++sh->heredocs);
             strcpy(path, "T:vsh-here.");
@@ -792,10 +849,11 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
         } else {
             char *path = expand_one(sh, r->target, parent);
             int mode = r->kind == SH_R_IN ? SH_OPEN_READ
-                     : r->kind == SH_R_APPEND ? SH_OPEN_APPEND : SH_OPEN_WRITE;
+                     : r->kind == SH_R_RDWR ? SH_OPEN_RDWR
+                     : r->kind == SH_R_APPEND || r->kind == SH_R_BOTHAPP ? SH_OPEN_APPEND : SH_OPEN_WRITE;
             if (!path)
                 return -1;
-            if (mode == SH_OPEN_WRITE && (sh->opts & SO_NOCLOBBER) && strncmp(path, "/dev/", 5) &&
+            if (mode == SH_OPEN_WRITE && r->kind != SH_R_CLOBBER && (sh->opts & SO_NOCLOBBER) && strncmp(path, "/dev/", 5) &&
                 sh->os.stat && sh_exists(sh, path, 0)) {
                 err2(sh, parent, path, "cannot overwrite existing file");
                 free(path);
@@ -808,25 +866,25 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
         }
         if (!fh)
             return -1;
-        if (r->kind == SH_R_BOTH) {
+        if (r->kind == SH_R_BOTH || r->kind == SH_R_BOTHAPP) {
             if (io->owned & SH_OWN_OUT)
-                sh->os.close(sh->os.data, io->out);
+                closed_del(sh, io->out), sh->os.close(sh->os.data, io->out);
             io->out = io->err = fh;
             io->owned |= SH_OWN_OUT;
             io->owned &= ~SH_OWN_ERR;
         } else if (r->fd == 0) {
             if (io->owned & SH_OWN_IN)
-                sh->os.close(sh->os.data, io->in);
+                closed_del(sh, io->in), sh->os.close(sh->os.data, io->in);
             io->in = fh;
             io->owned |= SH_OWN_IN;
         } else if (r->fd == 2) {
             if (io->owned & SH_OWN_ERR)
-                sh->os.close(sh->os.data, io->err);
+                closed_del(sh, io->err), sh->os.close(sh->os.data, io->err);
             io->err = fh;
             io->owned |= SH_OWN_ERR;
         } else {
             if (io->owned & SH_OWN_OUT)
-                sh->os.close(sh->os.data, io->out);
+                closed_del(sh, io->out), sh->os.close(sh->os.data, io->out);
             io->out = fh;
             io->owned |= SH_OWN_OUT;
         }
@@ -1216,7 +1274,7 @@ static long b_printf(sh_shell *sh, int argc, char **argv, const sh_io *io)
         if (sh_set(&sh->ctx, vname, b.s ? b.s : ""))
             bad = 1;
     } else if (b.s)
-        sh->os.write(sh->os.data, io->out, b.s, b.n);
+        put(sh, io->out, b.s, b.n);
     free(b.s);
     return bad;
 }
@@ -3238,7 +3296,7 @@ static int do_assign(sh_shell *sh, const char *text, const sh_io *io, int flag)
         if (r)
             err2(sh, io, name, "readonly variable");
         r = r != 0;
-    } else if ((v = expand_one(sh, eq + 1, io)) != 0) {
+    } else if ((v = expand_val(sh, eq + 1, io, SH_ASSIGN)) != 0) {
         if (flag == 2) {
             pbuf nb = { 0, 0, 0 };
             pb_str(&nb, name);
@@ -3739,7 +3797,7 @@ static void xt_end(sh_shell *sh, const sh_io *io, pbuf *b)
 {
     pb_str(b, "\n");
     if (b->s)
-        sh->os.write(sh->os.data, io->err, b->s, b->n);
+        put(sh, io->err, b->s, b->n);
     free(b->s);
 }
 
@@ -3872,7 +3930,11 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
             sh->io.owned = 0;
             st = 0;
         } else {
+            sh->wfail = 0;
             st = b(sh, argv.n, argv.v, &io);
+            if (sh->wfail && !st)
+                st = 1; /* it wrote to a closed stream */
+            sh->wfail = 0;
             close_owned(sh, &io);
         }
     } else {
@@ -4180,19 +4242,23 @@ static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
     const sh_case *c;
     const sh_word *p;
     long st = 0;
+    int fall = 0;
     if (!subject)
         return 1;
-    for (c = n->cases; c; c = c->next)
-        for (p = c->patterns; p; p = p->next) {
+    for (c = n->cases; c; c = c->next) {
+        int hit = fall;
+        for (p = c->patterns; !hit && p; p = p->next) {
             char *pat = expand_one(sh, p->text, io);
-            int hit = pat && sh_match(pat, subject, 0);
+            hit = pat && sh_match(pat, subject, 0);
             free(pat);
-            if (hit) {
-                st = exec_node(sh, c->body, io);
-                free(subject);
-                return st;
-            }
         }
+        if (hit) {
+            st = exec_node(sh, c->body, io);
+            if (c->term == 0 || sh->exiting || sh->intr)
+                break;
+            fall = c->term == 1; /* ;& runs the next body; ;;& tests the next patterns */
+        }
+    }
     free(subject);
     return st;
 }

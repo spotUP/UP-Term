@@ -87,6 +87,8 @@ static sh_fh h_open(void *os, const char *path, int mode)
         flags = O_RDONLY;
     else if (mode == SH_OPEN_APPEND)
         flags = O_WRONLY | O_CREAT | O_APPEND;
+    else if (mode == SH_OPEN_RDWR)
+        flags = O_RDWR | O_CREAT;
     else
         flags = O_WRONLY | O_CREAT | O_TRUNC;
     fd = open(p, flags, 0666);
@@ -94,6 +96,14 @@ static sh_fh h_open(void *os, const char *path, int mode)
         return SH_NOFH;
     cloexec(fd);
     return FH(fd);
+}
+
+static int h_remove(void *os, const char *path)
+{
+    char p[1024];
+    (void)os;
+    host_path(path, p, sizeof(p));
+    return unlink(p);
 }
 
 static void h_close(void *os, sh_fh fh)
@@ -516,6 +526,7 @@ static int run_main(int argc, char **argv)
     sh.os.read = h_read;
     sh.os.ready = h_ready;
     sh.os.now = h_now;
+    sh.os.remove = h_remove;
     sh.os.sysid = h_sysid;
     sh.os.echo = h_echo;
     sh.os.interrupted = h_interrupted;

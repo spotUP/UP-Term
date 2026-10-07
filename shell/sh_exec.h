@@ -24,6 +24,7 @@ typedef struct sh_io {
 #define SH_OPEN_READ   0
 #define SH_OPEN_WRITE  1   /* create / truncate */
 #define SH_OPEN_APPEND 2
+#define SH_OPEN_RDWR   3   /* read and write an existing or new file, no truncation (<>) */
 
 struct sh_shell;
 
@@ -117,6 +118,8 @@ typedef struct sh_os {
     long  (*now)(void *os, long *usec);
     /* PPID, UID, EUID: what is SH_ID_*; 0 in the table: 0 */
     long  (*sysid)(void *os, int what);
+    /* delete a file (process substitution and here-document temp files); 0 = ok; 0 in the table: files stay */
+    int   (*remove)(void *os, const char *path);
     void *data;
 } sh_os;
 
@@ -188,6 +191,9 @@ typedef struct sh_shell {
     int subst_ran;         /* a $( ) ran in the current command ... */
     long subst_status;     /* ... with this status (assignments only: the command's $?) */
     int heredocs;          /* numbering for here-document temp files */
+    sh_fh closed[8];       /* null-device streams standing for a stream closed with n>&- (see put) */
+    int nclosed;
+    int wfail;             /* a builtin wrote to one of them: its status becomes 1 */
     char *traps[SH_NSIG];  /* trap actions: [0] EXIT, [n] signal n (0: none, "": ignored) */
     int in_trap;           /* a trap action is running */
     int exit_trap_ran;     /* the EXIT trap has run (once per shell) */

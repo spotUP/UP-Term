@@ -677,6 +677,37 @@ static int lower(int ch)
     return ch >= 'A' && ch <= 'Z' ? ch + 32 : ch;
 }
 
+/* [:name:] at name (after the "[:"): 1 when ch is in the class, 0 when not, -1 when name is no class
+ * (the [ is then an ordinary member). The C locale: ASCII only. nocase: upper and lower are both letters. */
+static int posix_class(const char *name, int ch, int nocase)
+{
+    static const char *const names[] = { "alpha", "digit", "alnum", "upper", "lower", "space", "blank", "punct",
+                                         "print", "graph", "cntrl", "xdigit" };
+    int k, n = 0, up = ch >= 'A' && ch <= 'Z', lo = ch >= 'a' && ch <= 'z', dg = ch >= '0' && ch <= '9';
+    const char *e = strstr(name, ":]");
+    if (!e)
+        return -1;
+    n = (int)(e - name);
+    for (k = 0; k < 12; k++)
+        if ((int)strlen(names[k]) == n && !strncmp(names[k], name, (size_t)n))
+            break;
+    switch (k) {
+    case 0: return up || lo;
+    case 1: return dg;
+    case 2: return up || lo || dg;
+    case 3: return nocase ? up || lo : up;
+    case 4: return nocase ? up || lo : lo;
+    case 5: return ch == ' ' || (ch >= 9 && ch <= 13);
+    case 6: return ch == ' ' || ch == '\t';
+    case 7: return ch > 32 && ch < 127 && !(up || lo || dg);
+    case 8: return ch >= 32 && ch < 127;
+    case 9: return ch > 32 && ch < 127;
+    case 10: return (ch >= 0 && ch < 32) || ch == 127;
+    case 11: return dg || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
+    default: return -1;
+    }
+}
+
 int sh_match(const char *p, const char *s, int nocase)
 {
     for (; *p; p++, s++) {
@@ -705,6 +736,15 @@ int sh_match(const char *p, const char *s, int nocase)
                 int lo = *q, hi = *q;
                 if (!*q)
                     return 0; /* no ]: not a bracket; treat as unmatched */
+                if (*q == '[' && q[1] == ':') {
+                    int cl = posix_class(q + 2, *s, nocase);
+                    if (cl >= 0) {
+                        if (cl)
+                            ok = 1;
+                        q = strstr(q + 2, ":]") + 2;
+                        continue;
+                    }
+                }
                 if (q[1] == '-' && q[2] && q[2] != ']') {
                     hi = q[2];
                     q += 2;
@@ -973,6 +1013,7 @@ static void cfree(cbuf *b)
 typedef struct ex {
     sh_ctx *c;
     const char *err;
+    int assign;         /* an assignment value: ~ also after a colon */
 } ex;
 
 static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote);
@@ -1991,6 +2032,39 @@ static long dollar(ex *e, const char *w, long len, cbuf *b, int dquote)
     return 1;
 }
 
+/* w[0..n) is NAME or NAME+ (the head of a declare argument NAME=value) */
+static int assign_prefix(const char *w, long n)
+{
+    long k;
+    if (n && w[n - 1] == '+')
+        n--;
+    for (k = 0; k < n; k++)
+        if (!is_name_char(w[k], !k))
+            return 0;
+    return n > 0;
+}
+
+/* A tilde prefix at w[*i] (the ~ up to the next / or, in an assignment, :): ~ is $HOME, ~+ is $PWD, ~- is
+ * $OLDPWD; ~user is left as it is (vsh has no user database). 1 when expanded, *i moved past it. */
+static int tilde(ex *e, const char *w, long *i, long len, cbuf *b)
+{
+    long j = *i + 1;
+    const char *v = 0;
+    while (j < len && w[j] != '/' && !(e->assign && w[j] == ':'))
+        j++;
+    if (j == *i + 1)
+        v = sh_get(e->c, "HOME"), v = v ? v : "SYS:";
+    else if (j == *i + 2 && w[*i + 1] == '+')
+        v = sh_get(e->c, "PWD");
+    else if (j == *i + 2 && w[*i + 1] == '-')
+        v = sh_get(e->c, "OLDPWD");
+    if (!v)
+        return 0;
+    cputs(b, v, F_QUOTED);
+    *i = j;
+    return 1;
+}
+
 /* Expand w[0..len) into b: quotes and escapes resolved, expansions done. */
 static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
 {
@@ -2044,10 +2118,9 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
             }
             command_output(e, w + i + 1, j - i - 1, b, dquote, 1);
             i = j + 1;
-        } else if (!dquote && ch == '~' && i == 0) {
-            const char *home = sh_get(e->c, "HOME");
-            cputs(b, home ? home : "SYS:", F_QUOTED);
-            i++;
+        } else if (!dquote && ch == '~' && (i == 0 || (e->assign && (w[i - 1] == ':' || (w[i - 1] == '=' && assign_prefix(w, i - 1))))) &&
+                   tilde(e, w, &i, len, b)) {
+            ; /* ~ ~+ ~- expanded, i moved past the prefix */
         } else {
             cput(b, ch, dquote ? F_QUOTED : 0);
             i++;
@@ -2063,16 +2136,48 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
  * the word "[" of [ $i -lt 9 ] is no pattern (vsh listed the directory
  * for every one -- 85 ms per loop turn on the rig). quoted: the flags,
  * or 0 to take every character as unquoted. */
-static int bracket_closes(const char *s, const unsigned char *quoted, int i, int to)
+static int bracket_end(const char *s, const unsigned char *quoted, int i, int to)
 {
     int j = i + 1;
     if (j < to && (s[j] == '!' || s[j] == '^'))
         j++;
     if (j < to && s[j] == ']')
         j++;
-    for (; j < to; j++)
+    for (; j < to; j++) {
+        if (s[j] == '[' && j + 1 < to && s[j + 1] == ':') {
+            int k = j + 2;
+            while (k + 1 < to && !(s[k] == ':' && s[k + 1] == ']'))
+                k++;
+            if (k + 1 < to) { /* [:class:] */
+                j = k + 1;
+                continue;
+            }
+        }
         if (s[j] == ']' && !(quoted && (quoted[j] & F_QUOTED)))
-            return 1;
+            return j;
+    }
+    return -1;
+}
+
+static int bracket_closes(const char *s, const unsigned char *quoted, int i, int to)
+{
+    return bracket_end(s, quoted, i, to) >= 0;
+}
+
+/* The ':' ending a volume name in a glob pattern ("SYS:*"), not one inside [...] or escaped; 0 when none */
+static char *vol_colon(char *pat)
+{
+    int i, n = (int)strlen(pat), e;
+    for (i = 0; i < n; i++) {
+        if (pat[i] == '\\' && i + 1 < n)
+            i++;
+        else if (pat[i] == '[' && (e = bracket_end(pat, 0, i, n)) >= 0)
+            i = e;
+        else if (pat[i] == ':')
+            return pat + i;
+        else if (pat[i] == '/')
+            return 0;
+    }
     return 0;
 }
 
@@ -2181,8 +2286,8 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
         memset(&found, 0, sizeof(found));
         start = pat;
         root[0] = 0;
-        colon = strchr(pat, ':');
-        if (colon && (!strchr(pat, '/') || colon < strchr(pat, '/'))) {
+        colon = vol_colon(pat);
+        if (colon) {
             size_t rl = (size_t)(colon - pat) + 1;
             memcpy(root, pat, rl);
             root[rl] = 0;
@@ -2432,6 +2537,7 @@ static int expand_word(sh_ctx *c, const char *word, int flags, sh_list *out, con
         flags |= SH_NO_GLOB;
     e.c = c;
     e.err = 0;
+    e.assign = (flags & SH_ASSIGN) != 0;
     memset(&b, 0, sizeof(b));
     if (!ifs)
         ifs = " \t\n";
@@ -2504,7 +2610,7 @@ int sh_expand(sh_ctx *c, const char *word, int flags, sh_list *out, const char *
     sh_list bw;
     long i;
     int rc = 0;
-    if ((flags & SH_NO_SPLIT) || !strchr(word, '{'))
+    if ((flags & (SH_NO_SPLIT | SH_ASSIGN)) || !strchr(word, '{'))
         return expand_word(c, word, flags, out, err);
     memset(&bw, 0, sizeof(bw));
     if (bx_expand(word, (long)strlen(word), &bw) < 0) {

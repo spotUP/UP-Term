@@ -261,9 +261,15 @@ static sh_fh os_open(void *os, const char *path, int mode)
     if (mode == SH_OPEN_WRITE)
         return (sh_fh)Open((STRPTR)path, MODE_NEWFILE);
     fh = Open((STRPTR)path, MODE_READWRITE);
-    if (fh)
+    if (fh && mode == SH_OPEN_APPEND)
         Seek(fh, 0, OFFSET_END);
     return (sh_fh)fh;
+}
+
+static int os_remove(void *os, const char *path)
+{
+    (void)os;
+    return DeleteFile((STRPTR)path) ? 0 : -1;
 }
 
 static void os_close(void *os, sh_fh fh)
@@ -1425,6 +1431,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.read = os_read;
     sh.os.ready = os_ready;
     sh.os.now = os_now;
+    sh.os.remove = os_remove;
     sh.os.echo = os_echo;
     sh.os.interrupted = os_interrupted;
     sh.os.signal = os_signal;

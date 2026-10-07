@@ -21,16 +21,8 @@ agent/a045_arith_ops	later:V62	arithmetic operators
 agent/a046_arith_64bit	later:V61,V62	64-bit arithmetic
 agent/a047_let	later:V63	let
 agent/a048_arith_assign	later:V62,V63	(( += )) and $((n--))
-agent/a065_clobber_override	later:V58	>|
-agent/a066_here_string	later:V58	<<<
-agent/a067_heredoc_dash	later:V58	<<-
 agent/a085_date_arith	later:V62	$(( > ))
 agent/a101_regex_class	later:V56,V65,V66	[[:digit:]] in [[ =~ ]]
-agent/a102_glob_class	later:V56	[[:upper:]] in globs
-agent/a103_case_class	later:V56	[[:digit:]] in case
-agent/a104_function_keyword	later:V57	function name { }
-agent/a105_case_fallthrough	later:V57	;;&
-agent/a106_pipe_stderr	later:V57	|&
 agent/a107_procsub_same	later:V59	<( )
 agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
 agent/a117_arith_ternary_var	later:V62	?: in $(( ))
@@ -40,26 +32,12 @@ arith/dparen2	later:V63	(( x = 5 )) is not an arithmetic command
 builtins/declare_f	later:V82	declare -f prints a function
 dbrack/dbrack	later:V65	[[ ]]
 dbrack/dbrack2	later:V65	[[ ]] with && and ( )
-expand/globclass	later:V56	[[:lower:]] in globs
-expand/tilde2	later:V54	~+ and ~-
-expand/tildeassign	later:V54	tilde after a colon in an assignment (no item names it: nearest V54)
 fd/fd4	later:V71	redirection of fd 4
 fd/fdopen	later:V71	exec 3>file
 fd/fdvar	later:V72	{var} descriptors
-grammar/case2	later:V57	;;& terminator
-grammar/case3	later:V57	;& terminator
-grammar/fnkw	later:V57	function name { }
-grammar/fnkw2	later:V57	function name() { }
 grammar/forarith	later:V64	for (( ; ; ))
-grammar/funcparen	later:V57	name () { } with a space (no item names it: nearest V57)
-grammar/pipeamp	later:V57	|& pipeline
 jobs/bgwait	later:V83	wait $! returns the status of a background subshell (no item names it: nearest V83)
 procsub/procsub	later:V59	<( )
-redir/ampappend	later:V58	&>>
-redir/clobber	later:V58	>| and set -C
-redir/heredocdash	later:V58	<<-
-redir/herestr	later:V58	<<<
-redir/rwredir	later:V58	<>
 shopt/extglob	later:V79	shopt -s extglob
 shopt/globstar	later:V79	shopt -s globstar
 traps/trapdebug	later:V77	trap DEBUG
@@ -67,3 +45,5 @@ traps/traperr	later:V76	trap ERR
 traps/trapret	later:V77	trap RETURN
 builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings)
 expand/brace_oom	documented	brace expansion stops at 1,000,000 words with "brace expansion: out of memory" (status 1); bash goes on until memory ends
+expand/tilde_user	n/a-amiga	~user needs a user database; vsh leaves ~user as typed (bash expands it for a real user)
+redir/close_out	documented	a stream closed with n>&- or n<&- is the null device (NIL:) for a command that is not a builtin, so its write or read does not fail (bash: status 1)

@@ -328,6 +328,11 @@ VSH (the shell)
     named by its test probe id (tests/bash/divergences.txt).
     Brace expansion stops at 1,000,000 words: {1..100000000} fails with
     "brace expansion: out of memory", status 1 (probe expand/brace_oom).
+    A stream closed with  n>&-  or  n<&-  is the null device (NIL:) for a
+    command that is not a builtin: its write or read does not fail as in
+    bash (probe redir/close_out).
+    ~user is left as typed: there is no user database to look the home up in
+    (probe expand/tilde_user); ~  ~+  ~-  are expanded.
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

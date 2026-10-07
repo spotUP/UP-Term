@@ -60,12 +60,14 @@ void sh_parse_free(sh_parse *p)
 
 enum tok {
     T_EOF, T_WORD, T_NEWLINE, T_SEMI, T_DSEMI, T_AMP, T_AND, T_PIPE, T_OR,
-    T_LPAREN, T_RPAREN, T_LT, T_GT, T_DGT, T_LTAMP, T_GTAMP, T_AMPGT, T_DLT
+    T_LPAREN, T_RPAREN, T_LT, T_GT, T_DGT, T_LTAMP, T_GTAMP, T_AMPGT, T_DLT,
+    T_SEMIAMP, T_DSEMIAMP, T_PIPEAMP, T_DLTDASH, T_TLT, T_AMPDGT, T_LTGT, T_GTPIPE
 };
 
 typedef struct heredoc {
     sh_redir *r;
     char *delim;
+    int strip;
     struct heredoc *next;
 } heredoc;
 
@@ -263,10 +265,13 @@ static void read_heredocs(lexer *L)
         long start = L->pos, i = start, body_end = start;
         int dlen = (int)strlen(h->delim);
         for (;;) {
-            long ls = i;
+            long ls = i, ts = i;
             while (s[i] && s[i] != '\n')
                 i++;
-            if ((long)(i - ls) == dlen && !strncmp(s + ls, h->delim, dlen)) {
+            if (h->strip)
+                while (ts < i && s[ts] == '\t')
+                    ts++;
+            if ((long)(i - ts) == dlen && !strncmp(s + ts, h->delim, dlen)) {
                 body_end = ls;
                 if (s[i])
                     i++;
@@ -279,6 +284,18 @@ static void read_heredocs(lexer *L)
             i++;
         }
         h->r->target = dup_n(L->p, s + start, body_end - start);
+        if (h->strip) {
+            /* <<- : the leading tabs of every line of the document go */
+            char *o = h->r->target, *q = o;
+            int bol = 1;
+            for (; *q; q++) {
+                if (bol && *q == '\t')
+                    continue;
+                bol = *q == '\n';
+                *o++ = *q;
+            }
+            *o = 0;
+        }
         L->pos = i;
     }
 }
@@ -315,13 +332,27 @@ static void next(lexer *L)
             read_heredocs(L);
         return;
     case ';':
-        L->tok = s[i + 1] == ';' ? T_DSEMI : T_SEMI;
-        L->pos += L->tok == T_DSEMI ? 2 : 1;
+        if (s[i + 1] == ';' && s[i + 2] == '&') {
+            L->tok = T_DSEMIAMP;
+            L->pos += 3;
+        } else if (s[i + 1] == ';') {
+            L->tok = T_DSEMI;
+            L->pos += 2;
+        } else if (s[i + 1] == '&') {
+            L->tok = T_SEMIAMP;
+            L->pos += 2;
+        } else {
+            L->tok = T_SEMI;
+            L->pos++;
+        }
         return;
     case '&':
         if (s[i + 1] == '&') {
             L->tok = T_AND;
             L->pos += 2;
+        } else if (s[i + 1] == '>' && s[i + 2] == '>') {
+            L->tok = T_AMPDGT;
+            L->pos += 3;
         } else if (s[i + 1] == '>') {
             L->tok = T_AMPGT;
             L->pos += 2;
@@ -331,8 +362,8 @@ static void next(lexer *L)
         }
         return;
     case '|':
-        L->tok = s[i + 1] == '|' ? T_OR : T_PIPE;
-        L->pos += L->tok == T_OR ? 2 : 1;
+        L->tok = s[i + 1] == '|' ? T_OR : s[i + 1] == '&' ? T_PIPEAMP : T_PIPE;
+        L->pos += L->tok == T_PIPE ? 1 : 2;
         return;
     case '(':
         L->tok = T_LPAREN;
@@ -343,11 +374,20 @@ static void next(lexer *L)
         L->pos++;
         return;
     case '<':
-        if (s[i + 1] == '<') {
+        if (s[i + 1] == '<' && s[i + 2] == '<') {
+            L->tok = T_TLT;
+            L->pos += 3;
+        } else if (s[i + 1] == '<' && s[i + 2] == '-') {
+            L->tok = T_DLTDASH;
+            L->pos += 3;
+        } else if (s[i + 1] == '<') {
             L->tok = T_DLT;
             L->pos += 2;
         } else if (s[i + 1] == '&') {
             L->tok = T_LTAMP;
+            L->pos += 2;
+        } else if (s[i + 1] == '>') {
+            L->tok = T_LTGT;
             L->pos += 2;
         } else {
             L->tok = T_LT;
@@ -360,6 +400,9 @@ static void next(lexer *L)
             L->pos += 2;
         } else if (s[i + 1] == '&') {
             L->tok = T_GTAMP;
+            L->pos += 2;
+        } else if (s[i + 1] == '|') {
+            L->tok = T_GTPIPE;
             L->pos += 2;
         } else {
             L->tok = T_GT;
@@ -431,7 +474,8 @@ static int at_list_end(lexer *L)
 {
     static const char *const ends[] = { "then", "else", "elif", "fi", "do", "done", "esac", "}", 0 };
     int i;
-    if (L->tok == T_EOF || L->tok == T_RPAREN || L->tok == T_DSEMI)
+    if (L->tok == T_EOF || L->tok == T_RPAREN || L->tok == T_DSEMI || L->tok == T_SEMIAMP ||
+        L->tok == T_DSEMIAMP)
         return 1;
     for (i = 0; ends[i]; i++)
         if (is_word(L, ends[i]))
@@ -477,7 +521,7 @@ static int parse_redir(lexer *L, sh_redir **list)
     int fd = L->io_number;
     sh_redir *r;
     if (t != T_LT && t != T_GT && t != T_DGT && t != T_LTAMP && t != T_GTAMP && t != T_AMPGT &&
-        t != T_DLT)
+        t != T_DLT && t != T_DLTDASH && t != T_TLT && t != T_AMPDGT && t != T_LTGT && t != T_GTPIPE)
         return 0;
     r = (sh_redir *)alloc(L->p, sizeof(sh_redir));
     if (!r)
@@ -489,9 +533,15 @@ static int parse_redir(lexer *L, sh_redir **list)
     case T_LTAMP: r->kind = SH_R_DUPIN; break;
     case T_GTAMP: r->kind = SH_R_DUPOUT; break;
     case T_AMPGT: r->kind = SH_R_BOTH; break;
+    case T_AMPDGT: r->kind = SH_R_BOTHAPP; break;
+    case T_LTGT: r->kind = SH_R_RDWR; break;
+    case T_GTPIPE: r->kind = SH_R_CLOBBER; break;
+    case T_TLT: r->kind = SH_R_HERESTR; break;
     default: r->kind = SH_R_HEREDOC; break;
     }
-    r->fd = fd >= 0 ? fd : (r->kind == SH_R_IN || r->kind == SH_R_DUPIN || r->kind == SH_R_HEREDOC) ? 0 : 1;
+    r->strip = t == T_DLTDASH;
+    r->fd = fd >= 0 ? fd : (r->kind == SH_R_IN || r->kind == SH_R_DUPIN || r->kind == SH_R_HEREDOC ||
+                            r->kind == SH_R_HERESTR || r->kind == SH_R_RDWR) ? 0 : 1;
     next(L);
     if (L->tok != T_WORD) {
         fail(L, "redirection without a target", L->tok == T_EOF);
@@ -510,11 +560,14 @@ static int parse_redir(lexer *L, sh_redir **list)
         *o = 0;
         h->r = r;
         h->delim = d;
+        h->strip = r->strip;
         for (tail = &L->pending; *tail; tail = &(*tail)->next)
             ;
         *tail = h;
     } else {
         r->target = L->word;
+        if ((r->kind == SH_R_DUPIN || r->kind == SH_R_DUPOUT) && !strcmp(r->target, "-") && !L->quoted)
+            r->kind = SH_R_CLOSE;
     }
     next(L);
     while (*list)
@@ -685,14 +738,29 @@ static sh_node *parse_case(lexer *L)
         *tail = c;
         tail = &c->next;
         skip_newlines(L);
-        if (L->tok == T_DSEMI)
+        if (L->tok == T_DSEMI || L->tok == T_SEMIAMP || L->tok == T_DSEMIAMP) {
+            c->term = L->tok == T_SEMIAMP ? 1 : L->tok == T_DSEMIAMP ? 2 : 0;
             next(L);
-        else if (!is_word(L, "esac")) {
+        } else if (!is_word(L, "esac")) {
             fail(L, "case: ;; is missing", L->tok == T_EOF);
             return n;
         }
     }
     return n;
+}
+
+/* the position after "( )" (blanks allowed) right after the current word, 0 when it is not there */
+static long parens_after(lexer *L)
+{
+    long k = L->pos;
+    while (L->s[k] == ' ' || L->s[k] == '\t')
+        k++;
+    if (L->s[k] != '(')
+        return 0;
+    k++;
+    while (L->s[k] == ' ' || L->s[k] == '\t')
+        k++;
+    return L->s[k] == ')' ? k + 1 : 0;
 }
 
 static sh_node *parse_command1(lexer *L);
@@ -752,11 +820,31 @@ static sh_node *parse_command1(lexer *L)
         parse_trailing_redirs(L, n);
         return n;
     }
-    /* name ( ) body: a function */
-    if (L->tok == T_WORD && !L->quoted && L->s[L->pos] == '(' && L->s[L->pos + 1] == ')') {
+    /* function name { ... }, function name() { ... } */
+    if (is_word(L, "function")) {
+        long k;
+        next(L);
+        if (L->tok != T_WORD) {
+            fail(L, "function: a name is missing", L->tok == T_EOF);
+            return 0;
+        }
         n = node(L, SH_FUNC);
         n->name = L->word;
-        L->pos += 2;
+        k = parens_after(L);
+        if (k) {
+            L->pos = k;
+            next(L);
+        } else
+            next(L);
+        skip_newlines(L);
+        n->a = parse_command(L);
+        return n;
+    }
+    /* name ( ) body: a function; blanks may stand before and inside the parentheses */
+    if (L->tok == T_WORD && !L->quoted && parens_after(L)) {
+        n = node(L, SH_FUNC);
+        n->name = L->word;
+        L->pos = parens_after(L);
         next(L);
         skip_newlines(L);
         n->a = parse_command(L);
@@ -768,18 +856,32 @@ static sh_node *parse_command1(lexer *L)
 static sh_node *parse_pipeline(lexer *L)
 {
     int not = 0;
-    sh_node *n;
+    sh_node *n, *last;
     if (is_word(L, "!")) {
         not = 1;
         next(L);
     }
     n = parse_command(L);
-    while (!L->had_error && L->tok == T_PIPE) {
+    last = n;
+    while (!L->had_error && (L->tok == T_PIPE || L->tok == T_PIPEAMP)) {
         sh_node *p = node(L, SH_PIPE);
+        if (L->tok == T_PIPEAMP && last) {
+            /* a |& b is a 2>&1 | b */
+            sh_redir **rl = &last->redirs, *r = (sh_redir *)alloc(L->p, sizeof(sh_redir));
+            if (r) {
+                r->kind = SH_R_DUPOUT;
+                r->fd = 2;
+                r->target = dup_n(L->p, "1", 1);
+                while (*rl)
+                    rl = &(*rl)->next;
+                *rl = r;
+            }
+        }
         next(L);
         skip_newlines(L);
         p->a = n;
         p->b = parse_command(L);
+        last = p->b;
         n = p;
     }
     if (not) {

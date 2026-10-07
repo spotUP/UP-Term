@@ -18,7 +18,12 @@ enum sh_redir_kind {
     SH_R_DUPIN,   /* <&   */
     SH_R_DUPOUT,  /* >&   */
     SH_R_BOTH,    /* &>   stdout and stderr to a file */
-    SH_R_HEREDOC  /* <<   target is the document's text; quoted delimiter: no expansion */
+    SH_R_HEREDOC, /* <<   target is the document's text; quoted delimiter: no expansion */
+    SH_R_HERESTR, /* <<<  target is a word; its expansion and a newline are the input */
+    SH_R_RDWR,    /* <>   read and write, no truncation */
+    SH_R_CLOBBER, /* >|   like > but ignores noclobber */
+    SH_R_BOTHAPP, /* &>>  stdout and stderr appended to a file */
+    SH_R_CLOSE    /* n>&- and n<&-: the stream is closed */
 };
 
 typedef struct sh_redir {
@@ -26,6 +31,7 @@ typedef struct sh_redir {
     enum sh_redir_kind kind;
     char *target;           /* a word, or for << the document */
     int quoted;             /* << with a quoted delimiter: the document is literal */
+    int strip;              /* <<- : the leading tabs of the document's lines are removed */
     struct sh_redir *next;
 } sh_redir;
 
@@ -50,6 +56,7 @@ enum sh_kind {
 typedef struct sh_case {
     sh_word *patterns;      /* p1 | p2 ... */
     struct sh_node *body;
+    int term;               /* 0 ;;   1 ;& (run the next body too)   2 ;;& (test the next patterns) */
     struct sh_case *next;
 } sh_case;
 
