@@ -127,3 +127,39 @@ int vw_break(void)
 {
     return (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) != 0;
 }
+
+/* the real cat is UP-Term:bin/cat; the command line is built here, an argument in quotes (* escapes). The
+ * local variable HL_EXEC_CAT stops a cat that is hl itself from running hl again. */
+int vw_exec_cat(int argc, char **argv)
+{
+    char line[1024];
+    char tmp[4];
+    int i, l;
+    if (GetVar((STRPTR)"HL_EXEC_CAT", (STRPTR)tmp, sizeof(tmp), LV_VAR) >= 0) {
+        vw_say("hl: no cat other than hl found\n");
+        return vw_fail_code;
+    }
+    SetVar((STRPTR)"HL_EXEC_CAT", (STRPTR)"1", 1, LV_VAR | GVF_LOCAL_ONLY);
+    strcpy(line, "UP-Term:bin/cat");
+    l = (int)strlen(line);
+    for (i = 1; i < argc; i++) {
+        const char *a = argv[i];
+        if (!strcmp(a, "-p") || !strcmp(a, "--plain"))
+            continue;
+        if (l + 2 * (int)strlen(a) + 4 >= (int)sizeof(line)) {
+            vw_say("hl: the command line is too long for cat\n");
+            return vw_fail_code;
+        }
+        line[l++] = ' ';
+        line[l++] = '"';
+        for (; *a; a++) {
+            if (*a == '"' || *a == '*' || *a == '\n')
+                line[l++] = '*';
+            line[l++] = *a == '\n' ? 'N' : *a;
+        }
+        line[l++] = '"';
+        line[l] = 0;
+    }
+    l = (int)SystemTags((STRPTR)line, TAG_END);
+    return l;
+}

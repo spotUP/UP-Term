@@ -232,6 +232,10 @@ int main(int argc, char **argv)
     op.plain = 0;
     op.tabs = 8;
     op.lang = 0;
+    for (i = 1; i < argc; i++)
+        if (!strcmp(argv[i], "-p") || !strcmp(argv[i], "--plain"))
+            op.plain = 1;
+    i = 1;
     vw_cli_init(&cli);
     files = (char **)malloc(sizeof(char *) * (argc + 1));
     if (!files)
@@ -243,12 +247,16 @@ int main(int argc, char **argv)
             return vw_fail_code;
         if (r > 0)
             continue;
+        /* hl -p is cat: an option hl does not own is cat's (cat -n numbers, -A shows, ...) */
+        if (op.plain && a[0] == '-' && a[1] && strcmp(a, "-p") && strcmp(a, "--plain") && strcmp(a, "-l") &&
+            strcmp(a, "--lang") && strncmp(a, "--lang=", 7) && strcmp(a, "--list"))
+            return vw_exec_cat(argc, argv);
         if (!strcmp(a, "-n") || !strcmp(a, "--number")) {
             op.numbers = 1;
         } else if (!strcmp(a, "-N") || !strcmp(a, "--no-number")) {
             op.numbers = 0;
         } else if (!strcmp(a, "-p") || !strcmp(a, "--plain")) {
-            op.plain = 1;
+            /* seen before the loop */
         } else if (!strcmp(a, "-l") || !strcmp(a, "--lang") || !strncmp(a, "--lang=", 7)) {
             const char *v = a[1] == 'l' ? (i + 1 < argc ? argv[++i] : "") : a[6] == '=' ? a + 7
                             : (i + 1 < argc ? argv[++i] : "");

@@ -25,6 +25,11 @@ int  vw_env(const char *name, char *buf, int n);
 /* Ctrl-C was pressed (and is now taken) */
 int  vw_break(void);
 
+/* Hand the command to the real cat: argv[0] is the program's name, the rest the arguments (hl -p is the
+ * cat of vsh, and an option it does not own is cat's). Returns only when cat could not be run (the return
+ * code to exit with); never runs hl itself again. */
+int  vw_exec_cat(int argc, char **argv);
+
 /* the return code for a failure: 10 (RETURN_ERROR) on AmigaDOS, 1 on Unix */
 extern const int vw_fail_code;
 

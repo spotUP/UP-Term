@@ -4,7 +4,7 @@ cat'): a .md or .markdown file on a console is drawn as mdv draws it; to a
 pipe or a file it is the bytes of the file, as cat. Any other file keeps its
 colours on a console and stays plain through a pipe. Runs build/hl and
 build/mdv on a pty."""
-import os, pty, subprocess, sys, tempfile, unittest
+import os, pty, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 HL = os.path.join(ROOT, 'build', 'hl')
@@ -81,6 +81,34 @@ class HlPlain(unittest.TestCase):
         m = os.path.join(self.tmp.name, 'cmd')
         put(m, DOC)
         self.assertEqual(piped([HL, '-p', m]), DOC)
+
+    def test_cat_options_run_the_real_cat(self):
+        # alias cat='hl -p': any option cat takes is cat's, even on a console
+        f = os.path.join(self.tmp.name, 'a.txt')
+        put(f, b'one\n\n\ntwo\tx\n')
+        real = shutil.which('cat')
+        for opts in (['-n'], ['-b'], ['-s'], ['-A'], ['-E'], ['-nE'], ['--number'], ['-T']):
+            want = subprocess.run([real] + opts + [f], stdout=subprocess.PIPE).stdout
+            self.assertEqual(piped([HL, '-p'] + opts + [f]), want, opts)
+            self.assertEqual(on_tty([HL, '-p'] + opts + [f]), want.replace(b'\r\n', b'\n'), opts)
+        # -p may follow the option
+        want = subprocess.run([real, '-n', f], stdout=subprocess.PIPE).stdout
+        self.assertEqual(piped([HL, '-n', '-p', f]), want)
+
+    def test_cat_options_never_run_hl_again(self):
+        # a PATH whose only cat is hl itself: an error, not a loop
+        d = os.path.join(self.tmp.name, 'bin')
+        os.mkdir(d)
+        os.symlink(HL, os.path.join(d, 'cat'))
+        env = dict(ENV, PATH=d)
+        r = subprocess.run([os.path.join(d, 'cat'), '-p', '-n', self.md], stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, env=env, timeout=10)
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_hl_without_p_keeps_its_own_options(self):
+        f = os.path.join(self.tmp.name, 'a.c')
+        put(f, b'int x;\n')
+        self.assertIn(b'1', piped([HL, '-n', f]))
 
 
 if __name__ == '__main__':

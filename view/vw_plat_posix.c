@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include "vw_plat.h"
 
 const int vw_fail_code = 1;
@@ -97,4 +98,73 @@ int vw_env(const char *name, char *buf, int n)
 int vw_break(void)
 {
     return 0;
+}
+
+/* the real cat: the first cat on PATH that is not this program (same device and inode as argv[0]) */
+static int is_self(const char *path, const char *argv0)
+{
+    struct stat a, b;
+    const char *p, *e;
+    char full[1024];
+    if (stat(path, &a))
+        return 0;
+    if (strchr(argv0, '/'))
+        return !stat(argv0, &b) && a.st_dev == b.st_dev && a.st_ino == b.st_ino;
+    p = getenv("PATH");
+    for (; p && *p; p = *e ? e + 1 : e) {
+        size_t l;
+        e = strchr(p, ':');
+        if (!e)
+            e = p + strlen(p);
+        l = (size_t)(e - p);
+        if (l + strlen(argv0) + 2 > sizeof(full))
+            continue;
+        memcpy(full, p, l);
+        full[l] = 0;
+        strcat(full, l ? "/" : "./");
+        strcat(full, argv0);
+        if (!stat(full, &b) && a.st_dev == b.st_dev && a.st_ino == b.st_ino)
+            return 1;
+    }
+    return 0;
+}
+
+int vw_exec_cat(int argc, char **argv)
+{
+    const char *p = getenv("PATH");
+    const char *e;
+    char full[1024];
+    char **av;
+    int i, n = 0;
+    if (getenv("HL_EXEC_CAT")) {
+        vw_say("hl: no cat other than hl found\n");
+        return vw_fail_code;
+    }
+    av = (char **)malloc(sizeof(char *) * (argc + 2));
+    if (!av)
+        return vw_fail_code;
+    av[n++] = (char *)"cat";
+    for (i = 1; i < argc; i++)
+        if (strcmp(argv[i], "-p") && strcmp(argv[i], "--plain"))
+            av[n++] = argv[i];
+    av[n] = 0;
+    setenv("HL_EXEC_CAT", "1", 1);
+    for (; p && *p; p = *e ? e + 1 : e) {
+        size_t l;
+        e = strchr(p, ':');
+        if (!e)
+            e = p + strlen(p);
+        l = (size_t)(e - p);
+        if (l + 5 > sizeof(full))
+            continue;
+        memcpy(full, p, l);
+        full[l] = 0;
+        strcat(full, l ? "/cat" : "./cat");
+        if (access(full, X_OK) || is_self(full, argv[0]))
+            continue;
+        execv(full, av);
+    }
+    free(av);
+    vw_say("hl: cannot run cat\n");
+    return vw_fail_code;
 }
