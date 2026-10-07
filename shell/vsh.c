@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sh_exec.h"
+#include "sh_pipe.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
@@ -96,12 +97,9 @@ typedef struct job {
 
 /* The pipes vsh made. AmigaOS has no SIGPIPE: a PIPE: writer whose reader
  * has gone blocks for ever (rig: List | less, q, and the shell never came
- * back). So closing a read end is the broken pipe: the writer gets Ctrl-C
- * and the pipe is read dry, which lets its blocked Write return. */
-typedef struct pipe_rec {
-    BPTR rd, wr;
-    job *writer;            /* the command writing it, if one runs */
-} pipe_rec;
+ * back). So closing a read end reads the pipe dry, which lets a blocked
+ * Write return, and a writer that writes to it gets Ctrl-C (sh_pipe.h). */
+typedef sh_pipe_rec pipe_rec; /* handles and jobs are kept as void * (shell/sh_pipe.h) */
 
 static pipe_rec pipe_tab[32];
 
@@ -206,22 +204,25 @@ static void close_stream(BPTR fh)
         return;
     Forbid();
     for (i = 0; i < 32; i++)
-        if (pipe_tab[i].rd == fh || pipe_tab[i].wr == fh)
+        if (pipe_tab[i].rd == (void *)fh || pipe_tab[i].wr == (void *)fh)
             pr = &pipe_tab[i];
-    if (pr && pr->rd == fh) {
-        if (pr->writer)
-            job_break(pr->writer);
+    if (pr && pr->rd == (void *)fh) {
+        sp_reader_closed(pr);
         Permit();
         {
             static char sink[512]; /* only read into, never used: shared is fine */
-            while (Read(fh, sink, sizeof(sink)) > 0)
-                ;
+            LONG n;
+            while ((n = Read(fh, sink, sizeof(sink))) > 0) {
+                Forbid();
+                if (sp_drained(pr, (long)n))
+                    job_break((job *)pr->writer);
+                Permit();
+            }
         }
         Forbid();
         pr->rd = 0;
     } else if (pr) {
-        pr->wr = 0;
-        pr->writer = 0;
+        sp_writer_gone(pr);
     }
     Permit();
     Close(fh);
@@ -324,9 +325,7 @@ static int os_pipe(void *os, sh_fh *rd, sh_fh *wr)
     Forbid();
     for (k = 0; k < 32; k++)
         if (!pipe_tab[k].rd && !pipe_tab[k].wr) {
-            pipe_tab[k].rd = (BPTR)*rd;
-            pipe_tab[k].wr = (BPTR)*wr;
-            pipe_tab[k].writer = 0;
+            sp_init(&pipe_tab[k], (void *)*rd, (void *)*wr);
             break;
         }
     Permit();
@@ -768,7 +767,7 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         int i;
         Forbid();
         for (i = 0; i < 32; i++)
-            if (pipe_tab[i].wr == j->out)
+            if (pipe_tab[i].wr == (void *)j->out)
                 pipe_tab[i].writer = j;
         Permit();
     }
@@ -1258,7 +1257,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
         int i;
         Forbid();
         for (i = 0; i < 32; i++)
-            if (pipe_tab[i].wr == (BPTR)j->io.out)
+            if (pipe_tab[i].wr == (void *)j->io.out)
                 pipe_tab[i].writer = j;
         Permit();
     }

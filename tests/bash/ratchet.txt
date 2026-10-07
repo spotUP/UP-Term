@@ -612,6 +612,7 @@ invocation/stdin_noarg
 invocation/type_missing_volume
 invocation/u_script
 invocation/x_script
+jobs/pipe_status_early_reader
 options/dash_flags
 options/dollarmin
 options/ee_andor
