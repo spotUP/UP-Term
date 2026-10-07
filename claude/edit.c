@@ -406,11 +406,13 @@ static int edit_key(cl_edit *e, const cl_key *k)
     case K_DEL:
         ed_cut(e, e->cur, ed_next(e, e->cur), 0);
         return 1;
-    case K_LEFT:
-        e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_back(e, e->cur) : ed_prev(e, e->cur);
+    case K_LEFT:    /* Shift: the line's start, as AmigaShell's Shift+Left */
+        e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_back(e, e->cur)
+               : k->mods & KM_SHIFT ? ed_lstart(e, e->cur) : ed_prev(e, e->cur);
         return 1;
-    case K_RIGHT:
-        e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_fwd(e, e->cur) : ed_next(e, e->cur);
+    case K_RIGHT:   /* Shift: the line's end, as AmigaShell's Shift+Right */
+        e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_fwd(e, e->cur)
+               : k->mods & KM_SHIFT ? ed_lend(e, e->cur) : ed_next(e, e->cur);
         return 1;
     case K_HOME:
         e->cur = ed_lstart(e, e->cur);

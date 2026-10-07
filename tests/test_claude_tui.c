@@ -775,6 +775,26 @@ static void editor_words_undo(void)
     ed_free(&e);
 }
 
+/* Shift+Left / Shift+Right move to the line's start / end, as in AmigaShell:
+ * the Amiga's own codes (CSI space A / CSI space @) and xterm's (CSI 1;2D/C) */
+static void shift_arrows_line_ends(void)
+{
+    cl_edit e;
+    ed_init(&e);
+    type(&e, "hello world");
+    type(&e, "\233 A");                    /* Amiga Shift+Left */
+    CHECK_INT(e.cur, 0);
+    type(&e, "\233 @");                    /* Amiga Shift+Right */
+    CHECK_INT(e.cur, 11);
+    type(&e, "\033[1;2D");                 /* xterm Shift+Left */
+    CHECK_INT(e.cur, 0);
+    type(&e, "\033[1;2C");                 /* xterm Shift+Right */
+    CHECK_INT(e.cur, 11);
+    type(&e, "\033[D");                    /* plain Left still one character */
+    CHECK_INT(e.cur, 10);
+    ed_free(&e);
+}
+
 /* 1.8: vim mode */
 static void vim_mode(void)
 {
@@ -2032,6 +2052,7 @@ void suite_claude_tui(void)
     mk_tdir();
     history_and_search();
     editor_words_undo();
+    shift_arrows_line_ends();
     vim_mode();
     vim_visual_dot();
     bash_and_memory_box();
