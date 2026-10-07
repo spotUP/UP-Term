@@ -634,8 +634,50 @@ static int run_main(int argc, char **argv)
         else if (inf.script)
             sh_run_script(&sh); /* the arguments stay $1 ... */
         else {
-            /* a script on standard input */
+            /* a script on standard input; an interactive shell (-i) reads it a line at a time as vsh does: the prompt
+             * hook, history expansion, PS0, the history list */
             char *text = 0, buf[4096];
+            if (sh.opts & SO_INTERACTIVE) {
+                int incomplete = 0;
+                size_t tl = 0;
+                while (!sh.exiting) {
+                    size_t n;
+                    if (!text)
+                        sh_prompt_command(&sh);
+                    if (!fgets(buf, sizeof(buf), stdin))
+                        break;
+                    if (!text) {
+                        char *ex;
+                        int po, r = sh_hist_expand(&sh, buf, &ex, &po);
+                        if (r < 0)
+                            continue;
+                        if (r > 0) {
+                            fputs(ex, stderr);
+                            if (po) {
+                                sh_hist_replace(&sh, ex, 1);
+                                free(ex);
+                                continue;
+                            }
+                            snprintf(buf, sizeof(buf), "%s", ex);
+                            free(ex);
+                        }
+                    }
+                    n = strlen(buf);
+                    text = (char *)realloc(text, tl + n + 1);
+                    memcpy(text + tl, buf, n + 1);
+                    tl += n;
+                    sh.ps0_on = 1;
+                    sh_run_text(&sh, text, &incomplete);
+                    sh.ps0_on = 0;
+                    if (incomplete)
+                        continue;
+                    free(text);
+                    text = 0;
+                    tl = 0;
+                }
+                free(text);
+                text = 0;
+            } else {
             size_t len = 0, n;
             while ((n = fread(buf, 1, sizeof(buf), stdin)) > 0) {
                 text = (char *)realloc(text, len + n + 1);
@@ -646,6 +688,7 @@ static int run_main(int argc, char **argv)
             if (text)
                 sh_run_text(&sh, text, 0);
             free(text);
+            }
         }
     }
     (void)first;

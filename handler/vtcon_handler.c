@@ -217,6 +217,8 @@ typedef struct con {
     struct complete_req *check;  /* is the first word a command */
     struct complete_req *hist;   /* history file: load at open, append per line */
     int hist_busy;
+    long hist_filesize;          /* HISTFILESIZE from the shell: lines kept in the file (0: HISTORY_KEEP) */
+    int hist_reload;             /* the list was made bigger: read the file again when the worker is free */
     char hist_queue[512];        /* lines waiting for the file, '\n'-ended */
     int hist_queue_len;
     int comp_busy, check_busy;
@@ -3198,7 +3200,10 @@ static void history_load(con *c)
     if (!ensure_worker(c, WORK_HIST) || c->hist_busy)
         return;
     c->hist->data = 0; /* the worker makes it at the file's size */
-    c->hist->data_max = HISTORY_KEEP * 2 * 256;
+    c->hist->keep = c->hist_filesize > HISTORY_KEEP ? c->hist_filesize : HISTORY_KEEP;
+    if (c->le.hist_max > c->hist->keep)
+        c->hist->keep = c->le.hist_max;
+    c->hist->data_max = c->hist->keep * 2 * 256;
     c->hist->mode = HISTORY_LOAD;
     if (complete_start(c->hist, c->comp_port, opener(c)))
         c->hist_busy = 1;
@@ -3284,6 +3289,11 @@ static void finish_completion(con *c)
                     }
                 FreeVec(q->data);
                 q->data = 0;
+            }
+            if (c->hist_reload) {
+                c->hist_reload = 0;
+                le_hist_clear(&c->le);
+                history_load(c);   /* the list was made bigger: all the file's lines now */
             }
             history_next(c);
             continue;
@@ -3721,7 +3731,8 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
     if (le_key(&c->le, key ? key : (n ? (long)b[0] : 0), mods, b, n)) {
         char line[256], *ans = 0;
         int l = copy_latin1(&c->le, 0, c->le.len, line, sizeof(line));
-        history_save(c, c->le.buf, c->le.len);
+        if (le_hist_wants(&c->le))
+            history_save(c, c->le.buf, c->le.len);
         /* the answer (the help is long) on the heap: the stack is small, and
          * a static would be every window's (one code, many processes) */
         if (l > 1 && line[0] == '/' && line[1] >= 'a' && line[1] <= 'z' &&
@@ -5807,6 +5818,38 @@ static void packet(con *c, struct DosPacket *p)
         case VTCON_HIST_DEL:
             reply(p, le_hist_del(&c->le, (int)p->dp_Arg3) == 0 ? DOSTRUE : DOSFALSE, 0);
             return;
+        case VTCON_HIST_CONFIG: {
+            /* "HISTSIZE\nHISTFILESIZE\nHISTCONTROL": numbers (empty: the default), the control words */
+            const char *t = (const char *)p->dp_Arg4;
+            int old_max = c->le.hist_max > 0 ? c->le.hist_max : LE_HIST;
+            long size = 0, fsize = 0;
+            if (!t) {
+                reply(p, DOSFALSE, ERROR_REQUIRED_ARG_MISSING);
+                return;
+            }
+            while (*t >= '0' && *t <= '9')
+                size = size * 10 + (*t++ - '0');
+            if (*t == '\n')
+                t++;
+            while (*t >= '0' && *t <= '9')
+                fsize = fsize * 10 + (*t++ - '0');
+            if (*t == '\n')
+                t++;
+            c->le.hist_ctl = (strstr(t, "ignorespace") || strstr(t, "ignoreboth") ? LE_HC_IGNORESPACE : 0) |
+                             (strstr(t, "erasedups") ? LE_HC_ERASEDUPS : 0);
+            c->hist_filesize = fsize;
+            le_hist_limit(&c->le, (int)size);
+            if ((c->le.hist_max > 0 ? c->le.hist_max : LE_HIST) > old_max) {
+                if (c->hist_busy)
+                    c->hist_reload = 1;
+                else {
+                    le_hist_clear(&c->le);
+                    history_load(c);
+                }
+            }
+            reply(p, DOSTRUE, 0);
+            return;
+        }
         case VTCON_HIST_CLEAR:
             le_hist_clear(&c->le);
             reply(p, DOSTRUE, 0);

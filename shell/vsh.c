@@ -1332,7 +1332,7 @@ static long os_hist(void *os, int op, long arg, char *buf, long max)
     r = DoPkt(fh->fh_Type, ACTION_VTCON_HISTORY, fh->fh_Arg1, op, arg, (LONG)buf, max);
     if (op == SH_HIST_COUNT && r == DOSFALSE && IoErr() == ERROR_ACTION_NOT_KNOWN)
         return -1;
-    if (op == SH_HIST_DEL || op == SH_HIST_ADD || op == SH_HIST_CLEAR)
+    if (op == SH_HIST_DEL || op == SH_HIST_ADD || op == SH_HIST_CLEAR || op == SH_HIST_CONFIG)
         return r ? 1 : 0;
     return r;
 }
@@ -1354,8 +1354,12 @@ static void put_str(const char *s)
 
 static void prompt(sh_shell *sh, int more)
 {
-    const char *ps = sh_get(&sh->ctx, more ? "PS2" : "PS1");
-    char *text = sh_prompt(sh, ps ? ps : more ? "> " : "%F{cyan}%~%f %# ");
+    const char *ps;
+    char *text;
+    if (!more)
+        sh_prompt_command(sh);
+    ps = sh_get(&sh->ctx, more ? "PS2" : "PS1");
+    text = sh_prompt(sh, ps ? ps : more ? "> " : "%F{cyan}%~%f %# ");
     if (term_marks && !more) {
         char b[600];
         char *dir = os_cwd(0);
@@ -1612,11 +1616,33 @@ static int vsh_main(int argc, char **argv)
         if (!text) {
             sh_notify(&sh);
             send_words(&sh);
+            sh_hist_config(&sh);
         }
         if (IsInteractive(Input())) /* a script or a pipe gets no prompts */
             prompt(&sh, text != 0);
         if (!FGets(Input(), (STRPTR)line, sizeof(line)))
             break;
+        if (!text && (sh.opts & SO_INTERACTIVE) && (sh.opts & SO_HISTEXP)) {
+            /* the first line of a command: !! !$ ^a^b ... (bash shows the expanded line) */
+            char *ex;
+            int po, r = sh_hist_expand(&sh, line, &ex, &po);
+            if (r < 0)
+                continue;
+            if (r > 0) {
+                long m = (long)strlen(ex);
+                Write(Output(), ex, m);
+                sh_hist_replace(&sh, ex, po);
+                if (po) {
+                    free(ex);
+                    continue;
+                }
+                if (m >= (long)sizeof(line))
+                    m = (long)sizeof(line) - 1;
+                memcpy(line, ex, (size_t)m);
+                line[m] = 0;
+                free(ex);
+            }
+        }
         n = (long)strlen(line);
         {
             char *t = (char *)realloc(text, len + n + 1);
@@ -1631,10 +1657,11 @@ static int vsh_main(int argc, char **argv)
             put_str("\033]133;C\007"); /* a command's output starts here */
             command_ran = 1;
         }
+        sh.ps0_on = (sh.opts & SO_INTERACTIVE) != 0;
         sh_run_text(&sh, text, &incomplete);
+        sh.ps0_on = 0;
         if (incomplete)
             continue;
-        sh_hist_note(&sh, text);
         free(text);
         text = 0;
         len = 0;

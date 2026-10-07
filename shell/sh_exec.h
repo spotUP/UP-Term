@@ -153,6 +153,7 @@ typedef struct sh_os {
 #define SH_HIST_GET   1   /* line arg (0 = oldest) into buf (max bytes): its length, -1 none */
 #define SH_HIST_ADD   2   /* buf: one more line, in memory only */
 #define SH_HIST_DEL   3   /* delete line arg: 0 ok, -1 none */
+#define SH_HIST_CONFIG 5  /* buf: "HISTSIZE\nHISTFILESIZE\nHISTCONTROL" for the console that keeps the list */
 #define SH_HIST_CLEAR 4   /* empty the list, in memory only */
 
 typedef struct sh_func {
@@ -196,6 +197,7 @@ typedef struct sh_retired {
 #define SO_ICOMMENTS   0x10000UL
 #define SO_ERRTRACE    0x40000UL  /* set -E: functions and subshells inherit the ERR trap */
 #define SO_FUNCTRACE   0x80000UL  /* set -T: functions and subshells inherit DEBUG and RETURN */
+#define SO_HISTEXP     0x100000UL /* set -H: history expansion (!! !$ ^a^b) of an interactive shell's lines, on by default there */
 #define SO_INERT       0x20000UL  /* the accepted names with no effect (emacs vi history ...): first of many */
 
 /* a temp file of a here-document or process substitution: removed when the command using it ends;
@@ -220,6 +222,9 @@ typedef struct sh_shell {
     sh_list aliases;       /* "name=value" */
     sh_list hist;          /* history: the shell's own list, used only when the console has none (os.hist) */
     int hist_native;       /* 0 not asked yet, 1 the console keeps the list, -1 the shell does */
+    char *hx_old, *hx_new, *hx_find; /* history expansion: the last :s/old/new/ and the last !?str? */
+    char *hist_cfg;        /* what sh_hist_config last sent */
+    int ps0_on;            /* the interactive loop is reading: sh_run_text shows PS0 before a command runs */
     long hist_base;        /* history numbers start after this many lines that HISTSIZE dropped */
     long hist_saved;       /* history -a: the lines before this index are in the file already */
     sh_list hashtab;       /* hash: "name\tpath\thits" in the order they were added */
@@ -350,6 +355,21 @@ void sh_hist_note(sh_shell *sh, const char *text);
 /* An interactive shell with a list of its own (no console list) reads HISTFILE at its start and, at its end,
  * adds the lines of this session to it, keeping the last HISTFILESIZE (default 500) lines; with a console
  * list (vtcon) both do nothing, the console loads and appends the file itself. */
+/* History expansion of an interactive line (set -H). Returns 0: nothing to expand; 1: *out is the expanded
+ * line (malloc'ed; *print_only: it ends in :p, so it is shown and entered but not run); -1: an error was
+ * said (event not found, bad word specifier) and the line is dropped. On a console that keeps the list
+ * the line being read is its newest entry already, which !! does not mean. */
+/* the line just expanded replaces the raw one the console list took on Enter (add_own: a print-only line the
+ * shell must enter itself) */
+void sh_hist_replace(sh_shell *sh, const char *text, int add_own);
+int  sh_hist_expand(sh_shell *sh, const char *line, char **out, int *print_only);
+/* PROMPT_COMMAND (a string, or every element of an array) runs before each primary prompt with $? kept; PS0,
+ * expanded as a prompt, is what is shown after a command line is read and before it runs (malloc'ed, 0 if
+ * PS0 is unset or empty). */
+void sh_prompt_command(sh_shell *sh);
+char *sh_ps0(sh_shell *sh);
+/* tell a console that keeps the list HISTSIZE, HISTFILESIZE and HISTCONTROL when they have changed (before a prompt) */
+void sh_hist_config(sh_shell *sh);
 void sh_hist_load(sh_shell *sh);
 void sh_hist_save(sh_shell *sh);
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);

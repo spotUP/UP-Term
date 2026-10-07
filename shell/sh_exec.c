@@ -115,7 +115,7 @@ static const struct sh_opt {
 } sh_optab[] = {
     { "allexport", 'a', SO_ALLEXPORT }, { "braceexpand", 'B', SO_BRACEEXPAND }, { "emacs", 0, SO_INERT },
     { "errexit", 'e', SO_ERREXIT }, { "errtrace", 'E', SO_ERRTRACE }, { "functrace", 'T', SO_FUNCTRACE },
-    { "hashall", 'h', SO_HASHALL }, { "histexpand", 'H', SO_INERT }, { "history", 0, SO_INERT },
+    { "hashall", 'h', SO_HASHALL }, { "histexpand", 'H', SO_HISTEXP }, { "history", 0, SO_INERT },
     { "ignoreeof", 0, SO_INERT }, { "interactive-comments", 0, SO_ICOMMENTS }, { "keyword", 'k', SO_INERT },
     { "monitor", 'm', SO_INERT }, { "noclobber", 'C', SO_NOCLOBBER }, { "noexec", 'n', SO_NOEXEC },
     { "noglob", 'f', SO_NOGLOB }, { "nolog", 0, SO_INERT }, { "notify", 'b', SO_INERT },
@@ -307,6 +307,10 @@ void sh_shell_free(sh_shell *sh)
     free(sh->locals);
     sh_list_free(&sh->aliases);
     sh_list_free(&sh->hist);
+    free(sh->hist_cfg);
+    free(sh->hx_old);
+    free(sh->hx_new);
+    free(sh->hx_find);
     sh_list_free(&sh->hashtab);
     free(sh->hashpath);
     sh_list_free(&sh->disabled);
@@ -4480,6 +4484,8 @@ static long b_popd(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static long b_hash(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_history(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_fc(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static void hx_replace(pbuf *r, const char *s, const char *old, const char *nw, int global);
 static long b_enable(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_times(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_caller(sh_shell *sh, int argc, char **argv, const sh_io *io);
@@ -4507,7 +4513,7 @@ static const struct {
     { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
-    { "hash", b_hash }, { "history", b_history }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout }, { 0, 0 }
+    { "hash", b_hash }, { "history", b_history }, { "fc", b_fc }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout }, { 0, 0 }
 };
 
 /* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
@@ -4724,14 +4730,56 @@ static void hist_clear(sh_shell *sh)
     sh->hist_saved = 0;
 }
 
+/* HISTIGNORE: colon-separated patterns; a line that matches one whole is not remembered; & in a pattern is the
+ * previous line */
+static int hist_ignored(sh_shell *sh, const char *line, const char *prev)
+{
+    const char *p = sh_get(&sh->ctx, "HISTIGNORE");
+    int hit = 0;
+    while (p && *p && !hit) {
+        const char *e = strchr(p, ':');
+        size_t l = e ? (size_t)(e - p) : strlen(p);
+        pbuf pat = { 0, 0, 0 };
+        size_t k;
+        for (k = 0; k < l; k++) {
+            if (p[k] == '\\' && k + 1 < l)
+                pb_add(&pat, p + ++k - 1, 2);
+            else if (p[k] == '&' && prev) {
+                const char *q;   /* the previous line, its glob characters quoted */
+                for (q = prev; *q; q++) {
+                    if (strchr("*?[]\\", *q))
+                        pb_add(&pat, "\\", 1);
+                    pb_add(&pat, q, 1);
+                }
+            } else
+                pb_add(&pat, p + k, 1);
+        }
+        if (pat.s && sh_match(pat.s, line, 0))
+            hit = 1;
+        free(pat.s);
+        p = e ? e + 1 : 0;
+    }
+    return hit;
+}
+
 void sh_hist_note(sh_shell *sh, const char *text)
 {
     char *t;
     size_t n;
     const char *ctl;
     long last;
-    if (!(sh->opts & SO_INTERACTIVE) || !hist_own(sh))
-        return;   /* a console with a list has the line already */
+    if (!(sh->opts & SO_INTERACTIVE))
+        return;
+    if (!hist_own(sh)) {
+        /* a console with a list has the line already (and applied HISTCONTROL); HISTIGNORE is the shell's */
+        long cnt = hist_count(sh);
+        char *cur = cnt > 0 ? hist_get(sh, cnt - 1) : 0, *prev = cnt > 1 ? hist_get(sh, cnt - 2) : 0;
+        if (cur && hist_ignored(sh, cur, prev))
+            hist_del(sh, cnt - 1);
+        free(cur);
+        free(prev);
+        return;
+    }
     while (*text == '\n')
         text++;
     n = strlen(text);
@@ -4739,11 +4787,35 @@ void sh_hist_note(sh_shell *sh, const char *text)
         n--;
     if (!n)
         return;
-    t = (char *)malloc(n + 1);
+    t = (char *)malloc(2 * n + 1);   /* a newline may become two characters */
     if (!t)
         return;
     memcpy(t, text, n);
     t[n] = 0;
+    if (!strstr(t, "<<")) {
+        /* a command of several lines is one entry (bash cmdhist): a newline becomes "; ", or a space after a
+         * word that wants no separator (then do else {) or an operator */
+        char *nl;
+        while ((nl = strchr(t, '\n')) != 0) {
+            const char *b = nl;
+            size_t w;
+            int plain;
+            while (b > t && (b[-1] == ' ' || b[-1] == '\t'))
+                b--;
+            for (w = (size_t)(b - t); w > 0 && t[w - 1] != ' ' && t[w - 1] != '\t' && t[w - 1] != '\n'; w--)
+                ;
+            plain = !((b - t - (long)w == 4 && !strncmp(t + w, "then", 4)) || (b - t - (long)w == 2 && !strncmp(t + w, "do", 2)) ||
+                      (b - t - (long)w == 4 && !strncmp(t + w, "else", 4)) || (b - t - (long)w == 4 && !strncmp(t + w, "elif", 4)) ||
+                      (b > t && strchr(";&|{(\\", b[-1])));
+            if (plain)
+                memmove(nl + 2, nl + 1, strlen(nl + 1) + 1);
+            if (plain) {
+                nl[0] = ';';
+                nl[1] = ' ';
+            } else
+                nl[0] = ' ';
+        }
+    }
     ctl = sh_get(&sh->ctx, "HISTCONTROL");
     last = sh->hist.n;
     if (ctl && (strstr(ctl, "ignorespace") || strstr(ctl, "ignoreboth")) && t[0] == ' ') {
@@ -4751,6 +4823,10 @@ void sh_hist_note(sh_shell *sh, const char *text)
         return;
     }
     if (ctl && (strstr(ctl, "ignoredups") || strstr(ctl, "ignoreboth")) && last && !strcmp(sh->hist.v[last - 1], t)) {
+        free(t);
+        return;
+    }
+    if (hist_ignored(sh, t, last ? sh->hist.v[last - 1] : 0)) {
         free(t);
         return;
     }
@@ -4961,6 +5037,28 @@ static long b_history(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+void sh_hist_config(sh_shell *sh)
+{
+    pbuf b = { 0, 0, 0 };
+    const char *v;
+    if (hist_own(sh))
+        return;
+    v = sh_get(&sh->ctx, "HISTSIZE");
+    pb_str(&b, v ? v : "");
+    pb_add(&b, "\n", 1);
+    v = sh_get(&sh->ctx, "HISTFILESIZE");
+    pb_str(&b, v ? v : "");
+    pb_add(&b, "\n", 1);
+    v = sh_get(&sh->ctx, "HISTCONTROL");
+    pb_str(&b, v ? v : "");
+    if (b.s && (!sh->hist_cfg || strcmp(sh->hist_cfg, b.s))) {
+        sh->os.hist(sh->os.data, SH_HIST_CONFIG, 0, b.s, 0);
+        free(sh->hist_cfg);
+        sh->hist_cfg = b.s;
+    } else
+        free(b.s);
+}
+
 void sh_hist_load(sh_shell *sh)
 {
     const char *f = sh_get(&sh->ctx, "HISTFILE");
@@ -5005,6 +5103,253 @@ void sh_hist_save(sh_shell *sh)
         sh->hist_saved = sh->hist.n;
     }
     sh_list_free(&all);
+}
+
+/* fc: a history spec to an entry number (1 = oldest shown). cur is the number the running command would have:
+ * a negative spec counts back from it, so -1 is the command before. 0: no such entry. */
+static long fc_spec(sh_shell *sh, const char *s, long cur, long base)
+{
+    char *e;
+    long n = strtol(s, &e, 10), i;
+    if (*s && !*e) {
+        if (n < 0)
+            n = cur + n;
+        else if (n == 0)
+            n = cur - 1;
+        return n >= base + 1 && n < cur ? n : 0;
+    }
+    for (i = cur - 1; i > base; i--) {
+        char *l = hist_get(sh, i - 1 - base);
+        int hit = l && !strncmp(l, s, strlen(s));
+        free(l);
+        if (hit)
+            return i;
+    }
+    return 0;
+}
+
+static long b_fc(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int a = 1, l = 0, nn = 0, r = 0, s = 0;
+    const char *ename = 0;
+    long cnt = hist_count(sh), base = hist_own(sh) ? sh->hist_base : 0, cur, first, last, i;
+    cur = base + cnt + ((sh->opts & SO_INTERACTIVE) ? 0 : 1);   /* an interactive shell has the fc line in the list */
+    for (; a < argc && argv[a][0] == '-' && argv[a][1] && !(argv[a][1] >= '0' && argv[a][1] <= '9'); a++) {
+        const char *q = argv[a] + 1;
+        if (!strcmp(argv[a], "--")) {
+            a++;
+            break;
+        }
+        for (; *q; q++) {
+            if (*q == 'l') l = 1;
+            else if (*q == 'n') nn = 1;
+            else if (*q == 'r') r = 1;
+            else if (*q == 's') s = 1;
+            else if (*q == 'e') {
+                if (q[1]) {
+                    ename = q + 1;
+                    q += strlen(q) - 1;
+                } else if (a + 1 < argc) {
+                    ename = argv[++a];
+                } else {
+                    err2(sh, io, "fc", "-e: option requires an argument");
+                    return 2;
+                }
+            } else {
+                char opt[3];
+                opt[0] = '-';
+                opt[1] = *q;
+                opt[2] = 0;
+                err2(sh, io, opt, "invalid option");
+                say(sh, io->err, "fc: usage: fc [-e ename] [-lnr] [first] [last] or fc -s [pat=rep] [command]\n");
+                return 2;
+            }
+        }
+    }
+    if (ename && !strcmp(ename, "-")) {
+        s = 1;
+        ename = 0;
+    }
+    if (l) {
+        if (a < argc) {
+            char *e;
+            (void)strtol(argv[a], &e, 10);
+            first = fc_spec(sh, argv[a], cur, base);
+            if (!first) {
+                if (*argv[a] && !*e)
+                    first = base + 1;   /* a number outside the list: from the oldest (bash) */
+                else {
+                    err2(sh, io, "fc", "no command found");
+                    return 1;
+                }
+            }
+            if (a + 1 < argc) {
+                last = fc_spec(sh, argv[a + 1], cur, base);
+                if (!last) {
+                    (void)strtol(argv[a + 1], &e, 10);
+                    if (*argv[a + 1] && !*e)
+                        last = cur - 1;
+                    else {
+                        err2(sh, io, "fc", "no command found");
+                        return 1;
+                    }
+                }
+            } else
+                last = cur - 1;
+        } else {
+            last = cur - 1;
+            first = last - 15 > base ? last - 15 : base + 1;
+        }
+        if (first > last) {
+            long t = first;
+            first = last;
+            last = t;
+            r = !r;
+        }
+        for (i = r ? last : first; r ? i >= first : i <= last; i += r ? -1 : 1) {
+            char *ln = hist_get(sh, i - 1 - base), num[24];
+            if (!ln)
+                continue;
+            if (nn) {
+                num[0] = '\t';
+                num[1] = ' ';
+                num[2] = 0;
+            } else {
+                long v = i;
+                int k = 20;
+                num[21] = '\t';
+                num[22] = ' ';
+                num[23] = 0;
+                do {
+                    num[k--] = (char)('0' + v % 10);
+                    v /= 10;
+                } while (v && k >= 0);
+                memmove(num, num + k + 1, (size_t)(23 - k));
+            }
+            sayl(sh, io->out, num, ln, "\n", NULL);
+            free(ln);
+        }
+        return 0;
+    }
+    {
+        /* re-run: -s [pat=rep] [cmd], or the edited commands first..last */
+        char *pat = 0, *rep = 0, *text = 0;
+        pbuf cmd = { 0, 0, 0 };
+        long st;
+        if (s) {
+            if (a < argc && strchr(argv[a], '=') && argv[a][0] != '=') {
+                const char *eq = strchr(argv[a], '=');
+                pat = (char *)malloc((size_t)(eq - argv[a]) + 1);
+                if (pat) {
+                    memcpy(pat, argv[a], (size_t)(eq - argv[a]));
+                    pat[eq - argv[a]] = 0;
+                }
+                rep = sdup(eq + 1);
+                a++;
+            }
+            first = a < argc ? fc_spec(sh, argv[a], cur, base) : fc_spec(sh, "-1", cur, base);
+            last = first;
+        } else {
+            first = a < argc ? fc_spec(sh, argv[a], cur, base) : fc_spec(sh, "-1", cur, base);
+            last = a + 1 < argc ? fc_spec(sh, argv[a + 1], cur, base) : first;
+        }
+        if (!first || !last) {
+            err2(sh, io, "fc", "no command found");
+            free(pat);
+            free(rep);
+            return 1;
+        }
+        if (first > last) {
+            long t = first;
+            first = last;
+            last = t;
+        }
+        for (i = first; i <= last; i++) {
+            char *ln = hist_get(sh, i - 1 - base);
+            if (ln) {
+                if (pat && *pat && strstr(ln, pat)) {
+                    pbuf rr = { 0, 0, 0 };
+                    hx_replace(&rr, ln, pat, rep ? rep : "", 0);
+                    free(ln);
+                    ln = rr.s ? rr.s : sdup("");
+                }
+                pb_str(&cmd, ln);
+                pb_add(&cmd, "\n", 1);
+                free(ln);
+            }
+        }
+        free(pat);
+        free(rep);
+        text = cmd.s ? cmd.s : sdup("");
+        if (!s) {
+            /* the editor: the commands in a temporary file, FCEDIT, EDITOR or vi on it, then run what it left */
+            const char *ed = ename ? ename : sh_get(&sh->ctx, "FCEDIT");
+            const char *tmp = sh->os.tmpdir ? sh->os.tmpdir(sh->os.data) : "T:";
+            char *path, *line;
+            sh_fh fh;
+            pbuf cl = { 0, 0, 0 };
+            long n;
+            if (!ed || !*ed)
+                ed = sh_get(&sh->ctx, "EDITOR");
+            if (!ed || !*ed)
+                ed = "vi";
+            path = (char *)malloc(strlen(tmp) + 16);
+            if (!path) {
+                free(text);
+                return 1;
+            }
+            strcpy(path, tmp);
+            strcat(path, "vsh-fc.tmp");
+            fh = sh->os.open(sh->os.data, path, SH_OPEN_WRITE);
+            if (!fh) {
+                err2(sh, io, path, "cannot open");
+                free(path);
+                free(text);
+                return 1;
+            }
+            put(sh, fh, text, (long)strlen(text));
+            sh->os.close(sh->os.data, fh);
+            pb_str(&cl, ed);
+            pb_add(&cl, " '", 2);
+            pb_str(&cl, path);
+            pb_add(&cl, "'", 1);
+            sh_run_text(sh, cl.s, 0);
+            free(cl.s);
+            free(text);
+            text = sdup("");
+            fh = sh->os.open(sh->os.data, path, SH_OPEN_READ);
+            line = (char *)malloc(1024);
+            if (fh && line) {
+                pbuf got = { 0, 0, 0 };
+                while ((n = sh->os.read_line(sh->os.data, fh, line, 1024)) >= 0)
+                    pb_add(&got, line, n);
+                free(text);
+                text = got.s ? got.s : sdup("");
+            }
+            if (fh)
+                sh->os.close(sh->os.data, fh);
+            free(line);
+            if (sh->os.remove)
+                sh->os.remove(sh->os.data, path);
+            free(path);
+        }
+        say(sh, io->err, text);
+        if (sh->opts & SO_INTERACTIVE) {
+            /* the command that runs takes the place of the fc line in the history */
+            size_t tn = strlen(text);
+            char *ent = sdup(text);
+            while (tn && ent[tn - 1] == '\n')
+                ent[--tn] = 0;
+            if (hist_count(sh) > 0)
+                hist_del(sh, hist_count(sh) - 1);
+            if (tn)
+                hist_add(sh, ent);
+            free(ent);
+        }
+        st = sh_run_text(sh, text, 0);
+        free(text);
+        return st;
+    }
 }
 
 static long b_hash(sh_shell *sh, int argc, char **argv, const sh_io *io)
@@ -7620,6 +7965,432 @@ static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return b_exit(sh, argc, argv, io);
 }
 
+/* ---- history expansion and the prompt hooks --------------------------------------------- */
+
+/* the words of a history line, as readline tokenizes it: blanks separate, quotes and backslashes keep a word
+ * together, an unquoted ; & | ( ) < > is a word of its own (two of the same character together) */
+static void hx_words(const char *l, sh_list *out)
+{
+    const char *p = l;
+    while (*p) {
+        const char *s;
+        char q = 0, *w;
+        while (*p == ' ' || *p == '\t' || *p == '\n')
+            p++;
+        if (!*p)
+            break;
+        s = p;
+        if (strchr(";&|()<>", *p)) {
+            p += (p[1] == *p && *p != '(' && *p != ')') ? 2 : 1;
+        } else {
+            while (*p && (q || !(*p == ' ' || *p == '\t' || *p == '\n' || strchr(";&|()<>", *p)))) {
+                if (*p == '\\' && p[1] && q != '\'')
+                    p++;
+                else if (q) {
+                    if (*p == q)
+                        q = 0;
+                } else if (*p == '\'' || *p == '"')
+                    q = *p;
+                p++;
+            }
+        }
+        w = (char *)malloc((size_t)(p - s) + 1);
+        if (!w)
+            return;
+        memcpy(w, s, (size_t)(p - s));
+        w[p - s] = 0;
+        sh_list_add(out, w);
+        free(w);
+    }
+}
+
+/* a word designator at p (after the colon, or right after the event for ^ $ * -): words f..l of nw; returns
+ * the text after it, or 0 when there is none; *bad: it names a word the line does not have */
+static const char *hx_desig(const char *p, int nw, int *f, int *l, int *bad)
+{
+    char *e;
+    long n;
+    *bad = 0;
+    if (*p == '^') {
+        *f = *l = 1;
+        p++;
+    } else if (*p == '$') {
+        *f = *l = nw - 1;
+        p++;
+    } else if (*p == '*') {
+        *f = 1;
+        *l = nw - 1;
+        p++;
+        if (nw < 2) {
+            *f = 1;
+            *l = 0;
+        }
+        return p;
+    } else if (*p >= '0' && *p <= '9') {
+        n = strtol(p, &e, 10);
+        *f = *l = (int)n;
+        p = e;
+        if (*p == '-') {
+            p++;
+            if (*p >= '0' && *p <= '9') {
+                *l = (int)strtol(p, &e, 10);
+                p = e;
+            } else if (*p == '$') {
+                *l = nw - 1;
+                p++;
+            } else
+                *l = nw - 2;
+        } else if (*p == '*') {
+            *l = nw - 1;
+            p++;
+        }
+    } else if (*p == '-' && p[1] >= '0' && p[1] <= '9') {
+        *f = 0;
+        *l = (int)strtol(p + 1, &e, 10);
+        p = e;
+    } else
+        return 0;
+    if (*f < 0 || *l >= nw || *f > *l + 1 || (*f > *l && !(*f == 1 && *l == 0)))
+        *bad = 1;
+    return p;
+}
+
+static void hx_replace(pbuf *r, const char *s, const char *old, const char *nw, int global)
+{
+    size_t ol = strlen(old);
+    const char *p = s;
+    int done = 0;
+    while (*p) {
+        if (ol && !strncmp(p, old, ol) && (global || !done)) {
+            const char *q;
+            for (q = nw; *q; q++)
+                pb_add(r, q, 1);
+            p += ol;
+            done = 1;
+        } else {
+            pb_add(r, p, 1);
+            p++;
+        }
+    }
+}
+
+void sh_hist_replace(sh_shell *sh, const char *text, int add_own)
+{
+    char *t = sdup(text);
+    size_t n = strlen(t);
+    while (n && (t[n - 1] == '\n' || t[n - 1] == '\r'))
+        t[--n] = 0;
+    if (!hist_own(sh)) {
+        long cnt = hist_count(sh);
+        if (cnt > 0)
+            hist_del(sh, cnt - 1);
+        if (n)
+            hist_add(sh, t);
+    } else if (add_own && n)
+        hist_add(sh, t);
+    free(t);
+}
+
+int sh_hist_expand(sh_shell *sh, const char *line, char **out, int *print_only)
+{
+    pbuf r = { 0, 0, 0 };
+    long total = hist_count(sh), last = total - (hist_own(sh) ? 0 : 1);   /* entries 0 .. last-1 are the past */
+    long base = hist_own(sh) ? sh->hist_base : 0;
+    const char *p = line;
+    char q = 0;
+    int changed = 0, pr = 0, rc = 0;
+    *out = 0;
+    *print_only = 0;
+    if (!hist_own(sh) && total > 0)
+        last = total - 1;
+    else
+        last = total;
+    if (!(sh->opts & SO_HISTEXP))
+        return 0;
+    for (; *p; ) {
+        char *ev = 0, *res = 0, *name = 0;
+        sh_list wl;
+        const char *s = p, *t;
+        long idx = -1;
+        int qs = 0;
+        if (q != '\'' && *p == '\\' && p[1]) {
+            pb_add(&r, p, 2);
+            p += 2;
+            continue;
+        }
+        if (!q && *p == '\'') { q = '\''; pb_add(&r, p++, 1); continue; }
+        if (q == '\'') { if (*p == '\'') q = 0; pb_add(&r, p++, 1); continue; }
+        if (*p == '"') { q = q ? 0 : '"'; pb_add(&r, p++, 1); continue; }
+        if (*p == '^' && p == line) {
+            /* ^old^new^ : the last line with the first old replaced */
+            const char *a = p + 1, *b = strchr(a, '^'), *c2, *end;
+            char *o, *n2;
+            pbuf rr = { 0, 0, 0 };
+            if (!b || last < 1)
+                goto literal;
+            c2 = strchr(b + 1, '^');
+            {
+                const char *nl = b + 1 + strcspn(b + 1, "\n");
+                end = c2 && c2 < nl ? c2 : nl;
+                if (end != c2)
+                    c2 = 0;
+            }
+            o = (char *)malloc((size_t)(b - a) + 1);
+            n2 = (char *)malloc((size_t)(end - (b + 1)) + 1);
+            if (!o || !n2) { free(o); free(n2); goto literal; }
+            memcpy(o, a, (size_t)(b - a)); o[b - a] = 0;
+            memcpy(n2, b + 1, (size_t)(end - (b + 1)));
+            n2[end - (b + 1)] = 0;
+            ev = hist_get(sh, last - 1);
+            if (!ev || !strstr(ev, o)) {
+                sayl(sh, sh->io.err, "vsh: ^", o, ": substitution failed\n", NULL);
+                free(o); free(n2); free(ev);
+                rc = -1;
+                goto done;
+            }
+            hx_replace(&rr, ev, o, n2, 0);
+            if (rr.s)
+                pb_add(&r, rr.s, (long)strlen(rr.s));
+            free(rr.s);
+            free(sh->hx_old); sh->hx_old = o;
+            free(sh->hx_new); sh->hx_new = n2;
+            free(ev);
+            p = c2 ? c2 + 1 : end;
+            changed = 1;
+            continue;
+        }
+    literal:
+        if (*p != '!' || !p[1] || strchr(" \t\n=(", p[1]) ||
+            (p > line && p[-1] == '$') || (p > line + 1 && p[-1] == '{' && p[-2] == '$')) {
+            pb_add(&r, p++, 1);
+            continue;
+        }
+        (void)qs;
+        /* the event */
+        p++;
+        if (*p == '!') {
+            idx = last - 1;
+            p++;
+        } else if (*p == '-' && p[1] >= '0' && p[1] <= '9') {
+            char *e;
+            long n = strtol(p + 1, &e, 10);
+            idx = last - n;
+            p = e;
+        } else if (*p >= '0' && *p <= '9') {
+            char *e;
+            long n = strtol(p, &e, 10);
+            idx = n - 1 - base;
+            p = e;
+            if (idx >= last)
+                idx = -1;
+        } else if (*p == '?') {
+            const char *b = ++p;
+            size_t l;
+            while (*p && *p != '?' && *p != '\n')
+                p++;
+            l = (size_t)(p - b);
+            name = (char *)malloc(l + 1);
+            if (!name) goto done;
+            memcpy(name, b, l); name[l] = 0;
+            if (*p == '?')
+                p++;
+            if (!l && sh->hx_find) { free(name); name = sdup(sh->hx_find); }
+            for (idx = last - 1; idx >= 0; idx--) {
+                char *c3 = hist_get(sh, idx);
+                int hit = c3 && name && strstr(c3, name);
+                free(c3);
+                if (hit) break;
+            }
+            if (name) { free(sh->hx_find); sh->hx_find = sdup(name); }
+        } else if (strchr("^$*", *p)) {
+            idx = last - 1;     /* !$ !^ !* : the designator follows at once */
+        } else {
+            const char *b = p;
+            size_t l;
+            while (*p && !strchr(" \t\n;&()|<>:=\"'", *p))
+                p++;
+            l = (size_t)(p - b);
+            name = (char *)malloc(l + 1);
+            if (!name) goto done;
+            memcpy(name, b, l); name[l] = 0;
+            for (idx = last - 1; idx >= 0; idx--) {
+                char *c3 = hist_get(sh, idx);
+                int hit = c3 && !strncmp(c3, name, l);
+                free(c3);
+                if (hit) break;
+            }
+        }
+        ev = idx >= 0 && idx < last ? hist_get(sh, idx) : 0;
+        if (!ev) {
+            char *txt;
+            long n = (long)(p - s);
+            txt = (char *)malloc((size_t)n + 1);
+            if (txt) {
+                memcpy(txt, s, (size_t)n);
+                txt[n] = 0;
+                sayl(sh, sh->io.err, "vsh: ", txt, ": event not found\n", NULL);
+                free(txt);
+            }
+            free(name);
+            rc = -1;
+            goto done;
+        }
+        free(name);
+        /* the word designator, then the modifiers */
+        memset(&wl, 0, sizeof(wl));
+        res = 0;
+        t = p;
+        {
+            int f, l, bad = 0, nw;
+            const char *after = 0;
+            hx_words(ev, &wl);
+            nw = wl.n;
+            if (*t == ':')
+                after = hx_desig(t + 1, nw, &f, &l, &bad);
+            else if (strchr("^$*", *t))
+                after = hx_desig(t, nw, &f, &l, &bad);
+            if (after) {
+                pbuf w = { 0, 0, 0 };
+                int k;
+                if (bad) {
+                    sayl(sh, sh->io.err, "vsh: ", ev, ": bad word specifier\n", NULL);
+                    sh_list_free(&wl);
+                    free(ev);
+                    rc = -1;
+                    goto done;
+                }
+                for (k = f; k <= l; k++) {
+                    if (k > f)
+                        pb_add(&w, " ", 1);
+                    pb_str(&w, wl.v[k]);
+                }
+                res = w.s ? w.s : sdup("");
+                t = after;
+            } else
+                res = sdup(ev);
+        }
+        sh_list_free(&wl);
+        free(ev);
+        while (*t == ':' && t[1] && strchr("htrepsg&", t[1])) {
+            int global = 0;
+            char m;
+            t++;
+            if (*t == 'g') {
+                global = 1;
+                t++;
+                if (!*t || !strchr("s&", *t)) { t--; break; }
+            }
+            m = *t++;
+            if (m == 'p') {
+                pr = 1;
+            } else if (m == 'h' || m == 't' || m == 'r' || m == 'e') {
+                char *sl = strrchr(res, '/'), *dot = strrchr(sl ? sl : res, '.');
+                if (m == 'h' && sl) *sl = 0;
+                else if (m == 't' && sl) memmove(res, sl + 1, strlen(sl + 1) + 1);
+                else if (m == 'r' && dot) *dot = 0;
+                else if (m == 'e') {
+                    if (dot) memmove(res, dot, strlen(dot) + 1);
+                    else res[0] = 0;
+                }
+            } else {
+                pbuf rr = { 0, 0, 0 };
+                char *o = 0, *n2 = 0;
+                if (m == 's') {
+                    char d = *t;
+                    const char *a, *b;
+                    if (d) {
+                        a = ++t;
+                        while (*t && *t != d) t += (*t == '\\' && t[1]) ? 2 : 1;
+                        o = (char *)malloc((size_t)(t - a) + 1);
+                        if (o) { memcpy(o, a, (size_t)(t - a)); o[t - a] = 0; }
+                        if (*t) t++;
+                        b = t;
+                        while (*t && *t != d) t += (*t == '\\' && t[1]) ? 2 : 1;
+                        n2 = (char *)malloc((size_t)(t - b) + 1);
+                        if (n2) { memcpy(n2, b, (size_t)(t - b)); n2[t - b] = 0; }
+                        if (*t) t++;
+                        /* \delim is the delimiter itself; & in new is the old text */
+                        if (o) { char *x, *y; for (x = y = o; *x; x++) { if (*x == '\\' && x[1] == d) x++; *y++ = *x; } *y = 0; }
+                        if (n2) {
+                            pbuf nb = { 0, 0, 0 };
+                            char *x;
+                            for (x = n2; *x; x++) {
+                                if (*x == '\\' && (x[1] == d || x[1] == '&')) { x++; pb_add(&nb, x, 1); }
+                                else if (*x == '&' && o) pb_str(&nb, *o ? o : (sh->hx_old ? sh->hx_old : ""));
+                                else pb_add(&nb, x, 1);
+                            }
+                            free(n2);
+                            n2 = nb.s ? nb.s : sdup("");
+                        }
+                        if (o && !*o && sh->hx_find) { free(o); o = sdup(sh->hx_find); }
+                        if (o && n2) {
+                            free(sh->hx_old); sh->hx_old = sdup(o);
+                            free(sh->hx_new); sh->hx_new = sdup(n2);
+                        }
+                    }
+                } else {   /* & : the last substitution again */
+                    o = sh->hx_old ? sdup(sh->hx_old) : 0;
+                    n2 = sh->hx_new ? sdup(sh->hx_new) : 0;
+                }
+                if (!o || !n2 || !*o || !strstr(res, o)) {
+                    sayl(sh, sh->io.err, "vsh: :", m == 's' ? "s" : "&", ": substitution failed\n", NULL);
+                    free(o); free(n2); free(res); free(rr.s);
+                    rc = -1;
+                    goto done;
+                }
+                hx_replace(&rr, res, o, n2, global);
+                free(res);
+                res = rr.s ? rr.s : sdup("");
+                free(o); free(n2);
+            }
+        }
+        pb_str(&r, res);
+        free(res);
+        p = t;
+        changed = 1;
+    }
+done:
+    if (rc < 0) {
+        free(r.s);
+        return -1;
+    }
+    if (!changed) {
+        free(r.s);
+        return 0;
+    }
+    *out = r.s ? r.s : sdup("");
+    *print_only = pr;
+    return 1;
+}
+
+void sh_prompt_command(sh_shell *sh)
+{
+    long n, i, st = sh->ctx.status;
+    char **v = sh_values(&sh->ctx, "PROMPT_COMMAND", &n);
+    sh_list cmds;
+    if (!v || n < 1) {
+        free(v);
+        return;
+    }
+    memset(&cmds, 0, sizeof(cmds));
+    for (i = 0; i < n; i++)
+        if (v[i] && *v[i])
+            sh_list_add(&cmds, v[i]);
+    free(v);
+    for (i = 0; i < cmds.n; i++)
+        sh_run_text(sh, cmds.v[i], 0);
+    sh_list_free(&cmds);
+    sh->ctx.status = st;
+}
+
+char *sh_ps0(sh_shell *sh)
+{
+    const char *ps = sh_get(&sh->ctx, "PS0");
+    if (!ps || !*ps)
+        return 0;
+    return sh_prompt(sh, ps);
+}
+
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
 {
     const char *s = text;
@@ -7663,6 +8434,19 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
         free(chunk);
         if (incomplete)
             *incomplete = p.incomplete;
+        if (sh->ps0_on && !p.incomplete) {
+            /* the interactive loop's line is complete: it joins the history before it runs (bash), and PS0 shows;
+             * once per line read, not for the eval or source inside it */
+            sh->ps0_on = 0;
+            sh_hist_note(sh, text);
+            if (p.tree) {
+                char *ps0 = sh_ps0(sh);
+                if (ps0) {
+                    say(sh, sh->io.err, ps0);
+                    free(ps0);
+                }
+            }
+        }
         if (p.error) {
             if (!p.incomplete)
                 err2(sh, &sh->io, p.error, 0);
@@ -8045,6 +8829,8 @@ void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *inf
         inv |= SO_INTERACTIVE;
     if (interactive && (have_c || info->script) && (argc > 0))
         inv |= SO_INTERACTIVE;
+    if (inv & SO_INTERACTIVE)
+        inv |= SO_HISTEXP;
     if (!(inv & SO_STDIN))
         inv &= ~SO_STDIN;
     sh->opts |= inv;

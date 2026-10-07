@@ -18,7 +18,8 @@
 #include "../engine/vtengine.h"
 
 #define LE_MAX 1024
-#define LE_HIST 100
+#define LE_HIST 100        /* lines kept by default */
+#define LE_HIST_CEIL 1000  /* the most le_hist_limit allows (HISTSIZE of the shell) */
 #define LE_HIST_LEN 256
 #define LE_UNDO 8
 /* History and undo are kept packed, each in one block that grows as lines
@@ -53,7 +54,9 @@ typedef struct le_line {
     int suggest;            /* show history suggestions (default on) */
     unsigned char *hist;    /* the lines, each NUL-terminated, oldest first (LE_MALLOC) */
     long hist_used, hist_cap;
-    unsigned short hist_at[LE_HIST]; /* where line i starts in hist */
+    unsigned long *hist_at; /* where line i starts in hist (LE_MALLOC, hist_at_cap entries) */
+    int hist_at_cap, hist_max; /* hist_max 0: LE_HIST */
+    int hist_ctl;           /* LE_HC_*: HISTCONTROL of the shell */
     int hist_n, hist_pos;
     /* Ctrl-R incremental search */
     int searching;
@@ -172,6 +175,15 @@ void le_hist_add(le_line *le, const unsigned char *s, int n);
  * le_hist_get copies line i (NUL-terminated, cut to max-1) into buf and returns its length, -1 if there is none;
  * le_hist_del removes line i (0 ok, -1 none); le_hist_clear empties the list. The saved history file is not
  * touched by any of them. */
+/* HISTSIZE: keep at most n lines (n < 1: the default LE_HIST; above LE_HIST_CEIL: LE_HIST_CEIL); the oldest lines
+ * go at once when n is below the number held. */
+void le_hist_limit(le_line *le, int n);
+/* HISTCONTROL: a line that starts with a blank is not entered (ignorespace); a line equal to an earlier one removes
+ * the earlier ones (erasedups). A line equal to the one before is never entered twice (ignoredups, always). */
+#define LE_HC_IGNORESPACE 1
+#define LE_HC_ERASEDUPS   2
+/* whether the line just completed (le->buf, with its newline) goes into the history and the saved file */
+int  le_hist_wants(const le_line *le);
 int  le_hist_count(const le_line *le);
 int  le_hist_get(const le_line *le, int i, unsigned char *buf, int max);
 int  le_hist_del(le_line *le, int i);

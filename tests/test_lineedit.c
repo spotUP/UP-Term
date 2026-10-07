@@ -866,6 +866,37 @@ static void history_list_is_readable_and_editable(void)
     le_free(&le);
 }
 
+/* HISTSIZE reaches the line editor: more than the default 100 lines, fewer at once, a ceiling */
+static void history_size_can_be_set(void)
+{
+    unsigned char ln[16];
+    vt_term *t;
+    int k;
+    le_free(&le);
+    t = h_new(80, 24, VT_XTERM);
+    le_init(&le, t, to_term, t);
+    le_hist_limit(&le, 500);
+    for (k = 0; k < 600; k++) {
+        snprintf((char *)ln, sizeof(ln), "line %d", k);
+        le_hist_add(&le, ln, (int)strlen((char *)ln));
+    }
+    CHECK_INT(le_hist_count(&le), 500);
+    CHECK_INT(le_hist_get(&le, 0, ln, sizeof(ln)), 8);   /* line 100 is the oldest left */
+    CHECK(!strcmp((char *)ln, "line 100"));
+    le_hist_limit(&le, 3);
+    CHECK_INT(le_hist_count(&le), 3);
+    CHECK(le_hist_get(&le, 2, ln, sizeof(ln)) == 8 && !strcmp((char *)ln, "line 599"));
+    le_hist_limit(&le, 100000);
+    for (k = 0; k < LE_HIST_CEIL + 5; k++) {
+        snprintf((char *)ln, sizeof(ln), "x %d", k);
+        le_hist_add(&le, ln, (int)strlen((char *)ln));
+    }
+    CHECK_INT(le_hist_count(&le), LE_HIST_CEIL);
+    le_hist_limit(&le, 0);   /* back to the default */
+    CHECK_INT(le_hist_count(&le), LE_HIST);
+    le_free(&le);
+}
+
 static void history_and_undo_grow_and_free(void)
 {
     vt_term *t;
@@ -885,7 +916,7 @@ static void history_and_undo_grow_and_free(void)
     le_hist_add(&le, (const unsigned char *)"dir\n", 4); /* the same line again: one entry */
     CHECK_INT(le.hist_n, 1);
     CHECK_INT(le.hist_used, 4);
-    CHECK_INT(vt_count_live - before, 256);
+    CHECK_INT(vt_count_live - before, 256 + 4 * (long)sizeof(unsigned long)); /* the text, and an index of 4 */
 
     /* 101 different lines of 300 bytes: each kept at 255, the first gone */
     for (k = 0; k < LE_HIST + 1; k++) {
@@ -1018,6 +1049,7 @@ void suite_lineedit(void)
     history_and_prefix_search();
     utf8_characters_move_as_one();
     history_list_is_readable_and_editable();
+    history_size_can_be_set();
     history_and_undo_grow_and_free();
     theme_menu_chosen_with_arrows_and_return();
     theme_menu_scrolls_a_long_list_at_the_bottom();

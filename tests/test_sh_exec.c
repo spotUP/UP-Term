@@ -532,6 +532,7 @@ static void a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV(void)
 
 /* V88: a console that keeps the line list (vtcon) is asked through os.hist and the shell holds nothing;
  * this one is a plain array standing in for the handler's */
+static char native_cfg[80];
 static char native_list[8][40];
 static int native_n, native_asked;
 
@@ -558,6 +559,9 @@ static long f_hist(void *os, int op, long arg, char *buf, long max)
         return 1;
     case SH_HIST_CLEAR:
         native_n = 0;
+        return 1;
+    case SH_HIST_CONFIG:
+        strcpy(native_cfg, buf);
         return 1;
     }
     return -1;
@@ -615,6 +619,34 @@ static void history_has_one_owner_the_console_list_or_the_shell(void)
     CHECK_INT(sh.hist.n, 0);
     sh_run_text(&sh, "history -c; history", 0);
     CHECK_INT(native_n, 0);
+    /* the console took the typed line already (it is the newest entry): !! means the one before it, and the
+     * expanded line takes its place; HISTIGNORE is the shell's; HISTSIZE and HISTCONTROL are sent once */
+    fresh();
+    sh.os.hist = f_hist;
+    native_n = 0;
+    strcpy(native_list[native_n++], "echo one two");
+    strcpy(native_list[native_n++], "echo !!");
+    sh.opts |= SO_INTERACTIVE | SO_HISTEXP;
+    {
+        char *ex;
+        int po;
+        CHECK_INT(sh_hist_expand(&sh, "echo !!\n", &ex, &po), 1);
+        CHECK_STR(ex, "echo echo one two\n");
+        free(ex);
+        sh_hist_replace(&sh, "echo echo one two\n", 0);
+        CHECK_INT(native_n, 2);
+        CHECK_STR(native_list[1], "echo echo one two");
+        CHECK_INT(sh_hist_expand(&sh, "echo nothing\n", &ex, &po), 0);
+    }
+    sh_run_text(&sh, "HISTIGNORE='ls*'; HISTSIZE=300; HISTFILESIZE=700; HISTCONTROL=ignoreboth", 0);
+    strcpy(native_list[native_n++], "ls -l");
+    sh_hist_note(&sh, "ls -l");
+    CHECK_INT(native_n, 2);
+    sh_hist_config(&sh);
+    CHECK_STR(native_cfg, "300\n700\nignoreboth");
+    native_cfg[0] = 0;
+    sh_hist_config(&sh);                /* unchanged: not sent again */
+    CHECK_STR(native_cfg, "");
     /* a console that does not know the packet (COUNT below 0): the shell's own list, asked once */
     fresh();
     sh.os.hist = 0;

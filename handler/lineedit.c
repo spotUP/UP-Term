@@ -183,6 +183,21 @@ static void go(le_line *le, int p)
 
 /* ---- history ------------------------------------------------------------ */
 
+static void hist_drop(le_line *le);
+
+static int hist_max(const le_line *le)
+{
+    return le->hist_max > 0 ? le->hist_max : LE_HIST;
+}
+
+void le_hist_limit(le_line *le, int n)
+{
+    le->hist_max = n < 1 ? 0 : n > LE_HIST_CEIL ? LE_HIST_CEIL : n;
+    while (le->hist_n > hist_max(le))
+        hist_drop(le);
+    le->hist_pos = le->hist_n;
+}
+
 /* The oldest history line out; the others move down. */
 static void hist_drop(le_line *le)
 {
@@ -191,7 +206,7 @@ static void hist_drop(le_line *le)
     memmove(le->hist, le->hist + n, (size_t)(le->hist_used - n));
     le->hist_used -= n;
     for (i = 1; i < le->hist_n; i++)
-        le->hist_at[i - 1] = (unsigned short)(le->hist_at[i] - n);
+        le->hist_at[i - 1] = le->hist_at[i] - n;
     le->hist_n--;
 }
 
@@ -206,20 +221,44 @@ void le_hist_add(le_line *le, const unsigned char *s, int n)
     if (le->hist_n && (int)strlen((const char *)HIST(le, le->hist_n - 1)) == n &&
         !memcmp(HIST(le, le->hist_n - 1), s, n))
         return; /* the same line again */
-    if (le->hist_n == LE_HIST)
+    while (le->hist_n >= hist_max(le))
         hist_drop(le);
     /* no memory for more: the oldest lines make room, as a full history does */
-    while (!grow(&le->hist, &le->hist_cap, le->hist_used, le->hist_used + n + 1, LE_HIST_BYTES) &&
-           le->hist_n)
+    while (!grow(&le->hist, &le->hist_cap, le->hist_used, le->hist_used + n + 1,
+                 (long)hist_max(le) * LE_HIST_LEN) && le->hist_n)
         hist_drop(le);
     if (le->hist_used + n + 1 > le->hist_cap)
         return;
-    le->hist_at[le->hist_n] = (unsigned short)le->hist_used;
+    if (le->hist_n >= le->hist_at_cap) {
+        int nc = le->hist_at_cap ? le->hist_at_cap * 2 : 4;
+        unsigned long *na;
+        if (nc > hist_max(le))
+            nc = hist_max(le);
+        na = (unsigned long *)LE_MALLOC((size_t)nc * sizeof(unsigned long));
+        if (!na) {
+            if (!le->hist_n)
+                return;
+            hist_drop(le);   /* no memory for the index: the oldest line makes room */
+        } else {
+            if (le->hist_n)
+                memcpy(na, le->hist_at, (size_t)le->hist_n * sizeof(unsigned long));
+            if (le->hist_at)
+                LE_FREE(le->hist_at);
+            le->hist_at = na;
+            le->hist_at_cap = nc;
+        }
+    }
+    le->hist_at[le->hist_n] = le->hist_used;
     memcpy(le->hist + le->hist_used, s, n);
     le->hist[le->hist_used + n] = 0;
     le->hist_used += n + 1;
     le->hist_n++;
     le->hist_pos = le->hist_n;
+}
+
+int le_hist_wants(const le_line *le)
+{
+    return !((le->hist_ctl & LE_HC_IGNORESPACE) && le->len && le->buf[0] == ' ');
 }
 
 int le_hist_count(const le_line *le)
@@ -250,7 +289,7 @@ int le_hist_del(le_line *le, int i)
             (size_t)(le->hist_used - le->hist_at[i] - n));
     le->hist_used -= n;
     for (k = i + 1; k < le->hist_n; k++)
-        le->hist_at[k - 1] = (unsigned short)(le->hist_at[k] - n);
+        le->hist_at[k - 1] = le->hist_at[k] - n;
     le->hist_n--;
     le->hist_pos = le->hist_n;
     return 0;
@@ -700,6 +739,10 @@ void le_free(le_line *le)
 {
     if (le->hist)
         LE_FREE(le->hist);
+    if (le->hist_at)
+        LE_FREE(le->hist_at);
+    le->hist_at = 0;
+    le->hist_at_cap = 0;
     if (le->undo_buf)
         LE_FREE(le->undo_buf);
     le->hist = le->undo_buf = 0;
@@ -787,7 +830,17 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
         cmd_show(le);
         go(le, le->pos);
         out(le, "\r\n", 2);
-        le_hist_add(le, le->buf, le->len);
+        if (le_hist_wants(le)) {
+            if (le->hist_ctl & LE_HC_ERASEDUPS) {
+                int k, n = le->len;
+                while (n > 0 && (le->buf[n - 1] == '\n' || le->buf[n - 1] == '\r'))
+                    n--;
+                for (k = le->hist_n - 1; k >= 0; k--)
+                    if ((int)strlen((const char *)HIST(le, k)) == n && !memcmp(HIST(le, k), le->buf, (size_t)n))
+                        le_hist_del(le, k);
+            }
+            le_hist_add(le, le->buf, le->len);
+        }
         le->buf[le->len++] = '\n';
         return 1;
     }

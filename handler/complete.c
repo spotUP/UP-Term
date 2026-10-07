@@ -717,7 +717,7 @@ static void history_load(struct complete_req *q)
 {
     BPTR f = Open((STRPTR)HISTORY_FILE, MODE_OLDFILE);
     struct FileInfoBlock *fib;
-    long n, i, lines = 0, from = 0, size = q->data_max;
+    long n, i, lines = 0, from = 0, size = q->data_max, keepn = q->keep > 0 ? q->keep : HISTORY_KEEP;
     q->data_len = 0;
     q->data = 0;
     if (!f)
@@ -738,13 +738,13 @@ static void history_load(struct complete_req *q)
     if (n <= 0)
         return;
     for (i = n - 1; i >= 0; i--)
-        if (q->data[i] == '\n' && ++lines > HISTORY_KEEP) {
+        if (q->data[i] == '\n' && ++lines > keepn) {
             from = i + 1;
             break;
         }
     memmove(q->data, q->data + from, n - from);
     q->data_len = n - from;
-    if (from && lines > HISTORY_KEEP) {
+    if (from && lines > keepn) {
         /* the file had more: keep only what was loaded */
         f = Open((STRPTR)HISTORY_FILE, MODE_NEWFILE);
         if (f) {

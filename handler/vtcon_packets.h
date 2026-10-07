@@ -80,13 +80,20 @@
  *                               line's length (it is NUL-terminated), -1 when there is no such line
  *            VTCON_HIST_ADD     dp_Arg4 the NUL-terminated line: dp_Res1 DOSTRUE
  *            VTCON_HIST_DEL     dp_Arg3 index: dp_Res1 DOSTRUE, DOSFALSE when there is none
- *            VTCON_HIST_CLEAR   dp_Res1 DOSTRUE */
+ *            VTCON_HIST_CLEAR   dp_Res1 DOSTRUE
+ *            VTCON_HIST_CONFIG  see below */
 #define ACTION_VTCON_HISTORY 0x765D
 #define VTCON_HIST_COUNT 0
 #define VTCON_HIST_GET   1
 #define VTCON_HIST_ADD   2
 #define VTCON_HIST_DEL   3
 #define VTCON_HIST_CLEAR 4
+/*            VTCON_HIST_CONFIG  dp_Arg4 a NUL-terminated "HISTSIZE\nHISTFILESIZE\nHISTCONTROL" (the numbers may
+ *                               be empty = the default 100 lines; the control words are the shell's, of which
+ *                               ignorespace, ignoreboth and erasedups matter here). The list keeps at most
+ *                               HISTSIZE lines (up to 1000), is read from the file again when it grew, and
+ *                               the file keeps HISTFILESIZE lines when it is trimmed at the next window. */
+#define VTCON_HIST_CONFIG 5
 
 /* ACTION_VTCON_TCGETA answers dp_Res2 1 when the console is in termios
  * mode (a program set it), 0 when it describes the Amiga mode in termios
