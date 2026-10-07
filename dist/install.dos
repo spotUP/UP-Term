@@ -1,4 +1,4 @@
-.KEY DIR/A,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -13,10 +13,12 @@
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
 ;     [REMOTE "host port"]  (ENVARC:Claude/remote: plain Claude, with no API
-;               key, connects to Claude Code there -- the NAS; kept if it exists)
+;               key, connects to Claude Code there -- the NAS; written whenever given,
+;               ENVARC: and ENV:)
 ;     [PYTHON]  (Python 3.14 in UP-Term:Python3, 15 MB; Python3: assigned at boot)
 ;     [NVIM]    (Neovim 0.12 in UP-Term:nvim, 32 MB; nvim on vsh's path)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
+;     [STEP <part>]  (only that part: see "The parts" below)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
 ; (every new Shell window); CONSOLE answers yes, NOCONSOLE no, unasked.
@@ -26,6 +28,18 @@
 FailAt 21
 ; the kit's Files drawer: every name below is relative to it
 CD "{DIR}"
+; The parts, each from its Lab line to the next. With no STEP every part runs,
+; in this order (a Shell install, tools/rig/install_rig.py). The kit's Install
+; runs them one at a time with STEP, so the Installer can say what each part
+; does and move its progress bar between them; it copies the copy-<part>
+; drawers itself (copyfiles shows every file it copies) and never runs those
+; parts. tests/test_dist_installer.py holds the two to the same list. Every
+; part after "drawer" reaches the files through the assign UP-Term: that
+; "drawer" makes.
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+Lab drawer
 ; UP-Term's own drawer, wherever the owner put it: DEST, else SYS:UP-Term.
 ; Every later line and every program reaches it as UP-Term: (assigned now,
 ; and at every boot by a marked block in S:User-Startup, written before the
@@ -89,6 +103,12 @@ If WARN
     EndIf
   EndIf
 EndIf
+UnSet updest
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab system
+; the handlers and their DOSDrivers, the terminal entries, the commands in C:
 Copy vtcon-handler L: CLONE
 Copy XCON DEVS:DOSDrivers/XCON CLONE
 Copy pty-handler L: CLONE
@@ -170,6 +190,10 @@ Copy screenrc ENV:screenrc CLONE
 Copy tmux C:tmux CLONE
 Copy tmux.conf ENVARC:tmux.conf CLONE
 Copy tmux.conf ENV:tmux.conf CLONE
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-coreutils
 ; The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
 ; wc... GPL v2: COPYING and the complete source are in the kit's
 ; coreutils-5.2.1 drawer) in UP-Term's own drawer UP-Term:bin, not C::
@@ -180,11 +204,10 @@ Copy tmux.conf ENV:tmux.conf CLONE
 ; keeps its own commands.
 MakeDir >NIL: UP-Term:bin
 Copy coreutils/bin UP-Term:bin ALL CLONE QUIET
-; VERSIONS: what this kit was built from (C:UPConsole STATUS prints its first line)
-Copy VERSIONS UP-Term:VERSIONS CLONE
-; sz / rz: ZMODEM over the shell's own line (UP-Term's, no ixemul), beside
-; coreutils; C:upgetty: a shell on the serial port (see the README)
-Copy sz rz UP-Term:bin CLONE
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-unifont
 ; [UNIFONT]: GNU Unifont's glyphs (SIL Open Font License 1.1: OFL-1.1.txt
 ; and SOURCE.txt go with them), one file per 256 characters, 1.8 MB: drawn
 ; for every character up to U+FFFF and every emoji (U+1F000-1FAFF) the
@@ -194,6 +217,10 @@ If "{UNIFONT}" EQ "UNIFONT"
   MakeDir >NIL: UP-Term:unifont
   Copy unifont UP-Term:unifont ALL CLONE QUIET
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-emoji
 ; [EMOJI]: Twemoji's colour emoji (CC-BY 4.0: CC-BY-4.0.txt and SOURCE.txt
 ; go with them), one file per 256 characters, 0.5 MB: drawn over two cells
 ; on an RTG screen of 15 bits or more with cybergraphics.library; other
@@ -202,6 +229,17 @@ If "{EMOJI}" EQ "EMOJI"
   MakeDir >NIL: UP-Term:emoji
   Copy emoji UP-Term:emoji ALL CLONE QUIET
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab tools
+; the kit's own commands, the network tools and Claude
+MakeDir >NIL: UP-Term:bin
+; VERSIONS: what this kit was built from (C:UPConsole STATUS prints its first line)
+Copy VERSIONS UP-Term:VERSIONS CLONE
+; sz / rz: ZMODEM over the shell's own line (UP-Term's, no ixemul), beside
+; coreutils; C:upgetty: a shell on the serial port (see the README)
+Copy sz rz UP-Term:bin CLONE
 Copy upgetty C:upgetty CLONE
 ; hl and mdv: a source file in colour, Markdown formatted for the window
 ; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
@@ -258,18 +296,32 @@ If NOT EXISTS ENVARC:Claude
 EndIf
 ; REMOTE: where Claude Code runs (the NAS); plain Claude goes there
 If NOT "{REMOTE}" EQ ""
-  If NOT EXISTS ENVARC:Claude/remote
-    Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"
-    Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."
-    Echo >>ENVARC:Claude/remote "{REMOTE}"
+  ; the chosen value always wins (the Installer's page starts with the
+  ; existing file's host and port, so a kept answer is the same line)
+  If NOT EXISTS ENV:Claude
+    MakeDir ENV:Claude
   EndIf
+  Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"
+  Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."
+  Echo >>ENVARC:Claude/remote "{REMOTE}"
+  Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-python
 ; Python 3.14 (README, PYTHON): UP-Term:Python3, its programs run as
 ; Python3:bin/python3 or python3 from vsh (vshrc's path); Python3: is
 ; assigned at every boot (a marked block in S:User-Startup).
 If "{PYTHON}" EQ "PYTHON"
   MakeDir >NIL: UP-Term:Python3
   Copy python3 UP-Term:Python3 ALL CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab python
+If "{PYTHON}" EQ "PYTHON"
   Assign Python3: UP-Term:Python3
   Search >NIL: S:User-Startup ";BEGIN UP-Term python"
   If WARN
@@ -281,12 +333,20 @@ If "{PYTHON}" EQ "PYTHON"
     Echo >>S:User-Startup ";END UP-Term python"
   EndIf
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-nvim
 ; Neovim 0.12 (README, NEOVIM): UP-Term:nvim (its runtime beside the
 ; binary); nvim from vsh (vshrc's path).
 If "{NVIM}" EQ "NVIM"
   MakeDir >NIL: UP-Term:nvim
   Copy nvim UP-Term:nvim ALL CLONE QUIET
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab fonts
 ; The fonts by pixel shape (fonts/SOURCE.txt): TopazPro 16, IBM 8 / 11 /
 ; 16 into FONTS:, only the sizes not there yet -- a user's own IBM.font
 ; keeps its files -- each marked for Uninstall; FixFonts then lists every
@@ -322,6 +382,10 @@ EndIf
 If EXISTS SYS:System/FixFonts
   SYS:System/FixFonts
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab unix
 ; The shell ixemul programs run (system(), popen(), tmux's jobs) is
 ; /gg/bin/sh -- GG:bin/sh, where Geek Gadgets keeps its sh: vsh, as
 ; UP-Term:bin/sh. Without a GG: UP-Term: is GG:, assigned at every
@@ -382,6 +446,10 @@ If WARN
     Echo >>S:User-Startup ";END UP-Term tmp"
   EndIf
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab desktop
 ; the Workbench way in: double-click UP-Term (its tool is C:vsh; the
 ; window is its WINDOW tooltype)
 ; the UP-Term icon goes beside Shell in SYS:System, the preferences editor
@@ -405,6 +473,10 @@ If "{SHELLICON}" EQ "SHELLICON"
     upicon SYS:System/Shell WINDOWDEV=XCON
   EndIf
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab boot
 ; SERIAL: a Unix-style login on the serial port at every boot (upgetty LOOP:
 ; vsh for whoever connects, see the README's SERIAL LOGIN), from a marked
 ; block in S:User-Startup that Uninstall takes out. upgetty then holds
@@ -461,6 +533,10 @@ Copy banner ENVARC:vsh/banner CLONE
 MakeDir >NIL: ENV:vsh
 Copy vshrc ENV:vsh/vshrc CLONE
 Copy banner ENV:vsh/banner CLONE
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab libs
 ; ixemul.library with the UP-Term patches (termios, PTY: ptys, job
 ; control), and ixnet.library from the same build: ixnet refuses an ixemul
 ; of another version or revision. Each library there is kept once as
@@ -478,6 +554,10 @@ If NOT EXISTS LIBS:ixnet.library.orig
 EndIf
 Copy libs/ixnet.library LIBS:ixnet.library CLONE
 Avail >NIL: FLUSH
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab mount
 ; a DOSDrivers file is mounted by its path ("Mount XCON: FROM file" looks
 ; for an XCON: entry inside, which a DOSDrivers file has not; >NIL: hid
 ; that, so XCON: only appeared after a reboot). Not twice: it is there.
@@ -500,6 +580,10 @@ Assign >NIL: PTY: EXISTS DEVICES
 If WARN
   Mount DEVS:DOSDrivers/PTY
 EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab console
 ; CON: and RAW: served by UP-Term (opt-in): C:UPConsole switches them at
 ; every boot from its own marked block in S:User-Startup, and now. Not on
 ; AmigaOS 3.2 yet: its Shell needs medium mode (UPConsole refuses there).
@@ -566,6 +650,5 @@ If WARN
 Else
   Echo "CON: and console.device stay the system's: UP-Term cannot serve them on AmigaOS 3.2 yet."
 EndIf
-UnSet updest
 Echo "UP-Term installed. Try:  NewShell XCON:0/20/640/300/UP-Term/CLOSE"
 Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"

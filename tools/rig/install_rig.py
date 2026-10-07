@@ -35,19 +35,47 @@ def run_long(script, timeout=1500):
     (VTC / "longdone").unlink(missing_ok=True)
     (VTC / "longwrap").write_text("Execute VTC:%s\nEcho >VTC:longdone \"$RC\"\n" % script)
     out = ''
-    try:
-        out = ami.req(0x02, struct.pack('>H', 120) + b'Execute VTC:longwrap', 150)[4:].decode('latin-1')
-    except SystemExit as e:
-        if 'still running' not in str(e):
-            raise
     end = time.time() + timeout
+    while True:
+        try:
+            out = ami.req(0x02, struct.pack('>H', 120) + b'Execute VTC:longwrap', 150)[4:].decode('latin-1')
+        except SystemExit as e:
+            # "a command is still running ... runs one at a time": the agent
+            # is busy with an earlier command and did NOT start this one
+            # (taken for "started" before, the wait below ran its full
+            # timeout for a script that never ran, 2026-10-07). Wait for it.
+            if 'one at a time' in str(e) and time.time() < end:
+                time.sleep(5)
+                continue
+            if 'still running' not in str(e):
+                raise
+        break
     while not (VTC / "longdone").exists():
         if time.time() > end:
             return 1, 'run_long: %s did not finish in %d s' % (script, timeout)
         time.sleep(3)
-    time.sleep(1)
-    rc = (VTC / "longdone").read_text(errors='replace').strip()
+    rc = ''
+    for _ in range(20):  # the host drawer can show the file a moment before it can be read
+        time.sleep(1)
+        try:
+            rc = (VTC / "longdone").read_text(errors='replace').strip()
+            break
+        except FileNotFoundError:
+            continue
+    if not rc:
+        return 1, 'run_long: VTC:longdone vanished or empty after %s' % script
     return (int(rc) if rc.isdigit() else 0), out
+
+def run_slow(name, cmd, timeout=600):
+    """One command that can pass the agent's limit (a cold nvim start; Delete
+    ALL of an installed drawer, which took over 60 s on the 68020 and ended
+    the --move pass with ERR "still running", 2026-10-07): written to
+    VTC:<name>, its output to VTC:<name>.out, and run through run_long."""
+    (VTC / (name + ".out")).unlink(missing_ok=True)
+    (VTC / name).write_text("%s >VTC:%s.out\n" % (cmd, name))
+    rc, out = run_long(name, timeout)
+    f = VTC / (name + ".out")
+    return rc, (f.read_text(errors='replace') if f.exists() else out)
 
 passed = total = 0
 def check(ok, what, seen=''):
@@ -77,7 +105,50 @@ def prepare(dest):
     run('Assign LIBS: DH0:Libs')
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
 
+# What a run plants or removes on the Amiga that a user may own: each is saved
+# before the run and put back in a finally, so a failing or killed run (the
+# killed one that left 127.0.0.1 2399 in ENVARC:Claude/remote) leaves nothing.
+FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:UP-Term.prefs')
+FIXTURE_ASSIGNS = ('GG', 'UP-Term')
+
+class Fixtures:
+    """take() once the rig is up (a reboot keeps the disk, so any time after the
+    first boot is the same), restore() in a finally. restore() without take() does nothing."""
+    def __init__(self, files=()):
+        self.paths = FIXTURE_FILES + tuple(files)
+        self.files = self.assigns = None
+
+    def take(self):
+        if self.files is not None: return
+        self.files = {p: ami.read_file(p) for p in self.paths}
+        rc, out = run('Assign LIST')
+        self.assigns = {}
+        for l in out.splitlines():
+            f = l.split(None, 1)
+            if len(f) == 2 and f[0].rstrip(':').upper() in FIXTURE_ASSIGNS:
+                self.assigns[f[0].rstrip(':').upper()] = f[1].strip()
+
+    def restore(self):
+        if self.files is None: return
+        for p, saved in self.files.items():
+            try: ami.restore_file(p, saved)
+            except BaseException as e: print('[WARN] fixture %s not restored: %s' % (p, e))
+        for name in FIXTURE_ASSIGNS:
+            try:
+                if name in self.assigns: run('Assign %s: "%s"' % (name, self.assigns[name]))
+                else: run('Assign >NIL: %s:' % name)
+            except BaseException as e: print('[WARN] assign %s: not restored: %s' % (name, e))
+        print('install_rig: fixtures put back (%s)' % ' '.join(self.paths))
+
 def main(dest=None):
+    fx = Fixtures()
+    try:
+        fx.take()
+        return _main(dest)
+    finally:
+        fx.restore()
+
+def _main(dest=None):
     """One pass: dest None = the default drawer, else Install is given DEST=<dest>."""
     global passed, total
     passed = total = 0
@@ -175,7 +246,8 @@ def main(dest=None):
     check(run('Assign >NIL: Python3: EXISTS')[0] == 0 and
           run('Search >NIL: S:User-Startup "Assign Python3: UP-Term:Python3"')[0] == 0,
           'PYTHON: Python3: assigned, and at every boot', '')
-    rc, out = run('UP-Term:nvim/bin/nvim --version', 120)
+    # a cold nvim start can pass the agent's 120 s limit: run it through run_long
+    rc, out = run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
     check(rc == 0 and 'NVIM v0.12' in out, 'NVIM: nvim runs from UP-Term:nvim', out[-300:])
     # REMOTE: plain Claude, no API key, goes to Claude Code where
     # ENVARC:Claude/remote points (W49) -- here a banner on this Mac
@@ -343,6 +415,14 @@ OLD = "SYS:UP-Term"
 NEW = "VTC:Apps/UP-Term"
 
 def move():
+    fx = Fixtures()
+    try:
+        fx.take()
+        return _move()
+    finally:
+        fx.restore()
+
+def _move():
     """Install into the default drawer, Install again with DEST=NEW. Checked:
     the assign now and the one Assign line in S:User-Startup name NEW; exactly
     one marked UP-Term: block, still before the GG: block; a user's own line
@@ -359,7 +439,7 @@ def move():
     (VTC / "runinstall_new").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files DEST=%s NOCONSOLE NODEVICE\n" % NEW)
     run_long('rununinstall')
     run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote S:User-Startup.before-UP-Term QUIET')
-    run('Delete >NIL: "%s" ALL QUIET' % OLD)
+    run_slow('deleteold', 'Delete "%s" ALL QUIET' % OLD)
     rig_gg = run('Assign >NIL: GG: EXISTS')[0] == 0
     if rig_gg:
         run('Assign GG:')
@@ -426,7 +506,7 @@ def move():
           'differs: %r vs %r' % (out[-100:], startup_before[-100:]))
     check(run('List >NIL: "%s/VERSIONS"' % OLD)[0] == 0,
           'move: Uninstall of the new kit leaves the old drawer %s (the message said so)' % OLD, '')
-    run('Delete >NIL: "%s" ALL QUIET' % OLD)   # the test's own clean-up of the left drawer
+    run_slow('deleteold', 'Delete "%s" ALL QUIET' % OLD)   # the test's own clean-up of the left drawer
     run('Delete >NIL: ENVARC:UP-Term.prefs S:User-Startup.before-UP-Term QUIET')
     if rig_gg:
         run('Assign GG: VTC:gg')

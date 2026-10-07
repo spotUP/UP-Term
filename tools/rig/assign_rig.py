@@ -25,10 +25,9 @@ skipped.
   assign_rig.py FAILED          only the cases that failed last time
   assign_rig.py FORCE           all, from zero
 Not run by `make test`: it needs the emulator."""
-import hashlib, json, os, pathlib, struct, sys, time
+import hashlib, json, os, pathlib, struct, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
-import conbench_rig as cb
 import install_rig as ir
 
 ROOT = ir.ROOT
@@ -39,36 +38,49 @@ CASES = ["install", "noassign", "assign", "lazy-vsh", "lazy-handler"]
 WIDE = "\u4e2d"  # U+4E2D, a glyph of Unifont's page 0x4E
 
 CASE_SCRIPTS = {
-    "noassign": """Delete >NIL: RAM:ar.# QUIET
-C:vsh -c "echo hi >RAM:ar.hi"
-C:vsh -c "ls /UP-Term/bin >RAM:ar.ls 2>&1"
-C:vsh -c "cd /UP-Term/bin >RAM:ar.cd 2>&1"
-C:vsh -c "type ls >RAM:ar.type 2>&1"
+    "noassign": """Delete >NIL: RAM:ar.#? QUIET
+VTC:vsh -c "echo hi >RAM:ar.hi"
+VTC:vsh -c "ls /UP-Term/bin >RAM:ar.ls 2>&1"
+VTC:vsh -c "cd /UP-Term/bin >RAM:ar.cd 2>&1"
+VTC:vsh -c "type ls >RAM:ar.type 2>&1"
 If EXISTS C:tmux
   C:tmux new-session -d -s assignrig
   C:tmux kill-server
 EndIf
 Echo "%s"
 Echo >RAM:ar.done ok
+EndCLI >NIL:
 """,
-    "assign": """Delete >NIL: RAM:ar.# QUIET
-C:vsh -c "ls /UP-Term/bin >RAM:ar.ls 2>&1"
-C:vsh -c "type ls >RAM:ar.type 2>&1"
+    "assign": """Delete >NIL: RAM:ar.#? QUIET
+VTC:vsh -c "ls /UP-Term/bin >RAM:ar.ls 2>&1"
+VTC:vsh -c "type ls >RAM:ar.type 2>&1"
 Echo >RAM:ar.done ok
+EndCLI >NIL:
 """,
-    "lazy-vsh": """Delete >NIL: RAM:ar.# QUIET
-C:vsh -c "ls /UP-Term/bin >RAM:ar.ls 2>&1"
+    "lazy-vsh": """Delete >NIL: RAM:ar.#? QUIET
+VTC:vsh -c "ls /UP-Term/bin >RAM:ar.ls 2>&1"
 Assign >RAM:ar.assign UP-Term: EXISTS
 Echo >RAM:ar.done ok
+EndCLI >NIL:
 """,
-    "lazy-handler": """Delete >NIL: RAM:ar.# QUIET
+    "lazy-handler": """Delete >NIL: RAM:ar.#? QUIET
 Echo "%s"
 Wait 3
 Assign >RAM:ar.assign UP-Term: EXISTS
 Echo >RAM:ar.done ok
+EndCLI >NIL:
 """,
 }
 WINDOW = 'XCON:0/20/640/300/UP-Term/CLOSE'
+
+
+def rig(cmd):
+    """The default rig, the machine install_rig.py is written for (its 3.1
+    disk: ORIG_SIZE is that ixemul). conbench_rig.rig() was used here and
+    booted creep's --stock --os32 machine: 2 MB chip RAM and no fast RAM
+    (Python3 "not enough memory", nvim past 400 s, CON: switches failed)
+    and the 3.2 tree, every install check on the wrong system (2026-10-07)."""
+    subprocess.run([sys.executable, str(ROOT / "tools/rig/rig.py"), cmd], check=True, timeout=400)
 
 
 def fingerprint():
@@ -93,19 +105,24 @@ def record(case, ok, detail):
 
 
 def requester_seen():
-    return "System Request" in ami.req(0x0D).decode("latin-1")
+    tree = ami.req(0x0D).decode("latin-1")
+    return "System Request" in tree or "Volume Request" in tree
 
 
 def window_case(name, text):
     """Open WINDOW running the script, poll for requesters until RAM:ar.done; the files' contents."""
     (VTC / "assigncase").write_text(text.replace("%s", WIDE), encoding="utf-8")
-    ir.run("Delete >NIL: RAM:ar.# QUIET")
+    ir.run("Delete >NIL: RAM:ar.#? QUIET")
     ir.run('Run >NIL: NewShell "%s" FROM VTC:assigncase' % WINDOW)
     seen_req, end = False, time.time() + 120
     while time.time() < end:
         if requester_seen():
             seen_req = True
-            ami.main(["ui", "click", "System Request", "Cancel"])  # unblock the case, the verdict stays
+            for win, gad in (("System Request", "Cancel"), ("Volume Request", "_Cancel")):
+                try:
+                    ami.main(["ui", "click", win, gad])  # unblock the case, the verdict stays
+                except SystemExit:
+                    pass  # that window is not there
         if ir.run("List >NIL: RAM:ar.done")[0] == 0:
             break
         time.sleep(2)
@@ -119,7 +136,7 @@ def window_case(name, text):
 
 def case_install():
     import subprocess
-    rc = subprocess.run([sys.executable, str(ROOT / "tools/rig/install_rig.py")], timeout=3600).returncode
+    rc = subprocess.run([sys.executable, "-u", str(ROOT / "tools/rig/install_rig.py")], timeout=3600).returncode
     return rc == 0, "install_rig exit %d" % rc
 
 
@@ -153,6 +170,14 @@ def lazy(case):
 
 
 def main():
+    fx = ir.Fixtures(('ENVARC:up-term/Dir',))
+    try:
+        return _main(fx)
+    finally:
+        fx.restore()   # a killed or failing run leaves nothing planted
+
+
+def _main(fx):
     args = sys.argv[1:]
     only = args[args.index("ONLY") + 1] if "ONLY" in args else None
     todo = [only] if only else CASES
@@ -166,9 +191,10 @@ def main():
         if "FAILED" in args and not (v and v["verdict"] == "fail"):
             continue
         if not ran_boot:
-            cb.rig("stop")
-            cb.rig("start")
+            rig("stop")
+            rig("start")
             ir.prepare(None)
+            fx.take()   # the user's files and assigns, before any case plants its own
             ran_boot = True
         if case != "install" and not installed:
             rc, out = ir.run_long("runinstall")  # Install (the cases need the kit in the rig)

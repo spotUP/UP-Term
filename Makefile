@@ -49,10 +49,12 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py)
 test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
@@ -793,6 +795,8 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 # it is in the lha archive.
 dist-check:
 	python3 tests/test_dist_versions.py
+	python3 tests/test_dist_installer.py
+	python3 tests/test_rig_fixtures.py
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga

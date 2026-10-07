@@ -3,7 +3,7 @@
    ami.py ping | break | info | exec "cmd" [secs] | menus [win] | uitree | ui verb win gadget [text]
           | shot out.png [x y w h] | rexx "program" | get path out | put local path
           | key code [qual] | screens
-          | gclick win gadget   (clicks a UITREE gadget on the front screen, scaled: amiagent's
+          | gclick win gadget   (clicks a UITREE gadget by its id, matched exactly: '90' is not '290'; on the front screen, scaled: amiagent's
                                  INPUT takes Intuition pointer units -- twice the lines of a
                                  non-interlaced screen -- while UITREE gives screen pixels;
                                  needs DCT:ptrpos)"""
@@ -37,6 +37,27 @@ def req(code, payload=b'', timeout=150):
     frame(code, payload); st, body = recv_frame(); s.close()
     if st != 0: raise SystemExit('ERR: ' + body.decode('latin-1'))
     return body
+
+def read_file(path):
+    """The file's bytes on the Amiga, None when it is not there. The agent or
+    the rig being gone is not 'not there': that SystemExit goes on."""
+    try:
+        return req(0x03, path.encode('latin-1'))
+    except SystemExit as e:
+        if str(e).startswith('ERR'): return None
+        raise
+
+def restore_file(path, saved):
+    """Put read_file's answer back: the bytes, or the file gone when it was None."""
+    if saved is None:
+        req(0x02, struct.pack('>H', 30) + ('Delete >NIL: "%s" QUIET' % path).encode('latin-1'))
+        return
+    import tempfile
+    parent = path.rsplit('/', 1)[0] if '/' in path else path.rsplit(':', 1)[0] + ':'
+    req(0x02, struct.pack('>H', 30) + ('MakeDir >NIL: "%s"' % parent).encode('latin-1'))
+    with tempfile.NamedTemporaryFile(delete=False) as t: t.write(saved)
+    try: put(t.name, path)
+    finally: os.unlink(t.name)
 
 def key(code, qual=0):
     # Down, 2 ticks, up in ONE request (INPUT op 8 SCRIPT): two requests
@@ -152,7 +173,7 @@ def main(a):
                 win = f[1]
             elif win is not None and line.startswith('W '):
                 win = None
-            elif win is not None and line.startswith('G ') and a[2].lower() in line.lower():
+            elif win is not None and line.startswith('G ') and f[1].lower() == a[2].lower():
                 x, y = int(f[2]), int(f[3]); w, h = map(int, f[4].split('x'))
                 cx, cy = x + w // 2, y + h // 2
                 req(0x08, bytes([5]) + struct.pack('>HH', cx, cy) + bytes([0, 1]))

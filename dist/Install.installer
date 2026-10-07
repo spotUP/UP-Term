@@ -1,10 +1,32 @@
-; UP-Term -- Installer script (Commodore Installer 43, AmigaOS 3.0 and up).
-; Double-click the Install icon. The script asks the questions; the copying
-; is done by Files/install.dos (the tested AmigaDOS install, also usable
-; from a Shell without Installer). Remove it again with Uninstall.
+; UP-Term -- Installer script (Commodore Installer 43.3, AmigaOS 3.1, and the
+; Installer 47 of AmigaOS 3.2). Double-click the Install icon.
+;
+; What gets installed is Files/install.dos, part by part (its Lab lines): the
+; Installer asks the questions, then runs each part with STEP=<part> under its
+; own progress text, and copies the big drawers (the copy-<part> parts of
+; install.dos) itself with copyfiles, which shows every file it copies. The
+; same install.dos with no STEP installs everything from a Shell.
+; tests/test_dist_installer.py holds this script and install.dos to the same
+; parts in the same order, and to the Installer 43.3 language.
+; Remove UP-Term again with Uninstall.
+;
+; TEXT LAYOUT. The Installer 47 window is a fixed 496x210 and takes no size
+; option; its text area runs from the title bar (y 14) to the button row
+; (y 191), 177 px, and its font sets 12 px per line, so a page holds
+; LINES = 14.75 lines. It centres each line sideways but starts the text
+; at the top. So every (message), (working) and (prompt) text here has
+;   - explicit line breaks, no line longer than 62 characters (the font is
+;     proportional, about 5.8 px a character; the text area is 464 px, so
+;     no line wraps), and
+;   - leading newlines that centre the block vertically:
+;       lead = floor((15 - n) / 2)      n = the lines of the block
+;     (n = 14 needs none; a block of more than 14 lines does not fit).
+; A text built from choices (P_LEAD) counts its lines in #n first. The
+; button gap to the window's bottom edge is the Installer's own layout.
 
 (set @app-name "UP-Term")
 (set #files (tackon (pathonly @icon) "Files"))
+(set #script (tackon #files "install.dos"))
 
 ; ---- requirements ---------------------------------------------------------
 
@@ -12,24 +34,26 @@
     (abort "UP-Term needs AmigaOS 3.0 or newer."))
 (if (or (= (database "cpu") "68000") (= (database "cpu") "68010"))
     (abort "UP-Term needs a 68020 or better (the terminal and its ixemul.library are 68020 code)."))
-(if (not (exists (tackon #files "install.dos")))
+(if (not (exists #script))
     (abort "The Files drawer is missing: unpack the whole archive and start Install from its drawer."))
 
 (set #v47 (>= (/ (getversion "dos.library" (resident)) 65536) 47))
 
-; ---- what it is -----------------------------------------------------------
+; ---- welcome ---------------------------------------------------------------
 
+; welcome: n = 14, lead 0
 (message
-    "UP-Term: a modern terminal for AmigaOS\n\n"
-    "This installs:\n"
-    "- XCON:, a console window with an xterm-class terminal inside\n"
-    "- vsh, a Unix-style shell, and tmux, screen and ls\n"
-    "- PTY:, Unix pseudo-terminals\n"
-    "- UP-Term Prefs, with 112 colour themes\n"
-    "- a patched ixemul.library and its ixnet.library (the ones\n"
-    "  there are kept as LIBS:<name>.orig; Uninstall puts them back)\n\n"
-    "Files go to C:, L:, LIBS:, DEVS:, ENVARC:, SYS:System and SYS:Prefs,\n"
-    "and to a drawer of its own, assigned as UP-Term:, that you choose next.")
+    "* * * * * * * * * * * * * * * * * * * *\n\n"
+    "U P - T E R M\n\n"
+    "a modern terminal for AmigaOS\n\n"
+    "XCON:, a console window with an xterm-class terminal inside;\n"
+    "vsh, a Unix shell with tmux, screen and the GNU commands;\n"
+    "PTY:, Unix pseudo-terminals; UP-Term Prefs, 112 colour themes;\n"
+    "a patched ixemul.library.\n\n"
+    "The next pages ask where UP-Term's own drawer goes and which\n"
+    "parts you want. Every page has a Help button.\n"
+    "Uninstall takes it all out again."
+    (all))
 
 ; ---- where UP-Term's own drawer goes ---------------------------------------
 ; Its commands, Unifont, emoji, Python and Neovim live in one drawer that is
@@ -39,19 +63,22 @@
 (set #old (getassign "UP-Term" "a"))
 (set #dest
     (askdir
-        (prompt "Where should UP-Term's own drawer go? It is assigned as "
-                "UP-Term: and holds the Unix commands, Unifont, emoji, "
+        (prompt "Where should UP-Term's own drawer go? It is assigned as\n"
+                "UP-Term: and holds the Unix commands, Unifont, emoji,\n"
                 "Python and Neovim.")
         (help "The drawer is made if it is not there (its parent must "
               "exist). Programs find it through the assign UP-Term:, which "
               "Install makes now and at every boot (a block in "
-              "S:User-Startup that Uninstall takes out again).")
+              "S:User-Startup that Uninstall takes out again).\n\n"
+              "An earlier UP-Term's drawer is offered first: installing into "
+              "it again replaces the files and keeps your settings.")
         (default (if #old #old "SYS:UP-Term"))
         (newpath)))
 (if (= (substr #dest (- (strlen #dest) 1) 1) ":")
     (set #dest (tackon #dest "UP-Term")))
+(set @default-dest #dest)
 
-; ---- what to install: one page of choices --------------------------------
+; ---- what to install: three pages of choices -------------------------------
 
 (set #con "NOCONSOLE")
 (set #dev "NODEVICE")
@@ -71,90 +98,117 @@
 ; curl is ticked when AmiSSL is there (curl cannot run without it)
 (set #amissl (exists "LIBS:amisslmaster.library"))
 
-(set #opts
+(set #net
     (askoptions
-        (prompt "UP-Term itself is always installed. Choose the optional parts:")
-        (help "ssh and scp: BebboSSH 1.45 by Stefan Franke (GPL v3+), an SSH client "
-              "for remote Unix machines, with scp, a key generator and a simple "
-              "server; libcryptossh.library goes to LIBS: unless one is there.\n\n"
+        (prompt "Network tools, in UP-Term:bin (they need a TCP/IP stack\n"
+                "such as Roadshow or AmiTCP):")
+        (help "ssh and scp: BebboSSH 1.45 by Stefan Franke (GPL v3+), an SSH "
+              "client for remote Unix machines, with scp, a key generator and "
+              "a simple server. Its libcryptossh.library goes to LIBS: unless "
+              "one is there.\n\n"
               "bebboget: https downloads (GPL v3+), by the same author.\n\n"
-              "curl 8.22.0: downloads and transfers (the curl licence); needs "
-              "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha).\n\n"
-              "The network tools need a TCP/IP stack (Roadshow, AmiTCP) and go to "
-              "UP-Term:bin; their licences and sources are in the kit's "
-              "Files/net drawer.\n\n"
-              "Serial login: C:upgetty LOOP runs at every boot from a block in "
-              "S:User-Startup, and a terminal program on a null-modem cable at 19200 "
-              "baud gets vsh. While it runs no other program can use the serial port.\n\n"
-              "wasabi (remote development, MIT, by Tobias Karlsson): wasabid in C:, "
-              "started at every boot, so a Mac or Linux machine on your network can "
-              "copy files to this Amiga, run commands on it, grab its screen and read "
-              "its debug output. It runs ANY command a client with its key sends: "
-              "Install makes a key (or keeps yours, ENVARC:wasabi.key) and shows it at "
-              "the end. Leave it off unless you develop on this Amiga from another "
-              "machine. The client for the other machine is in the kit's Files/wasabi.\n\n"
-              "Unifont: GNU Unifont's glyphs (SIL Open Font License 1.1), 1.8 MB in "
-              "UP-Term:unifont. UP-Term draws every character up to U+FFFF your "
-              "font lacks from them (Cyrillic, Greek, CJK, symbols), and the emoji, "
-              "two cells wide, when the font is 8 or 16 pixels high; without them "
-              "such characters show as '?' and emoji as a box.\n\n"
-              "Colour emoji: Twemoji (CC-BY 4.0, Twitter and contributors), 0.5 MB in "
-              "UP-Term:emoji. On an RTG screen of 15 bits or more with "
-              "Picasso96 or CyberGraphX, emoji are drawn in colour over their two "
-              "cells; on other screens Unifont's one-colour glyph is drawn.\n\n"
-              "The UP-Term icon is in SYS:System, beside Shell, and UP-Term Prefs in "
-              "SYS:Prefs.\n\n"
-              "The Shell icon: its WINDOW tooltype is changed to XCON:, so SYS:System/Shell "
-              "opens an UP-Term window; a copy of the icon is kept in "
-              "ENVARC:up-term-orig.\n\n"
-              "Python 3.14 (15 MB) and Neovim 0.12 (32 MB) go to UP-Term:; "
-              "python3 and nvim then run from an UP-Term window.\n\n"
-              "Always installed: C:Claude and C:ClaudeCode (Claude Code on your "
-              "server, see README.txt, CLAUDE FROM THE AMIGA).\n\n"
-              "Uninstall takes every one of them out again.")
+              "curl 8.22.0: downloads and transfers (the curl licence). It needs "
+              "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha), so it is ticked "
+              "only when AmiSSL is found.\n\n"
+              "Their licences and sources are in the kit's Files/net drawer.")
         (choices "ssh and scp (BebboSSH)"
                  "bebboget (https downloads)"
-                 (if #amissl "curl (AmiSSL 5 found)" "curl (needs AmiSSL 5, not found)")
-                 "Serial login at every boot"
-                 "wasabi: remote development from another computer"
-                 "Shell icon opens an UP-Term window"
-                 "Python 3.14 (15 MB)"
-                 "Unifont: glyphs for every character and emoji (1.8 MB)"
+                 (if #amissl "curl (AmiSSL 5 found)" "curl (needs AmiSSL 5, not found)"))
+        (default (+ 1 2 (if #amissl 4 0)))))
+(if (in #net 0) (set #ssh "SSH"))
+(if (in #net 1) (set #bget "BEBBOGET"))
+(if (in #net 2) (set #curl "CURL"))
+
+(set #extra
+    (askoptions
+        (prompt "Extras:")
+        (help "Unifont: GNU Unifont's glyphs (SIL Open Font License 1.1), "
+              "1.8 MB in UP-Term:unifont. UP-Term draws every character up to "
+              "U+FFFF your font lacks from them (Cyrillic, Greek, CJK, "
+              "symbols), and emoji two cells wide, when the font is 8 or 16 "
+              "pixels high. Without them such characters show as '?'.\n\n"
+              "Colour emoji: Twemoji (CC-BY 4.0), 0.5 MB in UP-Term:emoji, "
+              "drawn in colour on an RTG screen of 15 bits or more "
+              "(Picasso96, CyberGraphX); other screens use Unifont's glyph.\n\n"
+              "Python 3.14 (15 MB, UP-Term:Python3, assigned as Python3:) and "
+              "Neovim 0.12 (32 MB, UP-Term:nvim): python3 and nvim then run "
+              "from an UP-Term window.\n\n"
+              "Shell icon: SYS:System/Shell's WINDOW tooltype is changed to "
+              "XCON:, so the Shell opens an UP-Term window. A copy of the icon "
+              "is kept in ENVARC:up-term-orig and Uninstall puts it back.")
+        (choices "Unifont: glyphs for every character and emoji (1.8 MB)"
                  "Colour emoji for RTG screens (Twemoji, 0.5 MB)"
-                 "Neovim 0.12 (32 MB)")
-        (default (+ 1 2 (if #amissl 4 0) 64 128 256 512))))
-(if (in #opts 0) (set #ssh "SSH"))
-(if (in #opts 1) (set #bget "BEBBOGET"))
-(if (in #opts 2) (set #curl "CURL"))
-(if (in #opts 3) (set #serial "SERIAL"))
-(if (in #opts 4) (set #wasabi "WASABI"))
-(if (and (in #opts 5) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+                 "Python 3.14 (15 MB)"
+                 "Neovim 0.12 (32 MB)"
+                 "Shell icon opens an UP-Term window")
+        (default (+ 1 2 4 8))))
+(if (in #extra 0) (set #unifont "UNIFONT"))
+(if (in #extra 1) (set #emoji "EMOJI"))
+(if (in #extra 2) (set #python "PYTHON"))
+(if (in #extra 3) (set #nvim "NVIM"))
+(if (and (in #extra 4) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+
+(set #boot
+    (askoptions
+        (prompt "Started at every boot (both are off unless you tick them):")
+        (help "Serial login: C:upgetty LOOP runs at every boot from a block in "
+              "S:User-Startup, and a terminal program on a null-modem cable at "
+              "19200 baud gets vsh. While it runs no other program can use the "
+              "serial port.\n\n"
+              "wasabi (remote development, MIT, by Tobias Karlsson): wasabid in "
+              "C:, so a Mac or Linux machine on your network can copy files to "
+              "this Amiga, run commands on it, grab its screen and read its "
+              "debug output. It runs ANY command a client with its key sends: "
+              "Install makes a key (or keeps yours, ENVARC:wasabi.key) and "
+              "shows it at the end. Leave it off unless you develop on this "
+              "Amiga from another machine.\n\n"
+              "Uninstall takes both blocks out again.")
+        (choices "Serial login on the serial port"
+                 "wasabi: remote development from another computer")
+        (default 0)))
+(if (in #boot 0) (set #serial "SERIAL"))
+(if (in #boot 1) (set #wasabi "WASABI"))
+
+; the page's default is the host and port line of an existing
+; ENVARC:Claude/remote (';' lines are comments; the line has a space and a
+; port number); no such file: the address below. Search prints that line
+; into ENV:UPTermRemote, whose first line getenv returns.
+(set #oldremote "")
+(if (exists "ENVARC:Claude/remote")
+    (
+        (run "Search ENVARC:Claude/remote \"[~;]#? #[0-9]#?\" PATTERN NONUM >ENV:UPTermRemote" (safe))
+        (set #oldremote (getenv "UPTermRemote"))
+        (run "Delete >NIL: ENV:UPTermRemote QUIET" (safe))
+    ))
+(if (= #oldremote "") (set #oldremote "192.168.0.198 2323"))
+
 (set #remote
     (askstring
         (prompt "Claude Code on your server (the NAS): its address and port.\n"
                 "Then Claude in a Shell goes straight there. Empty: none.")
-        (help "C:Claude without an API key connects to Claude Code on this "
-              "computer with uptelnet (your Claude subscription, through the "
-              "server). Kept in ENVARC:Claude/remote; edit or delete it later.")
-        (default "192.168.0.198 2323")))
+        (help "C:Claude and C:ClaudeCode are always installed (README.txt, "
+              "CLAUDE FROM THE AMIGA). C:Claude without an API key connects to "
+              "Claude Code on this computer with uptelnet (your Claude "
+              "subscription, through the server). Kept in ENVARC:Claude/remote; "
+              "edit or delete it later. The answer replaces an existing file; its "
+              "address is what this page starts with.")
+        (default #oldremote)))
+(set #remotetext #remote)
 (if (<> #remote "") (set #remote (cat "REMOTE=\"" #remote "\"")))
-(if (in #opts 6) (set #python "PYTHON"))
-(if (in #opts 9) (set #nvim "NVIM"))
-(if (in #opts 7) (set #unifont "UNIFONT"))
-(if (in #opts 8) (set #emoji "EMOJI"))
 
 ; ---- taking over the system's console: a page of its own -----------------
 
 (if #v47
     (message
-        "AmigaOS 3.2 found.\n\n"
-        "UP-Term installs normally, but it does not take over CON: or "
-        "console.device on 3.2 yet: the 3.2 Shell needs a console mode "
+        ; n = 5, lead 5
+        "\n\n\n\n\nAmigaOS 3.2 found.\n\n"
+        "UP-Term installs normally, but it does not take over CON: or\n"
+        "console.device on 3.2 yet: the 3.2 Shell needs a console mode\n"
         "UP-Term does not have yet.")
     (
         (set #sys
             (askoptions
-                (prompt "UP-Term can also take over the system's console. "
+                (prompt "UP-Term can also take over the system's console.\n"
                         "Leave both off to keep the system's own.")
                 (help "CON: and RAW:: every new Shell window is an UP-Term window "
                       "(the Amiga look, with UP-Term's line editing, history and Tab "
@@ -174,18 +228,253 @@
     )
 )
 
-; ---- install --------------------------------------------------------------
+; ---- the size of each part, in KB ------------------------------------------
+; Only the pace of the percent bar: each part moves it by its share of the
+; total (measured on the kit of 2026-10-07; a part's few seconds of start-up
+; count as 20 KB).
 
-(working "Installing UP-Term...")
-(execute (tackon #files "install.dos") (cat "\"" #files "\"") (cat "DEST=\"" #dest "\"") #con #dev #shellicon #serial #ssh #bget #curl #wasabi #python #nvim #remote #cpu040 #cpu060 #unifont #emoji)
+(set #kb-drawer 20)
+(set #kb-system 2200)
+(set #kb-coreutils 2200)
+(set #kb-unifont (if #unifont 1800 0))
+(set #kb-emoji (if #emoji 500 0))
+(set #kb-tools (+ 900 (if #ssh 300 0) (if #bget 210 0) (if #curl 1200 0)))
+(set #kb-python (if #python 15040 0))
+(set #kb-nvim (if #nvim 27500 0))
+; fonts, unix, desktop, boot, libs, mount, console: their #kb below
+(set #kb-rest (+ 20 60 100 (if #wasabi 160 20) 420 50 200))
+(set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-unifont #kb-emoji
+                 #kb-tools #kb-python 20 #kb-nvim #kb-rest))
+(set #donekb 0)
 
+; ---- room on the disk --------------------------------------------------------
+; getdiskspace answers -1 when it cannot tell (and Installer 43.3 can
+; overflow on a volume past 2 GB): only a positive answer that is too small
+; asks.
+
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (if (not (askbool
+            (prompt (cat "The volume of " #dest " has " (/ #free 1024) " KB free;\n"
+                         "the parts you chose need about " #totalkb " KB."))
+            (help "Choose fewer extras (Python and Neovim are the big ones), "
+                  "or another drawer on a volume with more room.")
+            (choices "Install anyway" "Abort")
+            (default 1)))
+        (abort "Nothing was installed.")))
+
+;  ready: n = 9, lead 3
+(message
+    (cat "\n\n\nReady to install UP-Term into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB. Each part says what it does while it runs,\n"
+         "and the bar shows how far the whole install is.\n\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+
+; ---- install ------------------------------------------------------------------
+; P_STEP runs one part of install.dos (#step), saying what it does (#why),
+; and moves the bar by its size (#kb). P_COPY copies one drawer of the kit
+; (#from) into UP-Term's drawer (#to) the same way: copyfiles makes #to,
+; takes the subdrawers along, and shows each file as it copies it.
+
+; P_LEAD sets #lead, the newlines that centre a block of #n lines
+(procedure P_LEAD
+    (set #lead (substr "\n\n\n\n\n\n\n" 0 (/ (- 15 #n) 2))))
+
+(procedure P_BAR
+    (set #donekb (+ #donekb #kb))
+    (complete (/ (* #donekb 100) #totalkb)))
+
+(procedure P_STEP
+    (P_LEAD)
+    (working #lead #why)
+    (set #rc (execute #script (cat "\"" #files "\"") (cat "STEP=" #step)
+                      (cat "DEST=\"" #dest "\"") #con #dev #shellicon #serial #ssh
+                      #bget #curl #wasabi #python #nvim #remote #cpu040 #cpu060
+                      #unifont #emoji))
+    (if (>= #rc 20)
+        (abort (cat "Part \"" #step "\" of the install failed (return code "
+                    #rc "). What was installed so far stays; Uninstall takes "
+                    "it out.")))
+    (P_BAR))
+
+; copyfiles' own window lists the files under its prompt, so its prompt
+; has line breaks but no lead
+(procedure P_COPY
+    (P_LEAD)
+    (working #lead #why)
+    (copyfiles
+        (prompt #why)
+        (help @copyfiles-help)
+        (source #from)
+        (dest #to)
+        (all)
+        (optional "force"))
+    (P_BAR))
+
+(complete 0)
+
+(set #step "drawer" #kb #kb-drawer #n 4
+     #why (cat "Making UP-Term's own drawer\n" #dest ",\n"
+               "assigned as UP-Term: now and at every boot\n"
+               "(a block in S:User-Startup)."))
+(P_STEP)
+
+(set #step "system" #kb #kb-system #n 2
+     #why (cat "Installing the XCON: and PTY: handlers, the terminal\n"
+               "entries, the colour themes, and vsh, tmux and screen in C:."))
+(P_STEP)
+
+(set #from (tackon #files "coreutils/bin") #to (tackon #dest "bin") #kb #kb-coreutils #n 3
+     #why (cat "Copying the Unix commands (GNU coreutils: ls, cp, sort...)\n"
+               "to UP-Term:bin. They stay out of C:, where AmigaDOS keeps\n"
+               "its own Sort, Date and Join."))
+(P_COPY)
+
+(if #unifont
+    (
+        (set #from (tackon #files "unifont") #to (tackon #dest "unifont") #kb #kb-unifont #n 2
+             #why (cat "Copying GNU Unifont's glyphs to UP-Term:unifont:\n"
+                       "every character your font lacks is drawn from them."))
+        (P_COPY)
+    ))
+
+(if #emoji
+    (
+        (set #from (tackon #files "emoji") #to (tackon #dest "emoji") #kb #kb-emoji #n 2
+             #why (cat "Copying the colour emoji (Twemoji) to UP-Term:emoji,\n"
+                       "for RTG screens."))
+        (P_COPY)
+    ))
+
+(set #step "tools" #kb #kb-tools #n 3
+     #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo, upgetty,\n"
+               "uptelnet, Claude, ClaudeCode), the network tools you chose,\n"
+               "and Claude's settings."))
+(P_STEP)
+
+; the Python / Neovim page: n = 5 lines, one more for each of the two
+(if (or #python #nvim)
+    (
+        (set #n (+ 5 (if #python 1 0) (if #nvim 1 0)))
+        (P_LEAD)
+        (message
+            (cat #lead "Next:\n"
+                 (if #python "Python 3.14 (15 MB)\n" "")
+                 (if #nvim "Neovim 0.12 (32 MB, about 2100 files)\n" "")
+                 "\nThe biggest part of the install: on a 68020 with a hard\n"
+                 "disk it takes several minutes. The Installer shows\n"
+                 "every file as it is copied."))
+    ))
+
+(if #python
+    (
+        (set #from (tackon #files "python3") #to (tackon #dest "Python3") #kb #kb-python #n 1
+             #why "Copying Python 3.14 to UP-Term:Python3.")
+        (P_COPY)
+    ))
+
+(set #step "python" #kb 20 #n 2
+     #why (cat "Assigning Python3: now and at every boot\n"
+               "(a block in S:User-Startup)."))
+(P_STEP)
+
+(if #nvim
+    (
+        (set #from (tackon #files "nvim") #to (tackon #dest "nvim") #kb #kb-nvim #n 1
+             #why "Copying Neovim 0.12 and its runtime to UP-Term:nvim.")
+        (P_COPY)
+    ))
+
+(set #step "fonts" #kb 20 #n 2
+     #why (cat "Adding the TopazPro and IBM fonts (only the sizes you do\n"
+               "not have yet) and running FixFonts."))
+(P_STEP)
+
+(set #step "unix" #kb 60 #n 2
+     #why (cat "Setting up /gg/bin/sh and /tmp for Unix programs: GG: and\n"
+               "TMP: are assigned only when you have none."))
+(P_STEP)
+
+(set #step "desktop" #kb 100 #n (if #shellicon 3 2)
+     #why (cat "Putting the UP-Term icon in SYS:System and UP-Term Prefs\n"
+               "in SYS:Prefs"
+               (if #shellicon ",\nand pointing the Shell icon at XCON:" "") "."))
+(P_STEP)
+
+(set #step "boot" #kb (if #wasabi 160 20) #n 1
+     #why (cat "Writing vsh's settings"
+               (if #serial ", the serial login" "")
+               (if #wasabi ", wasabid and its key" "") "."))
+(P_STEP)
+
+(set #step "libs" #kb 420 #n 2
+     #why (cat "Installing the patched ixemul.library and its ixnet.library\n"
+               "(the ones there are kept as LIBS:<name>.orig)."))
+(P_STEP)
+
+(set #step "mount" #kb 50 #n 2
+     #why (cat "Mounting XCON:, PTY: and IXPIPE:, so they work now,\n"
+               "without a reboot."))
+(P_STEP)
+
+(set #step "console" #kb 200 #n (+ 1 (if (= #con "CONSOLE") 1 0) (if (= #dev "DEVICE") 1 0))
+     #why (cat "Installing C:UPConsole"
+               (if (= #con "CONSOLE") ",\nserving CON: and RAW:" "")
+               (if (= #dev "DEVICE") ",\nserving console.device" "") "."))
+(P_STEP)
+
+(complete 100)
+
+; ---- what went where ------------------------------------------------------------
+
+(set #assigns (cat "UP-Term: = " #dest))
+(if #python (set #assigns (cat #assigns ", Python3:")))
+; Install writes these markers only when it made the assign (Uninstall reads them)
+(if (exists "ENVARC:up-term/gg") (set #assigns (cat #assigns ", GG:")))
+(if (exists "ENVARC:up-term/tmp") (set #assigns (cat #assigns ", TMP:")))
+(set #blocks "UP-Term assign")
+(if (exists "ENVARC:up-term/gg") (set #blocks (cat #blocks ", GG:")))
+(if (exists "ENVARC:up-term/tmp") (set #blocks (cat #blocks ", TMP:")))
+(if #python (set #blocks (cat #blocks ", Python3:")))
+(if #serial (set #blocks (cat #blocks ", serial login")))
+(if #wasabi (set #blocks (cat #blocks ", wasabid")))
+(if (= #con "CONSOLE") (set #blocks (cat #blocks ", CON:")))
+(if (= #dev "DEVICE") (set #blocks (cat #blocks ", console.device")))
+
+; what went where: 10 lines, one more for the extras, the Claude Code
+; server, and a Blocks list that does not fit one line (> 75 characters)
+(set #xl (cat (if #unifont ", Unifont" "") (if #emoji ", emoji" "")
+              (if #python ", Python3" "") (if #nvim ", nvim" "")))
+(set #n (+ 10 (if (<> #xl "") 1 0) (if (<> #remotetext "") 1 0)
+           (if (> (strlen #blocks) 75) 1 0)))
+(P_LEAD)
+
+(message
+    (cat #lead "UP-Term is installed. What went where:\n"
+         #dest ": coreutils, sh, sz, rz, hl, mdv, network tools"
+         (if (<> #xl "") (cat ",\n" (substr #xl 2 (strlen #xl))) "") "\n"
+         "C: vsh, tmux, screen, UPConsole, UPTerm, UPDemo, Claude, ClaudeCode\n"
+         "L: and DEVS:DOSDrivers: XCON:, PTY:, IXPIPE:\n"
+         "LIBS: ixemul.library, ixnet.library (old ones: .orig)\n"
+         "SYS:System/UP-Term, SYS:Prefs/UP-Term-Prefs\n"
+         "ENVARC:up-term: settings, terminal entries, themes\n"
+         "Assigns: " #assigns "\n"
+         "Blocks in S:User-Startup:\n" #blocks
+         (if (<> #remotetext "") (cat "\nClaude Code server: " #remotetext) ""))
+    (all))
+
+; the last page: 9 lines, 14 with the wasabi key
+(set #n (if (= #wasabi "WASABI") 14 9))
+(P_LEAD)
 (set #done
-    (cat "UP-Term is installed.\n\n"
-         "Open it: double-click SYS:System/UP-Term, or type\n"
-         "  NewShell XCON:0/20/640/300/UP-Term/CLOSE\n\n"
+    (cat #lead "Open UP-Term: double-click SYS:System/UP-Term, or type\n"
+         "  NewShell XCON:0/20/640/300/UP-Term/CLOSE\n"
+         "and in it  vsh  for the Unix-style shell.\n\n"
          "Preferences and themes: SYS:Prefs/UP-Term-Prefs, or the\n"
          "UP-Term menu of any UP-Term window.\n\n"
-         "A reboot mounts XCON:, PTY: and IXPIPE: at every start."))
+         "A reboot mounts XCON:, PTY: and IXPIPE: at every start.\n"
+         "Uninstall (beside Install) takes UP-Term out again."))
 (if (= #wasabi "WASABI")
     (set #done
         (cat #done "\n\n"
