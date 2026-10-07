@@ -1735,6 +1735,9 @@ int vtwin_set_size(vtwin *w, int cols, int rows)
     WORD ww, wh;
     if (!w->t || !win || cols < 1 || rows < 1)
         return 0;
+    if ((win->Flags & WFLG_BACKDROP) && (win->Flags & WFLG_BORDERLESS) && win->LeftEdge == 0 && win->TopEdge == 0 &&
+        win->Width == win->WScreen->Width && win->Height == win->WScreen->Height)
+        return -1; /* FULLSCREEN: the window is the screen; shrinking it leaves a bare screen around it */
     ww = (WORD)(win->BorderLeft + win->BorderRight + cols * w->r.cw);
     wh = (WORD)(win->BorderTop + win->BorderBottom + w->inset_top + rows * w->r.ch);
     if (ww > win->WScreen->Width || wh > win->WScreen->Height)

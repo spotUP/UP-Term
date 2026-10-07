@@ -2121,8 +2121,8 @@ static int menu_run(con *c, LONG id, int on)
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no designed size that way */
         return 1;
     case MENU_SIZE_80X24: case MENU_SIZE_132X43:
-        if (!vtwin_set_size(&c->w, id == MENU_SIZE_80X24 ? 80 : 132, id == MENU_SIZE_80X24 ? 24 : 43))
-            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the screen is too small */
+        if (vtwin_set_size(&c->w, id == MENU_SIZE_80X24 ? 80 : 132, id == MENU_SIZE_80X24 ? 24 : 43) <= 0)
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the screen is too small, or fullscreen */
         return 1;
     default:
         break;
@@ -3556,6 +3556,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
     }
     case SLASH_SIZE: {
         long cols = 0, rows = 0;
+        int ok;
         const char *p = cmd.arg;
         for (; *p >= '0' && *p <= '9'; p++)
             cols = cols * 10 + (*p - '0');
@@ -3566,7 +3567,12 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
             cat3(ans, cap, name, ": COLSxROWS, e.g. 80x24", "\n");
             return 2;
         }
-        if (!vtwin_set_size(&c->w, (int)cols, (int)rows)) {
+        ok = vtwin_set_size(&c->w, (int)cols, (int)rows);
+        if (ok < 0) {
+            cat3(ans, cap, name, ": fullscreen, the window is the whole screen (use /font-size)", "\n");
+            return 2;
+        }
+        if (!ok) {
             cat3(ans, cap, name, ": the screen is too small for it", "\n");
             return 2;
         }
