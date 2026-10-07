@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "amiga": {
+      "command": "sh",
+      "args": ["-c", "AMIGA_HOST=$(cat \"$HOME/.config/amimcp/host\") AMIGA_TOKEN=$(cat \"$HOME/.config/amimcp/token\") exec python3 \"$HOME/amimcp/server/amimcp.py\""]
+    }
+  }
+}

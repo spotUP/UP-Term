@@ -54,3 +54,61 @@ Claude should edit files there).
 
 Status: built and running on the owner's DS218+ (DSM 7.2.2) 2026-10-05. Needs an
 x86-64 or ARM64 Synology with Container Manager.
+
+## Give Claude control of the Amiga (amimcp)
+
+With this, the Claude Code in the container can act on the Amiga you talk to
+it from: run AmigaDOS commands, read and write files, list drawers, see the
+screen, click and type. It uses amimcp (https://github.com/thomas-luebker/amimcp):
+amiagent on the Amiga, an MCP server (pure Python 3 standard library) beside
+Claude Code. amiagent runs whatever it is sent and the link is NOT encrypted:
+always set a TOKEN, keep it on a LAN you trust, never forward the port (7846).
+
+1. On the Amiga: install amiagent (Aminet comm/net/amiagent) and start it with
+   a token, at every boot from S:User-Startup:
+
+       Run >NIL: amiagent TOKEN=pick-a-secret QUIET
+
+   Note the Amiga's IP address.
+
+2. On the NAS (container volume = /volume1/docker/claude-amiga/home, which is
+   /home/claude inside the container), put three things beside Claude Code:
+
+   - amimcp's server: clone https://github.com/thomas-luebker/amimcp and copy its
+     `server/` drawer to `home/amimcp/server/`.
+   - the skill: copy `skills/amiga-upterm/` (beside this README) to
+     `home/.claude/skills/amiga-upterm/`. It teaches Claude AmigaDOS, the
+     UP-Term layout and the safety rules (requesters block amiagent, never
+     kill an install, read before writing).
+   - the MCP config: copy `mcp.json` (beside this README) to
+     `home/work/.mcp.json`. Claude Code starts in ~/work, so it finds it; the
+     server reads the Amiga's address and token from two files at start, so
+     the token is in neither the config nor any chat.
+
+   Copying from a Mac: Synology's scp/SFTP may be off; tar over ssh works:
+
+       tar -C staging -cf - amimcp .claude/skills/amiga-upterm work/.mcp.json \
+         | ssh -p <port> <user>@<nas> "tar -C /volume1/docker/claude-amiga/home -xf -"
+
+3. The address and token, written as the container's claude user (Container
+   Manager > Container > claude-amiga > Terminal > Create > bash):
+
+       su -s /bin/sh claude -c 'umask 077; mkdir -p ~/.config/amimcp; printf "%s" "AMIGA_IP" > ~/.config/amimcp/host; read -rs T; printf "%s" "$T" > ~/.config/amimcp/token'
+
+   It waits for the token (not echoed), then Return.
+
+4. Start `claude` from UP-Term (C:Claude or ClaudeCode). Claude asks once to
+   approve the project's `amiga` MCP server: approve it. Check: ask "what
+   volumes does my Amiga have?" -- it runs a command on the Amiga and answers.
+
+## ssh to the NAS (for setting this up from another computer)
+
+DSM: Control Panel > Terminal & SNMP > Enable SSH service (any port); Control
+Panel > User & Group > Advanced > Enable user home service (key login needs a
+home); on DSM 7 only members of `administrators` may log in by ssh. Then, in a
+normal terminal (it asks for the password, so not from a tool without a TTY):
+
+    ssh-copy-id -p <port> -i ~/.ssh/id_ed25519.pub <user>@<nas>
+
+Synology refuses keys unless the home is not group-writable:
+`chmod 755 ~; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys`.
