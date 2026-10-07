@@ -17,6 +17,8 @@
 
 extern struct ExecBase *SysBase;
 extern struct DosLibrary *DOSBase;
+#define UPASSIGN_DOS
+#include "../config/upassign.h"
 
 #define VO_SLOTS 1024      /* a power of two */
 #define VO_FILL 768        /* a full table is emptied and filled again */
@@ -304,7 +306,12 @@ static void worker(void)
         case VO_READ: {
             /* a file the caller may not read itself (a DOS call; U2's
              * Unifont pages): a missing one is an answer, not a requester */
-            BPTR fh = Open((STRPTR)m->name, MODE_OLDFILE);
+            BPTR fh;
+            /* the kit's own pages: through the assign UP-Term:, which a window
+             * opened before S:User-Startup ran does not have yet (upassign.h) */
+            if (!strncmp(m->name, UPASSIGN_NAME ":", sizeof(UPASSIGN_NAME)))
+                upassign_ensure();
+            fh = Open((STRPTR)m->name, MODE_OLDFILE);
             m->len = -1;
             if (fh) {
                 m->len = Read(fh, m->buf, m->max);

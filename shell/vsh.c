@@ -28,6 +28,8 @@
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
+#define UPASSIGN_DOS
+#include "../config/upassign.h"
 #include "../config/termurl.h"
 
 #ifdef VSH_DEBUG
@@ -940,8 +942,18 @@ static BPTR lock_name(const char *path, char *used, int max)
     amiga_name(path, used, max);
     if ((lock = Lock((STRPTR)used, SHARED_LOCK)) != 0)
         return lock;
-    if (sh_unix_root(path, used, max) && (lock = Lock((STRPTR)used, SHARED_LOCK)) != 0)
-        return lock;
+    if (sh_unix_root(path, used, max)) {
+        /* the Unix reading is a guess ("/vol/x"): a volume this machine does
+         * not have (UP-Term: before its assign) is "no such file", never an
+         * "insert volume" requester */
+        struct Process *me = (struct Process *)FindTask(0);
+        APTR win = me->pr_WindowPtr;
+        me->pr_WindowPtr = (APTR)-1;
+        lock = Lock((STRPTR)used, SHARED_LOCK);
+        me->pr_WindowPtr = win;
+        if (lock)
+            return lock;
+    }
     amiga_name(path, used, max); /* not there either way: the Amiga name */
     return 0;
 }
@@ -1298,6 +1310,7 @@ static int vsh_main(int argc, char **argv)
     static vproc vp;
     (void)version;
     (void)stack_cookie;
+    upassign_ensure(); /* vshrc's PATH names /UP-Term/bin: the assign first */
     vp.sh = &sh;
     vp.port = CreateMsgPort();
     if (!vp.port)

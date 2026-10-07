@@ -29,7 +29,8 @@ CD "{DIR}"
 ; UP-Term's own drawer, wherever the owner put it: DEST, else SYS:UP-Term.
 ; Every later line and every program reaches it as UP-Term: (assigned now,
 ; and at every boot by a marked block in S:User-Startup, written before the
-; blocks that use it; Uninstall finds the drawer through the assign).
+; blocks that use it, and named in ENVARC:up-term/Dir for the programs that
+; run before that block; Uninstall finds the drawer through the assign).
 Set updest "{DEST}"
 If "$updest" EQ ""
   Set updest SYS:UP-Term
@@ -41,6 +42,14 @@ If NOT EXISTS "$updest"
   Quit 20
 EndIf
 Assign UP-Term: "$updest"
+; The same drawer, written down where UP-Term itself can read it: XCON:, PTY:
+; and console.device are mounted BEFORE S:User-Startup runs, so a window
+; opened early (or a boot whose block below was lost) would find no
+; UP-Term: and AmigaDOS would ask "insert volume UP-Term:". Every program of
+; the kit that reads UP-Term: first makes the assign from this file when it
+; is missing (config/upassign.h). ENVARC:up-term goes whole at Uninstall.
+MakeDir >NIL: ENVARC:up-term
+Echo >ENVARC:up-term/Dir "$updest"
 If NOT EXISTS S:User-Startup
   Echo >S:User-Startup ""
 EndIf

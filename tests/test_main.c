@@ -17,6 +17,7 @@ void suite_ldisc(void);
 void suite_waitset(void);
 void suite_brk(void);
 void suite_bmsg(void);
+void suite_upassign(void);
 void suite_upcon(void);
 void suite_upconf(void);
 void suite_prefs(void);
@@ -68,6 +69,7 @@ static const h_suite suites[] = {
     { "waitset", suite_waitset },
     { "brk", suite_brk },
     { "bmsg", suite_bmsg },
+    { "upassign", suite_upassign },
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
     { "prefs", suite_prefs },

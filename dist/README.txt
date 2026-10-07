@@ -38,9 +38,14 @@ WHERE IT IS INSTALLED
   Shell; the drawer's parent must exist). Everything finds it through the
   assign UP-Term:, which Install makes at once and at every boot (a block
   in S:User-Startup between ;BEGIN UP-Term assign and ;END UP-Term assign).
-  To move the drawer later, copy it and change that one line. Uninstall
-  looks the drawer up through UP-Term: and removes the drawer, the block
-  and the assign.
+  XCON:, PTY: and the console device start before that block runs, so the
+  drawer is also written in ENVARC:up-term/Dir: whatever of UP-Term reads
+  UP-Term: first makes the assign from it when it is missing, and nothing
+  of UP-Term ever asks you to "insert volume UP-Term:" (a missing assign
+  is "not installed" to it). To move the drawer later, copy it and change
+  that one line and ENVARC:up-term/Dir (or run Install again with DEST).
+  Uninstall looks the drawer up through UP-Term: and removes the drawer,
+  the block and the assign.
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"

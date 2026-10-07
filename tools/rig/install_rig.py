@@ -87,6 +87,7 @@ def main(dest=None):
     terminfo_before = terminfo_before.strip()
     run_long('rununinstall')  # a run that stopped half-way left things behind
     startup_before = run('Type S:User-Startup')[1]
+    sseq_before = run('Type S:Startup-Sequence')[1]  # no part of UP-Term edits it (UPTERM-VOLUME-REQUESTER)
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
     run('Delete >NIL: ENVARC:Claude/remote QUIET')  # an earlier run's remote (Install keeps one)
     ls_before = run('List >NIL: C:ls')[0] == 0  # Install puts no Unix command in C:
@@ -128,6 +129,19 @@ def main(dest=None):
     rc, out = run('Type S:User-Startup')
     check(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
           'the UP-Term: block comes before the blocks that use it', out[-300:])
+    # UPTERM-VOLUME-REQUESTER: the drawer is also in ENVARC:up-term/Dir, so
+    # what runs before S:User-Startup can make the assign itself. Lose the
+    # assign, run a real consumer (UPConsole STATUS reads UP-Term:VERSIONS):
+    # the assign is back, the kit line is printed, and no requester is up.
+    rc, out = run('Type ENVARC:up-term/Dir')
+    check(rc == 0 and out.strip().lower() == drawer.lower(), 'ENVARC:up-term/Dir names %s' % drawer, out)
+    run('Assign UP-Term:')
+    check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'the rig lost the UP-Term: assign', '')
+    rc, out = run('VTC:UPConsole STATUS')
+    check('kit:' in out, 'UPConsole STATUS finds UP-Term:VERSIONS with no assign (it made it from Dir)', out)
+    check(run('Assign >NIL: UP-Term: EXISTS')[0] == 0, 'a consumer made the UP-Term: assign from ENVARC:up-term/Dir', '')
+    tree = ami.req(0x0D).decode('latin-1')
+    check('System Request' not in tree, 'no requester on screen (UITREE has no System Request)', tree[-200:])
     rc, out = run('Assign PTY: EXISTS DEVICES')
     check(rc == 0, 'Install mounted PTY:', out)
     rc, out = run('Assign IXPIPE: EXISTS DEVICES')
@@ -287,6 +301,8 @@ def main(dest=None):
     check(run('List >NIL: SYS:System/UP-Term.info')[0] != 0, 'after Uninstall: no UP-Term icon in SYS:System', '')
     check(run('List >NIL: "%s/VERSIONS"' % drawer)[0] != 0, 'after Uninstall: %s/VERSIONS is gone' % drawer, '')
     check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after Uninstall: no UP-Term: assign', '')
+    check(run('List >NIL: ENVARC:up-term/Dir')[0] != 0, 'after Uninstall: no ENVARC:up-term/Dir', '')
+    check(run('Type S:Startup-Sequence')[1] == sseq_before, 'after Uninstall: S:Startup-Sequence as it was, byte for byte', '')
     rc, out = run('VTC:UPConsole STATUS')
     check('CON: ROM' in out and 'RAW: ROM' in out, 'after Uninstall: CON: and RAW: are the ROM\'s', out)
     check('console.device: ROM' in out, 'after Uninstall: console.device is the ROM\'s', out)

@@ -30,6 +30,15 @@ If NOT WARN
   Delete >NIL: ENV:updir QUIET
 EndIf
 Delete >NIL: ENV:upcd QUIET
+; a reboot that lost the assign: the drawer Install wrote down (ENVARC:up-term/Dir)
+Assign >NIL: UP-Term: EXISTS
+If WARN
+  If EXISTS ENVARC:up-term/Dir
+    Copy >NIL: ENVARC:up-term/Dir ENV:updir CLONE
+    Set updest "$updir"
+    Delete >NIL: ENV:updir QUIET
+  EndIf
+EndIf
 Set unst ""
 If EXISTS "$updest/unstartup.sh"
   Set unst "$updest/unstartup.sh"
@@ -64,6 +73,9 @@ Assign >NIL: Python3: EXISTS
 If NOT WARN
   Assign Python3:
 EndIf
+; Dir first: with it a window opened now would make the assign again and the
+; drawer would be in use (config/upassign.h)
+Delete >NIL: ENVARC:up-term/Dir QUIET
 ; (UP-Term:VERSIONS goes with the drawer), then the assign itself
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN

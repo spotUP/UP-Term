@@ -50,6 +50,8 @@
 #include "upc_public.h"
 
 extern struct DosLibrary *DOSBase;
+#define UPASSIGN_DOS
+#include "../config/upassign.h"
 
 static const char vers[] = "$VER: UPConsole 0.1 (30.9.2026)";
 
@@ -565,6 +567,7 @@ static void status(void)
         struct Process *me = (struct Process *)FindTask(0);
         APTR oldwin = me->pr_WindowPtr;
         BPTR fh;
+        upassign_ensure(); /* made from ENVARC:up-term/Dir when a boot lost it */
         me->pr_WindowPtr = (APTR)-1;
         fh = Open((STRPTR)"UP-Term:VERSIONS", MODE_OLDFILE);
         me->pr_WindowPtr = oldwin;
