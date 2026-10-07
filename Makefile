@@ -318,10 +318,14 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # vsh: the portable core (host-tested) and the AmigaDOS side. vbcc warns
 # (153) on the (void) parameter casts the host compiler needs, and (65) on
 # the parameters they are for.
+# Size pass: vbcc -O=1 -size is 6.8 KB smaller than -O2 (bit 2 of -O
+# and -O2 grow vsh); -D__NOINLINE__ stops vbcc's string.h from inlining
+# strcmp/strlen/strcpy at every call (another 3.5 KB). Measured 2026-10-07.
+VSH_OPT := -O=1 -size -D__NOINLINE__
 VSH_SRC := shell/vsh.c shell/sh_exec.c shell/sh_expand.c shell/sh_parse.c config/termurl.c tty/bmsg.c
 $(BUILD)/amiga/vsh: $(VSH_SRC) config/termurl.h shell/sh_exec.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
+	$(subst -O2,$(VSH_OPT),$(VC)) -Dmain=up_main -dontwarn=153,65 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 
 $(BUILD)/amiga/vtshow: tests/amiga/vtshow.c
 	@mkdir -p $(BUILD)/amiga
