@@ -184,7 +184,9 @@ $(BUILD)/te_diff: tools/te_diff/te_diff.c tools/te_diff/te_shim.h engine/vtengin
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=gnu99 -O1 -g -w -Itools/te_diff -I$(DCTELNET)/src/third_party/retro32-term \
 		tools/te_diff/te_diff.c engine/vtengine.c -o $@
-te-diff: $(BUILD)/te_diff
+te-diff:
+	@test -d $(DCTELNET)/src/third_party/retro32-term || { echo "[ERROR] te-diff needs a DCTelnet checkout in DCTELNET=$(DCTELNET) (dctelnet-v2, optional in upterm's repos.lock: upterm-bootstrap --only dctelnet-v2): set DCTELNET=<checkout>"; exit 1; }
+	@$(MAKE) --no-print-directory $(BUILD)/te_diff
 	@test -d $(ART) || { echo "[ERROR] te-diff needs BBS art in ART=$(ART) (amiexpress-doorserver, optional in upterm's repos.lock; private repo): set ART=<dir of .ans files>"; exit 1; }
 	find $(ART) -type f -iname '*.ans' -print0 | xargs -0 $(BUILD)/te_diff | grep -v ' 0 cells differ'
 
@@ -587,6 +589,7 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h $(BUILD)/amiga/o
 # when unpacked there, else DCTelnet's copy, or VTCON_NETINC=<netinclude>.
 VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(UPTERM_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
 $(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+	@test -d $(VTCON_NETINC) || { echo "[ERROR] C:uptelnet needs the Roadshow netinclude headers, not found at $(VTCON_NETINC): unpack them to vendor/roadshow-netinclude, or pass VTCON_NETINC=<dir> (DCTelnet's copy: dctelnet-v2, optional in upterm's repos.lock)"; exit 1; }
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -Dmain=up_main -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 

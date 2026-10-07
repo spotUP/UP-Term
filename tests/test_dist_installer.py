@@ -143,7 +143,8 @@ class ClaudeRemoteFile(unittest.TestCase):
         self.assertIn('(default #oldremote)', INSTALLER)
         self.assertNotIn('(default "192.168.0.198 2323")', INSTALLER)
         self.assertIn('(set #oldremote "")', INSTALLER)
-        self.assertIn('(if (= #oldremote "") (set #oldremote "192.168.0.198 2323"))', INSTALLER)
+        self.assertNotIn('192.168.', INSTALLER, 'no private LAN address as a default')
+        self.assertIn('(set #remotetext #remote)', INSTALLER)
         m = re.search(r'\(run "Search ENVARC:Claude/remote \\"([^"]*?)\\" PATTERN NONUM >ENV:UPTermRemote"', INSTALLER)
         self.assertTrue(m, 'the read of the existing file')
         # the Search pattern, in Python terms: not a comment line, a space, a port

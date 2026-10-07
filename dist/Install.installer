@@ -180,18 +180,19 @@
         (set #oldremote (getenv "UPTermRemote"))
         (run "Delete >NIL: ENV:UPTermRemote QUIET" (safe))
     ))
-(if (= #oldremote "") (set #oldremote "192.168.0.198 2323"))
 
 (set #remote
     (askstring
         (prompt "Claude Code on your server (the NAS): its address and port.\n"
-                "Then Claude in a Shell goes straight there. Empty: none.")
+                "Like: nas.local 2323. Then Claude in a Shell goes straight there. Empty: none.")
         (help "C:Claude and C:ClaudeCode are always installed (README.txt, "
               "CLAUDE FROM THE AMIGA). C:Claude without an API key connects to "
               "Claude Code on this computer with uptelnet (your Claude "
               "subscription, through the server). Kept in ENVARC:Claude/remote; "
               "edit or delete it later. The answer replaces an existing file; its "
-              "address is what this page starts with.")
+              "address is what this page starts with. With no file the page starts empty "
+              "and nothing is written: type your server's address and port (the port is "
+              "2323 for the server in tools/nas).")
         (default #oldremote)))
 (set #remotetext #remote)
 (if (<> #remote "") (set #remote (cat "REMOTE=\"" #remote "\"")))

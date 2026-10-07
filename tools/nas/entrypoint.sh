@@ -24,6 +24,12 @@ done
 # NAS_IP and ALLOW may each hold several, space-separated: the LAN address
 # and 127.0.0.1, where Synology's Tailscale (userspace networking) hands over
 # the connections that reach the NAS's tailnet address
+case "$NAS_IP $ALLOW" in
+*EDIT-ME*)
+    echo "claude-amiga: NAS_IP and ALLOW in compose.yaml are still the EDIT-ME placeholders."
+    echo "claude-amiga: set NAS_IP to the NAS's LAN address and ALLOW to your LAN (like 192.168.1.0/24), then start again."
+    exit 1 ;;
+esac
 set --
 for b in $NAS_IP; do set -- "$@" --bind "$b"; done
 for n in $ALLOW; do set -- "$@" --allow "$n"; done
