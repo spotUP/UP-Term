@@ -1,0 +1,1 @@
+[[ 1 -eq 1 || 1 -eq 2 && 1 -eq 3 ]] && echo andfirst; [[ ( 1 -eq 1 || 1 -eq 2 ) && 1 -eq 3 ]] || echo paren

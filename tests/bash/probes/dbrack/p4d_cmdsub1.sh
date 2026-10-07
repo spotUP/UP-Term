@@ -1,0 +1,1 @@
+[[ $(echo abc) == abc ]] && echo sub; [[ "$(echo a b)" == "a b" ]] && echo subq

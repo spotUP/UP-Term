@@ -1,0 +1,1 @@
+[[ "" == * ]] && echo empty-star; [[ a == "" ]] || echo no

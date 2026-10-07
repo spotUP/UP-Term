@@ -1,0 +1,1 @@
+echo hi > f.txt; mkdir -p dd; [[ -f f.txt ]] && echo f; [[ -d dd ]] && echo d; [[ -e f.txt ]] && echo e; [[ -e nope ]] || echo ne

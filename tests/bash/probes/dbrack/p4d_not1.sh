@@ -1,0 +1,1 @@
+[[ ! -f nope ]] && echo notfile; [[ ! abc == abd ]] && echo not-eq; [[ ! ! abc ]] && echo double; [[ ! "" ]] && echo not-empty

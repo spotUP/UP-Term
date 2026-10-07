@@ -1,0 +1,1 @@
+[[ abc == abc ]] && echo 1; [[ abc = abc ]] && echo 2; [[ abc != abd ]] && echo 3; [[ abc == abd ]] || echo 4

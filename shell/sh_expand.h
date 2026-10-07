@@ -123,6 +123,8 @@ void sh_ctx_free(sh_ctx *c);
 
 #define SH_NO_SPLIT 1   /* one field: assignments, redirection targets, case words */
 #define SH_NO_GLOB  2
+#define SH_PATTERN  8   /* quoted glob characters stay escaped: [[ x == "*" ]] and case patterns match literally */
+#define SH_REGEX    16  /* the same for the regular expression of [[ x =~ re ]] */
 #define SH_ASSIGN   4   /* the word is NAME=value: ~ also expands after a colon, no brace expansion */
 
 /* Expand one word into fields appended to out. 0 on success; -1 with

@@ -1,0 +1,1 @@
+[[ -f ]] && echo bare-f; [[ -d . ]] && echo dot; [[ -x /bin/sh ]] && echo sh-x

@@ -1,0 +1,1 @@
+[[ 010 -eq 8 ]] && echo octal; [[ 0x10 -eq 16 ]] && echo hex; [[ 2#11 -eq 3 ]] && echo base

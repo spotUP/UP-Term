@@ -1,0 +1,1 @@
+p="a*"; [[ abc == $p ]] && echo unquoted-var; [[ abc == "$p" ]] || echo quoted-var; [[ "a*" == "$p" ]] && echo lit

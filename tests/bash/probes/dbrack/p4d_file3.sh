@@ -1,0 +1,1 @@
+echo hi > f.txt; [[ -f f.txt && -r f.txt ]] && echo both; [[ -f nope || -f f.txt ]] && echo either

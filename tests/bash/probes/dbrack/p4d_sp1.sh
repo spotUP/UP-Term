@@ -1,0 +1,1 @@
+[[   a   ==   a   ]] && echo spaces; [[	a == a	]] && echo tabs

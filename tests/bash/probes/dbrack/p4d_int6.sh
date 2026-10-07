@@ -1,0 +1,1 @@
+a=(1 2 3); [[ a[1] -eq 2 ]] && echo elem; i=2; [[ a[i] -eq 3 ]] && echo idx

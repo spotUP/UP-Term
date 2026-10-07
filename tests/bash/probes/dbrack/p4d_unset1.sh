@@ -1,0 +1,1 @@
+[[ $nope == "" ]] && echo e1; [[ -z $nope ]] && echo e2; [[ $nope ]] || echo e3; [[ $nope -eq 0 ]] && echo e4

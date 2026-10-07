@@ -1,0 +1,1 @@
+[[ x == [[:alpha:]] ]] && echo alpha; [[ 5 == [[:digit:]] ]] && echo digit; [[ x == [[:digit:]] ]] || echo notdigit

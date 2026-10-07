@@ -1,0 +1,1 @@
+[[ abc == \a* ]] && echo bs1; [[ a*c == a\*c ]] && echo bs2; [[ abc == a\*c ]] || echo bs3

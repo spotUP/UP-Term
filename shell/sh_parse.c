@@ -844,6 +844,188 @@ static char *arena_text(lexer *L, long from, long to)
     return t;
 }
 
+/* ---- [[ ]] ------------------------------------------------------------------------ */
+
+static sh_node *db_or(lexer *L);
+
+static int db_binop(const char *w)
+{
+    static const char *const ops[] = {"==", "=", "!=", "=~", "-eq", "-ne", "-lt", "-le", "-gt", "-ge", "-nt", "-ot",
+                                      "-ef", 0};
+    int i;
+    for (i = 0; ops[i]; i++)
+        if (!strcmp(w, ops[i]))
+            return 1;
+    return 0;
+}
+
+static sh_node *db_leaf(lexer *L, const char *op, char *a, char *b)
+{
+    sh_node *n = node(L, SH_DBRACK);
+    if (!n)
+        return n;
+    n->name = (char *)op;
+    n->words = new_word(L, a);
+    if (b)
+        append_word(&n->words, new_word(L, b));
+    return n;
+}
+
+/* the right side of =~: the text up to a blank at parenthesis depth 0 (parentheses, | and blanks inside
+ * ( ) belong to the regular expression) */
+static char *db_regex_word(lexer *L)
+{
+    const char *s = L->s;
+    long i = L->pos, from;
+    int depth = 0;
+    while (s[i] == ' ' || s[i] == '\t')
+        i++;
+    from = i;
+    for (; s[i]; i++) {
+        char ch = s[i];
+        if (ch == '\\' && s[i + 1])
+            i++;
+        else if (ch == '\'' || ch == '"') {
+            for (i++; s[i] && s[i] != ch; i++)
+                if (ch == '"' && s[i] == '\\' && s[i + 1])
+                    i++;
+            if (!s[i])
+                break;
+        } else if (ch == '$' && (s[i + 1] == '(' || s[i + 1] == '{')) {
+            long e = sh_skip_sub(s, i, (long)strlen(s), 0);
+            if (e < 0)
+                break;
+            i = e - 1;
+        } else if (ch == '(')
+            depth++;
+        else if (ch == ')') {
+            if (!depth)
+                break;
+            depth--;
+        } else if ((ch == ' ' || ch == '\t' || ch == '\n') && !depth)
+            break;
+    }
+    L->pos = i;
+    return arena_text(L, from, i);
+}
+
+static sh_node *db_primary(lexer *L)
+{
+    sh_node *n;
+    char *first;
+    int fq;
+    const char *op = 0;
+    if (L->tok == T_LPAREN) {
+        n = node(L, SH_DBRACK);
+        n->name = "(";
+        next(L);
+        n->a = db_or(L);
+        if (L->tok != T_RPAREN)
+            fail(L, "[[: ) is missing", L->tok == T_EOF);
+        else
+            next(L);
+        return n;
+    }
+    if (L->tok != T_WORD || is_word(L, "]]")) {
+        fail(L, "[[: a word is missing", L->tok == T_EOF);
+        return db_leaf(L, "", "", 0);
+    }
+    first = L->word;
+    fq = L->quoted;
+    next(L);
+    if (L->tok == T_LT)
+        op = "<";
+    else if (L->tok == T_GT)
+        op = ">";
+    else if (L->tok == T_WORD && !L->quoted && db_binop(L->word))
+        op = L->word;
+    if (op) {
+        char *rhs;
+        if (!strcmp(op, "=~"))
+            rhs = db_regex_word(L);
+        else {
+            next(L);
+            if (L->tok != T_WORD || is_word(L, "]]")) {
+                fail(L, "[[: a word is missing after the operator", L->tok == T_EOF);
+                return db_leaf(L, "", "", 0);
+            }
+            rhs = L->word;
+        }
+        n = db_leaf(L, op, first, rhs);
+        next(L);
+        return n;
+    }
+    if (!fq && first[0] == '-' && first[1] && !first[2] && L->tok == T_WORD && !is_word(L, "]]")) {
+        char *a = L->word;
+        n = db_leaf(L, first, a, 0);
+        next(L);
+        return n;
+    }
+    if (!fq && first[0] == '-' && first[1] && !first[2] && strchr("abcdefghknoprstuvwxzGLNORS", first[1]))
+        fail(L, "[[: a unary operator needs an operand", L->tok == T_EOF);
+    return db_leaf(L, "", first, 0);
+}
+
+static sh_node *db_not(lexer *L)
+{
+    if (is_word(L, "!")) {
+        sh_node *n = node(L, SH_DBRACK);
+        n->name = "!";
+        next(L);
+        n->a = db_not(L);
+        return n;
+    }
+    return db_primary(L);
+}
+
+static sh_node *db_and(lexer *L)
+{
+    sh_node *l = db_not(L);
+    while (!L->had_error && L->tok == T_AND) {
+        sh_node *n = node(L, SH_DBRACK);
+        n->name = "&&";
+        next(L);
+        skip_newlines(L);
+        n->a = l;
+        n->b = db_not(L);
+        l = n;
+    }
+    return l;
+}
+
+static sh_node *db_or(lexer *L)
+{
+    sh_node *l = db_and(L);
+    while (!L->had_error && L->tok == T_OR) {
+        sh_node *n = node(L, SH_DBRACK);
+        n->name = "||";
+        next(L);
+        skip_newlines(L);
+        n->a = l;
+        n->b = db_and(L);
+        l = n;
+    }
+    return l;
+}
+
+static sh_node *parse_dbrack(lexer *L)
+{
+    sh_node *n;
+    next(L);
+    skip_newlines(L);
+    n = db_or(L);
+    skip_newlines(L);
+    if (L->had_error)
+        return n;
+    if (!is_word(L, "]]")) {
+        fail(L, "[[: ]] is missing", L->tok == T_EOF);
+        return n;
+    }
+    next(L);
+    parse_trailing_redirs(L, n);
+    return n;
+}
+
 static sh_node *parse_command1(lexer *L);
 
 static sh_node *parse_command(lexer *L)
@@ -900,6 +1082,10 @@ static sh_node *parse_command1(lexer *L)
     if (is_word(L, "while") || is_word(L, "until")) {
         n = parse_loop(L, is_word(L, "while") ? SH_WHILE : SH_UNTIL);
         parse_trailing_redirs(L, n);
+        return n;
+    }
+    if (is_word(L, "[[")) {
+        n = parse_dbrack(L);
         return n;
     }
     if (is_word(L, "for")) {
@@ -1101,7 +1287,7 @@ static void dump(out *o, const sh_node *n)
 {
     static const char *const names[] = {
         "cmd", "pipe", "and", "or", "seq", "bg", "not", "sub", "group", "if", "while", "until",
-        "for", "case", "func", "arith", "forarith"
+        "for", "case", "func", "arith", "forarith", "dbrack"
     };
     const sh_case *c;
     if (!n) {
@@ -1121,6 +1307,19 @@ static void dump(out *o, const sh_node *n)
         break;
     case SH_ARITHCMD:
         dump_words(o, n->words);
+        break;
+    case SH_DBRACK:
+        put(o, " ");
+        put(o, n->name && n->name[0] ? n->name : "str");
+        dump_words(o, n->words);
+        if (n->a) {
+            put(o, " ");
+            dump(o, n->a);
+        }
+        if (n->b) {
+            put(o, " ");
+            dump(o, n->b);
+        }
         break;
     case SH_FORARITH:
         dump_words(o, n->words);

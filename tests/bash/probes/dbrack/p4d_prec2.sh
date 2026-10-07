@@ -1,0 +1,1 @@
+[[ ! 1 -eq 1 || 2 -eq 2 ]] && echo notbinds; [[ ! ( 1 -eq 1 || 2 -eq 2 ) ]] || echo group

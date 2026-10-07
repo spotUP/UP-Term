@@ -1,0 +1,1 @@
+[[ 1 -eq 1 && 2 -eq 2 ]] && echo both; [[ 1 -eq 1 && 2 -eq 3 ]] || echo not-both

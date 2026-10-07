@@ -1,0 +1,1 @@
+touch g1 g2; [[ g* == g* ]] && echo lit; x=g*; [[ $x == "g*" ]] && echo nosplitglob

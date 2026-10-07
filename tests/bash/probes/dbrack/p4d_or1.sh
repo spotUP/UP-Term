@@ -1,0 +1,1 @@
+[[ 1 -eq 2 || 2 -eq 2 ]] && echo either; [[ 1 -eq 2 || 2 -eq 3 ]] || echo neither

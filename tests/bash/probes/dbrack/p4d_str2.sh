@@ -1,0 +1,1 @@
+x=; [[ $x ]] || echo empty; [[ -n $x ]] || echo n-empty; [[ -z $x ]] && echo z-empty; y="a b"; [[ $y ]] && echo set

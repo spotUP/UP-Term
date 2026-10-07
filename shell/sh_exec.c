@@ -4302,6 +4302,83 @@ static long exec_forarith(sh_shell *sh, const sh_node *n, const sh_io *io)
     return sh->intr ? intr_status(sh) : st;
 }
 
+/* ---- [[ ]] ----------------------------------------------------------------------- */
+
+static char *db_word(sh_shell *sh, const char *text, const sh_io *io, int flags)
+{
+    return expand_val(sh, text, io, flags);
+}
+
+/* 1 true, 0 false; *bad set when an error was reported (status 1 then, 2 for a syntax error) */
+static int db_eval(sh_shell *sh, const sh_node *n, const sh_io *io, int *bad)
+{
+    const char *op = n->name ? n->name : "";
+    char *a, *b = 0;
+    int r = 0;
+    tctx t;
+    if (!strcmp(op, "||") || !strcmp(op, "&&")) {
+        r = db_eval(sh, n->a, io, bad);
+        if (*bad || (op[0] == '|') == (r != 0))
+            return r;
+        return db_eval(sh, n->b, io, bad);
+    }
+    if (!strcmp(op, "!"))
+        r = !db_eval(sh, n->a, io, bad);
+    else if (!strcmp(op, "("))
+        r = db_eval(sh, n->a, io, bad);
+    else {
+        int pat = !strcmp(op, "==") || !strcmp(op, "=") || !strcmp(op, "!=");
+        t.sh = sh;
+        t.io = io;
+        t.err = 0;
+        a = db_word(sh, n->words->text, io, 0);
+        if (n->words->next)
+            b = db_word(sh, n->words->next->text, io, pat ? SH_PATTERN : 0);
+        if (!a || (n->words->next && !b)) {
+            *bad = 1;
+            free(a);
+            free(b);
+            return 0;
+        }
+        if (!op[0])
+            r = a[0] != 0;
+        else if (!b)
+            r = sh_test_unary(&t, op[1], a);
+        else if (pat)
+            r = sh_match(b, a, 0) == (op[0] != '!');
+        else if (!strcmp(op, "=~")) {
+            err2(sh, io, "[[", "=~ is not available yet");
+            *bad = 2;
+        } else if (op[0] == '<' || op[0] == '>')
+            r = op[0] == '<' ? strcmp(a, b) < 0 : strcmp(a, b) > 0;
+        else if (!strcmp(op, "-nt") || !strcmp(op, "-ot") || !strcmp(op, "-ef"))
+            r = sh_test_binary(&t, a, op, b);
+        else {
+            const char *e1 = 0, *e2 = 0;
+            sh_int x = sh_arith(&sh->ctx, a, &e1), y = sh_arith(&sh->ctx, b, &e2);
+            if (e1 || e2) {
+                err2(sh, io, "[[", e1 ? e1 : e2);
+                *bad = 1;
+            } else
+                r = !strcmp(op, "-eq") ? x == y : !strcmp(op, "-ne") ? x != y : !strcmp(op, "-lt") ? x < y
+                  : !strcmp(op, "-le") ? x <= y : !strcmp(op, "-gt") ? x > y : x >= y;
+        }
+        if (t.err)
+            *bad = 2;
+        free(a);
+        free(b);
+    }
+    return r;
+}
+
+static long exec_dbrack(sh_shell *sh, const sh_node *n, const sh_io *io)
+{
+    int bad = 0, r;
+    SH_HIT(DBRACK);
+    r = db_eval(sh, n, io, &bad);
+    return bad ? bad : !r;
+}
+
 static long exec_for(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     sh_list items;
@@ -4399,6 +4476,8 @@ static long exec_compound(sh_shell *sh, const sh_node *n, const sh_io *io)
         return exec_forarith(sh, n, io);
     case SH_ARITHCMD:
         return exec_arithcmd(sh, n, io);
+    case SH_DBRACK:
+        return exec_dbrack(sh, n, io);
     case SH_CASE:
         return exec_case(sh, n, io);
     default:
@@ -4501,6 +4580,7 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_FOR:
     case SH_FORARITH:
     case SH_ARITHCMD:
+    case SH_DBRACK:
     case SH_CASE:
         /* a compound command's redirections are for all of it (POSIX
          * 2.9.4), as a group's: "while read l; ...; done <in >out" */

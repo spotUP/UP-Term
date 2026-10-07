@@ -1,0 +1,1 @@
+echo a > a; sleep 1; echo b > b; [[ b -nt a ]] && echo nt; [[ a -ot b ]] && echo ot; [[ a -ef a ]] && echo ef; [[ a -ef b ]] || echo notef

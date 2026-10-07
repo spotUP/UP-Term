@@ -1,0 +1,1 @@
+[[ abc == "a*" ]] || echo quoted-literal; [[ "a*" == "a*" ]] && echo same; [[ a* == "a*" ]] && echo star

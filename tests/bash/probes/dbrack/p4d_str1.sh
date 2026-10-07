@@ -1,0 +1,1 @@
+[[ abc ]] && echo t1; [[ "" ]] || echo f1; [[ -n abc ]] && echo t2; [[ -z "" ]] && echo t3; [[ -z abc ]] || echo f3

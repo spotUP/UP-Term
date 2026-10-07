@@ -1,0 +1,1 @@
+x="a b"; [[ $x == "a b" ]] && echo one; y="*"; [[ $y == "*" ]] && echo nopglob

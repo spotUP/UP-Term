@@ -1,0 +1,1 @@
+[[ 1 -eq 2 ]] || echo f1; [[ 2 -lt 1 ]] || echo f2; [[ -5 -lt 0 ]] && echo neg

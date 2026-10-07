@@ -1,0 +1,1 @@
+[[ a < b ]] && echo lt; ls | wc -l | tr -d " "

@@ -1,0 +1,1 @@
+t() { [[ $1 == y* ]]; }; t yes && echo y; t no || echo n

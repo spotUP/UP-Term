@@ -1,0 +1,1 @@
+x=1; [[ -v x ]] && echo set; [[ -v nope ]] || echo unset; a=(1); [[ -v a ]] && echo arr

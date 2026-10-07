@@ -1,0 +1,1 @@
+[[ a.txt == *.txt ]] && echo ext; [[ .hid == * ]] && echo dotstar; [[ a/b == a* ]] && echo slash

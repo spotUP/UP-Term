@@ -1,0 +1,1 @@
+x="a b"; [[ $x == "a b" ]] && echo spaces; [[ $x == a* ]] && echo prefix; [[ $x != a* ]] || echo neg

@@ -1,0 +1,1 @@
+[[ abc == a* ]] && echo 1; [[ abc == *c ]] && echo 2; [[ abc == a?c ]] && echo 3; [[ abc == [a-c]bc ]] && echo 4; [[ abc == a[!b]c ]] || echo 5

@@ -52,7 +52,9 @@ enum sh_kind {
     SH_CASE,      /* case words(the subject) in cases */
     SH_FUNC,      /* name() a */
     SH_ARITHCMD,  /* (( expr )): words is the one expression text */
-    SH_FORARITH   /* for (( init; cond; step )) a: words are the three texts (empty when left out) */
+    SH_FORARITH,  /* for (( init; cond; step )) a: words are the three texts (empty when left out) */
+    SH_DBRACK     /* [[ ]]: name is && || ! ( with the operands in a and b, or the test operator ("" for a bare
+                   * string, "-f", "==", "=~", "<" ...) with its one or two operand words in words */
 };
 
 typedef struct sh_case {

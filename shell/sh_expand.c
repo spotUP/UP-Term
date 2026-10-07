@@ -2560,13 +2560,17 @@ static void glob_rec(sh_ctx *c, const char *dir, const char *pat, sh_list *out)
  * else added with quotes removed (they already are: b holds the text). */
 static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *out)
 {
-    char *plain = (char *)malloc(to - from + 1);
+    char *plain = (char *)malloc(2 * (to - from) + 1);
     int i, m = 0;
+    const char *spec = (flags & SH_REGEX) ? "\\.[]()*+?{}|^$" : (flags & SH_PATTERN) ? "*?[]\\" : 0;
     if (!plain)
         return;
     for (i = from; i < to; i++)
-        if (!(b->f[i] & F_EMPTY))
+        if (!(b->f[i] & F_EMPTY)) {
+            if (spec && (b->f[i] & F_QUOTED) && strchr(spec, b->s[i]))
+                plain[m++] = '\\';
             plain[m++] = b->s[i];
+        }
     plain[m] = 0;
     if (!(flags & SH_NO_GLOB) && has_glob(b, from, to)) {
         /* the pattern: quoted characters escaped, so they match themselves */

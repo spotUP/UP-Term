@@ -1,0 +1,1 @@
+[[ "a b" == "a b" ]] && echo dq; [[ 'a b' == 'a b' ]] && echo sq; [[ a\ b == "a b" ]] && echo esc

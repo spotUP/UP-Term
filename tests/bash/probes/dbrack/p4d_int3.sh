@@ -1,0 +1,1 @@
+x=5; [[ x -eq 5 ]] && echo name; [[ $x -eq 5 ]] && echo val; [[ x+1 -eq 6 ]] && echo expr; [[ 2*3 -eq 6 ]] && echo mul

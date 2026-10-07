@@ -1,0 +1,1 @@
+[[ a < b ]] && echo lt; [[ b > a ]] && echo gt; [[ a > b ]] || echo notgt; [[ abc < abd ]] && echo lt2; [[ 10 < 9 ]] && echo strlt

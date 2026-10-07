@@ -1,0 +1,1 @@
+if [[ abc == a* ]]; then echo y; else echo n; fi; if [[ -z abc ]]; then echo y; else echo n; fi

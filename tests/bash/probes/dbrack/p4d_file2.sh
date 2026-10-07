@@ -1,0 +1,1 @@
+echo hi > f.txt; [[ -s f.txt ]] && echo s; : > e.txt; [[ -s e.txt ]] || echo empty; [[ -r f.txt ]] && echo r; [[ -w f.txt ]] && echo w

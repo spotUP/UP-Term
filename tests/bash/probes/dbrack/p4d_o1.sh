@@ -1,0 +1,1 @@
+set -e; [[ -o errexit ]] && echo e; set +e; [[ -o errexit ]] || echo noe

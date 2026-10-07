@@ -1,0 +1,1 @@
+f="my file"; echo x > "$f"; [[ -f $f ]] && echo spaced; [[ -f "$f" ]] && echo quoted

@@ -1,0 +1,1 @@
+[[ a == a ]] && echo yes || echo no; [[ a == b ]] && echo yes || echo no

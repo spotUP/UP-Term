@@ -1,0 +1,1 @@
+x=abc; [[ $x == abc ]] && echo 1; [[ ${x} == a* ]] && echo 2; [[ ${#x} -eq 3 ]] && echo 3; [[ ${x:1} == bc ]] && echo 4

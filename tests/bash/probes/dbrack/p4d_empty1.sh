@@ -1,0 +1,1 @@
+[[ "" == "" ]] && echo e; [[ "" != a ]] && echo ne; [[ "" -eq 0 ]] && echo zero

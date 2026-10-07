@@ -6,17 +6,9 @@
 #   P:forlines  the audit's own malformed probe, not a vsh behaviour (audit table, "for" row)
 #   P:shebang   it tested the host kernel's #! handling through the driver, not vsh
 # The other 188 are tests/bash/probes/<area>/<id>.sh (areas: the plan's list plus grammar and vars).
-agent/a001_pipefail_loop	later:V14,V65	set -euo pipefail and [[ ]]
-agent/a008_regex_match	later:V65,V66	[[ =~ ]] and BASH_REMATCH
-agent/a032_dbrack_files	later:V65	[[ ]]
-agent/a033_dbrack_strings	later:V65	[[ ]]
-agent/a034_dbrack_lt	later:V65	[[ < ]]
-agent/a035_dbrack_or	later:V65	[[ || ]]
-agent/a101_regex_class	later:V56,V65,V66	[[:digit:]] in [[ =~ ]]
-agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
+agent/a008_regex_match	later:V66	[[ =~ ]] and BASH_REMATCH
+agent/a101_regex_class	later:V66	[[:digit:]] in [[ =~ ]]
 builtins/declare_f	later:V82	declare -f prints a function
-dbrack/dbrack	later:V65	[[ ]]
-dbrack/dbrack2	later:V65	[[ ]] with && and ( )
 fd/fd4	later:V71	redirection of fd 4
 fd/fdopen	later:V71	exec 3>file
 fd/fdvar	later:V72	{var} descriptors

@@ -1,0 +1,1 @@
+[[ a < a ]] || echo eq-not-lt; [[ "" < a ]] && echo emptylt; [[ B < a ]] && echo upper
