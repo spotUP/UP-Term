@@ -453,6 +453,24 @@ static ULONG command_stack(BPTR seg)
     return want > st ? want : st;
 }
 
+/* The umask builtin's mask for the commands vsh starts. vsh is a native
+ * program (no ixemul), so it cannot call umask() for them: an ixemul program
+ * takes its mask from the local variable UMASK at startup (ixemul's
+ * ix_open.c), and the processes vsh starts (CreateNewProc, SystemTags) copy
+ * vsh's local variables. */
+static void os_umask(void *os, int mask)
+{
+    char v[8];
+    int i = 0;
+    (void)os;
+    v[i++] = '0';
+    v[i++] = (char)('0' + ((mask >> 6) & 7));
+    v[i++] = (char)('0' + ((mask >> 3) & 7));
+    v[i++] = (char)('0' + (mask & 7));
+    v[i] = 0;
+    SetVar((STRPTR)"UMASK", (STRPTR)v, -1, GVF_LOCAL_ONLY);
+}
+
 static long os_stack(void *os, long bytes)
 {
     struct CommandLineInterface *cli = Cli();
@@ -1262,6 +1280,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.cont = os_cont;
     sh.os.isatty = os_isatty;
     sh.os.stack = os_stack;
+    sh.os.umask = os_umask;
     sh.os.spawn = os_spawn;
     sh.os.read = os_read;
     sh.os.interrupted = os_interrupted;
@@ -1285,6 +1304,18 @@ static int vsh_main(int argc, char **argv)
     import_var(&sh, "HOST");
     import_var(&sh, "HOSTNAME");
     import_locals(&sh);
+    {
+        /* a parent's UMASK (octal) is the shell's own mask too */
+        char um[16];
+        if (GetVar((STRPTR)"UMASK", (STRPTR)um, sizeof(um), GVF_LOCAL_ONLY) > 0) {
+            const char *p = um;
+            int m = 0;
+            while (*p >= '0' && *p <= '7')
+                m = m * 8 + (*p++ - '0');
+            if (!*p && p != um && m <= 0777)
+                sh.umask = m;
+        }
+    }
     {
         /* on a vtcon console (it answers TCGETA) the programs vsh runs get
          * its terminal type -- a global TERM is another console's -- and
