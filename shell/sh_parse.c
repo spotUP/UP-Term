@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sh_parse.h"
+#include "sh_expand.h" /* sh_skip_sub */
 
 /* ---- arena ------------------------------------------------------------------ */
 
@@ -190,6 +191,12 @@ static long word_end(lexer *L, long i, int *quoted)
             while (s[i] && s[i] != '"') {
                 if (s[i] == '\\' && s[i + 1])
                     i++;
+                else if (s[i] == '$' && (s[i + 1] == '(' || s[i + 1] == '{')) {
+                    i = sh_skip_sub(s, i, 0x7fffffffL, 1);
+                    if (i < 0)
+                        return -1;
+                    continue;
+                }
                 i++;
             }
             if (!s[i])
@@ -205,25 +212,18 @@ static long word_end(lexer *L, long i, int *quoted)
             if (!s[i])
                 return -1;
             i++;
-        } else if (c == '$' && (s[i + 1] == '(' || s[i + 1] == '{')) {
-            char open = s[i + 1], close = open == '(' ? ')' : '}';
-            i += 2;
-            depth = 1;
-            while (s[i] && depth) {
+        } else if (c == '$' && s[i + 1] == '\'') {
+            /* $'...': backslash escapes, \' does not end it */
+            *quoted = 1;
+            for (i += 2; s[i] && s[i] != '\''; i++)
                 if (s[i] == '\\' && s[i + 1])
                     i++;
-                else if (s[i] == '\'') {
-                    i++;
-                    while (s[i] && s[i] != '\'')
-                        i++;
-                } else if (s[i] == open)
-                    depth++;
-                else if (s[i] == close)
-                    depth--;
-                if (s[i])
-                    i++;
-            }
-            if (depth)
+            if (!s[i])
+                return -1;
+            i++;
+        } else if (c == '$' && (s[i + 1] == '(' || s[i + 1] == '{')) {
+            i = sh_skip_sub(s, i, 0x7fffffffL, 0);
+            if (i < 0)
                 return -1;
         } else {
             i++;

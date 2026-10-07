@@ -325,7 +325,9 @@ VSH (the shell)
   Differences from bash
     vsh is being brought to bash 5 behaviour. A difference that stays on
     purpose (AmigaOS cannot do it, or it was decided) gets one line here,
-    named by its test probe id (tests/bash/divergences.txt). None yet.
+    named by its test probe id (tests/bash/divergences.txt).
+    Brace expansion stops at 1,000,000 words: {1..100000000} fails with
+    "brace expansion: out of memory", status 1 (probe expand/brace_oom).
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

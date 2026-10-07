@@ -12,7 +12,6 @@ agent/a008_regex_match	later:V65,V66	[[ =~ ]] and BASH_REMATCH
 agent/a016_read_procsub	later:V59	< <( )
 agent/a018_arith_command	later:V63	(( ))
 agent/a019_cstyle_for	later:V64	for (( ))
-agent/a028_ansi_c_quote	later:V52	$'...'
 agent/a032_dbrack_files	later:V65	[[ ]]
 agent/a033_dbrack_strings	later:V65	[[ ]]
 agent/a034_dbrack_lt	later:V65	[[ < ]]
@@ -22,9 +21,6 @@ agent/a045_arith_ops	later:V62	arithmetic operators
 agent/a046_arith_64bit	later:V61,V62	64-bit arithmetic
 agent/a047_let	later:V63	let
 agent/a048_arith_assign	later:V62,V63	(( += )) and $((n--))
-agent/a049_brace_list	later:V53	brace expansion
-agent/a050_brace_mkdir	later:V53	brace expansion
-agent/a051_cmdsub_file	later:V55	$(< file)
 agent/a065_clobber_override	later:V58	>|
 agent/a066_here_string	later:V58	<<<
 agent/a067_heredoc_dash	later:V58	<<-
@@ -36,8 +32,6 @@ agent/a104_function_keyword	later:V57	function name { }
 agent/a105_case_fallthrough	later:V57	;;&
 agent/a106_pipe_stderr	later:V57	|&
 agent/a107_procsub_same	later:V59	<( )
-agent/a108_ansi_c_len	later:V52	$'...'
-agent/a109_nested_quote_default	later:V51	"${a:-"x y"}"
 agent/a116_dbrack_pattern_quote	later:V65	[[ == pattern ]]
 agent/a117_arith_ternary_var	later:V62	?: in $(( ))
 arith/arith	later:V62	operators beyond + - * / % ( ) and assignment forms
@@ -46,14 +40,7 @@ arith/dparen2	later:V63	(( x = 5 )) is not an arithmetic command
 builtins/declare_f	later:V82	declare -f prints a function
 dbrack/dbrack	later:V65	[[ ]]
 dbrack/dbrack2	later:V65	[[ ]] with && and ( )
-expand/brace	later:V53	brace expansion
-expand/brace2	later:V53	brace expansion ranges
-expand/brace3	later:V53	brace expansion letters and prefixes
-expand/bt	later:V55	nested escaped backticks
-expand/cmdsub_quote	later:V55	quotes inside $( ) inside double quotes
-expand/cmdsubfile	later:V55	$(< file)
 expand/globclass	later:V56	[[:lower:]] in globs
-expand/nestedquote	later:V51	"${a:-"x y"}"
 expand/tilde2	later:V54	~+ and ~-
 expand/tildeassign	later:V54	tilde after a colon in an assignment (no item names it: nearest V54)
 fd/fd4	later:V71	redirection of fd 4
@@ -61,9 +48,6 @@ fd/fdopen	later:V71	exec 3>file
 fd/fdvar	later:V72	{var} descriptors
 grammar/case2	later:V57	;;& terminator
 grammar/case3	later:V57	;& terminator
-grammar/cmdsubcase2	later:V55	case pattern a) inside $( )
-grammar/dollarq	later:V52	$'...' quoting
-grammar/dollarq2	later:V52	$"..." quoting
 grammar/fnkw	later:V57	function name { }
 grammar/fnkw2	later:V57	function name() { }
 grammar/forarith	later:V64	for (( ; ; ))
@@ -82,3 +66,4 @@ traps/trapdebug	later:V77	trap DEBUG
 traps/traperr	later:V76	trap ERR
 traps/trapret	later:V77	trap RETURN
 builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings)
+expand/brace_oom	documented	brace expansion stops at 1,000,000 words with "brace expansion: out of memory" (status 1); bash goes on until memory ends

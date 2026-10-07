@@ -729,6 +729,80 @@ int sh_match(const char *p, const char *s, int nocase)
 
 /* ---- arithmetic ---------------------------------------------------------------- */
 
+/* The end of the $( ), $(( )) or ${ } at s[i] (on the $), s[0..len) being the text: quotes and nested
+ * constructs skipped. Returns the index after its closing bracket, -1 when the text ends inside it.
+ * dq: the construct sits inside double quotes (then a single quote in ${ } is a plain character). A $( )
+ * body is read for the `case x in a) ... esac` patterns, whose ) is not the end. */
+#define SK(k) ((k) < len ? s[k] : 0)
+long sh_skip_sub(const char *s, long i, long len, int dq)
+{
+    char open = SK(i + 1), close = open == '(' ? ')' : '}';
+    int depth = 1, pend = 0, incase = 0;
+    i += 2;
+    while (SK(i) && depth) {
+        char c = s[i];
+        if (c == '\\' && SK(i + 1))
+            i++;
+        else if (c == '\'' && !(dq && open == '{')) {
+            for (i++; SK(i) && s[i] != '\''; i++)
+                ;
+            if (!SK(i))
+                return -1;
+        } else if (c == '"') {
+            for (i++; SK(i) && s[i] != '"'; i++) {
+                if (s[i] == '\\' && SK(i + 1))
+                    i++;
+                else if (s[i] == '$' && (SK(i + 1) == '(' || SK(i + 1) == '{')) {
+                    i = sh_skip_sub(s, i, len, 1);
+                    if (i < 0)
+                        return -1;
+                    i--;
+                }
+            }
+            if (!SK(i))
+                return -1;
+        } else if (c == '`') {
+            for (i++; SK(i) && s[i] != '`'; i++)
+                if (s[i] == '\\' && SK(i + 1))
+                    i++;
+            if (!SK(i))
+                return -1;
+        } else if (c == '$' && (SK(i + 1) == '(' || SK(i + 1) == '{')) {
+            i = sh_skip_sub(s, i, len, dq && open == '{');
+            if (i < 0)
+                return -1;
+            continue;
+        } else if (c == open) {
+            depth++;
+        } else if (c == close) {
+            if (open == '(' && incase && depth == 1) {
+                /* the ) ending a case pattern */
+            } else
+                depth--;
+        } else if (open == '(' && ((c >= 'a' && c <= 'z') || c == '_') &&
+                   (i == 0 || !((s[i - 1] >= 'a' && s[i - 1] <= 'z') || (s[i - 1] >= 'A' && s[i - 1] <= 'Z') ||
+                                (s[i - 1] >= '0' && s[i - 1] <= '9') || s[i - 1] == '_' || s[i - 1] == '$'))) {
+            long e = i;
+            while ((SK(e) >= 'a' && SK(e) <= 'z') || SK(e) == '_')
+                e++;
+            if (!((SK(e) >= 'A' && SK(e) <= 'Z') || (SK(e) >= '0' && SK(e) <= '9'))) {
+                if (e - i == 4 && !strncmp(s + i, "case", 4))
+                    pend++;
+                else if (e - i == 2 && !strncmp(s + i, "in", 2) && pend) {
+                    pend--;
+                    incase++;
+                } else if (e - i == 4 && !strncmp(s + i, "esac", 4) && incase)
+                    incase--;
+            }
+            i = e - 1;
+        }
+        if (SK(i))
+            i++;
+    }
+    return depth ? -1 : i;
+}
+#undef SK
+
 typedef struct arith {
     sh_ctx *c;
     const char *s;
@@ -1221,6 +1295,24 @@ static const char *pval(ex *e, const char *name, int hassub, const char *sub)
     return r;
 }
 
+/* The word of ${x:-word} ${x:+word} ${x:=word} into b. Unquoted, its text splits like an expansion
+ * result, but what the word quotes ("a  b", \x) stays whole. */
+static void put_word(ex *e, cbuf *b, const char *w, long len, int dquote)
+{
+    int k;
+    if (dquote) {
+        char *v = expand_string(e, w, len, 1);
+        cputs(b, v, F_QUOTED);
+        free(v);
+        return;
+    }
+    k = b->n;
+    expand_into(e, w, len, b, 0);
+    for (; k < b->n; k++)
+        if (!b->f[k])
+            b->f[k] = F_SPLIT;
+}
+
 /* ${X:o:l}, ${@:o:l}, ${A[@]:o:l}: offset and length are arithmetic; a negative offset counts from the
  * end, a negative length is an end position. Returns 0, or -1 with e->err set. */
 static int slice_range(ex *e, const char *w, long a, long end, long *off, long *len, int *haslen)
@@ -1469,13 +1561,10 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
     int k = 0, len_op = 0, colon = 0, hassub = 0, indirect = 0, all = 0;
     char op = 0;
     const char *val;
-    while (i < len && depth) {
-        if (w[i] == '{')
-            depth++;
-        else if (w[i] == '}')
-            depth--;
-        if (depth)
-            i++;
+    {
+        long k = sh_skip_sub(w, 0, len, dquote);
+        depth = k < 0;
+        i = k < 0 ? len : k - 1;
     }
     end = i;
     if (depth) {
@@ -1737,16 +1826,20 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
     {
         int empty = !val || (colon && !*val);
         if (op == '-' && empty) {
-            char *v = expand_string(e, w + i, end - i, dquote);
-            cputs(b, v, dquote ? F_QUOTED : F_SPLIT);
-            free(v);
+            put_word(e, b, w + i, end - i, dquote);
             return end + 1;
         }
         if (op == '=' && empty) {
-            char *v = expand_string(e, w + i, end - i, dquote);
-            sh_set(e->c, name, v);
-            cputs(b, v, dquote ? F_QUOTED : F_SPLIT);
-            free(v);
+            int k = b->n;
+            char *v;
+            put_word(e, b, w + i, end - i, dquote);
+            v = (char *)malloc((size_t)(b->n - k) + 1);
+            if (v) {
+                memcpy(v, b->s + k, (size_t)(b->n - k));
+                v[b->n - k] = 0;
+                sh_set(e->c, name, v);
+                free(v);
+            }
             return end + 1;
         }
         if (op == '?' && empty) {
@@ -1754,11 +1847,8 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
             return end + 1;
         }
         if (op == '+') {
-            if (!empty) {
-                char *v = expand_string(e, w + i, end - i, dquote);
-                cputs(b, v, dquote ? F_QUOTED : F_SPLIT);
-                free(v);
-            }
+            if (!empty)
+                put_word(e, b, w + i, end - i, dquote);
             return end + 1;
         }
     }
@@ -1772,14 +1862,23 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
 }
 
 /* $(cmd) or `cmd`: the command's output, trailing newlines removed. */
-static void command_output(ex *e, const char *cmd, long n, cbuf *b, int dquote)
+static void command_output(ex *e, const char *cmd, long n, cbuf *b, int dquote, int backtick)
 {
     char *text = (char *)malloc(n + 1), *out;
-    long l;
+    long l, k;
     if (!text)
         return;
     memcpy(text, cmd, n);
     text[n] = 0;
+    if (backtick) {
+        /* `...`: a backslash before $, ` or \ is dropped (so \` nests) */
+        for (l = k = 0; l < n; l++) {
+            if (text[l] == '\\' && l + 1 < n && strchr(dquote ? "$`\\\"" : "$`\\", text[l + 1]))
+                l++;
+            text[k++] = text[l];
+        }
+        text[k] = 0;
+    }
     out = e->c->subst ? e->c->subst(e->c, text) : 0;
     free(text);
     if (!out)
@@ -1828,18 +1927,33 @@ static long dollar(ex *e, const char *w, long len, cbuf *b, int dquote)
         }
         return i;
     }
-    if (len >= 2 && w[1] == '(') {
-        long i = 2, depth = 1;
-        while (i < len && depth) {
-            if (w[i] == '(')
-                depth++;
-            else if (w[i] == ')')
-                depth--;
-            if (depth)
-                i++;
+    if (len >= 2 && w[1] == '\'' && !dquote) {
+        /* $'...' (ANSI-C quoting): the escapes read as printf %b reads them, plus \E \cX \? */
+        long j = 2;
+        char *raw, *txt;
+        while (j < len && w[j] != '\'') {
+            if (w[j] == '\\' && j + 1 < len)
+                j++;
+            j++;
         }
-        command_output(e, w + 2, i - 2, b, dquote);
-        return i + 1;
+        raw = (char *)malloc((size_t)j);
+        if (raw) {
+            memcpy(raw, w + 2, (size_t)j - 2);
+            raw[j - 2] = 0;
+            txt = e->c->unescape ? e->c->unescape(e->c, raw) : sdup(raw);
+            cputs(b, txt ? txt : "", F_QUOTED);
+            b->had_quotes = 1;
+            free(txt);
+            free(raw);
+        }
+        return j + 1;
+    }
+    if (len >= 2 && w[1] == '(') {
+        long i = sh_skip_sub(w, 0, len, dquote);
+        if (i < 0)
+            i = len;
+        command_output(e, w + 2, i - 3 < 0 ? 0 : i - 3, b, dquote, 0);
+        return i;
     }
     if (len >= 2 && w[1] == '{')
         return brace(e, w, len, b, dquote);
@@ -1889,17 +2003,20 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
             while (j < len && w[j] != '\'')
                 cput(b, w[j++], F_QUOTED);
             i = j + 1;
-        } else if (!dquote && ch == '"') {
-            long j = i + 1, depth = 0;
+        } else if (ch == '"') {
+            /* a quoted section; inside ${ } within "..." a nested one quotes as well */
+            long j = i + 1;
             b->had_quotes = 1;
             /* the closing quote, skipping over $( ) and ${ } */
-            while (j < len && (w[j] != '"' || depth)) {
+            while (j < len && w[j] != '"') {
                 if (w[j] == '\\' && j + 1 < len)
                     j++;
-                else if (w[j] == '$' && j + 1 < len && (w[j + 1] == '(' || w[j + 1] == '{'))
-                    depth++, j++;
-                else if (depth && (w[j] == ')' || w[j] == '}'))
-                    depth--;
+                else if (w[j] == '$' && j + 1 < len && (w[j + 1] == '(' || w[j + 1] == '{')) {
+                    long k = sh_skip_sub(w + j, 0, len - j, 1);
+                    if (k < 0)
+                        k = len - j;
+                    j += k - 1;
+                }
                 j++;
             }
             expand_into(e, w + i + 1, j - i - 1, b, 1);
@@ -1914,6 +2031,8 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
             }
             b->had_quotes = 1;
             i += 2;
+        } else if (ch == '$' && !dquote && i + 1 < len && w[i + 1] == '"') {
+            i++; /* $"...": no message catalogue, plain double quotes */
         } else if (ch == '$') {
             i += dollar(e, w + i, len - i, b, dquote);
         } else if (ch == '`') {
@@ -1923,7 +2042,7 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
                     j++;
                 j++;
             }
-            command_output(e, w + i + 1, j - i - 1, b, dquote);
+            command_output(e, w + i + 1, j - i - 1, b, dquote, 1);
             i = j + 1;
         } else if (!dquote && ch == '~' && i == 0) {
             const char *home = sh_get(e->c, "HOME");
@@ -2090,7 +2209,220 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
     free(plain);
 }
 
-int sh_expand(sh_ctx *c, const char *word, int flags, sh_list *out, const char **err)
+/* ---- brace expansion: {a,b} {1..5} {a..e} {01..10..2}, before every other expansion ------------- */
+
+#define BX_MAX 1000000L   /* more words than this is "out of memory" (the Amiga has less than that) */
+
+/* The index of the unquoted bracket-free end of a quoted or $-construct at w[i] (or i itself when w[i]
+ * starts none): the next character to look at. */
+static long bx_skip(const char *w, long i, long len)
+{
+    char c = w[i];
+    if (c == '\\')
+        return i + 2 <= len ? i + 2 : len;
+    if (c == '\'') {
+        for (i++; i < len && w[i] != '\''; i++)
+            ;
+        return i < len ? i + 1 : len;
+    }
+    if (c == '"' || c == '`') {
+        for (i++; i < len && w[i] != c; i++)
+            if (w[i] == '\\')
+                i++;
+        return i < len ? i + 1 : len;
+    }
+    if (c == '$' && i + 1 < len && (w[i + 1] == '(' || w[i + 1] == '{')) {
+        long k = sh_skip_sub(w + i, 0, len - i, 0);
+        return k < 0 ? len : i + k;
+    }
+    return i + 1;
+}
+
+/* the } that closes the { at w[i], or -1; *comma: index of the first top-level comma, or -1 */
+static long bx_close(const char *w, long i, long len, long *comma)
+{
+    long j = i + 1, depth = 1;
+    *comma = -1;
+    while (j < len) {
+        char c = w[j];
+        if (c == '\\' || c == '\'' || c == '"' || c == '`' || c == '$') {
+            j = bx_skip(w, j, len);
+            continue;
+        }
+        if (c == '{')
+            depth++;
+        else if (c == '}') {
+            if (!--depth)
+                return j;
+        } else if (c == ',' && depth == 1 && *comma < 0)
+            *comma = j;
+        j++;
+    }
+    return -1;
+}
+
+/* a sequence body x..y or x..y..incr: integers or single letters */
+static int bx_seq(const char *w, long a, long b, long *x, long *y, long *incr, int *letters, int *width)
+{
+    long p = a, q;
+    int neg, digits;
+    long v[3];
+    int nv = 0, isnum[3];
+    *width = 0;
+    while (nv < 3) {
+        q = p;
+        neg = 0;
+        if (q < b && w[q] == '-')
+            neg = 1, q++;
+        digits = 0;
+        v[nv] = 0;
+        while (q < b && w[q] >= '0' && w[q] <= '9' && digits < 18) {
+            v[nv] = v[nv] * 10 + (w[q] - '0');
+            q++, digits++;
+        }
+        isnum[nv] = digits > 0 && (q == b || (q + 1 < b && w[q] == '.' && w[q + 1] == '.'));
+        if (isnum[nv]) {
+            if (neg)
+                v[nv] = -v[nv];
+            if (nv < 2 && digits > 1 && w[p + neg] == '0' && *width < digits + neg)
+                *width = digits + neg;
+        } else if (nv < 2 && !neg && p < b && ((w[p] | 32) >= 'a' && (w[p] | 32) <= 'z') &&
+                   (p + 1 == b || (p + 3 < b && w[p + 1] == '.' && w[p + 2] == '.'))) {
+            q = p + 1;
+            v[nv] = (unsigned char)w[p];
+        } else
+            return 0;
+        nv++;
+        if (q == b)
+            break;
+        if (!(q + 1 < b && w[q] == '.' && w[q + 1] == '.'))
+            return 0;
+        p = q + 2;
+    }
+    if (nv < 2 || (nv == 3 && !isnum[2]))
+        return 0;
+    if (isnum[0] != isnum[1])
+        return 0;
+    *letters = !isnum[0];
+    *x = v[0];
+    *y = v[1];
+    *incr = nv == 3 ? v[2] : 1;
+    if (*incr < 0)
+        *incr = -*incr;
+    if (!*incr)
+        *incr = 1;
+    return 1;
+}
+
+static int bx_add(sh_list *out, const char *a, long an, const char *b, long bn, const char *c, long cn)
+{
+    char *t;
+    if (out->n >= BX_MAX)
+        return -1;
+    t = (char *)malloc((size_t)(an + bn + cn) + 1);
+    if (!t)
+        return -1;
+    memcpy(t, a, (size_t)an);
+    memcpy(t + an, b, (size_t)bn);
+    memcpy(t + an + bn, c, (size_t)cn);
+    t[an + bn + cn] = 0;
+    sh_list_add(out, t);
+    free(t);
+    return 0;
+}
+
+/* w[0..len) with its first valid brace group expanded, the rest (the text after the group) recursively;
+ * appended to out. 0, or -1 when memory or BX_MAX runs out. */
+static int bx_expand(const char *w, long len, sh_list *out)
+{
+    long i = 0;
+    while (i < len) {
+        char c = w[i];
+        if (c == '\\' || c == '\'' || c == '"' || c == '`' || c == '$') {
+            i = bx_skip(w, i, len);
+            continue;
+        }
+        if (c == '{') {
+            long comma, close = bx_close(w, i, len, &comma), x, y, incr;
+            int letters, width;
+            if (close > i + 1 && comma >= 0) {
+                /* {a,b,c}: every alternative is itself expanded; then the text after the group */
+                sh_list post, alt;
+                long from = i + 1, k, pi, ai, depth = 0;
+                int rc = 0;
+                memset(&post, 0, sizeof(post));
+                if (bx_expand(w + close + 1, len - close - 1, &post) < 0) {
+                    sh_list_free(&post);
+                    return -1;
+                }
+                for (k = i + 1; k <= close && !rc; k++) {
+                    char d = w[k];
+                    if (k < close && (d == '\\' || d == '\'' || d == '"' || d == '`' || d == '$')) {
+                        k = bx_skip(w, k, close) - 1;
+                        continue;
+                    }
+                    if (d == '{' && k < close)
+                        depth++;
+                    else if (d == '}' && k < close)
+                        depth--;
+                    if ((k == close) || (d == ',' && !depth)) {
+                        memset(&alt, 0, sizeof(alt));
+                        if (bx_expand(w + from, k - from, &alt) < 0)
+                            rc = -1;
+                        for (ai = 0; !rc && ai < alt.n; ai++)
+                            for (pi = 0; !rc && pi < post.n; pi++)
+                                rc = bx_add(out, w, i, alt.v[ai], (long)strlen(alt.v[ai]), post.v[pi],
+                                            (long)strlen(post.v[pi]));
+                        sh_list_free(&alt);
+                        from = k + 1;
+                    }
+                }
+                sh_list_free(&post);
+                return rc;
+            }
+            if (close > i + 1 && bx_seq(w, i + 1, close, &x, &y, &incr, &letters, &width)) {
+                sh_list post;
+                long v, pi, count = (x < y ? y - x : x - y) / incr + 1;
+                int rc = 0;
+                if (count > BX_MAX)
+                    return -1;
+                memset(&post, 0, sizeof(post));
+                if (bx_expand(w + close + 1, len - close - 1, &post) < 0) {
+                    sh_list_free(&post);
+                    return -1;
+                }
+                for (v = x; !rc && (x <= y ? v <= y : v >= y); v += x <= y ? incr : -incr) {
+                    char num[40], *t = num;
+                    if (letters) {
+                        num[0] = (char)v;
+                        num[1] = 0;
+                    } else {
+                        char dig[24];
+                        long av = v < 0 ? -v : v;
+                        int nd, pad;
+                        sh_ltoa(av, dig);
+                        nd = (int)strlen(dig);
+                        t = num;
+                        if (v < 0)
+                            *t++ = '-';
+                        for (pad = width - nd - (v < 0); pad > 0; pad--)
+                            *t++ = '0';
+                        strcpy(t, dig);
+                        t = num;
+                    }
+                    for (pi = 0; !rc && pi < post.n; pi++)
+                        rc = bx_add(out, w, i, t, (long)strlen(t), post.v[pi], (long)strlen(post.v[pi]));
+                }
+                sh_list_free(&post);
+                return rc;
+            }
+        }
+        i++;
+    }
+    return bx_add(out, w, len, "", 0, "", 0);
+}
+
+static int expand_word(sh_ctx *c, const char *word, int flags, sh_list *out, const char **err)
 {
     ex e;
     cbuf b;
@@ -2163,4 +2495,31 @@ char *sh_unquote(const char *word)
     }
     *o = 0;
     return r;
+}
+
+/* One word into fields appended to out: brace expansion first (words that are not assignments or
+ * redirection targets), then each resulting word on its own. */
+int sh_expand(sh_ctx *c, const char *word, int flags, sh_list *out, const char **err)
+{
+    sh_list bw;
+    long i;
+    int rc = 0;
+    if ((flags & SH_NO_SPLIT) || !strchr(word, '{'))
+        return expand_word(c, word, flags, out, err);
+    memset(&bw, 0, sizeof(bw));
+    if (bx_expand(word, (long)strlen(word), &bw) < 0) {
+        sh_list_free(&bw);
+        if (err)
+            *err = "brace expansion: out of memory";
+        return -1;
+    }
+    if (bw.n == 1 && !strcmp(bw.v[0], word)) {
+        sh_list_free(&bw);
+        return expand_word(c, word, flags, out, err);
+    }
+    SH_HIT(BRACE);
+    for (i = 0; !rc && i < bw.n; i++)
+        rc = expand_word(c, bw.v[i], flags, out, err);
+    sh_list_free(&bw);
+    return rc;
 }

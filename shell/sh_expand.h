@@ -122,6 +122,9 @@ void sh_ctx_free(sh_ctx *c);
  * *err set (${x:?msg}, a bad substitution). */
 int sh_expand(sh_ctx *c, const char *word, int flags, sh_list *out, const char **err);
 
+/* End of the $( ) $(( ) ${ } construct at s[i], bounded by len: see sh_expand.c; -1 when unterminated */
+long sh_skip_sub(const char *s, long i, long len, int dq);
+
 /* The word with quotes removed and nothing expanded (here-document
  * delimiters, alias names). */
 char *sh_unquote(const char *word);

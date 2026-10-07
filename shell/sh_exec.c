@@ -4465,6 +4465,7 @@ static char *core_subst1(sh_ctx *c, const char *cmd)
     sh_parse p;
     char buf[512];
     long n;
+    const sh_node *rn;
     SH_HIT(SUBST);
     sh_parse_text(&p, cmd);
     if (p.error) {
@@ -4472,6 +4473,32 @@ static char *core_subst1(sh_ctx *c, const char *cmd)
         sh_parse_free(&p);
         sh->ctx.status = 2;
         return sdup("");
+    }
+    rn = p.tree;
+    while (rn && rn->kind == SH_SEQ && !rn->b)
+        rn = rn->a;
+    if (rn && rn->kind == SH_CMD && !rn->words && !rn->assigns && rn->redirs && !rn->redirs->next &&
+        rn->redirs->kind == SH_R_IN && rn->redirs->fd == 0) {
+        /* $(< file): the file's contents, no command runs (bash) */
+        char *path = expand_one(sh, rn->redirs->target, &sh->io);
+        sh_fh fh = path ? sh->os.open(sh->os.data, path, SH_OPEN_READ) : SH_NOFH;
+        if (path && !fh)
+            err2(sh, &sh->io, path, "cannot open");
+        if (fh) {
+            if (sh->os.read) {
+                while ((n = sh->os.read(sh->os.data, fh, buf, sizeof(buf))) > 0)
+                    pb_add(&out, buf, n);
+            } else {
+                char line[512];
+                while ((n = sh->os.read_line(sh->os.data, fh, line, sizeof(line))) >= 0)
+                    pb_add(&out, line, n);
+            }
+            sh->os.close(sh->os.data, fh);
+        }
+        sh->ctx.status = fh ? 0 : 1;
+        free(path);
+        sh_parse_free(&p);
+        return out.s ? out.s : sdup("");
     }
     if (sh->os.spawn && sh->os.read) {
         sh_fh rd, wr;
