@@ -716,6 +716,28 @@ static void fd_handles_are_counted(void)
     run("exec 3>f; ( echo s >&3 ) 3>&- 2>/dev/null; echo t >&3");
     CHECK_INT(closes_of("f"), 0);
     CHECK_STR(data_of("f"), "t\n");
+    /* background and pipeline subshells: the parent's table is as it was at once, the handle the
+     * child uses is closed once, when the job is waited for */
+    run("( echo a >&3 ) 3>f & wait; echo x >&3");
+    CHECK_STR(slot(ERR)->data, "[1] 1\nvsh: 3: bad file descriptor\n");
+    CHECK_INT(closes_of("f"), 1);
+    CHECK_STR(data_of("f"), "a\n");
+    /* an external command: it gets 0-2 only, its table changes are undone when it ends; a handle
+     * it still writes to in the background is closed when the job is waited for */
+    run("args 3>f; echo y >&3");
+    CHECK_STR(slot(ERR)->data, "vsh: 3: bad file descriptor\n");
+    CHECK_INT(closes_of("f"), 1);
+    run("args q 3>f >&3 &");
+    CHECK_INT(closes_of("f"), 0);
+    sh_run_text(&sh, "echo z >&3; wait", 0);
+    CHECK_INT(closes_of("f"), 1);
+    CHECK_STR(data_of("f"), "<q>\n");
+    run("( echo b >&3 ) 3>f | cat; echo y >&3");
+    CHECK_STR(slot(ERR)->data, "vsh: 3: bad file descriptor\n");
+    CHECK_INT(closes_of("f"), 1);
+    run("{ echo c >&3; } 3>f | cat; echo z >&3");
+    CHECK_STR(slot(ERR)->data, "vsh: 3: bad file descriptor\n");
+    CHECK_INT(closes_of("f"), 1);
 }
 
 static void subshells(void)

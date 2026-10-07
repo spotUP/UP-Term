@@ -223,6 +223,7 @@ void sh_shell_init(sh_shell *sh)
     sh->loop_depth = sh->func_depth = 0;
     memset(sh->fdt, 0, sizeof(sh->fdt)); /* a clone is malloc memory: the fd table and its undo stack start empty */
     sh->nundo = 0;
+    sh->fddefer = 0;
     memset(sh->jobs, 0, sizeof(sh->jobs));
     memset(sh->job_text, 0, sizeof(sh->job_text));
     memset(sh->job_stopped, 0, sizeof(sh->job_stopped));
@@ -279,9 +280,13 @@ static void frame_pop(sh_shell *sh);
 
 static void tmp_sweep(sh_shell *sh, int mark);
 
+static void fd_defer_release(sh_shell *sh, long job);
+static long job_wait(sh_shell *sh, long job);
+
 void sh_shell_free(sh_shell *sh)
 {
     int i;
+    fd_defer_release(sh, 0);
     for (i = 0; i < SH_FDMAX; i++) {
         int k;
         for (k = 0; k < i && sh->fdt[k].fh != sh->fdt[i].fh; k++)
@@ -423,7 +428,7 @@ long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io)
     /* its own background jobs report to it: it waits for them */
     for (i = 0; i < 32; i++)
         if (child->jobs[i])
-            child->os.wait(child->os.data, child->jobs[i]);
+            job_wait(child, child->jobs[i]);
     if (tree) {
         sh_parse_free(tree);
         free(tree);
@@ -850,8 +855,47 @@ static int fd_set(sh_shell *sh, int slot, sh_fh fh, int own)
     return 0;
 }
 
-/* the command ended: its table changes are undone, what only it used is closed */
-static void fd_unwind(sh_shell *sh, int mark, const sh_io *io)
+typedef struct sh_fddefer {
+    struct sh_fddefer *next;
+    long job;
+    sh_fh fh;
+} sh_fddefer;
+
+/* a handle a background job may still use: closed when the job is waited for */
+static void fd_defer(sh_shell *sh, long job, sh_fh fh)
+{
+    sh_fddefer *d = (sh_fddefer *)malloc(sizeof(sh_fddefer));
+    if (!d) {
+        sh->os.close(sh->os.data, fh); /* no memory to remember it: closed now */
+        return;
+    }
+    d->job = job;
+    d->fh = fh;
+    d->next = sh->fddefer;
+    sh->fddefer = d;
+}
+
+/* job ended (0: every deferred handle, the shell is going): its deferred handles are closed
+ * unless a slot or stream of the shell uses them again */
+static void fd_defer_release(sh_shell *sh, long job)
+{
+    sh_fddefer **p = &sh->fddefer;
+    while (*p) {
+        sh_fddefer *d = *p;
+        if (job && d->job != job) {
+            p = &d->next;
+            continue;
+        }
+        *p = d->next;
+        if (!fd_used(sh, d->fh, 0))
+            sh->os.close(sh->os.data, d->fh);
+        free(d);
+    }
+}
+
+/* the command ended: its table changes are undone, what only it used is closed. A handle of
+ * the streams in `io` goes to the still running background job (job != 0) instead. */
+static void fd_unwind_job(sh_shell *sh, int mark, const sh_io *io, long job)
 {
     while (sh->nundo > mark) {
         int i = --sh->nundo;
@@ -860,9 +904,27 @@ static void fd_unwind(sh_shell *sh, int mark, const sh_io *io)
         int cown = sh->fdt[slot].own;
         sh->fdt[slot].fh = sh->fdundo[i].fh;
         sh->fdt[slot].own = sh->fdundo[i].own;
-        if (cur && cown && cur != sh->fdundo[i].fh && !fd_used(sh, cur, io))
-            sh->os.close(sh->os.data, cur);
+        if (cur && cown && cur != sh->fdundo[i].fh && !fd_used(sh, cur, 0)) {
+            if (job && io && (io->in == cur || io->out == cur || io->err == cur))
+                fd_defer(sh, job, cur);
+            else if (!io || !(io->in == cur || io->out == cur || io->err == cur))
+                sh->os.close(sh->os.data, cur);
+        }
     }
+}
+
+static void fd_unwind(sh_shell *sh, int mark, const sh_io *io)
+{
+    fd_unwind_job(sh, mark, io, 0);
+}
+
+/* a job's status; once it has ended, the handles deferred for it are closed */
+static long job_wait(sh_shell *sh, long job)
+{
+    long st = sh->os.wait(sh->os.data, job);
+    if (st != SH_STOPPED)
+        fd_defer_release(sh, job);
+    return st;
 }
 
 /* exec kept the changes: the handles they replaced or closed go now */
@@ -2499,7 +2561,7 @@ static int job_reap(sh_shell *sh, int i, sh_fh fh)
     long st;
     if (!sh->jobs[i] || !sh->os.done || !sh->os.done(sh->os.data, sh->jobs[i]))
         return 0;
-    st = sh->os.wait(sh->os.data, sh->jobs[i]);
+    st = job_wait(sh, sh->jobs[i]);
     job_line(sh, fh, i, st ? "Exit" : "Done", st);
     job_forget(sh, i);
     return 1;
@@ -2634,7 +2696,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
             sh->job_stopped[i] = 0;
         }
         sh->os.suspendable = sh->os.cont != 0;
-        st = sh->os.wait(sh->os.data, sh->jobs[i]);
+        st = job_wait(sh, sh->jobs[i]);
         sh->os.suspendable = 0;
         if (st == SH_STOPPED)
             return fg_status(sh, st, i, 0, io);
@@ -2647,7 +2709,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
         /* a stopped job is not waited for: it would never end */
         if (!sh->jobs[i] || sh->job_stopped[i] || (which >= 0 && i != which))
             continue;
-        st = sh->os.wait(sh->os.data, sh->jobs[i]);
+        st = job_wait(sh, sh->jobs[i]);
         job_forget(sh, i);
     }
     return st;
@@ -4343,6 +4405,11 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         sh->os.suspendable = wait && sh->os.cont;
         st = sh->os.run(sh->os.data, argv.v, &io, wait);
         sh->os.suspendable = 0;
+        /* the program only ever gets 0-2: the redirections of this command are undone in the
+         * table they were made in; a handle the running background program still uses is
+         * closed when its job is waited for */
+        if (io.owned & SH_OWN_FDS)
+            fd_unwind_job(sh, io.fdmark, !wait && st > 0 ? &io : 0, !wait && st > 0 ? st : 0);
         if (wait && st == SH_STOPPED) {
             st = fg_status(sh, st, -1, words_text(n), &io);
         } else if (!wait) {
@@ -4557,7 +4624,7 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
     }
     for (i = 0; i < k; i++)
         if (job[i])
-            ps[i] = sh->os.wait(sh->os.data, job[i]);
+            ps[i] = job_wait(sh, job[i]);
     status = ps[k - 1];
     if (sh->opts & SO_PIPEFAIL) {
         for (i = k - 1; i >= 0; i--)
@@ -5197,7 +5264,7 @@ static char *core_subst1(sh_ctx *c, const char *cmd)
             pb_add(&out, buf, n);
         sh->os.close(sh->os.data, rd);
         if (job)
-            st = sh->os.wait(sh->os.data, job);
+            st = job_wait(sh, job);
         sh->ctx.status = st;
         sh->subst_ran = 1;
         sh->subst_status = st;

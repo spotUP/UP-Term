@@ -208,6 +208,7 @@ typedef struct sh_shell {
     struct { sh_fh fh; int own; } fdt[SH_FDMAX]; /* the shell's fds 3 and up (index = fd - 3); own: closed when no slot or stream uses it */
     struct { int slot; sh_fh fh; int own; } fdundo[SH_FDUNDO]; /* values the current commands' redirections replaced */
     int nundo;
+    struct sh_fddefer *fddefer; /* handles a running background job still uses, closed when it is waited for */
     sh_fh closed[8];       /* null-device streams standing for a stream closed with n>&- (see put) */
     int nclosed;
     int wfail;             /* a builtin wrote to one of them: its status becomes 1 */
