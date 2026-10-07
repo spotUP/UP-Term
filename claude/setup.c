@@ -165,7 +165,7 @@ static void page_host(cl_repl *r)
         cl_cat(m, " (an empty line keeps it)", sizeof(m));
         ui_line(&r->ui, m);
     }
-    ui_line(&r->ui, "Type its address and port, like 192.168.0.198 2323 (the port is 2323 when left out).");
+    ui_line(&r->ui, "Type its address and port, like 192.0.2.10 2323 (the port is 2323 when left out).");
     r->wiz.step = SETUP_HOST;
 }
 
@@ -338,7 +338,7 @@ int setup_line(cl_repl *r, const char *line)
                 break;
             }
         } else if (!cli_remote_parse(s, host, sizeof(host), &port)) {
-            ui_line(&r->ui, "That is not an address and port. Type something like 192.168.0.198 2323.");
+            ui_line(&r->ui, "That is not an address and port. Type something like 192.0.2.10 2323.");
             break;
         }
         cl_copy(r->wiz.host, host, sizeof(r->wiz.host));

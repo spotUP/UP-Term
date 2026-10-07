@@ -2123,7 +2123,7 @@ static int home_has(const char *name)
 /* the whole wizard through the REPL's own start (repl_run): the entry point */
 static void test_setup_reach(void)
 {
-    static const char *remote_script[] = { "1", "192.168.0.198 2323", "n", "/exit", 0 };
+    static const char *remote_script[] = { "1", "192.0.2.10 2323", "n", "/exit", 0 };
     static cl_repl r;
     char *t = 0;
     long n = 0, port = 0;
@@ -2140,10 +2140,10 @@ static void test_setup_reach(void)
     repl_run(&r);
     CHECK(strstr(cn.screen.p, "Setup, step 1 of 4") != 0);
     CHECK(strstr(cn.screen.p, "uptelnetd") != 0);                   /* explained */
-    CHECK(strstr(cn.screen.p, "[OK] Connect to the computer: 192.168.0.198 port 2323") != 0);
+    CHECK(strstr(cn.screen.p, "[OK] Connect to the computer: 192.0.2.10 port 2323") != 0);
     CHECK(strstr(cn.screen.p, "Paste the API key") == 0);           /* not /login's page */
     CHECK_INT(sb.opens, 1);                                         /* the sentinel: the connect test ran */
-    CHECK_STR(open_host, "192.168.0.198");
+    CHECK_STR(open_host, "192.0.2.10");
     CHECK_INT(open_port, 2323);
     CHECK(strstr(cn.screen.p, "github.com/thomas-luebker") == 0);     /* n: the optional page skipped */
     CHECK(strstr(cn.screen.p, "Setup, step 4 of 4: done.") != 0);
@@ -2152,7 +2152,7 @@ static void test_setup_reach(void)
     strcat(p, "/home/remote");
     CHECK_INT(sys.read(sys.u, p, 511, &t, &n), 0);
     CHECK_INT(cli_remote_parse(t, host, sizeof(host), &port), 1);   /* the format main_amiga.c reads */
-    CHECK_STR(host, "192.168.0.198");
+    CHECK_STR(host, "192.0.2.10");
     CHECK_INT(port, 2323);
     CHECK(strncmp(t, "; Claude Code on another computer", 33) == 0);
     free(t);

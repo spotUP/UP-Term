@@ -225,8 +225,8 @@ static void test_remote(void)
 {
     char host[64];
     long port = 0;
-    CHECK_INT(cli_remote_parse("; Claude Code on the NAS\n192.168.0.198 2323\n", host, sizeof(host), &port), 1);
-    CHECK_STR(host, "192.168.0.198");
+    CHECK_INT(cli_remote_parse("; Claude Code on the NAS\n192.0.2.10 2323\n", host, sizeof(host), &port), 1);
+    CHECK_STR(host, "192.0.2.10");
     CHECK_INT(port, 2323);
     CHECK_INT(cli_remote_parse("\n# comment\n  nas.local\r\n", host, sizeof(host), &port), 1);
     CHECK_STR(host, "nas.local");
