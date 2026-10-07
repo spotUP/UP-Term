@@ -231,6 +231,7 @@ $(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
 # GNU screen for the kit (P7.1): built in screen-amiga/src (make -f Makefile.amiga)
 SCREEN_BIN ?= $(UPTERM_ROOT)/screen-amiga/src/screen
 # tmux for the kit (P7.2): built in tmux-amiga (make -f Makefile.amiga)
+AMIGA_STRIP ?= $(HOME)/opt/amiga/bin/m68k-amigaos-strip
 TMUX_BIN ?= $(UPTERM_ROOT)/tmux-amiga/build/tmux-bin
 
 # Recapture the programs with TERM=vtcon (tests/streams/ti-*), then check
@@ -762,6 +763,8 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/Claude $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
+	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
+	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
 	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
