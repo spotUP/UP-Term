@@ -333,6 +333,12 @@ VSH (the shell)
     bash (probe redir/close_out).
     ~user is left as typed: there is no user database to look the home up in
     (probe expand/tilde_user); ~  ~+  ~-  are expanded.
+    Descriptors 3 and up (exec 3>file, {fd}<file, n>&m, read -u N, mapfile -u N)
+    live in the shell: builtins and  >&N  targets use them, but a native
+    command gets only 0, 1 and 2 (probe fd/ext_fd3). /dev/fd/N, /dev/stdin,
+    /dev/stdout and /dev/stderr are redirection targets, source files and
+    test -e/-a/-r/-w operands; a native command that is given such a name as
+    an argument cannot open it (probe fd/ext_devfd).
 
 PTY: (pseudo-terminals)
   For terminal multiplexers and remote shells: PTY:<id>/m is the master,

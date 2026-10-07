@@ -10,6 +10,7 @@ typedef struct fbuf {
     char name[64];
     char data[4096];
     int len, rpos, used, is_pipe;
+    int closes;             /* times the shell closed this handle */
 } fbuf;
 
 static fbuf fs[NF];
@@ -61,7 +62,8 @@ static sh_fh f_open(void *os, const char *path, int mode)
 static void f_close(void *os, sh_fh fh)
 {
     (void)os;
-    (void)fh; /* files persist; pipes are read to the end */
+    if (slot(fh))
+        slot(fh)->closes++; /* files persist; pipes are read to the end */
 }
 
 static int f_pipe(void *os, sh_fh *rd, sh_fh *wr)
@@ -661,6 +663,61 @@ static int f_interrupted(void *os)
 /* Subshells run as processes of their own (S3.4): what they change stays
  * in them; builtin pipeline stages run at the same time; & takes any
  * command; $( ) is a subshell too. */
+/* how often the shell closed the file of that name, and what it holds */
+static int closes_of(const char *name)
+{
+    int i;
+    for (i = 0; i < NF; i++)
+        if (fs[i].used && !strcmp(fs[i].name, name))
+            return fs[i].closes;
+    return -1;
+}
+
+static const char *data_of(const char *name)
+{
+    int i;
+    for (i = 0; i < NF; i++)
+        if (fs[i].used && !strcmp(fs[i].name, name))
+            return fs[i].data;
+    return "";
+}
+
+/* A handle behind several descriptors is closed once, by its last user (V70). */
+static void fd_handles_are_counted(void)
+{
+    /* dup: closing the original keeps the copy open; the copy's close is the last */
+    run("exec 3>f; exec 4>&3; exec 3>&-; echo x >&4");
+    CHECK_INT(closes_of("f"), 0);
+    CHECK_STR(data_of("f"), "x\n");
+    sh_run_text(&sh, "exec 4>&-", 0);
+    CHECK_INT(closes_of("f"), 1);
+    /* a fd 1 that shares the handle stays open when the table slot goes */
+    run("exec 3>f; echo a >&3; exec 3>&-");
+    CHECK_INT(closes_of("f"), 1);
+    /* unwind: a command's own redirections are closed when it ends, once, even when shared */
+    run("echo hi 3>f 4>&3");
+    CHECK_INT(closes_of("f"), 1);
+    run("{ echo a >&3; } 3>f; echo b");
+    CHECK_INT(closes_of("f"), 1);
+    run("exec 3>f; echo c 3>&-; echo d >&3");
+    CHECK_INT(closes_of("f"), 0);
+    CHECK_STR(data_of("f"), "d\n");
+    /* exec commit: the handle a new exec 3> replaces is closed then, the new one stays */
+    run("exec 3>f; exec 3>g");
+    CHECK_INT(closes_of("f"), 1);
+    CHECK_INT(closes_of("g"), 0);
+    run("exec 3>f 4>&3; exec 3>g; echo x >&4");
+    CHECK_INT(closes_of("f"), 0);
+    CHECK_STR(data_of("f"), "x\n");
+    /* subshell: it shares the parent's handles and closes none of them */
+    run("exec 3>f; ( echo s >&3; exec 3>&- ); echo t >&3");
+    CHECK_INT(closes_of("f"), 0);
+    CHECK_STR(data_of("f"), "s\nt\n");
+    run("exec 3>f; ( echo s >&3 ) 3>&- 2>/dev/null; echo t >&3");
+    CHECK_INT(closes_of("f"), 0);
+    CHECK_STR(data_of("f"), "t\n");
+}
+
 static void subshells(void)
 {
     int inc = 0;
@@ -1185,6 +1242,7 @@ void suite_sh_exec(void)
     suspend();
     functions_outlive_their_lines();
     subshells();
+    fd_handles_are_counted();
     assignment_status_and_scope();
     read_builtin();
     path_entries_are_amigados_dirs();

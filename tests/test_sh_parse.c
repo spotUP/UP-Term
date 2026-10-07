@@ -72,6 +72,7 @@ static void lists_pipes_and_logic(void)
 static void redirections(void)
 {
     parses("cmd <in >out 2>err", "(seq (cmd cmd [0<in] [1>out] [2>err]))");
+    parses("cmd 12>out 10<in 9>&10 {v}>f 3>&- 4<>rw 5>|c 6<<<w &>>ap", "(seq (cmd cmd [12>out] [10<in] [9>&10] [{v}>f] [3>&-] [4<>rw] [5>|c] [6<<<w] [1&>>ap]))");
     parses("cmd >>log 2>&1 &>both", "(seq (cmd cmd [1>>log] [2>&1] [1&>both]))");
     parses("cat <<EOF\nhello $X\nEOF\necho after",
            "(seq (cmd cat [0<<hello $X\n]) (seq (cmd echo after)))");

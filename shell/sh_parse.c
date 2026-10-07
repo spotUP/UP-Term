@@ -1292,17 +1292,32 @@ static void dump_words(out *o, const sh_word *w)
 
 static void dump_redirs(out *o, const sh_redir *r)
 {
-    static const char *const ops[] = { "<", ">", ">>", "<&", ">&", "&>", "<<" };
-    char fd[4];
+    static const char *const ops[] = { "<", ">", ">>", "<&", ">&", "&>", "<<", "<<<", "<>", ">|", "&>>", ">&-" };
+    char fd[16];
     for (; r; r = r->next) {
+        long v = r->fd;
+        int k = 0, j;
+        char rev[16];
         put(o, " [");
-        fd[0] = (char)('0' + r->fd);
-        fd[1] = 0;
-        put(o, fd);
+        if (r->var) {
+            put(o, "{");
+            put(o, r->var);
+            put(o, "}");
+        } else {
+            do {
+                rev[k++] = (char)('0' + v % 10);
+                v /= 10;
+            } while (v > 0 && k < 15);
+            for (j = 0; j < k; j++)
+                fd[j] = rev[k - 1 - j];
+            fd[k] = 0;
+            put(o, fd);
+        }
         put(o, ops[r->kind]);
         if (r->kind == SH_R_HEREDOC && r->quoted)
             put(o, "'");
-        put(o, r->target ? r->target : "?");
+        if (r->kind != SH_R_CLOSE)
+            put(o, r->target ? r->target : "?");
         put(o, "]");
     }
 }

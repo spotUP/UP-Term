@@ -17,3 +17,5 @@ builtins/printf_bnul	documented	printf %b and echo -e lose a NUL byte (C strings
 expand/brace_oom	documented	brace expansion stops at 1,000,000 words with "brace expansion: out of memory" (status 1); bash goes on until memory ends
 expand/tilde_user	n/a-amiga	~user needs a user database; vsh leaves ~user as typed (bash expands it for a real user)
 redir/close_out	documented	a stream closed with n>&- or n<&- is the null device (NIL:) for a command that is not a builtin, so its write or read does not fail (bash: status 1)
+fd/ext_fd3	documented	descriptors 3 and up reach builtins and n>&m targets only: a native or external command gets fds 0-2 (AmigaDOS processes have no inherited fd table), bash passes every open fd
+fd/ext_devfd	documented	/dev/fd/N, /dev/stdin, /dev/stdout, /dev/stderr work as redirection targets, source and test -e/-a/-r/-w (shell fd table); a native command given such a name as an argument cannot open it (no such device on AmigaOS)

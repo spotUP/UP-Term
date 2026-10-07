@@ -221,6 +221,8 @@ void sh_shell_init(sh_shell *sh)
     sh->exit_status = 0;
     sh->breaking = sh->continuing = sh->returning = 0;
     sh->loop_depth = sh->func_depth = 0;
+    memset(sh->fdt, 0, sizeof(sh->fdt)); /* a clone is malloc memory: the fd table and its undo stack start empty */
+    sh->nundo = 0;
     memset(sh->jobs, 0, sizeof(sh->jobs));
     memset(sh->job_text, 0, sizeof(sh->job_text));
     memset(sh->job_stopped, 0, sizeof(sh->job_stopped));
@@ -901,6 +903,23 @@ static long fd_number(const char *t)
     return v;
 }
 
+/* /dev/stdin, /dev/stdout, /dev/stderr and /dev/fd/N name a descriptor of the shell: the
+ * number, else -1. Redirection targets, test -e and source take them through the fd table. */
+static long dev_fd(const char *path)
+{
+    if (strncmp(path, "/dev/", 5))
+        return -1;
+    if (!strcmp(path + 5, "stdin"))
+        return 0;
+    if (!strcmp(path + 5, "stdout"))
+        return 1;
+    if (!strcmp(path + 5, "stderr"))
+        return 2;
+    if (!strncmp(path + 5, "fd/", 3))
+        return fd_number(path + 8);
+    return -1;
+}
+
 /* a free slot for {var}> (from fd 10, as bash), or -1 */
 static int fd_alloc(const sh_shell *sh)
 {
@@ -929,6 +948,36 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
         }
     if (sh->nundo > mark)
         io->owned |= SH_OWN_FDS;
+    return 0;
+}
+
+/* descriptor dest (slot >= 0: a table slot) becomes another name for handle src, which was
+ * descriptor sn: n>&m, n<&m, and a redirection to /dev/fd/m */
+static int redir_dup(sh_shell *sh, const sh_redir *r, sh_io *io, long dest, int slot, long sn, sh_fh src)
+{
+    if (sn >= 3)
+        SH_HIT(FD_HIGH);
+    if (slot >= 0) {
+        if (r->var)
+            SH_HIT(FDVAR_ALLOC);
+        if (fd_set(sh, slot, src, sn >= 3) < 0)
+            return -1;
+        if (r->var) {
+            char nb[16];
+            num(nb, dest);
+            sh_set(&sh->ctx, r->var, nb);
+        }
+        return 0;
+    }
+    if (r->kind == SH_R_BOTH || r->kind == SH_R_BOTHAPP) {
+        io->out = io->err = src;
+        io->owned &= ~(SH_OWN_OUT | SH_OWN_ERR);
+    } else if (r->fd == 2)
+        io->err = src, io->owned &= ~SH_OWN_ERR;
+    else if (r->fd == 1)
+        io->out = src, io->owned &= ~SH_OWN_OUT;
+    else if (r->fd == 0)
+        io->in = src, io->owned &= ~SH_OWN_IN;
     return 0;
 }
 
@@ -975,27 +1024,7 @@ static int redirect_one(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh
                 return -1;
             }
             free(tw);
-            if (sn >= 3)
-                SH_HIT(FD_HIGH);
-            if (slot >= 0) {
-                if (r->var)
-                    SH_HIT(FDVAR_ALLOC);
-                if (fd_set(sh, slot, src, sn >= 3) < 0)
-                    return -1;
-                if (r->var) {
-                    char nb[16];
-                    num(nb, dest);
-                    sh_set(&sh->ctx, r->var, nb);
-                }
-                return 0;
-            }
-            if (r->fd == 2)
-                io->err = src, io->owned &= ~SH_OWN_ERR;
-            else if (r->fd == 1)
-                io->out = src, io->owned &= ~SH_OWN_OUT;
-            else if (r->fd == 0)
-                io->in = src, io->owned &= ~SH_OWN_IN;
-            return 0;
+            return redir_dup(sh, r, io, dest, slot, sn, src);
         }
         if (r->kind == SH_R_CLOSE && slot >= 0)
             return sh->fdt[slot].fh ? fd_set(sh, slot, SH_NOFH, 0) : 0;
@@ -1041,8 +1070,21 @@ static int redirect_one(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh
             int mode = r->kind == SH_R_IN ? SH_OPEN_READ
                      : r->kind == SH_R_RDWR ? SH_OPEN_RDWR
                      : r->kind == SH_R_APPEND || r->kind == SH_R_BOTHAPP ? SH_OPEN_APPEND : SH_OPEN_WRITE;
+            long dn;
             if (!path)
                 return -1;
+            dn = dev_fd(path);
+            if (dn >= 0) {
+                /* /dev/fd/N and friends: another name for the shell's descriptor, not a file */
+                sh_fh src = fd_get(sh, io, dn);
+                if (!src) {
+                    err2(sh, parent, path, "bad file descriptor");
+                    free(path);
+                    return -1;
+                }
+                free(path);
+                return redir_dup(sh, r, io, dest, slot, dn, src);
+            }
             if (mode == SH_OPEN_WRITE && r->kind != SH_R_CLOBBER && (sh->opts & SO_NOCLOBBER) && strncmp(path, "/dev/", 5) &&
                 sh->os.stat && sh_exists(sh, path, 0)) {
                 err2(sh, parent, path, "cannot overwrite existing file");
@@ -2248,6 +2290,8 @@ static int sh_test_unary(tctx *t, char op, const char *a)
         return 0;
     }
     }
+    if ((op == 'e' || op == 'a' || op == 'r' || op == 'w') && dev_fd(a) >= 0)
+        return fd_get(sh, t->io, dev_fd(a)) != SH_NOFH; /* /dev/fd/N: open in the shell's table */
     if (!sh->os.stat || sh->os.stat(sh->os.data, a, &st, op == 'L' || op == 'h'))
         return 0;
     switch (op) {
@@ -3450,6 +3494,7 @@ static int find_command_file(sh_shell *sh, const char *name, char *out, long max
 static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     sh_fh fh;
+    int borrowed;
     char line[1024];
     char *text = 0;
     long len = 0, n, st = 0;
@@ -3464,7 +3509,8 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
     /* a name without a slash is looked for in $PATH first (bash: sourcepath), then here */
     if (!strchr(file, '/') && !strchr(file, ':') && find_command_file(sh, file, found, sizeof(found)))
         file = found;
-    fh = sh->os.open(sh->os.data, file, SH_OPEN_READ);
+    borrowed = dev_fd(file) >= 0;
+    fh = borrowed ? fd_get(sh, io, dev_fd(file)) : sh->os.open(sh->os.data, file, SH_OPEN_READ);
     if (!fh) {
         err2(sh, io, argv[1], "cannot open");
         return 1;
@@ -3478,7 +3524,8 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
         len += n;
         text[len] = 0;
     }
-    sh->os.close(sh->os.data, fh);
+    if (!borrowed)
+        sh->os.close(sh->os.data, fh);
     if (swap) {
         int k;
         saved_args = sh->ctx.args;
@@ -4384,6 +4431,10 @@ static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, 
     }
     SH_HIT(SPAWN);
     r = sh->os.spawn(sh->os.data, c, t, io, wait);
+    /* the child worked on a copy of the fd table: the redirections of this command are undone
+     * here, in the table they were made in (a background child may still use their handles) */
+    if (wait && (io->owned & SH_OWN_FDS))
+        fd_unwind(sh, io->fdmark, io);
     if (r < 0 && (!wait || r == -1)) {
         /* it did not start: child and tree are still ours (the streams are not) */
         sh_shell_free(c);

@@ -1,0 +1,1 @@
+[ -e /dev/fd/3 ]; echo $?; exec 3>o.txt; [ -e /dev/fd/3 ]; echo $?; exec 3>&-; [ -e /dev/fd/3 ]; echo $?; [ -e /dev/stdin ]; echo $?; [ -e /dev/stdout ]; echo $?; [ -e /dev/stderr ]; echo $?; [ -e /dev/fd/7 ]; echo $?
