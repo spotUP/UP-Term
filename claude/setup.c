@@ -83,15 +83,61 @@ static int current_remote(cl_repl *r, char *host, long cap, long *port)
     return ok;
 }
 
+/* The choices of the three menus; the screen shows them as a menu (ui_pick,
+ * the picker /model uses), the line mode numbers them. One text for both. */
+static const char *const mode_opt[] = {
+    "Claude Code on another computer (your Claude subscription; this window connects to it)",
+    "An Anthropic API key here (Claude talks to Anthropic directly; needs AmiSSL 5)",
+    "Later (nothing is stored; /setup comes back to this)"
+};
+static const char *const keep_opt[] = {
+    "Store these settings anyway",
+    "Enter the address again",
+    "Back to the first question"
+};
+static const char *const info_opt[] = {
+    "Show the page about amimcp and amiagent",
+    "Skip it"
+};
+
+/* a menu's question in the screen: the option's index, -1 Esc. In the line
+ * mode (no screen: plain, -p, scripts) the options are numbered and the
+ * answer is typed: -2, the step's own line handler reads it. */
+static int ask(cl_repl *r, const char *title, const char *const *opt, int n, const char *typed)
+{
+    int i;
+    char m[200], num[16];
+    if (r->ui.tui)
+        return ui_pick(&r->ui, title, opt, n, 0);
+    ui_line(&r->ui, title);
+    for (i = 0; i < n; i++) {
+        cl_ltoa(i + 1, num);
+        cl_copy(m, "  ", sizeof(m));
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, "  ", sizeof(m));
+        cl_cat(m, opt[i], sizeof(m));
+        ui_line(&r->ui, m);
+    }
+    ui_line(&r->ui, typed);
+    return -2;
+}
+
+static void mode_chosen(cl_repl *r, int c);
+
+static void page_host(cl_repl *r);
+static void page_key(cl_repl *r);
 static void page_mode(cl_repl *r)
 {
+    int c;
     ui_line(&r->ui, "");
-    ui_line(&r->ui, "Setup, step 1 of 4: how do you want to use Claude on this Amiga?");
-    ui_line(&r->ui, "  1  Claude Code on another computer (your Claude subscription; this window connects to it)");
-    ui_line(&r->ui, "  2  An Anthropic API key here (Claude talks to Anthropic directly; needs AmiSSL 5)");
-    ui_line(&r->ui, "  3  Later (nothing is stored; /setup comes back to this)");
-    ui_line(&r->ui, "Type 1, 2 or 3 and press Enter.");
     r->wiz.step = SETUP_MODE;
+    c = ask(r, "Setup, step 1 of 4: how do you want to use Claude on this Amiga?", mode_opt, 3,
+            "Type 1, 2 or 3 and press Enter.");
+    if (c == -1) {                      /* Esc at the first question: nothing to go back to */
+        r->wiz.step = SETUP_OFF;
+        ui_line(&r->ui, "Setup left. Nothing was stored; /setup comes back to this.");
+    } else if (c >= 0)
+        mode_chosen(r, c + 1);
 }
 
 void setup_begin(cl_repl *r)
@@ -138,12 +184,20 @@ static void page_key(cl_repl *r)
     r->wiz.step = SETUP_KEY;
 }
 
+static void info_chosen(cl_repl *r, int show);
+static void finish(cl_repl *r);
+
 static void page_info(cl_repl *r)
 {
+    int c;
     ui_line(&r->ui, "");
     ui_line(&r->ui, "Setup, step 3 of 4 (optional): let Claude control this Amiga.");
-    ui_line(&r->ui, "Show the page about amimcp and amiagent? Type y or n.");
     r->wiz.step = SETUP_INFO;
+    c = ask(r, "Show the page about amimcp and amiagent?", info_opt, 2, "Type 1 or 2 (y shows it, n skips it).");
+    if (c >= 0)
+        info_chosen(r, c == 0);
+    else if (c == -1)
+        info_chosen(r, 0);              /* Esc: skipped */
 }
 
 static void show_info(cl_repl *r)
@@ -177,6 +231,40 @@ static void finish(cl_repl *r)
     r->wiz.step = SETUP_OFF;
 }
 
+static void mode_chosen(cl_repl *r, int c)
+{
+    r->wiz.mode = c;
+    if (c == 1)
+        page_host(r);
+    else if (c == 2)
+        page_key(r);
+    else
+        finish(r);
+}
+
+static void info_chosen(cl_repl *r, int show)
+{
+    if (show)
+        show_info(r);
+    finish(r);
+}
+
+/* the keep question after a failed connect: 0 store anyway, 1 the address
+ * again, 2 back to the first question */
+static void keep_chosen(cl_repl *r, int c)
+{
+    if (c == 0) {
+        if (setup_write_remote(r->sys, r->home, r->wiz.host, r->wiz.port))
+            say2(r, "  Could not store ENVARC:Claude/remote: ", r->sys->err(r->sys->u));
+        else
+            say2(r, "  Stored in ", "ENVARC:Claude/remote");
+        page_info(r);
+    } else if (c == 1)
+        page_host(r);
+    else
+        page_mode(r);
+}
+
 static int yes(const char *s)
 {
     return (s[0] == 'y' || s[0] == 'Y') && (!s[1] || !strcmp(s + 1, "es") || !strcmp(s + 1, "ES"));
@@ -208,8 +296,13 @@ static void test_remote(cl_repl *r)
     } else {
         cl_copy(m, rc == NET_BREAK ? "stopped" : r->net->err(r->net->u), sizeof(m));
         chk(r, 0, "Connect to the computer", m[0] ? m : "failed");
-        ui_line(&r->ui, "Keep these settings anyway? Type y or n (n asks for the address again).");
         r->wiz.step = SETUP_KEEP;
+        rc = ask(r, "The computer did not answer. Keep these settings anyway?", keep_opt, 3,
+                 "Type 1, 2 or 3 (y stores them, n asks for the address again).");
+        if (rc >= 0)
+            keep_chosen(r, rc);
+        else if (rc == -1)
+            keep_chosen(r, 2);          /* Esc: back */
     }
 }
 
@@ -231,15 +324,9 @@ int setup_line(cl_repl *r, const char *line)
     }
     switch (r->wiz.step) {
     case SETUP_MODE:
-        if (!strcmp(s, "1") || !strcmp(s, "2") || !strcmp(s, "3")) {
-            r->wiz.mode = s[0] - '0';
-            if (r->wiz.mode == 1)
-                page_host(r);
-            else if (r->wiz.mode == 2)
-                page_key(r);
-            else
-                finish(r);
-        } else
+        if (!strcmp(s, "1") || !strcmp(s, "2") || !strcmp(s, "3"))
+            mode_chosen(r, s[0] - '0');
+        else
             ui_line(&r->ui, "Type 1, 2 or 3.");
         break;
     case SETUP_HOST: {
@@ -260,16 +347,14 @@ int setup_line(cl_repl *r, const char *line)
         break;
     }
     case SETUP_KEEP:
-        if (yes(s)) {
-            if (setup_write_remote(r->sys, r->home, r->wiz.host, r->wiz.port))
-                say2(r, "  Could not store ENVARC:Claude/remote: ", r->sys->err(r->sys->u));
-            else
-                say2(r, "  Stored in ", "ENVARC:Claude/remote");
-            page_info(r);
-        } else if (!strcmp(s, "n") || !strcmp(s, "N") || !strcmp(s, "no"))
-            page_host(r);
+        if (yes(s) || !strcmp(s, "1"))
+            keep_chosen(r, 0);
+        else if (!strcmp(s, "n") || !strcmp(s, "N") || !strcmp(s, "no") || !strcmp(s, "2"))
+            keep_chosen(r, 1);
+        else if (!strcmp(s, "3"))
+            keep_chosen(r, 2);
         else
-            ui_line(&r->ui, "Type y or n.");
+            ui_line(&r->ui, "Type 1, 2 or 3.");
         break;
     case SETUP_KEY:
         r->await_key = 0;
@@ -292,12 +377,12 @@ int setup_line(cl_repl *r, const char *line)
         page_info(r);
         break;
     case SETUP_INFO:
-        if (yes(s))
-            show_info(r);
-        if (yes(s) || !strcmp(s, "n") || !strcmp(s, "N") || !strcmp(s, "no") || !s[0])
-            finish(r);
+        if (yes(s) || !strcmp(s, "1"))
+            info_chosen(r, 1);
+        else if (!strcmp(s, "n") || !strcmp(s, "N") || !strcmp(s, "no") || !strcmp(s, "2") || !s[0])
+            info_chosen(r, 0);
         else
-            ui_line(&r->ui, "Type y or n.");
+            ui_line(&r->ui, "Type 1 or 2.");
         break;
     default:
         return 0;

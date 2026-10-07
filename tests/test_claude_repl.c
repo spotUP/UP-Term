@@ -2246,6 +2246,94 @@ static void test_setup_steps(void)
     setup_done_mark(0);
 }
 
+/* the wizard's menus in the screen: Down and Enter choose, Esc goes back (line mode: the tests above) */
+static void test_setup_menu(void)
+{
+    static const char *keys[] = {
+        "\033",                            /* 1: Esc at the first question leaves */
+        "\033[B", "\033[B", "\r",          /* 2: Down, Down, Enter: Later */
+        "\r",                              /* 3: Enter: Claude Code on another computer */
+        "\033[B", "\r",                    /* 3: the connect failed: Down, Enter: enter the address again */
+        "\033",                            /* 3: failed again: Esc is Back to the first question */
+        "\033",                            /* 3: Esc at the first question leaves */
+        "\r", "\r",                        /* 4: the computer, failed: Enter stores anyway */
+        "\033[B", "\r",                    /* 4: the page question: Down, Enter skips it */
+        "\r", "\r",                        /* 5: the computer answers; the page question: Enter shows it */
+        "\033[B", "\r", 0                  /* 6: the key mode (Down, Enter) */
+    };
+    static cl_repl r;
+    stub_reset();
+    cs_open(80, 24, keys);
+    cs_io(&io);
+    io.log = 0;
+    net.u = 0;
+    net.open = s_open;
+    net.send = s_send;
+    net.recv = s_recv;
+    net.close = s_close;
+    net.err = s_err;
+    sys_posix_init(&sp, &sys);
+    setup_done_mark(0);
+    unlink_home("remote");
+    setup_key = "";
+    CHECK_INT(repl_init(&r, &io, &net, &sys, CL_DEFAULT_URL, setup_key, dir), 0);
+    setup_key = "test-key-not-real";
+    CHECK_INT(repl_screen(&r), 0);
+    CHECK(r.ui.tui != 0);
+    open_fail = 0;
+
+    setup_begin(&r);
+    CHECK_INT(r.wiz.step, SETUP_OFF);                       /* Esc */
+    CHECK_INT(cs.next, 1);
+    CHECK_INT(home_has("setup-done"), 0);
+
+    setup_begin(&r);
+    CHECK_INT(r.wiz.step, SETUP_OFF);                       /* Later */
+    CHECK_INT(cs.next, 4);
+    CHECK_INT(home_has("setup-done"), 1);
+    CHECK_INT(home_has("remote"), 0);
+    setup_done_mark(0);
+
+    open_fail = 1;
+    setup_begin(&r);
+    CHECK_INT(r.wiz.step, SETUP_HOST);                      /* Enter on the first option */
+    CHECK_INT(cs.next, 5);
+    repl_line(&r, "nas.local 2399");
+    CHECK_INT(r.wiz.step, SETUP_HOST);                      /* Enter the address again */
+    CHECK_INT(cs.next, 7);
+    CHECK_INT(sb.opens, 1);
+    repl_line(&r, "nas.local 2399");
+    CHECK_INT(r.wiz.step, SETUP_OFF);                       /* Esc: Back, then Esc leaves */
+    CHECK_INT(cs.next, 9);
+    CHECK_INT(sb.opens, 2);
+    CHECK_INT(home_has("remote"), 0);
+
+    setup_begin(&r);
+    repl_line(&r, "nas.local 2399");
+    CHECK_INT(r.wiz.step, SETUP_OFF);                       /* stored anyway, page skipped, done */
+    CHECK_INT(cs.next, 13);
+    CHECK_INT(home_has("remote"), 1);
+    CHECK_INT(home_has("setup-done"), 1);
+    CHECK(strstr(cn.screen.p, "github.com/thomas-luebker") == 0);
+    setup_done_mark(0);
+
+    open_fail = 0;
+    setup_begin(&r);
+    repl_line(&r, "nas.local 2399");
+    CHECK_INT(r.wiz.step, SETUP_OFF);                       /* answers; Show */
+    CHECK_INT(cs.next, 15);
+    CHECK(strstr(cn.screen.p, "github.com/thomas-luebker") != 0 || cs_find("amimcp") >= 0);
+    setup_done_mark(0);
+
+    setup_begin(&r);
+    CHECK_INT(cs.next, 17);
+    CHECK_INT(r.wiz.step, SETUP_KEY);                       /* Down, Enter: the API key here */
+    CHECK_INT(r.await_key, 1);
+    repl_free(&r);
+    setup_done_mark(0);
+    unlink_home("remote");
+}
+
 /* the key: through /login's path, masked, tested with one request, never in the screen or the log */
 static void test_setup_key(void)
 {
@@ -2345,6 +2433,7 @@ static void test_wp4(void)
     test_wp4_apply();
     test_setup_reach();
     test_setup_steps();
+    test_setup_menu();
     test_setup_key();
     test_wp4_start();
     jw_free(&pc.out);
