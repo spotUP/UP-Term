@@ -34,6 +34,10 @@ and hash are unchanged is skipped on the next run.
   tools/bashdiff.py --probe subst      one probe (name or area/name), rerun
   tools/bashdiff.py --failed           the probes whose verdict is FAIL
   tools/bashdiff.py --force            every probe again
+  tools/bashdiff.py --leak             every ratchet probe under build/vsh_host_leak (counting
+                                       allocator, no sanitizers) with VSH_LEAKCHECK=1: fails when a probe
+                                       leaves a block live after sh_shell_free (V44);
+                                       --probe NAME limits it to one probe
   tools/bashdiff.py --gate             the ratchet only, plus the list checks (make test);
                                        "[INFO] no bash 5" and a skip when the oracle is missing
 Exit 0 when the gate passes (or, without --gate, when no ratchet probe fails and
@@ -49,6 +53,8 @@ PLAN = ROOT / "thoughts/shared/plans/2026-10-07-vsh-bash.md"
 README = ROOT / "dist/README.txt"
 OUT = ROOT / "build/bashdiff"
 VSH = ROOT / "build/vsh_host"
+VSH_LEAK = ROOT / "build/vsh_host_leak"
+LEAK_BASE = 0  # blocks the counting allocator may find live after sh_shell_free
 ORACLE = os.environ.get("BASH_ORACLE", "/opt/homebrew/bin/bash")
 PATH = "/usr/bin:/bin"
 TIMEOUT = 5
@@ -154,7 +160,7 @@ def probe_hash(p):
     return h.hexdigest()[:12]
 
 
-def run_one(shell_cmd, p, base, hits=False):
+def run_one(shell_cmd, p, base, hits=False, leak=False):
     """(stdout bytes, status, stderr bytes) of one shell on probe p, in a fresh work dir under base.
     hits: vsh_host runs with --hits and its stderr (the counters) is returned; else stderr is dropped."""
     work, tmp = base / "work", base / "tmp"
@@ -166,6 +172,8 @@ def run_one(shell_cmd, p, base, hits=False):
     args = shlex.split(p.with_suffix(".args").read_text()) if p.with_suffix(".args").exists() else []
     stdin = open(p.with_suffix(".in"), "rb") if p.with_suffix(".in").exists() else subprocess.DEVNULL
     env = {"PATH": PATH, "HOME": str(base / "home"), "LANG": "C", "LC_ALL": "C", "TZ": "UTC", "TMPDIR": str(tmp)}
+    if leak:
+        env["VSH_LEAKCHECK"] = "1"
     flags = shlex.split(p.with_suffix(".flags").read_text()) if p.with_suffix(".flags").exists() else []
     # <name>.flags: options before the probe. Last flag -c / -ec ...: the probe's text is the
     # command string (args after it are $0 and the positionals); last flag -s: the text is
@@ -180,7 +188,7 @@ def run_one(shell_cmd, p, base, hits=False):
         r = subprocess.run(shell_cmd + (["--hits"] if hits else []) + flags + target + args,
                            stdin=None if isinstance(stdin, bytes) else stdin,
                            input=stdin if isinstance(stdin, bytes) else None, stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE if hits else subprocess.DEVNULL,
+                           stderr=subprocess.PIPE if hits or leak else subprocess.DEVNULL,
                            cwd=work, env=env, timeout=TIMEOUT, start_new_session=True)
         return r.stdout, r.returncode if r.returncode >= 0 else 128 - r.returncode, r.stderr or b""
     except subprocess.TimeoutExpired as e:
@@ -270,6 +278,38 @@ def write_verdict(area, fp, res):
         "%s %s\n%s" % (status, fp, "".join("%s\t%s\t%s\n" % (n, v[0], v[1]) for n, v in sorted(res.items()))))
 
 
+def leak_gate(only):
+    """V44: no ratchet probe leaves heap blocks behind. Returns the exit status."""
+    if not VSH_LEAK.exists():
+        print("[ERROR] %s missing: make build/vsh_host_leak" % VSH_LEAK)
+        return 2
+    allp = probes()
+    div, rat, errs = lists(allp)
+    ids = [pid for pid in sorted(rat) if not only or pid == only or pid.split("/")[1] == only]
+    bad = []
+    with tempfile.TemporaryDirectory(prefix="bashdiff-leak-") as td:
+        def one(i_pid):
+            i, pid = i_pid
+            base = pathlib.Path(td) / str(i)
+            base.mkdir()
+            out, st, err = run_one([str(VSH_LEAK)], allp[pid], base, leak=True)
+            m = re.findall(rb"leak blocks=(-?\d+)", err)
+            shutil.rmtree(base, ignore_errors=True)
+            return pid, (int(m[-1]) if m else None), st
+        with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as ex:
+            for pid, n, st in ex.map(one, enumerate(ids)):
+                if st == "timeout":
+                    continue
+                if n is None:
+                    bad.append("%s printed no leak tally" % pid)
+                elif n > LEAK_BASE:
+                    bad.append("%s leaks %d heap blocks (baseline %d)" % (pid, n - LEAK_BASE, LEAK_BASE))
+    for b in bad:
+        print("[FAIL] leak: " + b)
+    print("[INFO] leak gate: %d ratchet probes, %d leaking" % (len(ids), len(bad)))
+    return 1 if bad else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--only", metavar="AREA", help="one area")
@@ -277,8 +317,11 @@ def main():
     ap.add_argument("--failed", action="store_true", help="the probes whose verdict is FAIL")
     ap.add_argument("--force", action="store_true", help="rerun passed probes too")
     ap.add_argument("--gate", action="store_true", help="ratchet probes only, plus the list checks")
+    ap.add_argument("--leak", action="store_true", help="V44 leak gate over the ratchet probes")
     ap.add_argument("-v", "--verbose", action="store_true", help="name every failing probe")
     a = ap.parse_args()
+    if a.leak:
+        return leak_gate(a.probe)
     allp = probes()
     div, rat, errs = lists(allp)
     if a.gate:

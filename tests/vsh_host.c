@@ -26,9 +26,6 @@
 #include <poll.h>
 #include <termios.h>
 #include <unistd.h>
-#ifdef __APPLE__
-#include <malloc/malloc.h>
-#endif
 #include "../shell/sh_exec.h"
 #include "../shell/sh_hits.h"
 
@@ -472,26 +469,17 @@ static int h_listdir(sh_ctx *c, const char *dir, sh_list *out)
     return 0;
 }
 
-/* Leak check without LeakSanitizer (unsupported on macOS): with VSH_LEAKCHECK set, the heap's live
- * blocks are counted before the shell starts and after sh_shell_free; a difference is printed to
- * stderr as "leak blocks=N bytes=M" (stdio's own buffers account for a small constant). */
-#ifdef __APPLE__
-static size_t leak_blocks0, leak_bytes0;
-static void leak_count(size_t *b, size_t *by)
-{
-    malloc_statistics_t st;
-    malloc_zone_statistics(0, &st);
-    *b = st.blocks_in_use;
-    *by = st.size_in_use;
-}
-static void leak_mark(void) { leak_count(&leak_blocks0, &leak_bytes0); }
+/* Leak check (V44): built with -DVH_COUNT (build/vsh_host_leak), tests/vh_alloc.c counts every block
+ * the shell core and this driver allocate; with VSH_LEAKCHECK set, the blocks still live after
+ * sh_shell_free are printed to stderr as "leak blocks=N". The baseline is 0. */
+#ifdef VH_COUNT
+extern long vh_live(void);
+static long leak_blocks0;
+static void leak_mark(void) { leak_blocks0 = vh_live(); }
 static void leak_report(void)
 {
-    size_t b, by;
-    if (!getenv("VSH_LEAKCHECK"))
-        return;
-    leak_count(&b, &by);
-    fprintf(stderr, "leak blocks=%ld bytes=%ld\n", (long)b - (long)leak_blocks0, (long)by - (long)leak_bytes0);
+    if (getenv("VSH_LEAKCHECK"))
+        fprintf(stderr, "leak blocks=%ld\n", vh_live() - leak_blocks0);
 }
 #else
 static void leak_mark(void) {}

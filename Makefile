@@ -48,13 +48,13 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 .PHONY: bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py)
-test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host
+test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak
 	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
 $(BUILD)/vttest_host: $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
 	@mkdir -p $(BUILD)
@@ -66,6 +66,12 @@ $(BUILD)/vttest_host: $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_C
 $(BUILD)/vsh_host: tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_hits.h shell/sh_float.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -DSH_HITS -o $@ tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c
+# the same host shell with a counting allocator (tests/vh_alloc.c) instead of the sanitizers: the leak
+# gate (tools/bashdiff.py --leak) runs it and fails when a ratchet probe leaves a block live (V44)
+$(BUILD)/vsh_host_leak: tests/vsh_host.c tests/vh_alloc.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_hits.h shell/sh_float.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -c -o $(BUILD)/vh_alloc.o tests/vh_alloc.c
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -DSH_HITS -DVH_COUNT -Dmalloc=vh_malloc -Dcalloc=vh_calloc -Drealloc=vh_realloc -Dfree=vh_free -o $@ tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c $(BUILD)/vh_alloc.o
 # the ratchet list in byte order (content unchanged: sort -o keeps every line)
 ratchet-sort:
 	LC_ALL=C sort -o tests/bash/ratchet.txt tests/bash/ratchet.txt
