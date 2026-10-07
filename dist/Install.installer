@@ -169,14 +169,19 @@
 (if (in #boot 0) (set #serial "SERIAL"))
 (if (in #boot 1) (set #wasabi "WASABI"))
 
-; the page's default is the host and port line of an existing
-; ENVARC:Claude/remote (';' lines are comments; the line has a space and a
-; port number); no such file: the address below. Search prints that line
-; into ENV:UPTermRemote, whose first line getenv returns.
+; the page's default is the host and port of an existing
+; ENVARC:Claude/remote: the kit's own Claude prints them (Claude REMOTE-ADDRESS,
+; the parser C:Claude itself uses: comments skipped, port 2323 when left out)
+; into ENV:UPTermRemote (a two-line script: Claude needs a 16000 byte stack),
+; whose first line getenv returns. No file, or no
+; host in it: the address below.
 (set #oldremote "")
 (if (exists "ENVARC:Claude/remote")
     (
-        (run "Search ENVARC:Claude/remote \"[~;]#? #[0-9]#?\" PATTERN NONUM >ENV:UPTermRemote" (safe))
+        (textfile (dest "T:UPTermRemote.sh")
+                  (append "Stack 32768\n\"" #files "/Claude\" REMOTE-ADDRESS >ENV:UPTermRemote\n"))
+        (run "Execute T:UPTermRemote.sh" (safe))
+        (run "Delete >NIL: T:UPTermRemote.sh QUIET" (safe))
         (set #oldremote (getenv "UPTermRemote"))
         (run "Delete >NIL: ENV:UPTermRemote QUIET" (safe))
     ))
@@ -195,7 +200,6 @@
               "2323 for the server in tools/nas).")
         (default #oldremote)))
 (set #remotetext #remote)
-(if (<> #remote "") (set #remote (cat "REMOTE=\"" #remote "\"")))
 
 ; ---- taking over the system's console: a page of its own -----------------
 
@@ -274,13 +278,48 @@
 
 ; ---- install ------------------------------------------------------------------
 ; P_STEP runs one part of install.dos (#step), saying what it does (#why),
-; and moves the bar by its size (#kb). P_COPY copies one drawer of the kit
+; and moves the bar by its size (#kb). Its command line is short whatever the
+; kit's path and the answers are (AmigaDOS takes about 255 characters): the
+; kit's Files drawer is the assign UPTKIT:, and the options are not on the
+; line at all but in the files ENV:UPT_<keyword> that P_OPTIONS writes once
+; before the first part (install.dos reads them) and P_OPTIONS_END removes. P_COPY copies one drawer of the kit
 ; (#from) into UP-Term's drawer (#to) the same way: copyfiles makes #to,
 ; takes the subdrawers along, and shows each file as it copies it.
 
 ; P_LEAD sets #lead, the newlines that centre a block of #n lines
 (procedure P_LEAD
     (set #lead (substr "\n\n\n\n\n\n\n" 0 (/ (- 15 #n) 2))))
+
+; P_OPT writes one option: the file ENV:UPT_<name> holding #val (nothing when
+; the option is off). textfile, not a SetEnv line: no quoting of a path with
+; spaces, and no command line to outgrow.
+(procedure P_OPT
+    (if (<> #val "")
+        (textfile (dest (cat "ENV:UPT_" #name)) (append #val))))
+
+(procedure P_OPTIONS
+    (run "Delete >NIL: ENV:UPT_#? QUIET")
+    (makeassign "UPTKIT" #files)
+    (set #name "DEST" #val #dest) (P_OPT)
+    (set #name "REMOTE" #val #remote) (P_OPT)
+    (set #name #con #val #con) (P_OPT)
+    (set #name #dev #val #dev) (P_OPT)
+    (set #name "SHELLICON" #val #shellicon) (P_OPT)
+    (set #name "SERIAL" #val #serial) (P_OPT)
+    (set #name "SSH" #val #ssh) (P_OPT)
+    (set #name "BEBBOGET" #val #bget) (P_OPT)
+    (set #name "CURL" #val #curl) (P_OPT)
+    (set #name "WASABI" #val #wasabi) (P_OPT)
+    (set #name "PYTHON" #val #python) (P_OPT)
+    (set #name "NVIM" #val #nvim) (P_OPT)
+    (set #name "CPU040" #val #cpu040) (P_OPT)
+    (set #name "CPU060" #val #cpu060) (P_OPT)
+    (set #name "UNIFONT" #val #unifont) (P_OPT)
+    (set #name "EMOJI" #val #emoji) (P_OPT))
+
+(procedure P_OPTIONS_END
+    (run "Delete >NIL: ENV:UPT_#? QUIET")
+    (makeassign "UPTKIT"))
 
 (procedure P_BAR
     (set #donekb (+ #donekb #kb))
@@ -289,14 +328,13 @@
 (procedure P_STEP
     (P_LEAD)
     (working #lead #why)
-    (set #rc (execute #script (cat "\"" #files "\"") (cat "STEP=" #step)
-                      (cat "DEST=\"" #dest "\"") #con #dev #shellicon #serial #ssh
-                      #bget #curl #wasabi #python #nvim #remote #cpu040 #cpu060
-                      #unifont #emoji))
+    (set #rc (execute "UPTKIT:install.dos" "UPTKIT:" (cat "STEP=" #step)))
     (if (>= #rc 20)
-        (abort (cat "Part \"" #step "\" of the install failed (return code "
-                    #rc "). What was installed so far stays; Uninstall takes "
-                    "it out.")))
+        (
+            (P_OPTIONS_END)
+            (abort (cat "Part \"" #step "\" of the install failed (return code "
+                        #rc "). What was installed so far stays; Uninstall takes "
+                        "it out."))))
     (P_BAR))
 
 ; copyfiles' own window lists the files under its prompt, so its prompt
@@ -314,6 +352,8 @@
     (P_BAR))
 
 (complete 0)
+
+(P_OPTIONS)
 
 (set #step "drawer" #kb #kb-drawer #n 4
      #why (cat "Making UP-Term's own drawer\n" #dest ",\n"
@@ -464,6 +504,9 @@
          "Blocks in S:User-Startup:\n" #blocks
          (if (<> #remotetext "") (cat "\nClaude Code server: " #remotetext) ""))
     (all))
+
+; the parts are done: the options and the UPTKIT: assign go
+(P_OPTIONS_END)
 
 ; the last page: 9 lines, 14 with the wasabi key
 (set #n (if (= #wasabi "WASABI") 14 9))

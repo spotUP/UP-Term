@@ -82,7 +82,7 @@ enum {
     O_SYSP, O_SYSPF, O_APPEND, O_APPENDF, O_SETTINGS, O_MAXTURNS, O_BUDGET, O_VERBOSE, O_AGENT, O_VERSION,
     O_HELP, O_SESSID, O_SCHEMA, O_REPLAY, O_BARE, O_SAFE, O_AGENTS, O_SUBAPP, O_SUBAPPF, O_NOSLASH, O_SOURCES,
     O_BETAS, O_AUTOCOMPACT, O_FWDSUB, O_DEBUGFILE, O_PERMPROMPTS, O_INIT, O_INITONLY, O_MAINT, O_HOOKEV,
-    O_SUGGEST, O_NODYN, O_ADVISOR, O_SNAPSHOT, O_ALLOWSKIP
+    O_SUGGEST, O_NODYN, O_ADVISOR, O_SNAPSHOT, O_ALLOWSKIP, O_REMOTEADDR
 };
 
 /* takes: 0 a switch, 1 a value, 2 an optional value, 3 values (Claude Code's variadic flags) */
@@ -117,6 +117,7 @@ static const opt opts[] = {
     { O_PARTIAL, "include-partial-messages", 0, 0, "INCLUDE-PARTIAL-MESSAGES", 0, 0 },
     { O_PERM, "permission-mode", 0, 0, "PERMISSION-MODE", 0, 1 },
     { O_SKIP, "dangerously-skip-permissions", 0, 0, "DANGEROUSLY-SKIP-PERMISSIONS", 0, 0 },
+    { O_REMOTEADDR, "remote-address", 0, 0, "REMOTE-ADDRESS", 0, 0 },
     { O_ALLOWSKIP, "allow-dangerously-skip-permissions", 0, 0, "ALLOW-DANGEROUSLY-SKIP-PERMISSIONS", 0, 0 },
     { O_ALLOW, "allowedTools", 0, "allowed-tools", "ALLOWED-TOOLS", 0, 3 },
     { O_DENY, "disallowedTools", 0, "disallowed-tools", "DISALLOWED-TOOLS", 0, 3 },
@@ -413,6 +414,9 @@ static int set(cl_cli *c, const opt *o, const char *v, int amiga)
         break;
     case O_SKIP:
         c->skip_perms = 1;
+        break;
+    case O_REMOTEADDR:
+        c->remote_addr = 1;
         break;
     case O_ALLOWSKIP:
         c->allow_skip = 1;
@@ -853,6 +857,25 @@ int cli_remote_parse(const char *text, char *host, long hcap, long *port)
         p = *e ? e + 1 : e;
     }
     return 0;
+}
+
+int cli_remote_line(const char *text, char *out, long cap)
+{
+    char host[200], num[12];
+    long port, n, i = (long)sizeof(num) - 1;
+    if (!cli_remote_parse(text, host, (long)sizeof(host), &port))
+        return 0;
+    num[i] = 0;
+    do
+        num[--i] = (char)('0' + port % 10);
+    while ((port /= 10) && i > 0);
+    n = (long)strlen(host);
+    if (n + 1 + (long)strlen(num + i) + 1 >= cap)
+        return 0;
+    memcpy(out, host, (size_t)n);
+    out[n++] = ' ';
+    strcpy(out + n, num + i);
+    return 1;
 }
 
 const char *cli_version(void)

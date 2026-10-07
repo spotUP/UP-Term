@@ -43,7 +43,7 @@
     "APPEND-SUBAGENT-SYSTEM-PROMPT/K,APPEND-SUBAGENT-SYSTEM-PROMPT-FILE/K,DISABLE-SLASH-COMMANDS/S,"            \
     "SETTING-SOURCES/K,BETAS/K,AUTOCOMPACT/K,FORWARD-SUBAGENT-TEXT/S,DEBUG-FILE/K,PERMISSION-PROMPTS/K,"        \
     "INIT/S,INIT-ONLY/S,MAINTENANCE/S,INCLUDE-HOOK-EVENTS/S,PROMPT-SUGGESTIONS/S,"                              \
-    "EXCLUDE-DYNAMIC-SYSTEM-PROMPT-SECTIONS/S"
+    "EXCLUDE-DYNAMIC-SYSTEM-PROMPT-SECTIONS/S,REMOTE-ADDRESS/S"
 
 enum { CLI_TEXT, CLI_JSON, CLI_STREAM };
 /* Claude Code's subcommands that exist here */
@@ -55,7 +55,7 @@ typedef struct cl_strs {
 } cl_strs;
 
 typedef struct cl_cli {
-    int print, ping, setup, debug, plain, verbose, partial, version, help, ask_template;
+    int print, ping, setup, remote_addr, debug, plain, verbose, partial, version, help, ask_template;
     int cont, fork, no_persist, resume;     /* resume: -r given (resume_name "" = the picker) */
     int skip_perms;                         /* --dangerously-skip-permissions */
     int allow_skip;                         /* --allow-dangerously-skip-permissions */
@@ -130,6 +130,11 @@ const char *cli_version(void);
  * hcap - 1 characters) and *port (2323 when not given), 0 when the file
  * names no host or the port is not 1-65535. */
 int cli_remote_parse(const char *text, char *host, long hcap, long *port);
+/* The one line "host port" that Claude REMOTE-ADDRESS prints for the file's
+ * text (the Installer's server page and dist/ClaudeCode read it from there,
+ * never by pattern-matching the file): written to out, 1; 0 when the file
+ * names no host (nothing written). */
+int cli_remote_line(const char *text, char *out, long cap);
 
 /* After repl_init: everything but the session flags applied to r (the
  * settings layer, the system prompt flags, --tools and --disallowedTools,

@@ -365,6 +365,24 @@ int main(void)
         cli_free(&cli);
         return 0;
     }
+    if (cli.remote_addr) {
+        /* the line "host port" of ENVARC:Claude/remote, for the Installer
+         * and ClaudeCode (one parser: cli_remote_parse); WARN when none */
+        char text[512], line[260];
+        LONG n = 0;
+        BPTR f = Open((STRPTR)"ENVARC:Claude/remote", MODE_OLDFILE);
+        if (f) {
+            n = Read(f, text, sizeof(text) - 1);
+            Close(f);
+        }
+        text[n > 0 ? n : 0] = 0;
+        cli_free(&cli);
+        if (!cli_remote_line(text, line, sizeof(line)))
+            return 5;
+        say(line);
+        say("\n");
+        return 0;
+    }
     url = cli.url[0] ? cli.url : CL_DEFAULT_URL;
     have_key = load_key(cli.key_source, sizeof(cli.key_source));
     /* no key and nothing asked of the API itself: Claude Code on the

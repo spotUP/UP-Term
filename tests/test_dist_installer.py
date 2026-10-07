@@ -127,8 +127,26 @@ class OneListOfParts(unittest.TestCase):
     def test_installer_passes_every_keyword(self):
         keys = re.match(r'\.KEY (\S+)', DOS).group(1).split(',')
         names = [k.split('/')[0] for k in keys if k.split('/')[0] not in ('DIR', 'STEP')]
-        missing = [n for n in names if not re.search(r'"%s[="]' % n, INSTALLER)]
+        missing = [n for n in names if not re.search(r'"(UPT_)?%s[="\s]' % n, INSTALLER)]
         self.assertEqual(missing, [], 'install.dos keywords the Installer never passes')
+
+    def test_options_travel_in_env_files_and_every_keyword_is_read_from_them(self):
+        keys = re.match(r'\.KEY (\S+)', DOS).group(1).split(',')
+        names = [k.split('/')[0] for k in keys if k.split('/')[0] not in ('DIR', 'STEP')]
+        body = DOS[DOS.index('If NOT "{STEP}" EQ ""\n  If EXISTS ENV:UPT_'):DOS.index('; The parts, each')]
+        for n in names:
+            self.assertIn('  If EXISTS ENV:UPT_%s\n' % n, body, 'install.dos never reads UPT_%s' % n)
+            self.assertEqual(DOS.count('{%s}' % n), 1, '{%s} is read once, into $o_%s' % (n, n.lower()))
+        self.assertEqual(sorted(re.findall(r'\{(\w+)\}', DOS.replace('{STEP}', '').replace('{DIR}', ''))),
+                         sorted(names), 'a {KEYWORD} used outside the prelude')
+        opts = INSTALLER[INSTALLER.index('(procedure P_OPTIONS'):INSTALLER.index('(procedure P_OPTIONS_END')]
+        for n in set(names) - {'CONSOLE', 'NOCONSOLE', 'DEVICE', 'NODEVICE'}:
+            self.assertIn('"%s"' % n, opts, 'the Installer never writes UPT_%s' % n)
+        self.assertIn('(set #name #con #val #con)', opts)
+        self.assertIn('(set #name #dev #val #dev)', opts)
+        self.assertLess(INSTALLER.index('\n(P_OPTIONS)\n'), INSTALLER.index('(set #step "drawer"'))
+        self.assertLess(INSTALLER.index('\n(P_OPTIONS_END)\n'), INSTALLER.index('(exit #done)'))
+        self.assertIn('(P_OPTIONS_END)\n            (abort', INSTALLER, 'a failed part removes them too')
 
 
 class ClaudeRemoteFile(unittest.TestCase):
@@ -145,22 +163,21 @@ class ClaudeRemoteFile(unittest.TestCase):
         self.assertIn('(set #oldremote "")', INSTALLER)
         self.assertNotIn('192.168.', INSTALLER, 'no private LAN address as a default')
         self.assertIn('(set #remotetext #remote)', INSTALLER)
-        m = re.search(r'\(run "Search ENVARC:Claude/remote \\"([^"]*?)\\" PATTERN NONUM >ENV:UPTermRemote"', INSTALLER)
-        self.assertTrue(m, 'the read of the existing file')
-        # the Search pattern, in Python terms: not a comment line, a space, a port
-        self.assertEqual(m.group(1), '[~;]#? #[0-9]#?')
-        host = [l for l in self.FILE.splitlines() if re.match(r'[^;].* [0-9]', l)]
-        self.assertEqual(host, ['192.168.0.198 2323'], 'comment lines are skipped')
+        # one parser: C:Claude's own (cli_remote_parse, tested in test_claude_cli.c); a Search
+        # PATTERN matches anywhere in a line, so it listed the comment lines too
+        self.assertNotIn('Search ENVARC:Claude/remote', INSTALLER)
+        self.assertIn('REMOTE-ADDRESS >ENV:UPTermRemote', INSTALLER)
+        self.assertIn('Stack 32768', INSTALLER, 'Claude refuses a stack under 16000')
         # the read only happens when the file exists, before the page asks
         self.assertLess(INSTALLER.index('(exists "ENVARC:Claude/remote")'), INSTALLER.index('(set #remote\n'))
 
     def test_install_writes_the_chosen_remote_even_when_the_file_exists(self):
-        a = DOS.index('If NOT "{REMOTE}" EQ ""')
+        a = DOS.index('If NOT "$o_remote" EQ ""')
         blk = DOS[a:DOS.index('If NOT "{STEP}" EQ ""', a)]
         self.assertNotIn('If NOT EXISTS ENVARC:Claude/remote', blk, 'an existing file must not block the write')
         want = ['Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"',
                 'Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."',
-                'Echo >>ENVARC:Claude/remote "{REMOTE}"']
+                'Echo >>ENVARC:Claude/remote "$o_remote"']
         lines = [l.strip() for l in blk.splitlines()]
         for w in want:
             self.assertIn(w, lines)
@@ -180,21 +197,74 @@ class ClaudeCodeScript(unittest.TestCase):
     def test_no_host_argument_is_optional(self):
         self.assertTrue(self.SCRIPT.startswith('.KEY HOST,PORT/N\n'), 'HOST is no longer required (/A)')
 
-    def test_reads_the_wizards_file_skipping_comment_lines(self):
-        pats = re.findall(r'Search >ENV:ClaudeCodeRemote ENVARC:Claude/remote "([^"]*)" PATTERN NONUM', self.SCRIPT)
-        self.assertEqual(pats, ['[~;]#? #[0-9]#?', '[~; ]#?'])
-        # the first pattern in Python terms: not a ';' line, a space, a port
-        host = [l for l in self.WIZARD.splitlines() if re.match(r'[^;].* [0-9]', l)]
-        self.assertEqual(host, ['192.0.2.10 2323'])
-        self.assertIn('uptelnet $ClaudeCodeRemote\n', self.SCRIPT)
-        self.assertIn('uptelnet $ClaudeCodeRemote 2323\n', self.SCRIPT, 'a host-only line gets port 2323')
+    def test_reads_the_wizards_file_with_claudes_own_parser(self):
+        """Search PATTERN matches anywhere in a line, so the pattern that was here
+        also printed the comment lines (they hold a space and a digit)."""
+        self.assertNotIn('Search', self.SCRIPT.replace('`Claude SETUP`', ''))
+        self.assertIn('Claude REMOTE-ADDRESS >ENV:ClaudeCodeRemote\n  If NOT WARN\n    uptelnet $ClaudeCodeRemote\n',
+                      self.SCRIPT)
+        self.assertLess(self.SCRIPT.index('Stack 32768'), self.SCRIPT.index('Claude REMOTE-ADDRESS'))
 
     def test_arguments_still_win_and_missing_setup_is_explained(self):
         self.assertTrue(self.SCRIPT.rstrip().endswith('uptelnet {HOST} {PORT$2323}'))
-        self.assertLess(self.SCRIPT.index('If "{HOST}" EQ ""'), self.SCRIPT.index('Search >ENV'))
+        self.assertLess(self.SCRIPT.index('If "{HOST}" EQ ""'), self.SCRIPT.index('Claude REMOTE-ADDRESS'))
         self.assertGreaterEqual(self.SCRIPT.count('`Claude SETUP`'), 2)
         self.assertGreaterEqual(self.SCRIPT.count('Quit 10'), 2)
         self.assertEqual(self.SCRIPT.count('If '), self.SCRIPT.count('EndIf'))
+
+
+def step_command_line(files, dest, remote):
+    """The AmigaDOS line P_STEP's (execute ...) makes, worst case: every option on.
+    Each argument of the form is evaluated: strings, (cat ...) and #variables."""
+    toks = tokens(INSTALLER)
+    # the form starts after "(set #rc" of P_STEP: the first (execute in the procedure
+    p = next(k for k in range(len(toks) - 2) if toks[k] == ('word', 'procedure') and toks[k + 1] == ('word', 'P_STEP'))
+    i = next(k for k in range(p, len(toks)) if toks[k] == ('word', 'execute')) - 1
+    depth, j, args = 0, i, []
+    cur = None
+    while True:
+        kind, text = toks[j]
+        if kind == 'open':
+            depth += 1
+            if depth == 2:
+                cur = []
+        elif kind == 'close':
+            depth -= 1
+            if depth == 1:
+                args.append(('cat', cur)); cur = None
+            if depth == 0:
+                break
+        elif depth >= 1 and not (depth == 1 and text == 'execute'):
+            (cur if depth == 2 else args).append((kind, text))
+        j += 1
+    kw = {'con': 'NOCONSOLE', 'dev': 'NODEVICE', 'bget': 'BEBBOGET', 'remote': 'REMOTE="%s"' % remote,
+          'files': files, 'script': files + '/install.dos', 'dest': dest, 'step': 'copy-coreutils'}
+    def val(tok):
+        kind, text = tok
+        if kind == 'str':
+            return text.replace('\\"', '"')
+        name = text.lstrip('#')
+        return kw.get(name, name.upper())
+    out = []
+    for a in args:
+        if a[0] == 'cat':
+            cat = a[1]
+            if cat and cat[0] == ('word', 'cat'):
+                cat = cat[1:]
+            out.append(''.join(val(x) for x in cat))
+        else:
+            out.append(val(a))
+    return 'Execute ' + ' '.join(out)
+
+
+class StepCommandLine(unittest.TestCase):
+    def test_worst_case_step_line_fits_the_255_character_limit(self):
+        """INSTALLER-CMDLINE-TOO-LONG: a kit in a long path, every option on, a long
+        DEST and REMOTE: the line P_STEP hands the Shell stays under AmigaDOS's limit."""
+        files = 'Work:' + 'k' * 49 + '/Files'          # 60 characters
+        self.assertEqual(len(files), 60)
+        line = step_command_line(files, 'D' * 40, 'r' * 30 + ' 2323')
+        self.assertLess(len(line), 255, '%d characters: %s' % (len(line), line))
 
 
 if __name__ == '__main__':

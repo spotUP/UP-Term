@@ -140,6 +140,8 @@ static void test_amiga(void)
     CHECK_STR(prompt(), "what is new");
     CHECK_INT(parse("PING"), 0);
     CHECK_INT(c.ping, 1);
+    CHECK_INT(parse("REMOTE-ADDRESS"), 0);
+    CHECK_INT(c.remote_addr, 1);
 
     /* the new ones: KEY=value, KEY value, case and '-' as one likes */
     CHECK_INT(parse("print model haiku Output-Format=json MAXTURNS=2 max-budget-usd 1.5 NAME=x "
@@ -238,6 +240,20 @@ static void test_remote(void)
     CHECK_INT(cli_remote_parse("host 70000\n", host, sizeof(host), &port), 0);
     CHECK_INT(cli_remote_parse("host 0\n", host, sizeof(host), &port), 0);
     CHECK_INT(cli_remote_parse("a-very-long-host-name-that-does-not-fit\n", host, 8, &port), 0);
+    {
+        /* Claude REMOTE-ADDRESS: the file as Install writes it (two comment
+         * lines with spaces and digits in them, then the address) gives the
+         * address line only: a Search pattern matched the comments too */
+        char line[64];
+        CHECK_INT(cli_remote_line("; Claude Code on another computer: host and port. With no API key,\n"
+                                  "; plain Claude connects there (uptelnet). Delete this file to stop.\n"
+                                  "nas.local 2323\n", line, sizeof(line)), 1);
+        CHECK_STR(line, "nas.local 2323");
+        CHECK_INT(cli_remote_line("nas.local\n", line, sizeof(line)), 1);
+        CHECK_STR(line, "nas.local 2323");
+        CHECK_INT(cli_remote_line("; only a comment 12\n", line, sizeof(line)), 0);
+        CHECK_INT(cli_remote_line("megadrive 23\n", line, 8), 0);
+    }
 }
 
 void suite_claude_cli(void)

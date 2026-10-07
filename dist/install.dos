@@ -28,6 +28,87 @@
 FailAt 21
 ; the kit's Files drawer: every name below is relative to it
 CD "{DIR}"
+; The options. The kit's Install passes none of them on the command line (a
+; kit in a long path made that line longer than AmigaDOS takes, 255): it
+; writes each one it needs into the variable file ENV:UPT_<keyword> (the
+; keyword itself, or for DEST and REMOTE the value) before the first STEP and
+; removes them at the end. A STEP run reads them here; run by hand (no STEP,
+; tools/rig/install_rig.py) the keywords on the command line are the options.
+; Below, $o_<keyword> is the option, whichever way it came.
+Set o_dest "{DEST}"
+Set o_console "{CONSOLE}"
+Set o_noconsole "{NOCONSOLE}"
+Set o_device "{DEVICE}"
+Set o_nodevice "{NODEVICE}"
+Set o_shellicon "{SHELLICON}"
+Set o_serial "{SERIAL}"
+Set o_ssh "{SSH}"
+Set o_bebboget "{BEBBOGET}"
+Set o_curl "{CURL}"
+Set o_wasabi "{WASABI}"
+Set o_python "{PYTHON}"
+Set o_nvim "{NVIM}"
+Set o_remote "{REMOTE}"
+Set o_cpu040 "{CPU040}"
+Set o_cpu060 "{CPU060}"
+Set o_unifont "{UNIFONT}"
+Set o_emoji "{EMOJI}"
+If NOT "{STEP}" EQ ""
+  If EXISTS ENV:UPT_DEST
+    Set o_dest "$UPT_DEST"
+  EndIf
+  If EXISTS ENV:UPT_CONSOLE
+    Set o_console CONSOLE
+  EndIf
+  If EXISTS ENV:UPT_NOCONSOLE
+    Set o_noconsole NOCONSOLE
+  EndIf
+  If EXISTS ENV:UPT_DEVICE
+    Set o_device DEVICE
+  EndIf
+  If EXISTS ENV:UPT_NODEVICE
+    Set o_nodevice NODEVICE
+  EndIf
+  If EXISTS ENV:UPT_SHELLICON
+    Set o_shellicon SHELLICON
+  EndIf
+  If EXISTS ENV:UPT_SERIAL
+    Set o_serial SERIAL
+  EndIf
+  If EXISTS ENV:UPT_SSH
+    Set o_ssh SSH
+  EndIf
+  If EXISTS ENV:UPT_BEBBOGET
+    Set o_bebboget BEBBOGET
+  EndIf
+  If EXISTS ENV:UPT_CURL
+    Set o_curl CURL
+  EndIf
+  If EXISTS ENV:UPT_WASABI
+    Set o_wasabi WASABI
+  EndIf
+  If EXISTS ENV:UPT_PYTHON
+    Set o_python PYTHON
+  EndIf
+  If EXISTS ENV:UPT_NVIM
+    Set o_nvim NVIM
+  EndIf
+  If EXISTS ENV:UPT_REMOTE
+    Set o_remote "$UPT_REMOTE"
+  EndIf
+  If EXISTS ENV:UPT_CPU040
+    Set o_cpu040 CPU040
+  EndIf
+  If EXISTS ENV:UPT_CPU060
+    Set o_cpu060 CPU060
+  EndIf
+  If EXISTS ENV:UPT_UNIFONT
+    Set o_unifont UNIFONT
+  EndIf
+  If EXISTS ENV:UPT_EMOJI
+    Set o_emoji EMOJI
+  EndIf
+EndIf
 ; The parts, each from its Lab line to the next. With no STEP every part runs,
 ; in this order (a Shell install, tools/rig/install_rig.py). The kit's Install
 ; runs them one at a time with STEP, so the Installer can say what each part
@@ -45,7 +126,7 @@ Lab drawer
 ; and at every boot by a marked block in S:User-Startup, written before the
 ; blocks that use it, and named in ENVARC:up-term/Dir for the programs that
 ; run before that block; Uninstall finds the drawer through the assign).
-Set updest "{DEST}"
+Set updest "$o_dest"
 If "$updest" EQ ""
   Set updest SYS:UP-Term
 EndIf
@@ -219,7 +300,7 @@ Lab copy-unifont
 ; for every character up to U+FFFF and every emoji (U+1F000-1FAFF) the
 ; window's font lacks, at 8 and 16 pixels high. Not in FONTS: (FixFonts below scans it). Uninstall takes the
 ; whole of UP-Term:.
-If "{UNIFONT}" EQ "UNIFONT"
+If "$o_unifont" EQ "UNIFONT"
   MakeDir >NIL: UP-Term:unifont
   Copy unifont UP-Term:unifont ALL CLONE QUIET
 EndIf
@@ -231,7 +312,7 @@ Lab copy-emoji
 ; go with them), one file per 256 characters, 0.5 MB: drawn over two cells
 ; on an RTG screen of 15 bits or more with cybergraphics.library; other
 ; screens keep Unifont's one-colour glyph.
-If "{EMOJI}" EQ "EMOJI"
+If "$o_emoji" EQ "EMOJI"
   MakeDir >NIL: UP-Term:emoji
   Copy emoji UP-Term:emoji ALL CLONE QUIET
 EndIf
@@ -267,10 +348,10 @@ Copy uptelnet C:uptelnet CLONE
 ; COPYING and the complete source are in the kit's net drawer. vshrc makes
 ; ssh and scp of them. Their library goes to LIBS: unless one is there (a
 ; user's own BebboSSH keeps its library; Uninstall removes only ours).
-If "{SSH}" EQ "SSH"
+If "$o_ssh" EQ "SSH"
   Copy net/bebbossh-1.45/bebbossh net/bebbossh-1.45/bebboscp net/bebbossh-1.45/bebbosshkeygen net/bebbossh-1.45/bebbosshd UP-Term:bin CLONE QUIET
   If NOT EXISTS LIBS:libcryptossh.library
-    If "{CPU060}" EQ "CPU060"
+    If "$o_cpu060" EQ "CPU060"
       Copy net/bebbossh-1.45/libcryptossh.library060 LIBS:libcryptossh.library CLONE
     Else
       Copy net/bebbossh-1.45/libcryptossh.library020 LIBS:libcryptossh.library CLONE
@@ -278,15 +359,15 @@ If "{SSH}" EQ "SSH"
     Echo >ENVARC:up-term/cryptossh "installed by UP-Term"
   EndIf
 EndIf
-If "{BEBBOGET}" EQ "BEBBOGET"
+If "$o_bebboget" EQ "BEBBOGET"
   Copy net/bebboget-1.11/bebboget net/bebboget-1.11/installcerts UP-Term:bin CLONE QUIET
 EndIf
 ; curl 8.22.0 (the curl licence, net/curl-8.22.0); it needs AmiSSL 5
-If "{CURL}" EQ "CURL"
-  If "{CPU060}" EQ "CPU060"
+If "$o_curl" EQ "CURL"
+  If "$o_cpu060" EQ "CPU060"
     Copy net/curl-8.22.0/curl.060 UP-Term:bin/curl CLONE QUIET
   Else
-    If "{CPU040}" EQ "CPU040"
+    If "$o_cpu040" EQ "CPU040"
       Copy net/curl-8.22.0/curl.040 UP-Term:bin/curl CLONE QUIET
     Else
       Copy net/curl-8.22.0/curl.020 UP-Term:bin/curl CLONE QUIET
@@ -301,7 +382,7 @@ If NOT EXISTS ENVARC:Claude
   MakeDir ENVARC:Claude
 EndIf
 ; REMOTE: where Claude Code runs (the NAS); plain Claude goes there
-If NOT "{REMOTE}" EQ ""
+If NOT "$o_remote" EQ ""
   ; the chosen value always wins (the Installer's page starts with the
   ; existing file's host and port, so a kept answer is the same line)
   If NOT EXISTS ENV:Claude
@@ -309,7 +390,7 @@ If NOT "{REMOTE}" EQ ""
   EndIf
   Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"
   Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."
-  Echo >>ENVARC:Claude/remote "{REMOTE}"
+  Echo >>ENVARC:Claude/remote "$o_remote"
   Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET
 EndIf
 If NOT "{STEP}" EQ ""
@@ -319,7 +400,7 @@ Lab copy-python
 ; Python 3.14 (README, PYTHON): UP-Term:Python3, its programs run as
 ; Python3:bin/python3 or python3 from vsh (vshrc's path); Python3: is
 ; assigned at every boot (a marked block in S:User-Startup).
-If "{PYTHON}" EQ "PYTHON"
+If "$o_python" EQ "PYTHON"
   MakeDir >NIL: UP-Term:Python3
   Copy python3 UP-Term:Python3 ALL CLONE QUIET
 EndIf
@@ -327,7 +408,7 @@ If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 Lab python
-If "{PYTHON}" EQ "PYTHON"
+If "$o_python" EQ "PYTHON"
   Assign Python3: UP-Term:Python3
   Search >NIL: S:User-Startup ";BEGIN UP-Term python"
   If WARN
@@ -345,7 +426,7 @@ EndIf
 Lab copy-nvim
 ; Neovim 0.12 (README, NEOVIM): UP-Term:nvim (its runtime beside the
 ; binary); nvim from vsh (vshrc's path).
-If "{NVIM}" EQ "NVIM"
+If "$o_nvim" EQ "NVIM"
   MakeDir >NIL: UP-Term:nvim
   Copy nvim UP-Term:nvim ALL CLONE QUIET
 EndIf
@@ -471,7 +552,7 @@ Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-T
 ; its place, size, title and options as they were (upicon swaps only the
 ; WINDOW tooltype's device). The icon as it was is kept in
 ; ENVARC:up-term-orig for Uninstall (a second Install keeps the first copy).
-If "{SHELLICON}" EQ "SHELLICON"
+If "$o_shellicon" EQ "SHELLICON"
   If EXISTS SYS:System/Shell.info
     If NOT EXISTS ENVARC:up-term-orig/Shell.info
       Copy SYS:System/Shell.info ENVARC:up-term-orig/Shell.info CLONE
@@ -487,7 +568,7 @@ Lab boot
 ; vsh for whoever connects, see the README's SERIAL LOGIN), from a marked
 ; block in S:User-Startup that Uninstall takes out. upgetty then holds
 ; serial.device: nothing else can use the port while it runs.
-If "{SERIAL}" EQ "SERIAL"
+If "$o_serial" EQ "SERIAL"
   If NOT EXISTS S:User-Startup
     Echo >S:User-Startup ""
   EndIf
@@ -507,7 +588,7 @@ EndIf
 ; (a key already set stays), saved in ENVARC:wasabi.key (a marker when it
 ; is ours, for Uninstall). Started now and at every boot from a marked
 ; block in S:User-Startup.
-If "{WASABI}" EQ "WASABI"
+If "$o_wasabi" EQ "WASABI"
   If NOT EXISTS C:wasabid
     Echo >ENVARC:up-term/wasabid "installed by UP-Term"
   EndIf
@@ -596,11 +677,11 @@ Lab console
 Copy UPConsole C:UPConsole CLONE
 Version >NIL: dos.library 47
 If WARN
-  Set upcon "{CONSOLE}"
-  If "{NOCONSOLE}" EQ "NOCONSOLE"
+  Set upcon "$o_console"
+  If "$o_noconsole" EQ "NOCONSOLE"
     Set upcon ""
   Else
-    If "{CONSOLE}" EQ ""
+    If "$o_console" EQ ""
       Ask "Should UP-Term also serve CON: and RAW: (every new Shell window)? y/N"
       If WARN
         Set upcon "CONSOLE"
@@ -626,11 +707,11 @@ If WARN
   ; console.device served by UP-Term (opt-in): UPConsole DEVICE ON at every
   ; boot from its own block, and now. Not on 3.2 before it is tested there.
   Copy up-console.device DEVS:up-console.device CLONE
-  Set updev "{DEVICE}"
-  If "{NODEVICE}" EQ "NODEVICE"
+  Set updev "$o_device"
+  If "$o_nodevice" EQ "NODEVICE"
     Set updev ""
   Else
-    If "{DEVICE}" EQ ""
+    If "$o_device" EQ ""
       Ask "Should console.device be UP-Term's too (every program's console window)? y/N"
       If WARN
         Set updev "DEVICE"
