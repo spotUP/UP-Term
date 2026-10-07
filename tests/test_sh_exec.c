@@ -516,7 +516,8 @@ static void pipes_and_redirection(void)
     CHECK_STR(run("echo gone >/dev/null; cat <NIL:"), "gone\n");
     CHECK_STR(run("echo here >/dev/tty; cat <'*'"), "here\n");
     CHECK_STR(run("ls | cat | wc"), "2\n");
-    CHECK_STR(run("echo a b | read x y; echo $y$x"), "ba\n");
+    /* bash's default (lastpipe off): the last stage is a subshell too, x and y stay unset */
+    CHECK_STR(run("echo a b | read x y; echo $y$x"), "\n");
     CHECK_STR(run("echo one >f; echo two >>f; cat <f"), "one\ntwo\n");
     CHECK_STR(run("echo gone >f; echo new >f; cat <f"), "new\n");
     CHECK_STR(run("cat <<EOF\nline $A\nEOF\n"), "line \n");
@@ -661,8 +662,8 @@ static void subshells(void)
     CHECK_STR(run("x=$(exit 3); echo after"), "after\n");
     CHECK_STR(run("echo [$(echo a; echo b)]"), "[a b]\n");
     CHECK_STR(run("{ echo a; echo b; } | while read x; do echo got$x; done"), "gota\ngotb\n");
-    CHECK_INT(n_spawned, 1);   /* the first stage; the last runs in the shell */
-    CHECK_STR(run("echo a b | read x y; echo $y$x"), "ba\n");
+    CHECK_INT(n_spawned, 2);   /* both stages (lastpipe is off, as in bash) */
+    CHECK_STR(run("echo a b | read x y; echo $y$x"), "\n");
     run("{ echo bg; fail 2; } & wait; echo $?");
     CHECK_STR(slot(OUT)->data, "bg\n2\n");
     CHECK_STR(slot(ERR)->data, "[1] 1\n");

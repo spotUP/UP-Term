@@ -13,7 +13,11 @@
     X(SPAWN)      /* a subshell or non-final pipeline stage was spawned */ \
     X(HEREDOC)    /* a here-document temp file was made */ \
     X(EXIT_TRAP)  /* the EXIT trap ran */ \
-    X(GLOB)       /* a glob pattern was matched against a directory */
+    X(GLOB)       /* a glob pattern was matched against a directory */ \
+    X(ERREXIT)    /* set -e ended the shell */ \
+    X(PIPEFAIL)   /* a pipeline's status came from pipefail */ \
+    X(TEST_BINARY) /* test evaluated a binary operator */ \
+    X(INVOKE_CLUSTER) /* the command line had a cluster of option letters */
 
 #ifdef SH_HITS
 #define SH_HIT_ENUM(n) SH_HIT_##n,

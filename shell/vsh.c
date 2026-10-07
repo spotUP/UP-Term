@@ -627,12 +627,12 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         long need = 1;
         char *e;
         for (v = sh->ctx.vars; v; v = v->next)
-            if (v->exported)
+            if (v->attr & SH_ATTR_EXPORT)
                 need += (long)strlen(v->name) + (long)strlen(v->value) + 2;
         j->env = e = (char *)malloc(need);
         if (e) {
             for (v = sh->ctx.vars; v; v = v->next)
-                if (v->exported) {
+                if (v->attr & SH_ATTR_EXPORT) {
                     strcpy(e, v->name);
                     e += strlen(e) + 1;
                     strcpy(e, v->value);
@@ -1261,8 +1261,8 @@ static int vsh_main(int argc, char **argv)
     char line[1024];
     char *text = 0;
     long len = 0;
-    int i;
     const char *command = 0, *script = 0;
+    int norc = 0;
     static vproc vp;
     (void)version;
     (void)stack_cookie;
@@ -1348,20 +1348,16 @@ static int vsh_main(int argc, char **argv)
      * it and end with its status, no prompts ($- has no "i"). screen's
      * printcmd, vim's :! and other ports run $SHELL -c. */
     {
-        int first = 1;
-        if (argc > 2 && !strcmp(argv[1], "-c")) {
-            command = argv[2];
-            if (argc > 3)
-                sh.ctx.arg0 = argv[3];
-            first = 4;
-        } else if (argc > 1 && argv[1][0] != '-') {
-            script = argv[1];
-            sh.ctx.arg0 = argv[1];
-            first = 2;
+        sh_invoke_info inf;
+        sh_invoke(&sh, argc, argv, IsInteractive(Input()), &inf);
+        command = inf.command;
+        script = inf.script;
+        norc = inf.norc;
+        if (inf.exit_now) {
+            command = "true";
+            sh.exiting = 1;
+            sh.exit_status = inf.status;
         }
-        for (i = first; i < argc; i++)
-            sh_list_add(&sh.ctx.args, argv[i]);
-        sh.ctx.flags = !command && !script && IsInteractive(Input()) ? "i" : "";
     }
     /* AmigaDOS leaves a command's argument line in its input buffer (for
      * ReadArgs); unread, vsh took it as its first, empty, command line
@@ -1369,7 +1365,8 @@ static int vsh_main(int argc, char **argv)
     Flush(Input());
     /* the system's startup file (ENVARC:vsh/vshrc, copied to ENV: at boot),
      * then the user's */
-    source_if(&sh, "ENV:vsh/vshrc");
+    if (!norc)
+        source_if(&sh, "ENV:vsh/vshrc");
     canonical_home(&sh);
     {
         const char *home = sh_get(&sh.ctx, "HOME");
@@ -1379,7 +1376,8 @@ static int vsh_main(int argc, char **argv)
             if (*p && p[strlen(p) - 1] != ':' && p[strlen(p) - 1] != '/')
                 strcat(p, "/");
             strcat(p, ".vshrc");
-            source_if(&sh, p);
+            if (!norc)
+                source_if(&sh, p);
             free(p);
         }
         canonical_home(&sh);

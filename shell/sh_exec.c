@@ -102,6 +102,105 @@ static void pb_str(pbuf *b, const char *s)
 
 static char *core_subst(sh_ctx *c, const char *cmd);
 
+/* ---- options: the one table ------------------------------------------------- */
+
+static const struct sh_opt {
+    const char *name;
+    char letter;
+    unsigned long bit;
+} sh_optab[] = {
+    { "allexport", 'a', SO_ALLEXPORT }, { "braceexpand", 'B', SO_BRACEEXPAND }, { "emacs", 0, SO_INERT },
+    { "errexit", 'e', SO_ERREXIT }, { "errtrace", 'E', SO_INERT }, { "functrace", 'T', SO_INERT },
+    { "hashall", 'h', SO_HASHALL }, { "histexpand", 'H', SO_INERT }, { "history", 0, SO_INERT },
+    { "ignoreeof", 0, SO_INERT }, { "interactive-comments", 0, SO_ICOMMENTS }, { "keyword", 'k', SO_INERT },
+    { "monitor", 'm', SO_INERT }, { "noclobber", 'C', SO_NOCLOBBER }, { "noexec", 'n', SO_NOEXEC },
+    { "noglob", 'f', SO_NOGLOB }, { "nolog", 0, SO_INERT }, { "notify", 'b', SO_INERT },
+    { "nounset", 'u', SO_NOUNSET }, { "onecmd", 't', SO_INERT }, { "physical", 'P', SO_INERT },
+    { "pipefail", 0, SO_PIPEFAIL }, { "posix", 0, SO_POSIX }, { "privileged", 'p', SO_INERT },
+    { "verbose", 'v', SO_VERBOSE }, { "vi", 0, SO_INERT }, { "xtrace", 'x', SO_XTRACE }
+};
+#define N_SHOPT ((int)(sizeof(sh_optab) / sizeof(sh_optab[0])))
+/* the order of the letters in $-, as bash prints them */
+static const char sh_flag_order[] = "abefhikmnptuvxBCEHPT";
+
+/* an option with no effect keeps its own state (set -o vi; set -o: vi on) */
+static unsigned long inert_state;
+
+/* $- and the context's copies of the flags the expander looks at */
+static void opts_apply(sh_shell *sh)
+{
+    char *p = sh->flagbuf;
+    const char *o;
+    int i;
+    for (o = sh_flag_order; *o; o++) {
+        unsigned long bit = *o == 'i' ? SO_INTERACTIVE : 0;
+        for (i = 0; i < N_SHOPT && !bit; i++)
+            if (sh_optab[i].letter == *o)
+                bit = sh_optab[i].bit;
+        if (bit && (bit == SO_INERT ? 0 : (sh->opts & bit)))
+            *p++ = *o;
+    }
+    if (sh->opts & SO_STDIN)
+        *p++ = 's';
+    if (sh->opts & SO_COMMAND)
+        *p++ = 'c';
+    *p = 0;
+    sh->ctx.flags = sh->flagbuf;
+    sh->ctx.nounset = (sh->opts & SO_NOUNSET) != 0;
+    sh->ctx.noglob = (sh->opts & SO_NOGLOB) != 0;
+    sh->ctx.allexport = (sh->opts & SO_ALLEXPORT) != 0;
+}
+
+/* set -x / +x ... by letter: 0 = no such option */
+static int opt_letter(sh_shell *sh, char ch, int on)
+{
+    int i;
+    for (i = 0; i < N_SHOPT; i++)
+        if (sh_optab[i].letter == ch) {
+            if (sh_optab[i].bit != SO_INERT) {
+                if (on)
+                    sh->opts |= sh_optab[i].bit;
+                else
+                    sh->opts &= ~sh_optab[i].bit;
+            } else {
+                if (on)
+                    inert_state |= 1UL << i;
+                else
+                    inert_state &= ~(1UL << i);
+            }
+            opts_apply(sh);
+            return 1;
+        }
+    return 0;
+}
+
+static int opt_name(sh_shell *sh, const char *name, int on)
+{
+    int i;
+    for (i = 0; i < N_SHOPT; i++)
+        if (!strcmp(sh_optab[i].name, name)) {
+            if (sh_optab[i].bit != SO_INERT) {
+                if (on)
+                    sh->opts |= sh_optab[i].bit;
+                else
+                    sh->opts &= ~sh_optab[i].bit;
+            } else {
+                if (on)
+                    inert_state |= 1UL << i;
+                else
+                    inert_state &= ~(1UL << i);
+            }
+            opts_apply(sh);
+            return 1;
+        }
+    return 0;
+}
+
+static int opt_on(const sh_shell *sh, int i)
+{
+    return sh_optab[i].bit == SO_INERT ? (inert_state >> i) & 1 : (sh->opts & sh_optab[i].bit) != 0;
+}
+
 void sh_shell_init(sh_shell *sh)
 {
     memset(&sh->ctx, 0, sizeof(sh->ctx));
@@ -131,12 +230,16 @@ void sh_shell_init(sh_shell *sh)
     sh->umask = 022;
     sh->optpos = 0;
     sh->optind_seen = 0;
+    sh->opts = SO_BRACEEXPAND | SO_HASHALL | SO_ICOMMENTS;
+    sh->cond_depth = 0;
+    sh->xlevel = 0;
+    opts_apply(sh);
 }
 
 /* A variable as it was before NAME=value cmd or local NAME, to put back after. */
 typedef struct saved_var {
     char *name, *value;     /* value 0: it was not set */
-    int exported;
+    unsigned attr;
 } saved_var;
 static void restore_var(sh_shell *sh, saved_var *s);
 
@@ -182,8 +285,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->io.owned = 0;
     for (v = sh->ctx.vars; v; v = v->next) {
         sh_set(&c->ctx, v->name, v->value);
-        if (v->exported)
-            sh_export(&c->ctx, v->name);
+        sh_attr_change(&c->ctx, v->name, v->attr, 0);
     }
     for (i = 0; i < sh->ctx.args.n; i++)
         sh_list_add(&c->ctx.args, sh->ctx.args.v[i]);
@@ -192,6 +294,12 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.pid = sh->ctx.pid;
     c->ctx.last_bg = sh->ctx.last_bg;
     c->umask = sh->umask;  /* traps are not inherited (POSIX) */
+    c->opts = sh->opts;
+    c->cond_depth = sh->cond_depth;
+    c->xlevel = sh->xlevel;
+    opts_apply(c);
+    if (sh->ctx.npstat)
+        sh_pstat(&c->ctx, sh->ctx.pstat, sh->ctx.npstat);
     c->ctx.nocase = sh->ctx.nocase;
     c->ctx.listdir = sh->ctx.listdir;
     c->ctx.subst = sh->ctx.subst;
@@ -317,12 +425,24 @@ static void close_owned(sh_shell *sh, const sh_io *io)
 
 /* ---- expansion of a command's words --------------------------------------------- */
 
+/* an expansion error (unbound variable, ${x:?}, bad substitution) ends a
+ * shell that is not interactive, with status 1, as bash does */
+static void expand_fatal(sh_shell *sh, const char *err)
+{
+    if (!(sh->opts & SO_INTERACTIVE)) {
+        sh->exiting = 1;
+        /* bash: an unbound variable in a -c string ends with 127, anywhere else 1 */
+        sh->exit_status = (sh->opts & SO_COMMAND) && err && strstr(err, "unbound") ? 127 : 1;
+    }
+}
+
 static int expand_words(sh_shell *sh, const sh_word *w, sh_list *out, const sh_io *io)
 {
     for (; w; w = w->next) {
         const char *err = 0;
         if (sh_expand(&sh->ctx, w->text, 0, out, &err)) {
             err2(sh, io, w->text, err);
+            expand_fatal(sh, err);
             return -1;
         }
     }
@@ -337,6 +457,7 @@ static char *expand_one(sh_shell *sh, const char *text, const sh_io *io)
     memset(&l, 0, sizeof(l));
     if (sh_expand(&sh->ctx, text, SH_NO_SPLIT | SH_NO_GLOB, &l, &err)) {
         err2(sh, io, text, err);
+        expand_fatal(sh, err);
         sh_list_free(&l);
         return 0;
     }
@@ -396,6 +517,12 @@ static int redirect(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh_io 
                      : r->kind == SH_R_APPEND ? SH_OPEN_APPEND : SH_OPEN_WRITE;
             if (!path)
                 return -1;
+            if (mode == SH_OPEN_WRITE && (sh->opts & SO_NOCLOBBER) && strncmp(path, "/dev/", 5) &&
+                sh->os.exists && sh->os.exists(sh->os.data, path, 0)) {
+                err2(sh, parent, path, "cannot overwrite existing file");
+                free(path);
+                return -1;
+            }
             fh = sh->os.open(sh->os.data, dev_name(path), mode);
             if (!fh)
                 err2(sh, parent, path, mode == SH_OPEN_READ ? "cannot open" : "cannot create");
@@ -766,25 +893,99 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+static int cmp_var(const void *a, const void *b)
+{
+    return strcmp((*(const sh_var *const *)a)->name, (*(const sh_var *const *)b)->name);
+}
+
+/* set -o (or +o) with no name: the option list, as bash prints it */
+static void list_opts(sh_shell *sh, const sh_io *io, int as_commands)
+{
+    int i, k;
+    for (i = 0; i < N_SHOPT; i++) {
+        const char *nm = sh_optab[i].name;
+        if (as_commands) {
+            say(sh, io->out, opt_on(sh, i) ? "set -o " : "set +o ");
+            say(sh, io->out, nm);
+        } else {
+            say(sh, io->out, nm);
+            for (k = (int)strlen(nm); k < 15; k++)
+                say(sh, io->out, " ");
+            say(sh, io->out, opt_on(sh, i) ? "\ton" : "\toff");
+        }
+        say(sh, io->out, "\n");
+    }
+}
+
 static long b_set(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    int i;
+    int i = 1, positional = 0;
     if (argc == 1) {
-        sh_var *v;
-        for (v = sh->ctx.vars; v; v = v->next) {
-            say(sh, io->out, v->name);
+        sh_var *v, **all;
+        int n = 0, k;
+        for (v = sh->ctx.vars; v; v = v->next)
+            n++;
+        all = (sh_var **)malloc((size_t)(n ? n : 1) * sizeof(sh_var *));
+        if (!all)
+            return 1;
+        for (v = sh->ctx.vars, k = 0; v; v = v->next)
+            all[k++] = v;
+        qsort(all, (size_t)n, sizeof(sh_var *), cmp_var);
+        for (k = 0; k < n; k++) {
+            char *q = all[k]->value[0] ? sh_quote(all[k]->value, SH_Q_SINGLE) : sdup("");
+            say(sh, io->out, all[k]->name);
             say(sh, io->out, "=");
-            say(sh, io->out, v->value);
+            say(sh, io->out, q ? q : "");
             say(sh, io->out, "\n");
+            free(q);
         }
+        free(all);
         return 0;
     }
-    i = 1;
-    if (!strcmp(argv[1], "--"))
-        i = 2;
-    sh_list_free(&sh->ctx.args);
-    for (; i < argc; i++)
-        sh_list_add(&sh->ctx.args, argv[i]);
+    for (; i < argc; i++) {
+        const char *a = argv[i], *p;
+        int on;
+        if (a[0] != '-' && a[0] != '+')
+            break;
+        if (!strcmp(a, "--")) {
+            i++;
+            positional = 1;
+            break;
+        }
+        if (!strcmp(a, "-")) {
+            sh->opts &= ~(SO_XTRACE | SO_VERBOSE);
+            opts_apply(sh);
+            i++;
+            positional = 1;
+            break;
+        }
+        on = a[0] == '-';
+        for (p = a + 1; *p; p++) {
+            if (*p == 'o') {
+                if (i + 1 < argc && argv[i + 1][0] != '-' && argv[i + 1][0] != '+') {
+                    i++;
+                    if (!opt_name(sh, argv[i], on)) {
+                        err2(sh, io, argv[i], "invalid option name");
+                        return 2;
+                    }
+                } else {
+                    list_opts(sh, io, !on);
+                }
+            } else if (!opt_letter(sh, *p, on)) {
+                char o[3];
+                o[0] = a[0];
+                o[1] = *p;
+                o[2] = 0;
+                err2(sh, io, o, "invalid option");
+                return 2;
+            }
+        }
+    }
+    if (positional || i < argc) {
+        sh_list_free(&sh->ctx.args);
+        for (; i < argc; i++)
+            sh_list_add(&sh->ctx.args, argv[i]);
+    }
     return 0;
 }
 
@@ -812,7 +1013,7 @@ static long b_exit(sh_shell *sh, int argc, char **argv, const sh_io *io)
             return 1;
         }
     sh->exiting = 1;
-    sh->exit_status = argc > 1 ? atol(argv[1]) : sh->ctx.status;
+    sh->exit_status = (argc > 1 ? atol(argv[1]) : sh->ctx.status) & 255;
     return sh->exit_status;
 }
 
@@ -820,7 +1021,7 @@ static long b_return(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     (void)io;
     sh->returning = 1;
-    return argc > 1 ? atol(argv[1]) : sh->ctx.status;
+    return (argc > 1 ? atol(argv[1]) : sh->ctx.status) & 255;
 }
 
 static long b_break(sh_shell *sh, int argc, char **argv, const sh_io *io)
@@ -1506,22 +1707,22 @@ static void save_var(sh_shell *sh, const char *name, saved_var *s)
     const sh_var *v;
     s->name = sdup(name);
     s->value = 0;
-    s->exported = 0;
+    s->attr = 0;
     for (v = sh->ctx.vars; v; v = v->next)
         if (!strcmp(v->name, name)) {
             s->value = sdup(v->value);
-            s->exported = v->exported;
+            s->attr = v->attr;
         }
 }
 
 static void restore_var(sh_shell *sh, saved_var *s)
 {
     if (s->name) {
+        sh_attr_change(&sh->ctx, s->name, 0, SH_ATTR_READONLY);
         sh_unset(&sh->ctx, s->name);
         if (s->value) {
             sh_set(&sh->ctx, s->name, s->value);
-            if (s->exported)
-                sh_export(&sh->ctx, s->name);
+            sh_attr_change(&sh->ctx, s->name, s->attr, 0);
         }
     }
     free(s->name);
@@ -1888,6 +2089,60 @@ static long b_umask(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+/* set -x: PS4 expanded, its first character repeated per nesting level, then
+ * the words quoted as bash does (sh_quote), on the command's error stream */
+static void xt_begin(sh_shell *sh, const sh_io *io, pbuf *b)
+{
+    const char *ps4 = sh_get(&sh->ctx, "PS4");
+    char *t;
+    int k;
+    unsigned long saved = sh->opts;
+    sh->opts &= ~SO_XTRACE;
+    t = expand_one(sh, ps4 ? ps4 : "+ ", io);
+    sh->opts = saved;
+    if (t && *t) {
+        for (k = 0; k < sh->xlevel; k++)
+            pb_add(b, t, 1);
+        pb_str(b, t);
+    }
+    free(t);
+}
+
+static void xt_end(sh_shell *sh, const sh_io *io, pbuf *b)
+{
+    pb_str(b, "\n");
+    if (b->s)
+        sh->os.write(sh->os.data, io->err, b->s, b->n);
+    free(b->s);
+}
+
+static void xt_assign(sh_shell *sh, const sh_io *io, const char *name, const char *value)
+{
+    pbuf b = { 0, 0, 0 };
+    char *q = sh_quote(value, SH_Q_SINGLE);
+    xt_begin(sh, io, &b);
+    pb_str(&b, name);
+    pb_str(&b, "=");
+    pb_str(&b, q ? q : "");
+    free(q);
+    xt_end(sh, io, &b);
+}
+
+static void xt_cmd(sh_shell *sh, const sh_io *io, const sh_list *argv)
+{
+    pbuf b = { 0, 0, 0 };
+    int i;
+    xt_begin(sh, io, &b);
+    for (i = 0; i < argv->n; i++) {
+        char *q = sh_quote(argv->v[i], SH_Q_SINGLE);
+        if (i)
+            pb_str(&b, " ");
+        pb_str(&b, q ? q : "");
+        free(q);
+    }
+    xt_end(sh, io, &b);
+}
+
 static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job)
 {
     sh_list argv;
@@ -1911,8 +2166,18 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         for (a = n->assigns; a; a = a->next) {
             char *v = expand_one(sh, strchr(a->text, '=') + 1, parent);
             char *name = assign_name(a->text);
-            if (v && name)
-                sh_set(&sh->ctx, name, v);
+            if (v && name) {
+                if (sh->opts & SO_XTRACE)
+                    xt_assign(sh, parent, name, v);
+                if (sh_set(&sh->ctx, name, v)) {
+                    err2(sh, parent, name, "readonly variable");
+                    expand_fatal(sh, 0);
+                    free(name);
+                    free(v);
+                    sh_list_free(&argv);
+                    return 1;
+                }
+            }
             free(name);
             free(v);
         }
@@ -1922,6 +2187,18 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         return sh->subst_ran ? sh->subst_status : 0;
     }
     apply_alias(sh, &argv);
+    if (sh->opts & SO_XTRACE) {
+        const sh_word *xa;
+        for (xa = n->assigns; xa; xa = xa->next) {
+            char *xv = expand_one(sh, strchr(xa->text, '=') + 1, parent);
+            char *xn = assign_name(xa->text);
+            if (xv && xn)
+                xt_assign(sh, parent, xn, xv);
+            free(xn);
+            free(xv);
+        }
+        xt_cmd(sh, parent, &argv);
+    }
     if (!strcmp(argv.v[0], "command")) {
         /* command NAME ...: the builtin or program NAME, never a function
          * of that name (the vshrc's telnet() runs the real telnet) */
@@ -1959,8 +2236,15 @@ static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wa
         st = run_function(sh, f, &argv, &io);
         close_owned(sh, &io);
     } else if ((b = find_builtin(argv.v[0])) != 0) {
-        st = b(sh, argv.n, argv.v, &io);
-        close_owned(sh, &io);
+        if (b == b_exec && argv.n == 1 && n->redirs && parent == &sh->io) {
+            /* exec with redirections only: they stay for the shell itself */
+            sh->io = io;
+            sh->io.owned = 0;
+            st = 0;
+        } else {
+            st = b(sh, argv.n, argv.v, &io);
+            close_owned(sh, &io);
+        }
     } else {
         if (!wait) {
             /* started in the background, the command keeps the streams the
@@ -2131,7 +2415,7 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
     long job[16];
     int started[16];
     int k = stages(n, st, 16), i;
-    long status = 0;
+    long status = 0, ps[16];
     for (i = 0; i < k; i++) {
         sio[i] = *io;
         sio[i].owned = 0;
@@ -2156,12 +2440,13 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
         started[i] = 0;
         if (is_external(sh, st[i])) {
             exec_cmd(sh, st[i], &sio[i], 0, &job[i]);
-        } else if (sh->os.spawn && i + 1 < k) {
+        } else if (sh->os.spawn && (i + 1 < k || !(sh->opts & SO_LASTPIPE))) {
             subshell(sh, st[i], &sio[i], 0, &job[i]);
             started[i] = 1; /* or failed: its streams are gone either way */
         }
     }
     for (i = 0; i < k; i++) {
+        ps[i] = 0;
         if (job[i] || started[i])
             continue;
         if (is_external(sh, st[i])) {
@@ -2169,18 +2454,26 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
             char *name = expand_one(sh, st[i]->words->text, io);
             err_not_found(sh, io, name ? name : "?");
             free(name);
-            status = 127;
+            ps[i] = 127;
             continue;
         }
-        status = exec_node(sh, st[i], &sio[i]);
+        ps[i] = exec_node(sh, st[i], &sio[i]);
         close_owned(sh, &sio[i]);
     }
     for (i = 0; i < k; i++)
-        if (job[i]) {
-            long s = sh->os.wait(sh->os.data, job[i]);
-            if (i == k - 1)
-                status = s;
-        }
+        if (job[i])
+            ps[i] = sh->os.wait(sh->os.data, job[i]);
+    status = ps[k - 1];
+    if (sh->opts & SO_PIPEFAIL) {
+        for (i = k - 1; i >= 0; i--)
+            if (ps[i]) {
+                if (i != k - 1)
+                    SH_HIT(PIPEFAIL);
+                status = ps[i];
+                break;
+            }
+    }
+    sh_pstat(&sh->ctx, ps, k);
     return status;
 }
 
@@ -2190,7 +2483,10 @@ static long exec_list_loop(sh_shell *sh, const sh_node *n, const sh_io *io)
     int until = n->kind == SH_UNTIL;
     sh->loop_depth++;
     for (;;) {
-        long c = exec_node(sh, n->a, io);
+        long c;
+        sh->cond_depth++;
+        c = exec_node(sh, n->a, io);
+        sh->cond_depth--;
         if (sh->exiting || sh->returning || sh->intr)
             break;
         if ((c == 0) == until)
@@ -2283,10 +2579,15 @@ static int poll_break(sh_shell *sh)
 static long exec_compound(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     switch (n->kind) {
-    case SH_IF:
-        if (!exec_node(sh, n->a, io))
+    case SH_IF: {
+        long c;
+        sh->cond_depth++;
+        c = exec_node(sh, n->a, io);
+        sh->cond_depth--;
+        if (!c)
             return exec_node(sh, n->b, io);
         return n->c ? exec_node(sh, n->c, io) : 0;
+    }
     case SH_WHILE:
     case SH_UNTIL:
         return exec_list_loop(sh, n, io);
@@ -2305,6 +2606,8 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
     sh_io rio;
     if (!n || sh->exiting)
         return sh->ctx.status;
+    if ((sh->opts & SO_NOEXEC) && !(sh->opts & SO_INTERACTIVE))
+        return 0;
     if (poll_break(sh))
         return 130;
     if (sh->stack_limit && (unsigned long)&rio < sh->stack_limit) {
@@ -2321,6 +2624,7 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
     switch (n->kind) {
     case SH_CMD:
         st = exec_cmd(sh, n, io, 1, 0);
+        sh_pstat(&sh->ctx, &st, 1);
         break;
     case SH_SEQ:
         st = exec_node(sh, n->a, io);
@@ -2350,17 +2654,23 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
         break;
     }
     case SH_AND:
+        sh->cond_depth++;
         st = exec_node(sh, n->a, io);
+        sh->cond_depth--;
         if (!st && !sh->exiting)
             st = exec_node(sh, n->b, io);
         break;
     case SH_OR:
+        sh->cond_depth++;
         st = exec_node(sh, n->a, io);
+        sh->cond_depth--;
         if (st && !sh->exiting)
             st = exec_node(sh, n->b, io);
         break;
     case SH_NOT:
+        sh->cond_depth++;
         st = !exec_node(sh, n->a, io);
+        sh->cond_depth--;
         break;
     case SH_PIPE:
         st = exec_pipeline(sh, n, io);
@@ -2424,6 +2734,12 @@ static long exec_node(sh_shell *sh, const sh_node *n, const sh_io *io)
         break;
     }
     }
+    if (st && (sh->opts & SO_ERREXIT) && !sh->cond_depth && !sh->exiting && !sh->returning && !sh->intr &&
+        (n->kind == SH_CMD || n->kind == SH_PIPE || n->kind == SH_SUBSHELL)) {
+        SH_HIT(ERREXIT);
+        sh->exiting = 1;
+        sh->exit_status = st;
+    }
     sh->ctx.status = st;
     return st;
 }
@@ -2458,7 +2774,7 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
 
 /* $(cmd): cmd runs as a subshell writing into a pipe the shell reads
  * (without subshell processes: here, into a temporary file). */
-static char *core_subst(sh_ctx *c, const char *cmd)
+static char *core_subst1(sh_ctx *c, const char *cmd)
 {
     sh_shell *sh = (sh_shell *)c->user;
     pbuf out = { 0, 0, 0 };
@@ -2520,6 +2836,147 @@ static char *core_subst(sh_ctx *c, const char *cmd)
         }
     }
     return out.s ? out.s : sdup("");
+}
+
+/* $( ) does not inherit set -e (bash), and its trace lines gain a PS4 character */
+static char *core_subst(sh_ctx *c, const char *cmd)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    unsigned long saved = sh->opts;
+    char *r;
+    sh->opts &= ~SO_ERREXIT;
+    sh->xlevel++;
+    r = core_subst1(c, cmd);
+    sh->xlevel--;
+    sh->opts = (sh->opts & ~SO_ERREXIT) | (saved & SO_ERREXIT);
+    return r;
+}
+
+/* ---- the command line ---------------------------------------------------------- */
+
+static void inv_msg(sh_shell *sh, const char *a, const char *b)
+{
+    say(sh, sh->io.err, "vsh: ");
+    say(sh, sh->io.err, a);
+    say(sh, sh->io.err, b);
+    say(sh, sh->io.err, "\n");
+}
+
+void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *info)
+{
+    int i = 1, want_stdin = 0, interactive = 0, have_c = 0;
+    unsigned long inv = 0;
+    info->command = info->script = 0;
+    info->norc = info->login = info->exit_now = 0;
+    info->status = 0;
+    for (; i < argc; i++) {
+        const char *a = argv[i], *p;
+        int on;
+        if (!strcmp(a, "--")) {
+            i++;
+            break;
+        }
+        if (!strcmp(a, "-")) {
+            sh->opts &= ~(SO_XTRACE | SO_VERBOSE);
+            i++;
+            break;
+        }
+        if (a[0] == '-' && a[1] == '-') {
+            if (!strcmp(a, "--login")) info->login = 1;
+            else if (!strcmp(a, "--norc") || !strcmp(a, "--noprofile")) info->norc = 1;
+            else if (!strcmp(a, "--posix")) sh->opts |= SO_POSIX;
+            else if (!strcmp(a, "--noediting") || !strcmp(a, "--restricted")) ;
+            else if (!strcmp(a, "--version")) {
+                say(sh, sh->io.out, "vsh, a bash-compatible shell for AmigaDOS\n");
+                info->exit_now = 1;
+                return;
+            } else if (!strcmp(a, "--help")) {
+                say(sh, sh->io.out, "usage: vsh [-ceuxvfCanhils] [-o option] [+o option] [-c command [name]] [file] [argument ...]\n");
+                info->exit_now = 1;
+                return;
+            } else if (!strcmp(a, "--rcfile") || !strcmp(a, "--init-file")) i++;
+            else {
+                inv_msg(sh, a, ": invalid option");
+                info->exit_now = 1;
+                info->status = 2;
+                return;
+            }
+            continue;
+        }
+        if (a[0] != '-' && a[0] != '+')
+            break;
+        on = a[0] == '-';
+        if (a[1] && a[2])
+            SH_HIT(INVOKE_CLUSTER);
+        for (p = a + 1; *p; p++) {
+            if (*p == 'c' && on)
+                have_c = 1;
+            else if (*p == 's' && on)
+                want_stdin = 1;
+            else if (*p == 'i' && on)
+                interactive = 1;
+            else if (*p == 'l' && on)
+                info->login = 1;
+            else if (*p == 'o') {
+                if (i + 1 >= argc) {
+                    list_opts(sh, &sh->io, !on);
+                } else if (!opt_name(sh, argv[++i], on)) {
+                    inv_msg(sh, argv[i], ": invalid option name");
+                    info->exit_now = 1;
+                    info->status = 2;
+                    return;
+                }
+            } else if (*p == 'r' || *p == 'D') {
+                ;
+            } else if (!opt_letter(sh, *p, on)) {
+                char o[3];
+                o[0] = a[0];
+                o[1] = *p;
+                o[2] = 0;
+                inv_msg(sh, o, ": invalid option");
+                info->exit_now = 1;
+                info->status = 2;
+                return;
+            }
+        }
+    }
+    if (have_c) {
+        if (i >= argc) {
+            inv_msg(sh, "-c", ": option requires an argument");
+            info->exit_now = 1;
+            info->status = 2;
+            return;
+        }
+        info->command = argv[i++];
+        inv |= SO_COMMAND;
+        if (i < argc)
+            sh->ctx.arg0 = argv[i++];
+    } else if (i < argc && !want_stdin) {
+        info->script = argv[i];
+        sh->ctx.arg0 = argv[i++];
+    } else {
+        inv |= SO_STDIN;
+        if (tty || interactive)
+            interactive = 1;
+    }
+    if (interactive && !have_c && !info->script)
+        inv |= SO_INTERACTIVE;
+    if (interactive && (have_c || info->script) && (argc > 0))
+        inv |= SO_INTERACTIVE;
+    if (!(inv & SO_STDIN))
+        inv &= ~SO_STDIN;
+    sh->opts |= inv;
+    opts_apply(sh);
+    for (; i < argc; i++)
+        sh_list_add(&sh->ctx.args, argv[i]);
+    if (sh->os.cwd && !sh_get(&sh->ctx, "PWD")) {
+        char *d = sh->os.cwd(sh->os.data);
+        if (d && *d) {
+            sh_set(&sh->ctx, "PWD", d);
+            sh_attr_change(&sh->ctx, "PWD", SH_ATTR_EXPORT, 0);
+        }
+        free(d);
+    }
 }
 
 /* ---- the prompt ---------------------------------------------------------------- */

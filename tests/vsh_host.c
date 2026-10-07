@@ -124,13 +124,13 @@ static char **build_envp(const sh_shell *sh)
     char **envp;
     int n = 0, i = 0;
     for (v = sh->ctx.vars; v; v = v->next)
-        if (v->exported && v->value)
+        if ((v->attr & SH_ATTR_EXPORT) && v->value)
             n++;
     envp = (char **)calloc((size_t)n + 1, sizeof(char *));
     if (!envp)
         return 0;
     for (v = sh->ctx.vars; v; v = v->next)
-        if (v->exported && v->value) {
+        if ((v->attr & SH_ATTR_EXPORT) && v->value) {
             size_t len = strlen(v->name) + strlen(v->value) + 2;
             envp[i] = (char *)malloc(len);
             if (envp[i]) {
@@ -456,25 +456,34 @@ static int run_main(int argc, char **argv)
             }
         }
     }
-    if (argc > a + 1 && !strcmp(argv[a], "-c")) {
-        command = argv[a + 1];
-        if (argc > a + 2)
-            sh.ctx.arg0 = argv[a + 2];
-        first = a + 3;
-    } else if (argc > a && argv[a][0] != '-') {
-        sh.ctx.arg0 = argv[a];
-        first = a + 1;
-    } else {
-        fprintf(stderr, "usage: vsh_host [--hits] -c COMMAND [NAME [ARG ...]] | FILE [ARG ...]\n");
-        return 2;
+    {
+        sh_invoke_info inf;
+        argv[a - 1] = argv[0];
+        sh_invoke(&sh, argc - (a - 1), argv + (a - 1), isatty(0), &inf);
+        if (inf.exit_now)
+            return inf.status;
+        command = inf.command;
+        if (command)
+            sh_run_text(&sh, command, 0);
+        else if (inf.script)
+            sh_run_text(&sh, "source \"$0\"", 0); /* the arguments stay $1 ... */
+        else {
+            /* a script on standard input */
+            char *text = 0, buf[4096];
+            size_t len = 0, n;
+            while ((n = fread(buf, 1, sizeof(buf), stdin)) > 0) {
+                text = (char *)realloc(text, len + n + 1);
+                memcpy(text + len, buf, n);
+                len += n;
+                text[len] = 0;
+            }
+            if (text)
+                sh_run_text(&sh, text, 0);
+            free(text);
+        }
     }
-    for (i = first; i < argc; i++)
-        sh_list_add(&sh.ctx.args, argv[i]);
-    sh.ctx.flags = "";
-    if (command)
-        sh_run_text(&sh, command, 0);
-    else
-        sh_run_text(&sh, "source \"$0\"", 0); /* the arguments stay $1 ... */
+    (void)first;
+    (void)i;
     sh_exit_trap(&sh); /* end of input, exit, a script's end */
     st = sh.exiting ? sh.exit_status : sh.ctx.status;
 #ifdef SH_HITS

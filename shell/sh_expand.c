@@ -54,33 +54,171 @@ const char *sh_get(const sh_ctx *c, const char *name)
     return v ? v->value : 0;
 }
 
-void sh_set(sh_ctx *c, const char *name, const char *value)
+void sh_ltoa(long v, char *out)
+{
+    char d[24];
+    int n = 0, k = 0;
+    unsigned long u = v < 0 ? 0UL - (unsigned long)v : (unsigned long)v;
+    if (v < 0)
+        out[k++] = '-';
+    do
+        d[n++] = (char)('0' + u % 10);
+    while ((u /= 10) > 0);
+    while (n)
+        out[k++] = d[--n];
+    out[k] = 0;
+}
+
+int sh_set(sh_ctx *c, const char *name, const char *value)
 {
     sh_var *v = find(c, name);
+    char *nv;
+    if (v && (v->attr & SH_ATTR_READONLY))
+        return 1;
+    if (v && (v->attr & (SH_ATTR_INTEGER | SH_ATTR_UPPER | SH_ATTR_LOWER))) {
+        char *t = sdup(value), *q;
+        if (v->attr & SH_ATTR_INTEGER) {
+            const char *err = 0;
+            long n = sh_arith(c, value, &err);
+            char d[24];
+            sh_ltoa(err ? 0L : n, d);
+            free(t);
+            t = sdup(d);
+        }
+        for (q = t; q && *q; q++)
+            if ((v->attr & SH_ATTR_UPPER) && *q >= 'a' && *q <= 'z')
+                *q -= 32;
+            else if ((v->attr & SH_ATTR_LOWER) && *q >= 'A' && *q <= 'Z')
+                *q += 32;
+        nv = t;
+        value = nv;
+    } else {
+        nv = 0;
+    }
     if (!v) {
         v = (sh_var *)calloc(1, sizeof(sh_var));
         if (!v)
-            return;
+            return 1;
         v->name = sdup(name);
         v->next = c->vars;
         c->vars = v;
     }
-    free(v->value);
-    v->value = sdup(value);
+    {
+        char *copy = sdup(value);
+        free(v->value);
+        v->value = copy;
+    }
+    free(nv);
+    if (c->allexport)
+        v->attr |= SH_ATTR_EXPORT;
+    return 0;
 }
 
-void sh_unset(sh_ctx *c, const char *name)
+unsigned sh_attr(const sh_ctx *c, const char *name)
+{
+    sh_var *v = find(c, name);
+    return v ? v->attr : 0;
+}
+
+void sh_attr_change(sh_ctx *c, const char *name, unsigned set, unsigned clear)
+{
+    sh_var *v = find(c, name);
+    if (!v) {
+        sh_set(c, name, "");
+        v = find(c, name);
+    }
+    if (v)
+        v->attr = (unsigned short)((v->attr & ~clear) | set);
+}
+
+void sh_pstat(sh_ctx *c, const long *st, int n)
+{
+    long *t;
+    if (n == 1 && c->npstat == 1) {
+        c->pstat[0] = st[0];
+        return;
+    }
+    t = (long *)realloc(c->pstat, (size_t)(n ? n : 1) * sizeof(long));
+    if (!t)
+        return;
+    memcpy(t, st, (size_t)n * sizeof(long));
+    c->pstat = t;
+    c->npstat = n;
+}
+
+/* bash's quoting: see sh_expand.h */
+char *sh_quote(const char *s, int style)
+{
+    size_t n = strlen(s), k = 0, i;
+    char *o = (char *)malloc(n * 4 + 8);
+    int ctl = 0, plain = 1;
+    if (!o)
+        return 0;
+    for (i = 0; i < n; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        if (ch < 32 || ch == 127)
+            ctl = 1;
+        if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+              ch >= 128 || strchr("_-./:,@%+=", ch)))
+            plain = 0;
+    }
+    if (!n) {
+        strcpy(o, "''");
+        return o;
+    }
+    if (!ctl && plain)
+        return strcpy(o, s);
+    if (ctl) {
+        o[k++] = '$';
+        o[k++] = '\'';
+        for (i = 0; i < n; i++) {
+            unsigned char ch = (unsigned char)s[i];
+            if (ch == '\n') { o[k++] = '\\'; o[k++] = 'n'; }
+            else if (ch == '\t') { o[k++] = '\\'; o[k++] = 't'; }
+            else if (ch == '\r') { o[k++] = '\\'; o[k++] = 'r'; }
+            else if (ch == 27) { o[k++] = '\\'; o[k++] = 'E'; }
+            else if (ch == '\'' || ch == '\\') { o[k++] = '\\'; o[k++] = (char)ch; }
+            else if (ch < 32 || ch == 127) { o[k++] = '\\'; o[k++] = (char)('0' + (ch >> 6)); o[k++] = (char)('0' + ((ch >> 3) & 7)); o[k++] = (char)('0' + (ch & 7)); }
+            else o[k++] = (char)ch;
+        }
+        o[k++] = '\'';
+    } else if (style == SH_Q_BACKSLASH) {
+        for (i = 0; i < n; i++) {
+            unsigned char ch = (unsigned char)s[i];
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                  ch >= 128 || strchr("_-./:,@%+=", ch) || ch == '\''))
+                o[k++] = '\\';
+            else if (ch == '\'')
+                o[k++] = '\\';
+            o[k++] = (char)ch;
+        }
+    } else {
+        o[k++] = '\'';
+        for (i = 0; i < n; i++) {
+            if (s[i] == '\'') { o[k++] = '\''; o[k++] = '\\'; o[k++] = '\''; }
+            o[k++] = s[i];
+        }
+        o[k++] = '\'';
+    }
+    o[k] = 0;
+    return o;
+}
+
+int sh_unset(sh_ctx *c, const char *name)
 {
     sh_var **p;
     for (p = &c->vars; *p; p = &(*p)->next)
         if (!strcmp((*p)->name, name)) {
             sh_var *v = *p;
+            if (v->attr & SH_ATTR_READONLY)
+                return 1;
             *p = v->next;
             free(v->name);
             free(v->value);
             free(v);
-            return;
+            return 0;
         }
+    return 0;
 }
 
 void sh_export(sh_ctx *c, const char *name)
@@ -91,13 +229,17 @@ void sh_export(sh_ctx *c, const char *name)
         v = find(c, name);
     }
     if (v)
-        v->exported = 1;
+        v->attr |= SH_ATTR_EXPORT;
 }
 
 void sh_ctx_free(sh_ctx *c)
 {
-    while (c->vars)
+    while (c->vars) {
+        c->vars->attr &= (unsigned short)~SH_ATTR_READONLY;
         sh_unset(c, c->vars->name);
+    }
+    free(c->pstat);
+    c->pstat = 0;
     sh_list_free(&c->args);
 }
 
@@ -369,6 +511,10 @@ static const char *param(ex *e, const char *name)
     }
     if (!name[1] && name[0] == '-')
         return c->flags ? c->flags : "";
+    if (!strcmp(name, "PIPESTATUS") && c->npstat) {
+        sh_ltoa(c->pstat[0], num);
+        return num;
+    }
     if (name[0] >= '0' && name[0] <= '9') {
         int i = atoi(name);
         if (!i)
@@ -376,6 +522,19 @@ static const char *param(ex *e, const char *name)
         return i <= c->args.n ? c->args.v[i - 1] : 0;
     }
     return sh_get(c, name);
+}
+
+/* set -u: an unset NAME is an error (not $@ $*) */
+static int unbound(ex *e, const char *name, const char *val)
+{
+    static char msg[80];
+    if (val || !e->c->nounset || !strcmp(name, "@") || !strcmp(name, "*"))
+        return 0;
+    strncpy(msg, name, 60);
+    msg[60] = 0;
+    strcat(msg, ": unbound variable");
+    e->err = msg;
+    return 1;
 }
 
 /* $@ and $*: the positional parameters, fields apart ("$@") or joined. */
@@ -432,6 +591,30 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         e->err = "bad substitution";
         return end + 1;
     }
+    if (!strcmp(name, "PIPESTATUS") && i < end && w[i] == '[') {
+        /* PIPESTATUS[n] [@] [*]: until arrays exist (phase 2) it is a special case */
+        long j = i + 1;
+        char idx[16], t[24];
+        int m = 0, q;
+        while (j < end && w[j] != ']' && m < 15)
+            idx[m++] = w[j++];
+        idx[m] = 0;
+        if (!strcmp(idx, "@") || !strcmp(idx, "*")) {
+            for (q = 0; q < e->c->npstat; q++) {
+                if (q)
+                    cput(b, ' ', dquote ? F_QUOTED : F_SPLIT);
+                sh_ltoa(e->c->pstat[q], t);
+                cputs(b, t, dquote ? F_QUOTED : F_SPLIT);
+            }
+        } else {
+            q = atoi(idx);
+            if (q >= 0 && q < e->c->npstat) {
+                sh_ltoa(e->c->pstat[q], t);
+                cputs(b, t, dquote ? F_QUOTED : F_SPLIT);
+            }
+        }
+        return end + 1;
+    }
     if (i < end && (w[i] == '#' || w[i] == '%') && !len_op) {
         /* ${X#p} ${X##p}: without the shortest / longest prefix matching p;
          * ${X%p} ${X%%p}: the same for a suffix */
@@ -443,6 +626,8 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
             i++;
         }
         val = param(e, name);
+        if (unbound(e, name, val))
+            return end + 1;
         if (!val)
             val = "";
         l = (long)strlen(val);
@@ -485,6 +670,10 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         return end + 1;
     }
     val = param(e, name);
+    if (!op && !len_op && unbound(e, name, val))
+        return end + 1;
+    if (len_op && unbound(e, name, val))
+        return end + 1;
     if (len_op) {
         char n[16];
         long l = val ? (long)strlen(val) : 0;
@@ -615,6 +804,8 @@ static long dollar(ex *e, const char *w, long len, cbuf *b, int dquote)
             put_args(e, b, w[1] == '@', dquote);
         else {
             const char *v = param(e, name);
+            if (unbound(e, name, v))
+                return 2;
             if (v)
                 cputs(b, v, dquote ? F_QUOTED : F_SPLIT);
         }
@@ -629,6 +820,8 @@ static long dollar(ex *e, const char *w, long len, cbuf *b, int dquote)
             name[k++] = w[i++];
         name[k] = 0;
         v = param(e, name);
+        if (unbound(e, name, v))
+            return i;
         if (v)
             cputs(b, v, dquote ? F_QUOTED : F_SPLIT);
         return i;
@@ -853,6 +1046,8 @@ int sh_expand(sh_ctx *c, const char *word, int flags, sh_list *out, const char *
     cbuf b;
     const char *ifs = sh_get(c, "IFS");
     int i, start = 0, in_field = 0, fields = 0;
+    if (c->noglob)
+        flags |= SH_NO_GLOB;
     e.c = c;
     e.err = 0;
     memset(&b, 0, sizeof(b));

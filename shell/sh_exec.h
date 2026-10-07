@@ -92,8 +92,34 @@ typedef struct sh_retired {
     struct sh_retired *next;
 } sh_retired;
 
+/* Shell options (sh_shell.opts): one table in sh_exec.c names them, gives their
+ * letter for set/$-/invocation. SO_INTERACTIVE, SO_STDIN, SO_COMMAND are the
+ * invocation's i, s, c. */
+#define SO_ALLEXPORT   0x1UL
+#define SO_BRACEEXPAND 0x2UL
+#define SO_ERREXIT     0x4UL
+#define SO_HASHALL     0x8UL
+#define SO_NOCLOBBER   0x10UL
+#define SO_NOEXEC      0x20UL
+#define SO_NOGLOB      0x40UL
+#define SO_NOUNSET     0x80UL
+#define SO_PIPEFAIL    0x100UL
+#define SO_VERBOSE     0x200UL
+#define SO_XTRACE      0x400UL
+#define SO_INTERACTIVE 0x800UL
+#define SO_COMMAND     0x1000UL
+#define SO_STDIN       0x2000UL
+#define SO_POSIX       0x4000UL
+#define SO_LASTPIPE    0x8000UL   /* shopt lastpipe: the last stage of a pipeline runs in the shell */
+#define SO_ICOMMENTS   0x10000UL
+#define SO_INERT       0x20000UL  /* the accepted names with no effect (emacs vi history ...): first of many */
+
 typedef struct sh_shell {
     sh_ctx ctx;
+    unsigned long opts;    /* SO_* */
+    int cond_depth;        /* errexit is ignored while > 0: if/while conditions, !, && || lists */
+    int xlevel;            /* xtrace nesting: $( ) adds a PS4 character */
+    char flagbuf[40];      /* $- */
     sh_os os;
     sh_io io;              /* the shell's own streams */
     sh_func *funcs;
@@ -124,6 +150,21 @@ typedef struct sh_shell {
     int optpos;            /* getopts: the next character inside a cluster (-abc), 0 = at an argument */
     long optind_seen;      /* the OPTIND getopts left, to notice a script resetting it */
 } sh_shell;
+
+/* What the command line asked for (sh_invoke). */
+typedef struct sh_invoke_info {
+    const char *command;   /* -c text, 0 = none */
+    const char *script;    /* the file to run, 0 = none (stdin, or -c) */
+    int norc;              /* --norc / --noprofile: skip the startup files */
+    int login;             /* -l / --login */
+    int exit_now;          /* --version, --help, or an error: end with status */
+    int status;
+} sh_invoke_info;
+
+/* Parse vsh's command line (bash's: -c -e -u -x -v -f -C -a -n -h -i -l -s -o NAME +o NAME,
+ * clusters, --, -, --login --norc --noprofile --posix --version --help) into sh's options,
+ * $0 and positionals. tty: standard input is a terminal. Used by vsh.c and vsh_host.c. */
+void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *info);
 
 void sh_shell_init(sh_shell *sh);
 void sh_shell_free(sh_shell *sh);

@@ -142,7 +142,7 @@ def lists(allp):
 
 def probe_hash(p):
     h = hashlib.sha256()
-    for ext in (".sh", ".in", ".args"):
+    for ext in (".sh", ".in", ".args", ".flags"):
         f = p.with_suffix(ext)
         h.update(ext.encode() + (f.read_bytes() if f.exists() else b"-"))
     for f in sorted(DATA.rglob("*")):
@@ -162,14 +162,25 @@ def run_one(shell_cmd, p, base):
     args = shlex.split(p.with_suffix(".args").read_text()) if p.with_suffix(".args").exists() else []
     stdin = open(p.with_suffix(".in"), "rb") if p.with_suffix(".in").exists() else subprocess.DEVNULL
     env = {"PATH": PATH, "HOME": str(base / "home"), "LANG": "C", "LC_ALL": "C", "TZ": "UTC", "TMPDIR": str(tmp)}
+    flags = shlex.split(p.with_suffix(".flags").read_text()) if p.with_suffix(".flags").exists() else []
+    # <name>.flags: options before the probe. Last flag -c / -ec ...: the probe's text is the
+    # command string (args after it are $0 and the positionals); last flag -s: the text is
+    # fed on stdin (args are the positionals); otherwise the probe is a file as always.
+    target = [str(p)]
+    if flags and re.match(r"^-[a-zA-Z]*c$", flags[-1]):
+        target = [p.read_text()]
+    elif flags and flags[-1] == "-s":
+        target = []
+        stdin = p.read_bytes()
     try:
-        r = subprocess.run(shell_cmd + [str(p)] + args, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        r = subprocess.run(shell_cmd + flags + target + args, stdin=None if isinstance(stdin, bytes) else stdin,
+                           input=stdin if isinstance(stdin, bytes) else None, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                            cwd=work, env=env, timeout=TIMEOUT, start_new_session=True)
         return r.stdout, r.returncode if r.returncode >= 0 else 128 - r.returncode
     except subprocess.TimeoutExpired as e:
         return (e.stdout or b""), "timeout"
     finally:
-        if hasattr(stdin, "close"):
+        if not isinstance(stdin, bytes) and hasattr(stdin, "close"):
             stdin.close()
 
 
