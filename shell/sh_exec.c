@@ -2017,15 +2017,15 @@ static void pb_array(pbuf *o, const sh_var *v)
         if (v->attr & SH_ATTR_ASSOC) {
             const char *k;
             int plain = 1;
-            for (k = el->key; *k; k++)
+            for (k = el->k.key; *k; k++)
                 if (!((*k >= 'a' && *k <= 'z') || (*k >= 'A' && *k <= 'Z') || (*k >= '0' && *k <= '9') || *k == '_'))
                     plain = 0;
-            if (plain && *el->key)
-                pb_str(o, el->key);
+            if (plain && *el->k.key)
+                pb_str(o, el->k.key);
             else
-                pb_dq(o, el->key);
+                pb_dq(o, el->k.key);
         } else {
-            sh_ltoa(el->idx, d);
+            sh_ltoa(el->k.idx, d);
             pb_str(o, d);
         }
         pb_add(o, "]=", 2);
@@ -3608,6 +3608,11 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
         }
         if (eq && (sh_attr(&sh->ctx, name) & SH_ATTR_READONLY)) {
             err2(sh, io, name, "readonly variable");
+            st = 1;
+            continue;
+        }
+        if ((clear & (SH_ATTR_ARRAY | SH_ATTR_ASSOC)) && (sh_attr(&sh->ctx, name) & (SH_ATTR_ARRAY | SH_ATTR_ASSOC))) {
+            err2(sh, io, name, "cannot destroy array variables in this way");
             st = 1;
             continue;
         }

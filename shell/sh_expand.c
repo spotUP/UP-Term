@@ -102,9 +102,9 @@ static long arr_pos(const sh_var *v, long idx, const char *key, int *found)
     while (lo < hi) {
         long m = (lo + hi) / 2, d;
         if (is_assoc(v))
-            d = strcmp(a->e[m].key, key);
+            d = strcmp(a->e[m].k.key, key);
         else
-            d = a->e[m].idx < idx ? -1 : a->e[m].idx > idx;
+            d = a->e[m].k.idx < idx ? -1 : a->e[m].k.idx > idx;
         if (!d) {
             *found = 1;
             return m;
@@ -118,9 +118,10 @@ static long arr_pos(const sh_var *v, long idx, const char *key, int *found)
     return lo;
 }
 
-static void elem_free(sh_elem *e)
+static void elem_free(const sh_var *v, sh_elem *e)
 {
-    free(e->key);
+    if (is_assoc(v))
+        free(e->k.key);
     free(e->val);
 }
 
@@ -131,7 +132,7 @@ static void var_free(sh_var *v)
     if (v->arr) {
         long i;
         for (i = 0; i < v->arr->n; i++)
-            elem_free(v->arr->e + i);
+            elem_free(v, v->arr->e + i);
         free(v->arr->e);
         free(v->arr);
     }
@@ -152,7 +153,7 @@ static int make_array(sh_var *v, int assoc)
         v->arr->n = v->arr->cap = 1;
         v->arr->e[0].val = v->sv;
         if (assoc)
-            v->arr->e[0].key = sdup("0");
+            v->arr->e[0].k.key = sdup("0");
         v->sv = 0;
     }
     return 0;
@@ -174,7 +175,7 @@ static char **elem_slot(sh_ctx *c, sh_var *v, const char *sub, int make)
         if (err)
             return 0;
         if (idx < 0 && v->arr && v->arr->n)
-            idx += v->arr->e[v->arr->n - 1].idx + 1;
+            idx += v->arr->e[v->arr->n - 1].k.idx + 1;
         if (idx < 0)
             return 0;
     }
@@ -197,8 +198,10 @@ static char **elem_slot(sh_ctx *c, sh_var *v, const char *sub, int make)
         a->cap = cap;
     }
     memmove(a->e + pos + 1, a->e + pos, (size_t)(a->n - pos) * sizeof(sh_elem));
-    a->e[pos].idx = idx;
-    a->e[pos].key = is_assoc(v) ? sdup(sub) : 0;
+    if (is_assoc(v))
+        a->e[pos].k.key = sdup(sub);
+    else
+        a->e[pos].k.idx = idx;
     a->e[pos].val = 0;
     a->n++;
     return &a->e[pos].val;
@@ -267,9 +270,9 @@ void sh_keys(const sh_ctx *c, const char *name, sh_list *out)
     }
     for (i = 0; i < v->arr->n; i++) {
         if (is_assoc(v))
-            sh_list_add(out, v->arr->e[i].key);
+            sh_list_add(out, v->arr->e[i].k.key);
         else {
-            sh_ltoa(v->arr->e[i].idx, d);
+            sh_ltoa(v->arr->e[i].k.idx, d);
             sh_list_add(out, d);
         }
     }
@@ -396,6 +399,7 @@ void sh_attr_change(sh_ctx *c, const char *name, unsigned set, unsigned clear)
     if ((set & (SH_ATTR_ARRAY | SH_ATTR_ASSOC)) && !v->arr)
         make_array(v, (set & SH_ATTR_ASSOC) != 0);
     set &= ~(unsigned)(v->arr ? SH_ATTR_ARRAY | SH_ATTR_ASSOC : 0);
+    clear &= ~(unsigned)(v->arr ? SH_ATTR_ARRAY | SH_ATTR_ASSOC : 0); /* an array keeps its kind */
     v->attr = (unsigned short)((v->attr & ~clear) | set);
 }
 
@@ -406,7 +410,9 @@ long sh_next_index(const sh_ctx *c, const char *name)
         return 0;
     if (!v->arr)
         return v->sv ? 1 : 0;
-    return v->arr->n ? v->arr->e[v->arr->n - 1].idx + 1 : 0;
+    if (is_assoc(v))
+        return v->arr->n ? 1 : 0; /* as before the union: an associative element's idx was 0 */
+    return v->arr->n ? v->arr->e[v->arr->n - 1].k.idx + 1 : 0;
 }
 
 int sh_array_reset(sh_ctx *c, const char *name, int assoc)
@@ -423,7 +429,7 @@ int sh_array_reset(sh_ctx *c, const char *name, int assoc)
     if (v && v->arr && is_assoc(v) == assoc) {
         long i;
         for (i = 0; i < v->arr->n; i++)
-            elem_free(v->arr->e + i);
+            elem_free(v, v->arr->e + i);
         v->arr->n = 0;
         return 0;
     }
@@ -434,7 +440,7 @@ int sh_array_reset(sh_ctx *c, const char *name, int assoc)
         if (v->arr) {
             long i;
             for (i = 0; i < v->arr->n; i++)
-                elem_free(v->arr->e + i);
+                elem_free(v, v->arr->e + i);
             free(v->arr->e);
             free(v->arr);
             v->arr = 0;
@@ -469,9 +475,10 @@ sh_var *sh_var_copy(const sh_var *v)
             return r;
         r->arr->n = r->arr->cap = v->arr->n;
         for (i = 0; i < v->arr->n; i++) {
-            r->arr->e[i].idx = v->arr->e[i].idx;
-            if (v->arr->e[i].key)
-                r->arr->e[i].key = sdup(v->arr->e[i].key);
+            if (is_assoc(v))
+                r->arr->e[i].k.key = sdup(v->arr->e[i].k.key);
+            else
+                r->arr->e[i].k.idx = v->arr->e[i].k.idx;
             if (v->arr->e[i].val)
                 r->arr->e[i].val = sdup(v->arr->e[i].val);
         }
@@ -649,7 +656,7 @@ int sh_unset_elem(sh_ctx *c, const char *name, const char *sub)
     if (!slot)
         return 0;
     pos = (sh_elem *)((char *)slot - offsetof(sh_elem, val)) - v->arr->e;
-    elem_free(v->arr->e + pos);
+    elem_free(v, v->arr->e + pos);
     memmove(v->arr->e + pos, v->arr->e + pos + 1, (size_t)(v->arr->n - pos - 1) * sizeof(sh_elem));
     v->arr->n--;
     return 0;

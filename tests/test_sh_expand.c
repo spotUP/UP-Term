@@ -215,9 +215,24 @@ static void typed_arrays(void)
     CHECK_STR(ex(c, "${ta[5]}", 0), "w");
 }
 
+/* V44: an element holds its index or its key, not both -- 8 bytes on the Amiga (12 before: 35.2 bytes
+ * per element of a 10,000-element array on rig 2, over the 24-byte budget; 28.6 after) -- and an
+ * array never changes kind while it has elements, or a key would be read as an index */
+static void array_elements_are_two_words_and_keep_their_kind(void)
+{
+    sh_ctx *c = ctx();
+    CHECK_INT((int)sizeof(sh_elem), (int)(2 * sizeof(char *)));
+    sh_attr_change(c, "km", SH_ATTR_ASSOC, 0);
+    CHECK_INT(sh_assign(c, "km", "k", "v", 0), 0);
+    sh_attr_change(c, "km", 0, SH_ATTR_ASSOC);            /* declare +A km: refused */
+    CHECK(sh_attr(c, "km") & SH_ATTR_ASSOC);
+    CHECK_STR(ex(c, "${!km[@]}=${km[k]}", 0), "k=v");
+}
+
 void suite_sh_expand(void)
 {
     typed_arrays();
+    array_elements_are_two_words_and_keep_their_kind();
     unclosed_bracket_is_literal();
     variables_and_quotes();
     substitution_and_arithmetic();

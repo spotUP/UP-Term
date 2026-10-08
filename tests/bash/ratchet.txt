@@ -261,6 +261,7 @@ arrays/assoc
 arrays/assoc2
 arrays/compound
 arrays/declare_p
+arrays/declare_plus_a
 arrays/indirect
 arrays/local_typed
 arrays/mapfile

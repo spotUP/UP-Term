@@ -30,10 +30,14 @@ typedef unsigned long long sh_uint;
 #define SH_ATTR_NAMEREF  128
 #define SH_ATTR_NOVALUE  256 /* declared (declare -a x) and never assigned: declare -p prints no value */
 /* An array is a sparse vector sorted by index (indexed) or by key (associative):
- * append is O(1), lookup a binary search. */
+ * append is O(1), lookup a binary search. An element has the index or the key,
+ * never both (an array never changes kind while it has elements): 8 bytes on
+ * the Amiga, not 12 (V44, at most 24 bytes per element beyond its string). */
 typedef struct sh_elem {
-    long idx;               /* indexed arrays */
-    char *key;              /* associative arrays */
+    union {
+        long idx;           /* indexed arrays */
+        char *key;          /* associative arrays */
+    } k;
     char *val;
 } sh_elem;
 typedef struct sh_arr {
