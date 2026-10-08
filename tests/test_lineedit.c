@@ -1085,6 +1085,74 @@ static void medium_mode_leaves_the_editing_keys_to_the_editor(void)
     vt_free(t);
 }
 
+/* V91: vi editing mode. vtype() sends characters; an escape character is Esc. */
+static int vtype(const char *s)
+{
+    int done = 0;
+    for (; *s; s++)
+        done |= le_key(&le, *s == 033 ? VT_KEY_ESCAPE : (unsigned char)*s, 0, (const unsigned char *)s, 1);
+    return done;
+}
+
+static void vi_mode_moves_deletes_and_repeats(void)
+{
+    vt_term *t = start(60, 3, "$ ");
+    le_set_vi(&le, 1);
+    vtype("foo bar baz\033"); /* Esc: command mode, the cursor on the last character */
+    CHECK_INT(le.pos, 10);
+    vtype("0w");
+    CHECK_INT(le.pos, 4);
+    vtype("dw"); /* delete a word */
+    CHECK_STR(line(), "foo baz");
+    vtype("u"); /* undo */
+    CHECK_STR(line(), "foo bar baz");
+    vtype("0cwxx\033"); /* cw changes to the end of the word */
+    CHECK_STR(line(), "xx bar baz");
+    vtype("w."); /* . repeats the change, text included */
+    CHECK_STR(line(), "xx xx baz");
+    vtype("0x");
+    CHECK_STR(line(), "x xx baz");
+    vtype("p"); /* the register holds the x */
+    CHECK_STR(line(), "xx xx baz");
+    vtype("$bD"); /* D: to the end of the line */
+    CHECK_STR(line(), "xx xx ");
+    vtype("0y$$p");
+    CHECK_STR(line(), "xx xx xx xx ");
+    vtype("0d2w"); /* a count after the operator */
+    CHECK_STR(line(), "xx xx ");
+    vtype("0rZ");
+    CHECK_STR(line(), "Zx xx ");
+    vtype("3~");
+    CHECK_STR(line(), "zX xx ");
+    vtype("AEnd\033Ibeg\033"); /* A and I enter insert mode */
+    CHECK_STR(line(), "begzX xx End");
+    vtype("0Rab\033"); /* R overwrites */
+    CHECK_STR(line(), "abgzX xx End");
+    vtype("ddi"); /* dd empties the line */
+    CHECK_STR(line(), "");
+    vt_free(t);
+}
+
+static void vi_mode_starts_each_line_in_insert_mode_and_emacs_keys_stay(void)
+{
+    vt_term *t = start(60, 3, "$ ");
+    le_set_vi(&le, 1);
+    vtype("one\033");
+    CHECK(le_key(&le, VT_KEY_RETURN, 0, (const unsigned char *)"\r", 1));
+    CHECK_STR(line(), "one\n");
+    le_reset(&le);
+    vtype("two"); /* insert mode again: typed text is text */
+    CHECK_STR(line(), "two");
+    vtype("\033k"); /* k: the history line before */
+    CHECK_STR(line(), "one");
+    le_set_vi(&le, 0); /* set -o emacs: Esc and k are plain again */
+    le_reset(&le);
+    vtype("\033");
+    vtype("k");
+    CHECK_STR(line(), "k");
+    vt_free(t);
+}
+
 void suite_lineedit(void)
 {
     medium_mode_reports_tab_shift_tab_up_and_down_at_once();
@@ -1124,4 +1192,6 @@ void suite_lineedit(void)
     theme_menu_scrolls_a_long_list_at_the_bottom();
     holding_down_in_the_theme_list_draws_rows_and_previews_once();
     the_list_drawn_by_rows_is_the_list_drawn_whole();
+    vi_mode_moves_deletes_and_repeats();
+    vi_mode_starts_each_line_in_insert_mode_and_emacs_keys_stay();
 }

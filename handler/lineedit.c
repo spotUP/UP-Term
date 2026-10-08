@@ -779,6 +779,8 @@ void le_reset(le_line *le)
     le->shown = 0;
     le->hist_pos = le->hist_n;
     le->searching = 0;
+    le->vi_cmd = le->vi_op = le->vi_pend = le->vi_count = le->vi_count2 = le->vi_replace = 0;
+    le->vi_rec_n = le->vi_changed = 0;
     le->undo_n = 0;
     le->undo_used = 0;
     le->typing = 0;
@@ -831,6 +833,366 @@ static int search_key(le_line *le, long key, const unsigned char *b, int n)
     return 1;
 }
 
+/* ---- V91: vi editing mode -------------------------------------------------- */
+
+static int vi_cls(unsigned char c)
+{
+    if (c == ' ' || c == '\t')
+        return 0;
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c >= 0x80 ? 1 : 2;
+}
+
+static int vi_w(const le_line *le, int p) /* the start of the next word */
+{
+    int c;
+    if (p >= le->len)
+        return le->len;
+    c = vi_cls(le->buf[p]);
+    if (c)
+        while (p < le->len && vi_cls(le->buf[p]) == c)
+            p = next_char(le, p);
+    while (p < le->len && !vi_cls(le->buf[p]))
+        p = next_char(le, p);
+    return p;
+}
+
+static int vi_e(const le_line *le, int p) /* the last character of this or the next word */
+{
+    int c, q;
+    if (p >= le->len)
+        return le->len;
+    p = next_char(le, p);
+    while (p < le->len && !vi_cls(le->buf[p]))
+        p = next_char(le, p);
+    if (p >= le->len)
+        return le->len;
+    c = vi_cls(le->buf[p]);
+    while ((q = next_char(le, p)) < le->len && vi_cls(le->buf[q]) == c)
+        p = q;
+    return p;
+}
+
+static int vi_b(const le_line *le, int p) /* the start of this or the previous word */
+{
+    int c;
+    if (p <= 0)
+        return 0;
+    p = prev_char(le, p);
+    while (p > 0 && !vi_cls(le->buf[p]))
+        p = prev_char(le, p);
+    c = vi_cls(le->buf[p]);
+    while (p > 0 && vi_cls(le->buf[prev_char(le, p)]) == c)
+        p = prev_char(le, p);
+    return p;
+}
+
+/* Where a motion key goes, count times; -1 when ch is no motion. *incl: an operator includes the character there. */
+static int vi_motion(const le_line *le, int ch, int cnt, int *incl)
+{
+    int p = le->pos, i;
+    *incl = 0;
+    switch (ch) {
+    case 'h':
+        for (i = 0; i < cnt; i++) p = prev_char(le, p);
+        return p;
+    case 'l': case ' ':
+        for (i = 0; i < cnt; i++) p = p < le->len ? next_char(le, p) : p;
+        return p;
+    case 'w':
+        for (i = 0; i < cnt; i++) p = vi_w(le, p);
+        return p;
+    case 'b':
+        for (i = 0; i < cnt; i++) p = vi_b(le, p);
+        return p;
+    case 'e':
+        for (i = 0; i < cnt; i++) p = vi_e(le, p);
+        *incl = 1;
+        return p;
+    case '0': return 0;
+    case '$': return le->len;
+    case '^':
+        for (p = 0; p < le->len && !vi_cls(le->buf[p]); p++)
+            ;
+        return p;
+    default: return -1;
+    }
+}
+
+static void vi_rec_add(le_line *le, int c)
+{
+    if (!le->vi_replay && le->vi_rec_n < (int)sizeof(le->vi_rec))
+        le->vi_rec[le->vi_rec_n++] = (unsigned char)c;
+}
+
+/* The command is over (idle in command mode): a change becomes what "." repeats. */
+static void vi_settle(le_line *le)
+{
+    if (le->vi_op || le->vi_pend || le->vi_count || !le->vi_cmd)
+        return;
+    if (le->vi_changed && !le->vi_replay && le->vi_rec_n < (int)sizeof(le->vi_rec)) {
+        memcpy(le->vi_last, le->vi_rec, (size_t)le->vi_rec_n);
+        le->vi_last_n = le->vi_rec_n;
+    }
+    le->vi_changed = 0;
+    le->vi_rec_n = 0;
+}
+
+static void vi_to_cmd(le_line *le)
+{
+    le->vi_cmd = 1;
+    le->vi_replace = 0;
+    le->typing = 0;
+    if (le->pos > 0)
+        move_to(le, prev_char(le, le->pos));
+}
+
+static void vi_to_insert(le_line *le)
+{
+    le->vi_cmd = 0;
+    le->vi_changed = 1;
+    le->typing = 0;
+}
+
+static void vi_clamp(le_line *le)
+{
+    if (le->vi_cmd && le->pos >= le->len && le->len > 0)
+        move_to(le, prev_char(le, le->len));
+}
+
+/* y d c over [a, b) */
+static void vi_range(le_line *le, int op, int a, int b)
+{
+    if (b < a) {
+        int t = a;
+        a = b;
+        b = t;
+    }
+    if (b > a) {
+        le->vi_reg_n = b - a < (int)sizeof(le->vi_reg) ? b - a : (int)sizeof(le->vi_reg);
+        memcpy(le->vi_reg, le->buf + a, (size_t)le->vi_reg_n);
+    }
+    if (op == 'y') {
+        move_to(le, a);
+        return;
+    }
+    le->pos = a;
+    erase(le, a, b);
+    le->vi_changed = 1;
+    if (op == 'c')
+        vi_to_insert(le);
+    else
+        vi_clamp(le);
+}
+
+static void vi_paste(le_line *le, int after, int cnt)
+{
+    int i;
+    if (!le->vi_reg_n)
+        return;
+    if (after && le->pos < le->len)
+        move_to(le, next_char(le, le->pos));
+    le->typing = 0;
+    for (i = 0; i < cnt; i++)
+        insert(le, le->vi_reg, le->vi_reg_n, 0);
+    le->typing = 0;
+    le->vi_changed = 1;
+    if (le->pos > 0)
+        move_to(le, prev_char(le, le->pos));
+}
+
+static int vi_search(le_line *le, int dir)
+{
+    int i;
+    if (!le->pat_len)
+        return 0;
+    for (i = le->hist_pos + dir; i >= 0 && i < le->hist_n; i += dir)
+        if (find(HIST(le, i), le->pat, le->pat_len) >= 0) {
+            le->hist_pos = i;
+            le->typing = 0;
+            set_line(le, HIST(le, i), 0);
+            return 1;
+        }
+    return 0;
+}
+
+static int vi_key(le_line *le, long key, int mods, const unsigned char *b, int n);
+
+static void vi_feed(le_line *le, int c)
+{
+    unsigned char ch = (unsigned char)c;
+    if (!vi_key(le, ch, 0, &ch, 1) && c >= 0x20)
+        insert(le, &ch, 1, 1);
+}
+
+/* 1: the key was the vi mode's; 0: the editor treats it as in emacs mode (inserts it, an arrow key, a Ctrl key) */
+static int vi_key(le_line *le, long key, int mods, const unsigned char *b, int n)
+{
+    int ch, cnt, t, incl, i, a;
+    if (key == VT_KEY_ESCAPE || (n == 1 && b[0] == 0x1B)) {
+        if (!le->vi_cmd) {
+            vi_rec_add(le, 0x1B);
+            vi_to_cmd(le);
+        }
+        le->vi_op = le->vi_pend = le->vi_count = le->vi_count2 = 0;
+        vi_settle(le);
+        return 1;
+    }
+    if (key >= 0x110000 || n < 1)
+        return 0;
+    if (!le->vi_cmd) {
+        if (b[0] >= 0x20 && b[0] != 0x7F) {
+            vi_rec_add(le, b[0]); /* a multibyte character: its first byte only is repeated by "." */
+            if (le->vi_replace && le->pos < le->len)
+                erase(le, le->pos, next_char(le, le->pos));
+        }
+        return 0;
+    }
+    if ((mods & (VT_MOD_CTRL | VT_MOD_ALT)) || n != 1 || b[0] < 0x20)
+        return 0;
+    ch = b[0];
+    if (le->vi_pend == 'r') {
+        vi_rec_add(le, ch);
+        cnt = le->vi_count ? le->vi_count : 1;
+        le->vi_pend = le->vi_count = 0;
+        for (a = le->pos, i = 0; i < cnt && a < le->len; i++)
+            a = next_char(le, a);
+        if (i == cnt) {
+            unsigned char c = (unsigned char)ch;
+            int at = le->pos;
+            erase(le, at, a);
+            le->pos = at;
+            for (i = 0; i < cnt; i++)
+                insert(le, &c, 1, 0);
+            le->typing = 0;
+            move_to(le, prev_char(le, le->pos));
+            le->vi_changed = 1;
+        }
+        vi_settle(le);
+        return 1;
+    }
+    if (ch >= '1' && ch <= '9' ? 1 : (ch == '0' && le->vi_count)) {
+        le->vi_count = le->vi_count * 10 + (ch - '0');
+        if (le->vi_count > 9999)
+            le->vi_count = 9999;
+        vi_rec_add(le, ch);
+        return 1;
+    }
+    vi_rec_add(le, ch);
+    cnt = le->vi_count ? le->vi_count : 1;
+    if (le->vi_op) {
+        int op = le->vi_op, m = ch;
+        cnt *= le->vi_count2 ? le->vi_count2 : 1;
+        le->vi_op = le->vi_count = le->vi_count2 = 0;
+        if (ch == op) {
+            vi_range(le, op, 0, le->len);
+        } else {
+            if (op == 'c' && ch == 'w' && le->pos < le->len && vi_cls(le->buf[le->pos]))
+                m = 'e'; /* cw changes to the end of the word */
+            t = vi_motion(le, m, cnt, &incl);
+            if (t >= 0) {
+                if (incl && t < le->len)
+                    t = next_char(le, t);
+                vi_range(le, op, le->pos, t);
+            }
+        }
+        vi_settle(le);
+        return 1;
+    }
+    le->vi_count = 0;
+    switch (ch) {
+    case 'd': case 'c': case 'y':
+        le->vi_op = ch;
+        le->vi_count2 = cnt == 1 ? 0 : cnt;
+        return 1;
+    case 'D': case 'C': case 'Y':
+        vi_range(le, ch == 'D' ? 'd' : ch == 'C' ? 'c' : 'y', le->pos, le->len);
+        break;
+    case 'x': case 's':
+        for (a = le->pos, i = 0; i < cnt && a < le->len; i++)
+            a = next_char(le, a);
+        vi_range(le, ch == 'x' ? 'd' : 'c', le->pos, a);
+        break;
+    case 'X':
+        for (a = le->pos, i = 0; i < cnt && a > 0; i++)
+            a = prev_char(le, a);
+        vi_range(le, 'd', a, le->pos);
+        break;
+    case 'S': vi_range(le, 'c', 0, le->len); break;
+    case 'i': vi_to_insert(le); break;
+    case 'a':
+        if (le->pos < le->len)
+            move_to(le, next_char(le, le->pos));
+        vi_to_insert(le);
+        break;
+    case 'A': move_to(le, le->len); vi_to_insert(le); break;
+    case 'I': move_to(le, 0); vi_to_insert(le); break;
+    case 'R': vi_to_insert(le); le->vi_replace = 1; break;
+    case 'p': vi_paste(le, 1, cnt); break;
+    case 'P': vi_paste(le, 0, cnt); break;
+    case 'r': le->vi_pend = 'r'; le->vi_count = cnt == 1 ? 0 : cnt; return 1;
+    case '~':
+        for (i = 0; i < cnt && le->pos < le->len; i++) {
+            unsigned char c = le->buf[le->pos];
+            int at = le->pos;
+            c = c >= 'a' && c <= 'z' ? c - 32 : c >= 'A' && c <= 'Z' ? c + 32 : c;
+            erase(le, at, next_char(le, at));
+            le->pos = at;
+            insert(le, &c, 1, 0);
+            le->typing = 0;
+        }
+        vi_clamp(le);
+        le->vi_changed = 1;
+        break;
+    case 'u':
+        if (le->undo_n) {
+            le->typing = 0;
+            pop_undo(le);
+            vi_clamp(le);
+        }
+        break;
+    case '.': {
+        unsigned char rec[sizeof(le->vi_last)];
+        int len = le->vi_last_n;
+        memcpy(rec, le->vi_last, (size_t)len);
+        le->vi_rec_n = 0;
+        le->vi_replay = 1;
+        for (i = 0; i < len; i++)
+            vi_feed(le, rec[i]);
+        le->vi_replay = 0;
+        break;
+    }
+    case 'k': case '-': history(le, -1, 0); vi_clamp(le); break;
+    case 'j': case '+': history(le, 1, 0); vi_clamp(le); break;
+    case '/': case '?':
+        le->vi_dir = ch == '/' ? -1 : 1;
+        save_state(&le->before_search, le);
+        le->searching = 1;
+        le->pat_len = 0;
+        le->search_idx = le->hist_n - 1;
+        redraw_from(le, 0);
+        break;
+    case 'n': vi_search(le, le->vi_dir ? le->vi_dir : -1); break;
+    case 'N': vi_search(le, le->vi_dir ? -le->vi_dir : 1); break;
+    default:
+        t = vi_motion(le, ch, cnt, &incl);
+        if (t >= 0) {
+            if (t >= le->len && le->len > 0)
+                t = prev_char(le, le->len);
+            move_to(le, t);
+        }
+        break;
+    }
+    vi_settle(le);
+    return 1;
+}
+
+void le_set_vi(le_line *le, int on)
+{
+    le->vi = on != 0;
+    le->vi_cmd = 0;
+    le->vi_op = le->vi_pend = le->vi_count = le->vi_count2 = le->vi_replace = 0;
+}
+
 int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
 {
     int shift = (mods & VT_MOD_SHIFT) != 0, ctrl = (mods & VT_MOD_CTRL) != 0;
@@ -865,6 +1227,8 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
         le->buf[le->len++] = '\n';
         return 1;
     }
+    if (le->vi && vi_key(le, key, mods, b, n))
+        return 0;
     switch (key) {
     case VT_KEY_LEFT:
         move_to(le, shift ? 0 : ctrl ? word_back(le, le->pos) : prev_char(le, le->pos));

@@ -74,6 +74,17 @@ typedef struct le_line {
     unsigned char *undo_buf;
     long undo_used, undo_cap;
     int undo_n, typing;     /* typing: the last change was an inserted char */
+    /* V91 vi editing mode (set -o vi): vi 0 emacs keys, 1 vi. Each line starts in insert mode. */
+    int vi, vi_cmd;         /* vi_cmd: command mode */
+    int vi_count, vi_count2; /* the count typed, the one saved by an operator */
+    int vi_op, vi_pend;     /* a pending d c y; a pending r */
+    int vi_replace;         /* R: typed characters overwrite */
+    int vi_changed, vi_replay;
+    int vi_dir;             /* the last / (-1) or ? (1) */
+    unsigned char vi_reg[256];
+    int vi_reg_n;
+    unsigned char vi_rec[96], vi_last[96];
+    int vi_rec_n, vi_last_n;
     /* the first word as a command: 0 not known, 1 found, 2 not found;
      * valid while the first word is still cmd_word */
     int cmd_state;
@@ -98,6 +109,8 @@ void le_free(le_line *le);
  * it with the '\n', and the caller takes it and calls le_reset. */
 int  le_key(le_line *le, long key, int mods, const unsigned char *bytes, int n);
 void le_reset(le_line *le);
+/* set -o vi / set -o emacs (the shell tells the console before a prompt). */
+void le_set_vi(le_line *le, int on);
 /* The window was resized: a reflow may have moved the line. Where it
  * starts is worked out again from the cursor, which the engine kept on
  * its character. */

@@ -197,6 +197,13 @@ static int opt_name(sh_shell *sh, const char *name, int on)
                     inert_state &= ~(1UL << i);
             }
             opts_apply(sh);
+            if (on && (!strcmp(name, "vi") || !strcmp(name, "emacs"))) {
+                /* the two editing modes exclude each other */
+                int k;
+                for (k = 0; k < N_SHOPT; k++)
+                    if (k != i && (!strcmp(sh_optab[k].name, "vi") || !strcmp(sh_optab[k].name, "emacs")))
+                        inert_state &= ~(1UL << k);
+            }
             if (sh_optab[i].bit == SO_POSIX) {
                 /* bash keeps POSIXLY_CORRECT in step with the mode: set to y on entering, unset on leaving */
                 if (!on)
@@ -206,6 +213,16 @@ static int opt_name(sh_shell *sh, const char *name, int on)
             }
             return 1;
         }
+    return 0;
+}
+
+/* set -o vi is on */
+static int sh_edit_mode_vi(void)
+{
+    int i;
+    for (i = 0; i < N_SHOPT; i++)
+        if (!strcmp(sh_optab[i].name, "vi"))
+            return (int)((inert_state >> i) & 1);
     return 0;
 }
 
@@ -5069,6 +5086,8 @@ void sh_hist_config(sh_shell *sh)
     pb_add(&b, "\n", 1);
     v = sh_get(&sh->ctx, "HISTCONTROL");
     pb_str(&b, v ? v : "");
+    pb_add(&b, "\n", 1);
+    pb_str(&b, sh_edit_mode_vi() ? "vi" : "emacs"); /* set -o vi / emacs: the console's line editor */
     if (b.s && (!sh->hist_cfg || strcmp(sh->hist_cfg, b.s))) {
         sh->os.hist(sh->os.data, SH_HIST_CONFIG, 0, b.s, 0);
         free(sh->hist_cfg);

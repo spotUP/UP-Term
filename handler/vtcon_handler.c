@@ -6030,6 +6030,11 @@ static void packet(con *c, struct DosPacket *p)
                 t++;
             c->le.hist_ctl = (strstr(t, "ignorespace") || strstr(t, "ignoreboth") ? LE_HC_IGNORESPACE : 0) |
                              (strstr(t, "erasedups") ? LE_HC_ERASEDUPS : 0);
+            {
+                /* the fourth line: "vi" or "emacs" (set -o), the keys of the line editor */
+                const char *mode = strchr(t, '\n');
+                le_set_vi(&c->le, mode && !strncmp(mode + 1, "vi", 2));
+            }
             c->hist_filesize = fsize;
             le_hist_limit(&c->le, (int)size);
             if ((c->le.hist_max > 0 ? c->le.hist_max : LE_HIST) > old_max) {

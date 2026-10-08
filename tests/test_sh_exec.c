@@ -669,7 +669,17 @@ static void history_has_one_owner_the_console_list_or_the_shell(void)
     sh_hist_note(&sh, "ls -l");
     CHECK_INT(native_n, 2);
     sh_hist_config(&sh);
-    CHECK_STR(native_cfg, "300\n700\nignoreboth");
+    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs");
+    /* V91: set -o vi tells the console its line editor; set -o emacs takes it back (the two exclude each other) */
+    sh_run_text(&sh, "set -o vi", 0);
+    sh_hist_config(&sh);
+    CHECK_STR(native_cfg, "300\n700\nignoreboth\nvi");
+    sh_run_text(&sh, "set -o emacs", 0);
+    sh_hist_config(&sh);
+    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs");
+    sh_run_text(&sh, "set -o vi; set +o vi", 0);
+    sh_hist_config(&sh);
+    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs");
     native_cfg[0] = 0;
     sh_hist_config(&sh);                /* unchanged: not sent again */
     CHECK_STR(native_cfg, "");
