@@ -864,6 +864,20 @@ static void fd_handles_are_counted(void)
     CHECK_INT(closes_of("f"), 1);
     run("{ echo a >&3; } 3>f; echo b");
     CHECK_INT(closes_of("f"), 1);
+    /* rig fd/fd12: fd 1 made another name for a command's own fd 3 (n>f m>&n): closed when it ends */
+    run("echo cmd 3>f >&3");
+    CHECK_INT(closes_of("f"), 1);
+    run("echo e 3>f 2>&3 1>&3");
+    CHECK_INT(closes_of("f"), 1);
+    /* rig redir/redirexec: the stream exec opened for a subshell is closed when the subshell ends,
+     * and the main shell closes the one a new exec replaces */
+    run("( exec >f; echo captured )");
+    CHECK_INT(closes_of("f"), 1);
+    run("exec >f 2>&1; echo a; exec >g; echo b");
+    CHECK_INT(closes_of("f"), 0);   /* still fd 2 */
+    sh_run_text(&sh, "exec 2>g", 0);
+    CHECK_INT(closes_of("f"), 1);
+    CHECK_INT(closes_of("g"), 0);
     run("exec 3>f; echo c 3>&-; echo d >&3");
     CHECK_INT(closes_of("f"), 0);
     CHECK_STR(data_of("f"), "d\n");
@@ -1461,8 +1475,40 @@ static void umask_builtin(void)
     sh.os.umask = 0;
 }
 
+/* rig posix/function_name and 35 other probes: "$BASH -c ..." said "vsh: bash: not found" on the Amiga,
+ * where no command bash exists outside the interactive vshrc alias. $BASH is the shell's own path. */
+static char *f_realpath(void *os, const char *path)
+{
+    char *r = (char *)malloc(strlen(path) + 8);
+    (void)os;
+    if (r) {
+        strcpy(r, "Work:x/");
+        strcat(r, strchr(path, ':') ? strchr(path, ':') + 1 : path);
+    }
+    return r;
+}
+
+static void dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh(void)
+{
+    char a0[] = "VTC:vsh", a1[] = "-c", a2[] = "true", n0[] = "nosuchvsh";
+    char *argv[4], *argn[4];
+    sh_invoke_info inf;
+    argv[0] = a0, argv[1] = a1, argv[2] = a2, argv[3] = 0;
+    argn[0] = n0, argn[1] = a1, argn[2] = a2, argn[3] = 0;
+    fresh();
+    sh.os.realpath = f_realpath;
+    sh_invoke(&sh, 3, argv, 0, &inf);
+    CHECK_STR(sh_get(&sh.ctx, "BASH"), "Work:x/vsh");
+    /* a bare name PATH does not find stays as it was given (not "bash", which names no program) */
+    fresh();
+    sh.os.realpath = f_realpath;
+    sh_invoke(&sh, 3, argn, 0, &inf);
+    CHECK_STR(sh_get(&sh.ctx, "BASH"), "nosuchvsh");
+}
+
 void suite_sh_exec(void)
 {
+    dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh();
     eval_builtin();
     exec_builtin();
     trap_builtin();

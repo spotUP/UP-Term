@@ -267,6 +267,15 @@ void sh_shell_free(sh_shell *sh)
 {
     int i;
     fd_defer_release(sh, 0);
+    /* the streams exec opened for the shell: `(exec >f; echo x)` left f open (and on AmigaDOS
+     * locked: the next `cat f` got "object is in use") */
+    if ((sh->io_own & SH_OWN_IN) && sh->io.in)
+        sh->os.close(sh->os.data, sh->io.in);
+    if ((sh->io_own & SH_OWN_OUT) && sh->io.out && sh->io.out != sh->io.in)
+        sh->os.close(sh->os.data, sh->io.out);
+    if ((sh->io_own & SH_OWN_ERR) && sh->io.err && sh->io.err != sh->io.out && sh->io.err != sh->io.in)
+        sh->os.close(sh->os.data, sh->io.err);
+    sh->io_own = 0;
     for (i = 0; i < SH_FDMAX; i++) {
         int k;
         for (k = 0; k < i && sh->fdt[k].fh != sh->fdt[i].fh; k++)
@@ -1015,7 +1024,12 @@ static void fd_unwind_job(sh_shell *sh, int mark, const sh_io *io, long job)
         if (cur && cown && cur != sh->fdundo[i].fh && !fd_used(sh, cur, 0)) {
             if (job && io && (io->in == cur || io->out == cur || io->err == cur))
                 fd_defer(sh, job, cur);
-            else if (!io || !(io->in == cur || io->out == cur || io->err == cur))
+            else if (!io || !((io->in == cur && (io->owned & SH_OWN_IN)) ||
+                              (io->out == cur && (io->owned & SH_OWN_OUT)) ||
+                              (io->err == cur && (io->owned & SH_OWN_ERR))))
+                /* closed here unless io owns it (close_owned closes that one): `echo x 3>f >&3`
+                 * made fd 1 another name for fd 3's handle, which nobody closed (AmigaDOS kept
+                 * f locked: the next `cat f` got "object is in use") */
                 sh->os.close(sh->os.data, cur);
         }
     }
@@ -6778,9 +6792,30 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
     } else if ((b = find_bi(sh, argv.v[0])) != 0) {
         if (b == b_exec && argv.n == 1 && n->redirs &&
             (parent == &sh->io || (parent->in == sh->io.in && parent->out == sh->io.out && parent->err == sh->io.err))) {
-            /* exec with redirections only: they stay for the shell itself */
+            /* exec with redirections only: they stay for the shell itself, which now owns the
+             * streams they opened; a stream it owned that nothing uses any more is closed */
+            sh_fh old[3];
+            int oown = sh->io_own, k;
+            old[0] = sh->io.in, old[1] = sh->io.out, old[2] = sh->io.err;
             sh->io = io;
             sh->io.owned = 0;
+            sh->io_own = io.owned & (SH_OWN_IN | SH_OWN_OUT | SH_OWN_ERR);
+            for (k = 0; k < 3; k++) {
+                sh_fh h = old[k];
+                if (!h || !(oown & (k == 0 ? SH_OWN_IN : k == 1 ? SH_OWN_OUT : SH_OWN_ERR)) ||
+                    (k > 0 && h == old[0]) || (k > 1 && h == old[1]))
+                    continue;
+                if (h == sh->io.in)
+                    sh->io_own |= SH_OWN_IN;
+                else if (h == sh->io.out)
+                    sh->io_own |= SH_OWN_OUT;
+                else if (h == sh->io.err)
+                    sh->io_own |= SH_OWN_ERR;
+                else if (!fd_used(sh, h, 0)) {
+                    closed_del(sh, h);
+                    sh->os.close(sh->os.data, h);
+                }
+            }
             if (io.owned & SH_OWN_FDS)
                 fd_commit(sh, io.fdmark);
             st = 0;
@@ -8725,12 +8760,30 @@ static void inv_msg(sh_shell *sh, const char *a, const char *b)
     sayl(sh, sh->io.err, "vsh: ", a, b, "\n", NULL);
 }
 
+/* $BASH: the shell's own full path, as bash sets it, so "$BASH -c ..." runs this shell (on the
+ * Amiga no command "bash" exists outside the interactive vshrc alias). A name without a directory is
+ * looked up in PATH; one the OS cannot resolve stays as it was given. */
+static void self_path(sh_shell *sh, const char *arg0)
+{
+    char found[256];
+    const char *name = arg0 && *arg0 ? arg0 : "vsh";
+    char *full = 0;
+    if (*name == '-')
+        name++; /* a login shell's -vsh */
+    if (!strchr(name, '/') && !strchr(name, ':') && hash_search(sh, name, found, sizeof(found)))
+        name = found;
+    if ((strchr(name, '/') || strchr(name, ':')) && sh->os.realpath)
+        full = sh->os.realpath(sh->os.data, name);
+    sh_set(&sh->ctx, "BASH", full && *full ? full : name);
+    free(full);
+}
+
 /* the variables bash has when it starts: its version (5.2: the owner's decision), the system, the
- * shell's nesting depth, and the ids; the last few read-only */
-static void start_vars(sh_shell *sh)
+ * shell's own path, its nesting depth, and the ids; the last few read-only */
+static void start_vars(sh_shell *sh, const char *arg0)
 {
     static const char *const fixed[][2] = {
-        { "BASH_VERSION", "5.2.0(1)-release" }, { "BASH", "bash" }, { "OSTYPE", "amigaos" },
+        { "BASH_VERSION", "5.2.0(1)-release" }, { "OSTYPE", "amigaos" },
         { "MACHTYPE", "m68k-commodore-amigaos" }, { "HOSTTYPE", "m68k" }
     };
     static const char *const info[] = { "5", "2", "0", "1", "release", "m68k-commodore-amigaos" };
@@ -8738,8 +8791,9 @@ static void start_vars(sh_shell *sh)
     const char *old = sh_get(&sh->ctx, "SHLVL");
     char d[24];
     int i;
-    for (i = 0; i < 5; i++)
+    for (i = 0; i < 4; i++)
         sh_set(&sh->ctx, fixed[i][0], fixed[i][1]);
+    self_path(sh, arg0);
     sh_ltoa((old ? atol(old) : 0) + 1, d);
     sh_set(&sh->ctx, "SHLVL", d);
     sh_attr_change(&sh->ctx, "SHLVL", SH_ATTR_EXPORT, 0);
@@ -8875,7 +8929,7 @@ void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *inf
         long us;
         sh->secs0 = sh_now(sh, &us);
     }
-    start_vars(sh);
+    start_vars(sh, argc > 0 ? argv[0] : 0);
     if (sh->os.cwd && !sh_get(&sh->ctx, "PWD")) {
         char *d = sh->os.cwd(sh->os.data);
         if (d && *d) {

@@ -218,6 +218,8 @@ typedef struct sh_shell {
     char flagbuf[40];      /* $- */
     sh_os os;
     sh_io io;              /* the shell's own streams */
+    int io_own;            /* SH_OWN_IN/OUT/ERR: the streams of io the shell opened itself (exec >f):
+                            * closed when exec replaces them or when the shell is freed */
     sh_func *funcs;
     sh_list aliases;       /* "name=value" */
     sh_list hist;          /* history: the shell's own list, used only when the console has none (os.hist) */

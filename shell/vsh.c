@@ -243,12 +243,17 @@ static void close_stream(BPTR fh)
 }
 
 static BPTR lock_name(const char *path, char *used, int max);
+static void amiga_name(const char *in, char *out, int max);
 
 static sh_fh os_open(void *os, const char *path, int mode)
 {
     BPTR fh;
-    char p[256];
+    char p[256], an[256];
     (void)os;
+    /* "./x" and "../x" as AmigaDOS names them (AmigaDOS has no "." entry: ". ./e.sh" and
+     * ENV=./e.sh could not open a file that was there) */
+    amiga_name(path, an, sizeof(an));
+    path = an;
     if (path[0] == '/' && path[1] && path[1] != '/') {
         /* "/vol/x" as Unix means it when the Amiga meaning (the parent's
          * x) has nothing there: the file itself, or for a new file its
@@ -283,8 +288,10 @@ static sh_fh os_open(void *os, const char *path, int mode)
 
 static int os_remove(void *os, const char *path)
 {
+    char an[256];
     (void)os;
-    return DeleteFile((STRPTR)path) ? 0 : -1;
+    amiga_name(path, an, sizeof(an));
+    return DeleteFile((STRPTR)an) ? 0 : -1;
 }
 
 /* where process substitution puts its files: T: (RAM: when no T: is assigned) */
@@ -759,9 +766,12 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
             j->close_err = j->err != 0;
         }
     }
+    /* NP_CopyVars FALSE: the command's environment is the shell's exported variables (runner sets
+     * them) and nothing else; a copy of this process's local variables brought back the ones the
+     * shell had unset (`unset SHLVL` in a vsh run by vsh: the child still saw the outer SHLVL) */
     p = (j->name && j->args)
         ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"vsh job", NP_StackSize, 8000,
-                            NP_Cli, TRUE, TAG_END)
+                            NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
         : 0;
     if (!p) {
         if (j->close_in)
@@ -1091,6 +1101,13 @@ static long os_read_line(void *os, sh_fh fh, char *buf, long max)
 static void amiga_name(const char *in, char *out, int max)
 {
     int n = 0;
+    /* the Unix devices a script names: /dev/null is NIL:, /dev/tty the console (". /dev/null",
+     * test -c /dev/null) */
+    if (!strcmp(in, "/dev/null") || !strcmp(in, "/dev/tty")) {
+        strncpy(out, in[5] == 'n' ? "NIL:" : "*", (size_t)max - 1);
+        out[max - 1] = 0;
+        return;
+    }
     for (;;) {
         if (!strncmp(in, "./", 2))
             in += 2;
@@ -1260,13 +1277,25 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
     BPTR lock;
     struct FileInfoBlock *fib;
     int r = -1;
+    char an[256];
     (void)os;
+    amiga_name(path, an, sizeof(an)); /* test -r ./x: AmigaDOS has no "." entry */
+    path = an;
     if (nofollow && os_is_link(path)) {
         memset(st, 0, sizeof(*st));
         st->type = SH_ST_FILE;
         st->link = 1;
         st->mode = 0777u;
         st->access = 7;
+        st->owned = st->group = 1;
+        return 0;
+    }
+    if (!strcmp(path, "NIL:") || !strcmp(path, "*")) {
+        /* /dev/null and /dev/tty: character devices anybody reads and writes; no lock names them */
+        memset(st, 0, sizeof(*st));
+        st->type = SH_ST_CHAR;
+        st->access = 6;
+        st->mode = 0666u;
         st->owned = st->group = 1;
         return 0;
     }
@@ -1808,17 +1837,20 @@ static int vsh_main(int argc, char **argv)
         }
         if (IsInteractive(Input())) /* a script or a pipe gets no prompts */
             prompt(&sh, text != 0);
+        else if (!text && (sh.opts & SO_INTERACTIVE))
+            sh_prompt_command(&sh); /* vsh -i reading a pipe: PROMPT_COMMAND still runs, as in bash */
         if (!FGets(Input(), (STRPTR)line, sizeof(line)))
             break;
         if (!text && (sh.opts & SO_INTERACTIVE) && (sh.opts & SO_HISTEXP)) {
-            /* the first line of a command: !! !$ ^a^b ... (bash shows the expanded line) */
+            /* the first line of a command: !! !$ ^a^b ... (bash shows the expanded line on its
+             * error stream, as vsh_host does: on Output() it was in the command's output) */
             char *ex;
             int po, r = sh_hist_expand(&sh, line, &ex, &po);
             if (r < 0)
                 continue;
             if (r > 0) {
                 long m = (long)strlen(ex);
-                Write(Output(), ex, m);
+                Write((BPTR)sh.io.err, ex, m);
                 sh_hist_replace(&sh, ex, po);
                 if (po) {
                     free(ex);
