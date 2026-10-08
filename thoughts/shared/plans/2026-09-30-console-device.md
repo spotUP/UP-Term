@@ -261,9 +261,11 @@ unmeasured value.
       close. Fail-first on the rig (unfixed build hung on run 2), fixed build 6/6, reach.py
       PASS, cube_rig 240/240. The race is intermittent: run autoprobe_rig.py XCON several
       times (a reboot between runs) when touching window open/close.
-- [ ] H5.3 Medium mode SetMode(fh,2): cooked line editing, but TAB, Shift+TAB, Up, Down
+- [x] H5.3 Medium mode SetMode(fh,2): cooked line editing, but TAB, Shift+TAB, Up, Down
       send DP5's bytes at once. `handler/lineedit.c` gains the mode; host test in
       `tests/test_lineedit.c` (each key gives DP5's bytes, other keys edit). Lifts DD20.
+      **DONE 2026-10-03/08:** amigaos32 plan T3.3 (handler medium mode, ACTION_FORCE, tests/test_lineedit.c)
+      and T3.4; concon_rig.py 9 of 9 on --os32 again 2026-10-08 (Shell medium mode in use).
 - [x] H5.4 `device/upconsole.c` -> `C:UPConsole` (vbcc, ReadArgs
       `CON/K,DEVICE/K,EXCLUDE/K,STATUS/S`): CON ON/OFF per DD19/DD21, STATUS prints both
       states. Makefile target `build/amiga/UPConsole`.
@@ -529,7 +531,7 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       | 3.1 40.63 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
       | 3.5 40.71 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
       | 3.1.4 | not tested: no ROM on this machine (the owner's A1200, V4, is the real-hardware row) |
-      | 3.2 47.115 | last in the project (T3: a real 3.2 install) |
+      | 3.2 47.115 | 17/17 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |   (2026-10-08, `rig.py start --os32`, HEAD build; the 3.2.3 ROM on the 3.2 tree)
 - [ ] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
       memory back to its start value; a task holding signal bit 31 opens and closes a
       unit 100 times and still holds it (ibmcon 1.8 regression, R-3).
