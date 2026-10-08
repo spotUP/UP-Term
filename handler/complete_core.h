@@ -170,4 +170,23 @@ long cc_cache_pack(const cc_cache *c, const char *old, long oldlen, char *out, l
 int cc_cache_parse(const char *buf, long len,
                    int (*each)(void *x, const cc_date *d, const char *ent, long size), void *x);
 
+/* W21: ghost text from completion candidates, the pure half. A word's
+ * directory part ends after its last '/' or ':' -- the offset of the name
+ * part, the directory part copied to dir (max bytes). */
+int cc_ghost_split(const char *word, char *dir, int max);
+
+/* The grey tail for a name part `prefix` out of a directory listing
+ * (names: NUL-separated, each ending in its suffix char -- ' ' file,
+ * '/' directory, ':' device -- the worker's KingCON-style list, files
+ * first): the first name that starts with prefix (case-insensitive, as
+ * AmigaDOS) and goes on, from the prefix on, a file's blank dropped.
+ * Copies it to tail (max bytes with the NUL); returns its length, 0 when no
+ * name fits. */
+int cc_ghost_tail(const char *names, long len, const char *prefix, char *tail, int max);
+
+/* A completion's `add` (unix style: the common extension, a blank after a
+ * single file) as a ghost tail: the trailing blank dropped. Returns the
+ * length. */
+int cc_ghost_from_add(const char *add, char *tail, int max);
+
 #endif

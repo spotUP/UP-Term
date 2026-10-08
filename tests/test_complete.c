@@ -487,8 +487,34 @@ static void reset_cache_reads_every_directory_again(void)
     cc_free_all(&c, &s);
 }
 
+static void ghost_tail_comes_from_the_directory_list_without_a_read(void)
+{
+    /* the worker's list: files first, then directories, each with its suffix */
+    static const char list[] = "readme.txt \0Rebuild \0docs/\0tmp/\0";
+    long len = (long)sizeof(list) - 1;
+    char tail[32], dir[32];
+    CHECK_INT(cc_ghost_split("SYS:Prefs/re", dir, sizeof(dir)), 10);
+    CHECK_STR(dir, "SYS:Prefs/");
+    CHECK_INT(cc_ghost_split("re", dir, sizeof(dir)), 0);
+    CHECK_STR(dir, "");
+    CHECK_INT(cc_ghost_tail(list, len, "re", tail, sizeof(tail)), 8);
+    CHECK_STR(tail, "adme.txt"); /* the first name, its blank dropped */
+    CHECK_INT(cc_ghost_tail(list, len, "REB", tail, sizeof(tail)), 4);
+    CHECK_STR(tail, "uild");     /* case-insensitive, the tail as the name has it */
+    CHECK_INT(cc_ghost_tail(list, len, "do", tail, sizeof(tail)), 3);
+    CHECK_STR(tail, "cs/");      /* a directory keeps its slash */
+    CHECK_INT(cc_ghost_tail(list, len, "docs", tail, sizeof(tail)), 1);
+    CHECK_STR(tail, "/");
+    CHECK_INT(cc_ghost_tail(list, len, "readme.txt", tail, sizeof(tail)), 0); /* nothing left to add */
+    CHECK_INT(cc_ghost_tail(list, len, "x", tail, sizeof(tail)), 0);
+    CHECK_INT(cc_ghost_from_add("cho ", tail, sizeof(tail)), 3);
+    CHECK_STR(tail, "cho");
+    CHECK_INT(cc_ghost_from_add("", tail, sizeof(tail)), 0);
+}
+
 void suite_complete(void)
 {
+    ghost_tail_comes_from_the_directory_list_without_a_read();
     first_tab_never_scans_a_cold_directory();
     tab_after_the_warm_up_is_answered_from_the_cache();
     cache_file_round_trips_through_a_reboot();

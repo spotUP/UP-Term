@@ -302,9 +302,18 @@ void le_hist_clear(le_line *le)
     le->hist_pos = 0;
 }
 
+static unsigned long line_key(const le_line *le)
+{
+    unsigned long k = 2166136261UL ^ (unsigned long)le->len;
+    int i;
+    for (i = 0; i < le->len; i++)
+        k = (k ^ le->buf[i]) * 16777619UL;
+    return k ? k : 1;
+}
+
 /* The newest history line that starts with the whole line and is longer:
- * its tail is the grey suggestion. */
-static const unsigned char *suggestion(const le_line *le)
+ * its tail is the grey suggestion; failing that, the completion ghost. */
+static const unsigned char *hist_suggestion(const le_line *le)
 {
     int i;
     if (!le->suggest || le->searching || !le->len || le->pos != le->len)
@@ -315,6 +324,17 @@ static const unsigned char *suggestion(const le_line *le)
         if (n > le->len && !memcmp(h, le->buf, le->len))
             return h + le->len;
     }
+    return 0;
+}
+
+static const unsigned char *suggestion(const le_line *le)
+{
+    const unsigned char *s = hist_suggestion(le);
+    if (s)
+        return s;
+    if (le->suggest && le->ghost_n && !le->searching && le->len && le->pos == le->len &&
+        le->ghost_key == line_key(le))
+        return le->ghost;
     return 0;
 }
 
@@ -752,6 +772,7 @@ void le_free(le_line *le)
 
 void le_reset(le_line *le)
 {
+    le_ghost_clear(le);
     le->len = 0;
     le->pos = 0;
     le->started = 0;
@@ -1357,4 +1378,73 @@ void le_menu_close(le_line *le, le_menu *m)
     out(le, "\033[J", 3);
     m->open = 0;
     m->rest_us = 0;
+}
+
+/* ---- W21: ghost text from completion candidates ------------------------- */
+
+int le_ghost_want(le_line *le, int *from, int *kind, unsigned long *key)
+{
+    int i, j, start, first = 1;
+    unsigned long k;
+    if (!le->suggest || le->searching || !le->len || le->pos != le->len || hist_suggestion(le))
+        return 0;
+    k = line_key(le);
+    if (le->ghost_asked == k || (le->ghost_n && le->ghost_key == k))
+        return 0;
+    for (i = 0; i < le->len; i++)
+        if (le->buf[i] == '"' || le->buf[i] == '\'' || le->buf[i] == '`')
+            return 0; /* a quoted line: the word's end is the shell's to say */
+    for (start = le->len; start > 0 && le->buf[start - 1] != ' '; start--)
+        ;
+    if (start == le->len)
+        return 0; /* the line ends in a blank: no word yet */
+    for (j = 0; j < start; j++)
+        if (le->buf[j] != ' ')
+            first = 0;
+    if (le->buf[start] && strchr("$-<>|&;(", le->buf[start]))
+        return 0; /* a variable, an option, a redirect */
+    if (first && le->buf[start] == '/')
+        return 0; /* UP-Term's own slash commands */
+    *kind = first ? 1 : 2;
+    for (i = start; i < le->len; i++) {
+        if (le->buf[i] == '#' || le->buf[i] == '?' || le->buf[i] == '*')
+            return 0;
+        if (le->buf[i] == '/' || le->buf[i] == ':')
+            *kind = 2; /* a path, even as the first word: files */
+    }
+    *from = start;
+    *key = k;
+    le->ghost_asked = k;
+    return 1;
+}
+
+void le_ghost_offer(le_line *le, unsigned long key, const unsigned char *tail, int n)
+{
+    int i, k = 0;
+    if (!n || !le->suggest || le->searching || le->pos != le->len || line_key(le) != key ||
+        hist_suggestion(le))
+        return;
+    for (i = 0; i < n && k < (int)sizeof(le->ghost) - 3; i++) {
+        unsigned char ch = tail[i];
+        if (ch < 0x20 || ch == 0x7F)
+            break; /* a control character in a file name is not shown */
+        if (le->utf8 && ch >= 0x80) {
+            le->ghost[k++] = (unsigned char)(0xC0 | (ch >> 6));
+            le->ghost[k++] = (unsigned char)(0x80 | (ch & 0x3F));
+        } else
+            le->ghost[k++] = ch;
+    }
+    if (!k)
+        return;
+    le->ghost[k] = 0;
+    le->ghost_n = k;
+    le->ghost_key = key;
+    redraw_from(le, le->pos);
+}
+
+void le_ghost_clear(le_line *le)
+{
+    le->ghost_n = 0;
+    le->ghost_key = 0;
+    le->ghost_asked = 0;
 }

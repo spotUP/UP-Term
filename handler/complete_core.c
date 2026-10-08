@@ -549,3 +549,64 @@ long cc_cache_release(cc_cache *c, const cc_cache_os *os)
             cc_drop(c, os, i);
     return freed;
 }
+
+/* ---- W21: ghost text from completion candidates ------------------------- */
+
+int cc_ghost_split(const char *word, char *dir, int max)
+{
+    int i, split = 0;
+    for (i = 0; word[i]; i++)
+        if (word[i] == '/' || word[i] == ':')
+            split = i + 1;
+    if (split > max - 1)
+        split = max - 1;
+    memcpy(dir, word, split);
+    dir[split] = 0;
+    return split;
+}
+
+static int ghost_lower(int c)
+{
+    return (c >= 'A' && c <= 'Z') ? c + 32 : c;
+}
+
+int cc_ghost_tail(const char *names, long len, const char *prefix, char *tail, int max)
+{
+    long k = 0;
+    int pn = (int)strlen(prefix);
+    while (k < len) {
+        const char *e = names + k;
+        int n = (int)strlen(e), i;
+        k += n + 1;
+        if (n <= pn)
+            continue; /* the prefix is all of it (its suffix is no tail) */
+        for (i = 0; i < pn && ghost_lower((unsigned char)e[i]) == ghost_lower((unsigned char)prefix[i]); i++)
+            ;
+        if (i < pn)
+            continue;
+        if (e[n - 1] == ' ')
+            n--;
+        n -= pn;
+        if (n <= 0)
+            continue;
+        if (n > max - 1)
+            n = max - 1;
+        memcpy(tail, e + pn, n);
+        tail[n] = 0;
+        return n;
+    }
+    tail[0] = 0;
+    return 0;
+}
+
+int cc_ghost_from_add(const char *add, char *tail, int max)
+{
+    int n = (int)strlen(add);
+    if (n && add[n - 1] == ' ')
+        n--;
+    if (n > max - 1)
+        n = max - 1;
+    memcpy(tail, add, n);
+    tail[n] = 0;
+    return n;
+}

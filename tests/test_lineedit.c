@@ -190,6 +190,72 @@ static void suggestion_shows_grey_and_right_takes_it(void)
     vt_free(t);
 }
 
+static void completion_ghost_shows_when_no_history_fits_and_right_takes_it(void)
+{
+    vt_term *t = start(40, 6, "> ");
+    int from = -1, kind = 0;
+    unsigned long gk = 0, old;
+    type("ec");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    CHECK_INT(from, 0);
+    CHECK_INT(kind, 1); /* the first word: a command */
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &old), 0); /* asked once per line */
+    le_ghost_offer(&le, gk, (const unsigned char *)"ho", 2);
+    CHECK_STR(h_row(t, 0), "> echo");
+    CHECK(h_cell(t, 4, 0)->attr & VT_ATTR_FAINT);
+    CHECK_STR(line(), "ec"); /* not in the line */
+    key(VT_KEY_RIGHT, 0);
+    CHECK_STR(line(), "echo");
+    vt_free(t);
+}
+
+static void completion_ghost_for_an_old_line_is_dropped(void)
+{
+    vt_term *t = start(40, 6, "> ");
+    int from, kind;
+    unsigned long gk;
+    type("ec");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    type("h");                                            /* the line moved on */
+    le_ghost_offer(&le, gk, (const unsigned char *)"ho", 2); /* the answer is late */
+    CHECK_STR(h_row(t, 0), "> ech");
+    CHECK_STR(line(), "ech");
+    vt_free(t);
+}
+
+static void completion_ghost_is_asked_only_for_a_plain_word_without_a_history_hit(void)
+{
+    vt_term *t = start(40, 6, "> ");
+    int from = -1, kind = 0;
+    unsigned long gk;
+    type("cd Wor");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    CHECK_INT(from, 3);
+    CHECK_INT(kind, 2); /* a file word */
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    type("/th");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 0); /* UP-Term's slash command */
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    type("echo \"a b");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 0); /* quoted */
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    type("echo $HO");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 0); /* a variable */
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    type("dir ");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 0); /* no word yet */
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    run("list SYS:Prefs");
+    type("li");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 0); /* history has it */
+    vt_free(t);
+}
+
 static void return_does_not_run_the_suggestion(void)
 {
     vt_term *t = start(40, 6, "> ");
@@ -1036,6 +1102,9 @@ void suite_lineedit(void)
     kingcon_list_has_19_char_columns_and_cuts_long_names();
     replace_word_for_menu_cycling();
     suggestion_shows_grey_and_right_takes_it();
+    completion_ghost_shows_when_no_history_fits_and_right_takes_it();
+    completion_ghost_for_an_old_line_is_dropped();
+    completion_ghost_is_asked_only_for_a_plain_word_without_a_history_hit();
     return_does_not_run_the_suggestion();
     ctrl_r_searches_history();
     ctrl_r_cancel_restores();

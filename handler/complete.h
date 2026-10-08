@@ -8,6 +8,8 @@
 
 #define COMPLETE_MAX 256
 #define COMPLETE_NAMES 8192   /* the matching names, NUL-separated (a whole C: in KingCON's window) */
+#define GHOST_ENTRIES 600     /* W21: names read from one directory for a ghost */
+#define GHOST_TICKS 10        /* W21: the read gives up after this many 1/50 s ticks */
 #define COMPLETE_EXTRA 2048   /* the shell's words handed to a completion */
 
 enum complete_mode {
@@ -51,6 +53,10 @@ struct complete_req {
                                    * "Enable cache" off, or kingcon-cache = off) */
     int cold;                     /* in: read a command directory the cache cannot answer
                                    * for (the refine after a warm-up); 0: never wait */
+    int ghost;                    /* in: W21 ghost text, asked as the user types: the
+                                   * worker never waits on a volume that is not in the
+                                   * DOS list, reads at most GHOST_ENTRIES names within
+                                   * GHOST_TICKS, and does not fall back to devices */
     int partial;                  /* out: COMMANDS answered without every directory's
                                    * current names (a warm-up refines it; add then
                                    * carries no suffix) */

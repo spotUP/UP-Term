@@ -195,8 +195,40 @@ static void scan_devices(struct complete_req *q, const char *prefix)
 
 /* Names in directory `lock` starting with `prefix`; commands: only what
  * cc_is_command takes (files with e or s, no directories), no .info. */
+/* W21: ticks (1/50 s) since the epoch of DateStamp, for the ghost read's budget */
+static long now_ticks(void)
+{
+    struct DateStamp ds;
+    DateStamp(&ds);
+    return ds.ds_Minute * 3000L + ds.ds_Tick;
+}
+
+/* W21: the volume or assign a path starts with is in the DOS list (a name
+ * that is not would be asked for in a requester, or waited for); a path
+ * without a volume is the current directory's. */
+static int ghost_volume_known(const char *dirpart)
+{
+    char name[COMPLETE_MAX];
+    int n = 0;
+    struct DosList *dl;
+    while (dirpart[n] && dirpart[n] != ':' && dirpart[n] != '/')
+        n++;
+    if (dirpart[n] != ':')
+        return 1;
+    if (n == 0 || n >= (int)sizeof(name))
+        return 0;
+    memcpy(name, dirpart, n);
+    name[n] = 0;
+    dl = LockDosList(LDF_ALL | LDF_READ);
+    dl = FindDosEntry(dl, (STRPTR)name, LDF_ALL);
+    UnLockDosList(LDF_ALL | LDF_READ);
+    return dl != 0;
+}
+
 static void scan_dir(struct complete_req *q, BPTR lock, const char *prefix, int commands)
 {
+    long t0 = q->ghost ? now_ticks() : 0;
+    int seen = 0;
     struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
     char pat[COMPLETE_MAX * 2 + 2];
     int wild = 0;
@@ -210,6 +242,8 @@ static void scan_dir(struct complete_req *q, BPTR lock, const char *prefix, int 
             const char *name = (const char *)fib->fib_FileName;
             int is_dir = fib->fib_DirEntryType > 0;
             int n = (int)strlen(name);
+            if (q->ghost && (++seen > GHOST_ENTRIES || now_ticks() - t0 > GHOST_TICKS))
+                break; /* a big or slow directory: what was read is the ghost's */
             int info = n > 5 && same_name(name + n - 5, ".info");
             if (commands && (info || !cc_is_command(fib->fib_DirEntryType, fib->fib_Protection)))
                 continue;
@@ -998,7 +1032,9 @@ static void worker(void)
         memcpy(dirpart, q->word, split + 1);
         dirpart[split + 1] = 0;
         strcpy(prefix, q->word + split + 1);
-        lock = q->mode == COMPLETE_DEVICES ? 0 : Lock((STRPTR)dirpart, ACCESS_READ);
+        lock = q->mode == COMPLETE_DEVICES || (q->ghost && !ghost_volume_known(dirpart))
+                   ? 0
+                   : Lock((STRPTR)dirpart, ACCESS_READ);
         if (lock) {
             /* KingCON's Alt+Tab: commands only, in the word's directory too
              * (unix keeps directories there: a directory's name is a cd) */
@@ -1011,7 +1047,7 @@ static void worker(void)
             scan_extra(q, prefix);
         }
         /* KingCON: file names that find nothing are device names */
-        if (q->mode == COMPLETE_DEVICES || (q->kingcon && q->mode == COMPLETE_FILES && !q->matches)) {
+        if (q->mode == COMPLETE_DEVICES || (q->kingcon && q->mode == COMPLETE_FILES && !q->matches && !q->ghost)) {
             q->matches = 0;
             q->names_len = 0;
             q->common[0] = 0;

@@ -52,6 +52,12 @@ typedef struct le_line {
     int started;
     int utf8;               /* characters are UTF-8 (xterm personality) */
     int suggest;            /* show history suggestions (default on) */
+    /* W21: the grey tail from a completion candidate (the handler's worker
+     * finds it, off the key path) when no history line fits; good only for
+     * the exact line it was found for (ghost_key) */
+    unsigned char ghost[96];
+    int ghost_n;
+    unsigned long ghost_key, ghost_asked;
     unsigned char *hist;    /* the lines, each NUL-terminated, oldest first (LE_MALLOC) */
     long hist_used, hist_cap;
     unsigned long *hist_at; /* where line i starts in hist (LE_MALLOC, hist_at_cap entries) */
@@ -128,6 +134,21 @@ void le_show_list(le_line *le, const char *names, int len);
  * least one), a name over 18 characters (its suffix counted) cut to 15
  * and "..." (research/2026-10-02_kingcon-completion.md). */
 void le_kc_show_list(le_line *le, const char *names, int len);
+/* W21 (owner 2026-10-08): ghost text from completion candidates when no
+ * history line fits. le_ghost_want says whether the caller should look for
+ * one now: 1 for a command word (the line's first word), 2 for a file
+ * word; *from is the word's first byte, *key names the line it is asked
+ * for. It answers 0 for an empty or finished word, a quote, a variable, a
+ * wildcard, a slash command, a line with a history suggestion, a line
+ * already asked about. The look-up must not wait on the disk: it is the
+ * caller's worker. le_ghost_offer gives the answer: tail (Latin-1, the
+ * text that would follow the cursor; n 0: nothing) shows grey if the line
+ * is still the one `key` names and the cursor is at its end; Right or End
+ * take it as a history suggestion. */
+int  le_ghost_want(le_line *le, int *from, int *key_kind, unsigned long *key);
+void le_ghost_offer(le_line *le, unsigned long key, const unsigned char *tail, int n);
+/* Forget the ghost and what was asked (a line was run, the directory may differ). */
+void le_ghost_clear(le_line *le);
 /* Replace the word ending at the cursor (from `from`) with `s`. */
 void le_replace_word(le_line *le, int from, const unsigned char *s, int n);
 

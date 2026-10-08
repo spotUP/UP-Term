@@ -56,6 +56,7 @@
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
+#include "complete_core.h"
 #include "menu_ids.h"
 #include "slash.h"
 #include "brk.h"
@@ -223,6 +224,14 @@ typedef struct con {
     char hist_queue[512];        /* lines waiting for the file, '\n'-ended */
     int hist_queue_len;
     int comp_busy, check_busy;
+    /* W21: ghost text from completion candidates, looked up off the key
+     * path: the request (its names stay as the directory's listing), the
+     * directory it lists, and what the pending look-up is for */
+    struct complete_req *ghost;
+    int ghost_busy, gdir_ok, gkind;
+    unsigned long gkey;
+    char gdir[COMPLETE_MAX];
+    char gword[COMPLETE_MAX];
     char checked[64];            /* the first word last sent to check */
     char *words[3];              /* ACTION_VTCON_WORDS lists by kind (1, 2), AllocVec'd */
     long words_len[3];
@@ -1549,6 +1558,7 @@ static void prefs_launch(void)
 #define WORK_COMP 1  /* the completion request (Tab, ASL, font, theme, save) */
 #define WORK_CHECK 2 /* is the first word a command */
 #define WORK_HIST 4  /* the history file */
+#define WORK_GHOST 8 /* ghost text from a completion candidate (11 KB, made at the first look-up) */
 static int ensure_worker(con *c, int want);
 static struct Process *opener(con *c);
 
@@ -2926,8 +2936,10 @@ static int ensure_worker(con *c, int want)
         c->check = complete_req_new(0);
     if ((want & WORK_HIST) && !c->hist)
         c->hist = complete_req_new(0);
+    if ((want & WORK_GHOST) && !c->ghost)
+        c->ghost = complete_req_new(1);
     return c->comp_port && (!(want & WORK_COMP) || c->comp) && (!(want & WORK_CHECK) || c->check) &&
-           (!(want & WORK_HIST) || c->hist);
+           (!(want & WORK_HIST) || c->hist) && (!(want & WORK_GHOST) || c->ghost);
 }
 
 /* The completion menu's names (COMPLETE_NAMES), made at the first menu. */
@@ -3139,6 +3151,84 @@ static void check_command(con *c)
         c->check_busy = 1;
 }
 
+/* W21 (owner 2026-10-08): grey text from a completion candidate when no
+ * history line fits. Nothing here waits on the disk: a command word is
+ * answered by the worker from the command cache (cold 0), a file word from
+ * the listing of its directory, which the worker read once (volume known,
+ * a budget of GHOST_ENTRIES names and GHOST_TICKS, no requester) and which
+ * stays until a line is run or a word is completed; typing within the
+ * directory is answered from that memory. One look-up at a time; a key
+ * meanwhile asks again when the answer is in. */
+static void ghost_show(con *c, unsigned long key, const char *tail, int n)
+{
+    if (n > 0 && !c->raw && c->w.t)
+        le_ghost_offer(&c->le, key, (const unsigned char *)tail, n);
+}
+
+static void ghost_check(con *c)
+{
+    int from, kind, off;
+    unsigned long key;
+    char word[COMPLETE_MAX], tail[96];
+    if (c->raw || !c->reader_shell || !c->w.t || c->ghost_busy || c->comp_busy || !c->le.suggest)
+        return;
+    if (!c->le.len || c->le.pos != c->le.len)
+        return;
+    if (!le_ghost_want(&c->le, &from, &kind, &key))
+        return;
+    if (!ensure_worker(c, WORK_GHOST))
+        return;
+    copy_latin1(&c->le, from, c->le.len, word, COMPLETE_MAX);
+    if (kind == 2) {
+        char dir[COMPLETE_MAX];
+        off = cc_ghost_split(word, dir, sizeof(dir));
+        if (c->gdir_ok && !strcmp(c->gdir, dir)) {
+            ghost_show(c, key, tail, cc_ghost_tail(c->ghost->names, c->ghost->names_len, word + off,
+                                                   tail, sizeof(tail)));
+            return;
+        }
+        c->gdir_ok = 0;
+        strcpy(c->gdir, dir);
+        c->ghost->mode = COMPLETE_FILES;
+        c->ghost->kingcon = 1; /* the suffixed, sorted list cc_ghost_tail reads */
+        strcpy(c->ghost->word, dir);
+    } else {
+        c->ghost->mode = COMPLETE_COMMANDS;
+        c->ghost->kingcon = 0;
+        strcpy(c->ghost->word, word);
+    }
+    strcpy(c->gword, word);
+    c->gkind = kind;
+    c->gkey = key;
+    c->ghost->show_info = 0;
+    c->ghost->no_cache = 0;
+    c->ghost->cold = 0; /* never wait for a command directory */
+    c->ghost->ghost = 1;
+    c->ghost->extra_len = 0;
+    c->ghost->screen = 0;
+    if (complete_start(c->ghost, c->comp_port, opener(c)))
+        c->ghost_busy = 1;
+}
+
+/* The look-up is back. */
+static void ghost_answer(con *c, struct complete_req *q)
+{
+    char tail[96], dir[COMPLETE_MAX];
+    int n = 0;
+    c->ghost_busy = 0;
+    if (!c->w.t || c->raw)
+        return;
+    if (c->gkind == 2) {
+        c->gdir_ok = q->mode == COMPLETE_FILES; /* the listing, or nothing */
+        if (c->gdir_ok)
+            n = cc_ghost_tail(q->names, q->names_len, c->gword + cc_ghost_split(c->gword, dir, sizeof(dir)),
+                              tail, sizeof(tail));
+    } else if (q->matches)
+        n = cc_ghost_from_add(q->add, tail, sizeof(tail));
+    ghost_show(c, c->gkey, tail, n);
+    ghost_check(c); /* a key came meanwhile */
+}
+
 /* W44: a key changed the first word as it is typed -- the word stays plain
  * and its colour waits for the keys to rest, counted on the frame clock
  * (command_wait), as /theme's list counts its rest; with no clock, at once. */
@@ -3299,6 +3389,10 @@ static void finish_completion(con *c)
             history_next(c);
             continue;
         }
+        if (q == c->ghost) {
+            ghost_answer(c, q);
+            continue;
+        }
         if (q == c->check) {
             c->check_busy = 0;
             if (!c->w.t)
@@ -3318,6 +3412,7 @@ static void finish_completion(con *c)
             continue;
         }
         c->comp_busy = 0;
+        c->gdir_ok = 0; /* a completion: the directory's listing is read again */
         if (q->mode == CONFIG_SAVE) {
             if (q->matches && c->save_work) {
                 FreeVec(c->conf); /* the staged table is the file's now: it becomes the window's */
@@ -3757,6 +3852,7 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
             if (!c->line_held)
                 in_append(c, (const vt_u8 *)"\n", 1); /* else when /theme's list closes */
             c->checked[0] = 0;
+            c->gdir_ok = 0;
             return;
         }
         if (ans)
@@ -3764,10 +3860,12 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
         in_append(c, c->le.buf, c->le.len);
         le_reset(&c->le);
         c->checked[0] = 0;
+        c->gdir_ok = 0; /* the line may have changed a directory or its contents */
         return;
     }
     check_command(c);
     command_clock(c); /* a word being typed: its colour when the keys rest */
+    ghost_check(c);
 }
 
 /* ---- keyboard ------------------------------------------------------------------- */
@@ -6112,7 +6210,7 @@ static LONG handler_main(void)
          * before it, opens is 0 too (a wake-up between the startup packet and
          * that Open used to end the handler, leaving dn_Task at a dead port). */
         if (c->ever_opened && c->opens <= 0 && (!c->wait_close || c->closing) && !c->nreads &&
-            !c->comp_busy && !c->check_busy && !c->hist_busy && !c->host_only) { /* a worker holds our request */
+            !c->comp_busy && !c->check_busy && !c->ghost_busy && !c->hist_busy && !c->host_only) { /* a worker holds our request */
             if (c->own_win && c->ntabs >= 2) {
                 /* our own shell ended, other tabs live: their window stays
                  * ours until the last one goes; our session goes now */
@@ -6172,6 +6270,8 @@ static LONG handler_main(void)
     }
     if (c->check)
         FreeVec(c->check);
+    if (c->ghost)
+        FreeVec(c->ghost);
     if (c->menu)
         FreeVec(c->menu);
     if (c->tm)
