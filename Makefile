@@ -53,7 +53,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py); ONLY=ixemul the patched
 # ixemul's host tests (IXEMUL_SRC/tests/host: its argument line parser)
 test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
@@ -65,6 +65,8 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = entry ]; then python3 tests/test_entry_stub.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = deps ]; then python3 tests/test_host_deps.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul ]; then $(MAKE) -s -C $(IXEMUL_SRC)/tests/host test; fi
+	@# UP-Term's own manual pages (man/*.1, mdoc): no mandoc warning (macOS has mandoc)
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = man ]; then for f in man/*.1; do mandoc -T lint -W warning $$f || exit 1; done; echo "[OK] man/*.1 lint clean"; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
 $(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h

@@ -1,0 +1,25 @@
+.Dd October 8, 2026
+.Dt SZ 1
+.Os UP-Term
+.Sh NAME
+.Nm sz ,
+.Nm rz
+.Nd send and receive files with ZMODEM
+.Sh SYNOPSIS
+.Nm sz
+.Ar file ...
+.Nm rz
+.Op Cm OVERWRITE
+.Sh DESCRIPTION
+In a login over a serial line
+.Pq Xr upgetty 1 ,
+.Nm sz
+sends the files; the far end's
+.Nm rz
+or its terminal program receives them.
+.Nm rz
+receives files into the current directory;
+.Cm OVERWRITE
+replaces files of the same name there.
+.Sh SEE ALSO
+.Xr upgetty 1

@@ -1,0 +1,33 @@
+.Dd October 8, 2026
+.Dt UPTERM 1
+.Os UP-Term
+.Sh NAME
+.Nm UPTerm
+.Nd change a setting of the UP-Term window it runs in
+.Sh SYNOPSIS
+.Nm
+.Ar name
+.Op Ar value ...
+.Sh DESCRIPTION
+Every setting of UP-Term's menus and of its preferences is also a command
+typed at the prompt as
+.Ql / Ns Ar name Ar value
+.Pq Li /cursor bar , /theme dracula-default , /font topaz 11 .
+.Nm
+does the same from a script, or in a window whose shell does its own line
+editing:
+.Dl UPTerm cursor bar
+.Pp
+The change applies to the window
+.Nm
+runs in;
+.Li UPTerm save
+writes the window's settings to its profile.
+.Li /help
+in the window lists the names, and Tab completes names and values.
+.Sh EXIT STATUS
+0 when the window took the setting, 10 when it refused it.
+.Sh SEE ALSO
+.Xr vsh 1
+.Pp
+The kit's README.txt, section COMMANDS.

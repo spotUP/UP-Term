@@ -1,0 +1,55 @@
+.Dd October 8, 2026
+.Dt UPGETTY 1
+.Os UP-Term
+.Sh NAME
+.Nm upgetty
+.Nd a Unix-style login on the serial port
+.Sh SYNOPSIS
+.Nm
+.Op Cm BAUD Ar n
+.Op Cm RTSCTS
+.Op Cm UNIT Ar n
+.Op Cm DEVICE Ar name
+.Op Cm ROWS Ar n Cm COLS Ar n
+.Op Cm TERM Ar name
+.Op Cm SHELL Ar command
+.Op Cm LOOP
+.Sh DESCRIPTION
+.Nm
+gives the far end of a serial line \(em a null-modem cable or a USB serial
+adapter, with
+.Ql screen /dev/ttyUSB0 19200 ,
+minicom or PuTTY there \(em a shell on a real tty: line editing, the window
+size
+.Pq Li stty rows/cols ,
+and full-screen programs such as less, nano, vim and tmux.
+Ctrl-C, Ctrl-Z and Ctrl-\e work as on a Unix tty: only the bytes 0x03,
+0x1A and 0x1C cross the cable, and the Amiga end turns them into signals
+for the running program.
+Unlike
+.Ql NewShell AUX: ,
+every byte arrives as it was sent.
+.Bl -tag -width "DEVICE name"
+.It Cm BAUD Ar n
+The line speed; 19200 when not given.
+.It Cm RTSCTS
+Hardware flow control: needed for 115200, with a cable that carries RTS
+and CTS.
+.It Cm UNIT Ar n , Cm DEVICE Ar name
+The serial device and its unit.
+.It Cm ROWS Ar n , Cm COLS Ar n
+The far end's window size.
+.It Cm TERM Ar name
+The terminal type the shell is given.
+.It Cm SHELL Ar command
+The program to start instead of vsh.
+.It Cm LOOP
+Start a new shell each time one ends.
+.El
+.Sh EXAMPLES
+.Dl upgetty LOOP
+.Dl upgetty BAUD 115200 RTSCTS LOOP
+.Sh SEE ALSO
+.Xr rz 1 ,
+.Xr sz 1 ,
+.Xr vsh 1

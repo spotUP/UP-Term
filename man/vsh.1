@@ -1,0 +1,132 @@
+.Dd October 8, 2026
+.Dt VSH 1
+.Os UP-Term
+.Sh NAME
+.Nm vsh
+.Nd the UP-Term shell, a POSIX shell for AmigaOS
+.Sh SYNOPSIS
+.Nm
+.Op Fl i
+.Op Fl s
+.Nm
+.Fl c Ar command
+.Op Ar name Op Ar arg ...
+.Nm
+.Ar file
+.Op Ar arg ...
+.Sh DESCRIPTION
+.Nm
+is a POSIX shell with bash and zsh touches that runs AmigaDOS commands and
+ixemul Unix programs alike.
+It has pipes, the redirections
+.Ql 2> 2>&1 &> <<EOF ,
+.Ql $( ) ,
+.Ql $(( )) ,
+globs,
+.Ic if , while , for
+and
+.Ic case ,
+functions, aliases and job control
+.Pf ( Ic jobs , fg , bg , wait ) .
+Ctrl-C goes to the running command; Ctrl-Z suspends an ixemul program
+(an AmigaDOS command cannot be stopped, and
+.Nm
+says so).
+.Pp
+There is no fork on the Amiga: subshells,
+.Ql $( )
+and all but the last stage of a pipeline run as processes of their own.
+.Pp
+Commands are looked for in
+.Ev PATH ,
+in Unix form as ixemul programs read it
+.Pq Pa /UP-Term/bin:/gg/bin:/c No by default ,
+then in the AmigaDOS Shell's path.
+A name that starts with
+.Ql /
+means the parent directory when something is there, and otherwise what it
+means on Unix:
+.Pa /RAM/notes
+is
+.Pa RAM:notes ,
+as ixemul programs name it.
+.Pp
+The
+.Ic type
+and
+.Ic which
+builtins shadow the AmigaDOS
+.Ic C:Type
+command, which stays reachable by its full name.
+The
+.Ic umask
+builtin sets the local variable
+.Ev UMASK ,
+which the programs it starts inherit.
+.Ss Options
+.Bl -tag -width Ds
+.It Fl c Ar command
+Run
+.Ar command ;
+.Ar name
+becomes
+.Li $0
+and the
+.Ar arg Ns s
+the positional parameters.
+.It Fl i
+Interactive, also when the input is no console.
+.It Fl s
+Read commands from the standard input.
+.El
+.Ss Completion and keys
+.Ic complete ,
+.Ic compgen
+and
+.Ic compopt
+work as in bash; Tab in an UP-Term window asks
+.Nm
+for the words.
+.Ic bind
+and an
+.Pa .inputrc
+.Pf ( Ev INPUTRC ,
+else
+.Pa $HOME/.inputrc )
+set the window's line editor
+.Pq Li set editing-mode vi | emacs .
+.Sh ENVIRONMENT
+.Bl -tag -width INPUTRC
+.It Ev HOME
+The start directory and the place of
+.Pa .vshrc ;
+.Pa SYS:
+when unset.
+.It Ev PATH
+Where commands are looked for, in Unix form.
+.It Ev UMASK
+The file mode mask the started programs take.
+.El
+.Sh FILES
+.Bl -tag -width ENVARC:vsh/vshrc
+.It Pa ENVARC:vsh/vshrc
+Read first at startup.
+.It Pa $HOME/.vshrc
+Read next.
+.It Pa GG:bin/sh
+.Nm
+installed as
+.Pa /gg/bin/sh ,
+the shell ixemul programs run their commands with, when there is no Geek
+Gadgets
+.Pa GG: .
+.El
+.Sh EXIT STATUS
+The status of the last command; an AmigaDOS return code (0, 5, 10, 20)
+passes through.
+.Sh SEE ALSO
+.Xr ixkill 1 ,
+.Xr upgetty 1 ,
+.Xr UPTerm 1
+.Pp
+The kit's README.txt, section VSH, lists the differences from bash.
