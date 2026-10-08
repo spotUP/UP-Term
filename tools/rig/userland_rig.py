@@ -20,8 +20,9 @@ For each package this script
      here but by the terminal cases (below);
   3. diffs each output against the expected one.
 
-Terminal cases: pkgs/<pkg>/check/tty ("name<TAB>command", the command a
-plain argv: no pipes or quotes) with the keys in check/keys/<name> run under
+Terminal cases: pkgs/<pkg>/check/tty ("name<TAB>command[<TAB>file]", the
+command a plain argv: no pipes or quotes; file: one it writes, which must
+be byte-equal to the Mac's) with the keys in check/keys/<name> run under
 the ports' ptyrun (build/tools/ptyrun.amiga, `make tty-tools` there) on an
 80x24 pseudo-terminal with TERM=vtcon (the ports' build/tools/terminfo).
 ptyrun records the stream and the byte count at each key step; the Mac's
@@ -149,8 +150,20 @@ def script_text(pkg, name, cmd):
             "echo \"[exit $?]\"\n")
 
 
+def amiga_delete(*drawers):
+    """Delete VTC: drawers from the Amiga side. FS-UAE's host drawer keeps a
+    directory cache: a name the Mac deleted under it stays known, and a later
+    open, rename or stat of that name fails or finds a ghost (nano took a
+    deleted new.txt for an existing file, sed -i could not rename u.txt to a
+    deleted u.txt.bak; rig 3, 2026-10-08)."""
+    for d in drawers:
+        if (VTC / d).exists():
+            run("Delete >NIL: VTC:%s ALL QUIET FORCE" % d, 60)
+
+
 def stage(pkg, bins, wanted):
     """Binaries, data and one script per wanted case into VTC:."""
+    amiga_delete("userland/work/" + pkg, "userland/" + pkg, "out/" + pkg)
     (VTC / "userland/bin").mkdir(parents=True, exist_ok=True)
     for b in bins:
         shutil.copyfile(b, VTC / "userland/bin" / b.name)
@@ -237,9 +250,19 @@ def tty_cases(pkg):
     if f.exists():
         for line in f.read_text(encoding="utf-8").splitlines():
             if line.strip() and not line.startswith("#") and "\t" in line:
-                name, cmd = line.split("\t", 1)
+                name, cmd = line.split("\t")[:2]
                 out.append((name, cmd))
     return out
+
+
+def tty_file(pkg, name):
+    """The file a terminal case writes (its third field), or None."""
+    f = PORTS / "pkgs" / pkg / "check/tty"
+    for line in (f.read_text(encoding="utf-8").splitlines() if f.exists() else []):
+        p = line.split("\t")
+        if p[0] == name and len(p) > 2 and p[2]:
+            return p[2]
+    return None
 
 
 def tty_stage(pkg, wanted):
@@ -287,6 +310,12 @@ def tty_compare(pkg, name):
     b = (got / (name + ".txt")).read_text(encoding="latin-1").strip() if (got / (name + ".txt")).exists() else ""
     if a != b:
         return False, "program status: expected %r, rig %r" % (a, b)
+    wrote = tty_file(pkg, name)
+    if wrote:
+        ef, gf = exp / (name + ".file"), VTC / "userland/work" / pkg / wrote
+        if not gf.exists() or not ef.exists() or ef.read_bytes() != gf.read_bytes():
+            return False, "%s: expected %r, rig %r" % (wrote, ef.read_bytes() if ef.exists() else None,
+                                                       gf.read_bytes() if gf.exists() else None)
     es, gs = (exp / (name + ".stream")).read_bytes(), (got / (name + ".stream")).read_bytes()
     em, gm = marks(exp / (name + ".stream.marks")), marks(got / (name + ".stream.marks"))
     if len(em) != len(gm):
