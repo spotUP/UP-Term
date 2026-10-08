@@ -345,7 +345,7 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # and -O2 grow vsh); -D__NOINLINE__ stops vbcc's string.h from inlining
 # strcmp/strlen/strcpy at every call (another 3.5 KB). Measured 2026-10-07.
 VSH_OPT := -O=1 -size -D__NOINLINE__
-VSH_SRC := shell/vsh.c shell/sh_exec.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
+VSH_SRC := shell/vsh.c shell/vsh_mem.c shell/sh_exec.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
 $(BUILD)/amiga/vsh: $(VSH_SRC) config/termurl.h shell/sh_exec.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
 	$(subst -O2,$(VSH_OPT),$(VC)) -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
