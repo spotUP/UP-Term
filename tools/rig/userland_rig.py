@@ -16,8 +16,19 @@ For each package this script
      data, PATH with the binaries first, LANG=C, the case's command, then
      "[exit $?]") and runs it as `VTC:vsh <script>` with stdout to
      VTC:out/<pkg>/<name>.txt. There is no terminal window: the agent's EXEC
-     does not take a `<` redirect, so a case that needs a tty is not covered;
+     does not take a `<` redirect, so a case that needs a tty is not covered
+     here but by the terminal cases (below);
   3. diffs each output against the expected one.
+
+Terminal cases: pkgs/<pkg>/check/tty ("name<TAB>command", the command a
+plain argv: no pipes or quotes) with the keys in check/keys/<name> run under
+the ports' ptyrun (build/tools/ptyrun.amiga, `make tty-tools` there) on an
+80x24 pseudo-terminal with TERM=vtcon (the ports' build/tools/terminfo).
+ptyrun records the stream and the byte count at each key step; the Mac's
+run of the same keys (`make host-<pkg>`) is the expected one. Both streams
+are rendered by the engine (build/vtdump: text, colours and attributes) at
+every step, and the screens and the program's exit status must match.
+Verdict lines: tty:<name>.
 
   python3 tools/rig/userland_rig.py                 every package with check cases
   python3 tools/rig/userland_rig.py --only grep     one package (rerun even if it passed)
@@ -63,6 +74,9 @@ VERDICTS = paths.RIG / "userland"
 PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", paths.repo("upterm-ports")))
 COREUTILS = ROOT / "dist/gg/coreutils-5.2.1/bin"
 SYSBIN = PORTS / "build/sysroot/SYS/UP-Term"
+PTYRUN = PORTS / "build/tools/ptyrun.amiga"
+TERMINFO = PORTS / "build/tools/terminfo"
+VTDUMP = ROOT / "build/vtdump"
 
 
 def run(cmd, timeout=60):
@@ -71,8 +85,9 @@ def run(cmd, timeout=60):
 
 
 def packages():
-    """Packages with a check/cases file, sorted."""
-    return sorted(p.parent.parent.name for p in (PORTS / "pkgs").glob("*/check/cases"))
+    """Packages with a check/cases or check/tty file, sorted."""
+    return sorted({p.parent.parent.name for p in (PORTS / "pkgs").glob("*/check/cases")} |
+                  {p.parent.parent.name for p in (PORTS / "pkgs").glob("*/check/tty")})
 
 
 def cases(pkg):
@@ -93,8 +108,11 @@ def binaries(pkg):
 
 def fingerprint(pkg, bins):
     h = hashlib.sha256()
-    files = list(bins) + [PORTS / "pkgs" / pkg / "check/cases"]
+    files = list(bins) + [PORTS / "pkgs" / pkg / "check/cases", PORTS / "pkgs" / pkg / "check/tty"]
     files += sorted((PORTS / "build/expected" / pkg).glob("*.txt"))
+    if tty_cases(pkg):
+        files += [PTYRUN] + sorted((PORTS / "pkgs" / pkg / "check/keys").glob("*"))
+        files += sorted((PORTS / "build/expected" / pkg).glob("*.stream*"))
     for f in files:
         h.update(f.name.encode() + (f.read_bytes() if f.exists() else b"<missing>"))
     return h.hexdigest()[:16]
@@ -182,25 +200,104 @@ def check_package(pkg, only_case):
     fp = fingerprint(pkg, bins)
     old = read_verdict(pkg)
     prior = old[2] if old and old[1] == fp else {}
-    wanted = [c for c in cases(pkg) if (not only_case or c[0] == only_case)]
+    all_cases = cases(pkg) + [("tty:" + n, c) for n, c in tty_cases(pkg)]
+    wanted = [c for c in all_cases if (not only_case or c[0] == only_case)]
     if only_case and not wanted:
         print("[ERROR] %s: no case %s" % (pkg, only_case))
         return False
     # a case that passed under this fingerprint stays passed unless it is asked for
     todo = [c for c in wanted if only_case or prior.get(c[0]) != "PASS"]
     results = dict(prior)
-    stage(pkg, bins, todo)
+    plain = [c for c in todo if not c[0].startswith("tty:")]
+    tty = [(n[4:], c) for n, c in todo if n.startswith("tty:")]
+    stage(pkg, bins, plain)
+    if tty:
+        tty_stage(pkg, tty)
     for name, _cmd in todo:
-        rc, out = run_case(pkg, name)
-        ok, diff = compare(pkg, name)
+        if name.startswith("tty:"):
+            rc, out = run("VTC:vsh VTC:userland/%s/tty-%s.sh" % (pkg, name[4:]), 120)
+            ok, diff = tty_compare(pkg, name[4:])
+        else:
+            rc, out = run_case(pkg, name)
+            ok, diff = compare(pkg, name)
         results[name] = "PASS" if ok else "FAIL"
         print("%s %s/%s%s" % ("[OK]" if ok else "[FAIL]", pkg, name, "" if ok else " (agent rc %s %s)\n%s" % (rc, out.strip()[:200], diff)),
               flush=True)
-    for name in [n for n in results if n not in dict(cases(pkg))]:
+    for name in [n for n in results if n not in dict(all_cases)]:
         del results[name]   # a case the package no longer has
     status = write_verdict(pkg, fp, results)
     print("%s: %s, %d of %d cases pass" % (pkg, status, sum(v == "PASS" for v in results.values()), len(results)))
     return status == "PASS"
+
+
+def tty_cases(pkg):
+    """(name, command) lines of pkgs/<pkg>/check/tty: the terminal cases."""
+    f = PORTS / "pkgs" / pkg / "check/tty"
+    out = []
+    if f.exists():
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.startswith("#") and "\t" in line:
+                name, cmd = line.split("\t", 1)
+                out.append((name, cmd))
+    return out
+
+
+def tty_stage(pkg, wanted):
+    """ptyrun, the terminfo, the keys and one vsh script per terminal case into VTC:."""
+    shutil.copyfile(PTYRUN, VTC / "userland/bin/ptyrun")
+    shutil.rmtree(VTC / "userland/terminfo", ignore_errors=True)
+    shutil.copytree(TERMINFO, VTC / "userland/terminfo")
+    keys = VTC / "userland" / pkg / "keys"
+    keys.mkdir(parents=True, exist_ok=True)
+    for name, cmd in wanted:
+        shutil.copyfile(PORTS / "pkgs" / pkg / "check/keys" / name, keys / name)
+        (VTC / "userland" / pkg / ("tty-" + name + ".sh")).write_text(
+            "cd VTC:userland/work/" + pkg + "\n"
+            "export PATH=/VTC/userland/bin:$PATH\n"
+            "unset LC_ALL LC_CTYPE SHLVL\n"
+            "export LANG=C TERM=vtcon TERMINFO=/VTC/userland/terminfo\n"
+            "ptyrun -t 30 VTC:userland/%s/keys/%s VTC:out/%s/%s.stream %s >VTC:out/%s/%s.txt 2>VTC:out/%s/%s.err\n"
+            % (pkg, name, pkg, name, cmd, pkg, name, pkg, name), encoding="latin-1")
+
+
+def render(stream, upto):
+    """The engine's screen (text, then colours and attributes) after the first `upto` bytes."""
+    return subprocess.run([str(VTDUMP), "80", "24"], input=stream[:upto], capture_output=True).stdout.decode("utf-8", "replace")
+
+
+def marks(f):
+    """[(step, bytes)] of a ptyrun .marks file (not the end line)."""
+    out = []
+    for l in (f.read_text().splitlines() if f.exists() else []):
+        a, b = l.split()
+        if a != "end":
+            out.append((a, int(b)))
+    return out
+
+
+def tty_compare(pkg, name):
+    """(ok, diff text) of a terminal case: exit status, then the screen at every key step."""
+    exp, got = PORTS / "build/expected" / pkg, VTC / "out" / pkg
+    if not (exp / (name + ".stream")).exists():
+        return False, "no expected stream (make host-%s in the ports repo)" % pkg
+    if not (got / (name + ".stream")).exists():
+        return False, "no stream captured: %s" % ((got / (name + ".err")).read_text(encoding="latin-1").strip()[:200]
+                                                   if (got / (name + ".err")).exists() else "")
+    a = (exp / (name + ".txt")).read_text(encoding="latin-1").strip()
+    b = (got / (name + ".txt")).read_text(encoding="latin-1").strip() if (got / (name + ".txt")).exists() else ""
+    if a != b:
+        return False, "program status: expected %r, rig %r" % (a, b)
+    es, gs = (exp / (name + ".stream")).read_bytes(), (got / (name + ".stream")).read_bytes()
+    em, gm = marks(exp / (name + ".stream.marks")), marks(got / (name + ".stream.marks"))
+    if len(em) != len(gm):
+        return False, "key steps: expected %d, rig %d" % (len(em), len(gm))
+    for (step, eb), (_s, gb) in zip(em, gm):
+        x, y = render(es, eb), render(gs, gb)
+        if x != y:
+            d = list(difflib.unified_diff(x.splitlines()[:24], y.splitlines()[:24], "expected", "rig", lineterm=""))
+            return False, "screen before key step %s differs%s\n%s" % (
+                step, "" if d else " (colours or attributes only)", "\n".join(d[:20]))
+    return True, ""
 
 
 def bash_cases(area):
