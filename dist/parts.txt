@@ -1,0 +1,65 @@
+# Which part of Files/install.dos installs each file of the kit (the Installer's
+# update copies a changed file again and runs its part again; tools/mkmanifest.py
+# writes the part into Files/MANIFEST). One line: <part> <kit path> [<UP-Term: drawer>]
+# A kit path names a file or a whole drawer; the longest one that matches wins.
+# "-": in the kit, not installed. The third column: a copy part's drawer in UP-Term:
+# (what P_COPY's copyfiles and install.dos's copy-<part> copy it to).
+# Every file of the kit must match a line: mkmanifest stops `make dist` otherwise.
+-               Install
+-               Install.info
+-               Uninstall
+-               Uninstall.info
+-               README.txt
+-               LICENSES.txt
+-               ClaudeCode
+-               ClaudeCode.info
+-               Files/install.dos
+drawer          Files/reassign.sh
+system          Files/PTY
+system          Files/XCON
+system          Files/UP-Term Prefs
+system          Files/ixkill
+system          Files/pty-handler
+system          Files/screen
+system          Files/screenrc
+system          Files/termcap.vtcon
+system          Files/terminfo
+system          Files/themes
+system          Files/tmux
+system          Files/tmux.conf
+system          Files/unstartup.sh
+system          Files/up-term.conf
+system          Files/vsh
+system          Files/vtcon-handler
+copy-coreutils  Files/coreutils/bin     bin
+-               Files/coreutils
+copy-unifont    Files/unifont           unifont
+copy-emoji      Files/emoji             emoji
+tools           Files/Claude
+tools           Files/ClaudeCode
+tools           Files/UPDemo
+tools           Files/UPTerm
+tools           Files/VERSIONS
+tools           Files/hl
+tools           Files/mdv
+tools           Files/net
+tools           Files/rz
+tools           Files/sz
+tools           Files/upgetty
+tools           Files/uptelnet
+copy-python     Files/python3           Python3
+copy-nvim       Files/nvim              nvim
+fonts           Files/fonts
+desktop         Files/UP-Term
+desktop         Files/UP-Term.info
+desktop         Files/UP-Term-Prefs
+desktop         Files/UP-Term-Prefs.info
+desktop         Files/upicon
+boot            Files/banner
+boot            Files/vshrc
+boot            Files/wasabi
+libs            Files/libs
+mount           Files/IXPIPE
+mount           Files/ixpipe-handler
+console         Files/UPConsole
+console         Files/up-console.device
