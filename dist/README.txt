@@ -350,6 +350,11 @@ VSH (the shell)
   CDPATH is a list of directories in Unix form (/RAM/work:/Work/src), as PATH
   is: a volume name (RAM:work) holds a colon, which splits the entry, so it
   cannot be listed. cd and pushd themselves take either form.
+  Process substitution goes through a file in T: (T:vsh-ps-...; RAM: without
+  T:), which native commands and ixemul programs both open: <(cmd) runs cmd
+  to its end before the command starts, so the two do not run at the same
+  time and a cmd that never ends hangs the line; >(cmd) runs after the
+  command that writes to it, so its output comes after the writer's.
   Stack: vsh needs none set (it takes 320 KB itself). The commands it runs
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
   when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).
