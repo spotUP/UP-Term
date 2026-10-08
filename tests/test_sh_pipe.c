@@ -49,8 +49,21 @@ static void no_break_without_closed_reader_or_running_writer(void)
     CHECK_INT(p.broke, 0);
 }
 
+/* coproc { read x; }: the coproc ends without reading all of its input; the shell
+ * writes that pipe itself (no writer job) and has not closed NAME[1]: closing the read
+ * end must not drain it (the drain waited for an end of file that never came) */
+static void reader_closing_a_pipe_the_shell_writes_does_not_drain(void)
+{
+    sh_pipe_rec p;
+    sp_init(&p, &rd_tag, &wr_tag);
+    CHECK_INT(sp_reader_closed(&p), 0);
+    fresh(&p);
+    CHECK_INT(sp_reader_closed(&p), 1);
+}
+
 void suite_sh_pipe(void)
 {
+    reader_closing_a_pipe_the_shell_writes_does_not_drain();
     writer_that_writes_nothing_is_not_broken_when_the_reader_closes();
     writer_that_writes_to_the_closed_pipe_is_broken_once();
     no_break_without_closed_reader_or_running_writer();

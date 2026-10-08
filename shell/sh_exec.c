@@ -6735,6 +6735,13 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
     if (redirect(sh, n->redirs, parent, &io)) {
         if (!nofunc && special_bi(argv.v[0]))
             posix_fatal(sh, 1);
+        if (!wait) {
+            /* the pipe ends handed to it: it never starts, so nobody else closes them, and the
+             * next stage waited for an EOF for ever */
+            sh_io ends = *parent;
+            ends.owned &= SH_OWN_IN | SH_OWN_OUT | SH_OWN_ERR;
+            close_owned(sh, &ends);
+        }
         sh_list_free(&argv);
         return 1;
     }
@@ -6833,7 +6840,11 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         } else if (!wait) {
             if (job)
                 *job = st > 0 ? st : 0;
-            st = st > 0 ? 0 : 1;
+            if (st < 0) {
+                err_not_found(sh, &io, argv.v[0]);
+                st = 127;
+            } else
+                st = 0;
         } else if (st < 0) {
             err_not_found(sh, &io, argv.v[0]);
             st = 127;
@@ -6997,6 +7008,7 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
     sh_io sio[16];
     long job[16];
     int started[16];
+    long ps0[16];
     int k = stages(n, st, 16), i;
     long status = 0, ps[16];
     sh_list hsnap;
@@ -7029,27 +7041,25 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
     for (i = 0; i < k; i++) {   /* bash runs DEBUG in the shell, for each stage's simple command, before the stage starts */
         job[i] = 0;
         started[i] = 0;
+        ps0[i] = 0;
         if (st[i]->kind == SH_CMD)
             debug_trap(sh, st[i], io);
         if (is_external(sh, st[i])) {
-            exec_cmd(sh, st[i], &sio[i], 0, &job[i]);
+            long r = exec_cmd(sh, st[i], &sio[i], 0, &job[i]);
+            if (!job[i]) {
+                /* it did not start (not found, or a redirection failed): its streams are gone */
+                started[i] = 1;
+                ps0[i] = r;
+            }
         } else if (sh->os.spawn && (i + 1 < k || !(sh->opts & SO_LASTPIPE))) {
             subshell_mode(sh, st[i], &sio[i], 0, 1, &job[i]);
             started[i] = 1; /* or failed: its streams are gone either way */
         }
     }
     for (i = 0; i < k; i++) {
-        ps[i] = 0;
+        ps[i] = ps0[i];
         if (job[i] || started[i])
             continue;
-        if (is_external(sh, st[i])) {
-            /* it did not start; the OS layer took its streams all the same */
-            char *name = expand_one(sh, st[i]->words->text, io);
-            err_not_found(sh, io, name ? name : "?");
-            free(name);
-            ps[i] = 127;
-            continue;
-        }
         sh->debug_done = st[i]->kind == SH_CMD && sh->traps[TRAP_DEBUG] && !sh->trap_busy;
         ps[i] = exec_node(sh, st[i], &sio[i]);
         sh->debug_done = 0;

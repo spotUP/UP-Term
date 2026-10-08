@@ -104,6 +104,16 @@ typedef sh_pipe_rec pipe_rec; /* handles and jobs are kept as void * (shell/sh_p
 
 static pipe_rec pipe_tab[32];
 
+/* Which handles line reads take a byte at a time (os_read_line): a handle
+ * and its handler's port (a PIPE: handler process serves one open, so a
+ * reused handle with another port is another stream). */
+static struct {
+    BPTR fh;
+    struct MsgPort *port;
+    int stream;
+} rl_kind[8];
+static int rl_next;
+
 /* A break (Ctrl-C, or ^\ as CTRL_E) to a running job: its runner, which
  * is the command's process for a loaded command, and the Shell process
  * SystemTags spawned for a Resident command or a script (found by the
@@ -204,13 +214,16 @@ static void close_stream(BPTR fh)
     if (!fh)
         return;
     Forbid();
+    for (i = 0; i < 8; i++)
+        if (rl_kind[i].fh == fh)
+            rl_kind[i].fh = 0;
     for (i = 0; i < 32; i++)
         if (pipe_tab[i].rd == (void *)fh || pipe_tab[i].wr == (void *)fh)
             pr = &pipe_tab[i];
     if (pr && pr->rd == (void *)fh) {
-        sp_reader_closed(pr);
+        int drain = sp_reader_closed(pr);
         Permit();
-        {
+        if (drain) {
             static char sink[512]; /* only read into, never used: shared is fine */
             LONG n;
             while ((n = Read(fh, sink, sizeof(sink))) > 0) {
@@ -733,8 +746,18 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
             j->out = Open((STRPTR)"*", MODE_NEWFILE);
             j->close_out = 1;
         }
-        j->err = (io->owned & SH_OWN_ERR) ? (BPTR)io->err : 0;
-        j->close_err = (io->owned & SH_OWN_ERR) != 0;
+        /* errors: the shell's error stream, never 0 (a process without one wrote its errors to
+         * its output: `cat nofile | tr` sent cat's message down the pipe) */
+        if (io->owned & SH_OWN_ERR) {
+            j->err = (BPTR)io->err;
+            j->close_err = 1;
+        } else if (io->err && !IsInteractive((BPTR)io->err)) {
+            j->err = (BPTR)io->err;
+            j->close_err = 0;
+        } else {
+            j->err = Open((STRPTR)"*", MODE_NEWFILE);
+            j->close_err = j->err != 0;
+        }
     }
     p = (j->name && j->args)
         ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"vsh job", NP_StackSize, 8000,
@@ -745,6 +768,8 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
             close_stream(j->in);
         if (j->close_out)
             close_stream(j->out);
+        if (j->close_err && j->err != j->out)
+            close_stream(j->err);
         if (seg)
             UnLoadSeg(seg);
         free(j->name);
@@ -1004,9 +1029,54 @@ static long os_write(void *os, sh_fh fh, const char *b, long n)
     return Write((BPTR)fh, (APTR)b, n);
 }
 
+/* A stream that cannot seek (a pipe, a socket): Seek fails on it. Asked
+ * once per handle (rl_kind), not per line. */
+static int is_stream(BPTR fh)
+{
+    struct FileHandle *f = (struct FileHandle *)BADDR(fh);
+    int i, st;
+    if (!f || IsInteractive(fh))
+        return 0;
+    Forbid();
+    for (i = 0; i < 8; i++)
+        if (rl_kind[i].fh == fh && rl_kind[i].port == f->fh_Type) {
+            st = rl_kind[i].stream;
+            Permit();
+            return st;
+        }
+    Permit();
+    /* the rig's L:Queue-Handler answers Seek with 0 and ERROR_ACTION_NOT_KNOWN, not -1 */
+    SetIoErr(0);
+    st = Seek(fh, 0, OFFSET_CURRENT) < 0 || IoErr() == ERROR_ACTION_NOT_KNOWN;
+    Forbid();
+    i = rl_next++ & 7;
+    rl_kind[i].fh = fh;
+    rl_kind[i].port = f->fh_Type;
+    rl_kind[i].stream = st;
+    Permit();
+    return st;
+}
+
+/* One line. From a stream a byte at a time, as bash reads one: a buffered
+ * read (FGets) waits on PIPE: until its whole buffer is filled or the
+ * writer closes, so a coproc that answered a line and waited for the next
+ * never got the line to the shell (both hung), and FGets took bytes past
+ * the line that the next reader of the pipe should get. */
 static long os_read_line(void *os, sh_fh fh, char *buf, long max)
 {
     (void)os;
+    if (is_stream((BPTR)fh)) {
+        long n = 0;
+        char c;
+        while (n < max - 1 && Read((BPTR)fh, &c, 1) == 1) {
+            buf[n++] = c;
+            if (c == '\n')
+                break;
+        }
+        buf[n] = 0;
+        TR("read_line stream", fh, n);
+        return n ? n : -1;
+    }
     if (!FGets((BPTR)fh, (STRPTR)buf, max)) {
         TR("read_line eof", fh, IoErr());
         return -1;
@@ -1334,8 +1404,17 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                 j->io.out = (sh_fh)Open((STRPTR)"*", MODE_NEWFILE);
                 j->io.owned |= SH_OWN_OUT;
             }
-            if (!(io->owned & SH_OWN_ERR))
-                j->io.err = j->io.out;
+            if (!(io->owned & SH_OWN_ERR)) {
+                /* the shell's error stream, as Unix shares the descriptor: a file or a pipe is
+                 * that handle itself; a console its own handle on it. Never its output: the
+                 * errors (and set -x) of a $( ) went into the capture */
+                if (io->err && !IsInteractive((BPTR)io->err))
+                    j->io.err = io->err;
+                else if (!(io->owned & SH_OWN_OUT))
+                    j->io.err = j->io.out; /* the console handle opened for its output */
+                else if ((j->io.err = (sh_fh)Open((STRPTR)"*", MODE_NEWFILE)) != 0)
+                    j->io.owned |= SH_OWN_ERR;
+            }
         }
         p = CreateNewProcTags(NP_Entry, (ULONG)subshell_proc, NP_Name, (ULONG)"vsh subshell",
                               NP_StackSize, VSH_STACK_SUB, NP_Cli, TRUE, TAG_END);

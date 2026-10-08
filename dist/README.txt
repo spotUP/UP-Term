@@ -368,6 +368,10 @@ VSH (the shell)
     /dev/stdout and /dev/stderr are redirection targets, source files and
     test -e/-a/-r/-w operands; a native command that is given such a name as
     an argument cannot open it (probe fd/ext_devfd).
+    coproc: a coproc whose body is shell code answers line by line as in
+    bash; an external program as the coproc (coproc cat) gets its input only
+    when PIPE: has filled the read it asked for or NAME[1] is closed, so a
+    line-by-line exchange with it waits (probe builtins/coproc).
     Traps: ERR (set -E), DEBUG (set -T) and RETURN work as in bash; the
     DEBUG text of a command with a here-document leaves the document out.
     shopt knows all of bash 5.3's names. extglob, globstar, nullglob,

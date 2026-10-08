@@ -44,7 +44,7 @@ A package that passed with an unchanged fingerprint is skipped on the next run;
 a case that passed is skipped when only some cases are rerun. Exit 0 when every
 package that ran passed. The rig must be up (`rig.py start`, VTC: is
 build/rig/vtc); `make build/amiga/vsh` first."""
-import argparse, difflib, hashlib, os, pathlib, re, shlex, shutil, struct, sys
+import argparse, difflib, hashlib, os, pathlib, re, shlex, shutil, struct, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
 import paths
@@ -280,6 +280,27 @@ def bash_fingerprint(area):
     return h.hexdigest()[:16]
 
 
+def run_watched(pkg, name, limit=90):
+    """One probe in the background (Run), so a probe that never ends cannot wedge amiagent: the host
+    waits for its done-file up to limit seconds. A probe that did not end: 'HANG', and the rig is
+    rebooted (a vsh blocked in a PIPE: read ignores Ctrl-C) so the next probe has a clean machine."""
+    done = VTC / "out" / pkg / (name + ".done")
+    done.unlink(missing_ok=True)
+    launcher = VTC / "userland" / pkg / (name + ".run")
+    launcher.write_text("VTC:vsh VTC:userland/%s/%s.sh >VTC:out/%s/%s.txt\necho done >VTC:out/%s/%s.done\n"
+                        % (pkg, name, pkg, name, pkg, name), encoding="latin-1")
+    run("Run >NIL: VTC:vsh VTC:userland/%s/%s.run" % (pkg, name), 20)
+    end = time.time() + limit
+    while time.time() < end:
+        if done.exists():
+            return "ended"
+        time.sleep(0.5)
+    rig = [sys.executable, str(pathlib.Path(__file__).with_name("rig.py"))]
+    subprocess.run(rig + ["stop"], capture_output=True, timeout=120)
+    subprocess.run(rig + ["start", "--max"], capture_output=True, timeout=400)
+    return "HANG (no end in %d s; rig rebooted)" % limit
+
+
 def check_bash(area, only_case):
     pkg = "bash-" + area
     if not (BASH_PROBES / area).is_dir():
@@ -299,11 +320,16 @@ def check_bash(area, only_case):
     todo = [n for n in wanted if only_case or prior.get(n) != "PASS"]
     results = dict(prior)
     stage_bash(area, todo)
+    # /tmp is the volume TMP: (vsh and ixemul); the kit's Install assigns it to T: when it is missing,
+    # the rig never ran Install: the same assign here (probes write ${TMPDIR:-/tmp}/name)
+    if todo and run("Assign >NIL: TMP: EXISTS", 20)[0] != 0:
+        run("Assign TMP: T:", 20)
     for name in todo:
-        rc, out = run("VTC:vsh VTC:userland/%s/%s.sh >VTC:out/%s/%s.txt" % (pkg, name, pkg, name), 90)
+        how = run_watched(pkg, name)
         ok, diff = compare(pkg, name, BASH_EXPECTED / area / (name + ".txt"), "make bashdiff ONLY=%s" % area)
+        ok = ok and how == "ended"
         results[name] = "PASS" if ok else "FAIL"
-        print("%s %s/%s%s" % ("[OK]" if ok else "[FAIL]", pkg, name, "" if ok else " (agent rc %s %s)\n%s" % (rc, out.strip()[:200], diff)),
+        print("%s %s/%s%s" % ("[OK]" if ok else "[FAIL]", pkg, name, "" if ok else " (%s)\n%s" % (how, diff)),
               flush=True)
     for name in [n for n in results if n not in names]:
         del results[name]

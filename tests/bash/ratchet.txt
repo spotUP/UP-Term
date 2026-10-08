@@ -284,6 +284,7 @@ builtins/command_flags
 builtins/command_run
 builtins/command_v
 builtins/coproc
+builtins/coproc_shell
 builtins/decl_F
 builtins/decl_bad
 builtins/decl_case
@@ -814,6 +815,8 @@ redir/herestr2
 redir/inredir
 redir/noclobber
 redir/pipe_last_stage_redirect
+redir/pipe_stage_redirect_fails
+redir/subst_stderr
 redir/pipe_redirect_eof
 redir/rdwr2
 redir/redirexec

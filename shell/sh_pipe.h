@@ -24,10 +24,14 @@ static void sp_init(sh_pipe_rec *p, void *rd, void *wr)
     p->broke = 0;
 }
 
-/* The reader closes. */
-static void sp_reader_closed(sh_pipe_rec *p)
+/* The reader closes. 1: drain the pipe, a command writes it (it may be blocked in a
+ * Write the closed reader never takes). 0: no command writes it, the write end is a
+ * shell's own (a coproc's input, NAME[1]): a drain would wait for that shell to close
+ * it, and a coproc that ended without reading all of it never ended (rig: wait hung). */
+static int sp_reader_closed(sh_pipe_rec *p)
 {
     p->rd_closed = 1;
+    return p->writer != 0;
 }
 
 /* The drain read n bytes: 1 when the writer must get its break now (once). */
