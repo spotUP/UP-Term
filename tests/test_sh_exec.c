@@ -1579,8 +1579,29 @@ static void dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh(void)
     CHECK_STR(sh_get(&sh.ctx, "BASH"), "nosuchvsh");
 }
 
+/* V94 (pty probes): bash -i on a terminal has job control on, so $- shows m; on a pipe it does not */
+static void an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash(void)
+{
+    char a0[] = "vsh", a1[] = "-i";
+    char *argv[3];
+    sh_invoke_info inf;
+    argv[0] = a0, argv[1] = a1, argv[2] = 0;
+    fresh();
+    sh_invoke(&sh, 2, argv, 1, &inf);
+    CHECK_INT(strchr(sh.flagbuf, 'm') != 0, 1);
+    sh_run_text(&sh, "set +m", 0);
+    CHECK_INT(strchr(sh.flagbuf, 'm') == 0, 1);
+    sh_run_text(&sh, "set -o monitor", 0);
+    CHECK_INT(strchr(sh.flagbuf, 'm') != 0, 1);
+    sh_run_text(&sh, "set +m", 0);
+    fresh();
+    sh_invoke(&sh, 2, argv, 0, &inf); /* -i reading a pipe */
+    CHECK_INT(strchr(sh.flagbuf, 'm') == 0, 1);
+}
+
 void suite_sh_exec(void)
 {
+    an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash();
     tab_on_a_command_with_a_spec_answers_with_its_words();
     dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh();
     eval_builtin();

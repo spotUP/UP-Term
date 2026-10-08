@@ -133,6 +133,8 @@ static unsigned long inert_state;
 static int shopt_get(sh_shell *sh, const char *name);
 static int core_pathkind(sh_ctx *c, const char *path);
 
+static int opt_on(const sh_shell *sh, int i);
+
 /* $- and the context's copies of the flags the expander looks at */
 static void opts_apply(sh_shell *sh)
 {
@@ -140,11 +142,11 @@ static void opts_apply(sh_shell *sh)
     const char *o;
     int i;
     for (o = sh_flag_order; *o; o++) {
-        unsigned long bit = *o == 'i' ? SO_INTERACTIVE : 0;
-        for (i = 0; i < N_SHOPT && !bit; i++)
+        int on = *o == 'i' && (sh->opts & SO_INTERACTIVE);
+        for (i = 0; i < N_SHOPT; i++)
             if (sh_optab[i].letter == *o)
-                bit = sh_optab[i].bit;
-        if (bit && (bit == SO_INERT ? 0 : (sh->opts & bit)))
+                on = opt_on(sh, i); /* an option vsh only records (m k ...) shows when set, as in bash */
+        if (on)
             *p++ = *o;
     }
     if (sh->opts & SO_STDIN)
@@ -9515,6 +9517,7 @@ void sh_invoke(sh_shell *sh, int argc, char **argv, int tty, sh_invoke_info *inf
         inv |= SO_INTERACTIVE;
     if (inv & SO_INTERACTIVE)
         inv |= SO_HISTEXP;
+    opt_name(sh, "monitor", (inv & SO_INTERACTIVE) && tty); /* bash: job control on a terminal */
     if (!(inv & SO_STDIN))
         inv &= ~SO_STDIN;
     sh->opts |= inv;
