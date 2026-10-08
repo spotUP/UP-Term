@@ -481,6 +481,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
     c->ctx.arg0 = sh->ctx.arg0;  /* not owned by a ctx */
     c->ctx.status = sh->ctx.status;
     c->ctx.pid = sh->ctx.pid;
+    c->ctx.top_pid = sh->ctx.top_pid ? sh->ctx.top_pid : sh->ctx.pid;
     c->ctx.last_bg = sh->ctx.last_bg;
     for (i = 0; i < 32; i++)
         if (sh->jobs[i]) { /* the subshell lists its parent's jobs (jobs | cat, $(jobs)) but is not their parent */

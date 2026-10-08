@@ -63,7 +63,8 @@ typedef struct sh_ctx {
     char *arg0;             /* $0 */
     const char *flags;      /* $-: "i" in an interactive shell (not owned) */
     long status;            /* $? */
-    long pid;               /* $$ */
+    long pid;               /* this process's id: BASHPID, the temp names, kill's target */
+    long top_pid;           /* $$: the top shell's pid, which every subshell reports (0: this is the top shell, pid) */
     long last_bg;           /* $! (0: none yet) */
     int nocase;             /* globs match names without regard to case (Amiga filesystems) */
     /* $(cmd): run cmd, return its output (malloc'ed, the caller frees) */

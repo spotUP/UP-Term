@@ -1562,7 +1562,7 @@ static const char *param(ex *e, const char *name)
     long v;
     int k;
     if (!name[1] && (name[0] == '?' || name[0] == '$' || name[0] == '!' || name[0] == '#')) {
-        v = name[0] == '?' ? c->status : name[0] == '$' ? c->pid : name[0] == '!' ? c->last_bg : c->args.n;
+        v = name[0] == '?' ? c->status : name[0] == '$' ? (c->top_pid ? c->top_pid : c->pid) : name[0] == '!' ? c->last_bg : c->args.n;
         if (name[0] == '!' && !c->last_bg)
             return 0;
         k = 0;
