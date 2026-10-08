@@ -355,7 +355,7 @@ VSH (the shell)
   to its end before the command starts, so the two do not run at the same
   time and a cmd that never ends hangs the line; >(cmd) runs after the
   command that writes to it, so its output comes after the writer's.
-  Stack: vsh needs none set (it takes 320 KB itself). The commands it runs
+  Stack: vsh needs none set (it takes 256 KB itself). The commands it runs
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
   when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).
   Prompt: PS1 takes bash (\w \u \h) and zsh (%~ %n %m %? %F{red}...%f)
@@ -381,10 +381,10 @@ VSH (the shell)
     (probe expand/tilde_user); ~  ~+  ~-  are expanded.
     $PPID, $UID and $EUID are 0: AmigaOS has no parent process id and no
     user ids (probe vars/ids).
-    Function calls nest as deep as the stack lets them: vsh runs on 320 KB
+    Function calls nest as deep as the stack lets them: vsh runs on 256 KB
     (more when the Shell's Stack is larger), a subshell, pipeline stage or
     $( ) on 128 KB. A level of a small function takes about 0.7 to 1.1 KB:
-    about 290 levels in the shell, 110 in a subshell. Deeper, the call
+    about 230 levels in the shell, 110 in a subshell. Deeper, the call
     stops with "nested too deeply (N function levels)", status 2, and no
     crash (probe grammar/deep goes 200 levels).
     $PWD is an AmigaDOS name (Work:dir); its colon would split PATH, so a

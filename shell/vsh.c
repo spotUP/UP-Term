@@ -64,7 +64,7 @@ static void tr(const char *s, long a, long b)
 static const char version[] = "$VER: vsh 0.1 (29.9.2026)";
 /* the stack vsh wants: AmigaOS 3.2 and 4 start it with that, and so does
  * a vsh it runs; otherwise it swaps to 64 KB itself (main) */
-static const char stack_cookie[] = "$STACK: 327680";
+static const char stack_cookie[] = "$STACK: 262144";
 
 /* ---- the OS layer ------------------------------------------------------------- */
 
@@ -2146,7 +2146,7 @@ static int vsh_main(int argc, char **argv)
  * Shell's default stack is 4 KB on 3.1, so vsh runs on a 64 KB stack of
  * its own when it was given less, as its subshell processes do. Only
  * statics across the swap: locals of this frame live on the old stack. */
-#define VSH_STACK 327680
+#define VSH_STACK 262144
 static struct StackSwapStruct swap;
 static int g_argc, g_rc;
 static char **g_argv;
