@@ -14,6 +14,7 @@
 -               ClaudeCode
 -               ClaudeCode.info
 -               Files/install.dos
+-               Files/upupdate
 drawer          Files/reassign.sh
 system          Files/PTY
 system          Files/XCON
