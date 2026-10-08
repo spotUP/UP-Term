@@ -502,6 +502,10 @@ $(BUILD)/amiga/wbrun: tests/amiga/wbrun.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/wbrun.c
 
+$(BUILD)/amiga/taskdump: tests/amiga/taskdump.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/taskdump.c
+
 $(BUILD)/amiga/taskpath: tests/amiga/taskpath.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/taskpath.c
