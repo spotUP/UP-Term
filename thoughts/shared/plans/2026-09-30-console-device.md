@@ -523,15 +523,25 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       and alloc_screen's row array is zeroed so a failed allocation frees only what it made.
       DD14 amended: device units keep no scrollback -- the amiga personality keeps none, as
       the ROM, so the 200 lines were never used.
-- [ ] DV5 Kickstart matrix (DD22): per row DV1, DV2, D2.3, D3.2, H5.6 results.
+- [x] DV5 Kickstart matrix (DD22): per row DV1, DV2, D2.3, D3.2, H5.6 results.
       **2026-09-30, all but the 3.2 row (last, ledger T3):** `tools/rig/dvmatrix.sh <rom> <label>`
       (logs build/rig/shots/dvmatrix-<label>.log):
       | ROM | DV1 condev | DV2+DV4 devverify | D2.3 rkc | D3.2 cudump | H5.6 concon |
       | 3.0 39.106 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
       | 3.1 40.63 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
       | 3.5 40.71 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
-      | 3.1.4 | not tested: no ROM on this machine (the owner's A1200, V4, is the real-hardware row) |
+      | 3.1.4 46.143 | 17/17 | 5/6 | 5/5 | 1 of 15 differ | 8/9 |   (2026-10-08, the owner's A1200 ROM kick.a1200.46.143 read in place, default 3.1 disk, HEAD build)
       | 3.2 47.115 | 17/17 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |   (2026-10-08, `rig.py start --os32`, HEAD build; the 3.2.3 ROM on the 3.2 tree)
+      **Every row filled 2026-10-08 (ticked: the matrix is measured; 3.1.4 has three open differences,
+      not fixed here):** on Kickstart 3.1.4 (46.143, exec 46.45)
+      - devverify DV4: a STANDARD unit with its scrollback full holds 68112 bytes, over the 65536
+        limit (67976 open, 68112 full; ROM 5088). Every other ROM stays under it.
+      - cudump: ConUnit cu_Mask is 0xFFFFFFFF in console.device 46's unit, 1 in ours (the other 14
+        fields equal); on 3.0/3.1/3.5/3.2 the ROM's was ours.
+      - concon H5.6: romprobe through CON: equals the ROM on 46 of 51 lines: the ROM's window reports
+        25 rows (`size 25;79`), ours 12 (`12;79`), and the four bottom-row probes follow from it
+        (cuf-past-right 13;52 vs 12;52, cuf-at-bottom, text-at-bottom-right, cup-past-bounds).
+      Logs: build/rig/shots/dvmatrix-3.1.4.log (summary), the full run in the agent's session log.
 - [x] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
       memory back to its start value; a task holding signal bit 31 opens and closes a
       unit 100 times and still holds it (ibmcon 1.8 regression, R-3).
