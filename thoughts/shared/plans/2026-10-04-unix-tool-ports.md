@@ -313,11 +313,11 @@ Phase 1:
 - [ ] 1.10 kit (2026-10-08: upterm-ports make kit-stage (76c4f8b) stages programs, pages, licences, SOURCES.txt and the source tree; the vtcon side is upterm-ports thoughts/shared/handoffs/2026-10-08_vtcon-kit-userland.patch, held back: it needs a copy part in dist/Install.installer, which the Installer agent has open)
 
 Phase 2:
-- [ ] 2.1 gzip
-- [ ] 2.2 bzip2
-- [ ] 2.3 xz
-- [ ] 2.4 bsdtar
-- [ ] 2.5 zip
+- [ ] 2.1 gzip (2026-10-08: gzip 1.15 + zlib 1.3.2, rig 3 9/9, staged; open: 1.10)
+- [ ] 2.2 bzip2 (2026-10-08: 1.0.8, rig 3 6/6, staged; open: 1.10)
+- [ ] 2.3 xz (2026-10-08: 5.8.4, rig 3 8/8, staged; open: 1.10)
+- [ ] 2.4 bsdtar (2026-10-08: libarchive 3.8.9 as tar/cpio/bsdunzip/bsdcat, rig 3 11/11, staged; FFS long-name and -p probes not run; open: 1.10)
+- [ ] 2.5 zip (2026-10-08: Zip 3.0, rig 3 6/6, staged; open: 1.10)
 
 Phase 3:
 - [ ] 3.1 file
