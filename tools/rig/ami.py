@@ -111,6 +111,22 @@ def window(title):
             found.setdefault(f[5], (int(f[2]), int(f[3]), w, h))
     return found
 
+def grab(box=None):
+    # The front screen (or box = (x, y, w, h) of it) as (w, h, rows): each row
+    # w*3 bytes of RGB, whatever SCREENSHOT sent (palette indices or RGB).
+    b = req(0x07, struct.pack('>4H', *box) if box else b'')
+    fmt, w, h, nc = b[0], *struct.unpack('>HHH', b[2:8])
+    if fmt == 1:
+        # On 3.2's native 16-colour Workbench the indices carry bits above the
+        # palette (16, 32, ...: planes the screen does not have); a lookup past
+        # the palette gave no bytes and sheared every row after it (2026-10-08).
+        # Only the screen's depth counts.
+        pal = b[8:8 + nc * 3]; px = b[8 + nc * 3:]; m = max(nc, 1) - 1
+        rows = [b''.join(pal[(i & m) * 3:(i & m) * 3 + 3] for i in px[y * w:(y + 1) * w]) for y in range(h)]
+    else:
+        px = b[8:]; rows = [px[y * w * 3:(y + 1) * w * 3] for y in range(h)]
+    return w, h, rows
+
 PUT_PART = 8 << 20   # a frame holds 16 MiB at most (PROTOCOL.md)
 
 def put(local, remote):
@@ -155,14 +171,7 @@ def main(a):
     elif cmd == 'screens':
         b = req(0x0A); print(b.hex())
     elif cmd == 'shot':
-        payload = struct.pack('>4H', *map(int, a[2:6])) if len(a) >= 6 else b''
-        b = req(0x07, payload)
-        fmt, w, h, nc = b[0], *struct.unpack('>HHH', b[2:8])
-        if fmt == 1:
-            pal = b[8:8 + nc * 3]; px = b[8 + nc * 3:]
-            rows = [b''.join(pal[i * 3:i * 3 + 3] for i in px[y * w:(y + 1) * w]) for y in range(h)]
-        else:
-            px = b[8:]; rows = [px[y * w * 3:(y + 1) * w * 3] for y in range(h)]
+        w, h, rows = grab(tuple(map(int, a[2:6])) if len(a) >= 6 else None)
         png(a[1], w, h, rows); print(a[1], w, h)
     elif cmd == 'key':
         # INPUT op 3 KEY: rawcode u8, down u8, qualifier u16 -- down, then up

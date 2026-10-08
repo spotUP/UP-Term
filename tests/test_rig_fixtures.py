@@ -54,6 +54,30 @@ class Rig(unittest.TestCase):
         x, y = struct.unpack('>HH', self.fake.clicks[0][1:5])
         self.assertEqual((x, y), (120, 220))
 
+    def test_installer_rig_clicks_proceed_on_a_non_interlaced_screen(self):
+        # 3.2's PAL Workbench: installer_rig clicked Proceed (y 191) at y 95, in the page's text,
+        # and the Installer's first page never moved (2026-10-08)
+        import installer_rig
+        self.fake.yunits = 2
+        installer_rig.click((100, 100, 40, 20))
+        x, y = struct.unpack('>HH', self.fake.clicks[0][1:5])
+        self.assertEqual((x, y), (120, 220))
+
+    def test_a_shot_with_indices_past_the_palette_keeps_its_rows(self):
+        # 3.2's native 16-colour screen: SHOT sent indices 16 and 32; a palette lookup past the end gave
+        # no bytes and sheared every later row (2026-10-08). Only the screen's depth counts.
+        pal = bytes([170, 170, 170, 0, 0, 0]) + bytes(14 * 3)
+        px = bytes([0, 1, 16, 33, 1, 0, 32, 17])        # 4x2: 16 -> 0, 33 -> 1, 32 -> 0, 17 -> 1
+        body = bytes([1, 0]) + struct.pack('>HHH', 4, 2, 16) + pal + px
+        saved = ami.req
+        ami.req = lambda code, payload=b'', timeout=150: body
+        try:
+            w, h, rows = ami.grab()
+        finally:
+            ami.req = saved
+        g, k = bytes([170, 170, 170]), bytes(3)
+        self.assertEqual(rows, [g + k + g + k, k + g + g + k])
+
     def test_a_failing_run_puts_back_the_users_remote_file(self):
         fx = ir.Fixtures(); fx.take()
         self.fake.files['ENVARC:Claude/remote'] = b'127.0.0.1 2399\n'   # the rig fixture
