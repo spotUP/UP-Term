@@ -222,7 +222,10 @@ def bash_wrapper(area, name):
     flags = shlex.split(fl.read_text()) if fl.exists() else []
     target, stdin_text = "VTC:userland/bash/%s/%s.sh" % (area, name), None
     # <name>.flags as tools/bashdiff.py reads them: options before the probe; last flag -c / -ec: the
-    # probe's text is the command string; last flag -s: the text is the shell's input
+    # probe's text is the command string; last flag -s: the text is the shell's input; last flag PTY (a
+    # host pseudo-terminal in bashdiff): the rig feeds the text as with -s (the console is no pty)
+    if flags and flags[-1] == "PTY":
+        flags[-1] = "-s"
     if flags and re.match(r"^-[a-zA-Z]*c$", flags[-1]):
         target = shlex.quote((pdir / (name + ".sh")).read_text(encoding="latin-1"))
     elif flags and flags[-1] == "-s":

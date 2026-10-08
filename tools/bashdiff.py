@@ -179,6 +179,11 @@ def run_one(shell_cmd, p, base, hits=False, leak=False):
     # command string (args after it are $0 and the positionals); last flag -s: the text is
     # fed on stdin (args are the positionals); otherwise the probe is a file as always.
     target = [str(p)]
+    if flags and flags[-1] == "PTY":
+        # last flag PTY (V94): the text is typed into a pseudo-terminal that is the shell's stdin, a line
+        # every 50 ms, then ^D; stdout stays a pipe (bash -i's prompts and readline's echo go to stderr)
+        return run_pty(shell_cmd + (["--hits"] if hits else []) + flags[:-1] + args, p.read_bytes(), work, env,
+                       hits or leak)
     if flags and re.match(r"^-[a-zA-Z]*c$", flags[-1]):
         target = [p.read_text()]
     elif flags and flags[-1] == "-s":
@@ -196,6 +201,48 @@ def run_one(shell_cmd, p, base, hits=False, leak=False):
     finally:
         if not isinstance(stdin, bytes) and hasattr(stdin, "close"):
             stdin.close()
+
+
+def run_pty(cmd, text, work, env, want_err=False):
+    """cmd with a pseudo-terminal as stdin, text typed into it line by line, then ^D: (stdout, status,
+    stderr when want_err, else b"")."""
+    import pty, threading, time
+    master, slave = pty.openpty()
+    proc = subprocess.Popen(cmd, stdin=slave, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE if want_err else subprocess.DEVNULL, cwd=work,
+                            env=env, start_new_session=True)
+    os.close(slave)
+    out, err = [], []
+    reader = threading.Thread(target=lambda: out.append(proc.stdout.read()))
+    reader.start()
+    if want_err:
+        ereader = threading.Thread(target=lambda: err.append(proc.stderr.read()))
+        ereader.start()
+
+    def drain():  # the terminal's echo, read so the shell never blocks on it
+        try:
+            while os.read(master, 4096):
+                pass
+        except OSError:
+            pass
+    threading.Thread(target=drain, daemon=True).start()
+    try:
+        for line in text.splitlines(True) + [b"\x04"]:
+            time.sleep(0.05)
+            if proc.poll() is not None:
+                break
+            os.write(master, line)
+        proc.wait(timeout=TIMEOUT)
+        status = proc.returncode if proc.returncode >= 0 else 128 - proc.returncode
+    except (subprocess.TimeoutExpired, OSError):
+        proc.kill()
+        proc.wait()
+        status = "timeout"
+    reader.join()
+    if want_err:
+        ereader.join()
+    os.close(master)
+    return out[0] if out else b"", status, (err[0] if err else b"")
 
 
 def hits_check(hf, err):
