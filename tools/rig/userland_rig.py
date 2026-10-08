@@ -26,6 +26,8 @@ For each package this script
   python3 tools/rig/userland_rig.py --force         rerun the passed ones too
   python3 tools/rig/userland_rig.py --bash agent    the bash probes of tests/bash/probes/agent (below)
   python3 tools/rig/userland_rig.py --bash agent --case a001_pipefail_loop   one probe
+  python3 tools/rig/userland_rig.py --bash agent --failed   the probes of AREA whose verdict is FAIL
+                                                    (--case and --failed keep the other verdicts)
 
 --bash AREA is a second case source (plan 2026-10-07-vsh-bash, V9): the probes
 of tests/bash/probes/AREA run as `VTC:vsh <probe> [args]` in a fresh copy of
@@ -34,7 +36,8 @@ their output is compared with the one bash 5 gave on the Mac, written by
 tools/bashdiff.py to build/bashdiff/expected/AREA/<name>.txt (stdout and a
 last line "[exit N]"; run `make bashdiff` first). A probe with a .in file
 gets its stdin as a here-document (EXEC takes no `<`). tests/bash/rig-skip.txt
-("area/name<TAB>reason") lists the probes the rig does not run. Verdicts:
+("area/name<TAB>reason") lists the probes the rig does not run, and it skips the ones
+tests/bash/divergences.txt records as differences from bash. Verdicts:
 build/rig/userland/bash-AREA.verdict. Probes only the host can run (no vsh
 binary change reaches them) belong in rig-skip.txt with the reason.
 
@@ -54,6 +57,7 @@ BASH_PROBES = ROOT / "tests/bash/probes"
 BASH_DATA = ROOT / "tests/bash/data"
 BASH_EXPECTED = ROOT / "build/bashdiff/expected"
 BASH_SKIP = ROOT / "tests/bash/rig-skip.txt"
+BASH_DIVERGENCES = ROOT / "tests/bash/divergences.txt"
 VTC = paths.RIG / "vtc"
 VERDICTS = paths.RIG / "userland"
 PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", paths.repo("upterm-ports")))
@@ -120,7 +124,8 @@ def script_text(pkg, name, cmd):
     """The vsh script of one case: the same environment tools/run-cases.sh gives sh."""
     return ("cd VTC:userland/work/" + pkg + "\n"
             "export PATH=/VTC/userland/bin:$PATH\n"
-            "unset LC_ALL LC_CTYPE\n"
+            "unset LC_ALL LC_CTYPE SHLVL\n"   # SHLVL: the oracle starts bash from a clean environment; the rig nests two shells
+
             "export LANG=C\n"
             "{ " + cmd + "\n} 2>VTC:out/" + pkg + "/" + name + ".err\n"
             "echo \"[exit $?]\"\n")
@@ -199,10 +204,12 @@ def check_package(pkg, only_case):
 
 
 def bash_cases(area):
-    """Probe names of tests/bash/probes/AREA the rig runs (rig-skip.txt names the others)."""
+    """Probe names of tests/bash/probes/AREA the rig runs: not the ones rig-skip.txt names, nor the
+    differences from bash divergences.txt records (their output differs from the oracle by decision)."""
     skip = set()
-    if BASH_SKIP.exists():
-        skip = {l.split("\t")[0] for l in BASH_SKIP.read_text().splitlines() if l.strip() and not l.startswith("#")}
+    for f in (BASH_SKIP, BASH_DIVERGENCES):
+        if f.exists():
+            skip |= {l.split("\t")[0] for l in f.read_text().splitlines() if l.strip() and not l.startswith("#")}
     return [p.stem for p in sorted((BASH_PROBES / area).glob("*.sh")) if "%s/%s" % (area, p.stem) not in skip]
 
 
@@ -223,7 +230,8 @@ def bash_wrapper(area, name):
     cmd = "VTC:vsh %s %s %s" % (" ".join(flags), target, args)
     text = ("cd " + work + "\n"
             "export PATH=/VTC/userland/bin:$PATH\n"
-            "unset LC_ALL LC_CTYPE\n"
+            "unset LC_ALL LC_CTYPE SHLVL\n"   # SHLVL: the oracle starts bash from a clean environment; the rig nests two shells
+
             "export LANG=C TZ=UTC\n")
     inp = pdir / (name + ".in")
     if stdin_text is not None:
@@ -301,7 +309,7 @@ def run_watched(pkg, name, limit=90):
     return "HANG (no end in %d s; rig rebooted)" % limit
 
 
-def check_bash(area, only_case):
+def check_bash(area, only_case, failed=False):
     pkg = "bash-" + area
     if not (BASH_PROBES / area).is_dir():
         print("[ERROR] no area %s in %s" % (area, BASH_PROBES))
@@ -315,7 +323,9 @@ def check_bash(area, only_case):
         return False
     fp = bash_fingerprint(area)
     old = read_verdict(pkg)
-    prior = old[2] if old and old[1] == fp else {}
+    # --case and --failed rerun those probes only and keep the other probes' recorded verdicts
+    # (the ones that passed on an older binary stay PASS until a full run: say so when it matters)
+    prior = old[2] if old and (old[1] == fp or only_case or failed) else {}
     wanted = [n for n in names if (not only_case or n == only_case)]
     todo = [n for n in wanted if only_case or prior.get(n) != "PASS"]
     results = dict(prior)
@@ -350,7 +360,7 @@ def main():
         VERDICTS.mkdir(parents=True, exist_ok=True)
         if a.force:
             (VERDICTS / ("bash-" + a.bash + ".verdict")).unlink(missing_ok=True)
-        return 0 if check_bash(a.bash, a.case) else 1
+        return 0 if check_bash(a.bash, a.case, a.failed) else 1
     if a.case and not (a.only and len(a.only) == 1):
         ap.error("--case needs exactly one --only package")
     names = a.only or packages()

@@ -4,3 +4,54 @@ test/testx	needs /bin/sh, which the rig does not have
 test/t_perm	set-uid, set-gid and sticky bits do not exist in AmigaDOS protection
 test/t_link	the rig VTC: is a host folder (no soft links); -L is checked on RAM: by hand
 test/testL	the rig VTC: is a host folder (no soft links); -L is checked on RAM: by hand
+shopt/globstar_tree	the rig VTC: is a host folder (no soft links: ln -s makes none, lnk and e/up are missing)
+agent/a002_command_v	the oracle's Mac has gcc and sh on PATH; the rig has neither
+agent/a004_diff_procsub	needs diff, which the rig does not have (the kit ships coreutils only)
+agent/a107_procsub_same	needs diff, which the rig does not have (the kit ships coreutils only)
+procsub/procsub	needs diff, which the rig does not have (the kit ships coreutils only)
+procsub/ps02	needs diff, which the rig does not have (the kit ships coreutils only)
+procsub/ps17	needs cmp, which the rig does not have (the kit ships coreutils only)
+agent/a009_errexit_cd	needs sed, which the rig does not have (the kit ships coreutils only)
+agent/a069_sed_head	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/command_flags	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/command_v	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/dirstack_write	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/hash_pipeline	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/hash_run	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/hash_table	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/pushd_popd_dirs	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/pwdP	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/time_keyword	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/type_text	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/cd_cdpath_dirstack	needs sed, which the rig does not have (the kit ships coreutils only)
+builtins/enable_caller_times	needs sed, which the rig does not have (the kit ships coreutils only)
+jobs/spec_list	needs sed, which the rig does not have (the kit ships coreutils only)
+posix/env_login	needs sed, which the rig does not have (the kit ships coreutils only)
+invocation/bash_env_logout	needs sed, which the rig does not have (the kit ships coreutils only)
+agent/a070_find_sort	needs find, which the rig does not have (the kit ships coreutils only)
+agent/a072_xargs	needs xargs, which the rig does not have (the kit ships coreutils only)
+agent/a073_awk_wc	needs awk, which the rig does not have (the kit ships coreutils only)
+history/list_read_write	needs mktemp, which the rig does not have (coreutils 5.2.1 has none)
+builtins/cd_physical	the rig VTC: is a host folder (no soft links: ln -s makes none); cd -P is checked on RAM: by hand
+test/t_ef	the rig VTC: is a host folder (ln makes no hard link)
+agent/a001_pipefail_loop	counts with wc: the oracle's BSD wc pads the number to 8 columns, the kit's GNU wc does not
+expand/brace_l20	counts with wc: the oracle's BSD wc pads the number to 8 columns, the kit's GNU wc does not
+redir/bothapp2	counts with wc: the oracle's BSD wc pads the number to 8 columns, the kit's GNU wc does not
+redir/herestr2	counts with wc: the oracle's BSD wc pads the number to 8 columns, the kit's GNU wc does not
+grammar/pipeamp2	counts with wc: the oracle's BSD wc pads the number to 8 columns, the kit's GNU wc does not
+procsub/ps09	counts with wc: the oracle's BSD wc pads the number to 8 columns, the kit's GNU wc does not
+expand/ansic	dumps with od -c: the oracle's BSD od lays the columns out differently from the kit's GNU od
+builtins/echo_escapes	dumps with od -c: the oracle's BSD od lays the columns out differently from the kit's GNU od
+arrays/slice_sparse	prints the probe's own path: the oracle's is a Mac path, the rig's VTC:userland/bash/...
+builtins/caller_top	prints the probe's own path: the oracle's is a Mac path, the rig's VTC:userland/bash/...
+builtins/cd1	prints the name of the work directory: the oracle's is work, the rig's <area>_<probe>
+expand/tilde3	prints or counts $HOME: the oracle's is a Mac temporary folder, the rig's System:
+expand/bt_nest	prints or counts $HOME: the oracle's is a Mac temporary folder, the rig's System:
+jobs/bgwait	sleep 0.1: the kit's sleep (coreutils 5.2.1) takes whole seconds only
+jobs/done_state	sleep 0.1: the kit's sleep (coreutils 5.2.1) takes whole seconds only
+fd/fdv15	sleep 0.1: the kit's sleep (coreutils 5.2.1) takes whole seconds only
+fd/fdv16	sleep 0.1: the kit's sleep (coreutils 5.2.1) takes whole seconds only
+interactive/histignore_patterns	lists / : the Mac's root folders in the oracle, the Amiga's volumes on the rig
+expand/indirect	lists the variables starting with p: the AmigaDOS Shell gives every process the local variable process, which the oracle does not have
+expand/prefix2	lists the variables starting with p: the AmigaDOS Shell gives every process the local variable process, which the oracle does not have
+agent/a074_case_uname	asks uname for the system: Darwin on the oracle's Mac, AmigaOS on the rig

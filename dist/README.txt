@@ -362,6 +362,10 @@ VSH (the shell)
     bash (probe redir/close_out).
     ~user is left as typed: there is no user database to look the home up in
     (probe expand/tilde_user); ~  ~+  ~-  are expanded.
+    $PPID, $UID and $EUID are 0: AmigaOS has no parent process id and no
+    user ids (probe vars/ids).
+    $PWD is an AmigaDOS name (Work:dir); its colon would split PATH, so a
+    directory goes into PATH as /Work/dir (probe invocation/source_path).
     Descriptors 3 and up (exec 3>file, {fd}<file, n>&m, read -u N, mapfile -u N)
     live in the shell: builtins and  >&N  targets use them, but a native
     command gets only 0, 1 and 2 (probe fd/ext_fd3). /dev/fd/N, /dev/stdin,

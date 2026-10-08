@@ -680,7 +680,6 @@ invocation/paramspecial
 invocation/returnsrc
 invocation/s_stdin
 invocation/s_stdin_dash
-invocation/source_path
 invocation/source_restore
 invocation/source_return
 invocation/sourceargs
@@ -902,7 +901,6 @@ vars/circular
 vars/eval_lineno
 vars/funcname
 vars/funcname_stack
-vars/ids
 vars/lastarg
 vars/lineno
 vars/lineno_forms

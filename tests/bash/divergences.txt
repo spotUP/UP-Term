@@ -12,3 +12,5 @@ expand/tilde_user	n/a-amiga	~user needs a user database; vsh leaves ~user as typ
 redir/close_out	documented	a stream closed with n>&- or n<&- is the null device (NIL:) for a command that is not a builtin, so its write or read does not fail (bash: status 1)
 fd/ext_fd3	documented	descriptors 3 and up reach builtins and n>&m targets only: a native or external command gets fds 0-2 (AmigaDOS processes have no inherited fd table), bash passes every open fd
 fd/ext_devfd	documented	/dev/fd/N, /dev/stdin, /dev/stdout, /dev/stderr work as redirection targets, source and test -e/-a/-r/-w (shell fd table); a native command given such a name as an argument cannot open it (no such device on AmigaOS)
+vars/ids	n/a-amiga	AmigaOS has no parent process id and no user ids: $PPID, $UID and $EUID are 0 (bash: the real ids)
+invocation/source_path	n/a-amiga	$PWD is an AmigaDOS name (vol:dir), whose colon splits PATH: PATH=$PWD/lib:$PATH needs /vol/dir (PATH=/VTC/lib:$PATH)
