@@ -15,6 +15,8 @@ vsh is in budget.
 
   UPTERM_RIG=2 python3 tools/rig/substmem_rig.py              3 runs of build/amiga/vsh
   VSH=old/vsh UPTERM_RIG=2 python3 tools/rig/substmem_rig.py  another binary
+  --kind funcs / --kind aliases: 1,000 functions (`fN() { echo N x; }`) or aliases instead of the array
+  (a subshell copied every function body and alias before 2026-10-08); the ledger is per kind.
 
 The rig must be up; UPTERM_RIG selects which one."""
 import argparse, hashlib, os, shutil, sys
@@ -22,27 +24,34 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import userland_rig as U
 
-N = 10000
 BUDGET = 1.0
 LEDGER = paths.RIG / "userland" / "substmem"
+# what fills the shell between the two measurements, and how many
+FILL = {
+    "array": (10000, "for ((i=0;i<%(n)d;i++)); do a[i]=x$i; done"),
+    "funcs": (1000, 'for ((i=0;i<%(n)d;i++)); do eval "f$i() { echo $i x; }"; done'),
+    "aliases": (1000, "for ((i=0;i<%(n)d;i++)); do alias a$i=\"echo $i x\"; done"),
+}
+N = 10000
 SCRIPT = """\
 for k in 0 1; do echo 0000000000 >RAM:smem$k; done
 s0=0000000000 s1=0000000000
 C:Avail FLUSH TOTAL >RAM:smem0
 s0=$(C:Avail FLUSH TOTAL)
-for ((i=0;i<%(n)d;i++)); do a[i]=x$i; done
+%(fill)s
 C:Avail FLUSH TOTAL >RAM:smem1
 s1=$(C:Avail FLUSH TOTAL)
 read f0 <RAM:smem0; read f1 <RAM:smem1
 echo "$f0 $s0 $f1 $s1"
-""" % {"n": N}
+"""
 
 
-def stage(vsh):
+def stage(vsh, kind):
     d = U.VTC / "substmem"
     d.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(vsh, d / "vsh")
-    (d / "substmem.sh").write_text(SCRIPT, encoding="latin-1")
+    n, fill = FILL[kind]
+    (d / "substmem.sh").write_text(SCRIPT % {"fill": fill % {"n": n}}, encoding="latin-1")
 
 
 def one_run():
@@ -65,16 +74,19 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--runs", type=int, default=3, help="runs recorded in total for this vsh")
     ap.add_argument("--fresh", action="store_true", help="forget this vsh's recorded runs")
+    ap.add_argument("--kind", choices=sorted(FILL), default="array", help="what fills the shell")
     a = ap.parse_args()
+    global N
+    N = FILL[a.kind][0]
     vsh = os.environ.get("VSH") or str(U.ROOT / "build/amiga/vsh")
     sha = hashlib.sha1(open(vsh, "rb").read()).hexdigest()[:12]
     LEDGER.mkdir(parents=True, exist_ok=True)
-    log = LEDGER / (sha + ".log")
+    log = LEDGER / (sha + ("" if a.kind == "array" else "." + a.kind) + ".log")
     if a.fresh:
         log.unlink(missing_ok=True)
     done = log.read_text().splitlines() if log.exists() else []
     if len(done) < a.runs:
-        stage(vsh)
+        stage(vsh, a.kind)
     for i in range(len(done) + 1, a.runs + 1):
         line = "run %d %s" % (i, verdict(one_run()))
         with log.open("a") as f:
@@ -82,8 +94,8 @@ def main():
         print(line, flush=True)
     lines = log.read_text().splitlines()
     good = sum(" PASS " in l for l in lines)
-    print("substmem %s: %d of %d recorded runs in budget (%s; budget %.0f byte per element while $( ) runs)"
-          % (sha, good, len(lines), log, BUDGET))
+    print("substmem %s %s: %d of %d recorded runs in budget (%s; budget %.0f byte per element while $( ) runs)"
+          % (sha, a.kind, good, len(lines), log, BUDGET))
     return 0 if lines and good == len(lines) else 1
 
 

@@ -58,6 +58,7 @@
     X(ARITH_ASSIGN) /* an arithmetic assignment, ++ or -- stored a value */ \
     X(VAR_SHARED) /* a subshell read its parent's variables in place (sh_shell_clone, share) */ \
     X(VAR_COPY_UP) /* a subshell copied one of its parent's variables before writing it */ \
+    X(FUNC_SHARED) /* a subshell read its parent's functions and aliases in place (sh_shell_clone, share) */ \
     X(QUIT_SIGNAL) /* the OS layer reported a QUIT (Amiga: break bit E) */
 
 #ifdef SH_HITS

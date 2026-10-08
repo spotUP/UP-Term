@@ -351,6 +351,102 @@ void sh_shell_free(sh_shell *sh)
 
 static int frame_push(sh_shell *sh, const char *name, const char *src);
 
+/* ---- functions and aliases of a shared subshell ------------------------------------------------- */
+/* A shared subshell's own entries come first in a lookup; its parent's (funcs_base, aliases_base) are read
+ * in place unless an own entry of that name, a tombstone included, hides them. The walks give the order an
+ * unshared copy had: functions are prepended on definition (own new ones, then the parent's list with a
+ * redefinition in its place), aliases appended (the parent's list, then own new ones). */
+
+/* the shell's own function of that name, a tombstone included */
+static sh_func *own_func(const sh_shell *sh, const char *name)
+{
+    sh_func *f;
+    for (f = sh->funcs; f; f = f->next)
+        if (!strcmp(f->name, name))
+            return f;
+    return 0;
+}
+
+static sh_func *base_func(const sh_shell *sh, const char *name)
+{
+    const sh_func *f;
+    for (f = sh->funcs_base; f; f = f->next)
+        if (!strcmp(f->name, name))
+            return (sh_func *)f;
+    return 0;
+}
+
+typedef struct { const sh_func *f; int base; } func_iter;
+
+static sh_func *func_next(const sh_shell *sh, func_iter *it)
+{
+    for (;;) {
+        const sh_func *f = it->f, *o;
+        if (!f) {
+            if (it->base || !sh->funcs_base)
+                return 0;
+            it->base = 1;
+            it->f = sh->funcs_base;
+            continue;
+        }
+        it->f = f->next;
+        if (!it->base) {
+            if (!f->gone && !base_func(sh, f->name))
+                return (sh_func *)f;
+        } else if (!(o = own_func(sh, f->name)))
+            return (sh_func *)f;
+        else if (!o->gone)
+            return (sh_func *)o;
+    }
+}
+
+static sh_func *func_first(const sh_shell *sh, func_iter *it)
+{
+    it->f = sh->funcs;
+    it->base = 0;
+    return func_next(sh, it);
+}
+
+/* the index in l of the alias entry for name (n bytes): "name=value", or "name" when tomb */
+static int alias_index(const sh_list *l, const char *name, size_t n, int tomb)
+{
+    int k;
+    for (k = 0; l && k < l->n; k++)
+        if (!strncmp(l->v[k], name, n) && (l->v[k][n] == '=' || (tomb && !l->v[k][n])))
+            return k;
+    return -1;
+}
+
+/* "name=value" of the alias named by the n bytes at name, or 0 */
+static const char *alias_entry(const sh_shell *sh, const char *name, size_t n)
+{
+    int k = alias_index(&sh->aliases, name, n, 1);
+    if (k >= 0)
+        return sh->aliases.v[k][n] == '=' ? sh->aliases.v[k] : 0;
+    k = alias_index(sh->aliases_base, name, n, 0);
+    return k >= 0 ? sh->aliases_base->v[k] : 0;
+}
+
+/* the aliases in order, "name=value" each; *pos starts at 0 */
+static const char *alias_next(const sh_shell *sh, int *pos)
+{
+    const sh_list *b = sh->aliases_base;
+    int nb = b ? b->n : 0;
+    while (*pos < nb + sh->aliases.n) {
+        int i = (*pos)++, o;
+        const char *e = i < nb ? b->v[i] : sh->aliases.v[i - nb];
+        size_t n = strcspn(e, "=");
+        if (i >= nb) {
+            if (e[n] == '=' && alias_index(b, e, n, 0) < 0)
+                return e;
+        } else if ((o = alias_index(&sh->aliases, e, n, 1)) < 0)
+            return e;
+        else if (sh->aliases.v[o][n] == '=')
+            return sh->aliases.v[o];
+    }
+    return 0;
+}
+
 sh_shell *sh_shell_clone(const sh_shell *sh, int share)
 {
     sh_shell *c = (sh_shell *)malloc(sizeof(sh_shell));
@@ -456,19 +552,28 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
         c->frames[c->nframes - 1].line = fr->line;
     }
     c->ctx.user = sh->ctx.user == (const void *)sh ? (void *)c : sh->ctx.user;
-    tail = &c->funcs;
-    for (f = sh->funcs; f; f = f->next) {
-        sh_func *nf = (sh_func *)calloc(1, sizeof(sh_func));
-        if (!nf)
-            break;
-        nf->name = sdup(f->name);
-        nf->src = sdup(f->src ? f->src : "");
-        sh_parse_copy(f->body.tree, &nf->body);
-        *tail = nf;
-        tail = &nf->next;
+    if (share && !sh->ctx.base) {
+        /* functions and aliases as the variables: read in place, copied by nobody */
+        SH_HIT(FUNC_SHARED);
+        c->funcs_base = sh->funcs;
+        c->aliases_base = &sh->aliases;
+    } else {
+        func_iter fi;
+        const char *al;
+        tail = &c->funcs;
+        for (f = func_first(sh, &fi); f; f = func_next(sh, &fi)) {
+            sh_func *nf = (sh_func *)calloc(1, sizeof(sh_func));
+            if (!nf)
+                break;
+            nf->name = sdup(f->name);
+            nf->src = sdup(f->src ? f->src : "");
+            sh_parse_copy(f->body.tree, &nf->body);
+            *tail = nf;
+            tail = &nf->next;
+        }
+        for (i = 0; (al = alias_next(sh, &i)) != 0;)
+            sh_list_add(&c->aliases, al);
     }
-    for (i = 0; i < sh->aliases.n; i++)
-        sh_list_add(&c->aliases, sh->aliases.v[i]);
     for (i = 0; i < sh->hashtab.n; i++)
         sh_list_add(&c->hashtab, sh->hashtab.v[i]);
     for (i = 0; i < sh->hist.n; i++)
@@ -2486,25 +2591,22 @@ static long b_read(sh_shell *sh, int argc, char **argv, const sh_io *io)
 static long b_alias(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int i, k;
+    const char *e;
     if (argc == 1) {
-        for (k = 0; k < sh->aliases.n; k++) {
-            sayl(sh, io->out, "alias ", sh->aliases.v[k], "\n", NULL);
-        }
+        for (k = 0; (e = alias_next(sh, &k)) != 0;)
+            sayl(sh, io->out, "alias ", e, "\n", NULL);
         return 0;
     }
     for (i = 1; i < argc; i++) {
         const char *eq = strchr(argv[i], '=');
         size_t n = eq ? (size_t)(eq - argv[i]) : strlen(argv[i]);
-        for (k = 0; k < sh->aliases.n; k++)
-            if (!strncmp(sh->aliases.v[k], argv[i], n) && sh->aliases.v[k][n] == '=')
-                break;
         if (!eq) {
-            if (k < sh->aliases.n) {
-                sayl(sh, io->out, sh->aliases.v[k], "\n", NULL);
-            }
+            if ((e = alias_entry(sh, argv[i], n)) != 0)
+                sayl(sh, io->out, e, "\n", NULL);
             continue;
         }
-        if (k < sh->aliases.n) {
+        /* an own entry (a tombstone too) is replaced in place; a parent's is hidden by a new own one */
+        if ((k = alias_index(&sh->aliases, argv[i], n, 1)) >= 0) {
             free(sh->aliases.v[k]);
             sh->aliases.v[k] = sdup(argv[i]);
         } else {
@@ -2520,13 +2622,17 @@ static long b_unalias(sh_shell *sh, int argc, char **argv, const sh_io *io)
     (void)io;
     for (i = 1; i < argc; i++) {
         size_t n = strlen(argv[i]);
-        for (k = 0; k < sh->aliases.n; k++)
-            if (!strncmp(sh->aliases.v[k], argv[i], n) && sh->aliases.v[k][n] == '=') {
-                free(sh->aliases.v[k]);
-                memmove(sh->aliases.v + k, sh->aliases.v + k + 1, (sh->aliases.n - k) * sizeof(char *));
-                sh->aliases.n--;
-                break;
+        int parent = alias_index(sh->aliases_base, argv[i], n, 0) >= 0;
+        if ((k = alias_index(&sh->aliases, argv[i], n, 1)) >= 0) {
+            free(sh->aliases.v[k]);
+            if (parent) { /* the parent's stays hidden */
+                sh->aliases.v[k] = sdup(argv[i]);
+                continue;
             }
+            memmove(sh->aliases.v + k, sh->aliases.v + k + 1, (sh->aliases.n - k) * sizeof(char *));
+            sh->aliases.n--;
+        } else if (parent)
+            sh_list_add(&sh->aliases, argv[i]); /* a tombstone: "name" without = */
     }
     return 0;
 }
@@ -3500,12 +3606,13 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
             return st;
         }
         if (i >= argc) {
-            for (f = sh->funcs; f; f = f->next)
+            func_iter fi;
+            for (f = func_first(sh, &fi); f; f = func_next(sh, &fi))
                 nf++;
             fl = (sh_func **)malloc((size_t)(nf ? nf : 1) * sizeof(sh_func *));
             if (!fl)
                 return 1;
-            for (k = 0, f = sh->funcs; f; f = f->next)
+            for (k = 0, f = func_first(sh, &fi); f; f = func_next(sh, &fi))
                 fl[k++] = f;
             qsort(fl, (size_t)nf, sizeof(sh_func *), cmp_func);
             for (k = 0; k < nf; k++)
@@ -3809,16 +3916,32 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
     for (; i < argc; i++) {
         if (fn) {
             sh_func **p;
-            for (p = &sh->funcs; *p; p = &(*p)->next)
-                if (!strcmp((*p)->name, argv[i]) && !(*p)->busy) {
-                    sh_func *f = *p;
+            int parent = base_func(sh, argv[i]) != 0;
+            for (p = &sh->funcs; *p && strcmp((*p)->name, argv[i]); p = &(*p)->next)
+                ;
+            if (*p && !(*p)->busy) {
+                sh_func *f = *p;
+                if (parent) { /* the parent's stays hidden: the entry becomes a tombstone */
+                    sh_parse_free(&f->body);
+                    memset(&f->body, 0, sizeof(f->body));
+                    f->gone = 1;
+                } else {
                     *p = f->next;
                     free(f->name);
                     free(f->src);
                     sh_parse_free(&f->body);
                     free(f);
-                    break;
                 }
+            }
+            if (!*p && parent) {
+                sh_func *f = (sh_func *)calloc(1, sizeof(sh_func));
+                if (f && (f->name = sdup(argv[i])) != 0) {
+                    f->gone = 1;
+                    f->next = sh->funcs;
+                    sh->funcs = f;
+                } else
+                    free(f);
+            }
         } else if (nameref) {
             sh_var_restore(&sh->ctx, argv[i], 0);
         } else {
@@ -3865,12 +3988,9 @@ static const char *const sh_keywords[] = { "!", "[[", "]]", "{", "}", "case", "d
 
 static const char *alias_value(sh_shell *sh, const char *name)
 {
-    int i;
     size_t n = strlen(name);
-    for (i = 0; i < sh->aliases.n; i++)
-        if (!strncmp(sh->aliases.v[i], name, n) && sh->aliases.v[i][n] == '=')
-            return sh->aliases.v[i] + n + 1;
-    return 0;
+    const char *e = alias_entry(sh, name, n);
+    return e ? e + n + 1 : 0;
 }
 
 /* one name for type (mode 0), type -t (1), command -v (2), command -V (3). 0 = found */
@@ -5759,6 +5879,7 @@ long sh_word_list(const sh_shell *sh, int kind, char *out, long max)
 {
     long n = 0;
     int i;
+    const char *al;
     if (kind == SH_WORDS_VARIABLES) {
         const sh_var *v;
         sh_var_iter it;
@@ -5773,15 +5894,15 @@ long sh_word_list(const sh_shell *sh, int kind, char *out, long max)
     }
     {
         const sh_func *f;
-        for (f = sh->funcs; f; f = f->next)
+        func_iter fi;
+        for (f = func_first(sh, &fi); f; f = func_next(sh, &fi))
             n = add_word(out, n, max, f->name);
     }
-    for (i = 0; i < sh->aliases.n; i++) {
+    for (i = 0; (al = alias_next(sh, &i)) != 0;) {
         char name[64];
-        const char *eq = strchr(sh->aliases.v[i], '=');
-        size_t l = eq ? (size_t)(eq - sh->aliases.v[i]) : strlen(sh->aliases.v[i]);
+        size_t l = strcspn(al, "=");
         if (l < sizeof(name)) {
-            memcpy(name, sh->aliases.v[i], l);
+            memcpy(name, al, l);
             name[l] = 0;
             n = add_word(out, n, max, name);
         }
@@ -6249,13 +6370,14 @@ static void comp_names(sh_shell *sh, unsigned act, const char *w, sh_list *out)
 {
     sh_list l;
     int i;
+    const char *al;
     char name[64];
     memset(&l, 0, sizeof(l));
     if (act == 1)
-        for (i = 0; i < sh->aliases.n; i++) {
-            size_t n = strcspn(sh->aliases.v[i], "=");
+        for (i = 0; (al = alias_next(sh, &i)) != 0;) {
+            size_t n = strcspn(al, "=");
             if (n < sizeof(name)) {
-                memcpy(name, sh->aliases.v[i], n);
+                memcpy(name, al, n);
                 name[n] = 0;
                 sh_list_add(&l, name);
             }
@@ -6271,7 +6393,8 @@ static void comp_names(sh_shell *sh, unsigned act, const char *w, sh_list *out)
     }
     if (act == CA_FUNC) {
         const sh_func *f;
-        for (f = sh->funcs; f; f = f->next)
+        func_iter fi;
+        for (f = func_first(sh, &fi); f; f = func_next(sh, &fi))
             sh_list_add(&l, f->name);
     }
     if (l.n)
@@ -6624,11 +6747,10 @@ static builtin_fn find_builtin(const char *name)
 
 static sh_func *find_func(sh_shell *sh, const char *name)
 {
-    sh_func *f;
-    for (f = sh->funcs; f; f = f->next)
-        if (!strcmp(f->name, name))
-            return f;
-    return 0;
+    sh_func *f = own_func(sh, name);
+    if (f)
+        return f->gone ? 0 : f;
+    return base_func(sh, name);
 }
 
 /* The file a command name stands for, the way vsh's resolve() looks: a name
@@ -6760,12 +6882,10 @@ static void apply_alias(sh_shell *sh, sh_list *argv)
         size_t n = strlen(argv->v[0]);
         sh_list nw;
         char *val, *p;
-        for (k = 0; k < sh->aliases.n; k++)
-            if (!strncmp(sh->aliases.v[k], argv->v[0], n) && sh->aliases.v[k][n] == '=')
-                break;
-        if (k == sh->aliases.n)
+        const char *e = alias_entry(sh, argv->v[0], n);
+        if (!e)
             return;
-        val = sdup(sh->aliases.v[k] + n + 1);
+        val = sdup(e + n + 1);
         if (!val)
             return;
         memset(&nw, 0, sizeof(nw));
@@ -8802,7 +8922,7 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
             st = 2;
             break;
         }
-        f = find_func(sh, n->name);
+        f = own_func(sh, n->name); /* a parent's function (shared subshell) is hidden by an own one */
         if (!f) {
             f = (sh_func *)calloc(1, sizeof(sh_func));
             if (!f)
@@ -8811,6 +8931,7 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
             f->next = sh->funcs;
             sh->funcs = f;
         }
+        f->gone = 0;
         if (f->body.tree && f->busy) {
             /* it is running: its old body stays until the shell ends */
             sh_retired *r = (sh_retired *)malloc(sizeof(sh_retired));

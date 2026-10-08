@@ -170,6 +170,7 @@ typedef struct sh_func {
     char *src;             /* the file it was defined in (BASH_SOURCE) */
     sh_parse body;         /* its own copy of the body (body.tree) */
     int busy;              /* running: a redefinition retires the old body */
+    int gone;              /* unset -f in a shared subshell: hides the parent's function (no body) */
     struct sh_func *next;
 } sh_func;
 
@@ -233,6 +234,11 @@ typedef struct sh_shell {
                             * closed when exec replaces them or when the shell is freed */
     sh_func *funcs;
     sh_list aliases;       /* "name=value" */
+    /* a shared subshell (sh_shell_clone, share) reads its parent's functions and aliases in place, as
+     * ctx.base its variables: funcs and aliases hold only what it defines or unsets itself (a function
+     * with gone set, an alias "name" without =, hides the parent's) */
+    const sh_func *funcs_base;
+    const sh_list *aliases_base;
     sh_list hist;          /* history: the shell's own list, used only when the console has none (os.hist) */
     int hist_native;       /* 0 not asked yet, 1 the console keeps the list, -1 the shell does */
     char *hx_old, *hx_new, *hx_find; /* history expansion: the last :s/old/new/ and the last !?str? */

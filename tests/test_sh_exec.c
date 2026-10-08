@@ -813,6 +813,46 @@ static void a_shared_subshell_reads_the_shell_s_variables_and_changes_none(void)
     run("unset pfx_x pfx_a pfx_y pfx_e pfx_h");
 }
 
+/* A shared subshell copied every function body (sh_parse_copy) and alias of the shell; it reads them in
+ * place now, as the variables. What it defines, redefines or unsets is its own; the listings keep the order
+ * an unshared copy had (declare -F sorted, alias in definition order), and the shell's own stay as they were. */
+static void a_shared_subshell_reads_the_shell_s_functions_and_aliases_and_changes_none(void)
+{
+    sh_shell *c;
+    const sh_func *g0;
+    run("shopt -s expand_aliases; pfg_a() { echo A; }; pfg_b() { echo B; }; pfg_c() { echo C; }; "
+        "alias pfa_x='echo X' pfa_y='echo Y' pfa_z='echo Z'");
+    g0 = sh.funcs;
+    c = sh_shell_clone(&sh, 1);
+    CHECK_INT(c != 0, 1);
+    if (!c)
+        return;
+    CHECK_INT(c->funcs == 0 && c->aliases.n == 0, 1); /* nothing copied */
+    CHECK_INT(c->funcs_base == sh.funcs && c->aliases_base == &sh.aliases, 1);
+    sh_run_text(c, "shopt -s expand_aliases\npfg_a; pfg_b; declare -F; alias\npfa_y\n", 0);
+    sh_run_text(c, "pfg_b() { echo B2; }; unset -f pfg_c; pfg_d() { echo D; }; "
+                   "alias pfa_x='echo X2' pfa_w='echo W'; unalias pfa_z\n", 0);
+    sh_run_text(c, "pfg_b; pfg_c 2>/dev/null || echo no-c; pfg_d; declare -F; alias\n"
+                   "pfa_x\npfa_z 2>/dev/null || echo no-z\n", 0);
+    sh_run_text(c, "pfg_c() { echo C2; }; pfg_c; alias pfa_z='echo Z2'; alias pfa_z; unset -f pfg_d; declare -F\n", 0);
+    CHECK_STR(slot(OUT)->data, "A\nB\ndeclare -f pfg_a\ndeclare -f pfg_b\ndeclare -f pfg_c\n"
+                               "alias pfa_x=echo X\nalias pfa_y=echo Y\nalias pfa_z=echo Z\nY\n"
+                               "B2\nno-c\nD\ndeclare -f pfg_a\ndeclare -f pfg_b\ndeclare -f pfg_d\n"
+                               "alias pfa_x=echo X2\nalias pfa_y=echo Y\nalias pfa_w=echo W\nX2\nno-z\n"
+                               "C2\npfa_z=echo Z2\ndeclare -f pfg_a\ndeclare -f pfg_b\ndeclare -f pfg_c\n");
+    sh_shell_free(c);
+    free(c);
+    CHECK_INT(sh.funcs == g0, 1);
+    sh_run_text(&sh, "pfg_a; pfg_b; pfg_c; pfg_d 2>/dev/null || echo no-d; alias\npfa_z\n", 0);
+    CHECK_STR(slot(OUT)->data, "A\nB\ndeclare -f pfg_a\ndeclare -f pfg_b\ndeclare -f pfg_c\n"
+                               "alias pfa_x=echo X\nalias pfa_y=echo Y\nalias pfa_z=echo Z\nY\n"
+                               "B2\nno-c\nD\ndeclare -f pfg_a\ndeclare -f pfg_b\ndeclare -f pfg_d\n"
+                               "alias pfa_x=echo X2\nalias pfa_y=echo Y\nalias pfa_w=echo W\nX2\nno-z\n"
+                               "C2\npfa_z=echo Z2\ndeclare -f pfg_a\ndeclare -f pfg_b\ndeclare -f pfg_c\n"
+                               "A\nB\nC\nno-d\nalias pfa_x=echo X\nalias pfa_y=echo Y\nalias pfa_z=echo Z\nZ\n");
+    run("unset -f pfg_a pfg_b pfg_c; unalias pfa_x pfa_y pfa_z; shopt -u expand_aliases");
+}
+
 static void a_shell_made_on_dirty_memory_is_a_fresh_shell(void)
 {
     /* one place for both, so the fields pointing into the shell itself agree */
@@ -1709,6 +1749,7 @@ void suite_sh_exec(void)
     bind_and_inputrc_reach_the_console_line_editor();
     a_subshell_s_set_o_and_shopt_leave_the_shell_s_alone();
     a_shared_subshell_reads_the_shell_s_variables_and_changes_none();
+    a_shared_subshell_reads_the_shell_s_functions_and_aliases_and_changes_none();
     an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash();
     tab_on_a_command_with_a_spec_answers_with_its_words();
     dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh();
