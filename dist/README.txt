@@ -338,7 +338,10 @@ VSH (the shell)
   (probe builtins/printf_bnul).
   Associative arrays list their keys sorted, bash in hash order: scripts must
   not depend on the order (probes sort).
-  Stack: vsh needs none set (it takes 64 KB itself). The commands it runs
+  CDPATH is a list of directories in Unix form (/RAM/work:/Work/src), as PATH
+  is: a volume name (RAM:work) holds a colon, which splits the entry, so it
+  cannot be listed. cd and pushd themselves take either form.
+  Stack: vsh needs none set (it takes 320 KB itself). The commands it runs
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
   when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).
   Prompt: PS1 takes bash (\w \u \h) and zsh (%~ %n %m %? %F{red}...%f)
