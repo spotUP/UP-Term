@@ -1,5 +1,5 @@
 # area/name<TAB>reason: probes the rig does not run (host-only commands). Empty until the first rig run (plan V9).
-builtins/coproc	Amiga difference: an external program as a coproc (coproc cat) gets its input when PIPE: fills the read it asked for (cat asks for a whole buffer) or NAME[1] is closed, so a line-by-line exchange with it waits for ever; a coproc with a shell body works (probe builtins/coproc_shell); coproc sh needs /bin/sh, which the rig lacks
+builtins/coproc_sh	needs sh on the command path, which the rig lacks (coproc with an external program runs on the rig: builtins/coproc)
 test/testx	needs /bin/sh, which the rig does not have
 test/t_perm	set-uid, set-gid and sticky bits do not exist in AmigaDOS protection
 test/t_link	the rig VTC: is a host folder (no soft links); -L is checked on RAM: by hand

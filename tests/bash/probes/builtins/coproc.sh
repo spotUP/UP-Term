@@ -13,7 +13,3 @@ echo abc >&${UP[1]}
 read -u ${UP[0]} up; echo "$up"
 eval "exec ${UP[1]}>&-"
 wait $UP_PID; echo "st=$?"
-coproc sh -c 'read x; echo "r:$x"'
-echo q >&${COPROC[1]}
-read -u ${COPROC[0]} z; echo "$z"
-wait; echo "st=$?"

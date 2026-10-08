@@ -284,6 +284,7 @@ builtins/command_flags
 builtins/command_run
 builtins/command_v
 builtins/coproc
+builtins/coproc_sh
 builtins/coproc_shell
 builtins/decl_F
 builtins/decl_bad

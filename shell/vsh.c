@@ -2,7 +2,7 @@
  *
  * The grammar, expansion and control logic are the portable core
  * (sh_parse.c, sh_expand.c, sh_exec.c); this file is the AmigaDOS side:
- * streams are DOS file handles, pipes are PIPE: channels, commands run
+ * streams are DOS file handles, pipes are PTY: pipes (PIPE: without PTY:), commands run
  * through SystemTags (Resident commands, C:, the path, files), and
  * background or pipelined commands in a small runner process each, which
  * reports the exit status back on a message port.
@@ -98,7 +98,7 @@ typedef struct job {
 
 /* The pipes vsh made. AmigaOS has no SIGPIPE: a PIPE: writer whose reader
  * has gone blocks for ever (rig: List | less, q, and the shell never came
- * back). So closing a read end reads the pipe dry, which lets a blocked
+ * back; a PTY: pipe drops what it writes, and it writes on). So closing a read end reads the pipe dry, which lets a blocked
  * Write return, and a writer that writes to it gets Ctrl-C (sh_pipe.h). */
 typedef sh_pipe_rec pipe_rec; /* handles and jobs are kept as void * (shell/sh_pipe.h) */
 
@@ -360,35 +360,83 @@ static void os_close(void *os, sh_fh fh)
 
 static long pipes;
 
-static int os_pipe(void *os, sh_fh *rd, sh_fh *wr)
+static void hex_cat(char *s, unsigned long k)
 {
-    char name[48];
-    long n = ++pipes, k;
     char digits[12];
     int d = 0;
-    (void)os;
-    strcpy(name, "PIPE:vsh.");
-    k = (long)FindTask(0);
     do
         digits[d++] = "0123456789abcdef"[k & 15];
     while ((k >>= 4) && d < 8);
     while (d)
-        strncat(name, &digits[--d], 1);
-    strcat(name, ".");
-    d = 0;
-    do
-        digits[d++] = (char)('0' + n % 10);
-    while ((n /= 10) > 0);
-    while (d)
-        strncat(name, &digits[--d], 1);
-    *wr = (sh_fh)Open((STRPTR)name, MODE_NEWFILE);
-    *rd = (sh_fh)Open((STRPTR)name, MODE_OLDFILE);
-    if (!*wr || !*rd) {
+        strncat(s, &digits[--d], 1);
+}
+
+/* A pipe on PTY: (handler/pty_name.h): a Read answers with what the pipe
+ * holds. PIPE: (Queue-Handler) holds a Read until its whole length is there
+ * or the writer closes: `coproc cat` never got its line (cat reads 4096
+ * bytes), and a pipeline's reader saw nothing until 4 KB had been written
+ * (rig: tests/amiga/pipeprobe). 0 when PTY: is not mounted (no "insert
+ * volume" requester) or its handler has no pipes: then PIPE: it is. */
+static int pty_pipe(sh_fh *rd, sh_fh *wr)
+{
+    char name[32];
+    struct DosList *dl;
+    int i, mounted;
+    dl = LockDosList(LDF_DEVICES | LDF_READ);
+    mounted = FindDosEntry(dl, (STRPTR)"PTY", LDF_DEVICES) != 0;
+    UnLockDosList(LDF_DEVICES | LDF_READ);
+    if (!mounted)
+        return 0;
+    for (i = 0; i < 16; i++) {
+        long n;
+        Forbid();
+        n = ++pipes;
+        Permit();
+        strcpy(name, "PTY:v");
+        hex_cat(name, (unsigned long)FindTask(0));
+        hex_cat(name, (unsigned long)n & 0xffff); /* the id: 15 characters at most */
+        strcat(name, "/w");
+        *wr = (sh_fh)Open((STRPTR)name, MODE_NEWFILE);
         if (*wr)
-            Close((BPTR)*wr);
-        if (*rd)
-            Close((BPTR)*rd);
-        return -1;
+            break;
+        if (IoErr() != ERROR_OBJECT_IN_USE)
+            return 0;
+    }
+    if (!*wr)
+        return 0;
+    name[strlen(name) - 1] = 'r';
+    *rd = (sh_fh)Open((STRPTR)name, MODE_OLDFILE);
+    if (!*rd) {
+        Close((BPTR)*wr);
+        *wr = 0;
+        return 0;
+    }
+    return 1;
+}
+
+static int os_pipe(void *os, sh_fh *rd, sh_fh *wr)
+{
+    char name[48];
+    long k;
+    (void)os;
+    *rd = *wr = 0;
+    if (!pty_pipe(rd, wr)) {
+        strcpy(name, "PIPE:vsh.");
+        hex_cat(name, (unsigned long)FindTask(0));
+        strcat(name, ".");
+        Forbid();
+        k = ++pipes;
+        Permit();
+        hex_cat(name, (unsigned long)k);
+        *wr = (sh_fh)Open((STRPTR)name, MODE_NEWFILE);
+        *rd = (sh_fh)Open((STRPTR)name, MODE_OLDFILE);
+        if (!*wr || !*rd) {
+            if (*wr)
+                Close((BPTR)*wr);
+            if (*rd)
+                Close((BPTR)*rd);
+            return -1;
+        }
     }
     Forbid();
     for (k = 0; k < 32; k++)
