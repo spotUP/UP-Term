@@ -27,6 +27,7 @@
 #include <string.h>
 #include "sh_exec.h"
 #include "sh_pipe.h"
+#include "sh_ixargv.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
@@ -615,6 +616,16 @@ static ULONG seg_stack(BPTR seg)
     return 0;
 }
 
+/* Is a loaded command an ixemul program? The first longs of its first hunk (sh_ixargv.h). */
+static int seg_is_ixemul(BPTR seg)
+{
+    ULONG *h = (ULONG *)BADDR(seg);
+    /* the hunk's allocation (its size long, the next-hunk link, the code) holds three longs of code */
+    if (h[-1] < 4 + 4 + 12)
+        return 0;
+    return ixa_is_ixemul((const unsigned long *)(h + 1));
+}
+
 #define MIN_COMMAND_STACK 16000
 
 /* The stack for a command: its file's $STACK: when that is more, else
@@ -866,10 +877,18 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     }
     while (*sp == ' ')
         sp++;
-    j->args = (char *)malloc(strlen(sp) + 2);
-    if (j->args) {
-        strcpy(j->args, sp);
-        strcat(j->args, "\n");
+    if (seg && seg_is_ixemul(seg)) {
+        /* an ixemul program: after the line, its argv byte for byte (sh_ixargv.h). It is
+         * this RunCommand's argument alone: no other process, and no native program, sees it */
+        j->args = (char *)malloc(ixa_len(sp, argv + 1) + 1);
+        if (j->args)
+            ixa_put(j->args, sp, argv + 1);
+    } else {
+        j->args = (char *)malloc(strlen(sp) + 2);
+        if (j->args) {
+            strcpy(j->args, sp);
+            strcat(j->args, "\n");
+        }
     }
     if (wait) {
         /* in the foreground: the shell's own streams, not handed over */
