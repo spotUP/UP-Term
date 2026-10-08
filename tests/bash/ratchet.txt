@@ -895,6 +895,7 @@ redir/redirif
 redir/redirloop
 redir/rwredir
 redir/subst_stderr
+redir/heredoc_literal_quotes
 shopt/dotglob
 shopt/expand_aliases
 shopt/extglob

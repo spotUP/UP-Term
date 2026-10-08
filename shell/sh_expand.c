@@ -2574,7 +2574,8 @@ static int tilde(ex *e, const char *w, long *i, long len, cbuf *b)
     return 1;
 }
 
-/* Expand w[0..len) into b: quotes and escapes resolved, expansions done. */
+/* Expand w[0..len) into b: quotes and escapes resolved, expansions done. dquote 1: inside "...";
+ * 2: a here-document's body (quotes are themselves, \ quotes only $ ` \ and a newline) */
 static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
 {
     long i = 0;
@@ -2586,7 +2587,7 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
             while (j < len && w[j] != '\'')
                 cput(b, w[j++], F_QUOTED);
             i = j + 1;
-        } else if (ch == '"') {
+        } else if (ch == '"' && dquote != 2) {
             /* a quoted section; inside ${ } within "..." a nested one quotes as well */
             long j = i + 1;
             b->had_quotes = 1;
@@ -2604,9 +2605,11 @@ static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote)
             }
             expand_into(e, w + i + 1, j - i - 1, b, 1);
             i = j + 1;
+        } else if (ch == '\\' && i + 1 < len && w[i + 1] == '\n' && dquote) {
+            i += 2; /* "a\<newline>b" and a here-document's line ending in \: the lines join */
         } else if (ch == '\\' && i + 1 < len) {
             char nx = w[i + 1];
-            if (dquote && !strchr("$`\"\\\n", nx)) {
+            if (dquote && !strchr(dquote == 2 ? "$`\\\n" : "$`\"\\\n", nx)) {
                 cput(b, '\\', F_QUOTED); /* inside "...": \ stays before others */
                 cput(b, nx, F_QUOTED);
             } else {
@@ -3198,7 +3201,7 @@ static int expand_word(sh_ctx *c, const char *word, int flags, sh_list *out, con
     memset(&b, 0, sizeof(b));
     if (!ifs)
         ifs = " \t\n";
-    if (expand_into(&e, word, (long)strlen(word), &b, 0) < 0) {
+    if (expand_into(&e, word, (long)strlen(word), &b, (flags & SH_HEREDOC) ? 2 : 0) < 0) {
         if (err)
             *err = e.err;
         cfree(&b);

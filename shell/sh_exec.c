@@ -1256,7 +1256,8 @@ static int redirect_one(sh_shell *sh, const sh_redir *r, const sh_io *parent, sh
         } else if (r->kind == SH_R_HEREDOC || r->kind == SH_R_HERESTR) {
             /* the document (here-string: the word and a newline) into a temp file, then read from it */
             char path[40], n[16];
-            char *text = r->quoted ? sdup(r->target) : expand_one(sh, r->target, parent);
+            char *text = r->quoted ? sdup(r->target)
+                         : expand_val(sh, r->target, parent, r->kind == SH_R_HEREDOC ? SH_HEREDOC : 0);
             sh_fh w;
             if (text && r->kind == SH_R_HERESTR) {
                 char *t = (char *)malloc(strlen(text) + 2);
