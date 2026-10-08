@@ -138,6 +138,12 @@ class Fixtures:
                 if name in self.assigns: run('Assign %s: "%s"' % (name, self.assigns[name]))
                 else: run('Assign >NIL: %s:' % name)
             except BaseException as e: print('[WARN] assign %s: not restored: %s' % (name, e))
+        # LIBS: is the rig's normal boot order again, whatever a case assigned
+        # (a rig without LIBS: or with a missing drawer stops every library open)
+        try:
+            import rig
+            for line in rig.RIG_LIBS: run(line)
+        except BaseException as e: print('[WARN] LIBS: not restored: %s' % e)
         print('install_rig: fixtures put back (%s)' % ' '.join(self.paths))
 
 def main(dest=None):
@@ -421,6 +427,55 @@ def _main(dest=None):
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 
+def libs():
+    fx = Fixtures()
+    try:
+        fx.take()
+        return _libs()
+    finally:
+        run_slow('deletelibsA', 'Delete VTC:libsA ALL QUIET')
+        fx.restore()
+
+def _libs():
+    """Install and Uninstall with LIBS: a multi-assign whose first drawer holds
+    no ixemul (a normal boot: Copy and Open of LIBS:<name> look only in the
+    first drawer, Which finds the real one). Checked: the original is kept as
+    .orig beside the real library, the kit's library replaces it there, and
+    Uninstall puts the original back byte for byte, no .orig left, the
+    recorded path gone."""
+    global passed, total
+    passed = total = 0
+    prepare(None)
+    run_slow('deletelibsA', 'Delete VTC:libsA ALL QUIET')
+    run('MakeDir VTC:libsA')
+    run_long('rununinstall')
+    # DH0:Libs is where the rig's own ixemul.library and ixnet.library live
+    run('Assign LIBS: VTC:libsA')
+    run('Assign LIBS: DH0:Libs ADD')
+    rc, real = run('Which LIBS:ixemul.library')
+    real = real.strip()
+    rc, realnet = run('Which LIBS:ixnet.library')
+    realnet = realnet.strip()
+    check(real.lower() == 'system:libs/ixemul.library' and realnet.lower() == 'system:libs/ixnet.library',
+          'libs: the originals are in a later drawer of LIBS:, not the first', real + ' ' + realnet)
+    before_em, before_net = ami.read_file(real), ami.read_file(realnet)   # compared on the Mac: the rig has no Compare
+    rc, out = run_long('runinstall')
+    check(rc == 0, 'libs: Install runs', out)
+    check(run('List >NIL: "%s.orig"' % real)[0] == 0, 'libs: the original ixemul is kept as .orig beside the real library', '')
+    check(run('List >NIL: "%s.orig"' % realnet)[0] == 0, 'libs: the original ixnet is kept as .orig beside the real library', '')
+    check(ami.read_file(real) != before_em, 'libs: the kit\'s ixemul replaced the original', '')
+    rc, out = run_long('rununinstall')
+    check(rc == 0 and "Can't open" not in out, 'libs: Uninstall runs and does not fail to open the .orig', out)
+    check(ami.read_file(real) == before_em, 'libs: the original ixemul is back, byte for byte', '')
+    check(ami.read_file(realnet) == before_net, 'libs: the original ixnet is back, byte for byte', '')
+    check(run('List >NIL: "%s.orig"' % real)[0] != 0 and run('List >NIL: "%s.orig"' % realnet)[0] != 0,
+          'libs: no .orig left', '')
+    check(run('List >NIL: ENVARC:up-term-orig')[0] != 0, 'libs: no ENVARC:up-term-orig left', '')
+    check(run('List >NIL: VTC:libsA/ixemul.library')[0] != 0, 'libs: nothing was put in the first drawer', '')
+    run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')
+    print('install_rig: passed %d of %d' % (passed, total))
+    return 0 if passed == total else 1
+
 OLD = "SYS:UP-Term"
 NEW = "VTC:Apps/UP-Term"
 
@@ -539,4 +594,11 @@ if __name__ == '__main__':
     if not args or '--move' in args:
         print('install_rig: pass 3, Install over an Install with another DEST (%s then %s)' % (OLD, NEW))
         rc |= move()
+    if '--libs' in args:
+        print('install_rig: pass 4, LIBS: a multi-assign (the rig\'s normal boot)')
+        rc |= libs()
+        out = run('Assign LIBS: EXISTS')[1]
+        ok = 'ixp6' in out and 'ncurses' in out
+        print('%s the rig\'s LIBS: is assigned again after the case' % ('ok' if ok else 'FAIL'), '' if ok else out)
+        rc |= not ok
     sys.exit(rc)

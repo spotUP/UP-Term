@@ -191,16 +191,31 @@ EndIf
 If EXISTS ENVARC:up-term-orig/Shell.info
   Copy ENVARC:up-term-orig/Shell.info SYS:System/Shell.info CLONE QUIET
 EndIf
+; the libraries Install replaced: the .orig beside the real library (path in
+; ENVARC:up-term-orig/<name>.path), or in LIBS: for a kit that wrote no path
+If EXISTS ENVARC:up-term-orig/ixemul.path
+  Copy >NIL: ENVARC:up-term-orig/ixemul.path ENV:upixemul CLONE
+Else
+  Set upixemul LIBS:ixemul.library
+EndIf
+If EXISTS "$upixemul.orig"
+  Copy "$upixemul.orig" "$upixemul" CLONE
+  Delete >NIL: "$upixemul.orig" QUIET
+  Avail >NIL: FLUSH
+EndIf
+If EXISTS ENVARC:up-term-orig/ixnet.path
+  Copy >NIL: ENVARC:up-term-orig/ixnet.path ENV:upixnet CLONE
+Else
+  Set upixnet LIBS:ixnet.library
+EndIf
+If EXISTS "$upixnet.orig"
+  Copy "$upixnet.orig" "$upixnet" CLONE
+  Delete >NIL: "$upixnet.orig" QUIET
+  Avail >NIL: FLUSH
+EndIf
+Delete >NIL: ENV:upixemul ENV:upixnet QUIET
+UnSet upixemul
+UnSet upixnet
 Delete >NIL: ENVARC:up-term-orig ALL QUIET
 Delete >NIL: ENVARC:vsh ENV:vsh ALL QUIET
-If EXISTS LIBS:ixemul.library.orig
-  Copy LIBS:ixemul.library.orig LIBS:ixemul.library CLONE
-  Delete >NIL: LIBS:ixemul.library.orig QUIET
-  Avail >NIL: FLUSH
-EndIf
-If EXISTS LIBS:ixnet.library.orig
-  Copy LIBS:ixnet.library.orig LIBS:ixnet.library CLONE
-  Delete >NIL: LIBS:ixnet.library.orig QUIET
-  Avail >NIL: FLUSH
-EndIf
 Echo "UP-Term removed. Reboot to unmount XCON:, PTY: and IXPIPE:."

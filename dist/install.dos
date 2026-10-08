@@ -630,19 +630,47 @@ Lab libs
 ; ixemul.library with the UP-Term patches (termios, PTY: ptys, job
 ; control), and ixnet.library from the same build: ixnet refuses an ixemul
 ; of another version or revision. Each library there is kept once as
-; LIBS:<name>.orig.
-If NOT EXISTS LIBS:ixemul.library.orig
-  If EXISTS LIBS:ixemul.library
-    Copy LIBS:ixemul.library LIBS:ixemul.library.orig CLONE
+; <name>.orig, beside the library it replaces. LIBS: can be several drawers
+; (Copy and Open of LIBS:<name> only look in the first one), so the real place
+; of the library (Which) is written to ENVARC:up-term-orig/<name>.path by the
+; first Install, the kit's library replaces it there, and Uninstall puts the
+; .orig back at that path. Without an earlier library it goes to LIBS:.
+If NOT EXISTS ENVARC:up-term-orig
+  MakeDir >NIL: ENVARC:up-term-orig
+EndIf
+If NOT EXISTS ENVARC:up-term-orig/ixemul.path
+  Which >NIL: LIBS:ixemul.library
+  If NOT WARN
+    Which >ENV:upixemul LIBS:ixemul.library
+    Copy >NIL: ENV:upixemul ENVARC:up-term-orig/ixemul.path CLONE
+    If NOT EXISTS "$upixemul.orig"
+      Copy "$upixemul" "$upixemul.orig" CLONE
+    EndIf
   EndIf
 EndIf
-Copy libs/ixemul.library LIBS:ixemul.library CLONE
-If NOT EXISTS LIBS:ixnet.library.orig
-  If EXISTS LIBS:ixnet.library
-    Copy LIBS:ixnet.library LIBS:ixnet.library.orig CLONE
+If EXISTS ENVARC:up-term-orig/ixemul.path
+  Copy >NIL: ENVARC:up-term-orig/ixemul.path ENV:upixemul CLONE
+  Copy libs/ixemul.library "$upixemul" CLONE
+Else
+  Copy libs/ixemul.library LIBS:ixemul.library CLONE
+EndIf
+If NOT EXISTS ENVARC:up-term-orig/ixnet.path
+  Which >NIL: LIBS:ixnet.library
+  If NOT WARN
+    Which >ENV:upixnet LIBS:ixnet.library
+    Copy >NIL: ENV:upixnet ENVARC:up-term-orig/ixnet.path CLONE
+    If NOT EXISTS "$upixnet.orig"
+      Copy "$upixnet" "$upixnet.orig" CLONE
+    EndIf
   EndIf
 EndIf
-Copy libs/ixnet.library LIBS:ixnet.library CLONE
+If EXISTS ENVARC:up-term-orig/ixnet.path
+  Copy >NIL: ENVARC:up-term-orig/ixnet.path ENV:upixnet CLONE
+  Copy libs/ixnet.library "$upixnet" CLONE
+Else
+  Copy libs/ixnet.library LIBS:ixnet.library CLONE
+EndIf
+Delete >NIL: ENV:upixemul ENV:upixnet QUIET
 Avail >NIL: FLUSH
 If NOT "{STEP}" EQ ""
   Quit 0
