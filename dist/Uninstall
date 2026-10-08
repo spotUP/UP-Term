@@ -219,5 +219,6 @@ Delete >NIL: ENV:upixemul ENV:upixnet QUIET
 UnSet upixemul
 UnSet upixnet
 Delete >NIL: ENVARC:up-term-orig ALL QUIET
-Delete >NIL: ENVARC:vsh ENV:vsh ALL QUIET
+; ENV: first, as ENV:up-term above
+Delete >NIL: ENV:vsh ENVARC:vsh ALL QUIET
 Echo "UP-Term removed. Reboot to unmount XCON:, PTY: and IXPIPE:."

@@ -243,6 +243,13 @@ Copy terminfo ENVARC:up-term/terminfo ALL CLONE QUIET
 MakeDir >NIL: ENVARC:up-term/themes
 Copy themes ENVARC:up-term/themes ALL CLONE QUIET
 Copy termcap.vtcon ENVARC:up-term/termcap.vtcon CLONE
+; ENV: first emptied, then copied. On AmigaOS 3.2 ENV: is a link to ENVARC:
+; (S:Startup-Sequence: MakeLink RAM:ENV to ENVARC:) that shows ENVARC:up-term
+; as ENV:up-term before anything is copied; a Copy into that linked drawer
+; leaves a drawer whose Delete ALL never returns and stops the RAM disk with it
+; (Uninstall in the same boot hung, 2026-10-08). Deleted first, the copy is a
+; plain RAM: drawer, as on 3.1, where this Delete takes an older Install's copy.
+Delete >NIL: ENV:up-term ALL QUIET
 Copy ENVARC:up-term ENV:up-term ALL CLONE QUIET
 ; the window-preferences sample (/ENV/up-term/up-term, read by the XCON:
 ; handler, written by UP-Term Prefs): laid down where the user has no file,
@@ -620,6 +627,8 @@ EndIf
 MakeDir >NIL: ENVARC:vsh
 Copy vshrc ENVARC:vsh/vshrc CLONE
 Copy banner ENVARC:vsh/banner CLONE
+; ENV:vsh emptied first, as ENV:up-term above (3.2's linked ENV:)
+Delete >NIL: ENV:vsh ALL QUIET
 MakeDir >NIL: ENV:vsh
 Copy vshrc ENV:vsh/vshrc CLONE
 Copy banner ENV:vsh/banner CLONE

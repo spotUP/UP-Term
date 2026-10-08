@@ -410,7 +410,7 @@ def _main(dest=None):
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
     left = [f for f in ('C:ClaudeCode', 'DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO',
+                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO', 'ENVARC:vsh', 'ENV:vsh',
                         'SYS:System/UP-Term', 'SYS:System/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
                         '"C:UP-Term Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
             if run('List >NIL: %s' % f)[0] == 0]

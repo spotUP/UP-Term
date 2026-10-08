@@ -291,5 +291,38 @@ class StepCommandLine(unittest.TestCase):
         self.assertLess(len(line), 255, '%d characters: %s' % (len(line), line))
 
 
+class LinkedEnvOn32(unittest.TestCase):
+    """UNINSTALL-HANGS-ON-32: AmigaOS 3.2 links RAM:ENV to ENVARC:, so a drawer made in
+    ENVARC: shows in ENV: at once; a Copy or MakeDir into that linked drawer leaves one whose
+    Delete ALL never returns and stops the RAM disk (Uninstall in the boot of the Install hung,
+    2026-10-08). Every ENV: drawer the kit fills is deleted first in the same script, and
+    Uninstall deletes the ENV: drawer before the ENVARC: one (whose source is in use)."""
+
+    def test_every_env_drawer_install_fills_is_deleted_first(self):
+        lines = [l.strip() for l in DOS.splitlines() if not l.strip().startswith(';')]
+        filled = set()
+        for i, l in enumerate(lines):
+            m = (re.match(r'(?i)copy\s+\S+\s+env:([\w.-]+)\s.*\ball\b', l) or
+                 re.match(r'(?i)makedir\s+(?:>nil:\s+)?env:([\w.-]+)\s*$', l))
+            # the drawers Uninstall deletes (ENV:Claude is the user's and stays)
+            if not m or m.group(1).lower() in filled or m.group(1).lower() not in ('up-term', 'vsh'):
+                continue
+            name = m.group(1).lower()
+            before = [p.lower() for p in lines[:i]]
+            self.assertTrue(any(re.match(r'delete\s+(?:>nil:\s+)?env:%s\s+all\b' % re.escape(name), p)
+                                for p in before),
+                            'install.dos fills ENV:%s without deleting it first: %s' % (name, l))
+            filled.add(name)
+        self.assertEqual(filled, {'up-term', 'vsh'})
+
+    def test_uninstall_deletes_env_before_envarc(self):
+        un = (ROOT / "dist/Uninstall").read_text(encoding="latin-1")
+        for name in ('up-term', 'vsh'):
+            both = [l.lower() for l in un.splitlines() if l.lower().startswith('delete')
+                    and re.search(r'\benv:%s\s' % name, l.lower()) and re.search(r'\benvarc:%s\s' % name, l.lower())]
+            self.assertEqual(len(both), 1, name)
+            self.assertLess(both[0].index(' env:%s' % name), both[0].index(' envarc:%s' % name), both[0])
+
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
