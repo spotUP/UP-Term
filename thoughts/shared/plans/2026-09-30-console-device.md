@@ -532,9 +532,12 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       | 3.5 40.71 | 12/12 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |
       | 3.1.4 | not tested: no ROM on this machine (the owner's A1200, V4, is the real-hardware row) |
       | 3.2 47.115 | 17/17 | 6/6 | 5/5 | 0 of 15 differ | 9/9 |   (2026-10-08, `rig.py start --os32`, HEAD build; the 3.2.3 ROM on the 3.2 tree)
-- [ ] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
+- [x] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
       memory back to its start value; a task holding signal bit 31 opens and closes a
       unit 100 times and still holds it (ibmcon 1.8 regression, R-3).
+      **DONE 2026-10-08, rig 1 default (3.1, 40.63), soak_rig.py 30:** 113 rounds in 30 min, 0 units left open,
+      0 stalls, free memory 72833704 after round 1 and 72833760 at the end (+56 bytes); sigprobe: signal bit 31
+      held after 100 opens and closes.
 
 ## Automated vs manual
 
