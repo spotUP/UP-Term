@@ -5668,6 +5668,27 @@ static long add_word(char *out, long n, long max, const char *w)
     return n + l;
 }
 
+void sh_apply_env(sh_shell *sh, const char *list, long len)
+{
+    long k = 0;
+    while (k < len && list[k]) {
+        const char *e = list + k;
+        long n = (long)strlen(e);
+        char name[64];
+        const char *eq = strchr(e, '=');
+        k += n + 1;
+        if (!eq || eq == e || eq - e >= (long)sizeof(name))
+            continue;
+        memcpy(name, e, (size_t)(eq - e));
+        name[eq - e] = 0;
+        if (!eq[1]) {
+            sh_unset(&sh->ctx, name);
+        } else if (!sh_set(&sh->ctx, name, eq + 1)) {
+            sh_export(&sh->ctx, name);
+        }
+    }
+}
+
 long sh_word_list(const sh_shell *sh, int kind, char *out, long max)
 {
     long n = 0;

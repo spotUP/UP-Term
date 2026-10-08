@@ -322,6 +322,11 @@ long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io);
  * completion and command colouring. */
 long sh_word_list(const sh_shell *sh, int kind, char *out, long max);
 
+/* W46: the console's environment for the programs (ACTION_VTCON_ENV): the
+ * NAME=VALUE entries of list (each NUL-ended, an empty entry or len ends
+ * it) exported; an empty VALUE unsets NAME. */
+void sh_apply_env(sh_shell *sh, const char *list, long len);
+
 /* The next directory of a Unix $PATH ("/gg/bin:/c:."), as AmigaDOS names
  * it, into dir (at most max bytes): /vol/rest is vol:rest, /vol is vol:,
  * an empty entry or "." the current directory (""), a relative entry

@@ -33,6 +33,8 @@ typedef struct prefs_fields {
     char bg[UC_MAX_VALUE];
     char selfg[UC_MAX_VALUE];
     char selbg[UC_MAX_VALUE];
+    char term[32];                  /* term: TERM for programs vsh starts in the window ("": vtcon) */
+    char colors[8];                 /* colors: rgb | 256 ("": not told) -- COLORTERM for those programs */
     char linkopen[UC_MAX_VALUE];    /* link-open: the command for an OSC 8 link, %s the URL */
     char pal[16][16];
     int cursor;     /* PREFS_CURSOR_* */

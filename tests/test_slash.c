@@ -172,8 +172,52 @@ static void tab_completes_names_then_values(void)
     CHECK_INT(slash_complete("dir /", 5, 0, 0, out, sizeof(out), &from), 0);
 }
 
+/* W46: /term and /colors tell vsh's programs, /setup says where values came from */
+static void term_colors_and_setup_are_wired_and_pure(void)
+{
+    char buf[128];
+    slash_row rows[3];
+    long n;
+    CHECK_INT(parse("/term xterm-256color"), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_TERM);
+    CHECK_STR(cmd.arg, "xterm-256color");
+    CHECK_INT(parse("/term"), SLASH_ERROR);
+    CHECK_INT(parse("/colors rgb"), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_COLORS);
+    CHECK_INT(parse("/setup"), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_SETUP);
+    CHECK_INT(slash_term_ok("screen-256color"), 1);
+    CHECK_INT(slash_term_ok("vtcon"), 1);
+    CHECK_INT(slash_term_ok(""), 0);
+    CHECK_INT(slash_term_ok("a b"), 0);
+    CHECK_INT(slash_term_ok("x;rm"), 0);
+    CHECK_INT(slash_term_ok("0123456789012345678901234567890123"), 0);
+    CHECK_INT(slash_colors_ok("rgb"), 1);
+    CHECK_INT(slash_colors_ok("256"), 1);
+    CHECK_INT(slash_colors_ok("16"), 0);
+    n = slash_env_list("xterm-256color", "rgb", buf, sizeof(buf));
+    CHECK_INT(n, 20 + 20 + 1);
+    CHECK_STR(buf, "TERM=xterm-256color");
+    CHECK_STR(buf + 20, "COLORTERM=truecolor");
+    CHECK_INT(buf[n - 1], 0);
+    n = slash_env_list("", "256", buf, sizeof(buf));
+    CHECK_STR(buf, "COLORTERM="); /* unset */
+    CHECK_INT(slash_env_list("", "", buf, sizeof(buf)), 0);
+    CHECK_INT(slash_env_list("vtcon", "rgb", buf, 10), 0); /* does not fit */
+    CHECK_STR(slash_source("xterm", "vtcon", ""), "this window");
+    CHECK_STR(slash_source("vtcon", "vtcon", ""), "profile");
+    CHECK_STR(slash_source("", 0, ""), "default");
+    rows[0].name = "term"; rows[0].value = "xterm"; rows[0].source = "this window";
+    rows[1].name = "colors"; rows[1].value = ""; rows[1].source = "default";
+    n = slash_setup_text(rows, 2, buf, sizeof(buf));
+    CHECK_STR(buf, "term    xterm  [this window]\ncolors  -  [default]\n");
+    CHECK_INT(n, (long)strlen(buf));
+    CHECK_INT(slash_setup_text(rows, 2, buf, 10), 0); /* no room: no half line */
+}
+
 void suite_slash(void)
 {
+    term_colors_and_setup_are_wired_and_pure();
     paths_stay_the_shells();
     settings_name_their_menu_items();
     arguments_are_handed_on_trimmed();

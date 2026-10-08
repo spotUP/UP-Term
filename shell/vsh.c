@@ -1319,6 +1319,35 @@ static void send_words(sh_shell *sh)
     }
 }
 
+/* W46: the environment the window tells its programs (/term, /colors): asked
+ * at the start and before a prompt, applied when it changed -- not every
+ * prompt, so a `export TERM=x` typed by hand stays until the window says
+ * something new. A console that does not know the packet is not asked again. */
+static char env_sent[VTCON_ENV_MAX];
+static long env_sent_len = -1;
+
+static void sync_env(sh_shell *sh)
+{
+    char buf[VTCON_ENV_MAX];
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    static int refused;
+    long n = 0;
+    if (refused || !fh || !fh->fh_Type)
+        return;
+    memset(buf, 0, sizeof(buf));
+    if (!DoPkt(fh->fh_Type, ACTION_VTCON_ENV, fh->fh_Arg1, (LONG)buf, sizeof(buf) - 2, 0, 0)) {
+        refused = 1;
+        return;
+    }
+    while (n < (long)sizeof(buf) - 1 && buf[n])
+        n += (long)strlen(buf + n) + 1;
+    if (n == env_sent_len && !memcmp(buf, env_sent, n))
+        return;
+    memcpy(env_sent, buf, n);
+    env_sent_len = n;
+    sh_apply_env(sh, buf, n);
+}
+
 /* The console's line history (history, V88): the vtcon handler owns the list (ACTION_VTCON_HISTORY in
  * vtcon_packets.h). A console that does not know the packet answers ERROR_ACTION_NOT_KNOWN to the first
  * COUNT, and the shell keeps its own list (sh_exec.c) and never asks again. */
@@ -1554,6 +1583,7 @@ static int vsh_main(int argc, char **argv)
             }
             if (sh_get(&sh.ctx, "TERMCAP"))
                 sh_export(&sh.ctx, "TERMCAP");
+            sync_env(&sh); /* the window's /term and /colors beat the default above */
         }
     }
     /* vsh -c COMMAND [NAME [ARG ...]] and vsh FILE [ARG ...], as sh: run
@@ -1616,6 +1646,7 @@ static int vsh_main(int argc, char **argv)
         if (!text) {
             sh_notify(&sh);
             send_words(&sh);
+            sync_env(&sh);
             sh_hist_config(&sh);
         }
         if (IsInteractive(Input())) /* a script or a pipe gets no prompts */

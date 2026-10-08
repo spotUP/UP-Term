@@ -188,6 +188,8 @@ typedef struct con {
     int auto_shut;               /* the close gadget shut an AUTO window: close it after idcmp() */
     int spec_parsed;
     char profile[UC_NAME];       /* the config profile (spec's PROFILE; "default") */
+    char term[32];               /* W46: TERM told to vsh's programs ("": vsh's own, vtcon) */
+    char colors[8];              /* W46: rgb | 256 ("": not told) */
     char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
@@ -949,6 +951,8 @@ static void apply_profile(con *c)
 {
     const char *p, *v;
     c->link_open[0] = 0; /* none: OpenURL %s (h_open_link) */
+    c->term[0] = 0;
+    c->colors[0] = 0;
     if (!c->conf)
         return;
     p = c->profile;
@@ -958,6 +962,12 @@ static void apply_profile(con *c)
         return;
     /* OSC 8: the command a Ctrl + clicked link runs, %s the URL */
     copy_str(c->link_open, upconf_str(c->conf, p, "link-open", ""), sizeof(c->link_open));
+    v = upconf_str(c->conf, p, "term", "");
+    if (slash_term_ok(v))
+        copy_str(c->term, v, sizeof(c->term));
+    v = upconf_str(c->conf, p, "colors", "");
+    if (slash_colors_ok(v))
+        copy_str(c->colors, v, sizeof(c->colors));
     v = upconf_str(c->conf, p, "font", 0);
     if (v && !c->w.fontname[0]) {
         char f[UC_MAX_VALUE];
@@ -1614,6 +1624,8 @@ static void window_fields(con *c, prefs_fields *f)
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
                  : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
     copy_str(f->linkopen, c->link_open, sizeof(f->linkopen));
+    copy_str(f->term, c->term, sizeof(f->term));
+    copy_str(f->colors, c->colors, sizeof(f->colors));
     k = 0;
     if (c->kc_style & LE_KC_WINDOW) f->kcmode[k++] = 'W';
     if (c->kc_style & LE_KC_LIST) f->kcmode[k++] = 'L';
@@ -3550,6 +3562,50 @@ static int slash_colour(const char *arg, ULONG *rgb)
  * each ending "\n"). typed: from the line editor (the reader waits for the
  * line), not C:UPTerm's packet. 0 when the line is not one (the
  * program's), 1 done, 2 refused (ans says why). */
+/* /setup: this window's settings the profile can hold, with where each value
+ * came from (W46): the profile's, this window's (a /command since), or the
+ * built-in default. */
+static void setup_text(con *c, char *ans, int cap)
+{
+    const char *p = c->conf && profile_exists(c->conf, c->profile) ? c->profile : 0;
+    const char *base = p ? p : (c->conf && profile_exists(c->conf, "default") ? "default" : 0);
+    slash_row rows[6];
+    const char *pv;
+    char font[UC_MAX_VALUE];
+    int n = 0;
+    rows[n].name = "profile";
+    rows[n].value = base ? base : "(none)";
+    rows[n].source = p ? "profile" : "default";
+    n++;
+    rows[n].name = "term";
+    rows[n].value = c->term;
+    pv = base ? upconf_str(c->conf, base, "term", 0) : 0;
+    rows[n].source = slash_source(c->term, pv, "");
+    n++;
+    rows[n].name = "colors";
+    rows[n].value = c->colors;
+    pv = base ? upconf_str(c->conf, base, "colors", 0) : 0;
+    rows[n].source = slash_source(c->colors, pv, "");
+    n++;
+    copy_str(font, c->w.fontname, sizeof(font));
+    rows[n].name = "font";
+    rows[n].value = font;
+    pv = base ? upconf_str(c->conf, base, "font", 0) : 0;
+    rows[n].source = pv && !strcmp(pv, font) ? "profile" : font[0] ? "this window" : "default";
+    n++;
+    rows[n].name = "completion";
+    rows[n].value = c->kingcon ? "kingcon" : "unix";
+    pv = base ? upconf_str(c->conf, base, "completion", 0) : 0;
+    rows[n].source = slash_source(rows[n].value, pv, "unix");
+    n++;
+    rows[n].name = "link-open";
+    rows[n].value = c->link_open;
+    pv = base ? upconf_str(c->conf, base, "link-open", 0) : 0;
+    rows[n].source = slash_source(c->link_open, pv, "");
+    n++;
+    slash_setup_text(rows, n, ans, cap);
+}
+
 static int slash_run(con *c, const char *line, int len, char *ans, int cap, int typed)
 {
     slash_cmd cmd;
@@ -3639,6 +3695,31 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
     case SLASH_LINK_OPEN:
         /* this window's, until Save settings to profile keeps it */
         copy_str(c->link_open, str_ieq(cmd.arg, "none") ? "" : cmd.arg, sizeof(c->link_open));
+        return 1;
+    case SLASH_TERM:
+        if (str_ieq(cmd.arg, "none"))
+            c->term[0] = 0;
+        else if (slash_term_ok(cmd.arg))
+            copy_str(c->term, cmd.arg, sizeof(c->term));
+        else {
+            cat3(ans, cap, name, ": NAME | none (letters, digits, . _ + -)", "\n");
+            return 2;
+        }
+        cat3(ans, cap, name, ": the next command vsh starts sees it", "\n");
+        return 1;
+    case SLASH_COLORS:
+        if (str_ieq(cmd.arg, "none"))
+            c->colors[0] = 0;
+        else if (slash_colors_ok(cmd.arg))
+            copy_str(c->colors, cmd.arg, sizeof(c->colors));
+        else {
+            cat3(ans, cap, name, ": rgb | 256 | none", "\n");
+            return 2;
+        }
+        cat3(ans, cap, name, ": the next command vsh starts sees it", "\n");
+        return 1;
+    case SLASH_SETUP:
+        setup_text(c, ans, cap);
         return 1;
     case SLASH_THEME:
         if (!cmd.arg[0] && typed) {
@@ -5864,6 +5945,19 @@ static void packet(con *c, struct DosPacket *p)
         ld_set(&c->ld, (const vt_termios *)p->dp_Arg2, (int)p->dp_Arg3);
         reply(p, DOSTRUE, 0);
         service_reads(c);
+        return;
+    case ACTION_VTCON_ENV:
+        /* vsh: what this window tells its programs (/term, /colors) */
+        if (!p->dp_Arg2 || p->dp_Arg3 < 2) {
+            reply(p, DOSFALSE, ERROR_REQUIRED_ARG_MISSING);
+            return;
+        }
+        {
+            char *buf = (char *)p->dp_Arg2;
+            buf[0] = buf[1] = 0;
+            slash_env_list(c->term, c->colors, buf, p->dp_Arg3);
+        }
+        reply(p, DOSTRUE, 0);
         return;
     case ACTION_VTCON_COMMAND:
         /* C:UPTerm: a slash command for this window, its answer back */

@@ -67,6 +67,8 @@ static const slash_def table[] = {
     { "bg", SL_ARG, SLASH_BG, 1, 0, "RRGGBB | none", "the background colour" },
     { "bold-bright", SL_CHOICE, 0, 0, v_bold, "on | off", "bold text takes the bright colours (xterm)" },
     { "clear", SL_CHOICE, 0, 0, v_clear, "screen | scrollback", "clear the screen or the scrollback" },
+    { "colors", SL_ARG, SLASH_COLORS, 1, 0, "rgb | 256 | none",
+      "the colour depth programs are told (rgb: COLORTERM=truecolor)" },
     { "completion", SL_CHOICE, 0, 0, v_completion, "unix | kingcon", "the Tab key's completion style" },
     { "copy", SL_ACTION, MENU_COPY, 0, 0, "", "copy the selection to the clipboard" },
     { "copy-on-select", SL_CHOICE, 0, 0, v_copy, "on | off", "a drag ends with the text on the clipboard" },
@@ -102,8 +104,11 @@ static const slash_def table[] = {
     { "select-all", SL_ACTION, MENU_SELECT_ALL, 0, 0, "", "select the scrollback and the screen" },
     { "selection-bg", SL_ARG, SLASH_SEL_BG, 1, 0, "RRGGBB | none", "the selection's background" },
     { "selection-fg", SL_ARG, SLASH_SEL_FG, 1, 0, "RRGGBB | none", "the selected text's colour" },
+    { "setup", SL_ACTION, SLASH_SETUP, 0, 0, "", "what this window has set, and where each came from" },
     { "size", SL_ARG, SLASH_SIZE, 1, 0, "COLSxROWS", "the window sized to the grid (80x24)" },
     { "tab", SL_CHOICE, 0, 0, v_tab, "new | next | previous | close", "tabs" },
+    { "term", SL_ARG, SLASH_TERM, 1, 0, "NAME | none",
+      "TERM for programs vsh starts here (vtcon, xterm-256color, screen-256color)" },
     { "theme", SL_ARG, SLASH_THEME, 0, 0, "[NAME]", "a colour theme (no name: a list, Up/Down and Enter)" },
     { "wheel", SL_CHOICE, 0, 0, v_wheel, "scroll | ignore", "the mouse wheel moves the scrollback" }
 };
@@ -305,9 +310,95 @@ int slash_complete(const char *line, int len, const char *const *extra, int next
         }
     } else if (d->id == SLASH_SCROLLBACK || d->id == SLASH_FALLBACK || d->id == SLASH_FG ||
                d->id == SLASH_BG || d->id == SLASH_CURSOR_COLOR || d->id == SLASH_SEL_FG ||
-               d->id == SLASH_SEL_BG || d->id == SLASH_LINK_OPEN) {
+               d->id == SLASH_SEL_BG || d->id == SLASH_LINK_OPEN || d->id == SLASH_TERM ||
+               d->id == SLASH_COLORS) {
         if (!strncmp("none", line + a, (size_t)(len - a)) && add(out, cap, &k, "", "none"))
             count++;
     }
     return count;
+}
+
+/* ---- W46: /term, /colors, /setup ---------------------------------------- */
+
+int slash_term_ok(const char *name)
+{
+    int n = 0;
+    for (; name[n]; n++) {
+        char c = name[n];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' ||
+              c == '_' || c == '+' || c == '-'))
+            return 0;
+    }
+    return n >= 1 && n <= 31;
+}
+
+int slash_colors_ok(const char *name)
+{
+    return !strcmp(name, "rgb") || !strcmp(name, "256");
+}
+
+long slash_env_list(const char *term, const char *colors, char *out, long max)
+{
+    long k = 0;
+    const char *e[2];
+    char t[40];
+    int i, ne = 0;
+    if (term[0] && strlen(term) < 32) {
+        strcpy(t, "TERM=");
+        strcat(t, term);
+        e[ne++] = t;
+    }
+    if (!strcmp(colors, "rgb"))
+        e[ne++] = "COLORTERM=truecolor";
+    else if (!strcmp(colors, "256"))
+        e[ne++] = "COLORTERM=";
+    for (i = 0; i < ne; i++) {
+        long n = (long)strlen(e[i]) + 1;
+        if (k + n + 1 > max)
+            return 0;
+        memcpy(out + k, e[i], (size_t)n);
+        k += n;
+    }
+    if (!k)
+        return 0;
+    out[k++] = 0;
+    return k;
+}
+
+const char *slash_source(const char *value, const char *profile, const char *dflt)
+{
+    const char *base = profile ? profile : dflt;
+    if (strcmp(value, base))
+        return "this window";
+    return profile ? "profile" : "default";
+}
+
+int slash_setup_text(const slash_row *rows, int n, char *out, int cap)
+{
+    int i, k = 0, w = 0;
+    out[0] = 0;
+    for (i = 0; i < n; i++)
+        if ((int)strlen(rows[i].name) > w)
+            w = (int)strlen(rows[i].name);
+    for (i = 0; i < n; i++) {
+        const char *v = rows[i].value[0] ? rows[i].value : "-";
+        int pad = w - (int)strlen(rows[i].name) + 2;
+        int need = (int)strlen(rows[i].name) + pad + (int)strlen(v) + (int)strlen(rows[i].source) + 5;
+        if (k + need >= cap)
+            break;
+        strcpy(out + k, rows[i].name);
+        k += (int)strlen(rows[i].name);
+        while (pad-- > 0)
+            out[k++] = ' ';
+        strcpy(out + k, v);
+        k += (int)strlen(v);
+        strcpy(out + k, "  [");
+        k += 3;
+        strcpy(out + k, rows[i].source);
+        k += (int)strlen(rows[i].source);
+        out[k++] = ']';
+        out[k++] = '\n';
+        out[k] = 0;
+    }
+    return k;
 }

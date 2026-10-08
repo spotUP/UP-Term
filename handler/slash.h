@@ -28,7 +28,10 @@ enum {
     SLASH_FIND,              /* arg: the text */
     SLASH_HELP,              /* arg: a command's name, or empty for all */
     SLASH_SIZE,              /* arg: COLSxROWS */
-    SLASH_LINK_OPEN          /* arg: the command for a link (%s the address), or "none" */
+    SLASH_LINK_OPEN,         /* arg: the command for a link (%s the address), or "none" */
+    SLASH_TERM,              /* arg: TERM for programs vsh starts here, or "none" */
+    SLASH_COLORS,            /* arg: rgb | 256 (COLORTERM for those programs), or "none" */
+    SLASH_SETUP              /* the window's settings and where each came from */
 };
 
 typedef struct slash_value {
@@ -78,5 +81,27 @@ int slash_complete(const char *line, int len, const char *const *extra, int n, c
 
 /* the table, for listings: n entries */
 const slash_def *slash_table(int *n);
+
+/* W46: what the window tells the programs vsh starts in it, and the
+ * /setup listing. slash_term_ok: a terminal type's name (1 to 31 letters,
+ * digits and . _ + -). slash_colors_ok: "rgb" or "256". slash_env_list
+ * writes the ACTION_VTCON_ENV list for the window's term and colors ("" =
+ * not set): TERM=<term>; COLORTERM=truecolor for rgb, COLORTERM= (unset) for
+ * 256. Returns its bytes (the closing NUL included), 0 when nothing is told. */
+int  slash_term_ok(const char *name);
+int  slash_colors_ok(const char *name);
+long slash_env_list(const char *term, const char *colors, char *out, long max);
+
+/* Where a setting's value came from: "this window" when it differs from
+ * the profile's (profile: its value, 0 when the profile has no such key;
+ * dflt: the built-in value), else "profile" or "default". */
+const char *slash_source(const char *value, const char *profile, const char *dflt);
+
+typedef struct slash_row {
+    const char *name, *value, *source;
+} slash_row;
+/* The /setup answer: one line per row, names and values in columns, the
+ * source in brackets. Returns the bytes written (NUL-terminated). */
+int slash_setup_text(const slash_row *rows, int n, char *out, int cap);
 
 #endif

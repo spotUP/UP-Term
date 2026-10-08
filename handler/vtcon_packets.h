@@ -95,6 +95,17 @@
  *                               the file keeps HISTFILESIZE lines when it is trimmed at the next window. */
 #define VTCON_HIST_CONFIG 5
 
+/* The environment the window tells its programs (W46: /term, /colors and
+ * the profile's term and colors): vsh asks at its start and before a
+ * prompt and exports what changed, so the next command it starts sees it.
+ *   dp_Arg1  fh_Arg1
+ *   dp_Arg2  a buffer (APTR), dp_Arg3 its size (VTCON_ENV_MAX is enough)
+ *   dp_Res1  DOSTRUE; the buffer holds NAME=VALUE entries, each ending in
+ *            NUL, then one more NUL; an empty VALUE means "unset NAME". An
+ *            empty list: the window tells nothing. */
+#define ACTION_VTCON_ENV 0x765E
+#define VTCON_ENV_MAX 128
+
 /* ACTION_VTCON_TCGETA answers dp_Res2 1 when the console is in termios
  * mode (a program set it), 0 when it describes the Amiga mode in termios
  * terms: a shell that suspends a job keeps the job's settings only then

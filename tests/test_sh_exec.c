@@ -1118,6 +1118,21 @@ static int has_word(const char *list, long n, const char *w)
     return 0;
 }
 
+static void the_console_env_is_exported_and_unset(void)
+{
+    static const char list[] = "TERM=xterm-256color\0COLORTERM=truecolor\0\0";
+    static const char gone[] = "COLORTERM=\0\0";
+    run("COLORTERM=old; TERM=vtcon");
+    sh_apply_env(&sh, list, (long)sizeof(list) - 1);
+    CHECK_STR(sh_get(&sh.ctx, "TERM"), "xterm-256color");
+    CHECK_STR(sh_get(&sh.ctx, "COLORTERM"), "truecolor");
+    sh_apply_env(&sh, gone, (long)sizeof(gone) - 1);
+    CHECK(sh_get(&sh.ctx, "COLORTERM") == 0);
+    CHECK_STR(sh_get(&sh.ctx, "TERM"), "xterm-256color"); /* the rest is left alone */
+    sh_apply_env(&sh, "junk\0=x\0\0", 8);              /* no NAME=VALUE: ignored */
+    CHECK_STR(sh_get(&sh.ctx, "TERM"), "xterm-256color");
+}
+
 static void word_lists(void)
 {
     char buf[4096];
@@ -1479,6 +1494,7 @@ void suite_sh_exec(void)
     command_skips_functions();
     deep_recursion();
     word_lists();
+    the_console_env_is_exported_and_unset();
     uninstall_removes_every_up_term_block();
     sh_shell_free(&sh);
 }
