@@ -687,6 +687,8 @@ invocation/stdin_noarg
 invocation/type_missing_volume
 invocation/u_script
 invocation/x_script
+invocation/s_cat_reads_rest
+invocation/s_head_reads_script
 jobs/bg_quiet
 jobs/bgwait
 jobs/done_state
@@ -822,6 +824,7 @@ redir/redirexec
 redir/redirif
 redir/redirloop
 redir/rwredir
+redir/read_loop_ext
 shopt/dotglob
 shopt/expand_aliases
 shopt/extglob

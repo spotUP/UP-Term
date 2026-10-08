@@ -634,61 +634,50 @@ static int run_main(int argc, char **argv)
         else if (inf.script)
             sh_run_script(&sh); /* the arguments stay $1 ... */
         else {
-            /* a script on standard input; an interactive shell (-i) reads it a line at a time as vsh does: the prompt
-             * hook, history expansion, PS0, the history list */
+            /* a script on standard input, a line at a time as vsh does (h_read_line: a byte at a
+             * time, so a command that reads the same input starts where the shell's line ended:
+             * `head -n 1` in `vsh -s` reads the script's next line, as in bash). An interactive
+             * shell (-i) also runs the prompt hook, history expansion, PS0, the history list */
             char *text = 0, buf[4096];
-            if (sh.opts & SO_INTERACTIVE) {
-                int incomplete = 0;
-                size_t tl = 0;
-                while (!sh.exiting) {
-                    size_t n;
-                    if (!text)
-                        sh_prompt_command(&sh);
-                    if (!fgets(buf, sizeof(buf), stdin))
-                        break;
-                    if (!text) {
-                        char *ex;
-                        int po, r = sh_hist_expand(&sh, buf, &ex, &po);
-                        if (r < 0)
-                            continue;
-                        if (r > 0) {
-                            fputs(ex, stderr);
-                            if (po) {
-                                sh_hist_replace(&sh, ex, 1);
-                                free(ex);
-                                continue;
-                            }
-                            snprintf(buf, sizeof(buf), "%s", ex);
-                            free(ex);
-                        }
-                    }
-                    n = strlen(buf);
-                    text = (char *)realloc(text, tl + n + 1);
-                    memcpy(text + tl, buf, n + 1);
-                    tl += n;
-                    sh.ps0_on = 1;
-                    sh_run_text(&sh, text, &incomplete);
-                    sh.ps0_on = 0;
-                    if (incomplete)
+            int incomplete = 0;
+            size_t tl = 0;
+            while (!sh.exiting) {
+                size_t n;
+                int inter = (sh.opts & SO_INTERACTIVE) != 0;
+                if (!text && inter)
+                    sh_prompt_command(&sh);
+                if (h_read_line(0, FH(0), buf, sizeof(buf)) < 0)
+                    break;
+                if (!text && inter) {
+                    char *ex;
+                    int po, r = sh_hist_expand(&sh, buf, &ex, &po);
+                    if (r < 0)
                         continue;
-                    free(text);
-                    text = 0;
-                    tl = 0;
+                    if (r > 0) {
+                        fputs(ex, stderr);
+                        if (po) {
+                            sh_hist_replace(&sh, ex, 1);
+                            free(ex);
+                            continue;
+                        }
+                        snprintf(buf, sizeof(buf), "%s", ex);
+                        free(ex);
+                    }
                 }
+                n = strlen(buf);
+                text = (char *)realloc(text, tl + n + 1);
+                memcpy(text + tl, buf, n + 1);
+                tl += n;
+                sh.ps0_on = inter;
+                sh_run_text(&sh, text, &incomplete);
+                sh.ps0_on = 0;
+                if (incomplete)
+                    continue;
                 free(text);
                 text = 0;
-            } else {
-            size_t len = 0, n;
-            while ((n = fread(buf, 1, sizeof(buf), stdin)) > 0) {
-                text = (char *)realloc(text, len + n + 1);
-                memcpy(text + len, buf, n);
-                len += n;
-                text[len] = 0;
+                tl = 0;
             }
-            if (text)
-                sh_run_text(&sh, text, 0);
             free(text);
-            }
         }
     }
     (void)first;
