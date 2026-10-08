@@ -161,6 +161,16 @@ def amiga_delete(*drawers):
             run("Delete >NIL: VTC:%s ALL QUIET FORCE" % d, 60)
 
 
+def kit_assigns():
+    """What the kit's install.dos sets up that the ports rely on: TMP:, which
+    ixemul programs see as /tmp (patch's temporary files: "Can't create
+    temporary file /tmp/...: Device not configured" without it), on T: when
+    the system has no TMP: of its own."""
+    rc, _ = run("Assign >NIL: TMP: EXISTS", 20)
+    if rc != 0:
+        run("Assign TMP: T:", 20)
+
+
 def stage(pkg, bins, wanted):
     """Binaries, data and one script per wanted case into VTC:."""
     amiga_delete("userland/work/" + pkg, "userland/" + pkg, "out/" + pkg)
@@ -492,6 +502,7 @@ def main():
         return 0 if check_bash(a.bash, a.case, a.failed) else 1
     if a.case and not (a.only and len(a.only) == 1):
         ap.error("--case needs exactly one --only package")
+    kit_assigns()
     names = a.only or packages()
     if a.failed:
         names = [p for p in names if (read_verdict(p) or ("",))[0] == "FAIL"]
