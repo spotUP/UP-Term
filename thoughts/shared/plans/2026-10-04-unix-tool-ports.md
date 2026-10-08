@@ -302,15 +302,15 @@ Phase 0:
 
 Phase 1:
 - [x] 1.1 grep
-- [ ] 1.2 sed
-- [ ] 1.3 awk
-- [ ] 1.4 less
-- [ ] 1.5 nano
-- [ ] 1.6 findutils
-- [ ] 1.7 diffutils
-- [ ] 1.8 patch
-- [ ] 1.9 mandoc + pages
-- [ ] 1.10 kit
+- [ ] 1.2 sed (2026-10-08: sed 4.10 built, rig 3 17 of 17, kit-staged; open: the kit install step, 1.10)
+- [ ] 1.3 awk (2026-10-08: onetrue-awk 20260426, rig 3 17 of 17, kit-staged; open: 1.10)
+- [ ] 1.4 less (2026-10-08: less 710, rig 3 7 of 7 incl. 3 terminal cases, kit-staged; lesskey is no program in 710; open: 1.10)
+- [ ] 1.5 nano (2026-10-08: nano 9.2, rig 3 3 of 3 (type, save, edit; bytes equal), syntax files + nanorc staged; open: 1.10)
+- [ ] 1.6 findutils (2026-10-08: 4.11 over posix_spawnp, rig 3 8 of 9; -type d miscompiled by the installed cc1 (bbb opt_strcpy), fixed by cpython-amiga 7eeb010 gcc patch 0004, not installed in ~/opt/amiga: OWNER; held out of the kit)
+- [ ] 1.7 diffutils (2026-10-08: 3.12, rig 3 14 of 14, kit-staged; open: 1.10)
+- [ ] 1.8 patch (2026-10-08: 2.8, rig 3 6 of 6, kit-staged; open: 1.10)
+- [ ] 1.9 mandoc + pages (2026-10-08: mandoc 1.14.6, rig 3 8 of 8 incl. man paging through less; own pages vsh UPTerm upgetty sz/rz in vtcon man/ (5aa2069, lint in make test); pages install under UP-Term:share/man; open: 1.10)
+- [ ] 1.10 kit (2026-10-08: upterm-ports make kit-stage (76c4f8b) stages programs, pages, licences, SOURCES.txt and the source tree; the vtcon side is upterm-ports thoughts/shared/handoffs/2026-10-08_vtcon-kit-userland.patch, held back: it needs a copy part in dist/Install.installer, which the Installer agent has open)
 
 Phase 2:
 - [ ] 2.1 gzip
