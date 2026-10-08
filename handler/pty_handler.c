@@ -13,6 +13,10 @@
  *               for the program on it: SCREEN_MODE, WAIT_CHAR,
  *               CHANGE_SIGNAL and the termios packets (vtcon_packets.h).
  * <id> is 1-15 characters without '/', compared without case.
+ *   PTY:<id>/w  a pipe's write end (MODE_NEWFILE makes the pipe), PTY:<id>/r
+ *               its read end: a pair without the line discipline, not
+ *               interactive; a Read answers with what the pipe holds, which
+ *               PIPE: does not (vsh's pipes; names and rules: pty_name.h).
  *
  * One process serves every pair (dn_Task stays set while a pair exists).
  * Each side of a pair has a port of its own, which its handles carry in
@@ -49,6 +53,7 @@
 #include "vtcon_packets.h"
 #include "brk.h"
 #include "waitset.h"
+#include "pty_name.h"
 #include "../tty/ldisc.h"
 
 struct ExecBase *SysBase;
@@ -99,7 +104,7 @@ static void tr(const char *s, LONG a, LONG b)
 #define STR(x) STR_(x)
 static const char vers[] = "$VER: pty-handler 0.1 (UP-Term, build " STR(VTCON_BUILD) ")";
 
-#define ID_MAX 16
+#define ID_MAX PN_ID_MAX
 #define OUT_MAX 4096   /* slave output and echo, waiting for the master */
 #define Q 16           /* packets waiting per queue */
 
@@ -114,6 +119,8 @@ typedef struct pair {
     brk brk;                     /* who the slave's signal keys go to */
     int masters, slaves;
     int slave_ever;              /* a slave was opened: its last close is EOF for the master */
+    int pipe;                    /* a pipe (pty_name.h): master = read end, slave = write end, no ldisc */
+    int master_ever;             /* a read end was opened (a pipe's writer waits for one before it drops) */
     int ocol;                    /* OPOST column (OXTABS) */
     unsigned char out[OUT_MAX];
     long out_len;
@@ -146,25 +153,11 @@ static void reply(struct DosPacket *p, LONG r1, LONG r2)
     ReplyPkt(p, r1, r2);
 }
 
-static int id_eq(const char *a, const char *b)
-{
-    for (; *a && *b; a++, b++) {
-        char x = *a, y = *b;
-        if (x >= 'A' && x <= 'Z')
-            x += 32;
-        if (y >= 'A' && y <= 'Z')
-            y += 32;
-        if (x != y)
-            return 0;
-    }
-    return *a == *b;
-}
-
 static pair *find_pair(const char *id)
 {
     struct MinNode *n;
     for (n = pairs.mlh_Head; n->mln_Succ; n = n->mln_Succ)
-        if (id_eq(((pair *)n)->id, id))
+        if (pn_id_eq(((pair *)n)->id, id))
             return (pair *)n;
     return 0;
 }
@@ -240,9 +233,10 @@ static void ld_signal_cb(void *u, int sig)
         brk_send(&p->brk, SIGBREAKF_CTRL_F);
 }
 
+/* the master (a pipe's last reader) has gone; a pipe nobody has read yet is not hung up */
 static int hung_up(pair *p)
 {
-    return p->masters <= 0;
+    return p->masters <= 0 && (!p->pipe || p->master_ever);
 }
 
 /* Slave writes into the master's queue, as far as it has room. A write
@@ -255,7 +249,17 @@ static int slave_writes(pair *p)
         struct DosPacket *w = p->swrites[0];
         const unsigned char *b = (const unsigned char *)w->dp_Arg2 + p->swoff;
         long left = w->dp_Arg3 - p->swoff;
-        if (!hung_up(p)) {
+        if (!hung_up(p) && p->pipe) {
+            long k = OUT_MAX - p->out_len; /* a pipe: the bytes as they are */
+            if (k > left)
+                k = left;
+            out_append(p, b, k);
+            p->swoff += k;
+            left -= k;
+            moved |= k > 0;
+            if (left > 0)
+                break;
+        } else if (!hung_up(p)) {
             if (p->ld.stopped)
                 break; /* ^S */
             while (left > 0) {
@@ -443,42 +447,6 @@ static void end_pair(pair *p)
 
 /* ---- packets ----------------------------------------------------------------- */
 
-/* "PTY:<id>/m" -> id and 'm'; "*" and "CONSOLE:" -> 0 (the port's pair). */
-static int parse_name(UBYTE *b, char *id, int *master)
-{
-    char name[256];
-    int i, n = b ? b[0] : 0, colon = -1, slash = -1, start, len;
-    for (i = 0; i < n && i < 255; i++) {
-        name[i] = (char)b[i + 1];
-        if (colon < 0 && name[i] == ':')
-            colon = i;
-    }
-    name[i] = 0;
-    if (!strcmp(name, "*") || id_eq(name, "CONSOLE:"))
-        return 0;
-    start = colon + 1;
-    for (i = start; name[i]; i++)
-        if (name[i] == '/')
-            slash = i;
-    if (slash < 0 || !name[slash + 1] || name[slash + 2])
-        return -1;
-    len = slash - start;
-    if (len < 1 || len >= ID_MAX)
-        return -1;
-    memcpy(id, name + start, len);
-    id[len] = 0;
-    for (i = 0; i < len; i++)
-        if (id[i] == '/')
-            return -1;
-    if (name[slash + 1] == 'm' || name[slash + 1] == 'M')
-        *master = 1;
-    else if (name[slash + 1] == 's' || name[slash + 1] == 'S')
-        *master = 0;
-    else
-        return -1;
-    return 1;
-}
-
 /* Which side a port is: SIDE_NONE for the handler's own port. */
 #define SIDE_NONE 0
 #define SIDE_MASTER 1
@@ -488,53 +456,62 @@ static void do_open(struct DosPacket *d, pair *via, int side)
 {
     struct FileHandle *fh = (struct FileHandle *)BADDR(d->dp_Arg1);
     char id[ID_MAX];
-    int master = 0, how = parse_name((UBYTE *)BADDR(d->dp_Arg3), id, &master);
+    int kind = pn_parse((const unsigned char *)BADDR(d->dp_Arg3), id), master;
     pair *p;
-    if (how == 0) {
+    if (kind == PN_PORT) {
         p = via; /* "*" on a slave's port: another slave of it */
-        if (!p || side != SIDE_SLAVE) {
+        if (!p || side != SIDE_SLAVE || p->pipe) {
             reply(d, DOSFALSE, ERROR_OBJECT_NOT_FOUND);
             return;
         }
-    } else if (how < 0) {
+        kind = PN_SLAVE;
+    } else if (kind == PN_BAD) {
         reply(d, DOSFALSE, ERROR_INVALID_COMPONENT_NAME);
         return;
     } else {
         p = find_pair(id);
-        if (master) {
-            if (p) {
-                reply(d, DOSFALSE, ERROR_OBJECT_IN_USE); /* taken: try the next id */
-                return;
-            }
+        switch (pn_open_rule(kind, p != 0, p && p->pipe, p && hung_up(p), d->dp_Type == ACTION_FINDOUTPUT)) {
+        case PN_IN_USE:
+            reply(d, DOSFALSE, ERROR_OBJECT_IN_USE); /* taken: try the next id */
+            return;
+        case PN_NOT_FOUND:
+            reply(d, DOSFALSE, ERROR_OBJECT_NOT_FOUND);
+            return;
+        case PN_NEW:
             if (!(p = new_pair(id))) {
                 reply(d, DOSFALSE, ERROR_NO_FREE_STORE);
                 return;
             }
-        } else if (!p || hung_up(p)) {
-            reply(d, DOSFALSE, ERROR_OBJECT_NOT_FOUND);
-            return;
+            p->pipe = kind == PN_PIPE_W;
+            break;
         }
     }
-    fh->fh_Port = (struct MsgPort *)DOSTRUE; /* interactive */
+    master = kind == PN_MASTER || kind == PN_PIPE_R;
+    /* a terminal is interactive, a pipe is not (isatty, IsInteractive) */
+    fh->fh_Port = p->pipe ? 0 : (struct MsgPort *)DOSTRUE;
     if (master) {
         p->masters++;
+        p->master_ever = 1;
         fh->fh_Arg1 = (LONG)p | 1L;
         fh->fh_Type = &p->mport;
     } else {
         struct Task *t;
         /* the first slave opener is the break target, as on Unix the
          * first opener gets the controlling terminal; again when it is gone */
-        Forbid();
-        t = brk_task(&p->brk);
-        Permit();
-        if (!t)
-            brk_open(&p->brk, d->dp_Port);
+        if (!p->pipe) {
+            Forbid();
+            t = brk_task(&p->brk);
+            Permit();
+            if (!t)
+                brk_open(&p->brk, d->dp_Port);
+        }
         p->slaves++;
         p->slave_ever = 1;
         fh->fh_Arg1 = (LONG)p;
         fh->fh_Type = &p->sport;
     }
     reply(d, DOSTRUE, 0);
+    service(p); /* a reader that came after the writer's data */
 }
 
 static void set_mode(pair *p, int raw);
@@ -543,6 +520,14 @@ static void set_mode(pair *p, int raw);
  * (dp_Arg1 0 cooked, else raw) for one side of p. */
 static void by_port(struct DosPacket *d, pair *p, int master)
 {
+    if (p->pipe && (d->dp_Type == ACTION_SCREEN_MODE || !master)) {
+        /* a pipe has no mode; its write end is always ready */
+        if (d->dp_Type == ACTION_SCREEN_MODE)
+            reply(d, DOSFALSE, ERROR_ACTION_NOT_KNOWN);
+        else
+            reply(d, DOSTRUE, 0);
+        return;
+    }
     if (d->dp_Type == ACTION_SCREEN_MODE) {
         /* the Amiga way to set a mode, in termios terms (as XCON:'s TCGETA) */
         set_mode(p, d->dp_Arg1 != 0);
@@ -642,6 +627,31 @@ static void packet(struct DosPacket *d, pair *via, int side)
     }
     p = EP_PAIR(d->dp_Arg1);
     master = EP_MASTER(d->dp_Arg1) != 0;
+    if (p->pipe)
+        switch (d->dp_Type) {
+        case ACTION_READ:
+            if (master)
+                break;
+            reply(d, -1, ERROR_READ_PROTECTED); /* the write end */
+            return;
+        case ACTION_WRITE:
+            if (!master)
+                break;
+            reply(d, -1, ERROR_WRITE_PROTECTED); /* the read end */
+            return;
+        case ACTION_VTCON_NREAD:
+        case ACTION_VTCON_INTR:
+            if (master)
+                break;
+            reply(d, DOSFALSE, ERROR_ACTION_NOT_KNOWN);
+            return;
+        case ACTION_END:
+        case ACTION_FLUSH:
+            break;
+        default: /* no terminal: termios, size, break target */
+            reply(d, DOSFALSE, ERROR_ACTION_NOT_KNOWN);
+            return;
+        }
     switch (d->dp_Type) {
     case ACTION_VTCON_NREAD:
         reply(d, master ? p->out_len : ld_nread(&p->ld), 0);
