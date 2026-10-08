@@ -37,8 +37,6 @@
 (if (not (exists #script))
     (abort "The Files drawer is missing: unpack the whole archive and start Install from its drawer."))
 
-(set #v47 (>= (/ (getversion "dos.library" (resident)) 65536) 47))
-
 ; ---- welcome ---------------------------------------------------------------
 
 ; welcome: n = 14, lead 0
@@ -208,35 +206,25 @@
 
 ; ---- taking over the system's console: a page of its own -----------------
 
-(if #v47
-    (message
-        ; n = 5, lead 5
-        "\n\n\n\n\nAmigaOS 3.2 found.\n\n"
-        "UP-Term installs normally, but it does not take over CON: or\n"
-        "console.device on 3.2 yet: the 3.2 Shell needs a console mode\n"
-        "UP-Term does not have yet.")
-    (
-        (set #sys
-            (askoptions
-                (prompt "UP-Term can also take over the system's console.\n"
-                        "Leave both off to keep the system's own.")
-                (help "CON: and RAW:: every new Shell window is an UP-Term window "
-                      "(the Amiga look, with UP-Term's line editing, history and Tab "
-                      "completion); C:UPConsole CON OFF switches back. Refused when "
-                      "another console replacement (KingCON, ViNCEd...) serves CON:.\n\n"
-                      "console.device: every program's console window (Ed, More, the "
-                      "system's Shell windows) draws with UP-Term's engine; C:UPConsole "
-                      "DEVICE OFF switches back. Refused when console.device was patched "
-                      "by another program.\n\n"
-                      "Each is switched on at every boot by a block in S:User-Startup, "
-                      "which Uninstall takes out.")
-                (choices "UP-Term serves CON: and RAW:"
-                         "console.device is UP-Term's")
-                (default 0)))
-        (if (in #sys 0) (set #con "CONSOLE"))
-        (if (in #sys 1) (set #dev "DEVICE"))
-    )
-)
+(set #sys
+    (askoptions
+        (prompt "UP-Term can also take over the system's console.\n"
+                "Leave both off to keep the system's own.")
+        (help "CON: and RAW:: every new Shell window is an UP-Term window "
+              "(the Amiga look, with UP-Term's line editing, history and Tab "
+              "completion); C:UPConsole CON OFF switches back. Refused when "
+              "another console replacement (KingCON, ViNCEd...) serves CON:.\n\n"
+              "console.device: every program's console window (Ed, More, the "
+              "system's Shell windows) draws with UP-Term's engine; C:UPConsole "
+              "DEVICE OFF switches back. Refused when console.device was patched "
+              "by another program.\n\n"
+              "Each is switched on at every boot by a block in S:User-Startup, "
+              "which Uninstall takes out.")
+        (choices "UP-Term serves CON: and RAW:"
+                 "console.device is UP-Term's")
+        (default 0)))
+(if (in #sys 0) (set #con "CONSOLE"))
+(if (in #sys 1) (set #dev "DEVICE"))
 
 ; ---- the size of each part, in KB ------------------------------------------
 ; Only the pace of the percent bar: each part moves it by its share of the

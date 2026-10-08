@@ -703,70 +703,64 @@ If NOT "{STEP}" EQ ""
 EndIf
 Lab console
 ; CON: and RAW: served by UP-Term (opt-in): C:UPConsole switches them at
-; every boot from its own marked block in S:User-Startup, and now. Not on
-; AmigaOS 3.2 yet: its Shell needs medium mode (UPConsole refuses there).
+; every boot from its own marked block in S:User-Startup, and now (on 3.2 too).
 Copy UPConsole C:UPConsole CLONE
-Version >NIL: dos.library 47
-If WARN
-  Set upcon "$optconsole"
-  If "$optnoconsole" EQ "NOCONSOLE"
-    Set upcon ""
-  Else
-    If "$optconsole" EQ ""
-      Ask "Should UP-Term also serve CON: and RAW: (every new Shell window)? y/N"
-      If WARN
-        Set upcon "CONSOLE"
-      EndIf
-    EndIf
-  EndIf
-  If "$upcon" EQ "CONSOLE"
-    If NOT EXISTS S:User-Startup
-      Echo >S:User-Startup ""
-    EndIf
-    Search >NIL: S:User-Startup ";BEGIN UP-Term console"
-    If WARN
-      If NOT EXISTS S:User-Startup.before-UP-Term
-        Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
-      EndIf
-      Echo >>S:User-Startup ";BEGIN UP-Term console"
-      Echo >>S:User-Startup "C:UPConsole >NIL: CON ON"
-      Echo >>S:User-Startup ";END UP-Term console"
-    EndIf
-    C:UPConsole CON ON
-  EndIf
-  UnSet upcon
-  ; console.device served by UP-Term (opt-in): UPConsole DEVICE ON at every
-  ; boot from its own block, and now. Not on 3.2 before it is tested there.
-  Copy up-console.device DEVS:up-console.device CLONE
-  Set updev "$optdevice"
-  If "$optnodevice" EQ "NODEVICE"
-    Set updev ""
-  Else
-    If "$optdevice" EQ ""
-      Ask "Should console.device be UP-Term's too (every program's console window)? y/N"
-      If WARN
-        Set updev "DEVICE"
-      EndIf
-    EndIf
-  EndIf
-  If "$updev" EQ "DEVICE"
-    If NOT EXISTS S:User-Startup
-      Echo >S:User-Startup ""
-    EndIf
-    Search >NIL: S:User-Startup ";BEGIN UP-Term device"
-    If WARN
-      If NOT EXISTS S:User-Startup.before-UP-Term
-        Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
-      EndIf
-      Echo >>S:User-Startup ";BEGIN UP-Term device"
-      Echo >>S:User-Startup "C:UPConsole >NIL: DEVICE ON"
-      Echo >>S:User-Startup ";END UP-Term device"
-    EndIf
-    C:UPConsole DEVICE ON
-  EndIf
-  UnSet updev
+Set upcon "$optconsole"
+If "$optnoconsole" EQ "NOCONSOLE"
+  Set upcon ""
 Else
-  Echo "CON: and console.device stay the system's: UP-Term cannot serve them on AmigaOS 3.2 yet."
+  If "$optconsole" EQ ""
+    Ask "Should UP-Term also serve CON: and RAW: (every new Shell window)? y/N"
+    If WARN
+      Set upcon "CONSOLE"
+    EndIf
+  EndIf
 EndIf
+If "$upcon" EQ "CONSOLE"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup ";BEGIN UP-Term console"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term console"
+    Echo >>S:User-Startup "C:UPConsole >NIL: CON ON"
+    Echo >>S:User-Startup ";END UP-Term console"
+  EndIf
+  C:UPConsole CON ON
+EndIf
+UnSet upcon
+; console.device served by UP-Term (opt-in): UPConsole DEVICE ON at every
+; boot from its own block, and now.
+Copy up-console.device DEVS:up-console.device CLONE
+Set updev "$optdevice"
+If "$optnodevice" EQ "NODEVICE"
+  Set updev ""
+Else
+  If "$optdevice" EQ ""
+    Ask "Should console.device be UP-Term's too (every program's console window)? y/N"
+    If WARN
+      Set updev "DEVICE"
+    EndIf
+  EndIf
+EndIf
+If "$updev" EQ "DEVICE"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup ";BEGIN UP-Term device"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term device"
+    Echo >>S:User-Startup "C:UPConsole >NIL: DEVICE ON"
+    Echo >>S:User-Startup ";END UP-Term device"
+  EndIf
+  C:UPConsole DEVICE ON
+EndIf
+UnSet updev
 Echo "UP-Term installed. Try:  NewShell XCON:0/20/640/300/UP-Term/CLOSE"
 Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"

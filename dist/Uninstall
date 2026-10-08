@@ -167,7 +167,9 @@ EndIf
 If EXISTS ENVARC:up-term/touch
   Delete >NIL: C:touch QUIET
 EndIf
-Delete >NIL: ENVARC:up-term ENV:up-term ALL QUIET
+; ENV: first: on AmigaOS 3.2 a directory copied from ENVARC: into ENV: keeps
+; its source locked ("object is in use") until the copy in ENV: is gone
+Delete >NIL: ENV:up-term ENVARC:up-term ALL QUIET
 ; TERMINFO: ours goes, the user's from before Install comes back
 If EXISTS ENV:TERMINFO
   Search >NIL: ENV:TERMINFO /ENV/up-term/terminfo

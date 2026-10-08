@@ -667,8 +667,8 @@ CON: AND RAW:
   on, a block in S:User-Startup between ;BEGIN UP-Term console and
   ;END UP-Term console does it at every boot; Uninstall switches it off and
   takes the block out. It refuses to switch when another console
-  replacement (KingCON, ViNCEd, ...) serves CON:, and on AmigaOS 3.2, whose
-  Shell needs a console mode UP-Term does not have yet.
+  replacement (KingCON, ViNCEd, ...) serves CON:. It works on AmigaOS 3.2
+  (the Shell's medium mode is supported).
 
 CONSOLE.DEVICE
   UP-Term can also be console.device itself: every console window any
@@ -686,7 +686,7 @@ CONSOLE.DEVICE
   takes the block out. It refuses to switch when console.device has been
   patched by another program (SetFunction). Fields of struct ConUnit that
   programs write are overwritten at the next output, except the keymap
-  (CD_SETKEYMAP). Not offered on AmigaOS 3.2 yet.
+  (CD_SETKEYMAP). It works on AmigaOS 3.2 too.
 
 CLAUDE
   C:Claude talks to Claude, Anthropic's AI model, from an UP-Term window,
