@@ -3,10 +3,12 @@
 #   tools/rig/dvmatrix.sh <kickstart file> <label>
 # Boots the rig on that ROM and runs condev (DV1), devverify (DV2, DV4),
 # rkc (D2.3), cudump (D3.2), concon (H5.6); one summary line per check into
-# build/rig/shots/dvmatrix-<label>.log. Stops the rig at the end.
+# build/rig/shots/dvmatrix-<label>.log (build/rig2/... with UPTERM_RIG=2).
+# Stops the rig at the end.
 set -u
 cd "$(dirname "$0")/../.."
-K="$1"; L="$2"; LOG=build/rig/shots/dvmatrix-$L.log
+RIG=$(python3 -c 'import sys; sys.path.insert(0, "tools/rig"); import paths; print(paths.RIG)')
+K="$1"; L="$2"; LOG=$RIG/shots/dvmatrix-$L.log
 python3 tools/rig/rig.py stop >/dev/null
 python3 tools/rig/rig.py start --kick "$K" | tail -1
 : > "$LOG"

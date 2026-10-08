@@ -15,10 +15,11 @@ Two passes: the default drawer (SYS:UP-Term) and a non-default one
                               again with DEST=VTC:Apps/UP-Term (the assign moves)"""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths  # before ami: it sets the agent port of UPTERM_RIG
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 ORIG_SIZE = 166972  # the rig's ixemul.library 48.2 as released
 
 def run(cmd, timeout=60):
