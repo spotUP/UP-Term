@@ -287,7 +287,10 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     seen_faults = set()
 
     def dump(tree, why):
-        faults, bands = text_faults(tree)
+        # the Make New Drawer dialog is the Installer's own, drawn over the askdir page (its frames read as a
+        # panel, the drawer list under it as stray text: 3.1 dest, 2026-10-08): only our pages' text is judged
+        own = why in ('dialog', 'no dialog', 'after Make New Drawer')
+        faults, bands = ([], []) if own else text_faults(tree)
         with pages.open('a') as f:
             f.write('---- %.0f s %s\n%s\ntext: %s\n' % (time.time() - t0, why, tree, ' '.join(bands)))
             for x in faults:
