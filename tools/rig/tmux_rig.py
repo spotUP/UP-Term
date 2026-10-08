@@ -4,7 +4,8 @@ XCON: window, vsh, tmux with a tmux.conf (vsh as the shell, screen-256color,
 a #() status job). Checks:
   - tmux is running and the pane's shell sees $TMUX
   - the 256-colour cube and grey ramp in a pane are the xterm palette
-    (cube_rig.check), within TMUX_WAIT seconds
+    (cube_rig.shoot_check: a shot every few seconds), within TMUX_WAIT
+    seconds (default 90; the pane drew the cube in about 25 s, 2026-10-08)
   - a split (Ctrl-B %) makes two panes
   - the #() status job ran (forkprobe logs its start)
   - detach (Ctrl-B d) leaves the session, `tmux attach` brings it back
@@ -17,7 +18,6 @@ import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ami, cube_rig, ixpty_rig, paths, ptytest_rig, screen_rig
-from PIL import Image
 from install_rig import run, check
 import install_rig
 
@@ -69,9 +69,8 @@ def main():
     typeline('echo "$TMUX" >RAM:tmux_env', 3)
     env = run('Type RAM:tmux_env')[1].strip()
     check(env.startswith('/'), "tmux runs; the pane's shell has $TMUX", env)
-    typeline('source VTC:colors.sh', float(os.environ.get("TMUX_WAIT", "20")))
-    ami.main(['shot', str(SHOT)])
-    check(cube_rig.check(Image.open(SHOT).convert('RGB'), 30, 560) == 0,
+    typeline('source VTC:colors.sh', 2)
+    check(cube_rig.shoot_check(SHOT, 30, 560, float(os.environ.get("TMUX_WAIT", "90"))) == 0,
           'the 256-colour cube in a pane is the xterm palette')
     ctrl_b('%')
     panes = lines('VTC:tmux list-panes')

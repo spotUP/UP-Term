@@ -2,8 +2,9 @@
 """screen_rig.py -- GNU screen (P7.1) on the rig: an XCON window, vsh,
 screen with SHELL=vsh and TERM=screen-256color, then tests/amiga/colors.sh
 inside it. Passes when all 240 cube and grey cells are the xterm palette
-(cube_rig.check) within SCREEN_WAIT seconds (default 20; plain XCON takes
-under 4 s, the owner's first run inside screen over 60 s). Screenshot:
+(cube_rig.shoot_check: a shot every few seconds) within SCREEN_WAIT
+seconds (default 120; plain XCON takes under 10 s, the owner's first run
+inside screen over 60 s). Screenshot:
 build/rig/shots/screen_colors.png.
 
 Then screen's other children, which the port starts with vfork (ixemul has
@@ -22,7 +23,6 @@ import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ami, cube_rig, ixpty_rig, ptytest_rig
-from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
@@ -104,9 +104,7 @@ def main():
         print('FAIL the window\'s vsh is not interactive ($- without i): ' + sty)
         rc = 1
     typeline('source VTC:colors.sh', 0)
-    time.sleep(float(os.environ.get("SCREEN_WAIT", "20")))
-    ami.main(['shot', str(SHOT)])
-    rc |= cube_rig.check(Image.open(SHOT).convert('RGB'), 30, 580)
+    rc |= cube_rig.shoot_check(SHOT, 30, 580, float(os.environ.get("SCREEN_WAIT", "120")))
     # typed text cannot carry "[" (amiagent types it as "("): from a file
     typeline('source VTC:printcmd.sh', 3)
     ctrl_a()
