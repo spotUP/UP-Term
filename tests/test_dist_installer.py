@@ -163,7 +163,7 @@ class OneListOfParts(unittest.TestCase):
         self.assertIn('(set #name #dev #val #dev)', opts)
         self.assertLess(INSTALLER.index('\n(P_OPTIONS)\n'), INSTALLER.index('(set #step "drawer"'))
         self.assertLess(INSTALLER.index('\n(P_OPTIONS_END)\n'), INSTALLER.index('(exit #done)'))
-        self.assertIn('(P_OPTIONS_END)\n            (abort', INSTALLER, 'a failed part removes them too')
+        self.assertRegex(INSTALLER, r'\(P_OPTIONS_END\)\n\s+\(abort', 'a failed part removes them too')
 
 
 class ClaudeRemoteFile(unittest.TestCase):

@@ -2,7 +2,7 @@
 date: 2026-10-08
 topic: Installer update -- copy only what changed
 tags: [installer, dist, kit, amiga]
-status: draft
+status: implemented
 ---
 
 # Installer update: copy only what changed
@@ -47,7 +47,8 @@ Installer detects an installed UP-Term and offers an Update that copies only wha
   the full install, which records both.
 - D6 Native tool `upupdate` (install/upupdate.c main, install/updiff.c pure core, vbcc,
   68020, no ixemul): `upupdate OLD NEW KIT` merges the two manifests by path; writes
-  ENV:UPTUPD<part> (KB to copy for that part, at least 1 when it runs), ENV:UPTUPDKB (total),
+  ENV:UPTUPD<part> (KB to copy for that part, at least 1 when it runs), ENV:UPTUPDKB (the sum of
+  the parts' KB, so the bar ends at 100%: a total rounded from bytes left it at 150% on 3.1),
   ENV:UPTVEROLD / ENV:UPTVERNEW (first lines of the two VERSIONS), and for each copy part
   T:UPTUPD-<part> (an AmigaDOS script: MakeDir for new drawers, `Copy "<kit>/<path>"
   "UP-Term:<drawer>/<rest>" CLONE` for new and changed files, `Delete` for files gone from it).
@@ -61,25 +62,37 @@ Installer detects an installed UP-Term and offers an Update that copies only wha
 
 ## Checklist
 
-- [ ] U1 dist/parts.txt + host test (every kit file claimed once; copy parts match the scripts)
-- [ ] U2 tools/mkmanifest.py + `make dist` writes Files/MANIFEST (D1, D3); host test of the format
-- [ ] U3 install/updiff.c core + tests/test_updiff.c in vttest_host (`make test`): new, changed,
+- [x] U1 dist/parts.txt + host test (every kit file claimed once; copy parts match the scripts)
+- [x] U2 tools/mkmanifest.py + `make dist` writes Files/MANIFEST (D1, D3); host test of the format
+- [x] U3 install/updiff.c core + tests/test_updiff.c in vttest_host (`make test`): new, changed,
       gone files, changed part sections, KB per part, scripts per copy part
-- [ ] U4 install/upupdate.c (vbcc) + Makefile + kit (Files/upupdate)
-- [ ] U5 install.dos: the record (MANIFEST, opts) at the end of a full install (D4)
-- [ ] U6 Install.installer: detection page (D5), the update run (D7), Installer 43.3 language
+- [x] U4 install/upupdate.c (vbcc) + Makefile + kit (Files/upupdate)
+- [x] U5 install.dos: the record (MANIFEST, opts) at the end of a full install (D4)
+- [x] U6 Install.installer: detection page (D5), the update run (D7), Installer 43.3 language
       (test_dist_installer), page text <= 56 characters
-- [ ] U7 Uninstall leaves nothing of it (UP-Term:MANIFEST goes with the drawer, opts with
+- [x] U7 Uninstall leaves nothing of it (UP-Term:MANIFEST goes with the drawer, opts with
       ENVARC:up-term): install_rig/installer_rig leftover checks
-- [ ] U8 installer_rig case "update": previous kit installed, new kit with one changed file:
+- [x] U8 installer_rig case "update": previous kit installed, new kit with one changed file:
       only that file's date changes in UP-Term: (List ALL dates before/after), the page flow is
       detection -> update -> done, time recorded, S:User-Startup and ENVARC:up-term/opts
       unchanged, then Uninstall removes everything. On 3.1 (43.3) and 3.2 (47).
-- [ ] U9 the reachability test: the update case drives the real Installer from the kit's
+- [x] U9 the reachability test: the update case drives the real Installer from the kit's
       Install icon and proves upupdate ran (its ENV:UPTUPDKB) -- that is U8
-- [ ] U10 README.txt: Update
+- [x] U10 README.txt: Update
 
 ## Verification
 
 Automated: `make test ONLY=installer`, vttest_host (updiff), installer_rig update on both rigs.
 Manual (owner): an Update on the Replay (3.2) over the kit installed today.
+
+## Result (2026-10-08)
+
+installer_rig update, from a private kit copy (build/dist is shared with other agents' make dist):
+- 3.2 (Installer 47): 44 of 45, full install 746 s, Update 60 s; only UP-Term:unifont/SOURCE.txt
+  changed date, UP-Term:MANIFEST the new kit's, S:User-Startup and the options as they were,
+  bar at most 100%, pages readable, Uninstall removes everything.
+- 3.1 (Installer 43.3): 44 of 45, full install 467 s, Update 62 s, the same checks. The one failing check on both is "python3 runs from the
+  Installer's copy" (python3 printed 67 for print(6*7)): the kit's ixemul.library was built at
+  18:55 before ixemul-vtcon 5cc91cd ("in quotes a * ... is a literal star"); not this feature.
+Design decisions as above; the one sequence of parts serves both the full install and the Update
+(P_WANT), so tests/test_dist_installer.py's part-order test holds both.

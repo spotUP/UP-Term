@@ -771,5 +771,23 @@ If "$updev" EQ "DEVICE"
   C:UPConsole DEVICE ON
 EndIf
 UnSet updev
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab record
+; What a later Install's Update compares and keeps (the Installer offers it
+; when both are there): this kit's manifest (every file, its part and CRC,
+; tools/mkmanifest.py) and the options of this install, the Installer's
+; ENV:UPTOPT<keyword> files as P_OPTIONS wrote them. An install from a Shell
+; has no such files and leaves no options: the next Install asks again.
+Copy MANIFEST UP-Term:MANIFEST CLONE
+If EXISTS ENV:UPTOPTDEST
+  Delete >NIL: ENVARC:up-term/opts ALL QUIET
+  MakeDir >NIL: ENVARC:up-term/opts
+  Copy ENV:UPTOPT#? ENVARC:up-term/opts CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
 Echo "UP-Term installed. Try:  NewShell XCON:0/20/640/300/UP-Term/CLOSE"
 Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"

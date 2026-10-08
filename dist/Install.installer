@@ -45,6 +45,47 @@
 (if (not (exists #script))
     (abort "The Files drawer is missing: unpack the whole archive and start Install from its drawer."))
 
+; ---- an installed UP-Term: Update or Full install ---------------------------
+; (plan 2026-10-08-installer-update) With UP-Term: assigned, its MANIFEST (the
+; record part of the last install) and that install's options
+; (ENVARC:up-term/opts) there, upupdate (Files/upupdate, no ixemul) compares
+; the installed manifest with this kit's and writes what changed into ENV:
+; (UPTUPD<part>: the KB of each part to run, UPTUPDKB, UPTVEROLD/NEW) and
+; T:UPTUPD-<part>, a copy part's script. Update then asks nothing: the
+; options come back from the record, P_STEP and P_COPY run only the parts
+; upupdate named, and the bar counts only their KB.
+
+(set #update 0)
+(if (<> (getassign "UP-Term" "a") "")
+    (if (and (exists "UP-Term:MANIFEST") (exists "ENVARC:up-term/opts/UPTOPTDEST")
+             (exists (tackon #files "upupdate")))
+        (
+            (run "Delete >NIL: ENV:UPTUPD#? ENV:UPTVER#? T:UPTUPD-#? QUIET")
+            (if (= 0 (run (cat "\"" (tackon #files "upupdate") "\" UP-Term:MANIFEST \""
+                                (tackon #files "MANIFEST") "\" \"" (pathonly @icon) "\"")))
+                (set #update
+                    (= 0 (askchoice
+                        (prompt (cat "UP-Term is installed:\n" (getenv "UPTVEROLD") "\n\n"
+                                     "This kit holds:\n" (getenv "UPTVERNEW") "\n\n"
+                                     "Update copies only what changed ("
+                                     (getenv "UPTUPDKB") " KB)\n"
+                                     "and keeps the drawer and the choices of\n"
+                                     "the last install."))
+                        (help "Update compares the list of files the last install "
+                              "wrote (UP-Term:MANIFEST) with this kit's and copies "
+                              "only the files that changed, deletes the ones this "
+                              "kit no longer has, and runs again only the parts of "
+                              "the install whose files or script changed. The "
+                              "drawer, the assigns, the blocks in S:User-Startup "
+                              "and every choice of the last install stay as they "
+                              "are.\n\n"
+                              "Full install asks every question again and copies "
+                              "everything.")
+                        (choices "Update" "Full install")
+                        (default 0))))))))
+
+(if (not #update)
+(
 ; ---- welcome ---------------------------------------------------------------
 
 ; welcome: n = 12, lead 1
@@ -247,8 +288,8 @@
 (set #kb-tools (+ 900 (if #ssh 300 0) (if #bget 210 0) (if #curl 1200 0)))
 (set #kb-python (if #python 15040 0))
 (set #kb-nvim (if #nvim 27500 0))
-; fonts, unix, desktop, boot, libs, mount, console: their #kb below
-(set #kb-rest (+ 20 60 100 (if #wasabi 160 20) 420 50 200))
+; fonts, unix, desktop, boot, libs, mount, console, record: their #kb below
+(set #kb-rest (+ 20 60 100 (if #wasabi 160 20) 420 50 200 20))
 (set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-unifont #kb-emoji
                  #kb-tools #kb-python 20 #kb-nvim #kb-rest))
 (set #donekb 0)
@@ -276,6 +317,33 @@
          "and the bar shows how far the whole install is.\n\n"
          "Proceed starts the install;\n"
          "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (run "Copy ENVARC:up-term/opts/#? ENV: QUIET")
+        (set #dest (getenv "UPTOPTDEST"))
+        (set @default-dest #dest)
+        (set #con (if (exists "ENV:UPTOPTCONSOLE") "CONSOLE" "NOCONSOLE"))
+        (set #dev (if (exists "ENV:UPTOPTDEVICE") "DEVICE" "NODEVICE"))
+        (set #shellicon (getenv "UPTOPTSHELLICON"))
+        (set #serial (getenv "UPTOPTSERIAL"))
+        (set #ssh (getenv "UPTOPTSSH"))
+        (set #bget (getenv "UPTOPTBEBBOGET"))
+        (set #curl (getenv "UPTOPTCURL"))
+        (set #wasabi (getenv "UPTOPTWASABI"))
+        (set #remote (getenv "UPTOPTREMOTE"))
+        (set #remotetext #remote)
+        (set #python (getenv "UPTOPTPYTHON"))
+        (set #nvim (getenv "UPTOPTNVIM"))
+        (set #unifont (getenv "UPTOPTUNIFONT"))
+        (set #emoji (getenv "UPTOPTEMOJI"))
+        (set #cpu040 (getenv "UPTOPTCPU040"))
+        (set #cpu060 (getenv "UPTOPTCPU060"))
+        (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-unifont 0 #kb-emoji 0
+             #kb-tools 0 #kb-python 0 #kb-nvim 0)
+        ; the parts upupdate named, and the record part's 1
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        (set #donekb 0)))
 
 ; ---- install ------------------------------------------------------------------
 ; P_STEP runs one part of install.dos (#step), saying what it does (#why),
@@ -326,32 +394,58 @@
     (set #donekb (+ #donekb #kb))
     (complete (/ (* #donekb 100) #totalkb)))
 
-(procedure P_STEP
-    (P_LEAD)
-    (working #lead #why)
-    (set #rc (execute "UPTKIT:install.dos" "UPTKIT:" (cat "STEP=" #step)))
-    (if (>= #rc 20)
+; P_WANT: does part #part run? Always in a full install; in an Update only
+; when upupdate named it (its KB become #kb), and the record part always.
+(procedure P_WANT
+    (set #want 1)
+    (if #update
         (
-            (P_OPTIONS_END)
-            (abort (cat "Part \"" #step "\" of the install failed (return code "
-                        #rc "). What was installed so far stays; Uninstall takes "
-                        "it out."))))
-    (P_BAR))
+            (set #kb (getenv (cat "UPTUPD" #part)))
+            (if (= #part "record") (set #kb 1))
+            (if (= #kb "") (set #want 0)))))
+
+(procedure P_STEP
+    (set #part #step)
+    (P_WANT)
+    (if #want
+        (
+            (P_LEAD)
+            (working #lead #why)
+            (set #rc (execute "UPTKIT:install.dos" "UPTKIT:" (cat "STEP=" #step)))
+            (if (>= #rc 20)
+                (
+                    (P_OPTIONS_END)
+                    (abort (cat "Part \"" #step "\" of the install failed (return code "
+                                #rc "). What was installed so far stays; Uninstall takes "
+                                "it out."))))
+            (P_BAR))))
 
 ; copyfiles' panel covers the page below the Working line (TEXT LAYOUT), so
 ; the page is emptied of the last part's text and gets none of its own; the
 ; panel names each file and drawer. #why is copyfiles' prompt (shown only
 ; when it asks), with line breaks but no lead.
+; In an Update a copy part runs upupdate's script for it instead (T:UPTUPD-
+; <part>: the drawer's new and changed files, the ones gone deleted), under
+; its own text: there is no copyfiles panel then.
 (procedure P_COPY
-    (working "")
-    (copyfiles
-        (prompt #why)
-        (help @copyfiles-help)
-        (source #from)
-        (dest #to)
-        (all)
-        (optional "force"))
-    (P_BAR))
+    (P_WANT)
+    (if #want
+        (
+            (if #update
+                (
+                    (P_LEAD)
+                    (working #lead #why)
+                    (execute (cat "T:UPTUPD-" #part)))
+                (
+                    (working "")
+                    (copyfiles
+                        (prompt #why)
+                        (help @copyfiles-help)
+                        (source #from)
+                        (dest #to)
+                        (all)
+                        (optional "force"))))
+            (P_BAR))))
 
 (complete 0)
 
@@ -369,7 +463,7 @@
                "screen in C:."))
 (P_STEP)
 
-(set #from (tackon #files "coreutils/bin") #to (tackon #dest "bin") #kb #kb-coreutils #n 3
+(set #from (tackon #files "coreutils/bin") #to (tackon #dest "bin") #part "copy-coreutils" #kb #kb-coreutils #n 3
      #why (cat "Copying the Unix commands (GNU coreutils: ls, cp,\n"
                "sort...) to UP-Term:bin. They stay out of C:, where\n"
                "AmigaDOS keeps its own Sort, Date and Join."))
@@ -377,7 +471,7 @@
 
 (if #unifont
     (
-        (set #from (tackon #files "unifont") #to (tackon #dest "unifont") #kb #kb-unifont #n 2
+        (set #from (tackon #files "unifont") #to (tackon #dest "unifont") #part "copy-unifont" #kb #kb-unifont #n 2
              #why (cat "Copying GNU Unifont's glyphs to UP-Term:unifont:\n"
                        "every character your font lacks is drawn from them."))
         (P_COPY)
@@ -385,7 +479,7 @@
 
 (if #emoji
     (
-        (set #from (tackon #files "emoji") #to (tackon #dest "emoji") #kb #kb-emoji #n 2
+        (set #from (tackon #files "emoji") #to (tackon #dest "emoji") #part "copy-emoji" #kb #kb-emoji #n 2
              #why (cat "Copying the colour emoji (Twemoji) to UP-Term:emoji,\n"
                        "for RTG screens."))
         (P_COPY)
@@ -398,7 +492,7 @@
 (P_STEP)
 
 ; the Python / Neovim page: n = 5 lines, one more for each of the two
-(if (or #python #nvim)
+(if (and (not #update) (or #python #nvim))
     (
         (set #n (+ 5 (if #python 1 0) (if #nvim 1 0)))
         (P_LEAD)
@@ -413,7 +507,7 @@
 
 (if #python
     (
-        (set #from (tackon #files "python3") #to (tackon #dest "Python3") #kb #kb-python #n 1
+        (set #from (tackon #files "python3") #to (tackon #dest "Python3") #part "copy-python" #kb #kb-python #n 1
              #why "Copying Python 3.14 to UP-Term:Python3.")
         (P_COPY)
     ))
@@ -425,7 +519,7 @@
 
 (if #nvim
     (
-        (set #from (tackon #files "nvim") #to (tackon #dest "nvim") #kb #kb-nvim #n 1
+        (set #from (tackon #files "nvim") #to (tackon #dest "nvim") #part "copy-nvim" #kb #kb-nvim #n 1
              #why "Copying Neovim 0.12 and its runtime to UP-Term:nvim.")
         (P_COPY)
     ))
@@ -470,6 +564,23 @@
 (P_STEP)
 
 (complete 100)
+
+(set #step "record" #kb 20 #n 2
+     #why (cat "Writing down this kit's list of files and your\n"
+               "choices, for a later Update."))
+(P_STEP)
+
+; ---- an Update ends here -----------------------------------------------------
+(if #update
+    (
+        (P_OPTIONS_END)
+        (run "Delete >NIL: T:UPTUPD-#? ENV:UPTUPD#? QUIET")
+        (set #n 5)
+        (P_LEAD)
+        (set #updated (cat #lead "UP-Term is updated:\n" (getenv "UPTVEROLD") "\nto\n"
+                        (getenv "UPTVERNEW") "\n\nNothing else changed."))
+        (run "Delete >NIL: ENV:UPTVER#? QUIET")
+        (exit #updated)))
 
 ; ---- what went where ------------------------------------------------------------
 

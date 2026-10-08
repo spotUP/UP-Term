@@ -11,6 +11,12 @@ and clicks them, then checks what landed and runs Uninstall.
             askdir string gadget)
   novice    NOVICE: no question asked, only the pages marked (all) -- the
             welcome and the summary -- and the default drawer
+  update    AVERAGE as default, then the kit with one file changed
+            (Files/unifont/SOURCE.txt, its MANIFEST made again) and Install
+            again: the first page offers Update (the default), and after it
+            only that file's date in UP-Term: has changed, UP-Term:MANIFEST is
+            the new kit's, S:User-Startup and the recorded options are as
+            they were; both times are logged (installer update plan U8)
 
 After each Install: UP-Term: names the drawer, ENVARC:up-term/Dir, the
 marked UP-Term: block in S:User-Startup (before the GG: block), the files in
@@ -50,7 +56,9 @@ VTC = ir.VTC
 OUT = paths.RIG / "installer"
 OUT.mkdir(parents=True, exist_ok=True)  # pages are logged before the first verdict is written
 KIT = ROOT / "build/dist/UP-Term"
-CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", "VTC:Apps/UP-Term"), "novice": ("NOVICE", None)}
+CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", "VTC:Apps/UP-Term"), "novice": ("NOVICE", None),
+         "update": ("AVERAGE", None)}
+UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 RAMIGA = 0x0080
 KEY_X, KEY_RETURN = 0x32, 0x44
 
@@ -373,6 +381,46 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     return False, log
 
 
+def dates():
+    """{file: 'date time'} of everything in UP-Term: and of the files Install puts elsewhere."""
+    out = ir.run_slow('dates', 'List UP-Term: ALL FILES LFORMAT "%P%N|%D %T"', 900)[1]
+    out += ir.run('List C:vsh C:UPConsole L:vtcon-handler L:pty-handler LIBS:ixemul.library LIBS:ixnet.library '
+                  'DEVS:DOSDrivers/XCON S:User-Startup LFORMAT "%P%N|%D %T"')[1]
+    return dict(l.rsplit('|', 1) for l in out.splitlines() if '|' in l)
+
+
+def update_phase(ck, inst, level, base, t_install):
+    """The update case's second Install: the kit with UPDATED changed, Update chosen (the default)."""
+    import subprocess
+    before, startup = dates(), ir.run('Type S:User-Startup')[1]
+    opts = ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1]
+    f = VTC / "distkit" / UPDATED
+    f.write_bytes(f.read_bytes() + b"\n(installer_rig update case)\n")
+    subprocess.run([sys.executable, str(ROOT / "tools/mkmanifest.py"), str(VTC / "distkit")], check=True)
+    t = time.time()
+    ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER %s DEFUSER %s NOLOG' % (inst, level, level), 30)
+    time.sleep(5)
+    finished, log = drive('update-2', inst, None, base)
+    t = time.time() - t
+    (OUT / "update-2.log.txt").write_text('\n'.join(log) + '\n')
+    print('installer_rig update: full install %.0f s, update %.0f s' % (t_install, t))
+    ck(finished, 'the Update ran to its end (%.0f s; the full install %.0f s)' % (t, t_install), log[-1] if log else '')
+    after = dates()
+    changed = sorted(k for k in set(before) | set(after)
+                     if before.get(k) != after.get(k) and k.lower() != 'up-term:manifest')
+    ck(changed == ['UP-Term:unifont/SOURCE.txt'], 'the Update copied only the changed file', ' '.join(changed[:8]))
+    got = ami.read_file('UP-Term:' + UPDATED.split('/', 1)[1]) or b''
+    ck(got.endswith(b"(installer_rig update case)\n"), 'the changed file is the new kit\'s')
+    ck(ami.read_file('UP-Term:MANIFEST') == (VTC / "distkit/Files/MANIFEST").read_bytes(),
+       'UP-Term:MANIFEST is the new kit\'s (the record part ran)')
+    ck(ir.run('Type S:User-Startup')[1] == startup, 'S:User-Startup as it was')
+    ck(ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1] == opts, 'the recorded options as they were', opts)
+    lay = [l for l in log if l.startswith('LAYOUT')]
+    ck(not lay, 'the Update\'s pages readable', '; '.join(lay[:4]))
+    pct = [int(x) for l in log for x in re.findall(r'(\d+)% done', l)]
+    ck(pct and max(pct) <= 100, 'the bar counts only the Update\'s parts (at most 100%%: %s)' % (max(pct) if pct else '-'))
+
+
 def run_case(case):
     level, dest = CASES[case]
     drawer = dest or "SYS:UP-Term"
@@ -393,9 +441,11 @@ def run_case(case):
         return False, 'no Installer on the rig (Which Installer, SYS:System, SYS:Utilities, C:)'
     base = {t for t, _ in windows(ami.req(0x0D).decode('latin-1'))}
     # the icon: default tool Installer, tooltypes APPNAME=UP-Term MINUSER=AVERAGE DEFUSER=AVERAGE (Makefile dist)
+    t_install = time.time()
     ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER %s DEFUSER %s NOLOG' % (inst, level, level), 30)
     time.sleep(5)
     finished, log = drive(case, inst, dest, base)
+    t_install = time.time() - t_install
     (OUT / (case + ".log.txt")).write_text('\n'.join(log) + '\n')
     ck(finished, 'the Installer ran to its end (%s)' % level, log[-1] if log else '')
     lay = [l for l in log if l.startswith('LAYOUT')]
@@ -426,7 +476,8 @@ def run_case(case):
         ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'a chosen drawer leaves SYS:UP-Term unmade')
     for f in ('"%s/VERSIONS"' % drawer, 'UP-Term:bin/sh', 'UP-Term:bin/ls', 'UP-Term:unifont/00', 'UP-Term:emoji/1F6',
               'C:vsh', 'C:tmux', 'C:UPConsole', 'L:vtcon-handler', 'L:pty-handler', 'DEVS:DOSDrivers/XCON',
-              'SYS:System/UP-Term.info', 'SYS:Prefs/UP-Term-Prefs.info', 'ENVARC:up-term/unstartup.sh'):
+              'SYS:System/UP-Term.info', 'SYS:Prefs/UP-Term-Prefs.info', 'ENVARC:up-term/unstartup.sh',
+              'UP-Term:MANIFEST', 'ENVARC:up-term/opts/UPTOPTDEST'):
         ck(ir.run('List >NIL: %s' % f)[0] == 0, '%s is there' % f)
     st = ir.lib_state()
     ck(st.get('ixemul.library.orig') == before.get('ixemul.library'), 'the original ixemul kept as .orig', str(st))
@@ -443,6 +494,8 @@ def run_case(case):
     ck(got == want, 'copyfiles copied every file of the nvim drawer, subdrawers too (%d of %d)' % (got, want))
     rc, out = ir.run_slow('pyrun', 'Stack 1000000\nUP-Term:Python3/bin/python3 -c "print(6*7)"', 400)
     ck(out.strip().splitlines()[-1:] == ['42'], 'python3 runs from the Installer\'s copy', out[-200:])
+    if case == 'update':
+        update_phase(ck, inst, level, base, t_install)
     # Uninstall gives it all back
     rc, out = ir.run_long('rununinstall')
     ck(rc == 0, 'Uninstall runs', out)

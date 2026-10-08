@@ -46,6 +46,19 @@ INSTALL
   (each optional part only when named).
   Remove everything again: double-click Uninstall (or Execute Uninstall).
 
+UPDATE
+  Install a newer kit over one installed with Install: its first page
+  names the installed version and the kit's and offers Update (the
+  default) or Full install. Update asks nothing: it compares the file
+  list the last install wrote (UP-Term:MANIFEST: every file of that kit,
+  its size and checksum) with this kit's, copies only the files that
+  changed, deletes the ones this kit no longer has, and runs again only
+  the parts of the install whose files or script changed. The drawer,
+  the assigns, the blocks in S:User-Startup and every choice of the last
+  install (kept in ENVARC:up-term/opts) stay as they are; the bar counts
+  only what Update copies. An install from a Shell keeps no choices and
+  a kit older than Update no list: Install then installs in full.
+
 WHERE IT IS INSTALLED
   UP-Term's own files (bin with the Unix commands and sh, unifont, emoji,
   Python3, nvim, VERSIONS) live in one drawer: SYS:UP-Term unless you
