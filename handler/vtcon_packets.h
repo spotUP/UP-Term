@@ -106,6 +106,26 @@
 #define ACTION_VTCON_ENV 0x765E
 #define VTCON_ENV_MAX 128
 
+/* Programmable completion (vsh's `complete`, V93). A shell with completion specs arms the console before
+ * each prompt; a Tab in an argument word of that prompt's line then answers the shell's waiting Read with a
+ * private line instead of completing it itself:
+ *   VTCON_COMPLETE_MARK <point> ' ' <line> LF
+ * (point: the cursor's offset in line; the line in Latin-1, as the console's other completions see it). The
+ * line editor keeps the line on screen. The shell answers with this packet, then reads again.
+ *   dp_Arg1  fh_Arg1
+ *   dp_Arg2  the words, each ending in NUL (APTR)
+ *   dp_Arg3  their length in bytes
+ *   dp_Arg4  VTCON_COMP_ARM: no words; the sender's next Read is a prompt line (the arming lasts until a
+ *            Read of the sender's is answered with a line that is not the marker)
+ *            VTCON_COMP_NOSPACE: no blank after a single word
+ *            VTCON_COMP_DEFAULT: no spec for the command: the console completes as it does without a shell
+ * A console that does not know it refuses (ERROR_ACTION_NOT_KNOWN); the shell does not arm it again. */
+#define ACTION_VTCON_COMPLETE 0x765F
+#define VTCON_COMP_ARM     1
+#define VTCON_COMP_NOSPACE 2
+#define VTCON_COMP_DEFAULT 4
+#define VTCON_COMPLETE_MARK "\033_vsh-complete "
+
 /* ACTION_VTCON_TCGETA answers dp_Res2 1 when the console is in termios
  * mode (a program set it), 0 when it describes the Amiga mode in termios
  * terms: a shell that suspends a job keeps the job's settings only then

@@ -362,6 +362,10 @@ $(BUILD)/amiga/pipeprobe: tests/amiga/pipeprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/pipeprobe.c
 
+$(BUILD)/amiga/compprobe: tests/amiga/compprobe.c handler/vtcon_packets.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/compprobe.c
+
 $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/breakport.c

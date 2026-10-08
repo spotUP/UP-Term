@@ -333,6 +333,11 @@ VSH (the shell)
   bash); C:Type stays reachable as  C:Type  or by its full path. The  umask
   builtin sets the local variable UMASK, which started programs inherit.
   Startup: ENVARC:vsh/vshrc, then $HOME/.vshrc (HOME defaults to SYS:).
+  Programmable completion: complete (-W -F -C -a -b -c -d -f -v, -A function,
+  -o default dirnames filenames nosort nospace plusdirs ...), compgen and
+  compopt as in bash; Tab in an XCON: window asks vsh for the words.
+  COMP_WORDS splits at blanks, " and = only (bash also at :, which would cut
+  an Amiga path in two); -G -X -P -S -D -E -I are not there.
   Differences from bash
   printf %b and echo -e drop a NUL byte (\0, \x00): strings are C strings
   (probe builtins/printf_bnul).

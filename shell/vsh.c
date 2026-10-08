@@ -1647,6 +1647,37 @@ static void send_words(sh_shell *sh)
     }
 }
 
+/* V93: programmable completion. Before a prompt a shell with `complete` specs arms the console; a Tab in the
+ * line then answers the prompt's Read with the marker line (vtcon_packets.h ACTION_VTCON_COMPLETE), which
+ * comp_answer runs through sh_complete and answers with the words. */
+#if SH_COMP_NOSPACE != VTCON_COMP_NOSPACE || SH_COMP_DEFAULT != VTCON_COMP_DEFAULT
+#error the completion flags of sh_exec.h and vtcon_packets.h differ
+#endif
+static int comp_refused;
+
+static void comp_arm(sh_shell *sh)
+{
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    if (!comp_refused && sh->ncomps && fh && fh->fh_Type &&
+        !DoPkt(fh->fh_Type, ACTION_VTCON_COMPLETE, fh->fh_Arg1, 0, 0, VTCON_COMP_ARM, 0))
+        comp_refused = 1; /* not vtcon: never again */
+}
+
+/* 1: line was the marker, answered */
+static int comp_answer(sh_shell *sh, const char *line)
+{
+    static char words[4096];
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    size_t m = strlen(VTCON_COMPLETE_MARK);
+    int flags;
+    long n;
+    if (strncmp(line, VTCON_COMPLETE_MARK, m) || !fh || !fh->fh_Type)
+        return 0;
+    n = sh_complete(sh, line + m, words, sizeof(words), &flags);
+    DoPkt(fh->fh_Type, ACTION_VTCON_COMPLETE, fh->fh_Arg1, (LONG)words, n, flags, 0);
+    return 1;
+}
+
 /* W46: the environment the window tells its programs (/term, /colors): asked
  * at the start and before a prompt, applied when it changed -- not every
  * prompt, so a `export TERM=x` typed by hand stays until the window says
@@ -1981,8 +2012,15 @@ static int vsh_main(int argc, char **argv)
             prompt(&sh, text != 0);
         else if (!text && (sh.opts & SO_INTERACTIVE))
             sh_prompt_command(&sh); /* vsh -i reading a pipe: PROMPT_COMMAND still runs, as in bash */
-        if (IsInteractive(Input()) ? !FGets(Input(), (STRPTR)line, sizeof(line))
-                                   : os_read_line(0, (sh_fh)Input(), line, sizeof(line)) < 0)
+        if (IsInteractive(Input())) {
+            char *got;
+            if (!text)
+                comp_arm(&sh);
+            while ((got = (char *)FGets(Input(), (STRPTR)line, sizeof(line))) != 0 && comp_answer(&sh, line))
+                ;
+            if (!got)
+                break;
+        } else if (os_read_line(0, (sh_fh)Input(), line, sizeof(line)) < 0)
             break; /* a file or a pipe: line by line, as the commands that share it must see it */
         if (!text && (sh.opts & SO_INTERACTIVE) && (sh.opts & SO_HISTEXP)) {
             /* the first line of a command: !! !$ ^a^b ... (bash shows the expanded line on its

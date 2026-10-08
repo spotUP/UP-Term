@@ -104,6 +104,7 @@ static void pb_str(pbuf *b, const char *s)
 }
 
 static char *core_subst(sh_ctx *c, const char *cmd);
+static void comp_free(struct sh_shell *sh);
 static char *core_procsub(sh_ctx *c, const char *cmd, int out);
 
 /* ---- options: the one table ------------------------------------------------- */
@@ -334,6 +335,7 @@ void sh_shell_free(sh_shell *sh)
     sh_list_free(&sh->aliases);
     sh_list_free(&sh->hist);
     free(sh->hist_cfg);
+    comp_free(sh);
     free(sh->hx_old);
     free(sh->hx_new);
     free(sh->hx_find);
@@ -4527,6 +4529,10 @@ static long b_caller(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_complete(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_compgen(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_compopt(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *io);
 static builtin_fn find_bi(const sh_shell *sh, const char *name);
 static void time_part(pbuf *o, long us, int prec, int lng);
 static int hash_note_run(sh_shell *sh, const char *name, char *path, long max);
@@ -4548,7 +4554,8 @@ static const struct {
     { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
-    { "hash", b_hash }, { "history", b_history }, { "fc", b_fc }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout }, { 0, 0 }
+    { "hash", b_hash }, { "history", b_history }, { "fc", b_fc }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout },
+    { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
 };
 
 /* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
@@ -5756,6 +5763,566 @@ long sh_word_list(const sh_shell *sh, int kind, char *out, long max)
             n = add_word(out, n, max, name);
         }
     }
+    return n;
+}
+
+/* ---- programmable completion: complete, compgen, compopt (V93) ------------------------------------------
+ * The console asks by the marker line (sh_complete); the words come from the actions, -W, -F and -C in
+ * bash's order. */
+
+/* -o options in the order bash prints them (bit = index) */
+static const char *const comp_optnames[] = { "bashdefault", "default", "dirnames", "filenames", "fullquote",
+                                             "noquote", "nosort", "nospace", "plusdirs", 0 };
+#define CO_BASHDEFAULT 1u
+#define CO_DEFAULT 2u
+#define CO_DIRNAMES 4u
+#define CO_FILENAMES 8u
+#define CO_NOSORT 64u
+#define CO_NOSPACE 128u
+#define CO_PLUSDIRS 256u
+/* actions: the flags bash prints as such, then -A function (bit = index) */
+static const char comp_actflags[] = "abcdfv";
+static const char *const comp_actnames[] = { "alias", "builtin", "command", "directory", "file", "variable",
+                                             "function", 0 };
+#define CA_DIR 8u
+#define CA_FILE 16u
+#define CA_FUNC 64u
+
+struct sh_comp {
+    char *name, *words, *cmd, *func; /* -W -C -F: 0 none */
+    unsigned acts, opts;
+};
+
+static int comp_find(const sh_shell *sh, const char *name)
+{
+    int i;
+    for (i = 0; i < sh->ncomps; i++)
+        if (!strcmp(sh->comps[i].name, name))
+            return i;
+    return -1;
+}
+
+static void comp_free1(struct sh_comp *s)
+{
+    free(s->name);
+    free(s->words);
+    free(s->cmd);
+    free(s->func);
+}
+
+static void comp_free(sh_shell *sh)
+{
+    while (sh->ncomps > 0)
+        comp_free1(&sh->comps[--sh->ncomps]);
+    free(sh->comps);
+    sh->comps = 0;
+}
+
+/* "vsh: who: what: msg"; returns r */
+static long comp_err(sh_shell *sh, const sh_io *io, const char *who, const char *what, const char *msg, long r)
+{
+    sayl(sh, io->err, "vsh: ", who, ": ", what, ": ", msg, "\n", NULL);
+    return r;
+}
+
+#define COMP_NOSPEC "no completion specification"
+
+/* The options of complete (pr: -p 1, -r 2), compgen (pr 0) and compopt (off: the +o bits; only -o and +o)
+ * from argv[*i] on, the arguments pointing into argv. 0, or 2 after a message. */
+static long comp_parse(sh_shell *sh, const sh_io *io, int argc, char **argv, int *i, struct sh_comp *s,
+                       int *pr, unsigned *off)
+{
+    for (; *i < argc; (*i)++) {
+        const char *a = argv[*i], *f;
+        int plus = a[0] == '+' && off;
+        char bad[3] = "-?";
+        if ((a[0] != '-' && !plus) || !a[1])
+            break;
+        if (!strcmp(a, "--")) {
+            (*i)++;
+            break;
+        }
+        for (a++; *a; a++) {
+            const char *arg;
+            int k;
+            bad[1] = *a;
+            if (pr && (*a == 'p' || *a == 'r')) {
+                *pr |= *a == 'p' ? 1 : 2;
+                continue;
+            }
+            if (pr)
+                *pr |= 4; /* an option that makes a spec */
+            if (!off && !plus && (f = strchr(comp_actflags, *a)) != 0) {
+                s->acts |= 1u << (f - comp_actflags);
+                continue;
+            }
+            if (!strchr(off ? "o" : "oAWCF", *a))
+                return comp_err(sh, io, argv[0], bad, "invalid option", 2);
+            if (!(arg = a[1] ? a + 1 : *i + 1 < argc ? argv[++*i] : 0))
+                return comp_err(sh, io, argv[0], bad, "option requires an argument", 2);
+            if (*a == 'o' || *a == 'A') {
+                const char *const *t = *a == 'o' ? comp_optnames : comp_actnames;
+                for (k = 0; t[k] && strcmp(t[k], arg); k++)
+                    ;
+                if (!t[k])
+                    return comp_err(sh, io, argv[0], arg, *a == 'o' ? "invalid option name" : "invalid action name", 2);
+                if (*a == 'A')
+                    s->acts |= 1u << k;
+                else if (plus)
+                    *off |= 1u << k;
+                else
+                    s->opts |= 1u << k;
+            } else
+                *(*a == 'W' ? &s->words : *a == 'C' ? &s->cmd : &s->func) = (char *)arg;
+            break;
+        }
+    }
+    return 0;
+}
+
+/* flag, arg (single-quoted with quote), a blank; nothing without arg */
+static void comp_qarg(pbuf *b, const char *flag, const char *arg, int quote)
+{
+    char *q = 0;
+    if (!arg)
+        return;
+    pb_str(b, flag);
+    pb_str(b, quote && (q = sh_quote(arg, SH_Q_ALWAYS)) != 0 ? q : arg);
+    free(q);
+    pb_str(b, " ");
+}
+
+/* complete -p's line for s; compopt's (every option, -o or +o) with as_compopt */
+static void comp_print(sh_shell *sh, const sh_io *io, const struct sh_comp *s, int as_compopt)
+{
+    pbuf b = { 0, 0, 0 };
+    char f[3] = "-x";
+    int k;
+    pb_str(&b, as_compopt ? "compopt " : "complete ");
+    for (k = 0; comp_optnames[k]; k++)
+        if (as_compopt || (s->opts >> k & 1))
+            comp_qarg(&b, s->opts >> k & 1 ? "-o " : "+o ", comp_optnames[k], 0);
+    if (!as_compopt) {
+        for (k = 0; comp_actflags[k]; k++)
+            if (s->acts >> k & 1) {
+                f[1] = comp_actflags[k];
+                comp_qarg(&b, "", f, 0);
+            }
+        comp_qarg(&b, "-A ", s->acts & CA_FUNC ? "function" : 0, 0);
+        comp_qarg(&b, "-W ", s->words, 1);
+        comp_qarg(&b, "-C ", s->cmd, 1);
+        comp_qarg(&b, "-F ", s->func, 0);
+    }
+    pb_str(&b, s->name);
+    pb_str(&b, "\n");
+    if (b.s)
+        say(sh, io->out, b.s);
+    free(b.s);
+}
+
+static int comp_pre(const char *s, const char *w)
+{
+    return !strncmp(s, w, strlen(w));
+}
+
+/* The names in word's directory that start with its last part (how 1: directories only), the directory
+ * part in front (how 2: not), in the directory's order (bash's readline does not sort them either). */
+static void comp_files(sh_shell *sh, const char *word, int how, sh_list *out)
+{
+    const char *base = word, *p;
+    char dir[256], *full;
+    sh_list names;
+    size_t dl;
+    int i;
+    for (p = word; *p; p++)
+        if (*p == '/' || *p == ':')
+            base = p + 1;
+    if ((dl = (size_t)(base - word)) >= sizeof(dir) || !sh->ctx.listdir)
+        return;
+    memcpy(dir, word, dl);
+    dir[dl] = 0;
+    if (dl > 1 && dir[dl - 1] == '/' && dir[dl - 2] != '/' && dir[dl - 2] != ':')
+        dir[dl - 1] = 0; /* "a/b": a; "/" and "RAM:" stay */
+    memset(&names, 0, sizeof(names));
+    if (sh->ctx.listdir(&sh->ctx, dir, &names) == 0)
+        for (i = 0; i < names.n; i++)
+            if (comp_pre(names.v[i], base) && (full = (char *)malloc(dl + strlen(names.v[i]) + 1)) != 0) {
+                memcpy(full, word, dl);
+                strcpy(full + dl, names.v[i]);
+                if (!(how & 1) || (sh->ctx.pathkind && (sh->ctx.pathkind(&sh->ctx, full) & 1)))
+                    sh_list_add(out, how & 2 ? names.v[i] : full);
+                free(full);
+            }
+    sh_list_free(&names);
+}
+
+/* The aliases, builtins, variables or functions (one action bit) that start with w, sorted */
+static void comp_names(sh_shell *sh, unsigned act, const char *w, sh_list *out)
+{
+    sh_list l;
+    int i;
+    char name[64];
+    memset(&l, 0, sizeof(l));
+    if (act == 1)
+        for (i = 0; i < sh->aliases.n; i++) {
+            size_t n = strcspn(sh->aliases.v[i], "=");
+            if (n < sizeof(name)) {
+                memcpy(name, sh->aliases.v[i], n);
+                name[n] = 0;
+                sh_list_add(&l, name);
+            }
+        }
+    if (act == 2)
+        for (i = 0; builtins[i].name; i++)
+            sh_list_add(&l, builtins[i].name);
+    if (act == 32) {
+        const sh_var *v;
+        for (v = sh->ctx.vars; v; v = v->next)
+            sh_list_add(&l, v->name);
+    }
+    if (act == CA_FUNC) {
+        const sh_func *f;
+        for (f = sh->funcs; f; f = f->next)
+            sh_list_add(&l, f->name);
+    }
+    if (l.n)
+        qsort(l.v, (size_t)l.n, sizeof(char *), cmp_str);
+    for (i = 0; i < l.n; i++)
+        if (comp_pre(l.v[i], w))
+            sh_list_add(out, l.v[i]);
+    sh_list_free(&l);
+}
+
+/* -c: aliases, functions, builtins, then the commands in PATH's directories and C: */
+static void comp_commands(sh_shell *sh, const char *w, sh_list *out)
+{
+    const char *p = sh_get(&sh->ctx, "PATH");
+    char dir[400];
+    int last = 0;
+    comp_names(sh, 1, w, out);
+    comp_names(sh, CA_FUNC, w, out);
+    comp_names(sh, 2, w, out);
+    while (!last) {
+        if (!p || !sh_path_next(&p, dir, 256)) {
+            strcpy(dir, "C:");
+            last = 1;
+        } else if (!*dir)
+            continue;
+        else if (dir[strlen(dir) - 1] != ':' && dir[strlen(dir) - 1] != '/')
+            strcat(dir, "/");
+        if (strlen(w) < 140 && !strchr(w, '/')) {
+            strcat(dir, w);
+            comp_files(sh, dir, 2, out); /* every file of a command directory */
+        }
+    }
+}
+
+/* -W: the list split at blanks outside quotes, each part expanded as a word without globbing (bash) */
+static void comp_wordlist(sh_shell *sh, const char *s, const char *w, sh_list *out)
+{
+    while (*s) {
+        const char *e, *err;
+        char q = 0, *part;
+        sh_list f;
+        int i;
+        s += strspn(s, " \t\n");
+        for (e = s; *e && (q || !strchr(" \t\n", *e)); e++)
+            if (*e == '\\' && e[1] && q != '\'')
+                e++;
+            else if (q ? *e == q : (*e == '\'' || *e == '"'))
+                q = q ? 0 : *e;
+        if (e == s || !(part = (char *)malloc((size_t)(e - s) + 1)))
+            break;
+        memcpy(part, s, (size_t)(e - s));
+        part[e - s] = 0;
+        memset(&f, 0, sizeof(f));
+        if (!sh_expand(&sh->ctx, part, SH_NO_GLOB, &f, &err))
+            for (i = 0; i < f.n; i++)
+                if (comp_pre(f.v[i], w))
+                    sh_list_add(out, f.v[i]);
+        sh_list_free(&f);
+        free(part);
+        s = e;
+    }
+}
+
+/* the matches of s for a3 (the command, the word, the word before it), in bash's order: actions, -W,
+ * -F's COMPREPLY, -C's lines; then -o dirnames (when none) and plusdirs */
+static void comp_gen(sh_shell *sh, const struct sh_comp *s, char **a3, sh_list *out, const sh_io *io)
+{
+    const char *w = a3[1];
+    unsigned k;
+    long st = sh->ctx.status;
+    for (k = 1; k <= CA_FUNC; k <<= 1)
+        if (s->acts & k) {
+            if (k == 4)
+                comp_commands(sh, w, out);
+            else if (k == CA_DIR || k == CA_FILE)
+                comp_files(sh, w, k == CA_DIR, out);
+            else
+                comp_names(sh, k, w, out);
+        }
+    if (s->words)
+        comp_wordlist(sh, s->words, w, out);
+    if (s->func) {
+        sh_func *f = find_func(sh, s->func);
+        if (f) {
+            sh_list av;
+            char **v;
+            long n, i;
+            memset(&av, 0, sizeof(av));
+            sh_list_add(&av, s->func);
+            for (i = 0; i < 3; i++)
+                sh_list_add(&av, a3[i]);
+            sh_unset(&sh->ctx, "COMPREPLY");
+            run_function(sh, f, &av, io);
+            sh_list_free(&av);
+            if ((v = sh_values(&sh->ctx, "COMPREPLY", &n)) != 0)
+                for (i = 0; i < n; i++)
+                    if (v[i])
+                        sh_list_add(out, v[i]);
+            free(v);
+            sh_unset(&sh->ctx, "COMPREPLY");
+        } else
+            comp_err(sh, io, "complete", s->func, "function not found", 0);
+    }
+    if (s->cmd) {
+        pbuf b = { 0, 0, 0 };
+        char *r, *line, *nl;
+        int i;
+        pb_str(&b, s->cmd);
+        for (i = 0; i < 3; i++)
+            comp_qarg(&b, " ", a3[i], 1);
+        if (b.s && (r = core_subst(&sh->ctx, b.s)) != 0) {
+            for (line = r; *line; line = nl) {
+                if ((nl = strchr(line, '\n')) != 0)
+                    *nl++ = 0;
+                else
+                    nl = line + strlen(line);
+                sh_list_add(out, line);
+            }
+            free(r);
+        }
+        free(b.s);
+    }
+    if (!out->n && (s->opts & CO_DIRNAMES))
+        comp_files(sh, w, 1, out);
+    if (s->opts & CO_PLUSDIRS)
+        comp_files(sh, w, 1, out);
+    sh->ctx.status = st;
+}
+
+static long b_compgen(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    struct sh_comp s;
+    sh_list out;
+    int i = 1;
+    long r;
+    char *a3[3];
+    memset(&s, 0, sizeof(s));
+    memset(&out, 0, sizeof(out));
+    if ((r = comp_parse(sh, io, argc, argv, &i, &s, 0, 0)) != 0)
+        return r;
+    a3[0] = "compgen";
+    a3[1] = i < argc ? argv[i] : "";
+    a3[2] = "";
+    comp_gen(sh, &s, a3, &out, io);
+    for (i = 0; i < out.n; i++)
+        sayl(sh, io->out, out.v[i], "\n", NULL);
+    r = !out.n && (s.acts || s.words || s.func || s.cmd);
+    sh_list_free(&out);
+    return r;
+}
+
+static long b_complete(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    struct sh_comp s, *t;
+    int i = 1, pr = 0, k;
+    long r;
+    memset(&s, 0, sizeof(s));
+    if ((r = comp_parse(sh, io, argc, argv, &i, &s, &pr, 0)) != 0)
+        return r;
+    if (i == argc && !(pr & 2)) { /* -p, or nothing: every spec */
+        for (k = 0; !(pr & 4) && k < sh->ncomps; k++)
+            comp_print(sh, io, &sh->comps[k], 0);
+        return pr & 4 ? comp_err(sh, io, "complete", "usage", "complete [-abcdfvpr] [-o opt] [-A act] [-WFC arg] name...", 2) : 0;
+    }
+    if (sh->comp_running && !(pr & 1))
+        return comp_err(sh, io, "complete", "-F", "a completion is running", 1);
+    if (i == argc)
+        comp_free(sh); /* -r */
+    for (; i < argc; i++) {
+        k = comp_find(sh, argv[i]);
+        if (k < 0 && (pr & 3))
+            r = comp_err(sh, io, "complete", argv[i], COMP_NOSPEC, 1);
+        else if (pr & 1)
+            comp_print(sh, io, &sh->comps[k], 0);
+        else if (k >= 0) {
+            comp_free1(&sh->comps[k]);
+            sh->comps[k] = sh->comps[--sh->ncomps];
+        }
+        if (pr & 3)
+            continue;
+        if (!(t = (struct sh_comp *)realloc(sh->comps, (size_t)(sh->ncomps + 1) * sizeof(*t))))
+            return 1;
+        sh->comps = t;
+        t += sh->ncomps++;
+        *t = s;
+        t->name = sdup(argv[i]);
+        t->words = s.words ? sdup(s.words) : 0;
+        t->cmd = s.cmd ? sdup(s.cmd) : 0;
+        t->func = s.func ? sdup(s.func) : 0;
+    }
+    return r;
+}
+
+static long b_compopt(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    struct sh_comp s;
+    unsigned off = 0;
+    int i = 1, k;
+    long r;
+    memset(&s, 0, sizeof(s));
+    if ((r = comp_parse(sh, io, argc, argv, &i, &s, 0, &off)) != 0)
+        return r;
+    if (i == argc) {
+        if (!sh->comp_running) {
+            err2(sh, io, "compopt", "not currently executing completion function");
+            return 1;
+        }
+        sh->comp_opts = (sh->comp_opts | s.opts) & ~off;
+        return 0;
+    }
+    for (; i < argc; i++)
+        if ((k = comp_find(sh, argv[i])) < 0)
+            r = comp_err(sh, io, "compopt", argv[i], COMP_NOSPEC, 1);
+        else if (!s.opts && !off)
+            comp_print(sh, io, &sh->comps[k], 1);
+        else
+            sh->comps[k].opts = (sh->comps[k].opts | s.opts) & ~off;
+    return r;
+}
+
+static char *comp_dupn(const char *s, long n)
+{
+    char *t = (char *)malloc((size_t)n + 1);
+    if (t) {
+        memcpy(t, s, (size_t)n);
+        t[n] = 0;
+    }
+    return t;
+}
+
+static const char *const comp_vars[] = { "COMP_LINE", "COMP_POINT", "COMP_CWORD", "COMP_WORDS", 0 };
+
+long sh_complete(sh_shell *sh, const char *text, char *out, long max, int *flags)
+{
+    long point = 0, s0, e0, i, a, n = 0;
+    const char *line;
+    sh_list w, m;
+    int cw = -1, k, opts;
+    char *a3[3], *cur = 0, *cl, *t, c, num[24];
+    struct sh_comp sc;
+    *flags = SH_COMP_DEFAULT;
+    while (*text >= '0' && *text <= '9')
+        point = point * 10 + *text++ - '0';
+    line = text + 1;
+    if (*text != ' ' || point > (e0 = (long)strcspn(line, "\n")))
+        return 0;
+    /* the command around the cursor: after the ; | & ( before it, up to the one after it */
+    for (s0 = point; s0 > 0 && !strchr(";|&(", line[s0 - 1]); s0--)
+        ;
+    s0 += (long)strspn(line + s0, " \t");
+    if (s0 > point)
+        s0 = point;
+    e0 = point + (long)strcspn(line + point, ";|&(\n");
+    if (!(cl = comp_dupn(line + s0, e0 - s0)))
+        return 0;
+    point -= s0;
+    /* its words: blanks and " end one, = is one of its own (the console's word starts after them too) */
+    memset(&w, 0, sizeof(w));
+    memset(&m, 0, sizeof(m));
+    for (i = 0;;) {
+        int here = 0;
+        i += (long)strspn(cl + i, " \t\"");
+        a = i;
+        i += cl[i] == '=' ? 1 : (long)strcspn(cl + i, " \t\"=");
+        if (cw < 0 && point <= i) {
+            cw = w.n;
+            if (point < a)
+                sh_list_add(&w, ""); /* the cursor in the blanks before this word: an empty one */
+            else
+                here = 1;
+            cur = comp_dupn(cl + a, point < a ? 0 : point - a);
+        }
+        if (i > a || here) {
+            c = cl[i];
+            cl[i] = 0;
+            sh_list_add(&w, cl + a);
+            cl[i] = c;
+        }
+        if (!cl[i])
+            break;
+    }
+    if (!cur || cw < 1 || cw >= w.n)
+        goto done; /* the command word: the console's own completion */
+    k = comp_find(sh, w.v[0]);
+    if (k < 0 && (t = strrchr(w.v[0], '/')) != 0)
+        k = comp_find(sh, t + 1);
+    if (k < 0)
+        goto done;
+    sc = sh->comps[k]; /* complete changes no spec while it runs (comp_running) */
+    sh_set(&sh->ctx, "COMP_LINE", cl);
+    sh_ltoa(point, num);
+    sh_set(&sh->ctx, "COMP_POINT", num);
+    sh_ltoa(cw, num);
+    sh_set(&sh->ctx, "COMP_CWORD", num);
+    sh_array_reset(&sh->ctx, "COMP_WORDS", 0);
+    for (k = 0; k < w.n; k++) {
+        sh_ltoa(k, num);
+        sh_assign(&sh->ctx, "COMP_WORDS", num, w.v[k], 0);
+    }
+    a3[0] = w.v[0];
+    a3[1] = cur;
+    a3[2] = w.v[cw - 1];
+    sh->comp_running = 1;
+    sh->comp_opts = sc.opts;
+    comp_gen(sh, &sc, a3, &m, &sh->io);
+    opts = (int)sh->comp_opts;
+    sh->comp_running = 0;
+    for (k = 0; comp_vars[k]; k++)
+        sh_unset(&sh->ctx, comp_vars[k]);
+    *flags = 0;
+    if (!m.n) {
+        if (opts & (CO_DEFAULT | CO_BASHDEFAULT))
+            *flags = SH_COMP_DEFAULT;
+        goto done;
+    }
+    if (!(opts & CO_NOSORT))
+        qsort(m.v, (size_t)m.n, sizeof(char *), cmp_str);
+    if (opts & CO_NOSPACE)
+        *flags |= SH_COMP_NOSPACE;
+    for (k = 0; k < m.n; k++) {
+        long l = (long)strlen(m.v[k]);
+        if (k && !strcmp(m.v[k], m.v[k - 1]))
+            continue; /* once each, as readline lists them */
+        if (n + l + 2 > max)
+            break;
+        memcpy(out + n, m.v[k], (size_t)l + 1);
+        n += l + 1;
+    }
+    /* one directory of a file completion: a slash after it, no blank */
+    if (n && n == (long)strlen(out) + 1 && ((opts & CO_FILENAMES) || (sc.acts & (CA_DIR | CA_FILE))) &&
+        out[n - 2] != '/' && sh->ctx.pathkind && (sh->ctx.pathkind(&sh->ctx, out) & 1)) {
+        out[n - 1] = '/';
+        out[n++] = 0;
+        *flags |= SH_COMP_NOSPACE;
+    }
+done:
+    free(cur);
+    free(cl);
+    sh_list_free(&w);
+    sh_list_free(&m);
     return n;
 }
 

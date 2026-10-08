@@ -512,8 +512,34 @@ static void ghost_tail_comes_from_the_directory_list_without_a_read(void)
     CHECK_INT(cc_ghost_from_add("", tail, sizeof(tail)), 0);
 }
 
+/* V93: a Tab of vsh's programmable completion answers the shell's waiting Read with the marker line (the
+ * line and the cursor), and the shell's words come back as one NUL-separated list */
+static void shell_completion_marker_and_words_common_start(void)
+{
+    char out[64], c[16];
+    CHECK_INT(cc_mark_line("git ch", 6, out, sizeof(out)), 15 + 1 + 1 + 6 + 1);
+    CHECK_STR(out, "\033_vsh-complete 6 git ch\n");
+    CHECK_INT(cc_mark_line("ab", 0, out, sizeof(out)) > 0, 1);
+    CHECK_STR(out, "\033_vsh-complete 0 ab\n");
+    cc_mark_line("0123456789x", 11, out, sizeof(out));
+    CHECK_STR(out, "\033_vsh-complete 11 0123456789x\n");
+    CHECK_INT(cc_mark_line("ab", 3, out, sizeof(out)), 0);   /* the cursor past the line */
+    CHECK_INT(cc_mark_line("ab", 1, out, 20), 0);            /* does not fit */
+    CHECK_INT(cc_common_start("checkout\0cherry\0chmod", 22, c, sizeof(c)), 2);
+    CHECK_STR(c, "ch");
+    CHECK_INT(cc_common_start("check\0checkout", 15, c, sizeof(c)), 5);
+    CHECK_STR(c, "check");
+    CHECK_INT(cc_common_start("Abc\0abc", 8, c, sizeof(c)), 0); /* case counts */
+    CHECK_INT(cc_common_start("one", 4, c, sizeof(c)), 3);
+    CHECK_STR(c, "one");
+    CHECK_INT(cc_common_start("", 0, c, sizeof(c)), 0);
+    CHECK_INT(cc_common_start("abcdefghijklmnopq", 18, c, 4), 3); /* cut to max */
+    CHECK_STR(c, "abc");
+}
+
 void suite_complete(void)
 {
+    shell_completion_marker_and_words_common_start();
     ghost_tail_comes_from_the_directory_list_without_a_read();
     first_tab_never_scans_a_cold_directory();
     tab_after_the_warm_up_is_answered_from_the_cache();

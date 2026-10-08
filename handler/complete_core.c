@@ -1,6 +1,7 @@
 /* See complete_core.h. Portable C89: no OS calls. */
 #include <string.h>
 #include "complete_core.h"
+#include "vtcon_packets.h"
 
 int cc_is_command(long entry_type, unsigned long protection)
 {
@@ -608,5 +609,46 @@ int cc_ghost_from_add(const char *add, char *tail, int max)
         n = max - 1;
     memcpy(tail, add, n);
     tail[n] = 0;
+    return n;
+}
+
+/* V93: the marker line (vtcon_packets.h ACTION_VTCON_COMPLETE) */
+int cc_mark_line(const char *line, int point, char *out, int max)
+{
+    int m = (int)strlen(VTCON_COMPLETE_MARK), n = (int)strlen(line), k, d = 1, p = point;
+    while (p >= 10) {
+        p /= 10;
+        d++;
+    }
+    if (point < 0 || point > n || m + d + 1 + n + 2 > max)
+        return 0;
+    memcpy(out, VTCON_COMPLETE_MARK, m);
+    for (k = d - 1, p = point; k >= 0; k--, p /= 10)
+        out[m + k] = (char)('0' + p % 10);
+    out[m + d] = ' ';
+    memcpy(out + m + d + 1, line, n);
+    out[m + d + 1 + n] = '\n';
+    out[m + d + 2 + n] = 0;
+    return m + d + 2 + n;
+}
+
+int cc_common_start(const char *names, long len, char *out, int max)
+{
+    long k;
+    int n = -1, i;
+    for (k = 0; k < len; k += (long)strlen(names + k) + 1) {
+        const char *w = names + k;
+        if (n < 0) {
+            for (n = 0; w[n] && n < max - 1; n++)
+                out[n] = w[n];
+            continue;
+        }
+        for (i = 0; i < n && out[i] == w[i]; i++)
+            ;
+        n = i;
+    }
+    if (n < 0)
+        n = 0;
+    out[n] = 0;
     return n;
 }

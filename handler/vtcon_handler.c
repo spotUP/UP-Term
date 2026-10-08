@@ -238,6 +238,8 @@ typedef struct con {
     char *words[3];              /* ACTION_VTCON_WORDS lists by kind (1, 2), AllocVec'd */
     long words_len[3];
     struct Task *words_owner;    /* the shell that sent them: valid while it lives */
+    struct Task *comp_armed;     /* V93: the shell whose prompt Read a Tab may answer with the marker */
+    int marker_out;              /* V93: the marker went to it; its ACTION_VTCON_COMPLETE is awaited */
     int reader_shell;            /* the last ACTION_READ came from a shell (W31: colour its first word) */
     int tabs;                    /* Tabs in a row */
     int kingcon;                 /* profile completion = kingcon: KingCON's keys and
@@ -2887,6 +2889,8 @@ static void service_reads(con *c)
         for (i = n; i < c->in_len; i++)
             c->in[i - n] = c->in[i];
         c->in_len -= (int)n;
+        if (!c->marker_out && p->dp_Port && (struct Task *)p->dp_Port->mp_SigTask == c->comp_armed)
+            c->comp_armed = 0; /* V93: its prompt line went: the shell arms again before the next prompt */
         reply(p, n, 0);
     next:
         drop_read(c, k);
@@ -3060,7 +3064,56 @@ static int command_position(con *c, int a)
     return shell_words(c, VTCON_WORDS_COMMANDS, &n) && strchr("|;&(", le->buf[k - 1]) != 0;
 }
 
+/* V93: a Tab in an argument word of the prompt line of a shell that armed the console (ACTION_VTCON_COMPLETE)
+ * answers the shell's waiting Read with the marker line; the line editor keeps the line, the shell's words
+ * come back by comp_words. 1: sent. */
+static int comp_marker(con *c, int a)
+{
+    char line[COMPLETE_MAX], mark[COMPLETE_MAX + 32];
+    int k, point, n, alive;
+    struct Task *t;
+    Forbid();
+    alive = task_alive(c->comp_armed);
+    Permit();
+    if (!alive)
+        c->comp_armed = 0;
+    if (!c->comp_armed || c->raw || tty_active(c) || c->in_len || command_position(c, a) ||
+        (k = next_read(c)) < 0)
+        return 0;
+    t = c->reads[k]->dp_Port ? (struct Task *)c->reads[k]->dp_Port->mp_SigTask : 0;
+    if (t != c->comp_armed)
+        return 0;
+    point = copy_latin1(&c->le, 0, c->le.pos, line, sizeof(line));
+    copy_latin1(&c->le, 0, c->le.len, line, sizeof(line));
+    if (!(n = cc_mark_line(line, point, mark, sizeof(mark))))
+        return 0;
+    c->marker_out = 1;
+    c->comp_busy = 1;
+    c->comp_edits = c->edits;
+    c->menu_start = a;
+    in_append(c, (const vt_u8 *)mark, n);
+    service_reads(c);
+    return 1;
+}
+
+static void default_completion(con *c);
+
 static void start_completion(con *c)
+{
+    if (c->marker_out) {
+        int alive;
+        Forbid();
+        alive = task_alive(c->comp_armed);
+        Permit();
+        if (alive)
+            return; /* the shell is still at it */
+        c->marker_out = c->comp_busy = 0; /* it ended without an answer */
+    }
+    if (!c->comp_busy && !comp_marker(c, word_start(&c->le)))
+        default_completion(c);
+}
+
+static void default_completion(con *c)
 {
     le_line *le = &c->le;
     int a;
@@ -3505,6 +3558,16 @@ static void finish_completion(con *c)
     partial_refine(c); /* a warm-up we waited for has ended */
 }
 
+/* name (Latin-1) in place of the word a completion is for, in the line's encoding */
+static void put_word(con *c, const char *name)
+{
+    unsigned char enc[COMPLETE_MAX * 2];
+    int n = 0;
+    for (; *name && n < (int)sizeof(enc) - 3; name++)
+        n += vt_encode_key(c->w.t, (unsigned char)*name, 0, enc + n);
+    le_replace_word(&c->le, word_start(&c->le) < c->menu_start ? word_start(&c->le) : c->menu_start, enc, n);
+}
+
 /* The next Tab after a completion: show the menu, then cycle through it. */
 static void menu_tab(con *c)
 {
@@ -3519,17 +3582,59 @@ static void menu_tab(con *c)
         for (i = 0; i < c->menu_i; i++)
             k += (int)strlen(c->menu + k) + 1;
         name = c->menu + k;
-        {
-            /* the name in the line's encoding */
-            unsigned char enc[COMPLETE_MAX * 2];
-            int n = 0;
-            for (; *name && n < (int)sizeof(enc) - 3; name++)
-                n += vt_encode_key(c->w.t, (unsigned char)*name, 0, enc + n);
-            le_replace_word(&c->le, word_start(&c->le) < c->menu_start ? word_start(&c->le)
-                                                                          : c->menu_start,
-                            enc, n);
-        }
+        put_word(c, name);
     }
+}
+
+/* V93: the shell's words for the marker it was sent (ACTION_VTCON_COMPLETE), or its arming. One word goes
+ * in place of the word with a blank after it (not with VTCON_COMP_NOSPACE); several put in what they share
+ * and are the menu of the next Tabs, as a completion of the console's own. */
+static void comp_words(con *c, struct DosPacket *p)
+{
+    const char *w = (const char *)p->dp_Arg2;
+    long len = p->dp_Arg3, k;
+    int n = 0;
+    char common[COMPLETE_MAX];
+    if (p->dp_Arg4 & VTCON_COMP_ARM) {
+        c->comp_armed = (struct Task *)p->dp_Port->mp_SigTask;
+        return;
+    }
+    if (!c->marker_out)
+        return;
+    c->marker_out = c->comp_busy = 0;
+    c->menu_n = 0;
+    if (!c->w.t || c->raw || c->edits != c->comp_edits)
+        return; /* the line moved on meanwhile */
+    if (p->dp_Arg4 & VTCON_COMP_DEFAULT) {
+        default_completion(c);
+        return;
+    }
+    if (!w || len < 0)
+        len = 0;
+    if (len > COMPLETE_NAMES)
+        len = COMPLETE_NAMES;
+    while (len > 0 && w[len - 1])
+        len--; /* whole words only */
+    for (k = 0; k < len; k += (long)strlen(w + k) + 1)
+        n++;
+    if (!n) {
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+        return;
+    }
+    cc_common_start(w, len, common, sizeof(common));
+    put_word(c, common);
+    if (n == 1) {
+        if (!(p->dp_Arg4 & VTCON_COMP_NOSPACE))
+            type_text(c, " ");
+        return;
+    }
+    if (menu_buf(c)) {
+        CopyMem((APTR)w, c->menu, len);
+        c->menu_len = (int)len;
+        c->menu_n = n;
+        c->menu_i = -1;
+    }
+    DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
 }
 
 /* ---- slash commands (ledger C1, handler/slash.c) ------------------------------- */
@@ -6085,6 +6190,10 @@ static void packet(con *c, struct DosPacket *p)
         return;
     case ACTION_VTCON_WORDS:
         take_words(c, p);
+        reply(p, DOSTRUE, 0);
+        return;
+    case ACTION_VTCON_COMPLETE:
+        comp_words(c, p);
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_CHANGE_SIGNAL:

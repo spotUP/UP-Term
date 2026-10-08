@@ -189,4 +189,13 @@ int cc_ghost_tail(const char *names, long len, const char *prefix, char *tail, i
  * length. */
 int cc_ghost_from_add(const char *add, char *tail, int max);
 
+/* V93, vsh's programmable completion (vtcon_packets.h ACTION_VTCON_COMPLETE): the marker line that
+ * answers the shell's prompt Read -- VTCON_COMPLETE_MARK, point in decimal, a blank, the line, LF, NUL.
+ * Returns its length without the NUL, 0 when point is outside the line or it does not fit in max. */
+int cc_mark_line(const char *line, int point, char *out, int max);
+
+/* The start every word of a NUL-separated list shares (case counts, as in a shell), at most max - 1
+ * bytes into out; returns its length (0 for an empty list). */
+int cc_common_start(const char *names, long len, char *out, int max);
+
 #endif

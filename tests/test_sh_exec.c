@@ -692,6 +692,43 @@ static void history_has_one_owner_the_console_list_or_the_shell(void)
     CHECK_STR(slot(OUT)->data, "    1  mine\n");
 }
 
+/* V93: the console's Tab on a command with a `complete` spec (the marker line's "point line") runs the spec with
+ * COMP_WORDS, COMP_CWORD, COMP_LINE, COMP_POINT set for the function, and answers with its words, sorted */
+static void tab_on_a_command_with_a_spec_answers_with_its_words(void)
+{
+    char out[256];
+    int fl;
+    run("_f() { echo \"$COMP_CWORD|$COMP_LINE|$COMP_POINT|${COMP_WORDS[*]}|$1|$2|$3\"; COMPREPLY=(two three twelve);"
+        " compopt -o nospace; }; complete -F _f kw; complete -W 'alpha beta' -o default wd; complete -W 'x' wx;"
+        " _g() { echo \"$COMP_CWORD:${#COMP_WORDS[@]}:[$2]:[$3]\"; }; complete -F _g kg");
+    CHECK_INT(sh_complete(&sh, "7 kw a tw", out, sizeof(out), &fl), 17);
+    CHECK_STR(slot(OUT)->data, "2|kw a tw|7|kw a tw|kw|tw|a\n");
+    CHECK_INT(memcmp(out, "three\0twelve\0two\0", 17), 0);
+    CHECK_INT(fl, SH_COMP_NOSPACE);
+    CHECK_INT(sh_get(&sh.ctx, "COMP_LINE") == 0 && sh_get(&sh.ctx, "COMP_WORDS") == 0, 1); /* gone after it */
+    slot(OUT)->len = 0;
+    slot(OUT)->data[0] = 0;
+    sh_complete(&sh, "3 kg  x", out, sizeof(out), &fl); /* the cursor between words: an empty one there */
+    CHECK_STR(slot(OUT)->data, "1:3:[]:[kg]\n");
+    slot(OUT)->len = 0;
+    slot(OUT)->data[0] = 0;
+    sh_complete(&sh, "15 echo a | kg b=c", out, sizeof(out), &fl); /* the command after the pipe; = parts */
+    CHECK_STR(slot(OUT)->data, "3:4:[c]:[=]\n");
+    CHECK_INT(sh_complete(&sh, "4 wd b", out, sizeof(out), &fl), 5);
+    CHECK_STR(out, "beta");
+    CHECK_INT(fl, 0);
+    CHECK_INT(sh_complete(&sh, "4 wd z", out, sizeof(out), &fl), 0); /* none, -o default: the console's own */
+    CHECK_INT(fl, SH_COMP_DEFAULT);
+    CHECK_INT(sh_complete(&sh, "4 wx z", out, sizeof(out), &fl), 0); /* none, no -o default: nothing */
+    CHECK_INT(fl, 0);
+    CHECK_INT(sh_complete(&sh, "5 ls ab", out, sizeof(out), &fl), 0); /* no spec */
+    CHECK_INT(fl, SH_COMP_DEFAULT);
+    CHECK_INT(sh_complete(&sh, "2 kw", out, sizeof(out), &fl), 0);  /* the command word */
+    CHECK_INT(fl, SH_COMP_DEFAULT);
+    CHECK_INT(sh_complete(&sh, "9 kw", out, sizeof(out), &fl), 0);  /* the cursor past the line */
+    CHECK_INT(sh_complete(&sh, "/usr/bin/kw x", out, sizeof(out), &fl), 0); /* no point */
+}
+
 static void a_shell_made_on_dirty_memory_is_a_fresh_shell(void)
 {
     /* one place for both, so the fields pointing into the shell itself agree */
@@ -1544,6 +1581,7 @@ static void dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh(void)
 
 void suite_sh_exec(void)
 {
+    tab_on_a_command_with_a_spec_answers_with_its_words();
     dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh();
     eval_builtin();
     exec_builtin();

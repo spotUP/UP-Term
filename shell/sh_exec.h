@@ -292,6 +292,10 @@ typedef struct sh_shell {
     int seeded;
     long secs0;            /* the time SECONDS counts from */
     int special_busy;      /* the store is being brought up to date (no recursion) */
+    struct sh_comp *comps; /* complete: the specs (V93) */
+    int ncomps;
+    int comp_running;      /* a completion's -F function or -C command runs: compopt with no name changes ... */
+    unsigned comp_opts;    /* ... these, its -o options */
 } sh_shell;
 
 /* What the command line asked for (sh_invoke). */
@@ -328,6 +332,16 @@ long sh_run_child(sh_shell *child, sh_parse *tree, const sh_io *io);
  * whole names only). Returns the bytes used. For the console's
  * completion and command colouring. */
 long sh_word_list(const sh_shell *sh, int kind, char *out, long max);
+
+/* Programmable completion (V93): the console's Tab sent the marker line (handler/vtcon_packets.h
+ * ACTION_VTCON_COMPLETE); text is what followed VTCON_COMPLETE_MARK, "point line". The spec of the command
+ * around point (`complete`) runs: COMP_WORDS, COMP_CWORD, COMP_LINE, COMP_POINT are set for its -F function
+ * and -C command. The words, NUL-separated, go to out (whole words, at most max bytes); returns their bytes.
+ * *flags: SH_COMP_NOSPACE, SH_COMP_DEFAULT (no spec, or none matched with -o default / bashdefault: the
+ * console completes as it would without the shell). The values are the packet's. */
+#define SH_COMP_NOSPACE 2
+#define SH_COMP_DEFAULT 4
+long sh_complete(sh_shell *sh, const char *text, char *out, long max, int *flags);
 
 /* W46: the console's environment for the programs (ACTION_VTCON_ENV): the
  * NAME=VALUE entries of list (each NUL-ended, an empty entry or len ends

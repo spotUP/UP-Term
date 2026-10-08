@@ -55,3 +55,4 @@ interactive/histignore_patterns	lists / : the Mac's root folders in the oracle, 
 expand/indirect	lists the variables starting with p: the AmigaDOS Shell gives every process the local variable process, which the oracle does not have
 expand/prefix2	lists the variables starting with p: the AmigaDOS Shell gives every process the local variable process, which the oracle does not have
 agent/a074_case_uname	asks uname for the system: Darwin on the oracle's Mac, AmigaOS on the rig
+interactive/comp_compgen_actions	needs sed and mktemp, which the rig does not have (the kit ships coreutils only)
