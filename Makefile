@@ -433,6 +433,11 @@ $(BUILD)/amiga/forkprobe: tests/amiga/forkprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/forkprobe.c
 
+# FIONREAD on a vsh pipe (PTY:<id>/r): what it holds, 0 at end of file (cat -n)
+$(BUILD)/amiga/ixfionread: tests/amiga/ixfionread.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixfionread.c
+
 # a pipe into a vfork + exec child, ixemul and native (screen's printcmd)
 $(BUILD)/amiga/ixpipeprobe: tests/amiga/ixpipeprobe.c
 	@mkdir -p $(BUILD)/amiga
