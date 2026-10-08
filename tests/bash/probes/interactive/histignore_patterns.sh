@@ -1,7 +1,7 @@
 HISTIGNORE='ls:ls *:true'
 echo a
-ls /
-ls -l /
+ls / >/dev/null
+ls -l / >/dev/null
 true
 echo b
 history
