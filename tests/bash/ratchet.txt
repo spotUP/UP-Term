@@ -988,3 +988,4 @@ vars/underscore
 vars/underscore_start
 vars/underscore_start_stdin
 vars/versinfo
+builtins/command_drawer_name

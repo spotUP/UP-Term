@@ -668,6 +668,19 @@ static long os_stack(void *os, long bytes)
  * through $PATH has its full name in found (found[0] = 0 otherwise), so a
  * script there runs as that file and not as a same-named command of the
  * Shell's path (C:Sort for sort). -1: not found. */
+/* A directory is never a command (bash: a name is looked up as a file through $PATH; a directory name
+ * only cd's under shopt -s autocd, and only when no command is found). A drawer named like a command
+ * in the current directory, a $PATH entry or C: was taken as the command, and SystemTags gave its name
+ * to the Shell, whose implicit CD entered it: `man` in a directory holding a drawer man failed. */
+static int lock_is_dir(BPTR lock)
+{
+    struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    int dir = fib && Examine(lock, fib) && fib->fib_DirEntryType > 0 && fib->fib_DirEntryType != 3; /* ST_SOFTLINK */
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    return dir;
+}
+
 static int resolve(const char *name, const char *path, BPTR *seg, char *found, long max)
 {
     struct CommandLineInterface *cli = Cli();
@@ -687,13 +700,17 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
     }
     {
         char used[256];
-        if ((lock = lock_name(name, used, sizeof(used))) != 0) {
+        /* a bare name naming a drawer here goes on to $PATH; a path to a drawer stays the Shell's */
+        if ((lock = lock_name(name, used, sizeof(used))) != 0 &&
+            (strchr(name, ':') || strchr(name, '/') || !lock_is_dir(lock))) {
             UnLock(lock);
             *seg = LoadSeg((STRPTR)used);
             if (strcmp(used, name) && (long)strlen(used) < max)
                 strcpy(found, used); /* "/vol/x" ran as vol:x: a script there runs as that file */
             return 0; /* not loadable (a script): SystemTags */
         }
+        if (lock)
+            UnLock(lock);
     }
     if (strchr(name, ':') || strchr(name, '/'))
         return -1;
@@ -712,7 +729,11 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
             if (!(lock = Lock((STRPTR)dir, SHARED_LOCK)))
                 continue;
             old = CurrentDir(lock);
-            if ((f = Lock((STRPTR)name, SHARED_LOCK)) != 0) {
+            if ((f = Lock((STRPTR)name, SHARED_LOCK)) != 0 && lock_is_dir(f)) {
+                UnLock(f);
+                f = 0;
+            }
+            if (f) {
                 UnLock(f);
                 *seg = LoadSeg((STRPTR)name);
                 if ((long)(strlen(dir) + strlen(name) + 2) <= max) {
@@ -731,6 +752,10 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
             continue;
         old = CurrentDir(node[1]);
         lock = Lock((STRPTR)name, SHARED_LOCK);
+        if (lock && lock_is_dir(lock)) {
+            UnLock(lock);
+            lock = 0;
+        }
         if (lock) {
             UnLock(lock);
             *seg = LoadSeg((STRPTR)name);
@@ -744,6 +769,10 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
         BPTR f;
         old = CurrentDir(lock);
         f = Lock((STRPTR)name, SHARED_LOCK);
+        if (f && lock_is_dir(f)) {
+            UnLock(f);
+            f = 0;
+        }
         if (f) {
             UnLock(f);
             *seg = LoadSeg((STRPTR)name);
