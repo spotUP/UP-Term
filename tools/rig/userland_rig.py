@@ -101,10 +101,16 @@ def cases(pkg):
     return out
 
 
+def recipe_var(pkg, var):
+    """The words of <pkg>_<var> in its recipe.mk (a plain := line)."""
+    m = re.search(r"^%s_%s\s*:?=\s*(.*)$" % (re.escape(pkg), var), (PORTS / "pkgs" / pkg / "recipe.mk").read_text(), re.M)
+    return m.group(1).split() if m else []
+
+
 def binaries(pkg):
-    """The installed programs: <pkg>_BINS of its recipe.mk, relative to the sysroot's UP-Term."""
-    m = re.search(r"^%s_BINS\s*:?=\s*(.*)$" % re.escape(pkg), (PORTS / "pkgs" / pkg / "recipe.mk").read_text(), re.M)
-    return [SYSBIN / b for b in (m.group(1).split() if m else [])]
+    """The installed programs: <pkg>_BINS of its recipe.mk, relative to the sysroot's UP-Term,
+    then those of its <pkg>_CHECK_DEPS (programs its cases run: man pages through less)."""
+    return [SYSBIN / b for p in [pkg] + recipe_var(pkg, "CHECK_DEPS") for b in recipe_var(p, "BINS")]
 
 
 def fingerprint(pkg, bins):
