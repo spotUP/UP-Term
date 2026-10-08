@@ -452,8 +452,11 @@ static int os_pipe(void *os, sh_fh *rd, sh_fh *wr)
     return 0;
 }
 
-/* argv as an AmigaDOS command line: arguments with spaces, quotes or
- * semicolons in double quotes, " and * escaped with * (AmigaDOS). */
+/* argv as an AmigaDOS command line: arguments with spaces, quotes,
+ * semicolons or newlines in double quotes, " and * escaped with * and a
+ * newline written *N (AmigaDOS: ReadItem fails a raw newline inside quotes,
+ * and an unquoted one ends the line, so `sed 'p<newline>p'` reached a native
+ * or ixemul command cut after its first line). */
 static char *command_line(char **argv)
 {
     long len = 1;
@@ -467,15 +470,15 @@ static char *command_line(char **argv)
     o = s;
     for (i = 0; argv[i]; i++) {
         const char *a = argv[i];
-        int quote = !*a || strpbrk(a, " \t\";*=") != 0;
+        int quote = !*a || strpbrk(a, " \t\";*=\n") != 0;
         if (i)
             *o++ = ' ';
         if (quote)
             *o++ = '"';
         for (; *a; a++) {
-            if (quote && (*a == '"' || *a == '*'))
+            if (quote && (*a == '"' || *a == '*' || *a == '\n'))
                 *o++ = '*';
-            *o++ = *a;
+            *o++ = *a == '\n' ? 'N' : *a;
         }
         if (quote)
             *o++ = '"';
