@@ -57,3 +57,4 @@ expand/prefix2	lists the variables starting with p: the AmigaDOS Shell gives eve
 agent/a074_case_uname	asks uname for the system: Darwin on the oracle's Mac, AmigaOS on the rig
 interactive/comp_compgen_actions	needs sed and mktemp, which the rig does not have (the kit ships coreutils only)
 vars/columns_lines	needs a pseudo-terminal of a known size (the rig feeds PTY probes on stdin); the console window case is checked by hand on rig 2
+interactive/bind_editing_mode	needs grep, which the rig does not have, and a pseudo-terminal (bind_rig.py checks bind in a window)

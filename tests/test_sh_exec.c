@@ -669,17 +669,17 @@ static void history_has_one_owner_the_console_list_or_the_shell(void)
     sh_hist_note(&sh, "ls -l");
     CHECK_INT(native_n, 2);
     sh_hist_config(&sh);
-    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs");
+    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs\n");
     /* V91: set -o vi tells the console its line editor; set -o emacs takes it back (the two exclude each other) */
     sh_run_text(&sh, "set -o vi", 0);
     sh_hist_config(&sh);
-    CHECK_STR(native_cfg, "300\n700\nignoreboth\nvi");
+    CHECK_STR(native_cfg, "300\n700\nignoreboth\nvi\n");
     sh_run_text(&sh, "set -o emacs", 0);
     sh_hist_config(&sh);
-    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs");
+    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs\n");
     sh_run_text(&sh, "set -o vi; set +o vi", 0);
     sh_hist_config(&sh);
-    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs");
+    CHECK_STR(native_cfg, "300\n700\nignoreboth\nemacs\n");
     native_cfg[0] = 0;
     sh_hist_config(&sh);                /* unchanged: not sent again */
     CHECK_STR(native_cfg, "");
@@ -727,6 +727,33 @@ static void tab_on_a_command_with_a_spec_answers_with_its_words(void)
     CHECK_INT(fl, SH_COMP_DEFAULT);
     CHECK_INT(sh_complete(&sh, "9 kw", out, sizeof(out), &fl), 0);  /* the cursor past the line */
     CHECK_INT(sh_complete(&sh, "/usr/bin/kw x", out, sizeof(out), &fl), 0); /* no point */
+}
+
+/* V92: bind and the .inputrc set the console's key bindings and edit mode; they travel with the history config
+ * (a fifth line: key, 0x20 + function), reach a subshell, and bind -p / -q name them as readline does */
+static void bind_and_inputrc_reach_the_console_line_editor(void)
+{
+    const char *cfg;
+    run("echo '# keys' > RAM:irc; echo 'set editing-mode vi' >> RAM:irc; echo '$if mode=emacs' >> RAM:irc;"
+        " echo '\"\\C-x\": undo' >> RAM:irc; echo '$endif' >> RAM:irc; echo 'Control-b: backward-char' >> RAM:irc;"
+        " echo 'Meta-x: kill-word' >> RAM:irc; INPUTRC=RAM:irc");
+    sh.os.hist = f_hist;
+    sh_inputrc(&sh);
+    sh_run_text(&sh, "bind '\"\\C-a\": end-of-line'", 0);
+    sh_hist_config(&sh);
+    cfg = strrchr(native_cfg, '\n');
+    CHECK_INT(cfg != 0, 1);
+    CHECK_STR(cfg ? cfg + 1 : "", "\002!\370-\001(");  /* C-b backward-char, M-x kill-word, C-a end-of-line */
+    CHECK_INT(strstr(native_cfg, "\nvi\n") != 0, 1); /* set editing-mode vi; the $if block skipped */
+    sh_run_text(&sh, "bind -q end-of-line; (bind -q backward-char); bind -q undo; bind -r '\\C-a';"
+                     " bind -q beginning-of-line; bind -p | (read -r l; echo \"$l\"); bind -q nosuch", 0);
+    CHECK_STR(slot(OUT)->data, "end-of-line can be invoked via \"\\C-a\", \"\\C-e\".\n"
+                               "backward-char can be invoked via \"\\C-b\".\n"
+                               "undo can be invoked via \"\\C-z\", \"\\C-_\".\n"
+                               "beginning-of-line is not bound to any keys.\n"
+                               "\"\\C-b\": backward-char\n");
+    CHECK_INT((int)sh.ctx.status, 1);
+    sh_run_text(&sh, "bind 'set editing-mode emacs'", 0);
 }
 
 static void a_shell_made_on_dirty_memory_is_a_fresh_shell(void)
@@ -1601,6 +1628,7 @@ static void an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash(void
 
 void suite_sh_exec(void)
 {
+    bind_and_inputrc_reach_the_console_line_editor();
     an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash();
     tab_on_a_command_with_a_spec_answers_with_its_words();
     dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh();

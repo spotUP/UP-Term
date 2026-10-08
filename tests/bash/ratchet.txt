@@ -662,11 +662,13 @@ interactive/bang_basic
 interactive/bang_blank
 interactive/bang_equals_paren
 interactive/bang_in_word
+interactive/bind_editing_mode
 interactive/chained
 interactive/comp_compgen_actions
 interactive/comp_compgen_fc
 interactive/comp_compgen_w
 interactive/comp_complete_print
+interactive/comp_complete_subshell
 interactive/comp_compopt
 interactive/desig_caret_dollar
 interactive/desig_dash_end

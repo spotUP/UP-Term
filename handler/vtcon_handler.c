@@ -6137,8 +6137,10 @@ static void packet(con *c, struct DosPacket *p)
                              (strstr(t, "erasedups") ? LE_HC_ERASEDUPS : 0);
             {
                 /* the fourth line: "vi" or "emacs" (set -o), the keys of the line editor */
-                const char *mode = strchr(t, '\n');
+                const char *mode = strchr(t, '\n'), *keys = mode ? strchr(mode + 1, '\n') : 0;
                 le_set_vi(&c->le, mode && !strncmp(mode + 1, "vi", 2));
+                /* V92: the fifth line, the shell's key bindings (bind, .inputrc; le_set_binds) */
+                le_set_binds(&c->le, keys ? (const unsigned char *)keys + 1 : 0);
             }
             c->hist_filesize = fsize;
             le_hist_limit(&c->le, (int)size);

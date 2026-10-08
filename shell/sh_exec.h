@@ -298,6 +298,7 @@ typedef struct sh_shell {
     int ncomps;
     int comp_running;      /* a completion's -F function or -C command runs: compopt with no name changes ... */
     unsigned comp_opts;    /* ... these, its -o options */
+    char binds[65];        /* bind, .inputrc (V92): pairs of a key and 0x20 + a function (handler/le_fns.h), NUL */
 } sh_shell;
 
 /* What the command line asked for (sh_invoke). */
@@ -398,6 +399,8 @@ void sh_prompt_command(sh_shell *sh);
 /* Before a prompt of an interactive shell: COLUMNS and LINES from the terminal's size (shopt checkwinsize,
  * on by default as in bash 5; V42) */
 void sh_check_winsize(sh_shell *sh);
+/* An interactive shell's start: the key bindings and `set editing-mode` of $INPUTRC, else $HOME/.inputrc (V92) */
+void sh_inputrc(sh_shell *sh);
 char *sh_ps0(sh_shell *sh);
 /* tell a console that keeps the list HISTSIZE, HISTFILESIZE and HISTCONTROL when they have changed (before a prompt) */
 void sh_hist_config(sh_shell *sh);

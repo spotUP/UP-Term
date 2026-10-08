@@ -1153,8 +1153,35 @@ static void vi_mode_starts_each_line_in_insert_mode_and_emacs_keys_stay(void)
     vt_free(t);
 }
 
+/* V92: a key the shell bound (bind, .inputrc) runs its function; the others keep emacs's; Meta keys too */
+static void bound_keys_run_their_functions_and_the_rest_keep_emacs(void)
+{
+    vt_term *t = start(60, 3, "$ ");
+    unsigned char pairs[] = { 0x01, 0x20 + 8, LE_META + 'b', 0x20 + 9, 0x02, 0x20 + 1, 0x05, 0x20, 0 };
+    vtype("abc def");
+    vtype("\001");
+    CHECK_INT(le.pos, 0); /* emacs: Ctrl-A beginning-of-line */
+    le_set_binds(&le, pairs);
+    vtype("\001");
+    CHECK_INT(le.pos, 7); /* bound to end-of-line */
+    vtype("\002\002");
+    CHECK_INT(le.pos, 5); /* Ctrl-B backward-char, which emacs here did not have */
+    le_key(&le, 'b', VT_MOD_ALT, (const unsigned char *)"b", 1);
+    CHECK_INT(le.pos, 6); /* Meta-b bound to forward-char */
+    vtype("\005");
+    CHECK_INT(le.pos, 6); /* Ctrl-E unbound: nothing */
+    vtype("\013");
+    CHECK_STR(line(), "abc de"); /* Ctrl-K is still kill-line */
+    CHECK_INT(le_key_fn(&le, 0x0B), 11);
+    le_set_binds(&le, 0);
+    vtype("\001");
+    CHECK_INT(le.pos, 0); /* the bindings gone: emacs again */
+    vt_free(t);
+}
+
 void suite_lineedit(void)
 {
+    bound_keys_run_their_functions_and_the_rest_keep_emacs();
     medium_mode_reports_tab_shift_tab_up_and_down_at_once();
     medium_mode_leaves_the_editing_keys_to_the_editor();
     reflow_moves_the_line_and_editing_follows();

@@ -90,7 +90,7 @@
 #define VTCON_HIST_CLEAR 4
 /*            VTCON_HIST_CONFIG  dp_Arg4 a NUL-terminated "HISTSIZE\nHISTFILESIZE\nHISTCONTROL" (the numbers may
  *                               be empty = the default 100 lines; the control words are the shell's, of which
- *                               ignorespace, ignoreboth and erasedups matter here), then a fourth line "vi" or "emacs" (set -o: the keys of the line editor). The list keeps at most
+ *                               ignorespace, ignoreboth and erasedups matter here), then a fourth line "vi" or "emacs" (set -o: the keys of the line editor), then a fifth, the key bindings of `bind` (V92: pairs of a key and 0x20 + a function, handler/le_fns.h, as lineedit.h le_set_binds reads them). The list keeps at most
  *                               HISTSIZE lines (up to 1000), is read from the file again when it grew, and
  *                               the file keeps HISTFILESIZE lines when it is trimmed at the next window. */
 #define VTCON_HIST_CONFIG 5

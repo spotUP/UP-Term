@@ -2050,6 +2050,7 @@ static int vsh_main(int argc, char **argv)
         if (!sh_get(&sh.ctx, "HISTFILE"))
             sh_set(&sh.ctx, "HISTFILE", "ENVARC:vtcon.history");
         sh_hist_load(&sh);
+        sh_inputrc(&sh);
     }
     if (command)
         sh_run_text(&sh, command, 0);

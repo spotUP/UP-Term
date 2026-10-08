@@ -654,6 +654,8 @@ static int run_main(int argc, char **argv)
             char *text = 0, buf[4096];
             int incomplete = 0;
             size_t tl = 0;
+            if (sh.opts & SO_INTERACTIVE)
+                sh_inputrc(&sh);
             while (!sh.exiting) {
                 size_t n;
                 int inter = (sh.opts & SO_INTERACTIVE) != 0;

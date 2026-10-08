@@ -16,6 +16,7 @@
 #ifndef LINEEDIT_H
 #define LINEEDIT_H
 #include "../engine/vtengine.h"
+#include "le_fns.h"
 
 #define LE_MAX 1024
 #define LE_HIST 100        /* lines kept by default */
@@ -76,6 +77,8 @@ typedef struct le_line {
     int undo_n, typing;     /* typing: the last change was an inserted char */
     /* V91 vi editing mode (set -o vi): vi 0 emacs keys, 1 vi. Each line starts in insert mode. */
     int vi, vi_cmd;         /* vi_cmd: command mode */
+    unsigned char binds[LE_BINDS][2]; /* V92: the shell's key bindings: key, function (le_fns.h) */
+    int nbinds;
     int vi_count, vi_count2; /* the count typed, the one saved by an operator */
     int vi_op, vi_pend;     /* a pending d c y; a pending r */
     int vi_replace;         /* R: typed characters overwrite */
@@ -111,6 +114,11 @@ int  le_key(le_line *le, long key, int mods, const unsigned char *bytes, int n);
 void le_reset(le_line *le);
 /* set -o vi / set -o emacs (the shell tells the console before a prompt). */
 void le_set_vi(le_line *le, int on);
+/* V92: the shell's bindings, pairs of bytes up to a NUL: a key (le_fns.h) and 0x20 + its function (0x20: the
+ * key does nothing); they replace the previous ones. le_key_fn: what a key runs; le_run: run a function. */
+void le_set_binds(le_line *le, const unsigned char *pairs);
+int le_key_fn(const le_line *le, int key);
+void le_run(le_line *le, int fn);
 /* The window was resized: a reflow may have moved the line. Where it
  * starts is worked out again from the cursor, which the engine kept on
  * its character. */

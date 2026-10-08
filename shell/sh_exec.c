@@ -7,6 +7,10 @@
 #include "sh_hits.h"
 #include "sh_float.h"
 #include "../tty/bmsg.h"
+#include "../handler/le_fns.h"
+#if LE_BINDS != 32
+#error sh_shell.binds holds 32 bindings
+#endif
 
 
 /* The Unix device names scripts use, as AmigaDOS has them: /dev/null is
@@ -105,6 +109,7 @@ static void pb_str(pbuf *b, const char *s)
 
 static char *core_subst(sh_ctx *c, const char *cmd);
 static void comp_free(struct sh_shell *sh);
+static void comp_clone(struct sh_shell *c, const struct sh_shell *sh);
 static char *core_procsub(sh_ctx *c, const char *cmd, int out);
 
 /* ---- options: the one table ------------------------------------------------- */
@@ -394,6 +399,8 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->dirstack_gone = sh->dirstack_gone;
     c->cp_close[0] = sh->cp_close[0];
     c->cp_close[1] = sh->cp_close[1];
+    memcpy(c->binds, sh->binds, sizeof(c->binds));
+    comp_clone(c, sh);     /* complete's specs, as a forked bash has them */
     c->umask = sh->umask;  /* traps are not inherited (POSIX); set -E and -T hand the ERR, DEBUG and RETURN ones on */
     c->opts |= sh->opts & (SO_ERRTRACE | SO_FUNCTRACE);
     if ((sh->opts & SO_ERRTRACE) && sh->traps[TRAP_ERR])
@@ -4532,6 +4539,7 @@ static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_complete(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_bind(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_compgen(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_compopt(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long run_function(sh_shell *sh, sh_func *f, sh_list *argv, const sh_io *io);
@@ -4557,7 +4565,7 @@ static const struct {
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
     { "hash", b_hash }, { "history", b_history }, { "fc", b_fc }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout },
-    { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
+    { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
 };
 
 /* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
@@ -5097,6 +5105,8 @@ void sh_hist_config(sh_shell *sh)
     pb_str(&b, v ? v : "");
     pb_add(&b, "\n", 1);
     pb_str(&b, sh_edit_mode_vi() ? "vi" : "emacs"); /* set -o vi / emacs: the console's line editor */
+    pb_add(&b, "\n", 1);
+    pb_str(&b, sh->binds); /* bind: the key bindings (V92) */
     if (b.s && (!sh->hist_cfg || strcmp(sh->hist_cfg, b.s))) {
         sh->os.hist(sh->os.data, SH_HIST_CONFIG, 0, b.s, 0);
         free(sh->hist_cfg);
@@ -5768,6 +5778,253 @@ long sh_word_list(const sh_shell *sh, int kind, char *out, long max)
     return n;
 }
 
+/* ---- bind and .inputrc (V92) ----------------------------------------------------------------------------
+ * The console's line editor runs the functions of handler/le_fns.h; vsh keeps the bindings in sh->binds
+ * (pairs: a key, 0x20 + its function) and sends them with the history config (sh_hist_config). */
+
+static long comp_err(sh_shell *sh, const sh_io *io, const char *who, const char *what, const char *msg, long r);
+
+#define LE_FN_NAME(n, s) s,
+static const char *const bind_fns[] = { "", LE_FNS(LE_FN_NAME) 0 };
+#undef LE_FN_NAME
+
+static int bind_fn(const char *name)
+{
+    int i;
+    for (i = 1; bind_fns[i]; i++)
+        if (!strcmp(bind_fns[i], name))
+            return i;
+    return -1;
+}
+
+/* the function key k runs: the shell's binding, else emacs's (as lineedit.c's le_key_fn) */
+static int bind_of(const sh_shell *sh, int k)
+{
+    static const unsigned char emacs[][2] = {
+#define LE_EK(k, f) { k, f },
+        LE_EMACS_KEYS(LE_EK)
+#undef LE_EK
+    };
+    const unsigned char *b;
+    unsigned i;
+    for (b = (const unsigned char *)sh->binds; *b; b += 2)
+        if (*b == k)
+            return b[1] - 0x20;
+    for (i = 0; i < sizeof(emacs) / sizeof(emacs[0]); i++)
+        if (emacs[i][0] == k)
+            return emacs[i][1];
+    return 0;
+}
+
+/* a key in readline's notation: "\C-a" "\M-b" "\eb" "\C-?" inside quotes, or Control-a C-a Meta-b M-b */
+static int bind_key(const char *s, size_t n)
+{
+    int meta = 0, ctrl = 0;
+    for (;;) {
+        if (n >= 3 && (!strncmp(s, "\\C-", 3) || !strncmp(s, "C-", 2))) {
+            size_t k = s[0] == '\\' ? 3 : 2;
+            s += k, n -= k, ctrl = 1;
+        } else if (n >= 8 && !strncmp(s, "Control-", 8))
+            s += 8, n -= 8, ctrl = 1;
+        else if (n >= 3 && (!strncmp(s, "\\M-", 3) || !strncmp(s, "M-", 2))) {
+            size_t k = s[0] == '\\' ? 3 : 2;
+            s += k, n -= k, meta = LE_META;
+        } else if (n >= 5 && !strncmp(s, "Meta-", 5))
+            s += 5, n -= 5, meta = LE_META;
+        else if (n >= 2 && !strncmp(s, "\\e", 2))
+            s += 2, n -= 2, meta = LE_META;
+        else
+            break;
+    }
+    if (n != 1 || (meta && ctrl))
+        return -1;
+    if (ctrl)
+        return *s == '?' ? 0x7F : (*s & 0x1F) ? (*s & 0x1F) : -1;
+    return meta ? meta + (*s & 0x7F) : -1;
+}
+
+static void bind_keyname(pbuf *b, int k)
+{
+    char t[6];
+    t[0] = '\\';
+    t[1] = k & LE_META ? 'e' : 'C';
+    t[2] = '-';
+    t[3] = k == 0x7F ? '?' : (char)(k & LE_META ? k & 0x7F : k + (k <= 26 ? 0x60 : 0x40)); /* \C-a, \C-_ */
+    t[4] = 0;
+    pb_str(b, k & LE_META ? "\"\\e" : "\"");
+    pb_str(b, k & LE_META ? t + 3 : t);
+    pb_str(b, "\"");
+}
+
+/* one line of an .inputrc or of bind's arguments: "set editing-mode vi|emacs" (other variables are
+ * accepted and ignored), "KEY": function, KEY: function; 0 ok, 1 bad */
+static int bind_line(sh_shell *sh, const char *l)
+{
+    const char *k, *e;
+    int key, fn;
+    size_t n;
+    unsigned char *b;
+    l += strspn(l, " \t");
+    if (!*l || *l == '#' || *l == '\n')
+        return 0;
+    if (!strncmp(l, "set", 3) && (l[3] == ' ' || l[3] == '\t')) {
+        l += 3 + strspn(l + 3, " \t");
+        if (!strncmp(l, "editing-mode", 12)) {
+            l += 12 + strspn(l + 12, " \t");
+            if (!strncmp(l, "vi", 2) || !strncmp(l, "emacs", 5))
+                opt_name(sh, l[0] == 'v' ? "vi" : "emacs", 1);
+        }
+        return 0;
+    }
+    if (*l == '"') {
+        k = l + 1;
+        if (!(e = strchr(k, '"')))
+            return 1;
+        n = (size_t)(e - k);
+        e = strchr(e, ':');
+    } else {
+        k = l;
+        e = strchr(l, ':');
+        n = e ? (size_t)(e - l) : 0;
+    }
+    if (!e || (key = bind_key(k, n)) < 0)
+        return 1;
+    e++;
+    e += strspn(e, " \t");
+    n = strcspn(e, " \t\r\n");
+    {
+        char name[32];
+        if (n >= sizeof(name))
+            return 1;
+        memcpy(name, e, n);
+        name[n] = 0;
+        if ((fn = bind_fn(name)) < 0)
+            return 1;
+    }
+    for (b = (unsigned char *)sh->binds; *b && *b != key; b += 2)
+        ;
+    if (!*b && b - (unsigned char *)sh->binds >= (long)sizeof(sh->binds) - 2)
+        return 1; /* full */
+    b[0] = (unsigned char)key;
+    b[1] = (unsigned char)(0x20 + fn);
+    return 0;
+}
+
+/* bind -f FILE and the .inputrc: each line, the ones inside $if ... $endif skipped */
+static int bind_file(sh_shell *sh, const char *path)
+{
+    sh_fh fh = sh->os.open ? sh->os.open(sh->os.data, path, SH_OPEN_READ) : 0;
+    char line[512];
+    int skip = 0, bad = 0;
+    if (!fh)
+        return 1;
+    while (sh->os.read_line(sh->os.data, fh, line, sizeof(line)) >= 0) {
+        const char *l = line + strspn(line, " \t");
+        if (*l == '$')
+            skip += !strncmp(l, "$if", 3) ? 1 : !strncmp(l, "$endif", 6) && skip ? -1 : 0;
+        else if (!skip)
+            bad |= bind_line(sh, line);
+    }
+    sh->os.close(sh->os.data, fh);
+    return bad;
+}
+
+void sh_inputrc(sh_shell *sh)
+{
+    const char *f = sh_get(&sh->ctx, "INPUTRC"), *home = sh_get(&sh->ctx, "HOME");
+    pbuf b = { 0, 0, 0 };
+    if (!f || !*f) {
+        pb_str(&b, home ? home : "");
+        if (b.n && b.s[b.n - 1] != '/' && b.s[b.n - 1] != ':')
+            pb_str(&b, "/");
+        pb_str(&b, ".inputrc");
+        f = b.s;
+    }
+    if (f)
+        bind_file(sh, f);
+    free(b.s);
+}
+
+static long b_bind(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int i, k, fn;
+    long r = 0;
+    pbuf b = { 0, 0, 0 };
+    for (i = 1; i < argc && argv[i][0] == '-' && argv[i][1]; i++) {
+        char o = argv[i][1];
+        const char *arg = argv[i][2] ? argv[i] + 2 : i + 1 < argc ? argv[i + 1] : 0;
+        if (!strcmp(argv[i], "--")) {
+            i++;
+            break;
+        }
+        if (strchr("qrf", o)) {
+            if (!arg)
+                return comp_err(sh, io, "bind", argv[i], "option requires an argument", 2);
+            if (!argv[i][2])
+                i++;
+        }
+        if (o == 'l')
+            for (fn = 1; bind_fns[fn]; fn++)
+                sayl(sh, io->out, bind_fns[fn], "\n", NULL);
+        else if (o == 'v')
+            sayl(sh, io->out, "set editing-mode ", sh_edit_mode_vi() ? "vi" : "emacs", "\n", NULL);
+        else if (o == 'p' || o == 'q') {
+            for (fn = 1; bind_fns[fn]; fn++) {
+                int any = 0;
+                if (o == 'q' && strcmp(bind_fns[fn], arg))
+                    continue;
+                if (o == 'q')
+                    pb_str(&b, bind_fns[fn]);
+                for (k = 1; k < 0x100; k++)
+                    if (bind_of(sh, k) == fn) {
+                        if (o == 'p') {
+                            bind_keyname(&b, k);
+                            pb_str(&b, ": ");
+                            pb_str(&b, bind_fns[fn]);
+                            pb_str(&b, "\n");
+                        } else {
+                            pb_str(&b, any ? ", " : " can be invoked via ");
+                            bind_keyname(&b, k);
+                        }
+                        any = 1;
+                    }
+                if (o == 'p' && !any) {
+                    pb_str(&b, "# ");
+                    pb_str(&b, bind_fns[fn]);
+                    pb_str(&b, " (not bound)\n");
+                }
+                if (o == 'q')
+                    pb_str(&b, any ? ".\n" : " is not bound to any keys.\n");
+            }
+            if (o == 'q' && bind_fn(arg) < 0)
+                r = comp_err(sh, io, "bind", arg, "unknown function name", 1);
+        } else if (o == 'r') {
+            const char *q = arg + (arg[0] == '"');
+            if ((k = bind_key(q, strcspn(q, "\""))) < 0)
+                r = comp_err(sh, io, "bind", arg, "cannot unbind", 1);
+            else {
+                for (fn = 0; sh->binds[fn] && (unsigned char)sh->binds[fn] != k; fn += 2)
+                    ;
+                if (fn < (int)sizeof(sh->binds) - 2) {
+                    sh->binds[fn] = (char)k;
+                    sh->binds[fn + 1] = 0x20; /* nothing */
+                }
+            }
+        } else if (o == 'f') {
+            if (bind_file(sh, arg))
+                r = comp_err(sh, io, "bind", arg, "cannot read or a line is bad", 1);
+        } else
+            return comp_err(sh, io, "bind", argv[i], "invalid option", 2);
+    }
+    for (; i < argc; i++)
+        if (bind_line(sh, argv[i]))
+            comp_err(sh, io, "bind", argv[i], "cannot bind", 0); /* readline says so; bind's status stays 0 */
+    if (b.s)
+        say(sh, io->out, b.s);
+    free(b.s);
+    return r;
+}
+
 /* ---- programmable completion: complete, compgen, compopt (V93) ------------------------------------------
  * The console asks by the marker line (sh_complete); the words come from the actions, -W, -F and -C in
  * bash's order. */
@@ -5810,6 +6067,24 @@ static void comp_free1(struct sh_comp *s)
     free(s->words);
     free(s->cmd);
     free(s->func);
+}
+
+/* t's strings, copied (t was a struct copy) */
+static void comp_dup(struct sh_comp *t)
+{
+    t->name = sdup(t->name);
+    t->words = t->words ? sdup(t->words) : 0;
+    t->cmd = t->cmd ? sdup(t->cmd) : 0;
+    t->func = t->func ? sdup(t->func) : 0;
+}
+
+static void comp_clone(sh_shell *c, const sh_shell *sh)
+{
+    if (sh->ncomps && (c->comps = (struct sh_comp *)malloc((size_t)sh->ncomps * sizeof(*c->comps))) != 0)
+        for (; c->ncomps < sh->ncomps; c->ncomps++) {
+            c->comps[c->ncomps] = sh->comps[c->ncomps];
+            comp_dup(&c->comps[c->ncomps]);
+        }
 }
 
 static void comp_free(sh_shell *sh)
@@ -6170,10 +6445,8 @@ static long b_complete(sh_shell *sh, int argc, char **argv, const sh_io *io)
         sh->comps = t;
         t += sh->ncomps++;
         *t = s;
-        t->name = sdup(argv[i]);
-        t->words = s.words ? sdup(s.words) : 0;
-        t->cmd = s.cmd ? sdup(s.cmd) : 0;
-        t->func = s.func ? sdup(s.func) : 0;
+        t->name = argv[i];
+        comp_dup(t);
     }
     return r;
 }

@@ -1273,58 +1273,95 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
     if (key >= 0x110000)
         return 0; /* other special keys: nothing in a cooked line */
     if (meta && key < 0x80) {
-        switch (key) {
-        case 'b': move_to(le, word_back(le, le->pos)); return 0;
-        case 'f': move_to(le, word_forward(le, le->pos)); return 0;
-        case 'd': erase(le, le->pos, word_forward(le, le->pos)); return 0;
-        default: return 0;
-        }
+        le_run(le, le_key_fn(le, LE_META + (int)key));
+        return 0;
     }
     if (n == 1 && b[0] < 0x20 && b[0] != '\t') {
-        int p;
-        switch (b[0]) {
-        case 0x01: move_to(le, 0); break;                     /* Ctrl-A */
-        case 0x05:                                            /* Ctrl-E */
-            if (le->pos == le->len && suggestion(le)) {
-                const unsigned char *s = suggestion(le);
-                insert(le, s, (int)strlen((const char *)s), 0);
-            } else {
-                move_to(le, le->len);
-            }
-            break;
-        case 0x0B: erase(le, le->pos, le->len); break;        /* Ctrl-K */
-        case 0x0C: clear_screen(le); break;                   /* Ctrl-L */
-        case 0x12:                                            /* Ctrl-R */
-            save_state(&le->before_search, le);
-            le->searching = 1;
-            le->pat_len = 0;
-            le->search_idx = le->hist_n - 1;
-            redraw_from(le, 0);
-            break;
-        case 0x15: erase(le, 0, le->pos); break;              /* Ctrl-U */
-        case 0x17:                                            /* Ctrl-W */
-            p = le->pos;
-            while (p > 0 && le->buf[p - 1] == ' ')
-                p--;
-            while (p > 0 && le->buf[p - 1] != ' ')
-                p--;
-            erase(le, p, le->pos);
-            break;
-        case 0x18: erase(le, 0, le->len); break;              /* Ctrl-X */
-        case 0x1F:                                            /* Ctrl-_ undo */
-        case 0x1A:
-            if (le->undo_n) {
-                le->typing = 0;
-                pop_undo(le);
-            }
-            break;
-        default:
-            break;
-        }
+        le_run(le, le_key_fn(le, b[0]));
         return 0;
     }
     insert(le, b, n, 1);
     return 0;
+}
+
+/* V92: the function a Ctrl or Meta key runs: the shell's binding (bind, .inputrc), else emacs's (le_fns.h) */
+int le_key_fn(const le_line *le, int key)
+{
+    static const unsigned char emacs[][2] = {
+#define LE_EK(k, f) { k, f },
+        LE_EMACS_KEYS(LE_EK)
+#undef LE_EK
+    };
+    int i;
+    for (i = 0; i < le->nbinds; i++)
+        if (le->binds[i][0] == key)
+            return le->binds[i][1];
+    for (i = 0; i < (int)(sizeof(emacs) / sizeof(emacs[0])); i++)
+        if (emacs[i][0] == key)
+            return emacs[i][1];
+    return 0;
+}
+
+void le_set_binds(le_line *le, const unsigned char *pairs)
+{
+    le->nbinds = 0;
+    while (pairs && pairs[0] && pairs[1] && le->nbinds < LE_BINDS) {
+        le->binds[le->nbinds][0] = pairs[0];
+        le->binds[le->nbinds++][1] = (unsigned char)(pairs[1] - 0x20);
+        pairs += 2;
+    }
+}
+
+/* one of le_fns.h's functions (0: nothing) */
+void le_run(le_line *le, int fn)
+{
+    int p = le->pos;
+    switch (fn) {
+    case 1: move_to(le, prev_char(le, p)); break;
+    case 2: erase(le, prev_char(le, p), p); break;
+    case 3: erase(le, word_back(le, p), p); break;
+    case 4: move_to(le, word_back(le, p)); break;
+    case 5: move_to(le, 0); break;
+    case 6: clear_screen(le); break;
+    case 7: erase(le, p, next_char(le, p)); break;
+    case 8:
+        if (p == le->len && suggestion(le)) {
+            const unsigned char *s = suggestion(le);
+            insert(le, s, (int)strlen((const char *)s), 0);
+        } else
+            move_to(le, le->len);
+        break;
+    case 9: move_to(le, next_char(le, p)); break;
+    case 10: move_to(le, word_forward(le, p)); break;
+    case 11: erase(le, p, le->len); break;
+    case 12: erase(le, 0, le->len); break;
+    case 13: erase(le, p, word_forward(le, p)); break;
+    case 14: history(le, 1, 0); break;
+    case 15: history(le, -1, 0); break;
+    case 16:
+        save_state(&le->before_search, le);
+        le->searching = 1;
+        le->pat_len = 0;
+        le->search_idx = le->hist_n - 1;
+        redraw_from(le, 0);
+        break;
+    case 17:
+        if (le->undo_n) {
+            le->typing = 0;
+            pop_undo(le);
+        }
+        break;
+    case 18: erase(le, 0, p); break;
+    case 19:
+        while (p > 0 && le->buf[p - 1] == ' ')
+            p--;
+        while (p > 0 && le->buf[p - 1] != ' ')
+            p--;
+        erase(le, p, le->pos);
+        break;
+    default:
+        break;
+    }
 }
 
 void le_set_command(le_line *le, const unsigned char *word, int found)

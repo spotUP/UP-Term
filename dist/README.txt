@@ -338,6 +338,10 @@ VSH (the shell)
   compopt as in bash; Tab in an XCON: window asks vsh for the words.
   COMP_WORDS splits at blanks, " and = only (bash also at :, which would cut
   an Amiga path in two); -G -X -P -S -D -E -I are not there.
+  Keys: bind and an .inputrc ($INPUTRC, else $HOME/.inputrc) set the
+  window's line editor: set editing-mode vi|emacs, and "\C-x" / "\M-x" /
+  Control-x / Meta-x bound to one of the 19 functions bind -l lists (no
+  macros, no key sequences longer than one key; $if blocks are skipped).
   Differences from bash
   printf %b and echo -e drop a NUL byte (\0, \x00): strings are C strings
   (probe builtins/printf_bnul).
