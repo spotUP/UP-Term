@@ -4,7 +4,8 @@
 ixemul's startup (ixemul-vtcon library/_cli_parse.c, the splitter in
 library/cli_args.c) must read the line as dos.library's ReadItem does: double
 quotes with the * escapes (*" ** *N *E), the line ending at an unquoted
-newline. Before it, vsh's line for printf 'a"b' gave the arguments a* and b",
+newline; but a * before any other character stays a star (python3 -c
+"print(6*7)", find -name "*.c" typed in the AmigaShell). Before it, vsh's line for printf 'a"b' gave the arguments a* and b",
 'c*d' gave c**d, and an argument holding a newline was cut there (V74: a
 configure's multi-line sed script; rig 2, 2026-10-08).
 
@@ -42,11 +43,18 @@ VSH_CASES = [
     ("plain", ["plain"]),
     ("equals", ["k=v"]),
     ("mixed", ['a"b', "c*d", "", "plain", "x\ny z"]),
+    ("glob_exe", ["*exe", "*n", "*.c"]),
 ]
 
 # a line as a person types it in the Shell, and the argv it means
 DOS_LINE = '"a*"b" "c**d" "x*Ny" "e*Ef" "" plain "q"r a"b'
 DOS_WANT = ['a"b', "c*d", "x\ny", "e\x1bf", "", "plain", "q", "r", 'a"b']
+
+# ixemul only, on purpose unlike ReadItem (library/cli_args.c): in quotes a *
+# before anything but " * N n E e is a literal star, so a Unix user's quoted
+# glob or expression typed in the AmigaShell arrives whole (ReadItem: print(67), .c)
+STAR_LINE = '-c "print(6*7)" "*.c" "a*b" "[*]" "*exe" "**exe"'
+STAR_WANT = ["-c", "print(6*7)", "*.c", "a*b", "[*]", "\x1bxe", "*exe"]
 
 def sq(a):
     return "'" + a.replace("'", "'\\''") + "'"
@@ -75,6 +83,12 @@ def main():
     print("%s dos line" % ("PASS" if good else "FAIL"))
     if not good:
         sys.stdout.write("  want " + want(DOS_WANT).replace("\n", " | ") + "\n  got  " + out.replace("\n", " | ") + "\n")
+    rc, out = ixpty_rig.run("VTC:ixargv " + STAR_LINE, 60)
+    good = out == want(STAR_WANT)
+    ok = ok and good
+    print("%s star line" % ("PASS" if good else "FAIL"))
+    if not good:
+        sys.stdout.write("  want " + want(STAR_WANT).replace("\n", " | ") + "\n  got  " + out.replace("\n", " | ") + "\n")
     # the reference: ReadArgs reads the same line to the same arguments
     rc, out = ixpty_rig.run("VTC:readitem " + DOS_LINE, 60)
     ref = [l[5:-1].lower() for l in out.splitlines() if l.startswith("arg [")]
