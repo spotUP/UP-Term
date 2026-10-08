@@ -968,6 +968,7 @@ traps/trapusr
 vars/bash_source
 vars/bashv
 vars/circular
+vars/columns_lines
 vars/eval_lineno
 vars/funcname
 vars/funcname_stack
@@ -980,4 +981,6 @@ vars/seconds
 vars/shlvl
 vars/srandom
 vars/underscore
+vars/underscore_start
+vars/underscore_start_stdin
 vars/versinfo

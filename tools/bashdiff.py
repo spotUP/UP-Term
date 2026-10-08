@@ -180,7 +180,7 @@ def run_one(shell_cmd, p, base, hits=False, leak=False):
     # fed on stdin (args are the positionals); otherwise the probe is a file as always.
     target = [str(p)]
     if flags and flags[-1] == "PTY":
-        # last flag PTY (V94): the text is typed into a pseudo-terminal that is the shell's stdin, a line
+        # last flag PTY (V94): the text is typed into a pseudo-terminal (100x30) that is the shell's stdin, a line
         # every 50 ms, then ^D; stdout stays a pipe (bash -i's prompts and readline's echo go to stderr)
         return run_pty(shell_cmd + (["--hits"] if hits else []) + flags[:-1] + args, p.read_bytes(), work, env,
                        hits or leak)
@@ -207,7 +207,9 @@ def run_pty(cmd, text, work, env, want_err=False):
     """cmd with a pseudo-terminal as stdin, text typed into it line by line, then ^D: (stdout, status,
     stderr when want_err, else b"")."""
     import pty, threading, time
+    import fcntl, struct, termios
     master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))  # 100 columns, 30 lines
     proc = subprocess.Popen(cmd, stdin=slave, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE if want_err else subprocess.DEVNULL, cwd=work,
                             env=env, start_new_session=True)

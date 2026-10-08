@@ -1690,6 +1690,19 @@ static void send_words(sh_shell *sh)
     }
 }
 
+/* COLUMNS and LINES (sh_check_winsize): the console window's size; another console refuses */
+static int os_winsize(void *os, long *cols, long *rows)
+{
+    struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
+    vt_winsize w;
+    (void)os;
+    if (!fh || !fh->fh_Type || !DoPkt(fh->fh_Type, ACTION_VTCON_GWINSZ, fh->fh_Arg1, (LONG)&w, 0, 0, 0))
+        return 0;
+    *cols = w.ws_col;
+    *rows = w.ws_row;
+    return 1;
+}
+
 /* V93: programmable completion. Before a prompt a shell with `complete` specs arms the console; a Tab in the
  * line then answers the prompt's Read with the marker line (vtcon_packets.h ACTION_VTCON_COMPLETE), which
  * comp_answer runs through sh_complete and answers with the words. */
@@ -1912,6 +1925,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.done = os_done;
     sh.os.cont = os_cont;
     sh.os.isatty = os_isatty;
+    sh.os.winsize = os_winsize;
     sh.os.stack = os_stack;
     sh.os.umask = os_umask;
     sh.os.spawn = os_spawn;
@@ -2051,6 +2065,7 @@ static int vsh_main(int argc, char **argv)
             send_words(&sh);
             sync_env(&sh);
             sh_hist_config(&sh);
+            sh_check_winsize(&sh);
         }
         if (IsInteractive(Input())) /* a script or a pipe gets no prompts */
             prompt(&sh, text != 0);

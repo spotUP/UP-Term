@@ -26,6 +26,7 @@
 #include <dirent.h>
 #include <poll.h>
 #include <termios.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include "../shell/sh_exec.h"
 #include "../shell/sh_hits.h"
@@ -500,6 +501,17 @@ static int h_signal(void *os, long target, int sig, int is_job)
     return is_job ? -1 : kill((pid_t)target, sig);
 }
 
+static int h_winsize(void *os, long *cols, long *rows)
+{
+    struct winsize w;
+    (void)os;
+    if (ioctl(0, TIOCGWINSZ, &w) != 0)
+        return 0;
+    *cols = w.ws_col;
+    *rows = w.ws_row;
+    return 1;
+}
+
 static int h_isatty(void *os, sh_fh fh)
 {
     (void)os;
@@ -576,6 +588,7 @@ static int run_main(int argc, char **argv)
     sh.os.done = h_done;
     sh.os.cont = 0;
     sh.os.isatty = h_isatty;
+    sh.os.winsize = h_winsize;
     sh.os.stack = h_stack;
     sh.os.umask = h_umask;
     sh.os.spawn = h_spawn;
@@ -644,8 +657,10 @@ static int run_main(int argc, char **argv)
             while (!sh.exiting) {
                 size_t n;
                 int inter = (sh.opts & SO_INTERACTIVE) != 0;
-                if (!text && inter)
+                if (!text && inter) {
+                    sh_check_winsize(&sh);
                     sh_prompt_command(&sh);
+                }
                 if (h_read_line(0, FH(0), buf, sizeof(buf)) < 0)
                     break;
                 if (!text && inter) {

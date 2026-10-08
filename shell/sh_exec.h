@@ -139,6 +139,8 @@ typedef struct sh_os {
     long  (*now)(void *os, long *usec);
     /* PPID, UID, EUID: what is SH_ID_*; 0 in the table: 0 */
     long  (*sysid)(void *os, int what);
+    /* the size of the terminal the shell reads from: 1 with *cols and *rows, 0 not a terminal; 0 in the table: none */
+    int   (*winsize)(void *os, long *cols, long *rows);
     /* delete a file (process substitution and here-document temp files); 0 = ok; 0 in the table: files stay */
     int   (*remove)(void *os, const char *path);
     /* the directory prefix of process substitution temp files, ending in : or / ("T:", "RAM:", "/tmp/"); 0 in the table: "T:" */
@@ -393,6 +395,9 @@ int  sh_hist_expand(sh_shell *sh, const char *line, char **out, int *print_only)
  * expanded as a prompt, is what is shown after a command line is read and before it runs (malloc'ed, 0 if
  * PS0 is unset or empty). */
 void sh_prompt_command(sh_shell *sh);
+/* Before a prompt of an interactive shell: COLUMNS and LINES from the terminal's size (shopt checkwinsize,
+ * on by default as in bash 5; V42) */
+void sh_check_winsize(sh_shell *sh);
 char *sh_ps0(sh_shell *sh);
 /* tell a console that keeps the list HISTSIZE, HISTFILESIZE and HISTCONTROL when they have changed (before a prompt) */
 void sh_hist_config(sh_shell *sh);

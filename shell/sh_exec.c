@@ -9050,6 +9050,19 @@ void sh_prompt_command(sh_shell *sh)
     sh->ctx.status = st;
 }
 
+void sh_check_winsize(sh_shell *sh)
+{
+    long c, r;
+    char d[24];
+    if ((sh->opts & SO_INTERACTIVE) && sh->os.winsize && shopt_get(sh, "checkwinsize") &&
+        sh->os.winsize(sh->os.data, &c, &r) && c > 0 && r > 0) {
+        sh_ltoa(c, d);
+        sh_set(&sh->ctx, "COLUMNS", d);
+        sh_ltoa(r, d);
+        sh_set(&sh->ctx, "LINES", d);
+    }
+}
+
 char *sh_ps0(sh_shell *sh)
 {
     const char *ps = sh_get(&sh->ctx, "PS0");
@@ -9395,6 +9408,8 @@ static void start_vars(sh_shell *sh, const char *arg0)
     for (i = 0; i < 4; i++)
         sh_set(&sh->ctx, fixed[i][0], fixed[i][1]);
     self_path(sh, arg0);
+    if (sh_get(&sh->ctx, "BASH") && !sh_get(&sh->ctx, "_"))
+        sh_set(&sh->ctx, "_", sh_get(&sh->ctx, "BASH")); /* bash: $_ is the shell (or the environment's) */
     sh_ltoa((old ? atol(old) : 0) + 1, d);
     sh_set(&sh->ctx, "SHLVL", d);
     sh_attr_change(&sh->ctx, "SHLVL", SH_ATTR_EXPORT, 0);
