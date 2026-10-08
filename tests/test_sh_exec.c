@@ -756,6 +756,28 @@ static void bind_and_inputrc_reach_the_console_line_editor(void)
     sh_run_text(&sh, "bind 'set editing-mode emacs'", 0);
 }
 
+/* vsh's subshell processes share its static data (one program image, one address space): a shell's
+ * options lived there. On the rig a subshell's `set +o vi` turned vi off in the shell, and making the
+ * subshell's clone (sh_shell_init) turned the shell's extglob off: after `( : )` an @( ) pattern was a
+ * syntax error. The clone here is made and run in this process, as vsh's is. */
+static void a_subshell_s_set_o_and_shopt_leave_the_shell_s_alone(void)
+{
+    sh_shell *c;
+    run("shopt -s extglob; set -o vi");
+    c = sh_shell_clone(&sh);
+    CHECK_INT(c != 0, 1);
+    if (!c)
+        return;
+    sh_run_text(c, "shopt -oq vi && echo sub_vi; shopt -q extglob && echo sub_eg; set +o vi; shopt -u extglob", 0);
+    CHECK_STR(slot(OUT)->data, "sub_vi\nsub_eg\n"); /* a subshell starts with its shell's options */
+    sh_shell_free(c);
+    free(c);
+    sh_run_text(&sh, "shopt -oq vi && echo vi; shopt -q extglob && echo eg", 0);
+    sh_run_text(&sh, "case ab in @(ab|cd)) echo matched;; esac", 0);
+    CHECK_STR(slot(OUT)->data, "sub_vi\nsub_eg\nvi\neg\nmatched\n");
+    sh_run_text(&sh, "set +o vi", 0);
+}
+
 static void a_shell_made_on_dirty_memory_is_a_fresh_shell(void)
 {
     /* one place for both, so the fields pointing into the shell itself agree */
@@ -1629,6 +1651,7 @@ static void an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash(void
 void suite_sh_exec(void)
 {
     bind_and_inputrc_reach_the_console_line_editor();
+    a_subshell_s_set_o_and_shopt_leave_the_shell_s_alone();
     an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash();
     tab_on_a_command_with_a_spec_answers_with_its_words();
     dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh();

@@ -216,6 +216,8 @@ typedef struct sh_tmp {
 typedef struct sh_shell {
     sh_ctx ctx;
     unsigned long opts;    /* SO_* */
+    unsigned long inert;   /* set -o options with no effect (vi, emacs ...): bit i for sh_optab[i]; per shell, a
+                            * subshell process shares vsh's static data (set +o vi there turned it off here) */
     sh_fh cp_close[2];     /* coproc: the shell's ends of its pipes; an OS layer whose subshell process has copies of
                             * the handles (a fork) closes them there, or the command never sees the end of its input */
     int dirstack_gone;     /* unset DIRSTACK: it stops mirroring the directory stack */

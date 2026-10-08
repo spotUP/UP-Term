@@ -89,10 +89,11 @@ typedef struct sh_parse {
     void *arena;
 } sh_parse;
 
-/* Parse a whole input (one or more lines). */
+/* Parse a whole input (one or more lines), shopt extglob off. */
 void sh_parse_text(sh_parse *p, const char *text);
-/* the same with the text's first line numbered line0 (LINENO): a script read command by command */
-void sh_parse_text_at(sh_parse *p, const char *text, int line0);
+/* the same with the text's first line numbered line0 (LINENO), a script read command by command, and
+ * extglob the shell's shopt extglob (sh_ctx.extglob): @( ) ... are part of a word */
+void sh_parse_text_at(sh_parse *p, const char *text, int line0, int extglob);
 void sh_parse_free(sh_parse *p);
 
 /* The tree as an S-expression, for tests and `set -x`-style tracing:

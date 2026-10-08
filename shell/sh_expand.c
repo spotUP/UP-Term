@@ -722,17 +722,6 @@ static int posix_class(const char *name, int ch, int nocase)
     }
 }
 
-static int g_extglob;   /* shopt extglob: one switch for the parser, the matcher and the glob (bash's is global too) */
-
-void sh_set_extglob(int on)
-{
-    g_extglob = on != 0;
-}
-
-int sh_get_extglob(void)
-{
-    return g_extglob;
-}
 
 /* p[0] is the "(" of an extended pattern: the index of its matching ")" (nested ( ), [ ], \ skipped), or -1 */
 static long ext_close(const char *p)
@@ -760,10 +749,10 @@ static long ext_close(const char *p)
     return -1;
 }
 
-static int match_flags(const char *p, const char *s, int nocase);
+static int match_flags(const char *p, const char *s, int flags);
 
 /* kind ( alt | alt ) rest against s: kind is one of @ ? * + ! (p points after the "(", len = its text up to ")") */
-static int ext_match(char kind, const char *alts, long len, const char *rest, const char *s, int nocase)
+static int ext_match(char kind, const char *alts, long len, const char *rest, const char *s, int flags)
 {
     char *a = (char *)malloc((size_t)len + 1), *buf;
     long n = (long)strlen(s), k;
@@ -796,7 +785,7 @@ static int ext_match(char kind, const char *alts, long len, const char *rest, co
         return 0;
     }
     memcpy(buf, s, (size_t)n + 1);
-    if ((kind == '?' || kind == '*') && match_flags(rest, s, nocase)) {
+    if ((kind == '?' || kind == '*') && match_flags(rest, s, flags)) {
         res = 1;
         goto done;
     }
@@ -805,15 +794,15 @@ static int ext_match(char kind, const char *alts, long len, const char *rest, co
         int any = 0;
         buf[k] = 0;
         for (i = 0; i < na && !any; i++)
-            any = match_flags(alt[i], buf, nocase);
+            any = match_flags(alt[i], buf, flags);
         buf[k] = save;
         if (kind == '!') {
-            if (!any && match_flags(rest, s + k, nocase))
+            if (!any && match_flags(rest, s + k, flags))
                 res = 1;
         } else if (any) {
-            if (match_flags(rest, s + k, nocase))
+            if (match_flags(rest, s + k, flags))
                 res = 1;
-            else if ((kind == '*' || kind == '+') && k > 0 && ext_match('*', alts, len, rest, s + k, nocase))
+            else if ((kind == '*' || kind == '+') && k > 0 && ext_match('*', alts, len, rest, s + k, flags))
                 res = 1;
         }
     }
@@ -823,18 +812,19 @@ done:
     return res;
 }
 
-int sh_match(const char *p, const char *s, int nocase)
+int sh_match(const char *p, const char *s, int flags)
 {
-    return match_flags(p, s, nocase);
+    return match_flags(p, s, flags);
 }
 
-static int match_flags(const char *p, const char *s, int nocase)
+static int match_flags(const char *p, const char *s, int flags)
 {
+    int nocase = (flags & SH_MATCH_NOCASE) != 0;
     for (; *p; p++, s++) {
-        if (g_extglob && strchr("@?*+!", *p) && p[1] == '(') {
+        if ((flags & SH_MATCH_EXTGLOB) && strchr("@?*+!", *p) && p[1] == '(') {
             long e = ext_close(p + 1);
             if (e >= 0)
-                return ext_match(*p, p + 2, e - 1, p + 1 + e + 1, s, nocase);
+                return ext_match(*p, p + 2, e - 1, p + 1 + e + 1, s, flags);
         }
         if (*p == '*') {
             while (p[1] == '*')
@@ -842,9 +832,9 @@ static int match_flags(const char *p, const char *s, int nocase)
             if (!p[1])
                 return 1;
             for (; *s; s++)
-                if (match_flags(p + 1, s, nocase))
+                if (match_flags(p + 1, s, flags))
                     return 1;
-            return match_flags(p + 1, s, nocase);
+            return match_flags(p + 1, s, flags);
         }
         if (!*s)
             return 0;
@@ -1446,6 +1436,8 @@ typedef struct ex {
     sh_ctx *c;
     const char *err;
     int assign;         /* an assignment value: ~ also after a colon */
+    char pnum[24];      /* param's number ($? $$ $! $# PIPESTATUS), pval's: here, not static (vsh's */
+    char vnum[24];      /* processes share its static data: a subshell's $? overwrote the shell's) */
 } ex;
 
 static int expand_into(ex *e, const char *w, long len, cbuf *b, int dquote);
@@ -1472,7 +1464,7 @@ static int is_name_char(char ch, int first)
  * The result is valid until the next call. */
 static const char *param(ex *e, const char *name)
 {
-    static char num[24];
+    char *num = e->pnum;
     sh_ctx *c = e->c;
     long v;
     int k;
@@ -1515,7 +1507,7 @@ static const char *param(ex *e, const char *name)
 /* set -u: an unset NAME is an error (not $@ $*) */
 static int unbound(ex *e, const char *name, const char *val)
 {
-    static char msg[80];
+    char *msg = e->c->errbuf;
     if (val || !e->c->nounset || !strcmp(name, "@") || !strcmp(name, "*"))
         return 0;
     strncpy(msg, name, 60);
@@ -1622,13 +1614,13 @@ static void sb_add(sbuf *b, const char *s, long n)
 }
 
 /* the length of the longest match of pat at s[from..], or -1; the whole of s[from..to] must match */
-static long longest_at(const char *pat, const char *s, long from, long l, char *tmp)
+static long longest_at(const char *pat, const char *s, long from, long l, char *tmp, int mf)
 {
     long j;
     for (j = l; j >= from; j--) {
         memcpy(tmp, s + from, (size_t)(j - from));
         tmp[j - from] = 0;
-        if (sh_match(pat, tmp, 0))
+        if (sh_match(pat, tmp, mf))
             return j - from;
     }
     return -1;
@@ -1636,7 +1628,7 @@ static long longest_at(const char *pat, const char *s, long from, long l, char *
 
 /* ${v/pat/rep} ${v//pat/rep} ${v/#pat/rep} ${v/%pat/rep}; an unquoted & in rep (marked \001 by the
  * caller) is the matched text. Zero-length matches are not replaced (as bash). */
-static char *subst_one(const char *pat, const char *rep, const char *v, int all, char anchor)
+static char *subst_one(const char *pat, const char *rep, const char *v, int all, char anchor, int mf)
 {
     long l = (long)strlen(v), i = 0;
     sbuf o;
@@ -1650,7 +1642,7 @@ static char *subst_one(const char *pat, const char *rep, const char *v, int all,
             long m = -1, k;
             if (anchor == '%') {
                 for (k = 0; k <= l && m < 0; k++)
-                    if (sh_match(pat, v + k, 0)) {
+                    if (sh_match(pat, v + k, mf)) {
                         i = k;
                         m = l - k;
                     }
@@ -1658,7 +1650,7 @@ static char *subst_one(const char *pat, const char *rep, const char *v, int all,
                     break;
                 sb_add(&o, v, i);
             } else
-                m = longest_at(pat, v, i, l, tmp);
+                m = longest_at(pat, v, i, l, tmp, mf);
             if (m > 0 && (anchor != '#' || i == 0)) {
                 const char *q;
                 for (q = rep; *q; q++) {
@@ -1692,7 +1684,7 @@ static char *subst_one(const char *pat, const char *rep, const char *v, int all,
 }
 
 /* ${v^pat} ${v^^pat} ${v,pat} ${v,,pat} ${v~pat} ${v~~pat}: the characters pat matches change case */
-static char *case_one(const char *pat, const char *v, char kind, int all)
+static char *case_one(const char *pat, const char *v, char kind, int all, int mf)
 {
     long l = (long)strlen(v), i;
     char *r = (char *)malloc((size_t)l + 1);
@@ -1705,7 +1697,7 @@ static char *case_one(const char *pat, const char *v, char kind, int all)
         r[i] = c;
         if (i && !all)
             continue;
-        if (*pat && !sh_match(pat, one, 0))
+        if (*pat && !sh_match(pat, one, mf))
             continue;
         if ((kind == '^' || kind == '~') && c >= 'a' && c <= 'z')
             r[i] = (char)(c - 32);
@@ -1717,7 +1709,7 @@ static char *case_one(const char *pat, const char *v, char kind, int all)
 }
 
 /* ${v#p} ${v##p} ${v%p} ${v%%p} of one value */
-static char *trim_one(const char *pat, const char *val, char kind, int longest)
+static char *trim_one(const char *pat, const char *val, char kind, int longest, int mf)
 {
     long l = (long)strlen(val), k, from = 0, to = l;
     char *tmp = (char *)malloc((size_t)l + 1), *r;
@@ -1727,14 +1719,14 @@ static char *trim_one(const char *pat, const char *val, char kind, int longest)
         for (k = longest ? l : 0; longest ? k >= 0 : k <= l; k += longest ? -1 : 1) {
             memcpy(tmp, val, (size_t)k);
             tmp[k] = 0;
-            if (sh_match(pat, tmp, 0)) {
+            if (sh_match(pat, tmp, mf)) {
                 from = k;
                 break;
             }
         }
     } else {
         for (k = longest ? 0 : l; longest ? k <= l : k >= 0; k += longest ? 1 : -1)
-            if (sh_match(pat, val + k, 0)) {
+            if (sh_match(pat, val + k, mf)) {
                 to = k;
                 break;
             }
@@ -1749,7 +1741,7 @@ static char *trim_one(const char *pat, const char *val, char kind, int longest)
 /* the value of NAME[sub] (sub raw text, expanded here); 0 when unset. @ and * give element 0. */
 static const char *pval(ex *e, const char *name, int hassub, const char *sub)
 {
-    static char num[24];
+    char *num = e->vnum;
     char *k;
     const char *r;
     if (!hassub)
@@ -1986,9 +1978,9 @@ static void transform(ex *e, cbuf *b, const char *name, int hassub, int all, con
             case 'Q': case 'K': case 'k': t = sh_quote(x, SH_Q_ALWAYS); break;
             case 'E': t = e->c->unescape ? e->c->unescape(e->c, x) : sdup(x); break;
             case 'P': t = e->c->prompt ? e->c->prompt(e->c, x) : sdup(x); break;
-            case 'U': t = case_one(pat, x, '^', 1); break;
-            case 'u': t = case_one(pat, x, '^', 0); break;
-            case 'L': t = case_one(pat, x, ',', 1); break;
+            case 'U': t = case_one(pat, x, '^', 1, SH_MATCH_OF(e->c, 0)); break;
+            case 'u': t = case_one(pat, x, '^', 0, SH_MATCH_OF(e->c, 0)); break;
+            case 'L': t = case_one(pat, x, ',', 1, SH_MATCH_OF(e->c, 0)); break;
             default: break;
             }
             res.v[res.n++] = t ? t : sdup("");
@@ -2220,9 +2212,10 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
             SH_HIT(PARAM_OP);
             for (q = 0; q < n; q++) {
                 const char *v = list ? src.v[q] : one[0];
-                tmp = kind == '/' ? subst_one(pat, rep, v, twice, anchor)
-                    : (kind == '#' || kind == '%') ? trim_one(pat, v, kind, twice)
-                    : case_one(pat, v, kind, twice);
+                int mf = SH_MATCH_OF(e->c, 0);
+                tmp = kind == '/' ? subst_one(pat, rep, v, twice, anchor, mf)
+                    : (kind == '#' || kind == '%') ? trim_one(pat, v, kind, twice, mf)
+                    : case_one(pat, v, kind, twice, mf);
                 res.v[res.n++] = tmp ? tmp : sdup("");
             }
         }
@@ -2621,14 +2614,14 @@ static char *vol_colon(char *pat)
     return 0;
 }
 
-static int has_glob(const cbuf *b, int from, int to)
+static int has_glob(const sh_ctx *c, const cbuf *b, int from, int to)
 {
     int i;
     for (i = from; i < to; i++)
         if (!(b->f[i] & F_QUOTED) &&
             (b->s[i] == '*' || b->s[i] == '?' ||
              (b->s[i] == '[' && bracket_closes(b->s, b->f, i, to)) ||
-             (g_extglob && i + 1 < to && strchr("@+!", b->s[i]) && b->s[i + 1] == '(' && !(b->f[i + 1] & F_QUOTED))))
+             (c->extglob && i + 1 < to && strchr("@+!", b->s[i]) && b->s[i + 1] == '(' && !(b->f[i + 1] & F_QUOTED))))
             return 1;
     return 0;
 }
@@ -2640,11 +2633,11 @@ static int cmp_str(const void *a, const void *b)
 
 /* extglob: a component that starts with a group one of whose alternatives starts with a literal dot
  * (@(.a|b)) may match a name that starts with a dot */
-static int ext_dot(const char *comp)
+static int ext_dot(const sh_ctx *c, const char *comp)
 {
     long e;
     const char *q;
-    if (!g_extglob || !strchr("@?*+!", comp[0]) || comp[1] != '(' || comp[0] == '!')
+    if (!c->extglob || !strchr("@?*+!", comp[0]) || comp[1] != '(' || comp[0] == '!')
         return 0;
     e = ext_close(comp + 1);
     if (e < 0)
@@ -2746,7 +2739,7 @@ static void glob_rec_comp(sh_ctx *c, const char *dir, const char *pat, sh_list *
     comp[clen] = 0;
     for (i = 0; comp[i]; i++)
         if (comp[i] == '*' || comp[i] == '?' ||
-            (g_extglob && strchr("@+!", comp[i]) && comp[i + 1] == '(') ||
+            (c->extglob && strchr("@+!", comp[i]) && comp[i + 1] == '(') ||
             (comp[i] == '[' && bracket_closes(comp, 0, i, (int)clen)))
             magic = 1;
     if (!magic) {
@@ -2775,9 +2768,9 @@ static void glob_rec_comp(sh_ctx *c, const char *dir, const char *pat, sh_list *
         return;
     for (i = 0; i < names.n; i++) {
         char path[512];
-        if (names.v[i][0] == '.' && comp[0] != '.' && !c->dotglob && !ext_dot(comp))
+        if (names.v[i][0] == '.' && comp[0] != '.' && !c->dotglob && !ext_dot(c, comp))
             continue; /* dot files only when asked for (shopt dotglob) */
-        if (!sh_match(comp, names.v[i], c->nocase))
+        if (!sh_match(comp, names.v[i], SH_MATCH_OF(c, c->nocase)))
             continue;
         strcpy(path, dir);
         if (*dir && dir[strlen(dir) - 1] != ':' && dir[strlen(dir) - 1] != '/')
@@ -2826,7 +2819,7 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
             plain[m++] = b->s[i];
         }
     plain[m] = 0;
-    if (!(flags & SH_NO_GLOB) && has_glob(b, from, to)) {
+    if (!(flags & SH_NO_GLOB) && has_glob(c, b, from, to)) {
         /* the pattern: quoted characters escaped, so they match themselves */
         char *pat = (char *)malloc(2 * (to - from) + 1), *start;
         sh_list found;
@@ -2836,7 +2829,7 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
         for (i = from; i < to; i++) {
             if (b->f[i] & F_EMPTY)
                 continue;
-            if ((b->f[i] & F_QUOTED) && strchr(g_extglob ? "*?[]\\()|@+!" : "*?[]\\", b->s[i]))
+            if ((b->f[i] & F_QUOTED) && strchr(c->extglob ? "*?[]\\()|@+!" : "*?[]\\", b->s[i]))
                 pat[k++] = '\\';
             pat[k++] = b->s[i];
         }
@@ -3147,7 +3140,7 @@ static int expand_word(sh_ctx *c, const char *word, int flags, sh_list *out, con
         sh_list_add(out, ""); /* "" and "$empty" are one empty field */
     cfree(&b);
     if (c->glob_fail) {
-        static char msg[200];
+        char *msg = c->errbuf;
         c->glob_fail = 0;
         strcpy(msg, "no match: ");
         strncat(msg, c->glob_pat, 150);

@@ -133,8 +133,6 @@ static const struct sh_opt {
 /* the order of the letters in $-, as bash prints them */
 static const char sh_flag_order[] = "abefhikmnptuvxBCEHPT";
 
-/* an option with no effect keeps its own state (set -o vi; set -o: vi on) */
-static unsigned long inert_state;
 static int shopt_get(sh_shell *sh, const char *name);
 static int core_pathkind(sh_ctx *c, const char *path);
 
@@ -178,9 +176,9 @@ static int opt_letter(sh_shell *sh, char ch, int on)
                     sh->opts &= ~sh_optab[i].bit;
             } else {
                 if (on)
-                    inert_state |= 1UL << i;
+                    sh->inert |= 1UL << i;
                 else
-                    inert_state &= ~(1UL << i);
+                    sh->inert &= ~(1UL << i);
             }
             opts_apply(sh);
             return 1;
@@ -200,9 +198,9 @@ static int opt_name(sh_shell *sh, const char *name, int on)
                     sh->opts &= ~sh_optab[i].bit;
             } else {
                 if (on)
-                    inert_state |= 1UL << i;
+                    sh->inert |= 1UL << i;
                 else
-                    inert_state &= ~(1UL << i);
+                    sh->inert &= ~(1UL << i);
             }
             opts_apply(sh);
             if (on && (!strcmp(name, "vi") || !strcmp(name, "emacs"))) {
@@ -210,7 +208,7 @@ static int opt_name(sh_shell *sh, const char *name, int on)
                 int k;
                 for (k = 0; k < N_SHOPT; k++)
                     if (k != i && (!strcmp(sh_optab[k].name, "vi") || !strcmp(sh_optab[k].name, "emacs")))
-                        inert_state &= ~(1UL << k);
+                        sh->inert &= ~(1UL << k);
             }
             if (sh_optab[i].bit == SO_POSIX) {
                 /* bash keeps POSIXLY_CORRECT in step with the mode: set to y on entering, unset on leaving */
@@ -225,18 +223,18 @@ static int opt_name(sh_shell *sh, const char *name, int on)
 }
 
 /* set -o vi is on */
-static int sh_edit_mode_vi(void)
+static int sh_edit_mode_vi(const sh_shell *sh)
 {
     int i;
     for (i = 0; i < N_SHOPT; i++)
         if (!strcmp(sh_optab[i].name, "vi"))
-            return (int)((inert_state >> i) & 1);
+            return (int)((sh->inert >> i) & 1);
     return 0;
 }
 
 static int opt_on(const sh_shell *sh, int i)
 {
-    return sh_optab[i].bit == SO_INERT ? (inert_state >> i) & 1 : (sh->opts & sh_optab[i].bit) != 0;
+    return sh_optab[i].bit == SO_INERT ? (sh->inert >> i) & 1 : (sh->opts & sh_optab[i].bit) != 0;
 }
 
 static void core_warn(sh_ctx *c, const char *name, const char *msg);
@@ -253,7 +251,6 @@ void sh_shell_init(sh_shell *sh)
     memset(sh, 0, sizeof(*sh));
     memset(sh->shopt_v, -1, sizeof(sh->shopt_v));
     sh->ctx.pathkind = core_pathkind;
-    sh_set_extglob(0);
     sh->ctx.subst = core_subst;
     sh->ctx.procsub = core_procsub;
     sh->ctx.user = sh;
@@ -412,6 +409,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
             c->traps[TRAP_RETURN] = sdup(sh->traps[TRAP_RETURN]);
     }
     c->opts = sh->opts;
+    c->inert = sh->inert;
     c->cond_depth = sh->cond_depth;
     c->xlevel = sh->xlevel;
     opts_apply(c);
@@ -422,6 +420,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
     c->ctx.failglob = sh->ctx.failglob;
     c->ctx.dotglob = sh->ctx.dotglob;
     c->ctx.nocasematch = sh->ctx.nocasematch;
+    c->ctx.extglob = sh->ctx.extglob;
     c->ctx.globstar = sh->ctx.globstar;
     memcpy(c->shopt_v, sh->shopt_v, sizeof(c->shopt_v));
     c->ctx.listdir = sh->ctx.listdir;
@@ -4032,6 +4031,7 @@ static int *shopt_flag(sh_shell *sh, const char *name, unsigned long *bit)
     if (!strcmp(name, "globstar")) return &sh->ctx.globstar;
     if (!strcmp(name, "nocaseglob")) return &sh->ctx.nocase;
     if (!strcmp(name, "nocasematch")) return &sh->ctx.nocasematch;
+    if (!strcmp(name, "extglob")) return &sh->ctx.extglob;
     if (!strcmp(name, "lastpipe")) { *bit = SO_LASTPIPE; return 0; }
     return 0;
 }
@@ -4045,8 +4045,6 @@ static int shopt_get(sh_shell *sh, const char *name)
         return *f != 0;
     if (bit)
         return (sh->opts & bit) != 0;
-    if (!strcmp(name, "extglob"))
-        return sh_get_extglob();
     k = shopt_index(name);
     if (k < 0)
         return 0;
@@ -4067,8 +4065,6 @@ static void shopt_put(sh_shell *sh, const char *name, int on)
             sh->opts |= bit;
         else
             sh->opts &= ~bit;
-    } else if (!strcmp(name, "extglob")) {
-        sh_set_extglob(on);
     } else if ((k = shopt_index(name)) >= 0)
         sh->shopt_v[k] = (signed char)on;
 }
@@ -4811,7 +4807,7 @@ static int hist_ignored(sh_shell *sh, const char *line, const char *prev)
             } else
                 pb_add(&pat, p + k, 1);
         }
-        if (pat.s && sh_match(pat.s, line, 0))
+        if (pat.s && sh_match(pat.s, line, SH_MATCH_OF(&sh->ctx, 0)))
             hit = 1;
         free(pat.s);
         p = e ? e + 1 : 0;
@@ -5109,7 +5105,7 @@ void sh_hist_config(sh_shell *sh)
     v = sh_get(&sh->ctx, "HISTCONTROL");
     pb_str(&b, v ? v : "");
     pb_add(&b, "\n", 1);
-    pb_str(&b, sh_edit_mode_vi() ? "vi" : "emacs"); /* set -o vi / emacs: the console's line editor */
+    pb_str(&b, sh_edit_mode_vi(sh) ? "vi" : "emacs"); /* set -o vi / emacs: the console's line editor */
     pb_add(&b, "\n", 1);
     pb_str(&b, sh->binds); /* bind: the key bindings (V92) */
     if (b.s && (!sh->hist_cfg || strcmp(sh->hist_cfg, b.s))) {
@@ -5972,7 +5968,7 @@ static long b_bind(sh_shell *sh, int argc, char **argv, const sh_io *io)
             for (fn = 1; bind_fns[fn]; fn++)
                 sayl(sh, io->out, bind_fns[fn], "\n", NULL);
         else if (o == 'v')
-            sayl(sh, io->out, "set editing-mode ", sh_edit_mode_vi() ? "vi" : "emacs", "\n", NULL);
+            sayl(sh, io->out, "set editing-mode ", sh_edit_mode_vi(sh) ? "vi" : "emacs", "\n", NULL);
         else if (o == 'p' || o == 'q') {
             for (fn = 1; bind_fns[fn]; fn++) {
                 int any = 0;
@@ -6752,16 +6748,25 @@ static void apply_alias(sh_shell *sh, sh_list *argv)
     for (depth = 0; depth < 8 && argv->n; depth++) {
         size_t n = strlen(argv->v[0]);
         sh_list nw;
-        char *val, *p, *tok;
+        char *val, *p;
         for (k = 0; k < sh->aliases.n; k++)
             if (!strncmp(sh->aliases.v[k], argv->v[0], n) && sh->aliases.v[k][n] == '=')
                 break;
         if (k == sh->aliases.n)
             return;
         val = sdup(sh->aliases.v[k] + n + 1);
+        if (!val)
+            return;
         memset(&nw, 0, sizeof(nw));
-        for (p = val; (tok = strtok(p, " \t")) != 0; p = 0)
-            sh_list_add(&nw, tok);
+        for (p = val + strspn(val, " \t"); *p; p += strspn(p, " \t")) {
+            /* not strtok: its place in the string is vc.lib's static, shared by vsh's processes */
+            size_t w = strcspn(p, " \t");
+            char c = p[w];
+            p[w] = 0;
+            sh_list_add(&nw, p);
+            p[w] = c;
+            p += w;
+        }
         free(val);
         for (k = 1; k < argv->n; k++)
             sh_list_add(&nw, argv->v[k]);
@@ -6968,7 +6973,7 @@ static int compound_assign(sh_shell *sh, const char *name, int append, const cha
         } else if (text[i] == '\n')
             text[i] = ' ';
     }
-    sh_parse_text(&p, text);
+    sh_parse_text_at(&p, text, 1, sh->ctx.extglob);
     free(text);
     t0 = p.tree;
     while (t0 && t0->kind == SH_SEQ && !t0->b)
@@ -7068,7 +7073,7 @@ static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io)
     }
     if (!t.s)
         return 0;
-    sh_parse_text_at(&p, t.s, (int)sh->lineno); /* its lines count from the line of the eval */
+    sh_parse_text_at(&p, t.s, (int)sh->lineno, sh->ctx.extglob); /* its lines count from the line of the eval */
     free(t.s);
     if (p.error) {
         err2(sh, io, "eval", p.incomplete ? "unexpected end of input" : p.error);
@@ -7200,7 +7205,7 @@ static void run_trap_text(sh_shell *sh, const char *text)
     sh_parse p;
     long st = sh->ctx.status;
     sh->in_trap = 1;
-    sh_parse_text(&p, text);
+    sh_parse_text_at(&p, text, 1, sh->ctx.extglob);
     if (p.error)
         err2(sh, &sh->io, "trap", p.incomplete ? "unexpected end of input" : p.error);
     else
@@ -7230,7 +7235,7 @@ static void pseudo_trap(sh_shell *sh, int k, const sh_io *io)
         return;
     text = sdup(sh->traps[k]); /* the action may reset its own trap */
     sh->trap_busy = 1;
-    sh_parse_text(&p, text);
+    sh_parse_text_at(&p, text, 1, sh->ctx.extglob);
     if (p.error)
         err2(sh, io, "trap", p.incomplete ? "unexpected end of input" : p.error);
     else
@@ -8259,7 +8264,7 @@ static int db_eval(sh_shell *sh, const sh_node *n, const sh_io *io, int *bad)
         else if (!b)
             r = sh_test_unary(&t, op[1], a);
         else if (pat)
-            r = sh_match(b, a, sh->ctx.nocasematch) == (op[0] != '!');
+            r = sh_match(b, a, SH_MATCH_OF(&sh->ctx, sh->ctx.nocasematch)) == (op[0] != '!');
         else if (rx)
             r = db_regex(sh, a, b, io, bad);
         else if (op[0] == '<' || op[0] == '>')
@@ -8579,7 +8584,7 @@ static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
         int hit = fall;
         for (p = c->patterns; !hit && p; p = p->next) {
             char *pat = expand_one(sh, p->text, io);
-            hit = pat && sh_match(pat, subject, sh->ctx.nocasematch);
+            hit = pat && sh_match(pat, subject, SH_MATCH_OF(&sh->ctx, sh->ctx.nocasematch));
             free(pat);
         }
         if (hit) {
@@ -9369,7 +9374,7 @@ long sh_run_text(sh_shell *sh, const char *text, int *incomplete)
                 return st;
             memcpy(chunk, s, (size_t)(e - s));
             chunk[e - s] = 0;
-            sh_parse_text_at(&p, chunk, (int)line);
+            sh_parse_text_at(&p, chunk, (int)line, sh->ctx.extglob);
             if (p.incomplete && *e) {
                 sh_parse_free(&p);
                 free(chunk);
@@ -9436,7 +9441,7 @@ static char *core_subst1(sh_ctx *c, const char *cmd)
     long n;
     const sh_node *rn;
     SH_HIT(SUBST);
-    sh_parse_text(&p, cmd);
+    sh_parse_text_at(&p, cmd, 1, sh->ctx.extglob);
     if (p.error) {
         err2(sh, &sh->io, p.error, 0);
         sh_parse_free(&p);
@@ -9548,7 +9553,7 @@ static void tmp_sweep(sh_shell *sh, int mark)
         sh->ntmp--;
         if (t.cmd && !sh->intr && !sh->exiting) {
             sh_parse p;
-            sh_parse_text(&p, t.cmd);
+            sh_parse_text_at(&p, t.cmd, 1, sh->ctx.extglob);
             if (!p.error) {
                 sh_io io = sh->io;
                 sh_fh fh = sh->os.open(sh->os.data, t.path, SH_OPEN_READ);
@@ -9595,7 +9600,7 @@ static char *core_procsub(sh_ctx *c, const char *cmd, int out)
         sh_parse p;
         long status = sh->ctx.status;
         sh_io io = sh->io;
-        sh_parse_text(&p, cmd);
+        sh_parse_text_at(&p, cmd, 1, sh->ctx.extglob);
         if (p.error) {
             err2(sh, &sh->io, p.error, 0);
             sh->os.close(sh->os.data, fh);

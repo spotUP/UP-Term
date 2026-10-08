@@ -156,32 +156,36 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
  * once and kept; not found is looked up again next time (it may have been installed since). */
 static const char *ixkill_name(const char *path)
 {
-    static char name[200];
+    static char name[200]; /* shared by vsh's processes: built aside, published once under Forbid */
+    char t[200], found[200];
     struct Process *me;
     BPTR l, seg;
-    char found[200];
     if (name[0])
         return name;
+    t[0] = 0;
     me = (struct Process *)FindTask(0);
-    if (me->pr_HomeDir && NameFromLock(me->pr_HomeDir, (STRPTR)name + 1, sizeof(name) - 10) &&
-        AddPart((STRPTR)name + 1, (STRPTR)"ixkill", sizeof(name) - 10) &&
-        (l = Lock((STRPTR)name + 1, SHARED_LOCK)) != 0) {
+    if (me->pr_HomeDir && NameFromLock(me->pr_HomeDir, (STRPTR)t + 1, sizeof(t) - 10) &&
+        AddPart((STRPTR)t + 1, (STRPTR)"ixkill", sizeof(t) - 10) &&
+        (l = Lock((STRPTR)t + 1, SHARED_LOCK)) != 0) {
         UnLock(l);
-        name[0] = '"';
-        strcat(name, "\"");
-        return name;
+        t[0] = '"';
+        strcat(t, "\"");
+    } else {
+        if (resolve("ixkill", path, &seg, found, sizeof(found)) < 0)
+            return 0;
+        if (seg)
+            UnLoadSeg(seg);
+        if (found[0]) {
+            t[0] = '"';
+            strcpy(t + 1, found);
+            strcat(t, "\"");
+        } else
+            strcpy(t, "ixkill");
     }
-    name[0] = 0;
-    if (resolve("ixkill", path, &seg, found, sizeof(found)) < 0)
-        return 0;
-    if (seg)
-        UnLoadSeg(seg);
-    if (found[0]) {
-        name[0] = '"';
-        strcpy(name + 1, found);
-        strcat(name, "\"");
-    } else
-        strcpy(name, "ixkill");
+    Forbid();
+    if (!name[0])
+        strcpy(name, t);
+    Permit();
     return name;
 }
 

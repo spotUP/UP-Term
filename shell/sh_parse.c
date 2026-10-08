@@ -85,6 +85,7 @@ typedef struct lexer {
     long tokpos;            /* where the current token starts */
     long lpos;              /* line counting: the text before lpos has lline-line0 newlines */
     int lline;
+    int extglob;            /* shopt extglob: @( ) ?( ) *( ) +( ) !( ) belong to the word */
 } lexer;
 
 static int is_meta(char c)
@@ -180,7 +181,7 @@ static long word_end(lexer *L, long i, int *quoted)
                 return -1;
             continue;
         }
-        if (c == '(' && i > start && sh_get_extglob() && strchr("@?*+!", s[i - 1])) {
+        if (c == '(' && i > start && L->extglob && strchr("@?*+!", s[i - 1])) {
             /* extglob: @( ) ?( ) *( ) +( ) !( ) belongs to the word */
             long e = sh_skip_sub(s, i - 1, 0x7fffffffL, 0);
             if (e < 0)
@@ -1293,10 +1294,10 @@ static sh_node *parse_list(lexer *L, int top)
 
 void sh_parse_text(sh_parse *p, const char *text)
 {
-    sh_parse_text_at(p, text, 1);
+    sh_parse_text_at(p, text, 1, 0);
 }
 
-void sh_parse_text_at(sh_parse *p, const char *text, int line0)
+void sh_parse_text_at(sh_parse *p, const char *text, int line0, int extglob)
 {
     lexer L;
     memset(p, 0, sizeof(*p));
@@ -1304,6 +1305,7 @@ void sh_parse_text_at(sh_parse *p, const char *text, int line0)
     L.p = p;
     L.s = text;
     L.lline = line0;
+    L.extglob = extglob;
     next(&L);
     p->tree = parse_list(&L, 1);
     if (!L.had_error && L.pending)

@@ -73,6 +73,8 @@ typedef struct sh_ctx {
     int nounset;            /* set -u: an unset parameter is an error */
     int noglob;             /* set -f */
     int nullglob, failglob, dotglob, nocasematch; /* shopt */
+    int extglob;            /* shopt extglob: per shell, not static (a subshell process shares vsh's data) */
+    char errbuf[200];       /* an expansion error naming something (NAME: unbound variable, no match: PAT) */
     int globstar;           /* shopt globstar: a ** component matches the directories below */
     int glob_fail;          /* failglob: a word matched nothing (the pattern is in glob_pat) */
     char glob_pat[160];
@@ -150,11 +152,12 @@ long sh_skip_sub(const char *s, long i, long len, int dq);
  * delimiters, alias names). */
 char *sh_unquote(const char *word);
 
-/* Glob pattern match (* ? [a-z] [!x], backslash escapes). */
-int sh_match(const char *pattern, const char *name, int nocase);
-/* shopt extglob: @( ) ?( ) *( ) +( ) !( ) in patterns and in the parser's words */
-void sh_set_extglob(int on);
-int sh_get_extglob(void);
+/* Glob pattern match (* ? [a-z] [!x], backslash escapes); flags: SH_MATCH_*. */
+#define SH_MATCH_NOCASE  1  /* letters match without regard to case */
+#define SH_MATCH_EXTGLOB 2  /* @( ) ?( ) *( ) +( ) !( ) (shopt extglob, sh_ctx.extglob) */
+int sh_match(const char *pattern, const char *name, int flags);
+/* the flags for a match under c's shopts, nocase from the caller (nocaseglob or nocasematch) */
+#define SH_MATCH_OF(c, nocase) (((nocase) ? SH_MATCH_NOCASE : 0) | ((c)->extglob ? SH_MATCH_EXTGLOB : 0))
 
 /* $((expr)): 64-bit integer arithmetic, bash's operator set, variables and array elements as lvalues. */
 sh_int sh_arith(sh_ctx *c, const char *expr, const char **err);
