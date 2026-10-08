@@ -216,3 +216,62 @@ int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
     }
     return n;
 }
+
+/* One row's selected span [*s, *e] of a selection normalised to start
+ * (sx, sy), end (ex, ey); 0 when the row has none. */
+static int sel_span(long sx, long sy, long ex, long ey, long y, long *s, long *e)
+{
+    if (y < sy || y > ey)
+        return 0;
+    *s = (y == sy) ? sx : 0;
+    *e = (y == ey) ? ex : 0x7FFFFFFL;
+    return 1;
+}
+
+static void sel_norm(long *ax, long *ay, long *bx, long *by)
+{
+    long t;
+    if (*ay > *by || (*ay == *by && *ax > *bx)) {
+        t = *ax; *ax = *bx; *bx = t;
+        t = *ay; *ay = *by; *by = t;
+    }
+}
+
+int vti_sel_dirty(int on_old, long ax, long ay, long bx, long by,
+                  int on_new, long cx, long cy, long dx, long dy, long *y0, long *y1)
+{
+    long lo, hi, y, m1, m2, s1, e1, s2, e2;
+    int in1, in2, any = 0;
+    if (!on_old && !on_new)
+        return 0;
+    sel_norm(&ax, &ay, &bx, &by);
+    sel_norm(&cx, &cy, &dx, &dy);
+    if (!on_old) {
+        *y0 = cy;
+        *y1 = dy;
+        return 1;
+    }
+    if (!on_new) {
+        *y0 = ay;
+        *y1 = by;
+        return 1;
+    }
+    lo = ay < cy ? ay : cy;
+    hi = by > dy ? by : dy;
+    m1 = ay > cy ? ay : cy;
+    m2 = by < dy ? by : dy;
+        for (y = lo; y <= hi; y++) {
+        in1 = sel_span(ax, ay, bx, by, y, &s1, &e1);
+        in2 = sel_span(cx, cy, dx, dy, y, &s2, &e2);
+        if (in1 != in2 || (in1 && (s1 != s2 || e1 != e2))) {
+            if (!any)
+                *y0 = y;
+            *y1 = y;
+            any = 1;
+        }
+        /* rows m1+1 .. m2-1 are whole in both selections: jump over them */
+        if (y == m1 && m2 > m1 + 1)
+            y = m2 - 1;
+    }
+    return any;
+}

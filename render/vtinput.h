@@ -112,4 +112,13 @@ int vti_page_keys_scroll(const vt_term *t);
  * C0 / C1 controls do not. */
 int vti_paste_keeps(const vt_term *t, unsigned long ch);
 
+/* The rows a selection change has to repaint (W42): a selection is on or off
+ * (on), from cell ax, ay to bx, by (any order; rows absolute, one number
+ * line for the old and the new). Row by row the selected span of the old
+ * and the new differ only between the ends that moved; a drag step that
+ * moves one end by a cell touches one or two rows, not the whole selection.
+ * 1 and *y0 .. *y1 (inclusive) when any row differs, 0 when none does. */
+int vti_sel_dirty(int on_old, long ax, long ay, long bx, long by,
+                  int on_new, long cx, long cy, long dx, long dy, long *y0, long *y1);
+
 #endif

@@ -1,6 +1,7 @@
 /* The Amiga renderer; see amiga_render.h. */
 #include "amiga_render.h"
 #include "painter.h"
+#include "vtinput.h"
 #ifdef VTCON_PROF
 #define TimerBase vtwin_timer
 extern struct Device *vtwin_timer;
@@ -2050,34 +2051,30 @@ int vr_selection(const vr_render *r, int *ax, int *ay, int *bx, int *by)
 
 void vr_select(vr_render *r, int on, int ax, int ay, int bx, int by)
 {
-    LONG base, lo = 0, hi = -1;
-    int y0, y1, any = 0;
+    LONG base;
+    long lo, hi;
+    int y0, y1, was, any;
+    WORD oax, obx;
+    LONG oay, oby;
     if (!r->win)
         return; /* no window (before vr_init, after vr_free) */
     base = vt_lines_scrolled(r->t);
-    /* redraw the rows the old and the new selection touch */
-    if (r->sel) {
-        lo = (r->sel_ay < r->sel_by ? r->sel_ay : r->sel_by) - base;
-        hi = (r->sel_ay < r->sel_by ? r->sel_by : r->sel_ay) - base;
-        any = 1;
-    }
+    was = r->sel;
+    oax = r->sel_ax;
+    obx = r->sel_bx;
+    oay = r->sel_ay;
+    oby = r->sel_by;
     r->sel = (BYTE)on;
     r->sel_ax = (WORD)ax;
     r->sel_bx = (WORD)bx;
     r->sel_ay = ay + base;
     r->sel_by = by + base;
-    if (on) {
-        int nlo = ay < by ? ay : by, nhi = ay < by ? by : ay;
-        if (!any || nlo < lo)
-            lo = nlo;
-        if (!any || nhi > hi)
-            hi = nhi;
-        any = 1;
-    }
+    /* repaint only the rows whose selected span changed (W42) */
+    any = vti_sel_dirty(was, oax, oay, obx, oby, on, ax, r->sel_ay, bx, r->sel_by, &lo, &hi);
     if (!any)
         return;
-    y0 = (int)lo + r->view;
-    y1 = (int)hi + r->view + 1;
+    y0 = (int)(lo - base) + r->view;
+    y1 = (int)(hi - base) + r->view + 1;
     if (y0 < 0)
         y0 = 0;
     if (y1 > r->rows)

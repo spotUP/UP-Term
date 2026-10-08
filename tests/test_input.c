@@ -327,8 +327,38 @@ static void bracketed_paste_drops_escape_and_controls(void)
     vt_free(t);
 }
 
+static void a_drag_step_repaints_the_rows_whose_span_changed(void)
+{
+    long y0 = -1, y1 = -1;
+    /* 100 rows selected; the end moves one cell on its own row: one row */
+    CHECK_INT(vti_sel_dirty(1, 5, 10, 20, 110, 1, 5, 10, 21, 110, &y0, &y1), 1);
+    CHECK_INT(y0, 110);
+    CHECK_INT(y1, 110);
+    /* the end moves down two rows: the old end row to the new one */
+    CHECK_INT(vti_sel_dirty(1, 5, 10, 20, 110, 1, 5, 10, 3, 112, &y0, &y1), 1);
+    CHECK_INT(y0, 110);
+    CHECK_INT(y1, 112);
+    /* dragging up past the anchor (ends swap): any order of ends is the same selection */
+    CHECK_INT(vti_sel_dirty(1, 20, 110, 5, 10, 1, 5, 10, 20, 110, &y0, &y1), 0);
+    /* the start end moves up three rows: those rows plus the old start row */
+    CHECK_INT(vti_sel_dirty(1, 5, 10, 20, 110, 1, 5, 7, 20, 110, &y0, &y1), 1);
+    CHECK_INT(y0, 7);
+    CHECK_INT(y1, 10);
+    /* nothing moved: nothing to paint */
+    CHECK_INT(vti_sel_dirty(1, 5, 10, 20, 110, 1, 5, 10, 20, 110, &y0, &y1), 0);
+    /* a new selection paints its rows; a cleared one paints the old rows */
+    CHECK_INT(vti_sel_dirty(0, 0, 0, 0, 0, 1, 2, 4, 9, 6, &y0, &y1), 1);
+    CHECK_INT(y0, 4);
+    CHECK_INT(y1, 6);
+    CHECK_INT(vti_sel_dirty(1, 2, 4, 9, 6, 0, 0, 0, 0, 0, &y0, &y1), 1);
+    CHECK_INT(y0, 4);
+    CHECK_INT(y1, 6);
+    CHECK_INT(vti_sel_dirty(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, &y0, &y1), 0);
+}
+
 void suite_input(void)
 {
+    a_drag_step_repaints_the_rows_whose_span_changed();
     bracketed_paste_drops_escape_and_controls();
     shift_page_keys_reach_full_screen_programs();
     middle_click_pastes_when_nobody_asked();
