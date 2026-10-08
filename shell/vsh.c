@@ -1508,10 +1508,18 @@ static long os_read(void *os, sh_fh fh, char *buf, long max)
 
 /* Ctrl-C since the last look (the console signals the interpreter's
  * process; os_wait raises it again after passing it on). */
+/* Ctrl-C is INT; break bit E is QUIT, the bit vsh's kill sends for it (os_signal) and the console for ^\.
+ * One at a time: a QUIT that came with an INT stays for the next poll. */
 static int os_interrupted(void *os)
 {
+    ULONG got = SetSignal(0, SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E);
     (void)os;
-    return (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) != 0;
+    if (got & SIGBREAKF_CTRL_C) {
+        if (got & SIGBREAKF_CTRL_E)
+            SetSignal(SIGBREAKF_CTRL_E, SIGBREAKF_CTRL_E);
+        return 2;
+    }
+    return (got & SIGBREAKF_CTRL_E) ? 3 : 0;
 }
 
 #define VSH_STACK_SUB 131072

@@ -101,7 +101,9 @@ typedef struct sh_os {
      * 0 (no spawn): subshells run in the shell's own process. */
     long  (*spawn)(void *os, struct sh_shell *child, sh_parse *tree, const sh_io *io, int wait);
     long  (*read)(void *os, sh_fh fh, char *buf, long max); /* raw; 0 at the end */
-    int   (*interrupted)(void *os);  /* Ctrl-C arrived since the last call (0 = none) */
+    /* the signal that arrived since the last call: 2 INT (Ctrl-C), 3 QUIT (the Amiga's
+     * break bit E, as kill sends QUIT); 0 = none */
+    int   (*interrupted)(void *os);
     long  (*write)(void *os, sh_fh fh, const char *buf, long n);
     long  (*read_line)(void *os, sh_fh fh, char *buf, long max); /* -1 at the end */
     int   (*chdir)(void *os, const char *path);    /* 0 = ok */
@@ -374,7 +376,7 @@ int sh_unix_root(const char *in, char *out, long max);
 /* A signal reached the shell (2 = INT, 15 = TERM): run its trap action. 1 =
  * a trap took it (the action ran, or the signal is ignored with trap '' SIG),
  * 0 = no trap: the caller's own handling follows. INT is polled by the core
- * itself (sh_os.interrupted); the OS layer calls this for TERM. */
+ * itself (sh_os.interrupted, QUIT too); the OS layer calls this for TERM. */
 int sh_trap_signal(sh_shell *sh, int sig);
 
 /* Run the EXIT trap, once. The caller runs it where the shell ends (end of

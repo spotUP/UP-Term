@@ -976,10 +976,12 @@ static void f_umask(void *os, int mask)
 
 static int intr_after;  /* the fake's Ctrl-C arrives after this many polls (0: never) */
 
+static int intr_sig = 2; /* which signal the fake reports: 2 INT, 3 QUIT */
+
 static int f_interrupted(void *os)
 {
     (void)os;
-    return intr_after > 0 && --intr_after == 0;
+    return intr_after > 0 && --intr_after == 0 ? intr_sig : 0;
 }
 
 /* Subshells run as processes of their own (S3.4): what they change stays
@@ -1525,6 +1527,25 @@ static void trap_builtin(void)
     sh_run_text(&sh, "trap - INT; i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
     CHECK_STR(slot(OUT)->data, "");
     CHECK_INT(sh.ctx.status, 130);
+    /* QUIT (the Amiga's break bit E, which kill -s QUIT sends) runs its trap; without one a script ends
+     * with 131. It never arrived: vsh polled Ctrl-C only (rig 2, tools/rig/trapsig_rig.py) */
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_sig = 3;
+    intr_after = 20;
+    sh_run_text(&sh, "trap 'echo quit' QUIT; i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "quit\ndone 40\n");
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_after = 20;
+    sh.exiting = 0;
+    sh_run_text(&sh, "trap - QUIT; i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "");
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT((int)sh.exit_status, 131);
+    sh.exiting = 0;
+    sh.exit_status = 0;
+    intr_sig = 2;
     intr_after = 0;
     /* TERM arrives from the OS layer */
     fresh();

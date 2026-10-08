@@ -8618,10 +8618,20 @@ static long intr_status(const sh_shell *sh)
     return sh->intr == 2 ? 2 : sh->intr == 3 ? 1 : 130;
 }
 
-/* Ctrl-C: once it arrives, everything unwinds to the prompt (status 130). */
+/* Ctrl-C: once it arrives, everything unwinds to the prompt (status 130). QUIT runs its trap; without
+ * one a shell that is not interactive ends with 131 and an interactive one ignores it (bash). */
 static int poll_break(sh_shell *sh)
 {
-    if (!sh->intr && sh->os.interrupted && sh->os.interrupted(sh->os.data) && !sh_trap_signal(sh, 2))
+    int sig;
+    if (sh->intr || !sh->os.interrupted || !(sig = sh->os.interrupted(sh->os.data)))
+        return sh->intr;
+    if (sig == 3) {
+        SH_HIT(QUIT_SIGNAL);
+        if (!sh_trap_signal(sh, 3) && !(sh->opts & SO_INTERACTIVE)) {
+            sh->exiting = 1;
+            sh->exit_status = 131;
+        }
+    } else if (!sh_trap_signal(sh, 2))
         sh->intr = 1;
     return sh->intr;
 }
