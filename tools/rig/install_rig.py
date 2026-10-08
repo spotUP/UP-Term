@@ -20,7 +20,7 @@ import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-ORIG_SIZE = 166972  # the rig's ixemul.library 48.2 as released
+ORIG_SIZE = 166972  # the 3.1 rig's ixemul.library 48.2 as released; main() takes the size the system has before Install (the 3.2 tree's differs)
 
 def run(cmd, timeout=60):
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'), timeout + 30)
@@ -181,7 +181,9 @@ def _main(dest=None):
     check(rc == 0 and out.strip() == terminfo_before and terminfo_before != '/ENV/up-term/terminfo',
           'Uninstall with nothing installed leaves the user\'s TERMINFO', out)
     before = lib_state()
-    check(before.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in before,
+    global ORIG_SIZE
+    ORIG_SIZE = int(before.get('ixemul.library') or ORIG_SIZE)
+    check('ixemul.library' in before and 'ixemul.library.orig' not in before,
           'before: the original ixemul, no .orig', str(before))
     ixnet_before = before.get('ixnet.library')  # the rig's own (Install keeps it as .orig)
     check(ixnet_before and 'ixnet.library.orig' not in before, 'before: an ixnet, no .orig', str(before))
