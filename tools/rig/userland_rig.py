@@ -7,7 +7,7 @@ The ports repo (UPTERM_PORTS, default $UPTERM_ROOT/upterm-ports) holds, per pack
 pkgs/<pkg>/check/cases ("name<TAB>command" lines) and check/data (the files the
 cases read); `make host-<pkg>` there writes build/expected/<pkg>/<name>.txt
 (stdout and a last line "[exit N]"; stderr is not compared). `make <pkg>`
-installs the Amiga binaries under build/sysroot/SYS/UP-Term/bin.
+installs the Amiga binaries under build/sysroot/UP-Term/bin.
 
 For each package this script
   1. copies the binaries (<pkg>_BINS of its recipe.mk) to VTC:userland/bin and
@@ -74,7 +74,7 @@ VTC = paths.RIG / "vtc"
 VERDICTS = paths.RIG / "userland"
 PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", paths.repo("upterm-ports")))
 COREUTILS = ROOT / "dist/gg/coreutils-5.2.1/bin"
-SYSBIN = PORTS / "build/sysroot/SYS/UP-Term"
+SYSBIN = PORTS / "build/sysroot/UP-Term"
 PTYRUN = PORTS / "build/tools/ptyrun.amiga"
 TERMINFO = PORTS / "build/tools/terminfo"
 VTDUMP = ROOT / "build/vtdump"
