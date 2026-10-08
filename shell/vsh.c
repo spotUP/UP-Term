@@ -147,43 +147,64 @@ static struct Task *job_process(job *j)
     return t;
 }
 
+static int resolve(const char *name, const char *path, BPTR *seg, char *found, long max);
+
 /* The ixkill that sends a Unix signal (vsh itself cannot call ixemul): the one beside vsh first (the kit
  * has both in C:; a vsh run from another drawer, the rig's VTC:vsh, has its ixkill there and none in C:,
- * and kill -9 on a job said "No such process"), else the Shell's command path. Looked up once; a
- * subshell process has the shell's home drawer, so a second lookup there finds the same name. */
-static const char *ixkill_name(void)
+ * and kill -9 on a job said "No such process"), else where the shell finds a command (path: $PATH,
+ * then the Shell's path and C:). 0 when there is none: kill names that, not "No such process". Found
+ * once and kept; not found is looked up again next time (it may have been installed since). */
+static const char *ixkill_name(const char *path)
 {
     static char name[200];
-    static int looked;
-    if (!looked) {
-        struct Process *me = (struct Process *)FindTask(0);
-        BPTR l;
-        strcpy(name, "ixkill");
-        if (me->pr_HomeDir && NameFromLock(me->pr_HomeDir, (STRPTR)name + 1, sizeof(name) - 10) &&
-            AddPart((STRPTR)name + 1, (STRPTR)"ixkill", sizeof(name) - 10) &&
-            (l = Lock((STRPTR)name + 1, SHARED_LOCK)) != 0) {
-            UnLock(l);
-            name[0] = '"';
-            strcat(name, "\"");
-        } else
-            strcpy(name, "ixkill");
-        looked = 1;
+    struct Process *me;
+    BPTR l, seg;
+    char found[200];
+    if (name[0])
+        return name;
+    me = (struct Process *)FindTask(0);
+    if (me->pr_HomeDir && NameFromLock(me->pr_HomeDir, (STRPTR)name + 1, sizeof(name) - 10) &&
+        AddPart((STRPTR)name + 1, (STRPTR)"ixkill", sizeof(name) - 10) &&
+        (l = Lock((STRPTR)name + 1, SHARED_LOCK)) != 0) {
+        UnLock(l);
+        name[0] = '"';
+        strcat(name, "\"");
+        return name;
     }
+    name[0] = 0;
+    if (resolve("ixkill", path, &seg, found, sizeof(found)) < 0)
+        return 0;
+    if (seg)
+        UnLoadSeg(seg);
+    if (found[0]) {
+        name[0] = '"';
+        strcpy(name + 1, found);
+        strcat(name, "\"");
+    } else
+        strcpy(name, "ixkill");
     return name;
 }
 
-static int task_unix_signal(struct Task *t, const char *sig)
+static const char ixkill_missing[] = "ixkill not found: looked beside vsh, in $PATH, the Shell's path and C: "
+                                     "(without it only INT, QUIT, HUP and TERM reach a command)";
+
+/* 0 when the signal went out, -1 when it did not (the task ended, or ixkill found no ixemul process
+ * there), SH_SIG_NOSENDER when there is no ixkill to send it. */
+static int task_unix_signal(struct Task *t, const char *sig, const char *path)
 {
     char cmd[256];
     static const char hex[] = "0123456789abcdef";
+    const char *ixkill;
     unsigned long a;
     int i, k;
     BPTR nil_in, nil_out;
     LONG rc;
     if (!t)
         return -1;
+    if (!(ixkill = ixkill_name(path)))
+        return SH_SIG_NOSENDER;
     a = (unsigned long)t;
-    strcpy(cmd, ixkill_name());
+    strcpy(cmd, ixkill);
     strcat(cmd, " -");
     strcat(cmd, sig);
     strcat(cmd, " 0x");
@@ -201,9 +222,9 @@ static int task_unix_signal(struct Task *t, const char *sig)
     return rc == 0 ? 0 : -1;
 }
 
-static int job_unix_signal(job *j, const char *sig)
+static int job_unix_signal(job *j, const char *sig, const char *path)
 {
-    return task_unix_signal(job_process(j), sig);
+    return task_unix_signal(job_process(j), sig, path);
 }
 
 /* The console's termios, if a program set one (TCGETA's Res2, see
@@ -418,7 +439,10 @@ static int is_stream(BPTR fh);
  * buffer unread when it ends, and a flush of unread bytes seeks the file BACK by their number. The
  * shell then read the end of its own input again: `ls /nonexist_q` in `vsh -s <file` sent the shell 12
  * bytes back (`!ls` repeated forever, fc listed twice, "vsh: ho: not found"). No command moves its
- * input before where it started: a position below that one is the argument line, and is undone. */
+ * input before where it started: a position below that one is the argument line, and is undone.
+ * The patched ixemul (ixemul-vtcon _cli_parse.c) now reads that copy out at startup, as ReadArgs
+ * does, so its programs also start reading where the shell's line ended (`head -n 1` in `vsh -s`);
+ * this stays for the programs that still leave it: a stock ixemul, a native command without ReadArgs. */
 static long input_mark(BPTR in)
 {
     if (!in || IsInteractive(in) || is_stream(in))
@@ -875,10 +899,13 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
 static int suspend_job(void *os, job *j)
 {
     sh_shell *sh = ((vproc *)os)->sh;
+    int rc;
     TR("suspend", j, j->task);
-    if (job_unix_signal(j, "TSTP")) {
-        const char *m = "\nvsh: only ixemul programs can be suspended\n";
+    if ((rc = job_unix_signal(j, "TSTP", sh_get(&sh->ctx, "PATH"))) != 0) {
+        const char *m = rc == SH_SIG_NOSENDER ? ixkill_missing : "only ixemul programs can be suspended";
+        Write((BPTR)sh->io.err, (APTR)"\nvsh: ", 6);
         Write((BPTR)sh->io.err, (APTR)m, (LONG)strlen(m));
+        Write((BPTR)sh->io.err, (APTR)"\n", 1);
         return -1;
     }
     /* a read it sent before it stopped waits: the prompt's line is ours */
@@ -892,9 +919,8 @@ static int suspend_job(void *os, job *j)
 
 static int os_cont(void *os, long id)
 {
-    (void)os;
     TR("cont", id, 0);
-    return job_unix_signal((job *)id, "CONT");
+    return job_unix_signal((job *)id, "CONT", sh_get(&((vproc *)os)->sh->ctx, "PATH")) ? -1 : 0;
 }
 
 /* Wait for a job. Ctrl-C (and ^\) while waiting goes on to the job's
@@ -1004,7 +1030,7 @@ static int os_signal(void *os, long target, int sig, int is_job)
     struct Task *self = FindTask(0), *t = 0;
     job *j = 0;
     char num[8];
-    int i, ok;
+    int i, ok, rc;
     if (!target)
         return -1;
     if (is_job)
@@ -1041,7 +1067,8 @@ static int os_signal(void *os, long target, int sig, int is_job)
         return 0;
     }
     sh_ltoa(sig, num);
-    ok = (j ? job_unix_signal(j, num) : task_unix_signal(t, num)) == 0;
+    rc = j ? job_unix_signal(j, num, sh_get(&sh->ctx, "PATH")) : task_unix_signal(t, num, sh_get(&sh->ctx, "PATH"));
+    ok = rc == 0;
     if (!ok && (sig == 1 || sig == 15)) {
         Forbid();
         if (j)
@@ -1050,6 +1077,10 @@ static int os_signal(void *os, long target, int sig, int is_job)
             Signal(t, SIGBREAKF_CTRL_C);
         Permit();
         ok = 1;
+    }
+    if (!ok && rc == SH_SIG_NOSENDER) {
+        sh->os.signal_why = ixkill_missing;
+        return SH_SIG_NOSENDER;
     }
     return ok ? 0 : -1;
 }

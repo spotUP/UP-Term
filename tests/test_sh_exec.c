@@ -484,6 +484,32 @@ static const char *run(const char *text)
     return slot(OUT)->data;
 }
 
+/* kill with the OS layer's signal sender missing (vsh without ixkill) names that, not "No such
+ * process"; a target that is gone still says No such process. */
+static int f_signal_nosender(void *os, long target, int sig, int is_job)
+{
+    (void)os;
+    (void)sig;
+    (void)is_job;
+    if (target == 4242) {
+        sh.os.signal_why = "ixkill not found: looked here";
+        return SH_SIG_NOSENDER;
+    }
+    return -1;
+}
+
+static void kill_names_a_missing_signal_sender(void)
+{
+    fresh();
+    sh.os.signal = f_signal_nosender;
+    {
+        int inc = 0;
+        sh_run_text(&sh, "kill -9 4242; echo st=$?; kill -9 77", &inc);
+    }
+    CHECK_STR(slot(OUT)->data, "st=1\n");
+    CHECK_STR(slot(ERR)->data, "vsh: kill: ixkill not found: looked here\nvsh: 77: No such process\n");
+}
+
 static void basics(void)
 {
     CHECK_STR(run("echo hello world"), "hello world\n");
@@ -1520,6 +1546,7 @@ void suite_sh_exec(void)
     printf_builtin();
     prompts();
     basics();
+    kill_names_a_missing_signal_sender();
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
     history_has_one_owner_the_console_list_or_the_shell();

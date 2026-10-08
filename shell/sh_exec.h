@@ -9,6 +9,8 @@
 
 /* An open stream: an opaque handle of the OS layer (a BPTR on the Amiga). */
 typedef long sh_fh;
+
+#define SH_SIG_NOSENDER (-2) /* os.signal: the sender is missing, os.signal_why names it */
 #define SH_NOFH 0L
 
 /* A command's standard streams. */
@@ -121,9 +123,12 @@ typedef struct sh_os {
     /* The umask builtin's mask, passed to the OS layer so commands it starts
      * inherit it (0 = none: the mask is kept by the shell only). */
     void  (*umask)(void *os, int mask);
-    /* kill: send sig (0: only test it exists) to a process, or a job id (is_job) of this shell; 0 = ok;
-     * 0 in the table: kill reports it cannot */
+    /* kill: send sig (0: only test it exists) to a process, or a job id (is_job) of this shell; 0 = ok,
+     * -1 no such process or job, SH_SIG_NOSENDER: the target is there but the OS layer's way to send
+     * the signal is missing, and signal_why says what (vsh: no ixkill); 0 in the table: kill reports
+     * it cannot */
     int   (*signal)(void *os, long target, int sig, int is_job);
+    const char *signal_why;
     /* read -t: 1 when input is waiting (or at its end) within ms milliseconds, 0 on timeout;
      * 0 in the table: always ready */
     int   (*ready)(void *os, sh_fh fh, long ms);

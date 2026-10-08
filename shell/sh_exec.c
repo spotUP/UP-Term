@@ -4219,7 +4219,7 @@ static void print_siglist(sh_shell *sh, const sh_io *io)
 
 static long b_kill(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
-    int i = 1, sig = 15;
+    int i = 1, sig = 15, r;
     long st = 0;
     if (argc > 1 && (!strcmp(argv[1], "-l") || !strcmp(argv[1], "-L"))) {
         if (argc == 2) {
@@ -4273,7 +4273,11 @@ static long b_kill(sh_shell *sh, int argc, char **argv, const sh_io *io)
             target = atol(argv[i] + 1) > 0 && atol(argv[i] + 1) <= 32 ? sh->jobs[atol(argv[i] + 1) - 1] : 0;
         if (!job && target == sh->ctx.pid && sig > 0 && sh_trap_signal(sh, sig))
             continue;
-        if (!target || !sh->os.signal || sh->os.signal(sh->os.data, target, sig, job)) {
+        r = target && sh->os.signal ? sh->os.signal(sh->os.data, target, sig, job) : -1;
+        if (r == SH_SIG_NOSENDER && sh->os.signal_why) {
+            err2(sh, io, "kill", sh->os.signal_why);
+            st = 1;
+        } else if (r) {
             err2(sh, io, argv[i], job ? "no such job" : "No such process");
             st = 1;
         }
