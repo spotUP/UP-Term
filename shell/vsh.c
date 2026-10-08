@@ -1515,6 +1515,47 @@ static unsigned long stack_limit_here(void)
     return (unsigned long)t->tc_SPLower + STACK_MARGIN;
 }
 
+#ifdef VSH_STACKHW
+/* The measurement build (make build/amiga/vsh_hw; the kit's vsh has none of this): the free part of a
+ * process's stack is filled with a pattern at its start, and at its end the deepest byte the stack reached
+ * goes to RAM:vsh_hw.log as "<kind> <bytes used> <stack size>". */
+#define HW_PAT 0x5A5A5A5AUL
+static void hw_fill(void)
+{
+    struct Task *t = FindTask(0);
+    ULONG *p = (ULONG *)(((ULONG)t->tc_SPLower + 3) & ~3UL), *end = (ULONG *)((ULONG)&t - 512);
+    while (p < end)
+        *p++ = HW_PAT;
+}
+
+static void hw_report(const char *kind)
+{
+    struct Task *t = FindTask(0);
+    ULONG *p = (ULONG *)(((ULONG)t->tc_SPLower + 3) & ~3UL);
+    char num[24];
+    BPTR f;
+    while ((ULONG)p < (ULONG)t->tc_SPUpper && *p == HW_PAT)
+        p++;
+    if (!(f = Open((STRPTR) "RAM:vsh_hw.log", MODE_READWRITE)))
+        return;
+    Seek(f, 0, OFFSET_END);
+    Write(f, (APTR)kind, (LONG)strlen(kind));
+    sh_ltoa((long)((ULONG)t->tc_SPUpper - (ULONG)p), num);
+    Write(f, (APTR) " ", 1);
+    Write(f, num, (LONG)strlen(num));
+    sh_ltoa((long)((ULONG)t->tc_SPUpper - (ULONG)t->tc_SPLower), num);
+    Write(f, (APTR) " ", 1);
+    Write(f, num, (LONG)strlen(num));
+    Write(f, (APTR) "\n", 1);
+    Close(f);
+}
+#define HW_FILL() hw_fill()
+#define HW_REPORT(k) hw_report(k)
+#else
+#define HW_FILL()
+#define HW_REPORT(k)
+#endif
+
 /* A subshell's process: the shell clone runs its tree (sh_run_child),
  * with a job port of its own for the commands it starts. */
 static void subshell_proc(void)
@@ -1522,6 +1563,7 @@ static void subshell_proc(void)
     struct Process *me = (struct Process *)FindTask(0);
     job *j;
     vproc vp;
+    HW_FILL();
     WaitPort(&me->pr_MsgPort);
     j = (job *)GetMsg(&me->pr_MsgPort);
     vp.sh = j->sub;
@@ -1546,6 +1588,7 @@ static void subshell_proc(void)
         free(j->sub);
         j->rc = 20;
     }
+    HW_REPORT("sub");
     Forbid(); /* the reply and our end, before the shell can free anything */
     j->done = 1;
     ReplyMsg(&j->msg);
@@ -1854,6 +1897,7 @@ static int vsh_main(int argc, char **argv)
     static vproc vp;
     (void)version;
     (void)stack_cookie;
+    HW_FILL();
     upassign_ensure(); /* vshrc's PATH names /UP-Term/bin: the assign first */
     vp.sh = &sh;
     vp.port = CreateMsgPort();
@@ -2077,6 +2121,7 @@ static int vsh_main(int argc, char **argv)
         TR("exit port", 0, 0);
         DeleteMsgPort(vp.port);
         TR("exit return", 0, 0);
+        HW_REPORT("main");
         return (int)st;
     }
 }

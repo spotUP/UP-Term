@@ -350,6 +350,11 @@ $(BUILD)/amiga/vsh: $(VSH_SRC) config/termurl.h shell/sh_exec.h shell/sh_expand.
 	@mkdir -p $(BUILD)/amiga
 	$(subst -O2,$(VSH_OPT),$(VC)) -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 
+# vsh that logs how deep its stacks went (RAM:vsh_hw.log, shell/vsh.c VSH_STACKHW): the $$STACK measurement
+$(BUILD)/amiga/vsh_hw: $(VSH_SRC) $(HOST_HDR) $(BUILD)/amiga/obj/cpuchk-vsh.o
+	@mkdir -p $(BUILD)/amiga
+	$(subst -O2,$(VSH_OPT),$(VC)) -Dmain=up_main -dontwarn=153,65,79 -DVSH_STACKHW -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
+
 $(BUILD)/amiga/vtshow: tests/amiga/vtshow.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/vtshow.c
