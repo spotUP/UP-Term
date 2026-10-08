@@ -180,6 +180,90 @@ def installer_page(tree):
     return None, {}
 
 
+def text_faults(tree):
+    """Text of the Installer's page that the user cannot read whole, from the screen's pixels (UITREE has
+    no text): ([fault], [text band]). Text is the black pen with the rules taken out (a run of more than 30
+    pixels across, or 16 or more down) and the gadgets' own boxes left out. Faults: text in the bottom
+    strip of the window (a line cut by its border: the welcome page's last line on 3.2's 560x176 window,
+    2026-10-08), text under the button row, text beside copyfiles' panel (P_COPY's lines peeking out)."""
+    box, gads = None, []
+    for line in tree.splitlines():
+        if line.startswith('W '):
+            f = shlex.split(line)
+            cur = f[-1].startswith('VTC:distkit/Install')
+            if cur:
+                w, h = map(int, f[4].split('x'))
+                box = (int(f[2]), int(f[3]), w, h)
+        elif line.startswith('G ') and box and cur and 'sys:' not in line:
+            f = line.split()
+            gw, gh = map(int, f[4].split('x'))
+            gads.append((int(f[2]), int(f[3]), gw, gh))
+    if not box:
+        return [], []
+    x0, y0, w, h = box
+    W, H, rows = ami.grab()
+    px, cols = set(), {}
+    for y in range(y0 + 12, min(H, y0 + h)):
+        r = rows[y]
+        xs = [x for x in range(x0 + 5, min(W, x0 + w - 5)) if r[x * 3:x * 3 + 3] == b'\0\0\0']
+        run = [xs[0]] if xs else []
+        for x in xs[1:] + [None]:
+            if x is not None and x == run[-1] + 1:
+                run.append(x)
+                continue
+            if len(run) <= 30:
+                px.update((xx, y) for xx in run)
+            else:
+                cols.setdefault('h', []).append((y, run[0], run[-1]))
+            run = [x] if x is not None else []
+    vert = {}
+    for x, y in px:
+        vert.setdefault(x, []).append(y)
+    vrules = []
+    for x, ys in vert.items():
+        ys.sort()
+        run = [ys[0]]
+        for y in ys[1:] + [None]:
+            if y is not None and y == run[-1] + 1:
+                run.append(y)
+                continue
+            if len(run) >= 16:
+                px.difference_update((x, yy) for yy in run)
+                vrules.append((x, run[0], run[-1]))
+            run = [y] if y is not None else []
+    px = {(x, y) for x, y in px
+          if not any(gx - 1 <= x <= gx + gw and gy - 1 <= y <= gy + gh for gx, gy, gw, gh in gads)}
+    faults = []
+    low = [y for y in (y for _, y in px) if y >= y0 + h - 6]
+    if low:
+        faults.append('text in the bottom border strip (y %d..%d)' % (min(low) - y0, max(low) - y0))
+    btop = min((gy for gx, gy, gw, gh in gads if gy + gh >= y0 + h - 40 and gh >= 12), default=None)
+    if btop is not None:
+        under = sorted(y for _, y in px if btop <= y < y0 + h - 6)
+        if under:
+            faults.append('text under the button row (y %d..%d)' % (under[0] - y0, under[-1] - y0))
+    for vx, vt, vb in vrules:   # copyfiles' panel: its right edge runs >= 100 lines, its bottom rule ends there
+        if vb - vt < 100:
+            continue
+        left = min((a for y, a, z in cols.get('h', []) if vb - 1 <= y <= vb + 2 and abs(z - vx) <= 2), default=None)
+        if left is None:
+            continue
+        side = sorted((x, y) for x, y in px if vt <= y <= vb and (x < left - 1 or x > vx + 1))
+        if side:
+            faults.append('text beside the copy panel (x %s, y %d..%d)' % (
+                ' '.join(sorted({str(x - x0) for x, _ in side})[:6]), min(y for _, y in side) - y0,
+                max(y for _, y in side) - y0))
+    bands, cur = [], None
+    for y in sorted({y for _, y in px}):
+        xs = [x for x, yy in px if yy == y]
+        if cur and cur[1] >= y - 1:
+            cur[1], cur[2], cur[3] = y, min(cur[2], min(xs)), max(cur[3], max(xs))
+        else:
+            cur = [y, y, min(xs), max(xs)]
+            bands.append(cur)
+    return faults, ['y%d-%d x%d-%d' % (a - y0, b - y0, c - x0, d - x0) for a, b, c, d in bands]
+
+
 def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
@@ -190,11 +274,20 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     pages.write_text('')
     t0 = time.time()
     last_sig, clicked_at, retried, typed, chose = None, None, None, False, set()
-    work_since, last_pct = None, None
+    work_since, last_pct, dumped_pct = None, None, set()
+
+    seen_faults = set()
 
     def dump(tree, why):
+        faults, bands = text_faults(tree)
         with pages.open('a') as f:
-            f.write('---- %.0f s %s\n%s\n' % (time.time() - t0, why, tree))
+            f.write('---- %.0f s %s\n%s\ntext: %s\n' % (time.time() - t0, why, tree, ' '.join(bands)))
+            for x in faults:
+                f.write('LAYOUT: %s\n' % x)
+        for x in faults:
+            if x not in seen_faults:
+                seen_faults.add(x)
+                log.append('LAYOUT %s on [%s]' % (x, installer_page(tree)[0]))
 
     while time.time() - t0 < timeout:
         if not installer_running(inst):
@@ -216,6 +309,9 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             log.append('%s%% done at %.0f s' % (last_pct, time.time() - t0))
         if 90 not in gads:
             # copying or waiting for the next page: only Abort (or nothing) on it
+            if m and m[-1] == last_pct and last_pct not in dumped_pct:
+                dumped_pct.add(last_pct)
+                dump(tree, 'work %s%%' % last_pct)
             work_since = work_since or time.time()
             if time.time() - work_since > work_limit:
                 log.append('no Proceed page for %d s: %s' % (work_limit, last_sig))
@@ -302,6 +398,9 @@ def run_case(case):
     finished, log = drive(case, inst, dest, base)
     (OUT / (case + ".log.txt")).write_text('\n'.join(log) + '\n')
     ck(finished, 'the Installer ran to its end (%s)' % level, log[-1] if log else '')
+    lay = [l for l in log if l.startswith('LAYOUT')]
+    ck(not lay, 'every page\'s text readable: no line cut by the border, under the buttons or beside the copy panel',
+       '; '.join(lay[:4]))
     if not finished:
         if installer_running(inst):
             ir.run('Break >NIL: `Status COM "%s"` C' % inst)

@@ -10,19 +10,27 @@
 ; parts in the same order, and to the Installer 43.3 language.
 ; Remove UP-Term again with Uninstall.
 ;
-; TEXT LAYOUT. The Installer 47 window is a fixed 496x210 and takes no size
-; option; its text area runs from the title bar (y 14) to the button row
-; (y 191), 177 px, and its font sets 12 px per line, so a page holds
-; LINES = 14.75 lines. It centres each line sideways but starts the text
-; at the top. So every (message), (working) and (prompt) text here has
-;   - explicit line breaks, no line longer than 62 characters (the font is
-;     proportional, about 5.8 px a character; the text area is 464 px, so
-;     no line wraps), and
-;   - leading newlines that centre the block vertically:
-;       lead = floor((15 - n) / 2)      n = the lines of the block
+; TEXT LAYOUT, measured 2026-10-08 (installer_rig's text check reads the
+; page's pixels):
+;   Installer 43.3, AmigaOS 3.1 (RTG): window 496x210, 12 px a line, the
+;     first line at y 16, about 5.8 px a character;
+;   Installer 47, AmigaOS 3.2 PAL Workbench: window 560x176, 10 px a line,
+;     the first line at y 13, about 8.6 px a character: a 60-character
+;     line already wraps there (the welcome's three did, and its 14 lines
+;     became 17).
+; On both a page with one button row holds 14 lines, one with two rows
+; (Help) 13; a (working) page holds its "Working on installation" line, a
+; blank one and 14 lines of ours under them. Installer 43.3 starts the text
+; at the top, Installer 47 centres a (message) page itself. So every
+; (message), (working) and (prompt) text here has
+;   - explicit line breaks and no line longer than 56 characters
+;     (tests/test_dist_installer.py holds the literal ones to it), and
+;   - leading newlines that centre the block of n lines:
+;       lead = floor((14 - n) / 2)      (P_LEAD)
 ;     (n = 14 needs none; a block of more than 14 lines does not fit).
-; A text built from choices (P_LEAD) counts its lines in #n first. The
-; button gap to the window's bottom edge is the Installer's own layout.
+; copyfiles draws its panel (file, drawer, bar, Abort) over the whole page
+; below the Working line, on both: P_COPY writes no text of its own there
+; (what peeked out at the panel's sides on 3.2 was cut text).
 
 (set @app-name "UP-Term")
 (set #files (tackon (pathonly @icon) "Files"))
@@ -39,17 +47,16 @@
 
 ; ---- welcome ---------------------------------------------------------------
 
-; welcome: n = 14, lead 0
+; welcome: n = 12, lead 1
 (message
-    "* * * * * * * * * * * * * * * * * * * *\n\n"
-    "U P - T E R M\n\n"
+    "\nU P - T E R M\n\n"
     "a modern terminal for AmigaOS\n\n"
-    "XCON:, a console window with an xterm-class terminal inside;\n"
-    "vsh, a Unix shell with tmux, screen and the GNU commands;\n"
-    "PTY:, Unix pseudo-terminals; UP-Term Prefs, 112 colour themes;\n"
-    "a patched ixemul.library.\n\n"
-    "The next pages ask where UP-Term's own drawer goes and which\n"
-    "parts you want. Every page has a Help button.\n"
+    "XCON:, a console window with an xterm-class terminal;\n"
+    "vsh, a Unix shell with tmux, screen and GNU commands;\n"
+    "PTY:, Unix pseudo-terminals; UP-Term Prefs with 112\n"
+    "colour themes; a patched ixemul.library.\n\n"
+    "The next pages ask where UP-Term's own drawer goes\n"
+    "and which parts you want. Every page has a Help button.\n"
     "Uninstall takes it all out again."
     (all))
 
@@ -148,7 +155,7 @@
 
 (set #boot
     (askoptions
-        (prompt "Started at every boot (both are off unless you tick them):")
+        (prompt "Started at every boot (both off unless you tick them):")
         (help "Serial login: C:upgetty LOOP runs at every boot from a block in "
               "S:User-Startup, and a terminal program on a null-modem cable at "
               "19200 baud gets vsh. While it runs no other program can use the "
@@ -191,8 +198,9 @@
 
 (set #remote
     (askstring
-        (prompt "Claude Code on your server (the NAS): its address and port.\n"
-                "Like: nas.local 2323. Then Claude in a Shell goes straight there. Empty: none.")
+        (prompt "Claude Code on your server (the NAS): address and port,\n"
+                "like nas.local 2323. Then Claude in a Shell goes\n"
+                "straight there. Empty: none.")
         (help "C:Claude and C:ClaudeCode are always installed (README.txt, "
               "CLAUDE FROM THE AMIGA). C:Claude without an API key connects to "
               "Claude Code on this computer with uptelnet (your Claude "
@@ -281,7 +289,7 @@
 
 ; P_LEAD sets #lead, the newlines that centre a block of #n lines
 (procedure P_LEAD
-    (set #lead (substr "\n\n\n\n\n\n\n" 0 (/ (- 15 #n) 2))))
+    (set #lead (substr "\n\n\n\n\n\n\n" 0 (/ (- 14 #n) 2))))
 
 ; P_OPT writes one option: the file ENV:UPTOPT<name> holding #val (nothing when
 ; the option is off). textfile, not a SetEnv line: no quoting of a path with
@@ -330,11 +338,12 @@
                         "it out."))))
     (P_BAR))
 
-; copyfiles' own window lists the files under its prompt, so its prompt
-; has line breaks but no lead
+; copyfiles' panel covers the page below the Working line (TEXT LAYOUT), so
+; the page is emptied of the last part's text and gets none of its own; the
+; panel names each file and drawer. #why is copyfiles' prompt (shown only
+; when it asks), with line breaks but no lead.
 (procedure P_COPY
-    (P_LEAD)
-    (working #lead #why)
+    (working "")
     (copyfiles
         (prompt #why)
         (help @copyfiles-help)
@@ -354,15 +363,16 @@
                "(a block in S:User-Startup)."))
 (P_STEP)
 
-(set #step "system" #kb #kb-system #n 2
+(set #step "system" #kb #kb-system #n 3
      #why (cat "Installing the XCON: and PTY: handlers, the terminal\n"
-               "entries, the colour themes, and vsh, tmux and screen in C:."))
+               "entries, the colour themes, and vsh, tmux and\n"
+               "screen in C:."))
 (P_STEP)
 
 (set #from (tackon #files "coreutils/bin") #to (tackon #dest "bin") #kb #kb-coreutils #n 3
-     #why (cat "Copying the Unix commands (GNU coreutils: ls, cp, sort...)\n"
-               "to UP-Term:bin. They stay out of C:, where AmigaDOS keeps\n"
-               "its own Sort, Date and Join."))
+     #why (cat "Copying the Unix commands (GNU coreutils: ls, cp,\n"
+               "sort...) to UP-Term:bin. They stay out of C:, where\n"
+               "AmigaDOS keeps its own Sort, Date and Join."))
 (P_COPY)
 
 (if #unifont
@@ -382,9 +392,9 @@
     ))
 
 (set #step "tools" #kb #kb-tools #n 3
-     #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo, upgetty,\n"
-               "uptelnet, Claude, ClaudeCode), the network tools you chose,\n"
-               "and Claude's settings."))
+     #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo,\n"
+               "upgetty, uptelnet, Claude, ClaudeCode), the network\n"
+               "tools you chose, and Claude's settings."))
 (P_STEP)
 
 ; the Python / Neovim page: n = 5 lines, one more for each of the two
@@ -426,8 +436,8 @@
 (P_STEP)
 
 (set #step "unix" #kb 60 #n 2
-     #why (cat "Setting up /gg/bin/sh and /tmp for Unix programs: GG: and\n"
-               "TMP: are assigned only when you have none."))
+     #why (cat "Setting up /gg/bin/sh and /tmp for Unix programs:\n"
+               "GG: and TMP: are assigned only when you have none."))
 (P_STEP)
 
 (set #step "desktop" #kb 100 #n (if #shellicon 3 2)
@@ -436,15 +446,16 @@
                (if #shellicon ",\nand pointing the Shell icon at XCON:" "") "."))
 (P_STEP)
 
-(set #step "boot" #kb (if #wasabi 160 20) #n 1
+(set #step "boot" #kb (if #wasabi 160 20) #n (+ 1 (if #serial 1 0) (if #wasabi 1 0))
      #why (cat "Writing vsh's settings"
-               (if #serial ", the serial login" "")
-               (if #wasabi ", wasabid and its key" "") "."))
+               (if #serial ",\nthe serial login" "")
+               (if #wasabi ",\nwasabid and its key" "") "."))
 (P_STEP)
 
-(set #step "libs" #kb 420 #n 2
-     #why (cat "Installing the patched ixemul.library and its ixnet.library\n"
-               "(the ones there are kept as LIBS:<name>.orig)."))
+(set #step "libs" #kb 420 #n 3
+     #why (cat "Installing the patched ixemul.library and its\n"
+               "ixnet.library (the ones there are kept as\n"
+               "LIBS:<name>.orig)."))
 (P_STEP)
 
 (set #step "mount" #kb 50 #n 2
@@ -477,24 +488,28 @@
 (if (= #dev "DEVICE") (set #blocks (cat #blocks ", console.device")))
 
 ; what went where: 10 lines, one more for the extras, the Claude Code
-; server, and a Blocks list that does not fit one line (> 75 characters)
+; server, and each of the Assigns and Startup blocks lines that does not fit
+; one line (> 56 characters, TEXT LAYOUT): at most 14
 (set #xl (cat (if #unifont ", Unifont" "") (if #emoji ", emoji" "")
               (if #python ", Python3" "") (if #nvim ", nvim" "")))
+(set #assignline (cat "Assigns: " #assigns))
+(set #blockline (cat "Startup blocks: " #blocks))
 (set #n (+ 10 (if (<> #xl "") 1 0) (if (<> #remotetext "") 1 0)
-           (if (> (strlen #blocks) 75) 1 0)))
+           (if (> (strlen #assignline) 56) 1 0) (if (> (strlen #blockline) 56) 1 0)))
 (P_LEAD)
 
 (message
     (cat #lead "UP-Term is installed. What went where:\n"
-         #dest ": coreutils, sh, sz, rz, hl, mdv, network tools"
+         "UP-Term: coreutils, sh, sz, rz, hl, mdv, network tools"
          (if (<> #xl "") (cat ",\n" (substr #xl 2 (strlen #xl))) "") "\n"
-         "C: vsh, tmux, screen, UPConsole, UPTerm, UPDemo, Claude, ClaudeCode\n"
+         "C: vsh, tmux, screen, UPConsole, UPTerm, UPDemo,\n"
+         "   Claude, ClaudeCode\n"
          "L: and DEVS:DOSDrivers: XCON:, PTY:, IXPIPE:\n"
          "LIBS: ixemul.library, ixnet.library (old ones: .orig)\n"
          "SYS:System/UP-Term, SYS:Prefs/UP-Term-Prefs\n"
          "ENVARC:up-term: settings, terminal entries, themes\n"
-         "Assigns: " #assigns "\n"
-         "Blocks in S:User-Startup:\n" #blocks
+         #assignline "\n"
+         #blockline
          (if (<> #remotetext "") (cat "\nClaude Code server: " #remotetext) ""))
     (all))
 
@@ -514,9 +529,10 @@
          "Uninstall (beside Install) takes UP-Term out again."))
 (if (= #wasabi "WASABI")
     (set #done
-        (cat #done "\n\n"
+        (cat #done "\n"
              "wasabi is running. On the other computer, with Python 3:\n"
              "  copy Files/wasabi/wasabi from this kit, then\n"
-             "  WASABI_KEY=" (getenv "wasabi.key") " ./wasabi discover\n"
+             "  export WASABI_KEY=" (getenv "wasabi.key") "\n"
+             "  ./wasabi discover\n"
              "The key is in ENVARC:wasabi.key; keep it to yourself.")))
 (exit #done)

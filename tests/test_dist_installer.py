@@ -84,6 +84,23 @@ class InstallerScript(unittest.TestCase):
                 self.assertLessEqual(len(text.encode('latin-1')), 512, 'string over 512 bytes: %.60s' % text)
         self.assertEqual(depth, 0, 'unbalanced parentheses')
 
+    def test_page_text_lines_fit_the_32_window(self):
+        """INSTALLER-TEXT-WRAPS-ON-32: on 3.2's 560x176 Installer window (PAL Workbench) the screen font
+        is wider than 3.1's, and a 60-character line wraps: the welcome's three such lines made 14 lines
+        17, which ran under the buttons and left a cut line at the window's bottom (installer_rig's
+        text check, 2026-10-08). Every line of page text is 56 characters or less; Help texts scroll
+        in their own requester and are left out."""
+        stack, long = [], []
+        toks = tokens(INSTALLER)
+        for i, (kind, text) in enumerate(toks):
+            if kind == 'open':
+                stack.append(toks[i + 1][1] if i + 1 < len(toks) and toks[i + 1][0] == 'word' else '')
+            elif kind == 'close':
+                stack.pop()
+            elif kind == 'str' and 'help' not in stack and 'abort' not in stack:
+                long += [part for part in text.split('\\n') if len(part) > 56]
+        self.assertEqual(long, [])
+
     def test_only_installer_43_language(self):
         toks = tokens(INSTALLER)
         procs = {toks[i + 2][1] for i in range(len(toks) - 2)
