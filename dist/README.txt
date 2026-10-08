@@ -364,6 +364,12 @@ VSH (the shell)
     (probe expand/tilde_user); ~  ~+  ~-  are expanded.
     $PPID, $UID and $EUID are 0: AmigaOS has no parent process id and no
     user ids (probe vars/ids).
+    Function calls nest as deep as the stack lets them: vsh runs on 320 KB
+    (more when the Shell's Stack is larger), a subshell, pipeline stage or
+    $( ) on 128 KB. A level of a small function takes about 0.7 to 1.1 KB:
+    about 290 levels in the shell, 110 in a subshell. Deeper, the call
+    stops with "nested too deeply (N function levels)", status 2, and no
+    crash (probe grammar/deep goes 200 levels).
     $PWD is an AmigaDOS name (Work:dir); its colon would split PATH, so a
     directory goes into PATH as /Work/dir (probe invocation/source_path).
     Descriptors 3 and up (exec 3>file, {fd}<file, n>&m, read -u N, mapfile -u N)

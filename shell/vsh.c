@@ -64,7 +64,7 @@ static void tr(const char *s, long a, long b)
 static const char version[] = "$VER: vsh 0.1 (29.9.2026)";
 /* the stack vsh wants: AmigaOS 3.2 and 4 start it with that, and so does
  * a vsh it runs; otherwise it swaps to 64 KB itself (main) */
-static const char stack_cookie[] = "$STACK: 65536";
+static const char stack_cookie[] = "$STACK: 327680";
 
 /* ---- the OS layer ------------------------------------------------------------- */
 
@@ -147,9 +147,34 @@ static struct Task *job_process(job *j)
     return t;
 }
 
+/* The ixkill that sends a Unix signal (vsh itself cannot call ixemul): the one beside vsh first (the kit
+ * has both in C:; a vsh run from another drawer, the rig's VTC:vsh, has its ixkill there and none in C:,
+ * and kill -9 on a job said "No such process"), else the Shell's command path. Looked up once; a
+ * subshell process has the shell's home drawer, so a second lookup there finds the same name. */
+static const char *ixkill_name(void)
+{
+    static char name[200];
+    static int looked;
+    if (!looked) {
+        struct Process *me = (struct Process *)FindTask(0);
+        BPTR l;
+        strcpy(name, "ixkill");
+        if (me->pr_HomeDir && NameFromLock(me->pr_HomeDir, (STRPTR)name + 1, sizeof(name) - 10) &&
+            AddPart((STRPTR)name + 1, (STRPTR)"ixkill", sizeof(name) - 10) &&
+            (l = Lock((STRPTR)name + 1, SHARED_LOCK)) != 0) {
+            UnLock(l);
+            name[0] = '"';
+            strcat(name, "\"");
+        } else
+            strcpy(name, "ixkill");
+        looked = 1;
+    }
+    return name;
+}
+
 static int task_unix_signal(struct Task *t, const char *sig)
 {
-    char cmd[64];
+    char cmd[256];
     static const char hex[] = "0123456789abcdef";
     unsigned long a;
     int i, k;
@@ -158,7 +183,8 @@ static int task_unix_signal(struct Task *t, const char *sig)
     if (!t)
         return -1;
     a = (unsigned long)t;
-    strcpy(cmd, "ixkill -");
+    strcpy(cmd, ixkill_name());
+    strcat(cmd, " -");
     strcat(cmd, sig);
     strcat(cmd, " 0x");
     k = (int)strlen(cmd);
@@ -385,10 +411,36 @@ static char *command_line(char **argv)
     return s;
 }
 
+static int is_stream(BPTR fh);
+
+/* Where a command's input file is before it runs: -1 on a console or a pipe. RunCommand (and the Shell
+ * of SystemTags) put the argument line into the input handle's buffer; an ixemul command flushes that
+ * buffer unread when it ends, and a flush of unread bytes seeks the file BACK by their number. The
+ * shell then read the end of its own input again: `ls /nonexist_q` in `vsh -s <file` sent the shell 12
+ * bytes back (`!ls` repeated forever, fc listed twice, "vsh: ho: not found"). No command moves its
+ * input before where it started: a position below that one is the argument line, and is undone. */
+static long input_mark(BPTR in)
+{
+    if (!in || IsInteractive(in) || is_stream(in))
+        return -1;
+    Flush(in);
+    return Seek(in, 0, OFFSET_CURRENT);
+}
+
+static void input_restore(BPTR in, long mark)
+{
+    if (mark < 0)
+        return;
+    Flush(in);
+    if (Seek(in, 0, OFFSET_CURRENT) < mark)
+        Seek(in, mark, OFFSET_BEGINNING);
+}
+
 static void runner(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
     job *j;
+    long mark;
     WaitPort(&me->pr_MsgPort);
     j = (job *)GetMsg(&me->pr_MsgPort);
     TR("runner start", j, me);
@@ -407,6 +459,7 @@ static void runner(void)
      * CreateNewProc's 8000, whatever vsh's stack said) */
     if (Cli())
         Cli()->cli_DefaultStack = (j->stack + 3) / 4;
+    mark = input_mark(j->in);
     /* the runner has the shell's current directory (CreateNewProc copies it) */
     if (j->seg) {
         BPTR oin = SelectInput(j->in), oout = SelectOutput(j->out);
@@ -426,6 +479,7 @@ static void runner(void)
                            SYS_UserShell, TRUE, NP_Name, (ULONG)j->child,
                            j->err ? NP_Error : TAG_IGNORE, j->err, TAG_END);
     }
+    input_restore(j->in, mark);
     if (j->close_in)
         close_stream(j->in);
     if (j->close_out)
@@ -1091,6 +1145,12 @@ static long os_read_line(void *os, sh_fh fh, char *buf, long max)
         TR("read_line eof", fh, IoErr());
         return -1;
     }
+    /* A file: its position is where this line ends, not where the read-ahead stopped (bash seeks back
+     * the same way). The handle and its buffer are shared with every command that inherits it: a
+     * command that ran after a buffered line (an ixemul ls) left the shell reading the file's last
+     * bytes a second time (`!ls` ran forever, fc listed twice) */
+    if (!IsInteractive((BPTR)fh))
+        Flush((BPTR)fh);
     TR("read_line", fh, strlen(buf));
     return (long)strlen(buf);
 }
@@ -1365,7 +1425,7 @@ static int os_interrupted(void *os)
     return (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) != 0;
 }
 
-#define VSH_STACK_SUB 65536
+#define VSH_STACK_SUB 131072
 #define STACK_MARGIN 12288  /* the deepest path below a guard: read's buffers, DOS calls */
 
 /* Where the interpreter must stop in this process: the bottom of its
@@ -1429,7 +1489,10 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                 j->io.in = (sh_fh)Open((STRPTR)"NIL:", MODE_OLDFILE);
                 j->io.owned |= SH_OWN_IN;
             }
-            if (!(io->owned & SH_OWN_OUT)) {
+            /* output as os_run gives a background command: a file or a pipe is the shell's handle
+             * itself (Unix shares the descriptor); "*" was a console the process may not have:
+             * `echo bg &` in `vsh script >file` (Run >NIL:) wrote nowhere */
+            if (!(io->owned & SH_OWN_OUT) && !(io->out && !IsInteractive((BPTR)io->out))) {
                 j->io.out = (sh_fh)Open((STRPTR)"*", MODE_NEWFILE);
                 j->io.owned |= SH_OWN_OUT;
             }
@@ -1439,7 +1502,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                  * errors (and set -x) of a $( ) went into the capture */
                 if (io->err && !IsInteractive((BPTR)io->err))
                     j->io.err = io->err;
-                else if (!(io->owned & SH_OWN_OUT))
+                else if (!(io->owned & SH_OWN_OUT) && j->io.out != io->out)
                     j->io.err = j->io.out; /* the console handle opened for its output */
                 else if ((j->io.err = (sh_fh)Open((STRPTR)"*", MODE_NEWFILE)) != 0)
                     j->io.owned |= SH_OWN_ERR;
@@ -1839,8 +1902,9 @@ static int vsh_main(int argc, char **argv)
             prompt(&sh, text != 0);
         else if (!text && (sh.opts & SO_INTERACTIVE))
             sh_prompt_command(&sh); /* vsh -i reading a pipe: PROMPT_COMMAND still runs, as in bash */
-        if (!FGets(Input(), (STRPTR)line, sizeof(line)))
-            break;
+        if (IsInteractive(Input()) ? !FGets(Input(), (STRPTR)line, sizeof(line))
+                                   : os_read_line(0, (sh_fh)Input(), line, sizeof(line)) < 0)
+            break; /* a file or a pipe: line by line, as the commands that share it must see it */
         if (!text && (sh.opts & SO_INTERACTIVE) && (sh.opts & SO_HISTEXP)) {
             /* the first line of a command: !! !$ ^a^b ... (bash shows the expanded line on its
              * error stream, as vsh_host does: on Output() it was in the command's output) */
@@ -1904,7 +1968,7 @@ static int vsh_main(int argc, char **argv)
  * Shell's default stack is 4 KB on 3.1, so vsh runs on a 64 KB stack of
  * its own when it was given less, as its subshell processes do. Only
  * statics across the swap: locals of this frame live on the old stack. */
-#define VSH_STACK 65536
+#define VSH_STACK 327680
 static struct StackSwapStruct swap;
 static int g_argc, g_rc;
 static char **g_argv;

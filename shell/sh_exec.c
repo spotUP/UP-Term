@@ -6677,6 +6677,21 @@ static void xt_cmd(sh_shell *sh, const sh_io *io, const sh_list *argv)
 
 /* The simple command. *last gets the last word of the command as expanded (malloc'ed; 0 when the
  * expansion failed): the shell's $_ once the command has run. */
+/* A program by its hashed path (hash -p): a function of its own, so the path's buffer is on the stack
+ * only while a program starts. In exec_cmd1 it was in the frame of every function call level (vbcc
+ * gives a function all its block locals at entry): 512 of the ~1.8 KB a level of `f() { f; }` took on
+ * the Amiga, where the stack ended at 156 levels of grammar/deep. */
+static long run_program(sh_shell *sh, sh_list *argv, const sh_io *io, int wait)
+{
+    char hp[512], *name0 = argv->v[0];
+    long st;
+    if (hash_note_run(sh, name0, hp, sizeof(hp)))
+        argv->v[0] = hp;
+    st = sh->os.run(sh->os.data, argv->v, io, wait);
+    argv->v[0] = name0;
+    return st;
+}
+
 static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job, char **last)
 {
     sh_list argv;
@@ -6847,13 +6862,7 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
                 io.owned |= SH_OWN_ERR;
         }
         sh->os.suspendable = wait && sh->os.cont;
-        {
-            char hp[512], *name0 = argv.v[0];
-            if (hash_note_run(sh, name0, hp, sizeof(hp)))
-                argv.v[0] = hp;
-            st = sh->os.run(sh->os.data, argv.v, &io, wait);
-            argv.v[0] = name0;
-        }
+        st = run_program(sh, &argv, &io, wait);
         sh->os.suspendable = 0;
         if (!wait) {
             /* a redirection took the place of a pipe end the pipeline opened for this command: that
