@@ -19,6 +19,16 @@ and libixcompat (linked into  BSD and other authors keep       LICENSES.README),
 every Amiga program)          their notices in their files)
 GNU coreutils 5.2.1 (Files/   GPL v2 (Files/coreutils/COPYING) Files/coreutils/coreutils-5.2.1-src.tar.bz2;
 coreutils)                                                     vtcon dist/gg/coreutils-5.2.1/SOURCE.txt
+Unix tool ports (Files/       per package, the licence files   UP-Term-src.lha (published next to
+userland, UP-Term:bin): GNU   in UP-Term:licenses/<package>;   UP-Term.lha): each upstream archive with
+grep, sed, findutils,         GPL v3 or later: grep, sed,      UP-Term's patches, recipes and build
+diffutils, patch, nano,       findutils, diffutils, patch,     scripts (upterm-ports repo); the list
+gzip; less; onetrue-awk;      nano, gzip; less GPL v3 or       with versions, URLs and sha256 is
+mandoc (man); ncurses 6       BSD-2; awk MIT-like; mandoc      UP-Term:licenses/SOURCES.txt
+tools; bzip2; xz;             ISC; ncurses MIT; bzip2
+libarchive (tar, cpio);       BSD-like; xz 0BSD and public
+zip; zlib (linked)            domain; libarchive BSD-2; zip
+                              Info-ZIP; zlib Zlib
 bebboget 1.11                 GPL v3 or later (COPYING,        Files/net/bebboget-1.11/bebboget-1.11-src.tar.bz2
                               LICENSE)
 BebboSSH 1.45 (bebbossh,      GPL v3 or later (COPYING); some  Files/net/bebbossh-1.45/bebbossh-1.45-src.tar.bz2

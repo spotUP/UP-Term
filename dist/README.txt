@@ -381,6 +381,17 @@ VSH (the shell)
   /tmp is TMP:; without one Install assigns it to T: at every boot.
   coreutils is GPL v2: COPYING and the complete source are in the kit's
   Files/coreutils drawer.
+  Beside them, the Unix tool ports: grep, sed, awk (the One True Awk),
+  less, nano, find, xargs, diff, cmp, diff3, sdiff, patch, man (mandoc),
+  gzip, gunzip, zcat, bzip2, xz, tar, cpio, bsdunzip, bsdcat, zip and
+  ncurses' tput, tset, reset, clear, tabs, infocmp, tic, toe. Their manual
+  pages, and vsh's, UPTerm's, upgetty's, sz's and rz's, are in
+  UP-Term:share/man:  man grep  pages it through less;  man -T utf8 ...
+  writes UTF-8. nano colours code with the syntax files in
+  UP-Term:share/nano (UP-Term:etc/nanorc includes them). Each package's
+  licence is in UP-Term:licenses, with SOURCES.txt (version, upstream
+  archive, sha256); the complete source with UP-Term's patches and build
+  recipes is UP-Term-src.lha, published next to UP-Term.lha.
   Differences from bash
     vsh is being brought to bash 5 behaviour. A difference that stays on
     purpose (AmigaOS cannot do it, or it was decided) gets one line here,

@@ -44,7 +44,8 @@ telnet() {
     uptelnet "$@" TERM "$(remote_term)"
 }
 
-# The Unix commands are GNU coreutils 5.2.1 in UP-Term:bin (see
+# The Unix commands are GNU coreutils 5.2.1 and the Unix tool ports
+# (grep, sed, awk, less, nano, find, diff, man, tar...) in UP-Term:bin (see
 # Install): ls, cp, mv, rm, mkdir, cat, sort, head, tail, wc and the rest,
 # with their Unix flags and paths (.. is the parent, / the volume list).
 # $PATH is in Unix form, the way ixemul programs read it too, and comes

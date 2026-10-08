@@ -233,8 +233,9 @@ $(BUILD)/terminfo/76/vtcon: terminfo/vtcon.terminfo
 	@cp $(BUILD)/terminfo/76/vtcon.tmp $(BUILD)/terminfo/v/vtcon; mv $(BUILD)/terminfo/76/vtcon.tmp $(BUILD)/terminfo/76/vtcon
 
 # The kit's terminal entries: vtcon and GNU screen's, in first-letter
-# directories (v/vtcon): the Amiga's ncurses 5.5 reads those, tic on macOS
-# writes hex ones (76/).
+# directories (v/vtcon), which the Amiga's ncurses 5.5 reads, and in the hex
+# ones tic on macOS writes (76/vtcon), which ncurses 6 reads (upterm-ports'
+# less, nano, tput: built with cf_cv_mixedcase=no, Amiga names ignore case).
 KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/screen.terminfo
 $(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
 	rm -rf $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
@@ -242,6 +243,7 @@ $(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
 	for f in $(KIT_TERMINFO); do tic -x -o $(BUILD)/kit-terminfo.tmp $$f; done
 	cd $(BUILD)/kit-terminfo.tmp && for p in */*; do n=$${p#*/}; c=$$(printf %s "$$n" | cut -c1); \
 	  mkdir -p ../kit-terminfo/$$c && cp "$$p" ../kit-terminfo/$$c/; done
+	cp -R $(BUILD)/kit-terminfo.tmp/. $(BUILD)/kit-terminfo/
 	rm -rf $(BUILD)/kit-terminfo.tmp
 	touch $@
 
@@ -798,9 +800,14 @@ PYTHON_DIST ?= $(UPTERM_ROOT)/cpython-amiga/build/m68k/dist/Python3
 NVIM_DIST ?= $(UPTERM_ROOT)/neovim-amiga/build/v012/dist/nvim
 # ixnet.library from the same build (ixnet refuses an ixemul of another revision)
 IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
+# the Unix tool ports: staged by `make kit-stage` in upterm-ports (programs,
+# pages, licences, SOURCES.txt) with their source beside it; the source goes
+# into build/UP-Term-src.lha, published next to the kit (plan D2)
+UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
 dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
 	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
-	cd $(BUILD)/kit-terminfo && cp -R [a-z] $(CURDIR)/$(KIT)/Files/terminfo/
+	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
 	cp dist/screenrc $(KIT)/Files/screenrc
 	cp $(TMUX_BIN) $(KIT)/Files/tmux
@@ -817,6 +824,12 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 $(KIT)/Files/coreutils/
+	@# the ports (copy-userland: bin; userland: share, etc, licenses) and
+	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
+	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
+	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
+	cp man/sz.1 $(KIT)/Files/userland/share/man/man1/rz.1
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
@@ -848,6 +861,8 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	python3 tools/mkmanifest.py $(KIT)
 	cd $(BUILD)/dist && rm -f ../UP-Term.lha && lha -aq ../UP-Term.lha UP-Term
 	@ls -la $(BUILD)/UP-Term.lha
+	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/UP-Term-src.lha && lha -aq $(CURDIR)/$(BUILD)/UP-Term-src.lha userland-src
+	@ls -la $(BUILD)/UP-Term-src.lha
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.

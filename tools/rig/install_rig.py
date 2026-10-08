@@ -354,6 +354,10 @@ def _main(dest=None):
     rc, out = run('C:vsh -c "ls --version"')
     check(rc == 0 and 'coreutils' in out and '5.2.1' in out, 'vsh\'s ls is GNU coreutils 5.2.1 (through $PATH)', out)
     check((run('List >NIL: C:ls')[0] == 0) == ls_before, 'Install put no ls in C:', '')
+    # the reachability test of the Unix tool ports (unix-tool-ports plan 1.10):
+    # Install put upterm-ports' grep in UP-Term:bin and vsh's $PATH reaches it
+    rc, out = run('C:vsh -c "grep --version"')
+    check(rc == 0 and 'GNU grep' in out and '3.12' in out, 'vsh\'s grep is the ports\' GNU grep 3.12 (through $PATH)', out)
     # .. is the parent (on RAM:, a real volume -- VTC:'s root is its own
     # parent, an FS-UAE quirk). rm -r runs from outside: AmigaDOS keeps the
     # current directory locked, so a shell can never delete the drawer it is in

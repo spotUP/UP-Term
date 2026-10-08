@@ -34,6 +34,8 @@ system          Files/vsh
 system          Files/vtcon-handler
 copy-coreutils  Files/coreutils/bin     bin
 -               Files/coreutils
+copy-userland   Files/userland/bin      bin
+userland        Files/userland
 copy-unifont    Files/unifont           unifont
 copy-emoji      Files/emoji             emoji
 tools           Files/Claude

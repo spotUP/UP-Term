@@ -304,6 +304,34 @@ Copy coreutils/bin UP-Term:bin ALL CLONE QUIET
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
+Lab copy-userland
+; The Unix tool ports (upterm-ports), beside coreutils in UP-Term:bin: grep,
+; sed, awk, less, nano, find, xargs, diff, cmp, diff3, sdiff, patch, man,
+; gzip, bzip2, xz, tar, cpio, zip and ncurses' tput, reset, clear... No name
+; is one of coreutils'. Their pages, nano's files and licences: next part.
+MakeDir >NIL: UP-Term:bin
+Copy userland/bin UP-Term:bin ALL CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab userland
+; The ports' manual pages and UP-Term's own (vsh, UPTerm, upgetty, sz, rz)
+; in UP-Term:share/man (man's default MANPATH, /UP-Term/share/man), nano's
+; syntax files and its system nanorc (UP-Term:etc/nanorc), and every
+; package's licence in UP-Term:licenses. SOURCES.txt there names each one's
+; version and upstream archive; the complete source with UP-Term's patches
+; and build recipes is UP-Term-src.lha, published next to UP-Term.lha.
+; one MakeDir each: an Install over an Install finds them there
+MakeDir >NIL: UP-Term:share
+MakeDir >NIL: UP-Term:etc
+MakeDir >NIL: UP-Term:licenses
+Copy userland/share UP-Term:share ALL CLONE QUIET
+Copy userland/etc UP-Term:etc ALL CLONE QUIET
+Copy userland/licenses UP-Term:licenses ALL CLONE QUIET
+Copy userland/SOURCES.txt UP-Term:licenses/SOURCES.txt CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
 Lab copy-unifont
 ; [UNIFONT]: GNU Unifont's glyphs (SIL Open Font License 1.1: OFL-1.1.txt
 ; and SOURCE.txt go with them), one file per 256 characters, 1.8 MB: drawn

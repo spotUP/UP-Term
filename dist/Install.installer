@@ -283,6 +283,9 @@
 (set #kb-drawer 20)
 (set #kb-system 2200)
 (set #kb-coreutils 2200)
+; the Unix tool ports' programs (measured on the staged ports of 2026-10-08);
+; their pages, nano's files and licences are the userland part's 1780
+(set #kb-userland 8800)
 (set #kb-unifont (if #unifont 1800 0))
 (set #kb-emoji (if #emoji 500 0))
 (set #kb-tools (+ 900 (if #ssh 300 0) (if #bget 210 0) (if #curl 1200 0)))
@@ -290,7 +293,7 @@
 (set #kb-nvim (if #nvim 27500 0))
 ; fonts, unix, desktop, boot, libs, mount, console, record: their #kb below
 (set #kb-rest (+ 20 60 100 (if #wasabi 160 20) 420 50 200 20))
-(set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-unifont #kb-emoji
+(set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-userland 1780 #kb-unifont #kb-emoji
                  #kb-tools #kb-python 20 #kb-nvim #kb-rest))
 (set #donekb 0)
 
@@ -339,7 +342,7 @@
         (set #emoji (getenv "UPTOPTEMOJI"))
         (set #cpu040 (getenv "UPTOPTCPU040"))
         (set #cpu060 (getenv "UPTOPTCPU060"))
-        (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-unifont 0 #kb-emoji 0
+        (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-userland 0 #kb-unifont 0 #kb-emoji 0
              #kb-tools 0 #kb-python 0 #kb-nvim 0)
         ; the parts upupdate named, and the record part's 1
         (set #totalkb (+ 1 (getenv "UPTUPDKB")))
@@ -468,6 +471,18 @@
                "sort...) to UP-Term:bin. They stay out of C:, where\n"
                "AmigaDOS keeps its own Sort, Date and Join."))
 (P_COPY)
+
+(set #from (tackon #files "userland/bin") #to (tackon #dest "bin") #part "copy-userland" #kb #kb-userland #n 3
+     #why (cat "Copying the Unix tools to UP-Term:bin: grep, sed,\n"
+               "awk, less, nano, find, diff, patch, man, tar, gzip,\n"
+               "xz, zip and the terminal commands (tput, reset...)."))
+(P_COPY)
+
+(set #step "userland" #kb 1780 #n 3
+     #why (cat "Installing the manual pages (UP-Term:share/man),\n"
+               "nano's syntax colours, and each Unix tool's licence\n"
+               "(UP-Term:licenses)."))
+(P_STEP)
 
 (if #unifont
     (
@@ -611,7 +626,7 @@
 
 (message
     (cat #lead "UP-Term is installed. What went where:\n"
-         "UP-Term: coreutils, sh, sz, rz, hl, mdv, network tools"
+         "UP-Term: Unix commands, man pages, network tools, sz, rz"
          (if (<> #xl "") (cat ",\n" (substr #xl 2 (strlen #xl))) "") "\n"
          "C: vsh, tmux, screen, UPConsole, UPTerm, UPDemo,\n"
          "   Claude, ClaudeCode\n"
