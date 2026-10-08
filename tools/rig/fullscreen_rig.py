@@ -60,20 +60,28 @@ def truth():
 
 def font_case():
     """requests that fit: cols/rows reported >= requested and the window is the screen;
-    one that cannot fit: refused, the grid as it was"""
+    one that cannot fit (no font size of the face is narrow enough): refused, the grid as it was"""
     shutil.copyfile(ROOT / 'build/amiga/ixwinch', c.VTC / 'ixwinch')
     ixpty_rig.use_ixemul()
     c.run('Run >NIL: NewShell "XCON:0/20/640/300/fullfont/FULLSCREEN"')
     time.sleep(6)
     ok, seen = True, []
+    prev = truth()
+    # The shell's face is topaz (8x8 in ROM, 11 on disk): no size is narrower than
+    # 8 pixels, so a request wider or taller than screen/8 has no font and is
+    # refused with the grid as it was. One that fits gets a grid at least the
+    # request (the largest designed size that still gives it; topaz's largest is
+    # 11, so on this face every fitting request ends on the same 11 pixel grid).
     for cols, rows in ((80, 24), (100, 30), (132, 43), (40, 12)):
         t('/size %dx%d' % (cols, rows))
         name, scr, wins = front()
         got = truth()
-        good = (len(wins) == 1 and wins[0][1:] == scr and got is not None
-                and got[0] >= cols and got[1] >= rows and got[0] < 2 * cols + 1 and got[1] < 2 * rows + 1)
-        seen.append(((cols, rows), scr, got, good))
+        fits = cols <= scr[0] // 8 and rows <= scr[1] // 8
+        good = len(wins) == 1 and wins[0][1:] == scr and got is not None and (
+            (got[0] >= cols and got[1] >= rows) if fits else got == prev)
+        seen.append(((cols, rows), 'fits' if fits else 'refused', scr, got, good))
         ok = ok and good
+        prev = got
     before = truth()
     t('/size 400x200')
     name, scr, wins = front()

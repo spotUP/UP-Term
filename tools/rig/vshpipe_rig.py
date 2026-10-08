@@ -12,12 +12,19 @@ amiagent; a case that has not ended after 20 s is a FAIL. The binary goes to
 RAM:vshpipe/ (VTC: is not touched). The rig must be up; `make
 build/amiga/vsh` first (VSH= names another binary). A hung case leaves its
 processes running: restart the rig after a FAIL."""
-import os, pathlib, sys, tempfile, time
+import os, pathlib, shutil, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami
+import paths
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DIR = "RAM:vshpipe"
+# wc and cat are the kit's coreutils (dist/gg), staged into this rig's VTC:userland/bin
+# (the same drawer userland_rig puts on PATH): a rig's system disk has neither on PATH,
+# and a stage that is "not found" ends the Execute script at once (rc 127 > FailAt)
+COREUTILS = ROOT / "dist/gg/coreutils-5.2.1/bin"
+STAGED = ("wc", "cat")
+PATH_LINE = "export PATH=/VTC/userland/bin:$PATH\n"
 
 # (name, vsh script, the output it must give). The redirect_* cases are a builtin or compound
 # LAST stage: it keeps its own stdout redirect and the pipeline's stdout (os_spawn once opened
@@ -51,8 +58,8 @@ def ex(cmd, secs=20):
 def run_case(name, script, want):
     base = "%s/%s" % (DIR, name)
     ex('Delete >NIL: "%s.out" "%s.done" QUIET' % (base, base))
-    put_text(script, base + ".sh")
-    put_text("%s/vsh %s.sh >%s.out\nEcho >%s.done $RC\n" % (DIR, base, base, base), base + ".run")
+    put_text(PATH_LINE + script, base + ".sh")
+    put_text("FailAt 21\n%s/vsh %s.sh >%s.out\nEcho >%s.done $RC\n" % (DIR, base, base, base), base + ".run")
     ex("Run >NIL: <NIL: Execute %s.run" % base)
     end = time.time() + 20
     while time.time() < end:
@@ -66,6 +73,10 @@ def run_case(name, script, want):
 def main():
     vsh = pathlib.Path(os.environ.get("VSH") or ROOT / "build/amiga/vsh")
     ex("MakeDir >NIL: %s" % DIR)
+    bindir = paths.RIG / "vtc/userland/bin"
+    bindir.mkdir(parents=True, exist_ok=True)
+    for tool in STAGED:
+        shutil.copyfile(COREUTILS / tool, bindir / tool)
     ami.put(str(vsh), DIR + "/vsh")
     ok = True
     for name, script, want in CASES:

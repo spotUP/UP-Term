@@ -309,6 +309,14 @@ def setup_config_only():
 def install():
     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
+    # every other build/amiga program the drawer already holds: rig 2's VTC:
+    # starts as a copy of old builds, and a script that runs VTC:<name> must
+    # run the current one
+    for f in sorted((ROOT / "build/amiga").iterdir()):
+        dst = RIG / "vtc" / f.name
+        if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
+            shutil.copyfile(f, dst)
+            print("refreshed", f.name, dst.stat().st_size, "bytes")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)
