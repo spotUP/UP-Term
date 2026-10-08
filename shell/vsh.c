@@ -758,7 +758,8 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
 {
     sh_shell *sh = ((vproc *)os)->sh;
     char *cmd = command_line(argv), *sp;
-    sh_var *v;
+    const sh_var *v;
+    sh_var_iter it;
     job *j;
     struct Process *p;
     BPTR seg;
@@ -798,12 +799,12 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
          * variables (never the shell's own: NAME=v cmd must not stay) */
         long need = 1;
         char *e;
-        for (v = sh->ctx.vars; v; v = v->next)
+        for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
             if ((v->attr & SH_ATTR_EXPORT) && !v->arr)
                 need += (long)strlen(v->name) + (long)strlen(sh_var_str(v) ? sh_var_str(v) : "") + 2;
         j->env = e = (char *)malloc(need);
         if (e) {
-            for (v = sh->ctx.vars; v; v = v->next)
+            for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
                 if ((v->attr & SH_ATTR_EXPORT) && !v->arr) {
                     strcpy(e, v->name);
                     e += strlen(e) + 1;

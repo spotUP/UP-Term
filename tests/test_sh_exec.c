@@ -764,7 +764,7 @@ static void a_subshell_s_set_o_and_shopt_leave_the_shell_s_alone(void)
 {
     sh_shell *c;
     run("shopt -s extglob; set -o vi");
-    c = sh_shell_clone(&sh);
+    c = sh_shell_clone(&sh, 0);
     CHECK_INT(c != 0, 1);
     if (!c)
         return;
@@ -776,6 +776,41 @@ static void a_subshell_s_set_o_and_shopt_leave_the_shell_s_alone(void)
     sh_run_text(&sh, "case ab in @(ab|cd)) echo matched;; esac", 0);
     CHECK_STR(slot(OUT)->data, "sub_vi\nsub_eg\nvi\neg\nmatched\n");
     sh_run_text(&sh, "set +o vi", 0);
+}
+
+/* $(cmd) copied every variable into its subshell (sh_shell_clone): with a 10,000-element array that was
+ * about 24 bytes per element more while the substitution ran (rig 2, tools/rig/substmem_rig.py). A shared
+ * clone reads the shell's table in place; what it writes or unsets is its own, and the shell's nodes stay
+ * as they were. */
+static void a_shared_subshell_reads_the_shell_s_variables_and_changes_none(void)
+{
+    sh_shell *c;
+    const sh_var *x0;
+    run("pfx_x=old; pfx_a=(a0 a1 a2); pfx_y=gone; export pfx_e=env; declare -A pfx_h=([k]=v)");
+    x0 = sh_lookup_raw(&sh.ctx, "pfx_x");
+    c = sh_shell_clone(&sh, 1);
+    CHECK_INT(c != 0, 1);
+    if (!c)
+        return;
+    CHECK_INT(c->ctx.base == sh.ctx.vars, 1);
+    CHECK_INT(c->ctx.vars == 0, 1); /* nothing copied */
+    sh_run_text(c, "echo \"$pfx_x ${pfx_a[1]} ${#pfx_a[@]} $pfx_y ${pfx_h[k]}\"; echo ${!pfx_*}", 0);
+    sh_run_text(c, "pfx_x=new; pfx_a[1]=B; unset 'pfx_a[0]'; unset pfx_y; pfx_h[k]=w; pfx_z=1; export -n pfx_e", 0);
+    sh_run_text(c, "echo \"$pfx_x ${pfx_a[*]} ${pfx_y-unset} ${pfx_h[k]} $pfx_z\"; echo ${!pfx_*}", 0);
+    sh_run_text(c, "pfx_y=back; echo $pfx_y; declare -p pfx_e", 0);
+    CHECK_STR(slot(OUT)->data, "old a1 3 gone v\npfx_a pfx_e pfx_h pfx_x pfx_y\n"
+                               "new B a2 unset w 1\npfx_a pfx_e pfx_h pfx_x pfx_z\n"
+                               "back\ndeclare -- pfx_e=\"env\"\n");
+    CHECK_INT(c->ctx.base == sh.ctx.vars, 1);
+    sh_shell_free(c);
+    free(c);
+    CHECK_INT(sh_lookup_raw(&sh.ctx, "pfx_x") == x0, 1);
+    sh_run_text(&sh, "echo \"$pfx_x ${pfx_a[*]} $pfx_y ${pfx_h[k]} ${pfx_z-unset}\"; declare -p pfx_e", 0);
+    CHECK_STR(slot(OUT)->data, "old a1 3 gone v\npfx_a pfx_e pfx_h pfx_x pfx_y\n"
+                               "new B a2 unset w 1\npfx_a pfx_e pfx_h pfx_x pfx_z\n"
+                               "back\ndeclare -- pfx_e=\"env\"\n"
+                               "old a0 a1 a2 gone v unset\ndeclare -x pfx_e=\"env\"\n");
+    run("unset pfx_x pfx_a pfx_y pfx_e pfx_h");
 }
 
 static void a_shell_made_on_dirty_memory_is_a_fresh_shell(void)
@@ -1652,6 +1687,7 @@ void suite_sh_exec(void)
 {
     bind_and_inputrc_reach_the_console_line_editor();
     a_subshell_s_set_o_and_shopt_leave_the_shell_s_alone();
+    a_shared_subshell_reads_the_shell_s_variables_and_changes_none();
     an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash();
     tab_on_a_command_with_a_spec_answers_with_its_words();
     dollar_BASH_names_the_running_shell_so_BASH_dash_c_runs_vsh();

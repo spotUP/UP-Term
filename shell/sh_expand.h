@@ -29,6 +29,7 @@ typedef unsigned long long sh_uint;
 #define SH_ATTR_ASSOC    64
 #define SH_ATTR_NAMEREF  128
 #define SH_ATTR_NOVALUE  256 /* declared (declare -a x) and never assigned: declare -p prints no value */
+#define SH_ATTR_GONE     512 /* a tombstone in a shared table's own list: the base's variable of this name is unset */
 /* An array is a sparse vector sorted by index (indexed) or by key (associative):
  * append is O(1), lookup a binary search. An element has the index or the key,
  * never both (an array never changes kind while it has elements): 8 bytes on
@@ -54,6 +55,10 @@ typedef struct sh_var {
 
 typedef struct sh_ctx {
     sh_var *vars;
+    /* a subshell's view of its parent's variables, read in place (0: none): a variable is copied into
+     * vars when it is first written, and unsetting one leaves an SH_ATTR_GONE node in vars. Only while
+     * the parent waits for the subshell's end and changes nothing (sh_shell_clone, share) */
+    const sh_var *base;
     sh_list args;           /* $1.. */
     char *arg0;             /* $0 */
     const char *flags;      /* $-: "i" in an interactive shell (not owned) */
@@ -100,6 +105,14 @@ const char *sh_get(const sh_ctx *c, const char *name);       /* an array: elemen
 const char *sh_var_str(const sh_var *v);                     /* scalar value, or element 0; 0 when none */
 sh_var *sh_lookup(const sh_ctx *c, const char *name);        /* namerefs followed (at most 8) */
 sh_var *sh_lookup_raw(const sh_ctx *c, const char *name);    /* the variable itself, a reference too */
+/* every variable once, the own list's and then the base's (sh_ctx.base) it does not hide; never a
+ * tombstone. for (v = sh_var_first(c, &it); v; v = sh_var_next(c, &it)) */
+typedef struct sh_var_iter {
+    const sh_var *v;
+    int in_base;
+} sh_var_iter;
+const sh_var *sh_var_first(const sh_ctx *c, sh_var_iter *it);
+const sh_var *sh_var_next(const sh_ctx *c, sh_var_iter *it);
 const char *sh_resolve(const sh_ctx *c, const char *name);   /* the name a reference leads to */
 const char *sh_get_elem(sh_ctx *c, const char *name, const char *sub);
 /* NAME=value, NAME[sub]=value (sub already expanded: arithmetic for an indexed array, the key for an

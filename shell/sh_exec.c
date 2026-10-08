@@ -351,10 +351,11 @@ void sh_shell_free(sh_shell *sh)
 
 static int frame_push(sh_shell *sh, const char *name, const char *src);
 
-sh_shell *sh_shell_clone(const sh_shell *sh)
+sh_shell *sh_shell_clone(const sh_shell *sh, int share)
 {
     sh_shell *c = (sh_shell *)malloc(sizeof(sh_shell));
     const sh_var *v;
+    sh_var_iter it;
     const sh_func *f;
     sh_func **tail;
     int i;
@@ -368,11 +369,17 @@ sh_shell *sh_shell_clone(const sh_shell *sh)
         c->fdt[i].fh = sh->fdt[i].fh; /* shared with the parent, which closes it */
         c->fdt[i].own = 0;
     }
-    for (v = sh->ctx.vars; v; v = v->next) {
-        sh_var *cp = sh_var_copy(v);
-        if (cp)
-            sh_var_link(&c->ctx, cp);
-    }
+    if (share && !sh->ctx.base) {
+        /* bash forks, copy on write; vsh has no fork: the parent's table is read in place (its own
+         * subshells may outlive it, so a sharing shell's clones copy) */
+        SH_HIT(VAR_SHARED);
+        c->ctx.base = sh->ctx.vars;
+    } else
+        for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it)) {
+            sh_var *cp = sh_var_copy(v);
+            if (cp)
+                sh_var_link(&c->ctx, cp);
+        }
     for (i = 0; i < sh->ctx.args.n; i++)
         sh_list_add(&c->ctx.args, sh->ctx.args.v[i]);
     c->ctx.arg0 = sh->ctx.arg0;  /* not owned by a ctx */
@@ -2064,15 +2071,17 @@ static int cmp_var(const void *a, const void *b)
 /* every variable, by name, in a malloc'd vector (NULL when out of memory); *n is its length */
 static sh_var **sorted_vars(sh_shell *sh, int *n)
 {
-    sh_var *v, **all;
+    const sh_var *v;
+    sh_var **all;
+    sh_var_iter it;
     int k = 0;
-    for (v = sh->ctx.vars; v; v = v->next)
+    for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
         k++;
     all = (sh_var **)malloc((size_t)(k ? k : 1) * sizeof(sh_var *));
     if (!all)
         return NULL;
-    for (v = sh->ctx.vars, k = 0; v; v = v->next)
-        all[k++] = v;
+    for (v = sh_var_first(&sh->ctx, &it), k = 0; v; v = sh_var_next(&sh->ctx, &it))
+        all[k++] = (sh_var *)v; /* to read: a shared table's base is the parent's */
     qsort(all, (size_t)k, sizeof(sh_var *), cmp_var);
     *n = k;
     return all;
@@ -3536,8 +3545,7 @@ static long declare_main(sh_shell *sh, int mode, int argc, char **argv, const sh
                 const sh_var *lv;
                 if (j && !strcmp(nm[j], nm[j - 1]))
                     continue;
-                for (lv = sh->ctx.vars; lv && strcmp(lv->name, nm[j]); lv = lv->next)
-                    ;
+                lv = sh_lookup_raw(&sh->ctx, nm[j]);
                 if (lv)
                     decl_print(sh, io, lv, mode);
                 else {
@@ -5752,7 +5760,8 @@ long sh_word_list(const sh_shell *sh, int kind, char *out, long max)
     int i;
     if (kind == SH_WORDS_VARIABLES) {
         const sh_var *v;
-        for (v = sh->ctx.vars; v; v = v->next)
+        sh_var_iter it;
+        for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
             n = add_word(out, n, max, v->name);
         return n;
     }
@@ -6255,7 +6264,8 @@ static void comp_names(sh_shell *sh, unsigned act, const char *w, sh_list *out)
             sh_list_add(&l, builtins[i].name);
     if (act == 32) {
         const sh_var *v;
-        for (v = sh->ctx.vars; v; v = v->next)
+        sh_var_iter it;
+        for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
             sh_list_add(&l, v->name);
     }
     if (act == CA_FUNC) {
@@ -7820,7 +7830,8 @@ static int is_external(sh_shell *sh, const sh_node *n)
  * one (then the shell's variables, directory and functions are safe from
  * it), else here with the directory restored. io's owned streams go with
  * it. wait: its status; else *job (0: it ran here, or did not start). */
-static long subshell_mode(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, int stage, long *job)
+static long subshell_mode(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, int stage, int share,
+                          long *job)
 {
     sh_shell *c;
     sh_parse *t;
@@ -7836,7 +7847,7 @@ static long subshell_mode(sh_shell *sh, const sh_node *n, const sh_io *io, int w
         free(dir);
         return r;
     }
-    c = sh_shell_clone(sh);
+    c = sh_shell_clone(sh, share);
     t = (sh_parse *)malloc(sizeof(sh_parse));
     if (t)
         sh_parse_copy(n, t);
@@ -7907,7 +7918,8 @@ static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
 
 static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, long *job)
 {
-    return subshell_mode(sh, n, io, wait, 0, job);
+    /* waited for: os.spawn returns at the child's end, so the child may read the shell's variables */
+    return subshell_mode(sh, n, io, wait, 0, wait == 1, job);
 }
 
 static long exec_cmd(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job)
@@ -7971,7 +7983,7 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
                 ps0[i] = r;
             }
         } else if (sh->os.spawn && (i + 1 < k || !(sh->opts & SO_LASTPIPE))) {
-            subshell_mode(sh, st[i], &sio[i], 0, 1, &job[i]);
+            subshell_mode(sh, st[i], &sio[i], 0, 1, 0, &job[i]);
             started[i] = 1; /* or failed: its streams are gone either way */
         }
     }
@@ -9485,7 +9497,9 @@ static char *core_subst1(sh_ctx *c, const char *cmd)
         }
         io.out = wr;
         io.owned = SH_OWN_OUT;
-        st = subshell(sh, p.tree, &io, 0, &job);
+        /* the shell reads the pipe to its end, then waits for the child: nothing here changes a
+         * variable before the child has ended, so it reads them in place (share) */
+        st = subshell_mode(sh, p.tree, &io, 0, 0, 1, &job);
         sh_parse_free(&p);
         while ((n = sh->os.read(sh->os.data, rd, buf, sizeof(buf))) > 0)
             pb_add(&out, buf, n);

@@ -55,7 +55,9 @@
     X(FORARITH) /* a for (( ; ; )) loop ran */ \
     X(REGEX_CAPTURE) /* a [[ =~ ]] matched and set BASH_REMATCH */ \
     X(DBRACK) /* a [[ ]] ran */ \
-    X(ARITH_ASSIGN) /* an arithmetic assignment, ++ or -- stored a value */
+    X(ARITH_ASSIGN) /* an arithmetic assignment, ++ or -- stored a value */ \
+    X(VAR_SHARED) /* a subshell read its parent's variables in place (sh_shell_clone, share) */ \
+    X(VAR_COPY_UP) /* a subshell copied one of its parent's variables before writing it */
 
 #ifdef SH_HITS
 #define SH_HIT_ENUM(n) SH_HIT_##n,

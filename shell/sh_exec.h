@@ -323,8 +323,11 @@ void sh_shell_free(sh_shell *sh);
 
 /* A subshell's copy of sh: variables (and which are exported), $0 $1.. $?,
  * functions (bodies copied), aliases, the OS table and streams; no jobs.
- * malloc'ed; 0 when memory runs out. */
-sh_shell *sh_shell_clone(const sh_shell *sh);
+ * malloc'ed; 0 when memory runs out. share: the caller waits for the
+ * subshell's end before sh runs anything again, so the subshell reads sh's
+ * variables in place and copies only those it writes (sh_ctx.base); a
+ * shell that is itself sharing (or share 0) copies them all. */
+sh_shell *sh_shell_clone(const sh_shell *sh, int share);
 
 /* In the subshell's process: run tree with io, close io's owned streams,
  * free child and tree (both malloc'ed); the exit status. */

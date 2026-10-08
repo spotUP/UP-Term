@@ -8,9 +8,10 @@ One run: vsh (VSH=<binary>, default build/amiga/vsh, copied to VTC:v44mem/vsh) r
 `C:Avail FLUSH TOTAL` before the fill (m0), after it (m1), after `unset a` (m2) and after a second fill
 and unset (m3). Avail writes to RAM: files made before m0, so no measurement adds a file node.
 
-Not with `$(C:Avail ...)`: a command substitution is a subshell process holding a copy of the shell's
-variables (sh_shell_clone), so the array is counted twice while Avail runs: 53.95 bytes per element
-on rig 2 for the same build that takes 27.9 here (2026-10-08).
+Not with `$(C:Avail ...)`: a command substitution was a subshell process holding a copy of the shell's
+variables (sh_shell_clone), so the array was counted twice while Avail ran: 53.95 bytes per element
+on rig 2 for the same build that takes 27.9 here (2026-10-08). Since the shared table it holds none
+(tools/rig/substmem_rig.py), but the file keeps the measurement independent of that.
 
 Each run's numbers go to build/<rig>/userland/v44mem/<vsh sha1>.log as it ends; the next call goes on
 from the recorded runs (--runs N in total, --fresh starts again). Exit 0 when every recorded run of this

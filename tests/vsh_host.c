@@ -151,15 +151,16 @@ static void close_owned(const sh_io *io)
 static char **build_envp(const sh_shell *sh)
 {
     const sh_var *v;
+    sh_var_iter it;
     char **envp;
     int n = 0, i = 0;
-    for (v = sh->ctx.vars; v; v = v->next)
+    for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
         if ((v->attr & SH_ATTR_EXPORT) && !v->arr && sh_var_str(v))
             n++;
     envp = (char **)calloc((size_t)n + 1, sizeof(char *));
     if (!envp)
         return 0;
-    for (v = sh->ctx.vars; v; v = v->next)
+    for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
         if ((v->attr & SH_ATTR_EXPORT) && !v->arr && sh_var_str(v)) {
             size_t len = strlen(v->name) + strlen(sh_var_str(v)) + 2;
             envp[i] = (char *)malloc(len);

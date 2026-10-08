@@ -40,13 +40,94 @@ void sh_list_free(sh_list *l)
     l->n = l->cap = 0;
 }
 
-static sh_var *find(const sh_ctx *c, const char *name)
+static void var_free(sh_var *v);
+
+/* the own list's node of NAME, a tombstone too */
+static sh_var *own_find(const sh_ctx *c, const char *name)
 {
     sh_var *v;
     for (v = c->vars; v; v = v->next)
         if (!strcmp(v->name, name))
             return v;
     return 0;
+}
+
+static const sh_var *base_find(const sh_ctx *c, const char *name)
+{
+    const sh_var *v;
+    for (v = c->base; v; v = v->next)
+        if (!strcmp(v->name, name))
+            return v;
+    return 0;
+}
+
+/* NAME, to read: the own list, else the base (a node there is the parent's: never written through) */
+static sh_var *find(const sh_ctx *c, const char *name)
+{
+    sh_var *v = own_find(c, name);
+    if (v)
+        return (v->attr & SH_ATTR_GONE) ? 0 : v;
+    return (sh_var *)base_find(c, name);
+}
+
+/* NAME, to write: the own list's, the base's copied into it first; 0 when it is not set */
+static sh_var *find_w(sh_ctx *c, const char *name)
+{
+    sh_var *v = own_find(c, name);
+    const sh_var *b;
+    if (v)
+        return (v->attr & SH_ATTR_GONE) ? 0 : v;
+    if (!(b = base_find(c, name)) || !(v = sh_var_copy(b)))
+        return 0;
+    SH_HIT(VAR_COPY_UP);
+    v->next = c->vars;
+    c->vars = v;
+    return v;
+}
+
+/* the own list's node of NAME out and freed (a tombstone too) */
+static void unlink_own(sh_ctx *c, const char *name)
+{
+    sh_var **p;
+    for (p = &c->vars; *p; p = &(*p)->next)
+        if (!strcmp((*p)->name, name)) {
+            sh_var *v = *p;
+            *p = v->next;
+            var_free(v);
+            return;
+        }
+}
+
+const sh_var *sh_var_next(const sh_ctx *c, sh_var_iter *it)
+{
+    const sh_var *v = it->v ? it->v->next : 0;
+    for (;;) {
+        if (!v && !it->in_base) {
+            it->in_base = 1;
+            v = c->base;
+        }
+        if (!v)
+            break;
+        if (!it->in_base ? !(v->attr & SH_ATTR_GONE) : !own_find(c, v->name))
+            break;
+        v = v->next;
+    }
+    it->v = v;
+    return v;
+}
+
+const sh_var *sh_var_first(const sh_ctx *c, sh_var_iter *it)
+{
+    const sh_var *v = c->vars;
+    it->in_base = 0;
+    while (v && (v->attr & SH_ATTR_GONE))
+        v = v->next;
+    if (v) {
+        it->v = v;
+        return v;
+    }
+    it->v = 0;
+    return sh_var_next(c, it);
 }
 
 /* The name a reference leads to (declare -n): at most 8 links. A chain that comes back to a name
@@ -323,9 +404,12 @@ int sh_assign(sh_ctx *c, const char *name, const char *sub, const char *value, i
     v = find(c, name);
     if (v && (v->attr & SH_ATTR_READONLY))
         return 1;
+    if (v && !(v = find_w(c, name)))
+        return 1; /* no memory to copy the parent's variable */
     if (v)
         v->attr &= (unsigned short)~SH_ATTR_NOVALUE;
     if (!v) {
+        unlink_own(c, name); /* a tombstone of the name */
         v = (sh_var *)calloc(1, sizeof(sh_var));
         if (!v)
             return 1;
@@ -384,10 +468,10 @@ unsigned sh_attr(const sh_ctx *c, const char *name)
 
 void sh_attr_change(sh_ctx *c, const char *name, unsigned set, unsigned clear)
 {
-    sh_var *v = find(c, name);
+    sh_var *v = find_w(c, name);
     if (!v) {
         sh_set(c, name, "");
-        v = find(c, name);
+        v = find_w(c, name);
         if (v && (set & (SH_ATTR_ARRAY | SH_ATTR_ASSOC))) {
             free(v->sv);
             v->sv = 0;
@@ -424,6 +508,8 @@ int sh_array_reset(sh_ctx *c, const char *name, int assoc)
     v = find(c, name);
     if (v && (v->attr & SH_ATTR_READONLY))
         return 1;
+    if (v && !(v = find_w(c, name)))
+        return 1;
     if (v)
         v->attr &= (unsigned short)~SH_ATTR_NOVALUE;
     if (v && v->arr && is_assoc(v) == assoc) {
@@ -448,7 +534,7 @@ int sh_array_reset(sh_ctx *c, const char *name, int assoc)
         v->attr = keep;
     } else {
         sh_attr_change(c, name, assoc ? SH_ATTR_ASSOC : SH_ATTR_ARRAY, 0);
-        v = find(c, name);
+        v = find_w(c, name);
         if (v)
             v->attr &= (unsigned short)~SH_ATTR_NOVALUE;
         return 0;
@@ -486,17 +572,21 @@ sh_var *sh_var_copy(const sh_var *v)
     return r;
 }
 
-/* remove the variable NAME whatever its attributes */
+/* remove the variable NAME whatever its attributes; the base's is hidden by a tombstone */
 static void drop(sh_ctx *c, const char *name)
 {
-    sh_var **p;
-    for (p = &c->vars; *p; p = &(*p)->next)
-        if (!strcmp((*p)->name, name)) {
-            sh_var *v = *p;
-            *p = v->next;
-            var_free(v);
-            return;
-        }
+    sh_var *t = 0;
+    /* name may be the dropped node's own: the tombstone takes a copy before it goes */
+    if (base_find(c, name) && (t = (sh_var *)calloc(1, sizeof(sh_var))) != 0 && !(t->name = sdup(name))) {
+        free(t);
+        t = 0;
+    }
+    unlink_own(c, t ? t->name : name);
+    if (t) {
+        t->attr = SH_ATTR_GONE;
+        t->next = c->vars;
+        c->vars = t;
+    }
 }
 
 sh_var *sh_var_save(const sh_ctx *c, const char *name)
@@ -507,7 +597,7 @@ sh_var *sh_var_save(const sh_ctx *c, const char *name)
 
 void sh_var_link(sh_ctx *c, sh_var *v)
 {
-    drop(c, v->name);
+    unlink_own(c, v->name);
     v->next = c->vars;
     c->vars = v;
 }
@@ -652,6 +742,8 @@ int sh_unset_elem(sh_ctx *c, const char *name, const char *sub)
             drop(c, v->name);
         return 0;
     }
+    if (!(v = find_w(c, v->name)))
+        return 1;
     slot = elem_slot(c, v, sub, 0);
     if (!slot)
         return 0;
@@ -664,10 +756,10 @@ int sh_unset_elem(sh_ctx *c, const char *name, const char *sub)
 
 void sh_export(sh_ctx *c, const char *name)
 {
-    sh_var *v = find(c, name);
+    sh_var *v = find_w(c, name);
     if (!v) {
         sh_set(c, name, "");
-        v = find(c, name);
+        v = find_w(c, name);
     }
     if (v)
         v->attr |= SH_ATTR_EXPORT;
@@ -675,6 +767,7 @@ void sh_export(sh_ctx *c, const char *name)
 
 void sh_ctx_free(sh_ctx *c)
 {
+    c->base = 0; /* the parent's: never freed here */
     while (c->vars) {
         drop(c, c->vars->name);
     }
@@ -2074,14 +2167,15 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
         /* ${!prefix*} ${!prefix@}: the names of the variables that start with prefix, sorted */
         pv ns;
         const sh_var *vp;
+        sh_var_iter it;
         long q, r, pl = (long)strlen(name);
         memset(&ns, 0, sizeof(ns));
-        for (vp = e->c->vars; vp; vp = vp->next)
+        for (vp = sh_var_first(e->c, &it); vp; vp = sh_var_next(e->c, &it))
             ns.n++;
         ns.v = (char **)calloc((size_t)ns.n + 1, sizeof(char *));
         ns.own = 1;
         ns.n = 0;
-        for (vp = e->c->vars; ns.v && vp; vp = vp->next)
+        for (vp = sh_var_first(e->c, &it); ns.v && vp; vp = sh_var_next(e->c, &it))
             if (!strncmp(vp->name, name, (size_t)pl))
                 ns.v[ns.n++] = vp->name;
         for (q = 1; q < ns.n; q++) {
