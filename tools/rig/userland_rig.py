@@ -57,6 +57,7 @@ BASH_SKIP = ROOT / "tests/bash/rig-skip.txt"
 VTC = paths.RIG / "vtc"
 VERDICTS = paths.RIG / "userland"
 PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", paths.repo("upterm-ports")))
+COREUTILS = ROOT / "dist/gg/coreutils-5.2.1/bin"
 SYSBIN = PORTS / "build/sysroot/SYS/UP-Term"
 
 
@@ -239,12 +240,15 @@ def stage_bash(area, wanted):
     pkg = "bash-" + area
     (VTC / "userland").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "build/amiga/vsh", VTC / "vsh")
-    # the ports built so far (grep; there are no coreutils for the rig: probes that need cat, tr, env,
-    # mkdir ... are in rig-skip.txt)
+    # the ports built so far (grep) and the kit's coreutils (dist/gg: cat, tr, env, mkdir, wc ...;
+    # the rig's system disk has none), on PATH as /VTC/userland/bin
     (VTC / "userland/bin").mkdir(parents=True, exist_ok=True)
     for tool in ("grep", "egrep", "fgrep"):
         if (SYSBIN / "bin" / tool).exists():
             shutil.copyfile(SYSBIN / "bin" / tool, VTC / "userland/bin" / tool)
+    for f in sorted(COREUTILS.iterdir()):
+        if f.is_file():
+            shutil.copyfile(f, VTC / "userland/bin" / f.name)
     pdest = VTC / "userland/bash" / area
     shutil.rmtree(pdest, ignore_errors=True)
     pdest.mkdir(parents=True)

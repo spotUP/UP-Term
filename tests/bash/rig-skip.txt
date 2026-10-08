@@ -1,1 +1,7 @@
 # area/name<TAB>reason: probes the rig does not run (host-only commands). Empty until the first rig run (plan V9).
+builtins/coproc	hangs the rig (coproc over PIPE: never ends; open Amiga bug, V85 rig half) and wedges amiagent for the rest of the run
+redir/pipe_last_stage_redirect	hangs the rig; it redirects to ${TMPDIR:-/tmp}/pls$$ and the rig has no /tmp (cause not confirmed; the same shape with RAM: paths passes in vshpipe_rig)
+test/testx	needs /bin/sh, which the rig does not have
+test/t_perm	set-uid, set-gid and sticky bits do not exist in AmigaDOS protection
+test/t_link	the rig VTC: is a host folder (no soft links); -L is checked on RAM: by hand
+test/testL	the rig VTC: is a host folder (no soft links); -L is checked on RAM: by hand

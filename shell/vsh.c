@@ -15,6 +15,7 @@
 #include <dos/dostags.h>
 #include <dos/dosextens.h>
 #include <dos/var.h>
+#include <ctype.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/icon.h>
@@ -1115,6 +1116,73 @@ static char *os_realpath(void *os, const char *path)
  * the script bit also makes a file executable. Unconfirmed until the rig: how a soft
  * link is detected without following it (nofollow is ignored: -L is never true), and
  * which bits ixemul-built binaries carry. */
+static int same_name(const char *a, const char *b)
+{
+    while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b)) {
+        a++;
+        b++;
+    }
+    return !*a && !*b;
+}
+
+/* Is `path` itself a soft link (not what it points to)? Lock follows links, so the entry is
+ * looked up by name among its directory's entries, where ExNext reports ST_SOFTLINK. */
+static int os_is_link(const char *path)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR win = me->pr_WindowPtr;
+    char dir[512];
+    const char *leaf = path, *q;
+    BPTR lock;
+    struct FileInfoBlock *fib;
+    int found = 0;
+    size_t dn;
+    for (q = path; *q; q++)
+        if (*q == '/' || *q == ':')
+            leaf = q + 1;
+    dn = (size_t)(leaf - path);
+    if (!*leaf || dn >= sizeof(dir))
+        return 0;
+    memcpy(dir, path, dn);
+    dir[dn] = 0;
+    me->pr_WindowPtr = (APTR)-1;
+    lock = Lock((STRPTR)dir, SHARED_LOCK);
+    me->pr_WindowPtr = win;
+    if (!lock)
+        return 0;
+    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (fib && Examine(lock, fib)) {
+        while (ExNext(lock, fib)) {
+            if (same_name(fib->fib_FileName, leaf)) {
+                found = fib->fib_DirEntryType == 3;   /* ST_SOFTLINK */
+                break;
+            }
+        }
+    }
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    UnLock(lock);
+    return found;
+}
+
+/* Can a file be run? Amiga protection bits say "not forbidden" for every file a program made, a
+ * text file included, so a file is executable when E allows it and it is a script (the S bit) or
+ * starts with the hunk header 0x000003F3. */
+static int os_runnable(const char *path, unsigned long prot)
+{
+    BPTR fh;
+    unsigned long magic = 0;
+    if (prot & (1UL << 6))
+        return 1;
+    fh = Open((STRPTR)path, MODE_OLDFILE);
+    if (!fh)
+        return 0;
+    if (Read(fh, &magic, 4) != 4)
+        magic = 0;
+    Close(fh);
+    return magic == 0x000003F3UL;
+}
+
 static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
 {
     struct Process *me = (struct Process *)FindTask(0);
@@ -1123,7 +1191,15 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
     struct FileInfoBlock *fib;
     int r = -1;
     (void)os;
-    (void)nofollow;
+    if (nofollow && os_is_link(path)) {
+        memset(st, 0, sizeof(*st));
+        st->type = SH_ST_FILE;
+        st->link = 1;
+        st->mode = 0777u;
+        st->access = 7;
+        st->owned = st->group = 1;
+        return 0;
+    }
     /* a question ("is there a file?"), never an "insert volume" requester: a $PATH entry on a
      * volume this machine does not have made `type x` wait for a click nobody gives */
     me->pr_WindowPtr = (APTR)-1;
@@ -1138,10 +1214,12 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
         unsigned long p = (unsigned long)fib->fib_Protection;
         memset(st, 0, sizeof(*st));
         st->type = fib->fib_DirEntryType > 0 ? SH_ST_DIR : SH_ST_FILE;
-        st->size = fib->fib_Size;
+        st->size = st->type == SH_ST_DIR ? 512 : fib->fib_Size;   /* a directory takes a block, as on Unix: test -s */
         st->mtime = st->atime = secs;
         st->access = ((p & (1UL << 3)) ? 0u : 4u) | ((p & (1UL << 2)) ? 0u : 2u) |
                      ((!(p & (1UL << 1)) || (p & (1UL << 6))) ? 1u : 0u);
+        if (st->type == SH_ST_FILE && (st->access & 1) && !os_runnable(path, p))
+            st->access &= ~1u;
         st->mode = ((st->access & 4) ? 0444u : 0u) | ((st->access & 2) ? 0200u : 0u) | ((st->access & 1) ? 0111u : 0u);
         st->owned = st->group = 1;
         st->dev = (long)((struct FileLock *)BADDR(lock))->fl_Volume;
