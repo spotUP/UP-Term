@@ -25,6 +25,7 @@
 #include <sys/wait.h>
 #include <dirent.h>
 #include <poll.h>
+#include <spawn.h>
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -233,7 +234,25 @@ static long h_run(void *os, char **argv, const sh_io *io, int wait)
         return -1;
     }
     envp = build_envp(sh);
-    pid = fork();
+    /* posix_spawn, not fork: this test build runs under ASan, whose fork copies its shadow mappings
+     * (about 65 ms a command on macOS, 3 ms spawned), so posix/special_errors (29 `$BASH -c`) took
+     * 4-5 s of its 5 s. The same dup2s in the same order; fork stays the way when spawning fails (a
+     * file execve refuses: the child's 127, as before) */
+    {
+        posix_spawn_file_actions_t fa;
+        int ok = posix_spawn_file_actions_init(&fa) == 0;
+        if (ok && io->in)
+            ok = posix_spawn_file_actions_adddup2(&fa, FD(io->in), 0) == 0;
+        if (ok && io->out)
+            ok = posix_spawn_file_actions_adddup2(&fa, FD(io->out), 1) == 0;
+        if (ok && io->err)
+            ok = posix_spawn_file_actions_adddup2(&fa, FD(io->err), 2) == 0;
+        if (!ok || posix_spawn(&pid, exe, &fa, 0, argv, envp ? envp : (char **)0) != 0)
+            pid = 0;
+        posix_spawn_file_actions_destroy(&fa);
+    }
+    if (!pid)
+        pid = fork();
     if (pid < 0) {
         close_owned(io);
         return -1;
