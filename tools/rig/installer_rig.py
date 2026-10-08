@@ -38,7 +38,7 @@ Confirmed on the rig (2026-10-07, Installer 47.19): the Installer's custom gadge
 are driven by gadget id (90 Proceed, 91 Abort, 89 Make New Drawer, 92 the askdir string); the string gadget keeps
 only a path that exists, so the dest drawer is made through Make New Drawer (dialog: string 1, OK 90, Cancel 91).
 A page unchanged 60 s after a click is a FAIL (never a hang)."""
-import hashlib, json, os, pathlib, re, shlex, struct, sys, time
+import hashlib, json, os, pathlib, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ami
@@ -102,8 +102,11 @@ def windows(tree):
 
 
 def click(box):
+    # UITREE gives screen pixels, CLICK takes Intuition pointer units: the same on the 3.1 rig's RTG screen,
+    # y doubled on 3.2's native non-interlaced Workbench (a raw click at Proceed's y 191 landed at y 95, in
+    # the page's text: the 3.2 stall of 2026-10-08). ami.click_px scales.
     x, y, w, h = box
-    ami.req(0x08, bytes([5]) + struct.pack('>HH', x + w // 2, y + h // 2) + bytes([0, 1]))
+    ami.click_px(x + w // 2, y + h // 2)
 
 
 def installer_running(inst):
