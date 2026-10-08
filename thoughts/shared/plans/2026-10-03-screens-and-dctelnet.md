@@ -30,6 +30,12 @@ else should be ported over from DC Telnet?"
   25 rows do not fit.
 - **PETSCII** is a fourth personality of the engine (host-testable), with C64 fonts.
 
+- **Decision 2026-10-08 (owner):** DCTelnet is the BBS client; UP-Term gets no second copy of its
+  BBS features (PETSCII, capture, ARexx port, ANSI music, macros, rlogin, ZMODEM autostart).
+  DCTelnet runs on UP-Term's engine (dctelnet-vtcon feature/vtcon-engine), so UP-Term reuses it
+  by running DCTelnet in a window, not by porting code. A first rlogin copy in net/tn.c was
+  written and discarded the same day for this reason.
+
 ## Checklist
 
 - [x] P1.1 own screen: OWNSCREEN / FULLSCREEN / PUBSCREEN / SCREENMODE / DEPTH and the profile keys
@@ -62,11 +68,30 @@ else should be ported over from DC Telnet?"
       cursor check failing on the old code.
 - [ ] P3 (OPEN 2026-10-06: the planar fast path exists, 7ecdb88, and RT1/CC1 hardware proofs, but no cycle-exact comparison against Text() and no lazy-WaitBlit/stride record found) the DIRECT path on the own native screen: lazy WaitBlit, stride, measured cycle-exact
       against Text() (68020; a 68000 row when there is an A500 rig); on by default where it wins.
-- [ ] P4 PETSCII personality: dispatch, screencodes, C64 colours, reverse, keys, 40 columns
+- [x] P4 covered by DCTelnet (dctelnet-vtcon feature/vtcon-engine (also dctelnet-v2) e52dd69 C64 font, f94d59d/2448df3 C64 colour keys, 5894016 charset switch; src/petscii_*.c with tests): PETSCII personality: dispatch, screencodes, C64 colours, reverse, keys, 40 columns
       (16x8 cells), the Petscii fonts; host tests from DCTelnet's.
-- [ ] P5 capture / log to file, Save screen as .ans.
-- [ ] P6 ZMODEM autostart in the window (the stream sniffer) using zm/.
-- [ ] P7 ARexx command port (SEND, WAITFOR, CAPTURE, GETSTATUS).
-- [ ] P8 ANSI music and an audio.device bell (PC-ANSI personality).
-- [ ] P9 function-key macros per profile; a SyncTERM key set; BS/DEL swap.
-- [ ] P10 (HALF DONE: telnet = net/tn.c, net/uptelnet.c, tests/test_telnet.c 28 checks, ffa32a4, not over PTY: but on bsdsocket; rlogin: no code in net/, OPEN; rig run of uptelnet is OWNER step A1.4) a telnet / rlogin command over PTY: (DCTelnet's IAC / NAWS / TTYPE code).
+- [x] P5 covered by DCTelnet (dctelnet-vtcon feature/vtcon-engine (also dctelnet-v2) a71eb3b "Capture to file, save screen as ANSI, find in the scroll back"): capture / log to file, Save screen as .ans.
+- [x] P6 covered by DCTelnet (dctelnet-vtcon feature/vtcon-engine (also dctelnet-v2) 5f28fe1 "Telnet protocol handling and ZModem transfer detection", d58c769, ec7ebb1; src/DCTelnet-protocol.h): ZMODEM autostart in the window (the stream sniffer) using zm/.
+- [x] P7 covered by DCTelnet (dctelnet-vtcon feature/vtcon-engine (also dctelnet-v2) 1a2e1ef "An ARexx port", src/rexxcmd.c, waitfor.c): ARexx command port (SEND, WAITFOR, CAPTURE, GETSTATUS).
+- [x] P8 covered by DCTelnet (dctelnet-vtcon feature/vtcon-engine (also dctelnet-v2) e4ada33 "Bell as a sound or off; ANSI music", src/ansimusic.c, sound.c): ANSI music and an audio.device bell (PC-ANSI personality).
+- [x] P9 covered by DCTelnet for macros, function keys and BS/DEL swap (dctelnet-vtcon feature/vtcon-engine (also dctelnet-v2) deced37 keys, fkey.gui / "Function Keys window" 6196853, APP_BACKSPACE_DEL_SWAPPED in src/prefs.h; UP-Term has its own backspace = del|bs pref, prefs/prefs_core.c). A SyncTERM KEY SET was not found in DCTelnet (only the phone book import, d2b206f): a DCTelnet item, not UP-Term. function-key macros per profile; a SyncTERM key set; BS/DEL swap.
+- [x] P10 telnet stays in UP-Term (net/tn.c, ffa32a4); rlogin covered by DCTelnet (dctelnet-vtcon feature/vtcon-engine (also dctelnet-v2) 0064c01 "Rlogin connections", src/rlogin.c, tests/test_rlogin.c); rig run of uptelnet stays OWNER step A1.4. (was HALF DONE: telnet = net/tn.c, net/uptelnet.c, tests/test_telnet.c 28 checks, ffa32a4, not over PTY: but on bsdsocket; rlogin: no code in net/, OPEN; rig run of uptelnet is OWNER step A1.4) a telnet / rlogin command over PTY: (DCTelnet's IAC / NAWS / TTYPE code).
+
+## Open items triage 2026-10-08
+
+8 lines were open (P3-P10). After the owner decision above, 1 stays open.
+
+| Item | Needs | Verdict |
+|------|-------|---------|
+| P3 native-screen fast path, measured cycle-exact against Text() | rig + owner on hardware | OPEN, UP-Term only. The planar path exists (7ecdb88) with RT1/CC1 hardware proofs, but no cycle-exact comparison and no lazy-WaitBlit/stride record. Needs a bench on the rig (68020; 68000 row needs an A500) and the owner's hardware numbers. Tick needs a measurement. |
+| P4 PETSCII | none | covered by DCTelnet e52dd69, f94d59d, 5894016 |
+| P5 capture / save .ans | none | covered by DCTelnet a71eb3b |
+| P6 ZMODEM autostart | none | covered by DCTelnet 5f28fe1 (detection in src/DCTelnet-protocol.h); UP-Term keeps sz/rz in zm/ for shell use |
+| P7 ARexx port | none | covered by DCTelnet 1a2e1ef |
+| P8 ANSI music, bell | none | covered by DCTelnet e4ada33 (UP-Term's bell: beep/flash, render/vtwin.c cb_bell) |
+| P9 macros, keys, BS/DEL | none | covered by DCTelnet deced37, 6196853; SyncTERM key set is absent there: a DCTelnet item |
+| P10 telnet / rlogin | owner step A1.4 | telnet in UP-Term done (ffa32a4); rlogin covered by DCTelnet 0064c01 |
+
+Evidence: commit subjects and files read in ~/Code/dctelnet-vtcon (feature/vtcon-engine); the
+hashes exist in both DCTelnet checkouts. Not run: DCTelnet's `make ci` (Docker/VBCC) and its
+behaviour on UP-Term's engine are unverified here.
