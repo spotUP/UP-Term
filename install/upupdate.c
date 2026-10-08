@@ -7,7 +7,7 @@
  * (<kit>/Files/MANIFEST), KIT: this kit's drawer, the copies' source. The
  * comparison is updiff.c's; this writes what the Installer reads:
  *   ENV:UPTUPD<part>    the KB the part copies, set for every part that runs
- *   ENV:UPTUPDKB        all of them
+ *   ENV:UPTUPDKB        all of them (the sum of the parts' KB)
  *   ENV:UPTVEROLD / ENV:UPTVERNEW   the first lines of the two VERSIONS
  *                       (the files beside the two manifests)
  *   T:UPTUPD-<part>     a copy part's script: its new and changed files
@@ -116,6 +116,7 @@ int main(void)
     char *a = 0, *b = 0, name[64], kb[16];
     ud_result *r = 0;
     int i, parts = 0, rc = 20;
+    unsigned long total = 0;
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"upupdate");
         return 20;
@@ -137,9 +138,11 @@ int main(void)
             strcat(name, r->part[i].name);
             number(kb, ud_kb(&r->part[i]));
             setvar(name, kb);
+            total += ud_kb(&r->part[i]);
             parts++;
         }
-    number(kb, (r->bytes + 1023) / 1024);
+    /* the parts' KB summed, as the Installer's bar adds them (each part at least 1) */
+    number(kb, total);
     setvar("UPTUPDKB", kb);
     version((const char *)args[0], "UPTVEROLD");
     version((const char *)args[1], "UPTVERNEW");

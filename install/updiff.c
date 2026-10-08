@@ -1,5 +1,4 @@
 /* updiff -- the installed kit's manifest against the new kit's (updiff.h). */
-#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include "updiff.h"
@@ -101,23 +100,20 @@ typedef struct {
     char madedir[UD_MAXPARTS][256];
 } ud_out;
 
-/* the strings up to a 0 joined into buf; 0 when they do not fit */
-static int join(char *buf, size_t n, ...)
+/* buf = a b c ... joined (0 for the ones not used); 0 when they do not fit */
+static int join(char *buf, size_t n, const char *a, const char *b, const char *c, const char *d,
+                const char *e, const char *f, const char *g, const char *h)
 {
-    va_list ap;
-    const char *s;
+    const char *s[8];
     size_t k = 0;
-    va_start(ap, n);
-    while ((s = va_arg(ap, const char *)) != 0) {
-        size_t m = strlen(s);
-        if (k + m >= n) {
-            va_end(ap);
-            return 0;
-        }
-        memcpy(buf + k, s, m);
+    int i;
+    s[0] = a, s[1] = b, s[2] = c, s[3] = d, s[4] = e, s[5] = f, s[6] = g, s[7] = h;
+    for (i = 0; i < 8; i++) {
+        size_t m = s[i] ? strlen(s[i]) : 0;
+        if (k + m >= n) return 0;
+        if (m) memcpy(buf + k, s[i], m);
         k += m;
     }
-    va_end(ap);
     buf[k] = 0;
     return 1;
 }
@@ -141,9 +137,9 @@ static void emit_copy(ud_out *o, ud_result *r, ud_part *p, const char *kit, cons
         dir[n] = 0;
         if (!strncmp(o->madedir[pi], dir, n) && (o->madedir[pi][n] == 0 || o->madedir[pi][n] == '/'))
             continue;   /* made for an earlier file of this drawer */
-        if (!join(line, sizeof(line), "If NOT EXISTS \"UP-Term:", p->drawer, "/", dir, "\"", (char *)0)) return;
+        if (!join(line, sizeof(line), "If NOT EXISTS \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0)) return;
         say(o, p, line);
-        join(line, sizeof(line), "  MakeDir \"UP-Term:", p->drawer, "/", dir, "\"", (char *)0);
+        join(line, sizeof(line), "  MakeDir \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0);
         say(o, p, line);
         say(o, p, "EndIf");
     }
@@ -153,16 +149,21 @@ static void emit_copy(ud_out *o, ud_result *r, ud_part *p, const char *kit, cons
         o->madedir[pi][s - rest] = 0;
     }
     if (join(line, sizeof(line), "Copy \"", kit, (k && kit[k - 1] != ':' && kit[k - 1] != '/') ? "/" : "",
-             path, "\" \"UP-Term:", p->drawer, "/", rest, "\" CLONE QUIET", (char *)0))
+             path, "\" \"UP-Term:", p->drawer, "/", 0) &&
+        strlen(line) + strlen(rest) + 16 < sizeof(line)) {
+        strcat(line, rest);
+        strcat(line, "\" CLONE QUIET");
+    } else
+        return;
         say(o, p, line);
 }
 
 static void emit_delete(ud_out *o, ud_part *p, const char *rest)
 {
     char line[600];
-    if (!join(line, sizeof(line), "If EXISTS \"UP-Term:", p->drawer, "/", rest, "\"", (char *)0)) return;
+    if (!join(line, sizeof(line), "If EXISTS \"UP-Term:", p->drawer, "/", rest, "\"", 0, 0, 0)) return;
     say(o, p, line);
-    join(line, sizeof(line), "  Delete \"UP-Term:", p->drawer, "/", rest, "\" QUIET", (char *)0);
+    join(line, sizeof(line), "  Delete \"UP-Term:", p->drawer, "/", rest, "\" QUIET", 0, 0, 0);
     say(o, p, line);
     say(o, p, "EndIf");
 }
