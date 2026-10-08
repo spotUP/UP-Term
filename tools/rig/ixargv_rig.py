@@ -15,7 +15,13 @@ outside 33..126 as <hex>):
   - amiagent's Shell runs lines written by hand: one ReadItem reads the same
     way (no star inside quotes), one with stars in quotes;
   - readitem (a native ReadArgs command) runs the first hand-written line, as
-    the reference for the shared rules.
+    the reference for the shared rules;
+  - vsh starts it through a Shell: as a Resident command (ixargvr) and as the
+    command of AmigaDOS Run; the argv then travels in the local variable
+    __ixargv (Run's output: IXARGV_OUT=RAM:ixrun.out).
+It also checks that vsh gives a loaded command its drawer as PROGDIR: (C:List
+finds itself) and that python3 (VTC:Python3, when the rig has it) finds its
+library from vsh with no PYTHONHOME. VSH=<binary> runs another vsh.
 Installs IXEMUL= (default the build295 one) as ixpty_rig does; IXEMUL=<old
 library> is the A/B. The rig must be up; `make build/amiga/vsh
 build/amiga/ixargv build/amiga/readitem` first."""
@@ -56,6 +62,10 @@ VSH_CASES = [
 DOS_LINE = '"" plain "q"r a"b "x y"'
 DOS_WANT = ["", "plain", "q", "r", 'a"b', "x y"]
 
+# the arguments for the ixemul programs a Shell starts for vsh: a Resident one
+# (ixargvr, made resident from VTC:ixargv) and the command of AmigaDOS Run
+SHELL_ARGS = ["a**b", 'c*"d', '"', "\n", "", "x y", "k=v", "*.c", "#?", "p\nq"]
+
 # a native command vsh runs right after the ixemul ones: it still gets the
 # AmigaDOS line (ReadArgs reads ** as *, *" as "), and no argv meant for another
 NATIVE_ARGS = ["a**b", 'c*"d', "x y"]
@@ -68,25 +78,53 @@ STAR_LINE = ('-c "print(2**3)" "print(6*7)" "*.c" "a*b" "[*]" "*exe" "**exe" "*"
 STAR_WANT = ["-c", "print(2**3)", "print(6*7)", "*.c", "a*b", "[*]", "*exe", "**exe", "*", "error.*",
              "*name*", "x*Ny", "a*", "b"]
 
+# python3 on the rig (VTC:Python3, a copy of the kit's drawer)
+PYTHON = (VTC / "Python3/bin/python3").exists()
+
 def sq(a):
     return "'" + a.replace("'", "'\\''") + "'"
 
+def report(name, good, want_s, got_s):
+    print("%s %s" % ("PASS" if good else "FAIL", name))
+    if not good:
+        sys.stdout.write("  want " + want_s.replace("\n", " | ") + "\n  got  " + got_s.replace("\n", " | ") + "\n")
+    return good
+
 def main():
-    for name in ("vsh", "ixargv", "readitem"):
+    for name in ("ixargv", "readitem"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
+    # VSH=: another vsh binary (the A/B)
+    shutil.copyfile(os.environ.get("VSH") or ROOT / "build/amiga/vsh", VTC / "vsh")
     ixpty_rig.use_ixemul()
     ok = True
+    ixpty_rig.run("Resident >NIL: ixargvr REMOVE\nResident ixargvr VTC:ixargv PURE\nDelete >NIL: RAM:ixrun.out", 60)
     script = "".join("echo '== %s'\nVTC:ixargv %s\n" % (n, " ".join(sq(a) for a in args))
                      for n, args in VSH_CASES)
+    shell_args = " ".join(sq(a) for a in SHELL_ARGS)
+    script += "echo '== resident'\nixargvr %s\n" % shell_args
+    # a command's program directory (PROGDIR:) is the drawer vsh loaded it from, as the Shell gives
+    # it (C:List finds itself there); python3 finds its library from it, with no PYTHONHOME
+    script += "echo '== progdir'\nC:List PROGDIR:List LFORMAT %n\n"
+    if PYTHON:
+        script += "echo '== python'\nunset PYTHONHOME\nVTC:Python3/bin/python3 -c 'print(2**3)'\n"
+    script += "echo '== run'\nIXARGV_OUT=RAM:ixrun.out run VTC:ixargv %s\n" % shell_args
     script += "echo '== native'\nVTC:readitem %s\n" % " ".join(sq(a) for a in NATIVE_ARGS)
     (VTC / "ixargv.sh").write_bytes(script.encode("latin-1"))
-    rc, out = ixpty_rig.run("VTC:vsh VTC:ixargv.sh", 120)
+    rc, out = ixpty_rig.run("Stack 1000000\nVTC:vsh VTC:ixargv.sh", 300)
     parts = out.split("== ")[1:]
     got = {p.split("\n", 1)[0]: p.split("\n", 1)[1] for p in parts}
     ref = [l[5:-1].lower() for l in got.get("native", "").splitlines() if l.startswith("arg [")]
     good = ref == [show(a).lower() for a in NATIVE_ARGS]
     ok = ok and good
     print("%s vsh native readargs %s" % ("PASS" if good else "FAIL", ref))
+    ok = report("vsh resident ixemul command", got.get("resident") == want(SHELL_ARGS),
+                want(SHELL_ARGS), got.get("resident") or "(none)") and ok
+    ok = report("vsh progdir", got.get("progdir") == "List\n", "List\n", got.get("progdir") or "(none)") and ok
+    if PYTHON:
+        ok = report("vsh python3 finds its library", got.get("python") == "8\n", "8\n",
+                    got.get("python") or "(none)") and ok
+    rc, out = ixpty_rig.run("Wait 3\nType RAM:ixrun.out\nResident >NIL: ixargvr REMOVE", 60)
+    ok = report("vsh run ixemul command", out == want(SHELL_ARGS), want(SHELL_ARGS), out) and ok
     for n, args in VSH_CASES:
         good = got.get(n) == want(args)
         ok = ok and good

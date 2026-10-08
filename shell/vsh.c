@@ -80,12 +80,15 @@ typedef struct job {
     char *name;             /* the program name (SetProgramName) */
     char *args;             /* its argument string, ending in \n */
     BPTR seg;               /* the loaded command, or 0: SystemTags */
+    BPTR home;              /* its directory, its PROGDIR: (a lock, or 0) */
     ULONG stack;            /* its stack for RunCommand */
     BPTR in, out, err;
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
     char child[24];         /* the name of the Shell process SystemTags makes */
     char *env;              /* exported variables: name\0value\0 ... \0 */
+    char *ixvar;            /* the argv of the ixemul program a Shell starts for it (sh_ixargv.h) ... */
+    long ixvarlen;          /* ... its bytes, the local variable __ixargv of the runner */
     sh_shell *sub;          /* a subshell: this shell clone runs tree with io */
     sh_parse *tree;
     sh_io io;
@@ -148,7 +151,8 @@ static struct Task *job_process(job *j)
     return t;
 }
 
-static int resolve(const char *name, const char *path, BPTR *seg, char *found, long max);
+static int resolve(const char *name, const char *path, BPTR *seg, char *found, long max, int *ixres, BPTR *home);
+static int same_name(const char *a, const char *b);
 
 /* The ixkill that sends a Unix signal (vsh itself cannot call ixemul): the one beside vsh first (the kit
  * has both in C:; a vsh run from another drawer, the rig's VTC:vsh, has its ixkill there and none in C:,
@@ -172,7 +176,7 @@ static const char *ixkill_name(const char *path)
         t[0] = '"';
         strcat(t, "\"");
     } else {
-        if (resolve("ixkill", path, &seg, found, sizeof(found)) < 0)
+        if (resolve("ixkill", path, &seg, found, sizeof(found), 0, 0) < 0)
             return 0;
         if (seg)
             UnLoadSeg(seg);
@@ -534,6 +538,11 @@ static void runner(void)
             e = v + strlen(v) + 1;
         }
     }
+    /* the argv of the ixemul program a Shell starts here (a Resident command, Run's command): the
+     * Shell (and Run's CLI) copy this process's local variables into the program's process, which
+     * takes it out (ixemul-vtcon cli_args.c); after the exported ones, so none of them replaces it */
+    if (j->ixvar)
+        SetVar((STRPTR)"__ixargv", (STRPTR)j->ixvar, j->ixvarlen, GVF_LOCAL_ONLY);
     /* its CLI carries the command's stack: a Shell SystemTags starts takes
      * its stack from there, and ixemul's stack extension reads it (it was
      * CreateNewProc's 8000, whatever vsh's stack said) */
@@ -544,10 +553,20 @@ static void runner(void)
     if (j->seg) {
         BPTR oin = SelectInput(j->in), oout = SelectOutput(j->out);
         BPTR oerr = me->pr_CES;
+        BPTR ohome = j->home ? SetProgramDir(j->home) : 0;
         if (j->err)
             me->pr_CES = j->err;
         SetProgramName((STRPTR)j->name);
+        /* its program directory (PROGDIR:) is the drawer it was loaded from, as the Shell gives it:
+         * python3 finds its library beside its own file (sys.prefix from GetProgramDir) */
         j->rc = RunCommand(j->seg, j->stack, (STRPTR)j->args, (LONG)strlen(j->args));
+        if (j->home)
+            SetProgramDir(ohome);
+        /* what the command left in its output's buffer goes out now, as the Shell does after a
+         * command: the shell writes the same handle unbuffered (`List ...; echo x` printed x first) */
+        Flush(j->out);
+        if (j->err && j->err != j->out)
+            Flush(j->err);
         TR("runcommand back", j, j->rc);
         me->pr_CES = oerr;
         SelectInput(oin);
@@ -692,19 +711,40 @@ static int lock_is_dir(BPTR lock)
     return dir;
 }
 
-static int resolve(const char *name, const char *path, BPTR *seg, char *found, long max)
+/* The directory of the command file name (relative to the current directory): its program directory,
+ * PROGDIR:, as the Shell gives the command it loads. 0 when there is no such file or no home is asked. */
+static BPTR home_of(const char *name, BPTR *home)
+{
+    BPTR f, d = 0;
+    if (!home)
+        return 0;
+    if ((f = Lock((STRPTR)name, SHARED_LOCK)) != 0) {
+        d = ParentDir(f);
+        UnLock(f);
+    }
+    return *home = d;
+}
+
+static int resolve(const char *name, const char *path, BPTR *seg, char *found, long max, int *ixres, BPTR *home)
 {
     struct CommandLineInterface *cli = Cli();
     BPTR lock, old;
     BPTR *node;
     *seg = 0;
     found[0] = 0;
+    if (home)
+        *home = 0;
+    if (ixres)
+        *ixres = 0;
     if (!strchr(name, ':') && !strchr(name, '/')) {
         struct Segment *r;
         Forbid();
         r = FindSegment((STRPTR)name, 0, 0);
         if (!r)
             r = FindSegment((STRPTR)name, 0, 1);
+        /* a Resident ixemul program (the Shell's own commands have a negative count: no segment of theirs) */
+        if (r && ixres && r->seg_UC >= 0 && r->seg_Seg)
+            *ixres = seg_is_ixemul(r->seg_Seg);
         Permit();
         if (r)
             return 0; /* Resident: the Shell runs it */
@@ -715,7 +755,8 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
         if ((lock = lock_name(name, used, sizeof(used))) != 0 &&
             (strchr(name, ':') || strchr(name, '/') || !lock_is_dir(lock))) {
             UnLock(lock);
-            *seg = LoadSeg((STRPTR)used);
+            if ((*seg = LoadSeg((STRPTR)used)) != 0)
+                home_of(used, home);
             if (strcmp(used, name) && (long)strlen(used) < max)
                 strcpy(found, used); /* "/vol/x" ran as vol:x: a script there runs as that file */
             return 0; /* not loadable (a script): SystemTags */
@@ -746,7 +787,8 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
             }
             if (f) {
                 UnLock(f);
-                *seg = LoadSeg((STRPTR)name);
+                if ((*seg = LoadSeg((STRPTR)name)) != 0)
+                    home_of(name, home);
                 if ((long)(strlen(dir) + strlen(name) + 2) <= max) {
                     strcpy(found, dir);
                     AddPart((STRPTR)found, (STRPTR)name, max);
@@ -769,7 +811,8 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
         }
         if (lock) {
             UnLock(lock);
-            *seg = LoadSeg((STRPTR)name);
+            if ((*seg = LoadSeg((STRPTR)name)) != 0)
+                home_of(name, home);
             CurrentDir(old);
             return 0;
         }
@@ -786,7 +829,8 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
         }
         if (f) {
             UnLock(f);
-            *seg = LoadSeg((STRPTR)name);
+            if ((*seg = LoadSeg((STRPTR)name)) != 0)
+                home_of(name, home);
         }
         UnLock(CurrentDir(old));
         if (f)
@@ -797,10 +841,27 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
 
 static long os_wait(void *os, long id);
 
+/* Is the command name finds (the way vsh finds a command) an ixemul program? */
+static int command_is_ixemul(const char *name, const char *path)
+{
+    BPTR seg;
+    char found[256];
+    int ixres, r;
+    if (resolve(name, path, &seg, found, sizeof(found), &ixres, 0) < 0)
+        return 0;
+    if (!seg)
+        return ixres;
+    r = seg_is_ixemul(seg);
+    UnLoadSeg(seg);
+    return r;
+}
+
 static long os_run(void *os, char **argv, const sh_io *io, int wait)
 {
     sh_shell *sh = ((vproc *)os)->sh;
     char *cmd = command_line(argv), *sp;
+    int ixres;
+    BPTR home;
     const sh_var *v;
     sh_var_iter it;
     job *j;
@@ -809,7 +870,7 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     char found[256];
     if (!cmd)
         return -1;
-    if (resolve(argv[0], sh_get(&sh->ctx, "PATH"), &seg, found, sizeof(found)) < 0) {
+    if (resolve(argv[0], sh_get(&sh->ctx, "PATH"), &seg, found, sizeof(found), &ixres, &home) < 0) {
         free(cmd);
         if ((io->owned & SH_OWN_IN) && io->in)
             close_stream((BPTR)io->in);
@@ -832,6 +893,8 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     if (!j) {
         if (seg)
             UnLoadSeg(seg);
+        if (home)
+            UnLock(home);
         free(cmd);
         return -1;
     }
@@ -859,6 +922,7 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     }
     j->cmd = cmd;
     j->seg = seg;
+    j->home = home;
     j->stack = command_stack(seg);
     j->name = (char *)malloc(strlen(argv[0]) + 1);
     if (j->name)
@@ -888,6 +952,30 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
         if (j->args) {
             strcpy(j->args, sp);
             strcat(j->args, "\n");
+        }
+    }
+    {
+        /* a Shell starts the program, so vsh writes no argument string for it: a Resident ixemul
+         * command, or the ixemul command of AmigaDOS Run (`run cmd args`). Its argv goes in a local
+         * variable, matched against the line the Shell gives it */
+        char **targ = 0;
+        if (!seg && ixres)
+            targ = argv;
+        else if (same_name((const char *)FilePart((STRPTR)argv[0]), "run") && argv[1] &&
+                 command_is_ixemul(argv[1], sh_get(&sh->ctx, "PATH")))
+            targ = argv + 1;
+        if (targ) {
+            char *line = command_line(targ + 1);
+            long n = line ? ixa_len(line, targ + 1) : 0;
+            char *all = line ? (char *)malloc(n + 1) : 0;
+            if (all) {
+                long skip = (long)strlen(line) + 1; /* the variable is the argv alone */
+                ixa_put(all, line, targ + 1);
+                memmove(all, all + skip, (size_t)(n - skip + 1));
+                j->ixvar = all;
+                j->ixvarlen = n - skip;
+            }
+            free(line);
         }
     }
     if (wait) {
@@ -964,10 +1052,13 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
             close_stream(j->err);
         if (seg)
             UnLoadSeg(seg);
+        if (home)
+            UnLock(home);
         free(j->name);
         free(j->args);
         free(cmd);
         free(j->env);
+        free(j->ixvar);
         FreeVec(j);
         return -1;
     }
@@ -1091,10 +1182,13 @@ static long os_wait(void *os, long id)
     }
     if (j->seg)
         UnLoadSeg(j->seg);
+    if (j->home)
+        UnLock(j->home);
     free(j->name);
     free(j->args);
     free(j->cmd);
     free(j->env);
+    free(j->ixvar);
     FreeVec(j);
     return rc;
 }
