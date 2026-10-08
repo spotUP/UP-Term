@@ -1,1 +1,1 @@
-cd dir; echo ${PWD##*/}; pwd -P | sed 's|.*/||'; pwd -L | sed 's|.*/||'
+cd dir; echo ${PWD##*/}; p=$(pwd -P); echo "${p##*/}"; p=$(pwd -L); echo "${p##*/}"

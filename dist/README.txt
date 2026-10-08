@@ -418,10 +418,12 @@ VSH (the shell)
     lists the builtin names only; enable -a lists vsh's builtins, not bash's.
     The hash table is filled by the commands run in the shell itself; the
     commands of a pipeline are hashed in their own subshells, so the table
-    does not change (probe builtins/hash_pipeline). cd -P and pwd -P print
-    the path AmigaDOS resolves (a Lock on it and NameFromLock: soft links
-    followed, an assign turned into its volume); cd -L, the default, keeps the
-    name the shell has (probe builtins/cd_physical). DIRSTACK[n]=dir sets the
+    does not change (probe builtins/hash_pipeline). The work directory has
+    no logical name on the Amiga: AmigaDOS names it by its lock, so after
+    cd V2A: (an assign) or cd link (a soft link) the name is the volume's and
+    the target's (Ram Disk:v2/sub), with cd -L and cd -P alike, and pwd -L
+    and pwd -P print the same; in bash, -L keeps the link's name (probe
+    builtins/cd_physical, tools/rig/vshpath_rig.py). DIRSTACK[n]=dir sets the
     n-th directory of the stack as in bash; element 0 and indexes past the
     stack are dropped, and after unset DIRSTACK it is an ordinary array
     (probe builtins/dirstack_write). coproc [NAME] command works with two

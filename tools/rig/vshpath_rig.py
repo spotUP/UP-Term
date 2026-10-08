@@ -9,6 +9,14 @@ parent directory) names nothing, and keeps the AmigaDOS meaning where it does.
   4. "/" alone is still the parent: in RAM:v2/sub, "cd /" is RAM:v2.
   5. The Amiga meaning wins where it names something: in RAM:v2/sub, a
      drawer RAM:v2/RAM exists, and "cd /RAM" goes there, not to RAM:.
+  6. A test by Unix name: test -d /RAM/v2/sub is true (it was false while
+     cd /RAM/v2/sub worked: the stat looked at the Amiga name only).
+  7. CDPATH in Unix form: CDPATH=/RAM/v2, then cd sub goes to RAM:v2/sub.
+  8. V84, cd -P and pwd -P through a soft link (MakeLink RAM:v2/link
+     RAM:v2/sub FORCE): the target's name, as AmigaDOS resolves it.
+  9. V84, an assign: cd V2A: (Assign V2A: RAM:v2/sub) gives "Ram Disk:v2/sub"
+     with -L and -P alike; the work directory has no logical name on the
+     Amiga (dist/README.txt, Differences from bash).
 
 Run with the rig up: python3 tools/rig/vshpath_rig.py
 """
@@ -37,8 +45,11 @@ def vsh(cmd):
 
 def main():
     shutil.copyfile(ROOT / 'build/amiga/vsh', paths.RIG / 'vtc/vsh')
+    c.run('Assign V2A: REMOVE')
     c.run('Delete RAM:v2 RAM:v2.out ALL QUIET')
     c.run('MakeDir RAM:v2 RAM:v2/sub RAM:v2/RAM')
+    c.run('MakeLink RAM:v2/link RAM:v2/sub FORCE')
+    c.run('Assign V2A: RAM:v2/sub')
     try:
         # C:Version is a file (Echo is the Shell's own on 3.1)
         rc, out = vsh('cd SYS: ; /C/Version exec.library')
@@ -52,7 +63,20 @@ def main():
         check(out.strip().lower().endswith('v2'), '"cd /" is still the parent directory', out)
         rc, out = vsh('cd RAM:v2/sub ; cd /RAM ; pwd')
         check(out.strip().lower().endswith('v2/ram'), 'the Amiga meaning wins where it names something', out)
+        rc, out = vsh('cd SYS: ; test -d /RAM/v2/sub ; echo st=$?')
+        check('st=0' in out, 'test -d /RAM/v2/sub is true', out)
+        rc, out = vsh('cd RAM: ; CDPATH=/RAM/v2 ; cd sub ; pwd')
+        check(out.strip().lower().endswith('v2/sub'), 'CDPATH=/RAM/v2: cd sub goes to RAM:v2/sub', out)
+        rc, out = vsh('cd RAM:v2 ; cd -P link ; pwd ; cd RAM:v2 ; cd link ; pwd -P')
+        lines = out.strip().lower().splitlines()
+        check(len(lines) == 2 and all(l == 'ram disk:v2/sub' for l in lines),
+              'cd -P link and pwd -P name the soft link\'s target', out)
+        rc, out = vsh('cd -P V2A: ; pwd ; cd -L V2A: ; pwd -L ; pwd -P')
+        lines = out.strip().lower().splitlines()
+        check(len(lines) == 3 and all(l == 'ram disk:v2/sub' for l in lines),
+              'an assign: cd -L and cd -P both give the volume\'s name', out)
     finally:
+        c.run('Assign V2A: REMOVE')
         c.run('Delete RAM:v2 RAM:v2.out ALL QUIET')
     print('vshpath_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1

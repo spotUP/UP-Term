@@ -1421,18 +1421,10 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
     struct FileInfoBlock *fib;
     int r = -1;
     char an[256];
+    const char *name = path;
     (void)os;
     amiga_name(path, an, sizeof(an)); /* test -r ./x: AmigaDOS has no "." entry */
     path = an;
-    if (nofollow && os_is_link(path)) {
-        memset(st, 0, sizeof(*st));
-        st->type = SH_ST_FILE;
-        st->link = 1;
-        st->mode = 0777u;
-        st->access = 7;
-        st->owned = st->group = 1;
-        return 0;
-    }
     if (!strcmp(path, "NIL:") || !strcmp(path, "*")) {
         /* /dev/null and /dev/tty: character devices anybody reads and writes; no lock names them */
         memset(st, 0, sizeof(*st));
@@ -1442,11 +1434,24 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
         st->owned = st->group = 1;
         return 0;
     }
-    /* a question ("is there a file?"), never an "insert volume" requester: a $PATH entry on a
-     * volume this machine does not have made `type x` wait for a click nobody gives */
+    /* the name as cd and open read it (lock_name: the Amiga meaning, else "/vol/x" as vol:x): test -d
+     * /RAM/x was false, and a CDPATH entry in Unix form found nothing, while cd /RAM/x went there. A
+     * question ("is there a file?"), never an "insert volume" requester: a $PATH entry on a volume this
+     * machine does not have made `type x` wait for a click nobody gives */
     me->pr_WindowPtr = (APTR)-1;
-    lock = Lock((STRPTR)path, SHARED_LOCK);
+    lock = lock_name(name, an, sizeof(an));
     me->pr_WindowPtr = win;
+    if (nofollow && os_is_link(path)) {
+        if (lock)
+            UnLock(lock);
+        memset(st, 0, sizeof(*st));
+        st->type = SH_ST_FILE;
+        st->link = 1;
+        st->mode = 0777u;
+        st->access = 7;
+        st->owned = st->group = 1;
+        return 0;
+    }
     if (!lock)
         return -1;
     fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
