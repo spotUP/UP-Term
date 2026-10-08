@@ -19,9 +19,10 @@ installed (rig.py install + a reboot):
 """
 import pathlib, struct, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
+import paths
 import ami, condev_rig as c
 
-VTC = pathlib.Path(__file__).resolve().parents[2] / 'build/rig/vtc'
+VTC = pathlib.Path(__file__).resolve().paths.RIG / 'vtc'
 RET, RCMD = 0x44, 0x0080
 # the window, its bar and two points inside it (screen pixels, topaz 8 on
 # the rig's Workbench): the bar is one font row under the title bar

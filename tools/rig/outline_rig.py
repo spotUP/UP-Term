@@ -22,10 +22,11 @@ back at the end. Run with the rig up and the handler installed:
 """
 import pathlib, shutil, struct, subprocess, sys, time, urllib.request, zipfile, io
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
+import paths
 import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / 'build/rig/vtc'
+VTC = paths.RIG / 'vtc'
 TP = ROOT / 'build/third_party/f1'
 TTFLIB = 'https://aminet.net/util/libs/ttflib68020.lha'
 NERD = 'https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip'
@@ -135,9 +136,9 @@ def main():
         check(2 + 2 * len(ICONS) not in cols, 'the CJK character the font lacks keeps its \'?\'', cols)
         check(4 + 2 * len(ICONS) not in cols, 'the em dash keeps its stand-in', cols)
         print('  line with the font drawn within %.1f s of Return (6 s wait)' % secs)
-        ami.png(str(ROOT / 'build/rig/outline_plain.png'), w, h,
+        ami.png(str(paths.RIG / 'outline_plain.png'), w, h,
                 [plain[r * w * 3:(r + 1) * w * 3] for r in range(h)])
-        ami.png(str(ROOT / 'build/rig/outline_fancy.png'), w, h,
+        ami.png(str(paths.RIG / 'outline_fancy.png'), w, h,
                 [fancy[r * w * 3:(r + 1) * w * 3] for r in range(h)])
     finally:
         if had:

@@ -8,11 +8,12 @@ on a FAIL line. Needs a 3.2 Kickstart (rig.py start --kick
 ~/Desktop/KICK_323.rom); `make build/amiga/mediumprobe` first."""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 TAB, UP, DOWN, RETURN, SHIFT = 0x42, 0x4C, 0x4D, 0x44, 0x0001
 
 def run(cmd, timeout=60):

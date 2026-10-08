@@ -19,11 +19,12 @@ The rig is stopped before and after (its serial port changes). Log:
 build/rig/shots/getty.log."""
 import os, pathlib, re, select, shutil, struct, subprocess, sys, time, tty
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 RIG = [sys.executable, str(ROOT / "tools/rig/rig.py")]
 lines, failed = [], 0
 

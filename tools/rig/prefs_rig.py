@@ -22,6 +22,7 @@ backwards), the visual-bell flash, copy-on-select's clipboard content.
 """
 import os, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 from colour_check import pixels
 
@@ -125,7 +126,7 @@ def main():
     # the bytes to Type: an ANSI-green word and a plain word, one per line
     put('VTC:prefsa.txt', b'\x1b[32mGGGG\x1b[0m\nHHHH\n')
     put('VTC:prefsb.txt', b'WWWW\nWWWW\n')
-    out = os.path.join(HERE, "../../build/rig/shots/prefs_rig.png")
+    out = os.path.join(paths.RIG, "shots/prefs_rig.png")
     x = 20   # inside the window's first column area
     # a background pixel: well right of and below any text the test writes
     # (x=20,y=100 sat on the prompt line once profile b's 16-pixel font
@@ -287,7 +288,7 @@ def ui_main():
     binary = os.path.join(HERE, "../../build/amiga/upprefs")
     if not os.path.exists(binary):
         raise SystemExit("build the app first: make build/amiga/upprefs")
-    out = os.path.join(HERE, "../../build/rig/shots/prefs_ui.png")
+    out = os.path.join(paths.RIG, "shots/prefs_ui.png")
     ensure_dir()
     # a file for Load to read: one profile with a font the field shows
     put('ENV:up-term/up-term',

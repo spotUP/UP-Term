@@ -8,12 +8,14 @@
                                  non-interlaced screen -- while UITREE gives screen pixels;
                                  needs DCT:ptrpos)"""
 import os, socket, struct, sys, zlib
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths   # the one reader of UPTERM_RIG: rig 2's agent is on 7847
 
 # the emulator by default; a real Amiga running amiagent (the Replay, with
 # the Up Rough network kit) with AMI_HOST and AMI_TOKEN (its Install-Agent
 # token: never in this repo) set in the environment
 HOST = os.environ.get('AMI_HOST', '127.0.0.1')
-PORT = int(os.environ.get('AMI_PORT', '7846'))
+PORT = int(os.environ.get('AMI_PORT') or paths.AGENT_PORT)
 TOKEN = os.environ.get('AMI_TOKEN', 'rigtoken').encode()
 
 def req(code, payload=b'', timeout=150):

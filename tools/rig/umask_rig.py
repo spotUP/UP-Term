@@ -7,12 +7,15 @@ must be the mask of the ixemul program (vsh hands it over as the local
 variable UMASK; ixemul's ix_open.c reads it), the default is 0022, and the
 mask is kept for the next command. --orig runs on the original library (A/B). The rig must be up;
 `make build/amiga/vsh build/amiga/ixumask` first."""
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import os, pathlib, shutil, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ixpty_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 
 def main():
     for name in ("vsh", "ixumask"):

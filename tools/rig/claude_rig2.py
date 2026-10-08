@@ -10,13 +10,14 @@ in build/rig/shots/claude2-*.png for the rest.
 """
 import glob, json, os, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 import condev_rig as c
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-SHOTS = os.path.join(ROOT, 'build/rig/shots')
-DUMP = os.path.join(ROOT, 'build/rig/claude_dump')
-LOG = os.path.join(ROOT, 'build/rig/claude_fixture.log')
+SHOTS = os.path.join(paths.RIG, 'shots')
+DUMP = os.path.join(paths.RIG, 'claude_dump')
+LOG = os.path.join(paths.RIG, 'claude_fixture.log')
 URL = 'http://127.0.0.1:8080/v1/messages'
 RET, ESC, UP = 0x44, 0x45, 0x4C
 fails = []
@@ -59,7 +60,7 @@ def bodies():
 
 
 def put(path, text):
-    tmp = os.path.join(ROOT, 'build/rig/_c2_put')
+    tmp = os.path.join(paths.RIG, '_c2_put')
     open(tmp, 'w').write(text)
     ami.main(['put', tmp, path])
     os.unlink(tmp)

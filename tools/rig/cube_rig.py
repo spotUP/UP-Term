@@ -8,11 +8,12 @@ VTC:vsh and the handler installed; the kit must not be installed (its
 DOSDrivers XCON would mount L:vtcon-handler first)."""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SHOT = ROOT / "build/rig/shots/cube.png"
+SHOT = paths.RIG / "shots/cube.png"
 LV = [0, 95, 135, 175, 215, 255]
 
 def expect(i):
@@ -23,7 +24,7 @@ def expect(i):
     return (g, g, g)
 
 def main():
-    shutil.copyfile(ROOT / "tests/amiga/colors.sh", ROOT / "build/rig/vtc/colors.sh")
+    shutil.copyfile(ROOT / "tests/amiga/colors.sh", paths.RIG / "vtc/colors.sh")
     ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/300/780/280/cube/CLOSE"')
     time.sleep(4)
     for s in ('VTC:vsh', 'source VTC:colors.sh'):

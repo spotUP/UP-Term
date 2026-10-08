@@ -10,8 +10,9 @@ reboots the rig first when the installed handler differs from the build.
 import filecmp, pathlib, shutil, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-RIG = ROOT / "build/rig"
+RIG = paths.RIG
 sys.path.insert(0, str(ROOT / "tools/rig"))
+import paths
 import ami  # noqa: E402
 
 def main():

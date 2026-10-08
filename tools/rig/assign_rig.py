@@ -27,12 +27,13 @@ skipped.
 Not run by `make test`: it needs the emulator."""
 import hashlib, json, os, pathlib, struct, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 import install_rig as ir
 
 ROOT = ir.ROOT
 VTC = ir.VTC
-OUT = ROOT / "build/rig/assign"
+OUT = paths.RIG / "assign"
 DRAWER = "SYS:UP-Term"
 CASES = ["install", "noassign", "assign", "lazy-vsh", "lazy-handler"]
 WIDE = "\u4e2d"  # U+4E2D, a glyph of Unifont's page 0x4E

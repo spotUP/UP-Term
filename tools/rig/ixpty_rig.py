@@ -14,7 +14,7 @@ import paths
 import ptytest_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 IXEMUL = pathlib.Path(os.environ.get("IXEMUL", paths.repo("ixemul-vtcon") /
     "build295/library/68020/68881/amigaos/ixemul.library"))
 # ixnet.library from the same build: ixnet_open refuses (ix_panic) an ixemul

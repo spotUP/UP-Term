@@ -20,12 +20,13 @@ and the kit NOT installed (its DOSDrivers XCON mounts L:vtcon-handler).
   screen_rig.py --keep     leave screen running (default: exit it and close the window)"""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami, cube_rig, ixpty_rig, ptytest_rig
 from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-SHOT = ROOT / "build/rig/shots/screen_colors.png"
+VTC = paths.RIG / "vtc"
+SHOT = paths.RIG / "shots/screen_colors.png"
 SCREENRC = """shell /VTC/vsh
 term screen-256color
 setenv IXSTACK 65536

@@ -9,13 +9,16 @@ the serial log: total, waiting, vt_feed, drawing, the rest -- in ms.
 
   phase_rig.py [ONLY n]
 """
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import pathlib, re, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import condev_rig as c
 import conbench_rig as cb
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SER = ROOT / 'build/rig/serial.log'
+SER = paths.RIG / 'serial.log'
 
 
 def main():

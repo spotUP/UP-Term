@@ -8,12 +8,15 @@ ixemul extend the stack) and passes when the program prints [OK]. Regression tes
 library/stackextend.c: gcc 16 -O2 dropped the store of the saved mask and
 main() started with stack garbage as its signal mask. The rig must be up;
 `make build/amiga/ixstackext` first."""
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import os, pathlib, shutil, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ixpty_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 
 def main():
     shutil.copyfile(ROOT / "build/amiga/ixstackext", VTC / "ixstackext")

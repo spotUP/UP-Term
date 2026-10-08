@@ -9,11 +9,12 @@ how many distinct colours reached the screen. The rig must be up.
 """
 import ast, os, struct, sys, time, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VTC = os.path.join(HERE, "../../build/rig/vtc")
-OUT = os.path.join(HERE, "../../build/rig/shots/colour_check.png")
+VTC = os.path.join(paths.RIG, "vtc")
+OUT = os.path.join(paths.RIG, "shots/colour_check.png")
 
 def pixels(path):
     b = open(path, 'rb').read(); i = 8; idat = b''

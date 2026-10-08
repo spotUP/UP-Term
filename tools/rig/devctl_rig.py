@@ -16,11 +16,12 @@ The rig must be up; `make build/amiga/up-console.device build/amiga/UPConsole
 build/amiga/devwho build/amiga/patchcon`. Log: build/rig/shots/devctl.log."""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 lines, failed = [], 0
 ON = 'VTC:UPConsole DEVICE ON FILE VTC:up-console.device'
 

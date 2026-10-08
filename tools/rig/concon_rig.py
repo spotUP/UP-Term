@@ -18,11 +18,12 @@ The rig must be up on a pre-3.2 Kickstart (3.2 is refused, plan DD20);
 build/amiga/vtcon-handler` first. Log: build/rig/shots/concon.log."""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 PROBE_WIN = "CON:0/12/656/216/probe"
 lines, failed = [], 0
 

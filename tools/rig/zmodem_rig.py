@@ -12,12 +12,15 @@ the far end of the cable, as a user's terminal program would.
      is copied to VTC: and compared on the host.
   4. The prompt is back after each.
 Needs lrzsz on the host (lsz / lrz). The rig is stopped before and after."""
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import os, pathlib, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import getty_rig as g
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 results = []
 
 

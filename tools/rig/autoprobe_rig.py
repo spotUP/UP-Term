@@ -10,11 +10,12 @@ as build/rig/shots/autoprobe-<dev>-<dos version>.log. The rig must be up;
 open/close, run it several times with `rig.py stop; rig.py start` between."""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 CLICK_AFTER = ("wrote", "diskinfo", "undisk")
 
 def run(cmd, timeout=60):

@@ -18,6 +18,7 @@ Run with the rig up and the handler installed:
 """
 import os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami, condev_rig as c
 import kingcon_rig as kc
 
@@ -26,7 +27,7 @@ TAB, RET, ESC, D = 0x42, 0x44, 0x45, 0x22
 LALT, CTRL = 0x0010, 0x0008
 
 
-SHOTS = os.path.join(HERE, '../../build/rig/shots')
+SHOTS = os.path.join(paths.RIG, 'shots')
 
 
 def shot(name):

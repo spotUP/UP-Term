@@ -20,10 +20,11 @@ every recorded run.
 """
 import pathlib, re, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
+import paths
 import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = ROOT / 'build/rig/conbench'
+OUT = paths.RIG / 'conbench'
 FLAGS = ['--stock', '--os32']
 
 CONSOLES = {

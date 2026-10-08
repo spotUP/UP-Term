@@ -24,10 +24,11 @@ Run with the rig up and the handler installed (rig.py install + a reboot):
 """
 import pathlib, shutil, struct, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
+import paths
 import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / 'build/rig/vtc'
+VTC = paths.RIG / 'vtc'
 RET = 0x44
 TITLE = 'menus'
 passed = total = 0

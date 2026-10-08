@@ -11,10 +11,11 @@ The rig must be up, handler installed; `make amiga build/amiga/ixintr`.
   intr_rig.py [line|raw|vsh ...]"""
 import os, pathlib, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami, ixpty_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 OUT = VTC / "intr.out"
 TEXT = "echo hi2"
 
@@ -77,7 +78,7 @@ def vsh_case():
     ami.key(0x33, 0x08)
     time.sleep(3)
     screen_rig.typeline('echo hi2 >RAM:intr_echo', 3)
-    ami.main(['shot', str(ROOT / 'build/rig/shots/intrvsh.png')])
+    ami.main(['shot', str(paths.RIG / 'shots/intrvsh.png')])
     rc, out = ixpty_rig.run('Type RAM:intr_echo')
     ok = out.strip() == 'hi2'
     print('intrvsh: line after Ctrl-C ran as typed: %s (file %r)' % ('ok' if ok else 'FAIL', out.strip()))

@@ -16,8 +16,9 @@ screen, and the screenshots in DIR (default the scratch folder)."""
 import pathlib, struct, subprocess, sys, time, zlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-RIG = ROOT / "build/rig"
+RIG = paths.RIG
 sys.path.insert(0, str(ROOT / "tools/rig"))
+import paths
 import ami
 
 W, H = 662, 212          # an XCON window of exactly 80x24 topaz 8 cells (CSI 18t)

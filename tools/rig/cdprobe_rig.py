@@ -12,11 +12,12 @@ command). --reset also sends CMD_RESET (hangs on unit 0 of KS 40.63;
 reboot after), unit=n runs the census on that unit only, --nocensus parts 2 and 3 only. The rig must be up; `make build/amiga/cdprobe` first."""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 
 def run(cmd, timeout=60):
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'))

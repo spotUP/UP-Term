@@ -13,11 +13,12 @@ Rig up with a fresh boot for part 1 (it is skipped, and says so, when
 IXPIPE: is already mounted)."""
 import os, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami, ixpty_rig, screen_rig
 from install_rig import run, check, ROOT
 import install_rig
 
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 
 
 def main():

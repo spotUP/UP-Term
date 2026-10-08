@@ -15,14 +15,15 @@ VTC:tmux from tmux-amiga in the workspace (make -f Makefile.amiga).
   tmux_rig.py --keep     leave tmux running"""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami, cube_rig, ixpty_rig, paths, ptytest_rig, screen_rig
 from PIL import Image
 from install_rig import run, check
 import install_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-SHOT = ROOT / "build/rig/shots/tmux_colors.png"
+VTC = paths.RIG / "vtc"
+SHOT = paths.RIG / "shots/tmux_colors.png"
 TMUX = paths.repo("tmux-amiga") / "build/tmux-bin"
 CONF = """set -g default-shell /VTC/vsh
 set -g default-terminal screen-256color

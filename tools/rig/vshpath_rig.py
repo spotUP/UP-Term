@@ -12,6 +12,9 @@ parent directory) names nothing, and keeps the AmigaDOS meaning where it does.
 
 Run with the rig up: python3 tools/rig/vshpath_rig.py
 """
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import pathlib, shutil, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import condev_rig as c
@@ -33,7 +36,7 @@ def vsh(cmd):
 
 
 def main():
-    shutil.copyfile(ROOT / 'build/amiga/vsh', ROOT / 'build/rig/vtc/vsh')
+    shutil.copyfile(ROOT / 'build/amiga/vsh', paths.RIG / 'vtc/vsh')
     c.run('Delete RAM:v2 RAM:v2.out ALL QUIET')
     c.run('MakeDir RAM:v2 RAM:v2/sub RAM:v2/RAM')
     try:

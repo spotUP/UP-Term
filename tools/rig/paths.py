@@ -16,6 +16,16 @@ VTCON = pathlib.Path(__file__).resolve().parents[2]
 UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
 
 
+# Which rig: UPTERM_RIG unset or 1 is the first (build/rig, amiagent port 7846);
+# UPTERM_RIG=2 is the second (build/rig2, port 7847), a separate FS-UAE with
+# its own system disk copy. Every rig script reads the instance from here.
+RIG_N = int(os.environ.get("UPTERM_RIG") or 1)
+RIG_NAME = "rig" if RIG_N == 1 else "rig%d" % RIG_N
+RIG = VTCON / "build" / RIG_NAME
+AGENT_PORT = 7846 + RIG_N - 1
+os.environ.setdefault("AMI_PORT", str(AGENT_PORT))   # ami.py reads it
+
+
 def repo(name):
     """The checkout of repository `name` in the workspace."""
     return UPTERM_ROOT / name

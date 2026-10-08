@@ -11,10 +11,11 @@ size, or a read the signal did not interrupt. The rig must be up;
 `make amiga build/amiga/ixwinch` first."""
 import os, pathlib, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami, ixpty_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 OUT = VTC / "winch.out"
 TITLE = 'winch'
 

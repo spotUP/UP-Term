@@ -14,11 +14,12 @@ system itself leaks or stalls). Log: build/rig/shots/soak.log (soak-rom.log) (on
 build/amiga/devwho`."""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 
 
 def run(cmd, timeout=120):

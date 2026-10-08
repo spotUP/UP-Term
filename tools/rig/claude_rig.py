@@ -23,12 +23,13 @@ The rig must be up (rig.py start) with the handler and C:Claude installed:
 """
 import os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 import condev_rig as c
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-SHOTS = os.path.join(ROOT, 'build/rig/shots')
-LOG = os.path.join(ROOT, 'build/rig/claude_fixture.log')
+SHOTS = os.path.join(paths.RIG, 'shots')
+LOG = os.path.join(paths.RIG, 'claude_fixture.log')
 URL = 'http://127.0.0.1:8080/v1/messages'
 RET, ESC, TAB = 0x44, 0x45, 0x42
 fails = []

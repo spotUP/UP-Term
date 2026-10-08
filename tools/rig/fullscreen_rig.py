@@ -23,10 +23,11 @@ Run with the rig up and the handler installed (rig.py install + a reboot):
 """
 import pathlib, re, shutil, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
+import paths
 import ami, condev_rig as c, ixpty_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = ROOT / 'build/rig/fullscreen'
+OUT = paths.RIG / 'fullscreen'
 RET = 0x44
 
 

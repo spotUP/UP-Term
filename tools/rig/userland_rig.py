@@ -54,8 +54,8 @@ BASH_PROBES = ROOT / "tests/bash/probes"
 BASH_DATA = ROOT / "tests/bash/data"
 BASH_EXPECTED = ROOT / "build/bashdiff/expected"
 BASH_SKIP = ROOT / "tests/bash/rig-skip.txt"
-VTC = ROOT / "build/rig/vtc"
-VERDICTS = ROOT / "build/rig/userland"
+VTC = paths.RIG / "vtc"
+VERDICTS = paths.RIG / "userland"
 PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", paths.repo("upterm-ports")))
 SYSBIN = PORTS / "build/sysroot/SYS/UP-Term"
 

@@ -7,10 +7,11 @@ same window core (render/vtwin). The rig must be up; `make
 build/amiga/snipprobe build/amiga/up-console.device build/amiga/UPConsole`."""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 failed = 0
 
 

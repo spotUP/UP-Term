@@ -23,10 +23,11 @@ install + a reboot): python3 tools/rig/ownscreen_rig.py
 """
 import pathlib, shutil, struct, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
+import paths
 import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / 'build/rig/vtc'
+VTC = paths.RIG / 'vtc'
 passed = total = 0
 
 

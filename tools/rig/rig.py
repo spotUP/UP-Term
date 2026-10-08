@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """The vtcon test rig: FS-UAE, A1200 (68020, KS 3.1 40.068, 8 MB fast), driven
-through amiagent (TCP 7846, tools/rig/ami.py).
+through amiagent (TCP 7846, tools/rig/ami.py). UPTERM_RIG=2 selects a second,
+independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
   rig.py start    boot it in the background (--060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
@@ -27,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-RIG = ROOT / "build/rig"
+RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
 CFG = RIG / "vtcon-rig.fs-uae"
 # the owner's system disk (2026-10-03: the rig's copy was taken from it;
 # the old source sat in a session scratchpad that is gone). Only read: the
@@ -130,9 +131,9 @@ C:SetEnv TERMINFO /VTC/terminfo
 C:SetEnv TERMCAP /etc/termcap
 Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
-Run >NIL: BOOTX:amiagent TOKEN=rigtoken
+Run >NIL: BOOTX:amiagent PORT=%(port)d TOKEN=rigtoken
 Echo >>BOOTX:boot.log "amiagent started"
-""" % {"libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.AGENT_PORT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -196,6 +197,11 @@ def os32_hd_layout():
 
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
+    if paths.RIG_N > 1 and not (RIG / "vtc").exists():
+        # rig 2's VTC: starts as a copy of rig 1's (only read there; .uaem
+        # files carry the protection bits); `install` and the scripts keep it
+        print("copying rig 1's VTC: drawer ...")
+        shutil.copytree(paths.VTCON / "build/rig/vtc", RIG / "vtc", symlinks=True)
     (RIG / "vtc").mkdir(exist_ok=True)
     (RIG / "shots").mkdir(exist_ok=True)
     if OS32 and not (RIG / "os32").exists():
@@ -241,11 +247,15 @@ def setup():
                 sys.exit("rig: amiagent's stack constant moved; the --stock patch needs new offsets")
             a[off:off + 4] = (16384).to_bytes(4, "big")
         (RIG / "boot/amiagent.stock").write_bytes(bytes(a))
-    (RIG / "boot/go").write_text(GO.replace("Run >NIL: BOOTX:amiagent TOKEN", "Run >NIL: BOOTX:amiagent.stock TOKEN")
+    (RIG / "boot/go").write_text(GO.replace("BOOTX:amiagent PORT", "BOOTX:amiagent.stock PORT")
                                  if STOCK else GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     # once, like the disk: the sources were in a session scratchpad, which
     # is gone after that session (the rig failed to start, 2026-09-30)
+    if not (RIG / "boot/amiagent").exists() and paths.RIG_N > 1:
+        # rig 2 takes its own copy of rig 1's agent (only read there)
+        shutil.copyfile(paths.VTCON / "build/rig/boot/amiagent", RIG / "boot/amiagent")
+        os.chmod(RIG / "boot/amiagent", 0o755)
     if not (RIG / "boot/amiagent").exists():
         sys.exit("rig: build/rig/boot/amiagent is missing (copy it from the Up Rough demo system)")
     machine = [

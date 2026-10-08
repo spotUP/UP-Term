@@ -40,13 +40,14 @@ only a path that exists, so the dest drawer is made through Make New Drawer (dia
 A page unchanged 60 s after a click is a FAIL (never a hang)."""
 import hashlib, json, os, pathlib, re, shlex, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 import install_rig as ir
 from assign_rig import rig
 
 ROOT = ir.ROOT
 VTC = ir.VTC
-OUT = ROOT / "build/rig/installer"
+OUT = paths.RIG / "installer"
 OUT.mkdir(parents=True, exist_ok=True)  # pages are logged before the first verdict is written
 KIT = ROOT / "build/dist/UP-Term"
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", "VTC:Apps/UP-Term"), "novice": ("NOVICE", None)}

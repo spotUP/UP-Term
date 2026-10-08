@@ -4,7 +4,7 @@ An emulated Amiga (FS-UAE) that the host drives through amiagent. Every
 `*_rig.py` here boots nothing itself: it needs the rig up (`rig.py start`) and
 then types into it, reads its files and screen, and prints PASS or FAIL.
 No real Amiga is needed to develop UP-Term; the rig is how the Amiga code is
-tested. Do not run two scripts at once: they share the one emulator.
+tested. Do not run two scripts at once on one rig: they share its emulator (a second rig: see below).
 
 Where this fits: step 3 of "Set up the whole thing" in the `upterm` repo's
 README. Build the Amiga programs first (`make amiga` in vtcon).
@@ -61,6 +61,38 @@ next boot.
 Layout of `build/rig/` (gitignored): `sys.hdf` (DH0:), `boot/` (BOOTX:, boots
 first: assigns, mounts XCON:, starts amiagent with token `rigtoken`), `vtc/`
 (VTC:, the binaries under test), `shots/` (screenshots), `serial.log`.
+
+## A second rig, to run two jobs in parallel
+
+`UPTERM_RIG=2` selects rig 2: the same FS-UAE backend and the same config
+generator (`rig.py`), so results are comparable, but a separate machine:
+
+| | rig 1 (default) | rig 2 (`UPTERM_RIG=2`) |
+|---|---|---|
+| directory | `build/rig` | `build/rig2` (own `sys.hdf`, `vtc/`, `boot/`, `shots/`, config) |
+| amiagent | port 7846 | port 7847 (`go` starts `amiagent PORT=7847`) |
+| FS-UAE process | matched by `build/rig/vtcon-rig.fs-uae` | matched by `build/rig2/vtcon-rig.fs-uae` |
+
+```
+UPTERM_RIG=2 python3 tools/rig/rig.py setup    # once: copies UPTERM_SYSTEM_HDF (1.5 GB) and rig 1's vtc/ (about 400 MB, read only) and amiagent
+UPTERM_RIG=2 python3 tools/rig/rig.py start    # then status / install / stop, as for rig 1
+UPTERM_RIG=2 python3 tools/rig/ami.py ping
+UPTERM_RIG=2 python3 tools/rig/<script>_rig.py
+```
+
+`paths.py` is the one reader of `UPTERM_RIG` (`paths.RIG`, `paths.AGENT_PORT`);
+`ami.py` takes its port from it (`AMI_PORT` still wins) and the scripts take
+their `build/rig` directories from `paths.RIG`. `stop` kills only the FS-UAE
+whose config path is that rig's. The two machines share nothing but the
+read-only ROM and the source disk image; rig 2's `vtc/` is a copy taken at
+setup, so run `UPTERM_RIG=2 ... rig.py install` after a rebuild. Two scripts
+may run at once only if they run on different rigs. Rig 2 needs CPU for its own
+JIT: timing benchmarks run while another rig works are not comparable.
+
+Not yet on rig 2: `install_rig.py` still reads `build/rig/vtc` (an other
+agent's file, left alone), and `dvmatrix.sh` still logs to `build/rig/shots`.
+Amiberry (`/Applications/Amiberry.app`) could become a rig 3 with another
+config writer; it was not needed because a second FS-UAE runs beside the first.
 
 ## The client, and a real Amiga
 

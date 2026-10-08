@@ -10,11 +10,12 @@ exits non-zero on a FAIL line. The rig must be up;
 `make build/amiga/chainprobe` first."""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 SECONDS = 50
 
 def run(cmd, timeout=60):

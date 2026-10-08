@@ -13,12 +13,13 @@ installed; `make amiga build/amiga/ixwinch`, VTC:tmux from tmux-amiga,
   resize_rig.py [tmux] [nvim]"""
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami, ixpty_rig, paths, ptytest_rig, screen_rig, tmux_rig, winch_rig
 from install_rig import run, check
 import install_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
+VTC = paths.RIG / "vtc"
 NVDIST = paths.repo("neovim-amiga") / "build/m68k/dist"
 typeline = screen_rig.typeline
 SIZE = re.compile(r'(\d+)x(\d+)')
@@ -123,7 +124,7 @@ def nvim_case():
     ask = ':redir! > RAM:nvsize.txt | echo &columns . "x" . &lines | redir END'
     time.sleep(5)
     before = ask_size(ask)
-    ami.main(['shot', str(ROOT / 'build/rig/shots/rznvim.png')])
+    ami.main(['shot', str(paths.RIG / 'shots/rznvim.png')])
     run('Delete RAM:nvsize.txt QUIET')
     grow(title)
     time.sleep(3)

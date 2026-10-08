@@ -6,11 +6,12 @@ saves build/rig/shots/cudump.log. The rig must be up; `make
 build/amiga/cudump build/amiga/up-console.device build/amiga/UPConsole`."""
 import os, pathlib, shutil, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths
 import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-VTC = ROOT / "build/rig/vtc"
-OUT = ROOT / "build/rig/shots"
+VTC = paths.RIG / "vtc"
+OUT = paths.RIG / "shots"
 
 
 def run(cmd, timeout=60):
