@@ -9,8 +9,10 @@ One line per file of the kit, sorted by path (bytes):
 kit path that matches; "-" for none). And one line per part of install.dos:
   <part> 0 <crc32 of its text> install.dos#<part>
 ("all" for the text before the first part: every part reads it), so a part whose
-script changed runs again. The Amiga compares two manifests (upupdate) and hashes
-nothing itself. A kit file no line of parts.txt claims stops `make dist`."""
+script changed runs again. And one line per copy part (dist/parts.txt's third column):
+  <part> 0 00000000 copy#<kit drawer>#<drawer in UP-Term:>
+the drawers its files go between. The Amiga compares two manifests (upupdate) and
+hashes nothing itself. A kit file no line of parts.txt claims stops `make dist`."""
 import pathlib, re, sys, zlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -64,6 +66,10 @@ def manifest(kit, parts, dos):
         lines.append((rel.encode('latin-1'), '%s %d %08x %s' % (p[0], len(data), zlib.crc32(data), rel)))
     if missing:
         raise SystemExit('mkmanifest: no line of dist/parts.txt claims %s' % ', '.join(missing[:8]))
+    for name, prefix, drawer in parts:
+        if drawer:
+            rel = 'copy#%s#%s' % (prefix, drawer)
+            lines.append((rel.encode('latin-1'), '%s 0 00000000 %s' % (name, rel)))
     for name, text in sections(dos):
         rel = 'install.dos#' + name
         lines.append((rel.encode('latin-1'), '%s 0 %08x %s' % (name, zlib.crc32(text.encode('latin-1')), rel)))

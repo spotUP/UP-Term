@@ -34,6 +34,7 @@ class Manifest(unittest.TestCase):
         self.assertIn("- 3 %08x Files/coreutils/COPYING" % zlib.crc32(b"gpl"), lines)
         self.assertIn("all 0 %08x install.dos#all" % zlib.crc32(b"; head\n"), lines)
         self.assertIn("system 0 %08x install.dos#system" % zlib.crc32(b"Copy vsh C:vsh\n"), lines)
+        self.assertIn("copy-coreutils 0 00000000 copy#Files/coreutils/bin#bin", lines)
         paths = [l.split(' ', 3)[3].encode() for l in lines]
         self.assertEqual(paths, sorted(paths))
 
