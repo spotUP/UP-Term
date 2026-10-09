@@ -570,6 +570,7 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       | ROM (rig 3, after) | DV1 condev | DV2+DV4+DV5 devverify | D2.3 rkc | D3.2 cudump | H5.6 concon |
       | 3.1 40.63 | 17/17 | 7/7 | 5/5 | 0 of 15 differ | 9/9 |
       | 3.1.4 46.143 | 17/17 | 7/7 | 5/5 | 0 of 15 differ | 9/9 |
+      Committed ac71868 (2026-10-09); re-run on rig 3 after the commit build: 3.1 and 3.1.4 devverify 7/7, condev 17/17, concon 9/9; cudump on 3.1.4 0 of 15 differ; make test green.
 - [x] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
       memory back to its start value; a task holding signal bit 31 opens and closes a
       unit 100 times and still holds it (ibmcon 1.8 regression, R-3).
