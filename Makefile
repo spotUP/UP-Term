@@ -669,6 +669,11 @@ $(BUILD)/amiga/memprobe: tests/amiga/memprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/memprobe.c
 
+# DV5's close probe (tools/rig/devverify_rig.py): CloseDevice with a read pending
+$(BUILD)/amiga/closeread: tests/amiga/closeread.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/closeread.c
+
 $(BUILD)/amiga/allocwatch: tests/amiga/allocwatch.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/allocwatch.c

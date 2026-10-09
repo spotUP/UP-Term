@@ -7,8 +7,13 @@
   DV4: tests/amiga/memprobe: what a unit costs with our device, STANDARD
        and CHARMAP (80 x 25, scrollback full), and whether closing gives it
        all back; the ROM's numbers alongside.
+  DV5: tests/amiga/closeread: CloseDevice on the request that holds a
+       pending CMD_READ (as the 3.1 ROM con-handler closes CON:): the read
+       neither aborted into the close (that freed the unit under its running
+       process: romprobe hung the rig, 2026-10-08) nor replied, as the ROM.
 The rig must be up; `make build/amiga/up-console.device build/amiga/UPConsole
-build/amiga/romprobe build/amiga/memprobe`. Log: build/rig/shots/devverify.log."""
+build/amiga/romprobe build/amiga/memprobe
+build/amiga/closeread`. Log: build/rig/shots/devverify.log."""
 import os, pathlib, re, shutil, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
@@ -41,7 +46,7 @@ def mem():
 
 
 def main():
-    for f in ("up-console.device", "UPConsole", "romprobe", "memprobe"):
+    for f in ("up-console.device", "UPConsole", "romprobe", "memprobe", "closeread"):
         shutil.copyfile(ROOT / "build/amiga" / f, VTC / f)
     shutil.copyfile(ROOT / "tests/probes/amiga_cases.txt", VTC / "amiga_cases.txt")
     run('VTC:UPConsole CON OFF')
@@ -49,8 +54,13 @@ def main():
     probe = 'VTC:romprobe VTC:amiga_cases.txt "CON:0/12/656/216/probe"'
     rom = run(probe)[1]
     rom_mem = mem()
+    rom_close = run('VTC:closeread 20')[1].strip()
     rc, out = run('VTC:UPConsole DEVICE ON FILE VTC:up-console.device')
     check(rc == 0, 'DEVICE ON', out)
+    up_close = run('VTC:closeread 20')[1].strip()
+    check(up_close == rom_close == 'CLOSEREAD n 20 aborted 0 replied 0',
+          'DV5 CloseDevice with a read pending: the read neither aborted into the close nor replied (%s; ROM %s)'
+          % (up_close, rom_close), up_close)
     up = run(probe)[1]
     up_mem = mem()
     run('VTC:UPConsole DEVICE OFF')

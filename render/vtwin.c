@@ -379,13 +379,17 @@ static long emo_load(void *u, int page, vt_u8 **buf)
  * chip RAM; none without it (the cells look as before U2). The colour
  * emoji's store beside it, made at the first bind to a screen that shows
  * colour (none on AGA or 8-bit RTG: ~3.3 KB a window saved); its pages
- * are read when an emoji is first drawn. */
+ * are read when an emoji is first drawn. None for the amiga personality
+ * either: its cells hold Latin-1, one cell wide, and colour emoji are only
+ * wide ones -- a console.device unit (always that personality) never draws
+ * one, and the 3.3 KB put a STANDARD unit over DV4's 64 KB (68,136 bytes on
+ * a 24-bit screen, 2026-10-08). */
 static void uni_bind(vtwin *w)
 {
     if (!w->uni_mask && (w->uni_mask = (UBYTE *)AllocVec(UF_MASK_MAX, MEMF_CHIP | MEMF_CLEAR)) != 0)
         uf_init(&w->uni, uni_load, uni_release, w, w->uni_mask, UF_MASK_MAX);
     vr_set_unifont(&w->r, w->uni_mask ? &w->uni : 0);
-    if (!w->emo && vr_can_colour(&w->r) && (w->emo = (struct ce_store *)AllocVec(sizeof(ce_store), MEMF_ANY)) != 0)
+    if (!w->emo && w->pers != VT_AMIGA && vr_can_colour(&w->r) && (w->emo = (struct ce_store *)AllocVec(sizeof(ce_store), MEMF_ANY)) != 0)
         uf_init_pages(&w->emo->pages, emo_load, uni_release, w, ce_page_check, CE_SLOTS);
     vr_set_emoji(&w->r, w->emo);
 }
@@ -696,14 +700,17 @@ static int strcmp_nocase(const char *a, const char *b)
 
 /* The font a pair (render/fontpair) gives this screen for the font
  * asked for -- the system's default font when none was -- or 0 when it
- * is the font asked for, or not installed. */
+ * is the font asked for, or not installed. Never for the amiga
+ * personality: the ROM console keeps its font on every screen, and a CON:
+ * window served by UP-Term must have the ROM's grid (H5.6: TopazPro 16 on
+ * square pixels gave 12 rows where the ROM's CON: has 25, 2026-10-08). */
 static struct TextFont *aspect_font(vtwin *w, char *name, int max, WORD *size)
 {
     fontpair_choice ch;
     const char *base = w->fontname;
     int bsize = w->fontsize;
     struct TextFont *f;
-    if (!w->aspect_known || w->aspect_off)
+    if (!w->aspect_known || w->aspect_off || w->pers == VT_AMIGA)
         return 0;
     if (!base[0]) {
         base = (const char *)GfxBase->DefaultFont->tf_Message.mn_Node.ln_Name;

@@ -322,6 +322,16 @@ static BPTR upc_close(__reg("a1") struct IOStdReq *io, __reg("a6") struct upc_ba
         if (!any)
             upc_input_rem(b);
         ReleaseSemaphore(&b->lock);
+        /* a CMD_READ still pending on the request being closed (the 3.1 ROM
+         * con-handler closes a CON: window with its read request, the read
+         * not aborted) leaves the queue unanswered, as the ROM device leaves
+         * it (closeread: never replied). Aborted by the unit process it was
+         * replied to our UPCMD_DIE port: we freed the unit while the process
+         * still detached, and its own reply followed into a deleted port
+         * (DV5: romprobe through CON: hung the rig). */
+        ObtainSemaphore(&u->lock);
+        upc_rq_abort(&u->rq, io);
+        ReleaseSemaphore(&u->lock);
         /* the unit process draws what is pending, aborts its reads, ends */
         io->io_Command = UPCMD_DIE;
         io->io_Flags = 0;

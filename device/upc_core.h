@@ -195,4 +195,10 @@ typedef struct {
 
 void upc_conunit_fill(unsigned char *cu, const upc_cu_state *s);
 
+/* The cu_Mask the running ROM's console.device writes, by its version
+ * (cudump, D3.2/DV5): 1 from 39-40 (3.0, 3.1, 3.5) and 47 (3.2); 0xFF
+ * (all planes) from 45 (3.1.4's console.device 45.4, Kickstart 46.143).
+ * Other versions were not measured and keep 1. */
+int upc_rom_cu_mask(int rom_version);
+
 #endif

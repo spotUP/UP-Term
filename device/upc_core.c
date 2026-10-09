@@ -328,3 +328,8 @@ void upc_conunit_fill(unsigned char *cu, const upc_cu_state *s)
         if (s->rawevents & (1UL << i))
             setbit(cu + UPC_CU_RAWEVENTS, i);
 }
+
+int upc_rom_cu_mask(int rom_version)
+{
+    return rom_version == 45 ? 0xFF : 1;
+}

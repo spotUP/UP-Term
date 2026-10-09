@@ -542,6 +542,34 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
         25 rows (`size 25;79`), ours 12 (`12;79`), and the four bottom-row probes follow from it
         (cuf-past-right 13;52 vs 12;52, cuf-at-bottom, text-at-bottom-right, cup-past-bounds).
       Logs: build/rig/shots/dvmatrix-3.1.4.log (summary), the full run in the agent's session log.
+      **Explained and fixed 2026-10-08 (rig 3, --max, 24-bit RTG Workbench): none of the three was
+      3.1.4 behaviour UP-Term lacked except cu_Mask; two were UP-Term regressions the 3.1 row shows
+      too on a square-pixel 24-bit screen, and a fourth (an intermittent hang) was found:**
+      - DV4 68,136 bytes: also on 3.1 (40.63) on a 24-bit screen; 64,824 on a 16-colour one. The
+        3.3 KB is the colour-emoji store (U4) that uni_bind made for every window on a colour
+        screen. Measured (debug device, AvailMem by stage): unit struct 11,138, process 12,536,
+        engine 40,832 (cells 32,000), bind 3,448. An amiga-personality unit holds Latin-1 one cell
+        wide and colour emoji are wide only, so it never draws one: no store for VT_AMIGA
+        (render/vtwin.c uni_bind). Now 64,824 (3.1) / 64,800 (3.1.4) on the 24-bit screen. The
+        limit stands (DV4, 64 KB); the margin is ~700 bytes -- the unit grew 57,224 -> 64,824 since
+        2026-09-30 (OSC 8 links, images, unifont in vt_term / vr_render).
+      - cudump cu_Mask: real ROM behaviour. 40.63 writes 1, 3.1.4's console.device 45.4 writes 0xFF
+        (signed BYTE -1), 3.2 (47) writes 1 (row above). Ours follows the running ROM's version:
+        upc_rom_cu_mask (device/upc_core.c), host test conunit_mask_by_rom (fails with 1 for 45).
+      - concon 12 rows: also on 3.1 on a square-pixel screen. P2's font pairing (topaz 8 ->
+        TopazPro 16 on square pixels, 2026-10-03) applied to CON: windows; the ROM console keeps its
+        font. aspect_font now never pairs for VT_AMIGA (render/vtwin.c). concon is the check
+        (12;79 before, 25;79 after). Owner may veto: a CON: window no longer gets TopazPro 16.
+      - The hang (DV2/concon "timed out", 3 of 6 runs on 3.1): the 3.1 ROM con-handler closes CON:
+        with its read request while the read is pending. Our unit process aborted that read into
+        the closer's UPCMD_DIE port, so CloseDevice returned and freed the unit while the process
+        still detached (serial trace: "close: unit gone" before "die: detached"), and the process's
+        own ReplyMsg went to a deleted port. upc_close now takes the closing request out of the
+        read queue first, unreplied as the ROM leaves it. Check: tests/amiga/closeread in
+        devverify (DV5 line): before 20 of 20 aborted, after 0, ROM 0.
+      | ROM (rig 3, after) | DV1 condev | DV2+DV4+DV5 devverify | D2.3 rkc | D3.2 cudump | H5.6 concon |
+      | 3.1 40.63 | 17/17 | 7/7 | 5/5 | 0 of 15 differ | 9/9 |
+      | 3.1.4 46.143 | 17/17 | 7/7 | 5/5 | 0 of 15 differ | 9/9 |
 - [x] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
       memory back to its start value; a task holding signal bit 31 opens and closes a
       unit 100 times and still holds it (ibmcon 1.8 regression, R-3).

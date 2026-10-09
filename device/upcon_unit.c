@@ -118,10 +118,10 @@ static void fill_conunit(struct upc_unit *u)
     s.ox = w->r.ox;
     s.oy = w->r.oy;
     /* the values the ROM writes (D3.2 cudump on KS 40.63, RTG and AGA screens
-     * alike): MinShrink 9999, mask 1, AOL pen 0, text fields from the
-     * window's RastPort (not the font's flags) */
+     * alike): MinShrink 9999, mask as the running ROM's (upc_rom_cu_mask),
+     * AOL pen 0, text fields from the window's RastPort (not the font's flags) */
     s.minshrink_x = s.minshrink_y = 9999;
-    s.mask = 1;
+    s.mask = upc_rom_cu_mask(u->base->rom->lib_Version);
     s.fg = 1;
     s.bg = 0;
     s.aol = 0;

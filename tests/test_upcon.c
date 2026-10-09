@@ -512,6 +512,16 @@ static void conunit_fill(void)
     }
 }
 
+/* cu_Mask follows the running ROM's console.device (DV5 cudump): 3.1.4's
+ * (45) writes 0xFF, 3.0 / 3.1 / 3.5 (39, 40) and 3.2 (47) write 1 */
+static void conunit_mask_by_rom(void)
+{
+    CHECK_INT(upc_rom_cu_mask(45), 0xFF);
+    CHECK_INT(upc_rom_cu_mask(40), 1);
+    CHECK_INT(upc_rom_cu_mask(39), 1);
+    CHECK_INT(upc_rom_cu_mask(47), 1);
+}
+
 void suite_upcon(void)
 {
     quick_reads();
@@ -522,4 +532,5 @@ void suite_upcon(void)
     event_ring();
     route();
     conunit_fill();
+    conunit_mask_by_rom();
 }
