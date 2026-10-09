@@ -11,6 +11,7 @@ Two passes: the default drawer (SYS:UP-Term) and a non-default one
   install_rig.py              all three passes
   install_rig.py --default    the default drawer only
   install_rig.py --dest       the non-default drawer only
+  install_rig.py --show-check the watched window (UPTERM_RIG_SHOW=<title>) alone
   install_rig.py --move       a third pass: Install into the default drawer, then
                               again with DEST=VTC:Apps/UP-Term (the assign moves)"""
 import os, pathlib, re, shutil, struct, sys, time
@@ -20,11 +21,130 @@ import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
+# the kit under test: build/dist/UP-Term, or UPTERM_KIT=<drawer> (build/dist is
+# shared with every agent's `make dist`, so a rig run takes a private copy)
+KIT = pathlib.Path(os.environ.get('UPTERM_KIT') or ROOT / "build/dist/UP-Term")
 ORIG_SIZE = 166972  # the 3.1 rig's ixemul.library 48.2 as released; main() takes the size the system has before Install (the 3.2 tree's differs)
 
 def run(cmd, timeout=60):
+    if SHOW:
+        return show(cmd, timeout)
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'), timeout + 30)
     return struct.unpack('>I', b[:4])[0], b[4:].decode('latin-1')
+
+# UPTERM_RIG_SHOW=<title>: the commands run in a window on the Workbench
+# screen the owner can watch, titled <title>, instead of inside the agent: a
+# Shell (a ROM CON: window, there with UP-Term installed or not) executes
+# <drawer>/loop, which takes each command the host writes to <drawer>/cmd
+# (renamed to run, so the next one cannot be lost) and runs it in a Shell of
+# its own (Run, in the same window): an Execute inside the loop would splice
+# the loop's rest into a new script file, and its Skip top BACK then finds no
+# label (3.1, 2026-10-09). The command's output goes to out<n>, is typed into
+# the window, and rc<n> is written last; the host waits for rc<n>. <drawer>
+# is a new VTC:show-<time> for each window, and only the Amiga side deletes
+# in it: FS-UAE's VTC: keeps names the Mac deleted, and a Rename onto such a
+# name fails (the loop stalled so, 2026-10-09). Commands run at FailAt 1000:
+# a failing line (Execute of a missing file returns 10) does not end the
+# wrapper, and the last line's return code comes back.
+SHOW = os.environ.get('UPTERM_RIG_SHOW', '')
+SHOW_LOOP = """FailAt 1000
+Lab top
+If EXISTS {d}/stop
+  Skip done
+EndIf
+If EXISTS {d}/cmd
+  Delete {d}/run QUIET
+  Rename {d}/cmd {d}/run
+  Run Execute {d}/run
+EndIf
+Wait 1
+Skip top BACK
+Lab done
+CD VTC:
+Delete {d} ALL QUIET
+EndCLI >NIL:
+"""
+SHOW_KEEP = ('IF', 'ELSE', 'ENDIF', 'LAB', 'SKIP', 'QUIT', 'FAILAT')   # script keywords: left as they are
+_shown = None   # the window's drawer name on VTC:, while it is open
+_seq = 0
+
+def show_open():
+    """Open the watched window (again after a reboot: installer_rig resets _shown)."""
+    global _shown, _seq
+    name = 'show-%d' % int(time.time())
+    (VTC / name).mkdir()
+    d = 'VTC:' + name
+    (VTC / name / "loop").write_text(SHOW_LOOP.replace('{d}', d))
+    (VTC / name / "start").write_text('Execute %s/loop\n' % d)   # Skip ... BACK works in an Execute script only
+    title = re.sub(r'[/"]', ' ', SHOW)
+    b = ami.req(0x02, struct.pack('>H', 20) +
+                ('NewShell "CON:0/12/640/200/%s/CLOSE" FROM %s/start' % (title, d)).encode('latin-1'), 50)
+    if struct.unpack('>I', b[:4])[0] != 0:
+        raise SystemExit('show: NewShell failed: %r' % b[4:])
+    _shown, _seq = name, 0
+
+def show_close():
+    global _shown
+    if _shown:
+        (VTC / _shown / "stop").write_text('')
+    _shown = None
+
+def show(cmd, timeout):
+    """run() in the watched window: (return code, output)."""
+    global _seq
+    if not _shown:
+        show_open()
+    _seq += 1
+    n, h, d = _seq, VTC / _shown, 'VTC:' + _shown
+    # The wrapper holds the command's lines, each with its output appended to
+    # out<n> (a line that redirects its own output keeps it); an Execute'd
+    # script's lines print in the window only (Execute splices them into the
+    # Shell's input, which writes to the window: run_long returns no output).
+    # It types out<n> into the window and writes rc<n> last.
+    out = '%s/out%d' % (d, n)
+    lines = ['FailAt 1000', 'Echo "-------- %d"' % n, 'Echo >%s "" NOLINE' % out]
+    for line in cmd.split('\n'):
+        w = line.split(None, 1)
+        if w and w[0].upper() not in SHOW_KEEP and not w[0].startswith(';') and not (len(w) > 1 and w[1][:1] in '<>'):
+            line = '%s >>%s%s' % (w[0], out, (' ' + w[1]) if len(w) > 1 else '')
+        lines.append(line)
+    lines += ['Echo >{d}/rcw%d "$RC"'.replace('{d}', d) % n, 'Type ' + out,
+              'Rename {d}/rcw%d {d}/rc%d'.replace('{d}', d) % (n, n)]
+    (h / "cmd").write_text('\n'.join(lines) + '\n')
+    rcf, outf = h / ("rc%d" % n), h / ("out%d" % n)
+    end = time.time() + timeout + 30
+    while time.time() < end:
+        try:
+            rc = rcf.read_text(errors='replace').strip()
+        except FileNotFoundError:
+            time.sleep(0.5)
+            continue
+        if rc:
+            out = outf.read_text(errors='replace') if outf.exists() else ''
+            return (int(rc) if rc.isdigit() else 0), out
+        time.sleep(0.5)
+    raise SystemExit('ERR: show: still running after %d s: %r' % (timeout, cmd[:80]))
+
+def show_check():
+    """--show-check: the watched window survives what broke its first version
+    (2026-10-09: the owner saw "object not found", "Skip failed returncode
+    10" in it on 3.1, read as an Installer error): after a failing command
+    (Execute of a missing file, 10) and a second one, each command's return
+    code and output still come back. Needs UPTERM_RIG_SHOW."""
+    global passed, total
+    passed = total = 0
+    if not SHOW:
+        raise SystemExit('--show-check needs UPTERM_RIG_SHOW=<title>')
+    rc, out = run('Echo one')
+    check(rc == 0 and out.strip() == 'one', 'show: a first command and its output', out)
+    rc, out = run('Execute T:show-check-nosuch')
+    check(rc == 10 and 'object not found' in out, 'show: Execute of a missing file returns 10, its message comes back', out)
+    rc, out = run('Echo two\nEcho three')
+    check(rc == 0 and out.split() == ['two', 'three'], 'show: the window takes commands after the failing one (two lines)', out)
+    rc, out = run('Delete >NIL: T:show-check-nosuch#? QUIET')
+    check(rc == 5, 'show: a line that redirects its own output keeps it, its return code comes back', out)
+    print('install_rig: passed %d of %d' % (passed, total))
+    return 0 if passed == total else 1
 
 def run_long(script, timeout=1500):
     """Execute VTC:<script>, however long it takes, as run() returns it. The
@@ -33,6 +153,8 @@ def run_long(script, timeout=1500):
     returns its output, one that does not returns '' and its return code).
     The script runs inside a wrapper that writes its return code to
     VTC:longdone, and this waits for that file."""
+    if SHOW:   # the watched window waits as long as it takes
+        return show('Execute VTC:%s' % script, timeout)
     (VTC / "longdone").unlink(missing_ok=True)
     (VTC / "longwrap").write_text("Execute VTC:%s\nEcho >VTC:longdone \"$RC\"\n" % script)
     out = ''
@@ -93,7 +215,7 @@ def prepare(dest):
     """The kit unpacked into VTC:distkit, the helper programs and the run scripts beside it, LIBS: as the rig boots it."""
     destarg = (" DEST=%s" % dest) if dest else ""
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
-    shutil.copytree(ROOT / "build/dist/UP-Term", VTC / "distkit")
+    shutil.copytree(KIT, VTC / "distkit")
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     if dest:
@@ -252,6 +374,12 @@ def _main(dest=None):
     # now and at boot (W49)
     rc, out = run('Stack 1000000\nUP-Term:Python3/bin/python3 -c "print(6*7)"', 120)
     check(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'PYTHON: python3 runs from UP-Term:Python3', out[-300:])
+    # through vsh a quoted ** reaches python as typed (vsh hands its argv over
+    # out of band, ixemul 39f6760/2cda2f6); the AmigaDOS Shell's "**" is its
+    # escape for one *, so this one runs from a vsh script, not a Shell line
+    (VTC / "py8.sh").write_text("python3 -c 'print(2**3)'\n")
+    rc, out = run('Stack 1000000\nC:vsh VTC:py8.sh', 120)
+    check(rc == 0 and out.strip().splitlines()[-1:] == ['8'], 'PYTHON: vsh runs python3 -c \'print(2**3)\' as typed (8)', out[-300:])
     check(run('Assign >NIL: Python3: EXISTS')[0] == 0 and
           run('Search >NIL: S:User-Startup "Assign Python3: UP-Term:Python3"')[0] == 0,
           'PYTHON: Python3: assigned, and at every boot', '')
@@ -601,6 +729,9 @@ if __name__ == '__main__':
     if not args or '--move' in args:
         print('install_rig: pass 3, Install over an Install with another DEST (%s then %s)' % (OLD, NEW))
         rc |= move()
+    if '--show-check' in args:
+        print('install_rig: the watched window (UPTERM_RIG_SHOW) itself')
+        rc |= show_check()
     if '--libs' in args:
         print('install_rig: pass 4, LIBS: a multi-assign (the rig\'s normal boot)')
         rc |= libs()
@@ -608,4 +739,5 @@ if __name__ == '__main__':
         ok = 'ixp6' in out and 'ncurses' in out
         print('%s the rig\'s LIBS: is assigned again after the case' % ('ok' if ok else 'FAIL'), '' if ok else out)
         rc |= not ok
+    show_close()
     sys.exit(rc)

@@ -55,7 +55,7 @@ ROOT = ir.ROOT
 VTC = ir.VTC
 OUT = paths.RIG / "installer"
 OUT.mkdir(parents=True, exist_ok=True)  # pages are logged before the first verdict is written
-KIT = ROOT / "build/dist/UP-Term"
+KIT = ir.KIT
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", "VTC:Apps/UP-Term"), "novice": ("NOVICE", None),
          "update": ("AVERAGE", None)}
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
@@ -65,10 +65,9 @@ KEY_X, KEY_RETURN = 0x32, 0x44
 
 def fingerprint():
     h = hashlib.sha256()
-    for p in ("dist/Install.installer", "dist/install.dos", "dist/Uninstall", "build/dist/UP-Term/Install",
-              "build/dist/UP-Term/Files/install.dos"):
-        f = ROOT / p
-        h.update(f.read_bytes() if f.exists() else b"missing " + p.encode())
+    for f in (ROOT / "dist/Install.installer", ROOT / "dist/install.dos", ROOT / "dist/Uninstall", KIT / "Install",
+              KIT / "Files/install.dos"):
+        h.update(f.read_bytes() if f.exists() else b"missing " + str(f).encode())
     return h.hexdigest()[:16]
 
 
@@ -529,6 +528,7 @@ def main():
         return _main(fx)
     finally:
         fx.restore()   # a killed or failing run leaves nothing planted
+        ir.show_close()
 
 
 def _main(fx):
@@ -551,6 +551,7 @@ def _main(fx):
         if not booted:
             rig("stop")
             rig("start")
+            ir._shown = None   # a fresh boot: the watched window (UPTERM_RIG_SHOW) opens again
             fx.take()   # the user's files and assigns, before any case plants its own
             booted = True
         try:
