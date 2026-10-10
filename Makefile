@@ -10,7 +10,7 @@ BUILD   := build
 UPTERM_ROOT ?= $(abspath ..)
 
 ENGINE  := engine/vtengine.c
-RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c
+RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
 SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c shell/sh_float.c
 TTY     := tty/ldisc.c tty/bmsg.c
 DEVICE_CORE := device/upc_core.c
@@ -300,9 +300,11 @@ $(BUILD)/amiga/obj/cpuchk-%.o: tty/cpucheck.c tty/bmsg.h tty/bmsg.c
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
-HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/complete_core.c handler/brk.c handler/waitset.c handler/slash.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c
+# the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over sys_amiga
+HANDLER_DATADIR := claude/datadir.c claude/path.c claude/util.c claude/sys_amiga.c
+HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/complete.c handler/complete_core.c handler/brk.c handler/waitset.c handler/slash.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c handler/histfile.c $(HANDLER_DATADIR)
 HANDLER_HDR := engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h \
-               handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h
+               handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/sys_amiga.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h
 
 amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/Claude
 
@@ -343,6 +345,14 @@ CLAUDE_FLAGS := AMISSL_SDK=$(AMISSL_SDK)
 ifneq ($(CLAUDE_FLAGS),$(shell cat $(BUILD)/amiga/claude.flags 2>/dev/null))
 CLAUDE_FORCE := FORCE
 endif
+# amiga-pi B12: one prompt through llm_request on the Amiga (tools/rig/amigapi_rig.py); plain http only
+PI_PROBE_SRC := tests/amiga/pi_llmprobe.c $(LLM_CORE) claude/json.c claude/util.c claude/http.c claude/sse.c \
+                claude/tls_none.c tty/bmsg.c
+$(BUILD)/amiga/pi-llmprobe: $(PI_PROBE_SRC) claude/net_amiga.c $(CLAUDE_HDR) tty/bmsg.h
+	@mkdir -p $(BUILD)/amiga/obj/pi
+	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/pi/net_amiga.o claude/net_amiga.c
+	$(VC) -dontwarn=153,65 -o $@ $(PI_PROBE_SRC) $(BUILD)/amiga/obj/pi/net_amiga.o
+
 $(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(VIEW_HDR) tty/ldisc.h tty/bmsg.h handler/vtcon_packets.h $(CLAUDE_FORCE) $(BUILD)/amiga/obj/cpuchk-Claude.o
 	@mkdir -p $(BUILD)/amiga/obj/claude
 	@echo '$(CLAUDE_FLAGS)' > $(BUILD)/amiga/claude.flags
@@ -773,6 +783,11 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -c -o $(BUILD)/amiga/obj/clipfmt.o handler/clipfmt.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/lineedit.o handler/lineedit.c
 	$(VC) -c -o $(BUILD)/amiga/obj/complete.o handler/complete.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/histfile.o handler/histfile.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/hd_datadir.o claude/datadir.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/hd_path.o claude/path.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/hd_util.o claude/util.c
+	$(VC) -DVT_AMIGA_EXEC_ALLOC -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/hd_sys_amiga.o claude/sys_amiga.c
 	$(VC) -c -o $(BUILD)/amiga/obj/complete_core.o handler/complete_core.c
 	$(VC) -c -o $(BUILD)/amiga/obj/brk.o handler/brk.c
 	$(VC) -c -o $(BUILD)/amiga/obj/waitset.o handler/waitset.c
@@ -789,6 +804,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/complete.o $(BUILD)/amiga/obj/complete_core.o \
 	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/waitset.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/termurl.o \
 	  $(BUILD)/amiga/obj/prefs_core.o $(BUILD)/amiga/obj/prefs_dos.o \
+	  $(BUILD)/amiga/obj/histfile.o $(BUILD)/amiga/obj/hd_datadir.o $(BUILD)/amiga/obj/hd_path.o $(BUILD)/amiga/obj/hd_util.o $(BUILD)/amiga/obj/hd_sys_amiga.o \
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
 # PTY: (P5): pseudo-terminals on the same line discipline. No C startup:

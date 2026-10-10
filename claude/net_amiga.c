@@ -74,11 +74,35 @@ static void drop(net_amiga *n)
     n->sock = -1;
 }
 
+/* host's IPv4 address into *addr (a dotted literal or a name lookup): 0, -1 */
+static int lookup(const char *host, struct in_addr *addr)
+{
+    struct hostent *he;
+    addr->s_addr = inet_addr((STRPTR)host);
+    if (addr->s_addr != (in_addr_t)-1)
+        return 0;
+    he = gethostbyname((STRPTR)host);
+    if (!he || !he->h_addr_list || !he->h_addr_list[0])
+        return -1;
+    memcpy(addr, he->h_addr_list[0], 4);
+    return 0;
+}
+
+int net_amiga_resolve(const char *host, unsigned char ip[4])
+{
+    struct in_addr a;
+    if (!SocketBase)
+        SocketBase = OpenLibrary((STRPTR)"bsdsocket.library", 4);
+    if (!SocketBase || lookup(host, &a))
+        return -1;
+    memcpy(ip, &a, 4);              /* network order: the 68k's own */
+    return 0;
+}
+
 static int a_open(void *u, const char *host, int port, int tls)
 {
     net_amiga *n = (net_amiga *)u;
     struct sockaddr_in sa;
-    struct hostent *he;
     LONG one = 1, rc, ce;
     n->err[0] = 0;
     drop(n);
@@ -92,14 +116,9 @@ static int a_open(void *u, const char *host, int port, int tls)
     sa.sin_len = sizeof(sa);
     sa.sin_family = AF_INET;
     sa.sin_port = (unsigned short)port;     /* the 68k is big-endian: network order */
-    sa.sin_addr.s_addr = inet_addr((STRPTR)host);
-    if (sa.sin_addr.s_addr == (in_addr_t)-1) {
-        he = gethostbyname((STRPTR)host);
-        if (!he || !he->h_addr_list || !he->h_addr_list[0]) {
-            set_err(n, "cannot find the address of ", host);
-            return NET_ERROR;
-        }
-        memcpy(&sa.sin_addr, he->h_addr_list[0], 4);
+    if (lookup(host, &sa.sin_addr)) {
+        set_err(n, "cannot find the address of ", host);
+        return NET_ERROR;
     }
     n->sock = socket(AF_INET, SOCK_STREAM, 0);
     if (n->sock < 0) {

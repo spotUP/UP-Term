@@ -11,6 +11,8 @@ typedef struct net_amiga {
 } net_amiga;
 
 void net_amiga_init(net_amiga *n, cl_net *net);
+/* the IPv4 address host resolves to (amiga-pi's LAN rule): 0, -1 */
+int net_amiga_resolve(const char *host, unsigned char ip[4]);
 /* closes the connection and the libraries (at the program's end) */
 void net_amiga_exit(net_amiga *n);
 
