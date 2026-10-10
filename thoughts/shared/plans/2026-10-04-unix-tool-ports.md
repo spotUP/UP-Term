@@ -320,15 +320,15 @@ Phase 2:
 - [ ] 2.5 zip (2026-10-08: Zip 3.0, rig 3 6/6, staged; open: 1.10)
 
 Phase 3:
-- [ ] 3.1 file
-- [ ] 3.2 tree
-- [ ] 3.3 ps/top
-- [ ] 3.4 watch
-- [ ] 3.5 script
-- [ ] 3.6 ncdu
+- [ ] 3.1 file (2026-10-10: file 5.48 with a trimmed 3.4 MB magic (full is 7-8 MB; filesystems, windows, msdos, games ... out), built-in zlib/bzip2/xz, rig 3 34 of 34, kit-staged; ports c17843e, 6179535; ixemul 8ff7a77 INFINITY, 47b6874 inttypes.h, a0cb0bd isless; vtcon de859fd RIG_DATA; open: 1.10)
+- [ ] 3.2 tree (2026-10-10: tree 2.2.1, rig 3 20 of 20, kit-staged; ports dfa8b7a; open: 1.10)
+- [ ] 3.3 ps/top (2026-10-10: NOT STARTED, owner decision: Amiga has no per-task CPU counters, so top's CPU column needs either a Dispatch/tc_Switch patch (changes every task switch) or a sampler (statistical); also a native vbcc tool needs the vtcon Makefile `amiga:` target and the kit copy, which the kit agent has open)
+- [ ] 3.4 watch (2026-10-10: our own watch 1.0 (procps-ng's needs its library, curses and fork), command via posix_spawn, rig 3 9 of 9 incl. 3 terminal cases, kit-staged; ports c8087aa; the header's clock/host line is not compared (time), only a title cut at the width; open: 1.10)
+- [ ] 3.5 script (2026-10-10: our own script 1.0 over a new posix_openpt/ptsname in libixcompat, rig 3 9 of 9 incl. 1 terminal case, kit-staged; ports 81c318a, 268bfd0; ixemul 69feef4; open: 1.10)
+- [ ] 3.6 ncdu (2026-10-10: ncdu 1.22, rig 3 12 of 12 incl. 3 terminal cases, kit-staged; ports 1d9a77d; open: 1.10)
 - [ ] 3.7 coreutils 9 (OPEN: kit ships GG coreutils 5.2.1, dist/gg/coreutils-5.2.1)
 - [x] 3.8 hl/mdv in the kit
-- [ ] 3.9 fzy
+- [ ] 3.9 fzy (2026-10-10: fzy 1.0 single-threaded (patch 0001), rig 3 12 of 12 incl. 2 terminal cases, kit-staged; ports 946cbe2; ixemul a105524 getopt_long, getopt_long_only, pselect; open: 1.10)
 
 Phase 4:
 - [ ] 4.1 vim
