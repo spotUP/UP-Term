@@ -59,6 +59,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
@@ -862,6 +863,9 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	python3 tools/mkicon.py $(KIT)/ClaudeCode.info --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE" --tooltype DELAY=0
 	python3 tools/mkicon.py $(KIT)/Uninstall.info --tool C:IconX --plain
+	# every file's mode by one rule (lha carries it to the Amiga as protection bits: a file
+	# without u+w cannot be replaced by the next Install or an Update); stops on one left without u+w
+	python3 tools/kitmodes.py $(KIT)
 	# last: every file of the kit, its part and CRC, for the Installer's update (dist/parts.txt)
 	python3 tools/mkmanifest.py $(KIT)
 	cd $(BUILD)/dist && rm -f ../UP-Term.lha && lha -aq ../UP-Term.lha UP-Term
@@ -875,6 +879,7 @@ dist-check:
 	python3 tests/test_dist_versions.py
 	python3 tests/test_dist_installer.py
 	python3 tests/test_dist_manifest.py
+	python3 tests/test_dist_modes.py
 	python3 tests/test_rig_fixtures.py
 
 # The one reachability test: XCON: through DOS on the running rig.
