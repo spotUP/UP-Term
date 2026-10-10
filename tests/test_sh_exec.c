@@ -1431,6 +1431,67 @@ static void printf_builtin(void)
     CHECK_INT(sh.ctx.status, 2);
 }
 
+/* V74: less's configure ended "vsh: /bin/sh: not found". /bin/sh and /bin/bash (only those two) are the
+ * shell itself, as a command word, after exec, and on a #! line; $BASH is the shell's own path. The
+ * recording layer shows what the OS layer is asked to start. */
+static char seen[8][64];
+static int seen_n;
+
+static long f_run_record(void *os, char **argv, const sh_io *io, int wait)
+{
+    int i;
+    (void)os;
+    (void)io;
+    (void)wait;
+    for (i = 0; argv[i] && i < 8; i++)
+        strcpy(seen[i], argv[i]);
+    seen_n = i;
+    return strcmp(argv[0], "/bin/foo") ? 0 : -1;
+}
+
+static const char *started(const char *text)
+{
+    static char line[512];
+    int i;
+    fresh();
+    sh.os.run = f_run_record;
+    sh_set(&sh.ctx, "BASH", "VTC:vsh");
+    seen_n = 0;
+    {
+        sh_fh f = f_open(0, "RAM:s1", SH_OPEN_WRITE);
+        f_write(0, f, "#!/bin/sh\necho ok\n", 18);
+        f = f_open(0, "RAM:s2", SH_OPEN_WRITE);
+        f_write(0, f, "#!/bin/bash -e\necho ok\n", 22);
+        f = f_open(0, "RAM:s3", SH_OPEN_WRITE);
+        f_write(0, f, "#!/bin/zsh\necho ok\n", 19);
+    }
+    {
+        int inc = 0;
+        sh_run_text(&sh, text, &inc);
+    }
+    line[0] = 0;
+    for (i = 0; i < seen_n; i++) {
+        if (i)
+            strcat(line, "|");
+        strcat(line, seen[i]);
+    }
+    return line;
+}
+
+static void a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is(void)
+{
+    CHECK_STR(started("/bin/sh -c 'echo ok'"), "VTC:vsh|-c|echo ok");
+    CHECK_STR(started("/bin/bash -c 'echo ok'"), "VTC:vsh|-c|echo ok");
+    CHECK_STR(started("exec /bin/sh -c 'echo ok'"), "VTC:vsh|-c|echo ok");
+    CHECK_STR(started("exec /bin/bash script a"), "VTC:vsh|script|a");
+    CHECK_STR(started("RAM:s1 x y"), "VTC:vsh|RAM:s1|x|y");
+    CHECK_STR(started("RAM:s2 x"), "VTC:vsh|-e|RAM:s2|x");
+    CHECK_STR(started("RAM:s3 x"), "RAM:s3|x"); /* another interpreter: not ours */
+    CHECK_STR(started("/bin/zsh -c x"), "/bin/zsh|-c|x");
+    started("/bin/foo -c x");
+    CHECK_STR(slot(ERR)->data, "vsh: /bin/foo: not found\n");
+}
+
 /* V2: "/VTC/bin/nvim" is vol:rest when the Amiga meaning has nothing */
 static void a_unix_absolute_name_maps_to_its_volume(void)
 {
@@ -1761,6 +1822,7 @@ void suite_sh_exec(void)
     which_type();
     umask_builtin();
     a_unix_absolute_name_maps_to_its_volume();
+    a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is();
     printf_builtin();
     prompts();
     basics();

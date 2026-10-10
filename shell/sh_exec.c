@@ -7223,6 +7223,8 @@ static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io)
  * command that is not found leaves the shell running (status 127). Without
  * a command, exec would make its redirections permanent: the core closes a
  * command's redirections when it ends, so that form does nothing. */
+static long start_program(sh_shell *sh, char **argv, const sh_io *io, int wait);
+
 static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     builtin_fn b;
@@ -7232,7 +7234,7 @@ static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
     if ((b = find_bi(sh, argv[1])) != 0)
         st = b(sh, argc - 1, argv + 1, io);
     else {
-        st = sh->os.run(sh->os.data, argv + 1, io, 1);
+        st = start_program(sh, argv + 1, io, 1);
         if (st < 0) {
             err_not_found(sh, io, argv[1]);
             /* bash: a shell that is not interactive ends here with 127, posix mode or not
@@ -7688,13 +7690,120 @@ static void xt_cmd(sh_shell *sh, const sh_io *io, const sh_list *argv)
  * only while a program starts. In exec_cmd1 it was in the frame of every function call level (vbcc
  * gives a function all its block locals at entry): 512 of the ~1.8 KB a level of `f() { f; }` took on
  * the Amiga, where the stack ended at 156 levels of grammar/deep. */
+/* /bin/sh and /bin/bash are this shell (owner's decision 2026-10-10): configure scripts, make and
+ * `#!/bin/sh` files name the Unix path, and the Amiga has no such file. Only those two paths; the shell
+ * is $BASH, the path start_vars gave it, the same file `$BASH -c ...` runs today. 0: not one of them. */
+static const char *shell_path_alias(sh_shell *sh, const char *name)
+{
+    const char *self;
+    if (strcmp(name, "/bin/sh") && strcmp(name, "/bin/bash"))
+        return 0;
+    self = sh_get(&sh->ctx, "BASH");
+    return self && *self ? self : 0;
+}
+
+/* A script whose first line is `#!/bin/sh [arg]` or `#!/bin/bash [arg]` runs in this shell, as the
+ * kernel runs it: interpreter, its one argument, the script's name, the script's arguments. Any other
+ * interpreter is not ours to start. Returns a malloc'ed argv (the strings borrowed, out[1] a copy of
+ * the interpreter's argument when there is one), or 0. */
+static char **shebang_argv(sh_shell *sh, char **argv)
+{
+    char file[512], line[160], interp[16], *p, *arg = 0;
+    const char *self;
+    sh_fh fh;
+    long n, i = 0, k = 0;
+    int na = 0;
+    char **out;
+    if (!argv[0][0] || !sh->os.read || !find_command_file(sh, argv[0], file, sizeof(file)))
+        return 0;
+    fh = sh->os.open(sh->os.data, file, SH_OPEN_READ);
+    if (fh == SH_NOFH)
+        return 0;
+    n = sh->os.read(sh->os.data, fh, line, (long)sizeof(line) - 1);
+    sh->os.close(sh->os.data, fh);
+    if (n < 3 || line[0] != '#' || line[1] != '!')
+        return 0;
+    line[n] = 0;
+    if ((p = strchr(line, '\n')) != 0)
+        *p = 0;
+    if ((p = strchr(line, '\r')) != 0)
+        *p = 0;
+    for (i = 2; line[i] == ' ' || line[i] == '\t'; i++)
+        ;
+    while (line[i] && line[i] != ' ' && line[i] != '\t' && k < (long)sizeof(interp) - 1)
+        interp[k++] = line[i++];
+    interp[k] = 0;
+    if (line[i] && line[i] != ' ' && line[i] != '\t')
+        return 0; /* a longer name than either alias */
+    self = shell_path_alias(sh, interp);
+    if (!self)
+        return 0;
+    while (line[i] == ' ' || line[i] == '\t')
+        i++;
+    if (line[i]) {
+        arg = line + i;
+        for (p = arg + strlen(arg); p > arg && (p[-1] == ' ' || p[-1] == '\t'); p--)
+            ;
+        *p = 0;
+    }
+    while (argv[na])
+        na++;
+    out = (char **)malloc(sizeof(char *) * (na + 3));
+    if (!out)
+        return 0;
+    if (arg && *arg) {
+        char *c = (char *)malloc(strlen(arg) + 1);
+        if (!c) {
+            free(out);
+            return 0;
+        }
+        strcpy(c, arg);
+        arg = c;
+    } else
+        arg = 0;
+    i = 0;
+    out[i++] = (char *)self;
+    if (arg)
+        out[i++] = arg;
+    out[i++] = argv[0];
+    for (k = 1; k < na; k++)
+        out[i++] = argv[k];
+    out[i] = 0;
+    return out;
+}
+
+/* Start a program: /bin/sh and /bin/bash are the shell itself, and so is a script that names one of
+ * them on its #! line. Every way a command is started (a command word, exec, a hashed path) comes here. */
+static long start_program(sh_shell *sh, char **argv, const sh_io *io, int wait)
+{
+    const char *self = shell_path_alias(sh, argv[0]);
+    char *saved = argv[0];
+    char **sb;
+    long st;
+    if (self) {
+        argv[0] = (char *)self;
+        st = sh->os.run(sh->os.data, argv, io, wait);
+        argv[0] = saved;
+        return st;
+    }
+    sb = shebang_argv(sh, argv);
+    if (sb) {
+        char *own = sb[1] != argv[0] ? sb[1] : 0;
+        st = sh->os.run(sh->os.data, sb, io, wait);
+        free(own);
+        free(sb);
+        return st;
+    }
+    return sh->os.run(sh->os.data, argv, io, wait);
+}
+
 static long run_program(sh_shell *sh, sh_list *argv, const sh_io *io, int wait)
 {
     char hp[512], *name0 = argv->v[0];
     long st;
     if (hash_note_run(sh, name0, hp, sizeof(hp)))
         argv->v[0] = hp;
-    st = sh->os.run(sh->os.data, argv->v, io, wait);
+    st = start_program(sh, argv->v, io, wait);
     argv->v[0] = name0;
     return st;
 }
