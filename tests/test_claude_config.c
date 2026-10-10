@@ -22,6 +22,8 @@
 #include "../claude/conv.h"
 #include "../claude/sys_posix.h"
 #include "../claude/util.h"
+#include "../claude/datadir.h"
+#include "claude_vol.h"
 
 static char dir[512];
 static sys_posix sp;
@@ -438,7 +440,7 @@ static void test_defs(void)
     at(home, "home");
     at(root, "proj");
     defs_init(&s);
-    defs_load(&s, &sys, home, root);
+    defs_load(&s, &sys, home, home, root);
     CHECK_INT(defs_count(&s, DEF_COMMAND), 3);     /* review (project hides user), hello, git:commit (its subdirectory: Claude Code's namespace) */
     CHECK_INT(defs_count(&s, DEF_AGENT), 1);
     CHECK_INT(defs_count(&s, DEF_SKILL), 10);      /* one of the project's, nine bundled ones (loop: A4 gaps 3) */
@@ -915,6 +917,101 @@ static void test_gaps3(void)
     cfg_free(&s);
 }
 
+/* ---- where the growing files live (claude/datadir.c; C:Claude and amiga-pi) ---- */
+
+static void test_datadir(void)
+{
+    cl_vol v;
+    cl_sys vs;
+    char out[300], *b;
+    long n;
+    memset(&v, 0, sizeof(v));
+    mk("vol");
+    mk("vol/envarc");
+    at(v.envarc, "vol/envarc");
+    vol_init(&v, &sys, &vs);
+
+    /* no kit (no UP-Term: assign): ENVARC:<program>, as before */
+    CHECK_INT(dd_dir(&vs, "Claude", out, sizeof(out)), 0);
+    CHECK_STR(out, "ENVARC:Claude");
+    CHECK(v.quiet_kinds > 0);           /* asked without the "insert volume" requester */
+    CHECK_INT(dd_dir(&vs, "amiga-pi", out, sizeof(out)), 0);
+    CHECK_STR(out, "ENVARC:amiga-pi");
+    /* ... nowhere to move to: the file stays where it is */
+    mk("vol/envarc/Claude");
+    put("vol/envarc/Claude/history", "one\n");
+    CHECK_INT(dd_migrate(&vs, "ENVARC:Claude/history", "UP-Term:var/Claude/history"), -1);
+    CHECK_INT(vs.kind(vs.u, "ENVARC:Claude/history"), 1);
+
+    /* the kit installed: UP-Term:var/<program> */
+    mk("vol/kit");
+    at(v.kit, "vol/kit");
+    CHECK_INT(dd_dir(&vs, "Claude", out, sizeof(out)), 1);
+    CHECK_STR(out, "UP-Term:var/Claude");
+    CHECK_INT(dd_dir(&vs, "Claude", out, 18), -1);
+
+    /* old file only: moved (var/ and var/Claude/ made on the way) */
+    CHECK_INT(dd_migrate(&vs, "ENVARC:Claude/history", "UP-Term:var/Claude/history"), 1);
+    CHECK_INT(vs.kind(vs.u, "ENVARC:Claude/history"), 0);
+    b = slurp("vol/kit/var/Claude/history");
+    CHECK_STR(b ? b : "", "one\n");
+    free(b);
+    /* nothing left to move: nothing done */
+    CHECK_INT(dd_migrate(&vs, "ENVARC:Claude/history", "UP-Term:var/Claude/history"), 0);
+
+    /* both exist: neither touched, the new one is the one used */
+    put("vol/envarc/Claude/session.json", "{\"old\":1}");
+    put("vol/kit/var/Claude/session.json", "{\"new\":1}");
+    CHECK_INT(dd_migrate(&vs, "ENVARC:Claude/session.json", "UP-Term:var/Claude/session.json"), 2);
+    b = slurp("vol/envarc/Claude/session.json");
+    CHECK_STR(b ? b : "", "{\"old\":1}");
+    free(b);
+    b = slurp("vol/kit/var/Claude/session.json");
+    CHECK_STR(b ? b : "", "{\"new\":1}");
+    free(b);
+
+    /* a tree across volumes (no rename): copied whole, then the old one deleted */
+    mk("vol/envarc/Claude/projects");
+    mk("vol/envarc/Claude/projects/Work-x");
+    mk("vol/envarc/Claude/projects/Work-x/memory");
+    put("vol/envarc/Claude/projects/Work-x/00000001.jsonl", "{\"type\":\"user\"}\n");
+    put("vol/envarc/Claude/projects/Work-x/memory/MEMORY.md", "remember\n");
+    v.no_rename = 1;
+    v.renames = 0;
+    CHECK_INT(dd_migrate(&vs, "ENVARC:Claude/projects", "UP-Term:var/Claude/projects"), 1);
+    CHECK_INT((int)v.renames, 0);
+    CHECK_INT(vs.kind(vs.u, "ENVARC:Claude/projects"), 0);
+    b = slurp("vol/kit/var/Claude/projects/Work-x/00000001.jsonl");
+    CHECK_STR(b ? b : "", "{\"type\":\"user\"}\n");
+    free(b);
+    b = slurp("vol/kit/var/Claude/projects/Work-x/memory/MEMORY.md");
+    CHECK_STR(b ? b : "", "remember\n");
+    free(b);
+    /* the same volume: one rename */
+    v.no_rename = 0;
+    mk("vol/envarc/Claude/agent-memory");
+    put("vol/envarc/Claude/agent-memory/notes.md", "x");
+    CHECK_INT(dd_migrate(&vs, "ENVARC:Claude/agent-memory", "UP-Term:var/Claude/agent-memory"), 1);
+    CHECK_INT((int)v.renames, 1);
+    CHECK_INT(vs.kind(vs.u, "UP-Term:var/Claude/agent-memory/notes.md"), 1);
+
+    /* a directory of more entries than one listing buffer held (purge kept 128) */
+    {
+        int i;
+        char rel[100], num[16];
+        mk("vol/kit/many");
+        for (i = 0; i < 300; i++) {
+            cl_ltoa(i, num);
+            strcpy(rel, "vol/kit/many/f");
+            strcat(rel, num);
+            put(rel, "x");
+        }
+        n = dd_remove_tree(&vs, "UP-Term:many");
+        CHECK_INT(n, 301);
+        CHECK_INT(vs.kind(vs.u, "UP-Term:many"), 0);
+    }
+}
+
 void suite_claude_config(void)
 {
     char cmd[600];
@@ -929,6 +1026,7 @@ void suite_claude_config(void)
     test_checkpoints();
     test_gaps();
     test_gaps3();
+    test_datadir();
     strcpy(cmd, "rm -rf ");
     strcat(cmd, dir);
     if (system(cmd))

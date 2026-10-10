@@ -659,7 +659,8 @@ static const char *const sk_update_config[] = {
 };
 static const char *const sk_fewer_prompts[] = {
     "Find the permission questions that keep coming back and propose allow rules for them. Read this project's "
-    "session files (ENVARC:Claude/projects/<this directory's name>/*.jsonl; the newest few are enough) and "
+    "session files (UP-Term:var/Claude/projects/<this directory's name>/*.jsonl, or ENVARC:Claude/projects/... "
+    "without UP-Term:; the newest few are enough) and "
     "collect the Bash commands and tools used again and again. ",
     "Propose rules only for what is safe: commands that read, build or test, never ones that delete or "
     "publish. Show the list; when the user agrees, add the rules to .claude/settings.json under "
@@ -668,7 +669,8 @@ static const char *const sk_fewer_prompts[] = {
 };
 static const char *const sk_insights[] = {
     "Write a short HTML report on how C:Claude is used on this machine: read the session indexes "
-    "(ENVARC:Claude/projects/*/sessions) and a sample of the sessions (*.jsonl). ",
+    "(UP-Term:var/Claude/projects/*/sessions, or ENVARC:Claude/projects/*/sessions without UP-Term:) and a "
+    "sample of the sessions (*.jsonl). ",
     "Cover the projects worked on, what kind of work, what went wrong (errors, denied tools, stopped answers) "
     "and features worth trying. Save it as RAM:claude-insights.html and say where it is.",
     0
@@ -678,7 +680,8 @@ static const char *const sk_onboarding[] = {
     "message to Claude: what the project is, how it is built, run and tested on this machine, its conventions "
     "and its pitfalls. ",
     "Use the project's files and its CLAUDE.md / AMIGA.md, and this project's past sessions "
-    "(ENVARC:Claude/projects/...) for what was learned. Save it as .claude/onboarding.md.",
+    "(UP-Term:var/Claude/projects/..., or ENVARC:Claude/projects/... without UP-Term:) for what was learned. "
+    "Save it as .claude/onboarding.md.",
     0
 };
 static const char *const sk_run[] = {
@@ -764,7 +767,7 @@ static void bundled(cl_defs *s, const char *name, const char *desc, const char *
     jw_free(&b);
 }
 
-int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
+int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *data, const char *root)
 {
     static const char *const sub[DEF_NTYPES] = { "commands", "agents", "skills", "output-styles" };
     char base[2][300], p[300];
@@ -796,7 +799,7 @@ int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root)
         if (!base[src][0])
             continue;
         for (t = 0; t < DEF_NTYPES; t++)
-            if (path_join(base[src], sub[t], p, sizeof(p)) == 0)
+            if (path_join(!src && t == DEF_SKILL && data && *data ? data : base[src], sub[t], p, sizeof(p)) == 0)
                 load_dir(s, sys, t, src ? CFG_PROJECT : CFG_USER, p, 0);
     }
     return s->n;

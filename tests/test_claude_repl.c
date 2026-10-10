@@ -27,6 +27,8 @@
 #include "../claude/show.h"
 #include "../claude/session.h"
 #include "claude_screen.h"
+#include "claude_vol.h"
+#include "../claude/datadir.h"
 
 /* ---- the stub transport: one canned HTTP response per request ---- */
 
@@ -378,6 +380,9 @@ static sys_posix sp;
 static cl_sys sys;
 
 static const char *setup_key = "test-key-not-real";
+static cl_vol vol;              /* vol_on: ENVARC: and UP-Term: mapped to host directories */
+static int vol_on;
+static cl_sys vsys;
 
 static void setup_in(cl_repl *r, const char **script, const char *root)
 {
@@ -400,7 +405,9 @@ static void setup_in(cl_repl *r, const char **script, const char *root)
     net.close = s_close;
     net.err = s_err;
     sys_posix_init(&sp, &sys);
-    CHECK_INT(repl_init(r, &io, &net, &sys, CL_DEFAULT_URL, setup_key, root), 0);
+    if (vol_on)
+        vol_init(&vol, &sys, &vsys);
+    CHECK_INT(repl_init(r, &io, &net, vol_on ? &vsys : &sys, CL_DEFAULT_URL, setup_key, root), 0);
     jw_free(&snt.text);
     memset(&snt, 0, sizeof(snt));
     jw_init(&snt.text);
@@ -1681,6 +1688,104 @@ static void req_golden(int i, const char *name)
     jw_free(&h);
     jw_free(&b);
     jw_free(&all);
+}
+
+/* C:Claude's growing files out of ENVARC:Claude (3.1 copies all of ENVARC:
+ * into RAM at every boot): with the kit they live in UP-Term:var/Claude
+ * (claude/datadir.c), and what an older C:Claude left in ENVARC:Claude is
+ * moved there by repl_init -- through the program's own start, with
+ * CLAUDE_CONFIG_DIR unset as on the Amiga. */
+static void vt_put(const char *path, const char *text)
+{
+    vsys.write(vsys.u, path, text, (long)strlen(text));
+}
+
+static char *vt_get(const char *path)
+{
+    char *b = 0;
+    long n = 0;
+    return vsys.read(vsys.u, path, 1L << 20, &b, &n) ? 0 : b;
+}
+
+static void test_datadir_move(void)
+{
+    static const char *none[] = { 0 };
+    static cl_repl r;
+    char cfgdir[600], base[600], *b;
+    int i;
+    strcpy(cfgdir, getenv("CLAUDE_CONFIG_DIR") ? getenv("CLAUDE_CONFIG_DIR") : "");
+    unsetenv("CLAUDE_CONFIG_DIR");
+    strcpy(base, dir);
+    strcat(base, "/vol");
+    mkdir(base, 0700);
+    memset(&vol, 0, sizeof(vol));
+    strcpy(vol.envarc, base);
+    strcat(vol.envarc, "/envarc");
+    mkdir(vol.envarc, 0700);
+    vol_on = 1;
+
+    /* no kit: everything stays in ENVARC:Claude, as before */
+    setup(&r, none);
+    CHECK_STR(r.data, "ENVARC:Claude");
+    CHECK(strstr(r.sess.dir, "ENVARC:Claude/projects/") == r.sess.dir);
+    repl_free(&r);
+
+    /* an older C:Claude's files, then the kit installed (rename fails: two volumes) */
+    vsys.mkdir(vsys.u, "ENVARC:Claude");
+    vsys.mkdir(vsys.u, "ENVARC:Claude/projects");
+    vsys.mkdir(vsys.u, "ENVARC:Claude/projects/old-proj");
+    vsys.mkdir(vsys.u, "ENVARC:Claude/skills");
+    vsys.mkdir(vsys.u, "ENVARC:Claude/skills/tidy");
+    vt_put("ENVARC:Claude/projects/old-proj/0000002a.jsonl", "{\"type\":\"user\"}\n");
+    vt_put("ENVARC:Claude/skills/tidy/SKILL.md", "---\ndescription: Tidy the drawer\n---\nTidy it.\n");
+    vt_put("ENVARC:Claude/history", "old prompt\n");
+    vt_put("ENVARC:Claude/session.json", "{\"messages\":[]}");
+    vt_put("ENVARC:Claude/key", "sk-not-real\n");
+    strcpy(vol.kit, base);
+    strcat(vol.kit, "/kit");
+    mkdir(vol.kit, 0700);
+    vol.no_rename = 1;
+    setup(&r, none);
+    CHECK_STR(r.data, "UP-Term:var/Claude");
+    CHECK(strstr(r.sess.dir, "UP-Term:var/Claude/projects/") == r.sess.dir);
+    /* the growing ones moved, the small configuration left */
+    CHECK_INT(vsys.kind(vsys.u, "ENVARC:Claude/projects"), 0);
+    CHECK_INT(vsys.kind(vsys.u, "ENVARC:Claude/skills"), 0);
+    CHECK_INT(vsys.kind(vsys.u, "ENVARC:Claude/history"), 0);
+    CHECK_INT(vsys.kind(vsys.u, "ENVARC:Claude/session.json"), 0);
+    CHECK_INT(vsys.kind(vsys.u, "ENVARC:Claude/key"), 1);
+    b = vt_get("UP-Term:var/Claude/projects/old-proj/0000002a.jsonl");
+    CHECK_STR(b ? b : "", "{\"type\":\"user\"}\n");
+    free(b);
+    b = vt_get("UP-Term:var/Claude/history");
+    CHECK_STR(b ? b : "", "old prompt\n");
+    free(b);
+    CHECK_INT(vsys.kind(vsys.u, "UP-Term:var/Claude/session.json"), 1);
+    /* the moved skill is the user's skill */
+    for (i = 0; i < r.defs.n; i++)
+        if (!strcmp(r.defs.d[i].name, "tidy"))
+            break;
+    CHECK(i < r.defs.n && r.defs.d[i].src == CFG_USER);
+    /* a turn's session lands on disk */
+    add_stream("text.sse");
+    repl_line(&r, "hello");
+    CHECK(r.sess.file[0] && strstr(r.sess.file, "UP-Term:var/Claude/projects/") == r.sess.file);
+    CHECK_INT(vsys.kind(vsys.u, r.sess.file), 1);
+    repl_free(&r);
+
+    /* both places hold a history: the new one is used, the old one left alone */
+    vt_put("ENVARC:Claude/history", "stale\n");
+    setup(&r, none);
+    b = vt_get("ENVARC:Claude/history");
+    CHECK_STR(b ? b : "", "stale\n");
+    free(b);
+    b = vt_get("UP-Term:var/Claude/history");
+    CHECK_STR(b ? b : "", "old prompt\n");
+    free(b);
+    repl_free(&r);
+
+    vol_on = 0;
+    setenv("CLAUDE_CONFIG_DIR", cfgdir, 1);
 }
 
 static void test_req_golden(void)
@@ -6140,6 +6245,7 @@ void suite_claude_repl(void)
     test_reach();
     test_unfinished();
     test_req_golden();
+    test_datadir_move();
     test_commands();
     test_screen();
     test_wp1();

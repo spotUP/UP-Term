@@ -72,8 +72,9 @@ typedef struct cl_defs {
 void defs_init(cl_defs *s);
 void defs_free(cl_defs *s);
 /* Everything under home (user) and root/.claude (project), and the
- * built-in output styles: the count. */
-int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *root);
+ * built-in output styles: the count. The user's skills/ are under data
+ * (the growing files' directory, claude/datadir.h; home when 0). */
+int defs_load(cl_defs *s, cl_sys *sys, const char *home, const char *data, const char *root);
 /* By type and name (case-insensitive); the project's first. 0 none. */
 const cl_def *defs_find(const cl_defs *s, int type, const char *name);
 /* the i-th of a type (0..), 0 past the end: the list WP2's Task / Skill

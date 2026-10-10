@@ -290,7 +290,7 @@ static void preload(cl_tools *t, const cl_agent *a, jw *sys)
 }
 
 /* An agent's persistent memory (frontmatter memory: user, project, local;
- * Claude Code's): its directory -- ENVARC:Claude/agent-memory/<name>,
+ * Claude Code's): its directory -- <data>/agent-memory/<name> (claude/datadir.h),
  * <root>/.claude/agent-memory/<name>, <root>/.claude/agent-memory-local/
  * <name> -- named in its system prompt with MEMORY.md's first 200 lines
  * (25 KB at most); Read, Write and Edit are its tools there, free. */
@@ -301,7 +301,7 @@ static void agent_memory(cl_tools *t, cl_tools *child, const cl_agent *a, jw *sy
     long n = 0, k = 0, lines = 0;
     int ok;
     if (!strcmp(a->memory, "user"))
-        ok = t->home && path_join(t->home, "agent-memory", dir, sizeof(dir)) == 0;
+        ok = t->data && path_join(t->data, "agent-memory", dir, sizeof(dir)) == 0;
     else if (!strcmp(a->memory, "project"))
         ok = path_join(t->root, ".claude/agent-memory", dir, sizeof(dir)) == 0;
     else if (!strcmp(a->memory, "local"))

@@ -455,4 +455,5 @@ void sys_posix_init(sys_posix *p, cl_sys *s)
     s->bg_size = x_bg_size;
     s->bg_file = x_bg_file;
     s->rename = x_rename;
+    s->quiet_kind = 0;          /* kind() asks nothing on the host */
 }

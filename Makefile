@@ -36,7 +36,7 @@ CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c clau
                claude/webfetch.c claude/subagent.c claude/tasks.c claude/sched.c claude/watch.c claude/trust.c \
                claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) \
                claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
-               claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c
+               claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c claude/datadir.c
 CLAUDE_HDR := $(wildcard claude/*.h)
 # every header a host binary can include: a header-only change rebuilds the host tests (tests/test_host_deps.py)
 HOST_HDR := $(wildcard engine/*.h engine/*.inc render/*.h render/*.inc handler/*.h shell/*.h tty/*.h device/*.h config/*.h \
@@ -46,7 +46,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
-           tests/claude_load.c tests/claude_screen.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_pty_name.c tests/test_bmsg.c tests/test_upassign.c
+           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_pty_name.c tests/test_bmsg.c tests/test_upassign.c
 
 .PHONY: bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
@@ -325,7 +325,7 @@ CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude
                    claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) $(VIEW_MD) tty/ldisc.c tty/bmsg.c \
                    handler/clip.c handler/clipfmt.c \
                    claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
-                   claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c
+                   claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c claude/datadir.c
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
 AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK

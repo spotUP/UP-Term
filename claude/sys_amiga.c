@@ -146,6 +146,18 @@ static int a_kind(void *u, const char *path)
     return k;
 }
 
+/* kind() with the volume requesters off: a missing assign is an answer */
+static int a_quiet_kind(void *u, const char *path)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR win = me->pr_WindowPtr;
+    int k;
+    me->pr_WindowPtr = (APTR)-1;
+    k = a_kind(u, path);
+    me->pr_WindowPtr = win;
+    return k;
+}
+
 static int a_canon(void *u, const char *path, char *out, long cap)
 {
     BPTR l = Lock((STRPTR)path, SHARED_LOCK);
@@ -691,4 +703,5 @@ void sys_amiga_init(sys_amiga *s, cl_sys *sys)
     sys->bg_size = a_bg_size;
     sys->bg_file = a_bg_file;
     sys->rename = a_rename;
+    sys->quiet_kind = a_quiet_kind;
 }

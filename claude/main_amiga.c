@@ -48,6 +48,7 @@
 #include "net_amiga.h"
 #include "sys_amiga.h"
 #include "util.h"
+#include "path.h"
 
 static const char vers[] = "$VER: Claude 1.0 (5.10.2026) UP-Term";
 const char stack_cookie[] = "$STACK: 32768";
@@ -441,8 +442,11 @@ int main(void)
         r->log_path = logname;      /* /debug names it */
         r->tools.web = &wnet;
         /* A2's one saved conversation: /resume takes it over when there is no session yet */
-        cl_copy(r->session, "ENVARC:Claude/session.json", sizeof(r->session));
-        cl_copy(r->ui.histfile, "ENVARC:Claude/history", sizeof(r->ui.histfile));   /* A4 1.1 */
+        /* in the growing files' directory (claude/datadir.h): UP-Term:var/Claude with the kit */
+        if (path_join(r->data, "session.json", r->session, sizeof(r->session)))
+            r->session[0] = 0;
+        if (path_join(r->data, "history", r->ui.histfile, sizeof(r->ui.histfile)))   /* A4 1.1 */
+            r->ui.histfile[0] = 0;
         if (cli_apply(&cli, r)) {
             say(cli.err);
             say("\n");

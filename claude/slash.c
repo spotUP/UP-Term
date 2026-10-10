@@ -1679,7 +1679,7 @@ static void skills(cl_repl *r, const char *arg)
     }
     if (!k)
         ui_line(&r->ui, *arg ? "No skill matches." : "No skills: put them in .claude/skills/NAME/SKILL.md (or "
-                                                     "ENVARC:Claude/skills).");
+                                                     "UP-Term:var/Claude/skills; ENVARC:Claude/skills without UP-Term:).");
     else if (!*arg)
         ui_line(&r->ui, "Turn one on or off: /skills NAME on|name-only|user-only|off");
 }

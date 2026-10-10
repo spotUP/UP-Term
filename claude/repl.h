@@ -98,7 +98,10 @@ typedef struct cl_repl {
     char session[256];          /* A2's single saved conversation: read by /resume when there
                                  * is no session yet (the migration), no longer written */
     /* A4 WP3: settings, memory, definitions, hooks, sessions, checkpoints */
-    char home[256];             /* ENVARC:Claude */
+    char home[256];             /* ENVARC:Claude: the small configuration */
+    char data[256];             /* what grows: projects/ (sessions, memory), agent-memory/, skills/,
+                                 * history, session.json -- UP-Term:var/Claude with the kit, else
+                                 * ENVARC:Claude (claude/datadir.h); CLAUDE_CONFIG_DIR: that directory */
     char tmp[256];              /* T: */
     cl_settings cfg;
     cl_memory mem;

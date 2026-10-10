@@ -79,6 +79,10 @@ typedef struct cl_sys {
     const char *(*bg_file)(void *u, long job);
     /* a file renamed (the same volume): 0, -1 */
     int (*rename)(void *u, const char *from, const char *to);
+    /* kind() that never asks for a volume: 0 when an assign or volume is
+     * not there, without the "Please insert volume" requester kind() may
+     * bring up (claude/datadir.c asks whether UP-Term: exists); 0 = use kind() */
+    int (*quiet_kind)(void *u, const char *path);
 } cl_sys;
 
 #endif

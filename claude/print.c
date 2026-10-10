@@ -6,6 +6,7 @@
 #include "tui.h"
 #include "path.h"
 #include "util.h"
+#include "datadir.h"
 
 #define NOTES_MAX 4096L
 
@@ -823,43 +824,6 @@ static long s_read_line(void *u, char *buf, long cap)
     return o->read_line ? o->read_line(o->u, buf, cap) : -1;
 }
 
-/* the files of a project's directory (sessions, memory/) removed */
-typedef struct purge_ls {
-    cl_dirent e[128];
-    int n;
-} purge_ls;
-
-static int purge_one(void *c, const cl_dirent *e)
-{
-    purge_ls *l = (purge_ls *)c;
-    if (l->n < 128)
-        l->e[l->n++] = *e;
-    return 0;
-}
-
-static int purge_dir(cl_sys *sys, const char *dir)
-{
-    purge_ls *l = (purge_ls *)malloc(sizeof(purge_ls));
-    int i, gone = 0;
-    if (!l || sys->kind(sys->u, dir) != 2) {
-        free(l);
-        return 0;
-    }
-    l->n = 0;
-    sys->list(sys->u, dir, purge_one, l);
-    for (i = 0; i < l->n; i++) {
-        char p[400];
-        if (path_join(dir, l->e[i].name, p, sizeof(p)))
-            continue;
-        if (l->e[i].dir)
-            gone += purge_dir(sys, p);
-        if (sys->remove && sys->remove(sys->u, p) == 0)
-            gone++;
-    }
-    free(l);
-    return gone;
-}
-
 /* the history's lines of a project dropped (the rest kept as it was) */
 static int purge_history(cl_sys *sys, const char *file, const char *project)
 {
@@ -955,7 +919,7 @@ int print_subcommand(cl_repl *r, cl_cli *c, cl_pout *p)
         } else {
             if (!c->sub_arg[0] || r->sys->canon(r->sys->u, dir, dir, sizeof(dir)))
                 cl_copy(dir, c->sub_arg[0] ? dir : r->tools.root, sizeof(dir));
-            sess_init(&s, r->sys, r->home, dir);
+            sess_init(&s, r->sys, r->data, dir);
             jw_init(&m);
             jw_rawz(&m, "This removes C:Claude's sessions, auto memory and prompt history of ");
             jw_rawz(&m, dir);
@@ -965,9 +929,12 @@ int print_subcommand(cl_repl *r, cl_cli *c, cl_pout *p)
             p->out(p->u, m.p ? m.p : "", m.n);
             jw_free(&m);
             if (s_read_line(&st, ans, sizeof(ans)) > 0 && (ans[0] == 'y' || ans[0] == 'Y')) {
-                int gone = purge_dir(r->sys, s.dir);
-                if (r->sys->remove)
-                    r->sys->remove(r->sys->u, s.dir);
+                /* the project's directory (sessions, memory/) with all below it; the
+                 * directory itself is not counted */
+                int had = r->sys->kind(r->sys->u, s.dir) == 2;
+                int gone = (int)dd_remove_tree(r->sys, s.dir);
+                if (had && gone && r->sys->kind(r->sys->u, s.dir) == 0)
+                    gone--;
                 gone += purge_history(r->sys, r->ui.histfile, dir);
                 jw_init(&m);
                 jw_rawz(&m, "Removed ");

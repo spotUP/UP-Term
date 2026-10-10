@@ -225,7 +225,8 @@ typedef struct cl_tools {
     char advisor[64];           /* the advisor server tool's model ("" none, /advisor) */
     int run_id;                 /* a subagent's run (its background tasks end with it), 0 the conversation */
     int rerun;                  /* the question was answered ASK_RERUN: run the call again (pol_call) */
-    const char *home;           /* the user's directory (ENVARC:Claude): an agent's user-scope memory */
+    const char *home;           /* the user's directory (ENVARC:Claude) */
+    const char *data;           /* the growing files' (claude/datadir.h): an agent's user-scope memory */
     int auto_memory;            /* auto memory is on (an agent's memory: field needs it) */
     char mem_dir[300];          /* inside an agent with memory: its directory (Read/Write/Edit free there) */
     /* the environment variables the tools take (the REPL's repl_env) */

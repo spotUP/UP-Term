@@ -9,6 +9,7 @@
 #include "trust.h"
 #include "setup.h"
 #include "util.h"
+#include "datadir.h"
 
 enum { R_OK, R_RETRY, R_FAIL, R_CANCEL };
 
@@ -2001,7 +2002,7 @@ int repl_continue(cl_repl *r)
 }
 
 /* /resume: a picker over this directory's sessions; /resume NAME|ID; and
- * A2's JSON files (/resume FILE.json, and ENVARC:Claude/session.json
+ * A2's JSON files (/resume FILE.json, and <data>/session.json
  * when there is no session yet) */
 static void resume(cl_repl *r, const char *arg)
 {
@@ -2789,7 +2790,7 @@ int repl_load_memory(cl_repl *r)
 static void repl_defs(cl_repl *r)
 {
     defs_free(&r->defs);
-    defs_load(&r->defs, r->sys, r->home, r->tools.root);
+    defs_load(&r->defs, r->sys, r->home, r->data, r->tools.root);
     if (r->bare || r->safe)
         defs_drop(&r->defs, -1);    /* only the built-in output styles stay */
     if (env_on(r, "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS")) {
@@ -3054,6 +3055,31 @@ static void var_or(cl_sys *sys, const char *name, const char *def, char *out, lo
         cl_copy(out, def, cap);
 }
 
+/* r->data, where the growing files live (claude/datadir.h): with
+ * CLAUDE_CONFIG_DIR that directory, as Claude Code keeps everything there;
+ * else UP-Term:var/Claude with the kit, ENVARC:Claude without. What an
+ * older C:Claude left in ENVARC:Claude is moved there on this first run
+ * (a name in both places: the new one is used, the old one left alone). */
+static void data_dir(cl_repl *r)
+{
+    static const char *const moved[] = { "projects", "agent-memory", "skills", "session.json", "history", 0 };
+    char cd[8];
+    int i;
+    if (r->sys->getenv && r->sys->getenv(r->sys->u, "CLAUDE_CONFIG_DIR", cd, sizeof(cd)) >= 0) {
+        cl_copy(r->data, r->home, sizeof(r->data));
+        return;
+    }
+    if (dd_dir(r->sys, "Claude", r->data, sizeof(r->data)) != 1 || dd_mkdirs(r->sys, r->data)) {
+        cl_copy(r->data, r->home, sizeof(r->data));     /* no kit, or its drawer cannot be written */
+        return;
+    }
+    for (i = 0; moved[i]; i++) {
+        char from[300], to[300];
+        if (path_join(r->home, moved[i], from, sizeof(from)) == 0 && path_join(r->data, moved[i], to, sizeof(to)) == 0)
+            dd_migrate(r->sys, from, to);
+    }
+}
+
 int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, const char *key,
               const char *root)
 {
@@ -3108,20 +3134,22 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     }
     var_or(sys, "CLAUDE_CONFIG_DIR", CL_HOME, r->home, sizeof(r->home));
     r->tools.home = r->home;
+    data_dir(r);
+    r->tools.data = r->data;
     {
         char hd[256];
         var_or(sys, "HOME", "SYS:", hd, sizeof(hd));
         cfg_set_home(hd);           /* ~/ in permission rules */
     }
     var_or(sys, "CLAUDE_CODE_TMPDIR", CL_TMP, r->tmp, sizeof(r->tmp));
-    sess_init(&r->sess, sys, r->home, r->tools.root);
+    sess_init(&r->sess, sys, r->data, r->tools.root);
     {
         /* CLAUDE_CODE_PROJECT_DIR_NAME (with CLAUDE_CONFIG_DIR): the projects/ directory's name */
         char pn[64], cd[8];
         env_str(r, "CLAUDE_CODE_PROJECT_DIR_NAME", pn, sizeof(pn));
         if (pn[0] && !strpbrk(pn, "/:") && sys->getenv && sys->getenv(sys->u, "CLAUDE_CONFIG_DIR", cd, sizeof(cd)) >= 0) {
             char d[300];
-            if (path_join(r->home, "projects", d, sizeof(d)) == 0 && path_join(d, pn, r->sess.dir, sizeof(r->sess.dir)))
+            if (path_join(r->data, "projects", d, sizeof(d)) == 0 && path_join(d, pn, r->sess.dir, sizeof(r->sess.dir)))
                 cl_copy(r->sess.dir, d, sizeof(r->sess.dir));
         }
     }
