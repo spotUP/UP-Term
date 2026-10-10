@@ -36,14 +36,19 @@ def run(cmd, timeout=60):
 # screen the owner can watch, titled <title>, instead of inside the agent: a
 # Shell (a ROM CON: window, there with UP-Term installed or not) executes
 # <drawer>/loop, which takes each command the host writes to <drawer>/cmd
-# (renamed to run, so the next one cannot be lost) and runs it in a Shell of
-# its own (Run, in the same window): an Execute inside the loop would splice
-# the loop's rest into a new script file, and its Skip top BACK then finds no
-# label (3.1, 2026-10-09). The command's output goes to out<n>, is typed into
-# the window, and rc<n> is written last; the host waits for rc<n>. <drawer>
-# is a new VTC:show-<time> for each window, and only the Amiga side deletes
-# in it: FS-UAE's VTC: keeps names the Mac deleted, and a Rename onto such a
-# name fails (the loop stalled so, 2026-10-09). Commands run at FailAt 1000:
+# (renamed to run, so the next one cannot be lost), types the command into
+# the window and starts it in a Shell of its own with no console (NewShell
+# NIL:), then types its output into the window when it is done. Not in the
+# loop's Shell: an Execute there splices the loop's rest into a new script
+# file, and its Skip top BACK then finds no label ("object not found", "Skip
+# failed returncode 10" on 3.1, 2026-10-09). Not in a Run'd Shell on the
+# window either: that Shell stopped after C:UPConsole CON ON switched the
+# window's handler (2026-10-10). Each line's output is appended to out<n>
+# (a line that redirects its own keeps it; an Execute'd script's lines print
+# nowhere, so run_long returns no output), and rc<n> is written last; the
+# host waits for rc<n>. <drawer> is a new VTC:show-<time> for each window,
+# and only the Amiga side deletes in it: FS-UAE's VTC: keeps names the Mac
+# deleted, and a Rename onto such a name fails. Commands run at FailAt 1000:
 # a failing line (Execute of a missing file returns 10) does not end the
 # wrapper, and the last line's return code comes back.
 SHOW = os.environ.get('UPTERM_RIG_SHOW', '')
@@ -52,9 +57,14 @@ Lab top
 If EXISTS {d}/stop
   Skip done
 EndIf
+If EXISTS {d}/done
+  Type {d}/last
+  Delete {d}/done QUIET
+EndIf
 If EXISTS {d}/cmd
   Delete {d}/run QUIET
   Rename {d}/cmd {d}/run
+  Type {d}/show
   Run Execute {d}/run
 EndIf
 Wait 1
@@ -96,20 +106,20 @@ def show(cmd, timeout):
         show_open()
     _seq += 1
     n, h, d = _seq, VTC / _shown, 'VTC:' + _shown
-    # The wrapper holds the command's lines, each with its output appended to
-    # out<n> (a line that redirects its own output keeps it); an Execute'd
-    # script's lines print in the window only (Execute splices them into the
-    # Shell's input, which writes to the window: run_long returns no output).
-    # It types out<n> into the window and writes rc<n> last.
+    # the wrapper: the command's lines, each with its output appended to out<n>
+    # (not its input: Search fails with <NIL:), its output copied to last for
+    # the loop to type, done, and rc<n> last
     out = '%s/out%d' % (d, n)
-    lines = ['FailAt 1000', 'Echo "-------- %d"' % n, 'Echo >%s "" NOLINE' % out]
+    lines = ['FailAt 1000', 'Echo >%s "" NOLINE' % out]
     for line in cmd.split('\n'):
         w = line.split(None, 1)
         if w and w[0].upper() not in SHOW_KEEP and not w[0].startswith(';') and not (len(w) > 1 and w[1][:1] in '<>'):
             line = '%s >>%s%s' % (w[0], out, (' ' + w[1]) if len(w) > 1 else '')
         lines.append(line)
-    lines += ['Echo >{d}/rcw%d "$RC"'.replace('{d}', d) % n, 'Type ' + out,
-              'Rename {d}/rcw%d {d}/rc%d'.replace('{d}', d) % (n, n)]
+    lines += [x.replace('{d}', d).replace('{n}', str(n)) for x in
+              ('Echo >{d}/rcw{n} "$RC"', 'Copy {d}/out{n} {d}/last QUIET', 'Echo >{d}/done ""',
+               'Rename {d}/rcw{n} {d}/rc{n}')]
+    (h / "show").write_text('-------- %d\n%s\n' % (n, cmd))
     (h / "cmd").write_text('\n'.join(lines) + '\n')
     rcf, outf = h / ("rc%d" % n), h / ("out%d" % n)
     end = time.time() + timeout + 30
@@ -143,6 +153,16 @@ def show_check():
     check(rc == 0 and out.split() == ['two', 'three'], 'show: the window takes commands after the failing one (two lines)', out)
     rc, out = run('Delete >NIL: T:show-check-nosuch#? QUIET')
     check(rc == 5, 'show: a line that redirects its own output keeps it, its return code comes back', out)
+    # a command that switches the console handler of every new window (C:UPConsole
+    # CON ON stopped the Run'd Shell on the window, 2026-10-10): the next still runs
+    if run('List >NIL: C:UPConsole')[0] == 0:
+        was = 'CON: UP-Term' in run('C:UPConsole STATUS')[1]
+        run('C:UPConsole >NIL: CON OFF')
+        run('C:UPConsole >NIL: CON ON')
+        rc, out = run('Echo four')
+        check(rc == 0 and out.strip() == 'four', 'show: a command after C:UPConsole CON ON', out)
+        if not was:
+            run('C:UPConsole CON OFF')
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 
@@ -486,6 +506,31 @@ def _main(dest=None):
     # Install put upterm-ports' grep in UP-Term:bin and vsh's $PATH reaches it
     rc, out = run('C:vsh -c "grep --version"')
     check(rc == 0 and 'GNU grep' in out and '3.12' in out, 'vsh\'s grep is the ports\' GNU grep 3.12 (through $PATH)', out)
+    # ... and every other tool of the ports (plan items 1.2-1.9, 2.1-2.5): each
+    # once, through vsh's $PATH, with a result only the right program gives;
+    # a vsh script, so no AmigaDOS quoting stands between (VTC:ports.sh)
+    ports = [('sed', 'echo abc | sed s/b/X/', lambda o: o == 'aXc'),
+             ('awk', "echo 3 4 | awk '{print $1+$2}'", lambda o: o == '7'),
+             ('less', 'less --version | head -1', lambda o: 'less 710' in o),
+             ('nano', 'nano --version | head -1', lambda o: '9.2' in o),
+             ('find', 'find --version | head -1', lambda o: 'findutils' in o and '4.11' in o),
+             ('xargs', 'echo a b | xargs echo x', lambda o: o == 'x a b'),
+             ('diff', 'diff --version | head -1', lambda o: '3.12' in o),
+             ('cmp', 'cmp --version | head -1', lambda o: '3.12' in o),
+             ('patch', 'patch --version | head -1', lambda o: '2.8' in o),
+             ('man', 'man -w sed', lambda o: o.endswith('share/man/man1/sed.1')),
+             ('gzip', 'echo hi | gzip | gzip -dc', lambda o: o == 'hi'),
+             ('bzip2', 'echo hi | bzip2 | bzip2 -dc', lambda o: o == 'hi'),
+             ('xz', 'echo hi | xz | xz -dc', lambda o: o == 'hi'),
+             ('tar', 'tar --version | head -1', lambda o: '3.8.9' in o),
+             ('zip', 'zip -h | grep -c "Zip 3.0"', lambda o: o.isdigit() and int(o) > 0),
+             ('path', 'command -v sed', lambda o: o == '/UP-Term/bin/sed')]
+    (VTC / "ports.sh").write_text(''.join('echo "%s:$(%s)"\n' % (t, c) for t, c, _ in ports))
+    rc, out = run('Stack 200000\nC:vsh VTC:ports.sh', 120)
+    got = dict(l.split(':', 1) for l in out.splitlines() if ':' in l)
+    for t, c, ok in ports:
+        o = got.get(t, '').strip()
+        check(ok(o), 'PORTS: %s through vsh\'s $PATH (%s)' % (t, c), o or out[-200:])
     # .. is the parent (on RAM:, a real volume -- VTC:'s root is its own
     # parent, an FS-UAE quirk). rm -r runs from outside: AmigaDOS keeps the
     # current directory locked, so a shell can never delete the drawer it is in
