@@ -196,6 +196,13 @@ def show_check():
         check(rc == 0 and out.strip() == 'four', 'show: a command after C:UPConsole CON ON', out)
         if not was:
             run('C:UPConsole CON OFF')
+    # the fixtures: a line a case appends to S:User-Startup does not stay
+    fx = Fixtures()
+    fx.take()
+    before = run('Type S:User-Startup')[1]
+    run('Echo >>S:User-Startup "; fixture probe"')
+    fx.restore()
+    check(run('Type S:User-Startup')[1] == before, 'fixtures: S:User-Startup is put back after a case appended a line', '')
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 
@@ -293,7 +300,7 @@ def prepare(dest):
 # What a run plants or removes on the Amiga that a user may own: each is saved
 # before the run and put back in a finally, so a failing or killed run (the
 # killed one that left 127.0.0.1 2399 in ENVARC:Claude/remote) leaves nothing.
-FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:UP-Term.prefs')
+FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:UP-Term.prefs', 'S:User-Startup')   # the move pass appends a user line to the last (ten were left by 2026-10-10)
 FIXTURE_ASSIGNS = ('GG', 'UP-Term')
 
 class Fixtures:
