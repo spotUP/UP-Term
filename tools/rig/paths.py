@@ -72,7 +72,7 @@ LIB68060 = pathlib.Path(os.environ.get("UPTERM_LIB68060") or
 LIB68040 = pathlib.Path(os.environ.get("UPTERM_LIB68040") or VTCON / "build/rig-inputs/68040.library")
 
 
-# the clean 3.0/3.1 installs have no Installer; this is the Installer 3.1's (UPTERM_INSTALLER)
+# the clean 3.0/3.1 installs have no Installer; Installer 43.3 (30.4.96), the 3.1 Install disk's (UPTERM_INSTALLER)
 INSTALLER = pathlib.Path(os.environ.get("UPTERM_INSTALLER") or VTCON / "build/rig-inputs/Installer")
 
 
