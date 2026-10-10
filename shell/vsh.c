@@ -28,6 +28,7 @@
 #include "sh_exec.h"
 #include "sh_pipe.h"
 #include "sh_ixargv.h"
+#include "sh_own.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
@@ -493,6 +494,26 @@ static char *command_line(char **argv)
 }
 
 static int is_stream(BPTR fh);
+
+/* A command's own handle on the shell's stream `shared` (0: the shell has none there): "*" opened at
+ * the port sh_own_port names, the handler of that stream when it is interactive. On a pseudo-terminal
+ * that is the pty's slave, not pr_ConsoleTask, the window the shell was started from (`ptyrun /bin/sh
+ * -c "sed p"`: sed read the window). 0 when it is a file or a pipe (the caller shares the handle) or
+ * the open failed. */
+static BPTR own_handle(BPTR shared, LONG mode)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    struct MsgPort *port, *old;
+    BPTR fh;
+    port = (struct MsgPort *)sh_own_port(shared ? ((struct FileHandle *)BADDR(shared))->fh_Type : 0, shared != 0,
+                                         shared && IsInteractive(shared), me->pr_ConsoleTask);
+    if (!port)
+        return 0;
+    old = SetConsoleTask(port);
+    fh = Open((STRPTR)"*", mode);
+    SetConsoleTask(old);
+    return fh;
+}
 
 /* Where a command's input file is before it runs: -1 on a console or a pipe. RunCommand (and the Shell
  * of SystemTags) put the argument line into the input handle's buffer; an ixemul command flushes that
@@ -1023,11 +1044,12 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
              * returned: the prompt read its argument line (an empty
              * command, a second prompt), and its late return put the
              * buffer back under the shell (rig: the machine rebooted when a
-             * job continued with bg ended). Only on a console: "*" is
-             * vsh's console even when its input is a pipe or a file (vsh -c
-             * under screen's printcmd: the command waited on screen's
-             * window instead of reading the pipe). */
-            BPTR own = Open((STRPTR)"*", MODE_OLDFILE);
+             * job continued with bg ended). Only on an interactive input,
+             * and at that input's handler (own_handle): pr_ConsoleTask is
+             * the window vsh was started from, not a pipe vsh reads (vsh -c
+             * under screen's printcmd waited on screen's window) and not a
+             * pty slave (ptyrun /bin/sh -c "sed p" read the window). */
+            BPTR own = own_handle(j->in, MODE_OLDFILE);
             if (own) {
                 j->in = own;
                 j->close_in = 1;
@@ -1050,7 +1072,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             j->out = (BPTR)io->out;
             j->close_out = 0;
         } else {
-            j->out = Open((STRPTR)"*", MODE_NEWFILE);
+            j->out = own_handle((BPTR)io->out, MODE_NEWFILE);
             j->close_out = 1;
         }
         /* errors: the shell's error stream, never 0 (a process without one wrote its errors to
@@ -1062,7 +1084,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             j->err = (BPTR)io->err;
             j->close_err = 0;
         } else {
-            j->err = Open((STRPTR)"*", MODE_NEWFILE);
+            j->err = own_handle((BPTR)io->err, MODE_NEWFILE);
             j->close_err = j->err != 0;
         }
     }
@@ -1808,7 +1830,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
              * itself (Unix shares the descriptor); "*" was a console the process may not have:
              * `echo bg &` in `vsh script >file` (Run >NIL:) wrote nowhere */
             if (!(io->owned & SH_OWN_OUT) && !(io->out && !IsInteractive((BPTR)io->out))) {
-                j->io.out = (sh_fh)Open((STRPTR)"*", MODE_NEWFILE);
+                j->io.out = (sh_fh)own_handle((BPTR)io->out, MODE_NEWFILE);
                 j->io.owned |= SH_OWN_OUT;
             }
             if (!(io->owned & SH_OWN_ERR)) {
@@ -1819,7 +1841,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                     j->io.err = io->err;
                 else if (!(io->owned & SH_OWN_OUT) && j->io.out != io->out)
                     j->io.err = j->io.out; /* the console handle opened for its output */
-                else if ((j->io.err = (sh_fh)Open((STRPTR)"*", MODE_NEWFILE)) != 0)
+                else if ((j->io.err = (sh_fh)own_handle((BPTR)io->err, MODE_NEWFILE)) != 0)
                     j->io.owned |= SH_OWN_ERR;
             }
         }
