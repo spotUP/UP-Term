@@ -65,7 +65,7 @@ typedef struct cl_cli {
     unsigned long budget_micro;             /* --max-budget-usd in US dollars * 1e6 */
     int has_tools;                          /* --tools given ("" = none) */
     char *prompt;                           /* the words of the prompt, joined; 0 none */
-    char resume_name[128];
+    char resume_name[512];      /* an id, a title, or a transcript's path (repl_resume_session's full[512]) */
     char name[96];
     char model[64], effort[16], fallback[64], perm[24], agent[64];
     char url[256], root[256];

@@ -305,17 +305,26 @@ static void sn_end(void *u)
 /* ---- the tree ---- */
 
 static char dir[512];
+static char top[512];           /* the temporary directory dir lies in (rm_tree removes it) */
 
 static void mk_tree(void)
 {
     const char *base = getenv("TMPDIR");
     char p[600];
     FILE *f;
-    strcpy(dir, base && *base ? base : "/tmp");
-    if (dir[strlen(dir) - 1] == '/')
-        dir[strlen(dir) - 1] = 0;
-    strcat(dir, "/claude_repl_XXXXXX");
-    if (!mkdtemp(dir))
+    strcpy(top, base && *base ? base : "/tmp");
+    if (top[strlen(top) - 1] == '/')
+        top[strlen(top) - 1] = 0;
+    strcat(top, "/claude_repl_XXXXXX");
+    if (!mkdtemp(top))
+        return;
+    /* the start directory deep down, so that every test runs with a long
+     * root: paths of 130+ characters overflowed fixed buffers (a settings
+     * file built in a char[900], -r's transcript path cut at 127) only when
+     * TMPDIR happened to be long */
+    strcpy(dir, top);
+    strcat(dir, "/a-start-directory-deeper-than-the-usual-temporary-one-eighty-characters-long-x");
+    if (mkdir(dir, 0700))
         return;
     /* the user's directory (ENVARC:Claude) and T: inside the tree */
     strcpy(p, dir);
@@ -358,9 +367,9 @@ static void rm_tree(void)
 {
     char cmd[600];
     strcpy(cmd, "rm -rf ");
-    strcat(cmd, dir);
+    strcat(cmd, top);
     if (system(cmd))
-        printf("  [ERROR] could not remove %s\n", dir);
+        printf("  [ERROR] could not remove %s\n", top);
 }
 
 static cl_io io;
@@ -3927,6 +3936,13 @@ static void age_file(const char *p, long secs)
     utime(p, &u);
 }
 
+/* w holds s alone (the tests' paths and settings, of any start directory's length) */
+static void pset(jw *w, const char *s)
+{
+    jw_reset(w);
+    jw_rawz(w, s);
+}
+
 /* Phase 5: the rest the Amiga can do (P1-P8) */
 static void test_gaps_more(void)
 {
@@ -3934,10 +3950,12 @@ static void test_gaps_more(void)
     static const char *yes[] = { "y", 0 };
     static const char *proj[] = { "p", 0 };
     static cl_repl r;
-    char root[600], p[900], m[700], home0[600];
+    char root[600], m[700], home0[600];
     const char *env;
     cl_cli c;
     cl_net web;
+    jw pw;                      /* settings with the root in them five times: no fixed size holds them */
+    jw_init(&pw);
     strcpy(root, dir);
     strcat(root, "/gapsmore");
     mkdir(root, 0700);
@@ -3960,8 +3978,8 @@ static void test_gaps_more(void)
     SCRIPT("nohaiku.sh", "echo no haiku here\nexit 2\n");
 
     /* P2 a prompt hook on Stop: the small model says not yet, Claude goes on with its reason */
-    strcpy(p, "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"prompt\",\"prompt\":\"Done? $ARGUMENTS\"}]}]}}");
-    HOOKS(p);
+    pset(&pw, "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"prompt\",\"prompt\":\"Done? $ARGUMENTS\"}]}]}}");
+    HOOKS(pw.p);
     setup_in(&r, none, root);
     add_answer(0, 0, 0, "first answer");
     add_answer(0, 0, 0, "{\"ok\": false, \"reason\": \"KEEP-GOING\"}");
@@ -3977,21 +3995,21 @@ static void test_gaps_more(void)
     /* P2 once, matchers (a plain list, a regular expression), CLAUDE_ENV_FILE,
      * InstructionsLoaded, Notification's types, PostToolBatch */
     xput(root, "CLAUDE.md", "MEM\n");
-    strcpy(p, "{\"hooks\":{\"PostToolUse\":[{\"matcher\":\"Grep, Read\",\"hooks\":[{\"type\":\"command\",\"once\":true,"
+    pset(&pw, "{\"hooks\":{\"PostToolUse\":[{\"matcher\":\"Grep, Read\",\"hooks\":[{\"type\":\"command\",\"once\":true,"
               "\"statusMessage\":\"Checking\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/mark.sh once\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/envf.sh\"}]}],\"InstructionsLoaded\":[{\"matcher\":\"session_start\",\"hooks\":[{\"type\":\"command\","
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/mark.sh once\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/envf.sh\"}]}],\"InstructionsLoaded\":[{\"matcher\":\"session_start\",\"hooks\":[{\"type\":\"command\","
               "\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/mark.sh instr\"}]}],\"Notification\":[{\"matcher\":\"^idle_\",\"hooks\":[{\"type\":\"command\","
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/mark.sh instr\"}]}],\"Notification\":[{\"matcher\":\"^idle_\",\"hooks\":[{\"type\":\"command\","
               "\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/mark.sh idle\"}]}],\"PostToolBatch\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/batch.sh\"}]}]}}");
-    HOOKS(p);
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/mark.sh idle\"}]}],\"PostToolBatch\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/batch.sh\"}]}]}}");
+    HOOKS(pw.p);
     setup_in(&r, none, root);
     add_answer("toolu_A1", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
     add_answer(0, 0, 0, "never");
@@ -4002,9 +4020,9 @@ static void test_gaps_more(void)
     CHECK(env && !strcmp(env, "from-hook"));
     add_answer("toolu_A2", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
     add_answer(0, 0, 0, "x");
-    strcpy(p, root);
-    strcat(p, "/m-once.json");
-    remove(p);
+    pset(&pw, root);
+    jw_rawz(&pw, "/m-once.json");
+    remove(pw.p);
     repl_line(&r, "again");
     CHECK(sb.nreq >= 2 && strstr(sb.body[1], "BATCH-STOP") != 0);     /* Claude was told why */
     CHECK(!marker(root, "m-once.json"));            /* once: not again */
@@ -4016,12 +4034,12 @@ static void test_gaps_more(void)
     unsetenv("GAPS_ENV_VAR");
 
     /* P2 Pre/PostModelSwitch; ConfigChange reads a changed file again */
-    strcpy(p, "{\"hooks\":{\"PreModelSwitch\":[{\"matcher\":\".*haiku.*\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/nohaiku.sh\"}]}],\"PostModelSwitch\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/mark.sh postswitch\"}]}]}}");
-    HOOKS(p);
+    pset(&pw, "{\"hooks\":{\"PreModelSwitch\":[{\"matcher\":\".*haiku.*\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/nohaiku.sh\"}]}],\"PostModelSwitch\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/mark.sh postswitch\"}]}]}}");
+    HOOKS(pw.p);
     setup_in(&r, none, root);
     repl_line(&r, "/model haiku");
     CHECK_STR(r.model, "claude-opus-5-5");
@@ -4030,21 +4048,21 @@ static void test_gaps_more(void)
     CHECK_STR(r.model, "claude-sonnet-5-5");
     CHECK(marker(root, "m-postswitch.json"));
     unset_home_model();
-    strcpy(p, root);
-    strcat(p, "/.claude/settings.json");
-    age_file(p, 100);
+    pset(&pw, root);
+    jw_rawz(&pw, "/.claude/settings.json");
+    age_file(pw.p, 100);
     r.cfg_mtime[CFG_PROJECT] = 0;               /* as if read before the file changed */
     repl_line(&r, "/status");
     CHECK(strstr(cn.screen.p, "Settings changed on disk, read again:") != 0);
     repl_free(&r);
-    remove(p);
+    remove(pw.p);
 
     /* P2 Setup (--init-only) and --include-hook-events; P6 --prompt-suggestions,
      * --exclude-dynamic-system-prompt-sections */
-    strcpy(p, "{\"hooks\":{\"Setup\":[{\"matcher\":\"init\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/mark.sh setup\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"echo STARTED\"}]}]}}");
-    HOOKS(p);
+    pset(&pw, "{\"hooks\":{\"Setup\":[{\"matcher\":\"init\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/mark.sh setup\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"echo STARTED\"}]}]}}");
+    HOOKS(pw.p);
     setup_in(&r, none, root);
     CHECK_INT(run_print(&r, "-p --init-only", 0), 0);
     CHECK(marker(root, "m-setup.json"));
@@ -4067,9 +4085,9 @@ static void test_gaps_more(void)
         CHECK(strstr(r.system, "# Auto memory") == 0);            /* ... not in the system prompt */
     }
     repl_free(&r);
-    strcpy(p, root);
-    strcat(p, "/.claude/settings.json");
-    remove(p);
+    pset(&pw, root);
+    jw_rawz(&pw, "/.claude/settings.json");
+    remove(pw.p);
 
     /* P3 "don't ask again in this project" kept as a rule; ~/ in rules; apiKeyHelper,
      * availableModels, bashOutputMaxChars, cleanupPeriodDays */
@@ -4079,12 +4097,12 @@ static void test_gaps_more(void)
     repl_line(&r, "make a dir");
     CHECK(has("gapsmore/.claude/settings.local.json", "\"Bash(makedir *)\""));
     repl_free(&r);
-    strcpy(p, root);
-    strcat(p, "/.claude/settings.local.json");
-    remove(p);
-    strcpy(p, "{\"apiKeyHelper\":\"echo sk-from-helper-1234\",\"availableModels\":[\"sonnet\"],"
+    pset(&pw, root);
+    jw_rawz(&pw, "/.claude/settings.local.json");
+    remove(pw.p);
+    pset(&pw, "{\"apiKeyHelper\":\"echo sk-from-helper-1234\",\"availableModels\":[\"sonnet\"],"
               "\"bashOutputMaxChars\":100,\"cleanupPeriodDays\":5,\"permissions\":{\"deny\":[\"Read(~/secret.txt)\"]}}");
-    HOOKS(p);
+    HOOKS(pw.p);
     xput(root, "secret.txt", "SECRET\n");
     {
         char real[700];
@@ -4119,10 +4137,10 @@ static void test_gaps_more(void)
         setenv("HOME", home0, 1);
     else
         unsetenv("HOME");
-    remove(p);
-    strcpy(p, root);
-    strcat(p, "/.claude/settings.json");
-    remove(p);
+    remove(pw.p);
+    pset(&pw, root);
+    jw_rawz(&pw, "/.claude/settings.json");
+    remove(pw.p);
 
     /* P4 AGENTS.md only where no CLAUDE.md is; CLAUDE.local.md in a subdirectory */
     xput(root, "AGENTS.md", "ROOT-AGENTS\n");
@@ -4232,9 +4250,9 @@ static void test_gaps_more(void)
         jw_reset(&pc.out);
         CHECK_INT(print_subcommand(&r, &c, &po), 0);
         CHECK(strstr(outp(), "Removed ") != 0);
-        strcpy(p, r.sess.dir);
-        strcat(p, "/1234abcd.jsonl");
-        CHECK(!exists(p));
+        pset(&pw, r.sess.dir);
+        jw_rawz(&pw, "/1234abcd.jsonl");
+        CHECK(!exists(pw.p));
     }
     cli_free(&c);
     repl_free(&r);
@@ -4261,14 +4279,14 @@ static void test_gaps_more(void)
                              "\"updatedToolOutput\":\"REPLACED-OUTPUT\"}}'\n");
         xput(root, "bad.sh", "echo '{\"terminalSequence\":\"\\\\u001b[2J\"}'\n");
     }
-    strcpy(p, "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/ss.sh\"}]}],\"PostToolUse\":[{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/out.sh\"},{\"type\":\"command\",\"command\":\"sh ");
-    strcat(p, root);
-    strcat(p, "/bad.sh\"}]}]}}");
-    xput(root, ".claude/settings.json", p);
+    pset(&pw, "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/ss.sh\"}]}],\"PostToolUse\":[{\"matcher\":\"Read\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/out.sh\"},{\"type\":\"command\",\"command\":\"sh ");
+    jw_rawz(&pw, root);
+    jw_rawz(&pw, "/bad.sh\"}]}]}}");
+    xput(root, ".claude/settings.json", pw.p);
     setup_in(&r, none, root);
     add_answer(0, 0, 0, "first done");
     add_answer("toolu_R5", "Read", "{\"file_path\":\"S/Startup-Sequence\"}", 0);
@@ -4286,9 +4304,9 @@ static void test_gaps_more(void)
     CHECK(strstr(cn.screen.p, "\033]0;HOOK-SEQ\007") != 0);
     CHECK(strstr(cn.screen.p, "\033[2J") == 0);      /* not on the allowlist: ignored */
     repl_free(&r);
-    strcpy(p, root);
-    strcat(p, "/.claude/settings.json");
-    remove(p);
+    pset(&pw, root);
+    jw_rawz(&pw, "/.claude/settings.json");
+    remove(pw.p);
 
     /* skills that wait (paths:, a nested .claude/skills) until a matching file is
      * worked on; a typed skill's effort; a command in a subdirectory is dir:name */
@@ -4335,6 +4353,7 @@ static void test_gaps_more(void)
         CHECK(!exists(f));
         repl_free(&r);
     }
+    jw_free(&pw);
 #undef SCRIPT
 #undef HOOKS
 }

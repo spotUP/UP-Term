@@ -83,6 +83,20 @@ static void test_unix(void)
     CHECK_INT(parse("--resume=abc --fork-session"), 0);
     CHECK_STR(c.resume_name, "abc");
     CHECK_INT(c.fork, 1);
+    {
+        /* -r with a transcript's path longer than 127 characters keeps it whole
+         * (it was cut to 127: "No session file here" for a deep start directory) */
+        char path[400], line[420];
+        int i;
+        strcpy(path, "Work:");
+        for (i = 0; i < 30; i++)
+            strcat(path, "deeper/");
+        strcat(path, "00000024.jsonl");
+        strcpy(line, "-r ");
+        strcat(line, path);
+        CHECK_INT(parse(line), 0);
+        CHECK_STR(c.resume_name, path);
+    }
 
     /* the rest of the flags */
     CHECK_INT(parse("-p --output-format stream-json --verbose --include-partial-messages --input-format stream-json "
