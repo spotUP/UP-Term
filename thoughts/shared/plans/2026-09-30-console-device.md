@@ -559,7 +559,7 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       - concon 12 rows: also on 3.1 on a square-pixel screen. P2's font pairing (topaz 8 ->
         TopazPro 16 on square pixels, 2026-10-03) applied to CON: windows; the ROM console keeps its
         font. aspect_font now never pairs for VT_AMIGA (render/vtwin.c). concon is the check
-        (12;79 before, 25;79 after). Owner may veto: a CON: window no longer gets TopazPro 16.
+        (12;79 before, 25;79 after). Owner approved 2026-10-10: a CON: window no longer gets TopazPro 16.
       - The hang (DV2/concon "timed out", 3 of 6 runs on 3.1): the 3.1 ROM con-handler closes CON:
         with its read request while the read is pending. Our unit process aborted that read into
         the closer's UPCMD_DIE port, so CloseDevice returned and freed the unit while the process
