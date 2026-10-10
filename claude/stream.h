@@ -10,11 +10,15 @@
  * history (stream_content) follows the API's echo rule for a server-side
  * fallback: thinking, redacted thinking, tool_use and unknown blocks that
  * came before the last `fallback` block are left out.
+ * The wire events are decoded by the shared Anthropic backend
+ * (llm/be_anthropic.c) into neutral events (llm/event.h); this module
+ * builds C:Claude's blocks from those.
  * Portable C89, host-tested (tests/test_claude_stream.c). */
 #ifndef CL_STREAM_H
 #define CL_STREAM_H
 
 #include "json.h"
+#include "../llm/be_anthropic.h"
 
 /* B_SERVER: a server tool's call (server_tool_use, web_search): its input
  * collects like a tool's; the API runs it, its result comes as a B_OTHER
@@ -60,6 +64,8 @@ typedef struct cl_stream {
     sblock *b;
     int nb, cap;
     int oom;
+    llm_anth_dec dec;           /* the Anthropic decoder (llm/be_anthropic.c): wire events to neutral ones */
+    int fail;                   /* an event this stream could not take (out of memory) */
 } cl_stream;
 
 void stream_init(cl_stream *s, const cl_stream_ui *ui);

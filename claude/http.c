@@ -89,47 +89,51 @@ static void put(obuf *o, const char *s)
     o->n += l;
 }
 
-long http_request_head(const http_req *r, char *out, long cap)
+long http_post_head(const char *host, int port, int tls, const char *path, const http_hdr *h, int nh,
+                    long body_len, char *out, long cap)
 {
     obuf o;
     char num[32];
+    int i;
     o.p = out;
     o.n = 0;
     o.cap = cap;
     o.over = 0;
     put(&o, "POST ");
-    put(&o, r->path);
+    put(&o, path);
     put(&o, " HTTP/1.1\r\nHost: ");
-    put(&o, r->host);
-    if (r->port != (r->tls ? 443 : 80)) {
+    put(&o, host);
+    if (port != (tls ? 443 : 80)) {
         num[0] = ':';
-        cl_ltoa(r->port, num + 1);
+        cl_ltoa(port, num + 1);
         put(&o, num);
     }
-    put(&o, "\r\nUser-Agent: UP-Term-Claude/1.0 (AmigaOS)\r\n"
-            "Accept: text/event-stream\r\n"
-            "Content-Type: application/json\r\n"
-            "anthropic-version: 2023-06-01\r\n");
-    if (r->beta && *r->beta) {
-        put(&o, "anthropic-beta: ");
-        put(&o, r->beta);
+    put(&o, "\r\n");
+    for (i = 0; i < nh; i++) {
+        if (!h[i].value || !*h[i].value)
+            continue;
+        put(&o, h[i].name);
+        put(&o, ": ");
+        put(&o, h[i].value);
         put(&o, "\r\n");
     }
-    if (r->key && *r->key) {
-        put(&o, "x-api-key: ");
-        put(&o, r->key);
-        put(&o, "\r\n");
-    }
-    cl_ltoa(r->body_len, num);
+    cl_ltoa(body_len, num);
     put(&o, "Content-Length: ");
     put(&o, num);
     put(&o, "\r\nConnection: keep-alive\r\n\r\n");
     return o.over ? -1 : o.n;
 }
 
-long http_redact(const char *head, long n, char *out, long cap)
+long http_redact_header(const char *head, long n, const char *name, char *out, long cap)
 {
-    long i = 0, o = 0;
+    char lname[64];
+    long i = 0, o = 0, nl = (long)strlen(name), k;
+    if (nl + 2 > (long)sizeof(lname))
+        return -1;
+    for (k = 0; k < nl; k++)
+        lname[k] = (char)lower((unsigned char)name[k]);
+    lname[nl] = ':';
+    lname[nl + 1] = 0;
     while (i < n) {
         long e = i, l;
         int key;
@@ -137,13 +141,13 @@ long http_redact(const char *head, long n, char *out, long cap)
             e++;
         if (e < n)
             e++;                    /* the line with its LF */
-        key = e - i >= 10 && starts_ci(head + i, "x-api-key:");
+        key = e - i >= nl + 1 && starts_ci(head + i, lname);
         if (key) {
-            const char *rep = "x-api-key: [redacted]\r\n";
-            l = (long)strlen(rep);
+            l = nl + (long)strlen(": [redacted]\r\n");
             if (o + l > cap)
                 return -1;
-            memcpy(out + o, rep, (size_t)l);
+            memcpy(out + o, name, (size_t)nl);
+            memcpy(out + o + nl, ": [redacted]\r\n", (size_t)(l - nl));
         } else {
             l = e - i;
             if (o + l > cap)

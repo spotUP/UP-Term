@@ -225,22 +225,11 @@ static void on_event(void *u, const char *ev, const char *data, long n)
     stream_event(&r->st, ev, data, n);
 }
 
-static void on_body(void *u, const char *s, long n)
-{
-    cl_repl *r = (cl_repl *)u;
-    if (r->resp.status == 200 && r->resp.event_stream)
-        sse_feed(&r->sse, s, n);
-    else if (r->errbody.n < 16384)
-        jw_raw(&r->errbody, s, n);
-}
-
 /* ---- the transport ---- */
 
 static void drop(cl_repl *r)
 {
-    if (r->connected)
-        r->net->close(r->net->u);
-    r->connected = 0;
+    llm_pool_close(&r->pool);
 }
 
 static void show_err(cl_repl *r, const char *a, const char *b)
@@ -290,14 +279,100 @@ static void request_free(cl_repl *r)
     jw_free(&r->errbody);
 }
 
+/* post()'s side of llm_post (llm/request.c): the head with this
+ * request's betas, the screen while connecting and waiting, the stream */
+typedef struct post_ctx {
+    cl_repl *r;
+    const char *body;
+    long bn;
+    cl_stream_ui sui;
+    char beta[320];
+} post_ctx;
+
+static int p_head(void *u, const char **head, long *hn)
+{
+    post_ctx *pc = (post_ctx *)u;
+    cl_repl *r = pc->r;
+    http_req q;
+    memset(&q, 0, sizeof(q));
+    q.host = r->url.host;
+    q.port = r->url.port;
+    q.tls = r->url.tls;
+    q.path = r->url.path;
+    q.key = r->key;
+    q.beta = conv_beta(r->model);
+    if (r->betas[0] || (r->tools.advisor[0] && strstr(pc->body, "\"advisor_20260301\""))) {
+        /* --betas: added to the model's own (anthropic-beta takes a comma list);
+         * the advisor tool's beta when the request declares it (/advisor) */
+        cl_copy(pc->beta, q.beta, sizeof(pc->beta));
+        if (r->tools.advisor[0] && strstr(pc->body, "\"advisor_20260301\"")) {
+            if (pc->beta[0])
+                cl_cat(pc->beta, ",", sizeof(pc->beta));
+            cl_cat(pc->beta, "advisor-tool-2026-03-01", sizeof(pc->beta));
+        }
+        if (r->betas[0]) {
+            if (pc->beta[0])
+                cl_cat(pc->beta, ",", sizeof(pc->beta));
+            cl_cat(pc->beta, r->betas, sizeof(pc->beta));
+        }
+        q.beta = pc->beta;
+    }
+    q.body_len = pc->bn;
+    *hn = http_request_head(&q, r->head, sizeof(r->head));
+    if (*hn < 0)
+        return -1;
+    if (r->debug && r->io->log) {
+        char red[1100];
+        long rn = http_redact(r->head, *hn, red, sizeof(red));
+        if (rn > 0)
+            r->io->log(r->io->u, red, rn);
+    }
+    *head = r->head;
+    return 0;
+}
+
+static int p_poll(void *u)
+{
+    return ui_poll(&((post_ctx *)u)->r->ui);
+}
+
+static void p_status(void *u, int what)
+{
+    cl_repl *r = ((post_ctx *)u)->r;
+    if (what == LPS_CONNECT)
+        ui_status(&r->ui, "Connecting");
+    else if (!r->shown)
+        ui_status(&r->ui, r->st.state == ST_OPEN ? "Thinking" : "Waiting for Claude");
+}
+
+static unsigned long p_ms(void *u)
+{
+    cl_repl *r = ((post_ctx *)u)->r;
+    return r->io->ms ? r->io->ms(r->io->u) : 0;
+}
+
+static void p_begin(void *u)
+{
+    post_ctx *pc = (post_ctx *)u;
+    stream_init(&pc->r->st, &pc->sui);
+}
+
+static void p_restart(void *u)
+{
+    request_free(((post_ctx *)u)->r);
+}
+
+static void p_event(void *u, const char *ev, const char *data, long n)
+{
+    on_event(((post_ctx *)u)->r, ev, data, n);
+}
+
 /* One POST and its whole answer. *retry_s: the wait the server asked for. */
 static int post(cl_repl *r, const char *body, long bn, long *retry_s)
 {
-    http_req q;
-    cl_stream_ui sui;
-    long hn, idle = 0;
-    int reused, again = 1, got;
-    char beta[320];
+    post_ctx pc;
+    llm_call c;
+    int rc;
     *retry_s = -1;
     request_free(r);
     r->resp.status = 0;             /* no answer yet (system/api_retry's error_status) */
@@ -307,139 +382,74 @@ static int post(cl_repl *r, const char *body, long bn, long *retry_s)
         new_id(r, r->msg_id);
         r->md_index = 0;
     }
-    sui.u = r;
-    sui.text = st_text;
-    sui.block = st_block;
-    sui.thinking = st_thinking;
+    memset(&pc, 0, sizeof(pc));
+    pc.r = r;
+    pc.body = body;
+    pc.bn = bn;
+    pc.sui.u = r;
+    pc.sui.text = st_text;
+    pc.sui.block = st_block;
+    pc.sui.thinking = st_thinking;
     /* a tool's own request (api_send) draws nothing: WebSearch's server
      * search is shown by the tool's header and result, not a second time */
-    sui.stop = r->quiet_req ? 0 : st_stop;
+    pc.sui.stop = r->quiet_req ? 0 : st_stop;
     if (repl_need_key(r)) {
         /* A4 WP4: a keyless start; nothing goes out without the key */
         show_err(r, "Not logged in: no API key. Type /login, or set ENV:ANTHROPIC_API_KEY.", 0);
         return R_FAIL;
     }
-top:
-    reused = r->connected;
-    if (!r->connected) {
-        int rc;
-        unsigned long t0 = r->io->ms ? r->io->ms(r->io->u) : 0;
-        ui_status(&r->ui, "Connecting");
-        rc = r->net->open(r->net->u, r->url.host, r->url.port, r->url.tls);
-        if (rc == NET_BREAK)
-            return R_CANCEL;
-        if (rc) {
-            show_err(r, "Cannot connect: ", r->net->err(r->net->u));
-            return R_RETRY;
-        }
-        r->connected = 1;
-        r->t_open = r->io->ms ? r->io->ms(r->io->u) - t0 : 0;
-    }
-    memset(&q, 0, sizeof(q));
-    q.host = r->url.host;
-    q.port = r->url.port;
-    q.tls = r->url.tls;
-    q.path = r->url.path;
-    q.key = r->key;
-    q.beta = conv_beta(r->model);
-    if (r->betas[0] || (r->tools.advisor[0] && strstr(body, "\"advisor_20260301\""))) {
-        /* --betas: added to the model's own (anthropic-beta takes a comma list);
-         * the advisor tool's beta when the request declares it (/advisor) */
-        cl_copy(beta, q.beta, sizeof(beta));
-        if (r->tools.advisor[0] && strstr(body, "\"advisor_20260301\"")) {
-            if (beta[0])
-                cl_cat(beta, ",", sizeof(beta));
-            cl_cat(beta, "advisor-tool-2026-03-01", sizeof(beta));
-        }
-        if (r->betas[0]) {
-            if (beta[0])
-                cl_cat(beta, ",", sizeof(beta));
-            cl_cat(beta, r->betas, sizeof(beta));
-        }
-        q.beta = beta;
-    }
-    q.body_len = bn;
-    hn = http_request_head(&q, r->head, sizeof(r->head));
-    if (hn < 0)
+    memset(&c, 0, sizeof(c));
+    c.pool = &r->pool;
+    c.host = r->url.host;
+    c.port = r->url.port;
+    c.tls = r->url.tls;
+    c.body = body;
+    c.bn = bn;
+    c.h.u = &pc;
+    c.h.poll = p_poll;
+    c.h.status = p_status;
+    c.h.ms = p_ms;
+    c.h.head = p_head;
+    c.h.begin = p_begin;
+    c.h.restart = p_restart;
+    c.h.event = p_event;
+    c.idle_ms = IDLE_LIMIT_MS;
+    c.buf = r->buf;
+    c.bufcap = sizeof(r->buf);
+    c.resp = &r->resp;
+    c.sse = &r->sse;
+    c.errbody = &r->errbody;
+    rc = llm_post(&c);
+    if (c.conn && !c.reused)
+        r->t_open = c.t_open;       /* a connection opened for this request */
+    if (c.got)
+        r->t_first = c.t_first;
+    switch (rc) {
+    case LP_OK:
+        break;
+    case LP_BREAK:
+        return R_CANCEL;
+    case LP_CONNECT:
+        show_err(r, "Cannot connect: ", c.err);
+        return R_RETRY;
+    case LP_SEND:
+        show_err(r, "Sending failed: ", c.err);
+        return R_RETRY;
+    case LP_IDLE:
+        show_err(r, "No answer for three minutes; the connection is given up.", 0);
+        return R_RETRY;
+    case LP_RECV:
+        show_err(r, "The connection failed: ", c.err);
+        return R_RETRY;
+    case LP_EOF:
+        show_err(r, "The connection closed early.", 0);
+        return R_RETRY;
+    case LP_BADHTTP:
+        show_err(r, "The server's answer was not valid HTTP.", 0);
         return R_FAIL;
-    if (r->debug && r->io->log) {
-        char red[1100];
-        long rn = http_redact(r->head, hn, red, sizeof(red));
-        if (rn > 0)
-            r->io->log(r->io->u, red, rn);
+    default:
+        return R_FAIL;              /* the head did not fit */
     }
-    {
-        unsigned long t0 = r->io->ms ? r->io->ms(r->io->u) : 0;
-        long s1 = r->net->send(r->net->u, r->head, hn);
-        long s2 = s1 == hn ? r->net->send(r->net->u, body, bn) : s1;
-        if (s1 == NET_BREAK || s2 == NET_BREAK) {
-            drop(r);
-            return R_CANCEL;
-        }
-        if (s1 != hn || s2 != bn) {
-            drop(r);
-            if (reused && again--)
-                goto top;           /* the server closed the kept connection */
-            show_err(r, "Sending failed: ", r->net->err(r->net->u));
-            return R_RETRY;
-        }
-        http_resp_init(&r->resp, on_body, r);
-        stream_init(&r->st, &sui);
-        sse_init(&r->sse, on_event, r);
-        jw_init(&r->errbody);
-        got = 0;
-        for (;;) {
-            long n = r->net->recv(r->net->u, r->buf, sizeof(r->buf), 250);
-            if (n == NET_TIMEOUT) {
-                if (ui_poll(&r->ui)) {
-                    drop(r);
-                    return R_CANCEL;
-                }
-                if (!r->shown)
-                    ui_status(&r->ui, r->st.state == ST_OPEN ? "Thinking" : "Waiting for Claude");
-                idle += 250;
-                if (idle < IDLE_LIMIT_MS)
-                    continue;
-                drop(r);
-                show_err(r, "No answer for three minutes; the connection is given up.", 0);
-                return R_RETRY;
-            }
-            if (n == NET_BREAK) {
-                drop(r);
-                return R_CANCEL;
-            }
-            if (n < 0 || (n == 0 && http_resp_eof(&r->resp))) {
-                drop(r);
-                if (!got && reused && again--) {
-                    request_free(r);
-                    goto top;
-                }
-                show_err(r, n < 0 ? "The connection failed: " : "The connection closed early.",
-                         n < 0 ? r->net->err(r->net->u) : 0);
-                return R_RETRY;
-            }
-            if (n == 0)
-                break;              /* the body ran to the close, complete */
-            if (!got) {
-                got = 1;
-                r->t_first = r->io->ms ? r->io->ms(r->io->u) - t0 : 0;
-            }
-            idle = 0;
-            if (http_resp_feed(&r->resp, r->buf, n)) {
-                drop(r);
-                show_err(r, "The server's answer was not valid HTTP.", 0);
-                return R_FAIL;
-            }
-            if (ui_poll(&r->ui)) {
-                drop(r);
-                return R_CANCEL;
-            }
-            if (r->resp.state == HR_DONE)
-                break;
-        }
-    }
-    if (r->resp.close)
-        drop(r);
     ui_status_clear(&r->ui);
     log_s(r, "status ", r->resp.request_id, (long)strlen(r->resp.request_id));
     if (r->resp.status == 200 && r->resp.event_stream) {
@@ -3087,6 +3097,7 @@ int repl_init(cl_repl *r, cl_io *io, cl_net *net, cl_sys *sys, const char *url, 
     memset(r, 0, sizeof(*r));
     r->io = io;
     r->net = net;
+    llm_pool_init(&r->pool, &r->net, 1);
     r->sys = sys;
     ui_init(&r->ui, io);
     ui_plain(&r->ui, &r->render);

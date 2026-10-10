@@ -30,7 +30,9 @@ VIEW_CLI  := view/vw_cli.c
 # the Claude client's portable core (ledger A2); net_posix is the host transport
 # A4 WP1: the input box's vim mode, history, themes, prompt prefixes, transcript viewer
 # amiga-pi's provider-neutral LLM layer (llm/, shared with C:Claude; plan 2026-10-07-amiga-pi B)
-LLM_CORE := llm/llm.c llm/accum.c
+# what C:Claude links of it: the events, the Anthropic backend, the request
+LLM_CLAUDE := llm/event.c llm/be_anthropic.c llm/request.c
+LLM_CORE := $(LLM_CLAUDE) llm/llm.c llm/accum.c llm/be_anthropic_pi.c llm/retry.c
 LLM_HDR := $(wildcard llm/*.h)
 CLAUDE_INPUT := claude/vim.c claude/hist.c claude/theme.c claude/input.c claude/tview.c
 CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
@@ -61,7 +63,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = layers ]; then python3 -I tools/test_check_layers.py && python3 -I tools/check_layers.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = layers ]; then python3 -I tools/test_check_layers.py && python3 -I tools/check_layers.py --strict; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
@@ -328,7 +330,7 @@ CLAUDE_PORTABLE := claude/util.c claude/http.c claude/json.c claude/sse.c claude
                    claude/keys.c claude/edit.c claude/tui.c claude/show.c $(CLAUDE_INPUT) $(VIEW_MD) tty/ldisc.c tty/bmsg.c \
                    handler/clip.c handler/clipfmt.c \
                    claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
-                   claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c claude/datadir.c
+                   claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c claude/datadir.c $(LLM_CLAUDE)
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
 AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK

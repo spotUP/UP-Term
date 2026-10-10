@@ -10,6 +10,7 @@ void stream_init(cl_stream *s, const cl_stream_ui *ui)
     if (ui)
         s->ui = *ui;
     s->state = ST_WAIT;
+    llm_anth_init(&s->dec);
 }
 
 void stream_free(cl_stream *s)
@@ -23,26 +24,7 @@ void stream_free(cl_stream *s)
     free(s->b);
     s->b = 0;
     s->nb = s->cap = 0;
-}
-
-static void str_field(jv obj, const char *key, char *out, long cap)
-{
-    jv v;
-    if (json_get(obj, key, &v) && json_type(v) == J_STR)
-        json_str(v, out, cap);
-}
-
-static void usage(cl_stream *s, jv u)
-{
-    jv v;
-    if (json_get(u, "input_tokens", &v))
-        s->in_tok = json_long(v, s->in_tok);
-    if (json_get(u, "output_tokens", &v))
-        s->out_tok = json_long(v, s->out_tok);
-    if (json_get(u, "cache_creation_input_tokens", &v))
-        s->cache_w = json_long(v, s->cache_w);
-    if (json_get(u, "cache_read_input_tokens", &v))
-        s->cache_r = json_long(v, s->cache_r);
+    llm_anth_free(&s->dec);
 }
 
 static sblock *find(cl_stream *s, long index)
@@ -54,50 +36,32 @@ static sblock *find(cl_stream *s, long index)
     return 0;
 }
 
-static int block_type(jv cb)
+/* the neutral block's kind back to C:Claude's block type */
+static int block_type(const llm_event *e)
 {
-    jv t;
-    if (!json_get(cb, "type", &t))
-        return B_OTHER;
-    if (json_streq(t, "text"))
+    if (e->kind == LB_TEXT)
         return B_TEXT;
-    if (json_streq(t, "thinking"))
-        return B_THINKING;
-    if (json_streq(t, "redacted_thinking"))
-        return B_REDACTED;
-    if (json_streq(t, "tool_use"))
+    if (e->kind == LB_THINKING)
+        return e->redacted ? B_REDACTED : B_THINKING;
+    if (e->kind == LB_TOOLCALL)
         return B_TOOL;
-    if (json_streq(t, "fallback"))
+    if (e->raw_type && !strcmp(e->raw_type, "fallback"))
         return B_FALLBACK;
-    if (json_streq(t, "server_tool_use"))
+    if (e->raw_type && !strcmp(e->raw_type, "server_tool_use"))
         return B_SERVER;
     return B_OTHER;
 }
 
-static void append_str(jw *w, jv v)
+static void block_start(cl_stream *s, const llm_event *e)
 {
-    long l;
-    char *d = json_strdup(v, &l);
-    if (!d) {
-        w->oom = 1;
-        return;
-    }
-    jw_raw(w, d, l);
-    free(d);
-}
-
-static int block_start(cl_stream *s, jv ev)
-{
-    jv idx, cb, v;
     sblock *b;
-    if (!json_get(ev, "index", &idx) || !json_get(ev, "content_block", &cb) || json_type(cb) != J_OBJ)
-        return -1;
     if (s->nb == s->cap) {
         int c = s->cap ? s->cap * 2 : 8;
         sblock *nb = (sblock *)realloc(s->b, (size_t)c * sizeof(sblock));
         if (!nb) {
             s->oom = 1;
-            return -1;
+            s->fail = 1;
+            return;
         }
         s->b = nb;
         s->cap = c;
@@ -107,147 +71,117 @@ static int block_start(cl_stream *s, jv ev)
     jw_init(&b->a);
     jw_init(&b->sig);
     jw_init(&b->start);
-    b->index = json_long(idx, -1);
-    b->type = block_type(cb);
-    jw_raw(&b->start, cb.p, cb.n);
+    b->index = e->index;
+    b->type = block_type(e);
+    jw_raw(&b->start, e->raw, e->rn);
     switch (b->type) {
     case B_TEXT:
-        if (json_get(cb, "text", &v))
-            append_str(&b->a, v);
+        jw_raw(&b->a, e->p, e->n);
         break;
     case B_THINKING:
-        if (json_get(cb, "thinking", &v))
-            append_str(&b->a, v);
-        if (json_get(cb, "signature", &v))
-            append_str(&b->sig, v);
+        jw_raw(&b->a, e->p, e->n);
+        jw_raw(&b->sig, e->sig, e->sn);
         break;
     case B_TOOL:
     case B_SERVER:
-        str_field(cb, "id", b->id, sizeof(b->id));
-        str_field(cb, "name", b->name, sizeof(b->name));
+        cl_copy(b->id, e->id ? e->id : "", sizeof(b->id));
+        cl_copy(b->name, e->name ? e->name : "", sizeof(b->name));
         break;
     }
     if (s->ui.block)
         s->ui.block(s->ui.u, b->type, b->name);
     if (b->type == B_TEXT && b->a.n && s->ui.text)
         s->ui.text(s->ui.u, b->a.p, b->a.n);
-    return 0;
 }
 
-static int block_delta(cl_stream *s, jv ev)
+static void on_event(void *u, const llm_event *e)
 {
-    jv idx, d, t, v;
+    cl_stream *s = (cl_stream *)u;
     sblock *b;
-    if (!json_get(ev, "index", &idx) || !json_get(ev, "delta", &d))
-        return -1;
-    b = find(s, json_long(idx, -1));
-    if (!b || b->done || !json_get(d, "type", &t))
-        return -1;
-    if (json_streq(t, "text_delta") && b->type == B_TEXT && json_get(d, "text", &v)) {
-        long l;
-        char *txt = json_strdup(v, &l);
-        if (!txt)
-            return -1;
-        jw_raw(&b->a, txt, l);
-        if (s->ui.text && l)
-            s->ui.text(s->ui.u, txt, l);
-        free(txt);
-    } else if (json_streq(t, "input_json_delta") && (b->type == B_TOOL || b->type == B_SERVER) &&
-             json_get(d, "partial_json", &v))
-        append_str(&b->a, v);
-    else if (json_streq(t, "thinking_delta") && b->type == B_THINKING && json_get(d, "thinking", &v)) {
-        long before = b->a.n;
-        append_str(&b->a, v);
-        if (s->ui.thinking && b->a.n > before)
-            s->ui.thinking(s->ui.u, b->a.p + before, b->a.n - before);
-    }
-    else if (json_streq(t, "signature_delta") && b->type == B_THINKING && json_get(d, "signature", &v))
-        append_str(&b->sig, v);
-    /* other delta types (citations, ...) change nothing the client keeps */
-    return 0;
-}
-
-static int block_stop(cl_stream *s, jv ev)
-{
-    jv idx, in;
-    sblock *b;
-    if (!json_get(ev, "index", &idx))
-        return -1;
-    b = find(s, json_long(idx, -1));
-    if (!b)
-        return -1;
-    b->done = 1;
-    if (b->type == B_TOOL || b->type == B_SERVER) {
-        if (!b->a.n) {
-            /* no deltas: the input of content_block_start */
-            jv cb;
-            if (json_parse(b->start.p, b->start.n, &cb) == 0 && json_get(cb, "input", &in))
-                jw_raw(&b->a, in.p, in.n);
+    switch (e->type) {
+    case LE_START:
+        cl_copy(s->model, e->model ? e->model : "", sizeof(s->model));
+        cl_copy(s->id, e->p ? e->p : "", sizeof(s->id));
+        s->state = ST_OPEN;
+        break;
+    case LE_USAGE:
+        if (e->in >= 0)
+            s->in_tok = e->in;
+        if (e->out >= 0)
+            s->out_tok = e->out;
+        if (e->cache_w >= 0)
+            s->cache_w = e->cache_w;
+        if (e->cache_r >= 0)
+            s->cache_r = e->cache_r;
+        break;
+    case LE_BLOCK_START:
+        block_start(s, e);
+        break;
+    case LE_DELTA:
+        b = find(s, e->index);
+        if (!b)
+            break;
+        jw_raw(&b->a, e->p, e->n);
+        if (b->type == B_TEXT && s->ui.text && e->n)
+            s->ui.text(s->ui.u, e->p, e->n);
+        else if (b->type == B_THINKING && s->ui.thinking && e->n)
+            s->ui.thinking(s->ui.u, e->p, e->n);
+        break;
+    case LE_SIG_DELTA:
+        b = find(s, e->index);
+        if (b)
+            jw_raw(&b->sig, e->p, e->n);
+        break;
+    case LE_BLOCK_END:
+        b = find(s, e->index);
+        if (!b)
+            break;
+        b->done = 1;
+        if (b->type == B_TOOL || b->type == B_SERVER) {
+            jv in;
+            b->input_ok = b->a.n && json_parse(b->a.p, b->a.n, &in) == 0 && json_type(in) == J_OBJ;
         }
-        b->input_ok = b->a.n && json_parse(b->a.p, b->a.n, &in) == 0 && json_type(in) == J_OBJ;
+        if (s->ui.stop)
+            s->ui.stop(s->ui.u, b);
+        break;
+    case LE_STOP:
+        if (e->stop_raw && *e->stop_raw)
+            cl_copy(s->stop_reason, e->stop_raw, sizeof(s->stop_reason));
+        if (e->stop_detail && *e->stop_detail)
+            cl_copy(s->stop_category, e->stop_detail, sizeof(s->stop_category));
+        break;
+    case LE_DONE:
+        s->state = ST_DONE;
+        break;
+    case LE_ERROR:
+        cl_copy(s->err_type, e->err_type ? e->err_type : "error", sizeof(s->err_type));
+        if (e->p && e->n) {
+            long n = e->n < (long)sizeof(s->err_msg) - 1 ? e->n : (long)sizeof(s->err_msg) - 1;
+            memcpy(s->err_msg, e->p, (size_t)n);
+            s->err_msg[n] = 0;
+        }
+        s->state = ST_ERROR;
+        break;
     }
-    if (s->ui.stop)
-        s->ui.stop(s->ui.u, b);
-    return 0;
 }
 
 int stream_event(cl_stream *s, const char *event, const char *data, long n)
 {
-    jv ev, t, v, u;
-    int rc = 0;
+    llm_sink k;
+    int rc;
     (void)event;                    /* the data's own "type" decides */
     if (s->state == ST_BAD)
         return -1;
-    if (json_parse(data, n, &ev) || !json_get(ev, "type", &t)) {
+    k.u = s;
+    k.ev = on_event;
+    rc = llm_anth_feed(&s->dec, data, n, &k);
+    if (s->dec.oom)
+        s->oom = 1;
+    if (rc || s->fail) {
         s->state = ST_BAD;
         return -1;
     }
-    if (json_streq(t, "ping"))
-        return 0;
-    if (json_streq(t, "error")) {
-        jv e;
-        if (json_get(ev, "error", &e)) {
-            str_field(e, "type", s->err_type, sizeof(s->err_type));
-            str_field(e, "message", s->err_msg, sizeof(s->err_msg));
-        }
-        if (!s->err_type[0])
-            cl_copy(s->err_type, "error", sizeof(s->err_type));
-        s->state = ST_ERROR;
-        return 0;
-    }
-    if (json_streq(t, "message_start")) {
-        if (s->state != ST_WAIT || !json_get(ev, "message", &v))
-            rc = -1;
-        else {
-            str_field(v, "model", s->model, sizeof(s->model));
-            str_field(v, "id", s->id, sizeof(s->id));
-            if (json_get(v, "usage", &u))
-                usage(s, u);
-            s->state = ST_OPEN;
-        }
-    } else if (s->state != ST_OPEN)
-        rc = -1;
-    else if (json_streq(t, "content_block_start"))
-        rc = block_start(s, ev);
-    else if (json_streq(t, "content_block_delta"))
-        rc = block_delta(s, ev);
-    else if (json_streq(t, "content_block_stop"))
-        rc = block_stop(s, ev);
-    else if (json_streq(t, "message_delta")) {
-        if (json_get(ev, "delta", &v)) {
-            jv sd;
-            str_field(v, "stop_reason", s->stop_reason, sizeof(s->stop_reason));
-            if (json_get(v, "stop_details", &sd) && json_type(sd) == J_OBJ)
-                str_field(sd, "category", s->stop_category, sizeof(s->stop_category));
-        }
-        if (json_get(ev, "usage", &u))
-            usage(s, u);
-    } else if (json_streq(t, "message_stop"))
-        s->state = ST_DONE;
-    /* an event type the client does not know is passed over */
-    if (rc)
-        s->state = ST_BAD;
-    return rc;
+    return 0;
 }
 
 int stream_content(cl_stream *s, jw *out)

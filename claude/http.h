@@ -16,6 +16,24 @@ typedef struct http_url {
 /* "https://host[:port]/path" or "http://...". 0, or -1 when it is not one. */
 int http_parse_url(const char *url, http_url *u);
 
+/* A header for http_post_head; a 0 or "" value is left out. */
+typedef struct http_hdr {
+    const char *name, *value;
+} http_hdr;
+
+/* "POST path HTTP/1.1", Host (with the port when it is not the scheme's),
+ * the headers in order, Content-Length, Connection: keep-alive: the head's
+ * length in out, or -1 when it does not fit. Provider-neutral: the
+ * provider's headers come from its backend (llm/be_*.c). */
+long http_post_head(const char *host, int port, int tls, const char *path, const http_hdr *h, int nh,
+                    long body_len, char *out, long cap);
+/* head[0..n) with the value of every header called name (any case)
+ * replaced by "[redacted]" into out: its length, or -1 when it does not
+ * fit. The only form of a request head that may reach a log. */
+long http_redact_header(const char *head, long n, const char *name, char *out, long cap);
+
+/* C:Claude's Messages API request: the head and its redaction are the
+ * Anthropic backend's (defined in llm/be_anthropic.c). */
 typedef struct http_req {
     const char *host;
     int port;                   /* in the Host header when not 80/443 */

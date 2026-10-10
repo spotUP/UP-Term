@@ -16,6 +16,7 @@
 #include "http.h"
 #include "sse.h"
 #include "stream.h"
+#include "../llm/request.h"
 #include "conv.h"
 #include "tools.h"
 #include "ui.h"
@@ -81,7 +82,7 @@ typedef struct cl_repl {
     char *system;
     cl_conv conv;
     cl_tools tools;
-    int connected;
+    llm_pool pool;              /* the API connection, kept between requests (llm/request.c; one slot: r->net) */
     int debug;
     /* the request in flight */
     http_resp resp;

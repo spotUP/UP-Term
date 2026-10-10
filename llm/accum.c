@@ -4,14 +4,6 @@
 #include "accum.h"
 #include "../claude/util.h"
 
-void llm_event_init(llm_event *e, int type)
-{
-    memset(e, 0, sizeof(*e));
-    e->type = type;
-    e->index = -1;
-    e->in = e->out = e->cache_r = e->cache_w = -1;
-}
-
 void llm_acc_init(llm_acc *a, const char *api, const char *provider)
 {
     memset(a, 0, sizeof(*a));
