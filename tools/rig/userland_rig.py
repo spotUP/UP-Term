@@ -113,9 +113,16 @@ def binaries(pkg):
     return [SYSBIN / b for p in [pkg] + recipe_var(pkg, "CHECK_DEPS") for b in recipe_var(p, "BINS")]
 
 
+def rig_data(pkg):
+    """The installed data files the cases need (<pkg>_RIG_DATA of its recipe.mk, relative
+    to the sysroot's UP-Term, e.g. file's compiled magic), kept where the kit puts them under
+    UP-Term:, which kit_assigns() points at VTC:userland."""
+    return [SYSBIN / d for d in recipe_var(pkg, "RIG_DATA")]
+
+
 def fingerprint(pkg, bins):
     h = hashlib.sha256()
-    files = list(bins) + [PORTS / "pkgs" / pkg / "check/cases", PORTS / "pkgs" / pkg / "check/tty"]
+    files = list(bins) + rig_data(pkg) + [PORTS / "pkgs" / pkg / "check/cases", PORTS / "pkgs" / pkg / "check/tty"]
     files += sorted((PORTS / "build/expected" / pkg).glob("*.txt"))
     if tty_cases(pkg):
         files += [PTYRUN] + sorted((PORTS / "pkgs" / pkg / "check/keys").glob("*"))
@@ -175,6 +182,11 @@ def kit_assigns():
     rc, _ = run("Assign >NIL: TMP: EXISTS", 20)
     if rc != 0:
         run("Assign TMP: T:", 20)
+    # UP-Term: is the kit's drawer; here it is the staged one (bin, share/...),
+    # where ixemul's /UP-Term/... paths (file's magic) end up
+    rc, _ = run("Assign >NIL: UP-Term: EXISTS", 20)
+    if rc != 0:
+        run("Assign UP-Term: VTC:userland", 20)
 
 
 def stage(pkg, bins, wanted):
@@ -183,6 +195,10 @@ def stage(pkg, bins, wanted):
     (VTC / "userland/bin").mkdir(parents=True, exist_ok=True)
     for b in bins:
         shutil.copyfile(b, VTC / "userland/bin" / b.name)
+    for d in rig_data(pkg):
+        dest = VTC / "userland" / d.relative_to(SYSBIN)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(d, dest)
     work = VTC / "userland/work" / pkg
     shutil.rmtree(work, ignore_errors=True)
     data = PORTS / "pkgs" / pkg / "check/data"
