@@ -49,6 +49,29 @@ OS32_ROM = pathlib.Path(os.environ.get("UPTERM_OS32_ROM") or
     pathlib.Path.home() / "Desktop/KICK_323.rom")
 
 
+# --os <name>: a clean installed Workbench image per OS (the owner's, read
+# only: the rig boots its own copy) and the Kickstart that goes with it.
+# UPTERM_OS_IMAGES  the drawer of Workbench_<version>.hdf files
+# UPTERM_ROM314     the A1200 Kickstart 3.1.4 (46.143), for --os 314
+OS_IMAGES = pathlib.Path(os.environ.get("UPTERM_OS_IMAGES") or
+    pathlib.Path.home() / "Downloads/clean-wb/Clean Workbench Installs")
+ROM314 = pathlib.Path(os.environ.get("UPTERM_ROM314") or
+    pathlib.Path.home() / "Downloads/kickstart 3.1.4/kick.a1200.46.143")
+
+
+# --os with --060/--max: the clean system has no 68060.library and its
+# Startup-Sequence (SetPatch, CPU CHECKINSTALL) fails on a 68060 without it
+# (Software Failure 8000 888B, rig 3, 2026-10-10); UPTERM_LIB68060 names the file (default: Phase5's 68060.library 44.3,
+# taken from the old rig system disk's Libs:; GG-Lite's 68060.library did not help).
+LIB68060 = pathlib.Path(os.environ.get("UPTERM_LIB68060") or
+    VTCON / "build/rig-inputs/68060.library")
+
+
+# ... and the 3.1 68040.library, which SetPatch also loads on a 68060, crashes
+# there; the old rig system disk has a 692-byte stub in its place (UPTERM_LIB68040).
+LIB68040 = pathlib.Path(os.environ.get("UPTERM_LIB68040") or VTCON / "build/rig-inputs/68040.library")
+
+
 def require_input(path, var, what):
     """Exit with one clear message when a rig input is missing."""
     if not pathlib.Path(path).exists():

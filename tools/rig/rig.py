@@ -11,6 +11,9 @@ independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
                   --serial <path>: the serial port to that path, not serial.log)
+                  --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
+                  Workbench of that version (paths.OS_IMAGES; own copy per rig,
+                  --fresh copies it anew; the Kickstart goes with it)
   rig.py aga      Workbench on native AGA (PAL hires, 16 colours) from next boot
   rig.py rtg      Workbench back on the graphics card from next boot
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
@@ -55,6 +58,24 @@ OS32_SRC = paths.OS32_TREE        # UPTERM_OS32_TREE
 OS32_KICK = paths.OS32_ROM        # UPTERM_OS32_ROM
 if OS32:
     KICK = OS32_KICK
+# --os <name>: boot a clean installed Workbench instead of sys.hdf or the 3.2
+# tree (owner 2026-10-10: every rig boots a clean installed OS image). The
+# owner's image (paths.OS_IMAGES, only read) is copied to <rig>/os-<name>.hdf,
+# the rig's own copy; --fresh copies it anew (a clean system for this run).
+# The system boots as a user's does: the rig's two hooks are lines appended
+# to the copy's S:User-Startup (xdftool; the originals are never written):
+# VTC: assigned, BOOTX:go run. BOOTX: and VTCX: are data drives and do not
+# boot (the image's priority is the higher). Names: 30 31 314 32 321 322 35 39.
+OS_NAMES = {"30": "3.0", "31": "3.1", "314": "3.1.4", "32": "3.2", "321": "3.2.1", "322": "3.2.2",
+            "35": "3.5", "39": "3.9"}
+OS = sys.argv[sys.argv.index("--os") + 1] if "--os" in sys.argv else None
+if OS is not None and OS not in OS_NAMES:
+    sys.exit("rig: --os %s: one of %s" % (OS, " ".join(OS_NAMES)))
+FRESH = "--fresh" in sys.argv
+if OS in ("32", "321", "322"):
+    KICK = OS32_KICK
+elif OS == "314":
+    KICK = paths.ROM314
 if "--kick" in sys.argv:
     KICK = pathlib.Path(sys.argv[sys.argv.index("--kick") + 1]).expanduser()
 
@@ -195,6 +216,38 @@ def os32_hd_layout():
     shutil.rmtree(tmp)
     print("made SYS:L from Extras3.2.adf:", ", ".join(sorted(p.name for p in sysl.iterdir())))
 
+OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
+
+def os_image_copy():
+    """<rig>/os-<name>.hdf from the owner's clean image (once, or anew with
+    --fresh), the two hooks appended to its S:User-Startup; with --060/--max
+    also the 68060.library."""
+    dst = RIG / ("os-%s.hdf" % OS)
+    if not dst.exists() or FRESH:
+        src = paths.OS_IMAGES / ("Workbench_%s.hdf" % OS_NAMES[OS])
+        paths.require_input(src, "UPTERM_OS_IMAGES", "the clean Workbench %s image" % OS_NAMES[OS])
+        shutil.copyfile(src, dst)
+        os.chmod(dst, 0o644)
+        us, hooks = RIG / "os-us.tmp", RIG / "os-hooks.tmp"
+        got = subprocess.run(["xdftool", str(dst), "read", "S/User-Startup", str(us)], capture_output=True)
+        prior = us.read_text(errors="replace") if got.returncode == 0 and us.exists() else ""
+        hooks.write_text(prior + OS_HOOKS)
+        xdf_write(dst, hooks, "S/User-Startup")
+        hooks.unlink()
+        us.unlink(missing_ok=True)
+    if M060:
+        paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
+        xdf_write(dst, paths.LIB68060, "Libs/68060.library")
+        paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
+        xdf_write(dst, paths.LIB68040, "Libs/68040.library")
+
+def xdf_write(image, local, name):
+    """Put a host file into the image's volume as <name> (replacing one)."""
+    subprocess.run(["xdftool", str(image), "delete", name], capture_output=True)
+    r = subprocess.run(["xdftool", str(image), "write", str(local), name], capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit("rig: xdftool could not write %s into %s: %s" % (name, image, (r.stderr or r.stdout).strip()[-200:]))
+
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
     if paths.RIG_N > 1 and not (RIG / "vtc").exists():
@@ -210,7 +263,9 @@ def setup():
         shutil.copytree(OS32_SRC, RIG / "os32", symlinks=True)
     if OS32:
         os32_hd_layout()
-    if not OS32 and not (RIG / "sys.hdf").exists():
+    if OS:
+        os_image_copy()
+    elif not OS32 and not (RIG / "sys.hdf").exists():
         print("copying the system disk (1.5 GB) ...")
         paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image")
         shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
@@ -283,15 +338,16 @@ def setup():
     ] + (["uae_cpu_no_unimplemented = false", "uae_fpu_no_unimplemented = false"] if M060 else [])
     paths.require_rom(KICK)
     CFG.write_text("\n".join(machine + [
-        "hard_drive_0 = %s" % (RIG / ("os32" if OS32 else "sys.hdf")),
+        "hard_drive_0 = %s" % (RIG / ("os-%s.hdf" % OS if OS else "os32" if OS32 else "sys.hdf")),
         # Writable: read-only (--ro) put up "Volume System is write
         # protected" requesters that stalled the rig (the owner saw them,
         # 2026-09-29). stop write-protects DH0: through amiagent before its
         # SIGKILL, so no write is left in flight to validate on next boot.
         "hard_drive_0_read_only = %d" % (0 if RW else 1),
+    ] + (["hard_drive_0_priority = 10"] if OS else []) + [
         "hard_drive_1 = %s" % (RIG / "vtc"), "hard_drive_1_label = VTCX",
         "hard_drive_2 = %s" % (RIG / "boot"), "hard_drive_2_label = BOOTX",
-        "hard_drive_2_priority = 10", "joystick_port_1 = none",
+        "hard_drive_2_priority = %d" % (0 if OS else 10), "joystick_port_1 = none",
         "kickstart_file = %s" % KICK,
         "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
         "window_width = 1280", "window_height = 1024",
