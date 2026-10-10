@@ -45,8 +45,8 @@ def run(cmd, timeout=60):
 # window either: that Shell stopped after C:UPConsole CON ON switched the
 # window's handler (2026-10-10). Each line's output is appended to out<n>
 # (a line that redirects its own keeps it; an Execute'd script's lines print
-# nowhere, so run_long returns no output), and rc<n> is written last; the
-# host waits for rc<n>. <drawer> is a new VTC:show-<time> for each window,
+# nowhere: run_long has the agent run them and types their output here), and rc<n> is
+# written last; the host waits for rc<n>. <drawer> is a new VTC:show-<time> for each window,
 # and only the Amiga side deletes in it: FS-UAE's VTC: keeps names the Mac
 # deleted, and a Rename onto such a name fails. Commands run at FailAt 1000:
 # a failing line (Execute of a missing file returns 10) does not end the
@@ -135,6 +135,36 @@ def show(cmd, timeout):
         time.sleep(0.5)
     raise SystemExit('ERR: show: still running after %d s: %r' % (timeout, cmd[:80]))
 
+def ports():
+    """Every tool of the Unix ports (plan items 1.2-1.9, 2.1-2.5) once, through
+    vsh's $PATH, with a result only the right program gives; a vsh script, so
+    no AmigaDOS quoting stands between (VTC:ports.sh). xz compresses at -0
+    (about 3 MB): its default -6 needs about 94 MB and an 8 MB A1200 answers
+    "Cannot allocate memory" (rig 1, 2026-10-10). vsh's command -v names the
+    Amiga path."""
+    ports = [('sed', 'echo abc | sed s/b/X/', lambda o: o == 'aXc'),
+             ('awk', "echo 3 4 | awk '{print $1+$2}'", lambda o: o == '7'),
+             ('less', 'less --version | head -1', lambda o: 'less 710' in o),
+             ('nano', 'nano --version | head -1', lambda o: '9.2' in o),
+             ('find', 'find --version | head -1', lambda o: 'findutils' in o and '4.11' in o),
+             ('xargs', 'echo a b | xargs echo x', lambda o: o == 'x a b'),
+             ('diff', 'diff --version | head -1', lambda o: '3.12' in o),
+             ('cmp', 'cmp --version | head -1', lambda o: '3.12' in o),
+             ('patch', 'patch --version | head -1', lambda o: '2.8' in o),
+             ('man', 'man -w sed', lambda o: o.endswith('share/man/man1/sed.1')),
+             ('gzip', 'echo hi | gzip | gzip -dc', lambda o: o == 'hi'),
+             ('bzip2', 'echo hi | bzip2 | bzip2 -dc', lambda o: o == 'hi'),
+             ('xz', 'echo hi | xz -0 | xz -dc', lambda o: o == 'hi'),
+             ('tar', 'tar --version | head -1', lambda o: '3.8.9' in o),
+             ('zip', 'zip -h | grep -c "Zip 3.0"', lambda o: o.isdigit() and int(o) > 0),
+             ('path', 'command -v sed', lambda o: o in ('/UP-Term/bin/sed', 'UP-Term:bin/sed'))]
+    (VTC / "ports.sh").write_text(''.join('echo "%s:$(%s)"\n' % (t, c) for t, c, _ in ports))
+    rc, out = run('Stack 200000\nC:vsh VTC:ports.sh', 120)
+    got = dict(l.split(':', 1) for l in out.splitlines() if ':' in l)
+    for t, c, ok in ports:
+        o = got.get(t, '').strip()
+        check(ok(o), 'PORTS: %s through vsh\'s $PATH (%s)' % (t, c), o or out[-200:])
+
 def show_check():
     """--show-check: the watched window survives what broke its first version
     (2026-10-09: the owner saw "object not found", "Skip failed returncode
@@ -151,6 +181,9 @@ def show_check():
     check(rc == 10 and 'object not found' in out, 'show: Execute of a missing file returns 10, its message comes back', out)
     rc, out = run('Echo two\nEcho three')
     check(rc == 0 and out.split() == ['two', 'three'], 'show: the window takes commands after the failing one (two lines)', out)
+    (VTC / "showscript").write_text('Echo from-the-script\n')
+    rc, out = run_long('showscript', 120)
+    check(rc == 0 and 'from-the-script' in out, 'show: run_long returns the words of an Execute\'d script', out)
     rc, out = run('Delete >NIL: T:show-check-nosuch#? QUIET')
     check(rc == 5, 'show: a line that redirects its own output keeps it, its return code comes back', out)
     # a command that switches the console handler of every new window (C:UPConsole
@@ -173,12 +206,18 @@ def run_long(script, timeout=1500):
     returns its output, one that does not returns '' and its return code).
     The script runs inside a wrapper that writes its return code to
     VTC:longdone, and this waits for that file."""
-    if SHOW:   # the watched window waits as long as it takes
-        return show('Execute VTC:%s' % script, timeout)
     (VTC / "longdone").unlink(missing_ok=True)
     (VTC / "longwrap").write_text("Execute VTC:%s\nEcho >VTC:longdone \"$RC\"\n" % script)
     out = ''
     end = time.time() + timeout
+    if SHOW:
+        # An Execute in the watched window prints into the window and nowhere
+        # else: no redirection reaches an Execute'd script's lines, and Run
+        # hands the new CLI the window, not the redirection (rig 1,
+        # 2026-10-10: the checks on Install's words saw ''). So the agent runs
+        # the wrapper and captures its words; the window gets the command now
+        # and the words when it is done.
+        show('Echo "run_long: Execute VTC:%s"' % script, 60)
     while True:
         try:
             out = ami.req(0x02, struct.pack('>H', 120) + b'Execute VTC:longwrap', 150)[4:].decode('latin-1')
@@ -207,6 +246,9 @@ def run_long(script, timeout=1500):
             continue
     if not rc:
         return 1, 'run_long: VTC:longdone vanished or empty after %s' % script
+    if SHOW:
+        (VTC / (script + ".runout")).write_text(out)
+        show('Type VTC:%s.runout' % script, 60)
     return (int(rc) if rc.isdigit() else 0), out
 
 def run_slow(name, cmd, timeout=600):
@@ -506,31 +548,7 @@ def _main(dest=None):
     # Install put upterm-ports' grep in UP-Term:bin and vsh's $PATH reaches it
     rc, out = run('C:vsh -c "grep --version"')
     check(rc == 0 and 'GNU grep' in out and '3.12' in out, 'vsh\'s grep is the ports\' GNU grep 3.12 (through $PATH)', out)
-    # ... and every other tool of the ports (plan items 1.2-1.9, 2.1-2.5): each
-    # once, through vsh's $PATH, with a result only the right program gives;
-    # a vsh script, so no AmigaDOS quoting stands between (VTC:ports.sh)
-    ports = [('sed', 'echo abc | sed s/b/X/', lambda o: o == 'aXc'),
-             ('awk', "echo 3 4 | awk '{print $1+$2}'", lambda o: o == '7'),
-             ('less', 'less --version | head -1', lambda o: 'less 710' in o),
-             ('nano', 'nano --version | head -1', lambda o: '9.2' in o),
-             ('find', 'find --version | head -1', lambda o: 'findutils' in o and '4.11' in o),
-             ('xargs', 'echo a b | xargs echo x', lambda o: o == 'x a b'),
-             ('diff', 'diff --version | head -1', lambda o: '3.12' in o),
-             ('cmp', 'cmp --version | head -1', lambda o: '3.12' in o),
-             ('patch', 'patch --version | head -1', lambda o: '2.8' in o),
-             ('man', 'man -w sed', lambda o: o.endswith('share/man/man1/sed.1')),
-             ('gzip', 'echo hi | gzip | gzip -dc', lambda o: o == 'hi'),
-             ('bzip2', 'echo hi | bzip2 | bzip2 -dc', lambda o: o == 'hi'),
-             ('xz', 'echo hi | xz | xz -dc', lambda o: o == 'hi'),
-             ('tar', 'tar --version | head -1', lambda o: '3.8.9' in o),
-             ('zip', 'zip -h | grep -c "Zip 3.0"', lambda o: o.isdigit() and int(o) > 0),
-             ('path', 'command -v sed', lambda o: o == '/UP-Term/bin/sed')]
-    (VTC / "ports.sh").write_text(''.join('echo "%s:$(%s)"\n' % (t, c) for t, c, _ in ports))
-    rc, out = run('Stack 200000\nC:vsh VTC:ports.sh', 120)
-    got = dict(l.split(':', 1) for l in out.splitlines() if ':' in l)
-    for t, c, ok in ports:
-        o = got.get(t, '').strip()
-        check(ok(o), 'PORTS: %s through vsh\'s $PATH (%s)' % (t, c), o or out[-200:])
+    ports()
     # .. is the parent (on RAM:, a real volume -- VTC:'s root is its own
     # parent, an FS-UAE quirk). rm -r runs from outside: AmigaDOS keeps the
     # current directory locked, so a shell can never delete the drawer it is in
@@ -742,6 +760,7 @@ def _move():
     check(rc == 0 and 'left in place' not in out and 'now assigns' not in out,
           'move: the same DEST again says nothing about the block', out)
     check(run('Type S:User-Startup')[1] == startup_moved, 'move: the same DEST again leaves S:User-Startup byte for byte', '')
+    ports()   # the tools through vsh's $PATH from the moved drawer
     rc, out = run_long('rununinstall')
     check(rc == 0, 'move: Uninstall runs', out)
     check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'move: after Uninstall no UP-Term: assign', '')
