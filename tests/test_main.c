@@ -21,6 +21,7 @@ void suite_sh_ixargv(void);
 void suite_pty_name(void);
 void suite_bmsg(void);
 void suite_upassign(void);
+void suite_pi_llm(void);
 void suite_upcon(void);
 void suite_upconf(void);
 void suite_prefs(void);
@@ -111,6 +112,7 @@ static const h_suite suites[] = {
     { "claude_cli", suite_claude_cli },
     { "claude_tui", suite_claude_tui },
     { "claude_config", suite_claude_config },
+    { "pi_llm", suite_pi_llm },
     { 0, 0 }
 };
 
