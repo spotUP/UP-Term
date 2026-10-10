@@ -14,7 +14,7 @@ Two passes: the default drawer (SYS:UP-Term) and a non-default one
   install_rig.py --show-check the watched window (UPTERM_RIG_SHOW=<title>) alone
   install_rig.py --move       a third pass: Install into the default drawer, then
                               again with DEST=VTC:Apps/UP-Term (the assign moves)"""
-import os, pathlib, re, shutil, struct, sys, time
+import os, pathlib, re, shutil, signal, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # before ami: it sets the agent port of UPTERM_RIG
 import ami
@@ -203,6 +203,7 @@ def show_check():
     run('Echo >>S:User-Startup "; fixture probe"')
     fx.restore()
     check(run('Type S:User-Startup')[1] == before, 'fixtures: S:User-Startup is put back after a case appended a line', '')
+    check(signal.getsignal(signal.SIGTERM) not in (signal.SIG_DFL, signal.SIG_IGN), 'fixtures: a SIGTERM ends the run through its finally (the fixtures are put back)', '')
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 
@@ -312,6 +313,11 @@ class Fixtures:
 
     def take(self):
         if self.files is not None: return
+        # a killed run (pkill, the Monitor's timeout) is SIGTERM: Python then
+        # skips the finally, and the run left an UP-Term block in S:User-Startup
+        # whose drawer the next run deleted -- "Please insert volume UP-Term:"
+        # at every boot (rig 1, 2026-10-10)
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
         self.files = {p: ami.read_file(p) for p in self.paths}
         rc, out = run('Assign LIST')
         self.assigns = {}
