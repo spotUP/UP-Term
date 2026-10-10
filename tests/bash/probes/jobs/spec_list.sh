@@ -33,6 +33,7 @@ wait $!; echo rc=$?
 wait %1; echo rc=$?
 wait 99999; echo rc=$?
 wait %9; echo rc=$?
-true &
-true &
+# still running at the wait: bash answered 127 for a %+ that had ended under load (V95 run)
+sleep 1 &
+sleep 1 &
 wait %+ ; echo rc=$?
