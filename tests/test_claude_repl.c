@@ -25,6 +25,7 @@
 #include "../claude/util.h"
 #include "../claude/tui.h"
 #include "../claude/show.h"
+#include "../claude/session.h"
 #include "claude_screen.h"
 
 /* ---- the stub transport: one canned HTTP response per request ---- */
@@ -1610,6 +1611,96 @@ static void golden(const char *name, const char *got)
     if (want)
         CHECK_STR(got, want);
     free(want);
+}
+
+/* amiga-pi B4: the bytes C:Claude sends (head + body) for six recorded turns,
+ * captured BEFORE the Anthropic head and decoder move behind amiga-pi's
+ * backend interface (plan 2026-10-07-amiga-pi B4/B5): B5 must leave every one
+ * of these equal. The start directory is blanked (norm) and the head's
+ * Content-Length checked against the real body, then blanked, since the
+ * directory's length moves it. tests/claude/golden_req_<recording>.txt. */
+static void req_norm(const char *s, jw *o)
+{
+    char real[600], slug[2][64];
+    const char *roots[4];
+    jw t;
+    int k;
+    if (!realpath(dir, real))
+        strcpy(real, dir);
+    sess_slug(real, slug[0], sizeof(slug[0]));
+    sess_slug(dir, slug[1], sizeof(slug[1]));
+    roots[0] = real;            /* the resolved root first: /private/var/.. holds /var/.. */
+    roots[1] = dir;
+    roots[2] = slug[0];         /* the memory directory's name, from the random root */
+    roots[3] = slug[1];
+    jw_init(&t);
+    jw_rawz(&t, s);
+    for (k = 0; k < 4; k++) {
+        norm(t.p ? t.p : "", roots[k], o);
+        jw_reset(&t);
+        jw_rawz(&t, o->p ? o->p : "");
+    }
+    jw_free(&t);
+}
+
+static void req_golden(int i, const char *name)
+{
+    jw h, b, all;
+    const char *cl;
+    if (i >= sb.nreq) {
+        CHECK(i < sb.nreq);
+        return;
+    }
+    cl = strstr(sb.head[i], "Content-Length: ");
+    CHECK(cl != 0 && atol(cl + 16) == (long)strlen(sb.body[i]));
+    jw_init(&h);
+    jw_init(&b);
+    jw_init(&all);
+    req_norm(sb.head[i], &h);
+    req_norm(sb.body[i], &b);
+    if (h.p && cl) {
+        char *c = strstr(h.p, "Content-Length: ") + 16;
+        char *e = c;
+        while (*e >= '0' && *e <= '9')
+            e++;
+        jw_raw(&all, h.p, (long)(c - h.p));
+        jw_rawz(&all, "*");
+        jw_rawz(&all, e);
+    }
+    jw_rawz(&all, b.p ? b.p : "");
+    golden(name, all.p ? all.p : "");
+    jw_free(&h);
+    jw_free(&b);
+    jw_free(&all);
+}
+
+static void test_req_golden(void)
+{
+    static const char *script[] = { "hello", "show me S/Startup-Sequence", "two", "three", "four", 0 };
+    static cl_repl r;
+    setup(&r, script);
+    add_stream("text.sse");
+    add_stream("tool_use.sse");
+    add_stream("tool_final.sse");
+    add_stream("refusal.sse");
+    add_stream("max_tokens.sse");
+    add_stream("overloaded.sse");
+    add_stream("text.sse");
+    while (cn.lines[cn.next])
+        repl_line(&r, cn.lines[cn.next++]);
+    CHECK_INT(sb.nreq, 7);
+    req_golden(0, "golden_req_text.txt");
+    req_golden(1, "golden_req_tool_use.txt");
+    req_golden(2, "golden_req_tool_final.txt");
+    req_golden(3, "golden_req_refusal.txt");
+    req_golden(4, "golden_req_max_tokens.txt");
+    req_golden(5, "golden_req_overloaded.txt");
+    /* the retry after the overloaded stream sends the same bytes again */
+    if (sb.nreq == 7) {
+        CHECK_STR(sb.head[6], sb.head[5]);
+        CHECK_STR(sb.body[6], sb.body[5]);
+    }
+    repl_free(&r);
 }
 
 /* every line of the output a JSON object; the count; types: their "type"s, joined by ' ' */
@@ -6029,6 +6120,7 @@ void suite_claude_repl(void)
     mk_tree();
     test_reach();
     test_unfinished();
+    test_req_golden();
     test_commands();
     test_screen();
     test_wp1();
