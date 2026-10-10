@@ -26,7 +26,7 @@ Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts amiagent), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import os, pathlib, shutil, subprocess, sys, time
+import os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 
@@ -231,10 +231,15 @@ def os_image_copy():
         us, hooks = RIG / "os-us.tmp", RIG / "os-hooks.tmp"
         got = subprocess.run(["xdftool", str(dst), "read", "S/User-Startup", str(us)], capture_output=True)
         prior = us.read_text(errors="replace") if got.returncode == 0 and us.exists() else ""
-        hooks.write_text(prior + OS_HOOKS)
+        hooks.write_text(prior + ("" if prior.endswith("\n") or not prior else "\n") + OS_HOOKS)   # 3.2.2 ends its comment box without a newline: the first hook line was part of it (VTC: never assigned, 2026-10-10)
         xdf_write(dst, hooks, "S/User-Startup")
         hooks.unlink()
         us.unlink(missing_ok=True)
+    listing = subprocess.run(["xdftool", str(dst), "list"], capture_output=True, text=True).stdout
+    if not re.search(r"^\s+Installer\s", listing, re.M):
+        # the clean 3.0/3.1 installs have no Installer (it is on the Install disk)
+        paths.require_input(paths.INSTALLER, "UPTERM_INSTALLER", "an Installer program")
+        xdf_write(dst, paths.INSTALLER, "C/Installer")
     if M060:
         paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
         xdf_write(dst, paths.LIB68060, "Libs/68060.library")
@@ -417,6 +422,9 @@ def start(retries=2):
         time.sleep(2)
         if status(quiet=True):
             print("up")
+            missing = boot_assigns_missing()
+            if missing:
+                sys.exit("rig: the boot lacks the assigns %s (BOOTX:go or the boot hook did not run)" % " ".join(missing))
             guard_shell_startup()
             if M060:
                 retry_wb_reset()
@@ -430,6 +438,22 @@ def start(retries=2):
         print("retrying the boot")
         stop()
         start(retries - 1)
+
+# the assigns every rig script uses, made by the boot hook and BOOTX:go: a
+# boot that lacks one has a requester waiting ("Please insert volume VTC:"
+# three times on 2026-10-10: ENV:, UP-Term:, VTC:). Read from Assign LIST,
+# which never asks for a volume.
+BOOT_ASSIGNS = ["VTC", "ETC", "AmiTCP", "LIBS"]
+
+def boot_assigns_missing():
+    """The names of BOOT_ASSIGNS (and GG: when VTC:gg/bin/sh is on the rig) the
+    booted system does not have; [] when all are there."""
+    import struct
+    import ami
+    out = ami.req(0x02, struct.pack(">H", 30) + b"Assign LIST", 60)[4:].decode("latin-1")
+    have = {l.split()[0].rstrip(":").upper() for l in out.splitlines() if l.strip() and not l[0].isspace()}
+    need = BOOT_ASSIGNS + (["GG"] if (RIG / "vtc/gg/bin/sh").exists() else [])
+    return [n for n in need if n.upper() not in have]
 
 def guard_shell_startup():
     """An earlier go's bare BARE_SHELL_PATH line in S:Shell-Startup becomes

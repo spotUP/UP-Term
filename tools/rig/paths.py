@@ -72,6 +72,10 @@ LIB68060 = pathlib.Path(os.environ.get("UPTERM_LIB68060") or
 LIB68040 = pathlib.Path(os.environ.get("UPTERM_LIB68040") or VTCON / "build/rig-inputs/68040.library")
 
 
+# the clean 3.0/3.1 installs have no Installer; this is the Installer 3.1's (UPTERM_INSTALLER)
+INSTALLER = pathlib.Path(os.environ.get("UPTERM_INSTALLER") or VTCON / "build/rig-inputs/Installer")
+
+
 def require_input(path, var, what):
     """Exit with one clear message when a rig input is missing."""
     if not pathlib.Path(path).exists():
