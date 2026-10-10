@@ -62,6 +62,16 @@ static int rq_head(void *u, const char **head, long *hn)
     return q->hn < 0 ? -1 : 0;
 }
 
+static void rq_event(void *u, const char *event, const char *data, long n)
+{
+    rq *r = (rq *)u;
+    (void)event;
+    if (r->inner.log) {
+        r->inner.log(r->inner.u, data, n);
+        r->inner.log(r->inner.u, "\n", 1);
+    }
+}
+
 static int rq_poll(void *u)
 {
     rq *r = (rq *)u;
@@ -175,6 +185,13 @@ int llm_request(llm_req *q)
     }
     q->hn = q->be->head(u.host, u.port, u.tls, path, key, q->user_agent, body.n, q->head, sizeof(q->head));
     q->key_sent = key && *key && q->hn > 0;
+    if (q->h.log && q->hn > 0) {
+        /* the only form of the head a log gets: the credential's value blanked */
+        char red[1100];
+        long rn = http_redact_header(q->head, q->hn, q->be->secret_header, red, sizeof(red));
+        if (rn > 0)
+            q->h.log(q->h.u, red, rn);
+    }
     r.q = q;
     r.inner = q->h;
     for (attempt = 1;; attempt++) {
@@ -194,6 +211,7 @@ int llm_request(llm_req *q)
         c.h.status = rq_status;
         c.h.ms = rq_ms;
         c.h.head = rq_head;
+        c.h.event = q->h.log ? rq_event : 0;
         c.be = q->be;
         c.dec = dec;
         c.sink = &gk;

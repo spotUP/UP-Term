@@ -32,7 +32,7 @@ VIEW_CLI  := view/vw_cli.c
 # amiga-pi's provider-neutral LLM layer (llm/, shared with C:Claude; plan 2026-10-07-amiga-pi B)
 # what C:Claude links of it: the events, the Anthropic backend, the request
 LLM_CLAUDE := llm/event.c llm/be_anthropic.c llm/request.c
-LLM_CORE := $(LLM_CLAUDE) llm/llm.c llm/accum.c llm/be_anthropic_pi.c llm/retry.c
+LLM_CORE := $(LLM_CLAUDE) llm/llm.c llm/accum.c llm/be_anthropic_pi.c llm/retry.c llm/be_openai_chat.c
 LLM_HDR := $(wildcard llm/*.h)
 CLAUDE_INPUT := claude/vim.c claude/hist.c claude/theme.c claude/input.c claude/tview.c
 CLAUDE_CORE := claude/util.c claude/http.c claude/net_posix.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \

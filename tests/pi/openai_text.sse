@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-amiga1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"content":"Hello from "},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"content":"the Amiga! Grüße — ok"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-amiga1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[],"usage":{"prompt_tokens":120,"completion_tokens":9,"total_tokens":129,"prompt_tokens_details":{"cached_tokens":20}}}
+
+data: [DONE]
+

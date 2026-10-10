@@ -1609,24 +1609,7 @@ static void norm(const char *s, const char *root, jw *o)
 /* got against tests/claude/<name> (CL_UPDATE_GOLDEN=1 writes it instead) */
 static void golden(const char *name, const char *got)
 {
-    long n;
-    char *want;
-    if (getenv("CL_UPDATE_GOLDEN")) {
-        char p[256];
-        FILE *f;
-        strcpy(p, "tests/claude/");
-        strcat(p, name);
-        f = fopen(p, "wb");
-        if (f) {
-            fputs(got, f);
-            fclose(f);
-        }
-    }
-    want = claude_load(name, &n);
-    CHECK(want != 0);
-    if (want)
-        CHECK_STR(got, want);
-    free(want);
+    claude_golden(name, got);
 }
 
 /* amiga-pi B4: the bytes C:Claude sends (head + body) for six recorded turns,

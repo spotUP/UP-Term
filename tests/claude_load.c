@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "claude_load.h"
+#include "harness.h"
 
 char *claude_load(const char *name, long *n)
 {
@@ -30,4 +31,29 @@ char *claude_load(const char *name, long *n)
         b[len] = 0;
     *n = len;
     return b;
+}
+
+int claude_golden(const char *name, const char *got)
+{
+    long n;
+    char *want;
+    int ok;
+    if (getenv("CL_UPDATE_GOLDEN")) {
+        char p[256];
+        FILE *f;
+        strcpy(p, "tests/claude/");
+        strcat(p, name);
+        f = fopen(p, "wb");
+        if (f) {
+            fputs(got, f);
+            fclose(f);
+        }
+    }
+    want = claude_load(name, &n);
+    CHECK(want != 0);
+    ok = want && !strcmp(got, want);
+    if (want)
+        CHECK_STR(got, want);
+    free(want);
+    return ok;
 }

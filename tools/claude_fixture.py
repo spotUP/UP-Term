@@ -51,6 +51,11 @@ stream (A2/A3, and the A4 WP2 tools):
   - anything else                                     -> text.sse
   (--stream NAME answers every request with NAME.sse instead.)
 
+It also answers amiga-pi's POST .../chat/completions (openai-completions)
+from tests/pi/openai_*.sse: after tool results openai_final, a prompt
+naming "startup" or "tool" openai_tools, else openai_text; the log line
+says whether an Authorization header came (over plain http it must not).
+
 On the Amiga:  Claude URL=http://<this machine>:8080/v1/messages ROOT=SYS:
 Each request is summarised here: model, messages, tool results, and whether
 an x-api-key header came (it must not: the key only goes over https).
@@ -121,6 +126,27 @@ def pick(body, forced):
     return "text"
 
 
+PI = os.path.join(HERE, "..", "tests", "pi")
+
+
+def pick_openai(body):
+    """amiga-pi's openai-completions requests (POST .../chat/completions):
+    after tool results -> openai_final.sse, a prompt naming "startup" or
+    "tool" -> openai_tools.sse (read and ls, the arguments in pieces), else
+    openai_text.sse."""
+    msgs = body.get("messages") or []
+    last = msgs[-1] if msgs else {}
+    if last.get("role") == "tool":
+        return "openai_final"
+    content = last.get("content")
+    text = content if isinstance(content, str) else " ".join(
+        b.get("text", "") for b in (content or []) if isinstance(b, dict))
+    text = text.lower()
+    if "startup" in text or "tool" in text:
+        return "openai_tools"
+    return "openai_text"
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     forced = None
@@ -152,7 +178,8 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_error(400, "the body is not JSON")
             return
-        name = pick(body, self.forced)
+        openai = self.path.endswith("/chat/completions")
+        name = pick_openai(body) if openai else pick(body, self.forced)
         if self.dump:
             # every request body as it came, numbered, for the rig checks to read
             Handler.ndump += 1
@@ -161,10 +188,13 @@ class Handler(BaseHTTPRequestHandler):
         msgs = body.get("messages") or []
         results = sum(1 for m in msgs if isinstance(m.get("content"), list)
                       for b in m["content"] if b.get("type") == "tool_result")
+        if openai:
+            results = sum(1 for m in msgs if m.get("role") == "tool")
+        key = self.headers.get("Authorization") if openai else self.headers.get("x-api-key")
         print("[INFO] %s model=%s messages=%d tool_results=%d key_header=%s -> %s.sse" % (
             self.path, body.get("model"), len(msgs), results,
-            "PRESENT (wrong!)" if self.headers.get("x-api-key") else "none", name), flush=True)
-        with open(os.path.join(STREAMS, name + ".sse"), "rb") as f:
+            "PRESENT (wrong!)" if key else "none", name), flush=True)
+        with open(os.path.join(PI if openai else STREAMS, name + ".sse"), "rb") as f:
             data = f.read()
         if self.page_host and name == "tool_fetch":
             data = data.replace(b"127.0.0.1:8080", self.page_host.encode())

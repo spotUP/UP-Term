@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for tools/claude_fixture.py (amiga-pi plan B10, first half).
+"""Tests for tools/claude_fixture.py (amiga-pi plan B10).
 
 The fixture's /v1/messages routing is what C:Claude's rig runs and the owner's
 Amiga checks depend on. This snapshot pins every route -- which recording each
@@ -88,6 +88,24 @@ class Routes(unittest.TestCase):
         self.assertEqual(fx.pick(body(user("edit")), "text"), "text")
 
 
+OPENAI = [
+    ("text", {"model": "m", "messages": [{"role": "user", "content": "hello"}]}, "openai_text"),
+    ("startup", {"model": "m", "messages": [{"role": "user", "content": "show me the startup"}]}, "openai_tools"),
+    ("tool in blocks", {"model": "m", "messages": [{"role": "user", "content": [{"type": "text", "text": "use a tool"}]}]},
+     "openai_tools"),
+    ("after results", {"model": "m", "messages": [{"role": "user", "content": "tool"},
+                                                  {"role": "tool", "tool_call_id": "c", "content": "x"}]}, "openai_final"),
+]
+
+
+class OpenAiRoute(unittest.TestCase):
+    def test_every_route_picks_its_recording(self):
+        for what, b, want in OPENAI:
+            with self.subTest(what):
+                self.assertEqual(fx.pick_openai(b), want)
+                self.assertTrue((ROOT / "tests" / "pi" / (want + ".sse")).is_file())
+
+
 class OverHttp(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -126,6 +144,16 @@ class OverHttp(unittest.TestCase):
                 self.assertEqual(r.getheader("Content-Type"), "text/event-stream; charset=utf-8")
                 self.assertEqual(r.getheader("Transfer-Encoding"), "chunked")
                 self.assertEqual(data, (ROOT / "tests" / "claude" / (want + ".sse")).read_bytes())
+
+    def test_chat_completions_streams_the_openai_recording(self):
+        for what, b, want in OPENAI:
+            with self.subTest(what):
+                r, data = self.post(b, "/v1/chat/completions")
+                self.assertEqual(r.status, 200)
+                self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".sse")).read_bytes())
+        # and /v1/messages still answers with the Messages API's recordings
+        r, data = self.post({"model": "m", "messages": [{"role": "user", "content": "hello"}]})
+        self.assertEqual(data, (ROOT / "tests" / "claude" / "text.sse").read_bytes())
 
     def test_body_not_json_is_400(self):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)

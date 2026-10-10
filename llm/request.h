@@ -78,6 +78,8 @@ typedef struct llm_hooks {
     void (*notice)(void *u, const char *text);  /* llm_request's notices (a key not sent) */
     /* llm_request: the address host resolves to (the LAN rule): 0, -1 */
     int (*resolve)(void *u, const char *host, unsigned char ip[4]);
+    /* llm_request's debug log: the head with the credential redacted, then each event; 0 none */
+    void (*log)(void *u, const char *s, long n);
 } llm_hooks;
 
 typedef struct llm_call {
