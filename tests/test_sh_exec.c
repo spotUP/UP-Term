@@ -1433,20 +1433,68 @@ static void printf_builtin(void)
 
 /* V74: less's configure ended "vsh: /bin/sh: not found". /bin/sh and /bin/bash (only those two) are the
  * shell itself, as a command word, after exec, and on a #! line; $BASH is the shell's own path. The
- * recording layer shows what the OS layer is asked to start. */
+ * recording layer shows what the OS layer is asked to start. It does what vsh.c os_run does: a file
+ * that loads (here: one starting with the hunk header's magic) starts as it is, and only one that does
+ * not is given to sh_script_argv. Opens and reads of the started file are counted: an ordinary
+ * command must cost no open or read for its #! line (ixemul's order, library/__load_seg.c). */
 static char seen[8][64];
 static int seen_n;
+static char watched[64];
+static int watched_io;
 
-static long f_run_record(void *os, char **argv, const sh_io *io, int wait)
+static int fake_loads(const char *name)
 {
     int i;
-    (void)os;
-    (void)io;
-    (void)wait;
+    for (i = 0; i < NF; i++)
+        if (fs[i].used && !fs[i].is_pipe && !strcmp(fs[i].name, name))
+            return fs[i].len >= 4 && !memcmp(fs[i].data, "\0\0\3\363", 4);
+    return 1; /* not a file here: a command elsewhere, as the recording layer has always had them */
+}
+
+static sh_fh f_open_counted(void *os, const char *path, int mode)
+{
+    sh_fh fh = f_open(os, path, mode);
+    if (!strcmp(path, watched))
+        watched_io++;
+    return fh;
+}
+
+static long f_read_counted(void *os, sh_fh fh, char *buf, long max)
+{
+    if (slot(fh) && !strcmp(slot(fh)->name, watched))
+        watched_io++;
+    return f_read(os, fh, buf, max);
+}
+
+static void record(char **argv)
+{
+    int i;
     for (i = 0; argv[i] && i < 8; i++)
         strcpy(seen[i], argv[i]);
     seen_n = i;
+}
+
+static long f_run_record(void *os, char **argv, const sh_io *io, int wait)
+{
+    char **sb;
+    (void)os;
+    (void)io;
+    (void)wait;
+    if (!fake_loads(argv[0]) && (sb = sh_script_argv(&sh, argv)) != 0) {
+        record(sb);
+        if (sb[1] != argv[0])
+            free(sb[1]);
+        free(sb);
+        return 0;
+    }
+    record(argv);
     return strcmp(argv[0], "/bin/foo") ? 0 : -1;
+}
+
+static void put_file(const char *name, const char *data, int len)
+{
+    sh_fh f = f_open(0, name, SH_OPEN_WRITE);
+    f_write(0, f, data, len);
 }
 
 static const char *started(const char *text)
@@ -1455,16 +1503,18 @@ static const char *started(const char *text)
     int i;
     fresh();
     sh.os.run = f_run_record;
+    sh.os.open = f_open_counted;
+    sh.os.read = f_read_counted;
     sh_set(&sh.ctx, "BASH", "VTC:vsh");
     seen_n = 0;
-    {
-        sh_fh f = f_open(0, "RAM:s1", SH_OPEN_WRITE);
-        f_write(0, f, "#!/bin/sh\necho ok\n", 18);
-        f = f_open(0, "RAM:s2", SH_OPEN_WRITE);
-        f_write(0, f, "#!/bin/bash -e\necho ok\n", 22);
-        f = f_open(0, "RAM:s3", SH_OPEN_WRITE);
-        f_write(0, f, "#!/bin/zsh\necho ok\n", 19);
-    }
+    put_file("RAM:s1", "#!/bin/sh\necho ok\n", 18);
+    put_file("RAM:s2", "#!/bin/bash -e\necho ok\n", 22);
+    put_file("RAM:s3", "#!/bin/zsh\necho ok\n", 19);
+    put_file("RAM:s4", ".KEY a/m\n#!/bin/sh\necho ok\n", 27);
+    put_file("RAM:s5", ";! /bin/bash -x  more\r\necho ok\n", 31);
+    put_file("RAM:s6", "echo ok\n", 8);
+    put_file("RAM:prog", "\0\0\3\363#!/bin/sh\n", 14);
+    watched_io = 0;
     {
         int inc = 0;
         sh_run_text(&sh, text, &inc);
@@ -1487,6 +1537,17 @@ static void a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is(void)
     CHECK_STR(started("RAM:s1 x y"), "VTC:vsh|RAM:s1|x|y");
     CHECK_STR(started("RAM:s2 x"), "VTC:vsh|-e|RAM:s2|x");
     CHECK_STR(started("RAM:s3 x"), "RAM:s3|x"); /* another interpreter: not ours */
+    CHECK_STR(started("RAM:s4 x"), "VTC:vsh|RAM:s4|x");   /* a .key line first: the second line counts */
+    CHECK_STR(started("RAM:s5 x"), "VTC:vsh|-x|RAM:s5|x"); /* ;! as ixemul has it; one argument word */
+    CHECK_STR(started("RAM:s6 x"), "RAM:s6|x");           /* no #! line: the OS layer's script */
+    /* an ordinary executable starts with no open or read of its file by the shell */
+    strcpy(watched, "RAM:prog");
+    CHECK_STR(started("RAM:prog x"), "RAM:prog|x");
+    CHECK_INT(watched_io, 0);
+    strcpy(watched, "RAM:s1");
+    CHECK_STR(started("RAM:s1 x y"), "VTC:vsh|RAM:s1|x|y");
+    CHECK(watched_io > 0); /* the counter sees a script's read */
+    watched[0] = 0;
     CHECK_STR(started("/bin/zsh -c x"), "/bin/zsh|-c|x");
     started("/bin/foo -c x");
     CHECK_STR(slot(ERR)->data, "vsh: /bin/foo: not found\n");

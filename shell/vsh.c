@@ -747,7 +747,7 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
             *ixres = seg_is_ixemul(r->seg_Seg);
         Permit();
         if (r)
-            return 0; /* Resident: the Shell runs it */
+            return 1; /* Resident: the Shell runs it */
     }
     {
         char used[256];
@@ -856,11 +856,22 @@ static int command_is_ixemul(const char *name, const char *path)
     return r;
 }
 
+/* Start argv. As ixemul's execve (library/__load_seg.c): the file is loaded first, and only a file
+ * that does not load is looked at for a #! line naming /bin/sh or /bin/bash (sh_script_argv), which
+ * runs it in this shell; interp 0 on that second start, so it never expands again. Any other file
+ * that does not load (an AmigaDOS script) goes to SystemTags. */
+static long os_start(void *os, char **argv, const sh_io *io, int wait, int interp);
+
 static long os_run(void *os, char **argv, const sh_io *io, int wait)
+{
+    return os_start(os, argv, io, wait, 1);
+}
+
+static long os_start(void *os, char **argv, const sh_io *io, int wait, int interp)
 {
     sh_shell *sh = ((vproc *)os)->sh;
     char *cmd = command_line(argv), *sp;
-    int ixres;
+    int ixres, r;
     BPTR home;
     const sh_var *v;
     sh_var_iter it;
@@ -870,13 +881,32 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
     char found[256];
     if (!cmd)
         return -1;
-    if (resolve(argv[0], sh_get(&sh->ctx, "PATH"), &seg, found, sizeof(found), &ixres, &home) < 0) {
+    if ((r = resolve(argv[0], sh_get(&sh->ctx, "PATH"), &seg, found, sizeof(found), &ixres, &home)) < 0) {
         free(cmd);
         if ((io->owned & SH_OWN_IN) && io->in)
             close_stream((BPTR)io->in);
         if ((io->owned & SH_OWN_OUT) && io->out)
             close_stream((BPTR)io->out);
         return -1;
+    }
+    if (r == 0 && !seg && interp) {
+        /* a file that did not load: a script for /bin/sh or /bin/bash runs in this shell */
+        char *a0 = argv[0], **sb;
+        if (found[0])
+            argv[0] = found;
+        sb = sh_script_argv(sh, argv);
+        argv[0] = a0;
+        if (sb) {
+            char *own = sb[1] != (found[0] ? found : a0) ? sb[1] : 0;
+            long st;
+            free(cmd);
+            if (home)
+                UnLock(home);
+            st = os_start(os, sb, io, wait, 0);
+            free(own);
+            free(sb);
+            return st;
+        }
     }
     if (found[0]) {
         /* found through $PATH: the command line names that file */

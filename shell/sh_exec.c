@@ -7702,56 +7702,71 @@ static const char *shell_path_alias(sh_shell *sh, const char *name)
     return self && *self ? self : 0;
 }
 
-/* A script whose first line is `#!/bin/sh [arg]` or `#!/bin/bash [arg]` runs in this shell, as the
- * kernel runs it: interpreter, its one argument, the script's name, the script's arguments. Any other
- * interpreter is not ours to start. Returns a malloc'ed argv (the strings borrowed, out[1] a copy of
- * the interpreter's argument when there is one), or 0. */
-static char **shebang_argv(sh_shell *sh, char **argv)
+/* A file that is not a load file, whose first line is `#!/bin/sh [arg]` or `#!/bin/bash [arg]`, runs
+ * in this shell: interpreter, its one argument, the script's name, the script's arguments. The rule
+ * is ixemul's (library/__load_seg.c, load_seg_or_script) so a script starts the same from vsh and from
+ * an ixemul program's execve: a regular file, `#!` or `;!`, a first line beginning `.key` (any case)
+ * skipped so the second is looked at, the interpreter the first word, its argument the next word. Any
+ * other interpreter is not ours to start. The OS layer calls this only for a file it found and could
+ * not load, after trying to load it (vsh.c os_run: LoadSeg first), so an ordinary command costs no
+ * open or read here. Returns a malloc'ed argv (the strings borrowed, out[1] a copy of the
+ * interpreter's argument when there is one; free that and the array), or 0. */
+char **sh_script_argv(sh_shell *sh, char **argv)
 {
-    char file[512], line[160], interp[16], *p, *arg = 0;
+    char file[512], line[256], *p, *interp, *arg = 0;
     const char *self;
+    sh_stat st;
     sh_fh fh;
-    long n, i = 0, k = 0;
-    int na = 0;
+    long n;
+    int na = 0, i;
     char **out;
     if (!argv[0][0] || !sh->os.read || !find_command_file(sh, argv[0], file, sizeof(file)))
+        return 0;
+    if (sh->os.stat(sh->os.data, file, &st, 0) || st.type != SH_ST_FILE)
         return 0;
     fh = sh->os.open(sh->os.data, file, SH_OPEN_READ);
     if (fh == SH_NOFH)
         return 0;
     n = sh->os.read(sh->os.data, fh, line, (long)sizeof(line) - 1);
     sh->os.close(sh->os.data, fh);
-    if (n < 3 || line[0] != '#' || line[1] != '!')
-        return 0;
+    if (n < 0)
+        n = 0;
     line[n] = 0;
-    if ((p = strchr(line, '\n')) != 0)
-        *p = 0;
-    if ((p = strchr(line, '\r')) != 0)
-        *p = 0;
-    for (i = 2; line[i] == ' ' || line[i] == '\t'; i++)
+    p = line;
+    if (n >= 4 && p[0] == '.' && (p[1] == 'k' || p[1] == 'K') && (p[2] == 'e' || p[2] == 'E') &&
+        (p[3] == 'y' || p[3] == 'Y')) {
+        p = strchr(p, '\n');
+        if (!p)
+            return 0;
+        p++;
+    }
+    if ((p[0] != '#' && p[0] != ';') || p[1] != '!')
+        return 0;
+    for (p += 2; *p == ' ' || *p == '\t'; p++)
         ;
-    while (line[i] && line[i] != ' ' && line[i] != '\t' && k < (long)sizeof(interp) - 1)
-        interp[k++] = line[i++];
-    interp[k] = 0;
-    if (line[i] && line[i] != ' ' && line[i] != '\t')
-        return 0; /* a longer name than either alias */
+    interp = p;
+    while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r')
+        p++;
+    if (*p && *p != '\n') {
+        *p++ = 0;
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (*p && *p != '\n' && *p != '\r') {
+            arg = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r')
+                p++;
+        }
+    }
+    *p = 0;
     self = shell_path_alias(sh, interp);
     if (!self)
         return 0;
-    while (line[i] == ' ' || line[i] == '\t')
-        i++;
-    if (line[i]) {
-        arg = line + i;
-        for (p = arg + strlen(arg); p > arg && (p[-1] == ' ' || p[-1] == '\t'); p--)
-            ;
-        *p = 0;
-    }
     while (argv[na])
         na++;
     out = (char **)malloc(sizeof(char *) * (na + 3));
     if (!out)
         return 0;
-    if (arg && *arg) {
+    if (arg) {
         char *c = (char *)malloc(strlen(arg) + 1);
         if (!c) {
             free(out);
@@ -7759,39 +7774,29 @@ static char **shebang_argv(sh_shell *sh, char **argv)
         }
         strcpy(c, arg);
         arg = c;
-    } else
-        arg = 0;
+    }
     i = 0;
     out[i++] = (char *)self;
     if (arg)
         out[i++] = arg;
-    out[i++] = argv[0];
-    for (k = 1; k < na; k++)
-        out[i++] = argv[k];
+    for (n = 0; n < na; n++)
+        out[i++] = argv[n];
     out[i] = 0;
     return out;
 }
 
-/* Start a program: /bin/sh and /bin/bash are the shell itself, and so is a script that names one of
- * them on its #! line. Every way a command is started (a command word, exec, a hashed path) comes here. */
+/* Start a program: /bin/sh and /bin/bash are the shell itself. Every way a command is started (a
+ * command word, exec, a hashed path) comes here. A script naming one of them on its #! line is the
+ * OS layer's to find, once it has failed to load the file (sh_script_argv). */
 static long start_program(sh_shell *sh, char **argv, const sh_io *io, int wait)
 {
     const char *self = shell_path_alias(sh, argv[0]);
     char *saved = argv[0];
-    char **sb;
     long st;
     if (self) {
         argv[0] = (char *)self;
         st = sh->os.run(sh->os.data, argv, io, wait);
         argv[0] = saved;
-        return st;
-    }
-    sb = shebang_argv(sh, argv);
-    if (sb) {
-        char *own = sb[1] != argv[0] ? sb[1] : 0;
-        st = sh->os.run(sh->os.data, sb, io, wait);
-        free(own);
-        free(sb);
         return st;
     }
     return sh->os.run(sh->os.data, argv, io, wait);

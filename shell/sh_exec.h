@@ -378,6 +378,10 @@ int sh_path_next(const char **p, char *dir, long max);
  * parent directory, so vsh tries a name that way first and this one only
  * when there is nothing by the Amiga meaning (vsh.c lock_name). */
 int sh_unix_root(const char *in, char *out, long max);
+/* The OS layer, for a command file it found and could not load: the argv that runs it in this shell
+ * when its #! (or ;!) line names /bin/sh or /bin/bash (ixemul's rule; sh_exec.c), else 0. Malloc'ed;
+ * out[1] is malloc'ed too when it is not argv[0] (the interpreter's argument). */
+char **sh_script_argv(struct sh_shell *sh, char **argv);
 
 /* A signal reached the shell (2 = INT, 15 = TERM): run its trap action. 1 =
  * a trap took it (the action ran, or the signal is ignored with trap '' SIG),
