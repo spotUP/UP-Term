@@ -286,8 +286,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     if (r->planar)
         extract_glyphs(r); /* the planar path's glyphs (DIRECT=1: also the text's 8-pixel alignment) */
     r->n_direct = r->n_text = 0;
-    for (i = 0; i < VR_IMG_SLOTS; i++)
-        r->img_key[i] = 0;
+    r->img = 0;
     r->n_img_pens = 0;
     r->img_buf = 0;
     r->img_buf_size = 0;
@@ -452,9 +451,13 @@ void vr_free(vr_render *r)
     r->truecolor = 0;
     if (r->glyphs)
         FreeVec(r->glyphs);
-    for (i = 0; i < VR_IMG_SLOTS; i++)
-        if (r->cm && r->img_key[i])
-            ReleasePen(r->cm, (ULONG)r->img_pen[i]);
+    if (r->img) {
+        for (i = 0; i < VR_IMG_SLOTS; i++)
+            if (r->cm && r->img->key[i])
+                ReleasePen(r->cm, (ULONG)r->img->pen[i]);
+        FreeVec(r->img);
+        r->img = 0;
+    }
     if (r->img_buf)
         FreeVec(r->img_buf);
     if (r->cgx)
@@ -1535,14 +1538,14 @@ static UBYTE img_pen_for(vr_render *r, ULONG rgb)
     LONG p;
     ULONG ink;
     for (i = 0; i < VR_IMG_SLOTS; i++, h = (h + 1) & (VR_IMG_SLOTS - 1)) {
-        if (r->img_key[h] == key)
-            return r->img_pen[h];
-        if (!r->img_key[h])
+        if (r->img->key[h] == key)
+            return r->img->pen[h];
+        if (!r->img->key[h])
             break;
     }
     if (i < VR_IMG_SLOTS && r->n_img_pens < VR_IMG_MAX && (p = obtain(r, rgb)) >= 0) {
-        r->img_key[h] = key;
-        r->img_pen[h] = (UBYTE)p;
+        r->img->key[h] = key;
+        r->img->pen[h] = (UBYTE)p;
         r->n_img_pens++;
         return (UBYTE)p;
     }
@@ -1560,16 +1563,16 @@ static void img_colours(vr_render *r, const vt_image_view *v)
     r->img_serial = v->serial;
     r->img_bgrgb = bgrgb;
     if (r->cgx) {
-        r->img_ctab[0] = bgrgb; /* the pixels the image left unset */
+        r->img->ctab[0] = bgrgb; /* the pixels the image left unset */
         for (i = 1; i < v->npal; i++)
-            r->img_ctab[i] = v->pal[i];
+            r->img->ctab[i] = v->pal[i];
         return;
     }
-    r->img_map[0] = r->bg_ink & VR_INK_RGB ? img_pen_for(r, bgrgb) : (UBYTE)r->bg_ink;
-    r->img_planes = r->img_map[0];
+    r->img->map[0] = r->bg_ink & VR_INK_RGB ? img_pen_for(r, bgrgb) : (UBYTE)r->bg_ink;
+    r->img_planes = r->img->map[0];
     for (i = 1; i < v->npal; i++) {
-        r->img_map[i] = img_pen_for(r, v->pal[i]);
-        r->img_planes |= r->img_map[i];
+        r->img->map[i] = img_pen_for(r, v->pal[i]);
+        r->img_planes |= r->img->map[i];
     }
 }
 
@@ -1590,11 +1593,17 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
         h = v->h - sy;
     if (w <= 0 || h <= 0)
         return;
+    if (!r->img) {
+        /* the window's first image: its colour tables now (vr_images) */
+        if (!(r->img = (struct vr_images *)AllocVec(sizeof(struct vr_images), MEMF_ANY | MEMF_CLEAR)))
+            return;
+        r->img_serial = 0; /* no table made yet */
+    }
     img_colours(r, v);
     r->blank = 0;
     r->n_img_runs++;
     if (r->cgx) {
-        vr_cgx_write_lut(r->cgx, (APTR)v->pix, (UWORD)sx, (UWORD)sy, (UWORD)v->w, r->rp, r->img_ctab, (UWORD)dx,
+        vr_cgx_write_lut(r->cgx, (APTR)v->pix, (UWORD)sx, (UWORD)sy, (UWORD)v->w, r->rp, r->img->ctab, (UWORD)dx,
                          (UWORD)dy, (UWORD)w, (UWORD)h, VR_CTABFMT_XRGB8);
         return;
     }
@@ -1613,7 +1622,7 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
         src = v->pix + (sy + k) * v->w + sx;
         d = r->img_buf + k * stride;
         for (j = 0; j < w; j++)
-            d[j] = r->img_map[src[j]];
+            d[j] = r->img->map[src[j]];
     }
     if ((UBYTE)(r->img_planes & ~r->mask)) {
         /* planes not in use held zeros: drawing may start to include them */

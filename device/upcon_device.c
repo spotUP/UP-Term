@@ -170,6 +170,13 @@ static void free_unit(struct upc_unit *u)
     FreeMem(u, sizeof(*u));
 }
 
+/* What a unit's own block costs, held at compile time (DV4: a STANDARD unit
+ * <= 64 KB in all, tools/rig/devverify_rig.py): 11,138 bytes while every
+ * window's renderer carried the image colour tables (3,840 bytes, now
+ * render/amiga_render.h vr_images, made at the first image), 7,302 after
+ * (2026-10-11). The build fails when it climbs back past the bound. */
+typedef char upc_unit_size_bound[sizeof(struct upc_unit) <= 7600 ? 1 : -1];
+
 /* A new unit on the opener's window: its process, which attaches vtwin. */
 static struct upc_unit *new_unit(struct upc_base *b, LONG unitno, ULONG flags, struct Window *win)
 {

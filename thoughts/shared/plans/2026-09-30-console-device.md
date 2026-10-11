@@ -571,6 +571,18 @@ Success: D4.2/D4.3 green; ledger D4 ticked.
       | 3.1 40.63 | 17/17 | 7/7 | 5/5 | 0 of 15 differ | 9/9 |
       | 3.1.4 46.143 | 17/17 | 7/7 | 5/5 | 0 of 15 differ | 9/9 |
       Committed ac71868 (2026-10-09); re-run on rig 3 after the commit build: 3.1 and 3.1.4 devverify 7/7, condev 17/17, concon 9/9; cudump on 3.1.4 0 of 15 differ; make test green.
+      **2026-10-11, DV4 over again on the clean 3.1 image (rig 3 --max --os 31): STANDARD 65,608 bytes.**
+      Not a regression: the ac71868 device measures the same 65,608 there. Per stage (a traced device,
+      AvailMem): unit struct 11,144, process 12,568, engine 39,560 (vt_term 7,162 + 25 lines), renderer
+      glyph table 2,056 (extract_glyphs: a planar screen and an 8-pixel font; none on the RTG sys.hdf),
+      unifont mask 136. The 64,824 of 2026-10-09 was the RTG sys.hdf, and memprobe sized its window by
+      the screen's font (6 x 11 there) while the unit uses the window's (topaz 8): it measured a 60 x 34
+      unit without the glyph table. The cut: the image colour tables (img_key/pen/map/ctab, 3,840
+      bytes) were in every window's vr_render; now struct vr_images, allocated at a window's first
+      image (render/amiga_render.h). Unit struct 11,138 -> 7,302, held by upc_unit_size_bound
+      (device/upcon_device.c, <= 7,600: the old code fails the build); memprobe sizes the window by
+      its own font. After: clean 3.1 61,768 and clean 3.2.2 61,744, devverify 7/7 on both; sys.hdf
+      60,080 (memprobe direct: devverify's DV2 romprobe hangs the rig there, ac71868's device too).
 - [x] DV6 Soak: 30 minutes of opening/closing CON: windows with typing, DEVICE ON: free
       memory back to its start value; a task holding signal bit 31 opens and closes a
       unit 100 times and still holds it (ibmcon 1.8 regression, R-3).

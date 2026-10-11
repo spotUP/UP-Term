@@ -1,5 +1,5 @@
 /* memprobe STANDARD|CHARMAP -- DV4 of the console.device plan: the memory a
- * console unit costs. A window for 80 x 25 cells of the screen's font, free
+ * console unit costs. A window for 80 x 25 cells of its own font, free
  * memory (AvailMem MEMF_ANY) before OpenDevice, after it, after 300 lines
  * written (the CHARMAP scrollback full at 200), after CloseDevice. Prints
  * "MEM <unit> open <bytes> full <bytes> leak <bytes>". */
@@ -33,9 +33,19 @@ int main(int argc, char **argv)
         return 20;
     fw = s->RastPort.TxWidth;
     fh = s->RastPort.TxHeight;
-    w = OpenWindowTags(0, WA_Left, 0, WA_Top, 20, WA_InnerWidth, 80 * fw, WA_InnerHeight, 25 * fh,
-                       WA_Title, (ULONG)"memprobe", WA_DragBar, TRUE, WA_SimpleRefresh, (ULONG)charmap,
-                       WA_PubScreen, (ULONG)s, WA_IDCMP, 0, TAG_DONE);
+    for (i = 0; i < 2; i++) {
+        w = OpenWindowTags(0, WA_Left, 0, WA_Top, 20, WA_InnerWidth, 80 * fw, WA_InnerHeight, 25 * fh,
+                           WA_Title, (ULONG)"memprobe", WA_DragBar, TRUE, WA_SimpleRefresh, (ULONG)charmap,
+                           WA_PubScreen, (ULONG)s, WA_IDCMP, 0, TAG_DONE);
+        /* the unit's cells are the window's font (the system default text), not the screen's: a
+         * screen font of 6 x 11 over topaz 8 made the "80 x 25" unit 60 x 34 (rig 3, 2026-10-11) */
+        if (!w || (w->RPort->TxWidth == fw && w->RPort->TxHeight == fh))
+            break;
+        fw = w->RPort->TxWidth;
+        fh = w->RPort->TxHeight;
+        CloseWindow(w);
+        w = 0;
+    }
     UnlockPubScreen(0, s);
     if (!w)
         return 20;
