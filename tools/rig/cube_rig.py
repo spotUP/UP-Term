@@ -35,7 +35,11 @@ def main():
     vshwin.open_vsh("cube", "0/300/780/280", wait=7)
     for s in ('source VTC:colors.sh',):
         ami.req(0x08, bytes([4]) + s.encode()); time.sleep(0.4); ami.key(0x44); time.sleep(4)
-    rc = shoot_check(SHOT, 300, 600, float(os.environ.get("CUBE_WAIT", "30")))
+    # where the window is: Intuition moves and shrinks it onto a smaller screen (a clean image's 640x256 PAL
+    # Workbench), so the rows to look in are the window's, not the 800x600 RTG screen's
+    w = ami.window("cube")
+    y0, y1 = (w['box'][1], w['box'][1] + w['box'][3]) if w else (300, 600)
+    rc = shoot_check(SHOT, y0, y1, float(os.environ.get("CUBE_WAIT", "30")))
     if "--keep" not in sys.argv:
         for s in ('exit',):  # vsh, then the window closes (vshwin)
             ami.req(0x08, bytes([4]) + s.encode()); time.sleep(0.4); ami.key(0x44); time.sleep(2)
@@ -67,6 +71,7 @@ def cells_wrong(im, y0, y1, x=12):
     black, as the background), crossing column x between rows y0 and y1;
     that cell's run of pixels gives the cell size (8x8 for topaz 8, 8x16
     for TopazPro 16 on square pixels) and the cube's left edge."""
+    y1 = min(y1, im.height)  # a PAL Workbench is 256 rows, not 600
     top = next((y for y in range(y0, y1) if im.getpixel((x, y))[:2] < (20, 20)
                 and abs(im.getpixel((x, y))[2] - 95) < 20), None)
     if top is None:
