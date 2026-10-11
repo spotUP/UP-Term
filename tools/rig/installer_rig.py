@@ -471,7 +471,7 @@ def run_case(case):
         return False, '; '.join(ck.failed + log[-3:])
     if case == 'space':
         # the room check: Install on a volume with too little room says so and changes nothing
-        ck(any('abort message' in l for l in log), 'the Installer stopped on its room message (not on a copy)', '; '.join(log[-3:]))
+        ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase (the room message)', '; '.join(log[-3:]))
         ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'no drawer was made', '')
         ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
         ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')

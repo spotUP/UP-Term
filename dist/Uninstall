@@ -224,6 +224,10 @@ If EXISTS ENVARC:up-term-orig/ixemul.path
   Copy >NIL: ENVARC:up-term-orig/ixemul.path ENV:upixemul CLONE
 Else
   Set upixemul LIBS:ixemul.library
+  ; Install found no ixemul.library of the system's: the kit's goes
+  If EXISTS ENVARC:up-term-orig/ixemul.none
+    Delete >NIL: LIBS:ixemul.library QUIET
+  EndIf
 EndIf
 If EXISTS "$upixemul.orig"
   Copy "$upixemul.orig" "$upixemul" CLONE
@@ -234,6 +238,10 @@ If EXISTS ENVARC:up-term-orig/ixnet.path
   Copy >NIL: ENVARC:up-term-orig/ixnet.path ENV:upixnet CLONE
 Else
   Set upixnet LIBS:ixnet.library
+  ; Install found no ixnet.library of the system's: the kit's goes
+  If EXISTS ENVARC:up-term-orig/ixnet.none
+    Delete >NIL: LIBS:ixnet.library QUIET
+  EndIf
 EndIf
 If EXISTS "$upixnet.orig"
   Copy "$upixnet.orig" "$upixnet" CLONE

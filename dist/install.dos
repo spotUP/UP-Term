@@ -690,6 +690,9 @@ If EXISTS ENVARC:up-term-orig/ixemul.path
   Copy libs/ixemul.library "$upixemul" CLONE
 Else
   Copy libs/ixemul.library LIBS:ixemul.library CLONE
+  ; no library of the system's was replaced: Uninstall removes ours (a system
+  ; without ixemul.library was left with the kit's after Uninstall, 2026-10-11)
+  Echo >ENVARC:up-term-orig/ixemul.none ""
 EndIf
 If NOT EXISTS ENVARC:up-term-orig/ixnet.path
   Which >NIL: LIBS:ixnet.library
@@ -706,6 +709,7 @@ If EXISTS ENVARC:up-term-orig/ixnet.path
   Copy libs/ixnet.library "$upixnet" CLONE
 Else
   Copy libs/ixnet.library LIBS:ixnet.library CLONE
+  Echo >ENVARC:up-term-orig/ixnet.none ""
 EndIf
 Delete >NIL: ENV:upixemul ENV:upixnet QUIET
 Avail >NIL: FLUSH
