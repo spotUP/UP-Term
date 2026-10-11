@@ -203,7 +203,7 @@ top:
         c->resp->header = c->h.header;
         c->resp->hu = c->h.u;
         sse_init(c->sse, on_sse, c);
-        jw_init(c->errbody);
+        jw_reset(c->errbody);       /* the caller's buffer, kept: a call per refusal must not leak the last */
         c->bad = 0;
         if (c->h.begin)
             c->h.begin(c->h.u);

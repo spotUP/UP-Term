@@ -774,6 +774,19 @@ static void test_post_hooks(void)
     }
     CHECK_INT(llm_post(&c), LP_OK);
     CHECK_INT(eb.n, 7);
+    /* repeated refusals on one errbody (mcp_http keeps it across requests): the buffer is reused, not leaked
+     * (init per call dropped the pointer: a new allocation each answer) */
+    {
+        static const char r503[] = "HTTP/1.1 503 Unavailable\r\nContent-Length: 5\r\n\r\nbusy!";
+        char *kept = eb.p;
+        for (i = 0; i < 3; i++) {
+            ps_http_text(r503, (long)sizeof(r503) - 1);
+            CHECK_INT(llm_post(&c), LP_OK);
+            CHECK_INT(resp.status, 503);
+            CHECK_INT(eb.n, 5);
+            CHECK(eb.p == kept);
+        }
+    }
     llm_pool_close(&ps_pool);
     jw_free(&hk_hdr);
     jw_free(&hk_body);
