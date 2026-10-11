@@ -63,6 +63,12 @@ with tempfile.TemporaryDirectory() as tmp:
     rig, lib = rig_of(plain, 1)
     check(rig == plain / "build/rig", "no git: rig 1 is %s, not %s" % (rig, plain / "build/rig"))
 
+# make test-rig's entry point loads (it used paths.RIG before importing paths)
+r = subprocess.run([sys.executable, "-I", "-c",
+    "import importlib.util as u; s = u.spec_from_file_location('reach', %r); s.loader.exec_module(u.module_from_spec(s))"
+    % str(HERE / "rig/reach.py")], capture_output=True, text=True)
+check(r.returncode == 0, "tools/rig/reach.py does not load: %s" % r.stderr.strip().splitlines()[-1:])
+
 if fails:
     sys.exit("%d failed" % fails)
-print("[OK] rig_paths: 5 checks, 0 failed")
+print("[OK] rig_paths: 6 checks, 0 failed")
