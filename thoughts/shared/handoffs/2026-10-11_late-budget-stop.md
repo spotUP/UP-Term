@@ -47,6 +47,15 @@ bugs that the Sonnet ledger had ticked).
   Needed before rig 1 moves to 0.13.2: a tiny tests/amiga tool running a command with
   pr_WindowPtr 0, used by those checks.
 - Phase H (print/JSON/RPC) after F; I/J after G; L, M, N, O later.
+- Colour at no extra cost (owner 2026-10-12: "ccon draws colors at no extra cost we
+  should do that as well"). Done = conbench colour rows (sgr-perchar etc.) cost what the
+  plain-text row costs, as in CCON, on the stock A1200 rig (SYNC SCALE 1 REPS 3).
+  Starting points: research/2026-10-04_ccon-b9-techniques-vs-ours.md rows 5-7 (exact
+  plane mask, per-plane (bits AND A) XOR X, pre-shifted glyphs), plan W27,
+  handoffs/2026-10-04_speed-campaign-updemo-wasabi.md Next Steps 1-2 (mask left wide
+  after colour; cell_style/pen_for/vt_resolve_colors per cell in draw_rows). Opus design
+  (measure first: which part of a colour row costs more), then Sonnet implementation.
+  Queued behind the Phase F and K-audit agents (2-agent limit).
 - Kit: remaining rig cases (amissl-present, novice, dest, update on 3.2.2 and 3.1), make
   test, kit to Desktop. Guest dies mid-install ~3 of 8 runs (undiagnosed).
 - `make test` in a vtcon worktree needs UPTERM_ROOT=/Users/spot/Code.
