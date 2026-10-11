@@ -47,6 +47,10 @@ bugs that the Sonnet ledger had ticked).
   Needed before rig 1 moves to 0.13.2: a tiny tests/amiga tool running a command with
   pr_WindowPtr 0, used by those checks.
 - Phase H (print/JSON/RPC) after F; I/J after G; L, M, N, O later.
+- E11 rig run (owner asked 2026-10-12): Sonnet, rig 3, merged-main amiga-pi, step 5a keeping
+  the file, then `pi --export <file> out.html` (pi 1.0.4 installed at /opt/homebrew/bin/pi).
+- Amiga IDE spike (approved): research/2026-10-12_amiga-ide-brainstorm.md, section Spike.
+  After E11, the Phase F audit and the Enter bug.
 - BUG (owner 2026-10-12, rig FS-UAE): holding Enter at the shell, the cursor sometimes
   jumps up some rows and carries on from there, as if half the screen was cleared (rows
   below the cursor gone). Not a flash: the output continues from the higher row. Suspects
