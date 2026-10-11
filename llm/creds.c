@@ -77,18 +77,20 @@ static long run_cached(llm_cfg *c, const char *cmd, char *out, long cap)
     return n;
 }
 
-/* an environment variable appended at out[n]: its length; -1 when it is unset, empty (pi: `env[name] || undefined`) or
- * does not fit. getenv cuts a long value to the room it is given, so a value that fills the room is taken as cut:
- * an error, never half a key */
+/* an environment variable appended at out[n]: its length; -1 when it is unset or empty (pi: `env[name] || undefined`),
+ * -2 when it does not fit. getenv cuts a long value to the room it is given, so a value that fills the room is taken
+ * as cut: an error, never half a key */
 static long env_into(llm_cfg *c, const char *name, char *out, long cap, long n)
 {
     long v;
-    if (!c->getenv || cap - n < 2)
+    if (!c->getenv)
         return -1;
+    if (cap - n < 2)
+        return -2;
     v = c->getenv(c->u, name, out + n, cap - n);
-    if (v <= 0 || v >= cap - n - 1)
+    if (v <= 0)
         return -1;
-    return v;
+    return v >= cap - n - 1 ? -2 : v;
 }
 
 long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
@@ -136,7 +138,10 @@ long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
             }
             memcpy(nm, p + 2, (size_t)l);
             nm[l] = 0;
-            if ((v = env_into(c, nm, out, cap, n)) < 0)
+            v = env_into(c, nm, out, cap, n);
+            if (v == -1 && c->unset_empty)
+                v = 0;
+            if (v < 0)
                 return -1;
             n += v;
             p = e + 1;
@@ -147,7 +152,10 @@ long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
             while (name_char((unsigned char)*q) && l < (long)sizeof(nm) - 1)
                 nm[l++] = *q++;
             nm[l] = 0;
-            if ((v = env_into(c, nm, out, cap, n)) < 0)
+            v = env_into(c, nm, out, cap, n);
+            if (v == -1 && c->unset_empty)
+                v = 0;
+            if (v < 0)
                 return -1;
             n += v;
             p = q;

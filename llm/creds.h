@@ -35,6 +35,9 @@ typedef struct llm_cfg {
     /* auth.json text (pi: {"provider":{"type":"api_key","key":"..."}}), 0 none; owned by the caller */
     const char *auth;
     long auth_n;
+    /* a `$NAME` that is unset or empty resolves to nothing instead of failing the value (MCP's ${VAR}); a value
+     * longer than the room is an error either way */
+    int unset_empty;
 } llm_cfg;
 
 void llm_cfg_init(llm_cfg *c);
