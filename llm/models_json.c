@@ -408,7 +408,7 @@ int llm_reg_overlay(llm_reg *r, const char *text, long n)
 {
     ctx c;
     char *b;
-    long bn, i;
+    long bn;
     jv root, provs, key, cfg;
     jit it;
     llm_model *save = 0;
@@ -461,7 +461,6 @@ int llm_reg_overlay(llm_reg *r, const char *text, long n)
         if (!r->err[0])
             strcpy(r->err, "out of memory");
     }
-    (void)i;
     free(save);
     free(b);
     return rc;
