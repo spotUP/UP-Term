@@ -46,7 +46,8 @@ bugs that the Sonnet ledger had ticked).
   checks for "no requester" (install_rig.py:430, installer_rig.py:311) pass vacuously.
   Needed before rig 1 moves to 0.13.2: a tiny tests/amiga tool running a command with
   pr_WindowPtr 0, used by those checks.
-- Phase H (print/JSON/RPC) after F; I/J after G; L, M, N, O later.
+- Phase order (owner 2026-10-12): F, G, then N (TUI parity, now with N0 look parity against
+  real pi screens), then H, I, J, L, M, O.
 - E11 rig run (owner asked 2026-10-12): Sonnet, rig 3, merged-main amiga-pi, step 5a keeping
   the file, then `pi --export <file> out.html` (pi 1.0.4 installed at /opt/homebrew/bin/pi).
 - Amiga IDE spike (approved; PARKED by owner 2026-10-12): starts only after the UP-Term and
