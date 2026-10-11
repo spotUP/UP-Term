@@ -36,7 +36,7 @@ typedef struct llm_model {
     const char *id;             /* "claude-opus-5-5", "qwen2.5-coder:7b" */
     const char *api;            /* "anthropic-messages", "openai-completions" */
     const char *provider;       /* "anthropic", "openai", "ollama", ... */
-    const char *base_url;       /* "https://api.anthropic.com/v1", "http://192.168.1.10:11434/v1" */
+    const char *base_url;       /* "https://api.anthropic.com", "http://192.168.1.10:11434/v1" */
     int reasoning;              /* a reasoning model */
     long max_tokens;            /* the answer's cap */
     long context_window;
@@ -72,7 +72,7 @@ typedef struct llm_backend {
     const char *api;
     /* the header whose value is the credential (redacted in logs, never sent over plain http) */
     const char *secret_header;
-    /* the URL path below base_url's path ("/messages", "/chat/completions") */
+    /* the URL path below base_url (pi: "/v1/messages" on anthropic-messages, "/chat/completions", "/responses") */
     const char *path;
     /* the request head: host and path from the URL, key 0 = none sent; its length, -1 too long */
     long (*head)(const char *host, int port, int tls, const char *path, const char *key,

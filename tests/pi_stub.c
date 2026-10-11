@@ -238,7 +238,7 @@ llm_model ps_model_anthropic(void)
     m.id = "claude-opus-5-5";
     m.api = "anthropic-messages";
     m.provider = "anthropic";
-    m.base_url = "https://api.anthropic.com/v1";
+    m.base_url = "https://api.anthropic.com";
     m.max_tokens = 8192;
     return m;
 }

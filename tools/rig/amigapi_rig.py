@@ -620,14 +620,14 @@ def step6(port):
     kit = VTC / 'pi-kit'
     sess = kit / 'var' / 'amiga-pi' / 'sessions'
     agent = VTC / 'pi6agent'
-    base = 'http://127.0.0.1:%d/v1' % port
+    base = 'http://127.0.0.1:%d' % port   # anthropic-messages: pi's baseUrl has no /v1, the backend adds /v1/messages
     made_assign = False
     try:
         agent.mkdir(exist_ok=True)
         (agent / 'models.json').write_text(json.dumps({'providers': {
             'fixa': {'baseUrl': base, 'api': 'anthropic-messages',
                      'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
-            'fixo': {'baseUrl': base, 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
+            'fixo': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
                      'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
         (VTC / 'pi6.in').write_text('hello\n/model fixo/m2\nagain\n')
         for f in ('pi6.out', 'pi6.rc'):

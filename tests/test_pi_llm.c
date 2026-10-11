@@ -6,6 +6,7 @@
 #include <string.h>
 #include "harness.h"
 #include "../llm/llm.h"
+#include "../llm/registry.h"
 #include "../llm/event.h"
 #include "../llm/accum.h"
 #include "../llm/request.h"
@@ -425,6 +426,41 @@ static void kinds(const char *msg, char *out, long cap)
                 strncat(out, " ", (size_t)(cap - (long)strlen(out) - 1));
             strncat(out, k, (size_t)(cap - (long)strlen(out) - 1));
         }
+}
+
+/* FA1: an anthropic-messages baseUrl means what pi means: no /v1; the request goes to baseUrl + "/v1/messages" */
+static void test_anthropic_baseurl(void)
+{
+    static const char cfg[] = "{\"providers\":{\"proxy\":{\"baseUrl\":\"https://proxy.example\","
+                              "\"api\":\"anthropic-messages\",\"apiKey\":\"k\",\"models\":[{\"id\":\"claude-x\"}]}}}";
+    llm_reg r;
+    const llm_model *mp;
+    llm_ctx c;
+    llm_req q;
+    llm_acc a;
+    llm_sink k;
+
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    CHECK_INT(llm_reg_overlay(&r, cfg, (long)sizeof(cfg) - 1), 0);
+    mp = llm_reg_find(&r, "proxy", "claude-x");
+    CHECK(mp != 0);
+    if (mp) {
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_sse("tool_use.sse", 0);
+        c = ctx_of(mp, 1);
+        llm_acc_init(&a, mp->api, mp->provider);
+        k = llm_acc_sink(&a);
+        q = req_of(mp, &c, &k, "k");
+        CHECK_INT(llm_request(&q), 0);
+        CHECK(ps.nreq && strstr(ps.head[0], "POST /v1/messages HTTP/1.1\r\nHost: proxy.example\r\n") == ps.head[0]);
+        llm_acc_free(&a);
+    }
+    /* the catalog's own anthropic models carry pi's baseUrl, no /v1 */
+    mp = llm_reg_find(&r, "anthropic", "claude-opus-5-5");
+    CHECK(mp && !strcmp(mp->base_url, "https://api.anthropic.com"));
+    llm_reg_free(&r);
 }
 
 /* B11: one top-level request per backend, the neutral message of the same shape */
@@ -1097,6 +1133,7 @@ void suite_pi_llm(void)
     test_messages();
     test_accum();
     test_reach();
+    test_anthropic_baseurl();
     test_openai_bodies();
     test_request();
     test_pool();
