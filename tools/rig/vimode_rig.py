@@ -11,7 +11,7 @@ installed (rig.py install, then a reboot); run with UPTERM_RIG=2 for rig 2.
   vimode_rig.py"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ami, ixpty_rig, screen_rig
+import ami, ixpty_rig, screen_rig, vshwin
 
 ESC = 0x45
 
@@ -40,9 +40,7 @@ def send(step):
 def main():
     ixpty_rig.use_ixemul()
     ixpty_rig.run("Delete RAM:vi1.txt RAM:vi2.txt RAM:vi3.txt QUIET")
-    ixpty_rig.run('Run >NIL: NewShell "XCON:0/20/600/200/vimode/CLOSE"', 10)
-    time.sleep(4)
-    screen_rig.typeline("VTC:vsh", 4)
+    vshwin.open_vsh("vimode", "0/20/600/200", wait=8)
     ok = True
     for name, steps, path, want in CASES:
         for s in steps:
@@ -51,8 +49,7 @@ def main():
         good = out.strip() == want
         print("%s: %r %s" % (name, out.strip(), "ok" if good else "FAIL (want %r)" % want))
         ok = ok and good
-    screen_rig.typeline("exit", 1)
-    screen_rig.typeline("endcli", 1)
+    screen_rig.typeline("exit", 2)  # vsh, then the window closes (vshwin)
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 

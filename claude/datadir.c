@@ -43,10 +43,14 @@ static int dd_one(void *c, const cl_dirent *e)
     dd_list *l = (dd_list *)c;
     if (l->n == l->cap) {
         int nc = l->cap ? l->cap * 2 : 32;
-        cl_dirent *g = (cl_dirent *)realloc(l->e, (size_t)nc * sizeof(cl_dirent));
+        cl_dirent *g = (cl_dirent *)CL_ALLOC((size_t)nc * sizeof(cl_dirent));
         if (!g) {
             l->oom = 1;
             return 1;
+        }
+        if (l->e) {
+            memcpy(g, l->e, (size_t)l->n * sizeof(cl_dirent));
+            CL_FREE(l->e);
         }
         l->e = g;
         l->cap = nc;
@@ -59,7 +63,8 @@ static int dd_entries(cl_sys *sys, const char *dir, dd_list *l)
 {
     memset(l, 0, sizeof(*l));
     if (!sys->list || sys->list(sys->u, dir, dd_one, l) < 0 || l->oom) {
-        free(l->e);
+        if (l->e)
+            CL_FREE(l->e);
         l->e = 0;
         return -1;
     }
@@ -79,7 +84,8 @@ long dd_remove_tree(cl_sys *sys, const char *path)
             if (path_join(path, l.e[i].name, p, sizeof(p)) == 0)
                 gone += dd_remove_tree(sys, p);
         }
-        free(l.e);
+        if (l.e)
+            CL_FREE(l.e);
     }
     if (sys->kind(sys->u, path) != 0 && sys->remove(sys->u, path) == 0)
         gone++;
@@ -97,7 +103,7 @@ static int dd_copy(cl_sys *sys, const char *from, const char *to)
         if (sys->read(sys->u, from, DD_MAXFILE, &b, &n))
             return -1;
         rc = sys->write(sys->u, to, b, n);
-        free(b);
+        CL_FREE(b);
         return rc ? -1 : 0;
     }
     if (k != 2 || sys->mkdir(sys->u, to) || dd_entries(sys, from, &l))
@@ -109,7 +115,8 @@ static int dd_copy(cl_sys *sys, const char *from, const char *to)
         else
             rc = dd_copy(sys, a, b);
     }
-    free(l.e);
+    if (l.e)
+        CL_FREE(l.e);
     return rc;
 }
 

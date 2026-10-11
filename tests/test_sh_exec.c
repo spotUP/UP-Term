@@ -559,6 +559,8 @@ static void a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV(void)
 /* V88: a console that keeps the line list (vtcon) is asked through os.hist and the shell holds nothing;
  * this one is a plain array standing in for the handler's */
 static char native_cfg[80];
+static char native_file[80];
+static int native_file_sent;
 static char native_list[8][40];
 static int native_n, native_asked;
 
@@ -588,6 +590,10 @@ static long f_hist(void *os, int op, long arg, char *buf, long max)
         return 1;
     case SH_HIST_CONFIG:
         strcpy(native_cfg, buf);
+        return 1;
+    case SH_HIST_FILE:
+        strcpy(native_file, buf);
+        native_file_sent++;
         return 1;
     }
     return -1;
@@ -690,6 +696,41 @@ static void history_has_one_owner_the_console_list_or_the_shell(void)
     sh_hist_note(&sh, "mine");
     sh_run_text(&sh, "history", 0);
     CHECK_STR(slot(OUT)->data, "    1  mine\n");
+}
+
+/* A rig test's (or a user's) HISTFILE reaches the console that keeps the list, so its lines go to that file and
+ * not into the console's default history; unset, the console is told to use its own; each change once */
+static void histfile_is_told_to_the_console_that_keeps_the_list(void)
+{
+    fresh();
+    sh.os.hist = f_hist;
+    native_n = 0;
+    native_file_sent = 0;
+    strcpy(native_file, "(not sent)");
+    sh.opts |= SO_INTERACTIVE;
+    sh_hist_config(&sh);
+    CHECK_STR(native_file, "");
+    CHECK_INT(native_file_sent, 1);
+    sh_run_text(&sh, "HISTFILE=RAM:rig.history", 0);
+    sh_hist_config(&sh);
+    CHECK_STR(native_file, "RAM:rig.history");
+    CHECK_INT(native_file_sent, 2);
+    sh_hist_config(&sh);                /* unchanged: not sent again */
+    CHECK_INT(native_file_sent, 2);
+    sh_run_text(&sh, "unset HISTFILE", 0);
+    sh_hist_config(&sh);
+    CHECK_STR(native_file, "");
+    CHECK_INT(native_file_sent, 3);
+    CHECK_INT(sh_hist_console(&sh), 1);
+    /* a console without the list: the shell keeps it and tells nobody */
+    fresh();
+    sh.os.hist = 0;
+    sh.opts |= SO_INTERACTIVE;
+    native_file_sent = 0;
+    sh_run_text(&sh, "HISTFILE=RAM:own", 0);
+    sh_hist_config(&sh);
+    CHECK_INT(native_file_sent, 0);
+    CHECK_INT(sh_hist_console(&sh), 0);
 }
 
 /* V93: the console's Tab on a command with a `complete` spec (the marker line's "point line") runs the spec with
@@ -1891,6 +1932,7 @@ void suite_sh_exec(void)
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
     history_has_one_owner_the_console_list_or_the_shell();
+    histfile_is_told_to_the_console_that_keeps_the_list();
     control_flow();
     pipes_and_redirection();
     jobs_aliases_and_dirs();

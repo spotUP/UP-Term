@@ -1,13 +1,11 @@
 """Tab latency: type a word, press Tab, poll the input line until it changes."""
 import os, sys, time, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ami
+import ami, vshwin
 def t(s): ami.req(0x08, bytes([4]) + s.encode('latin-1')); time.sleep(0.4)
 def region():
     return ami.req(0x07, struct.pack('>4H', 0, 12, 780, 120))  # the top lines only
-ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/12/780/560/tab latency/CLOSE"')
-time.sleep(4)
-t('VTC:vsh'); ami.key(0x44); time.sleep(3)
+vshwin.open_vsh("tab latency", "0/12/780/560", wait=7)
 for word in sys.argv[1:]:
     t(word); time.sleep(1.5)
     before = region()

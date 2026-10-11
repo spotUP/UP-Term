@@ -164,6 +164,7 @@ typedef struct sh_os {
 #define SH_HIST_DEL   3   /* delete line arg: 0 ok, -1 none */
 #define SH_HIST_CONFIG 5  /* buf: "HISTSIZE\nHISTFILESIZE\nHISTCONTROL" for the console that keeps the list */
 #define SH_HIST_CLEAR 4   /* empty the list, in memory only */
+#define SH_HIST_FILE  6   /* buf: the shell's HISTFILE, "" none: the file the console keeps the list in */
 
 typedef struct sh_func {
     char *name;
@@ -243,6 +244,7 @@ typedef struct sh_shell {
     int hist_native;       /* 0 not asked yet, 1 the console keeps the list, -1 the shell does */
     char *hx_old, *hx_new, *hx_find; /* history expansion: the last :s/old/new/ and the last !?str? */
     char *hist_cfg;        /* what sh_hist_config last sent */
+    char *hist_file_sent;  /* the HISTFILE sh_hist_config last told the console */
     int ps0_on;            /* the interactive loop is reading: sh_run_text shows PS0 before a command runs */
     long hist_base;        /* history numbers start after this many lines that HISTSIZE dropped */
     long hist_saved;       /* history -a: the lines before this index are in the file already */
@@ -419,8 +421,11 @@ void sh_check_winsize(sh_shell *sh);
 /* An interactive shell's start: the key bindings and `set editing-mode` of $INPUTRC, else $HOME/.inputrc (V92) */
 void sh_inputrc(sh_shell *sh);
 char *sh_ps0(sh_shell *sh);
-/* tell a console that keeps the list HISTSIZE, HISTFILESIZE and HISTCONTROL when they have changed (before a prompt) */
+/* Before a prompt: HISTSIZE, HISTFILESIZE, HISTCONTROL, the edit mode and bind for the console that keeps the
+ * list, and the shell's HISTFILE ("" when unset), each sent when it changed. */
 void sh_hist_config(sh_shell *sh);
+/* 1: the console keeps the line history (vtcon), 0: the shell keeps its own (any other console) */
+int sh_hist_console(sh_shell *sh);
 void sh_hist_load(sh_shell *sh);
 void sh_hist_save(sh_shell *sh);
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);

@@ -1981,6 +1981,9 @@ static void sync_env(sh_shell *sh)
 /* The console's line history (history, V88): the vtcon handler owns the list (ACTION_VTCON_HISTORY in
  * vtcon_packets.h). A console that does not know the packet answers ERROR_ACTION_NOT_KNOWN to the first
  * COUNT, and the shell keeps its own list (sh_exec.c) and never asks again. */
+#if SH_HIST_FILE != VTCON_HIST_FILE || SH_HIST_CONFIG != VTCON_HIST_CONFIG
+#error the history operations of sh_exec.h and vtcon_packets.h differ
+#endif
 static long os_hist(void *os, int op, long arg, char *buf, long max)
 {
     struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
@@ -1991,7 +1994,7 @@ static long os_hist(void *os, int op, long arg, char *buf, long max)
     r = DoPkt(fh->fh_Type, ACTION_VTCON_HISTORY, fh->fh_Arg1, op, arg, (LONG)buf, max);
     if (op == SH_HIST_COUNT && r == DOSFALSE && IoErr() == ERROR_ACTION_NOT_KNOWN)
         return -1;
-    if (op == SH_HIST_DEL || op == SH_HIST_ADD || op == SH_HIST_CLEAR || op == SH_HIST_CONFIG)
+    if (op == SH_HIST_DEL || op == SH_HIST_ADD || op == SH_HIST_CLEAR || op == SH_HIST_CONFIG || op == SH_HIST_FILE)
         return r ? 1 : 0;
     return r;
 }
@@ -2261,8 +2264,10 @@ static int vsh_main(int argc, char **argv)
     }
     sh_startup_env(&sh);
     if (!command && !script && IsInteractive(Input())) {
-        /* bash's HISTFILE; the vtcon console loads and appends this very file itself */
-        if (!sh_get(&sh.ctx, "HISTFILE"))
+        /* bash's HISTFILE. On a vtcon console the console keeps the list, in the shell's HISTFILE when it
+         * has one (sh_hist_config tells it), else in its own default (handler/histfile.h: UP-Term:var/vtcon);
+         * on another console the shell keeps it, by default in the file it always used */
+        if (!sh_get(&sh.ctx, "HISTFILE") && !sh_hist_console(&sh))
             sh_set(&sh.ctx, "HISTFILE", "ENVARC:vtcon.history");
         sh_hist_load(&sh);
         sh_inputrc(&sh);

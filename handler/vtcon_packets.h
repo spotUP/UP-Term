@@ -70,7 +70,8 @@
 #define ACTION_VTCON_INTR 0x765C
 
 /* The window's line history, for the shell's `history` builtin (V88). The console owns the list (the line
- * editor's, loaded from ENVARC:vtcon.history when the window opens, each entered line appended to that file);
+ * editor's, loaded from its history file when the window opens, each entered line appended to that file: the
+ * shell's HISTFILE once VTCON_HIST_FILE named one, else handler/histfile.h's default, UP-Term:var/vtcon/history);
  * the shell holds no copy. These operations change the list in memory only, never the file. A console that
  * does not know the packet answers dp_Res1 DOSFALSE, dp_Res2 ERROR_ACTION_NOT_KNOWN and the shell keeps a list
  * of its own from then on.
@@ -94,6 +95,10 @@
  *                               HISTSIZE lines (up to 1000), is read from the file again when it grew, and
  *                               the file keeps HISTFILESIZE lines when it is trimmed at the next window. */
 #define VTCON_HIST_CONFIG 5
+/*            VTCON_HIST_FILE    dp_Arg4 the NUL-terminated name of the shell's history file (HISTFILE; "" the
+ *                               console's default): the list is read from it again and each entered line goes to it.
+ *                               dp_Res1 DOSTRUE, DOSFALSE ERROR_LINE_TOO_LONG when the name does not fit. */
+#define VTCON_HIST_FILE 6
 
 /* The environment the window tells its programs (W46: /term, /colors and
  * the profile's term and colors): vsh asks at its start and before a

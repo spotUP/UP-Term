@@ -22,7 +22,7 @@ and the kit NOT installed (its DOSDrivers XCON mounts L:vtcon-handler).
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
-import ami, cube_rig, ixpty_rig, ptytest_rig
+import ami, cube_rig, ixpty_rig, ptytest_rig, vshwin
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
@@ -88,9 +88,7 @@ def main():
     ex('Copy VTC:screenrc ENV:screenrc')
     ex('Delete RAM:forkprobe.log QUIET')
     before = screens()
-    ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/20/780/560/screen/CLOSE"')
-    time.sleep(4)
-    typeline('VTC:vsh', 3)
+    vshwin.open_vsh("screen", "0/20/780/560", wait=7)
     typeline('LOCKPRG=/VTC/forkprobe; export LOCKPRG', 1)
     typeline('VTC:screen', 10)
     ex('Delete RAM:screen_sty QUIET')
@@ -121,8 +119,7 @@ def main():
         print('%s screen started %s' % ('ok' if ok else 'FAIL', want))
     if "--keep" not in sys.argv:
         typeline('exit', 3)  # the window's vsh: its last window, so screen ends
-        typeline('exit', 2)  # the vsh screen was started from
-        typeline('endcli', 2)  # the AmigaDOS Shell of the XCON window
+        typeline('exit', 2)  # the vsh screen was started from; the window closes (vshwin)
         left = screens()
         if left > before:
             print('FAIL screen still running after exit: %d screen processes, %d before' % (left, before))

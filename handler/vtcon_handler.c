@@ -56,6 +56,7 @@
 #include "clip.h"
 #include "lineedit.h"
 #include "complete.h"
+#include "histfile.h"
 #include "complete_core.h"
 #include "menu_ids.h"
 #include "slash.h"
@@ -222,6 +223,10 @@ typedef struct con {
     struct complete_req *hist;   /* history file: load at open, append per line */
     int hist_busy;
     long hist_filesize;          /* HISTFILESIZE from the shell: lines kept in the file (0: HISTORY_KEEP) */
+    char *hist_file;             /* the shell's HISTFILE (VTCON_HIST_FILE, AllocVec), 0 the console's default
+                                  * (histfile.h); the history worker reads it, so it changes only when that is idle */
+    char *hist_file_next;        /* hist_file_switch: the name to take when the worker is done (0 the default) */
+    int hist_file_switch;
     int hist_reload;             /* the list was made bigger: read the file again when the worker is free */
     char hist_queue[512];        /* lines waiting for the file, '\n'-ended */
     int hist_queue_len;
@@ -3319,6 +3324,22 @@ static void command_wait(con *c, ULONG us)
         vtwin_clock(&c->w);
 }
 
+/* A history file the shell named (VTCON_HIST_FILE) is taken when the worker is idle (it reads the name), and the
+ * list read from it again. */
+static void hist_file_take(con *c)
+{
+    if (!c->hist_file_switch || c->hist_busy)
+        return;
+    if (c->hist_file)
+        FreeVec(c->hist_file);
+    c->hist_file = c->hist_file_next;
+    c->hist_file_next = 0;
+    c->hist_file_switch = 0;
+    c->hist_reload = 0;
+    le_hist_clear(&c->le);
+    history_load(c);
+}
+
 /* The history file: loaded once when the window opens, then each entered
  * line appended (one worker at a time; lines queue meanwhile). */
 static void history_next(con *c)
@@ -3335,6 +3356,7 @@ static void history_next(con *c)
     memmove(c->hist_queue, c->hist_queue + i, c->hist_queue_len - i);
     c->hist_queue_len -= i;
     c->hist->mode = HISTORY_APPEND;
+    c->hist->hist_file = c->hist_file ? c->hist_file : "";
     if (complete_start(c->hist, c->comp_port, opener(c)))
         c->hist_busy = 1;
 }
@@ -3361,6 +3383,7 @@ static void history_load(con *c)
         c->hist->keep = c->le.hist_max;
     c->hist->data_max = c->hist->keep * 2 * 256;
     c->hist->mode = HISTORY_LOAD;
+    c->hist->hist_file = c->hist_file ? c->hist_file : "";
     if (complete_start(c->hist, c->comp_port, opener(c)))
         c->hist_busy = 1;
 }
@@ -3446,7 +3469,9 @@ static void finish_completion(con *c)
                 FreeVec(q->data);
                 q->data = 0;
             }
-            if (c->hist_reload) {
+            if (c->hist_file_switch)
+                hist_file_take(c); /* the shell named another file meanwhile */
+            else if (c->hist_reload) {
                 c->hist_reload = 0;
                 le_hist_clear(&c->le);
                 history_load(c);   /* the list was made bigger: all the file's lines now */
@@ -6155,6 +6180,33 @@ static void packet(con *c, struct DosPacket *p)
             reply(p, DOSTRUE, 0);
             return;
         }
+        case VTCON_HIST_FILE: {
+            /* the shell's HISTFILE ("" its default): the list is that file's from now on */
+            const char *f = p->dp_Arg4 ? (const char *)p->dp_Arg4 : "";
+            char *name = 0;
+            if (strlen(f) >= HF_MAX) {
+                reply(p, DOSFALSE, ERROR_LINE_TOO_LONG);
+                return;
+            }
+            if (!strcmp(f, c->hist_file_switch ? (c->hist_file_next ? c->hist_file_next : "")
+                                               : (c->hist_file ? c->hist_file : ""))) {
+                reply(p, DOSTRUE, 0);
+                return;
+            }
+            if (*f && !(name = (char *)AllocVec(strlen(f) + 1, MEMF_ANY))) {
+                reply(p, DOSFALSE, ERROR_NO_FREE_STORE);
+                return;
+            }
+            if (name)
+                strcpy(name, f);
+            if (c->hist_file_switch && c->hist_file_next)
+                FreeVec(c->hist_file_next);
+            c->hist_file_next = name;
+            c->hist_file_switch = 1;
+            hist_file_take(c);
+            reply(p, DOSTRUE, 0);
+            return;
+        }
         case VTCON_HIST_CLEAR:
             le_hist_clear(&c->le);
             reply(p, DOSTRUE, 0);
@@ -6493,6 +6545,10 @@ static LONG handler_main(void)
             FreeVec(c->hist->data);
         FreeVec(c->hist);
     }
+    if (c->hist_file)
+        FreeVec(c->hist_file);
+    if (c->hist_file_next)
+        FreeVec(c->hist_file_next);
     complete_warm_forget(FindTask(0)); /* its signal is the port's */
     if (c->comp_port)
         DeleteMsgPort(c->comp_port);

@@ -14,7 +14,7 @@ installed; `make amiga build/amiga/ixwinch`, VTC:tmux from tmux-amiga,
 import os, pathlib, re, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
-import ami, ixpty_rig, paths, ptytest_rig, screen_rig, tmux_rig, winch_rig
+import ami, ixpty_rig, paths, ptytest_rig, screen_rig, tmux_rig, vshwin, winch_rig
 from install_rig import run, check
 import install_rig
 
@@ -46,9 +46,7 @@ def setup():
 
 
 def open_window(title):
-    ami.req(0x02, struct.pack('>H', 10) + ('run >NIL: newshell "XCON:0/20/400/200/%s/CLOSE"' % title).encode())
-    time.sleep(4)
-    typeline('VTC:vsh', 3)
+    vshwin.open_vsh(title, "0/20/400/200", wait=7)
     return ami.window(title)
 
 
@@ -84,8 +82,7 @@ def tmux_case():
     print('tmux: before %s after %s truth %s' % (before, after, real))
     check(ok, 'tmux follows the resized window (status line takes a row)',
           'before %s after %s truth %s' % (before, after, real))
-    typeline('exit', 2)
-    typeline('endcli', 2)
+    typeline('exit', 2)  # vsh, then the window closes (vshwin)
     return ok
 
 
@@ -140,8 +137,7 @@ def nvim_case():
     print('nvim: before %s after %s truth %s' % (before, after, real))
     check(ok, 'nvim follows the resized window (&columns x &lines)',
           'before %s after %s truth %s' % (before, after, real))
-    typeline('exit', 2)
-    typeline('endcli', 2)
+    typeline('exit', 2)  # vsh, then the window closes (vshwin)
     return ok
 
 

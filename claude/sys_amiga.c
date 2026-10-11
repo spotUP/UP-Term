@@ -64,10 +64,11 @@ static int a_read(void *u, const char *path, long max, char **out, long *n)
         Close(f);
         return SYS_TOO_BIG;
     }
-    b = (char *)malloc((size_t)len + 1);
+    b = (char *)CL_ALLOC((size_t)len + 1);
     if (!b || Read(f, b, len) != len) {
         set_err(s, b ? path : "out of memory");
-        free(b);
+        if (b)
+            CL_FREE(b);
         Close(f);
         return -1;
     }
@@ -240,7 +241,7 @@ static int start(sys_amiga *s, const char *cmd, long tag, char *script, char *ou
     {
         /* the script: the command line and a newline */
         long cl = (long)strlen(cmd);
-        char *text = (char *)malloc((size_t)cl + 2);
+        char *text = (char *)CL_ALLOC((size_t)cl + 2);
         int bad;
         if (!text) {
             cl_copy(s->err, "out of memory", sizeof(s->err));
@@ -249,7 +250,7 @@ static int start(sys_amiga *s, const char *cmd, long tag, char *script, char *ou
         memcpy(text, cmd, (size_t)cl);
         text[cl] = '\n';
         bad = a_write(s, script, text, cl + 1);
-        free(text);
+        CL_FREE(text);
         if (bad)
             return -1;
     }

@@ -17,7 +17,7 @@ VTC:tmux from tmux-amiga in the workspace (make -f Makefile.amiga).
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
-import ami, cube_rig, ixpty_rig, paths, ptytest_rig, screen_rig
+import ami, cube_rig, ixpty_rig, paths, ptytest_rig, screen_rig, vshwin
 from install_rig import run, check
 import install_rig
 
@@ -62,9 +62,7 @@ def main():
     if run('Assign >NIL: PTY: EXISTS DEVICES')[0] != 0:
         run('Mount PTY: FROM VTC:ptymount')
     run('Delete RAM:forkprobe.log RAM:tmux_env QUIET')
-    ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/20/780/560/tmux/CLOSE"')
-    time.sleep(4)
-    typeline('VTC:vsh', 3)
+    vshwin.open_vsh("tmux", "0/20/780/560", wait=7)
     typeline('VTC:tmux -f /VTC/tmux.conf', 30)
     typeline('echo "$TMUX" >RAM:tmux_env', 3)
     env = run('Type RAM:tmux_env')[1].strip()
@@ -95,8 +93,7 @@ def main():
     if "--keep" not in sys.argv:
         typeline('exit', 3)      # the second pane
         typeline('exit', 5)      # the first: the session ends, the server too
-        typeline('exit', 2)      # the vsh tmux ran from
-        typeline('endcli', 2)
+        typeline('exit', 2)      # the vsh tmux ran from; the window closes (vshwin)
     print('tmux_rig: passed %d of %d' % (install_rig.passed, install_rig.total))
     return 0 if install_rig.passed == install_rig.total else 1
 

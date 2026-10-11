@@ -339,6 +339,7 @@ void sh_shell_free(sh_shell *sh)
     sh_list_free(&sh->aliases);
     sh_list_free(&sh->hist);
     free(sh->hist_cfg);
+    free(sh->hist_file_sent);
     comp_free(sh);
     free(sh->hx_old);
     free(sh->hx_new);
@@ -5244,6 +5245,24 @@ void sh_hist_config(sh_shell *sh)
         sh->hist_cfg = b.s;
     } else
         free(b.s);
+    /* the shell's HISTFILE: the console keeps the list in that file ("" its own default) */
+    v = sh_get(&sh->ctx, "HISTFILE");
+    if (!v)
+        v = "";
+    if (!sh->hist_file_sent || strcmp(sh->hist_file_sent, v)) {
+        char *copy = (char *)malloc(strlen(v) + 1);
+        if (copy) {
+            strcpy(copy, v);
+            sh->os.hist(sh->os.data, SH_HIST_FILE, 0, copy, 0);
+            free(sh->hist_file_sent);
+            sh->hist_file_sent = copy;
+        }
+    }
+}
+
+int sh_hist_console(sh_shell *sh)
+{
+    return !hist_own(sh);
 }
 
 void sh_hist_load(sh_shell *sh)

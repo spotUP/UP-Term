@@ -16,7 +16,7 @@ sh loop of colors.sh was still drawing the grey ramp at 4 s."""
 import os, pathlib, shutil, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
-import ami
+import ami, vshwin
 from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -32,13 +32,12 @@ def expect(i):
 
 def main():
     shutil.copyfile(ROOT / "tests/amiga/colors.sh", paths.RIG / "vtc/colors.sh")
-    ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/300/780/280/cube/CLOSE"')
-    time.sleep(4)
-    for s in ('VTC:vsh', 'source VTC:colors.sh'):
+    vshwin.open_vsh("cube", "0/300/780/280", wait=7)
+    for s in ('source VTC:colors.sh',):
         ami.req(0x08, bytes([4]) + s.encode()); time.sleep(0.4); ami.key(0x44); time.sleep(4)
     rc = shoot_check(SHOT, 300, 600, float(os.environ.get("CUBE_WAIT", "30")))
     if "--keep" not in sys.argv:
-        for s in ('exit', 'endcli'):  # vsh, then the window's shell: it closes
+        for s in ('exit',):  # vsh, then the window closes (vshwin)
             ami.req(0x08, bytes([4]) + s.encode()); time.sleep(0.4); ami.key(0x44); time.sleep(2)
     return rc
 

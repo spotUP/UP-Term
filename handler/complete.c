@@ -26,6 +26,8 @@
 #include <string.h>
 #include "complete.h"
 #include "complete_core.h"
+#include "histfile.h"
+#include "../claude/sys_amiga.h"
 
 #if CC_FIBF_EXECUTE != FIBF_EXECUTE || CC_FIBF_SCRIPT != FIBF_SCRIPT
 #error "the protection bits of complete_core.h disagree with dos/dos.h"
@@ -747,11 +749,31 @@ static int command_exists(struct complete_req *q)
  * made here at the file's size (data_max at most, and data_max when the
  * size is not known): the window held 51 KB for a history of a few lines
  * while it opened. */
+/* The file the history lives in (histfile.h), the default's drawer made and an older ENVARC:vtcon.history
+ * moved there; HF_OLD when there is no memory for the DOS layer. */
+static void history_path(const struct complete_req *q, char *out, long cap)
+{
+    sys_amiga *sa = (sys_amiga *)AllocVec(sizeof(sys_amiga), MEMF_ANY);
+    cl_sys sys;
+    if (sa) {
+        sys_amiga_init(sa, &sys);
+        if (hf_path(&sys, q->hist_file, out, cap) == 0) {
+            FreeVec(sa);
+            return;
+        }
+        FreeVec(sa);
+    }
+    strcpy(out, HF_OLD);
+}
+
 static void history_load(struct complete_req *q)
 {
-    BPTR f = Open((STRPTR)HISTORY_FILE, MODE_OLDFILE);
+    char path[HF_MAX];
+    BPTR f;
     struct FileInfoBlock *fib;
     long n, i, lines = 0, from = 0, size = q->data_max, keepn = q->keep > 0 ? q->keep : HISTORY_KEEP;
+    history_path(q, path, sizeof(path));
+    f = Open((STRPTR)path, MODE_OLDFILE);
     q->data_len = 0;
     q->data = 0;
     if (!f)
@@ -780,7 +802,7 @@ static void history_load(struct complete_req *q)
     q->data_len = n - from;
     if (from && lines > keepn) {
         /* the file had more: keep only what was loaded */
-        f = Open((STRPTR)HISTORY_FILE, MODE_NEWFILE);
+        f = Open((STRPTR)path, MODE_NEWFILE);
         if (f) {
             Write(f, q->data, q->data_len);
             Close(f);
@@ -790,7 +812,10 @@ static void history_load(struct complete_req *q)
 
 static void history_append(struct complete_req *q)
 {
-    BPTR f = Open((STRPTR)HISTORY_FILE, MODE_READWRITE);
+    char path[HF_MAX];
+    BPTR f;
+    history_path(q, path, sizeof(path));
+    f = Open((STRPTR)path, MODE_READWRITE);
     if (!f)
         return;
     Seek(f, 0, OFFSET_END);

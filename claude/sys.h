@@ -14,6 +14,20 @@ typedef struct cl_dirent {
 
 typedef int (*cl_dir_fn)(void *c, const cl_dirent *e);   /* nonzero stops */
 
+/* The memory of read's buffer and of the portable code that frees what cl_sys hands it: the C
+ * library's, or exec's in code built without a C startup (VT_AMIGA_EXEC_ALLOC: the console handler,
+ * which runs datadir.c over sys_amiga.c for its history file). */
+#if defined(VT_AMIGA_EXEC_ALLOC)
+#include <exec/memory.h>
+#include <proto/exec.h>
+#define CL_ALLOC(n) AllocVec((unsigned long)(n), MEMF_ANY)
+#define CL_FREE(p) FreeVec(p)
+#else
+#include <stdlib.h>
+#define CL_ALLOC(n) malloc(n)
+#define CL_FREE(p) free(p)
+#endif
+
 #define SYS_TOO_BIG  (-2)
 #define SYS_TIMEOUT  (-2)
 #define SYS_BREAK    (-3)

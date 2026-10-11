@@ -71,9 +71,8 @@ def vsh_case():
     arrive whole ("cho" for "echo" was the symptom)."""
     import screen_rig
     ixpty_rig.run('Delete RAM:intr_echo QUIET')
-    ixpty_rig.run('Run >NIL: NewShell "XCON:0/20/600/200/intrvsh/CLOSE"', 10)
-    time.sleep(4)
-    screen_rig.typeline('VTC:vsh', 3)
+    import vshwin
+    vshwin.open_vsh("intrvsh", "0/20/600/200", wait=7)
     screen_rig.typeline('VTC:ixintr 20 die', 3)
     ami.key(0x33, 0x08)
     time.sleep(3)
@@ -82,8 +81,7 @@ def vsh_case():
     rc, out = ixpty_rig.run('Type RAM:intr_echo')
     ok = out.strip() == 'hi2'
     print('intrvsh: line after Ctrl-C ran as typed: %s (file %r)' % ('ok' if ok else 'FAIL', out.strip()))
-    screen_rig.typeline('exit', 1)
-    screen_rig.typeline('endcli', 1)
+    screen_rig.typeline('exit', 2)  # vsh, then the window closes (vshwin)
     return ok
 
 

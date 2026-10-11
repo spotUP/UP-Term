@@ -35,7 +35,7 @@ enum complete_mode {
                                * names (matches of them); the drawer in add ("" none) */
 };
 
-#define HISTORY_FILE "ENVARC:vtcon.history"
+/* the history file: handler/histfile.h (UP-Term:var/vtcon/history, or the shell's HISTFILE) */
 #define HISTORY_KEEP 100      /* lines kept when the file is trimmed */
 
 struct complete_req {
@@ -85,6 +85,8 @@ struct complete_req {
                                    * COMPLETE_THEME, CONFIG_SAVE: the caller's, data_max bytes */
     long data_max, data_len;
     long keep;                /* HISTORY_LOAD: lines kept (0: HISTORY_KEEP) */
+    const char *hist_file;    /* HISTORY_LOAD, HISTORY_APPEND: the shell's HISTFILE ("" or 0: the console's
+                               * default, histfile.h); the window's, it outlives the request */
     int hlcat;                /* CONFIG_SAVE: the highlight-cat switch prefs_dos_save writes beside the file */
 };
 

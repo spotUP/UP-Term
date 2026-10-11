@@ -11,7 +11,7 @@ current handler installed (rig.py install, then a reboot); UPTERM_RIG=2 for rig 
   vshcomp_rig.py [probe|vsh]"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ami, ixpty_rig, screen_rig
+import ami, ixpty_rig, screen_rig, vshwin
 
 TAB, RET = "\t", "\n"
 
@@ -78,8 +78,7 @@ def probe():
 def vsh():
     ok = True
     ixpty_rig.run("Delete RAM:vc1.txt RAM:vc3.txt RAM:vc4.txt QUIET")
-    window("vshcomp")
-    screen_rig.typeline("VTC:vsh", 4)
+    vshwin.open_vsh("vshcomp", "0/20/600/200", wait=8)
     for name, steps, path, want in VSH:
         for s in steps:
             send(s)
@@ -87,8 +86,7 @@ def vsh():
         good = out.strip() == want
         print("%s: %r %s" % (name, out.strip(), "ok" if good else "FAIL (want %r)" % want))
         ok = ok and good
-    screen_rig.typeline("exit", 1)
-    screen_rig.typeline("endcli", 1)
+    screen_rig.typeline("exit", 2)  # vsh, then the window closes (vshwin)
     return ok
 
 
