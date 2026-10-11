@@ -46,8 +46,10 @@ tools           Files/VERSIONS
 tools           Files/hl
 tools           Files/mdv
 tools           Files/net
+tools           Files/ps
 tools           Files/rz
 tools           Files/sz
+tools           Files/top
 tools           Files/upgetty
 tools           Files/uptelnet
 copy-python     Files/python3           Python3

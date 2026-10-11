@@ -517,6 +517,14 @@ TMUX
   panes (ENV:tmux.conf: default-shell, 256 colours). Your own settings go
   in ~/.tmux.conf.
 
+TASKS (ps, top)
+  ps lists the tasks and processes: CLI number, priority, state, type and
+  name (a CLI process shows the command it runs). top shows them by CPU
+  use, refreshed every 2 seconds (-d SECONDS); q or Ctrl-C ends it, -b
+  prints plain lines (-n COUNT refreshes). AmigaOS counts no time per
+  task: top samples the running task 50 times a second at the vertical
+  blank, so a share is statistical, and idle is the time no task ran.
+
 VIEWING FILES (hl, mdv)
   hl shows a source file in colour, with line numbers, the language found
   from the name, the #! line or -l:

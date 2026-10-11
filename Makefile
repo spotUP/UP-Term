@@ -14,6 +14,7 @@ RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c r
 SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c shell/sh_float.c
 TTY     := tty/ldisc.c tty/bmsg.c
 DEVICE_CORE := device/upc_core.c
+PROC_CORE := proc/proc_core.c
 CONF    := config/upconf.c
 TERMURL := config/termurl.c
 PREFS_CORE := prefs/prefs_core.c
@@ -33,7 +34,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
-           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_pty_name.c tests/test_bmsg.c tests/test_upassign.c
+           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_upassign.c
 
 .PHONY: bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
@@ -64,9 +65,9 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = man ]; then for f in man/*.1; do mandoc -T lint -W warning $$f || exit 1; done; echo "[OK] man/*.1 lint clean"; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
-$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
+$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
 
 # vsh's shell core on the host behind a POSIX sh_os (tests/vsh_host.c), and the
 # differential run of tests/bash/probes against bash 5 (tools/bashdiff.py;
@@ -290,10 +291,24 @@ HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s r
 HANDLER_HDR := engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h \
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/Claude
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude
 
 # hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
+# ps and top (Unix tool ports 3.3): proc/proc_core.c host-tested (suite proc); top's VBlank sampler in proc/vbsample.s
+$(BUILD)/amiga/ps: proc/ps_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h $(PROC_CORE) proc/proc_core.h $(BUILD)/amiga/obj/cpuchk-ps.o
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ proc/ps_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/cpuchk-ps.o
+$(BUILD)/amiga/top: proc/top_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h proc/vbsample.s $(PROC_CORE) proc/proc_core.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-top.o
+	@mkdir -p $(BUILD)/amiga/obj
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vbsample.o proc/vbsample.s
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ proc/top_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/vbsample.o $(BUILD)/amiga/obj/cpuchk-top.o
+$(BUILD)/amiga/busyloop: tests/amiga/busyloop.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/busyloop.c
+$(BUILD)/amiga/intlist: tests/amiga/intlist.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/intlist.c
 $(BUILD)/amiga/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-hl.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-hl.o
@@ -844,7 +859,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/Claude $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
 	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
