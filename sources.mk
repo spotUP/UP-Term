@@ -19,7 +19,7 @@ LLM_CLAUDE := $(call cl_src,llm/event.c llm/be_anthropic.c llm/request.c)
 LLM_CORE := $(LLM_CLAUDE) $(call cl_src,llm/llm.c llm/accum.c llm/be_anthropic_pi.c llm/retry.c llm/be_openai_chat.c llm/transform.c)
 LLM_HDR := $(wildcard $(CL_DIR)llm/*.h)
 # what amiga-pi adds of claude/ (plan D): pi's edit on Edit's pieces; C:Claude never calls it
-CLAUDE_PI := $(call cl_src,claude/edit_orig.c)
+CLAUDE_PI := $(call cl_src,claude/edit_orig.c claude/unorm.c)
 CLAUDE_INPUT := $(call cl_src,claude/vim.c claude/hist.c claude/theme.c claude/input.c claude/tview.c)
 CLAUDE_CORE := $(call cl_src,claude/util.c claude/http.c claude/net_posix.c claude/json.c claude/sse.c claude/stream.c claude/conv.c \
                claude/path.c claude/tools.c claude/sys_posix.c claude/ui.c claude/repl.c \

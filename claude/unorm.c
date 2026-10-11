@@ -181,7 +181,7 @@ int un_nfkc(const char *s, long n, char **out, long *on)
             long j;
             int l2;
             for (j = 0; j < dn; j += l2)
-                put(&b, next((const char *)un_data + at, at + dn, j + at, &l2));
+                put(&b, next((const char *)un_data + at, dn, j, &l2));
         } else
             put(&b, c);
     }
