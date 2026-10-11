@@ -77,6 +77,20 @@ static long run_cached(llm_cfg *c, const char *cmd, char *out, long cap)
     return n;
 }
 
+/* an environment variable appended at out[n]: its length; -1 when it is unset, empty (pi: `env[name] || undefined`) or
+ * does not fit. getenv cuts a long value to the room it is given, so a value that fills the room is taken as cut:
+ * an error, never half a key */
+static long env_into(llm_cfg *c, const char *name, char *out, long cap, long n)
+{
+    long v;
+    if (!c->getenv || cap - n < 2)
+        return -1;
+    v = c->getenv(c->u, name, out + n, cap - n);
+    if (v <= 0 || v >= cap - n - 1)
+        return -1;
+    return v;
+}
+
 long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
 {
     long n = 0;
@@ -122,8 +136,7 @@ long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
             }
             memcpy(nm, p + 2, (size_t)l);
             nm[l] = 0;
-            v = c->getenv ? c->getenv(c->u, nm, out + n, cap - n) : -1;
-            if (v < 0)
+            if ((v = env_into(c, nm, out, cap, n)) < 0)
                 return -1;
             n += v;
             p = e + 1;
@@ -134,8 +147,7 @@ long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
             while (name_char((unsigned char)*q) && l < (long)sizeof(nm) - 1)
                 nm[l++] = *q++;
             nm[l] = 0;
-            v = c->getenv ? c->getenv(c->u, nm, out + n, cap - n) : -1;
-            if (v < 0)
+            if ((v = env_into(c, nm, out, cap, n)) < 0)
                 return -1;
             n += v;
             p = q;
@@ -160,14 +172,17 @@ void llm_key_env_name(const char *provider, char *out, long cap)
     strcat(out, "_API_KEY");
 }
 
-/* auth.json: {"<provider>":{"type":"api_key","key":"<config value>"}} */
+/* auth.json: {"<provider>":{"type":"api_key","key":"<config value>"}}.
+ * A stored credential owns the provider (pi-ai auth/resolve.js): -2 nothing is stored for it, else the key's length,
+ * or -1 when the entry cannot give one (a command that fails, another credential type, an empty key); the caller
+ * does not fall back to models.json or the environment after a -1. */
 static long auth_key(llm_cfg *c, const char *provider, char *out, long cap)
 {
     jv root, e, t, k;
     char *raw;
     long n, r;
     if (!c->auth || json_parse(c->auth, c->auth_n, &root) || json_type(root) != J_OBJ)
-        return -1;
+        return -2;
     {
         jit it;
         jv key;
@@ -181,7 +196,7 @@ static long auth_key(llm_cfg *c, const char *provider, char *out, long cap)
             }
         }
         if (!found)
-            return -1;
+            return -2;
     }
     if (json_type(e) != J_OBJ || !json_get(e, "type", &t) || !json_streq(t, "api_key") || !json_get(e, "key", &k))
         return -1;
@@ -190,7 +205,7 @@ static long auth_key(llm_cfg *c, const char *provider, char *out, long cap)
         return -1;
     r = n ? llm_cfg_value(c, raw, out, cap) : -1;
     free(raw);
-    return r;
+    return r > 0 ? r : -1;
 }
 
 long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src)
@@ -208,10 +223,15 @@ long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char
             return n;
         }
     }
-    if ((n = auth_key(c, m->provider, out, cap)) > 0) {
+    n = auth_key(c, m->provider, out, cap);
+    if (n > 0) {
         if (src)
             *src = "auth.json";
         return n;
+    }
+    if (n == -1) {              /* a stored credential owns the provider: no fallback */
+        out[0] = 0;
+        return 0;
     }
     if (m->key && (n = llm_cfg_value(c, m->key, out, cap)) > 0) {
         if (src)
@@ -219,7 +239,7 @@ long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char
         return n;
     }
     llm_key_env_name(m->provider, nm, sizeof(nm));
-    if (c->getenv && (n = c->getenv(c->u, nm, out, cap)) > 0) {
+    if ((n = env_into(c, nm, out, cap, 0)) > 0) {
         if (src)
             *src = "environment";
         return n;
