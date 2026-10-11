@@ -231,6 +231,13 @@ int  le_hist_get(const le_line *le, int i, unsigned char *buf, int max);
 int  le_hist_del(le_line *le, int i);
 void le_hist_clear(le_line *le);
 
+/* Ctrl-D in a cooked read (owner 2026-10-10). A program that a shell (vsh, which armed the console) runs reads the
+ * window as from a Unix terminal: Ctrl-D on an empty line is end of file, on a line with text that text goes to
+ * the reader without a newline, and no CTRL_D break is sent. The shell's own prompt, the AmigaShell and a window
+ * no shell armed keep Ctrl-D as before, the CTRL_D break (LE_CTRLD_KEY). Ctrl-\ stays end of file everywhere. */
+enum { LE_CTRLD_KEY, LE_CTRLD_EOF, LE_CTRLD_SEND };
+int le_ctrl_d(int shell_armed, int reader_is_program, int line_len);
+
 /* A list to choose from with the keys, drawn under a finished line (W30:
  * /theme with no name): one name a row, the chosen one as a reverse bar,
  * the marked one (what the window has now) with a '*', a faint row under

@@ -1849,3 +1849,10 @@ void le_ghost_clear(le_line *le)
     le->ghost_key = 0;
     le->ghost_asked = 0;
 }
+
+int le_ctrl_d(int shell_armed, int reader_is_program, int line_len)
+{
+    if (!shell_armed || !reader_is_program)
+        return LE_CTRLD_KEY;
+    return line_len ? LE_CTRLD_SEND : LE_CTRLD_EOF;
+}

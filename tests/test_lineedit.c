@@ -1179,8 +1179,20 @@ static void bound_keys_run_their_functions_and_the_rest_keep_emacs(void)
     vt_free(t);
 }
 
+/* `sed p` started by vsh reads the window: Ctrl-D on an empty line ends its input, on "abc" sends abc with no
+ * newline; at vsh's own prompt, in the AmigaShell and in a window no shell armed, Ctrl-D stays the editor's key */
+static void ctrl_d_ends_a_program_read_under_vsh_only(void)
+{
+    CHECK_INT(le_ctrl_d(1, 1, 0), LE_CTRLD_EOF);
+    CHECK_INT(le_ctrl_d(1, 1, 3), LE_CTRLD_SEND);
+    CHECK_INT(le_ctrl_d(1, 0, 0), LE_CTRLD_KEY);   /* vsh's own prompt */
+    CHECK_INT(le_ctrl_d(0, 1, 0), LE_CTRLD_KEY);   /* no shell armed the window (AmigaShell) */
+    CHECK_INT(le_ctrl_d(0, 1, 3), LE_CTRLD_KEY);
+}
+
 void suite_lineedit(void)
 {
+    ctrl_d_ends_a_program_read_under_vsh_only();
     bound_keys_run_their_functions_and_the_rest_keep_emacs();
     medium_mode_reports_tab_shift_tab_up_and_down_at_once();
     medium_mode_leaves_the_editing_keys_to_the_editor();

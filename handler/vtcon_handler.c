@@ -3980,6 +3980,25 @@ static int slash_tab(con *c)
     return 1;
 }
 
+/* A shell armed this window: the one that sent its words (ACTION_VTCON_WORDS, vsh before each prompt), while it
+ * runs. Its words are the console's state of "a shell is attached" already (shell_words). */
+static int shell_armed(con *c)
+{
+    int alive;
+    Forbid();
+    alive = c->words_owner && task_alive(c->words_owner);
+    Permit();
+    return alive;
+}
+
+/* The oldest waiting Read is a program's, not the armed shell's own (its prompt). */
+static int program_reads(con *c)
+{
+    int k = next_read(c);
+    struct DosPacket *p = k >= 0 ? c->reads[k] : 0;
+    return p && p->dp_Port && (struct Task *)p->dp_Port->mp_SigTask != c->words_owner;
+}
+
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
 {
     if (c->tm && c->tm->m.open) {
@@ -4116,6 +4135,23 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
         kc_tab(c, -1);
         service_reads(c);
         return;
+    }
+    if (!c->raw && n == 1 && !key && out[0] == 0x04) {
+        /* Ctrl-D, before its break: a Unix terminal's end of file for a program a shell runs (le_ctrl_d); at the
+         * shell's own prompt, in the AmigaShell and in a window no shell armed it stays the CTRL_D break */
+        int act = le_ctrl_d(shell_armed(c), program_reads(c), c->le.len);
+        if (act != LE_CTRLD_KEY) {
+            sel_close(c);
+            if (act == LE_CTRLD_EOF)
+                c->eof = 1;
+            else {
+                in_append(c, c->le.buf, c->le.len); /* the text so far, no newline */
+                le_reset(&c->le);
+                c->checked[0] = 0;
+            }
+            service_reads(c);
+            return;
+        }
     }
     if (n == 1 && !key && (!c->raw || c->w.pers != VT_XTERM)) {
         ULONG brk = 0;

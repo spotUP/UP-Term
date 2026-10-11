@@ -2,8 +2,9 @@
 """shstdin_rig.py -- a program started by `/bin/sh -c` reads the terminal (vsh at a console prompt).
 
 bash gives a `sh -c` child the terminal as its stdin. Each case opens its own titled XCON: window,
-starts VTC:vsh there with a throwaway HISTFILE, types the case's command, then the line `abc` and
-Ctrl-\\ (end of file on the console; Ctrl-D is not). A program that read the terminal wrote what it
+starts VTC:vsh there with a throwaway HISTFILE (vshwin.py), types the case's command, then the line `abc`
+and Ctrl-\\ (end of file on the console), or Ctrl-D (the ctrld-* cases: under vsh a program reads the window
+as a Unix terminal). A program that read the terminal wrote what it
 read to a file in RAM:, read back here; one that saw end of file at once wrote nothing (and `abc`
 went to the prompt). Nothing is typed unless the case's window is the active one. The rig must be
 up with the current handler installed; the kit's sed (upterm-ports build/kit) is copied to
@@ -15,14 +16,14 @@ says which handler a native program's input is. build/amiga/vsh is copied to VTC
   shstdin_rig.py [case ...]"""
 import os, pathlib, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ami, ixpty_rig, paths, screen_rig
+import ami, ixpty_rig, paths, screen_rig, vshwin
 
 # the kit's sed and the userland's cat (ixemul programs), first on vsh's PATH
 SED = paths.repo("upterm-ports") / "build/kit/userland/bin/sed"
 BIN = paths.RIG / "vtc/shstdin"
 
 CTRL = 0x0008
-HIST = "RAM:shstdin.hist"
+EOF_BS, EOF_D = "^\\", "^D"   # Ctrl-\\: end of file on the console; Ctrl-D: under vsh, as a Unix terminal
 
 # name, command line typed at vsh's prompt (output to RAM:<name>.txt), what the file must hold
 CASES = (
@@ -33,6 +34,10 @@ CASES = (
     ("plain-cat", "cat >RAM:plain-cat.txt", "abc"),
     ("binsh-sed-dq", "/bin/sh -c \"sed p\" >RAM:binsh-sed-dq.txt", "abc\nabc"),
     ("plain-read", "read x; echo $x >RAM:plain-read.txt", "abc"),
+    # Ctrl-D (owner 2026-10-10): end of file on an empty line, the text without a newline on a line with text
+    ("ctrld-sed", "sed p >RAM:ctrld-sed.txt", "abc\nabc", ("abc", EOF_D)),
+    ("ctrld-cat", "cat >RAM:ctrld-cat.txt", "abc\nxy", ("abc", "~xy", EOF_D, EOF_D)),
+    ("ctrld-binsh", "/bin/sh -c 'sed p' >RAM:ctrld-binsh.txt", "abc\nabc", ("abc", EOF_D)),
 )
 
 
@@ -108,37 +113,41 @@ def focus(title):
 
 
 def close(title):
-    """End the reader (Ctrl-\\), vsh and the window's Shell."""
+    """End the reader (Ctrl-\\), then vsh: the window closes with it (vshwin). Each key only into that window."""
     if focus(title):
         ami.key(0x0D, CTRL)
         time.sleep(2)
-        screen_rig.typeline("exit", 1)
-        screen_rig.typeline("endcli", 2)
+    if focus(title):
+        screen_rig.typeline("exit", 2)
 
 
-def one(name, cmd, want):
+def one(name, cmd, want, keys=("abc", EOF_BS)):
     title = "shstdin %s" % name
     ixpty_rig.run("Delete RAM:%s.txt RAM:%s.rc QUIET" % (name, name))
-    ixpty_rig.run('Run >NIL: NewShell "XCON:0/20/640/200/%s/CLOSE"' % title, 10)
-    time.sleep(4)
+    vshwin.open_vsh(title, "0/20/640/200", wait=8)
     if not focus(title):
         print("%s: FAIL (its window is not the active one; nothing typed)" % name)
         return False
-    screen_rig.typeline("Set HISTFILE %s" % HIST, 1)
-    screen_rig.typeline("VTC:vsh", 4)
     screen_rig.typeline("export PATH=/VTC/shstdin:/VTC/userland/bin:$PATH", 1)
     screen_rig.typeline("%s; echo rc=$? >RAM:%s.rc" % (cmd, name), 4)
-    screen_rig.typeline("abc", 3)
-    ami.key(0x0D, CTRL)  # Ctrl-\: end of file on the console (Ctrl-D is not)
-    time.sleep(3)
+    for k in keys:
+        if k in (EOF_BS, EOF_D):
+            ami.key(0x0D if k == EOF_BS else 0x22, CTRL)
+            time.sleep(2)
+        elif k.startswith("~"):
+            ami.req(0x08, bytes([4]) + k[1:].encode())  # typed without Return
+            time.sleep(1)
+        else:
+            screen_rig.typeline(k, 3)
+    time.sleep(2)
     rc, done = ixpty_rig.run("Type RAM:%s.rc" % name)
     if done.startswith("rc="):
-        screen_rig.typeline("exit", 1)
-        screen_rig.typeline("endcli", 2)
+        if focus(title):
+            screen_rig.typeline("exit", 2)  # vsh, then the window closes (vshwin)
     else:
-        close(title)  # the reader did not end: end it, then the rest
+        close(title)  # the reader did not end: end it, then vsh
     rc, out = ixpty_rig.run("Type RAM:%s.txt" % name)
-    got = out.replace("\r", "").strip()
+    got = out.replace("\r", "").strip("\n")
     good = got == want and done.startswith("rc=0")
     print("%s: %r %s %s" % (name, got, done.strip(), "ok" if good else "FAIL (want %r)" % want))
     return good
@@ -148,9 +157,9 @@ def main():
     names = sys.argv[1:]
     install()
     ok = True
-    for name, cmd, want in CASES:
-        if not names or name in names:
-            ok = one(name, cmd, want) and ok
+    for case in CASES:
+        if not names or case[0] in names:
+            ok = one(*case) and ok
     if not names or any(n.startswith("pty-") for n in names):
         ok = pty_cases([n for n in names if n.startswith("pty-")]) and ok
     print("PASS" if ok else "FAIL")
