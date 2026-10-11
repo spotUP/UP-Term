@@ -395,6 +395,13 @@ def setup():
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
         "clipboard_sharing = 1",
+        # both Cmd keys are Right-Amiga, so Cmd+C/Cmd+V copy and paste from either
+        # side as on the Mac. FS-UAE's own modifier was the left Cmd (its log: "Using
+        # default modifier key LSUPER") and took those keys; it moves to the right
+        # Ctrl. The F12 menu is unchanged.
+        "modifier_key = rctrl",
+        "keyboard_key_lsuper = action_key_amiga_right",
+        "keyboard_key_rsuper = action_key_amiga_right",
         "window_width = 1280", "window_height = 1024",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,
