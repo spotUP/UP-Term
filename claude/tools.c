@@ -1625,7 +1625,8 @@ int tl_edit_load(cl_tools *t, jw *out, const char *id, const char *path, pedit *
                  rc == SYS_TOO_BIG ? path : t->sys->err(t->sys->u));
         return -1;
     }
-    if (tl_is_binary(b, n)) {
+    if (!t->pi_rules && tl_is_binary(b, n)) {
+        /* pi edits any file (a NUL is text to it); its bytes come back as they were */
         free(b);
         tl_error(t, out, id, "this is a binary file, not text: ", path);
         return -1;
