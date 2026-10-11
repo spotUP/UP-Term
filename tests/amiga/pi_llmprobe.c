@@ -86,13 +86,11 @@ int main(int argc, char **argv)
     net_amiga_init(&na, &net);
     nets[0] = &net;
     llm_pool_init(&pool, nets, 1);
-    memset(&m, 0, sizeof(m));
+    llm_model_init(&m);
     m.id = argv[2];
     m.api = "openai-completions";
     m.provider = "fixture";
     m.base_url = argv[1];
-    m.compat.max_tokens_field = m.compat.usage_in_streaming = m.compat.developer_role =
-        m.compat.tool_result_name = LC_UNSET;
     ts.sec = 0;
     ts.ms = 0;
     jw_init(&content);

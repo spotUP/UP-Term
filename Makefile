@@ -49,6 +49,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_recordings ]; then python3 -I tools/test_pi_recordings.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = layers ]; then python3 -I tools/test_check_layers.py && python3 -I tools/check_layers.py --strict; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_llm ]; then python3 -I tools/gen_models_builtin.py --check || { echo "[ERROR] llm/models_builtin.h is out of date: python3 tools/gen_models_builtin.py"; exit 1; }; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unorm ]; then python3 -I tests/test_unorm.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_search ]; then python3 -I tests/test_pi_search.py; fi

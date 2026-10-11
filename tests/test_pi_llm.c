@@ -9,6 +9,7 @@
 #include "../llm/event.h"
 #include "../llm/accum.h"
 #include "../llm/request.h"
+#include "../llm/handoff.h"
 #include "claude_load.h"
 #include "pi_stub.h"
 
@@ -354,6 +355,7 @@ static const char *conv_msgs[] = {
     "\"text\":\"Startup-Sequence\\n\"}],\"isError\":true,\"timestamp\":1760100000003}"
 };
 static long conv_n[4];
+static llm_view conv_view;
 static const char tools_json[] = "[{\"name\":\"read\",\"description\":\"Read a file\",\"parameters\":{\"type\":"
                                  "\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}}]";
 
@@ -374,9 +376,13 @@ static llm_ctx ctx_of(const llm_model *m, int nmsg)
     memset(&c, 0, sizeof(c));
     c.model = m;
     c.system = "You are amiga-pi.";
-    c.msgs = conv_msgs;
-    c.msg_n = conv_n;
-    c.nmsg = nmsg;
+    /* the messages as the agent sends them: through the handoff for this model (ids, foreign thinking) */
+    llm_view_free(&conv_view);
+    if (llm_prepare(m, (const char *const *)conv_msgs, conv_n, nmsg, ts_of(1760100000L, 0), &conv_view))
+        CHECK(0);
+    c.msgs = conv_view.m;
+    c.msg_n = conv_view.n;
+    c.nmsg = conv_view.count;
     c.tools = tools_json;
     c.tools_n = (long)strlen(tools_json);
     return c;
@@ -522,11 +528,11 @@ static void test_openai_bodies(void)
         CHECK(strstr(w.p, "\"max_completion_tokens\":4096") != 0);
         CHECK(strstr(w.p, "\"tool_call_id\":\"call_1_item_9\"") != 0 && strstr(w.p, "call_1|item_9") == 0);
         CHECK(strstr(w.p, "\"name\":\"read\"}") == 0);
-        CHECK(strstr(w.p, "Read it.") == 0);     /* another provider's thinking is not sent */
+        CHECK(strstr(w.p, "\"content\":\"Read it.Let me look.\"") != 0);   /* pi: another model's thinking is plain text */
         jw_free(&w);
     }
     /* the Anthropic body from the same messages: thinking with its
-     * signature (same api), the calls, both results in one user turn */
+     * signature (the same model: its ids stay as written), the calls, both results in one user turn */
     {
         llm_model ma = ps_model_anthropic();
         llm_ctx c = ctx_of(&ma, 4);
@@ -534,10 +540,10 @@ static void test_openai_bodies(void)
         jw_init(&w);
         CHECK_INT(llm_be_anthropic.body(&c, &w), 0);
         CHECK(strstr(w.p, "{\"type\":\"thinking\",\"thinking\":\"Read it.\",\"signature\":\"sig==\"}") != 0);
-        CHECK(strstr(w.p, "{\"type\":\"tool_use\",\"id\":\"call_1_item_9\",\"name\":\"read\",\"input\":"
+        CHECK(strstr(w.p, "{\"type\":\"tool_use\",\"id\":\"call_1|item_9\",\"name\":\"read\",\"input\":"
                           "{\"path\":\"S:Startup-Sequence\"}}") != 0);
         CHECK(strstr(w.p, "{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":"
-                          "\"call_1_item_9\",\"content\":[{\"type\":\"text\",\"text\":\"SetPatch QUIET\\n\"}]},"
+                          "\"call_1|item_9\",\"content\":[{\"type\":\"text\",\"text\":\"SetPatch QUIET\\n\"}]},"
                           "{\"type\":\"tool_result\",\"tool_use_id\":\"call_2\",\"content\":[{\"type\":\"text\","
                           "\"text\":\"Startup-Sequence\\n\"}],\"is_error\":true}]}") != 0);
         CHECK(strstr(w.p, "\"input_schema\":{\"type\":\"object\"") != 0);

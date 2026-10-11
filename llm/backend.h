@@ -19,7 +19,18 @@ typedef struct llm_compat {
     int usage_in_streaming;     /* stream_options.include_usage */
     int developer_role;         /* "developer" for the system prompt of a reasoning model */
     int tool_result_name;       /* the tool message carries the tool's name */
+    int reasoning_effort;       /* supportsReasoningEffort: the reasoning_effort field */
+    int thinking_as_text;       /* requiresThinkingAsText: a thinking block goes back as text */
 } llm_compat;
+
+/* pi's thinking levels (ModelThinkingLevel), in order; thinking_map[] is pi's
+ * thinkingLevelMap: a provider value, null (the level is unsupported) or unset */
+enum { LT_OFF, LT_MINIMAL, LT_LOW, LT_MEDIUM, LT_HIGH, LT_XHIGH, LT_MAX, LT_N };
+enum { LTM_UNSET, LTM_STR, LTM_NULL };
+typedef struct llm_tmap {
+    int kind;                   /* LTM_* */
+    const char *val;            /* LTM_STR */
+} llm_tmap;
 
 typedef struct llm_model {
     const char *id;             /* "claude-opus-5-5", "qwen2.5-coder:7b" */
@@ -31,7 +42,18 @@ typedef struct llm_model {
     long context_window;
     long cost[4];               /* micro-dollars per million tokens: input, output, cacheRead, cacheWrite */
     llm_compat compat;          /* explicit values (LC_UNSET: detect) */
+    /* the registry's fields (llm/registry.h); a model made by hand leaves them 0 */
+    const char *name;           /* display name, 0: the id */
+    int image;                  /* input includes images */
+    int adaptive;               /* compat.forceAdaptiveThinking (anthropic-messages) */
+    llm_tmap thinking_map[LT_N];
+    const char *headers;        /* a JSON object {"Name":"value"} of extra request headers, 0 none */
+    const char *key;            /* models.json apiKey, unresolved (a config value), 0 none */
+    int auth_header;            /* models.json authHeader: also send "Authorization: Bearer <key>" */
 } llm_model;
+
+/* a model with nothing set: the compat flags LC_UNSET (detect), the rest 0 */
+void llm_model_init(llm_model *m);
 
 /* what one request carries */
 typedef struct llm_ctx {
@@ -43,6 +65,7 @@ typedef struct llm_ctx {
     const char *tools;          /* a JSON array of pi tools {name, description, parameters}, 0 none */
     long tools_n;
     long max_tokens;            /* 0: the model's */
+    int thinking;               /* the thinking level, LT_*; clamped to the model's here (llm_think_clamp) */
 } llm_ctx;
 
 typedef struct llm_backend {
@@ -56,6 +79,8 @@ typedef struct llm_backend {
                  const char *user_agent, long body_len, char *out, long cap);
     /* the request body: 0, -1 (out of memory, or a message it cannot send) */
     int (*body)(const llm_ctx *c, jw *out);
+    /* extra header lines this request needs ("Name: value\r\n" ...) into out: its length, 0 none; 0 pointer none */
+    long (*xhead)(const llm_ctx *c, char *out, long cap);
     /* a decoder: new state, one SSE event (event name, data) into the sink
      * (0, or -1 when the stream is malformed), free */
     void *(*dec_new)(void);

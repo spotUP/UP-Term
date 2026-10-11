@@ -117,6 +117,7 @@ typedef struct llm_req {
     const llm_ctx *ctx;
     const char *key;            /* 0 none */
     const char *user_agent;
+    const char *xhead;          /* extra header lines "Name: value\r\n" added to the head (models.json), 0 none */
     llm_hooks h;
     const llm_sink *sink;
     int retries;                /* 0: 3 */
@@ -125,7 +126,7 @@ typedef struct llm_req {
     int attempts;
     int key_sent;               /* the credential header went out */
     long slept_ms;              /* waits between attempts, summed */
-    char head[1024];            /* the last head sent (the tests read it) */
+    char head[1536];            /* the last head sent (the tests read it) */
     long hn;
 } llm_req;
 

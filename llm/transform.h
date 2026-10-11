@@ -24,5 +24,8 @@ typedef struct llm_view {
 /* 0, -1 out of memory or a message that is not JSON; ts stamps the synthesized results */
 int llm_transform(const char *const *msgs, const long *n, int count, llm_ts ts, llm_view *v);
 void llm_view_free(llm_view *v);
+/* the view's own building blocks (handoff.c): a message appended; a string handed over to be freed with the view */
+int llm_view_put(llm_view *v, const char *m, long n);
+int llm_view_own(llm_view *v, char *p);
 
 #endif
