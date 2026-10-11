@@ -648,5 +648,7 @@ const llm_backend *llm_backend_of(const char *api)
         return &llm_be_anthropic;
     if (api && !strcmp(api, llm_be_openai_chat.api))
         return &llm_be_openai_chat;
+    if (api && !strcmp(api, llm_be_openai_responses.api))
+        return &llm_be_openai_responses;
     return 0;
 }

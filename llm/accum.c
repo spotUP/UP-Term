@@ -325,7 +325,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
         first = 0;
         switch (b->kind) {
         case LB_TEXT:
-            llm_b_text(&c, b->a.p, b->a.n, 0);
+            llm_b_text(&c, b->a.p, b->a.n, b->sig.n ? b->sig.p : 0);
             break;
         case LB_THINKING:
             llm_b_thinking(&c, b->a.p, b->a.n, b->sig.p, b->sig.n, b->redacted);

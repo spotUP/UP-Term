@@ -1,0 +1,6 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_err","object":"response","created_at":1760100000,"status":"in_progress","model":"gpt-5.5-2026-01-01","output":[]}}
+
+event: error
+data: {"type":"error","sequence_number":1,"code":"rate_limit_exceeded","message":"Rate limit reached for gpt-5.5.","param":null}
+

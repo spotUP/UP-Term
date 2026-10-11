@@ -1,0 +1,1 @@
+{"model":"gpt-5.5","input":[{"role":"developer","content":"You are amiga-pi, a coding agent."},{"role":"user","content":[{"type":"input_text","text":"think about it"}]}],"stream":true,"store":false,"max_output_tokens":128000,"reasoning":{"effort":"high","summary":"auto"},"include":["reasoning.encrypted_content"]}

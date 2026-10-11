@@ -13,8 +13,9 @@
  *     model lose their thoughtSignature and get the id this api accepts
  *     (anthropic-messages: [^a-zA-Z0-9_-] -> "_", 64 characters;
  *     openai-completions: "call|item" -> "call_item", at most 40, a hash
- *     when longer; provider openai cuts at 40), and their tool results the
- *     same id;
+ *     when longer; provider openai cuts at 40; openai-responses: "call|item"
+ *     with the item "fc_<hash of the item>" for another provider or api,
+ *     else cleaned, always fc_-prefixed), and their tool results the same id;
  *   - a null content is an empty array.
  * Second pass: llm_transform (transform.h).
  * Portable C89, host-tested (amiga-pi tests/test_pi_model.c). */

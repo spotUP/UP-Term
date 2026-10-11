@@ -1,0 +1,6 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_fail","object":"response","created_at":1760100000,"status":"in_progress","model":"gpt-5.5-2026-01-01","output":[]}}
+
+event: response.failed
+data: {"type":"response.failed","sequence_number":1,"response":{"id":"resp_fail","object":"response","created_at":1760100000,"status":"failed","model":"gpt-5.5-2026-01-01","output":[],"error":{"code":"server_error","message":"The model is overloaded."}}}
+

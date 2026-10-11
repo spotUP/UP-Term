@@ -2,7 +2,8 @@
  * the request head with its credential, the body from pi-ai messages, and
  * the decoder from the API's stream events to the neutral ones
  * (llm/event.h). llm/be_anthropic.c (anthropic-messages, shared with
- * C:Claude) and llm/be_openai_chat.c (openai-completions) implement it;
+ * C:Claude) and llm/be_openai_chat.c (openai-completions) and llm/be_openai_responses.c
+ * (openai-responses) implement it;
  * llm/request.c drives any of them.
  * Portable C89. */
 #ifndef LLM_BACKEND_H
@@ -21,6 +22,7 @@ typedef struct llm_compat {
     int tool_result_name;       /* the tool message carries the tool's name */
     int reasoning_effort;       /* supportsReasoningEffort: the reasoning_effort field */
     int thinking_as_text;       /* requiresThinkingAsText: a thinking block goes back as text */
+    int strict_tools;           /* supportsStrictMode (openai-responses): tools carry "strict":false */
 } llm_compat;
 
 /* pi's thinking levels (ModelThinkingLevel), in order; thinking_map[] is pi's
@@ -66,6 +68,7 @@ typedef struct llm_ctx {
     long tools_n;
     long max_tokens;            /* 0: the model's */
     int thinking;               /* the thinking level, LT_*; clamped to the model's here (llm_think_clamp) */
+    const char *session_id;     /* the session's id (pi's sessionId: openai-responses prompt_cache_key and headers), 0 none */
 } llm_ctx;
 
 typedef struct llm_backend {
@@ -90,10 +93,11 @@ typedef struct llm_backend {
 
 extern const llm_backend llm_be_anthropic;
 extern const llm_backend llm_be_openai_chat;
+extern const llm_backend llm_be_openai_responses;
 
 /* the backend of an api name, 0 none */
 const llm_backend *llm_backend_of(const char *api);
 /* calls of each backend's feed since the start (the reachability tests' sentinel) */
-extern long llm_feeds_anthropic, llm_feeds_openai;
+extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses;
 
 #endif

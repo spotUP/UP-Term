@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "handoff.h"
+#include "../claude/util.h"
 
 #define M32 0xffffffffUL
 
@@ -62,14 +63,75 @@ static void clean_id(char *s)
             *s = '_';
 }
 
-/* the id the target api takes: 1 when it differs from id (written to out) */
-static int norm_id(const llm_model *to, const char *id, char *out, long cap)
+/* openai-responses' normalizeIdPart: [^a-zA-Z0-9_-] -> "_", 64 characters, trailing "_" cut */
+static void id_part(const char *s, long n, char *out, long cap)
+{
+    long i, m = n > 64 ? 64 : n;
+    if (m >= cap)
+        m = cap - 1;
+    memcpy(out, s, (size_t)m);
+    out[m] = 0;
+    clean_id(out);
+    for (i = m; i > 0 && out[i - 1] == '_'; i--)
+        out[i - 1] = 0;
+}
+
+/* openai-responses' normalizeToolCallId (api/openai-responses-shared.js): sp/sa the message's provider and api */
+static void resp_id(const llm_model *to, const char *id, const char *sp, const char *sa, char *out, long cap)
+{
+    const char *bar = strchr(id, '|'), *bar2;
+    char call[80], item[80], tmp[100];
+    int provider_ok = !strcmp(to->provider, "openai") || !strcmp(to->provider, "openai-codex") ||
+                      !strcmp(to->provider, "opencode");
+    if (!provider_ok || !bar) {
+        id_part(id, (long)strlen(id), out, cap);
+        return;
+    }
+    bar2 = strchr(bar + 1, '|');
+    id_part(id, (long)(bar - id), call, sizeof(call));
+    if (strcmp(sp, to->provider) || strcmp(sa, to->api)) {
+        char h[24];
+        llm_short_hash(bar + 1, h, sizeof(h));
+        if (bar2) {
+            char t2[512];
+            long il = (long)(bar2 - bar - 1);
+            if (il >= (long)sizeof(t2))
+                il = (long)sizeof(t2) - 1;
+            memcpy(t2, bar + 1, (size_t)il);
+            t2[il] = 0;
+            llm_short_hash(t2, h, sizeof(h));
+        }
+        cl_copy(tmp, "fc_", sizeof(tmp));
+        cl_cat(tmp, h, sizeof(tmp));
+        if (strlen(tmp) > 64)
+            tmp[64] = 0;
+        strcpy(item, tmp);
+    } else {
+        long il = bar2 ? (long)(bar2 - bar - 1) : (long)strlen(bar + 1);
+        id_part(bar + 1, il, item, sizeof(item));
+    }
+    if (strncmp(item, "fc_", 3)) {
+        cl_copy(tmp, "fc_", sizeof(tmp));
+        cl_cat(tmp, item, sizeof(tmp));
+        id_part(tmp, (long)strlen(tmp), item, sizeof(item));
+    }
+    cl_copy(out, call, cap);
+    cl_cat(out, "|", cap);
+    cl_cat(out, item, cap);
+}
+
+/* the id the target api takes: 1 when it differs from id (written to out); sp/sa: the message's provider and api */
+static int norm_id(const llm_model *to, const char *id, const char *sp, const char *sa, char *out, long cap)
 {
     long l = (long)strlen(id);
     if (l >= cap)
         return 0;
     strcpy(out, id);
-    if (!strcmp(to->api, "anthropic-messages")) {
+    if (!strcmp(to->api, "openai-responses")) {
+        if (cap < 200)
+            return 0;
+        resp_id(to, id, sp, sa, out, cap);
+    } else if (!strcmp(to->api, "anthropic-messages")) {
         clean_id(out);
         if (strlen(out) > 64)
             out[64] = 0;
@@ -221,7 +283,7 @@ static void text_block(jw *o, jv text)
 }
 
 /* an assistant's content array for model `to` */
-static int assistant_content(const llm_model *to, jv c, int same, idmap *ids, jw *o)
+static int assistant_content(const llm_model *to, jv c, int same, const char *sp, const char *sa, idmap *ids, jw *o)
 {
     jit it;
     jv b, t, v;
@@ -269,7 +331,7 @@ static int assistant_content(const llm_model *to, jv c, int same, idmap *ids, jw
             if (json_get(b, "id", &v))
                 json_str(v, id, sizeof(id));
             if (!same && id[0])
-                changed = norm_id(to, id, nid, sizeof(nid));
+                changed = norm_id(to, id, sp, sa, nid, sizeof(nid));
             if (changed && map_add(ids, id, nid))
                 return -1;
             if (drop_sig || changed)
@@ -371,11 +433,17 @@ static int first_pass(const llm_model *to, const char *const *msgs, const long *
             jv p, a, md;
             int same = 0;
             const char *e = "[]";
+            char sp[80], sa[80];
+            sp[0] = sa[0] = 0;
+            if (json_get(m, "provider", &p))
+                json_str(p, sp, sizeof(sp));
+            if (json_get(m, "api", &a))
+                json_str(a, sa, sizeof(sa));
             if (json_get(m, "provider", &p) && json_get(m, "api", &a) && json_get(m, "model", &md))
                 same = json_streq(p, to->provider) && json_streq(a, to->api) && json_streq(md, to->id);
             if (null_c)
                 jw_rawz(&nc, e);
-            else if (assistant_content(to, c, same, &ids, &nc))
+            else if (assistant_content(to, c, same, sp, sa, &ids, &nc))
                 rc = -1;
             if (!rc)
                 rc = rebuild(v, msg, n[i], (long)(c.p - msg), (long)(c.p + c.n - msg), &nc, -1, 0, 0);

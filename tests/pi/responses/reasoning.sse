@@ -1,0 +1,48 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_reason","object":"response","created_at":1760100000,"status":"in_progress","model":"gpt-5.5-2026-01-01","output":[]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"rs_001","type":"reasoning","summary":[]}}
+
+event: response.reasoning_summary_part.added
+data: {"type":"response.reasoning_summary_part.added","sequence_number":2,"output_index":0,"item_id":"rs_001","summary_index":0,"part":{"type":"summary_text","text":""}}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":3,"output_index":0,"item_id":"rs_001","summary_index":0,"delta":"Reading the "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":4,"output_index":0,"item_id":"rs_001","summary_index":0,"delta":"request."}
+
+event: response.reasoning_summary_text.done
+data: {"type":"response.reasoning_summary_text.done","sequence_number":5,"output_index":0,"item_id":"rs_001","summary_index":0,"text":"Reading the request."}
+
+event: response.reasoning_summary_part.done
+data: {"type":"response.reasoning_summary_part.done","sequence_number":6,"output_index":0,"item_id":"rs_001","summary_index":0,"part":{"type":"summary_text","text":"Reading the request."}}
+
+event: response.reasoning_summary_part.added
+data: {"type":"response.reasoning_summary_part.added","sequence_number":7,"output_index":0,"item_id":"rs_001","summary_index":1,"part":{"type":"summary_text","text":""}}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":8,"output_index":0,"item_id":"rs_001","summary_index":1,"delta":"Planning the answer."}
+
+event: response.reasoning_summary_text.done
+data: {"type":"response.reasoning_summary_text.done","sequence_number":9,"output_index":0,"item_id":"rs_001","summary_index":1,"text":"Planning the answer."}
+
+event: response.reasoning_summary_part.done
+data: {"type":"response.reasoning_summary_part.done","sequence_number":10,"output_index":0,"item_id":"rs_001","summary_index":1,"part":{"type":"summary_text","text":"Planning the answer."}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":11,"output_index":0,"item":{"id":"rs_001","type":"reasoning","summary":[{"type":"summary_text","text":"Reading the request."},{"type":"summary_text","text":"Planning the answer."}],"encrypted_content":"gAAAAABencrypted=="}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":12,"output_index":1,"item":{"id":"msg_reason","type":"message","status":"in_progress","content":[],"phase":"final_answer","role":"assistant"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":13,"output_index":1,"item_id":"msg_reason","content_index":0,"delta":"Done."}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":14,"output_index":1,"item":{"id":"msg_reason","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"text":"Done."}],"role":"assistant","phase":"final_answer"}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":15,"response":{"id":"resp_reason","object":"response","created_at":1760100000,"status":"completed","model":"gpt-5.5-2026-01-01","output":[{"id":"rs_001","type":"reasoning","summary":[{"type":"summary_text","text":"Reading the request."},{"type":"summary_text","text":"Planning the answer."}],"encrypted_content":"gAAAAABencrypted=="},{"id":"msg_reason","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"text":"Done."}],"role":"assistant","phase":"final_answer"}],"usage":{"input_tokens":40,"input_tokens_details":{"cached_tokens":0},"output_tokens":120,"output_tokens_details":{"reasoning_tokens":96},"total_tokens":160}}}
+
