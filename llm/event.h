@@ -16,7 +16,7 @@ enum {
     LE_SIG_DELTA,               /* thinking: signature bytes */
     LE_BLOCK_END,
     LE_USAGE,                   /* token counts so far (-1: not in this event) */
-    LE_STOP,                    /* why the answer stopped: stop, stop_raw, stop_detail */
+    LE_STOP,                    /* why the answer stopped: stop, stop_raw, stop_detail; p/n pi-ai's errorMessage when stop is LS_ERROR */
     LE_DONE,                    /* the answer is complete */
     LE_ERROR                    /* the answer failed: stop LS_ERROR or LS_ABORTED, err_type, p/n message */
 };

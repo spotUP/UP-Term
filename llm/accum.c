@@ -33,6 +33,18 @@ static void fail(llm_acc *a, int stop, const char *msg)
     cl_copy(a->err, msg, sizeof(a->err));
 }
 
+/* the event's bytes as a string in m: their length */
+static long ev_text(const llm_event *e, char *m, long cap)
+{
+    long n = e->n < cap - 1 ? e->n : cap - 1;
+    if (!e->p || n < 0)
+        n = 0;
+    if (n)
+        memcpy(m, e->p, (size_t)n);
+    m[n] = 0;
+    return n;
+}
+
 static llm_ablock *find(llm_acc *a, long index)
 {
     int i;
@@ -136,7 +148,10 @@ void llm_acc_event(void *u, const llm_event *e)
             a->usage.cache_write = e->cache_w;
         break;
     case LE_STOP:
-        if (!a->failed)
+        if (e->stop == LS_ERROR) {
+            char m[256];
+            fail(a, LS_ERROR, ev_text(e, m, sizeof(m)) ? m : "error");  /* pi-ai: an error stop ends as an error */
+        } else if (!a->failed)
             a->stop = e->stop;
         copyn(a->stop_raw, sizeof(a->stop_raw), e->stop_raw);
         break;
@@ -148,13 +163,8 @@ void llm_acc_event(void *u, const llm_event *e)
     case LE_ERROR:
         {
             char m[256];
-            long n = e->n < (long)sizeof(m) - 1 ? e->n : (long)sizeof(m) - 1;
-            if (e->p && n > 0)
-                memcpy(m, e->p, (size_t)n);
-            else
-                n = 0;
-            m[n] = 0;
-            fail(a, e->stop == LS_ABORTED ? LS_ABORTED : LS_ERROR, n ? m : e->err_type ? e->err_type : "error");
+            fail(a, e->stop == LS_ABORTED ? LS_ABORTED : LS_ERROR,
+                 ev_text(e, m, sizeof(m)) ? m : e->err_type ? e->err_type : "error");
         }
         a->done = 1;
         break;

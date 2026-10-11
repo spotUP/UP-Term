@@ -258,17 +258,29 @@ static int block_stop(llm_anth_dec *d, jv ev, const llm_sink *k)
     return 0;
 }
 
-static int stop_of(const char *r)
+/* pi-ai's mapStopReason (pi f10993bc anthropic-messages.ts:1613-1638): the
+ * neutral reason, and for an error its message into msg (C:Claude reads
+ * only the raw reason) */
+static int stop_of(const char *r, const char *explanation, char *msg, long cap)
 {
+    msg[0] = 0;
     if (!strcmp(r, "end_turn") || !strcmp(r, "stop_sequence") || !strcmp(r, "pause_turn"))
         return LS_STOP;
-    if (!strcmp(r, "max_tokens") || !strcmp(r, "model_context_window_exceeded"))
+    if (!strcmp(r, "max_tokens"))
         return LS_LENGTH;
     if (!strcmp(r, "tool_use"))
         return LS_TOOLUSE;
+    if (!r[0])
+        return LS_NONE;
     if (!strcmp(r, "refusal"))
-        return LS_ERROR;
-    return r[0] ? LS_STOP : LS_NONE;
+        cl_copy(msg, explanation[0] ? explanation : "The model refused to complete the request", cap);
+    else if (!strcmp(r, "sensitive"))
+        cl_copy(msg, "Provider stopped with: sensitive", cap);
+    else {
+        cl_copy(msg, "Unhandled stop reason: ", cap);
+        cl_cat(msg, r, cap);
+    }
+    return LS_ERROR;
 }
 
 int llm_anth_feed(llm_anth_dec *d, const char *data, long n, const llm_sink *k)
@@ -330,13 +342,17 @@ int llm_anth_feed(llm_anth_dec *d, const char *data, long n, const llm_sink *k)
     else if (json_streq(t, "message_delta")) {
         if (json_get(ev, "delta", &v)) {
             jv sd;
-            char sr[32], cat[32];
-            sr[0] = cat[0] = 0;
+            char sr[32], cat[32], expl[200], msg[240];
+            sr[0] = cat[0] = expl[0] = 0;
             str_field(v, "stop_reason", sr, sizeof(sr));
-            if (json_get(v, "stop_details", &sd) && json_type(sd) == J_OBJ)
+            if (json_get(v, "stop_details", &sd) && json_type(sd) == J_OBJ) {
                 str_field(sd, "category", cat, sizeof(cat));
+                str_field(sd, "explanation", expl, sizeof(expl));
+            }
             llm_event_init(&e, LE_STOP);
-            e.stop = stop_of(sr);
+            e.stop = stop_of(sr, expl, msg, sizeof(msg));
+            e.p = msg;
+            e.n = (long)strlen(msg);
             e.stop_raw = sr;
             e.stop_detail = cat;
             emit(k, &e);

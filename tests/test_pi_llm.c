@@ -1019,6 +1019,131 @@ static void test_lan(void)
     jw_free(&m);
 }
 
+/* PB3/PB2 (pi f10993bc anthropic-messages.ts:1613-1638 mapStopReason,
+ * openai-completions.ts:1562-1586): a stop reason pi-ai calls an error
+ * makes the message an error with pi-ai's words */
+static void stop_case(const llm_backend *be, const char *const *ev, int n, const char *want_stop,
+                      const char *want_err)
+{
+    llm_acc a;
+    llm_sink k;
+    void *d = be->dec_new();
+    jw m;
+    int i;
+    llm_acc_init(&a, be->api, "p");
+    k = llm_acc_sink(&a);
+    for (i = 0; i < n; i += 2)
+        be->feed(d, ev[i], ev[i + 1], (long)strlen(ev[i + 1]), &k);
+    be->dec_free(d);
+    jw_init(&m);
+    llm_acc_message(&a, ts_of(1760100000L, 0), &m);
+    CHECK(m.p && strstr(m.p, want_stop) != 0);
+    if (want_err)
+        CHECK(m.p && strstr(m.p, want_err) != 0);
+    else
+        CHECK(m.p && strstr(m.p, "errorMessage") == 0);
+    if (m.p && (!strstr(m.p, want_stop) || (want_err && !strstr(m.p, want_err))))
+        printf("    message %s\n", m.p);
+    jw_free(&m);
+    llm_acc_free(&a);
+}
+
+#define A_START "{\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"m\",\"usage\":{\"input_tokens\":1}}}"
+#define A_TEXT "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}"
+#define A_END "{\"type\":\"content_block_stop\",\"index\":0}"
+#define A_STOP "{\"type\":\"message_stop\"}"
+#define O_CH(fr) "{\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"},\"finish_reason\":" fr "}]}"
+
+static void test_stops(void)
+{
+    const char *refusal[] = {
+        "message_start", A_START, "content_block_start", A_TEXT, "content_block_stop", A_END,
+        "message_delta", ("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\",\"stop_details\":"
+                         "{\"type\":\"refusal\",\"category\":\"cyber\",\"explanation\":null}}}"),
+        "message_stop", A_STOP };
+    const char *explained[] = {
+        "message_start", A_START,
+        "message_delta", ("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\",\"stop_details\":"
+                         "{\"type\":\"refusal\",\"explanation\":\"Not this.\"}}}"),
+        "message_stop", A_STOP };
+    const char *sensitive[] = {
+        "message_start", A_START,
+        "message_delta", "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"sensitive\"}}",
+        "message_stop", A_STOP };
+    const char *unknown[] = {
+        "message_start", A_START,
+        "message_delta", "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"brand_new\"}}",
+        "message_stop", A_STOP };
+    const char *pause[] = {
+        "message_start", A_START,
+        "message_delta", "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"pause_turn\"}}",
+        "message_stop", A_STOP };
+    const char *o_filter[] = { "", O_CH("\"content_filter\""), "", "[DONE]" };
+    const char *o_end[] = { "", O_CH("\"end\""), "", "[DONE]" };
+    const char *o_new[] = { "", O_CH("\"brand_new\""), "", "[DONE]" };
+    const char *o_len[] = { "", O_CH("\"length\""), "", "[DONE]" };
+
+    stop_case(&llm_be_anthropic, refusal, 10, "\"stopReason\":\"error\"",
+              "\"errorMessage\":\"The model refused to complete the request\"");
+    stop_case(&llm_be_anthropic, explained, 6, "\"stopReason\":\"error\"", "\"errorMessage\":\"Not this.\"");
+    stop_case(&llm_be_anthropic, sensitive, 6, "\"stopReason\":\"error\"",
+              "\"errorMessage\":\"Provider stopped with: sensitive\"");
+    stop_case(&llm_be_anthropic, unknown, 6, "\"stopReason\":\"error\"",
+              "\"errorMessage\":\"Unhandled stop reason: brand_new\"");
+    stop_case(&llm_be_anthropic, pause, 6, "\"stopReason\":\"stop\"", 0);
+    stop_case(&llm_be_openai_chat, o_filter, 4, "\"stopReason\":\"error\"",
+              "\"errorMessage\":\"Provider finish_reason: content_filter\"");
+    stop_case(&llm_be_openai_chat, o_end, 4, "\"stopReason\":\"stop\"", 0);
+    stop_case(&llm_be_openai_chat, o_new, 4, "\"stopReason\":\"error\"",
+              "\"errorMessage\":\"Provider finish_reason: brand_new\"");
+    stop_case(&llm_be_openai_chat, o_len, 4, "\"stopReason\":\"length\"", 0);
+}
+
+/* PB2: pi-ai's compat detection by provider and base URL (pi f10993bc
+ * openai-completions.ts:1593-1690 detectCompat): which token-cap field and
+ * system role a reasoning model's body gets */
+static void compat_case(const char *provider, const char *base, const char *id, const char *cap, const char *role)
+{
+    llm_model m = model_openai(base);
+    llm_ctx c;
+    jw w;
+    m.provider = provider;
+    m.id = id;
+    m.reasoning = 1;
+    c = ctx_of(&m, 1);
+    jw_init(&w);
+    CHECK_INT(llm_be_openai_chat.body(&c, &w), 0);
+    CHECK(w.p && strstr(w.p, cap) != 0);
+    CHECK(w.p && strstr(w.p, role) != 0);
+    if (w.p && (!strstr(w.p, cap) || !strstr(w.p, role)))
+        printf("    %s %s: %.160s\n", provider, base, w.p);
+    jw_free(&w);
+}
+
+static void test_compat(void)
+{
+    const char *mct = "\"max_completion_tokens\":", *mt = "\"max_tokens\":";
+    const char *dev = "{\"role\":\"developer\"", *sys = "{\"role\":\"system\"";
+    compat_case("ollama", "http://192.168.1.10:11434/v1", "q", mct, dev);
+    compat_case("openai", "https://api.openai.com/v1", "o3", mct, dev);
+    compat_case("deepseek", "https://api.deepseek.com/v1", "r", mt, sys);
+    compat_case("x", "https://API.DeepSeek.com/v1", "r", mt, sys);
+    compat_case("x", "https://api.together.xyz/v1", "r", mt, sys);
+    compat_case("moonshotai", "https://example/v1", "k", mt, sys);
+    compat_case("x", "https://api.z.ai/api/paas/v4", "g", mt, sys);
+    compat_case("x", "https://integrate.api.nvidia.com/v1", "n", mt, sys);
+    compat_case("x", "https://llm.chutes.ai/v1", "c", mt, sys);
+    compat_case("x", "https://gateway.ai.cloudflare.com/v1/a/b/compat", "c", mt, sys);
+    compat_case("x", "https://api.ant-ling.com/v1", "l", mt, sys);
+    compat_case("xai", "https://example/v1", "grok", mct, sys);
+    compat_case("cerebras", "https://example/v1", "c", mct, sys);
+    compat_case("opencode", "https://example/v1", "c", mct, sys);
+    compat_case("cloudflare-workers-ai", "https://example/v1", "c", mct, sys);
+    compat_case("openrouter", "https://openrouter.ai/api/v1", "qwen/q", mct, sys);
+    compat_case("openrouter", "https://openrouter.ai/api/v1", "anthropic/claude", mct, dev);
+    compat_case("x", "https://openrouter.ai/api/v1", "openai/o3", mct, dev);
+}
+
 void suite_pi_llm(void)
 {
     test_messages();
@@ -1028,5 +1153,7 @@ void suite_pi_llm(void)
     test_request();
     test_pool();
     test_lan();
+    test_stops();
+    test_compat();
     ps_reset();
 }

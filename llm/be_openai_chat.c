@@ -41,16 +41,54 @@ static int has(const char *s, const char *w)
     return s && strstr(s, w) != 0;
 }
 
+static int is(const char *s, const char *w)
+{
+    return s && !strcmp(s, w);
+}
+
+/* w (lower case) anywhere in s, ignoring case */
+static int has_nocase(const char *s, const char *w)
+{
+    long n = (long)strlen(w);
+    for (; s && *s; s++)
+        if (cl_strnieq(s, w, n))
+            return 1;
+    return 0;
+}
+
+/* pi-ai's detectCompat (pi f10993bc openai-completions.ts:1593-1690) for
+ * the four flags this backend writes: the provider name or the base URL
+ * names a host that needs max_tokens or takes no developer role */
+static llm_compat detect(const llm_model *m)
+{
+    const char *p = m->provider, *u = m->base_url, *id = m->id ? m->id : "";
+    llm_compat c;
+    int zai = is(p, "zai") || is(p, "zai-coding-cn") || has(u, "api.z.ai") || has(u, "open.bigmodel.cn");
+    int together = is(p, "together") || has(u, "api.together.ai") || has(u, "api.together.xyz");
+    int moonshot = is(p, "moonshotai") || is(p, "moonshotai-cn") || has(u, "api.moonshot.");
+    int openrouter = is(p, "openrouter") || has(u, "openrouter.ai");
+    int cf_workers = is(p, "cloudflare-workers-ai") || has(u, "api.cloudflare.com");
+    int cf_gateway = is(p, "cloudflare-ai-gateway") || has(u, "gateway.ai.cloudflare.com");
+    int nvidia = is(p, "nvidia") || has(u, "integrate.api.nvidia.com");
+    int antling = is(p, "ant-ling") || has(u, "api.ant-ling.com");
+    int cerebras = is(p, "cerebras") || has(u, "cerebras.ai");
+    int deepseek = is(p, "deepseek") || has_nocase(u, "deepseek.com");
+    int nonstd = nvidia || cerebras || is(p, "xai") || has(u, "api.x.ai") || together || has(u, "chutes.ai") ||
+                 deepseek || zai || moonshot || is(p, "opencode") || has(u, "opencode.ai") || cf_workers ||
+                 cf_gateway || antling;
+    int or_dev = openrouter && (!strncmp(id, "anthropic/", 10) || !strncmp(id, "openai/", 7));
+    c.developer_role = or_dev || (!nonstd && !openrouter);
+    c.usage_in_streaming = 1;
+    c.max_tokens_field = has(u, "chutes.ai") || deepseek || moonshot || cf_gateway || together || nvidia ||
+                         antling || zai;
+    c.tool_result_name = 0;
+    return c;
+}
+
+/* the detected values, then the model's explicit ones (getCompat :1696) */
 static llm_compat compat_of(const llm_model *m)
 {
-    llm_compat c;
-    /* pi-ai's defaults for a generic endpoint (openai-completions.ts
-     * :1640-1690): developer role yes except OpenRouter-like hosts, usage in
-     * the stream, max_completion_tokens, no name on tool results */
-    c.developer_role = !(has(m->provider, "openrouter") || has(m->base_url, "openrouter.ai"));
-    c.usage_in_streaming = 1;
-    c.max_tokens_field = 0;
-    c.tool_result_name = 0;
+    llm_compat c = detect(m);
     if (m->compat.developer_role != LC_UNSET)
         c.developer_role = m->compat.developer_role;
     if (m->compat.usage_in_streaming != LC_UNSET)
@@ -425,18 +463,17 @@ static int tool_delta(oc_dec *d, const llm_sink *k, jv tc)
     return 0;
 }
 
+/* pi-ai's mapStopReason (pi f10993bc openai-completions.ts:1562-1586) */
 static int stop_of(jv v, char *raw, long cap)
 {
     json_str(v, raw, cap);
-    if (!strcmp(raw, "stop"))
+    if (!strcmp(raw, "stop") || !strcmp(raw, "end"))
         return LS_STOP;
     if (!strcmp(raw, "length"))
         return LS_LENGTH;
     if (!strcmp(raw, "tool_calls") || !strcmp(raw, "function_call"))
         return LS_TOOLUSE;
-    if (!strcmp(raw, "content_filter"))
-        return LS_ERROR;
-    return LS_STOP;
+    return LS_ERROR;            /* content_filter, network_error, anything new: "Provider finish_reason: <it>" */
 }
 
 static int o_feed(void *dv, const char *event, const char *data, long n, const llm_sink *k)
@@ -454,9 +491,16 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
     if (n == 6 && !memcmp(data, "[DONE]", 6)) {
         end_all(d, k);
         if (d->stop) {
+            char msg[64];
             llm_event_init(&e, LE_STOP);
             e.stop = d->stop;
             e.stop_raw = d->stop_raw;
+            if (d->stop == LS_ERROR) {
+                cl_copy(msg, "Provider finish_reason: ", sizeof(msg));
+                cl_cat(msg, d->stop_raw, sizeof(msg));
+                e.p = msg;
+                e.n = (long)strlen(msg);
+            }
             emit(k, &e);
         }
         llm_event_init(&e, LE_DONE);
