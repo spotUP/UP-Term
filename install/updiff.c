@@ -94,10 +94,16 @@ static const char *below(const char *path, const char *from)
     return (!strncmp(path, from, n) && path[n] == '/') ? path + n + 1 : 0;
 }
 
+/* Everything ud_compare and its helpers need that is bigger than a few
+ * bytes lives here, on the heap: the Installer runs upupdate on its own
+ * stack (about 8 KB), and these tables as locals (7 KB for the old kit's
+ * copy drawers alone) overran it into an address error. */
 typedef struct {
     ud_emit emit;
     void *ctx;
     char madedir[UD_MAXPARTS][256];
+    char oldfrom[UD_MAXPARTS][UD_DRAWER], olddrawer[UD_MAXPARTS][UD_DRAWER], oldname[UD_MAXPARTS][UD_NAME];
+    char line[600], dir[256];       /* emit_copy, emit_delete */
 } ud_out;
 
 /* buf = a b c ... joined (0 for the ones not used); 0 when they do not fit */
@@ -126,20 +132,20 @@ static void say(ud_out *o, const ud_part *p, const char *line)
 /* the drawers a file needs (each once in a row), then the copy */
 static void emit_copy(ud_out *o, ud_result *r, ud_part *p, const char *kit, const char *path, const char *rest)
 {
-    char line[600], dir[256];
+    char *line = o->line, *dir = o->dir;
     const char *s;
     size_t k = strlen(kit);
     int pi = (int)(p - r->part);
     for (s = strchr(rest, '/'); s; s = strchr(s + 1, '/')) {
         size_t n = (size_t)(s - rest);
-        if (n >= sizeof(dir)) return;
+        if (n >= sizeof(o->dir)) return;
         memcpy(dir, rest, n);
         dir[n] = 0;
         if (!strncmp(o->madedir[pi], dir, n) && (o->madedir[pi][n] == 0 || o->madedir[pi][n] == '/'))
             continue;   /* made for an earlier file of this drawer */
-        if (!join(line, sizeof(line), "If NOT EXISTS \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0)) return;
+        if (!join(line, sizeof(o->line), "If NOT EXISTS \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0)) return;
         say(o, p, line);
-        join(line, sizeof(line), "  MakeDir \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0);
+        join(line, sizeof(o->line), "  MakeDir \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0);
         say(o, p, line);
         say(o, p, "EndIf");
     }
@@ -148,9 +154,9 @@ static void emit_copy(ud_out *o, ud_result *r, ud_part *p, const char *kit, cons
         memcpy(o->madedir[pi], rest, (size_t)(s - rest));
         o->madedir[pi][s - rest] = 0;
     }
-    if (join(line, sizeof(line), "Copy \"", kit, (k && kit[k - 1] != ':' && kit[k - 1] != '/') ? "/" : "",
+    if (join(line, sizeof(o->line), "Copy \"", kit, (k && kit[k - 1] != ':' && kit[k - 1] != '/') ? "/" : "",
              path, "\" \"UP-Term:", p->drawer, "/", 0) &&
-        strlen(line) + strlen(rest) + 16 < sizeof(line)) {
+        strlen(line) + strlen(rest) + 16 < sizeof(o->line)) {
         strcat(line, rest);
         strcat(line, "\" CLONE QUIET");
     } else
@@ -160,10 +166,10 @@ static void emit_copy(ud_out *o, ud_result *r, ud_part *p, const char *kit, cons
 
 static void emit_delete(ud_out *o, ud_part *p, const char *rest)
 {
-    char line[600];
-    if (!join(line, sizeof(line), "If EXISTS \"UP-Term:", p->drawer, "/", rest, "\"", 0, 0, 0)) return;
+    char *line = o->line;
+    if (!join(line, sizeof(o->line), "If EXISTS \"UP-Term:", p->drawer, "/", rest, "\"", 0, 0, 0)) return;
     say(o, p, line);
-    join(line, sizeof(line), "  Delete \"UP-Term:", p->drawer, "/", rest, "\" QUIET", 0, 0, 0);
+    join(line, sizeof(o->line), "  Delete \"UP-Term:", p->drawer, "/", rest, "\" QUIET", 0, 0, 0);
     say(o, p, line);
     say(o, p, "EndIf");
 }
@@ -179,7 +185,6 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
 {
     ud_list a, b;
     ud_out *o;
-    char oldfrom[UD_MAXPARTS][UD_DRAWER], olddrawer[UD_MAXPARTS][UD_DRAWER], oldname[UD_MAXPARTS][UD_NAME];
     int nold = 0, i = 0, j = 0, all = 0, rc = -1;
     char from[UD_DRAWER], drawer[UD_DRAWER];
     const char *sec;
@@ -202,8 +207,8 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
         strcpy(p->drawer, drawer);
     }
     for (i = 0; i < a.n && nold < UD_MAXPARTS; i++) {
-        if (copy_line(a.l[i].path, oldfrom[nold], olddrawer[nold]) == 1 && strlen(a.l[i].part) < UD_NAME)
-            strcpy(oldname[nold++], a.l[i].part);
+        if (copy_line(a.l[i].path, o->oldfrom[nold], o->olddrawer[nold]) == 1 && strlen(a.l[i].part) < UD_NAME)
+            strcpy(o->oldname[nold++], a.l[i].part);
     }
     i = j = 0;
     while (i < a.n || j < b.n) {
@@ -213,9 +218,9 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
             int moved = 0, k;
             /* a copy part whose drawers moved copies every file again */
             if (p && p->copy && !strncmp(b.l[j].path, "Files/", 6)) {
-                for (k = 0; k < nold && strcmp(oldname[k], p->name); k++)
+                for (k = 0; k < nold && strcmp(o->oldname[k], p->name); k++)
                     ;
-                moved = k == nold || strcmp(oldfrom[k], p->from) || strcmp(olddrawer[k], p->drawer);
+                moved = k == nold || strcmp(o->oldfrom[k], p->from) || strcmp(o->olddrawer[k], p->drawer);
             }
             if (!moved) {
                 i++, j++;
@@ -254,12 +259,12 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
             if (!strcmp(l->part, "-") || !strncmp(l->path, "copy#", 5) || is_section(l->path, &sec)) continue;
             r->gone++;
             if (!(p = part_of(r, l->part))) goto out;
-            for (k = 0; k < nold && strcmp(oldname[k], l->part); k++)
+            for (k = 0; k < nold && strcmp(o->oldname[k], l->part); k++)
                 ;
             if (k < nold) {      /* from an old copy part's drawer */
-                const char *rest = below(l->path, oldfrom[k]);
+                const char *rest = below(l->path, o->oldfrom[k]);
                 ud_part q = *p;
-                strcpy(q.drawer, olddrawer[k]);
+                strcpy(q.drawer, o->olddrawer[k]);
                 if (rest) emit_delete(o, &q, rest);
                 p->run = 1;
             } else

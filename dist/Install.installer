@@ -45,6 +45,12 @@
 (if (not (exists #script))
     (abort "The Files drawer is missing: unpack the whole archive and start Install from its drawer."))
 
+; A volume named UP-Term (the kit's own disk, mounted by that name) clashes
+; with the UP-Term: assign the install makes: UP-Term: then means the disk.
+(if (<> (getassign "UP-Term" "v") "")
+    (abort "A volume named UP-Term is mounted, and it clashes with the UP-Term: assign.\n"
+           "Rename the disk (or the kit's drawer volume) and start Install again."))
+
 ; ---- an installed UP-Term: Update or Full install ---------------------------
 ; (plan 2026-10-08-installer-update) With UP-Term: assigned, its MANIFEST (the
 ; record part of the last install) and that install's options
