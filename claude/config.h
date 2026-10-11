@@ -163,6 +163,11 @@ const char *cfg_kind_name(int kind);    /* "allow" "ask" "deny" */
 int cfg_rule_parse(const char *rule, char *tool, long tcap, char *pat, long pcap);
 /* Claude Code's name of a tool ("read_file" -> "Read"); others as they are */
 const char *cfg_cc_tool(const char *name);
+/* the rule "yes, and don't ask again in this project" keeps for a call of
+ * tool with input: Claude Code's -- "Bash(<first word> *)",
+ * "WebFetch(domain:<host>)", else the tool's name (C:Claude's policy.c,
+ * amiga-pi's gate) */
+void cfg_rule_for(const char *tool, const char *input, long n, char *rule, long cap);
 /* Does the rule cover this call? root resolves relative paths. */
 int cfg_rule_match(const char *rule, const char *tool, jv input, const char *root);
 /* ... a compound Bash line when any part matches (a hook's "if", as hooks.md's table) */

@@ -1066,42 +1066,8 @@ int pol_permission_request(cl_repl *r, const char *tool, const char *input, long
 
 void pol_keep_rule(cl_repl *r, const char *tool, const char *input, long n)
 {
-    const char *cc = cfg_cc_tool(tool);
-    char rule[300], word[64];
-    jv in, x;
-    cl_copy(rule, cc, sizeof(rule));
-    if (input && n > 0 && json_parse(input, n, &in) == 0) {
-        if (!strcmp(cc, "Bash") && json_get(in, "command", &x)) {
-            /* Claude Code's prefix rule: the command's first word */
-            char cmd[200];
-            int k = 0;
-            json_str(x, cmd, sizeof(cmd));
-            while (cmd[k] && cmd[k] != ' ' && cmd[k] != ';' && cmd[k] != '|' && cmd[k] != '&' &&
-                   k < (int)sizeof(word) - 1) {
-                word[k] = cmd[k];
-                k++;
-            }
-            word[k] = 0;
-            if (k) {
-                cl_copy(rule, "Bash(", sizeof(rule));
-                cl_cat(rule, word, sizeof(rule));
-                cl_cat(rule, " *)", sizeof(rule));
-            }
-        } else if (!strcmp(cc, "WebFetch") && json_get(in, "url", &x)) {
-            char url[300], *h, *e;
-            json_str(x, url, sizeof(url));
-            h = strstr(url, "://");
-            if (h) {
-                h += 3;
-                for (e = h; *e && *e != '/' && *e != ':'; e++)
-                    ;
-                *e = 0;
-                cl_copy(rule, "WebFetch(domain:", sizeof(rule));
-                cl_cat(rule, h, sizeof(rule));
-                cl_cat(rule, ")", sizeof(rule));
-            }
-        }
-    }
+    char rule[300];
+    cfg_rule_for(tool, input, n, rule, sizeof(rule));
     if (cfg_write_rule(r->sys, cfg_file(&r->cfg, CFG_LOCAL), RULE_ALLOW, rule, 1) == 0) {
         cfg_add_rule(&r->cfg, RULE_ALLOW, CFG_LOCAL, rule);
         repl_say(r, "Allowed from now on in this project: ", rule);
