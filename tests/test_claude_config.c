@@ -10,6 +10,8 @@
 #define _XOPEN_SOURCE 700
 #define _DARWIN_C_SOURCE
 #include <stdlib.h>
+#include <signal.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include "harness.h"
@@ -24,6 +26,11 @@
 #include "../claude/util.h"
 #include "../claude/datadir.h"
 #include "claude_vol.h"
+
+static void alarm_nop(int sig)
+{
+    (void)sig;
+}
 
 static char dir[512];
 static sys_posix sp;
@@ -700,6 +707,55 @@ static void test_sessions(void)
             CHECK_INT(sys.spawn2_read(sys.u, h, buf, sizeof(buf), 2000), 0); /* its end at once */
             CHECK_INT(sys.spawn2_close(sys.u, h, 2000), 127);
         }
+    }
+    /* the Amiga spawn2's command line (cl_shell_line): a program with Shell special characters quoted, not only
+     * one with a space; a line that does not fit is an error, not cut */
+    {
+        char line[64];
+        static const char *const plain[] = {"python3", "a b", "q\"x", "s*", "nl\n", 0};
+        static const char *const spaced[] = {"Work:My Tools/srv", "x", 0};
+        static const char *const semi[] = {"srv;rm", "-v", 0};
+        static const char *const redir[] = {"srv>out", 0};
+        static const char *const none[] = {"", 0};
+        static const char *const longer[] = {"srv", "0123456789012345678901234567890123456789012345678901234506789012", 0};
+        static const char *const exact[] = {"srv", "012345678901234567890123456789012345678901234567890123450", 0};
+        CHECK_INT(cl_shell_line(line, sizeof(line), plain), 0);
+        CHECK_STR(line, "python3 \"a b\" \"q*\"x\" \"s**\" \"nl*N\"");
+        CHECK_INT(cl_shell_line(line, sizeof(line), spaced), 0);
+        CHECK_STR(line, "\"Work:My Tools/srv\" \"x\"");
+        CHECK_INT(cl_shell_line(line, sizeof(line), semi), 0);
+        CHECK_STR(line, "\"srv;rm\" \"-v\"");
+        CHECK_INT(cl_shell_line(line, sizeof(line), redir), 0);
+        CHECK_STR(line, "\"srv>out\"");
+        CHECK_INT(cl_shell_line(line, sizeof(line), none), 0);
+        CHECK_STR(line, "\"\"");
+        CHECK_INT(cl_shell_line(line, sizeof(line), longer), -1);
+        CHECK_INT(cl_shell_line(line, sizeof(line), exact), 0);     /* 63 characters fit a 64-byte line */
+        CHECK_INT((long)strlen(line), 63);
+    }
+    /* a signal during a wait (Ctrl+C: SIGINT, here a repeating timer) ends spawn2_read with "nothing came" so the
+     * caller can look at its abort key; it must not fall into a blocking read() of a silent child */
+    {
+        static const char *const quiet[] = {"/bin/sh", "-c", "read l; exit 0", 0};
+        struct sigaction sa, old;
+        struct itimerval it, off;
+        char buf[16];
+        void *h = 0;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = alarm_nop;           /* no SA_RESTART: the wait is interrupted */
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGALRM, &sa, &old);
+        memset(&it, 0, sizeof(it));
+        it.it_value.tv_usec = 100000;
+        it.it_interval.tv_usec = 100000;
+        memset(&off, 0, sizeof(off));
+        CHECK_INT(sys.spawn2(sys.u, quiet, 0, 0, &h), 0);
+        setitimer(ITIMER_REAL, &it, 0);
+        CHECK_INT(sys.spawn2_read(sys.u, h, buf, sizeof(buf), 5000), -2);
+        setitimer(ITIMER_REAL, &off, 0);
+        sigaction(SIGALRM, &old, 0);
+        CHECK_INT(sys.spawn2_write(sys.u, h, "\n", 1), 0);
+        CHECK_INT(sys.spawn2_close(sys.u, h, 2000), 0);
     }
     at(home, "home");
     sess_init(&s, &sys, home, "Work:proj");

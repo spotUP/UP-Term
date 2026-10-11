@@ -545,8 +545,11 @@ static long x_spawn2_read(void *u, void *h, char *out, long cap, long ms)
     pf.fd = c->out;
     pf.events = POLLIN;
     pf.revents = 0;
-    if (poll(&pf, 1, (int)ms) == 0)
-        return -2;
+    k = poll(&pf, 1, (int)ms);
+    if (k == 0 || (k < 0 && errno == EINTR))
+        return -2;                  /* nothing came, or a signal: the caller looks at its abort key and asks again */
+    if (k < 0)
+        return -1;
     k = read(c->out, out, (size_t)cap);
     return k < 0 ? -1 : (long)k;
 }
