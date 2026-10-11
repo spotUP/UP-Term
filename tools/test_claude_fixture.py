@@ -128,6 +128,25 @@ class OpenAiRoute(unittest.TestCase):
                 self.assertTrue((ROOT / "tests" / "pi" / (want + ".sse")).is_file())
 
 
+RESPONSES = [
+    ("text", {"model": "m", "input": [{"role": "user", "content": [{"type": "input_text", "text": "hello"}]}]},
+     "responses/plain"),
+    ("startup", {"model": "m", "input": [{"role": "user", "content": [{"type": "input_text", "text": "the startup"}]}]},
+     "responses/tool"),
+    ("after a result", {"model": "m", "input": [{"role": "user", "content": "the startup"},
+                                                  {"type": "function_call_output", "call_id": "c", "output": "x"}]},
+     "responses/plain"),
+]
+
+
+class ResponsesRoute(unittest.TestCase):
+    def test_every_route_picks_its_recording(self):
+        for what, b, want in RESPONSES:
+            with self.subTest(what):
+                self.assertEqual(fx.pick_responses(b), want)
+                self.assertTrue((ROOT / "tests" / "pi" / (want + ".sse")).is_file())
+
+
 class OverHttp(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -176,6 +195,13 @@ class OverHttp(unittest.TestCase):
         # and /v1/messages still answers with the Messages API's recordings
         r, data = self.post({"model": "m", "messages": [{"role": "user", "content": "hello"}]})
         self.assertEqual(data, (ROOT / "tests" / "claude" / "text.sse").read_bytes())
+
+    def test_responses_streams_the_openai_responses_recording(self):
+        for what, b, want in RESPONSES:
+            with self.subTest(what):
+                r, data = self.post(b, "/v1/responses")
+                self.assertEqual(r.status, 200)
+                self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".sse")).read_bytes())
 
     def test_body_not_json_is_400(self):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
