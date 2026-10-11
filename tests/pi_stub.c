@@ -49,6 +49,18 @@ void ps_sse_text(const char *sse, long n, int cut)
     ps.rlen[ps.nresp++] = cut ? -w.n : w.n;     /* negative: close after it */
 }
 
+/* a whole HTTP answer from memory, as it is */
+void ps_http_text(const char *http, long n)
+{
+    char *b = (char *)malloc((size_t)n + 1);
+    if (!b)
+        return;
+    memcpy(b, http, (size_t)n);
+    b[n] = 0;
+    ps.resp[ps.nresp] = b;
+    ps.rlen[ps.nresp++] = n;
+}
+
 /* a recording, the same way */
 void ps_sse(const char *name, int cut)
 {

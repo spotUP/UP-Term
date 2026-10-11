@@ -100,6 +100,21 @@ typedef struct cl_sys {
     /* up to cap bytes of a file from byte off on (amiga-pi's session reader
      * streams a file this way): 0 with *n read (0 past the end), -1; 0 = none */
     int (*pread)(void *u, const char *path, long off, char *out, long cap, long *n);
+    /* A program with its standard input and output on pipes, line by line
+     * (amiga-pi's MCP stdio servers): argv[0] the program, the rest its
+     * arguments (not a shell line); env "NAME=value" entries set for it (0
+     * none); dir its working directory (0 ours). Its standard error goes
+     * nowhere. 0 with *h, -1 (err). 0 = none. On the Amiga the pipes are
+     * PTY: pipe pairs (amiga-pi ARCHITECTURE.md, K1). */
+    int (*spawn2)(void *u, const char *const *argv, const char *const *env, const char *dir, void **h);
+    /* n bytes to its input: 0, -1 when it has gone */
+    int (*spawn2_write)(void *u, void *h, const char *s, long n);
+    /* what its output holds, up to cap, waiting at most ms for the first
+     * byte: the bytes, 0 at its end, -2 nothing came, -1 an error */
+    long (*spawn2_read)(void *u, void *h, char *out, long cap, long ms);
+    /* its input closed, then up to ms for it to end, then it is stopped;
+     * h is gone after: its exit code, -1 not known */
+    long (*spawn2_close)(void *u, void *h, long ms);
 } cl_sys;
 
 #endif

@@ -1,0 +1,18 @@
+data: {"id":"chatcmpl-mcp1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"role":"assistant","content":"Asking both MCP servers."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mcp1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_McpMac","type":"function","function":{"name":"mcp__fake__echo","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mcp1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_McpAmiga","type":"function","function":{"name":"mcp__amiga__echo","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mcp1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"text\":\"from the "}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mcp1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"text\":\"over PTY:\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mcp1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"Amiga\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mcp1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"id":"chatcmpl-mcp1","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[],"usage":{"prompt_tokens":320,"completion_tokens":30,"total_tokens":350}}
+
+data: [DONE]
+

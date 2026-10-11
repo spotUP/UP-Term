@@ -72,11 +72,30 @@ amiga-pi reads its lines from a file through "<": a prompt, "/model fixo/m2", a 
   6e the screen says "Model: fixo/m2, thinking off"
 Visible windows titled "amiga-pi step 6".
 
+Step 10 (K5, K8): MCP. ENVARC:amiga-pi/mcp.json names two servers: "fake",
+tools/fake_mcp.py over streamable HTTP on the Mac at its LAN address (the LAN
+rule's plain http), and "amiga", build/amiga/mcp-echo (a native stdio server)
+on the Amiga, started by spawn2 on PTY: pipe pairs. "amiga-pi -p use the mcp
+tools" against the fixture, whose openai_mcp.sse calls mcp__fake__echo and
+mcp__amiga__echo, then answers openai_final.sse:
+  10a exit code 0, the final text printed
+  10b the Mac's server: one initialize (no session id) and one tools/call with
+      the model's arguments and Mcp-Session-Id, from the Mac's LAN address;
+      its result reached the model (the fixture's log)
+  10c the Amiga's server answered over PTY: ("echo: over PTY: (3 requests)":
+      initialize, tools/list, tools/call reached it) and its result reached
+      the model
+  10d the server ended with amiga-pi (no more mcp-echo in Status than before)
+ENVARC:amiga-pi/mcp.json is removed again. A visible window titled
+"amiga-pi step 10". The tree the binary was built in gives mcp-echo and
+fake_mcp.py (make -C <amiga-pi> amiga build/amiga/mcp-echo).
+
   make build/amiga/pi-llmprobe build/amiga/Claude; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|10]
 """
 import argparse
+import json
 import os
 import pathlib
 import struct
@@ -669,6 +688,92 @@ def step6(port):
         shutil.rmtree(agent, ignore_errors=True)
 
 
+def mac_lan_ip():
+    """the Mac's own LAN address (en0, en1), 0 none"""
+    for ifc in ('en0', 'en1'):
+        r = subprocess.run(['ipconfig', 'getifaddr', ifc], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    return None
+
+
+def step10(port):
+    tree = AMIGA_PI.parents[2]
+    echo = tree / 'build' / 'amiga' / 'mcp-echo'
+    fake = tree / 'tools' / 'fake_mcp.py'
+    for b, hint in ((AMIGA_PI, 'make -C %s amiga' % tree), (echo, 'make -C %s build/amiga/mcp-echo' % tree),
+                    (fake, 'the amiga-pi tree with phase K')):
+        if not b.exists():
+            sys.exit('[ERROR] %s missing: %s' % (b, hint))
+    ip = mac_lan_ip()
+    check('10 the Mac has a LAN address', ip is not None and not ip.startswith('127.'), repr(ip))
+    if not ip:
+        return
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    shutil.copy(echo, VTC / 'mcp-echo')
+    mlog = paths.RIG / 'amigapi_mcp.log'
+    if mlog.exists():
+        mlog.unlink()
+    srv = subprocess.Popen([sys.executable, '-I', str(fake), '--http', '0', '--bind', '0.0.0.0', '--log', str(mlog)],
+                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    first = srv.stdout.readline()
+    mport = int(first.split()[1]) if first.startswith('port ') else 0
+    log = paths.RIG / 'amigapi_fixture10.log'
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    before = c.run('Status')[1].count('mcp-echo')     # servers left by something else are not this run's
+    try:
+        for f in ('pi10.out', 'pi10.rc', 'pi10.status'):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        (VTC / 'pi10-mcp.json').write_text(
+            '{"mcpServers":{"fake":{"url":"http://%s:%d/mcp"},"amiga":{"command":"VTC:mcp-echo"}}}\n' % (ip, mport))
+        ok = run_window('pi10', 'amiga-pi step 10', [
+            'Echo "amiga-pi step 10: MCP over LAN http (the Mac) and over PTY: (the Amiga)"',
+            'If NOT EXISTS ENVARC:amiga-pi',
+            'MakeDir ENVARC:amiga-pi',
+            'EndIf',
+            'Copy VTC:pi10-mcp.json ENVARC:amiga-pi/mcp.json QUIET',
+            'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 --no-session '
+            '-p "use the mcp tools" >VTC:pi10.out' % port,
+            'Echo "rc=$RC" >VTC:pi10.rc',
+            'Wait 3',
+            'Status >VTC:pi10.status',
+            'Delete ENVARC:amiga-pi/mcp.json QUIET',
+            'Type VTC:pi10.out'], 'pi10-done')
+        check('10 the window ended', ok)
+        time.sleep(4)
+        read = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        text, rc, status = read('pi10.out'), read('pi10.rc').strip(), read('pi10.status')
+        check('10a exit code 0', rc == 'rc=0', repr((rc, text[:400])))
+        check('10a the final text', 'SetPatch' in text, repr(text[:400]))
+        msgs = [json.loads(l) for l in open(mlog)] if mlog.exists() else []
+        inits = [m for m in msgs if m['msg'].get('method') == 'initialize']
+        calls = [m for m in msgs if m['msg'].get('method') == 'tools/call']
+        check('10b one initialize, no session id yet', len(inits) == 1 and 'mcp-session-id' not in inits[0]['headers'],
+              repr(inits))
+        check('10b one tools/call with the arguments and the session',
+              len(calls) == 1 and calls[0]['msg']['params'] == {'name': 'echo', 'arguments': {'text': 'from the Amiga'}}
+              and calls[0]['headers'].get('mcp-session-id') == 'sess-1', repr(calls))
+        check('10b from the LAN address', bool(calls) and calls[0]['headers'].get('peer') == ip, repr(calls))
+        lines = open(log).read().splitlines()
+        mac = [l for l in lines if 'tool_result call_McpMac:' in l]
+        ami_ = [l for l in lines if 'tool_result call_McpAmiga:' in l]
+        check("10b the Mac's result reached the model", len(mac) == 1 and 'echo: from the Amiga' in mac[0], repr(mac))
+        check("10c the Amiga's server answered over PTY:",
+              len(ami_) == 1 and 'echo: over PTY: (3 requests)' in ami_[0], repr(ami_))
+        for l in mac + ami_:
+            print('[INFO] ' + l.strip(), flush=True)
+        check('10d the server ended with amiga-pi', status and status.count('mcp-echo') == before,
+              repr((before, status[-400:])))
+    finally:
+        fx.terminate()
+        srv.stdin.close()
+        srv.wait(timeout=10)
+        c.run('Delete RAM:pi10-done VTC:pi10.dos VTC:pi10-mcp.json ENVARC:amiga-pi/mcp.json QUIET')
+
+
 def pathlib_home():
     return pathlib.Path.home()
 
@@ -676,7 +781,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6), help='one step only (default: all)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 10), help='one step only (default: all)')
     a = ap.parse_args()
     if a.step in (None, 1):
         step1(a.port)
@@ -690,6 +795,8 @@ def main():
         step5(a.port + 4)
     if a.step in (None, 6):
         step6(a.port + 5)
+    if a.step in (None, 10):
+        step10(a.port + 9)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 
