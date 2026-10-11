@@ -3,7 +3,10 @@
  * their events interleave in, text and thinking byte for byte, signatures
  * reassembled from their deltas, a tool call's arguments parsed strictly
  * when its block ends (a malformed one makes the message an error, never
- * a crash), usage and the stop reason.
+ * a crash -- except when the answer stopped at its length: then, as pi-ai's
+ * salvage parser does, the arguments are completed as far as they go and
+ * the call kept, so the loop can tell the model it was cut), usage and the
+ * stop reason.
  * Portable C89, host-tested (tests/test_pi_llm.c). */
 #ifndef LLM_ACCUM_H
 #define LLM_ACCUM_H
@@ -15,6 +18,7 @@ typedef struct llm_ablock {
     long index;
     int kind;                   /* LB_* */
     int redacted, done;
+    int bad;                    /* LB_TOOLCALL: its arguments did not parse (settled at the stop) */
     jw a;                       /* text / thinking / argument JSON / raw input JSON */
     jw sig;
     jw raw;                     /* the provider's block (LB_RAW) */

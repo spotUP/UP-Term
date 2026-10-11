@@ -45,6 +45,79 @@ static long ev_text(const llm_event *e, char *m, long cap)
     return n;
 }
 
+/* cut JSON completed as far as it goes (pi-ai's partial-json salvage for an
+ * answer stopped at its length): an open string closed, a dangling ',' or
+ * key dropped, open objects and arrays closed; "{}" when that does not parse */
+static void salvage(jw *w)
+{
+    char st[64];
+    int depth = 0, in_str = 0, esc = 0;
+    long i, cut = -1;
+    jv v;
+    jw o;
+    for (i = 0; i < w->n; i++) {
+        char c = w->p[i];
+        if (in_str) {
+            if (esc)
+                esc = 0;
+            else if (c == '\\')
+                esc = 1;
+            else if (c == '"')
+                in_str = 0;
+        } else if (c == '"')
+            in_str = 1;
+        else if ((c == '{' || c == '[') && depth < (int)sizeof(st))
+            st[depth++] = c;
+        else if ((c == '}' || c == ']') && depth)
+            depth--;
+    }
+    jw_init(&o);
+    jw_raw(&o, w->p, w->n - (esc ? 1 : 0));
+    if (in_str)
+        jw_raw(&o, "\"", 1);
+    while (o.n && (o.p[o.n - 1] == ' ' || o.p[o.n - 1] == ',' || o.p[o.n - 1] == '\n'))
+        o.n--;
+    if (o.n && o.p[o.n - 1] == ':') {
+        /* a key without its value: back to the ',' or '{' before it */
+        for (cut = o.n - 2; cut >= 0 && o.p[cut] != ',' && o.p[cut] != '{'; cut--)
+            ;
+        o.n = cut >= 0 && o.p[cut] == '{' ? cut + 1 : cut >= 0 ? cut : 0;
+    }
+    if (o.p)
+        o.p[o.n] = 0;
+    while (depth > 0)
+        jw_raw(&o, st[--depth] == '{' ? "}" : "]", 1);
+    jw_reset(w);
+    if (!o.oom && o.n && json_parse(o.p, o.n, &v) == 0 && json_type(v) == J_OBJ)
+        jw_raw(w, o.p, o.n);
+    else
+        jw_rawz(w, "{}");
+    jw_free(&o);
+}
+
+/* tool calls whose arguments did not parse: kept and completed when the
+ * answer stopped at its length, else the message is an error */
+static void settle(llm_acc *a)
+{
+    int i;
+    for (i = 0; i < a->nb; i++) {
+        llm_ablock *b = &a->b[i];
+        if (!b->bad)
+            continue;
+        if (a->stop == LS_LENGTH && !a->failed) {
+            salvage(&b->a);
+            b->bad = 0;
+        } else {
+            char m[200];
+            cl_copy(m, "the arguments of tool call ", sizeof(m));
+            cl_cat(m, b->name, sizeof(m));
+            cl_cat(m, " are not valid JSON", sizeof(m));
+            fail(a, LS_ERROR, m);
+            return;
+        }
+    }
+}
+
 static llm_ablock *find(llm_acc *a, long index)
 {
     int i;
@@ -129,13 +202,8 @@ void llm_acc_event(void *u, const llm_event *e)
             break;
         }
         b->done = 1;
-        if (b->kind == LB_TOOLCALL && !args_ok(b)) {
-            char m[200];
-            cl_copy(m, "the arguments of tool call ", sizeof(m));
-            cl_cat(m, b->name, sizeof(m));
-            cl_cat(m, " are not valid JSON", sizeof(m));
-            fail(a, LS_ERROR, m);
-        }
+        if (b->kind == LB_TOOLCALL && !args_ok(b))
+            b->bad = 1;         /* settled once the stop reason is known */
         break;
     case LE_USAGE:
         if (e->in >= 0)
@@ -159,6 +227,7 @@ void llm_acc_event(void *u, const llm_event *e)
         a->done = 1;
         if (!a->failed && !a->stop)
             a->stop = e->stop ? e->stop : LS_STOP;
+        settle(a);
         break;
     case LE_ERROR:
         {
@@ -212,6 +281,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     jw c;
     llm_meta m;
     int i, first = 1, *ord;
+    settle(a);
     ord = (int *)malloc((size_t)(a->nb ? a->nb : 1) * sizeof(int));
     if (!ord)
         return -1;

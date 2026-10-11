@@ -898,6 +898,57 @@ static void test_compat(void)
     compat_case("x", "https://openrouter.ai/api/v1", "openai/o3", mct, dev);
 }
 
+/* an answer cut at its length keeps its last tool call with the arguments
+ * completed as far as they go (pi-ai's salvage); any other stop with bad
+ * arguments is an error (B2) */
+static void salvage_case(const char *args_json_str, const char *fr, const char *want)
+{
+    const char *ev[6];
+    char c1[400], c2[200];
+    llm_acc a;
+    llm_sink k;
+    void *d = llm_be_openai_chat.dec_new();
+    jw m;
+    int i;
+    strcpy(c1, "{\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,"
+               "\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":"
+               "{\"name\":\"read\",\"arguments\":");
+    strcat(c1, args_json_str);
+    strcat(c1, "}}]},\"finish_reason\":null}]}");
+    strcpy(c2, "{\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,"
+               "\"delta\":{},\"finish_reason\":");
+    strcat(c2, fr);
+    strcat(c2, "}]}");
+    ev[0] = "";
+    ev[1] = c1;
+    ev[2] = "";
+    ev[3] = c2;
+    ev[4] = "";
+    ev[5] = "[DONE]";
+    llm_acc_init(&a, "openai-completions", "p");
+    k = llm_acc_sink(&a);
+    for (i = 0; i < 6; i += 2)
+        llm_be_openai_chat.feed(d, ev[i], ev[i + 1], (long)strlen(ev[i + 1]), &k);
+    llm_be_openai_chat.dec_free(d);
+    jw_init(&m);
+    llm_acc_message(&a, ts_of(1760100000L, 0), &m);
+    CHECK(m.p && strstr(m.p, want) != 0);
+    if (m.p && !strstr(m.p, want))
+        printf("    message %s\n", m.p);
+    jw_free(&m);
+    llm_acc_free(&a);
+}
+
+static void test_salvage(void)
+{
+    salvage_case("\"{\\\"path\\\":\\\"S:\"", "\"length\"", "\"arguments\":{\"path\":\"S:\"}");
+    salvage_case("\"{\\\"a\\\":1,\\\"b\\\":\"", "\"length\"", "\"arguments\":{\"a\":1}");
+    salvage_case("\"{\\\"a\\\":[1,2\"", "\"length\"", "\"arguments\":{\"a\":[1,2]}");
+    salvage_case("\"{\\\"a\\\"\"", "\"length\"", "\"arguments\":{}");
+    salvage_case("\"{\\\"path\\\":\\\"S:\"", "\"length\"", "\"stopReason\":\"length\"");
+    salvage_case("\"{\\\"path\\\":\\\"S:\"", "\"tool_calls\"", "\"errorMessage\":\"the arguments of tool call read are not valid JSON\"");
+}
+
 void suite_pi_llm(void)
 {
     test_messages();
@@ -909,5 +960,6 @@ void suite_pi_llm(void)
     test_lan();
     test_stops();
     test_compat();
+    test_salvage();
     ps_reset();
 }

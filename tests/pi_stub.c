@@ -23,15 +23,12 @@ void ps_reset(void)
     jw_init(&ps.log);
 }
 
-/* an SSE recording as a chunked 200 answer (cut: no terminating chunk, the connection closes) */
-void ps_sse(const char *name, int cut)
+/* SSE text as a chunked 200 answer (cut: no terminating chunk, the connection closes) */
+void ps_sse_text(const char *sse, long n, int cut)
 {
-    long n, i;
-    char *sse = claude_load(name, &n);
+    long i;
     jw w;
     static const char hex[] = "0123456789abcdef";
-    if (!sse)
-        return;
     jw_init(&w);
     jw_rawz(&w, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n");
     for (i = 0; i < n; i += 100) {
@@ -48,9 +45,19 @@ void ps_sse(const char *name, int cut)
     }
     if (!cut)
         jw_rawz(&w, "0\r\n\r\n");
-    free(sse);
     ps.resp[ps.nresp] = w.p;
     ps.rlen[ps.nresp++] = cut ? -w.n : w.n;     /* negative: close after it */
+}
+
+/* a recording, the same way */
+void ps_sse(const char *name, int cut)
+{
+    long n;
+    char *sse = claude_load(name, &n);
+    if (!sse)
+        return;
+    ps_sse_text(sse, n, cut);
+    free(sse);
 }
 
 void ps_raw(const char *name)

@@ -38,6 +38,8 @@ extern llm_pool ps_pool;
 void ps_reset(void);
 /* an SSE recording queued as a chunked 200 answer (cut: no last chunk, the connection closes) */
 void ps_sse(const char *name, int cut);
+/* the same from SSE text in memory */
+void ps_sse_text(const char *sse, long n, int cut);
 /* a whole HTTP answer queued as it is in the file */
 void ps_raw(const char *name);
 /* ps_pool over n stub transports */
