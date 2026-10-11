@@ -40,6 +40,8 @@ void ps_reset(void);
 void ps_sse(const char *name, int cut);
 /* the same from SSE text in memory */
 void ps_sse_text(const char *sse, long n, int cut);
+/* a whole HTTP answer from memory, as it is */
+void ps_http_text(const char *http, long n);
 /* a whole HTTP answer queued as it is in the file */
 void ps_raw(const char *name);
 /* ps_pool over n stub transports */

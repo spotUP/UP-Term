@@ -671,6 +671,36 @@ static void test_sessions(void)
         at(p, "t/nothere.txt");
         CHECK_INT(sys.pread(sys.u, p, 0, buf, 16, &got), -1);
     }
+    /* spawn2 (amiga-pi's MCP stdio): a line in, its answer back before anything else is written, the
+     * environment and the directory it was given, EOF on its input ends it, its exit code */
+    {
+        static const char *const argv[] = {"/bin/sh", "-c",
+            "while read l; do echo \"got $l $SP2 $(basename \"$PWD\")\"; done; echo bye; exit 3", 0};
+        static const char *const env[] = {"SP2=env-ok", 0};
+        char dir[700], buf[200];
+        void *h = 0;
+        long n, k = 0;
+        at(dir, "t");
+        CHECK(sys.spawn2 != 0);
+        CHECK_INT(sys.spawn2(sys.u, argv, env, dir, &h), 0);
+        CHECK_INT(sys.spawn2_write(sys.u, h, "ping\n", 5), 0);
+        while (k < (long)sizeof(buf) - 1 && (k == 0 || buf[k - 1] != '\n')) {
+            n = sys.spawn2_read(sys.u, h, buf + k, (long)sizeof(buf) - 1 - k, 5000);
+            if (n <= 0)
+                break;
+            k += n;
+        }
+        buf[k] = 0;
+        CHECK_STR(buf, "got ping env-ok t\n");
+        CHECK_INT(sys.spawn2_read(sys.u, h, buf, sizeof(buf), 50), -2);   /* nothing more until asked */
+        CHECK_INT(sys.spawn2_close(sys.u, h, 2000), 3);
+        {
+            static const char *const bad[] = {"/nonexistent/program", 0};
+            CHECK_INT(sys.spawn2(sys.u, bad, 0, 0, &h), 0);                 /* exec fails in the child */
+            CHECK_INT(sys.spawn2_read(sys.u, h, buf, sizeof(buf), 2000), 0); /* its end at once */
+            CHECK_INT(sys.spawn2_close(sys.u, h, 2000), 127);
+        }
+    }
     at(home, "home");
     sess_init(&s, &sys, home, "Work:proj");
     sess_new(&s, 0x12345678UL * 1000UL);

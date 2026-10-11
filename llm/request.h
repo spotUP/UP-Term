@@ -80,6 +80,11 @@ typedef struct llm_hooks {
     int (*resolve)(void *u, const char *host, unsigned char ip[4]);
     /* llm_request's debug log: the head with the credential redacted, then each event; 0 none */
     void (*log)(void *u, const char *s, long n);
+    /* llm_post: every response header, name in lower case; 0 none */
+    void (*header)(void *u, const char *name, const char *value);
+    /* llm_post: the body of a 2xx answer that is not an event stream (MCP's
+     * application/json answers), as it arrives; 0: kept in errbody as before */
+    void (*body)(void *u, const char *s, long n);
 } llm_hooks;
 
 typedef struct llm_call {
