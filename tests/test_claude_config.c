@@ -632,6 +632,45 @@ static void test_sessions(void)
     sess_slug("DH0:a/very/long/path/to/some/project/called/foobar", slug, sizeof(slug));
     CHECK_INT((long)strlen(slug), 30);
     CHECK(strstr(slug, "called-foobar-") != 0);
+    /* sess_fit, the cut amiga-pi names its own files with: its last max-9 characters, '-', 8 hex digits of the hash */
+    {
+        char nm[80];
+        strcpy(nm, "--Users-spot-Code-vtcon-some-long-path--");
+        sess_fit(nm, 0xabcdef12UL, 25);
+        CHECK_STR(nm, "some-long-path---abcdef12");
+        CHECK_INT((long)strlen(nm), 25);
+        strcpy(nm, "--short--");
+        sess_fit(nm, 0xabcdef12UL, 25);
+        CHECK_STR(nm, "--short--");          /* a name that fits is left alone */
+    }
+    /* cl_uuid: 36 characters, version 4, variant 8..b, the seed moves on */
+    {
+        unsigned long seed = 12345UL;
+        char u1[40], u2[40];
+        cl_uuid(&seed, u1);
+        cl_uuid(&seed, u2);
+        CHECK_INT((long)strlen(u1), 36);
+        CHECK(u1[8] == '-' && u1[13] == '-' && u1[18] == '-' && u1[23] == '-');
+        CHECK(u1[14] == '4' && (u1[19] == '8' || u1[19] == '9' || u1[19] == 'a' || u1[19] == 'b'));
+        CHECK(strcmp(u1, u2) != 0);
+    }
+    /* pread: a range of a file, 0 bytes past its end, an error for a file that is not there */
+    {
+        char p[700], buf[16];
+        long got = -1;
+        put("t/pread.txt", "0123456789");
+        at(p, "t/pread.txt");
+        CHECK(sys.pread != 0);
+        CHECK_INT(sys.pread(sys.u, p, 3, buf, 4, &got), 0);
+        CHECK_INT(got, 4);
+        CHECK(memcmp(buf, "3456", 4) == 0);
+        CHECK_INT(sys.pread(sys.u, p, 8, buf, 16, &got), 0);
+        CHECK_INT(got, 2);
+        CHECK_INT(sys.pread(sys.u, p, 50, buf, 16, &got), 0);
+        CHECK_INT(got, 0);
+        at(p, "t/nothere.txt");
+        CHECK_INT(sys.pread(sys.u, p, 0, buf, 16, &got), -1);
+    }
     at(home, "home");
     sess_init(&s, &sys, home, "Work:proj");
     sess_new(&s, 0x12345678UL * 1000UL);
