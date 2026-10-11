@@ -687,6 +687,41 @@ def _libs():
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 
+def var_check():
+    """--var: Uninstall keeps UP-Term:var on No (the script answers with
+    Set upvardelete NO), a reinstall keeps the old history, Uninstall on Yes
+    removes the drawer with it."""
+    global passed, total
+    passed = total = 0
+    fx = Fixtures()
+    try:
+        fx.take()
+        prepare(None)
+        (VTC / "rununinstall_no").write_text("Set upvardelete NO\nCD VTC:distkit\nExecute Uninstall\n")
+        (VTC / "rununinstall_yes").write_text("Set upvardelete YES\nCD VTC:distkit\nExecute Uninstall\n")
+        run_long('rununinstall')   # whatever an earlier run left
+        run('Delete >NIL: SYS:UP-Term ALL QUIET')
+        rc, out = run_long('runinstall')
+        check(rc == 0, 'var: Install runs', out)
+        run('MakeDir UP-Term:var UP-Term:var/Claude')
+        run('Echo >UP-Term:var/Claude/history "old prompt"')
+        rc, out = run_long('rununinstall_no')
+        check(run('Type SYS:UP-Term/var/Claude/history')[1].strip() == 'old prompt', 'var: Uninstall answered No keeps var/Claude/history', out)
+        check(run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0 and run('List >NIL: SYS:UP-Term/bin')[0] != 0,
+              'var: ... and removes the rest of the drawer', '')
+        check('stayed in SYS:UP-Term/var' in out, 'var: ... and says where the data stayed', out)
+        check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'var: ... and removes the UP-Term: assign', '')
+        rc, out = run_long('runinstall')
+        check(rc == 0 and run('Type SYS:UP-Term/var/Claude/history')[1].strip() == 'old prompt',
+              'var: a reinstall keeps the old history', out)
+        rc, out = run_long('rununinstall_yes')
+        check(run('List >NIL: SYS:UP-Term')[0] != 0, 'var: Uninstall answered Yes removes the drawer with var', out)
+    finally:
+        run('Delete >NIL: SYS:UP-Term ALL QUIET')
+        fx.restore()
+    print('install_rig: passed %d of %d' % (passed, total))
+    return 0 if passed == total else 1
+
 OLD = "SYS:UP-Term"
 NEW = "VTC:Apps/UP-Term"
 
@@ -806,6 +841,9 @@ if __name__ == '__main__':
     if not args or '--move' in args:
         print('install_rig: pass 3, Install over an Install with another DEST (%s then %s)' % (OLD, NEW))
         rc |= move()
+    if '--var' in args:
+        print('install_rig: Uninstall and UP-Term:var')
+        rc |= var_check()
     if '--show-check' in args:
         print('install_rig: the watched window (UPTERM_RIG_SHOW) itself')
         rc |= show_check()

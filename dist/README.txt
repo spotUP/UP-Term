@@ -73,7 +73,9 @@ WHERE IT IS INSTALLED
   is "not installed" to it). To move the drawer later, copy it and change
   that one line and ENVARC:up-term/Dir (or run Install again with DEST).
   Uninstall looks the drawer up through UP-Term: and removes the drawer,
-  the block and the assign.
+  the block and the assign. It asks whether to delete your data in
+  UP-Term:var too (Claude and amiga-pi sessions and history; default No):
+  on No the drawer stays with only var in it, and Uninstall says so.
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
@@ -767,7 +769,7 @@ CLAUDE
   directory, how much of the context is left, the permission mode).
     Enter               sends; a new line: Shift+Enter, \ Enter, or Ctrl+J
     Up / Down           earlier prompts, kept across sessions per start
-                        directory (ENVARC:Claude/history); Ctrl+R searches
+                        directory (UP-Term:var/Claude/history); Ctrl+R searches
                         them all (again: older; Tab edits, Enter sends)
     Ctrl+A/E/K/U/W/Y    start, end, cut to the end / start / white space,
                         put back; Ctrl+_ undoes; a paste stays one block
@@ -798,7 +800,10 @@ CLAUDE
   /compact summarises the conversation and goes on from the summary;
   /context shows how full the context is; /init writes AMIGA.md, notes on
   the start directory that every later session reads; /resume loads the
-  conversation saved after each answer (ENVARC:Claude/session.json).
+  conversation saved after each answer (UP-Term:var/Claude/session.json).
+  Without UP-Term: (the kit not installed) the history and the session stay
+  in ENVARC:Claude. Uninstall asks whether to delete UP-Term:var (default
+  No: everything else goes, var stays); Install and Update never touch it.
   Tools: every call is shown. Reading, listing and searching ask once
   (answer 2 allows all three for the session); writing, editing and
   running a command ask every time unless you answer 2 for that tool; an

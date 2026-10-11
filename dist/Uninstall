@@ -1,6 +1,6 @@
 ; UP-Term uninstall: removes what Install put in and gives back the
 ; ixemul.library and ixnet.library it replaced. XCON:, PTY: and IXPIPE: stay mounted until a reboot.
-; Your history (ENVARC:vtcon.history) and $HOME/.vshrc are kept.
+; Your history (ENVARC:vtcon.history), UP-Term:var (asked, default No) and $HOME/.vshrc are kept.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
 ; CON:/RAW: back to the system's (new windows; open ones keep UP-Term)
@@ -89,7 +89,32 @@ Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   Assign UP-Term:
 EndIf
-Delete >NIL: "$updest" ALL QUIET
+; Your data lives in UP-Term:var (the Claude and amiga-pi sessions and history).
+; Asked, default No: on No everything else goes and var stays where it is.
+; A script can answer for the user: Set upvardelete YES (or NO) before it.
+Set upkeepvar ""
+If EXISTS "$updest/var"
+  If "$upvardelete" EQ "YES"
+    Set upkeepvar ""
+  Else
+    If "$upvardelete" EQ "NO"
+      Set upkeepvar "YES"
+    Else
+      Set upkeepvar "YES"
+      Ask "Also delete your data in UP-Term:var (Claude and amiga-pi sessions and history)? y/N"
+      If WARN
+        Set upkeepvar ""
+      EndIf
+    EndIf
+  EndIf
+EndIf
+If "$upkeepvar" EQ "YES"
+  Delete >NIL: "$updest/~(var|var.info)" ALL QUIET
+  Echo "Your data stayed in $updest/var; delete that drawer to remove it."
+Else
+  Delete >NIL: "$updest" ALL QUIET
+EndIf
+UnSet upkeepvar
 UnSet updest
 ; BebboSSH's library, only when Install put it there (its marker)
 If EXISTS ENVARC:up-term/cryptossh
