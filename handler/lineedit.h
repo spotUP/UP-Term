@@ -285,4 +285,34 @@ void le_menu_close(le_line *le, le_menu *m);
 /* name i */
 const char *le_menu_name(const le_menu *m, int i);
 
+/* Keys typed ahead (owner 2026-10-12, Return held at the vsh prompt). The line editor
+ * works for a reader: it takes a key only while a program asks for input (a Read or a
+ * WAIT_CHAR waits, or a program polls). A key typed while nobody asks waits here,
+ * unechoed, and goes to the editor when the next reader asks, one line at a time, as
+ * a Unix line editor (readline, zle) reads its typeahead from the tty queue after it
+ * drew the prompt. Echoed at once instead, a Return typed while the shell was between
+ * its read and its next prompt went to the screen before that prompt: rows with no
+ * prompt between the prompts, then the prompts written one after another on a line
+ * (rig trace: "KEY ret nreads 0", its CR LF, then the prompt's write). One record per
+ * key: its length, its modifiers, the key code (4 bytes) and the encoded bytes. */
+#define LE_AHEAD_MAX 16384
+typedef struct le_ahead {
+    unsigned char *buf;     /* the records (LE_MALLOC) */
+    long used, cap, at;     /* at: the oldest record not yet taken */
+} le_ahead;
+enum { LE_AHEAD_NOW, LE_AHEAD_HELD, LE_AHEAD_FULL };
+/* A typed key: LE_AHEAD_NOW the editor takes it now (a reader waits and no key waits
+ * before it), LE_AHEAD_HELD it waits, LE_AHEAD_FULL no room: dropped (a tty's full
+ * input queue; the caller beeps). */
+int  le_ahead_key(le_ahead *a, int reader_waits, const unsigned char *b, int n, long key, int mods);
+/* The oldest waiting key for a reader that asks, into b (64 bytes): 0 when none
+ * waits, or while line_waiting (a finished line already waits to be read: the
+ * next key belongs to the line after it, typed after that reader's next prompt). */
+int  le_ahead_next(le_ahead *a, int line_waiting, unsigned char *b, int *n, long *key, int *mods);
+/* Whether any key waits */
+int  le_ahead_any(const le_ahead *a);
+/* Ctrl-C: what was typed ahead goes (a tty flushes its input queue on an interrupt) */
+void le_ahead_clear(le_ahead *a);
+void le_ahead_free(le_ahead *a);
+
 #endif
