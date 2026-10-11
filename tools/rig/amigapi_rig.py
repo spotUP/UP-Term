@@ -57,7 +57,7 @@ directory is UP-Term:var/amiga-pi and the host can read what amiga-pi wrote.
   5b "amiga-pi -c -p again" continues that file (still one file, two user messages, one
      system message) and the request carries the first exchange
   5c the host opens the file the Amiga wrote with pi's own SessionManager
-     (tools/pi_oracle/gen.ts --dump in the amiga-pi tree; skipped when the oracle is not there)
+     (tools/pi_oracle/gen.ts --dump in the tree the binary was built in; skipped when the oracle is not there)
   5d --no-session leaves the directory as it was
 Visible windows titled "amiga-pi step 5".
 
@@ -67,6 +67,7 @@ Visible windows titled "amiga-pi step 5".
 """
 import argparse
 import os
+import pathlib
 import struct
 import shutil
 import subprocess
@@ -134,7 +135,8 @@ def step1(port):
         c.run('Delete RAM:pi1-done VTC:pi1.dos QUIET')
 
 
-AMIGA_PI = paths.repo('amiga-pi') / 'build' / 'amiga' / 'amiga-pi'
+AMIGA_PI = pathlib.Path(os.environ.get('AMIGA_PI_BIN') or
+                        paths.repo('amiga-pi') / 'build' / 'amiga' / 'amiga-pi')   # AMIGA_PI_BIN: another build (a worktree's)
 
 
 def run_window(name, title, lines, done):
@@ -505,7 +507,8 @@ def step5(port):
         check('5a the answer printed', 'Hello from the Amiga!' in text, repr(text[:200]))
         files = session_files()
         check('5a one session file under UP-Term:var/amiga-pi/sessions', len(files) == 1, repr(files))
-        names = [p.name for p in sess.rglob('*')] if sess.exists() else []
+        # FS-UAE keeps protection bits and comments in <name>.uaem beside a file: not an Amiga name
+        names = [p.name for p in sess.rglob('*') if not p.name.endswith('.uaem')] if sess.exists() else []
         check('5a every name at most 30 characters', names and max(len(n) for n in names) <= 30, repr(names))
         check('5a the file name is <YYYYMMDDTHHMMSS>_<8 hex>.jsonl',
               files and re.fullmatch(r'\d{8}T\d{6}_[0-9a-f]{8}\.jsonl', files[0].name) is not None,
@@ -542,7 +545,7 @@ def step5(port):
         check('5b the second request carries the first exchange', 'hello' in said and 'Hello from the Amiga!' in said
               and 'again' in said, repr(said[-300:]))
         # 5c: pi's own code opens the file
-        oracle = paths.repo('amiga-pi') / 'tools' / 'pi_oracle' / 'gen.ts'
+        oracle = AMIGA_PI.parents[2] / 'tools' / 'pi_oracle' / 'gen.ts'     # the tree the binary was built in
         pi_dir = os.environ.get('PI_ORACLE') or str(pathlib_home() / 'Code/amiga-pi/build/pi-oracle/oracle')
         if files and oracle.exists() and os.path.isdir(pi_dir):
             r = subprocess.run(['node', str(oracle), '--dump', str(files[0])], capture_output=True, text=True,
@@ -569,7 +572,6 @@ def step5(port):
 
 
 def pathlib_home():
-    import pathlib
     return pathlib.Path.home()
 
 
