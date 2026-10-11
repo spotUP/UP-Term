@@ -694,30 +694,34 @@ def var_check():
     global passed, total
     passed = total = 0
     fx = Fixtures()
+    # a clean image has a 12 MB system partition: the kit goes to its Work: drive
+    D = 'Work:Apps/UP-Term' if '--os' in os.environ.get('UPTERM_RIG_FLAGS', '') else 'SYS:UP-Term'
     try:
         fx.take()
-        prepare(None)
+        if D.startswith('Work:'):
+            run('MakeDir >NIL: Work:Apps')
+        prepare(D if D.startswith('Work:') else None)
         (VTC / "rununinstall_no").write_text("Set upvardelete NO\nCD VTC:distkit\nExecute Uninstall\n")
         (VTC / "rununinstall_yes").write_text("Set upvardelete YES\nCD VTC:distkit\nExecute Uninstall\n")
         run_long('rununinstall')   # whatever an earlier run left
-        run('Delete >NIL: SYS:UP-Term ALL QUIET')
+        run('Delete >NIL: "%s" ALL QUIET' % D)
         rc, out = run_long('runinstall')
         check(rc == 0, 'var: Install runs', out)
         run('MakeDir UP-Term:var UP-Term:var/Claude')
         run('Echo >UP-Term:var/Claude/history "old prompt"')
         rc, out = run_long('rununinstall_no')
-        check(run('Type SYS:UP-Term/var/Claude/history')[1].strip() == 'old prompt', 'var: Uninstall answered No keeps var/Claude/history', out)
-        check(run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0 and run('List >NIL: SYS:UP-Term/bin')[0] != 0,
+        check(run('Type %s/var/Claude/history' % D)[1].strip() == 'old prompt', 'var: Uninstall answered No keeps var/Claude/history', out)
+        check(run('List >NIL: %s/VERSIONS' % D)[0] != 0 and run('List >NIL: %s/bin' % D)[0] != 0,
               'var: ... and removes the rest of the drawer', '')
-        check('stayed in SYS:UP-Term/var' in out, 'var: ... and says where the data stayed', out)
+        check(('stayed in %s/var' % D) in out, 'var: ... and says where the data stayed', out)
         check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'var: ... and removes the UP-Term: assign', '')
         rc, out = run_long('runinstall')
-        check(rc == 0 and run('Type SYS:UP-Term/var/Claude/history')[1].strip() == 'old prompt',
+        check(rc == 0 and run('Type %s/var/Claude/history' % D)[1].strip() == 'old prompt',
               'var: a reinstall keeps the old history', out)
         rc, out = run_long('rununinstall_yes')
-        check(run('List >NIL: SYS:UP-Term')[0] != 0, 'var: Uninstall answered Yes removes the drawer with var', out)
+        check(run('List >NIL: %s' % D)[0] != 0, 'var: Uninstall answered Yes removes the drawer with var', out)
     finally:
-        run('Delete >NIL: SYS:UP-Term ALL QUIET')
+        run('Delete >NIL: "%s" ALL QUIET' % D)
         fx.restore()
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
