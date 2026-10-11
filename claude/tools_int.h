@@ -1,5 +1,6 @@
 /* tools_int -- what the tool modules share (tools.c, search.c, shells.c,
- * webfetch.c, subagent.c); not for the rest of the program. */
+ * webfetch.c, subagent.c, and amiga-pi's tools_pi.c, which runs pi's tools
+ * on them); not for the rest of the program. */
 #ifndef CL_TOOLS_INT_H
 #define CL_TOOLS_INT_H
 
@@ -24,6 +25,28 @@ int tl_is_binary(const char *s, long n);
 int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, int outside, int show);
 /* a one-line summary for the screen, controls as '?' */
 void tl_summary(char *out, long cap, const char *a, const char *b);
+/* pi_rules: a command's status after its output in res (from start on):
+ * "(no output)" when it wrote nothing, then "Command exited with code N",
+ * "Command timed out after N seconds" or "Command aborted" (pi's words) for
+ * r (sys->run's: SYS_TIMEOUT, SYS_BREAK) and rc. 1 when it failed. */
+int tl_pi_status(jw *res, long start, int r, long rc, int secs);
+
+/* Edit's pieces (tools.c), for pi's edit (edit_orig.c) */
+typedef struct pedit {
+    char *before, *after;
+    long bn, an;
+    int latin, created;
+    long first;                 /* where the first change starts in after */
+} pedit;
+/* the file read into e (before and a copy as after), as UTF-8: 0, -1 (the result written) */
+int tl_edit_load(cl_tools *t, jw *out, const char *id, const char *path, pedit *e);
+void tl_edit_free(pedit *e);
+/* the non-overlapping occurrences of nd in h, *first the first one's place (-1 none) */
+long tl_count_of(const char *h, long hn, const char *nd, long nn, long *first);
+/* UTF-8 back to Latin-1 in place: the new length */
+long tl_utf8_to_latin1(char *s, long n);
+/* the file counts as read (now, with its time) */
+void tl_read_note(cl_tools *t, const char *p);
 
 /* search.c */
 void search_glob(cl_tools *t, jw *out, const char *id, jv in);

@@ -21,9 +21,17 @@ in print mode against the same fixture, with ENV:PI_MEM set:
       still answers PRINT against the fixture and returns 0
 Each in a visible window titled "amiga-pi step 2".
 
+Step 3 (D8): the tools. "amiga-pi -p please edit it" against the fixture,
+whose openai_edit.sse calls edit on RAM:pi-test.txt ("hello" -> "hello from
+the Amiga") and bash "List RAM:", then answers openai_edit_final.sse:
+  3a. RAM:pi-test.txt says "hello from the Amiga"
+  3b. the fixture's log shows edit's result text and List's (pi-test.txt in it)
+  3c. the final text printed, exit code 0
+In a visible window titled "amiga-pi step 3".
+
   make build/amiga/pi-llmprobe build/amiga/Claude; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3]
 """
 import argparse
 import os
@@ -92,7 +100,7 @@ def step1(port):
         c.run('Delete RAM:pi1-done VTC:pi1.dos QUIET')
 
 
-AMIGA_PI = paths.VTCON.parent / 'amiga-pi' / 'build' / 'amiga' / 'amiga-pi'
+AMIGA_PI = paths.repo('amiga-pi') / 'build' / 'amiga' / 'amiga-pi'
 
 
 def run_window(name, title, lines, done):
@@ -159,15 +167,60 @@ def step2(port):
         c.run('Delete RAM:pi2-done VTC:pi2.dos QUIET')
 
 
+def step3(port):
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    log = paths.RIG / 'amigapi_fixture3.log'
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    try:
+        for f in ('pi3.out', 'pi3.rc', 'pi3.file'):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        ok = run_window('pi3', 'amiga-pi step 3', [
+            'Echo "amiga-pi step 3: edit RAM:pi-test.txt and List RAM: through the tools"',
+            'Echo hello >RAM:pi-test.txt',
+            'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 -p "please edit it" '
+            '>VTC:pi3.out' % port,
+            'Echo "rc=$RC" >VTC:pi3.rc',
+            'Type RAM:pi-test.txt >VTC:pi3.file',
+            'Type VTC:pi3.out',
+            'Type RAM:pi-test.txt'], 'pi3-done')
+        check('3 the window ended', ok)
+        time.sleep(4)
+        read = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        text, rc, body = read('pi3.out'), read('pi3.rc').strip(), read('pi3.file')
+        check('3a the file was edited', body.strip() == 'hello from the Amiga', repr(body))
+        lines = open(log).read().splitlines()
+        reqs = [l for l in lines if '/chat/completions' in l and '.sse' in l]
+        check('3b two chat/completions requests', len(reqs) == 2, repr(reqs))
+        edit = [l for l in lines if 'tool_result call_PiEditTest:' in l]
+        lst = [l for l in lines if 'tool_result call_PiListRam:' in l]
+        check('3b edit\'s result reached the fixture',
+              len(edit) == 1 and 'Successfully replaced 1 block(s) in RAM:pi-test.txt.' in edit[0], repr(edit))
+        check('3b List RAM:\'s output reached the fixture', len(lst) == 1 and 'pi-test.txt' in lst[0], repr(lst))
+        for l in edit + lst:
+            print('[INFO] ' + l.strip(), flush=True)
+        check('3c the final text', 'Done: RAM:pi-test.txt now says hello from the Amiga.' in text, repr(text[:300]))
+        check('3c exit code 0', rc == 'rc=0', repr(rc))
+    finally:
+        fx.terminate()
+        c.run('Delete RAM:pi3-done VTC:pi3.dos RAM:pi-test.txt QUIET')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2), help='one step only (default: all)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3), help='one step only (default: all)')
     a = ap.parse_args()
     if a.step in (None, 1):
         step1(a.port)
     if a.step in (None, 2):
         step2(a.port + 1)
+    if a.step in (None, 3):
+        step3(a.port + 2)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 

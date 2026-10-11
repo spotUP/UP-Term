@@ -252,6 +252,13 @@ typedef struct cl_tools {
     int cur;                    /* the tool being run (the result hook's) */
     const char *cur_in;
     long cur_inn;
+    /* amiga-pi (its tools_pi.c runs pi's tools on these): pi's rules where
+     * C:Claude's differ -- Write and Edit need no Read first, Write makes
+     * the missing directories, a command failed when its code is not 0 and
+     * its status follows its output in pi's words, its output is not cut
+     * here (out_inline is the whole capture; amiga-pi truncates). 0 for
+     * C:Claude. */
+    int pi_rules;
 } cl_tools;
 
 /* the shared state (read set, shells) made; 0, -1 out of memory */
@@ -289,6 +296,14 @@ int tools_validate(int tool, jv input, char *err, long cap);
  * JSON (raw is what came). */
 void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
                const char *raw, long rawn, jw *out);
+/* pi's edit (amiga-pi): raw is {path, edits: [{oldText, newText}]} (also
+ * pi's legacy forms: oldText/newText beside path, edits as one object or as
+ * a JSON string). Every oldText is matched against the ORIGINAL file, must
+ * occur there exactly once (exact bytes) and must not overlap another; all
+ * are applied in one write or none is. Edit's loading (a binary file
+ * refused, Latin-1 kept), question and write; pi's words in the results.
+ * Its tool_result block appended to out. */
+void tools_edit_orig(cl_tools *t, const char *id, const char *raw, long rawn, jw *out);
 
 /* A tools list ("Read, Grep", "Bash(make:*) Edit"; "" or "*" all) as a
  * bit set of T_*, bit T_COUNT for WebSearch; "Agent" names Task. */

@@ -52,9 +52,13 @@ stream (A2/A3, and the A4 WP2 tools):
   (--stream NAME answers every request with NAME.sse instead.)
 
 It also answers amiga-pi's POST .../chat/completions (openai-completions)
-from tests/pi/openai_*.sse: after tool results openai_final, a prompt
-naming "startup" or "tool" openai_tools, else openai_text; the log line
-says whether an Authorization header came (over plain http it must not).
+from tests/pi/openai_*.sse: after the results of openai_edit's calls
+openai_edit_final, after other tool results openai_final, a prompt naming
+"edit" openai_edit (edit RAM:pi-test.txt "hello" -> "hello from the Amiga"
+and bash List RAM:; Echo hello >RAM:pi-test.txt first), "startup" or
+"tool" openai_tools, else openai_text; the log line says whether an
+Authorization header came (over plain http it must not), and a line per
+tool result gives its text (the first 300 characters, newlines as \\n).
 
 On the Amiga:  Claude URL=http://<this machine>:8080/v1/messages ROOT=SYS:
 Each request is summarised here: model, messages, tool results, and whether
@@ -131,20 +135,41 @@ PI = os.path.join(HERE, "..", "tests", "pi")
 
 def pick_openai(body):
     """amiga-pi's openai-completions requests (POST .../chat/completions):
-    after tool results -> openai_final.sse, a prompt naming "startup" or
+    after openai_edit's results (call_Pi...) -> openai_edit_final.sse, after other
+    tool results -> openai_final.sse, a prompt naming "edit" -> openai_edit.sse
+    (edit and bash), "startup" or
     "tool" -> openai_tools.sse (read and ls, the arguments in pieces), else
     openai_text.sse."""
     msgs = body.get("messages") or []
     last = msgs[-1] if msgs else {}
     if last.get("role") == "tool":
-        return "openai_final"
+        return "openai_edit_final" if str(last.get("tool_call_id", "")).startswith("call_Pi") else "openai_final"
     content = last.get("content")
     text = content if isinstance(content, str) else " ".join(
         b.get("text", "") for b in (content or []) if isinstance(b, dict))
     text = text.lower()
+    if "edit" in text:
+        return "openai_edit"
     if "startup" in text or "tool" in text:
         return "openai_tools"
     return "openai_text"
+
+
+def tool_tail(msgs):
+    """the tool messages at the end of an openai conversation (the last round's results)"""
+    tail = []
+    for m in reversed(msgs):
+        if m.get("role") != "tool":
+            break
+        tail.insert(0, m)
+    return tail
+
+
+def result_text(m):
+    """a tool message's text, the first 300 characters, newlines as \\n"""
+    c = m.get("content")
+    text = c if isinstance(c, str) else " ".join(b.get("text", "") for b in (c or []) if isinstance(b, dict))
+    return text[:300].replace("\n", "\\n")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -194,6 +219,10 @@ class Handler(BaseHTTPRequestHandler):
         print("[INFO] %s model=%s messages=%d tool_results=%d key_header=%s -> %s.sse" % (
             self.path, body.get("model"), len(msgs), results,
             "PRESENT (wrong!)" if key else "none", name), flush=True)
+        if openai:
+            # the latest tool results' text (amiga-pi's rig checks read it)
+            for m in tool_tail(msgs):
+                print("[INFO]   tool_result %s: %s" % (m.get("tool_call_id"), result_text(m)), flush=True)
         with open(os.path.join(PI if openai else STREAMS, name + ".sse"), "rb") as f:
             data = f.read()
         if self.page_host and name == "tool_fetch":

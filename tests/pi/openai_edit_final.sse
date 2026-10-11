@@ -1,0 +1,8 @@
+data: {"id":"chatcmpl-amiga3","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"role":"assistant","content":"Done: RAM:pi-test.txt now says hello from the Amiga."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga3","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-amiga3","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[],"usage":{"prompt_tokens":500,"completion_tokens":14,"total_tokens":514}}
+
+data: [DONE]
+

@@ -11,6 +11,7 @@
 #include "path.h"
 #include "stream.h"
 #include "util.h"
+#include "datadir.h"            /* dd_mkdirs: pi's write makes the directories */
 
 #define READ_WHOLE (256L * 1024)     /* Read without offset/limit */
 #define READ_PART  (2048L * 1024)    /* Read with them */
@@ -826,12 +827,17 @@ static void rs_note(cl_tools *t, const char *p)
     rs->mtime[i] = m;
 }
 
+void tl_read_note(cl_tools *t, const char *p)
+{
+    rs_note(t, p);
+}
+
 /* 0 may be written; -1 with the reason written as the result */
 static int rs_check(cl_tools *t, jw *out, const char *id, const char *p)
 {
     int i;
-    if (!t->rs)
-        return 0;
+    if (!t->rs || t->pi_rules)
+        return 0;                   /* pi: a write needs no read first */
     i = rs_find(t->rs, p);
     if (i < 0) {
         tl_error(t, out, id, "File has not been read yet. Read it first before writing to it.", 0);
@@ -1088,7 +1094,7 @@ static char *latin1_to_utf8(const char *s, long n, long *on)
 }
 
 /* UTF-8 to Latin-1 in place ('?' for what Latin-1 lacks): the new length */
-static long utf8_to_latin1(char *s, long n)
+long tl_utf8_to_latin1(char *s, long n)
 {
     long i = 0, k = 0;
     unsigned long cp;
@@ -1170,6 +1176,31 @@ void tl_error(cl_tools *t, jw *out, const char *id, const char *a, const char *b
         jw_rawz(&m, b);
     tl_result(t, out, id, m.p ? m.p : a, m.p ? m.n : (long)strlen(a), 1);
     jw_free(&m);
+}
+
+int tl_pi_status(jw *res, long start, int r, long rc, int secs)
+{
+    char num[16];
+    const char *st = 0;
+    if (res->n == start)
+        jw_rawz(res, "(no output)");
+    if (r == SYS_TIMEOUT)
+        st = "Command timed out after ";
+    else if (r == SYS_BREAK)
+        st = "Command aborted";
+    else if (rc != 0)
+        st = "Command exited with code ";
+    if (!st)
+        return 0;
+    jw_rawz(res, "\n\n");
+    jw_rawz(res, st);
+    if (r == SYS_TIMEOUT || r != SYS_BREAK) {
+        cl_ltoa(r == SYS_TIMEOUT ? (long)secs : rc, num);
+        jw_rawz(res, num);
+        if (r == SYS_TIMEOUT)
+            jw_rawz(res, " seconds");
+    }
+    return 1;
 }
 
 int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, int outside, int show)
@@ -1485,7 +1516,13 @@ static void run_write(cl_tools *t, jw *out, const char *id, jv in)
     if (tl_gate(t, out, id, T_WRITE, what, outside, 0))
         goto done;
     if (latin)
-        cn = utf8_to_latin1(content, cn);
+        cn = tl_utf8_to_latin1(content, cn);
+    if (!kind && t->pi_rules) {
+        /* pi: the missing directories are made */
+        char up[512];
+        if (path_parent(full, up, sizeof(up)) == 0 && up[0])
+            dd_mkdirs(t->sys, up);
+    }
     if (t->sys->write(t->sys->u, full, content, cn)) {
         tl_error(t, out, id, "cannot write the file: ", t->sys->err(t->sys->u));
         goto done;
@@ -1506,14 +1543,7 @@ done:
 
 /* ---- Edit and MultiEdit ---- */
 
-typedef struct pedit {
-    char *before, *after;
-    long bn, an;
-    int latin, created;
-    long first;                 /* where the first change starts in after */
-} pedit;
-
-static long count_of(const char *h, long hn, const char *nd, long nn, long *first)
+long tl_count_of(const char *h, long hn, const char *nd, long nn, long *first)
 {
     long i, c = 0;
     *first = -1;
@@ -1537,7 +1567,7 @@ static int apply_one(pedit *e, const char *olds, long on, const char *news, long
         jw_rawz(err, "No changes to make: old_string and new_string are exactly the same.");
         return -1;
     }
-    c = count_of(e->after, e->an, olds, on, &at);
+    c = tl_count_of(e->after, e->an, olds, on, &at);
     if (!c) {
         jw_rawz(err, "String to replace not found in file.\nString: ");
         jw_raw(err, olds, on);
@@ -1577,7 +1607,7 @@ static int apply_one(pedit *e, const char *olds, long on, const char *news, long
     return 0;
 }
 
-static void edit_free(pedit *e)
+void tl_edit_free(pedit *e)
 {
     free(e->before);
     free(e->after);
@@ -1585,7 +1615,7 @@ static void edit_free(pedit *e)
 }
 
 /* the file read into e (before and a copy as after), as UTF-8 */
-static int edit_load(cl_tools *t, jw *out, const char *id, const char *path, pedit *e)
+int tl_edit_load(cl_tools *t, jw *out, const char *id, const char *path, pedit *e)
 {
     char *b = 0;
     long n = 0;
@@ -1689,7 +1719,7 @@ static void run_edit(cl_tools *t, jw *out, const char *id, jv in, int tool)
                 tl_error(t, out, id, "File does not exist: ", full);
                 return;
             }
-            if (rs_check_edit(t, out, id, full, outside, &stale) || edit_load(t, out, id, full, &e))
+            if (rs_check_edit(t, out, id, full, outside, &stale) || tl_edit_load(t, out, id, full, &e))
                 goto done;
         }
     } else {
@@ -1697,7 +1727,7 @@ static void run_edit(cl_tools *t, jw *out, const char *id, jv in, int tool)
             tl_error(t, out, id, "File does not exist: ", full);
             return;
         }
-        if (rs_check_edit(t, out, id, full, outside, &stale) || edit_load(t, out, id, full, &e))
+        if (rs_check_edit(t, out, id, full, outside, &stale) || tl_edit_load(t, out, id, full, &e))
             goto done;
     }
     if (!e.created) {
@@ -1761,7 +1791,7 @@ static void run_edit(cl_tools *t, jw *out, const char *id, jv in, int tool)
     {
         long rn = e.an;
         if (e.latin)
-            rn = utf8_to_latin1(e.after, rn);
+            rn = tl_utf8_to_latin1(e.after, rn);
         if (t->sys->write(t->sys->u, full, e.after, rn)) {
             tl_error(t, out, id, "cannot write the file: ", t->sys->err(t->sys->u));
             goto done;
@@ -1806,7 +1836,7 @@ static void run_edit(cl_tools *t, jw *out, const char *id, jv in, int tool)
     jw_free(&m);
 done:
     jw_free(&err);
-    edit_free(&e);
+    tl_edit_free(&e);
 }
 
 /* ---- Bash (in the foreground) ---- */
@@ -1973,6 +2003,20 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         return;
     }
     jw_init(&res);
+    if (t->pi_rules) {
+        /* pi: the output (as much as sys->run captured), then the status */
+        int failed;
+        jw_raw(&res, buf, n);
+        if (n >= omax)
+            jw_rawz(&res, "\n(output cut at the capture limit)");
+        failed = tl_pi_status(&res, 0, r, rc, secs);
+        if (r == SYS_BREAK)
+            t->stop = 1;            /* Ctrl+C: the prompt stops with the command */
+        tl_result(t, out, id, res.p ? res.p : "", res.n, failed);
+        jw_free(&res);
+        free(buf);
+        return;
+    }
     if (r == SYS_TIMEOUT) {
         jw_rawz(&res, "The command ran out of time (");
         cl_ltoa(secs, num);

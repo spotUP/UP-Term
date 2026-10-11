@@ -95,7 +95,24 @@ OPENAI = [
      "openai_tools"),
     ("after results", {"model": "m", "messages": [{"role": "user", "content": "tool"},
                                                   {"role": "tool", "tool_call_id": "c", "content": "x"}]}, "openai_final"),
+    ("edit (before startup/tool)", {"model": "m", "messages": [{"role": "user", "content": "please edit the tool"}]},
+     "openai_edit"),
+    ("after openai_edit's results", {"model": "m", "messages": [
+        {"role": "user", "content": "please edit it"},
+        {"role": "tool", "tool_call_id": "call_PiEditTest", "content": "ok"},
+        {"role": "tool", "tool_call_id": "call_PiListRam", "content": "pi-test.txt"}]}, "openai_edit_final"),
 ]
+
+
+class ToolResultLog(unittest.TestCase):
+    def test_the_last_rounds_results_are_logged(self):
+        msgs = [{"role": "user", "content": "x"}, {"role": "tool", "tool_call_id": "a", "content": "old"},
+                {"role": "assistant", "content": "y"}, {"role": "tool", "tool_call_id": "b", "content": "one\ntwo"},
+                {"role": "tool", "tool_call_id": "c", "content": [{"type": "text", "text": "z" * 400}]}]
+        tail = fx.tool_tail(msgs)
+        self.assertEqual([m["tool_call_id"] for m in tail], ["b", "c"])
+        self.assertEqual(fx.result_text(tail[0]), "one\\ntwo")
+        self.assertEqual(len(fx.result_text(tail[1])), 300)
 
 
 class OpenAiRoute(unittest.TestCase):
