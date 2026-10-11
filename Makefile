@@ -43,7 +43,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=layers amiga-pi's layering rule over llm/, claude/http.c and UPTERM_ROOT/amiga-pi (tools/check_layers.py)
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py); ONLY=ixemul the patched
 # ixemul's host tests (IXEMUL_SRC/tests/host: its argument line parser)
-test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv
+test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv
 	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
@@ -53,6 +53,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unorm ]; then python3 -I tests/test_unorm.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_search ]; then python3 -I tests/test_pi_search.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = updiff ]; then ./$(BUILD)/updiff_stack_drv; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
@@ -81,6 +82,11 @@ $(BUILD)/unorm_drv: tests/unorm_drv.c claude/unorm.c claude/unorm.h claude/unorm
 $(BUILD)/pi_search_drv: tests/pi_search_drv.c $(CLAUDE_CORE) $(CLAUDE_PI) $(CLAUDE_HDR) $(VIEW_CORE)
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -I. -o $@ tests/pi_search_drv.c $(CLAUDE_CORE) $(CLAUDE_PI) $(VIEW_CORE) tty/bmsg.c handler/clipfmt.c
+
+# ud_compare's stack use against the Amiga budget: plain -O2, NO sanitizers (they inflate frames)
+$(BUILD)/updiff_stack_drv: tests/updiff_stack_drv.c install/updiff.c install/updiff.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I. -o $@ tests/updiff_stack_drv.c install/updiff.c
 
 # vsh's shell core on the host behind a POSIX sh_os (tests/vsh_host.c), and the
 # differential run of tests/bash/probes against bash 5 (tools/bashdiff.py;

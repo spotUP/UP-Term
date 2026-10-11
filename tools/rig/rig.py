@@ -299,9 +299,6 @@ def setup():
         # the clean system partition is 12 MB: the kit goes to a second, roomy
         # drive, Work:, as on an Amiga with System and Work partitions
         (RIG / "work").mkdir(exist_ok=True)
-        small = RIG / "small.hdf"   # 6 MB, for installer_rig's room-check case
-        if not small.exists():
-            subprocess.run(["xdftool", str(small), "create", "size=6M", "+", "format", "Small", "ffs"], check=True, capture_output=True)
         os_image_copy()
     elif not OS32 and not (RIG / "sys.hdf").exists():
         print("copying the system disk (1.5 GB) ...")
@@ -333,11 +330,16 @@ def setup():
     # 16 KB keeps Avail readings honest.
     # The agent sets its commands' stack itself (NP_StackSize 262144, two
     # places in the binary): --stock runs a copy with 16384 there.
+    # The two places are found by the tag, NP_StackSize (0x800003f3), not by
+    # offset: once as move.l #262144,(a0)+ after the tag, once as a TagItem.
+    # Offsets moved between 0.13.0 and 0.13.2.
     if STOCK:
         a = bytearray((RIG / "boot/amiagent").read_bytes())
-        for off in (0x752, 0x14f20):
-            if a[off:off + 4] != bytes.fromhex("00040000"):
-                sys.exit("rig: amiagent's stack constant moved; the --stock patch needs new offsets")
+        offs = [m.end() - 4 for m in re.finditer(
+            rb"\x80\x00\x03\xf3(?:\x20\xfc)?\x00\x04\x00\x00", bytes(a))]
+        if len(offs) != 2:
+            sys.exit(f"rig: amiagent has {len(offs)} NP_StackSize 262144 places, not 2; the --stock patch needs a look")
+        for off in offs:
             a[off:off + 4] = (16384).to_bytes(4, "big")
         (RIG / "boot/amiagent.stock").write_bytes(bytes(a))
     (RIG / "boot/go").write_text(GO.replace("BOOTX:amiagent PORT", "BOOTX:amiagent.stock PORT")
@@ -388,7 +390,7 @@ def setup():
         "hard_drive_2 = %s" % (RIG / "boot"), "hard_drive_2_label = BOOTX",
         "hard_drive_2_priority = %d" % (0 if OS else 10), "joystick_port_1 = none",
         "kickstart_file = %s" % KICK,
-    ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128", "hard_drive_4 = %s" % (RIG / "small.hdf"), "hard_drive_4_priority = -129"] if OS else []) + [
+    ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
         "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
         "window_width = 1280", "window_height = 1024",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
