@@ -20,6 +20,7 @@ void suite_sh_pipe(void);
 void suite_sh_ixargv(void);
 void suite_sh_own(void);
 void suite_histfile(void);
+void suite_pens(void);
 void suite_pty_name(void);
 void suite_bmsg(void);
 void suite_upassign(void);
@@ -79,6 +80,7 @@ static const h_suite suites[] = {
     { "sh_ixargv", suite_sh_ixargv },
     { "sh_own", suite_sh_own },
     { "histfile", suite_histfile },
+    { "pens", suite_pens },
     { "pty_name", suite_pty_name },
     { "bmsg", suite_bmsg },
     { "upassign", suite_upassign },

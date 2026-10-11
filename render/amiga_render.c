@@ -35,22 +35,37 @@ LONG vr_cgx_write_lut(__reg("a6") struct Library *, __reg("a0") APTR src, __reg(
                       __reg("a2") APTR ctab, __reg("d3") UWORD dx, __reg("d4") UWORD dy,
                       __reg("d5") UWORD w, __reg("d6") UWORD h, __reg("d7") UBYTE fmt) = "\tjsr\t-198(a6)";
 
+#include "pen_rule.h"
+
 #define RUN_MAX 256
 
 /* ---- palette ------------------------------------------------------------ */
 
 
-static LONG obtain(vr_render *r, ULONG rgb)
+/* the screen's ObtainBestPen for pen_rule.h: exact (a free entry gets the colour) or the nearest */
+static long best_pen(void *u, unsigned long rgb, int exact)
 {
-    static const struct TagItem tags[] = {
+    static const struct TagItem exact_tags[] = {
+        { OBP_Precision, (ULONG)PRECISION_EXACT },
+        { OBP_FailIfBad, TRUE },
+        { TAG_DONE, 0 }
+    };
+    static const struct TagItem near_tags[] = {
         { OBP_Precision, PRECISION_IMAGE },
         { TAG_DONE, 0 }
     };
     ULONG cr = (rgb >> 16) & 0xFF, cg = (rgb >> 8) & 0xFF, cb = rgb & 0xFF;
+    return ObtainBestPenA((struct ColorMap *)u, cr * 0x01010101UL, cg * 0x01010101UL, cb * 0x01010101UL,
+                          (struct TagItem *)(exact ? exact_tags : near_tags));
+}
+
+/* A palette colour's pen: exact while the map has room, the nearest when it is full (pen_rule.h). One pen to
+ * release either way. */
+static LONG obtain(vr_render *r, ULONG rgb)
+{
     if (!r->cm)
         return -1;
-    return ObtainBestPenA(r->cm, cr * 0x01010101UL, cg * 0x01010101UL, cb * 0x01010101UL,
-                          (struct TagItem *)tags);
+    return (LONG)vr_obtain_rule(best_pen, r->cm, rgb);
 }
 
 /* An ink is what a cell is drawn with: a screen pen, or on a true-colour
