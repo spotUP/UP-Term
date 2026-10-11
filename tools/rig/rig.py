@@ -392,6 +392,9 @@ def setup():
         "kickstart_file = %s" % KICK,
     ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
         "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
+        # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
+        # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
+        "clipboard_sharing = 1",
         "window_width = 1280", "window_height = 1024",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,

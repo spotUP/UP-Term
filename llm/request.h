@@ -102,7 +102,7 @@ typedef struct llm_call {
     long bufcap;
     http_resp *resp;            /* the caller's: status, Retry-After, request id */
     sse *sse;
-    jw *errbody;                /* a refusal's body (up to 16 KB) */
+    jw *errbody;                /* a refusal's body (up to 16 KB); jw_init'd by the caller, emptied (buffer kept) by every llm_post */
     /* out */
     llm_conn *conn;
     int got;                    /* bytes of the answer arrived */

@@ -12,6 +12,10 @@ char *cl_cat(char *dst, const char *src, long cap);
 /* case-insensitive (ASCII) compares */
 int cl_strieq(const char *a, const char *b);
 int cl_strnieq(const char *a, const char *b, long n);
+/* argv as one AmigaDOS Shell command line in line of cap bytes: the program (in quotes only when it holds a
+ * space, tab, quote, * or one of ; < > | & ` $ { } or is empty), then each argument quoted with "*" escapes
+ * (*" ** *N). 0, or -1 when it does not fit (line then holds what fitted; nothing is cut silently). */
+int cl_shell_line(char *line, long cap, const char *const *argv);
 /* a random (version 4) UUID into out (37 bytes) from the generator *seed
  * (an LCG the caller seeds from its clock), *seed advanced */
 void cl_uuid(unsigned long *seed, char *out);

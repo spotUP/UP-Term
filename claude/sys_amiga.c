@@ -537,25 +537,44 @@ static int pty_mounted(void)
     return found;
 }
 
-/* an argument for the Shell's command line: in quotes, with its *, " and newline escaped */
-static void quote_arg(char *line, long cap, const char *a)
+/* the local variables a server is started with (a_spawn2): the value each had before, put back after */
+#define ENV_KEEP 16
+typedef struct env_saved {
+    char name[64];
+    char val[256];
+    int had;
+} env_saved;
+static env_saved env_old[ENV_KEEP];     /* spawn2 runs on one task at a time */
+
+static void env_set(const char *const *env)
 {
-    char one[2];
-    one[1] = 0;
-    cl_cat(line, "\"", cap);
-    for (; *a; a++) {
-        if (*a == '"')
-            cl_cat(line, "*\"", cap);
-        else if (*a == '*')
-            cl_cat(line, "**", cap);
-        else if (*a == '\n')
-            cl_cat(line, "*N", cap);
-        else {
-            one[0] = *a;
-            cl_cat(line, one, cap);
-        }
+    const char *const *e;
+    int n = 0;
+    for (e = env; e && *e && n < ENV_KEEP; e++) {
+        const char *eq = strchr(*e, '=');
+        long k = eq ? (long)(eq - *e) : 0;
+        env_saved *v = &env_old[n];
+        if (k <= 0 || k >= (long)sizeof(v->name))
+            continue;
+        memcpy(v->name, *e, (size_t)k);
+        v->name[k] = 0;
+        v->had = GetVar((STRPTR)v->name, (STRPTR)v->val, sizeof(v->val), GVF_LOCAL_ONLY) >= 0;
+        SetVar((STRPTR)v->name, (STRPTR)(eq + 1), -1, GVF_LOCAL_ONLY);
+        n++;
     }
-    cl_cat(line, "\"", cap);
+    if (n < ENV_KEEP)
+        env_old[n].name[0] = 0;
+}
+
+static void env_restore(void)
+{
+    int n;
+    for (n = 0; n < ENV_KEEP && env_old[n].name[0]; n++) {
+        if (env_old[n].had)
+            SetVar((STRPTR)env_old[n].name, (STRPTR)env_old[n].val, -1, GVF_LOCAL_ONLY);
+        else
+            DeleteVar((STRPTR)env_old[n].name, GVF_LOCAL_ONLY);
+    }
 }
 
 static void read_start(sa_child *c)
@@ -601,8 +620,6 @@ static int a_spawn2(void *u, const char *const *argv, const char *const *env, co
     char id[16], nm[48], line[1024], num[12];
     BPTR in_r = 0, out_w = 0, dl = 0, old = 0;
     sa_child *c;
-    const char *const *e;
-    int i;
     if (!pty_mounted()) {
         cl_copy(s->dos.err, "PTY: is not mounted (the UP-Term kit mounts it)", sizeof(s->dos.err));
         return -1;
@@ -636,28 +653,14 @@ static int a_spawn2(void *u, const char *const *argv, const char *const *env, co
         goto fail;
     }
     /* the command line: the program, then each argument quoted */
-    line[0] = 0;
-    if (strchr(argv[0], ' '))
-        quote_arg(line, sizeof(line), argv[0]);
-    else
-        cl_copy(line, argv[0], sizeof(line));
-    for (i = 1; argv[i]; i++) {
-        cl_cat(line, " ", sizeof(line));
-        quote_arg(line, sizeof(line), argv[i]);
+    if (cl_shell_line(line, sizeof(line), argv)) {
+        cl_copy(s->dos.err, "the server's command line is longer than 1023 bytes", sizeof(s->dos.err));
+        goto fail;
     }
     cl_copy(c->name, "amiga-pi server ", sizeof(c->name));
     cl_cat(c->name, id, sizeof(c->name));
     /* its environment: local variables, which the new Shell copies; ours put back after */
-    for (e = env; e && *e; e++) {
-        const char *eq = strchr(*e, '=');
-        char vn[64];
-        long k = eq ? (long)(eq - *e) : 0;
-        if (k <= 0 || k >= (long)sizeof(vn))
-            continue;
-        memcpy(vn, *e, (size_t)k);
-        vn[k] = 0;
-        SetVar((STRPTR)vn, (STRPTR)(eq + 1), -1, GVF_LOCAL_ONLY);
-    }
+    env_set(env);
     if (dir && *dir) {
         dl = Lock((STRPTR)dir, SHARED_LOCK);
         if (!dl) {
@@ -676,29 +679,11 @@ static int a_spawn2(void *u, const char *const *argv, const char *const *env, co
     }
     if (dl)
         UnLock(CurrentDir(old));
-    for (e = env; e && *e; e++) {
-        const char *eq = strchr(*e, '=');
-        char vn[64];
-        long k = eq ? (long)(eq - *e) : 0;
-        if (k <= 0 || k >= (long)sizeof(vn))
-            continue;
-        memcpy(vn, *e, (size_t)k);
-        vn[k] = 0;
-        DeleteVar((STRPTR)vn, GVF_LOCAL_ONLY);
-    }
+    env_restore();
     *h = c;
     return 0;
 unvar:
-    for (e = env; e && *e; e++) {
-        const char *eq = strchr(*e, '=');
-        char vn[64];
-        long k = eq ? (long)(eq - *e) : 0;
-        if (k <= 0 || k >= (long)sizeof(vn))
-            continue;
-        memcpy(vn, *e, (size_t)k);
-        vn[k] = 0;
-        DeleteVar((STRPTR)vn, GVF_LOCAL_ONLY);
-    }
+    env_restore();
     goto fail;
 oom:
     cl_copy(s->dos.err, "out of memory", sizeof(s->dos.err));
@@ -773,8 +758,12 @@ static long a_spawn2_close(void *u, void *h, long ms)
             t += 100;
         }
     }
-    if (c->pending)
-        return -1;              /* a read still out: its buffer must stay (the child never ended) */
+    if (c->pending) {
+        /* a read still out: its buffer must stay (the child never ended). Its reply, whenever it comes, must
+         * not signal this task (gone by then, or busy with something else): the port ignores it */
+        c->port->mp_Flags = PA_IGNORE;
+        return -1;
+    }
     Close(c->out_r);
     FreeVec(c->sp);
     DeleteMsgPort(c->port);
