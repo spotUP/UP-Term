@@ -407,6 +407,11 @@ $(BUILD)/amiga/pipeprobe: tests/amiga/pipeprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/pipeprobe.c
 
+# amiga-pi K1: which pipe handler gives a spawned child line-buffered stdio and EOF
+$(BUILD)/amiga/spawnprobe: tests/amiga/spawnprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/spawnprobe.c
+
 $(BUILD)/amiga/compprobe: tests/amiga/compprobe.c handler/vtcon_packets.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/compprobe.c

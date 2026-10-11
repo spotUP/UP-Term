@@ -239,6 +239,8 @@ static void header_line(http_resp *r)
         strncpy(r->request_id, v, sizeof(r->request_id) - 1);
         r->request_id[sizeof(r->request_id) - 1] = 0;
     }
+    if (r->header)
+        r->header(r->hu, r->line, v);
 }
 
 /* The header block ended: how the body comes. */

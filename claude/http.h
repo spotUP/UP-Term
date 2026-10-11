@@ -72,6 +72,11 @@ typedef struct http_resp {
     int ll;
     http_body_fn body;
     void *u;
+    /* every header as it arrives, its name in lower case (0 none; set after
+     * http_resp_init): what a protocol needs beyond the fields above (MCP's
+     * Mcp-Session-Id) */
+    void (*header)(void *hu, const char *name, const char *value);
+    void *hu;
 } http_resp;
 
 void http_resp_init(http_resp *r, http_body_fn body, void *u);

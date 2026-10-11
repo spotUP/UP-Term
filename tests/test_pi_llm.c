@@ -669,6 +669,119 @@ static void test_pool(void)
     CHECK_INT(llm_pool_open(&ps_pool), 0);
 }
 
+/* MCP over HTTP (amiga-pi K3) on llm_post: every response header reaches the header hook (the session id),
+ * a 2xx application/json body reaches the body hook whole (not cut at errbody's 16 KB), an event stream
+ * still goes to the SSE events, and without the hooks a JSON answer stays in errbody as before */
+static jw hk_hdr, hk_body, hk_ev;
+static void hk_header(void *u, const char *name, const char *value)
+{
+    (void)u;
+    jw_rawz(&hk_hdr, name);
+    jw_rawz(&hk_hdr, "=");
+    jw_rawz(&hk_hdr, value);
+    jw_rawz(&hk_hdr, ";");
+}
+static void hk_bodyfn(void *u, const char *s, long n)
+{
+    (void)u;
+    jw_raw(&hk_body, s, n);
+}
+static void hk_event(void *u, const char *event, const char *data, long n)
+{
+    (void)u;
+    (void)event;
+    jw_raw(&hk_ev, data, n);
+    jw_rawz(&hk_ev, "|");
+}
+static int hk_head(void *u, const char **head, long *hn)
+{
+    static const char h[] = "POST /mcp HTTP/1.1\r\nHost: nas.lan\r\nContent-Length: 2\r\n\r\n";
+    (void)u;
+    *head = h;
+    *hn = (long)sizeof(h) - 1;
+    return 0;
+}
+static void test_post_hooks(void)
+{
+    static char buf[4096];
+    http_resp resp;
+    sse ss;
+    jw eb;
+    llm_call c;
+    jw big;
+    long i;
+    jw_init(&hk_hdr);
+    jw_init(&hk_body);
+    jw_init(&hk_ev);
+    jw_init(&eb);
+    jw_init(&big);
+    jw_rawz(&big, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"t\":\"");
+    for (i = 0; i < 30000; i++)
+        jw_raw(&big, "x", 1);
+    jw_rawz(&big, "\"}}");
+    ps_reset();
+    ps_pool_up(LLM_POOL);
+    {
+        jw a;
+        jw_init(&a);
+        jw_rawz(&a, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nMcp-Session-Id: abc-123\r\n");
+        jw_rawz(&a, "Content-Length: ");
+        jw_long(&a, big.n);
+        jw_rawz(&a, "\r\n\r\n");
+        jw_raw(&a, big.p, big.n);
+        ps_http_text(a.p, a.n);
+        jw_free(&a);
+    }
+    memset(&c, 0, sizeof(c));
+    c.pool = &ps_pool;
+    c.host = "nas.lan";
+    c.port = 80;
+    c.body = "{}";
+    c.bn = 2;
+    c.h.head = hk_head;
+    c.h.header = hk_header;
+    c.h.body = hk_bodyfn;
+    c.h.event = hk_event;
+    c.idle_ms = 5000;
+    c.buf = buf;
+    c.bufcap = sizeof(buf);
+    c.resp = &resp;
+    c.sse = &ss;
+    c.errbody = &eb;
+    CHECK_INT(llm_post(&c), LP_OK);
+    CHECK_INT(resp.status, 200);
+    CHECK(hk_hdr.p && strstr(hk_hdr.p, "mcp-session-id=abc-123;") != 0);
+    CHECK(hk_hdr.p && strstr(hk_hdr.p, "content-type=application/json;") != 0);
+    CHECK_INT(hk_body.n, big.n);
+    CHECK(hk_body.p && !memcmp(hk_body.p, big.p, (size_t)big.n));
+    CHECK_INT(eb.n, 0);
+    /* an event stream on the same call: its events, nothing in the body hook */
+    jw_free(&hk_body);
+    jw_init(&hk_body);
+    {
+        static const char ev[] = "event: message\ndata: {\"id\":2}\n\n";
+        ps_sse_text(ev, (long)sizeof(ev) - 1, 0);
+    }
+    CHECK_INT(llm_post(&c), LP_OK);
+    CHECK(hk_ev.p && strstr(hk_ev.p, "{\"id\":2}|") != 0);
+    CHECK_INT(hk_body.n, 0);
+    /* without the hooks: a JSON answer kept in errbody, cut at 16 KB, as before */
+    c.h.header = 0;
+    c.h.body = 0;
+    {
+        static const char an[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 7\r\n\r\n{\"a\":1}";
+        ps_http_text(an, (long)sizeof(an) - 1);
+    }
+    CHECK_INT(llm_post(&c), LP_OK);
+    CHECK_INT(eb.n, 7);
+    llm_pool_close(&ps_pool);
+    jw_free(&hk_hdr);
+    jw_free(&hk_body);
+    jw_free(&hk_ev);
+    jw_free(&eb);
+    jw_free(&big);
+}
+
 /* B8, B9: plain http only on the LAN, no key over it, a notice once; the log never holds the key */
 static void test_lan(void)
 {
@@ -968,6 +1081,7 @@ void suite_pi_llm(void)
     test_openai_bodies();
     test_request();
     test_pool();
+    test_post_hooks();
     test_lan();
     test_stops();
     test_compat();

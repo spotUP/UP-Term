@@ -140,6 +140,8 @@ static void on_body(void *u, const char *s, long n)
     llm_call *c = (llm_call *)u;
     if (c->resp->status == 200 && c->resp->event_stream)
         sse_feed(c->sse, s, n);
+    else if (c->h.body && c->resp->status >= 200 && c->resp->status < 300)
+        c->h.body(c->h.u, s, n);
     else if (c->errbody->n < 16384)
         jw_raw(c->errbody, s, n);
 }
@@ -198,6 +200,8 @@ top:
             return LP_SEND;
         }
         http_resp_init(c->resp, on_body, c);
+        c->resp->header = c->h.header;
+        c->resp->hu = c->h.u;
         sse_init(c->sse, on_sse, c);
         jw_init(c->errbody);
         c->bad = 0;

@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <poll.h>
 #include "sys_posix.h"
 #include "util.h"
 
@@ -446,6 +447,137 @@ static int x_rename(void *u, const char *from, const char *to)
     return 0;
 }
 
+/* ---- spawn2: a child on two pipes ---- */
+typedef struct sp_child {
+    pid_t pid;
+    int in, out;                /* our ends: its standard input, its standard output */
+} sp_child;
+
+static int x_spawn2(void *u, const char *const *argv, const char *const *env, const char *dir, void **h)
+{
+    sys_posix *p = (sys_posix *)u;
+    int to[2], from[2];
+    pid_t pid;
+    sp_child *c;
+    if (!argv || !argv[0]) {
+        cl_copy(p->err, "no program", sizeof(p->err));
+        return -1;
+    }
+    c = (sp_child *)malloc(sizeof(*c));
+    if (!c) {
+        cl_copy(p->err, "out of memory", sizeof(p->err));
+        return -1;
+    }
+    if (pipe(to)) {
+        set_err(p, "pipe");
+        free(c);
+        return -1;
+    }
+    if (pipe(from)) {
+        set_err(p, "pipe");
+        close(to[0]);
+        close(to[1]);
+        free(c);
+        return -1;
+    }
+    signal(SIGPIPE, SIG_IGN);  /* a write to a child that has gone is -1, not the end of us */
+    pid = fork();
+    if (pid < 0) {
+        set_err(p, "fork");
+        close(to[0]);
+        close(to[1]);
+        close(from[0]);
+        close(from[1]);
+        free(c);
+        return -1;
+    }
+    if (!pid) {
+        int nul = open("/dev/null", O_WRONLY);
+        setpgid(0, 0);
+        dup2(to[0], 0);
+        dup2(from[1], 1);
+        dup2(nul, 2);
+        close(to[0]);
+        close(to[1]);
+        close(from[0]);
+        close(from[1]);
+        if (dir && *dir && chdir(dir))
+            _exit(127);
+        for (; env && *env; env++)
+            putenv((char *)*env);
+        execvp(argv[0], (char *const *)argv);
+        _exit(127);
+    }
+    setpgid(pid, pid);
+    close(to[0]);
+    close(from[1]);
+    fcntl(to[1], F_SETFD, FD_CLOEXEC);
+    fcntl(from[0], F_SETFD, FD_CLOEXEC);
+    c->pid = pid;
+    c->in = to[1];
+    c->out = from[0];
+    *h = c;
+    return 0;
+}
+
+static int x_spawn2_write(void *u, void *h, const char *s, long n)
+{
+    sp_child *c = (sp_child *)h;
+    (void)u;
+    while (n > 0) {
+        ssize_t k = write(c->in, s, (size_t)n);
+        if (k < 0 && errno == EINTR)
+            continue;
+        if (k <= 0)
+            return -1;
+        s += k;
+        n -= (long)k;
+    }
+    return 0;
+}
+
+static long x_spawn2_read(void *u, void *h, char *out, long cap, long ms)
+{
+    sp_child *c = (sp_child *)h;
+    struct pollfd pf;
+    ssize_t k;
+    (void)u;
+    pf.fd = c->out;
+    pf.events = POLLIN;
+    pf.revents = 0;
+    if (poll(&pf, 1, (int)ms) == 0)
+        return -2;
+    k = read(c->out, out, (size_t)cap);
+    return k < 0 ? -1 : (long)k;
+}
+
+static long x_spawn2_close(void *u, void *h, long ms)
+{
+    sp_child *c = (sp_child *)h;
+    int st, sig;
+    long t, rc = -1;
+    (void)u;
+    close(c->in);
+    /* the spec's shutdown, as pi's stdio transport: input closed, a grace time, SIGTERM, SIGKILL to its group */
+    for (sig = 0; sig < 3; sig++) {
+        if (sig == 1)
+            kill(-c->pid, SIGTERM);
+        else if (sig == 2)
+            kill(-c->pid, SIGKILL);
+        for (t = 0; t <= (sig ? 2000 : ms); t += 10) {
+            if (waitpid(c->pid, &st, WNOHANG) == c->pid) {
+                rc = WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+                sig = 3;
+                break;
+            }
+            usleep(10000);
+        }
+    }
+    close(c->out);
+    free(c);
+    return rc;
+}
+
 void sys_posix_init(sys_posix *p, cl_sys *s)
 {
     memset(p, 0, sizeof(*p));
@@ -476,4 +608,8 @@ void sys_posix_init(sys_posix *p, cl_sys *s)
     s->rename = x_rename;
     s->quiet_kind = 0;          /* kind() asks nothing on the host */
     s->pread = x_pread;
+    s->spawn2 = x_spawn2;
+    s->spawn2_write = x_spawn2_write;
+    s->spawn2_read = x_spawn2_read;
+    s->spawn2_close = x_spawn2_close;
 }

@@ -96,6 +96,10 @@ OPENAI = [
     ("after results", {"model": "m", "messages": [{"role": "user", "content": "tool"},
                                                   {"role": "tool", "tool_call_id": "c", "content": "x"}]}, "openai_final"),
     ("shell", {"model": "m", "messages": [{"role": "user", "content": "ask the shell"}]}, "openai_shell"),
+    ("mcp", {"model": "m", "messages": [{"role": "user", "content": "use the mcp tools"}]}, "openai_mcp"),
+    ("after the mcp results", {"model": "m", "messages": [
+        {"role": "user", "content": "use the mcp tools"},
+        {"role": "tool", "tool_call_id": "call_McpMac", "content": "echo: from the Amiga"}]}, "openai_final"),
     ("edit (before startup/tool)", {"model": "m", "messages": [{"role": "user", "content": "please edit the tool"}]},
      "openai_edit"),
     ("after openai_edit's results", {"model": "m", "messages": [
