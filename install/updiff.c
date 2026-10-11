@@ -95,9 +95,12 @@ static const char *below(const char *path, const char *from)
 }
 
 /* Everything ud_compare and its helpers need that is bigger than a few
- * bytes lives here, on the heap: the Installer runs upupdate on its own
- * stack (about 8 KB), and these tables as locals (7 KB for the old kit's
- * copy drawers alone) overran it into an address error. */
+ * bytes lives here, on the heap: the Installer runs upupdate on a child
+ * stack that is probably the 4096-byte DOS default (inferred; the rig showed
+ * the old binary crashing at 4096), and these tables as locals (7 KB for the
+ * old kit's copy drawers alone) ran the stack into the memory below it. The
+ * jump into that garbage ended in an illegal-instruction alert (80000004).
+ * tests/updiff_stack_drv.c holds the stack use to a budget. */
 typedef struct {
     ud_emit emit;
     void *ctx;

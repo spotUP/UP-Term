@@ -190,57 +190,6 @@ static void bad_manifests(void)
     CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, 0, 0), -1);   /* not sorted */
 }
 
-/* The Installer runs upupdate on its own stack, and a stale manifest crashed
- * it with an address error (Software Failure 80000004): ud_compare kept 7 KB
- * of tables as locals and the stack ran out. The comparison must stay in a
- * few KB of stack however many parts and files there are. Measured by
- * painting the stack below this frame, running the call, and finding the
- * deepest byte it changed. */
-#define PROBE 24576
-#define STACK_LIMIT 8192   /* host build with the sanitizers: 3.7 and 5.8 KB fixed, 11 and 14 KB before */
-#if defined(__GNUC__)
-#define UD_NOINLINE __attribute__((noinline, no_sanitize_address))
-#else
-#define UD_NOINLINE
-#endif
-
-/* mode 0: paint PROBE bytes below the caller; mode 1: how deep the call in between went */
-static UD_NOINLINE long stack_probe(int mode)
-{
-    volatile unsigned char buf[PROBE];
-    long i;
-    if (mode == 0) {
-        for (i = 0; i < PROBE; i++) buf[i] = 0xA5;
-        return 0;
-    }
-    for (i = 0; i < PROBE && buf[i] == 0xA5; i++)
-        ;
-    return PROBE - i;
-}
-
-/* the update check against a stale manifest: every copy part differs and the old kit is gone */
-static void stack_use(void)
-{
-    static char a[2048], b[2048];
-    static ud_result r;
-    long same, changed;
-    build(a, old_lines);
-    build(b, old_lines);
-    stack_probe(0);
-    CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, 0, 0), 0);
-    same = stack_probe(1);
-    build(a, old_lines);
-    build(b, new_lines);
-    out[0] = 0;
-    stack_probe(0);
-    CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, collect, 0), 0);
-    changed = stack_probe(1);
-    printf("  updiff stack: unchanged %ld bytes, changed %ld bytes\n", same, changed);
-    CHECK(same > 0 && changed > 0);   /* the probe saw the call */
-    CHECK(same < STACK_LIMIT);
-    CHECK(changed < STACK_LIMIT);
-}
-
 void suite_updiff(void)
 {
     same_kit();
@@ -249,5 +198,4 @@ void suite_updiff(void)
     script_sections();
     gone_and_unowned();
     bad_manifests();
-    stack_use();
 }
