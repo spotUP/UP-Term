@@ -38,6 +38,7 @@ typedef struct llm_meta {       /* an assistant message's own fields */
     const char *api;            /* "anthropic-messages", "openai-completions", ... */
     const char *provider;       /* "anthropic", "openai", "ollama", ... */
     const char *model;
+    const char *response_model; /* responseModel: the model the server says it used, when not model; 0 none */
     llm_usage usage;
     int stop;                   /* LS_* */
     const char *error;          /* errorMessage, 0 none */
