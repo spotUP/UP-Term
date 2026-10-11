@@ -23,9 +23,10 @@ void cl_uuid(unsigned long *seed, char *out);
  * buffer (for ReadArgs). A program that takes its arguments from registers leaves the copy unread and dos.library counts
  * it as read-ahead of the file, so a redirected input starts with "arg arg" instead of the file's first line. Given the
  * handle's buffer (buf, the next unread position pos, the end of the buffered bytes) and GetArgStr()'s text: the number
- * of bytes to read out (the argument line's length) when the buffer holds exactly that line, else 0 (a handle with real
- * read-ahead, a program started any other way, is left alone). Same decision as ixemul's consume_runcommand_args
- * (library/_cli_parse.c). */
+ * of bytes to read out when the buffer holds nothing but that line, else 0 (a handle with real read-ahead, a program
+ * started any other way, is left alone). Measured on the rig (2026-10-12): with `<file >file` redirections the buffer is
+ * GetArgStr()'s text plus " \n" (28 bytes for 26), so the text may be followed by blanks and a newline. ixemul's
+ * consume_runcommand_args (library/_cli_parse.c) compares with the registers' length instead and needs no tail. */
 long cl_runcommand_args(const char *buf, long pos, long end, const char *args);
 
 #endif

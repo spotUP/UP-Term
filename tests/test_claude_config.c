@@ -1141,21 +1141,27 @@ static void test_datadir(void)
  * when the buffer holds exactly that line */
 static void test_runcommand_args(void)
 {
-    static const char args[] = "-p hello\n";
-    char buf[64];
-    strcpy(buf, "-p hello\nmore");
-    CHECK_INT(cl_runcommand_args(buf, 0, 9, args), 9);                  /* exactly the line: read it out */
-    CHECK_INT(cl_runcommand_args(buf, 0, 13, args), 0);                 /* the file's own read-ahead after it: leave it */
-    CHECK_INT(cl_runcommand_args(buf, 4, 13, args), 0);                 /* nothing buffered but the file's data */
-    CHECK_INT(cl_runcommand_args("xx-p hello\n", 2, 11, args), 9);     /* the compare is at pos */
-    CHECK_INT(cl_runcommand_args("-p hellO\n", 0, 9, args), 0);         /* same length, other text: a file's first line */
-    CHECK_INT(cl_runcommand_args(buf, -1, 8, args), 0);
-    CHECK_INT(cl_runcommand_args(0, 0, 9, args), 0);                    /* no buffer */
-    CHECK_INT(cl_runcommand_args(buf, 0, 0, ""), 0);                    /* no arguments */
+    static const char args[] = "--model fixa/m1 --no-tools";
+    char buf[96];
+    /* what the Shell left on the rig with `<file >file` (hex-dumped): the text, a blank and a newline */
+    strcpy(buf, "--model fixa/m1 --no-tools \n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 28, args), 28);
+    strcpy(buf, "--model fixa/m1 --no-tools\n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 27, args), 27);               /* the newline alone */
+    CHECK_INT(cl_runcommand_args(buf, 0, 26, args), 26);               /* the text alone */
+    CHECK_INT(cl_runcommand_args("--model fixa/m1 --no-tools\n", 0, 27, "--model fixa/m1 --no-tools\n"), 27);   /* GetArgStr with its newline */
+    CHECK_INT(cl_runcommand_args("xx--model fixa/m1 --no-tools \n", 2, 30, args), 28);   /* the compare is at pos */
+    /* the file's own bytes: a first line that begins with the arguments, read ahead or followed by more */
+    strcpy(buf, "--model fixa/m1 --no-tools \nhello\n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 34, args), 0);
+    strcpy(buf, "--model fixa/m1 --no-tools and more\n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 36, args), 0);
+    CHECK_INT(cl_runcommand_args("--model fixa/m2 --no-tools \n", 0, 28, args), 0);   /* other text */
+    CHECK_INT(cl_runcommand_args(buf, 0, 20, args), 0);                /* shorter than the arguments */
+    CHECK_INT(cl_runcommand_args(buf, -1, 27, args), 0);
+    CHECK_INT(cl_runcommand_args(0, 0, 28, args), 0);                  /* no buffer */
+    CHECK_INT(cl_runcommand_args(buf, 0, 0, ""), 0);                   /* no arguments */
     CHECK_INT(cl_runcommand_args(buf, 0, 0, 0), 0);
-    /* what ixemul cannot tell either: a buffer that is only a line equal to the arguments */
-    strcpy(buf, "-p hello\n");
-    CHECK_INT(cl_runcommand_args(buf, 0, 9, args), 9);
 }
 
 void suite_claude_config(void)

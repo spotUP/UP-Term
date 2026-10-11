@@ -110,10 +110,14 @@ int cl_strieq(const char *a, const char *b)
 
 long cl_runcommand_args(const char *buf, long pos, long end, const char *args)
 {
-    long alen = args ? (long)strlen(args) : 0;
-    if (alen <= 0 || !buf || pos < 0 || end - pos != alen)
+    long alen = args ? (long)strlen(args) : 0, n = end - pos, i;
+    if (alen <= 0 || !buf || pos < 0 || n < alen || memcmp(buf + pos, args, (size_t)alen))
         return 0;
-    return memcmp(buf + pos, args, (size_t)alen) ? 0 : alen;
+    for (i = pos + alen; i < end && (buf[i] == ' ' || buf[i] == '\t'); i++)
+        ;
+    if (i < end && buf[i] == '\n')
+        i++;
+    return i == end ? n : 0;
 }
 
 void cl_uuid(unsigned long *seed, char *out)
