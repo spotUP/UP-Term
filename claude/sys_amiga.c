@@ -22,142 +22,12 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "sys_amiga.h"
+#include "datadir_amiga.h"
 #include "util.h"
 #include "../handler/clip.h"
 extern struct DosLibrary *DOSBase;
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
-
-static void set_err(sys_amiga *s, const char *what)
-{
-    char f[120];
-    LONG e = IoErr();
-    cl_copy(s->err, what, sizeof(s->err));
-    if (e && Fault(e, 0, (STRPTR)f, sizeof(f))) {
-        cl_cat(s->err, ": ", sizeof(s->err));
-        cl_cat(s->err, f, sizeof(s->err));
-    }
-}
-
-static int a_read(void *u, const char *path, long max, char **out, long *n)
-{
-    sys_amiga *s = (sys_amiga *)u;
-    BPTR f = Open((STRPTR)path, MODE_OLDFILE);
-    struct FileInfoBlock *fib;
-    long len = -1;
-    char *b;
-    if (!f) {
-        set_err(s, path);
-        return -1;
-    }
-    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
-    if (fib && ExamineFH(f, fib))
-        len = fib->fib_Size;
-    if (fib)
-        FreeDosObject(DOS_FIB, fib);
-    if (len < 0) {
-        set_err(s, path);
-        Close(f);
-        return -1;
-    }
-    if (len > max) {
-        Close(f);
-        return SYS_TOO_BIG;
-    }
-    b = (char *)CL_ALLOC((size_t)len + 1);
-    if (!b || Read(f, b, len) != len) {
-        set_err(s, b ? path : "out of memory");
-        if (b)
-            CL_FREE(b);
-        Close(f);
-        return -1;
-    }
-    Close(f);
-    b[len] = 0;
-    *out = b;
-    *n = len;
-    return 0;
-}
-
-static int a_write(void *u, const char *path, const char *str, long n)
-{
-    sys_amiga *s = (sys_amiga *)u;
-    BPTR f = Open((STRPTR)path, MODE_NEWFILE);
-    LONG w;
-    if (!f) {
-        set_err(s, path);
-        return -1;
-    }
-    w = n ? Write(f, (APTR)str, n) : 0;
-    if (w != n) {
-        set_err(s, path);
-        Close(f);
-        return -1;
-    }
-    return Close(f) ? 0 : -1;
-}
-
-/* a DateStamp in seconds since 1978 */
-static long ds_seconds(const struct DateStamp *d)
-{
-    return d->ds_Days * 86400L + d->ds_Minute * 60L + d->ds_Tick / TICKS_PER_SECOND;
-}
-
-static int a_list(void *u, const char *path, cl_dir_fn fn, void *c)
-{
-    sys_amiga *s = (sys_amiga *)u;
-    BPTR l = Lock((STRPTR)path, SHARED_LOCK);
-    struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
-    int rc = -1;
-    if (l && fib && Examine(l, fib) && fib->fib_DirEntryType > 0) {
-        rc = 0;
-        while (ExNext(l, fib)) {
-            cl_dirent e;
-            memset(&e, 0, sizeof(e));
-            cl_copy(e.name, (const char *)fib->fib_FileName, sizeof(e.name));
-            e.dir = fib->fib_DirEntryType > 0;
-            e.size = fib->fib_Size;
-            e.mtime = ds_seconds(&fib->fib_Date);
-            if (fn(c, &e))
-                break;
-        }
-    } else
-        set_err(s, path);
-    if (fib)
-        FreeDosObject(DOS_FIB, fib);
-    if (l)
-        UnLock(l);
-    return rc;
-}
-
-static int a_kind(void *u, const char *path)
-{
-    BPTR l = Lock((STRPTR)path, SHARED_LOCK);
-    struct FileInfoBlock *fib;
-    int k = 0;
-    (void)u;
-    if (!l)
-        return 0;
-    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
-    if (fib && Examine(l, fib))
-        k = fib->fib_DirEntryType > 0 ? 2 : 1;
-    if (fib)
-        FreeDosObject(DOS_FIB, fib);
-    UnLock(l);
-    return k;
-}
-
-/* kind() with the volume requesters off: a missing assign is an answer */
-static int a_quiet_kind(void *u, const char *path)
-{
-    struct Process *me = (struct Process *)FindTask(0);
-    APTR win = me->pr_WindowPtr;
-    int k;
-    me->pr_WindowPtr = (APTR)-1;
-    k = a_kind(u, path);
-    me->pr_WindowPtr = win;
-    return k;
-}
 
 static int a_canon(void *u, const char *path, char *out, long cap)
 {
@@ -244,12 +114,12 @@ static int start(sys_amiga *s, const char *cmd, long tag, char *script, char *ou
         char *text = (char *)CL_ALLOC((size_t)cl + 2);
         int bad;
         if (!text) {
-            cl_copy(s->err, "out of memory", sizeof(s->err));
+            cl_copy(s->dos.err, "out of memory", sizeof(s->dos.err));
             return -1;
         }
         memcpy(text, cmd, (size_t)cl);
         text[cl] = '\n';
-        bad = a_write(s, script, text, cl + 1);
+        bad = dda_write(s, script, text, cl + 1);
         CL_FREE(text);
         if (bad)
             return -1;
@@ -258,7 +128,7 @@ static int start(sys_amiga *s, const char *cmd, long tag, char *script, char *ou
     j = (runjob *)AllocVec(sizeof(runjob), MEMF_PUBLIC | MEMF_CLEAR);
     port = CreateMsgPort();
     if (!j || !port) {
-        cl_copy(s->err, "out of memory", sizeof(s->err));
+        cl_copy(s->dos.err, "out of memory", sizeof(s->dos.err));
         goto fail;
     }
     /* the full name: the line is run with no assumption about C: or the path */
@@ -276,7 +146,7 @@ static int start(sys_amiga *s, const char *cmd, long tag, char *script, char *ou
     j->in = Open((STRPTR)"NIL:", MODE_OLDFILE);
     j->out = Open((STRPTR)output, MODE_READWRITE);
     if (!j->in || !j->out) {
-        set_err(s, "cannot open the command's input or output");
+        dda_err(&s->dos, "cannot open the command's input or output");
         goto fail;
     }
     j->msg.mn_ReplyPort = port;
@@ -284,7 +154,7 @@ static int start(sys_amiga *s, const char *cmd, long tag, char *script, char *ou
     p = CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"Claude runner", NP_StackSize, 8000,
                           NP_Cli, TRUE, TAG_END);
     if (!p) {
-        set_err(s, "the command did not start");
+        dda_err(&s->dos, "the command did not start");
         goto fail;
     }
     PutMsg(&p->pr_MsgPort, &j->msg);
@@ -366,7 +236,7 @@ static int a_run(void *u, const char *cmd, int timeout_s, char *out, long cap, l
     }
     if (!ended) {
         /* the runner still owns j, its streams and the port: leave them */
-        cl_copy(s->err, "the command did not end after a break; it was left running", sizeof(s->err));
+        cl_copy(s->dos.err, "the command did not end after a break; it was left running", sizeof(s->dos.err));
         return -1;
     }
     *rc = j->rc;
@@ -387,7 +257,7 @@ static int a_bg_start(void *u, const char *cmd, long *job)
         if (!s->jobs[i].used)
             break;
     if (i == SA_JOBS) {
-        cl_copy(s->err, "too many background commands", sizeof(s->err));
+        cl_copy(s->dos.err, "too many background commands", sizeof(s->dos.err));
         return -1;
     }
     if (start(s, cmd, i + 1, s->jobs[i].script, s->jobs[i].output, (runjob **)&s->jobs[i].job,
@@ -416,7 +286,7 @@ static int a_bg_read(void *u, long job, long from, char *out, long cap, long *ou
     sys_amiga *s = (sys_amiga *)u;
     sa_job *b;
     if (job < 0 || job >= SA_JOBS || !s->jobs[job].used) {
-        cl_copy(s->err, "no such command", sizeof(s->err));
+        cl_copy(s->dos.err, "no such command", sizeof(s->dos.err));
         return -1;
     }
     b = &s->jobs[job];
@@ -465,7 +335,7 @@ static long a_mtime(void *u, const char *path)
         return -1;
     fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
     if (fib && Examine(l, fib))
-        t = ds_seconds(&fib->fib_Date);
+        t = dda_seconds(&fib->fib_Date);
     if (fib)
         FreeDosObject(DOS_FIB, fib);
     UnLock(l);
@@ -480,42 +350,17 @@ static int a_append(void *u, const char *path, const char *str, long n)
     BPTR f = Open((STRPTR)path, MODE_READWRITE);
     LONG w;
     if (!f) {
-        set_err(s, path);
+        dda_err(&s->dos, path);
         return -1;
     }
     Seek(f, 0, OFFSET_END);
     w = n ? Write(f, (APTR)str, n) : 0;
     if (w != n) {
-        set_err(s, path);
+        dda_err(&s->dos, path);
         Close(f);
         return -1;
     }
     return Close(f) ? 0 : -1;
-}
-
-static int a_mkdir(void *u, const char *path)
-{
-    sys_amiga *s = (sys_amiga *)u;
-    BPTR l;
-    if (a_kind(u, path) == 2)
-        return 0;
-    l = CreateDir((STRPTR)path);
-    if (!l) {
-        set_err(s, path);
-        return -1;
-    }
-    UnLock(l);
-    return 0;
-}
-
-static int a_remove(void *u, const char *path)
-{
-    sys_amiga *s = (sys_amiga *)u;
-    if (!DeleteFile((STRPTR)path)) {
-        set_err(s, path);
-        return -1;
-    }
-    return 0;
 }
 
 static long a_getenv(void *u, const char *name, char *out, long cap)
@@ -536,7 +381,7 @@ static int a_clip(void *u, const char *str, long n)
 {
     sys_amiga *s = (sys_amiga *)u;
     if (!clip_write(str, n)) {
-        cl_copy(s->err, "the clipboard (clipboard.device unit 0) did not take the text", sizeof(s->err));
+        cl_copy(s->dos.err, "the clipboard (clipboard.device unit 0) did not take the text", sizeof(s->dos.err));
         return -1;
     }
     return 0;
@@ -605,7 +450,7 @@ static int a_info(void *u, const char *what, char *out, long cap)
 
 static const char *a_err(void *u)
 {
-    return ((sys_amiga *)u)->err;
+    return ((sys_amiga *)u)->dos.err;
 }
 
 /* ---- A4 gaps 2: the clock, a wait, a job's output size and file, rename ---- */
@@ -616,7 +461,7 @@ static long a_now(void *u)
     struct DateStamp d;
     (void)u;
     DateStamp(&d);
-    return ds_seconds(&d);
+    return dda_seconds(&d);
 }
 
 /* Delay in ticks (1/50 s), a Ctrl+C on this task looked at every tenth of a second */
@@ -666,24 +511,14 @@ static const char *a_bg_file(void *u, long job)
     return job >= 0 && job < SA_JOBS && s->jobs[job].used ? s->jobs[job].output : "";
 }
 
-static int a_rename(void *u, const char *from, const char *to)
-{
-    sys_amiga *s = (sys_amiga *)u;
-    if (!Rename((STRPTR)from, (STRPTR)to)) {
-        set_err(s, from);
-        return -1;
-    }
-    return 0;
-}
-
 void sys_amiga_init(sys_amiga *s, cl_sys *sys)
 {
     memset(s, 0, sizeof(*s));
     sys->u = s;
-    sys->read = a_read;
-    sys->write = a_write;
-    sys->list = a_list;
-    sys->kind = a_kind;
+    sys->read = dda_read;
+    sys->write = dda_write;
+    sys->list = dda_list;
+    sys->kind = dda_kind;
     sys->canon = a_canon;
     sys->run = a_run;
     sys->err = a_err;
@@ -693,8 +528,8 @@ void sys_amiga_init(sys_amiga *s, cl_sys *sys)
     sys->bg_kill = a_bg_kill;
     sys->bg_drop = a_bg_drop;
     sys->append = a_append;
-    sys->mkdir = a_mkdir;
-    sys->remove = a_remove;
+    sys->mkdir = dda_mkdir;
+    sys->remove = dda_remove;
     sys->getenv = a_getenv;
     sys->setenv = a_setenv;
     sys->clip = a_clip;
@@ -703,6 +538,6 @@ void sys_amiga_init(sys_amiga *s, cl_sys *sys)
     sys->pause = a_pause;
     sys->bg_size = a_bg_size;
     sys->bg_file = a_bg_file;
-    sys->rename = a_rename;
-    sys->quiet_kind = a_quiet_kind;
+    sys->rename = dda_rename;
+    sys->quiet_kind = dda_quiet_kind;
 }

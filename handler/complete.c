@@ -27,7 +27,7 @@
 #include "complete.h"
 #include "complete_core.h"
 #include "histfile.h"
-#include "../claude/sys_amiga.h"
+#include "../claude/datadir_amiga.h"
 
 #if CC_FIBF_EXECUTE != FIBF_EXECUTE || CC_FIBF_SCRIPT != FIBF_SCRIPT
 #error "the protection bits of complete_core.h disagree with dos/dos.h"
@@ -753,10 +753,11 @@ static int command_exists(struct complete_req *q)
  * moved there; HF_OLD when there is no memory for the DOS layer. */
 static void history_path(const struct complete_req *q, char *out, long cap)
 {
-    sys_amiga *sa = (sys_amiga *)AllocVec(sizeof(sys_amiga), MEMF_ANY);
+    dd_amiga *sa = (dd_amiga *)AllocVec(sizeof(dd_amiga), MEMF_ANY);
     cl_sys sys;
     if (sa) {
-        sys_amiga_init(sa, &sys);
+        memset(&sys, 0, sizeof(sys));
+        dda_init(sa, &sys);
         if (hf_path(&sys, q->hist_file, out, cap) == 0) {
             FreeVec(sa);
             return;

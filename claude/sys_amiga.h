@@ -3,6 +3,7 @@
 #define CL_SYS_AMIGA_H
 
 #include "sys.h"
+#include "datadir_amiga.h"
 
 #define SA_JOBS 16
 
@@ -15,7 +16,7 @@ typedef struct sa_job {
 } sa_job;
 
 typedef struct sys_amiga {
-    char err[200];
+    dd_amiga dos;               /* first: the file calls (datadir_amiga.c) take the same u */
     const char *vsh;            /* the vsh to run (UP-Term:bin/vsh or C:vsh), 0 without */
     int vsh_known;
     sa_job jobs[SA_JOBS];
