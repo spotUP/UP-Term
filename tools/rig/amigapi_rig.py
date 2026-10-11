@@ -74,7 +74,7 @@ mcp__amiga__echo, then answers openai_final.sse:
   10c the Amiga's server answered over PTY: ("echo: over PTY: (3 requests)":
       initialize, tools/list, tools/call reached it) and its result reached
       the model
-  10d the server ended with amiga-pi (no mcp-echo in Status)
+  10d the server ended with amiga-pi (no more mcp-echo in Status than before)
 ENVARC:amiga-pi/mcp.json is removed again. A visible window titled
 "amiga-pi step 10". The tree the binary was built in gives mcp-echo and
 fake_mcp.py (make -C <amiga-pi> amiga build/amiga/mcp-echo).
@@ -624,6 +624,7 @@ def step10(port):
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
                            '--delay', '0.01'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
     time.sleep(1)
+    before = c.run('Status')[1].count('mcp-echo')     # servers left by something else are not this run's
     try:
         for f in ('pi10.out', 'pi10.rc', 'pi10.status'):
             if (VTC / f).exists():
@@ -666,7 +667,8 @@ def step10(port):
               len(ami_) == 1 and 'echo: over PTY: (3 requests)' in ami_[0], repr(ami_))
         for l in mac + ami_:
             print('[INFO] ' + l.strip(), flush=True)
-        check('10d the server ended with amiga-pi', status and 'mcp-echo' not in status, repr(status[-400:]))
+        check('10d the server ended with amiga-pi', status and status.count('mcp-echo') == before,
+              repr((before, status[-400:])))
     finally:
         fx.terminate()
         srv.stdin.close()
