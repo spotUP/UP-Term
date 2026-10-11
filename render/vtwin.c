@@ -482,7 +482,7 @@ static void frame_start(vtwin *w)
 #define SETTLE_QUIET_US 250000UL
 static void settle(vtwin *w)
 {
-    if (!w->t || !w->r.jump)
+    if (!w->t || !w->r.js.jump)
         return;
     vr_mask_begin(&w->r);
     vr_cursor_off(&w->r);
@@ -533,7 +533,7 @@ void vtwin_render(vtwin *w)
         }
     }
     vtwin_knob_sync(w); /* once a frame: the scrollback grew, the alternate screen came */
-    if (w->r.has_blink || vr_cursor_blinks(&w->r) || w->r.jump)
+    if (w->r.has_blink || vr_cursor_blinks(&w->r) || w->r.js.jump)
         frame_start(w); /* blinking cells or cursor, or a jump to settle: the frames keep coming */
 }
 
@@ -1405,6 +1405,7 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
     vt_u8 out[40];
     if (!w->t)
         return;
+    vt_jump_key(&w->r.js); /* what comes next answers this key, line by line (jumpscroll.h) */
     if ((qual & IEQUALIFIER_REPEAT) && !(vt_modes(w->t) & VT_MODE_AUTOREPEAT))
         return; /* DECARM off: a held key types once */
     if (vt_raw_events(w->t) & (1UL << 1)) {

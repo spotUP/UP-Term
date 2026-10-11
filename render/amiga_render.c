@@ -623,17 +623,7 @@ void vr_mask_begin(vr_render *r)
 {
     r->in_pass = 1;   /* one flush: what a default blank looks like is worked out once (draw_rows) */
     r->bs_valid = 0;
-    /* jump scroll: a pass right after one that scrolled moves twice as far
-     * (up to a screenful); a pass that did not scroll resets the step */
-    if (r->scrolled_pass) {
-        int h = vis_rows(r) - 1;
-        r->jump_step = r->jump_step ? r->jump_step * 2 : 2;
-        if (r->jump_step > h)
-            r->jump_step = h > 0 ? h : 0;
-    } else {
-        r->jump_step = 0;
-    }
-    r->scrolled_pass = 0;
+    vt_jump_pass(&r->js, vis_rows(r)); /* jump scroll: the step after a pass that scrolled */
     if (!r->win || !r->planar)
         return;
     r->mask_on = 1;
@@ -1402,7 +1392,7 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
         vt_glyph g;
         struct TextFont *font = r->font;
         UBYTE code;
-        cell_style(r, &c[x], selected(r, x, y - r->view + r->jump), &st);
+        cell_style(r, &c[x], selected(r, x, y - r->view + r->js.jump), &st);
         fill(r, px, py, (WORD)(px + 2 * cw - 1), (WORD)(py + ch - 1), st.bg);
         g = vt_map_glyph(cell_char(r, &c[x]), r->enc);
         code = g.kind == VT_GLYPH_FONT ? g.code : (UBYTE)'?';
@@ -1654,7 +1644,7 @@ static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
     const vt_cell *c;
     int y, i, x, a, xe, ncells, gy;
     for (y = y0; y < y1; y++) {
-        gy = y - r->view + r->jump;
+        gy = y - r->view + r->js.jump;
         c = vt_row(r->t, gy, &ncells);
         if (!c || (!r->view && vt_row_size(r->t, gy)))
             continue; /* a double-size row shows no images */
@@ -1750,8 +1740,8 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
     }
     for (y = y0; y < y1; y++) {
         int ncells;
-        const vt_cell *c = vt_row(r->t, y - r->view + r->jump, &ncells);
-        int gy = y - r->view + r->jump;
+        const vt_cell *c = vt_row(r->t, y - r->view + r->js.jump, &ncells);
+        int gy = y - r->view + r->js.jump;
         WORD py = r->oy + y * r->ch, run_x = 0;
         vr_style st, run_st;
         /* the last cell's look: runs of equal cells skip the lookups */
@@ -2031,10 +2021,10 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
         return; /* no window (before vr_init, after vr_free) */
     if (r->view)
         return; /* looking at the scrollback: the live rows are not shown */
-    if (r->jump) {
+    if (r->js.jump) {
         /* grid row g shows on screen row g - jump (vr_scroll's jump) */
-        y0 -= r->jump;
-        y1 -= r->jump;
+        y0 -= r->js.jump;
+        y1 -= r->js.jump;
         if (y0 < 0)
             y0 = 0;
         if (y1 <= y0)
@@ -2117,8 +2107,8 @@ void vr_redraw(vr_render *r)
         return; /* no window (before vr_init, after vr_free) */
     if (r->off)
         return; /* a tab another one covers: its pixels are not ours */
-    r->jump = 0; /* every row drawn again where the grid has it */
-    r->jump_step = 0;
+    r->js.jump = 0; /* every row drawn again where the grid has it */
+    r->js.step = 0;
     top = w->BorderTop + r->inset_top; /* the tab bar above stays the host's */
     if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= top) {
         /* every plane written: from here the planes in use are the
@@ -2142,7 +2132,7 @@ static void raw_scroll(vr_render *r, int top, int bottom, int n);
 /* Jump scroll (S1, creep's CCON 1.2.8): while scrolls keep coming frame
  * after frame -- a flood of output, or a program that waits for each line
  * to be drawn (conbench sync-line) -- the screen moves further than the
- * grid did and keeps the difference as r->jump: screen row s shows grid
+ * grid did and keeps the difference as r->js.jump: screen row s shows grid
  * row s + jump, the rows below the text are blank, and the next scrolls
  * move no pixels until the text reaches the bottom again. Each pass that
  * scrolls again doubles the step (vr_mask_begin), up to a screenful. When
@@ -2151,11 +2141,11 @@ static void raw_scroll(vr_render *r, int top, int bottom, int n);
  * anything else settles first. */
 void vr_settle(vr_render *r)
 {
-    int e = r->jump, rows = vis_rows(r);
+    int e = r->js.jump, rows = vis_rows(r);
     if (!e || !r->win)
         return;
-    r->jump = 0;
-    r->jump_step = 0;
+    r->js.jump = 0;
+    r->js.step = 0;
     if (r->hidden || r->view)
         return;
     vr_cursor_off(r);
@@ -2176,23 +2166,13 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
     if (top >= bottom || !vis_cols(r))
         return;
     if (r->blank) {
-        r->jump = 0; /* nothing on screen to keep in place */
+        r->js.jump = 0; /* nothing on screen to keep in place */
         return; /* blank rows over blank rows: no pixel changes (CCON 1.2.4, the ROM console) */
     }
     if (top == 0 && bottom == vis_rows(r) && n > 0 && r->in_pass) {
-        int h = bottom, B;
-        r->scrolled_pass = 1;
-        if (r->jump >= n) {
-            r->jump -= n; /* the text moves into the blank rows below it: no pixels move */
-            return;
-        }
-        B = n - r->jump + r->jump_step; /* move that far, keep jump_step rows to spare */
-        if (B > h)
-            B = h;
-        raw_scroll(r, 0, h, B);
-        r->jump = r->jump + B - n;
-        if (r->jump < 0)
-            r->jump = 0;
+        int B = vt_jump_scroll(&r->js, bottom, n);
+        if (B)
+            raw_scroll(r, 0, bottom, B);
         return;
     }
     vr_settle(r); /* a region, or the other way: the screen exactly as the grid first */
@@ -2404,7 +2384,7 @@ void vr_cursor_on(vr_render *r)
     if (r->hidden)
         return;
     vt_cursor(r->t, &x, &y);
-    y -= r->jump; /* its screen row (vr_scroll's jump) */
+    y -= r->js.jump; /* its screen row (vr_scroll's jump) */
     if (r->cursor_drawn && (x != r->cursor_x || y != r->cursor_y))
         vr_cursor_off(r);
     if (!(vt_modes(r->t) & VT_MODE_CURSOR_VISIBLE) || x >= vis_cols(r) || y >= vis_rows(r) || y < 0 || r->view)

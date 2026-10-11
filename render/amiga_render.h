@@ -18,6 +18,7 @@
 #include "outline.h"
 #include "unifont.h"
 #include "emoji.h"
+#include "jumpscroll.h"
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
@@ -105,9 +106,7 @@ typedef struct vr_render {
     WORD inset_top;       /* pixels above the text kept free (the tab bar) */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
-    WORD jump;             /* jump scroll: screen row s shows grid row s + jump (vr_scroll) */
-    WORD jump_step;        /* the spare rows the next jump leaves; doubles while scrolls keep coming */
-    UBYTE scrolled_pass;   /* this render pass scrolled the whole screen */
+    vt_jump js;            /* jump scroll (jumpscroll.h): screen row s shows grid row s + js.jump */
     /* Amiga layout requests (CSI t / u / x / y), -1 = automatic:
      * text rows, text columns, left and top offset in pixels */
     WORD lay_rows, lay_cols, lay_x, lay_y;
