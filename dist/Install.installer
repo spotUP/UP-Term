@@ -304,14 +304,17 @@
 
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))
-    (if (not (askbool
-            (prompt (cat "The volume of " #dest " has " (/ #free 1024) " KB free;\n"
-                         "the parts you chose need about " #totalkb " KB."))
-            (help "Choose fewer extras (Python and Neovim are the big ones), "
-                  "or another drawer on a volume with more room.")
-            (choices "Install anyway" "Abort")
-            (default 1)))
-        (abort "Nothing was installed.")))
+    (abort "Nothing was installed: UP-Term needs about " #totalkb " KB on the volume of "
+           #dest ", which has " (/ #free 1024) " KB free.\n"
+           "Run Install again and choose a drawer on another drive with more room "
+           "(or choose fewer extras: Python and Neovim are the big ones)."))
+; what goes on SYS: whatever the drawer's volume is (C:, L:, LIBS:, DEVS:, fonts,
+; the S:User-Startup block): the system parts and the small rest
+(set #sysfree (getdiskspace "SYS:"))
+(if (and (> #sysfree 0) (< (/ #sysfree 1024) (+ #kb-system #kb-rest)))
+    (abort "Nothing was installed: UP-Term puts about " (+ #kb-system #kb-rest)
+           " KB on SYS: (C:, L:, LIBS:, DEVS: and the fonts), which has " (/ #sysfree 1024)
+           " KB free. Free room on SYS: and run Install again."))
 
 ;  ready: n = 9, lead 3
 (message

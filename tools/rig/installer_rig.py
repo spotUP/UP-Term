@@ -56,8 +56,11 @@ VTC = ir.VTC
 OUT = paths.RIG / "installer"
 OUT.mkdir(parents=True, exist_ok=True)  # pages are logged before the first verdict is written
 KIT = ir.KIT
-CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", "VTC:Apps/UP-Term"), "novice": ("NOVICE", None),
-         "update": ("AVERAGE", None)}
+# a clean image (--os) has a 12 MB system partition: the kit goes to its Work: drive
+CLEAN = "--os" in os.environ.get("UPTERM_RIG_FLAGS", "")
+WORKDEST = "Work:Apps/UP-Term"
+CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:Apps/UP-Term"),
+         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None)}
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 RAMIGA = 0x0080
 KEY_X, KEY_RETURN = 0x32, 0x44
@@ -271,7 +274,7 @@ def text_faults(tree):
     return faults, ['y%d-%d x%d-%d' % (a - y0, b - y0, c - x0, d - x0) for a, b, c, d in bands]
 
 
-def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20):
+def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20, expect_abort=False):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
     A page unchanged `stall` s after a click is a FAIL; a page without Proceed is the copy: waited out
@@ -281,6 +284,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     pages.write_text('')
     t0 = time.time()
     last_sig, clicked_at, retried, typed, chose = None, None, None, False, set()
+    last_page_at = time.time()
     work_since, last_pct, dumped_pct = None, None, set()
 
     seen_faults = set()
@@ -313,10 +317,18 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             dump(tree, 'page')
             log.append('page [%s] ids %s' % (title, ' '.join(map(str, sorted(gads)))))
             last_sig, clicked_at, retried = sig, None, None
+            last_page_at = time.time()
         m = re.findall(r'(\d+)% done', tree)
         if m and m[-1] != last_pct:
             last_pct = m[-1]
             log.append('%s%% done at %.0f s' % (last_pct, time.time() - t0))
+        if 90 not in gads and expect_abort and gads and time.time() - last_page_at > 10:
+            # the abort message (room check): its one gadget ends the Installer
+            dump(tree, 'abort message')
+            log.append('abort message page, ids %s: clicked' % ' '.join(map(str, sorted(gads))))
+            click(gads[91][0] if 91 in gads else gads[min(gads)][0])
+            time.sleep(5)
+            continue
         if 90 not in gads:
             # copying or waiting for the next page: only Abort (or nothing) on it
             if m and m[-1] == last_pct and last_pct not in dumped_pct:
@@ -446,7 +458,7 @@ def run_case(case):
     t_install = time.time()
     ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER %s DEFUSER %s NOLOG' % (inst, level, level), 30)
     time.sleep(5)
-    finished, log = drive(case, inst, dest, base)
+    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'))
     t_install = time.time() - t_install
     (OUT / (case + ".log.txt")).write_text('\n'.join(log) + '\n')
     ck(finished, 'the Installer ran to its end (%s)' % level, log[-1] if log else '')
@@ -457,6 +469,16 @@ def run_case(case):
         if installer_running(inst):
             ir.run('Break >NIL: `Status COM "%s"` C' % inst)
         return False, '; '.join(ck.failed + log[-3:])
+    if case == 'space':
+        # the room check: Install on a volume with too little room says so and changes nothing
+        ck(any('abort message' in l for l in log), 'the Installer stopped on its room message (not on a copy)', '; '.join(log[-3:]))
+        ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'no drawer was made', '')
+        ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
+        ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
+        st = ir.lib_state()
+        ck(st == before, 'LIBS: as it was', 'now %s, before %s' % (st, before))
+        print('installer_rig %s: passed %d of %d' % (case, ck.total - len(ck.failed), ck.total))
+        return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
     # what the Installer's install.dos parts and copyfiles put there
     rc, out = ir.run('Assign LIST')
     al = [l for l in out.splitlines() if l.lower().startswith('up-term')]
@@ -508,9 +530,9 @@ def run_case(case):
     ck(ir.run('List >NIL: "%s"' % drawer)[0] != 0, 'after Uninstall: %s is gone' % drawer)
     st = ir.lib_state()
     ck(st.get('ixemul.library') == before.get('ixemul.library') and 'ixemul.library.orig' not in st,
-       'after Uninstall: the original ixemul back, no .orig', str(st))
+       'after Uninstall: the original ixemul back, no .orig', 'now %s, before %s' % (st, before))
     ck(st.get('ixnet.library') == before.get('ixnet.library') and 'ixnet.library.orig' not in st,
-       'after Uninstall: the original ixnet back, no .orig', str(st))
+       'after Uninstall: the original ixnet back, no .orig', 'now %s, before %s' % (st, before))
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     if rig_gg:
         ir.run('Assign GG: VTC:gg')
@@ -536,7 +558,7 @@ def _main(fx):
     only = args[args.index("ONLY") + 1] if "ONLY" in args else None
     if only and only not in CASES:
         raise SystemExit('cases: ' + ' '.join(CASES))
-    todo = [only] if only else list(CASES)
+    todo = [only] if only else [c for c in CASES if c != 'space']   # space needs a volume too small for the kit (the clean images)
     if not (KIT / "Install").exists():
         raise SystemExit('no kit: make dist first')
     fp = fingerprint()
