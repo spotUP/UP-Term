@@ -56,6 +56,25 @@ static int x_read(void *u, const char *path, long max, char **out, long *n)
     return 0;
 }
 
+static int x_pread(void *u, const char *path, long off, char *out, long cap, long *n)
+{
+    sys_posix *p = (sys_posix *)u;
+    FILE *f = fopen(path, "rb");
+    *n = 0;
+    if (!f) {
+        set_err(p, path);
+        return -1;
+    }
+    if (fseek(f, off, SEEK_SET)) {
+        set_err(p, path);
+        fclose(f);
+        return -1;
+    }
+    *n = (long)fread(out, 1, (size_t)cap, f);
+    fclose(f);
+    return 0;
+}
+
 static int x_write(void *u, const char *path, const char *s, long n)
 {
     sys_posix *p = (sys_posix *)u;
@@ -456,4 +475,5 @@ void sys_posix_init(sys_posix *p, cl_sys *s)
     s->bg_file = x_bg_file;
     s->rename = x_rename;
     s->quiet_kind = 0;          /* kind() asks nothing on the host */
+    s->pread = x_pread;
 }

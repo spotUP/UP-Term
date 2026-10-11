@@ -60,6 +60,13 @@ void llm_m_assistant(jw *w, const char *content, long cn, const llm_meta *m, llm
 void llm_m_toolresult(jw *w, const char *id, const char *name, const char *content, long cn,
                       const char *details, long dn, int is_error, llm_ts ts);
 void llm_m_system(jw *w, const char *text, long n, llm_ts ts);
+/* pi-ai's whole SystemMessage: sections a JSON object of named prompt
+ * sections (a string, or null removing one), added/removed JSON arrays of
+ * tool declarations / {name} references; each 0 when absent. Key order as
+ * pi-agent-core writes it: role, content, sections, timestamp, toolsAdded,
+ * toolsRemoved. */
+void llm_m_system_ex(jw *w, const char *text, long n, const char *sections, long sn, const char *added, long an,
+                     const char *removed, long rn, llm_ts ts);
 
 /* any pi-shaped message re-written in the canonical order into out (appended):
  * its role, or LR_BAD (not a message this model knows; out unchanged) */
@@ -80,6 +87,9 @@ int llm_stop_of(jv v);                          /* the reverse; LS_NONE when unk
 void llm_w_micro(jw *w, long micro);            /* 12960 -> 0.01296 */
 long llm_r_micro(jv v);                         /* a JSON number of dollars -> micro-dollars */
 void llm_w_ts(jw *w, llm_ts ts);
+/* pi-ai's Usage object {input, output, cacheRead, cacheWrite, totalTokens, cost{...}} */
+void llm_w_usage(jw *w, const llm_usage *u);
+void llm_r_usage(jv v, llm_usage *o);
 llm_ts llm_r_ts(jv v);
 
 #endif

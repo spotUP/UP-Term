@@ -97,6 +97,9 @@ typedef struct cl_sys {
      * not there, without the "Please insert volume" requester kind() may
      * bring up (claude/datadir.c asks whether UP-Term: exists); 0 = use kind() */
     int (*quiet_kind)(void *u, const char *path);
+    /* up to cap bytes of a file from byte off on (amiga-pi's session reader
+     * streams a file this way): 0 with *n read (0 past the end), -1; 0 = none */
+    int (*pread)(void *u, const char *path, long off, char *out, long cap, long *n);
 } cl_sys;
 
 #endif

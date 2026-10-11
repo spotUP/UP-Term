@@ -7,6 +7,27 @@
 
 static const char hexd[] = "0123456789abcdef";
 
+unsigned long sess_hash(const char *s)
+{
+    unsigned long h = 5381;
+    while (*s)
+        h = h * 33 + (unsigned char)*s++;
+    return h;
+}
+
+void sess_fit(char *s, unsigned long h, int max)
+{
+    long n = (long)strlen(s), i, keep = max - 9;
+    if (n > max && keep > 0) {
+        /* the end (the project's own name) and a hash of the whole */
+        memmove(s, s + n - keep, (size_t)keep);
+        s[keep] = '-';
+        for (i = 0; i < 8; i++)
+            s[keep + 1 + i] = hexd[(h >> (28 - 4 * i)) & 15];
+        s[max] = 0;
+    }
+}
+
 void sess_slug(const char *root, char *out, long cap)
 {
     char s[300];
@@ -23,16 +44,7 @@ void sess_slug(const char *root, char *out, long cap)
         s[--n] = 0;
     if (!n)
         cl_copy(s, "root", sizeof(s));
-    if (n > 30) {
-        /* the end (the project's own name) and a hash of the whole */
-        char t[32];
-        memcpy(t, s + n - 21, 21);
-        t[21] = '-';
-        for (i = 0; i < 8; i++)
-            t[22 + i] = hexd[(h >> (28 - 4 * i)) & 15];
-        t[30] = 0;
-        cl_copy(s, t, sizeof(s));
-    }
+    sess_fit(s, h, 30);
     cl_copy(out, s, cap);
 }
 

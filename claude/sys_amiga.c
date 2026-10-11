@@ -540,4 +540,5 @@ void sys_amiga_init(sys_amiga *s, cl_sys *sys)
     sys->bg_file = a_bg_file;
     sys->rename = dda_rename;
     sys->quiet_kind = dda_quiet_kind;
+    sys->pread = dda_pread;
 }

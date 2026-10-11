@@ -20,6 +20,7 @@ void dda_err(dd_amiga *s, const char *what);
 long dda_seconds(const struct DateStamp *d);
 
 int dda_read(void *u, const char *path, long max, char **out, long *n);
+int dda_pread(void *u, const char *path, long off, char *out, long cap, long *n);
 int dda_write(void *u, const char *path, const char *str, long n);
 int dda_list(void *u, const char *path, cl_dir_fn fn, void *c);
 int dda_kind(void *u, const char *path);

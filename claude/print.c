@@ -82,23 +82,8 @@ static void w_log(void *u, const char *s, long n)
 
 static void put_uuid(pst *st, jw *w)
 {
-    static const char hex[] = "0123456789abcdef";
     char u[37];
-    int i, k = 0;
-    for (i = 0; i < 32; i++) {
-        unsigned d;
-        if (!(i & 7))
-            st->seed = st->seed * 1103515245UL + 12345UL;
-        d = (unsigned)(st->seed >> (4 * (i & 7))) & 15;
-        if (i == 12)
-            d = 4;              /* version 4 */
-        else if (i == 16)
-            d = 8 | (d & 3);    /* the variant */
-        if (i == 8 || i == 12 || i == 16 || i == 20)
-            u[k++] = '-';
-        u[k++] = hex[d];
-    }
-    u[k] = 0;
+    cl_uuid(&st->seed, u);
     jw_strz(w, u);
 }
 

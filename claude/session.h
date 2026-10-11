@@ -51,6 +51,11 @@ typedef struct cl_sess_info {
 /* the slug of a root: "Work:Projects/x" -> "Work-Projects-x", at most 30
  * characters (a long one keeps its end and a hash) */
 void sess_slug(const char *root, char *out, long cap);
+/* a name longer than max characters (FFS: 30) cut to max as sess_slug cuts
+ * one: its last max-9 characters, '-', 8 hex digits of h (the whole name's hash) */
+void sess_fit(char *s, unsigned long h, int max);
+/* the hash sess_slug takes of a name */
+unsigned long sess_hash(const char *s);
 void sess_init(cl_session *s, cl_sys *sys, const char *home, const char *root);
 /* a new session (nothing is written until the first save); clock in ms */
 void sess_new(cl_session *s, unsigned long ms);
