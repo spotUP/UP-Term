@@ -44,3 +44,20 @@ Older detail: `2026-10-11_rigs-clean-images-vsh-done-amiga-pi-b.md`,
 - Images: never in the main context (hooks enforce it; "latest shot" = newest in
   ~/Pictures/claude-inbox via a haiku subagent).
 - Main session on Sonnet for coordination (`/model sonnet`).
+
+## Update 20:15 (session switch)
+
+- Kit DONE: `~/Desktop/UP-Term-83199a4.lha`; clean 3.1 + 3.2.2 dest/update/var/PORTS pass (rigs boot
+  clean images unpacked to host directories, real-sized). Pushed: vtcon `1a75280`, upterm lock
+  `e81f998`. Owner still to test Install + Update on the Replay.
+- Next kit, first job: AmiSSL (Apache 2.0, archive `vendor/AmiSSL-5.27-OS3.lha`, plan and draft diff
+  in `thoughts/spot/todos.md` and `thoughts/spot/notes/`): bundle, Installer offers AmiSSL's own
+  installer when missing/old, never silently.
+- amiga-pi Phase E: 0 of 18 (E1-E13, G1-G4). WIP, nothing merged:
+  vtcon branch `feature/amiga-pi-phase-e` (45141fd), worktree `.claude/worktrees/phase-e`;
+  amiga-pi branch `phase-e` (7941a69), worktree `~/Code/amiga-pi/build/wt-phase-e`.
+  Next: compile `session3.c`, `tests/test_pi_session.c` from pi's cases; order and decisions in the
+  progress file, Phase E section. pi's session oracle (node) saved to
+  `~/Code/amiga-pi/build/pi-oracle/` (pi f10993bc, gitignored).
+- Rig checks cover only paths real users take (owner 2026-10-11): no tiny disks, no small-volume cases.
+- Keep the Mac awake while agents run (`caffeinate -dims`): sleep killed an agent.
