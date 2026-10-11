@@ -56,6 +56,13 @@ bugs that the Sonnet ledger had ticked).
   after colour; cell_style/pen_for/vt_resolve_colors per cell in draw_rows). Opus design
   (measure first: which part of a colour row costs more), then Sonnet implementation.
   Queued behind the Phase F and K-audit agents (2-agent limit).
+  The answer is in CCON 1.3.0 (github.com/creep-ltx/AmigaTools, ccon/; our research
+  covered b9/b10 only). Its README: "a C engine inside the E handler and direct drawing
+  into the screen (... colour nearly as cheap as plain text)". Commits to read first:
+  0e45b7b (b11-b12 leaner text path, rows remember their length), ce4c21b (b15 the
+  direct painters), 1ec662d (1.3.0, direct drawing), plus ccon/todo.md and conbench's
+  colour-run workloads. Research doc first: what direct drawing does per colour run
+  that we do not.
 - Kit: remaining rig cases (amissl-present, novice, dest, update on 3.2.2 and 3.1), make
   test, kit to Desktop. Guest dies mid-install ~3 of 8 runs (undiagnosed).
 - `make test` in a vtcon worktree needs UPTERM_ROOT=/Users/spot/Code.
