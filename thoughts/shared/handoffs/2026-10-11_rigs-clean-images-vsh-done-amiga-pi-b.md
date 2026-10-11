@@ -139,3 +139,33 @@ C:Claude / llm:
 - Pushed 2026-10-10: ixemul-vtcon, upterm-ports, cpython-amiga at HEAD; vtcon up to `c30c530`
   (make test green); upterm `cc1bac8`.
 - The owner allowed three agents at once this session (global rule says two).
+
+## Update, later 2026-10-11 (before the owner's restart)
+
+Done since the first version of this file (vtcon, all local, 32 unpushed at c785ca2):
+- Console history in `UP-Term:var/vtcon/history`, HISTFILE honoured, rig scripts use RAM:rig.history
+  (`63627a2`); Ctrl-D = EOF under vsh (`42708c8`); handler links only `claude/datadir_amiga.c`
+  (`5e9d0f3`, handler 300,588 bytes).
+- Colour: rig 2 screen mode restored to 24-bit (`022a744`); exact pen first, nearest only when the map
+  is full (`d4607d1`, suite `pens`); cube_rig and screen_rig 240/240 on clean 3.1, clean 3.2.2 and rig
+  2's sys.hdf. cube_rig PAL-screen fix (`68a2e09`). Open, owner-chosen: a deep screen with a FULL
+  32-entry map still snaps to Workbench pens (no cybergraphics RGB path).
+- ps/top, Unix ports 3.3 (`c785ca2`): native in `proc/`, VBlank sampler `proc/vbsample.s` (reads
+  SysBase from address 4: a6 is not SysBase in the VBlank server), suite `proc`, `proc_rig.py` 7/7 on
+  rig 2 and clean 3.2.2. Kit part `tools`; `make dist` not yet run with it.
+- amiga-pi phase C 21/21 and phase D 16/16 (merged, `bbc604f`; amiga-pi `aca7948`).
+
+Paused or in flight at the restart:
+- amiga-pi pi-parity follow-up: 0 of 15 (Q1-Q12, G1-G3), branch `amiga-pi-parity` (WIP `7d4c5c3`),
+  worktree `vtcon/.claude/worktrees/pi-parity`, checklist in the progress file section "Phase D parity
+  follow-up". Owner answers: build pi's image shrink + BMP->PNG in read; keep Latin-1 in edit.
+  Rig 3 has no UP-Term: assign (neither `rig.py install` nor the boot hook adds it), so phase D's rig
+  step 3 probably ran the AmigaShell, not vsh: re-check.
+- coreutils 9 (ports 3.7): vsh agent was starting it; check upterm-ports for commits.
+- Installer agent: big separate Work: drive for clean-image rigs (the 12 MB images fill on Install),
+  free-space check in the Installer, boot hook for every assign, clean 3.1 / 3.2.2 default + update,
+  ports 1.2-1.10, then the kit. Check `git log` and `git status` for where it stopped.
+- A worktree from an older session sits at
+  `/private/tmp/claude-501/-Users-spot-Code-ixemul-vtcon/bf545e39-.../scratchpad/wt2` (85a76db,
+  detached): not this session's, not removed.
+- Owner asked for no new subagents ahead of the restart.
