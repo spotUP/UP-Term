@@ -677,7 +677,10 @@ Lab libs
 If NOT EXISTS ENVARC:up-term-orig
   MakeDir >NIL: ENVARC:up-term-orig
 EndIf
+; a second Install on a system that had none finds only the kit's own library
+; there: the .none marker keeps it from being recorded as the original
 If NOT EXISTS ENVARC:up-term-orig/ixemul.path
+ If NOT EXISTS ENVARC:up-term-orig/ixemul.none
   Which >NIL: LIBS:ixemul.library
   If NOT WARN
     Which >ENV:upixemul LIBS:ixemul.library
@@ -686,6 +689,7 @@ If NOT EXISTS ENVARC:up-term-orig/ixemul.path
       Copy "$upixemul" "$upixemul.orig" CLONE
     EndIf
   EndIf
+ EndIf
 EndIf
 If EXISTS ENVARC:up-term-orig/ixemul.path
   Copy >NIL: ENVARC:up-term-orig/ixemul.path ENV:upixemul CLONE
@@ -696,7 +700,10 @@ Else
   ; without ixemul.library was left with the kit's after Uninstall, 2026-10-11)
   Echo >ENVARC:up-term-orig/ixemul.none ""
 EndIf
+; a second Install on a system that had none finds only the kit's own library
+; there: the .none marker keeps it from being recorded as the original
 If NOT EXISTS ENVARC:up-term-orig/ixnet.path
+ If NOT EXISTS ENVARC:up-term-orig/ixnet.none
   Which >NIL: LIBS:ixnet.library
   If NOT WARN
     Which >ENV:upixnet LIBS:ixnet.library
@@ -705,6 +712,7 @@ If NOT EXISTS ENVARC:up-term-orig/ixnet.path
       Copy "$upixnet" "$upixnet.orig" CLONE
     EndIf
   EndIf
+ EndIf
 EndIf
 If EXISTS ENVARC:up-term-orig/ixnet.path
   Copy >NIL: ENVARC:up-term-orig/ixnet.path ENV:upixnet CLONE
