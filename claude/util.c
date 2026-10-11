@@ -108,6 +108,14 @@ int cl_strieq(const char *a, const char *b)
     return low((unsigned char)*a) == low((unsigned char)*b);
 }
 
+long cl_runcommand_args(const char *buf, long pos, long end, const char *args)
+{
+    long alen = args ? (long)strlen(args) : 0;
+    if (alen <= 0 || !buf || pos < 0 || end - pos != alen)
+        return 0;
+    return memcmp(buf + pos, args, (size_t)alen) ? 0 : alen;
+}
+
 void cl_uuid(unsigned long *seed, char *out)
 {
     static const char hex[] = "0123456789abcdef";

@@ -282,6 +282,7 @@ int main(void)
     if (cli.print)
         open_err();
     memset(&io, 0, sizeof(io));
+    io_amiga_args();
     io_amiga_line(&io);
     io.log = c_log;
     if (!cli.print && !cli.ping && !cli.plain)

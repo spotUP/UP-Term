@@ -1137,6 +1137,27 @@ static void test_datadir(void)
     }
 }
 
+/* a redirected input read from its start: the Shell's copy of the argument line in the handle's buffer is consumed only
+ * when the buffer holds exactly that line */
+static void test_runcommand_args(void)
+{
+    static const char args[] = "-p hello\n";
+    char buf[64];
+    strcpy(buf, "-p hello\nmore");
+    CHECK_INT(cl_runcommand_args(buf, 0, 9, args), 9);                  /* exactly the line: read it out */
+    CHECK_INT(cl_runcommand_args(buf, 0, 13, args), 0);                 /* the file's own read-ahead after it: leave it */
+    CHECK_INT(cl_runcommand_args(buf, 4, 13, args), 0);                 /* nothing buffered but the file's data */
+    CHECK_INT(cl_runcommand_args("xx-p hello\n", 2, 11, args), 9);     /* the compare is at pos */
+    CHECK_INT(cl_runcommand_args("-p hellO\n", 0, 9, args), 0);         /* same length, other text: a file's first line */
+    CHECK_INT(cl_runcommand_args(buf, -1, 8, args), 0);
+    CHECK_INT(cl_runcommand_args(0, 0, 9, args), 0);                    /* no buffer */
+    CHECK_INT(cl_runcommand_args(buf, 0, 0, ""), 0);                    /* no arguments */
+    CHECK_INT(cl_runcommand_args(buf, 0, 0, 0), 0);
+    /* what ixemul cannot tell either: a buffer that is only a line equal to the arguments */
+    strcpy(buf, "-p hello\n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 9, args), 9);
+}
+
 void suite_claude_config(void)
 {
     char cmd[600];
@@ -1152,6 +1173,7 @@ void suite_claude_config(void)
     test_gaps();
     test_gaps3();
     test_datadir();
+    test_runcommand_args();
     strcpy(cmd, "rm -rf ");
     strcat(cmd, dir);
     if (system(cmd))
