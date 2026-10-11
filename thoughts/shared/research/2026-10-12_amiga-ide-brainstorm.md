@@ -28,6 +28,8 @@ of amiga-pi's edits. Porting VS Code/Electron itself was ruled out (no 68k V8, G
 
 ## Spike (approved, not started) - the gate before spec 1
 
+Parked (owner 2026-10-12): starts only after the UP-Term and amiga-pi work is finished.
+
 Question: can Scintilla 5 + Lexilla + Scinterm be built with our Amiga toolchain and run
 well enough on an 040?
 
