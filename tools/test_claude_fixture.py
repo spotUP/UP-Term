@@ -95,6 +95,7 @@ OPENAI = [
      "openai_tools"),
     ("after results", {"model": "m", "messages": [{"role": "user", "content": "tool"},
                                                   {"role": "tool", "tool_call_id": "c", "content": "x"}]}, "openai_final"),
+    ("shell", {"model": "m", "messages": [{"role": "user", "content": "ask the shell"}]}, "openai_shell"),
     ("edit (before startup/tool)", {"model": "m", "messages": [{"role": "user", "content": "please edit the tool"}]},
      "openai_edit"),
     ("after openai_edit's results", {"model": "m", "messages": [

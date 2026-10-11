@@ -29,12 +29,33 @@ the Amiga") and bash "List RAM:", then answers openai_edit_final.sse:
   3c. the final text printed, exit code 0
 In a visible window titled "amiga-pi step 3".
 
+Step 4 (parity Q9-Q11): the bash tool's shell and read's images on the Amiga.
+"amiga-pi -p ask the shell" against the fixture, whose openai_shell.sse calls
+bash with a command only vsh answers (echo $((1+2)), quoting, a here-document read by a loop,
+$0) and read on RAM:pi-wide.bmp (2400x10):
+  4a without UP-Term: (no assign, no ENVARC:up-term/Dir, no C:vsh): the run
+     ends, no requester window appears (amiagent's UI tree, polled), the
+     prompt says vsh is not installed, the AmigaShell ran the command; read
+     sent the BMP as PNG at 2000x8 with pi's notes
+  4b UP-Term: the kit's way: VTC:pi-kit/bin/vsh and ENVARC:up-term/Dir naming
+     VTC:pi-kit (upassign_ensure makes the assign, as for an installed kit):
+     the prompt names vsh and the command's output is vsh's ("3", the quoted
+     words, the here-document)
+  4c step 3 again with UP-Term: there (bash's List RAM: through vsh)
+  4d vsh -c against vsh <script> (what sys_amiga runs): $0, exit status,
+     standard input, the directory, quoting, two lines; the outputs side by
+     side in the log; only $0 differs
+  4e a 600-character command: the script runs it, as vsh -c the Shell
+     refuses the line (too long), so the bash tool keeps the script
+Everything 4b made is removed again. Visible windows titled "amiga-pi step 4".
+
   make build/amiga/pi-llmprobe build/amiga/Claude; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
   UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3]
 """
 import argparse
 import os
+import struct
 import shutil
 import subprocess
 import sys
@@ -43,6 +64,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
 import condev_rig as c  # noqa: E402
+import ami  # noqa: E402
 
 ROOT = paths.VTCON
 VTC = paths.RIG / 'vtc'
@@ -210,10 +232,217 @@ def step3(port):
         c.run('Delete RAM:pi3-done VTC:pi3.dos RAM:pi-test.txt QUIET')
 
 
+def assigns():
+    """the assign, device and volume names the Amiga has (Assign LIST never asks for a volume)"""
+    out = ami.req(0x02, struct.pack('>H', 30) + b'Assign LIST', 60)[4:].decode('latin-1')
+    return {l.split()[0].rstrip(':').upper() for l in out.splitlines() if l.strip() and not l[0].isspace()}
+
+
+def run_watched(name, title, lines, done):
+    """run_window, polling amiagent's UI tree for a requester the while: (ended, requester titles seen)"""
+    c.run('Delete RAM:%s QUIET' % done)
+    with open(VTC / (name + '.dos'), 'w') as f:
+        f.write(''.join(l + '\n' for l in lines) + 'Echo >RAM:%s "done"\nWait 3\nEndCLI\n' % done)
+    c.run('Run >NIL: NewShell "CON:0/12/640/200/%s/CLOSE" FROM VTC:%s.dos' % (title, name))
+    seen = set()
+    for _ in range(240):
+        tree = ami.req(0x0D).decode('latin-1')
+        for l in tree.splitlines():
+            if 'System Request' in l or 'insert volume' in l.lower() or 'Please insert' in l:
+                seen.add(l.strip()[:120])
+        if there('RAM:' + done):
+            return True, sorted(seen)
+        time.sleep(0.5)
+    return False, sorted(seen)
+
+
+def bmp(path, w, h):
+    row = (w * 3 + 3) & ~3
+    data = bytearray()
+    for y in range(h):
+        r = bytearray()
+        for x in range(w):
+            r += bytes((255, 0, 0)) if x < w // 2 else bytes((0, 0, 255))
+        data += r + b'\0' * (row - len(r))
+    hdr = b'BM' + struct.pack('<IHHI', 54 + len(data), 0, 0, 54) + \
+        struct.pack('<IiiHHIIiiII', 40, w, h, 1, 24, 0, len(data), 2835, 2835, 0, 0)
+    open(path, 'wb').write(hdr + data)
+
+
+def body_of(dump, k):
+    import json
+    p = dump / ('%03d.json' % k)
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def shell_run(port, tag, log, dump):
+    """amiga-pi -p ask the shell in a watched window: (ended, requesters, system prompt, results by call id)"""
+    for f in ('pi4%s.out' % tag, 'pi4%s.rc' % tag):
+        if (VTC / f).exists():
+            (VTC / f).unlink()
+    ended, req = run_watched('pi4' + tag, 'amiga-pi step 4%s' % tag, [
+        'Echo "amiga-pi step 4%s: bash and read through the tools"' % tag,
+        'Copy VTC:pi-wide.bmp RAM:pi-wide.bmp',
+        'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 -p "ask the shell" '
+        '>VTC:pi4%s.out' % (port, tag),
+        'Echo "rc=$RC" >VTC:pi4%s.rc' % tag,
+        'Type VTC:pi4%s.out' % tag], 'pi4%s-done' % tag)
+    time.sleep(3)
+    bodies = sorted(dump.glob('*.json'))
+    first = body_of(dump, len(bodies) - 1) if len(bodies) >= 2 else {}
+    last = body_of(dump, len(bodies)) if bodies else {}
+    system = ''
+    for m in first.get('messages', []):
+        if m.get('role') == 'system':
+            system = m.get('content') if isinstance(m.get('content'), str) else str(m.get('content'))
+    res = {}
+    for m in last.get('messages', []):
+        if m.get('role') == 'tool':
+            cn = m.get('content')
+            res[m.get('tool_call_id')] = cn if isinstance(cn, str) else ' '.join(
+                b.get('text', '') for b in cn if isinstance(b, dict))
+    return ended, req, system, res
+
+
+IMG_NOTE = ('Read image file [image/png]\n[Image converted from image/bmp to image/png.]\n'
+            '[Image: original 2400x10, displayed at 2000x8. Multiply coordinates by 1.20 to map to original image.]')
+
+
+def q9_probes():
+    """vsh -c against vsh <script>: (name, command) pairs"""
+    return [('$0', 'echo "$0"'), ('exit status', 'exit 7'), ('standard input', 'cat; echo end'),
+            ('directory', 'pwd'), ('quoting', 'printf \'%s|\' "a b" \'c"d\' "e*f"; echo'),
+            ('two lines', 'echo one\necho two')]
+
+
+def amigados_quote(cmd):
+    """cmd as one quoted AmigaDOS argument: * as **, " as *", a newline as *N"""
+    return '"' + cmd.replace('*', '**').replace('"', '*"').replace('\n', '*N') + '"'
+
+
+def step4(port):
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    if not (VTC / 'vsh').exists():
+        sys.exit('[ERROR] VTC:vsh missing')
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    bmp(VTC / 'pi-wide.bmp', 2400, 10)
+    had = assigns()
+    saved_dir = ami.read_file('ENVARC:up-term/Dir')
+    check('4 no UP-Term: on this rig to begin with', 'UP-TERM' not in had and saved_dir is None,
+          repr(('UP-TERM' in had, saved_dir)))
+    rc, out = c.run('List C:vsh QUICK')
+    check('4 no C:vsh', rc != 0, out)
+    log = paths.RIG / 'amigapi_fixture4.log'
+    dump = paths.RIG / 'amigapi_dump4'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    made_assign = False
+    try:
+        # 4a: nothing of the kit
+        ended, req, system, res = shell_run(port, 'a', log, dump)
+        check('4a the run ended', ended)
+        check('4a no requester', not req, repr(req))
+        check('4a the prompt: vsh is not installed', 'vsh is not installed' in system, repr(system[-400:]))
+        probe = res.get('call_VshProbe', '')
+        print('[INFO] 4a AmigaShell ran: %r' % probe[:200], flush=True)
+        check('4a the AmigaShell ran it (not vsh)', probe and not probe.startswith('3\n'), repr(probe[:200]))
+        check('4a read sent the BMP as PNG at 2000x8', res.get('call_ImgRead', '') == IMG_NOTE,
+              repr(res.get('call_ImgRead', '')))
+        rcs = (VTC / 'pi4a.rc').read_text(errors='replace').strip() if (VTC / 'pi4a.rc').exists() else ''
+        check('4a exit code 0', rcs == 'rc=0', repr(rcs))
+        # 4b: UP-Term: as an installed kit makes it, from ENVARC:up-term/Dir
+        c.run('MakeDir VTC:pi-kit VTC:pi-kit/bin ENVARC:up-term')
+        c.run('Copy VTC:vsh VTC:pi-kit/bin/vsh')
+        with open(VTC / 'pi-kit-dir', 'w') as f:
+            f.write('VTC:pi-kit\n')
+        c.run('Copy VTC:pi-kit-dir ENVARC:up-term/Dir')
+        c.run('Copy VTC:pi-kit-dir ENV:up-term/Dir')
+        made_assign = True
+        ended, req, system, res = shell_run(port, 'b', log, dump)
+        check('4b the run ended', ended)
+        check('4b no requester', not req, repr(req))
+        check('4b UP-Term: made from the Dir file', 'UP-TERM' in assigns())
+        check('4b the prompt names vsh', 'vsh, a bash-compatible shell' in system, repr(system[-400:]))
+        probe = res.get('call_VshProbe', '')
+        print('[INFO] 4b vsh ran: %r' % probe[:200], flush=True)
+        check('4b vsh answered (3, the quoted words, the here-document)',
+              probe.startswith('3\na b|c"d|\ngot heredoc line\n'), repr(probe[:200]))
+        check('4b read sent the BMP as PNG at 2000x8', res.get('call_ImgRead', '') == IMG_NOTE,
+              repr(res.get('call_ImgRead', '')))
+        # 4c: step 3 under vsh
+        fx.terminate()
+        fx = None
+        step3(port + 10)
+        # 4d: vsh -c against vsh <script>
+        lines = ['Echo "amiga-pi step 4d: vsh -c against vsh <script>"', 'CD RAM:']
+        for i, (name, cmd) in enumerate(q9_probes()):
+            with open(VTC / ('q9s%d.sh' % i), 'w') as f:
+                f.write(cmd + '\n')
+            lines += ['VTC:vsh -c %s >VTC:q9c%d.out <NIL:' % (amigados_quote(cmd), i),
+                      'Echo "$RC" >VTC:q9c%d.rc' % i,
+                      'VTC:vsh VTC:q9s%d.sh >VTC:q9s%d.out <NIL:' % (i, i),
+                      'Echo "$RC" >VTC:q9s%d.rc' % i]
+        ended, req = run_watched('pi4d', 'amiga-pi step 4d', lines, 'pi4d-done')
+        check('4d the probes ended', ended)
+        rd = lambda f: (VTC / f).read_bytes().decode('latin-1') if (VTC / f).exists() else '(none)'
+        same = []
+        for i, (name, cmd) in enumerate(q9_probes()):
+            a, b = rd('q9c%d.out' % i) + ' rc=' + rd('q9c%d.rc' % i).strip(), \
+                rd('q9s%d.out' % i) + ' rc=' + rd('q9s%d.rc' % i).strip()
+            print('[INFO] 4d %-14s -c: %r | script: %r' % (name, a, b), flush=True)
+            same.append((name, a == b))
+        print('[INFO] 4d the same both ways: %s' % ', '.join('%s=%s' % x for x in same), flush=True)
+        check('4d only $0 differs', [n for n, ok in same if not ok] == ['$0'], repr(same))
+        # 4e: a 600-character command: the script carries it; as a -c argument the AmigaDOS
+        # line is too long for the Shell (the script's last line: the window is left at the
+        # error and closed here)
+        long_cmd = 'echo ' + 'x' * 600
+        with open(VTC / 'q9long.sh', 'w') as f:
+            f.write(long_cmd + '\n')
+        for f in ('q9long.out', 'q9longc.out'):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        c.run('Delete RAM:pi4e-done QUIET')
+        with open(VTC / 'pi4e.dos', 'w') as f:
+            f.write('Echo "amiga-pi step 4e: a 600-character command, as a script and as vsh -c"\n'
+                    'VTC:vsh VTC:q9long.sh >VTC:q9long.out <NIL:\n'
+                    'Echo >RAM:pi4e-done "done"\n'
+                    'VTC:vsh -c %s >VTC:q9longc.out <NIL:\n'
+                    'Wait 3\nEndCLI\n' % amigados_quote(long_cmd))
+        c.run('Run >NIL: NewShell "CON:0/12/640/200/amiga-pi step 4e/CLOSE" FROM VTC:pi4e.dos')
+        for _ in range(40):
+            if there('RAM:pi4e-done'):
+                break
+            time.sleep(0.5)
+        time.sleep(6)
+        script_out = rd('q9long.out')
+        c_out = rd('q9longc.out')
+        print('[INFO] 4e script: %d x; -c: %r' % (script_out.count('x'), c_out[:80]), flush=True)
+        check('4e the script ran the 600-character command', script_out.strip() == 'x' * 600, repr(script_out[:80]))
+        tree = ami.req(0x0D).decode('latin-1')
+        if 'amiga-pi step 4e' in tree:
+            ami.req(0x08, bytes([4]) + b'endcli\r')
+            time.sleep(2)
+        check('4e as vsh -c it did not run (the AmigaDOS line is too long)', 'x' * 600 not in c_out, repr(c_out[:80]))
+    finally:
+        if fx:
+            fx.terminate()
+        if made_assign:
+            c.run('Delete ENVARC:up-term/Dir ENV:up-term/Dir QUIET')
+            if 'UP-TERM' not in had:
+                c.run('Assign UP-Term: REMOVE')
+            c.run('Delete VTC:pi-kit ALL QUIET')
+        c.run('Delete RAM:pi4a-done RAM:pi4b-done RAM:pi4d-done RAM:pi4e-done RAM:pi-wide.bmp QUIET')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3), help='one step only (default: all)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4), help='one step only (default: all)')
     a = ap.parse_args()
     if a.step in (None, 1):
         step1(a.port)
@@ -221,6 +450,8 @@ def main():
         step2(a.port + 1)
     if a.step in (None, 3):
         step3(a.port + 2)
+    if a.step in (None, 4):
+        step4(a.port + 3)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 

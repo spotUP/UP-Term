@@ -2,10 +2,13 @@
 date: 2026-10-11
 topic: amiga-pi tools to pi parity (Phase D follow-up), paused for a session restart
 tags: [amiga-pi, phase-d, parity, handoff]
-status: draft
+status: final
 ---
 
 # amiga-pi parity follow-up: handoff
+
+Resumed and finished the same day: see the ledger section "Phase D parity follow-up" (every item
+ticked with its evidence). This page is the pause's record only.
 
 ## Task(s)
 The coordinator reviewed Phase D (done, 16 of 16, vtcon bbc604f on main, amiga-pi aca7948) and asked

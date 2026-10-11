@@ -1,0 +1,18 @@
+data: {"id":"chatcmpl-amiga4","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"role":"assistant","content":"I will ask the shell and look at the picture."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga4","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_VshProbe","type":"function","function":{"name":"bash","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga4","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_ImgRead","type":"function","function":{"name":"read","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga4","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\": \"echo $((1+2)); pr"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga4","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"path\": \"RAM:pi-wide.bmp\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga4","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"intf '%s|' \\\"a b\\\" 'c\\\"d'; echo; while read -r l; do echo \\\"got $l\\\"; done <<EOF\\nheredoc line\\nEOF\\necho \\\"$0\\\"\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-amiga4","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"id":"chatcmpl-amiga4","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[],"usage":{"prompt_tokens":330,"completion_tokens":50,"total_tokens":380}}
+
+data: [DONE]
+
