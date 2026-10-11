@@ -286,7 +286,7 @@ def setup():
         # rig 2's VTC: starts as a copy of rig 1's (only read there; .uaem
         # files carry the protection bits); `install` and the scripts keep it
         print("copying rig 1's VTC: drawer ...")
-        shutil.copytree(paths.VTCON / "build/rig/vtc", RIG / "vtc", symlinks=True)
+        shutil.copytree(paths.RIG_HOME / "rig/vtc", RIG / "vtc", symlinks=True)
     (RIG / "vtc").mkdir(exist_ok=True)
     (RIG / "shots").mkdir(exist_ok=True)
     if OS32 and not (RIG / "os32").exists():
@@ -349,7 +349,7 @@ def setup():
     # is gone after that session (the rig failed to start, 2026-09-30)
     if not (RIG / "boot/amiagent").exists() and paths.RIG_N > 1:
         # rig 2 takes its own copy of rig 1's agent (only read there)
-        shutil.copyfile(paths.VTCON / "build/rig/boot/amiagent", RIG / "boot/amiagent")
+        shutil.copyfile(paths.RIG_HOME / "rig/boot/amiagent", RIG / "boot/amiagent")
         os.chmod(RIG / "boot/amiagent", 0o755)
     if not (RIG / "boot/amiagent").exists():
         sys.exit("rig: build/rig/boot/amiagent is missing (copy it from the Up Rough demo system)")
