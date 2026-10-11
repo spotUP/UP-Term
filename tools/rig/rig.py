@@ -234,6 +234,12 @@ def os_image_copy():
         hooks.write_text(prior + ("" if prior.endswith("\n") or not prior else "\n") + OS_HOOKS)   # 3.2.2 ends its comment box without a newline: the first hook line was part of it (VTC: never assigned, 2026-10-10)
         xdf_write(dst, hooks, "S/User-Startup")
         hooks.unlink()
+        # the Workbench in 256 colours (rig.py aga256's file): the clean images have AGA only and a Workbench of few
+        # colours, whose full colour map gives UP-Term's windows no pens for the xterm 256 colours (cube_rig,
+        # screen_rig, tmux_rig: every colour the nearest Workbench pen; owner 2026-10-11)
+        sm = RIG / "vtc/screenmode.aga256.prefs"
+        paths.require_input(sm, "UPTERM_RIG", "the rig's 256-colour ScreenMode prefs (VTC:screenmode.aga256.prefs)")
+        xdf_write(dst, sm, "Prefs/Env-Archive/Sys/screenmode.prefs")
         us.unlink(missing_ok=True)
     listing = subprocess.run(["xdftool", str(dst), "list"], capture_output=True, text=True).stdout
     if not re.search(r"^\s+Installer\s", listing, re.M):
