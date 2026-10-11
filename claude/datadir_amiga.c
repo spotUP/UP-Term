@@ -21,6 +21,31 @@ void dda_err(dd_amiga *s, const char *what)
     }
 }
 
+int dda_pread(void *u, const char *path, long off, char *out, long cap, long *n)
+{
+    dd_amiga *s = (dd_amiga *)u;
+    BPTR f = Open((STRPTR)path, MODE_OLDFILE);
+    long got;
+    *n = 0;
+    if (!f) {
+        dda_err(s, path);
+        return -1;
+    }
+    if (off && Seek(f, off, OFFSET_BEGINNING) < 0) {
+        dda_err(s, path);
+        Close(f);
+        return -1;
+    }
+    got = Read(f, out, cap);
+    Close(f);
+    if (got < 0) {
+        dda_err(s, path);
+        return -1;
+    }
+    *n = got;
+    return 0;
+}
+
 int dda_read(void *u, const char *path, long max, char **out, long *n)
 {
     dd_amiga *s = (dd_amiga *)u;
@@ -188,4 +213,5 @@ void dda_init(dd_amiga *s, cl_sys *sys)
     sys->mkdir = dda_mkdir;
     sys->remove = dda_remove;
     sys->rename = dda_rename;
+    sys->pread = dda_pread;
 }

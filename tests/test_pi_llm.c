@@ -140,6 +140,17 @@ static void test_messages(void)
     jw_reset(&m);
     llm_m_system(&m, "You are amiga-pi.", 17, ts);
     round_trip("system", m.p, LR_SYSTEM);
+    /* pi-ai's whole SystemMessage: sections (a null removes one), tools added and removed, in pi-agent-core's key order */
+    jw_reset(&m);
+    {
+        static const char secs[] = "{\"preamble\":\"You are.\",\"cwd\":null}";
+        static const char add[] = "[{\"name\":\"read\",\"description\":\"Read\",\"parameters\":{}}]";
+        static const char rem[] = "[{\"name\":\"bash\"}]";
+        llm_m_system_ex(&m, "", 0, secs, (long)strlen(secs), add, (long)strlen(add), rem, (long)strlen(rem), ts);
+    }
+    CHECK_STR(m.p, "{\"role\":\"system\",\"content\":\"\",\"sections\":{\"preamble\":\"You are.\",\"cwd\":null},\"timestamp\":1760100000042,"
+                   "\"toolsAdded\":[{\"name\":\"read\",\"description\":\"Read\",\"parameters\":{}}],\"toolsRemoved\":[{\"name\":\"bash\"}]}");
+    round_trip("system with sections and tools", m.p, LR_SYSTEM);
 
     /* pi's own order and spacing come back in the canonical order */
     jw_init(&x);

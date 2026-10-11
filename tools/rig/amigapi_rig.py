@@ -49,12 +49,25 @@ $0) and read on RAM:pi-wide.bmp (2400x10):
      refuses the line (too long), so the bash tool keeps the script
 Everything 4b made is removed again. Visible windows titled "amiga-pi step 4".
 
+Step 5 (E12): sessions. UP-Term: made as step 4b makes it (VTC:pi-kit), so the data
+directory is UP-Term:var/amiga-pi and the host can read what amiga-pi wrote.
+  5a "amiga-pi -p hello" writes one session file under var/amiga-pi/sessions/<dir>/:
+     every name at most 30 characters, pi's header (version 3, timestamp without Z),
+     model_change, thinking_level_change, the system message, the user message, the answer
+  5b "amiga-pi -c -p again" continues that file (still one file, two user messages, one
+     system message) and the request carries the first exchange
+  5c the host opens the file the Amiga wrote with pi's own SessionManager
+     (tools/pi_oracle/gen.ts --dump in the tree the binary was built in; skipped when the oracle is not there)
+  5d --no-session leaves the directory as it was
+Visible windows titled "amiga-pi step 5".
+
   make build/amiga/pi-llmprobe build/amiga/Claude; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
   UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3]
 """
 import argparse
 import os
+import pathlib
 import struct
 import shutil
 import subprocess
@@ -122,7 +135,8 @@ def step1(port):
         c.run('Delete RAM:pi1-done VTC:pi1.dos QUIET')
 
 
-AMIGA_PI = paths.repo('amiga-pi') / 'build' / 'amiga' / 'amiga-pi'
+AMIGA_PI = pathlib.Path(os.environ.get('AMIGA_PI_BIN') or
+                        paths.repo('amiga-pi') / 'build' / 'amiga' / 'amiga-pi')   # AMIGA_PI_BIN: another build (a worktree's)
 
 
 def run_window(name, title, lines, done):
@@ -439,10 +453,132 @@ def step4(port):
         c.run('Delete RAM:pi4a-done RAM:pi4b-done RAM:pi4d-done RAM:pi4e-done RAM:pi-wide.bmp QUIET')
 
 
+def step5(port):
+    import json
+    import re
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    had = assigns()
+    saved_dir = ami.read_file('ENVARC:up-term/Dir')
+    check('5 no UP-Term: on this rig to begin with', 'UP-TERM' not in had and saved_dir is None,
+          repr(('UP-TERM' in had, saved_dir)))
+    log = paths.RIG / 'amigapi_fixture5.log'
+    dump = paths.RIG / 'amigapi_dump5'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    kit = VTC / 'pi-kit'
+    sess = kit / 'var' / 'amiga-pi' / 'sessions'
+    made_assign = False
+
+    def pi_run(tag, args):
+        for f in ('pi5%s.out' % tag, 'pi5%s.rc' % tag):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        ended = run_window('pi5' + tag, 'amiga-pi step 5%s' % tag, [
+            'Echo "amiga-pi step 5%s: %s"' % (tag, args),
+            'CD RAM:',
+            'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 %s >VTC:pi5%s.out' % (
+                port, args, tag),
+            'Echo "rc=$RC" >VTC:pi5%s.rc' % tag,
+            'Type VTC:pi5%s.out' % tag], 'pi5%s-done' % tag)
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        return ended, rd('pi5%s.out' % tag), rd('pi5%s.rc' % tag).strip()
+
+    def session_files():
+        return sorted(sess.glob('*/*.jsonl')) if sess.exists() else []
+
+    try:
+        c.run('MakeDir VTC:pi-kit VTC:pi-kit/bin ENVARC:up-term')
+        with open(VTC / 'pi-kit-dir', 'w') as f:
+            f.write('VTC:pi-kit\n')
+        c.run('Copy VTC:pi-kit-dir ENVARC:up-term/Dir')
+        c.run('Copy VTC:pi-kit-dir ENV:up-term/Dir')
+        made_assign = True
+        # 5a: a new session
+        ended, text, rc = pi_run('a', '-p hello')
+        check('5a the run ended', ended)
+        check('5a exit code 0', rc == 'rc=0', repr(rc))
+        check('5a UP-Term: made from the Dir file', 'UP-TERM' in assigns())
+        check('5a the answer printed', 'Hello from the Amiga!' in text, repr(text[:200]))
+        files = session_files()
+        check('5a one session file under UP-Term:var/amiga-pi/sessions', len(files) == 1, repr(files))
+        # FS-UAE keeps protection bits and comments in <name>.uaem beside a file: not an Amiga name
+        names = [p.name for p in sess.rglob('*') if not p.name.endswith('.uaem')] if sess.exists() else []
+        check('5a every name at most 30 characters', names and max(len(n) for n in names) <= 30, repr(names))
+        check('5a the file name is <YYYYMMDDTHHMMSS>_<8 hex>.jsonl',
+              files and re.fullmatch(r'\d{8}T\d{6}_[0-9a-f]{8}\.jsonl', files[0].name) is not None,
+              repr([f.name for f in files]))
+        entries = []
+        if files:
+            entries = [json.loads(l) for l in files[0].read_text(encoding='utf-8').splitlines() if l.strip()]
+        head = entries[0] if entries else {}
+        shape = [(e.get('type'), (e.get('message') or {}).get('role')) for e in entries[1:]]
+        check('5a the header is pi\'s v3', head.get('type') == 'session' and head.get('version') == 3 and
+              re.fullmatch(r'[0-9a-f-]{36}', str(head.get('id'))) is not None, repr(head))
+        check('5a timestamps are the Amiga\'s local time, no Z',
+              re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}', str(head.get('timestamp'))) is not None and
+              all(re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}', e.get('timestamp', '')) for e in entries[1:]),
+              repr(head.get('timestamp')))
+        check('5a entries: model, thinking level, system, user, answer',
+              shape == [('model_change', None), ('thinking_level_change', None), ('message', 'system'),
+                        ('message', 'user'), ('message', 'assistant')], repr(shape))
+        check('5a the answer is in the file', 'Hello from the Amiga!' in (files[0].read_text(encoding='utf-8')
+                                                                           if files else ''))
+        # 5b: continue it
+        ended, text, rc = pi_run('b', '-c -p again')
+        check('5b the run ended', ended)
+        check('5b exit code 0', rc == 'rc=0', repr(rc))
+        files = session_files()
+        check('5b still one session file', len(files) == 1, repr(files))
+        entries = [json.loads(l) for l in files[0].read_text(encoding='utf-8').splitlines() if l.strip()] if files else []
+        roles = [(e.get('message') or {}).get('role') for e in entries[1:] if e.get('type') == 'message']
+        check('5b one system message, two user messages, two answers',
+              roles == ['system', 'user', 'assistant', 'user', 'assistant'], repr(roles))
+        bodies = sorted(dump.glob('*.json'))
+        last = body_of(dump, len(bodies)) if bodies else {}
+        said = json.dumps(last)
+        check('5b the second request carries the first exchange', 'hello' in said and 'Hello from the Amiga!' in said
+              and 'again' in said, repr(said[-300:]))
+        # 5c: pi's own code opens the file
+        oracle = AMIGA_PI.parents[2] / 'tools' / 'pi_oracle' / 'gen.ts'     # the tree the binary was built in
+        pi_dir = os.environ.get('PI_ORACLE') or str(pathlib_home() / 'Code/amiga-pi/build/pi-oracle/oracle')
+        if files and oracle.exists() and os.path.isdir(pi_dir):
+            r = subprocess.run(['node', str(oracle), '--dump', str(files[0])], capture_output=True, text=True,
+                               env=dict(os.environ, PI_ORACLE=pi_dir))
+            head5 = ' '.join(r.stdout.split('\n')[:2])
+            check('5c pi\'s SessionManager opened the Amiga\'s file', r.returncode == 0 and r.stdout.startswith('open ok'),
+                  repr((r.returncode, r.stdout[:200], r.stderr[-200:])))
+            print('[INFO] 5c pi says: %s' % head5, flush=True)
+        else:
+            print('[INFO] 5c skipped: the pi oracle (%s) is not here' % pi_dir, flush=True)
+        # 5d: --no-session
+        before = [(f.name, f.stat().st_size) for f in session_files()]
+        ended, text, rc = pi_run('d', '--no-session -p ephemeral')
+        check('5d the run ended, exit code 0', ended and rc == 'rc=0', repr((ended, rc)))
+        check('5d nothing written', [(f.name, f.stat().st_size) for f in session_files()] == before)
+    finally:
+        fx.terminate()
+        if made_assign:
+            c.run('Delete ENVARC:up-term/Dir ENV:up-term/Dir QUIET')
+            if 'UP-TERM' not in had:
+                c.run('Assign UP-Term: REMOVE')
+            c.run('Delete VTC:pi-kit ALL QUIET')
+        c.run('Delete RAM:pi5a-done RAM:pi5b-done RAM:pi5d-done QUIET')
+
+
+def pathlib_home():
+    return pathlib.Path.home()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4), help='one step only (default: all)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5), help='one step only (default: all)')
     a = ap.parse_args()
     if a.step in (None, 1):
         step1(a.port)
@@ -452,6 +588,8 @@ def main():
         step3(a.port + 2)
     if a.step in (None, 4):
         step4(a.port + 3)
+    if a.step in (None, 5):
+        step5(a.port + 4)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 

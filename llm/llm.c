@@ -225,7 +225,7 @@ void llm_m_user(jw *w, const char *c, long cn, llm_ts ts)
     jw_raw(w, "}", 1);
 }
 
-static void usage(jw *w, const llm_usage *u)
+void llm_w_usage(jw *w, const llm_usage *u)
 {
     static const char *const ck[4] = { "input", "output", "cacheRead", "cacheWrite" };
     int i;
@@ -263,7 +263,7 @@ void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts
     key(w, "model");
     jw_strz(w, m->model ? m->model : "");
     key(w, "usage");
-    usage(w, &m->usage);
+    llm_w_usage(w, &m->usage);
     key(w, "stopReason");
     jw_strz(w, m->stop ? llm_stop_name(m->stop) : "stop");
     if (m->error) {
@@ -294,13 +294,31 @@ void llm_m_toolresult(jw *w, const char *id, const char *name, const char *c, lo
     jw_raw(w, "}", 1);
 }
 
-void llm_m_system(jw *w, const char *text, long n, llm_ts ts)
+void llm_m_system_ex(jw *w, const char *text, long n, const char *sections, long sn, const char *added, long an,
+                     const char *removed, long rn, llm_ts ts)
 {
     jw_rawz(w, "{\"role\":\"system\",\"content\":");
     jw_str(w, text ? text : "", text ? n : 0);
+    if (sections && sn) {
+        key(w, "sections");
+        jw_raw(w, sections, sn);
+    }
     key(w, "timestamp");
     llm_w_ts(w, ts);
+    if (added && an) {
+        key(w, "toolsAdded");
+        jw_raw(w, added, an);
+    }
+    if (removed && rn) {
+        key(w, "toolsRemoved");
+        jw_raw(w, removed, rn);
+    }
     jw_raw(w, "}", 1);
+}
+
+void llm_m_system(jw *w, const char *text, long n, llm_ts ts)
+{
+    llm_m_system_ex(w, text, n, 0, 0, 0, 0, 0, 0, ts);
 }
 
 /* ---- reading back ---- */
@@ -405,7 +423,7 @@ static int role_of(jv m)
     return LR_BAD;
 }
 
-static void usage_read(jv u, llm_usage *o)
+void llm_r_usage(jv u, llm_usage *o)
 {
     static const char *const ck[4] = { "input", "output", "cacheRead", "cacheWrite" };
     jv v, c;
@@ -444,11 +462,20 @@ int llm_msg_canon(const char *json, long n, jw *out)
     if (role == LR_SYSTEM) {
         char *s;
         long sn;
+        jv se, ad, re;
         s = sget(m, "content", &sn);
+        se.p = ad.p = re.p = 0;
+        se.n = ad.n = re.n = 0;
+        if (json_get(m, "sections", &se) && json_type(se) != J_OBJ)
+            se.n = 0;
+        if (json_get(m, "toolsAdded", &ad) && json_type(ad) != J_ARR)
+            ad.n = 0;
+        if (json_get(m, "toolsRemoved", &re) && json_type(re) != J_ARR)
+            re.n = 0;
         if (!s)
             rc = -1;
         else
-            llm_m_system(&body, s, sn, ts);
+            llm_m_system_ex(&body, s, sn, se.p, se.n, ad.p, ad.n, re.p, re.n, ts);
         free(s);
     } else {
         jw cc;
@@ -467,7 +494,7 @@ int llm_msg_canon(const char *json, long n, jw *out)
             mt.model = model;
             mt.error = err;
             if (json_get(m, "usage", &v))
-                usage_read(v, &mt.usage);
+                llm_r_usage(v, &mt.usage);
             mt.stop = json_get(m, "stopReason", &v) ? llm_stop_of(v) : LS_NONE;
             if (!mt.stop)
                 rc = -1;
