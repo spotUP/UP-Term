@@ -59,8 +59,9 @@ KIT = ir.KIT
 # a clean image (--os) has a 12 MB system partition: the kit goes to its Work: drive
 CLEAN = "--os" in os.environ.get("UPTERM_RIG_FLAGS", "")
 WORKDEST = "Work:Apps/UP-Term"
+SMALLDEST = "Small:Apps/UP-Term"   # Small: is a 6 MB volume (rig.py small.hdf): the room check must refuse it
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:Apps/UP-Term"),
-         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None)}
+         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", SMALLDEST if CLEAN else None)}
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 RAMIGA = 0x0080
 KEY_X, KEY_RETURN = 0x32, 0x44
@@ -473,7 +474,7 @@ def run_case(case):
     if case == 'space':
         # the room check: Install on a volume with too little room says so and changes nothing
         ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase (the room message)', '; '.join(log[-3:]))
-        ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'no drawer was made', '')
+        ck(ir.run('List >NIL: "%s"' % drawer)[0] != 0, 'no drawer was made', '')
         ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
         ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
         st = ir.lib_state()
@@ -537,9 +538,8 @@ def run_case(case):
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     if rig_gg:
         ir.run('Assign GG: VTC:gg')
-    import rig as rigmod
     ir.run('Avail >NIL: FLUSH')
-    for line in rigmod.RIG_LIBS:
+    for line in ir.rig_libs():
         ir.run(line)
     print('installer_rig %s: passed %d of %d' % (case, ck.total - len(ck.failed), ck.total))
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
@@ -559,7 +559,7 @@ def _main(fx):
     only = args[args.index("ONLY") + 1] if "ONLY" in args else None
     if only and only not in CASES:
         raise SystemExit('cases: ' + ' '.join(CASES))
-    todo = [only] if only else [c for c in CASES if c != 'space']   # space needs a volume too small for the kit (the clean images)
+    todo = [only] if only else [c for c in CASES if c != 'space']   # space needs a volume too small for the kit (Small:, clean images only)
     if not (KIT / "Install").exists():
         raise SystemExit('no kit: make dist first')
     fp = fingerprint()

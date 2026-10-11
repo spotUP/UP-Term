@@ -24,6 +24,16 @@ VTC = paths.RIG / "vtc"
 # the kit under test: build/dist/UP-Term, or UPTERM_KIT=<drawer> (build/dist is
 # shared with every agent's `make dist`, so a rig run takes a private copy)
 KIT = pathlib.Path(os.environ.get('UPTERM_KIT') or ROOT / "build/dist/UP-Term")
+# a clean image (rig.py --os) has no DH0:: its system volume is SYS:
+CLEAN = '--os' in os.environ.get('UPTERM_RIG_FLAGS', '')
+SYSVOL = 'SYS:' if CLEAN else 'DH0:'
+
+def rig_libs():
+    """rig.RIG_LIBS with the system volume the rig really has (DH0: asks for a
+    volume that a clean image does not have)."""
+    import rig
+    return [l.replace('DH0:', SYSVOL) for l in rig.RIG_LIBS]
+
 ORIG_SIZE = 166972  # the 3.1 rig's ixemul.library 48.2 as released; main() takes the size the system has before Install (the 3.2 tree's differs)
 
 def run(cmd, timeout=60):
@@ -295,7 +305,7 @@ def prepare(dest):
     (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
-    run('Assign LIBS: DH0:Libs')
+    run('Assign LIBS: %sLibs' % SYSVOL)
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
 
 # What a run plants or removes on the Amiga that a user may own: each is saved
@@ -339,8 +349,7 @@ class Fixtures:
         # LIBS: is the rig's normal boot order again, whatever a case assigned
         # (a rig without LIBS: or with a missing drawer stops every library open)
         try:
-            import rig
-            for line in rig.RIG_LIBS: run(line)
+            for line in rig_libs(): run(line)
         except BaseException as e: print('[WARN] LIBS: not restored: %s' % e)
         print('install_rig: fixtures put back (%s)' % ' '.join(self.paths))
 
@@ -380,10 +389,10 @@ def _main(dest=None):
     before = lib_state()
     global ORIG_SIZE
     ORIG_SIZE = int(before.get('ixemul.library') or ORIG_SIZE)
-    check('ixemul.library' in before and 'ixemul.library.orig' not in before,
-          'before: the original ixemul, no .orig', str(before))
-    ixnet_before = before.get('ixnet.library')  # the rig's own (Install keeps it as .orig)
-    check(ixnet_before and 'ixnet.library.orig' not in before, 'before: an ixnet, no .orig', str(before))
+    check('ixemul.library.orig' not in before,
+          'before: no .orig of ixemul (the system\'s own ixemul, when it has one)', str(before))
+    ixnet_before = before.get('ixnet.library')  # the system's own, if any (Install keeps it as .orig)
+    check('ixnet.library.orig' not in before, 'before: no .orig of ixnet', str(before))
     rc, out = run_long('runinstall')
     check(rc == 0 and 'Unknown command' not in out, 'Install runs (no line taken for a command)', out)
     # UP-Term: (UPTERM-ASSIGN): the drawer is where Install was told, reached
@@ -426,7 +435,7 @@ def _main(dest=None):
     rc, out = run('VTC:ptytest', 120)
     check(rc == 0 and 'FAIL' not in out, 'the installed PTY: passes ptytest', out[-300:])
     st = lib_state()
-    check(st.get('ixemul.library.orig') == str(ORIG_SIZE), 'the original ixemul kept as .orig', str(st))
+    check(st.get('ixemul.library.orig') == before.get('ixemul.library'), 'the original ixemul kept as .orig (none when the system had none)', '%s; %s; %s' % (st, run('List ENVARC:up-term-orig')[1], run('Type ENVARC:up-term-orig/ixemul.path')[1]))
     kit_ixnet = (VTC / "distkit/Files/libs/ixnet.library").stat().st_size
     check(st.get('ixnet.library.orig') == ixnet_before and st.get('ixnet.library') == str(kit_ixnet),
           'the kit\'s ixnet in LIBS:, the original kept as .orig', str(st))
@@ -606,10 +615,10 @@ def _main(dest=None):
     check('CON: ROM' in out and 'RAW: ROM' in out, 'after Uninstall: CON: and RAW: are the ROM\'s', out)
     check('console.device: ROM' in out, 'after Uninstall: console.device is the ROM\'s', out)
     st = lib_state()
-    check(st.get('ixemul.library') == str(ORIG_SIZE) and 'ixemul.library.orig' not in st,
-          'after Uninstall: the original ixemul back, no .orig', str(st))
+    check(st.get('ixemul.library') == before.get('ixemul.library') and 'ixemul.library.orig' not in st,
+          'after Uninstall: the original ixemul back, no .orig', 'now %s, before %s' % (st, before))
     check(st.get('ixnet.library') == ixnet_before and 'ixnet.library.orig' not in st,
-          'after Uninstall: the original ixnet back, no .orig', str(st))
+          'after Uninstall: the original ixnet back, no .orig', 'now %s, before %s' % (st, before))
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == terminfo_before, 'after Uninstall: the TERMINFO from before Install is back', out)
     rc, out = run('Type S:User-Startup')
@@ -624,16 +633,18 @@ def _main(dest=None):
             if run('List >NIL: %s' % f)[0] == 0]
     if not tmp_before:
         check(run('Assign >NIL: TMP: EXISTS')[0] != 0, 'after Uninstall: no TMP: (Install made it)')
-    check(not left, 'Uninstall removed the files', ' '.join(left))
+    # Uninstall keeps UP-Term:var unless told otherwise (the question's default is No)
+    if '"%s"' % drawer in left and set(run('List "%s" LFORMAT "%%N"' % drawer)[1].split()) <= {'var'}:
+        left.remove('"%s"' % drawer)
+    check(not left, 'Uninstall removed the files (UP-Term:var stays)', ' '.join(left))
     check(run('List >NIL: ENVARC:UP-Term.prefs')[0] == 0, 'Uninstall kept the user\'s preferences', '')
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')
     if rig_gg:
         run('Assign GG: VTC:gg')
     # LIBS: as the rig runs (the patched ixemul first): this test set it to
     # the stock library, and whatever runs next on the rig needs ours
-    import rig
     run('Avail >NIL: FLUSH')
-    for line in rig.RIG_LIBS:
+    for line in rig_libs():
         run(line)
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
@@ -662,7 +673,7 @@ def _libs():
     run_long('rununinstall')
     # DH0:Libs is where the rig's own ixemul.library and ixnet.library live
     run('Assign LIBS: VTC:libsA')
-    run('Assign LIBS: DH0:Libs ADD')
+    run('Assign LIBS: %sLibs ADD' % SYSVOL)
     rc, real = run('Which LIBS:ixemul.library')
     real = real.strip()
     rc, realnet = run('Which LIBS:ixnet.library')
@@ -826,9 +837,8 @@ def _move():
     run('Delete >NIL: ENVARC:UP-Term.prefs S:User-Startup.before-UP-Term QUIET')
     if rig_gg:
         run('Assign GG: VTC:gg')
-    import rig
     run('Avail >NIL: FLUSH')
-    for line in rig.RIG_LIBS:
+    for line in rig_libs():
         run(line)
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1

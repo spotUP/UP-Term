@@ -60,10 +60,10 @@ if OS32:
     KICK = OS32_KICK
 # --os <name>: boot a clean installed Workbench instead of sys.hdf or the 3.2
 # tree (owner 2026-10-10: every rig boots a clean installed OS image). The
-# owner's image (paths.OS_IMAGES, only read) is copied to <rig>/os-<name>.hdf,
+# owner's image (paths.OS_IMAGES, only read) is unpacked to the host directory <rig>/os-<name>/ (FS-UAE's hard drive),
 # the rig's own copy; --fresh copies it anew (a clean system for this run).
 # The system boots as a user's does: the rig's two hooks are lines appended
-# to the copy's S:User-Startup (xdftool; the originals are never written):
+# to the copy's S:User-Startup (the originals are never written):
 # VTC: assigned, BOOTX:go run. BOOTX: and VTCX: are data drives and do not
 # boot (the image's priority is the higher). Names: 30 31 314 32 321 322 35 39.
 OS_NAMES = {"30": "3.0", "31": "3.1", "314": "3.1.4", "32": "3.2", "321": "3.2.1", "322": "3.2.2",
@@ -218,46 +218,67 @@ def os32_hd_layout():
 
 OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
 
+def unpack_volume(image, dst):
+    """The whole file tree of an ADF/HDF volume as a host directory FS-UAE
+    mounts (its free space is the Mac's): xdftool unpack, then the protection
+    bits, dates and comments of its .xdfmeta file written as FS-UAE's .uaem
+    sidecar files (flags in hspa rwed order, date, comment). The image is only
+    read. Returns the volume's name."""
+    tmp = pathlib.Path(str(dst) + ".unpack")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    r = subprocess.run(["xdftool", str(image), "unpack", str(tmp)], capture_output=True, text=True)
+    metas = list(tmp.glob("*.xdfmeta"))
+    if r.returncode != 0 or len(metas) != 1:
+        sys.exit("rig: xdftool could not unpack %s: %s" % (image, (r.stderr or r.stdout).strip()[-200:]))
+    vol = metas[0].name[:-len(".xdfmeta")]
+    for line in metas[0].read_text(encoding="utf-8", errors="replace").splitlines():
+        path, _, rest = line.partition(":")
+        if rest.startswith("DOS"):
+            continue    # the volume's own line (file system type, dates)
+        flags, date, comment = (rest.split(",", 2) + ["", ""])[:3]
+        f = "".join(c if c in flags else "-" for c in "hsparwed")
+        m = re.match(r"(\d\d)\.(\d\d)\.(\d{4}) (\S+)", date)
+        when = "%s-%s-%s %s" % (m.group(3), m.group(2), m.group(1), m.group(4)) if m else "1978-01-01 00:00:00.00"
+        target = tmp / vol / path
+        if target.exists():
+            pathlib.Path(str(target) + ".uaem").write_text("%s %s %s\n" % (f, when, comment))
+    shutil.rmtree(dst, ignore_errors=True)
+    shutil.move(str(tmp / vol), str(dst))
+    shutil.rmtree(tmp)
+    return vol
+
 def os_image_copy():
-    """<rig>/os-<name>.hdf from the owner's clean image (once, or anew with
-    --fresh), the two hooks appended to its S:User-Startup; with --060/--max
-    also the 68060.library."""
-    dst = RIG / ("os-%s.hdf" % OS)
-    if not dst.exists() or FRESH:
+    """<rig>/os-<name>/ (a host directory, FS-UAE's hard drive) from the owner's
+    clean image (once, or anew with --fresh), the two hooks appended to its
+    S:User-Startup; with --060/--max also the 68060.library. A directory and
+    not an HDF copy: the clean images are 12 MB, a real system disk is far
+    larger (owner 2026-10-11)."""
+    dst = RIG / ("os-%s" % OS)
+    label = RIG / ("os-%s.label" % OS)
+    if not dst.exists() or not label.exists() or FRESH:
         src = paths.OS_IMAGES / ("Workbench_%s.hdf" % OS_NAMES[OS])
         paths.require_input(src, "UPTERM_OS_IMAGES", "the clean Workbench %s image" % OS_NAMES[OS])
-        shutil.copyfile(src, dst)
-        os.chmod(dst, 0o644)
-        us, hooks = RIG / "os-us.tmp", RIG / "os-hooks.tmp"
-        got = subprocess.run(["xdftool", str(dst), "read", "S/User-Startup", str(us)], capture_output=True)
-        prior = us.read_text(errors="replace") if got.returncode == 0 and us.exists() else ""
-        hooks.write_text(prior + ("" if prior.endswith("\n") or not prior else "\n") + OS_HOOKS)   # 3.2.2 ends its comment box without a newline: the first hook line was part of it (VTC: never assigned, 2026-10-10)
-        xdf_write(dst, hooks, "S/User-Startup")
-        hooks.unlink()
+        label.write_text(unpack_volume(src, dst))
+        us = dst / "S/User-Startup"
+        prior = us.read_text(errors="replace") if us.exists() else ""
+        us.write_text(prior + ("" if prior.endswith("\n") or not prior else "\n") + OS_HOOKS)   # 3.2.2 ends its comment box without a newline: the first hook line was part of it (VTC: never as
         # the Workbench in 256 colours (rig.py aga256's file): the clean images have AGA only and a Workbench of few
         # colours, whose full colour map gives UP-Term's windows no pens for the xterm 256 colours (cube_rig,
         # screen_rig, tmux_rig: every colour the nearest Workbench pen; owner 2026-10-11)
         sm = RIG / "vtc/screenmode.aga256.prefs"
         paths.require_input(sm, "UPTERM_RIG", "the rig's 256-colour ScreenMode prefs (VTC:screenmode.aga256.prefs)")
-        xdf_write(dst, sm, "Prefs/Env-Archive/Sys/screenmode.prefs")
-        us.unlink(missing_ok=True)
-    listing = subprocess.run(["xdftool", str(dst), "list"], capture_output=True, text=True).stdout
-    if not re.search(r"^\s+Installer\s", listing, re.M):
+        (dst / "Prefs/Env-Archive/Sys").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(sm, dst / "Prefs/Env-Archive/Sys/screenmode.prefs")
+    if not (dst / "C/Installer").exists():
         # the clean 3.0/3.1 installs have no Installer (it is on the Install disk)
         paths.require_input(paths.INSTALLER, "UPTERM_INSTALLER", "an Installer program")
-        xdf_write(dst, paths.INSTALLER, "C/Installer")
+        shutil.copyfile(paths.INSTALLER, dst / "C/Installer")
     if M060:
         paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
-        xdf_write(dst, paths.LIB68060, "Libs/68060.library")
+        shutil.copyfile(paths.LIB68060, dst / "Libs/68060.library")
         paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
-        xdf_write(dst, paths.LIB68040, "Libs/68040.library")
-
-def xdf_write(image, local, name):
-    """Put a host file into the image's volume as <name> (replacing one)."""
-    subprocess.run(["xdftool", str(image), "delete", name], capture_output=True)
-    r = subprocess.run(["xdftool", str(image), "write", str(local), name], capture_output=True, text=True)
-    if r.returncode != 0:
-        sys.exit("rig: xdftool could not write %s into %s: %s" % (name, image, (r.stderr or r.stdout).strip()[-200:]))
+        shutil.copyfile(paths.LIB68040, dst / "Libs/68040.library")
 
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
@@ -278,6 +299,9 @@ def setup():
         # the clean system partition is 12 MB: the kit goes to a second, roomy
         # drive, Work:, as on an Amiga with System and Work partitions
         (RIG / "work").mkdir(exist_ok=True)
+        small = RIG / "small.hdf"   # 6 MB, for installer_rig's room-check case
+        if not small.exists():
+            subprocess.run(["xdftool", str(small), "create", "size=6M", "+", "format", "Small", "ffs"], check=True, capture_output=True)
         os_image_copy()
     elif not OS32 and not (RIG / "sys.hdf").exists():
         print("copying the system disk (1.5 GB) ...")
@@ -352,7 +376,8 @@ def setup():
     ] + (["uae_cpu_no_unimplemented = false", "uae_fpu_no_unimplemented = false"] if M060 else [])
     paths.require_rom(KICK)
     CFG.write_text("\n".join(machine + [
-        "hard_drive_0 = %s" % (RIG / ("os-%s.hdf" % OS if OS else "os32" if OS32 else "sys.hdf")),
+        "hard_drive_0 = %s" % (RIG / ("os-%s" % OS if OS else "os32" if OS32 else "sys.hdf")),
+        ] + (["hard_drive_0_label = %s" % (RIG / ("os-%s.label" % OS)).read_text()] if OS else []) + [
         # Writable: read-only (--ro) put up "Volume System is write
         # protected" requesters that stalled the rig (the owner saw them,
         # 2026-09-29). stop write-protects DH0: through amiagent before its
@@ -363,7 +388,7 @@ def setup():
         "hard_drive_2 = %s" % (RIG / "boot"), "hard_drive_2_label = BOOTX",
         "hard_drive_2_priority = %d" % (0 if OS else 10), "joystick_port_1 = none",
         "kickstart_file = %s" % KICK,
-    ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
+    ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128", "hard_drive_4 = %s" % (RIG / "small.hdf"), "hard_drive_4_priority = -129"] if OS else []) + [
         "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
         "window_width = 1280", "window_height = 1024",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
