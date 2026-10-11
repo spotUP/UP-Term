@@ -47,6 +47,15 @@ bugs that the Sonnet ledger had ticked).
   Needed before rig 1 moves to 0.13.2: a tiny tests/amiga tool running a command with
   pr_WindowPtr 0, used by those checks.
 - Phase H (print/JSON/RPC) after F; I/J after G; L, M, N, O later.
+- BUG (owner 2026-10-12, rig FS-UAE): holding Enter at the shell, the cursor sometimes
+  jumps up some rows and carries on from there, as if half the screen was cleared (rows
+  below the cursor gone). Not a flash: the output continues from the higher row. Suspects
+  to tell apart by a recording of the bytes the console receives (not by reading code):
+  the line editor's redraw moving up by a stale row count (ghost text / wrapped prompt
+  height, handler/lineedit.c), the console's own scroll/blank-scroll skip or jump scroll
+  losing rows (renderer), or a race in the paced flush. First step: reproduce on rig 1
+  with a key-repeat driver and log vt_feed input around the jump. Regression test named
+  after the symptom.
 - Colour at no extra cost (owner 2026-10-12: "ccon draws colors at no extra cost we
   should do that as well"). Done = conbench colour rows (sgr-perchar etc.) cost what the
   plain-text row costs, as in CCON, on the stock A1200 rig (SYNC SCALE 1 REPS 3).
