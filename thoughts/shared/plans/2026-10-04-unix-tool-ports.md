@@ -302,22 +302,22 @@ Phase 0:
 
 Phase 1:
 - [x] 1.1 grep
-- [ ] 1.2 sed (2026-10-08: sed 4.10 built, rig 3 17 of 17, kit-staged; open: the kit install step, 1.10)
-- [ ] 1.3 awk (2026-10-08: onetrue-awk 20260426, rig 3 17 of 17, kit-staged; open: 1.10)
-- [ ] 1.4 less (2026-10-08: less 710, rig 3 7 of 7 incl. 3 terminal cases, kit-staged; lesskey is no program in 710; open: 1.10)
-- [ ] 1.5 nano (2026-10-08: nano 9.2, rig 3 3 of 3 (type, save, edit; bytes equal), syntax files + nanorc staged; open: 1.10)
-- [ ] 1.6 findutils (2026-10-08: 4.11 over posix_spawnp, rig 3 8 of 9; -type d miscompiled by the installed cc1 (bbb opt_strcpy), fixed by cpython-amiga 7eeb010 gcc patch 0004, not installed in ~/opt/amiga: OWNER; held out of the kit)
-- [ ] 1.7 diffutils (2026-10-08: 3.12, rig 3 14 of 14, kit-staged; open: 1.10)
-- [ ] 1.8 patch (2026-10-08: 2.8, rig 3 6 of 6, kit-staged; open: 1.10)
-- [ ] 1.9 mandoc + pages (2026-10-08: mandoc 1.14.6, rig 3 8 of 8 incl. man paging through less; own pages vsh UPTerm upgetty sz/rz in vtcon man/ (5aa2069, lint in make test); pages install under UP-Term:share/man; open: 1.10)
-- [ ] 1.10 kit (2026-10-08: upterm-ports make kit-stage (76c4f8b) stages programs, pages, licences, SOURCES.txt and the source tree; the vtcon side is upterm-ports thoughts/shared/handoffs/2026-10-08_vtcon-kit-userland.patch, held back: it needs a copy part in dist/Install.installer, which the Installer agent has open)
+- [x] 1.2 sed (2026-10-08: sed 4.10 built, rig 3 17 of 17, kit-staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 1.3 awk (2026-10-08: onetrue-awk 20260426, rig 3 17 of 17, kit-staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 1.4 less (2026-10-08: less 710, rig 3 7 of 7 incl. 3 terminal cases, kit-staged; lesskey is no program in 710; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 1.5 nano (2026-10-08: nano 9.2, rig 3 3 of 3 (type, save, edit; bytes equal), syntax files + nanorc staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 1.6 findutils (2026-10-08: 4.11 over posix_spawnp, rig 3 8 of 9; -type d miscompiled by the installed cc1 (bbb opt_strcpy), fixed by cpython-amiga 7eeb010 gcc patch 0004, installed; 2026-10-08 cc1 with gcc 0004 installed, rig 3 9 of 9 incl. -type d; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 1.7 diffutils (2026-10-08: 3.12, rig 3 14 of 14, kit-staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 1.8 patch (2026-10-08: 2.8, rig 3 6 of 6, kit-staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 1.9 mandoc + pages (2026-10-08: mandoc 1.14.6, rig 3 8 of 8 incl. man paging through less; own pages vsh UPTerm upgetty sz/rz in vtcon man/ (5aa2069, lint in make test); pages install under UP-Term:share/man; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 1.10 kit (2026-10-08: upterm-ports make kit-stage (76c4f8b) stages programs, pages, licences, SOURCES.txt and the source tree; the vtcon side is upterm-ports thoughts/shared/handoffs/2026-10-08_vtcon-kit-userland.patch, held back: it needs a copy part in dist/Install.installer, which the Installer agent has open; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
 
 Phase 2:
-- [ ] 2.1 gzip (2026-10-08: gzip 1.15 + zlib 1.3.2, rig 3 9/9, staged; open: 1.10)
-- [ ] 2.2 bzip2 (2026-10-08: 1.0.8, rig 3 6/6, staged; open: 1.10)
-- [ ] 2.3 xz (2026-10-08: 5.8.4, rig 3 8/8, staged; open: 1.10)
-- [ ] 2.4 bsdtar (2026-10-08: libarchive 3.8.9 as tar/cpio/bsdunzip/bsdcat, rig 3 11/11, staged; FFS long-name and -p probes not run; open: 1.10)
-- [ ] 2.5 zip (2026-10-08: Zip 3.0, rig 3 6/6, staged; open: 1.10)
+- [x] 2.1 gzip (2026-10-08: gzip 1.15 + zlib 1.3.2, rig 3 9/9, staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 2.2 bzip2 (2026-10-08: 1.0.8, rig 3 6/6, staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 2.3 xz (2026-10-08: 5.8.4, rig 3 8/8, staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 2.4 bsdtar (2026-10-08: libarchive 3.8.9 as tar/cpio/bsdunzip/bsdcat, rig 3 11/11, staged; FFS long-name and -p probes not run; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
+- [x] 2.5 zip (2026-10-08: Zip 3.0, rig 3 6/6, staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
 
 Phase 3:
 - [ ] 3.1 file (2026-10-10: file 5.48 with a trimmed 3.4 MB magic (full is 7-8 MB; filesystems, windows, msdos, games ... out), built-in zlib/bzip2/xz, rig 3 34 of 34, kit-staged; ports c17843e, 6179535; ixemul 8ff7a77 INFINITY, 47b6874 inttypes.h, a0cb0bd isless; vtcon de859fd RIG_DATA; open: 1.10)
