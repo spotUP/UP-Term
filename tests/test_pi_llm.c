@@ -10,6 +10,7 @@
 #include "../llm/accum.h"
 #include "../llm/request.h"
 #include "claude_load.h"
+#include "pi_stub.h"
 
 static llm_ts ts_of(long sec, int ms)
 {
@@ -330,253 +331,6 @@ static void test_accum(void)
     jw_free(&m);
 }
 
-/* ---- a stub transport: canned HTTP answers, the requests kept ---- */
-
-#define PS_MAX 12
-
-typedef struct pstub {
-    char *resp[PS_MAX];
-    long rlen[PS_MAX];
-    int nresp, next, cur;
-    long pos;
-    jw req;
-    char *head[PS_MAX], *body[PS_MAX];
-    int nreq, opens, closes;
-    long brk_at;                /* the poll says stop once this many bytes went out */
-    int brk;
-    int silent;                 /* answer nothing at all (the idle limit) */
-    int sleeps;
-    long slept;
-    int notices;
-    char notice[160];
-    jw log;
-    unsigned long clock;
-} pstub;
-
-static pstub ps;
-
-static void ps_reset(void)
-{
-    int i;
-    for (i = 0; i < ps.nresp; i++)
-        free(ps.resp[i]);
-    for (i = 0; i < ps.nreq; i++) {
-        free(ps.head[i]);
-        free(ps.body[i]);
-    }
-    jw_free(&ps.req);
-    jw_free(&ps.log);
-    memset(&ps, 0, sizeof(ps));
-    ps.cur = -1;
-    jw_init(&ps.req);
-    jw_init(&ps.log);
-}
-
-/* an SSE recording as a chunked 200 answer (cut: no terminating chunk, the connection closes) */
-static void ps_sse(const char *name, int cut)
-{
-    long n, i;
-    char *sse = claude_load(name, &n);
-    jw w;
-    static const char hex[] = "0123456789abcdef";
-    if (!sse)
-        return;
-    jw_init(&w);
-    jw_rawz(&w, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n");
-    for (i = 0; i < n; i += 100) {
-        long k = n - i < 100 ? n - i : 100;
-        char h[8];
-        int hl = 0;
-        if (k >= 16)
-            h[hl++] = hex[k >> 4];
-        h[hl++] = hex[k & 15];
-        jw_raw(&w, h, hl);
-        jw_raw(&w, "\r\n", 2);
-        jw_raw(&w, sse + i, k);
-        jw_raw(&w, "\r\n", 2);
-    }
-    if (!cut)
-        jw_rawz(&w, "0\r\n\r\n");
-    free(sse);
-    ps.resp[ps.nresp] = w.p;
-    ps.rlen[ps.nresp++] = cut ? -w.n : w.n;     /* negative: close after it */
-}
-
-static void ps_raw(const char *name)
-{
-    long n;
-    char *b = claude_load(name, &n);
-    if (!b)
-        return;
-    ps.resp[ps.nresp] = b;
-    ps.rlen[ps.nresp++] = n;
-}
-
-static int s_open(void *u, const char *host, int port, int tls)
-{
-    (void)u;
-    (void)host;
-    (void)port;
-    (void)tls;
-    ps.opens++;
-    return 0;
-}
-
-static long s_send(void *u, const char *b, long n)
-{
-    char *e;
-    (void)u;
-    jw_raw(&ps.req, b, n);
-    e = strstr(ps.req.p, "\r\n\r\n");
-    if (e) {
-        char *cl = strstr(ps.req.p, "Content-Length: ");
-        long hl = (long)(e + 4 - ps.req.p), bl = cl ? atol(cl + 16) : 0;
-        if (ps.req.n >= hl + bl && ps.nreq < PS_MAX) {
-            ps.head[ps.nreq] = (char *)malloc((size_t)hl + 1);
-            memcpy(ps.head[ps.nreq], ps.req.p, (size_t)hl);
-            ps.head[ps.nreq][hl] = 0;
-            ps.body[ps.nreq] = (char *)malloc((size_t)bl + 1);
-            memcpy(ps.body[ps.nreq], ps.req.p + hl, (size_t)bl);
-            ps.body[ps.nreq][bl] = 0;
-            ps.nreq++;
-            jw_reset(&ps.req);
-            ps.cur = ps.next < ps.nresp ? ps.next++ : -1;
-            ps.pos = 0;
-        }
-    }
-    return n;
-}
-
-static long s_recv(void *u, char *b, long cap, int timeout_ms)
-{
-    long n, len;
-    (void)u;
-    (void)timeout_ms;
-    ps.clock += 250;
-    if (ps.silent || ps.cur < 0)
-        return ps.silent ? NET_TIMEOUT : 0;
-    len = ps.rlen[ps.cur] < 0 ? -ps.rlen[ps.cur] : ps.rlen[ps.cur];
-    n = len - ps.pos;
-    if (!n)
-        return ps.rlen[ps.cur] < 0 ? 0 : NET_TIMEOUT;
-    if (n > 37)
-        n = 37;                 /* small reads: every split is tried */
-    if (n > cap)
-        n = cap;
-    memcpy(b, ps.resp[ps.cur] + ps.pos, (size_t)n);
-    ps.pos += n;
-    if (ps.brk_at && ps.pos >= ps.brk_at)
-        ps.brk = 1;
-    return n;
-}
-
-static void s_close(void *u)
-{
-    (void)u;
-    ps.closes++;
-    ps.cur = -1;
-}
-
-static const char *s_err(void *u)
-{
-    (void)u;
-    return "stub";
-}
-
-static int h_poll(void *u)
-{
-    (void)u;
-    return ps.brk;
-}
-
-static unsigned long h_ms(void *u)
-{
-    (void)u;
-    return ps.clock;
-}
-
-static int h_sleep(void *u, long ms)
-{
-    (void)u;
-    ps.sleeps++;
-    ps.slept += ms;
-    return 0;
-}
-
-static void h_notice(void *u, const char *t)
-{
-    (void)u;
-    ps.notices++;
-    strncpy(ps.notice, t, sizeof(ps.notice) - 1);
-}
-
-static int h_resolve(void *u, const char *host, unsigned char ip[4])
-{
-    (void)u;
-    if (!strcmp(host, "nas.lan")) {
-        ip[0] = 192, ip[1] = 168, ip[2] = 1, ip[3] = 10;
-        return 0;
-    }
-    if (!strcmp(host, "public.example")) {
-        ip[0] = 8, ip[1] = 8, ip[2] = 8, ip[3] = 8;
-        return 0;
-    }
-    return -1;
-}
-
-static void h_log(void *u, const char *s, long n)
-{
-    (void)u;
-    jw_raw(&ps.log, s, n);
-}
-
-static cl_net nets[LLM_POOL];
-static cl_net *netp[LLM_POOL];
-static llm_pool pool;
-
-static void pool_up(int n)
-{
-    int i;
-    for (i = 0; i < LLM_POOL; i++) {
-        memset(&nets[i], 0, sizeof(nets[i]));
-        nets[i].open = s_open;
-        nets[i].send = s_send;
-        nets[i].recv = s_recv;
-        nets[i].close = s_close;
-        nets[i].err = s_err;
-        netp[i] = &nets[i];
-    }
-    llm_pool_init(&pool, netp, n);
-}
-
-static llm_model model_openai(const char *base)
-{
-    llm_model m;
-    memset(&m, 0, sizeof(m));
-    m.id = "qwen2.5-coder:7b";
-    m.api = "openai-completions";
-    m.provider = "ollama";
-    m.base_url = base;
-    m.max_tokens = 4096;
-    m.compat.max_tokens_field = m.compat.usage_in_streaming = m.compat.developer_role =
-        m.compat.tool_result_name = LC_UNSET;
-    return m;
-}
-
-static llm_model model_anthropic(void)
-{
-    llm_model m;
-    memset(&m, 0, sizeof(m));
-    m.id = "claude-opus-5-5";
-    m.api = "anthropic-messages";
-    m.provider = "anthropic";
-    m.base_url = "https://api.anthropic.com/v1";
-    m.max_tokens = 8192;
-    m.compat.max_tokens_field = m.compat.usage_in_streaming = m.compat.developer_role =
-        m.compat.tool_result_name = LC_UNSET;
-    return m;
-}
-
 /* one conversation every request test sends: a user turn, an answer with
  * thinking and two calls, their results */
 static char conv_asst[900];
@@ -621,18 +375,18 @@ static llm_req req_of(const llm_model *m, const llm_ctx *c, const llm_sink *k, c
 {
     llm_req q;
     memset(&q, 0, sizeof(q));
-    q.pool = &pool;
+    q.pool = &ps_pool;
     q.model = m;
     q.be = llm_backend_of(m->api);
     q.ctx = c;
     q.key = key;
     q.user_agent = "UP-Term-amiga-pi/0.1 (AmigaOS)";
-    q.h.poll = h_poll;
-    q.h.ms = h_ms;
-    q.h.sleep = h_sleep;
-    q.h.notice = h_notice;
-    q.h.resolve = h_resolve;
-    q.h.log = h_log;
+    q.h.poll = ps_poll;
+    q.h.ms = ps_ms;
+    q.h.sleep = ps_sleep;
+    q.h.notice = ps_notice;
+    q.h.resolve = ps_resolve;
+    q.h.log = ps_log;
     q.sink = k;
     return q;
 }
@@ -659,7 +413,7 @@ static void kinds(const char *msg, char *out, long cap)
 /* B11: one top-level request per backend, the neutral message of the same shape */
 static void test_reach(void)
 {
-    llm_model mo = model_openai("http://192.168.1.10:11434/v1"), ma = model_anthropic();
+    llm_model mo = ps_model_openai("http://192.168.1.10:11434/v1"), ma = ps_model_anthropic();
     llm_ctx c;
     llm_req q;
     llm_acc a;
@@ -670,7 +424,7 @@ static void test_reach(void)
     llm_info inf;
 
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_sse("../pi/openai_tools.sse", 0);
     c = ctx_of(&mo, 1);
     llm_acc_init(&a, mo.api, mo.provider);
@@ -693,7 +447,7 @@ static void test_reach(void)
     llm_acc_free(&a);
 
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_sse("tool_use.sse", 0);
     c = ctx_of(&ma, 1);
     llm_acc_init(&a, ma.api, ma.provider);
@@ -719,7 +473,7 @@ static void test_openai_bodies(void)
 {
     int bits;
     for (bits = 0; bits < 16; bits++) {
-        llm_model mo = model_openai("https://api.openai.com/v1");
+        llm_model mo = ps_model_openai("https://api.openai.com/v1");
         llm_ctx c;
         jw w;
         jv v;
@@ -747,7 +501,7 @@ static void test_openai_bodies(void)
     /* the defaults of a LAN endpoint: system role (not a reasoning model),
      * include_usage, max_completion_tokens, no tool name; ids made safe */
     {
-        llm_model mo = model_openai("http://192.168.1.10:11434/v1");
+        llm_model mo = ps_model_openai("http://192.168.1.10:11434/v1");
         llm_ctx c = ctx_of(&mo, 4);
         jw w;
         jw_init(&w);
@@ -763,7 +517,7 @@ static void test_openai_bodies(void)
     /* the Anthropic body from the same messages: thinking with its
      * signature (same api), the calls, both results in one user turn */
     {
-        llm_model ma = model_anthropic();
+        llm_model ma = ps_model_anthropic();
         llm_ctx c = ctx_of(&ma, 4);
         jw w;
         jw_init(&w);
@@ -783,7 +537,7 @@ static void test_openai_bodies(void)
 /* B3: done, a cut stream, a 429 with Retry-After 2, Ctrl+C mid-stream, the idle limit; usage */
 static void test_request(void)
 {
-    llm_model mo = model_openai("http://192.168.1.10:11434/v1");
+    llm_model mo = ps_model_openai("http://192.168.1.10:11434/v1");
     llm_ctx c = ctx_of(&mo, 1);
     llm_req q;
     llm_acc a;
@@ -793,7 +547,7 @@ static void test_request(void)
 
     /* [DONE]: complete; the include_usage chunk's counts (cached tokens apart) */
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_sse("../pi/openai_text.sse", 0);
     llm_acc_init(&a, mo.api, mo.provider);
     k = llm_acc_sink(&a);
@@ -808,7 +562,7 @@ static void test_request(void)
 
     /* a 429 with Retry-After 2: one retry after 2 s, then the answer */
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_raw("../pi/openai_429.http");
     ps_sse("../pi/openai_text.sse", 0);
     llm_acc_init(&a, mo.api, mo.provider);
@@ -823,7 +577,7 @@ static void test_request(void)
 
     /* cut off after part of the answer: an error, not tried again (the text kept) */
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_sse("../pi/openai_cut.sse", 1);
     llm_acc_init(&a, mo.api, mo.provider);
     k = llm_acc_sink(&a);
@@ -838,7 +592,7 @@ static void test_request(void)
 
     /* Ctrl+C mid-stream: aborted, the text so far kept */
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_sse("../pi/openai_text.sse", 0);
     ps.brk_at = 600;
     llm_acc_init(&a, mo.api, mo.provider);
@@ -854,7 +608,7 @@ static void test_request(void)
 
     /* the server says nothing: the idle limit, three retries (2, 4, 8 s), then an error */
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps.silent = 1;
     llm_acc_init(&a, mo.api, mo.provider);
     k = llm_acc_sink(&a);
@@ -876,32 +630,32 @@ static void test_pool(void)
     int i, reused, rc;
     llm_conn *c;
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     for (i = 0; i < 10; i++) {
-        c = llm_pool_get(&pool, i & 1 ? "b.lan" : "a.lan", 80, 0, &reused, &rc);
+        c = llm_pool_get(&ps_pool, i & 1 ? "b.lan" : "a.lan", 80, 0, &reused, &rc);
         CHECK(c != 0);
         CHECK_INT(reused, i >= 2);
     }
-    CHECK_INT(pool.opens, 2);
-    CHECK_INT(llm_pool_open(&pool), 2);
-    llm_pool_get(&pool, "c.lan", 80, 0, &reused, &rc);
-    llm_pool_get(&pool, "d.lan", 80, 0, &reused, &rc);
-    llm_pool_get(&pool, "a.lan", 80, 0, &reused, &rc);     /* a used last: b is the oldest */
-    CHECK_INT(llm_pool_open(&pool), 4);
+    CHECK_INT(ps_pool.opens, 2);
+    CHECK_INT(llm_pool_open(&ps_pool), 2);
+    llm_pool_get(&ps_pool, "c.lan", 80, 0, &reused, &rc);
+    llm_pool_get(&ps_pool, "d.lan", 80, 0, &reused, &rc);
+    llm_pool_get(&ps_pool, "a.lan", 80, 0, &reused, &rc);     /* a used last: b is the oldest */
+    CHECK_INT(llm_pool_open(&ps_pool), 4);
     CHECK_INT(ps.closes, 0);
-    llm_pool_get(&pool, "e.lan", 80, 0, &reused, &rc);     /* a fifth: b closed */
+    llm_pool_get(&ps_pool, "e.lan", 80, 0, &reused, &rc);     /* a fifth: b closed */
     CHECK_INT(ps.closes, 1);
-    CHECK_INT(llm_pool_open(&pool), 4);
-    llm_pool_get(&pool, "a.lan", 80, 0, &reused, &rc);
+    CHECK_INT(llm_pool_open(&ps_pool), 4);
+    llm_pool_get(&ps_pool, "a.lan", 80, 0, &reused, &rc);
     CHECK_INT(reused, 1);
-    llm_pool_get(&pool, "b.lan", 80, 0, &reused, &rc);
+    llm_pool_get(&ps_pool, "b.lan", 80, 0, &reused, &rc);
     CHECK_INT(reused, 0);
-    CHECK_INT(pool.opens, 6);
+    CHECK_INT(ps_pool.opens, 6);
     /* the same host on another port or with TLS is another connection */
-    llm_pool_get(&pool, "a.lan", 443, 1, &reused, &rc);
+    llm_pool_get(&ps_pool, "a.lan", 443, 1, &reused, &rc);
     CHECK_INT(reused, 0);
-    llm_pool_close(&pool);
-    CHECK_INT(llm_pool_open(&pool), 0);
+    llm_pool_close(&ps_pool);
+    CHECK_INT(llm_pool_open(&ps_pool), 0);
 }
 
 /* B8, B9: plain http only on the LAN, no key over it, a notice once; the log never holds the key */
@@ -930,10 +684,10 @@ static void test_lan(void)
 
     /* http to the LAN with a key configured: no credential header, one notice */
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_sse("../pi/openai_text.sse", 0);
     ps_sse("../pi/openai_text.sse", 0);
-    mo = model_openai("http://192.168.1.10:11434/v1");
+    mo = ps_model_openai("http://192.168.1.10:11434/v1");
     mo.provider = "lan-ollama-b8";
     c = ctx_of(&mo, 1);
     llm_acc_init(&a, mo.api, mo.provider);
@@ -951,14 +705,14 @@ static void test_lan(void)
 
     /* a name resolving to the LAN, and a .local name: allowed */
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_sse("../pi/openai_text.sse", 0);
     ps_sse("../pi/openai_text.sse", 0);
-    mo = model_openai("http://nas.lan:8080/v1");
+    mo = ps_model_openai("http://nas.lan:8080/v1");
     q = req_of(&mo, &c, &k, 0);
     llm_acc_init(&a, mo.api, mo.provider);
     CHECK_INT(llm_request(&q), 0);
-    mo = model_openai("http://studio.local:1234/v1");
+    mo = ps_model_openai("http://studio.local:1234/v1");
     q = req_of(&mo, &c, &k, 0);
     CHECK_INT(llm_request(&q), 0);
     CHECK_INT(ps.nreq, 2);
@@ -966,8 +720,8 @@ static void test_lan(void)
 
     /* http to the internet: refused before any connection, said in the stream */
     ps_reset();
-    pool_up(LLM_POOL);
-    mo = model_openai("http://8.8.8.8/v1");
+    ps_pool_up(LLM_POOL);
+    mo = ps_model_openai("http://8.8.8.8/v1");
     llm_acc_init(&a, mo.api, mo.provider);
     k = llm_acc_sink(&a);
     q = req_of(&mo, &c, &k, key);
@@ -977,12 +731,12 @@ static void test_lan(void)
     llm_acc_message(&a, ts_of(1, 0), &m);
     CHECK(strstr(m.p, "plain http is only for the LAN") != 0 && strstr(m.p, "8.8.8.8 is not one: use https") != 0);
     llm_acc_free(&a);
-    mo = model_openai("http://public.example/v1");
+    mo = ps_model_openai("http://public.example/v1");
     llm_acc_init(&a, mo.api, mo.provider);
     k = llm_acc_sink(&a);
     q = req_of(&mo, &c, &k, key);
     CHECK_INT(llm_request(&q), -1);
-    mo = model_openai("http://unresolvable.example/v1");
+    mo = ps_model_openai("http://unresolvable.example/v1");
     q = req_of(&mo, &c, &k, key);
     CHECK_INT(llm_request(&q), -1);
     CHECK_INT(ps.opens, 0);
@@ -990,10 +744,10 @@ static void test_lan(void)
 
     /* https: the key goes; the debug log has it blanked, for both backends */
     ps_reset();
-    pool_up(LLM_POOL);
+    ps_pool_up(LLM_POOL);
     ps_sse("../pi/openai_text.sse", 0);
     ps_sse("tool_use.sse", 0);
-    mo = model_openai("https://api.openai.com/v1");
+    mo = ps_model_openai("https://api.openai.com/v1");
     mo.provider = "openai";
     llm_acc_init(&a, mo.api, mo.provider);
     k = llm_acc_sink(&a);
@@ -1005,7 +759,7 @@ static void test_lan(void)
     CHECK(ps.log.p && strstr(ps.log.p, "chat.completion.chunk") != 0);  /* the events are logged too */
     llm_acc_free(&a);
     {
-        llm_model ma = model_anthropic();
+        llm_model ma = ps_model_anthropic();
         llm_ctx ca = ctx_of(&ma, 1);
         llm_acc_init(&a, ma.api, ma.provider);
         k = llm_acc_sink(&a);
@@ -1104,7 +858,7 @@ static void test_stops(void)
  * system role a reasoning model's body gets */
 static void compat_case(const char *provider, const char *base, const char *id, const char *cap, const char *role)
 {
-    llm_model m = model_openai(base);
+    llm_model m = ps_model_openai(base);
     llm_ctx c;
     jw w;
     m.provider = provider;

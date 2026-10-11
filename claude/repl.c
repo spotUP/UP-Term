@@ -10,6 +10,7 @@
 #include "setup.h"
 #include "util.h"
 #include "datadir.h"
+#include "amiga_text.h"
 
 enum { R_OK, R_RETRY, R_FAIL, R_CANCEL };
 
@@ -35,13 +36,8 @@ static int win_no1m;
 
 #define IDLE_LIMIT_MS 180000L   /* no byte for this long: the connection is dead */
 
-static const char sys_a[] =
-    "You are Claude, running as a native client on an Amiga computer (AmigaOS 3.x, a 68020 or "
-    "faster processor) in the UP-Term terminal. ";
-static const char sys_b[] =
-    "Paths are AmigaOS paths: a volume or an assign ends with a colon (SYS:, RAM:, Work:), "
-    "directories are separated by /, and a leading / or an empty part means the parent directory. "
-    "Relative paths start from the start directory: ";
+static const char sys_a[] = "You are Claude, running as a native client on " CL_AMIGA_MACHINE ". ";
+static const char sys_b[] = CL_AMIGA_PATHS "Relative paths start from the start directory: ";
 static const char sys_c[] =
     ". Bash runs commands through vsh, a Unix-like shell for AmigaOS (or the AmigaShell when vsh is "
     "not installed); AmigaDOS commands work, and return codes 5, 10 and 20 mean warning, error and "
