@@ -153,6 +153,7 @@ typedef struct con {
     vt_u8 in[IN_MAX];
     int in_len;
     le_line le;                  /* the line being edited (cooked mode) */
+    le_ahead ahead;              /* keys typed while no reader asks (le_ahead_key) */
     struct DosPacket *reads[READ_Q];
     int nreads;
     struct Task *held[8];        /* ACTION_VTCON_HOLD: their reads wait */
@@ -505,6 +506,8 @@ static void h_input(void *u, const vt_u8 *b, long n)
 static void typed(con *c, const vt_u8 *out, int n, long key, int mods);
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
 
+static int ahead_hold(con *c, const vt_u8 *b, int n, long key, int mods);
+
 static void h_key(void *u, const vt_u8 *b, int n, long key, int mods)
 {
     typed((con *)u, b, n, key, mods);
@@ -517,7 +520,7 @@ static void h_pasted(void *u, const vt_u8 *b, int n, long key)
         return;
     if (c->raw)
         in_append(c, b, n);
-    else
+    else if (!ahead_hold(c, b, n, key, 0))
         cooked_key(c, b, n, key, 0);
     service_reads(c);
 }
@@ -2501,6 +2504,7 @@ have_window:
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */
     le_free(&c->le); /* an AUTO window opening again: the last one's history (reloaded below) */
+    le_ahead_clear(&c->ahead);
     le_init(&c->le, c->w.t, le_out, c);
     c->le.utf8 = c->w.pers == VT_XTERM && !c->w.latin1 && !c->w.cp437;
     history_load(c); /* the saved history, read by a worker */
@@ -2830,6 +2834,14 @@ static void tty_enter(con *c, struct Task *owner)
         ld_defaults(&c->ld.t);
         c->ld.echo = e;
         c->tty = 1;
+        {
+            /* keys that waited for a reader (le_ahead_key): the line discipline's now, echoed as it echoes */
+            vt_u8 b[64];
+            int n, mods;
+            long key;
+            while (le_ahead_next(&c->ahead, 0, b, &n, &key, &mods))
+                to_tty(c, b, n);
+        }
         c->tty_ocol = 0;
         if (c->w.t)
             vt_set_onlcr(c->w.t, 0); /* OPOST decides now (vttest m1 s04: raw LF is LF) */
@@ -4112,6 +4124,40 @@ static void send_break(con *c, ULONG sig)
 
 static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods);
 
+/* A reader asks for input now: a Read or a WAIT_CHAR waits. */
+static int reader_waits(con *c)
+{
+    return c->nreads > 0 || c->waitchar.n > 0;
+}
+
+/* A key for the cooked line editor while no reader asks waits in c->ahead,
+ * unechoed (le_ahead_key): 1 when it waits (or was dropped, the queue full). */
+static int ahead_hold(con *c, const vt_u8 *b, int n, long key, int mods)
+{
+    int r = le_ahead_key(&c->ahead, reader_waits(c), b, n, key, mods);
+    if (r == LE_AHEAD_FULL)
+        DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
+    return r != LE_AHEAD_NOW;
+}
+
+static void key_in(con *c, const vt_u8 *out, int n, long key, int mods);
+
+/* A reader asks (a Read, a WAIT_CHAR, FIONREAD): the keys that waited for it
+ * go to the line editor, until a line is finished for it -- the keys after
+ * that are the next line's, typed after the reader's next prompt. */
+static void ahead_feed(con *c)
+{
+    vt_u8 b[64];
+    int n, mods;
+    long key;
+    while (!tty_active(c) && le_ahead_next(&c->ahead, !c->raw && (line_end(c) || c->eof), b, &n, &key, &mods)) {
+        int r0 = c->nreads, w0 = c->waitchar.n;
+        key_in(c, b, n, key, mods);
+        if (c->nreads != r0 || c->waitchar.n != w0)
+            break; /* the key answered the reader */
+    }
+}
+
 /* A typed key, encoded by the window (vtwin_key): the break keys, the
  * line discipline, the line editor or the raw stream. */
 static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
@@ -4123,6 +4169,20 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
         to_tty(c, out, n);
         return;
     }
+    /* the break keys act at once (Ctrl-D waits its turn: what it does
+     * depends on the line before it); the line editor's keys wait for a
+     * reader (ahead_hold); raw mode's go to the program at once, behind
+     * any that still wait */
+    if ((!c->raw || le_ahead_any(&c->ahead)) && !(n == 1 && !key && (out[0] == 0x03 || out[0] == 0x05 || out[0] == 0x06 ||
+                                        out[0] == 0x1A || out[0] == 0x1C)) &&
+        ahead_hold(c, out, n, key, mods))
+        return;
+    key_in(c, out, n, key, mods);
+}
+
+/* A key for the line editor or the raw stream, in its turn. */
+static void key_in(con *c, const vt_u8 *out, int n, long key, int mods)
+{
     /* Break keys: Ctrl-C..F signal the opener in cooked mode (and Amiga raw
      * mode); an xterm window in raw mode sends the byte only, as a Unix tty
      * without ISIG does. ^\ and ^Z are the CTRL_E and CTRL_F breaks too, as
@@ -4162,6 +4222,8 @@ static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
         else if (out[0] == 0x1A)
             brk = SIGBREAKF_CTRL_F;
         if (brk) {
+            if (brk == SIGBREAKF_CTRL_C)
+                le_ahead_clear(&c->ahead); /* an interrupt flushes what was typed ahead, as a tty's does */
             send_break(c, brk);
             if (!c->raw)
                 return;
@@ -5931,6 +5993,7 @@ static void packet(con *c, struct DosPacket *p)
 #ifdef VTCON_DEBUG
             dbg("READ task/nreads", (LONG)p->dp_Port->mp_SigTask, c->nreads);
 #endif
+            ahead_feed(c); /* the keys typed while nobody read: after the prompt it wrote */
             service_reads(c);
         } else {
             reply(p, -1, ERROR_NO_FREE_STORE);
@@ -6049,6 +6112,7 @@ static void packet(con *c, struct DosPacket *p)
         dbg("WAIT in/eof", c->in_len, c->eof);
         dbg("WAIT tty/pending", c->tty, c->tty ? ld_input_pending(&c->ld) : -1);
 #endif
+        ahead_feed(c); /* it looks for input: what was typed ahead is its */
         if (c->in_len || c->eof || (tty_active(c) && ld_input_pending(&c->ld))) {
             reply(p, DOSTRUE, 0);
         } else if (p->dp_Arg1 <= 0) {
@@ -6251,6 +6315,7 @@ static void packet(con *c, struct DosPacket *p)
         reply(p, DOSFALSE, ERROR_ACTION_NOT_KNOWN);
         return;
     case ACTION_VTCON_NREAD:
+        ahead_feed(c);
         if (tty_active(c))
             reply(p, ld_nread(&c->ld), 0);
         else
@@ -6555,6 +6620,7 @@ static LONG handler_main(void)
     Permit();
     watch_stop(c);
     le_free(&c->le);
+    le_ahead_free(&c->ahead);
     forget_words(c);
     kc_cyc_end(c);
     if (c->kc_snap)

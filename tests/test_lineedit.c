@@ -1181,6 +1181,118 @@ static void bound_keys_run_their_functions_and_the_rest_keep_emacs(void)
 
 /* `sed p` started by vsh reads the window: Ctrl-D on an empty line ends its input, on "abc" sends abc with no
  * newline; at vsh's own prompt, in the AmigaShell and in a window no shell armed, Ctrl-D stays the editor's key */
+/* A console as the handler runs it (vtcon_handler.c typed, ahead_feed): a key goes to the
+ * editor at once while a reader waits, else waits in the typeahead queue; a reader that
+ * asks takes the waiting keys until a line is finished. The shell: reads a line, then
+ * writes its prompt and reads again. */
+static le_ahead ahead;
+static unsigned char con_in[512];
+static int con_in_len, reader_waits;
+
+static void con_key(long k, const char *b, int n)
+{
+    if (le_ahead_key(&ahead, reader_waits, (const unsigned char *)b, n, k, 0) != LE_AHEAD_NOW)
+        return;
+    if (le_key(&le, k, 0, (const unsigned char *)b, n)) {
+        memcpy(con_in + con_in_len, le.buf, (size_t)le.len);
+        con_in_len += le.len;
+        le_reset(&le);
+    }
+    if (con_in_len)
+        reader_waits = 0; /* the line answers the shell's read: it goes off to run it */
+}
+
+/* the shell writes its prompt and reads: the keys that waited are the editor's now */
+static void shell_prompt_and_read(vt_term *t)
+{
+    unsigned char b[64];
+    int n, mods;
+    long k;
+    con_in_len = 0; /* the line it ran */
+    if (!le.len)
+        le.started = 0; /* output: the next line starts after it (handler output()) */
+    h_put(t, "% ");
+    reader_waits = 1;
+    while (le_ahead_next(&ahead, con_in_len != 0, b, &n, &k, &mods)) {
+        reader_waits = 0; /* the replayed key goes the typed way: as if a reader waits */
+        if (le_key(&le, k ? k : b[0], mods, b, n)) {
+            memcpy(con_in + con_in_len, le.buf, (size_t)le.len);
+            con_in_len += le.len;
+            le_reset(&le);
+        }
+        reader_waits = !con_in_len;
+    }
+}
+
+static void typed_ahead_enters_each_start_a_new_line(void)
+{
+    vt_term *t = start(20, 8, "% ");
+    int i;
+    le_ahead_free(&ahead);
+    con_in_len = 0;
+    reader_waits = 1;
+    con_key(VT_KEY_RETURN, "\r", 1);     /* the shell read it, and is busy */
+    for (i = 0; i < 3; i++)
+        con_key(VT_KEY_RETURN, "\r", 1); /* key repeat, faster than the shell */
+    CHECK_STR(h_row(t, 1), "");          /* nothing on screen before the next prompt */
+    for (i = 0; i < 4; i++)
+        shell_prompt_and_read(t);
+    for (i = 0; i < 5; i++)
+        CHECK_STR(h_row(t, i), "%");     /* one prompt a row: no blank row, none piled up */
+    CHECK_STR(h_row(t, 5), "");
+    CHECK_INT(le_ahead_any(&ahead), 0);
+    vt_free(t);
+}
+
+static void a_line_typed_ahead_is_drawn_after_the_next_prompt(void)
+{
+    vt_term *t = start(20, 6, "% ");
+    le_ahead_free(&ahead);
+    con_in_len = 0;
+    reader_waits = 1;
+    con_key(VT_KEY_RETURN, "\r", 1);
+    con_key('l', "l", 1);
+    con_key('s', "s", 1);
+    con_key(VT_KEY_RETURN, "\r", 1);
+    con_key('p', "p", 1);
+    shell_prompt_and_read(t);
+    CHECK_STR(h_row(t, 1), "% ls");
+    CHECK_STR((const char *)con_in, "ls\n");
+    shell_prompt_and_read(t);
+    CHECK_STR(h_row(t, 2), "% p");       /* the next line's start, after its prompt */
+    CHECK_INT(le_ahead_any(&ahead), 0);
+    le_ahead_clear(&ahead);
+    vt_free(t);
+}
+
+static void typeahead_queue_drops_a_key_only_when_full(void)
+{
+    le_ahead a;
+    unsigned char b[64];
+    int n = 0, mods = 0, i, full = 0;
+    long k = 0;
+    memset(&a, 0, sizeof(a));
+    CHECK_INT(le_ahead_key(&a, 1, (const unsigned char *)"x", 1, 0, 0), LE_AHEAD_NOW);
+    CHECK_INT(le_ahead_key(&a, 0, (const unsigned char *)"\033[A", 3, VT_KEY_UP, VT_MOD_SHIFT), LE_AHEAD_HELD);
+    CHECK_INT(le_ahead_key(&a, 1, (const unsigned char *)"y", 1, 0, 0), LE_AHEAD_HELD); /* behind the waiting one */
+    CHECK_INT(le_ahead_next(&a, 1, b, &n, &k, &mods), 0);  /* a line waits: not yet */
+    CHECK_INT(le_ahead_next(&a, 0, b, &n, &k, &mods), 1);
+    CHECK_INT(n, 3);
+    CHECK_INT(k, VT_KEY_UP);
+    CHECK_INT(mods, VT_MOD_SHIFT);
+    CHECK(!memcmp(b, "\033[A", 3));
+    CHECK_INT(le_ahead_next(&a, 0, b, &n, &k, &mods), 1);
+    CHECK_INT(b[0], 'y');
+    CHECK_INT(le_ahead_any(&a), 0);
+    for (i = 0; i < 4000 && !full; i++)
+        full = le_ahead_key(&a, 0, (const unsigned char *)"z", 1, 0, 0) == LE_AHEAD_FULL;
+    CHECK(full);
+    CHECK_INT(i, LE_AHEAD_MAX / 7 + 1);
+    le_ahead_clear(&a);                                    /* Ctrl-C */
+    CHECK_INT(le_ahead_any(&a), 0);
+    le_ahead_free(&a);
+}
+
 static void ctrl_d_ends_a_program_read_under_vsh_only(void)
 {
     CHECK_INT(le_ctrl_d(1, 1, 0), LE_CTRLD_EOF);
@@ -1192,6 +1304,9 @@ static void ctrl_d_ends_a_program_read_under_vsh_only(void)
 
 void suite_lineedit(void)
 {
+    typed_ahead_enters_each_start_a_new_line();
+    a_line_typed_ahead_is_drawn_after_the_next_prompt();
+    typeahead_queue_drops_a_key_only_when_full();
     ctrl_d_ends_a_program_read_under_vsh_only();
     bound_keys_run_their_functions_and_the_rest_keep_emacs();
     medium_mode_reports_tab_shift_tab_up_and_down_at_once();
