@@ -299,9 +299,6 @@ def setup():
         # the clean system partition is 12 MB: the kit goes to a second, roomy
         # drive, Work:, as on an Amiga with System and Work partitions
         (RIG / "work").mkdir(exist_ok=True)
-        small = RIG / "small.hdf"   # 6 MB, for installer_rig's room-check case
-        if not small.exists():
-            subprocess.run(["xdftool", str(small), "create", "size=6M", "+", "format", "Small", "ffs"], check=True, capture_output=True)
         os_image_copy()
     elif not OS32 and not (RIG / "sys.hdf").exists():
         print("copying the system disk (1.5 GB) ...")
@@ -388,7 +385,7 @@ def setup():
         "hard_drive_2 = %s" % (RIG / "boot"), "hard_drive_2_label = BOOTX",
         "hard_drive_2_priority = %d" % (0 if OS else 10), "joystick_port_1 = none",
         "kickstart_file = %s" % KICK,
-    ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128", "hard_drive_4 = %s" % (RIG / "small.hdf"), "hard_drive_4_priority = -129"] if OS else []) + [
+    ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
         "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
         "window_width = 1280", "window_height = 1024",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
