@@ -222,17 +222,59 @@ static int add_in(cl_memory *m, cl_sys *sys, const char *dir, const char *name, 
     return path_join(dir, name, p, sizeof(p)) == 0 ? add_file(m, sys, p, kind, 0, out) : 0;
 }
 
+const mem_cand mem_claude_files[] = {
+    { "CLAUDE.md", 0 }, { "AMIGA.md", 0 }, { "AGENTS.md", MEMC_ALONE }, { "CLAUDE.local.md", MEMC_LOCAL }, { 0, 0 }
+};
+
+int mem_dir(const char *dir, const mem_cand *list, mem_take_fn take, void *u)
+{
+    int got = 0;
+    char p[300];
+    for (; list->name; list++)
+        if (!((list->flags & MEMC_ALONE) && got) && path_join(dir, list->name, p, sizeof(p)) == 0)
+            got += take(u, p, list->flags) > 0;
+    return got;
+}
+
+int mem_walk(const char *root, const mem_cand *list, mem_take_fn take, void *u)
+{
+    char anc[8][300], p[300];
+    int na = 0, i, got = 0;
+    cl_copy(p, root, sizeof(p));
+    while (na < 8 && path_parent(p, anc[na], sizeof(anc[0])) == 0 && anc[na][0]) {
+        cl_copy(p, anc[na], sizeof(p));
+        na++;
+    }
+    for (i = na - 1; i >= 0; i--)
+        got += mem_dir(anc[i], list, take, u);
+    return got + mem_dir(root, list, take, u);
+}
+
+/* C:Claude's take: the file added as kind (the private one as MEM_LOCAL) */
+typedef struct ctake {
+    cl_memory *m;
+    cl_sys *sys;
+    int kind;
+    jw *out;
+} ctake;
+
+static int take_claude(void *u, const char *path, int flags)
+{
+    ctake *c = (ctake *)u;
+    return add_file(c->m, c->sys, path, (flags & MEMC_LOCAL) ? MEM_LOCAL : c->kind, 0, c->out);
+}
+
 /* One directory's memory: CLAUDE.md and AMIGA.md, AGENTS.md only when
  * neither is there (Claude Code reads AGENTS.md in place of a missing
- * CLAUDE.md), and the private CLAUDE.local.md */
+ * CLAUDE.md), and the private CLAUDE.local.md (mem_claude_files) */
 static int dir_files(cl_memory *m, cl_sys *sys, const char *dir, int kind, jw *out)
 {
-    int got = add_in(m, sys, dir, "CLAUDE.md", kind, out);
-    got += add_in(m, sys, dir, "AMIGA.md", kind, out);
-    if (!got)
-        got += add_in(m, sys, dir, "AGENTS.md", kind, out);
-    got += add_in(m, sys, dir, "CLAUDE.local.md", MEM_LOCAL, out);
-    return got;
+    ctake c;
+    c.m = m;
+    c.sys = sys;
+    c.kind = kind;
+    c.out = out;
+    return mem_dir(dir, mem_claude_files, take_claude, &c);
 }
 
 void mem_file_of(int kind, const char *home, const char *root, char *out, long cap)
@@ -247,23 +289,21 @@ void mem_file_of(int kind, const char *home, const char *root, char *out, long c
 
 int mem_load(cl_memory *m, cl_sys *sys, const char *home, const char *root)
 {
-    char anc[8][300], p[300];
-    int na = 0, i, got = 0;
+    char p[300];
+    int got = 0;
+    ctake c;
     m->home = home;
     cl_copy(m->root, root, sizeof(m->root));
     m->ext_list[0] = 0;
     m->next = 0;
     if (home && *home)
         got += add_in(m, sys, home, "CLAUDE.md", MEM_USER, &m->text);
-    /* the ancestors, the volume's root first */
-    cl_copy(p, root, sizeof(p));
-    while (na < 8 && path_parent(p, anc[na], sizeof(anc[0])) == 0 && anc[na][0]) {
-        cl_copy(p, anc[na], sizeof(p));
-        na++;
-    }
-    for (i = na - 1; i >= 0; i--)
-        got += dir_files(m, sys, anc[i], MEM_PROJECT, &m->text);
-    got += dir_files(m, sys, root, MEM_PROJECT, &m->text);
+    /* the ancestors, the volume's root first, then the root itself */
+    c.m = m;
+    c.sys = sys;
+    c.kind = MEM_PROJECT;
+    c.out = &m->text;
+    got += mem_walk(root, mem_claude_files, take_claude, &c);
     got += add_in(m, sys, root, ".claude/CLAUDE.md", MEM_PROJECT, &m->text);
     /* the rules: the user's, then the project's */
     if (home && *home && path_join(home, "rules", p, sizeof(p)) == 0)

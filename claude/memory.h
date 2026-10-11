@@ -69,6 +69,31 @@ typedef struct cl_memory {
     char root[300];
 } cl_memory;
 
+/* The memory files of a directory, as data: one candidate's name and flags.
+ * MEMC_ALONE: tried only when no candidate before it in this directory was
+ * taken (a list of them all is "the first found"); MEMC_LOCAL: the private
+ * kind (CLAUDE.local.md). A list ends with a 0 name. */
+#define MEMC_ALONE 1
+#define MEMC_LOCAL 2
+
+typedef struct mem_cand {
+    const char *name;
+    int flags;
+} mem_cand;
+
+/* C:Claude's: CLAUDE.md, AMIGA.md, AGENTS.md alone, CLAUDE.local.md local */
+extern const mem_cand mem_claude_files[];
+
+/* a candidate's path offered: 1 taken (it was there and read), 0 not */
+typedef int (*mem_take_fn)(void *u, const char *path, int flags);
+
+/* One directory's candidates offered to take in list order: the count taken. */
+int mem_dir(const char *dir, const mem_cand *list, mem_take_fn take, void *u);
+/* The walk: root's ancestors from the volume down (eight at most), then root
+ * itself, each through mem_dir. The count taken. amiga-pi passes pi's
+ * candidates (AGENTS.override.md, AGENTS.md, ... all MEMC_ALONE). */
+int mem_walk(const char *root, const mem_cand *list, mem_take_fn take, void *u);
+
 void mem_init(cl_memory *m);
 void mem_free(cl_memory *m);
 /* The files read at the start into m->text: their count. */

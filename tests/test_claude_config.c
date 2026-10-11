@@ -23,6 +23,7 @@
 #include "../claude/sys_posix.h"
 #include "../claude/util.h"
 #include "../claude/datadir.h"
+#include "../claude/trust.h"
 #include "claude_vol.h"
 
 static char dir[512];
@@ -408,6 +409,80 @@ static void test_memory(void)
     CHECK_STR(f, "Work:p/CLAUDE.local.md");
     mem_file_of(MEM_USER, "ENVARC:Claude", "Work:p", f, sizeof(f));
     CHECK_STR(f, "ENVARC:Claude/CLAUDE.md");
+}
+
+/* G1: the walk with another program's candidates (amiga-pi: pi's first-found list) */
+static const mem_cand first_found[] = {
+    { "AGENTS.override.md", MEMC_ALONE }, { "AGENTS.md", MEMC_ALONE }, { "CLAUDE.md", MEMC_ALONE }, { 0, 0 }
+};
+
+static char walked[2000];
+
+static int take_seen(void *u, const char *path, int flags)
+{
+    (void)u;
+    (void)flags;
+    if (sys.kind(sys.u, path) != 1)
+        return 0;
+    strcat(walked, strrchr(path, '/') ? strrchr(path, '/') - 3 : path);
+    strcat(walked, ";");
+    return 1;
+}
+
+static void test_memory_walk(void)
+{
+    char root[600];
+    mk("w1");
+    mk("w1/w2");
+    mk("w1/w2/w3");
+    put("w1/CLAUDE.md", "x");
+    put("w1/w2/AGENTS.md", "x");
+    put("w1/w2/CLAUDE.md", "x");            /* not read: AGENTS.md came first */
+    put("w1/w2/w3/AGENTS.override.md", "x");
+    put("w1/w2/w3/AGENTS.md", "x");         /* the override wins */
+    at(root, "w1/w2/w3");
+    walked[0] = 0;
+    CHECK_INT(mem_walk(root, first_found, take_seen, 0), 3);
+    /* root-most first, one file per directory */
+    CHECK_STR(walked, "/w1/CLAUDE.md;/w2/AGENTS.md;/w3/AGENTS.override.md;");
+    walked[0] = 0;
+    at(root, "w1/w2");
+    CHECK_INT(mem_dir(root, first_found, take_seen, 0), 1);
+    CHECK_STR(walked, "/w2/AGENTS.md;");
+}
+
+/* G3: pi's trust.json (amiga-pi): nearest decision up the parents, pi's file form */
+static void test_trust_flat(void)
+{
+    char f[600], where[300];
+    char *b;
+    at(f, "t/trust.json");
+    CHECK_INT(trust_near(&sys, f, "Work:a/b", where, sizeof(where)), -1);
+    CHECK_INT(trust_put(&sys, f, "Work:a", 1), 0);
+    CHECK_INT(trust_put(&sys, f, "Work:a/b/c", 0), 0);
+    CHECK_INT(trust_put(&sys, f, "DH0:x", 1), 0);
+    b = slurp("t/trust.json");
+    CHECK_STR(b ? b : "", "{\n  \"DH0:x\": true,\n  \"Work:a\": true,\n  \"Work:a/b/c\": false\n}\n");
+    free(b);
+    /* the nearest one: a/b/c/d -> a/b/c's false; a/b -> a's true; case does not matter */
+    CHECK_INT(trust_near(&sys, f, "Work:a/b/c/d", where, sizeof(where)), 0);
+    CHECK_STR(where, "Work:a/b/c");
+    CHECK_INT(trust_near(&sys, f, "WORK:A/b", where, sizeof(where)), 1);
+    CHECK_STR(where, "Work:a");
+    CHECK_INT(trust_near(&sys, f, "Other:", where, sizeof(where)), -1);
+    /* null removes; the last one gone leaves {} */
+    CHECK_INT(trust_put(&sys, f, "work:A/B/C", -1), 0);
+    CHECK_INT(trust_put(&sys, f, "DH0:x", -1), 0);
+    CHECK_INT(trust_put(&sys, f, "Work:a", -1), 0);
+    b = slurp("t/trust.json");
+    CHECK_STR(b ? b : "", "{}\n");
+    free(b);
+    /* a file that is not an object is not overwritten */
+    put("t/trust.json", "[1]");
+    CHECK_INT(trust_put(&sys, f, "Work:a", 1), -1);
+    b = slurp("t/trust.json");
+    CHECK_STR(b ? b : "", "[1]");
+    free(b);
 }
 
 /* ---- definitions ---- */
@@ -1059,6 +1134,8 @@ void suite_claude_config(void)
     test_rules();
     test_models();
     test_memory();
+    test_memory_walk();
+    test_trust_flat();
     test_defs();
     test_hooks();
     test_sessions();
