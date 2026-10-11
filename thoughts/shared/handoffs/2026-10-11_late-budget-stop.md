@@ -50,3 +50,7 @@ bugs that the Sonnet ledger had ticked).
 - Kit: remaining rig cases (amissl-present, novice, dest, update on 3.2.2 and 3.1), make
   test, kit to Desktop. Guest dies mid-install ~3 of 8 runs (undiagnosed).
 - `make test` in a vtcon worktree needs UPTERM_ROOT=/Users/spot/Code.
+
+## Late reports
+- Phase G stopped 0/5: vtcon f715a59 (memory.c candidate list as parameter, pi trust.json; C:Claude suites unchanged, +2,052 bytes), amiga-pi WIP 68ac41f not compiled/tested; pause note vtcon 14d53a1. Next: mkoracle_g.py misses `dirname` import (gen_resources.ts fails).
+- Kit paused at a90d01b (feature/amissl-bundle): volume-name abort works on the rig; Installer `exists` sees AmiSSL libs after `Assign LIBS: AmiSSL:Libs ADD` (rig BOOTX:go drops the ADD: rig artifact); fixtures snapshot added. amissl case 3.2.2 fails only check 41 (AmiSSL still there after Uninstall), cleanup hangs on a Volume Request. Not run: other cases, 3.1, make test, tls-check, Desktop kit. RULE BREAK: cd7b4db committed with core.hooksPath=/dev/null; re-run the hooks on it before any merge.
