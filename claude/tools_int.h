@@ -20,15 +20,19 @@ int tl_bool(jv in, const char *key);
  * start directory: 0, or -1 when the name is no path. */
 int tl_resolve(cl_tools *t, const char *arg, char *full, long cap, int *outside);
 int tl_is_binary(const char *s, long n);
+/* p[0..n) as base64 into w (Read's images; amiga-pi's read) */
+void tl_base64(jw *w, const unsigned char *p, long n);
 /* The call shown, the mode and the user asked as the rules say: 0 go on,
  * -1 refused (its result already written). show 0: already shown. */
 int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, int outside, int show);
 /* a one-line summary for the screen, controls as '?' */
 void tl_summary(char *out, long cap, const char *a, const char *b);
-/* pi_rules: a command's status after its output in res (from start on):
- * "(no output)" when it wrote nothing, then "Command exited with code N",
- * "Command timed out after N seconds" or "Command aborted" (pi's words) for
- * r (sys->run's: SYS_TIMEOUT, SYS_BREAK) and rc. 1 when it failed. */
+/* pi_rules: a command's status after its output in res (from start on), as
+ * pi's appendStatus: "(no output)" when a finished command wrote nothing,
+ * then after a blank line "Command exited with code N", "Command timed out
+ * after N seconds" or "Command aborted" (pi's words) for r (sys->run's:
+ * SYS_TIMEOUT, SYS_BREAK) and rc. The status's bytes (with the blank line)
+ * when it failed, 0 when not. */
 int tl_pi_status(jw *res, long start, int r, long rc, int secs);
 
 /* Edit's pieces (tools.c), for pi's edit (edit_orig.c) */

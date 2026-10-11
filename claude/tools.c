@@ -1182,25 +1182,30 @@ int tl_pi_status(jw *res, long start, int r, long rc, int secs)
 {
     char num[16];
     const char *st = 0;
-    if (res->n == start)
-        jw_rawz(res, "(no output)");
+    long at;
+    /* pi's appendStatus: the output ("(no output)" when a finished command
+     * wrote nothing), a blank line, the status */
     if (r == SYS_TIMEOUT)
         st = "Command timed out after ";
     else if (r == SYS_BREAK)
         st = "Command aborted";
-    else if (rc != 0)
+    else if (res->n == start)
+        jw_rawz(res, "(no output)");
+    if (!st && rc != 0)
         st = "Command exited with code ";
     if (!st)
         return 0;
-    jw_rawz(res, "\n\n");
+    at = res->n;
+    if (res->n > start)
+        jw_rawz(res, "\n\n");
     jw_rawz(res, st);
-    if (r == SYS_TIMEOUT || r != SYS_BREAK) {
+    if (r != SYS_BREAK) {
         cl_ltoa(r == SYS_TIMEOUT ? (long)secs : rc, num);
         jw_rawz(res, num);
         if (r == SYS_TIMEOUT)
             jw_rawz(res, " seconds");
     }
-    return 1;
+    return (int)(res->n - at);
 }
 
 int tl_gate(cl_tools *t, jw *out, const char *id, int tool, const char *what, int outside, int show)
@@ -1304,7 +1309,7 @@ static int media_name(const char *p)
     return 0;
 }
 
-static void base64(jw *w, const unsigned char *p, long n)
+void tl_base64(jw *w, const unsigned char *p, long n)
 {
     static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     char q[4];
@@ -1343,7 +1348,7 @@ static void read_media(cl_tools *t, jw *out, const char *id, const char *full, c
                      : ",\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":");
     jw_strz(out, type);
     jw_rawz(out, ",\"data\":\"");
-    base64(out, (const unsigned char *)b, n);
+    tl_base64(out, (const unsigned char *)b, n);
     jw_rawz(out, "\"}}]}");
     cl_copy(m, pdf ? "Read PDF (" : "Read image (", sizeof(m));
     cl_ltoa((n + 1023) / 1024, num);
@@ -2011,6 +2016,8 @@ static void run_bash(cl_tools *t, jw *out, const char *id, jv in)
         if (n >= omax)
             jw_rawz(&res, "\n(output cut at the capture limit)");
         failed = tl_pi_status(&res, 0, r, rc, secs);
+        t->pi_status_n = failed;
+        failed = failed > 0;
         if (r == SYS_BREAK)
             t->stop = 1;            /* Ctrl+C: the prompt stops with the command */
         tl_result(t, out, id, res.p ? res.p : "", res.n, failed);

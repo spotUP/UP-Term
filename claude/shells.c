@@ -404,7 +404,8 @@ int shells_run_fg(cl_tools *t, const char *cmd, const char *shown, const char *d
         inl = t->out_inline > 0 ? t->out_inline : TL_OUT_MAX;
         put_range(t, job, total > inl ? total - inl : 0, total > inl ? inl : total, res);
         *rc_out = rc;
-        *is_err = tl_pi_status(res, start, r, rc, secs);
+        t->pi_status_n = tl_pi_status(res, start, r, rc, secs);
+        *is_err = t->pi_status_n > 0;
         if (r == SYS_BREAK)
             t->stop = 1;            /* Ctrl+C: the prompt stops with the command */
         t->sys->bg_drop(t->sys->u, job);

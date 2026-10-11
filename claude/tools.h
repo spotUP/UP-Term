@@ -259,6 +259,8 @@ typedef struct cl_tools {
      * here (out_inline is the whole capture; amiga-pi truncates). 0 for
      * C:Claude. */
     int pi_rules;
+    long pi_status_n;           /* pi_rules: the bytes of the last command's status at its result's end
+                                 * (ASCII, so the same in the tool_result's text) */
 } cl_tools;
 
 /* the shared state (read set, shells) made; 0, -1 out of memory */
@@ -298,12 +300,30 @@ void tools_run(cl_tools *t, const char *id, const char *name, int input_ok,
                const char *raw, long rawn, jw *out);
 /* pi's edit (amiga-pi): raw is {path, edits: [{oldText, newText}]} (also
  * pi's legacy forms: oldText/newText beside path, edits as one object or as
- * a JSON string). Every oldText is matched against the ORIGINAL file, must
- * occur there exactly once (exact bytes) and must not overlap another; all
- * are applied in one write or none is. Edit's loading (a binary file
- * refused, Latin-1 kept), question and write; pi's words in the results.
+ * a JSON string). Every oldText is matched against the ORIGINAL file as pi
+ * matches (edit-diff.ts: exact, else after pi's fuzzy normalisation; the
+ * BOM apart, CRLF as LF), must occur there once and must not overlap
+ * another; all are applied in one write or none is. Edit's loading (any
+ * file, Latin-1 kept), question and write; pi's words in the results.
  * Its tool_result block appended to out. */
 void tools_edit_orig(cl_tools *t, const char *id, const char *raw, long rawn, jw *out);
+
+/* pi's grep and find (amiga-pi; search_pi.c): what pi gets from rg and fd.
+ * text: the rows joined by '\n' (grep "path:N: line", context "path-N- line";
+ * find the paths below the search directory, '/' after a directory), or
+ * the error; the notices and the byte cut are the caller's (pi's words). */
+typedef struct pi_rows {
+    jw text;
+    long rows, matches, limit;
+    int limit_hit;              /* matches reached limit */
+    int lines_cut;              /* a line was cut at 500 characters */
+    int oom;
+} pi_rows;
+/* raw is pi's grep {pattern, path?, glob?, ignoreCase?, literal?, context?,
+ * limit?}: 0, or 1 with the error in r->text. r->text is the caller's to free. */
+int tools_pi_grep(cl_tools *t, const char *raw, long rawn, pi_rows *r);
+/* raw is pi's find {pattern, path?, limit?}: 0, or 1 with the error */
+int tools_pi_find(cl_tools *t, const char *raw, long rawn, pi_rows *r);
 
 /* A tools list ("Read, Grep", "Bash(make:*) Edit"; "" or "*" all) as a
  * bit set of T_*, bit T_COUNT for WebSearch; "Agent" names Task. */
