@@ -62,7 +62,7 @@ directory is UP-Term:var/amiga-pi and the host can read what amiga-pi wrote.
 Visible windows titled "amiga-pi step 5".
 
 Step 6 (F6): the model switch. models.json (in VTC:pi6agent, PI_CODING_AGENT_DIR) names two providers on the
-fixture: fixa (anthropic-messages, a reasoning model) and fixo (openai-completions, apiKey "!Echo rig-key").
+fixture: fixa (anthropic-messages, a reasoning model) and fixo (openai-completions, apiKey "!Echo rig-test-key").
 amiga-pi reads its lines from a file through "<": a prompt, "/model fixo/m2", a prompt.
   6a the fixture saw POST .../messages first, then .../chat/completions (both backends, in order)
   6b the first request asks for budget thinking, the second names model m2 and carries the first answer
@@ -627,7 +627,7 @@ def step6(port):
         (agent / 'models.json').write_text(json.dumps({'providers': {
             'fixa': {'baseUrl': base, 'api': 'anthropic-messages',
                      'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
-            'fixo': {'baseUrl': base, 'api': 'openai-completions', 'apiKey': '!Echo rig-key',
+            'fixo': {'baseUrl': base, 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
                      'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
         (VTC / 'pi6.in').write_text('hello\n/model fixo/m2\nagain\n')
         for f in ('pi6.out', 'pi6.rc'):
@@ -650,7 +650,7 @@ def step6(port):
         rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
         text, rc = rd('pi6.out'), rd('pi6.rc').strip()
         check('6 the run ended, exit code 0', ended and rc == 'rc=0', repr((ended, rc)))
-        reqs = [l.split('POST')[1].split()[0] for l in open(log) if 'POST' in l]
+        reqs = [l.split()[1] for l in open(log) if l.startswith('[INFO] /v1/')]
         check('6a the fixture saw .../messages, then .../chat/completions',
               len(reqs) == 2 and reqs[0].endswith('/messages') and reqs[1].endswith('/chat/completions'), repr(reqs))
         first, second = body_of(dump, 1), body_of(dump, 2)

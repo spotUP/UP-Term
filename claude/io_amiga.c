@@ -12,12 +12,36 @@
 #include "io_amiga.h"
 #include "util.h"
 
+/* the Shell puts the program's argument line at the front of a redirected Input()
+ * (Program <file: the first line read is "arg arg", not the file's): the first read
+ * drops it when it is the argument line, so a redirected file is read from its start */
+static int first_read = 1;
+
+static long trimmed(const char *s, char *out, long cap)
+{
+    long n = (long)strlen(s);
+    if (n >= cap)
+        n = cap - 1;
+    memcpy(out, s, (size_t)n);
+    while (n && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ' || out[n - 1] == '\t'))
+        n--;
+    out[n] = 0;
+    return n;
+}
+
 static long c_read(void *u, char *buf, long cap)
 {
     long n;
     (void)u;
     if (!FGets(Input(), (STRPTR)buf, cap))
         return -1;
+    if (first_read) {
+        char a[512], b[512];
+        first_read = 0;
+        if (!IsInteractive(Input()) && trimmed((const char *)GetArgStr(), a, sizeof(a)) &&
+            trimmed(buf, b, sizeof(b)) && !strcmp(a, b) && !FGets(Input(), (STRPTR)buf, cap))
+            return -1;
+    }
     n = (long)strlen(buf);
     while (n && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
         buf[--n] = 0;
