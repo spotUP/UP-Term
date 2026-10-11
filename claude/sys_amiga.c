@@ -511,6 +511,266 @@ static const char *a_bg_file(void *u, long job)
     return job >= 0 && job < SA_JOBS && s->jobs[job].used ? s->jobs[job].output : "";
 }
 
+/* ---- spawn2: a child on two PTY: pipe pairs (amiga-pi K1, ARCHITECTURE.md) ----
+ * PIPE: holds a line until its writer closes (a JSON-RPC request would never
+ * reach the server); PTY:<id>/w + PTY:<id>/r answers a Read with what it
+ * holds and gives EOF when the writer closes. The child is a Shell process
+ * (SystemTags, SYS_Asynch: it closes its ends when it ends) named so a
+ * break can find it. Reads are ACTION_READ packets kept pending, so a read
+ * can wait a given time. AmigaOS gives System() no separate error stream:
+ * what the server writes to stderr goes with its output. */
+typedef struct sa_child {
+    BPTR in_w, out_r;
+    struct MsgPort *port;
+    struct StandardPacket *sp;
+    int pending, eof;
+    long have, off;
+    char name[40];              /* the Shell process's name */
+    char buf[4096];
+} sa_child;
+
+static int pty_mounted(void)
+{
+    struct DosList *dl = LockDosList(LDF_DEVICES | LDF_READ);
+    int found = FindDosEntry(dl, (STRPTR)"PTY", LDF_DEVICES) != 0;
+    UnLockDosList(LDF_DEVICES | LDF_READ);
+    return found;
+}
+
+/* the local variables a server is started with (a_spawn2): the value each had before, put back after */
+#define ENV_KEEP 16
+typedef struct env_saved {
+    char name[64];
+    char val[256];
+    int had;
+} env_saved;
+static env_saved env_old[ENV_KEEP];     /* spawn2 runs on one task at a time */
+
+static void env_set(const char *const *env)
+{
+    const char *const *e;
+    int n = 0;
+    for (e = env; e && *e && n < ENV_KEEP; e++) {
+        const char *eq = strchr(*e, '=');
+        long k = eq ? (long)(eq - *e) : 0;
+        env_saved *v = &env_old[n];
+        if (k <= 0 || k >= (long)sizeof(v->name))
+            continue;
+        memcpy(v->name, *e, (size_t)k);
+        v->name[k] = 0;
+        v->had = GetVar((STRPTR)v->name, (STRPTR)v->val, sizeof(v->val), GVF_LOCAL_ONLY) >= 0;
+        SetVar((STRPTR)v->name, (STRPTR)(eq + 1), -1, GVF_LOCAL_ONLY);
+        n++;
+    }
+    if (n < ENV_KEEP)
+        env_old[n].name[0] = 0;
+}
+
+static void env_restore(void)
+{
+    int n;
+    for (n = 0; n < ENV_KEEP && env_old[n].name[0]; n++) {
+        if (env_old[n].had)
+            SetVar((STRPTR)env_old[n].name, (STRPTR)env_old[n].val, -1, GVF_LOCAL_ONLY);
+        else
+            DeleteVar((STRPTR)env_old[n].name, GVF_LOCAL_ONLY);
+    }
+}
+
+static void read_start(sa_child *c)
+{
+    struct FileHandle *fh = (struct FileHandle *)BADDR(c->out_r);
+    memset(c->sp, 0, sizeof(*c->sp));
+    c->sp->sp_Msg.mn_Node.ln_Name = (char *)&c->sp->sp_Pkt;
+    c->sp->sp_Msg.mn_ReplyPort = c->port;
+    c->sp->sp_Pkt.dp_Link = &c->sp->sp_Msg;
+    c->sp->sp_Pkt.dp_Port = c->port;
+    c->sp->sp_Pkt.dp_Type = ACTION_READ;
+    c->sp->sp_Pkt.dp_Arg1 = fh->fh_Arg1;
+    c->sp->sp_Pkt.dp_Arg2 = (LONG)c->buf;
+    c->sp->sp_Pkt.dp_Arg3 = sizeof(c->buf);
+    PutMsg(fh->fh_Type, &c->sp->sp_Msg);
+    c->pending = 1;
+}
+
+/* the pending read's answer within ms: 1 answered (have, eof set), 0 not yet */
+static int read_wait(sa_child *c, long ms)
+{
+    long t = 0;
+    for (;;) {
+        if (GetMsg(c->port)) {
+            c->pending = 0;
+            c->have = c->sp->sp_Pkt.dp_Res1 > 0 ? c->sp->sp_Pkt.dp_Res1 : 0;
+            c->off = 0;
+            if (c->sp->sp_Pkt.dp_Res1 <= 0)
+                c->eof = 1;
+            return 1;
+        }
+        if (t >= ms)
+            return 0;
+        Delay(1);
+        t += 20;
+    }
+}
+
+static int a_spawn2(void *u, const char *const *argv, const char *const *env, const char *dir, void **h)
+{
+    sys_amiga *s = (sys_amiga *)u;
+    static unsigned long serial;
+    char id[16], nm[48], line[1024], num[12];
+    BPTR in_r = 0, out_w = 0, dl = 0, old = 0;
+    sa_child *c;
+    if (!pty_mounted()) {
+        cl_copy(s->dos.err, "PTY: is not mounted (the UP-Term kit mounts it)", sizeof(s->dos.err));
+        return -1;
+    }
+    c = (sa_child *)AllocVec(sizeof(sa_child), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!c)
+        goto oom;
+    c->port = CreateMsgPort();
+    c->sp = (struct StandardPacket *)AllocVec(sizeof(struct StandardPacket), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!c->port || !c->sp)
+        goto oom;
+    /* "<serial><task>" in hex, at most 15 characters (pty_name.h) */
+    cl_ltoa((long)(++serial & 0xffff), id);
+    cl_ltoa((long)((unsigned long)FindTask(0) & 0xfffff), num);
+    cl_cat(id, "x", sizeof(id));
+    cl_cat(id, num, sizeof(id));
+    cl_copy(nm, "PTY:i", sizeof(nm));
+    cl_cat(nm, id, sizeof(nm));
+    cl_cat(nm, "/w", sizeof(nm));
+    c->in_w = Open((STRPTR)nm, MODE_NEWFILE);
+    nm[strlen(nm) - 1] = 'r';
+    in_r = c->in_w ? Open((STRPTR)nm, MODE_OLDFILE) : 0;
+    cl_copy(nm, "PTY:o", sizeof(nm));
+    cl_cat(nm, id, sizeof(nm));
+    cl_cat(nm, "/w", sizeof(nm));
+    out_w = in_r ? Open((STRPTR)nm, MODE_NEWFILE) : 0;
+    nm[strlen(nm) - 1] = 'r';
+    c->out_r = out_w ? Open((STRPTR)nm, MODE_OLDFILE) : 0;
+    if (!c->out_r) {
+        dda_err(&s->dos, "cannot open the PTY: pipes");
+        goto fail;
+    }
+    /* the command line: the program, then each argument quoted */
+    if (cl_shell_line(line, sizeof(line), argv)) {
+        cl_copy(s->dos.err, "the server's command line is longer than 1023 bytes", sizeof(s->dos.err));
+        goto fail;
+    }
+    cl_copy(c->name, "amiga-pi server ", sizeof(c->name));
+    cl_cat(c->name, id, sizeof(c->name));
+    /* its environment: local variables, which the new Shell copies; ours put back after */
+    env_set(env);
+    if (dir && *dir) {
+        dl = Lock((STRPTR)dir, SHARED_LOCK);
+        if (!dl) {
+            dda_err(&s->dos, dir);
+            goto unvar;
+        }
+        old = CurrentDir(dl);
+    }
+    if (SystemTags((STRPTR)line, SYS_Input, in_r, SYS_Output, out_w, SYS_Asynch, TRUE, SYS_UserShell, TRUE,
+                   NP_Name, (ULONG)c->name, TAG_END) == -1) {
+        dda_err(&s->dos, "the server did not start");
+        if (dl)
+            UnLock(CurrentDir(old));
+        dl = 0;
+        goto unvar;
+    }
+    if (dl)
+        UnLock(CurrentDir(old));
+    env_restore();
+    *h = c;
+    return 0;
+unvar:
+    env_restore();
+    goto fail;
+oom:
+    cl_copy(s->dos.err, "out of memory", sizeof(s->dos.err));
+fail:
+    if (out_w)
+        Close(out_w);
+    if (in_r)
+        Close(in_r);
+    if (c) {
+        if (c->out_r)
+            Close(c->out_r);
+        if (c->in_w)
+            Close(c->in_w);
+        if (c->sp)
+            FreeVec(c->sp);
+        if (c->port)
+            DeleteMsgPort(c->port);
+        FreeVec(c);
+    }
+    return -1;
+}
+
+static int a_spawn2_write(void *u, void *h, const char *str, long n)
+{
+    sa_child *c = (sa_child *)h;
+    (void)u;
+    return c->in_w && Write(c->in_w, (APTR)str, n) == n ? 0 : -1;
+}
+
+static long a_spawn2_read(void *u, void *h, char *out, long cap, long ms)
+{
+    sa_child *c = (sa_child *)h;
+    long k;
+    (void)u;
+    if (c->off >= c->have) {
+        if (c->eof)
+            return 0;
+        if (!c->pending)
+            read_start(c);
+        if (!read_wait(c, ms))
+            return -2;
+        if (c->eof && !c->have)
+            return 0;
+    }
+    k = c->have - c->off < cap ? c->have - c->off : cap;
+    memcpy(out, c->buf + c->off, (size_t)k);
+    c->off += k;
+    return k;
+}
+
+static long a_spawn2_close(void *u, void *h, long ms)
+{
+    sa_child *c = (sa_child *)h;
+    int round;
+    (void)u;
+    Close(c->in_w);
+    c->in_w = 0;
+    /* its output read to the end (EOF once it has ended); a break after ms, then 2 s more */
+    for (round = 0; round < 2 && !c->eof; round++) {
+        long t = 0;
+        if (round) {
+            struct Task *t2;
+            Forbid();
+            if ((t2 = FindTask((STRPTR)c->name)) != 0)
+                Signal(t2, SIGBREAKF_CTRL_C);
+            Permit();
+        }
+        while (!c->eof && t < (round ? 2000 : ms)) {
+            if (!c->pending)
+                read_start(c);
+            read_wait(c, 100);
+            t += 100;
+        }
+    }
+    if (c->pending) {
+        /* a read still out: its buffer must stay (the child never ended). Its reply, whenever it comes, must
+         * not signal this task (gone by then, or busy with something else): the port ignores it */
+        c->port->mp_Flags = PA_IGNORE;
+        return -1;
+    }
+    Close(c->out_r);
+    FreeVec(c->sp);
+    DeleteMsgPort(c->port);
+    FreeVec(c);
+    return -1;                  /* SYS_Asynch gives no return code */
+}
+
 void sys_amiga_init(sys_amiga *s, cl_sys *sys)
 {
     memset(s, 0, sizeof(*s));
@@ -541,4 +801,8 @@ void sys_amiga_init(sys_amiga *s, cl_sys *sys)
     sys->rename = dda_rename;
     sys->quiet_kind = dda_quiet_kind;
     sys->pread = dda_pread;
+    sys->spawn2 = a_spawn2;
+    sys->spawn2_write = a_spawn2_write;
+    sys->spawn2_read = a_spawn2_read;
+    sys->spawn2_close = a_spawn2_close;
 }

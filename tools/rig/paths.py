@@ -10,18 +10,37 @@ the parent of this vtcon checkout. The Makefile's default is the same
 """
 import os
 import pathlib
+import subprocess
 import sys
 
 VTCON = pathlib.Path(__file__).resolve().parents[2]
 UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
 
 
+def _main_checkout(checkout):
+    """The main checkout of the repository `checkout` belongs to: `checkout`
+    itself, or for a git worktree the checkout that owns its .git."""
+    try:
+        common = subprocess.run(
+            ["git", "-C", str(checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return checkout
+    return pathlib.Path(common).resolve().parent
+
+
+# The rigs are machine resources (an FS-UAE each, a fixed amiagent port, a
+# 1.5 GB system disk), so they live in the main checkout's build/ for every
+# worktree. A worktree has no build/rig2: FS-UAE started from one booted with
+# no bootable device (2026-10-12).
+RIG_HOME = _main_checkout(VTCON) / "build"
+
 # Which rig: UPTERM_RIG unset or 1 is the first (build/rig, amiagent port 7846);
 # UPTERM_RIG=2 is the second (build/rig2, port 7847), a separate FS-UAE with
 # its own system disk copy. Every rig script reads the instance from here.
 RIG_N = int(os.environ.get("UPTERM_RIG") or 1)
 RIG_NAME = "rig" if RIG_N == 1 else "rig%d" % RIG_N
-RIG = VTCON / "build" / RIG_NAME
+RIG = RIG_HOME / RIG_NAME
 AGENT_PORT = 7846 + RIG_N - 1
 os.environ.setdefault("AMI_PORT", str(AGENT_PORT))   # ami.py reads it
 
@@ -64,16 +83,16 @@ ROM314 = pathlib.Path(os.environ.get("UPTERM_ROM314") or
 # (Software Failure 8000 888B, rig 3, 2026-10-10); UPTERM_LIB68060 names the file (default: Phase5's 68060.library 44.3,
 # taken from the old rig system disk's Libs:; GG-Lite's 68060.library did not help).
 LIB68060 = pathlib.Path(os.environ.get("UPTERM_LIB68060") or
-    VTCON / "build/rig-inputs/68060.library")
+    RIG_HOME / "rig-inputs/68060.library")
 
 
 # ... and the 3.1 68040.library, which SetPatch also loads on a 68060, crashes
 # there; the old rig system disk has a 692-byte stub in its place (UPTERM_LIB68040).
-LIB68040 = pathlib.Path(os.environ.get("UPTERM_LIB68040") or VTCON / "build/rig-inputs/68040.library")
+LIB68040 = pathlib.Path(os.environ.get("UPTERM_LIB68040") or RIG_HOME / "rig-inputs/68040.library")
 
 
 # the clean 3.0/3.1 installs have no Installer; Installer 43.3 (30.4.96), the 3.1 Install disk's (UPTERM_INSTALLER)
-INSTALLER = pathlib.Path(os.environ.get("UPTERM_INSTALLER") or VTCON / "build/rig-inputs/Installer")
+INSTALLER = pathlib.Path(os.environ.get("UPTERM_INSTALLER") or RIG_HOME / "rig-inputs/Installer")
 
 
 def require_input(path, var, what):

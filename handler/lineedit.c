@@ -1856,3 +1856,71 @@ int le_ctrl_d(int shell_armed, int reader_is_program, int line_len)
         return LE_CTRLD_KEY;
     return line_len ? LE_CTRLD_SEND : LE_CTRLD_EOF;
 }
+
+#define AHEAD_HDR 6 /* length, modifiers, key (4 bytes, high byte first) */
+
+int le_ahead_key(le_ahead *a, int reader_waits, const unsigned char *b, int n, long key, int mods)
+{
+    unsigned char *r;
+    if (reader_waits && a->at == a->used)
+        return LE_AHEAD_NOW;
+    if (n < 0 || n > 64)
+        return LE_AHEAD_FULL;
+    if (a->at && a->at == a->used)
+        a->at = a->used = 0;
+    if (!grow(&a->buf, &a->cap, a->used, a->used + AHEAD_HDR + n, LE_AHEAD_MAX)) {
+        if (!a->at)
+            return LE_AHEAD_FULL;
+        memmove(a->buf, a->buf + a->at, (size_t)(a->used - a->at)); /* the taken ones make room */
+        a->used -= a->at;
+        a->at = 0;
+        if (!grow(&a->buf, &a->cap, a->used, a->used + AHEAD_HDR + n, LE_AHEAD_MAX))
+            return LE_AHEAD_FULL;
+    }
+    r = a->buf + a->used;
+    r[0] = (unsigned char)n;
+    r[1] = (unsigned char)mods;
+    r[2] = (unsigned char)((unsigned long)key >> 24);
+    r[3] = (unsigned char)((unsigned long)key >> 16);
+    r[4] = (unsigned char)((unsigned long)key >> 8);
+    r[5] = (unsigned char)key;
+    if (n)
+        memcpy(r + AHEAD_HDR, b, (size_t)n);
+    a->used += AHEAD_HDR + n;
+    return LE_AHEAD_HELD;
+}
+
+int le_ahead_next(le_ahead *a, int line_waiting, unsigned char *b, int *n, long *key, int *mods)
+{
+    const unsigned char *r;
+    if (line_waiting || a->at >= a->used)
+        return 0;
+    r = a->buf + a->at;
+    *n = r[0];
+    *mods = r[1];
+    *key = (long)(((unsigned long)r[2] << 24) | ((unsigned long)r[3] << 16) | ((unsigned long)r[4] << 8) | r[5]);
+    if (*n)
+        memcpy(b, r + AHEAD_HDR, (size_t)*n);
+    a->at += AHEAD_HDR + *n;
+    if (a->at == a->used)
+        a->at = a->used = 0;
+    return 1;
+}
+
+int le_ahead_any(const le_ahead *a)
+{
+    return a->at < a->used;
+}
+
+void le_ahead_clear(le_ahead *a)
+{
+    a->at = a->used = 0;
+}
+
+void le_ahead_free(le_ahead *a)
+{
+    if (a->buf)
+        LE_FREE(a->buf);
+    a->buf = 0;
+    a->cap = a->used = a->at = 0;
+}

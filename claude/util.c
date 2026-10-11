@@ -39,6 +39,49 @@ char *cl_cat(char *dst, const char *src, long cap)
     return dst;
 }
 
+/* c appended at *n of cap bytes (one kept for the terminator): 0, -1 full */
+static int put(char *line, long cap, long *n, char c)
+{
+    if (*n + 1 >= cap)
+        return -1;
+    line[(*n)++] = c;
+    line[*n] = 0;
+    return 0;
+}
+
+static int put_arg(char *line, long cap, long *n, const char *a, int quote)
+{
+    if (quote && put(line, cap, n, '"'))
+        return -1;
+    for (; *a; a++) {
+        if (quote && (*a == '"' || *a == '*' || *a == '\n')) {
+            if (put(line, cap, n, '*') || put(line, cap, n, *a == '\n' ? 'N' : *a))
+                return -1;
+        } else if (put(line, cap, n, *a))
+            return -1;
+    }
+    return quote && put(line, cap, n, '"') ? -1 : 0;
+}
+
+int cl_shell_line(char *line, long cap, const char *const *argv)
+{
+    long n = 0;
+    int i, quote = !argv[0][0];
+    const char *a;
+    if (cap < 1)
+        return -1;
+    line[0] = 0;
+    for (a = argv[0]; *a; a++)
+        if (strchr(" \t\"*\n;<>|&`${}", *a))
+            quote = 1;
+    if (put_arg(line, cap, &n, argv[0], quote))
+        return -1;
+    for (i = 1; argv[i]; i++)
+        if (put(line, cap, &n, ' ') || put_arg(line, cap, &n, argv[i], 1))
+            return -1;
+    return 0;
+}
+
 static int low(int c)
 {
     return c >= 'A' && c <= 'Z' ? c + 32 : c;

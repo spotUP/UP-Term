@@ -39,14 +39,16 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 .PHONY: bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
+# ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
 # ONLY=pi_recordings amiga-pi's OpenAI recordings against OpenAI's schema (tools/test_pi_recordings.py)
 # ONLY=layers amiga-pi's layering rule over llm/, claude/http.c and UPTERM_ROOT/amiga-pi (tools/check_layers.py)
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py); ONLY=ixemul the patched
 # ixemul's host tests (IXEMUL_SRC/tests/host: its argument line parser)
 test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_recordings ]; then python3 -I tools/test_pi_recordings.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = layers ]; then python3 -I tools/test_check_layers.py && python3 -I tools/check_layers.py --strict; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unifont ]; then python3 tests/test_gen_unifont.py; fi
@@ -406,6 +408,11 @@ $(BUILD)/amiga/sizewatch: tests/amiga/sizewatch.c
 $(BUILD)/amiga/pipeprobe: tests/amiga/pipeprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/pipeprobe.c
+
+# amiga-pi K1: which pipe handler gives a spawned child line-buffered stdio and EOF
+$(BUILD)/amiga/spawnprobe: tests/amiga/spawnprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/spawnprobe.c
 
 $(BUILD)/amiga/compprobe: tests/amiga/compprobe.c handler/vtcon_packets.h
 	@mkdir -p $(BUILD)/amiga

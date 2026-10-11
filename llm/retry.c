@@ -178,6 +178,7 @@ int llm_request(llm_req *q)
         }
     }
     jw_init(&body);
+    jw_init(&errbody);
     if (q->be->body(q->ctx, &body) || body.oom) {
         jw_free(&body);
         final_error(q->sink, LS_ERROR, "body", "the request could not be built");
