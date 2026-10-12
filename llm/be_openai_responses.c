@@ -867,6 +867,9 @@ static void finish(or_dec *d, const llm_sink *k, jv resp)
         e.cache_r = cr;
         e.cache_w = cw;
         e.out = json_get(u, "output_tokens", &v) ? json_long(v, 0) : 0;
+        e.has_reasoning = 1;    /* finalizeResponse: output_tokens_details?.reasoning_tokens || 0 */
+        if (json_get(u, "output_tokens_details", &det) && json_type(det) == J_OBJ && json_get(det, "reasoning_tokens", &x))
+            e.reasoning = json_long(x, 0);
         emit(k, &e);
     }
     if (json_get(resp, "status", &v) && json_type(v) == J_STR)

@@ -5,7 +5,9 @@
 #include "claude_load.h"
 #include "harness.h"
 
-char *claude_load(const char *name, long *n)
+int claude_load_errors;
+
+static char *load(const char *name, long *n, int loud)
 {
     char path[256];
     FILE *f;
@@ -15,7 +17,10 @@ char *claude_load(const char *name, long *n)
     strcat(path, name);
     f = fopen(path, "rb");
     if (!f) {
-        printf("  [ERROR] cannot open %s\n", path);
+        if (loud) {
+            printf("  [ERROR] cannot open %s\n", path);
+            claude_load_errors++;
+        }
         return 0;
     }
     fseek(f, 0, SEEK_END);
@@ -31,6 +36,16 @@ char *claude_load(const char *name, long *n)
         b[len] = 0;
     *n = len;
     return b;
+}
+
+char *claude_load(const char *name, long *n)
+{
+    return load(name, n, 1);
+}
+
+char *claude_load_opt(const char *name, long *n)
+{
+    return load(name, n, 0);
 }
 
 int claude_golden(const char *name, const char *got)

@@ -640,7 +640,7 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
         }
     }
     if (json_get(ch, "usage", &u) && json_type(u) == J_OBJ) {
-        jv pt, ct, det, cached;
+        jv pt, ct, det, cached, rt;
         long in = -1, cr = 0;
         llm_event_init(&e, LE_USAGE);
         if (json_get(u, "prompt_tokens", &pt))
@@ -653,6 +653,9 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
         }
         if (json_get(u, "completion_tokens", &ct))
             e.out = json_long(ct, -1);
+        e.has_reasoning = 1;    /* parseChunkUsage: completion_tokens_details.reasoning_tokens || 0 */
+        if (json_get(u, "completion_tokens_details", &det) && json_type(det) == J_OBJ && json_get(det, "reasoning_tokens", &rt))
+            e.reasoning = json_long(rt, 0);
         emit(k, &e);
     }
     return 0;

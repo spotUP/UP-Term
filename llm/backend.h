@@ -12,6 +12,14 @@
 #include "llm.h"
 #include "event.h"
 
+/* compat.allowedFallbackModels (anthropic-messages; at most 3, pi's schema): the models the server may answer with
+ * instead (server-side fallback), each with its own price for the usage cost */
+#define LLM_FALLBACKS 3
+typedef struct llm_fallback {
+    const char *provider, *model;
+    long cost[4];               /* micro-dollars per million tokens: input, output, cacheRead, cacheWrite */
+} llm_fallback;
+
 /* openai-completions compatibility (pi-ai's compat flags; detection order:
  * the defaults for the endpoint, then the model's explicit values) */
 enum { LC_UNSET = -1 };
@@ -32,6 +40,8 @@ typedef struct llm_compat {
     int eager_tools;            /* supportsEagerToolInputStreaming (default on) */
     int cache_tools;            /* supportsCacheControlOnTools (default on) */
     int empty_signature;        /* allowEmptySignature: an unsigned thinking block keeps an empty signature */
+    llm_fallback fb[LLM_FALLBACKS];     /* allowedFallbackModels: the request names them ("fallbacks", the server-side-fallback beta) */
+    int nfb;
 } llm_compat;
 
 /* pi's thinking levels (ModelThinkingLevel), in order; thinking_map[] is pi's
