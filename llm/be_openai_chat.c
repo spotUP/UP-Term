@@ -639,7 +639,7 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
 }
 
 const llm_backend llm_be_openai_chat = {
-    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free
+    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, 0
 };
 
 const llm_backend *llm_backend_of(const char *api)

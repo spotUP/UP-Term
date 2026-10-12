@@ -1033,5 +1033,6 @@ static int r_feed(void *dv, const char *event, const char *data, long n, const l
 }
 
 const llm_backend llm_be_openai_responses = {
-    "openai-responses", "Authorization", "/responses", r_head, r_body, r_xhead, r_new, r_feed, r_free
+    "openai-responses", "Authorization", "/responses", r_head, r_body, r_xhead, r_new, r_feed, r_free,
+    "OpenAI Responses stream ended before a terminal response event"
 };

@@ -266,7 +266,7 @@ int llm_request(llm_req *q)
                 cl_copy(err, g.em[0] ? g.em : g.et, sizeof(err));
                 retry = !g.content && (!strcmp(g.et, "overloaded_error") || !strcmp(g.et, "api_error"));
             } else {
-                cl_copy(err, "the answer was cut off", sizeof(err));
+                cl_copy(err, q->be->cut ? q->be->cut : "the answer was cut off", sizeof(err));
                 retry = !g.content;
             }
         } else if (rc == LP_OK) {

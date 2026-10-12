@@ -96,6 +96,9 @@ typedef struct llm_backend {
     void *(*dec_new)(void);
     int (*feed)(void *dec, const char *event, const char *data, long n, const llm_sink *k);
     void (*dec_free)(void *dec);
+    /* pi-ai's error text when the stream ends without the API's terminal event ("OpenAI Responses stream ended before
+     * a terminal response event"); 0: the generic one */
+    const char *cut;
 } llm_backend;
 
 extern const llm_backend llm_be_anthropic;

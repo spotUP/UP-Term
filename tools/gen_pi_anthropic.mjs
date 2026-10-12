@@ -2,6 +2,7 @@
 // (api/anthropic-messages.js streamSimple) run on each case of tests/pi/anthropic/cases.json with a fake fetch that
 // answers with the case's .sse file. Writes, per case, next to cases.json:
 //   <name>.body     the request body pi sent (the exact text; the SDK moves `betas` into the header)
+//   <name>.digest   what pi made of the stream (stop, error, usage, blocks), the form tests/test_pi_llm.c rebuilds
 //   <name>.headers  the anthropic-beta header pi sent, when it sent one
 // A message {"$reply": "<case>"} in a case's messages is replaced by the assistant message pi made for that case. Unaltered models: the compat
 // flags (supportsMidConvo*) are pi's own.
@@ -19,6 +20,18 @@ const { clampThinkingLevel } = await imp("models.js");
 const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "tests", "pi", "anthropic");
 const { cases } = JSON.parse(readFileSync(join(dir, "cases.json"), "utf8"));
 const replies = {};
+
+function digest(m) {
+	const j = (v) => JSON.stringify(v);
+	let s = `stop=${m.stopReason}\nerror=${m.errorMessage ?? "-"}\n`;
+	s += `usage=${m.usage.input},${m.usage.output},${m.usage.cacheRead},${m.usage.cacheWrite}\n`;
+	for (const b of m.content) {
+		if (b.type === "thinking") s += `thinking=${j(b.thinking)} sig=${b.thinkingSignature === undefined ? "-" : j(b.thinkingSignature)}\n`;
+		else if (b.type === "text") s += `text=${j(b.text)} sig=${b.textSignature === undefined ? "-" : j(b.textSignature)}\n`;
+		else if (b.type === "toolCall") s += `tool=${b.id} ${b.name} ${j(b.arguments)}\n`;
+	}
+	return s;
+}
 for (const c of cases) {
 	const [provider, id] = c.model.split("/");
 	// "compat" in a case replaces the model's compat (a models.json model with only that flag)
@@ -38,6 +51,7 @@ for (const c of cases) {
 	for await (const ev of s) if (ev.type === "done" || ev.type === "error") final = ev.type === "done" ? ev.message : ev.error;
 	replies[c.name] = final;
 	writeFileSync(join(dir, c.name + ".body"), body);
+	writeFileSync(join(dir, c.name + ".digest"), digest(final));
 	const beta = headers.get("anthropic-beta");
 	if (beta) writeFileSync(join(dir, c.name + ".headers"), "anthropic-beta: " + beta + "\n");
 	else rmSync(join(dir, c.name + ".headers"), { force: true });

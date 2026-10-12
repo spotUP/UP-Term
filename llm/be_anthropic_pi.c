@@ -925,5 +925,6 @@ static void a_free(void *dec)
 }
 
 const llm_backend llm_be_anthropic = {
-    "anthropic-messages", "x-api-key", "/v1/messages", a_head, a_body, a_xhead, a_new, a_feed, a_free
+    "anthropic-messages", "x-api-key", "/v1/messages", a_head, a_body, a_xhead, a_new, a_feed, a_free,
+    "Anthropic stream ended before message_stop"
 };

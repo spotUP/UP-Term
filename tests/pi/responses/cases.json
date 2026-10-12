@@ -982,6 +982,25 @@
     }
    ],
    "sse": "error_member"
+  },
+  {
+   "name": "no_terminal",
+   "model": "openai/gpt-5.5",
+   "level": "low",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "no_terminal"
   }
  ]
 }

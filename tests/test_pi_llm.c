@@ -760,8 +760,8 @@ static void test_anthropic_pi(void)
         char mname[96], file[96], sse[64], lvl[16], sys[200];
         const llm_model *md;
         llm_model cmod;
-        char *msgs[16], *want_body, *want_hdr;
-        long mn[16], bn, hn;
+        char *msgs[16], *want_body, *want_hdr, *want_dig;
+        long mn[16], bn, hn, dn;
         int nm = 0, lv, own[16];
         jit mit;
         llm_ctx cx;
@@ -769,7 +769,7 @@ static void test_anthropic_pi(void)
         llm_acc a;
         llm_sink k;
         llm_view vw;
-        jw msg;
+        jw msg, dig;
         char *tools = 0;
         long tools_n = 0;
         memset(own, 0, sizeof(own));
@@ -872,9 +872,21 @@ static void test_anthropic_pi(void)
             free(want_hdr);
         } else
             CHECK(strstr(ps.head[0], "anthropic-beta") == 0);
-        /* what the answer records: the level pi keeps on it */
+        /* what the stream made: pi's digest; and the level pi keeps on the answer */
         jw_init(&msg);
+        jw_init(&dig);
         llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+        resp_digest(msg.p, &dig);
+        file[strlen(file) - 8] = 0;
+        strcat(file, ".digest");
+        want_dig = claude_load(file, &dn);
+        CHECK(want_dig != 0);
+        if (want_dig && strcmp(want_dig, dig.p)) {
+            printf("    case %s digest\n      got  %s\n      want %s\n", name, dig.p, want_dig);
+            CHECK(0);
+        }
+        free(want_dig);
+        jw_free(&dig);
         for (i = 0; i < RC_MAX; i++)
             if (!ra_reply[i]) {
                 ra_reply[i] = (char *)malloc((size_t)msg.n + 1);
@@ -892,7 +904,7 @@ static void test_anthropic_pi(void)
                 free(msgs[i]);
         ncase++;
     }
-    CHECK(ncase >= 17);
+    CHECK(ncase >= 18);
     CHECK(mid_cases >= 8);                          /* the managed-effort model's cases ran */
     CHECK(llm_feeds_anthropic > feeds0);            /* the backend ran */
     for (i = 0; i < RC_MAX; i++) {
