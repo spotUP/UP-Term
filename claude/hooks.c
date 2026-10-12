@@ -8,6 +8,7 @@
 
 #define HOOK_OUT 16384
 #define ASYNC_MAX 8
+#define HOOK_LINE 1200          /* a command line with its input file */
 
 /* an async hook in flight (A4 gaps 2) */
 typedef struct hk_async {
@@ -702,9 +703,26 @@ int hooks_watch_names(const cl_hooks *h, void (*fn)(void *c, const char *name), 
     return n;
 }
 
+/* one command hook: `<line> < file` (line already put through project_cmd), the status message, the trace and the
+ * count around it; sys->run's status */
+static int exec_command(cl_hooks *h, const cl_hook *k, int event, const char *file, char *line, char *o, long *on,
+                        long *rc)
+{
+    int st;
+    cl_cat(line, " < ", HOOK_LINE);
+    cl_cat(line, file, HOOK_LINE);
+    st = h->sys->run(h->sys->u, line, k->timeout_s, o, HOOK_OUT - 1, on, rc);
+    if (k->status && h->status)
+        h->status(h->u, 0);
+    if (h->seen)
+        h->seen(h->u, event, k->cmd, 1, st < 0 ? -1 : *rc, o, st < 0 ? 0 : *on);
+    h->n_run++;
+    return st;
+}
+
 int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_hookres *r)
 {
-    char file[300], line[1200], num[16];
+    char file[300], line[HOOK_LINE], num[16];
     char *o = 0;
     jw ev;
     int i;
@@ -778,14 +796,7 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
                 add_line(&r->shown, "An async hook could not be started in the background.", 53);
             continue;
         }
-        cl_cat(line, " < ", sizeof(line));
-        cl_cat(line, file, sizeof(line));
-        st = h->sys->run(h->sys->u, line, k->timeout_s, o, HOOK_OUT - 1, &on, &rc);
-        if (k->status && h->status)
-            h->status(h->u, 0);
-        if (h->seen)
-            h->seen(h->u, event, k->cmd, 1, st < 0 ? -1 : rc, o, st < 0 ? 0 : on);
-        h->n_run++;
+        st = exec_command(h, k, event, file, line, o, &on, &rc);
         r->ran++;
         if (st < 0) {
             char m[400];
@@ -835,4 +846,41 @@ int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_ho
     if (h->sys->remove)
         h->sys->remove(h->sys->u, file);
     return r->ran;
+}
+
+int hooks_run_raw(cl_hooks *h, int event, const char *name, hooks_raw_body body, hooks_raw_fn fn, void *c)
+{
+    char file[300], line[HOOK_LINE];
+    char *o;
+    int i, ran = 0;
+    cl_hook *k;
+    if (!hooks_any(h, event, name) || path_join(h->tmp ? h->tmp : "T:", "Claude-hook.json", file, sizeof(file)))
+        return 0;
+    o = (char *)malloc(HOOK_OUT);
+    if (!o)
+        return 0;
+    for (i = 0; (k = hook_at(h, i)) != 0; i++) {
+        long on = 0, rc = 0, bn = 0;
+        const char *b;
+        int st;
+        if (k->event != event || k->kind != HOOK_COMMAND || k->async || !hooks_match(k->matcher, name ? name : ""))
+            continue;
+        b = body(c, &bn);
+        if (!b || h->sys->write(h->sys->u, file, b, bn))
+            break;
+        if (k->status && h->status)
+            h->status(h->u, k->status);
+        if (h->seen)
+            h->seen(h->u, event, k->cmd, 0, -1, "", 0);
+        project_cmd(h, k->cmd, line, sizeof(line) - 320);
+        st = exec_command(h, k, event, file, line, o, &on, &rc);
+        ran++;
+        o[st < 0 ? 0 : on] = 0;
+        if (fn(c, k, st, rc, o, st < 0 ? 0 : on))
+            break;
+    }
+    free(o);
+    if (h->sys->remove)
+        h->sys->remove(h->sys->u, file);
+    return ran;
 }
