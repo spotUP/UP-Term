@@ -72,6 +72,17 @@ amiga-pi reads its lines from a file through "<": a prompt, "/model fixo/m2", a 
   6e the screen says "Model: fixo/m2, thinking off"
 Visible windows titled "amiga-pi step 6".
 
+Step 7 (G5): project instructions and trust. RAM:AGENTS.md (the volume root) and RAM:proj/AGENTS.md,
+and RAM:proj/.pi/SYSTEM.md; "amiga-pi --no-session -p hello" with RAM:proj as the current directory:
+  7a exit code 0, the request's system prompt holds both AGENTS.md texts, RAM:AGENTS.md first, each in a
+     <project_instructions path="..."> naming its file
+  7b the project is not trusted in print mode (nothing decided): the default prompt's preamble stays and
+     SYSTEM.md's text is not sent; no requester appeared
+  7c the same with -a: SYSTEM.md replaces the preamble (its text is sent, the default's is not), the
+     AGENTS.md texts are still there
+  7d nothing was written to ENVARC:amiga-pi/trust.json (one that was there is put aside first and restored after)
+Everything made is removed again. Visible windows titled "amiga-pi step 7".
+
 Step 10 (K5, K8): MCP. ENVARC:amiga-pi/mcp.json names two servers: "fake",
 tools/fake_mcp.py over streamable HTTP on the Mac at its LAN address (the LAN
 rule's plain http), and "amiga", build/amiga/mcp-echo (a native stdio server)
@@ -92,7 +103,7 @@ fake_mcp.py (make -C <amiga-pi> amiga build/amiga/mcp-echo).
 
   make build/amiga/pi-llmprobe build/amiga/Claude; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|10]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|10]
 """
 import argparse
 import json
@@ -774,6 +785,80 @@ def step10(port):
         c.run('Delete RAM:pi10-done VTC:pi10.dos VTC:pi10-mcp.json ENVARC:amiga-pi/mcp.json QUIET')
 
 
+def system_text(body):
+    """the system and developer messages of a chat/completions body, joined"""
+    return '\n'.join(str(m.get('content')) for m in body.get('messages', []) if m.get('role') in ('system', 'developer'))
+
+
+def step7(port):
+    import re
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    log = paths.RIG / 'amigapi_fixture7.log'
+    dump = paths.RIG / 'amigapi_dump7'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    (VTC / 'g7-outer.md').write_text('RIG-OUTER-RULES-7\n')
+    (VTC / 'g7-inner.md').write_text('RIG-INNER-RULES-7\n')
+    (VTC / 'g7-sys.md').write_text('RIG-PROJECT-SYSTEM-7')
+    # a trust.json that was there already would make 7d pass whatever the run wrote: put it aside, restore it after
+    had_trust = there('ENVARC:amiga-pi/trust.json')
+    if had_trust:
+        c.run('Rename ENVARC:amiga-pi/trust.json ENVARC:amiga-pi/trust.json.g7bak')
+    try:
+        for f in ('pi7.out', 'pi7.rc'):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        ended, req = run_watched('pi7', 'amiga-pi step 7', [
+            'Echo "amiga-pi step 7: AGENTS.md at RAM: and RAM:proj, .pi/SYSTEM.md untrusted then -a"',
+            'Delete RAM:AGENTS.md RAM:proj ALL QUIET',
+            'MakeDir RAM:proj RAM:proj/.pi',
+            'Copy VTC:g7-outer.md RAM:AGENTS.md QUIET',
+            'Copy VTC:g7-inner.md RAM:proj/AGENTS.md QUIET',
+            'Copy VTC:g7-sys.md RAM:proj/.pi/SYSTEM.md QUIET',
+            'CD RAM:proj',
+            'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 --no-session -p hello '
+            '>VTC:pi7.out' % port,
+            'Echo "rc=$RC" >VTC:pi7.rc',
+            'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 --no-session -a -p hello '
+            '>VTC:pi7a.out' % port,
+            'Echo "rc=$RC" >VTC:pi7a.rc',
+            'CD RAM:',
+            'Delete RAM:AGENTS.md RAM:proj ALL QUIET',
+            'Type VTC:pi7.out'], 'pi7-done')
+        check('7 the window ended', ended)
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        check('7a exit codes 0', rd('pi7.rc').strip() == 'rc=0' and rd('pi7a.rc').strip() == 'rc=0',
+              repr((rd('pi7.rc'), rd('pi7a.rc'), rd('pi7.out')[:300])))
+        plain, trusted = system_text(body_of(dump, 1)), system_text(body_of(dump, 2))
+        o, i = plain.find('RIG-OUTER-RULES-7'), plain.find('RIG-INNER-RULES-7')
+        check('7a both AGENTS.md texts, RAM:AGENTS.md first', 0 <= o < i, repr(plain[-400:]))
+        check('7a each in a project_instructions tag naming its file',
+              re.search(r'<project_instructions path="[^"]*:AGENTS\.md">\nRIG-OUTER', plain) is not None and
+              re.search(r'<project_instructions path="[^"]*:proj/AGENTS\.md">\nRIG-INNER', plain) is not None,
+              repr(plain[-500:]))
+        check('7b untrusted: the default preamble stays, SYSTEM.md is not sent',
+              'expert coding assistant' in plain and 'RIG-PROJECT-SYSTEM-7' not in plain, repr(plain[:200]))
+        check('7b no requester', not req, repr(req))
+        check('7c -a: SYSTEM.md replaces the preamble', 'RIG-PROJECT-SYSTEM-7' in trusted and
+              'expert coding assistant' not in trusted, repr(trusted[:300]))
+        check('7c -a: the AGENTS.md texts are still there', 'RIG-OUTER-RULES-7' in trusted and
+              'RIG-INNER-RULES-7' in trusted)
+        check('7d no trust.json written', not there('ENVARC:amiga-pi/trust.json'))
+    finally:
+        fx.terminate()
+        if had_trust:
+            c.run('Delete ENVARC:amiga-pi/trust.json QUIET')
+            c.run('Rename ENVARC:amiga-pi/trust.json.g7bak ENVARC:amiga-pi/trust.json')
+        c.run('Delete RAM:pi7-done VTC:pi7.dos VTC:g7-outer.md VTC:g7-inner.md VTC:g7-sys.md RAM:AGENTS.md QUIET')
+        c.run('Delete RAM:proj ALL QUIET')
+
+
 def pathlib_home():
     return pathlib.Path.home()
 
@@ -781,7 +866,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 10), help='one step only (default: all)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 10), help='one step only (default: all)')
     a = ap.parse_args()
     if a.step in (None, 1):
         step1(a.port)
@@ -795,6 +880,8 @@ def main():
         step5(a.port + 4)
     if a.step in (None, 6):
         step6(a.port + 5)
+    if a.step in (None, 7):
+        step7(a.port + 6)
     if a.step in (None, 10):
         step10(a.port + 9)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
