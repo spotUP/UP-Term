@@ -772,6 +772,78 @@ static void test_hooks(void)
     cfg_free(&s);
 }
 
+/* L1: hooks_run_raw -- amiga-pi's pi-named events: the caller's file as the command's stdin, its output and exit code
+ * handed back, no Claude Code protocol read from them */
+typedef struct raw_got {
+    int calls, st, stop;
+    long rc, n;
+    char out[200];
+} raw_got;
+
+static const char raw_text[] = "{\"type\":\"tool_call\",\"toolName\":\"bash\"}\n";
+
+static const char *raw_body(void *c, long *n)
+{
+    (void)c;
+    *n = (long)sizeof(raw_text) - 1;
+    return raw_text;
+}
+
+static int raw_cb(void *c, const cl_hook *k, int st, long rc, const char *out, long n)
+{
+    raw_got *g = (raw_got *)c;
+    (void)k;
+    g->calls++;
+    g->st = st;
+    g->rc = rc;
+    g->n = n;
+    strncpy(g->out, out, sizeof(g->out) - 1);
+    return g->stop;
+}
+
+static void test_hooks_raw(void)
+{
+    cl_settings s;
+    cl_hooks h;
+    raw_got g;
+    char cmd[800], tmp[600], json[1600], *seen;
+    put("raw.sh", "cat > \"$(dirname \"$0\")/raw_seen.json\"\necho '{\"block\":true}'\nexit 3\n");
+    at(cmd, "raw.sh");
+    strcpy(json, "{\"hooks\":{\"tool_call\":[{\"matcher\":\"bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"sh ");
+    strcat(json, cmd);
+    strcat(json, " one\"},{\"type\":\"command\",\"command\":\"sh ");
+    strcat(json, cmd);
+    strcat(json, " two\"}]}]}}");
+    cfg_init(&s);
+    CHECK_INT(cfg_merge(&s, CFG_USER, json, (long)strlen(json), "x"), 0);
+    CHECK_INT(s.nhooks, 2);
+    CHECK_INT(s.hooks[0].event, HK_PI_TOOL_CALL);
+    memset(&h, 0, sizeof(h));
+    at(tmp, "t");
+    h.cfg = &s;
+    h.sys = &sys;
+    h.tmp = tmp;
+    memset(&g, 0, sizeof(g));
+    CHECK_INT(hooks_run_raw(&h, HK_PI_TOOL_CALL, "read", raw_body, raw_cb, &g), 0);   /* the matcher says no */
+    CHECK_INT(g.calls, 0);
+    CHECK_INT(hooks_run_raw(&h, HK_PI_TOOL_RESULT, "bash", raw_body, raw_cb, &g), 0); /* another event */
+    g.stop = 1;                               /* a hook that stops the rest: the second does not run */
+    CHECK_INT(hooks_run_raw(&h, HK_PI_TOOL_CALL, "bash", raw_body, raw_cb, &g), 1);
+    CHECK_INT(g.calls, 1);
+    g.stop = 0;
+    g.calls = 0;
+    CHECK_INT(hooks_run_raw(&h, HK_PI_TOOL_CALL, "bash", raw_body, raw_cb, &g), 2);
+    CHECK_INT(g.calls, 2);
+    CHECK_INT(g.st, 0);
+    CHECK_INT(g.rc, 3);
+    CHECK_STR(g.out, "{\"block\":true}\n");
+    CHECK_INT(h.n_run, 3);
+    seen = slurp("raw_seen.json");
+    CHECK(seen && !strcmp(seen, raw_text));       /* the file as given, no Claude Code header */
+    free(seen);
+    cfg_free(&s);
+}
+
 /* ---- sessions ---- */
 
 static void addz(cl_conv *c, int user, const char *s)
@@ -1333,6 +1405,7 @@ void suite_claude_config(void)
     test_trust_malformed();
     test_defs();
     test_hooks();
+    test_hooks_raw();
     test_sessions();
     test_checkpoints();
     test_gaps();

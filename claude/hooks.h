@@ -110,6 +110,16 @@ int hooks_has(const cl_hooks *h, int event);
  * res->ran. */
 int hooks_run(cl_hooks *h, int event, const char *name, const char *extra, cl_hookres *res);
 
+/* L1 (amiga-pi): the command hooks of one event run with the caller's own event file, no Claude Code protocol on the
+ * answer. The event's hooks (matched on name as the settings' matchers are) each run as `<command> < <file>`; before
+ * each one body is asked for the file's text (n bytes, written as given), so an earlier hook's change reaches the next.
+ * fn is called per hook that ran: st the sys->run status (< 0: it did not run or was stopped, SYS_TIMEOUT / SYS_BREAK,
+ * sys->err says why), rc its exit code, out its output (n bytes, text); it returns 1 to stop (no later hook runs).
+ * Prompt, agent, http and async hooks are not run. Returns how many commands ran. */
+typedef const char *(*hooks_raw_body)(void *c, long *n);
+typedef int (*hooks_raw_fn)(void *c, const cl_hook *k, int st, long rc, const char *out, long n);
+int hooks_run_raw(cl_hooks *h, int event, const char *name, hooks_raw_body body, hooks_raw_fn fn, void *c);
+
 /* A4 gaps 2: the async hooks that finished since the last look -- their
  * additionalContext and systemMessage, for Claude, appended to w (Claude
  * Code delivers them on the next turn; the user is not shown them). Their

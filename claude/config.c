@@ -9,7 +9,9 @@ const char *const cfg_hook_events[HK_COUNT] = {
     "PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop", "SessionStart", "SessionEnd",
     "PreCompact", "Notification", "PermissionRequest", "PostToolUseFailure", "SubagentStart", "PostCompact",
     "StopFailure", "UserPromptExpansion", "CwdChanged", "DirectoryAdded", "PreModelSwitch", "PostModelSwitch",
-    "InstructionsLoaded", "PostToolBatch", "ConfigChange", "Setup", "FileChanged", "MessageDisplay"
+    "InstructionsLoaded", "PostToolBatch", "ConfigChange", "Setup", "FileChanged", "MessageDisplay",
+    "session_start", "input", "agent_start", "turn_start", "message_start", "message_end", "tool_call",
+    "tool_execution_start", "tool_execution_update", "tool_result", "tool_execution_end", "agent_end", "agent_settled"
 };
 
 static char *dupn(const char *s, long n)
