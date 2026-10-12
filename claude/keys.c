@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "keys.h"
+#include "util.h"
 
 void keys_init(cl_keys *k)
 {
@@ -978,16 +979,16 @@ static const pi_bind pi_binds[] = {
     { "tui.input.newLine", KC_CHAT, KA_NEWLINE, "shift+enter|ctrl+j" },
     { "tui.input.submit", KC_CHAT, KA_SUBMIT, "enter" },
     { "tui.input.tab", KC_CHAT, KA_INERT, "" }, { "tui.input.copy", KC_CHAT, KA_INERT, "" },
-    { "tui.select.up", KC_SELECT, KA_SEL_PREV, "up" }, { "tui.select.up", KC_CONFIRM, KA_PREV, "" },
-    { "tui.select.up", KC_TREE, KA_SEL_PREV, "" },
-    { "tui.select.down", KC_SELECT, KA_SEL_NEXT, "down" }, { "tui.select.down", KC_CONFIRM, KA_NEXT, "" },
-    { "tui.select.down", KC_TREE, KA_SEL_NEXT, "" },
-    { "tui.select.pageUp", KC_SELECT, KA_SEL_PGUP, "pageUp" }, { "tui.select.pageUp", KC_TREE, KA_SEL_PGUP, "" },
-    { "tui.select.pageDown", KC_SELECT, KA_SEL_PGDN, "pageDown" }, { "tui.select.pageDown", KC_TREE, KA_SEL_PGDN, "" },
-    { "tui.select.confirm", KC_SELECT, KA_SEL_ACCEPT, "enter" }, { "tui.select.confirm", KC_CONFIRM, KA_YES, "" },
-    { "tui.select.confirm", KC_TREE, KA_SEL_ACCEPT, "" },
-    { "tui.select.cancel", KC_SELECT, KA_SEL_CANCEL, "escape|ctrl+c" }, { "tui.select.cancel", KC_CONFIRM, KA_NO, "" },
-    { "tui.select.cancel", KC_TREE, KA_SEL_CANCEL, "" },
+    { "tui.select.up", KC_SELECT, KA_SEL_PREV, "up" }, { "tui.select.up", KC_CONFIRM, KA_PREV, "up" },
+    { "tui.select.up", KC_TREE, KA_SEL_PREV, "up" },
+    { "tui.select.down", KC_SELECT, KA_SEL_NEXT, "down" }, { "tui.select.down", KC_CONFIRM, KA_NEXT, "down" },
+    { "tui.select.down", KC_TREE, KA_SEL_NEXT, "down" },
+    { "tui.select.pageUp", KC_SELECT, KA_SEL_PGUP, "pageUp" }, { "tui.select.pageUp", KC_TREE, KA_SEL_PGUP, "pageUp" },
+    { "tui.select.pageDown", KC_SELECT, KA_SEL_PGDN, "pageDown" }, { "tui.select.pageDown", KC_TREE, KA_SEL_PGDN, "pageDown" },
+    { "tui.select.confirm", KC_SELECT, KA_SEL_ACCEPT, "enter" }, { "tui.select.confirm", KC_CONFIRM, KA_YES, "enter" },
+    { "tui.select.confirm", KC_TREE, KA_SEL_ACCEPT, "enter" },
+    { "tui.select.cancel", KC_SELECT, KA_SEL_CANCEL, "escape|ctrl+c" }, { "tui.select.cancel", KC_CONFIRM, KA_NO, "escape|ctrl+c" },
+    { "tui.select.cancel", KC_TREE, KA_SEL_CANCEL, "escape|ctrl+c" },
     { "tui.altScreen.pageUp", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.pageDown", KC_CHAT, KA_INERT, "" },
     { "tui.altScreen.halfPageUp", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.halfPageDown", KC_CHAT, KA_INERT, "" },
     { "tui.altScreen.lineUp", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.lineDown", KC_CHAT, KA_INERT, "" },
@@ -1151,6 +1152,52 @@ int km_load_pi(cl_keymap *m, const char *json, long n)
             ;
         if (!b->id)
             km_warn(m, "keybindings: an unknown action \"", id, "\"");
+    }
+    return 0;
+}
+
+int km_key_text(const cl_keymap *m, int ctx, int act, char *out, long cap)
+{
+    int i;
+    out[0] = 0;
+    for (i = m->n - 1; i >= 0; i--) {
+        const kb_bind *b = &m->b[i];
+        const kb_stroke *s = &b->s[0];
+        const char *name = 0;
+        if (b->ctx != ctx || b->act != act || b->n != 1 || s->k < 0)
+            continue;
+        if (s->mods & KM_CTRL)
+            cl_cat(out, "ctrl+", cap);
+        if (s->mods & KM_SHIFT)
+            cl_cat(out, "shift+", cap);
+        if (s->mods & KM_ALT)
+            cl_cat(out, "alt+", cap);
+        switch (s->k) {
+        case K_ENTER: name = "enter"; break;
+        case K_TAB: name = "tab"; break;
+        case K_ESC: name = "escape"; break;
+        case K_UP: name = "up"; break;
+        case K_DOWN: name = "down"; break;
+        case K_LEFT: name = "left"; break;
+        case K_RIGHT: name = "right"; break;
+        case K_HOME: name = "home"; break;
+        case K_END: name = "end"; break;
+        case K_PGUP: name = "pageUp"; break;
+        case K_PGDN: name = "pageDown"; break;
+        case K_BS: name = "backspace"; break;
+        case K_DEL: name = "delete"; break;
+        case K_INS: name = "insert"; break;
+        default: break;
+        }
+        if (name)
+            cl_cat(out, name, cap);
+        else if (s->k == K_CHAR) {
+            char c[2];
+            c[0] = s->ch == '_' && (s->mods & KM_CTRL) ? '-' : (char)s->ch;
+            c[1] = 0;
+            cl_cat(out, s->ch == ' ' ? "space" : c, cap);
+        }
+        return (int)strlen(out);
     }
     return 0;
 }

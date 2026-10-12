@@ -78,6 +78,22 @@ typedef struct cl_cmd {
 /* permission modes, cycled with Shift+Tab (tools.h PERM_*) */
 extern const char *const tui_mode_names[4];
 
+/* TUI_LOOK_PI: a selector over the program's own rows (the session tree): a rule, the title, the help, a search
+ * line, a rule, the rows around the selection with "(sel/total)" and the program's status words under them, a
+ * rule, the footer. The program's key function sees every key first (act: the keymap's KC_TREE action or
+ * KA_NONE) and returns 1 when it took it; else up/down (wrapping), page keys, accept and cancel are the
+ * picker's. row writes row i (SGR kept, the cursor mark included) into out. */
+typedef struct tui_pick {
+    const char *title;
+    const char *help;           /* dim, wrapped, two spaces in */
+    char query[96];             /* the search line's text */
+    int n, sel;
+    int maxrows;                /* rows shown at most */
+    char status[64];            /* after "(sel/total)" */
+    void (*row)(void *u, int i, int selected, char *out, long cap);
+    int (*key)(void *u, const cl_key *k, int act);
+    void *u;
+} tui_pick;
 typedef struct cl_tui {
     cl_io *io;
     int cols, rows;
@@ -247,7 +263,16 @@ typedef struct cl_tui {
     char *(*on_dequeue)(void *u, int *count, int quiet);
     void (*on_cycle)(void *u, int what, int dir);
     void *qu;
+    const tui_pick *pick;       /* the picker that is open (modal 2), the line input (modal 3: pi_in) */
+    char pi_in[200];
+    const char *pi_in_title;
+    int pi_nofoot;              /* a question before the screen is up: no footer under it */
 } cl_tui;
+
+/* the row chosen (accept), -1 cancelled or the end of input */
+int tui_pick_run(cl_tui *t, tui_pick *p);
+/* TUI_LOOK_PI: a one-line input under a title (Enter: 1 with the text in out, Esc: 0, the end of input: -1) */
+int tui_line_input(cl_tui *t, const char *title, char *out, long cap);
 
 /* 0, or -1 when out of memory. cols x rows from io->size (80x24 when it
  * says nothing). */

@@ -1260,13 +1260,139 @@ static void pi_menu_rows(cl_tui *t)
     want(t, &r);
 }
 
+static void pi_rule_row(cl_tui *t, int role)
+{
+    row r;
+    int i;
+    r_init(&r, t->cols);
+    pi_role(t, &r, role);
+    for (i = 0; i < t->cols; i++)
+        r_glyph(&r, G_H);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+}
+
+static void pi_blank_row(cl_tui *t)
+{
+    row r;
+    r_init(&r, t->cols);
+    want(t, &r);
+}
+
+static void pi_pick_rows(cl_tui *t)
+{
+    const tui_pick *p = t->pick;
+    row r;
+    int i, start, end, maxv = p->maxrows > 0 ? p->maxrows : 5;
+    char line[600], num[16];
+    pi_blank_row(t);
+    pi_rule_row(t, PR_BORDER);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, BOLD);
+    r_text(&r, "  ", 2);
+    r_textz(&r, p->title);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_wrapped(t, DIM, p->help, 0);
+    r_init(&r, t->cols);
+    r_text(&r, "  ", 2);
+    r_sgr(&r, DIM);
+    r_textz(&r, "Type to search:");
+    r_sgr(&r, SGR0);
+    if (p->query[0]) {
+        r_text(&r, " ", 1);
+        pi_role(t, &r, PR_ACCENT);
+        r_textz(&r, p->query);
+        r_sgr(&r, SGR0);
+    }
+    want(t, &r);
+    pi_rule_row(t, PR_BORDER);
+    pi_blank_row(t);
+    if (!p->n) {
+        r_init(&r, t->cols);
+        r_sgr(&r, DIM);
+        r_textz(&r, "  No entries found");
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    } else {
+        start = p->sel - maxv / 2;
+        if (start > p->n - maxv)
+            start = p->n - maxv;
+        if (start < 0)
+            start = 0;
+        end = start + maxv < p->n ? start + maxv : p->n;
+        for (i = start; i < end; i++) {
+            line[0] = 0;
+            p->row(p->u, i, i == p->sel, line, sizeof(line));
+            r_init(&r, t->cols);
+            r_ansi(&r, line, (long)strlen(line));
+            r_sgr(&r, SGR0);
+            want(t, &r);
+        }
+    }
+    r_init(&r, t->cols);
+    r_sgr(&r, DIM);
+    cl_copy(line, "  (", sizeof(line));
+    cl_ltoa(p->n ? p->sel + 1 : 0, num);
+    cl_cat(line, num, sizeof(line));
+    cl_cat(line, "/", sizeof(line));
+    cl_ltoa(p->n, num);
+    cl_cat(line, num, sizeof(line));
+    cl_cat(line, ")", sizeof(line));
+    cl_cat(line, p->status, sizeof(line));
+    r_textz(&r, line);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_blank_row(t);
+    pi_rule_row(t, PR_BORDER);
+}
+
+static void pi_input_rows(cl_tui *t)
+{
+    row r;
+    pi_blank_row(t);
+    pi_rule_row(t, PR_BORDER);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, BOLD);
+    r_textz(&r, t->pi_in_title);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_textz(&r, t->pi_in);
+    r_sgr(&r, REV);
+    r_text(&r, " ", 1);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, DIM);
+    r_textz(&r, "enter save");
+    r_sgr(&r, SGR0);
+    r_text(&r, "  ", 2);
+    r_sgr(&r, DIM);
+    r_textz(&r, "escape cancel");
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_rule_row(t, PR_BORDER);
+}
+
 static void build_pi(cl_tui *t)
 {
     int idx[64], nm;
     t->nwant = 0;
     t->crow = 0;
     if (t->modal) {
-        pi_menu_rows(t);
+        if (t->modal == 2 && t->pick)
+            pi_pick_rows(t);
+        else if (t->modal == 3)
+            pi_input_rows(t);
+        else
+            pi_menu_rows(t);
+        if (!t->pi_nofoot)
+            pi_footer_rows(t);
         return;
     }
     pi_queue_rows(t);
@@ -3039,4 +3165,94 @@ int tui_pending(cl_tui *t)
         t->keys.n -= 3;
     }
     return t->keys.n > 0 || t->keys.paste;
+}
+
+int tui_pick_run(cl_tui *t, tui_pick *p)
+{
+    int res = -1, ctx[1];
+    ctx[0] = KC_TREE;
+    t->modal = 2;
+    t->pick = p;
+    for (;;) {
+        cl_key k;
+        int r, act;
+        tui_frame(t);
+        r = next_key(t, &k, 500);
+        if (r < 0)
+            break;
+        if (!r) {
+            check_size(t);
+            continue;
+        }
+        act = km_action(&t->km, ctx, 1, &k, now(t));
+        if (act == KA_PENDING || act == KA_CHORD_MISS)
+            continue;
+        if (p->key && p->key(p->u, &k, act))
+            continue;
+        if (act == KA_SEL_NEXT || (act == KA_NONE && k.k == K_DOWN)) {
+            if (p->n)
+                p->sel = p->sel == p->n - 1 ? 0 : p->sel + 1;
+        } else if (act == KA_SEL_PREV || (act == KA_NONE && k.k == K_UP)) {
+            if (p->n)
+                p->sel = p->sel == 0 ? p->n - 1 : p->sel - 1;
+        } else if (act == KA_SEL_PGUP || (act == KA_NONE && k.k == K_LEFT)) {
+            p->sel = p->sel - p->maxrows < 0 ? 0 : p->sel - p->maxrows;
+        } else if (act == KA_SEL_PGDN || (act == KA_NONE && k.k == K_RIGHT)) {
+            p->sel = p->sel + p->maxrows > p->n - 1 ? (p->n ? p->n - 1 : 0) : p->sel + p->maxrows;
+        } else if (act == KA_SEL_ACCEPT) {
+            if (p->n) {
+                res = p->sel;
+                break;
+            }
+        } else if (act == KA_SEL_CANCEL)
+            break;
+    }
+    t->modal = 0;
+    t->pick = 0;
+    tui_frame(t);
+    return res;
+}
+
+int tui_line_input(cl_tui *t, const char *title, char *out, long cap)
+{
+    int res = -1;
+    t->modal = 3;
+    t->pi_in_title = title;
+    t->pi_in[0] = 0;
+    for (;;) {
+        cl_key k;
+        int r;
+        long l = (long)strlen(t->pi_in);
+        tui_frame(t);
+        r = next_key(t, &k, 500);
+        if (r < 0)
+            break;
+        if (!r) {
+            check_size(t);
+            continue;
+        }
+        if (k.k == K_ENTER) {
+            cl_copy(out, t->pi_in, cap);
+            res = 1;
+            break;
+        }
+        if (k.k == K_ESC || (k.k == K_CTRL && k.ch == 'c')) {
+            res = 0;
+            break;
+        }
+        if (k.k == K_BS) {
+            if (l) {
+                do
+                    l--;
+                while (l > 0 && ((unsigned char)t->pi_in[l] & 0xc0) == 0x80);
+                t->pi_in[l] = 0;
+            }
+        } else if (k.k == K_CHAR && k.ch >= 0x20 && l + 5 < (long)sizeof(t->pi_in)) {
+            l += vw_put_utf8(t->pi_in + l, k.ch);
+            t->pi_in[l] = 0;
+        }
+    }
+    t->modal = 0;
+    tui_frame(t);
+    return res;
 }

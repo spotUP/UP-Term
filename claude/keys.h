@@ -146,6 +146,8 @@ int km_action(cl_keymap *m, const int *ctx, int nctx, const cl_key *k, unsigned 
  * names; the editor's own motions (tui.editor.*) are accepted and keep their keys. */
 int km_init_pi(cl_keymap *m);
 int km_load_pi(cl_keymap *m, const char *json, long n);
+/* the first key bound to act in context ctx as pi writes keys ("ctrl+x", "shift+l", "alt+left", "up"): its length, 0 none */
+int km_key_text(const cl_keymap *m, int ctx, int act, char *out, long cap);
 /* the defaults as a keybindings.json (what /keybindings writes) */
 void km_defaults_json(jw *out);
 
