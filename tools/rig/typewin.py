@@ -3,8 +3,10 @@ the window's text read back through the clipboard: the helpers claude_rig.py and
 
   open_xcon(title)   a titled XCON: window, focused by a click, its Shell at the prompt
   typ(s), key(code, qual)  characters / one key (down, up) into the active window
-  screen_text(title) the window's whole text: Right Amiga A (Select all), Right Amiga C (Copy), then
-                     VTC:snipprobe CLIP <file> writes the clipboard's text (make build/amiga/snipprobe)
+  screen_text(out)   the window's whole text: Right Amiga A (Select all), Right Amiga C (Copy), then
+                     VTC:snipprobe CLIP <file> writes the clipboard's text (make build/amiga/snipprobe),
+                     then one click in the window drops the selection (render/vtwin.c VTI_SELECT_END: a
+                     click clears it), so the window is left as it was
 """
 import os, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -26,16 +28,30 @@ def key(k, q=0, wait=0.7):
     time.sleep(wait)
 
 
+_last_title = None   # the window open_xcon opened last: where screen_text clicks
+
+
+def click_in(title):
+    """One left click inside the window titled `title` (the selection goes, a program sees no key)."""
+    w = ami.window(title)
+    if not w:
+        return False
+    kx, ky = ami.pointer_scale()
+    x, y, ww, hh = w['box']
+    ami.script(('move', int((x + 300) * kx), int((y + 150) * ky)), ('wait', 2), ('button', 0, 1),
+               ('wait', 2), ('button', 0, 0), ('wait', 5))
+    return True
+
+
 def open_xcon(title, box='0/12/760/440'):
+    global _last_title
+    _last_title = title
     c.run('Run >NIL: NewShell "XCON:%s/%s/CLOSE"' % (box, title))
     time.sleep(5)
     w = ami.window(title)
     if not w:
         raise SystemExit('window %s never appeared' % title)
-    kx, ky = ami.pointer_scale()
-    x, y, ww, hh = w['box']
-    ami.script(('move', int((x + 300) * kx), int((y + 150) * ky)), ('wait', 2), ('button', 0, 1),
-               ('wait', 2), ('button', 0, 0), ('wait', 5))
+    click_in(title)
     time.sleep(1)
     return w
 
@@ -46,4 +62,6 @@ def screen_text(out='RAM:screen.txt'):
     key(0x20, RAMIGA, wait=1)    # Select all
     key(0x33, RAMIGA, wait=1.5)  # Copy
     c.run('VTC:snipprobe CLIP %s' % out)
+    if _last_title:
+        click_in(_last_title)   # a click clears the selection (UT3): the next frame shows no highlight
     return c.run('Type %s' % out)[1]

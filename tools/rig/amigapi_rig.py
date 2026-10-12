@@ -314,6 +314,28 @@ def assigns():
     return {l.split()[0].rstrip(':').upper() for l in out.splitlines() if l.strip() and not l[0].isspace()}
 
 
+RIG_ASSIGN = False   # drop_rig_assign took the rig's own UP-Term: (VTC:) away; restore_rig_assign puts it back
+
+
+def drop_rig_assign(had):
+    """Steps 4-6 start from a rig with no UP-Term: and no Dir file. rig.py's boot script assigns UP-Term:
+    to VTC: for the glyph pages (UT1) when no kit is installed; take that one away for the step."""
+    global RIG_ASSIGN
+    if 'UP-TERM' in had and ami.read_file('ENVARC:up-term/Dir') is None:
+        c.run('Assign UP-Term: REMOVE')
+        RIG_ASSIGN = True
+        return had - {'UP-TERM'}
+    return had
+
+
+def restore_rig_assign():
+    global RIG_ASSIGN
+    if RIG_ASSIGN:
+        c.run('Assign UP-Term: REMOVE')
+        c.run('Assign UP-Term: VTC:')
+        RIG_ASSIGN = False
+
+
 def run_watched(name, title, lines, done):
     """run_window, polling amiagent's UI tree for a requester the while: (ended, requester titles seen)"""
     c.run('Delete RAM:%s QUIET' % done)
@@ -404,6 +426,7 @@ def step4(port):
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     bmp(VTC / 'pi-wide.bmp', 2400, 10)
     had = assigns()
+    had = drop_rig_assign(had)
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     check('4 no UP-Term: on this rig to begin with', 'UP-TERM' not in had and saved_dir is None,
           repr(('UP-TERM' in had, saved_dir)))
@@ -511,6 +534,7 @@ def step4(port):
             c.run('Delete ENVARC:up-term/Dir ENV:up-term/Dir QUIET')
             if 'UP-TERM' not in had:
                 c.run('Assign UP-Term: REMOVE')
+            restore_rig_assign()
             c.run('Delete VTC:pi-kit ALL QUIET')
         c.run('Delete RAM:pi4a-done RAM:pi4b-done RAM:pi4d-done RAM:pi4e-done RAM:pi-wide.bmp QUIET')
 
@@ -522,6 +546,7 @@ def step5(port):
         sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     had = assigns()
+    had = drop_rig_assign(had)
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     check('5 no UP-Term: on this rig to begin with', 'UP-TERM' not in had and saved_dir is None,
           repr(('UP-TERM' in had, saved_dir)))
@@ -629,6 +654,7 @@ def step5(port):
             c.run('Delete ENVARC:up-term/Dir ENV:up-term/Dir QUIET')
             if 'UP-TERM' not in had:
                 c.run('Assign UP-Term: REMOVE')
+            restore_rig_assign()
             c.run('Delete VTC:pi-kit ALL QUIET')
         c.run('Delete RAM:pi5a-done RAM:pi5b-done RAM:pi5d-done QUIET')
 
@@ -639,6 +665,7 @@ def step6(port):
         sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     had = assigns()
+    had = drop_rig_assign(had)
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     check('6 no UP-Term: on this rig to begin with', 'UP-TERM' not in had and saved_dir is None,
           repr(('UP-TERM' in had, saved_dir)))
@@ -715,6 +742,7 @@ def step6(port):
         if made_assign:
             if 'UP-TERM' not in had:
                 c.run('Assign UP-Term: REMOVE')
+            restore_rig_assign()
             c.run('Delete VTC:pi-kit ALL QUIET')
         c.run('Delete RAM:pi6-done VTC:pi6agent ALL QUIET')
         shutil.rmtree(agent, ignore_errors=True)
@@ -1063,7 +1091,7 @@ def step13(port):
         return
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     shutil.copy(ROOT / 'build' / 'amiga' / 'snipprobe', VTC / 'snipprobe')
-    had = assigns()
+    had = drop_rig_assign(assigns())
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     log = paths.RIG / 'amigapi_fixture13.log'
     dump = paths.RIG / 'amigapi_dump13'
@@ -1132,6 +1160,11 @@ def step13(port):
             f.write('VTC:pi-kit\n')
         c.run('Copy VTC:pi-kit-dir ENVARC:up-term/Dir')
         c.run('Copy VTC:pi-kit-dir ENV:up-term/Dir')
+        # UP-Term: is the kit drawer first, then VTC: (UT2): the windows read UP-Term:unifont/ and
+        # UP-Term:emoji/ from the rig's VTC: (rig.py install puts the pages there), the sessions go
+        # to the first drawer, the kit's. No megabytes copied into the kit.
+        c.run('Assign UP-Term: VTC:pi-kit')
+        c.run('Assign UP-Term: VTC: ADD')
         made_assign = True
         shutil.rmtree(sess, ignore_errors=True)
         if phase_due('a'):
@@ -1197,6 +1230,7 @@ def step13(port):
         if made_assign:
             if 'UP-TERM' not in had:
                 c.run('Assign UP-Term: REMOVE')
+            restore_rig_assign()
             c.run('Delete VTC:pi-kit ALL QUIET')
         c.run('Delete VTC:pi13agent ALL QUIET')
         shutil.rmtree(agent, ignore_errors=True)

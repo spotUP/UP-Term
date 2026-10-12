@@ -147,6 +147,16 @@ If EXISTS VTC:gg/bin/sh
 %(shellpath)s
   EndIf
 EndIf
+; UP-Term: for the rig with no kit installed (UT1): the glyph pages are read
+; through UP-Term:unifont/ and UP-Term:emoji/ (render/unifont.h, emoji.h), and
+; `install` puts them in VTC:. A kit's install writes ENVARC:up-term/Dir and
+; makes its own assign, which wins.
+C:Assign >NIL: UP-Term: EXISTS
+If WARN
+  If NOT EXISTS ENVARC:up-term/Dir
+    C:Assign >NIL: UP-Term: VTC:
+  EndIf
+EndIf
 C:SetEnv TERM vtcon
 C:SetEnv TERMINFO /VTC/terminfo
 C:SetEnv TERMCAP /etc/termcap
@@ -428,6 +438,18 @@ def install():
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)
+    # the glyph pages beside them (UT1): UP-Term: is assigned to VTC: on a rig
+    # with no kit (GO), and the windows read UP-Term:unifont/ and emoji/
+    for drawer in ("unifont", "emoji"):
+        src = ROOT / "build" / drawer / "pages"
+        if src.is_dir():
+            dst = RIG / "vtc" / drawer
+            dst.mkdir(exist_ok=True)
+            for f in sorted(src.iterdir()):
+                if f.is_file() and f.name != "stamp" and not (dst / f.name).is_file():
+                    shutil.copyfile(f, dst / f.name)
+        else:
+            print("no %s: run make %s for glyphs above U+00FF on the rig" % (src, drawer))
     (RIG / "vtc/themes").mkdir(exist_ok=True)
     for f in sorted((ROOT / "themes").glob("*.conf")):
         shutil.copyfile(f, RIG / "vtc/themes" / f.name)
