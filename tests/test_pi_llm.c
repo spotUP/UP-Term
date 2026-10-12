@@ -1341,6 +1341,24 @@ static void test_request(void)
     CHECK_INT(ps.nreq, 2);
     llm_acc_free(&a);
 
+    /* retries -1: the caller retries (amiga-pi's agent loop, as pi's agent session): the 429 is the answer, no wait */
+    ps_reset();
+    ps_pool_up(LLM_POOL);
+    ps_raw("../pi/openai_429.http");
+    ps_sse("../pi/openai_text.sse", 0);
+    llm_acc_init(&a, mo.api, mo.provider);
+    k = llm_acc_sink(&a);
+    q = req_of(&mo, &c, &k, 0);
+    q.retries = -1;
+    CHECK_INT(llm_request(&q), -1);
+    CHECK_INT(q.attempts, 1);
+    CHECK_INT(ps.sleeps, 0);
+    CHECK_INT(ps.nreq, 1);
+    jw_reset(&m);
+    llm_acc_message(&a, ts_of(1, 0), &m);
+    CHECK(strstr(m.p, "\"stopReason\":\"error\"") != 0);
+    llm_acc_free(&a);
+
     /* cut off after part of the answer: an error, not tried again (the text kept) */
     ps_reset();
     ps_pool_up(LLM_POOL);
