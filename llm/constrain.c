@@ -32,15 +32,22 @@ static int ant_unsupported(jv key, jv val)
     if (in_list(ant_keys, key))
         return 1;
     if (json_streq(key, "minItems")) {
-        char b[48];
-        double d;
-        char *e;
-        if (json_type(val) != J_NUM || val.n >= (long)sizeof(b))
+        /* value !== 0 && value !== 1: written 0, -0, 1, with a zero fraction (no floating point: the Amiga build has
+         * none linked in); an exponent form (1e0) counts as another number, which JavaScript would read as 1 */
+        long i = 0;
+        if (json_type(val) != J_NUM)
             return 1;
-        memcpy(b, val.p, (size_t)val.n);
-        b[val.n] = 0;
-        d = strtod(b, &e);
-        return !(d == 0.0 || d == 1.0);
+        if (val.p[0] == '-')
+            i = 1;
+        if (i < val.n && (val.p[i] == '0' || (val.p[i] == '1' && i == 0)))
+            i++;
+        else
+            return 1;
+        if (i < val.n && val.p[i] == '.') {
+            for (i++; i < val.n && val.p[i] == '0'; i++)
+                ;
+        }
+        return i != val.n;
     }
     if (json_streq(key, "format"))
         return json_type(val) != J_STR || !in_list(ant_formats, val);

@@ -859,6 +859,81 @@
     "description": "top",
     "additionalProperties": false
    }
+  },
+  {
+   "name": "minitems_zero_anthropic",
+   "kw": "anthropic",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "xs": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "minItems": 0
+     }
+    },
+    "required": [
+     "xs"
+    ]
+   },
+   "strict": {
+    "type": "object",
+    "properties": {
+     "xs": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "minItems": 0
+     }
+    },
+    "required": [
+     "xs"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "minitems_fraction_anthropic",
+   "kw": "anthropic",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "xs": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "minItems": 1.5
+     }
+    },
+    "required": [
+     "xs"
+    ]
+   },
+   "strict": null
+  },
+  {
+   "name": "minitems_negative_anthropic",
+   "kw": "anthropic",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "xs": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "minItems": -1
+     }
+    },
+    "required": [
+     "xs"
+    ]
+   },
+   "strict": null
   }
  ]
 }
