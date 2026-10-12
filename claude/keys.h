@@ -73,7 +73,7 @@ int keys_next(cl_keys *k, cl_key *key, int idle);
  * active at the moment and does what the action says. */
 enum {
     KC_GLOBAL, KC_CHAT, KC_AUTOCOMPLETE, KC_CONFIRM, KC_TRANSCRIPT, KC_HSEARCH, KC_TASK, KC_HELP,
-    KC_SELECT, KC_THEME, KC_MSGSEL, KC_COUNT
+    KC_SELECT, KC_THEME, KC_MSGSEL, KC_TREE, KC_COUNT
 };
 
 enum {
@@ -90,6 +90,12 @@ enum {
     KA_TASK_BG, KA_HELP_DISMISS,
     KA_SEL_NEXT, KA_SEL_PREV, KA_SEL_PGUP, KA_SEL_PGDN, KA_SEL_FIRST, KA_SEL_LAST, KA_SEL_ACCEPT, KA_SEL_CANCEL,
     KA_THEME_SYNTAX,
+    /* pi's (km_init_pi): queue a follow-up message, take the queued ones back to the editor, cycle the model
+     * forward / backward, cycle the thinking level, collapse the thinking blocks, the tree view's keys */
+    KA_FOLLOW_UP, KA_DEQUEUE, KA_MODEL_NEXT, KA_MODEL_PREV, KA_THINK_CYCLE,
+    KA_CMD_NEW, KA_CMD_TREE, KA_CMD_FORK, KA_CMD_RESUME,
+    KA_TREE_FOLD, KA_TREE_UNFOLD, KA_TREE_LABEL, KA_TREE_STAMP, KA_TREE_F_DEFAULT, KA_TREE_F_NOTOOLS,
+    KA_TREE_F_USER, KA_TREE_F_LABELED, KA_TREE_F_ALL, KA_TREE_F_NEXT, KA_TREE_F_PREV,
     KA_INERT,                   /* one of Claude Code's actions with nothing to do here (tabs, diff, ...) */
     KA_COUNT,
     KA_PENDING = 100,           /* the first keystroke of a chord: wait for the next */
@@ -133,6 +139,13 @@ int km_load(cl_keymap *m, const char *json, long n);
 /* the action for a key in the active contexts (most specific first):
  * KA_*, KA_NONE, KA_PENDING, KA_CHORD_MISS; now_ms times a chord */
 int km_action(cl_keymap *m, const int *ctx, int nctx, const cl_key *k, unsigned long now_ms);
+/* pi's keybindings (docs/keybindings.md): the defaults of pi's actions (km_init_pi) and an <agent-dir>/keybindings.json
+ * of pi's shape -- {"app.session.new": "ctrl+shift+n", "app.session.tree": ["ctrl+shift+t", "alt+shift+t"],
+ * "tui.altScreen.pageUp": []} -- a value replacing the action's default and [] switching it off (km_load_pi:
+ * 0, -1 for no JSON object; the problems are warnings). The actions are the Claude screen's actions under pi's
+ * names; the editor's own motions (tui.editor.*) are accepted and keep their keys. */
+int km_init_pi(cl_keymap *m);
+int km_load_pi(cl_keymap *m, const char *json, long n);
 /* the defaults as a keybindings.json (what /keybindings writes) */
 void km_defaults_json(jw *out);
 

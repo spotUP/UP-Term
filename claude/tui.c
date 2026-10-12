@@ -1141,16 +1141,16 @@ static void pi_queue_rows(cl_tui *t)
     for (i = 0; i < t->n_steer + t->n_follow; i++) {
         const char *s = i < t->n_steer ? t->pi_steer[i] : t->pi_follow[i - t->n_steer];
         r_init(&r, t->cols);
-        r_sgr(&r, DIM);
         r_text(&r, " ", 1);
+        r_sgr(&r, DIM);
         r_textz(&r, i < t->n_steer ? "Steering: " : "Follow-up: ");
         r_textz(&r, s);
         r_sgr(&r, SGR0);
         want(t, &r);
     }
     r_init(&r, t->cols);
-    r_sgr(&r, DIM);
     r_text(&r, " ", 1);
+    r_sgr(&r, DIM);
     r_glyph(&r, "\342\206\263");
     r_textz(&r, " Option+Up to edit all queued messages");
     r_sgr(&r, SGR0);
@@ -2232,6 +2232,42 @@ static void edit_as(cl_tui *t, int kind, unsigned long ch, int mods)
 
 /* the box's text submitted (Enter's chat:submit; queue: chat:queueSubmit,
  * which never takes the \ + Enter newline) */
+/* TUI_LOOK_PI: the program's queued messages put in front of the box's text, a blank line between (pi's
+ * restoreQueuedMessagesToEditor); how many came back */
+static int restore_queue(cl_tui *t, int quiet)
+{
+    int n = 0;
+    char *q = t->on_dequeue ? t->on_dequeue(t->qu, &n, quiet) : 0;
+    if (q) {
+        jw w;
+        char *cur = box_line(t);
+        jw_init(&w);
+        jw_rawz(&w, q);
+        if (cur && cur[0]) {
+            jw_rawz(&w, "\n\n");
+            jw_rawz(&w, cur);
+        }
+        jw_rawz(&w, "");
+        tui_set_text(t, w.p);
+        jw_free(&w);
+        free(cur);
+        free(q);
+    }
+    return n;
+}
+
+/* a line typed while the agent works, in pi's look: steering (Enter) or a follow-up (Alt+Enter) for the
+ * program; a command or a ! line waits in the type-ahead queue. 1 when taken */
+static int pi_queue_line(cl_tui *t, char *line, int follow)
+{
+    if (t->look != TUI_LOOK_PI || !t->on_queue || line[0] == '/' || line[0] == '!')
+        return 0;
+    if (!t->on_queue(t->qu, line, follow))
+        return 0;
+    free(line);
+    return 1;
+}
+
 static int submit(cl_tui *t, int busy, char *buf, long cap, int queue)
 {
     char *line;
@@ -2243,6 +2279,8 @@ static int submit(cl_tui *t, int busy, char *buf, long cap, int queue)
     }
     line = take_box(t);
     if (!line)
+        return H_GO;
+    if (busy && pi_queue_line(t, line, 0))
         return H_GO;
     if (busy || !buf) {
         enqueue(t, line);
@@ -2272,8 +2310,11 @@ static int cancel(cl_tui *t, int busy)
         t->box = BOX_PROMPT;
         return H_GO;
     }
-    if (busy)
+    if (busy) {
+        if (t->look == TUI_LOOK_PI)
+            restore_queue(t, 1);    /* pi: Esc takes the queued messages back to the editor, then aborts */
         return H_STOP;
+    }
     if (!t->ed.n && t->esc_idle && t->esc_idle(t->iu))
         return H_GO;                /* A4 gaps 3: a pending /loop wakeup cancelled */
     if (t->esc_armed && now(t) - t->esc_ms <= 1000) {
@@ -2393,6 +2434,41 @@ static int act_chat(cl_tui *t, int act, cl_key *k, int busy, char *buf, long cap
         return submit(t, busy, buf, cap, act == KA_QUEUE_SUBMIT);
     case KA_SEND_NOW:
         return busy ? send_now(t) : submit(t, busy, buf, cap, 1);
+    case KA_FOLLOW_UP:
+        if (busy) {
+            char *line = take_box(t);
+            if (line && !pi_queue_line(t, line, 1))
+                enqueue(t, line);
+            return H_GO;
+        }
+        return submit(t, busy, buf, cap, 0);        /* idle: it is a plain Enter */
+    case KA_DEQUEUE:
+        restore_queue(t, 0);
+        return H_GO;
+    case KA_MODEL_NEXT:
+    case KA_MODEL_PREV:
+        if (t->on_cycle)
+            t->on_cycle(t->qu, 0, act == KA_MODEL_NEXT ? 1 : -1);
+        return H_GO;
+    case KA_THINK_CYCLE:
+        if (t->on_cycle)
+            t->on_cycle(t->qu, 1, 1);
+        return H_GO;
+    case KA_CMD_NEW:
+    case KA_CMD_TREE:
+    case KA_CMD_FORK:
+    case KA_CMD_RESUME: {
+        const char *c = act == KA_CMD_NEW ? "/new" : act == KA_CMD_TREE ? "/tree" : act == KA_CMD_FORK ? "/fork" : "/resume";
+        if (busy || !buf) {
+            char *m = dupn(c, (long)strlen(c));
+            if (m)
+                enqueue(t, m);
+            return H_GO;
+        }
+        cl_copy(buf, c, cap);
+        t->keycmd = 1;
+        return H_SUBMIT;
+    }
     case KA_NEWLINE:
         edit_as(t, K_NEWLINE, 0, 0);
         return H_GO;

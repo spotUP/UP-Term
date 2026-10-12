@@ -238,6 +238,15 @@ typedef struct cl_tui {
     int pi_ctx_role, pi_rule;
     char *pi_steer[TUI_QUEUE], *pi_follow[TUI_QUEUE];
     int n_steer, n_follow;
+    /* TUI_LOOK_PI -- what the program does for the keys of pi's queue and cycling (pi_ui in amiga-pi):
+     * on_queue: a message typed while the agent works (follow 0: steering, Enter; 1: follow-up, Alt+Enter):
+     * 1 when the program took it, 0 and the type-ahead queue keeps it; on_dequeue: Alt+Up, and Esc while
+     * working (quiet 1: no word about it): the queued messages out of the program's queues, malloc'ed text
+     * joined by blank lines (0 none; *count how many); on_cycle: Ctrl+P / Shift+Ctrl+P (what 0, dir 1 / -1) and Shift+Tab (what 1) */
+    int (*on_queue)(void *u, const char *text, int follow);
+    char *(*on_dequeue)(void *u, int *count, int quiet);
+    void (*on_cycle)(void *u, int what, int dir);
+    void *qu;
 } cl_tui;
 
 /* 0, or -1 when out of memory. cols x rows from io->size (80x24 when it
