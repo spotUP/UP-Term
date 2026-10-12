@@ -1405,6 +1405,48 @@ static void test_request(void)
         llm_acc_free(&a);
     }
 
+    /* R6: cache-read fallbacks and the usage under choices[0], pi parseChunkUsage (openai-completions.ts:1531-1532:
+     * prompt_tokens_details.cached_tokens ?? prompt_cache_hit_tokens (DeepSeek) ?? cached_tokens (Kimi)) and the
+     * choice.usage fallback (:575-579, Moonshot); expected = pi's arithmetic (:1546) on prompt 100, completion 5 */
+    {
+        static const struct {
+            const char *chunk;    /* the final chunk, after the text chunk */
+            const char *usage;
+        } cs[] = {
+            { "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,\"prompt_cache_hit_tokens\":40}",
+              "\"usage\":{\"input\":60,\"output\":5,\"cacheRead\":40,\"cacheWrite\":0,\"reasoning\":0,\"totalTokens\":105" },
+            { "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,\"cached_tokens\":25}",
+              "\"usage\":{\"input\":75,\"output\":5,\"cacheRead\":25,\"cacheWrite\":0,\"reasoning\":0,\"totalTokens\":105" },
+            { "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,\"cached_tokens\":25,\"prompt_cache_hit_tokens\":40}",
+              "\"usage\":{\"input\":60,\"output\":5,\"cacheRead\":40,\"cacheWrite\":0,\"reasoning\":0,\"totalTokens\":105" },
+            { "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,\"prompt_cache_hit_tokens\":40,\"prompt_tokens_details\":{\"cached_tokens\":50}}",
+              "\"usage\":{\"input\":50,\"output\":5,\"cacheRead\":50,\"cacheWrite\":0,\"reasoning\":0,\"totalTokens\":105" },
+            { "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\",\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,\"cached_tokens\":25}}]",
+              "\"usage\":{\"input\":75,\"output\":5,\"cacheRead\":25,\"cacheWrite\":0,\"reasoning\":0,\"totalTokens\":105" },
+            { "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\",\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5}",
+              "\"usage\":{\"input\":100,\"output\":5,\"cacheRead\":0,\"cacheWrite\":0,\"reasoning\":0,\"totalTokens\":105" }
+        };
+        size_t ci;
+        for (ci = 0; ci < sizeof(cs) / sizeof(cs[0]); ci++) {
+            char sse[1024];
+            snprintf(sse, sizeof(sse),
+                     "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"OK\"},"
+                     "\"finish_reason\":null}]}\n\n"
+                     "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",%s}\n\ndata: [DONE]\n\n", cs[ci].chunk);
+            ps_reset();
+            ps_pool_up(LLM_POOL);
+            ps_sse_text(sse, (long)strlen(sse), 0);
+            llm_acc_init(&a, mo.api, mo.provider);
+            k = llm_acc_sink(&a);
+            q = req_of(&mo, &c, &k, 0);
+            CHECK_INT(llm_request(&q), 0);
+            jw_reset(&m);
+            llm_acc_message(&a, ts_of(1, 0), &m);
+            CHECK(strstr(m.p, cs[ci].usage) != 0);
+            llm_acc_free(&a);
+        }
+    }
+
     /* a 429 with Retry-After 2: one retry after 2 s, then the answer */
     ps_reset();
     ps_pool_up(LLM_POOL);
