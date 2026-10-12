@@ -50,6 +50,21 @@ bugs that the Sonnet ledger had ticked).
   real pi screens), then H, I, J, L, M, O.
 - E11 rig run (owner asked 2026-10-12): Sonnet, rig 3, merged-main amiga-pi, step 5a keeping
   the file, then `pi --export <file> out.html` (pi 1.0.4 installed at /opt/homebrew/bin/pi).
+- amiga-pi parity follow-up PX (Opus recheck 2026-10-12; F merged dcc9c24/3e79223 anyway,
+  as PX1/PX2 were on main before F):
+  - PX1 strict tools: pi's read/bash/edit/write carry constrainedSampling {json_schema,
+    strict:"prefer"}; pi sends strict:true + strict schema on anthropic (supportsStrictTools,
+    all 17 anthropic models) and openai (supportsStrictMode; ours "strict":false at
+    llm/be_openai_responses.c:465). Port resolveJsonSchemaStrictSampling/makeStrictJsonSchema
+    to the three backends; carry constrainedSampling in tool declarations (session toolsAdded);
+    goldens from pi's REAL tool definitions (switch_inputs.json/cases.json use plain tools).
+    COMPATIBILITY.md:19 is wrong.
+  - PX2 clampMaxTokensToContext (pi simple-options.js:23): min(maxTokens, contextWindow -
+    estimate(input) - 4096) on every request; 156 catalog models differ on the first request
+    (openai/gpt-4 likely 400s). Port with estimateContextTokens.
+  - PX3 declareToolChanges for every model (pi agent-loop.js:44,116), not only
+    llm_ant_mid_system (amiga-pi/agent.c:271).
+  Probes: scratchpad recheck/strict2.mjs, strict3.mjs, clamp2.mjs.
 - Amiga IDE spike (approved; PARKED by owner 2026-10-12): starts only after the UP-Term and
   amiga-pi work is finished. research/2026-10-12_amiga-ide-brainstorm.md, section Spike.
 - BUG (owner 2026-10-12, rig FS-UAE): holding Enter at the shell, the cursor sometimes
