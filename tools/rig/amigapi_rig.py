@@ -83,6 +83,16 @@ and RAM:proj/.pi/SYSTEM.md; "amiga-pi --no-session -p hello" with RAM:proj as th
   7d nothing was written to ENVARC:amiga-pi/trust.json (one that was there is put aside first and restored after)
 Everything made is removed again. Visible windows titled "amiga-pi step 7".
 
+Step 8 (I6): skills. ENVARC:amiga-pi/skills holds rig-skill-8 (with a description) and rig-hidden-8 (disable-model-invocation:
+true); "amiga-pi --no-session -p ..." against the fixture, three runs, RAM: as the current directory:
+  8a exit code 0, the request's system prompt holds the <skills> section: <name>rig-skill-8</name>, its description and
+     <location>ENVARC:amiga-pi/skills/rig-skill-8/SKILL.md</location>, after the preamble and before <cwd>; rig-hidden-8 is not in it
+  8b "/skill:rig-skill-8 do the rig thing": the user message is the <skill name="rig-skill-8" location=...> block with
+     "References are relative to ..." and the skill's text, then "do the rig thing"; the hidden skill loads the same way
+  8c --no-skills: no <skills> section is sent
+The skills are removed again (a skills directory that was there is put aside first and restored after). Visible windows titled
+"amiga-pi step 8".
+
 Step 10 (K5, K8): MCP. ENVARC:amiga-pi/mcp.json names two servers: "fake",
 tools/fake_mcp.py over streamable HTTP on the Mac at its LAN address (the LAN
 rule's plain http), and "amiga", build/amiga/mcp-echo (a native stdio server)
@@ -124,7 +134,7 @@ not run again; a phase with every check recorded is skipped. --force runs everyt
 
   make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|10|13|14] [--force]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|8|10|13|14] [--force]
 """
 import argparse
 import json
@@ -911,6 +921,80 @@ def step7(port):
 
 
 
+def user_text(body):
+    """the user messages of a chat/completions body, joined"""
+    out = []
+    for m in body.get('messages', []):
+        if m.get('role') != 'user':
+            continue
+        cont = m.get('content')
+        out.append(cont if isinstance(cont, str) else '\n'.join(str(b.get('text', '')) for b in cont))
+    return '\n'.join(out)
+
+
+def step8(port):
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    log = paths.RIG / 'amigapi_fixture8.log'
+    dump = paths.RIG / 'amigapi_dump8'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    (VTC / 'g8-skill.md').write_text('---\nname: rig-skill-8\ndescription: Rig skill for step 8 & the XML escapes\n---\n'
+                                     'RIG-SKILL-BODY-8: say the rig word.\n')
+    (VTC / 'g8-hidden.md').write_text('---\nname: rig-hidden-8\ndescription: Hidden from the model\n'
+                                      'disable-model-invocation: true\n---\nRIG-HIDDEN-BODY-8\n')
+    # a skills directory that was there already would make 8a pass or fail on its contents: put it aside, restore it after
+    had_skills = there('ENVARC:amiga-pi/skills')
+    if had_skills:
+        c.run('Rename ENVARC:amiga-pi/skills ENVARC:amiga-pi/skills.g8bak')
+    try:
+        for f in ('pi8.out', 'pi8.rc', 'pi8b.out', 'pi8b.rc', 'pi8c.out', 'pi8c.rc'):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        base = 'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 --no-session' % port
+        ended, req = run_watched('pi8', 'amiga-pi step 8', [
+            'Echo "amiga-pi step 8: skills in ENVARC:amiga-pi/skills, /skill:name, --no-skills"',
+            'Failat 21',                  # ENVARC:amiga-pi is there already: MakeDir says so with RC 10
+            'MakeDir ENVARC:amiga-pi ENVARC:amiga-pi/skills ENVARC:amiga-pi/skills/rig-skill-8 ENVARC:amiga-pi/skills/rig-hidden-8',
+            'Copy VTC:g8-skill.md ENVARC:amiga-pi/skills/rig-skill-8/SKILL.md QUIET',
+            'Copy VTC:g8-hidden.md ENVARC:amiga-pi/skills/rig-hidden-8/SKILL.md QUIET',
+            'CD RAM:',
+            base + ' -p hello >VTC:pi8.out',
+            'Echo "rc=$RC" >VTC:pi8.rc',
+            base + ' -p "/skill:rig-skill-8 do the rig thing" >VTC:pi8b.out',
+            'Echo "rc=$RC" >VTC:pi8b.rc',
+            base + ' --no-skills -p hello >VTC:pi8c.out',
+            'Echo "rc=$RC" >VTC:pi8c.rc',
+            'Delete ENVARC:amiga-pi/skills ALL QUIET',
+            'Type VTC:pi8.out'], 'pi8-done')
+        check('8 the window ended', ended)
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        check('8a exit codes 0', all(rd(f).strip() == 'rc=0' for f in ('pi8.rc', 'pi8b.rc', 'pi8c.rc')),
+              repr((rd('pi8.rc'), rd('pi8b.rc'), rd('pi8c.rc'), rd('pi8.out')[:300])))
+        plain, skilled, off = system_text(body_of(dump, 1)), body_of(dump, 2), system_text(body_of(dump, 3))
+        check('8a the <skills> section names rig-skill-8 with its description and location',
+              '<name>rig-skill-8</name>' in plain and '<description>Rig skill for step 8 &amp; the XML escapes</description>' in plain and
+              '<location>ENVARC:amiga-pi/skills/rig-skill-8/SKILL.md</location>' in plain, repr(plain[-700:]))
+        check('8a after the preamble, before <cwd>', 0 <= plain.find('expert coding assistant') < plain.find('<skills>') < plain.find('<cwd>'))
+        check('8a the hidden skill is not in it', 'rig-hidden-8' not in plain)
+        ut = user_text(skilled)
+        check('8b /skill:rig-skill-8 sends the skill block and the arguments',
+              '<skill name="rig-skill-8" location="ENVARC:amiga-pi/skills/rig-skill-8/SKILL.md">\nReferences are relative to ' in ut and
+              'RIG-SKILL-BODY-8: say the rig word.\n</skill>\n\ndo the rig thing' in ut and '/skill:' not in ut, repr(ut[:500]))
+        check('8c --no-skills: no <skills> section', '<skills>' not in off and 'rig-skill-8' not in off, repr(off[-300:]))
+    finally:
+        fx.terminate()
+        c.run('Delete ENVARC:amiga-pi/skills ALL QUIET')
+        if had_skills:
+            c.run('Rename ENVARC:amiga-pi/skills.g8bak ENVARC:amiga-pi/skills')
+        c.run('Delete RAM:pi8-done VTC:pi8.dos VTC:g8-skill.md VTC:g8-hidden.md QUIET')
+
+
 def mask_rpc(o, spec):
     """A record of pi's RPC/JSON stream after the masks of amiga-pi's tests/pi/rpc/masks.json (spec: that file, parsed),
     the one list of this rig and of amiga-pi's tests/test_pi_modes.c, with each mask's reason. The rules are those of
@@ -1269,7 +1353,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 10, 13, 14), help='one step only (default: all but 13 and 14)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 14), help='one step only (default: all but 13 and 14)')
     ap.add_argument('--force', action='store_true', help='step 13: run every check again')
     a = ap.parse_args()
     global force13
@@ -1288,6 +1372,8 @@ def main():
         step6(a.port + 5)
     if a.step in (None, 7):
         step7(a.port + 6)
+    if a.step in (None, 8):
+        step8(a.port + 7)
     if a.step in (None, 10):
         step10(a.port + 9)
     if a.step == 13:
