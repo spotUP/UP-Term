@@ -105,6 +105,8 @@ def pick(body, forced):
     msgs = body.get("messages") or []
     if not msgs:
         return "text"
+    if body.get("model") == "fake-model":
+        return "pirpc_text"      # amiga-pi rig step 14 (--mode rpc from a file): the answer tests/pi/rpc/prompt of amiga-pi is made with
     if str(body.get("model", "")).startswith("claude-haiku"):
         return "fetch_answer"
     last = msgs[-1]

@@ -113,12 +113,17 @@ fixture, settings.json enables both. The fixture answers slowly (--delay 0.4: ab
   13b Shift+Tab: "Thinking level: ..." on the screen and a second thinking_level_change in the session;
       Ctrl+P: "Switched to ..." and model_change m2 (then thinking off) in the session
   13c /tree: the selector shows ("Session Tree", "Type to search:")
+Step 14 (H8): `amiga-pi --mode rpc` fed from a file through `<`, its stdout in a file. The fixture answers the model
+fake-model with tests/claude/pirpc_text.sse (the golden's answer); the output file is compared line by line with
+~/Code/amiga-pi tests/pi/rpc/prompt.out, masked as that suite's tests/test_pi_modes.c masks (mask_rpc below), then
+get_messages and get_session_stats must answer. Verdicts in build/<rig>/amigapi14.verdicts.json, output kept as
+amigapi14-out.jsonl.
 Verdicts are recorded in build/rig3/amigapi13.verdicts.json (build/<rig>/ of the rig used): a check that passed is
 not run again; a phase with every check recorded is skipped. --force runs everything again.
 
   make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|10|13] [--force]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|10|13|14] [--force]
 """
 import argparse
 import json
@@ -875,6 +880,132 @@ def step7(port):
         c.run('Delete RAM:proj ALL QUIET')
 
 
+
+
+def mask_rpc(o, spec):
+    """A record of pi's RPC/JSON stream after the masks of amiga-pi's tests/pi/rpc/masks.json (spec: that file, parsed),
+    the one list of this rig and of amiga-pi's tests/test_pi_modes.c, with each mask's reason. The rules are those of
+    the file's "rules" section, applied as test_pi_modes.c applies them; the rig adds one of its own: the bash tool's
+    description names the shell this machine runs (vsh), a difference on purpose."""
+    import math, re
+    fresh = re.compile(r'^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?!d000)[0-9a-f]{8})$')
+    http_err = re.compile(r'^(HTTP )?[1-5][0-9][0-9][ :]')
+    drop, star, ids = set(spec['drop']), set(spec['star']), set(spec['ids']['keys'])
+    prov = spec['fixtureProvider']
+
+    def m(v, start=False, cost=False):
+        if isinstance(v, list):
+            return [m(x) for x in v]
+        if not isinstance(v, dict):
+            return v
+        r = {}
+        asst = v.get('role') == 'assistant'
+        start_msg = v.get('type') == 'message_start' and isinstance(v.get('message'), dict) and v['message'].get('role') == 'assistant'
+        for k, x in v.items():
+            if k == 'description' and v.get('name') == 'bash':
+                r[k] = '*'
+                continue
+            if k in drop:
+                continue
+            if k in star:
+                r[k] = '*'
+            elif cost and isinstance(x, (int, float)) and not isinstance(x, bool):
+                r[k] = 'u$%d' % math.floor(x * 1e6 + 0.5)    # as test_pi_modes.c rounds
+            elif k == 'errorMessage' and (asst or v.get('type') == 'auto_retry_start') and isinstance(x, str) and http_err.match(x):
+                r[k] = '<http error>'
+            elif k in ids and isinstance(x, str) and fresh.match(x):
+                r[k] = '*'
+            elif k == 'cost' and isinstance(x, dict) and 'total' in x:
+                r[k] = m(x, cost=True)
+            elif k == 'baseUrl' and isinstance(x, str):
+                r[k] = '<base>'
+            elif k == 'error' and v.get('command') == 'parse':
+                r[k] = '*'
+            elif k == 'usage' and start:
+                r[k] = '*'
+            elif k == 'message' and start_msg:
+                r[k] = m(x, True)
+            elif k == 'models' and isinstance(x, list):
+                r[k] = [m(e) for e in x if isinstance(e, dict) and e.get('provider') == prov]
+            else:
+                r[k] = m(x)
+        return r
+    return m(o)
+
+
+def step14(port):
+    """H8: amiga-pi --mode rpc fed from a file through `<`; its output file equals pi's golden (tests/pi/rpc/prompt.out of
+    the amiga-pi tree), line by line, masked as tests/test_pi_modes.c masks. The commands are the golden's prompt.in and a
+    get_state, a get_messages and a get_session_stats read after the run (the Amiga reads the lines one after the other)."""
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    gold = AMIGA_PI.parents[2] / 'tests' / 'pi' / 'rpc'
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    log = paths.RIG / 'amigapi_fixture14.log'
+    dump = paths.RIG / 'amigapi_dump14'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    agent = VTC / 'pi14agent'
+    agent.mkdir(exist_ok=True)
+    models = json.loads((gold / 'models.json').read_text())
+    models['providers']['fake']['baseUrl'] = 'http://127.0.0.1:%d' % port
+    (agent / 'models.json').write_text(json.dumps(models))
+    (agent / 'settings.json').write_text(json.dumps({'defaultProvider': 'fake', 'defaultModel': 'fake-model',
+                                                     'defaultThinkingLevel': 'off', 'quietStartup': True}))
+    cmds = [l for l in (gold / 'prompt.in').read_text().splitlines() if l and not l.startswith('#')]
+    cmds += ['{"id":"2","type":"get_messages"}', '{"id":"3","type":"get_session_stats"}']
+    (VTC / 'pi14.in').write_text(''.join(l + '\n' for l in cmds))
+    for f in ('pi14.out', 'pi14.err'):
+        if (VTC / f).exists():
+            (VTC / f).unlink()
+    try:
+        ended, req = run_watched('pi14', 'amiga-pi step 14', [
+            'SetEnv PI_CODING_AGENT_DIR VTC:pi14agent',
+            'CD RAM:',
+            'VTC:amiga-pi --mode rpc --model fake/fake-model --no-session <VTC:pi14.in >VTC:pi14.out',
+            'Echo "rc=$RC" >VTC:pi14.rc'], 'pi14-done')
+        check('14 the window ended', ended)
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        got = [json.loads(l) for l in rd('pi14.out').splitlines() if l.strip().startswith('{')]
+        want = [json.loads(l) for l in (gold / 'prompt.out').read_text().splitlines() if l.strip()]
+        n = len(want)
+        spec = json.loads((gold / 'masks.json').read_text())
+        a = [json.dumps(mask_rpc(o, spec)) for o in want]
+        b = [json.dumps(mask_rpc(o, spec)) for o in got[:n]]
+        bad = [i for i in range(n) if i >= len(b) or a[i] != b[i]]
+        verd = {'14a prompt: the stream equals the golden line by line': not bad and len(got) > n,
+                '14b get_messages answered': any(o.get('command') == 'get_messages' and o.get('success') for o in got),
+                '14c get_session_stats answered': any(o.get('command') == 'get_session_stats' and o.get('success') for o in got),
+                '14d exit code 0': rd('pi14.rc').strip() == 'rc=0'}
+        detail = 'first differing line %s: want %s got %s' % (bad[0], a[bad[0]][:300], (b[bad[0]] if bad[0] < len(b) else '')[:300]) \
+            if bad else repr(rd('pi14.out')[:300])
+        for name, ok in verd.items():
+            record14(name, ok, detail)
+        (paths.RIG / 'amigapi14-out.jsonl').write_text(rd('pi14.out'))
+    finally:
+        fx.terminate()
+        c.run('Delete RAM:pi14-done VTC:pi14.dos QUIET')
+
+
+def record14(name, ok, detail=''):
+    v = verdicts14()
+    v[name] = 'PASS' if ok else 'FAIL'
+    VERDICTS14.write_text(json.dumps(v, indent=1, sort_keys=True) + '\n')
+    check(name, ok, detail)
+
+
+def verdicts14():
+    try:
+        return json.loads(VERDICTS14.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+VERDICTS14 = paths.RIG / 'amigapi14.verdicts.json'
 VERDICTS = paths.RIG / 'amigapi13.verdicts.json'
 STEP13 = {'a': ['13a Steering row', '13a Follow-up row', '13a steering text in request 2 only',
                 '13a follow-up text in request 3', '13a session: three user messages', '13a Ctrl+D twice ends amiga-pi'],
@@ -1080,7 +1211,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 10, 13), help='one step only (default: all but 13)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 10, 13, 14), help='one step only (default: all but 13 and 14)')
     ap.add_argument('--force', action='store_true', help='step 13: run every check again')
     a = ap.parse_args()
     global force13
@@ -1103,6 +1234,8 @@ def main():
         step10(a.port + 9)
     if a.step == 13:
         step13(a.port + 12)
+    if a.step == 14:
+        step14(a.port + 13)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 

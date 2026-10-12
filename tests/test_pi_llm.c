@@ -105,7 +105,9 @@ static void test_messages(void)
     mt.stop = LS_ERROR;
     mt.error = "overloaded";
     llm_m_assistant(&m, "[]", 2, &mt, ts);
-    CHECK(strstr(m.p, "\"stopReason\":\"error\",\"errorMessage\":\"overloaded\",") != 0);
+    /* pi-ai's order: errorMessage last, after the timestamp */
+    CHECK(strstr(m.p, "\"stopReason\":\"error\",\"timestamp\":") != 0);
+    CHECK(strstr(m.p, ",\"errorMessage\":\"overloaded\"}") != 0);
     round_trip("assistant error", m.p, LR_ASSISTANT);
 
     /* user: a string, and blocks */
@@ -293,8 +295,8 @@ static void test_accum(void)
     jw_reset(&m);
     CHECK_INT(llm_acc_message(&a, ts_of(1, 0), &m), 0);
     CHECK(strstr(m.p, "\"content\":[]") != 0);
-    CHECK(strstr(m.p, "\"stopReason\":\"error\",\"errorMessage\":\"the arguments of tool call edit are not valid "
-                      "JSON\"") != 0);
+    CHECK(strstr(m.p, "\"stopReason\":\"error\",\"timestamp\":") != 0);
+    CHECK(strstr(m.p, ",\"errorMessage\":\"the arguments of tool call edit are not valid JSON\"}") != 0);
     CHECK_INT(llm_acc_tools(&a), 0);
     llm_acc_free(&a);
 
@@ -322,7 +324,8 @@ static void test_accum(void)
     llm_acc_event(&a, &e);
     jw_reset(&m);
     llm_acc_message(&a, ts_of(1, 0), &m);
-    CHECK(strstr(m.p, "\"stopReason\":\"aborted\",\"errorMessage\":\"Stopped by Ctrl+C\"") != 0);
+    CHECK(strstr(m.p, "\"stopReason\":\"aborted\",\"timestamp\":") != 0);
+    CHECK(strstr(m.p, ",\"errorMessage\":\"Stopped by Ctrl+C\"}") != 0);
     llm_acc_free(&a);
 
     /* a raw block whose input came in deltas (Anthropic's server tool) */
@@ -1338,6 +1341,24 @@ static void test_request(void)
     CHECK_INT(ps.nreq, 2);
     llm_acc_free(&a);
 
+    /* retries -1: the caller retries (amiga-pi's agent loop, as pi's agent session): the 429 is the answer, no wait */
+    ps_reset();
+    ps_pool_up(LLM_POOL);
+    ps_raw("../pi/openai_429.http");
+    ps_sse("../pi/openai_text.sse", 0);
+    llm_acc_init(&a, mo.api, mo.provider);
+    k = llm_acc_sink(&a);
+    q = req_of(&mo, &c, &k, 0);
+    q.retries = -1;
+    CHECK_INT(llm_request(&q), -1);
+    CHECK_INT(q.attempts, 1);
+    CHECK_INT(ps.sleeps, 0);
+    CHECK_INT(ps.nreq, 1);
+    jw_reset(&m);
+    llm_acc_message(&a, ts_of(1, 0), &m);
+    CHECK(strstr(m.p, "\"stopReason\":\"error\"") != 0);
+    llm_acc_free(&a);
+
     /* cut off after part of the answer: an error, not tried again (the text kept) */
     ps_reset();
     ps_pool_up(LLM_POOL);
@@ -1350,7 +1371,8 @@ static void test_request(void)
     jw_reset(&m);
     llm_acc_message(&a, ts_of(1, 0), &m);
     CHECK(strstr(m.p, "\"text\":\"This answer is cut off in the mid\"") != 0);
-    CHECK(strstr(m.p, "\"stopReason\":\"error\",\"errorMessage\":\"the connection closed early\"") != 0);
+    CHECK(strstr(m.p, "\"stopReason\":\"error\",\"timestamp\":") != 0);
+    CHECK(strstr(m.p, ",\"errorMessage\":\"the connection closed early\"}") != 0);
     llm_acc_free(&a);
 
     /* Ctrl+C mid-stream: aborted, the text so far kept */
@@ -1365,7 +1387,9 @@ static void test_request(void)
     jw_reset(&m);
     llm_acc_message(&a, ts_of(1, 0), &m);
     CHECK(strstr(m.p, "\"text\":\"Hello from \"") != 0);
-    CHECK(strstr(m.p, "\"stopReason\":\"aborted\",\"errorMessage\":\"Stopped.\"") != 0);
+    /* pi-ai's text for a request stopped by the user (provider-retry.js createAbortError) */
+    CHECK(strstr(m.p, "\"stopReason\":\"aborted\",\"timestamp\":") != 0);
+    CHECK(strstr(m.p, ",\"errorMessage\":\"Request aborted\"}") != 0);
     CHECK_INT(ps.nreq, 1);
     llm_acc_free(&a);
 

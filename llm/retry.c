@@ -144,7 +144,7 @@ int llm_request(llm_req *q)
     gate g;
     llm_sink gk;
     rq r;
-    int retries = q->retries > 0 ? q->retries : 3, attempt;
+    int retries = q->retries < 0 ? 0 : q->retries > 0 ? q->retries : 3, attempt;
     long base = q->base_ms > 0 ? q->base_ms : 2000, cap = q->cap_ms > 0 ? q->cap_ms : 60000;
     q->attempts = 0;
     q->key_sent = 0;
@@ -252,7 +252,7 @@ int llm_request(llm_req *q)
         rc = llm_post(&c);
         err[0] = 0;
         if (rc == LP_BREAK) {
-            final_error(q->sink, LS_ABORTED, "aborted", "Stopped.");
+            final_error(q->sink, LS_ABORTED, "aborted", "Request aborted");
         } else if (rc == LP_OK && resp.status == 200 && resp.event_stream) {
             if (c.bad)
                 cl_copy(err, "the answer's stream was malformed", sizeof(err));
@@ -304,7 +304,7 @@ int llm_request(llm_req *q)
             wait = cap;
         q->slept_ms += wait;
         if (q->h.sleep && q->h.sleep(q->h.u, wait)) {
-            final_error(q->sink, LS_ABORTED, "aborted", "Stopped.");
+            final_error(q->sink, LS_ABORTED, "aborted", "Request aborted");
             break;
         }
     }
