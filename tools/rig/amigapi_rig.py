@@ -116,8 +116,8 @@ fixture, settings.json enables both. The fixture answers slowly (--delay 0.4: ab
 Step 14 (H8): `amiga-pi --mode rpc` fed from a file through `<`, its stdout in a file. The fixture answers the model
 fake-model with tests/claude/pirpc_text.sse (the golden's answer); the output file is compared line by line with
 ~/Code/amiga-pi tests/pi/rpc/prompt.out, masked as that suite's tests/test_pi_modes.c masks (mask_rpc below), then
-get_messages and get_session_stats must answer. 14e (HF1): `--mode json --tools +nosuchtool` run through vsh with 2> to a file:
-the diagnostic is in the error file and not in the stdout JSONL. Verdicts in build/<rig>/amigapi14.verdicts.json, output kept as
+get_messages and get_session_stats must answer. 14e (HF1): `--mode json` with a broken models.json in its own agent dir, run through vsh with 2> to a file:
+the "[WARN] ..." diagnostic is ONE line in the error file and not in the stdout JSONL. Verdicts in build/<rig>/amigapi14.verdicts.json, output kept as
 amigapi14-out.jsonl.
 Verdicts are recorded in build/rig3/amigapi13.verdicts.json (build/<rig>/ of the rig used): a check that passed is
 not run again; a phase with every check recorded is skipped. --force runs everything again.
@@ -1017,23 +1017,29 @@ def step14(port):
         for name, ok in verd.items():
             record14(name, ok, detail)
         (paths.RIG / 'amigapi14-out.jsonl').write_text(rd('pi14.out'))
-        # 14e (HF1): json mode's own diagnostic goes to the error stream (pr_CES), not to the JSONL on stdout. Trigger:
-        # an unknown tool in --tools (amiga-pi/tools_pi.c pi_tools_add; pi 1.1.0 reports the same case on stderr, as
-        # "Unknown tool name" at vendor/pi-src/packages/coding-agent/src/core/tools/index.ts:137)
+        # 14e (HF1, Q18): json mode's own diagnostic goes to the error stream (pr_CES) as ONE line, not to the JSONL on
+        # stdout. Trigger: a models.json that is not JSON in the step's own agent dir, which makes amiga-pi write
+        # "[WARN] <why> (models.json is ignored)" (amiga-pi/app.c, tests/test_pi_modes.c test_diag_one_line). An unknown
+        # --tools entry no longer writes anything: pi 1.1.0 filters it silently (core/tools/sdk.ts:289-294).
         for f in ('pi14e.out', 'pi14e.err'):
             if (VTC / f).exists():
                 (VTC / f).unlink()
-        (VTC / 'pi14e.sh').write_text('VTC:amiga-pi --mode json --no-session --tools +nosuchtool -p hi >VTC:pi14e.out 2>VTC:pi14e.err\n')
+        agente = VTC / 'pi14eagent'
+        agente.mkdir(exist_ok=True)
+        (agente / 'models.json').write_text('{not json')
+        (VTC / 'pi14e.sh').write_text('VTC:amiga-pi --mode json --no-session -p hi >VTC:pi14e.out 2>VTC:pi14e.err\n')
         ended, req = run_watched('pi14e', 'amiga-pi step 14e', [
-            'SetEnv PI_CODING_AGENT_DIR VTC:pi14agent',
+            'SetEnv PI_CODING_AGENT_DIR VTC:pi14eagent',
             'CD RAM:',
-            'FailAt 21',   # amiga-pi exits 2 on the bad --tools; the Shell would stop the script at 10
+            'FailAt 21',   # amiga-pi may exit 2; the Shell would stop the script at 10
             'VTC:vsh VTC:pi14e.sh <NIL:',   # the Shell has no 2>; vsh does
             'Echo "rc=$RC" >VTC:pi14e.rc'], 'pi14e-done')
         time.sleep(2)
         eo, ee = rd('pi14e.out'), rd('pi14e.err')
-        record14('14e diag line in the error file, not in the stdout JSONL',
-                 ended and 'unknown tool in --tools: nosuchtool' in ee and 'nosuchtool' not in eo,
+        warn = [l for l in ee.splitlines() if l.startswith('[WARN] ')]
+        record14('14e diag line in the error file as one line, not in the stdout JSONL',
+                 ended and len(warn) == 1 and '(models.json is ignored)' in warn[0] and '[WARN]' not in eo
+                 and 'models.json' not in eo,
                  'ended=%s req=%s out=%r err=%r' % (ended, req, eo[:200], ee[:200]))
     finally:
         fx.terminate()
