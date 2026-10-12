@@ -270,15 +270,15 @@ void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts
     llm_w_usage(w, &m->usage);
     key(w, "stopReason");
     jw_strz(w, m->stop ? llm_stop_name(m->stop) : "stop");
-    if (m->error) {
-        key(w, "errorMessage");
-        jw_strz(w, m->error);
-    }
     key(w, "timestamp");
     llm_w_ts(w, ts);
     if (m->response_model && *m->response_model) {
         key(w, "responseModel");
         jw_strz(w, m->response_model);
+    }
+    if (m->error) {             /* last, as pi-ai sets it in the stream's catch on the finished object */
+        key(w, "errorMessage");
+        jw_strz(w, m->error);
     }
     jw_raw(w, "}", 1);
 }
