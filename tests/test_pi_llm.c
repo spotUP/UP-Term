@@ -1380,6 +1380,31 @@ static void test_request(void)
     CHECK_INT(q.attempts, 1);
     llm_acc_free(&a);
 
+    /* R2: prompt_tokens_details.cache_write_tokens is the cache write (a count of its own, not part of the reads):
+     * pi parseChunkUsage (openai-completions.ts:1533, :1546; its test openai-completions-tool-choice.test.ts:1688:
+     * prompt 100, cached 50, written 30 -> input 20, cacheRead 50, cacheWrite 30, totalTokens 105) */
+    {
+        static const char sse[] =
+            "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"OK\"},"
+            "\"finish_reason\":null}]}\n\n"
+            "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},"
+            "\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,"
+            "\"prompt_tokens_details\":{\"cached_tokens\":50,\"cache_write_tokens\":30},"
+            "\"completion_tokens_details\":{\"reasoning_tokens\":0}}}\n\n"
+            "data: [DONE]\n\n";
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_sse_text(sse, (long)sizeof(sse) - 1, 0);
+        llm_acc_init(&a, mo.api, mo.provider);
+        k = llm_acc_sink(&a);
+        q = req_of(&mo, &c, &k, 0);
+        CHECK_INT(llm_request(&q), 0);
+        jw_reset(&m);
+        llm_acc_message(&a, ts_of(1, 0), &m);
+        CHECK(strstr(m.p, "\"usage\":{\"input\":20,\"output\":5,\"cacheRead\":50,\"cacheWrite\":30,\"reasoning\":0,\"totalTokens\":105") != 0);
+        llm_acc_free(&a);
+    }
+
     /* a 429 with Retry-After 2: one retry after 2 s, then the answer */
     ps_reset();
     ps_pool_up(LLM_POOL);

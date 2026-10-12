@@ -641,15 +641,20 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
     }
     if (json_get(ch, "usage", &u) && json_type(u) == J_OBJ) {
         jv pt, ct, det, cached, rt;
-        long in = -1, cr = 0;
+        long in = -1, cr = 0, cw = 0;
         llm_event_init(&e, LE_USAGE);
         if (json_get(u, "prompt_tokens", &pt))
             in = json_long(pt, -1);
-        if (json_get(u, "prompt_tokens_details", &det) && json_get(det, "cached_tokens", &cached))
-            cr = json_long(cached, 0);
+        if (json_get(u, "prompt_tokens_details", &det) && json_type(det) == J_OBJ) {
+            if (json_get(det, "cached_tokens", &cached))
+                cr = json_long(cached, 0);
+            if (json_get(det, "cache_write_tokens", &cached))    /* parseChunkUsage (openai-completions.ts:1533): a separate count */
+                cw = json_long(cached, 0);
+        }
         if (in >= 0) {
-            e.in = in - cr;
+            e.in = in - cr - cw > 0 ? in - cr - cw : 0;        /* openai-completions.ts:1546 */
             e.cache_r = cr;
+            e.cache_w = cw;
         }
         if (json_get(u, "completion_tokens", &ct))
             e.out = json_long(ct, -1);

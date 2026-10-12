@@ -890,6 +890,24 @@ static void test_search(void)
     tools_free(&t);
 }
 
+/* R1: Bash's foreground output reaches t->chunk as it arrives (amiga-pi's tool_execution_update) */
+static struct {
+    char acc[256];
+    int data, ticks;
+} ck;
+
+static void on_chunk(void *u, const char *d, long n)
+{
+    (void)u;
+    if (n <= 0) {
+        ck.ticks++;
+        return;
+    }
+    ck.data++;
+    if (strlen(ck.acc) + (size_t)n < sizeof(ck.acc))
+        strncat(ck.acc, d, (size_t)n);
+}
+
 static void test_bash(void)
 {
     char text[4096], seen[400];
@@ -904,6 +922,18 @@ static void test_bash(void)
     /* control characters from the model never reach the screen as such */
     CHECK_INT(call(&t, "Bash", "{\"command\":\"echo \\u001b[2J\"}", text, sizeof(text)), 0);
     CHECK(strchr(a.last, 0x1b) == 0);
+    /* t->chunk set: the output in the pieces it came in (two, 0.6 s apart), the result unchanged; 0: not called */
+    memset(&ck, 0, sizeof(ck));
+    t.chunk = on_chunk;
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo a; sleep 0.6; echo b\"}", text, sizeof(text)), 0);
+    t.chunk = 0;
+    CHECK_STR(ck.acc, "a\nb\n");
+    CHECK(ck.data >= 2);
+    CHECK(ck.ticks >= 1);
+    CHECK_STR(text, "Return code 0.\na\nb\n");
+    ck.data = 0;
+    CHECK_INT(call(&t, "Bash", "{\"command\":\"echo a\"}", text, sizeof(text)), 0);
+    CHECK_INT(ck.data, 0);
     /* in the background: an id at once, the output read in pieces */
     CHECK_INT(call(&t, "Bash", "{\"command\":\"echo one; sleep 1; echo two\",\"run_in_background\":true}", text,
                    sizeof(text)), 0);
