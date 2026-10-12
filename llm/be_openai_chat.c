@@ -80,6 +80,7 @@ static llm_compat detect(const llm_model *m)
                  deepseek || zai || moonshot || is(p, "opencode") || has(u, "opencode.ai") || cf_workers ||
                  cf_gateway || antling;
     int or_dev = openrouter && (!strncmp(id, "anthropic/", 10) || !strncmp(id, "openai/", 7));
+    c.store = !nonstd;
     c.developer_role = or_dev || (!nonstd && !openrouter);
     c.usage_in_streaming = 1;
     c.max_tokens_field = has(u, "chutes.ai") || deepseek || moonshot || cf_gateway || together || nvidia ||
@@ -96,6 +97,8 @@ static llm_compat compat_of(const llm_model *m)
     llm_compat c = detect(m);
     if (m->compat.developer_role != LC_UNSET)
         c.developer_role = m->compat.developer_role;
+    if (m->compat.store != LC_UNSET)
+        c.store = m->compat.store;
     if (m->compat.usage_in_streaming != LC_UNSET)
         c.usage_in_streaming = m->compat.usage_in_streaming;
     if (m->compat.max_tokens_field != LC_UNSET)
@@ -329,6 +332,8 @@ static int o_body(const llm_ctx *x, jw *w)
     jw_rawz(w, "],\"stream\":true");
     if (cp.usage_in_streaming)
         jw_rawz(w, ",\"stream_options\":{\"include_usage\":true}");
+    if (cp.store)
+        jw_rawz(w, ",\"store\":false");
     if (maxt > 0) {
         jw_rawz(w, cp.max_tokens_field ? ",\"max_tokens\":" : ",\"max_completion_tokens\":");
         jw_long(w, maxt);

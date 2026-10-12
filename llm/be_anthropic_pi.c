@@ -8,6 +8,7 @@
 #include "registry.h"
 #include "constrain.h"
 #include "estimate.h"
+#include "transcript.h"
 
 static long a_head(const char *host, int port, int tls, const char *path, const char *key,
                    const char *user_agent, long body_len, char *out, long cap)
@@ -40,7 +41,6 @@ static long a_head(const char *host, int port, int tls, const char *path, const 
  * The initial system message is msgs[0] when it is one; else c->system and c->tools stand for it (pi's
  * normalizeContext). */
 
-#define AP_TOOLS 128
 #define AP_HELD 32
 #define AP_CACHE ",\"cache_control\":{\"type\":\"ephemeral\"}"
 
@@ -49,12 +49,7 @@ enum { K_USER_STR, K_USER, K_RESULT, K_SYS, K_ASSIST };
 typedef struct ap {
     const llm_ctx *c;
     int mid_sys, mid_effort, mid_tools, eager, cache_tools, empty_sig, strict;
-    int has_init;               /* msgs[0] is the initial system message */
-    jv init;
-    jv itl[AP_TOOLS];           /* the initial tools */
-    int nitl;
-    jv tl[AP_TOOLS];            /* the tools after every later system message */
-    int ntl;
+    llm_tx tx;                  /* the initial system message and tools, the tools after the later ones */
     int native_tools;           /* pi's nativeToolChanges */
 } ap;
 
@@ -117,9 +112,10 @@ const char *llm_ant_effort(const llm_model *m, int thinking)
     return e ? e : "high";
 }
 
-int llm_ant_mid_system(const llm_model *m)
+int llm_mid_system(const llm_model *m)
 {
-    return m && m->api && !strcmp(m->api, "anthropic-messages") && m->compat.mid_system == 1;
+    return m && m->api && (!strcmp(m->api, "anthropic-messages") || !strcmp(m->api, "openai-responses")) &&
+           m->compat.mid_system == 1;
 }
 
 static int is_effort(jv v)
@@ -132,108 +128,6 @@ static const char *effort_name(jv v)
 {
     return json_streq(v, "low") ? "low" : json_streq(v, "medium") ? "medium" : json_streq(v, "high") ? "high"
          : json_streq(v, "xhigh") ? "xhigh" : "max";
-}
-
-/* the inner text of a JSON string value (between the quotes), appended raw */
-static void w_inner(jw *w, jv s)
-{
-    if (json_type(s) == J_STR && s.n >= 2)
-        jw_raw(w, s.p + 1, s.n - 2);
-}
-
-/* pi's contentText: a string, or the text blocks joined by "\n" (inner form, no quotes); the number of parts */
-static int content_text(jw *w, jv c)
-{
-    jit it;
-    jv b, t, v;
-    int k = 0;
-    if (json_type(c) == J_STR) {
-        w_inner(w, c);
-        return 1;
-    }
-    if (json_type(c) != J_ARR)
-        return 0;
-    json_iter(c, &it);
-    while (json_next(&it, 0, &b))
-        if (json_get(b, "type", &t) && json_streq(t, "text") && json_get(b, "text", &v)) {
-            if (k++)
-                jw_rawz(w, "\\n");
-            w_inner(w, v);
-        }
-    return k;
-}
-
-/* pi's getSystemMessageText: the content, then the sections' texts, the non-empty ones joined by a blank line; the
- * quoted JSON string appended */
-static void sys_text(jw *w, jv m)
-{
-    jw part;
-    jv c, sec, k, v;
-    jit it;
-    int n = 0;
-    jw_raw(w, "\"", 1);
-    jw_init(&part);
-    if (json_get(m, "content", &c))
-        content_text(&part, c);
-    if (part.n) {
-        jw_raw(w, part.p, part.n);
-        n++;
-    }
-    jw_free(&part);
-    if (json_get(m, "sections", &sec) && json_type(sec) == J_OBJ) {
-        json_iter(sec, &it);
-        while (json_next(&it, &k, &v))
-            if (json_type(v) == J_STR && v.n > 2) {
-                if (n++)
-                    jw_rawz(w, "\\n\\n");
-                w_inner(w, v);
-            }
-    }
-    jw_raw(w, "\"", 1);
-}
-
-/* pi's renderSystemMessageUpdate as a quoted string; 0 (nothing appended) when it has nothing to say */
-static long sys_update(jw *w, jv m)
-{
-    jw part;
-    jv c, sec, k, v;
-    jit it;
-    int n = 0;
-    long start = w->n;
-    jw_raw(w, "\"", 1);
-    jw_init(&part);
-    if (json_get(m, "content", &c))
-        content_text(&part, c);
-    if (part.n) {
-        jw_raw(w, part.p, part.n);
-        n++;
-    }
-    jw_free(&part);
-    if (json_get(m, "sections", &sec) && json_type(sec) == J_OBJ) {
-        json_iter(sec, &it);
-        while (json_next(&it, &k, &v)) {
-            if (n++)
-                jw_rawz(w, "\\n\\n");
-            if (json_type(v) == J_NULL) {
-                jw_rawz(w, "Removed system prompt section \\\"");
-                w_inner(w, k);
-                jw_rawz(w, "\\\".");
-            } else {
-                jw_rawz(w, "Updated system prompt section \\\"");
-                w_inner(w, k);
-                jw_rawz(w, "\\\":\\n\\n");
-                w_inner(w, v);
-            }
-        }
-    }
-    jw_raw(w, "\"", 1);
-    if (w->n == start + 2) {
-        w->n = start;
-        if (w->p)
-            w->p[w->n] = 0;
-        return 0;
-    }
-    return w->n - start;
 }
 
 /* one tool as the API takes it (pi's convertTools): a tool with constrainedSampling goes out strict when the model
@@ -304,63 +198,9 @@ static int w_tools(jw *w, const jv *tl, int n, int eager, int cache, int strict)
     return 0;
 }
 
-static int tool_find(const jv *tl, int n, jv name)
-{
-    int i;
-    jv v;
-    for (i = 0; i < n; i++)
-        if (json_get(tl[i], "name", &v) && v.n == name.n && !memcmp(v.p, name.p, (size_t)v.n))
-            return i;
-    return -1;
-}
-
-/* the tools of a toolsAdded array put into tl (a name set again keeps its place) */
-static int tools_set(jv arr, jv *tl, int *n)
-{
-    jit it;
-    jv t, nm;
-    if (json_type(arr) != J_ARR)
-        return 0;
-    json_iter(arr, &it);
-    while (json_next(&it, 0, &t)) {
-        int i;
-        if (!json_get(t, "name", &nm))
-            return -1;
-        i = tool_find(tl, *n, nm);
-        if (i < 0) {
-            if (*n >= AP_TOOLS)
-                return -1;
-            i = (*n)++;
-        }
-        tl[i] = t;
-    }
-    return 0;
-}
-
-static void tools_del(jv arr, jv *tl, int *n)
-{
-    jit it;
-    jv t, nm;
-    if (json_type(arr) != J_ARR)
-        return;
-    json_iter(arr, &it);
-    while (json_next(&it, 0, &t)) {
-        int i;
-        if (!json_get(t, "name", &nm))
-            continue;
-        i = tool_find(tl, *n, nm);
-        if (i >= 0) {
-            memmove(tl + i, tl + i + 1, (size_t)(*n - i - 1) * sizeof(*tl));
-            (*n)--;
-        }
-    }
-}
-
-/* the transcript's initial system message and tools, and the tools after the later system messages */
+/* the flags of the model, and the transcript's system messages and tools (llm_tx_plan); llm_tx_free(&a->tx) after */
 static int plan(const llm_ctx *c, ap *a)
 {
-    int i;
-    jv m, r, v;
     memset(a, 0, sizeof(*a));
     a->c = c;
     a->mid_sys = flag(c->model->compat.mid_system, 0);
@@ -370,30 +210,11 @@ static int plan(const llm_ctx *c, ap *a)
     a->cache_tools = flag(c->model->compat.cache_tools, 1);
     a->empty_sig = flag(c->model->compat.empty_signature, 0);
     a->strict = flag(c->model->compat.strict_tools, 0);
-    if (a->mid_sys && c->nmsg > 0 && !json_parse(c->msgs[0], c->msg_n[0], &m) && json_get(m, "role", &r) &&
-        json_streq(r, "system")) {
-        a->has_init = 1;
-        a->init = m;
-        if (json_get(m, "toolsAdded", &v) && tools_set(v, a->itl, &a->nitl))
-            return -1;
-    } else if (c->tools && c->tools_n > 2) {
-        jv ts;
-        if (json_parse(c->tools, c->tools_n, &ts) || json_type(ts) != J_ARR || tools_set(ts, a->itl, &a->nitl))
-            return -1;
+    if (llm_tx_plan(c, a->mid_sys, &a->tx)) {
+        llm_tx_free(&a->tx);
+        return -1;
     }
-    memcpy(a->tl, a->itl, (size_t)a->nitl * sizeof(jv));
-    a->ntl = a->nitl;
-    if (a->mid_sys) {
-        for (i = a->has_init ? 1 : 0; i < c->nmsg; i++) {
-            if (json_parse(c->msgs[i], c->msg_n[i], &m) || !json_get(m, "role", &r) || !json_streq(r, "system"))
-                continue;
-            if (json_get(m, "toolsRemoved", &v))
-                tools_del(v, a->tl, &a->ntl);
-            if (json_get(m, "toolsAdded", &v) && tools_set(v, a->tl, &a->ntl))
-                return -1;
-        }
-    }
-    a->native_tools = a->mid_sys && a->mid_tools && a->nitl > 0;
+    a->native_tools = a->mid_sys && a->mid_tools && a->tx.nitl > 0;
     return 0;
 }
 
@@ -464,7 +285,7 @@ static int w_result_content(jw *w, jv c)
     }
     if (!has_img) {
         jw_rawz(w, "\"");
-        content_text(w, c);
+        llm_tx_content_text(w, c);
         jw_rawz(w, "\"");
         return 0;
     }
@@ -614,7 +435,7 @@ static long a_xhead(const llm_ctx *c, char *out, long cap)
     strcpy(line, "anthropic-beta: ");
     n = (long)strlen(line);
 #define BETA(s) do { if (k++) line[n++] = ','; strcpy(line + n, s); n += (long)strlen(s); } while (0)
-    if (a.ntl > 0 && !a.eager)
+    if (a.tx.ntl > 0 && !a.eager)
         BETA("fine-grained-tool-streaming-2025-05-14");
     if (think_mode(c, &mt, &b) == 1)
         BETA("interleaved-thinking-2025-05-14");
@@ -625,6 +446,7 @@ static long a_xhead(const llm_ctx *c, char *out, long cap)
     if (a.native_tools)
         BETA("inline-tools-2026-09-15");
 #undef BETA
+    llm_tx_free(&a.tx);
     if (!k)
         return 0;
     strcpy(line + n, "\r\n");
@@ -684,7 +506,7 @@ static int sys_message(const ap *a, jv m, jw *b)
     int k = 0, has_add;
     jw_rawz(b, "{\"role\":\"system\",\"content\":[");
     jw_init(&t);
-    if (sys_update(&t, m)) {
+    if (llm_tx_sys_update(&t, m)) {
         jw_rawz(b, "{\"type\":\"text\",\"text\":");
         jw_raw(b, t.p, t.n);
         jw_raw(b, "}", 1);
@@ -730,7 +552,7 @@ static int convert(const ap *a, conv *cv)
     const llm_ctx *c = a->c;
     int i, nheld = 0, j, rc = -1;
     jw held[AP_HELD];
-    for (i = a->has_init ? 1 : 0; i < c->nmsg; i++) {
+    for (i = a->tx.has_init ? 1 : 0; i < c->nmsg; i++) {
         jv m, r, x;
         long mark = cv->cm.n;
         if (json_parse(c->msgs[i], c->msg_n[i], &m) || !json_get(m, "role", &r))
@@ -892,9 +714,9 @@ static int a_body(const llm_ctx *c, jw *w)
     jw_rawz(w, ",\"stream\":true");
     sp = w->n;
     jw_rawz(w, ",\"system\":[{\"type\":\"text\",\"text\":");
-    if (a.has_init) {
+    if (a.tx.has_init) {
         long at = w->n;
-        sys_text(w, a.init);
+        llm_tx_sys_text(w, a.tx.init);
         if (w->n == at + 2)
             w->n = sp;                  /* nothing to say: no system member */
     } else if (c->system && *c->system)
@@ -907,14 +729,14 @@ static int a_body(const llm_ctx *c, jw *w)
         w->p[w->n] = 0;
     if (a.native_tools) {
         jw_rawz(w, ",\"tools\":[");
-        if (w_tools(w, a.itl, a.nitl, a.eager, a.cache_tools, a.strict))
+        if (w_tools(w, a.tx.itl, a.tx.nitl, a.eager, a.cache_tools, a.strict))
             goto out;
         jw_rawz(w, ",{\"name\":\"__pi_deferred_placeholder__\",\"description\":\"Reserved placeholder. Never available. "
                    "Never call this.\",\"input_schema\":{\"type\":\"object\",\"properties\":{},\"required\":[]},"
                    "\"defer_loading\":true}]");
-    } else if (a.ntl > 0) {
+    } else if (a.tx.ntl > 0) {
         jw_rawz(w, ",\"tools\":[");
-        if (w_tools(w, a.tl, a.ntl, a.eager, a.cache_tools, a.strict))
+        if (w_tools(w, a.tx.tl, a.tx.ntl, a.eager, a.cache_tools, a.strict))
             goto out;
         jw_raw(w, "]", 1);
     }
@@ -934,6 +756,7 @@ static int a_body(const llm_ctx *c, jw *w)
     jw_raw(w, "}", 1);
     rc = w->oom ? -1 : 0;
 out:
+    llm_tx_free(&a.tx);
     jw_free(&cv.cm);
     free(cv.start);
     free(cv.kind);

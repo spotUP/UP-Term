@@ -97,6 +97,8 @@ static int rd_compat(ctx *c, jv cv, llm_model *m)
         m->compat.tool_result_name = json_type(v) == J_TRUE;
     if (json_get(cv, "requiresThinkingAsText", &v))
         m->compat.thinking_as_text = json_type(v) == J_TRUE;
+    if (json_get(cv, "supportsStore", &v))
+        m->compat.store = json_type(v) == J_TRUE;
     if (json_get(cv, "supportsStrictMode", &v) || json_get(cv, "supportsStrictTools", &v))
         m->compat.strict_tools = json_type(v) == J_TRUE;
     if (json_get(cv, "maxTokensField", &v))
@@ -105,6 +107,8 @@ static int rd_compat(ctx *c, jv cv, llm_model *m)
         m->compat.mid_effort = json_type(v) == J_TRUE;
     if (json_get(cv, "supportsMidConvoSystemMessages", &v))
         m->compat.mid_system = json_type(v) == J_TRUE;
+    if (json_get(cv, "supportsAdditionalTools", &v))
+        m->compat.add_tools = json_type(v) == J_TRUE;
     if (json_get(cv, "supportsMidConvoToolChanges", &v))
         m->compat.mid_tools = json_type(v) == J_TRUE;
     if (json_get(cv, "supportsEagerToolInputStreaming", &v))
