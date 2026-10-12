@@ -953,7 +953,7 @@ def mask_rpc(o, spec):
                 r[k] = '*'
             elif k == 'message' and start_msg:
                 r[k] = m(x, True)
-            elif k == 'result' and v.get('type') == 'compaction_end' and v.get('reason') == 'overflow':
+            elif k == 'result' and v.get('type') == 'compaction_end' and v.get('reason') == 'overflow' and v.get('willRetry') is True:
                 r[k] = m(x, ovf=True)
             elif k == 'models' and isinstance(x, list):
                 r[k] = [m(e) for e in x if isinstance(e, dict) and e.get('provider') == prov]
