@@ -35,15 +35,17 @@ typedef struct llm_cfg {
     /* auth.json text (pi: {"provider":{"type":"api_key","key":"..."}}), 0 none; owned by the caller */
     const char *auth;
     long auth_n;
-    /* a `$NAME` that is unset or empty resolves to nothing instead of failing the value (MCP's ${VAR}); a value
-     * longer than the room is an error either way */
-    int unset_empty;
 } llm_cfg;
 
 void llm_cfg_init(llm_cfg *c);
 void llm_cfg_free(llm_cfg *c);
 /* a config value resolved into out: its length, -1 unresolved */
 long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap);
+/* pi's resolveConfigValueOrThrow (core/resolve-config-value.js): the value resolved into out, its length (empty is
+ * fine for a template); -1 with pi's message in err ("Failed to resolve <what> from environment variable: X",
+ * "... variables: X, Y", "... from shell command: <cmd>"). A "!command" runs every time: no cache, as pi does not
+ * cache on this path. */
+long llm_cfg_value_strict(llm_cfg *c, const char *cfg, const char *what, char *out, long cap, char *err, long errcap);
 /* the model's credential: the length, 0 none; *src names where it came from ("--api-key", "auth.json",
  * "models.json", "environment", 0 none) */
 long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src);

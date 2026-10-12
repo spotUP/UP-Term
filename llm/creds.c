@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "creds.h"
+#include "../claude/util.h"
 
 void llm_cfg_init(llm_cfg *c)
 {
@@ -93,7 +94,26 @@ static long env_into(llm_cfg *c, const char *name, char *out, long cap, long n)
     return v >= cap - n - 1 ? -2 : v;
 }
 
-long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
+/* the env variables a value names that are unset or empty, each once, in order (pi: getMissingConfigValueEnvVarNames) */
+typedef struct miss {
+    char name[8][96];
+    int n, extra;
+} miss;
+
+static void miss_note(miss *m, const char *nm)
+{
+    int i;
+    for (i = 0; i < m->n; i++)
+        if (!strcmp(m->name[i], nm))
+            return;
+    if (m->n < 8)
+        strcpy(m->name[m->n++], nm);
+    else
+        m->extra = 1;
+}
+
+/* the value expanded; with miss, an unset variable is noted and counts as empty instead of failing the value */
+static long expand(llm_cfg *c, const char *cfg, char *out, long cap, miss *ms)
 {
     long n = 0;
     const char *p = cfg;
@@ -139,7 +159,9 @@ long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
             memcpy(nm, p + 2, (size_t)l);
             nm[l] = 0;
             v = env_into(c, nm, out, cap, n);
-            if (v == -1 && c->unset_empty)
+            if (v == -1 && ms)
+                miss_note(ms, nm);
+            if (v == -1 && ms)
                 v = 0;
             if (v < 0)
                 return -1;
@@ -153,7 +175,9 @@ long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
                 nm[l++] = *q++;
             nm[l] = 0;
             v = env_into(c, nm, out, cap, n);
-            if (v == -1 && c->unset_empty)
+            if (v == -1 && ms)
+                miss_note(ms, nm);
+            if (v == -1 && ms)
                 v = 0;
             if (v < 0)
                 return -1;
@@ -167,6 +191,48 @@ long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
     }
     out[n] = 0;
     return n;
+}
+
+long llm_cfg_value(llm_cfg *c, const char *cfg, char *out, long cap)
+{
+    return expand(c, cfg, out, cap, 0);
+}
+
+long llm_cfg_value_strict(llm_cfg *c, const char *cfg, const char *what, char *out, long cap, char *err, long errcap)
+{
+    miss ms;
+    long n;
+    int i;
+    memset(&ms, 0, sizeof(ms));
+    err[0] = 0;
+    if (cfg[0] == '!') {
+        /* pi's resolveConfigValueUncached: the command runs every time; no output, a failure or a timeout is none */
+        n = c->run && cap > 0 ? c->run(c->u, cfg + 1, out, cap) : -1;
+        c->runs++;
+        if (n > 0) {
+            out[n] = 0;
+            return n;
+        }
+        cl_copy(err, "Failed to resolve ", errcap);
+        cl_cat(err, what, errcap);
+        cl_cat(err, " from shell command: ", errcap);
+        cl_cat(err, cfg + 1, errcap);
+        return -1;
+    }
+    n = expand(c, cfg, out, cap, &ms);
+    if (n >= 0 && !ms.n)
+        return n;
+    cl_copy(err, "Failed to resolve ", errcap);
+    cl_cat(err, what, errcap);
+    if (ms.n) {
+        cl_cat(err, ms.n == 1 && !ms.extra ? " from environment variable: " : " from environment variables: ", errcap);
+        for (i = 0; i < ms.n; i++) {
+            if (i)
+                cl_cat(err, ", ", errcap);
+            cl_cat(err, ms.name[i], errcap);
+        }
+    }
+    return -1;
 }
 
 void llm_key_env_name(const char *provider, char *out, long cap)
