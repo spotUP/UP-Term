@@ -9,6 +9,8 @@
 #include <string.h>
 #include "backend.h"
 #include "registry.h"
+#include "constrain.h"
+#include "estimate.h"
 #include "../claude/http.h"
 #include "../claude/util.h"
 
@@ -273,7 +275,7 @@ static int o_body(const llm_ctx *x, jw *w)
     const llm_model *md = x->model;
     llm_compat cp = compat_of(md);
     int i, k = 0;
-    long maxt = x->max_tokens > 0 ? x->max_tokens : md->max_tokens;
+    long maxt = llm_ctx_max_tokens(x);
     jw_rawz(w, "{\"model\":");
     jw_strz(w, md->id);
     jw_rawz(w, ",\"messages\":[");
@@ -346,9 +348,11 @@ static int o_body(const llm_ctx *x, jw *w)
     if (x->tools && x->tools_n > 2) {
         jv ts, t, v;
         jit it;
-        int n = 0;
+        int n = 0, st;
+        jw sch;
         if (json_parse(x->tools, x->tools_n, &ts) || json_type(ts) != J_ARR)
             return -1;
+        jw_init(&sch);
         jw_rawz(w, ",\"tools\":[");
         json_iter(ts, &it);
         while (json_next(&it, 0, &t)) {
@@ -361,13 +365,24 @@ static int o_body(const llm_ctx *x, jw *w)
                 jw_rawz(w, ",\"description\":");
                 jw_raw(w, v.p, v.n);
             }
+            /* resolveJsonSchemaStrictSampling, then getJsonSchemaToolParameters; "strict" only where the model supports it */
+            st = llm_tool_strict(t, md->compat.strict_tools == 1, LCS_NONE, &sch, 0, 0);
+            if (st < 0) {
+                jw_free(&sch);
+                return -1;
+            }
             jw_rawz(w, ",\"parameters\":");
-            if (json_get(t, "parameters", &v))
+            if (st == 1)
+                jw_raw(w, sch.p, sch.n);
+            else if (json_get(t, "parameters", &v))
                 jw_raw(w, v.p, v.n);
             else
                 jw_rawz(w, "{\"type\":\"object\"}");
+            if (md->compat.strict_tools == 1)
+                jw_rawz(w, st == 1 ? ",\"strict\":true" : ",\"strict\":false");
             jw_rawz(w, "}}");
         }
+        jw_free(&sch);
         jw_raw(w, "]", 1);
     }
     jw_raw(w, "}", 1);

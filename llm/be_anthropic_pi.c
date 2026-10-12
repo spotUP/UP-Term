@@ -6,6 +6,8 @@
 #include "be_anthropic.h"
 #include "../claude/http.h"
 #include "registry.h"
+#include "constrain.h"
+#include "estimate.h"
 
 static long a_head(const char *host, int port, int tls, const char *path, const char *key,
                    const char *user_agent, long body_len, char *out, long cap)
@@ -46,7 +48,7 @@ enum { K_USER_STR, K_USER, K_RESULT, K_SYS, K_ASSIST };
 
 typedef struct ap {
     const llm_ctx *c;
-    int mid_sys, mid_effort, mid_tools, eager, cache_tools, empty_sig;
+    int mid_sys, mid_effort, mid_tools, eager, cache_tools, empty_sig, strict;
     int has_init;               /* msgs[0] is the initial system message */
     jv init;
     jv itl[AP_TOOLS];           /* the initial tools */
@@ -234,13 +236,25 @@ static long sys_update(jw *w, jv m)
     return w->n - start;
 }
 
-/* one tool as the API takes it (pi's convertTools): the schema is rebuilt from properties and required */
-static int w_tool(jw *w, jv t, int eager, int cache)
+/* one tool as the API takes it (pi's convertTools): a tool with constrainedSampling goes out strict when the model
+ * supports it (resolveJsonSchemaStrictSampling), its input_schema then the strict one; otherwise the schema is
+ * rebuilt from properties and required. 0, -1 */
+static int w_tool(jw *w, jv t, int eager, int cache, int strict)
 {
     jv v, pr;
-    jw_rawz(w, "{\"name\":");
-    if (!json_get(t, "name", &v))
+    jw sch;
+    int st;
+    jw_init(&sch);
+    st = llm_tool_strict(t, strict, LCS_ANTHROPIC, &sch, 0, 0);
+    if (st < 0) {
+        jw_free(&sch);
         return -1;
+    }
+    jw_rawz(w, "{\"name\":");
+    if (!json_get(t, "name", &v)) {
+        jw_free(&sch);
+        return -1;
+    }
     jw_raw(w, v.p, v.n);
     if (json_get(t, "description", &v)) {
         jw_rawz(w, ",\"description\":");
@@ -248,30 +262,46 @@ static int w_tool(jw *w, jv t, int eager, int cache)
     }
     if (eager)
         jw_rawz(w, ",\"eager_input_streaming\":true");
-    jw_rawz(w, ",\"input_schema\":{\"type\":\"object\",\"properties\":");
-    if (json_get(t, "parameters", &pr) && json_get(pr, "properties", &v) && json_type(v) != J_NULL)
-        jw_raw(w, v.p, v.n);
-    else
-        jw_rawz(w, "{}");
-    jw_rawz(w, ",\"required\":");
-    if (json_get(t, "parameters", &pr) && json_get(pr, "required", &v) && json_type(v) != J_NULL)
-        jw_raw(w, v.p, v.n);
-    else
-        jw_rawz(w, "[]");
-    jw_raw(w, "}", 1);
+    if (st == 1)
+        jw_rawz(w, ",\"strict\":true");
+    if (st == 1) {
+        /* {...parameters, type, properties, required}: the strict schema, properties appended when it had none */
+        jv sv;
+        jw_rawz(w, ",\"input_schema\":");
+        if (!json_parse(sch.p, sch.n, &sv) && !json_get(sv, "properties", &v)) {
+            jw_raw(w, sch.p, sch.n - 1);
+            jw_rawz(w, ",\"properties\":{}}");
+        } else
+            jw_raw(w, sch.p, sch.n);
+    } else {
+        jw_rawz(w, ",\"input_schema\":{\"type\":\"object\",\"properties\":");
+        if (json_get(t, "parameters", &pr) && json_get(pr, "properties", &v) && json_type(v) != J_NULL)
+            jw_raw(w, v.p, v.n);
+        else
+            jw_rawz(w, "{}");
+        jw_rawz(w, ",\"required\":");
+        if (json_get(t, "parameters", &pr) && json_get(pr, "required", &v) && json_type(v) != J_NULL)
+            jw_raw(w, v.p, v.n);
+        else
+            jw_rawz(w, "[]");
+        jw_raw(w, "}", 1);
+    }
+    jw_free(&sch);
     if (cache)
         jw_rawz(w, AP_CACHE);
     jw_raw(w, "}", 1);
     return 0;
 }
 
-static void w_tools(jw *w, const jv *tl, int n, int eager, int cache)
+static int w_tools(jw *w, const jv *tl, int n, int eager, int cache, int strict)
 {
     int i;
     for (i = 0; i < n; i++) {
         jw_rawz(w, i ? "," : "");
-        w_tool(w, tl[i], eager, cache && i == n - 1);
+        if (w_tool(w, tl[i], eager, cache && i == n - 1, strict))
+            return -1;
     }
+    return 0;
 }
 
 static int tool_find(const jv *tl, int n, jv name)
@@ -339,6 +369,7 @@ static int plan(const llm_ctx *c, ap *a)
     a->eager = flag(c->model->compat.eager_tools, 1);
     a->cache_tools = flag(c->model->compat.cache_tools, 1);
     a->empty_sig = flag(c->model->compat.empty_signature, 0);
+    a->strict = flag(c->model->compat.strict_tools, 0);
     if (a->mid_sys && c->nmsg > 0 && !json_parse(c->msgs[0], c->msg_n[0], &m) && json_get(m, "role", &r) &&
         json_streq(r, "system")) {
         a->has_init = 1;
@@ -546,9 +577,11 @@ static long think_budget(int level)
 static int think_mode(const llm_ctx *c, long *maxt, long *budget)
 {
     const llm_model *m = c->model;
-    long mm = m->max_tokens > 0 ? m->max_tokens : 8192, base = c->max_tokens > 0 ? c->max_tokens : -1, b;
+    long mm = m->max_tokens > 0 ? m->max_tokens : 8192, base = c->max_tokens > 0 ? c->max_tokens : mm, b, m1;
     int lv;
-    *maxt = base > 0 ? base : mm;
+    /* buildBaseOptions: the cap clamped to the context window */
+    base = llm_clamp_max_tokens(m, c->est_tokens, base);
+    *maxt = base;
     if (!m->reasoning)
         return 0;
     lv = llm_think_clamp(m, c->thinking);
@@ -557,9 +590,12 @@ static int think_mode(const llm_ctx *c, long *maxt, long *budget)
     if (m->adaptive)
         return 2;
     b = think_budget(lv);
-    *maxt = base < 0 ? mm : (base + b < mm ? base + b : mm);
+    /* adjustMaxTokensForThinking, clampMaxTokensToContext again, then min(budget, maxTokens - 1024) */
+    m1 = base + b < mm ? base + b : mm;
+    if (m1 <= b)
+        b = b < (m1 > 1024 ? m1 - 1024 : 0) ? b : (m1 > 1024 ? m1 - 1024 : 0);
+    *maxt = llm_clamp_max_tokens(m, c->est_tokens, m1);
     {
-        /* adjustMaxTokensForThinking, then min(budget, maxTokens - 1024): the two clamps are one */
         long room = *maxt > 1024 ? *maxt - 1024 : 0;
         *budget = b < room ? b : room;
     }
@@ -678,7 +714,7 @@ static int sys_message(const ap *a, jv m, jw *b)
             while (json_next(&it, 0, &v)) {
                 jw_rawz(b, k ? "," : "");
                 jw_rawz(b, "{\"type\":\"tool_addition\",\"tool\":{\"type\":\"tool_definition\",\"definition\":");
-                if (w_tool(b, v, a->eager, 0))
+                if (w_tool(b, v, a->eager, 0, a->strict))
                     return -1;
                 jw_rawz(b, "}}");
                 k++;
@@ -871,13 +907,15 @@ static int a_body(const llm_ctx *c, jw *w)
         w->p[w->n] = 0;
     if (a.native_tools) {
         jw_rawz(w, ",\"tools\":[");
-        w_tools(w, a.itl, a.nitl, a.eager, a.cache_tools);
+        if (w_tools(w, a.itl, a.nitl, a.eager, a.cache_tools, a.strict))
+            goto out;
         jw_rawz(w, ",{\"name\":\"__pi_deferred_placeholder__\",\"description\":\"Reserved placeholder. Never available. "
                    "Never call this.\",\"input_schema\":{\"type\":\"object\",\"properties\":{},\"required\":[]},"
                    "\"defer_loading\":true}]");
     } else if (a.ntl > 0) {
         jw_rawz(w, ",\"tools\":[");
-        w_tools(w, a.tl, a.ntl, a.eager, a.cache_tools);
+        if (w_tools(w, a.tl, a.ntl, a.eager, a.cache_tools, a.strict))
+            goto out;
         jw_raw(w, "]", 1);
     }
     if (a.mid_effort)
