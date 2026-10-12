@@ -237,6 +237,10 @@ void llm_w_usage(jw *w, const llm_usage *u)
     jw_long(w, u->cache_read);
     jw_rawz(w, ",\"cacheWrite\":");
     jw_long(w, u->cache_write);
+    if (u->has_1h && u->combined) {
+        jw_rawz(w, ",\"cacheWrite1h\":");
+        jw_long(w, u->cache_write_1h);
+    }
     jw_rawz(w, ",\"totalTokens\":");
     jw_long(w, u->input + u->output + u->cache_read + u->cache_write);
     jw_rawz(w, ",\"cost\":{");
@@ -250,7 +254,7 @@ void llm_w_usage(jw *w, const llm_usage *u)
     jw_rawz(w, ",\"total\":");
     llm_w_micro(w, u->cost[0] + u->cost[1] + u->cost[2] + u->cost[3]);
     jw_rawz(w, "}");
-    if (u->has_1h) {            /* pi-ai adds it to the usage object after the cost, from the anthropic stream */
+    if (u->has_1h && !u->combined) {    /* pi-ai adds it to the usage object after the cost, from the anthropic stream */
         jw_rawz(w, ",\"cacheWrite1h\":");
         jw_long(w, u->cache_write_1h);
     }

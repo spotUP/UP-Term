@@ -1844,6 +1844,20 @@ static void test_phs(void)
           strstr(c.p, "\"rawStopReason\":\"end_turn\"") && strstr(c.p, "\"thinkingLevel\":\"high\""));
     jw_free(&c);
     jw_free(&m);
+    {
+        /* a sum of two usages (compaction of a split turn): pi's combineUsage puts cacheWrite1h before totalTokens */
+        llm_usage u;
+        jw w;
+        memset(&u, 0, sizeof(u));
+        u.input = 2;
+        u.has_1h = u.combined = 1;
+        u.cache_write_1h = 7;
+        jw_init(&w);
+        llm_w_usage(&w, &u);
+        CHECK(w.p && strstr(w.p, "\"cacheWrite\":0,\"cacheWrite1h\":7,\"totalTokens\":2,\"cost\":{") != 0 &&
+              strstr(w.p, "\"total\":0}}") != 0);
+        jw_free(&w);
+    }
     phs_feed(&llm_be_anthropic, ant, 10, 0, &m);
     CHECK(m.p && strstr(m.p, "thinkingLevel") == 0);
     jw_free(&m);
