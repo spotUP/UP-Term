@@ -352,6 +352,9 @@ int tui_replace_tail(cl_tui *t, long mark, const char *s, long n);
 void tui_scroll(cl_tui *t, int act);
 /* the window's title (OSC 2), sent only when it changes */
 void tui_title(cl_tui *t, const char *s);
+/* bytes for the terminal itself, written now and not part of the screen (amiga-pi's OSC 7501 program status); nothing
+ * before tui_start or after tui_stop */
+void tui_raw(cl_tui *t, const char *s, long n);
 /* the bell and a desktop notification (OSC 9) */
 void tui_notify(cl_tui *t, const char *msg);
 /* the next typed-ahead prompt (plain ones in a row joined by newlines; a
