@@ -31,7 +31,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 SHOTS = os.path.join(paths.RIG, 'shots')
 LOG = os.path.join(paths.RIG, 'claude_fixture.log')
 URL = 'http://127.0.0.1:8080/v1/messages'
-RET, ESC, TAB = 0x44, 0x45, 0x42
+from typewin import RET, ESC, TAB, typ, key, open_xcon
 fails = []
 
 
@@ -39,16 +39,6 @@ def check(name, ok, detail=''):
     print('[%s] %s %s' % ('PASS' if ok else 'FAIL', name, '' if ok else detail), flush=True)
     if not ok:
         fails.append(name)
-
-
-def typ(s):
-    ami.req(0x08, bytes([4]) + s.encode('latin-1'))
-    time.sleep(0.6)
-
-
-def key(k, q=0, wait=0.7):
-    ami.key(k, q)
-    time.sleep(wait)
 
 
 def shot(name):
@@ -74,16 +64,7 @@ def requests():
 
 
 def window(title, root):
-    c.run('Run >NIL: NewShell "XCON:0/12/760/440/%s/CLOSE"' % title)
-    time.sleep(5)
-    w = ami.window(title)
-    if not w:
-        raise SystemExit('window %s never appeared' % title)
-    kx, ky = ami.pointer_scale()
-    x, y, ww, hh = w['box']
-    ami.script(('move', int((x + 300) * kx), int((y + 150) * ky)), ('wait', 2), ('button', 0, 1),
-               ('wait', 2), ('button', 0, 0), ('wait', 5))
-    time.sleep(1)
+    open_xcon(title)
     typ('Stack 32768')
     key(RET, wait=1)
     typ('C:Claude URL=%s ROOT=%s' % (URL, root) if os.environ.get('CLAUDE_IN_C') else

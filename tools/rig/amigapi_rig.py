@@ -101,9 +101,24 @@ ENVARC:amiga-pi/mcp.json is removed again. A visible window titled
 "amiga-pi step 10". The tree the binary was built in gives mcp-echo and
 fake_mcp.py (make -C <amiga-pi> amiga build/amiga/mcp-echo).
 
-  make build/amiga/pi-llmprobe build/amiga/Claude; make -C ~/Code/amiga-pi amiga
+Step 13 (N8): the TUI in an UP-Term window. amiga-pi runs in a visible XCON: window titled "amiga-pi step 13a/b/c" and
+the keys are typed into it the way claude_rig.py types them (tools/rig/typewin.py); the screen is read back as TEXT
+(Right Amiga A, Right Amiga C, VTC:snipprobe CLIP <file>), the rest from the fixture's request bodies and the
+session file. models.json names fixa/m1 (anthropic-messages, reasoning) and fixo/m2 (openai-completions) on the
+fixture, settings.json enables both. The fixture answers slowly (--delay 0.4: about 11 s a reply).
+  13a "hello", then while it works "steer me" + Enter and "and then this" + Alt+Enter (Left Amiga + Return, UP-Term's Meta key):
+      the screen holds "Steering: steer me" and "Follow-up: and then this"; the second request carries the
+      steering text (not the first), the third the follow-up; the session holds the three user messages in order
+  13a (also) Ctrl+D twice ends amiga-pi
+  13b Shift+Tab: "Thinking level: ..." on the screen and a second thinking_level_change in the session;
+      Ctrl+P: "Switched to ..." and model_change m2 (then thinking off) in the session
+  13c /tree: the selector shows ("Session Tree", "Type to search:")
+Verdicts are recorded in build/rig3/amigapi13.verdicts.json (build/<rig>/ of the rig used): a check that passed is
+not run again; a phase with every check recorded is skipped. --force runs everything again.
+
+  make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|10]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|10|13] [--force]
 """
 import argparse
 import json
@@ -119,6 +134,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
 import condev_rig as c  # noqa: E402
 import ami  # noqa: E402
+import typewin as tw  # noqa: E402
 
 ROOT = paths.VTCON
 VTC = paths.RIG / 'vtc'
@@ -859,6 +875,204 @@ def step7(port):
         c.run('Delete RAM:proj ALL QUIET')
 
 
+VERDICTS = paths.RIG / 'amigapi13.verdicts.json'
+STEP13 = {'a': ['13a Steering row', '13a Follow-up row', '13a steering text in request 2 only',
+                '13a follow-up text in request 3', '13a session: three user messages', '13a Ctrl+D twice ends amiga-pi'],
+          'b': ['13b Shift+Tab: Thinking level on screen', '13b Shift+Tab: thinking_level_change in session',
+                '13b Ctrl+P: Switched to on screen', '13b Ctrl+P: model_change m2 in session'],
+          'c': ['13c /tree: the selector shows']}
+force13 = False
+
+
+def verdicts():
+    try:
+        return json.loads(VERDICTS.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def record(name, ok, detail=''):
+    v = verdicts()
+    v[name] = 'PASS' if ok else 'FAIL'
+    VERDICTS.write_text(json.dumps(v, indent=1, sort_keys=True) + '\n')
+    check(name, ok, detail)
+
+
+def phase_due(ph):
+    v = verdicts()
+    return force13 or any(v.get(n) != 'PASS' for n in STEP13[ph])
+
+
+def session_entries(sess):
+    """(file, entries) of the newest session file the Amiga wrote, or the one `newer_than` names"""
+    files = sorted(sess.glob('*/*.jsonl'), key=lambda f: f.stat().st_mtime) if sess.exists() else []
+    if not files:
+        return None, []
+    return files[-1], [json.loads(l) for l in files[-1].read_text(encoding='utf-8').splitlines() if l.strip()]
+
+
+def user_texts(entries):
+    out = []
+    for e in entries:
+        m = e.get('message') or {}
+        if e.get('type') == 'message' and m.get('role') == 'user':
+            c_ = m.get('content')
+            out.append(c_ if isinstance(c_, str) else ' '.join(b.get('text', '') for b in c_ if isinstance(b, dict)))
+    return out
+
+
+def step13(port):
+    global force13
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    if not (ROOT / 'build' / 'amiga' / 'snipprobe').exists():
+        sys.exit('[ERROR] build/amiga/snipprobe missing: make build/amiga/snipprobe')
+    if not any(phase_due(p) for p in STEP13):
+        print('13: every check already recorded as PASS in %s (--force to run again)' % VERDICTS)
+        return
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    shutil.copy(ROOT / 'build' / 'amiga' / 'snipprobe', VTC / 'snipprobe')
+    had = assigns()
+    saved_dir = ami.read_file('ENVARC:up-term/Dir')
+    log = paths.RIG / 'amigapi_fixture13.log'
+    dump = paths.RIG / 'amigapi_dump13'
+    kit = VTC / 'pi-kit'
+    sess = kit / 'var' / 'amiga-pi' / 'sessions'
+    agent = VTC / 'pi13agent'
+    base = 'http://127.0.0.1:%d' % port
+    fx = None
+    made_assign = False
+
+    def fixture():
+        nonlocal fx
+        if fx:
+            fx.terminate()
+        shutil.rmtree(dump, ignore_errors=True)
+        dump.mkdir()
+        fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                               '--delay', '0.4', '--dump', str(dump)], stdout=open(log, 'w'),
+                              stderr=subprocess.STDOUT)
+        time.sleep(1)
+
+    def requests():
+        return len(list(dump.glob('*.json')))
+
+    def wait_requests(n, secs=120):
+        for _ in range(secs * 2):
+            if requests() >= n:
+                return True
+            time.sleep(0.5)
+        return False
+
+    def launch(title, args):
+        tw.open_xcon(title)
+        tw.typ('Stack 32768')
+        tw.key(tw.RET, wait=1)
+        tw.typ('SetEnv PI_CODING_AGENT_DIR VTC:pi13agent')
+        tw.key(tw.RET, wait=1)
+        tw.typ('CD RAM:')
+        tw.key(tw.RET, wait=1)
+        tw.typ('VTC:amiga-pi --model fixa/m1 --no-tools ' + args)
+        tw.key(tw.RET, wait=10)
+
+    def leave():
+        tw.key(0x22, tw.CTRL, wait=0.2)   # Ctrl+D twice within 0.8 s on the empty editor ends amiga-pi
+        tw.key(0x22, tw.CTRL, wait=3)
+        gone = 'VTC:amiga-pi' not in c.run('Status')[1]
+        tw.typ('endcli')
+        tw.key(tw.RET, wait=2)
+        return gone
+
+    def text(name):
+        t = tw.screen_text('RAM:pi13-%s.txt' % name)
+        (paths.RIG / ('amigapi13-%s.txt' % name)).write_text(t)
+        return t
+
+    try:
+        agent.mkdir(exist_ok=True)
+        (agent / 'models.json').write_text(json.dumps({'providers': {
+            'fixa': {'baseUrl': base, 'api': 'anthropic-messages',
+                     'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
+            'fixo': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
+                     'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
+        (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixa/m1', 'fixo/m2'], 'quietStartup': True}))
+        c.run('MakeDir VTC:pi-kit VTC:pi-kit/bin ENVARC:up-term')
+        with open(VTC / 'pi-kit-dir', 'w') as f:
+            f.write('VTC:pi-kit\n')
+        c.run('Copy VTC:pi-kit-dir ENVARC:up-term/Dir')
+        c.run('Copy VTC:pi-kit-dir ENV:up-term/Dir')
+        made_assign = True
+        shutil.rmtree(sess, ignore_errors=True)
+        if phase_due('a'):
+            fixture()
+            launch('amiga-pi step 13a', '')
+            tw.typ('hello')
+            tw.key(tw.RET, wait=4)
+            tw.typ('steer me')
+            tw.key(tw.RET, wait=2)               # Enter while it works: steering
+            tw.typ('and then this')
+            tw.key(tw.RET, tw.LAMIGA, wait=2)    # Alt+Enter: UP-Term's Meta key is Left Amiga, it sends ESC CR
+            t = text('13a')
+            record('13a Steering row', 'Steering: steer me' in t, repr(t[-600:]))
+            record('13a Follow-up row', 'Follow-up: and then this' in t, repr(t[-600:]))
+            done = wait_requests(3)
+            time.sleep(30)
+            b = [json.dumps(body_of(dump, k)) for k in (1, 2, 3)]
+            record('13a steering text in request 2 only', done and 'steer me' not in b[0] and 'steer me' in b[1],
+                   repr([('steer me' in x) for x in b]))
+            record('13a follow-up text in request 3', done and 'and then this' in b[2] and 'and then this' not in b[1],
+                   repr([('and then this' in x) for x in b]))
+            gone = leave()
+            record('13a Ctrl+D twice ends amiga-pi', gone, 'amiga-pi still in Status')
+            f, ents = session_entries(sess)
+            record('13a session: three user messages', user_texts(ents) == ['hello', 'steer me', 'and then this'],
+                   repr(user_texts(ents)))
+        if phase_due('b'):
+            fixture()
+            launch('amiga-pi step 13b', '')
+            tw.typ('hello')
+            tw.key(tw.RET, wait=2)
+            wait_requests(1)
+            time.sleep(25)
+            f, ents = session_entries(sess)
+            name = f.name if f else ''
+            tw.key(tw.TAB, tw.SHIFT, wait=2)
+            t = text('13b-thinking')
+            record('13b Shift+Tab: Thinking level on screen', 'Thinking level: ' in t, repr(t[-400:]))
+            tw.key(0x19, tw.CTRL, wait=3)        # Ctrl+P
+            t = text('13b-model')
+            record('13b Ctrl+P: Switched to on screen', 'Switched to' in t, repr(t[-400:]))
+            leave()
+            f, ents = session_entries(sess)
+            kinds = [(e.get('type'), e.get('modelId') or e.get('thinkingLevel')) for e in ents
+                     if e.get('type') in ('model_change', 'thinking_level_change')]
+            record('13b Shift+Tab: thinking_level_change in session',
+                   [k for k in kinds if k[0] == 'thinking_level_change'][:2] != [] and
+                   len([k for k in kinds if k[0] == 'thinking_level_change']) >= 2, repr(kinds))
+            record('13b Ctrl+P: model_change m2 in session', ('model_change', 'm2') in kinds, repr(kinds))
+        if phase_due('c'):
+            fixture()
+            launch('amiga-pi step 13c', '-c')
+            tw.typ('/tree')
+            tw.key(tw.RET, wait=3)
+            t = text('13c')
+            record('13c /tree: the selector shows', 'Session Tree' in t and 'Type to search:' in t, repr(t[-600:]))
+            tw.key(tw.ESC, wait=1)
+            leave()
+    finally:
+        if fx:
+            fx.terminate()
+        c.run('Delete ENVARC:up-term/Dir ENV:up-term/Dir QUIET')
+        if made_assign:
+            if 'UP-TERM' not in had:
+                c.run('Assign UP-Term: REMOVE')
+            c.run('Delete VTC:pi-kit ALL QUIET')
+        c.run('Delete VTC:pi13agent ALL QUIET')
+        shutil.rmtree(agent, ignore_errors=True)
+        if saved_dir is not None:
+            ami.restore_file('ENVARC:up-term/Dir', saved_dir)
+
+
 def pathlib_home():
     return pathlib.Path.home()
 
@@ -866,8 +1080,11 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 10), help='one step only (default: all)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 10, 13), help='one step only (default: all but 13)')
+    ap.add_argument('--force', action='store_true', help='step 13: run every check again')
     a = ap.parse_args()
+    global force13
+    force13 = a.force
     if a.step in (None, 1):
         step1(a.port)
     if a.step in (None, 2):
@@ -884,6 +1101,8 @@ def main():
         step7(a.port + 6)
     if a.step in (None, 10):
         step10(a.port + 9)
+    if a.step == 13:
+        step13(a.port + 12)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 
