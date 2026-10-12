@@ -1015,7 +1015,7 @@ static const pi_bind pi_binds[] = {
     { "app.models.reorderUp", KC_CHAT, KA_INERT, "" }, { "app.models.reorderDown", KC_CHAT, KA_INERT, "" },
     { "app.thinking.cycle", KC_CHAT, KA_THINK_CYCLE, "shift+tab" },
     { "app.thinking.save", KC_CHAT, KA_INERT, "" }, { "app.thinking.toggle", KC_CHAT, KA_INERT, "" },
-    { "app.tools.expand", KC_GLOBAL, KA_TRANSCRIPT, "ctrl+o" },
+    { "app.tools.expand", KC_GLOBAL, KA_TOOLS_EXPAND, "ctrl+o" },
     { "app.message.copy", KC_CHAT, KA_INERT, "" },
     { "app.message.followUp", KC_CHAT, KA_FOLLOW_UP, "alt+enter" },
     { "app.message.dequeue", KC_CHAT, KA_DEQUEUE, "alt+up" },

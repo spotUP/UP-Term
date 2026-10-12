@@ -2898,6 +2898,10 @@ static int act_chat(cl_tui *t, int act, cl_key *k, int busy, char *buf, long cap
         if (t->on_cycle)
             t->on_cycle(t->qu, 1, 1);
         return H_GO;
+    case KA_TOOLS_EXPAND:
+        if (t->on_expand)
+            t->on_expand(t->qu);
+        return H_GO;
     case KA_CMD_NEW:
     case KA_CMD_TREE:
     case KA_CMD_FORK:
