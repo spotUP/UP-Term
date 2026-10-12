@@ -626,6 +626,11 @@ $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dripens.c
 
+# What a window on a public screen can get for direct colours (UT4: depth, entries, exclusive pens)
+$(BUILD)/amiga/penprobe: tests/amiga/penprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/penprobe.c
+
 $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldisc.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ttyprobe.c

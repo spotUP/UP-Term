@@ -54,10 +54,23 @@ static void set_view(vtwin *w, int lines);
 #define PROF_OUT(w, k)
 #endif
 
+/* A write or an erase over a selected cell drops the selection, as xterm does (UT5; the rule is
+ * vti_sel_hit). vr_select repaints the rows it held with the grid as it is. */
+static void sel_drop_if_hit(vtwin *w, int x0, int y0, int x1, int y1)
+{
+    int ax, ay, bx, by;
+    if (w->t && vr_selection(&w->r, &ax, &ay, &bx, &by) &&
+        vti_sel_hit(1, ax, ay, bx, by, 0, x0, y0, x1, y1)) {
+        w->dragging = 0;
+        vr_select(&w->r, 0, 0, 0, 0, 0);
+    }
+}
+
 static void cb_damage(void *u, int x0, int y0, int x1, int y1)
 {
     vtwin *w = (vtwin *)u;
     PROF_IN(w);
+    sel_drop_if_hit(w, x0, y0, x1, y1);
     vr_damage(&w->r, x0, y0, x1, y1);
     PROF_OUT(w, 0);
 }
@@ -65,8 +78,19 @@ static void cb_damage(void *u, int x0, int y0, int x1, int y1)
 static void cb_scroll(void *u, int top, int bot, int n)
 {
     vtwin *w = (vtwin *)u;
+    int ax, ay, bx, by, hit = 0;
+    long now = w->t ? vt_lines_scrolled(w->t) : 0;
     PROF_IN(w);
+    /* vr_selection gives rows relative to the screen now: base 0 for vti_sel_scroll_hit */
+    if (w->t && vr_selection(&w->r, &ax, &ay, &bx, &by))
+        hit = vti_sel_scroll_hit(1, ax, ay, bx, by, 0, top, bot, vt_rows(w->t), n, now - w->scroll_base);
+    w->scroll_base = now;
     vr_scroll(&w->r, top, bot, n);
+    if (hit) {
+        w->dragging = 0;
+        vr_select(&w->r, 0, 0, 0, 0, 0);
+        vr_damage(&w->r, 0, top, vt_cols(w->t), bot); /* the moved rows carried the highlight */
+    }
     PROF_OUT(w, 1);
 }
 
@@ -854,6 +878,7 @@ int vtwin_attach(vtwin *w, struct Window *win)
     }
     if (!w->t)
         return 0;
+    w->scroll_base = vt_lines_scrolled(w->t);
     vt_set_personality(w->t, w->pers);
     if (w->pers == VT_XTERM)
         vt_set_onlcr(w->t, 1); /* LF out as CR LF, as a Unix tty does */

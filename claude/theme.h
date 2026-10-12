@@ -50,8 +50,8 @@ const char *theme_named(const char *name);
  * 256-palette index, #rgb / #rrggbb, "" for the terminal's own, a variable,
  * okhsl() / okhsl() (decoded by the caller's hook) -- and a faint flag. The
  * ONE place a colour is brought down to this screen's palette is
- * pitheme_sgr(): hl_rgb_to_16 / hl_rgb_to_256 by the depth (16: the
- * window's own ANSI colours, UP-Term's default). pitheme_system() is pi's
+ * pitheme_sgr(): hl_rgb_to_16 / hl_rgb_to_256 / 38;2 by the depth (16: the
+ * window's own ANSI colours; a loaded theme is 256 or truecolor as pitheme_depth says). pitheme_system() is pi's
  * default theme as pi draws it on a terminal that reports no colours: ANSI
  * indices 0-15, neutral roles faint, panels without a background. */
 enum {
@@ -68,11 +68,13 @@ enum {
     PR_COUNT
 };
 
+#define PITHEME_TRUE 24 /* cl_pitheme.depth: colours as 38;2;r;g;b */
+
 typedef struct cl_pitheme {
     char name[64];
     long color[PR_COUNT];       /* hl_style.h: HL_DEFAULT, 0..255, HL_RGB() */
     unsigned char dim[PR_COUNT];/* drawn faint (SGR 2) on top */
-    int depth;                  /* 16 or 256: what pitheme_sgr sends */
+    int depth;                  /* 16, 256 or PITHEME_TRUE: what pitheme_sgr sends */
 } cl_pitheme;
 
 extern const char *const pi_role_names[PR_COUNT];
@@ -90,6 +92,9 @@ int pitheme_load(cl_pitheme *t, const char *json, long n, pitheme_ext ext, char 
  * "" for the terminal's own colour (and SGR 2 first for a faint role): the
  * length. out holds 48 bytes. */
 int pitheme_sgr(const cl_pitheme *t, int role, char *out);
+/* The depth pi would use on a terminal with this environment (pi-tui 1.0.4): PITHEME_TRUE when COLORTERM is
+ * truecolor / 24bit or TERM ends in -direct (PI_TRUE_COLOR "1" / "0" decides first), else 256. NULL: unset. */
+int pitheme_depth(const char *term, const char *colorterm, const char *pi_true_color);
 /* a colour (HL_DEFAULT, 0..255, HL_RGB) as the SGR that sets it: the one place a colour of pi's is brought
  * down to this screen's palette (t->depth). out holds 48 bytes. */
 int pitheme_color(const cl_pitheme *t, long color, int bg, char *out);

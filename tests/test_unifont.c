@@ -360,51 +360,71 @@ static void fallback_asks_outline_then_unifont_after_the_font(void)
     CHECK(vt_fallback_glyph(0, 0x2013, 1, &bpr) == 0);
 }
 
-/* W33: Claude Code's prompt U+276F, its en dashes, U+23F5, the middle dot
- * drew as Unifont glyphs on the U2 build; main drew '>' '-' '>' and the
- * font's dot. The stand-in comes before Unifont; an outline font the
- * profile names is still asked first (F1, as on main). */
-static void stand_in_cells_keep_their_stand_in_not_unifont(void)
+static const vt_u8 *no_unifont_page(void *src, vt_u32 cp, int cells, int *bpr)
 {
-    static const vt_u32 cps[4] = { 0x276F, 0x2013, 0x23F5, 0xB7 };
-    static const int want[4] = { '>', '-', '>', 0xB7 };
+    (void)src;
+    (void)cp;
+    (void)cells;
+    (void)bpr;
+    n_unifont++;
+    return 0; /* the page is not installed: Unifont has no glyph */
+}
+
+/* W33, reversed by the owner 2026-10-12 (UT6): Claude Code's prompt U+276F, its en and em dashes, U+23F5
+ * drew as the stand-ins '>' '-' '>' even with Unifont's pages installed. Unifont's own glyph comes first
+ * now; the stand-in is what draws when the page is missing. U+B7 is the font's own and stays. An outline
+ * font the profile names is still asked first (F1). */
+static void unifont_comes_before_shape_stand_ins_and_the_stand_in_is_the_fallback(void)
+{
+    static const vt_u32 cps[5] = { 0x276F, 0x2013, 0x2014, 0x23F5, 0xB7 };
+    static const int want[5] = { '>', '-', '-', '>', 0xB7 };
     vt_term *t = h_new(20, 2, VT_XTERM);
     vt_fallback f;
-    int i, n, bpr, x = 0;
+    int pass, i, n, bpr, x;
     const vt_cell *row;
     f.enc = VT_ENC_LATIN1;
     f.outline = 0;
     f.outline_src = 0;
-    f.unifont = fake_unifont;
     f.unifont_src = 0;
     f.colour = 0;
-    n_outline = n_unifont = 0;
-    h_put(t, "\xE2\x9D\xAF\xE2\x80\x93\xE2\x8F\xB5\xC2\xB7"); /* ❯–⏵· */
+    h_put(t, "\xE2\x9D\xAF\xE2\x80\x93\xE2\x80\x94\xE2\x8F\xB5\xC2\xB7"); /* prompt, en dash, em dash, U+23F5, dot */
     row = vt_row(t, 0, &n);
-    for (i = 0; i < 4; i++, x++) {
-        vt_u32 cp[VT_CLUSTER_CPS];
-        int ncp;
-        vt_glyph g;
-        while (x < n && row[x].width == 0)
-            x++;
-        CHECK_INT(row[x].ch, cps[i]);
-        CHECK(vt_cell_glyph(&f, t, &row[x], cp, &ncp, &bpr, &g) == 0);
-        CHECK_INT(g.kind, VT_GLYPH_FONT);
-        CHECK_INT(g.code, want[i]);
+    for (pass = 0; pass < 2; pass++) {
+        f.unifont = pass ? no_unifont_page : fake_unifont;
+        n_outline = n_unifont = 0;
+        for (i = 0, x = 0; i < 5; i++, x++) {
+            vt_u32 cp[VT_CLUSTER_CPS];
+            int ncp;
+            vt_glyph g;
+            const vt_u8 *m;
+            while (x < n && row[x].width == 0)
+                x++;
+            CHECK_INT(row[x].ch, cps[i]);
+            m = vt_cell_glyph(&f, t, &row[x], cp, &ncp, &bpr, &g);
+            if (pass == 0 && i < 4) {
+                CHECK(m == fake_mask + 16); /* Unifont's glyph, not the stand-in */
+            } else {
+                CHECK(m == 0);
+                CHECK_INT(g.kind, VT_GLYPH_FONT);
+                CHECK_INT(g.code, want[i]);
+            }
+        }
+        CHECK_INT(n_unifont, 4); /* asked for the four non-native cells, never for the font's own dot */
     }
-    CHECK_INT(n_unifont, 0);
     /* an outline font named in the profile is asked for them first */
+    f.unifont = fake_unifont;
     f.outline = fake_outline;
-    CHECK(vt_fallback_glyph(&f, 0x2013, 1, &bpr) == 0);
+    n_outline = n_unifont = 0;
+    CHECK(vt_fallback_glyph(&f, 0x2013, 1, &bpr) == fake_mask + 16);
     CHECK_INT(n_outline, 1);
-    CHECK_INT(n_unifont, 0);
+    CHECK_INT(n_unifont, 1);
     vt_free(t);
 }
 
 /* The owner (2026-10-05): the euro sign showed as 'E'. A letter stand-in
  * is a substitute: Unifont's real glyph comes first; with no Unifont the
- * stand-in still draws. A shape stand-in ('-' for the en dash) keeps its
- * place (the test above). */
+ * stand-in still draws. Shape stand-ins ('-' for the en dash) give way
+ * the same way since UT6 (the test above). */
 static void letter_stand_ins_give_way_to_unifont(void)
 {
     static const vt_u32 cps[3] = { 0x20AC, 0x2713, 0x25CF }; /* euro, check mark, black circle */
@@ -494,7 +514,7 @@ static void emoji_page_gives_a_glyph_two_cells_wide(void)
  * draw_rows walks it (render/amiga_render.c: every cell past ASCII through
  * vt_cell_glyph; the renderer itself has no host build, it draws through
  * Intuition): each character the font lacks and has no stand-in for
- * (an emoji too, over its two cells) reads its page once
+ * (an emoji too, over its two cells; the en dash too, UT6) reads its page once
  * (the loader's call count is the sentinel) and draws Unifont's glyph. */
 static void text_reaches_the_unifont_pages(void)
 {
@@ -535,8 +555,10 @@ static void text_reaches_the_unifont_pages(void)
                 CHECK(mk && bpr == 2 && mk[3 * 2] == 0x3F && mk[3 * 2 + 1] == 0xFE);
                 wide_drawn += mk != 0;
             }
-            if (cp[0] == 0xE9 || cp[0] == 0x2013)
-                CHECK(mk == 0); /* the font's own; the stand-in '-' */
+            if (cp[0] == 0xE9)
+                CHECK(mk == 0); /* the font's own */
+            if (cp[0] == 0x2013)
+                CHECK(mk && bpr >= 1); /* the en dash: Unifont's glyph, not the stand-in '-' (UT6) */
             if (cp[0] == 0x1F600) {
                 /* the emoji: two cells, Unifont's 16x16 row for row */
                 CHECK_INT(row[x].width, 2);
@@ -546,16 +568,16 @@ static void text_reaches_the_unifont_pages(void)
             drawn += mk != 0;
         }
     }
-    CHECK_INT(drawn, 8);      /* Ж 中 ☃ 😀, twice */
+    CHECK_INT(drawn, 10);     /* Ж 中 – ☃ 😀, twice */
     CHECK_INT(wide_drawn, 4);
-    CHECK_INT(l.loads, 4);    /* pages 04, 4E, 26, 1F6: once each */
+    CHECK_INT(l.loads, 5);    /* pages 04, 4E, 20, 26, 1F6: once each */
     CHECK_INT(l.calls[0x04], 1);
     CHECK_INT(l.calls[0x4E], 1);
     CHECK_INT(l.calls[0x1F6], 1);
-    CHECK_INT(l.calls[0x20], 0); /* the en dash keeps its stand-in */
+    CHECK_INT(l.calls[0x20], 1); /* the en dash reads its page (W33 reversed, UT6) */
     CHECK_INT(l.calls[0x00], 0); /* é is the font's */
     uf_flush(&c);
-    CHECK_INT(l.releases, 4);
+    CHECK_INT(l.releases, 5);
     vt_free(t);
 }
 
@@ -573,7 +595,7 @@ void suite_unifont(void)
     missing_page_file_is_a_replacement_and_read_once();
     corrupt_page_is_given_back_and_remembered();
     fallback_asks_outline_then_unifont_after_the_font();
-    stand_in_cells_keep_their_stand_in_not_unifont();
+    unifont_comes_before_shape_stand_ins_and_the_stand_in_is_the_fallback();
     letter_stand_ins_give_way_to_unifont();
     emoji_asks_unifont_over_two_cells();
     emoji_page_gives_a_glyph_two_cells_wide();

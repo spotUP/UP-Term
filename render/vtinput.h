@@ -121,4 +121,16 @@ int vti_paste_keeps(const vt_term *t, unsigned long ch);
 int vti_sel_dirty(int on_old, long ax, long ay, long bx, long by,
                   int on_new, long cx, long cy, long dx, long dy, long *y0, long *y1);
 
+/* 1 when a change to the cells x0 <= x < x1, y0 <= y < y1 of the visible grid touches a selected cell:
+ * the selection (on, from ax, ay to bx, by in absolute rows, any order of ends) must go, as xterm drops
+ * it when a write or an erase (ESC[2J, ED, EL, ECH, DCH) reaches it. base is vt_lines_scrolled. */
+int vti_sel_hit(int on, long ax, long ay, long bx, long by, long base, int x0, int y0, int x1, int y1);
+
+/* The same for a scroll of the rows top <= y < bot by n (down when n < 0) of a grid of `rows`: 1 when
+ * the selection must go. A scroll of the whole screen that feeds the scrollback (base_gain, how far
+ * vt_lines_scrolled rose, equals n) leaves it alone: the lines keep their absolute rows. A region, the
+ * alternate screen and a scroll down lose or move text under it. */
+int vti_sel_scroll_hit(int on, long ax, long ay, long bx, long by, long base, int top, int bot,
+                       int rows, int n, long base_gain);
+
 #endif

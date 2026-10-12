@@ -57,11 +57,12 @@ typedef int (*vt_colour_source)(void *src, vt_u32 cp, int cells);
 
 /* The sources asked for what the font cannot show itself, in this order:
  * the outline font the profile names (font-fallback, F1: the user's
- * choice, Nerd Font icons); then, for a code point vt_map_glyph has no
- * stand-in for ('-' for an en dash, '>' for U+276F), GNU Unifont
- * (render/unifont, U2: the BMP and plane 1's emoji). A shape stand-in is
- * never replaced by Unifont's glyph (ledger W33); a letter or digit
- * stand-in ('E' for the euro sign) is, when Unifont has the character. In Unifont's place, for a
+ * choice, Nerd Font icons); then GNU Unifont (render/unifont, U2: the BMP
+ * and plane 1's emoji), for every code point the font does not have, also
+ * one vt_map_glyph has a stand-in for ('-' for an en dash, '>' for U+276F,
+ * 'E' for the euro sign): the stand-in draws only when Unifont has no glyph
+ * (its page is not installed). Ledger W33 kept shape stand-ins before
+ * Unifont; the owner reversed it on 2026-10-12 (UT6). In Unifont's place, for a
  * two-cell cell, the colour source first (render/emoji, U4: Twemoji on a
  * true-colour RTG screen; it answers nothing anywhere else, and Unifont's
  * glyph is drawn). A source left 0 is skipped. */
