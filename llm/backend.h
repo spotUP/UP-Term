@@ -26,7 +26,8 @@ typedef struct llm_compat {
     int strict_tools;           /* supportsStrictMode (openai-completions, openai-responses) / supportsStrictTools (anthropic-messages): tools carrying constrainedSampling go out strict (llm/constrain.h) */
     /* anthropic-messages (pi-ai getAnthropicCompat; LC_UNSET: pi's default) */
     int mid_effort;             /* supportsMidConvoEffort: adaptive thinking bound to the level sent as system messages */
-    int mid_system;             /* supportsMidConvoSystemMessages: later system messages stay in the transcript */
+    int mid_system;             /* supportsMidConvoSystemMessages: later system messages stay in the transcript (anthropic-messages, openai-responses) */
+    int add_tools;              /* supportsAdditionalTools (openai-responses): later tool additions go in the request as additional_tools items */
     int mid_tools;              /* supportsMidConvoToolChanges: tool changes as tool_addition / tool_removal blocks */
     int eager_tools;            /* supportsEagerToolInputStreaming (default on) */
     int cache_tools;            /* supportsCacheControlOnTools (default on) */
@@ -111,8 +112,8 @@ extern const llm_backend llm_be_openai_responses;
  * model's supportsMidConvoEffort is on): "low".."max", 0 when the model does not manage the effort */
 const char *llm_ant_effort(const llm_model *m, int thinking);
 /* does the model take the transcript's system messages mid-conversation (pi-ai supportsMidConvoSystemMessages on
- * anthropic-messages): its requests carry them in place, the first as the initial one */
-int llm_ant_mid_system(const llm_model *m);
+ * anthropic-messages or openai-responses): its requests carry them in place, the first as the initial one */
+int llm_mid_system(const llm_model *m);
 /* the backend of an api name, 0 none */
 const llm_backend *llm_backend_of(const char *api);
 /* calls of each backend's feed since the start (the reachability tests' sentinel) */
