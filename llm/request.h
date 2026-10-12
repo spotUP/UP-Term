@@ -125,7 +125,7 @@ typedef struct llm_req {
     const char *xhead;          /* extra header lines "Name: value\r\n" added to the head (models.json), 0 none */
     llm_hooks h;
     const llm_sink *sink;
-    int retries;                /* 0: 3 */
+    int retries;                /* 0: 3, -1: none (the caller retries: amiga-pi's agent loop, as pi's agent session does) */
     long base_ms, cap_ms, idle_ms;  /* 0: 2000, 60000, 300000 */
     /* out */
     int attempts;

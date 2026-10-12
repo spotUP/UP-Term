@@ -144,7 +144,7 @@ int llm_request(llm_req *q)
     gate g;
     llm_sink gk;
     rq r;
-    int retries = q->retries > 0 ? q->retries : 3, attempt;
+    int retries = q->retries < 0 ? 0 : q->retries > 0 ? q->retries : 3, attempt;
     long base = q->base_ms > 0 ? q->base_ms : 2000, cap = q->cap_ms > 0 ? q->cap_ms : 60000;
     q->attempts = 0;
     q->key_sent = 0;
