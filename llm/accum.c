@@ -24,6 +24,11 @@ void llm_acc_level(llm_acc *a, const char *level)
     cl_copy(a->level, level ? level : "", sizeof(a->level));
 }
 
+void llm_acc_thinking(llm_acc *a, const char *level)
+{
+    cl_copy(a->tlevel, level ? level : "", sizeof(a->tlevel));
+}
+
 /* tokens * price / 1e6 in micro-dollars without leaving 32 bits */
 static long cost_of(long tokens, long price)
 {
@@ -39,6 +44,9 @@ void llm_acc_meta(const llm_acc *a, llm_meta *m)
     m->provider = a->provider;
     m->model = a->cfg_model[0] ? a->cfg_model : a->model;
     m->level = a->level[0] ? a->level : 0;
+    m->thinking_level = a->tlevel[0] ? a->tlevel : 0;
+    m->response_id = a->id[0] ? a->id : 0;
+    m->raw_stop = a->stop_raw[0] ? a->stop_raw : 0;
     m->response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
     m->usage = a->usage;
     if (a->cfg_model[0]) {
@@ -252,6 +260,10 @@ void llm_acc_event(void *u, const llm_event *e)
             a->usage.cache_read = e->cache_r;
         if (e->cache_w >= 0)
             a->usage.cache_write = e->cache_w;
+        if (e->has_w1h) {
+            a->usage.cache_write_1h = e->cache_w1h;
+            a->usage.has_1h = 1;
+        }
         break;
     case LE_STOP:
         if (e->stop == LS_ERROR) {
@@ -273,6 +285,8 @@ void llm_acc_event(void *u, const llm_event *e)
             fail(a, e->stop == LS_ABORTED ? LS_ABORTED : LS_ERROR,
                  ev_text(e, m, sizeof(m)) ? m : e->err_type ? e->err_type : "error");
         }
+        if (e->stop_raw)
+            copyn(a->stop_raw, sizeof(a->stop_raw), e->stop_raw);
         a->done = 1;
         break;
     }

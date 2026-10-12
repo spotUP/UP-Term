@@ -918,10 +918,10 @@ def mask_rpc(o, spec):
     import math, re
     fresh = re.compile(r'^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?!d000)[0-9a-f]{8})$')
     http_err = re.compile(r'^(HTTP )?[1-5][0-9][0-9][ :]')
-    drop, star, ids = set(spec['drop']), set(spec['star']), set(spec['ids']['keys'])
+    star, ids = set(spec['star']), set(spec['ids']['keys'])
     prov = spec['fixtureProvider']
 
-    def m(v, start=False, cost=False):
+    def m(v, start=False, cost=False, ovf=False):
         if isinstance(v, list):
             return [m(x) for x in v]
         if not isinstance(v, dict):
@@ -933,9 +933,9 @@ def mask_rpc(o, spec):
             if k == 'description' and v.get('name') == 'bash':
                 r[k] = '*'
                 continue
-            if k in drop:
+            if k == 'responseId' and start:
                 continue
-            if k in star:
+            if k in star or (ovf and k == 'tokensBefore'):
                 r[k] = '*'
             elif cost and isinstance(x, (int, float)) and not isinstance(x, bool):
                 r[k] = 'u$%d' % math.floor(x * 1e6 + 0.5)    # as test_pi_modes.c rounds
@@ -953,6 +953,8 @@ def mask_rpc(o, spec):
                 r[k] = '*'
             elif k == 'message' and start_msg:
                 r[k] = m(x, True)
+            elif k == 'result' and v.get('type') == 'compaction_end' and v.get('reason') == 'overflow' and v.get('willRetry') is True:
+                r[k] = m(x, ovf=True)
             elif k == 'models' and isinstance(x, list):
                 r[k] = [m(e) for e in x if isinstance(e, dict) and e.get('provider') == prov]
             else:

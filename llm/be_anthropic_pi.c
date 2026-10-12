@@ -772,10 +772,41 @@ static void *a_new(void)
     return d;
 }
 
+/* usage.cacheWrite1h, which C:Claude's decoder (be_anthropic.c, shared) does not read: pi-ai sets it from message_start's
+ * usage.cache_creation.ephemeral_1h_input_tokens whatever the counts (0 without), and from a message_delta's only when
+ * the delta carries it (anthropic-messages.ts:684, 846) */
+static void w1h(const char *data, long n, const llm_sink *k)
+{
+    jv ev, t, u, cc, v;
+    llm_event e;
+    int start;
+    if (json_parse(data, n, &ev) || !json_get(ev, "type", &t))
+        return;
+    start = json_streq(t, "message_start");
+    if (start) {
+        jv m;
+        if (!json_get(ev, "message", &m) || !json_get(m, "usage", &u))
+            return;
+    } else if (!json_streq(t, "message_delta") || !json_get(ev, "usage", &u))
+        return;
+    llm_event_init(&e, LE_USAGE);
+    if (json_get(u, "cache_creation", &cc) && json_type(cc) == J_OBJ && json_get(cc, "ephemeral_1h_input_tokens", &v)) {
+        e.cache_w1h = json_long(v, 0);
+        e.has_w1h = 1;
+    } else if (start)
+        e.has_w1h = 1;
+    if (e.has_w1h && k && k->ev)
+        k->ev(k->u, &e);
+}
+
 static int a_feed(void *dec, const char *event, const char *data, long n, const llm_sink *k)
 {
+    int rc;
     (void)event;
-    return llm_anth_feed((llm_anth_dec *)dec, data, n, k);
+    rc = llm_anth_feed((llm_anth_dec *)dec, data, n, k);
+    if (rc == 0)
+        w1h(data, n, k);
+    return rc;
 }
 
 static void a_free(void *dec)
