@@ -52,6 +52,12 @@
 #define TUI_DIRS 4              /* directory listings kept for the @ list */
 #define TUI_DIR_NAMES 400       /* names kept from one directory at most */
 
+/* the look: Claude Code's (the default) or pi's (amiga-pi plan N0): no
+ * frame, the editor between two rules with its cursor drawn as a reverse
+ * cell, the working row in the top rule, the working directory and the
+ * usage line under it, a list for the slash commands and for questions */
+enum { TUI_LOOK_CLAUDE, TUI_LOOK_PI };
+
 /* what the box holds: a prompt, a ! command, a # memory */
 enum { BOX_PROMPT, BOX_BASH, BOX_MEMORY };
 
@@ -222,6 +228,16 @@ typedef struct cl_tui {
     /* what was sent (tests: the redraw economy) */
     long n_frames, n_rows, n_lines, n_writes, n_full;
     long n_views, n_redraws, n_notify;
+    /* TUI_LOOK_PI: its colours, and the footer's facts as the program formats them (pi's footer.js): the
+     * directory, the usage before the context figure, the figure (ctx_role: 0, or a PR_* role it is
+     * drawn in), the model on the right; the working row's label ("" idle); the editor rules' role (the
+     * thinking level's); the messages waiting (steering, then follow-up) shown above the editor */
+    int look;
+    const cl_pitheme *pith;
+    char pi_cwd[300], pi_left[160], pi_ctx[48], pi_right[120], pi_work[96];
+    int pi_ctx_role, pi_rule;
+    char *pi_steer[TUI_QUEUE], *pi_follow[TUI_QUEUE];
+    int n_steer, n_follow;
 } cl_tui;
 
 /* 0, or -1 when out of memory. cols x rows from io->size (80x24 when it

@@ -95,8 +95,7 @@ static long text(jw *o, const char *p, long n, int max, int *w)
 
 /* text word-wrapped into lines of width columns, each prefixed (first
  * line: first, the others: rest) */
-static void wrapped(cl_show *s, const char *first, const char *rest, const char *style, const char *p, long n,
-                    int width)
+void show_wrap(jw *o, const char *first, const char *rest, const char *style, const char *p, long n, int width)
 {
     long a = 0;
     int line = 0;
@@ -111,8 +110,8 @@ static void wrapped(cl_show *s, const char *first, const char *rest, const char 
         while (e < n && p[e] != '\n')
             e++;
         if (a == e) {
-            raw(s, line++ ? rest : first);
-            raw(s, "\n");
+            jw_rawz(o, line++ ? rest : first);
+            jw_rawz(o, "\n");
         }
         for (i = a; i < e;) {
             long k = i;
@@ -135,10 +134,10 @@ static void wrapped(cl_show *s, const char *first, const char *rest, const char 
                 unsigned long cp;
                 k = i + vw_char(p + i, e - i, &cp);
             }
-            raw(s, line++ ? rest : first);
-            raw(s, style);
-            text(&s->batch, p + i, k - i, -1, &cw);
-            raw(s, SGR0 "\n");
+            jw_rawz(o, line++ ? rest : first);
+            jw_rawz(o, style);
+            text(o, p + i, k - i, -1, &cw);
+            jw_rawz(o, SGR0 "\n");
             i = k;
             while (i < e && p[i] == ' ')
                 i++;
@@ -147,6 +146,12 @@ static void wrapped(cl_show *s, const char *first, const char *rest, const char 
             break;
         a = e + 1;
     }
+}
+
+static void wrapped(cl_show *s, const char *first, const char *rest, const char *style, const char *p, long n,
+                    int width)
+{
+    show_wrap(&s->batch, first, rest, style, p, n, width);
 }
 
 /* ---- the answer ---- */

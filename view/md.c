@@ -18,6 +18,7 @@
 
 enum { C_QUOTE, C_ITEM };
 enum { L_NONE, L_PARA, L_FENCE, L_ICODE, L_HTML, L_TABLE };
+enum { PK_NONE, PK_PARA, PK_LEAF, PK_LIST };
 enum { I_NONE, I_TEXT, I_CODE, I_DELIM, I_BOPEN, I_SOFT, I_HARD, I_LINKEND };
 enum { A_LEFT, A_CENTER, A_RIGHT };
 
@@ -70,6 +71,8 @@ struct md {
     char lang[32];
     int talign[TCOLS], tcols;
     int any, blank, force_blank;
+    int pk;                     /* the last block's kind (PK_*), for pi's blank lines */
+    int code_known;             /* the code block's language is one hl knows (pi leaves its plain text uncoloured) */
     int kept;                   /* containers open since the last block */
     listmem last[MAXC];
     ref *refs;
@@ -267,10 +270,12 @@ static int num_width(long v)
     return w;
 }
 
-static int marker_width(const cont *c)
+static int marker_width(md *m, const cont *c)
 {
     if (c->type == C_QUOTE)
         return 2;
+    if (m->o->look == MD_LOOK_PI && c->type == C_ITEM && !c->task)
+        return 4;               /* pi indents a nested list four columns, whatever its parent's marker */
     return (c->ordered ? num_width(c->num) + 2 : 2) + (c->task ? 4 : 0);
 }
 
@@ -278,7 +283,7 @@ static int prefix_width(md *m)
 {
     int k, w = 0;
     for (k = 0; k < m->nc; k++)
-        w += marker_width(&m->c[k]);
+        w += marker_width(m, &m->c[k]);
     return w;
 }
 
@@ -321,7 +326,7 @@ static void prefix(md *m, int blank)
                 }
                 vo_raw(o, t, num_width(c->num) + 2);
             } else {
-                vo_rawz(o, glyph(m, c->level % 3 == 0 ? G_B1 : c->level % 3 == 1 ? G_B2 : G_B3));
+                vo_rawz(o, m->o->look == MD_LOOK_PI ? "-" : glyph(m, c->level % 3 == 0 ? G_B1 : c->level % 3 == 1 ? G_B2 : G_B3));
                 vo_raw(o, " ", 1);
             }
             if (c->task) {
@@ -331,7 +336,7 @@ static void prefix(md *m, int blank)
             c->marker = 0;
         } else {
             vo_reset(o);
-            vo_spaces(o, marker_width(c));
+            vo_spaces(o, marker_width(m, c));
         }
     }
     vo_reset(o);
@@ -354,10 +359,23 @@ static int items_open(md *m)
 
 /* the blank line before a block: always, except between the blocks of a
  * tight list (no blank line in the source) */
-static void gap(md *m)
+static void gap(md *m, int kind)
 {
-    int d = items_open(m), k;
-    if (m->any && (m->force_blank || m->blank || d == 0)) {
+    int d = items_open(m), k, need;
+    if (m->o->look == MD_LOOK_PI) {
+        /* pi: a block adds its own blank line unless the next token is a list (after a paragraph) or a blank
+         * line of the source (which adds the one); a list adds none; items of a list only when it is loose */
+        if (d == 0)
+            need = m->blank || m->pk != PK_LIST;
+        else if (m->force_blank)
+            need = m->blank || (m->pk != PK_PARA && m->pk != PK_LIST);
+        else
+            need = m->blank;
+        need = m->any && need;
+        m->pk = d > 0 ? PK_LIST : kind;
+    } else
+        need = m->any && (m->force_blank || m->blank || d == 0);
+    if (need) {
         prefix(m, 1);
         endline(m);
     }
@@ -1153,8 +1171,14 @@ static void inlines(md *m, const char *s, long n, int cls)
         case I_LINKEND:
             if (a->show) {
                 const char *u = m->urls.p + a->link - 1;
-                fput(m, " ", 1, WORD(cls, 0, 0));
-                fput(m, u, (long)strlen(u), WORD(MD_URL, 0, a->link));
+                if (m->o->look == MD_LOOK_PI) {
+                    fput(m, " (", 2, WORD(MD_URL, 0, 0));
+                    fput(m, u, (long)strlen(u), WORD(MD_URL, 0, a->link));
+                    fput(m, ")", 1, WORD(MD_URL, 0, 0));
+                } else {
+                    fput(m, " ", 1, WORD(cls, 0, 0));
+                    fput(m, u, (long)strlen(u), WORD(MD_URL, 0, a->link));
+                }
             }
             break;
         default:
@@ -1185,6 +1209,17 @@ static void lines_out(md *m, int indent_cols)
     }
 }
 
+/* pi sets the text inside a block quote in the quote's style (italic, faint) */
+static int plain_cls(md *m)
+{
+    int k;
+    if (m->o->look == MD_LOOK_PI)
+        for (k = 0; k < m->nc; k++)
+            if (m->c[k].type == C_QUOTE)
+                return MD_QTEXT;
+    return HL_PLAIN;
+}
+
 static void render_para(md *m, const char *s, long n, int html)
 {
     cont *c = m->nc ? &m->c[m->nc - 1] : 0;
@@ -1196,10 +1231,10 @@ static void render_para(md *m, const char *s, long n, int html)
         s += 4;
         n -= 4;
     }
-    inlines(m, s, n, HL_PLAIN);
+    inlines(m, s, n, plain_cls(m));
     if (!visible(m))
         return;
-    gap(m);
+    gap(m, PK_PARA);
     wrap(m, 0, m->flat.n, avail(m));
     lines_out(m, 0);
 }
@@ -1209,17 +1244,23 @@ static void render_heading(md *m, int level, const char *s, long n)
     int cls = MD_H1 + level - 1, w, k;
     m->flat.n = 0;
     m->urls.n = 0;
-    if (m->out->depth <= 0 && level >= 3) {
+    if (m->o->look == MD_LOOK_PI) {
+        /* pi: the third level on keeps its hashes; no rule under any level */
+        if (level >= 3) {
+            fput(m, "######", level, WORD(cls, 0, 0));
+            fput(m, " ", 1, WORD(cls, 0, 0));
+        }
+    } else if (m->out->depth <= 0 && level >= 3) {
         /* without colours the level shows as the source wrote it */
         fput(m, "######", level, WORD(cls, 0, 0));
         fput(m, " ", 1, WORD(cls, 0, 0));
     }
     inlines(m, s, n, cls);
-    gap(m);
+    gap(m, PK_LEAF);
     w = avail(m);
     wrap(m, 0, m->flat.n, w);
     lines_out(m, 0);
-    if (level <= 2) {
+    if (level <= 2 && m->o->look != MD_LOOK_PI) {
         hl_sty st = m->out->theme->s[cls];
         st.attr = 0;
         prefix(m, 0);
@@ -1233,8 +1274,10 @@ static void render_heading(md *m, int level, const char *s, long n)
 static void render_rule(md *m)
 {
     int w, k;
-    gap(m);
+    gap(m, PK_LEAF);
     w = avail(m);
+    if (m->o->look == MD_LOOK_PI && w > 80)
+        w = 80;
     prefix(m, 0);
     vo_class(m->out, MD_RULE);
     for (k = 0; k < w; k++)
@@ -1245,7 +1288,7 @@ static void render_rule(md *m)
 static void code_token(void *u, int cls, const char *s, long n)
 {
     md *m = (md *)u;
-    fput(m, s, n, WORD(cls == HL_PLAIN ? MD_CODEBLOCK : cls, 0, 0));
+    fput(m, s, n, WORD(cls == HL_PLAIN && !(m->o->look == MD_LOOK_PI && m->code_known) ? MD_CODEBLOCK : cls, 0, 0));
 }
 
 static void render_code(md *m)
@@ -1264,10 +1307,18 @@ static void render_code(md *m)
             break;
         n = b;
     }
-    gap(m);
+    gap(m, PK_LEAF);
     w = avail(m) - 2;
     if (w < 4)
         w = 4;
+    if (m->o->look == MD_LOOK_PI) {
+        prefix(m, 0);
+        vo_class(m->out, MD_FENCE);
+        vo_rawz(m->out, "```");
+        vo_textz(m->out, m->lang);
+        endline(m);
+    }
+    m->code_known = L != 0;
     hl_begin(&st, L);
     while (a < n) {
         long e = a, k = 0;
@@ -1289,6 +1340,12 @@ static void render_code(md *m)
             k = b;
         } while (k < m->flat.n);
         a = e + 1;
+    }
+    if (m->o->look == MD_LOOK_PI) {
+        prefix(m, 0);
+        vo_class(m->out, MD_FENCE);
+        vo_rawz(m->out, "```");
+        endline(m);
     }
 }
 
@@ -1459,7 +1516,7 @@ static void render_table(md *m)
     }
     room = m->o->width - prefix_width(m) - (3 * nc + 1);
     md_fit_columns(nat, nc, room, w);
-    gap(m);
+    gap(m, PK_LEAF);
     border(m, w, nc, G_TL, G_TM, G_TR);
     for (r = 0; r < nrows; r++) {
         lspan *ls = 0;
@@ -1509,7 +1566,7 @@ static void render_table(md *m)
             endline(m);
         }
         free(ls);
-        if (r == 0)
+        if (r == 0 || (m->o->look == MD_LOOK_PI && r < nrows - 1))
             border(m, w, nc, G_ML, G_MM, G_MR);
     }
     border(m, w, nc, G_BL, G_BM, G_BR);
@@ -1564,7 +1621,7 @@ static void pop(md *m)
         int d = items_open(m) - 1;
         if (c->marker) {
             /* an empty item still shows its marker */
-            gap(m);
+            gap(m, PK_LIST);
             prefix(m, 0);
             endline(m);
         }

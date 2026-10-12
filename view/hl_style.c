@@ -9,7 +9,7 @@ const char *const hl_class_names[HL_NCLASS] = {
     "removed",
     "lineno",
     "h1", "h2", "h3", "h4", "h5", "h6", "quote", "bullet", "rule",
-    "codespan", "codeblock", "url", "image", "table", "th", "task"
+    "codespan", "codeblock", "url", "image", "table", "th", "task", "fence", "qtext"
 };
 
 /* xterm's 16 colours: what 16-colour output is measured against */
