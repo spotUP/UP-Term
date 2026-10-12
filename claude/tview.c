@@ -251,7 +251,8 @@ void tui_transcript(cl_tui *t)
     clamp_top(&v);
     t->n_views++;
     /* the alternate screen, autowrap off, the status row outside the region */
-    put(&v, "\033[?1049h\033[?25l\033[?7l");
+    /* (pi's fullscreen is on the alternate screen already: the viewer takes it over and the viewport is drawn again) */
+    put(&v, t->screen == TUI_SCREEN_FULL ? "\033[?25l\033[?7l" : "\033[?1049h\033[?25l\033[?7l");
     set_region(&v);
     draw(&v);
     for (;;) {
@@ -335,10 +336,11 @@ void tui_transcript(cl_tui *t)
             draw(&v);
         }
     }
-    put(&v, "\033[r\033[?7h\033[?1049l");
+    put(&v, t->screen == TUI_SCREEN_FULL ? "\033[r\033[?7h" : "\033[r\033[?7h\033[?1049l");
     flush(&v);
     jw_free(&v.o);
     free(v.ix);
     t->full = 1;
+    t->view_dirty = t->screen == TUI_SCREEN_FULL;
     tui_frame(t);
 }

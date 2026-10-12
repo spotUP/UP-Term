@@ -2,6 +2,7 @@
  * foregrounds, 40-47 backgrounds. Light themes trade the bright yellow and
  * cyan (unreadable on white) for their dark halves; the colour-blind ones
  * draw a diff in blue and orange-ish yellow instead of green and red. */
+#include <stdlib.h>
 #include <string.h>
 #include "theme.h"
 #include "json.h"
@@ -301,6 +302,39 @@ int pitheme_depth(const char *term, const char *colorterm, const char *pi_true_c
     return 256;
 }
 
+/* pi-tui's rgbToAnsi256 (colors.js, the conversion on a terminal without truecolor): each channel to the nearest
+ * level of the 6x6x6 cube, the grey ramp only for a colour with a spread under 10 that is nearer to it. pi-tui and
+ * hl_rgb_to_256 pick different indexes for the same colour (a dark blue panel is 23 in pi), so pi's look uses this */
+static int rgb_256(int r, int g, int b)
+{
+    static const int cube[6] = { 0, 95, 135, 175, 215, 255 };
+    int ri = 0, gi = 0, bi = 0, i, gray, go = 0, mx, mn;
+    long dc, dg;
+    for (i = 1; i < 6; i++) {
+        if (abs(r - cube[i]) < abs(r - cube[ri]))
+            ri = i;
+        if (abs(g - cube[i]) < abs(g - cube[gi]))
+            gi = i;
+        if (abs(b - cube[i]) < abs(b - cube[bi]))
+            bi = i;
+    }
+    gray = (299 * r + 587 * g + 114 * b + 500) / 1000;
+    for (i = 1; i < 24; i++)
+        if (abs(gray - (8 + i * 10)) < abs(gray - (8 + go * 10)))
+            go = i;
+    mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    if (mx - mn < 10) {
+        int v = 8 + go * 10;
+        dg = (long)(r - v) * (r - v) * 299 + (long)(g - v) * (g - v) * 587 + (long)(b - v) * (b - v) * 114;
+        dc = (long)(r - cube[ri]) * (r - cube[ri]) * 299 + (long)(g - cube[gi]) * (g - cube[gi]) * 587 +
+             (long)(b - cube[bi]) * (b - cube[bi]) * 114;
+        if (dg < dc)
+            return 232 + go;
+    }
+    return 16 + 36 * ri + 6 * gi + bi;
+}
+
 int pitheme_color(const cl_pitheme *t, long c, int bg, char *out)
 {
     int n = 0, idx, r, g, b;
@@ -325,7 +359,7 @@ int pitheme_color(const cl_pitheme *t, long c, int bg, char *out)
             strcat(out, "m");
             return (int)strlen(out);
         }
-        idx = t->depth >= 256 ? hl_rgb_to_256(r, g, b) : hl_rgb_to_16(r, g, b);
+        idx = t->depth >= 256 ? rgb_256(r, g, b) : hl_rgb_to_16(r, g, b);
     } else {
         idx = (int)c;
         if (idx >= 16 && t->depth < 256) {      /* an index of the cube on a 16-colour screen: its nearest ANSI colour */
@@ -362,7 +396,10 @@ int pitheme_sgr(const cl_pitheme *t, int role, char *out)
 
 static void hl_role(const cl_pitheme *t, struct hl_theme *h, int cls, int role, unsigned attr)
 {
-    h->s[cls].fg = t->color[role];
+    long c = t->color[role];
+    if (HL_IS_RGB(c) && t->depth == 256)    /* the palette index pi-tui picks, sent as it is at depth 256 */
+        c = rgb_256((int)((c >> 16) & 255), (int)((c >> 8) & 255), (int)(c & 255));
+    h->s[cls].fg = c;
     h->s[cls].bg = HL_DEFAULT;
     h->s[cls].attr = attr | (t->dim[role] ? HL_A_DIM : 0);
 }

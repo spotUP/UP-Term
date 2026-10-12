@@ -142,7 +142,7 @@ int tui_init(cl_tui *t, cl_io *io)
     keys_init(&t->keys);
     ed_init(&t->ed);
     get_size(t, &t->cols, &t->rows);
-    t->B = t->rows;
+    t->B = t->fb = t->rows;
     t->tr = 1;
     t->ctx_left = -1;
     t->full = 1;
@@ -1052,7 +1052,7 @@ static void pi_list_rows(cl_tui *t, const char *const *label, const char *const 
         if (desc && desc[i] && desc[i][0] && t->cols > 40) {
             int room = t->cols - (2 + colw) - 2;
             if (i != sel)
-                r_sgr(&r, DIM);
+                pi_role(t, &r, PR_DIM);
             r_pad(&r, 2 + (lw + 2 > colw ? lw + 2 : colw));
             if (room > 10)
                 r_text(&r, desc[i], (long)strlen(desc[i]));
@@ -1064,7 +1064,7 @@ static void pi_list_rows(cl_tui *t, const char *const *label, const char *const 
         row r;
         char m[48], num[16];
         r_init(&r, t->cols);
-        r_sgr(&r, DIM);
+        pi_role(t, &r, PR_DIM);
         cl_copy(m, "  (", sizeof(m));
         cl_ltoa(sel + 1, num);
         cl_cat(m, num, sizeof(m));
@@ -1095,7 +1095,7 @@ static void pi_footer_rows(cl_tui *t)
     row r;
     int lw, cw, rw, pad;
     r_init(&r, t->cols);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     r_textz(&r, t->pi_cwd);
     r_sgr(&r, SGR0);
     want(t, &r);
@@ -1106,7 +1106,7 @@ static void pi_footer_rows(cl_tui *t)
     if (lw && t->pi_ctx[0])
         lw++;                   /* the space between the usage and the context figure */
     pad = t->cols - lw - cw - rw;
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     if (t->pi_left[0]) {
         r_textz(&r, t->pi_left);
         if (t->pi_ctx[0])
@@ -1117,11 +1117,11 @@ static void pi_footer_rows(cl_tui *t)
         if (t->pi_ctx_role)
             pi_role(t, &r, t->pi_ctx_role - 1);
         else
-            r_sgr(&r, DIM);
+            pi_role(t, &r, PR_DIM);
         r_textz(&r, t->pi_ctx);
         r_sgr(&r, SGR0);
     }
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     if (pad < 2) {
         pad = 2;
     }
@@ -1143,7 +1143,7 @@ static void pi_queue_rows(cl_tui *t)
         const char *s = i < t->n_steer ? t->pi_steer[i] : t->pi_follow[i - t->n_steer];
         r_init(&r, t->cols);
         r_text(&r, " ", 1);
-        r_sgr(&r, DIM);
+        pi_role(t, &r, PR_DIM);
         r_textz(&r, i < t->n_steer ? "Steering: " : "Follow-up: ");
         r_textz(&r, s);
         r_sgr(&r, SGR0);
@@ -1151,7 +1151,7 @@ static void pi_queue_rows(cl_tui *t)
     }
     r_init(&r, t->cols);
     r_text(&r, " ", 1);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     r_glyph(&r, "\342\206\263");
     r_textz(&r, " Option+Up to edit all queued messages");
     r_sgr(&r, SGR0);
@@ -1239,15 +1239,15 @@ static void pi_menu_rows(cl_tui *t)
     want(t, &r);
     r_init(&r, t->cols);
     r_text(&r, " ", 1);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     r_textz(&r, "\342\206\221\342\206\223 navigate");
     r_sgr(&r, SGR0);
     r_text(&r, "  ", 2);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     r_textz(&r, "enter select");
     r_sgr(&r, SGR0);
     r_text(&r, "  ", 2);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     r_textz(&r, "escape/ctrl+c cancel");
     r_sgr(&r, SGR0);
     want(t, &r);
@@ -1298,7 +1298,7 @@ static void pi_pick_rows(cl_tui *t)
     pi_wrapped(t, DIM, p->help, 0);
     r_init(&r, t->cols);
     r_text(&r, "  ", 2);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     r_textz(&r, "Type to search:");
     r_sgr(&r, SGR0);
     if (p->query[0]) {
@@ -1312,7 +1312,7 @@ static void pi_pick_rows(cl_tui *t)
     pi_blank_row(t);
     if (!p->n) {
         r_init(&r, t->cols);
-        r_sgr(&r, DIM);
+        pi_role(t, &r, PR_DIM);
         r_textz(&r, "  No entries found");
         r_sgr(&r, SGR0);
         want(t, &r);
@@ -1333,7 +1333,7 @@ static void pi_pick_rows(cl_tui *t)
         }
     }
     r_init(&r, t->cols);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     cl_copy(line, "  (", sizeof(line));
     cl_ltoa(p->n ? p->sel + 1 : 0, num);
     cl_cat(line, num, sizeof(line));
@@ -1369,11 +1369,11 @@ static void pi_input_rows(cl_tui *t)
     want(t, &r);
     r_init(&r, t->cols);
     r_text(&r, " ", 1);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     r_textz(&r, "enter save");
     r_sgr(&r, SGR0);
     r_text(&r, "  ", 2);
-    r_sgr(&r, DIM);
+    pi_role(t, &r, PR_DIM);
     r_textz(&r, "escape cancel");
     r_sgr(&r, SGR0);
     want(t, &r);
@@ -1453,9 +1453,18 @@ static void build(cl_tui *t)
 
 /* ---- drawing ---- */
 
+/* the row above the footer's first: its place at the bottom (newB), or in REGULAR mode right under the
+ * transcript while the window is not yet full (pi's regular mode: the editor follows the content) */
+static int foot_top(cl_tui *t, int newB)
+{
+    if (t->screen == TUI_SCREEN_REGULAR && t->tr - 1 < newB)
+        return t->tr - 1 < 0 ? 0 : t->tr - 1;
+    return newB;
+}
+
 /* the transcript region ends at newB: the footer grows (the transcript
  * scrolls up if it would be covered) or shrinks */
-static void set_bottom(cl_tui *t, int newB)
+static void set_bottom(cl_tui *t, int newB, int newFb)
 {
     if (newB < 1)
         newB = 1;
@@ -1468,14 +1477,24 @@ static void set_bottom(cl_tui *t, int newB)
         for (i = 0; i < s; i++)
             put(t, "\n");
         t->tr = newB + 1;
+        if (newFb > newB)
+            newFb = newB;
     }
     {
         /* what was the footer and is not any more (a smaller footer: the
          * rows the transcript gets back) is cleared with what is the
          * footer now */
-        int from = (newB < t->B ? newB : t->B) + 1;
+        int from = newB < t->B ? newB : t->B;
+        if (t->fb < from)
+            from = t->fb;
+        if (newFb < from)
+            from = newFb;
+        if (t->screen == TUI_SCREEN_REGULAR)    /* the footer follows the transcript: what is below its end is the footer's or blank */
+            from = (t->tr < newFb + 1 ? t->tr : newFb + 1) - 1;
+        from++;
         t->n_full++;
         t->B = newB;
+        t->fb = newFb;
         region(t, newB);
         cup(t, from <= t->rows ? from : t->rows, 1);
         put(t, SGR0 "\033[J");
@@ -1483,14 +1502,18 @@ static void set_bottom(cl_tui *t, int newB)
     t->full = 1;
 }
 
+static void fs_draw(cl_tui *t);
+
 void tui_frame(cl_tui *t)
 {
-    int i, newB, any = 0;
+    int i, newB, newFb, any = 0;
     if (!t->started)
         return;
     build(t);
     newB = t->rows - t->nwant;
-    if (newB == t->B && !t->full && t->nwant == t->ndrawn && t->crow == t->lrow && t->ccol == t->lcol) {
+    newFb = foot_top(t, newB);
+    if (newB == t->B && newFb == t->fb && !t->full && !t->view_dirty && t->nwant == t->ndrawn && t->crow == t->lrow &&
+        t->ccol == t->lcol) {
         for (i = 0; i < t->nwant; i++)
             if (!t->drawn[i] || strcmp(t->drawn[i], t->want[i]))
                 break;
@@ -1500,14 +1523,19 @@ void tui_frame(cl_tui *t)
     t->lrow = t->crow;
     t->lcol = t->ccol;
     put(t, "\033[?2026h\033[?25l");
-    if (newB != t->B || t->full) {
-        set_bottom(t, newB);
+    if (newB != t->B || newFb != t->fb || t->full) {
+        set_bottom(t, newB, newFb);
+        any = 1;
+    }
+    if (t->view_dirty) {
+        fs_draw(t);
+        t->full = 1;
         any = 1;
     }
     for (i = 0; i < t->nwant; i++) {
         if (!t->full && i < t->ndrawn && t->drawn[i] && !strcmp(t->drawn[i], t->want[i]))
             continue;
-        cup(t, t->B + 1 + i, 1);
+        cup(t, t->fb + 1 + i, 1);
         put(t, t->want[i]);
         put(t, SGR0);
         if (t->wantw[i] < t->cols)
@@ -1526,7 +1554,7 @@ void tui_frame(cl_tui *t)
     t->ndrawn = t->nwant;
     t->full = 0;
     if (t->crow) {
-        cup(t, t->B + t->crow, t->ccol);
+        cup(t, t->fb + t->crow, t->ccol);
         put(t, "\033[?25h");
     } else {
         /* the cursor rests where the transcript goes on */
@@ -1568,22 +1596,34 @@ void tui_log(cl_tui *t, const char *s, long n)
         jw_raw(&t->log, "\n", 1);
 }
 
+static void bar_draw(cl_tui *t, long total);
+static long log_rows(cl_tui *t);
+
 void tui_lines(cl_tui *t, const char *s, long n)
 {
     long a = 0, i;
     int r0 = t->tr, rows = 0, first = 1;
+    int hold = t->screen == TUI_SCREEN_FULL && t->view > 0;     /* scrolled back: the viewport stays where it is */
+    int float_foot = t->screen == TUI_SCREEN_REGULAR && r0 <= t->B;
     if (!t->nolog)
         tui_log(t, s, n);
     if (!t->started) {
         t->io->write(t->io->u, s, n);
         return;
     }
-    put(t, "\033[?2026h\033[?25l");
-    if (r0 > t->B) {
-        cup(t, t->B, 1);
-        put(t, "\n");
-    } else {
-        cup(t, r0, 1);
+    if (!hold) {
+        put(t, "\033[?2026h\033[?25l");
+        if (float_foot) {
+            /* the footer follows the transcript (REGULAR): the lines go where it is, it is drawn again under them */
+            cup(t, r0, 1);
+            put(t, SGR0 "\033[J");
+            t->full = 1;
+        } else if (r0 > t->B) {
+            cup(t, t->B, 1);
+            put(t, "\n");
+        } else {
+            cup(t, r0, 1);
+        }
     }
     for (i = 0; i <= n; i++) {
         if (i < n && s[i] != '\n')
@@ -1592,24 +1632,38 @@ void tui_lines(cl_tui *t, const char *s, long n)
             break;
         {
             int w = tui_width(s + a, i - a), k = w ? (w + t->cols - 1) / t->cols : 1;
-            if (!first)
-                put(t, "\r\n");
-            jw_raw(&t->o, s + a, i - a);
+            if (!hold) {
+                if (!first)
+                    put(t, "\r\n");
+                jw_raw(&t->o, s + a, i - a);
+                put(t, SGR0);
+            }
             ring_add(t, s + a, i - a);
-            put(t, SGR0);
             rows += k;
             first = 0;
             t->n_lines++;
         }
         a = i + 1;
     }
+    if (hold) {
+        t->view += rows;            /* the same text stays in view */
+        t->view_dirty = 1;
+        tui_frame(t);
+        return;
+    }
     if (r0 > t->B)
         t->tr = t->B + 1;
     else
         t->tr = r0 + rows > t->B + 1 ? t->B + 1 : r0 + rows;
+    if (t->screen == TUI_SCREEN_FULL && t->scrollbar)
+        bar_draw(t, log_rows(t));
+    if (float_foot) {
+        tui_frame(t);               /* closes the frame opened above */
+        return;
+    }
     /* the cursor back in the box */
     if (t->crow) {
-        cup(t, t->B + t->crow, t->ccol);
+        cup(t, t->fb + t->crow, t->ccol);
         put(t, "\033[?25h");
     }
     put(t, "\033[?2026l");
@@ -1633,8 +1687,9 @@ void tui_clear(cl_tui *t)
     if (!t->started)
         return;
     put(t, "\033[r\033[H\033[2J");
-    t->B = t->rows;
+    t->B = t->fb = t->rows;
     t->tr = 1;
+    t->view = 0;
     t->full = 1;
     tui_frame(t);
 }
@@ -1645,6 +1700,11 @@ void tui_redraw(cl_tui *t)
     if (!t->started)
         return;
     t->n_redraws++;
+    if (t->screen == TUI_SCREEN_FULL) {     /* the viewport is drawn from the whole log at the next frame */
+        t->view_dirty = 1;
+        tui_frame(t);
+        return;
+    }
     put(t, "\033[?2026h\033[r\033[H\033[2J");
     /* the newest lines that fit the transcript's rows, oldest first */
     for (k = 0; k < t->nring; k++) {
@@ -1667,11 +1727,28 @@ void tui_redraw(cl_tui *t)
     tui_frame(t);
 }
 
+/* the last k lines of the log (FULL's viewport is drawn from it, so what is taken back leaves it too) */
+static void log_pop(cl_tui *t, long k)
+{
+    long e = t->log.n;
+    while (k > 0 && e > 0) {
+        e--;                        /* the newline that ends the last line */
+        while (e > 0 && t->log.p[e - 1] != '\n')
+            e--;
+        k--;
+    }
+    t->log.n = e;
+    if (t->log.p)
+        t->log.p[e] = 0;
+}
+
 int tui_takeback(cl_tui *t, long mark)
 {
     long k = t->n_lines - mark;
     if (k < 0 || k > t->nring)
         return -1;
+    if (t->screen == TUI_SCREEN_FULL && !t->nolog)
+        log_pop(t, k);
     for (; k > 0; k--) {
         t->ringat = (t->ringat - 1 + TUI_RING) % TUI_RING;
         free(t->ring[t->ringat]);
@@ -1683,6 +1760,181 @@ int tui_takeback(cl_tui *t, long mark)
     return 0;
 }
 
+int tui_replace_tail(cl_tui *t, long mark, const char *s, long n)
+{
+    long k = t->n_lines - mark;
+    int rows_old = 0, j, onscreen;
+    if (k < 0 || k > t->nring)
+        return -1;
+    for (j = 0; j < k; j++) {
+        const char *l = t->ring[(t->ringat - 1 - j + TUI_RING * 2) % TUI_RING];
+        int w = tui_width(l, (long)strlen(l));
+        rows_old += w ? (w + t->cols - 1) / t->cols : 1;
+    }
+    /* the old lines out of the copy and the log; the new ones go in through tui_lines */
+    if (!t->nolog)
+        log_pop(t, k);
+    for (; k > 0; k--) {
+        t->ringat = (t->ringat - 1 + TUI_RING) % TUI_RING;
+        free(t->ring[t->ringat]);
+        t->ring[t->ringat] = 0;
+        t->nring--;
+        t->n_lines--;
+    }
+    onscreen = t->started && !(t->screen == TUI_SCREEN_FULL && t->view > 0) && rows_old < t->tr;
+    if (onscreen) {
+        /* they are the end of what the screen shows: the cursor goes to their first row and the rest is wiped
+         * with the footer, which is drawn again */
+        t->tr -= rows_old;
+        put(t, "\033[?2026h");
+        cup(t, t->tr, 1);
+        put(t, SGR0 "\033[J");
+        t->full = 1;
+        put(t, "\033[?2026l");
+        tui_lines(t, s, n);
+        tui_frame(t);               /* the footer under them again */
+        return 0;
+    }
+    if (t->started) {
+        /* scrolled out of sight (or off the top): the screen is drawn again from the copy */
+        long a = 0, i;
+        if (!t->nolog)
+            tui_log(t, s, n);
+        for (i = 0; i <= n; i++) {
+            if (i < n && s[i] != '\n')
+                continue;
+            if (i == n && a == n)
+                break;
+            ring_add(t, s + a, i - a);
+            t->n_lines++;
+            a = i + 1;
+        }
+        tui_redraw(t);
+        return 0;
+    }
+    tui_lines(t, s, n);
+    return 0;
+}
+
+/* ---- FULL: the transcript's viewport (pi's alternate screen) ---- */
+
+static int line_rows(cl_tui *t, const char *l, long n)
+{
+    int w = tui_width(l, n);
+    return w ? (w + t->cols - 1) / t->cols : 1;
+}
+
+/* the rows the whole log takes */
+static long log_rows(cl_tui *t)
+{
+    long i, a = 0, r = 0;
+    for (i = 0; i < t->log.n; i++)
+        if (t->log.p[i] == '\n') {
+            r += line_rows(t, t->log.p + a, i - a);
+            a = i + 1;
+        }
+    return r;
+}
+
+/* pi's scrollbar (pi-tui layout.js getScrollbarGeometry): the track a "|" down the last column, the thumb a
+ * "heavy |" at least two rows tall, its place as far down the track as the viewport is down the transcript */
+static void bar_draw(cl_tui *t, long total)
+{
+    long track = t->B, thumb, maxscroll, top, i;
+    char sg[48];
+    if (track < 1 || total <= track || !t->pith)
+        return;
+    thumb = (track * track + total / 2) / total;
+    if (thumb > track)
+        thumb = track;
+    if (thumb < (track < 2 ? track : 2))
+        thumb = track < 2 ? track : 2;
+    maxscroll = total - track;
+    top = (((maxscroll - t->view) * (track - thumb)) * 2 + maxscroll) / (2 * maxscroll);
+    for (i = 0; i < track; i++) {
+        int on = i >= top && i < top + thumb;
+        cup(t, (int)i + 1, t->cols);
+        pitheme_sgr(t->pith, on ? PR_SCROLLBAR_THUMB : PR_SCROLLBAR_TRACK, sg);
+        put(t, sg);
+        put(t, on ? "\342\224\203" : "\342\224\202");
+        put(t, SGR0);
+    }
+}
+
+/* the viewport drawn from the log: the lines whose rows are the transcript's `view` rows back from its end */
+static void fs_draw(cl_tui *t)
+{
+    long total = log_rows(t), maxv, top, i, a = 0, row = 0;
+    int used = 0;
+    t->view_dirty = 0;
+    maxv = total > t->B ? total - t->B : 0;
+    if (t->view > maxv)
+        t->view = maxv;
+    if (t->view < 0)
+        t->view = 0;
+    top = total - t->B - t->view;
+    if (top < 0)
+        top = 0;
+    t->n_redraws++;
+    put(t, "\033[H\033[2J");
+    for (i = 0; i < t->log.n; i++) {
+        int k;
+        if (t->log.p[i] != '\n')
+            continue;
+        k = line_rows(t, t->log.p + a, i - a);
+        if (row >= top) {
+            if (used + k > t->B)
+                break;
+            if (used)
+                put(t, "\r\n");
+            jw_raw(&t->o, t->log.p + a, i - a);
+            put(t, SGR0);
+            used += k;
+        }
+        row += k;
+        a = i + 1;
+    }
+    t->tr = used + 1;
+    if (t->view > 0) {
+        /* pi's indicator while the viewport is not at the end, centred on the last row */
+        static const char jump[] = "\342\206\223 Jump to latest message \302\267 Ctrl+End";
+        int w = tui_width(jump, (long)sizeof(jump) - 1);
+        if (t->B >= 1 && t->cols > w) {
+            cup(t, t->B, (t->cols - w) / 2 + 1);
+            put(t, jump);
+        }
+    }
+    if (t->scrollbar)
+        bar_draw(t, total);
+}
+
+void tui_scroll(cl_tui *t, int act)
+{
+    long page, total, maxv;
+    if (t->screen != TUI_SCREEN_FULL || !t->started)
+        return;
+    total = log_rows(t);
+    maxv = total > t->B ? total - t->B : 0;
+    page = t->B > 4 ? t->B - 4 : 1;         /* pi-tui tui-alt-screen.js PAGE_SCROLL_OVERLAP 4 */
+    switch (act) {
+    case KA_VIEW_PGUP: t->view += page; break;
+    case KA_VIEW_PGDN: t->view -= page; break;
+    case KA_VIEW_HALF_UP: t->view += t->B > 1 ? t->B / 2 : 1; break;
+    case KA_VIEW_HALF_DN: t->view -= t->B > 1 ? t->B / 2 : 1; break;
+    case KA_VIEW_LINE_UP: t->view += 1; break;
+    case KA_VIEW_LINE_DN: t->view -= 1; break;
+    case KA_VIEW_TOP: t->view = maxv; break;
+    case KA_VIEW_BOTTOM: t->view = 0; break;
+    default: return;
+    }
+    if (t->view > maxv)
+        t->view = maxv;
+    if (t->view < 0)
+        t->view = 0;
+    t->view_dirty = 1;
+    tui_frame(t);
+}
+
 int tui_resized(cl_tui *t)
 {
     int c, r;
@@ -1692,9 +1944,11 @@ int tui_resized(cl_tui *t)
     t->cols = c;
     t->rows = r;
     put(t, "\033[r");
-    t->B = r;
+    t->B = t->fb = r;
     if (t->tr > r)
         t->tr = r;
+    if (t->screen == TUI_SCREEN_FULL)
+        t->view_dirty = 1;          /* the lines wrap differently: the viewport is drawn again */
     t->full = 1;
     return 1;
 }
@@ -1719,7 +1973,9 @@ void tui_title(cl_tui *t, const char *s)
 
 void tui_notify(cl_tui *t, const char *msg)
 {
-    if (!t->started)
+    /* pi 1.0.4 sends nothing when a turn ends or a question is asked: no bell, no OSC 9 (its raw output stream,
+     * tests/pi/tui/turn_raw.raw); only an extension can ring it */
+    if (!t->started || t->look == TUI_LOOK_PI)
         return;
     /* the bell, then OSC 9 (UP-Term, iTerm2, kitty: a desktop notice) */
     put(t, "\a\033]9;");
@@ -1744,13 +2000,17 @@ int tui_start(cl_tui *t)
     /* bracketed paste, kitty's disambiguation (Esc and Shift+Enter come
      * as CSI u), modifyOtherKeys 1 for terminals without it; where is the
      * cursor? */
-    {
+    if (t->screen == TUI_SCREEN_FULL) {
+        /* pi's fullscreen: the alternate screen, cleared, no cursor row to ask for */
+        static const char start[] = "\033[?2004h\033[>1u\033[>4;1m\033[?1004h\033[?1049h\033[H\033[2J";
+        t->io->write(t->io->u, start, (long)sizeof(start) - 1);
+    } else {
         static const char start[] = "\033[?2004h\033[>1u\033[>4;1m\033[?1004h\033[6n";
         t->io->write(t->io->u, start, (long)sizeof(start) - 1);
     }
-    t->tr = t->rows;
+    t->tr = t->screen == TUI_SCREEN_FULL ? 1 : t->rows;
     t0 = t->io->ms ? t->io->ms(t->io->u) : 0;
-    for (;;) {
+    for (; t->screen != TUI_SCREEN_FULL;) {
         char b[64];
         cl_key k;
         long n = t->io->read(t->io->u, b, sizeof(b), 100);
@@ -1773,7 +2033,7 @@ int tui_start(cl_tui *t)
         t->tr = 1;
     if (t->tr > t->rows + 1)
         t->tr = t->rows + 1;
-    t->B = t->rows;
+    t->B = t->fb = t->rows;
     t->started = 1;
     t->full = 1;
     put(t, "\033[22;0t");       /* the window's title kept, put back at the end */
@@ -1782,8 +2042,48 @@ int tui_start(cl_tui *t)
     return 0;
 }
 
+/* pi's way out: what it leaves on the screen is the footer (REGULAR), or the alternate screen is left and the
+ * transcript and the footer written on the main screen (FULL, fullscreenExitOutput "transcript"), then the line
+ * that tells how to come back */
+static void park_pi(cl_tui *t)
+{
+    int i;
+    put(t, "\033[r" SGR0 "\033[?25h");
+    put(t, modes_off);
+    if (t->screen == TUI_SCREEN_FULL) {
+        long a = 0, k;
+        put(t, "\033[?1049l");
+        if (!t->exit_hint_only) {
+            for (k = 0; k < t->log.n; k++)
+                if (t->log.p[k] == '\n') {
+                    jw_raw(&t->o, t->log.p + a, k - a);
+                    put(t, SGR0 "\r\n");
+                    a = k + 1;
+                }
+            for (i = 0; i < t->ndrawn; i++) {
+                put(t, t->drawn[i] ? t->drawn[i] : "");
+                put(t, SGR0 "\r\n");
+            }
+            put(t, "\r\n");
+        }
+    } else {
+        cup(t, t->fb + (t->ndrawn > 0 ? t->ndrawn : 1), 1);
+        put(t, "\r\n\r\n");
+    }
+    if (t->exit_hint[0]) {
+        put(t, t->exit_hint);
+        put(t, "\r\n");
+    } else if (t->screen == TUI_SCREEN_REGULAR) {
+        put(t, "\033[A");
+    }
+}
+
 static void park(cl_tui *t)
 {
+    if (t->screen != TUI_SCREEN_INLINE) {
+        park_pi(t);
+        return;
+    }
     put(t, "\033[r");
     cup(t, t->tr <= t->B ? t->tr : t->B + 1 <= t->rows ? t->B + 1 : t->rows, 1);
     if (t->tr > t->B && t->B >= t->rows)
@@ -2777,6 +3077,14 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
             t->copen = 0;
         }
         /* typing narrows it (edit -> comp_live) */
+    }
+    if (act >= KA_VIEW_PGUP && act <= KA_VIEW_BOTTOM) {
+        /* pi's tui.altScreen.*: the viewport of the fullscreen transcript; elsewhere the key is the editor's */
+        if (t->screen == TUI_SCREEN_FULL) {
+            tui_scroll(t, act);
+            return H_GO;
+        }
+        act = KA_NONE;
     }
     if (act > KA_NONE && act < KA_COUNT)
         return act_chat(t, act, k, busy, buf, cap);
