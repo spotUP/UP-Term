@@ -2036,8 +2036,45 @@ static void gaps3_keymap(void)
     cs_close();
 }
 
+
+/* UT7: amiga-pi's theme depth was fixed at 16, so a dark theme's background #343541 became ANSI 8 (bright
+ * black). pi 1.0.4 has two modes, truecolor and 256 colours, read from COLORTERM and TERM. */
+static void pi_theme_depth_follows_pi_not_a_fixed_16(void)
+{
+    static char json[8192];
+    cl_pitheme th;
+    char err[400], sgr[64];
+    int i;
+    strcpy(json, "{\"name\":\"depthtest\",\"colors\":{");
+    for (i = 0; i < PR_COUNT; i++) {
+        if (i)
+            strcat(json, ",");
+        strcat(json, "\"");
+        strcat(json, pi_role_names[i]);
+        strcat(json, "\":\"#343541\"");
+    }
+    strcat(json, "}}");
+    CHECK_INT(pitheme_depth("xterm-256color", "", 0), 256);
+    CHECK_INT(pitheme_depth("vtcon", 0, 0), 256);
+    CHECK_INT(pitheme_depth("", "", 0), 256);              /* never 16: pi's getTerminalColorMode has no such mode */
+    CHECK_INT(pitheme_depth("vtcon", "truecolor", 0), PITHEME_TRUE);
+    CHECK_INT(pitheme_depth("vtcon", "24bit", 0), PITHEME_TRUE);
+    CHECK_INT(pitheme_depth("xterm-direct", "", 0), PITHEME_TRUE);
+    CHECK_INT(pitheme_depth("vtcon", "truecolor", "0"), 256);   /* PI_TRUE_COLOR decides first */
+    CHECK_INT(pitheme_depth("vtcon", "", "1"), PITHEME_TRUE);
+    CHECK_INT(pitheme_load(&th, json, (long)strlen(json), 0, err, sizeof(err)), 0);
+    CHECK_INT(th.depth, 256);
+    /* the dark background in the 256 cube, not ANSI 8 (SGR 100) */
+    pitheme_sgr(&th, PR_USER_MESSAGE_BG, sgr);
+    CHECK_STR(sgr, "\033[48;5;237m");
+    th.depth = PITHEME_TRUE;
+    pitheme_sgr(&th, PR_USER_MESSAGE_BG, sgr);
+    CHECK_STR(sgr, "\033[48;2;52;53;65m");
+}
+
 void suite_claude_tui(void)
 {
+    pi_theme_depth_follows_pi_not_a_fixed_16();
     keys();
     editor();
     idle_prompt();

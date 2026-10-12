@@ -210,7 +210,7 @@ int pitheme_load(cl_pitheme *t, const char *json, long n, pitheme_ext ext, char 
     }
     memset(have, 0, sizeof(have));
     memset(t, 0, sizeof(*t));
-    t->depth = 16;
+    t->depth = 256; /* pi 1.0.4 knows two modes, truecolor and 256 colours; pitheme_depth says which */
     if (json_parse(json, n, &root) || json_type(root) != J_OBJ) {
         cl_copy(err, "Failed to parse theme: not a JSON object", errlen);
         return -1;
@@ -283,6 +283,24 @@ int pitheme_load(cl_pitheme *t, const char *json, long n, pitheme_ext ext, char 
     return 0;
 }
 
+int pitheme_depth(const char *term, const char *colorterm, const char *pi_true_color)
+{
+    /* pi-tui 1.0.4 terminal-image.js detectCapabilitiesFromEnvironment + detectCapabilities: trueColor when
+     * COLORTERM is "truecolor" or "24bit" (hl_depth_from_env's 24) or TERM ends in "-direct";
+     * PI_TRUE_COLOR=1 / 0 decides first. The terminals it knows by name (kitty, iTerm, ...) are not an
+     * Amiga's. Otherwise "256color": getTerminalColorMode has no 16, the Amiga side maps to the 256 palette. */
+    size_t n = term ? strlen(term) : 0;
+    if (pi_true_color && !strcmp(pi_true_color, "1"))
+        return PITHEME_TRUE;
+    if (pi_true_color && !strcmp(pi_true_color, "0"))
+        return 256;
+    if (hl_depth_from_env(0, colorterm) == 24)
+        return PITHEME_TRUE;
+    if (n >= 7 && !strcmp(term + n - 7, "-direct"))
+        return PITHEME_TRUE;
+    return 256;
+}
+
 int pitheme_color(const cl_pitheme *t, long c, int bg, char *out)
 {
     int n = 0, idx, r, g, b;
@@ -294,6 +312,19 @@ int pitheme_color(const cl_pitheme *t, long c, int bg, char *out)
         r = (int)((c >> 16) & 255);
         g = (int)((c >> 8) & 255);
         b = (int)(c & 255);
+        if (t->depth == PITHEME_TRUE) {
+            strcpy(out, bg ? "\033[48;2;" : "\033[38;2;");
+            cl_ltoa(r, num);
+            strcat(out, num);
+            strcat(out, ";");
+            cl_ltoa(g, num);
+            strcat(out, num);
+            strcat(out, ";");
+            cl_ltoa(b, num);
+            strcat(out, num);
+            strcat(out, "m");
+            return (int)strlen(out);
+        }
         idx = t->depth >= 256 ? hl_rgb_to_256(r, g, b) : hl_rgb_to_16(r, g, b);
     } else {
         idx = (int)c;
