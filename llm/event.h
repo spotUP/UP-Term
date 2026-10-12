@@ -45,6 +45,8 @@ typedef struct llm_event {
     long in, out, cache_r, cache_w;     /* LE_USAGE */
     long cache_w1h;             /* LE_USAGE: the 1 hour part of cache_w, pi-ai usage.cacheWrite1h (amiga-pi's decoder only) */
     int has_w1h;                /* cache_w1h is in this event (0 for every event C:Claude's decoder makes) */
+    long reasoning;             /* LE_USAGE: usage.reasoning, a subset of out (amiga-pi's decoders only) */
+    int has_reasoning;          /* reasoning is in this event */
 } llm_event;
 
 typedef struct llm_sink {

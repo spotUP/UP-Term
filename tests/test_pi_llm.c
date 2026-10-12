@@ -1375,7 +1375,7 @@ static void test_request(void)
     CHECK_INT(llm_request(&q), 0);
     llm_acc_message(&a, ts_of(1, 0), &m);
     CHECK(strstr(m.p, "\"text\":\"Hello from the Amiga! Gr\xc3\xbc\xc3\x9f" "e \xe2\x80\x94 ok\"") != 0);
-    CHECK(strstr(m.p, "\"usage\":{\"input\":100,\"output\":9,\"cacheRead\":20,\"cacheWrite\":0,\"totalTokens\":129") != 0);
+    CHECK(strstr(m.p, "\"usage\":{\"input\":100,\"output\":9,\"cacheRead\":20,\"cacheWrite\":0,\"reasoning\":0,\"totalTokens\":129") != 0);
     CHECK(strstr(m.p, "\"stopReason\":\"stop\"") != 0);
     CHECK_INT(q.attempts, 1);
     llm_acc_free(&a);
@@ -2038,6 +2038,203 @@ static void test_salvage(void)
     salvage_case("\"{\\\"path\\\":\\\"S:\"", "\"tool_calls\"", "\"errorMessage\":\"the arguments of tool call read are not valid JSON\"");
 }
 
+/* PHS7: pi-ai 1.1.0's usage.reasoning -- openai-completions and openai-responses always set it (reasoning_tokens or 0),
+ * before totalTokens (openai-completions.ts:1554, openai-responses-shared.ts:572); anthropic only when message_delta's
+ * usage carries output_tokens_details.thinking_tokens, appended after the cost and cacheWrite1h (anthropic-messages.ts:849) */
+static void test_reasoning(void)
+{
+    jw m;
+    const char *ant[] = {
+        "message_start", A_START,
+        "content_block_start", A_TEXT, "content_block_stop", A_END,
+        "message_delta", ("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{"
+                         "\"output_tokens\":9,\"output_tokens_details\":{\"thinking_tokens\":4}}}"),
+        "message_stop", A_STOP };
+    const char *ant_zero[] = {
+        "message_start", A_START,
+        "message_delta", ("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{"
+                         "\"output_tokens\":9,\"output_tokens_details\":{\"thinking_tokens\":0}}}"),
+        "message_stop", A_STOP };
+    const char *ant_none[] = {
+        "message_start", A_START,
+        "message_delta", ("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{"
+                         "\"output_tokens\":9,\"output_tokens_details\":{\"thinking_tokens\":null}}}"),
+        "message_stop", A_STOP };
+    const char *chat[] = {
+        "", O_CH("\"stop\""),
+        "", ("{\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"model\":\"m\",\"choices\":[],\"usage\":{"
+             "\"prompt_tokens\":10,\"completion_tokens\":8,\"completion_tokens_details\":{\"reasoning_tokens\":3}}}"),
+        "", "[DONE]" };
+    const char *chat_plain[] = {
+        "", O_CH("\"stop\""),
+        "", ("{\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"model\":\"m\",\"choices\":[],\"usage\":{"
+             "\"prompt_tokens\":10,\"completion_tokens\":8}}"),
+        "", "[DONE]" };
+    const char *resp[] = {
+        "response.created", PHS_CREATED,
+        "response.completed", ("{\"type\":\"response.completed\",\"response\":{\"id\":\"resp_9\",\"status\":\"completed\","
+                              "\"model\":\"m\",\"output\":[],\"usage\":{\"input_tokens\":12,\"output_tokens\":7,"
+                              "\"total_tokens\":19,\"output_tokens_details\":{\"reasoning_tokens\":5}}}}") };
+    phs_feed(&llm_be_anthropic, ant, 10, 0, &m);
+    CHECK(m.p && strstr(m.p, "\"total\":0},\"cacheWrite1h\":0,\"reasoning\":4},\"stopReason\"") != 0);
+    jw_free(&m);
+    phs_feed(&llm_be_anthropic, ant_zero, 6, 0, &m);
+    CHECK(m.p && strstr(m.p, "\"cacheWrite1h\":0,\"reasoning\":0},\"stopReason\"") != 0);
+    jw_free(&m);
+    phs_feed(&llm_be_anthropic, ant_none, 6, 0, &m);
+    CHECK(m.p && strstr(m.p, "reasoning") == 0);
+    jw_free(&m);
+    phs_feed(&llm_be_openai_chat, chat, 6, 0, &m);
+    CHECK(m.p && strstr(m.p, "\"cacheWrite\":0,\"reasoning\":3,\"totalTokens\":18,") != 0);
+    jw_free(&m);
+    phs_feed(&llm_be_openai_chat, chat_plain, 6, 0, &m);
+    CHECK(m.p && strstr(m.p, "\"cacheWrite\":0,\"reasoning\":0,\"totalTokens\":18,") != 0);
+    jw_free(&m);
+    phs_feed(&llm_be_openai_responses, resp, 4, 0, &m);
+    CHECK(m.p && strstr(m.p, "\"cacheWrite\":0,\"reasoning\":5,\"totalTokens\":") != 0);
+    jw_free(&m);
+    {
+        /* read back: the same bytes in each layout (openai: before totalTokens; anthropic: after cacheWrite1h; a sum:
+         * cacheWrite1h, reasoning, totalTokens) */
+        static const char *const rt[3] = {
+            "{\"input\":2,\"output\":8,\"cacheRead\":0,\"cacheWrite\":0,\"reasoning\":3,\"totalTokens\":10,"
+            "\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}",
+            "{\"input\":2,\"output\":8,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":10,"
+            "\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0},\"cacheWrite1h\":0,\"reasoning\":3}",
+            "{\"input\":2,\"output\":8,\"cacheRead\":0,\"cacheWrite\":0,\"cacheWrite1h\":0,\"reasoning\":3,\"totalTokens\":10,"
+            "\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}"
+        };
+        int i;
+        for (i = 0; i < 3; i++) {
+            jv uv;
+            llm_usage r;
+            jw o;
+            CHECK(json_parse(rt[i], (long)strlen(rt[i]), &uv) == 0);
+            llm_r_usage(uv, &r);
+            CHECK(r.has_reasoning && r.reasoning == 3);
+            jw_init(&o);
+            llm_w_usage(&o, &r);
+            CHECK(o.p && strcmp(o.p, rt[i]) == 0);
+            jw_free(&o);
+        }
+    }
+}
+
+/* PHS7: compat.allowedFallbackModels (anthropic-messages.ts:212, 671-677, 1281-1284): models.json lists them with a cost, the
+ * request names them (the server-side-fallback beta, "fallbacks" last), and a reply from one of them is priced with its cost */
+static void test_fallbacks(void)
+{
+    static const char cfg[] =
+        "{\"providers\":{\"proxy\":{\"baseUrl\":\"https://proxy.example\",\"api\":\"anthropic-messages\",\"apiKey\":\"k\","
+        "\"compat\":{\"allowedFallbackModels\":[{\"provider\":\"proxy\",\"model\":\"claude-fb\","
+        "\"cost\":{\"input\":10,\"output\":20,\"cacheRead\":1,\"cacheWrite\":2}},"
+        "{\"provider\":\"other\",\"model\":\"claude-other\",\"cost\":{\"input\":99,\"output\":99,\"cacheRead\":9,\"cacheWrite\":9}}]},"
+        "\"models\":[{\"id\":\"claude-x\",\"cost\":{\"input\":3,\"output\":15,\"cacheRead\":0.3,\"cacheWrite\":3.75}},"
+        "{\"id\":\"claude-y\",\"compat\":{\"allowedFallbackModels\":[]}}]}}}";
+    static const char bad4[] =
+        "{\"providers\":{\"proxy\":{\"baseUrl\":\"https://p\",\"api\":\"anthropic-messages\",\"apiKey\":\"k\","
+        "\"compat\":{\"allowedFallbackModels\":[{\"provider\":\"a\",\"model\":\"b\",\"cost\":{\"input\":1,\"output\":1,"
+        "\"cacheRead\":1,\"cacheWrite\":1}},{\"provider\":\"a\",\"model\":\"c\",\"cost\":{\"input\":1,\"output\":1,"
+        "\"cacheRead\":1,\"cacheWrite\":1}},{\"provider\":\"a\",\"model\":\"d\",\"cost\":{\"input\":1,\"output\":1,"
+        "\"cacheRead\":1,\"cacheWrite\":1}},{\"provider\":\"a\",\"model\":\"e\",\"cost\":{\"input\":1,\"output\":1,"
+        "\"cacheRead\":1,\"cacheWrite\":1}}]},\"models\":[{\"id\":\"m\"}]}}}";
+    static const char nocost[] =
+        "{\"providers\":{\"proxy\":{\"baseUrl\":\"https://p\",\"api\":\"anthropic-messages\",\"apiKey\":\"k\","
+        "\"compat\":{\"allowedFallbackModels\":[{\"provider\":\"a\",\"model\":\"b\"}]},\"models\":[{\"id\":\"m\"}]}}}";
+    llm_reg r, r2;
+    const llm_model *mx, *my;
+    llm_ctx c;
+    llm_req q;
+    llm_acc a;
+    llm_sink k;
+    jw m;
+    int i;
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    CHECK_INT(llm_reg_overlay(&r, cfg, (long)sizeof(cfg) - 1), 0);
+    mx = llm_reg_find(&r, "proxy", "claude-x");
+    my = llm_reg_find(&r, "proxy", "claude-y");
+    CHECK(mx != 0 && my != 0);
+    if (mx && my) {
+        CHECK_INT(mx->compat.nfb, 2);
+        CHECK_INT(my->compat.nfb, 0);
+        CHECK(!strcmp(mx->compat.fb[0].model, "claude-fb") && mx->compat.fb[0].cost[1] == 20000000L);
+        /* the request: the beta, and "fallbacks" as the body's last member; a model with none sends neither */
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_sse("tool_use.sse", 0);
+        c = ctx_of(mx, 1);
+        llm_acc_init(&a, mx->api, mx->provider);
+        k = llm_acc_sink(&a);
+        q = req_of(mx, &c, &k, "k");
+        CHECK_INT(llm_request(&q), 0);
+        CHECK(ps.nreq && strstr(ps.head[0], "anthropic-beta: server-side-fallback-2026-07-01\r\n") != 0);
+        CHECK(ps.nreq && ps.body[0] && strstr(ps.body[0], ",\"fallbacks\":[{\"model\":\"claude-fb\"},{\"model\":\"claude-other\"}]}") != 0);
+        llm_acc_free(&a);
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_sse("tool_use.sse", 0);
+        c = ctx_of(my, 1);
+        llm_acc_init(&a, my->api, my->provider);
+        k = llm_acc_sink(&a);
+        q = req_of(my, &c, &k, "k");
+        CHECK_INT(llm_request(&q), 0);
+        CHECK(ps.nreq && strstr(ps.head[0], "server-side-fallback") == 0 && ps.body[0] && strstr(ps.body[0], "fallbacks") == 0);
+        llm_acc_free(&a);
+        /* the price: the server answers with claude-fb (listed, same provider): its cost; claude-other (other provider) and an
+         * unlisted model: the model's own; the model itself: its own */
+        for (i = 0; i < 4; i++) {
+            static const char *const srv[4] = { "claude-fb", "claude-other", "claude-zzz", "claude-x" };
+            static const long out_cost[4] = { 20L, 15L, 15L, 15L };    /* output tokens: 1000000, micro-dollars / 1e6 */
+            char start[200];
+            const char *ev[8];
+            jv uv, cv;
+            llm_usage u;
+            strcpy(start, "{\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"");
+            strcat(start, srv[i]);
+            strcat(start, "\",\"usage\":{\"input_tokens\":0}}}");
+            ev[0] = "message_start";
+            ev[1] = start;
+            ev[2] = "message_delta";
+            ev[3] = "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1000000}}";
+            ev[4] = "message_stop";
+            ev[5] = A_STOP;
+            {
+                void *d = llm_be_anthropic.dec_new();
+                int j;
+                llm_acc_init(&a, mx->api, mx->provider);
+                llm_acc_model(&a, mx->id, mx->cost);
+                llm_acc_fallbacks(&a, mx->compat.fb, mx->compat.nfb);
+                k = llm_acc_sink(&a);
+                for (j = 0; j < 6; j += 2)
+                    llm_be_anthropic.feed(d, ev[j], ev[j + 1], (long)strlen(ev[j + 1]), &k);
+                llm_be_anthropic.dec_free(d);
+            }
+            jw_init(&m);
+            llm_acc_message(&a, ts_of(1760100000L, 0), &m);
+            memset(&u, 0, sizeof(u));
+            if (json_parse(m.p, m.n, &uv) == 0 && json_get(uv, "usage", &cv))
+                llm_r_usage(cv, &u);
+            else
+                CHECK(0);
+            CHECK_INT(u.cost[1] / 1000000L, out_cost[i]);
+            jw_free(&m);
+            llm_acc_free(&a);
+        }
+    }
+    llm_reg_free(&r);
+    /* pi's schema: at most 3, each with a provider, a model and a cost */
+    llm_reg_init(&r2);
+    CHECK_INT(llm_reg_builtin(&r2), 0);
+    CHECK(llm_reg_overlay(&r2, bad4, (long)sizeof(bad4) - 1) != 0);
+    CHECK(strstr(r2.err, "at most 3") != 0);
+    llm_reg_free(&r2);
+    llm_reg_init(&r2);
+    CHECK_INT(llm_reg_builtin(&r2), 0);
+    CHECK(llm_reg_overlay(&r2, nocost, (long)sizeof(nocost) - 1) != 0);
+    llm_reg_free(&r2);
+}
+
 void suite_pi_llm(void)
 {
     claude_load_errors = 0;
@@ -2057,6 +2254,8 @@ void suite_pi_llm(void)
     test_lan();
     test_stops();
     test_phs();
+    test_reasoning();
+    test_fallbacks();
     test_compat();
     test_salvage();
     ps_reset();

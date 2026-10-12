@@ -33,6 +33,10 @@ typedef struct llm_usage {
     long input, output, cache_read, cache_write;
     long cache_write_1h;        /* cacheWrite1h: the 1 hour part of cache_write; written only when has_1h */
     int has_1h;                 /* anthropic streams set it, other providers' usage has no such key */
+    long reasoning;             /* usage.reasoning (pi-ai 1.1.0): a subset of output, written only when has_reasoning */
+    int has_reasoning;          /* openai-completions and openai-responses always set it, anthropic when the stream carries
+                                 * output_tokens_details.thinking_tokens; written before totalTokens, anthropic's after
+                                 * cacheWrite1h behind the cost */
     int combined;               /* the sum of two usages (pi's combineUsage, a compaction of a split turn): cacheWrite1h
                                  * stands after cacheWrite there, not after the cost */
     /* cost in micro-dollars: input, output, cacheRead, cacheWrite (total is their sum) */

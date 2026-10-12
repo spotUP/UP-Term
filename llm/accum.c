@@ -19,6 +19,13 @@ void llm_acc_model(llm_acc *a, const char *id, const long price[4])
         a->price[i] = price ? price[i] : 0;
 }
 
+void llm_acc_fallbacks(llm_acc *a, const llm_fallback *fb, int n)
+{
+    a->nfb = n > LLM_FALLBACKS ? LLM_FALLBACKS : n < 0 ? 0 : n;
+    if (a->nfb)
+        memcpy(a->fb, fb, (size_t)a->nfb * sizeof(*fb));
+}
+
 void llm_acc_level(llm_acc *a, const char *level)
 {
     cl_copy(a->level, level ? level : "", sizeof(a->level));
@@ -58,10 +65,19 @@ void llm_acc_meta(const llm_acc *a, llm_meta *m)
     m->response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
     m->usage = a->usage;
     if (a->cfg_model[0]) {
-        m->usage.cost[0] = cost_of(m->usage.input, a->price[0]);
-        m->usage.cost[1] = cost_of(m->usage.output, a->price[1]);
-        m->usage.cost[2] = cost_of(m->usage.cache_read, a->price[2]);
-        m->usage.cost[3] = cost_of(m->usage.cache_write, a->price[3]);
+        const long *price = a->price;
+        int i;
+        if (m->response_model)          /* the server's model, when the list allows it: its own price */
+            for (i = 0; i < a->nfb; i++)
+                if (a->fb[i].model && !strcmp(a->fb[i].model, a->model) && a->fb[i].provider && a->provider &&
+                    !strcmp(a->fb[i].provider, a->provider)) {
+                    price = a->fb[i].cost;
+                    break;
+                }
+        m->usage.cost[0] = cost_of(m->usage.input, price[0]);
+        m->usage.cost[1] = cost_of(m->usage.output, price[1]);
+        m->usage.cost[2] = cost_of(m->usage.cache_read, price[2]);
+        m->usage.cost[3] = cost_of(m->usage.cache_write, price[3]);
     }
 }
 
@@ -271,6 +287,10 @@ void llm_acc_event(void *u, const llm_event *e)
         if (e->has_w1h) {
             a->usage.cache_write_1h = e->cache_w1h;
             a->usage.has_1h = 1;
+        }
+        if (e->has_reasoning) {
+            a->usage.reasoning = e->reasoning;
+            a->usage.has_reasoning = 1;
         }
         break;
     case LE_STOP:

@@ -241,6 +241,10 @@ void llm_w_usage(jw *w, const llm_usage *u)
         jw_rawz(w, ",\"cacheWrite1h\":");
         jw_long(w, u->cache_write_1h);
     }
+    if (u->has_reasoning && (u->combined || !u->has_1h)) {      /* openai: before totalTokens; anthropic's follows the cost */
+        jw_rawz(w, ",\"reasoning\":");
+        jw_long(w, u->reasoning);
+    }
     jw_rawz(w, ",\"totalTokens\":");
     jw_long(w, u->input + u->output + u->cache_read + u->cache_write);
     jw_rawz(w, ",\"cost\":{");
@@ -257,6 +261,10 @@ void llm_w_usage(jw *w, const llm_usage *u)
     if (u->has_1h && !u->combined) {    /* pi-ai adds it to the usage object after the cost, from the anthropic stream */
         jw_rawz(w, ",\"cacheWrite1h\":");
         jw_long(w, u->cache_write_1h);
+    }
+    if (u->has_reasoning && u->has_1h && !u->combined) {
+        jw_rawz(w, ",\"reasoning\":");
+        jw_long(w, u->reasoning);
     }
     jw_rawz(w, "}");
 }
@@ -479,6 +487,10 @@ void llm_r_usage(jv u, llm_usage *o)
     if (json_get(u, "cacheWrite1h", &v)) {
         o->cache_write_1h = json_long(v, 0);
         o->has_1h = 1;
+    }
+    if (json_get(u, "reasoning", &v)) {
+        o->reasoning = json_long(v, 0);
+        o->has_reasoning = 1;
     }
     if (json_get(u, "cost", &c))
         for (i = 0; i < 4; i++)

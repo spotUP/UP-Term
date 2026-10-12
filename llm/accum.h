@@ -12,6 +12,7 @@
 #define LLM_ACCUM_H
 
 #include "llm.h"
+#include "backend.h"
 #include "event.h"
 
 typedef struct llm_ablock {
@@ -29,6 +30,8 @@ typedef struct llm_acc {
     const char *api, *provider;
     char model[64];             /* the model the server named (LE_START) */
     char cfg_model[96];         /* the configured model's id (llm_acc_model), "" unknown */
+    llm_fallback fb[LLM_FALLBACKS];     /* compat.allowedFallbackModels (llm_acc_fallbacks) */
+    int nfb;
     char level[16];             /* providerThinkingLevel the message records (llm_acc_level), "" none */
     char tlevel[16];            /* thinkingLevel the message records (llm_acc_thinking), "" none */
     long duration_ms;           /* durationMs the message records (llm_acc_duration) */
@@ -52,6 +55,9 @@ void llm_acc_free(llm_acc *a);
  * `responseModel` when it differs) and its price, for the usage cost (pi-ai calculateCost). Without it the
  * message names the server's model and carries no cost. */
 void llm_acc_model(llm_acc *a, const char *id, const long price[4]);
+/* compat.allowedFallbackModels of the model: when the server answers with another model that this list names (same
+ * provider), the usage is priced with that entry's cost (anthropic-messages.ts:671-677) */
+void llm_acc_fallbacks(llm_acc *a, const llm_fallback *fb, int n);
 /* the thinking level the request carried, kept on the message as pi-ai's providerThinkingLevel (llm_ant_effort);
  * 0 none */
 void llm_acc_level(llm_acc *a, const char *level);

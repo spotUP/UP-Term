@@ -82,6 +82,8 @@ static char *clean(const char *t, long n, long *out)
 
 /* ---- pieces ---- */
 
+static int rd_cost(ctx *c, jv cv, long cost[4], int full);
+
 static int rd_compat(ctx *c, jv cv, llm_model *m)
 {
     jv v;
@@ -119,7 +121,38 @@ static int rd_compat(ctx *c, jv cv, llm_model *m)
         m->compat.empty_signature = json_type(v) == J_TRUE;
     if (json_get(cv, "forceAdaptiveThinking", &v))
         m->adaptive = json_type(v) == J_TRUE;
-    return 0;
+    if (json_get(cv, "allowedFallbackModels", &v)) {
+        jit it;
+        jv f, x;
+        int n = 0;
+        if (json_type(v) != J_ARR)
+            return fail(c, "allowedFallbackModels must be an array");
+        json_iter(v, &it);
+        while (json_next(&it, 0, &f)) {
+            llm_fallback *o;
+            if (n == LLM_FALLBACKS)
+                return fail(c, "allowedFallbackModels holds at most 3 models");
+            o = &m->compat.fb[n];
+            memset(o, 0, sizeof(*o));
+            if (json_type(f) != J_OBJ || !json_get(f, "provider", &x) || json_type(x) != J_STR)
+                return fail(c, "allowedFallbackModels needs a provider string");
+            o->provider = sdup(c, x);
+            if (!o->provider || !*o->provider)
+                return c->r->oom ? -1 : fail(c, "allowedFallbackModels needs a provider string");
+            if (!json_get(f, "model", &x) || json_type(x) != J_STR)
+                return fail(c, "allowedFallbackModels needs a model string");
+            o->model = sdup(c, x);
+            if (!o->model || !*o->model)
+                return c->r->oom ? -1 : fail(c, "allowedFallbackModels needs a model string");
+            if (!json_get(f, "cost", &x))
+                return fail(c, "allowedFallbackModels needs a cost");
+            if (rd_cost(c, x, o->cost, 1))
+                return -1;
+            n++;
+        }
+        m->compat.nfb = n;
+    }
+    return c->r->oom ? -1 : 0;
 }
 
 static int rd_tmap(ctx *c, jv tv, llm_model *m)

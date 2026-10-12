@@ -439,6 +439,8 @@ static long a_xhead(const llm_ctx *c, char *out, long cap)
         BETA("fine-grained-tool-streaming-2025-05-14");
     if (think_mode(c, &mt, &b) == 1)
         BETA("interleaved-thinking-2025-05-14");
+    if (c->model->compat.nfb > 0)
+        BETA("server-side-fallback-2026-07-01");
     if (a.mid_effort) {
         BETA("mid-conversation-output-config-2026-07-01");
         BETA("thinking-binding-controls-2026-08-01");
@@ -753,6 +755,15 @@ static int a_body(const llm_ctx *c, jw *w)
         jw_raw(w, "}", 1);
     } else if (tm == 3)
         jw_rawz(w, ",\"thinking\":{\"type\":\"disabled\"}");
+    if (c->model->compat.nfb > 0) {     /* last (buildParams): the models the server may fall back to */
+        jw_rawz(w, ",\"fallbacks\":[");
+        for (i = 0; i < c->model->compat.nfb; i++) {
+            jw_rawz(w, i ? ",{\"model\":" : "{\"model\":");
+            jw_strz(w, c->model->compat.fb[i].model);
+            jw_raw(w, "}", 1);
+        }
+        jw_raw(w, "]", 1);
+    }
     jw_raw(w, "}", 1);
     rc = w->oom ? -1 : 0;
 out:
@@ -790,12 +801,17 @@ static void w1h(const char *data, long n, const llm_sink *k)
     } else if (!json_streq(t, "message_delta") || !json_get(ev, "usage", &u))
         return;
     llm_event_init(&e, LE_USAGE);
+    if (!start && json_get(u, "output_tokens_details", &cc) && json_type(cc) == J_OBJ &&
+        json_get(cc, "thinking_tokens", &v) && json_type(v) != J_NULL) {   /* Anthropic reports reasoning as a subset of output (anthropic-messages.ts:849) */
+        e.reasoning = json_long(v, 0);
+        e.has_reasoning = 1;
+    }
     if (json_get(u, "cache_creation", &cc) && json_type(cc) == J_OBJ && json_get(cc, "ephemeral_1h_input_tokens", &v)) {
         e.cache_w1h = json_long(v, 0);
         e.has_w1h = 1;
     } else if (start)
         e.has_w1h = 1;
-    if (e.has_w1h && k && k->ev)
+    if ((e.has_w1h || e.has_reasoning) && k && k->ev)
         k->ev(k->u, &e);
 }
 
