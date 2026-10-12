@@ -91,8 +91,8 @@ enum {
     KA_SEL_NEXT, KA_SEL_PREV, KA_SEL_PGUP, KA_SEL_PGDN, KA_SEL_FIRST, KA_SEL_LAST, KA_SEL_ACCEPT, KA_SEL_CANCEL,
     KA_THEME_SYNTAX,
     /* pi's (km_init_pi): queue a follow-up message, take the queued ones back to the editor, cycle the model
-     * forward / backward, cycle the thinking level, collapse the thinking blocks, the tree view's keys */
-    KA_FOLLOW_UP, KA_DEQUEUE, KA_MODEL_NEXT, KA_MODEL_PREV, KA_THINK_CYCLE,
+     * forward / backward, cycle the thinking level, expand or collapse the tool output and the summaries (app.tools.expand), collapse the thinking blocks, the tree view's keys */
+    KA_FOLLOW_UP, KA_DEQUEUE, KA_MODEL_NEXT, KA_MODEL_PREV, KA_THINK_CYCLE, KA_TOOLS_EXPAND,
     KA_CMD_NEW, KA_CMD_TREE, KA_CMD_FORK, KA_CMD_RESUME,
     KA_TREE_FOLD, KA_TREE_UNFOLD, KA_TREE_LABEL, KA_TREE_STAMP, KA_TREE_F_DEFAULT, KA_TREE_F_NOTOOLS,
     KA_TREE_F_USER, KA_TREE_F_LABELED, KA_TREE_F_ALL, KA_TREE_F_NEXT, KA_TREE_F_PREV,

@@ -270,6 +270,8 @@ typedef struct cl_tui {
     int (*on_queue)(void *u, const char *text, int follow);
     char *(*on_dequeue)(void *u, int *count, int quiet);
     void (*on_cycle)(void *u, int what, int dir);
+    /* app.tools.expand (Ctrl+O): the program toggles pi's tool output expansion (qu is its argument); C:Claude's Ctrl+O is the transcript */
+    void (*on_expand)(void *u);
     void *qu;
     const tui_pick *pick;       /* the picker that is open (modal 2), the line input (modal 3: pi_in) */
     char pi_in[200];
