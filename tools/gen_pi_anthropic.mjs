@@ -35,7 +35,9 @@ function digest(m) {
 for (const c of cases) {
 	const [provider, id] = c.model.split("/");
 	// "compat" in a case replaces the model's compat (a models.json model with only that flag)
-	const model = c.compat ? { ...MODELS[provider][id], compat: c.compat } : MODELS[provider][id];
+	// "window" replaces the model's context window (a small one makes the output cap clamp on a short input)
+	let model = c.compat ? { ...MODELS[provider][id], compat: c.compat } : MODELS[provider][id];
+	if (c.window) model = { ...model, contextWindow: c.window };
 	const sse = readFileSync(join(dir, c.sse + ".sse"), "utf8");
 	const messages = c.messages.map((m) => (m.$reply ? replies[m.$reply] : m));
 	let body, headers;

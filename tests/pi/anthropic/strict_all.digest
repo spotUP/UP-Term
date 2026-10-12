@@ -1,0 +1,6 @@
+stop=toolUse
+error=-
+usage=310,40,1200,0
+thinking="Read the file." sig="ErUBsig2=="
+text="Let me look." sig=-
+tool=toolu_01ReadStartup read {"path":"S:Startup-Sequence"}

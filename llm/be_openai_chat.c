@@ -9,6 +9,8 @@
 #include <string.h>
 #include "backend.h"
 #include "registry.h"
+#include "constrain.h"
+#include "estimate.h"
 #include "../claude/http.h"
 #include "../claude/util.h"
 
@@ -78,6 +80,7 @@ static llm_compat detect(const llm_model *m)
                  deepseek || zai || moonshot || is(p, "opencode") || has(u, "opencode.ai") || cf_workers ||
                  cf_gateway || antling;
     int or_dev = openrouter && (!strncmp(id, "anthropic/", 10) || !strncmp(id, "openai/", 7));
+    c.store = !nonstd;
     c.developer_role = or_dev || (!nonstd && !openrouter);
     c.usage_in_streaming = 1;
     c.max_tokens_field = has(u, "chutes.ai") || deepseek || moonshot || cf_gateway || together || nvidia ||
@@ -94,6 +97,8 @@ static llm_compat compat_of(const llm_model *m)
     llm_compat c = detect(m);
     if (m->compat.developer_role != LC_UNSET)
         c.developer_role = m->compat.developer_role;
+    if (m->compat.store != LC_UNSET)
+        c.store = m->compat.store;
     if (m->compat.usage_in_streaming != LC_UNSET)
         c.usage_in_streaming = m->compat.usage_in_streaming;
     if (m->compat.max_tokens_field != LC_UNSET)
@@ -273,7 +278,7 @@ static int o_body(const llm_ctx *x, jw *w)
     const llm_model *md = x->model;
     llm_compat cp = compat_of(md);
     int i, k = 0;
-    long maxt = x->max_tokens > 0 ? x->max_tokens : md->max_tokens;
+    long maxt = llm_ctx_max_tokens(x);
     jw_rawz(w, "{\"model\":");
     jw_strz(w, md->id);
     jw_rawz(w, ",\"messages\":[");
@@ -327,6 +332,8 @@ static int o_body(const llm_ctx *x, jw *w)
     jw_rawz(w, "],\"stream\":true");
     if (cp.usage_in_streaming)
         jw_rawz(w, ",\"stream_options\":{\"include_usage\":true}");
+    if (cp.store)
+        jw_rawz(w, ",\"store\":false");
     if (maxt > 0) {
         jw_rawz(w, cp.max_tokens_field ? ",\"max_tokens\":" : ",\"max_completion_tokens\":");
         jw_long(w, maxt);
@@ -346,9 +353,11 @@ static int o_body(const llm_ctx *x, jw *w)
     if (x->tools && x->tools_n > 2) {
         jv ts, t, v;
         jit it;
-        int n = 0;
+        int n = 0, st;
+        jw sch;
         if (json_parse(x->tools, x->tools_n, &ts) || json_type(ts) != J_ARR)
             return -1;
+        jw_init(&sch);
         jw_rawz(w, ",\"tools\":[");
         json_iter(ts, &it);
         while (json_next(&it, 0, &t)) {
@@ -361,13 +370,24 @@ static int o_body(const llm_ctx *x, jw *w)
                 jw_rawz(w, ",\"description\":");
                 jw_raw(w, v.p, v.n);
             }
+            /* resolveJsonSchemaStrictSampling, then getJsonSchemaToolParameters; "strict" only where the model supports it */
+            st = llm_tool_strict(t, md->compat.strict_tools == 1, LCS_NONE, &sch, 0, 0);
+            if (st < 0) {
+                jw_free(&sch);
+                return -1;
+            }
             jw_rawz(w, ",\"parameters\":");
-            if (json_get(t, "parameters", &v))
+            if (st == 1)
+                jw_raw(w, sch.p, sch.n);
+            else if (json_get(t, "parameters", &v))
                 jw_raw(w, v.p, v.n);
             else
                 jw_rawz(w, "{\"type\":\"object\"}");
+            if (md->compat.strict_tools == 1)
+                jw_rawz(w, st == 1 ? ",\"strict\":true" : ",\"strict\":false");
             jw_rawz(w, "}}");
         }
+        jw_free(&sch);
         jw_raw(w, "]", 1);
     }
     jw_raw(w, "}", 1);

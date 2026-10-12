@@ -1,0 +1,540 @@
+{
+ "cases": [
+  {
+   "name": "text_only",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1000
+    }
+   ],
+   "tokens": 2
+  },
+  {
+   "name": "string_content",
+   "messages": [
+    {
+     "role": "user",
+     "content": "a string of seventy characters, more or less, no more no less, none",
+     "timestamp": 1000
+    }
+   ],
+   "tokens": 20
+  },
+  {
+   "name": "astral_and_escapes",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "café 😀 \"quoted\" back\\slash\ttab\nnewline \u0001 end"
+      }
+     ],
+     "timestamp": 1000
+    }
+   ],
+   "tokens": 13
+  },
+  {
+   "name": "image",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "look"
+      },
+      {
+       "type": "image",
+       "data": "AAAA",
+       "mimeType": "image/png"
+      }
+     ],
+     "timestamp": 1000
+    }
+   ],
+   "tokens": 1373
+  },
+  {
+   "name": "tool_call_arguments",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "go"
+      }
+     ],
+     "timestamp": 1000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "hm 😀"
+      },
+      {
+       "type": "text",
+       "text": "ok"
+      },
+      {
+       "type": "toolCall",
+       "id": "c1",
+       "name": "edit",
+       "arguments": {
+        "path": "a/b\n",
+        "edits": [
+         {
+          "oldText": "x\"y",
+          "newText": "café"
+         }
+        ],
+        "n": 3,
+        "ok": true,
+        "none": null
+       }
+      }
+     ],
+     "api": "openai-responses",
+     "provider": "openai",
+     "model": "gpt-4.1",
+     "stopReason": "stop",
+     "timestamp": 1001,
+     "usage": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 0,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     }
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "c1",
+     "toolName": "edit",
+     "content": [
+      {
+       "type": "text",
+       "text": "done é"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1002
+    }
+   ],
+   "tokens": 32
+  },
+  {
+   "name": "usage_then_trailing",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "first"
+      }
+     ],
+     "timestamp": 1000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "answer"
+      }
+     ],
+     "api": "openai-responses",
+     "provider": "openai",
+     "model": "gpt-4.1",
+     "stopReason": "stop",
+     "timestamp": 1001,
+     "usage": {
+      "input": 5000,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 5000,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     }
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+     ],
+     "timestamp": 1002
+    }
+   ],
+   "tokens": 5200
+  },
+  {
+   "name": "error_answer_ignored",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "first"
+      }
+     ],
+     "timestamp": 1000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "answer"
+      }
+     ],
+     "api": "openai-responses",
+     "provider": "openai",
+     "model": "gpt-4.1",
+     "stopReason": "stop",
+     "timestamp": 1001,
+     "usage": {
+      "input": 5000,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 5000,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     }
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "second"
+      }
+     ],
+     "timestamp": 1002
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "half"
+      }
+     ],
+     "api": "openai-responses",
+     "provider": "openai",
+     "model": "gpt-4.1",
+     "stopReason": "error",
+     "timestamp": 1003,
+     "usage": {
+      "input": 9000,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 9000,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     }
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "third"
+      }
+     ],
+     "timestamp": 1004
+    }
+   ],
+   "tokens": 5006
+  },
+  {
+   "name": "aborted_answer_ignored",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "first"
+      }
+     ],
+     "timestamp": 1000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "half"
+      }
+     ],
+     "api": "openai-responses",
+     "provider": "openai",
+     "model": "gpt-4.1",
+     "stopReason": "aborted",
+     "timestamp": 1001,
+     "usage": {
+      "input": 9000,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 9000,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     }
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "second"
+      }
+     ],
+     "timestamp": 1002
+    }
+   ],
+   "tokens": 6
+  },
+  {
+   "name": "usage_older_than_prefix",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "first"
+      }
+     ],
+     "timestamp": 5000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "answer"
+      }
+     ],
+     "api": "openai-responses",
+     "provider": "openai",
+     "model": "gpt-4.1",
+     "stopReason": "stop",
+     "timestamp": 1001,
+     "usage": {
+      "input": 7000,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 7000,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     }
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "again"
+      }
+     ],
+     "timestamp": 5001
+    }
+   ],
+   "tokens": 6
+  },
+  {
+   "name": "usage_sum_without_total",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "first"
+      }
+     ],
+     "timestamp": 1000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "a"
+      }
+     ],
+     "api": "x",
+     "provider": "x",
+     "model": "x",
+     "stopReason": "stop",
+     "timestamp": 1001,
+     "usage": {
+      "input": 100,
+      "output": 20,
+      "cacheRead": 30,
+      "cacheWrite": 4,
+      "totalTokens": 0,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     }
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "more"
+      }
+     ],
+     "timestamp": 1002
+    }
+   ],
+   "tokens": 156
+  },
+  {
+   "name": "system_text_sections_tools",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are amiga-pi.",
+     "sections": {
+      "cwd": "/work",
+      "gone": null,
+      "tools": "<tools>\n- read\n</tools>"
+     },
+     "toolsAdded": [
+      {
+       "name": "read",
+       "description": "Read é",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "path": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "path"
+        ]
+       }
+      }
+     ],
+     "timestamp": 0
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hi"
+      }
+     ],
+     "timestamp": 1000
+    },
+    {
+     "role": "system",
+     "content": [
+      {
+       "type": "text",
+       "text": "later"
+      },
+      {
+       "type": "text",
+       "text": "parts"
+      }
+     ],
+     "toolsRemoved": [
+      {
+       "name": "read"
+      }
+     ],
+     "timestamp": 1003
+    }
+   ],
+   "tokens": 62
+  },
+  {
+   "name": "empty_system_parts",
+   "messages": [
+    {
+     "role": "system",
+     "content": "",
+     "sections": {
+      "a": ""
+     },
+     "timestamp": 0
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hi"
+      }
+     ],
+     "timestamp": 1000
+    }
+   ],
+   "tokens": 1
+  }
+ ]
+}

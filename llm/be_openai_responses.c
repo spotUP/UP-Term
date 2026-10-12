@@ -12,15 +12,20 @@
  * compat supportsStrictMode); reasoning effort through the model's
  * thinkingLevelMap, summary "auto", include encrypted reasoning, store false,
  * prompt_cache_key and the session headers from the session id.
- * Not ported (COMPATIBILITY.md): grammar/custom tools, additional_tools and
- * tool search, service tiers, sampling params, PI_CACHE_RETENTION long, the
+ * Later system messages and tool additions: with supportsMidConvoSystemMessages they stay in place (the update text as an
+ * input item) and, with supportsAdditionalTools, the tools they add go out as additional_tools items (llm/transcript.c,
+ * pi-ai utils/transcript.js); else the leading system message and the tool list are the collapsed ones.
+ * Not ported (COMPATIBILITY.md): grammar/custom tools, tool search, service tiers, sampling params, PI_CACHE_RETENTION long, the
  * Sign in with ChatGPT token rules, context-window clamping of max_output_tokens.
  * Portable C89, host-tested (tests/test_pi_llm.c, goldens from pi). */
 #include <stdlib.h>
 #include <string.h>
 #include "backend.h"
 #include "registry.h"
+#include "constrain.h"
+#include "estimate.h"
 #include "handoff.h"
+#include "transcript.h"
 #include "../claude/http.h"
 #include "../claude/util.h"
 
@@ -366,46 +371,187 @@ static int w_result(jw *w, const llm_model *md, jv m)
     return 0;
 }
 
+/* convertResponsesTools: the tools as function declarations (strict when the model supports it and the tool's
+ * constrainedSampling allows it), a JSON array appended. 0, -1 */
+static int w_tools(jw *w, const jv *tl, int n, int strict)
+{
+    int i, st;
+    jw sch;
+    jv v;
+    jw_init(&sch);
+    jw_raw(w, "[", 1);
+    for (i = 0; i < n; i++) {
+        jv t = tl[i];
+        if (!json_get(t, "name", &v)) {
+            jw_free(&sch);
+            return -1;
+        }
+        jw_rawz(w, i ? "," : "");
+        jw_rawz(w, "{\"type\":\"function\",\"name\":");
+        jw_raw(w, v.p, v.n);
+        if (json_get(t, "description", &v)) {
+            jw_rawz(w, ",\"description\":");
+            jw_raw(w, v.p, v.n);
+        }
+        st = llm_tool_strict(t, strict, LCS_NONE, &sch, 0, 0);
+        if (st < 0) {
+            jw_free(&sch);
+            return -1;
+        }
+        jw_rawz(w, ",\"parameters\":");
+        if (st == 1)
+            jw_raw(w, sch.p, sch.n);
+        else if (json_get(t, "parameters", &v))
+            jw_raw(w, v.p, v.n);
+        else
+            jw_rawz(w, "{\"type\":\"object\"}");
+        if (strict)
+            jw_rawz(w, st == 1 ? ",\"strict\":true" : ",\"strict\":false");
+        jw_raw(w, "}", 1);
+    }
+    jw_free(&sch);
+    jw_raw(w, "]", 1);
+    return 0;
+}
+
+/* a system message's toolsAdded as an additional_tools item (pi: only the ones the transcript anchors); 1 written,
+ * 0 nothing to add, -1 */
+static int w_added_tools(jw *w, jv ta, int strict)
+{
+    jit it;
+    jv t, *tls;
+    int nt = 0, rc;
+    if (json_type(ta) != J_ARR)
+        return 0;
+    json_iter(ta, &it);
+    while (json_next(&it, 0, &t))
+        nt++;
+    if (!nt)
+        return 0;
+    tls = (jv *)malloc((size_t)nt * sizeof(jv));
+    if (!tls)
+        return -1;
+    nt = 0;
+    json_iter(ta, &it);
+    while (json_next(&it, 0, &t))
+        tls[nt++] = t;
+    jw_rawz(w, "{\"type\":\"additional_tools\",\"role\":\"developer\",\"tools\":");
+    rc = w_tools(w, tls, nt, strict);
+    jw_raw(w, "}", 1);
+    free(tls);
+    return rc ? -1 : 1;
+}
+
+/* an instruction item for a system message: pi's getSystemMessageText of the leading one, renderSystemMessageUpdate of
+ * a later one; nothing written (0) when the text is empty, else 1 */
+static int w_sys_item(jw *w, const llm_model *md, jv m, int update)
+{
+    long at = w->n, ts;
+    jw_rawz(w, md->reasoning && md->compat.developer_role != 0 ? "{\"role\":\"developer\",\"content\":"
+                                                              : "{\"role\":\"system\",\"content\":");
+    ts = w->n;
+    if (update)
+        llm_tx_sys_update(w, m);
+    else
+        llm_tx_sys_text(w, m);
+    if (w->n == ts || w->n == ts + 2) {
+        w->n = at;                  /* no text: no item */
+        if (w->p)
+            w->p[w->n] = 0;
+        return 0;
+    }
+    jw_raw(w, "}", 1);
+    return 1;
+}
+
 static int r_body(const llm_ctx *x, jw *w)
 {
     const llm_model *md = x->model;
-    int i, k = 0, lv;
-    long msgidx = 0, maxt = x->max_tokens > 0 ? x->max_tokens : md->max_tokens;
+    int i, k = 0, lv, rc = -1;
+    long msgidx = 0, maxt = llm_ctx_max_tokens(x);
     int strict = md->compat.strict_tools == 1;
+    int mid = md->compat.mid_system == 1;
+    int add = md->compat.add_tools == 1;
+    llm_tx tx;
+    const jv *reqt;
+    int nreq, anchors;
+    /* pi: resolveTranscript (later system messages stay in place or collapse into the leading one) and
+     * resolveTranscriptTools (a model that takes tool additions keeps the initial tools at the top and loads later ones
+     * where they appear, unless a tool was removed or declared twice) */
+    if (llm_tx_plan(x, mid, &tx)) {
+        llm_tx_free(&tx);
+        return -1;
+    }
+    anchors = add && tx.additive;
+    reqt = anchors ? tx.itl : tx.tl;
+    nreq = anchors ? tx.nitl : tx.ntl;
     jw_rawz(w, "{\"model\":");
     jw_strz(w, md->id);
     jw_rawz(w, ",\"input\":[");
-    if (x->system && *x->system) {
+    if (tx.has_init) {
+        k += w_sys_item(w, md, tx.init, 0);
+    } else if (x->system && *x->system) {
         jw_rawz(w, md->reasoning && md->compat.developer_role != 0 ? "{\"role\":\"developer\",\"content\":"
                                                                     : "{\"role\":\"system\",\"content\":");
         jw_strz(w, x->system);
         jw_raw(w, "}", 1);
         k++;
     }
-    for (i = 0; i < x->nmsg; i++) {
+    for (i = tx.has_init ? 1 : 0; i < x->nmsg; i++) {
         jv m, r, c;
         long mark = w->n;
         int wrote = 0;
         if (json_parse(x->msgs[i], x->msg_n[i], &m) || !json_get(m, "role", &r))
-            return -1;
+            goto out;
         jw_rawz(w, k ? "," : "");
         if (json_streq(r, "user")) {
             if (!json_get(m, "content", &c))
-                return -1;
+                goto out;
             wrote = w_user(w, c);
             if (wrote < 0)
-                return -1;
+                goto out;
         } else if (json_streq(r, "assistant")) {
             int items = 0;
             if (w_assistant(w, md, m, msgidx, &items))
-                return -1;
+                goto out;
             wrote = items > 0;
         } else if (json_streq(r, "toolResult")) {
             if (w_result(w, md, m))
-                return -1;
+                goto out;
             wrote = 1;
+        } else if (mid && json_streq(r, "system")) {
+            /* a later system message: the tools it adds (additional_tools, when anchored), then its update text */
+            int n1 = 0;
+            jv ta;
+            if (anchors && json_get(m, "toolsAdded", &ta)) {
+                n1 = w_added_tools(w, ta, strict);
+                if (n1 < 0)
+                    goto out;
+                k += n1;
+            }
+            if (n1) {
+                long at = w->n;
+                jw_rawz(w, ",");
+                if (w_sys_item(w, md, m, 1))
+                    k++;
+                else {
+                    w->n = at;
+                    if (w->p)
+                        w->p[w->n] = 0;
+                }
+            } else if (w_sys_item(w, md, m, 1)) {
+                n1 = 1;
+                k++;
+            }
+            if (!n1) {
+                w->n = mark;
+                if (w->p)
+                    w->p[w->n] = 0;
+            }
+            msgidx++;
+            continue;
         } else {
-            msgidx++;           /* a system message update: not sent, but pi counts it */
+            msgidx++;           /* a system message the model does not take: not sent, but pi counts it */
             w->n = mark;
             if (w->p)
                 w->p[w->n] = 0;
@@ -439,34 +585,12 @@ static int r_body(const llm_ctx *x, jw *w)
         jw_rawz(w, ",\"max_output_tokens\":");
         jw_long(w, maxt < 16 ? 16 : maxt);
     }
-    if (x->tools && x->tools_n > 2) {
-        jv ts, t, v;
-        jit it;
-        int n = 0;
-        if (json_parse(x->tools, x->tools_n, &ts) || json_type(ts) != J_ARR)
-            return -1;
-        jw_rawz(w, ",\"tools\":[");
-        json_iter(ts, &it);
-        while (json_next(&it, 0, &t)) {
-            if (!json_get(t, "name", &v))
-                return -1;
-            jw_rawz(w, n++ ? "," : "");
-            jw_rawz(w, "{\"type\":\"function\",\"name\":");
-            jw_raw(w, v.p, v.n);
-            if (json_get(t, "description", &v)) {
-                jw_rawz(w, ",\"description\":");
-                jw_raw(w, v.p, v.n);
-            }
-            jw_rawz(w, ",\"parameters\":");
-            if (json_get(t, "parameters", &v))
-                jw_raw(w, v.p, v.n);
-            else
-                jw_rawz(w, "{\"type\":\"object\"}");
-            if (strict)
-                jw_rawz(w, ",\"strict\":false");
-            jw_raw(w, "}", 1);
+    if (nreq > 0) {
+        jw_rawz(w, ",\"tools\":");
+        if (w_tools(w, reqt, nreq, strict)) {
+            rc = -1;
+            goto out;
         }
-        jw_raw(w, "]", 1);
     }
     lv = llm_think_clamp(md, x->thinking);
     if (md->reasoning) {
@@ -483,7 +607,10 @@ static int r_body(const llm_ctx *x, jw *w)
         }
     }
     jw_raw(w, "}", 1);
-    return w->oom ? -1 : 0;
+    rc = w->oom ? -1 : 0;
+out:
+    llm_tx_free(&tx);
+    return rc;
 }
 
 /* ---- the decoder ---- */

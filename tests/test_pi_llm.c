@@ -7,6 +7,8 @@
 #include "harness.h"
 #include "../llm/llm.h"
 #include "../llm/registry.h"
+#include "../llm/estimate.h"
+#include "../llm/constrain.h"
 #include "../llm/event.h"
 #include "../llm/accum.h"
 #include "../llm/request.h"
@@ -552,7 +554,37 @@ static void resp_digest(const char *msg, jw *o)
     }
 }
 
-#define RC_MAX 24
+#define RC_MAX 40
+/* the transcript pi's buildBaseOptions estimates: normalizeContext's initial system message (the prompt and the
+ * tools it declares) followed by the messages as they stand before any provider transform */
+static long est_of(const char *sys, const char *tools, long tools_n, char *const *msgs, const long *mn, int nm)
+{
+    jw sm;
+    const char *all[20];
+    long an[20];
+    int i, k = 0;
+    long est;
+    jw_init(&sm);
+    if ((sys && *sys) || tools_n > 2) {
+        jw_rawz(&sm, "{\"role\":\"system\",\"content\":");
+        jw_strz(&sm, sys ? sys : "");
+        if (tools_n > 2) {
+            jw_rawz(&sm, ",\"toolsAdded\":");
+            jw_raw(&sm, tools, tools_n);
+        }
+        jw_rawz(&sm, ",\"timestamp\":0}");
+        all[k] = sm.p;
+        an[k++] = sm.n;
+    }
+    for (i = 0; i < nm; i++) {
+        all[k] = msgs[i];
+        an[k++] = mn[i];
+    }
+    est = llm_estimate_context(all, an, k);
+    jw_free(&sm);
+    return est;
+}
+
 static char *rc_reply[RC_MAX];
 static char rc_name[RC_MAX][32];
 
@@ -585,6 +617,7 @@ static void test_responses(void)
         llm_acc a;
         llm_sink k;
         llm_view vw;
+        llm_model wmod;
         jw dig, msg;
         char *tools = 0;
         long tools_n = 0;
@@ -637,9 +670,16 @@ static void test_responses(void)
             }
             nm++;
         }
+        if (json_get(c, "window", &v)) {
+            /* a smaller context window (the generator's "window"): the output cap clamps on a short input */
+            wmod = *md;
+            wmod.context_window = json_long(v, 0);
+            md = &wmod;
+        }
         CHECK_INT(llm_prepare(md, (const char *const *)msgs, mn, nm, ts_of(1760100000L, 0), &vw), 0);
         memset(&cx, 0, sizeof(cx));
         cx.model = md;
+        cx.est_tokens = est_of(sys, tools, tools_n, msgs, mn, nm);
         cx.system = sys;
         cx.msgs = vw.m;
         cx.msg_n = vw.n;
@@ -723,7 +763,7 @@ static void test_responses(void)
                 free(msgs[i]);
         ncase++;
     }
-    CHECK(ncase >= 18);
+    CHECK(ncase >= 27);
     CHECK(llm_feeds_responses > feeds0);          /* the new backend ran */
     for (i = 0; i < RC_MAX; i++) {
         free(rc_reply[i]);
@@ -759,7 +799,7 @@ static void test_anthropic_pi(void)
     while (json_next(&it, 0, &c)) {
         char mname[96], file[96], sse[64], lvl[16], sys[200];
         const llm_model *md;
-        llm_model cmod;
+        llm_model cmod, wmod;
         char *msgs[16], *want_body, *want_hdr, *want_dig;
         long mn[16], bn, hn, dn;
         int nm = 0, lv, own[16];
@@ -788,7 +828,7 @@ static void test_anthropic_pi(void)
         if (json_get(c, "compat", &v)) {
             /* a models.json model with only forceAdaptiveThinking: the managed-effort flags are unset */
             cmod = *md;
-            cmod.compat.mid_effort = cmod.compat.mid_system = cmod.compat.mid_tools = LC_UNSET;
+            cmod.compat.mid_effort = cmod.compat.mid_system = cmod.compat.mid_tools = cmod.compat.strict_tools = LC_UNSET;
             md = &cmod;
         }
         json_get(c, "level", &v);
@@ -822,9 +862,16 @@ static void test_anthropic_pi(void)
             }
             nm++;
         }
+        if (json_get(c, "window", &v)) {
+            /* a smaller context window (the generator's "window"): the output cap clamps on a short input */
+            wmod = *md;
+            wmod.context_window = json_long(v, 0);
+            md = &wmod;
+        }
         CHECK_INT(llm_prepare(md, (const char *const *)msgs, mn, nm, ts_of(1760100000L, 0), &vw), 0);
         memset(&cx, 0, sizeof(cx));
         cx.model = md;
+        cx.est_tokens = est_of(sys, tools, tools_n, msgs, mn, nm);
         cx.system = sys;
         cx.msgs = vw.m;
         cx.msg_n = vw.n;
@@ -904,7 +951,7 @@ static void test_anthropic_pi(void)
                 free(msgs[i]);
         ncase++;
     }
-    CHECK(ncase >= 18);
+    CHECK(ncase >= 24);
     CHECK(mid_cases >= 8);                          /* the managed-effort model's cases ran */
     CHECK(llm_feeds_anthropic > feeds0);            /* the backend ran */
     for (i = 0; i < RC_MAX; i++) {
@@ -1038,6 +1085,216 @@ static void test_openai_bodies(void)
         CHECK(strstr(w.p, "\"input_schema\":{\"type\":\"object\"") != 0);
         jw_free(&w);
     }
+}
+
+/* PX1: the strict schema pi-ai's makeStrictJsonSchema makes (tests/pi/strict/cases.json, made by tools/gen_pi_strict.mjs):
+ * a tool schema outside the strict subset is refused (the tool then goes out plain), the rest comes out as pi's */
+static void test_strict_schema(void)
+{
+    char *txt;
+    long cn;
+    jv root, cs, c, v;
+    jit it;
+    int n = 0, refused = 0;
+    txt = claude_load("../pi/strict/cases.json", &cn);
+    CHECK(txt != 0);
+    if (!txt)
+        return;
+    CHECK_INT(json_parse(txt, cn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char name[64], kw[16];
+        char *schema, *want = 0;
+        long sn, wn = 0;
+        jv sv, st;
+        jw out;
+        int rc, ant;
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "kw", &v);
+        json_str(v, kw, sizeof(kw));
+        ant = !strcmp(kw, "anthropic");
+        json_get(c, "schema", &v);
+        schema = compact_dup(v.p, v.n, &sn);
+        json_get(c, "strict", &st);
+        if (json_type(st) != J_NULL)
+            want = compact_dup(st.p, st.n, &wn);
+        CHECK_INT(json_parse(schema, sn, &sv), 0);
+        jw_init(&out);
+        rc = llm_strict_schema(sv, &out, ant ? LCS_ANTHROPIC : LCS_NONE);
+        if (!want) {
+            if (rc != -1)
+                printf("    case %s: pi refuses it, we made %s\n", name, out.p ? out.p : "");
+            CHECK_INT(rc, -1);
+            refused++;
+        } else {
+            CHECK_INT(rc, 0);
+            if (rc == 0 && strcmp(out.p, want)) {
+                printf("    case %s\n      got  %s\n      want %s\n", name, out.p, want);
+                CHECK(0);
+            }
+        }
+        jw_free(&out);
+        free(schema);
+        free(want);
+        n++;
+    }
+    CHECK(n >= 30);
+    CHECK(refused >= 10);
+    free(txt);
+}
+
+/* PX2: llm_estimate_context is pi-ai's estimateContextTokens (tests/pi/estimate/cases.json, tools/gen_pi_estimate.mjs):
+ * 3.5 characters per token in UTF-16 units, images 4800 characters, the last good answer's usage plus what follows it */
+static void test_estimate(void)
+{
+    char *txt;
+    long cn;
+    jv root, cs, c, v, ms, mv;
+    jit it, mit;
+    int n = 0;
+    txt = claude_load("../pi/estimate/cases.json", &cn);
+    CHECK(txt != 0);
+    if (!txt)
+        return;
+    CHECK_INT(json_parse(txt, cn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char name[64];
+        char *msgs[16];
+        long mn[16], got, want;
+        int nm = 0, i;
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "tokens", &v);
+        want = json_long(v, -1);
+        json_get(c, "messages", &ms);
+        json_iter(ms, &mit);
+        while (json_next(&mit, 0, &mv)) {
+            msgs[nm] = compact_dup(mv.p, mv.n, &mn[nm]);
+            nm++;
+        }
+        got = llm_estimate_context((const char *const *)msgs, mn, nm);
+        if (got != want)
+            printf("    case %s: got %ld, pi says %ld\n", name, got, want);
+        CHECK_INT(got, want);
+        for (i = 0; i < nm; i++)
+            free(msgs[i]);
+        n++;
+    }
+    CHECK(n >= 12);
+    /* clampMaxTokensToContext: the window less the estimate less 4096, at least 1, never above the cap */
+    {
+        llm_model m;
+        llm_model_init(&m);
+        m.context_window = 8192;
+        CHECK_INT(llm_clamp_max_tokens(&m, 1420, 8192), 2676);
+        CHECK_INT(llm_clamp_max_tokens(&m, 1420, 2000), 2000);
+        CHECK_INT(llm_clamp_max_tokens(&m, 9000, 8192), 1);
+        m.context_window = 0;
+        CHECK_INT(llm_clamp_max_tokens(&m, 9000, 8192), 8192);
+        CHECK_INT(llm_clamp_max_tokens(&m, 9000, 0), 1);
+    }
+    free(txt);
+}
+
+/* PX1, PX2 for openai-completions: the body pi-ai's openai-completions makes for each case of
+ * tests/pi/completions/cases.json (strict tools of a model that supports them, the fallback of a schema outside the
+ * strict subset, a model without strict mode, the output cap clamped to the context window) */
+static void test_completions(void)
+{
+    char *cases_txt;
+    long cn;
+    jv root, cs, c, v, mv, ms, mc;
+    jit it;
+    int ncase = 0, strict_cases = 0;
+    cases_txt = claude_load("../pi/completions/cases.json", &cn);
+    CHECK(cases_txt != 0);
+    if (!cases_txt)
+        return;
+    CHECK_INT(json_parse(cases_txt, cn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char name[64], idb[64], sys[200], file[96], pvb[64], ubb[128];
+        llm_model md = ps_model_openai("http://192.168.1.10:11434/v1");
+        char *msgs[4], *tools = 0, *want;
+        long mn[4], tools_n = 0, wn;
+        int nm = 0;
+        jit mit;
+        llm_view vw;
+        llm_ctx cx;
+        jw w;
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "model", &mv);
+        json_get(mv, "id", &v);
+        json_str(v, idb, sizeof(idb));
+        md.id = idb;
+        md.provider = "lan";
+        if (json_get(mv, "provider", &v)) {
+            json_str(v, pvb, sizeof(pvb));
+            md.provider = pvb;
+        }
+        if (json_get(mv, "baseUrl", &v)) {
+            json_str(v, ubb, sizeof(ubb));
+            md.base_url = ubb;
+        }
+        md.reasoning = 0;
+        json_get(mv, "window", &v);
+        md.context_window = json_long(v, 0);
+        json_get(mv, "maxTokens", &v);
+        md.max_tokens = json_long(v, 0);
+        if (json_get(mv, "compat", &mc) && json_get(mc, "supportsStrictMode", &v))
+            md.compat.strict_tools = json_type(v) == J_TRUE;
+        if (json_get(mv, "compat", &mc) && json_get(mc, "supportsStore", &v))
+            md.compat.store = json_type(v) == J_TRUE;
+        json_get(c, "system", &v);
+        json_str(v, sys, sizeof(sys));
+        if (json_get(c, "tools", &v))
+            tools = compact_dup(v.p, v.n, &tools_n);
+        json_get(c, "messages", &ms);
+        json_iter(ms, &mit);
+        while (json_next(&mit, 0, &v)) {
+            msgs[nm] = compact_dup(v.p, v.n, &mn[nm]);
+            nm++;
+        }
+        CHECK_INT(llm_prepare(&md, (const char *const *)msgs, mn, nm, ts_of(1760100000L, 0), &vw), 0);
+        memset(&cx, 0, sizeof(cx));
+        cx.model = &md;
+        cx.system = sys;
+        cx.msgs = vw.m;
+        cx.msg_n = vw.n;
+        cx.nmsg = vw.count;
+        cx.tools = tools;
+        cx.tools_n = tools_n;
+        cx.est_tokens = est_of(sys, tools, tools_n, msgs, mn, nm);
+        jw_init(&w);
+        CHECK_INT(llm_be_openai_chat.body(&cx, &w), 0);
+        strcpy(file, "../pi/completions/");
+        strcat(file, name);
+        strcat(file, ".body");
+        want = claude_load(file, &wn);
+        CHECK(want != 0);
+        if (want && strcmp(want, w.p)) {
+            printf("    case %s body\n      got  %s\n      want %s\n", name, w.p, want);
+            CHECK(0);
+        }
+        if (strstr(w.p, "\"strict\":true"))
+            strict_cases++;
+        free(want);
+        jw_free(&w);
+        llm_view_free(&vw);
+        free(tools);
+        while (nm > 0)
+            free(msgs[--nm]);
+        ncase++;
+    }
+    CHECK(ncase >= 8);
+    CHECK(strict_cases >= 2);
+    free(cases_txt);
 }
 
 /* B3: done, a cut stream, a 429 with Retry-After 2, Ctrl+C mid-stream, the idle limit; usage */
@@ -1590,6 +1847,9 @@ void suite_pi_llm(void)
     test_responses();
     test_anthropic_pi();
     test_openai_bodies();
+    test_completions();
+    test_strict_schema();
+    test_estimate();
     test_request();
     test_pool();
     test_post_hooks();
