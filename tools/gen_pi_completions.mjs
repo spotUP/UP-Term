@@ -1,8 +1,8 @@
 // Goldens for llm/be_openai_chat.c's tools and output cap, made by pi's own code: pi-ai's openai-completions provider
 // (api/openai-completions.js streamSimple) run on each case of tests/pi/completions/cases.json with a fake fetch that
 // answers with the case's .sse file (tests/pi/<sse>.sse). Writes <name>.body next to cases.json.
-// A case's "model" is a models.json style model (compat as pi's, "window" the context window). supportsStore is false in
-// every case: llm/be_openai_chat.c does not send "store":false yet (COMPATIBILITY.md).
+// A case's "model" is a models.json style model (compat as pi's, "window" the context window, "provider" and
+// "baseUrl" the host, default a LAN one). supportsStore is left to pi's host rule except in the cases that set it.
 //   node tools/gen_pi_completions.mjs        (PI_NPM: the pi install, default the Homebrew one)
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";

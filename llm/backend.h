@@ -22,6 +22,7 @@ typedef struct llm_compat {
     int tool_result_name;       /* the tool message carries the tool's name */
     int reasoning_effort;       /* supportsReasoningEffort: the reasoning_effort field */
     int thinking_as_text;       /* requiresThinkingAsText: a thinking block goes back as text */
+    int store;                  /* supportsStore: the body carries "store":false (pi: every host not listed as non-standard) */
     int strict_tools;           /* supportsStrictMode (openai-completions, openai-responses) / supportsStrictTools (anthropic-messages): tools carrying constrainedSampling go out strict (llm/constrain.h) */
     /* anthropic-messages (pi-ai getAnthropicCompat; LC_UNSET: pi's default) */
     int mid_effort;             /* supportsMidConvoEffort: adaptive thinking bound to the level sent as system messages */

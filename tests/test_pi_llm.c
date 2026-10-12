@@ -1218,7 +1218,7 @@ static void test_completions(void)
     CHECK(json_get(root, "cases", &cs) != 0);
     json_iter(cs, &it);
     while (json_next(&it, 0, &c)) {
-        char name[64], idb[64], sys[200], file[96];
+        char name[64], idb[64], sys[200], file[96], pvb[64], ubb[128];
         llm_model md = ps_model_openai("http://192.168.1.10:11434/v1");
         char *msgs[4], *tools = 0, *want;
         long mn[4], tools_n = 0, wn;
@@ -1234,6 +1234,14 @@ static void test_completions(void)
         json_str(v, idb, sizeof(idb));
         md.id = idb;
         md.provider = "lan";
+        if (json_get(mv, "provider", &v)) {
+            json_str(v, pvb, sizeof(pvb));
+            md.provider = pvb;
+        }
+        if (json_get(mv, "baseUrl", &v)) {
+            json_str(v, ubb, sizeof(ubb));
+            md.base_url = ubb;
+        }
         md.reasoning = 0;
         json_get(mv, "window", &v);
         md.context_window = json_long(v, 0);
@@ -1241,6 +1249,8 @@ static void test_completions(void)
         md.max_tokens = json_long(v, 0);
         if (json_get(mv, "compat", &mc) && json_get(mc, "supportsStrictMode", &v))
             md.compat.strict_tools = json_type(v) == J_TRUE;
+        if (json_get(mv, "compat", &mc) && json_get(mc, "supportsStore", &v))
+            md.compat.store = json_type(v) == J_TRUE;
         json_get(c, "system", &v);
         json_str(v, sys, sizeof(sys));
         if (json_get(c, "tools", &v))
@@ -1282,7 +1292,7 @@ static void test_completions(void)
             free(msgs[--nm]);
         ncase++;
     }
-    CHECK(ncase >= 5);
+    CHECK(ncase >= 8);
     CHECK(strict_cases >= 2);
     free(cases_txt);
 }
