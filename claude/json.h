@@ -54,6 +54,11 @@ long json_long(jv v, long def);
  * when the bytes are not one; *cp its code point. */
 int json_utf8(const char *s, long n, unsigned long *cp);
 
+/* s as the UTF-8 the writer stores it in: valid UTF-8 kept, every other byte
+ * taken as Latin-1 (jw_str's rule). Written to out (cap bytes, terminated);
+ * the length, -1 when it does not fit. */
+long json_utf8_of(const char *s, char *out, long cap);
+
 typedef struct jw {
     char *p;                    /* always terminated */
     long n, cap;

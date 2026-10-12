@@ -19,6 +19,14 @@
 #include "path.h"
 #include "util.h"
 
+/* A path as the files store it: UTF-8 (jw_strz writes a Latin-1 folder name of the
+ * Amiga as UTF-8, json_str reads it back so). Every comparison against a stored key is
+ * made in this form, once converted here; ASCII letters fold, as everywhere in the client. */
+static int stored(const char *path, char *out, long cap)
+{
+    return json_utf8_of(path, out, cap) < 0 ? -1 : 0;
+}
+
 static int file_of(const char *home, char *out, long cap)
 {
     return path_join(home, "claude.json", out, cap);
@@ -45,15 +53,20 @@ int trust_get(cl_sys *sys, const char *home, const char *dir, const char *key, i
     char *b = load(sys, home, &n);
     jv o, p, k, e, x;
     jit it;
+    char sdir[300];
     int got = -1;
     if (!b)
         return -1;
+    if (stored(dir, sdir, sizeof(sdir))) {
+        free(b);
+        return -1;
+    }
     if (json_parse(b, n, &o) == 0 && json_get(o, "projects", &p) && json_type(p) == J_OBJ) {
         json_iter(p, &it);
         while (json_next(&it, &k, &e)) {
             char path[300];
             json_str(k, path, sizeof(path));
-            if (!(cl_strieq(path, dir) || (inherit && path_inside(path, dir))))
+            if (!(cl_strieq(path, sdir) || (inherit && path_inside(path, sdir))))
                 continue;
             if (json_type(e) == J_OBJ && json_get(e, key, &x)) {
                 if (json_type(x) == J_TRUE)
@@ -70,11 +83,16 @@ int trust_get(cl_sys *sys, const char *home, const char *dir, const char *key, i
 int trust_set(cl_sys *sys, const char *home, const char *dir, const char *key, int value)
 {
     long n = 0;
-    char *b = load(sys, home, &n), f[300];
+    char *b = load(sys, home, &n), f[300], sdir[300];
     jv o, p, k, e;
     jit it;
     jw w;
     int done = 0, first = 1, rc;
+    if (stored(dir, sdir, sizeof(sdir))) {
+        free(b);
+        return -1;
+    }
+    dir = sdir;
     jw_init(&w);
     jw_raw(&w, "{", 1);
     if (b && json_parse(b, n, &o) == 0 && json_get(o, "projects", &p) && json_type(p) == J_OBJ) {
@@ -134,38 +152,123 @@ int trust_set(cl_sys *sys, const char *home, const char *dir, const char *key, i
     return rc;
 }
 
-/* ---- pi's trust.json: one object, a canonical directory -> true | false (null kept as it is) ---- */
+/* ---- pi's trust.json: one object, a canonical directory -> true | false | null ----
+ * pi's readTrustFile (core/trust-manager.ts) throws on a file that is not JSON, not an
+ * object, or holds a value other than true, false, null: pi stops with that error and
+ * never rewrites the file. The functions below do the same: -2 / -1, the file untouched. */
+
+static void why(char *err, long cap, const char *a, const char *file, const char *b)
+{
+    if (err && cap > 0) {
+        cl_copy(err, a, cap);
+        cl_cat(err, file, cap);
+        cl_cat(err, b, cap);
+    }
+}
+
+/* the store's text read and checked: 0 (b is 0 when there is no file), -1 with pi's words in err */
+static int store_open(cl_sys *sys, const char *file, char **b, long *n, jv *o, char *err, long cap)
+{
+    jit it;
+    jv k, e;
+    char name[300], quoted[330];
+    *b = 0;
+    *n = 0;
+    if (sys->kind(sys->u, file) != 1)
+        return 0;
+    if (sys->read(sys->u, file, 256L * 1024, b, n)) {
+        *b = 0;
+        why(err, cap, "Failed to read trust store ", file, ": the file cannot be read");
+        return -1;
+    }
+    {
+        const char *t = *b;
+        long m = *n;
+        if (m >= 3 && (unsigned char)t[0] == 0xef && (unsigned char)t[1] == 0xbb && (unsigned char)t[2] == 0xbf) {
+            t += 3;                     /* pi's stripBom */
+            m -= 3;
+        }
+        if (json_parse(t, m, o)) {
+            why(err, cap, "Failed to read trust store ", file, ": the text is not valid JSON");
+            free(*b);
+            *b = 0;
+            return -1;
+        }
+    }
+    if (json_type(*o) != J_OBJ) {
+        why(err, cap, "Invalid trust store ", file, ": expected an object");
+        free(*b);
+        *b = 0;
+        return -1;
+    }
+    json_iter(*o, &it);
+    while (json_next(&it, &k, &e)) {
+        int ty = json_type(e);
+        if (ty != J_TRUE && ty != J_FALSE && ty != J_NULL) {
+            jw q;
+            json_str(k, name, sizeof(name));
+            jw_init(&q);
+            jw_strz(&q, name);
+            cl_copy(quoted, q.p ? q.p : "", sizeof(quoted));
+            jw_free(&q);
+            why(err, cap, "Invalid trust store ", file, ": value for ");
+            if (err && cap > 0) {
+                cl_cat(err, quoted, cap);
+                cl_cat(err, " must be true, false, or null", cap);
+            }
+            free(*b);
+            *b = 0;
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int trust_check(cl_sys *sys, const char *file, char *err, long cap)
+{
+    char *b;
+    long n;
+    jv o;
+    int rc;
+    if (err && cap > 0)
+        err[0] = 0;
+    rc = store_open(sys, file, &b, &n, &o, err, cap);
+    free(b);
+    return rc;
+}
 
 int trust_near(cl_sys *sys, const char *file, const char *dir, char *where, long cap)
 {
     long n = 0;
-    char *b = load_file(sys, file, &n), cur[300], up[300];
+    char *b, cur[300], up[300], scur[300];
     jv o;
     int got = -1;
     if (where && cap > 0)
         where[0] = 0;
+    if (store_open(sys, file, &b, &n, &o, 0, 0))
+        return -2;
     if (!b)
         return -1;
-    if (json_parse(b, n, &o) == 0 && json_type(o) == J_OBJ) {
-        /* pi's findNearestTrustEntry: the directory, then each parent, the first true or false */
-        cl_copy(cur, dir, sizeof(cur));
-        while (got < 0 && cur[0]) {
-            jit it;
-            jv k, e;
-            json_iter(o, &it);
-            while (got < 0 && json_next(&it, &k, &e)) {
-                char path[300];
-                json_str(k, path, sizeof(path));
-                if (cl_strieq(path, cur) && (json_type(e) == J_TRUE || json_type(e) == J_FALSE)) {
-                    got = json_type(e) == J_TRUE;
-                    if (where)
-                        cl_copy(where, path, cap);
-                }
+    /* pi's findNearestTrustEntry: the directory, then each parent, the first true or false */
+    cl_copy(cur, dir, sizeof(cur));
+    while (got < 0 && cur[0]) {
+        jit it;
+        jv k, e;
+        if (stored(cur, scur, sizeof(scur)))
+            break;
+        json_iter(o, &it);
+        while (got < 0 && json_next(&it, &k, &e)) {
+            char path[300];
+            json_str(k, path, sizeof(path));
+            if (cl_strieq(path, scur) && (json_type(e) == J_TRUE || json_type(e) == J_FALSE)) {
+                got = json_type(e) == J_TRUE;
+                if (where)
+                    cl_copy(where, cur, cap);
             }
-            if (path_parent(cur, up, sizeof(up)))
-                break;
-            cl_copy(cur, up, sizeof(cur));
         }
+        if (path_parent(cur, up, sizeof(up)))
+            break;
+        cl_copy(cur, up, sizeof(cur));
     }
     free(b);
     return got;
@@ -184,16 +287,16 @@ static int tcmp(const void *a, const void *b)
 int trust_put(cl_sys *sys, const char *file, const char *path, int value)
 {
     long n = 0;
-    char *b = load_file(sys, file, &n), dir[300];
+    char *b, dir[300], spath[300];
     tent *t;
     int nt = 0, cap = 1, i, found = 0, rc = -1;
     jv o, k, e;
     jit it;
     jw w;
-    if (b && (json_parse(b, n, &o) || json_type(o) != J_OBJ)) {
-        free(b);
-        return -1;              /* pi refuses a file that is not an object: not overwritten */
-    }
+    if (stored(path, spath, sizeof(spath)))
+        return -1;
+    if (store_open(sys, file, &b, &n, &o, 0, 0))
+        return -1;              /* pi refuses a file it cannot read: not overwritten */
     if (b) {
         json_iter(o, &it);
         while (json_next(&it, &k, &e))
@@ -208,8 +311,6 @@ int trust_put(cl_sys *sys, const char *file, const char *path, int value)
         json_iter(o, &it);
         while (json_next(&it, &k, &e)) {
             int ty = json_type(e);
-            if (ty != J_TRUE && ty != J_FALSE && ty != J_NULL)
-                continue;
             json_str(k, t[nt].key, sizeof(t[0].key));
             t[nt].val = ty == J_TRUE ? "true" : ty == J_FALSE ? "false" : "null";
             nt++;
@@ -218,18 +319,18 @@ int trust_put(cl_sys *sys, const char *file, const char *path, int value)
     free(b);
     /* pi's setMany: a decision set, null deletes; the same directory in any case is one */
     for (i = 0; i < nt; i++)
-        if (cl_strieq(t[i].key, path)) {
+        if (cl_strieq(t[i].key, spath)) {
             found = 1;
             if (value < 0) {
                 t[i] = t[--nt];
                 i--;
             } else {
-                cl_copy(t[i].key, path, sizeof(t[0].key));
+                cl_copy(t[i].key, spath, sizeof(t[0].key));
                 t[i].val = value ? "true" : "false";
             }
         }
     if (!found && value >= 0) {
-        cl_copy(t[nt].key, path, sizeof(t[0].key));
+        cl_copy(t[nt].key, spath, sizeof(t[0].key));
         t[nt].val = value ? "true" : "false";
         nt++;
     }

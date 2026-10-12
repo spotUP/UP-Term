@@ -475,7 +475,7 @@ static void test_trust_flat(void)
     CHECK_INT(trust_near(&sys, f, "Work:a/b/c/d", where, sizeof(where)), 0);
     CHECK_STR(where, "Work:a/b/c");
     CHECK_INT(trust_near(&sys, f, "WORK:A/b", where, sizeof(where)), 1);
-    CHECK_STR(where, "Work:a");
+    CHECK_STR(where, "WORK:A");         /* the directory as the caller spells it */
     CHECK_INT(trust_near(&sys, f, "Other:", where, sizeof(where)), -1);
     /* null removes; the last one gone leaves {} */
     CHECK_INT(trust_put(&sys, f, "work:A/B/C", -1), 0);
@@ -490,6 +490,86 @@ static void test_trust_flat(void)
     b = slurp("t/trust.json");
     CHECK_STR(b ? b : "", "[1]");
     free(b);
+}
+
+/* GA1: the Amiga's Latin-1 folder name against the UTF-8 the file stores: found again, one key, parent removes it */
+static void test_trust_latin1(void)
+{
+    char f[600], where[300], g[600];
+    char *b;
+    at(f, "t/trust-l1.json");
+    remove(f);
+    CHECK_INT(trust_put(&sys, f, "Work:M\xfc" "ll", 0), 0);
+    b = slurp("t/trust-l1.json");
+    CHECK_STR(b ? b : "", "{\n  \"Work:M\xc3\xbc" "ll\": false\n}\n");
+    free(b);
+    CHECK_INT(trust_near(&sys, f, "Work:M\xfc" "ll", where, sizeof(where)), 0);   /* a "do not trust" is found again */
+    CHECK_INT(trust_near(&sys, f, "WORK:m\xfc" "ll/sub", where, sizeof(where)), 0);
+    CHECK_STR(where, "WORK:m\xfc" "ll");                          /* where: the caller's own bytes */
+    CHECK_INT(trust_put(&sys, f, "work:M\xfc" "ll", 1), 0);        /* a second put changes the one key */
+    b = slurp("t/trust-l1.json");
+    CHECK_STR(b ? b : "", "{\n  \"work:M\xc3\xbc" "ll\": true\n}\n");
+    free(b);
+    CHECK_INT(trust_put(&sys, f, "Work:", 1), 0);                  /* parent trust ... */
+    CHECK_INT(trust_put(&sys, f, "Work:M\xfc" "ll", -1), 0);       /* ... removes the child */
+    b = slurp("t/trust-l1.json");
+    CHECK_STR(b ? b : "", "{\n  \"Work:\": true\n}\n");
+    free(b);
+    /* the same folder already in UTF-8 (a host path) is the same key */
+    CHECK_INT(trust_put(&sys, f, "Work:M\xc3\xbc" "ll", 0), 0);
+    CHECK_INT(trust_put(&sys, f, "Work:M\xfc" "ll", 1), 0);
+    b = slurp("t/trust-l1.json");
+    CHECK_STR(b ? b : "", "{\n  \"Work:\": true,\n  \"Work:M\xc3\xbc" "ll\": true\n}\n");
+    free(b);
+    /* C:Claude's claude.json: the same folder name found, set and inherited */
+    at(g, "t/home-l1");
+    CHECK_INT(trust_set(&sys, g, "Work:M\xfc" "ll", TRUST_ACCEPTED, 1), 0);
+    CHECK_INT(trust_get(&sys, g, "Work:M\xfc" "ll", TRUST_ACCEPTED, 0), 1);
+    CHECK_INT(trust_get(&sys, g, "WORK:M\xfc" "ll/sub", TRUST_ACCEPTED, 1), 1);
+    CHECK_INT(trust_set(&sys, g, "Work:M\xfc" "ll", TRUST_ACCEPTED, 0), 0);
+    CHECK_INT(trust_get(&sys, g, "Work:M\xfc" "ll", TRUST_ACCEPTED, 0), 0);
+    b = slurp("t/home-l1/claude.json");
+    CHECK(b && strstr(b, "Work:M\xc3\xbc" "ll") && strstr(b, "Work:M\xc3\xbc" "ll") == strrchr(b, 'W'));
+    free(b);
+}
+
+/* GA3: pi's readTrustFile throws; the file is neither read as "no decision" nor rewritten */
+static void test_trust_malformed(void)
+{
+    char f[600], where[300], err[400];
+    char *b;
+    static const char *const bad[] = { "{\"Work:a\": true,", "[1]", "", "{\"Work:a\": \"yes\", \"Work:b\": true}",
+                                       "{\"Work:a\": 1}", "{\"Work:a\": {\"x\": true}}", 0 };
+    int i;
+    at(f, "t/trust-bad.json");
+    for (i = 0; bad[i]; i++) {
+        put("t/trust-bad.json", bad[i]);
+        CHECK_INT(trust_near(&sys, f, "Work:b", where, sizeof(where)), -2);
+        CHECK_INT(trust_put(&sys, f, "Work:b", 1), -1);
+        CHECK_INT(trust_check(&sys, f, err, sizeof(err)), -1);
+        b = slurp("t/trust-bad.json");
+        CHECK_STR(b ? b : "", bad[i]);              /* not rewritten, the odd entry kept */
+        free(b);
+    }
+    put("t/trust-bad.json", "{\"Work:a\": 1}");
+    trust_check(&sys, f, err, sizeof(err));
+    CHECK(strstr(err, "Invalid trust store ") == err && strstr(err, ": value for \"Work:a\" must be true, false, or null"));
+    put("t/trust-bad.json", "[1]");
+    trust_check(&sys, f, err, sizeof(err));
+    CHECK(strstr(err, ": expected an object") != 0);
+    put("t/trust-bad.json", "{");
+    trust_check(&sys, f, err, sizeof(err));
+    CHECK(strstr(err, "Failed to read trust store ") == err);
+    /* null entries stay as they are; a BOM is dropped as pi does; no file is no error */
+    put("t/trust-bad.json", "\xef\xbb\xbf{\"Work:a\": null, \"Work:b\": true}");
+    CHECK_INT(trust_check(&sys, f, err, sizeof(err)), 0);
+    CHECK_INT(trust_near(&sys, f, "Work:b", where, sizeof(where)), 1);
+    CHECK_INT(trust_put(&sys, f, "Work:c", 0), 0);
+    b = slurp("t/trust-bad.json");
+    CHECK_STR(b ? b : "", "{\n  \"Work:a\": null,\n  \"Work:b\": true,\n  \"Work:c\": false\n}\n");
+    free(b);
+    remove(f);
+    CHECK_INT(trust_check(&sys, f, err, sizeof(err)), 0);
 }
 
 /* ---- definitions ---- */
@@ -1222,6 +1302,8 @@ void suite_claude_config(void)
     test_memory();
     test_memory_walk();
     test_trust_flat();
+    test_trust_latin1();
+    test_trust_malformed();
     test_defs();
     test_hooks();
     test_sessions();

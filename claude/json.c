@@ -507,6 +507,36 @@ void jw_rawz(jw *w, const char *s)
     jw_raw(w, s, (long)strlen(s));
 }
 
+long json_utf8_of(const char *s, char *out, long cap)
+{
+    long i = 0, k = 0;
+    unsigned long cp;
+    int m;
+    while (s[i]) {
+        unsigned char c = (unsigned char)s[i];
+        char e[8];
+        if (c < 0x80) {
+            e[0] = (char)c;
+            m = 1;
+            i++;
+        } else if ((m = json_utf8(s + i, (long)strlen(s + i), &cp)) != 0) {
+            memcpy(e, s + i, (size_t)m);
+            i += m;
+        } else {
+            m = put_utf8(e, c);          /* a Latin-1 byte */
+            i++;
+        }
+        if (k + m >= cap)
+            return -1;
+        memcpy(out + k, e, (size_t)m);
+        k += m;
+    }
+    if (cap < 1)
+        return -1;
+    out[k] = 0;
+    return k;
+}
+
 void jw_str(jw *w, const char *s, long n)
 {
     static const char hex[] = "0123456789abcdef";

@@ -18,12 +18,18 @@ int trust_set(cl_sys *sys, const char *home, const char *dir, const char *key, i
 
 /* pi's trust.json (amiga-pi, pi f10993bc core/trust-manager.ts): file holds
  * {"<canonical dir>": true | false}. The nearest decision for dir -- dir, then
- * each parent: 1, 0, -1 none (no file, not an object); the directory it came
- * from into where (0 not wanted). Keys compare without case (FFS). */
+ * each parent: 1, 0, -1 none (no file), -2 the file is there but pi would refuse it
+ * (trust_check says why); the directory it came from, as dir spells it, into where
+ * (0 not wanted). Paths are the Amiga's Latin-1 (or UTF-8): they are compared in the
+ * UTF-8 the keys are stored in, ASCII letters without case (FFS). */
 int trust_near(cl_sys *sys, const char *file, const char *dir, char *where, long cap);
 /* path's decision set (1, 0) or removed (-1), the file written as pi writes it:
- * keys sorted, two-space JSON, a final newline. 0, -1 (also: a file that is
- * there but not a JSON object is left alone) */
+ * keys sorted, two-space JSON, a final newline. 0, -1 (also: a file that pi
+ * would refuse is left alone, never rewritten) */
 int trust_put(cl_sys *sys, const char *file, const char *path, int value);
+/* pi's readTrustFile checks: 0 (also no file), -1 when pi would stop with an error
+ * (not JSON, not an object, a value other than true, false, null, unreadable); pi's
+ * words for it into err (0 not wanted) */
+int trust_check(cl_sys *sys, const char *file, char *err, long cap);
 
 #endif
