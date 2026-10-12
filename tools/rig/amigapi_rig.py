@@ -693,6 +693,7 @@ def system_text(body):
 
 
 def step6(port):
+    import re
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
@@ -737,8 +738,9 @@ def step6(port):
         o, i = plain.find('RIG-OUTER-RULES-6'), plain.find('RIG-INNER-RULES-6')
         check('6a both AGENTS.md texts, RAM:AGENTS.md first', 0 <= o < i, repr(plain[-400:]))
         check('6a each in a project_instructions tag naming its file',
-              '<project_instructions path="RAM:AGENTS.md">' in plain and
-              '<project_instructions path="RAM:proj/AGENTS.md">' in plain, repr(plain[-500:]))
+              re.search(r'<project_instructions path="[^"]*:AGENTS\.md">\nRIG-OUTER', plain) is not None and
+              re.search(r'<project_instructions path="[^"]*:proj/AGENTS\.md">\nRIG-INNER', plain) is not None,
+              repr(plain[-500:]))
         check('6b untrusted: the default preamble stays, SYSTEM.md is not sent',
               'expert coding assistant' in plain and 'RIG-PROJECT-SYSTEM-6' not in plain, repr(plain[:200]))
         check('6b no requester', not req, repr(req))
