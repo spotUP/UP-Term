@@ -1087,6 +1087,119 @@ static void test_openai_bodies(void)
     }
 }
 
+/* PX1: the strict schema pi-ai's makeStrictJsonSchema makes (tests/pi/strict/cases.json, made by tools/gen_pi_strict.mjs):
+ * a tool schema outside the strict subset is refused (the tool then goes out plain), the rest comes out as pi's */
+static void test_strict_schema(void)
+{
+    char *txt;
+    long cn;
+    jv root, cs, c, v;
+    jit it;
+    int n = 0, refused = 0;
+    txt = claude_load("../pi/strict/cases.json", &cn);
+    CHECK(txt != 0);
+    if (!txt)
+        return;
+    CHECK_INT(json_parse(txt, cn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char name[64], kw[16];
+        char *schema, *want = 0;
+        long sn, wn = 0;
+        jv sv, st;
+        jw out;
+        int rc, ant;
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "kw", &v);
+        json_str(v, kw, sizeof(kw));
+        ant = !strcmp(kw, "anthropic");
+        json_get(c, "schema", &v);
+        schema = compact_dup(v.p, v.n, &sn);
+        json_get(c, "strict", &st);
+        if (json_type(st) != J_NULL)
+            want = compact_dup(st.p, st.n, &wn);
+        CHECK_INT(json_parse(schema, sn, &sv), 0);
+        jw_init(&out);
+        rc = llm_strict_schema(sv, &out, ant ? LCS_ANTHROPIC : LCS_NONE);
+        if (!want) {
+            if (rc != -1)
+                printf("    case %s: pi refuses it, we made %s\n", name, out.p ? out.p : "");
+            CHECK_INT(rc, -1);
+            refused++;
+        } else {
+            CHECK_INT(rc, 0);
+            if (rc == 0 && strcmp(out.p, want)) {
+                printf("    case %s\n      got  %s\n      want %s\n", name, out.p, want);
+                CHECK(0);
+            }
+        }
+        jw_free(&out);
+        free(schema);
+        free(want);
+        n++;
+    }
+    CHECK(n >= 30);
+    CHECK(refused >= 10);
+    free(txt);
+}
+
+/* PX2: llm_estimate_context is pi-ai's estimateContextTokens (tests/pi/estimate/cases.json, tools/gen_pi_estimate.mjs):
+ * 3.5 characters per token in UTF-16 units, images 4800 characters, the last good answer's usage plus what follows it */
+static void test_estimate(void)
+{
+    char *txt;
+    long cn;
+    jv root, cs, c, v, ms, mv;
+    jit it, mit;
+    int n = 0;
+    txt = claude_load("../pi/estimate/cases.json", &cn);
+    CHECK(txt != 0);
+    if (!txt)
+        return;
+    CHECK_INT(json_parse(txt, cn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char name[64];
+        char *msgs[16];
+        long mn[16], got, want;
+        int nm = 0, i;
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "tokens", &v);
+        want = json_long(v, -1);
+        json_get(c, "messages", &ms);
+        json_iter(ms, &mit);
+        while (json_next(&mit, 0, &mv)) {
+            msgs[nm] = compact_dup(mv.p, mv.n, &mn[nm]);
+            nm++;
+        }
+        got = llm_estimate_context((const char *const *)msgs, mn, nm);
+        if (got != want)
+            printf("    case %s: got %ld, pi says %ld\n", name, got, want);
+        CHECK_INT(got, want);
+        for (i = 0; i < nm; i++)
+            free(msgs[i]);
+        n++;
+    }
+    CHECK(n >= 12);
+    /* clampMaxTokensToContext: the window less the estimate less 4096, at least 1, never above the cap */
+    {
+        llm_model m;
+        llm_model_init(&m);
+        m.context_window = 8192;
+        CHECK_INT(llm_clamp_max_tokens(&m, 1420, 8192), 2676);
+        CHECK_INT(llm_clamp_max_tokens(&m, 1420, 2000), 2000);
+        CHECK_INT(llm_clamp_max_tokens(&m, 9000, 8192), 1);
+        m.context_window = 0;
+        CHECK_INT(llm_clamp_max_tokens(&m, 9000, 8192), 8192);
+        CHECK_INT(llm_clamp_max_tokens(&m, 9000, 0), 1);
+    }
+    free(txt);
+}
+
 /* PX1, PX2 for openai-completions: the body pi-ai's openai-completions makes for each case of
  * tests/pi/completions/cases.json (strict tools of a model that supports them, the fallback of a schema outside the
  * strict subset, a model without strict mode, the output cap clamped to the context window) */
@@ -1725,6 +1838,8 @@ void suite_pi_llm(void)
     test_anthropic_pi();
     test_openai_bodies();
     test_completions();
+    test_strict_schema();
+    test_estimate();
     test_request();
     test_pool();
     test_post_hooks();
