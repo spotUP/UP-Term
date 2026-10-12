@@ -275,3 +275,32 @@ int vti_sel_dirty(int on_old, long ax, long ay, long bx, long by,
     }
     return any;
 }
+
+/* A selection stays only while the cells under it are the text that was selected (xterm's rule: a
+ * write or an erase over a selected cell drops the selection; UT5). Rows are absolute (grid row +
+ * base, vt_lines_scrolled), so a line that went into the scrollback keeps its number and is not
+ * touched. */
+int vti_sel_hit(int on, long ax, long ay, long bx, long by, long base, int x0, int y0, int x1, int y1)
+{
+    long y, s, e;
+    if (!on || x1 <= x0 || y1 <= y0)
+        return 0;
+    sel_norm(&ax, &ay, &bx, &by);
+    for (y = y0; y < y1; y++) {
+        if (!sel_span(ax, ay, bx, by, y + base, &s, &e))
+            continue;
+        if (s < x1 && e >= x0)
+            return 1;
+    }
+    return 0;
+}
+
+int vti_sel_scroll_hit(int on, long ax, long ay, long bx, long by, long base, int top, int bot,
+                       int rows, int n, long base_gain)
+{
+    if (!on)
+        return 0;
+    if (top == 0 && bot == rows && n > 0 && base_gain == n)
+        return 0; /* the lines went into the scrollback: the same text under the same numbers */
+    return vti_sel_hit(on, ax, ay, bx, by, base, 0, top, 0x7FFF, bot);
+}

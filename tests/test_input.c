@@ -356,9 +356,114 @@ static void a_drag_step_repaints_the_rows_whose_span_changed(void)
     CHECK_INT(vti_sel_dirty(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, &y0, &y1), 0);
 }
 
+
+/* UT5: a mock of render/vtwin.c's glue (cb_damage / cb_scroll call the rule) on the real engine, so what
+ * the engine reports for ESC[2J, an overwrite, a region scroll and a scrollback scroll meets the rule. */
+typedef struct {
+    vt_term *t;
+    int on, ax, ay, bx, by; /* the selection, rows relative to the screen now (vr_selection's form) */
+    long scroll_base;
+} selwin;
+
+static void sw_damage(void *u, int x0, int y0, int x1, int y1)
+{
+    selwin *w = (selwin *)u;
+    if (w->t && w->on && vti_sel_hit(1, w->ax, w->ay, w->bx, w->by, 0, x0, y0, x1, y1))
+        w->on = 0;
+}
+
+static void sw_scroll(void *u, int top, int bot, int n)
+{
+    selwin *w = (selwin *)u;
+    long now = w->t ? vt_lines_scrolled(w->t) : 0;
+    if (w->t && w->on) {
+        if (vti_sel_scroll_hit(1, w->ax, w->ay, w->bx, w->by, 0, top, bot, vt_rows(w->t), n, now - w->scroll_base))
+            w->on = 0;
+        else if (now != w->scroll_base) {
+            w->ay -= (int)(now - w->scroll_base); /* vr_selection: absolute row minus the new base */
+            w->by -= (int)(now - w->scroll_base);
+        }
+    }
+    w->scroll_base = now;
+}
+
+static selwin *sw_new(vt_term **out)
+{
+    static selwin w;
+    vt_callbacks cb;
+    memset(&cb, 0, sizeof(cb));
+    cb.damage = sw_damage;
+    cb.scroll = sw_scroll;
+    memset(&w, 0, sizeof(w));
+    w.t = vt_new(20, 6, 100, &cb, &w);
+    vt_set_personality(w.t, VT_XTERM);
+    *out = w.t;
+    return &w;
+}
+
+static void select_cells(selwin *w, int ax, int ay, int bx, int by)
+{
+    w->on = 1;
+    w->ax = ax; w->ay = ay; w->bx = bx; w->by = by;
+}
+
+static void a_selection_goes_when_output_overwrites_or_erases_it(void)
+{
+    vt_term *t;
+    selwin *w = sw_new(&t);
+    h_put(t, "alpha\r\nbeta\r\ngamma");
+    select_cells(w, 0, 0, 4, 1);                  /* "alpha" and "beta" */
+    h_put(t, "\x1b[3;1Hzed");                     /* below it: untouched */
+    CHECK_INT(w->on, 1);
+    h_put(t, "\x1b[1;10Hx");                      /* the same row, right of the span on row 0, inside it on row 1? row 0 spans 0..end */
+    CHECK_INT(w->on, 0);                          /* row 0 is selected from column 0 to the end of the row */
+    select_cells(w, 2, 0, 3, 0);                  /* two cells of row 0 */
+    h_put(t, "\x1b[1;10Hx");                      /* right of them: untouched */
+    CHECK_INT(w->on, 1);
+    h_put(t, "\x1b[1;3Hq");                       /* over a selected cell */
+    CHECK_INT(w->on, 0);
+    select_cells(w, 2, 0, 3, 0);
+    h_put(t, "\x1b[2J");                          /* the screen erased */
+    CHECK_INT(w->on, 0);
+    h_put(t, "\x1b[2;1Hbeta");
+    select_cells(w, 0, 1, 3, 1);
+    h_put(t, "\x1b[2;1H\x1b[K");                  /* EL over the row */
+    CHECK_INT(w->on, 0);
+    vt_free(t);
+}
+
+static void a_selection_survives_lines_that_scroll_into_the_scrollback(void)
+{
+    vt_term *t;
+    selwin *w = sw_new(&t);
+    h_put(t, "one\r\ntwo\r\nthree");
+    select_cells(w, 0, 0, 2, 0);                  /* "one" on row 0 */
+    h_put(t, "\r\nfour\r\nfive\r\nsix\r\nseven");  /* the screen scrolls: "one" goes into the scrollback */
+    CHECK_INT(w->on, 1);
+    CHECK_INT(w->ay < 0, 1);                      /* still the same line, now above the screen */
+    vt_free(t);
+}
+
+static void a_selection_goes_when_a_region_scrolls_under_it(void)
+{
+    vt_term *t;
+    selwin *w = sw_new(&t);
+    h_put(t, "a\r\nb\r\nc\r\nd");
+    select_cells(w, 0, 1, 0, 1);                  /* "b" */
+    h_put(t, "\x1b[1;3r\x1b[3;1H\n");             /* region rows 1-3, a line feed at its bottom: a scroll out of the region */
+    CHECK_INT(w->on, 0);
+    select_cells(w, 0, 4, 0, 4);                  /* a row outside any region */
+    h_put(t, "\x1b[1;3r\x1b[3;1H\n");
+    CHECK_INT(w->on, 1);
+    vt_free(t);
+}
+
 void suite_input(void)
 {
     a_drag_step_repaints_the_rows_whose_span_changed();
+    a_selection_goes_when_output_overwrites_or_erases_it();
+    a_selection_survives_lines_that_scroll_into_the_scrollback();
+    a_selection_goes_when_a_region_scrolls_under_it();
     bracketed_paste_drops_escape_and_controls();
     shift_page_keys_reach_full_screen_programs();
     middle_click_pastes_when_nobody_asked();
