@@ -42,6 +42,7 @@ def body(*msgs, **kw):
 ROUTES = [
     ("no messages", body(), "text"),
     ("Haiku (WebFetch's small model)", body(user("x"), model="claude-haiku-4-5"), "fetch_answer"),
+    ("amiga-pi rig step 14 (the model name of its RPC golden)", body(user("hello"), model="fake-model"), "pirpc_text"),
     ("web search's own request", body(user("x"), system="You are performing a web search"), "websearch"),
     ("system as blocks", body(user("x"), system=[{"type": "text", "text": "performing a web search"}]), "websearch"),
     ("subagent, first", body(user("find"), system="a file search specialist"), "agent_tool"),
