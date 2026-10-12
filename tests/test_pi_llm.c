@@ -772,7 +772,7 @@ static void test_responses(void)
         CHECK(ps.nreq && strstr(ps.head[0], "Authorization: Bearer sk-test-not-real\r\n") != 0);
         file[strlen(file) - 5] = 0;
         strcat(file, ".headers");
-        want_hdr = claude_load(file, &hn);
+        want_hdr = claude_load_opt(file, &hn);
         if (want_hdr) {
             char *line = want_hdr;
             while (*line) {
@@ -963,7 +963,7 @@ static void test_anthropic_pi(void)
         CHECK(ps.nreq && strstr(ps.head[0], "POST /v1/messages HTTP/1.1\r\nHost: api.anthropic.com\r\n") == ps.head[0]);
         file[strlen(file) - 5] = 0;
         strcat(file, ".headers");
-        want_hdr = claude_load(file, &hn);
+        want_hdr = claude_load_opt(file, &hn);
         if (want_hdr) {
             char *line = want_hdr, *e = strchr(line, '\n');
             if (e)
@@ -1895,6 +1895,28 @@ static void test_phs(void)
         llm_w_usage(&w, &u);
         CHECK(w.p && strstr(w.p, "\"cacheWrite\":0,\"cacheWrite1h\":7,\"totalTokens\":2,\"cost\":{") != 0 &&
               strstr(w.p, "\"total\":0}}") != 0);
+        /* read back: the same bytes (a combined usage is not rewritten after the cost), and the stream's
+         * order (cacheWrite1h after the cost) stays too */
+        {
+            static const char *const rt[2] = {
+                "{\"input\":2,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"cacheWrite1h\":7,\"totalTokens\":2,"
+                "\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}",
+                "{\"input\":2,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,"
+                "\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0},\"cacheWrite1h\":7}"
+            };
+            int i;
+            for (i = 0; i < 2; i++) {
+                jv uv;
+                llm_usage r;
+                jw o;
+                CHECK(json_parse(rt[i], (long)strlen(rt[i]), &uv) == 0);
+                llm_r_usage(uv, &r);
+                jw_init(&o);
+                llm_w_usage(&o, &r);
+                CHECK(o.p && strcmp(o.p, rt[i]) == 0);
+                jw_free(&o);
+            }
+        }
         jw_free(&w);
     }
     phs_feed(&llm_be_anthropic, ant, 10, 0, &m);
@@ -2018,6 +2040,7 @@ static void test_salvage(void)
 
 void suite_pi_llm(void)
 {
+    claude_load_errors = 0;
     test_messages();
     test_accum();
     test_reach();
@@ -2037,4 +2060,7 @@ void suite_pi_llm(void)
     test_compat();
     test_salvage();
     ps_reset();
+    /* the optional recordings (.headers) are looked up quietly: no cannot-open line,
+     * and a recording that is really missing still counts */
+    CHECK(claude_load_errors == 0);
 }

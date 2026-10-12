@@ -484,6 +484,19 @@ void llm_r_usage(jv u, llm_usage *o)
         for (i = 0; i < 4; i++)
             if (json_get(c, ck[i], &v))
                 o->cost[i] = llm_r_micro(v);
+    if (o->has_1h) {            /* where cacheWrite1h stood: before totalTokens is a combined usage (pi's combineUsage) */
+        jit it;
+        jv k;
+        json_iter(u, &it);
+        while (json_next(&it, &k, &v)) {
+            if (json_streq(k, "totalTokens"))
+                break;
+            if (json_streq(k, "cacheWrite1h")) {
+                o->combined = 1;
+                break;
+            }
+        }
+    }
 }
 
 int llm_msg_canon(const char *json, long n, jw *out)
