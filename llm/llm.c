@@ -3,11 +3,11 @@
 #include <string.h>
 #include "llm.h"
 
-static const char *const stops[] = { "", "stop", "length", "toolUse", "error", "aborted" };
+static const char *const stops[] = { "", "stop", "length", "toolUse", "error", "aborted", "pending" };
 
 const char *llm_stop_name(int stop)
 {
-    return stop >= LS_STOP && stop <= LS_ABORTED ? stops[stop] : "";
+    return stop >= LS_STOP && stop <= LS_PENDING ? stops[stop] : "";
 }
 
 int llm_stop_of(jv v)

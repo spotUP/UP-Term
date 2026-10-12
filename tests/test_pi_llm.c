@@ -97,6 +97,20 @@ static void test_messages(void)
     CHECK_INT(llm_msg_info(m.p, m.n, &inf), LR_ASSISTANT);
     CHECK_INT(inf.stop, LS_TOOLUSE);
     CHECK_INT(inf.ntools, 2);
+    /* the streaming message (JSON and RPC modes' message_start): the serializer writes pi-ai's "pending"; a stored
+     * message with it is not one the reader takes */
+    {
+        jw pm, pc;
+        llm_meta pend = mt;
+        pend.stop = LS_PENDING;
+        jw_init(&pm);
+        llm_m_assistant(&pm, "[]", 2, &pend, ts);
+        CHECK(strstr(pm.p, "\"stopReason\":\"pending\",\"timestamp\":1760100000042}") != 0);
+        jw_init(&pc);
+        CHECK_INT(llm_msg_canon(pm.p, pm.n, &pc), LR_BAD);
+        jw_free(&pc);
+        jw_free(&pm);
+    }
     CHECK_INT(inf.ts.sec, 1760100000L);
     CHECK_INT(inf.ts.ms, 42);
 
