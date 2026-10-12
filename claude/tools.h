@@ -204,6 +204,11 @@ typedef struct cl_tools {
     long out_max;               /* bashOutputMaxChars / BASH_MAX_OUTPUT_LENGTH, 0: 30000 */
     char cwd[256];              /* where Bash's commands run: a "cd" persists (Claude Code), "" the root */
     unsigned long (*clock)(void *u);    /* optional: milliseconds (WebFetch's 15-minute cache) */
+    /* optional: Bash's foreground output as it arrives (amiga-pi's tool_execution_update). Called from the
+     * wait on the command (every 100 ms) with the bytes new since the last call, and with n 0 on a look that
+     * found none (time passing, for a caller that holds an update back). 0 (C:Claude): not called. */
+    void (*chunk)(void *u, const char *data, long n);
+    void *chunk_u;
     void *fetch_cache;          /* WebFetch's pages (webfetch.c), shared with subagents' copies */
     long n_fetch_cached;        /* the tests' sentinel: fetches answered from the cache */
     /* the call's one-line summary for the screen when its result's text is

@@ -244,19 +244,40 @@ int shells_can_run(cl_tools *t)
 /* fg_wait's answers besides SYS_BREAK */
 enum { FG_END, FG_LIMIT, FG_MOVE };
 
+/* The output new since *seen to t->chunk (t->chunk 0: nothing), in reads of 2 KB; n 0 once when there was none */
+static void pump(cl_tools *t, long job, long *seen)
+{
+    char buf[2048];
+    long got = 0, any = 0;
+    int running;
+    long rc;
+    if (!t->chunk)
+        return;
+    while (t->sys->bg_read(t->sys->u, job, *seen, buf, sizeof(buf), &got, &running, &rc) == 0 && got > 0) {
+        t->chunk(t->chunk_u, buf, got);
+        *seen += got;
+        any = 1;
+    }
+    if (!any)
+        t->chunk(t->chunk_u, 0, 0);
+}
+
 /* The foreground command waited on, a look every 100 ms: FG_END it ended,
  * FG_LIMIT its time is up, SYS_BREAK the user stopped it, FG_MOVE the user
  * moved it to the background (the screen's Ctrl+B / Ctrl+Enter, a slot
  * free, background tasks on). With t->wait (the screen) the keys are read
  * meanwhile (Esc, Ctrl+C stop it); without, sys->pause sees Ctrl+C. */
-static int fg_wait(cl_tools *t, long job, int secs, long *rc)
+static int fg_wait(cl_tools *t, long job, int secs, long *rc, long *seen)
 {
     unsigned long t0 = now_ms(t), limit = (unsigned long)secs * 1000UL, waited = 0;
     int running = 1;
     for (;;) {
         char one[1];
         long got;
-        if (t->sys->bg_read(t->sys->u, job, 0, one, 0, &got, &running, rc) || !running)
+        int over = t->sys->bg_read(t->sys->u, job, 0, one, 0, &got, &running, rc) || !running;
+        if (seen)
+            pump(t, job, seen);
+        if (over)
             return FG_END;
         if (t->wait) {
             int w = t->wait(t->u, 100);
@@ -316,7 +337,7 @@ int tools_run_fg(cl_tools *t, const char *cmd, int secs, char *out, long cap, lo
         return t->sys->run(t->sys->u, cmd, secs, out, cap, outn, rc);
     if (t->sys->bg_start(t->sys->u, cmd, &job))
         return -1;
-    fg = fg_wait(t, job, secs, rc);
+    fg = fg_wait(t, job, secs, rc, 0);
     if (fg == FG_MOVE && fg_move(t, job, cmd, "", name)) {
         if (id && idcap)
             cl_copy(id, name, idcap);
@@ -341,14 +362,16 @@ int tools_run_fg(cl_tools *t, const char *cmd, int secs, char *out, long cap, lo
 int shells_run_fg(cl_tools *t, const char *cmd, const char *shown, const char *desc, int secs, jw *res,
                   long *rc_out, int *is_err)
 {
-    long job, total, rc = 0, inl, fail_max;
+    long job, total, rc = 0, inl, fail_max, seen = 0;
     int fg, broke = 0, r = 0;
     char num[16], name[24];
     *rc_out = 0;
     *is_err = 0;
     if (t->sys->bg_start(t->sys->u, cmd, &job))
         return -1;
-    fg = fg_wait(t, job, secs, &rc);
+    fg = fg_wait(t, job, secs, &rc, &seen);
+    if (fg != FG_MOVE)
+        pump(t, job, &seen);        /* what came after the last look (a stopped command's too) */
     if (fg == FG_MOVE || (fg == FG_LIMIT && !t->no_background && !is_sleep(shown) && slot(t))) {
         /* Claude Code: at its time limit a command moves to the background
          * (a pause excepted); Ctrl+B moves it before */
