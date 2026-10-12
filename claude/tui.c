@@ -5,6 +5,7 @@
 #include "tools.h"
 #include "conv.h"
 #include "util.h"
+#include "theme.h"
 #include "../view/vw_text.h"
 
 /* glyphs: box drawing (drawn by UP-Term at any font) and the stand-ins
@@ -513,6 +514,8 @@ static void status_row(cl_tui *t)
     want(t, &r);
 }
 
+#define SLASH_MAX(t) ((t)->look == TUI_LOOK_PI ? 64 : 8)
+
 /* the slash commands matching the box's text: their indexes */
 static int slash_matches(cl_tui *t, int *idx, int max)
 {
@@ -883,9 +886,538 @@ static void todo_rows(cl_tui *t)
     (void)skip;
 }
 
+/* ---- pi's look (TUI_LOOK_PI; amiga-pi plan N0): rows as pi's interactive mode draws them, from the
+ * goldens in amiga-pi tests/pi/tui (pi 1.0.4, capture-pane -e) ---- */
+
+static const char *const pi_spin[] = {
+    "\342\240\213", "\342\240\231", "\342\240\271", "\342\240\270", "\342\240\274", "\342\240\264", "\342\240\246",
+    "\342\240\247", "\342\240\207", "\342\240\217"
+};
+#define PI_NSPIN 10
+
+static void pi_role(cl_tui *t, row *r, int role)
+{
+    char b[48];
+    pitheme_sgr(t->pith, role, b);
+    r_sgr(r, b);
+}
+
+/* a row of the editor's rule: the working label in it while the agent works */
+static void pi_rule(cl_tui *t, int work)
+{
+    row r;
+    char b[8];
+    int i;
+    r_init(&r, t->cols);
+    /* a line that starts with ! is a command: the rules take the bash colour (pi updateEditorBorderColor) */
+    pi_role(t, &r, t->ed.n && t->ed.b[0] == '!' ? PR_BASH_MODE : t->pi_rule);
+    (void)b;
+    if (work && t->pi_work[0] && t->cols >= (int)strlen(t->pi_work) + 5) {
+        r_glyph(&r, G_H);
+        r_glyph(&r, G_H);
+        r_text(&r, " ", 1);
+        r_glyph(&r, pi_spin[t->frame % PI_NSPIN]);
+        r_sgr(&r, SGR0);
+        r_text(&r, " ", 1);         /* pi draws the space between the spinner and its label unstyled */
+        pi_role(t, &r, t->pi_rule);
+        r_textz(&r, t->pi_work);
+        r_text(&r, " ", 1);
+    }
+    for (i = r.w; i < t->cols; i++)
+        r_glyph(&r, G_H);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+}
+
+/* a rule with a scroll indicator ("─── ↑ 3 more ───"): pi's createScrollBorder */
+static void pi_scroll_rule(cl_tui *t, const char *arrow, int hidden)
+{
+    row r;
+    char label[48], num[16];
+    int lw, left, i;
+    r_init(&r, t->cols);
+    pi_role(t, &r, t->pi_rule);
+    cl_copy(label, " ", sizeof(label));
+    cl_cat(label, arrow, sizeof(label));
+    cl_cat(label, " ", sizeof(label));
+    cl_ltoa(hidden, num);
+    cl_cat(label, num, sizeof(label));
+    cl_cat(label, " more ", sizeof(label));
+    lw = vw_width(label, (long)strlen(label));
+    if (lw + 2 <= t->cols) {
+        left = (t->cols - lw) / 2;
+        for (i = 0; i < left; i++)
+            r_glyph(&r, G_H);
+        r_textz(&r, label);
+    } else {
+        r_glyph(&r, G_H);
+        r_glyph(&r, G_H);
+        r_glyph(&r, G_H);
+        r_textz(&r, label);
+    }
+    while (r.w < t->cols)
+        r_glyph(&r, G_H);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+}
+
+/* the text rows of the editor: no frame, the cursor a reverse cell (pi's editor.js render) */
+static void pi_editor_rows(cl_tui *t)
+{
+    long a[64], z[64];
+    int n, crow, ccol, show, maxv, i, lw = t->cols > 1 ? t->cols - 1 : 1;
+    maxv = t->rows * 3 / 10;
+    if (maxv < 5)
+        maxv = 5;
+    n = ed_layout(&t->ed, lw, a, z, 64, &crow, &ccol);
+    if (n > 64)
+        n = 64;
+    if (crow >= 64)
+        crow = 63;
+    show = n < maxv ? n : maxv;
+    if (crow < t->scroll)
+        t->scroll = crow;
+    if (crow >= t->scroll + show)
+        t->scroll = crow - show + 1;
+    if (t->scroll > n - show)
+        t->scroll = n - show;
+    if (t->scroll < 0)
+        t->scroll = 0;
+    if (t->busy && t->pi_work[0] && t->scroll == 0)
+        pi_rule(t, 1);
+    else if (t->scroll > 0)
+        pi_scroll_rule(t, "\342\206\221", t->scroll);
+    else
+        pi_rule(t, 0);
+    for (i = 0; i < show; i++) {
+        row r;
+        int k = t->scroll + i, w = 0;
+        long b = a[k];
+        r_init(&r, t->cols);
+        if (k == crow) {
+            /* the text up to the cursor, the cursor cell reversed (the character under it, or a space) */
+            while (b < z[k] && w < ccol) {
+                unsigned long cp;
+                int l = vw_char(t->ed.b + b, z[k] - b, &cp);
+                w += vw_cp_width(cp);
+                b += l;
+            }
+            r_text(&r, t->ed.b + a[k], b - a[k]);
+            r_sgr(&r, REV);
+            if (b < z[k]) {
+                unsigned long cp;
+                int l = vw_char(t->ed.b + b, z[k] - b, &cp);
+                r_text(&r, t->ed.b + b, l);
+                b += l;
+            } else
+                r_text(&r, " ", 1);
+            r_sgr(&r, SGR0);
+            r_text(&r, t->ed.b + b, z[k] - b);
+        } else
+            r_text(&r, t->ed.b + a[k], z[k] - a[k]);
+        want(t, &r);
+    }
+    if (n - (t->scroll + show) > 0)
+        pi_scroll_rule(t, "\342\206\223", n - (t->scroll + show));
+    else
+        pi_rule(t, 0);
+}
+
+/* pi's SelectList (select-list.js): a window of five around the selection, "→ " on it, descriptions in a
+ * column as wide as the widest label + 2 (12..32), "(n/total)" when there is more than the window */
+static void pi_list_rows(cl_tui *t, const char *const *label, const char *const *desc, int n, int sel)
+{
+    int i, start, end, colw = 0, maxv = 5;
+    for (i = 0; i < n; i++) {
+        int w = vw_width(label[i], (long)strlen(label[i])) + 2;
+        if (w > colw)
+            colw = w;
+    }
+    colw = colw < 12 ? 12 : colw > 32 ? 32 : colw;
+    start = sel - maxv / 2;
+    if (start > n - maxv)
+        start = n - maxv;
+    if (start < 0)
+        start = 0;
+    end = start + maxv < n ? start + maxv : n;
+    for (i = start; i < end; i++) {
+        row r;
+        int lw = vw_width(label[i], (long)strlen(label[i]));
+        r_init(&r, t->cols);
+        if (i == sel)
+            pi_role(t, &r, PR_ACCENT);
+        r_text(&r, i == sel ? "\342\206\222 " : "  ", i == sel ? 4 : 2);
+        r.w = r.w;              /* "→" is one column: r_text counted its bytes' width */
+        r_textz(&r, label[i]);
+        if (desc && desc[i] && desc[i][0] && t->cols > 40) {
+            int room = t->cols - (2 + colw) - 2;
+            if (i != sel)
+                r_sgr(&r, DIM);
+            r_pad(&r, 2 + (lw + 2 > colw ? lw + 2 : colw));
+            if (room > 10)
+                r_text(&r, desc[i], (long)strlen(desc[i]));
+        }
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
+    if (start > 0 || end < n) {
+        row r;
+        char m[48], num[16];
+        r_init(&r, t->cols);
+        r_sgr(&r, DIM);
+        cl_copy(m, "  (", sizeof(m));
+        cl_ltoa(sel + 1, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, "/", sizeof(m));
+        cl_ltoa(n, num);
+        cl_cat(m, num, sizeof(m));
+        cl_cat(m, ")", sizeof(m));
+        r_textz(&r, m);
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
+}
+
+static void pi_slash_rows(cl_tui *t, int *idx, int n)
+{
+    const char *label[64], *desc[64];
+    int i;
+    for (i = 0; i < n; i++) {
+        label[i] = t->cmds[idx[i]].name[0] == '/' ? t->cmds[idx[i]].name + 1 : t->cmds[idx[i]].name;
+        desc[i] = t->cmds[idx[i]].help;
+    }
+    pi_list_rows(t, label, desc, n, t->msel);
+}
+
+/* pi's footer.js: the directory, then the usage with the model on the right (padding of at least two) */
+static void pi_footer_rows(cl_tui *t)
+{
+    row r;
+    int lw, cw, rw, pad;
+    r_init(&r, t->cols);
+    r_sgr(&r, DIM);
+    r_textz(&r, t->pi_cwd);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    lw = vw_width(t->pi_left, (long)strlen(t->pi_left));
+    cw = vw_width(t->pi_ctx, (long)strlen(t->pi_ctx));
+    rw = vw_width(t->pi_right, (long)strlen(t->pi_right));
+    if (lw && t->pi_ctx[0])
+        lw++;                   /* the space between the usage and the context figure */
+    pad = t->cols - lw - cw - rw;
+    r_sgr(&r, DIM);
+    if (t->pi_left[0]) {
+        r_textz(&r, t->pi_left);
+        if (t->pi_ctx[0])
+            r_text(&r, " ", 1);
+    }
+    r_sgr(&r, SGR0);
+    if (t->pi_ctx[0]) {
+        if (t->pi_ctx_role)
+            pi_role(t, &r, t->pi_ctx_role - 1);
+        else
+            r_sgr(&r, DIM);
+        r_textz(&r, t->pi_ctx);
+        r_sgr(&r, SGR0);
+    }
+    r_sgr(&r, DIM);
+    if (pad < 2) {
+        pad = 2;
+    }
+    while (pad-- > 0 && r.w < t->cols)
+        r_text(&r, " ", 1);
+    r_textz(&r, t->pi_right);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+}
+
+/* the messages waiting for the agent: "Steering: ..." then "Follow-up: ...", and the hint */
+static void pi_queue_rows(cl_tui *t)
+{
+    int i;
+    row r;
+    if (!t->n_steer && !t->n_follow)
+        return;
+    for (i = 0; i < t->n_steer + t->n_follow; i++) {
+        const char *s = i < t->n_steer ? t->pi_steer[i] : t->pi_follow[i - t->n_steer];
+        r_init(&r, t->cols);
+        r_text(&r, " ", 1);
+        r_sgr(&r, DIM);
+        r_textz(&r, i < t->n_steer ? "Steering: " : "Follow-up: ");
+        r_textz(&r, s);
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, DIM);
+    r_glyph(&r, "\342\206\263");
+    r_textz(&r, " Option+Up to edit all queued messages");
+    r_sgr(&r, SGR0);
+    want(t, &r);
+}
+
+/* the words of s on rows of at most width columns (pi's Text component), one row each, to want() */
+static void pi_wrapped(cl_tui *t, const char *sgr, const char *s, int pad)
+{
+    int width = t->cols - pad * 2, lw;
+    const char *p = s;
+    if (width < 8)
+        width = 8;
+    while (1) {
+        const char *e = p;
+        long n;
+        int w = 0;
+        row r;
+        const char *brk = 0;
+        while (*e && *e != '\n') {
+            unsigned long cp;
+            int l = vw_char(e, (long)strlen(e), &cp), cw = vw_cp_width(cp);
+            if (w + cw > width)
+                break;
+            if (cp == ' ')
+                brk = e;
+            w += cw;
+            e += l;
+        }
+        if (*e && *e != '\n' && brk && brk > p) {
+            n = (long)(brk - p);
+            lw = 1;
+        } else {
+            n = (long)(e - p);
+            lw = 0;
+        }
+        r_init(&r, t->cols);
+        r_text(&r, "          ", pad);
+        r_sgr(&r, sgr);
+        r_text(&r, p, n);
+        r_sgr(&r, SGR0);
+        want(t, &r);
+        p += n + lw;
+        if (*p == '\n')
+            p++;
+        else if (!*p && !(lw && 0))
+            break;
+        if (!*p && (e == p || *(p - 1) != '\n'))
+            break;
+    }
+}
+
+/* a question (tui_menu): pi's selector -- a rule in the border colour, the title in bold, the options with
+ * "→" on the choice, the keys, a rule */
+static void pi_menu_rows(cl_tui *t)
+{
+    row r;
+    int i;
+    char b[48];
+    r_init(&r, t->cols);
+    pitheme_sgr(t->pith, PR_BORDER, b);
+    r_sgr(&r, b);
+    for (i = 0; i < t->cols; i++)
+        r_glyph(&r, G_H);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    want(t, &r);
+    pi_wrapped(t, BOLD, t->m_title ? t->m_title : "", 1);
+    if (t->m_q && *t->m_q) {
+        r_init(&r, t->cols);
+        want(t, &r);
+        pi_wrapped(t, BOLD, t->m_q, 1);
+    }
+    r_init(&r, t->cols);
+    want(t, &r);
+    for (i = 0; i < t->m_n; i++) {
+        r_init(&r, t->cols);
+        r_text(&r, " ", 1);
+        r_text(&r, i == t->m_sel ? "\342\206\222 " : "  ", i == t->m_sel ? 4 : 2);
+        r_textz(&r, t->m_opt[i]);
+        want(t, &r);
+    }
+    r_init(&r, t->cols);
+    want(t, &r);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, DIM);
+    r_textz(&r, "\342\206\221\342\206\223 navigate");
+    r_sgr(&r, SGR0);
+    r_text(&r, "  ", 2);
+    r_sgr(&r, DIM);
+    r_textz(&r, "enter select");
+    r_sgr(&r, SGR0);
+    r_text(&r, "  ", 2);
+    r_sgr(&r, DIM);
+    r_textz(&r, "escape/ctrl+c cancel");
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    want(t, &r);
+    r_init(&r, t->cols);
+    r_sgr(&r, b);
+    for (i = 0; i < t->cols; i++)
+        r_glyph(&r, G_H);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+}
+
+static void pi_rule_row(cl_tui *t, int role)
+{
+    row r;
+    int i;
+    r_init(&r, t->cols);
+    pi_role(t, &r, role);
+    for (i = 0; i < t->cols; i++)
+        r_glyph(&r, G_H);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+}
+
+static void pi_blank_row(cl_tui *t)
+{
+    row r;
+    r_init(&r, t->cols);
+    want(t, &r);
+}
+
+static void pi_pick_rows(cl_tui *t)
+{
+    const tui_pick *p = t->pick;
+    row r;
+    int i, start, end, maxv = p->maxrows > 0 ? p->maxrows : 5;
+    char line[600], num[16];
+    pi_blank_row(t);
+    pi_rule_row(t, PR_BORDER);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, BOLD);
+    r_text(&r, "  ", 2);
+    r_textz(&r, p->title);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_wrapped(t, DIM, p->help, 0);
+    r_init(&r, t->cols);
+    r_text(&r, "  ", 2);
+    r_sgr(&r, DIM);
+    r_textz(&r, "Type to search:");
+    r_sgr(&r, SGR0);
+    if (p->query[0]) {
+        r_text(&r, " ", 1);
+        pi_role(t, &r, PR_ACCENT);
+        r_textz(&r, p->query);
+        r_sgr(&r, SGR0);
+    }
+    want(t, &r);
+    pi_rule_row(t, PR_BORDER);
+    pi_blank_row(t);
+    if (!p->n) {
+        r_init(&r, t->cols);
+        r_sgr(&r, DIM);
+        r_textz(&r, "  No entries found");
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    } else {
+        start = p->sel - maxv / 2;
+        if (start > p->n - maxv)
+            start = p->n - maxv;
+        if (start < 0)
+            start = 0;
+        end = start + maxv < p->n ? start + maxv : p->n;
+        for (i = start; i < end; i++) {
+            line[0] = 0;
+            p->row(p->u, i, i == p->sel, line, sizeof(line));
+            r_init(&r, t->cols);
+            r_ansi(&r, line, (long)strlen(line));
+            r_sgr(&r, SGR0);
+            want(t, &r);
+        }
+    }
+    r_init(&r, t->cols);
+    r_sgr(&r, DIM);
+    cl_copy(line, "  (", sizeof(line));
+    cl_ltoa(p->n ? p->sel + 1 : 0, num);
+    cl_cat(line, num, sizeof(line));
+    cl_cat(line, "/", sizeof(line));
+    cl_ltoa(p->n, num);
+    cl_cat(line, num, sizeof(line));
+    cl_cat(line, ")", sizeof(line));
+    cl_cat(line, p->status, sizeof(line));
+    r_textz(&r, line);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_blank_row(t);
+    pi_rule_row(t, PR_BORDER);
+}
+
+static void pi_input_rows(cl_tui *t)
+{
+    row r;
+    pi_blank_row(t);
+    pi_rule_row(t, PR_BORDER);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, BOLD);
+    r_textz(&r, t->pi_in_title);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_textz(&r, t->pi_in);
+    r_sgr(&r, REV);
+    r_text(&r, " ", 1);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, DIM);
+    r_textz(&r, "enter save");
+    r_sgr(&r, SGR0);
+    r_text(&r, "  ", 2);
+    r_sgr(&r, DIM);
+    r_textz(&r, "escape cancel");
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_rule_row(t, PR_BORDER);
+}
+
+static void build_pi(cl_tui *t)
+{
+    int idx[64], nm;
+    t->nwant = 0;
+    t->crow = 0;
+    if (t->modal) {
+        if (t->modal == 2 && t->pick)
+            pi_pick_rows(t);
+        else if (t->modal == 3)
+            pi_input_rows(t);
+        else
+            pi_menu_rows(t);
+        if (!t->pi_nofoot)
+            pi_footer_rows(t);
+        return;
+    }
+    pi_queue_rows(t);
+    {
+        row r;
+        r_init(&r, t->cols);           /* the blank row between the transcript and the editor */
+        want(t, &r);
+    }
+    pi_editor_rows(t);
+    nm = slash_matches(t, idx, SLASH_MAX(t));
+    if (t->msel >= nm)
+        t->msel = nm ? nm - 1 : 0;
+    if (nm)
+        pi_slash_rows(t, idx, nm);
+    pi_footer_rows(t);
+}
+
 static void build(cl_tui *t)
 {
-    int idx[8], nm;
+    int idx[64], nm;
+    if (t->look == TUI_LOOK_PI) {
+        build_pi(t);
+        return;
+    }
     t->nwant = 0;
     t->crow = 0;
     if (t->busy)
@@ -904,7 +1436,7 @@ static void build(cl_tui *t)
         help_rows(t);
         return;
     }
-    nm = slash_matches(t, idx, 8);
+    nm = slash_matches(t, idx, SLASH_MAX(t));
     if (t->msel >= nm)
         t->msel = nm ? nm - 1 : 0;
     if (nm) {
@@ -1321,7 +1853,7 @@ static void tick(cl_tui *t)
 /* the slash menu's chosen command written into the box; 1 when it took */
 static int complete(cl_tui *t)
 {
-    int idx[8], n = slash_matches(t, idx, 8);
+    int idx[64], n = slash_matches(t, idx, SLASH_MAX(t));
     if (!n)
         return 0;
     ed_set(&t->ed, t->cmds[idx[t->msel < n ? t->msel : 0]].name);
@@ -1827,6 +2359,42 @@ static void edit_as(cl_tui *t, int kind, unsigned long ch, int mods)
 
 /* the box's text submitted (Enter's chat:submit; queue: chat:queueSubmit,
  * which never takes the \ + Enter newline) */
+/* TUI_LOOK_PI: the program's queued messages put in front of the box's text, a blank line between (pi's
+ * restoreQueuedMessagesToEditor); how many came back */
+static int restore_queue(cl_tui *t, int quiet)
+{
+    int n = 0;
+    char *q = t->on_dequeue ? t->on_dequeue(t->qu, &n, quiet) : 0;
+    if (q) {
+        jw w;
+        char *cur = box_line(t);
+        jw_init(&w);
+        jw_rawz(&w, q);
+        if (cur && cur[0]) {
+            jw_rawz(&w, "\n\n");
+            jw_rawz(&w, cur);
+        }
+        jw_rawz(&w, "");
+        tui_set_text(t, w.p);
+        jw_free(&w);
+        free(cur);
+        free(q);
+    }
+    return n;
+}
+
+/* a line typed while the agent works, in pi's look: steering (Enter) or a follow-up (Alt+Enter) for the
+ * program; a command or a ! line waits in the type-ahead queue. 1 when taken */
+static int pi_queue_line(cl_tui *t, char *line, int follow)
+{
+    if (t->look != TUI_LOOK_PI || !t->on_queue || line[0] == '/' || line[0] == '!')
+        return 0;
+    if (!t->on_queue(t->qu, line, follow))
+        return 0;
+    free(line);
+    return 1;
+}
+
 static int submit(cl_tui *t, int busy, char *buf, long cap, int queue)
 {
     char *line;
@@ -1838,6 +2406,8 @@ static int submit(cl_tui *t, int busy, char *buf, long cap, int queue)
     }
     line = take_box(t);
     if (!line)
+        return H_GO;
+    if (busy && pi_queue_line(t, line, 0))
         return H_GO;
     if (busy || !buf) {
         enqueue(t, line);
@@ -1859,7 +2429,7 @@ static int cancel(cl_tui *t, int busy)
         edit_as(t, K_ESC, 0, 0);
         return H_GO;
     }
-    if (slash_matches(t, idx, 8)) {
+    if (slash_matches(t, idx, SLASH_MAX(t))) {
         t->mclosed = 1;
         return H_GO;
     }
@@ -1867,8 +2437,11 @@ static int cancel(cl_tui *t, int busy)
         t->box = BOX_PROMPT;
         return H_GO;
     }
-    if (busy)
+    if (busy) {
+        if (t->look == TUI_LOOK_PI)
+            restore_queue(t, 1);    /* pi: Esc takes the queued messages back to the editor, then aborts */
         return H_STOP;
+    }
     if (!t->ed.n && t->esc_idle && t->esc_idle(t->iu))
         return H_GO;                /* A4 gaps 3: a pending /loop wakeup cancelled */
     if (t->esc_armed && now(t) - t->esc_ms <= 1000) {
@@ -1897,7 +2470,7 @@ static int cancel(cl_tui *t, int busy)
  * the queue taken back, else the editor (a row up, then the history) */
 static int history_step(cl_tui *t, int up)
 {
-    int idx[8], n = slash_matches(t, idx, 8);
+    int idx[64], n = slash_matches(t, idx, SLASH_MAX(t));
     if (n) {
         t->msel = (t->msel + (up ? n - 1 : 1)) % n;
         return H_GO;
@@ -1932,6 +2505,13 @@ static int act_chat(cl_tui *t, int act, cl_key *k, int busy, char *buf, long cap
         if (t->ed.n) {
             edit(t, k);             /* text in the box: the character after the cursor goes */
             return H_GO;
+        }
+        if (t->look == TUI_LOOK_PI) {
+            /* pi's app.exit on an empty editor: shutdown at once, the run stopped first when one is going */
+            if (!busy)
+                return H_QUIT;
+            t->quit_after = 1;
+            return H_STOP;
         }
         if (busy)
             return H_GO;
@@ -1988,6 +2568,41 @@ static int act_chat(cl_tui *t, int act, cl_key *k, int busy, char *buf, long cap
         return submit(t, busy, buf, cap, act == KA_QUEUE_SUBMIT);
     case KA_SEND_NOW:
         return busy ? send_now(t) : submit(t, busy, buf, cap, 1);
+    case KA_FOLLOW_UP:
+        if (busy) {
+            char *line = take_box(t);
+            if (line && !pi_queue_line(t, line, 1))
+                enqueue(t, line);
+            return H_GO;
+        }
+        return submit(t, busy, buf, cap, 0);        /* idle: it is a plain Enter */
+    case KA_DEQUEUE:
+        restore_queue(t, 0);
+        return H_GO;
+    case KA_MODEL_NEXT:
+    case KA_MODEL_PREV:
+        if (t->on_cycle)
+            t->on_cycle(t->qu, 0, act == KA_MODEL_NEXT ? 1 : -1);
+        return H_GO;
+    case KA_THINK_CYCLE:
+        if (t->on_cycle)
+            t->on_cycle(t->qu, 1, 1);
+        return H_GO;
+    case KA_CMD_NEW:
+    case KA_CMD_TREE:
+    case KA_CMD_FORK:
+    case KA_CMD_RESUME: {
+        const char *c = act == KA_CMD_NEW ? "/new" : act == KA_CMD_TREE ? "/tree" : act == KA_CMD_FORK ? "/fork" : "/resume";
+        if (busy || !buf) {
+            char *m = dupn(c, (long)strlen(c));
+            if (m)
+                enqueue(t, m);
+            return H_GO;
+        }
+        cl_copy(buf, c, cap);
+        t->keycmd = 1;
+        return H_SUBMIT;
+    }
     case KA_NEWLINE:
         edit_as(t, K_NEWLINE, 0, 0);
         return H_GO;
@@ -2190,7 +2805,7 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         return H_GO;
     case K_CHAR:
         if (!t->ed.n && t->box == BOX_PROMPT && (t->ed.vim == VIM_OFF || t->ed.vim == VIM_INSERT) &&
-            (k->ch == '!' || k->ch == '#')) {
+            (k->ch == '!' || k->ch == '#') && t->look != TUI_LOOK_PI) {
             t->box = k->ch == '!' ? BOX_BASH : BOX_MEMORY;
             return H_GO;
         }
@@ -2233,6 +2848,10 @@ long tui_read(cl_tui *t, char *buf, long cap)
     char *q;
     t->hint[0] = 0;
     t->keycmd = 0;
+    if (t->quit_after) {
+        t->quit_after = 0;
+        return -1;              /* Ctrl+D while the run went (pi's look): the run has stopped, now the program */
+    }
     q = tui_dequeue(t, 0);
     if (q) {
         cl_copy(buf, q, cap);
@@ -2558,4 +3177,94 @@ int tui_pending(cl_tui *t)
         t->keys.n -= 3;
     }
     return t->keys.n > 0 || t->keys.paste;
+}
+
+int tui_pick_run(cl_tui *t, tui_pick *p)
+{
+    int res = -1, ctx[1];
+    ctx[0] = KC_TREE;
+    t->modal = 2;
+    t->pick = p;
+    for (;;) {
+        cl_key k;
+        int r, act;
+        tui_frame(t);
+        r = next_key(t, &k, 500);
+        if (r < 0)
+            break;
+        if (!r) {
+            check_size(t);
+            continue;
+        }
+        act = km_action(&t->km, ctx, 1, &k, now(t));
+        if (act == KA_PENDING || act == KA_CHORD_MISS)
+            continue;
+        if (p->key && p->key(p->u, &k, act))
+            continue;
+        if (act == KA_SEL_NEXT || (act == KA_NONE && k.k == K_DOWN)) {
+            if (p->n)
+                p->sel = p->sel == p->n - 1 ? 0 : p->sel + 1;
+        } else if (act == KA_SEL_PREV || (act == KA_NONE && k.k == K_UP)) {
+            if (p->n)
+                p->sel = p->sel == 0 ? p->n - 1 : p->sel - 1;
+        } else if (act == KA_SEL_PGUP || (act == KA_NONE && k.k == K_LEFT)) {
+            p->sel = p->sel - p->maxrows < 0 ? 0 : p->sel - p->maxrows;
+        } else if (act == KA_SEL_PGDN || (act == KA_NONE && k.k == K_RIGHT)) {
+            p->sel = p->sel + p->maxrows > p->n - 1 ? (p->n ? p->n - 1 : 0) : p->sel + p->maxrows;
+        } else if (act == KA_SEL_ACCEPT) {
+            if (p->n) {
+                res = p->sel;
+                break;
+            }
+        } else if (act == KA_SEL_CANCEL)
+            break;
+    }
+    t->modal = 0;
+    t->pick = 0;
+    tui_frame(t);
+    return res;
+}
+
+int tui_line_input(cl_tui *t, const char *title, char *out, long cap)
+{
+    int res = -1;
+    t->modal = 3;
+    t->pi_in_title = title;
+    t->pi_in[0] = 0;
+    for (;;) {
+        cl_key k;
+        int r;
+        long l = (long)strlen(t->pi_in);
+        tui_frame(t);
+        r = next_key(t, &k, 500);
+        if (r < 0)
+            break;
+        if (!r) {
+            check_size(t);
+            continue;
+        }
+        if (k.k == K_ENTER) {
+            cl_copy(out, t->pi_in, cap);
+            res = 1;
+            break;
+        }
+        if (k.k == K_ESC || (k.k == K_CTRL && k.ch == 'c')) {
+            res = 0;
+            break;
+        }
+        if (k.k == K_BS) {
+            if (l) {
+                do
+                    l--;
+                while (l > 0 && ((unsigned char)t->pi_in[l] & 0xc0) == 0x80);
+                t->pi_in[l] = 0;
+            }
+        } else if (k.k == K_CHAR && k.ch >= 0x20 && l + 5 < (long)sizeof(t->pi_in)) {
+            l += vw_put_utf8(t->pi_in + l, k.ch);
+            t->pi_in[l] = 0;
+        }
+    }
+    t->modal = 0;
+    tui_frame(t);
+    return res;
 }

@@ -6,7 +6,8 @@
  * argument), writes "snipprobe copy me", clears the clipboard's text, writes
  * READY to RAM:snipprobe.log and waits 12 s while the rig drags over the
  * text and presses Right Amiga C; then logs "CLIP <text>" (or "CLIP -").
- * CLIP: only logs the clipboard's text (XCON:'s own copy, snip_rig.py). */
+ * CLIP: only logs the clipboard's text (XCON:'s own copy, snip_rig.py).
+ * CLIP <file>: writes the whole text to <file> (a full screen, amigapi_rig.py step 13). */
 #include <stdio.h>
 #include <string.h>
 #include <exec/memory.h>
@@ -38,6 +39,17 @@ int main(int argc, char **argv)
         static char l[300];
         long k;
         char *t = clip_read(&k);
+        if (argc > 2) {
+            BPTR o = Open((STRPTR)argv[2], MODE_NEWFILE);
+            if (o) {
+                if (t && k > 0)
+                    Write(o, t, k);
+                Close(o);
+            }
+            if (t)
+                FreeVec(t);
+            return 0;
+        }
         sprintf(l, "CLIP %.250s\n", t && k > 0 ? t : "-");
         say(l);
         if (t)

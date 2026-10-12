@@ -52,6 +52,12 @@
 #define TUI_DIRS 4              /* directory listings kept for the @ list */
 #define TUI_DIR_NAMES 400       /* names kept from one directory at most */
 
+/* the look: Claude Code's (the default) or pi's (amiga-pi plan N0): no
+ * frame, the editor between two rules with its cursor drawn as a reverse
+ * cell, the working row in the top rule, the working directory and the
+ * usage line under it, a list for the slash commands and for questions */
+enum { TUI_LOOK_CLAUDE, TUI_LOOK_PI };
+
 /* what the box holds: a prompt, a ! command, a # memory */
 enum { BOX_PROMPT, BOX_BASH, BOX_MEMORY };
 
@@ -72,6 +78,22 @@ typedef struct cl_cmd {
 /* permission modes, cycled with Shift+Tab (tools.h PERM_*) */
 extern const char *const tui_mode_names[4];
 
+/* TUI_LOOK_PI: a selector over the program's own rows (the session tree): a rule, the title, the help, a search
+ * line, a rule, the rows around the selection with "(sel/total)" and the program's status words under them, a
+ * rule, the footer. The program's key function sees every key first (act: the keymap's KC_TREE action or
+ * KA_NONE) and returns 1 when it took it; else up/down (wrapping), page keys, accept and cancel are the
+ * picker's. row writes row i (SGR kept, the cursor mark included) into out. */
+typedef struct tui_pick {
+    const char *title;
+    const char *help;           /* dim, wrapped, two spaces in */
+    char query[96];             /* the search line's text */
+    int n, sel;
+    int maxrows;                /* rows shown at most */
+    char status[64];            /* after "(sel/total)" */
+    void (*row)(void *u, int i, int selected, char *out, long cap);
+    int (*key)(void *u, const cl_key *k, int act);
+    void *u;
+} tui_pick;
 typedef struct cl_tui {
     cl_io *io;
     int cols, rows;
@@ -139,6 +161,7 @@ typedef struct cl_tui {
     int (*esc_idle)(void *u);
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
+    int quit_after;             /* TUI_LOOK_PI: Ctrl+D stopped the run; the next tui_read ends the program */
     const cl_theme *th;         /* the colours (/theme) */
     const char *bar;            /* /color: the prompt bar's colour for the session (SGR), 0 the theme's */
     /* A4: what the screen needs from the program (ui_attach sets them) */
@@ -222,7 +245,35 @@ typedef struct cl_tui {
     /* what was sent (tests: the redraw economy) */
     long n_frames, n_rows, n_lines, n_writes, n_full;
     long n_views, n_redraws, n_notify;
+    /* TUI_LOOK_PI: its colours, and the footer's facts as the program formats them (pi's footer.js): the
+     * directory, the usage before the context figure, the figure (ctx_role: 0, or a PR_* role it is
+     * drawn in), the model on the right; the working row's label ("" idle); the editor rules' role (the
+     * thinking level's); the messages waiting (steering, then follow-up) shown above the editor */
+    int look;
+    const cl_pitheme *pith;
+    char pi_cwd[300], pi_left[160], pi_ctx[48], pi_right[120], pi_work[96];
+    int pi_ctx_role, pi_rule;
+    char *pi_steer[TUI_QUEUE], *pi_follow[TUI_QUEUE];
+    int n_steer, n_follow;
+    /* TUI_LOOK_PI -- what the program does for the keys of pi's queue and cycling (pi_ui in amiga-pi):
+     * on_queue: a message typed while the agent works (follow 0: steering, Enter; 1: follow-up, Alt+Enter):
+     * 1 when the program took it, 0 and the type-ahead queue keeps it; on_dequeue: Alt+Up, and Esc while
+     * working (quiet 1: no word about it): the queued messages out of the program's queues, malloc'ed text
+     * joined by blank lines (0 none; *count how many); on_cycle: Ctrl+P / Shift+Ctrl+P (what 0, dir 1 / -1) and Shift+Tab (what 1) */
+    int (*on_queue)(void *u, const char *text, int follow);
+    char *(*on_dequeue)(void *u, int *count, int quiet);
+    void (*on_cycle)(void *u, int what, int dir);
+    void *qu;
+    const tui_pick *pick;       /* the picker that is open (modal 2), the line input (modal 3: pi_in) */
+    char pi_in[200];
+    const char *pi_in_title;
+    int pi_nofoot;              /* a question before the screen is up: no footer under it */
 } cl_tui;
+
+/* the row chosen (accept), -1 cancelled or the end of input */
+int tui_pick_run(cl_tui *t, tui_pick *p);
+/* TUI_LOOK_PI: a one-line input under a title (Enter: 1 with the text in out, Esc: 0, the end of input: -1) */
+int tui_line_input(cl_tui *t, const char *title, char *out, long cap);
 
 /* 0, or -1 when out of memory. cols x rows from io->size (80x24 when it
  * says nothing). */

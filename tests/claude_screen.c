@@ -45,6 +45,7 @@ static long rd(void *u, char *buf, long cap, long ms)
     const char *c;
     long n;
     (void)u;
+    cs.read_ms = ms;
     if (cs.before_read)
         cs.before_read();
     if (h_reply_len) {

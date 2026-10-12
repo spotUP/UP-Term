@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "keys.h"
+#include "util.h"
 
 void keys_init(cl_keys *k)
 {
@@ -395,7 +396,7 @@ int keys_next(cl_keys *k, cl_key *key, int idle)
 
 static const char *const ctx_names[KC_COUNT] = { "Global", "Chat", "Autocomplete", "Confirmation", "Transcript",
                                                  "HistorySearch", "Task", "Help", "Select", "ThemePicker",
-                                                 "MessageSelector" };
+                                                 "MessageSelector", "Tree" };
 
 /* Claude Code's other contexts: valid in the file, nothing of them here */
 static const char *const other_ctx[] = { "Settings", "Tabs", "Attachments", "Footer", "DiffDialog", "DiffPanel",
@@ -950,4 +951,253 @@ void km_defaults_json(jw *out)
             jw_rawz(out, "\n      }\n    }");
     }
     jw_rawz(out, "\n  ]\n}\n");
+}
+
+/* ---- pi's keybindings (keys.h) ---- */
+
+typedef struct pi_bind {
+    const char *id;             /* pi's action id */
+    int ctx;                    /* KC_* it binds in */
+    int act;                    /* the screen's action (KA_*), KA_INERT: accepted, nothing to bind */
+    const char *keys;           /* pi's defaults, '|' between them ("" none) */
+} pi_bind;
+
+/* docs/keybindings.md of pi 1.0.4, every action; one id may bind in several contexts */
+static const pi_bind pi_binds[] = {
+    { "tui.editor.cursorUp", KC_CHAT, KA_INERT, "" }, { "tui.editor.cursorDown", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.historyPrevious", KC_CHAT, KA_HIST_PREV, "" }, { "tui.editor.historyNext", KC_CHAT, KA_HIST_NEXT, "" },
+    { "tui.editor.cursorLeft", KC_CHAT, KA_INERT, "" }, { "tui.editor.cursorRight", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.cursorWordLeft", KC_CHAT, KA_INERT, "" }, { "tui.editor.cursorWordRight", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.cursorLineStart", KC_CHAT, KA_INERT, "" }, { "tui.editor.cursorLineEnd", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.jumpForward", KC_CHAT, KA_INERT, "" }, { "tui.editor.jumpBackward", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.pageUp", KC_CHAT, KA_INERT, "" }, { "tui.editor.pageDown", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.deleteCharBackward", KC_CHAT, KA_INERT, "" }, { "tui.editor.deleteCharForward", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.deleteWordBackward", KC_CHAT, KA_INERT, "" }, { "tui.editor.deleteWordForward", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.deleteToLineStart", KC_CHAT, KA_INERT, "" }, { "tui.editor.deleteToLineEnd", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.yank", KC_CHAT, KA_INERT, "" }, { "tui.editor.yankPop", KC_CHAT, KA_INERT, "" },
+    { "tui.editor.undo", KC_CHAT, KA_UNDO, "ctrl+_" },
+    { "tui.input.newLine", KC_CHAT, KA_NEWLINE, "shift+enter|ctrl+j" },
+    { "tui.input.submit", KC_CHAT, KA_SUBMIT, "enter" },
+    { "tui.input.tab", KC_CHAT, KA_INERT, "" }, { "tui.input.copy", KC_CHAT, KA_INERT, "" },
+    { "tui.select.up", KC_SELECT, KA_SEL_PREV, "up" }, { "tui.select.up", KC_CONFIRM, KA_PREV, "up" },
+    { "tui.select.up", KC_TREE, KA_SEL_PREV, "up" },
+    { "tui.select.down", KC_SELECT, KA_SEL_NEXT, "down" }, { "tui.select.down", KC_CONFIRM, KA_NEXT, "down" },
+    { "tui.select.down", KC_TREE, KA_SEL_NEXT, "down" },
+    { "tui.select.pageUp", KC_SELECT, KA_SEL_PGUP, "pageUp" }, { "tui.select.pageUp", KC_TREE, KA_SEL_PGUP, "pageUp" },
+    { "tui.select.pageDown", KC_SELECT, KA_SEL_PGDN, "pageDown" }, { "tui.select.pageDown", KC_TREE, KA_SEL_PGDN, "pageDown" },
+    { "tui.select.confirm", KC_SELECT, KA_SEL_ACCEPT, "enter" }, { "tui.select.confirm", KC_CONFIRM, KA_YES, "enter" },
+    { "tui.select.confirm", KC_TREE, KA_SEL_ACCEPT, "enter" },
+    { "tui.select.cancel", KC_SELECT, KA_SEL_CANCEL, "escape|ctrl+c" }, { "tui.select.cancel", KC_CONFIRM, KA_NO, "escape|ctrl+c" },
+    { "tui.select.cancel", KC_TREE, KA_SEL_CANCEL, "escape|ctrl+c" },
+    { "tui.altScreen.pageUp", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.pageDown", KC_CHAT, KA_INERT, "" },
+    { "tui.altScreen.halfPageUp", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.halfPageDown", KC_CHAT, KA_INERT, "" },
+    { "tui.altScreen.lineUp", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.lineDown", KC_CHAT, KA_INERT, "" },
+    { "tui.altScreen.previousPrompt", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.nextPrompt", KC_CHAT, KA_INERT, "" },
+    { "tui.altScreen.search", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.searchNext", KC_CHAT, KA_INERT, "" },
+    { "tui.altScreen.searchPrevious", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.searchClose", KC_CHAT, KA_INERT, "" },
+    { "tui.altScreen.top", KC_CHAT, KA_INERT, "" }, { "tui.altScreen.bottom", KC_CHAT, KA_INERT, "" },
+    { "app.interrupt", KC_CHAT, KA_CANCEL, "escape" },
+    { "app.clear", KC_GLOBAL, KA_INTERRUPT, "ctrl+c" },
+    { "app.exit", KC_GLOBAL, KA_EXIT, "ctrl+d" },
+    { "app.suspend", KC_CHAT, KA_INERT, "" },
+    { "app.editor.external", KC_CHAT, KA_EXT_EDITOR, "ctrl+g" },
+    { "app.clipboard.pasteImage", KC_CHAT, KA_IMAGE_PASTE, "ctrl+v" },
+    { "app.session.new", KC_CHAT, KA_CMD_NEW, "" }, { "app.session.tree", KC_CHAT, KA_CMD_TREE, "" },
+    { "app.session.fork", KC_CHAT, KA_CMD_FORK, "" }, { "app.session.resume", KC_CHAT, KA_CMD_RESUME, "" },
+    { "app.session.togglePath", KC_CHAT, KA_INERT, "" }, { "app.session.toggleSort", KC_CHAT, KA_INERT, "" },
+    { "app.session.toggleNamedFilter", KC_CHAT, KA_INERT, "" }, { "app.session.rename", KC_CHAT, KA_INERT, "" },
+    { "app.session.delete", KC_CHAT, KA_INERT, "" }, { "app.session.deleteNoninvasive", KC_CHAT, KA_INERT, "" },
+    { "app.model.select", KC_CHAT, KA_MODEL_PICKER, "ctrl+l" },
+    { "app.model.cycleForward", KC_CHAT, KA_MODEL_NEXT, "ctrl+p" },
+    { "app.model.cycleBackward", KC_CHAT, KA_MODEL_PREV, "shift+ctrl+p" },
+    { "app.models.save", KC_CHAT, KA_INERT, "" }, { "app.models.enableAll", KC_CHAT, KA_INERT, "" },
+    { "app.models.clearAll", KC_CHAT, KA_INERT, "" }, { "app.models.toggleProvider", KC_CHAT, KA_INERT, "" },
+    { "app.models.reorderUp", KC_CHAT, KA_INERT, "" }, { "app.models.reorderDown", KC_CHAT, KA_INERT, "" },
+    { "app.thinking.cycle", KC_CHAT, KA_THINK_CYCLE, "shift+tab" },
+    { "app.thinking.save", KC_CHAT, KA_INERT, "" }, { "app.thinking.toggle", KC_CHAT, KA_INERT, "" },
+    { "app.tools.expand", KC_GLOBAL, KA_TRANSCRIPT, "ctrl+o" },
+    { "app.message.copy", KC_CHAT, KA_INERT, "" },
+    { "app.message.followUp", KC_CHAT, KA_FOLLOW_UP, "alt+enter" },
+    { "app.message.dequeue", KC_CHAT, KA_DEQUEUE, "alt+up" },
+    { "app.tree.foldOrUp", KC_TREE, KA_TREE_FOLD, "ctrl+left|alt+left" },
+    { "app.tree.unfoldOrDown", KC_TREE, KA_TREE_UNFOLD, "ctrl+right|alt+right" },
+    { "app.tree.editLabel", KC_TREE, KA_TREE_LABEL, "shift+l" },
+    { "app.tree.toggleLabelTimestamp", KC_TREE, KA_TREE_STAMP, "shift+t" },
+    { "app.tree.filter.default", KC_TREE, KA_TREE_F_DEFAULT, "ctrl+d" },
+    { "app.tree.filter.noTools", KC_TREE, KA_TREE_F_NOTOOLS, "ctrl+t" },
+    { "app.tree.filter.userOnly", KC_TREE, KA_TREE_F_USER, "ctrl+u" },
+    { "app.tree.filter.labeledOnly", KC_TREE, KA_TREE_F_LABELED, "ctrl+l" },
+    { "app.tree.filter.all", KC_TREE, KA_TREE_F_ALL, "ctrl+a" },
+    { "app.tree.filter.cycleForward", KC_TREE, KA_TREE_F_NEXT, "ctrl+o" },
+    { "app.tree.filter.cycleBackward", KC_TREE, KA_TREE_F_PREV, "shift+ctrl+o" },
+    { 0, 0, 0, 0 }
+};
+
+/* the keys of the Transcript viewer and the other contexts pi has no counterpart of keep Claude Code's keys:
+ * q and Esc close the viewer; the history search is Ctrl+R */
+static int pi_base(cl_keymap *m)
+{
+    int i;
+    for (i = 0; i < NDEFAULTS; i++) {
+        int c;
+        if (strcmp(defaults[i][0], "Transcript") && strcmp(defaults[i][0], "HistorySearch") &&
+            strcmp(defaults[i][0], "Task") && strcmp(defaults[i][0], "Help") && strcmp(defaults[i][0], "Autocomplete") &&
+            strcmp(defaults[i][0], "Chat"))
+            continue;
+        if (!strcmp(defaults[i][0], "Chat") && strcmp(defaults[i][2], "history:search") &&
+            strcmp(defaults[i][2], "history:previous") && strcmp(defaults[i][2], "history:next") &&
+            strcmp(defaults[i][2], "chat:clearInput") && strcmp(defaults[i][2], "chat:stash") &&
+            strcmp(defaults[i][2], "chat:sendNow"))
+            continue;
+        for (c = 0; c < KC_COUNT && strcmp(ctx_names[c], defaults[i][0]); c++)
+            ;
+        if (bind(m, c, defaults[i][1], defaults[i][2], 0))
+            return -1;
+    }
+    return 0;
+}
+
+static int pi_bind_keys(cl_keymap *m, const pi_bind *b, const char *keys, long n)
+{
+    long a = 0, i;
+    for (i = 0; i <= n; i++) {
+        kb_stroke st;
+        if (i < n && keys[i] != '|')
+            continue;
+        if (i > a && !parse_stroke(m, keys + a, i - a, &st, keys) && add(m, b->ctx, b->act, &st, 1))
+            return -1;
+        a = i + 1;
+    }
+    return 0;
+}
+
+/* the table's bindings, those of the ids in over (a JSON object, or J_BAD none) taking the user's keys */
+static int pi_build(cl_keymap *m, jv over)
+{
+    const pi_bind *b;
+    km_reset(m);
+    m->n = 0;
+    if (pi_base(m))
+        return -1;
+    for (b = pi_binds; b->id; b++) {
+        jv v;
+        if (json_type(over) == J_OBJ && json_get(over, b->id, &v)) {
+            if (json_type(v) == J_STR) {
+                char k[64];
+                json_str(v, k, sizeof(k));
+                if (pi_bind_keys(m, b, k, (long)strlen(k)))
+                    return -1;
+            } else if (json_type(v) == J_ARR) {
+                jit it;
+                jv e;
+                json_iter(v, &it);
+                while (json_next(&it, 0, &e)) {
+                    char k[64];
+                    if (json_type(e) != J_STR) {
+                        km_warn(m, "keybindings: a key must be a string in ", b->id, 0);
+                        continue;
+                    }
+                    json_str(e, k, sizeof(k));
+                    if (strchr(k, '|')) {
+                        km_warn(m, "keybindings: a bad key in ", b->id, 0);
+                        continue;
+                    }
+                    if (pi_bind_keys(m, b, k, (long)strlen(k)))
+                        return -1;
+                }
+            } else
+                km_warn(m, "keybindings: a key or a list of keys is expected for ", b->id, 0);
+        } else if (pi_bind_keys(m, b, b->keys, (long)strlen(b->keys)))
+            return -1;
+    }
+    m->ndef = m->n;
+    return 0;
+}
+
+int km_init_pi(cl_keymap *m)
+{
+    jv none;
+    memset(m, 0, sizeof(*m));
+    jw_init(&m->warn);
+    none.p = 0;
+    none.n = 0;
+    return pi_build(m, none);
+}
+
+int km_load_pi(cl_keymap *m, const char *json, long n)
+{
+    jv o, k, v;
+    jit it;
+    if (n >= 3 && (unsigned char)json[0] == 0xEF && (unsigned char)json[1] == 0xBB && (unsigned char)json[2] == 0xBF) {
+        json += 3;
+        n -= 3;
+    }
+    if (json_parse(json, n, &o) || json_type(o) != J_OBJ) {
+        jv none;
+        none.p = 0;
+        none.n = 0;
+        pi_build(m, none);
+        km_warn(m, "keybindings: the file is no JSON object; the defaults apply", 0, 0);
+        return -1;
+    }
+    if (pi_build(m, o))
+        return -1;
+    /* an id pi does not have */
+    json_iter(o, &it);
+    while (json_next(&it, &k, &v)) {
+        char id[96];
+        const pi_bind *b;
+        json_str(k, id, sizeof(id));
+        for (b = pi_binds; b->id && strcmp(b->id, id); b++)
+            ;
+        if (!b->id)
+            km_warn(m, "keybindings: an unknown action \"", id, "\"");
+    }
+    return 0;
+}
+
+int km_key_text(const cl_keymap *m, int ctx, int act, char *out, long cap)
+{
+    int i;
+    out[0] = 0;
+    for (i = m->n - 1; i >= 0; i--) {
+        const kb_bind *b = &m->b[i];
+        const kb_stroke *s = &b->s[0];
+        const char *name = 0;
+        if (b->ctx != ctx || b->act != act || b->n != 1 || s->k < 0)
+            continue;
+        if (s->mods & KM_CTRL)
+            cl_cat(out, "ctrl+", cap);
+        if (s->mods & KM_SHIFT)
+            cl_cat(out, "shift+", cap);
+        if (s->mods & KM_ALT)
+            cl_cat(out, "alt+", cap);
+        switch (s->k) {
+        case K_ENTER: name = "enter"; break;
+        case K_TAB: name = "tab"; break;
+        case K_ESC: name = "escape"; break;
+        case K_UP: name = "up"; break;
+        case K_DOWN: name = "down"; break;
+        case K_LEFT: name = "left"; break;
+        case K_RIGHT: name = "right"; break;
+        case K_HOME: name = "home"; break;
+        case K_END: name = "end"; break;
+        case K_PGUP: name = "pageUp"; break;
+        case K_PGDN: name = "pageDown"; break;
+        case K_BS: name = "backspace"; break;
+        case K_DEL: name = "delete"; break;
+        case K_INS: name = "insert"; break;
+        default: break;
+        }
+        if (name)
+            cl_cat(out, name, cap);
+        else if (s->k == K_CHAR) {
+            char c[2];
+            c[0] = s->ch == '_' && (s->mods & KM_CTRL) ? '-' : (char)s->ch;
+            c[1] = 0;
+            cl_cat(out, s->ch == ' ' ? "space" : c, cap);
+        }
+        return (int)strlen(out);
+    }
+    return 0;
 }

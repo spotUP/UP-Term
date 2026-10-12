@@ -10,9 +10,15 @@
 
 #include "vw_text.h"
 
+/* md_opts.look: pi's markdown (pi-tui markdown.js; amiga-pi plan N0) -- "- " bullets and lists indented
+ * four columns a level, headings without a rule ("### " before the third level on), code fences shown,
+ * links followed by " (url)", a rule between the table's rows, blank lines between blocks as pi puts them */
+enum { MD_LOOK_DEFAULT, MD_LOOK_PI };
+
 typedef struct md_opts {
     int width;              /* the columns to fill */
     int urls;               /* show a link's URL after its text */
+    int look;               /* MD_LOOK_* (0 when the structure is zeroed: the default look) */
 } md_opts;
 
 /* doc[0..n) to out (its theme, depth, character set and osc8 decide the

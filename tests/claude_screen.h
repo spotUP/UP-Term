@@ -22,6 +22,7 @@ typedef struct cscreen {
     int raw_on, raw_calls;
     int brk;                    /* io->brk's answer once */
     void (*before_read)(void);  /* called before each read (a test looks at the screen mid-way) */
+    long read_ms;               /* the timeout of the read being made (0: not waiting; set before before_read) */
 } cscreen;
 
 extern cscreen cs;
