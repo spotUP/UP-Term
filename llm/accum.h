@@ -52,6 +52,9 @@ void llm_acc_model(llm_acc *a, const char *id, const long price[4]);
 /* the thinking level the request carried, kept on the message as pi-ai's providerThinkingLevel (llm_ant_effort);
  * 0 none */
 void llm_acc_level(llm_acc *a, const char *level);
+/* the message's own fields so far (api, provider, model, responseModel, providerThinkingLevel, usage with its cost, as
+ * pi-ai's calculateCost keeps them on every update); stop and error left 0 */
+void llm_acc_meta(const llm_acc *a, llm_meta *m);
 /* the sink's callback: u is the llm_acc */
 void llm_acc_event(void *u, const llm_event *e);
 /* a sink feeding a */
