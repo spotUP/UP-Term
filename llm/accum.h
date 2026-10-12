@@ -31,6 +31,8 @@ typedef struct llm_acc {
     char cfg_model[96];         /* the configured model's id (llm_acc_model), "" unknown */
     char level[16];             /* providerThinkingLevel the message records (llm_acc_level), "" none */
     char tlevel[16];            /* thinkingLevel the message records (llm_acc_thinking), "" none */
+    long duration_ms;           /* durationMs the message records (llm_acc_duration) */
+    int has_duration;
     long price[4];              /* its price per million tokens in micro-dollars: input, output, cacheRead, cacheWrite */
     char id[96];
     int stop;                   /* LS_* */
@@ -56,6 +58,9 @@ void llm_acc_level(llm_acc *a, const char *level);
 /* the session's thinking level the request was made at ("off" included), kept on the finished message as pi-agent-core's
  * thinkingLevel (agent-loop.js adds it to the stream's result); not set: the message has none */
 void llm_acc_thinking(llm_acc *a, const char *level);
+/* the request's duration, kept on the finished message as pi-ai 1.1.0's durationMs (ms from the request's start to the
+ * final message); not set: the message has none. A streaming message carries none either: the caller clears it. */
+void llm_acc_duration(llm_acc *a, long ms);
 /* the message's own fields so far (api, provider, model, responseId, responseModel, rawStopReason, providerThinkingLevel,
  * thinkingLevel, usage with its cost, as pi-ai's calculateCost keeps them on every update); stop and error left 0.
  * A streaming message (message_start, message_update) has no thinkingLevel yet: the caller clears it. */

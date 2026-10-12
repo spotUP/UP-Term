@@ -114,6 +114,30 @@ static void test_messages(void)
     CHECK_INT(inf.ts.sec, 1760100000L);
     CHECK_INT(inf.ts.ms, 42);
 
+    /* pi-ai 1.1.0 durationMs: after errorMessage, before the agent loop's thinkingLevel; read back and re-written in place */
+    {
+        jw dm, dc;
+        llm_meta dt = mt;
+        dt.stop = LS_ERROR;
+        dt.error = "overloaded";
+        dt.thinking_level = "off";
+        dt.duration_ms = 417;
+        dt.has_duration = 1;
+        jw_init(&dm);
+        llm_m_assistant(&dm, "[]", 2, &dt, ts);
+        CHECK(strstr(dm.p, ",\"errorMessage\":\"overloaded\",\"durationMs\":417,\"thinkingLevel\":\"off\"}") != 0);
+        round_trip("assistant durationMs", dm.p, LR_ASSISTANT);
+        jw_init(&dc);
+        CHECK_INT(llm_msg_canon(dm.p, dm.n, &dc), LR_ASSISTANT);
+        CHECK(strstr(dc.p, "\"durationMs\":417") != 0);
+        jw_free(&dc);
+        jw_reset(&dm);
+        dt.has_duration = 0;                    /* absent: no key */
+        llm_m_assistant(&dm, "[]", 2, &dt, ts);
+        CHECK(strstr(dm.p, "durationMs") == 0);
+        jw_free(&dm);
+    }
+
     /* an error answer keeps its message */
     jw_reset(&m);
     mt.stop = LS_ERROR;
@@ -147,14 +171,22 @@ static void test_messages(void)
     llm_b_text(&c, "     1\tSetPatch QUIET\n", 22, 0);
     jw_raw(&c, "]", 1);
     jw_reset(&m);
-    llm_m_toolresult(&m, "toolu_01Read", "read", c.p, c.n, "{\"truncated\":false}", 19, 0, ts);
+    llm_m_toolresult(&m, "toolu_01Read", "read", c.p, c.n, "{\"truncated\":false}", 19, 0, -1, ts);
     CHECK_STR(m.p, "{\"role\":\"toolResult\",\"toolCallId\":\"toolu_01Read\",\"toolName\":\"read\",\"content\":"
                    "[{\"type\":\"text\",\"text\":\"     1\\tSetPatch QUIET\\n\"}],\"details\":{\"truncated\":false},"
                    "\"isError\":false,\"timestamp\":1760100000042}");
     round_trip("toolResult", m.p, LR_TOOLRESULT);
     jw_reset(&m);
-    llm_m_toolresult(&m, "call_2", "bash", c.p, c.n, 0, 0, 1, ts);
+    llm_m_toolresult(&m, "call_2", "bash", c.p, c.n, 0, 0, 1, -1, ts);
     round_trip("toolResult error", m.p, LR_TOOLRESULT);
+    /* pi-agent-core 1.1.0 createToolResultMessage: durationMs after isError, before timestamp; -1: the tool did not run */
+    jw_reset(&m);
+    llm_m_toolresult(&m, "call_3", "read", c.p, c.n, 0, 0, 0, 3, ts);
+    CHECK(strstr(m.p, "\"isError\":false,\"durationMs\":3,\"timestamp\":1760100000042}") != 0);
+    round_trip("toolResult durationMs", m.p, LR_TOOLRESULT);
+    jw_reset(&m);
+    llm_m_toolresult(&m, "call_3", "read", c.p, c.n, 0, 0, 1, 0, ts);
+    CHECK(strstr(m.p, "\"durationMs\":0,") != 0);            /* a zero duration is a duration */
 
     /* system */
     jw_reset(&m);
