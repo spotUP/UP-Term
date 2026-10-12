@@ -918,7 +918,7 @@ def mask_rpc(o, spec):
     import math, re
     fresh = re.compile(r'^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?!d000)[0-9a-f]{8})$')
     http_err = re.compile(r'^(HTTP )?[1-5][0-9][0-9][ :]')
-    drop, star, ids = set(spec['drop']), set(spec['star']), set(spec['ids']['keys'])
+    star, ids = set(spec['star']), set(spec['ids']['keys'])
     prov = spec['fixtureProvider']
 
     def m(v, start=False, cost=False):
@@ -933,7 +933,7 @@ def mask_rpc(o, spec):
             if k == 'description' and v.get('name') == 'bash':
                 r[k] = '*'
                 continue
-            if k in drop:
+            if k == 'responseId' and start:
                 continue
             if k in star:
                 r[k] = '*'

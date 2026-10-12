@@ -249,7 +249,12 @@ void llm_w_usage(jw *w, const llm_usage *u)
     }
     jw_rawz(w, ",\"total\":");
     llm_w_micro(w, u->cost[0] + u->cost[1] + u->cost[2] + u->cost[3]);
-    jw_rawz(w, "}}");
+    jw_rawz(w, "}");
+    if (u->has_1h) {            /* pi-ai adds it to the usage object after the cost, from the anthropic stream */
+        jw_rawz(w, ",\"cacheWrite1h\":");
+        jw_long(w, u->cache_write_1h);
+    }
+    jw_rawz(w, "}");
 }
 
 void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts)
@@ -272,13 +277,27 @@ void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts
     jw_strz(w, m->stop ? llm_stop_name(m->stop) : "stop");
     key(w, "timestamp");
     llm_w_ts(w, ts);
+    /* the keys in the order pi-ai assigns them: the id and the server's model at the start of the answer, the provider's
+     * stop reason at its end, an error in the stream's catch, the session's level last (the agent loop) */
+    if (m->response_id && *m->response_id) {
+        key(w, "responseId");
+        jw_strz(w, m->response_id);
+    }
     if (m->response_model && *m->response_model) {
         key(w, "responseModel");
         jw_strz(w, m->response_model);
     }
-    if (m->error) {             /* last, as pi-ai sets it in the stream's catch on the finished object */
+    if (m->raw_stop && *m->raw_stop) {
+        key(w, "rawStopReason");
+        jw_strz(w, m->raw_stop);
+    }
+    if (m->error) {
         key(w, "errorMessage");
         jw_strz(w, m->error);
+    }
+    if (m->thinking_level && *m->thinking_level) {
+        key(w, "thinkingLevel");
+        jw_strz(w, m->thinking_level);
     }
     jw_raw(w, "}", 1);
 }
@@ -445,6 +464,10 @@ void llm_r_usage(jv u, llm_usage *o)
         o->cache_read = json_long(v, 0);
     if (json_get(u, "cacheWrite", &v))
         o->cache_write = json_long(v, 0);
+    if (json_get(u, "cacheWrite1h", &v)) {
+        o->cache_write_1h = json_long(v, 0);
+        o->has_1h = 1;
+    }
     if (json_get(u, "cost", &c))
         for (i = 0; i < 4; i++)
             if (json_get(c, ck[i], &v))
@@ -496,7 +519,8 @@ int llm_msg_canon(const char *json, long n, jw *out)
             long ln;
             char *api = sget(m, "api", &ln), *prov = sget(m, "provider", &ln), *model = sget(m, "model", &ln),
                  *err = sget(m, "errorMessage", &ln), *rmod = sget(m, "responseModel", &ln),
-                 *plv = sget(m, "providerThinkingLevel", &ln);
+                 *plv = sget(m, "providerThinkingLevel", &ln), *rid = sget(m, "responseId", &ln),
+                 *rsr = sget(m, "rawStopReason", &ln), *tlv = sget(m, "thinkingLevel", &ln);
             memset(&mt, 0, sizeof(mt));
             mt.api = api;
             mt.provider = prov;
@@ -504,6 +528,9 @@ int llm_msg_canon(const char *json, long n, jw *out)
             mt.error = err;
             mt.response_model = rmod;
             mt.level = plv;
+            mt.response_id = rid;
+            mt.raw_stop = rsr;
+            mt.thinking_level = tlv;
             if (json_get(m, "usage", &v))
                 llm_r_usage(v, &mt.usage);
             mt.stop = json_get(m, "stopReason", &v) ? llm_stop_of(v) : LS_NONE;
@@ -517,6 +544,9 @@ int llm_msg_canon(const char *json, long n, jw *out)
             free(err);
             free(rmod);
             free(plv);
+            free(rid);
+            free(rsr);
+            free(tlv);
         } else if (!rc) {
             long ln;
             char *id = sget(m, "toolCallId", &ln), *name = sget(m, "toolName", &ln);

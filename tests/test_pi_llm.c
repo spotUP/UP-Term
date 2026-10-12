@@ -285,7 +285,8 @@ static void test_accum(void)
                      "\"arguments\":{\"path\":\"C:\"}}],\"api\":\"openai-completions\",\"provider\":\"ollama\",");
         strcat(want, "\"model\":\"qwen2.5-coder:7b\",\"usage\":{\"input\":120,\"output\":33,\"cacheRead\":0,"
                    "\"cacheWrite\":0,\"totalTokens\":153,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,"
-                   "\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"toolUse\",\"timestamp\":1760100000000}");
+                   "\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"toolUse\",\"timestamp\":1760100000000,"
+                   "\"responseId\":\"chatcmpl-1\",\"rawStopReason\":\"tool_calls\"}");     /* pi-ai 1.0.4 keeps both */
         CHECK_STR(m.p, want);
     }
     CHECK_INT(llm_acc_tools(&a), 2);
@@ -1780,6 +1781,92 @@ static void test_stops(void)
     stop_case(&llm_be_openai_chat, o_len, 4, "\"stopReason\":\"length\"", 0);
 }
 
+/* PH-S: pi-ai 1.0.4's message fields -- usage.cacheWrite1h, responseId, rawStopReason (the provider's own words) and the
+ * agent loop's thinkingLevel -- each written as the stream sets them (pi f10993bc/1.0.4 anthropic-messages.ts:666-684,
+ * 819, 846; openai-completions.ts:564, 582; openai-responses-shared.ts:558-602, 589, 749) and kept by the round trip */
+#define PHS_CREATED "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_9\",\"status\":\"in_progress\"," \
+                    "\"model\":\"m\",\"output\":[]}}"
+
+static void phs_feed(const llm_backend *be, const char *const *ev, int n, const char *level, jw *m)
+{
+    llm_acc a;
+    llm_sink k;
+    void *d = be->dec_new();
+    int i;
+    llm_acc_init(&a, be->api, "p");
+    if (level)
+        llm_acc_thinking(&a, level);
+    k = llm_acc_sink(&a);
+    for (i = 0; i < n; i += 2)
+        be->feed(d, ev[i], ev[i + 1], (long)strlen(ev[i + 1]), &k);
+    be->dec_free(d);
+    jw_init(m);
+    llm_acc_message(&a, ts_of(1760100000L, 0), m);
+    llm_acc_free(&a);
+}
+
+static void test_phs(void)
+{
+    jw m, c;
+    const char *ant[] = {
+        "message_start", ("{\"type\":\"message_start\",\"message\":{\"id\":\"msg_77\",\"model\":\"m\",\"usage\":{"
+                         "\"input_tokens\":5,\"cache_creation_input_tokens\":300,\"cache_creation\":{"
+                         "\"ephemeral_5m_input_tokens\":100,\"ephemeral_1h_input_tokens\":200}}}}"),
+        "content_block_start", A_TEXT, "content_block_stop", A_END,
+        "message_delta", ("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{"
+                         "\"output_tokens\":9}}"),
+        "message_stop", A_STOP };
+    const char *ant_plain[] = {
+        "message_start", A_START,
+        "message_delta", ("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"},\"usage\":{"
+                         "\"cache_creation\":{\"ephemeral_1h_input_tokens\":40}}}"),
+        "message_stop", A_STOP };
+    const char *chat[] = { "", O_CH("null"), "", O_CH("\"length\""), "", "[DONE]" };
+    const char *rdone[] = {
+        "response.created", PHS_CREATED,
+        "response.completed", ("{\"type\":\"response.completed\",\"response\":{\"id\":\"resp_9\",\"status\":"
+                              "\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},"
+                              "\"model\":\"m\",\"output\":[]}}") };
+    const char *rfail[] = {
+        "response.created", PHS_CREATED,
+        "response.failed", ("{\"type\":\"response.failed\",\"response\":{\"id\":\"resp_9\",\"status\":\"failed\","
+                           "\"error\":{\"code\":\"server_error\",\"message\":\"overloaded\"}}}") };
+
+    /* anthropic: the id and the 1 hour cache write from message_start, the stop reason as the wire says it, the level
+     * last; no level on a message that was not made by the agent loop */
+    phs_feed(&llm_be_anthropic, ant, 10, "high", &m);
+    CHECK(m.p && strstr(m.p, "\"total\":0},\"cacheWrite1h\":200},\"stopReason\":\"stop\",\"timestamp\":1760100000000,"
+                             "\"responseId\":\"msg_77\",\"rawStopReason\":\"end_turn\","
+                             "\"thinkingLevel\":\"high\"}") != 0);
+    jw_init(&c);
+    CHECK_INT(llm_msg_canon(m.p, m.n, &c), LR_ASSISTANT);      /* a stored message keeps all four */
+    CHECK(c.p && strstr(c.p, "\"cacheWrite1h\":200}") && strstr(c.p, "\"responseId\":\"msg_77\"") &&
+          strstr(c.p, "\"rawStopReason\":\"end_turn\"") && strstr(c.p, "\"thinkingLevel\":\"high\""));
+    jw_free(&c);
+    jw_free(&m);
+    phs_feed(&llm_be_anthropic, ant, 10, 0, &m);
+    CHECK(m.p && strstr(m.p, "thinkingLevel") == 0);
+    jw_free(&m);
+    /* message_start without a cache_creation object: pi-ai still writes 0; a delta's own number replaces it */
+    phs_feed(&llm_be_anthropic, ant_plain, 6, "off", &m);
+    CHECK(m.p && strstr(m.p, "\"cacheWrite1h\":40}") && strstr(m.p, "\"rawStopReason\":\"max_tokens\",\"thinkingLevel\":\"off\"}"));
+    jw_free(&m);
+    /* openai chat: the chunk's id, finish_reason as sent, no cacheWrite1h in the usage object */
+    phs_feed(&llm_be_openai_chat, chat, 6, "off", &m);
+    CHECK(m.p && strstr(m.p, "\"responseId\":\"c\"") && strstr(m.p, "\"rawStopReason\":\"length\",\"thinkingLevel\":\"off\"}") &&
+          strstr(m.p, "cacheWrite1h") == 0);
+    jw_free(&m);
+    /* openai responses: the response id, status.reason; a failed response keeps its status */
+    phs_feed(&llm_be_openai_responses, rdone, 4, 0, &m);
+    CHECK(m.p && strstr(m.p, "\"responseId\":\"resp_9\"") && strstr(m.p, "\"rawStopReason\":\"incomplete.max_output_tokens\"}"));
+    jw_free(&m);
+    phs_feed(&llm_be_openai_responses, rfail, 4, 0, &m);
+    CHECK(m.p && strstr(m.p, "\"responseId\":\"resp_9\"") && strstr(m.p, "\"rawStopReason\":\"failed\",\"errorMessage\":"));
+    if (m.p && !strstr(m.p, "\"rawStopReason\":\"failed\",\"errorMessage\":"))
+        printf("    message %s\n", m.p);
+    jw_free(&m);
+}
+
 /* PB2: pi-ai's compat detection by provider and base URL (pi f10993bc
  * openai-completions.ts:1593-1690 detectCompat): which token-cap field and
  * system role a reasoning model's body gets */
@@ -1893,6 +1980,7 @@ void suite_pi_llm(void)
     test_post_hooks();
     test_lan();
     test_stops();
+    test_phs();
     test_compat();
     test_salvage();
     ps_reset();

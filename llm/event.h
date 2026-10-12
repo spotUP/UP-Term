@@ -39,10 +39,12 @@ typedef struct llm_event {
     const char *id, *name;      /* LB_TOOLCALL (and a raw tool call): the call's id and name */
     const char *model;          /* LE_START */
     int stop;                   /* LE_STOP, LE_DONE, LE_ERROR: LS_* (llm.h) */
-    const char *stop_raw;       /* LE_STOP: the provider's own reason ("end_turn", "tool_calls", ...) */
+    const char *stop_raw;       /* LE_STOP, LE_ERROR: the provider's own reason ("end_turn", "tool_calls", ...) */
     const char *stop_detail;    /* LE_STOP: a refusal's category, "" none */
     const char *err_type;       /* LE_ERROR: "overloaded_error", "aborted", "http_429", ... */
     long in, out, cache_r, cache_w;     /* LE_USAGE */
+    long cache_w1h;             /* LE_USAGE: the 1 hour part of cache_w, pi-ai usage.cacheWrite1h (amiga-pi's decoder only) */
+    int has_w1h;                /* cache_w1h is in this event (0 for every event C:Claude's decoder makes) */
 } llm_event;
 
 typedef struct llm_sink {
