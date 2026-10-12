@@ -6,9 +6,11 @@
 #include <string.h>
 #include "harness.h"
 #include "../llm/llm.h"
+#include "../llm/registry.h"
 #include "../llm/event.h"
 #include "../llm/accum.h"
 #include "../llm/request.h"
+#include "../llm/handoff.h"
 #include "claude_load.h"
 #include "pi_stub.h"
 
@@ -354,6 +356,7 @@ static const char *conv_msgs[] = {
     "\"text\":\"Startup-Sequence\\n\"}],\"isError\":true,\"timestamp\":1760100000003}"
 };
 static long conv_n[4];
+static llm_view conv_view;
 static const char tools_json[] = "[{\"name\":\"read\",\"description\":\"Read a file\",\"parameters\":{\"type\":"
                                  "\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}}]";
 
@@ -374,9 +377,13 @@ static llm_ctx ctx_of(const llm_model *m, int nmsg)
     memset(&c, 0, sizeof(c));
     c.model = m;
     c.system = "You are amiga-pi.";
-    c.msgs = conv_msgs;
-    c.msg_n = conv_n;
-    c.nmsg = nmsg;
+    /* the messages as the agent sends them: through the handoff for this model (ids, foreign thinking) */
+    llm_view_free(&conv_view);
+    if (llm_prepare(m, (const char *const *)conv_msgs, conv_n, nmsg, ts_of(1760100000L, 0), &conv_view))
+        CHECK(0);
+    c.msgs = conv_view.m;
+    c.msg_n = conv_view.n;
+    c.nmsg = conv_view.count;
     c.tools = tools_json;
     c.tools_n = (long)strlen(tools_json);
     return c;
@@ -419,6 +426,493 @@ static void kinds(const char *msg, char *out, long cap)
                 strncat(out, " ", (size_t)(cap - (long)strlen(out) - 1));
             strncat(out, k, (size_t)(cap - (long)strlen(out) - 1));
         }
+}
+
+/* FA1: an anthropic-messages baseUrl means what pi means: no /v1; the request goes to baseUrl + "/v1/messages" */
+static void test_anthropic_baseurl(void)
+{
+    static const char cfg[] = "{\"providers\":{\"proxy\":{\"baseUrl\":\"https://proxy.example\","
+                              "\"api\":\"anthropic-messages\",\"apiKey\":\"k\",\"models\":[{\"id\":\"claude-x\"}]}}}";
+    llm_reg r;
+    const llm_model *mp;
+    llm_ctx c;
+    llm_req q;
+    llm_acc a;
+    llm_sink k;
+
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    CHECK_INT(llm_reg_overlay(&r, cfg, (long)sizeof(cfg) - 1), 0);
+    mp = llm_reg_find(&r, "proxy", "claude-x");
+    CHECK(mp != 0);
+    if (mp) {
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_sse("tool_use.sse", 0);
+        c = ctx_of(mp, 1);
+        llm_acc_init(&a, mp->api, mp->provider);
+        k = llm_acc_sink(&a);
+        q = req_of(mp, &c, &k, "k");
+        CHECK_INT(llm_request(&q), 0);
+        CHECK(ps.nreq && strstr(ps.head[0], "POST /v1/messages HTTP/1.1\r\nHost: proxy.example\r\n") == ps.head[0]);
+        llm_acc_free(&a);
+    }
+    /* the catalog's own anthropic models carry pi's baseUrl, no /v1 */
+    mp = llm_reg_find(&r, "anthropic", "claude-opus-5-5");
+    CHECK(mp && !strcmp(mp->base_url, "https://api.anthropic.com"));
+    llm_reg_free(&r);
+}
+
+/* ---- FA4: openai-responses against pi's own output (tests/pi/responses, made by tools/gen_pi_responses.mjs) ---- */
+
+/* JSON text without the whitespace between tokens (the indented cases.json -> the wire form), malloc'd */
+static char *compact_dup(const char *p, long n, long *out_n)
+{
+    char *o = (char *)malloc((size_t)n + 1);
+    long k, m = 0, in_str = 0;
+    for (k = 0; k < n; k++) {
+        char ch = p[k];
+        if (in_str) {
+            if (ch == '\\')
+                o[m++] = p[k++];
+            else if (ch == '"')
+                in_str = 0;
+        } else if (ch == '"')
+            in_str = 1;
+        else if (ch == ' ' || ch == '\n' || ch == '\t' || ch == '\r')
+            continue;
+        o[m++] = p[k];
+    }
+    o[m] = 0;
+    *out_n = m;
+    return o;
+}
+
+
+/* what pi's digest line says of a message of ours: stop, error, usage, blocks */
+static void resp_digest(const char *msg, jw *o)
+{
+    jv m, v, c, b, t, x;
+    jit it;
+    char buf[400];
+    if (json_parse(msg, (long)strlen(msg), &m))
+        return;
+    jw_rawz(o, "stop=");
+    if (json_get(m, "stopReason", &v))
+        jw_raw(o, v.p + 1, v.n - 2);
+    jw_rawz(o, "\nerror=");
+    if (json_get(m, "errorMessage", &v)) {
+        json_str(v, buf, sizeof(buf));
+        jw_rawz(o, buf);
+    } else
+        jw_rawz(o, "-");
+    jw_rawz(o, "\nusage=");
+    if (json_get(m, "usage", &v)) {
+        static const char *const k[4] = { "input", "output", "cacheRead", "cacheWrite" };
+        int i;
+        for (i = 0; i < 4; i++) {
+            jw_rawz(o, i ? "," : "");
+            jw_long(o, json_get(v, k[i], &x) ? json_long(x, -1) : -1);
+        }
+    }
+    jw_rawz(o, "\n");
+    if (!json_get(m, "content", &c))
+        return;
+    json_iter(c, &it);
+    while (json_next(&it, 0, &b)) {
+        if (!json_get(b, "type", &t))
+            continue;
+        if (json_streq(t, "thinking") || json_streq(t, "text")) {
+            int th = json_streq(t, "thinking");
+            jw_rawz(o, th ? "thinking=" : "text=");
+            if (json_get(b, th ? "thinking" : "text", &v))
+                jw_raw(o, v.p, v.n);
+            jw_rawz(o, " sig=");
+            if (json_get(b, th ? "thinkingSignature" : "textSignature", &v))
+                jw_raw(o, v.p, v.n);
+            else
+                jw_rawz(o, "-");
+            jw_rawz(o, "\n");
+        } else if (json_streq(t, "toolCall")) {
+            jw_rawz(o, "tool=");
+            if (json_get(b, "id", &v)) {
+                json_str(v, buf, sizeof(buf));
+                jw_rawz(o, buf);
+            }
+            jw_rawz(o, " ");
+            if (json_get(b, "name", &v)) {
+                json_str(v, buf, sizeof(buf));
+                jw_rawz(o, buf);
+            }
+            jw_rawz(o, " ");
+            if (json_get(b, "arguments", &v))
+                jw_raw(o, v.p, v.n);
+            jw_rawz(o, "\n");
+        }
+    }
+}
+
+#define RC_MAX 24
+static char *rc_reply[RC_MAX];
+static char rc_name[RC_MAX][32];
+
+static void test_responses(void)
+{
+    char *cases_txt, name[64];
+    long cn, nreq0, feeds0 = llm_feeds_responses;
+    jv root, cs, c, v, ms, mv;
+    jit it;
+    llm_reg r;
+    int ncase = 0, i;
+    cases_txt = claude_load("../pi/responses/cases.json", &cn);
+    CHECK(cases_txt != 0);
+    if (!cases_txt)
+        return;
+    CHECK_INT(json_parse(cases_txt, cn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char mname[96], file[96], sse[64], lvl[16], sys[200], sid[80];
+        const llm_model *md;
+        char *msgs[16], *want_body, *want_dig, *want_hdr;
+        long mn[16], bn, dn, hn;
+        int nm = 0, lv, own[16];
+        jit mit;
+        llm_ctx cx;
+        llm_req q;
+        llm_acc a;
+        llm_sink k;
+        llm_view vw;
+        jw dig, msg;
+        char *tools = 0;
+        long tools_n = 0;
+        memset(own, 0, sizeof(own));
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "model", &v);
+        json_str(v, mname, sizeof(mname));
+        {
+            char *sl = strchr(mname, '/');
+            *sl = 0;
+            md = llm_reg_find(&r, mname, sl + 1);
+        }
+        CHECK(md != 0);
+        if (!md)
+            continue;
+        json_get(c, "level", &v);
+        json_str(v, lvl, sizeof(lvl));
+        lv = llm_think_of(lvl);
+        json_get(c, "system", &v);
+        json_str(v, sys, sizeof(sys));
+        json_get(c, "sse", &v);
+        json_str(v, sse, sizeof(sse));
+        sid[0] = 0;
+        if (json_get(c, "sessionId", &v))
+            json_str(v, sid, sizeof(sid));
+        if (json_get(c, "tools", &v)) {
+            tools = compact_dup(v.p, v.n, &tools_n);
+        }
+        json_get(c, "messages", &ms);
+        json_iter(ms, &mit);
+        while (json_next(&mit, 0, &mv)) {
+            jv rep;
+            if (json_type(mv) == J_OBJ && json_get(mv, "$reply", &rep)) {
+                char rn[32];
+                int j;
+                json_str(rep, rn, sizeof(rn));
+                msgs[nm] = 0;
+                for (j = 0; j < RC_MAX; j++)
+                    if (rc_reply[j] && !strcmp(rc_name[j], rn))
+                        msgs[nm] = rc_reply[j];
+                CHECK(msgs[nm] != 0);
+                if (!msgs[nm])
+                    msgs[nm] = (char *)"{\"role\":\"user\",\"content\":\"\",\"timestamp\":0}";
+                mn[nm] = (long)strlen(msgs[nm]);
+            } else {
+                /* cases.json is indented; a session's messages are compact */
+                msgs[nm] = compact_dup(mv.p, mv.n, &mn[nm]);
+                own[nm] = 1;
+            }
+            nm++;
+        }
+        CHECK_INT(llm_prepare(md, (const char *const *)msgs, mn, nm, ts_of(1760100000L, 0), &vw), 0);
+        memset(&cx, 0, sizeof(cx));
+        cx.model = md;
+        cx.system = sys;
+        cx.msgs = vw.m;
+        cx.msg_n = vw.n;
+        cx.nmsg = vw.count;
+        cx.tools = tools;
+        cx.tools_n = tools_n;
+        cx.thinking = lv;
+        cx.session_id = sid[0] ? sid : 0;
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        strcpy(file, "../pi/responses/");
+        strcat(file, sse);
+        strcat(file, ".sse");
+        ps_sse(file, 0);
+        llm_acc_init(&a, md->api, md->provider);
+        llm_acc_model(&a, md->id, md->cost);
+        k = llm_acc_sink(&a);
+        q = req_of(md, &cx, &k, "sk-test-not-real");
+        nreq0 = ps.nreq;
+        llm_request(&q);
+        /* the request on the wire: pi's body, byte for byte */
+        strcpy(file, "../pi/responses/");
+        strcat(file, name);
+        strcat(file, ".body");
+        want_body = claude_load(file, &bn);
+        CHECK(want_body != 0);
+        CHECK(ps.nreq == nreq0 + 1 && ps.body[0] != 0);
+        if (want_body && ps.body[0] && strcmp(want_body, ps.body[0])) {
+            printf("    case %s body\n      got  %s\n      want %s\n", name, ps.body[0], want_body);
+            CHECK(0);
+        }
+        CHECK(ps.nreq && strstr(ps.head[0], "POST /v1/responses HTTP/1.1\r\nHost: api.openai.com\r\n") == ps.head[0]);
+        CHECK(ps.nreq && strstr(ps.head[0], "Authorization: Bearer sk-test-not-real\r\n") != 0);
+        file[strlen(file) - 5] = 0;
+        strcat(file, ".headers");
+        want_hdr = claude_load(file, &hn);
+        if (want_hdr) {
+            char *line = want_hdr;
+            while (*line) {
+                char *e = strchr(line, '\n'), save;
+                if (!e)
+                    break;
+                save = *e;
+                *e = 0;
+                CHECK(strstr(ps.head[0], line) != 0);       /* the golden has \n, the wire \r\n */
+                *e = save;
+                line = e + 1;
+            }
+            free(want_hdr);
+        } else
+            CHECK(strstr(ps.head[0], "x-client-request-id") == 0);
+        /* what the stream made: pi's digest */
+        jw_init(&msg);
+        jw_init(&dig);
+        llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+        resp_digest(msg.p, &dig);
+        file[strlen(file) - 8] = 0;
+        strcat(file, ".digest");
+        want_dig = claude_load(file, &dn);
+        CHECK(want_dig != 0);
+        if (want_dig && strcmp(want_dig, dig.p)) {
+            printf("    case %s digest\n      got  %s\n      want %s\n", name, dig.p, want_dig);
+            CHECK(0);
+        }
+        for (i = 0; i < RC_MAX; i++)
+            if (!rc_reply[i]) {
+                rc_reply[i] = (char *)malloc((size_t)msg.n + 1);
+                memcpy(rc_reply[i], msg.p, (size_t)msg.n + 1);
+                strcpy(rc_name[i], name);
+                break;
+            }
+        free(want_body);
+        free(want_dig);
+        jw_free(&dig);
+        jw_free(&msg);
+        llm_acc_free(&a);
+        llm_view_free(&vw);
+        free(tools);
+        for (i = 0; i < nm; i++)
+            if (own[i])
+                free(msgs[i]);
+        ncase++;
+    }
+    CHECK(ncase >= 18);
+    CHECK(llm_feeds_responses > feeds0);          /* the new backend ran */
+    for (i = 0; i < RC_MAX; i++) {
+        free(rc_reply[i]);
+        rc_reply[i] = 0;
+    }
+    llm_reg_free(&r);
+    free(cases_txt);
+}
+
+/* ---- FB1/FB2: anthropic-messages against pi's own output (tests/pi/anthropic, made by tools/gen_pi_anthropic.mjs):
+ * the body byte for byte, the anthropic-beta header, and the level each answer records ---- */
+
+static char *ra_reply[RC_MAX];
+static char ra_name[RC_MAX][32];
+
+static void test_anthropic_pi(void)
+{
+    char *cases_txt, name[64];
+    long cn, nreq0, feeds0 = llm_feeds_anthropic;
+    jv root, cs, c, v, ms, mv;
+    jit it;
+    llm_reg r;
+    int ncase = 0, i, mid_cases = 0;
+    cases_txt = claude_load("../pi/anthropic/cases.json", &cn);
+    CHECK(cases_txt != 0);
+    if (!cases_txt)
+        return;
+    CHECK_INT(json_parse(cases_txt, cn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char mname[96], file[96], sse[64], lvl[16], sys[200];
+        const llm_model *md;
+        llm_model cmod;
+        char *msgs[16], *want_body, *want_hdr, *want_dig;
+        long mn[16], bn, hn, dn;
+        int nm = 0, lv, own[16];
+        jit mit;
+        llm_ctx cx;
+        llm_req q;
+        llm_acc a;
+        llm_sink k;
+        llm_view vw;
+        jw msg, dig;
+        char *tools = 0;
+        long tools_n = 0;
+        memset(own, 0, sizeof(own));
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "model", &v);
+        json_str(v, mname, sizeof(mname));
+        {
+            char *sl = strchr(mname, '/');
+            *sl = 0;
+            md = llm_reg_find(&r, mname, sl + 1);
+        }
+        CHECK(md != 0);
+        if (!md)
+            continue;
+        if (json_get(c, "compat", &v)) {
+            /* a models.json model with only forceAdaptiveThinking: the managed-effort flags are unset */
+            cmod = *md;
+            cmod.compat.mid_effort = cmod.compat.mid_system = cmod.compat.mid_tools = LC_UNSET;
+            md = &cmod;
+        }
+        json_get(c, "level", &v);
+        json_str(v, lvl, sizeof(lvl));
+        lv = llm_think_of(lvl);
+        json_get(c, "system", &v);
+        json_str(v, sys, sizeof(sys));
+        json_get(c, "sse", &v);
+        json_str(v, sse, sizeof(sse));
+        if (json_get(c, "tools", &v))
+            tools = compact_dup(v.p, v.n, &tools_n);
+        json_get(c, "messages", &ms);
+        json_iter(ms, &mit);
+        while (json_next(&mit, 0, &mv)) {
+            jv rep;
+            if (json_type(mv) == J_OBJ && json_get(mv, "$reply", &rep)) {
+                char rn[32];
+                int j;
+                json_str(rep, rn, sizeof(rn));
+                msgs[nm] = 0;
+                for (j = 0; j < RC_MAX; j++)
+                    if (ra_reply[j] && !strcmp(ra_name[j], rn))
+                        msgs[nm] = ra_reply[j];
+                CHECK(msgs[nm] != 0);
+                if (!msgs[nm])
+                    msgs[nm] = (char *)"{\"role\":\"user\",\"content\":\"\",\"timestamp\":0}";
+                mn[nm] = (long)strlen(msgs[nm]);
+            } else {
+                msgs[nm] = compact_dup(mv.p, mv.n, &mn[nm]);
+                own[nm] = 1;
+            }
+            nm++;
+        }
+        CHECK_INT(llm_prepare(md, (const char *const *)msgs, mn, nm, ts_of(1760100000L, 0), &vw), 0);
+        memset(&cx, 0, sizeof(cx));
+        cx.model = md;
+        cx.system = sys;
+        cx.msgs = vw.m;
+        cx.msg_n = vw.n;
+        cx.nmsg = vw.count;
+        cx.tools = tools;
+        cx.tools_n = tools_n;
+        cx.thinking = lv;
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        strcpy(file, "../pi/anthropic/");
+        strcat(file, sse);
+        strcat(file, ".sse");
+        ps_sse(file, 0);
+        llm_acc_init(&a, md->api, md->provider);
+        llm_acc_model(&a, md->id, md->cost);
+        llm_acc_level(&a, llm_ant_effort(md, lv));
+        k = llm_acc_sink(&a);
+        q = req_of(md, &cx, &k, "sk-test-not-real");
+        nreq0 = ps.nreq;
+        llm_request(&q);
+        /* the request on the wire: pi's body, byte for byte */
+        strcpy(file, "../pi/anthropic/");
+        strcat(file, name);
+        strcat(file, ".body");
+        want_body = claude_load(file, &bn);
+        CHECK(want_body != 0);
+        CHECK(ps.nreq == nreq0 + 1 && ps.body[0] != 0);
+        if (want_body && ps.body[0] && strcmp(want_body, ps.body[0])) {
+            printf("    case %s body\n      got  %s\n      want %s\n", name, ps.body[0], want_body);
+            CHECK(0);
+        }
+        CHECK(ps.nreq && strstr(ps.head[0], "POST /v1/messages HTTP/1.1\r\nHost: api.anthropic.com\r\n") == ps.head[0]);
+        file[strlen(file) - 5] = 0;
+        strcat(file, ".headers");
+        want_hdr = claude_load(file, &hn);
+        if (want_hdr) {
+            char *line = want_hdr, *e = strchr(line, '\n');
+            if (e)
+                *e = 0;
+            CHECK(strstr(ps.head[0], line) != 0);          /* the golden has \n, the wire \r\n */
+            if (e)
+                *e = '\n';
+            if (strstr(want_hdr, "mid-conversation-output-config"))
+                mid_cases++;
+            free(want_hdr);
+        } else
+            CHECK(strstr(ps.head[0], "anthropic-beta") == 0);
+        /* what the stream made: pi's digest; and the level pi keeps on the answer */
+        jw_init(&msg);
+        jw_init(&dig);
+        llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+        resp_digest(msg.p, &dig);
+        file[strlen(file) - 8] = 0;
+        strcat(file, ".digest");
+        want_dig = claude_load(file, &dn);
+        CHECK(want_dig != 0);
+        if (want_dig && strcmp(want_dig, dig.p)) {
+            printf("    case %s digest\n      got  %s\n      want %s\n", name, dig.p, want_dig);
+            CHECK(0);
+        }
+        free(want_dig);
+        jw_free(&dig);
+        for (i = 0; i < RC_MAX; i++)
+            if (!ra_reply[i]) {
+                ra_reply[i] = (char *)malloc((size_t)msg.n + 1);
+                memcpy(ra_reply[i], msg.p, (size_t)msg.n + 1);
+                strcpy(ra_name[i], name);
+                break;
+            }
+        free(want_body);
+        jw_free(&msg);
+        llm_acc_free(&a);
+        llm_view_free(&vw);
+        free(tools);
+        for (i = 0; i < nm; i++)
+            if (own[i])
+                free(msgs[i]);
+        ncase++;
+    }
+    CHECK(ncase >= 18);
+    CHECK(mid_cases >= 8);                          /* the managed-effort model's cases ran */
+    CHECK(llm_feeds_anthropic > feeds0);            /* the backend ran */
+    for (i = 0; i < RC_MAX; i++) {
+        free(ra_reply[i]);
+        ra_reply[i] = 0;
+    }
+    llm_reg_free(&r);
+    free(cases_txt);
 }
 
 /* B11: one top-level request per backend, the neutral message of the same shape */
@@ -522,11 +1016,11 @@ static void test_openai_bodies(void)
         CHECK(strstr(w.p, "\"max_completion_tokens\":4096") != 0);
         CHECK(strstr(w.p, "\"tool_call_id\":\"call_1_item_9\"") != 0 && strstr(w.p, "call_1|item_9") == 0);
         CHECK(strstr(w.p, "\"name\":\"read\"}") == 0);
-        CHECK(strstr(w.p, "Read it.") == 0);     /* another provider's thinking is not sent */
+        CHECK(strstr(w.p, "\"content\":\"Read it.Let me look.\"") != 0);   /* pi: another model's thinking is plain text */
         jw_free(&w);
     }
     /* the Anthropic body from the same messages: thinking with its
-     * signature (same api), the calls, both results in one user turn */
+     * signature (the same model: its ids stay as written), the calls, both results in one user turn */
     {
         llm_model ma = ps_model_anthropic();
         llm_ctx c = ctx_of(&ma, 4);
@@ -534,12 +1028,13 @@ static void test_openai_bodies(void)
         jw_init(&w);
         CHECK_INT(llm_be_anthropic.body(&c, &w), 0);
         CHECK(strstr(w.p, "{\"type\":\"thinking\",\"thinking\":\"Read it.\",\"signature\":\"sig==\"}") != 0);
-        CHECK(strstr(w.p, "{\"type\":\"tool_use\",\"id\":\"call_1_item_9\",\"name\":\"read\",\"input\":"
+        CHECK(strstr(w.p, "{\"type\":\"tool_use\",\"id\":\"call_1|item_9\",\"name\":\"read\",\"input\":"
                           "{\"path\":\"S:Startup-Sequence\"}}") != 0);
+        /* pi: a result's texts joined into one string, is_error always present */
         CHECK(strstr(w.p, "{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":"
-                          "\"call_1_item_9\",\"content\":[{\"type\":\"text\",\"text\":\"SetPatch QUIET\\n\"}]},"
-                          "{\"type\":\"tool_result\",\"tool_use_id\":\"call_2\",\"content\":[{\"type\":\"text\","
-                          "\"text\":\"Startup-Sequence\\n\"}],\"is_error\":true}]}") != 0);
+                          "\"call_1|item_9\",\"content\":\"SetPatch QUIET\\n\",\"is_error\":false},"
+                          "{\"type\":\"tool_result\",\"tool_use_id\":\"call_2\",\"content\":"
+                          "\"Startup-Sequence\\n\",\"is_error\":true,\"cache_control\":{\"type\":\"ephemeral\"}}]}") != 0);
         CHECK(strstr(w.p, "\"input_schema\":{\"type\":\"object\"") != 0);
         jw_free(&w);
     }
@@ -1091,6 +1586,9 @@ void suite_pi_llm(void)
     test_messages();
     test_accum();
     test_reach();
+    test_anthropic_baseurl();
+    test_responses();
+    test_anthropic_pi();
     test_openai_bodies();
     test_request();
     test_pool();

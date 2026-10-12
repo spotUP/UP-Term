@@ -61,6 +61,17 @@ directory is UP-Term:var/amiga-pi and the host can read what amiga-pi wrote.
   5d --no-session leaves the directory as it was
 Visible windows titled "amiga-pi step 5".
 
+Step 6 (F6): the model switch. models.json (in VTC:pi6agent, PI_CODING_AGENT_DIR) names two providers on the
+fixture: fixa (anthropic-messages, a reasoning model) and fixo (openai-completions, apiKey "!Echo rig-test-key").
+amiga-pi reads its lines from a file through "<": a prompt, "/model fixo/m2", a prompt.
+  6a the fixture saw POST .../messages first, then .../chat/completions (both backends, in order)
+  6b the first request asks for budget thinking, the second names model m2 and carries the first answer
+  6c the apiKey command ran on the Amiga (the plain-http notice for fixo says a key was resolved)
+  6d the session holds model_change, thinking_level_change (medium), system, user, answer, model_change,
+     thinking_level_change (off), user, answer
+  6e the screen says "Model: fixo/m2, thinking off"
+Visible windows titled "amiga-pi step 6".
+
 Step 10 (K5, K8): MCP. ENVARC:amiga-pi/mcp.json names two servers: "fake",
 tools/fake_mcp.py over streamable HTTP on the Mac at its LAN address (the LAN
 rule's plain http), and "amiga", build/amiga/mcp-echo (a native stdio server)
@@ -590,6 +601,93 @@ def step5(port):
         c.run('Delete RAM:pi5a-done RAM:pi5b-done RAM:pi5d-done QUIET')
 
 
+def step6(port):
+    import json
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    had = assigns()
+    saved_dir = ami.read_file('ENVARC:up-term/Dir')
+    check('6 no UP-Term: on this rig to begin with', 'UP-TERM' not in had and saved_dir is None,
+          repr(('UP-TERM' in had, saved_dir)))
+    log = paths.RIG / 'amigapi_fixture6.log'
+    dump = paths.RIG / 'amigapi_dump6'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    kit = VTC / 'pi-kit'
+    sess = kit / 'var' / 'amiga-pi' / 'sessions'
+    agent = VTC / 'pi6agent'
+    base = 'http://127.0.0.1:%d' % port   # anthropic-messages: pi's baseUrl has no /v1, the backend adds /v1/messages
+    made_assign = False
+    try:
+        agent.mkdir(exist_ok=True)
+        (agent / 'models.json').write_text(json.dumps({'providers': {
+            'fixa': {'baseUrl': base, 'api': 'anthropic-messages',
+                     'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
+            'fixo': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
+                     'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
+        (VTC / 'pi6.in').write_text('hello\n/model fixo/m2\nagain\n')
+        for f in ('pi6.out', 'pi6.rc'):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        c.run('MakeDir VTC:pi-kit VTC:pi-kit/bin ENVARC:up-term')
+        with open(VTC / 'pi-kit-dir', 'w') as f:
+            f.write('VTC:pi-kit\n')
+        c.run('Copy VTC:pi-kit-dir ENVARC:up-term/Dir')
+        c.run('Copy VTC:pi-kit-dir ENV:up-term/Dir')
+        made_assign = True
+        ended = run_window('pi6', 'amiga-pi step 6', [
+            'Echo "amiga-pi step 6: hello, /model fixo/m2, again"',
+            'SetEnv PI_CODING_AGENT_DIR VTC:pi6agent',
+            'CD RAM:',
+            'VTC:amiga-pi --model fixa/m1 --no-tools <VTC:pi6.in >VTC:pi6.out',
+            'Echo "rc=$RC" >VTC:pi6.rc',
+            'Type VTC:pi6.out'], 'pi6-done')
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        text, rc = rd('pi6.out'), rd('pi6.rc').strip()
+        check('6 the run ended, exit code 0', ended and rc == 'rc=0', repr((ended, rc)))
+        reqs = [l.split()[1] for l in open(log) if l.startswith('[INFO] /v1/')]
+        check('6a the fixture saw .../messages, then .../chat/completions',
+              len(reqs) == 2 and reqs[0].endswith('/messages') and reqs[1].endswith('/chat/completions'), repr(reqs))
+        first, second = body_of(dump, 1), body_of(dump, 2)
+        check('6b the first request: model m1 with budget thinking',
+              first.get('model') == 'm1' and (first.get('thinking') or {}).get('type') == 'enabled'
+              and (first.get('thinking') or {}).get('budget_tokens') == 8192, repr(first.get('thinking')))
+        said = json.dumps(second)
+        check('6b the second request: model m2, the first exchange and the new prompt',
+              second.get('model') == 'm2' and 'hello' in said and 'Hello from the Amiga!' in said and 'again' in said
+              and 'reasoning_effort' not in second, repr(said[-300:]))
+        check('6c the apiKey command ran on the Amiga', 'key for fixo not sent: plain http' in text, repr(text[:300]))
+        check('6e the screen says what the switch did', 'Model: fixo/m2, thinking off' in text, repr(text[-300:]))
+        files = sorted(sess.glob('*/*.jsonl')) if sess.exists() else []
+        entries = [json.loads(l) for l in files[0].read_text(encoding='utf-8').splitlines() if l.strip()] if files else []
+        shape = []
+        for e in entries[1:]:
+            t = e.get('type')
+            shape.append(t if t != 'message' else 'message/' + e['message']['role'])
+            if t == 'thinking_level_change':
+                shape[-1] += ':' + e.get('thinkingLevel', '')
+            if t == 'model_change':
+                shape[-1] += ':' + e.get('modelId', '')
+        check('6d the session: pi\'s entries for the switch',
+              shape == ['model_change:m1', 'thinking_level_change:medium', 'message/system', 'message/user',
+                        'message/assistant', 'model_change:m2', 'thinking_level_change:off', 'message/user',
+                        'message/assistant'], repr(shape))
+    finally:
+        fx.terminate()
+        c.run('Delete ENVARC:up-term/Dir ENV:up-term/Dir QUIET')
+        if made_assign:
+            if 'UP-TERM' not in had:
+                c.run('Assign UP-Term: REMOVE')
+            c.run('Delete VTC:pi-kit ALL QUIET')
+        c.run('Delete RAM:pi6-done VTC:pi6agent ALL QUIET')
+        shutil.rmtree(agent, ignore_errors=True)
+
+
 def mac_lan_ip():
     """the Mac's own LAN address (en0, en1), 0 none"""
     for ifc in ('en0', 'en1'):
@@ -683,7 +781,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 10), help='one step only (default: all)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 10), help='one step only (default: all)')
     a = ap.parse_args()
     if a.step in (None, 1):
         step1(a.port)
@@ -695,6 +793,8 @@ def main():
         step4(a.port + 3)
     if a.step in (None, 5):
         step5(a.port + 4)
+    if a.step in (None, 6):
+        step6(a.port + 5)
     if a.step in (None, 10):
         step10(a.port + 9)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))

@@ -222,28 +222,24 @@ void ps_pool_up(int n)
 llm_model ps_model_openai(const char *base)
 {
     llm_model m;
-    memset(&m, 0, sizeof(m));
+    llm_model_init(&m);
     m.id = "qwen2.5-coder:7b";
     m.api = "openai-completions";
     m.provider = "ollama";
     m.base_url = base;
     m.max_tokens = 4096;
-    m.compat.max_tokens_field = m.compat.usage_in_streaming = m.compat.developer_role =
-        m.compat.tool_result_name = LC_UNSET;
     return m;
 }
 
 llm_model ps_model_anthropic(void)
 {
     llm_model m;
-    memset(&m, 0, sizeof(m));
+    llm_model_init(&m);
     m.id = "claude-opus-5-5";
     m.api = "anthropic-messages";
     m.provider = "anthropic";
-    m.base_url = "https://api.anthropic.com/v1";
+    m.base_url = "https://api.anthropic.com";
     m.max_tokens = 8192;
-    m.compat.max_tokens_field = m.compat.usage_in_streaming = m.compat.developer_role =
-        m.compat.tool_result_name = LC_UNSET;
     return m;
 }
 

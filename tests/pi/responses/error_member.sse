@@ -1,0 +1,4 @@
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_e2","object":"response","status":"in_progress","model":"gpt-5.5","output":[]}}
+
+data: {"type":"response.in_progress","error":{"message":"Quota gone","type":"insufficient_quota","code":"insufficient_quota"}}
+

@@ -12,6 +12,23 @@
 #include "io_amiga.h"
 #include "util.h"
 
+/* the Shell's copy of the argument line in Input()'s buffer, read out once at the start (cl_runcommand_args) */
+void io_amiga_args(void)
+{
+    BPTR in = Input();
+    struct FileHandle *fh;
+    const char *args = (const char *)GetArgStr();
+    long n, i;
+    if (!in || !args)
+        return;
+    fh = (struct FileHandle *)BADDR(in);
+    if (!fh->fh_Buf)
+        return;
+    n = cl_runcommand_args((const char *)BADDR(fh->fh_Buf), fh->fh_Pos, fh->fh_End, args);
+    for (i = 0; i < n; i++)
+        FGetC(in);              /* never Flush(): that would Seek the file back */
+}
+
 static long c_read(void *u, char *buf, long cap)
 {
     long n;

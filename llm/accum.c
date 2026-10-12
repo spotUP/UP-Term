@@ -11,6 +11,27 @@ void llm_acc_init(llm_acc *a, const char *api, const char *provider)
     a->provider = provider;
 }
 
+void llm_acc_model(llm_acc *a, const char *id, const long price[4])
+{
+    int i;
+    cl_copy(a->cfg_model, id, sizeof(a->cfg_model));
+    for (i = 0; i < 4; i++)
+        a->price[i] = price ? price[i] : 0;
+}
+
+void llm_acc_level(llm_acc *a, const char *level)
+{
+    cl_copy(a->level, level ? level : "", sizeof(a->level));
+}
+
+/* tokens * price / 1e6 in micro-dollars without leaving 32 bits */
+static long cost_of(long tokens, long price)
+{
+    unsigned long t = tokens > 0 ? (unsigned long)tokens : 0, p = price > 0 ? (unsigned long)price : 0;
+    unsigned long q = t / 1000, r = t % 1000;
+    return (long)(q * (p / 1000) + q * (p % 1000) / 1000 + r * (p / 1000) / 1000);
+}
+
 void llm_acc_free(llm_acc *a)
 {
     int i;
@@ -309,7 +330,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
         first = 0;
         switch (b->kind) {
         case LB_TEXT:
-            llm_b_text(&c, b->a.p, b->a.n, 0);
+            llm_b_text(&c, b->a.p, b->a.n, b->sig.n ? b->sig.p : 0);
             break;
         case LB_THINKING:
             llm_b_thinking(&c, b->a.p, b->a.n, b->sig.p, b->sig.n, b->redacted);
@@ -333,8 +354,16 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     memset(&m, 0, sizeof(m));
     m.api = a->api;
     m.provider = a->provider;
-    m.model = a->model;
+    m.model = a->cfg_model[0] ? a->cfg_model : a->model;
+    m.level = a->level[0] ? a->level : 0;
+    m.response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
     m.usage = a->usage;
+    if (a->cfg_model[0]) {
+        m.usage.cost[0] = cost_of(m.usage.input, a->price[0]);
+        m.usage.cost[1] = cost_of(m.usage.output, a->price[1]);
+        m.usage.cost[2] = cost_of(m.usage.cache_read, a->price[2]);
+        m.usage.cost[3] = cost_of(m.usage.cache_write, a->price[3]);
+    }
     m.stop = a->failed ? a->stop : !a->done ? LS_ABORTED : a->stop ? a->stop : LS_STOP;
     m.error = a->failed ? a->err : 0;
     llm_m_assistant(out, c.p, c.n, &m, ts);

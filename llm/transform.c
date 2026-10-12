@@ -10,7 +10,7 @@ typedef struct pending {
     int answered;
 } pending;
 
-static int put(llm_view *v, const char *m, long n)
+int llm_view_put(llm_view *v, const char *m, long n)
 {
     if (v->count == v->cap) {
         int nc = v->cap ? v->cap * 2 : 16;
@@ -36,6 +36,24 @@ static int put(llm_view *v, const char *m, long n)
     return 0;
 }
 
+/* takes ownership of p (freed with the view): 0, -1 out of memory (p is not taken) */
+int llm_view_own(llm_view *v, char *p)
+{
+    if (v->nown == v->owncap) {
+        int nc = v->owncap ? v->owncap * 2 : 8;
+        char **g = (char **)malloc((size_t)nc * sizeof(*g));
+        if (!g)
+            return -1;
+        if (v->nown)
+            memcpy(g, v->own, (size_t)v->nown * sizeof(*g));
+        free(v->own);
+        v->own = g;
+        v->owncap = nc;
+    }
+    v->own[v->nown++] = p;
+    return 0;
+}
+
 /* a "No result provided" toolResult for each unanswered call, then the held system messages */
 static int close_pending(llm_view *v, pending *p, int *np, const int *held, int *nheld,
                          const char *const *msgs, const long *n, llm_ts ts)
@@ -56,27 +74,17 @@ static int close_pending(llm_view *v, pending *p, int *np, const int *held, int 
             jw_free(&w);
             return -1;
         }
-        if (v->nown == v->owncap) {
-            int nc = v->owncap ? v->owncap * 2 : 8;
-            char **g = (char **)malloc((size_t)nc * sizeof(*g));
-            if (!g) {
-                jw_free(&w);
-                return -1;
-            }
-            if (v->nown)
-                memcpy(g, v->own, (size_t)v->nown * sizeof(*g));
-            free(v->own);
-            v->own = g;
-            v->owncap = nc;
+        if (llm_view_own(v, w.p)) {
+            jw_free(&w);
+            return -1;
         }
-        v->own[v->nown++] = w.p;
-        if (put(v, w.p, w.n))
+        if (llm_view_put(v, w.p, w.n))
             return -1;
         v->synth++;
     }
     *np = 0;
     for (i = 0; i < *nheld; i++)
-        if (put(v, msgs[held[i]], n[held[i]]))
+        if (llm_view_put(v, msgs[held[i]], n[held[i]]))
             return -1;
     *nheld = 0;
     return 0;
@@ -112,7 +120,7 @@ int llm_transform(const char *const *msgs, const long *n, int count, llm_ts ts, 
                         p[np++].answered = 0;
                     }
             }
-            if (put(v, msgs[i], n[i]))
+            if (llm_view_put(v, msgs[i], n[i]))
                 return -1;
         } else if (json_streq(r, "toolResult")) {
             char id[96];
@@ -123,14 +131,14 @@ int llm_transform(const char *const *msgs, const long *n, int count, llm_ts ts, 
             for (k = 0; k < np; k++)
                 if (!strcmp(p[k].id, id))
                     p[k].answered = 1;
-            if (put(v, msgs[i], n[i]))
+            if (llm_view_put(v, msgs[i], n[i]))
                 return -1;
         } else if (json_streq(r, "system") && np > 0 && nheld < TR_CALLS) {
             held[nheld++] = i;
         } else {
             if (json_streq(r, "user") && close_pending(v, p, &np, held, &nheld, msgs, n, ts))
                 return -1;
-            if (put(v, msgs[i], n[i]))
+            if (llm_view_put(v, msgs[i], n[i]))
                 return -1;
         }
     }

@@ -1137,6 +1137,33 @@ static void test_datadir(void)
     }
 }
 
+/* a redirected input read from its start: the Shell's copy of the argument line in the handle's buffer is consumed only
+ * when the buffer holds exactly that line */
+static void test_runcommand_args(void)
+{
+    static const char args[] = "--model fixa/m1 --no-tools";
+    char buf[96];
+    /* what the Shell left on the rig with `<file >file` (hex-dumped): the text, a blank and a newline */
+    strcpy(buf, "--model fixa/m1 --no-tools \n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 28, args), 28);
+    strcpy(buf, "--model fixa/m1 --no-tools\n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 27, args), 27);               /* the newline alone */
+    CHECK_INT(cl_runcommand_args(buf, 0, 26, args), 26);               /* the text alone */
+    CHECK_INT(cl_runcommand_args("--model fixa/m1 --no-tools\n", 0, 27, "--model fixa/m1 --no-tools\n"), 27);   /* GetArgStr with its newline */
+    CHECK_INT(cl_runcommand_args("xx--model fixa/m1 --no-tools \n", 2, 30, args), 28);   /* the compare is at pos */
+    /* the file's own bytes: a first line that begins with the arguments, read ahead or followed by more */
+    strcpy(buf, "--model fixa/m1 --no-tools \nhello\n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 34, args), 0);
+    strcpy(buf, "--model fixa/m1 --no-tools and more\n");
+    CHECK_INT(cl_runcommand_args(buf, 0, 36, args), 0);
+    CHECK_INT(cl_runcommand_args("--model fixa/m2 --no-tools \n", 0, 28, args), 0);   /* other text */
+    CHECK_INT(cl_runcommand_args(buf, 0, 20, args), 0);                /* shorter than the arguments */
+    CHECK_INT(cl_runcommand_args(buf, -1, 27, args), 0);
+    CHECK_INT(cl_runcommand_args(0, 0, 28, args), 0);                  /* no buffer */
+    CHECK_INT(cl_runcommand_args(buf, 0, 0, ""), 0);                   /* no arguments */
+    CHECK_INT(cl_runcommand_args(buf, 0, 0, 0), 0);
+}
+
 void suite_claude_config(void)
 {
     char cmd[600];
@@ -1152,6 +1179,7 @@ void suite_claude_config(void)
     test_gaps();
     test_gaps3();
     test_datadir();
+    test_runcommand_args();
     strcpy(cmd, "rm -rf ");
     strcat(cmd, dir);
     if (system(cmd))

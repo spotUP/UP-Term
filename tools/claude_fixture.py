@@ -51,6 +51,10 @@ stream (A2/A3, and the A4 WP2 tools):
   - anything else                                     -> text.sse
   (--stream NAME answers every request with NAME.sse instead.)
 
+It also answers amiga-pi's POST .../responses (openai-responses) from
+tests/pi/responses/*.sse: after a function_call_output plain, a prompt naming
+"startup" or "tool" tool (a read and a bash call), else plain.
+
 It also answers amiga-pi's POST .../chat/completions (openai-completions)
 from tests/pi/openai_*.sse: after the results of openai_edit's calls
 openai_edit_final, after other tool results openai_final, a prompt naming
@@ -164,6 +168,23 @@ def pick_openai(body):
     return "openai_text"
 
 
+def pick_responses(body):
+    """amiga-pi's openai-responses requests (POST .../responses): after a
+    function_call_output -> responses/plain.sse, a prompt naming "startup" or
+    "tool" -> responses/tool.sse (read and bash calls), else responses/plain.sse."""
+    items = body.get("input") or []
+    last = items[-1] if items else {}
+    if last.get("type") == "function_call_output":
+        return "responses/plain"
+    content = last.get("content")
+    text = content if isinstance(content, str) else " ".join(
+        b.get("text", "") for b in (content or []) if isinstance(b, dict))
+    text = text.lower()
+    if "startup" in text or "tool" in text:
+        return "responses/tool"
+    return "responses/plain"
+
+
 def tool_tail(msgs):
     """the tool messages at the end of an openai conversation (the last round's results)"""
     tail = []
@@ -212,23 +233,26 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_error(400, "the body is not JSON")
             return
-        openai = self.path.endswith("/chat/completions")
-        name = pick_openai(body) if openai else pick(body, self.forced)
+        responses = self.path.endswith("/responses")
+        openai = self.path.endswith("/chat/completions") or responses
+        name = pick_responses(body) if responses else pick_openai(body) if openai else pick(body, self.forced)
         if self.dump:
             # every request body as it came, numbered, for the rig checks to read
             Handler.ndump += 1
             with open(os.path.join(self.dump, "%03d.json" % Handler.ndump), "wb") as f:
                 f.write(raw)
-        msgs = body.get("messages") or []
+        msgs = body.get("messages") or body.get("input") or []
         results = sum(1 for m in msgs if isinstance(m.get("content"), list)
                       for b in m["content"] if b.get("type") == "tool_result")
-        if openai:
+        if responses:
+            results = sum(1 for m in msgs if m.get("type") == "function_call_output")
+        elif openai:
             results = sum(1 for m in msgs if m.get("role") == "tool")
         key = self.headers.get("Authorization") if openai else self.headers.get("x-api-key")
         print("[INFO] %s model=%s messages=%d tool_results=%d key_header=%s -> %s.sse" % (
             self.path, body.get("model"), len(msgs), results,
             "PRESENT (wrong!)" if key else "none", name), flush=True)
-        if openai:
+        if openai and not responses:
             # the latest tool results' text (amiga-pi's rig checks read it)
             for m in tool_tail(msgs):
                 print("[INFO]   tool_result %s: %s" % (m.get("tool_call_id"), result_text(m)), flush=True)

@@ -136,7 +136,7 @@ static void http_error(jw *body, int status, char *out, long cap)
 int llm_request(llm_req *q)
 {
     http_url u;
-    char path[300], buf[2048], err[300];
+    char path[300], buf[2048], err[300], xb[512];
     const char *key = q->key;
     jw body, errbody;
     http_resp resp;
@@ -186,10 +186,35 @@ int llm_request(llm_req *q)
     }
     q->hn = q->be->head(u.host, u.port, u.tls, path, key, q->user_agent, body.n, q->head, sizeof(q->head));
     q->key_sent = key && *key && q->hn > 0;
+    xb[0] = 0;
+    if (q->be->xhead)
+        q->be->xhead(q->ctx, xb, sizeof(xb) / 2);
+    if (q->xhead && strlen(q->xhead) < sizeof(xb) / 2)
+        strcat(xb, q->xhead);
+    if (xb[0] && q->hn >= 4) {
+        /* the backend's and models.json's headers: before the blank line that ends the head */
+        long xn = (long)strlen(xb);
+        if (q->hn + xn >= (long)sizeof(q->head)) {
+            jw_free(&body);
+            final_error(q->sink, LS_ERROR, "head", "the request headers are too long");
+            return -1;
+        }
+        memcpy(q->head + q->hn - 2, xb, (size_t)xn);
+        memcpy(q->head + q->hn - 2 + xn, "\r\n", 2);
+        q->hn += xn;
+        q->head[q->hn] = 0;
+    }
     if (q->h.log && q->hn > 0) {
         /* the only form of the head a log gets: the credential's value blanked */
-        char red[1100];
+        static char red[1700], red2[1700];
         long rn = http_redact_header(q->head, q->hn, q->be->secret_header, red, sizeof(red));
+        if (rn > 0 && q->xhead && *q->xhead) {
+            long r2 = http_redact_header(red, rn, "Authorization", red2, sizeof(red2));
+            if (r2 > 0) {
+                memcpy(red, red2, (size_t)r2);
+                rn = r2;
+            }
+        }
         if (rn > 0)
             q->h.log(q->h.u, red, rn);
     }
@@ -241,7 +266,7 @@ int llm_request(llm_req *q)
                 cl_copy(err, g.em[0] ? g.em : g.et, sizeof(err));
                 retry = !g.content && (!strcmp(g.et, "overloaded_error") || !strcmp(g.et, "api_error"));
             } else {
-                cl_copy(err, "the answer was cut off", sizeof(err));
+                cl_copy(err, q->be->cut ? q->be->cut : "the answer was cut off", sizeof(err));
                 retry = !g.content;
             }
         } else if (rc == LP_OK) {

@@ -8,6 +8,9 @@
 
 #include "ui.h"
 
+/* once at the start, before anything is read from Input(): the argument line the Shell left in its buffer is read out
+ * (cl_runcommand_args decides), so a redirected file is read from its start */
+void io_amiga_args(void);
 /* read_line, write, brk, sleep, ms (log is the program's) */
 void io_amiga_line(cl_io *io);
 /* read, size, raw, edit when Input() and Output() are UP-Term consoles: 1, else 0 (io unchanged) */

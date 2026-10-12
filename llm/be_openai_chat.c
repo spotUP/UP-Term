@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "backend.h"
+#include "registry.h"
 #include "../claude/http.h"
 #include "../claude/util.h"
 
@@ -82,6 +83,8 @@ static llm_compat detect(const llm_model *m)
     c.max_tokens_field = has(u, "chutes.ai") || deepseek || moonshot || cf_gateway || together || nvidia ||
                          antling || zai;
     c.tool_result_name = 0;
+    c.reasoning_effort = !(is(p, "xai") || has(u, "api.x.ai") || zai || moonshot || together || cf_gateway || nvidia || antling);
+    c.thinking_as_text = 0;
     return c;
 }
 
@@ -97,25 +100,17 @@ static llm_compat compat_of(const llm_model *m)
         c.max_tokens_field = m->compat.max_tokens_field;
     if (m->compat.tool_result_name != LC_UNSET)
         c.tool_result_name = m->compat.tool_result_name;
+    if (m->compat.reasoning_effort != LC_UNSET)
+        c.reasoning_effort = m->compat.reasoning_effort;
+    if (m->compat.thinking_as_text != LC_UNSET)
+        c.thinking_as_text = m->compat.thinking_as_text;
     return c;
 }
 
-/* pi-ai's id for this API: "call|item" -> "call_item", other than
- * [A-Za-z0-9_-] -> "_", at most 40 characters */
+/* tool-call ids: llm_prepare (handoff.c) already made them the form this API takes */
 static void w_id(jw *w, jv v)
 {
-    char id[128];
-    long i, n = json_str(v, id, sizeof(id));
-    if (n < 0)
-        n = 0;
-    if (n > 40)
-        n = 40;
-    for (i = 0; i < n; i++) {
-        char c = id[i];
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
-            id[i] = '_';
-    }
-    jw_str(w, id, n);
+    jw_raw(w, v.p, v.n);
 }
 
 /* the text blocks of content joined (a tool result's or an answer's text) */
@@ -186,16 +181,21 @@ static int w_user(jw *w, jv c)
     return 0;
 }
 
-/* an assistant message: 0 when it has nothing this API can take */
-static int w_assistant(jw *w, jv m)
+/* openai-completions convertMessages for an assistant message: the text as one string; thinking back as the
+ * field its signature names (reasoning, reasoning_content, reasoning_text) or, requiresThinkingAsText, as plain
+ * text before the answer. 0 when it has nothing this API can take */
+static int w_assistant(jw *w, jv m, const llm_compat *cp)
 {
     jv c, b, t, v, id, nm, args;
     jit it;
-    jw text;
-    int calls = 0;
+    jw text, think;
+    char sig[32];
+    int calls = 0, nthink = 0;
     if (!json_get(m, "content", &c) || json_type(c) != J_ARR)
         return 0;
     jw_init(&text);
+    jw_init(&think);
+    sig[0] = 0;
     json_iter(c, &it);
     while (json_next(&it, 0, &b))
         if (json_get(b, "type", &t) && json_streq(t, "text") && json_get(b, "text", &v)) {
@@ -205,13 +205,46 @@ static int w_assistant(jw *w, jv m)
                 jw_raw(&text, x, l);
                 free(x);
             }
+        } else if (json_get(b, "type", &t) && json_streq(t, "thinking") && json_get(b, "thinking", &v)) {
+            long l, i;
+            char *x = json_strdup(v, &l);
+            int empty = 1;
+            for (i = 0; x && i < l; i++)
+                if (!(x[i] == ' ' || x[i] == '\t' || x[i] == '\n' || x[i] == '\r'))
+                    empty = 0;
+            if (x && !empty) {
+                if (nthink++)
+                    jw_rawz(&think, cp->thinking_as_text == 1 ? "\n\n" : "\n");
+                jw_raw(&think, x, l);
+                if (nthink == 1 && json_get(b, "thinkingSignature", &t) && json_type(t) == J_STR)
+                    json_str(t, sig, sizeof(sig));
+            }
+            free(x);
         }
     jw_rawz(w, "{\"role\":\"assistant\",\"content\":");
-    if (text.n)
+    if (nthink && cp->thinking_as_text == 1) {
+        jw_rawz(w, "[{\"type\":\"text\",\"text\":");
+        jw_str(w, think.p, think.n);
+        jw_raw(w, "}", 1);
+        if (text.n) {
+            jw_rawz(w, ",{\"type\":\"text\",\"text\":");
+            jw_str(w, text.p, text.n);
+            jw_raw(w, "}", 1);
+        }
+        jw_raw(w, "]", 1);
+    } else if (text.n)
         jw_str(w, text.p, text.n);
     else
         jw_rawz(w, "null");
+    if (nthink && cp->thinking_as_text != 1 &&
+        (!strcmp(sig, "reasoning") || !strcmp(sig, "reasoning_content") || !strcmp(sig, "reasoning_text"))) {
+        jw_rawz(w, ",\"");
+        jw_rawz(w, sig);
+        jw_rawz(w, "\":");
+        jw_str(w, think.p, think.n);
+    }
     jw_free(&text);
+    jw_free(&think);
     json_iter(c, &it);
     while (json_next(&it, 0, &b)) {
         if (!json_get(b, "type", &t) || !json_streq(t, "toolCall") || !json_get(b, "id", &id) ||
@@ -265,7 +298,7 @@ static int o_body(const llm_ctx *x, jw *w)
                 return -1;
             jw_raw(w, "}", 1);
         } else if (json_streq(r, "assistant")) {
-            if (!w_assistant(w, m)) {
+            if (!w_assistant(w, m, &cp)) {
                 w->n = mark;
                 if (w->p)
                     w->p[w->n] = 0;
@@ -297,6 +330,18 @@ static int o_body(const llm_ctx *x, jw *w)
     if (maxt > 0) {
         jw_rawz(w, cp.max_tokens_field ? ",\"max_tokens\":" : ",\"max_completion_tokens\":");
         jw_long(w, maxt);
+    }
+    if (md->reasoning && cp.reasoning_effort) {
+        /* openai-completions: reasoning_effort = thinkingLevelMap[level] ?? level; off sends only a mapped value */
+        int lv = llm_think_clamp(md, x->thinking);
+        const llm_tmap *t = &md->thinking_map[lv];
+        if (lv != LT_OFF) {
+            jw_rawz(w, ",\"reasoning_effort\":");
+            jw_strz(w, t->kind == LTM_STR ? t->val : llm_think_name(lv));
+        } else if (t->kind == LTM_STR) {
+            jw_rawz(w, ",\"reasoning_effort\":");
+            jw_strz(w, t->val);
+        }
     }
     if (x->tools && x->tools_n > 2) {
         jv ts, t, v;
@@ -387,7 +432,7 @@ static void end_all(oc_dec *d, const llm_sink *k)
 }
 
 /* a text or thinking delta: the block opened first (the other kind closed) */
-static int piece(oc_dec *d, const llm_sink *k, int kind, jv v)
+static int piece(oc_dec *d, const llm_sink *k, int kind, jv v, const char *field)
 {
     llm_event e;
     long l, *open = kind == LB_TEXT ? &d->text : &d->think;
@@ -407,6 +452,10 @@ static int piece(oc_dec *d, const llm_sink *k, int kind, jv v)
         llm_event_init(&e, LE_BLOCK_START);
         e.index = *open;
         e.kind = kind;
+        if (kind == LB_THINKING && field) {
+            e.sig = field;          /* pi: the thinking block's signature names the field it came in */
+            e.sn = (long)strlen(field);
+        }
         emit(k, &e);
     }
     llm_event_init(&e, LE_DELTA);
@@ -550,11 +599,11 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
         json_iter(cs, &it);
         if (json_next(&it, 0, &c0)) {
             if (json_get(c0, "delta", &dl) && json_type(dl) == J_OBJ) {
-                if (json_get(dl, "reasoning_content", &v) && piece(d, k, LB_THINKING, v))
+                if (json_get(dl, "reasoning_content", &v) && piece(d, k, LB_THINKING, v, "reasoning_content"))
                     return -1;
-                if (json_get(dl, "reasoning", &v) && piece(d, k, LB_THINKING, v))
+                if (json_get(dl, "reasoning", &v) && piece(d, k, LB_THINKING, v, "reasoning"))
                     return -1;
-                if (json_get(dl, "content", &v) && piece(d, k, LB_TEXT, v))
+                if (json_get(dl, "content", &v) && piece(d, k, LB_TEXT, v, 0))
                     return -1;
                 if (json_get(dl, "tool_calls", &tcs) && json_type(tcs) == J_ARR) {
                     jit ti;
@@ -590,7 +639,7 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
 }
 
 const llm_backend llm_be_openai_chat = {
-    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, o_new, o_feed, o_free
+    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, 0
 };
 
 const llm_backend *llm_backend_of(const char *api)
@@ -599,5 +648,7 @@ const llm_backend *llm_backend_of(const char *api)
         return &llm_be_anthropic;
     if (api && !strcmp(api, llm_be_openai_chat.api))
         return &llm_be_openai_chat;
+    if (api && !strcmp(api, llm_be_openai_responses.api))
+        return &llm_be_openai_responses;
     return 0;
 }
