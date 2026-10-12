@@ -909,7 +909,8 @@ static void pi_rule(cl_tui *t, int work)
     char b[8];
     int i;
     r_init(&r, t->cols);
-    pi_role(t, &r, t->pi_rule);
+    /* a line that starts with ! is a command: the rules take the bash colour (pi updateEditorBorderColor) */
+    pi_role(t, &r, t->ed.n && t->ed.b[0] == '!' ? PR_BASH_MODE : t->pi_rule);
     (void)b;
     if (work && t->pi_work[0] && t->cols >= (int)strlen(t->pi_work) + 5) {
         r_glyph(&r, G_H);
@@ -2797,7 +2798,7 @@ static int handle(cl_tui *t, cl_key *k, int busy, char *buf, long cap)
         return H_GO;
     case K_CHAR:
         if (!t->ed.n && t->box == BOX_PROMPT && (t->ed.vim == VIM_OFF || t->ed.vim == VIM_INSERT) &&
-            (k->ch == '!' || k->ch == '#')) {
+            (k->ch == '!' || k->ch == '#') && t->look != TUI_LOOK_PI) {
             t->box = k->ch == '!' ? BOX_BASH : BOX_MEMORY;
             return H_GO;
         }
