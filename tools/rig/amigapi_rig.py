@@ -882,18 +882,18 @@ def step7(port):
 
 
 
-def mask_rpc(o):
-    """A record of pi's RPC/JSON stream after the masks of amiga-pi's tests/test_pi_modes.c (that file explains each one and is the
-    master: this is the same list for the rig's python): times, fresh ids and paths, the system prompt's sections, the first
-    usage of an assistant message_start, cost objects, the fields pi 1.0.4 adds to the messages, error texts, the base URL."""
-    import re
+def mask_rpc(o, spec):
+    """A record of pi's RPC/JSON stream after the masks of amiga-pi's tests/pi/rpc/masks.json (spec: that file, parsed),
+    the one list of this rig and of amiga-pi's tests/test_pi_modes.c, with each mask's reason. The rules are those of
+    the file's "rules" section, applied as test_pi_modes.c applies them; the rig adds one of its own: the bash tool's
+    description names the shell this machine runs (vsh), a difference on purpose."""
+    import math, re
     fresh = re.compile(r'^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?!d000)[0-9a-f]{8})$')
-    drop = {'cacheWrite1h', 'responseId', 'rawStopReason', 'thinkingLevel', 'providerThinkingLevel', 'structuredContent',
-            'responseModel', 'finalError'}
-    star = {'timestamp', 'labelTimestamp', 'sections', 'sessionFile', 'path', 'wall_time_seconds', 'estimatedTokensAfter'}
-    ids = {'id', 'parentId', 'sessionId', 'leafId', 'firstKeptEntryId', 'targetId', 'fromId'}
+    http_err = re.compile(r'^(HTTP )?[1-5][0-9][0-9][ :]')
+    drop, star, ids = set(spec['drop']), set(spec['star']), set(spec['ids']['keys'])
+    prov = spec['fixtureProvider']
 
-    def m(v, start=False):
+    def m(v, start=False, cost=False):
         if isinstance(v, list):
             return [m(x) for x in v]
         if not isinstance(v, dict):
@@ -903,16 +903,20 @@ def mask_rpc(o):
         start_msg = v.get('type') == 'message_start' and isinstance(v.get('message'), dict) and v['message'].get('role') == 'assistant'
         for k, x in v.items():
             if k == 'description' and v.get('name') == 'bash':
-                r[k] = '*'          # the bash tool's text names the shell this machine runs (vsh), a difference on purpose
+                r[k] = '*'
                 continue
-            if k in drop or (k == 'errorMessage' and (asst or v.get('type') == 'auto_retry_start')):
+            if k in drop:
                 continue
             if k in star:
                 r[k] = '*'
+            elif cost and isinstance(x, (int, float)) and not isinstance(x, bool):
+                r[k] = 'u$%d' % math.floor(x * 1e6 + 0.5)    # as test_pi_modes.c rounds
+            elif k == 'errorMessage' and (asst or v.get('type') == 'auto_retry_start') and isinstance(x, str) and http_err.match(x):
+                r[k] = '<http error>'
             elif k in ids and isinstance(x, str) and fresh.match(x):
                 r[k] = '*'
             elif k == 'cost' and isinstance(x, dict) and 'total' in x:
-                r[k] = '*'
+                r[k] = m(x, cost=True)
             elif k == 'baseUrl' and isinstance(x, str):
                 r[k] = '<base>'
             elif k == 'error' and v.get('command') == 'parse':
@@ -922,7 +926,7 @@ def mask_rpc(o):
             elif k == 'message' and start_msg:
                 r[k] = m(x, True)
             elif k == 'models' and isinstance(x, list):
-                r[k] = [m(e) for e in x if isinstance(e, dict) and e.get('provider') == 'fake']
+                r[k] = [m(e) for e in x if isinstance(e, dict) and e.get('provider') == prov]
             else:
                 r[k] = m(x)
         return r
@@ -969,8 +973,9 @@ def step14(port):
         got = [json.loads(l) for l in rd('pi14.out').splitlines() if l.strip().startswith('{')]
         want = [json.loads(l) for l in (gold / 'prompt.out').read_text().splitlines() if l.strip()]
         n = len(want)
-        a = [json.dumps(mask_rpc(o)) for o in want]
-        b = [json.dumps(mask_rpc(o)) for o in got[:n]]
+        spec = json.loads((gold / 'masks.json').read_text())
+        a = [json.dumps(mask_rpc(o, spec)) for o in want]
+        b = [json.dumps(mask_rpc(o, spec)) for o in got[:n]]
         bad = [i for i in range(n) if i >= len(b) or a[i] != b[i]]
         verd = {'14a prompt: the stream equals the golden line by line': not bad and len(got) > n,
                 '14b get_messages answered': any(o.get('command') == 'get_messages' and o.get('success') for o in got),
