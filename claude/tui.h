@@ -239,7 +239,7 @@ typedef struct cl_tui {
     jw log;
     int nolog;
     /* notifications: the window title as set, when the turn began */
-    char title[64];
+    char title[200];
     unsigned long busy_t0;
     int notify_after_s;         /* a turn this long ends with the bell */
     /* what was sent (tests: the redraw economy) */
@@ -251,6 +251,7 @@ typedef struct cl_tui {
      * thinking level's); the messages waiting (steering, then follow-up) shown above the editor */
     int look;
     const cl_pitheme *pith;
+    char pi_title[200];         /* the window title in pi's look: the program's (pi's updateTerminalTitle), never C:Claude's */
     char pi_cwd[300], pi_left[160], pi_ctx[48], pi_right[120], pi_work[96];
     int pi_ctx_role, pi_rule;
     char *pi_steer[TUI_QUEUE], *pi_follow[TUI_QUEUE];

@@ -1706,7 +1706,9 @@ static void check_size(cl_tui *t)
 
 void tui_title(cl_tui *t, const char *s)
 {
-    if (!t->started || !strcmp(t->title, s))
+    if (t->look == TUI_LOOK_PI)
+        s = t->pi_title;        /* pi's title is the program's text and does not follow the turn */
+    if (!t->started || !s[0] || !strcmp(t->title, s))
         return;
     cl_copy(t->title, s, sizeof(t->title));
     put(t, "\033]2;");
