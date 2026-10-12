@@ -902,6 +902,9 @@ def mask_rpc(o):
         asst = v.get('role') == 'assistant'
         start_msg = v.get('type') == 'message_start' and isinstance(v.get('message'), dict) and v['message'].get('role') == 'assistant'
         for k, x in v.items():
+            if k == 'description' and v.get('name') == 'bash':
+                r[k] = '*'          # the bash tool's text names the shell this machine runs (vsh), a difference on purpose
+                continue
             if k in drop or (k == 'errorMessage' and (asst or v.get('type') == 'auto_retry_start')):
                 continue
             if k in star:
