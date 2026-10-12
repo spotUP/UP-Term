@@ -512,6 +512,13 @@ static void test_anthropic_baseurl(void)
     /* the catalog's own anthropic models carry pi's baseUrl, no /v1 */
     mp = llm_reg_find(&r, "anthropic", "claude-opus-5-5");
     CHECK(mp && !strcmp(mp->base_url, "https://api.anthropic.com"));
+    /* pi 1.1.0 added claude-haiku-5-5 (catalog regenerated from the pinned oracle, P11-I6) */
+    mp = llm_reg_find(&r, "anthropic", "claude-haiku-5-5");
+    CHECK(mp != 0);
+    if (mp) {
+        CHECK_INT(mp->context_window, 1000000);
+        CHECK_INT(mp->max_tokens, 128000);
+    }
     llm_reg_free(&r);
 }
 
