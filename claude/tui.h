@@ -58,6 +58,12 @@
  * usage line under it, a list for the slash commands and for questions */
 enum { TUI_LOOK_CLAUDE, TUI_LOOK_PI };
 
+/* where the screen is drawn (amiga-pi TM1; pi's tuiMode): INLINE is C:Claude's (the footer pinned to the bottom of
+ * the window, the transcript starting at the cursor's row), REGULAR is pi's "regular" (the main screen, not
+ * cleared; the footer follows the transcript until the window is full), FULL is pi's "fullscreen" (the alternate
+ * screen, cleared; the footer pinned; the transcript scrolls in a viewport by PageUp / PageDown) */
+enum { TUI_SCREEN_INLINE, TUI_SCREEN_REGULAR, TUI_SCREEN_FULL };
+
 /* what the box holds: a prompt, a ! command, a # memory */
 enum { BOX_PROMPT, BOX_BASH, BOX_MEMORY };
 
@@ -269,6 +275,14 @@ typedef struct cl_tui {
     char pi_in[200];
     const char *pi_in_title;
     int pi_nofoot;              /* a question before the screen is up: no footer under it */
+    /* TUI_SCREEN_*: set by the program before tui_start. fb: the row above the footer's first (B when pinned);
+     * view: rows the viewport is scrolled back from the transcript's end (FULL); view_dirty: the viewport is
+     * drawn again at the next frame; scrollbar: pi's fullscreenScrollbar "always" (else hidden: "auto" shows it
+     * on a pointer's hover only); exit_hint_only: pi's fullscreenExitOutput "resume-hint" (else "transcript");
+     * exit_hint: the line the program prints on leaving ("" none) */
+    int screen, fb, view_dirty, scrollbar, exit_hint_only;
+    long view;
+    char exit_hint[300];
 } cl_tui;
 
 /* the row chosen (accept), -1 cancelled or the end of input */
@@ -330,6 +344,12 @@ void tui_redraw(cl_tui *t);
  * (the Ctrl+L copy; the screen drawn again without them): 0, -1 when
  * they are no longer all kept */
 int tui_takeback(cl_tui *t, long mark);
+/* the transcript lines written since mark (tui_lines counted them: n_lines at that moment) replaced by s: pi's
+ * tool box changes its background when the tool ends. Drawn in place when those lines are the end of what is on the
+ * screen, else the screen is drawn again from the copy. 0, -1 when mark is no longer in the copy */
+int tui_replace_tail(cl_tui *t, long mark, const char *s, long n);
+/* FULL: scroll the viewport (KA_VIEW_*) */
+void tui_scroll(cl_tui *t, int act);
 /* the window's title (OSC 2), sent only when it changes */
 void tui_title(cl_tui *t, const char *s);
 /* the bell and a desktop notification (OSC 9) */

@@ -1684,6 +1684,24 @@ static void notifications(void)
     CHECK_INT(h_bells, b0 + 1);
     CHECK(strstr(cs.sent.p, "\033]9;Claude is waiting for your input\a") != 0);
     CHECK_STR(vt_title(cs.vt), "Claude");
+    {
+        /* TM4: pi 1.0.4 rings nothing when a long turn ends; its look sends no bell and no OSC 9 (the C:Claude
+         * screen above did: its notice stays) */
+        static cl_pitheme th;
+        long n0 = tui.n_notify;
+        int b1 = h_bells;
+        pitheme_system(&th);
+        tui.pith = &th;
+        tui.look = TUI_LOOK_PI;
+        tui_busy(&tui, 1);
+        cs.clock += 12000;
+        tui_busy(&tui, 0);
+        CHECK_INT(h_bells, b1);
+        CHECK_INT(tui.n_notify, n0);
+        tui_notify(&tui, "any text");
+        CHECK_INT(tui.n_notify, n0);
+        tui.look = TUI_LOOK_CLAUDE;
+    }
     unscreen();
     /* the title stack: pushed at the start, popped at the end */
     CHECK(strstr(cs.sent.p, "\033[22;0t") != 0);
@@ -2039,6 +2057,38 @@ static void gaps3_keymap(void)
 
 /* UT7: amiga-pi's theme depth was fixed at 16, so a dark theme's background #343541 became ANSI 8 (bright
  * black). pi 1.0.4 has two modes, truecolor and 256 colours, read from COLORTERM and TERM. */
+/* TM6: at depth 256 a colour becomes the index pi-tui's rgbToAnsi256 picks (colors.js: nearest cube level per channel,
+ * the grey ramp only under a spread of 10); the indexes are what pi 1.1.0 sent for its dark theme's panels (tmux capture,
+ * tests/pi/tui/dark_*.golden in amiga-pi). hl_rgb_to_256 picked 237 for the first. */
+static void pi_theme_256_is_pi_tuis_conversion(void)
+{
+    static const struct { const char *hex; const char *sgr; } c[] = {
+        { "#213b49", "\033[48;5;23m" }, { "#254131", "\033[48;5;23m" }, { "#5b282a", "\033[48;5;52m" },
+        { "#34383a", "\033[48;5;237m" }, { "#343541", "\033[48;5;59m" }
+    };
+    static char json[8192];
+    cl_pitheme th;
+    char err[400], sgr[64];
+    unsigned k;
+    int i;
+    for (k = 0; k < sizeof(c) / sizeof(c[0]); k++) {
+        strcpy(json, "{\"name\":\"t256\",\"colors\":{");
+        for (i = 0; i < PR_COUNT; i++) {
+            if (i)
+                strcat(json, ",");
+            strcat(json, "\"");
+            strcat(json, pi_role_names[i]);
+            strcat(json, "\":\"");
+            strcat(json, c[k].hex);
+            strcat(json, "\"");
+        }
+        strcat(json, "}}");
+        CHECK_INT(pitheme_load(&th, json, (long)strlen(json), 0, err, sizeof(err)), 0);
+        pitheme_sgr(&th, PR_USER_MESSAGE_BG, sgr);
+        CHECK_STR(sgr, c[k].sgr);
+    }
+}
+
 static void pi_theme_depth_follows_pi_not_a_fixed_16(void)
 {
     static char json[8192];
@@ -2064,9 +2114,9 @@ static void pi_theme_depth_follows_pi_not_a_fixed_16(void)
     CHECK_INT(pitheme_depth("vtcon", "", "1"), PITHEME_TRUE);
     CHECK_INT(pitheme_load(&th, json, (long)strlen(json), 0, err, sizeof(err)), 0);
     CHECK_INT(th.depth, 256);
-    /* the dark background in the 256 cube, not ANSI 8 (SGR 100) */
+    /* the dark background in the 256 cube (pi-tui's index for #343541: 59), not ANSI 8 (SGR 100) */
     pitheme_sgr(&th, PR_USER_MESSAGE_BG, sgr);
-    CHECK_STR(sgr, "\033[48;5;237m");
+    CHECK_STR(sgr, "\033[48;5;59m");
     th.depth = PITHEME_TRUE;
     pitheme_sgr(&th, PR_USER_MESSAGE_BG, sgr);
     CHECK_STR(sgr, "\033[48;2;52;53;65m");
@@ -2075,6 +2125,7 @@ static void pi_theme_depth_follows_pi_not_a_fixed_16(void)
 void suite_claude_tui(void)
 {
     pi_theme_depth_follows_pi_not_a_fixed_16();
+    pi_theme_256_is_pi_tuis_conversion();
     keys();
     editor();
     idle_prompt();

@@ -96,6 +96,9 @@ enum {
     KA_CMD_NEW, KA_CMD_TREE, KA_CMD_FORK, KA_CMD_RESUME,
     KA_TREE_FOLD, KA_TREE_UNFOLD, KA_TREE_LABEL, KA_TREE_STAMP, KA_TREE_F_DEFAULT, KA_TREE_F_NOTOOLS,
     KA_TREE_F_USER, KA_TREE_F_LABELED, KA_TREE_F_ALL, KA_TREE_F_NEXT, KA_TREE_F_PREV,
+    /* pi's fullscreen transcript: scroll a page, half a page, a line, to the top, to the end (tui.altScreen.*) */
+    KA_VIEW_PGUP, KA_VIEW_PGDN, KA_VIEW_HALF_UP, KA_VIEW_HALF_DN, KA_VIEW_LINE_UP, KA_VIEW_LINE_DN, KA_VIEW_TOP,
+    KA_VIEW_BOTTOM,
     KA_INERT,                   /* one of Claude Code's actions with nothing to do here (tabs, diff, ...) */
     KA_COUNT,
     KA_PENDING = 100,           /* the first keystroke of a chord: wait for the next */
