@@ -20,8 +20,9 @@
 #include "../claude/json.h"
 
 enum { LR_BAD = -1, LR_USER, LR_ASSISTANT, LR_TOOLRESULT, LR_SYSTEM };
-/* pi-ai's StopReason */
-enum { LS_NONE, LS_STOP, LS_LENGTH, LS_TOOLUSE, LS_ERROR, LS_ABORTED };
+/* pi-ai's StopReason; LS_PENDING is the in-flight message's (an assistant message while it streams: message_start of
+ * the JSON and RPC modes). llm_m_assistant writes it, a stored message never has it: llm_stop_of does not read it */
+enum { LS_NONE, LS_STOP, LS_LENGTH, LS_TOOLUSE, LS_ERROR, LS_ABORTED, LS_PENDING };
 
 typedef struct llm_ts {
     long sec;                   /* seconds since 1970-01-01 UTC */
