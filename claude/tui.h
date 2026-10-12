@@ -161,6 +161,7 @@ typedef struct cl_tui {
     int (*esc_idle)(void *u);
     int quit_armed;             /* 'c' Ctrl+C, 'd' Ctrl+D pressed once */
     unsigned long quit_ms;
+    int quit_after;             /* TUI_LOOK_PI: Ctrl+D stopped the run; the next tui_read ends the program */
     const cl_theme *th;         /* the colours (/theme) */
     const char *bar;            /* /color: the prompt bar's colour for the session (SGR), 0 the theme's */
     /* A4: what the screen needs from the program (ui_attach sets them) */

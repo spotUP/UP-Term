@@ -2506,6 +2506,13 @@ static int act_chat(cl_tui *t, int act, cl_key *k, int busy, char *buf, long cap
             edit(t, k);             /* text in the box: the character after the cursor goes */
             return H_GO;
         }
+        if (t->look == TUI_LOOK_PI) {
+            /* pi's app.exit on an empty editor: shutdown at once, the run stopped first when one is going */
+            if (!busy)
+                return H_QUIT;
+            t->quit_after = 1;
+            return H_STOP;
+        }
         if (busy)
             return H_GO;
         if (t->quit_armed == 'd' && now(t) - t->quit_ms <= 800)
@@ -2841,6 +2848,10 @@ long tui_read(cl_tui *t, char *buf, long cap)
     char *q;
     t->hint[0] = 0;
     t->keycmd = 0;
+    if (t->quit_after) {
+        t->quit_after = 0;
+        return -1;              /* Ctrl+D while the run went (pi's look): the run has stopped, now the program */
+    }
     q = tui_dequeue(t, 0);
     if (q) {
         cl_copy(buf, q, cap);
