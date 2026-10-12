@@ -115,6 +115,11 @@ const char *llm_ant_effort(const llm_model *m, int thinking)
     return e ? e : "high";
 }
 
+int llm_ant_mid_system(const llm_model *m)
+{
+    return m && m->api && !strcmp(m->api, "anthropic-messages") && m->compat.mid_system == 1;
+}
+
 static int is_effort(jv v)
 {
     return json_streq(v, "low") || json_streq(v, "medium") || json_streq(v, "high") || json_streq(v, "xhigh") ||

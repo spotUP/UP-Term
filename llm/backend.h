@@ -105,6 +105,9 @@ extern const llm_backend llm_be_openai_responses;
 /* the thinking level an anthropic-messages request records on its answer (pi: providerThinkingLevel, set when the
  * model's supportsMidConvoEffort is on): "low".."max", 0 when the model does not manage the effort */
 const char *llm_ant_effort(const llm_model *m, int thinking);
+/* does the model take the transcript's system messages mid-conversation (pi-ai supportsMidConvoSystemMessages on
+ * anthropic-messages): its requests carry them in place, the first as the initial one */
+int llm_ant_mid_system(const llm_model *m);
 /* the backend of an api name, 0 none */
 const llm_backend *llm_backend_of(const char *api);
 /* calls of each backend's feed since the start (the reachability tests' sentinel) */
