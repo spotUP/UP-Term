@@ -68,7 +68,7 @@ static int close_pending(llm_view *v, pending *p, int *np, const int *held, int 
         llm_b_text(&c, "No result provided", 18, 0);
         jw_rawz(&c, "]");
         jw_init(&w);
-        llm_m_toolresult(&w, p[i].id, p[i].name, c.p, c.n, 0, 0, 1, ts);
+        llm_m_toolresult(&w, p[i].id, p[i].name, c.p, c.n, 0, 0, 1, -1, ts);
         jw_free(&c);
         if (w.oom || !w.p) {
             jw_free(&w);

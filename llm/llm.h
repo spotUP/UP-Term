@@ -52,6 +52,9 @@ typedef struct llm_meta {       /* an assistant message's own fields */
     const char *raw_stop;       /* rawStopReason: the provider's stop_reason / finish_reason / status as sent, 0 none */
     const char *thinking_level; /* thinkingLevel: the session's level the request was made at, "off" included; 0 none (the
                                  * agent loop adds it to the finished message, pi-agent-core agent-loop.js) */
+    long duration_ms;           /* durationMs: ms from the request's start to the final message (pi-ai 1.1.0
+                                 * AssistantMessageEventStream #time, rounded, never below 0); written only when has_duration */
+    int has_duration;
 } llm_meta;
 
 /* ---- content blocks, each appended to w as one JSON object ---- */
@@ -67,9 +70,10 @@ void llm_b_raw(jw *w, const char *api, const char *json, long n);
  * also a plain string (pi-ai allows both for user) ---- */
 void llm_m_user(jw *w, const char *content, long cn, llm_ts ts);
 void llm_m_assistant(jw *w, const char *content, long cn, const llm_meta *m, llm_ts ts);
-/* details: JSON value or 0 */
+/* details: JSON value or 0; duration_ms: durationMs (pi-agent-core 1.1.0: the tool's execute() time, rounded), -1 when the
+ * tool did not run (blocked, validation failure, aborted before the start): no key */
 void llm_m_toolresult(jw *w, const char *id, const char *name, const char *content, long cn,
-                      const char *details, long dn, int is_error, llm_ts ts);
+                      const char *details, long dn, int is_error, long duration_ms, llm_ts ts);
 void llm_m_system(jw *w, const char *text, long n, llm_ts ts);
 /* pi-ai's whole SystemMessage: sections a JSON object of named prompt
  * sections (a string, or null removing one), added/removed JSON arrays of

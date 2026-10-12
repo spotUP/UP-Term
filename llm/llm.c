@@ -299,6 +299,10 @@ void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts
         key(w, "errorMessage");
         jw_strz(w, m->error);
     }
+    if (m->has_duration) {          /* pi-ai 1.1.0: set when the stream's done/error event is pushed, before the agent loop's level */
+        key(w, "durationMs");
+        jw_long(w, m->duration_ms);
+    }
     if (m->thinking_level && *m->thinking_level) {
         key(w, "thinkingLevel");
         jw_strz(w, m->thinking_level);
@@ -307,7 +311,7 @@ void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts
 }
 
 void llm_m_toolresult(jw *w, const char *id, const char *name, const char *c, long cn,
-                      const char *details, long dn, int is_error, llm_ts ts)
+                      const char *details, long dn, int is_error, long duration_ms, llm_ts ts)
 {
     jw_rawz(w, "{\"role\":\"toolResult\",\"toolCallId\":");
     jw_strz(w, id ? id : "");
@@ -320,6 +324,10 @@ void llm_m_toolresult(jw *w, const char *id, const char *name, const char *c, lo
         jw_raw(w, details, dn);
     }
     jw_rawz(w, is_error ? ",\"isError\":true" : ",\"isError\":false");
+    if (duration_ms >= 0) {         /* pi-agent-core 1.1.0 createToolResultMessage: after isError, before timestamp */
+        key(w, "durationMs");
+        jw_long(w, duration_ms);
+    }
     key(w, "timestamp");
     llm_w_ts(w, ts);
     jw_raw(w, "}", 1);
@@ -535,6 +543,10 @@ int llm_msg_canon(const char *json, long n, jw *out)
             mt.response_id = rid;
             mt.raw_stop = rsr;
             mt.thinking_level = tlv;
+            if (json_get(m, "durationMs", &v) && json_type(v) == J_NUM) {
+                mt.duration_ms = json_long(v, 0);
+                mt.has_duration = 1;
+            }
             if (json_get(m, "usage", &v))
                 llm_r_usage(v, &mt.usage);
             mt.stop = json_get(m, "stopReason", &v) ? llm_stop_of(v) : LS_NONE;
@@ -555,11 +567,13 @@ int llm_msg_canon(const char *json, long n, jw *out)
             long ln;
             char *id = sget(m, "toolCallId", &ln), *name = sget(m, "toolName", &ln);
             int has_d = json_get(m, "details", &d);
+            jv d2;
             if (!id || !name)
                 rc = -1;
             else
                 llm_m_toolresult(&body, id, name, cc.p, cc.n, has_d ? d.p : 0, has_d ? d.n : 0,
-                                 json_get(m, "isError", &v) && json_type(v) == J_TRUE, ts);
+                                 json_get(m, "isError", &v) && json_type(v) == J_TRUE,
+                                 json_get(m, "durationMs", &d2) && json_type(d2) == J_NUM ? json_long(d2, 0) : -1, ts);
             free(id);
             free(name);
         }
