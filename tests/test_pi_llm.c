@@ -733,6 +733,176 @@ static void test_responses(void)
     free(cases_txt);
 }
 
+/* ---- FB1/FB2: anthropic-messages against pi's own output (tests/pi/anthropic, made by tools/gen_pi_anthropic.mjs):
+ * the body byte for byte, the anthropic-beta header, and the level each answer records ---- */
+
+static char *ra_reply[RC_MAX];
+static char ra_name[RC_MAX][32];
+
+static void test_anthropic_pi(void)
+{
+    char *cases_txt, name[64];
+    long cn, nreq0, feeds0 = llm_feeds_anthropic;
+    jv root, cs, c, v, ms, mv;
+    jit it;
+    llm_reg r;
+    int ncase = 0, i, mid_cases = 0;
+    cases_txt = claude_load("../pi/anthropic/cases.json", &cn);
+    CHECK(cases_txt != 0);
+    if (!cases_txt)
+        return;
+    CHECK_INT(json_parse(cases_txt, cn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char mname[96], file[96], sse[64], lvl[16], sys[200];
+        const llm_model *md;
+        llm_model cmod;
+        char *msgs[16], *want_body, *want_hdr;
+        long mn[16], bn, hn;
+        int nm = 0, lv, own[16];
+        jit mit;
+        llm_ctx cx;
+        llm_req q;
+        llm_acc a;
+        llm_sink k;
+        llm_view vw;
+        jw msg;
+        char *tools = 0;
+        long tools_n = 0;
+        memset(own, 0, sizeof(own));
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "model", &v);
+        json_str(v, mname, sizeof(mname));
+        {
+            char *sl = strchr(mname, '/');
+            *sl = 0;
+            md = llm_reg_find(&r, mname, sl + 1);
+        }
+        CHECK(md != 0);
+        if (!md)
+            continue;
+        if (json_get(c, "compat", &v)) {
+            /* a models.json model with only forceAdaptiveThinking: the managed-effort flags are unset */
+            cmod = *md;
+            cmod.compat.mid_effort = cmod.compat.mid_system = cmod.compat.mid_tools = LC_UNSET;
+            md = &cmod;
+        }
+        json_get(c, "level", &v);
+        json_str(v, lvl, sizeof(lvl));
+        lv = llm_think_of(lvl);
+        json_get(c, "system", &v);
+        json_str(v, sys, sizeof(sys));
+        json_get(c, "sse", &v);
+        json_str(v, sse, sizeof(sse));
+        if (json_get(c, "tools", &v))
+            tools = compact_dup(v.p, v.n, &tools_n);
+        json_get(c, "messages", &ms);
+        json_iter(ms, &mit);
+        while (json_next(&mit, 0, &mv)) {
+            jv rep;
+            if (json_type(mv) == J_OBJ && json_get(mv, "$reply", &rep)) {
+                char rn[32];
+                int j;
+                json_str(rep, rn, sizeof(rn));
+                msgs[nm] = 0;
+                for (j = 0; j < RC_MAX; j++)
+                    if (ra_reply[j] && !strcmp(ra_name[j], rn))
+                        msgs[nm] = ra_reply[j];
+                CHECK(msgs[nm] != 0);
+                if (!msgs[nm])
+                    msgs[nm] = (char *)"{\"role\":\"user\",\"content\":\"\",\"timestamp\":0}";
+                mn[nm] = (long)strlen(msgs[nm]);
+            } else {
+                msgs[nm] = compact_dup(mv.p, mv.n, &mn[nm]);
+                own[nm] = 1;
+            }
+            nm++;
+        }
+        CHECK_INT(llm_prepare(md, (const char *const *)msgs, mn, nm, ts_of(1760100000L, 0), &vw), 0);
+        memset(&cx, 0, sizeof(cx));
+        cx.model = md;
+        cx.system = sys;
+        cx.msgs = vw.m;
+        cx.msg_n = vw.n;
+        cx.nmsg = vw.count;
+        cx.tools = tools;
+        cx.tools_n = tools_n;
+        cx.thinking = lv;
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        strcpy(file, "../pi/anthropic/");
+        strcat(file, sse);
+        strcat(file, ".sse");
+        ps_sse(file, 0);
+        llm_acc_init(&a, md->api, md->provider);
+        llm_acc_model(&a, md->id, md->cost);
+        llm_acc_level(&a, llm_ant_effort(md, lv));
+        k = llm_acc_sink(&a);
+        q = req_of(md, &cx, &k, "sk-test-not-real");
+        nreq0 = ps.nreq;
+        llm_request(&q);
+        /* the request on the wire: pi's body, byte for byte */
+        strcpy(file, "../pi/anthropic/");
+        strcat(file, name);
+        strcat(file, ".body");
+        want_body = claude_load(file, &bn);
+        CHECK(want_body != 0);
+        CHECK(ps.nreq == nreq0 + 1 && ps.body[0] != 0);
+        if (want_body && ps.body[0] && strcmp(want_body, ps.body[0])) {
+            printf("    case %s body\n      got  %s\n      want %s\n", name, ps.body[0], want_body);
+            CHECK(0);
+        }
+        CHECK(ps.nreq && strstr(ps.head[0], "POST /v1/messages HTTP/1.1\r\nHost: api.anthropic.com\r\n") == ps.head[0]);
+        file[strlen(file) - 5] = 0;
+        strcat(file, ".headers");
+        want_hdr = claude_load(file, &hn);
+        if (want_hdr) {
+            char *line = want_hdr, *e = strchr(line, '\n');
+            if (e)
+                *e = 0;
+            CHECK(strstr(ps.head[0], line) != 0);          /* the golden has \n, the wire \r\n */
+            if (e)
+                *e = '\n';
+            if (strstr(want_hdr, "mid-conversation-output-config"))
+                mid_cases++;
+            free(want_hdr);
+        } else
+            CHECK(strstr(ps.head[0], "anthropic-beta") == 0);
+        /* what the answer records: the level pi keeps on it */
+        jw_init(&msg);
+        llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+        for (i = 0; i < RC_MAX; i++)
+            if (!ra_reply[i]) {
+                ra_reply[i] = (char *)malloc((size_t)msg.n + 1);
+                memcpy(ra_reply[i], msg.p, (size_t)msg.n + 1);
+                strcpy(ra_name[i], name);
+                break;
+            }
+        free(want_body);
+        jw_free(&msg);
+        llm_acc_free(&a);
+        llm_view_free(&vw);
+        free(tools);
+        for (i = 0; i < nm; i++)
+            if (own[i])
+                free(msgs[i]);
+        ncase++;
+    }
+    CHECK(ncase >= 17);
+    CHECK(mid_cases >= 8);                          /* the managed-effort model's cases ran */
+    CHECK(llm_feeds_anthropic > feeds0);            /* the backend ran */
+    for (i = 0; i < RC_MAX; i++) {
+        free(ra_reply[i]);
+        ra_reply[i] = 0;
+    }
+    llm_reg_free(&r);
+    free(cases_txt);
+}
+
 /* B11: one top-level request per backend, the neutral message of the same shape */
 static void test_reach(void)
 {
@@ -848,10 +1018,11 @@ static void test_openai_bodies(void)
         CHECK(strstr(w.p, "{\"type\":\"thinking\",\"thinking\":\"Read it.\",\"signature\":\"sig==\"}") != 0);
         CHECK(strstr(w.p, "{\"type\":\"tool_use\",\"id\":\"call_1|item_9\",\"name\":\"read\",\"input\":"
                           "{\"path\":\"S:Startup-Sequence\"}}") != 0);
+        /* pi: a result's texts joined into one string, is_error always present */
         CHECK(strstr(w.p, "{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":"
-                          "\"call_1|item_9\",\"content\":[{\"type\":\"text\",\"text\":\"SetPatch QUIET\\n\"}]},"
-                          "{\"type\":\"tool_result\",\"tool_use_id\":\"call_2\",\"content\":[{\"type\":\"text\","
-                          "\"text\":\"Startup-Sequence\\n\"}],\"is_error\":true}]}") != 0);
+                          "\"call_1|item_9\",\"content\":\"SetPatch QUIET\\n\",\"is_error\":false},"
+                          "{\"type\":\"tool_result\",\"tool_use_id\":\"call_2\",\"content\":"
+                          "\"Startup-Sequence\\n\",\"is_error\":true,\"cache_control\":{\"type\":\"ephemeral\"}}]}") != 0);
         CHECK(strstr(w.p, "\"input_schema\":{\"type\":\"object\"") != 0);
         jw_free(&w);
     }
@@ -1405,6 +1576,7 @@ void suite_pi_llm(void)
     test_reach();
     test_anthropic_baseurl();
     test_responses();
+    test_anthropic_pi();
     test_openai_bodies();
     test_request();
     test_pool();

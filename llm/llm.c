@@ -262,6 +262,10 @@ void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts
     jw_strz(w, m->provider ? m->provider : "");
     key(w, "model");
     jw_strz(w, m->model ? m->model : "");
+    if (m->level && *m->level) {
+        key(w, "providerThinkingLevel");
+        jw_strz(w, m->level);
+    }
     key(w, "usage");
     llm_w_usage(w, &m->usage);
     key(w, "stopReason");
@@ -491,13 +495,15 @@ int llm_msg_canon(const char *json, long n, jw *out)
             llm_meta mt;
             long ln;
             char *api = sget(m, "api", &ln), *prov = sget(m, "provider", &ln), *model = sget(m, "model", &ln),
-                 *err = sget(m, "errorMessage", &ln), *rmod = sget(m, "responseModel", &ln);
+                 *err = sget(m, "errorMessage", &ln), *rmod = sget(m, "responseModel", &ln),
+                 *plv = sget(m, "providerThinkingLevel", &ln);
             memset(&mt, 0, sizeof(mt));
             mt.api = api;
             mt.provider = prov;
             mt.model = model;
             mt.error = err;
             mt.response_model = rmod;
+            mt.level = plv;
             if (json_get(m, "usage", &v))
                 llm_r_usage(v, &mt.usage);
             mt.stop = json_get(m, "stopReason", &v) ? llm_stop_of(v) : LS_NONE;
@@ -510,6 +516,7 @@ int llm_msg_canon(const char *json, long n, jw *out)
             free(model);
             free(err);
             free(rmod);
+            free(plv);
         } else if (!rc) {
             long ln;
             char *id = sget(m, "toolCallId", &ln), *name = sget(m, "toolName", &ln);

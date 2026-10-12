@@ -42,6 +42,7 @@ typedef struct llm_meta {       /* an assistant message's own fields */
     llm_usage usage;
     int stop;                   /* LS_* */
     const char *error;          /* errorMessage, 0 none */
+    const char *level;          /* providerThinkingLevel: the effort a managed-effort anthropic request carried, 0 none */
 } llm_meta;
 
 /* ---- content blocks, each appended to w as one JSON object ---- */

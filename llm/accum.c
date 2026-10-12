@@ -19,6 +19,11 @@ void llm_acc_model(llm_acc *a, const char *id, const long price[4])
         a->price[i] = price ? price[i] : 0;
 }
 
+void llm_acc_level(llm_acc *a, const char *level)
+{
+    cl_copy(a->level, level ? level : "", sizeof(a->level));
+}
+
 /* tokens * price / 1e6 in micro-dollars without leaving 32 bits */
 static long cost_of(long tokens, long price)
 {
@@ -350,6 +355,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     m.api = a->api;
     m.provider = a->provider;
     m.model = a->cfg_model[0] ? a->cfg_model : a->model;
+    m.level = a->level[0] ? a->level : 0;
     m.response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
     m.usage = a->usage;
     if (a->cfg_model[0]) {

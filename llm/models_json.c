@@ -101,6 +101,18 @@ static int rd_compat(ctx *c, jv cv, llm_model *m)
         m->compat.strict_tools = json_type(v) == J_TRUE;
     if (json_get(cv, "maxTokensField", &v))
         m->compat.max_tokens_field = json_streq(v, "max_tokens");
+    if (json_get(cv, "supportsMidConvoEffort", &v))
+        m->compat.mid_effort = json_type(v) == J_TRUE;
+    if (json_get(cv, "supportsMidConvoSystemMessages", &v))
+        m->compat.mid_system = json_type(v) == J_TRUE;
+    if (json_get(cv, "supportsMidConvoToolChanges", &v))
+        m->compat.mid_tools = json_type(v) == J_TRUE;
+    if (json_get(cv, "supportsEagerToolInputStreaming", &v))
+        m->compat.eager_tools = json_type(v) == J_TRUE;
+    if (json_get(cv, "supportsCacheControlOnTools", &v))
+        m->compat.cache_tools = json_type(v) == J_TRUE;
+    if (json_get(cv, "allowEmptySignature", &v))
+        m->compat.empty_signature = json_type(v) == J_TRUE;
     if (json_get(cv, "forceAdaptiveThinking", &v))
         m->adaptive = json_type(v) == J_TRUE;
     return 0;

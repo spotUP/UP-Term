@@ -23,6 +23,13 @@ typedef struct llm_compat {
     int reasoning_effort;       /* supportsReasoningEffort: the reasoning_effort field */
     int thinking_as_text;       /* requiresThinkingAsText: a thinking block goes back as text */
     int strict_tools;           /* supportsStrictMode (openai-responses): tools carry "strict":false */
+    /* anthropic-messages (pi-ai getAnthropicCompat; LC_UNSET: pi's default) */
+    int mid_effort;             /* supportsMidConvoEffort: adaptive thinking bound to the level sent as system messages */
+    int mid_system;             /* supportsMidConvoSystemMessages: later system messages stay in the transcript */
+    int mid_tools;              /* supportsMidConvoToolChanges: tool changes as tool_addition / tool_removal blocks */
+    int eager_tools;            /* supportsEagerToolInputStreaming (default on) */
+    int cache_tools;            /* supportsCacheControlOnTools (default on) */
+    int empty_signature;        /* allowEmptySignature: an unsigned thinking block keeps an empty signature */
 } llm_compat;
 
 /* pi's thinking levels (ModelThinkingLevel), in order; thinking_map[] is pi's
@@ -95,6 +102,9 @@ extern const llm_backend llm_be_anthropic;
 extern const llm_backend llm_be_openai_chat;
 extern const llm_backend llm_be_openai_responses;
 
+/* the thinking level an anthropic-messages request records on its answer (pi: providerThinkingLevel, set when the
+ * model's supportsMidConvoEffort is on): "low".."max", 0 when the model does not manage the effort */
+const char *llm_ant_effort(const llm_model *m, int thinking);
 /* the backend of an api name, 0 none */
 const llm_backend *llm_backend_of(const char *api);
 /* calls of each backend's feed since the start (the reachability tests' sentinel) */

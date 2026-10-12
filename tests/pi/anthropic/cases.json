@@ -1,0 +1,1151 @@
+{
+ "cases": [
+  {
+   "name": "plain",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain"
+  },
+  {
+   "name": "tool",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "roundtrip",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "tool"
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "toolu_01ReadStartup",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "SetPatch QUIET\n"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "and the user startup"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "levels_1",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "low",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain"
+  },
+  {
+   "name": "levels_2",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "levels_1"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "two"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain"
+  },
+  {
+   "name": "levels_3",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "levels_1"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "two"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "levels_2"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "three"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain"
+  },
+  {
+   "name": "levels_off",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "levels_1"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "two"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain"
+  },
+  {
+   "name": "levels_xhigh",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "xhigh",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "ok"
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-opus-5-5",
+     "providerThinkingLevel": "xhigh",
+     "usage": {
+      "input": 1,
+      "output": 2,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 3,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "two"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "ok2"
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-opus-5-5",
+     "providerThinkingLevel": "max",
+     "usage": {
+      "input": 1,
+      "output": 2,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 3,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "three"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain"
+  },
+  {
+   "name": "sys_end",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "tool"
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "toolu_01ReadStartup",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "ok"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "system",
+     "content": "",
+     "sections": {
+      "mcp_servers": "Servers: amiga.",
+      "old": null
+     },
+     "toolsAdded": [
+      {
+       "name": "mcp_dir",
+       "description": "List a directory",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "path": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "path"
+        ]
+       }
+      }
+     ],
+     "toolsRemoved": [
+      {
+       "name": "bash"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "sys_mid",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "system",
+     "content": "Be brief.",
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "ok"
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-opus-5-5",
+     "providerThinkingLevel": "low",
+     "usage": {
+      "input": 1,
+      "output": 2,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 3,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "two"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "system",
+     "content": "",
+     "toolsAdded": [
+      {
+       "name": "read",
+       "description": "Read file contents v2",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "three"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "assorted",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": "a plain string",
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "  "
+      },
+      {
+       "type": "text",
+       "text": "with image"
+      },
+      {
+       "type": "image",
+       "data": "iVBORw0KGgo=",
+       "mimeType": "image/png"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "hmm",
+       "thinkingSignature": "sigA=="
+      },
+      {
+       "type": "thinking",
+       "thinking": "",
+       "thinkingSignature": ""
+      },
+      {
+       "type": "thinking",
+       "thinking": "unsigned",
+       "thinkingSignature": ""
+      },
+      {
+       "type": "text",
+       "text": "  "
+      },
+      {
+       "type": "text",
+       "text": "Reading."
+      },
+      {
+       "type": "toolCall",
+       "id": "toolu_01A",
+       "name": "read",
+       "arguments": {
+        "path": "S:x"
+       }
+      },
+      {
+       "type": "toolCall",
+       "id": "toolu_01B",
+       "name": "bash",
+       "arguments": {
+        "command": "dir"
+       }
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-opus-5-5",
+     "providerThinkingLevel": "high",
+     "usage": {
+      "input": 1,
+      "output": 2,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 3,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "toolu_01A",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "line1"
+      },
+      {
+       "type": "text",
+       "text": "line2"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "toolu_01B",
+     "toolName": "bash",
+     "content": [
+      {
+       "type": "image",
+       "data": "iVBORw0KGgo=",
+       "mimeType": "image/png"
+      }
+     ],
+     "isError": true,
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "go on"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "handoff_openai",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "plan",
+       "thinkingSignature": "{\"id\":\"rs_1\"}"
+      },
+      {
+       "type": "text",
+       "text": "Looking."
+      },
+      {
+       "type": "toolCall",
+       "id": "call_1|item_9",
+       "name": "read",
+       "arguments": {
+        "path": "S:x"
+       }
+      }
+     ],
+     "api": "openai-responses",
+     "provider": "openai",
+     "model": "gpt-5.5",
+     "usage": {
+      "input": 1,
+      "output": 2,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 3,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "call_1|item_9",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "data"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "two"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "budget",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "budget_off",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "adaptive",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ],
+   "compat": {
+    "forceAdaptiveThinking": true
+   }
+  },
+  {
+   "name": "adaptive_off",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read file contents",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file"
+       },
+       "limit": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a command",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "command": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ]
+     }
+    }
+   ],
+   "compat": {
+    "forceAdaptiveThinking": true
+   }
+  },
+  {
+   "name": "adaptive_plain",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "compat": {
+    "forceAdaptiveThinking": true
+   }
+  }
+ ]
+}

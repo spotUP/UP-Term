@@ -29,6 +29,7 @@ typedef struct llm_acc {
     const char *api, *provider;
     char model[64];             /* the model the server named (LE_START) */
     char cfg_model[96];         /* the configured model's id (llm_acc_model), "" unknown */
+    char level[16];             /* providerThinkingLevel the message records (llm_acc_level), "" none */
     long price[4];              /* its price per million tokens in micro-dollars: input, output, cacheRead, cacheWrite */
     char id[96];
     int stop;                   /* LS_* */
@@ -48,6 +49,9 @@ void llm_acc_free(llm_acc *a);
  * `responseModel` when it differs) and its price, for the usage cost (pi-ai calculateCost). Without it the
  * message names the server's model and carries no cost. */
 void llm_acc_model(llm_acc *a, const char *id, const long price[4]);
+/* the thinking level the request carried, kept on the message as pi-ai's providerThinkingLevel (llm_ant_effort);
+ * 0 none */
+void llm_acc_level(llm_acc *a, const char *level);
 /* the sink's callback: u is the llm_acc */
 void llm_acc_event(void *u, const llm_event *e);
 /* a sink feeding a */
