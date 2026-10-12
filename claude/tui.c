@@ -1971,6 +1971,14 @@ void tui_title(cl_tui *t, const char *s)
     flush(t);
 }
 
+void tui_raw(cl_tui *t, const char *s, long n)
+{
+    if (!t->started || n <= 0)
+        return;
+    jw_raw(&t->o, s, n);
+    flush(t);
+}
+
 void tui_notify(cl_tui *t, const char *msg)
 {
     /* pi 1.0.4 sends nothing when a turn ends or a question is asked: no bell, no OSC 9 (its raw output stream,
