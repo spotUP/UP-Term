@@ -6,11 +6,14 @@
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 const npm = process.env.PI_NPM || "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent";
-const ai = join(npm, "node_modules/@earendil-works/pi-ai/dist/models.generated.js");
+// pi-ai sits inside the package's node_modules, or beside it when npm hoisted it (the vendor/pi-1.1.0 oracle install)
+import { existsSync } from "node:fs";
+const nested = join(npm, "node_modules/@earendil-works/pi-ai/dist/models.generated.js");
+const ai = existsSync(nested) ? nested : join(npm, "../pi-ai/dist/models.generated.js");
 const { MODELS } = await import(pathToFileURL(ai).href);
 const pkg = JSON.parse((await import("node:fs")).readFileSync(join(npm, "package.json"), "utf8"));
 const subset = {
-	anthropic: ["claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
+	anthropic: ["claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-haiku-4-5"],
 	openai: ["gpt-5.5", "gpt-4.1", "gpt-4"],
 };
 const out = { pi: pkg.name + "@" + pkg.version, providers: {} };

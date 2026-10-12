@@ -29,6 +29,12 @@ void llm_acc_thinking(llm_acc *a, const char *level)
     cl_copy(a->tlevel, level ? level : "", sizeof(a->tlevel));
 }
 
+void llm_acc_duration(llm_acc *a, long ms)
+{
+    a->duration_ms = ms < 0 ? 0 : ms;
+    a->has_duration = 1;
+}
+
 /* tokens * price / 1e6 in micro-dollars without leaving 32 bits */
 static long cost_of(long tokens, long price)
 {
@@ -45,6 +51,8 @@ void llm_acc_meta(const llm_acc *a, llm_meta *m)
     m->model = a->cfg_model[0] ? a->cfg_model : a->model;
     m->level = a->level[0] ? a->level : 0;
     m->thinking_level = a->tlevel[0] ? a->tlevel : 0;
+    m->duration_ms = a->duration_ms;
+    m->has_duration = a->has_duration;
     m->response_id = a->id[0] ? a->id : 0;
     m->raw_stop = a->stop_raw[0] ? a->stop_raw : 0;
     m->response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
