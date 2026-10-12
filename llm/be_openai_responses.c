@@ -631,6 +631,7 @@ typedef struct or_dec {
     long next;
     int ntools;
     char rid[96];
+    char raw_fail[32];       /* response.failed: the status pi-ai keeps as rawStopReason, "" none */
     or_slot s[OR_SLOTS];
 } or_dec;
 
@@ -671,6 +672,7 @@ static void fail(or_dec *d, const llm_sink *k, const char *type, const char *msg
     e.err_type = type;
     e.p = msg;
     e.n = (long)strlen(msg);
+    e.stop_raw = d->raw_fail[0] ? d->raw_fail : 0;
     emit(k, &e);
     d->done = 1;
 }
@@ -1153,6 +1155,8 @@ static int r_feed(void *dv, const char *event, const char *data, long n, const l
         }
         if (!msg[0])
             cl_copy(msg, "Unknown error (no error details in response)", sizeof(msg));
+        if (json_get(ev, "response", &r) && json_get(r, "status", &m) && json_type(m) == J_STR)
+            json_str(m, d->raw_fail, sizeof(d->raw_fail));
         start(d, k);
         fail(d, k, "error", msg);
     }

@@ -31,6 +31,10 @@ typedef struct llm_ts {
 
 typedef struct llm_usage {
     long input, output, cache_read, cache_write;
+    long cache_write_1h;        /* cacheWrite1h: the 1 hour part of cache_write; written only when has_1h */
+    int has_1h;                 /* anthropic streams set it, other providers' usage has no such key */
+    int combined;               /* the sum of two usages (pi's combineUsage, a compaction of a split turn): cacheWrite1h
+                                 * stands after cacheWrite there, not after the cost */
     /* cost in micro-dollars: input, output, cacheRead, cacheWrite (total is their sum) */
     long cost[4];
 } llm_usage;
@@ -44,6 +48,10 @@ typedef struct llm_meta {       /* an assistant message's own fields */
     int stop;                   /* LS_* */
     const char *error;          /* errorMessage, 0 none */
     const char *level;          /* providerThinkingLevel: the effort a managed-effort anthropic request carried, 0 none */
+    const char *response_id;    /* responseId: the provider's id of the answer (anthropic message id, chat completion id, response id), 0 none */
+    const char *raw_stop;       /* rawStopReason: the provider's stop_reason / finish_reason / status as sent, 0 none */
+    const char *thinking_level; /* thinkingLevel: the session's level the request was made at, "off" included; 0 none (the
+                                 * agent loop adds it to the finished message, pi-agent-core agent-loop.js) */
 } llm_meta;
 
 /* ---- content blocks, each appended to w as one JSON object ---- */
