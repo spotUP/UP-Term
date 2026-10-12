@@ -1,0 +1,1 @@
+{"model":"gpt-4","input":[{"role":"system","content":"You are amiga-pi, a coding agent."},{"role":"user","content":[{"type":"input_text","text":"hello"}]}],"stream":true,"store":false,"max_output_tokens":4084}

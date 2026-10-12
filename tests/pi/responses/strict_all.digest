@@ -1,0 +1,6 @@
+stop=toolUse
+error=-
+usage=182,52,128,0
+text="Let me look." sig="{\"v\":1,\"id\":\"msg_tool\"}"
+tool=call_ReadStartup|fc_aaa111 read {"path":"S:Startup-Sequence","limit":20}
+tool=call_Ls|fc_bbb222 bash {"command":"ls"}

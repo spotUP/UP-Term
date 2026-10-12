@@ -33,7 +33,8 @@ function digest(m) {
 
 for (const c of cases) {
 	const [provider, id] = c.model.split("/");
-	const model = MODELS[provider][id];
+	// "window" in a case replaces the model's context window (a small one makes the output cap clamp on a short input)
+	const model = c.window ? { ...MODELS[provider][id], contextWindow: c.window } : MODELS[provider][id];
 	const sse = readFileSync(join(dir, c.sse + ".sse"), "utf8");
 	const messages = c.messages.map((m) => (m.$reply ? replies[m.$reply] : m));
 	let body, headers;

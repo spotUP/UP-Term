@@ -198,6 +198,27 @@
      "compat": {
       "supportsStrictMode": true
      }
+    },
+    {
+     "id": "gpt-4",
+     "name": "GPT-4",
+     "api": "openai-responses",
+     "baseUrl": "https://api.openai.com/v1",
+     "reasoning": false,
+     "input": [
+      "text"
+     ],
+     "cost": {
+      "input": 30,
+      "output": 60,
+      "cacheRead": 0,
+      "cacheWrite": 0
+     },
+     "contextWindow": 8192,
+     "maxTokens": 8192,
+     "compat": {
+      "supportsStrictMode": true
+     }
     }
    ]
   },
