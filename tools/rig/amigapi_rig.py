@@ -1225,7 +1225,7 @@ def step13(port):
             t = text('13d')
             u = t.encode('latin-1', 'replace').decode('utf-8', 'replace')   # snipprobe's file is UTF-8, Type shows its bytes
             record('13d start header: logo, version and key hints', all(w in u for w in
-                   ('\u2580\u2580\u2588', '\u2588\u2580 \u2588', 'pi 1.0.4', 'escape interrupt', 'ctrl+o more')), repr(u[:500]))
+                   ('\u2580\u2580\u2588', '\u2588\u2580 \u2588', 'pi 1.1.0', 'escape interrupt', 'ctrl+o more')), repr(u[:500]))
             leave()
     finally:
         if fx:
