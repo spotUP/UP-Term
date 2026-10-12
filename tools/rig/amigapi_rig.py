@@ -83,6 +83,14 @@ and RAM:proj/.pi/SYSTEM.md; "amiga-pi --no-session -p hello" with RAM:proj as th
   7d nothing was written to ENVARC:amiga-pi/trust.json (one that was there is put aside first and restored after)
 Everything made is removed again. Visible windows titled "amiga-pi step 7".
 
+Step 9 (J4): prompt templates. RAM:proj/.pi/prompts/review.md ("Please review $1 with ${2:-nothing else} for
+RIG-TEMPLATE-9.") and RAM:proj as the current directory; "amiga-pi --no-session -p '/review src'":
+  9a exit codes 0, the project is not trusted in print mode (nothing decided): its template is not read, the request
+     carries the line as typed ("/review src") and not the template's text
+  9b the same with -a: the request carries "Please review src with nothing else for RIG-TEMPLATE-9." (the argument
+     in place, the default used) and no longer the typed "/review src"
+Everything made is removed again. Visible windows titled "amiga-pi step 9".
+
 Step 10 (K5, K8): MCP. ENVARC:amiga-pi/mcp.json names two servers: "fake",
 tools/fake_mcp.py over streamable HTTP on the Mac at its LAN address (the LAN
 rule's plain http), and "amiga", build/amiga/mcp-echo (a native stdio server)
@@ -124,7 +132,7 @@ not run again; a phase with every check recorded is skipped. --force runs everyt
 
   make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|10|13|14] [--force]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|9|10|13|14] [--force]
 """
 import argparse
 import json
@@ -835,6 +843,66 @@ def step10(port):
         c.run('Delete RAM:pi10-done VTC:pi10.dos VTC:pi10-mcp.json ENVARC:amiga-pi/mcp.json QUIET')
 
 
+def user_text(body):
+    """the user messages of a chat/completions body, joined"""
+    return '\n'.join(str(m.get('content')) for m in body.get('messages', []) if m.get('role') == 'user')
+
+
+def step9(port):
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    log = paths.RIG / 'amigapi_fixture9.log'
+    dump = paths.RIG / 'amigapi_dump9'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    (VTC / 'j9-review.md').write_text('Please review $1 with ${2:-nothing else} for RIG-TEMPLATE-9.\n')
+    # a trust.json that was there already would trust the project in the first run: put it aside, restore it after
+    had_trust = there('ENVARC:amiga-pi/trust.json')
+    if had_trust:
+        c.run('Rename ENVARC:amiga-pi/trust.json ENVARC:amiga-pi/trust.json.j9bak')
+    try:
+        for f in ('pi9.out', 'pi9.rc', 'pi9a.out', 'pi9a.rc'):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        ended, req = run_watched('pi9', 'amiga-pi step 9', [
+            'Echo "amiga-pi step 9: a prompt template from RAM:proj/.pi/prompts, untrusted then -a"',
+            'Delete RAM:proj ALL QUIET',
+            'MakeDir RAM:proj RAM:proj/.pi RAM:proj/.pi/prompts',
+            'Copy VTC:j9-review.md RAM:proj/.pi/prompts/review.md QUIET',
+            'CD RAM:proj',
+            'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 --no-session '
+            '-p "/review src" >VTC:pi9.out' % port,
+            'Echo "rc=$RC" >VTC:pi9.rc',
+            'VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 --no-session -a '
+            '-p "/review src" >VTC:pi9a.out' % port,
+            'Echo "rc=$RC" >VTC:pi9a.rc',
+            'CD RAM:',
+            'Delete RAM:proj ALL QUIET',
+            'Type VTC:pi9a.out'], 'pi9-done')
+        check('9 the window ended', ended)
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        check('9a exit codes 0', rd('pi9.rc').strip() == 'rc=0' and rd('pi9a.rc').strip() == 'rc=0',
+              repr((rd('pi9.rc'), rd('pi9a.rc'), rd('pi9.out')[:300])))
+        plain, trusted = user_text(body_of(dump, 1)), user_text(body_of(dump, 2))
+        check('9a untrusted: the line goes as typed', '/review src' in plain and 'RIG-TEMPLATE-9' not in plain, repr(plain[-300:]))
+        check('9a no requester', not req, repr(req))
+        check('9b -a: the expansion is sent, the argument in place and the default used',
+              'Please review src with nothing else for RIG-TEMPLATE-9.' in trusted, repr(trusted[-300:]))
+        check('9b -a: the typed line is not', '/review src' not in trusted, repr(trusted[-300:]))
+    finally:
+        fx.terminate()
+        if had_trust:
+            c.run('Delete ENVARC:amiga-pi/trust.json QUIET')
+            c.run('Rename ENVARC:amiga-pi/trust.json.j9bak ENVARC:amiga-pi/trust.json')
+        c.run('Delete RAM:pi9-done VTC:pi9.dos VTC:j9-review.md QUIET')
+        c.run('Delete RAM:proj ALL QUIET')
+
+
 def system_text(body):
     """the system and developer messages of a chat/completions body, joined"""
     return '\n'.join(str(m.get('content')) for m in body.get('messages', []) if m.get('role') in ('system', 'developer'))
@@ -1269,7 +1337,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 10, 13, 14), help='one step only (default: all but 13 and 14)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 9, 10, 13, 14), help='one step only (default: all but 13 and 14)')
     ap.add_argument('--force', action='store_true', help='step 13: run every check again')
     a = ap.parse_args()
     global force13
@@ -1288,6 +1356,8 @@ def main():
         step6(a.port + 5)
     if a.step in (None, 7):
         step7(a.port + 6)
+    if a.step in (None, 9):
+        step9(a.port + 8)
     if a.step in (None, 10):
         step10(a.port + 9)
     if a.step == 13:
