@@ -319,7 +319,7 @@ RIG_ASSIGN = False   # drop_rig_assign took the rig's own UP-Term: (VTC:) away; 
 
 def drop_rig_assign(had):
     """Steps 4-6 start from a rig with no UP-Term: and no Dir file. rig.py's boot script assigns UP-Term:
-    to VTC: for the glyph pages (UT1) when no kit is installed; take that one away for the step."""
+    to VTC:upterm for the glyph pages (UT1) when no kit is installed; take that one away for the step."""
     global RIG_ASSIGN
     if 'UP-TERM' in had and ami.read_file('ENVARC:up-term/Dir') is None:
         c.run('Assign UP-Term: REMOVE')
@@ -332,7 +332,7 @@ def restore_rig_assign():
     global RIG_ASSIGN
     if RIG_ASSIGN:
         c.run('Assign UP-Term: REMOVE')
-        c.run('Assign UP-Term: VTC:')
+        c.run('Assign UP-Term: VTC:upterm')
         RIG_ASSIGN = False
 
 
@@ -1039,7 +1039,8 @@ STEP13 = {'a': ['13a Steering row', '13a Follow-up row', '13a steering text in r
                 '13a follow-up text in request 3', '13a session: three user messages', '13a Ctrl+D twice ends amiga-pi'],
           'b': ['13b Shift+Tab: Thinking level on screen', '13b Shift+Tab: thinking_level_change in session',
                 '13b Ctrl+P: Switched to on screen', '13b Ctrl+P: model_change m2 in session'],
-          'c': ['13c /tree: the selector shows']}
+          'c': ['13c /tree: the selector shows'],
+          'd': ['13d start header: logo, version and key hints']}
 force13 = False
 
 
@@ -1091,16 +1092,15 @@ def step13(port):
         return
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     shutil.copy(ROOT / 'build' / 'amiga' / 'snipprobe', VTC / 'snipprobe')
-    had = drop_rig_assign(assigns())
+    had = assigns()
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     log = paths.RIG / 'amigapi_fixture13.log'
     dump = paths.RIG / 'amigapi_dump13'
-    kit = VTC / 'pi-kit'
+    kit = VTC / 'upterm'    # UP-Term: is the rig's own (rig.py, UT1): VTC:upterm holds unifont/ and emoji/, the sessions go to VTC:upterm/var/amiga-pi (UT2)
     sess = kit / 'var' / 'amiga-pi' / 'sessions'
     agent = VTC / 'pi13agent'
     base = 'http://127.0.0.1:%d' % port
     fx = None
-    made_assign = False
 
     def fixture():
         nonlocal fx
@@ -1154,19 +1154,12 @@ def step13(port):
                      'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
             'fixo': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
                      'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
-        (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixa/m1', 'fixo/m2'], 'quietStartup': True}))
-        c.run('MakeDir VTC:pi-kit VTC:pi-kit/bin ENVARC:up-term')
-        with open(VTC / 'pi-kit-dir', 'w') as f:
-            f.write('VTC:pi-kit\n')
-        c.run('Copy VTC:pi-kit-dir ENVARC:up-term/Dir')
-        c.run('Copy VTC:pi-kit-dir ENV:up-term/Dir')
-        # UP-Term: is the kit drawer first, then VTC: (UT2): the windows read UP-Term:unifont/ and
-        # UP-Term:emoji/ from the rig's VTC: (rig.py install puts the pages there), the sessions go
-        # to the first drawer, the kit's. No megabytes copied into the kit.
-        c.run('Assign UP-Term: VTC:pi-kit')
-        c.run('Assign UP-Term: VTC: ADD')
-        made_assign = True
-        shutil.rmtree(sess, ignore_errors=True)
+        (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixa/m1', 'fixo/m2']}))
+        # UP-Term: stays the rig's (VTC:upterm, UT1): the pages the windows read are there. A drawer of its own
+        # for the kit lacked unifont/ and emoji/; an assign with the kit first and VTC: added moved the
+        # sessions out of amiga-pi's reach (measured 2026-10-12), so the run uses the rig's drawer itself.
+        assert 'UP-TERM' in had, 'rig.py setup (UT1) assigns UP-Term: to VTC:upterm; reboot the rig'
+        c.run('Delete VTC:upterm/var/amiga-pi ALL QUIET')    # from the Amiga's side: the emulator caches a drawer removed behind its back
         if phase_due('a'):
             fixture()
             launch('amiga-pi step 13a', '')
@@ -1223,15 +1216,19 @@ def step13(port):
             record('13c /tree: the selector shows', 'Session Tree' in t and 'Type to search:' in t, repr(t[-600:]))
             tw.key(tw.ESC, wait=1)
             leave()
+        if phase_due('d'):
+            # the start header (no quietStartup): pi's logo of block glyphs, the version line, the key hints
+            fixture()
+            launch('amiga-pi step 13d', '')
+            t = text('13d')
+            u = t.encode('latin-1', 'replace').decode('utf-8', 'replace')   # snipprobe's file is UTF-8, Type shows its bytes
+            record('13d start header: logo, version and key hints', all(w in u for w in
+                   ('\u2580\u2580\u2588', '\u2588\u2580 \u2588', 'pi 1.0.4', 'escape interrupt', 'ctrl+o more')), repr(u[:500]))
+            leave()
     finally:
         if fx:
             fx.terminate()
-        c.run('Delete ENVARC:up-term/Dir ENV:up-term/Dir QUIET')
-        if made_assign:
-            if 'UP-TERM' not in had:
-                c.run('Assign UP-Term: REMOVE')
-            restore_rig_assign()
-            c.run('Delete VTC:pi-kit ALL QUIET')
+        c.run('Delete VTC:upterm/var/amiga-pi ALL QUIET')
         c.run('Delete VTC:pi13agent ALL QUIET')
         shutil.rmtree(agent, ignore_errors=True)
         if saved_dir is not None:

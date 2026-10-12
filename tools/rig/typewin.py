@@ -18,12 +18,35 @@ SHIFT, CTRL, ALT, LAMIGA, RAMIGA = 0x0001, 0x0008, 0x0010, 0x0040, 0x0080
 # UP-Term's Meta key (the ESC prefix a program reads as Alt) is Left Amiga unless Settings > Meta key says Alt
 
 
+_checked_at = 0.0
+
+
+def require_active(force=False):
+    """Keys go to whatever window is active: make the one open_xcon opened the active one, or stop (a stray
+    window must never swallow the keys of a script; 2026-10-12). A window that is gone (its program ended and
+    closed it, or changed its title) is not checked."""
+    global _checked_at
+    if not _last_title or time.time() - _checked_at < 3 and not force:
+        return      # a check costs a UITREE round trip: keys typed in quick succession (steering a working agent) must not wait for it
+    _checked_at = time.time()
+    w = ami.window(_last_title)
+    if w and not w['active']:
+        click_in(_last_title)
+        time.sleep(1)
+        w = ami.window(_last_title)
+        if w and not w['active']:
+            raise SystemExit('[ERROR] window %r is not the active window and a click did not make it so '
+                             '(another window is in front: close it)' % _last_title)
+
+
 def typ(s):
+    require_active()
     ami.req(0x08, bytes([4]) + s.encode('latin-1'))
     time.sleep(0.6)
 
 
 def key(k, q=0, wait=0.7):
+    require_active()
     ami.key(k, q)
     time.sleep(wait)
 
@@ -53,15 +76,57 @@ def open_xcon(title, box='0/12/760/440'):
         raise SystemExit('window %s never appeared' % title)
     click_in(title)
     time.sleep(1)
+    global _last_clip
+    _last_clip = _clip('RAM:clip-pre.txt')    # what the clipboard holds before this window: a Copy that finds nothing returns it
     return w
 
 
-def screen_text(out='RAM:screen.txt'):
-    """The active window's text (the screen as the program drew it), rows joined by newlines."""
+_last_clip = None   # the clipboard text the last screen_text read: a Copy that found nothing leaves it unchanged
+
+
+def _clip(out):
     c.run('Delete %s QUIET' % out)
-    key(0x20, RAMIGA, wait=1)    # Select all
-    key(0x33, RAMIGA, wait=1.5)  # Copy
     c.run('VTC:snipprobe CLIP %s' % out)
+    return c.run('Type %s' % out)[1]
+
+
+def screen_text(out='RAM:screen.txt'):
+    """The active window's text (the screen as the program drew it), rows joined by newlines.
+
+    A selection ends where output overwrites it (UT5, as in xterm), so on a screen that keeps changing (a
+    spinner) the Copy right after Select all can find nothing. The pair is sent back to back and repeated
+    until the clipboard holds something other than what the last call read (the first read is taken right
+    after the keys: the screen is what it is at that moment); the same text twice is accepted after the last try."""
+    global _last_clip
+    require_active(True)
+    new = ''
+    for _ in range(8):
+        key(0x20, RAMIGA, wait=0.0)     # Select all, Copy at once: a spinner's next frame ends the selection (UT5)
+        key(0x33, RAMIGA, wait=1.0)     # Copy
+        new = _clip(out)
+        if new != _last_clip:
+            break
+    _last_clip = new
     if _last_title:
         click_in(_last_title)   # a click clears the selection (UT3): the next frame shows no highlight
-    return c.run('Type %s' % out)[1]
+        time.sleep(1)
+        assert_no_selection(_last_title)
+    return new
+
+
+SELECTION_RGB = bytes((0xAA, 0xAA, 0xAA))
+
+
+def assert_no_selection(title):
+    """No pixel row of the window is mostly the selection colour (#aaa): a highlight that stays after the click
+    is a failure (the owner saw grey stay, 2026-10-12). Text in a grey is a few pixels of a row, not half of it."""
+    w = ami.window(title)
+    if not w:
+        return
+    x, y, ww, hh = w['box']
+    _, _, rows = ami.grab((x + 4, y + 14, max(ww - 8, 8), max(hh - 18, 8)))
+    for n, r in enumerate(rows):
+        px = [r[i:i + 3] for i in range(0, len(r), 3)]
+        if px and sum(1 for p in px if p == SELECTION_RGB) * 2 > len(px):
+            raise SystemExit('[ERROR] window %r: pixel row %d is mostly the selection colour #aaaaaa after the clearing '
+                             'click: the selection did not go' % (title, n))
