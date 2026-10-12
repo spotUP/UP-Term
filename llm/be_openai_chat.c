@@ -551,6 +551,7 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
     jv ch, v, cs, c0, dl, u, tcs, tc;
     jit it;
     llm_event e;
+    int have_c0 = 0, have_u;
     (void)event;
     llm_feeds_openai++;
     if (d->bad)
@@ -618,6 +619,7 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
     if (json_get(ch, "choices", &cs) && json_type(cs) == J_ARR) {
         json_iter(cs, &it);
         if (json_next(&it, 0, &c0)) {
+            have_c0 = 1;
             if (json_get(c0, "delta", &dl) && json_type(dl) == J_OBJ) {
                 if (json_get(dl, "reasoning_content", &v) && piece(d, k, LB_THINKING, v, "reasoning_content"))
                     return -1;
@@ -639,14 +641,23 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
                 d->stop = stop_of(v, d->stop_raw, sizeof(d->stop_raw));
         }
     }
-    if (json_get(ch, "usage", &u) && json_type(u) == J_OBJ) {
+    /* chunk.usage, else choices[0].usage (Moonshot; openai-completions.ts:575-579) */
+    have_u = json_get(ch, "usage", &u) && json_type(u) == J_OBJ;
+    if (!have_u && have_c0)
+        have_u = json_get(c0, "usage", &u) && json_type(u) == J_OBJ;
+    if (have_u) {
         jv pt, ct, det, cached, rt;
         long in = -1, cr = 0, cw = 0;
         llm_event_init(&e, LE_USAGE);
         if (json_get(u, "prompt_tokens", &pt))
             in = json_long(pt, -1);
+        /* cache read: prompt_tokens_details.cached_tokens ?? prompt_cache_hit_tokens (DeepSeek) ?? cached_tokens (Kimi), openai-completions.ts:1531-1532 */
+        if (json_get(u, "prompt_cache_hit_tokens", &cached) && json_type(cached) != J_NULL)
+            cr = json_long(cached, 0);
+        else if (json_get(u, "cached_tokens", &cached) && json_type(cached) != J_NULL)
+            cr = json_long(cached, 0);
         if (json_get(u, "prompt_tokens_details", &det) && json_type(det) == J_OBJ) {
-            if (json_get(det, "cached_tokens", &cached))
+            if (json_get(det, "cached_tokens", &cached) && json_type(cached) != J_NULL)
                 cr = json_long(cached, 0);
             if (json_get(det, "cache_write_tokens", &cached))    /* parseChunkUsage (openai-completions.ts:1533): a separate count */
                 cw = json_long(cached, 0);
