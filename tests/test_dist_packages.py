@@ -54,9 +54,29 @@ class Packages(unittest.TestCase):
             self.assertEqual(r['record'], want, r['id'])
         self.assertEqual(ROWS[0]['record'], 'UP-Term:')
 
-    def test_ixemul_is_80_or_empty(self):
+    def test_ixemul_is_a_version_or_empty(self):
         for r in ROWS:
-            self.assertIn(r['ixemul'], ('-', '80'), r['id'])
+            self.assertRegex(r['ixemul'], r'^(-|\d+)$', r['id'])
+            if r['needs-base'] != '-':
+                self.assertIn(r['ixemul'], ('-', '80'), r['id'] + ': the base brings the patched 80')
+
+    def test_a_stand_alone_archive_has_no_prefix_and_none_of_the_bases(self):
+        """K2-1 and the owner 2026-10-13: Claude, amiga-pi and Python3 install on a Workbench with no
+        UP-Term, under their own names; only what needs the base (Neovim) is named UP-Term-*."""
+        for r in ROWS[1:]:
+            if r['needs-base'] == '-':
+                self.assertFalse(r['archive'].startswith('UP-Term'), r['id'])
+            else:
+                self.assertTrue(r['archive'].startswith('UP-Term-'), r['id'])
+        self.assertEqual({r['id'] for r in ROWS[1:] if r['needs-base'] == '-'}, {'claude', 'pi', 'python'})
+        self.assertEqual([r['archive'] for r in ROWS], ['UP-Term', 'Claude', 'amiga-pi', 'UP-Term-nvim', 'Python3'])
+
+    def test_a_stand_alone_archive_with_an_ixemul_version_carries_the_library(self):
+        for r in ROWS[1:]:
+            if r['needs-base'] == '-' and r['ixemul'] != '-':
+                dos = (ROOT / 'dist/addons' / r['id'] / 'install.dos').read_text(encoding='latin-1')
+                self.assertIn('Lab ixemul', dos, r['id'])
+                self.assertIn('LIBS:ixemul.library %s' % r['ixemul'], dos, r['id'])
 
     def test_handed_paths_are_kit_paths_the_base_no_longer_lists(self):
         """K2-2 had them in parts.txt (the single kit); the split moved them to the add-on archives"""
@@ -73,6 +93,7 @@ class Packages(unittest.TestCase):
 
     def test_the_cli_answers_what_the_makefile_asks(self):
         self.assertEqual(pkgs.get('nvim', 'archive'), 'UP-Term-nvim')
+        self.assertEqual(pkgs.get('python', 'archive'), 'Python3')
         self.assertEqual(pkgs.get('claude', 'handed'), 'Files/Claude,Files/ClaudeCode')
         with self.assertRaises(SystemExit):
             pkgs.get('nope', 'archive')
@@ -105,9 +126,12 @@ class Readme(unittest.TestCase):
     def test_an_add_on_requires_the_base_at_the_version_packages_txt_names(self):
         for r in ROWS[1:]:
             req = mr.fields(mr.build(r['id'])[1])['Requires']
-            self.assertIn('comm/term/UP-Term.lha >= ' + r['needs-base'], req, r['id'])
-        bumped = [dict(r, **{'needs-base': '1.3'}) if r['id'] == 'pi' else dict(r) for r in ROWS]
-        self.assertIn('UP-Term.lha >= 1.3', mr.fields(mr.build('pi', table=bumped)[1])['Requires'])
+            if r['needs-base'] == '-':
+                self.assertNotIn('UP-Term.lha', req, r['id'] + ': stand-alone')
+            else:
+                self.assertIn('comm/term/UP-Term.lha >= ' + r['needs-base'], req, r['id'])
+        bumped = [dict(r, **{'needs-base': '1.3'}) if r['id'] == 'nvim' else dict(r) for r in ROWS]
+        self.assertIn('UP-Term.lha >= 1.3', mr.fields(mr.build('nvim', table=bumped)[1])['Requires'])
 
     def test_the_directories_are_the_owners_choice(self):
         want = {'base': 'comm/term', 'src': 'comm/term', 'claude': 'comm/misc', 'pi': 'comm/misc',

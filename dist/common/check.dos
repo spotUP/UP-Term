@@ -1,23 +1,21 @@
 Lab check
 ; what this archive needs, before anything is copied; the reason goes to
-; ENV:UPTCHECK, which the Installer's abort page shows
+; ENV:UPTCHECK, which the Installer's abort page shows (an archive that needs the base).
 Delete >NIL: ENV:UPTCHECK QUIET
-If NOT "@NEEDSBASE@" EQ "-"
-  Assign >NIL: UP-Term: EXISTS
-  If WARN
-    Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term @NEEDSBASE@ or newer. Install UP-Term.lha first."
-    Quit 20
-  EndIf
-  Version >NIL: FILE UP-Term:UP-Term.version @BASEMAJOR@ @BASEMINOR@
-  If WARN
-    Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term @NEEDSBASE@ or newer. Update UP-Term first."
-    Quit 20
-  EndIf
+Assign >NIL: UP-Term: EXISTS
+If WARN
+  Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term @NEEDSBASE@ or newer. Install UP-Term.lha first."
+  Quit 20
 EndIf
-If "@IXEMUL@" EQ "80"
-  Version >NIL: LIBS:ixemul.library 80
+Version >NIL: FILE UP-Term:UP-Term.version @BASEMAJOR@ @BASEMINOR@
+If WARN
+  Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term @NEEDSBASE@ or newer. Update UP-Term first."
+  Quit 20
+EndIf
+If NOT "@IXEMUL@" EQ "-"
+  Version >NIL: LIBS:ixemul.library @IXEMUL@
   If WARN
-    Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term's ixemul.library 80 in LIBS:. Install UP-Term again."
+    Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term's ixemul.library @IXEMUL@ in LIBS:. Install UP-Term again."
     Quit 20
   EndIf
 EndIf

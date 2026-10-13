@@ -15,12 +15,12 @@ and a set of Unix tools, the patched ixemul.library that Unix ports run on, and 
 terminfo entry for TERM=vtcon.
 
 This is the base archive. Neovim, Python, the Claude Code client and the pi coding
-agent are separate archives that need this one:
+agent are separate archives; Neovim needs this one, the other three stand alone:
   comm/term/UP-Term-src.lha      source of the Unix tools and of coreutils (GPL)
-  comm/misc/UP-Term-Claude.lha   Claude Code client
-  comm/misc/UP-Term-pi.lha       pi coding agent (amiga-pi)
-  text/edit/UP-Term-nvim.lha     Neovim 0.12
-  dev/lang/UP-Term-python.lha    Python 3.14
+  comm/misc/Claude.lha           Claude Code client (stand-alone)
+  comm/misc/amiga-pi.lha         pi coding agent (stand-alone)
+  text/edit/UP-Term-nvim.lha     Neovim 0.12 (needs this archive)
+  dev/lang/Python3.lha           Python 3.14 (stand-alone, brings its own ixemul.library)
 
 Install: unpack, double-click Install (Installer 43 or newer). A second Install over an
 installed UP-Term offers Update and leaves your settings alone. Uninstall removes it; it

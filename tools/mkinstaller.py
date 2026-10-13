@@ -79,6 +79,13 @@ def read_values(pkg_id, extra=()):
         'RECORDPRE': 'none.dos' if record.endswith(':') else 'record-addon.dos',
         'PKGDIR': record.rsplit('/', 1)[0] if '/' in record else record,
         'ADDONVAR': 'none.dos',
+        # a stand-alone archive (needs no base, packages.txt): its record is in ENVARC:, it is installed and
+        # updated with no UP-Term: assign, and DESTTEXT is what its pages call the place it installs to
+        'STANDALONE': 'YES' if row['id'] != 'base' and row['needs-base'] == '-' else 'NO',
+        'DESTTEXT': '',
+        # may an Update take over the files the single kit installed (UP-Term:pkg/legacy, kit-split D7)
+        'LEGACY': 'YES',
+        'CHECKFRAG': 'check-standalone.dos' if row['id'] != 'base' and row['needs-base'] == '-' else 'check.dos',
         'HANDEDSEARCH': handed_search(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONUNINSTALL': addon_uninstall(pkgs.rows()) if row['id'] == 'base' else '',
     }

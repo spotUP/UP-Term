@@ -79,5 +79,5 @@ Notes
   repositories named, which the upterm meta-repo pins to the commits the kit
   was built from.
 - Claude, amiga-pi, Python and Neovim are archives of their own
-  (UP-Term-Claude.lha, UP-Term-pi.lha, UP-Term-python.lha, UP-Term-nvim.lha),
+  (Claude.lha, amiga-pi.lha, Python3.lha, UP-Term-nvim.lha),
   each with its own LICENSES.txt.

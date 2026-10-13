@@ -5,9 +5,9 @@
 ; welcome: n = 7, lead 3
 (message
     "\n\n\nC L A U D E\n\n"
-    "Claude for an UP-Term window: C:Claude, and\n"
-    "C:ClaudeCode to reach Claude Code on a server.\n"
-    "Needs UP-Term.lha installed first.\n"
+    "Claude for the Amiga: C:Claude, and C:ClaudeCode\n"
+    "to reach Claude Code on a server. It needs no\n"
+    "UP-Term; in an UP-Term window it fills the screen.\n"
     (all))
 
 ; the page's default is the host and port of an existing
@@ -47,7 +47,7 @@
               "2323 for the server in tools/nas).")
         (default #oldremote)))
 
-(set #totalkb (+ 800 20))
+(set #totalkb (+ 900 20))
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))
     (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
@@ -73,15 +73,15 @@
 
 (P_OPTIONS)
 
-(set #step "claude" #kb 800 #n 3
-     #why (cat "Installing C:Claude and C:ClaudeCode, and Claude's\n"
-               "settings drawer ENVARC:Claude (no key written)."))
+(set #step "claude" #kb 900 #n 3
+     #why (cat "Installing C:Claude, C:ClaudeCode and C:uptelnet, and\n"
+               "its settings drawer ENVARC:Claude (no key written)."))
 (P_STEP)
 
 (set #n 9)
 (P_LEAD)
 (set #done
-    (cat #lead "Claude is installed. In an UP-Term window:\n"
+    (cat #lead "Claude is installed. In a Shell or an UP-Term window:\n"
          "  Claude\n\n"
          "With an API key: SetEnv SAVE ANTHROPIC_API_KEY <key>."
          (if (<> #remote "") (cat "\nClaude Code server: " #remote) "")

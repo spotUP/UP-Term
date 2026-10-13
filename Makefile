@@ -860,10 +860,11 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c handler/pty_name.h handler/han
 # The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
 # Installer script and its icon), Uninstall, README.txt, LICENSES.txt and Files/ (the rest).
 KIT := $(BUILD)/dist/UP-Term
-KIT_claude := $(BUILD)/dist/UP-Term-Claude
-KIT_pi := $(BUILD)/dist/UP-Term-pi
+# the archive names are dist/packages.txt's (Claude, amiga-pi and Python3 stand alone)
+KIT_claude := $(BUILD)/dist/Claude
+KIT_pi := $(BUILD)/dist/amiga-pi
 KIT_nvim := $(BUILD)/dist/UP-Term-nvim
-KIT_python := $(BUILD)/dist/UP-Term-python
+KIT_python := $(BUILD)/dist/Python3
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
@@ -932,14 +933,15 @@ dist-base: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUI
 	@ls -la $(BUILD)/UP-Term.lha
 
 # The add-on archives (dist/packages.txt): each stages its payload into build/dist/<archive>/Files and
-# tools/mkkit.py does the rest. They need the base (UP-Term.lha) installed first on the Amiga.
+# tools/mkkit.py does the rest. UP-Term-nvim needs the base (UP-Term.lha) installed first on the
+# Amiga; Claude, amiga-pi and Python3 stand alone.
 ADDON_STAGE = rm -rf $(BUILD)/dist/$(call pkg,$(1),archive) && mkdir -p $(BUILD)/dist/$(call pkg,$(1),archive)/Files \
 	&& cp $(BUILD)/amiga/upupdate $(BUILD)/dist/$(call pkg,$(1),archive)/Files/
 pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
 .PHONY: dist-claude dist-pi dist-nvim dist-python
-dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/upupdate
+dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,claude)
-	cp $(BUILD)/amiga/Claude dist/ClaudeCode $(KIT_claude)/Files/
+	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet dist/ClaudeCode $(KIT_claude)/Files/
 	cp dist/ClaudeCode $(KIT_claude)/ClaudeCode
 	python3 tools/mkicon.py $(KIT_claude)/ClaudeCode.info --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE" --tooltype DELAY=0
@@ -955,6 +957,9 @@ dist-nvim: $(BUILD)/amiga/upupdate
 dist-python: $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,python)
 	cp -R $(PYTHON_DIST) $(KIT_python)/Files/python3
+	mkdir -p $(KIT_python)/Files/libs
+	cp $(IXEMUL_LIB) $(KIT_python)/Files/libs/ixemul.library
+	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	python3 tools/mkkit.py python
 
 # build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the

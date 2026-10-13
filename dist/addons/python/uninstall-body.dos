@@ -2,23 +2,67 @@ Assign >NIL: Python3: EXISTS
 If NOT WARN
   Assign Python3:
 EndIf
-; only this archive's block in S:User-Startup (unstartup.sh with its block name; the
-; copy in ENVARC:up-term is the base's, written before the split too)
-Set unvsh C:vsh
-Assign >NIL: UP-Term: EXISTS
+; this archive's block in S:User-Startup (";BEGIN Python3" to ";END Python3"). Three ways, in this order:
+; 1. UP-Term is installed: its unstartup.sh takes out just this block, whatever else was added since;
+; 2. Install kept S:User-Startup as it was: it is put back when the file is still exactly that plus the block;
+; 3. neither: the block stays (it assigns only while SYS:Python3 exists, so it does nothing now) and
+;    the message says where it is.
+Search >NIL: S:User-Startup ";BEGIN Python3"
 If NOT WARN
-  If EXISTS UP-Term:bin/vsh
-    Set unvsh UP-Term:bin/vsh
-  EndIf
-EndIf
-If EXISTS ENVARC:up-term/unstartup.sh
-  If EXISTS S:User-Startup
-    $unvsh ENVARC:up-term/unstartup.sh python
-    If EXISTS T:User-Startup.up-term
-      Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
-      Delete >NIL: T:User-Startup.up-term QUIET
+  Assign >NIL: UP-Term: EXISTS
+  If NOT WARN
+    If EXISTS UP-Term:bin/vsh
+      If EXISTS ENVARC:up-term/unstartup.sh
+        Delete >NIL: T:User-Startup.up-term QUIET
+        UP-Term:bin/vsh ENVARC:up-term/unstartup.sh Python3
+        If EXISTS T:User-Startup.up-term
+          Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+          Delete >NIL: T:User-Startup.up-term QUIET
+        EndIf
+      EndIf
     EndIf
   EndIf
 EndIf
-UnSet unvsh
-Delete >NIL: UP-Term:Python3 ALL QUIET
+Search >NIL: S:User-Startup ";BEGIN Python3"
+If NOT WARN
+  If EXISTS ENVARC:uppkg/Python3/User-Startup.before
+    Copy ENVARC:uppkg/Python3/User-Startup.before T:User-Startup.python CLONE QUIET
+    Echo >>T:User-Startup.python ";BEGIN Python3"
+    Echo >>T:User-Startup.python "If EXISTS SYS:Python3"
+    Echo >>T:User-Startup.python "  Assign Python3: SYS:Python3"
+    Echo >>T:User-Startup.python "EndIf"
+    Echo >>T:User-Startup.python ";END Python3"
+    Compare >NIL: T:User-Startup.python S:User-Startup
+    If NOT WARN
+      Copy ENVARC:uppkg/Python3/User-Startup.before S:User-Startup CLONE QUIET
+    EndIf
+    Delete >NIL: T:User-Startup.python QUIET
+  EndIf
+EndIf
+Search >NIL: S:User-Startup ";BEGIN Python3"
+If NOT WARN
+  Echo "S:User-Startup changed since Python3 was installed: its lines from ;BEGIN Python3 to ;END Python3 stay (harmless; delete them by hand)."
+EndIf
+Delete >NIL: SYS:Python3 ALL QUIET
+; the ixemul.library this archive installed (ENVARC:uppkg/ixemul, see install.dos part ixemul): it goes
+; only when UP-Term is not installed (UP-Term uses that library) and no other package recorded a need for
+; it; the library it replaced is put back. Delete without ALL removes a drawer only when it is empty.
+Delete >NIL: ENVARC:uppkg/ixemul/needs/Python3 QUIET
+If EXISTS ENVARC:uppkg/ixemul/installed-by-Python3
+  Assign >NIL: UP-Term: EXISTS
+  If WARN
+    Delete >NIL: ENVARC:uppkg/ixemul/needs QUIET
+    If NOT EXISTS ENVARC:uppkg/ixemul/needs
+      Delete >NIL: LIBS:ixemul.library LIBS:ixnet.library QUIET
+      If EXISTS LIBS:ixemul.library.before-Python3
+        Rename LIBS:ixemul.library.before-Python3 LIBS:ixemul.library
+      EndIf
+      If EXISTS LIBS:ixnet.library.before-Python3
+        Rename LIBS:ixnet.library.before-Python3 LIBS:ixnet.library
+      EndIf
+      Delete >NIL: ENVARC:uppkg/ixemul ALL QUIET
+    EndIf
+  EndIf
+Else
+  Delete >NIL: ENVARC:uppkg/ixemul/needs ENVARC:uppkg/ixemul QUIET
+EndIf

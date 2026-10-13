@@ -1,5 +1,6 @@
-; @ARCHIVE@ uninstall: removes what its Install put in. The base's Uninstall
-; runs the copy of this script in @RECORD@ before it removes the base.
+; @ARCHIVE@ uninstall: removes what its Install put in. For an archive that needs
+; the base, the base's Uninstall runs the copy of this script in @RECORD@ before it
+; removes the base; a stand-alone archive is left alone by the base.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
 ; @include dist/addons/@ID@/uninstall-body.dos
@@ -7,4 +8,6 @@ FailAt 21
 ; the record: its copy of this script is the one a base Uninstall is running, which
 ; AmigaDOS cannot delete while it is read (the base removes it with its own drawer)
 Delete >NIL: "@RECORD@" ALL QUIET
+; the drawer of records goes too when this was the last (Delete without ALL: only an empty drawer)
+Delete >NIL: "@PKGDIR@" QUIET
 Echo "@ARCHIVE@ removed."

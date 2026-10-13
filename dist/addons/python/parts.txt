@@ -8,4 +8,6 @@
 -               Files/install.dos
 -               Files/upupdate
 record          Files/VERSIONS
-copy-python     Files/python3           Python3
+ixemul          Files/libs/ixemul.library
+ixemul          Files/libs/ixnet.library
+copy-python     Files/python3

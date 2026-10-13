@@ -1,9 +1,9 @@
-UP-Term-Claude: parts, licences and where the source is
+Claude: parts, licences and where the source is
 (rows moved from the single kit's LICENSES.txt by the kit split; K2-6 completes them)
 
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
-Claude, ClaudeCode            MIT, Copyright (c) 2026 spotUP   vtcon repo LICENSE: claude/, llm/, dist/ClaudeCode
+Claude, ClaudeCode, uptelnet  MIT, Copyright (c) 2026 spotUP   vtcon repo LICENSE: claude/, llm/, net/, dist/ClaudeCode
 
 Notes
 - The Claude and ClaudeCode programs talk to Anthropic's API; AmiSSL 5 (used at

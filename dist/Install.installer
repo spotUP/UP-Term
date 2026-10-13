@@ -10,7 +10,8 @@
 ; parts in the same order, and to the Installer 43.3 language.
 ; Remove UP-Term again with Uninstall.
 ; Neovim, Python, Claude and amiga-pi are archives of their own (UP-Term-nvim,
-; UP-Term-python, UP-Term-Claude, UP-Term-pi), each with an Install of its own.
+; Python3, Claude, amiga-pi), each with an Install of its own; the last three
+; stand alone and install with no UP-Term.
 ;
 ; TEXT LAYOUT, measured 2026-10-08 (installer_rig's text check reads the
 ; page's pixels):
@@ -57,7 +58,7 @@
     "The next pages ask where UP-Term's own drawer goes\n"
     "and which parts you want. Every page has a Help button.\n"
     "Neovim, Python, Claude and amiga-pi are archives of\n"
-    "their own: install them after this one."
+    "their own: Neovim wants this one first."
     (all))
 
 ; ---- where UP-Term's own drawer goes ---------------------------------------
@@ -424,7 +425,7 @@
                         (if (<> #stays "")
                             (cat "Stays installed: " (substr #stays 2 (strlen #stays)) ".\n"
                                  "They are archives of their own now: install\n"
-                                 "UP-Term-nvim, -python, -Claude or -pi to update them.")
+                                 "UP-Term-nvim, Python3, Claude or amiga-pi to update.")
                             "Nothing else changed.")))
         (run "Delete >NIL: ENV:UPTHANDED QUIET")
         (run "Delete >NIL: ENV:UPTVER#? QUIET")

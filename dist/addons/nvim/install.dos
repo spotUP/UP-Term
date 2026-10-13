@@ -14,7 +14,7 @@ CD "{DIR}"
 If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf
-; @include dist/common/check.dos
+; @include dist/common/@CHECKFRAG@
 Lab copy-nvim
 ; Neovim 0.12 (README): UP-Term:nvim (its runtime beside the binary); nvim from
 ; vsh (vshrc's path). Run by the Installer's copyfiles; a Shell install copies here.

@@ -1,11 +1,16 @@
 ; Your data in @VARDIR@ (asked, default No; a base Uninstall has asked already and
-; answers by Set upvardelete)
-; @include dist/common/uninstall-var.dos
-If NOT "$upkeepvar" EQ "YES"
-  Delete >NIL: "@VARDIR@" ALL QUIET
-Else
-  If EXISTS "@VARDIR@"
-    Echo "Your data stayed in @VARDIR@."
+; answers by Set upvardelete). Without an UP-Term: assign there is no such drawer: it is
+; not even looked at (EXISTS UP-Term:... would ask for the volume), and the data of a
+; stand-alone program is in ENVARC:, which stays.
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  ; @include dist/common/uninstall-var.dos
+  If NOT "$upkeepvar" EQ "YES"
+    Delete >NIL: "@VARDIR@" ALL QUIET
+  Else
+    If EXISTS "@VARDIR@"
+      Echo "Your data stayed in @VARDIR@."
+    EndIf
   EndIf
+  UnSet upkeepvar
 EndIf
-UnSet upkeepvar

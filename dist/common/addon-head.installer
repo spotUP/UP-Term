@@ -1,6 +1,6 @@
 ; @ARCHIVE@ -- Installer script (Commodore Installer 43.3, AmigaOS 3.1, and the
 ; Installer 47 of AmigaOS 3.2). Double-click the Install icon. Needs UP-Term.lha
-; installed first (its part check). What gets installed is Files/install.dos,
+; installed first (its part check), unless it stands alone (packages.txt). What gets installed is Files/install.dos,
 ; part by part, as in the base's Install; remove it again with Uninstall.
 ; TEXT LAYOUT: see the base's Install (dist/Install.installer): no page line over
 ; 56 characters, leading newlines that centre the block of n lines.
@@ -23,4 +23,5 @@
     (set #name "REMOTE" #val #remote) (P_OPT))
 
 ; @include dist/common/check.installer
-(set #dest (getassign "UP-Term" "a"))
+; where it installs: UP-Term: for what needs the base; a stand-alone archive says where
+(set #dest (if (= "@STANDALONE@" "YES") "@DESTTEXT@" (getassign "UP-Term" "a")))

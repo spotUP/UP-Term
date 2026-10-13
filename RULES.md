@@ -58,7 +58,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Cross build (vbcc, 68020) | `make amiga`. Needs the AmigaOS 3.2 SDK headers once: unpack `NDK3.2R4` to `vendor/ndk-3.2r4-Include_H` (gitignored), or pass `make amiga VTCON_NDK=<path-to-Include_H>` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | hl and mdv for the host terminal (build/hl, build/mdv; suites `ONLY=hl`, `ONLY=md`) | `make view-host` |
-| Install kit, every archive (kit split K2, `dist/packages.txt`: base `UP-Term.lha` + `UP-Term-Claude`, `-pi`, `-nvim`, `-python`, and `UP-Term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (writes the single `build/UP-Term.lha` until K2-7 is merged) |
+| Install kit, every archive (kit split K2, `dist/packages.txt`: base `UP-Term.lha` + `UP-Term-nvim` (needs the base) and the stand-alone `Claude`, `amiga-pi`, `Python3`, and `UP-Term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (writes the single `build/UP-Term.lha` until K2-7 is merged) |
 | One archive | `make dist-<id>` (id = `python3 tools/pkgs.py names`: base, claude, pi, nvim, python; K2-7, not yet in the Makefile) |
 | Archives checked: each lists Install, Uninstall, Files/VERSIONS; per-archive manifest, versions, modes | `make dist-check` (today the single kit; per archive from K2-7) |
 | Install kit on the rig: Install, check, Uninstall (passes: `--default`, `--dest`, `--move`, `--show-check`; no flag = all) | `python3 tools/rig/install_rig.py [--default|--dest|--move|--show-check]` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first). K2-10 turns the passes into cases (`base`, `claude`, `pi`, `nvim`, `python`, `all`, `legacy`, `nobase`) with `--only <case>`, `--failed`, `--force` |
@@ -104,5 +104,5 @@ from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
    address).
 6. Upload `UP-Term.lha` and `UP-Term-src.lha` together, then the add-ons, each with its
    `build/<archive>.readme`. Directories (owner 2026-10-13): base and source `comm/term`,
-   UP-Term-nvim `text/edit`, UP-Term-python `dev/lang`, UP-Term-Claude and UP-Term-pi
+   UP-Term-nvim `text/edit`, Python3 `dev/lang`, Claude and amiga-pi
    `comm/misc`. The upload is the owner's.

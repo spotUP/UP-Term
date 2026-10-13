@@ -12,3 +12,4 @@ record          Files/VERSIONS
 -               ClaudeCode.info
 claude          Files/Claude
 claude          Files/ClaudeCode
+claude          Files/uptelnet

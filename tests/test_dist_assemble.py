@@ -52,13 +52,28 @@ class Assemble(unittest.TestCase):
 
     def test_the_base_gets_the_add_ons_uninstall_blocks_and_search_lines_from_the_table(self):
         v = mi.read_values('base')
-        for e in ('Claude', 'pi', 'nvim', 'python'):
-            self.assertIn('If EXISTS UP-Term:pkg/UP-Term-%s/Uninstall\n  Execute UP-Term:pkg/UP-Term-%s/Uninstall\nEndIf' % (e, e),
-                          v['ADDONUNINSTALL'])
+        # only the archive that needs the base is run from UP-Term:pkg; the stand-alone ones (ENVARC:uppkg) are left alone
+        self.assertEqual(v['ADDONUNINSTALL'],
+                         'If EXISTS UP-Term:pkg/UP-Term-nvim/Uninstall\n  Execute UP-Term:pkg/UP-Term-nvim/Uninstall\nEndIf')
         # Files/Claude finds Files/ClaudeCode by substring: one search for both
         self.assertEqual(v['HANDEDSEARCH'].count('Search >NIL: UP-Term:MANIFEST'), 4)
         self.assertNotIn('Files/ClaudeCode', v['HANDEDSEARCH'])
         self.assertEqual(mi.read_values('nvim')['ADDONUNINSTALL'], '')
+
+    def test_a_stand_alone_package_gets_no_base_check_and_a_record_in_envarc(self):
+        for pid in ('claude', 'pi', 'python'):
+            v = mi.read_values(pid)
+            self.assertEqual(v['STANDALONE'], 'YES', pid)
+            self.assertEqual(v['CHECKFRAG'], 'check-standalone.dos', pid)
+            self.assertTrue(v['RECORD'].startswith('ENVARC:uppkg/'), pid)
+            self.assertEqual(v['OPTS'], v['RECORD'] + '/opts')
+            self.assertEqual(v['PKGDIR'], 'ENVARC:uppkg')
+            self.assertNotEqual(v['DESTTEXT'], '', pid)
+        self.assertEqual(mi.read_values('nvim')['STANDALONE'], 'NO')
+        self.assertEqual(mi.read_values('nvim')['CHECKFRAG'], 'check.dos')
+        self.assertEqual(mi.read_values('base')['STANDALONE'], 'NO')
+        self.assertEqual(mi.read_values('python')['LEGACY'], 'NO')
+        self.assertEqual(mi.read_values('claude')['LEGACY'], 'YES')
 
     def test_an_unknown_package_stops_the_tool(self):
         with self.assertRaises(SystemExit):

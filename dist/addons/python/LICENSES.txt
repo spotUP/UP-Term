@@ -1,11 +1,14 @@
-UP-Term-python: parts, licences and where the source is
-(rows moved from the single kit's LICENSES.txt by the kit split; K2-6 completes them)
+Python3: parts, licences and where the source is
 
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
 Python 3.14 (Files/python3)   Python Software Foundation       cpython-amiga repo (vendor/cpython/LICENSE)
                               licence (vendor/cpython/LICENSE)
+ixemul.library, ixnet.library GNU LGPL v2 or later (COPYING.LIB ixemul-vtcon repo, a fork of ixemul
+(Files/libs; installed only   of that repo; BSD and other        48.2; the commit this archive was built
+when LIBS: has none of         authors keep their notices in      from is in Files/VERSIONS (the upterm
+version 47 or newer)          their files)                       meta-repo pins it)
 
 Notes
-- The source is in the repository named, which the upterm meta-repo pins to the
-  commit the archive was built from.
+- The source is in the repositories named, which the upterm meta-repo pins to the commits the
+  archive was built from.

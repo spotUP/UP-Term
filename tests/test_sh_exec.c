@@ -1306,7 +1306,7 @@ static void vshrc_unix_names(void)
     CHECK_STR(with_vshrc("echo $hlcat"), "\n");   /* nothing left behind */
     vshrc_pre = 0;
     /* the Unix $PATH: UP-Term's bin first, kept when the user set one */
-    CHECK_STR(with_vshrc("echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c\n");
+    CHECK_STR(with_vshrc("echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c\n");
     vshrc_pre = "PATH=/mine";
     CHECK_STR(with_vshrc("echo $PATH"), "/mine\n");
     vshrc_pre = 0;
@@ -1659,6 +1659,35 @@ static void unstartup_with_a_name_removes_only_that_block(void)
                          ";BEGIN UP-Term pythonic\nC:Other\n;END UP-Term pythonic\nuser line\n");
 }
 
+/* A stand-alone archive (Python3.lha) writes ";BEGIN Python3" without UP-Term in the name: with its name
+ * unstartup.sh takes out that block only (an older base copy without this rule leaves it, and the
+ * archive's Uninstall notices); with no name the base's Uninstall leaves it alone. */
+static void unstartup_takes_a_stand_alone_block_by_its_name_only(void)
+{
+    FILE *f = fopen("dist/unstartup.sh", "rb");
+    char script[4096];
+    char text[8192];
+    size_t n;
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    n = fread(script, 1, sizeof(script) - 1, f);
+    fclose(f);
+    script[n] = 0;
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' ';BEGIN UP-Term assign' 'Assign UP-Term: SYS:UP-Term' ';END UP-Term assign'"
+             " ';BEGIN Python3' 'If EXISTS SYS:Python3' '  Assign Python3: SYS:Python3' 'EndIf' ';END Python3'"
+             " ';BEGIN Python33' 'C:Other' ';END Python33' 'user line' >S:User-Startup\n"
+             "set -- Python3\n%s\ncat <T:User-Startup.up-term\n", script);
+    CHECK_STR(run(text), ";BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n"
+                         ";BEGIN Python33\nC:Other\n;END Python33\nuser line\n");
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' ';BEGIN UP-Term assign' 'Assign UP-Term: SYS:UP-Term' ';END UP-Term assign'"
+             " ';BEGIN Python3' 'Assign Python3: SYS:Python3' ';END Python3' 'user line' >S:User-Startup\n"
+             "%s\ncat <T:User-Startup.up-term\n", script);
+    CHECK_STR(run(text), ";BEGIN Python3\nAssign Python3: SYS:Python3\n;END Python3\nuser line\n");
+}
+
 /* eval, exec, trap, local, getopts, umask (plan unix-tool-ports row 0.6) */
 static const char *errs(void)
 {
@@ -1976,5 +2005,6 @@ void suite_sh_exec(void)
     the_console_env_is_exported_and_unset();
     uninstall_removes_every_up_term_block();
     unstartup_with_a_name_removes_only_that_block();
+    unstartup_takes_a_stand_alone_block_by_its_name_only();
     sh_shell_free(&sh);
 }

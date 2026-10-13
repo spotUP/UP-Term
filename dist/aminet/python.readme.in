@@ -1,18 +1,20 @@
-Short:        Python 3.14 for UP-Term
+Short:        Python 3.14 for the Amiga (ixemul)
 Author:       spotUP
 Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
 Type:         dev/lang
 Version:      @VERSION@
 Replaces:     none
 Architecture: m68k-amigaos >= 3.0.0; m68k-020
-Requires:     comm/term/UP-Term.lha >= @NEEDSBASE@ (it brings the patched ixemul.library)
+Requires:     none (it brings ixemul.library when the system has none)
 Distribution: Aminet
 
-Python 3.14 for an UP-Term window (the patched ixemul.library of the base archive).
+Python 3.14 (the python3 program and its library, about 15 MB installed in SYS:Python3). It
+stands alone: it needs ixemul.library 47 or newer and brings one (a build of ixemul 80 with
+ixnet.library) only when the system has none that new; an ixemul.library of 47 or newer that
+is there stays as it is, UP-Term's patched one (comm/term/UP-Term.lha) included. Python3: is
+assigned to the drawer at every boot.
 
-Needs the base archive UP-Term.lha (version @NEEDSBASE@ or newer) installed first. About
-15 MB installed.
+Install: unpack, double-click Install. Uninstall removes the drawer, the assign and the
+ixemul.library this archive installed, unless another package still needs it.
 
-Install: unpack, double-click Install. Uninstall removes the Python3: assign and its files.
-
-Licence: Python Software Foundation licence.
+Licence: Python Software Foundation licence; ixemul.library under its own (LICENSES.txt).

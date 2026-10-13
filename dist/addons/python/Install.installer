@@ -4,13 +4,13 @@
 (
 ; welcome: n = 7, lead 3
 (message
-    "\n\n\nP Y T H O N\n\n"
-    "Python 3.14, for an UP-Term window.\n"
-    "It goes into UP-Term:Python3 (15 MB); Python3: is\n"
-    "assigned at every boot. Needs UP-Term.lha first.\n"
+    "\n\n\nP Y T H O N  3\n\n"
+    "Python 3.14 for AmigaOS 3.0 or newer, 68020 or better.\n"
+    "It goes into SYS:Python3 (15 MB) and brings the\n"
+    "ixemul.library it needs, only if yours is older.\n"
     (all))
 (set #kb-python 15040)
-(set #totalkb (+ 15040 20 20))
+(set #totalkb (+ 15040 400 20))
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))
     (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
@@ -36,20 +36,26 @@
 
 (P_OPTIONS)
 
-(set #from (tackon #files "python3") #to (tackon #dest "Python3") #part "copy-python" #kb #kb-python #n 1
-     #why "Copying Python 3.14 to UP-Term:Python3.")
-(P_COPY)
+(set #step "ixemul" #kb 400 #n 3
+     #why (cat "Looking for ixemul.library 47 or newer; the one\n"
+               "in this archive goes in only if there is none."))
+(P_STEP)
+
+(set #step "copy-python" #kb #kb-python #n 2
+     #why "Copying Python 3.14 to SYS:Python3.")
+(P_STEP)
 
 (set #step "python" #kb 20 #n 2
      #why (cat "Assigning Python3: now and at every boot\n"
                "(a block in S:User-Startup)."))
 (P_STEP)
 
-(set #n 6)
+(set #n 8)
 (P_LEAD)
 (set #done
-    (cat #lead "Python is installed. In an UP-Term window, in vsh:\n"
-         "  python3\n\n"
+    (cat #lead "Python is installed. In a Shell:\n"
+         "  Python3:bin/python3\n"
+         "(in an UP-Term window: python3)\n\n"
          "Python3: is assigned at every boot (a block in\n"
          "S:User-Startup). Uninstall (beside Install) takes\n"
          "Python out again."))

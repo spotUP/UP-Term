@@ -661,7 +661,7 @@ AMIAGENT
 
 UPTELNET
   uptelnet is a telnet client for the window (no ixemul; needs a TCP/IP
-  stack). UP-Term-Claude.lha's ClaudeCode uses it to reach Claude Code on a Mac.
+  stack). Claude.lha's ClaudeCode uses it (that archive carries its own copy) to reach Claude Code on a Mac.
  On the Mac, from an UP-Term source checkout (nothing is installed; it
   runs until Ctrl-C):
     (umask 077; mkdir -p ~/.config/uptelnetd; read -rs p; printf '%s\n' "$p" > ~/.config/uptelnetd/password)
@@ -753,21 +753,27 @@ CONSOLE.DEVICE
 
 ADD-ONS
   Neovim, Python, Claude and amiga-pi are archives of their own, next to
-  UP-Term.lha. Each has its own Install and Uninstall and README.txt, and
-  needs this one installed first (UP-Term-nvim and UP-Term-python run on
-  its patched ixemul.library; its Install says so and stops when this one
-  is missing or too old):
-    UP-Term-nvim.lha     Neovim 0.12 and its runtime (UP-Term:nvim)
-    UP-Term-python.lha   Python 3.14 (UP-Term:Python3, Python3: assigned at boot)
-    UP-Term-Claude.lha   C:Claude and C:ClaudeCode (Claude, Anthropic's AI model)
-    UP-Term-pi.lha       C:amiga-pi (pi, the coding agent)
-  Order: UP-Term.lha first, then any of these. An UP-Term installed from the
-  single kit (before the split) that had Neovim, Python, Claude or amiga-pi
-  keeps them when UP-Term.lha is installed over it (Update says so); install
-  the archive of each to keep it updated. Uninstall of UP-Term takes the
-  add-ons out first, each by its own Uninstall, and asks once about
-  UP-Term:var. The source of the GNU commands is UP-Term-src.lha, next to
-  UP-Term.lha, with the Unix tools' source.
+  UP-Term.lha. Each has its own Install, Uninstall and README.txt:
+    UP-Term-nvim.lha   Neovim 0.12 and its runtime (UP-Term:nvim). Needs this
+                       one installed first: it runs on its patched
+                       ixemul.library; its Install says so and stops when this
+                       one is missing or too old.
+    Python3.lha        Python 3.14 (SYS:Python3, Python3: assigned at boot).
+                       Stands alone: brings an ixemul.library when LIBS: has
+                       none of version 47 or newer, and uses this kit's.
+    Claude.lha         C:Claude, C:ClaudeCode and C:uptelnet (Claude,
+                       Anthropic's AI model). Stands alone.
+    amiga-pi.lha       C:amiga-pi (pi, the coding agent). Stands alone.
+  The stand-alone ones install on a Workbench with no UP-Term and record
+  themselves in ENVARC:uppkg; in an UP-Term window they use its screen, keys
+  and vsh. Uninstall of UP-Term takes UP-Term-nvim out first, by its own
+  Uninstall (and asks once about UP-Term:var); the stand-alone ones stay.
+  An UP-Term installed from the single kit (before the split) that had Neovim,
+  Python, Claude or amiga-pi keeps them when UP-Term.lha is installed over it
+  (Update says so); install the archive of each to keep it updated. The source
+  of the GNU commands is UP-Term-src.lha, next to UP-Term.lha, with the Unix
+  tools' source.
+
 STATUS
   Test build. CON:/RAW: and console.device stay the system's unless you
   switch them (above); XCON: runs beside them.

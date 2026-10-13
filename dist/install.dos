@@ -12,8 +12,8 @@
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
-; (Python, Neovim, Claude and amiga-pi are archives of their own: UP-Term-python,
-;  UP-Term-nvim, UP-Term-Claude and UP-Term-pi, each with its own Install.)
+; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
+;  UP-Term-nvim, Claude and amiga-pi, each with its own Install.)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
 ;     [AMIAGENT] [CPU000]  (amiagent, so Claude on another computer can drive this
 ;               Amiga: UP-Term:bin/amiagent, never started here and never without a

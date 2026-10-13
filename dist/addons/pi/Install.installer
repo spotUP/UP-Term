@@ -5,9 +5,9 @@
 ; welcome: n = 7, lead 3
 (message
     "\n\n\na m i g a - p i\n\n"
-    "pi, the coding agent, for an UP-Term window.\n"
-    "C:amiga-pi needs a TCP/IP stack and, for https,\n"
-    "AmiSSL 5; the key is yours. Needs UP-Term.lha first.\n"
+    "pi, the coding agent, for the Amiga. C:amiga-pi\n"
+    "needs a TCP/IP stack and, for https, AmiSSL 5; the\n"
+    "key is yours. No UP-Term needed.\n"
     (all))
 (set #totalkb (+ 1600 20))
 (set #free (getdiskspace (pathonly #dest)))
@@ -42,7 +42,7 @@
 (set #n 8)
 (P_LEAD)
 (set #done
-    (cat #lead "amiga-pi is installed. In an UP-Term window:\n"
+    (cat #lead "amiga-pi is installed. In a Shell or UP-Term window:\n"
          "  amiga-pi\n\n"
          "Its key: SetEnv SAVE ANTHROPIC_API_KEY <key> (or\n"
          "the provider's variable). Settings are yours, in\n"

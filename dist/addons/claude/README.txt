@@ -1,38 +1,43 @@
-UP-Term-Claude - Claude for an UP-Term window
-=============================================
+Claude - Claude for the Amiga
+=============================
 
-Claude, Anthropic's AI model, for an UP-Term window: C:Claude, and C:ClaudeCode for
-Claude Code on a server.
+Claude, Anthropic's AI model: C:Claude, and C:ClaudeCode (with C:uptelnet) for Claude Code
+on a server. It stands alone; UP-Term.lha is optional.
 
 WHAT YOU NEED
-  UP-Term.lha 1.0 or newer, installed first (the screen, the keys and vsh come from it;
-  Install checks the version). AmigaOS 3.0 or newer, a 68020 or better, a TCP/IP stack
-  (Roadshow, Miami, AmiTCP) and, for https, AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha).
+  AmigaOS 3.0 or newer, a 68020 or better, a TCP/IP stack (Roadshow, Miami, AmiTCP) and,
+  for https, AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha). UP-Term.lha is not needed.
+
+ON A PLAIN WORKBENCH
+  Without UP-Term the program runs in the Shell window in its line mode (the console's own
+  line editing: in the ROM CON: window Up does not recall a line; KingCON's does) and the
+  commands it runs go through the AmigaShell, which it tells the model. In an UP-Term window
+  it gets the full screen, the keys and vsh, and keeps its data in UP-Term:var.
 
 INSTALL
   Unpack the archive and double-click Install in its drawer (needs C:Installer or
   SYS:Utilities/Installer). From a Shell, without Installer, cd into the drawer, then:
     Execute Files/install.dos Files
-  The first part checks that UP-Term.lha is installed and new enough; when it is not,
-  Install says so and stops before it copies anything. Install the archive over an
-  earlier one and its first page offers Update, which copies only what changed.
-  An UP-Term installed from the single kit (before the kit split) that already has this
-  program keeps it: Install recognises it and offers Update from "installed by the
-  single UP-Term kit".
+  It needs no UP-Term and looks for none. Its record (the list of files, for Update and
+  Uninstall) is ENVARC:uppkg/Claude. Install the archive over an earlier one and its first
+  page offers Update, which copies only what changed. An UP-Term installed from the single
+  kit (before the kit split) that already has this program keeps it: Install recognises it
+  and offers Update from "installed by the single UP-Term kit".
 
 USE
   The sections below.
 
 UNINSTALL
-  Double-click Uninstall (or Execute Uninstall), or Uninstall of UP-Term.lha, which runs it
-  first. It removes C:Claude and C:ClaudeCode; your settings in ENVARC:Claude stay. It asks
-  whether to delete your data in UP-Term:var/Claude (default No).
+  Double-click Uninstall (or Execute Uninstall). It removes C:Claude and C:ClaudeCode, and
+  C:uptelnet unless UP-Term is installed; your settings in ENVARC:Claude stay. With UP-Term
+  installed it asks whether to delete your data in UP-Term:var/Claude (default No).
+  Uninstall of UP-Term.lha leaves this program alone.
 
 CLAUDE FROM THE AMIGA
   Quickest: Claude. Install asked where Claude Code runs (the NAS) and
   wrote it to ENVARC:Claude/remote ("host port"; edit or delete it): with
   no API key set, Claude connects there in the window. Or ClaudeCode
-  (or double-click ClaudeCode in the UP-Term drawer)
+  (or double-click ClaudeCode)
   connects to the host and port in ENVARC:Claude/remote (Claude SETUP
   writes it) -- ClaudeCode HOST PORT names another -- asks its password
   and starts Claude Code in tmux.

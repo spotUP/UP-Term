@@ -1,0 +1,6 @@
+# Values for @NAME@ in the Python3 archive's templates (tools/mkinstaller.py).
+# Where its pages say it installs (SYS:Python3 whether or not UP-Term is there).
+DESTTEXT=SYS:Python3
+# Python3 takes nothing over from the single kit: that copy is in UP-Term:Python3 and goes with the
+# UP-Term drawer; this archive installs its own drawer (no Update from "installed by the single kit")
+LEGACY=NO
