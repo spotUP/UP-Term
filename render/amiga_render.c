@@ -482,6 +482,9 @@ void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb)
         else
             r->pen_default_bg = (UBYTE)p;
     }
+    /* a default blank looks different now, also inside a pass (OSC 11 read
+     * after the pass drew the cursor off): worked out again (blank_look) */
+    r->bs_valid = 0;
 }
 
 /* The ink for a profile colour, and the pen obtained for it that the
@@ -2668,6 +2671,58 @@ static int block_run(vr_render *r, const vt_cell *c, int x, int xe, WORD py)
     return n;
 }
 
+/* What a default blank cell looks like now -- the dialect's default
+ * background (an Amiga-dialect window's global background pen), reverse
+ * video, a bell's flash -- into r->bg_ink, the window's background: what
+ * "blank" means, and what the strips beside the grid and the rows a scroll
+ * vacates are given. r->bs_ok: plain, so a row's tail of them can be one
+ * fill. Once a render pass: it cost every damaged row a cell_style()
+ * (conbench cursor-pos: seven rows a frame; S1); vr_set_defaults drops it. */
+static void blank_look(vr_render *r)
+{
+    vt_cell b;
+    vr_style bs;
+    if (r->in_pass && r->bs_valid)
+        return;
+    b.ch = ' ';
+    b.fg = VT_COLOR_DEFAULT;
+    b.bg = VT_COLOR_DEFAULT;
+    b.attr = 0;
+    b.width = 1;
+    b.deco = 0;
+    b.ext = 0;
+    b.pad = 0;
+    cell_style(r, &b, 0, &bs);
+    r->bs_ok = (UBYTE)(!bs.attr && !bs.deco && !bs.font);
+    r->bs_valid = 1;
+    if (bs.bg != r->bg_ink) {
+        r->bg_ink = bs.bg; /* another background: nothing on screen is known blank */
+        r->blank = 0;
+    }
+}
+
+/* The inside of the window around the grid -- above it (a console's top
+ * offset), left of it, and the strips right of and below the last whole
+ * cell -- in the window's background, as xterm paints its internal border
+ * in the default background: they are the window's, not Intuition's pen 0
+ * (W-T12). In place: a composed pass copies only the grid's cells. */
+static void pad_fill(vr_render *r)
+{
+    struct Window *w = r->win;
+    struct RastPort *f = to_front(r);
+    WORD top = (WORD)(w->BorderTop + r->inset_top), left = w->BorderLeft;
+    WORD gx1 = (WORD)(r->ox + vis_cols(r) * r->cw), gy1 = (WORD)(r->oy + vis_rows(r) * r->ch);
+    WORD ax1 = (WORD)(w->Width - w->BorderRight - 1), ay1 = (WORD)(w->Height - w->BorderBottom - 1);
+    UBYTE keep = r->was_blank;
+    fill(r, left, top, ax1, (WORD)(r->oy - 1), r->bg_ink);
+    fill(r, left, r->oy, (WORD)(r->ox - 1), ay1, r->bg_ink);
+    fill(r, gx1, r->oy, ax1, ay1, r->bg_ink);
+    fill(r, r->ox, gy1, (WORD)(gx1 - 1), ay1, r->bg_ink);
+    to_back(r, f);
+    r->pad_ink = r->bg_ink;
+    r->was_blank = keep;
+}
+
 static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
@@ -2681,35 +2736,9 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
         x1 = vis_cols(r);
     if (y1 > vis_rows(r))
         y1 = vis_rows(r);
-    if (r->in_pass && r->bs_valid) {
-        tail_ok = r->bs_ok && !r->sel;
-        tail_bg = r->bg_ink;
-    } else {
-        /* what a default blank looks like now (the dialect's default
-         * background, reverse video, a bell's flash): plain means its row
-         * tails can be filled at once; its ink is what "blank" means.
-         * Once a render pass: it cost every damaged row a cell_style()
-         * (conbench cursor-pos: seven rows a frame; S1). */
-        vt_cell b;
-        vr_style bs;
-        b.ch = ' ';
-        b.fg = VT_COLOR_DEFAULT;
-        b.bg = VT_COLOR_DEFAULT;
-        b.attr = 0;
-        b.width = 1;
-        b.deco = 0;
-        b.ext = 0;
-        b.pad = 0;
-        cell_style(r, &b, 0, &bs);
-        r->bs_ok = (UBYTE)(!bs.attr && !bs.deco && !bs.font);
-        r->bs_valid = 1;
-        tail_ok = r->bs_ok && !r->sel;
-        tail_bg = bs.bg;
-        if (tail_bg != r->bg_ink) {
-            r->bg_ink = tail_bg; /* another background: nothing on screen is known blank */
-            r->blank = 0;
-        }
-    }
+    blank_look(r);
+    tail_ok = r->bs_ok && !r->sel;
+    tail_bg = r->bg_ink;
     r->was_blank = (UBYTE)(r->blank && !r->cursor_drawn); /* a drawn cursor is pixels too */
     if (r->front_rp)
         r->was_blank = 0; /* composing: the back bitmap is not the window, every cell is drawn */
@@ -2726,22 +2755,16 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
              * background; the strips beside the grid are given it once. */
             r->full_pass = 1;
             r->seen = (UBYTE)tail_bg;
-            if (r->pad_ink != tail_bg) {
-                struct Window *w = r->win;
-                WORD gx1 = (WORD)(r->ox + vis_cols(r) * r->cw), gy1 = (WORD)(r->oy + vis_rows(r) * r->ch);
-                WORD ax1 = (WORD)(w->Width - w->BorderRight - 1), ay1 = (WORD)(w->Height - w->BorderBottom - 1);
-                UBYTE keep = r->was_blank, cpu = r->cpu;
-                r->cpu = 0; /* outside the grid, which is all a composed pass copies: in place */
-                fill(r, gx1, r->oy, ax1, ay1, tail_bg);
-                fill(r, r->ox, gy1, (WORD)(gx1 - 1), ay1, tail_bg);
-                if (w->BorderLeft < r->ox)
-                    fill(r, w->BorderLeft, r->oy, (WORD)(r->ox - 1), ay1, tail_bg);
-                r->cpu = cpu;
-                r->pad_ink = tail_bg;
-                r->was_blank = keep;
-                r->blank = 1;
-            }
         }
+    }
+    if (r->pad_ink != tail_bg) {
+        /* the window's background changed (OSC 11, reverse video, a
+         * flash, a global background): the engine redraws every cell, and
+         * the strips beside the grid follow it here, on every kind of
+         * screen -- a true-colour window kept them in the old one */
+        UBYTE blank = r->blank;
+        pad_fill(r);
+        r->blank = blank;
     }
     for (y = y0; y < y1; y++) {
         int ncells;
@@ -3178,14 +3201,17 @@ void vr_redraw(vr_render *r)
         /* every plane written: from here the planes in use are the
          * background's and what the rows below draw */
         vr_mask_end(r);
+        /* the window's background: a default blank's (an Amiga-dialect
+         * window's is the program's pen, not the screen's; OSC 11's,
+         * reverse video's), the same the rows below and the strips beside
+         * them are given -- not the screen's pen (W-T12) */
+        r->bs_valid = 0;
+        blank_look(r);
         fill(r, w->BorderLeft, top, w->Width - w->BorderRight - 1,
-             w->Height - w->BorderBottom - 1, r->pen_default_bg);
-        r->mask = r->pen_default_bg;
-        r->pad_ink = r->pen_default_bg;
-        /* blank until the rows below draw something -- when this is the
-         * blank cells' own background (an Amiga-dialect window's is the
-         * program's pen, not the screen's) */
-        r->blank = (UBYTE)(!r->view && r->bg_ink == r->pen_default_bg);
+             w->Height - w->BorderBottom - 1, r->bg_ink);
+        r->mask = (UBYTE)(r->bg_ink & VR_INK_RGB ? 0xFF : r->bg_ink);
+        r->pad_ink = r->bg_ink;
+        r->blank = (UBYTE)!r->view; /* blank until the rows below draw something */
     }
     r->cursor_drawn = 0;
     draw_rows(r, 0, 0, r->cols, r->rows);
@@ -3270,17 +3296,11 @@ static void raw_scroll(vr_render *r, int top, int bottom, int n)
 static void raw_scroll_now(vr_render *r, int top, int bottom, int n)
 {
     WORD dy = (WORD)(n * r->ch);
-    vt_cell blank;
-    vt_color f, b;
-    /* The vacated rows must come out in the personality's default
-     * background (the engine's scroll contract): the Amiga global
-     * background pen, for one, is not always pen 0. */
-    blank.ch = ' ';
-    blank.fg = VT_COLOR_DEFAULT;
-    blank.bg = VT_COLOR_DEFAULT;
-    blank.attr = 0;
-    blank.width = 1;
-    vt_resolve_colors(r->t, &blank, &f, &b);
+    /* The vacated rows must come out in the window's background (the
+     * engine's scroll contract): a default blank's look, as the cells and
+     * strips have it -- the Amiga global background pen, for one, is not
+     * always pen 0, and reverse video's is the foreground (W-T12) */
+    blank_look(r);
 #ifdef VTCON_DIRECT
     {
         /* Unobscured planar window: blit the screen bitmap itself and
@@ -3294,7 +3314,7 @@ static void raw_scroll_now(vr_render *r, int top, int bottom, int n)
             WORD sx = r->win->LeftEdge + r->ox, w = (WORD)(vis_cols(r) * r->cw);
             WORD sy = r->win->TopEdge + r->oy + top * r->ch;
             WORD h = (WORD)((bottom - top) * r->ch), ad = dy < 0 ? -dy : dy;
-            UBYTE pen = (UBYTE)pen_for(r, b, 1); /* planar: never an RGB ink */
+            UBYTE pen = (UBYTE)ink_solid(r->bg_ink); /* planar: never an RGB ink */
             if (ad < h) {
                 if (dy > 0)
                     BltBitMap(bm, sx, sy + ad, bm, sx, sy, w, h - ad, 0xC0, 0xFF, 0);
@@ -3316,7 +3336,7 @@ static void raw_scroll_now(vr_render *r, int top, int bottom, int n)
             return;
     }
 #endif
-    SetBPen(r->rp, ink_pen(r, pen_for(r, b, 1), 1));
+    SetBPen(r->rp, ink_pen(r, r->bg_ink, 1));
     ScrollRaster(r->rp, 0, dy, r->ox, r->oy + top * r->ch, r->ox + vis_cols(r) * r->cw - 1,
                  r->oy + bottom * r->ch - 1);
 }
@@ -3455,13 +3475,18 @@ void vr_cursor_off(vr_render *r)
     }
     if (r->cursor_drawn) {
         /* the cell comes back as it was: a blank screen with a cursor on
-         * it is blank again */
+         * it is blank again -- in the background it was blank in. The
+         * cell's redraw may be the first to see another one (OSC 11, then
+         * the pass takes the cursor off): then the screen is not blank in
+         * it, and the pass must draw every blank cell (W-T12: they kept
+         * the old background) */
         UBYTE was = r->blank;
+        ULONG ink = r->bg_ink;
         struct RastPort *f = to_front(r);
         cursor_draw(r, 0);
         to_back(r, f);
         r->cursor_drawn = 0;
-        r->blank = was;
+        r->blank = (UBYTE)(was && r->bg_ink == ink);
     }
 }
 
@@ -3489,10 +3514,13 @@ static void cursor_on_now(vr_render *r)
         return;
     if (!r->cursor_drawn) {
         UBYTE was = r->blank;
+        ULONG ink = r->bg_ink;
         r->cursor_x = (WORD)x;
         r->cursor_y = (WORD)y;
         cursor_draw(r, 1);
         r->cursor_drawn = 1;
-        r->blank = was; /* vr_scroll takes the cursor off before it looks */
+        /* vr_scroll takes the cursor off before it looks; blank in the
+         * background it was blank in (vr_cursor_off) */
+        r->blank = (UBYTE)(was && r->bg_ink == ink);
     }
 }

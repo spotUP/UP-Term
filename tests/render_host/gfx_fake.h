@@ -70,6 +70,7 @@ int gf_pixel(int x, int y);
 char gf_cell(int col, int row);
 /* The pen under the top left pixel of cell (col, row): the last fill's, or the background pen of the Text that drew it. */
 int gf_bgpen(int col, int row);
+int gf_bg(int x, int y); /* the background pen under window pixel (x, y): a planar screen's pen there */
 /* The window's rows as text, each cols long, joined with '|'. */
 const char *gf_screen(void);
 void gf_clear_log(void);

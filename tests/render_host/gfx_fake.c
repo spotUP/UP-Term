@@ -270,6 +270,13 @@ int gf_pixel(int x, int y)
     return x >= 0 && y >= 0 && x < W && y < H ? canvas[y * W + x] : -1;
 }
 
+int gf_bg(int x, int y)
+{
+    if (x < 0 || y < 0 || x >= W || y >= H)
+        return -1;
+    return pdepth ? ppen(x, y) : bgc[y * W + x];
+}
+
 int gf_bgpen(int col, int row)
 {
     return col >= 0 && row >= 0 && col * cw_px < W && row * ch_px < H ? bgc[row * ch_px * W + col * cw_px] : -1;
