@@ -297,6 +297,22 @@ class InstallCases(unittest.TestCase):
         self.assertEqual((rc, out), (20, 'refused\n'))
 
 
+class RigMachine(unittest.TestCase):
+    """Every test rig is the 68060 at full speed unless --a1200 asks for the stock 020 (owner 2026-10-13)."""
+    def machine(self, *flags):
+        import subprocess, sys
+        code = ("import sys; sys.argv = ['rig.py'] + %r; sys.path.insert(0, %r); import rig; print(rig.M060, rig.MAX)"
+                % (['start'] + list(flags), str(pathlib.Path(ir.__file__).parent)))
+        return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True).stdout.split()
+
+    def test_the_default_machine_is_the_060(self):
+        self.assertEqual(self.machine(), ['True', 'True'])
+
+    def test_a1200_asks_for_the_stock_020(self):
+        for f in ('--a1200', '--stock', '--exact', '--fast'):
+            self.assertEqual(self.machine(f), ['False', 'False'], f)
+
+
 class ScriptedAmiga:
     """Just enough Amiga for the add-on cases of install_rig.py to run on the host: it keeps the files an
     Install and an Uninstall put down and answers the commands the checks send. `skip` names a thing a

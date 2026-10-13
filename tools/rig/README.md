@@ -40,10 +40,11 @@ Machine flags (on `start`, and `setup` when the config alone changes):
 
 | Flag | Machine |
 |---|---|
-| none | A1200, 68020 + 68882, 8 MB fast + 64 MB Zorro III, RTG card, JIT, real CPU speed |
-| `--fast` | the same at the host's speed |
+| none | the owner's machine: `--max` (below). Every test rig runs as this, so no script falls back to the 020 |
+| `--a1200` | A1200, 68020 + 68882, 8 MB fast + 64 MB Zorro III, RTG card, JIT, real CPU speed (timing runs only) |
+| `--fast` | the `--a1200` machine at the host's speed |
 | `--060` | 68060 (no MMU) + FPU at the host's speed, 128 MB Zorro III |
-| `--max` | `--060` with 1 GB Zorro III. The machine the owner runs everything on by default. |
+| `--max` | `--060` with 1 GB Zorro III. The default machine, so the flag is optional. |
 | `--exact` | cycle-exact, no JIT (slow) |
 | `--stock` | an A1200 as it left the factory: 2 MB chip, no fast RAM, no card (for benchmark comparisons) |
 | `--os32` | AmigaOS 3.2 tree and ROM (see the table above) |
