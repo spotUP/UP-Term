@@ -493,6 +493,16 @@ def stage_upterm(dest, vsh):
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
     (dest / "UP-Term").write_text("UP-Term: double-click the icon to open a terminal with vsh.\n")
 
+def stage_terminfo(src, dest):
+    """VTC:terminfo (the rig's TERMINFO, GO) as the kit's terminal entries (make build/kit-terminfo/stamp:
+    vtcon, vtcon-amiga, screen, in first-letter and hex directories). An older copy of it lacked
+    vtcon-amiga, the TERM of an AMIGA-personality vsh window, and ncurses' clear answered
+    "'vtcon-amiga': unknown terminal type" and printed nothing (W-T6, 2026-10-13)."""
+    for f in sorted(src.glob("*/*")):
+        if f.is_file():
+            (dest / f.parent.name).mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(f, dest / f.parent.name / f.name)
+
 def kit_restore():
     """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
     (RIG / "vtc/kit-restore").write_text("")
@@ -526,6 +536,10 @@ def install():
         else:
             print("no %s: run make %s for glyphs above U+00FF on the rig" % (src, drawer))
     stage_upterm(RIG / "vtc" / "upterm", ROOT / "build/amiga/vsh")
+    if (ROOT / "build/kit-terminfo/stamp").is_file():
+        stage_terminfo(ROOT / "build/kit-terminfo", RIG / "vtc/terminfo")
+    else:
+        print("no %s: run make build/kit-terminfo/stamp, or VTC:terminfo stays as it was" % (ROOT / "build/kit-terminfo"))
     (RIG / "vtc/themes").mkdir(exist_ok=True)
     for f in sorted((ROOT / "themes").glob("*.conf")):
         shutil.copyfile(f, RIG / "vtc/themes" / f.name)

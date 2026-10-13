@@ -122,5 +122,30 @@ with tempfile.TemporaryDirectory() as tmp:
     finally:
         rig.RIG = old
 
+# W-T6: VTC:terminfo (TERMINFO on the rig) holds every entry the kit builds, vtcon-amiga included
+import re  # noqa: E402
+mk = (HERE.parent / "Makefile").read_text()
+names = [pathlib.Path(f).stem for f in re.search(r"KIT_TERMINFO := (.*)", mk).group(1).split()]
+check("vtcon-amiga" in names, "the kit builds vtcon-amiga")
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = pathlib.Path(tmp)
+    built = tmp / "kit-terminfo"
+    for n in names:   # what make build/kit-terminfo/stamp leaves: first-letter and hex directories
+        for d in (n[0], "%02x" % ord(n[0])):
+            (built / d).mkdir(parents=True, exist_ok=True)
+            (built / d / n).write_text("entry " + n)
+    stale = tmp / "vtc-terminfo"   # the rig's old copy: vtcon and screen only
+    for n, d in (("vtcon", "v"), ("vtcon", "76"), ("screen", "s")):
+        (stale / d).mkdir(parents=True, exist_ok=True)
+        (stale / d / n).write_text("old " + n)
+    if hasattr(rig, "stage_terminfo"):
+        rig.stage_terminfo(built, stale)
+        for n in names:
+            for d in (n[0], "%02x" % ord(n[0])):
+                check((stale / d / n).is_file(), "VTC:terminfo/%s/%s is staged" % (d, n))
+        check((stale / "v/vtcon").read_text() == "entry vtcon", "a stale entry is replaced by the build")
+    else:
+        check(False, "rig.stage_terminfo exists")
+
 print("[%s] rig_kit: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)
