@@ -48,6 +48,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
 # ONLY=rig_stdin amiga-pi in a rig window script gets <NIL: (tools/test_rig_stdin.py)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
+# ONLY=rig_upterm the rig has UP-Term:bin/vsh, the SYS:System icon and no global TERM (tools/test_rig_upterm.py)
 # ONLY=pi_recordings amiga-pi's OpenAI recordings against OpenAI's schema (tools/test_pi_recordings.py)
 # ONLY=layers amiga-pi's layering rule over llm/, claude/http.c and UPTERM_ROOT/amiga-pi (tools/check_layers.py)
 # ONLY=render render/amiga_render.c on the host against a fake RastPort (tests/test_render.c, tests/render_host/)
@@ -60,6 +61,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_upterm ]; then python3 -I tools/test_rig_upterm.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_recordings ]; then python3 -I tools/test_pi_recordings.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = layers ]; then python3 -I tools/test_check_layers.py && python3 -I tools/check_layers.py --strict; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_llm ]; then python3 -I tools/gen_models_builtin.py --check || { echo "[ERROR] llm/models_builtin.json or .h is out of date: python3 tools/gen_models_builtin.py --from-pi && python3 tools/gen_models_builtin.py"; exit 1; }; fi

@@ -100,7 +100,7 @@ LIBS = ('none', 'stock', 'kit')
 TERMS = ('unset', 'vtcon')
 GO_LIBS = ['Assign >NIL: LIBS: VTC:ixp6', 'Assign >NIL: LIBS: SYS:Libs ADD', 'Assign >NIL: LIBS: SYS:Classes ADD',
            'Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD']   # BOOTX:go's LIBS:
-GO_ENV = ['SetEnv TERM vtcon', 'SetEnv TERMINFO /VTC/terminfo', 'SetEnv TERMCAP /etc/termcap']
+GO_ENV = ['Delete >NIL: ENV:TERM QUIET', 'SetEnv TERMINFO /VTC/terminfo', 'SetEnv TERMCAP /etc/termcap']
 
 JUNK = re.compile(r'\[(?:\?\d+|\d+(?:;\d+)*)[A-Za-z]')   # an escape sequence a console printed as text
 TITLE = 'sa-'
