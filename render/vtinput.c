@@ -276,6 +276,22 @@ int vti_sel_dirty(int on_old, long ax, long ay, long bx, long by,
     return any;
 }
 
+int vti_view_scroll(int old_view, int new_view, int rows, int stale, int *n, int *y0, int *y1)
+{
+    int d = new_view - old_view, a = d < 0 ? -d : d;
+    if (stale || old_view <= 0 || new_view <= 0 || !d || a >= rows)
+        return 0;
+    *n = -d;
+    if (d > 0) {
+        *y0 = 0;
+        *y1 = a; /* scrolled back: the text moves down, the top rows are new */
+    } else {
+        *y0 = rows - a;
+        *y1 = rows;
+    }
+    return 1;
+}
+
 /* A selection stays only while the cells under it are the text that was selected (xterm's rule: a
  * write or an erase over a selected cell drops the selection; UT5). Rows are absolute (grid row +
  * base, vt_lines_scrolled), so a line that went into the scrollback keeps its number and is not

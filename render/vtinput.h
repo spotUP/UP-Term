@@ -121,6 +121,14 @@ int vti_paste_keeps(const vt_term *t, unsigned long ch);
 int vti_sel_dirty(int on_old, long ax, long ay, long bx, long by,
                   int on_new, long cx, long cy, long dx, long dy, long *y0, long *y1);
 
+/* A scrollback view that moves from old_view to new_view lines back, of a window of `rows` text rows:
+ * 1 when the picture can be carried by one blit and only the exposed rows drawn, 0 when all of it must be
+ * drawn again. Then *n is the scroll (rows, positive = the text moves up, as vr_scroll's n: scrolling back
+ * moves the text down, so n < 0) and *y0 .. *y1 (exclusive) the screen rows to draw. 0 when either end is
+ * the live grid (its double-size rows and cursor are not the scrollback's), when the screen is stale (live
+ * output reached the grid while the view was back), and when the move is a screenful or more. */
+int vti_view_scroll(int old_view, int new_view, int rows, int stale, int *n, int *y0, int *y1);
+
 /* 1 when a change to the cells x0 <= x < x1, y0 <= y < y1 of the visible grid touches a selected cell:
  * the selection (on, from ax, ay to bx, by in absolute rows, any order of ends) must go, as xterm drops
  * it when a write or an erase (ESC[2J, ED, EL, ECH, DCH) reaches it. base is vt_lines_scrolled. */

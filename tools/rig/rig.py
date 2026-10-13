@@ -28,7 +28,7 @@ under test), shots/.
 """
 import os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths
+import paths, agentpatch
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
@@ -37,8 +37,8 @@ CFG = RIG / "vtcon-rig.fs-uae"
 # the old source sat in a session scratchpad that is gone). Only read: the
 # rig works on its own copy, build/rig/sys.hdf.
 SRC_HDF = paths.SYSTEM_HDF        # UPTERM_SYSTEM_HDF
-# amiagent itself lives in build/rig/boot (the Up Rough demo system's agent,
-# copied there once); the rig refuses to start without it
+# amiagent: the 68020 build vendored in dist/net/amiagent-0.13.2, copied to
+# boot/amiagent on every start (tools/rig/agentpatch.py)
 # The default ROM's header says 40.63 (the A500/A600/A2000 3.1), whatever
 # its file name says (measured 2026-09-30). --kick <file> boots another ROM
 # (DP6 of the console.device plan); the config is rewritten on every start,
@@ -93,13 +93,19 @@ C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
 # LIBS: as the rig runs: the patched ixemul first, then the system's (with
-# Classes and MUI) and ncurses. The boot script uses it, and install_rig.py
-# puts it back after testing Install/Uninstall against the stock library.
+# Classes and MUI), ncurses and AmiSSL's drawer. The boot script uses it, and
+# install_rig.py puts it back after testing Install/Uninstall against the
+# stock library. AmiSSL: S:User-Startup adds AmiSSL:Libs before go runs, and
+# go's first line here assigns LIBS: anew, so without the last line
+# amisslmaster.library was not found and every https request failed
+# (amiga-pi: "Connection error.", 2026-10-13; tools/test_rig_libs.py). By its
+# volume, not AmiSSL:, which a rig image without AmiSSL would ask for.
 RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:Libs ADD",
             "Assign >NIL: LIBS: DH0:Classes ADD",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
-            "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD"]
+            "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",
+            "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD"]
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
@@ -335,35 +341,15 @@ def setup():
         shutil.copyfile(RIG / "os32/Devs/system-configuration", sysconf)
     elif sysconf.exists():
         sysconf.unlink()
-    # --stock: the agent gives every command process a 256 KB stack; on the
-    # 2 MB machine that took an eighth of memory each and the window under
-    # test ran out (2026-10-04, allocwatch). A stock A1200's Shell has 4 KB;
-    # 16 KB keeps Avail readings honest.
-    # The agent sets its commands' stack itself (NP_StackSize 262144, two
-    # places in the binary): --stock runs a copy with 16384 there.
-    # The two places are found by the tag, NP_StackSize (0x800003f3), not by
-    # offset: once as move.l #262144,(a0)+ after the tag, once as a TagItem.
-    # Offsets moved between 0.13.0 and 0.13.2.
+    # the vendored 68020 build, every start (dist/net/amiagent-0.13.2)
+    agentpatch.install(RIG / "boot/amiagent")
+    # --stock: the agent's command stack is 16 KB, not 256 KB (agentpatch.py)
     if STOCK:
-        a = bytearray((RIG / "boot/amiagent").read_bytes())
-        offs = [m.end() - 4 for m in re.finditer(
-            rb"\x80\x00\x03\xf3(?:\x20\xfc)?\x00\x04\x00\x00", bytes(a))]
-        if len(offs) != 2:
-            sys.exit(f"rig: amiagent has {len(offs)} NP_StackSize 262144 places, not 2; the --stock patch needs a look")
-        for off in offs:
-            a[off:off + 4] = (16384).to_bytes(4, "big")
-        (RIG / "boot/amiagent.stock").write_bytes(bytes(a))
+        (RIG / "boot/amiagent.stock").write_bytes(
+            agentpatch.stock_patch((RIG / "boot/amiagent").read_bytes()))
     (RIG / "boot/go").write_text(GO.replace("BOOTX:amiagent PORT", "BOOTX:amiagent.stock PORT")
                                  if STOCK else GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
-    # once, like the disk: the sources were in a session scratchpad, which
-    # is gone after that session (the rig failed to start, 2026-09-30)
-    if not (RIG / "boot/amiagent").exists() and paths.RIG_N > 1:
-        # rig 2 takes its own copy of rig 1's agent (only read there)
-        shutil.copyfile(paths.RIG_HOME / "rig/boot/amiagent", RIG / "boot/amiagent")
-        os.chmod(RIG / "boot/amiagent", 0o755)
-    if not (RIG / "boot/amiagent").exists():
-        sys.exit("rig: build/rig/boot/amiagent is missing (copy it from the Up Rough demo system)")
     machine = [
         "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
         "bsdsocket_library = 1",

@@ -37,7 +37,9 @@
     (set #name "CPU040" #val #cpu040) (P_OPT)
     (set #name "CPU060" #val #cpu060) (P_OPT)
     (set #name "UNIFONT" #val #unifont) (P_OPT)
-    (set #name "EMOJI" #val #emoji) (P_OPT))
+    (set #name "EMOJI" #val #emoji) (P_OPT)
+    (set #name "AMIAGENT" #val #agent) (P_OPT)
+    (set #name "CPU000" #val #cpu000) (P_OPT))
 
 (procedure P_OPTIONS_END
     (run "Delete >NIL: ENV:UPTOPT#? QUIET")

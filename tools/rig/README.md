@@ -20,7 +20,7 @@ Nothing below is in any repository (all of it is licensed material or large);
 | Kickstart 3.1 ROM (40.068, A1200) | `$UPTERM_ROM`, else `$UPTERM_ROOT/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200` (another repo of the owner's, not in `repos.lock`); `--kick <file>` for one boot | Your own legal copy (Amiga Forever, or dumped from your A1200). Set `UPTERM_ROM=<file>`. |
 | System disk | `~/Downloads/nyhd2.hdf`, copied once to `build/rig/sys.hdf` (1.5 GB) | A hard-disk image of a working Workbench 3.x install (the owner's own; there is no public source). Set `UPTERM_SYSTEM_HDF=<image>` (default `~/Downloads/nyhd2.hdf`). What it must hold, not verified for a smaller image: C:Assign, S:Startup-Sequence, Libs/Devs/Fonts, the Classes and MUI drawers the rig adds to `LIBS:`. |
 | AmigaOS 3.2 tree (only for `--os32`) | `~/Downloads/AmigaOS-3.2-full (1)` (a host drawer, copied to `build/rig/os32`), ROM `~/Desktop/KICK_323.rom` (3.2.3) | An installed AmigaOS 3.2 tree and its Kickstart 3.2.3 ROM, from Hyperion (licensed). Set `UPTERM_OS32_TREE=<drawer>` and `UPTERM_OS32_ROM=<rom>` (defaults as shown). Also needs `media/AmigaOS3.2CD/ADF/Extras3.2.adf` inside the tree and `xdftool` (`pip install amitools`) to make SYS:L once. |
-| amiagent | `build/rig/boot/amiagent` | Aminet `comm/net/amiagent` (the agent of https://github.com/thomas-luebker/amimcp); copy the 68k binary there once. The owner's copy came from the Up Rough demo system; that it is byte-identical to the Aminet one is not verified. `--stock` patches two stack constants at fixed offsets and refuses another build of amiagent. |
+| amiagent | `build/rig/boot/amiagent`, copied from the kit's vendored 68020 build on every `setup`/`start` | `dist/net/amiagent-0.13.2/amiagent.020` (Aminet `comm/net/amiagent-0.13.2`, the agent of https://github.com/thomas-luebker/amimcp; sha256s in its `SOURCE.txt`), the same file the kit's Install offers. Nothing to copy by hand. 0.13.2 sets `pr_WindowPtr` to -1: a command naming an unmounted volume fails at once instead of putting up a requester. `--stock` runs a copy (`boot/amiagent.stock`) with the command stack 16384 instead of 262144; `tools/rig/agentpatch.py` finds the two places by the NP_StackSize tag (offsets 0x744 and 0x13e88) and refuses any build but that sha256. |
 | ncurses 5.5, less, nano, BitchX (what the userland and tmux/screen rigs and the tmux and screen builds use) | `build/rig/vtc/pkgs/ncurses-5.5-1-p-bin-m68k` and siblings | Aminet `dev/gg/ncurses-5.5-1-bin-m68k` (Geek Gadgets) unpacked there. The `-p-` in the directory name is the owner's; whether it marks a modified unpack is not verified. tmux-amiga and screen-amiga read the same directory (`NCURSES=`), so build the rig tree before them. |
 | Python 3.14 | the host | `python3 --version` must be 3.14 or newer (the upterm doctor checks). The rig scripts use the standard library plus Pillow (`import PIL`, for screenshots: `python3 -m pip install pillow`; found by grepping the imports, not run on a clean machine). |
 
@@ -74,7 +74,7 @@ generator (`rig.py`), so results are comparable, but a separate machine:
 | FS-UAE process | matched by `build/rig/vtcon-rig.fs-uae` | matched by `build/rig2/vtcon-rig.fs-uae` |
 
 ```
-UPTERM_RIG=2 python3 tools/rig/rig.py setup    # once: copies UPTERM_SYSTEM_HDF (1.5 GB) and rig 1's vtc/ (about 400 MB, read only) and amiagent
+UPTERM_RIG=2 python3 tools/rig/rig.py setup    # once: copies UPTERM_SYSTEM_HDF (1.5 GB) and rig 1's vtc/ (about 400 MB, read only)
 UPTERM_RIG=2 python3 tools/rig/rig.py start    # then status / install / stop, as for rig 1
 UPTERM_RIG=2 python3 tools/rig/ami.py ping
 UPTERM_RIG=2 python3 tools/rig/<script>_rig.py
@@ -118,6 +118,7 @@ The reachability tests (the product's top-level entry, with a sentinel):
 | `concon_rig.py` | the system's CON:/RAW: served by UP-Term through `C:UPConsole` |
 | `condev_rig.py` | UP-Term's console.device under the ROM con-handler |
 | `install_rig.py` | the kit: unpack `build/dist/UP-Term`, run `Files/install.dos`, check what it did, Uninstall (needs `make dist` first) |
+| `standalone_rig.py` | what each add-on (Claude, amiga-pi, Neovim, Python 3) does on a stock Workbench 3.2 with no UP-Term file, in a ROM CON: and a KingCON window (K2-1; the screen text is read from the pixels, not OCR) |
 | `installer_rig.py` | the real Installer on the kit's Install icon, as a user starts it |
 | `ptytest_rig.py`, `ixpty_rig.py` | `PTY:` and BSD ptys through the patched ixemul |
 | `tmux_rig.py`, `screen_rig.py` | tmux and GNU screen through the XCON: window (screen: 256 colours) |

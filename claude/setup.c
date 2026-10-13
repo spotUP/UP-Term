@@ -207,6 +207,7 @@ static void show_info(cl_repl *r)
     ui_line(&r->ui, "is the MCP server on that computer. They share a token: set it on both sides, and anything");
     ui_line(&r->ui, "that connects without it is refused. Use them on your local network only, and never");
     ui_line(&r->ui, "forward the port to the internet: whoever holds the token controls this machine.");
+    ui_line(&r->ui, "The UP-Term kit's Install can install amiagent (a tick box; it never starts it).");
 }
 
 static void finish(cl_repl *r)
