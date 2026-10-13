@@ -68,22 +68,26 @@
 ; the default.
 
 (set #old (getassign "UP-Term" "a"))
-(set #dest
-    (askdir
-        (prompt "Where should UP-Term's own drawer go? It is assigned as\n"
-                "UP-Term: and holds the Unix commands, Unifont, emoji\n"
-                "and the files of the add-on archives.")
-        (help "The drawer is made if it is not there (its parent must "
-              "exist). Programs find it through the assign UP-Term:, which "
-              "Install makes now and at every boot (a block in "
-              "S:User-Startup that Uninstall takes out again).\n\n"
-              "An earlier UP-Term's drawer is offered first: installing into "
-              "it again replaces the files and keeps your settings.")
-        (default (if #old #old "SYS:UP-Term"))
-        (newpath)))
-(if (= (substr #dest (- (strlen #dest) 1) 1) ":")
-    (set #dest (tackon #dest "UP-Term")))
-(set @default-dest #dest)
+(set #dest (if #old #old "SYS:UP-Term"))
+; asked again, with the last answer as its default, when the disk of the drawer is too small (room on the disk)
+(procedure P_ASKDEST
+    (set #dest
+        (askdir
+            (prompt "Where should UP-Term's own drawer go? It is assigned as\n"
+                    "UP-Term: and holds the Unix commands, Unifont, emoji\n"
+                    "and the files of the add-on archives.")
+            (help "The drawer is made if it is not there (its parent must "
+                  "exist). Programs find it through the assign UP-Term:, which "
+                  "Install makes now and at every boot (a block in "
+                  "S:User-Startup that Uninstall takes out again).\n\n"
+                  "An earlier UP-Term's drawer is offered first: installing into "
+                  "it again replaces the files and keeps your settings.")
+            (default #dest)
+            (newpath)))
+    (if (= (substr #dest (- (strlen #dest) 1) 1) ":")
+        (set #dest (tackon #dest "UP-Term")))
+    (set @default-dest #dest))
+(P_ASKDEST)
 
 ; ---- what to install: three pages of choices -------------------------------
 
@@ -211,35 +215,48 @@
 (if (in #sys 1) (set #dev "DEVICE"))
 
 ; ---- the size of each part, in KB ------------------------------------------
-; Only the pace of the percent bar: each part moves it by its share of the
-; total (measured on the kit of 2026-10-07; a part's few seconds of start-up
-; count as 20 KB).
+; What each part takes on the disk, counted by `make dist` from the files of
+; this kit (tools/kitsize.py: blocks, not bytes; the options' files only when
+; they are ticked). They pace the percent bar and they are what the room on
+; the disk is checked against. A part of few files counts its minimum.
 
-(set #kb-drawer 20)
-(set #kb-system 2200)
-(set #kb-coreutils 2200)
-; the Unix tool ports' programs (measured on the staged ports of 2026-10-08);
-; their pages, nano's files and licences are the userland part's 1780
-(set #kb-userland 8800)
-(set #kb-unifont (if #unifont 1800 0))
-(set #kb-emoji (if #emoji 500 0))
-(set #kb-tools (+ 320 (if #ssh 300 0) (if #bget 210 0) (if #curl 1200 0) (if #agent 90 0)))
-; fonts, unix, desktop, boot, libs, mount, console, record: their #kb below
-(set #kb-rest (+ 20 60 100 (if #wasabi 160 20) 420 50 200 20))
-(set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-userland 1780 #kb-unifont #kb-emoji
+(set #kb-drawer @KBDRAWER@)
+(set #kb-system @KBSYSTEM@)
+(set #kb-coreutils @KBCOPYCOREUTILS@)
+(set #kb-userland @KBCOPYUSERLAND@)
+(set #kb-manpages @KBUSERLAND@)
+(set #kb-unifont (if #unifont @KBCOPYUNIFONT@ 0))
+(set #kb-emoji (if #emoji @KBCOPYEMOJI@ 0))
+(set #kb-tools (+ @KBTOOLS@ (if #ssh @KBSSH@ 0) (if #bget @KBBEBBOGET@ 0) (if #curl @KBCURL@ 0)
+                  (if #agent @KBAMIAGENT@ 0)))
+; fonts, unix, desktop, boot (with wasabi), libs, mount, console, record: their #kb below
+(set #kb-rest (+ @KBFONTS@ 60 @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ 20))
+(set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-userland #kb-manpages #kb-unifont #kb-emoji
                  #kb-tools #kb-rest))
 (set #donekb 0)
 
 ; ---- room on the disk --------------------------------------------------------
 ; getdiskspace answers -1 when it cannot tell (and Installer 43.3 can
 ; overflow on a volume past 2 GB): only a positive answer that is too small
-; asks.
+; asks. The drawer's disk too small: say how much there is and how much the
+; chosen parts need, and ask for another drawer (Abort Install ends it).
 
-(set #free (getdiskspace (pathonly #dest)))
-(if (and (> #free 0) (< (/ #free 1024) #totalkb))
-    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
-           "UP-Term needs about " #totalkb " KB. Run Install again\n"
-           "and choose a drawer on another drive."))
+(set #roomok 0)
+(while (not #roomok)
+    (
+        (set #free (getdiskspace (pathonly #dest)))
+        (if (and (> #free 0) (< (/ #free 1024) #totalkb))
+            (
+                (message
+                    (cat "\n\n\n" #dest " has " (/ #free 1024) " KB free;\n"
+                         "the parts you chose need about " #totalkb " KB.\n\n"
+                         "Nothing has been copied. Proceed asks for\n"
+                         "another drawer, on a drive with room;\n"
+                         "Abort Install leaves everything as it was."))
+                (P_ASKDEST)
+            )
+            (set #roomok 1))
+    ))
 ; what goes on SYS: whatever the drawer's volume is (C:, L:, LIBS:, DEVS:, fonts,
 ; the S:User-Startup block)
 (set #sysfree (getdiskspace "SYS:"))
@@ -275,7 +292,7 @@
         (set #cpu000 (getenv "UPTOPTCPU000"))
         (set #cpu040 (getenv "UPTOPTCPU040"))
         (set #cpu060 (getenv "UPTOPTCPU060"))
-        (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-userland 0 #kb-unifont 0 #kb-emoji 0
+        (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-userland 0 #kb-manpages 0 #kb-unifont 0 #kb-emoji 0
              #kb-tools 0)
         ; the parts upupdate named, and the record part's 1
         (set #totalkb (+ 1 (getenv "UPTUPDKB")))
@@ -330,7 +347,7 @@
                "xz, zip and the terminal commands (tput, reset...)."))
 (P_COPY)
 
-(set #step "userland" #kb 1780 #n 3
+(set #step "userland" #kb #kb-manpages #n 3
      #why (cat "Installing the manual pages (UP-Term:share/man),\n"
                "nano's syntax colours, and each Unix tool's licence\n"
                "(UP-Term:licenses)."))
@@ -358,7 +375,7 @@
                "the network tools you chose."))
 (P_STEP)
 
-(set #step "fonts" #kb 20 #n 2
+(set #step "fonts" #kb @KBFONTS@ #n 2
      #why (cat "Adding the TopazPro and IBM fonts (only the sizes you do\n"
                "not have yet) and running FixFonts."))
 (P_STEP)
@@ -368,30 +385,30 @@
                "GG: and TMP: are assigned only when you have none."))
 (P_STEP)
 
-(set #step "desktop" #kb 100 #n (if #shellicon 3 2)
+(set #step "desktop" #kb @KBDESKTOP@ #n (if #shellicon 3 2)
      #why (cat "Putting the UP-Term icon in SYS:System and UP-Term Prefs\n"
                "in SYS:Prefs"
                (if #shellicon ",\nand pointing the Shell icon at XCON:" "") "."))
 (P_STEP)
 
-(set #step "boot" #kb (if #wasabi 160 20) #n (+ 1 (if #serial 1 0) (if #wasabi 1 0))
+(set #step "boot" #kb (+ @KBBOOT@ (if #wasabi @KBWASABI@ 0)) #n (+ 1 (if #serial 1 0) (if #wasabi 1 0))
      #why (cat "Writing vsh's settings"
                (if #serial ",\nthe serial login" "")
                (if #wasabi ",\nwasabid and its key" "") "."))
 (P_STEP)
 
-(set #step "libs" #kb 420 #n 3
+(set #step "libs" #kb @KBLIBS@ #n 3
      #why (cat "Installing the patched ixemul.library and its\n"
                "ixnet.library (the ones there are kept as\n"
                "LIBS:<name>.orig)."))
 (P_STEP)
 
-(set #step "mount" #kb 50 #n 2
+(set #step "mount" #kb @KBMOUNT@ #n 2
      #why (cat "Mounting XCON:, PTY: and IXPIPE:, so they work now,\n"
                "without a reboot."))
 (P_STEP)
 
-(set #step "console" #kb 200 #n (+ 1 (if (= #con "CONSOLE") 1 0) (if (= #dev "DEVICE") 1 0))
+(set #step "console" #kb @KBCONSOLE@ #n (+ 1 (if (= #con "CONSOLE") 1 0) (if (= #dev "DEVICE") 1 0))
      #why (cat "Installing C:UPConsole"
                (if (= #con "CONSOLE") ",\nserving CON: and RAW:" "")
                (if (= #dev "DEVICE") ",\nserving console.device" "") "."))
