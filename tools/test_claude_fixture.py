@@ -97,6 +97,7 @@ OPENAI = [
     ("after results", {"model": "m", "messages": [{"role": "user", "content": "tool"},
                                                   {"role": "tool", "tool_call_id": "c", "content": "x"}]}, "openai_final"),
     ("shell", {"model": "m", "messages": [{"role": "user", "content": "ask the shell"}]}, "openai_shell"),
+    ("blocked bash", {"model": "m", "messages": [{"role": "user", "content": "try the blocked bash"}]}, "openai_bash"),
     ("mcp", {"model": "m", "messages": [{"role": "user", "content": "use the mcp tools"}]}, "openai_mcp"),
     ("after the mcp results", {"model": "m", "messages": [
         {"role": "user", "content": "use the mcp tools"},
