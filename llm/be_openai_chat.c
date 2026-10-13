@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "backend.h"
+#include "httperr.h"
 #include "registry.h"
 #include "constrain.h"
 #include "estimate.h"
@@ -678,8 +679,13 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
     return 0;
 }
 
+static void o_http_err(const llm_http_fail *f, char *out, long cap)
+{
+    llm_httperr_openai(f, 0, 1, out, cap);
+}
+
 const llm_backend llm_be_openai_chat = {
-    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, 0, 0, 0, 0, 0
+    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, 0, 0, 0, 0, o_http_err, 0
 };
 
 const llm_backend *llm_backend_of(const char *api)

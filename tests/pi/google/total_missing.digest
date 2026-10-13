@@ -1,0 +1,7 @@
+stop=stop
+error=-
+usage=30,4,0,0
+usage2=0
+total=0
+raw=STOP rid=resp-total-2
+text="checked" sig=-

@@ -2,5 +2,6 @@ stop=stop
 error=-
 usage=9,6,0,0
 usage2=0
+total=15
 raw=STOP rid=resp-plain-1
 text="Hello from the Amiga." sig=-

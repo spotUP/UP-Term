@@ -556,6 +556,10 @@ static char *compact_dup(const char *p, long n, long *out_n)
 
 /* what pi's digest line says of a message of ours: stop, error, usage, blocks; ext (the google and azure generators):
  * the reasoning count, the raw stop reason, the response id and a tool call's thought signature as well */
+/* a digest with the API's own totalTokens line (the recordings of tests/pi/{responses,azure,google}); the handoff and anthropic
+ * recordings keep their older digests */
+static int digest_total;
+
 static void resp_digest(const char *msg, jw *o, int ext)
 {
     jv m, v, c, b, t, x;
@@ -589,9 +593,15 @@ static void resp_digest(const char *msg, jw *o, int ext)
                 jw_long(o, json_long(x, -1));
             else
                 jw_rawz(o, "-");
-        } else if (ext) {
-            jw_rawz(o, "\nusage2=");
-            jw_long(o, json_get(v, "reasoning", &x) ? json_long(x, -1) : -1);
+        } else {
+            if (ext) {
+                jw_rawz(o, "\nusage2=");
+                jw_long(o, json_get(v, "reasoning", &x) ? json_long(x, -1) : -1);
+            }
+            if (digest_total) {
+                jw_rawz(o, "\ntotal=");     /* totalTokens as the API reported it (M10) */
+                jw_long(o, json_get(v, "totalTokens", &x) ? json_long(x, -1) : -1);
+            }
         }
     }
     jw_rawz(o, "\n");
@@ -1009,6 +1019,39 @@ static void run_api_cases(const api_spec *sp)
         cx.tools_n = tools_n;
         cx.thinking = lv;
         cx.session_id = sid[0] ? sid : 0;
+        {
+            /* pi's SimpleStreamOptions of the case: temperature, toolChoice, thinkingBudgets (tools/gen_pi_google.mjs) */
+            static char tc[16];
+            jv t, tb;
+            if (json_get(c, "temperature", &t)) {
+                /* the JSON number to millionths: digits of the integer part and up to six of the fraction */
+                char num[40];
+                const char *q;
+                long ip = 0, fp = 0, sc = 100000L;
+                memcpy(num, t.p, t.n < 39 ? (size_t)t.n : 39);
+                num[t.n < 39 ? t.n : 39] = 0;
+                for (q = num; *q >= '0' && *q <= '9'; q++)
+                    ip = ip * 10 + (*q - '0');
+                if (*q == '.')
+                    for (q++; *q >= '0' && *q <= '9' && sc; q++, sc /= 10)
+                        fp += (*q - '0') * sc;
+                cx.has_temperature = 1;
+                cx.temperature_micro = ip * 1000000L + fp;
+            }
+            if (json_get(c, "toolChoice", &t)) {
+                json_str(t, tc, sizeof(tc));
+                cx.tool_choice = tc;
+            }
+            if (json_get(c, "thinkingBudgets", &tb)) {
+                static const char *const lv_names[] = { "off", "minimal", "low", "medium", "high" };
+                int li;
+                for (li = LT_MINIMAL; li <= LT_HIGH; li++)
+                    if (json_get(tb, lv_names[li], &t)) {
+                        cx.think_budget_set |= 1u << li;
+                        cx.think_budget[li] = json_long(t, 0);
+                    }
+            }
+        }
         ps_reset();
         ps_pool_up(LLM_POOL);
         strcpy(file, "../pi/");
@@ -1137,7 +1180,9 @@ static void run_api_cases(const api_spec *sp)
         jw_init(&msg);
         jw_init(&dig);
         llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+        digest_total = 1;
         resp_digest(msg.p, &dig, sp->ext);
+        digest_total = 0;
         file[strlen(file) - 8] = 0;
         strcat(file, ".digest");
         want_dig = claude_load(file, &dn);
@@ -1187,7 +1232,7 @@ static void test_responses(void)
     api_spec sp;
     sp.dir = "responses";
     sp.feeds = &llm_feeds_responses;
-    sp.min_cases = 27;
+    sp.min_cases = 31;
     sp.ext = 0;
     sp.line = "POST /v1/responses HTTP/1.1\r\nHost: api.openai.com\r\n";
     sp.auth = "Authorization: Bearer sk-test-not-real\r\n";
@@ -1201,7 +1246,7 @@ static void test_azure(void)
     api_spec sp;
     sp.dir = "azure";
     sp.feeds = &llm_feeds_azure;
-    sp.min_cases = 19;
+    sp.min_cases = 21;
     sp.ext = 0;
     sp.line = 0;
     sp.auth = 0;
@@ -1239,17 +1284,214 @@ static void test_azure_endpoint(void)
     CHECK_STR(ep.base, "http://10.0.0.5:9000/az");      /* not an Azure host: kept as given */
 }
 
+/* M10: pi resolves the Azure endpoint on every request (stream() -> resolveAzureConfig): a variable set for one request and
+ * removed for the next leaves nothing of itself on the model; the model's own baseUrl is the fallback again */
+static void test_azure_env_removed(void)
+{
+    llm_reg r;
+    const llm_model *md;
+    llm_model m;
+    llm_cfg cfg;
+    char err[300];
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    md = llm_reg_find(&r, "azure", "gpt-4.1");
+    CHECK(md != 0);
+    if (!md)
+        return;
+    m = *md;
+    m.base_url = "https://model.openai.azure.com/openai/v1";
+    llm_cfg_init(&cfg);
+    cfg.getenv = case_getenv;
+    case_nenv = 0;
+    CHECK_INT(llm_cfg_endpoint(&cfg, &m, err, sizeof(err)), 0);
+    CHECK_STR(m.base_url, "https://model.openai.azure.com/openai/v1");
+    case_env_name[0] = strcpy((char *)malloc(32), "AZURE_OPENAI_BASE_URL");
+    case_env_val[0] = strcpy((char *)malloc(64), "https://env.openai.azure.com/openai/v1");
+    case_nenv = 1;
+    CHECK_INT(llm_cfg_endpoint(&cfg, &m, err, sizeof(err)), 0);
+    CHECK_STR(m.base_url, "https://env.openai.azure.com/openai/v1");
+    case_env_val[0][0] = 0;                         /* removed */
+    CHECK_INT(llm_cfg_endpoint(&cfg, &m, err, sizeof(err)), 0);
+    CHECK_STR(m.base_url, "https://model.openai.azure.com/openai/v1");
+    /* the model keeps no base URL of its own: the removed variable is an error again, as for pi */
+    m = *md;
+    m.base_url = "";
+    llm_cfg_free(&cfg);
+    llm_cfg_init(&cfg);
+    cfg.getenv = case_getenv;
+    strcpy(case_env_val[0], "https://env.openai.azure.com/openai/v1");
+    CHECK_INT(llm_cfg_endpoint(&cfg, &m, err, sizeof(err)), 0);
+    case_env_val[0][0] = 0;
+    CHECK_INT(llm_cfg_endpoint(&cfg, &m, err, sizeof(err)), -1);
+    CHECK(strstr(err, "Azure OpenAI base URL is required") != 0);
+    free(case_env_name[0]);
+    free(case_env_val[0]);
+    case_nenv = 0;
+    llm_cfg_free(&cfg);
+    llm_reg_free(&r);
+}
+
 /* M1: google-generative-ai against the @google/genai SDK's own request (tests/pi/google, tools/gen_pi_google.mjs) */
 static void test_google(void)
 {
     api_spec sp;
     sp.dir = "google";
     sp.feeds = &llm_feeds_google;
-    sp.min_cases = 25;
+    sp.min_cases = 58;
     sp.ext = 1;
     sp.line = 0;
     sp.auth = 0;
     run_api_cases(&sp);
+}
+
+/* M10: the text of a failed HTTP answer as pi shows it, per API (tests/pi/httperr, tools/gen_pi_httperr.mjs): the answer
+ * is built from the case, goes through llm_request, and the error of the accumulated message must be pi's errorMessage. */
+static void test_httperr(void)
+{
+    char *txt;
+    long tn;
+    jv root, cs, c, v;
+    jit it;
+    llm_reg r;
+    int ncase = 0;
+    static const char user[] = "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hello\"}],\"timestamp\":1760100000000}";
+    txt = claude_load("../pi/httperr/cases.json", &tn);
+    CHECK(txt != 0);
+    if (!txt)
+        return;
+    CHECK_INT(json_parse(txt, tn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char name[80], api[40], provider[40], reason[60], ctype[80], *body, *want, *raw, *msgs[1];
+        long bl, wl, rn, mn[1];
+        llm_model m;
+        const llm_model *md;
+        llm_cfg cfg;
+        llm_ctx cx;
+        llm_req q;
+        llm_acc a;
+        llm_sink k;
+        llm_view vw;
+        jw msg;
+        jv mv, ev;
+        static char got[LLM_ERR_MAX + 8];
+        char eerr[300], num[16];
+        int status;
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(c, "api", &v);
+        json_str(v, api, sizeof(api));
+        json_get(c, "provider", &v);
+        json_str(v, provider, sizeof(provider));
+        json_get(c, "status", &v);
+        status = (int)json_long(v, 0);
+        json_get(c, "reason", &v);
+        json_str(v, reason, sizeof(reason));
+        json_get(c, "ctype", &v);
+        json_str(v, ctype, sizeof(ctype));
+        json_get(c, "body", &v);
+        body = json_strdup(v, &bl);
+        json_get(c, "want", &v);
+        want = json_strdup(v, &wl);
+        if (!strcmp(api, "openai-completions")) {
+            m = ps_model_openai("http://192.168.1.10:11434/v1");
+            m.provider = provider;
+        } else {
+            const char *prov = !strcmp(api, "anthropic-messages") ? "anthropic" : !strcmp(api, "google-generative-ai") ? "google" :
+                               !strcmp(api, "azure-openai-responses") ? "azure" : "openai";
+            const char *id = !strcmp(api, "anthropic-messages") ? "claude-haiku-4-5" : !strcmp(api, "google-generative-ai") ? "gemini-2.5-flash" :
+                             !strcmp(api, "azure-openai-responses") ? "gpt-4.1" : "gpt-5.5";
+            md = llm_reg_find(&r, prov, id);
+            CHECK(md != 0);
+            if (!md)
+                continue;
+            m = *md;
+            m.provider = provider;
+        }
+        llm_cfg_init(&cfg);
+        cfg.getenv = case_getenv;
+        case_nenv = 0;
+        if (!strcmp(api, "azure-openai-responses")) {
+            case_env_name[0] = strcpy((char *)malloc(32), "AZURE_OPENAI_BASE_URL");
+            case_env_val[0] = strcpy((char *)malloc(64), "https://res.openai.azure.com/openai/v1");
+            case_nenv = 1;
+        }
+        eerr[0] = 0;
+        CHECK_INT(llm_cfg_endpoint(&cfg, &m, eerr, sizeof(eerr)), 0);
+        msgs[0] = (char *)user;
+        mn[0] = (long)strlen(user);
+        CHECK_INT(llm_prepare(&m, (const char *const *)msgs, mn, 1, ts_of(1760100000L, 0), &vw), 0);
+        memset(&cx, 0, sizeof(cx));
+        cx.model = &m;
+        cx.system = "S";
+        cx.msgs = vw.m;
+        cx.msg_n = vw.n;
+        cx.nmsg = vw.count;
+        cx.est_tokens = 10;
+        /* the answer: status line, headers, body */
+        raw = (char *)malloc((size_t)bl + 400);
+        strcpy(raw, "HTTP/1.1 ");
+        cl_ltoa(status, num);
+        strcat(raw, num);
+        strcat(raw, " ");
+        strcat(raw, reason);
+        strcat(raw, "\r\n");
+        if (ctype[0]) {
+            strcat(raw, "Content-Type: ");
+            strcat(raw, ctype);
+            strcat(raw, "\r\n");
+        }
+        cl_ltoa(bl, num);
+        strcat(raw, "Content-Length: ");
+        strcat(raw, num);
+        strcat(raw, "\r\n\r\n");
+        rn = (long)strlen(raw);
+        memcpy(raw + rn, body, (size_t)bl);
+        rn += bl;
+        llm_set_wall(fixed_wall, 0);
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_raw_text(raw, rn);
+        llm_acc_init(&a, m.api, m.provider);
+        llm_acc_model(&a, m.id, m.cost);
+        k = llm_acc_sink(&a);
+        q = req_of(&m, &cx, &k, "sk-test-not-real");
+        q.retries = -1;
+        llm_request(&q);
+        jw_init(&msg);
+        llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+        got[0] = 0;
+        if (json_parse(msg.p, msg.n, &mv) == 0 && json_get(mv, "errorMessage", &ev))
+            json_str(ev, got, sizeof(got));
+        if (strcmp(got, want)) {
+            printf("    case %s\n      got  %s\n      want %s\n", name, got, want);
+            CHECK(0);
+        }
+        ncase++;
+        jw_free(&msg);
+        llm_acc_free(&a);
+        llm_view_free(&vw);
+        free(raw);
+        free(body);
+        free(want);
+        {
+            int i;
+            for (i = 0; i < case_nenv; i++) {
+                free(case_env_name[i]);
+                free(case_env_val[i]);
+            }
+            case_nenv = 0;
+        }
+        llm_cfg_free(&cfg);
+    }
+    CHECK(ncase >= 150);
+    llm_set_wall(0, 0);
+    llm_reg_free(&r);
+    free(txt);
 }
 
 /* M6: bedrock-converse-stream against the SDK's own request (tests/pi/bedrock, tools/gen_pi_bedrock.mjs): the body, the
@@ -3775,7 +4017,9 @@ void suite_pi_llm(void)
     test_google();
     test_azure();
     test_azure_endpoint();
+    test_azure_env_removed();
     test_bedrock();
+    test_httperr();
     test_bedrock_sigv4();
     test_bedrock_cred();
     test_evstream();

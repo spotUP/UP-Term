@@ -28,6 +28,7 @@ function digest(m) {
 	const j = (v) => JSON.stringify(v);
 	let s = `stop=${m.stopReason}\nerror=${m.errorMessage ?? "-"}\n`;
 	s += `usage=${m.usage.input},${m.usage.output},${m.usage.cacheRead},${m.usage.cacheWrite}\n`;
+	s += `total=${m.usage.totalTokens}\n`;
 	for (const b of m.content) {
 		if (b.type === "thinking") s += `thinking=${j(b.thinking)} sig=${b.thinkingSignature === undefined ? "-" : j(b.thinkingSignature)}\n`;
 		else if (b.type === "text") s += `text=${j(b.text)} sig=${b.textSignature === undefined ? "-" : j(b.textSignature)}\n`;

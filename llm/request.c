@@ -160,8 +160,13 @@ static void on_body(void *u, const char *s, long n)
     if (c->resp->status == 200 && c->resp->aws_stream) {
         if (c->es && !c->bad && llm_evs_feed(c->es, s, n))
             c->bad = 1;
-    } else if (c->resp->status == 200 && c->resp->event_stream)
-        sse_feed(c->sse, s, n);
+    } else if (c->resp->status == 200 && c->resp->event_stream) {
+        if (c->be && c->be->raw && c->dec) {
+            if (!c->bad && c->be->raw(c->dec, s, n, c->sink))
+                c->bad = 1;
+        } else
+            sse_feed(c->sse, s, n);
+    }
     else if (c->h.body && c->resp->status >= 200 && c->resp->status < 300)
         c->h.body(c->h.u, s, n);
     else if (c->errbody->n < 16384)

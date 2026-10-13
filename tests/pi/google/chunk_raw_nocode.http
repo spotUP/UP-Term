@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+content-type: text/event-stream
+transfer-encoding: chunked
+
+26
+{"error":{"status":"X","message":"m"}}
+0
+

@@ -1,5 +1,6 @@
 stop=stop
 error=-
 usage=40,120,0,0
+total=160
 thinking="Reading the request.\n\nPlanning the answer." sig="{\"id\":\"rs_001\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"Reading the request.\"},{\"type\":\"summary_text\",\"text\":\"Planning the answer.\"}],\"encrypted_content\":\"gAAAAABencrypted==\"}"
 text="Done." sig="{\"v\":1,\"id\":\"msg_reason\",\"phase\":\"final_answer\"}"

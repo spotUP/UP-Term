@@ -1,4 +1,5 @@
 stop=stop
 error=-
 usage=15,7,10,0
+total=32
 text="Hello from the Amiga." sig="{\"v\":1,\"id\":\"msg_plain\"}"

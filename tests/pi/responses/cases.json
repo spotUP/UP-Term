@@ -1901,6 +1901,44 @@
      }
     }
    ]
+  },
+  {
+   "name": "total_extra",
+   "model": "openai/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "total_extra"
+  },
+  {
+   "name": "total_missing",
+   "model": "openai/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "total_missing"
   }
  ]
 }

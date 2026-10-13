@@ -90,6 +90,17 @@ void ps_sse(const char *name, int cut)
     free(sse);
 }
 
+void ps_raw_text(const char *p, long n)
+{
+    char *b = (char *)malloc((size_t)n + 1);
+    if (!b)
+        return;
+    memcpy(b, p, (size_t)n);
+    b[n] = 0;
+    ps.resp[ps.nresp] = b;
+    ps.rlen[ps.nresp++] = n;
+}
+
 void ps_raw(const char *name)
 {
     long n;

@@ -1,4 +1,5 @@
 stop=error
 error=OpenAI Responses stream ended before a terminal response event
 usage=0,0,0,0
+total=0
 text="Hello from the Amiga." sig="{\"v\":1,\"id\":\"msg_plain\"}"

@@ -92,6 +92,17 @@ typedef struct llm_model {
 void llm_model_init(llm_model *m);
 
 /* what one request carries */
+/* a failed HTTP answer (status other than 200 or a body that is no stream), for the text pi shows */
+typedef struct llm_http_fail {
+    int status;
+    const char *reason;         /* the status line's reason phrase, "" none */
+    const char *ctype;          /* the Content-Type header, "" none */
+    const char *errtype;        /* x-amzn-errortype, "" none */
+    const char *body;           /* the body (up to 16 KB) */
+    long bn;
+    const llm_model *model;
+} llm_http_fail;
+
 typedef struct llm_ctx {
     const llm_model *model;
     const char *system;         /* the system prompt, 0 none */
@@ -104,6 +115,12 @@ typedef struct llm_ctx {
     long est_tokens;            /* estimateContextTokens of the transcript the request answers (llm_estimate_context), 0 when unknown */
     int thinking;               /* the thinking level, LT_*; clamped to the model's here (llm_think_clamp) */
     const char *session_id;     /* the session's id (pi's sessionId: openai-responses prompt_cache_key and headers), 0 none */
+    /* pi's SimpleStreamOptions that the coding agent or an SDK user passes (google-generative-ai only so far) */
+    const char *tool_choice;    /* "auto" | "none" | "any", 0 none (google: toolConfig) */
+    int has_temperature;
+    long temperature_micro;     /* temperature * 1000000 (google: generationConfig.temperature) */
+    unsigned think_budget_set;  /* bit LT_x: a custom thinking budget for that level (settings.json thinkingBudgets) */
+    long think_budget[8];       /* tokens, by LT_* (google: thinkingConfig.thinkingBudget) */
 } llm_ctx;
 
 typedef struct llm_backend {
@@ -141,7 +158,11 @@ typedef struct llm_backend {
                  int bearer, char *out, long cap, char *err, long errcap);
     /* the text of a failed HTTP answer (status, the x-amzn-errortype header or "", the body) for an API whose errors the
      * SDK words its own way; 0 pointer: "HTTP <status>: <message>" */
-    void (*http_err)(int status, const char *errtype, const char *body, long bn, char *out, long cap);
+    void (*http_err)(const llm_http_fail *f, char *out, long cap);
+    /* a body segment of a 200 event-stream answer as the transport delivers it, for an API whose SDK frames the stream
+     * itself (google: processStreamResponse looks at every network chunk): it replaces the SSE parser, and calls feed for
+     * each event it finds. 0 pointer: the SSE parser. Returns -1 when the stream is malformed. */
+    int (*raw)(void *dec, const char *p, long n, const llm_sink *k);
 } llm_backend;
 
 extern const llm_backend llm_be_anthropic;

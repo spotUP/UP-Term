@@ -49,6 +49,8 @@ void ps_stream(const char *name, const char *ctype);
 void ps_http_text(const char *http, long n);
 /* a whole HTTP answer queued as it is in the file */
 void ps_raw(const char *name);
+/* the same from memory: a whole HTTP answer (status line, headers, body) */
+void ps_raw_text(const char *p, long n);
 /* ps_pool over n stub transports */
 void ps_pool_up(int n);
 

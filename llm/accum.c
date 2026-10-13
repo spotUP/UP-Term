@@ -92,6 +92,8 @@ void llm_acc_free(llm_acc *a)
     free(a->b);
     a->b = 0;
     a->nb = a->cap = 0;
+    free(a->err);
+    a->err = 0;
 }
 
 static void fail(llm_acc *a, int stop, const char *msg)
@@ -100,7 +102,10 @@ static void fail(llm_acc *a, int stop, const char *msg)
         return;                 /* the first reason is the one told */
     a->failed = 1;
     a->stop = stop;
-    cl_copy(a->err, msg, sizeof(a->err));
+    free(a->err);
+    a->err = (char *)malloc(LLM_ERR_MAX);
+    if (a->err)
+        cl_copy(a->err, msg, LLM_ERR_MAX);
 }
 
 /* the event's bytes as a string in m: their length */
@@ -303,7 +308,7 @@ void llm_acc_event(void *u, const llm_event *e)
         break;
     case LE_STOP:
         if (e->stop == LS_ERROR) {
-            char m[256];
+            static char m[LLM_ERR_MAX];
             fail(a, LS_ERROR, ev_text(e, m, sizeof(m)) ? m : "error");  /* pi-ai: an error stop ends as an error */
         } else if (!a->failed)
             a->stop = e->stop;
@@ -317,7 +322,7 @@ void llm_acc_event(void *u, const llm_event *e)
         break;
     case LE_ERROR:
         {
-            char m[256];
+            static char m[LLM_ERR_MAX];
             fail(a, e->stop == LS_ABORTED ? LS_ABORTED : LS_ERROR,
                  ev_text(e, m, sizeof(m)) ? m : e->err_type ? e->err_type : "error");
         }
@@ -420,7 +425,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     free(ord);
     llm_acc_meta(a, &m);
     m.stop = a->failed ? a->stop : !a->done ? LS_ABORTED : a->stop ? a->stop : LS_STOP;
-    m.error = a->failed ? a->err : 0;
+    m.error = a->failed ? (a->err ? a->err : "error") : 0;
     llm_m_assistant(out, c.p, c.n, &m, ts);
     i = c.oom || out->oom ? -1 : 0;
     jw_free(&c);

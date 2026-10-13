@@ -1,3 +1,4 @@
 POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent?alt=sse
 x-goog-api-key: sk-test-not-real
 content-type: application/json
+x-goog-api-client: google-genai-sdk/2.21.0 gl-node/v24.10.0
