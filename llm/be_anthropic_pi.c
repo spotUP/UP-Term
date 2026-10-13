@@ -388,18 +388,12 @@ static int w_assistant(jw *w, jv m, int empty_sig)
     return k;
 }
 
-/* simple-options.ts: DEFAULT_THINKING_BUDGETS, xhigh and max count as high */
-static long think_budget(int level)
-{
-    return level <= LT_MINIMAL ? 1024 : level == LT_LOW ? 2048 : level == LT_MEDIUM ? 8192 : 16384;
-}
-
 /* what the thinking level makes of the request (pi's anthropic streamSimple and buildParams):
  * 0 nothing, 1 budget (*maxt, *budget set), 2 adaptive, 3 disabled */
 static int think_mode(const llm_ctx *c, long *maxt, long *budget)
 {
     const llm_model *m = c->model;
-    long mm = m->max_tokens > 0 ? m->max_tokens : 8192, base = c->max_tokens > 0 ? c->max_tokens : mm, b, m1;
+    long mm = m->max_tokens > 0 ? m->max_tokens : 8192, base = c->max_tokens > 0 ? c->max_tokens : mm;
     int lv;
     /* buildBaseOptions: the cap clamped to the context window */
     base = llm_clamp_max_tokens(m, c->est_tokens, base);
@@ -411,16 +405,7 @@ static int think_mode(const llm_ctx *c, long *maxt, long *budget)
         return m->thinking_map[LT_OFF].kind == LTM_NULL ? 0 : 3;
     if (m->adaptive)
         return 2;
-    b = think_budget(lv);
-    /* adjustMaxTokensForThinking, clampMaxTokensToContext again, then min(budget, maxTokens - 1024) */
-    m1 = base + b < mm ? base + b : mm;
-    if (m1 <= b)
-        b = b < (m1 > 1024 ? m1 - 1024 : 0) ? b : (m1 > 1024 ? m1 - 1024 : 0);
-    *maxt = llm_clamp_max_tokens(m, c->est_tokens, m1);
-    {
-        long room = *maxt > 1024 ? *maxt - 1024 : 0;
-        *budget = b < room ? b : room;
-    }
+    llm_think_budget(m, c->est_tokens, base, lv, maxt, budget);
     return 1;
 }
 
@@ -835,5 +820,5 @@ static void a_free(void *dec)
 
 const llm_backend llm_be_anthropic = {
     "anthropic-messages", "x-api-key", "/v1/messages", a_head, a_body, a_xhead, a_new, a_feed, a_free,
-    "Anthropic stream ended before message_stop", 0, 0
+    "Anthropic stream ended before message_stop", 0, 0, 0, 0
 };

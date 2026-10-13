@@ -1,0 +1,5 @@
+stop=error
+error=Truncated event message received.
+usage=0,0,0,0
+total=0 w1h=-
+raw=-

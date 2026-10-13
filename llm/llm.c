@@ -246,7 +246,7 @@ void llm_w_usage(jw *w, const llm_usage *u)
         jw_long(w, u->reasoning);
     }
     jw_rawz(w, ",\"totalTokens\":");
-    jw_long(w, u->input + u->output + u->cache_read + u->cache_write);
+    jw_long(w, u->has_total ? u->total : u->input + u->output + u->cache_read + u->cache_write);
     jw_rawz(w, ",\"cost\":{");
     for (i = 0; i < 4; i++) {
         if (i)
@@ -491,6 +491,13 @@ void llm_r_usage(jv u, llm_usage *o)
     if (json_get(u, "reasoning", &v)) {
         o->reasoning = json_long(v, 0);
         o->has_reasoning = 1;
+    }
+    if (json_get(u, "totalTokens", &v)) {
+        long t = json_long(v, 0);
+        if (t != o->input + o->output + o->cache_read + o->cache_write) {
+            o->total = t;           /* the API's own count: kept as read */
+            o->has_total = 1;
+        }
     }
     if (json_get(u, "cost", &c))
         for (i = 0; i < 4; i++)

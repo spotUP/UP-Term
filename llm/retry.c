@@ -60,6 +60,7 @@ static void final_error(const llm_sink *k, int stop, const char *type, const cha
 typedef struct rq {
     llm_req *q;
     llm_hooks inner;
+    char errtype[100];          /* the answer's x-amzn-errortype header (AWS APIs), "" none */
 } rq;
 
 static int rq_head(void *u, const char **head, long *hn)
@@ -84,6 +85,15 @@ static int rq_poll(void *u)
 {
     rq *r = (rq *)u;
     return r->inner.poll ? r->inner.poll(r->inner.u) : 0;
+}
+
+static void rq_header(void *u, const char *name, const char *value)
+{
+    rq *r = (rq *)u;
+    if (!strcmp(name, "x-amzn-errortype"))
+        cl_copy(r->errtype, value, sizeof(r->errtype));
+    if (r->inner.header)
+        r->inner.header(r->inner.u, name, value);
 }
 
 static void rq_status(void *u, int what)
@@ -119,10 +129,14 @@ static void key_notice(llm_req *q)
         q->h.notice(q->h.u, m);
 }
 
-static void http_error(jw *body, int status, char *out, long cap)
+static void http_error(const llm_backend *be, const char *errtype, jw *body, int status, char *out, long cap)
 {
     jv v, e, x;
     char num[16], msg[200];
+    if (be->http_err) {
+        be->http_err(status, errtype, body->p ? body->p : "", body->n, out, cap);
+        return;
+    }
     msg[0] = 0;
     if (body->p && json_parse(body->p, body->n, &v) == 0) {
         if (json_get(v, "error", &e)) {
@@ -144,11 +158,14 @@ static void http_error(jw *body, int status, char *out, long cap)
 int llm_request(llm_req *q)
 {
     http_url u;
-    char path[300], buf[2048], err[300], xb[512];
+    char path[300], buf[2048], err[300];
+    static char xb[4096];
     const char *key = q->key;
+    int key_given = key && *key;       /* a bearer credential is configured, sent or not */
     jw body, errbody;
     http_resp resp;
     sse ss;
+    llm_evs es;
     gate g;
     llm_sink gk;
     rq r;
@@ -158,6 +175,7 @@ int llm_request(llm_req *q)
     q->key_sent = 0;
     q->slept_ms = 0;
     q->hn = -1;
+    q->signed_auth = 0;
     memset(&g, 0, sizeof(g));
     g.out = q->sink;
     gk.u = &g;
@@ -204,9 +222,21 @@ int llm_request(llm_req *q)
     q->key_sent = key && *key && q->hn > 0;
     xb[0] = 0;
     if (q->be->xhead)
-        q->be->xhead(q->ctx, xb, sizeof(xb) / 2);
-    if (q->xhead && strlen(q->xhead) < sizeof(xb) / 2)
+        q->be->xhead(q->ctx, xb, 512);
+    if (q->xhead && strlen(q->xhead) + strlen(xb) < 1024)
         strcat(xb, q->xhead);
+    if (q->be->sign) {
+        /* an authentication over the finished request (Signature Version 4): its header lines follow */
+        long sn = q->be->sign(q->ctx, u.host, u.port, u.tls, path, body.p ? body.p : "", body.n, key_given,
+                              xb + strlen(xb), (long)sizeof(xb) - (long)strlen(xb) - 1, err, sizeof(err));
+        if (sn < 0) {
+            jw_free(&body);
+            jw_free(&errbody);
+            final_error(q->sink, LS_ERROR, "auth", err);
+            return -1;
+        }
+        q->signed_auth = sn > 0;
+    }
     if (xb[0] && q->hn >= 4) {
         /* the backend's and models.json's headers: before the blank line that ends the head */
         long xn = (long)strlen(xb);
@@ -222,10 +252,17 @@ int llm_request(llm_req *q)
     }
     if (q->h.log && q->hn > 0) {
         /* the only form of the head a log gets: the credential's value blanked */
-        static char red[1700], red2[1700];
+        static char red[4700], red2[4700];
         long rn = http_redact_header(q->head, q->hn, q->be->secret_header, red, sizeof(red));
-        if (rn > 0 && q->xhead && *q->xhead) {
+        if (rn > 0 && ((q->xhead && *q->xhead) || q->signed_auth)) {
             long r2 = http_redact_header(red, rn, "Authorization", red2, sizeof(red2));
+            if (r2 > 0) {
+                memcpy(red, red2, (size_t)r2);
+                rn = r2;
+            }
+        }
+        if (rn > 0 && q->signed_auth) {
+            long r2 = http_redact_header(red, rn, "x-amz-security-token", red2, sizeof(red2));
             if (r2 > 0) {
                 memcpy(red, red2, (size_t)r2);
                 rn = r2;
@@ -253,6 +290,8 @@ int llm_request(llm_req *q)
         c.h.status = rq_status;
         c.h.ms = rq_ms;
         c.h.head = rq_head;
+        c.h.header = rq_header;
+        c.es = &es;
         c.h.event = q->h.log ? rq_event : 0;
         c.be = q->be;
         c.dec = dec;
@@ -265,18 +304,23 @@ int llm_request(llm_req *q)
         c.errbody = &errbody;
         g.err = 0;
         g.raw[0] = 0;
+        r.errtype[0] = 0;
+        memset(&es, 0, sizeof(es));
         q->attempts = attempt;
         rc = llm_post(&c);
         err[0] = 0;
         if (rc == LP_BREAK) {
             final_error(q->sink, LS_ABORTED, "aborted", "Request aborted");
         } else if (rc == LP_OK && resp.status == 200 && resp.event_stream) {
+            if (resp.aws_stream && !c.bad && llm_evs_end(&es))
+                c.bad = 1;          /* the answer ended inside a message */
             if (!c.bad && !g.done && !g.err && q->be->fin)
                 q->be->fin(dec, &gk);       /* the body ended: an API without a terminal event ends here */
             if (c.bad)
-                cl_copy(err, "the answer's stream was malformed", sizeof(err));
+                cl_copy(err, resp.aws_stream && es.err[0] ? es.err : "the answer's stream was malformed", sizeof(err));
             else if (g.done && !g.err) {
                 sse_free(&ss);
+                llm_evs_free(&es);
                 jw_free(&errbody);
                 q->be->dec_free(dec);
                 jw_free(&body);
@@ -289,7 +333,7 @@ int llm_request(llm_req *q)
                 retry = !g.content;
             }
         } else if (rc == LP_OK) {
-            http_error(&errbody, resp.status, err, sizeof(err));
+            http_error(q->be, r.errtype, &errbody, resp.status, err, sizeof(err));
             retry = resp.status == 429 || resp.status == 408 || (resp.status >= 500 && resp.status <= 599);
             if (resp.retry_after > 0)
                 wait = resp.retry_after * 1000L;
@@ -305,6 +349,7 @@ int llm_request(llm_req *q)
             retry = rc != LP_BADHTTP && !g.content;
         }
         sse_free(&ss);
+        llm_evs_free(&es);
         jw_free(&errbody);
         q->be->dec_free(dec);
         if (rc == LP_BREAK)

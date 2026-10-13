@@ -140,7 +140,9 @@ static int norm_id(const llm_model *to, const char *id, const char *sp, const ch
             if (strlen(out) > 64)
                 out[64] = 0;
         }
-    } else if (!strcmp(to->api, "anthropic-messages")) {
+    } else if (!strcmp(to->api, "anthropic-messages") || !strcmp(to->api, "bedrock-converse-stream")) {
+        /* anthropic-messages and bedrock-converse-stream (bedrock-converse-stream.ts normalizeToolCallId) alike:
+         * [^a-zA-Z0-9_-] -> "_", 64 characters */
         clean_id(out);
         if (strlen(out) > 64)
             out[64] = 0;

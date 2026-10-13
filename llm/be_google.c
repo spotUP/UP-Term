@@ -47,7 +47,7 @@ void llm_google_counter(long n)
     id_counter = n;
 }
 
-static llm_ts wall(void)
+llm_ts llm_wall(void)
 {
     llm_ts t;
     if (wall_now)
@@ -218,24 +218,6 @@ static int sig_ok(jv s)
     return ok;
 }
 
-/* JS String.prototype.trim() is empty */
-static int blank_text(jv s)
-{
-    char *d;
-    long l, i;
-    int b = 1;
-    d = json_strdup(s, &l);
-    if (!d)
-        return 1;
-    for (i = 0; i < l; i++)
-        if (!(d[i] == ' ' || d[i] == '\t' || d[i] == '\n' || d[i] == '\r' || d[i] == '\v' || d[i] == '\f')) {
-            b = 0;
-            break;
-        }
-    free(d);
-    return b;
-}
-
 /* the sink for the contents array being written */
 typedef struct gc {
     jw *w;
@@ -333,7 +315,7 @@ static int w_assistant(gc *g, const llm_model *md, jv m)
             if (!json_get(b, "text", &v))
                 continue;
             has_sig = same && json_get(b, "textSignature", &sg) && sig_ok(sg);
-            if ((v.n == 2 || blank_text(v)) && !has_sig)
+            if ((v.n == 2 || llm_tx_blank(v)) && !has_sig)
                 continue;
             part_sep(w, &k);
             jw_rawz(w, "{\"text\":");
@@ -348,7 +330,7 @@ static int w_assistant(gc *g, const llm_model *md, jv m)
                 continue;
             if (same) {
                 has_sig = json_get(b, "thinkingSignature", &sg) && sig_ok(sg);
-                if ((v.n == 2 || blank_text(v)) && !has_sig)
+                if ((v.n == 2 || llm_tx_blank(v)) && !has_sig)
                     continue;
                 part_sep(w, &k);
                 jw_rawz(w, "{\"text\":");
@@ -360,7 +342,7 @@ static int w_assistant(gc *g, const llm_model *md, jv m)
                 }
                 jw_rawz(w, "}");
             } else {
-                if (v.n == 2 || blank_text(v))
+                if (v.n == 2 || llm_tx_blank(v))
                     continue;
                 part_sep(w, &k);
                 jw_rawz(w, "{\"text\":");
@@ -692,52 +674,6 @@ static void end_cur(gd_dec *d, const llm_sink *k)
     d->cur = 0;
 }
 
-/* JSON.stringify of a parsed value: no whitespace, strings re-escaped the way JSON.stringify writes them */
-static void compact(jw *w, jv v)
-{
-    jit it;
-    jv k, x;
-    int n = 0;
-    switch (json_type(v)) {
-    case J_OBJ:
-        jw_rawz(w, "{");
-        json_iter(v, &it);
-        while (json_next(&it, &k, &x)) {
-            char *d;
-            long l;
-            jw_rawz(w, n++ ? "," : "");
-            d = json_strdup(k, &l);
-            jw_str(w, d ? d : "", d ? l : 0);
-            free(d);
-            jw_rawz(w, ":");
-            compact(w, x);
-        }
-        jw_rawz(w, "}");
-        break;
-    case J_ARR:
-        jw_rawz(w, "[");
-        json_iter(v, &it);
-        while (json_next(&it, 0, &x)) {
-            jw_rawz(w, n++ ? "," : "");
-            compact(w, x);
-        }
-        jw_rawz(w, "]");
-        break;
-    case J_STR:
-        {
-            char *d;
-            long l;
-            d = json_strdup(v, &l);
-            jw_str(w, d ? d : "", d ? l : 0);
-            free(d);
-        }
-        break;
-    default:
-        jw_raw(w, v.p, v.n);
-        break;
-    }
-}
-
 /* retainThoughtSignature: a non-empty signature replaces the block's */
 static void sig_part(gd_dec *d, const llm_sink *k, jv part)
 {
@@ -805,7 +741,7 @@ static void call_part(gd_dec *d, const llm_sink *k, jv fc, jv part)
         if (!strcmp(d->ids[i], id))
             dup = 1;
     if (!have || dup) {
-        llm_ts t = wall();
+        llm_ts t = llm_wall();
         char num[24];
         jw_init(&nid);
         jw_rawz(&nid, name[0] ? name : "undefined");
@@ -828,7 +764,7 @@ static void call_part(gd_dec *d, const llm_sink *k, jv fc, jv part)
     d->ntools++;
     jw_init(&args);
     if (json_get(fc, "args", &v) && json_type(v) != J_NULL)
-        compact(&args, v);
+        llm_json_compact(&args, v, 0);
     else
         jw_rawz(&args, "{}");
     llm_event_init(&e, LE_BLOCK_START);
@@ -984,5 +920,5 @@ static void g_fin(void *dv, const llm_sink *k)
 
 const llm_backend llm_be_google = {
     "google-generative-ai", "x-goog-api-key", "/models", g_head, g_body, 0, g_new, g_feed, g_free,
-    "Google stream ended without a finish reason", g_route, g_fin
+    "Google stream ended without a finish reason", g_route, g_fin, 0, 0
 };

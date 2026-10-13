@@ -1,0 +1,6 @@
+stop=error
+error=Bedrock stream ended without a stop reason
+usage=0,0,0,0
+total=0 w1h=-
+raw=-
+text="Hi"

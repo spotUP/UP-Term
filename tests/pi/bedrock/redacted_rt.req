@@ -1,0 +1,4 @@
+POST https://bedrock-runtime.us-east-1.amazonaws.com/model/global.openai.gpt-5.6-sol/converse-stream
+content-type: application/json
+x-amz-date: 20251010T124000Z
+credential: AKIDEXAMPLE/20251010/us-east-1/bedrock/aws4_request

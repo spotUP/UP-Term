@@ -1,0 +1,5 @@
+stop=error
+error=Validation error: data retention mode 'default' is not available for this model See https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html for supported data retention modes.
+usage=0,0,0,0
+total=0 w1h=-
+raw=-

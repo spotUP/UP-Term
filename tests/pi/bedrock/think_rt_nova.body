@@ -1,0 +1,1 @@
+{"messages":[{"role":"user","content":[{"text":"hello"}]},{"role":"assistant","content":[{"text":"Let me think."},{"text":"Done thinking."}]},{"role":"user","content":[{"text":"and now?"}]}],"system":[{"text":"You are amiga-pi, a coding agent."}],"inferenceConfig":{"maxTokens":10000}}

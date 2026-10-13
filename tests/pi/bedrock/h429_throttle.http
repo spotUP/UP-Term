@@ -1,0 +1,8 @@
+HTTP/1.1 429 X
+content-type: application/json
+x-amzn-requestid: req-123
+x-amzn-errortype: ThrottlingException
+content-length: 66
+connection: keep-alive
+
+{"message": "Too many requests, please wait before trying again."}

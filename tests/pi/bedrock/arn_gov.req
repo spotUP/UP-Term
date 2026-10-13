@@ -1,0 +1,4 @@
+POST https://bedrock-runtime.us-east-1.amazonaws.com/model/arn%3Aaws-us-gov%3Abedrock%3Aus-gov-west-1%3A123456789012%3Ainference-profile%2Fus-gov.anthropic.claude-sonnet-4-5-20250929-v1%3A0/converse-stream
+content-type: application/json
+x-amz-date: 20251010T124000Z
+credential: AKIDEXAMPLE/20251010/us-gov-west-1/bedrock/aws4_request

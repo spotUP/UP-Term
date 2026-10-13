@@ -1,0 +1,8 @@
+HTTP/1.1 500 X
+content-type: application/json
+x-amzn-requestid: req-123
+x-amzn-errortype: InternalServerException
+content-length: 31
+connection: keep-alive
+
+{"message": "Internal failure"}

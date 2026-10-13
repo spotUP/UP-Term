@@ -1,0 +1,2403 @@
+{
+ "cases": [
+  {
+   "name": "plain_sonnet",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "sys_none",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "adaptive_minimal",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "minimal",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "adaptive_low",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "low",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "adaptive_medium",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "adaptive_high",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "adaptive_xhigh",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "xhigh",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "adaptive_max",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "max",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "opus_high",
+   "model": "amazon-bedrock/anthropic.claude-opus-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "budget_off",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "budget_minimal",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "minimal",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "budget_low",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "low",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "budget_medium",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "budget_high",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "budget_xhigh",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "xhigh",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "budget_clamp_window",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think",
+   "window": 20000
+  },
+  {
+   "name": "budget_tiny_window",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think",
+   "window": 6000
+  },
+  {
+   "name": "adaptive_clamp_window",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think",
+   "window": 9000
+  },
+  {
+   "name": "nova_off",
+   "model": "amazon-bedrock/amazon.nova-pro-v1:0",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "nova_high",
+   "model": "amazon-bedrock/amazon.nova-pro-v1:0",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "deepseek_high",
+   "model": "amazon-bedrock/deepseek.v3.2",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "gpt_medium",
+   "model": "amazon-bedrock/global.openai.gpt-5.6-sol",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "redacted"
+  },
+  {
+   "name": "gpt_xhigh",
+   "model": "amazon-bedrock/global.openai.gpt-5.6-sol",
+   "level": "xhigh",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "redacted"
+  },
+  {
+   "name": "gpt_minimal",
+   "model": "amazon-bedrock/global.openai.gpt-5.6-sol",
+   "level": "minimal",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "tools2",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "tools2",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_rt",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "tools2"
+    },
+    {
+     "$result": {
+      "reply": "tools2",
+      "index": 0,
+      "text": "; Startup\nEcho hi"
+     }
+    },
+    {
+     "$result": {
+      "reply": "tools2",
+      "index": 1,
+      "text": "S:\nC:",
+      "isError": true
+     }
+    }
+   ],
+   "stream": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "think",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "think"
+  },
+  {
+   "name": "think_rt",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "think"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "and now?"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "think_rt_nova",
+   "model": "amazon-bedrock/amazon.nova-pro-v1:0",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "think"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "and now?"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "redacted",
+   "model": "amazon-bedrock/global.openai.gpt-5.6-sol",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "redacted"
+  },
+  {
+   "name": "redacted_rt",
+   "model": "amazon-bedrock/global.openai.gpt-5.6-sol",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "redacted"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "and now?"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "redacted_unaligned",
+   "model": "amazon-bedrock/global.openai.gpt-5.6-sol",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "redacted_unaligned"
+  },
+  {
+   "name": "handoff_think_to_haiku",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "think"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "and now?"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "image_user",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "what is this"
+      },
+      {
+       "type": "image",
+       "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+       "mimeType": "image/png"
+      },
+      {
+       "type": "image",
+       "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+       "mimeType": "image/jpeg"
+      },
+      {
+       "type": "text",
+       "text": "   "
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "image_result",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "tools2"
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "$0",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "Read image file"
+      },
+      {
+       "type": "image",
+       "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+       "mimeType": "image/png"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100002000,
+     "$id": {
+      "reply": "tools2",
+      "index": 0
+     }
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "$1",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "   "
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100002000,
+     "$id": {
+      "reply": "tools2",
+      "index": 1
+     }
+    }
+   ],
+   "stream": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "blank_user",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": "   ",
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "blank_blocks",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": ""
+      },
+      {
+       "type": "text",
+       "text": " \n"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "cache_nova",
+   "model": "amazon-bedrock/amazon.nova-pro-v1:0",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "cache"
+  },
+  {
+   "name": "cache_sonnet",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "cache"
+  },
+  {
+   "name": "cache_usage",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "cache_nodetails"
+  },
+  {
+   "name": "usage_nototal",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "usage_nototal"
+  },
+  {
+   "name": "length",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "length"
+  },
+  {
+   "name": "ctx_exceeded",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "ctx_exceeded"
+  },
+  {
+   "name": "stop_sequence",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "stop_sequence"
+  },
+  {
+   "name": "filtered",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "filtered"
+  },
+  {
+   "name": "guardrail",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "guardrail"
+  },
+  {
+   "name": "stop_empty",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "stop_empty"
+  },
+  {
+   "name": "no_stop",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "no_stop"
+  },
+  {
+   "name": "unknown_event",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "unknown_event"
+  },
+  {
+   "name": "role_user",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "role_user"
+  },
+  {
+   "name": "interleaved",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "interleaved",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_noargs",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "tool_noargs",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "exc_internal",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "exc_internal"
+  },
+  {
+   "name": "exc_modelstream",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "exc_modelstream"
+  },
+  {
+   "name": "exc_validation",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "exc_validation"
+  },
+  {
+   "name": "exc_throttle",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "exc_throttle"
+  },
+  {
+   "name": "exc_unavailable",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "exc_unavailable"
+  },
+  {
+   "name": "exc_foo",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "exc_foo"
+  },
+  {
+   "name": "exc_nomsg",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "exc_nomsg"
+  },
+  {
+   "name": "corrupt_msg_crc",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "corrupt_msg_crc"
+  },
+  {
+   "name": "corrupt_payload",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "corrupt_payload"
+  },
+  {
+   "name": "corrupt_prelude_crc",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "corrupt_prelude_crc"
+  },
+  {
+   "name": "cut",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "cut"
+  },
+  {
+   "name": "empty_body",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "empty_body"
+  },
+  {
+   "name": "h400_validation",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h400_validation"
+  },
+  {
+   "name": "h403_access",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h403_access"
+  },
+  {
+   "name": "h429_throttle",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h429_throttle"
+  },
+  {
+   "name": "h500_internal",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h500_internal"
+  },
+  {
+   "name": "h503_unavailable",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h503_unavailable"
+  },
+  {
+   "name": "h424_model",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h424_model"
+  },
+  {
+   "name": "h400_notype",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h400_notype"
+  },
+  {
+   "name": "h400_typebody",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h400_typebody"
+  },
+  {
+   "name": "h400_nomsg",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h400_nomsg"
+  },
+  {
+   "name": "h403_empty",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h403_empty"
+  },
+  {
+   "name": "h400_retention",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "h400_retention"
+  },
+  {
+   "name": "strict_haiku",
+   "model": "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "strict_sonnet",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "nodesc_tool",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "tools": [
+    {
+     "name": "nodesc",
+     "description": "",
+     "parameters": {
+      "type": "object",
+      "properties": {}
+     }
+    },
+    {
+     "name": "nodesc2",
+     "parameters": {
+      "type": "object",
+      "properties": {}
+     }
+    }
+   ]
+  },
+  {
+   "name": "arn_model",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "override": {
+    "id": "arn:aws:bedrock:us-west-2:123456789012:application-inference-profile/abc123",
+    "name": "My profile (claude sonnet 4.5)"
+   }
+  },
+  {
+   "name": "arn_gov",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "override": {
+    "id": "arn:aws-us-gov:bedrock:us-gov-west-1:123456789012:inference-profile/us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "name": "Gov Sonnet 4.5"
+   }
+  },
+  {
+   "name": "region_env",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_REGION": "eu-west-1"
+   }
+  },
+  {
+   "name": "region_default_env",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_DEFAULT_REGION": "ap-southeast-2"
+   }
+  },
+  {
+   "name": "region_from_endpoint",
+   "model": "amazon-bedrock/eu.anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain"
+  },
+  {
+   "name": "region_env_over_endpoint",
+   "model": "amazon-bedrock/eu.anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_REGION": "us-west-2"
+   }
+  },
+  {
+   "name": "region_cn",
+   "model": "amazon-bedrock/amazon.nova-pro-v1:0",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_REGION": "cn-north-1"
+   }
+  },
+  {
+   "name": "region_gov",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_REGION": "us-gov-west-1"
+   }
+  },
+  {
+   "name": "custom_endpoint",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "baseUrl": "https://bedrock-gateway.example.com/proxy",
+   "env": {
+    "AWS_REGION": "eu-west-1"
+   }
+  },
+  {
+   "name": "custom_endpoint_noregion",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "baseUrl": "https://bedrock-gateway.example.com"
+  },
+  {
+   "name": "session_token",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_SESSION_TOKEN": "IQoJb3JpZ2luX2VjEXAMPLETOKEN//////////wEaCXVzLWVhc3QtMSJHMEUCIQDEXAMPLE+/=="
+   }
+  },
+  {
+   "name": "bearer",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_ACCESS_KEY_ID": null,
+    "AWS_SECRET_ACCESS_KEY": null,
+    "AWS_BEARER_TOKEN_BEDROCK": "brk-test-token-not-real"
+   }
+  },
+  {
+   "name": "bearer_over_keys",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_BEARER_TOKEN_BEDROCK": "brk-test-token-not-real"
+   }
+  },
+  {
+   "name": "skip_auth",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_ACCESS_KEY_ID": null,
+    "AWS_SECRET_ACCESS_KEY": null,
+    "AWS_BEDROCK_SKIP_AUTH": "1"
+   }
+  },
+  {
+   "name": "skip_auth_over_bearer",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "env": {
+    "AWS_BEDROCK_SKIP_AUTH": "1",
+    "AWS_BEARER_TOKEN_BEDROCK": "brk-test-token-not-real"
+   }
+  },
+  {
+   "name": "wire_path_encoding",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "plain",
+   "override": {
+    "id": "my.model!x'(y)*z:1/2~3",
+    "name": "Odd id claude"
+   }
+  },
+  {
+   "name": "reuse_index",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "reuse_index"
+  },
+  {
+   "name": "mixed_kinds",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "stream": "mixed_kinds"
+  }
+ ]
+}

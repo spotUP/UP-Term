@@ -24,4 +24,11 @@ long llm_clamp_max_tokens(const llm_model *m, long est, long max_tokens);
  * neither is set (the member is left out) */
 long llm_ctx_max_tokens(const llm_ctx *c);
 
+/* simple-options.ts DEFAULT_THINKING_BUDGETS: the budget of thinking level (xhigh and max count as high) */
+long llm_think_budget_of(int level);
+/* a budget-based thinking request (pi's anthropic and bedrock streamSimple): base is the cap buildBaseOptions made
+ * (already clamped to the context window); the cap the request carries after adjustMaxTokensForThinking and a second
+ * clampMaxTokensToContext in *maxt, the thinking budget min(budget, maxt - 1024) in *budget */
+void llm_think_budget(const llm_model *m, long est, long base, int lv, long *maxt, long *budget);
+
 #endif

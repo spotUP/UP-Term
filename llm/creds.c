@@ -247,6 +247,10 @@ void llm_key_env_name(const char *provider, char *out, long cap)
         cl_copy(out, "GEMINI_API_KEY", cap);
         return;
     }
+    if (!strcmp(provider, "amazon-bedrock")) {
+        cl_copy(out, "AWS_BEARER_TOKEN_BEDROCK", cap);
+        return;
+    }
     for (i = 0; provider[i] && n < cap - 9; i++) {
         char ch = provider[i];
         out[n++] = ch == '-' ? '_' : ch >= 'a' && ch <= 'z' ? (char)(ch - 32) : ch;
@@ -291,7 +295,7 @@ static long auth_key(llm_cfg *c, const char *provider, char *out, long cap)
     return r > 0 ? r : -1;
 }
 
-long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src)
+static long cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src)
 {
     long n;
     char nm[96];
@@ -329,6 +333,21 @@ long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char
     }
     out[0] = 0;
     return 0;
+}
+
+long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src)
+{
+    const char *where = 0;
+    long n = cfg_key(c, m, out, cap, &where);
+    /* amazon-bedrock with AWS_BEDROCK_SKIP_AUTH=1: pi sends no stored key (the SDK still reads the environment's) */
+    if (n > 0 && m->aws && m->aws->skip_auth && (!where || strcmp(where, "environment"))) {
+        out[0] = 0;
+        n = 0;
+        where = 0;
+    }
+    if (src)
+        *src = where;
+    return n;
 }
 
 int llm_cfg_headers(llm_cfg *c, const llm_model *m, const char *key, jw *w)
@@ -371,10 +390,75 @@ int llm_cfg_headers(llm_cfg *c, const llm_model *m, const char *key, jw *w)
     return rc;
 }
 
+static int nz_skip(const char *skip)
+{
+    return skip && !strcmp(skip, "1");
+}
+
+/* bedrock-converse-stream: the region, endpoint and credentials from the AWS_* variables and the bearer token */
+static int bedrock_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
+{
+    char region[48], dregion[48], profile[100], access[130], secret[130], skip[8];
+    static char token[4100];
+    llm_bedrock_env e;
+    char key[1100];
+    const char *src;
+    region[0] = dregion[0] = profile[0] = access[0] = secret[0] = skip[0] = token[0] = 0;
+    env_into(c, "AWS_REGION", region, sizeof(region), 0);
+    env_into(c, "AWS_DEFAULT_REGION", dregion, sizeof(dregion), 0);
+    env_into(c, "AWS_PROFILE", profile, sizeof(profile), 0);
+    env_into(c, "AWS_ACCESS_KEY_ID", access, sizeof(access), 0);
+    env_into(c, "AWS_SECRET_ACCESS_KEY", secret, sizeof(secret), 0);
+    env_into(c, "AWS_SESSION_TOKEN", token, sizeof(token), 0);
+    env_into(c, "AWS_BEDROCK_SKIP_AUTH", skip, sizeof(skip), 0);
+    if (m->base_url != c->bd_ep)
+        cl_copy(c->bd_orig, m->base_url ? m->base_url : "", sizeof(c->bd_orig));    /* the catalog's, kept across requests */
+    {
+        llm_model t = *m;
+        t.base_url = c->bd_orig;
+        e.region = region;
+        e.default_region = dregion;
+        e.profile = profile;
+        e.access = access;
+        e.secret = secret;
+        e.token = token;
+        e.skip_auth = skip;
+        e.bearer = llm_cfg_key(c, m, key, sizeof(key), &src) > 0;
+        if (e.bearer && nz_skip(skip) && (!src || strcmp(src, "environment")))
+            e.bearer = 0;               /* AWS_BEDROCK_SKIP_AUTH drops a stored key; the SDK still reads the variable itself */
+        if (llm_bedrock_resolve(&t, &e, &c->aws, c->bd_ep, sizeof(c->bd_ep), err, errcap))
+            return -1;
+    }
+    m->base_url = c->bd_ep;
+    m->aws = &c->aws;
+    return 0;
+}
+
+int llm_cfg_authed(llm_cfg *c, const llm_model *m)
+{
+    char v[300];
+    static const char *const more[] = { "AWS_PROFILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+                                        "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_WEB_IDENTITY_TOKEN_FILE" };
+    char key[1100];
+    int i;
+    if (llm_cfg_key(c, m, key, sizeof(key), 0) > 0)
+        return 1;
+    if (!m->api || strcmp(m->api, "bedrock-converse-stream") || !m->provider || strcmp(m->provider, "amazon-bedrock"))
+        return 0;
+    if (env_into(c, "AWS_ACCESS_KEY_ID", v, sizeof(v), 0) > 0 && env_into(c, "AWS_SECRET_ACCESS_KEY", v, sizeof(v), 0) > 0)
+        return 1;
+    for (i = 0; i < 4; i++)
+        if (env_into(c, more[i], v, sizeof(v), 0) > 0)
+            return 1;
+    return 0;
+}
+
 int llm_cfg_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
 {
     char eb[300], er[100], ev[48], em[600];
     llm_model t;
+    if (m->api && !strcmp(m->api, "bedrock-converse-stream"))
+        return bedrock_endpoint(c, m, err, errcap);
     if (!m->api || strcmp(m->api, "azure-openai-responses"))
         return 0;
     eb[0] = er[0] = ev[0] = em[0] = 0;

@@ -1,0 +1,6 @@
+stop=error
+error=Model stream error: boom msg
+usage=0,0,0,0
+total=0 w1h=-
+raw=-
+text="Hi"

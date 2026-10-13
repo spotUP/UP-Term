@@ -33,6 +33,9 @@ typedef struct llm_usage {
     long input, output, cache_read, cache_write;
     long cache_write_1h;        /* cacheWrite1h: the 1 hour part of cache_write; written only when has_1h */
     int has_1h;                 /* anthropic streams set it, other providers' usage has no such key */
+    long total;                 /* totalTokens as the API reported it (bedrock: its own count, which leaves the cache tokens out),
+                                 * written when has_total; else the sum of the four counts */
+    int has_total;
     long reasoning;             /* usage.reasoning (pi-ai 1.1.0): a subset of output, written only when has_reasoning */
     int has_reasoning;          /* openai-completions and openai-responses always set it, anthropic when the stream carries
                                  * output_tokens_details.thinking_tokens; written before totalTokens, anthropic's after

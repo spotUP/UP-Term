@@ -92,6 +92,228 @@
    "model": "azure/gpt-5.5",
    "baseUrl": "https://myres.openai.azure.com",
    "sse": "src_responses"
+  },
+  {
+   "name": "bedrock",
+   "model": "amazon-bedrock/anthropic.claude-sonnet-5-5",
+   "stream": "src_bedrock",
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "text": "The user wants the startup sequence; I should read it."
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "signature": "EqQBCkgIBhABGAIiQLbedrockSig=="
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "text": "I will read the startup sequence and list S:."
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 1
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 2,
+      "start": {
+       "toolUse": {
+        "toolUseId": "tooluse_Rd1-abc",
+        "name": "read"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 2,
+      "delta": {
+       "toolUse": {
+        "input": "{\"path\":\"S:Startup-Sequence\"}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 2
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 3,
+      "start": {
+       "toolUse": {
+        "toolUseId": "tooluse.list_2",
+        "name": "bash"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 3,
+      "delta": {
+       "toolUse": {
+        "input": "{\"command\":\"List S:\"}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 3
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "tool_use"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 120,
+       "outputTokens": 80,
+       "totalTokens": 200,
+       "cacheReadInputTokens": 10,
+       "cacheWriteInputTokens": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "bedrock_gpt",
+   "model": "amazon-bedrock/global.openai.gpt-5.6-sol",
+   "stream": "src_bedrock_gpt",
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "redactedContent": "AQIDBAUGBwgJCgsMDQ4PEA=="
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "text": "Reading the startup sequence."
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 1
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 2,
+      "start": {
+       "toolUse": {
+        "toolUseId": "tooluse_gpt_read",
+        "name": "read"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 2,
+      "delta": {
+       "toolUse": {
+        "input": "{\"path\":\"S:Startup-Sequence\"}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 2
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "tool_use"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 90,
+       "outputTokens": 40,
+       "totalTokens": 130
+      }
+     }
+    }
+   ]
   }
  ]
 }

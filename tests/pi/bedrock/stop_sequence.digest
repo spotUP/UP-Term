@@ -1,0 +1,6 @@
+stop=stop
+error=-
+usage=1,1,0,0
+total=2 w1h=-
+raw=stop_sequence
+text="stopped"
