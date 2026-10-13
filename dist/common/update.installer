@@ -1,0 +1,38 @@
+; ---- an installed UP-Term: Update or Full install ---------------------------
+; (plan 2026-10-08-installer-update) With UP-Term: assigned, its MANIFEST (the
+; record part of the last install) and that install's options
+; (ENVARC:up-term/opts) there, upupdate (Files/upupdate, no ixemul) compares
+; the installed manifest with this kit's and writes what changed into ENV:
+; (UPTUPD<part>: the KB of each part to run, UPTUPDKB, UPTVEROLD/NEW) and
+; T:UPTUPD-<part>, a copy part's script. Update then asks nothing: the
+; options come back from the record, P_STEP and P_COPY run only the parts
+; upupdate named, and the bar counts only their KB.
+
+(set #update 0)
+(if (<> (getassign "UP-Term" "a") "")
+    (if (and (exists "@RECORD@MANIFEST") (exists "@OPTS@/UPTOPTDEST")
+             (exists (tackon #files "upupdate")))
+        (
+            (run "Delete >NIL: ENV:UPTUPD#? ENV:UPTVER#? T:UPTUPD-#? QUIET")
+            (if (= 0 (run (cat "\"" (tackon #files "upupdate") "\" @RECORD@MANIFEST \""
+                                (tackon #files "MANIFEST") "\" \"" (pathonly @icon) "\"")))
+                (set #update
+                    (= 0 (askchoice
+                        (prompt (cat "UP-Term is installed:\n" (getenv "UPTVEROLD") "\n\n"
+                                     "This kit holds:\n" (getenv "UPTVERNEW") "\n\n"
+                                     "Update copies only what changed ("
+                                     (getenv "UPTUPDKB") " KB)\n"
+                                     "and keeps the drawer and the choices of\n"
+                                     "the last install."))
+                        (help "Update compares the list of files the last install "
+                              "wrote (UP-Term:MANIFEST) with this kit's and copies "
+                              "only the files that changed, deletes the ones this "
+                              "kit no longer has, and runs again only the parts of "
+                              "the install whose files or script changed. The "
+                              "drawer, the assigns, the blocks in S:User-Startup "
+                              "and every choice of the last install stay as they "
+                              "are.\n\n"
+                              "Full install asks every question again and copies "
+                              "everything.")
+                        (choices "Update" "Full install")
+                        (default 0))))))))

@@ -5,10 +5,11 @@ import pathlib, re, sys, tempfile, unittest, zlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import mkmanifest as mm
+import mkinstaller as mi
 
 PARTS = mm.read_parts((ROOT / "dist/parts.txt").read_text())
-DOS = (ROOT / "dist/install.dos").read_text(encoding="latin-1")
-INSTALLER = (ROOT / "dist/Install.installer").read_text(encoding="latin-1")
+DOS = mi.build(ROOT / "dist/install.dos", "base")
+INSTALLER = mi.build(ROOT / "dist/Install.installer", "base")
 
 
 def kit(files):

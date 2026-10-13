@@ -1,0 +1,17 @@
+# The archives `make dist` writes: the one table every tool reads (tools/pkgs.py).
+# Columns are separated by two or more spaces; "-" is an empty value.
+#   id          short name used by the Makefile, the tests and the rig scripts
+#   archive     the lha archive and the drawer in it
+#   version     <major>.<minor> of this archive
+#   needs-base  lowest base version the archive needs; "-" for the base itself
+#               and for a standalone package
+#   ixemul      "80" when the archive needs UP-Term's patched ixemul.library
+#   record      where an install leaves its MANIFEST, VERSIONS and options
+#   handed      kit paths (comma separated) the base hands over to this
+#               archive: the base's Update leaves them alone (kit-split D7)
+# id      archive          version  needs-base  ixemul  record                       handed
+base      UP-Term          1.0      -           -       UP-Term:                     -
+claude    UP-Term-Claude   1.0      1.0         -       UP-Term:pkg/UP-Term-Claude   Files/Claude,Files/ClaudeCode
+pi        UP-Term-pi       1.0      1.0         -       UP-Term:pkg/UP-Term-pi       Files/amiga-pi
+nvim      UP-Term-nvim     1.0      1.0         80      UP-Term:pkg/UP-Term-nvim     Files/nvim
+python    UP-Term-python   1.0      1.0         80      UP-Term:pkg/UP-Term-python   Files/python3

@@ -1,0 +1,14 @@
+; ---- requirements ---------------------------------------------------------
+
+(if (< (/ (getversion "exec.library" (resident)) 65536) 39)
+    (abort "UP-Term needs AmigaOS 3.0 or newer."))
+(if (or (= (database "cpu") "68000") (= (database "cpu") "68010"))
+    (abort "UP-Term needs a 68020 or better (the terminal and its ixemul.library are 68020 code)."))
+(if (not (exists #script))
+    (abort "The Files drawer is missing: unpack the whole archive and start Install from its drawer."))
+
+; A volume named UP-Term (the kit's own disk, mounted by that name) clashes
+; with the UP-Term: assign the install makes: UP-Term: then means the disk.
+(if (<> (getassign "UP-Term" "v") "")
+    (abort "A volume named UP-Term is mounted, and it clashes with the UP-Term: assign.\n"
+           "Rename the disk (or the kit's drawer volume) and start Install again."))
