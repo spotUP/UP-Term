@@ -12,10 +12,20 @@ One case per package on the base, and the combinations (K2-10, plan 2026-10-13-k
   base-var    Uninstall and UP-Term:var (No keeps it, Yes removes it)
   claude pi nvim python
               (one per add-on of dist/packages.txt) the base, then the add-on's install.dos, its checks, its
-              Uninstall, the base still whole, the base's Uninstall
-  all         the base and every add-on, then only the base's Uninstall: every add-on goes with it
+              Uninstall, the base still whole, the base's Uninstall (the stand-alone ones, Claude amiga-pi
+              Python3, work over UP-Term too)
+  claude-bare pi-bare python-bare
+              (one per stand-alone archive: needs-base "-") on a Workbench with no UP-Term: assign: its
+              install.dos, its record in ENVARC:uppkg, its program answering, its Uninstall, S:User-Startup and
+              ENVARC:uppkg as before
+  python-ixemul
+              Python3 with an ixemul.library of 47 or newer in LIBS: (the rig's patched one): left as it is,
+              nothing recorded as installed by Python3, its need recorded and taken away again (the branch with
+              no library there is K2-12's, see the plan)
+  all         the base and every add-on; Python3 uninstalled with the base there; the base's Uninstall takes
+              nvim out and leaves Claude and amiga-pi (stand-alone); then their own Uninstall, bare
   legacy      LEGACY_KIT (the single kit of 0cd6f0b) installed, the new base over it, the nvim add-on, base Uninstall
-  nobase      an add-on's install.dos with no UP-Term: returns 20 and ENV:UPTCHECK names UP-Term.lha
+  nobase      an add-on that needs the base (nvim): install.dos with no UP-Term: returns 20, ENV:UPTCHECK names UP-Term.lha
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/install/<case>.json when the case
 ends, with a fingerprint of the archives it installs; a case that passed with the same kit is skipped.
@@ -59,6 +69,18 @@ def package_ids():
 
 def addon_ids():
     return [i for i in package_ids() if i != 'base']
+
+
+def standalone_ids():
+    """The add-ons that need no base (needs-base "-"): Claude, amiga-pi, Python3."""
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import pkgs
+    return [i for i in addon_ids() if pkgs.get(i, 'needs-base') == '-']
+
+
+def based_ids():
+    """The add-ons that need the base (UP-Term-nvim)."""
+    return [i for i in addon_ids() if i not in standalone_ids()]
 
 
 def archive(pkg):
@@ -912,7 +934,7 @@ def _move():
 ADDON_OPTIONS = {'claude': 'REMOTE="127.0.0.1 2399"'}
 # what each add-on's Install puts down: the files its Uninstall must take away again
 ADDON_FILES = {'claude': ('C:Claude', 'C:ClaudeCode'), 'pi': ('C:amiga-pi',), 'nvim': ('UP-Term:nvim/bin/nvim',),
-               'python': ('UP-Term:Python3/bin/python3',)}
+               'python': ('SYS:Python3/bin/python3',)}
 
 
 def addon_install_line(pkg):
@@ -962,12 +984,14 @@ def base_whole(ck, what):
     ck(run('List >NIL: UP-Term:VERSIONS')[0] == 0, 'the base is whole %s: UP-Term:VERSIONS' % what)
 
 
-def base_uninstall(ck, before):
-    """Uninstall of the base (which runs every add-on's own) gives the rig back byte for byte."""
+def base_uninstall(ck, before, expect_user_startup_clean=True):
+    """Uninstall of the base (which runs the Uninstall of the add-ons that need it) gives the rig back byte for byte
+    (not when a stand-alone archive's block is still there: it is not the base's to take out)."""
     rc, out = run_long('rununinstall')
     ck(rc == 0, 'base Uninstall runs', out)
-    ck(run('Type S:User-Startup')[1] == before.startup, 'after base Uninstall: S:User-Startup as it was, byte for byte',
-       'differs: %r vs %r' % (run('Type S:User-Startup')[1][-80:], before.startup[-80:]))
+    if expect_user_startup_clean:
+        ck(run('Type S:User-Startup')[1] == before.startup, 'after base Uninstall: S:User-Startup as it was, byte for byte',
+           'differs: %r vs %r' % (run('Type S:User-Startup')[1][-80:], before.startup[-80:]))
     ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'after base Uninstall: S:Startup-Sequence as it was')
     ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after base Uninstall: no UP-Term: assign')
     ck(run('List >NIL: SYS:UP-Term')[0] != 0, 'after base Uninstall: SYS:UP-Term is gone', run('List SYS:UP-Term ALL')[1][:400])
@@ -1010,9 +1034,10 @@ def plant(pkg):
         run('Echo >ENVARC:amiga-pi/settings.json "userfile-keepme"')
 
 
-def addon_verify(ck, pkg, remote=True):
+def addon_verify(ck, pkg, remote=True, with_base=True):
     """After the add-on's Install: its record, and its program answering from where Install put it (the sentinel).
-    `remote`: Claude's Install was given REMOTE (the Shell line has it; the Installer's page is left empty)."""
+    `remote`: Claude's Install was given REMOTE (the Shell line has it; the Installer's page is left empty).
+    `with_base`: UP-Term is installed (vsh answers); the bare cases of the stand-alone archives have none."""
     sys.path.insert(0, str(ROOT / 'tools'))
     import pkgs
     row = {r['id']: r for r in pkgs.rows()}[pkg]
@@ -1041,19 +1066,28 @@ def addon_verify(ck, pkg, remote=True):
         rc, out = run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
         ck(rc == 0 and 'NVIM v0.12' in out, 'nvim: nvim runs from UP-Term:nvim', out[-300:])
     elif pkg == 'python':
-        rc, out = run('Stack 1000000\nUP-Term:Python3/bin/python3 -c "print(6*7)"', 120)
-        ck(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'python: python3 runs from UP-Term:Python3', out[-300:])
-        # through vsh a quoted ** reaches python as typed (vsh hands its argv over out of band,
-        # ixemul 39f6760/2cda2f6); the Shell's "**" is its escape for one *, so a vsh script
-        (VTC / "py8.sh").write_text("python3 -c 'print(2**3)'\n")
-        rc, out = run('Stack 1000000\nC:vsh VTC:py8.sh', 120)
-        ck(rc == 0 and out.strip().splitlines()[-1:] == ['8'], 'python: vsh runs python3 -c \'print(2**3)\' as typed (8)', out[-300:])
+        rc, out = run('Stack 1000000\nSYS:Python3/bin/python3 -c "print(6*7)"', 120)
+        ck(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'python: python3 runs from SYS:Python3', out[-300:])
+        if with_base:
+            # through vsh a quoted ** reaches python as typed (vsh hands its argv over out of band,
+            # ixemul 39f6760/2cda2f6); the Shell's "**" is its escape for one *, so a vsh script
+            (VTC / "py8.sh").write_text("python3 -c 'print(2**3)'\n")
+            rc, out = run('Stack 1000000\nC:vsh VTC:py8.sh', 120)
+            ck(rc == 0 and out.strip().splitlines()[-1:] == ['8'],
+               'python: vsh runs python3 -c \'print(2**3)\' as typed (8; vsh\'s path names /SYS/Python3/bin)', out[-300:])
         ck(run('Assign >NIL: Python3: EXISTS')[0] == 0 and
-           run('Search >NIL: S:User-Startup "Assign Python3: UP-Term:Python3"')[0] == 0,
+           run('Search >NIL: S:User-Startup "Assign Python3: SYS:Python3"')[0] == 0,
            'python: Python3: assigned, and at every boot')
+        ck(run('List >NIL: ENVARC:uppkg/ixemul/needs/Python3')[0] == 0, 'python: its need of ixemul.library is recorded')
 
 
-def addon_gone(ck, pkg, base_stays=True, remote=True):
+def addon_absent_not(ck, pkg, what):
+    """The add-on's files are still there (a stand-alone archive after the base's Uninstall)."""
+    for f in ADDON_FILES[pkg]:
+        ck(run('List >NIL: %s' % f)[0] == 0, '%s: %s is still there %s' % (pkg, f, what))
+
+
+def addon_gone(ck, pkg, base_stays=True, remote=True, with_base=True):
     """After the add-on's Uninstall (or the base's): its files, its record and its block are gone, what is yours stays."""
     sys.path.insert(0, str(ROOT / 'tools'))
     import pkgs
@@ -1063,8 +1097,9 @@ def addon_gone(ck, pkg, base_stays=True, remote=True):
         ck(run('List >NIL: %s' % rec)[0] != 0, '%s: its record %s is gone' % (pkg, rec))
     if pkg == 'python':
         ck(run('Assign >NIL: Python3: EXISTS')[0] != 0, 'python: no Python3: assign')
-        ck(run('Search >NIL: S:User-Startup ";BEGIN UP-Term python"')[0] != 0, 'python: its block is out of S:User-Startup')
-        if base_stays:
+        ck(run('Search >NIL: S:User-Startup ";BEGIN Python3"')[0] != 0, 'python: its block is out of S:User-Startup')
+        ck(run('List >NIL: ENVARC:uppkg/ixemul/needs/Python3')[0] != 0, 'python: its need of ixemul.library is taken away')
+        if base_stays and with_base:
             ck(run('Search >NIL: S:User-Startup ";BEGIN UP-Term assign"')[0] == 0,
                'python: the base\'s UP-Term: block is still in S:User-Startup (only its own block went)')
     if pkg == 'pi':
@@ -1075,11 +1110,12 @@ def addon_gone(ck, pkg, base_stays=True, remote=True):
         run('Delete >NIL: ENVARC:Claude/remote ENV:Claude/remote QUIET')
 
 
-def addon_install(ck, pkg):
+def addon_install(ck, pkg, with_base=True):
     rc, out = run_long('runinstall-' + pkg, 3600)
     ck(rc == 0 and 'Unknown command' not in out, '%s: its Install runs' % pkg, out)
+    ck('insert volume' not in out.lower(), '%s: no requester for a volume' % pkg, out)
     ck(run('GetEnv UPTCHECK')[0] != 0 or not run('GetEnv UPTCHECK')[1].strip(), '%s: its check part left no reason' % pkg)
-    addon_verify(ck, pkg)
+    addon_verify(ck, pkg, with_base=with_base)
 
 
 def case_addon(ck, pkg):
@@ -1098,9 +1134,53 @@ def case_addon(ck, pkg):
     base_uninstall(ck, before)
 
 
+def case_bare(ck, pkg):
+    """A stand-alone archive on a Workbench with no UP-Term: assign and no base: its install.dos, its record in
+    ENVARC:uppkg, its program answering, its Uninstall, and the rig as before (S:User-Startup byte for byte, no
+    record left). No `UP-Term:` object is touched by the scripts (that would put up a requester: the run_long
+    wrapper's output has none)."""
+    prepare(None, [pkg])
+    before = Before()
+    plant(pkg)
+    run('Assign UP-Term:')
+    ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, '%s-bare: there is no UP-Term: assign' % pkg)
+    addon_absent(ck, pkg, 'before its Install')
+    addon_install(ck, pkg, with_base=False)
+    rc, out = run_long('rununinstall-' + pkg)
+    ck(rc == 0, '%s: its Uninstall runs' % pkg, out)
+    addon_gone(ck, pkg, with_base=False)
+    ck(run('Type S:User-Startup')[1] == before.startup, '%s-bare: S:User-Startup as it was, byte for byte' % pkg)
+    ck(run('List >NIL: ENVARC:uppkg/%s' % archive(pkg))[0] != 0, '%s-bare: its record is gone' % pkg)
+    ck(run('List >NIL: ENVARC:uppkg')[0] != 0, '%s-bare: ENVARC:uppkg is gone with its last record' % pkg)
+
+
+def case_python_ixemul(ck):
+    """THE IXEMUL.LIBRARY RULE, the branch the rig's LIBS: can show: a library of 47 or newer is there (the rig boots
+    with the patched 80): Python3's Install leaves it as it is (same size and date), records only its need, and its
+    Uninstall leaves the library alone. The branch with none or an older library there (Python3 installs its own,
+    keeps the older as .before-Python3, removes it again unless UP-Term or another package needs it) needs a LIBS:
+    without ixemul and is a hand step of the plan (K2-12)."""
+    prepare(None, ['python'])
+    before = Before()
+    run('Assign UP-Term:')
+    sig = run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip()
+    ck(bool(sig), 'python-ixemul: the rig has an ixemul.library in LIBS:')
+    addon_install(ck, 'python', with_base=False)
+    ck(run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip() == sig, 'python-ixemul: Install left the ixemul.library as it was')
+    ck(run('List >NIL: ENVARC:uppkg/ixemul/installed-by-Python3')[0] != 0, 'python-ixemul: nothing recorded as installed by Python3')
+    ck(run('List >NIL: LIBS:ixemul.library.before-Python3')[0] != 0, 'python-ixemul: no .before-Python3 made')
+    rc, out = run_long('rununinstall-python')
+    ck(rc == 0, 'python: its Uninstall runs', out)
+    ck(run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip() == sig, 'python-ixemul: Uninstall left the ixemul.library alone')
+    ck(run('List >NIL: ENVARC:uppkg/ixemul')[0] != 0, 'python-ixemul: ENVARC:uppkg/ixemul is gone')
+    ck(run('Type S:User-Startup')[1] == before.startup, 'python-ixemul: S:User-Startup as it was, byte for byte')
+
+
 def case_all(ck):
-    """The base and the four add-ons, then only the base's Uninstall: every add-on goes with it. The archives'
-    own scripts run; the sentinel is each add-on's program answering before the base is removed."""
+    """The base and every add-on. Python3 is uninstalled while the base is there (UP-Term's unstartup.sh takes its
+    block out); the base's Uninstall then removes UP-Term-nvim by its own Uninstall and leaves Claude and amiga-pi
+    (stand-alone: record in ENVARC:uppkg); their own Uninstall, with no base, ends it. The archives' own scripts
+    run; the sentinel is each add-on's program answering before the base is removed."""
     ids = addon_ids()
     prepare(None, ids)
     before = Before()
@@ -1110,10 +1190,24 @@ def case_all(ck):
     for pkg in ids:
         addon_install(ck, pkg)
     base_whole(ck, 'with every add-on installed')
-    base_uninstall(ck, before)
-    for pkg in ids:
+    rc, out = run_long('rununinstall-python')
+    ck(rc == 0, 'python: its Uninstall runs with the base there', out)
+    addon_gone(ck, 'python', remote=False)
+    base_uninstall(ck, before, expect_user_startup_clean=False)
+    for pkg in based_ids():
         addon_gone(ck, pkg, base_stays=False)
+    for pkg in ('claude', 'pi'):
+        addon_absent_not(ck, pkg, 'after the base Uninstall (stand-alone: the base leaves it)')
+        ck(run('List >NIL: ENVARC:uppkg/%s/MANIFEST' % archive(pkg))[0] == 0, '%s: its record survives the base Uninstall' % pkg)
+    ck(run('List >NIL: C:uptelnet')[0] == 0, 'all: C:uptelnet stays while Claude\'s record is there')
     ck(run('List >NIL: UP-Term:pkg')[0] != 0, 'all: no UP-Term:pkg left')
+    for pkg in ('claude', 'pi'):
+        rc, out = run_long('rununinstall-' + pkg)
+        ck(rc == 0, '%s: its Uninstall runs with no base' % pkg, out)
+        addon_gone(ck, pkg, base_stays=False, with_base=False)
+    ck(run('List >NIL: C:uptelnet')[0] != 0, 'all: C:uptelnet goes with the last of Claude and the base')
+    ck(run('Type S:User-Startup')[1] == before.startup, 'all: S:User-Startup as it was, byte for byte')
+    ck(run('List >NIL: ENVARC:uppkg')[0] != 0, 'all: ENVARC:uppkg is gone with the last record')
 
 
 def case_legacy(ck):
@@ -1155,8 +1249,8 @@ def case_legacy(ck):
 
 
 def case_nobase(ck):
-    """An add-on's install.dos with no UP-Term: assign stops with 20, names UP-Term.lha in ENV:UPTCHECK, and writes nothing."""
-    ids = addon_ids()
+    """An add-on that needs the base: its install.dos with no UP-Term: assign stops with 20, names UP-Term.lha in ENV:UPTCHECK, and writes nothing."""
+    ids = based_ids()
     prepare(None, ids)
     before = Before()
     run('Assign UP-Term:')
@@ -1197,9 +1291,12 @@ def case_table():
          'base-var': (['base'], [], _global_pass(var_check))}
     for pkg in addon_ids():
         t[pkg] = (['base', pkg], [], (lambda ck, pkg=pkg: case_addon(ck, pkg)))
+    for pkg in standalone_ids():
+        t[pkg + '-bare'] = ([pkg], [], (lambda ck, pkg=pkg: case_bare(ck, pkg)))
+    t['python-ixemul'] = (['python'], [], case_python_ixemul)
     t['all'] = (package_ids(), [], case_all)
     t['legacy'] = (['base', 'nvim'], [LEGACY_KIT / 'Files/MANIFEST', LEGACY_KIT / 'Files/install.dos'], case_legacy)
-    t['nobase'] = (addon_ids(), [], case_nobase)
+    t['nobase'] = (based_ids(), [], case_nobase)
     return t
 
 

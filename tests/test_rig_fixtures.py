@@ -157,9 +157,15 @@ class InstallCases(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
 
     def test_every_case_installs_the_base_it_needs(self):
+        bare = {p + '-bare' for p in ir.standalone_ids()} | {'python-ixemul'}
         for name, (pk, _, fn) in ir.case_table().items():
-            self.assertIn('base' if name != 'nobase' else self.addons[0], pk, name)
+            if name in bare:
+                self.assertNotIn('base', pk, name + ' runs on a Workbench with no UP-Term')
+            else:
+                self.assertIn('base' if name != 'nobase' else ir.based_ids()[0], pk, name)
             self.assertTrue(callable(fn), name)
+        self.assertEqual(ir.standalone_ids(), ['claude', 'pi', 'python'])
+        self.assertEqual(ir.based_ids(), ['nvim'])
 
     def test_a_pass_with_the_same_kit_is_skipped_and_a_changed_archive_runs_again(self):
         for pkg in ir.package_ids(): self.kit(pkg)
@@ -297,9 +303,10 @@ class ScriptedAmiga:
         if 'record' not in self.skip:
             self.files |= {rec + '/MANIFEST', rec + '/VERSIONS', rec + '/Uninstall'}
         if pkg == 'claude':
-            self.files.add('ENVARC:Claude/remote')
+            self.files |= {'ENVARC:Claude/remote', 'C:uptelnet'}
         if pkg == 'python':
-            self.startup += ';BEGIN UP-Term python\nAssign Python3: UP-Term:Python3\n;END UP-Term python\n'
+            self.files.add('ENVARC:uppkg/ixemul/needs/Python3')
+            self.startup += ';BEGIN Python3\nIf EXISTS SYS:Python3\n  Assign Python3: SYS:Python3\nEndIf\n;END Python3\n'
 
     def _remove(self, pkg):
         rec = self.rows[pkg]['record']
@@ -307,11 +314,14 @@ class ScriptedAmiga:
             self.files -= set(ir.ADDON_FILES[pkg]) | {f for f in self.files if f.startswith(rec)}
             return
         self.files -= set(ir.ADDON_FILES[pkg]) | {f for f in self.files if f.startswith(rec)}
+        if pkg == 'claude' and not self.base:
+            self.files.discard('C:uptelnet')
         if pkg == 'python':
-            self.startup = self.startup.replace(';BEGIN UP-Term python\nAssign Python3: UP-Term:Python3\n;END UP-Term python\n', '')
+            self.files.discard('ENVARC:uppkg/ixemul/needs/Python3')
+            self.startup = self.startup.replace(';BEGIN Python3\nIf EXISTS SYS:Python3\n  Assign Python3: SYS:Python3\nEndIf\n;END Python3\n', '')
 
     def python_block(self):
-        return ';BEGIN UP-Term python' in self.startup
+        return ';BEGIN Python3' in self.startup
 
     def run(self, cmd, timeout=60):
         self.log.append(cmd)
@@ -348,17 +358,18 @@ class ScriptedAmiga:
         self.log.append(script)
         if script == 'runinstall':
             self.base = True
-            self.files |= {'UP-Term:UP-Term.version', 'UP-Term:VERSIONS', 'SYS:UP-Term'}
+            self.files |= {'UP-Term:UP-Term.version', 'UP-Term:VERSIONS', 'SYS:UP-Term', 'C:uptelnet'}
             self.startup += ';BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n'
         elif script.startswith('runinstall-'):
             self._add(script[len('runinstall-'):])
         elif script.startswith('rununinstall-'):
             self._remove(script[len('rununinstall-'):])
         elif script == 'rununinstall':
-            for pkg in self.rows:
-                if pkg != 'base': self._remove(pkg)
+            for pkg in ir.based_ids(): self._remove(pkg)
             self.files = {f for f in self.files if not f.startswith(('UP-Term', 'SYS:UP-Term'))}
-            self.base, self.startup = False, self.startup0
+            if 'ENVARC:uppkg/Claude/MANIFEST' not in self.files: self.files.discard('C:uptelnet')
+            self.base = False
+            self.startup = self.startup.replace(';BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n', '')
         return 0, ''
 
     def run_slow(self, name, cmd, timeout=600):
@@ -401,8 +412,25 @@ class AddonCases(unittest.TestCase):
         ck, sim = self.play(ir.case_all)
         self.assertEqual(ck.failed, [])
         self.assertEqual([l for l in sim.log if l.startswith('runinstall-')], ['runinstall-' + i for i in self.ids()])
-        self.assertFalse([l for l in sim.log if l.startswith('rununinstall-')], 'no add-on Uninstall of its own in all')
+        self.assertEqual([l for l in sim.log if l.startswith('rununinstall-')],
+                         ['rununinstall-python', 'rununinstall-claude', 'rununinstall-pi'],
+                         'Python3 while the base is there; Claude and amiga-pi after it (stand-alone); nvim goes with the base')
         self.assertEqual(sim.files - {'ENVARC:Claude/remote'}, set(), 'the base Uninstall left files (only the user\'s ENVARC:Claude stays)')
+
+    def test_every_stand_alone_archive_installs_and_uninstalls_with_no_base(self):
+        for pkg in ir.standalone_ids():
+            ck, sim = self.play(lambda ck, pkg=pkg: ir.case_bare(ck, pkg))
+            self.assertEqual(ck.failed, [], pkg)
+            self.assertFalse(sim.base)
+            self.assertIn('runinstall-' + pkg, sim.log)
+            self.assertIn('rununinstall-' + pkg, sim.log)
+            self.assertNotIn('runinstall', sim.log, 'the base is not installed')
+            self.assertEqual(sim.files, {'ENVARC:Claude/remote'} if pkg == 'claude' else set())
+
+    def test_python_ixemul_case_leaves_a_library_that_is_new_enough(self):
+        ck, sim = self.play(ir.case_python_ixemul)
+        self.assertEqual(ck.failed, [])
+        self.assertNotIn('ENVARC:uppkg/ixemul/installed-by-Python3', sim.files)
 
     def test_an_add_on_without_its_record_fails_its_case(self):
         ck, _ = self.play(lambda ck: ir.case_addon(ck, 'nvim'), skip=('record',))
@@ -524,7 +552,7 @@ class NoBaseCase(unittest.TestCase):
     def run_case(self, refuses):
         sys.path.insert(0, str(ROOT / 'tools'))
         import pkgs, verdicts
-        ids = [r['id'] for r in pkgs.rows() if r['id'] != 'base']
+        ids = ir.based_ids()
         ran, files = [], {'S:User-Startup': 'u'}
         def run(cmd, timeout=60):
             if cmd.startswith('Type S:User-Startup'): return 0, files['S:User-Startup']
