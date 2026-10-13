@@ -2277,7 +2277,7 @@ static void cursor_flip(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE 
 static void cursor_draw(vr_render *r, int on)
 {
     ULONG ink = r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg;
-    int wide = !r->view && vt_row_size(r->t, r->cursor_y) ? 2 : 1; /* a double-size row */
+    int wide = !r->view && vt_row_size(r->t, r->cursor_y + r->jump) ? 2 : 1; /* a double-size row (the grid row, not the screen's: jump) */
     WORD px = (WORD)(r->ox + r->cursor_x * r->cw * wide), py = r->oy + r->cursor_y * r->ch;
     WORD x1 = (WORD)(px + r->cw * wide - 1), y1 = (WORD)(py + r->ch - 1);
     int style = vt_cursor_style(r->t);   /* DECSCUSR */
@@ -2327,7 +2327,7 @@ static void cursor_draw(vr_render *r, int on)
     }
     if (wide == 1) {
         int ncells;
-        const vt_cell *c = vt_row(r->t, r->cursor_y, &ncells);
+        const vt_cell *c = vt_row(r->t, r->cursor_y + r->jump, &ncells); /* grid row = screen row + jump */
         int have = c && r->cursor_x < ncells;
         vt_glyph g = { VT_GLYPH_FONT, 0 };
         struct TextFont *font = r->font;
