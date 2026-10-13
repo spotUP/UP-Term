@@ -25,6 +25,7 @@ static int W, R, H; /* columns; the picture's text rows (the last row is the sta
 static int bench_only; /* updemo_bench: the benchmarked scenes only */
 static int want_colours; /* updemo_colours: UPDEMO_AUTO, _ANSI or _FULL */
 static int ansi;         /* the run plays the 16-colour version */
+static int solid;        /* ... in solid colours: no shade blocks (UPDEMO_SOLID) */
 static int only_one;  /* updemo_only: scene `first` alone */
 
 /* ---- output -------------------------------------------------------------- */
@@ -372,7 +373,9 @@ static void put_code(int code)
 {
     static const char *const shade[4] = { " ", "\342\226\221", "\342\226\222", "\342\226\223" };
     int f = acode[code].fg, b = acode[code].bg;
-    if (!acode[code].shade) { /* a solid colour: a blank on it, or a full block when it is the foreground already */
+    if (solid && acode[code].shade)
+        b = code_colour(code); /* the nearer of the step's two colours: a quarter shade is its background, a half or more its foreground */
+    if (solid || !acode[code].shade) { /* a solid colour: a blank on it, or a full block when it is the foreground already */
         if (cbg == b)
             pc(' ');
         else if (cfg == b)
@@ -1350,7 +1353,11 @@ static void sc_unicode(long t, int first)
         fg(244);
         padded(rows[shown][0], 18);
         sgr0();
-        ps(rows[shown][1]);
+        if (solid && rows[shown][1][1] == '\226' && rows[shown][1][2] == '\221')
+            ps("\342\226\210 \342\226\200\342\226\204\342\226\214\342\226\220 \342\227\242\342\227\243\342\227\244\342\227\245 "
+               "\342\227\217\342\227\213\342\227\206\342\227\207"); /* the Blocks row without its shade blocks */
+        else
+            ps(rows[shown][1]);
         shown++;
         if (shown == n)
             grey_line(4 + gap * n, "What your font lacks comes from an outline font (/font-fallback NAME) "
@@ -1908,7 +1915,7 @@ typedef struct scene_def {
 static const scene_def scenes[] = {
     { "text", sc_text, 0, 450, "Text styles, double-size lines, box drawing", 0, 1, 0 },
     { "styles", sc_styles, 0, 400, "Every text style a program can ask for", 0, 0, 0 },
-    { "colours", sc_colours, 0, 400, "16, 256 and 24-bit colours", 0, 1, "The 16 ANSI colours and gradients of shade blocks" },
+    { "colours", sc_colours, 0, 400, "16, 256 and 24-bit colours", 0, 1, "The 16 ANSI colours and their gradients" },
     { "character sets", sc_charsets, 0, 400, "DEC line graphics, Latin-1 and UTF-8", 0, 0, 0 },
     { "unicode", sc_unicode, 0, 450, "Unicode: scripts, wide characters, accents", 0, 0, 0 },
     { "scroll regions", sc_region, 0, 350, "Scroll regions: the header stays put", 0, 1, 0 },
@@ -2000,7 +2007,8 @@ static int play(int first, long scene_ticks)
     int s, ended = 0, alt = 1, nav, moved;
     numbers_init();
     acode_init();
-    ansi = want_colours == UPDEMO_ANSI;
+    ansi = want_colours == UPDEMO_ANSI || want_colours == UPDEMO_SOLID;
+    solid = want_colours == UPDEMO_SOLID;
     if (want_colours == UPDEMO_AUTO) {
         int n = ask_colours();
         ansi = n > 0 && n <= 16; /* a 16-colour screen: the version made for it */
@@ -2127,7 +2135,7 @@ void updemo_only(int on)
 
 void updemo_colours(int mode)
 {
-    want_colours = mode == UPDEMO_ANSI || mode == UPDEMO_FULL ? mode : UPDEMO_AUTO;
+    want_colours = mode == UPDEMO_ANSI || mode == UPDEMO_FULL || mode == UPDEMO_SOLID ? mode : UPDEMO_AUTO;
 }
 
 int updemo_ansi(void)
@@ -2143,27 +2151,38 @@ static int same_word(const char *a, const char *w)
     return !*a;
 }
 
-/* UPDemo [n] [BENCH [n]] [ANSI | FULL], in any order and any case; other words are ignored */
+/* The play settings from the options, the one place that makes them: scene n (0: none), BENCH, and the
+ * colour words (SOLID beats ANSI beats FULL, SOLID implying ANSI). Both the command-line words
+ * (updemo_parse_args) and the Amiga's ReadArgs result come here. */
+void updemo_args_make(updemo_args *a, int scene, int bench, int ansi_w, int full_w, int solid_w)
+{
+    a->scene = scene > 0 ? scene : 0;
+    a->bench = bench != 0;
+    a->colours = solid_w ? UPDEMO_SOLID : ansi_w ? UPDEMO_ANSI : full_w ? UPDEMO_FULL : UPDEMO_AUTO;
+}
+
+/* UPDemo [n] [BENCH [n]] [ANSI | SOLID | FULL], in any order and any case; other words are ignored */
 void updemo_parse_args(int argc, char **argv, updemo_args *a)
 {
-    int i;
-    a->bench = a->scene = 0;
-    a->colours = UPDEMO_AUTO;
+    int i, scene = 0, bench = 0, ansi_w = 0, full_w = 0, solid_w = 0;
     for (i = 1; i < argc; i++) {
         const char *w = argv[i];
         if (same_word(w, "BENCH"))
-            a->bench = 1;
+            bench = 1;
+        else if (same_word(w, "SOLID"))
+            solid_w = 1;
         else if (same_word(w, "ANSI"))
-            a->colours = UPDEMO_ANSI;
+            ansi_w = 1, full_w = 0; /* the later of ANSI and FULL */
         else if (same_word(w, "FULL"))
-            a->colours = UPDEMO_FULL;
+            full_w = 1, ansi_w = 0;
         else if (*w >= '0' && *w <= '9') {
             int n = 0;
             for (; *w >= '0' && *w <= '9' && n < 10000; w++)
                 n = n * 10 + (*w - '0');
-            a->scene = n;
+            scene = n;
         }
     }
+    updemo_args_make(a, scene, bench, ansi_w, full_w, solid_w);
 }
 
 void updemo_bench(int on)

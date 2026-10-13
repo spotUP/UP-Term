@@ -712,6 +712,12 @@ DEMO
   screen's colours). UPDemo ANSI plays that version anywhere, UPDemo
   FULL the 256 and 24-bit colour one (dithered on a 16-colour screen);
   both go with a scene number or BENCH: UPDemo FULL 3, UPDemo BENCH ANSI 17.
+  UPDemo SOLID is the 16-colour version in solid colours only: no shade
+  blocks anywhere, every gradient step drawn as the nearest of the 16
+  colours (half blocks of two solid colours keep the half-cell detail);
+  it implies ANSI, also on a 256-colour window. Arguments on the Amiga
+  (template SCENE/N,ANSI/S,FULL/S,SOLID/S,BENCH/S, any order): UPDemo ?
+  prints the template and waits for them like any AmigaDOS command.
   UPDemo BENCH runs the effect scenes (text, colours, scroll regions and
   the effects) for three seconds each and prints the frames a second
   each reached: a benchmark of the terminal on your machine. UPDemo BENCH
