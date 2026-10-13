@@ -36,8 +36,8 @@ shots/. Resumable: a recorded verdict with the same fingerprint is skipped.
 
 Rig: UPTERM_RIG=<n> python3 -I tools/rig/rig.py setup --os 32 --max, then start --os 32 --max (a clean
 installed 3.2: no UP-Term:, no ixemul in SYS:Libs). Build first: `make build/amiga/Claude` here,
-`make -C ~/Code/amiga-pi amiga`; nvim and python3 come from the staged kit (build/dist/UP-Term/Files,
-STANDALONE_DIST= another). Needs xdftool only once, to read the owner's KingCON handler out of
+`make -C ~/Code/amiga-pi amiga`; nvim, python3 and its ixemul come from the staged archives
+(build/dist/UP-Term-nvim, Python3, terminfo from UP-Term; STANDALONE_DIST= one Files drawer with all). Needs xdftool only once, to read the owner's KingCON handler out of
 UPTERM_SYSTEM_HDF (read only); stock ixemul from UPTERM_IXSTOCK (default GG-Lite's Libs drawer).
 Not run by `make test`: it needs the emulator."""
 import argparse
@@ -72,9 +72,23 @@ PORT = 8110 + paths.RIG_N
 
 CLAUDE_BIN = pathlib.Path(os.environ.get('CLAUDE_BIN') or ROOT / 'build/amiga/Claude')
 PI_BIN = pathlib.Path(os.environ.get('AMIGA_PI_BIN') or paths.repo('amiga-pi') / 'build/amiga/amiga-pi')
-DIST = next((p for p in (pathlib.Path(os.environ['STANDALONE_DIST']) if os.environ.get('STANDALONE_DIST') else None,
-                         ROOT / 'build/dist/UP-Term/Files', paths.RIG_HOME / 'dist/UP-Term/Files') if p and p.exists()),
-            paths.RIG_HOME / 'dist/UP-Term/Files')
+DIST_ARCHIVE = {'nvim': 'UP-Term-nvim', 'python3': 'Python3', 'libs': 'Python3'}   # since the K2 split
+
+
+def dist(rel):
+    """A file of the staged kit: under STANDALONE_DIST (one Files drawer holding nvim, python3, libs and
+    terminfo), else in the archive that carries it since the K2 split (build/dist/<archive>/Files; libs:
+    Python3's own ixemul, terminfo: the base's), else in the single kit of before the split."""
+    if os.environ.get('STANDALONE_DIST'):
+        return pathlib.Path(os.environ['STANDALONE_DIST']) / rel
+    archive = DIST_ARCHIVE.get(rel.split('/')[0], 'UP-Term')
+    for top in (ROOT / 'build/dist', paths.RIG_HOME / 'dist'):
+        for a in (archive, 'UP-Term'):
+            if (top / a / 'Files' / rel).exists():
+                return top / a / 'Files' / rel
+    return paths.RIG_HOME / 'dist' / archive / 'Files' / rel
+
+
 IXSTOCK = pathlib.Path(os.environ.get('UPTERM_IXSTOCK') or
                        pathlib.Path.home() / 'Downloads/gg-lite/x/GG-Lite-1.0-bin-m68k/Libs')
 KING_HANDLER = SA / 'kc/KingCON-handler'
@@ -133,9 +147,9 @@ def fingerprint(session):
         return sha(CLAUDE_BIN, *base)
     if prog == 'pi':
         return sha(PI_BIN, *base)
-    exe = DIST / ('nvim/bin/nvim' if prog == 'nvim' else 'python3/bin/python3')
+    exe = dist('nvim/bin/nvim' if prog == 'nvim' else 'python3/bin/python3')
     libs = {'none': [], 'stock': [IXSTOCK / 'ixemul.library', IXSTOCK / 'ixnet.library'],
-            'kit': [DIST / 'libs/ixemul.library', DIST / 'libs/ixnet.library']}[parts[2]]
+            'kit': [dist('libs/ixemul.library'), dist('libs/ixnet.library')]}[parts[2]]
     return sha(exe, *libs, *base)
 
 
@@ -624,13 +638,13 @@ def stage():
         if not (SA / dst).exists() or (SA / dst).read_bytes() != src.read_bytes():
             shutil.copyfile(src, SA / dst)
     for sub in ('nvim', 'python3'):
-        if not (DIST / sub).exists():
-            sys.exit('[ERROR] %s missing: make dist (or STANDALONE_DIST=)' % (DIST / sub))
+        if not dist(sub).exists():
+            sys.exit('[ERROR] %s missing: make dist (or STANDALONE_DIST=)' % dist(sub))
         if not (SA / sub).exists():
-            shutil.copytree(DIST / sub, SA / sub, symlinks=True)
+            shutil.copytree(dist(sub), SA / sub, symlinks=True)
     if not (SA / 'terminfo').exists():
-        shutil.copytree(DIST / 'terminfo', SA / 'terminfo')
-    for lib, src in (('ixkit', DIST / 'libs'), ('ixstock', IXSTOCK)):
+        shutil.copytree(dist('terminfo'), SA / 'terminfo')
+    for lib, src in (('ixkit', dist('libs')), ('ixstock', IXSTOCK)):
         (SA / lib).mkdir(exist_ok=True)
         for f in ('ixemul.library', 'ixnet.library'):
             if not src.joinpath(f).exists():
