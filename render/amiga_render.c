@@ -716,9 +716,12 @@ static const UWORD shade_pat[3][2] = {
     { 0x7777, 0xDDDD }  /* dark: 75 % */
 };
 
-static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, ULONG fg, ULONG bg)
+/* `cells` neighbouring cells of one look in a row (draw_rows joins them only for
+ * a block that is a band across the whole cell: the upper and lower parts, see
+ * block_joins); a lone cell is 1. */
+static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, ULONG fg, ULONG bg, int cells)
 {
-    WORD w = r->cw, h = r->ch;
+    WORD w = (WORD)(r->cw * cells), h = r->ch;
     if (code & 0x80) {
         ink_ab(r, fg, bg);
         SetAfPt(r->rp, (UWORD *)shade_pat[(code & 3) - 1], 1);
@@ -750,9 +753,17 @@ static void draw_block(vr_render *r, WORD px, WORD py, vt_u8 code, ULONG fg, ULO
     }
 }
 
-static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg)
+/* A block that is a band across the full cell width (upper or lower part): n of them side by
+ * side are one band n cells wide. Quadrants, vertical bars and shades are not (their parts
+ * depend on the cell's width, or the pattern on its place). */
+static int block_joins(vt_glyph g)
 {
-    WORD x1 = px + r->cw * (g.kind == VT_GLYPH_MISSING && g.code == 2 ? 2 : 1) - 1, y1 = py + r->ch - 1;
+    return g.kind == VT_GLYPH_BLOCK && !(g.code & 0xC0) && ((g.code >> 4) & 3) < 2;
+}
+
+static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg, int cells)
+{
+    WORD x1 = px + r->cw * (g.kind == VT_GLYPH_MISSING && g.code == 2 ? 2 : cells) - 1, y1 = py + r->ch - 1;
     r->blank = 0;
     fill(r, px, py, x1, y1, bg);
     switch (g.kind) {
@@ -772,7 +783,7 @@ static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, U
         draw_box(r, px, py, g.code, fg);
         break;
     case VT_GLYPH_BLOCK:
-        draw_block(r, px, py, g.code, fg, bg);
+        draw_block(r, px, py, g.code, fg, bg, cells);
         break;
     case VT_GLYPH_DIAGONAL:
         ink_a(r, fg);
@@ -1890,7 +1901,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                         run[0] = g.code;
                         flush_run(r, run, 1, px, py, &st);
                     } else {
-                        draw_special(r, px, py, g, st.fg, st.bg);
+                        draw_special(r, px, py, g, st.fg, st.bg, 1);
                     }
                     draw_marks(r, px, py, cp + 1, ncp - 1, cells, &st);
                     if (g.kind == VT_GLYPH_MISSING && cells == 2 && x + 1 < ncells && c[x + 1].width == 0)
@@ -1901,7 +1912,20 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             if (g.kind != VT_GLYPH_FONT) {
                 flush_run(r, run, n, run_x, py, &run_st);
                 n = 0;
-                draw_special(r, r->ox + x * r->cw, py, g, st.fg, st.bg);
+                {
+                    int cells = 1;
+                    if (block_joins(g) && !r->sel) {
+                        /* the same block in the same colours to the right: one pair of fills
+                         * for the lot (UPDemo's plasma: 22 ms a frame of per-cell RectFill) */
+                        while (x + cells < xe && cells < RUN_MAX && c[x + cells].ch == c[x].ch &&
+                               c[x + cells].width == 1 && c[x + cells].fg == c[x].fg &&
+                               c[x + cells].bg == c[x].bg && c[x + cells].attr == c[x].attr &&
+                               c[x + cells].deco == c[x].deco && !c[x + cells].ext && !c[x].ext)
+                            cells++;
+                    }
+                    draw_special(r, r->ox + x * r->cw, py, g, st.fg, st.bg, cells);
+                    x += cells - 1;
+                }
                 if (g.kind == VT_GLYPH_MISSING && g.code == 2 && x + 1 < ncells && c[x + 1].width == 0)
                     x++; /* the box spans its right half */
                 continue;
@@ -2381,7 +2405,7 @@ static void cursor_draw(vr_render *r, int on)
             /* box / block / line on the cursor colour, drawn in the default
              * background -- draw_special fills the cell with `bg` itself */
             r->cursor_colorful = 1;
-            draw_special(r, px, py, g, r->pen_default_bg, ink);
+            draw_special(r, px, py, g, r->pen_default_bg, ink, 1);
             return;
         }
         ink_ab(r, r->pen_default_bg, ink);

@@ -83,6 +83,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_verdicts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_agentpatch.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
@@ -284,11 +285,12 @@ $(BUILD)/terminfo/76/vtcon: terminfo/vtcon.terminfo
 # directories (v/vtcon), which the Amiga's ncurses 5.5 reads, and in the hex
 # ones tic on macOS writes (76/vtcon), which ncurses 6 reads (upterm-ports'
 # less, nano, tput: built with cf_cv_mixedcase=no, Amiga names ignore case).
-KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/screen.terminfo
+# vtcon-amiga says use=vtcon: after it, and TERMINFO points tic at the entries made so far
+KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/vtcon-amiga.terminfo terminfo/screen.terminfo
 $(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
 	rm -rf $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
 	mkdir -p $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
-	for f in $(KIT_TERMINFO); do tic -x -o $(BUILD)/kit-terminfo.tmp $$f; done
+	for f in $(KIT_TERMINFO); do TERMINFO=$(CURDIR)/$(BUILD)/kit-terminfo.tmp tic -x -o $(BUILD)/kit-terminfo.tmp $$f || exit 1; done
 	cd $(BUILD)/kit-terminfo.tmp && for p in */*; do n=$${p#*/}; c=$$(printf %s "$$n" | cut -c1); \
 	  mkdir -p ../kit-terminfo/$$c && cp "$$p" ../kit-terminfo/$$c/; done
 	cp -R $(BUILD)/kit-terminfo.tmp/. $(BUILD)/kit-terminfo/

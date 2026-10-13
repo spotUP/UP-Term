@@ -93,6 +93,10 @@ USE
                          Set TERMCAP /ENV/up-term/termcap.vtcon
    (Set, not SetEnv: SetEnv is global, and a ROM CON: window cannot show
    vtcon's sequences. Install and Uninstall delete a global TERM that says vtcon.)
+   An XCON: window in the AMIGA personality gets TERM=vtcon-amiga instead:
+   the same entry without bce, since console.device fills what a clear or
+   scroll leaves with the window's one background (the entry is in
+   TERMINFO beside vtcon). A /term in the window beats both.
    TERMINFO (set by Install) is /ENV/up-term/terminfo.
 
 CONFIGURATION (profiles)

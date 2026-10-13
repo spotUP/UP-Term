@@ -195,15 +195,21 @@ static void term_colors_and_setup_are_wired_and_pure(void)
     CHECK_INT(slash_colors_ok("rgb"), 1);
     CHECK_INT(slash_colors_ok("256"), 1);
     CHECK_INT(slash_colors_ok("16"), 0);
-    n = slash_env_list("xterm-256color", "rgb", buf, sizeof(buf));
+    n = slash_env_list("xterm-256color", "rgb", "", buf, sizeof(buf));
     CHECK_INT(n, 20 + 20 + 1);
     CHECK_STR(buf, "TERM=xterm-256color");
     CHECK_STR(buf + 20, "COLORTERM=truecolor");
     CHECK_INT(buf[n - 1], 0);
-    n = slash_env_list("", "256", buf, sizeof(buf));
+    n = slash_env_list("", "256", "", buf, sizeof(buf));
     CHECK_STR(buf, "COLORTERM="); /* unset */
-    CHECK_INT(slash_env_list("", "", buf, sizeof(buf)), 0);
-    CHECK_INT(slash_env_list("vtcon", "rgb", buf, 10), 0); /* does not fit */
+    CHECK_INT(slash_env_list("", "", "", buf, sizeof(buf)), 0);
+    CHECK_INT(slash_env_list("vtcon", "rgb", "", buf, 10), 0); /* does not fit */
+    /* B4: an AMIGA window has no back colour erase; its TERM says so, and a /term beats it */
+    n = slash_env_list("", "", "vtcon-amiga", buf, sizeof(buf));
+    CHECK_STR(buf, "TERM=vtcon-amiga");
+    CHECK_INT(slash_env_list("", "", "", buf, sizeof(buf)), 0); /* XTERM: vsh's own vtcon stays */
+    slash_env_list("screen", "", "vtcon-amiga", buf, sizeof(buf));
+    CHECK_STR(buf, "TERM=screen");
     CHECK_STR(slash_source("xterm", "vtcon", ""), "this window");
     CHECK_STR(slash_source("vtcon", "vtcon", ""), "profile");
     CHECK_STR(slash_source("", 0, ""), "default");
