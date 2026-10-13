@@ -255,6 +255,7 @@ struct vt_term {
     vt_u32 dflt[3];            /* the host's default text, background, cursor */
     vt_u32 dflt_set[3];        /* OSC 10-12: 0x01RRGGBB, 0 = the host's */
     int cell_w, cell_h;        /* pixels, for CSI 14t / 16t */
+    int screen_colors;         /* the pens the screen has (vt_set_screen_colors); 0: not told, the entry's 256 */
     vt_u8 cursor_style;        /* DECSCUSR */
     vt_u8 cursor_dflt;         /* the host's DECSCUSR default (vt_set_cursor_style): RIS's */
     vt_u8 allow_cols;          /* ?40: DECCOLM may change the width */
@@ -4729,11 +4730,27 @@ static const char *const caps_extra[][2] = {
     { "TN", "vtcon" }, { "name", "vtcon" }, { "Co", "256" }, { "RGB", "8/8/8" }
 };
 
+/* The screen's pen count as the text of a number, for the two names xterm
+ * and terminfo give it (colors, Co): what the host told, else the entry's. */
+static const char *caps_colors(const vt_term *t, const char *dflt, char *buf)
+{
+    int n = t->screen_colors, i = 0, k;
+    char r[8];
+    if (n <= 0)
+        return dflt;
+    for (k = 0; n > 0 && k < 7; k++, n /= 10)
+        r[k] = (char)('0' + n % 10);
+    while (k)
+        buf[i++] = r[--k];
+    buf[i] = 0;
+    return buf;
+}
+
 static void xtgettcap(vt_term *t, const char *s, int len)
 {
     static const char hex[] = "0123456789ABCDEF";
     while (len > 0) {
-        char name[16], b[320];
+        char name[16], b[320], cbuf[8];
         int k = 0, i, n = 0, h1, h2, found = 0;
         const char *v = 0;
         while (len >= 2 && *s != ';') {
@@ -4758,6 +4775,8 @@ static void xtgettcap(vt_term *t, const char *s, int len)
                 found = 1;
                 v = vt_caps[i].kind == 'b' ? 0 : vt_caps[i].value; /* a boolean: no value */
             }
+        if (found && v && (!strcmp(name, "colors") || !strcmp(name, "Co")))
+            v = caps_colors(t, v, cbuf); /* the screen's own count, not the entry's */
         if (v && (int)strlen(v) * 2 + 2 * k + 16 > (int)sizeof(b))
             found = 0, v = 0; /* cannot happen with the entry's lengths */
         b[n++] = 0x1B;
@@ -6026,6 +6045,11 @@ void vt_screen_reverse(vt_term *t, int on)
         t->modes |= VT_MODE_SCREEN_REVERSE;
     else
         t->modes &= ~(vt_u32)VT_MODE_SCREEN_REVERSE;
+}
+
+void vt_set_screen_colors(vt_term *t, int n)
+{
+    t->screen_colors = n > 0 && n < 100000 ? n : 0;
 }
 
 void vt_set_cell_pixels(vt_term *t, int w, int h)

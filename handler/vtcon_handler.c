@@ -2204,6 +2204,18 @@ static void tab_unregister(con *c);
 
 /* ---- a screen of its own (P1) ------------------------------------------------ */
 
+/* The screen's pen count for XTGETTCAP colors (UPDemo picks its 16-colour
+ * version from it): 2 to the depth, 256 for a deeper (chunky) screen. */
+static void pens_tell(con *c)
+{
+    struct Screen *scr = c->w.win ? c->w.win->WScreen : 0;
+    ULONG depth;
+    if (!scr || !c->w.t)
+        return;
+    depth = GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH);
+    vt_set_screen_colors(c->w.t, depth >= 8 ? 256 : 1 << depth);
+}
+
 /* Intuition's pens for a screen of our own, from the Workbench's: each of
  * its DrawInfo pens with the colour it has there. cols holds the 16 ANSI
  * colours (SA_Colors32, 32-bit components); with room past them (more
@@ -2501,6 +2513,7 @@ have_window:
         return 0;
     }
     DBG("vt_new", c->w.t, 0);
+    pens_tell(c);
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */
     le_free(&c->le); /* an AUTO window opening again: the last one's history (reloaded below) */
@@ -2625,6 +2638,7 @@ static int screen_switch(con *c, int mode)
     c->own_win = win;
     vtwin_set_screen(&c->w, scr);
     vtwin_rebind(&c->w, win);
+    pens_tell(c);
     vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
     menu_add(c, win);
     sbar_apply(c); /* none on the borderless full-screen window: it has no border */

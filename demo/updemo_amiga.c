@@ -1,11 +1,14 @@
-/* UPDemo [SCENE | BENCH [SCENE]]: updemo in the console window it is
+/* UPDemo [SCENE] [BENCH [SCENE]] [ANSI | FULL]: updemo in the console window it is
  * started from (an XCON: window in its xterm dialect, the default): one
  * list of scenes with captions, from SCENE (1-based) on; Space next scene,
  * B back, Q quit (Help > Demo tour runs it in a tab of its own). BENCH: the effect scenes
  * (or SCENE alone) for three seconds, then the frames a second each one
  * reached -- what the terminal draws in a second, scene by scene. The window's size is
  * the cursor's position after a move to the far corner (DSR 6): a query
- * every dialect answers, with the cursor put back. */
+ * every dialect answers, with the cursor put back. ANSI plays the version for
+ * the 16 ANSI colours, FULL the 256 and 24-bit one; by itself it asks the
+ * terminal (XTGETTCAP colors) and takes the 16-colour one on a screen of 16
+ * colours or fewer. */
 #include <stdlib.h>
 #include <dos/dos.h>
 #include <proto/dos.h>
@@ -71,6 +74,7 @@ int main(int argc, char **argv)
 {
     updemo_io io;
     int cols = 0, rows = 0, rc, bench;
+    updemo_args args;
     con = Open((STRPTR)"*", MODE_OLDFILE);
     if (!con || !IsInteractive(con)) {
         PutStr((STRPTR)"UPDemo: start it in a console window\n");
@@ -81,15 +85,16 @@ int main(int argc, char **argv)
     io.key = key;
     io.ticks = ticks;
     io.user = 0;
-    bench = argc > 1 && (argv[1][0] == 'B' || argv[1][0] == 'b');
+    updemo_parse_args(argc, argv, &args);
+    bench = args.bench;
+    updemo_colours(args.colours);
     if (!size(&cols, &rows))
         rc = 2;
     else {
-        int first = argc > 1 && !bench ? atoi(argv[1]) - 1 : 0;
-        if (bench && argc > 2) {
-            first = atoi(argv[2]) - 1; /* BENCH n: scene n alone */
-            updemo_only(1);
-        } else if (bench)
+        int first = args.scene ? args.scene - 1 : 0;
+        if (bench && args.scene)
+            updemo_only(1); /* BENCH n: scene n alone */
+        else if (bench)
             updemo_bench(1);
         rc = updemo_run(&io, cols, rows, first, bench ? 150 : 0);
     }
