@@ -126,5 +126,33 @@ class Fingerprints(unittest.TestCase):
         self.assertNotEqual(after[1], before[1], 'installer_rig fingerprint ignores dist/common')
         self.assertEqual((assign_rig.fingerprint(), installer_rig.fingerprint()), before)
 
+class Step12(unittest.TestCase):
+    """M9: the fixture answers every route and answer text of amigapi_rig.py's step 12 (host, no rig)."""
+    BODY = {'anthropic': {'messages': [{'role': 'user', 'content': 'hello'}]},
+            'completions': {'messages': [{'role': 'user', 'content': 'hello'}]},
+            'responses': {'input': [{'role': 'user', 'content': 'hello'}]},
+            'azure': {'input': [{'role': 'user', 'content': 'hello'}]},
+            'google': {'contents': [{'parts': [{'text': 'hello'}]}]},
+            'bedrock': {'messages': [{'content': [{'text': 'hello'}]}]}}
+
+    def test_the_fixture_serves_each_adapter_route(self):
+        import json, subprocess, time, urllib.request
+        import amigapi_rig as ar
+        port = 18312
+        fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools/claude_fixture.py'), '--port', str(port), '--delay', '0'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            time.sleep(1)
+            self.assertEqual(len({r[1] for r in ar.ADAPTERS_12}), 6)
+            for tag, _, _, _, route, _ in ar.ADAPTERS_12:
+                req = urllib.request.Request('http://127.0.0.1:%d%s' % (port, route), json.dumps(self.BODY[tag]).encode(),
+                                             method='POST')
+                self.assertEqual(urllib.request.urlopen(req, timeout=10).status, 200, route)
+        finally:
+            fx.terminate()
+            out = fx.communicate()[0]
+        for _, _, _, _, route, _ in ar.ADAPTERS_12:
+            self.assertEqual(sum(1 for l in out.splitlines() if l.startswith('[INFO] ' + route + ' ')), 1, route)
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
