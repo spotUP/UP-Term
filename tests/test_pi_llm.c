@@ -2573,6 +2573,15 @@ static void test_request(void)
             jw_reset(&m);
             llm_acc_message(&a, ts_of(1, 0), &m);
             CHECK(strstr(m.p, ",\"errorMessage\":\"Connection error.\"}") != 0);
+            /* the transport's reason, which pi's text leaves out, is in the debug log once per attempt (an https
+             * request on an Amiga whose LIBS: lacks AmiSSL said only "Connection error.", 2026-10-13) */
+            {
+                const char *line = "llm: Connection error.: cannot connect to 127.0.0.1: connection refused\n", *p;
+                int lines = 0;
+                for (p = ps.log.p; p && (p = strstr(p, line)) != 0; p += strlen(line))
+                    lines++;
+                CHECK_INT(lines, ri ? 4 : 1);
+            }
             llm_acc_free(&a);
         }
     }
