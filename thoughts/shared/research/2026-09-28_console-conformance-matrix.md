@@ -748,9 +748,13 @@ does XCON:/AMIGA through DOS (identical output, window size included).
   the cursor stays on its character (or as far past the text as it was).
   Where the personality keeps a scrollback (xterm, pcansi) it is laid out with the
   screen as one text (2026-10-04, gaps #11): a line that began in the scrollback joins
-  its rest, the screen is the bottom of the result (rows below the cursor dropped
-  first), the rows above go back to the scrollback, and a taller window brings rows
-  down from it (iTerm2, Terminal.app, Alacritty). Not reflowed: the alternate screen
+  its rest, the rows above go back to the scrollback. A screen whose text reached
+  its last row stays bottom-anchored (rows below the cursor dropped first, a taller
+  window brings rows down from the scrollback: iTerm2, Terminal.app, Alacritty); a
+  screen with room under its text stays top-anchored (W-T1, 2026-10-13: the first
+  screen row keeps its place and the cursor its place in the text, the scrollback is
+  not pulled under a prompt near the top; kitty screen_resize, xterm resizeGravity
+  default). Not reflowed: the alternate screen
   (xterm does not; its program redraws on SIGWINCH), DEC double-size rows (cut or
   padded in place). Tests: `make test ONLY=reflow`.
   Narrowing was not measured on the ROM; the engine treats it as the inverse.
