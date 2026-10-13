@@ -2122,8 +2122,40 @@ static void pi_theme_depth_follows_pi_not_a_fixed_16(void)
     CHECK_STR(sgr, "\033[48;2;52;53;65m");
 }
 
+/* After C:Claude or amiga-pi leaves, the window's keys are a shell's again: every input mode its start
+ * switched on is off, on the screen the shell reads at. Owner, rig 3, 2026-10-13: after amiga-pi (pi's
+ * fullscreen) quit, `vtc:amiga-pi -r` typed at the vsh prompt ran as `\033[117` (vsh: ot found, the
+ * "\033[117: n" eaten as a CSI) and `5uvtc:amiga-pi` (insert volume 5uvtc): kitty's CSI >1u went to
+ * the main screen's stack before ?1049h and the CSI <u at the end popped the alternate screen's, so a
+ * Ctrl key at the prompt came as CSI 117;5u and the console's line editor took it as text. */
+static void modes_restored_at_exit(void)
+{
+    static const char *const names[] = { "inline", "regular", "fullscreen" };
+    static const int scr[] = { TUI_SCREEN_INLINE, TUI_SCREEN_REGULAR, TUI_SCREEN_FULL };
+    int i;
+    for (i = 0; i < 3; i++) {
+        static const char *script[] = { 0 };
+        vt_u32 m;
+        screen(80, 24, script);
+        tui.screen = scr[i];
+        CHECK_INT(tui_start(&tui), 0);
+        CHECK(vt_kitty_flags(cs.vt) != 0); /* the program's own keys while it runs */
+        tui_stop(&tui);
+        m = vt_modes(cs.vt);
+        if (vt_kitty_flags(cs.vt) || vt_modify_other_keys(cs.vt) || (m & (VT_MODE_BRACKET_PASTE | VT_MODE_FOCUS | VT_MODE_ALT_SCREEN)))
+            printf("  %s: kitty %d, modifyOtherKeys %d, modes %lx left on\n", names[i], vt_kitty_flags(cs.vt),
+                   vt_modify_other_keys(cs.vt), (unsigned long)m);
+        CHECK_INT(vt_kitty_flags(cs.vt), 0);
+        CHECK_INT(vt_modify_other_keys(cs.vt), 0);
+        CHECK_INT((long)(m & (VT_MODE_BRACKET_PASTE | VT_MODE_FOCUS | VT_MODE_ALT_SCREEN)), 0);
+        unscreen();
+        cs_close();
+    }
+}
+
 void suite_claude_tui(void)
 {
+    modes_restored_at_exit();
     pi_theme_depth_follows_pi_not_a_fixed_16();
     pi_theme_256_is_pi_tuis_conversion();
     keys();
