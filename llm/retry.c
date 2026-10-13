@@ -13,6 +13,7 @@ typedef struct gate {
     const llm_sink *out;
     int content, done, err;
     char et[48], em[256];
+    char raw[48];               /* the held error's stop_raw (the provider's own reason), "" none */
 } gate;
 
 static void gate_ev(void *u, const llm_event *e)
@@ -22,6 +23,7 @@ static void gate_ev(void *u, const llm_event *e)
         long n = e->n < (long)sizeof(g->em) - 1 ? e->n : (long)sizeof(g->em) - 1;
         g->err = 1;
         cl_copy(g->et, e->err_type ? e->err_type : "error", sizeof(g->et));
+        cl_copy(g->raw, e->stop_raw ? e->stop_raw : "", sizeof(g->raw));
         if (n > 0 && e->p)
             memcpy(g->em, e->p, (size_t)n);
         else
@@ -37,16 +39,22 @@ static void gate_ev(void *u, const llm_event *e)
         g->out->ev(g->out->u, e);
 }
 
-static void final_error(const llm_sink *k, int stop, const char *type, const char *msg)
+static void final_error_raw(const llm_sink *k, int stop, const char *type, const char *msg, const char *raw)
 {
     llm_event e;
     llm_event_init(&e, LE_ERROR);
     e.stop = stop;
+    e.stop_raw = raw && *raw ? raw : 0;
     e.err_type = type;
     e.p = msg;
     e.n = (long)strlen(msg);
     if (k && k->ev)
         k->ev(k->u, &e);
+}
+
+static void final_error(const llm_sink *k, int stop, const char *type, const char *msg)
+{
+    final_error_raw(k, stop, type, msg, 0);
 }
 
 typedef struct rq {
@@ -161,7 +169,15 @@ int llm_request(llm_req *q)
     cl_copy(path, u.path, sizeof(path));
     if (path[0] && path[strlen(path) - 1] == '/')
         path[strlen(path) - 1] = 0;
-    cl_cat(path, q->be->path, sizeof(path));
+    if (q->be->route) {
+        char rt[240];
+        if (q->be->route(q->ctx, rt, sizeof(rt)) < 0) {
+            final_error(q->sink, LS_ERROR, "config", "the request path is too long");
+            return -1;
+        }
+        cl_cat(path, rt, sizeof(path));
+    } else
+        cl_cat(path, q->be->path, sizeof(path));
     if (!u.tls) {
         unsigned char ip[4];
         int have = llm_ipv4(u.host, ip) || (q->h.resolve && q->h.resolve(q->h.u, u.host, ip) == 0);
@@ -248,12 +264,15 @@ int llm_request(llm_req *q)
         c.sse = &ss;
         c.errbody = &errbody;
         g.err = 0;
+        g.raw[0] = 0;
         q->attempts = attempt;
         rc = llm_post(&c);
         err[0] = 0;
         if (rc == LP_BREAK) {
             final_error(q->sink, LS_ABORTED, "aborted", "Request aborted");
         } else if (rc == LP_OK && resp.status == 200 && resp.event_stream) {
+            if (!c.bad && !g.done && !g.err && q->be->fin)
+                q->be->fin(dec, &gk);       /* the body ended: an API without a terminal event ends here */
             if (c.bad)
                 cl_copy(err, "the answer's stream was malformed", sizeof(err));
             else if (g.done && !g.err) {
@@ -291,7 +310,7 @@ int llm_request(llm_req *q)
         if (rc == LP_BREAK)
             break;
         if (!retry || attempt > retries) {
-            final_error(q->sink, LS_ERROR, g.err ? g.et : "error", err);
+            final_error_raw(q->sink, LS_ERROR, g.err ? g.et : "error", err, g.err ? g.raw : 0);
             break;
         }
         if (wait < 0) {

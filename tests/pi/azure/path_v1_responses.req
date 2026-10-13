@@ -1,0 +1,2 @@
+POST https://myres.cognitiveservices.azure.com/openai/v1/responses?api-version=v1
+api-key: sk-test-not-real

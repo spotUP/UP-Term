@@ -114,7 +114,8 @@ const char *llm_ant_effort(const llm_model *m, int thinking)
 
 int llm_mid_system(const llm_model *m)
 {
-    return m && m->api && (!strcmp(m->api, "anthropic-messages") || !strcmp(m->api, "openai-responses")) &&
+    return m && m->api && (!strcmp(m->api, "anthropic-messages") || !strcmp(m->api, "openai-responses") ||
+                          !strcmp(m->api, "azure-openai-responses")) &&
            m->compat.mid_system == 1;
 }
 
@@ -834,5 +835,5 @@ static void a_free(void *dec)
 
 const llm_backend llm_be_anthropic = {
     "anthropic-messages", "x-api-key", "/v1/messages", a_head, a_body, a_xhead, a_new, a_feed, a_free,
-    "Anthropic stream ended before message_stop"
+    "Anthropic stream ended before message_stop", 0, 0
 };

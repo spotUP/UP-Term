@@ -263,6 +263,8 @@ void llm_acc_event(void *u, const llm_event *e)
             fail(a, LS_ERROR, "the stream sent a delta for a block it had not opened");
             break;
         }
+        if (e->type == LE_SIG_DELTA && e->replace)
+            jw_reset(&b->sig);
         jw_raw(e->type == LE_DELTA ? &b->a : &b->sig, e->p, e->n);
         break;
     case LE_BLOCK_END:
@@ -395,7 +397,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
             llm_b_thinking(&c, b->a.p, b->a.n, b->sig.p, b->sig.n, b->redacted);
             break;
         case LB_TOOLCALL:
-            llm_b_toolcall(&c, b->id, b->name, b->a.p, b->a.n, 0);
+            llm_b_toolcall(&c, b->id, b->name, b->a.p, b->a.n, b->sig.n ? b->sig.p : 0);
             break;
         default:
             {

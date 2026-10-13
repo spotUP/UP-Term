@@ -1,0 +1,7 @@
+stop=toolUse
+error=-
+usage=30,28,0,0
+thinking="Plan the reads." sig="c2lnLW9uZQ=="
+text="Let me look." sig="dGV4dHNpZw=="
+tool=read_1760100000000_1 read {"path":"S:Startup-Sequence"}
+tool=call/odd id.1 bash {"command":"list S:"}

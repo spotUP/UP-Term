@@ -1,0 +1,6 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Plan the reads.","thought":true,"thoughtSignature":"c2lnLW9uZQ=="}]},"index":0}],"usageMetadata":{"promptTokenCount":30,"thoughtsTokenCount":4,"totalTokenCount":34},"responseId":"resp-src-1"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Let me look.","thoughtSignature":"dGV4dHNpZw=="}]},"index":0}],"usageMetadata":{"promptTokenCount":30,"thoughtsTokenCount":4,"totalTokenCount":34},"responseId":"resp-src-1"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"read","args":{"path":"S:Startup-Sequence"}},"thoughtSignature":"Y2FsbHNpZzE="},{"functionCall":{"id":"call/odd id.1","name":"bash","args":{"command":"list S:"}}}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":24,"thoughtsTokenCount":4,"totalTokenCount":58},"responseId":"resp-src-1"}
+

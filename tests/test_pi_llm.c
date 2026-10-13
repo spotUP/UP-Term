@@ -13,6 +13,8 @@
 #include "../llm/accum.h"
 #include "../llm/request.h"
 #include "../llm/handoff.h"
+#include "../llm/creds.h"
+#include "../llm/be_azure.h"
 #include "claude_load.h"
 #include "pi_stub.h"
 
@@ -548,8 +550,9 @@ static char *compact_dup(const char *p, long n, long *out_n)
 }
 
 
-/* what pi's digest line says of a message of ours: stop, error, usage, blocks */
-static void resp_digest(const char *msg, jw *o)
+/* what pi's digest line says of a message of ours: stop, error, usage, blocks; ext (the google and azure generators):
+ * the reasoning count, the raw stop reason, the response id and a tool call's thought signature as well */
+static void resp_digest(const char *msg, jw *o, int ext)
 {
     jv m, v, c, b, t, x;
     jit it;
@@ -573,8 +576,27 @@ static void resp_digest(const char *msg, jw *o)
             jw_rawz(o, i ? "," : "");
             jw_long(o, json_get(v, k[i], &x) ? json_long(x, -1) : -1);
         }
+        if (ext) {
+            jw_rawz(o, "\nusage2=");
+            jw_long(o, json_get(v, "reasoning", &x) ? json_long(x, -1) : -1);
+        }
     }
     jw_rawz(o, "\n");
+    if (ext) {
+        jw_rawz(o, "raw=");
+        if (json_get(m, "rawStopReason", &v)) {
+            json_str(v, buf, sizeof(buf));
+            jw_rawz(o, buf);
+        } else
+            jw_rawz(o, "-");
+        jw_rawz(o, " rid=");
+        if (json_get(m, "responseId", &v)) {
+            json_str(v, buf, sizeof(buf));
+            jw_rawz(o, buf);
+        } else
+            jw_rawz(o, "-");
+        jw_rawz(o, "\n");
+    }
     if (!json_get(m, "content", &c))
         return;
     json_iter(c, &it);
@@ -606,6 +628,13 @@ static void resp_digest(const char *msg, jw *o)
             jw_rawz(o, " ");
             if (json_get(b, "arguments", &v))
                 jw_raw(o, v.p, v.n);
+            if (ext) {
+                jw_rawz(o, " sig=");
+                if (json_get(b, "thoughtSignature", &v))
+                    jw_raw(o, v.p, v.n);
+                else
+                    jw_rawz(o, "-");
+            }
             jw_rawz(o, "\n");
         }
     }
@@ -645,15 +674,152 @@ static long est_of(const char *sys, const char *tools, long tools_n, char *const
 static char *rc_reply[RC_MAX];
 static char rc_name[RC_MAX][32];
 
-static void test_responses(void)
+/* the tool call of the reply named `name` (index i): its id and name; 0 when there is none */
+static int rc_call(const char *name, int idx, char *id, long idcap, char *tname, long ncap)
 {
-    char *cases_txt, name[64];
-    long cn, nreq0, feeds0 = llm_feeds_responses;
+    int j;
+    for (j = 0; j < RC_MAX; j++)
+        if (rc_reply[j] && !strcmp(rc_name[j], name)) {
+            jv m, c, b, t, v;
+            jit it;
+            int k = 0;
+            if (json_parse(rc_reply[j], (long)strlen(rc_reply[j]), &m) || !json_get(m, "content", &c))
+                return 0;
+            json_iter(c, &it);
+            while (json_next(&it, 0, &b))
+                if (json_get(b, "type", &t) && json_streq(t, "toolCall") && k++ == idx) {
+                    json_get(b, "id", &v);
+                    json_str(v, id, idcap);
+                    json_get(b, "name", &v);
+                    json_str(v, tname, ncap);
+                    return 1;
+                }
+        }
+    return 0;
+}
+
+/* a case message with a tools/gen_pi_*.mjs marker: {"$result": {reply, index, text, isError}} is the toolResult for a
+ * reply's tool call; "$id": {reply, index} on a message gives its toolCallId; malloc'd text, 0 when it has no marker */
+static char *rc_expand(jv mv)
+{
+    jv x, r, v;
+    char id[200], tname[80], rn[32], buf[2000];
+    jw w;
+    char *out;
+    if (json_type(mv) != J_OBJ)
+        return 0;
+    if (json_get(mv, "$result", &x)) {
+        json_get(x, "reply", &r);
+        json_str(r, rn, sizeof(rn));
+        CHECK(json_get(x, "index", &v) != 0 && rc_call(rn, (int)json_long(v, 0), id, sizeof(id), tname, sizeof(tname)));
+        jw_init(&w);
+        jw_rawz(&w, "{\"role\":\"toolResult\",\"toolCallId\":");
+        jw_strz(&w, id);
+        jw_rawz(&w, ",\"toolName\":");
+        jw_strz(&w, tname);
+        jw_rawz(&w, ",\"content\":[{\"type\":\"text\",\"text\":");
+        json_get(x, "text", &v);
+        json_str(v, buf, sizeof(buf));
+        jw_strz(&w, buf);
+        jw_rawz(&w, "}],\"isError\":");
+        jw_rawz(&w, json_get(x, "isError", &v) && json_type(v) == J_TRUE ? "true" : "false");
+        jw_rawz(&w, ",\"timestamp\":1760100002000}");
+    } else if (json_get(mv, "$id", &x)) {
+        jit it;
+        jv k;
+        int n = 0;
+        json_get(x, "reply", &r);
+        json_str(r, rn, sizeof(rn));
+        CHECK(json_get(x, "index", &v) != 0 && rc_call(rn, (int)json_long(v, 0), id, sizeof(id), tname, sizeof(tname)));
+        jw_init(&w);
+        jw_rawz(&w, "{");
+        json_iter(mv, &it);
+        while (json_next(&it, &k, &v)) {
+            char kk[32];
+            json_str(k, kk, sizeof(kk));
+            if (!strcmp(kk, "$id"))
+                continue;
+            jw_rawz(&w, n++ ? "," : "");
+            jw_raw(&w, k.p, k.n);
+            jw_rawz(&w, ":");
+            if (!strcmp(kk, "toolCallId"))
+                jw_strz(&w, id);
+            else
+                jw_raw(&w, v.p, v.n);
+        }
+        jw_rawz(&w, "}");
+    } else
+        return 0;
+    out = w.p;
+    return out;
+}
+
+/* a golden line "name: value" of a .req / .headers file found in the head, header names case-insensitive */
+static int head_has(const char *head, const char *line)
+{
+    const char *h;
+    long n = (long)strlen(line);
+    for (h = head; *h; h++) {
+        long i;
+        for (i = 0; i < n; i++) {
+            char a = h[i], b = line[i];
+            if (a >= 'A' && a <= 'Z')
+                a = (char)(a + 32);
+            if (b >= 'A' && b <= 'Z')
+                b = (char)(b + 32);
+            if (a != b || !a)
+                break;
+        }
+        if (i == n && (h == head || h[-1] == '\n'))
+            return 1;
+    }
+    return 0;
+}
+
+static llm_ts fixed_wall(void *u)
+{
+    (void)u;
+    return ts_of(1760100000L, 0);
+}
+
+static char *case_env_name[8], *case_env_val[8];
+static int case_nenv;
+
+static long case_getenv(void *u, const char *name, char *out, long cap)
+{
+    int i;
+    (void)u;
+    for (i = 0; i < case_nenv; i++)
+        if (!strcmp(case_env_name[i], name) && (long)strlen(case_env_val[i]) < cap) {
+            strcpy(out, case_env_val[i]);
+            return (long)strlen(out);
+        }
+    return -1;
+}
+
+/* one api's recordings: tests/pi/<dir>/cases.json, a stream (.sse) per case, and what pi made of it: the request body
+ * (.body), the request line and headers (.req, or .headers for the openai-responses session headers) and the digest
+ * of the answer (.digest). `line` / `auth`: the fixed start of the head and credential line (openai-responses) */
+typedef struct api_spec {
+    const char *dir;
+    long *feeds;                /* the backend's sentinel */
+    int min_cases;
+    int ext;                    /* resp_digest's ext form */
+    const char *line, *auth;
+} api_spec;
+
+static void run_api_cases(const api_spec *sp)
+{
+    char *cases_txt, name[64], path[96];
+    long cn, nreq0, feeds0 = *sp->feeds;
     jv root, cs, c, v, ms, mv;
     jit it;
     llm_reg r;
     int ncase = 0, i;
-    cases_txt = claude_load("../pi/responses/cases.json", &cn);
+    strcpy(path, "../pi/");
+    strcat(path, sp->dir);
+    strcat(path, "/cases.json");
+    cases_txt = claude_load(path, &cn);
     CHECK(cases_txt != 0);
     if (!cases_txt)
         return;
@@ -661,12 +827,13 @@ static void test_responses(void)
     CHECK(json_get(root, "cases", &cs) != 0);
     llm_reg_init(&r);
     CHECK_INT(llm_reg_builtin(&r), 0);
+    llm_set_wall(fixed_wall, 0);
     json_iter(cs, &it);
     while (json_next(&it, 0, &c)) {
         char mname[96], file[96], sse[64], lvl[16], sys[200], sid[80];
         const llm_model *md;
-        char *msgs[16], *want_body, *want_dig, *want_hdr;
-        long mn[16], bn, dn, hn;
+        char *msgs[16], *want_body, *want_dig, *want_hdr, *want_req;
+        long mn[16], bn, dn, hn, rn;
         int nm = 0, lv, own[16];
         jit mit;
         llm_ctx cx;
@@ -675,6 +842,7 @@ static void test_responses(void)
         llm_sink k;
         llm_view vw;
         llm_model wmod;
+        llm_cfg cfg;
         jw dig, msg;
         char *tools = 0;
         long tools_n = 0;
@@ -691,6 +859,8 @@ static void test_responses(void)
         CHECK(md != 0);
         if (!md)
             continue;
+        wmod = *md;
+        md = &wmod;
         json_get(c, "level", &v);
         json_str(v, lvl, sizeof(lvl));
         lv = llm_think_of(lvl);
@@ -708,18 +878,23 @@ static void test_responses(void)
         json_iter(ms, &mit);
         while (json_next(&mit, 0, &mv)) {
             jv rep;
+            char *ex;
             if (json_type(mv) == J_OBJ && json_get(mv, "$reply", &rep)) {
-                char rn[32];
+                char rn2[32];
                 int j;
-                json_str(rep, rn, sizeof(rn));
+                json_str(rep, rn2, sizeof(rn2));
                 msgs[nm] = 0;
                 for (j = 0; j < RC_MAX; j++)
-                    if (rc_reply[j] && !strcmp(rc_name[j], rn))
+                    if (rc_reply[j] && !strcmp(rc_name[j], rn2))
                         msgs[nm] = rc_reply[j];
                 CHECK(msgs[nm] != 0);
                 if (!msgs[nm])
                     msgs[nm] = (char *)"{\"role\":\"user\",\"content\":\"\",\"timestamp\":0}";
                 mn[nm] = (long)strlen(msgs[nm]);
+            } else if ((ex = rc_expand(mv)) != 0) {
+                msgs[nm] = ex;
+                mn[nm] = (long)strlen(ex);
+                own[nm] = 1;
             } else {
                 /* cases.json is indented; a session's messages are compact */
                 msgs[nm] = compact_dup(mv.p, mv.n, &mn[nm]);
@@ -729,9 +904,36 @@ static void test_responses(void)
         }
         if (json_get(c, "window", &v)) {
             /* a smaller context window (the generator's "window"): the output cap clamps on a short input */
-            wmod = *md;
             wmod.context_window = json_long(v, 0);
-            md = &wmod;
+        }
+        /* azure: the endpoint the case's environment (and baseUrl) give, as pi's resolveAzureConfig */
+        llm_cfg_init(&cfg);
+        cfg.getenv = case_getenv;
+        case_nenv = 0;
+        if (json_get(c, "env", &v)) {
+            jit eit;
+            jv ek, ev;
+            json_iter(v, &eit);
+            while (json_next(&eit, &ek, &ev) && case_nenv < 8) {
+                char tmp[200];
+                json_str(ek, tmp, sizeof(tmp));
+                case_env_name[case_nenv] = (char *)malloc(strlen(tmp) + 1);
+                strcpy(case_env_name[case_nenv], tmp);
+                json_str(ev, tmp, sizeof(tmp));
+                case_env_val[case_nenv] = (char *)malloc(strlen(tmp) + 1);
+                strcpy(case_env_val[case_nenv], tmp);
+                case_nenv++;
+            }
+        }
+        if (json_get(c, "baseUrl", &v)) {
+            static char burl[8][200];
+            static int nb;
+            json_str(v, burl[nb % 8], sizeof(burl[0]));
+            wmod.base_url = burl[nb++ % 8];
+        }
+        {
+            char eerr[300];
+            CHECK_INT(llm_cfg_endpoint(&cfg, &wmod, eerr, sizeof(eerr)), 0);
         }
         CHECK_INT(llm_prepare(md, (const char *const *)msgs, mn, nm, ts_of(1760100000L, 0), &vw), 0);
         memset(&cx, 0, sizeof(cx));
@@ -747,10 +949,13 @@ static void test_responses(void)
         cx.session_id = sid[0] ? sid : 0;
         ps_reset();
         ps_pool_up(LLM_POOL);
-        strcpy(file, "../pi/responses/");
+        strcpy(file, "../pi/");
+        strcat(file, sp->dir);
+        strcat(file, "/");
         strcat(file, sse);
         strcat(file, ".sse");
         ps_sse(file, 0);
+        llm_google_counter(0);          /* pi's generated tool-call ids count from 1 in every case (tools/gen_pi_google.mjs) */
         llm_acc_init(&a, md->api, md->provider);
         llm_acc_model(&a, md->id, md->cost);
         k = llm_acc_sink(&a);
@@ -758,7 +963,9 @@ static void test_responses(void)
         nreq0 = ps.nreq;
         llm_request(&q);
         /* the request on the wire: pi's body, byte for byte */
-        strcpy(file, "../pi/responses/");
+        strcpy(file, "../pi/");
+        strcat(file, sp->dir);
+        strcat(file, "/");
         strcat(file, name);
         strcat(file, ".body");
         want_body = claude_load(file, &bn);
@@ -768,9 +975,46 @@ static void test_responses(void)
             printf("    case %s body\n      got  %s\n      want %s\n", name, ps.body[0], want_body);
             CHECK(0);
         }
-        CHECK(ps.nreq && strstr(ps.head[0], "POST /v1/responses HTTP/1.1\r\nHost: api.openai.com\r\n") == ps.head[0]);
-        CHECK(ps.nreq && strstr(ps.head[0], "Authorization: Bearer sk-test-not-real\r\n") != 0);
+        if (sp->line) {
+            CHECK(ps.nreq && strstr(ps.head[0], sp->line) == ps.head[0]);
+            CHECK(ps.nreq && strstr(ps.head[0], sp->auth) != 0);
+        }
         file[strlen(file) - 5] = 0;
+        strcat(file, ".req");
+        want_req = claude_load_opt(file, &rn);
+        if (want_req) {
+            /* the first line is "POST <url>": the request line and the host; the others are headers */
+            char *line = want_req, exp[400];
+            int first = 1;
+            while (*line) {
+                char *e = strchr(line, '\n'), save;
+                if (!e)
+                    break;
+                save = *e;
+                *e = 0;
+                if (first) {
+                    const char *u = line + 5, *hs, *pe;
+                    int tls = !strncmp(u, "https://", 8);
+                    hs = u + (tls ? 8 : 7);
+                    pe = strchr(hs, '/');
+                    strcpy(exp, "POST ");
+                    strcat(exp, pe);
+                    strcat(exp, " HTTP/1.1\r\nHost: ");
+                    strncat(exp, hs, (size_t)(pe - hs));
+                    strcat(exp, "\r\n");
+                    if (ps.nreq != nreq0 + 1 || strstr(ps.head[0], exp) != ps.head[0]) {
+                        printf("    case %s request line\n      got  %.200s\n      want %s", name, ps.nreq ? ps.head[0] : "", exp);
+                        CHECK(0);
+                    }
+                    first = 0;
+                } else
+                    CHECK(ps.nreq && head_has(ps.head[0], line));
+                *e = save;
+                line = e + 1;
+            }
+            free(want_req);
+        }
+        file[strlen(file) - 4] = 0;
         strcat(file, ".headers");
         want_hdr = claude_load_opt(file, &hn);
         if (want_hdr) {
@@ -792,7 +1036,7 @@ static void test_responses(void)
         jw_init(&msg);
         jw_init(&dig);
         llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
-        resp_digest(msg.p, &dig);
+        resp_digest(msg.p, &dig, sp->ext);
         file[strlen(file) - 8] = 0;
         strcat(file, ".digest");
         want_dig = claude_load(file, &dn);
@@ -818,14 +1062,330 @@ static void test_responses(void)
         for (i = 0; i < nm; i++)
             if (own[i])
                 free(msgs[i]);
+        for (i = 0; i < case_nenv; i++) {
+            free(case_env_name[i]);
+            free(case_env_val[i]);
+        }
+        case_nenv = 0;
+        llm_cfg_free(&cfg);
         ncase++;
     }
-    CHECK(ncase >= 27);
-    CHECK(llm_feeds_responses > feeds0);          /* the new backend ran */
+    CHECK(ncase >= sp->min_cases);
+    CHECK(*sp->feeds > feeds0);                   /* the backend ran */
+    llm_set_wall(0, 0);
     for (i = 0; i < RC_MAX; i++) {
         free(rc_reply[i]);
         rc_reply[i] = 0;
     }
+    llm_reg_free(&r);
+    free(cases_txt);
+}
+
+static void test_responses(void)
+{
+    api_spec sp;
+    sp.dir = "responses";
+    sp.feeds = &llm_feeds_responses;
+    sp.min_cases = 27;
+    sp.ext = 0;
+    sp.line = "POST /v1/responses HTTP/1.1\r\nHost: api.openai.com\r\n";
+    sp.auth = "Authorization: Bearer sk-test-not-real\r\n";
+    run_api_cases(&sp);
+}
+
+/* M3: azure-openai-responses against the AzureOpenAI client's own request (tests/pi/azure, tools/gen_pi_responses.mjs azure):
+ * the body, the URL (base URL rules, api-version), the api-key header, the deployment name, the environment's endpoint */
+static void test_azure(void)
+{
+    api_spec sp;
+    sp.dir = "azure";
+    sp.feeds = &llm_feeds_azure;
+    sp.min_cases = 19;
+    sp.ext = 0;
+    sp.line = 0;
+    sp.auth = 0;
+    run_api_cases(&sp);
+}
+
+/* M3: pi's azure-openai-config.ts error texts and precedence, beside the goldens: no base URL anywhere, a base URL that
+ * is no URL, the environment over the model's own, the deployment map's trimming */
+static void test_azure_endpoint(void)
+{
+    llm_model m;
+    llm_azure_ep ep;
+    char err[300];
+    llm_model_init(&m);
+    m.id = "gpt-4.1";
+    m.api = "azure-openai-responses";
+    m.provider = "azure";
+    m.base_url = "";
+    CHECK_INT(llm_azure_resolve(&m, 0, 0, 0, 0, &ep, err, sizeof(err)), -1);
+    CHECK_STR(err, "Azure OpenAI base URL is required. Set AZURE_OPENAI_BASE_URL or AZURE_OPENAI_RESOURCE_NAME, or pass azureBaseUrl, azureResourceName, or model.baseUrl.");
+    m.base_url = "ftp://x.openai.azure.com";
+    CHECK_INT(llm_azure_resolve(&m, 0, 0, 0, 0, &ep, err, sizeof(err)), -1);
+    CHECK_STR(err, "Invalid Azure OpenAI base URL: ftp://x.openai.azure.com");
+    m.base_url = "https://model.openai.azure.com/";
+    CHECK_INT(llm_azure_resolve(&m, 0, 0, 0, 0, &ep, err, sizeof(err)), 0);
+    CHECK_STR(ep.base, "https://model.openai.azure.com/openai/v1");
+    CHECK_STR(ep.version, "v1");
+    CHECK_STR(ep.deployment, "gpt-4.1");
+    /* the base URL variable beats the resource name beats the model's baseUrl (blank values count as unset) */
+    CHECK_INT(llm_azure_resolve(&m, "  ", "res", "2025-01-01", "gpt-4.1= d1 ,gpt-4.1=d2", &ep, err, sizeof(err)), 0);
+    CHECK_STR(ep.base, "https://res.openai.azure.com/openai/v1");
+    CHECK_STR(ep.version, "2025-01-01");
+    CHECK_STR(ep.deployment, "d2");                     /* the last entry for a model wins (Map.set) */
+    CHECK_INT(llm_azure_resolve(&m, "http://10.0.0.5:9000/az", "res", 0, 0, &ep, err, sizeof(err)), 0);
+    CHECK_STR(ep.base, "http://10.0.0.5:9000/az");      /* not an Azure host: kept as given */
+}
+
+/* M1: google-generative-ai against the @google/genai SDK's own request (tests/pi/google, tools/gen_pi_google.mjs) */
+static void test_google(void)
+{
+    api_spec sp;
+    sp.dir = "google";
+    sp.feeds = &llm_feeds_google;
+    sp.min_cases = 25;
+    sp.ext = 1;
+    sp.line = 0;
+    sp.auth = 0;
+    run_api_cases(&sp);
+}
+
+/* M7: the handoff between apis. tests/pi/handoff (tools/gen_pi_handoff.mjs): six models, each also a target. A stream
+ * recorded for each is decoded by our backend (its digest must be pi's), and the conversation it produced -- the user's
+ * prompt, the answer, a result for each tool call, a second prompt -- is replayed to every other model: our request body
+ * is the one pi built (pi's transformMessages inside its provider), byte for byte. 30 ordered pairs, 20 of them between
+ * the five apis (anthropic-messages, openai-completions, google-generative-ai, openai-responses, azure-openai-responses). */
+#define HP_MAX 8
+
+typedef struct hp_src {
+    char name[24], sse[32];
+    llm_model m;
+    char id[64], provider[32], base[200];
+    char *msg;                  /* the assistant message our decoder made */
+} hp_src;
+
+static void test_handoff_pairs(void)
+{
+    char *cases_txt, *tools = 0, sys[200];
+    long cn, tools_n = 0;
+    jv root, srcs, c, v, cust;
+    jit it;
+    llm_reg r;
+    llm_cfg cfg;
+    hp_src hs[HP_MAX];
+    int n = 0, i, j, pairs = 0, api_pairs = 0;
+    long f_a = llm_feeds_anthropic, f_o = llm_feeds_openai, f_g = llm_feeds_google, f_r = llm_feeds_responses,
+         f_z = llm_feeds_azure;
+    memset(hs, 0, sizeof(hs));
+    cases_txt = claude_load("../pi/handoff/cases.json", &cn);
+    CHECK(cases_txt != 0);
+    if (!cases_txt)
+        return;
+    CHECK_INT(json_parse(cases_txt, cn, &root), 0);
+    json_get(root, "system", &v);
+    json_str(v, sys, sizeof(sys));
+    json_get(root, "tools", &v);
+    tools = compact_dup(v.p, v.n, &tools_n);
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    llm_cfg_init(&cfg);
+    llm_set_wall(fixed_wall, 0);
+    json_get(root, "sources", &srcs);
+    json_iter(srcs, &it);
+    while (json_next(&it, 0, &c) && n < HP_MAX) {
+        hp_src *h = &hs[n];
+        char mname[96], file[96], *want, *got_dig;
+        long wn;
+        llm_ctx cx;
+        llm_req q;
+        llm_acc a;
+        llm_sink k;
+        llm_view vw;
+        jw dig;
+        char *um;
+        long un;
+        const char *one[1];
+        long onen[1];
+        json_get(c, "name", &v);
+        json_str(v, h->name, sizeof(h->name));
+        json_get(c, "sse", &v);
+        json_str(v, h->sse, sizeof(h->sse));
+        if (json_get(c, "custom", &cust)) {
+            h->m = ps_model_openai("http://192.168.1.10:11434/v1");
+            json_get(cust, "id", &v);
+            json_str(v, h->id, sizeof(h->id));
+            h->m.id = h->id;
+            json_get(cust, "provider", &v);
+            json_str(v, h->provider, sizeof(h->provider));
+            h->m.provider = h->provider;
+            json_get(cust, "baseUrl", &v);
+            json_str(v, h->base, sizeof(h->base));
+            h->m.base_url = h->base;
+            h->m.reasoning = 0;
+            json_get(cust, "window", &v);
+            h->m.context_window = json_long(v, 0);
+            json_get(cust, "maxTokens", &v);
+            h->m.max_tokens = json_long(v, 0);
+        } else {
+            const llm_model *cm;
+            char *sl;
+            json_get(c, "model", &v);
+            json_str(v, mname, sizeof(mname));
+            sl = strchr(mname, '/');
+            *sl = 0;
+            cm = llm_reg_find(&r, mname, sl + 1);
+            CHECK(cm != 0);
+            if (!cm)
+                continue;
+            h->m = *cm;
+            if (json_get(c, "baseUrl", &v)) {
+                json_str(v, h->base, sizeof(h->base));
+                h->m.base_url = h->base;
+            }
+            CHECK_INT(llm_cfg_endpoint(&cfg, &h->m, file, sizeof(file)), 0);
+        }
+        /* decode the recorded stream with our backend: a request answering the first prompt */
+        um = (char *)"{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"look at the startup sequence\"}],\"timestamp\":1760100000000}";
+        un = (long)strlen(um);
+        one[0] = um;
+        onen[0] = un;
+        CHECK_INT(llm_prepare(&h->m, one, onen, 1, ts_of(1760100000L, 0), &vw), 0);
+        memset(&cx, 0, sizeof(cx));
+        cx.model = &h->m;
+        cx.system = sys;
+        cx.msgs = vw.m;
+        cx.msg_n = vw.n;
+        cx.nmsg = vw.count;
+        cx.tools = tools;
+        cx.tools_n = tools_n;
+        cx.thinking = LT_HIGH;
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        strcpy(file, "../pi/handoff/");
+        strcat(file, h->sse);
+        strcat(file, ".sse");
+        ps_sse(file, 0);
+        llm_google_counter(0);
+        llm_acc_init(&a, h->m.api, h->m.provider);
+        llm_acc_model(&a, h->m.id, h->m.cost);
+        k = llm_acc_sink(&a);
+        q = req_of(&h->m, &cx, &k, "sk-test-not-real");
+        llm_request(&q);
+        {
+            jw msg;
+            jw_init(&msg);
+            llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+            h->msg = (char *)malloc((size_t)msg.n + 1);
+            memcpy(h->msg, msg.p, (size_t)msg.n + 1);
+            jw_init(&dig);
+            resp_digest(h->msg, &dig, 0);
+            jw_free(&msg);
+        }
+        strcpy(file, "../pi/handoff/src_");
+        strcat(file, h->name);
+        strcat(file, ".digest");
+        got_dig = claude_load(file, &wn);
+        want = got_dig;
+        CHECK(want != 0);
+        if (want && strcmp(want, dig.p)) {
+            printf("    source %s digest\n      got  %s\n      want %s\n", h->name, dig.p, want);
+            CHECK(0);
+        }
+        free(got_dig);
+        jw_free(&dig);
+        llm_acc_free(&a);
+        llm_view_free(&vw);
+        n++;
+    }
+    for (i = 0; i < n; i++)
+        for (j = 0; j < n; j++) {
+            hp_src *s = &hs[i], *t = &hs[j];
+            char file[96], *msgs[16], *want_body;
+            long mn[16], bn;
+            int nm = 0, k2;
+            jv m, cc, b, ty, idv, nmv;
+            jit bit;
+            llm_view vw;
+            llm_ctx cx;
+            jw w, res;
+            if (i == j || !s->msg || !t->m.api)
+                continue;
+            msgs[nm] = (char *)"{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"look at the startup sequence\"}],\"timestamp\":1760100000000}";
+            mn[nm] = (long)strlen(msgs[nm]);
+            nm++;
+            msgs[nm] = s->msg;
+            mn[nm] = (long)strlen(s->msg);
+            nm++;
+            CHECK_INT(json_parse(s->msg, (long)strlen(s->msg), &m), 0);
+            json_get(m, "content", &cc);
+            json_iter(cc, &bit);
+            while (json_next(&bit, 0, &b)) {
+                char id[200], nmb[80];
+                if (!json_get(b, "type", &ty) || !json_streq(ty, "toolCall"))
+                    continue;
+                json_get(b, "id", &idv);
+                json_str(idv, id, sizeof(id));
+                json_get(b, "name", &nmv);
+                json_str(nmv, nmb, sizeof(nmb));
+                jw_init(&res);
+                jw_rawz(&res, "{\"role\":\"toolResult\",\"toolCallId\":");
+                jw_strz(&res, id);
+                jw_rawz(&res, ",\"toolName\":");
+                jw_strz(&res, nmb);
+                jw_rawz(&res, ",\"content\":[{\"type\":\"text\",\"text\":\"result of ");
+                jw_rawz(&res, nmb);
+                jw_rawz(&res, "\"}],\"isError\":false,\"timestamp\":1760100002000}");
+                msgs[nm] = res.p;
+                mn[nm] = res.n;
+                nm++;
+            }
+            msgs[nm] = (char *)"{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"thanks\"}],\"timestamp\":1760100003000}";
+            mn[nm] = (long)strlen(msgs[nm]);
+            nm++;
+            CHECK_INT(llm_prepare(&t->m, (const char *const *)msgs, mn, nm, ts_of(1760100000L, 0), &vw), 0);
+            memset(&cx, 0, sizeof(cx));
+            cx.model = &t->m;
+            cx.est_tokens = est_of(sys, tools, tools_n, msgs, mn, nm);
+            cx.system = sys;
+            cx.msgs = vw.m;
+            cx.msg_n = vw.n;
+            cx.nmsg = vw.count;
+            cx.tools = tools;
+            cx.tools_n = tools_n;
+            cx.thinking = LT_HIGH;
+            llm_google_counter(0);
+            jw_init(&w);
+            CHECK_INT(llm_backend_of(t->m.api)->body(&cx, &w), 0);
+            strcpy(file, "../pi/handoff/");
+            strcat(file, s->name);
+            strcat(file, "__");
+            strcat(file, t->name);
+            strcat(file, ".body");
+            want_body = claude_load(file, &bn);
+            CHECK(want_body != 0);
+            if (want_body && w.p && strcmp(want_body, w.p)) {
+                printf("    pair %s -> %s body\n      got  %s\n      want %s\n", s->name, t->name, w.p, want_body);
+                CHECK(0);
+            }
+            pairs++;
+            if (strcmp(s->m.api, t->m.api))
+                api_pairs++;
+            free(want_body);
+            jw_free(&w);
+            for (k2 = 2; k2 < nm - 1; k2++)
+                free(msgs[k2]);
+            llm_view_free(&vw);
+        }
+    CHECK_INT(pairs, 30);
+    CHECK_INT(api_pairs, 28);
+    CHECK(llm_feeds_anthropic > f_a && llm_feeds_openai > f_o && llm_feeds_google > f_g && llm_feeds_responses > f_r &&
+          llm_feeds_azure > f_z);       /* every source stream went through its own decoder */
+    llm_set_wall(0, 0);
+    for (i = 0; i < n; i++)
+        free(hs[i].msg);
+    free(tools);
+    llm_cfg_free(&cfg);
     llm_reg_free(&r);
     free(cases_txt);
 }
@@ -980,7 +1540,7 @@ static void test_anthropic_pi(void)
         jw_init(&msg);
         jw_init(&dig);
         llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
-        resp_digest(msg.p, &dig);
+        resp_digest(msg.p, &dig, 0);
         file[strlen(file) - 8] = 0;
         strcat(file, ".digest");
         want_dig = claude_load(file, &dn);
@@ -2310,6 +2870,10 @@ void suite_pi_llm(void)
     test_reach();
     test_anthropic_baseurl();
     test_responses();
+    test_google();
+    test_azure();
+    test_azure_endpoint();
+    test_handoff_pairs();
     test_anthropic_pi();
     test_openai_bodies();
     test_completions();

@@ -1,0 +1,6 @@
+stop=error
+error=Google stream ended without a finish reason
+usage=10,3,0,0
+usage2=0
+raw=- rid=resp-nofin
+text="never finished" sig=-

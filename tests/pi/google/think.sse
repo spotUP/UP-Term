@@ -1,0 +1,8 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"**Plan** ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":20,"totalTokenCount":20},"responseId":"resp-think-1"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Read the file first.","thought":true,"thoughtSignature":"c2lnLW9uZQ=="}]},"index":0}],"usageMetadata":{"promptTokenCount":20,"thoughtsTokenCount":7,"totalTokenCount":27},"responseId":"resp-think-1"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"The file "}]},"index":0}],"usageMetadata":{"promptTokenCount":20,"thoughtsTokenCount":7,"totalTokenCount":27},"responseId":"resp-think-1"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"says hi.","thoughtSignature":"c2lnLXR3bw=="}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":20,"candidatesTokenCount":5,"thoughtsTokenCount":7,"cachedContentTokenCount":8,"totalTokenCount":32},"responseId":"resp-think-1"}
+
