@@ -1,0 +1,20 @@
+Short:        Claude Code client for UP-Term
+Author:       spotUP
+Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
+Type:         comm/misc
+Version:      @VERSION@
+Replaces:     none
+Architecture: m68k-amigaos >= 3.0.0; m68k-020
+Requires:     comm/term/UP-Term.lha >= @NEEDSBASE@, TCP/IP stack (Roadshow, Miami, AmiTCP), util/libs/AmiSSL-v5-OS3.lha for https
+Distribution: Aminet
+
+C:Claude and C:ClaudeCode: a Claude Code client for an UP-Term window. It reads, searches
+and edits files and runs commands with your own Anthropic API key (billed to that key).
+Without an UP-Term window it falls back to a line mode.
+
+Needs the base archive UP-Term.lha (version @NEEDSBASE@ or newer) installed first.
+
+Install: unpack, double-click Install. Uninstall removes C:Claude and C:ClaudeCode and keeps
+your settings in ENVARC:Claude.
+
+Licence: PLACEHOLDER: UP-Term's own licence is not decided yet (ledger K4); until it is set this archive cannot be uploaded.

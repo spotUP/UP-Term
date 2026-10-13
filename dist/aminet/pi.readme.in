@@ -1,0 +1,23 @@
+Short:        pi coding agent (amiga-pi) for UP-Term
+Author:       spotUP
+Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
+Type:         comm/misc
+Version:      @VERSION@
+Replaces:     none
+Architecture: m68k-amigaos >= 3.0.0; m68k-020
+Requires:     comm/term/UP-Term.lha >= @NEEDSBASE@, TCP/IP stack (Roadshow, Miami, AmiTCP), util/libs/AmiSSL-v5-OS3.lha for https
+Distribution: Aminet
+
+C:amiga-pi: pi (pi.dev, version 1.1.0), the coding agent, for an UP-Term window. It reads,
+searches and edits files and runs commands with the model of your choice (Anthropic, OpenAI
+and compatible servers, Google, Azure, Bedrock) and your own key. Lua extensions, prompt
+templates, skills and MCP servers work as in pi.
+
+Needs the base archive UP-Term.lha (version @NEEDSBASE@ or newer) installed first.
+
+Install: unpack, double-click Install. It makes ENVARC:amiga-pi if it is missing and never
+overwrites settings.json, models.json or auth.json. Uninstall removes C:amiga-pi and keeps
+ENVARC:amiga-pi.
+
+Licence: MIT, Copyright (c) 2026 spotUP (LICENSE in the source). Parts: pi MIT (Mario Zechner),
+Lua 5.4 MIT, stb public domain or MIT.

@@ -68,8 +68,9 @@ KEY_X, KEY_RETURN = 0x32, 0x44
 
 def fingerprint():
     h = hashlib.sha256()
-    for f in (ROOT / "dist/Install.installer", ROOT / "dist/install.dos", ROOT / "dist/Uninstall", KIT / "Install",
-              KIT / "Files/install.dos"):
+    for script in ir.assembled_scripts():
+        h.update(script)
+    for f in (KIT / "Install", KIT / "Files/install.dos"):
         h.update(f.read_bytes() if f.exists() else b"missing " + str(f).encode())
     return h.hexdigest()[:16]
 

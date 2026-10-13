@@ -24,6 +24,16 @@ VTC = paths.RIG / "vtc"
 # the kit under test: build/dist/UP-Term, or UPTERM_KIT=<drawer> (build/dist is
 # shared with every agent's `make dist`, so a rig run takes a private copy)
 KIT = pathlib.Path(os.environ.get('UPTERM_KIT') or ROOT / "build/dist/UP-Term")
+
+
+def assembled_scripts(pkg='base'):
+    """The bytes of the package's Install, install.dos and Uninstall as tools/mkinstaller.py
+    assembles them from dist/ and dist/common/: what a kit build writes, so a rig verdict's
+    fingerprint moves with every part the scripts are made of (K5), built kit or not."""
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import mkinstaller
+    return [mkinstaller.build(ROOT / 'dist' / name, pkg).encode('latin-1')
+            for name in ('Install.installer', 'install.dos', 'Uninstall')]
 # a clean image (rig.py --os) has no DH0:: its system volume is SYS:
 CLEAN = '--os' in os.environ.get('UPTERM_RIG_FLAGS', '')
 SYSVOL = 'SYS:' if CLEAN else 'DH0:'

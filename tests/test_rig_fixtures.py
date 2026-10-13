@@ -102,5 +102,57 @@ class Rig(unittest.TestCase):
         finally: ir._main = orig
         self.assertEqual(self.fake.files['ENVARC:Claude/remote'], b'; c\n192.168.0.198 2323\n')
 
+class Fingerprints(unittest.TestCase):
+    """K5: a rig verdict's fingerprint covers the scripts as the kit build assembles them,
+    so a change in a dist/common/ part (not in the dist/ templates) invalidates old verdicts."""
+    def test_a_change_in_dist_common_changes_the_fingerprint(self):
+        import shutil, tempfile
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import assign_rig, installer_rig, mkinstaller
+        before = (assign_rig.fingerprint(), installer_rig.fingerprint())
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        for d in ('common', 'values'):
+            shutil.copytree(ROOT / 'dist' / d, tmp / 'dist' / d)
+        part = tmp / 'dist/common/record.dos'
+        part.write_text(part.read_text(encoding='latin-1') + '; changed\n', encoding='latin-1')
+        saved = mkinstaller.ROOT
+        mkinstaller.ROOT = tmp
+        try:
+            after = (assign_rig.fingerprint(), installer_rig.fingerprint())
+        finally:
+            mkinstaller.ROOT = saved
+            shutil.rmtree(tmp)
+        self.assertNotEqual(after[0], before[0], 'assign_rig fingerprint ignores dist/common')
+        self.assertNotEqual(after[1], before[1], 'installer_rig fingerprint ignores dist/common')
+        self.assertEqual((assign_rig.fingerprint(), installer_rig.fingerprint()), before)
+
+class Step12(unittest.TestCase):
+    """M9: the fixture answers every route and answer text of amigapi_rig.py's step 12 (host, no rig)."""
+    BODY = {'anthropic': {'messages': [{'role': 'user', 'content': 'hello'}]},
+            'completions': {'messages': [{'role': 'user', 'content': 'hello'}]},
+            'responses': {'input': [{'role': 'user', 'content': 'hello'}]},
+            'azure': {'input': [{'role': 'user', 'content': 'hello'}]},
+            'google': {'contents': [{'parts': [{'text': 'hello'}]}]},
+            'bedrock': {'messages': [{'content': [{'text': 'hello'}]}]}}
+
+    def test_the_fixture_serves_each_adapter_route(self):
+        import json, subprocess, time, urllib.request
+        import amigapi_rig as ar
+        port = 18312
+        fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools/claude_fixture.py'), '--port', str(port), '--delay', '0'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            time.sleep(1)
+            self.assertEqual(len({r[1] for r in ar.ADAPTERS_12}), 6)
+            for tag, _, _, _, route, _ in ar.ADAPTERS_12:
+                req = urllib.request.Request('http://127.0.0.1:%d%s' % (port, route), json.dumps(self.BODY[tag]).encode(),
+                                             method='POST')
+                self.assertEqual(urllib.request.urlopen(req, timeout=10).status, 200, route)
+        finally:
+            fx.terminate()
+            out = fx.communicate()[0]
+        for _, _, _, _, route, _ in ar.ADAPTERS_12:
+            self.assertEqual(sum(1 for l in out.splitlines() if l.startswith('[INFO] ' + route + ' ')), 1, route)
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

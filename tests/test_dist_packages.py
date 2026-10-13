@@ -5,6 +5,7 @@ import pathlib, re, sys, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import mkmanifest as mm
+import mkreadme as mr
 import pkgs
 
 ROWS = pkgs.rows()
@@ -77,6 +78,61 @@ class Packages(unittest.TestCase):
             pkgs.get('nope', 'archive')
         with self.assertRaises(SystemExit):
             pkgs.get('base', 'nope')
+
+
+class Readme(unittest.TestCase):
+    """K2-9: the Aminet readme of every archive (dist/aminet/<id>.readme.in, tools/mkreadme.py)."""
+    IDS = [r['id'] for r in ROWS] + ['src']
+
+    def test_every_archive_has_a_readme_with_every_field_in_order(self):
+        for i in self.IDS:
+            _, text = mr.build(i)
+            self.assertEqual(tuple(mr.fields(text)), mr.FIELDS, i)
+            self.assertTrue(all(mr.fields(text)[f] for f in mr.FIELDS), i)
+
+    def test_short_is_at_most_40_characters(self):
+        for i in self.IDS:
+            short = mr.fields(mr.build(i)[1])['Short']
+            self.assertLessEqual(len(short), 40, '%s: %r' % (i, short))
+
+    def test_version_is_the_one_of_packages_txt(self):
+        for r in ROWS:
+            self.assertEqual(mr.fields(mr.build(r['id'])[1])['Version'], r['version'])
+        bumped = [dict(r, version='2.7') if r['id'] == 'nvim' else dict(r) for r in ROWS]
+        self.assertEqual(mr.fields(mr.build('nvim', table=bumped)[1])['Version'], '2.7')
+        self.assertEqual(mr.fields(mr.build('src', table=bumped)[1])['Version'], ROWS[0]['version'])
+
+    def test_an_add_on_requires_the_base_at_the_version_packages_txt_names(self):
+        for r in ROWS[1:]:
+            req = mr.fields(mr.build(r['id'])[1])['Requires']
+            self.assertIn('comm/term/UP-Term.lha >= ' + r['needs-base'], req, r['id'])
+        bumped = [dict(r, **{'needs-base': '1.3'}) if r['id'] == 'pi' else dict(r) for r in ROWS]
+        self.assertIn('UP-Term.lha >= 1.3', mr.fields(mr.build('pi', table=bumped)[1])['Requires'])
+
+    def test_the_directories_are_the_owners_choice(self):
+        want = {'base': 'comm/term', 'src': 'comm/term', 'claude': 'comm/misc', 'pi': 'comm/misc',
+                'nvim': 'text/edit', 'python': 'dev/lang'}
+        for i, d in want.items():
+            self.assertEqual(mr.fields(mr.build(i)[1])['Type'], d, i)
+
+    def test_licences_pi_is_mit_and_the_base_one_is_a_marked_placeholder(self):
+        self.assertIn('Licence: MIT', mr.build('pi')[1])
+        base = mr.build('base')[1]
+        self.assertIn('Licence: PLACEHOLDER', base)
+
+    def test_release_refuses_a_readme_with_a_placeholder(self):
+        import subprocess
+        for i, rc in (('base', 1), ('pi', 1)):    # the uploader address is a placeholder in every readme
+            r = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/mkreadme.py'), i, '--release'],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, rc, i)
+            self.assertIn('PLACEHOLDER', r.stderr)
+        r = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/mkreadme.py'), 'pi'], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0)
+
+    def test_every_value_is_filled(self):
+        for i in self.IDS:
+            self.assertNotRegex(mr.build(i)[1], r'@[A-Z]+@')
 
 
 if __name__ == '__main__':

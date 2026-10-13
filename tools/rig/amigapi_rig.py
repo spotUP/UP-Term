@@ -132,6 +132,12 @@ that would write RAM:pi-blocked.txt, then answers openai_final.sse; run through 
 The extensions are removed again (an extensions directory that was there is put aside first and restored after). A visible
 window titled "amiga-pi step 11". Needs rig 2 or another free rig, never 3.
 
+Step 12 (M9): every adapter of amiga-pi against the fixture's routes. models.json (in VTC:pi12agent, PI_CODING_AGENT_DIR)
+names one provider per api: anthropic-messages, openai-completions, openai-responses, google-generative-ai,
+azure-openai-responses (a non-Azure base URL), bedrock-converse-stream (AWS keys in ENV:, signed). `amiga-pi -p hello <NIL:`
+each; per adapter: exit code 0, exactly one request on the adapter's route (key header none over plain http, sigv4 for
+bedrock), the answer's text printed. openai-codex has no fixture route for its responses endpoint: not covered.
+
 Step 13 (N8): the TUI in an UP-Term window. amiga-pi runs in a visible XCON: window titled "amiga-pi step 13a/b/c" and
 the keys are typed into it the way claude_rig.py types them (tools/rig/typewin.py); the screen is read back as TEXT
 (Right Amiga A, Right Amiga C, VTC:snipprobe CLIP <file>), the rest from the fixture's request bodies and the
@@ -1149,6 +1155,82 @@ def step11(port):
         c.run('Delete RAM:pi11-done VTC:pi11.dos VTC:x11-block.lua VTC:x11-bad.lua VTC:pi11.sh RAM:pi-blocked.txt QUIET')
 
 
+# M9: step 12's adapters: (tag, models.json api, baseUrl suffix, model id, the request line the fixture logs, the answer)
+ADAPTERS_12 = (
+    ('anthropic', 'anthropic-messages', '', 'm1', '/v1/messages', 'Hello from the Amiga!'),
+    ('completions', 'openai-completions', '/v1', 'm2', '/v1/chat/completions', 'Hello from the Amiga!'),
+    ('responses', 'openai-responses', '/v1', 'm3', '/v1/responses', 'Hello from the Amiga.'),
+    ('google', 'google-generative-ai', '/v1beta', 'g1', '/v1beta/models/g1:streamGenerateContent?alt=sse', 'Hello from the Amiga.'),
+    # azure: a base URL that is not an Azure host is kept as given; the route is /responses?api-version=v1 below it
+    ('azure', 'azure-openai-responses', '/az', 'a1', '/az/responses?api-version=v1', 'Hello from the Amiga.'),
+    # bedrock: the base URL is the endpoint; the request is signed with the AWS keys of the environment
+    ('bedrock', 'bedrock-converse-stream', '', 'b1', '/model/b1/converse-stream', 'Hello from the Amiga.'),
+)
+AWS_ENV_12 = ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION')
+
+
+def step12(port):
+    """M9: every adapter of amiga-pi, one `-p` run each, against tools/claude_fixture.py's routes. openai-codex is
+    not here: the fixture serves its OAuth endpoints (--oauth) but no codex responses route (code only, NOT rig-run)."""
+    import json
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    log = paths.RIG / 'amigapi_fixture12.log'
+    dump = paths.RIG / 'amigapi_dump12'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    # models.json in the step's own agent dir (PI_CODING_AGENT_DIR): ENVARC:amiga-pi stays as it is
+    agent = VTC / 'pi12agent'
+    base = 'http://127.0.0.1:%d' % port
+    providers = {}
+    for tag, api, suffix, mid, _, _ in ADAPTERS_12:
+        providers['fx' + tag] = {'baseUrl': base + suffix, 'api': api, 'apiKey': 'sk-rig-12-must-not-be-sent',
+                                 'models': [{'id': mid, 'contextWindow': 32000}]}
+    try:
+        agent.mkdir(exist_ok=True)
+        (agent / 'models.json').write_text(json.dumps({'providers': providers}))
+        lines = ['Echo "amiga-pi step 12: one run per adapter against the fixture"',
+                 'SetEnv PI_CODING_AGENT_DIR VTC:pi12agent',
+                 'SetEnv AWS_ACCESS_KEY_ID AKIDRIG12', 'SetEnv AWS_SECRET_ACCESS_KEY rig12secret', 'SetEnv AWS_REGION us-east-1',
+                 'CD RAM:']
+        for tag, _, _, mid, _, _ in ADAPTERS_12:
+            for f in ('pi12-%s.out' % tag, 'pi12-%s.rc' % tag):
+                if (VTC / f).exists():
+                    (VTC / f).unlink()
+            # <NIL: so the run never reads the script as its standard input (R7)
+            lines += ['VTC:amiga-pi --model fx%s/%s --no-session --no-tools -p "hello" <NIL: >VTC:pi12-%s.out' % (tag, mid, tag),
+                      'Echo "rc=$RC" >VTC:pi12-%s.rc' % tag]
+        lines += ['Delete ENV:AWS_ACCESS_KEY_ID ENV:AWS_SECRET_ACCESS_KEY ENV:AWS_REGION QUIET']
+        ended, req = run_watched('pi12', 'amiga-pi step 12', lines, 'pi12-done')
+        check('12 the window ended', ended)
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        seen = [l for l in open(log) if l.startswith('[INFO] /')]
+        for tag, api, _, mid, route, answer in ADAPTERS_12:
+            out, rc = rd('pi12-%s.out' % tag), rd('pi12-%s.rc' % tag).strip()
+            check('12 %s: exit code 0' % api, rc == 'rc=0', repr((rc, out[:200])))
+            mine = [l for l in seen if l.split()[1] == route]
+            check('12 %s: the fixture saw one request on %s' % (api, route), len(mine) == 1, repr(seen))
+            if tag == 'bedrock':
+                # a signature goes over plain http (it is no secret); the bearer form must not
+                check('12 %s: signed (sigv4), no bearer' % api, len(mine) == 1 and 'auth=sigv4' in mine[0], repr(mine))
+            else:
+                check('12 %s: the key stayed home (no key header over plain http)' % api,
+                      len(mine) == 1 and 'key_header=none' in mine[0], repr(mine))
+            check('12 %s: the answer text printed' % api, answer in out, repr(out[:200]))
+        check('12 no other request reached the fixture', len(seen) == len(ADAPTERS_12), repr(seen))
+        check('12 no requester', not req, repr(req))
+    finally:
+        fx.terminate()
+        c.run('Delete ENV:AWS_ACCESS_KEY_ID ENV:AWS_SECRET_ACCESS_KEY ENV:AWS_REGION QUIET')
+        c.run('Delete RAM:pi12-done VTC:pi12.dos VTC:pi12agent ALL QUIET')
+        shutil.rmtree(agent, ignore_errors=True)
+
+
 def mask_rpc(o, spec):
     """A record of pi's RPC/JSON stream after the masks of amiga-pi's tests/pi/rpc/masks.json (spec: that file, parsed),
     the one list of this rig and of amiga-pi's tests/test_pi_modes.c, with each mask's reason. The rules are those of
@@ -1507,7 +1589,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14), help='one step only (default: all but 13 and 14)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14), help='one step only (default: all but 13 and 14)')
     ap.add_argument('--force', action='store_true', help='step 13: run every check again')
     a = ap.parse_args()
     global force13
@@ -1534,6 +1616,8 @@ def main():
         step10(a.port + 9)
     if a.step in (None, 11):
         step11(a.port + 10)
+    if a.step in (None, 12):
+        step12(a.port + 11)
     if a.step == 13:
         step13(a.port + 12)
     if a.step == 14:
