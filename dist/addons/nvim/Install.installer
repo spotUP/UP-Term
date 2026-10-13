@@ -9,8 +9,8 @@
     "It goes into UP-Term:nvim (about 2100 files, 32 MB).\n"
     "Needs UP-Term.lha installed first.\n"
     (all))
-(set #kb-nvim 27500)
-(set #totalkb (+ 27500 20))
+(set #kb-nvim @KBCOPYNVIM@)
+(set #totalkb @KBTOTAL@)
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))
     (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"

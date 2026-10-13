@@ -15,7 +15,7 @@ import pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-import pkgs
+import kitsize, pkgs
 
 INC = re.compile(r'(?m)^; @include (\S+)[ \t]*\n')
 
@@ -91,6 +91,9 @@ def read_values(pkg_id, extra=()):
     }
     if row['needs-base'] != '-':
         values['BASEMAJOR'], values['BASEMINOR'] = row['needs-base'].split('.')
+    # the sizes of the staged kit (tools/kitsize.py): what the free-space check and the progress bar use. With no
+    # staged kit (the host tests of the script language) every part counts its minimum.
+    values.update({k: str(v) for k, v in kitsize.sizes(ROOT / 'build/dist' / row['archive'], pkg_id).items()})
     f = ROOT / 'dist/values' / (pkg_id + '.txt')
     lines = f.read_text(encoding='latin-1').splitlines() if f.exists() else []
     for line in list(lines) + list(extra):

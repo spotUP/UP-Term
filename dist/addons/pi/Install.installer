@@ -9,7 +9,7 @@
     "needs a TCP/IP stack and, for https, AmiSSL 5; the\n"
     "key is yours. No UP-Term needed.\n"
     (all))
-(set #totalkb (+ 1600 20))
+(set #totalkb @KBTOTAL@)
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))
     (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
@@ -34,7 +34,7 @@
 
 (P_OPTIONS)
 
-(set #step "pi" #kb 1600 #n 3
+(set #step "pi" #kb @KBPI@ #n 3
      #why (cat "Installing C:amiga-pi and making ENVARC:amiga-pi\n"
                "for its settings (Install writes none)."))
 (P_STEP)

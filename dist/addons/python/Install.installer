@@ -9,8 +9,8 @@
     "It goes into SYS:Python3 (15 MB) and brings the\n"
     "ixemul.library it needs, only if yours is older.\n"
     (all))
-(set #kb-python 15040)
-(set #totalkb (+ 15040 400 20))
+(set #kb-python @KBCOPYPYTHON@)
+(set #totalkb @KBTOTAL@)
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))
     (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
@@ -36,7 +36,7 @@
 
 (P_OPTIONS)
 
-(set #step "ixemul" #kb 400 #n 3
+(set #step "ixemul" #kb @KBIXEMUL@ #n 3
      #why (cat "Looking for ixemul.library 47 or newer; the one\n"
                "in this archive goes in only if there is none."))
 (P_STEP)

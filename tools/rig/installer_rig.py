@@ -9,6 +9,11 @@ and clicks them, then checks what landed and runs Uninstall.
             its default: the drawer SYS:UP-Term
   dest      AVERAGE, the drawer page given VTC:Apps/UP-Term (typed into the
             askdir string gadget)
+  space     AVERAGE on a System: partition made too full for the default choices (K7: a filler file leaves
+            about 12 MB; the kit needs more): the drawer page is answered by default, and the room message
+            (the choices need N KB, the drawer's disk has M KB; Proceed asks for another drawer) comes up
+            before anything is copied. The case Aborts on the drawer page that follows it, and checks that
+            nothing was installed. Every page is saved as build/<rig>/installer/space-<n>.png to read.
   novice    NOVICE: no question asked, only the pages marked (all) -- the
             welcome and the summary -- and the default drawer
   update    AVERAGE as default, then the kit with one file changed
@@ -293,6 +298,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     pages.write_text('')
     t0 = time.time()
     last_sig, clicked_at, retried, typed, chose = None, None, None, False, set()
+    askdirs, shots = 0, 0
     last_page_at = time.time()
     work_since, last_pct, dumped_pct = None, None, set()
 
@@ -327,15 +333,22 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             log.append('page [%s] ids %s' % (title, ' '.join(map(str, sorted(gads)))))
             last_sig, clicked_at, retried = sig, None, None
             last_page_at = time.time()
+            if expect_abort:
+                # K7: every page as an image (to read the room message), and the drawer page counted: a second
+                # one is the room message's Proceed (ask for another drawer)
+                shots += 1
+                w, h, rows = ami.grab()
+                ami.png(str(OUT / ('%s-%02d.png' % (case, shots))), w, h, rows)
+                if 89 in gads and 92 in gads:
+                    askdirs += 1
         m = re.findall(r'(\d+)% done', tree)
         if m and m[-1] != last_pct:
             last_pct = m[-1]
             log.append('%s%% done at %.0f s' % (last_pct, time.time() - t0))
-        if 90 not in gads and expect_abort and gads and time.time() - last_page_at > 10:
-            # the abort message (room check): its one gadget ends the Installer
-            dump(tree, 'abort message')
-            log.append('abort message page, ids %s: clicked' % ' '.join(map(str, sorted(gads))))
-            click(gads[91][0] if 91 in gads else gads[min(gads)][0])
+        if expect_abort and askdirs >= 2 and 91 in gads:
+            # the room message was answered with Proceed and the drawer page came back: Abort Install ends it
+            log.append('room message seen: the drawer page came a second time (page %d); Abort Install (id 91)' % shots)
+            click(gads[91][0])
             time.sleep(5)
             continue
         if 90 not in gads:
@@ -444,7 +457,44 @@ def update_phase(ck, inst, level, base, t_install):
     ck(pct and max(pct) <= 100, 'the bar counts only the Update\'s parts (at most 100%%: %s)' % (max(pct) if pct else '-'))
 
 
+SPACE_LEFT = 12 * 1024 * 1024    # what the space case leaves free on SYS:
+FILLER = 'SYS:space-filler'
+
+
+def sys_free_bytes():
+    """The free bytes of SYS: as the rig's Info prints them (blocks of 512)."""
+    out = ir.run('Info')[1]
+    for line in out.splitlines():
+        f = line.split()
+        if len(f) > 5 and f[0].upper() == 'DH0:':
+            return int(f[3]) * 512
+    raise SystemExit('installer_rig: cannot read the free space of SYS: from Info: %r' % out)
+
+
+def fill_sys():
+    """A file on SYS: that leaves SPACE_LEFT free (the kit's default choices need more): written on the host in VTC: and
+    copied, then the host copy removed."""
+    ir.run('Delete >NIL: %s QUIET' % FILLER)
+    n = sys_free_bytes() - SPACE_LEFT
+    if n <= 0:
+        return
+    host = VTC / 'space-filler'
+    with open(host, 'wb') as f:
+        f.truncate(n)
+    try:
+        ir.run_slow('fillsys', 'Copy VTC:space-filler %s' % FILLER, 900)
+    finally:
+        host.unlink(missing_ok=True)
+    print('installer_rig space: SYS: has %d KB free after the filler' % (sys_free_bytes() // 1024))
+
+
 def run_case(case):
+    if case == "space":
+        try:
+            fill_sys()
+            return run_base_case(case)
+        finally:
+            ir.run_slow('unfillsys', 'Delete >NIL: %s QUIET' % FILLER, 300)
     if case.startswith("addon-"):
         return run_addon_case(case[len("addon-"):])
     if case == "migrate":
@@ -489,7 +539,8 @@ def run_base_case(case):
         return False, '; '.join(ck.failed + log[-3:])
     if case == 'space':
         # the room check: Install on a volume with too little room says so and changes nothing
-        ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase (the room message)', '; '.join(log[-3:]))
+        ck(any(l.startswith('room message seen') for l in log), 'the room message came up and led back to the drawer page', '; '.join(log[-3:]))
+        ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase', '; '.join(log[-3:]))
         ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'no drawer was made', '')
         ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
         ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
@@ -731,7 +782,7 @@ def main():
 def _main(fx):
     args = sys.argv[1:]
     only = [args[args.index("ONLY") + 1]] if "ONLY" in args else []
-    # space needs a volume too small for the kit (the old 12 MB clean images; not run any more, 19f4c95 recorded 7/7)
+    # space fills SYS: with a file first (K7); it is not part of the default run
     names = [c for c in CASES if only or c != 'space']
     for case in (c for c in names if not only or c in only):
         for pkg in case_packages(case)[0]:

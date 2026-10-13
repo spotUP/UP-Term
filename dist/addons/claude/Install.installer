@@ -47,7 +47,7 @@
               "2323 for the server in tools/nas).")
         (default #oldremote)))
 
-(set #totalkb (+ 900 20))
+(set #totalkb @KBTOTAL@)
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))
     (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
@@ -73,7 +73,7 @@
 
 (P_OPTIONS)
 
-(set #step "claude" #kb 900 #n 3
+(set #step "claude" #kb @KBCLAUDE@ #n 3
      #why (cat "Installing C:Claude, C:ClaudeCode and C:uptelnet, and\n"
                "its settings drawer ENVARC:Claude (no key written)."))
 (P_STEP)
