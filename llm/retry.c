@@ -62,7 +62,68 @@ typedef struct rq {
     llm_hooks inner;
     char errtype[100];          /* the answer's x-amzn-errortype header (AWS APIs), "" none */
     char ctype[100];            /* its Content-Type header, "" none */
+    http_resp *resp;            /* the attempt's answer */
+    jw hdrs;                    /* its headers as name NUL value NUL ..., for the tap */
+    int told;                   /* the tap has been told of this answer */
 } rq;
+
+/* tap->response, once per answer: a 2xx status, the headers as one JSON object (lower-case names; a repeated one joined by ", ") */
+static void tap_response(rq *r)
+{
+    const llm_tap *t = r->q->tap;
+    jw o;
+    const char *p = r->hdrs.p;
+    long i = 0, n = r->hdrs.n;
+    if (r->told || !t || !t->response || !r->resp || r->resp->status < 200 || r->resp->status > 299)
+        return;
+    r->told = 1;
+    jw_init(&o);
+    jw_rawz(&o, "{");
+    while (i < n) {
+        const char *name = p + i, *val = name + strlen(name) + 1, *q;
+        long k, first = 1, j;
+        int dup = 0;
+        /* a name seen before is part of an earlier member */
+        for (j = 0; j < i;) {
+            const char *pn = p + j;
+            if (!strcmp(pn, name)) {
+                dup = 1;
+                break;
+            }
+            j += (long)strlen(pn) + 1;
+            j += (long)strlen(p + j) + 1;
+        }
+        if (!dup) {
+            if (o.n > 1)
+                jw_rawz(&o, ",");
+            jw_strz(&o, name);
+            jw_rawz(&o, ":");
+            jw_rawz(&o, "\"");
+            for (k = i; k < n;) {
+                const char *pn = p + k, *pv = pn + strlen(pn) + 1;
+                if (!strcmp(pn, name)) {
+                    jw v;
+                    if (!first)
+                        jw_rawz(&o, ", ");
+                    first = 0;
+                    jw_init(&v);
+                    jw_strz(&v, pv);
+                    if (v.n >= 2)
+                        jw_raw(&o, v.p + 1, v.n - 2);       /* the escaped text without its quotes */
+                    jw_free(&v);
+                }
+                k += (long)strlen(pn) + 1 + (long)strlen(pv) + 1;
+            }
+            jw_rawz(&o, "\"");
+        }
+        q = val + strlen(val) + 1;
+        i = (long)(q - p);
+    }
+    jw_rawz(&o, "}");
+    if (!o.oom)
+        t->response(t->u, r->q->model, r->resp->status, o.p, o.n);
+    jw_free(&o);
+}
 
 static int rq_head(void *u, const char **head, long *hn)
 {
@@ -75,7 +136,11 @@ static int rq_head(void *u, const char **head, long *hn)
 static void rq_event(void *u, const char *event, const char *data, long n)
 {
     rq *r = (rq *)u;
+    const llm_tap *t = r->q->tap;
     (void)event;
+    tap_response(r);                    /* pi: onResponse comes before the first event of the stream */
+    if (t && t->stream && n > 0 && data[0] == '{')
+        t->stream(t->u, r->q->model, data, n);
     if (r->inner.log) {
         r->inner.log(r->inner.u, data, n);
         r->inner.log(r->inner.u, "\n", 1);
@@ -91,6 +156,15 @@ static int rq_poll(void *u)
 static void rq_header(void *u, const char *name, const char *value)
 {
     rq *r = (rq *)u;
+    if (r->q->tap && r->q->tap->response) {
+        int i;
+        char lower[100];
+        for (i = 0; name[i] && i < 99; i++)
+            lower[i] = name[i] >= 'A' && name[i] <= 'Z' ? (char)(name[i] + 32) : name[i];
+        lower[i] = 0;
+        jw_raw(&r->hdrs, lower, (long)strlen(lower) + 1);
+        jw_raw(&r->hdrs, value, (long)strlen(value) + 1);
+    }
     if (!strcmp(name, "content-type"))
         cl_copy(r->ctype, value, sizeof(r->ctype));
     if (!strcmp(name, "x-amzn-errortype"))
@@ -337,7 +411,7 @@ static int mk_head(llm_req *q, const http_url *u, const char *path, const char *
     return 0;
 }
 
-int llm_request(llm_req *q)
+static int request_run(llm_req *q)
 {
     http_url u;
     char path[300], buf[2048], rerr[300];
@@ -398,6 +472,14 @@ int llm_request(llm_req *q)
         final_error(q->sink, LS_ERROR, "body", "the request could not be built");
         return -1;
     }
+    if (q->tap && q->tap->payload) {
+        /* pi's onPayload (the extensions' before_provider_request): once, before the head is made; a 401's second attempt sends the same body */
+        if (q->tap->payload(q->tap->u, q->model, &body) || body.oom) {
+            jw_free(&body);
+            final_error(q->sink, LS_ERROR, "body", "the request could not be built");
+            return -1;
+        }
+    }
     if (mk_head(q, &u, path, q->key, &body)) {
         jw_free(&body);
         jw_free(&errbody);
@@ -405,6 +487,7 @@ int llm_request(llm_req *q)
     }
     r.q = q;
     r.inner = q->h;
+    jw_init(&r.hdrs);
     for (attempt = 1;; attempt++) {
         llm_call c;
         void *dec = q->be->dec_new();
@@ -424,7 +507,10 @@ int llm_request(llm_req *q)
         c.h.head = rq_head;
         c.h.header = rq_header;
         c.es = &es;
-        c.h.event = q->h.log ? rq_event : 0;
+        c.h.event = q->h.log || (q->tap && (q->tap->stream || q->tap->response)) ? rq_event : 0;
+        r.resp = &resp;
+        r.told = 0;
+        jw_reset(&r.hdrs);
         c.be = q->be;
         c.dec = dec;
         c.sink = &gk;
@@ -443,6 +529,8 @@ int llm_request(llm_req *q)
         rc = llm_post(&c);
         err[0] = 0;
         q->status = rc == LP_OK ? resp.status : 0;
+        if (rc == LP_OK)
+            tap_response(&r);           /* an answer with no events (or none that came through) is told once all the same */
         if (rc == LP_BREAK) {
             final_error(q->sink, LS_ABORTED, "aborted", "Request aborted");
         } else if (rc == LP_OK && resp.status == 200 && resp.event_stream) {
@@ -458,6 +546,7 @@ int llm_request(llm_req *q)
                 jw_free(&errbody);
                 q->be->dec_free(dec);
                 jw_free(&body);
+                jw_free(&r.hdrs);
                 return 0;
             } else if (g.err) {
                 cl_copy(err, g.em[0] ? g.em : g.et, sizeof(err));
@@ -521,5 +610,29 @@ int llm_request(llm_req *q)
         }
     }
     jw_free(&body);
+    jw_free(&r.hdrs);
     return -1;
+}
+
+int llm_request(llm_req *q)
+{
+    const char *xh0 = q->xhead;
+    jw lines;
+    int rc;
+    if (q->tap && q->tap->headers) {
+        /* pi's transformHeaders (before_provider_headers): the extra header lines as the extension sees them, before the body is built */
+        jw_init(&lines);
+        if (xh0)
+            jw_rawz(&lines, xh0);
+        if (q->tap->headers(q->tap->u, q->model, &lines) == 0 && !lines.oom) {
+            jw_raw(&lines, "", 1);          /* a jw is not terminated; the head is made from a C string */
+            q->xhead = lines.n > 1 ? lines.p : 0;
+        }
+    }
+    rc = request_run(q);
+    if (q->tap && q->tap->headers) {
+        q->xhead = xh0;
+        jw_free(&lines);
+    }
+    return rc;
 }

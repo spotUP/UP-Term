@@ -15,7 +15,8 @@ const char *const cfg_hook_events[HK_COUNT] = {
     "message_update", "turn_end", "agent_before_settle", "before_agent_start", "context", "context_with_system",
     "ui_prompt_start", "ui_prompt_end", "session_info_changed", "session_shutdown", "session_before_switch",
     "session_before_fork", "session_before_compact", "session_compact", "session_compact_failed", "session_before_tree",
-    "session_tree", "model_select", "thinking_level_select", "user_bash", "resources_discover"
+    "session_tree", "model_select", "thinking_level_select", "user_bash", "resources_discover",
+    "before_provider_request", "before_provider_headers", "after_provider_response", "provider_stream_event"
 };
 
 static char *dupn(const char *s, long n)

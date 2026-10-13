@@ -528,6 +528,128 @@ static void test_anthropic_baseurl(void)
     llm_reg_free(&r);
 }
 
+
+/* ---- L7: the taps (request.h llm_tap): pi's transformHeaders, onPayload, onResponse and onProviderStreamEvent ---- */
+
+static struct {
+    int calls_payload, calls_headers, responses, streams, order_ok, first_stream_seen;
+    int status;
+    char rhead[2000];
+    char first_data[40];
+} tap;
+
+static int tap_payload(void *u, const llm_model *m, jw *body)
+{
+    (void)u;
+    (void)m;
+    tap.calls_payload++;
+    if (body->n > 2 && body->p[body->n - 1] == '}') {
+        body->n--;
+        jw_rawz(body, ",\"x_tap\":1}");
+    }
+    return 0;
+}
+
+static int tap_headers(void *u, const llm_model *m, jw *lines)
+{
+    char text[200];
+    const char *two;
+    (void)u;
+    (void)m;
+    tap.calls_headers++;
+    /* X-Two is taken out, X-Three put in */
+    memcpy(text, lines->p ? lines->p : "", (size_t)lines->n);
+    text[lines->n] = 0;
+    two = strstr(text, "X-Two: 2\r\n");
+    jw_reset(lines);
+    if (two) {
+        jw_raw(lines, text, (long)(two - text));
+        jw_rawz(lines, two + 11);
+    } else
+        jw_rawz(lines, text);
+    jw_rawz(lines, "X-Three: 3\r\n");
+    return 0;
+}
+
+static void tap_response(void *u, const llm_model *m, int status, const char *headers, long hn)
+{
+    (void)u;
+    (void)m;
+    tap.responses++;
+    tap.status = status;
+    tap.order_ok = tap.streams == 0;            /* before the first event */
+    memcpy(tap.rhead, headers, (size_t)(hn < 1999 ? hn : 1999));
+    tap.rhead[hn < 1999 ? hn : 1999] = 0;
+}
+
+static void tap_stream(void *u, const llm_model *m, const char *data, long n)
+{
+    (void)u;
+    (void)m;
+    if (!tap.streams++)
+        memcpy(tap.first_data, data, (size_t)(n < 39 ? n : 39));
+}
+
+static void test_tap(void)
+{
+    static const char cfg[] = "{\"providers\":{\"proxy\":{\"baseUrl\":\"https://proxy.example\","
+                              "\"api\":\"anthropic-messages\",\"apiKey\":\"k\",\"models\":[{\"id\":\"claude-x\"}]}}}";
+    llm_reg r;
+    const llm_model *mp;
+    llm_ctx c;
+    llm_req q;
+    llm_acc a;
+    llm_sink k;
+    llm_tap t;
+    int pass;
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    CHECK_INT(llm_reg_overlay(&r, cfg, (long)sizeof(cfg) - 1), 0);
+    mp = llm_reg_find(&r, "proxy", "claude-x");
+    CHECK(mp != 0);
+    for (pass = 0; mp && pass < 2; pass++) {
+        memset(&tap, 0, sizeof(tap));
+        memset(&t, 0, sizeof(t));
+        t.payload = tap_payload;
+        t.headers = tap_headers;
+        t.response = tap_response;
+        t.stream = tap_stream;
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_sse("tool_use.sse", 0);
+        c = ctx_of(mp, 1);
+        llm_acc_init(&a, mp->api, mp->provider);
+        k = llm_acc_sink(&a);
+        q = req_of(mp, &c, &k, "k");
+        q.xhead = "X-One: 1\r\nX-Two: 2\r\n";
+        q.tap = pass ? &t : 0;              /* the second pass has the taps; the first is C:Claude's (none) */
+        CHECK_INT(llm_request(&q), 0);
+        CHECK(ps.nreq == 1);
+        if (!pass) {
+            CHECK(strstr(ps.body[0], "x_tap") == 0 && strstr(ps.head[0], "X-Three") == 0 && strstr(ps.head[0], "X-Two: 2") != 0);
+        } else {
+            long bl = (long)strlen(ps.body[0]);
+            char cl[40];
+            CHECK_INT(tap.calls_payload, 1);
+            CHECK_INT(tap.calls_headers, 1);
+            CHECK(strstr(ps.body[0], ",\"x_tap\":1}") != 0);
+            cl_copy(cl, "Content-Length: ", sizeof(cl));
+            cl_ltoa(bl, cl + strlen(cl));
+            cl_cat(cl, "\r\n", sizeof(cl));
+            CHECK(strstr(ps.head[0], cl) != 0);              /* the head was made for the body that goes out */
+            CHECK(strstr(ps.head[0], "X-One: 1") != 0 && strstr(ps.head[0], "X-Two") == 0 && strstr(ps.head[0], "X-Three: 3") != 0);
+            CHECK_INT(tap.responses, 1);
+            CHECK_INT(tap.status, 200);
+            CHECK(tap.order_ok);
+            CHECK(strstr(tap.rhead, "\"content-type\":") != 0 && tap.rhead[0] == '{');
+            CHECK(tap.streams >= 3 && tap.first_data[0] == '{');
+            CHECK(q.xhead && !strcmp(q.xhead, "X-One: 1\r\nX-Two: 2\r\n"));      /* the caller's lines are given back */
+        }
+        llm_acc_free(&a);
+    }
+    llm_reg_free(&r);
+}
+
 /* ---- FA4: openai-responses against pi's own output (tests/pi/responses, made by tools/gen_pi_responses.mjs) ---- */
 
 /* JSON text without the whitespace between tokens (the indented cases.json -> the wire form), malloc'd */
@@ -4013,6 +4135,7 @@ void suite_pi_llm(void)
     test_accum();
     test_reach();
     test_anthropic_baseurl();
+    test_tap();
     test_responses();
     test_google();
     test_azure();
