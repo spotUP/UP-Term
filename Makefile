@@ -4,6 +4,9 @@ HOSTCC  ?= cc
 HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
 BUILD   := build
 
+# a recipe that fails must not leave its target behind: a 0-byte build/amiga/wbrun once counted as up to date (M2)
+.DELETE_ON_ERROR:
+
 # The workspace directory that holds vtcon and the other UP-Term repos side by
 # side (see the upterm meta-repo); every sibling default below hangs off it.
 # tools/rig/paths.py reads the same variable, with the same default.
@@ -47,7 +50,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py); ONLY=ixemul the patched
 # ixemul's host tests (IXEMUL_SRC/tests/host: its argument line parser)
 test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
@@ -73,6 +76,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_agentpatch.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = entry ]; then python3 tests/test_entry_stub.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = deps ]; then python3 tests/test_host_deps.py; fi
