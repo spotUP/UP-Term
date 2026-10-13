@@ -1636,6 +1636,29 @@ static void uninstall_removes_every_up_term_block(void)
     CHECK_STR(run(text), "Run >NIL: amiagent TOKEN=x\n;BEGIN UP-Terminal\n  spaced \\\\ line  \n");
 }
 
+/* An add-on archive's Uninstall takes out only its own block: unstartup.sh with a block name
+ * (kit-split D6, "unstartup.sh python"); the other blocks, the base's included, stay. */
+static void unstartup_with_a_name_removes_only_that_block(void)
+{
+    FILE *f = fopen("dist/unstartup.sh", "rb");
+    char script[4096];
+    char text[8192];
+    size_t n;
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    n = fread(script, 1, sizeof(script) - 1, f);
+    fclose(f);
+    script[n] = 0;
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' ';BEGIN UP-Term assign' 'Assign UP-Term: SYS:UP-Term' ';END UP-Term assign'"
+             " ';BEGIN UP-Term python' 'Assign Python3: UP-Term:Python3' ';END UP-Term python'"
+             " ';BEGIN UP-Term pythonic' 'C:Other' ';END UP-Term pythonic' 'user line' >S:User-Startup\n"
+             "set -- python\n%s\ncat <T:User-Startup.up-term\n", script);
+    CHECK_STR(run(text), ";BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n"
+                         ";BEGIN UP-Term pythonic\nC:Other\n;END UP-Term pythonic\nuser line\n");
+}
+
 /* eval, exec, trap, local, getopts, umask (plan unix-tool-ports row 0.6) */
 static const char *errs(void)
 {
@@ -1952,5 +1975,6 @@ void suite_sh_exec(void)
     word_lists();
     the_console_env_is_exported_and_unset();
     uninstall_removes_every_up_term_block();
+    unstartup_with_a_name_removes_only_that_block();
     sh_shell_free(&sh);
 }

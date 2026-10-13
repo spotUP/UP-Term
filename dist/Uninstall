@@ -1,6 +1,7 @@
 ; UP-Term uninstall: removes what Install put in and gives back the
 ; ixemul.library and ixnet.library it replaced. XCON:, PTY: and IXPIPE: stay mounted until a reboot.
 ; Your history (ENVARC:vtcon.history), UP-Term:var (asked, default No) and $HOME/.vshrc are kept.
+; The add-on archives (UP-Term-nvim, -python, -Claude, -pi) are removed first, each by its own Uninstall.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
 ; CON:/RAW: back to the system's (new windows; open ones keep UP-Term)
@@ -37,6 +38,33 @@ If WARN
     Copy >NIL: ENVARC:up-term/Dir ENV:updir CLONE
     Set updest "$updir"
     Delete >NIL: ENV:updir QUIET
+  EndIf
+EndIf
+; Your data lives in UP-Term:var (the sessions and history of Claude and
+; amiga-pi, whichever archive installed them). Asked once, here, default No: on
+; No everything else goes and var stays where it is. A script can answer for
+; the user: Set upvardelete YES (or NO) before it. The answer goes on to the
+; add-on archives' Uninstall below, which then ask nothing.
+; @include dist/common/uninstall-var.dos
+If "$upvardelete" EQ ""
+  If "$upkeepvar" EQ "YES"
+    Set upvardelete NO
+  Else
+    Set upvardelete YES
+  EndIf
+  Set upvarmine YES
+EndIf
+; The add-on archives that need UP-Term go first, each by the Uninstall its
+; Install kept, while UP-Term: is still assigned (a standalone add-on is left alone).
+@ADDONUNINSTALL@
+; The files of add-ons that the single kit (before the kit split) installed and
+; that no add-on archive has taken over (UP-Term:pkg/legacy, kit-split D7)
+If EXISTS UP-Term:pkg/legacy
+  If NOT EXISTS UP-Term:pkg/UP-Term-Claude
+    Delete >NIL: C:Claude C:ClaudeCode QUIET
+  EndIf
+  If NOT EXISTS UP-Term:pkg/UP-Term-pi
+    Delete >NIL: C:amiga-pi QUIET
   EndIf
 EndIf
 Set unst ""
@@ -89,10 +117,8 @@ Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   Assign UP-Term:
 EndIf
-; Your data lives in UP-Term:var (the Claude and amiga-pi sessions and history).
-; Asked, default No: on No everything else goes and var stays where it is.
-; A script can answer for the user: Set upvardelete YES (or NO) before it.
-; @include dist/common/uninstall-var.dos
+; Your data lives in UP-Term:var (asked above): on No everything else goes
+; and var stays where it is.
 If "$upkeepvar" EQ "YES"
   Delete >NIL: "$updest/~(var|var.info)" ALL QUIET
   Echo "Your data stayed in $updest/var; delete that drawer to remove it."
@@ -101,6 +127,10 @@ Else
 EndIf
 UnSet upkeepvar
 UnSet updest
+If "$upvarmine" EQ "YES"
+  UnSet upvardelete
+  UnSet upvarmine
+EndIf
 ; BebboSSH's library, only when Install put it there (its marker)
 If EXISTS ENVARC:up-term/cryptossh
   Delete >NIL: LIBS:libcryptossh.library QUIET
@@ -129,7 +159,7 @@ EndIf
 If EXISTS SYS:System/FixFonts
   SYS:System/FixFonts
 EndIf
-Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:uptelnet C:ClaudeCode C:UPDemo C:Claude C:amiga-pi C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
+Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:uptelnet C:UPDemo C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
 ; wasabid: stopped (Ctrl-C, its own way out), and the daemon and its key
 ; only when Install put them there (their markers)

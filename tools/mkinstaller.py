@@ -38,6 +38,30 @@ def assemble(path, values, stack=()):
     return text
 
 
+def handed_search(rows):
+    """The Search lines of the base's record part (dist/common/record-legacy.dos): one for each
+    path the base hands to an add-on archive, setting $uplegacy when the old manifest names it."""
+    paths = sorted({p for r in rows if r['id'] != 'base' and r['handed'] != '-' for p in r['handed'].split(',')})
+    # Search matches a substring: Files/Claude finds Files/ClaudeCode too
+    paths = [p for p in paths if not any(q != p and p.startswith(q) for q in paths)]
+    out = []
+    for path in paths:
+        out += ['    Search >NIL: UP-Term:MANIFEST " %s"' % path,
+                '    If NOT WARN', '      Set uplegacy YES', '    EndIf']
+    return '\n'.join(out)
+
+
+def addon_uninstall(rows):
+    """The base Uninstall's lines that run each add-on's own Uninstall (the copy its Install kept in its
+    record drawer under UP-Term:pkg); a standalone add-on (record in ENVARC:) is not run."""
+    out = []
+    for r in rows:
+        if r['id'] != 'base' and r['record'].startswith('UP-Term:pkg/'):
+            u = r['record'] + '/Uninstall'
+            out += ['If EXISTS ' + u, '  Execute ' + u, 'EndIf']
+    return '\n'.join(out)
+
+
 def read_values(pkg_id, extra=()):
     """The @NAME@ values of one package."""
     row = {r['id']: r for r in pkgs.rows()}.get(pkg_id)
@@ -49,6 +73,9 @@ def read_values(pkg_id, extra=()):
         'NEEDSBASE': row['needs-base'], 'IXEMUL': row['ixemul'], 'RECORD': record,
         'HANDED': row['handed'],
         'OPTS': 'ENVARC:up-term/opts' if row['id'] == 'base' else record.rstrip(':/') + '/opts',
+        'RECORDPRE': 'none.dos',    # a package's own first lines of its record part (dist/values/<id>.txt)
+        'HANDEDSEARCH': handed_search(pkgs.rows()) if row['id'] == 'base' else '',
+        'ADDONUNINSTALL': addon_uninstall(pkgs.rows()) if row['id'] == 'base' else '',
     }
     if row['needs-base'] != '-':
         values['BASEMAJOR'], values['BASEMINOR'] = row['needs-base'].split('.')

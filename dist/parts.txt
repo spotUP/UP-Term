@@ -11,8 +11,6 @@
 -               Uninstall.info
 -               README.txt
 -               LICENSES.txt
--               ClaudeCode
--               ClaudeCode.info
 -               Files/install.dos
 -               Files/upupdate
 drawer          Files/reassign.sh
@@ -38,11 +36,9 @@ copy-userland   Files/userland/bin      bin
 userland        Files/userland
 copy-unifont    Files/unifont           unifont
 copy-emoji      Files/emoji             emoji
-tools           Files/Claude
-tools           Files/amiga-pi
-tools           Files/ClaudeCode
 tools           Files/UPDemo
 tools           Files/UPTerm
+tools           Files/UP-Term.version
 tools           Files/VERSIONS
 tools           Files/hl
 tools           Files/mdv
@@ -53,8 +49,6 @@ tools           Files/sz
 tools           Files/top
 tools           Files/upgetty
 tools           Files/uptelnet
-copy-python     Files/python3           Python3
-copy-nvim       Files/nvim              nvim
 fonts           Files/fonts
 desktop         Files/UP-Term
 desktop         Files/UP-Term.info
