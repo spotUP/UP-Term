@@ -1,13 +1,19 @@
 /* upupdate -- the Installer's update: what changed between the installed kit
  * and this one (installer update plan, U4).
  *
- *   upupdate OLD NEW KIT
+ *   upupdate OLD NEW KIT [ONLY=<kit paths>]
  *
  * OLD: the installed kit's manifest (UP-Term:MANIFEST), NEW: this kit's
- * (<kit>/Files/MANIFEST), KIT: this kit's drawer, the copies' source. The
- * comparison is updiff.c's; this writes what the Installer reads:
+ * (<kit>/Files/MANIFEST), KIT: this kit's drawer, the copies' source. ONLY: the
+ * comma separated kit paths (Files/nvim) to which OLD is cut before the
+ * comparison: an add-on archive's Install over the single kit's manifest
+ * (UP-Term:pkg/legacy/MANIFEST) compares only its own files. The comparison is
+ * updiff.c's; this writes what the Installer reads:
  *   ENV:UPTUPD<part>    the KB the part copies, set for every part that runs
  *   ENV:UPTUPDKB        all of them (the sum of the parts' KB)
+ *   ENV:UPTHANDED       the kit paths (comma separated) the old kit had and an add-on
+ *                       archive installs now: their installed files were left alone
+ *                       (set only when there are such)
  *   ENV:UPTVEROLD / ENV:UPTVERNEW   the first lines of the two VERSIONS
  *                       (the files beside the two manifests)
  *   T:UPTUPD-<part>     a copy part's script: its new and changed files
@@ -115,8 +121,8 @@ static void version(const char *manifest, const char *var)
 
 int main(void)
 {
-    LONG args[3] = { 0, 0, 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)"OLD/A,NEW/A,KIT/A", args, 0);
+    LONG args[4] = { 0, 0, 0, 0 };
+    struct RDArgs *rd = ReadArgs((STRPTR)"OLD/A,NEW/A,KIT/A,ONLY/K", args, 0);
     char *a = 0, *b = 0, name[64], kb[16];
     ud_result *r = 0;
     int i, parts = 0, rc = 20;
@@ -132,6 +138,7 @@ int main(void)
         Printf("upupdate: cannot read %s\n", (LONG)(a ? args[1] : args[0]));
         goto out;
     }
+    if (args[3] && ud_only(a, (const char *)args[3]) < 0) goto out;
     if (ud_compare(a, b, (const char *)args[2], r, emit, 0) != 0) {
         Printf("upupdate: %s or %s is not a kit manifest\n", args[0], args[1]);
         goto out;
@@ -148,6 +155,15 @@ int main(void)
     /* the parts' KB summed, as the Installer's bar adds them (each part at least 1) */
     number(kb, total);
     setvar("UPTUPDKB", kb);
+    if (r->nhanded) {
+        char list[UD_MAXHANDED * UD_DRAWER];
+        list[0] = 0;
+        for (i = 0; i < r->nhanded; i++) {
+            if (i) strcat(list, ",");
+            strcat(list, r->handed[i]);
+        }
+        setvar("UPTHANDED", list);
+    }
     version((const char *)args[0], "UPTVEROLD");
     version((const char *)args[1], "UPTVERNEW");
     Printf("upupdate: %ld files new or changed (%s KB), %ld gone, %ld parts to run\n",

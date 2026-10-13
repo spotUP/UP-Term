@@ -6,7 +6,10 @@
  * A manifest line:  <part> <size> <crc32 hex> <path>   sorted by path.
  *   path "install.dos#<part>": that part's script text ("all": the text
  *   before the first part, which every part reads);
- *   path "copy#<kit drawer>#<drawer>": a copy part's two drawers.
+ *   path "copy#<kit drawer>#<drawer>": a copy part's two drawers;
+ *   path "handed#<kit path>": a path of the old single kit that an add-on
+ *   archive installs now, not this kit (kit-split plan D7). The installed
+ *   copies of those files are left alone: not deleted, not counted.
  * The result: which parts run again and how many bytes each copies, and
  * for the copy parts the script lines that copy their new and changed
  * files and delete the ones gone. */
@@ -16,6 +19,7 @@
 #define UD_MAXPARTS 32
 #define UD_NAME 32
 #define UD_DRAWER 96
+#define UD_MAXHANDED 8
 
 typedef struct {
     char name[UD_NAME];
@@ -32,6 +36,8 @@ typedef struct {
     unsigned long bytes;            /* all parts' */
     int files;                      /* new and changed files */
     int gone;                       /* files gone */
+    int nhanded;
+    char handed[UD_MAXHANDED][UD_DRAWER];   /* the handed paths whose old files were left alone */
 } ud_result;
 
 /* One line of a copy part's script (no newline). */
@@ -42,6 +48,13 @@ typedef void (*ud_emit)(void *ctx, const char *part, const char *line);
  * Returns 0, or -1 for a manifest that is not one (a bad line, not sorted,
  * more than UD_MAXPARTS parts). */
 int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_emit emit, void *ctx);
+
+/* Keep only the lines of a manifest that are under one of the comma separated
+ * kit paths (Files/nvim,Files/python3): file lines by their path, copy# lines by
+ * their kit drawer; install.dos# and handed# lines are dropped. The order stays.
+ * The text is changed in place. Returns the number of lines kept. An add-on's
+ * Install uses it on the single kit's manifest (upupdate ... ONLY=<paths>). */
+int ud_only(char *text, const char *paths);
 
 /* The KB a part's progress counts (at least 1 for a part that runs). */
 unsigned long ud_kb(const ud_part *p);
