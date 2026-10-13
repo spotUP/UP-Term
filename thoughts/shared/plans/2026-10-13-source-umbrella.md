@@ -42,3 +42,7 @@ Owner 2026-10-13: too many UP-Term dirs scattered in ~/Code; group them per proj
    `make dist`, `make dist-check`; one rig boot (060) per rig config.
 4. Copy memory dirs; update RULES.md / ledger / handoff paths; new session started from
    ~/Code/UP-Term/vtcon.
+
+## Update 2026-10-13 (other projects moved first)
+- DCTelnet/, AmiExpress/, UpRough/ now exist under ~/Code. vtcon branch feature/dctelnet-root adds DCTELNET_ROOT, AMIEXPRESS_ROOT (Makefile) and UPROUGH_ROOT (tools/rig/paths.py, Kickstart ROM) defaulting to $(UPTERM_ROOT)/<Umbrella>. At L1, when UPTERM_ROOT becomes ~/Code/UP-Term, these defaults must hang off its parent instead (e.g. CODE_ROOT ?= $(abspath $(UPTERM_ROOT)/..)).
+- Also at L1: upterm/repos.lock names, DCTelnet/dctelnet-vtcon/.gitmodules url = /Users/spot/Code/vtcon.
