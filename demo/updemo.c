@@ -1575,9 +1575,13 @@ static const scene_def tour[] = {
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1 },
-    { "plasma", sc_plasma, 1, 350, "The demoscene part: a plasma in 256 colours", 0 },
+    { "copper bars", sc_bars, 1, 350, "The demoscene part: copper bars", 0 },
+    { "plasma", sc_plasma, 1, 350, "A plasma in 256 colours", 0 },
+    { "fire", sc_fire, 1, 350, "Fire", 0 },
+    { "rotozoomer", sc_roto, 1, 350, "A rotozoomer", 0 },
     { "vector cubes", sc_cube, 0, 350, "Vector cubes in quadrant blocks", 0 },
     { "sine scroller", sc_scroll, 1, 500, "A sine scroller over a star field", 0 },
+    { "palette cycling", sc_cycle, 1, 350, "Palette cycling (OSC 4)", 0 },
     { "the end", sc_end, 0, 350, "The end", 0 }
 };
 

@@ -135,6 +135,15 @@ static int tour_scene(const char *name)
     return -1;
 }
 
+/* the tour shows the whole demo: every scene of the show (the animated demoscene part included) is in it */
+static void the_tour_has_every_scene_of_the_show(void)
+{
+    int s;
+    for (s = 0; s < updemo_scenes(); s++)
+        if (tour_scene(updemo_scene_name(s)) < 0)
+            CHECK_STR(updemo_scene_name(s), "a show scene the tour lacks");
+}
+
 static void every_scene_runs_and_the_screen_comes_back(void)
 {
     const char *kinds[16];
@@ -402,12 +411,13 @@ static void palette_cycling_tells_the_renderer_once_a_frame(void)
 void suite_updemo(void)
 {
     CHECK_INT(updemo_scenes(), 11);
-    CHECK_INT(updemo_tour_scenes(), 20);
+    CHECK_INT(updemo_tour_scenes(), 24);
     every_scene_runs_and_the_screen_comes_back();
     big_windows_are_drawn_within_bounds();
     a_small_window_is_refused_untouched();
     q_quits_and_the_palette_is_the_terminals_again();
     the_tour_plays_every_scene_and_puts_the_terminal_back();
+    the_tour_has_every_scene_of_the_show();
     the_unicode_scene_shows_emoji();
     any_key_ends_the_tour();
     the_mouse_scene_shows_a_click();
