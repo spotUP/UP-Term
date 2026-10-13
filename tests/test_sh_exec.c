@@ -1341,6 +1341,8 @@ static void remote_logins_send_xterm_256color(void)
     CHECK_STR(with_vshrc("telnet bbs.example 23"), "<uptelnet><TERM=vtcon><bbs.example><23><TERM><xterm-256color>\n");
     CHECK_STR(with_vshrc("rlogin box"), "<rlogin><TERM=xterm-256color><box>\n");
     CHECK_STR(with_vshrc("ssh h; echo $TERM"), "<bebbossh><TERM=xterm-256color><h>\nvtcon\n");
+    vshrc_pre = "TERM=vtcon-amiga"; /* an AMIGA window: still no vtcon-amiga entry on the host */
+    CHECK_STR(with_vshrc("ssh -l me host"), "<bebbossh><TERM=xterm-256color><-l><me><host>\n");
     vshrc_pre = "TERM=vtcon; UP_REMOTE_TERM=xterm-amiga";
     CHECK_STR(with_vshrc("ssh h"), "<bebbossh><TERM=xterm-amiga><h>\n");
     vshrc_pre = "TERM=screen";

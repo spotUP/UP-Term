@@ -1,0 +1,13 @@
+# vtcon-amiga -- vtcon for a window in the AMIGA personality.
+#
+# console.device fills the area a clear or scroll leaves with the window's
+# one background, never with the colour the program has set (the engine's
+# blank_cell in the AMIGA personality). vtcon declares bce (back colour
+# erase); a program told bce skips the repaint of its background after a
+# clear and so leaves the old background where console.device put it. This
+# entry is vtcon without bce, so TERM describes the window. vsh gets it for
+# AMIGA windows from the console (ACTION_VTCON_ENV, handler/slash.c).
+#
+# Build after terminfo/vtcon.terminfo: tic -x -o <dir> terminfo/vtcon-amiga.terminfo
+vtcon-amiga|vtcon Amiga console (AMIGA personality, no back colour erase),
+	bce@, use=vtcon,

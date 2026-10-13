@@ -337,12 +337,14 @@ int slash_colors_ok(const char *name)
     return !strcmp(name, "rgb") || !strcmp(name, "256");
 }
 
-long slash_env_list(const char *term, const char *colors, char *out, long max)
+long slash_env_list(const char *term, const char *colors, const char *dflt_term, char *out, long max)
 {
     long k = 0;
     const char *e[2];
     char t[40];
     int i, ne = 0;
+    if (!term[0])
+        term = dflt_term;
     if (term[0] && strlen(term) < 32) {
         strcpy(t, "TERM=");
         strcat(t, term);

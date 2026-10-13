@@ -20,11 +20,11 @@ clear() {
 # shell then cannot move the cursor and redraws every key); an UP-Term
 # window is an xterm-256color to it -- everything that entry asks for, the
 # window does. To send another name, set UP_REMOTE_TERM (in $HOME/.vshrc,
-# say UP_REMOTE_TERM=xterm-amiga). A TERM that is not vtcon -- screen's
+# say UP_REMOTE_TERM=xterm-amiga). A TERM that is not vtcon or vtcon-amiga -- screen's
 # windows are "screen" -- goes as it is.
 remote_term() {
     case "${UP_REMOTE_TERM:-$TERM}" in
-    ''|vtcon) echo xterm-256color ;;
+    ''|vtcon|vtcon-amiga) echo xterm-256color ;;
     *) echo "${UP_REMOTE_TERM:-$TERM}" ;;
     esac
 }

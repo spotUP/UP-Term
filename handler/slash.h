@@ -87,10 +87,12 @@ const slash_def *slash_table(int *n);
  * digits and . _ + -). slash_colors_ok: "rgb" or "256". slash_env_list
  * writes the ACTION_VTCON_ENV list for the window's term and colors ("" =
  * not set): TERM=<term>; COLORTERM=truecolor for rgb, COLORTERM= (unset) for
- * 256. Returns its bytes (the closing NUL included), 0 when nothing is told. */
+ * 256. dflt_term ("" = none) is the TERM told when the window has no /term:
+ * vtcon-amiga for an AMIGA personality window, whose terminal does not
+ * erase to the program's background (no bce). Returns its bytes (the closing NUL included), 0 when nothing is told. */
 int  slash_term_ok(const char *name);
 int  slash_colors_ok(const char *name);
-long slash_env_list(const char *term, const char *colors, char *out, long max);
+long slash_env_list(const char *term, const char *colors, const char *dflt_term, char *out, long max);
 
 /* Where a setting's value came from: "this window" when it differs from
  * the profile's (profile: its value, 0 when the profile has no such key;
