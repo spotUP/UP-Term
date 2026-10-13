@@ -52,8 +52,23 @@ static UBYTE fdata[256 * 8];
 static ULONG floc[256];
 long gf_beam;
 
-static int *canvas_of(struct RastPort *rp) { return rp && back_on && rp->BitMap == &back ? bcanvas : canvas; }
-static int *bgc_of(struct RastPort *rp) { return rp && back_on && rp->BitMap == &back ? bbgc : bgc; }
+/* the window's border widths (gf_borders) */
+static int bleft, btop, bright, bbottom;
+
+/* the canvas a RastPort draws into: the back bitmap's, the window's, or none (a scratch bitmap of the
+ * renderer's, a double-size row's glyph: its pixels are its own planes, not the window) */
+static int *canvas_of(struct RastPort *rp)
+{
+    if (rp && back_on && rp->BitMap == &back)
+        return bcanvas;
+    return !rp || rp->BitMap == &bm ? canvas : 0;
+}
+static int *bgc_of(struct RastPort *rp)
+{
+    if (rp && back_on && rp->BitMap == &back)
+        return bbgc;
+    return !rp || rp->BitMap == &bm ? bgc : 0;
+}
 
 static gf_call *rec(enum gf_kind k, long a, long b, long c, long d)
 {
@@ -97,6 +112,7 @@ void gf_open(int w, int h, int cw, int ch, int base)
     rport.Mask = 0xFF;
     win.Width = (WORD)w;
     win.Height = (WORD)h;
+    bleft = btop = bright = bbottom = 0;
     win.RPort = &rport;
     win.WScreen = &scr;
     gfxbase.LibNode.lib_Version = 40;
@@ -178,6 +194,42 @@ void gf_planar(int depth, int left, int top)
 }
 
 void gf_cover(int on) { clip.Next = on ? &clip2 : 0; }
+
+static int ppen(long x, long y);
+
+static int in_border(long x, long y) { return x < bleft || y < btop || x >= W - bright || y >= H - bbottom; }
+
+void gf_borders(int l, int t, int r, int b)
+{
+    long x, y;
+    int p;
+    bleft = l;
+    btop = t;
+    bright = r;
+    bbottom = b;
+    win.BorderLeft = (BYTE)l;
+    win.BorderTop = (BYTE)t;
+    win.BorderRight = (BYTE)r;
+    win.BorderBottom = (BYTE)b;
+    for (y = 0; y < H; y++)
+        for (x = 0; x < W; x++)
+            if (in_border(x, y)) {
+                canvas[y * W + x] = GF_BORDER;
+                for (p = 0; p < pdepth; p++)
+                    bm.Planes[p][(ptop + y) * pbpr + ((pleft + x) >> 3)] |= (UBYTE)(0x80 >> ((pleft + x) & 7));
+            }
+}
+
+int gf_border_hits(void)
+{
+    long x, y;
+    int n = 0;
+    for (y = 0; y < H; y++)
+        for (x = 0; x < W; x++)
+            if (in_border(x, y) && (canvas[y * W + x] != GF_BORDER || (pdepth && ppen(x, y) != (1 << pdepth) - 1)))
+                n++;
+    return n;
+}
 
 /* window pixel (x, y) of the planes: its pen, and setting it under the write mask */
 static int ppen(long x, long y)
@@ -265,7 +317,7 @@ static void paint_bg(struct RastPort *rp, long x0, long y0, long x1, long y1, in
 {
     int *bgc = bgc_of(rp);
     long x, y;
-    for (y = y0; y <= y1; y++)
+    for (y = y0; bgc && y <= y1; y++)
         for (x = x0; x <= x1; x++)
             if (x >= 0 && y >= 0 && x < W && y < H)
                 bgc[y * W + x] = pen;
@@ -275,7 +327,7 @@ static void paint(struct RastPort *rp, long x0, long y0, long x1, long y1, int v
 {
     int *canvas = canvas_of(rp);
     long x, y;
-    for (y = y0; y <= y1; y++)
+    for (y = y0; canvas && y <= y1; y++)
         for (x = x0; x <= x1; x++)
             if (x >= 0 && y >= 0 && x < W && y < H)
                 canvas[y * W + x] = flip ? canvas[y * W + x] ^ GF_FLIP : v;
@@ -442,9 +494,19 @@ ULONG VBeamPos(VOID) { return (ULONG)gf_beam; }
 LONG WritePixel(struct RastPort *rp, LONG x, LONG y) { (void)rp; rec(GF_OTHER, x, y, 0, 0); return 0; }
 struct BitMap *AllocBitMap(ULONG sx, ULONG sy, ULONG d, ULONG f, CONST struct BitMap *fr)
 {
-    (void)d; (void)f;
+    (void)f;
+    if (!fr && d == 1) {
+        /* a one-plane scratch bitmap of the renderer's (a double-size row's glyph): real, cleared planes that
+         * BltTemplate can read; nothing drawn into it reaches the window's canvas (canvas_of) */
+        struct BitMap *s = (struct BitMap *)calloc(1, sizeof(struct BitMap));
+        s->BytesPerRow = (UWORD)(((sx + 15) >> 4) << 1);
+        s->Rows = (UWORD)sy;
+        s->Depth = 1;
+        s->Planes[0] = (PLANEPTR)calloc((unsigned long)s->BytesPerRow * sy, 1);
+        return s;
+    }
     if (fr != &bm || (long)sx < W || (long)sy < H || back_on || gf_no_back)
-        return 0; /* the renderer's small scratch bitmaps (double-size rows, images) are not drawn here */
+        return 0; /* the renderer's other scratch bitmaps (image rows) are not drawn here */
     back_on = 1;
     bcanvas = (int *)calloc((size_t)(W * H), sizeof(int));
     bbgc = (int *)calloc((size_t)(W * H), sizeof(int));
@@ -459,6 +521,9 @@ VOID FreeBitMap(struct BitMap *b)
         free(bcanvas);
         free(bbgc);
         bcanvas = bbgc = 0;
+    } else if (b && b != &back && b != &bm) {
+        free(b->Planes[0]);
+        free(b);
     }
 }
 VOID BltBitMapRastPort(CONST struct BitMap *s, LONG sx, LONG sy, struct RastPort *rp, LONG dx, LONG dy, LONG w,

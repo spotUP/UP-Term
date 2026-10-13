@@ -720,6 +720,17 @@ static WORD vis_cols(const vr_render *r)
     return c < r->cols ? (c < 0 ? 0 : c) : r->cols;
 }
 
+/* The grid columns double-size cell x covers in the window: 2, or 1 for
+ * the last cell of a row whose visible columns are odd -- the engine gives
+ * a double-size row (cols + 1) / 2 cells, that one half in the grid. Past
+ * the grid is the window's border: drawn 2 columns wide, the last cell
+ * of UPDemo's headings painted over the right border (W-T10). */
+static int dbl_cols(const vr_render *r, int x)
+{
+    int n = vis_cols(r) - 2 * x;
+    return n < 2 ? n : 2;
+}
+
 static WORD vis_rows(const vr_render *r)
 {
     WORD n;
@@ -1784,12 +1795,12 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
     if (half > (vis_cols(r) + 1) / 2)
         half = (vis_cols(r) + 1) / 2;
     for (x = 0; x < half && x < ncells; x++) {
-        WORD px = (WORD)(r->ox + x * 2 * cw);
+        WORD px = (WORD)(r->ox + x * 2 * cw), dw = (WORD)(dbl_cols(r, x) * cw);
         vt_glyph g;
         struct TextFont *font = r->font;
         UBYTE code;
         cell_style(r, &c[x], selected(r, x, y - r->view + r->jump), &st);
-        fill(r, px, py, (WORD)(px + 2 * cw - 1), (WORD)(py + ch - 1), st.bg);
+        fill(r, px, py, (WORD)(px + dw - 1), (WORD)(py + ch - 1), st.bg);
         g = vt_map_glyph(cell_char(r, &c[x]), r->enc);
         code = g.kind == VT_GLYPH_FONT ? g.code : (UBYTE)'?';
         if (st.font && st.font <= 10 && r->alt_font[st.font])
@@ -1817,10 +1828,10 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
             SetDrMd(r->rp, JAM1);
             BltTemplate((PLANEPTR)(big->Planes[0] +
                                    (size == VT_LINE_DOUBLE_BOTTOM ? (LONG)ch * big->BytesPerRow : 0)),
-                        0, (WORD)big->BytesPerRow, r->rp, px, py, (WORD)(2 * cw), ch);
+                        0, (WORD)big->BytesPerRow, r->rp, px, py, dw, ch);
         }
         if ((st.attr & LINE_ATTRS) || (st.deco & VT_DECO_IDEO_MASK))
-            decorate(r, 2, px, py, &st);
+            decorate(r, dbl_cols(r, x), px, py, &st);
     }
     WaitBlit();
     FreeBitMap(big);
@@ -3334,7 +3345,8 @@ static void cursor_draw(vr_render *r, int on)
     ULONG ink = r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg;
     int wide = !r->view && vt_row_size(r->t, r->cursor_y + r->jump) ? 2 : 1; /* a double-size row (the grid row, not the screen's: jump) */
     WORD px = (WORD)(r->ox + r->cursor_x * r->cw * wide), py = r->oy + r->cursor_y * r->ch;
-    WORD x1 = (WORD)(px + r->cw * wide - 1), y1 = (WORD)(py + r->ch - 1);
+    int span = wide == 2 && dbl_cols(r, r->cursor_x) == 1 ? 1 : wide; /* a double-size row's half cell: its half */
+    WORD x1 = (WORD)(px + r->cw * span - 1), y1 = (WORD)(py + r->ch - 1);
     int style = vt_cursor_style(r->t);   /* DECSCUSR */
     if (style == 3 || style == 4)
         py = (WORD)(y1 - 1);              /* underline: the two bottom rows */
