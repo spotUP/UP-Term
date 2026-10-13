@@ -54,6 +54,9 @@ void updemo_bench(int on);
 #define UPDEMO_AUTO 0
 #define UPDEMO_ANSI 1
 #define UPDEMO_FULL 2
+/* UPDEMO_SOLID: the 16-colour version with no shade blocks: every ramp step is drawn as the solid
+ * ANSI colour nearest to it (half blocks of two solid colours keep the half-cell resolution) */
+#define UPDEMO_SOLID 3
 void updemo_colours(int mode);
 
 /* After updemo_run: 1 when it played the 16-colour version */
@@ -62,13 +65,16 @@ int updemo_ansi(void);
 /* The count in XTGETTCAP's answer to a colors query (DCS 1 + r 636F6C6F7273=hex ST); 0 when none */
 int updemo_colour_count(const char *reply, long len);
 
-/* The command line of UPDemo and updemo: [n] [BENCH [n]] [ANSI | FULL] */
+/* The command line of UPDemo and updemo: [n] [BENCH [n]] [ANSI | SOLID | FULL] */
 typedef struct updemo_args {
     int bench;   /* BENCH */
     int scene;   /* n, 1-based; 0: none */
-    int colours; /* UPDEMO_AUTO, _ANSI or _FULL */
+    int colours; /* UPDEMO_AUTO, _ANSI, _SOLID or _FULL */
 } updemo_args;
 void updemo_parse_args(int argc, char **argv, updemo_args *a);
+/* The settings from parsed options (the Amiga's ReadArgs template SCENE/N,ANSI/S,FULL/S,SOLID/S,BENCH/S):
+ * scene 0: none; SOLID beats ANSI beats FULL */
+void updemo_args_make(updemo_args *a, int scene, int bench, int ansi_w, int full_w, int solid_w);
 
 /* The 16-colour version's ramps (an effect's value -> a foreground, a
  * background and a shade: 0 a solid colour, 1-3 the blocks U+2591-2593 of

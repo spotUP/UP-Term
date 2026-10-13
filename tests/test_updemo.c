@@ -797,6 +797,105 @@ static void bench_works_in_the_16_colour_version(void)
     }
 }
 
+/* U+2591-2593 anywhere in what the last play_alone sent */
+static int cap_has_shade(void)
+{
+    return cap_has("\342\226\221") || cap_has("\342\226\222") || cap_has("\342\226\223");
+}
+
+/* SOLID: every scene -- text or effect -- is the 16-colour version with no shade block, and no 256-colour
+ * SGR or palette sequence either */
+static void solid_sends_no_shade_blocks_in_any_scene(void)
+{
+    int s;
+    for (s = 0; s < updemo_scenes(); s++) {
+        play_alone(s, UPDEMO_SOLID);
+        if (cap_has_shade() || cap_extended_colour() || cap_has("\033]4") || cap_has("\033]10;") ||
+            cap_has("\033]11;") || cap_has("\033]104") || cap_has("\033]110") || cap_has("\033]111")) {
+            CHECK_STR(updemo_scene_name(s), "a scene with no shade block, 256-colour or palette sequence");
+        }
+        CHECK(updemo_ansi());
+        vt_free(t);
+    }
+    /* the shaded version of the same effect does draw them (so the scan can fail), the solid one draws colours */
+    play_alone(scene_index("plasma"), UPDEMO_ANSI);
+    CHECK(cap_has_shade());
+    vt_free(t);
+    play_alone(scene_index("plasma"), UPDEMO_SOLID);
+    CHECK(!cap_has_shade());
+    CHECK(cap_has("\033[4") || cap_has("\033[10"));
+    vt_free(t);
+}
+
+/* UPDemo SOLID is the 16-colour version even when the window says it has 256 colours */
+static void solid_implies_ansi_on_a_256_colour_window(void)
+{
+    CHECK_INT(plays_ansi(256, UPDEMO_SOLID), 1);
+    CHECK_INT(plays_ansi(-1, UPDEMO_SOLID), 1);
+    CHECK_INT(plays_ansi(16, UPDEMO_SOLID), 1);
+}
+
+/* SOLID, ANSI, FULL, BENCH and the scene number in any order; ReadArgs' values go to the same settings */
+static void the_argument_solid_parses_in_any_order_and_readargs_values_make_the_same_settings(void)
+{
+    char *a1[] = { "UPDemo", "SOLID" }, *a2[] = { "UPDemo", "3", "solid", "bench" }, *a3[] = { "UPDemo", "BENCH", "Solid", "17" };
+    char *a4[] = { "UPDemo", "solid", "ANSI" }, *a5[] = { "UPDemo", "FULL", "SOLID" }, *a6[] = { "UPDemo", "ANSI", "FULL" };
+    updemo_args a;
+    updemo_parse_args(2, a1, &a);
+    CHECK_INT(a.colours, UPDEMO_SOLID);
+    CHECK_INT(a.bench, 0);
+    updemo_parse_args(4, a2, &a);
+    CHECK_INT(a.colours, UPDEMO_SOLID);
+    CHECK_INT(a.scene, 3);
+    CHECK_INT(a.bench, 1);
+    updemo_parse_args(4, a3, &a);
+    CHECK_INT(a.colours, UPDEMO_SOLID);
+    CHECK_INT(a.scene, 17);
+    CHECK_INT(a.bench, 1);
+    updemo_parse_args(3, a4, &a);
+    CHECK_INT(a.colours, UPDEMO_SOLID);
+    updemo_parse_args(3, a5, &a);
+    CHECK_INT(a.colours, UPDEMO_SOLID);
+    updemo_parse_args(3, a6, &a);
+    CHECK_INT(a.colours, UPDEMO_FULL); /* the later of the two */
+    /* the Amiga's template SCENE/N,ANSI/S,FULL/S,SOLID/S,BENCH/S */
+    updemo_args_make(&a, 17, 1, 0, 0, 1);
+    CHECK_INT(a.scene, 17);
+    CHECK_INT(a.bench, 1);
+    CHECK_INT(a.colours, UPDEMO_SOLID);
+    updemo_args_make(&a, 0, 0, 1, 0, 0);
+    CHECK_INT(a.colours, UPDEMO_ANSI);
+    CHECK_INT(a.scene, 0);
+    updemo_args_make(&a, 0, 0, 0, 1, 0);
+    CHECK_INT(a.colours, UPDEMO_FULL);
+    updemo_args_make(&a, 0, 0, 0, 0, 0);
+    CHECK_INT(a.colours, UPDEMO_AUTO);
+}
+
+/* BENCH SOLID runs the same eleven scenes and frames each, without shade blocks */
+static void bench_works_in_the_solid_version(void)
+{
+    long frames, tk;
+    int s, n = 0;
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_colours(UPDEMO_SOLID);
+    updemo_bench(1);
+    CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
+    updemo_bench(0);
+    capturing = 0;
+    CHECK(updemo_ansi());
+    CHECK(!cap_has_shade());
+    for (s = 0; s < updemo_scenes(); s++) {
+        updemo_stats(s, &frames, &tk);
+        CHECK_INT(frames > 0, updemo_scene_benchmarked(s));
+        n += frames > 0;
+    }
+    CHECK_INT(n, 11);
+    vt_free(t);
+}
+
 /* the 16-colour version's status line says what it plays */
 static void the_16_colour_captions_say_so(void)
 {
@@ -839,6 +938,10 @@ void suite_updemo(void)
     the_colour_count_is_read_from_the_xtgettcap_answer();
     the_demo_picks_the_version_from_the_colours_the_window_reports();
     the_arguments_ansi_and_full_force_a_version();
+    solid_sends_no_shade_blocks_in_any_scene();
+    solid_implies_ansi_on_a_256_colour_window();
+    the_argument_solid_parses_in_any_order_and_readargs_values_make_the_same_settings();
+    bench_works_in_the_solid_version();
     bench_works_in_the_16_colour_version();
     the_16_colour_captions_say_so();
 }
