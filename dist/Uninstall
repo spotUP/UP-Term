@@ -117,6 +117,21 @@ Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   Assign UP-Term:
 EndIf
+; amiagent, when Install put it in UP-Term:bin (its marker): stopped first (Ctrl-C, its
+; own way out; Status finds it by the name it was loaded as, the README says
+; UP-Term:bin/amiagent), because a running program's file cannot be deleted with the drawer
+If EXISTS ENVARC:up-term/amiagent
+  Status >ENV:upw COM UP-Term:bin/amiagent
+  If NOT WARN
+    Break $upw C
+  EndIf
+  Status >ENV:upw COM amiagent
+  If NOT WARN
+    Break $upw C
+  EndIf
+  UnSet >NIL: upw
+  Delete >NIL: ENV:upw QUIET
+EndIf
 ; Your data lives in UP-Term:var (asked above): on No everything else goes
 ; and var stays where it is.
 If "$upkeepvar" EQ "YES"

@@ -447,6 +447,9 @@ enum vt_key {
 #define VT_MOD_CTRL  4
 /* Writes at most 32 bytes to out; returns the count (0: nothing to send). */
 int      vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out);
+/* The same with no kitty flags and no modifyOtherKeys, whatever is set: for
+ * keys the console's own line editor reads. */
+int      vt_encode_key_plain(const vt_term *t, long key, int mods, vt_u8 *out);
 /* xterm's modifyOtherKeys level (CSI > 4 ; n m), 0 off. While it is on the
  * host hands character keys over without Ctrl applied, with VT_MOD_CTRL
  * (and VT_MOD_SHIFT) in mods: the encoder decides between the control

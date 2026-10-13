@@ -244,10 +244,10 @@ class OverHttp(unittest.TestCase):
         sys.stdout.close()
         sys.stdout = cls._out
 
-    def post(self, b, path="/v1/messages"):
+    def post(self, b, path="/v1/messages", headers=None):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         raw = json.dumps(b).encode()
-        c.request("POST", path, raw, {"Content-Type": "application/json", "Content-Length": str(len(raw))})
+        c.request("POST", path, raw, {"Content-Type": "application/json", "Content-Length": str(len(raw)), **(headers or {})})
         r = c.getresponse()
         data = r.read()
         c.close()
@@ -278,6 +278,21 @@ class OverHttp(unittest.TestCase):
                 r, data = self.post(b, "/v1/responses")
                 self.assertEqual(r.status, 200)
                 self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".sse")).read_bytes())
+
+    def test_codex_responses_streams_the_responses_recording_and_logs_the_originator(self):
+        import io
+        log = io.StringIO()
+        sys.stdout = log
+        try:
+            for what, b, want in RESPONSES:
+                with self.subTest(what):
+                    r, data = self.post(b, "/codex/responses", {"originator": "pi"})
+                    self.assertEqual(r.status, 200)
+                    self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".sse")).read_bytes())
+        finally:
+            sys.stdout = open(os.devnull, "w")
+        self.assertEqual(log.getvalue().count("[INFO]   codex originator=pi"), len(RESPONSES))
+        self.assertIn("[INFO] /codex/responses ", log.getvalue())
 
     def test_azure_responses_with_an_api_version_query_gets_the_responses_recording(self):
         for what, b, want in RESPONSES:

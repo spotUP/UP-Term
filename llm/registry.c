@@ -12,7 +12,7 @@ void llm_model_init(llm_model *m)
     m->compat.max_tokens_field = m->compat.usage_in_streaming = m->compat.developer_role =
         m->compat.tool_result_name = m->compat.reasoning_effort = m->compat.thinking_as_text = m->compat.strict_tools = m->compat.store = LC_UNSET;
     m->compat.mid_effort = m->compat.mid_system = m->compat.mid_tools = m->compat.eager_tools =
-        m->compat.cache_tools = m->compat.empty_signature = m->compat.add_tools = LC_UNSET;
+        m->compat.cache_tools = m->compat.empty_signature = m->compat.add_tools = m->compat.temperature = LC_UNSET;
 }
 
 void llm_reg_init(llm_reg *r)

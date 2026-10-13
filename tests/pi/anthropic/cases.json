@@ -1689,6 +1689,2678 @@
    ],
    "sse": "plain",
    "window": 3000
+  },
+  {
+   "name": "temp_off",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "temperature": 0.7
+  },
+  {
+   "name": "temp_thinking",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "temperature": 0.7
+  },
+  {
+   "name": "temp_integer",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "temperature": 1
+  },
+  {
+   "name": "temp_zero",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "temperature": 0
+  },
+  {
+   "name": "temp_mid_effort",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "one"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "levels_1"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "two"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "temperature": 0.3
+  },
+  {
+   "name": "temp_adaptive_off",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "compat": {
+    "forceAdaptiveThinking": true
+   },
+   "temperature": 0.5
+  },
+  {
+   "name": "temp_refused",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "temperature": 0.7,
+   "compat": {
+    "supportsTemperature": false
+   }
+  },
+  {
+   "name": "choice_auto",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "auto"
+  },
+  {
+   "name": "choice_any",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "any"
+  },
+  {
+   "name": "choice_none",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "none"
+  },
+  {
+   "name": "choice_tool",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": {
+    "type": "tool",
+    "name": "read"
+   }
+  },
+  {
+   "name": "choice_no_tools",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [],
+   "toolChoice": "any"
+  },
+  {
+   "name": "choice_with_temp",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "any",
+   "temperature": 0.2
+  },
+  {
+   "name": "budget_custom",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "thinkingBudgets": {
+    "medium": 4096
+   }
+  },
+  {
+   "name": "budget_custom_low",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "low",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "thinkingBudgets": {
+    "low": 3000,
+    "medium": 4096
+   }
+  },
+  {
+   "name": "budget_custom_minimal",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "minimal",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "thinkingBudgets": {
+    "minimal": 2000
+   }
+  },
+  {
+   "name": "budget_custom_xhigh",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "xhigh",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "thinkingBudgets": {
+    "high": 5000
+   }
+  },
+  {
+   "name": "budget_custom_clamp",
+   "model": "anthropic/claude-haiku-4-5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ipsum lorem ip"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "window": 12000,
+   "thinkingBudgets": {
+    "medium": 30000
+   }
+  },
+  {
+   "name": "budget_custom_adaptive",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "compat": {
+    "forceAdaptiveThinking": true
+   },
+   "thinkingBudgets": {
+    "high": 5000
+   }
+  },
+  {
+   "name": "tool_cut",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_empty",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_empty",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_second",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_second",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_keys",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_keys",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_num_dot",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_num_dot",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_num_minus",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_num_minus",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_num_exp",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_num_exp",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_lit_t",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_lit_t",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_lit_n",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_lit_n",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_nested",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_nested",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_nested_str",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_nested_str",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_esc",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_esc",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_uni",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_uni",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_key_closed",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_key_closed",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_key_colon_ws",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_key_colon_ws",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_open_only",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_open_only",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_open_comma",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_open_comma",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_arr_comma",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_arr_comma",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_cut_obj_in_arr",
+   "model": "anthropic/claude-opus-5-5",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool_cut_obj_in_arr",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
   }
  ]
 }

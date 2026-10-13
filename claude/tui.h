@@ -96,10 +96,21 @@ typedef struct tui_pick {
     int n, sel;
     int maxrows;                /* rows shown at most */
     char status[64];            /* after "(sel/total)" */
+    /* TUI_PICK_SESSION: pi's SessionSelectorComponent instead of the tree's frame (session-selector.ts:741-755, 313-342):
+     * a blank row, a rule, a blank row, title (the header row, composed by the program, SGR kept), help (the hint
+     * rows, '\n' between, SGR kept), a blank row, "> " and the search text with a cursor cell, a blank row, the rows
+     * (empty: the message when n is 0), "(sel/total)" only where the list scrolls, a blank row, a rule. The frame is
+     * left on the screen when the picker ends: pi's -r keeps its selector in the scrollback. */
     void (*row)(void *u, int i, int selected, char *out, long cap);
     int (*key)(void *u, const cl_key *k, int act);
     void *u;
+    /* TUI_PICK_AUTH: pi's OAuthSelectorComponent (the /login provider list): a rule, the title in bold and the accent colour,
+     * the search input ("> " and the query, a cursor), the rows (one column in), "(sel/total)" only while the list scrolls,
+     * a rule. status and help are not shown; `empty` is the row for no match (0: "No matching providers") */
+    int layout;
+    const char *empty;
 } tui_pick;
+enum { TUI_PICK_TREE, TUI_PICK_AUTH, TUI_PICK_SESSION };
 typedef struct cl_tui {
     cl_io *io;
     int cols, rows;
@@ -131,10 +142,12 @@ typedef struct cl_tui {
     /* slash commands */
     const cl_cmd *cmds;
     int ncmds;
-    /* the menu's filter: the indexes into cmds (room for ncmds in idx) of the commands that match the box's text (len bytes,
-     * from the '/'), in the order the menu shows them; the count. 0 (C:Claude): the commands whose name starts with the text,
-     * at most eight (pi's look: all of them). amiga-pi sets pi-tui's fuzzy filter here */
-    int (*slash_filter)(void *u, const cl_cmd *cmds, int n, const char *text, long len, int *idx);
+    /* the menu's filter: the indexes into cmds (room for ncmds in idx) of the commands to list for the box (b, len bytes,
+     * the cursor at byte cur), in the order the menu shows them; the count. *from is the offset in b where the text begins
+     * that a chosen command replaces (up to the cursor). 0 (C:Claude): the commands whose name starts with the box's text
+     * (it starts with '/', one line, no space), at most eight (pi's look: all of them). amiga-pi sets pi-tui's filter here,
+     * which decides by the text before the cursor itself */
+    int (*slash_filter)(void *u, const cl_cmd *cmds, int n, const char *b, long len, long cur, long *from, int *idx);
     void *slash_u;
     int *smatch;                /* the matches (tui.c), ncmds of room */
     int smatch_cap;
@@ -273,6 +286,12 @@ typedef struct cl_tui {
     char pi_title[200];         /* the window title in pi's look: the program's (pi's updateTerminalTitle), never C:Claude's */
     char pi_cwd[300], pi_left[160], pi_ctx[48], pi_right[120], pi_work[96];
     int pi_ctx_role, pi_rule;
+    /* TUI_LOOK_PI -- what extensions put on the screen (ctx.ui.setWidget, setStatus): widget lines above the editor and below it
+     * (text lines separated by line feeds, 0 none; the *_cut flag adds pi's muted "... (widget truncated)"), and the footer's extra
+     * status row (extension statuses, sorted and joined by the program) */
+    char *pi_wabove, *pi_wbelow;
+    int pi_wabove_cut, pi_wbelow_cut;
+    char pi_extstat[240];
     char *pi_steer[TUI_QUEUE], *pi_follow[TUI_QUEUE];
     int n_steer, n_follow;
     /* TUI_LOOK_PI -- what the program does for the keys of pi's queue and cycling (pi_ui in amiga-pi):
@@ -287,6 +306,7 @@ typedef struct cl_tui {
     void (*on_expand)(void *u);
     void *qu;
     const tui_pick *pick;       /* the picker that is open (modal 2), the line input (modal 3: pi_in) */
+    struct tui_dialog *dlg;     /* the sign-in dialog that is open (tui_dialog_open) */
     char pi_in[1100];           /* a pasted redirect URL of /login is the longest line */
     const char *pi_in_title;
     const char *pi_in_hint;     /* the first hint word of the line input ("enter save"), 0: "enter save" */
@@ -315,6 +335,20 @@ int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, lo
 /* TUI_LOOK_PI: an extension's text input (ctx.ui.input): 1 with the text in out, 0 for Esc, Ctrl+C and timeout_ms (0 none)
  * running out, -1 the end of input */
 int tui_ext_input(cl_tui *t, const char *title, char *out, long cap, long timeout_ms);
+/* TUI_LOOK_PI: pi's LoginDialogComponent (components/login-dialog.ts), which takes the editor's place while a sign-in runs: a
+ * rule, the title in bold and the accent colour, the content, a rule, the footer. The content is rows the program adds in
+ * order and shows as it goes: blank rows, text (wrapped one column in, in a theme role), one row of text that carries its
+ * own SGR, and the input line ("> " and the typed text; once read it stays as the text typed). */
+enum { TUI_DLG_BLANK, TUI_DLG_TEXT, TUI_DLG_ANSI, TUI_DLG_INPUT };
+void tui_dialog_open(cl_tui *t, const char *title);
+void tui_dialog_clear(cl_tui *t);
+/* role: a PR_* of the theme (TUI_DLG_TEXT) */
+void tui_dialog_add(cl_tui *t, int kind, int role, const char *text);
+/* the last input line typed into: 1 with the text in out, 0 for Esc and Ctrl+C, -1 the end of input */
+int tui_dialog_read(cl_tui *t, char *out, long cap);
+/* keys typed meanwhile (the program is waiting for the provider): 1 when Esc or Ctrl+C was among them */
+int tui_dialog_cancelled(cl_tui *t);
+void tui_dialog_close(cl_tui *t);
 
 /* 0, or -1 when out of memory. cols x rows from io->size (80x24 when it
  * says nothing). */
@@ -402,5 +436,9 @@ int tui_resized(cl_tui *t);
  * the slot, or 0 when it must be read (tui_dir_put then) */
 tui_dir *tui_dir_get(cl_tui *t, const char *full);
 tui_dir *tui_dir_put(cl_tui *t, const char *full);
+
+/* the widgets above and below the editor (copied; 0 clears), and the footer's status row ('' none) */
+void tui_pi_widgets(cl_tui *t, const char *above, int above_cut, const char *below, int below_cut);
+void tui_pi_ext_status(cl_tui *t, const char *text);
 
 #endif

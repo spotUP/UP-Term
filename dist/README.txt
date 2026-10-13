@@ -32,15 +32,15 @@ INSTALL
   It copies the handlers, DOSDrivers entries, vsh, ixkill, the terminal
   entries to ENVARC:up-term, sets TERMINFO, puts in the patched
   ixemul.library and mounts XCON: and PTY:. A page of check boxes picks
-  the optional parts: ssh and scp, bebboget, curl (see NETWORK), the
-  serial login (SERIAL LOGIN), the UP-Term icon in SYS:System and the
+  the optional parts: ssh and scp, bebboget, curl (see NETWORK), amiagent
+  (see CLAUDE FROM THE AMIGA), the serial login (SERIAL LOGIN), the UP-Term icon in SYS:System and the
   Shell icon. On 3.0/3.1 a second page asks whether UP-Term should also
   serve CON: and RAW: (see CON: AND RAW: below) and console.device (see
   CONSOLE.DEVICE below). Install first asks where UP-Term's own drawer
   goes (see WHERE IT IS INSTALLED).
   From a Shell, without Installer, cd into the drawer, then:
     Execute Files/install.dos Files [DEST <drawer>] [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
-      [SERIAL] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [CPU040|CPU060]
+      [SERIAL] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [AMIAGENT] [CPU040|CPU060]
   (each optional part only when named).
   Remove everything again: double-click Uninstall (or Execute Uninstall).
 
@@ -646,10 +646,23 @@ NETWORK
   under the curl licence. Their COPYING files and sources (or where the
   source is) are in the kit's Files/net drawer.
 
+AMIAGENT
+  amiagent 0.13.2 (Apache 2.0, by Thomas Luebker; Aminet comm/net/amiagent)
+  is an optional part of Install, off unless you tick it: it copies the
+  68020 build (on a 68000 or 68010 the 68000 build) to UP-Term:bin/amiagent
+  and never starts it. It runs ANY command that a client knowing its TOKEN
+  sends, over an unencrypted link: start it only with a TOKEN, on a network
+  you trust, and never forward its port (7846) to the internet:
+    Run >NIL: UP-Term:bin/amiagent TOKEN=pick-a-secret QUIET
+  Uninstall stops it (when started as UP-Term:bin/amiagent or amiagent;
+  stop one started another way with Ctrl-C first) and removes it.
+  Claude Code on another computer drives this Amiga through it (amimcp; tools/nas/README.md
+  in the vtcon source tree). Never run amiagent without a TOKEN.
+
 UPTELNET
   uptelnet is a telnet client for the window (no ixemul; needs a TCP/IP
   stack). UP-Term-Claude.lha's ClaudeCode uses it to reach Claude Code on a Mac.
-  On the Mac, from an UP-Term source checkout (nothing is installed; it
+ On the Mac, from an UP-Term source checkout (nothing is installed; it
   runs until Ctrl-C):
     (umask 077; mkdir -p ~/.config/uptelnetd; read -rs p; printf '%s\n' "$p" > ~/.config/uptelnetd/password)
     python3 tools/uptelnetd.py
@@ -755,7 +768,6 @@ ADD-ONS
   add-ons out first, each by its own Uninstall, and asks once about
   UP-Term:var. The source of the GNU commands is UP-Term-src.lha, next to
   UP-Term.lha, with the Unix tools' source.
-
 STATUS
   Test build. CON:/RAW: and console.device stay the system's unless you
   switch them (above); XCON: runs beside them.

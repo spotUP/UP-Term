@@ -1,0 +1,4 @@
+stop=error
+error=Anthropic stream ended before message_stop
+usage=310,2,0,0
+tool=toolu_c read {"a":true,"b":null}

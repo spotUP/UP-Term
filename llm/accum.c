@@ -120,50 +120,314 @@ static long ev_text(const llm_event *e, char *m, long cap)
     return n;
 }
 
-/* cut JSON completed as far as it goes (pi-ai's partial-json salvage for an
- * answer stopped at its length): an open string closed, a dangling ',' or
- * key dropped, open objects and arrays closed; "{}" when that does not parse */
+/* ---- parseStreamingJson: the arguments of a tool call that did not arrive whole ----
+ * A port of the `partial-json` package pi-ai 1.1.0 uses (parse with Allow.ALL, node_modules/partial-json/dist/index.js:
+ * parseAny, parseStr, parseObj, parseArr, parseNum) as utils/json-parse.js:parseStreamingJson calls it. The same rules:
+ * an object that ends early is closed after the last member that parsed; a half-written key, string escape or number
+ * drops that member (a string keeps what it has: "S:Star"), a half-written true / false / null is completed, and an
+ * exception inside a member only costs that member. The value is written as the token's own text (pi writes
+ * JSON.stringify of the value, so a number like 1e2 or a \u escape reads differently, equal as JSON); a repeated key is
+ * kept twice (pi keeps the last value in the first position). Anything that does not begin with '{' is {}. */
+typedef struct pjs {
+    const char *s;
+    long n, i;
+    jw *w;
+} pjs;
+
+#define PJ_THROW (-1)
+
+/* JavaScript's String.prototype.substring: arguments clamped to 0..n and swapped when the start is after the end */
+static void js_sub(const pjs *p, long a, long b, long *from, long *len)
+{
+    long t;
+    if (a < 0)
+        a = 0;
+    if (b < 0)
+        b = 0;
+    if (a > p->n)
+        a = p->n;
+    if (b > p->n)
+        b = p->n;
+    if (a > b) {
+        t = a;
+        a = b;
+        b = t;
+    }
+    *from = a;
+    *len = b - a;
+}
+
+static long last_index_of(const pjs *p, char c)
+{
+    long i;
+    for (i = p->n - 1; i >= 0; i--)
+        if (p->s[i] == c)
+            return i;
+    return -1;
+}
+
+/* JSON.parse of a string literal: quotes included, no raw control character, only JSON's escapes */
+static int json_str_ok(const char *t, long n)
+{
+    long i;
+    if (n < 2 || t[0] != '"' || t[n - 1] != '"')
+        return 0;
+    for (i = 1; i < n - 1; i++) {
+        unsigned char c = (unsigned char)t[i];
+        if (c < 0x20 || c == '"')
+            return 0;
+        if (c == '\\') {
+            char e;
+            if (++i >= n - 1)
+                return 0;
+            e = t[i];
+            if (e == 'u') {
+                int k;
+                for (k = 1; k <= 4; k++) {
+                    char h = i + k < n - 1 ? t[i + k] : 0;
+                    if (!((h >= '0' && h <= '9') || (h >= 'a' && h <= 'f') || (h >= 'A' && h <= 'F')))
+                        return 0;
+                }
+                i += 4;
+            } else if (!strchr("\"\\/bfnrt", e))
+                return 0;
+        }
+    }
+    return 1;
+}
+
+/* JSON.parse of a number (JSON whitespace around it is allowed): the trimmed span in *from / *len */
+static int json_num_ok(const char *t, long n, long *from, long *len)
+{
+    long i = 0, e = n;
+    while (i < e && strchr(" \n\r\t", t[i]))
+        i++;
+    while (e > i && strchr(" \n\r\t", t[e - 1]))
+        e--;
+    *from = i;
+    *len = e - i;
+    if (i < e && t[i] == '-')
+        i++;
+    if (i >= e)
+        return 0;
+    if (t[i] == '0')
+        i++;
+    else if (t[i] >= '1' && t[i] <= '9')
+        while (i < e && t[i] >= '0' && t[i] <= '9')
+            i++;
+    else
+        return 0;
+    if (i < e && t[i] == '.') {
+        long d = ++i;
+        while (i < e && t[i] >= '0' && t[i] <= '9')
+            i++;
+        if (i == d)
+            return 0;
+    }
+    if (i < e && (t[i] == 'e' || t[i] == 'E')) {
+        long d;
+        i++;
+        if (i < e && (t[i] == '+' || t[i] == '-'))
+            i++;
+        d = i;
+        while (i < e && t[i] >= '0' && t[i] <= '9')
+            i++;
+        if (i == d)
+            return 0;
+    }
+    return i == e;
+}
+
+static void pj_blank(pjs *p)
+{
+    while (p->i < p->n && strchr(" \n\r\t", p->s[p->i]))
+        p->i++;
+}
+
+static int pj_any(pjs *p);
+
+/* parseStr: the string at p->i is written (quotes included) */
+static int pj_str(pjs *p)
+{
+    long start = p->i, from, len, bs;
+    int esc = 0;
+    jw t;
+    p->i++;
+    while (p->i < p->n && (p->s[p->i] != '"' || (esc && p->s[p->i - 1] == '\\'))) {
+        esc = p->s[p->i] == '\\' ? !esc : 0;
+        p->i++;
+    }
+    if (p->i < p->n && p->s[p->i] == '"') {
+        p->i++;
+        js_sub(p, start, p->i - esc, &from, &len);
+        if (!json_str_ok(p->s + from, len))
+            return PJ_THROW;
+        jw_raw(p->w, p->s + from, len);
+        return 0;
+    }
+    /* unterminated (Allow.STR): what there is, closed; if that is no string (a half escape), up to the last backslash */
+    jw_init(&t);
+    js_sub(p, start, p->i - esc, &from, &len);
+    jw_raw(&t, p->s + from, len);
+    jw_raw(&t, "\"", 1);
+    if (!t.oom && json_str_ok(t.p, t.n)) {
+        jw_raw(p->w, t.p, t.n);
+        jw_free(&t);
+        return 0;
+    }
+    jw_reset(&t);
+    bs = last_index_of(p, '\\');
+    js_sub(p, start, bs, &from, &len);
+    jw_raw(&t, p->s + from, len);
+    jw_raw(&t, "\"", 1);
+    if (!t.oom && json_str_ok(t.p, t.n)) {
+        jw_raw(p->w, t.p, t.n);
+        jw_free(&t);
+        return 0;
+    }
+    jw_free(&t);
+    return PJ_THROW;
+}
+
+/* parseNum (a number inside an object or array) */
+static int pj_num(pjs *p)
+{
+    long start = p->i, from, len, f2, l2, e;
+    if (p->i < p->n && p->s[p->i] == '-')
+        p->i++;
+    while (p->i < p->n && !strchr(",]}", p->s[p->i]))
+        p->i++;
+    if (json_num_ok(p->s + start, p->i - start, &f2, &l2)) {
+        jw_raw(p->w, p->s + start + f2, l2);
+        return 0;
+    }
+    /* JSON.parse(jsonString.substring(start, jsonString.lastIndexOf("e"))): the last 'e' of the whole text */
+    e = last_index_of(p, 'e');
+    js_sub(p, start, e, &from, &len);
+    if (json_num_ok(p->s + from, len, &f2, &l2)) {
+        jw_raw(p->w, p->s + from + f2, l2);
+        return 0;
+    }
+    return PJ_THROW;
+}
+
+/* a literal, or its start when the text ends inside it (Allow.NULL / BOOL / INFINITY / NAN) */
+static int pj_lit(pjs *p, const char *lit, const char *out, long minleft)
+{
+    long ll = (long)strlen(lit), left = p->n - p->i;
+    if ((left >= ll && !strncmp(p->s + p->i, lit, (size_t)ll)) ||
+        (left < ll && left > minleft && !strncmp(p->s + p->i, lit, (size_t)left))) {
+        p->i += ll;
+        jw_rawz(p->w, out);
+        return 1;
+    }
+    return 0;
+}
+
+static int pj_obj(pjs *p)
+{
+    int first = 1;
+    jw_rawz(p->w, "{");
+    p->i++;
+    pj_blank(p);
+    while (p->i >= p->n || p->s[p->i] != '}') {
+        long mark = p->w->n;
+        pj_blank(p);
+        if (p->i >= p->n)
+            break;
+        if (!first)
+            jw_rawz(p->w, ",");
+        if (pj_str(p)) {
+            p->w->n = mark;
+            break;
+        }
+        jw_rawz(p->w, ":");
+        pj_blank(p);
+        p->i++;                         /* the colon, whatever it is */
+        if (pj_any(p)) {
+            p->w->n = mark;
+            break;
+        }
+        first = 0;
+        pj_blank(p);
+        if (p->i < p->n && p->s[p->i] == ',')
+            p->i++;
+    }
+    if (p->w->p)
+        p->w->p[p->w->n] = 0;
+    jw_rawz(p->w, "}");
+    if (p->i < p->n && p->s[p->i] == '}')
+        p->i++;
+    return 0;
+}
+
+static int pj_arr(pjs *p)
+{
+    int first = 1;
+    jw_rawz(p->w, "[");
+    p->i++;
+    while (p->i >= p->n || p->s[p->i] != ']') {
+        long mark = p->w->n;
+        if (!first)
+            jw_rawz(p->w, ",");
+        if (pj_any(p)) {
+            p->w->n = mark;
+            break;
+        }
+        first = 0;
+        pj_blank(p);
+        if (p->i < p->n && p->s[p->i] == ',')
+            p->i++;
+    }
+    if (p->w->p)
+        p->w->p[p->w->n] = 0;
+    jw_rawz(p->w, "]");
+    if (p->i < p->n && p->s[p->i] == ']')
+        p->i++;
+    return 0;
+}
+
+static int pj_any(pjs *p)
+{
+    pj_blank(p);
+    if (p->i >= p->n)
+        return PJ_THROW;
+    switch (p->s[p->i]) {
+    case '"':
+        return pj_str(p);
+    case '{':
+        return pj_obj(p);
+    case '[':
+        return pj_arr(p);
+    default:
+        break;
+    }
+    if (pj_lit(p, "null", "null", 0) || pj_lit(p, "true", "true", 0) || pj_lit(p, "false", "false", 0) ||
+        pj_lit(p, "Infinity", "null", 0) || pj_lit(p, "-Infinity", "null", 1) || pj_lit(p, "NaN", "null", 0))
+        return 0;
+    return pj_num(p);
+}
+
+/* w holds the text so far of a tool call's arguments; afterwards the object parseStreamingJson makes of it */
 static void salvage(jw *w)
 {
-    char st[64];
-    int depth = 0, in_str = 0, esc = 0;
-    long i, cut = -1;
-    jv v;
+    pjs p;
     jw o;
-    for (i = 0; i < w->n; i++) {
-        char c = w->p[i];
-        if (in_str) {
-            if (esc)
-                esc = 0;
-            else if (c == '\\')
-                esc = 1;
-            else if (c == '"')
-                in_str = 0;
-        } else if (c == '"')
-            in_str = 1;
-        else if ((c == '{' || c == '[') && depth < (int)sizeof(st))
-            st[depth++] = c;
-        else if ((c == '}' || c == ']') && depth)
-            depth--;
-    }
+    long a = 0, e = w->n;
+    while (a < e && strchr(" \n\r\t", w->p[a]))
+        a++;
+    while (e > a && strchr(" \n\r\t", w->p[e - 1]))
+        e--;
     jw_init(&o);
-    jw_raw(&o, w->p, w->n - (esc ? 1 : 0));
-    if (in_str)
-        jw_raw(&o, "\"", 1);
-    while (o.n && (o.p[o.n - 1] == ' ' || o.p[o.n - 1] == ',' || o.p[o.n - 1] == '\n'))
-        o.n--;
-    if (o.n && o.p[o.n - 1] == ':') {
-        /* a key without its value: back to the ',' or '{' before it */
-        for (cut = o.n - 2; cut >= 0 && o.p[cut] != ',' && o.p[cut] != '{'; cut--)
-            ;
-        o.n = cut >= 0 && o.p[cut] == '{' ? cut + 1 : cut >= 0 ? cut : 0;
+    if (e > a && w->p[a] == '{') {
+        p.s = w->p + a;
+        p.n = e - a;
+        p.i = 0;
+        p.w = &o;
+        pj_obj(&p);
     }
-    if (o.p)
-        o.p[o.n] = 0;
-    while (depth > 0)
-        jw_raw(&o, st[--depth] == '{' ? "}" : "]", 1);
     jw_reset(w);
-    if (!o.oom && o.n && json_parse(o.p, o.n, &v) == 0 && json_type(v) == J_OBJ)
+    if (!o.oom && o.n)
         jw_raw(w, o.p, o.n);
     else
         jw_rawz(w, "{}");
@@ -187,6 +451,8 @@ static void settle(llm_acc *a)
             cl_copy(m, "the arguments of tool call ", sizeof(m));
             cl_cat(m, b->name, sizeof(m));
             cl_cat(m, " are not valid JSON", sizeof(m));
+            if (!a->failed)
+                a->args_failed = 1;
             fail(a, LS_ERROR, m);
             return;
         }
@@ -373,7 +639,9 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
 {
     jw c;
     llm_meta m;
-    int i, first = 1, *ord;
+    int i, first = 1, *ord, cut = (a->failed && !a->args_failed) || !a->done;
+    /* an answer that ended in an error or was cut off keeps the tool calls it had begun, with the arguments so far
+     * (pi: every provider's catch block deletes only its scratch fields); a call of a finished answer must be whole */
     settle(a);
     ord = (int *)malloc((size_t)(a->nb ? a->nb : 1) * sizeof(int));
     if (!ord)
@@ -393,7 +661,9 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     jw_raw(&c, "[", 1);
     for (i = 0; i < a->nb; i++) {
         const llm_ablock *b = &a->b[ord[i]];
-        if (b->kind == LB_TOOLCALL && (!b->done || !args_ok(b)))
+        jw part;
+        int partial = b->kind == LB_TOOLCALL && (!b->done || !args_ok(b));
+        if (partial && !cut)
             continue;           /* half a call is no call */
         if (b->kind == LB_TEXT && !b->a.n)
             continue;
@@ -408,7 +678,15 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
             llm_b_thinking(&c, b->a.p, b->a.n, b->sig.p, b->sig.n, b->redacted);
             break;
         case LB_TOOLCALL:
-            llm_b_toolcall(&c, b->id, b->name, b->a.p, b->a.n, b->sig.n ? b->sig.p : 0);
+            if (partial) {
+                jw_init(&part);
+                jw_raw(&part, b->a.p, b->a.n);
+                if (!args_ok(b))
+                    salvage(&part);
+                llm_b_toolcall(&c, b->id, b->name, part.p, part.n, b->sig.n ? b->sig.p : 0);
+                jw_free(&part);
+            } else
+                llm_b_toolcall(&c, b->id, b->name, b->a.p, b->a.n, b->sig.n ? b->sig.p : 0);
             break;
         default:
             {

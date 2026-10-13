@@ -1248,6 +1248,13 @@ static void copy_selection(vtwin *w)
     FreeVec(utf);
 }
 
+/* A key's bytes: the plain legacy ones while the console's own line editor
+ * reads (H1), else what the program's modes make of it. */
+static int encode_key(const vtwin *w, int cooked, long key, int mods, vt_u8 *out)
+{
+    return cooked ? vt_encode_key_plain(w->t, key, mods, out) : vt_encode_key(w->t, key, mods, out);
+}
+
 /* The clipboard, typed into the program: each character in the terminal's
  * encoding, Return for each line break, controls other than TAB dropped
  * (clipfmt.h), and bracketed when the program asked for it (?2004). */
@@ -1273,7 +1280,7 @@ static void paste(vtwin *w)
         if (ch == '
 ' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
             continue; /* controls never; inside ?2004 nothing that ends the brackets early */
-        k = vt_encode_key(w->t, key, 0, out);
+        k = encode_key(w, !raw, key, 0, out);
         w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);
     }
     if (raw) {
@@ -1428,11 +1435,16 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
     long key;
     int mods = 0, n = 0;
     vt_u8 out[40];
+    /* H1: while the console's own line editor reads, the keys are the plain
+     * legacy ones whatever a program left on (kitty flags, modifyOtherKeys,
+     * raw key events, DECKPAM); a program that reads raw gets its modes */
+    int cooked;
     if (!w->t)
         return;
+    cooked = !w->host->raw(w->user);
     if ((qual & IEQUALIFIER_REPEAT) && !(vt_modes(w->t) & VT_MODE_AUTOREPEAT))
         return; /* DECARM off: a held key types once */
-    if (vt_raw_events(w->t) & (1UL << 1)) {
+    if (!cooked && (vt_raw_events(w->t) & (1UL << 1))) {
         /* the program asked for raw keyboard events (CSI 1 {): an input
          * event report per key, press and release (matrix 5.2) */
         char b[80];
@@ -1467,7 +1479,7 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         w->host->input(w->user, (const vt_u8 *)b, k);
         return;
     }
-    if (kitty_key(w, code, qual, prev))
+    if (!cooked && kitty_key(w, code, qual, prev))
         return; /* the kitty keyboard protocol: presses, repeats and releases */
     if (code & IECODE_UP_PREFIX)
         return;
@@ -1477,10 +1489,10 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         set_view(w, 0);
     mods = qual_mods(w, qual);
     key = special_key(code);
-    if (!key && w->pers == VT_XTERM && (vt_modes(w->t) & VT_MODE_APP_KEYPAD))
+    if (!key && !cooked && w->pers == VT_XTERM && (vt_modes(w->t) & VT_MODE_APP_KEYPAD))
         key = keypad_key(code); /* DECKPAM: the keypad sends SS3 codes */
     if (key) {
-        n = vt_encode_key(w->t, key, mods, out);
+        n = encode_key(w, cooked, key, mods, out);
     } else {
         /* Character keys go through the keymap (dead keys, Alt chars). */
         struct InputEvent ie;
@@ -1490,7 +1502,7 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
          * character without Ctrl and the encoder gets Ctrl and Shift, so
          * Ctrl+; or Ctrl+Shift+X can be told apart; otherwise the keymap
          * applies Ctrl itself (its control characters, as always) */
-        int mok_ctrl = w->pers == VT_XTERM && (mods & VT_MOD_CTRL) && vt_modify_other_keys(w->t);
+        int mok_ctrl = !cooked && w->pers == VT_XTERM && (mods & VT_MOD_CTRL) && vt_modify_other_keys(w->t);
         ie.ie_NextEvent = 0;
         ie.ie_Class = IECLASS_RAWKEY;
         ie.ie_SubClass = 0;
@@ -1507,8 +1519,8 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         for (i = 0; i < k && n < (int)sizeof(out) - 16; i++) {
             /* Meta (vt_encode_key adds the ESC for xterm), and Ctrl and
              * Shift when the keymap left Ctrl to the encoder */
-            n += vt_encode_key(w->t, buf[i], (w->pers != VT_XTERM) ? 0 : mok_ctrl ? mods : (mods & VT_MOD_ALT),
-                               out + n);
+            int km = (w->pers != VT_XTERM) ? 0 : mok_ctrl ? mods : (mods & VT_MOD_ALT);
+            n += encode_key(w, cooked, buf[i], km, out + n);
         }
     }
     if (n)

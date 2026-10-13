@@ -29,6 +29,6 @@ long llm_think_budget_of(int level);
 /* a budget-based thinking request (pi's anthropic and bedrock streamSimple): base is the cap buildBaseOptions made
  * (already clamped to the context window); the cap the request carries after adjustMaxTokensForThinking and a second
  * clampMaxTokensToContext in *maxt, the thinking budget min(budget, maxt - 1024) in *budget */
-void llm_think_budget(const llm_model *m, long est, long base, int lv, long *maxt, long *budget);
+void llm_think_budget(const llm_model *m, long est, long base, int lv, long custom, long *maxt, long *budget);
 
 #endif

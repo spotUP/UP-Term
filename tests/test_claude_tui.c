@@ -1724,6 +1724,43 @@ static int edit_stub(void *u, const char *path)
     return tsys.write(tsys.u, path, "from the editor\n", 16);
 }
 
+static int ed_alt, ed_kitty;
+static int edit_probe(void *u, const char *path)
+{
+    (void)u;
+    (void)path;
+    ed_alt = (vt_modes(cs.vt) & VT_MODE_ALT_SCREEN) != 0;
+    ed_kitty = vt_kitty_flags(cs.vt);
+    return 0;
+}
+
+/* U4: pi's fullscreen external editor (handleOpenExternalEditor: ui.stop() leaves the alternate screen,
+ * ui.start() enters it again): the editor runs on the main screen with no mode of ours on, and Claude comes
+ * back on the alternate screen with its modes, the flags on that screen's stack, and leaves clean. */
+static void fullscreen_external_editor_returns_to_the_alternate_screen(void)
+{
+    static const char *script[] = { "\007", 0 };
+    char line[32], p[600];
+    screen(60, 16, script);
+    tui.screen = TUI_SCREEN_FULL;
+    io.edit = edit_probe;
+    tpath(p, "prompt.txt");
+    tui.edit_path = p;
+    tui.sys = &tsys;
+    CHECK_INT(tui_start(&tui), 0);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_INT(ed_alt, 0);   /* the editor ran on the main screen */
+    CHECK_INT(ed_kitty, 0);
+    CHECK(vt_modes(cs.vt) & VT_MODE_ALT_SCREEN); /* back on the alternate screen */
+    CHECK(vt_kitty_flags(cs.vt) != 0);
+    tui_stop(&tui);
+    CHECK_INT((long)(vt_modes(cs.vt) & VT_MODE_ALT_SCREEN), 0);
+    CHECK_INT(vt_kitty_flags(cs.vt), 0);
+    io.edit = 0;
+    unscreen();
+    cs_close();
+}
+
 static void redraw_editor_todos(void)
 {
     static const char *s1[] = { "\014", 0 };
@@ -2122,8 +2159,40 @@ static void pi_theme_depth_follows_pi_not_a_fixed_16(void)
     CHECK_STR(sgr, "\033[48;2;52;53;65m");
 }
 
+/* After C:Claude or amiga-pi leaves, the window's keys are a shell's again: every input mode its start
+ * switched on is off, on the screen the shell reads at. Owner, rig 3, 2026-10-13: after amiga-pi (pi's
+ * fullscreen) quit, `vtc:amiga-pi -r` typed at the vsh prompt ran as `\033[117` (vsh: ot found, the
+ * "\033[117: n" eaten as a CSI) and `5uvtc:amiga-pi` (insert volume 5uvtc): kitty's CSI >1u went to
+ * the main screen's stack before ?1049h and the CSI <u at the end popped the alternate screen's, so a
+ * Ctrl key at the prompt came as CSI 117;5u and the console's line editor took it as text. */
+static void modes_restored_at_exit(void)
+{
+    static const char *const names[] = { "inline", "regular", "fullscreen" };
+    static const int scr[] = { TUI_SCREEN_INLINE, TUI_SCREEN_REGULAR, TUI_SCREEN_FULL };
+    int i;
+    for (i = 0; i < 3; i++) {
+        static const char *script[] = { 0 };
+        vt_u32 m;
+        screen(80, 24, script);
+        tui.screen = scr[i];
+        CHECK_INT(tui_start(&tui), 0);
+        CHECK(vt_kitty_flags(cs.vt) != 0); /* the program's own keys while it runs */
+        tui_stop(&tui);
+        m = vt_modes(cs.vt);
+        if (vt_kitty_flags(cs.vt) || vt_modify_other_keys(cs.vt) || (m & (VT_MODE_BRACKET_PASTE | VT_MODE_FOCUS | VT_MODE_ALT_SCREEN)))
+            printf("  %s: kitty %d, modifyOtherKeys %d, modes %lx left on\n", names[i], vt_kitty_flags(cs.vt),
+                   vt_modify_other_keys(cs.vt), (unsigned long)m);
+        CHECK_INT(vt_kitty_flags(cs.vt), 0);
+        CHECK_INT(vt_modify_other_keys(cs.vt), 0);
+        CHECK_INT((long)(m & (VT_MODE_BRACKET_PASTE | VT_MODE_FOCUS | VT_MODE_ALT_SCREEN)), 0);
+        unscreen();
+        cs_close();
+    }
+}
+
 void suite_claude_tui(void)
 {
+    modes_restored_at_exit();
     pi_theme_depth_follows_pi_not_a_fixed_16();
     pi_theme_256_is_pi_tuis_conversion();
     keys();
@@ -2154,6 +2223,7 @@ void suite_claude_tui(void)
     thinking_shown();
     themes();
     notifications();
+    fullscreen_external_editor_returns_to_the_alternate_screen();
     redraw_editor_todos();
     gaps3_think();
     gaps3_dirs();

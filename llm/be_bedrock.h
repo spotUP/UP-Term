@@ -10,7 +10,7 @@
  * (AWS_BEARER_TOKEN_BEDROCK, a stored key); with AWS_BEDROCK_SKIP_AUTH=1 only the environment's counts: the SDK reads
  * that variable itself, whatever pi decides (a stored key is dropped, pi: useBearerToken). */
 typedef struct llm_bedrock_env {
-    const char *region, *default_region, *profile, *access, *secret, *token, *skip_auth;
+    const char *region, *default_region, *profile, *access, *secret, *token, *skip_auth, *force_cache, *cache_retention;
     int bearer;
 } llm_bedrock_env;
 

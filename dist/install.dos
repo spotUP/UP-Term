@@ -1,4 +1,4 @@
-.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S,AMIAGENT/S,CPU000/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -15,6 +15,9 @@
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: UP-Term-python,
 ;  UP-Term-nvim, UP-Term-Claude and UP-Term-pi, each with its own Install.)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
+;     [AMIAGENT] [CPU000]  (amiagent, so Claude on another computer can drive this
+;               Amiga: UP-Term:bin/amiagent, never started here and never without a
+;               TOKEN; the 68020 build, or with CPU000 (a 68000 or 68010) the 68000 one)
 ;     [STEP <part>]  (only that part: see "The parts" below)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
@@ -50,6 +53,8 @@ Set optcpu040 "{CPU040}"
 Set optcpu060 "{CPU060}"
 Set optunifont "{UNIFONT}"
 Set optemoji "{EMOJI}"
+Set optamiagent "{AMIAGENT}"
+Set optcpu000 "{CPU000}"
 If NOT "{STEP}" EQ ""
   If EXISTS ENV:UPTOPTDEST
     Set optdest "$UPTOPTDEST"
@@ -95,6 +100,12 @@ If NOT "{STEP}" EQ ""
   EndIf
   If EXISTS ENV:UPTOPTEMOJI
     Set optemoji EMOJI
+  EndIf
+  If EXISTS ENV:UPTOPTAMIAGENT
+    Set optamiagent AMIAGENT
+  EndIf
+  If EXISTS ENV:UPTOPTCPU000
+    Set optcpu000 CPU000
   EndIf
 EndIf
 ; The parts, each from its Lab line to the next. With no STEP every part runs,
@@ -397,6 +408,18 @@ If "$optcurl" EQ "CURL"
       Copy net/curl-8.22.0/curl.020 UP-Term:bin/curl CLONE QUIET
     EndIf
   EndIf
+EndIf
+; amiagent 0.13.2 (Apache 2.0, net/amiagent-0.13.2), the Amiga half of amimcp: it runs
+; whatever a client with its TOKEN sends, so Install only copies it -- it is never
+; started here, and the README says to always give it a TOKEN. The marker is how
+; Uninstall knows the copy is ours.
+If "$optamiagent" EQ "AMIAGENT"
+  If "$optcpu000" EQ "CPU000"
+    Copy net/amiagent-0.13.2/amiagent UP-Term:bin/amiagent CLONE QUIET
+  Else
+    Copy net/amiagent-0.13.2/amiagent.020 UP-Term:bin/amiagent CLONE QUIET
+  EndIf
+  Echo >ENVARC:up-term/amiagent "installed by UP-Term"
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
