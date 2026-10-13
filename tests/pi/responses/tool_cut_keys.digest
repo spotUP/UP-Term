@@ -1,0 +1,5 @@
+stop=error
+error=OpenAI Responses stream ended before a terminal response event
+usage=0,0,0,0
+total=0
+tool=call_c3|fc_c3 read {"path":"S:A","offset":12}

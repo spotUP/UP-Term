@@ -182,6 +182,7 @@ void tui_free(cl_tui *t)
     }
     free(t->smatch);
     t->smatch = 0;
+    tui_dialog_close(t);
     free(t->saved);
     t->saved = 0;
     free(t->stash);
@@ -523,15 +524,18 @@ static void status_row(cl_tui *t)
 /* the most matches C:Claude's menu shows; pi's look shows (and scrolls) all of them */
 #define SLASH_MAX(t) ((t)->look == TUI_LOOK_PI ? (t)->ncmds : 8)
 
-/* the slash commands matching the box's text: their indexes (t->smatch, which the caller must not keep past the next call) */
-static int slash_matches(cl_tui *t, int **out, int max)
+/* the slash commands matching the box's text: their indexes (t->smatch, which the caller must not keep past the next call);
+ * *from the offset in the box where the text begins that a chosen command replaces, up to the cursor (0 without a filter hook:
+ * the whole box) */
+static int slash_matches_at(cl_tui *t, int **out, int max, long *from)
 {
     int i, n = 0;
     const char *s = t->ed.b;
     long len = t->ed.n;
-    if (t->modal || t->search || t->box != BOX_PROMPT || !t->cmds || len < 1 || s[0] != '/' || t->mclosed ||
-        memchr(s, ' ', (size_t)len) ||
-        memchr(s, '\n', (size_t)len))
+    *from = 0;
+    if (t->modal || t->search || t->box != BOX_PROMPT || !t->cmds || len < 1 || t->mclosed)
+        return 0;
+    if (!t->slash_filter && (s[0] != '/' || memchr(s, ' ', (size_t)len) || memchr(s, '\n', (size_t)len)))
         return 0;
     if (t->ncmds > t->smatch_cap) {
         int *g = (int *)realloc(t->smatch, sizeof(int) * (size_t)t->ncmds);
@@ -542,11 +546,17 @@ static int slash_matches(cl_tui *t, int **out, int max)
     }
     *out = t->smatch;
     if (t->slash_filter)
-        return t->slash_filter(t->slash_u, t->cmds, t->ncmds, s, len, t->smatch);
+        return t->slash_filter(t->slash_u, t->cmds, t->ncmds, s, len, t->ed.cur, from, t->smatch);
     for (i = 0; i < t->ncmds && n < max; i++)
         if (!strncmp(t->cmds[i].name, s, (size_t)len))
             t->smatch[n++] = i;
     return n;
+}
+
+static int slash_matches(cl_tui *t, int **out, int max)
+{
+    long from;
+    return slash_matches_at(t, out, max, &from);
 }
 
 static void slash_rows(cl_tui *t, int *idx, int n)
@@ -1286,7 +1296,10 @@ static void pi_wrapped(cl_tui *t, const char *sgr, const char *s, int pad)
             w += cw;
             e += l;
         }
-        if (*e && *e != '\n' && brk && brk > p) {
+        if (*e == ' ') {
+            n = (long)(e - p);          /* the line is full and a space follows: it ends there */
+            lw = 1;
+        } else if (*e && *e != '\n' && brk && brk > p) {
             n = (long)(brk - p);
             lw = 1;
         } else {
@@ -1489,14 +1502,96 @@ static void pi_session_rows(cl_tui *t)
     pi_rule_row(t, PR_ACCENT);
 }
 
+/* pi's OAuthSelectorComponent (modes/interactive/components/oauth-selector.ts:75-130, updateList 147-190) */
+static void pi_auth_pick_rows(cl_tui *t)
+{
+    const tui_pick *p = t->pick;
+    row r;
+    int i, start, end, maxv = p->maxrows > 0 ? p->maxrows : 8;
+    char line[600], num[16];
+    pi_rule_row(t, PR_BORDER);
+    pi_blank_row(t);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, BOLD);
+    pi_role(t, &r, PR_ACCENT);
+    r_textz(&r, p->title);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_blank_row(t);
+    r_init(&r, t->cols);
+    r_text(&r, "> ", 2);
+    {
+        /* a query longer than the row shows its end, from a character boundary */
+        const char *shown = p->query;
+        long l = (long)strlen(shown), room = (long)t->cols - 4;
+        if (room > 0 && l > room) {
+            shown += l - room;
+            while (*shown && ((unsigned char)*shown & 0xc0) == 0x80)
+                shown++;
+        }
+        r_textz(&r, shown);
+    }
+    r_sgr(&r, REV);
+    r_text(&r, " ", 1);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_blank_row(t);
+    start = p->sel - maxv / 2;
+    if (start > p->n - maxv)
+        start = p->n - maxv;
+    if (start < 0)
+        start = 0;
+    end = start + maxv < p->n ? start + maxv : p->n;
+    for (i = start; i < end; i++) {
+        line[0] = 0;
+        p->row(p->u, i, i == p->sel, line, sizeof(line));
+        r_init(&r, t->cols);
+        r_text(&r, " ", 1);
+        r_ansi(&r, line, (long)strlen(line));
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
+    if (start > 0 || end < p->n) {
+        r_init(&r, t->cols);
+        r_text(&r, " ", 1);
+        pi_role(t, &r, PR_MUTED);
+        cl_copy(line, "  (", sizeof(line));
+        cl_ltoa(p->sel + 1, num);
+        cl_cat(line, num, sizeof(line));
+        cl_cat(line, "/", sizeof(line));
+        cl_ltoa(p->n, num);
+        cl_cat(line, num, sizeof(line));
+        cl_cat(line, ")", sizeof(line));
+        r_textz(&r, line);
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
+    if (!p->n) {
+        r_init(&r, t->cols);
+        r_text(&r, " ", 1);
+        pi_role(t, &r, PR_MUTED);
+        r_text(&r, "  ", 2);
+        r_textz(&r, p->empty ? p->empty : "No matching providers");
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
+    pi_blank_row(t);
+    pi_rule_row(t, PR_BORDER);
+}
+
 static void pi_pick_rows(cl_tui *t)
 {
     const tui_pick *p = t->pick;
     row r;
     int i, start, end, maxv = p->maxrows > 0 ? p->maxrows : 5;
     char line[600], num[16];
-    if (p->session) {
+    if (p->layout == TUI_PICK_SESSION) {
         pi_session_rows(t);
+        return;
+    }
+    if (p->layout == TUI_PICK_AUTH) {
+        pi_auth_pick_rows(t);
         return;
     }
     pi_blank_row(t);
@@ -1610,9 +1705,140 @@ static void pi_ext_input_rows(cl_tui *t)
     pi_rule_row(t, PR_BORDER);
 }
 
+/* ---- the sign-in dialog ---- */
+
+typedef struct dlg_line {
+    int kind, role;
+    char *text;
+} dlg_line;
+
+struct tui_dialog {
+    char title[200];
+    dlg_line *l;
+    int n, cap;
+};
+
+void tui_dialog_open(cl_tui *t, const char *title)
+{
+    struct tui_dialog *d;
+    tui_dialog_close(t);
+    d = (struct tui_dialog *)calloc(1, sizeof(*d));
+    if (!d)
+        return;
+    cl_copy(d->title, title, sizeof(d->title));
+    t->dlg = d;
+    tui_frame(t);
+}
+
+void tui_dialog_clear(cl_tui *t)
+{
+    int i;
+    if (!t->dlg)
+        return;
+    for (i = 0; i < t->dlg->n; i++)
+        free(t->dlg->l[i].text);
+    t->dlg->n = 0;
+    tui_frame(t);
+}
+
+void tui_dialog_add(cl_tui *t, int kind, int role, const char *text)
+{
+    struct tui_dialog *d = t->dlg;
+    char *copy;
+    if (!d)
+        return;
+    if (d->n == d->cap) {
+        int cap = d->cap ? d->cap * 2 : 16;
+        dlg_line *g = (dlg_line *)realloc(d->l, sizeof(dlg_line) * (size_t)cap);
+        if (!g)
+            return;
+        d->l = g;
+        d->cap = cap;
+    }
+    copy = (char *)malloc(strlen(text ? text : "") + 1);
+    if (!copy)
+        return;
+    strcpy(copy, text ? text : "");
+    d->l[d->n].kind = kind;
+    d->l[d->n].role = role;
+    d->l[d->n].text = copy;
+    d->n++;
+    tui_frame(t);
+}
+
+void tui_dialog_close(cl_tui *t)
+{
+    int i;
+    if (!t->dlg)
+        return;
+    for (i = 0; i < t->dlg->n; i++)
+        free(t->dlg->l[i].text);
+    free(t->dlg->l);
+    free(t->dlg);
+    t->dlg = 0;
+    if (t->started)
+        tui_frame(t);
+}
+
+static void pi_dialog_rows(cl_tui *t)
+{
+    const struct tui_dialog *d = t->dlg;
+    row r;
+    int i, last_in = -1, typing = t->modal == 3 && t->pi_in_ext == 2;
+    pi_rule_row(t, PR_BORDER);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    r_sgr(&r, BOLD);
+    pi_role(t, &r, PR_ACCENT);
+    r_textz(&r, d->title);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    for (i = 0; i < d->n; i++)
+        if (d->l[i].kind == TUI_DLG_INPUT)
+            last_in = i;
+    for (i = 0; i < d->n; i++) {
+        const dlg_line *x = &d->l[i];
+        if (x->kind == TUI_DLG_BLANK) {
+            pi_blank_row(t);
+        } else if (x->kind == TUI_DLG_TEXT) {
+            char sgr[48];
+            pitheme_sgr(t->pith, x->role, sgr);
+            pi_wrapped(t, sgr, x->text, 1);
+        } else if (x->kind == TUI_DLG_ANSI) {
+            r_init(&r, t->cols);
+            r_text(&r, " ", 1);
+            r_ansi(&r, x->text, (long)strlen(x->text));
+            r_sgr(&r, SGR0);
+            want(t, &r);
+        } else {
+            const char *shown = typing && i == last_in ? t->pi_in : x->text;
+            long l = (long)strlen(shown), room = (long)t->cols - 4;
+            r_init(&r, t->cols);
+            r_text(&r, "> ", 2);
+            if (room > 0 && l > room) {
+                shown += l - room;
+                while (*shown && ((unsigned char)*shown & 0xc0) == 0x80)
+                    shown++;
+            }
+            r_textz(&r, shown);
+            if (typing && i == last_in) {
+                r_sgr(&r, REV);
+                r_text(&r, " ", 1);
+                r_sgr(&r, SGR0);
+            }
+            want(t, &r);
+        }
+    }
+    pi_rule_row(t, PR_BORDER);
+}
+
 static void pi_input_rows(cl_tui *t)
 {
     row r;
+    if (t->pi_in_ext == 2) {
+        pi_dialog_rows(t);
+        return;
+    }
     if (t->pi_in_ext) {
         pi_ext_input_rows(t);
         return;
@@ -1660,6 +1886,11 @@ static void build_pi(cl_tui *t)
     int *idx = 0, nm;
     t->nwant = 0;
     t->crow = 0;
+    if (t->dlg && !t->modal) {
+        pi_dialog_rows(t);
+        pi_footer_rows(t);
+        return;
+    }
     if (t->modal) {
         if (t->modal == 2 && t->pick)
             pi_pick_rows(t);
@@ -2442,13 +2673,24 @@ static void tick(cl_tui *t)
     }
 }
 
-/* the slash menu's chosen command written into the box; 1 when it took */
+/* the slash menu's chosen command written into the box in place of the text before the cursor (pi's applyCompletion:
+ * what follows the cursor stays); 1 when it took */
 static int complete(cl_tui *t)
 {
-    int *idx = 0, n = slash_matches(t, &idx, SLASH_MAX(t));
+    int *idx = 0, n;
+    long from, cur;
+    const char *name;
+    n = slash_matches_at(t, &idx, SLASH_MAX(t), &from);
     if (!n)
         return 0;
-    ed_set(&t->ed, t->cmds[idx[t->msel < n ? t->msel : 0]].name);
+    name = t->cmds[idx[t->msel < n ? t->msel : 0]].name;
+    cur = t->ed.cur;
+    if (!t->slash_filter || (from == 0 && cur == t->ed.n)) {
+        ed_set(&t->ed, name);
+        return 1;
+    }
+    ed_cut(&t->ed, from, cur, 0);
+    ed_insert(&t->ed, name, (long)strlen(name));
     return 1;
 }
 
@@ -2858,6 +3100,13 @@ static void edit(cl_tui *t, cl_key *k)
         t->mclosed = 0;
         t->msel = 0;
         t->cclosed = 0;
+    }
+    if (t->slash_filter && (t->ed.n != n0 || t->ed.cur != c0)) {
+        /* pi's menu is open or closed (editor.ts updateAutocomplete, cancelAutocomplete): typing opens it, a change that leaves
+         * nothing to list closes it, and a cursor move alone does not open a closed one */
+        int *idx = 0;
+        if (!t->mclosed && !slash_matches(t, &idx, SLASH_MAX(t)))
+            t->mclosed = 1;
     }
     if (t->ed.n != n0 || t->ed.cur != c0)
         comp_live(t);
@@ -3831,6 +4080,8 @@ int tui_pick_run(cl_tui *t, tui_pick *p)
             continue;
         if (p->key && p->key(p->u, &k, act))
             continue;
+        if (p->layout == TUI_PICK_AUTH && k.k == K_CTRL && k.ch == 'c')
+            break;                  /* pi's tui.select.cancel: Esc or Ctrl+C */
         if (act == KA_SEL_NEXT || (act == KA_NONE && k.k == K_DOWN)) {
             if (p->n)
                 p->sel = p->sel == p->n - 1 ? 0 : p->sel + 1;
@@ -3851,8 +4102,7 @@ int tui_pick_run(cl_tui *t, tui_pick *p)
     }
     t->modal = 0;
     t->pick = 0;
-    if (!p->session)
-        tui_frame(t);       /* the session selector stays as it was drawn */
+    tui_frame(t);
     return res;
 }
 
@@ -3942,6 +4192,40 @@ int tui_line_input_hint(cl_tui *t, const char *title, const char *hint, char *ou
 int tui_ext_input(cl_tui *t, const char *title, char *out, long cap, long timeout_ms)
 {
     return line_input(t, title, 0, out, cap, 1, timeout_ms > 0 ? timeout_ms : -1);
+}
+
+int tui_dialog_read(cl_tui *t, char *out, long cap)
+{
+    struct tui_dialog *d = t->dlg;
+    int i, last = -1, r;
+    if (!d)
+        return -1;
+    for (i = 0; i < d->n; i++)
+        if (d->l[i].kind == TUI_DLG_INPUT)
+            last = i;
+    if (last < 0)
+        return -1;
+    r = line_input(t, "", 0, out, cap, 2, -1);
+    if (r == 1) {
+        char *copy = (char *)malloc(strlen(out) + 1);
+        if (copy) {
+            strcpy(copy, out);
+            free(d->l[last].text);
+            d->l[last].text = copy;
+        }
+    }
+    tui_frame(t);
+    return r;
+}
+
+int tui_dialog_cancelled(cl_tui *t)
+{
+    cl_key k;
+    int stop = 0;
+    while (next_key(t, &k, 1) > 0)
+        if (k.k == K_ESC || (k.k == K_CTRL && k.ch == 'c'))
+            stop = 1;
+    return stop;
 }
 
 int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, long timeout_ms)

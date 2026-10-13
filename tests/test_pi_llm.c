@@ -528,6 +528,128 @@ static void test_anthropic_baseurl(void)
     llm_reg_free(&r);
 }
 
+
+/* ---- L7: the taps (request.h llm_tap): pi's transformHeaders, onPayload, onResponse and onProviderStreamEvent ---- */
+
+static struct {
+    int calls_payload, calls_headers, responses, streams, order_ok, first_stream_seen;
+    int status;
+    char rhead[2000];
+    char first_data[40];
+} tap;
+
+static int tap_payload(void *u, const llm_model *m, jw *body)
+{
+    (void)u;
+    (void)m;
+    tap.calls_payload++;
+    if (body->n > 2 && body->p[body->n - 1] == '}') {
+        body->n--;
+        jw_rawz(body, ",\"x_tap\":1}");
+    }
+    return 0;
+}
+
+static int tap_headers(void *u, const llm_model *m, jw *lines)
+{
+    char text[200];
+    const char *two;
+    (void)u;
+    (void)m;
+    tap.calls_headers++;
+    /* X-Two is taken out, X-Three put in */
+    memcpy(text, lines->p ? lines->p : "", (size_t)lines->n);
+    text[lines->n] = 0;
+    two = strstr(text, "X-Two: 2\r\n");
+    jw_reset(lines);
+    if (two) {
+        jw_raw(lines, text, (long)(two - text));
+        jw_rawz(lines, two + 11);
+    } else
+        jw_rawz(lines, text);
+    jw_rawz(lines, "X-Three: 3\r\n");
+    return 0;
+}
+
+static void tap_response(void *u, const llm_model *m, int status, const char *headers, long hn)
+{
+    (void)u;
+    (void)m;
+    tap.responses++;
+    tap.status = status;
+    tap.order_ok = tap.streams == 0;            /* before the first event */
+    memcpy(tap.rhead, headers, (size_t)(hn < 1999 ? hn : 1999));
+    tap.rhead[hn < 1999 ? hn : 1999] = 0;
+}
+
+static void tap_stream(void *u, const llm_model *m, const char *data, long n)
+{
+    (void)u;
+    (void)m;
+    if (!tap.streams++)
+        memcpy(tap.first_data, data, (size_t)(n < 39 ? n : 39));
+}
+
+static void test_tap(void)
+{
+    static const char cfg[] = "{\"providers\":{\"proxy\":{\"baseUrl\":\"https://proxy.example\","
+                              "\"api\":\"anthropic-messages\",\"apiKey\":\"k\",\"models\":[{\"id\":\"claude-x\"}]}}}";
+    llm_reg r;
+    const llm_model *mp;
+    llm_ctx c;
+    llm_req q;
+    llm_acc a;
+    llm_sink k;
+    llm_tap t;
+    int pass;
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    CHECK_INT(llm_reg_overlay(&r, cfg, (long)sizeof(cfg) - 1), 0);
+    mp = llm_reg_find(&r, "proxy", "claude-x");
+    CHECK(mp != 0);
+    for (pass = 0; mp && pass < 2; pass++) {
+        memset(&tap, 0, sizeof(tap));
+        memset(&t, 0, sizeof(t));
+        t.payload = tap_payload;
+        t.headers = tap_headers;
+        t.response = tap_response;
+        t.stream = tap_stream;
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_sse("tool_use.sse", 0);
+        c = ctx_of(mp, 1);
+        llm_acc_init(&a, mp->api, mp->provider);
+        k = llm_acc_sink(&a);
+        q = req_of(mp, &c, &k, "k");
+        q.xhead = "X-One: 1\r\nX-Two: 2\r\n";
+        q.tap = pass ? &t : 0;              /* the second pass has the taps; the first is C:Claude's (none) */
+        CHECK_INT(llm_request(&q), 0);
+        CHECK(ps.nreq == 1);
+        if (!pass) {
+            CHECK(strstr(ps.body[0], "x_tap") == 0 && strstr(ps.head[0], "X-Three") == 0 && strstr(ps.head[0], "X-Two: 2") != 0);
+        } else {
+            long bl = (long)strlen(ps.body[0]);
+            char cl[40];
+            CHECK_INT(tap.calls_payload, 1);
+            CHECK_INT(tap.calls_headers, 1);
+            CHECK(strstr(ps.body[0], ",\"x_tap\":1}") != 0);
+            cl_copy(cl, "Content-Length: ", sizeof(cl));
+            cl_ltoa(bl, cl + strlen(cl));
+            cl_cat(cl, "\r\n", sizeof(cl));
+            CHECK(strstr(ps.head[0], cl) != 0);              /* the head was made for the body that goes out */
+            CHECK(strstr(ps.head[0], "X-One: 1") != 0 && strstr(ps.head[0], "X-Two") == 0 && strstr(ps.head[0], "X-Three: 3") != 0);
+            CHECK_INT(tap.responses, 1);
+            CHECK_INT(tap.status, 200);
+            CHECK(tap.order_ok);
+            CHECK(strstr(tap.rhead, "\"content-type\":") != 0 && tap.rhead[0] == '{');
+            CHECK(tap.streams >= 3 && tap.first_data[0] == '{');
+            CHECK(q.xhead && !strcmp(q.xhead, "X-One: 1\r\nX-Two: 2\r\n"));      /* the caller's lines are given back */
+        }
+        llm_acc_free(&a);
+    }
+    llm_reg_free(&r);
+}
+
 /* ---- FA4: openai-responses against pi's own output (tests/pi/responses, made by tools/gen_pi_responses.mjs) ---- */
 
 /* JSON text without the whitespace between tokens (the indented cases.json -> the wire form), malloc'd */
@@ -845,6 +967,54 @@ typedef struct api_spec {
     const char *line, *auth;
 } api_spec;
 
+/* pi's SimpleStreamOptions of a case (tools/gen_pi_*.mjs): temperature, toolChoice (a string, or {type:"tool", name} as
+ * "tool:<name>"), thinkingBudgets, cacheRetention */
+static void case_options(llm_ctx *cxp, jv c)
+{
+#define cx (*cxp)
+    static char tc[80], cr[16];
+    jv t, tb;
+    if (json_get(c, "cacheRetention", &t)) {
+        json_str(t, cr, sizeof(cr));
+        cx.cache_retention = cr;
+    }
+    /* pi's SimpleStreamOptions of the case: temperature, toolChoice, thinkingBudgets (tools/gen_pi_google.mjs) */
+    if (json_get(c, "temperature", &t)) {
+        /* the JSON number to millionths: digits of the integer part and up to six of the fraction */
+        char num[40];
+        const char *q;
+        long ip = 0, fp = 0, sc = 100000L;
+        memcpy(num, t.p, t.n < 39 ? (size_t)t.n : 39);
+        num[t.n < 39 ? t.n : 39] = 0;
+        for (q = num; *q >= '0' && *q <= '9'; q++)
+            ip = ip * 10 + (*q - '0');
+        if (*q == '.')
+            for (q++; *q >= '0' && *q <= '9' && sc; q++, sc /= 10)
+                fp += (*q - '0') * sc;
+        cx.has_temperature = 1;
+        cx.temperature_micro = ip * 1000000L + fp;
+    }
+    if (json_get(c, "toolChoice", &t)) {
+        jv nm;
+        if (json_type(t) == J_OBJ && json_get(t, "name", &nm)) {
+            strcpy(tc, "tool:");
+            json_str(nm, tc + 5, sizeof(tc) - 5);
+        } else
+            json_str(t, tc, sizeof(tc));
+        cx.tool_choice = tc;
+    }
+    if (json_get(c, "thinkingBudgets", &tb)) {
+        static const char *const lv_names[] = { "off", "minimal", "low", "medium", "high" };
+        int li;
+        for (li = LT_MINIMAL; li <= LT_HIGH; li++)
+            if (json_get(tb, lv_names[li], &t)) {
+                cx.think_budget_set |= 1u << li;
+                cx.think_budget[li] = json_long(t, 0);
+            }
+    }
+#undef cx
+}
+
 static void run_api_cases(const api_spec *sp)
 {
     char *cases_txt, name[64], path[96];
@@ -1019,39 +1189,7 @@ static void run_api_cases(const api_spec *sp)
         cx.tools_n = tools_n;
         cx.thinking = lv;
         cx.session_id = sid[0] ? sid : 0;
-        {
-            /* pi's SimpleStreamOptions of the case: temperature, toolChoice, thinkingBudgets (tools/gen_pi_google.mjs) */
-            static char tc[16];
-            jv t, tb;
-            if (json_get(c, "temperature", &t)) {
-                /* the JSON number to millionths: digits of the integer part and up to six of the fraction */
-                char num[40];
-                const char *q;
-                long ip = 0, fp = 0, sc = 100000L;
-                memcpy(num, t.p, t.n < 39 ? (size_t)t.n : 39);
-                num[t.n < 39 ? t.n : 39] = 0;
-                for (q = num; *q >= '0' && *q <= '9'; q++)
-                    ip = ip * 10 + (*q - '0');
-                if (*q == '.')
-                    for (q++; *q >= '0' && *q <= '9' && sc; q++, sc /= 10)
-                        fp += (*q - '0') * sc;
-                cx.has_temperature = 1;
-                cx.temperature_micro = ip * 1000000L + fp;
-            }
-            if (json_get(c, "toolChoice", &t)) {
-                json_str(t, tc, sizeof(tc));
-                cx.tool_choice = tc;
-            }
-            if (json_get(c, "thinkingBudgets", &tb)) {
-                static const char *const lv_names[] = { "off", "minimal", "low", "medium", "high" };
-                int li;
-                for (li = LT_MINIMAL; li <= LT_HIGH; li++)
-                    if (json_get(tb, lv_names[li], &t)) {
-                        cx.think_budget_set |= 1u << li;
-                        cx.think_budget[li] = json_long(t, 0);
-                    }
-            }
-        }
+        case_options(&cx, c);
         ps_reset();
         ps_pool_up(LLM_POOL);
         strcpy(file, "../pi/");
@@ -1232,7 +1370,7 @@ static void test_responses(void)
     api_spec sp;
     sp.dir = "responses";
     sp.feeds = &llm_feeds_responses;
-    sp.min_cases = 31;
+    sp.min_cases = 35;
     sp.ext = 0;
     sp.line = "POST /v1/responses HTTP/1.1\r\nHost: api.openai.com\r\n";
     sp.auth = "Authorization: Bearer sk-test-not-real\r\n";
@@ -1402,9 +1540,9 @@ static void test_httperr(void)
             m.provider = provider;
         } else {
             const char *prov = !strcmp(api, "anthropic-messages") ? "anthropic" : !strcmp(api, "google-generative-ai") ? "google" :
-                               !strcmp(api, "azure-openai-responses") ? "azure" : "openai";
+                               !strcmp(api, "azure-openai-responses") ? "azure" : !strcmp(api, "openai-codex-responses") ? "openai-codex" : "openai";
             const char *id = !strcmp(api, "anthropic-messages") ? "claude-haiku-4-5" : !strcmp(api, "google-generative-ai") ? "gemini-2.5-flash" :
-                             !strcmp(api, "azure-openai-responses") ? "gpt-4.1" : "gpt-5.5";
+                             !strcmp(api, "azure-openai-responses") ? "gpt-4.1" : !strcmp(api, "openai-codex-responses") ? "gpt-5.3-codex-spark" : "gpt-5.5";
             md = llm_reg_find(&r, prov, id);
             CHECK(md != 0);
             if (!md)
@@ -1459,7 +1597,10 @@ static void test_httperr(void)
         llm_acc_init(&a, m.api, m.provider);
         llm_acc_model(&a, m.id, m.cost);
         k = llm_acc_sink(&a);
-        q = req_of(&m, &cx, &k, "sk-test-not-real");
+        /* the Codex key is a JWT whose claim names the account (tools/gen_pi_httperr.mjs CODEX_KEY) */
+        q = req_of(&m, &cx, &k, !strcmp(api, "openai-codex-responses")
+                   ? "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9yaWcifX0.sig"
+                   : "sk-test-not-real");
         q.retries = -1;
         llm_request(&q);
         jw_init(&msg);
@@ -1488,7 +1629,7 @@ static void test_httperr(void)
         }
         llm_cfg_free(&cfg);
     }
-    CHECK(ncase >= 150);
+    CHECK(ncase >= 196);
     llm_set_wall(0, 0);
     llm_reg_free(&r);
     free(txt);
@@ -1502,7 +1643,7 @@ static void test_bedrock(void)
     api_spec sp;
     sp.dir = "bedrock";
     sp.feeds = &llm_feeds_bedrock;
-    sp.min_cases = 96;
+    sp.min_cases = 127;
     sp.ext = 2;
     sp.line = 0;
     sp.auth = 0;
@@ -1777,7 +1918,7 @@ static void test_anthropic_pi(void)
 {
     char *cases_txt, name[64];
     long cn, nreq0, feeds0 = llm_feeds_anthropic;
-    jv root, cs, c, v, ms, mv;
+    jv root, cs, c, v, ms, mv, tb;
     jit it;
     llm_reg r;
     int ncase = 0, i, mid_cases = 0;
@@ -1823,6 +1964,8 @@ static void test_anthropic_pi(void)
             /* a models.json model with only forceAdaptiveThinking: the managed-effort flags are unset */
             cmod = *md;
             cmod.compat.mid_effort = cmod.compat.mid_system = cmod.compat.mid_tools = cmod.compat.strict_tools = LC_UNSET;
+            if (json_get(v, "supportsTemperature", &tb))
+                cmod.compat.temperature = json_type(tb) == J_TRUE;
             md = &cmod;
         }
         json_get(c, "level", &v);
@@ -1873,6 +2016,7 @@ static void test_anthropic_pi(void)
         cx.tools = tools;
         cx.tools_n = tools_n;
         cx.thinking = lv;
+        case_options(&cx, c);
         ps_reset();
         ps_pool_up(LLM_POOL);
         strcpy(file, "../pi/anthropic/");
@@ -1945,7 +2089,7 @@ static void test_anthropic_pi(void)
                 free(msgs[i]);
         ncase++;
     }
-    CHECK(ncase >= 24);
+    CHECK(ncase >= 62);
     CHECK(mid_cases >= 8);                          /* the managed-effort model's cases ran */
     CHECK(llm_feeds_anthropic > feeds0);            /* the backend ran */
     for (i = 0; i < RC_MAX; i++) {
@@ -2203,7 +2347,7 @@ static void test_completions(void)
     long cn;
     jv root, cs, c, v, mv, ms, mc;
     jit it;
-    int ncase = 0, strict_cases = 0;
+    int ncase = 0, strict_cases = 0, digest_cases = 0;
     cases_txt = claude_load("../pi/completions/cases.json", &cn);
     CHECK(cases_txt != 0);
     if (!cases_txt)
@@ -2279,6 +2423,46 @@ static void test_completions(void)
         if (strstr(w.p, "\"strict\":true"))
             strict_cases++;
         free(want);
+        if (json_get(c, "digest", &v)) {
+            /* the stream pi decoded (gen_pi_completions.mjs "digest"): what the accumulator makes of the same bytes */
+            llm_acc a;
+            llm_sink k;
+            llm_req q;
+            jw msg, dig;
+            char *wd;
+            long dn;
+            ps_reset();
+            ps_pool_up(LLM_POOL);
+            json_get(c, "sse", &v);
+            json_str(v, file, sizeof(file));
+            memmove(file + 6, file, strlen(file) + 1);
+            memcpy(file, "../pi/", 6);
+            strcat(file, ".sse");
+            ps_sse(file, 0);
+            llm_acc_init(&a, md.api, md.provider);
+            k = llm_acc_sink(&a);
+            q = req_of(&md, &cx, &k, "sk-test-not-real");
+            q.retries = -1;
+            llm_request(&q);
+            jw_init(&msg);
+            jw_init(&dig);
+            llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+            resp_digest(msg.p, &dig, 0);
+            strcpy(file, "../pi/completions/");
+            strcat(file, name);
+            strcat(file, ".digest");
+            wd = claude_load(file, &dn);
+            CHECK(wd != 0);
+            if (wd && strcmp(wd, dig.p)) {
+                printf("    case %s digest\n      got  %s\n      want %s\n", name, dig.p, wd);
+                CHECK(0);
+            }
+            free(wd);
+            jw_free(&dig);
+            jw_free(&msg);
+            llm_acc_free(&a);
+            digest_cases++;
+        }
         jw_free(&w);
         llm_view_free(&vw);
         free(tools);
@@ -2286,8 +2470,9 @@ static void test_completions(void)
             free(msgs[--nm]);
         ncase++;
     }
-    CHECK(ncase >= 8);
+    CHECK(ncase >= 12);
     CHECK(strict_cases >= 2);
+    CHECK(digest_cases >= 4);
     free(cases_txt);
 }
 
@@ -2451,6 +2636,15 @@ static void test_request(void)
             jw_reset(&m);
             llm_acc_message(&a, ts_of(1, 0), &m);
             CHECK(strstr(m.p, ",\"errorMessage\":\"Connection error.\"}") != 0);
+            /* the transport's reason, which pi's text leaves out, is in the debug log once per attempt (an https
+             * request on an Amiga whose LIBS: lacks AmiSSL said only "Connection error.", 2026-10-13) */
+            {
+                const char *line = "llm: Connection error.: cannot connect to 127.0.0.1: connection refused\n", *p;
+                int lines = 0;
+                for (p = ps.log.p; p && (p = strstr(p, line)) != 0; p += strlen(line))
+                    lines++;
+                CHECK_INT(lines, ri ? 4 : 1);
+            }
             llm_acc_free(&a);
         }
     }
@@ -3971,6 +4165,11 @@ static void test_bedrock_cred(void)
     memset(&q, 0, sizeof(q));
     CHECK_INT(bd_run("http://192.168.1.10:9000", keys, 0, &q, 0), 0);
     CHECK(q.signed_auth == 1 && strstr(ps.head[0], "Host: 192.168.1.10:9000\r\n") != 0 && strstr(ps.head[0], "Signature=") != 0);
+    /* a stored key (models.json apiKey) is the bearer token too: it beats the AWS keys, and over plain http it stays home
+     * with nothing signed (what rig step 12 saw while its bedrock provider carried an apiKey) */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run("http://192.168.1.10:9000", keys, "sk-stored", &q, 0), 0);
+    CHECK(q.signed_auth == 0 && q.key_sent == 0 && strstr(ps.head[0], "Authorization") == 0 && strstr(ps.head[0], "x-amz-date") == 0);
     /* a gateway answering with a page, not an AWS error body: the status and what it said (pi shows the SDK's JSON.parse error) */
     memset(&q, 0, sizeof(q));
     CHECK_INT(bd_run(0, keys, 0, &q, "../pi/bedrock/gateway_502.http"), -1);
@@ -4013,6 +4212,7 @@ void suite_pi_llm(void)
     test_accum();
     test_reach();
     test_anthropic_baseurl();
+    test_tap();
     test_responses();
     test_google();
     test_azure();

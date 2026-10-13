@@ -842,6 +842,10 @@ AMIGA-PI
   files there. Its sessions, skills, prompts, themes and extensions (Lua)
   are in UP-Term:var/amiga-pi, which Uninstall keeps unless you say yes
   (above). Without UP-Term: everything stays in ENVARC:amiga-pi.
+  "Connection error." and nothing more: SetEnv PI_DEBUG_LOG T:amiga-pi.log
+  and try again; that file says why (no answer from the address, AmiSSL
+  not in LIBS:, the certificate). It also holds each request, the key
+  left out, and each answer; UnSetEnv PI_DEBUG_LOG turns it off.
 
 STATUS
   Test build. CON:/RAW: and console.device stay the system's unless you

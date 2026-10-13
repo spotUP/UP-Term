@@ -1,0 +1,7 @@
+stop=error
+error=Bedrock stream ended without a stop reason
+usage=0,0,0,0
+total=0 w1h=-
+raw=-
+tool=tooluse_c4 read {"path":"S:A"}
+tool=tooluse_c5 read {"path":"S:B","offset":1}

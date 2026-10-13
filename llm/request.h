@@ -117,6 +117,21 @@ typedef struct llm_call {
 /* one attempt: LP_* (LP_OK: the HTTP answer is complete; its status is in resp) */
 int llm_post(llm_call *c);
 
+/* amiga-pi's extension taps on a request (pi 1.1.0 sdk.ts:340-410: transformHeaders, onPayload, onResponse, onProviderStreamEvent).
+ * Every member may be 0 and llm_req.tap 0 (C:Claude never sets one); the strings are valid only during the call. */
+typedef struct llm_tap {
+    void *u;
+    /* the request body just built, before the head is made (the Content-Length and a signature follow it): the callee may rewrite body;
+     * 0, -1 refuses the request (the stream ends in an error) */
+    int (*payload)(void *u, const llm_model *m, jw *body);
+    /* the extra header lines of the request ("Name: value\r\n", models.json's), before anything is built: the callee may rewrite them */
+    int (*headers)(void *u, const llm_model *m, jw *lines);
+    /* a 2xx answer began: its status and its headers as a JSON object (lower-case names, repeated ones joined by ", ") */
+    void (*response)(void *u, const llm_model *m, int status, const char *headers, long hn);
+    /* each event of the answer's stream whose data is a JSON object, as the decoder parsed it */
+    void (*stream)(void *u, const llm_model *m, const char *data, long n);
+} llm_tap;
+
 typedef struct llm_req {
     llm_pool *pool;
     const llm_model *model;
@@ -138,6 +153,7 @@ typedef struct llm_req {
     void *reauth_u;
     int status;                 /* out: the HTTP status of the last attempt, 0 none */
     int reauthed;               /* out: reauth was called */
+    const llm_tap *tap;         /* the extensions' view of the request, 0 none */
     int retries;                /* 0: 3, -1: none (the caller retries: amiga-pi's agent loop, as pi's agent session does) */
     long base_ms, cap_ms, idle_ms;  /* 0: 2000, 60000, 300000 */
     /* out */

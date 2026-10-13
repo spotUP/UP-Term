@@ -1,0 +1,4 @@
+stop=error
+error=Stream ended without finish_reason
+usage=0,0,0,0
+tool=call_c2 read {}

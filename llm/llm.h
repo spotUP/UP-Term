@@ -66,6 +66,8 @@ typedef struct llm_meta {       /* an assistant message's own fields */
 
 /* ---- content blocks, each appended to w as one JSON object ---- */
 void llm_b_text(jw *w, const char *s, long n, const char *sig);
+/* a temperature (millionths) as JavaScript writes the number: 0.7, 1, 0 (transform.c) */
+void llm_temp_text(jw *w, long micro);
 void llm_b_thinking(jw *w, const char *s, long n, const char *sig, long sn, int redacted);
 void llm_b_image(jw *w, const char *data, const char *mime);
 /* args: the arguments as JSON object text */

@@ -1,0 +1,6 @@
+stop=error
+error=Anthropic stream ended before message_stop
+usage=310,2,0,0
+text="Let me look." sig=-
+tool=toolu_cut3 read {"path":"S:Startup-Sequence"}
+tool=toolu_cut4 read {"path":"S:A","offset":1}
