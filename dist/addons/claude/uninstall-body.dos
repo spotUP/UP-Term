@@ -1,0 +1,2 @@
+; the settings and key in ENVARC:Claude are yours and stay
+Delete >NIL: C:Claude C:ClaudeCode QUIET

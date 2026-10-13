@@ -10,24 +10,35 @@
 ; upupdate named, and the bar counts only their KB.
 
 (set #update 0)
+; the manifest of the last install: this package's record; an add-on archive
+; (handed paths) with none of its own takes the single kit's, kept by the base's
+; Install in UP-Term:pkg/legacy, cut to its own paths (upupdate ... ONLY=)
+(set #oldman "@RECORDP@MANIFEST")
+(set #legacy 0)
+(if (and (not (exists #oldman)) (<> "@HANDED@" "-")
+         (exists "UP-Term:pkg/legacy/MANIFEST"))
+    (set #oldman "UP-Term:pkg/legacy/MANIFEST" #legacy 1))
 (if (<> (getassign "UP-Term" "a") "")
-    (if (and (exists "@RECORD@MANIFEST") (exists "@OPTS@/UPTOPTDEST")
+    (if (and (exists #oldman) (or #legacy (exists "@OPTS@/UPTOPTDEST"))
              (exists (tackon #files "upupdate")))
         (
             (run "Delete >NIL: ENV:UPTUPD#? ENV:UPTVER#? T:UPTUPD-#? QUIET")
             (run "Delete >NIL: ENV:UPTHANDED QUIET")
-            (if (= 0 (run (cat "\"" (tackon #files "upupdate") "\" @RECORD@MANIFEST \""
-                                (tackon #files "MANIFEST") "\" \"" (pathonly @icon) "\"")))
+            (if (= 0 (run (cat "\"" (tackon #files "upupdate") "\" \"" #oldman "\" \""
+                                (tackon #files "MANIFEST") "\" \"" (pathonly @icon) "\""
+                                (if #legacy " ONLY=@HANDED@" ""))))
                 (set #update
                     (= 0 (askchoice
-                        (prompt (cat "UP-Term is installed:\n" (getenv "UPTVEROLD") "\n\n"
+                        (prompt (cat "@ARCHIVE@ is installed"
+                                     (if #legacy " by the single kit" "") ":\n"
+                                     (getenv "UPTVEROLD") "\n\n"
                                      "This kit holds:\n" (getenv "UPTVERNEW") "\n\n"
                                      "Update copies only what changed ("
                                      (getenv "UPTUPDKB") " KB)\n"
                                      "and keeps the drawer and the choices of\n"
                                      "the last install."))
                         (help "Update compares the list of files the last install "
-                              "wrote (UP-Term:MANIFEST) with this kit's and copies "
+                              "wrote (@RECORDP@MANIFEST) with this kit's and copies "
                               "only the files that changed, deletes the ones this "
                               "kit no longer has, and runs again only the parts of "
                               "the install whose files or script changed. The "

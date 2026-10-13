@@ -290,10 +290,10 @@ class ClaudeCodeScript(unittest.TestCase):
         self.assertEqual(self.SCRIPT.count('If '), self.SCRIPT.count('EndIf'))
 
 
-def step_command_line(files, dest):
+def step_command_line(files, dest, installer=INSTALLER):
     """The AmigaDOS line P_STEP's (execute ...) makes, worst case: every option on.
     Each argument of the form is evaluated: strings, (cat ...) and #variables."""
-    toks = tokens(INSTALLER)
+    toks = tokens(installer)
     # the form starts after "(set #rc" of P_STEP: the first (execute in the procedure
     p = next(k for k in range(len(toks) - 2) if toks[k] == ('word', 'procedure') and toks[k + 1] == ('word', 'P_STEP'))
     i = next(k for k in range(p, len(toks)) if toks[k] == ('word', 'execute')) - 1

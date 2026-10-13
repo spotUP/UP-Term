@@ -1,0 +1,11 @@
+; Your data in @VARDIR@ (asked, default No; a base Uninstall has asked already and
+; answers by Set upvardelete)
+; @include dist/common/uninstall-var.dos
+If NOT "$upkeepvar" EQ "YES"
+  Delete >NIL: "@VARDIR@" ALL QUIET
+Else
+  If EXISTS "@VARDIR@"
+    Echo "Your data stayed in @VARDIR@."
+  EndIf
+EndIf
+UnSet upkeepvar

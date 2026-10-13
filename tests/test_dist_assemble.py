@@ -46,7 +46,9 @@ class Assemble(unittest.TestCase):
         self.assertEqual(v['OPTS'], 'UP-Term:pkg/UP-Term-nvim/opts')
         self.assertEqual((v['BASEMAJOR'], v['BASEMINOR']), ('1', '0'))
         self.assertEqual(mi.read_values('base')['OPTS'], 'ENVARC:up-term/opts')
-        self.assertEqual(mi.read_values('nvim')['RECORDPRE'], 'none.dos')
+        self.assertEqual(mi.read_values('nvim')['RECORDPRE'], 'record-addon.dos')
+        self.assertEqual(mi.read_values('base')['RECORDPRE'], 'record-legacy.dos')
+        self.assertEqual(mi.read_values('nvim')['RECORDP'], 'UP-Term:pkg/UP-Term-nvim/')
 
     def test_the_base_gets_the_add_ons_uninstall_blocks_and_search_lines_from_the_table(self):
         v = mi.read_values('base')

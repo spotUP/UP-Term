@@ -1,0 +1,8 @@
+; ---- what this archive needs: the base, its version, ixemul 80 --------------
+; (install.dos's part check; the reason is in ENV:UPTCHECK)
+(makeassign "UPTKIT" #files)
+(set #rc (execute "UPTKIT:install.dos" "UPTKIT:" "STEP=check"))
+(makeassign "UPTKIT")
+(if (>= #rc 20)
+    (abort (getenv "UPTCHECK")))
+

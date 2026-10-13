@@ -1,0 +1,3 @@
+ADDONVAR=uninstall-addon-var.dos
+VARDIR=UP-Term:var/amiga-pi
+VARWHAT=UP-Term:var/amiga-pi (sessions, skills, themes)

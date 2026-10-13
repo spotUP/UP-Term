@@ -73,7 +73,12 @@ def read_values(pkg_id, extra=()):
         'NEEDSBASE': row['needs-base'], 'IXEMUL': row['ixemul'], 'RECORD': record,
         'HANDED': row['handed'],
         'OPTS': 'ENVARC:up-term/opts' if row['id'] == 'base' else record.rstrip(':/') + '/opts',
-        'RECORDPRE': 'none.dos',    # a package's own first lines of its record part (dist/values/<id>.txt)
+        # the record drawer with its separator (UP-Term: or UP-Term:pkg/UP-Term-nvim/)
+        'RECORDP': record if record.endswith((':', '/')) else record + '/',
+        # first lines of a package's record part and its Uninstall's data question: dist/common/ fragments
+        'RECORDPRE': 'none.dos' if record.endswith(':') else 'record-addon.dos',
+        'PKGDIR': record.rsplit('/', 1)[0] if '/' in record else record,
+        'ADDONVAR': 'none.dos',
         'HANDEDSEARCH': handed_search(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONUNINSTALL': addon_uninstall(pkgs.rows()) if row['id'] == 'base' else '',
     }
