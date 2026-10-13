@@ -573,12 +573,12 @@ static int nz_skip(const char *skip)
 /* bedrock-converse-stream: the region, endpoint and credentials from the AWS_* variables and the bearer token */
 static int bedrock_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
 {
-    char region[48], dregion[48], profile[100], access[130], secret[130], skip[8];
+    char region[48], dregion[48], profile[100], access[130], secret[130], skip[8], force[8], retention[16];
     static char token[4100];
     llm_bedrock_env e;
     static char key[4100];             /* an OAuth access token is a JWT of a few KB */
     const char *src;
-    region[0] = dregion[0] = profile[0] = access[0] = secret[0] = skip[0] = token[0] = 0;
+    region[0] = dregion[0] = profile[0] = access[0] = secret[0] = skip[0] = token[0] = force[0] = retention[0] = 0;
     env_into(c, "AWS_REGION", region, sizeof(region), 0);
     env_into(c, "AWS_DEFAULT_REGION", dregion, sizeof(dregion), 0);
     env_into(c, "AWS_PROFILE", profile, sizeof(profile), 0);
@@ -586,6 +586,8 @@ static int bedrock_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
     env_into(c, "AWS_SECRET_ACCESS_KEY", secret, sizeof(secret), 0);
     env_into(c, "AWS_SESSION_TOKEN", token, sizeof(token), 0);
     env_into(c, "AWS_BEDROCK_SKIP_AUTH", skip, sizeof(skip), 0);
+    env_into(c, "AWS_BEDROCK_FORCE_CACHE", force, sizeof(force), 0);
+    env_into(c, "PI_CACHE_RETENTION", retention, sizeof(retention), 0);
     if (m->base_url != c->bd_ep)
         cl_copy(c->bd_orig, m->base_url ? m->base_url : "", sizeof(c->bd_orig));    /* the catalog's, kept across requests */
     {
@@ -598,6 +600,8 @@ static int bedrock_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
         e.secret = secret;
         e.token = token;
         e.skip_auth = skip;
+        e.force_cache = force;
+        e.cache_retention = retention;
         e.bearer = llm_cfg_key(c, m, key, sizeof(key), &src) > 0;
         if (e.bearer && nz_skip(skip) && (!src || strcmp(src, "environment")))
             e.bearer = 0;               /* AWS_BEDROCK_SKIP_AUTH drops a stored key; the SDK still reads the variable itself */

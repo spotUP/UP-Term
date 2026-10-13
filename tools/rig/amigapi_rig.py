@@ -134,9 +134,11 @@ window titled "amiga-pi step 11". Needs rig 2 or another free rig, never 3.
 
 Step 12 (M9): every adapter of amiga-pi against the fixture's routes. models.json (in VTC:pi12agent, PI_CODING_AGENT_DIR)
 names one provider per api: anthropic-messages, openai-completions, openai-responses, google-generative-ai,
-azure-openai-responses (a non-Azure base URL), bedrock-converse-stream (AWS keys in ENV:, signed). `amiga-pi -p hello <NIL:`
+azure-openai-responses (a non-Azure base URL), bedrock-converse-stream (AWS keys in ENV:, signed; its provider carries no apiKey: a
+stored key is the bearer token and would keep the request unsigned over plain http), openai-codex-responses (/codex/responses,
+the fixture logs pi's originator header). `amiga-pi -p hello <NIL:`
 each; per adapter: exit code 0, exactly one request on the adapter's route (key header none over plain http, sigv4 for
-bedrock), the answer's text printed. openai-codex has no fixture route for its responses endpoint: not covered.
+bedrock), the answer's text printed.
 
 Step 13 (N8): the TUI in an UP-Term window. amiga-pi runs in a visible XCON: window titled "amiga-pi step 13a/b/c" and
 the keys are typed into it the way claude_rig.py types them (tools/rig/typewin.py); the screen is read back as TEXT
@@ -1164,13 +1166,16 @@ ADAPTERS_12 = (
     ('azure', 'azure-openai-responses', '/az', 'a1', '/az/responses?api-version=v1', 'Hello from the Amiga.'),
     # bedrock: the base URL is the endpoint; the request is signed with the AWS keys of the environment
     ('bedrock', 'bedrock-converse-stream', '', 'b1', '/model/b1/converse-stream', 'Hello from the Amiga.'),
+    # codex: POST /codex/responses below the base URL; the fixture answers with the Responses recording. The token and the
+    # account id stay home on plain http, so the check is the route, the answer and pi's originator header
+    ('codex', 'openai-codex-responses', '', 'c1', '/codex/responses', 'Hello from the Amiga.'),
 )
 AWS_ENV_12 = ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION')
 
 
 def step12(port):
-    """M9: every adapter of amiga-pi, one `-p` run each, against tools/claude_fixture.py's routes. openai-codex is
-    not here: the fixture serves its OAuth endpoints (--oauth) but no codex responses route (code only, NOT rig-run)."""
+    """M9: every adapter of amiga-pi (anthropic, completions, responses, google, azure, bedrock, openai-codex), one `-p`
+    run each, against tools/claude_fixture.py's routes."""
     import json
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
@@ -1189,6 +1194,10 @@ def step12(port):
     for tag, api, suffix, mid, _, _ in ADAPTERS_12:
         providers['fx' + tag] = {'baseUrl': base + suffix, 'api': api, 'apiKey': 'sk-rig-12-must-not-be-sent',
                                  'models': [{'id': mid, 'contextWindow': 32000}]}
+        if tag == 'bedrock':
+            # a models.json apiKey IS the bedrock bearer token (pi: options.apiKey -> useBearerToken); over plain http it
+            # stays home and nothing is signed. The SigV4 check needs the AWS_* keys of the environment alone.
+            del providers['fx' + tag]['apiKey']
     try:
         agent.mkdir(exist_ok=True)
         (agent / 'models.json').write_text(json.dumps({'providers': providers}))
@@ -1221,6 +1230,8 @@ def step12(port):
                 check('12 %s: the key stayed home (no key header over plain http)' % api,
                       len(mine) == 1 and 'key_header=none' in mine[0], repr(mine))
             check('12 %s: the answer text printed' % api, answer in out, repr(out[:200]))
+        check('12 openai-codex-responses: the request carried pi\'s originator header',
+              '[INFO]   codex originator=pi' in open(log).read())
         check('12 no other request reached the fixture', len(seen) == len(ADAPTERS_12), repr(seen))
         check('12 no requester', not req, repr(req))
     finally:

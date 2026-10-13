@@ -55,6 +55,9 @@ It also answers amiga-pi's POST .../responses (openai-responses) from
 tests/pi/responses/*.sse: after a function_call_output plain, a prompt naming
 "startup" or "tool" tool (a read and a bash call), else plain.
 
+It also answers amiga-pi's openai-codex-responses requests (POST .../codex/responses) with the same recordings, and logs the
+originator header ("[INFO]   codex originator=pi").
+
 It also answers amiga-pi's Azure requests (POST .../responses?api-version=..., azure-openai-responses, the key in an
 api-key header) like the Responses ones, and its Google requests (POST .../models/<id>:streamGenerateContent?alt=sse,
 google-generative-ai, the key in x-goog-api-key) from tests/pi/google/*.sse: after a functionResponse plain, a prompt
@@ -294,7 +297,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(400, "the body is not JSON")
             return
         route = self.path.split("?")[0]
-        responses = route.endswith("/responses")            # openai-responses and azure-openai-responses (?api-version=)
+        responses = route.endswith("/responses")            # openai-responses, azure-openai-responses (?api-version=) and
+        codex = route.endswith("/codex/responses")          # openai-codex-responses (the ChatGPT subscription): the same events
         google = ":streamGenerateContent" in route
         bedrock = route.endswith("/converse-stream")
         openai = route.endswith("/chat/completions") or responses or google or bedrock
@@ -328,6 +332,10 @@ class Handler(BaseHTTPRequestHandler):
             print("[INFO] %s model=%s messages=%d tool_results=%d key_header=%s -> %s.sse" % (
                 self.path, body.get("model"), len(msgs), results,
                 "PRESENT (wrong!)" if key else "none", name), flush=True)
+        if codex:
+            # amiga-pi's Codex request carries pi's originator header whatever the key rule does (the token and the account
+            # id are withheld on plain http)
+            print("[INFO]   codex originator=%s" % self.headers.get("originator"), flush=True)
         if openai and not responses and not google:
             # the latest tool results' text (amiga-pi's rig checks read it)
             for m in tool_tail(msgs):

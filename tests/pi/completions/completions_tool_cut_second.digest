@@ -1,0 +1,5 @@
+stop=error
+error=Stream ended without finish_reason
+usage=0,0,0,0
+tool=call_c4 read {"path":"S:A"}
+tool=call_c5 read {"path":"S:B","offset":1}

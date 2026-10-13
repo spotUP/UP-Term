@@ -15,7 +15,8 @@
 // {"$result": {reply, index, text, isError?}} becomes the toolResult for that reply's tool call; "$id" on a message
 // gives its toolCallId from a reply's tool call. A case's "override" {id, name} replaces the model's, "window" the
 // context window, "baseUrl" the base URL, "env" sets (or, null, removes) AWS_* variables on top of the default
-// access keys. Date.now is fixed (1760100000000 = 20251010T124000Z).
+// access keys. A case may carry pi's SimpleStreamOptions "temperature", "toolChoice", "thinkingBudgets" and "cacheRetention"
+// (thinkingDisplay and requestMetadata are options of stream() only: streamSimple never sets them). Date.now is fixed (1760100000000 = 20251010T124000Z).
 //   PI_NPM=<dir holding node_modules/@earendil-works/pi-ai> node tools/gen_pi_bedrock.mjs   (the pinned amiga-pi/vendor/pi-1.1.0)
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -98,13 +99,16 @@ for (const c of cases) {
 	if (c.window) model.contextWindow = c.window;
 	if (c.baseUrl) model.baseUrl = c.baseUrl;
 	clearAws();
+	delete process.env.PI_CACHE_RETENTION;
 	process.env.AWS_BEDROCK_FORCE_HTTP1 = "1";
 	for (const [k, v] of Object.entries({ ...BASE_ENV, ...(c.env || {}) })) if (v !== null) process.env[k] = v;
 	state.reply = reply(c.stream);
 	state.last = null;
 	const { streamSimple } = await imp("api/bedrock-converse-stream.js", "?case=" + n++);
 	const context = normalizeContext({ systemPrompt: c.system, messages: c.messages.map(expand), tools: c.tools });
-	const s = streamSimple(model, context, { reasoning: c.level === "off" ? undefined : c.level });
+	const s = streamSimple(model, context, { reasoning: c.level === "off" ? undefined : c.level,
+		...(c.temperature !== undefined && { temperature: c.temperature }), ...(c.toolChoice && { toolChoice: c.toolChoice }),
+		...(c.thinkingBudgets && { thinkingBudgets: c.thinkingBudgets }), ...(c.cacheRetention && { cacheRetention: c.cacheRetention }) });
 	let final;
 	for await (const ev of s) if (ev.type === "done" || ev.type === "error") final = ev.type === "done" ? ev.message : ev.error;
 	replies[c.name] = final;

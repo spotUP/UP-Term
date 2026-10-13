@@ -8,14 +8,14 @@
  * :582-755, the model rules :758-960, convertMessages :976-1146, convertToolConfig :1148-1183, mapStopReason :1185,
  * the region and endpoint helpers :1202-1260, buildAdditionalModelRequestFields :1262-1340; env-api-keys.ts :174-190
  * (the variables that make the provider available). The SDK's restJson1 serializer gives the member order (messages,
- * system, inferenceConfig, toolConfig, additionalModelRequestFields; image {format, source}; toolSpec {name,
- * inputSchema, description, strict}); the goldens (tests/pi/bedrock, tools/gen_pi_bedrock.mjs) were made by pi itself
+ * system, inferenceConfig, toolConfig, additionalModelRequestFields; temperature, toolChoice, cachePoint ttl and the custom thinking
+ * budgets as streamSimple passes them (cacheRetention / PI_CACHE_RETENTION, AWS_BEDROCK_FORCE_CACHE); image {format,
+ * source}; toolSpec {name, inputSchema, description, strict}); the goldens (tests/pi/bedrock, tools/gen_pi_bedrock.mjs) were made by pi itself
  * against a recording HTTP server.
  *
  * Not ported (COMPATIBILITY.md): AWS profiles, SSO, container and web identity credentials (AWS_PROFILE, ~/.aws, IMDS),
- * proxies, toolChoice, temperature, requestMetadata, thinkingDisplay "omitted", custom thinking budgets,
- * PI_CACHE_RETENTION=long and AWS_BEDROCK_FORCE_CACHE, the SDK's retries (pi's agent retries a failed answer), the
- * bedrock_response_failure diagnostic on the message, sanitizeSurrogates, the SDK's wording of a non-JSON error body.
+ * proxies, requestMetadata and thinkingDisplay (options of pi's stream() only: streamSimple never sets them), the SDK's
+ * retries (pi's agent retries a failed answer), the bedrock_response_failure diagnostic on the message, sanitizeSurrogates, the SDK's wording of a non-JSON error body.
  * Portable C89, host-tested (tests/test_pi_llm.c, goldens from pi). */
 #include <stdlib.h>
 #include <string.h>
@@ -114,13 +114,13 @@ static int native_xhigh(const llm_model *m)
            has(&c, "haiku-5") || has(&c, "fable-5");
 }
 
-/* supportsPromptCaching (without AWS_BEDROCK_FORCE_CACHE) */
-static int caching(const llm_model *m)
+/* supportsPromptCaching; force: AWS_BEDROCK_FORCE_CACHE=1, which counts only for a model that does not say Claude */
+static int caching(const llm_model *m, int force)
 {
     cands c;
     cands_of(m, &c);
     if (!has(&c, "claude"))
-        return 0;
+        return force;
     if (has(&c, "fable-5") || has(&c, "opus-5") || has(&c, "sonnet-5") || has(&c, "haiku-5"))
         return 1;
     return has(&c, "-4-") || has(&c, "claude-3-7-sonnet") || has(&c, "claude-3-5-haiku");
@@ -257,6 +257,8 @@ int llm_bedrock_resolve(const llm_model *m, const llm_bedrock_env *e, llm_aws *a
         return -1;
     }
     aws->skip_auth = nz(e->skip_auth) && !strcmp(e->skip_auth, "1");
+    aws->force_cache = nz(e->force_cache) && !strcmp(e->force_cache, "1");
+    aws->cache_long = nz(e->cache_retention) && !strcmp(e->cache_retention, "long");
     if (aws->skip_auth) {
         cl_copy(aws->access, "dummy-access-key", sizeof(aws->access));
         cl_copy(aws->secret, "dummy-secret-key", sizeof(aws->secret));
@@ -712,16 +714,23 @@ static int b_body(const llm_ctx *x, jw *w)
     const llm_model *md = x->model;
     int i, rc = -1, n = 0, lv, claude = is_claude(md), last_user = 0, cache = 0;
     long maxt = llm_ctx_max_tokens(x), budget = 0, close_at = 0;
+    const char *ttl = "";
     llm_tx tx;
     if (llm_tx_plan(x, 0, &tx)) {
         llm_tx_free(&tx);
         return -1;
     }
-    cache = caching(md);
+    {
+        /* resolveCacheRetention: the option, else PI_CACHE_RETENTION=long, else short */
+        const char *ret = x->cache_retention && *x->cache_retention ? x->cache_retention
+                          : md->aws && md->aws->cache_long ? "long" : "short";
+        cache = strcmp(ret, "none") && caching(md, md->aws && md->aws->force_cache);
+        ttl = cache && !strcmp(ret, "long") ? ",\"ttl\":\"1h\"" : "";
+    }
     /* streamSimple: no level is no reasoning; a budget-based Claude shares its cap with the thinking budget */
     lv = x->thinking == LT_OFF ? LT_OFF : llm_think_clamp(md, x->thinking);
     if (lv != LT_OFF && claude && !adaptive(md))
-        llm_think_budget(md, x->est_tokens, llm_ctx_max_tokens(x), lv, &maxt, &budget);
+        llm_think_budget(md, x->est_tokens, llm_ctx_max_tokens(x), lv, llm_ctx_custom_budget(x, lv), &maxt, &budget);
     jw_rawz(w, "{\"messages\":[");
     for (i = 0; i < x->nmsg; i++) {
         jv m, r, c;
@@ -761,21 +770,31 @@ static int b_body(const llm_ctx *x, jw *w)
         w->n = close_at;
         if (w->p)
             w->p[w->n] = 0;
-        jw_rawz(w, ",{\"cachePoint\":{\"type\":\"default\"}}]}");
+        jw_rawz(w, ",{\"cachePoint\":{\"type\":\"default\"");
+        jw_rawz(w, ttl);
+        jw_rawz(w, "}}]}");
     }
     jw_rawz(w, "]");
     if (x->system && *x->system) {
         jw_rawz(w, ",\"system\":[{\"text\":");
         jw_strz(w, x->system);
         jw_rawz(w, "}");
-        if (cache)
-            jw_rawz(w, ",{\"cachePoint\":{\"type\":\"default\"}}");
+        if (cache) {
+            jw_rawz(w, ",{\"cachePoint\":{\"type\":\"default\"");
+            jw_rawz(w, ttl);
+            jw_rawz(w, "}}");
+        }
         jw_rawz(w, "]");
     }
     jw_rawz(w, ",\"inferenceConfig\":{\"maxTokens\":");
     jw_long(w, maxt);
+    if (x->has_temperature) {
+        jw_rawz(w, ",\"temperature\":");
+        llm_temp_text(w, x->temperature_micro);
+    }
     jw_rawz(w, "}");
-    if (tx.ntl > 0) {
+    /* convertToolConfig: toolChoice "none" sends no toolConfig at all */
+    if (tx.ntl > 0 && !(x->tool_choice && !strcmp(x->tool_choice, "none"))) {
         jw sch;
         jv v;
         jw_init(&sch);
@@ -810,10 +829,21 @@ static int b_body(const llm_ctx *x, jw *w)
                 jw_rawz(w, ",\"strict\":true");
             jw_rawz(w, "}}");
         }
-        jw_rawz(w, "]}");
+        jw_rawz(w, "]");
+        if (x->tool_choice && !strcmp(x->tool_choice, "auto"))
+            jw_rawz(w, ",\"toolChoice\":{\"auto\":{}}");
+        else if (x->tool_choice && !strcmp(x->tool_choice, "any"))
+            jw_rawz(w, ",\"toolChoice\":{\"any\":{}}");
+        else if (x->tool_choice && !strncmp(x->tool_choice, "tool:", 5)) {
+            jw_rawz(w, ",\"toolChoice\":{\"tool\":{\"name\":");
+            jw_strz(w, x->tool_choice + 5);
+            jw_rawz(w, "}}");
+        }
+        jw_rawz(w, "}");
         jw_free(&sch);
     }
     w_fields(w, md, lv, budget);
+
     jw_rawz(w, "}");
     rc = w->oom ? -1 : 0;
 out:

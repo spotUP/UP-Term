@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "transform.h"
+#include "llm.h"
 
 #define TR_CALLS 64
 
@@ -154,4 +155,31 @@ void llm_view_free(llm_view *v)
     free(v->m);
     free(v->n);
     memset(v, 0, sizeof(*v));
+}
+
+/* a temperature (millionths) as JavaScript writes the number: 0.7, 1, 0 */
+void llm_temp_text(jw *w, long micro)
+{
+    char b[24];
+    int n = 0;
+    long ip, fp;
+    if (micro < 0) {
+        jw_rawz(w, "-");
+        micro = -micro;
+    }
+    ip = micro / 1000000L;
+    fp = micro % 1000000L;
+    jw_long(w, ip);
+    if (fp) {
+        long d;
+        b[n++] = '.';
+        for (d = 100000L; d > 0; d /= 10) {
+            b[n++] = (char)('0' + fp / d);
+            fp %= d;
+        }
+        while (b[n - 1] == '0')
+            n--;
+        b[n] = 0;
+        jw_rawz(w, b);
+    }
 }
