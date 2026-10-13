@@ -178,7 +178,37 @@ static void drop(llm_call *c)
     llm_pool_drop(c->conn);
 }
 
+/* the transports' idle hook (net.h) while this call runs: the caller's poll, so the screen goes on through a slow connect, a
+ * TLS handshake and a full send buffer as it does through a quiet answer -- its spinner turns, Esc and Ctrl+C stop it */
+static int post_idle(void *u)
+{
+    llm_call *c = (llm_call *)u;
+    return c->h.poll && c->h.poll(c->h.u);
+}
+
+static int post_once(llm_call *c);
+
 int llm_post(llm_call *c)
+{
+    int (*was[LLM_POOL])(void *);
+    void *wu[LLM_POOL];
+    int i, rc;
+    for (i = 0; i < c->pool->n; i++) {
+        cl_net *n = c->pool->c[i].net;
+        was[i] = n->idle;
+        wu[i] = n->iu;
+        n->idle = post_idle;
+        n->iu = c;
+    }
+    rc = post_once(c);
+    for (i = 0; i < c->pool->n; i++) {
+        c->pool->c[i].net->idle = was[i];
+        c->pool->c[i].net->iu = wu[i];
+    }
+    return rc;
+}
+
+static int post_once(llm_call *c)
 {
     int again = 1;
     c->err = "";
@@ -238,7 +268,7 @@ top:
             c->h.begin(c->h.u);
         c->got = 0;
         for (;;) {
-            long n = net->recv(net->u, c->buf, c->bufcap, 250);
+            long n = net->recv(net->u, c->buf, c->bufcap, NET_SLICE_MS);
             if (n == NET_TIMEOUT) {
                 if (c->h.poll && c->h.poll(c->h.u)) {
                     drop(c);
@@ -246,7 +276,7 @@ top:
                 }
                 if (c->h.status)
                     c->h.status(c->h.u, LPS_WAIT);
-                idle += 250;
+                idle += NET_SLICE_MS;
                 if (idle < c->idle_ms)
                     continue;
                 drop(c);

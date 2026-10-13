@@ -12,6 +12,12 @@
 #define NET_TIMEOUT (-2)        /* nothing arrived within the timeout */
 #define NET_BREAK   (-3)        /* the user pressed Ctrl+C */
 
+/* The longest a transport waits without calling idle: the screen's
+ * spinner turns every 80 ms (pi's Loader, pi-tui loader.ts
+ * DEFAULT_INTERVAL_MS), so a wait in slices of this length keeps it
+ * turning and the keys (Esc) read. */
+#define NET_SLICE_MS 80
+
 typedef struct cl_net {
     void *u;
     /* Connects to host:port, with TLS (SNI host, certificate verified) when
@@ -25,6 +31,14 @@ typedef struct cl_net {
     void (*close)(void *u);
     /* The last failure as text ("" none). */
     const char *(*err)(void *u);
+    /* Set by the caller, 0 none: called during open, send and recv at
+     * least every NET_SLICE_MS while they wait (the connect, the TLS
+     * handshake's round trips and between its steps, a full send buffer)
+     * so the caller's screen goes on (its spinner, its keys). Nonzero
+     * ends the call with NET_BREAK, as Ctrl+C does. A transport that
+     * cannot wait in slices never calls it. */
+    int (*idle)(void *iu);
+    void *iu;
 } cl_net;
 
 #endif

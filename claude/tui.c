@@ -2664,10 +2664,12 @@ static int next_key(cl_tui *t, cl_key *k, long wait)
     return keys_next(&t->keys, k, 1) ? got_key(t, k) : 0;
 }
 
+/* the spinner's next frame: C:Claude's every 200 ms, pi's every 80 (pi-tui loader.ts DEFAULT_INTERVAL_MS, its Loader's
+ * setInterval) */
 static void tick(cl_tui *t)
 {
     unsigned long n = now(t);
-    if (t->busy && n - t->tick >= 200) {
+    if (t->busy && n - t->tick >= (t->look == TUI_LOOK_PI ? 80UL : 200UL)) {
         t->tick = n;
         t->frame++;
     }
