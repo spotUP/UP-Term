@@ -228,3 +228,72 @@ int llm_tx_plan(const llm_ctx *c, int mid_sys, llm_tx *t)
     t->additive = !twice && !removed;
     return 0;
 }
+
+/* JSON.stringify of a parsed value: no whitespace, strings re-escaped the way JSON.stringify writes them; drop_empty_keys:
+ * members whose key is "" left out (bedrock-converse-stream's sanitizeBedrockDocument) */
+void llm_json_compact(jw *w, jv v, int drop_empty_keys)
+{
+    jit it;
+    jv k, x;
+    int n = 0;
+    switch (json_type(v)) {
+    case J_OBJ:
+        jw_rawz(w, "{");
+        json_iter(v, &it);
+        while (json_next(&it, &k, &x)) {
+            char *d;
+            long l;
+            d = json_strdup(k, &l);
+            if (drop_empty_keys && (!d || l == 0)) {
+                free(d);
+                continue;
+            }
+            jw_rawz(w, n++ ? "," : "");
+            jw_str(w, d ? d : "", d ? l : 0);
+            free(d);
+            jw_rawz(w, ":");
+            llm_json_compact(w, x, drop_empty_keys);
+        }
+        jw_rawz(w, "}");
+        break;
+    case J_ARR:
+        jw_rawz(w, "[");
+        json_iter(v, &it);
+        while (json_next(&it, 0, &x)) {
+            jw_rawz(w, n++ ? "," : "");
+            llm_json_compact(w, x, drop_empty_keys);
+        }
+        jw_rawz(w, "]");
+        break;
+    case J_STR:
+        {
+            char *d;
+            long l;
+            d = json_strdup(v, &l);
+            jw_str(w, d ? d : "", d ? l : 0);
+            free(d);
+        }
+        break;
+    default:
+        jw_raw(w, v.p, v.n);
+        break;
+    }
+}
+
+/* a JSON string value that is empty after JS String.prototype.trim() (ASCII white space; pi's trim also takes the Unicode spaces) */
+int llm_tx_blank(jv s)
+{
+    char *d;
+    long l, i;
+    int b = 1;
+    d = json_strdup(s, &l);
+    if (!d)
+        return 1;
+    for (i = 0; i < l; i++)
+        if (!(d[i] == ' ' || d[i] == '\t' || d[i] == '\n' || d[i] == '\r' || d[i] == '\v' || d[i] == '\f')) {
+            b = 0;
+            break;
+        }
+    free(d);
+    return b;
+}

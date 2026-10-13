@@ -1,0 +1,1639 @@
+{
+ "streams": {
+  "plain": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hello from "
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "the Amiga."
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 15,
+       "outputTokens": 6,
+       "totalTokens": 21
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "cache": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "cached answer"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 10,
+       "outputTokens": 4,
+       "totalTokens": 2314,
+       "cacheReadInputTokens": 2000,
+       "cacheWriteInputTokens": 300,
+       "cacheDetails": [
+        {
+         "ttl": "5m",
+         "inputTokens": 100
+        },
+        {
+         "ttl": "1h",
+         "inputTokens": 200
+        }
+       ]
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "cache_nodetails": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "cached answer"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 10,
+       "outputTokens": 4,
+       "totalTokens": 14,
+       "cacheReadInputTokens": 5,
+       "cacheWriteInputTokens": 7
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "usage_nototal": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "x"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 3,
+       "outputTokens": 4
+      }
+     }
+    }
+   ]
+  },
+  "think": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "text": "Let me "
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "text": "think."
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "signature": "EqQBCkgIBhAB"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "signature": "GAIiQLsig=="
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "text": "Done thinking."
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 1
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 20,
+       "outputTokens": 30,
+       "totalTokens": 50
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "tools2": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "I will read two files."
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 1,
+      "start": {
+       "toolUse": {
+        "toolUseId": "tooluse_abc123",
+        "name": "read"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "toolUse": {
+        "input": "{\"path\":"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "toolUse": {
+        "input": "\"/work/a.txt\"}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 1
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 2,
+      "start": {
+       "toolUse": {
+        "toolUseId": "tooluse_def456",
+        "name": "read"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 2,
+      "delta": {
+       "toolUse": {
+        "input": "{\"path\":\"/work/\u00e9\u4e2d.txt\",\"limit\":5}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 2
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "tool_use"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 30,
+       "outputTokens": 25,
+       "totalTokens": 55
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "tool_noargs": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 0,
+      "start": {
+       "toolUse": {
+        "toolUseId": "tooluse_x",
+        "name": "nodesc"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "tool_use"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 5,
+       "outputTokens": 5,
+       "totalTokens": 10
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "interleaved": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "a"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 1,
+      "start": {
+       "toolUse": {
+        "toolUseId": "tooluse_i",
+        "name": "read"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "toolUse": {
+        "input": "{\"path\":"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "b"
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "toolUse": {
+        "input": "\"/x\"}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 1
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "c"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "tool_use"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 5,
+       "outputTokens": 5,
+       "totalTokens": 10
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "redacted": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "redactedContent": "AQIDBAUG"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "redactedContent": "BwgJCgsMDQ4PEA=="
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "text": "After the hidden reasoning."
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 1
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 9,
+       "outputTokens": 9,
+       "totalTokens": 18
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "redacted_unaligned": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "redactedContent": "AQ=="
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "redactedContent": "AgM="
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "redactedContent": "BA=="
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "text": "ok"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 1
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 9,
+       "outputTokens": 9,
+       "totalTokens": 18
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "length": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "cut by the limit"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "max_tokens"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 10,
+       "outputTokens": 100,
+       "totalTokens": 110
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "ctx_exceeded": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "too long"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "model_context_window_exceeded"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 10,
+       "outputTokens": 100,
+       "totalTokens": 110
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "stop_sequence": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "stopped"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "stop_sequence"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 1,
+       "outputTokens": 1,
+       "totalTokens": 2
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "filtered": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "content_filtered"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 1,
+       "outputTokens": 1,
+       "totalTokens": 2
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "guardrail": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "guardrail_intervened"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 1,
+       "outputTokens": 1,
+       "totalTokens": 2
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "stop_empty": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {}
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 1,
+       "outputTokens": 1,
+       "totalTokens": 2
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "no_stop": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    }
+   ]
+  },
+  "unknown_event": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "event": "somethingNew",
+     "payload": {
+      "a": 1
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 1,
+       "outputTokens": 1,
+       "totalTokens": 2
+      },
+      "metrics": {
+       "latencyMs": 321
+      }
+     }
+    }
+   ]
+  },
+  "role_user": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "user"
+     }
+    }
+   ]
+  },
+  "exc_internal": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "exception": "internalServerException",
+     "payload": {
+      "message": "boom msg"
+     }
+    }
+   ]
+  },
+  "exc_modelstream": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "exception": "modelStreamErrorException",
+     "payload": {
+      "message": "boom msg"
+     }
+    }
+   ]
+  },
+  "exc_validation": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "exception": "validationException",
+     "payload": {
+      "message": "boom msg"
+     }
+    }
+   ]
+  },
+  "exc_throttle": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "exception": "throttlingException",
+     "payload": {
+      "message": "boom msg"
+     }
+    }
+   ]
+  },
+  "exc_unavailable": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "exception": "serviceUnavailableException",
+     "payload": {
+      "message": "boom msg"
+     }
+    }
+   ]
+  },
+  "exc_foo": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "exception": "fooException",
+     "payload": {
+      "message": "boom msg"
+     }
+    }
+   ]
+  },
+  "exc_nomsg": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "exception": "throttlingException",
+     "payload": {}
+    }
+   ]
+  },
+  "corrupt_msg_crc": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    }
+   ],
+   "corrupt": {
+    "frame": 1,
+    "byte": -1
+   }
+  },
+  "corrupt_payload": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    }
+   ],
+   "corrupt": {
+    "frame": 1,
+    "byte": -12
+   }
+  },
+  "corrupt_prelude_crc": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    }
+   ],
+   "corrupt": {
+    "frame": 1,
+    "byte": 9
+   }
+  },
+  "cut": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "Hi"
+      }
+     }
+    }
+   ],
+   "cut": 5
+  },
+  "empty_body": {
+   "events": []
+  },
+  "h400_validation": {
+   "http": {
+    "status": 400,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123",
+     "x-amzn-errortype": "ValidationException:http://internal.amazon.com/coral/com.amazon.bedrock/"
+    },
+    "body": "{\"message\": \"The provided model identifier is invalid.\"}"
+   }
+  },
+  "h403_access": {
+   "http": {
+    "status": 403,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123",
+     "x-amzn-errortype": "AccessDeniedException"
+    },
+    "body": "{\"message\": \"You don't have access to the model with the specified model ID.\"}"
+   }
+  },
+  "h429_throttle": {
+   "http": {
+    "status": 429,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123",
+     "x-amzn-errortype": "ThrottlingException"
+    },
+    "body": "{\"message\": \"Too many requests, please wait before trying again.\"}"
+   }
+  },
+  "h500_internal": {
+   "http": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123",
+     "x-amzn-errortype": "InternalServerException"
+    },
+    "body": "{\"message\": \"Internal failure\"}"
+   }
+  },
+  "h503_unavailable": {
+   "http": {
+    "status": 503,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123",
+     "x-amzn-errortype": "ServiceUnavailableException"
+    },
+    "body": "{\"message\": \"Service unavailable now\"}"
+   }
+  },
+  "h424_model": {
+   "http": {
+    "status": 424,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123",
+     "x-amzn-errortype": "ModelErrorException"
+    },
+    "body": "{\"message\": \"model said no\", \"originalStatusCode\": 400}"
+   }
+  },
+  "h400_notype": {
+   "http": {
+    "status": 400,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123"
+    },
+    "body": "{\"message\": \"bare message\"}"
+   }
+  },
+  "h400_typebody": {
+   "http": {
+    "status": 400,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123"
+    },
+    "body": "{\"__type\": \"com.amazon#SomeException\", \"message\": \"typed in body\"}"
+   }
+  },
+  "h400_nomsg": {
+   "http": {
+    "status": 400,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123",
+     "x-amzn-errortype": "ValidationException"
+    },
+    "body": "{}"
+   }
+  },
+  "h403_empty": {
+   "http": {
+    "status": 403,
+    "headers": {},
+    "body": ""
+   }
+  },
+  "h400_retention": {
+   "http": {
+    "status": 400,
+    "headers": {
+     "content-type": "application/json",
+     "x-amzn-requestid": "req-123",
+     "x-amzn-errortype": "ValidationException"
+    },
+    "body": "{\"message\": \"data retention mode 'default' is not available for this model\"}"
+   }
+  },
+  "reuse_index": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "A"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "B"
+      }
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "C"
+      }
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "end_turn"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 1,
+       "outputTokens": 3,
+       "totalTokens": 4
+      }
+     }
+    }
+   ]
+  },
+  "mixed_kinds": {
+   "events": [
+    {
+     "event": "messageStart",
+     "payload": {
+      "role": "assistant"
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "text": "A"
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "reasoningContent": {
+        "text": "ignored: the block is text"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 0,
+      "delta": {
+       "toolUse": {
+        "input": "{\"ignored\":1}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 5,
+      "delta": {
+       "toolUse": {
+        "input": "{\"no block\":1}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 1,
+      "start": {
+       "toolUse": {
+        "toolUseId": "tooluse_k",
+        "name": "read"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "text": "ignored: the block is a tool call"
+      }
+     }
+    },
+    {
+     "event": "contentBlockDelta",
+     "payload": {
+      "contentBlockIndex": 1,
+      "delta": {
+       "toolUse": {
+        "input": "{\"path\":\"/k\"}"
+       }
+      }
+     }
+    },
+    {
+     "event": "contentBlockStart",
+     "payload": {
+      "contentBlockIndex": 2,
+      "start": {}
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 1
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 0
+     }
+    },
+    {
+     "event": "contentBlockStop",
+     "payload": {
+      "contentBlockIndex": 9
+     }
+    },
+    {
+     "event": "messageStop",
+     "payload": {
+      "stopReason": "tool_use"
+     }
+    },
+    {
+     "event": "metadata",
+     "payload": {
+      "usage": {
+       "inputTokens": 1,
+       "outputTokens": 3,
+       "totalTokens": 4
+      }
+     }
+    }
+   ]
+  }
+ }
+}

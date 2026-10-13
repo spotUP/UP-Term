@@ -1,0 +1,7 @@
+stop=toolUse
+error=-
+usage=120,80,10,5
+thinking="The user wants the startup sequence; I should read it." sig="EqQBCkgIBhABGAIiQLbedrockSig=="
+text="I will read the startup sequence and list S:." sig=-
+tool=tooluse_Rd1-abc read {"path":"S:Startup-Sequence"}
+tool=tooluse.list_2 bash {"command":"List S:"}

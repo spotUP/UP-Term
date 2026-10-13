@@ -1,0 +1,8 @@
+stop=toolUse
+error=-
+usage=30,25,0,0
+total=55 w1h=-
+raw=tool_use
+text="I will read two files."
+tool=tooluse_abc123 read {"path":"/work/a.txt"}
+tool=tooluse_def456 read {"path":"/work/é中.txt","limit":5}

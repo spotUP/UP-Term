@@ -265,6 +265,8 @@ void llm_acc_event(void *u, const llm_event *e)
         }
         if (e->type == LE_SIG_DELTA && e->replace)
             jw_reset(&b->sig);
+        if (e->type == LE_SIG_DELTA && e->redacted)
+            b->redacted = 1;        /* bedrock: the first encrypted reasoning chunk makes the block redacted */
         jw_raw(e->type == LE_DELTA ? &b->a : &b->sig, e->p, e->n);
         break;
     case LE_BLOCK_END:
@@ -289,6 +291,10 @@ void llm_acc_event(void *u, const llm_event *e)
         if (e->has_w1h) {
             a->usage.cache_write_1h = e->cache_w1h;
             a->usage.has_1h = 1;
+        }
+        if (e->has_total) {
+            a->usage.total = e->total;
+            a->usage.has_total = 1;
         }
         if (e->has_reasoning) {
             a->usage.reasoning = e->reasoning;

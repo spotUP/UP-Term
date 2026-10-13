@@ -25,6 +25,7 @@
 #include "../claude/http.h"
 #include "../claude/sse.h"
 #include "backend.h"
+#include "evstream.h"
 
 #define LLM_POOL 4
 
@@ -102,6 +103,7 @@ typedef struct llm_call {
     long bufcap;
     http_resp *resp;            /* the caller's: status, Retry-After, request id */
     sse *sse;
+    llm_evs *es;                /* the AWS event-stream decoder for an answer in that framing (Bedrock), 0 none */
     jw *errbody;                /* a refusal's body (up to 16 KB); jw_init'd by the caller, emptied (buffer kept) by every llm_post */
     /* out */
     llm_conn *conn;
@@ -130,8 +132,9 @@ typedef struct llm_req {
     /* out */
     int attempts;
     int key_sent;               /* the credential header went out */
+    int signed_auth;            /* the backend signed the request (AWS Signature Version 4 headers were added) */
     long slept_ms;              /* waits between attempts, summed */
-    char head[1536];            /* the last head sent (the tests read it) */
+    char head[4608];            /* the last head sent (the tests read it); a session token makes a signed head long */
     long hn;
 } llm_req;
 

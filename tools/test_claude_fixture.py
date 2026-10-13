@@ -151,6 +151,62 @@ GOOGLE = [
 ]
 
 
+BEDROCK = [
+    ("text", {"messages": [{"role": "user", "content": [{"text": "hello"}]}]}, "bedrock/plain"),
+    ("startup", {"messages": [{"role": "user", "content": [{"text": "the startup"}]}]}, "bedrock/tools2"),
+    ("after a result", {"messages": [{"role": "user", "content": [{"text": "the startup"}]},
+                                      {"role": "assistant", "content": [{"toolUse": {"toolUseId": "t", "name": "read", "input": {}}}]},
+                                      {"role": "user", "content": [{"toolResult": {"toolUseId": "t", "content": [{"text": "x"}], "status": "success"}}]}]},
+     "bedrock/plain"),
+]
+
+
+def event_stream_messages(data):
+    """the messages of an AWS event stream (total length, headers length, prelude CRC, headers, payload, message CRC), the
+    checksums verified with zlib: [(event type, payload bytes)]"""
+    import struct
+    import zlib
+    out = []
+    i = 0
+    while i < len(data):
+        total, hlen, pcrc = struct.unpack(">III", data[i:i + 12])
+        assert zlib.crc32(data[i:i + 8]) == pcrc, "prelude CRC"
+        msg = data[i:i + total]
+        assert zlib.crc32(msg[:-4]) == struct.unpack(">I", msg[-4:])[0], "message CRC"
+        hdr = msg[12:12 + hlen]
+        j = 0
+        et = None
+        while j < len(hdr):
+            nl = hdr[j]
+            name = hdr[j + 1:j + 1 + nl].decode()
+            j += 1 + nl
+            assert hdr[j] == 7, "string header"
+            vl = struct.unpack(">H", hdr[j + 1:j + 3])[0]
+            val = hdr[j + 3:j + 3 + vl].decode()
+            j += 3 + vl
+            if name == ":event-type":
+                et = val
+        out.append((et, msg[12 + hlen:-4]))
+        i += total
+    return out
+
+
+class BedrockRoute(unittest.TestCase):
+    def test_every_route_picks_its_recording(self):
+        for what, b, want in BEDROCK:
+            with self.subTest(what):
+                self.assertEqual(fx.pick_bedrock(b), want)
+                self.assertTrue((ROOT / "tests" / "pi" / (want + ".es")).is_file())
+
+    def test_the_recordings_are_valid_event_streams(self):
+        for _, _, want in BEDROCK:
+            with self.subTest(want):
+                msgs = event_stream_messages((ROOT / "tests" / "pi" / (want + ".es")).read_bytes())
+                self.assertEqual(msgs[0][0], "messageStart")
+                self.assertEqual(msgs[-1][0], "metadata")
+                self.assertIn("messageStop", [m[0] for m in msgs])
+
+
 class GoogleRoute(unittest.TestCase):
     def test_every_route_picks_its_recording(self):
         for what, b, want in GOOGLE:
@@ -236,6 +292,19 @@ class OverHttp(unittest.TestCase):
                 r, data = self.post(b, "/v1beta/models/gemini-3-flash-preview:streamGenerateContent?alt=sse")
                 self.assertEqual(r.status, 200)
                 self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".sse")).read_bytes())
+
+    def test_bedrock_streams_an_event_stream(self):
+        for what, b, want in BEDROCK:
+            with self.subTest(what):
+                r, data = self.post(b, "/model/anthropic.claude-sonnet-5-5/converse-stream")
+                self.assertEqual(r.status, 200)
+                self.assertEqual(r.getheader("Content-Type"), "application/vnd.amazon.eventstream")
+                self.assertEqual(r.getheader("Transfer-Encoding"), "chunked")
+                self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".es")).read_bytes())
+                self.assertEqual(event_stream_messages(data)[0][0], "messageStart")
+        # an id with a colon is written %3A in the path
+        r, data = self.post(BEDROCK[0][1], "/model/amazon.nova-pro-v1%3A0/converse-stream")
+        self.assertEqual(r.status, 200)
 
     def test_body_not_json_is_400(self):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)

@@ -1,0 +1,3 @@
+POST https://bedrock-runtime.us-east-1.amazonaws.com/model/anthropic.claude-sonnet-5-5/converse-stream
+content-type: application/json
+authorization: Bearer brk-test-token-not-real

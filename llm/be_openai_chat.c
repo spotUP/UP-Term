@@ -679,7 +679,7 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
 }
 
 const llm_backend llm_be_openai_chat = {
-    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, 0, 0, 0
+    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, 0, 0, 0, 0, 0
 };
 
 const llm_backend *llm_backend_of(const char *api)
@@ -694,5 +694,7 @@ const llm_backend *llm_backend_of(const char *api)
         return &llm_be_azure;
     if (api && !strcmp(api, llm_be_google.api))
         return &llm_be_google;
+    if (api && !strcmp(api, llm_be_bedrock.api))
+        return &llm_be_bedrock;
     return 0;
 }

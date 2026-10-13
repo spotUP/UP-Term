@@ -135,10 +135,32 @@ static void on_sse(void *u, const char *event, const char *data, long n)
         c->bad = 1;
 }
 
+/* a message of an AWS event-stream answer to the backend, as an SSE event is: the event type of an event, "!" and the
+ * exception type of an exception (llm/evstream.h) */
+static void on_es(void *u, const llm_evmsg *m)
+{
+    llm_call *c = (llm_call *)u;
+    char name[96];
+    const char *type = !strcmp(m->message_type, "exception") ? m->exception_type : m->event_type;
+    if (strcmp(m->message_type, "event") && strcmp(m->message_type, "exception"))
+        return;
+    name[0] = 0;
+    if (!strcmp(m->message_type, "exception"))
+        cl_copy(name, "!", sizeof(name));
+    cl_cat(name, type, sizeof(name));
+    if (c->h.event)
+        c->h.event(c->h.u, name, (const char *)m->payload, m->n);
+    if (c->be && c->dec && !c->bad && c->be->feed(c->dec, name, (const char *)m->payload, m->n, c->sink))
+        c->bad = 1;
+}
+
 static void on_body(void *u, const char *s, long n)
 {
     llm_call *c = (llm_call *)u;
-    if (c->resp->status == 200 && c->resp->event_stream)
+    if (c->resp->status == 200 && c->resp->aws_stream) {
+        if (c->es && !c->bad && llm_evs_feed(c->es, s, n))
+            c->bad = 1;
+    } else if (c->resp->status == 200 && c->resp->event_stream)
         sse_feed(c->sse, s, n);
     else if (c->h.body && c->resp->status >= 200 && c->resp->status < 300)
         c->h.body(c->h.u, s, n);
@@ -203,6 +225,8 @@ top:
         c->resp->header = c->h.header;
         c->resp->hu = c->h.u;
         sse_init(c->sse, on_sse, c);
+        if (c->es)
+            llm_evs_init(c->es, on_es, c);
         jw_reset(c->errbody);       /* the caller's buffer, kept: a call per refusal must not leak the last */
         c->bad = 0;
         if (c->h.begin)

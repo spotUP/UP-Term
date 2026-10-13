@@ -1,0 +1,7 @@
+tests/pi/sigv4/v4: the AWS Signature Version 4 test suite (the 38 cases of "aws-signing-test-suite/v4") as awslabs/aws-c-auth
+carries it (https://github.com/awslabs/aws-c-auth, tests/aws-signing-test-suite/v4, fetched 2026-10-13). Apache License 2.0:
+LICENSE and NOTICE here are that repository's, unchanged. Files per case: request.txt (the request), context.json
+(credentials, region, service, timestamp, sign_body, normalize, omit_session_token), header-* (the Authorization-header
+form: canonical request, string to sign, signature, signed request) and query-* (the presigned form). cases.txt lists the
+case directories. Nothing here was edited; tests/test_pi_llm.c (test_sigv4) signs each request with llm/sigv4.c in both
+forms and compares every file.

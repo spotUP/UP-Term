@@ -1,0 +1,6 @@
+stop=toolUse
+error=-
+usage=90,40,0,0
+thinking="[Reasoning redacted]" sig="AQIDBAUGBwgJCgsMDQ4PEA=="
+text="Reading the startup sequence." sig=-
+tool=tooluse_gpt_read read {"path":"S:Startup-Sequence"}

@@ -1311,28 +1311,7 @@ static int media_name(const char *p)
 
 void tl_base64(jw *w, const unsigned char *p, long n)
 {
-    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    char q[4];
-    long i;
-    for (i = 0; i + 2 < n; i += 3) {
-        q[0] = a[p[i] >> 2];
-        q[1] = a[((p[i] & 3) << 4) | (p[i + 1] >> 4)];
-        q[2] = a[((p[i + 1] & 15) << 2) | (p[i + 2] >> 6)];
-        q[3] = a[p[i + 2] & 63];
-        jw_raw(w, q, 4);
-    }
-    if (n - i == 1) {
-        q[0] = a[p[i] >> 2];
-        q[1] = a[(p[i] & 3) << 4];
-        q[2] = q[3] = '=';
-        jw_raw(w, q, 4);
-    } else if (n - i == 2) {
-        q[0] = a[p[i] >> 2];
-        q[1] = a[((p[i] & 3) << 4) | (p[i + 1] >> 4)];
-        q[2] = a[(p[i + 1] & 15) << 2];
-        q[3] = '=';
-        jw_raw(w, q, 4);
-    }
+    jw_base64(w, p, n);
 }
 
 /* Read of an image or a PDF: Claude sees it (a base64 image or document

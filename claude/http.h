@@ -66,7 +66,8 @@ typedef struct http_resp {
     long length;                /* Content-Length, -1 none */
     long left;                  /* body or chunk bytes to come */
     int close;                  /* Connection: close, or no length: read to the end */
-    int event_stream;           /* Content-Type: text/event-stream */
+    int event_stream;           /* Content-Type: text/event-stream, or application/vnd.amazon.eventstream (aws_stream) */
+    int aws_stream;             /* Content-Type: application/vnd.amazon.eventstream (Bedrock's binary framing, llm/evstream.h) */
     char request_id[64];
     char line[1024];            /* the header line being read (longer lines are cut) */
     int ll;

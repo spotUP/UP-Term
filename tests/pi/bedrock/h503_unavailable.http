@@ -1,0 +1,8 @@
+HTTP/1.1 503 X
+content-type: application/json
+x-amzn-requestid: req-123
+x-amzn-errortype: ServiceUnavailableException
+content-length: 38
+connection: keep-alive
+
+{"message": "Service unavailable now"}

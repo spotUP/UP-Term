@@ -214,5 +214,5 @@ int llm_azure_resolve(const llm_model *m, const char *e_base, const char *e_res,
 
 const llm_backend llm_be_azure = {
     "azure-openai-responses", "api-key", "/responses", a_head, a_body, 0, llm_responses_new, a_feed,
-    llm_responses_free, "OpenAI Responses stream ended before a terminal response event", a_route, 0
+    llm_responses_free, "OpenAI Responses stream ended before a terminal response event", a_route, 0, 0, 0
 };

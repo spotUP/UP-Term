@@ -298,3 +298,21 @@ long llm_ctx_max_tokens(const llm_ctx *c)
     long base = c->max_tokens > 0 ? c->max_tokens : c->model->max_tokens;
     return base > 0 ? llm_clamp_max_tokens(c->model, c->est_tokens, base) : 0;
 }
+
+/* simple-options.ts DEFAULT_THINKING_BUDGETS: xhigh and max count as high */
+long llm_think_budget_of(int level)
+{
+    return level <= LT_MINIMAL ? 1024 : level == LT_LOW ? 2048 : level == LT_MEDIUM ? 8192 : 16384;
+}
+
+void llm_think_budget(const llm_model *m, long est, long base, int lv, long *maxt, long *budget)
+{
+    long mm = m->max_tokens > 0 ? m->max_tokens : 8192, b = llm_think_budget_of(lv), m1, room;
+    /* adjustMaxTokensForThinking, clampMaxTokensToContext again, then min(budget, maxTokens - 1024) */
+    m1 = base + b < mm ? base + b : mm;
+    if (m1 <= b)
+        b = b < (m1 > 1024 ? m1 - 1024 : 0) ? b : (m1 > 1024 ? m1 - 1024 : 0);
+    *maxt = llm_clamp_max_tokens(m, est, m1);
+    room = *maxt > 1024 ? *maxt - 1024 : 0;
+    *budget = b < room ? b : room;
+}

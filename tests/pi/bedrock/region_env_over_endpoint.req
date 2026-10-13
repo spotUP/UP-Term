@@ -1,0 +1,4 @@
+POST https://bedrock-runtime.us-west-2.amazonaws.com/model/eu.anthropic.claude-sonnet-5-5/converse-stream
+content-type: application/json
+x-amz-date: 20251010T124000Z
+credential: AKIDEXAMPLE/20251010/us-west-2/bedrock/aws4_request

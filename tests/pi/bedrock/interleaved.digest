@@ -1,0 +1,7 @@
+stop=toolUse
+error=-
+usage=5,5,0,0
+total=10 w1h=-
+raw=tool_use
+text="abc"
+tool=tooluse_i read {"path":"/x"}

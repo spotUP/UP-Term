@@ -74,5 +74,7 @@ void jw_rawz(jw *w, const char *s);
 void jw_str(jw *w, const char *s, long n);
 void jw_strz(jw *w, const char *s);
 void jw_long(jw *w, long v);
+/* p[0..n) as base64 (RFC 4648, padded), appended raw (no quotes) */
+void jw_base64(jw *w, const unsigned char *p, long n);
 
 #endif

@@ -1,0 +1,1 @@
+{"messages":[{"role":"user","content":[{"text":"hello"}]}],"system":[{"text":"You are amiga-pi, a coding agent."}],"inferenceConfig":{"maxTokens":128000},"additionalModelRequestFields":{"reasoning":{"effort":"high"}}}
