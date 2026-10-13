@@ -1189,6 +1189,10 @@ def step12(port):
     for tag, api, suffix, mid, _, _ in ADAPTERS_12:
         providers['fx' + tag] = {'baseUrl': base + suffix, 'api': api, 'apiKey': 'sk-rig-12-must-not-be-sent',
                                  'models': [{'id': mid, 'contextWindow': 32000}]}
+        if tag == 'bedrock':
+            # a models.json apiKey IS the bedrock bearer token (pi: options.apiKey -> useBearerToken); over plain http it
+            # stays home and nothing is signed. The SigV4 check needs the AWS_* keys of the environment alone.
+            del providers['fx' + tag]['apiKey']
     try:
         agent.mkdir(exist_ok=True)
         (agent / 'models.json').write_text(json.dumps({'providers': providers}))

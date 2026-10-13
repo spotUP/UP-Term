@@ -3971,6 +3971,11 @@ static void test_bedrock_cred(void)
     memset(&q, 0, sizeof(q));
     CHECK_INT(bd_run("http://192.168.1.10:9000", keys, 0, &q, 0), 0);
     CHECK(q.signed_auth == 1 && strstr(ps.head[0], "Host: 192.168.1.10:9000\r\n") != 0 && strstr(ps.head[0], "Signature=") != 0);
+    /* a stored key (models.json apiKey) is the bearer token too: it beats the AWS keys, and over plain http it stays home
+     * with nothing signed (what rig step 12 saw while its bedrock provider carried an apiKey) */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run("http://192.168.1.10:9000", keys, "sk-stored", &q, 0), 0);
+    CHECK(q.signed_auth == 0 && q.key_sent == 0 && strstr(ps.head[0], "Authorization") == 0 && strstr(ps.head[0], "x-amz-date") == 0);
     /* a gateway answering with a page, not an AWS error body: the status and what it said (pi shows the SDK's JSON.parse error) */
     memset(&q, 0, sizeof(q));
     CHECK_INT(bd_run(0, keys, 0, &q, "../pi/bedrock/gateway_502.http"), -1);
