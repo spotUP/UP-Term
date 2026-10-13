@@ -21,9 +21,7 @@ WHAT YOU NEED
   Only for the network parts, all optional:
     a TCP/IP stack running: Roadshow (part of AmigaOS 3.2), Miami or AmiTCP
     AmiSSL 5: Aminet util/libs/AmiSSL-v5-OS3.lha; run its own installer
-      (Install ticks curl only when LIBS:amisslmaster.library is found, and
-      Claude with an API key needs it)
-    a computer for Claude Code (see CLAUDE FROM THE AMIGA), or an API key
+      (Install ticks curl only when LIBS:amisslmaster.library is found)
   Get UP-Term.lha onto the Amiga any way you like (a memory card, a shared
   drive, ftp over the stack) and unpack it with lha. Reboot after Install:
   XCON: and PTY: are mounted from then on.
@@ -61,7 +59,7 @@ UPDATE
 
 WHERE IT IS INSTALLED
   UP-Term's own files (bin with the Unix commands and sh, unifont, emoji,
-  Python3, nvim, VERSIONS) live in one drawer: SYS:UP-Term unless you
+  VERSIONS, and the add-on archives' files: Python3, nvim, pkg) live in one drawer: SYS:UP-Term unless you
   pick another in the first question of Install (DEST <drawer> from a
   Shell; the drawer's parent must exist). Everything finds it through the
   assign UP-Term:, which Install makes at once and at every boot (a block
@@ -74,8 +72,9 @@ WHERE IT IS INSTALLED
   that one line and ENVARC:up-term/Dir (or run Install again with DEST).
   Uninstall looks the drawer up through UP-Term: and removes the drawer,
   the block and the assign. It asks whether to delete your data in
-  UP-Term:var too (Claude and amiga-pi sessions and history; default No):
-  on No the drawer stays with only var in it, and Uninstall says so.
+  UP-Term:var too (the sessions and history of Claude and amiga-pi;
+  default No): on No the drawer stays with only var in it, and Uninstall
+  says so.
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
@@ -647,19 +646,9 @@ NETWORK
   under the curl licence. Their COPYING files and sources (or where the
   source is) are in the kit's Files/net drawer.
 
-CLAUDE FROM THE AMIGA
-  Quickest: Claude. Install asked where Claude Code runs (the NAS) and
-  wrote it to ENVARC:Claude/remote ("host port"; edit or delete it): with
-  no API key set, Claude connects there in the window. Or ClaudeCode
-  (or double-click ClaudeCode in the UP-Term drawer)
-  connects to the host and port in ENVARC:Claude/remote (Claude SETUP
-  writes it) -- ClaudeCode HOST PORT names another -- asks its password
-  and starts Claude Code in tmux.
-  Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
-  To set up the NAS end (a Synology container that keeps Claude Code in
-  tmux), see tools/nas/README.md in the vtcon source tree; to let Claude
-  there run commands on this Amiga, amimcp and amiagent are described in
-  the same file (never run amiagent without a TOKEN).
+UPTELNET
+  uptelnet is a telnet client for the window (no ixemul; needs a TCP/IP
+  stack). UP-Term-Claude.lha's ClaudeCode uses it to reach Claude Code on a Mac.
   On the Mac, from an UP-Term source checkout (nothing is installed; it
   runs until Ctrl-C):
     (umask 077; mkdir -p ~/.config/uptelnetd; read -rs p; printf '%s\n' "$p" > ~/.config/uptelnetd/password)
@@ -749,99 +738,23 @@ CONSOLE.DEVICE
   programs write are overwritten at the next output, except the keymap
   (CD_SETKEYMAP). It works on AmigaOS 3.2 too.
 
-CLAUDE
-  C:Claude talks to Claude, Anthropic's AI model, from an UP-Term window,
-  and can read, search and edit files and run commands for you. It needs
-  a TCP/IP stack (Roadshow, Miami, AmiTCP), AmiSSL 5 (Aminet
-  util/libs/AmiSSL-v5-OS3.lha), a 68020 or better, and an API key of your
-  own from console.anthropic.com. What it uses is billed to that key:
-  /cost shows the tokens and the price so far.
-    Claude                    a conversation (/help lists the commands)
-    Claude list the files in S:   one request, then back to the Shell
-    Claude PING               checks the connection: HTTP status, times
-    Claude MODEL=name EFFORT=low|medium|high|xhigh|max ROOT=dir DEBUG
-    Claude PLAIN              the line mode at the window's own prompt
-  First run: with no key, no ENVARC:Claude/remote and no
-  ENVARC:Claude/setup-done, Claude starts a short setup: it asks whether
-  Claude Code runs on another computer, whether you use an API key here,
-  or later; checks the TCP/IP stack, AmiSSL 5 (key) or C:uptelnet (other
-  computer) and that the computer answers; offers amimcp/amiagent; writes
-  the settings. `Claude SETUP` (or /setup) runs it again.
-  The key: SetEnv SAVE ANTHROPIC_API_KEY yourkey, or put it alone in the
-  file ENVARC:Claude/key (Install makes the drawer, never a key; Uninstall
-  leaves the drawer and your key). Claude never shows the key and never
-  writes it to a log; DEBUG logs to T:Claude.log with the key blanked. The
-  key only goes over https.
-  The screen is Claude Code's: what was said scrolls above, an input box
-  and a status line stay at the bottom (model, effort, the start
-  directory, how much of the context is left, the permission mode).
-    Enter               sends; a new line: Shift+Enter, \ Enter, or Ctrl+J
-    Up / Down           earlier prompts, kept across sessions per start
-                        directory (UP-Term:var/Claude/history); Ctrl+R searches
-                        them all (again: older; Tab edits, Enter sends)
-    Ctrl+A/E/K/U/W/Y    start, end, cut to the end / start / white space,
-                        put back; Ctrl+_ undoes; a paste stays one block
-    /                   the commands, as a menu: Up/Down, Tab completes
-    Shift+Tab           the permission mode: default, accept edits (writes
-                        and edits in the start directory run unasked), plan
-                        (only reading tools run; Claude presents a plan)
-    Esc                 stops Claude (the unfinished answer is not kept)
-    Esc Esc             clears the box (Up brings it back); on an empty box
-                        the rewind menu: back to before an earlier prompt
-    Enter while Claude works   queues the prompt; it goes in after the tool
-                        calls, or when Claude is done; Up takes it back
-    ! command           runs it in the shell; Claude sees the output
-    # note              saves the note to a memory file (CLAUDE.md, yours
-                        or the project's: a menu asks which)
-    @path               attaches the file (Tab completes the path)
-    Ctrl+O              the whole transcript: results in full, thinking;
-                        Up/Down/PgUp/PgDn, / or Ctrl+R searches, q leaves
-    Ctrl+T              Claude's todo list under the box, on or off
-    Ctrl+G              the prompt in your editor (ENV:EDITOR, else Ed)
-    Ctrl+L              draws the screen again
-    Ctrl+C              clears the line; twice on an empty line: leave
-                        (Ctrl+D twice too)
-  /theme picks the colours (dark, light, colour-blind friendly, monochrome
-  for 2- and 4-colour screens); /vim turns on vim keys in the box. When a
-  long answer ends or Claude asks for permission, the window rings and its
-  title says so.
-  /compact summarises the conversation and goes on from the summary;
-  /context shows how full the context is; /init writes AMIGA.md, notes on
-  the start directory that every later session reads; /resume loads the
-  conversation saved after each answer (UP-Term:var/Claude/session.json).
-  Without UP-Term: (the kit not installed) the history and the session stay
-  in ENVARC:Claude. Uninstall asks whether to delete UP-Term:var (default
-  No: everything else goes, var stays); Install and Update never touch it.
-  Tools: every call is shown. Reading, listing and searching ask once
-  (answer 2 allows all three for the session); writing, editing and
-  running a command ask every time unless you answer 2 for that tool; an
-  edit shows its change in red and green before you answer. 3 (or Esc)
-  says no and lets you tell Claude what to do instead. Anything outside
-  the start directory (the current one, or ROOT=) asks every time.
-  Commands run through vsh with no input, up to 60 seconds. The text is
-  UTF-8: the screen needs an UP-Term window in the xterm dialect (the
-  default); elsewhere Claude falls back to the line mode, where Ctrl+C
-  stops an answer and the questions are answered y, a or n.
-  Model claude-opus-5-5 and effort medium unless you choose others.
-
-AMIGA-PI
-  C:amiga-pi is pi, the coding agent (pi.dev), for an UP-Term window: it
-  reads, searches and edits files and runs commands for you, with the
-  model of your choice (Anthropic, OpenAI and compatible servers, Google,
-  Azure). It has the same needs as Claude: a TCP/IP stack, AmiSSL 5 for
-  https, a 68020 or better, and an API key of your own for the provider.
-    amiga-pi                  a conversation (/help lists the commands)
-    amiga-pi --version        the version (1.1.0, the pi it follows)
-  The key: SetEnv SAVE ANTHROPIC_API_KEY yourkey (OPENAI_API_KEY and the
-  provider's other variables the same way), or in
-  ENVARC:amiga-pi/auth.json. What it uses is billed to that key.
-  Its settings are small files in ENVARC:amiga-pi: settings.json,
-  models.json (more models and servers), auth.json, keybindings.json,
-  SYSTEM.md, APPEND_SYSTEM.md, AGENTS.md. Install makes the drawer and
-  never writes a file in it; Install, Update and Uninstall leave your
-  files there. Its sessions, skills, prompts, themes and extensions (Lua)
-  are in UP-Term:var/amiga-pi, which Uninstall keeps unless you say yes
-  (above). Without UP-Term: everything stays in ENVARC:amiga-pi.
+ADD-ONS
+  Neovim, Python, Claude and amiga-pi are archives of their own, next to
+  UP-Term.lha. Each has its own Install and Uninstall and README.txt, and
+  needs this one installed first (UP-Term-nvim and UP-Term-python run on
+  its patched ixemul.library; its Install says so and stops when this one
+  is missing or too old):
+    UP-Term-nvim.lha     Neovim 0.12 and its runtime (UP-Term:nvim)
+    UP-Term-python.lha   Python 3.14 (UP-Term:Python3, Python3: assigned at boot)
+    UP-Term-Claude.lha   C:Claude and C:ClaudeCode (Claude, Anthropic's AI model)
+    UP-Term-pi.lha       C:amiga-pi (pi, the coding agent)
+  Order: UP-Term.lha first, then any of these. An UP-Term installed from the
+  single kit (before the split) that had Neovim, Python, Claude or amiga-pi
+  keeps them when UP-Term.lha is installed over it (Update says so); install
+  the archive of each to keep it updated. Uninstall of UP-Term takes the
+  add-ons out first, each by its own Uninstall, and asks once about
+  UP-Term:var. The source of the GNU commands is UP-Term-src.lha, next to
+  UP-Term.lha, with the Unix tools' source.
 
 STATUS
   Test build. CON:/RAW: and console.device stay the system's unless you

@@ -1,0 +1,10 @@
+UP-Term-Claude: parts, licences and where the source is
+(rows moved from the single kit's LICENSES.txt by the kit split; K2-6 completes them)
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+Claude, ClaudeCode            No licence file (own code)       vtcon repo: claude/, llm/, dist/ClaudeCode
+
+Notes
+- The Claude and ClaudeCode programs talk to Anthropic's API; AmiSSL 5 (used at
+  run time) is not part of the archive.

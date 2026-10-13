@@ -1,0 +1,11 @@
+UP-Term-python: parts, licences and where the source is
+(rows moved from the single kit's LICENSES.txt by the kit split; K2-6 completes them)
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+Python 3.14 (Files/python3)   Python Software Foundation       cpython-amiga repo (vendor/cpython/LICENSE)
+                              licence (vendor/cpython/LICENSE)
+
+Notes
+- The source is in the repository named, which the upterm meta-repo pins to the
+  commit the archive was built from.
