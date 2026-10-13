@@ -108,6 +108,12 @@ static void test_glob(void)
     char o[200];
     CHECK(glob_match("*.c", "main.c"));
     CHECK(glob_match("*.c", "MAIN.C"));
+    CHECK(!glob_match_case("*.c", "MAIN.C"));      /* amiga-pi: settings.json patterns are matched with the case of letters */
+    CHECK(glob_match_case("*.c", "main.c"));
+    CHECK(!glob_match_case("[a-c]*", "Beta"));
+    CHECK(glob_match_case("{Doc,doc}/*.MD", "doc/x.MD"));
+    CHECK(!glob_match_case("{Doc,doc}/*.MD", "doc/x.md"));
+    CHECK(glob_match("*.c", "MAIN.C"));            /* and the default is not changed by it */
     CHECK(!glob_match("*.c", "src/main.c"));
     CHECK(glob_match("**/*.c", "main.c"));
     CHECK(glob_match("**/*.c", "src/deep/main.c"));
