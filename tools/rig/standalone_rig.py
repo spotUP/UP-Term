@@ -681,12 +681,34 @@ def cleanup():
     run('Assign >NIL: KCON: DISMOUNT')
     for cmd in GO_LIBS + GO_ENV:
         run(cmd)
+    if rig_upterm_removed:
+        run('Assign >NIL: UP-Term: ' + RIG_UPTERM_DRAWER)
     run('Delete >NIL: RAM:sa-cal.txt RAM:t.txt RAM:p.txt RAM:q.txt QUIET')
     run('Delete >NIL: ENVARC:Claude ENVARC:amiga-pi RAM:S RAM:.claude ALL QUIET')
 
 
+RIG_UPTERM_DRAWER = 'VTCX:upterm'   # what rig.py's boot assigns UP-Term: to when no kit is installed (UT1)
+rig_upterm_removed = False
+
+
+def rig_upterm_assign(assign_list):
+    """True when UP-Term: is in the `Assign LIST` text and points at the rig's own drawer (not a kit's)."""
+    for line in assign_list.splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[0].upper() == 'UP-TERM' and f[1].lower() == RIG_UPTERM_DRAWER.lower():
+            return True
+    return False
+
+
 def check_stock():
-    """The clean image: no UP-Term: assign and no ixemul in SYS:Libs; the stock ixemul's version."""
+    """The clean image: no UP-Term: assign and no ixemul in SYS:Libs; the stock ixemul's version.
+    The rig's own UP-Term: (the glyph pages and the icon's tool, R9) is taken away for the run and
+    put back by cleanup(); a kit's UP-Term: stays an error."""
+    global rig_upterm_removed
+    listing = run('Assign LIST')[1]
+    if rig_upterm_assign(listing):
+        run('Assign >NIL: UP-Term: REMOVE')
+        rig_upterm_removed = True
     assigns = run('Assign LIST')[1].upper()
     if 'UP-TERM' in assigns:
         sys.exit('[ERROR] UP-Term: is assigned: this is not a stock Workbench (rig.py setup --os 32, not the old rig)')

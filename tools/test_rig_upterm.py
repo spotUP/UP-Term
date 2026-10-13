@@ -42,5 +42,11 @@ with tempfile.TemporaryDirectory() as tmp:
     else:
         check(False, "rig.stage_upterm exists")
 
+# standalone_rig.py takes the rig's own UP-Term: away for its stock-Workbench runs, never a kit's
+import standalone_rig  # noqa: E402
+check(standalone_rig.rig_upterm_assign("Volumes:\nUP-Term         VTCX:upterm\nGG  VTCX:\n"), "the rig's UP-Term: assign is recognised")
+check(not standalone_rig.rig_upterm_assign("UP-Term         DH0:UP-Term\n"), "a kit's UP-Term: assign is not the rig's")
+check(not standalone_rig.rig_upterm_assign("GG  VTCX:\n"), "no UP-Term: assign is not the rig's")
+
 print("[%s] rig_upterm: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)
