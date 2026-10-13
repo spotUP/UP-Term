@@ -340,5 +340,30 @@ class PiInstall(unittest.TestCase):
         self.assertNotRegex(un, r'(?m)^\s*Delete[^;\n]*ENVARC:amiga-pi')
 
 
+class NvimShell(unittest.TestCase):
+    """N1: nvim's default 'shell' is sh, which AmigaOS has not, so :terminal and :! failed with
+    "E475 ... 'sh' is not executable". The archive's sysinit.vim ($VIM/sysinit.vim, read before
+    the user's init) sets it to the base's vsh, and make dist-nvim stages it where nvim reads it."""
+
+    def test_sysinit_sets_shell_to_the_bases_vsh(self):
+        vim = (ROOT / 'dist/addons/nvim/sysinit.vim').read_text()
+        code = [l.strip() for l in vim.splitlines() if not l.strip().startswith('"')]
+        self.assertIn('set shell=UP-Term:bin/vsh', code)
+        self.assertIn('set shell=C:vsh', code)
+        # the base installs vsh in both places (dist/install.dos: Copy vsh UP-Term:bin/vsh, C:vsh)
+        dos = (ROOT / 'dist/install.dos').read_text()
+        self.assertIn('Copy vsh UP-Term:bin/vsh', dos)
+        self.assertIn('Copy vsh C:vsh', dos)
+
+    def test_a_shell_the_user_named_is_not_replaced(self):
+        vim = (ROOT / 'dist/addons/nvim/sysinit.vim').read_text()
+        self.assertIn("empty($SHELL)", vim)
+
+    def test_the_kit_stages_sysinit_where_nvim_reads_it(self):
+        mk = (ROOT / 'Makefile').read_text()
+        m = re.search(r'(?ms)^dist-nvim:.*?^dist-python:', mk)
+        self.assertIn('dist/addons/nvim/sysinit.vim $(KIT_nvim)/Files/nvim/share/nvim/sysinit.vim', m.group(0))
+
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

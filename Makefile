@@ -961,6 +961,7 @@ dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
 dist-nvim: $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,nvim)
 	cp -R $(NVIM_DIST) $(KIT_nvim)/Files/nvim
+	cp dist/addons/nvim/sysinit.vim $(KIT_nvim)/Files/nvim/share/nvim/sysinit.vim
 	python3 tools/mkkit.py nvim
 dist-python: $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,python)

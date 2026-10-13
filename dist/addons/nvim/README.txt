@@ -24,6 +24,8 @@ USE
   In an UP-Term window, in vsh:
     nvim file.txt
   vsh's path already names /UP-Term/nvim/bin. Neovim follows a resized window.
+  Neovim's 'shell' is vsh (share/nvim/sysinit.vim, read before your own init file), so
+  :terminal and :! work; set 'shell' or $SHELL yourself to use another.
 
 UNINSTALL
   Double-click Uninstall (or Execute Uninstall), or Uninstall of UP-Term.lha, which
