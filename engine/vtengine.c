@@ -7408,7 +7408,8 @@ static int amiga_key(vt_u8 *o, long key, int mods)
     return 0;
 }
 
-static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out);
+static int legacy_key_ex(const vt_term *t, long key, int mods, vt_u8 *out, int plain);
+#define legacy_key(t, key, mods, out) legacy_key_ex(t, key, mods, out, 0)
 
 /* modifyOtherKeys' form: CSI 27 ; 1 + mods ; code ~ */
 static int mok_report(vt_u8 *out, int mods, long code)
@@ -7434,7 +7435,7 @@ static int mok_report(vt_u8 *out, int mods, long code)
  * Shift would otherwise lose (Shift+Tab is back-tab and Ctrl+Backspace BS
  * at both levels: keys of their own); without it Alt is the ESC prefix
  * and the rest is the plain key. 0: nothing here (the plain key). */
-static int c0_key_modified(const vt_term *t, long key, int mods, vt_u8 *out)
+static int c0_key_modified(const vt_term *t, long key, int mods, vt_u8 *out, int plain)
 {
     int n = 0;
     long code = key == VT_KEY_RETURN ? 13 : key == VT_KEY_TAB ? 9
@@ -7443,7 +7444,7 @@ static int c0_key_modified(const vt_term *t, long key, int mods, vt_u8 *out)
     int ctrl_bs = key == VT_KEY_BACKSPACE && (mods & VT_MOD_CTRL);
     if (!mods || t->pers == VT_AMIGA)
         return 0;
-    if (t->pers == VT_XTERM && t->mok && !backtab &&
+    if (!plain && t->pers == VT_XTERM && t->mok && !backtab &&
         (t->mok == 2 || ((mods & (VT_MOD_CTRL | VT_MOD_SHIFT)) && !(ctrl_bs && mods == VT_MOD_CTRL))))
         return mok_report(out, mods, code);
     if (!(mods & VT_MOD_ALT) && !ctrl_bs)
@@ -7455,7 +7456,7 @@ static int c0_key_modified(const vt_term *t, long key, int mods, vt_u8 *out)
         out[n++] = (vt_u8)(t->modes & VT_MODE_BACKSPACE_BS ? 0x7F : 0x08);
         return n;
     }
-    return n + legacy_key(t, key, mods & ~(VT_MOD_ALT | VT_MOD_CTRL), out + n);
+    return n + legacy_key_ex(t, key, mods & ~(VT_MOD_ALT | VT_MOD_CTRL), out + n, plain);
 }
 
 /* ---- the kitty keyboard protocol (sw.kovidgoyal.net/kitty/keyboard-protocol) ---- */
@@ -7613,7 +7614,16 @@ int vt_encode_key(const vt_term *t, long key, int mods, vt_u8 *out)
 
 /* xterm's keys (and the other personalities'): what vt_encode_key sends
  * when no kitty flags are set. */
-static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out)
+/* The plain legacy encoding: what vt_encode_key sends with no kitty flags and
+ * no modifyOtherKeys, whatever the program left on. For the keys the
+ * console's own line editor reads (H1): a program that died with the modes
+ * on must not turn the next prompt's Ctrl keys into CSI u / CSI 27 ~ text. */
+int vt_encode_key_plain(const vt_term *t, long key, int mods, vt_u8 *out)
+{
+    return legacy_key_ex(t, key, mods, out, 1);
+}
+
+static int legacy_key_ex(const vt_term *t, long key, int mods, vt_u8 *out, int plain)
 {
     int n = 0;
     int app = (t->modes & VT_MODE_APP_CURSOR) != 0;
@@ -7623,7 +7633,7 @@ static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out)
         /* modifyOtherKeys: CSI 27 ; mod ; code ~ for what the plain forms
          * cannot say -- level 2 every modified key, level 1 the ambiguous;
          * Shift alone is never one (the character already says it) */
-        if (t->pers == VT_XTERM && t->mok && (mods & ~VT_MOD_SHIFT) && key < 0x110000 &&
+        if (!plain && t->pers == VT_XTERM && t->mok && (mods & ~VT_MOD_SHIFT) && key < 0x110000 &&
             (t->mok == 2 ||
              ((mods & VT_MOD_CTRL) && ((mods & VT_MOD_SHIFT) ||
                                        !((c >= 'a' && c <= 'z') || (c >= '@' && c <= '_') ||
@@ -7658,7 +7668,7 @@ static int legacy_key(const vt_term *t, long key, int mods, vt_u8 *out)
     }
 
     if ((key == VT_KEY_RETURN || key == VT_KEY_TAB || key == VT_KEY_BACKSPACE ||
-         key == VT_KEY_ESCAPE) && (n = c0_key_modified(t, key, mods, out)) != 0)
+         key == VT_KEY_ESCAPE) && (n = c0_key_modified(t, key, mods, out, plain)) != 0)
         return n;
     switch (key) {
     case VT_KEY_RETURN:

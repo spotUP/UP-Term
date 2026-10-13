@@ -2735,7 +2735,13 @@ static void external_edit(cl_tui *t)
     rc = t->io->edit(t->io->u, t->edit_path);
     if (t->io->raw)
         t->io->raw(t->io->u, 1);
+    /* pi: ui.stop() leaves the alternate screen, ui.start() enters it again (tui-alt-screen.ts start: ?1049h,
+     * then its modes, cleared) -- the modes after the screen, as in tui_start */
+    if (t->screen == TUI_SCREEN_FULL)
+        put(t, "\033[?1049h");
     put(t, modes_on);
+    if (t->screen == TUI_SCREEN_FULL)
+        put(t, "\033[H\033[2J");
     t->title[0] = 0;
     tui_title(t, t->busy ? "Claude - working" : "Claude");
     tui_redraw(t);

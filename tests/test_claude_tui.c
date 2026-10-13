@@ -1724,6 +1724,43 @@ static int edit_stub(void *u, const char *path)
     return tsys.write(tsys.u, path, "from the editor\n", 16);
 }
 
+static int ed_alt, ed_kitty;
+static int edit_probe(void *u, const char *path)
+{
+    (void)u;
+    (void)path;
+    ed_alt = (vt_modes(cs.vt) & VT_MODE_ALT_SCREEN) != 0;
+    ed_kitty = vt_kitty_flags(cs.vt);
+    return 0;
+}
+
+/* U4: pi's fullscreen external editor (handleOpenExternalEditor: ui.stop() leaves the alternate screen,
+ * ui.start() enters it again): the editor runs on the main screen with no mode of ours on, and Claude comes
+ * back on the alternate screen with its modes, the flags on that screen's stack, and leaves clean. */
+static void fullscreen_external_editor_returns_to_the_alternate_screen(void)
+{
+    static const char *script[] = { "\007", 0 };
+    char line[32], p[600];
+    screen(60, 16, script);
+    tui.screen = TUI_SCREEN_FULL;
+    io.edit = edit_probe;
+    tpath(p, "prompt.txt");
+    tui.edit_path = p;
+    tui.sys = &tsys;
+    CHECK_INT(tui_start(&tui), 0);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_INT(ed_alt, 0);   /* the editor ran on the main screen */
+    CHECK_INT(ed_kitty, 0);
+    CHECK(vt_modes(cs.vt) & VT_MODE_ALT_SCREEN); /* back on the alternate screen */
+    CHECK(vt_kitty_flags(cs.vt) != 0);
+    tui_stop(&tui);
+    CHECK_INT((long)(vt_modes(cs.vt) & VT_MODE_ALT_SCREEN), 0);
+    CHECK_INT(vt_kitty_flags(cs.vt), 0);
+    io.edit = 0;
+    unscreen();
+    cs_close();
+}
+
 static void redraw_editor_todos(void)
 {
     static const char *s1[] = { "\014", 0 };
@@ -2186,6 +2223,7 @@ void suite_claude_tui(void)
     thinking_shown();
     themes();
     notifications();
+    fullscreen_external_editor_returns_to_the_alternate_screen();
     redraw_editor_todos();
     gaps3_think();
     gaps3_dirs();

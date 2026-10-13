@@ -94,6 +94,45 @@ static void kill_keys(void)
     vt_free(t);
 }
 
+/* H1: a program that died with kitty flags and modifyOtherKeys on must not
+ * turn the next prompt's Ctrl keys into CSI u text: the keys the console's
+ * line editor reads are the plain legacy ones; a raw reader still gets the
+ * extended ones. */
+static void ctrl_keys_at_the_prompt_stay_legacy_with_extended_key_modes_left_on(void)
+{
+    vt_term *t = start(40, 3, "$ ");
+    vt_u8 b[72];
+    int n;
+    h_put(t, "\033[>31u\033[>4;2m"); /* kitty flags 31, modifyOtherKeys 2 */
+    n = vt_encode_key(t, 'u', VT_MOD_CTRL, b);
+    b[n] = 0;
+    CHECK_INT(n > 1 && b[0] == 0x1B, 1); /* a raw reader gets the extended form */
+    type("abc");
+    n = vt_encode_key_plain(t, 'u', VT_MOD_CTRL, b);
+    CHECK_INT(n, 1);
+    CHECK_INT(b[0], 0x15);
+    le_key(&le, 'u', VT_MOD_CTRL, b, n);
+    CHECK_INT(le.len, 0); /* Ctrl-U killed the line */
+    n = vt_encode_key_plain(t, 'c', VT_MOD_CTRL, b);
+    CHECK_INT(n, 1);
+    CHECK_INT(b[0], 0x03); /* the break key is its byte */
+    n = vt_encode_key_plain(t, 'a', 0, b);
+    CHECK_INT(n, 1);
+    le_key(&le, 'a', 0, b, n);
+    CHECK_STR(line(), "a");
+    n = vt_encode_key_plain(t, 'd', VT_MOD_CTRL, b);
+    CHECK_INT(n, 1);
+    CHECK_INT(b[0], 0x04); /* Ctrl-D is end of file, not CSI 100;5u */
+    n = vt_encode_key_plain(t, VT_KEY_BACKSPACE, 0, b);
+    CHECK_INT(n, 1); /* Backspace after a key never meets half an escape */
+    le_key(&le, VT_KEY_BACKSPACE, 0, b, n);
+    CHECK_INT(le.len, 0);
+    n = vt_encode_key_plain(t, VT_KEY_RETURN, VT_MOD_CTRL, b);
+    CHECK_INT(b[0], '\r');
+    CHECK_INT(n, 1);
+    vt_free(t);
+}
+
 static void a_long_line_wraps_and_edits_across_rows(void)
 {
     vt_term *t = start(10, 4, "> ");
@@ -1335,6 +1374,7 @@ void suite_lineedit(void)
     ctrl_l_keeps_a_prompt_beyond_the_bmp();
     editing_inside_the_line();
     kill_keys();
+    ctrl_keys_at_the_prompt_stay_legacy_with_extended_key_modes_left_on();
     a_long_line_wraps_and_edits_across_rows();
     a_line_that_fills_the_bottom_row_exactly();
     history_and_prefix_search();
