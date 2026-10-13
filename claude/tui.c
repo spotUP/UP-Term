@@ -2203,8 +2203,11 @@ int tui_start(cl_tui *t)
      * as CSI u), modifyOtherKeys 1 for terminals without it; where is the
      * cursor? */
     if (t->screen == TUI_SCREEN_FULL) {
-        /* pi's fullscreen: the alternate screen, cleared, no cursor row to ask for */
-        static const char start[] = "\033[?2004h\033[>1u\033[>4;1m\033[?1004h\033[?1049h\033[H\033[2J";
+        /* pi's fullscreen: the alternate screen, cleared, no cursor row to ask for. The alternate screen
+         * first: kitty's flags are a stack per screen, and park_pi pops them there before ?1049l (pi
+         * itself writes ?1049h before its CSI >7u). Pushed on the main screen they outlived the program:
+         * a Ctrl key at the shell's prompt came as CSI 117;5u, text in the console's line editor */
+        static const char start[] = "\033[?1049h\033[?2004h\033[>1u\033[>4;1m\033[?1004h\033[H\033[2J";
         t->io->write(t->io->u, start, (long)sizeof(start) - 1);
     } else {
         static const char start[] = "\033[?2004h\033[>1u\033[>4;1m\033[?1004h\033[6n";
