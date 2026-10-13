@@ -1,5 +1,5 @@
 /* sys_posix -- sys.h on POSIX, for the host tests (a temporary tree).
- * run uses popen (no timeout: the tests run short commands); background
+ * run is `sh -c` in its own process group with the timeout (a command past it is killed: SYS_TIMEOUT); background
  * jobs are sh -c in their own process group, output to a temporary file. */
 #define _XOPEN_SOURCE 700
 #include <stdio.h>
@@ -146,21 +146,65 @@ static int x_canon(void *u, const char *path, char *out, long cap)
 static int x_run(void *u, const char *cmd, int timeout_s, char *out, long cap, long *outn, long *rc)
 {
     sys_posix *p = (sys_posix *)u;
-    char line[1100];
-    FILE *f;
+    int fd[2], st = 0, timed_out = 0, sent = 0;
+    pid_t pid;
     long n = 0;
-    int st;
-    (void)timeout_s;
-    cl_copy(line, cmd, 1000);
-    cl_cat(line, " 2>&1", sizeof(line));
-    f = popen(line, "r");
-    if (!f) {
-        set_err(p, "popen");
+    time_t end = timeout_s > 0 ? time(0) + timeout_s : 0;
+    if (pipe(fd)) {
+        set_err(p, "pipe");
         return -1;
     }
-    n = (long)fread(out, 1, (size_t)cap, f);
-    st = pclose(f);
+    pid = fork();
+    if (pid < 0) {
+        close(fd[0]);
+        close(fd[1]);
+        set_err(p, "fork");
+        return -1;
+    }
+    if (pid == 0) {
+        setpgid(0, 0);                  /* its own group: a timeout kills the command and what it started */
+        dup2(fd[1], 1);
+        dup2(fd[1], 2);
+        close(fd[0]);
+        close(fd[1]);
+        execl("/bin/sh", "sh", "-c", cmd, (char *)0);
+        _exit(127);
+    }
+    close(fd[1]);
+    for (;;) {
+        struct pollfd pf;
+        char buf[1024];
+        ssize_t r;
+        int wait_ms = 200;
+        if (end && time(0) >= end) {
+            timed_out = 1;
+            break;
+        }
+        pf.fd = fd[0];
+        pf.events = POLLIN;
+        pf.revents = 0;
+        if (poll(&pf, 1, wait_ms) <= 0)
+            continue;
+        r = read(fd[0], buf, sizeof(buf));
+        if (r <= 0)
+            break;
+        if (n < cap) {
+            long take = (long)r < cap - n ? (long)r : cap - n;
+            memcpy(out + n, buf, (size_t)take);
+            n += take;
+        }
+    }
+    if (timed_out) {
+        kill(-pid, SIGKILL);
+        sent = 1;
+    }
+    close(fd[0]);
+    waitpid(pid, &st, 0);
     *outn = n;
+    if (sent) {
+        *rc = -1;
+        return SYS_TIMEOUT;
+    }
     *rc = WIFEXITED(st) ? WEXITSTATUS(st) : -1;
     return 0;
 }
