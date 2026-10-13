@@ -20,6 +20,9 @@ static vt_term *term;
 /* open_term_in's screen: planar (gf_planar) of this depth with the window at screen x planar_left, y 10; 0: the
  * chunky screen */
 static int planar_depth, planar_left;
+/* open_term_in's colour map: gf_palette of these test_npal entries (0: the fake's default model) */
+static const unsigned long *test_pal;
+static int test_npal;
 
 static void cb_damage(void *u, int x0, int y0, int x1, int y1)
 {
@@ -60,6 +63,8 @@ static void open_term_in(int lines, enum vt_personality pers)
     gf_open(COLS * CW, ROWS * CH, CW, CH, 6);
     if (planar_depth)
         gf_planar(planar_depth, planar_left, 10);
+    if (test_npal)
+        gf_palette(test_pal, test_npal);
     term = vt_new(COLS, ROWS, 100, &cb, &rn);
     vt_set_personality(term, pers);
     vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
@@ -614,6 +619,331 @@ static void a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place(void
     planar_depth = 0;
 }
 
+
+/* ---- W-T7: 256 colours on a screen of few pens ---- */
+
+/* rig 1's 16-colour Workbench (AGA, 4 planes) as read 2026-10-13: pen 6 is the grey #d2d2e1 */
+static const unsigned long wb16[16] = { 0xaaaaaa, 0x000000, 0xffffff, 0x6688bb, 0x00ff9f, 0xf0f0ff, 0xd2d2e1, 0xebebeb,
+                                        0x4473ff, 0xffff00, 0x7f007f, 0xefaf4f, 0xee4444, 0x55dd55, 0x0044dd, 0xee9900 };
+
+static unsigned long cube_rgb(int i)
+{
+    static const int lv[6] = { 0, 95, 135, 175, 215, 255 };
+    i -= 16;
+    return ((unsigned long)lv[i / 36] << 16) | ((unsigned long)lv[(i / 6) % 6] << 8) | (unsigned long)lv[i % 6];
+}
+
+/* the entry the screen's own nearest gives (the fake's ObtainBestPen: plain RGB distance), the match before W-T7 */
+static int old_pen(unsigned long t)
+{
+    int i, k = 0;
+    long bd = -1;
+    for (i = 0; i < 16; i++) {
+        long dr = (long)((wb16[i] >> 16) & 255) - (long)((t >> 16) & 255);
+        long dg = (long)((wb16[i] >> 8) & 255) - (long)((t >> 8) & 255), db = (long)(wb16[i] & 255) - (long)(t & 255);
+        long d = dr * dr + dg * dg + db * db;
+        if (bd < 0 || d < bd) {
+            bd = d;
+            k = i;
+        }
+    }
+    return k;
+}
+
+/* the cube colours the old match drew in the grey pen */
+static int grey_colours(int *out)
+{
+    int i, n = 0;
+    for (i = 16; i < 232; i++)
+        if (old_pen(cube_rgb(i)) == 6)
+            out[n++] = i;
+    return n;
+}
+
+static double lin_of(int c)
+{
+    double v = c / 255.0;
+    double t = (v + 0.055) / 1.055, p = 1;
+    int k;
+    if (v <= 0.04045)
+        return v / 12.92;
+    /* t^2.4 = t^2 * t^0.4, t^0.4 by Newton on x^5 = t^2 */
+    {
+        double x = t, y = t * t;
+        for (k = 0; k < 40; k++)
+            x = x - (x * x * x * x * x - y) / (5 * x * x * x * x);
+        p = t * t * x;
+    }
+    return p;
+}
+
+static double cbrt_n(double v)
+{
+    double x = v > 1 ? v : 1;
+    int k;
+    if (v <= 0)
+        return 0;
+    for (k = 0; k < 60; k++)
+        x = x - (x * x * x - v) / (3 * x * x);
+    return x;
+}
+
+/* a colour in linear light (r, g, b) as OKLab (B. Ottosson, 2020) */
+static void oklab(const double *c, double *lab)
+{
+    double l = cbrt_n(0.4122214708 * c[0] + 0.5363325363 * c[1] + 0.0514459929 * c[2]);
+    double m = cbrt_n(0.2119034982 * c[0] + 0.6806995451 * c[1] + 0.1073969566 * c[2]);
+    double s = cbrt_n(0.0883024619 * c[0] + 0.2817188376 * c[1] + 0.6299787005 * c[2]);
+    lab[0] = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+    lab[1] = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    lab[2] = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+}
+
+/* how far (OKLab) a cell's pixels, averaged as light, look from colour t; *grey: its pixels in pen 6 */
+static double cell_error(int col, int row, unsigned long t, int *grey)
+{
+    double sum[3] = { 0, 0, 0 }, want[3], a[3], b[3];
+    int x, y, k, n = 0;
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++) {
+            int pen = gf_pixel(col * CW + x, row * CH + y);
+            *grey += pen == 6;
+            for (k = 0; k < 3; k++)
+                sum[k] += lin_of((int)((wb16[pen & 15] >> (16 - 8 * k)) & 255));
+            n++;
+        }
+    for (k = 0; k < 3; k++) {
+        sum[k] /= n;
+        want[k] = lin_of((int)((t >> (16 - 8 * k)) & 255));
+    }
+    oklab(sum, a);
+    oklab(want, b);
+    return (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]);
+}
+
+/* the pen of the first glyph pixel of cell (col, row) that is not the background's */
+static int text_pen(int col, int row, int bg)
+{
+    int x, y, pen;
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            if ((pen = gf_pixel(col * CW + x, row * CH + y)) != bg)
+                return pen;
+    return bg;
+}
+
+/* W-T7 (owner, 2026-10-13: "grey" -- 26-31 % of UPDemo's rotozoomer, 24-26 % of its plasma in pen 6 of a
+ * 16-colour Workbench): the light cube colours whose nearest pen by plain distance is the grey #d2d2e1. Drawn as
+ * backgrounds they are now mixes of two pens, at most a quarter of their pixels grey (before: every one); drawn
+ * as text, a saturated one (chroma 120 or more) takes a pen of its hue, never the grey; and the window gives back
+ * every pen it held. */
+static void light_cube_colours_on_a_16_colour_workbench_are_not_drawn_in_its_grey_pen(void)
+{
+    int cols[64], n = grey_colours(cols), i, grey = 0, sat = 0;
+    char buf[64];
+    CHECK(n >= 20);
+    planar_depth = 4;
+    planar_left = 0;
+    test_pal = wb16;
+    test_npal = 16;
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l\x1b[2J");
+    for (i = 0; i < n; i++) {
+        snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[48;5;%dm \x1b[m", 1 + i / COLS, 1 + i % COLS, cols[i]);
+        pass(buf);
+    }
+    for (i = 0; i < n; i++) {
+        int g = 0;
+        cell_error(i % COLS, i / COLS, cube_rgb(cols[i]), &g);
+        grey += g;
+    }
+    CHECK(grey * 4 <= n * CW * CH);
+    pass("\x1b[2J\x1b[H");
+    for (i = 0; i < n; i++) {
+        unsigned long t = cube_rgb(cols[i]);
+        int r = (int)(t >> 16), g = (int)((t >> 8) & 255), b = (int)(t & 255);
+        int mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+        if (mx - mn < 120)
+            continue;
+        snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[38;5;%dmW\x1b[m", 1 + i / COLS, 1 + i % COLS, cols[i]);
+        pass(buf);
+        CHECK(text_pen(i % COLS, i / COLS, 0) != 6);
+        sat++;
+    }
+    CHECK(sat >= 8);
+    close_term();
+    CHECK_INT(gf_pens_held, 0);
+    planar_depth = 0;
+    test_npal = 0;
+}
+
+/* The same cells: each one's pixels, averaged as light, closer to its colour than the single grey pen they were
+ * drawn in before -- by OKLab, a perceptual distance the renderer does not use itself: on the whole at most
+ * half the old error, and nearly every cell closer on its own. */
+static void a_dithered_cell_shows_its_colour_closer_than_the_old_single_pen(void)
+{
+    int cols[64], n = grey_colours(cols), i, closer = 0, g = 0;
+    double now = 0, before = 0, e, o;
+    char buf[64];
+    double old_lin[3], lab_o[3], lab_t[3], want[3];
+    int k;
+    planar_depth = 4;
+    planar_left = 0;
+    test_pal = wb16;
+    test_npal = 16;
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l\x1b[2J");
+    for (i = 0; i < n; i++) {
+        snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[48;5;%dm \x1b[m", 1 + i / COLS, 1 + i % COLS, cols[i]);
+        pass(buf);
+    }
+    for (i = 0; i < n; i++) {
+        unsigned long t = cube_rgb(cols[i]);
+        e = cell_error(i % COLS, i / COLS, t, &g);
+        for (k = 0; k < 3; k++) {
+            old_lin[k] = lin_of((int)((wb16[6] >> (16 - 8 * k)) & 255));
+            want[k] = lin_of((int)((t >> (16 - 8 * k)) & 255));
+        }
+        oklab(old_lin, lab_o);
+        oklab(want, lab_t);
+        o = (lab_o[0] - lab_t[0]) * (lab_o[0] - lab_t[0]) + (lab_o[1] - lab_t[1]) * (lab_o[1] - lab_t[1]) +
+            (lab_o[2] - lab_t[2]) * (lab_o[2] - lab_t[2]);
+        now += e;
+        before += o;
+        closer += e < o;
+    }
+    CHECK(now * 2 <= before);
+    CHECK(closer * 5 >= n * 4);
+    close_term();
+    planar_depth = 0;
+    test_npal = 0;
+}
+
+/* A frame of dithered half blocks, blanks, full blocks and a quadrant (the generic fill) */
+static const char *dither_frame(int phase)
+{
+    static char buf[4096];
+    int n = 0, y, x;
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "\x1b[H");
+    for (y = 0; y < 5; y++)
+        for (x = 0; x < COLS; x++) {
+            int a = 147 + (x + y + phase) % 72, b = 153 + (x * 3 + phase) % 66;
+            n += snprintf(buf + n, sizeof(buf) - (size_t)n, "\x1b[%d;%dH\x1b[38;5;%d;48;5;%dm%s", y + 1, x + 1, a, b,
+                          (x + y) % 4 == 0 ? " " : (x + y) % 4 == 1 ? "\xe2\x96\x88" : "\xe2\x96\x80");
+        }
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "\x1b[7;2H\x1b[38;5;219;48;5;117m\xe2\x96\x98\xe2\x96\x9f\x1b[m");
+    return buf;
+}
+
+/* The fast path keeps its pixels: a synchronized frame of dithered cells composed by the CPU in its planes (no
+ * RectFill, no template, one copy) shows what the same frame drawn in place shows, pixel for pixel, at any bit
+ * phase of the window. */
+static void a_dithered_frame_composed_and_drawn_in_place_has_the_same_pixels(void)
+{
+    static const int lefts[] = { 0, 4, 13 };
+    int l, composed;
+    unsigned long copies;
+    test_pal = wb16;
+    test_npal = 16;
+    for (l = 0; l < 3; l++) {
+        planar_depth = 4;
+        planar_left = lefts[l];
+        open_term_in(0, VT_XTERM);
+        pass("\x1b[?25l");
+        pass(dither_frame(0));
+        pass(dither_frame(5));
+        CHECK(gf_count(GF_OTHER) > 0); /* in place: the pattern's templates */
+        snapshot();
+        close_term();
+        open_term_in(0, VT_XTERM);
+        pass("\x1b[?25l");
+        pass(synced(dither_frame(0)));
+        vr_mask_begin(&rn);
+        vr_cursor_off(&rn);
+        vt_feed(term, (const vt_u8 *)synced(dither_frame(5)), (long)strlen(framebuf));
+        gf_clear_log();
+        copies = rn.n_copies;
+        composed = vr_compose_begin(&rn);
+        CHECK(composed);
+        vt_flush(term);
+        CHECK_INT(gf_count(GF_RECT), 0);
+        CHECK_INT(gf_count(GF_OTHER), 0);
+        if (composed)
+            vr_compose_end(&rn);
+        vr_cursor_on(&rn);
+        vr_mask_end(&rn);
+        CHECK_INT(rn.n_copies - copies, 1);
+        CHECK(same_as_snapshot());
+        close_term();
+    }
+    planar_depth = 0;
+    test_npal = 0;
+}
+
+/* 256 pens (an 8-plane screen) and true colour are as before: no dither, each cell one pen -- the screen's own
+ * nearest on the full map of 256. */
+static void screens_of_more_than_16_pens_are_not_dithered(void)
+{
+    int cols[64], n = grey_colours(cols), i, x, y, uniform = 1;
+    char buf[64];
+    planar_depth = 8;
+    planar_left = 0;
+    test_pal = wb16;
+    test_npal = 16;
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l\x1b[2J");
+    gf_clear_log();
+    for (i = 0; i < n; i++) {
+        snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[48;5;%dm \x1b[m", 1 + i / COLS, 1 + i % COLS, cols[i]);
+        pass(buf);
+    }
+    CHECK_INT(gf_count(GF_OTHER), 0); /* no pattern templates */
+    for (i = 0; i < n; i++)
+        for (y = 0; y < CH; y++)
+            for (x = 0; x < CW; x++)
+                if (gf_pixel((i % COLS) * CW + x, (i / COLS) * CH + y) != 6)
+                    uniform = 0;
+    CHECK(uniform);
+    close_term();
+    planar_depth = 0;
+    test_npal = 0;
+    open_term(0);
+    gf_truecolor(1);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vr_redraw(&rn);
+    gf_clear_log();
+    pass("\x1b[48;5;219m \x1b[38;2;255;175;255m\xe2\x96\x88\x1b[m");
+    CHECK_INT(gf_count(GF_OTHER), 0);
+    CHECK(gf_count(GF_CGXFILL) >= 2); /* the colours themselves */
+    close_term();
+}
+
+/* Neighbouring colours that share a pen (on 16 pens 226 #ffff00 and 190 #d7ff00 are both pen 9) as an upper half
+ * block: the whole cell in that pen. The rule that keeps text visible on its own background's pen gave the block's
+ * top half the default text pen -- a quarter of UPDemo's plasma on the rig's Workbench in its grey (W-T7). */
+static void a_half_block_of_two_colours_sharing_a_pen_is_drawn_in_that_pen(void)
+{
+    int x, y, other = 0, k;
+    planar_depth = 4;
+    test_pal = wb16;
+    test_npal = 16;
+    for (k = 0; k < 2; k++) {
+        planar_left = 0;
+        open_term_in(0, VT_XTERM);
+        pass("\x1b[?25l\x1b[2J");
+        pass(k ? synced("\x1b[2;2H\x1b[38;5;226;48;5;190m\xe2\x96\x80\x1b[m")
+               : "\x1b[2;2H\x1b[38;5;226;48;5;190m\xe2\x96\x80\x1b[m");
+        for (y = 0; y < CH; y++)
+            for (x = 0; x < CW; x++)
+                other += gf_pixel(CW + x, CH + y) != 9;
+        close_term();
+    }
+    CHECK_INT(other, 0);
+    planar_depth = 0;
+    test_npal = 0;
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
@@ -629,6 +959,11 @@ int main(void)
     a_planar_synchronized_frame_reaches_the_window_in_one_copy_with_the_in_place_pixels();
     a_planar_frame_is_copied_once_the_beam_has_left_its_rows();
     a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place();
+    light_cube_colours_on_a_16_colour_workbench_are_not_drawn_in_its_grey_pen();
+    a_dithered_cell_shows_its_colour_closer_than_the_old_single_pen();
+    a_dithered_frame_composed_and_drawn_in_place_has_the_same_pixels();
+    screens_of_more_than_16_pens_are_not_dithered();
+    a_half_block_of_two_colours_sharing_a_pen_is_drawn_in_that_pen();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }
