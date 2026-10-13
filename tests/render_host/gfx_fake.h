@@ -37,6 +37,8 @@ struct TextFont *gf_font(void);
 int gf_pixel(int x, int y);
 /* The glyph at cell (col, row), ' ' for anything that is not a glyph. */
 char gf_cell(int col, int row);
+/* The pen under the top left pixel of cell (col, row): the last fill's, or the background pen of the Text that drew it. */
+int gf_bgpen(int col, int row);
 /* The window's rows as text, each cols long, joined with '|'. */
 const char *gf_screen(void);
 void gf_clear_log(void);
