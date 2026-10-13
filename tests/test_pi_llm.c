@@ -1346,8 +1346,7 @@ static void test_google(void)
 }
 
 /* M10: the text of a failed HTTP answer as pi shows it, per API (tests/pi/httperr, tools/gen_pi_httperr.mjs): the answer
- * is built from the case, goes through llm_request, and the error of the accumulated message must be pi's errorMessage.
- * Answers longer than LLM_ERR_MAX are left out of the recordings (the build keeps 1536 characters, pi 4000 or more). */
+ * is built from the case, goes through llm_request, and the error of the accumulated message must be pi's errorMessage. */
 static void test_httperr(void)
 {
     char *txt;
@@ -1379,7 +1378,8 @@ static void test_httperr(void)
         llm_view vw;
         jw msg;
         jv mv, ev;
-        char got[LLM_ERR_MAX + 8], eerr[300], num[16];
+        static char got[LLM_ERR_MAX + 8];
+        char eerr[300], num[16];
         int status;
         json_get(c, "name", &v);
         json_str(v, name, sizeof(name));
@@ -1397,11 +1397,6 @@ static void test_httperr(void)
         body = json_strdup(v, &bl);
         json_get(c, "want", &v);
         want = json_strdup(v, &wl);
-        if (wl >= LLM_ERR_MAX) {
-            free(body);
-            free(want);
-            continue;
-        }
         if (!strcmp(api, "openai-completions")) {
             m = ps_model_openai("http://192.168.1.10:11434/v1");
             m.provider = provider;
@@ -1493,7 +1488,7 @@ static void test_httperr(void)
         }
         llm_cfg_free(&cfg);
     }
-    CHECK(ncase >= 130);
+    CHECK(ncase >= 150);
     llm_set_wall(0, 0);
     llm_reg_free(&r);
     free(txt);

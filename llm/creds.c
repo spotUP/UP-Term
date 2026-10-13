@@ -259,31 +259,52 @@ void llm_key_env_name(const char *provider, char *out, long cap)
     strcat(out, "_API_KEY");
 }
 
-/* auth.json: {"<provider>":{"type":"api_key","key":"<config value>"}}.
+/* the six providers pi 1.1.0 lets a subscription log into besides Anthropic (ai/src/providers/<provider>.ts oauth entries).
+ * Anthropic is not among them on purpose: a stored Anthropic OAuth entry gives no credential (owner decision 2026-10-07) */
+int llm_oauth_provider(const char *provider)
+{
+    static const char *const ids[] = { "openai", "openai-codex", "github-copilot", "kimi-coding", "xai", "meta" };
+    unsigned i;
+    for (i = 0; i < sizeof(ids) / sizeof(ids[0]); i++)
+        if (provider && !strcmp(provider, ids[i]))
+            return 1;
+    return 0;
+}
+
+/* the provider's entry of auth.json: 1 with *e, 0 none */
+static int auth_entry(llm_cfg *c, const char *provider, jv *e)
+{
+    jv root;
+    jit it;
+    jv key;
+    if (!c->auth || json_parse(c->auth, c->auth_n, &root) || json_type(root) != J_OBJ)
+        return 0;
+    json_iter(root, &it);
+    while (json_next(&it, &key, e)) {
+        char nm[64];
+        if (json_str(key, nm, sizeof(nm)) >= 0 && !strcmp(nm, provider))
+            return 1;
+    }
+    return 0;
+}
+
+/* auth.json: {"<provider>":{"type":"api_key","key":"<config value>"}} or pi's {"type":"oauth","access":...}.
  * A stored credential owns the provider (pi-ai auth/resolve.js): -2 nothing is stored for it, else the key's length,
- * or -1 when the entry cannot give one (a command that fails, another credential type, an empty key); the caller
- * does not fall back to models.json or the environment after a -1. */
+ * or -1 when the entry cannot give one (a command that fails, another credential type, an empty key, an OAuth entry of
+ * a provider with no OAuth here); the caller does not fall back to models.json or the environment after a -1. An OAuth
+ * entry's access token is the credential as it is: not a config value, no $ or ! in it is read. */
 static long auth_key(llm_cfg *c, const char *provider, char *out, long cap)
 {
-    jv root, e, t, k;
+    jv e, t, k;
     char *raw;
     long n, r;
-    if (!c->auth || json_parse(c->auth, c->auth_n, &root) || json_type(root) != J_OBJ)
+    if (!auth_entry(c, provider, &e))
         return -2;
-    {
-        jit it;
-        jv key;
-        int found = 0;
-        json_iter(root, &it);
-        while (json_next(&it, &key, &e)) {
-            char nm[64];
-            if (json_str(key, nm, sizeof(nm)) >= 0 && !strcmp(nm, provider)) {
-                found = 1;
-                break;
-            }
-        }
-        if (!found)
-            return -2;
+    if (json_type(e) == J_OBJ && json_get(e, "type", &t) && json_streq(t, "oauth")) {
+        if (!llm_oauth_provider(provider) || !json_get(e, "access", &k) || json_type(k) != J_STR)
+            return -1;
+        n = json_str(k, out, cap);
+        return n > 0 && n < cap ? n : -1;
     }
     if (json_type(e) != J_OBJ || !json_get(e, "type", &t) || !json_streq(t, "api_key") || !json_get(e, "key", &k))
         return -1;
@@ -293,6 +314,160 @@ static long auth_key(llm_cfg *c, const char *provider, char *out, long cap)
     r = n ? llm_cfg_value(c, raw, out, cap) : -1;
     free(raw);
     return r > 0 ? r : -1;
+}
+
+static int b64val(int ch)
+{
+    if (ch >= 'A' && ch <= 'Z')
+        return ch - 'A';
+    if (ch >= 'a' && ch <= 'z')
+        return ch - 'a' + 26;
+    if (ch >= '0' && ch <= '9')
+        return ch - '0' + 52;
+    if (ch == '-' || ch == '+')
+        return 62;
+    if (ch == '_' || ch == '/')
+        return 63;
+    return -1;
+}
+
+long llm_b64url_decode(const char *s, long n, unsigned char *out, long cap)
+{
+    long i, o = 0;
+    unsigned long acc = 0;
+    int bits = 0;
+    for (i = 0; i < n && s[i] != '='; i++) {
+        int v = b64val((unsigned char)s[i]);
+        if (v < 0)
+            return -1;
+        acc = (acc << 6) | (unsigned long)v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (o >= cap)
+                return -1;
+            out[o++] = (unsigned char)((acc >> bits) & 0xff);
+        }
+    }
+    return o;
+}
+
+/* a JWT's payload (its second part) decoded into out, terminated: its length, -1 not a JWT */
+static long jwt_payload(const char *tok, char *out, long cap)
+{
+    const char *a = strchr(tok, '.'), *b;
+    long n;
+    if (!a)
+        return -1;
+    a++;
+    b = strchr(a, '.');
+    if (!b || strchr(b + 1, '.'))
+        return -1;
+    n = llm_b64url_decode(a, (long)(b - a), (unsigned char *)out, cap - 1);
+    if (n < 0)
+        return -1;
+    out[n] = 0;
+    return n;
+}
+
+int llm_jwt_account_id(const char *token, char *out, long cap)
+{
+    char pl[2048];
+    jv v, a, id;
+    long n = jwt_payload(token, pl, sizeof(pl));
+    if (n < 0 || json_parse(pl, n, &v) || json_type(v) != J_OBJ || !json_get(v, "https://api.openai.com/auth", &a) ||
+        json_type(a) != J_OBJ || !json_get(a, "chatgpt_account_id", &id) || json_type(id) != J_STR)
+        return -1;
+    n = json_str(id, out, cap);
+    return n > 0 && n < cap ? 0 : -1;
+}
+
+/* getBaseUrlFromToken / getGitHubCopilotBaseUrl (auth/oauth/github-copilot.ts :69-87) */
+static void copilot_base(jv access, const char *enterprise, char *out, long cap)
+{
+    const char *p = 0;
+    long i;
+    for (i = 0; i + 9 <= access.n; i++)
+        if (!memcmp(access.p + i, "proxy-ep=", 9)) {
+            p = access.p + i + 9;
+            break;
+        }
+    if (p) {
+        long n = 0;
+        char host[200];
+        while (p < access.p + access.n && *p != ';' && *p != '"' && n < (long)sizeof(host) - 1) {
+            host[n] = *p++;
+            n++;
+        }
+        host[n] = 0;
+        if (n) {
+            cl_copy(out, "https://", cap);
+            cl_cat(out, !strncmp(host, "proxy.", 6) ? "api." : "", cap);
+            cl_cat(out, !strncmp(host, "proxy.", 6) ? host + 6 : host, cap);
+            return;
+        }
+    }
+    if (enterprise && *enterprise) {
+        cl_copy(out, "https://copilot-api.", cap);
+        cl_cat(out, enterprise, cap);
+        return;
+    }
+    cl_copy(out, "https://api.individual.githubcopilot.com", cap);
+}
+
+int llm_cfg_oauth(llm_cfg *c, const llm_model *m, llm_oauth_use *u)
+{
+    jv e, t, k, access;
+    char ent[160];
+    memset(u, 0, sizeof(*u));
+    if (!llm_oauth_provider(m->provider) || !auth_entry(c, m->provider, &e) || json_type(e) != J_OBJ ||
+        !json_get(e, "type", &t) || !json_streq(t, "oauth") || !json_get(e, "access", &access) ||
+        json_type(access) != J_STR || access.n <= 2)
+        return 0;
+    ent[0] = 0;
+    if (json_get(e, "enterpriseUrl", &k) && json_type(k) == J_STR)
+        json_str(k, ent, sizeof(ent));
+    if (!strcmp(m->provider, "github-copilot")) {
+        /* toAuth: the base URL comes with the Copilot token; Anthropic-messages through Copilot is Bearer auth */
+        char dom[160];
+        long i, j = 0;
+        /* copilotEnterpriseDomain: normalizeDomain(enterpriseUrl), the host of the URL */
+        {
+            const char *h = strstr(ent, "://");
+            h = h ? h + 3 : ent;
+            for (i = 0; h[i] && h[i] != '/' && h[i] != ':' && h[i] != '?' && h[i] != '#' && j < (long)sizeof(dom) - 1; i++)
+                dom[j++] = (char)(h[i] >= 'A' && h[i] <= 'Z' ? h[i] + 32 : h[i]);
+            dom[j] = 0;
+        }
+        copilot_base(access, dom, u->base, sizeof(u->base));
+        u->copilot = 1;
+        u->bearer = m->api && !strcmp(m->api, "anthropic-messages");
+    } else if (!strcmp(m->provider, "kimi-coding"))
+        u->bearer = 1;              /* toAuth: headers {Authorization: Bearer ...}, no apiKey */
+    return 1;
+}
+
+/* copilot's filterModels: an OAuth credential with availableModelIds lists the models the account has */
+int llm_cfg_model_ok(llm_cfg *c, const llm_model *m)
+{
+    jv e, t, a, it_v;
+    jit it;
+    int all = 1, any = 0;
+    if (strcmp(m->provider, "github-copilot") || !auth_entry(c, m->provider, &e) || json_type(e) != J_OBJ ||
+        !json_get(e, "type", &t) || !json_streq(t, "oauth") || !json_get(e, "availableModelIds", &a) ||
+        json_type(a) != J_ARR)
+        return 1;
+    json_iter(a, &it);
+    while (json_next(&it, 0, &it_v))
+        if (json_type(it_v) != J_STR)
+            all = 0;
+    if (!all)
+        return 1;
+    json_iter(a, &it);
+    while (json_next(&it, 0, &it_v))
+        if (json_streq(it_v, m->id))
+            any = 1;
+    return any;
 }
 
 static long cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src)
@@ -401,7 +576,7 @@ static int bedrock_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
     char region[48], dregion[48], profile[100], access[130], secret[130], skip[8];
     static char token[4100];
     llm_bedrock_env e;
-    char key[1100];
+    static char key[4100];             /* an OAuth access token is a JWT of a few KB */
     const char *src;
     region[0] = dregion[0] = profile[0] = access[0] = secret[0] = skip[0] = token[0] = 0;
     env_into(c, "AWS_REGION", region, sizeof(region), 0);
@@ -439,7 +614,7 @@ int llm_cfg_authed(llm_cfg *c, const llm_model *m)
     char v[300];
     static const char *const more[] = { "AWS_PROFILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
                                         "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_WEB_IDENTITY_TOKEN_FILE" };
-    char key[1100];
+    static char key[4100];             /* an OAuth access token is a JWT of a few KB */
     int i;
     if (llm_cfg_key(c, m, key, sizeof(key), 0) > 0)
         return 1;

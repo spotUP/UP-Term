@@ -24,6 +24,7 @@ const apis = {
 };
 const J = "application/json";
 const longMsg = "x".repeat(1200);
+const hugeMsg = "y".repeat(4100);      // an OpenAI-family body over the 4000 characters pi keeps
 const bodies = [
 	["rate_limit", 429, "Too Many Requests", J, '{"error":{"message":"Rate limit reached for requests","type":"rate_limit_exceeded","param":null,"code":"rate_limit_exceeded"}}'],
 	["error_string", 400, "Bad Request", J, '{"error":"bad thing"}'],
@@ -41,6 +42,7 @@ const bodies = [
 	["anthropic_overloaded", 529, "", J, '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}'],
 	["unicode", 400, "Bad Request", J, '{"error":{"message":"caf\\u00e9 \\u2603","detail":"\\u00e9\\n\\t\\"q\\""}}'],
 	["long_message", 400, "Bad Request", J, JSON.stringify({ error: { message: "short", detail: longMsg } })],
+	["huge_body", 400, "Bad Request", J, JSON.stringify({ error: { message: "short", detail: hugeMsg } })],
 	["metadata_raw", 502, "Bad Gateway", J, '{"error":{"message":"Provider returned error","code":502,"metadata":{"raw":"upstream said no","provider_name":"X"}}}'],
 	["google_error", 429, "Too Many Requests", J + "; charset=UTF-8", '{"error":{"code":429,"message":"Resource has been exhausted","status":"RESOURCE_EXHAUSTED"}}'],
 	["google_text_429", 429, "Too Many Requests", "text/plain; charset=utf-8", "slow down"],

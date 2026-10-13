@@ -166,19 +166,187 @@ static void http_error(const llm_req *q, const rq *r, const http_resp *resp, jw 
     }
 }
 
+/* Copilot's per-request headers (api/github-copilot-headers.ts): X-Initiator by the last message's role,
+ * Openai-Intent, Copilot-Vision-Request when a user or tool-result message carries an image */
+static void copilot_headers(const llm_ctx *c, char *out, long cap)
+{
+    int i, images = 0, agent = 0;
+    for (i = 0; i < c->nmsg; i++) {
+        jv m, r, ct, b, t;
+        jit it;
+        if (json_parse(c->msgs[i], c->msg_n[i], &m) || !json_get(m, "role", &r))
+            continue;
+        if (i == c->nmsg - 1)
+            agent = !json_streq(r, "user");
+        if ((json_streq(r, "user") || json_streq(r, "toolResult")) && json_get(m, "content", &ct) &&
+            json_type(ct) == J_ARR) {
+            json_iter(ct, &it);
+            while (json_next(&it, 0, &b))
+                if (json_type(b) == J_OBJ && json_get(b, "type", &t) && json_streq(t, "image"))
+                    images = 1;
+        }
+    }
+    cl_copy(out, "X-Initiator: ", cap);
+    cl_cat(out, agent ? "agent" : "user", cap);
+    cl_cat(out, "\r\nOpenai-Intent: conversation-edits\r\n", cap);
+    if (images)
+        cl_cat(out, "Copilot-Vision-Request: true\r\n", cap);
+}
+
+static int ieq_n(const char *a, const char *b, long n)
+{
+    long i;
+    for (i = 0; i < n; i++) {
+        char x = a[i], y = b[i];
+        if (x >= 'A' && x <= 'Z')
+            x = (char)(x + 32);
+        if (y >= 'A' && y <= 'Z')
+            y = (char)(y + 32);
+        if (x != y)
+            return 0;
+    }
+    return 1;
+}
+
+/* the header lines of xb (each "Name: value\r\n") replace headers of the same name in head[0..n): pi's defaults give way
+ * to the model's, the options' and the provider's headers. The new length */
+static long strip_dups(char *head, long n, const char *xb)
+{
+    const char *x = xb;
+    head[n] = 0;
+    while (*x) {
+        const char *colon = strchr(x, ':'), *eol = strstr(x, "\r\n");
+        long nl;
+        char *ln;
+        if (!colon || !eol || colon > eol)
+            break;
+        nl = (long)(colon - x);
+        ln = strstr(head, "\r\n");
+        while (ln && ln[2] && !(ln[2] == '\r' && ln[3] == '\n')) {
+            char *line = ln + 2, *le = strstr(line, "\r\n");
+            long ll;
+            if (!le)
+                break;
+            ll = (long)(le - line);
+            if (ll > nl && line[nl] == ':' && ieq_n(line, x, nl)) {
+                long cut = ll + 2;
+                memmove(line, line + cut, (size_t)(n - (line - head) - cut) + 1);
+                n -= cut;
+                continue;       /* the next line is at the same place now */
+            }
+            ln = le;
+        }
+        x = eol + 2;
+    }
+    return n;
+}
+
+/* header lines a + b (each part may be empty) before the blank line that ends the head; eol: a CRLF ends the lines
+ * (the extra headers of xb carry theirs). 0, -1 when they do not fit */
+static int add_line(llm_req *q, const char *a, long an, const char *b, long bn, int eol)
+{
+    long add = an + bn + (eol ? 2 : 0);
+    if (q->hn < 4 || q->hn + add >= (long)sizeof(q->head))
+        return -1;
+    memcpy(q->head + q->hn - 2, a, (size_t)an);
+    memcpy(q->head + q->hn - 2 + an, b, (size_t)bn);
+    if (eol)
+        memcpy(q->head + q->hn - 2 + an + bn, "\r\n", 2);
+    memcpy(q->head + q->hn - 2 + add, "\r\n", 2);
+    q->hn += add;
+    q->head[q->hn] = 0;
+    return 0;
+}
+
+/* the head of the request for key: the backend's, then the extra header lines (models.json's, Copilot's, the OAuth
+ * credential's Bearer) before the blank line. 0, or -1 with the error in the stream */
+static int mk_head(llm_req *q, const http_url *u, const char *path, const char *key, const jw *bodyw)
+{
+    static char xb[4096];
+    char cx[200], err[300];
+    const char *hkey;
+    int bearer = 0;
+    long body_n = bodyw->n;
+    int key_given = key && *key;       /* a bearer credential is configured, sent or not */
+    xb[0] = 0;
+    q->signed_auth = 0;
+    if (!u->tls && key && *key) {
+        key_notice(q);
+        key = 0;
+    }
+    hkey = key;
+    if (q->bearer && key && *key) {
+        bearer = 1;
+        hkey = 0;
+    }
+    q->hn = q->be->head(u->host, u->port, u->tls, path, hkey, q->user_agent, body_n, q->head, sizeof(q->head));
+    q->key_sent = key && *key && q->hn > 0;
+    if (q->be->xhead)
+        q->be->xhead(q->ctx, xb, 512);
+    if (q->xhead && strlen(q->xhead) + strlen(xb) < 1024)
+        strcat(xb, q->xhead);
+    if (q->copilot) {
+        copilot_headers(q->ctx, cx, sizeof(cx));
+        strcat(xb, cx);
+    }
+    if (q->be->sign) {
+        /* an authentication over the finished request (Signature Version 4): its header lines follow */
+        long sn = q->be->sign(q->ctx, u->host, u->port, u->tls, path, bodyw->p ? bodyw->p : "", body_n, key_given,
+                              xb + strlen(xb), (long)sizeof(xb) - (long)strlen(xb) - 1, err, sizeof(err));
+        if (sn < 0) {
+            final_error(q->sink, LS_ERROR, "auth", err);
+            return -1;
+        }
+        q->signed_auth = sn > 0;
+    }
+    if (q->hn >= 4 && xb[0])
+        q->hn = strip_dups(q->head, q->hn, xb);
+    if (q->hn >= 4 && xb[0] && add_line(q, xb, (long)strlen(xb), "", 0, 0)) {
+        final_error(q->sink, LS_ERROR, "head", "the request headers are too long");
+        return -1;
+    }
+    if (bearer && q->hn >= 4) {
+        long kl = (long)strlen(key);
+        q->hn = strip_dups(q->head, q->hn, "Authorization: x\r\n");
+        if (add_line(q, "Authorization: Bearer ", 22, key, kl, 1)) {
+            final_error(q->sink, LS_ERROR, "head", "the request headers are too long");
+            return -1;
+        }
+    }
+    if (q->h.log && q->hn > 0) {
+        /* the only form of the head a log gets: the credential's value blanked */
+        static char red[6200], red2[6200];
+        long rn = http_redact_header(q->head, q->hn, q->be->secret_header, red, sizeof(red));
+        if (rn > 0) {
+            long r2 = http_redact_header(red, rn, "Authorization", red2, sizeof(red2));
+            if (r2 > 0) {
+                memcpy(red, red2, (size_t)r2);
+                rn = r2;
+            }
+        }
+        if (rn > 0 && q->signed_auth) {
+            long r2 = http_redact_header(red, rn, "x-amz-security-token", red2, sizeof(red2));
+            if (r2 > 0) {
+                memcpy(red, red2, (size_t)r2);
+                rn = r2;
+            }
+        }
+        if (rn > 0)
+            q->h.log(q->h.u, red, rn);
+    }
+    return 0;
+}
+
 int llm_request(llm_req *q)
 {
     http_url u;
-    char path[300], buf[2048];
+    char path[300], buf[2048], rerr[300];
     static char err[LLM_ERR_MAX];
-    static char xb[4096];
-    const char *key = q->key;
-    int key_given = key && *key;       /* a bearer credential is configured, sent or not */
     jw body, errbody;
     http_resp resp;
     sse ss;
     llm_evs es;
-    gate g;
+    static gate g;
     llm_sink gk;
     rq r;
     int retries = q->retries < 0 ? 0 : q->retries > 0 ? q->retries : 3, attempt;
@@ -187,6 +355,9 @@ int llm_request(llm_req *q)
     q->key_sent = 0;
     q->slept_ms = 0;
     q->hn = -1;
+    q->status = 0;
+    q->reauthed = 0;
+    rerr[0] = 0;
     q->signed_auth = 0;
     memset(&g, 0, sizeof(g));
     g.out = q->sink;
@@ -218,10 +389,6 @@ int llm_request(llm_req *q)
             final_error(q->sink, LS_ERROR, "lan_rule", err);
             return -1;
         }
-        if (key && *key) {
-            key_notice(q);
-            key = 0;
-        }
     }
     jw_init(&body);
     jw_init(&errbody);
@@ -231,58 +398,10 @@ int llm_request(llm_req *q)
         final_error(q->sink, LS_ERROR, "body", "the request could not be built");
         return -1;
     }
-    q->hn = q->be->head(u.host, u.port, u.tls, path, key, q->user_agent, body.n, q->head, sizeof(q->head));
-    q->key_sent = key && *key && q->hn > 0;
-    xb[0] = 0;
-    if (q->be->xhead)
-        q->be->xhead(q->ctx, xb, 512);
-    if (q->xhead && strlen(q->xhead) + strlen(xb) < 1024)
-        strcat(xb, q->xhead);
-    if (q->be->sign) {
-        /* an authentication over the finished request (Signature Version 4): its header lines follow */
-        long sn = q->be->sign(q->ctx, u.host, u.port, u.tls, path, body.p ? body.p : "", body.n, key_given,
-                              xb + strlen(xb), (long)sizeof(xb) - (long)strlen(xb) - 1, err, sizeof(err));
-        if (sn < 0) {
-            jw_free(&body);
-            jw_free(&errbody);
-            final_error(q->sink, LS_ERROR, "auth", err);
-            return -1;
-        }
-        q->signed_auth = sn > 0;
-    }
-    if (xb[0] && q->hn >= 4) {
-        /* the backend's and models.json's headers: before the blank line that ends the head */
-        long xn = (long)strlen(xb);
-        if (q->hn + xn >= (long)sizeof(q->head)) {
-            jw_free(&body);
-            final_error(q->sink, LS_ERROR, "head", "the request headers are too long");
-            return -1;
-        }
-        memcpy(q->head + q->hn - 2, xb, (size_t)xn);
-        memcpy(q->head + q->hn - 2 + xn, "\r\n", 2);
-        q->hn += xn;
-        q->head[q->hn] = 0;
-    }
-    if (q->h.log && q->hn > 0) {
-        /* the only form of the head a log gets: the credential's value blanked */
-        static char red[4700], red2[4700];
-        long rn = http_redact_header(q->head, q->hn, q->be->secret_header, red, sizeof(red));
-        if (rn > 0 && ((q->xhead && *q->xhead) || q->signed_auth)) {
-            long r2 = http_redact_header(red, rn, "Authorization", red2, sizeof(red2));
-            if (r2 > 0) {
-                memcpy(red, red2, (size_t)r2);
-                rn = r2;
-            }
-        }
-        if (rn > 0 && q->signed_auth) {
-            long r2 = http_redact_header(red, rn, "x-amz-security-token", red2, sizeof(red2));
-            if (r2 > 0) {
-                memcpy(red, red2, (size_t)r2);
-                rn = r2;
-            }
-        }
-        if (rn > 0)
-            q->h.log(q->h.u, red, rn);
+    if (mk_head(q, &u, path, q->key, &body)) {
+        jw_free(&body);
+        jw_free(&errbody);
+        return -1;
     }
     r.q = q;
     r.inner = q->h;
@@ -323,6 +442,7 @@ int llm_request(llm_req *q)
         q->attempts = attempt;
         rc = llm_post(&c);
         err[0] = 0;
+        q->status = rc == LP_OK ? resp.status : 0;
         if (rc == LP_BREAK) {
             final_error(q->sink, LS_ABORTED, "aborted", "Request aborted");
         } else if (rc == LP_OK && resp.status == 200 && resp.event_stream) {
@@ -370,6 +490,18 @@ int llm_request(llm_req *q)
         q->be->dec_free(dec);
         if (rc == LP_BREAK)
             break;
+        if (rc == LP_OK && resp.status == 401 && q->reauth && !q->reauthed) {
+            /* the credential was refused: renewed once, the request goes again at once with the new one */
+            q->reauthed = 1;
+            if (q->reauth(q->reauth_u, q, rerr, sizeof(rerr)) == 0) {
+                if (mk_head(q, &u, path, q->key, &body))
+                    break;
+                attempt--;
+                continue;
+            }
+            if (rerr[0])
+                cl_copy(err, rerr, sizeof(err));
+        }
         if (!retry || attempt > retries) {
             final_error_raw(q->sink, LS_ERROR, g.err ? g.et : "error", err, g.err ? g.raw : 0);
             break;

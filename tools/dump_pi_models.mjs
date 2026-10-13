@@ -22,6 +22,8 @@ const subset = {
 		"eu.anthropic.claude-sonnet-5-5", "amazon.nova-pro-v1:0", "global.openai.gpt-5.6-sol", "deepseek.v3.2",
 	],
 };
+// the subscription providers (amiga-pi phase O, /login): every model pi offers for them, so what a login unlocks is what pi shows
+for (const p of ["openai-codex", "github-copilot", "kimi-coding", "xai", "meta"]) subset[p] = Object.keys(MODELS[p]);
 const out = { pi: pkg.name + "@" + pkg.version, providers: {} };
 for (const [p, ids] of Object.entries(subset)) {
 	out.providers[p] = ids.map((id) => {

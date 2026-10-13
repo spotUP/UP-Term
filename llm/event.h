@@ -24,9 +24,10 @@ enum {
 /* a block's kind; LB_RAW is a provider block pi-ai does not model */
 enum { LB_TEXT, LB_THINKING, LB_TOOLCALL, LB_RAW };
 
-/* the longest error text kept (accumulated message, retry loop, the gate): pi keeps the SDK's text whole (an HTTP body up to 4000
- * characters); a longer one is cut here, Amiga stack and memory being what they are */
-#define LLM_ERR_MAX 1536
+/* the longest error text kept (accumulated message, retry loop, the gate). pi keeps what the SDK says: an OpenAI-family body
+ * up to 4000 characters plus the status and prefix, an Anthropic or Google body whole; the bodies this build reads are cut at
+ * 16 KB, a text beyond this is cut. The buffers are on the heap or static, never on the 68k stack. */
+#define LLM_ERR_MAX 4200
 
 typedef struct llm_event {
     int type;                   /* LE_* */

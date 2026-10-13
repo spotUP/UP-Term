@@ -28,6 +28,7 @@
 #include <string.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
 #include <openssl/x509v3.h>
 #include "tls.h"
 #include "util.h"
@@ -196,4 +197,9 @@ void tls_free(cl_tls *t)
         SSL_free(t->ssl);
     }
     free(t);
+}
+
+int tls_random(unsigned char *buf, long n)
+{
+    return ctx && RAND_bytes(buf, (int)n) == 1 ? 0 : TLS_ERROR;
 }

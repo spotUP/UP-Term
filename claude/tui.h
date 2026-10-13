@@ -287,8 +287,9 @@ typedef struct cl_tui {
     void (*on_expand)(void *u);
     void *qu;
     const tui_pick *pick;       /* the picker that is open (modal 2), the line input (modal 3: pi_in) */
-    char pi_in[200];
+    char pi_in[1100];           /* a pasted redirect URL of /login is the longest line */
     const char *pi_in_title;
+    const char *pi_in_hint;     /* the first hint word of the line input ("enter save"), 0: "enter save" */
     int pi_nofoot;              /* a question before the screen is up: no footer under it */
     /* TUI_SCREEN_*: set by the program before tui_start. fb: the row above the footer's first (B when pinned);
      * view: rows the viewport is scrolled back from the transcript's end (FULL); view_dirty: the viewport is
@@ -302,8 +303,11 @@ typedef struct cl_tui {
 
 /* the row chosen (accept), -1 cancelled or the end of input */
 int tui_pick_run(cl_tui *t, tui_pick *p);
-/* TUI_LOOK_PI: a one-line input under a title (Enter: 1 with the text in out, Esc: 0, the end of input: -1) */
+/* TUI_LOOK_PI: a one-line input under a title (Enter: 1 with the text in out, Esc: 0, the end of input: -1); pasted
+ * text is taken (its line breaks left out) and a line longer than the screen shows its end */
 int tui_line_input(cl_tui *t, const char *title, char *out, long cap);
+/* the same with the hint's first word given ("enter submit"; 0: "enter save") */
+int tui_line_input_hint(cl_tui *t, const char *title, const char *hint, char *out, long cap);
 /* TUI_LOOK_PI: an extension's selector (ctx.ui.select, confirm) -- title may hold several lines, as pi's confirm puts the
  * message under the title: the option chosen (0..n-1), -1 for Esc, Ctrl+C and the end of input, TUI_AWAY when timeout_ms
  * (0 none) ran out; the keys of pi's ExtensionSelectorComponent (up, down, j, k, Enter) */

@@ -60,3 +60,10 @@ void tls_free(cl_tls *t)
 {
     (void)t;
 }
+
+int tls_random(unsigned char *buf, long n)
+{
+    (void)buf;
+    (void)n;
+    return TLS_ERROR;
+}
