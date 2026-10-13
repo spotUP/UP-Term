@@ -292,11 +292,13 @@ void llm_key_env_name(const char *provider, char *out, long cap)
     strcat(out, "_API_KEY");
 }
 
-/* the six providers pi 1.1.0 lets a subscription log into besides Anthropic (ai/src/providers/<provider>.ts oauth entries).
- * Anthropic is not among them on purpose: a stored Anthropic OAuth entry gives no credential (owner decision 2026-10-07) */
+/* the providers pi 1.1.0 lets a subscription log into besides Anthropic (ai/src/providers/<provider>.ts oauth entries): the six
+ * subscriptions and OpenRouter, whose OAuth result is a plain API key (openrouter.ts toAuth: { apiKey: credential.access }).
+ * Anthropic is not among them on purpose: a stored Anthropic OAuth entry gives no credential (owner decision 2026-10-07).
+ * Radius (oauth/radius.ts) also has a token, but its api is pi-messages, which this build does not speak (no model to send it to) */
 int llm_oauth_provider(const char *provider)
 {
-    static const char *const ids[] = { "openai", "openai-codex", "github-copilot", "kimi-coding", "xai", "meta" };
+    static const char *const ids[] = { "openai", "openai-codex", "github-copilot", "kimi-coding", "xai", "meta", "openrouter" };
     unsigned i;
     for (i = 0; i < sizeof(ids) / sizeof(ids[0]); i++)
         if (provider && !strcmp(provider, ids[i]))
