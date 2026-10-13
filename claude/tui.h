@@ -96,6 +96,13 @@ typedef struct tui_pick {
     int n, sel;
     int maxrows;                /* rows shown at most */
     char status[64];            /* after "(sel/total)" */
+    /* session: pi's SessionSelectorComponent instead of the tree's frame (session-selector.ts:741-755, 313-342):
+     * a blank row, a rule, a blank row, title (the header row, composed by the program, SGR kept), help (the hint
+     * rows, '\n' between, SGR kept), a blank row, "> " and the search text with a cursor cell, a blank row, the rows
+     * (empty: the message when n is 0), "(sel/total)" only where the list scrolls, a blank row, a rule. The frame is
+     * left on the screen when the picker ends: pi's -r keeps its selector in the scrollback. */
+    int session;
+    const char *empty;
     void (*row)(void *u, int i, int selected, char *out, long cap);
     int (*key)(void *u, const cl_key *k, int act);
     void *u;
