@@ -688,23 +688,23 @@ UPTELNET
   against macOS's sshd.
 
 DEMO
-  UPDemo, typed in an UP-Term window (76 x 20 characters or more), shows
-  what the terminal draws: text styles, double-size lines, 256 and 24-bit
-  colours, box drawing, scroll regions, and text-mode demo effects --
-  copper bars, plasma, fire, a rotozoomer, vector cubes, a sine scroller,
-  palette cycling. Space: the next scene, B: back, Q: quit; UPDemo 5
-  starts at scene 5. Your shell comes back as it was.
-  Help > Demo tour (or /demo, or UPDemo TOUR typed in a window) plays
+  UPDemo, typed in an UP-Term window (76 x 20 characters or more), plays
   a tour of what UP-Term does, about three minutes, a caption on each
-  scene: text styles, 256 and 24-bit colours, line graphics, Latin-1 and
-  UTF-8, wide characters and accents, scroll regions, a tmux split, vsh,
-  Tab completion (Unix and KingCON), themes switched live, mouse reports
-  (click in the window), links, a sixel image, synchronized output, a
-  program resizing the window (from 80 columns), reflow (drag the size
-  gadget when it asks), then some of the effects. From the menu it runs
-  in a tab of its own, which closes when the tour ends; any key ends it.
-  UPDemo BENCH runs every scene for three seconds and prints the frames
-  a second each reached: a benchmark of the terminal on your machine.
+  scene: text styles, double-size lines, box drawing, 256 and 24-bit
+  colours, line graphics, Latin-1 and UTF-8, wide characters and accents,
+  scroll regions, a tmux split, vsh, Tab completion (Unix and KingCON),
+  themes switched live, mouse reports (click in the window), links, a
+  sixel image, synchronized output, a program resizing the window (from
+  80 columns), reflow (drag the size gadget when it asks), then the
+  text-mode demo effects: copper bars, plasma, fire, a rotozoomer, vector
+  cubes, a sine scroller, palette cycling. Any key ends it; UPDemo 17
+  starts at scene 17 (the effects). Your shell comes back as it was.
+  Help > Demo tour (or /demo) plays the same in a tab of its own, which
+  closes when the demo ends.
+  UPDemo BENCH runs the effect scenes (text, colours, scroll regions and
+  the effects) for three seconds each and prints the frames a second
+  each reached: a benchmark of the terminal on your machine. UPDemo BENCH
+  17 measures scene 17 alone.
   The full-screen effects need a fast processor (a 68060, a PiStorm, an
   emulator at full speed); a stock A1200 draws them at about a frame a
   second.

@@ -1,5 +1,5 @@
 /* demo/updemo through the engine: every scene's output is sequences the
- * terminal knows, and the screen comes back as it was. The tour also
+ * terminal knows, and the screen comes back as it was. The demo
  * reads the terminal's answers (the window's size) and mouse reports:
  * the engine's replies go back in as input here. */
 #include <string.h>
@@ -132,43 +132,72 @@ static void start(int cols, int rows)
     saw_image = saw_link = saw_wide = saw_text = saw_slow = saw_rapid = 0;
 }
 
-static int tour_scene(const char *name)
+static int scene_index(const char *name)
 {
     int s;
-    for (s = 0; s < updemo_tour_scenes(); s++)
-        if (!strcmp(updemo_tour_scene_name(s), name))
+    for (s = 0; s < updemo_scenes(); s++)
+        if (!strcmp(updemo_scene_name(s), name))
             return s;
     return -1;
 }
 
-/* the tour shows the whole demo: every scene of the show (the animated demoscene part included) is in it */
-static void the_tour_has_every_scene_of_the_show(void)
+/* ONE route (owner 2026-10-13: "why is there still two different routes in the demo?"): the program has one scene
+ * list, the captioned one. UPDemo, UPDemo n and Help > Demo tour (/demo) are all updemo_run over it; there is no
+ * second player, so no second list can hold scenes the first lacks. */
+static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    int s;
-    for (s = 0; s < updemo_scenes(); s++)
-        if (tour_scene(updemo_scene_name(s)) < 0)
-            CHECK_STR(updemo_scene_name(s), "a show scene the tour lacks");
+    CHECK_INT(updemo_scenes(), 24);
+    CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
+    CHECK_INT(scene_index("copper bars"), 16);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 23);
 }
 
-static void every_scene_runs_and_the_screen_comes_back(void)
+/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/24" */
+static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
-    const char *kinds[16];
-    long counts[16];
-    int x, y;
     start(80, 24);
-    CHECK_INT(updemo_run(&io, 80, 24, 0, 12), 0);
-    CHECK(bytes > 20000);                       /* the scenes drew */
-    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
-    if (vt_unhandled(t, kinds, counts, 16))
-        CHECK_STR(kinds[0], "");                /* names the first sequence the engine dropped */
-    CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN));
-    CHECK(vt_modes(t) & VT_MODE_CURSOR_VISIBLE);
-    CHECK_STR(row_text(0), "before the demo");
-    CHECK_STR(row_text(1), "$");
-    CHECK_STR(row_text(23), "");                /* the status line was on the other screen */
-    vt_cursor(t, &x, &y);
-    CHECK_INT(x, 2);
-    CHECK_INT(y, 1);
+    needle = "Demo 1/24  Text styles, double-size lines, box drawing";
+    CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
+    CHECK(saw_text);
+    needle = 0;
+    vt_free(t);
+}
+
+/* UPDemo 2 starts at the second scene of the same list */
+static void a_start_number_picks_a_scene_of_the_one_list(void)
+{
+    start(80, 24);
+    needle = "Demo 2/24  Every text style a program can ask for";
+    CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
+    CHECK(saw_text);
+    needle = "Demo 1/24";
+    saw_text = 0;
+    vt_free(t);
+    start(80, 24);
+    needle = "Demo 1/24";
+    CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
+    CHECK(!saw_text);   /* scene 1 was skipped */
+    needle = 0;
+    vt_free(t);
+}
+
+/* UPDemo BENCH: the benchmarked scenes of the same list, the effects among them */
+static void bench_picks_the_effect_scenes_of_the_one_list(void)
+{
+    long frames, tk;
+    int s, n = 0;
+    start(80, 24);
+    updemo_bench(1);
+    CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
+    updemo_bench(0);
+    for (s = 0; s < updemo_scenes(); s++) {
+        updemo_stats(s, &frames, &tk);
+        CHECK_INT(frames > 0, updemo_scene_benchmarked(s));
+        n += frames > 0;
+    }
+    CHECK_INT(n, 11);
+    CHECK(updemo_scene_benchmarked(scene_index("plasma")));
+    CHECK(!updemo_scene_benchmarked(scene_index("tmux")));
     vt_free(t);
 }
 
@@ -177,7 +206,7 @@ static void big_windows_are_drawn_within_bounds(void)
 {
     start(132, 60);
     CHECK_INT(updemo_run(&io, 132, 60, 0, 6), 0);
-    CHECK_STR(row_text(0), "before the demo");
+    CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN)); /* the reflow scene draws on the main screen */
     vt_free(t);
     start(200, 80);
     CHECK_INT(updemo_run(&io, 200, 80, 0, 6), 0);
@@ -189,25 +218,8 @@ static void a_small_window_is_refused_untouched(void)
     start(60, 20);
     CHECK_INT(updemo_run(&io, 60, 20, 0, 6), 1);
     CHECK_INT(bytes, 0);
-    CHECK_INT(updemo_tour(&io, 60, 20, 0, 6), 1);
+    CHECK_INT(updemo_run(&io, 60, 20, 0, 6), 1);
     CHECK_INT(bytes, 0);
-    vt_free(t);
-}
-
-static void q_quits_and_the_palette_is_the_terminals_again(void)
-{
-    long all;
-    start(80, 24);
-    updemo_run(&io, 80, 24, 0, 12);
-    all = bytes;
-    vt_free(t);
-    start(80, 24);
-    next_key = 'q';
-    keys_left = 3; /* the fourth frame's key */
-    CHECK_INT(updemo_run(&io, 80, 24, 9, 0), 0); /* from the palette scene */
-    CHECK(bytes < all / 4);
-    CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN));
-    CHECK_INT(vt_palette_rgb(t, 20), vt_palette_rgb(0, 20)); /* OSC 104 took the scene's colours back */
     vt_free(t);
 }
 
@@ -216,21 +228,21 @@ static void q_quits_and_the_palette_is_the_terminals_again(void)
 /* Every scene of the tour plays, with what it is there to show reaching
  * the terminal: a sixel image, a hyperlink, wide characters. What the
  * scenes changed is put back: the mouse, the palette, the screen. */
-static void the_tour_plays_every_scene_and_puts_the_terminal_back(void)
+static void the_demo_plays_every_scene_and_puts_the_terminal_back(void)
 {
     const char *kinds[16];
     long counts[16], frames, tk;
     int s, all_ran = 1;
     start(80, 24);
-    CHECK_INT(updemo_tour(&io, 80, 24, 0, 90), 0); /* long enough for each scene to reach its point */
+    CHECK_INT(updemo_run(&io, 80, 24, 0, 90), 0); /* long enough for each scene to reach its point */
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     if (vt_unhandled(t, kinds, counts, 16))
         CHECK_STR(kinds[0], "");
-    for (s = 0; s < updemo_tour_scenes(); s++) {
+    for (s = 0; s < updemo_scenes(); s++) {
         updemo_stats(s, &frames, &tk);
         if (frames < 1) {
             all_ran = 0;
-            CHECK_STR(updemo_tour_scene_name(s), "a scene that drew no frame");
+            CHECK_STR(updemo_scene_name(s), "a scene that drew no frame");
         }
     }
     CHECK(all_ran);
@@ -255,7 +267,7 @@ static void the_unicode_scene_shows_emoji(void)
     start(80, 24);
     needle = "\360\237\230\200";   /* U+1F600 */
     saw_text = 0;
-    CHECK_INT(updemo_tour(&io, 80, 24, 0, 90), 0);
+    CHECK_INT(updemo_run(&io, 80, 24, 0, 90), 0);
     CHECK(saw_text);
     needle = 0;
     vt_free(t);
@@ -268,24 +280,24 @@ static void the_styles_scene_shows_slow_and_rapid_blink(void)
 {
     start(80, 24);
     updemo_only(1);
-    CHECK_INT(updemo_tour(&io, 80, 24, tour_scene("styles"), 150), 0);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("styles"), 150), 0);
     updemo_only(0);
     CHECK(saw_slow);
     CHECK(saw_rapid);
     vt_free(t);
 }
 
-static void any_key_ends_the_tour(void)
+static void any_key_ends_the_demo(void)
 {
     long all;
     start(80, 24);
-    updemo_tour(&io, 80, 24, 0, 12);
+    updemo_run(&io, 80, 24, 0, 12);
     all = bytes;
     vt_free(t);
     start(80, 24);
     next_key = 'x';
     keys_left = 3;
-    CHECK_INT(updemo_tour(&io, 80, 24, 0, 0), 0);
+    CHECK_INT(updemo_run(&io, 80, 24, 0, 0), 0);
     CHECK(bytes < all / 4);
     CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN));
     CHECK_STR(row_text(0), "before the demo");
@@ -293,7 +305,7 @@ static void any_key_ends_the_tour(void)
     start(80, 24);
     inject = "\033[A"; /* a cursor key is a key too */
     keys_left = 3;
-    CHECK_INT(updemo_tour(&io, 80, 24, 0, 0), 0);
+    CHECK_INT(updemo_run(&io, 80, 24, 0, 0), 0);
     CHECK(bytes < all / 4);
     vt_free(t);
 }
@@ -302,13 +314,13 @@ static void any_key_ends_the_tour(void)
  * the tour goes on */
 static void the_mouse_scene_shows_a_click(void)
 {
-    int s = tour_scene("mouse");
+    int s = scene_index("mouse");
     CHECK(s >= 0);
     start(80, 24);
     inject = "\033[<0;10;12M";
     keys_left = 2;
     needle = "button 1 pressed at column 10, row 12";
-    CHECK_INT(updemo_tour(&io, 80, 24, s, 0), 0);
+    CHECK_INT(updemo_run(&io, 80, 24, s, 0), 0);
     CHECK(saw_text);
     CHECK(!(vt_modes(t) & VT_MODE_MOUSE_SGR));
     vt_free(t);
@@ -317,31 +329,31 @@ static void the_mouse_scene_shows_a_click(void)
 /* DECCOLM from 80 columns, and back to 80 however the scene ends */
 static void the_resize_scene_leaves_the_width_as_it_was(void)
 {
-    int s = tour_scene("resize");
+    int s = scene_index("resize");
     CHECK(s >= 0);
     start(80, 24);
-    CHECK_INT(updemo_tour(&io, 80, 24, s, 12), 0); /* ends before the scene's own 80 */
+    CHECK_INT(updemo_run(&io, 80, 24, s, 12), 0); /* ends before the scene's own 80 */
     CHECK(n_layout >= 2);
     CHECK_INT(layout_cols[0], 132);
     CHECK_INT(layout_cols[n_layout - 1], 80);
     vt_free(t);
     start(100, 30); /* not 80 wide: the scene only tells */
-    CHECK_INT(updemo_tour(&io, 100, 30, s, 12), 0);
+    CHECK_INT(updemo_run(&io, 100, 30, s, 12), 0);
     CHECK_INT(n_layout, 0);
     vt_free(t);
 }
 
 /* the tour asks the size before each scene: a window made too small ends it */
-static void a_window_made_too_small_ends_the_tour(void)
+static void a_window_made_too_small_ends_the_demo(void)
 {
     long all;
     start(80, 24);
-    updemo_tour(&io, 80, 24, 0, 12);
+    updemo_run(&io, 80, 24, 0, 12);
     all = bytes;
     vt_free(t);
     start(80, 24);
     vt_resize(t, 60, 20); /* before the first scene's question */
-    CHECK_INT(updemo_tour(&io, 80, 24, 0, 12), 0);
+    CHECK_INT(updemo_run(&io, 80, 24, 0, 12), 0);
     CHECK(bytes < all / 10);
     CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN));
     vt_free(t);
@@ -395,14 +407,14 @@ static void a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second(vo
     updemo_io slow = { out_slow, key_slow, ticks, 0 };
     start(80, 24);
     draw_ticks = 1;
-    CHECK_INT(updemo_run(&slow, 80, 24, 4, 100), 0); /* plasma onwards, two seconds each */
-    CHECK_INT(fps_of(4), 25);                         /* plasma */
-    CHECK_INT(fps_of(9), 25);                         /* palette cycling */
+    CHECK_INT(updemo_run(&slow, 80, 24, scene_index("plasma"), 100), 0); /* plasma onwards, two seconds each */
+    CHECK_INT(fps_of(scene_index("plasma")), 25);                         /* plasma */
+    CHECK_INT(fps_of(scene_index("palette cycling")), 25);                         /* palette cycling */
     vt_free(t);
     start(80, 24);
     draw_ticks = 3; /* 60 ms a frame: as fast as the terminal draws, no wait on top */
-    CHECK_INT(updemo_run(&slow, 80, 24, 4, 100), 0);
-    CHECK_INT(fps_of(4), 16);
+    CHECK_INT(updemo_run(&slow, 80, 24, scene_index("plasma"), 100), 0);
+    CHECK_INT(fps_of(scene_index("plasma")), 16);
     vt_free(t);
 }
 
@@ -420,8 +432,8 @@ static void palette_cycling_tells_the_renderer_once_a_frame(void)
     inject = 0;
     needle = 0;
     colours_told = 0;
-    CHECK_INT(updemo_run(&io, 80, 24, 9, 40), 0); /* palette cycling, then the end */
-    updemo_stats(9, &frames, &tk);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("palette cycling"), 40), 0); /* then the end */
+    updemo_stats(scene_index("palette cycling"), &frames, &tk);
     CHECK(frames >= 10);
     CHECK(colours_told >= frames);     /* every frame's colours reached it */
     CHECK(colours_told <= frames + 2); /* once a frame, and the OSC 104 after each scene */
@@ -430,20 +442,19 @@ static void palette_cycling_tells_the_renderer_once_a_frame(void)
 
 void suite_updemo(void)
 {
-    CHECK_INT(updemo_scenes(), 11);
-    CHECK_INT(updemo_tour_scenes(), 24);
-    every_scene_runs_and_the_screen_comes_back();
     big_windows_are_drawn_within_bounds();
     a_small_window_is_refused_untouched();
-    q_quits_and_the_palette_is_the_terminals_again();
-    the_tour_plays_every_scene_and_puts_the_terminal_back();
-    the_tour_has_every_scene_of_the_show();
+    the_demo_plays_every_scene_and_puts_the_terminal_back();
+    there_is_one_scene_list_with_the_effects_at_its_end();
+    a_bare_run_starts_at_the_first_scene_with_its_caption();
+    a_start_number_picks_a_scene_of_the_one_list();
+    bench_picks_the_effect_scenes_of_the_one_list();
     the_unicode_scene_shows_emoji();
     the_styles_scene_shows_slow_and_rapid_blink();
-    any_key_ends_the_tour();
+    any_key_ends_the_demo();
     the_mouse_scene_shows_a_click();
     the_resize_scene_leaves_the_width_as_it_was();
-    a_window_made_too_small_ends_the_tour();
+    a_window_made_too_small_ends_the_demo();
     a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second();
     palette_cycling_tells_the_renderer_once_a_frame();
 }

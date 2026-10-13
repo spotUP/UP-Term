@@ -1337,7 +1337,7 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
 };
 
 /* Help, the strip's last menu: the tour of what the terminal does
- * (UPDemo TOUR, in a new tab; /demo too) */
+ * (UPDemo, in a new tab; /demo too) */
 #define MENU_HELP_ITEMS 2
 static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
     { NM_TITLE, (STRPTR)"Help", 0, 0, 0, 0 },
@@ -5321,10 +5321,10 @@ struct tab_spawn_msg {
     struct Message msg;
     char cmd[200];
     char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
-    int demo;                    /* Help > Demo tour: UPDemo's tour in the tab, not a shell */
+    int demo;                    /* Help > Demo tour: UPDemo in the tab, not a shell */
 };
 
-/* Help > Demo tour: the tab runs UPDemo's tour and closes when it ends.
+/* Help > Demo tour: the tab runs UPDemo and closes when it ends.
  * 1 when the tab is on its way; 0 when C:UPDemo is not there (said in a
  * requester, as Preferences... says it of the editor). */
 static int tab_demo_script(struct tab_spawn_msg *m)
@@ -5343,7 +5343,7 @@ static int tab_demo_script(struct tab_spawn_msg *m)
     UnLock(lock);
     if (!(f = Open((STRPTR)"T:UP-Term-demo", MODE_NEWFILE)))
         return 0;
-    FPuts(f, (STRPTR)"FailAt 2147483647\nC:UPDemo TOUR\nEndCLI >NIL:\n");
+    FPuts(f, (STRPTR)"FailAt 2147483647\nC:UPDemo\nEndCLI >NIL:\n");
     Close(f);
     strcat(m->cmd, " FROM T:UP-Term-demo");
     return 1;
@@ -5422,7 +5422,7 @@ static void h_open_link(void *u, const char *uri)
     start_worker(link_opener, "UP-Term link", &m->msg);
 }
 
-/* 1 when the new tab is on its way; demo: the tab plays the tour */
+/* 1 when the new tab is on its way; demo: the tab plays the demo */
 static int tab_spawn(con *c, const char *profile, con *from, int demo)
 {
     struct tab_spawn_msg *m;

@@ -14,7 +14,7 @@
 
 static const updemo_io *io;
 static int W, R, H; /* columns; the picture's text rows (the last row is the status line); its pixel rows (2 R) */
-static int touring;  /* the tour plays (updemo_tour): captions, any key ends it */
+static int bench_only; /* updemo_bench: the benchmarked scenes only */
 static int only_one;  /* updemo_only: scene `first` alone */
 
 /* ---- output -------------------------------------------------------------- */
@@ -354,8 +354,7 @@ static void sc_text(long t, int first)
             break;
         case 10:
             fg(244);
-            centred(18, touring ? "a tour of what UP-Term does: any key ends it"
-                                : "next: colours, then the demoscene part");
+            centred(18, "a tour of what UP-Term does: any key ends it");
             sgr0();
             break;
         default:
@@ -471,17 +470,7 @@ static void sc_region(long t, int first)
 
 static void sc_end(long t, int first)
 {
-    static const char *const show_lines[] = {
-        "UP-Term",
-        "",
-        "an xterm on the Amiga, by Up Rough",
-        "",
-        "everything you saw was plain text:",
-        "escape sequences, UTF-8, 256 and 24-bit colours",
-        "",
-        "your shell is behind this screen, as you left it"
-    };
-    static const char *const tour_lines[] = {
+    static const char *const end_lines[] = {
         "UP-Term",
         "",
         "an xterm on the Amiga, by Up Rough",
@@ -491,7 +480,7 @@ static void sc_end(long t, int first)
         "",
         "Help > Demo tour (or /demo) plays it again"
     };
-    const char *const *lines = touring ? tour_lines : show_lines;
+    const char *const *lines = end_lines;
     int i;
     if (first)
         pal_rainbow();
@@ -742,14 +731,14 @@ static void sc_cycle(long t, int first)
 }
 
 
-/* ---- the tour (updemo_tour) ----------------------------------------------------- */
+/* ---- reading the terminal back ---------------------------------------------- */
 
-/* What the tour reads back from the terminal: keys end it; mouse reports
+/* What the demo reads back from the terminal: keys end it; mouse reports
  * are kept for the mouse scene; the window's size (CSI 18 t) is how it
  * follows a resize. */
 enum { EV_NONE, EV_KEY, EV_MOUSE, EV_SIZE };
 
-static int quit_req;         /* a key came while the tour waited for something else */
+static int quit_req;         /* a key came while the demo waited for something else */
 static int want_size;        /* a scene asks: the size, after this frame */
 static int ev_rows, ev_cols; /* the size the terminal reported last */
 static struct { int b, x, y, press; } mev[64];
@@ -1335,7 +1324,7 @@ static void sc_links(long t, int first)
         grey_line(9, "ls --hyperlink, gcc and delta print their links this way.");
     }
     if (!told && t >= 100) {
-        ps("\033]9;UP-Term tour: a notification from a program\007");
+        ps("\033]9;UP-Term demo: a notification from a program\007");
         at(11, 2);
         ps("A program's notification (OSC 9: a build finished...) shows in the title bar.");
         told = 1;
@@ -1465,7 +1454,7 @@ static void sc_resize(long t, int first)
             at(4, 2);
             ps("This window is ");
             pn(W);
-            ps(" columns wide; from 80 the tour shows it.");
+            ps(" columns wide; from 80 the demo shows it.");
             grey_line(6, "View > 80 x 24 and View > 132 x 43 size the window from the menu.");
             colm_step = 9;
             return;
@@ -1508,7 +1497,7 @@ static void sc_reflow(long t, int first)
     static const char para[] =
         "UP-Term keeps a line that wrapped as one line. Drag the window's size gadget now: make it "
         "narrower, then wider. This paragraph wraps again to fit, as the text in a word processor "
-        "does, instead of being cut at the edge. The tour runs on the alternate screen, as vim and "
+        "does, instead of being cut at the edge. The demo runs on the alternate screen, as vim and "
         "less do; this is the main screen, where a shell's text stays. reflow = off in the profile "
         "keeps the old way.";
     static long last;
@@ -1524,7 +1513,7 @@ static void sc_reflow(long t, int first)
         ps(para);
         ps("\r\n\r\n");
         fg(244);
-        ps("(the size is in the title bar; any key ends the tour)");
+        ps("(the size is in the title bar; any key ends the demo)");
         sgr0();
         ps("\r\n");
     }
@@ -1541,159 +1530,89 @@ typedef struct scene_def {
     void (*fn)(long t, int first);
     int pixels;          /* draws into the picture: blit() after it */
     long ticks;
-    const char *caption; /* the tour's status line */
-    int main_screen;     /* the tour draws it on the main screen, with no status line */
+    const char *caption; /* the status line */
+    int main_screen;     /* drawn on the main screen, with no status line */
+    int bench;           /* UPDemo BENCH measures it (the frame rate of the scene) */
 } scene_def;
 
-static const scene_def show[] = {
-    { "text", sc_text, 0, 500, 0, 0 },
-    { "colours", sc_colours, 0, 450, 0, 0 },
-    { "scroll regions", sc_region, 0, 400, 0, 0 },
-    { "copper bars", sc_bars, 1, 500, 0, 0 },
-    { "plasma", sc_plasma, 1, 500, 0, 0 },
-    { "fire", sc_fire, 1, 500, 0, 0 },
-    { "rotozoomer", sc_roto, 1, 500, 0, 0 },
-    { "vector cubes", sc_cube, 0, 500, 0, 0 },
-    { "sine scroller", sc_scroll, 1, 900, 0, 0 },
-    { "palette cycling", sc_cycle, 1, 500, 0, 0 },
-    { "the end", sc_end, 0, 400, 0, 0 }
+static const scene_def scenes[] = {
+    { "text", sc_text, 0, 450, "Text styles, double-size lines, box drawing", 0, 1 },
+    { "styles", sc_styles, 0, 400, "Every text style a program can ask for", 0, 0 },
+    { "colours", sc_colours, 0, 400, "16, 256 and 24-bit colours", 0, 1 },
+    { "character sets", sc_charsets, 0, 400, "DEC line graphics, Latin-1 and UTF-8", 0, 0 },
+    { "unicode", sc_unicode, 0, 450, "Unicode: scripts, wide characters, accents", 0, 0 },
+    { "scroll regions", sc_region, 0, 350, "Scroll regions: the header stays put", 0, 1 },
+    { "tmux", sc_tmux, 0, 450, "tmux and screen: each pane a scroll region", 0, 0 },
+    { "vsh", sc_vsh, 0, 500, "vsh, the shell of UP-Term windows", 0, 0 },
+    { "completion", sc_complete, 0, 450, "Tab completion, Unix style and KingCON style", 0, 0 },
+    { "themes", sc_themes, 0, 480, "Themes switched live (OSC 4, 10, 11)", 0, 0 },
+    { "mouse", sc_mouse, 0, 600, "Mouse reports: click in the window", 0, 0 },
+    { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0, 0 },
+    { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0, 0 },
+    { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0 },
+    { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0 },
+    { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0 },
+    { "copper bars", sc_bars, 1, 350, "The demoscene part: copper bars", 0, 1 },
+    { "plasma", sc_plasma, 1, 350, "A plasma in 256 colours", 0, 1 },
+    { "fire", sc_fire, 1, 350, "Fire", 0, 1 },
+    { "rotozoomer", sc_roto, 1, 350, "A rotozoomer", 0, 1 },
+    { "vector cubes", sc_cube, 0, 350, "Vector cubes in quadrant blocks", 0, 1 },
+    { "sine scroller", sc_scroll, 1, 500, "A sine scroller over a star field", 0, 1 },
+    { "palette cycling", sc_cycle, 1, 350, "Palette cycling (OSC 4)", 0, 1 },
+    { "the end", sc_end, 0, 350, "The end", 0, 1 }
 };
 
-static const scene_def tour[] = {
-    { "text", sc_text, 0, 450, "Text styles, double-size lines, box drawing", 0 },
-    { "styles", sc_styles, 0, 400, "Every text style a program can ask for", 0 },
-    { "colours", sc_colours, 0, 400, "16, 256 and 24-bit colours", 0 },
-    { "character sets", sc_charsets, 0, 400, "DEC line graphics, Latin-1 and UTF-8", 0 },
-    { "unicode", sc_unicode, 0, 450, "Unicode: scripts, wide characters, accents", 0 },
-    { "scroll regions", sc_region, 0, 350, "Scroll regions: the header stays put", 0 },
-    { "tmux", sc_tmux, 0, 450, "tmux and screen: each pane a scroll region", 0 },
-    { "vsh", sc_vsh, 0, 500, "vsh, the shell of UP-Term windows", 0 },
-    { "completion", sc_complete, 0, 450, "Tab completion, Unix style and KingCON style", 0 },
-    { "themes", sc_themes, 0, 480, "Themes switched live (OSC 4, 10, 11)", 0 },
-    { "mouse", sc_mouse, 0, 600, "Mouse reports: click in the window", 0 },
-    { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0 },
-    { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0 },
-    { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0 },
-    { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0 },
-    { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1 },
-    { "copper bars", sc_bars, 1, 350, "The demoscene part: copper bars", 0 },
-    { "plasma", sc_plasma, 1, 350, "A plasma in 256 colours", 0 },
-    { "fire", sc_fire, 1, 350, "Fire", 0 },
-    { "rotozoomer", sc_roto, 1, 350, "A rotozoomer", 0 },
-    { "vector cubes", sc_cube, 0, 350, "Vector cubes in quadrant blocks", 0 },
-    { "sine scroller", sc_scroll, 1, 500, "A sine scroller over a star field", 0 },
-    { "palette cycling", sc_cycle, 1, 350, "Palette cycling (OSC 4)", 0 },
-    { "the end", sc_end, 0, 350, "The end", 0 }
-};
-
-#define SHOW_N ((int)(sizeof(show) / sizeof(show[0])))
-#define TOUR_N ((int)(sizeof(tour) / sizeof(tour[0])))
+#define SCENE_N ((int)(sizeof(scenes) / sizeof(scenes[0])))
 #define STAT_N 32
 
 static long stat_frames[STAT_N], stat_ticks[STAT_N];
-static const scene_def *played = show; /* the scenes updemo_stats speaks of */
-static int played_n = SHOW_N;
 
 int updemo_scenes(void)
 {
-    return SHOW_N;
+    return SCENE_N;
 }
 
 const char *updemo_scene_name(int s)
 {
-    return s >= 0 && s < SHOW_N ? show[s].name : "";
+    return s >= 0 && s < SCENE_N ? scenes[s].name : "";
 }
 
-int updemo_tour_scenes(void)
+int updemo_scene_benchmarked(int s)
 {
-    return TOUR_N;
-}
-
-const char *updemo_tour_scene_name(int s)
-{
-    return s >= 0 && s < TOUR_N ? tour[s].name : "";
+    return s >= 0 && s < SCENE_N && scenes[s].bench;
 }
 
 void updemo_stats(int s, long *frames, long *ticks)
 {
-    *frames = s >= 0 && s < played_n ? stat_frames[s] : 0;
-    *ticks = s >= 0 && s < played_n ? stat_ticks[s] : 0;
+    *frames = s >= 0 && s < SCENE_N ? stat_frames[s] : 0;
+    *ticks = s >= 0 && s < SCENE_N ? stat_ticks[s] : 0;
 }
 
-static void status(int s, long fps)
+static void status(int s)
 {
-    if (touring) {
-        const char *cap = played[s].caption;
-        int n = 6 + digits(s + 1) + 1 + digits(played_n) + 2 + (int)strlen(cap);
-        ps("\0337"); /* a scene may be typing: its cursor stays where it is */
-        at(R + 1, 1);
-        ps("\033[0;30;47m Tour ");
-        pn(s + 1);
-        pc('/');
-        pn(played_n);
-        ps("  ");
-        ps(cap);
-        if (W - n >= 24) {
-            for (; n < W - 22; n++)
-                pc(' ');
-            ps("Any key ends the tour");
-        }
-        ps("\033[K\0338");
-        cfg = cbg = -1;
-        return;
-    }
+    const char *cap = scenes[s].caption;
+    int n = 6 + digits(s + 1) + 1 + digits(SCENE_N) + 2 + (int)strlen(cap);
+    ps("\0337"); /* a scene may be typing: its cursor stays where it is */
     at(R + 1, 1);
-    ps("\033[0;30;47m");
-    cfg = cbg = -1;
-    ps(" UP-Term demo  ");
+    ps("\033[0;30;47m Demo ");
     pn(s + 1);
     pc('/');
-    pn(played_n);
+    pn(SCENE_N);
     ps("  ");
-    ps(played[s].name);
-    ps("   ");
-    pn(fps);
-    ps(" fps   Space next  B back  Q quit\033[K");
-    sgr0();
-}
-
-/* a key's meaning in the show: 0 nothing, 1 next, 2 back, 3 quit. A
- * function key's sequence (ESC [ ... or CSI ...) is read to its end and
- * means nothing. */
-static int key_action(int k)
-{
-    int n;
-    if (k < 0)
-        return 0;
-    if (k == 27) {
-        k = io->key(io->user, 40);
-        if (k < 0)
-            return 3; /* Esc alone */
-        if (k != '[' && k != 'O')
-            return 0;
-        k = 0x9B;
+    ps(cap);
+    if (W - n >= 24) {
+        for (; n < W - 22; n++)
+            pc(' ');
+        ps("Any key ends the demo");
     }
-    if (k == 0x9B) {
-        for (n = 0; n < 16; n++) {
-            k = io->key(io->user, 40);
-            if (k < 0 || (k >= 0x40 && k <= 0x7E))
-                break;
-        }
-        return 0;
-    }
-    if (k == 'q' || k == 'Q' || k == 3)
-        return 3;
-    if (k == 'b' || k == 'B' || k == 8 || k == 127)
-        return 2;
-    if (k == ' ' || k == '\r' || k == '\n' || k == 'n' || k == 'N')
-        return 1;
-    return 0;
+    ps("\033[K\0338");
+    cfg = cbg = -1;
 }
 
 /* the reflow scene's title: the window's size */
 static void size_title(void)
 {
-    ps("\033]2;UP-Term tour: ");
+    ps("\033]2;UP-Term demo: ");
     pn(ev_cols);
     ps(" x ");
     pn(ev_rows);
@@ -1701,46 +1620,42 @@ static void size_title(void)
     flush();
 }
 
-/* The show or the tour (played), from scene `first`. The tour also asks
- * the window's size before each scene (it follows a resize), draws some
- * scenes on the main screen, and puts back what a scene changed. */
+/* The demo, from scene `first`. It asks the window's size before each scene
+ * (it follows a resize), draws some scenes on the main screen, and puts back
+ * what a scene changed. Any key ends it. */
 static int play(int first, long scene_ticks)
 {
-    int s, act = 0, alt = 1;
+    int s, ended = 0, alt = 1;
     numbers_init();
     memset(stat_frames, 0, sizeof(stat_frames));
     memset(stat_ticks, 0, sizeof(stat_ticks));
     quit_req = want_size = nmev = colm_on = 0;
     ps("\033[?1049h\033[?25l");
-    if (touring)
-        ps("\033[22;0t\033]2;UP-Term tour\007"); /* the title, pushed to be put back */
-    for (s = first < 0 || first >= played_n ? 0 : first; s >= 0 && s < played_n && act != 3 &&
-         (!only_one || s == first);
-         s += act == 2 ? -1 : 1) {
-        const scene_def *sc = &played[s];
+    ps("\033[22;0t\033]2;UP-Term demo\007"); /* the title, pushed to be put back */
+    for (s = first < 0 || first >= SCENE_N ? 0 : first; s < SCENE_N && !ended && (!only_one || s == first); s++) {
+        const scene_def *sc = &scenes[s];
         long t0, dur = scene_ticks ? scene_ticks : sc->ticks;
-        long t, mark = 0, frames = 0, fps = 0;
+        long t;
         int fresh = 1;
-        if (touring) {
-            if (sc->main_screen == alt) {
-                ps(alt ? "\033[?1049l" : "\033[?1049h");
-                alt = !alt;
-            }
-            /* the window may have changed: the tour follows it */
-            if (ask_size() && !set_size(ev_cols, ev_rows))
-                break;
-            if (quit_req)
-                break;
-            nmev = 0;
-            ps("\033[?25l");
+        if (bench_only && !sc->bench)
+            continue;
+        if (sc->main_screen == alt) {
+            ps(alt ? "\033[?1049l" : "\033[?1049h");
+            alt = !alt;
         }
+        /* the window may have changed: the demo follows it */
+        if (ask_size() && !set_size(ev_cols, ev_rows))
+            break;
+        if (quit_req)
+            break;
+        nmev = 0;
+        ps("\033[?25l");
         t0 = io->ticks(io->user);
         ps("\033[r");
         sgr0();
         if (!sc->main_screen)
             ps("\033[2J");
         old_ok = 0;
-        act = 0;
         while ((t = io->ticks(io->user) - t0) < dur) {
             long spent;
             int pass;
@@ -1748,18 +1663,9 @@ static int play(int first, long scene_ticks)
             sc->fn(t, fresh);
             if (sc->pixels)
                 blit();
-            frames++;
             stat_frames[s]++;
-            if (fresh || t - mark >= 50) {
-                if (t > mark)
-                    fps = frames * 50 / (t - mark);
-                if (!fresh) {
-                    frames = 0;
-                    mark = t;
-                }
-                if (!sc->main_screen)
-                    status(s, fps);
-            }
+            if (fresh && !sc->main_screen)
+                status(s);
             fresh = 0;
             ps("\033[?2026l");
             flush();
@@ -1768,7 +1674,7 @@ static int play(int first, long scene_ticks)
                 if (ask_size() && sc->main_screen)
                     size_title();
                 if (quit_req) {
-                    act = 3;
+                    ended = 1;
                     break;
                 }
             }
@@ -1779,7 +1685,7 @@ static int play(int first, long scene_ticks)
              * it. (Read before it, the wait began with the drawing and
              * the whole 40 ms came after it: plasma at 12 frames a second
              * on a 68060 that draws it in 22 ms; ledger S2.) */
-            for (pass = 0; pass < 2 && !act; pass++) {
+            for (pass = 0; pass < 2 && !ended; pass++) {
                 int wait = 0;
                 if (pass) {
                     spent = io->ticks(io->user) - t0 - t;
@@ -1787,33 +1693,23 @@ static int play(int first, long scene_ticks)
                         break;
                     wait = (int)(2 - spent) * 20;
                 }
-                if (touring)
-                    act = read_event(wait) == EV_KEY ? 3 : 0;
-                else
-                    act = key_action(io->key(io->user, wait));
+                ended = read_event(wait) == EV_KEY;
             }
-            if (act)
+            if (ended)
                 break;
         }
         flush();
         stat_ticks[s] += io->ticks(io->user) - t0;
         ps("\033[r\033]104\007"); /* the whole screen scrolls again; the palette is the terminal's */
-        if (touring) {
-            /* what a scene may have changed: the width, the mouse, the default
-             * colours, the line graphics, the title */
-            if (colm_on)
-                ps("\033[?3l");
-            colm_on = 0;
-            ps("\033[?1000l\033[?1006l\033[?40l\033]110\007\033]111\007\033(B\033]2;UP-Term tour\007");
-        }
-        if (act == 2 && s == 0) {
-            act = 0; /* back from the first scene: the first again */
-            s = -1;
-        }
+        /* what a scene may have changed: the width, the mouse, the default
+         * colours, the line graphics, the title */
+        if (colm_on)
+            ps("\033[?3l");
+        colm_on = 0;
+        ps("\033[?1000l\033[?1006l\033[?40l\033]110\007\033]111\007\033(B\033]2;UP-Term demo\007");
     }
     sgr0();
-    if (touring)
-        ps("\033[23;0t"); /* the title as it was */
+    ps("\033[23;0t"); /* the title as it was */
     ps("\033[?25h");
     if (alt)
         ps("\033[?1049l");
@@ -1821,29 +1717,21 @@ static int play(int first, long scene_ticks)
     return 0;
 }
 
-static int begin(const updemo_io *i, int cols, int rows, int tour_on)
-{
-    if (cols < UPDEMO_MIN_COLS || rows < UPDEMO_MIN_ROWS)
-        return 0;
-    io = i;
-    on = 0;
-    touring = tour_on;
-    played = tour_on ? tour : show;
-    played_n = tour_on ? TOUR_N : SHOW_N;
-    return set_size(cols, rows);
-}
-
 void updemo_only(int on)
 {
     only_one = on;
 }
 
-int updemo_run(const updemo_io *i, int cols, int rows, int first, long scene_ticks)
+void updemo_bench(int on)
 {
-    return begin(i, cols, rows, 0) ? play(first, scene_ticks) : 1;
+    bench_only = on;
 }
 
-int updemo_tour(const updemo_io *i, int cols, int rows, int first, long scene_ticks)
+int updemo_run(const updemo_io *i, int cols, int rows, int first, long scene_ticks)
 {
-    return begin(i, cols, rows, 1) ? play(first, scene_ticks) : 1;
+    if (cols < UPDEMO_MIN_COLS || rows < UPDEMO_MIN_ROWS)
+        return 1;
+    io = i;
+    on = 0;
+    return set_size(cols, rows) ? play(first, scene_ticks) : 1;
 }
