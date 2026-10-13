@@ -186,6 +186,9 @@ void tui_free(cl_tui *t)
     t->saved = 0;
     free(t->stash);
     t->stash = 0;
+    free(t->pi_wabove);
+    free(t->pi_wbelow);
+    t->pi_wabove = t->pi_wbelow = 0;
     for (i = 0; i < TUI_DIRS; i++)
         jw_free(&t->dirs[i].names);
     hist_free(&t->hist);
@@ -1111,6 +1114,62 @@ static void pi_slash_rows(cl_tui *t, int *idx, int n)
     free(label);
 }
 
+static char *dup_text(const char *z)
+{
+    char *c;
+    if (!z || !z[0])
+        return 0;
+    c = (char *)malloc(strlen(z) + 1);
+    if (c)
+        strcpy(c, z);
+    return c;
+}
+
+void tui_pi_widgets(cl_tui *t, const char *above, int above_cut, const char *below, int below_cut)
+{
+    free(t->pi_wabove);
+    free(t->pi_wbelow);
+    t->pi_wabove = dup_text(above);
+    t->pi_wbelow = dup_text(below);
+    t->pi_wabove_cut = t->pi_wabove ? above_cut : 0;
+    t->pi_wbelow_cut = t->pi_wbelow ? below_cut : 0;
+}
+
+void tui_pi_ext_status(cl_tui *t, const char *text)
+{
+    cl_copy(t->pi_extstat, text ? text : "", sizeof(t->pi_extstat));
+}
+
+static void pi_wrapped(cl_tui *t, const char *sgr, const char *s, int pad);
+
+/* the widget lines (each a Text component with one column of padding: wrapped), then pi's muted note when the widgets were cut */
+static void pi_widget_rows(cl_tui *t, const char *lines, int cut)
+{
+    const char *p = lines;
+    row r;
+    while (*p) {
+        const char *e = strchr(p, '\n');
+        char buf[400];
+        long n = e ? (long)(e - p) : (long)strlen(p);
+        if (n > (long)sizeof(buf) - 1)
+            n = (long)sizeof(buf) - 1;
+        memcpy(buf, p, (size_t)n);
+        buf[n] = 0;
+        pi_wrapped(t, "", buf, 1);
+        p = e ? e + 1 : p + n;
+        if (!e)
+            break;
+    }
+    if (cut) {
+        r_init(&r, t->cols);
+        r_text(&r, " ", 1);
+        pi_role(t, &r, PR_MUTED);
+        r_textz(&r, "... (widget truncated)");
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    }
+}
+
 /* pi's footer.js: the directory, then the usage with the model on the right (padding of at least two) */
 static void pi_footer_rows(cl_tui *t)
 {
@@ -1152,6 +1211,30 @@ static void pi_footer_rows(cl_tui *t)
     r_textz(&r, t->pi_right);
     r_sgr(&r, SGR0);
     want(t, &r);
+    if (t->pi_extstat[0]) {
+        /* footer.ts:289-298: the extensions' statuses on one row, cut to the width with a dim "..." */
+        long n = (long)strlen(t->pi_extstat), w = vw_width(t->pi_extstat, n);
+        r_init(&r, t->cols);
+        if (w <= t->cols)
+            r_textz(&r, t->pi_extstat);
+        else {
+            long k = 0;
+            int cw = 0;
+            while (k < n) {
+                unsigned long cp;
+                int l = vw_char(t->pi_extstat + k, n - k, &cp), c1 = vw_cp_width(cp);
+                if (cw + c1 > t->cols - 3)
+                    break;
+                cw += c1;
+                k += l;
+            }
+            r_text(&r, t->pi_extstat, k);
+            pi_role(t, &r, PR_DIM);
+            r_textz(&r, "...");
+            r_sgr(&r, SGR0);
+        }
+        want(t, &r);
+    }
 }
 
 /* the messages waiting for the agent: "Steering: ..." then "Follow-up: ...", and the hint */
@@ -1496,10 +1579,14 @@ static void build_pi(cl_tui *t)
     pi_queue_rows(t);
     {
         row r;
-        r_init(&r, t->cols);           /* the blank row between the transcript and the editor */
+        r_init(&r, t->cols);           /* the blank row between the transcript and the editor (the widgets' Spacer(1)) */
         want(t, &r);
     }
+    if (t->pi_wabove)
+        pi_widget_rows(t, t->pi_wabove, t->pi_wabove_cut);
     pi_editor_rows(t);
+    if (t->pi_wbelow)
+        pi_widget_rows(t, t->pi_wbelow, t->pi_wbelow_cut);
     nm = slash_matches(t, &idx, SLASH_MAX(t));
     if (t->msel >= nm)
         t->msel = nm ? nm - 1 : 0;

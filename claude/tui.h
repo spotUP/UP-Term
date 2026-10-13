@@ -273,6 +273,12 @@ typedef struct cl_tui {
     char pi_title[200];         /* the window title in pi's look: the program's (pi's updateTerminalTitle), never C:Claude's */
     char pi_cwd[300], pi_left[160], pi_ctx[48], pi_right[120], pi_work[96];
     int pi_ctx_role, pi_rule;
+    /* TUI_LOOK_PI -- what extensions put on the screen (ctx.ui.setWidget, setStatus): widget lines above the editor and below it
+     * (text lines separated by line feeds, 0 none; the *_cut flag adds pi's muted "... (widget truncated)"), and the footer's extra
+     * status row (extension statuses, sorted and joined by the program) */
+    char *pi_wabove, *pi_wbelow;
+    int pi_wabove_cut, pi_wbelow_cut;
+    char pi_extstat[240];
     char *pi_steer[TUI_QUEUE], *pi_follow[TUI_QUEUE];
     int n_steer, n_follow;
     /* TUI_LOOK_PI -- what the program does for the keys of pi's queue and cycling (pi_ui in amiga-pi):
@@ -398,5 +404,9 @@ int tui_resized(cl_tui *t);
  * the slot, or 0 when it must be read (tui_dir_put then) */
 tui_dir *tui_dir_get(cl_tui *t, const char *full);
 tui_dir *tui_dir_put(cl_tui *t, const char *full);
+
+/* the widgets above and below the editor (copied; 0 clears), and the footer's status row ('' none) */
+void tui_pi_widgets(cl_tui *t, const char *above, int above_cut, const char *below, int below_cut);
+void tui_pi_ext_status(cl_tui *t, const char *text);
 
 #endif
