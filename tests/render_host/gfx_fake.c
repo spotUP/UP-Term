@@ -30,7 +30,7 @@ static struct ColorMap cmap;
 static struct TextFont font;
 static struct DrawInfo dinfo;
 static UWORD pens[16];
-static int *canvas, cw_px, ch_px, W, H;
+static int *canvas, *bgc, cw_px, ch_px, W, H;
 
 static gf_call *rec(enum gf_kind k, long a, long b, long c, long d)
 {
@@ -53,6 +53,7 @@ void gf_open(int w, int h, int cw, int ch, int base)
     cw_px = cw;
     ch_px = ch;
     canvas = (int *)calloc((size_t)(w * h), sizeof(int));
+    bgc = (int *)calloc((size_t)(w * h), sizeof(int));
     memset(&win, 0, sizeof(win));
     memset(&scr, 0, sizeof(scr));
     memset(&rport, 0, sizeof(rport));
@@ -83,7 +84,8 @@ void gf_open(int w, int h, int cw, int ch, int base)
 void gf_close(void)
 {
     free(canvas);
-    canvas = 0;
+    free(bgc);
+    canvas = bgc = 0;
 }
 
 struct Window *gf_window(void) { return &win; }
@@ -92,6 +94,11 @@ struct TextFont *gf_font(void) { return &font; }
 int gf_pixel(int x, int y)
 {
     return x >= 0 && y >= 0 && x < W && y < H ? canvas[y * W + x] : -1;
+}
+
+int gf_bgpen(int col, int row)
+{
+    return col >= 0 && row >= 0 && col * cw_px < W && row * ch_px < H ? bgc[row * ch_px * W + col * cw_px] : -1;
 }
 
 char gf_cell(int col, int row)
@@ -131,6 +138,16 @@ const gf_call *gf_find(enum gf_kind k, int nth)
     return 0;
 }
 
+/* the pen under the pixels: a fill's, or the background pen of the Text that drew them */
+static void paint_bg(long x0, long y0, long x1, long y1, int pen)
+{
+    long x, y;
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++)
+            if (x >= 0 && y >= 0 && x < W && y < H)
+                bgc[y * W + x] = pen;
+}
+
 static void paint(long x0, long y0, long x1, long y1, int v, int flip)
 {
     long x, y;
@@ -157,7 +174,11 @@ LONG Text(struct RastPort *rp, CONST_STRPTR s, ULONG n)
     for (i = 0; i < n && i < sizeof(g->str) - 1; i++)
         g->str[i] = s[i];
     for (i = 0; i < n; i++, x += rp->Font->tf_XSize)
+    {
         paint(x, y, x + rp->Font->tf_XSize - 1, y + rp->Font->tf_YSize - 1, (unsigned char)s[i], 0);
+        if (rp->DrawMode != JAM1)
+            paint_bg(x, y, x + rp->Font->tf_XSize - 1, y + rp->Font->tf_YSize - 1, rp->BgPen);
+    }
     rp->cp_x = (WORD)x;
     return 0;
 }
@@ -193,6 +214,8 @@ VOID RectFill(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
 {
     rec(GF_RECT, x0, y0, x1, y1);
     paint(x0, y0, x1, y1, GF_FILL | rp->FgPen, rp->DrawMode & COMPLEMENT);
+    if (!(rp->DrawMode & COMPLEMENT))
+        paint_bg(x0, y0, x1, y1, rp->FgPen);
 }
 
 VOID ScrollRaster(struct RastPort *rp, LONG dx, LONG dy, LONG x0, LONG y0, LONG x1, LONG y1)
@@ -205,11 +228,17 @@ VOID ScrollRaster(struct RastPort *rp, LONG dx, LONG dy, LONG x0, LONG y0, LONG 
     if (dy > 0) {
         for (y = y0; y <= y1; y++)
             for (x = x0; x <= x1; x++)
+            {
                 canvas[y * W + x] = y + dy <= y1 ? canvas[(y + dy) * W + x] : GF_FILL | rp->BgPen;
+                bgc[y * W + x] = y + dy <= y1 ? bgc[(y + dy) * W + x] : rp->BgPen;
+            }
     } else if (dy < 0) {
         for (y = y1; y >= y0; y--)
             for (x = x0; x <= x1; x++)
+            {
                 canvas[y * W + x] = y + dy >= y0 ? canvas[(y + dy) * W + x] : GF_FILL | rp->BgPen;
+                bgc[y * W + x] = y + dy >= y0 ? bgc[(y + dy) * W + x] : rp->BgPen;
+            }
     }
 }
 
@@ -248,6 +277,7 @@ VOID SetRast(struct RastPort *rp, ULONG pen)
 {
     (void)rp;
     paint(0, 0, W - 1, H - 1, GF_FILL | (int)pen, 0);
+    paint_bg(0, 0, W - 1, H - 1, (int)pen);
 }
 VOID InitRastPort(struct RastPort *rp) { memset(rp, 0, sizeof(*rp)); }
 VOID BitMapScale(struct BitScaleArgs *a) { (void)a; }
@@ -267,8 +297,9 @@ ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
 }
 LONG ObtainBestPenA(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, CONST struct TagItem *t)
 {
-    (void)cm; (void)r; (void)g; (void)b; (void)t;
-    return 2;
+    (void)cm; (void)t;
+    /* a pen per colour (channels quartered), so a test can tell colours apart by their pen */
+    return 8 + (LONG)(((r >> 30) << 4) | ((g >> 30) << 2) | (b >> 30));
 }
 VOID ReleasePen(struct ColorMap *cm, ULONG n) { (void)cm; (void)n; }
 VOID SetRGB32(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b) { (void)vp; (void)n; (void)r; (void)g; (void)b; }

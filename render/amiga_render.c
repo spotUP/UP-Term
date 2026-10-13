@@ -166,8 +166,8 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
         return r->pen_default_fg;
     if (c == VT_COLOR_DEFAULT_BG)
         return r->pen_default_bg;
-    if (vt_personality(r->t) == VT_AMIGA)
-        return (UBYTE)(c & 0xFF); /* amiga colours are screen pens */
+    if (vt_personality(r->t) == VT_AMIGA && !(c & VT_COLOR_RGB))
+        return (UBYTE)(c & 0xFF); /* amiga colours are screen pens; a direct colour (SGR 38;2 / 48;2) is a colour */
     if (c & VT_COLOR_RGB) {
         if (r->truecolor)
             return truecolor_ink(r, VT_RGB_OF(c));

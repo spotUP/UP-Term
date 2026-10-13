@@ -41,7 +41,7 @@ static void pass(const char *s)
 
 /* a window of COLS x ROWS cells, `lines` lines "L00", "L01"... written live, the cursor on the
  * (empty) last row; the live top row shows line lines - ROWS + 1 */
-static void open_term(int lines)
+static void open_term_in(int lines, enum vt_personality pers)
 {
     vt_callbacks cb;
     char buf[16];
@@ -51,6 +51,7 @@ static void open_term(int lines)
     cb.scroll = cb_scroll;
     gf_open(COLS * CW, ROWS * CH, CW, CH, 6);
     term = vt_new(COLS, ROWS, 100, &cb, &rn);
+    vt_set_personality(term, pers);
     vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
     vr_redraw(&rn);
     for (i = 0; i < lines; i++) {
@@ -65,6 +66,11 @@ static void open_term(int lines)
     vr_cursor_on(&rn);
     vr_mask_end(&rn);
     pass("");
+}
+
+static void open_term(int lines)
+{
+    open_term_in(lines, VT_XTERM);
 }
 
 static void close_term(void)
@@ -178,10 +184,38 @@ static void cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row(void)
     close_term();
 }
 
+/* The pen a cell's background is drawn in (the text's Text() or the blank's fill) after `s`, in a window of that personality. */
+static int bg_pen_after(enum vt_personality pers, const char *s)
+{
+    int pen;
+    open_term_in(0, pers);
+    pass(s);
+    pen = gf_bgpen(0, 0);
+    close_term();
+    return pen;
+}
+
+/* nvim in a CON: window (the Amiga personality): "the background was blue but all typed text had grey". A
+ * program that sends a direct colour (SGR 48;2, nvim does with TERM=vtcon) got the pen NUMBER of its blue byte
+ * on a text cell, where a blank cell and every other personality draw the colour. */
+static void direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour(void)
+{
+    const char *blue = "\x1b[48;2;0;0;170mhi";
+    int want = bg_pen_after(VT_XTERM, blue);
+    CHECK(want != 170);                                      /* the pen of the colour is not its blue byte */
+    CHECK_INT(bg_pen_after(VT_AMIGA, blue), want);
+    CHECK_INT(bg_pen_after(VT_AMIGA, "\x1b[48;2;0;0;1mhi"), bg_pen_after(VT_XTERM, "\x1b[48;2;0;0;1mhi"));
+    CHECK(bg_pen_after(VT_AMIGA, "\x1b[48;2;0;0;1mhi") != 1); /* not pen 1 either */
+    /* and the Amiga personality's own colours stay screen pens */
+    CHECK_INT(bg_pen_after(VT_AMIGA, "\x1b[44mhi"), 4);
+    CHECK_INT(bg_pen_after(VT_AMIGA, "\x1b[48;5;9mhi"), 9);
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
+    direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }
