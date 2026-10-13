@@ -3,7 +3,10 @@
 // answers with the case's .sse file. Writes, per case, next to cases.json:
 //   <name>.body     the request body pi sent (the exact text; the SDK moves `betas` into the header)
 //   <name>.digest   what pi made of the stream (stop, error, usage, blocks), the form tests/test_pi_llm.c rebuilds
-//   <name>.headers  the anthropic-beta header pi sent, when it sent one
+//   <name>.headers  the anthropic-beta, anthropic-workspace-id and x-extra headers pi sent, when it sent them
+// A case's "env" ({"NAME": "value"}) is pi's process environment for that case (the SDK reads ANTHROPIC_CUSTOM_HEADERS from it;
+// pi itself reads ANTHROPIC_WORKSPACE_ID only for workload identity federation, never to send a header with an API key);
+// "modelHeaders" is the model's headers (models.json).
 // A message {"$reply": "<case>"} in a case's messages is replaced by the assistant message pi made for that case. Unaltered models: the compat
 // flags (supportsMidConvo*) are pi's own.
 //   PI_NPM=<dir holding node_modules/@earendil-works/pi-ai> node tools/gen_pi_anthropic.mjs   (the pinned amiga-pi/vendor/pi-1.1.0)
@@ -39,6 +42,7 @@ for (const c of cases) {
 	// "window" replaces the model's context window (a small one makes the output cap clamp on a short input)
 	let model = c.compat ? { ...MODELS[provider][id], compat: c.compat } : MODELS[provider][id];
 	if (c.window) model = { ...model, contextWindow: c.window };
+	if (c.modelHeaders) model = { ...model, headers: c.modelHeaders };
 	const sse = readFileSync(join(dir, c.sse + ".sse"), "utf8");
 	const messages = c.messages.map((m) => (m.$reply ? replies[m.$reply] : m));
 	let body, headers;
@@ -49,16 +53,20 @@ for (const c of cases) {
 	};
 	const context = normalizeContext({ systemPrompt: c.system, messages, tools: c.tools });
 	const level = clampThinkingLevel(model, c.level);
+	const saved = {};
+	for (const [k, v] of Object.entries(c.env || {})) { saved[k] = process.env[k]; process.env[k] = v; }
 	const s = streamSimple(model, context, { apiKey: "sk-test-not-real", fetch, reasoning: level === "off" ? undefined : level,
 		...(c.temperature !== undefined && { temperature: c.temperature }), ...(c.toolChoice && { toolChoice: c.toolChoice }),
 		...(c.thinkingBudgets && { thinkingBudgets: c.thinkingBudgets }) });
 	let final;
 	for await (const ev of s) if (ev.type === "done" || ev.type === "error") final = ev.type === "done" ? ev.message : ev.error;
+	for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
 	replies[c.name] = final;
 	writeFileSync(join(dir, c.name + ".body"), body);
 	writeFileSync(join(dir, c.name + ".digest"), digest(final));
-	const beta = headers.get("anthropic-beta");
-	if (beta) writeFileSync(join(dir, c.name + ".headers"), "anthropic-beta: " + beta + "\n");
+	let hl = "";
+	for (const n of ["anthropic-beta", "anthropic-workspace-id", "x-extra"]) if (headers.get(n)) hl += n + ": " + headers.get(n) + "\n";
+	if (hl) writeFileSync(join(dir, c.name + ".headers"), hl);
 	else rmSync(join(dir, c.name + ".headers"), { force: true });
 }
 console.log("[OK] tests/pi/anthropic written, " + cases.length + " cases");
