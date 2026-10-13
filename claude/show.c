@@ -93,6 +93,31 @@ static long text(jw *o, const char *p, long n, int max, int *w)
     return i;
 }
 
+/* where the row of p[i..e) ends when it may be width columns wide: at the last space that fits, else where the width is
+ * full (at least one character) */
+long show_row_end(const char *p, long i, long e, int width)
+{
+    long k = i, brk = -1;
+    int w = 0;
+    while (k < e) {
+        unsigned long cp;
+        int l = vw_char(p + k, e - k, &cp), x = cp == '\t' ? 4 : vw_cp_width(cp);
+        if (w + x > width)
+            break;
+        if (cp == ' ')
+            brk = k;
+        w += x;
+        k += l;
+    }
+    if (k < e && brk > i)
+        k = brk;
+    if (k == i) {
+        unsigned long cp;
+        k = i + vw_char(p + i, e - i, &cp);
+    }
+    return k;
+}
+
 /* text word-wrapped into lines of width columns, each prefixed (first
  * line: first, the others: rest) */
 void show_wrap(jw *o, const char *first, const char *rest, const char *style, const char *p, long n, int width)
@@ -104,8 +129,7 @@ void show_wrap(jw *o, const char *first, const char *rest, const char *style, co
     while (n > 0 && p[n - 1] == '\n')
         n--;
     while (a <= n) {
-        long e = a, brk = -1, i;
-        int w = 0;
+        long e = a, i;
         /* one source line */
         while (e < n && p[e] != '\n')
             e++;
@@ -114,26 +138,8 @@ void show_wrap(jw *o, const char *first, const char *rest, const char *style, co
             jw_rawz(o, "\n");
         }
         for (i = a; i < e;) {
-            long k = i;
+            long k = show_row_end(p, i, e, width);
             int cw = 0;
-            brk = -1;
-            w = 0;
-            while (k < e) {
-                unsigned long cp;
-                int l = vw_char(p + k, e - k, &cp), x = cp == '\t' ? 4 : vw_cp_width(cp);
-                if (w + x > width)
-                    break;
-                if (cp == ' ')
-                    brk = k;
-                w += x;
-                k += l;
-            }
-            if (k < e && brk > i)
-                k = brk;
-            if (k == i) {
-                unsigned long cp;
-                k = i + vw_char(p + i, e - i, &cp);
-            }
             jw_rawz(o, line++ ? rest : first);
             jw_rawz(o, style);
             text(o, p + i, k - i, -1, &cw);

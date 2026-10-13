@@ -61,6 +61,8 @@ void show_server(cl_show *s, int call, const char *line);
 /* text word-wrapped into lines of width columns appended to o, each prefixed (the first: first, the others:
  * rest) and set in style (an SGR), each ending in SGR0 and a newline */
 void show_wrap(jw *o, const char *first, const char *rest, const char *style, const char *p, long n, int width);
+/* where the row of p[i..e) ends within width columns: at the last space that fits, else where the width is full */
+long show_row_end(const char *p, long i, long e, int width);
 /* the display name of a tool ("Read", "Update", ...) */
 const char *show_name(int tool);
 
