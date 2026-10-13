@@ -44,6 +44,10 @@ typedef struct llm_cfg {
     /* llm_cfg_endpoint for bedrock-converse-stream: the credentials and region, the endpoint, and the catalog's base URL */
     llm_aws aws;
     char bd_ep[300], bd_orig[300];
+    /* the "env" object of the stored api_key credential of the provider being resolved (pi's credential.env, the
+     * ProviderEnv of the request): its non-empty values win over getenv. Set for the length of one llm_cfg_* call. */
+    const char *cenv;
+    long cenv_n;
 } llm_cfg;
 
 void llm_cfg_init(llm_cfg *c);

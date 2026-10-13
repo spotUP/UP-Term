@@ -1911,8 +1911,123 @@ static void test_handoff_pairs(void)
 /* ---- FB1/FB2: anthropic-messages against pi's own output (tests/pi/anthropic, made by tools/gen_pi_anthropic.mjs):
  * the body byte for byte, the anthropic-beta header, and the level each answer records ---- */
 
+static jv empty_obj(void)
+{
+    jv e;
+    e.p = "{}";
+    e.n = 2;
+    return e;
+}
+
+/* a case's "env" object ({"NAME":"value"}) as the environment case_getenv answers from */
+static void case_env_set(jv env)
+{
+    jit eit;
+    jv ek, ev;
+    int j;
+    for (j = 0; j < case_nenv; j++) {
+        free(case_env_name[j]);
+        free(case_env_val[j]);
+    }
+    case_nenv = 0;
+    json_iter(env, &eit);
+    while (json_next(&eit, &ek, &ev) && case_nenv < 12) {
+        char nm[96], val[400];
+        json_str(ek, nm, sizeof(nm));
+        json_str(ev, val, sizeof(val));
+        case_env_name[case_nenv] = strcpy((char *)malloc(strlen(nm) + 1), nm);
+        case_env_val[case_nenv++] = strcpy((char *)malloc(strlen(val) + 1), val);
+    }
+}
+
 static char *ra_reply[RC_MAX];
 static char ra_name[RC_MAX][32];
+
+/* the credential env layer against pi's own resolveConfigValue (tools/gen_pi_credenv.mjs): an api_key entry's `env` wins over
+ * the process environment, per name, for the entry's own provider; the key is resolved with it */
+static void test_credenv(void)
+{
+    char *txt;
+    long tn;
+    jv root, cs, c, v;
+    jit it;
+    int n = 0;
+    txt = claude_load("../pi/credenv/cases.json", &tn);
+    CHECK(txt != 0);
+    if (!txt)
+        return;
+    CHECK_INT(json_parse(txt, tn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        llm_cfg cfg;
+        llm_model m = ps_model_anthropic(), o = ps_model_anthropic();
+        jw auth;
+        char key[200], name[64];
+        long kn;
+        jv want, ce;
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        llm_cfg_init(&cfg);
+        cfg.getenv = case_getenv;
+        if (json_get(c, "procEnv", &v))
+            case_env_set(v);
+        else
+            case_env_set(empty_obj());
+        jw_init(&auth);
+        jw_rawz(&auth, "{\"anthropic\":{\"type\":\"api_key\",\"key\":");
+        json_get(c, "key", &v);
+        jw_raw(&auth, v.p, v.n);
+        if (json_get(c, "credEnv", &ce)) {
+            jw_rawz(&auth, ",\"env\":");
+            jw_raw(&auth, ce.p, ce.n);
+        }
+        jw_rawz(&auth, "}}");
+        cfg.auth = auth.p;
+        cfg.auth_n = auth.n;
+        key[0] = 0;
+        kn = llm_cfg_key(&cfg, &m, key, sizeof(key), 0);
+        json_get(c, "want", &want);
+        if (json_type(want) == J_NULL)
+            CHECK_INT(kn, 0);
+        else {
+            char w[200];
+            json_str(want, w, sizeof(w));
+            if (strcmp(key, w)) {
+                printf("    credenv case %s: got '%s' want '%s'\n", name, key, w);
+                CHECK(0);
+            }
+        }
+        /* another provider's entry never sees it: the same text under "openai" gives "anthropic" no env */
+        o.provider = "openai";
+        key[0] = 0;
+        if (json_type(want) != J_NULL && json_get(c, "credEnv", &ce) && strstr(auth.p, "$")) {
+            llm_cfg_key(&cfg, &o, key, sizeof(key), 0);
+            CHECK(key[0] == 0);
+        }
+        CHECK(cfg.cenv == 0);                       /* the scope ends with the call */
+        jw_free(&auth);
+        llm_cfg_free(&cfg);
+        n++;
+    }
+    CHECK(n >= 8);
+    free(txt);
+    {   /* amazon-bedrock login's "AWS profile": {"type":"api_key","env":{"AWS_PROFILE":...}} (providers/amazon-bedrock.ts) */
+        llm_cfg cfg;
+        llm_model b = ps_model_anthropic();
+        static const char auth[] = "{\"amazon-bedrock\":{\"type\":\"api_key\",\"env\":{\"AWS_PROFILE\":\"work\"}}}";
+        b.api = "bedrock-converse-stream";
+        b.provider = "amazon-bedrock";
+        llm_cfg_init(&cfg);
+        cfg.getenv = case_getenv;
+        case_env_set(empty_obj());
+        CHECK_INT(llm_cfg_authed(&cfg, &b), 0);
+        cfg.auth = auth;
+        cfg.auth_n = (long)sizeof(auth) - 1;
+        CHECK_INT(llm_cfg_authed(&cfg, &b), 1);
+        llm_cfg_free(&cfg);
+    }
+}
 
 static void test_anthropic_pi(void)
 {
@@ -1945,8 +2060,10 @@ static void test_anthropic_pi(void)
         llm_sink k;
         llm_view vw;
         jw msg, dig;
-        char *tools = 0;
+        char *tools = 0, *mhdr = 0;
         long tools_n = 0;
+        llm_cfg cfg;
+        jw xh;
         memset(own, 0, sizeof(own));
         json_get(c, "name", &v);
         json_str(v, name, sizeof(name));
@@ -1966,6 +2083,13 @@ static void test_anthropic_pi(void)
             cmod.compat.mid_effort = cmod.compat.mid_system = cmod.compat.mid_tools = cmod.compat.strict_tools = LC_UNSET;
             if (json_get(v, "supportsTemperature", &tb))
                 cmod.compat.temperature = json_type(tb) == J_TRUE;
+            md = &cmod;
+        }
+        if (json_get(c, "modelHeaders", &v)) {
+            long hl;
+            cmod = *md;
+            cmod.headers = compact_dup(v.p, v.n, &hl);          /* models.json's headers of the model, owned by the case */
+            mhdr = (char *)cmod.headers;
             md = &cmod;
         }
         json_get(c, "level", &v);
@@ -2028,8 +2152,20 @@ static void test_anthropic_pi(void)
         llm_acc_level(&a, llm_ant_effort(md, lv));
         k = llm_acc_sink(&a);
         q = req_of(md, &cx, &k, "sk-test-not-real");
+        /* the headers pi's SDK adds from its environment (ANTHROPIC_CUSTOM_HEADERS) and the model's own (models.json) */
+        llm_cfg_init(&cfg);
+        cfg.getenv = case_getenv;
+        jw_init(&xh);
+        if (json_get(c, "env", &v))
+            case_env_set(v);
+        else
+            case_env_set(empty_obj());
+        CHECK_INT(llm_cfg_headers(&cfg, md, q.key, &xh), 0);
+        q.xhead = xh.n ? xh.p : 0;
         nreq0 = ps.nreq;
         llm_request(&q);
+        jw_free(&xh);
+        llm_cfg_free(&cfg);
         /* the request on the wire: pi's body, byte for byte */
         strcpy(file, "../pi/anthropic/");
         strcat(file, name);
@@ -2046,17 +2182,28 @@ static void test_anthropic_pi(void)
         strcat(file, ".headers");
         want_hdr = claude_load_opt(file, &hn);
         if (want_hdr) {
-            char *line = want_hdr, *e = strchr(line, '\n');
-            if (e)
-                *e = 0;
-            CHECK(strstr(ps.head[0], line) != 0);          /* the golden has \n, the wire \r\n */
-            if (e)
-                *e = '\n';
+            /* every header line pi sent (anthropic-beta, anthropic-workspace-id, x-extra) is on the wire; the golden has \n,
+             * the wire \r\n. Header names are lower case in the golden: the wire's are compared without case */
+            char *line = want_hdr;
+            while (*line) {
+                char *e = strchr(line, '\n');
+                char want[300];
+                long ln = e ? (long)(e - line) : (long)strlen(line);
+                memcpy(want, line, (size_t)ln);
+                want[ln] = 0;
+                CHECK(head_has(ps.head[0], want));
+                line += ln + (e ? 1 : 0);
+            }
+            if (strstr(want_hdr, "anthropic-workspace-id") == 0)
+                CHECK(head_has(ps.head[0], "anthropic-workspace-id: ") == 0);
             if (strstr(want_hdr, "mid-conversation-output-config"))
                 mid_cases++;
             free(want_hdr);
-        } else
+        } else {
             CHECK(strstr(ps.head[0], "anthropic-beta") == 0);
+            CHECK(head_has(ps.head[0], "anthropic-workspace-id: ") == 0);
+        }
+        free(mhdr);
         /* what the stream made: pi's digest; and the level pi keeps on the answer */
         jw_init(&msg);
         jw_init(&dig);
@@ -2089,7 +2236,7 @@ static void test_anthropic_pi(void)
                 free(msgs[i]);
         ncase++;
     }
-    CHECK(ncase >= 62);
+    CHECK(ncase >= 66);
     CHECK(mid_cases >= 8);                          /* the managed-effort model's cases ran */
     CHECK(llm_feeds_anthropic > feeds0);            /* the backend ran */
     for (i = 0; i < RC_MAX; i++) {
@@ -4225,6 +4372,7 @@ void suite_pi_llm(void)
     test_evstream();
     test_sigv4();
     test_handoff_pairs();
+    test_credenv();
     test_anthropic_pi();
     test_openai_bodies();
     test_completions();

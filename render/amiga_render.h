@@ -105,6 +105,7 @@ typedef struct vr_render {
     WORD inset_top;       /* pixels above the text kept free (the tab bar) */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
+    UBYTE view_stale;      /* live output reached the grid while the view was back: the screen is not the scrollback's */
     WORD jump;             /* jump scroll: screen row s shows grid row s + jump (vr_scroll) */
     WORD jump_step;        /* the spare rows the next jump leaves; doubles while scrolls keep coming */
     UBYTE scrolled_pass;   /* this render pass scrolled the whole screen */

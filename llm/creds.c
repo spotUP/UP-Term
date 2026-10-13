@@ -78,12 +78,45 @@ static long run_cached(llm_cfg *c, const char *cmd, char *out, long cap)
     return n;
 }
 
+static int auth_entry(llm_cfg *c, const char *provider, jv *e);
+
+/* the credential env of the provider's stored api_key entry becomes the first layer of env_into (pi: auth/helpers.ts
+ * returns `env: credential.env`; every ProviderEnv lookup reads it before process.env). 0 clears. */
+static void env_scope(llm_cfg *c, const char *provider)
+{
+    jv e, t, ev;
+    c->cenv = 0;
+    c->cenv_n = 0;
+    if (provider && auth_entry(c, provider, &e) && json_type(e) == J_OBJ && json_get(e, "type", &t) &&
+        json_streq(t, "api_key") && json_get(e, "env", &ev) && json_type(ev) == J_OBJ) {
+        c->cenv = ev.p;
+        c->cenv_n = ev.n;
+    }
+}
+
 /* an environment variable appended at out[n]: its length; -1 when it is unset or empty (pi: `env[name] || undefined`),
  * -2 when it does not fit. getenv cuts a long value to the room it is given, so a value that fills the room is taken
  * as cut: an error, never half a key */
 static long env_into(llm_cfg *c, const char *name, char *out, long cap, long n)
 {
     long v;
+    if (c->cenv) {                     /* pi's getProviderEnvValue: env?.[name] || process.env[name] */
+        jv root, k, val;
+        jit it;
+        if (json_parse(c->cenv, c->cenv_n, &root) == 0 && json_type(root) == J_OBJ) {
+            json_iter(root, &it);
+            while (json_next(&it, &k, &val)) {
+                char nm[96];
+                if (json_str(k, nm, sizeof(nm)) >= 0 && !strcmp(nm, name) && json_type(val) == J_STR) {
+                    if (cap - n < 2)
+                        return -2;
+                    v = json_str(val, out + n, cap - n);
+                    if (v > 0)
+                        return v >= cap - n - 1 ? -2 : v;
+                }
+            }
+        }
+    }
     if (!c->getenv)
         return -1;
     if (cap - n < 2)
@@ -510,7 +543,7 @@ static long cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const c
     return 0;
 }
 
-long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src)
+static long cfg_key_in(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src)
 {
     const char *where = 0;
     long n = cfg_key(c, m, out, cap, &where);
@@ -525,7 +558,106 @@ long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char
     return n;
 }
 
-int llm_cfg_headers(llm_cfg *c, const llm_model *m, const char *key, jw *w)
+long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src)
+{
+    const char *pc = c->cenv;
+    long pn = c->cenv_n, r;
+    env_scope(c, m->provider);
+    r = cfg_key_in(c, m, out, cap, src);
+    c->cenv = pc;
+    c->cenv_n = pn;
+    return r;
+}
+
+static int same_name(const char *a, const char *b, long n)
+{
+    long i;
+    for (i = 0; i < n; i++) {
+        char x = a[i], y = b[i];
+        if (x >= 'A' && x <= 'Z')
+            x = (char)(x + 32);
+        if (y >= 'A' && y <= 'Z')
+            y = (char)(y + 32);
+        if (x != y)
+            return 0;
+    }
+    return 1;
+}
+
+/* is a header of this name (any case) among the "Name: value\r\n" lines at p */
+static int has_header(const char *p, long n, const char *name, long nl)
+{
+    long i = 0;
+    while (i < n) {
+        long j = i;
+        while (j < n && p[j] != '\n')
+            j++;
+        if (j - i > nl && p[i + nl] == ':' && same_name(p + i, name, nl))
+            return 1;
+        i = j + 1;
+    }
+    return 0;
+}
+
+/* the Anthropic SDK's ANTHROPIC_CUSTOM_HEADERS (pi 1.1.0 builds every anthropic-messages client with it; client.js
+ * constructor): lines "Name: value", split at the first colon and trimmed, under the headers pi passes itself (models.json),
+ * which win by name. This is the only way pi 1.1.0 sends anthropic-workspace-id with an API key. */
+static int is_ws(char ch)
+{
+    return ch == ' ' || ch == '\t' || ch == '\r';
+}
+
+/* one "Name: value" line env[0..len): trimmed, appended unless a header of that name is already among t's first base bytes */
+static void custom_line(const char *env, long len, jw *t, long base)
+{
+    long colon = 0, a = 0, b, e = len;
+    while (colon < len && env[colon] != ':')
+        colon++;
+    if (colon >= len)
+        return;
+    b = colon;
+    while (a < b && is_ws(env[a]))
+        a++;
+    while (b > a && is_ws(env[b - 1]))
+        b--;
+    colon++;
+    while (colon < e && is_ws(env[colon]))
+        colon++;
+    while (e > colon && is_ws(env[e - 1]))
+        e--;
+    if (b > a && !has_header(t->p ? t->p : "", base, env + a, b - a)) {
+        jw_raw(t, env + a, b - a);
+        jw_rawz(t, ": ");
+        jw_raw(t, env + colon, e - colon);
+        jw_rawz(t, "\r\n");
+    }
+}
+
+static void custom_headers(llm_cfg *c, const llm_model *m, jw *t)
+{
+    char env[1024];
+    const char *pc;
+    long n, i = 0, base;
+    if (!m->api || strcmp(m->api, "anthropic-messages"))
+        return;
+    /* the SDK reads process.env itself: a credential's env does not reach it */
+    pc = c->cenv;
+    c->cenv = 0;
+    n = env_into(c, "ANTHROPIC_CUSTOM_HEADERS", env, sizeof(env), 0);
+    c->cenv = pc;
+    if (n <= 0)
+        return;
+    base = t->n;
+    while (i < n) {
+        long j = i;
+        while (j < n && env[j] != '\n')
+            j++;
+        custom_line(env + i, j - i, t, base);
+        i = j + 1;
+    }
+}
+
+static int cfg_headers_in(llm_cfg *c, const llm_model *m, const char *key, jw *w)
 {
     jw t;
     int rc = 0;
@@ -554,6 +686,8 @@ int llm_cfg_headers(llm_cfg *c, const llm_model *m, const char *key, jw *w)
             }
         }
     }
+    if (rc == 0)
+        custom_headers(c, m, &t);
     if (rc == 0 && m->auth_header && key && key[0]) {
         jw_rawz(&t, "Authorization: Bearer ");
         jw_rawz(&t, key);
@@ -563,6 +697,18 @@ int llm_cfg_headers(llm_cfg *c, const llm_model *m, const char *key, jw *w)
         jw_raw(w, t.p, t.n);
     jw_free(&t);
     return rc;
+}
+
+int llm_cfg_headers(llm_cfg *c, const llm_model *m, const char *key, jw *w)
+{
+    const char *pc = c->cenv;
+    long pn = c->cenv_n;
+    int r;
+    env_scope(c, m->provider);
+    r = cfg_headers_in(c, m, key, w);
+    c->cenv = pc;
+    c->cenv_n = pn;
+    return r;
 }
 
 static int nz_skip(const char *skip)
@@ -613,7 +759,7 @@ static int bedrock_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
     return 0;
 }
 
-int llm_cfg_authed(llm_cfg *c, const llm_model *m)
+static int cfg_authed_in(llm_cfg *c, const llm_model *m)
 {
     char v[300];
     static const char *const more[] = { "AWS_PROFILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
@@ -632,7 +778,19 @@ int llm_cfg_authed(llm_cfg *c, const llm_model *m)
     return 0;
 }
 
-int llm_cfg_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
+int llm_cfg_authed(llm_cfg *c, const llm_model *m)
+{
+    const char *pc = c->cenv;
+    long pn = c->cenv_n;
+    int r;
+    env_scope(c, m->provider);
+    r = cfg_authed_in(c, m);
+    c->cenv = pc;
+    c->cenv_n = pn;
+    return r;
+}
+
+static int cfg_endpoint_in(llm_cfg *c, llm_model *m, char *err, long errcap)
 {
     char eb[300], er[100], ev[48], em[600];
     llm_model t;
@@ -655,4 +813,16 @@ int llm_cfg_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
     m->api_version = c->az.version;
     m->deployment = c->az.deployment;
     return 0;
+}
+
+int llm_cfg_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
+{
+    const char *pc = c->cenv;
+    long pn = c->cenv_n;
+    int r;
+    env_scope(c, m->provider);
+    r = cfg_endpoint_in(c, m, err, errcap);
+    c->cenv = pc;
+    c->cenv_n = pn;
+    return r;
 }
