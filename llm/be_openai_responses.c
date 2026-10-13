@@ -35,7 +35,7 @@ static long r_head(const char *host, int port, int tls, const char *path, const 
                    const char *user_agent, long body_len, char *out, long cap)
 {
     http_hdr h[4];
-    char bearer[600];
+    char bearer[4200];
     bearer[0] = 0;
     if (key && *key) {
         cl_copy(bearer, "Bearer ", sizeof(bearer));
@@ -371,6 +371,8 @@ static int w_result(jw *w, const llm_model *md, jv m)
     return 0;
 }
 
+static int g_codex;             /* body_ex is writing an openai-codex-responses request: the default strict is null */
+
 /* convertResponsesTools: the tools as function declarations (strict when the model supports it and the tool's
  * constrainedSampling allows it), a JSON array appended. 0, -1 */
 static int w_tools(jw *w, const jv *tl, int n, int strict)
@@ -406,7 +408,7 @@ static int w_tools(jw *w, const jv *tl, int n, int strict)
         else
             jw_rawz(w, "{\"type\":\"object\"}");
         if (strict)
-            jw_rawz(w, st == 1 ? ",\"strict\":true" : ",\"strict\":false");
+            jw_rawz(w, st == 1 ? ",\"strict\":true" : g_codex ? ",\"strict\":null" : ",\"strict\":false");
         jw_raw(w, "}", 1);
     }
     jw_free(&sch);
@@ -466,7 +468,18 @@ static int w_sys_item(jw *w, const llm_model *md, jv m, int update)
 
 /* the Responses request for the model named `name` on the wire (the model's id; azure: the deployment's name);
  * strict: tools go out with their strict flag (openai: supportsStrictMode on, azure: on unless the model says off) */
-int llm_responses_body(const llm_ctx *x, jw *w, const char *name, int strict)
+static int body_in(const llm_ctx *x, jw *w, const char *name, int strict, int codex);
+
+static int body_ex(const llm_ctx *x, jw *w, const char *name, int strict, int codex)
+{
+    int rc;
+    g_codex = codex;
+    rc = body_in(x, w, name, strict, codex);
+    g_codex = 0;
+    return rc;
+}
+
+static int body_in(const llm_ctx *x, jw *w, const char *name, int strict, int codex)
 {
     const llm_model *md = x->model;
     int i, k = 0, lv, rc = -1;
@@ -488,8 +501,26 @@ int llm_responses_body(const llm_ctx *x, jw *w, const char *name, int strict)
     nreq = anchors ? tx.nitl : tx.ntl;
     jw_rawz(w, "{\"model\":");
     jw_strz(w, name);
+    if (codex) {
+        /* openai-codex-responses buildRequestBody: store, stream, then the instructions (the leading system message's
+         * text, else the prompt, else pi's default) and the input without a system item */
+        jw ins;
+        jw_init(&ins);
+        if (tx.has_init)
+            llm_tx_sys_text(&ins, tx.init);
+        else if (x->system && *x->system)
+            jw_strz(&ins, x->system);
+        jw_rawz(w, ",\"store\":false,\"stream\":true,\"instructions\":");
+        if (ins.n > 2)
+            jw_raw(w, ins.p, ins.n);
+        else
+            jw_rawz(w, "\"You are a helpful assistant.\"");
+        jw_free(&ins);
+    }
     jw_rawz(w, ",\"input\":[");
-    if (tx.has_init) {
+    if (codex) {
+        ;
+    } else if (tx.has_init) {
         k += w_sys_item(w, md, tx.init, 0);
     } else if (x->system && *x->system) {
         jw_rawz(w, md->reasoning && md->compat.developer_role != 0 ? "{\"role\":\"developer\",\"content\":"
@@ -567,6 +598,46 @@ int llm_responses_body(const llm_ctx *x, jw *w, const char *name, int strict)
         k++;
         msgidx++;
     }
+    if (codex) {
+        /* text, include, prompt_cache_key, tool_choice, parallel_tool_calls, tools, reasoning (pi's order) */
+        jw_rawz(w, "],\"text\":{\"verbosity\":\"low\"},\"include\":[\"reasoning.encrypted_content\"]");
+        if (x->session_id && *x->session_id) {
+            const char *s = x->session_id;
+            long n = 0, chars = 0;
+            while (s[n] && chars < 64) {
+                n++;
+                while (s[n] && (s[n] & 0xC0) == 0x80)
+                    n++;
+                chars++;
+            }
+            jw_rawz(w, ",\"prompt_cache_key\":");
+            jw_str(w, s, n);
+        }
+        jw_rawz(w, ",\"tool_choice\":\"auto\",\"parallel_tool_calls\":true");
+        if (nreq > 0) {
+            jw_rawz(w, ",\"tools\":");
+            if (w_tools(w, reqt, nreq, strict)) {
+                rc = -1;
+                goto out;
+            }
+        }
+        lv = llm_think_clamp(md, x->thinking);
+        if (md->reasoning) {
+            const llm_tmap *t = &md->thinking_map[lv];
+            if (lv != LT_OFF) {
+                jw_rawz(w, ",\"reasoning\":{\"effort\":");
+                jw_strz(w, t->kind == LTM_STR ? t->val : llm_think_name(lv));
+                jw_rawz(w, ",\"summary\":\"auto\"}");
+            } else if (t->kind != LTM_NULL) {
+                jw_rawz(w, ",\"reasoning\":{\"effort\":");
+                jw_strz(w, t->kind == LTM_STR ? t->val : "none");
+                jw_raw(w, "}", 1);
+            }
+        }
+        jw_raw(w, "}", 1);
+        rc = w->oom ? -1 : 0;
+        goto out;
+    }
     jw_rawz(w, "],\"stream\":true");
     if (x->session_id && *x->session_id) {
         /* clampOpenAIPromptCacheKey: at most 64 characters (code points) */
@@ -612,6 +683,19 @@ int llm_responses_body(const llm_ctx *x, jw *w, const char *name, int strict)
 out:
     llm_tx_free(&tx);
     return rc;
+}
+
+int llm_responses_body(const llm_ctx *x, jw *w, const char *name, int strict)
+{
+    return body_ex(x, w, name, strict, 0);
+}
+
+/* openai-codex-responses (api/openai-codex-responses.ts buildRequestBody): the same input and tools, pi's own field order
+ * and set; the tools' strict flag is null unless a tool's own constraint says true (supportsStrictMode defaults on there,
+ * strict: null) */
+int llm_codex_body(const llm_ctx *x, jw *w)
+{
+    return body_ex(x, w, x->model->id, x->model->compat.strict_tools != 0, 1);
 }
 
 static int r_body(const llm_ctx *x, jw *w)
@@ -1169,6 +1253,14 @@ int llm_responses_feed(void *dv, const char *event, const char *data, long n, co
         fail(d, k, "error", msg);
     }
     return 0;
+}
+
+/* a stream the API's own words end in an error (openai-codex-responses: "Codex error: ..."): the start, then the error */
+void llm_responses_fail(void *dv, const llm_sink *k, const char *msg)
+{
+    or_dec *d = (or_dec *)dv;
+    start(d, k);
+    fail(d, k, "error", msg);
 }
 
 static int r_feed(void *dv, const char *event, const char *data, long n, const llm_sink *k)

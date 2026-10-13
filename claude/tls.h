@@ -34,5 +34,7 @@ long tls_recv(cl_tls *t, char *b, long cap);
 /* bytes already decrypted inside the session (no need to wait) */
 int tls_pending(cl_tls *t);
 void tls_free(cl_tls *t);
+/* n secure random bytes (AmiSSL's generator; tls_init must have succeeded): 0, or TLS_ERROR (no TLS in this build) */
+int tls_random(unsigned char *buf, long n);
 
 #endif

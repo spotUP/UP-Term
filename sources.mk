@@ -16,7 +16,7 @@ VIEW_HDR  := $(call cl_src,view/hl_lex.h view/hl_style.h view/hl_view.h view/vw_
 # amiga-pi's provider-neutral LLM layer (llm/, shared with C:Claude; plan 2026-10-07-amiga-pi B)
 # what C:Claude links of it: the events, the Anthropic backend, the request
 LLM_CLAUDE := $(call cl_src,llm/event.c llm/be_anthropic.c llm/request.c llm/evstream.c)
-LLM_CORE := $(LLM_CLAUDE) $(call cl_src,llm/llm.c llm/accum.c llm/be_anthropic_pi.c llm/retry.c llm/be_openai_chat.c llm/be_openai_responses.c llm/be_azure.c llm/be_google.c llm/be_bedrock.c llm/sha256.c llm/sigv4.c llm/transform.c llm/handoff.c llm/constrain.c llm/estimate.c llm/transcript.c llm/registry.c llm/models_json.c llm/creds.c)
+LLM_CORE := $(LLM_CLAUDE) $(call cl_src,llm/llm.c llm/accum.c llm/be_anthropic_pi.c llm/retry.c llm/be_openai_chat.c llm/be_openai_responses.c llm/be_azure.c llm/be_google.c llm/be_openai_codex.c llm/be_bedrock.c llm/sha256.c llm/sigv4.c llm/transform.c llm/handoff.c llm/constrain.c llm/estimate.c llm/transcript.c llm/registry.c llm/models_json.c llm/creds.c)
 LLM_HDR := $(wildcard $(CL_DIR)llm/*.h)
 # what amiga-pi adds of claude/ (plan D): pi's edit on Edit's pieces; C:Claude never calls it
 CLAUDE_PI := $(call cl_src,claude/edit_orig.c claude/unorm.c claude/ignore.c claude/search_pi.c)

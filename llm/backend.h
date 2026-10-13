@@ -149,6 +149,7 @@ extern const llm_backend llm_be_openai_chat;
 extern const llm_backend llm_be_openai_responses;
 extern const llm_backend llm_be_azure;
 extern const llm_backend llm_be_google;
+extern const llm_backend llm_be_openai_codex;
 extern const llm_backend llm_be_bedrock;
 
 /* the thinking level an anthropic-messages request records on its answer (pi: providerThinkingLevel, set when the
@@ -160,6 +161,10 @@ int llm_mid_system(const llm_model *m);
 /* the pieces of the Responses backend that azure-openai-responses shares (llm/be_azure.c): the body for the model
  * named `name` on the wire, and the decoder; strict: the tools carry their strict flag */
 int llm_responses_body(const llm_ctx *x, jw *w, const char *name, int strict);
+/* openai-codex-responses (llm/be_openai_codex.c): the Responses body in Codex's shape; a stream that ends in an error of
+ * the API's own words (llm_responses_fail) */
+int llm_codex_body(const llm_ctx *x, jw *w);
+void llm_responses_fail(void *dec, const llm_sink *k, const char *msg);
 void *llm_responses_new(void);
 int llm_responses_feed(void *dec, const char *event, const char *data, long n, const llm_sink *k);
 void llm_responses_free(void *dec);
@@ -168,7 +173,7 @@ int llm_google_call_ids(const char *model_id);
 /* the backend of an api name, 0 none */
 const llm_backend *llm_backend_of(const char *api);
 /* calls of each backend's feed since the start (the reachability tests' sentinel) */
-extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses, llm_feeds_azure, llm_feeds_google, llm_feeds_bedrock;
+extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses, llm_feeds_azure, llm_feeds_google, llm_feeds_bedrock, llm_feeds_codex;
 
 /* the wall clock the generated tool-call ids read (google: pi's `${name}_${Date.now()}_${++counter}`); the host sets it
  * before a request (now: seconds and ms since 1970); unset, the ids read time() */

@@ -88,6 +88,17 @@ static int lookup(const char *host, struct in_addr *addr)
     return 0;
 }
 
+int net_amiga_random(unsigned char *buf, long n)
+{
+    char err[200];
+    if (!tls_ready) {
+        if (tls_init(SocketBase, err, sizeof(err)))
+            return -1;
+        tls_ready = 1;
+    }
+    return tls_random(buf, n) ? -1 : 0;
+}
+
 int net_amiga_resolve(const char *host, unsigned char ip[4])
 {
     struct in_addr a;

@@ -1459,7 +1459,17 @@ static void pi_input_rows(cl_tui *t)
     want(t, &r);
     r_init(&r, t->cols);
     r_text(&r, " ", 1);
-    r_textz(&r, t->pi_in);
+    {
+        /* a line longer than the row shows its end, from a character boundary */
+        const char *shown = t->pi_in;
+        long l = (long)strlen(shown), room = (long)t->cols - 4;
+        if (room > 0 && l > room) {
+            shown += l - room;
+            while (*shown && ((unsigned char)*shown & 0xc0) == 0x80)
+                shown++;
+        }
+        r_textz(&r, shown);
+    }
     r_sgr(&r, REV);
     r_text(&r, " ", 1);
     r_sgr(&r, SGR0);
@@ -1467,7 +1477,7 @@ static void pi_input_rows(cl_tui *t)
     r_init(&r, t->cols);
     r_text(&r, " ", 1);
     pi_role(t, &r, PR_DIM);
-    r_textz(&r, "enter save");
+    r_textz(&r, t->pi_in_hint ? t->pi_in_hint : "enter save");
     r_sgr(&r, SGR0);
     r_text(&r, "  ", 2);
     pi_role(t, &r, PR_DIM);
@@ -3664,11 +3674,12 @@ int tui_pick_run(cl_tui *t, tui_pick *p)
     return res;
 }
 
-static int line_input(cl_tui *t, const char *title, char *out, long cap, int ext, long timeout_ms)
+static int line_input(cl_tui *t, const char *title, const char *hint, char *out, long cap, int ext, long timeout_ms)
 {
     int res = -1;
     unsigned long start = now(t);
     t->modal = 3;
+    t->pi_in_hint = hint;
     t->pi_in_ext = ext;
     t->m_timeout_ms = timeout_ms;
     t->m_left = -1;
@@ -3719,9 +3730,16 @@ static int line_input(cl_tui *t, const char *title, char *out, long cap, int ext
         } else if (k.k == K_CHAR && k.ch >= 0x20 && l + 5 < (long)sizeof(t->pi_in)) {
             l += vw_put_utf8(t->pi_in + l, k.ch);
             t->pi_in[l] = 0;
+        } else if (k.k == K_PASTE) {
+            long i;
+            for (i = 0; i < k.n && l + 1 < (long)sizeof(t->pi_in); i++)
+                if ((unsigned char)k.text[i] >= 0x20)
+                    t->pi_in[l++] = k.text[i];
+            t->pi_in[l] = 0;
         }
     }
     t->modal = 0;
+    t->pi_in_hint = 0;
     t->pi_in_ext = 0;
     t->m_timeout_ms = -1;
     t->m_left = -1;
@@ -3731,12 +3749,17 @@ static int line_input(cl_tui *t, const char *title, char *out, long cap, int ext
 
 int tui_line_input(cl_tui *t, const char *title, char *out, long cap)
 {
-    return line_input(t, title, out, cap, 0, -1);
+    return line_input(t, title, 0, out, cap, 0, -1);
+}
+
+int tui_line_input_hint(cl_tui *t, const char *title, const char *hint, char *out, long cap)
+{
+    return line_input(t, title, hint, out, cap, 0, -1);
 }
 
 int tui_ext_input(cl_tui *t, const char *title, char *out, long cap, long timeout_ms)
 {
-    return line_input(t, title, out, cap, 1, timeout_ms > 0 ? timeout_ms : -1);
+    return line_input(t, title, 0, out, cap, 1, timeout_ms > 0 ? timeout_ms : -1);
 }
 
 int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, long timeout_ms)
