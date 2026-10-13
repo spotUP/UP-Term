@@ -21,7 +21,10 @@ independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
   owner's way, 2026-09-29. aga/rtg need the rig up and reboot it.)
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
-  rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer
+  rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer; the boot then puts
+                  these builds over the copies a kit installed in SYS: (KIT_SHADOWS;
+                  reboot the rig after install). The kit's own files are kept in
+                  VTC:kit-orig and come back with `rig.py kit-restore` + a reboot.
   rig.py status   is it up (amiagent ping)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
@@ -121,9 +124,61 @@ SHELL_STARTUP_PATH = ["Assign >NIL: VTC: EXISTS", "If NOT WARN",
                       "  Path >NIL: VTC:gg/bin ADD", "EndIf"]
 BARE_SHELL_PATH = "Path >NIL: VTC:gg/bin ADD"
 
+# The kit's install copies the programs this repo builds into SYS: (L:, C:, DEVS:,
+# UP-Term:bin), and what the system runs is those copies: XCON: is mounted from
+# DEVS:DOSDrivers/XCON, Handler = L:vtcon-handler, and C: comes before the
+# shell's path to VTC:. A `rig.py install` that writes only VTC: left a rig with
+# a kit running the OLD handler (W-R1, 2026-10-13: three rig checks tested it).
+# So the boot, before any of them is first used, puts the VTC: build over every
+# copy the system already holds (never where no kit put one), after keeping the
+# kit's own once in VTC:kit-orig. `kit-restore` makes the boot put those back.
+# (VTC: name, SYS: place, backup name)
+KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
+               ("pty-handler", "L:pty-handler", "L-pty-handler"),
+               ("ixpipe-handler", "L:ixpipe-handler", "L-ixpipe-handler"),
+               ("vsh", "C:vsh", "C-vsh"),
+               ("vsh", "UP-Term:bin/vsh", "UP-Term-bin-vsh"),
+               ("UPConsole", "C:UPConsole", "C-UPConsole"),
+               ("UPDemo", "C:UPDemo", "C-UPDemo"),
+               ("upgetty", "C:upgetty", "C-upgetty"),
+               ("ixkill", "C:ixkill", "C-ixkill"),
+               ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device")]
+
+
+def kit_guard(dest, body):
+    """body only if dest exists. UP-Term: is asked with Assign EXISTS first: EXISTS on an
+    assign that is not there (a rig with no kit) puts up a "insert volume" requester."""
+    pre, post = [], []
+    if dest.startswith("UP-Term:"):
+        pre, post = ["C:Assign >NIL: UP-Term: EXISTS", "If NOT WARN"], ["EndIf"]
+    return pre + ["If EXISTS %s" % dest] + ["  " + l for l in body] + ["EndIf"] + post
+
+
+def kit_shadow_lines(upterm):
+    """The boot lines of KIT_SHADOWS: shadow, or restore when VTC:kit-restore exists. UP-Term:
+    is the kit's assign from its User-Startup block, which has run only after go's Wait:
+    upterm=True gives the UP-Term: places, False all the others."""
+    shadows = [x for x in KIT_SHADOWS if x[1].startswith("UP-Term:") == upterm]
+    out = ["If NOT EXISTS VTC:kit-orig", "  C:MakeDir >NIL: VTC:kit-orig", "EndIf",
+           "If EXISTS VTC:kit-restore"]
+    for _, dest, bak in shadows:
+        out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, dest), "EndIf"])
+    out.append("Else")
+    for src, dest, bak in shadows:
+        out += kit_guard(dest, ["If EXISTS VTC:%s" % src,
+                                "  If NOT EXISTS VTC:kit-orig/%s" % bak,
+                                "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (dest, bak),
+                                "  EndIf",
+                                "  C:Copy >NIL: VTC:%s %s CLONE" % (src, dest), "EndIf"])
+    out.append("EndIf")
+    return "\n".join(out)
+
+
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
+%(shadows)s
 C:Wait 15
+%(shadows_up)s
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
@@ -186,7 +241,7 @@ Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent PORT=%(port)d TOKEN=rigtoken
 Echo >>BOOTX:boot.log "amiagent started"
-""" % {"port": paths.AGENT_PORT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.AGENT_PORT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -438,7 +493,23 @@ def stage_upterm(dest, vsh):
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
     (dest / "UP-Term").write_text("UP-Term: double-click the icon to open a terminal with vsh.\n")
 
+def stage_terminfo(src, dest):
+    """VTC:terminfo (the rig's TERMINFO, GO) as the kit's terminal entries (make build/kit-terminfo/stamp:
+    vtcon, vtcon-amiga, screen, in first-letter and hex directories). An older copy of it lacked
+    vtcon-amiga, the TERM of an AMIGA-personality vsh window, and ncurses' clear answered
+    "'vtcon-amiga': unknown terminal type" and printed nothing (W-T6, 2026-10-13)."""
+    for f in sorted(src.glob("*/*")):
+        if f.is_file():
+            (dest / f.parent.name).mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(f, dest / f.parent.name / f.name)
+
+def kit_restore():
+    """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
+    (RIG / "vtc/kit-restore").write_text("")
+    print("kit-restore: reboot the rig (stop, start); the kit's files come back from VTC:kit-orig")
+
 def install():
+    (RIG / "vtc/kit-restore").unlink(missing_ok=True)
     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
     # every other build/amiga program the drawer already holds: rig 2's VTC:
@@ -465,9 +536,14 @@ def install():
         else:
             print("no %s: run make %s for glyphs above U+00FF on the rig" % (src, drawer))
     stage_upterm(RIG / "vtc" / "upterm", ROOT / "build/amiga/vsh")
+    if (ROOT / "build/kit-terminfo/stamp").is_file():
+        stage_terminfo(ROOT / "build/kit-terminfo", RIG / "vtc/terminfo")
+    else:
+        print("no %s: run make build/kit-terminfo/stamp, or VTC:terminfo stays as it was" % (ROOT / "build/kit-terminfo"))
     (RIG / "vtc/themes").mkdir(exist_ok=True)
     for f in sorted((ROOT / "themes").glob("*.conf")):
         shutil.copyfile(f, RIG / "vtc/themes" / f.name)
+    print("installed in VTC:; a rig with a kit runs the build after the next boot (KIT_SHADOWS copy it over the kit's files)")
 
 def screenmode(name):
     """Install a ScreenMode prefs file (saved from ours) and reboot."""
@@ -651,6 +727,6 @@ def status(quiet=False):
         return False
 
 if __name__ == "__main__":
-    {"setup": setup, "start": start, "stop": stop, "install": install,
+    {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
      "status": status, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
      "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()
