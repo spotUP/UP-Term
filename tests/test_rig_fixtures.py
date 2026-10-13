@@ -133,7 +133,8 @@ class Step12(unittest.TestCase):
             'responses': {'input': [{'role': 'user', 'content': 'hello'}]},
             'azure': {'input': [{'role': 'user', 'content': 'hello'}]},
             'google': {'contents': [{'parts': [{'text': 'hello'}]}]},
-            'bedrock': {'messages': [{'content': [{'text': 'hello'}]}]}}
+            'bedrock': {'messages': [{'content': [{'text': 'hello'}]}]},
+            'codex': {'input': [{'role': 'user', 'content': 'hello'}]}}
 
     def test_the_fixture_serves_each_adapter_route(self):
         import json, subprocess, time, urllib.request
@@ -143,16 +144,17 @@ class Step12(unittest.TestCase):
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         try:
             time.sleep(1)
-            self.assertEqual(len({r[1] for r in ar.ADAPTERS_12}), 6)
+            self.assertEqual(len({r[1] for r in ar.ADAPTERS_12}), 7)
             for tag, _, _, _, route, _ in ar.ADAPTERS_12:
                 req = urllib.request.Request('http://127.0.0.1:%d%s' % (port, route), json.dumps(self.BODY[tag]).encode(),
-                                             method='POST')
+                                             {'originator': 'pi'}, method='POST')
                 self.assertEqual(urllib.request.urlopen(req, timeout=10).status, 200, route)
         finally:
             fx.terminate()
             out = fx.communicate()[0]
         for _, _, _, _, route, _ in ar.ADAPTERS_12:
             self.assertEqual(sum(1 for l in out.splitlines() if l.startswith('[INFO] ' + route + ' ')), 1, route)
+        self.assertEqual(sum(1 for l in out.splitlines() if l == '[INFO]   codex originator=pi'), 1)    # the rig step reads this line
 
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

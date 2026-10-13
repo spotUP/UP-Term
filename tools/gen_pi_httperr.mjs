@@ -14,12 +14,41 @@ const { MODELS } = await imp("models.generated.js");
 const { normalizeContext } = await imp("utils/transcript.js");
 const out = join(dirname(fileURLToPath(import.meta.url)), "..", "tests", "pi", "httperr", "cases.json");
 
+// Date.now is fixed: the minutes until error.resets_at are counted from it
+Date.now = () => 1760100000000;
+const CODEX_KEY = "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9yaWcifX0.sig";
+const codexBodies = [
+	["usage_limit", 429, "Too Many Requests", "application/json", '{"error":{"code":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"PLUS","resets_at":1760103600}}'],
+	["usage_limit_noplan", 429, "Too Many Requests", "application/json", '{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached"}}'],
+	["usage_limit_past", 429, "Too Many Requests", "application/json", '{"error":{"code":"usage_limit_reached","plan_type":"pro","resets_at":1760000000}}'],
+	["usage_limit_round", 429, "Too Many Requests", "application/json", '{"error":{"code":"usage_limit_reached","plan_type":"Team","resets_at":1760100090}}'],
+	["usage_not_included", 403, "Forbidden", "application/json", '{"error":{"code":"usage_not_included","message":"Plan does not include usage","plan_type":"free"}}'],
+	["rate_limit_exceeded", 400, "Bad Request", "application/json", '{"error":{"type":"rate_limit_exceeded","message":"Slow down"}}'],
+	["limit_code_upper", 400, "Bad Request", "application/json", '{"error":{"code":"USAGE_LIMIT_REACHED_SOON"}}'],
+	["plan_not_string", 429, "Too Many Requests", "application/json", '{"error":{"code":"usage_limit_reached","message":"boom","plan_type":5}}'],
+	["plan_empty", 429, "Too Many Requests", "application/json", '{"error":{"plan_type":"","resets_at":0}}'],
+	["error_string_429", 429, "Too Many Requests", "application/json", '{"error":"slow down"}'],
+	["error_string_400", 400, "Bad Request", "application/json", '{"error":"bad thing"}'],
+	["error_false", 429, "Too Many Requests", "application/json", '{"error":false}'],
+	["message_only", 400, "Bad Request", "application/json", '{"error":{"message":"Invalid request"}}'],
+	["message_number", 422, "Unprocessable Entity", "application/json", '{"error":{"message":42}}'],
+	["message_object", 422, "Unprocessable Entity", "application/json", '{"error":{"message":{"a":1}}}'],
+	["no_error_member", 400, "Bad Request", "application/json", '{"detail":"nope"}'],
+	["text_body", 500, "Internal Server Error", "text/plain", "upstream broke"],
+	["empty_reason", 403, "Forbidden", "application/json", ""],
+	["empty_no_reason", 500, "", "application/json", ""],
+	["html_429", 429, "Too Many Requests", "text/html", "<html>slow</html>"],
+	["unicode", 400, "Bad Request", "application/json", '{"error":{"message":"caf\\u00e9"}}'],
+];
 const apis = {
 	"anthropic-messages": { file: "api/anthropic-messages.js", model: MODELS.anthropic["claude-haiku-4-5"], provider: "anthropic" },
 	"openai-completions": { file: "api/openai-completions.js", model: { ...MODELS.openai["gpt-5.5"], api: "openai-completions", provider: "lan", baseUrl: "http://192.168.1.10:11434/v1" }, provider: "lan" },
 	"openai-responses": { file: "api/openai-responses.js", model: MODELS.openai["gpt-5.5"], provider: "openai" },
 	"openai-responses/other": { file: "api/openai-responses.js", model: { ...MODELS.openai["gpt-5.5"], provider: "myprov" }, provider: "myprov", api: "openai-responses" },
 	"azure-openai-responses": { file: "api/azure-openai-responses.js", model: { ...MODELS.azure["gpt-4.1"], baseUrl: "https://res.openai.azure.com/openai/v1" }, provider: "azure" },
+	// the subscription's Responses endpoint: its own error words (openai-codex-responses.ts parseErrorResponse); the key is a JWT
+	// with the account claim, SSE only (pi tries a WebSocket first)
+	"openai-codex-responses": { file: "api/openai-codex-responses.js", model: MODELS["openai-codex"]["gpt-5.3-codex-spark"], provider: "openai-codex", key: CODEX_KEY, extra: codexBodies },
 	"google-generative-ai": { file: "api/google-generative-ai.js", model: MODELS.google["gemini-2.5-flash"], provider: "google" },
 };
 const J = "application/json";
@@ -55,13 +84,13 @@ const bodies = [
 const cases = [];
 for (const [aname, a] of Object.entries(apis)) {
 	const mod = await imp(a.file);
-	for (const [bn, status, reason, ctype, body] of bodies) {
+	for (const [bn, status, reason, ctype, body] of [...bodies, ...(a.extra ?? [])]) {
 		const headers = ctype ? { "content-type": ctype } : {};
 		const fetch = async () => new Response(body, { status, statusText: reason, headers });
 		if (a.provider === "google") globalThis.fetch = fetch;
 		if (a.provider === "azure") process.env.AZURE_OPENAI_BASE_URL = "https://res.openai.azure.com/openai/v1";
 		const context = normalizeContext({ systemPrompt: "s", messages: [{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1760100000000 }], tools: [] });
-		const s = mod.streamSimple(a.model, context, { apiKey: "sk-test-not-real", fetch, maxRetries: 0 });
+		const s = mod.streamSimple(a.model, context, { apiKey: a.key ?? "sk-test-not-real", fetch, maxRetries: 0, ...(a.key && { transport: "sse" }) });
 		let final;
 		for await (const ev of s) if (ev.type === "done" || ev.type === "error") final = ev.type === "done" ? ev.message : ev.error;
 		if (final.stopReason !== "error") throw new Error(aname + " " + bn + ": no error");

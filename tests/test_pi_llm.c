@@ -1418,9 +1418,9 @@ static void test_httperr(void)
             m.provider = provider;
         } else {
             const char *prov = !strcmp(api, "anthropic-messages") ? "anthropic" : !strcmp(api, "google-generative-ai") ? "google" :
-                               !strcmp(api, "azure-openai-responses") ? "azure" : "openai";
+                               !strcmp(api, "azure-openai-responses") ? "azure" : !strcmp(api, "openai-codex-responses") ? "openai-codex" : "openai";
             const char *id = !strcmp(api, "anthropic-messages") ? "claude-haiku-4-5" : !strcmp(api, "google-generative-ai") ? "gemini-2.5-flash" :
-                             !strcmp(api, "azure-openai-responses") ? "gpt-4.1" : "gpt-5.5";
+                             !strcmp(api, "azure-openai-responses") ? "gpt-4.1" : !strcmp(api, "openai-codex-responses") ? "gpt-5.3-codex-spark" : "gpt-5.5";
             md = llm_reg_find(&r, prov, id);
             CHECK(md != 0);
             if (!md)
@@ -1475,7 +1475,10 @@ static void test_httperr(void)
         llm_acc_init(&a, m.api, m.provider);
         llm_acc_model(&a, m.id, m.cost);
         k = llm_acc_sink(&a);
-        q = req_of(&m, &cx, &k, "sk-test-not-real");
+        /* the Codex key is a JWT whose claim names the account (tools/gen_pi_httperr.mjs CODEX_KEY) */
+        q = req_of(&m, &cx, &k, !strcmp(api, "openai-codex-responses")
+                   ? "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9yaWcifX0.sig"
+                   : "sk-test-not-real");
         q.retries = -1;
         llm_request(&q);
         jw_init(&msg);
@@ -1504,7 +1507,7 @@ static void test_httperr(void)
         }
         llm_cfg_free(&cfg);
     }
-    CHECK(ncase >= 150);
+    CHECK(ncase >= 196);
     llm_set_wall(0, 0);
     llm_reg_free(&r);
     free(txt);
