@@ -88,7 +88,9 @@ def rig(cmd):
 
 def fingerprint():
     h = hashlib.sha256()
-    for p in ("dist/install.dos", "dist/Uninstall", "build/amiga/vsh", "build/amiga/vtcon-handler",
+    for script in ir.assembled_scripts():
+        h.update(script)
+    for p in ("build/amiga/vsh", "build/amiga/vtcon-handler",
               "build/amiga/UPConsole", "build/amiga/up-console.device"):
         f = ROOT / p
         h.update(f.read_bytes() if f.exists() else b"missing " + p.encode())

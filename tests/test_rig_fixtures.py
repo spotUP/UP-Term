@@ -102,5 +102,29 @@ class Rig(unittest.TestCase):
         finally: ir._main = orig
         self.assertEqual(self.fake.files['ENVARC:Claude/remote'], b'; c\n192.168.0.198 2323\n')
 
+class Fingerprints(unittest.TestCase):
+    """K5: a rig verdict's fingerprint covers the scripts as the kit build assembles them,
+    so a change in a dist/common/ part (not in the dist/ templates) invalidates old verdicts."""
+    def test_a_change_in_dist_common_changes_the_fingerprint(self):
+        import shutil, tempfile
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import assign_rig, installer_rig, mkinstaller
+        before = (assign_rig.fingerprint(), installer_rig.fingerprint())
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        for d in ('common', 'values'):
+            shutil.copytree(ROOT / 'dist' / d, tmp / 'dist' / d)
+        part = tmp / 'dist/common/record.dos'
+        part.write_text(part.read_text(encoding='latin-1') + '; changed\n', encoding='latin-1')
+        saved = mkinstaller.ROOT
+        mkinstaller.ROOT = tmp
+        try:
+            after = (assign_rig.fingerprint(), installer_rig.fingerprint())
+        finally:
+            mkinstaller.ROOT = saved
+            shutil.rmtree(tmp)
+        self.assertNotEqual(after[0], before[0], 'assign_rig fingerprint ignores dist/common')
+        self.assertNotEqual(after[1], before[1], 'installer_rig fingerprint ignores dist/common')
+        self.assertEqual((assign_rig.fingerprint(), installer_rig.fingerprint()), before)
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
