@@ -9,9 +9,11 @@
 #   record      where an install leaves its MANIFEST, VERSIONS and options
 #   handed      kit paths (comma separated) the base hands over to this
 #               archive: the base's Update leaves them alone (kit-split D7)
-# id      archive          version  needs-base  ixemul  record                       handed
-base      UP-Term          1.0      -           -       UP-Term:                     -
-claude    UP-Term-Claude   1.0      1.0         -       UP-Term:pkg/UP-Term-Claude   Files/Claude,Files/ClaudeCode
-pi        UP-Term-pi       1.0      1.0         -       UP-Term:pkg/UP-Term-pi       Files/amiga-pi
-nvim      UP-Term-nvim     1.0      1.0         80      UP-Term:pkg/UP-Term-nvim     Files/nvim
-python    UP-Term-python   1.0      1.0         80      UP-Term:pkg/UP-Term-python   Files/python3
+#   consumes    the repositories (comma separated; vtcon is this one) the archive is
+#               built from: the lines of its Files/VERSIONS (tools/mkversions.sh)
+# id      archive          version  needs-base  ixemul  record                       handed                         consumes
+base      UP-Term          1.0      -           -       UP-Term:                     -                              vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src
+claude    UP-Term-Claude   1.0      1.0         -       UP-Term:pkg/UP-Term-Claude   Files/Claude,Files/ClaudeCode  vtcon
+pi        UP-Term-pi       1.0      1.0         -       UP-Term:pkg/UP-Term-pi       Files/amiga-pi                 amiga-pi,vtcon
+nvim      UP-Term-nvim     1.0      1.0         80      UP-Term:pkg/UP-Term-nvim     Files/nvim                     neovim-amiga,ixemul-vtcon
+python    UP-Term-python   1.0      1.0         80      UP-Term:pkg/UP-Term-python   Files/python3                  cpython-amiga,ixemul-vtcon
