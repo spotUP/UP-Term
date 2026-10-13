@@ -12,11 +12,11 @@
 #include <graphics/gfxbase.h>
 #include <graphics/rastport.h>
 
-enum gf_kind { GF_TEXT, GF_RECT, GF_SCROLL, GF_BLT, GF_MOVE, GF_CGXFILL, GF_SETRGB, GF_OTHER };
+enum gf_kind { GF_TEXT, GF_RECT, GF_SCROLL, GF_BLT, GF_MOVE, GF_CGXFILL, GF_SETRGB, GF_ALLOC, GF_OTHER };
 
 typedef struct gf_call {
     enum gf_kind kind;
-    long a, b, c, d;      /* CGXFILL: x y w h; TEXT: x, y (top left of the cell), count, -; RECT: x0 y0 x1 y1; SCROLL: dx dy y0 y1; MOVE: x y */
+    long a, b, c, d;      /* BLT (BltBitMapRastPort): dest x y, w h; ALLOC: the back bitmap's w h; CGXFILL: x y w h; TEXT: x, y (top left of the cell), count, -; RECT: x0 y0 x1 y1; SCROLL: dx dy y0 y1; MOVE: x y */
     char str[16];         /* TEXT: the first bytes drawn */
     unsigned long drmd;   /* the draw mode at the call */
 } gf_call;
@@ -34,6 +34,8 @@ extern int gf_n;
 /* A window of w x h pixels with a font of cw x ch (baseline base) and its screen, no borders. */
 void gf_open(int w, int h, int cw, int ch, int base);
 void gf_close(void);
+/* 1: AllocBitMap refuses the renderer's back bitmap (no memory for it), until gf_close. */
+extern int gf_no_back;
 struct Window *gf_window(void);
 /* A true-colour screen (24 bits) with cybergraphics.library 41 and no pen left for ObtainBestPen, as a
  * screen that has used them up: a direct colour is then the renderer's VR_INK_RGB case (scratch pens, or

@@ -5959,12 +5959,14 @@ static void packet(con *c, struct DosPacket *p)
             DBG("PROF render/frames", c->w.prof_render, c->w.prof_frames);
             DBG("PROF rows/scroll", c->w.prof_part[0], c->w.prof_part[1]);
             {
-                extern ULONG vr_prof[4];
+                extern ULONG vr_prof[7];
                 DBG("PROF cursor/paint", c->w.prof_part[2], vr_prof[0]);
                 DBG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
                 DBG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
                 c->w.prof_part[3] = 0;
-                vr_prof[0] = vr_prof[1] = vr_prof[2] = 0;
+                DBG("PROF fill/fills", vr_prof[3], vr_prof[4]);
+                DBG("PROF blit/blits", vr_prof[5], vr_prof[6]);
+                vr_prof[0] = vr_prof[1] = vr_prof[2] = vr_prof[3] = vr_prof[4] = vr_prof[5] = vr_prof[6] = 0;
                 c->w.r.n_text = 0;
             }
             DBG("PROF pkwrite/n", c->prof_pk[0], c->prof_npk[0]);

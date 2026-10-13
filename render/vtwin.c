@@ -541,7 +541,14 @@ void vtwin_render(vtwin *w)
             vr_cursor_off(&w->r);
             PROF_OUT(w, 2);
         }
-        vt_flush(w->t);
+        {
+            /* a ?2026 frame ended since the last pass: drawn off screen,
+             * shown at once (vr_compose_begin; W-T3) */
+            int composed = vr_compose_begin(&w->r);
+            vt_flush(w->t);
+            if (composed)
+                vr_compose_end(&w->r);
+        }
         {
             PROF_IN(w);
             vr_cursor_on(&w->r);

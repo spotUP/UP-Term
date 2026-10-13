@@ -267,6 +267,10 @@ void     vt_clear_scrollback(vt_term *t);
  * grid row y + vt_lines_scrolled() names a line for good (a selection
  * stays on its text while output scrolls). */
 long     vt_lines_scrolled(const vt_term *t);
+/* Synchronized-output frames (?2026 set, then reset) ended since vt_new: a
+ * host whose count moved since its last flush has a whole frame to show,
+ * and may compose it off screen and show it at once (W-T3). */
+long     vt_sync_frames(const vt_term *t);
 void     vt_cursor(const vt_term *t, int *x, int *y);
 /* 1 while the cursor waits on the last column for the next character to
  * wrap it (xterm's deferred wrap): logically it stands one cell further. */

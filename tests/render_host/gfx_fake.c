@@ -33,6 +33,13 @@ static UWORD pens[16];
 static int *canvas, *bgc, cw_px, ch_px, W, H;
 static int truecolor;
 static struct Library cgx_lib;
+/* The one bitmap the window's size or more, a friend of the window's: the renderer's back bitmap
+ * (vr_compose_begin). Its own canvas; BltBitMapRastPort copies from it into the window's. */
+static struct BitMap back;
+static int *bcanvas, *bbgc, back_on;
+
+static int *canvas_of(struct RastPort *rp) { return rp && back_on && rp->BitMap == &back ? bcanvas : canvas; }
+static int *bgc_of(struct RastPort *rp) { return rp && back_on && rp->BitMap == &back ? bbgc : bgc; }
 
 static gf_call *rec(enum gf_kind k, long a, long b, long c, long d)
 {
@@ -86,8 +93,14 @@ void gf_open(int w, int h, int cw, int ch, int base)
 
 void gf_truecolor(int on) { truecolor = on; }
 
+int gf_no_back;
+VOID FreeBitMap(struct BitMap *b);
+
 void gf_close(void)
 {
+    if (back_on)
+        FreeBitMap(&back);
+    gf_no_back = 0;
     free(canvas);
     free(bgc);
     canvas = bgc = 0;
@@ -144,8 +157,9 @@ const gf_call *gf_find(enum gf_kind k, int nth)
 }
 
 /* the pen under the pixels: a fill's, or the background pen of the Text that drew them */
-static void paint_bg(long x0, long y0, long x1, long y1, int pen)
+static void paint_bg(struct RastPort *rp, long x0, long y0, long x1, long y1, int pen)
 {
+    int *bgc = bgc_of(rp);
     long x, y;
     for (y = y0; y <= y1; y++)
         for (x = x0; x <= x1; x++)
@@ -153,8 +167,9 @@ static void paint_bg(long x0, long y0, long x1, long y1, int pen)
                 bgc[y * W + x] = pen;
 }
 
-static void paint(long x0, long y0, long x1, long y1, int v, int flip)
+static void paint(struct RastPort *rp, long x0, long y0, long x1, long y1, int v, int flip)
 {
+    int *canvas = canvas_of(rp);
     long x, y;
     for (y = y0; y <= y1; y++)
         for (x = x0; x <= x1; x++)
@@ -180,9 +195,9 @@ LONG Text(struct RastPort *rp, CONST_STRPTR s, ULONG n)
         g->str[i] = s[i];
     for (i = 0; i < n; i++, x += rp->Font->tf_XSize)
     {
-        paint(x, y, x + rp->Font->tf_XSize - 1, y + rp->Font->tf_YSize - 1, (unsigned char)s[i], 0);
+        paint(rp, x, y, x + rp->Font->tf_XSize - 1, y + rp->Font->tf_YSize - 1, (unsigned char)s[i], 0);
         if (rp->DrawMode != JAM1)
-            paint_bg(x, y, x + rp->Font->tf_XSize - 1, y + rp->Font->tf_YSize - 1, rp->BgPen);
+            paint_bg(rp, x, y, x + rp->Font->tf_XSize - 1, y + rp->Font->tf_YSize - 1, rp->BgPen);
     }
     rp->cp_x = (WORD)x;
     return 0;
@@ -218,9 +233,9 @@ VOID SetAfPt(struct RastPort *rp, UWORD *p, BYTE n) { (void)rp; (void)p; (void)n
 VOID RectFill(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
 {
     rec(GF_RECT, x0, y0, x1, y1);
-    paint(x0, y0, x1, y1, GF_FILL | rp->FgPen, rp->DrawMode & COMPLEMENT);
+    paint(rp, x0, y0, x1, y1, GF_FILL | rp->FgPen, rp->DrawMode & COMPLEMENT);
     if (!(rp->DrawMode & COMPLEMENT))
-        paint_bg(x0, y0, x1, y1, rp->FgPen);
+        paint_bg(rp, x0, y0, x1, y1, rp->FgPen);
 }
 
 VOID ScrollRaster(struct RastPort *rp, LONG dx, LONG dy, LONG x0, LONG y0, LONG x1, LONG y1)
@@ -228,8 +243,8 @@ VOID ScrollRaster(struct RastPort *rp, LONG dx, LONG dy, LONG x0, LONG y0, LONG 
     long x, y;
     rec(GF_SCROLL, dx, dy, y0, y1);
     /* dy > 0: the contents move up by dy, the rows below are vacated in the background pen */
-    if (dx)
-        abort(); /* the renderer scrolls rows only */
+    if (dx || canvas_of(rp) != canvas)
+        abort(); /* the renderer scrolls rows only, and the window's */
     if (dy > 0) {
         for (y = y0; y <= y1; y++)
             for (x = x0; x <= x1; x++)
@@ -259,8 +274,7 @@ VOID BltTemplate(CONST PLANEPTR src, LONG sx, LONG sm, struct RastPort *rp, LONG
 {
     (void)src; (void)sx; (void)sm;
     rec(GF_OTHER, x, y, w, h);
-    paint(x, y, x + w - 1, y + h - 1, '?', 0); /* a template glyph: some glyph, not a code */
-    (void)rp;
+    paint(rp, x, y, x + w - 1, y + h - 1, '?', 0); /* a template glyph: some glyph, not a code */
 }
 
 ULONG GetBitMapAttr(CONST struct BitMap *b, ULONG a)
@@ -274,15 +288,45 @@ VOID Draw(struct RastPort *rp, LONG x, LONG y) { (void)rp; rec(GF_OTHER, x, y, 0
 LONG WritePixel(struct RastPort *rp, LONG x, LONG y) { (void)rp; rec(GF_OTHER, x, y, 0, 0); return 0; }
 struct BitMap *AllocBitMap(ULONG sx, ULONG sy, ULONG d, ULONG f, CONST struct BitMap *fr)
 {
-    (void)sx; (void)sy; (void)d; (void)f; (void)fr;
-    return 0;
+    (void)d; (void)f;
+    if (fr != &bm || (long)sx < W || (long)sy < H || back_on || gf_no_back)
+        return 0; /* the renderer's small scratch bitmaps (double-size rows, images) are not drawn here */
+    back_on = 1;
+    bcanvas = (int *)calloc((size_t)(W * H), sizeof(int));
+    bbgc = (int *)calloc((size_t)(W * H), sizeof(int));
+    memset(&back, 0, sizeof(back));
+    rec(GF_ALLOC, (long)sx, (long)sy, 0, 0);
+    return &back;
 }
-VOID FreeBitMap(struct BitMap *b) { (void)b; }
+VOID FreeBitMap(struct BitMap *b)
+{
+    if (b == &back && back_on) {
+        back_on = 0;
+        free(bcanvas);
+        free(bbgc);
+        bcanvas = bbgc = 0;
+    }
+}
+VOID BltBitMapRastPort(CONST struct BitMap *s, LONG sx, LONG sy, struct RastPort *rp, LONG dx, LONG dy, LONG w,
+                       LONG h, ULONG mt)
+{
+    long x, y;
+    int *src = s == &back && back_on ? bcanvas : canvas, *sbg = s == &back && back_on ? bbgc : bgc;
+    int *dst = canvas_of(rp), *dbg = bgc_of(rp);
+    rec(GF_BLT, dx, dy, w, h);
+    if (mt != 0xC0)
+        abort(); /* a plain copy is all the renderer asks for */
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++)
+            if (sx + x < W && sy + y < H && dx + x < W && dy + y < H) {
+                dst[(dy + y) * W + dx + x] = src[(sy + y) * W + sx + x];
+                dbg[(dy + y) * W + dx + x] = sbg[(sy + y) * W + sx + x];
+            }
+}
 VOID SetRast(struct RastPort *rp, ULONG pen)
 {
-    (void)rp;
-    paint(0, 0, W - 1, H - 1, GF_FILL | (int)pen, 0);
-    paint_bg(0, 0, W - 1, H - 1, (int)pen);
+    paint(rp, 0, 0, W - 1, H - 1, GF_FILL | (int)pen, 0);
+    paint_bg(rp, 0, 0, W - 1, H - 1, (int)pen);
 }
 VOID InitRastPort(struct RastPort *rp) { memset(rp, 0, sizeof(*rp)); }
 VOID BitMapScale(struct BitScaleArgs *a) { (void)a; }
@@ -354,10 +398,10 @@ LONG vr_cgx_write_lut(struct Library *l, APTR src, UWORD sx, UWORD sy, UWORD smo
 }
 ULONG vr_cgx_fill(struct Library *l, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb)
 {
-    (void)l; (void)rp;
+    (void)l;
     rec(GF_CGXFILL, x, y, w, h);
-    paint(x, y, x + w - 1, y + h - 1, GF_CGX | (int)(argb & 0xFFFFFF), 0);
-    paint_bg(x, y, x + w - 1, y + h - 1, GF_CGX | (int)(argb & 0xFFFFFF));
+    paint(rp, x, y, x + w - 1, y + h - 1, GF_CGX | (int)(argb & 0xFFFFFF), 0);
+    paint_bg(rp, x, y, x + w - 1, y + h - 1, GF_CGX | (int)(argb & 0xFFFFFF));
     return 0;
 }
 

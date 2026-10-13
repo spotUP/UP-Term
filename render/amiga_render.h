@@ -39,6 +39,19 @@ struct vr_images {
     ULONG ctab[256];
 };
 
+#define VR_BACK_RECTS 32
+
+/* The back bitmap (a friend of the window's, at least its size), its
+ * RastPort, and the rectangles drawn into it since the last blit (pixels,
+ * inclusive: x0 y0 x1 y1). */
+struct vr_back {
+    struct BitMap *bm;
+    struct RastPort rp;
+    WORD w, h;
+    WORD n;
+    WORD rect[VR_BACK_RECTS][4];
+};
+
 typedef struct vr_render {
     struct Window *win;
     struct RastPort *rp;
@@ -151,6 +164,14 @@ typedef struct vr_render {
     ULONG img_bgrgb;
     UBYTE img_planes;     /* the planes the last image's pens use */
     ULONG n_img_runs;     /* image runs drawn (the debug build's counter) */
+    /* A synchronized frame composed off screen (vr_compose_begin, W-T3):
+     * made at a window's first such frame (a window's own block stays
+     * small: device/upcon_device.c's bound), freed by vr_free; the window's
+     * RastPort while r->rp is the back one (0: not composing); the
+     * engine's count of frames already shown (vt_sync_frames). */
+    struct vr_back *back;
+    struct RastPort *front_rp;
+    long sync_seen;
 } vr_render;
 
 /* Default colours from RGB (0xRRGGBB; VR_KEEP leaves the screen's text /
@@ -213,6 +234,17 @@ int  vr_layout(vr_render *r);
  * at full depth. */
 void vr_mask_begin(vr_render *r);
 void vr_mask_end(vr_render *r);
+/* Around the engine's flush in a render pass (inside the mask): when the
+ * program ended a synchronized-output frame (?2026) since the last pass,
+ * the pass draws into an off-screen bitmap and vr_compose_end puts what it
+ * drew into the window in one blit per rectangle, so the frame appears at
+ * once instead of row by row as it is drawn (W-T3: UPDemo's effects swept
+ * down the window over 12-27 ms on the 68060's RTG screen). Palette and
+ * true-colour RTG screens only: a planar (AGA) window keeps drawing in place
+ * -- its fast paths write the screen's planes, and a blit of the planes
+ * goes plane by plane, no more at once. 1 when the pass is composed. */
+int  vr_compose_begin(vr_render *r);
+void vr_compose_end(vr_render *r);
 void vr_redraw(vr_render *r);
 void vr_damage(vr_render *r, int x0, int y0, int x1, int y1);
 /* Jump scroll's end: the screen exactly as the grid again (output stopped). */
